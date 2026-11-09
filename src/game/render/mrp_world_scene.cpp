@@ -653,7 +653,7 @@ void emit_static(Build& b, VUState& st, int kind) {
 // 0x5340b, its constants' qword 0x3cd)
 void emit_host_meshes(Build& b) {
     const World* w = host_meshes_bound(&b.idx);
-    if (w == nullptr || w->host_meshes.empty()) return;
+    if (w == nullptr || (w->host_meshes.empty() && b.in.host_dyn.empty())) return;
     float tie_fog[4];
     host_meshes_fog(tie_fog);
     const SceneInput& in = b.in;
@@ -673,11 +673,15 @@ void emit_host_meshes(Build& b) {
         return e != nullptr ? static_cast<float>(std::atof(e)) : 1000.0f;
     }();  // (0: none culled)
     const int view = b.view(false);
-    for (const HostMeshInstance& ci : w->host_meshes) {
+    const size_t n_static = w->host_meshes.size();
+    for (size_t ii = 0; ii < n_static + in.host_dyn.size(); ++ii) {
+        // (the static ones, then the level's objects': src/formats/host_meshes.h host_meshes_dynamic)
+        const HostMeshInstance& ci = ii < n_static ? w->host_meshes[ii] : in.host_dyn[ii - n_static];
+        if (ci.cls >= w->ties.size()) continue;
         const TieClass& c = w->ties[ci.cls];
         float sph[4];
         std::memcpy(sph, c.header.data() + 0x30, sizeof sph);
-        const float sc = c.scale;
+        const float sc = c.scale * ci.scale;
         float centre[3], rad = sph[3] * sc;
         for (int l = 0; l < 3; ++l) centre[l] = ci.pos[l] + sc * (ci.rot[0][l] * sph[0] + ci.rot[1][l] * sph[1] + ci.rot[2][l] * sph[2]);
         float d2 = 0;
@@ -1573,6 +1577,9 @@ void scene_capture(uint32_t chain_start, uint32_t chain_end, SceneInput& in, con
         float fog[4];
         for (uint32_t k = 0; k < 4; ++k) fog[k] = lwc1(OV(0x0016cc60u) + 4 * k);
         host_meshes_fog_set(fog);
+        host_meshes_dynamic(in.host_dyn);  // (the level's objects' models: their places this frame)
+    } else {
+        in.host_dyn.clear();
     }
     uint32_t last_end = 0;
     for (const PassRange& r : in.passes) last_end = std::max(last_end, r.end);

@@ -421,9 +421,11 @@ python3 examples/custom-level/make_example.py mods/example-plateau
 ```
 
 The first line writes the example mod (a floor, a ramp up to a platform, a few blocks coloured per vertex, a ship pad,
-five crates, Kerwan's sky and a short tune as its music, made round (0, 0, 0) and moved by its offset; everything in it
-is made by the script, the tune too), and copies its plugin (`examples/custom-level/plugin/`: a sixth crate that
-glides back and forth as a platform, a HUD line, a sound where it turns, a visits counter in the save). The second
+five crates, Kerwan's sky and a short tune as its music, made round (0, 0, 0) and moved by its offset; two classes of
+its own, sentries and gems, with their models, seven sounds and a trigger; everything in it is made by the script, the
+tune and the sounds too), and copies its plugin (`examples/custom-level/plugin/`: a sixth crate that glides back and
+forth as a platform, a HUD line, a sound where it turns, a visits counter in the save; the sentries' and gems'
+behaviour, the trigger's chime). The second
 composes it with your disc and builds the plugin (the setup does it too, as its last step: CMake and the compiler the
 game was built with). In the game, the mod contains code: Options > Mods, turn **Example Plateau** on and confirm it
 (cross twice), restart. Then enter your ship: the planet list ends with **Custom Levels / Example Plateau**. Its log
@@ -479,6 +481,10 @@ mods/example-plateau/
 | `moby <class> <x> <y> <z> [<yaw>]` | an object (below) |
 | `music <level>`, `music <loop.vag> [<intro.vag>]`, `music none` | the music: the game level's (0..18), your own (below), or none; default the base level's |
 | `sky <level>` | the sky of the game's level (0..18); default the base level's |
+| `class <name> <model.obj> [size <s>] [solid\|ghost] [scale <k>]` | a class of the level's own objects (its model, its hit box; its behaviour in the mod's plugin): [The mod SDK](sdk.md#the-levels-own-content-leveltxt) |
+| `object <class> <x> <y> <z> [<yaw>] [<key>=<value> ...]` | an object of one of the level's classes |
+| `sound <name> <file.wav\|.vag> [volume <v>] [range <near> <far>] [loop] [pitch <s>]` | a sound of the level's own (the plugin plays it) |
+| `trigger <name> <x0> <y0> <z0> <x1> <y1> <z1>` | a box Ratchet enters and leaves (the plugin's trigger callback) |
 
 **Objects** (`moby` lines): each is a copy of the first object of class `<class>` the base level places (its settings
 and its private values), put at `<x> <y> <z>` turned `<yaw>` radians; it drops to the ground under it when its class
@@ -526,7 +532,9 @@ last step. The build goes to `assets/generated/mods/<folder>/` (made from your d
   its take-off path) or none; your objects (`moby` lines).
 - `music_loop.vag`, `music_intro.vag`: your music, when level.txt names it.
 - `host_meshes.mrpc`: your meshes, drawn by the modern renderer (not by the game's code: the faithful renderer, a debug
-  choice, does not draw them).
+  choice, does not draw them), and your classes' models.
+- `level.sdk`, `sounds.bnk`: your classes, placed objects, sounds and triggers ([The mod SDK](sdk.md)); your sounds as
+  one sound bank of the game's format.
 - `mrp/world/level0/`: the modern renderer's world of the composed level (the meshes added).
 - `build.json` (the stamp), `compose.log` (what the composer did).
 
@@ -559,8 +567,10 @@ game's code is untouched.
 
 Format 1 is the first step:
 
-- objects: the base level's classes only, as copies of its own placements (see Objects above); no scripted events, no
-  objects of other levels' classes; sounds are the base level's;
+- objects of the game: the base level's classes only, as copies of its own placements (see Objects above); no
+  scripted events, no objects of other levels' classes. Objects of **your own classes** (`class` / `object` lines: a
+  model, a hit box, behaviour in your plugin) and sounds of your own (`sound` lines) are the SDK's: see
+  [The mod SDK](sdk.md);
 - the sky: a game level's (`sky`); a sky of your own is a later step (a texture mod can change a sky's textures in the
   modern renderer). Another level's sky is right in the modern renderer; the faithful renderer may show it with wrong
   colours;

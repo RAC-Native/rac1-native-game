@@ -56,6 +56,11 @@ int snd989_iop_active_sounds();
 //   snd989_host_play_sent for each one, in order; the game's IOP gives the place to the sound that command starts
 //   (checked by its bank and sound).
 void snd989_host_place(uint32_t handle, int mode, int pan);
+// Host: a sound bank of the host's own (a 989snd file, as the game's: a level mod's sounds.bnk, src/game/enhance/mod_code.cpp)
+// handed to the game's IOP (and the mirror, by its record): its handle (as the game's banks', for the play command's sound
+// definitions), 0 when it is not a bank; and unloaded (its sounds stopped)
+uint32_t snd989_host_bank_load(const std::vector<uint8_t>& bank);
+void snd989_host_bank_unload(uint32_t handle);
 void snd989_host_place_next(int mode, int pan);
 void snd989_host_play_sent(uint32_t bank, uint32_t sound);
 

@@ -86,6 +86,12 @@ bool host_meshes_bound_any();
 // orig: (host)
 void host_meshes_fog_set(const float fog[4]);
 void host_meshes_fog(float fog[4]);
+// The frame's moving host meshes: a level mod's objects (src/game/enhance/mod_code.cpp, docs/sdk.md), placed at their mobys'
+// matrices. Set by the game's thread after the frame's object updates; the scene's capture copies them (its SceneInput).
+// orig: (host)
+void host_meshes_dynamic_set(std::vector<HostMeshInstance> v);
+// orig: (host) a copy of the last set
+void host_meshes_dynamic(std::vector<HostMeshInstance>& out);
 
 }  // namespace rac1::mrpw
 

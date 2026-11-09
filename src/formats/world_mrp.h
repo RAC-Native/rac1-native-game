@@ -146,6 +146,7 @@ struct HostMeshInstance {
     float pos[3] = {};           // the position (world units)
     uint8_t rgba[4] = {0x80, 0x80, 0x80, 0x80};  // its colour (0x80 = 1.0), every vertex's without a palette entry
     std::vector<std::array<uint8_t, 4>> palette;  // its vertices' colours (at most 64: a vertex's index is its dinky slot lane)
+    float scale = 1.0f;          // (a level object's, src/game/enhance/mod_code.cpp: its class's scale times its own) the class's scale times this
 };
 
 struct World {

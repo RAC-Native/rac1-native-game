@@ -292,6 +292,8 @@ struct SceneInput {
     DirectWorld dw;
     const TfragLevel* tfrag_cpu = nullptr;
     const TfragColours* tfrag_cpu_colours = nullptr;
+    // a level mod's objects' models this frame (src/formats/host_meshes.h host_meshes_dynamic): drawn after its host meshes
+    std::vector<HostMeshInstance> host_dyn;
 };
 
 // orig: (host) the frame's chain [chain_start, chain_end) walked to the end of its last world range: the world's packets

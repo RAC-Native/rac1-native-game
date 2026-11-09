@@ -69,7 +69,7 @@ constexpr const char* kPluginFile = "rac1_mod.so";  // (CMake's MODULE suffix on
 
 // The level composer's version (src/setup/level_compose.cpp): a build made by another version is made again by the
 // setup, and the game does not use it ("needs setup")
-constexpr int kLevelComposerVersion = 2;
+constexpr int kLevelComposerVersion = 3;
 // The level folder formats this build reads (level.format)
 constexpr int kLevelFormat = 1;
 // The first host level slot (the game's levels are 0..18)

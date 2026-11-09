@@ -5,6 +5,8 @@ A mod can carry **code**: a native plugin, written in C (or C++) against the gam
 platform, a counter, a HUD line, its own rules for its objects), and how any mod can watch and change the game while it
 runs. This page is for modders: what a plugin can do, how it is built and loaded, and how to test it. The example level
 (`examples/custom-level/`) has one: [`plugin/example_plugin.c`](../examples/custom-level/plugin/example_plugin.c).
+**The SDK's full reference** (every struct, service and callback, the lifecycle, the versions, the limits) is
+[The mod SDK: reference](sdk.md).
 
 **For players:** a mod with code runs a program of its own on your computer, with your rights, as any program you
 download. The game keeps such a mod **off** when it first finds it; Options > Mods says "Contains code." in its box, and
@@ -89,6 +91,7 @@ Every callback gets your `mod->user` back. All are optional.
 | `load(user, data, size)` | a save is loaded: your bytes as saved, or `NULL` / 0 when it has none (reset) |
 | `test(user, text, frame)` | testing: `RAC1_MOD_TEST=<text>` given, once a frame of play |
 | `shutdown(user)` | the game ends |
+| `trigger(user, index, name, inside)` | (ABI 2) Ratchet entered or left one of level.txt's `trigger` boxes |
 
 A save's bytes of a mod that is off or missing are kept: saving again writes them back as they were.
 
@@ -99,7 +102,7 @@ A save's bytes of a mod that is off or missing are kept: saving again writes the
 | Group | Services |
 |---|---|
 | The log, files | `log(text)` (`[mod <folder>] text`), `mod_path(name, out, cap)` (a file of your mod's folder) |
-| Memory | `ram` (read the game's memory inline: `rac1_lw`, `rac1_lh`, `rac1_lb`, `rac1_lwf`), `sw`, `sh`, `sb`, `swf` (write it), `ov(addr)` (Veldin's overlay address on the current level), `ee_alloc(size)` (game memory of your own, 56 KB shared by the plugins: take it once), `replaying()` |
+| Memory | `ram` (read the game's memory inline: `rac1_lw`, `rac1_lh`, `rac1_lb`, `rac1_lwf`), `sw`, `sh`, `sb`, `swf` (write it), `ov(addr)` (Veldin's overlay address on the current level), `ee_alloc(size)` (game memory of your own, 54 KB shared by the plugins: take it once), `replaying()` |
 | Objects (mobys) | `moby_by_uid`, `moby_spawn(class)`, `moby_remove`, `moby_moved` (after writing a position, rotation or scale), `moby_link` / `moby_set_link` (a pvar word naming another moby) |
 | Collision | `collide_line(from, to, hit)`: the level's collision and the mobys |
 | The hero | `hero()` (his moby), `hero_place(pos, yaw)`, `bolts()`, `bolts_add(n)`, `health()` |
@@ -110,6 +113,11 @@ A save's bytes of a mod that is off or missing are kept: saving again writes the
 | Pad | `pad_held()`, `pad_pressed()`: the game's bits (0x10 triangle, 0x20 circle, 0x40 cross, 0x80 square, 0x800 start, 0x1000 up, 0x2000 right, 0x4000 down, 0x8000 left, 1 L2, 2 R2, 4 L1, 8 R1) |
 | Random | `random()`: numbers of your own (the game's random numbers untouched), the same each run from a level's start |
 | The game's code | `call_port(veldin_addr, arg)`: one of the game's functions the game itself calls through a pointer (its objects' update functions, their draw callbacks: the port's dispatch table, `ovl_register_moby_fn`), with one argument; 0 when the port has no such function |
+| (ABI 2) The level's objects | `class_define(def)` (a level class's behaviour: spawn, update, hit, remove, a state per object), `class_find`, `object_spawn`, `object_remove`, `object_moby`, `object_of_moby`, `object_class`, `object_state`, `object_param`, `object_named`, `object_place`, `object_show`, `object_solid`, `object_count`, `object_at` |
+| (ABI 2) Queries | `collide_ray(from, to, ignore, flags, out)` (the point, the normal, the moby or object hit), `objects_near`, `mobys_near` |
+| (ABI 2) Damage | `hero_damage(amount, from)`, `hit_send(moby, kinds, strength, from)`, `hit_take(moby, kinds, out)` |
+| (ABI 2) The level's sounds | `sfx_find(name)`, `sfx_play(sound, moby, pos)`, `sfx_stop(slot)`, `sfx_active(slot, sound)` |
+| (ABI 2) Triggers, time | `trigger_find(name)`, `trigger_inside(index)`, `frame_count()` |
 
 A moby is 0x100 bytes of the game's memory: +0x10 its position (x y z), +0x20 its state (negative: gone), +0x24 its
 class data, +0x2c its scale, +0x40 its rotation (Euler angles), +0x74 its update function, +0x78 its pvars (its class's
@@ -123,6 +131,35 @@ own values), +0xa6 its class, +0xb2 its uid. Some of the game's other addresses 
 | `0x0013c940` | pad 1 (+0x1b0 held, +0x1c4 pressed) |
 | `ov(0x0015ffd8)` | the first moby (Ratchet) |
 | `ov(0x00166dc0)` | the camera's position |
+
+## Your own objects and sounds (ABI 2)
+
+A level mod can have **classes of its own**: a model (an OBJ), a hit box, and behaviour in the plugin. level.txt says
+what there is, the plugin says what it does:
+
+```
+class sentry orb.obj size 1.2            (level.txt: a class, its model, its hit box)
+object sentry 12 14 2 name=east          (an object of it, placed; key=value words for the plugin)
+sound zap zap.wav range 6 60             (a sound of the level's own: a WAV or a VAG)
+trigger ramp -21 -8 -1 -15 8 6           (a box: the trigger callback)
+```
+
+```c
+rac1_class_def d = {sizeof d};          /* in rac1_mod_main */
+d.name = "sentry";
+d.state_size = sizeof(sentry);          /* your per-object state: api->object_state(obj) */
+d.spawn = sentry_spawn;                 /* (obj, spawn: where, its key=value words) */
+d.update = sentry_update;               /* once a frame */
+d.hit = sentry_hit;                     /* Ratchet's attacks reached it */
+d.remove = sentry_remove;
+api->class_define(&d);
+```
+
+Each object is a moby of the game (Ratchet stands on it, his weapons hit it, the game's rays see it) drawn with your
+model by the modern renderer; the sounds play through the game's own sound slots (distance, pan, walls, reverb). The
+example's plugin has two classes (a sentry that watches Ratchet with a ray, zaps him, breaks into a gem; gems to
+collect), seven sounds and a trigger. Everything about them: [The mod SDK: reference](sdk.md), "Objects", "Hits and
+damage", "Sounds".
 
 ## The rules
 
@@ -145,8 +182,10 @@ RAC1_HEADLESS=1 RAC1_MODS=1 RAC1_MOD_CODE=1 RAC1_GOTO=<level.id>@60 RAC1_MOD_TES
 ```
 
 `RAC1_MOD_TEST` is given to your `test` callback each frame: let it log what you want to check, or do scripted steps.
-The example plugin understands `log` (the platform's and Ratchet's places every second) and `ride` (Ratchet put on the
-platform at its 200th frame: he rides it). `RAC1_LEVEL_SAVE_IMAGE=<frame>:<prefix>` writes the `.pc` items a save
+The example plugin understands `log` (the platform's and Ratchet's places every second), `ride` (Ratchet put on the
+platform at its 200th frame: he rides it) and `sdk` (the level's own objects step by step: Ratchet put by a sentry,
+which sees and zaps him; three hits sent to it, so it breaks into a gem; Ratchet put on the gem, which he takes; then on
+the ramp, the trigger; two rays; the objects, his health and bolts logged every second). `RAC1_LEVEL_SAVE_IMAGE=<frame>:<prefix>` writes the `.pc` items a save
 would get, yours included.
 
 ## Untested yet

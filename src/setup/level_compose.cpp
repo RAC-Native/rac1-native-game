@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
@@ -54,7 +55,11 @@ namespace {
     "moby <class> <x> <y> <z> [<yaw>]          an object of the base level's class <class>, as its first placement there\n"
     "music <level> | music <loop.vag> [<intro.vag>] | music none   the level's music\n"
     "sky <level>                               the sky of the game's level <level> (default: the base level's)\n"
-    "offset auto | offset <x> <y> <z>          moved by that much (auto: as far as the collision needs to be above 0)\n";
+    "offset auto | offset <x> <y> <z>          moved by that much (auto: as far as the collision needs to be above 0)\n"
+    "class <name> <model.obj> [size <s>] [solid|ghost] [scale <k>]   a class of the level's own objects (docs/sdk.md)\n"
+    "object <class> <x> <y> <z> [<yaw>] [<key>=<value> ...]           an object of a level class\n"
+    "sound <name> <file.wav|.vag> [volume <v>] [range <near> <far>] [loop] [pitch <semitones>]   a sound of the level's own\n"
+    "trigger <name> <x0> <y0> <z0> <x1> <y1> <z1>                    a box Ratchet enters and leaves (the plugin's trigger callback)\n";
 
 struct LevelTxt {
     float hero[4] = {0, 0, 1, 0};
@@ -81,7 +86,43 @@ struct LevelTxt {
     int sky_level = -1;                 // sky <level>
     bool offset_auto = false;           // offset auto
     float offset[3] = {};               // offset <x> <y> <z> (or auto's): added to every coordinate (not lights.txt's)
+    // the level's own content (docs/sdk.md): its classes, their objects, its sounds, its triggers
+    struct Class {
+        std::string name, model;
+        float size = 0;                 // (0: the model's largest extent)
+        float scale = 1;
+        bool ghost = false;
+        int line = 0;
+    };
+    struct Object {
+        std::string cls;
+        float at[4] = {};
+        std::string params;
+        int line = 0;
+    };
+    struct Sound {
+        std::string name, file;
+        float volume = 1, near = 10, far = 60, pitch = 0;
+        bool loop = false;
+        int line = 0;
+    };
+    struct Trigger {
+        std::string name;
+        float lo[3] = {}, hi[3] = {};
+    };
+    std::vector<Class> classes;
+    std::vector<Object> objects;
+    std::vector<Sound> sounds;
+    std::vector<Trigger> triggers;
 };
+
+// a name of the level's own (a class, a sound, a trigger): letters, digits, - _ .
+bool sdk_name_ok(const std::string& n) {
+    if (n.empty() || n.size() > 31) return false;
+    for (const char c : n)
+        if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.')) return false;
+    return true;
+}
 
 struct Log {
     std::string text;
@@ -223,12 +264,91 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
             }
         } else if (key == "sky") {
             if (!(in >> t.sky_level) || t.sky_level < 0 || t.sky_level > 18) return bad();
+        } else if (key == "class") {
+            LevelTxt::Class c;
+            c.line = n;
+            if (!(in >> c.name >> c.model) || !sdk_name_ok(c.name)) return bad();
+            for (const LevelTxt::Class& o : t.classes)
+                if (o.name == c.name) {
+                    err = fmt("%s:%d: the class \"%s\" twice", p.generic_string().c_str(), n, c.name.c_str());
+                    return false;
+                }
+            std::string w;
+            while (in >> w) {
+                if (w == "size") {
+                    if (!(in >> c.size) || !(c.size > 0)) return bad();
+                } else if (w == "scale") {
+                    if (!(in >> c.scale) || !(c.scale > 0)) return bad();
+                } else if (w == "ghost" || w == "solid") {
+                    c.ghost = w == "ghost";
+                } else {
+                    return bad();
+                }
+            }
+            t.classes.push_back(c);
+        } else if (key == "object") {
+            LevelTxt::Object o;
+            o.line = n;
+            if (!(in >> o.cls >> o.at[0] >> o.at[1] >> o.at[2])) return bad();
+            std::string w;
+            while (in >> w) {
+                if (w.find('=') != std::string::npos) {
+                    if (w.front() == '=') return bad();
+                    o.params += (o.params.empty() ? "" : " ") + w;
+                } else {
+                    char* end = nullptr;
+                    const float yaw = std::strtof(w.c_str(), &end);
+                    if (end == nullptr || *end != 0 || !o.params.empty()) return bad();
+                    o.at[3] = yaw;
+                }
+            }
+            t.objects.push_back(o);
+        } else if (key == "sound") {
+            LevelTxt::Sound d;
+            d.line = n;
+            if (!(in >> d.name >> d.file) || !sdk_name_ok(d.name)) return bad();
+            for (const LevelTxt::Sound& o : t.sounds)
+                if (o.name == d.name) {
+                    err = fmt("%s:%d: the sound \"%s\" twice", p.generic_string().c_str(), n, d.name.c_str());
+                    return false;
+                }
+            std::string w;
+            while (in >> w) {
+                if (w == "volume") {
+                    if (!(in >> d.volume) || d.volume < 0 || d.volume > 1) return bad();
+                } else if (w == "range") {
+                    if (!(in >> d.near >> d.far) || d.near < 0 || !(d.far > d.near)) return bad();
+                } else if (w == "pitch") {
+                    if (!(in >> d.pitch) || std::fabs(d.pitch) > 24) return bad();
+                } else if (w == "loop") {
+                    d.loop = true;
+                } else {
+                    return bad();
+                }
+            }
+            t.sounds.push_back(d);
+        } else if (key == "trigger") {
+            LevelTxt::Trigger g;
+            if (!(in >> g.name >> g.lo[0] >> g.lo[1] >> g.lo[2] >> g.hi[0] >> g.hi[1] >> g.hi[2]) || !sdk_name_ok(g.name)) return bad();
+            t.triggers.push_back(g);
         } else {
             return bad();
         }
     }
     if (!t.has_hero) {
         err = p.generic_string() + ": no \"hero <x> <y> <z>\" line (where Ratchet starts)";
+        return false;
+    }
+    for (const LevelTxt::Object& o : t.objects) {
+        bool found = false;
+        for (const LevelTxt::Class& c : t.classes) found = found || c.name == o.cls;
+        if (!found) {
+            err = fmt("%s:%d: no class \"%s\" (a class line names it, before or after)", p.generic_string().c_str(), o.line, o.cls.c_str());
+            return false;
+        }
+    }
+    if (t.sounds.size() > 64) {
+        err = p.generic_string() + ": more than 64 sounds";
         return false;
     }
     return true;
@@ -716,7 +836,13 @@ bool material_texture(const ObjMaterial& m, mrp::Texture& t, Log& log, std::stri
     return true;
 }
 
-bool build_host_meshes(const Obj& o, mrpw::HostMeshFile& out, Log& log, std::string& err) {
+// (a level class's model, `as_class`: the whole OBJ one mesh round its own origin, no placement; its colours and extent out)
+struct ClassModel {
+    int32_t mesh = -1;
+    float extent = 0;  // the model's largest extent (its bounds' largest edge)
+    std::vector<std::array<uint8_t, 4>> palette;
+};
+bool build_host_meshes(const Obj& o, mrpw::HostMeshFile& out, Log& log, std::string& err, const char* as_class = nullptr, ClassModel* model = nullptr) {
     std::vector<int> tex_of(o.materials.size() + 1, -1);  // material (+1, 0 none) -> the file's texture
     auto texture = [&](int material) -> int {
         int& slot = tex_of[static_cast<size_t>(material + 1)];
@@ -731,18 +857,28 @@ bool build_host_meshes(const Obj& o, mrpw::HostMeshFile& out, Log& log, std::str
         return slot;
     };
     size_t total_tris = 0;
-    for (size_t obj = 0; obj < o.objects.size(); ++obj) {
+    const size_t groups = as_class != nullptr ? 1 : o.objects.size();
+    for (size_t obj = 0; obj < groups; ++obj) {
         std::vector<const ObjTri*> tris;
         for (const ObjTri& t : o.tris)
-            if (t.object == static_cast<int>(obj)) tris.push_back(&t);
-        if (tris.empty()) continue;
+            if (as_class != nullptr || t.object == static_cast<int>(obj)) tris.push_back(&t);
+        const std::string mesh_name = as_class != nullptr ? std::string(as_class) : o.objects[obj];
+        if (tris.empty()) {
+            if (as_class != nullptr) {
+                err = std::string("the class \"") + as_class + "\": its model has no faces";
+                return false;
+            }
+            continue;
+        }
         std::stable_sort(tris.begin(), tris.end(), [](const ObjTri* a, const ObjTri* b) { return a->material < b->material; });
         float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f};
         for (const ObjTri* t : tris)
             for (const ObjVert& v : t->v)
                 for (int l = 0; l < 3; ++l) lo[l] = std::min(lo[l], v.p[l]), hi[l] = std::max(hi[l], v.p[l]);
-        float centre[3], reach = 0;
-        for (int l = 0; l < 3; ++l) centre[l] = 0.5f * (lo[l] + hi[l]);
+        float centre[3], reach = 0, mid[3];
+        for (int l = 0; l < 3; ++l) mid[l] = centre[l] = 0.5f * (lo[l] + hi[l]);
+        if (as_class != nullptr)  // (round its own origin: the object's pivot)
+            for (float& c : centre) c = 0.0f;
         for (const ObjTri* t : tris)
             for (const ObjVert& v : t->v)
                 for (int l = 0; l < 3; ++l) reach = std::max(reach, std::fabs(v.p[l] - centre[l]));
@@ -758,6 +894,17 @@ bool build_host_meshes(const Obj& o, mrpw::HostMeshFile& out, Log& log, std::str
                 r2 = std::max(r2, d);
             }
         c.sphere[3] = std::sqrt(r2) / c.scale;
+        if (as_class != nullptr) {  // (the sphere round the model's middle: its offset from the origin, in vertex units / 1024)
+            r2 = 0;
+            for (const ObjTri* t : tris)
+                for (const ObjVert& v : t->v) {
+                    float d = 0;
+                    for (int l = 0; l < 3; ++l) d += (v.p[l] - mid[l]) * (v.p[l] - mid[l]);
+                    r2 = std::max(r2, d);
+                }
+            for (int l = 0; l < 3; ++l) c.sphere[l] = mid[l] / c.scale;
+            c.sphere[3] = std::sqrt(r2) / c.scale;
+        }
         // the vertices' colours (the OBJ's, times the material's Kd when it has a texture: a colour material's Kd is its
         // texture) in the instance's palette: at most 64 (the tie's colour table), so made coarser until they fit
         auto vcol = [&](const ObjTri* t, int i) {
@@ -789,7 +936,7 @@ bool build_host_meshes(const Obj& o, mrpw::HostMeshFile& out, Log& log, std::str
                 k = static_cast<uint8_t>(in.palette.size());
                 in.palette.push_back({static_cast<uint8_t>(c[0]), static_cast<uint8_t>(c[1]), static_cast<uint8_t>(c[2]), 0x80});
             }
-            if (step > 1) log.say(fmt("  %s: its vertex colours made coarser (steps of %d / 128) to fit 64", o.objects[obj].c_str(), step));
+            if (step > 1) log.say(fmt("  %s: its vertex colours made coarser (steps of %d / 128) to fit 64", mesh_name.c_str(), step));
         }
         auto vindex = [&](const ObjTri* t, int i) -> int16_t {
             if (!coloured) return 0;
@@ -809,7 +956,7 @@ bool build_host_meshes(const Obj& o, mrpw::HostMeshFile& out, Log& log, std::str
         for (const ObjTri* t : tris) {
             if (local.count(t->material) == 0) {
                 if (local.size() >= 16) {
-                    err = "the mesh \"" + o.objects[obj] + "\" has more than 16 materials (split it into objects)";
+                    err = "the mesh \"" + mesh_name + "\" has more than 16 materials (split it into objects)";
                     return false;
                 }
                 const int tx = texture(t->material);
@@ -840,18 +987,247 @@ bool build_host_meshes(const Obj& o, mrpw::HostMeshFile& out, Log& log, std::str
             pk.strips.push_back(std::move(strip));
         }
         flush();
-        if (clamped) log.say("  " + o.objects[obj] + ": UVs spanning more than 8 repeats in one triangle were clamped");
+        if (clamped) log.say("  " + mesh_name + ": UVs spanning more than 8 repeats in one triangle were clamped");
         for (int r = 0; r < 3; ++r) in.rot[r][r] = 1.0f;
         for (int l = 0; l < 3; ++l) in.pos[l] = centre[l];
         in.cls = static_cast<uint32_t>(out.classes.size());
-        out.instances.push_back(in);
-        log.say(fmt("  mesh \"%s\": %zu triangles, %zu packets, %zu textures, %zu vertex colours, centre (%.1f %.1f %.1f), reach %.1f", o.objects[obj].c_str(),
-                    tris.size(), c.packets.size(), c.textures.size(), in.palette.size(), centre[0], centre[1], centre[2], reach));
+        if (as_class == nullptr) {
+            out.instances.push_back(in);
+        } else if (model != nullptr) {
+            model->mesh = static_cast<int32_t>(out.classes.size());
+            model->palette = in.palette;
+            model->extent = std::max({hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]});
+        }
+        log.say(fmt("  %s \"%s\": %zu triangles, %zu packets, %zu textures, %zu vertex colours, %s (%.1f %.1f %.1f), reach %.1f", as_class != nullptr ? "class model" : "mesh",
+                    mesh_name.c_str(), tris.size(), c.packets.size(), c.textures.size(), in.palette.size(), as_class != nullptr ? "middle" : "centre", mid[0], mid[1], mid[2], reach));
         total_tris += tris.size();
         out.classes.push_back(std::move(c));
     }
-    log.say(fmt("host meshes: %zu meshes, %zu triangles, %zu textures", out.classes.size(), total_tris, out.textures.size()));
+    if (as_class == nullptr) log.say(fmt("host meshes: %zu meshes, %zu triangles, %zu textures", out.classes.size(), total_tris, out.textures.size()));
     return true;
+}
+
+// ---- the level's own sounds: one 989snd sound bank (the format of the game's own banks, third_party/989snd's loader) ----
+// a sound's samples, mono, and their rate
+struct Pcm {
+    std::vector<int16_t> s;
+    uint32_t rate = 0;
+};
+
+uint32_t le32(const std::vector<uint8_t>& b, size_t at) { return at + 4 <= b.size() ? static_cast<uint32_t>(b[at] | b[at + 1] << 8 | b[at + 2] << 16 | static_cast<uint32_t>(b[at + 3]) << 24) : 0; }
+uint32_t le16(const std::vector<uint8_t>& b, size_t at) { return at + 2 <= b.size() ? static_cast<uint32_t>(b[at] | b[at + 1] << 8) : 0; }
+uint32_t be32(const std::vector<uint8_t>& b, size_t at) { return at + 4 <= b.size() ? static_cast<uint32_t>(b[at] << 24 | b[at + 1] << 16 | b[at + 2] << 8 | b[at + 3]) : 0; }
+
+// a WAV (RIFF, PCM 8 or 16 bits, mono or stereo: mixed to mono)
+bool read_wav(const std::vector<uint8_t>& b, Pcm& out, std::string& why) {
+    if (b.size() < 12 || std::memcmp(b.data(), "RIFF", 4) != 0 || std::memcmp(b.data() + 8, "WAVE", 4) != 0) {
+        why = "not a WAV (RIFF / WAVE)";
+        return false;
+    }
+    uint32_t fmt_tag = 0, channels = 0, bits = 0;
+    size_t data = 0, data_size = 0;
+    for (size_t at = 12; at + 8 <= b.size();) {
+        const uint32_t n = le32(b, at + 4);
+        if (std::memcmp(b.data() + at, "fmt ", 4) == 0) {
+            fmt_tag = le16(b, at + 8);
+            channels = le16(b, at + 10);
+            out.rate = le32(b, at + 12);
+            bits = le16(b, at + 22);
+        } else if (std::memcmp(b.data() + at, "data", 4) == 0) {
+            data = at + 8;
+            data_size = std::min<size_t>(n, b.size() - data);
+        }
+        at += 8 + n + (n & 1);
+    }
+    if (fmt_tag != 1 || (bits != 8 && bits != 16) || channels < 1 || channels > 2 || data == 0) {
+        why = "a WAV of another kind (PCM 8 or 16 bits, mono or stereo only)";
+        return false;
+    }
+    const size_t frame = channels * bits / 8;
+    for (size_t at = data; at + frame <= data + data_size; at += frame) {
+        int32_t sum = 0;
+        for (uint32_t c = 0; c < channels; ++c)
+            sum += bits == 16 ? static_cast<int16_t>(le16(b, at + c * 2)) : (static_cast<int32_t>(b[at + c]) - 128) * 256;
+        out.s.push_back(static_cast<int16_t>(sum / static_cast<int32_t>(channels)));
+    }
+    return true;
+}
+
+// samples as PS-ADPCM (the SPU2's): 16-byte blocks of 28 samples, each with the predictor and shift that fit it best;
+// `loop`: the first block marks the loop's start, the last its end (and repeat), else the last ends the voice
+std::vector<uint8_t> adpcm_encode(const std::vector<int16_t>& in, bool loop) {
+    static const int coefs[5][2] = {{0, 0}, {60, 0}, {115, -52}, {98, -55}, {122, -60}};
+    std::vector<int32_t> pcm(in.begin(), in.end());
+    if (pcm.empty()) pcm.assign(28, 0);
+    pcm.resize((pcm.size() + 27) / 28 * 28, 0);
+    std::vector<uint8_t> out;
+    int32_t s1 = 0, s2 = 0;
+    for (size_t b = 0; b < pcm.size(); b += 28) {
+        int64_t best_err = -1;
+        int best_f = 0, best_shift = 0;
+        int32_t best_s1 = 0, best_s2 = 0;
+        uint8_t best_nib[28] = {};
+        for (int f = 0; f < 5; ++f) {
+            const int c1 = coefs[f][0], c2 = coefs[f][1];
+            int32_t p1 = s1, p2 = s2, peak = 0;
+            for (size_t i = 0; i < 28; ++i) {
+                const int32_t x = pcm[b + i];
+                peak = std::max(peak, std::abs(x - ((p1 * c1 + p2 * c2) >> 6)));
+                p2 = p1;
+                p1 = x;
+            }
+            int shift = 12;
+            while (shift > 0 && (7 << (12 - shift)) < peak) --shift;
+            p1 = s1;
+            p2 = s2;
+            int64_t err = 0;
+            uint8_t nib[28];
+            for (size_t i = 0; i < 28; ++i) {
+                const int32_t x = pcm[b + i];
+                const int32_t pred = (p1 * c1 + p2 * c2) >> 6;
+                const double qd = std::round(static_cast<double>(x - pred) / static_cast<double>(1 << (12 - shift)));
+                const int32_t q = std::clamp(static_cast<int32_t>(qd), -8, 7);
+                const int32_t y = std::clamp(((q << 12) >> shift) + pred, -32768, 32767);
+                err += static_cast<int64_t>(x - y) * (x - y);
+                nib[i] = static_cast<uint8_t>(q & 15);
+                p2 = p1;
+                p1 = y;
+            }
+            if (best_err < 0 || err < best_err) {
+                best_err = err;
+                best_f = f;
+                best_shift = shift;
+                best_s1 = p1;
+                best_s2 = p2;
+                std::memcpy(best_nib, nib, sizeof nib);
+            }
+        }
+        s1 = best_s1;
+        s2 = best_s2;
+        out.push_back(static_cast<uint8_t>(best_f << 4 | best_shift));
+        out.push_back(0);
+        for (size_t i = 0; i < 28; i += 2) out.push_back(static_cast<uint8_t>(best_nib[i] | best_nib[i + 1] << 4));
+    }
+    if (loop) {
+        out[1] |= 4;
+        out[out.size() - 15] |= 3;
+    } else {
+        out[out.size() - 15] |= 1;
+    }
+    return out;
+}
+
+// a VAG's blocks (the 0x30-byte "VAGp" header: the data's size +0xc, the rate +0x10, big endian), their flags made the
+// sound's (looping or not; the trailing silent blocks of a one-shot dropped)
+bool read_vag(const std::vector<uint8_t>& v, bool loop, std::vector<uint8_t>& out, uint32_t& rate, std::string& why) {
+    if (v.size() < 0x40 || std::memcmp(v.data(), "VAGp", 4) != 0) {
+        why = "not a VAG (no \"VAGp\" header)";
+        return false;
+    }
+    const uint32_t size = be32(v, 12);
+    rate = be32(v, 16);
+    if (size < 16 || size + 0x30 > v.size() || rate < 8000 || rate > 48000) {
+        why = fmt("its header's size %u or rate %u do not fit the file (%zu bytes)", size, rate, v.size());
+        return false;
+    }
+    out.assign(v.begin() + 0x30, v.begin() + 0x30 + size / 16 * 16);
+    if (out.size() >= 16 && std::all_of(out.begin(), out.begin() + 16, [](uint8_t c) { return c == 0; }) && out.size() > 16)
+        out.erase(out.begin(), out.begin() + 16);  // (the leading silent block most VAGs have)
+    while (out.size() > 16 && (out[out.size() - 15] & 1) != 0 && std::all_of(out.end() - 14, out.end(), [](uint8_t c) { return c == 0 || c == 0x77; }))
+        out.resize(out.size() - 16);  // (the end blocks: ours below)
+    for (size_t i = 0; i < out.size(); i += 16) out[i + 1] = 0;
+    if (out.empty()) {
+        why = "no samples";
+        return false;
+    }
+    if (loop) {
+        out[1] |= 4;
+        out[out.size() - 15] |= 3;
+    } else {
+        out[out.size() - 15] |= 1;
+    }
+    return true;
+}
+
+// the bank: the file's chunk table (type 1, two chunks: the SBlk block, the samples), the block (version 1, as the
+// game's: a header of 0x3c bytes, a 12-byte entry per sound, a 0x28-byte tone grain per sound), the samples (each sound's
+// ADPCM, 16-byte aligned). A tone at the handler's note 60 plays at its sample's rate: its centre note and fine set so
+// (60 - centre) + fine / 128 semitones is 12 log2(rate / 48000) (plus the line's pitch).
+struct BankSound {
+    std::vector<uint8_t> adpcm;
+    uint32_t rate = 0;
+    float volume = 1, pitch = 0;
+};
+std::vector<uint8_t> sound_bank(const std::vector<BankSound>& sounds) {
+    const uint32_t n = static_cast<uint32_t>(sounds.size());
+    const uint32_t first_sound = 0x40, first_grain = static_cast<uint32_t>(align_up(first_sound + 12 * n, 16));
+    std::vector<uint8_t> blk(align_up(first_grain + 0x28 * n, 16), 0);
+    std::vector<uint8_t> smp;
+    auto w8 = [&](size_t at, int v) { blk[at] = static_cast<uint8_t>(v); };
+    auto w16 = [&](size_t at, uint32_t v) {
+        blk[at] = static_cast<uint8_t>(v);
+        blk[at + 1] = static_cast<uint8_t>(v >> 8);
+    };
+    auto w32 = [&](size_t at, uint32_t v) { wr32(blk, at, static_cast<int32_t>(v)); };
+    std::memcpy(blk.data(), "SBlk", 4);
+    w32(4, 1);           // the version
+    w32(8, 0);           // flags: no names, no user data
+    w32(0xc, 0x4d4f4453);  // the bank's id ("SDOM")
+    w16(0x16, n);        // sounds
+    w16(0x18, n);        // grains
+    w16(0x1a, n);        // VAGs
+    w32(0x1c, first_sound);
+    w32(0x20, first_grain);
+    for (uint32_t i = 0; i < n; ++i) {
+        const BankSound& b = sounds[i];
+        const uint32_t sample_at = static_cast<uint32_t>(smp.size());
+        smp.insert(smp.end(), b.adpcm.begin(), b.adpcm.end());
+        smp.resize(align_up(smp.size(), 16), 0);
+        const size_t e = first_sound + 12 * i;
+        w8(e + 0, 127);      // its volume
+        w8(e + 1, 0);        // its volume group (the world's sounds)
+        w16(e + 2, 0);       // its pan
+        w8(e + 4, 1);        // one grain
+        w8(e + 5, 0);        // no instance limit
+        w16(e + 6, 0);
+        w32(e + 8, 0x28 * i);  // its grain (from the grains' start)
+        const size_t g = first_grain + 0x28 * i;
+        w32(g + 0, 1);       // a tone
+        w32(g + 4, 0);       // no delay
+        const double semis = 12.0 * std::log2(static_cast<double>(b.rate) / 48000.0) + b.pitch;
+        const double fl = std::floor(semis);
+        int centre = 60 - static_cast<int>(fl), fine = static_cast<int>(std::lround((semis - fl) * 128.0));
+        if (fine >= 128) {
+            fine -= 128;
+            --centre;
+        }
+        w8(g + 8, 0x40);                                                   // priority
+        w8(g + 9, static_cast<int>(std::lround(std::clamp(b.volume, 0.0f, 1.0f) * 127.0f)));  // volume
+        w8(g + 10, -centre);                                               // (negative: no 44.1 kHz scaling)
+        w8(g + 11, fine);
+        w16(g + 12, 0);      // pan
+        w8(g + 14, 0);       // the notes it maps
+        w8(g + 15, 127);
+        w8(g + 16, 2);       // pitch bend range
+        w8(g + 17, 2);
+        w16(g + 18, 0x00ff); // ADSR: the fastest attack, full sustain
+        w16(g + 20, 0x1fc8); //       held, a short release
+        w16(g + 22, 1);      // reverb (as the game's world sounds)
+        w32(g + 24, sample_at);
+    }
+    w32(0x24, n);        // VAGs in sound RAM
+    w32(0x28, static_cast<uint32_t>(smp.size()));
+    w32(0x2c, static_cast<uint32_t>(smp.size()));
+    std::vector<uint8_t> f(0x20, 0);
+    wr32(f, 0, 1);       // the file's type (a sound block)
+    wr32(f, 4, 2);       // two chunks
+    wr32(f, 8, 0x20);
+    wr32(f, 12, static_cast<int32_t>(blk.size()));
+    wr32(f, 16, static_cast<int32_t>(0x20 + blk.size()));
+    wr32(f, 20, static_cast<int32_t>(smp.size()));
+    f.insert(f.end(), blk.begin(), blk.end());
+    f.insert(f.end(), smp.begin(), smp.end());
+    return f;
 }
 
 // ---- the gameplay file ----
@@ -1391,6 +1767,11 @@ bool compose_level_mod(const std::string& folder, bool force) {
             lt.hero[l] += lt.offset[l];
             lt.ship_at[l] += lt.offset[l];
             for (LevelTxt::Moby& mb : lt.mobys) mb.at[l] += lt.offset[l];
+            for (LevelTxt::Object& ob : lt.objects) ob.at[l] += lt.offset[l];
+            for (LevelTxt::Trigger& tg : lt.triggers) {
+                tg.lo[l] += lt.offset[l];
+                tg.hi[l] += lt.offset[l];
+            }
         }
         lt.death += lt.offset[2];
         log.say(fmt("offset: (%g %g %g) added to every coordinate%s (lights.txt's are the game's: not moved)", lt.offset[0], lt.offset[1], lt.offset[2],
@@ -1445,6 +1826,44 @@ bool compose_level_mod(const std::string& folder, bool force) {
     } else {
         log.say("host meshes: none (no " + lt.meshes + ")");
     }
+    // the level's own classes: their models, more host meshes (no placement: the objects are placed by the game)
+    std::vector<ClassModel> models;
+    for (const LevelTxt::Class& c : lt.classes) {
+        LevelTxt unmoved = lt;  // (a model is made round its own origin: level.txt's up and scale, not its offset)
+        for (float& o : unmoved.offset) o = 0;
+        Obj mo;
+        if (!read_obj(ldir / c.model, unmoved, true, mo, err)) return fail(err);
+        ClassModel cm;
+        if (!build_host_meshes(mo, hm, log, err, c.name.c_str(), &cm)) return fail(fmt("level.txt:%d: ", c.line) + err);
+        models.push_back(cm);
+        log.say(fmt("class \"%s\": %s, its hit box %.2f units%s%s", c.name.c_str(), c.model.c_str(), c.size > 0 ? c.size : std::max(cm.extent, 0.1f),
+                    c.size > 0 ? "" : " (the model's extent)", c.ghost ? ", ghost (no collision)" : ""));
+    }
+    for (const LevelTxt::Object& o : lt.objects) log.say(fmt("object \"%s\" at (%g %g %g)%s%s", o.cls.c_str(), o.at[0], o.at[1], o.at[2], o.params.empty() ? "" : " ", o.params.c_str()));
+    for (const LevelTxt::Trigger& g : lt.triggers)
+        log.say(fmt("trigger \"%s\": (%g %g %g) .. (%g %g %g)", g.name.c_str(), g.lo[0], g.lo[1], g.lo[2], g.hi[0], g.hi[1], g.hi[2]));
+    // the level's own sounds: one bank
+    std::vector<BankSound> bank_sounds;
+    for (const LevelTxt::Sound& d : lt.sounds) {
+        std::vector<uint8_t> f;
+        if (!read_file(ldir / d.file, f)) return fail(fmt("level.txt:%d: %s cannot be read", d.line, d.file.c_str()));
+        BankSound b;
+        b.volume = d.volume;
+        b.pitch = d.pitch;
+        std::string why;
+        if (f.size() >= 4 && std::memcmp(f.data(), "VAGp", 4) == 0) {
+            if (!read_vag(f, d.loop, b.adpcm, b.rate, why)) return fail(fmt("level.txt:%d: %s: ", d.line, d.file.c_str()) + why);
+        } else {
+            Pcm pcm;
+            if (!read_wav(f, pcm, why)) return fail(fmt("level.txt:%d: %s: ", d.line, d.file.c_str()) + why + " (a WAV or a VAG)");
+            if (pcm.rate < 8000 || pcm.rate > 48000) return fail(fmt("level.txt:%d: %s: its rate %u Hz (8000 .. 48000)", d.line, d.file.c_str(), pcm.rate));
+            b.rate = pcm.rate;
+            b.adpcm = adpcm_encode(pcm.s, d.loop);
+        }
+        log.say(fmt("sound \"%s\": %s, %u Hz, %.2f s%s", d.name.c_str(), d.file.c_str(), b.rate, static_cast<double>(b.adpcm.size()) / 16.0 * 28.0 / b.rate,
+                    d.loop ? ", looping" : ""));
+        bank_sounds.push_back(std::move(b));
+    }
     // written: into a fresh folder, build.json last (a build without it is not used)
     std::error_code ec;
     if (fs::is_directory(out_dir, ec))  // (its plugin's build, mod_plugins.cpp, kept)
@@ -1479,6 +1898,34 @@ bool compose_level_mod(const std::string& folder, bool force) {
         music_json = "[" + names[0] + (names.size() > 1 ? ", " + names[1] : std::string()) + "]";
     }
     if (!hm.classes.empty() && !mrpw::write_host_meshes((out_dir / "host_meshes.mrpc").string(), hm, err)) return fail(err);
+    if (!bank_sounds.empty() && !write_file(out_dir / "sounds.bnk", sound_bank(bank_sounds))) return fail("cannot write into " + out_dir.generic_string());
+    // level.sdk: the level's own content for the game (src/game/enhance/mod_code.cpp reads it)
+    if (!lt.classes.empty() || !lt.sounds.empty() || !lt.triggers.empty()) {
+        std::ostringstream o;
+        o << "sdk\t1\n";
+        for (size_t i = 0; i < lt.classes.size(); ++i) {
+            const LevelTxt::Class& c = lt.classes[i];
+            const ClassModel& cm = models[i];
+            o << fmt("class\t%s\t%d\t%.6g\t%.6g\t%d\t%zu", c.name.c_str(), cm.mesh, c.size > 0 ? c.size : std::max(cm.extent * c.scale, 0.1f), c.scale, c.ghost ? 1 : 0,
+                     cm.palette.size());
+            for (const auto& p : cm.palette) o << fmt("\t%d %d %d %d", p[0], p[1], p[2], p[3]);
+            o << "\n";
+        }
+        for (const LevelTxt::Object& ob : lt.objects) {
+            size_t ci = 0;
+            while (lt.classes[ci].name != ob.cls) ++ci;
+            o << fmt("object\t%zu\t%.6g\t%.6g\t%.6g\t%.6g\t", ci, ob.at[0], ob.at[1], ob.at[2], ob.at[3]) << ob.params << "\n";
+        }
+        for (size_t i = 0; i < lt.sounds.size(); ++i) {
+            const LevelTxt::Sound& d = lt.sounds[i];
+            o << fmt("sound\t%s\t%zu\t%d\t%.6g\t%.6g\t%d\n", d.name.c_str(), i, 0x400, d.near, d.far, d.loop ? 1 : 0);
+        }
+        for (const LevelTxt::Trigger& g : lt.triggers)
+            o << fmt("trigger\t%s\t%.6g\t%.6g\t%.6g\t%.6g\t%.6g\t%.6g\n", g.name.c_str(), g.lo[0], g.lo[1], g.lo[2], g.hi[0], g.hi[1], g.hi[2]);
+        const std::string t = o.str();
+        if (!write_file(out_dir / "level.sdk", std::vector<uint8_t>(t.begin(), t.end()))) return fail("cannot write into " + out_dir.generic_string());
+        log.say(fmt("level.sdk: %zu classes, %zu objects, %zu sounds, %zu triggers", lt.classes.size(), lt.objects.size(), lt.sounds.size(), lt.triggers.size()));
+    }
     // the MRP world of the composed data file, the host meshes' classes and textures added
     const fs::path wdir = out_dir / "mrp" / "world" / ("level" + std::to_string(m.level_base));
     if (!export_mrp_world_wad(std::span<const std::byte>(reinterpret_cast<const std::byte*>(data.data()), data.size()), m.level_base, wdir.string()))

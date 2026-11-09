@@ -310,4 +310,21 @@ void host_meshes_fog(float fog[4]) {
     std::memcpy(fog, g_fog, sizeof g_fog);
 }
 
+namespace {
+std::mutex g_dyn_m;
+std::vector<HostMeshInstance> g_dyn;
+}  // namespace
+
+// orig: (host) see host_meshes.h
+void host_meshes_dynamic_set(std::vector<HostMeshInstance> v) {
+    std::scoped_lock lock(g_dyn_m);
+    g_dyn = std::move(v);
+}
+
+// orig: (host) see host_meshes.h
+void host_meshes_dynamic(std::vector<HostMeshInstance>& out) {
+    std::scoped_lock lock(g_dyn_m);
+    out = g_dyn;
+}
+
 }  // namespace rac1::mrpw
