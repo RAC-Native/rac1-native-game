@@ -178,6 +178,8 @@ void game_thread_attach();
 void frame_mark();
 // The game frames this host frame runs (its first zone's context).
 void frame_steps(int steps);
+// A picture presented by this host frame beyond the frame's own (the frame extrapolation's: k pictures a step).
+void frame_picture();
 
 // The view asks for the profiler this frame (the Profiler tab drawn); `pinned`: the overlay kept on screen.
 void request();
@@ -204,6 +206,7 @@ struct FrameRec {
     double worker_busy[kWorkerCount] = {}, worker_cpu[kWorkerCount] = {};
     double part[kPartCount] = {};// the workers' parts (Part)
     int steps = 0;               // the game frames it ran
+    int pictures = 0;            // the pictures it presented (0: one, the frame's own; the frame extrapolation's: k)
 };
 // The frames recorded, the oldest first (up to history_capacity()).
 int history_size();
@@ -226,6 +229,7 @@ struct Summary {
     double worker_busy[kWorkerCount] = {}, worker_cpu[kWorkerCount] = {};
     double part[kPartCount] = {};
     double steps = 0;
+    double pictures_fps = 0;  // the pictures presented a second (above fps with the frame extrapolation)
     Bound bound = Bound::None;
     std::string bound_text;
 };

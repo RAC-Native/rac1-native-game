@@ -5,6 +5,8 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Profiler (debug tools): with the frame extrapolation on, the Profiler tab and its overlay show the pictures presented
+  a second beside the fps (which count host frames, one a game step there), and the CSV has a `pictures` column.
 - Main menu > Exit: the main menu's last entry, below Updates, closes the game after a confirmation in the
   game's own style (the pause menu's Quit Game page: Circle Yes, Triangle No), the same way as closing the window
   (Alt+F4) does. Translated ("Esci", "Beenden", "Salir"); pad, keyboard and mouse through the bindings. Only on the PC

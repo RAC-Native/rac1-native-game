@@ -513,7 +513,7 @@ moby shadows are drawn; `RAC1_MRPW_P2_LESS` a few pixels).
 
 ## Measuring
 
-The profiler's CSV (`RAC1_PROFILER_CSV=<file>`) has, per host frame, its period, the game frames it ran (`steps`), the main
+The profiler's CSV (`RAC1_PROFILER_CSV=<file>`) has, per host frame, its period, the game frames it ran (`steps`), the pictures it presented (`pictures`: k with the frame extrapolation, whose pictures a second the Profiler tab and its overlay show beside the fps, which count host frames), the main
 thread's CPU time, every stage's CPU and GPU time, and the workers' busy and CPU time (the game thread's: `busy: Game thread`;
 its stages are counted in the stage columns, the main thread's wait for it in `Wait: game thread`), and the workers' parts (`part:`
 columns: the chain reader's uploads and VU1 programs, the scene worker's decisions, capture, walk and triangles). Two ways to use it
