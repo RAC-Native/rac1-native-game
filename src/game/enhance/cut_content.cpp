@@ -47,6 +47,10 @@ constexpr uint32_t FRED_SPIN = 0x1bc;  // the turn's spin, in its pvars
 // FRED_SNAP_DOWN below it (the game's own segment test, segment_collide: the level's triangles and the mobys that
 // collide); with nothing there it stays where it was placed.
 constexpr float FRED_SNAP_UP = 1.0f, FRED_SNAP_DOWN = 8.0f;
+// The idle they play (fred_idle_hook) is the grind boots seller's crouch, knees bent: the models' root stays at their
+// standing height, so a citizen playing it is lowered by this much to keep its feet on the ground (#136; checked in a
+// headless shot sheet on Kerwan's streets)
+constexpr float FRED_CROUCH = 0.25f;
 
 // orig: (none) — enhancement: a kept citizen put on the ground under its placement (above)
 void fred_snap_to_ground(uint32_t m) {
@@ -59,18 +63,21 @@ void fred_snap_to_ground(uint32_t m) {
 // Kerwan's citizens' idle (#128: they held their rest pose, arms out). Nebula G34's citizen "Fred" (level 6, class 1105)
 // has Fred 3's skeleton (65 joints, the same hierarchy; Fred 1 and 2 have the same with six more joints, 55..60, under
 // the head) and the same rest rotations but for the arms (its bones are longer: the rotations carry over, the lengths
-// stay each model's own). Its sequence 0 is a standing idle, arms lowered: 50 frames at 0.25 a game frame (200 game
-// frames), a closed loop. It is read from the player's disc (level 6's core), once a run, and given to each Fred class in
+// stay each model's own). That citizen is the grind boots seller ("Fred Prime"); it has two sequences: 0, a stiff standing
+// idle (50 frames: only the head and a shoulder move, #136), and 1, the one his update plays while he waits (15 frames at
+// 0.25 a game frame, 60 game frames, a loop: crouched, the hands together at the chest), the one used here (#136, Anya's
+// choice). It is read from the player's disc (level 6's core), once a run, and given to each Fred class in
 // place of its one-frame sequence (the class's slot 0), from host memory above the game's 32 MB
 // (host_layout::CUT_CONTENT_SEQS): the game's own animation code plays it. Nothing of it is in the repository.
-constexpr int IDLE_LEVEL = 6, IDLE_CLASS = 1105, IDLE_SEQ = 0;
+constexpr int IDLE_LEVEL = 6, IDLE_CLASS = 1105, IDLE_SEQ = 1;
 constexpr uint32_t IDLE_JOINTS = 65;
-constexpr uint32_t IDLE_CLASS_ROOM = 0x10000;  // one Fred class's sequence: the head, the frame table, 50 frames of 0x250
+constexpr uint32_t IDLE_CLASS_ROOM = 0x10000;  // one Fred class's sequence: the head, the frame table, its frames (0x250 at most)
 
 struct IdleSource {
     bool tried = false;
     uint32_t rate = 0;                             // the sequence's frame rate (+0x18, a float's bits)
     std::vector<std::vector<uint64_t>> rotations;  // a frame's joints' rotations (quaternions, 4 x s16)
+    std::vector<std::vector<uint64_t>> moves;      // a frame's joint translations (x, y, z, the joint: 4 x s16)
 } g_idle;
 
 // orig: (none) — enhancement: the idle's rotations read from level 6's core on the disc (once a run; none: the citizens
@@ -107,13 +114,25 @@ void fred_idle_read() {
                 std::vector<uint64_t> r(IDLE_JOINTS);
                 std::memcpy(r.data(), c + fo + 0x10, IDLE_JOINTS * 8);
                 g_idle.rotations.push_back(std::move(r));
+                // its translations: +0xe of them, 8 bytes each, at +0xc past the rotations' start
+                uint16_t at = 0, count = 0;
+                std::memcpy(&at, c + fo + 0xc, 2);
+                std::memcpy(&count, c + fo + 0xe, 2);
+                std::vector<uint64_t> t(count);
+                if (count != 0 && fo + 0x10 + at + count * 8u <= room) std::memcpy(t.data(), c + fo + 0x10 + at, count * 8u);
+                else t.clear();
+                g_idle.moves.push_back(std::move(t));
             }
-            if (g_idle.rotations.size() != c[seq + 0x10]) g_idle.rotations.clear();
+            if (g_idle.rotations.size() != c[seq + 0x10]) {
+                g_idle.rotations.clear();
+                g_idle.moves.clear();
+            }
             break;
         }
     } catch (const std::exception& e) {  // (a damaged core: the rest pose, not the game stopped)
         std::printf("[cut content] level %d's core not decoded (%s)\n", IDLE_LEVEL, e.what());
         g_idle.rotations.clear();
+        g_idle.moves.clear();
     }
     if (g_idle.rotations.empty()) std::printf("[cut content] class %d's idle not found: Kerwan's citizens keep their rest pose\n", IDLE_CLASS);
 }
@@ -152,6 +171,22 @@ bool fred_idle_hook(uint32_t m) {
             const uint32_t src = joints != IDLE_JOINTS && j >= 61 ? j - 6 : j;
             ee_write<uint64_t>(fr + 0x10 + j * 8, g_idle.rotations[f][src]);
         }
+        // the frame's joint translations (the seller's crouch lowers his hips: joint 4), past the rotations, when the
+        // class's frame has the room (its size rounds the rotations up to 16 bytes: one translation fits); their joint
+        // numbers on the class's own joints
+        const std::vector<uint64_t>& mv = g_idle.moves[f];
+        const uint32_t rot = joints * 8;
+        ee_write<uint16_t>(fr + 0xa, 0);  // (no scales)
+        ee_write<uint16_t>(fr + 0xc, static_cast<uint16_t>(rot));
+        uint16_t kept = 0;
+        for (uint64_t e : mv) {
+            if (0x10 + rot + (kept + 1u) * 8u > size) break;
+            uint32_t jt = static_cast<uint16_t>(e >> 48);
+            if (joints != IDLE_JOINTS && jt >= 55) jt += 6;
+            ee_write<uint64_t>(fr + 0x10 + rot + kept * 8u, (e & 0x0000ffffffffffffull) | (static_cast<uint64_t>(jt) << 48));
+            ++kept;
+        }
+        ee_write<uint16_t>(fr + 0xe, kept);
     }
     sw(slot, at);
     return true;
@@ -185,13 +220,15 @@ void cut_content_fred_dispatch_l3(uint32_t m) {
 // orig: (none) — cut content restored (cut_content.h). The game's own stub measures what a citizen needs to face the hero
 // - the distance to him (0x13f3d0) and the heading towards his moby (0x13ff80 +0x80) against its own (+0x48) - and then
 // retires it; here it is kept: its sequence 0 looped, and the heading turned towards Ratchet within FRED_RANGE. (That
-// sequence is one frame long in the three models: the rest pose, the arms held out; it is replaced by Nebula G34's
-// citizen's idle when the disc gives it, fred_idle_hook. No collision: Ratchet walks through them)
+// sequence is one frame long in the three models: the rest pose, the arms held out; it is replaced by the grind boots
+// seller's idle when the disc gives it, fred_idle_hook, the citizen then lowered by FRED_CROUCH. No collision: Ratchet
+// walks through them)
 void cut_content_fred_update_l3(uint32_t m) {
     if (lbu(m + 0x20) != FRED_KEPT) {
         sb(m + 0x20, FRED_KEPT);
         fred_snap_to_ground(m);
         if (fred_idle_hook(m)) {
+            swc1(m + 0x18, lwc1(m + 0x18) - FRED_CROUCH);  // (the seller's crouch: the feet on the ground)
             // the idle, each citizen from its own frame (they do not breathe in step); the game's animation loops it
             const uint32_t n = lbu(lwu(lwu(m + 0x24) + 0x48) + 0x10);
             moby_anim_set(m, 0, static_cast<int32_t>(((m >> 8) * 17u) % n), 1);

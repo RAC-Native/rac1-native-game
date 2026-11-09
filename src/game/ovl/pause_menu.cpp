@@ -10,6 +10,7 @@
 #include <game/boot/title_menu.h>
 #include <game/ovl/credits_tr.h>
 #include <game/ovl/memory_card.h>
+#include <host/level_slots.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/lib/snd989.h>
 #include <game/ovl/arrival.h>
@@ -533,10 +534,12 @@ int32_t menu_button_update(uint32_t w) {
     const uint32_t pressed = lwu(PAD + 0x1c4);
     if ((pressed & 0xd00) != 0) {
         if ((lwu(w + 0x30) & 0x20) != 0) sw(OV(0x00184414), lwu(0x0015ed84));
+        level_slots_list_back();  // enhancement: the ship's map left for the current level (src/host/level_slots.h; else nothing)
         return -1;
     }
     if ((pressed & 0x10) != 0) {
         if ((lwu(w + 0x30) & 0x20) != 0) sw(OV(0x00184414), lwu(0x0015ed84));
+        level_slots_list_back();  // enhancement: (the same)
         const uint32_t parent = lwu(lwu(MS + 4) + 0x38);
         if (parent != 0) {
             sw(MS + 8, parent);
@@ -620,6 +623,7 @@ int32_t menu_button_update(uint32_t w) {
     if (lw(w + 0x40) == old && lwu(lwu(MS + 4) + 0x80) == 0) return 0;
     moby_sound_start(1, 0x11, lwu(w + 0x14));
     if ((lwu(w + 0x30) & 0x20) != 0) sw(OV(0x00184414), lwu(lwu(OV(0x001602a0)) + static_cast<uint32_t>(lw(w + 0x40)) * 4));
+    level_slots_list_select(lwu(w + 0x34), lw(w + 0x40));  // enhancement: the ship's list's level rows (level_slots.h; else nothing)
     return 0;
 }
 

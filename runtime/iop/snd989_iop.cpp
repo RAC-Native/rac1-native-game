@@ -146,7 +146,7 @@ int32_t command(Iop& io, uint32_t id, const uint32_t* a) {
 // ---- the record for the mirror (written by the game's thread, read by the audio thread) ----
 
 struct Op {
-    enum Kind : uint8_t { Cmd, Bank, Batch, Vsync } kind = Cmd;
+    enum Kind : uint8_t { Cmd, Bank, Batch, Vsync, Place } kind = Cmd;  // (Place: snd989_host_place, w[0..2])
     uint32_t id = 0;
     uint32_t w[kArgWords] = {};
     int32_t reply = 0;
@@ -225,7 +225,55 @@ void mirror_apply(Op& op) {
         break;
     }
     case Op::Vsync: break;
+    case Op::Place: {
+        const auto it = m.handles.find(op.w[0]);
+        const uint32_t h = it != m.handles.end() ? it->second : op.w[0];
+        if (h != 0 && m.player) m.player->SetSoundHostPlace(static_cast<s32>(h), static_cast<u8>(op.w[1]), static_cast<s32>(op.w[2]));
+        break;
     }
+    }
+}
+
+// The host's places (snd989_host_place): the game's IOP's sound placed, the mirror's by its record.
+// orig: (none) — host
+void host_place(uint32_t handle, int mode, int pan) {
+    Iop& io = game();
+    if (handle == 0 || !io.player) return;
+    io.player->SetSoundHostPlace(static_cast<s32>(handle), static_cast<u8>(mode), pan);
+    if (g_rec.on.load(std::memory_order_relaxed)) {
+        Op op;
+        op.kind = Op::Place;
+        op.w[0] = handle;
+        op.w[1] = static_cast<uint32_t>(mode);
+        op.w[2] = static_cast<uint32_t>(pan);
+        record(std::move(op));
+    }
+}
+
+// The places of the play commands the EE sent and the game's IOP has not run yet, in order (snd989_host_play_place).
+struct PlayPlace {
+    uint32_t bank, sound;
+    int mode, pan;
+};
+std::mutex g_play_places_m;
+std::deque<PlayPlace> g_play_places;
+int g_next_mode = 0, g_next_pan = 0;  // (snd989_host_place_next: the next play's)
+
+// A play command run by the game's IOP (its reply `handle`): its place, if the EE gave one.
+// orig: (none) — host
+void host_play_done(uint32_t bank, uint32_t sound, uint32_t handle) {
+    PlayPlace pp{};
+    {
+        std::scoped_lock lock(g_play_places_m);
+        if (g_play_places.empty()) return;
+        pp = g_play_places.front();
+        g_play_places.pop_front();
+        if (pp.bank != bank || pp.sound != sound) {  // (out of step: a play not sent by snd_play_sound; start again)
+            g_play_places.clear();
+            return;
+        }
+    }
+    if (pp.mode != 0 && handle != 0) host_place(handle, pp.mode, pp.pan);
 }
 
 // `multi`: also the 5.1 / 7.1 speakers' output (`channels` 6 / 8 per frame; Synth::Tick), else nullptr; `hp` / `hp_multi`:
@@ -297,7 +345,9 @@ void cmd_server(uint32_t fno, uint32_t send, uint32_t ssize, uint32_t recv, uint
         for (uint32_t i = 0; i < kArgWords; ++i) op.w[i] = ee_read<uint32_t>(at + i * 4);
         op.reply = command(io, id, op.w);
         const int32_t r = op.reply;
+        const uint32_t bank = op.w[0], sound = op.w[1];
         if (rec) record(std::move(op));
+        if (id == 0x11) host_play_done(bank, sound, static_cast<uint32_t>(r));  // (after its record: the mirror's handle known)
         return r;
     };
     if (fno == 0x4d) {
@@ -390,6 +440,36 @@ void make(Iop& io) {
 // orig: (host) see snd989_iop.h
 void snd989_rand_use_game() { snd::RandUseGame(); }
 
+// orig: (none) — host, see snd989_iop.h
+void snd989_host_place(uint32_t handle, int mode, int pan) { host_place(handle, mode, pan); }
+
+// orig: (none) — host, see snd989_iop.h
+uint32_t snd989_host_bank_load(const std::vector<uint8_t>& bank) { return bank_load(bank, "host", 0); }
+
+// orig: (none) — host, see snd989_iop.h
+void snd989_host_bank_unload(uint32_t handle) {
+    Op op;
+    op.id = 0x06;
+    op.w[0] = handle;
+    op.reply = command(game(), 0x06, op.w);
+    if (g_rec.on.load(std::memory_order_relaxed)) record(std::move(op));
+}
+
+// orig: (none) — host, see snd989_iop.h
+void snd989_host_place_next(int mode, int pan) {
+    std::scoped_lock lock(g_play_places_m);
+    g_next_mode = mode;
+    g_next_pan = pan;
+}
+
+// orig: (none) — host, see snd989_iop.h
+void snd989_host_play_sent(uint32_t bank, uint32_t sound) {
+    std::scoped_lock lock(g_play_places_m);
+    if (g_play_places.size() >= 256) g_play_places.clear();  // (no IOP running them)
+    g_play_places.push_back(PlayPlace{bank, sound, g_next_mode, g_next_pan});
+    g_next_mode = g_next_pan = 0;
+}
+
 void snd989_iop_start() {
     make(game());
     sif_rpc_register(CMD_SERVER, cmd_server);
@@ -403,6 +483,8 @@ void snd989_iop_stop() {
         io->player.reset();
         io->banks.clear();
     }
+    std::scoped_lock lock(g_play_places_m);
+    g_play_places.clear();
 }
 
 void snd989_iop_render(int16_t* out, int frames, int16_t* multi, int channels, float* hp, float* hp_multi) {

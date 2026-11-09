@@ -3,6 +3,8 @@
 // also be run on its own.
 #include "setup_manager.h"
 #include "iso_extract.h"
+#include "level_compose.h"
+#include "mod_plugins.h"
 #include "mrp_export.h"
 #include "scene_export.h"
 
@@ -53,6 +55,12 @@ void print_usage(const char* prog) {
               << "  --movie-tracks <pss>        print the sound tracks of a movie file (tools/movie_subtitles.py)\n"
               << "  --movie-audio <pss> --track <n> --wav <out.wav>\n"
               << "                     one sound track of a movie file as a 16 kHz mono WAV (for speech to text)\n"
+              << "  --level-mods       compose the level mods in mods/ whose build is missing or old (with --force: all), and build\n"
+              << "                     the mods' plugins (their code) likewise\n"
+              << "  --mod-plugins      build the mods' plugins whose build is missing or old (with --force: all)\n"
+              << "  --mod-plugin <folder>   build that mod's plugin\n"
+              << "                     into assets/generated/mods/<folder>/ (docs/mods.md, \"Level mods\")\n"
+              << "  --level-mod <folder>  compose that level mod, whatever its build\n"
               << "  --help, -h         show this help\n";
 }
 
@@ -317,6 +325,9 @@ int run_setup(int argc, char** argv) {
     bool compare = false;
     std::string movie_tracks_of, movie_audio_of, wav;
     int track = -1;
+    bool level_mods = false, mod_plugins = false;
+    std::string mod_plugin;
+    std::string level_mod;
 
     if (const char* env_iso = std::getenv("RAC1_ISO")) iso_path = env_iso;
 
@@ -346,6 +357,14 @@ int run_setup(int argc, char** argv) {
             track = std::atoi(argv[++i]);
         } else if (a == "--wav" && i + 1 < argc) {
             wav = argv[++i];
+        } else if (a == "--level-mods") {
+            level_mods = true;
+        } else if (a == "--level-mod" && i + 1 < argc) {
+            level_mod = argv[++i];
+        } else if (a == "--mod-plugins") {
+            mod_plugins = true;
+        } else if (a == "--mod-plugin" && i + 1 < argc) {
+            mod_plugin = argv[++i];
         } else if (a == "--help" || a == "-h") {
             print_usage(argv[0]);
             return 0;
@@ -361,6 +380,13 @@ int run_setup(int argc, char** argv) {
         return 1;
     }
 
+    if (!level_mod.empty()) return compose_level_mod(level_mod, true) ? 0 : 1;  // (from the player's extracted disc files: no image)
+    if (!mod_plugin.empty()) return build_mod_plugin(mod_plugin, true) ? 0 : 1;
+    if (mod_plugins) return build_mod_plugins(force) ? 0 : 1;
+    if (level_mods) {
+        const bool levels = compose_level_mods(force);
+        return build_mod_plugins(force) && levels ? 0 : 1;
+    }
     if (!movie_tracks_of.empty()) return movie_tracks(movie_tracks_of);
     if (!movie_audio_of.empty()) {
         if (track < 0 || wav.empty()) {

@@ -33,6 +33,7 @@
 #include <game/ovl/quad_draw.h>
 #include <game/ovl/screen_effects.h>
 #include <game/ovl/vendor_tr.h>
+#include <host/level_slots.h>
 #include <game/enhance/vendor_buy_all.h>
 #include <game/port_stubs.h>
 #include <runtime/kernel/bootstrap.h>
@@ -127,7 +128,7 @@ void start_mode_select() {
     const int32_t lvl = lw(0x0015ed84);
     if (lvl == 1 && lbu(0x0013dd43) == 0) {
         sw(OV(0x0015f5c4), 0);
-    } else if (lvl == 0 || (lvl == 0xe && lbu(0x0013d3f0) == 0) || 0x13 < lvl) {
+    } else if ((lvl == 0 && !level_slots_planet_arrival()) || (lvl == 0xe && lbu(0x0013d3f0) == 0) || 0x13 < lvl) {  // (enhancement: a level mod's level lands)
         sw(OV(0x0015f5c4), 0);
     } else {
         sh(0x0013e054, 0xffff);
@@ -619,12 +620,12 @@ void overlay_entry_start() {
     TODO_PORT(0x00200f18, "kernel: display packet send")();
     music_start(lh(0x00151708), 1, 0x400);
     const int32_t lvl = lw(0x0015ed84);
-    if ((lvl == 1 && lbu(0x0013dd43) == 0) || (lvl == 0 && lbu(0x0013d390) != 0)) {
+    if ((lvl == 1 && lbu(0x0013dd43) == 0) || (lvl == 0 && lbu(0x0013d390) != 0 && !level_slots_planet_arrival())) {  // (enhancement: as a planet)
         music_volumes_default();
     } else {
         sub_00265828(0);
     }
-    level_visit_stats();
+    if (!level_slots_keep_base_progress()) level_visit_stats();  // (enhancement: not the base level's on a level mod's level)
     snd_hold();
 }
 
@@ -784,7 +785,7 @@ static bool overlay_frame_end(int32_t mode) {
         music_start(lh(0x00151708), 1, 0x400);
         hud_init();
     }
-    level_time_stat();
+    if (!level_slots_keep_base_progress()) level_time_stat();  // (enhancement: not the base level's on a level mod's level)
     return lw(OV(0x0015f570)) == 0;
 }
 

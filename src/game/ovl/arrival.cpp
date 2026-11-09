@@ -3,6 +3,7 @@
 // from the ship 0x28ecd8 and the planet chosen on the ship's map 0x28ed58.
 
 #include <game/ovl/arrival.h>
+#include <host/level_slots.h>
 #include <game/enhance/fixes102.h>
 #include <game/ovl/flight_draw.h>
 #include <game/ovl/ovl_reloc.h>
@@ -182,6 +183,8 @@ void ship_sequence_update() {
         }
         if (!(lw(SC + 0x34) < lh(SC + 0x40))) {  // the end of the scene
             dialog_slot_stop();
+            for (int32_t i = 0; lw(G + 0x20) == 8 && i < lh(SC + 0x44); ++i)  // (testing: RAC1_LEVEL_TRACE, the landing's end, src/host/level_slots.h)
+                if (const uint32_t m = lwu(SC + 0x178 + static_cast<uint32_t>(i) * 4); m != 0 && lh(m + 0xa6) == 0) level_slots_landing_end(m);
             sub_002a07c8();
             swc1(OV(0x0016caf0), u2f(0x3f2147aeu));
             projection_setup();
@@ -612,7 +615,8 @@ void planet_travel(int32_t planet) {
     sw(SC + 0x5c, lwu(OV(0x00173e08)) + base);
     sw(SC + 0x58, lwu(OV(0x00173e04)) + base);
     sw(OV(0x001611cc), base);
-    if (lw(0x0015ed84) == planet) {
+    const bool reload = level_slots_travel(planet);  // enhancement: a level mod's row chosen (src/host/level_slots.h)
+    if (lw(0x0015ed84) == planet && !reload) {
         ship_sequence_start(8);
         const int32_t s0 = lw(0x0015ed80) != 0 ? 0x50 : 0x60;
         const int32_t v = frame_scale_i(lw(OV(0x00160570) + static_cast<uint32_t>(lh(G + 0x26)) * 4));

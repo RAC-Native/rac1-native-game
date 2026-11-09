@@ -15,6 +15,14 @@ namespace rac1 {
 // orig: 0x00250fe0
 void moby_joints_pose(uint32_t job, uint32_t work);
 
+// orig: (host) the second moby pass's pose memo (render/mrp_pose_memo.h), null when off: `lookup` before the pose of `job`
+// (true: its joint matrices are on the scratchpad already, the pose is not run), `store` after the pose ran
+struct MobyPoseMemo {
+    bool (*lookup)(uint32_t job) = nullptr;
+    void (*store)(uint32_t job) = nullptr;
+};
+extern MobyPoseMemo g_moby_pose_memo;
+
 }  // namespace rac1
 
 #endif

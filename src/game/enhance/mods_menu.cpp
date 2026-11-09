@@ -52,19 +52,28 @@ constexpr uint32_t STRING_SIZE[] = {0x40, 0x80, 0x30, 0x20, 0x180};  // title, O
 static_assert(STRINGS + 0x40 + 0x80 + 0x30 * VISIBLE + 0x20 * VISIBLE + 0x180 <= 0x000f8000u, "the Mods page's texts end at 0xf8000");
 
 // per language (0x15ed88: 0 English, 2 French (in English for now, as the other pages), 3 German, 4 Spanish, 5 Italian)
-enum : int32_t { T_TITLE, T_OPTIONS_HELP, T_ON, T_OFF, T_ON_NEXT, T_OFF_NEXT, T_BROKEN, T_BY, T_VERSION, T_NEXT_START, T_BROKEN_HELP, T_NOTICE, T_COUNT };
+enum : int32_t { T_TITLE, T_OPTIONS_HELP, T_ON, T_OFF, T_ON_NEXT, T_OFF_NEXT, T_BROKEN, T_BY, T_VERSION, T_NEXT_START, T_BROKEN_HELP, T_NOTICE, T_SETUP, T_CODE, T_CONFIRM, T_CONFIRM_HELP, T_COUNT };
 constexpr const char* TEXTS[4][T_COUNT] = {
     {"Mods", "The mods in the mods folder, on or off", "On", "Off", "On at restart", "Off at restart", "Not loaded", "by", "version",
-     "The change applies at the next start.", "Its mod.json could not be read.", "Mods on"},
+     "The change applies at the next start.", "Its mod.json could not be read.", "Mods on", "Needs setup", "Contains code.", "Sure? Cross: on",
+     "This mod contains code: a program of its own that runs on your computer, with your rights. Turn it on only if you trust "
+     "where it comes from. Cross again turns it on, anything else does not."},
     {"Mods", "Die Mods im Ordner mods, an oder aus", "An", "Aus", "An nach Neustart", "Aus nach Neustart", "Nicht geladen", "von", "Version",
-     "Die Aenderung gilt ab dem naechsten Start.", "Seine mod.json ist nicht lesbar.", "Mods an"},
+     "Die Aenderung gilt ab dem naechsten Start.", "Seine mod.json ist nicht lesbar.", "Mods an", "Setup noetig", "Enthaelt Code.", "Sicher? Kreuz: an",
+     "Diese Mod enthaelt Code: ein eigenes Programm, das auf deinem Computer mit deinen Rechten laeuft. Schalte sie nur ein, "
+     "wenn du ihrer Herkunft vertraust. Noch einmal Kreuz schaltet sie ein, alles andere nicht."},
     {"Mods", "Los mods de la carpeta mods, si o no", "Si", "No", "Si al reiniciar", "No al reiniciar", "No cargado", "de", "version",
-     "El cambio se aplica al proximo inicio.", "Su mod.json no se puede leer.", "Mods activos"},
+     "El cambio se aplica al proximo inicio.", "Su mod.json no se puede leer.", "Mods activos", "Falta el setup", "Contiene codigo.", "Seguro? Cruz: si",
+     "Este mod contiene codigo: un programa propio que se ejecuta en tu ordenador, con tus permisos. Activalo solo si confias "
+     "en su origen. Cruz otra vez lo activa, cualquier otra cosa no."},
     {"Mod", "Le mod nella cartella mods, attive o no", "Si", "No", "Si al riavvio", "No al riavvio", "Non caricata", "di", "versione",
-     "La modifica vale dal prossimo avvio.", "Il suo mod.json non si legge.", "Mod attive"},
+     "La modifica vale dal prossimo avvio.", "Il suo mod.json non si legge.", "Mod attive", "Serve il setup", "Contiene codice.", "Sicuro? Croce: si",
+     "Questa mod contiene codice: un programma suo che gira sul tuo computer, con i tuoi permessi. Attivala solo se ti fidi "
+     "della sua provenienza. Croce di nuovo la attiva, altro no."},
 };
 
 int g_top = 0;       // the first mod the window shows
+int g_confirm = -1;  // the mod with code whose turning on waits for its confirmation (cross again), -1 none
 int g_prev_sel = 0;  // the selection at the last frame (the window moves when up / down go past its ends)
 bool g_built = false;
 
@@ -93,6 +102,9 @@ std::string row_value(int i) {
     const ModInfo& m = mods_list()[static_cast<size_t>(i)];
     const char* const* t = texts();
     if (!m.error.empty()) return t[T_BROKEN];
+    if (i == g_confirm) return t[T_CONFIRM];
+    if (m.enabled && (!m.level_wait.empty() || !m.code_wait.empty())) return t[T_SETUP];  // (no usable build: its level or its code)
+    if (m.active && !m.code_error.empty()) return t[T_BROKEN];  // (its code failed to load or start)
     if (m.enabled != m.active) return t[m.enabled ? T_ON_NEXT : T_OFF_NEXT];
     return t[m.enabled ? T_ON : T_OFF];
 }
@@ -103,12 +115,17 @@ std::string help_text(int i) {
     const ModInfo& m = mods_list()[static_cast<size_t>(i)];
     const char* const* t = texts();
     if (!m.error.empty()) return font_safe(m.folder) + ": " + t[T_BROKEN_HELP];
-    std::string s = font_safe(m.description);
+    if (i == g_confirm) return t[T_CONFIRM_HELP];
+    if (m.enabled && !m.level_wait.empty()) return font_safe(m.folder) + ": " + font_safe(m.level_wait);  // (the log's words)
+    if (m.enabled && !m.code_wait.empty()) return font_safe(m.folder) + ": " + font_safe(m.code_wait);
+    if (m.active && !m.code_error.empty()) return font_safe(m.folder) + ": " + font_safe(m.code_error);
+    std::string s = m.code ? std::string(t[T_CODE]) : std::string();
+    if (!m.description.empty()) s += (s.empty() ? "" : " ") + font_safe(m.description);
     std::string who;
     if (!m.author.empty()) who = std::string(t[T_BY]) + " " + font_safe(m.author);
     if (!m.version.empty()) who += (who.empty() ? "" : ", ") + std::string(t[T_VERSION]) + " " + font_safe(m.version);
     if (!who.empty()) s += (s.empty() ? "" : " (") + who + (s.empty() ? "" : ")");
-    if (m.enabled != m.active) s += (s.empty() ? "" : " ") + std::string(t[T_NEXT_START]);
+    if (m.enabled != m.active && m.level_wait.empty() && m.code_wait.empty()) s += (s.empty() ? "" : " ") + std::string(t[T_NEXT_START]);
     return s;
 }
 
@@ -143,7 +160,13 @@ void rows_write() {
 // orig: (none) — enhancement: mod `i` switched on / off (applies at the next start)
 void row_step(int i) {
     if (i < 0 || i >= mod_count()) return;
-    mods_set_enabled(static_cast<size_t>(i), !mods_list()[static_cast<size_t>(i)].enabled);
+    const ModInfo& m = mods_list()[static_cast<size_t>(i)];
+    if (m.code && !m.enabled && g_confirm != i) {  // (a mod with code: on only when confirmed, a second cross)
+        g_confirm = i;
+        return;
+    }
+    g_confirm = -1;
+    mods_set_enabled(static_cast<size_t>(i), !m.enabled);
 }
 }  // namespace
 
@@ -153,6 +176,7 @@ uint32_t mods_page_install(uint32_t parent) {
     if (g_advanced_disabled || mods_list().empty()) return 0;
     g_top = 0;
     g_prev_sel = 0;
+    g_confirm = -1;
     ee_copy(PAGE, CAMERA_PAGE, 0x84);
     ee_copy(TITLE, CAMERA_TITLE, 0x50);
     ee_copy(ROWS_WIDGET, CAMERA_SETTINGS, 0x50);
@@ -230,6 +254,7 @@ bool mods_setting_changed(uint32_t byte) {
 bool mods_settings_dpad(uint32_t w, uint32_t e, uint32_t pressed) {
     if (!g_built || w != ROWS_WIDGET) return false;
     int sel = lw(w + 0x38);
+    if ((pressed & 0x5000u) != 0) g_confirm = -1;  // (up / down: a confirmation waiting is dropped)
     // the window moved when up / down go past its ends (the widget stops there: its rows end)
     if ((pressed & 0x4000u) != 0 && g_prev_sel == VISIBLE - 1 && sel == VISIBLE - 1 && g_top + VISIBLE < mod_count()) {
         ++g_top;

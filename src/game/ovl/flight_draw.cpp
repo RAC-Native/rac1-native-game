@@ -16,6 +16,7 @@
 #include <game/render/mrp_fx.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
+#include <host/level_slots.h>
 
 namespace rac1 {
 
@@ -158,7 +159,7 @@ void flight_draw() {
     texture_block_begin(1);
     mrp_fx_window(true);  // (host: the trails' / the canopy's effects noted for the MRP, as render_frame's draw lists)
     int32_t level = lw(0x0015ed84);
-    if (level != 0 && (level != 1 || lbu(0x0013dd43) != 0)) ship_trails_draw(lwu(OV(0x0016c9d8)));
+    if ((level != 0 || level_slots_planet_arrival()) && (level != 1 || lbu(0x0013dd43) != 0)) ship_trails_draw(lwu(OV(0x0016c9d8)));  // (enhancement: a level mod's level as a planet)
     if (lw(0x0013e088) == 4) {
         int32_t a = lw(OV(0x0016c894));
         if (!(a < 0x3d)) {
@@ -168,7 +169,7 @@ void flight_draw() {
         }
     }
     level = lw(0x0015ed84);
-    if (level != 0 && (level != 1 || lbu(0x0013dd43) != 0)) ship_canopy_draw(lwu(OV(0x0016c9d8)));
+    if ((level != 0 || level_slots_planet_arrival()) && (level != 1 || lbu(0x0013dd43) != 0)) ship_canopy_draw(lwu(OV(0x0016c9d8)));  // (enhancement: the same)
     mrp_fx_window(false);
     constexpr uint32_t SAVE = 0x0013d290;
     if (!(lw(SAVE + 0xd4) < 3) || !(lw(SAVE + 0xdc) < 0)) {  // a save running: the memory card's icon and the spinner

@@ -157,6 +157,7 @@ add_library(rac1_game STATIC
     ovl/quick_select.cpp
     ovl/gadgebot_commands.cpp
     enhance/advanced.cpp
+    enhance/quick_rings.cpp
     enhance/graphics.cpp
     enhance/controls.cpp
     enhance/update_notice.cpp
@@ -165,10 +166,15 @@ add_library(rac1_game STATIC
     enhance/voice_language.cpp
     enhance/language.cpp
     enhance/mods_menu.cpp
+    enhance/exit_menu.cpp
     enhance/movie_subtitles.cpp
     enhance/corrected_texts.cpp
     enhance/cut_content.cpp
     enhance/fixes102.cpp
+    enhance/bug_fixes.cpp
+    enhance/level_slots.cpp
+    enhance/mod_code.cpp
+    enhance/level_mod_hero.cpp
     ovl/bomb_glove.cpp
     ovl/pyrocitor.cpp
     ovl/blaster.cpp
@@ -195,6 +201,8 @@ add_library(rac1_game STATIC
     ovl/empty_class_updates.cpp
     ovl/particles_draw.cpp
     ovl/moby_draw.cpp
+    ovl/moby_draw_fast.cpp
+    ovl/moby_draw_hand.cpp
     ovl/moby_pass.cpp
     ovl/moby_joints.cpp
     ovl/moby_shadows.cpp
@@ -271,6 +279,7 @@ add_library(rac1_game STATIC
     render/mrp_world_static.cpp
     render/mrp_tfrag_gpu.cpp
     render/mrp_lod.cpp
+    render/mrp_pose_memo.cpp
     render/mrp_title_view.cpp
     render/mrp_2d.cpp
     render/texture_mods.cpp
@@ -290,7 +299,7 @@ add_library(rac1_game STATIC
     render/texture_loader.cpp
 )
 target_include_directories(rac1_game PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(rac1_game PUBLIC rac1_runtime tinygltf_headers)
+target_link_libraries(rac1_game PUBLIC rac1_runtime tinygltf_headers ${CMAKE_DL_LIBS})  # (dlopen: the mods' plugins, enhance/mod_code.cpp)
 
 # ---- the generated sources ----
 # Part of the game's code is generated from the game's own MIPS and VU code, read from your disc image, by the

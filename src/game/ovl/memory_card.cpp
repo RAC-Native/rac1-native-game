@@ -8,6 +8,9 @@
 // card screens (game mode 4, kind 3) show and answer.
 #include <game/enhance/fixes102.h>
 #include <game/enhance/language.h>
+#include <host/level_slots.h>
+#include <host/mod_code.h>
+#include <host/quick_rings.h>
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/math/vecmath.h>
@@ -405,6 +408,7 @@ bool save_block_check(uint32_t p) {
 // orig: 0x0024d1d8
 int32_t save_block_read(uint32_t src, int32_t index, uint32_t list) {
     if (!save_block_check(src)) return 1;
+    level_slots_block_read(list, index);  // enhancement: the save's records, not a level mod's (src/host/level_slots.h)
     uint32_t p = src + 8;
     int32_t bad = 0;
     uint32_t done = 8;
@@ -510,6 +514,9 @@ void new_game_state() {
         sw(0x0015ede8, mono);
     }
     language_game_state_read();  // enhancement: the Subtitles choice (Options > Language) over the default save's
+    level_slots_new_game();      // enhancement: no level mod's progress (src/host/level_slots.h)
+    quick_rings_new_game();      // enhancement: rings 2 and 3 empty (src/host/quick_rings.h)
+    if (g_mod_code_any) mod_code_new_game();  // enhancement: the mods' code (src/host/mod_code.h)
     ee_stack_free(0x10);
     sw(0x0015ed84, 0);
 }

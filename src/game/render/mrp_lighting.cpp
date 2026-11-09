@@ -9,6 +9,8 @@
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/render_view.h>
+#include <host/level_slots.h>
+#include <host/mod_code.h>
 #include <profiler/host_profiler.h>
 #include <runtime/kernel/ee_copy.h>
 #include <runtime/vk/vk_context.h>
@@ -825,8 +827,8 @@ void fit_cascades() {
             for (int n : g_interior_sets) inside = inside || n == g_interior_hero_set;
             static int32_t ilvl = -1;
             const float want = inside ? 1.0f : 0.0f;
-            if (draw_lw(0x0015ed84) != ilvl) {
-                ilvl = draw_lw(0x0015ed84);
+            if (level_slot_of(draw_lw(0x0015ed84)) != ilvl) {
+                ilvl = level_slot_of(draw_lw(0x0015ed84));
                 g_interior_k = want;
             } else {
                 g_interior_k += std::clamp(want - g_interior_k, -1.0f / kInteriorFade, 1.0f / kInteriorFade);
@@ -835,7 +837,7 @@ void fit_cascades() {
         static glm::vec3 cur{0.0f, 0.0f, 1.0f};
         static float curw = 0.0f;
         static int32_t lvl = -1;
-        const int32_t level = draw_lw(0x0015ed84);
+        const int32_t level = level_slot_of(draw_lw(0x0015ed84));
         static glm::vec4 curkey{0.0f};
         static glm::vec3 curkey_dir{0.0f, 0.0f, 1.0f};
         if (level != lvl) {
@@ -878,7 +880,7 @@ void fit_cascades() {
     const float tx = 1.0f / g_sh.proj.x, ty = 1.0f / g_sh.proj.y;
     float near_d = 0.1f;
     // the caches emptied when what they hold may have changed
-    uint64_t key = static_cast<uint64_t>(draw_lw(0x0015ed84)) * 1000003u + static_cast<uint64_t>(g_mrp_lod) * 7919u + static_cast<uint64_t>(g_sh.res);
+    uint64_t key = static_cast<uint64_t>(level_slot_of(draw_lw(0x0015ed84))) * 1000003u + static_cast<uint64_t>(g_mrp_lod) * 7919u + static_cast<uint64_t>(g_sh.res);
     for (int i = 0; i < 3; ++i) {
         uint32_t u;
         std::memcpy(&u, &g_sh.sun[i], 4);
@@ -2085,7 +2087,7 @@ void cover_probe(GLint fb, const int vp[4]) {
     const bool on = cover_probe_on();
     static const bool trace = std::getenv("RAC1_SUN_COVER_TRACE") != nullptr;
     Probe& P = g_probe;
-    const int32_t level = draw_lw(0x0015ed84);
+    const int32_t level = level_slot_of(draw_lw(0x0015ed84));
     if (level != P.level) {  // (a new level: nothing measured yet)
         P.level = level;
         P.k = 1.0f;
@@ -3783,6 +3785,7 @@ int g_user_level = -1;
 std::string g_user_path;
 // orig: (host) the level's lights file
 std::string user_path(int level) {
+    if (level_slot_base(level) >= 0) return level_slot_mod_dir(level) + "/level/lights.txt";  // (a level mod's slot: its own file, src/host/level_slots.h)
     const char* dir = std::getenv("RAC1_LIGHTS_DIR");
     char name[32];
     std::snprintf(name, sizeof name, "level%02d.txt", level);
@@ -4329,7 +4332,7 @@ void user_load(int level) {
 // orig: (host) the current level's file read when the level changed (its sun is wanted at the shadow pass's start, whatever the
 // secondary lights' setting)
 void user_ensure() {
-    const int level = static_cast<int>(draw_lw(0x0015ed84));
+    const int level = level_slot_of(static_cast<int>(draw_lw(0x0015ed84)));
     if (level != g_user_level) {
         user_load(level);
     } else if (level_moby_classes() != g_global_classes) {  // (the level's classes registered after its file was read: the lines for
@@ -5306,6 +5309,24 @@ void beam_lights_add() {
         }
     }
 }
+
+// orig: (host) the mods' plugins' lights of the frame (light_add, src/host/mod_code.h: in the frame's copy of EE memory), as the
+// lights placed by hand: per pixel, no shadow cube, within the shadows' second split of the camera
+void mod_lights_add() {
+    if (!g_mod_code_any) return;
+    const uint32_t n = std::min(draw_lwu(MOD_LIGHTS), MOD_LIGHT_MAX);
+    for (uint32_t i = 0; i < n && g_sh.npts < kMaxPts; ++i) {
+        const uint32_t e = MOD_LIGHTS + 0x10 + i * 0x20;
+        const glm::vec3 p(draw_lwc1(e), draw_lwc1(e + 4), draw_lwc1(e + 8)), col(draw_lwc1(e + 0x10), draw_lwc1(e + 0x14), draw_lwc1(e + 0x18));
+        const float r = draw_lwc1(e + 0xc);
+        if (!(r > 0.0f) || glm::length(p - g_sh.cam) - r > g_sh.splits[1]) continue;
+        g_sh.pt_pos[g_sh.npts] = glm::vec4(p, r);
+        g_sh.pt_col[g_sh.npts] = glm::vec4(col, -1.0f);
+        g_sh.pt_slot[g_sh.npts] = -2;  // (no shadow cube)
+        g_sh.pt_down[g_sh.npts] = 0.0f;
+        ++g_sh.npts;
+    }
+}
 }  // namespace
 
 // orig: (host) see mrp_lighting.h
@@ -5345,7 +5366,7 @@ void mrp_lighting_shadow_pass() {
     }
     g_sh.ngame = g_sh.npts;
     if (g_modern_points != 0 && g_auto_lights != 0) {  // (step 3) the lights placed by hand, before the emitters
-        const int level = static_cast<int>(draw_lw(0x0015ed84));
+        const int level = level_slot_of(static_cast<int>(draw_lw(0x0015ed84)));
         if (level != g_user_level) user_load(level);
         const double t = static_cast<double>(g_sh.frame) / 60.0;
         for (size_t i = 0; i < g_user.size() && g_sh.npts < kMaxPts; ++i) {
@@ -5368,6 +5389,7 @@ void mrp_lighting_shadow_pass() {
         class_lights_add(t);
         beam_lights_add();
     }
+    if (g_modern_points != 0) mod_lights_add();  // (the mods' plugins' lights: before the automatic emitters)
     if (g_modern_points != 0 && g_auto_lights != 0) {  // the automatic emitters near the camera, the nearest first
         float pr[4 * kMaxPts], pc[4 * kMaxPts];
         const float cam[3] = {g_sh.cam.x, g_sh.cam.y, g_sh.cam.z};

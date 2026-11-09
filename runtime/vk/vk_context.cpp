@@ -104,9 +104,27 @@ struct Context {
     bool rendering_active = false;
     ImDrawData* imgui_draw_data = nullptr;
 
-    VkCommandPool imm_pool = VK_NULL_HANDLE;
-    VkCommandBuffer imm_cmd = VK_NULL_HANDLE;
-    VkFence imm_fence = VK_NULL_HANDLE;
+    // the immediate command buffers (the upload batch's, submit_immediate's): one recording at a time, the others possibly still
+    // on the GPU (submitted without a wait); a new one made when every one is (a level's load right after the last one's batch)
+    struct ImmSlot {
+        VkCommandPool pool = VK_NULL_HANDLE;
+        VkCommandBuffer cmd = VK_NULL_HANDLE;
+        VkFence fence = VK_NULL_HANDLE;
+        bool busy = false;  // (submitted, its fence not yet seen signalled)
+    };
+    std::vector<ImmSlot> imm;
+    size_t imm_cur = 0;  // (the slot recording the batch, while batch_open)
+    // The upload batch: the copies asked for outside a frame (a level's textures, between two frames) recorded into an immediate command buffer, their
+    // texels in staging chunks of their own, and submitted together without a wait at the next frame's start (begin_frame), or with
+    // one by anything that needs the GPU done (submit_immediate, wait_idle, a destroy_*_now, the batch's staging grown past
+    // kBatchMaxBytes). Before, every such upload was a submit and a wait of its own: with another process's work on the GPU each wait
+    // lasted as long as that work's submit (seconds for a level's ~1600 texture levels, tens of seconds with a heavy game beside it)
+    bool batch_open = false;  // (imm[imm_cur] recording the batch)
+    std::vector<GpuBuffer> batch_stage;  // (the staging chunks; the last one filled up to batch_stage_off)
+    VkDeviceSize batch_stage_off = 0;
+    VkDeviceSize batch_bytes = 0;
+    std::vector<GpuBuffer> batch_dead_buffers;  // (destroyed while the batch was open: freed once it has run)
+    std::vector<GpuImage> batch_dead_images;
 
     VkDescriptorPool imgui_pool = VK_NULL_HANDLE;
 
@@ -140,6 +158,22 @@ struct Context {
     bool has_memory_budget = false;
     VkDeviceSize ring_peak = 0;  // (the most of a frame ring a frame used: the profiler's memory view)
     bool has_host_query_reset = false;
+    // the frame extrapolation's measures (set_frame_timing / set_present_feedback): each frame's GPU time by two timestamps per
+    // frame slot, read when its fence is waited for; VK_KHR_present_id / present_wait: each present's id, polled for when shown
+    bool frame_timing = false;
+    bool force_fifo = false;  // (set_force_fifo: the frame extrapolation's vblank-paced presents, Wayland too)
+    VkQueryPool frame_pool = VK_NULL_HANDLE;
+    bool frame_ts[kFramesInFlight] = {};
+    uint64_t frame_ts_num[kFramesInFlight] = {};
+    double last_gpu_ms = -1.0;
+    uint64_t last_gpu_frame = 0;
+    double last_fence_ms = 0.0;
+    bool has_present_wait = false;  // (the extensions and features enabled at the device's making)
+    bool present_feedback = false;
+    uint64_t present_id = 0;
+    std::vector<uint64_t> present_pending;
+    std::vector<std::chrono::steady_clock::time_point> present_shown;
+    uint64_t present_seen = 0;
     bool has_float64 = false;       // (shaderFloat64: the tfrag compute's doubles; without it the tfrags are made on the CPU)
     bool has_anisotropy = false;    // (samplerAnisotropy: without it every sampler is isotropic)
     bool device_lost = false;       // (VK_ERROR_DEVICE_LOST seen: said once in the log)
@@ -149,6 +183,15 @@ struct Context {
     VkPhysicalDeviceAccelerationStructurePropertiesKHR as_props{};
     VkQueryPool timed_pool = VK_NULL_HANDLE;  // (timed_submit's two timestamps)
 } g_ctx;
+
+// the upload batch (Context::batch_open), defined below with the uploads
+constexpr VkDeviceSize kBatchChunk = 8ull * 1024ull * 1024ull;       // (a staging chunk; a larger upload gets one of its own size)
+constexpr VkDeviceSize kBatchMaxBytes = 128ull * 1024ull * 1024ull;  // (the most staged before the batch is submitted and waited for)
+VkCommandBuffer batch_cmd();
+void batch_submit(bool wait, FrameData* f);
+void imm_settle();
+void destroy_buffer_raw(GpuBuffer& buf);
+void destroy_image_raw(GpuImage& img);
 
 // Why init returned false (kept past g_ctx's reset: the host's line and the Renderer row read it after), and the host's hook
 // for a lost device (its marker: the next start on OpenGL)
@@ -222,6 +265,7 @@ void destroy_swap_semaphores() {
 }
 
 void destroy_swapchain() {
+    g_ctx.present_pending.clear();  // (the presents of that swapchain: no longer waited for)
     destroy_swap_semaphores();
     for (VkImageView v : g_ctx.swap_views) {
         if (v != VK_NULL_HANDLE) vkDestroyImageView(g_ctx.device, v, nullptr);
@@ -266,7 +310,7 @@ bool recreate_swapchain(int w, int h) {
 
     // On Wayland, FIFO blocks when the window is occluded; host_swap_interval in orig_main.cpp usesHostPacer on Wayland
     const bool wayland = glfwGetPlatform() == GLFW_PLATFORM_WAYLAND;
-    const bool want_vsync = g_ctx.vsync && !wayland;
+    const bool want_vsync = (g_ctx.vsync && !wayland) || g_ctx.force_fifo;
     VkPresentModeKHR chosen_pm = VK_PRESENT_MODE_FIFO_KHR;
     if (!want_vsync) {
         for (VkPresentModeKHR pm : pms) {
@@ -315,6 +359,7 @@ bool recreate_swapchain(int w, int h) {
     }
     g_ctx.swap_views.clear();
     if (old_swap != VK_NULL_HANDLE) vkDestroySwapchainKHR(g_ctx.device, old_swap, nullptr);
+    g_ctx.present_pending.clear();  // (the old swapchain's presents: no longer waited for)
 
     g_ctx.swapchain = new_swap;
     g_ctx.swap_w = static_cast<int>(extent.width);
@@ -1109,6 +1154,32 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     VkPhysicalDeviceFeatures2 feat2{};
     feat2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
     feat2.pNext = &v12_feat;
+    // (the frame extrapolation's present feedback: VK_KHR_present_id + present_wait when the device has both, a window only)
+    VkPhysicalDevicePresentIdFeaturesKHR pid_feat{};
+    pid_feat.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR;
+    VkPhysicalDevicePresentWaitFeaturesKHR pw_feat{};
+    pw_feat.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR;
+    if (!headless && has_ext(VK_KHR_PRESENT_ID_EXTENSION_NAME) && has_ext(VK_KHR_PRESENT_WAIT_EXTENSION_NAME) && std::getenv("RAC1_VK_NO_PRESENT_WAIT") == nullptr) {
+        VkPhysicalDevicePresentIdFeaturesKHR qi{};
+        qi.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_FEATURES_KHR;
+        VkPhysicalDevicePresentWaitFeaturesKHR qw{};
+        qw.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_WAIT_FEATURES_KHR;
+        qw.pNext = &qi;
+        VkPhysicalDeviceFeatures2 q2{};
+        q2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+        q2.pNext = &qw;
+        vkGetPhysicalDeviceFeatures2(g_ctx.phys_dev, &q2);
+        if (qi.presentId == VK_TRUE && qw.presentWait == VK_TRUE) {
+            enabled_dexts.push_back(VK_KHR_PRESENT_ID_EXTENSION_NAME);
+            enabled_dexts.push_back(VK_KHR_PRESENT_WAIT_EXTENSION_NAME);
+            pid_feat.presentId = VK_TRUE;
+            pw_feat.presentWait = VK_TRUE;
+            pw_feat.pNext = &pid_feat;
+            pid_feat.pNext = feat2.pNext;
+            feat2.pNext = &pw_feat;
+            g_ctx.has_present_wait = true;
+        }
+    }
     feat2.features.samplerAnisotropy = g_ctx.has_anisotropy ? VK_TRUE : VK_FALSE;
     feat2.features.imageCubeArray = VK_TRUE;
     feat2.features.multiDrawIndirect = VK_TRUE;
@@ -1154,26 +1225,6 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
             g_ctx.depth_format = cand;
             break;
         }
-    }
-
-    // Immediate command buffer & fence
-    {
-        VkCommandPoolCreateInfo cpci{};
-        cpci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        cpci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-        cpci.queueFamilyIndex = g_ctx.queue_family;
-        vkCreateCommandPool(g_ctx.device, &cpci, nullptr, &g_ctx.imm_pool);
-
-        VkCommandBufferAllocateInfo cbai{};
-        cbai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        cbai.commandPool = g_ctx.imm_pool;
-        cbai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        cbai.commandBufferCount = 1;
-        vkAllocateCommandBuffers(g_ctx.device, &cbai, &g_ctx.imm_cmd);
-
-        VkFenceCreateInfo fci{};
-        fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        vkCreateFence(g_ctx.device, &fci, nullptr, &g_ctx.imm_fence);
     }
 
     // Per-frame resources
@@ -1254,6 +1305,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
 
 void shutdown() {
     if (g_ctx.device != VK_NULL_HANDLE) {
+        batch_submit(true, nullptr);
         vkDeviceWaitIdle(g_ctx.device);
         for (auto fn : g_ctx.shutdown_callbacks) {
             if (fn != nullptr) fn();
@@ -1281,6 +1333,8 @@ void shutdown() {
         destroy_swapchain();
         if (g_ctx.prof_pool != VK_NULL_HANDLE) vkDestroyQueryPool(g_ctx.device, g_ctx.prof_pool, nullptr);
         if (g_ctx.timed_pool != VK_NULL_HANDLE) vkDestroyQueryPool(g_ctx.device, g_ctx.timed_pool, nullptr);
+        if (g_ctx.frame_pool != VK_NULL_HANDLE) vkDestroyQueryPool(g_ctx.device, g_ctx.frame_pool, nullptr);
+        g_ctx.frame_pool = VK_NULL_HANDLE;
         g_ctx.prof_pool = VK_NULL_HANDLE;
         prof::set_gpu_api(nullptr);
 
@@ -1302,8 +1356,11 @@ void shutdown() {
         }
 
         if (g_ctx.imgui_pool != VK_NULL_HANDLE) vkDestroyDescriptorPool(g_ctx.device, g_ctx.imgui_pool, nullptr);
-        if (g_ctx.imm_fence != VK_NULL_HANDLE) vkDestroyFence(g_ctx.device, g_ctx.imm_fence, nullptr);
-        if (g_ctx.imm_pool != VK_NULL_HANDLE) vkDestroyCommandPool(g_ctx.device, g_ctx.imm_pool, nullptr);
+        for (const Context::ImmSlot& q : g_ctx.imm) {
+            vkDestroyFence(g_ctx.device, q.fence, nullptr);
+            vkDestroyCommandPool(g_ctx.device, q.pool, nullptr);
+        }
+        g_ctx.imm.clear();
 
         vkDestroyDevice(g_ctx.device, nullptr);
         g_ctx.device = VK_NULL_HANDLE;
@@ -1322,7 +1379,50 @@ void shutdown() {
 bool is_active() { return g_ctx.active; }
 
 void wait_idle() {
-    if (g_ctx.device != VK_NULL_HANDLE) vkDeviceWaitIdle(g_ctx.device);
+    if (g_ctx.device == VK_NULL_HANDLE) return;
+    batch_submit(true, nullptr);
+    vkDeviceWaitIdle(g_ctx.device);
+}
+
+// orig: (host) see vk_context.h
+void set_frame_timing(bool on) { g_ctx.frame_timing = on; }
+double last_frame_gpu_ms(uint64_t* frame) {
+    if (frame != nullptr) *frame = g_ctx.last_gpu_frame;
+    return g_ctx.last_gpu_ms;
+}
+double last_fence_wait_ms() { return g_ctx.last_fence_ms; }
+void set_force_fifo(bool on) {
+    if (g_ctx.force_fifo != on) {
+        g_ctx.force_fifo = on;
+        g_ctx.swapchain_dirty = true;
+    }
+}
+bool present_feedback_supported() { return g_ctx.active && g_ctx.has_present_wait && !g_ctx.headless; }
+void set_present_feedback(bool on) {
+    g_ctx.present_feedback = on;
+    if (!on) g_ctx.present_pending.clear();
+}
+void poll_presents() {
+    if (!g_ctx.present_feedback || g_ctx.present_pending.empty() || g_ctx.swapchain == VK_NULL_HANDLE) return;
+    size_t done = 0;
+    while (done < g_ctx.present_pending.size()) {
+        const VkResult r = vkWaitForPresentKHR(g_ctx.device, g_ctx.swapchain, g_ctx.present_pending[done], 0);
+        if (r != VK_SUCCESS) {
+            if (r != VK_TIMEOUT) {  // (out of date, surface lost: those not waited for any more)
+                done = g_ctx.present_pending.size();
+                g_ctx.present_shown.clear();
+            }
+            break;
+        }
+        g_ctx.present_shown.push_back(std::chrono::steady_clock::now());
+        ++done;
+    }
+    g_ctx.present_pending.erase(g_ctx.present_pending.begin(), g_ctx.present_pending.begin() + static_cast<std::ptrdiff_t>(done));
+    if (g_ctx.present_pending.size() > 64) g_ctx.present_pending.erase(g_ctx.present_pending.begin(), g_ctx.present_pending.end() - 64);
+}
+void take_present_times(std::vector<std::chrono::steady_clock::time_point>& out) {
+    out.insert(out.end(), g_ctx.present_shown.begin(), g_ctx.present_shown.end());
+    g_ctx.present_shown.clear();
 }
 
 void set_vsync(bool vsync) {
@@ -1344,14 +1444,27 @@ void begin_frame(int win_w, int win_h, float clear_r, float clear_g, float clear
         // (the frame slot's fence: the GPU still on the frame before last - the driver's queue full, as an OpenGL swap that
         // blocks: the profiler's Present stage, a wait)
         RAC1_PROF_ZONE(kPresent);
+        const auto fw0 = std::chrono::steady_clock::now();
         check_lost(vkWaitForFences(g_ctx.device, 1, &f.in_flight, VK_TRUE, UINT64_MAX), "the frame's fence");
+        g_ctx.last_fence_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - fw0).count();
+    }
+    if (g_ctx.frame_ts[g_ctx.frame_idx] && g_ctx.frame_pool != VK_NULL_HANDLE) {  // (the slot's last frame: its GPU time)
+        g_ctx.frame_ts[g_ctx.frame_idx] = false;
+        uint64_t ts[2] = {};
+        if (vkGetQueryPoolResults(g_ctx.device, g_ctx.frame_pool, g_ctx.frame_idx * 2, 2, sizeof ts, ts, sizeof(uint64_t), VK_QUERY_RESULT_64_BIT) == VK_SUCCESS) {
+            g_ctx.last_gpu_ms = static_cast<double>((ts[1] - ts[0]) & g_ctx.ts_mask) * g_ctx.ts_period_ns * 1e-6;
+            g_ctx.last_gpu_frame = g_ctx.frame_ts_num[g_ctx.frame_idx];
+        }
     }
     g_ctx.ring_peak = std::max(g_ctx.ring_peak, f.ring_offset);
 
-    for (GpuBuffer& b : f.deferred_buffers) destroy_buffer_now(b);
+    for (GpuBuffer& b : f.deferred_buffers) destroy_buffer_raw(b);
     f.deferred_buffers.clear();
-    for (GpuImage& im : f.deferred_images) destroy_image_now(im);
+    for (GpuImage& im : f.deferred_images) destroy_image_raw(im);
     f.deferred_images.clear();
+    // (the uploads made since the last frame: submitted now, before this frame's commands, without a wait; their staging and the
+    // objects destroyed meanwhile freed with this slot, whose fence - this frame's submit, after the batch's - covers them too)
+    batch_submit(false, &f);
 
     f.ring_offset = 0;
     for (VkDescriptorPool dp : f.desc_pools) vkResetDescriptorPool(g_ctx.device, dp, 0);
@@ -1388,6 +1501,21 @@ void begin_frame(int win_w, int win_h, float clear_r, float clear_g, float clear
     vkBeginCommandBuffer(f.cmd, &cbbi);
     for (uint32_t q : g_ctx.prof_pending) vkCmdWriteTimestamp(f.cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, g_ctx.prof_pool, q);
     g_ctx.prof_pending.clear();
+    if (g_ctx.frame_timing && g_ctx.dev_props.limits.timestampComputeAndGraphics == VK_TRUE) {
+        if (g_ctx.frame_pool == VK_NULL_HANDLE) {
+            VkQueryPoolCreateInfo qci{};
+            qci.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+            qci.queryType = VK_QUERY_TYPE_TIMESTAMP;
+            qci.queryCount = 2 * kFramesInFlight;
+            if (vkCreateQueryPool(g_ctx.device, &qci, nullptr, &g_ctx.frame_pool) != VK_SUCCESS) g_ctx.frame_pool = VK_NULL_HANDLE;
+        }
+        if (g_ctx.frame_pool != VK_NULL_HANDLE) {
+            vkCmdResetQueryPool(f.cmd, g_ctx.frame_pool, g_ctx.frame_idx * 2, 2);
+            vkCmdWriteTimestamp(f.cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, g_ctx.frame_pool, g_ctx.frame_idx * 2);
+            g_ctx.frame_ts[g_ctx.frame_idx] = true;
+            g_ctx.frame_ts_num[g_ctx.frame_idx] = g_ctx.frame_num;
+        }
+    }
 
     g_ctx.cmd = f.cmd;
     g_ctx.in_frame = true;
@@ -1517,6 +1645,8 @@ void end_frame() {
                              nullptr, 0, nullptr, 1, &b_to_pres);
     }
 
+    if (g_ctx.frame_ts[g_ctx.frame_idx] && g_ctx.frame_pool != VK_NULL_HANDLE)
+        vkCmdWriteTimestamp(g_ctx.cmd, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, g_ctx.frame_pool, g_ctx.frame_idx * 2 + 1);
     vkEndCommandBuffer(g_ctx.cmd);
     vkResetFences(g_ctx.device, 1, &f.in_flight);
 
@@ -1546,7 +1676,17 @@ void end_frame() {
         pi.swapchainCount = 1;
         pi.pSwapchains = &g_ctx.swapchain;
         pi.pImageIndices = &g_ctx.swap_img_idx;
+        VkPresentIdKHR pid{};
+        uint64_t id = 0;
+        if (g_ctx.has_present_wait && g_ctx.present_feedback) {  // (its id, waited for by poll_presents)
+            id = ++g_ctx.present_id;
+            pid.sType = VK_STRUCTURE_TYPE_PRESENT_ID_KHR;
+            pid.swapchainCount = 1;
+            pid.pPresentIds = &id;
+            pi.pNext = &pid;
+        }
         const VkResult pres = vkQueuePresentKHR(g_ctx.queue, &pi);
+        if (id != 0 && (pres == VK_SUCCESS || pres == VK_SUBOPTIMAL_KHR)) g_ctx.present_pending.push_back(id);
         check_lost(pres, "vkQueuePresentKHR");
         if (pres == VK_ERROR_OUT_OF_DATE_KHR || pres == VK_SUBOPTIMAL_KHR) {
             g_ctx.swapchain_dirty = true;
@@ -1586,22 +1726,117 @@ void submit_immediate(const std::function<void(VkCommandBuffer)>& fn) {
         flush_cmd();
         return;
     }
-    vkResetCommandPool(g_ctx.device, g_ctx.imm_pool, 0);
-    VkCommandBufferBeginInfo cbbi{};
-    cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    vkBeginCommandBuffer(g_ctx.imm_cmd, &cbbi);
-    fn(g_ctx.imm_cmd);
-    vkEndCommandBuffer(g_ctx.imm_cmd);
+    fn(batch_cmd());  // (after the batch's uploads, in the same submit: one wait for both)
+    batch_submit(true, nullptr);
+}
 
-    vkResetFences(g_ctx.device, 1, &g_ctx.imm_fence);
+namespace {
+
+// orig: (host) every immediate command buffer's work done (a wait only for one still on the GPU: by the next frame's start the
+// batch before it has run, the frame after it waited for)
+void imm_settle() {
+    for (Context::ImmSlot& q : g_ctx.imm) {
+        if (!q.busy) continue;
+        check_lost(vkWaitForFences(g_ctx.device, 1, &q.fence, VK_TRUE, UINT64_MAX), "an upload's fence");
+        q.busy = false;
+    }
+}
+
+// orig: (host) the batch's command buffer, begun when the batch was not open: an immediate command buffer whose work is done
+// (its fence asked, no wait), else a new one
+VkCommandBuffer batch_cmd() {
+    if (!g_ctx.batch_open) {
+        size_t k = 0;
+        for (; k < g_ctx.imm.size(); ++k) {
+            Context::ImmSlot& q = g_ctx.imm[k];
+            if (q.busy && vkGetFenceStatus(g_ctx.device, q.fence) == VK_SUCCESS) q.busy = false;
+            if (!q.busy) break;
+        }
+        if (k == g_ctx.imm.size()) {
+            Context::ImmSlot q;
+            VkCommandPoolCreateInfo cpci{};
+            cpci.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+            cpci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+            cpci.queueFamilyIndex = g_ctx.queue_family;
+            vkCreateCommandPool(g_ctx.device, &cpci, nullptr, &q.pool);
+            VkCommandBufferAllocateInfo cbai{};
+            cbai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            cbai.commandPool = q.pool;
+            cbai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            cbai.commandBufferCount = 1;
+            vkAllocateCommandBuffers(g_ctx.device, &cbai, &q.cmd);
+            VkFenceCreateInfo fci{};
+            fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+            vkCreateFence(g_ctx.device, &fci, nullptr, &q.fence);
+            g_ctx.imm.push_back(q);
+        }
+        Context::ImmSlot& q = g_ctx.imm[k];
+        vkResetCommandPool(g_ctx.device, q.pool, 0);
+        VkCommandBufferBeginInfo cbbi{};
+        cbbi.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        cbbi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        vkBeginCommandBuffer(q.cmd, &cbbi);
+        g_ctx.imm_cur = k;
+        g_ctx.batch_open = true;
+        g_ctx.batch_bytes = 0;
+    }
+    return g_ctx.imm[g_ctx.imm_cur].cmd;
+}
+
+// orig: (host) `bytes` of the batch's staging (16-byte aligned: any texel size's copy offset); a batch past kBatchMaxBytes
+// submitted and waited for first, so a level's load holds a bounded amount of staging
+RingAlloc batch_stage(VkDeviceSize bytes) {
+    if (g_ctx.batch_open && g_ctx.batch_bytes + bytes > kBatchMaxBytes && g_ctx.batch_bytes > 0) batch_submit(true, nullptr);
+    batch_cmd();
+    const VkDeviceSize off = (g_ctx.batch_stage_off + 15) & ~VkDeviceSize{15};
+    if (g_ctx.batch_stage.empty() || off + bytes > g_ctx.batch_stage.back().size) {
+        GpuBuffer chunk{};
+        if (!create_buffer(std::max(bytes, kBatchChunk), VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, chunk, true))
+            return RingAlloc{};
+        g_ctx.batch_stage.push_back(chunk);
+        g_ctx.batch_stage_off = bytes;
+        g_ctx.batch_bytes += bytes;
+        return RingAlloc{chunk.buffer, 0, static_cast<uint8_t*>(chunk.mapped)};
+    }
+    g_ctx.batch_stage_off = off + bytes;
+    g_ctx.batch_bytes += bytes;
+    GpuBuffer& c = g_ctx.batch_stage.back();
+    return RingAlloc{c.buffer, off, static_cast<uint8_t*>(c.mapped) + off};
+}
+
+// orig: (host) the open batch submitted: `wait`, waited for and its staging and objects freed now; else freed with frame slot `f`
+// (its fence, signalled after the batch's submit, covers the batch too) and its command buffer busy until its fence
+void batch_submit(bool wait, FrameData* f) {
+    if (!g_ctx.batch_open) return;
+    g_ctx.batch_open = false;
+    Context::ImmSlot& q = g_ctx.imm[g_ctx.imm_cur];
+    vkEndCommandBuffer(q.cmd);
+    vkResetFences(g_ctx.device, 1, &q.fence);
     VkSubmitInfo si{};
     si.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     si.commandBufferCount = 1;
-    si.pCommandBuffers = &g_ctx.imm_cmd;
-    check_lost(vkQueueSubmit(g_ctx.queue, 1, &si, g_ctx.imm_fence), "an upload's vkQueueSubmit");
-    check_lost(vkWaitForFences(g_ctx.device, 1, &g_ctx.imm_fence, VK_TRUE, UINT64_MAX), "an upload's fence");
+    si.pCommandBuffers = &q.cmd;
+    check_lost(vkQueueSubmit(g_ctx.queue, 1, &si, q.fence), "an upload's vkQueueSubmit");
+    q.busy = true;
+    if (wait || f == nullptr) {
+        imm_settle();
+        for (GpuBuffer& b : g_ctx.batch_stage) destroy_buffer_raw(b);
+        for (GpuBuffer& b : g_ctx.batch_dead_buffers) destroy_buffer_raw(b);
+        for (GpuImage& im : g_ctx.batch_dead_images) destroy_image_raw(im);
+    } else {
+        f->deferred_buffers.insert(f->deferred_buffers.end(), g_ctx.batch_stage.begin(), g_ctx.batch_stage.end());
+        f->deferred_buffers.insert(f->deferred_buffers.end(), g_ctx.batch_dead_buffers.begin(), g_ctx.batch_dead_buffers.end());
+        f->deferred_images.insert(f->deferred_images.end(), g_ctx.batch_dead_images.begin(), g_ctx.batch_dead_images.end());
+    }
+    g_ctx.batch_stage.clear();
+    g_ctx.batch_stage_off = 0;
+    g_ctx.batch_bytes = 0;
+    g_ctx.batch_dead_buffers.clear();
+    g_ctx.batch_dead_images.clear();
 }
+
+}  // namespace
 
 // orig: (host) see vk_context.h
 double timed_submit(const std::function<void(VkCommandBuffer)>& record) {
@@ -1874,7 +2109,8 @@ bool create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryProperty
     return true;
 }
 
-void destroy_buffer_now(GpuBuffer& buf) {
+namespace {
+void destroy_buffer_raw(GpuBuffer& buf) {
     if (g_ctx.device == VK_NULL_HANDLE) {
         buf = GpuBuffer{};
         return;
@@ -1889,6 +2125,16 @@ void destroy_buffer_now(GpuBuffer& buf) {
     }
     buf = GpuBuffer{};
 }
+}  // namespace
+
+// (an object the upload batch may use: the batch run first, as when every upload was waited for)
+void destroy_buffer_now(GpuBuffer& buf) {
+    if (g_ctx.device != VK_NULL_HANDLE && (buf.buffer != VK_NULL_HANDLE || buf.memory != VK_NULL_HANDLE)) {
+        batch_submit(true, nullptr);
+        imm_settle();
+    }
+    destroy_buffer_raw(buf);
+}
 
 // The frame slot whose fence a deferred destroy waits for. Inside a frame: the frame being recorded. Between end_frame (which
 // has already moved frame_idx on) and the next begin_frame (a level loaded after the swap): the frame just submitted, whose
@@ -1898,7 +2144,10 @@ void destroy_buffer_now(GpuBuffer& buf) {
 static uint32_t deferred_slot() { return g_ctx.in_frame ? g_ctx.frame_idx : (g_ctx.frame_idx + kFramesInFlight - 1) % kFramesInFlight; }
 void destroy_buffer(GpuBuffer& buf) {
     if (buf.buffer == VK_NULL_HANDLE && buf.memory == VK_NULL_HANDLE) return;
-    if (g_ctx.active && g_ctx.device != VK_NULL_HANDLE) {
+    if (g_ctx.active && g_ctx.device != VK_NULL_HANDLE && g_ctx.batch_open) {  // (the batch may use it: freed after the batch)
+        g_ctx.batch_dead_buffers.push_back(buf);
+        buf = GpuBuffer{};
+    } else if (g_ctx.active && g_ctx.device != VK_NULL_HANDLE) {
         g_ctx.frames[deferred_slot()].deferred_buffers.push_back(buf);
         buf = GpuBuffer{};
     } else {
@@ -2032,7 +2281,8 @@ bool create_image(uint32_t w, uint32_t h, VkFormat format, VkImageUsageFlags usa
     return true;
 }
 
-void destroy_image_now(GpuImage& img) {
+namespace {
+void destroy_image_raw(GpuImage& img) {
     if (g_ctx.device == VK_NULL_HANDLE) {
         img = GpuImage{};
         return;
@@ -2046,10 +2296,23 @@ void destroy_image_now(GpuImage& img) {
     }
     img = GpuImage{};
 }
+}  // namespace
+
+// (as destroy_buffer_now: the upload batch run first)
+void destroy_image_now(GpuImage& img) {
+    if (g_ctx.device != VK_NULL_HANDLE && (img.image != VK_NULL_HANDLE || img.memory != VK_NULL_HANDLE)) {
+        batch_submit(true, nullptr);
+        imm_settle();
+    }
+    destroy_image_raw(img);
+}
 
 void destroy_image(GpuImage& img) {
     if (img.image == VK_NULL_HANDLE && img.view == VK_NULL_HANDLE && img.memory == VK_NULL_HANDLE) return;
-    if (g_ctx.active && g_ctx.device != VK_NULL_HANDLE) {
+    if (g_ctx.active && g_ctx.device != VK_NULL_HANDLE && g_ctx.batch_open) {  // (the batch may use it: freed after the batch)
+        g_ctx.batch_dead_images.push_back(img);
+        img = GpuImage{};
+    } else if (g_ctx.active && g_ctx.device != VK_NULL_HANDLE) {
         g_ctx.frames[deferred_slot()].deferred_images.push_back(img);
         img = GpuImage{};
     } else {
@@ -2102,24 +2365,21 @@ void upload_image_2d(GpuImage& img, const void* data, size_t byte_size, int x, i
         copy.imageExtent = {uw, uh, 1};
         vkCmdCopyBufferToImage(g_ctx.cmd, stage.buffer, img.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
         transition_image(g_ctx.cmd, img, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    } else {
-        GpuBuffer stage{};
-        create_buffer(byte_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stage, true);
-        std::memcpy(stage.mapped, data, byte_size);
-        submit_immediate([&](VkCommandBuffer cb) {
-            transition_image(cb, img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-            VkBufferImageCopy copy{};
-            copy.bufferOffset = 0;
-            copy.bufferRowLength = row_length > 0 ? static_cast<uint32_t>(row_length) : 0;
-            copy.bufferImageHeight = 0;
-            copy.imageSubresource = {img.aspect, mip_level, layer, 1};
-            copy.imageOffset = {x, y, 0};
-            copy.imageExtent = {uw, uh, 1};
-            vkCmdCopyBufferToImage(cb, stage.buffer, img.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
-            transition_image(cb, img, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        });
-        destroy_buffer_now(stage);
+    } else {  // (between frames: into the upload batch, no wait)
+        const RingAlloc stage = batch_stage(byte_size);
+        if (stage.ptr == nullptr) return;
+        std::memcpy(stage.ptr, data, byte_size);
+        const VkCommandBuffer cb = batch_cmd();
+        transition_image(cb, img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+        VkBufferImageCopy copy{};
+        copy.bufferOffset = stage.offset;
+        copy.bufferRowLength = row_length > 0 ? static_cast<uint32_t>(row_length) : 0;
+        copy.bufferImageHeight = 0;
+        copy.imageSubresource = {img.aspect, mip_level, layer, 1};
+        copy.imageOffset = {x, y, 0};
+        copy.imageExtent = {uw, uh, 1};
+        vkCmdCopyBufferToImage(cb, stage.buffer, img.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+        transition_image(cb, img, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     }
 }
 
@@ -2150,7 +2410,7 @@ void blit_image(GpuImage& src, int sx0, int sy0, int sx1, int sy1, GpuImage& dst
         end_rendering();
         record(g_ctx.cmd);
     } else {
-        submit_immediate(record);
+        record(batch_cmd());  // (between frames: into the upload batch, no wait)
     }
 }
 
@@ -2174,7 +2434,7 @@ void copy_image(GpuImage& src, int sx, int sy, GpuImage& dst, int dx, int dy, in
         end_rendering();
         record(g_ctx.cmd);
     } else {
-        submit_immediate(record);
+        record(batch_cmd());
     }
 }
 

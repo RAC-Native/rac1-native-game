@@ -282,6 +282,16 @@ void Player::SetSoundVolPan(s32 sound_id, s32 vol, s32 pan) {
   handler->second->SetVolPan(vol, pan);
 }
 
+// rac1 (host): see player.h
+void Player::SetSoundHostPlace(s32 sound_id, u8 mode, s32 pan) {
+  std::scoped_lock lock(mTickLock);
+  auto handler = mHandlers.find(sound_id);
+  if (handler == mHandlers.end())
+    return;
+
+  handler->second->SetHostPlace(mode, pan);
+}
+
 void Player::AutoPan(s32 sound_handle, s32 pan, s32 dir, s32 delta_time, s32 mode) {
   std::scoped_lock lock(mTickLock);
   auto handler = mHandlers.find(sound_handle);

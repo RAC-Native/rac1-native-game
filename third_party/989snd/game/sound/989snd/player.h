@@ -57,6 +57,8 @@ class Player {
   void PauseAllSoundsInGroup(u8 group);
   void ContinueAllSoundsInGroup(u8 group);
   void SetSoundVolPan(s32 sound_handle, s32 vol, s32 pan);
+  // rac1 (host): SoundHandler::SetHostPlace on a sound playing
+  void SetSoundHostPlace(s32 sound_handle, u8 mode, s32 pan);
   void AutoPan(s32 sound_handle, s32 pan, s32 dir, s32 delta_time, s32 mode);
   void SubmitVoice(std::shared_ptr<Voice>& voice) { mSynth.AddVoice(voice); };
   // rac1: a voice of the group's range (its core, Synth::AllocVoice), before SubmitVoice; the IRX's 0x0d / 0x4e

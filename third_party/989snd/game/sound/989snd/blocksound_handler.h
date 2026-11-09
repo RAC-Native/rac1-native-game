@@ -78,6 +78,11 @@ class BlockSoundHandler : public SoundHandler {
   bool m_positional{false};  // rac1 (host): played or moved with a pan (the world's sounds, sound_pan): its voices
                              // placed by their direction in 5.1 / 7.1
   void Place(BlockSoundVoice& voice);
+  // rac1 (host): the host's place (SoundHandler::SetHostPlace): 0 none, 1 positional at m_host_pan (a world sound the game
+  // plays without a pan), 2 diffuse (an ambience bed at the listener); given to the children it starts
+  u8 m_host_place{0};
+  s32 m_host_pan{0};
+  void SetHostPlace(u8 mode, s32 pan) override;
   s32 m_cur_pm{0};
   s32 m_cur_pb{0};
   s32 m_app_volume{0};

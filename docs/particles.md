@@ -98,6 +98,10 @@ fields and arenas have them and its other places (indoors, away from the lava) n
   frames with its collision unchanged, the collision tree the game loaded (`*(0x173e40)`, read only) is read on a thread of its
   own (Umbris about 20 ms, Gaspar about 60 ms) and its lava gets a point every 1.5 square units, spread by area with a fixed seed:
   the same points in every run. Only levels whose file has a `source lava` line are read.
+- **A level mod's lava**: on a level mod's level ([Mods, "Level mods"](mods.md#level-mods)) the faces of surface kind 3 too
+  (`usemtl type3` in its `collision.obj`: the generic hero code's lava, +0x12e6), besides kind 1: a level mod marks its lava so
+  (the night arena's lava lake: 43 264 faces of kind 3, 21 110 points). The game's own levels: kind 1 alone, as before (Aridia's
+  kind 3 is its quicksand). The material's lava (below) needs no collision at all.
 - **Which lava**: the levels' kind 1 faces, in the NTSC game: Umbris (the Snagglebeast's arena and its cave, 10 700 square units),
   Gaspar (the lava sea under the level, 168 000), and the green liquids of Blarg, Orxon and Drek's fleet, which are not lava (Orxon's
   green embers rise from its toxic pools this way; Blarg and Drek's fleet have no line). The other levels have none (Aridia's quicksand is kind 3).
@@ -117,12 +121,13 @@ The `lava` [material](materials.md) gives lava too (#136: Anya-Thoughtmane's lav
 surfaces gave none, only the collision's lava of Umbris, Gaspar and Orxon did). With Ambient Particles on:
 
 - **Tfrags, ties and shrubs** whose texture a level's line marks `lava` (`material tfrag|tie|shrub <class> tex <t> lava`): their
-  faces turned up or down (not their sides), every instance of a tie or shrub class, get a point every 1.5 square units with a
+  faces, whichever way they face (their sides too: the lava on the sides of Drek's broken plateaus; only the faces turned up
+  or down were taken up to 0.7.x), every instance of a tie or shrub class, get a point every 1.5 square units with a
   fixed seed, read once per level and lines on the drawing's thread (the tfrags as the debug menu's crosshair finds them, their
   far image; the ties and shrubs their LOD 0), again when a line is added or removed. They join the collision's points (a point
   within 2 units of one of them is left out: the same lava tagged twice), the same slots, the same motion.
 - **Mobys** marked `lava` (`material moby <class> tex <t> lava`): each frame, the drawn mobys of those classes within 60 units
-  are skinned on the CPU as the frame poses them and their tagged faces turned up or down get points (about one per 1.5 square
+  are skinned on the CPU as the frame poses them and their tagged faces (any way they face) get points (about one per 1.5 square
   units, each at a fixed place on its triangle: the same points frame after frame, moving with the moby), taken into the slots
   as the others; a slot follows its moby's point. A moby gone lets its particles fade out where it was.
 - **The line**: a level whose file has a `source lava` line draws the material's lava with it (and with the collision's). A

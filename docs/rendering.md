@@ -219,8 +219,9 @@ colours are built.
 passes draw with the alpha test on (GEQUAL 0x60, failing pixels drawn without depth: two passes), but
 most of their draws cannot fail it: every texel they sample has an alpha of at least 0x80 (known per
 texture at the level's load), and so has every vertex colour (a shrub's instance alpha; a tie's
-resident colours, through its morph's arithmetic; a tfrag entry's colours). Those draws' first pass is
-drawn with early depth testing and their second pass is left out; the batch keeps its order
+resident colours, through its morph's arithmetic; a tfrag entry's colours). Those draws' second pass is
+left out (their first pass keeps the late depth test: the early one was not the same picture from run to
+run on a Radeon); the batch keeps its order
 (`RAC1_PERF_OPAQUE`, [Performance](performance.md#found-while-profiling-a-low-end-target)).
 
 ### tfrag on a compute shader, with the EE's rounding
@@ -520,9 +521,9 @@ anchor, and they decide what moves (`hud_element_side`, hud.cpp, read only):
 | 2 | 492, 15 | 9 (top, right) | right | bolts (0x239df8) |
 | 3 | 20, 208 | 4 (left) | left | the quick select (0x2382a0), Gadgebot's commands (0x238f88) |
 | 4 | 492, 208 | 8 (right) | right | the air meter (0x2365a8), the Morph-o-Ray (0x236e50) |
-| 5 | 20, 376 | 6 (bottom, left) | left | the races' (Rilgar's request 5), Skid's (Aridia) |
+| 5 | 20, 376 | 6 (bottom, left) | left | the races' bar (Rilgar's request 5: not moved, below), Skid's (Aridia) |
 | 6 | 256, 376 | 2 (bottom) | centre | |
-| 7 | 492, 376 | 0xa (bottom, right) | right | the Metal Detector (0x23a2d0 and the level copies of Batalia, Drek's fleet, the Veldin finale), the races' (request 7), Skid's |
+| 7 | 492, 376 | 0xa (bottom, right) | right | the Metal Detector (0x23a2d0 and the level copies of Batalia, Drek's fleet, the Veldin finale), the races' bar (request 7: not moved), Skid's |
 | 8..11 | 492, 208 | 9 | right | |
 | 12 | 142, 50 | 0 | centre | the help panel (0x237200) |
 
@@ -533,7 +534,10 @@ drawing moves them by `Viewport::hud_shift` frame pixels, half the frame's width
 widening over 4:3 less one, toward their side, their scissor with them (what slides out is cut at the
 box's edge, as at the frame's before). Health, the help messages (0x23cf80), the help desk, subtitles,
 the cutscene letterbox, the menus, the pause screen, the Vendor, the planet cards, pictures, fades and
-the Visibomb's layer are not elements of a side and keep their places. The ship flight's planet banner
+the Visibomb's layer are not elements of a side and keep their places. Nor do the hoverboard races' bottom bar's two
+elements (Rilgar's L5:0x266320 in slot 5 and L5:0x266710 in slot 7, Kalebo III's L16:0x238a30 / 0x238e20, `hud_race_bar`):
+together they draw one bar centred on the 4:3 frame, its background with "Lap", "Time" and "Place" across it, which came
+apart when its halves were moved (#132). The ship flight's planet banner
 and save icon (`flight_draw`) are not HUD slots and stay on the 4:3 frame.
 
 ### The space fights' HUD

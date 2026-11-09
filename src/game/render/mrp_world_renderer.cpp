@@ -1,9 +1,11 @@
 // orig: (host) The MRP world renderer (see mrp_world_renderer.h).
 #include <game/render/mrp_world_renderer.h>
+#include <game/render/frame_extrap.inc>
 #include <game/render/texture_mods.h>
 #include <game/render/gl_draws.h>
 #include <game/render/mrp_chain.h>
 
+#include <formats/host_meshes.h>
 #include <formats/moby_mrp.h>
 #include <formats/world_mrp.h>
 #include <game/boot/front_end.h>
@@ -22,6 +24,7 @@
 #include <game/render/mrp_world_static.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
+#include <host/level_slots.h>
 #include <profiler/host_profiler.h>
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
@@ -82,7 +85,19 @@ std::string asset_root() {
 // the assets' level: the level 0x15ed84 names, or the boot module's title level while the boot runs (the title loop
 // sets 0x15ed84 to 0, its scene is its own level)
 // (while the loading screen shows, its own scene: the flight's assets)
-int world_level_id() { return level_exit_loading_screen() ? kFlightLevel : boot_active() ? kTitleLevel : lw(0x0015ed84); }
+// (a level mod's level, src/host/level_slots.h: its host slot, 19..)
+int world_level_id() { return level_exit_loading_screen() ? kFlightLevel : boot_active() ? kTitleLevel : level_slot(); }
+
+// orig: (host) the folder of level `id`'s level folders, and the level whose folder it is: a level mod's slot's, its build's
+// (rac1-native --setup --level-mods writes it: <build>/mrp/world/level<base>), else asset_root() and `id`
+std::string world_root(int id, int& dir_level) {
+    dir_level = id;
+    if (level_slot_base(id) >= 0) {  // (a level mod's slot)
+        dir_level = std::max(level_slot_base(id), 0);
+        return level_slot_build_dir(id) + "/mrp/world";
+    }
+    return asset_root();
+}
 
 // ---- level state -------------------------------------------------------------------------------
 
@@ -285,6 +300,7 @@ Stats g_st;
 CheckStats g_check;
 
 struct Frame {
+    uint64_t build_serial = 0;  // (build_triangles counts its builds: the frame extrapolation's kept clips, mrp_world_extrap_apply)
     bool active = false;
     SceneFrame scene;
     std::vector<GpuV> v;
@@ -347,7 +363,9 @@ void load_textures(Level& L) {
     // bucket of the replacement's size
     std::vector<std::shared_ptr<const texture_mods::Image>> rep[3];
     for (int k = 0; k < 3; ++k) {
-        const std::string path = asset_root() + "/" + level_dir_name(L.id) + "/textures_" + names[k] + ".mrpt";
+        int dir_level = L.id;
+        const std::string root = world_root(L.id, dir_level);
+        const std::string path = root + "/" + level_dir_name(dir_level) + "/textures_" + names[k] + ".mrpt";
         if (!mrp::read_textures(path, L.tex[k])) std::fprintf(stderr, "[mrpw] no %s textures %s\n", names[k], path.c_str());
         L.ref[k].assign(L.tex[k].size(), TexRef{});
         rep[k].assign(L.tex[k].size(), nullptr);
@@ -557,19 +575,38 @@ RtLevelGeometry rt_gather(const Level& L);
 
 // orig: (host) the level's world asset, its index, its textures, the GL buffers
 void load_level(int id) {
+    host_meshes_bind(nullptr, nullptr);  // (a level mod's host meshes: the world about to be freed)
     free_level(g_level);
     Level& L = g_level;
     L.id = id;
     L.tried = true;
     const double t0 = now_ms();
     L.world = std::make_unique<World>();
-    if (!load_world(asset_root(), id, *L.world)) {
-        std::fprintf(stderr, "[mrpw] no MRP world asset for level %d (%s/%s/world.mrpw): run setup.sh\n", id, asset_root().c_str(), level_dir_name(id).c_str());
+    int dir_level = id;
+    const std::string root = world_root(id, dir_level);
+    if (!load_world(root, dir_level, *L.world)) {
+        std::fprintf(stderr, "[mrpw] no MRP world asset for level %d (%s/%s/world.mrpw): run setup.sh\n", id, root.c_str(), level_dir_name(dir_level).c_str());
         L.world.reset();
         return;
     }
     L.idx = std::make_unique<WorldIndex>();
     L.idx->add(L.world.get());
+    if (level_slot_base(id) >= 0) {  // (a level mod's host meshes, src/formats/host_meshes.h: their placements, drawn by the scene itself)
+        const std::string path = level_slot_build_dir(id) + "/host_meshes.mrpc";
+        HostMeshes hm;
+        std::string err;
+        std::error_code ec;
+        if (!std::filesystem::exists(path, ec)) {
+        } else if (!read_host_meshes(path, hm, err)) {
+            std::fprintf(stderr, "[mrpw] %s\n", err.c_str());
+        } else if (hm.classes.size() != L.world->ties.size()) {
+            std::fprintf(stderr, "[mrpw] %s: %zu meshes, the world %zu tie classes (run the setup again)\n", path.c_str(), hm.classes.size(), L.world->ties.size());
+        } else {
+            L.world->host_meshes = std::move(hm.instances);
+            host_meshes_bind(L.idx.get(), L.world.get());
+            std::printf("[mrpw] level slot %d: %zu host meshes drawn by the host\n", id, L.world->host_meshes.size());
+        }
+    }
     load_textures(L);
     // the GPU path's templates (static)
     build_templates(L);
@@ -915,8 +952,8 @@ const bool g_p2_less = [] {
 GLuint g_prog = 0, g_prog_gpu = 0;
 GLuint g_prog_l = 0, g_prog_gpu_l = 0;  // the modern lighting's variants (SH_POINTS)
 GLuint g_prog_e = 0, g_prog_gpu_e = 0;  // the shadow pass's depth-only variants (early fragment tests: the opaque batches)
-// (host, RAC1_PERF_OPAQUE) the view's first pass of the draws no pixel of which fails the alpha test: early fragment tests (the base
-// program's and the modern lighting's)
+// (host, RAC1_PERF_OPAQUE) the view's first pass of the draws no pixel of which fails the alpha test (the base program's and the
+// modern lighting's; OpenGL: their late depth test, see init_gl)
 GLuint g_prog_o = 0, g_prog_gpu_o = 0, g_prog_o_l = 0, g_prog_gpu_o_l = 0;
 int perf_opaque();
 GLuint g_ssbo[3] = {}, g_indirect = 0;
@@ -1334,10 +1371,15 @@ bool init_gl() {
         g_prog_e = g_prog_gpu_e = 0;
     }
     if (perf_opaque() != 0) {  // (RAC1_PERF_OPAQUE: without them, every draw with the base programs)
-        g_prog_o = link(kVs, false, true);
-        g_prog_gpu_o = link(kVsGpu, false, true);
-        g_prog_o_l = link(kVs, true, true);
-        g_prog_gpu_o_l = link(kVsGpu, true, true);
+        // (OpenGL: the first pass of the opaque runs keeps the late depth test - the base program's code, the second pass still left
+        // out. With the early fragment tests, or with a shader without a discard that the driver tests early by itself, Mesa's radeonsi
+        // (Radeon 890M, Mesa 26.0.8) let a few pixels of a later early-tested draw through over a nearer late-tested one, by the
+        // GPU's timing: a different picture from one run to the next, a few pixels of foliage at 16:9 / 32:9 on Veldin; gone with
+        // AMD_DEBUG=nohyperz. Vulkan keeps its early variant: the same picture run after run)
+        g_prog_o = link(kVs, false);
+        g_prog_gpu_o = link(kVsGpu, false);
+        g_prog_o_l = link(kVs, true);
+        g_prog_gpu_o_l = link(kVsGpu, true);
         if (g_prog_o != 0 && g_prog_gpu_o != 0 && g_prog_o_l != 0 && g_prog_gpu_o_l != 0) {
             g_loc_o = locs(g_prog_o);
             g_loc_gpu_o = locs(g_prog_gpu_o);
@@ -1391,9 +1433,10 @@ uint32_t draw_flags(const Key& k, uint32_t unit) {
 // The world passes draw with the alpha test on (TEST_1 0x5360b: GEQUAL 0x60, AFAIL RGB_ONLY), so every tie / shrub / tfrag draw had
 // the shader's discard in its first pass (no early depth test) and a second pass for the failing pixels. Most of them cannot fail:
 // every texel the draw samples (TexRef::opaque) and every vertex colour have an alpha >= 0x80, the test GEQUAL / GREATER below
-// 0x80. Those draws' first pass is drawn with the program without the discard's effect on the depth (early fragment tests), their
-// second pass left out: the same pixels. 1 on (default), 0 off, 2 also a check (OpenGL): each such draw drawn again with the test's
-// failing pixels counted (an occlusion query, no depth test), the count reported - it must be 0.
+// 0x80. Those draws' first pass is drawn with the program without the discard's effect on the depth (early fragment tests; OpenGL:
+// the late test, as before - radeonsi's early test was not the same picture run after run, see init_gl), their second pass left
+// out: the same pixels. 1 on (default), 0 off, 2 also a check (OpenGL): each such draw drawn again with the test's failing pixels
+// counted (an occlusion query, no depth test), the count reported - it must be 0.
 // orig: (host)
 int perf_opaque() {
     static const int m = std::getenv("RAC1_PERF_OPAQUE") != nullptr ? std::atoi(std::getenv("RAC1_PERF_OPAQUE")) : 1;
@@ -2886,6 +2929,7 @@ void build_triangles(Frame& F) {
     F.batches.clear();
     F.p2runs.clear();
     F.insts.clear();
+    ++F.build_serial;
     F.inst_box.clear();
     F.cmds.clear();
     F.draws.clear();
@@ -3629,8 +3673,8 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
                 continue;
             }
             static const bool one_pass = std::getenv("RAC1_MRPW_ONEPASS") != nullptr;
-            // (RAC1_PERF_OPAQUE) the batch by its runs: those whose pixels cannot fail the alpha test drawn with the early fragment tests
-            // in the first pass and left out of the second (as the OpenGL path)
+            // (RAC1_PERF_OPAQUE) the batch by its runs: those whose pixels cannot fail the alpha test left out of the second pass (as the
+            // OpenGL path)
             const bool by_runs = b.rn != 0 && b.runs_ok && g_vk_world.fs_early_base != VK_NULL_HANDLE && g_vk_world.fs_early != VK_NULL_HANDLE;
             bool all_opq = by_runs, any_opq = false;
             if (by_runs)
@@ -3655,20 +3699,11 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
                 return e;
             };
             auto group_count = [&](uint32_t r, uint32_t e) { return F.p2runs[e - 1].first + F.p2runs[e - 1].count - F.p2runs[r].first; };
-            if (!by_runs || all_opq || !any_opq) {
-                pk.early = all_opq;
-                bind_pass(1, zwrite, 0);
-                draw_vk();
-            } else {
-                for (uint32_t r = b.r0; r < b.r0 + b.rn;) {
-                    const uint32_t e = group_end(r);
-                    pk.early = F.p2runs[r].state != 2;
-                    bind_pass(1, zwrite, 0);
-                    draw_range(F.p2runs[r].first, group_count(r, e));
-                    r = e;
-                }
-            }
+            // (the first pass of every run with the late depth test, as the OpenGL path's: the early variant, fs_early_base, let a few
+            // pixels of foliage through by the GPU's timing on RADV too - init_gl)
             pk.early = false;
+            bind_pass(1, zwrite, 0);
+            draw_vk();
             if (rk.pass2 != 0 && !one_pass && !all_opq) {
                 const uint32_t afail = rk.pass2;
                 bind_pass(2, afail == 2 && zwrite, afail == 2 ? 2 : afail == 3 ? 3 : 0);
@@ -4239,7 +4274,10 @@ bool mrp_world_static_lod() { return g_static_on && !g_static_check && mrp_world
 
 // orig: (host) see mrp_world_renderer.h
 bool mrp_world_tfrag_lod() {
-    return tfrag_gpu_enabled() && tfrag_host_enabled() && !g_tfrag_check && mrp_world_ready() && g_tlevel.ok && tfrag_gpu_ready() && g_mrp_world_projection == 0 && !g_env_check && !g_env_diff;
+    // (the direct world makes the CPU tfrag fallback's draws from the host's decisions too, with the host's ties and shrubs: no GPU path
+    // needed, RAC1_PERF_DIRECT_WORLD)
+    return tfrag_gpu_enabled() && tfrag_host_enabled() && !g_tfrag_check && mrp_world_ready() && g_tlevel.ok &&
+           (tfrag_gpu_ready() || (direct_world_mode() != 0 && mrp_world_static_lod())) && g_mrp_world_projection == 0 && !g_env_check && !g_env_diff;
 }
 
 // orig: (host) see mrp_world_renderer.h
@@ -4668,6 +4706,40 @@ void shadow_static_build() {
     }
 }
 SceneInput g_input;  // (the frame's EE inputs of the scene, captured on the game's thread)
+// (RAC1_PERF_DIRECT_WORLD=2) the direct world's inputs and scene, built beside the walker's (drawn) and compared with it
+SceneInput g_input_direct;
+SceneFrame g_scene_direct;
+uint64_t g_direct_by_level[32] = {};  // (the scenes made by the direct world, per level: the report)
+void direct_count(const SceneInput& in) {
+    if (in.dw.ok) ++g_direct_by_level[static_cast<size_t>(g_level.id) & 31];
+}
+// orig: (host) the =2 comparison's inputs: the walker's own as the frame asked (the walk decodes the chain's draws when the host made
+// them only for the direct world), the direct world's
+void direct_compare_inputs() {
+    SceneInput& d = g_input_direct;
+    d.colours = g_input.colours;
+    d.stat = g_input.stat;
+    d.stat_level = g_input.stat_level;
+    d.stat_check = g_input.stat_check;
+    d.tfrag_level = g_input.tfrag_level;
+    d.tfrag_colours = g_input.tfrag_colours;
+    d.tfrag_kicks = g_input.tfrag_kicks;
+    d.tfrag_host = g_input.tfrag_host;
+    d.tfrag_check = g_input.tfrag_check;
+    d.tfrag_shadow = g_input.tfrag_shadow;
+    d.tfrag_shadow_views = g_input.tfrag_shadow_views;
+    d.tfrag_cpu = g_input.tfrag_cpu;
+    d.tfrag_cpu_colours = g_input.tfrag_cpu_colours;
+    d.direct = true;
+    d.dw_reset = g_input.dw_reset;
+    d.walker = 1;
+    g_input.direct = false;
+    if (direct_world_forced()) {  // (the game's own 4:3 Original: the walker's scene as without the direct world)
+        g_input.stat = nullptr;
+        g_input.stat_level = nullptr;
+        g_input.tfrag_host = nullptr;
+    }
+}
 struct SceneWorker {
     std::mutex m;
     std::condition_variable cv;
@@ -4691,16 +4763,24 @@ struct SceneWorker {
             const rac1::prof::Job prof_job(rac1::prof::kWorkerScene);  // (the debug menu's profiler: the job's time)
             try {
                 if (capture) {
-                    // (the game's point lights per pixel instead; never before the level's colours were taken once)
-                    const bool freeze = mrp_lighting_points_freeze() && g_colours_level == g_level.id;
-                    if (g_static_on) {  // (the colours alone kept while a light is in use: the instances are this frame's)
-                        if (!freeze) resident_colours_update(g_rcols, colours);
-                        static_frame_build(g_slevel, g_rcols, g_sframe, g_static_check);
+                    {
+                        const rac1::prof::PartTimer part(rac1::prof::kPartSceneDecide);
+                        // (the game's point lights per pixel instead; never before the level's colours were taken once)
+                        const bool freeze = mrp_lighting_points_freeze() && g_colours_level == g_level.id;
+                        if (g_static_on) {  // (the colours alone kept while a light is in use: the instances are this frame's)
+                            if (!freeze) resident_colours_update(g_rcols, colours);
+                            static_frame_build(g_slevel, g_rcols, g_sframe, g_static_check);
+                        }
+                        shadow_static_build();
+                        if ((g_input.tfrag_level != nullptr || g_input.tfrag_cpu != nullptr) && !freeze) tfrag_colours_update(g_tcols, g_tlevel);
+                        if (!freeze) g_colours_level = g_level.id;
+                        if (g_input.tfrag_host != nullptr) tfrag_decide(g_tlevel, tfrag_snapshot(), g_tfrag_check, g_tdecide);
                     }
-                    shadow_static_build();
-                    if (g_input.tfrag_level != nullptr && !freeze) tfrag_colours_update(g_tcols, g_tlevel);
-                    if (!freeze) g_colours_level = g_level.id;
-                    if (g_input.tfrag_host != nullptr) tfrag_decide(g_tlevel, tfrag_snapshot(), g_tfrag_check, g_tdecide);
+                    const rac1::prof::PartTimer part(rac1::prof::kPartSceneCapture);
+                    if (direct_world_compare()) {
+                        direct_compare_inputs();
+                        scene_capture(chain_start, chain_end, g_input_direct, addrs);
+                    }
                     scene_capture(chain_start, chain_end, g_input, addrs);
                     {
                         std::lock_guard<std::mutex> lg(m);
@@ -4708,9 +4788,16 @@ struct SceneWorker {
                     }
                     cv.notify_all();
                 }
-                built = scene_build(*g_level.idx, g_input, g_frame.scene, reset, kicks);
+                {
+                    const rac1::prof::PartTimer part(rac1::prof::kPartSceneWalk);
+                    built = scene_build(*g_level.idx, g_input, g_frame.scene, reset, kicks);
+                }
+                if (built && direct_world_compare() && g_input_direct.dw.ok && scene_build(*g_level.idx, g_input_direct, g_scene_direct, reset, kicks))
+                    scene_compare(g_frame.scene, g_scene_direct);  // (the direct world's scene against the walker's, which is drawn)
+                if (built) direct_count(direct_world_compare() ? g_input_direct : g_input);
                 g_frame.built_on_worker = false;
                 if (built && build) {  // the frame's triangles too, its new textures' images left to the host thread
+                    const rac1::prof::PartTimer part(rac1::prof::kPartSceneTris);
                     const double tb = now_ms();
                     g_tex_defer = true;
                     build_triangles(g_frame);
@@ -4861,12 +4948,19 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
         g_input.tfrag_colours = on ? &g_tcols : nullptr;
         g_input.tfrag_kicks = on && g_tfrag_verify;
         const TfragSnapshot& S = tfrag_snapshot();  // (the decisions: made in the capture step, from the pass's snapshot)
-        g_input.tfrag_host = on && S.valid && (g_tfrag_check || (S.handle && mrp_world_tfrag_lod())) ? &g_tdecide : nullptr;
+        // (the CPU tfrag fallback - no GPU path - with the direct world: the host's decisions drawn by the CPU reference, mrp_world_scene.h)
+        const bool cpu = !on && direct_world_mode() != 0 && tfrag_gpu_enabled() && g_tlevel.ok && g_mrp_world_projection == 0 && !g_env_check && !g_env_diff && !g_tfrag_check;
+        g_input.tfrag_cpu = cpu ? &g_tlevel : nullptr;
+        g_input.tfrag_cpu_colours = cpu ? &g_tcols : nullptr;
+        g_input.tfrag_host = (on || cpu) && S.valid && (g_tfrag_check || (S.handle && mrp_world_tfrag_lod())) ? &g_tdecide : nullptr;
         g_input.tfrag_check = g_tfrag_check;
         g_input.tfrag_shadow = g_modern_shadows != 0 && g_input.tfrag_level != nullptr ? &g_tshadow : nullptr;
         g_tfrag_shadow_on = g_input.tfrag_shadow != nullptr;
         g_input.tfrag_shadow_views = &g_tshadow_views;
     }
+    g_input.direct = direct_world_on();  // (RAC1_PERF_DIRECT_WORLD: the world's ranges scanned, not walked, when the host makes them)
+    g_input.dw_reset = g_level.reset_walker;
+    g_input.walker = 0;
     if (scene_threaded()) {  // (the capture on the worker too: the host must call mrp_world_wait_captured before the game's state changes)
         g_worker.start(chain_start, chain_end, g_level.reset_walker, kicks, true, scene_addrs(), colour_source(), build_threaded());
     } else {
@@ -4876,11 +4970,18 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
             static_frame_build(g_slevel, g_rcols, g_sframe, g_static_check);
         }
         shadow_static_build();
-        if (g_input.tfrag_level != nullptr && !freeze) tfrag_colours_update(g_tcols, g_tlevel);
+        if ((g_input.tfrag_level != nullptr || g_input.tfrag_cpu != nullptr) && !freeze) tfrag_colours_update(g_tcols, g_tlevel);
         if (!freeze) g_colours_level = g_level.id;
         if (g_input.tfrag_host != nullptr) tfrag_decide(g_tlevel, tfrag_snapshot(), g_tfrag_check, g_tdecide);
+        if (direct_world_compare()) {
+            direct_compare_inputs();
+            scene_capture(chain_start, chain_end, g_input_direct);
+        }
         scene_capture(chain_start, chain_end, g_input);
         g_worker.built = scene_build(*g_level.idx, g_input, F.scene, g_level.reset_walker, kicks);
+        if (g_worker.built && direct_world_compare() && g_input_direct.dw.ok && scene_build(*g_level.idx, g_input_direct, g_scene_direct, g_level.reset_walker, kicks))
+            scene_compare(F.scene, g_scene_direct);
+        if (g_worker.built) direct_count(direct_world_compare() ? g_input_direct : g_input);
         g_worker.ms = now_ms() - g_t_begin;
     }
     g_level.reset_walker = false;
@@ -5000,6 +5101,40 @@ int g_last_vp[4] = {};  // (mrp_world_last_viewport)
 bool mrp_world_last_viewport(int out[4]) {
     std::memcpy(out, g_last_vp, sizeof g_last_vp);
     return g_last_vp[2] > 0 && g_last_vp[3] > 0;
+}
+
+// orig: (host) see mrp_world_renderer.h
+void mrp_world_extrap_apply() {
+    Frame& F = g_frame;
+    if (!F.active) return;
+    static uint64_t base_serial = ~0ull;
+    static std::vector<std::array<float, 16>> base;
+    if (base_serial != F.build_serial) {  // (this build's own clips, kept before the first change)
+        base_serial = F.build_serial;
+        base.resize(F.insts.size());
+        for (size_t i = 0; i < F.insts.size(); ++i) std::memcpy(base[i].data(), F.insts[i].clip, sizeof F.insts[i].clip);
+    }
+    // the ties' and shrubs' instances: their clip matrices (the build's view-projection times the instance's) moved to the view in
+    // force, (vp now) (vp built)^-1; the rest of the world takes the view-projection at its draw (uVP)
+    glm::mat4 built;
+    std::memcpy(&built[0][0], F.in.vp, sizeof F.in.vp);
+    float now_f[16];
+    mrp_world_view_proj(now_f);
+    glm::mat4 now;
+    std::memcpy(&now[0][0], now_f, sizeof now_f);
+    const bool same = std::memcmp(&now[0][0], &built[0][0], sizeof now_f) == 0;
+    const glm::dmat4 d = same ? glm::dmat4(1.0) : glm::dmat4(now) * glm::inverse(glm::dmat4(built));
+    for (size_t i = 0; i < F.insts.size() && i < base.size(); ++i) {
+        if (same) {
+            std::memcpy(F.insts[i].clip, base[i].data(), sizeof F.insts[i].clip);
+            continue;
+        }
+        glm::mat4 c;
+        std::memcpy(&c[0][0], base[i].data(), sizeof F.insts[i].clip);
+        const glm::mat4 e = glm::mat4(d * glm::dmat4(c));
+        std::memcpy(F.insts[i].clip, &e[0][0], sizeof F.insts[i].clip);
+    }
+    F.uploaded = false;  // (uploaded again at the next draw: Vulkan's frame rings are the frame's own)
 }
 
 // orig: (host) see mrp_world_renderer.h
@@ -5755,6 +5890,13 @@ void mrp_world_after_chain(int win_w, int win_h, const gs::Viewport* vp, const g
 // orig: (host) see mrp_world_renderer.h
 void mrp_world_report() {
     if (!g_world_mrp) return;
+    {  // (the GS memory model's upload memo, RAC1_PERF_UPLOAD_MEMO: runtime/gs/gs_memory.h)
+        const gs::LocalMemory::UploadMemoStats u = gs::local_memory().upload_memo_stats();
+        if (u.skipped + u.written != 0)
+            std::printf("[perf] upload memo (RAC1_PERF_UPLOAD_MEMO): upload pieces skipped %llu (%.1f MB), written %llu (%.1f MB)\n", static_cast<unsigned long long>(u.skipped),
+                        static_cast<double>(u.skipped_bytes) / 1048576.0, static_cast<unsigned long long>(u.written), static_cast<double>(u.written_bytes) / 1048576.0);
+        if (gs::local_memory().upload_memo_check().compared != 0) gs::local_memory().upload_memo_check().report("upload memo", "skipped pieces");
+    }
     if (pkt_memo_mode() != 0)
         std::printf("[perf] packet memo (RAC1_PERF_PKT_MEMO=%d): %llu GPU path packets, %llu replayed from the packet before; %llu checked against the full replay, %llu differing\n",
                     pkt_memo_mode(), static_cast<unsigned long long>(g_memo_packets), static_cast<unsigned long long>(g_memo_hits), static_cast<unsigned long long>(g_memo_checked),
@@ -5770,6 +5912,22 @@ void mrp_world_report() {
                         static_cast<unsigned long long>(g_opq_chk.pixels));
     }
     if (scene_capture_misses() != 0) std::printf("[mrpw] WARNING: %llu scene reads not captured\n", static_cast<unsigned long long>(scene_capture_misses()));
+    if (direct_world_mode() != 0) {  // (RAC1_PERF_DIRECT_WORLD: mrp_world_scene.h)
+        const DirectStats& d = direct_world_stats();
+        std::printf("[perf] direct world (RAC1_PERF_DIRECT_WORLD=%d): %llu scenes made without the world's walk, %llu scans failed (walked); scanned %llu tags, %llu VIF codes, "
+                    "%llu constants UNPACKs, %llu set-up starts; %.3f ms a scan\n",
+                    direct_world_mode(), static_cast<unsigned long long>(d.frames), static_cast<unsigned long long>(d.fallback), static_cast<unsigned long long>(d.tags),
+                    static_cast<unsigned long long>(d.codes), static_cast<unsigned long long>(d.unpacks), static_cast<unsigned long long>(d.starts),
+                    d.scans != 0 ? d.ms / static_cast<double>(d.scans) : 0.0);
+        std::printf("[perf] direct world: its scenes by level:");
+        for (int l = 0; l < 32; ++l)
+            if (g_direct_by_level[l] != 0) std::printf(" %d: %llu", l, static_cast<unsigned long long>(g_direct_by_level[l]));
+        std::printf("\n");
+        if (direct_world_compare()) {
+            std::printf("[perf] direct world check: %llu packets, %llu register writes compared\n", static_cast<unsigned long long>(d.packets), static_cast<unsigned long long>(d.regs));
+            d.check.report("direct world", "frames");
+        }
+    }
     static const char* names[6] = {"tfrag A", "tfrag B", "tie A", "tie B", "shrub A", "shrub B"};
     std::printf("[mrpw] %llu frames drawn, %llu scenes: packets %llu, vertices %llu, triangles %llu (ADC %llu, tie B flagged dropped %llu), batches %llu; set-up starts %llu, unknown programs %llu\n",
                 static_cast<unsigned long long>(g_st.frames), static_cast<unsigned long long>(g_st.scene_frames), static_cast<unsigned long long>(g_st.packets),

@@ -747,8 +747,27 @@ void moby_joints_pose_loop(int loop, int mode, uint32_t a, uint32_t b, int32_t n
     g_pose_wide = wide;
 }
 
+namespace {
+void pose(uint32_t a0, uint32_t a1);
+}  // namespace
+
+MobyPoseMemo g_moby_pose_memo;
+
 // orig: 0x00250fe0
 void moby_joints_pose(uint32_t a0, uint32_t a1) {
+    // orig: (host) the second moby pass's memo (mrp_pose_memo.h)
+    if (g_moby_pose_memo.lookup != nullptr) {
+        if (g_moby_pose_memo.lookup(a0)) return;
+        pose(a0, a1);
+        g_moby_pose_memo.store(a0);
+        return;
+    }
+    pose(a0, a1);
+}
+
+namespace {
+// orig: (helper) the pose itself (0x00250fe0)
+void pose(uint32_t a0, uint32_t a1) {
     LocalFlags fl(regs());  // (host: the ops' flags in locals, the VU0's written back at the return: the same values)
     Vf* const v = vf();
     qset_xy(v[28], sx(a1));  // (the caller's s0..s2 parked in vf29..vf31: no such registers here)
@@ -1136,5 +1155,7 @@ void moby_joints_pose(uint32_t a0, uint32_t a1) {
     if (g_pose_simd) bind_matrices_simd(fl, last);
     else bind_matrices_ref(fl, last);
 }
+
+}  // namespace
 
 }  // namespace rac1

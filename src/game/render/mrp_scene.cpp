@@ -6,6 +6,7 @@
 //  - the pose observer (moby_skin.h) gives the joint matrices on the scratchpad the skinning reads;
 //  - the chain (DMA tags + VIF codes in the packet buffer) is decoded into the parts and UNPACKs.
 #include <game/render/mrp_scene.h>
+#include <game/render/mrp_pose_memo.h>
 
 #include <game/ovl/moby_draw.h>
 #include <game/ovl/moby_skin.h>
@@ -45,11 +46,53 @@ int g_prof_frames = 0;
 
 double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 
+// (host, RAC1_PERF_SCENE_READS) the observers' reads of EE memory: 1 (default) a range at a time through one pointer (the same
+// bytes), 0 a word at a time through the accessors (as before), 2 both, compared (counted, reported)
+const int g_reads = [] {
+    const char* v = std::getenv("RAC1_PERF_SCENE_READS");
+    return v == nullptr ? 1 : std::atoi(v);
+}();
+uint64_t g_reads_checked = 0, g_reads_differing = 0;
+static_assert(sizeof(MrpVec4) == 16 && sizeof(MrpMat4) == 64, "the EE's layout");
+
 // orig: (host) a vector at an EE address
-MrpVec4 vec4_at(uint32_t a) { return MrpVec4{lwc1(a), lwc1(a + 4), lwc1(a + 8), lwc1(a + 12)}; }
+MrpVec4 vec4_at_words(uint32_t a) { return MrpVec4{lwc1(a), lwc1(a + 4), lwc1(a + 8), lwc1(a + 12)}; }
+// orig: (host) `n` bytes at `a` (RAM below 64 MB or within the scratchpad) as a pointer for reading; null: not plain memory
+const uint8_t* range_at(uint32_t a, uint32_t n) {
+    const bool spr = a >= 0x70000000u && a - 0x70000000u <= 0x4000u - n;
+    const bool ram = a != 0 && a < 0x04000000u && n <= 0x04000000u - a;
+    return spr || ram ? static_cast<const uint8_t*>(ee_ram_ptr_read(a)) : nullptr;
+}
+// orig: (host) `n` bytes at `a` into `out` (the observers' copies): see g_reads
+void copy_at(void* out, uint32_t a, uint32_t n) {
+    const uint8_t* p = g_reads != 0 ? range_at(a, n) : nullptr;
+    if (p != nullptr && g_reads == 1) {
+        std::memcpy(out, p, n);
+        return;
+    }
+    uint8_t* o = static_cast<uint8_t*>(out);
+    for (uint32_t i = 0; i < n; i += 4) {
+        const uint32_t w = lwu(a + i);
+        std::memcpy(o + i, &w, 4);
+    }
+    if (p != nullptr) {  // (2: compared)
+        ++g_reads_checked;
+        if (std::memcmp(o, p, n) != 0) ++g_reads_differing;
+    }
+}
+MrpVec4 vec4_at(uint32_t a) {
+    if (g_reads == 0) return vec4_at_words(a);
+    MrpVec4 v;
+    copy_at(&v, a, 16);
+    return v;
+}
 MrpMat4 mat4_at(uint32_t a) {
     MrpMat4 m;
-    for (int i = 0; i < 4; ++i) m.r[i] = vec4_at(a + 16 * static_cast<uint32_t>(i));
+    if (g_reads != 0) {
+        copy_at(&m, a, sizeof m);
+        return m;
+    }
+    for (int i = 0; i < 4; ++i) m.r[i] = vec4_at_words(a + 16 * static_cast<uint32_t>(i));
     return m;
 }
 
@@ -106,10 +149,7 @@ void on_draw(uint32_t moby, uint32_t chain_begin, uint32_t chain_end, uint32_t r
     m.record_qwords = qwords;
     m.record_first = static_cast<uint32_t>(f.records.size());
     f.records.resize(f.records.size() + static_cast<size_t>(qwords) * 16);
-    for (uint32_t i = 0; i < qwords * 16; i += 4) {
-        const uint32_t w = lwu(spr_rec + i);
-        std::memcpy(&f.records[m.record_first + i], &w, 4);
-    }
+    if (qwords != 0) copy_at(&f.records[m.record_first], spr_rec, qwords * 16);
     if (!in_place) f.mobys.push_back(m);
     if (g_prof) g_prof_obs_ms += now_ms() - t0;
 }
@@ -136,7 +176,11 @@ void on_pose(uint32_t rec, uint32_t /*work*/) {
     const uint32_t count = n <= 0 ? 1u : static_cast<uint32_t>(n);
     m.joint_first = static_cast<uint32_t>(f.joints.size());
     m.joint_count = count;
-    for (uint32_t j = 0; j < count; ++j) f.joints.push_back(mat4_at(SPR + 0x40 * j));
+    if (g_reads != 0) {  // (the matrices at once: 0x40 bytes each, as MrpMat4)
+        f.joints.resize(f.joints.size() + count);
+        copy_at(&f.joints[m.joint_first], SPR, 0x40 * count);
+    } else
+        for (uint32_t j = 0; j < count; ++j) f.joints.push_back(mat4_at(SPR + 0x40 * j));
     if (g_prof) g_prof_obs_ms += now_ms() - t0;
 }
 
@@ -470,6 +514,7 @@ void mrp_scene_install() {
     g_moby_draw_observer = on_draw;
     g_moby_pose_observer = on_pose;
     g_moby_skip_next = skip_next;
+    mrp_pose_memo_install();  // (the second pass's pose memo: mrp_pose_memo.h)
 }
 
 const MrpFrame& mrp_scene() { return g_frame; }
@@ -482,6 +527,23 @@ void mrp_scene_shadow_begin() {
     g_next_pose = 0;
     g_last_pose = ~size_t(0);
     g_have_camera = false;
+}
+
+// orig: (host) see mrp_scene.h: the moby on_pose will take for `rec` (the same search), when skip_next will then skip its skinning
+bool mrp_scene_pose_slot(uint32_t rec, uint32_t& moby, bool& far) {
+    const MrpFrame& f = g_frame;
+    size_t idx = f.mobys.size();
+    if (g_next_pose < f.mobys.size() && f.mobys[g_next_pose].ring == rec && f.mobys[g_next_pose].joint_count == 0) idx = g_next_pose;
+    else
+        for (size_t i = f.mobys.size(); i-- > 0;)
+            if (f.mobys[i].ring == rec && f.mobys[i].joint_count == 0) {
+                idx = i;
+                break;
+            }
+    if (idx == f.mobys.size() || f.mobys[idx].record_qwords == 0) return false;
+    moby = f.mobys[idx].moby;
+    far = f.mobys[idx].far_lod;
+    return true;
 }
 
 // orig: (host) see mrp_scene.h
@@ -631,6 +693,9 @@ void lod_keep_real(const MrpFrame& real, MrpFrame& draw) {
 
 // orig: (host) the drop check's totals (mobys of the real pass the LOD scene missed)
 void mrp_scene_lod_drop_report() {
+    if (g_reads == 2)
+        std::printf("[lod] scene reads (RAC1_PERF_SCENE_READS=2): %llu ranges compared, %llu differing\n", static_cast<unsigned long long>(g_reads_checked),
+                    static_cast<unsigned long long>(g_reads_differing));
     if (g_drops.frames == 0) return;
     std::printf("[lod] moby scenes compared %llu: real-pass mobys missing from the LOD scene %llu (in %llu frames); %.1f real / %.1f LOD mobys a frame; LOD mobys "
                 "without a pose or parts %llu; same-model mobys compared %llu, pose / matrix / parts differing %llu; kept from the real pass %llu, missing after that %llu\n",

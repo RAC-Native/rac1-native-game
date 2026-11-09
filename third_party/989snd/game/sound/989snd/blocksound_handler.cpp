@@ -285,7 +285,31 @@ void BlockSoundHandler::ApplyVolPan(s32 vol, s32 pan, bool cancel_autopan) {
 // rac1 (host): a voice's place in 5.1 / 7.1: a positional sound's voices by their pan (the sound's and the tone's),
 // the others on the front left / right as in stereo
 void BlockSoundHandler::Place(BlockSoundVoice& voice) {
-  voice.SetPlace(m_positional ? Voice::Place::Positional : Voice::Place::Front, m_cur_pan + voice.g_pan);
+  if (m_host_place == 1) {
+    voice.SetPlace(Voice::Place::Positional, m_host_pan + voice.g_pan);
+  } else if (m_host_place == 2) {
+    voice.SetPlace(Voice::Place::Diffuse, 0);
+  } else {
+    voice.SetPlace(m_positional ? Voice::Place::Positional : Voice::Place::Front, m_cur_pan + voice.g_pan);
+  }
+}
+
+// rac1 (host): see blocksound_handler.h; the voices playing placed again
+void BlockSoundHandler::SetHostPlace(u8 mode, s32 pan) {
+  if (mode == m_host_place && pan == m_host_pan) {
+    return;
+  }
+  m_host_place = mode;
+  m_host_pan = pan;
+  for (auto& p : m_voices) {
+    auto voice = p.lock();
+    if (voice != nullptr) {
+      Place(*voice);
+    }
+  }
+  for (auto& c : m_children) {
+    c->SetHostPlace(mode, pan);
+  }
 }
 
 void BlockSoundHandler::SetVolPan(s32 vol, s32 pan) {

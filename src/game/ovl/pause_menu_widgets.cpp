@@ -3,6 +3,7 @@
 // panel (an image read from the disc into one of the menu's buffers, unpacked and drawn),
 // the menu's buffers (0x1ba1b8) and the image upload.
 #include <game/enhance/advanced.h>
+#include <host/level_slots.h>
 #include <game/lib/libc.h>
 #include <game/ovl/end_menu_tr.h>
 #include <game/ovl/ovl_reloc.h>
@@ -255,7 +256,7 @@ int32_t menu_label_draw(uint32_t w) {
     const uint32_t buf = ee_stack_alloc(0x80);  // the frame: the formatted text +0, the box +0x40, its template +0x60
     if ((lwu(w + 0x30) & 0x200) != 0) {
         const uint32_t t = lwu(lwu(w + 0x34) + ((static_cast<uint32_t>(lw(w + 0x38) * item)) & ~3u));
-        if (t != 0x4ed2 && t != 0x4ed9 && t != 0x4edd) {
+        if (t != 0x4ed2 && t != 0x4ed9 && t != 0x4edd && !level_slots_map_row()) {  // (enhancement: a level mod's row: its name alone)
             std::vector<uint64_t> args(1, sub_00203ad8(0x4ecc));
             args.push_back(s);
             libc_sprintf(buf, OV(0x00160340), args);

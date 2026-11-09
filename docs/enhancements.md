@@ -32,6 +32,8 @@ See [Advanced options](advanced.md).
 
 - **Quick Select: Pause.** The world holds still while the quick select is open, as in the later
   games.
+- **Quick Select Rings: 3.** Three quick select rings, as in the later games: L1 / L2 and R1 / R2 switch the ring while
+  Triangle is held; the pause menu's Quick Select page edits each one (L2 / R2).
 - **Movement: RAC 3.** Ratchet moves as in *Ratchet & Clank: Up Your Arsenal*: the run follows the
   stick's tilt, he turns and stops quicker, and L2 or R2 held makes him strafe.
 - **Aiming: Modern.** A modern shooter's aim built on the strafe: L2 aims, R2 fires, the right stick

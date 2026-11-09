@@ -3,8 +3,9 @@
 Options > Advanced holds the settings that change how the game plays. The pause menu's page holds a playthrough's
 settings (the rows below, set first by New Game's Original / Modern and kept with the save); the main menu's holds only
 the global ones, settings of the whole game rather than of a playthrough: [Cut Content](#cut-content),
-[Corrected Texts](#corrected-texts), [1.02 Fixes](#102-fixes) and [1.02 Gameplay](#102-gameplay). They are different
-in kind
+[Corrected Texts](#corrected-texts), [1.02 Fixes](#102-fixes) and [1.02 Gameplay](#102-gameplay). Beside it, the main
+menu's Options has a page of its own for fixes of the original game's own bugs, [Bug Fixes](#bug-fixes). They are
+different in kind
 from the PS2 compromises the port removes (see [Overview](overview.md#faithful-to-the-games-code-not-to-the-ps2s-limits)):
 
 - **A removed compromise** keeps the game's behaviour and state exactly the original's and only drops
@@ -19,6 +20,7 @@ The Advanced page has these rows:
 | Row | Values (default first) | Kind |
 |---|---|---|
 | Quick Select | Normal, Pause | enhancement |
+| Quick Select Rings | 1, 3 | enhancement |
 | Aiming | Original, Modern, Modern, No Zoom | enhancement |
 | Movement | Original, Strafing, RAC 3 | enhancement |
 | Fades | Fast, Original | a removed compromise: Fast is the port's default, Original the PS2's |
@@ -63,7 +65,7 @@ port's fast fades). Left and right on a row step the value (`advanced_settings_d
   `update_channel`, and `update_skip`, the version the update notice's Skip Version chose), nor are
   Vibration and Adaptive Triggers (the machine's pad).
 
-The ids in `save<N>.pc`: Quick Select 1, Aiming 2, Movement 3, Fades 4, Buy All Ammo 5, Skip Cutscenes 10 (Vibration 6,
+The ids in `save<N>.pc`: Quick Select 1, Quick Select Rings 16, Aiming 2, Movement 3, Fades 4, Buy All Ammo 5, Skip Cutscenes 10 (Vibration 6,
 Adaptive Triggers 9 have ids but are not written with the saves; 7 and 8 are removed rows, and 11 was the Voice row,
 now on the Language page, never written with the saves; 12, Cut Content, 13, Corrected Texts, 14, 1.02 Fixes, and 15,
 1.02 Gameplay, are global and never written with the saves either: none reused).
@@ -78,7 +80,7 @@ A preferences file or a `save<N>.pc` written by an earlier build may hold a sett
 removed (`ship` and `clank`, the ship selector and Clank's movement, ids 7 and 8): it loads, and those
 lines are ignored.
 
-**The New Game choice.** Picking "Modern" in New Game's first window turns Quick Select, Aiming
+**The New Game choice.** Picking "Modern" in New Game's first window turns Quick Select, Quick Select Rings (3), Aiming
 (Modern), Movement (RAC 3), Buy All Ammo, Vibration (High), Skip Cutscenes (Always) and, when the pad in use is a
 DualSense, Adaptive Triggers on; "Original" turns them all off
 (`advanced_apply_mode`). Fades and the global rows are left as they are. Every setting can be changed at any time
@@ -97,6 +99,57 @@ Pause, it holds still.
 element is the one open (its update function is 0x237ba0, or 0x238b80 for the variant the hero opens
 in his other mode). `gameplay_frame` (0x297f78, `src/game/ovl/game_frame.cpp`) then skips the hero,
 the mobys, the particles and the camera for that frame, and the play-time statistic does not count it.
+
+## Quick Select Rings: 1 or 3
+
+With 3, the quick select has three rings of eight places, as in the later games: ring 1 is the game's own, rings 2 and 3
+are extra. At 1 (the default, and New Game's Original) the game is the original's; New Game's Modern turns it to 3.
+
+- **In game**, while the ring is open (Triangle held): **L1 or L2** shows the ring on the left, **R1 or R2** the ring on
+  the right. They wrap (left of ring 1 is ring 3). Those presses never reach the game: no crouch, no first-person view,
+  no Modern aiming's fire, until the button is let go (a button held before the ring opened stays the game's). Above
+  the ring: the L1 / R1 arrows (the pause page's frame 0xe99e and the font's L1 / R1 glyphs) and three dots, the ring
+  shown lit; the new ring's icons fade in. The selection stays on its place when the new ring has an item there. The
+  stick, the d-pad and the PC's next / previous weapon (mouse wheel, X) choose inside the ring shown; letting go of
+  Triangle equips from it, as the game does (gadgets too: the Drone Device's own request).
+- **Which ring opens**: the one shown when the quick select last closed. Closed, the PC's next / previous weapon steps
+  through that ring.
+- **Pause menu > Quick Select**: L1 / R1 still turn the selected place; **L2 / R2** change the ring being edited, shown
+  in the wheel's centre ("Ring 2", its dots under it) with the L2 / R2 arrows in the page's bottom corners. The page
+  opens on the ring the quick select shows. Cross puts the focused item in the ring edited: the same item may be in more
+  than one ring, and placing it takes it only from its old place in that ring.
+- **New items**: a weapon the game would put in ring 1's first free place goes, when ring 1 is full, to ring 2's first
+  free place, then ring 3's.
+- **Mods**: a plugin's `weapon_allow` leaves the weapons it does not allow out of every ring (empty places), as it does
+  for ring 1.
+
+**Where they are kept.** Ring 1 stays the game's list 0x141ea0, in the game's own save as before. Rings 2 and 3 and the
+ring last used are item 0x400 of `save<N>.pc` (18 bytes: version 1, the ring last used 0..2, then rings 2 and 3, one byte
+an item id, 0 empty), written only when there is something in them ([Saves](saves.md)). The original game, PCSX2 or a PS2
+read the card as before and never see them. A new game empties them; a save without the item loads with them empty; a
+challenge mode's new game keeps them, as it keeps ring 1 (items no longer owned dropped); deleting the save data deletes
+the `.pc` files with it.
+
+**How it is built** (`src/game/enhance/quick_rings.cpp`, `src/host/quick_rings.h`; the row's byte in `advanced.cpp`):
+
+- `pad_build` (the pad state the game reads) passes the controller's buttons through `quick_rings_pad` first: with the
+  quick select open (the HUD's slot 3 updated by 0x237ba0) a shoulder button's press is noted as a ring switch and taken
+  out of the buttons the game sees until it is let go.
+- `quick_select_start` (0x237ae8) fills the eight slots from ring 1 as the original; then the ring last used is put in
+  them. `quick_select_update` (0x237ba0) switches the ring asked for (the slots' items and icons again, the plugin's
+  disallowed items blanked); `quick_select_draw` (0x2382a0) draws the arrows and dots above the box and reads the
+  shown ring's item for the ammo and the name. The equip path is the game's: the slot's item.
+- `menu_quick_focus_in` / `focus_out` / `update` / `draw` (0x27a610, 0x27a6a8, 0x27a3e8, 0x27e768) read and write the ring
+  edited instead of 0x141ea0 when it is ring 2 or 3.
+- `item_give` (0x260860) calls `quick_rings_give` when ring 1 had no free place.
+- The texts: the row 0x7f22 ("Quick Select Rings"), its values 0x7f23 / 0x7f24 ("1", "3"); "Ring 1".."Ring 3" 0x7a00..0x7a02,
+  made at each lookup in the block 0xfa100..0xfa200 (the buttons' glyph strings there too).
+- The log: `[quick rings] opened on ring N (in hand 0x..)`, `ring N shown`, `closed on ring N, place P, item 0x..`,
+  `shoulder buttons 0x.. kept from the game`, `rings 2 and 3 loaded with the save`.
+
+At 1, and with every enhancement off (the headless tests), none of it runs: a scripted run with the ring opened and the
+shoulder buttons pressed, in game and on the pause page, gives the same RAM, frame by frame, as the build before it but for
+the Advanced page's own block (its new row and texts).
 
 ## Vibration (#10)
 
@@ -491,17 +544,20 @@ level load. `RAC1_CUT_CONTENT=fred,...` turns single items on for testing ([Envi
 **Kerwan's citizens.** Their shared update (L3:0x2dc310, `fred_update_l3`) measures the distance to Ratchet and the
 heading towards him against its own, throws both away and retires the moby on its first frame; the prototype build already
 has the stub. With the item on, a host update replaces it (`cut_content_fred_dispatch_l3`, registered at that address):
-the citizen stays, its sequence 0 is played in a loop, and within 15 units it turns to face Ratchet
+the citizen stays, an idle is played in a loop (below), and within 15 units it turns to face Ratchet
 (`yaw_turn_damped`, the game's turn, slow). What was learnt bringing them back:
 
 - Each of the three models has one sequence of **one frame**: the rest pose, arms held out (#128, "they T-pose like
   cryptids"); Kerwan's data has nothing else for them. They play **another citizen's idle** instead: Nebula G34's
   "Fred" (level 6, class 1105) has Fred 3's skeleton (65 joints, the same hierarchy) and Fred 1 and 2's but for their
   six extra joints under the head (55..60); its frames' rotations equal the Kerwan models' rest pose everywhere but the
-  arms, so they carry over (its bones are longer: each model keeps its own lengths). Its sequence 0, a standing idle with
-  the arms lowered (50 frames at 0.25 a game frame, 3.3 s, a closed loop: a slight sway of the legs, the hands and the
-  face), is read from the player's disc (level 6's core) at the first citizen kept on a level, rebuilt on each class's
-  joints (Fred 1 and 2's extra joints keep their rest rotations) in host memory above the game's 32 MB
+  arms, so they carry over (its bones are longer: each model keeps its own lengths). That citizen is the grind boots
+  seller ("Fred Prime"). Of his two sequences, 0 is a stiff standing idle (50 frames: only the head and a shoulder move;
+  it was used up to 0.7.x, #136) and 1 is the one his own update plays while he waits: crouched, the hands together at the
+  chest (15 frames at 0.25 a game frame, 1 s, a loop), with the hips' translation (joint 4) in each frame. Sequence 1
+  is used (#136): the models' root stays at their standing height, so each citizen is lowered by 0.25 to keep its feet on
+  the ground. It is read from the player's disc (level 6's core) at the first citizen kept on a level, rebuilt on each
+  class's joints (Fred 1 and 2's extra joints keep their rest rotations) in host memory above the game's 32 MB
   (`host_layout::CUT_CONTENT_SEQS`) and put in the class's sequence slot 0; each citizen starts it at its own frame. Their
   placements' flags keep the game's moby loop from advancing their animation (+0x34 bit 0x40), so their update advances
   it. Nothing of the sequence is in the repository; without it (no level 6 data) they keep the rest pose. The other
@@ -695,6 +751,33 @@ The others, read in the North American and the 1.02 build's code (PAL disc 2.00,
   removed, Quartu's own placement 0x274af8); Drek's fleet's 1448 and
   Veldin's finale's 1381 (a counter against a random wait); Pokitaru's 0x2d14b0 / 0x312838 and Gemlik's class 63 (large
   rewrites).
+
+## Bug Fixes
+
+The main menu's Options has a page **Bug Fixes**, right after Advanced, for small fixes of the original game's own bugs:
+the ones no later build of the game fixed (the 1.02 build's own fixes are [1.02 Fixes](#102-fixes)), each a row of its
+own, **Off / On**, off by default. With every row off the original's code runs and the game's memory is the same frame by
+frame (RAC1_RAMHASH). Like the Advanced page's global rows they are settings of the whole game, kept in the preferences
+only (one `bugfix_<name> 0|1` line each in `advanced_options.txt`), never with a save, and changed on the main menu only
+(the pause menu has no Bug Fixes page), so a playthrough sees them from its start. The help box under the rows says what
+the selected one changes.
+
+This is where a future fix of the same kind goes: a bug of the original's code, with a small, local change that a player
+may want, kept off by default so the original stays as it was. Each one gets a number (`RAC1_BUG_FIXES`), a row on the
+page and a section in the table below; its change sits where the original goes wrong, behind its own test
+(`bug_fix_on(n)`, `src/game/enhance/bug_fixes.{h,cpp}`, with an `enhancement: Bug Fixes, fix n` note at the site). A
+change that alters how the game plays (an exploit closed, a difficulty changed) is not a bug fix in this sense: it
+belongs with the gameplay rows.
+
+| Fix | Row | What it changes | Where |
+|---|---|---|---|
+| 1 | Race Music After Quitting | Rilgar's hoverboard race: quitting from its results screen (game mode 4, kind 0, Cross) brings the planet's music back. The original never switches back there: the race organiser (class 918) restarts the level's music only for the race's other endings (its states 1 and 2, the call `ril_28f5c8_l5(0, 8)`; the 1.02 build added it to its state 3 too, [1.02 Fixes](#102-fixes) fix 22), so after a quit the race's track (track 2) kept playing on the planet (issue #132). The fix makes the same call at the quit: the level's music routine L5:0x28f5c8 with the track 0 (the level's music) as the next track, faded over through the track 8, as those endings do. Kalebo III's hoverbike race keeps the planet's music throughout and needs none | `screen_update` 0x202aa0 (kind 0, the quit's step 2), `bug_fixes_race_quit` |
+
+The page is built as the Mods page: a copy of the Camera page with its settings widget in the tall box and a copy of the
+Options help label (its EE block 0xf1000..0xf2000, the Advanced block's free second half; its text ids 0x7b00..,
+German, Spanish and Italian translated, French in English). It is not there with every enhancement off (the headless
+default, the oracle). `RAC1_BUG_FIXES=<n>,<n>...` (`all`, `none`) turns single fixes on for testing
+([Environment variables](env-vars.md)).
 
 ## Limits
 

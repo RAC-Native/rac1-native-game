@@ -47,6 +47,23 @@ extern bool g_snd989_trace;
 extern void (*g_snd989_bank_filter)(std::vector<uint8_t>& bank);
 int snd989_iop_active_sounds();
 
+// Host: a place in 5.1 / 7.1 that the game's pan does not give (src/game/ovl/sound.cpp's sound_frame): 1 positional at
+// `pan` degrees (a world sound the game plays with pan 0: the stereo mix keeps pan 0), 2 diffuse (an ambience bed at the
+// listener), 0 none. Given to both copies (the game's IOP, the RAC1_AUDIO_DUMP's, directly; the mirror by its record);
+// only the speakers' output reads it (Synth::Tick's `multi`), never the stereo mix nor anything the game reads.
+// - snd989_host_place: a sound playing (the game's handle).
+// - snd989_host_place_next: the place of the next play command (0x11) the EE sends. The EE's snd_play_sound calls
+//   snd989_host_play_sent for each one, in order; the game's IOP gives the place to the sound that command starts
+//   (checked by its bank and sound).
+void snd989_host_place(uint32_t handle, int mode, int pan);
+// Host: a sound bank of the host's own (a 989snd file, as the game's: a level mod's sounds.bnk, src/game/enhance/mod_code.cpp)
+// handed to the game's IOP (and the mirror, by its record): its handle (as the game's banks', for the play command's sound
+// definitions), 0 when it is not a bank; and unloaded (its sounds stopped)
+uint32_t snd989_host_bank_load(const std::vector<uint8_t>& bank);
+void snd989_host_bank_unload(uint32_t handle);
+void snd989_host_place_next(int mode, int pan);
+void snd989_host_play_sent(uint32_t bank, uint32_t sound);
+
 // The host's mirror (see above). Enabled before the first command (snd989_iop_start), when an audio device plays it.
 void snd989_mirror_enable();
 void snd989_mirror_disable();  // (no device after all: nothing recorded any more, the queue dropped)

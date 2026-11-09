@@ -8,6 +8,7 @@
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/render_view.h>
+#include <host/level_slots.h>
 #include <profiler/host_profiler.h>
 #include <runtime/kernel/ee_copy.h>
 #include <runtime/vk/vk_context.h>
@@ -561,8 +562,8 @@ struct LavaSlots {
 constexpr int kLavaMatKind = kPartEmbers;
 constexpr float kLavaMatDensity = 1.5f;
 // The lava from the materials (#136): the textures the level's lines give the "lava" material (tfrags, ties, shrubs: points on
-// their faces turned up or down, read on the drawing's thread once per level and lines, as the collision's are; mobys: points on
-// their tagged faces as the frame poses them, each frame), added to the collision's lava (a point within a cell of 2 units of one
+// their faces, whichever way they face - a tagged texture is lava on its sides too: Drek's broken plateaus -, read on the drawing's
+// thread once per level and lines, as the collision's are; mobys: points on their tagged faces as the frame poses them, each frame), added to the collision's lava (a point within a cell of 2 units of one
 // of its points left out: the same lava tagged twice). Without a "source lava" line in the level's file, a level with such a
 // material draws embers from it (kLavaMatKind, kLavaMatDensity) (the collision's lava stays the lines' alone)
 struct LavaMat {
@@ -626,8 +627,9 @@ bool coll_faces(uint32_t tree, Face&& face, Tri&& fn) {
     return true;
 }
 
-// orig: (host) the level's lava points from the collision tree at `tree`
-std::shared_ptr<LavaSet> lava_scan(int level, uint32_t tree) {
+// orig: (host) the level's lava points from the collision tree at `tree`; `mod_lava`: a level mod's level (its slot, 19..), whose
+// lava is its collision's surface kind 3 too (the generic hero code's lava, hero_surface_update's +0x12e6: docs/mods.md, "Lava")
+std::shared_ptr<LavaSet> lava_scan(int level, uint32_t tree, bool mod_lava) {
     std::fill(std::begin(g_kind_hist), std::end(g_kind_hist), 0);
     auto out = std::make_shared<LavaSet>();
     out->level = level;
@@ -648,8 +650,9 @@ std::shared_ptr<LavaSet> lava_scan(int level, uint32_t tree) {
         [&](int kind) { ++g_kind_hist[kind]; },
         [&](const glm::vec3& a, const glm::vec3& b, const glm::vec3& cc, int kind, const glm::ivec3& ci, bool second) {
             zmax = std::max(zmax, ci.z + 1);
-            if (kind == 1 && !second) ++out->faces;
-            if (kind != 1) {  // (surface kind 1: the deadly liquid - the lava; the others may cover it)
+            const bool lava = kind == 1 || (mod_lava && kind == 3);
+            if (lava && !second) ++out->faces;
+            if (!lava) {  // (surface kind 1: the deadly liquid - the lava, and a level mod's kind 3; the others may cover it)
                 std::vector<glm::vec3>& r = roofs[cell_key(ci.x, ci.y, ci.z)];
                 for (const glm::vec3& v : {a, b, cc}) r.push_back(v);
                 return;
@@ -967,7 +970,7 @@ void lava_material_update() {
                 const glm::vec3 a(tris[i], tris[i + 1], tris[i + 2]), b(tris[i + 3], tris[i + 4], tris[i + 5]), c(tris[i + 6], tris[i + 7], tris[i + 8]);
                 const glm::vec3 n = glm::cross(b - a, c - a);
                 const float nl = glm::length(n);
-                if (!(nl > 2e-4f) || std::abs(n.z) < 0.5f * nl) continue;  // (the lava's top: not its sides)
+                if (!(nl > 2e-4f)) continue;  // (any face of a tagged texture: its sides too, #136)
                 for (carry += 0.5f * nl / kLavaSpacing; carry >= 1.0f && M.pts.size() < 262144; carry -= 1.0f) {
                     float u = rnd(), v = rnd();
                     if (u + v > 1.0f) {
@@ -1571,9 +1574,10 @@ void mrp_particles_fx_capture() {
             g_lava_fp = fp;
             // (read on a thread of its own: tens of ms on a lava sea; the collision stays as it is while the level runs, and a
             // reading that ends after the level changed is dropped)
-            std::thread([level, tree, fp] {
+            const bool mod_lava = level_slot_of(level) != level;  // (a level mod's level: its kind 3 faces are lava too)
+            std::thread([level, tree, fp, mod_lava] {
                 const auto t0 = std::chrono::steady_clock::now();
-                std::shared_ptr<const LavaSet> set = lava_scan(level, tree);
+                std::shared_ptr<const LavaSet> set = lava_scan(level, tree, mod_lava);
                 const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
                 static const bool trace = std::getenv("RAC1_PARTICLES_TRACE") != nullptr;
                 if (trace) {

@@ -14,6 +14,7 @@
 #define RAC1_GAME_RENDER_MRP_WORLD_SCENE_H
 
 #include <formats/world_mrp.h>
+#include <profiler/perf_switch.h>
 #include <game/render/mrp_world_check.h>
 #include <game/render/mrp_world_static.h>
 #include <game/render/mrp_tfrag_gpu.h>
@@ -148,6 +149,72 @@ void scene_note_shadow(int pass, uint32_t first, uint32_t end, uint32_t base, st
 void sky_texture_entries(std::vector<std::pair<uint64_t, uint32_t>>& out);
 void sky_texture_entries_at(std::vector<std::pair<uint64_t, uint32_t>>& out, uint32_t asset_ptr);
 
+// ---- the direct world (RAC1_PERF_DIRECT_WORLD) ------------------------------------------------------------------------------------
+//
+// When the host makes every tie, shrub and tfrag draw (mrp_world_static.h, mrp_tfrag_gpu.h; at every view, the game's 4:3 Original too),
+// the walker's work on the world passes' ranges is only what the host's draws take from them: the pass constants the chain leaves in
+// VU1 memory (the tfrag view 5..8 and constants 0x290..0x29d, the tie A alpha-test state 0x3cb..0x3cd, the shrub A fog vf29 / vf30
+// after the constants start) and the GS registers its DIRECT packets set (the textures' TEX0 0x1c2f00, the shrubs' TEST / CLAMP, the
+// far variants' stream ...). The direct world takes them where the chain's packets put them, in place in EE memory at the capture
+// (a scan of the ranges' VIF codes: their data skipped, no copy; the UNPACKs only into those constants' qwords, the constants
+// starts only, run on a private VU1), and the walk stops where the world's ranges begin (it walks the frame's set-up and the sky).
+// The scene's packets, registers, views, instances and textures are the walker's (RAC1_PERF_DIRECT_WORLD=2 builds both and compares
+// them field by field).
+//
+// One step of the world ranges' scan, in chain order (the walk's order: a GS register write, a GIF stream's vertices, the host's
+// draws of a pass where the walk leaves its range, with the VU1 state the pass's chain left)
+struct DirectEvent {
+    uint8_t kind = 0;   // 0 a register, 1 GIF vertices (writes [first, + count) of DirectWorld::writes, `table`), 2 the host's tfrag
+                        // draws, 3 the host's ties, 4 the host's shrubs (+ far variants)
+    uint8_t reg = 0, table = 0;
+    uint64_t value = 0;
+    uint32_t first = 0, count = 0;
+    uint32_t state = 0;        // (2 .. 4) DirectWorld::states
+    uint32_t draw_starts = 0;  // (2 .. 4) the walk's draw starts so far (the packets' `seq`)
+};
+// The VU1 state a pass's chain left where the host's draws are made (only what emit_* read)
+struct DirectState {
+    std::array<std::array<uint32_t, 4>, 4> view{};    // tfrag: VU1 5..8
+    std::array<std::array<uint32_t, 4>, 14> consts{}; // tfrag: VU1 0x290..0x29d
+    std::array<std::array<uint32_t, 4>, 3> tie{};     // tie: VU1 0x3cb..0x3cd
+    std::array<float, 4> shrub_fog{};                 // shrub: vf30 z / w, vf29 x / y
+};
+struct DirectWorld {
+    bool ok = false;
+    uint32_t start = 0;  // the first tag of the world's ranges: the walk of the captured chain stops there
+    std::vector<DirectEvent> events;
+    std::vector<SkyWrite> writes;
+    std::vector<DirectState> states;
+    uint32_t draw_starts = 0;  // (the walk's draw starts in the world's ranges: SceneFrame::draw_starts)
+    uint64_t tags = 0, codes = 0, unpacks = 0, starts = 0;  // (the scan's work: statistics)
+    double ms = 0;
+};
+// orig: (host) RAC1_PERF_DIRECT_WORLD: 0 the world's chain walked as before; 1 (the default) the direct world when the host makes every
+// world draw (the LOD slider off Original or a widened view; else the walk, as before); 2 both, the walker's scene drawn, the
+// direct one compared with it field by field; 3 the direct world at every view - the host makes the world's decisions at the
+// game's own 4:3 Original too (not the same picture there: the host's draws are the widened view's kind, not the decode of the
+// game's chain); 4 the comparison of 3 (at 4:3 Original the walk decodes the game's chain: it differs)
+int direct_world_mode();
+bool direct_world_on();       // (1, 3)
+bool direct_world_compare();  // (2, 4)
+bool direct_world_force();    // (3, 4: the host's decisions at every view)
+// orig: (host) (mrp_lod.cpp, the tfrag pass's turn, the game's thread) the host's decisions this frame are made only for the direct
+// world (the game's 4:3 Original: nothing scaled or widened): the =2 comparison's walk decodes the chain's draws then, as without it
+void direct_world_note_forced(bool forced);
+bool direct_world_forced();
+// The comparison's and the direct world's statistics, over the run
+struct DirectStats {
+    uint64_t frames = 0, fallback = 0;      // the scenes built direct; the scans that failed (the chain copied and walked that frame)
+    perf::DualCheck check;                  // (=2) the frames compared
+    uint64_t packets = 0, regs = 0;         // (=2) the packets / register writes compared
+    uint64_t tags = 0, codes = 0, unpacks = 0, starts = 0;
+    uint64_t scans = 0;
+    double ms = 0;  // (the scans' time, summed)
+};
+const DirectStats& direct_world_stats();
+// orig: (host) (=2) the direct scene `d` against the walker's `w`: false at the first difference (noted)
+bool scene_compare(const SceneFrame& w, const SceneFrame& d);
+
 // A pass's shadow chain (mrp_lod.h), by the real range it replaces
 struct SceneShadow {
     int pass = 0;
@@ -217,6 +284,16 @@ struct SceneInput {
     // as the host's, their packets ScenePacket::shadow
     const std::vector<std::pair<uint32_t, uint8_t>>* tfrag_shadow = nullptr;
     const std::vector<uint16_t>* tfrag_shadow_views = nullptr;  // (each one's shadow views)
+    // the direct world (RAC1_PERF_DIRECT_WORLD): asked for this capture (`direct`); the capture's scan of the world's ranges (`dw.ok`:
+    // the build makes the world from it; else the walk as before). `tfrag_cpu`: the CPU tfrag fallback's level (no GPU path:
+    // tfrag_level null) - the host's tfrag draws by the CPU reference on images made from the level's data
+    bool direct = false, dw_reset = false;  // (`dw_reset`: the scan's private VU1 started again, a new level)
+    int walker = 0;                         // (the walker the build uses: 1 the =2 comparison's direct build's own)
+    DirectWorld dw;
+    const TfragLevel* tfrag_cpu = nullptr;
+    const TfragColours* tfrag_cpu_colours = nullptr;
+    // a level mod's objects' models this frame (src/formats/host_meshes.h host_meshes_dynamic): drawn after its host meshes
+    std::vector<HostMeshInstance> host_dyn;
 };
 
 // orig: (host) the frame's chain [chain_start, chain_end) walked to the end of its last world range: the world's packets

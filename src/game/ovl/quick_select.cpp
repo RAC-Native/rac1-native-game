@@ -10,6 +10,8 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/port_stubs.h>
+#include <host/mod_code.h>
+#include <host/quick_rings.h>
 
 #include <vector>
 
@@ -79,10 +81,12 @@ void quick_select_start(uint32_t e) {
     sw(e + 0x70, 0);
     sw(OV(0x0015f72c), 0);
     for (uint32_t i = 0; i < 8; ++i) {
-        const uint32_t item = lwu(0x00141ea0 + i * 4);
+        uint32_t item = lwu(0x00141ea0 + i * 4);
+        if (!mod_code_weapon_allowed(item)) item = 0;  // (enhancement: a plugin's weapon_allow, the slot shown empty)
         sw(OV(0x0017dac0) + i * 0x1c + 0x18, item);
         sw(OV(0x0017dac0) + i * 0x1c, lhu(item * 0x4c + OV(0x00179ac0) + 0x38));
     }
+    quick_rings_start(e);  // (enhancement: with three rings, the ring last used in the slots, src/host/quick_rings.h)
 }
 
 // The quick select's frame: kept up; the stick (beyond 0.9) points at a slot of the ring (with
@@ -93,6 +97,7 @@ void quick_select_start(uint32_t e) {
 // orig: 0x00237ba0
 void quick_select_update(uint32_t e) {
     const uint32_t b = e + 0x70;
+    quick_rings_update(e);  // (enhancement: L1 / L2 / R1 / R2 show another ring, src/host/quick_rings.h)
     sw(e + 0x7c, static_cast<uint32_t>(frame_scale_i(0xb4)));
     sw(e + 0x6c, 0x18);
     if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(0x00141622))) != 0) sw(PAD + 0x1cc, 2);
@@ -233,6 +238,7 @@ int32_t quick_select_draw(uint32_t e) {
     hud_sprite(hud_frame(0xe934, 0), x + lw(OV(0x0015f718)), y + lw(OV(0x0015f71c)), -hw, -hh, a64);
     hud_sprite(hud_frame(0xe934, 0), x + lw(OV(0x0015f718)), y, -hw, hh, a64);
     hud_sprite(hud_frame(0xe934, 0), x, y + lw(OV(0x0015f71c)), hw, -hh, a64);
+    quick_rings_draw(e, x, y, alpha);  // (enhancement: the rings' arrows and dots above the box, src/host/quick_rings.h)
     const float PI = u2f(0x40490fdbu);
     for (int32_t i = 0; i < lw(OV(0x0015fa90)); ++i) {
         const float fi = static_cast<float>(i), fn = static_cast<float>(lw(OV(0x0015fa90)));
@@ -242,7 +248,7 @@ int32_t quick_select_draw(uint32_t e) {
         if (lw(e + 0x74) == i && lw(qs_slot(i)) != 0)
             hud_sprite(hud_frame(0xe99c, 0), sx - 0x13, sy - 0x13, 0x26, 0x26, static_cast<uint64_t>(static_cast<int64_t>(ring_a)));
         if (lw(qs_slot(i)) != 0) {
-            const int32_t ia = i == lw(e + 0x74) ? alpha : float_to_int(static_cast<float>(alpha) * lwc1(OV(0x0015f7c0)));
+            const int32_t ia = quick_rings_icon_alpha(i == lw(e + 0x74) ? alpha : float_to_int(static_cast<float>(alpha) * lwc1(OV(0x0015f7c0))));  // (enhancement: faded in after a ring switch)
             const uint32_t item = lwu(qs_slot(i) + 0x18);
             const int32_t f = hud_frame(lwu(qs_slot(i)), lbu(0x0013e520 + item) != 0 ? 4 : 0);
             hud_sprite_at(e, f, sx, sy, 1, static_cast<uint64_t>(static_cast<int64_t>(ia)));
@@ -252,7 +258,7 @@ int32_t quick_select_draw(uint32_t e) {
     if (sel < 0 || lw(qs_slot(sel)) == 0) return lw(e + 0x58);
     const float k = fbox * fin;
     const uint64_t shadow = rgba_lerp(lwu(OV(0x0015f798)), lwu(OV(0x0015f79c)), k);
-    const uint32_t item = lwu(0x00141ea0 + static_cast<uint32_t>(sel) * 4);
+    const uint32_t item = quick_rings_shown_item(sel);  // (0x141ea0[sel]; enhancement: the ring shown's)
     const uint32_t row = item * 0x18 + OV(0x001c40b0);
     const uint32_t buf = ee_stack_alloc(0x50);
     if (lhu(row + 8) != 0) {
@@ -288,7 +294,7 @@ int32_t quick_select_draw(uint32_t e) {
                 break;
             }
     int32_t ty = y + lw(OV(0x0015f724));
-    ty += lhu(lwu(0x00141ea0 + static_cast<uint32_t>(sel) * 4) * 0x18 + OV(0x001c40b0) + 8) != 0 ? lw(OV(0x0015f7b4)) : (split != 0 ? lw(OV(0x0015f7b8)) : lw(OV(0x0015f7bc)));
+    ty += lhu(quick_rings_shown_item(sel) * 0x18 + OV(0x001c40b0) + 8) != 0 ? lw(OV(0x0015f7b4)) : (split != 0 ? lw(OV(0x0015f7b8)) : lw(OV(0x0015f7bc)));
     const int32_t tx = x + lw(OV(0x0015f720));
     if (split != 0) {
         text_centered_small(tx + 1, ty + 1, shadow, name, split);

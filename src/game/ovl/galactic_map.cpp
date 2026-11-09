@@ -8,6 +8,7 @@
 //   page 0x1b63f8 (0x10): two labels, the planet's info (0x27a108 / 0x27d2d0 / 0x27a068), its map, its model (0x27cbc0),
 //     the command line (0x27f5b0 / 0x278e10).
 #include <game/ovl/galactic_map.h>
+#include <host/level_slots.h>
 #include <game/ovl/galactic_map_tr.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -53,10 +54,15 @@ int32_t galmap_list_focus_in(uint32_t w) {
             ++n;
         }
     }
+    n = level_slots_list_rows(list, n);  // enhancement: the level mods' rows, the prompt's order (src/host/level_slots.h; else nothing)
     sh(list + n * 0xc, 0);
     const uint32_t order = OV(0x00166c00u - 0x6960);
     sw(w + 0x40, 0);
     sw(w + 0x30, lwu(w + 0x30) | 0x8000u);
+    if (const int32_t row = level_slots_list_focus(n); row >= 0) {  // enhancement: on a level mod's level, its row (level_slots.h)
+        sw(w + 0x40, static_cast<uint32_t>(row));
+        return 0;
+    }
     uint32_t planet = lwu(lwu(order));
     if (planet == 0) return 0;
     uint32_t i = 1;
@@ -106,13 +112,14 @@ int32_t galmap_planet_update(uint32_t w) {
     }
     if ((b & 0x800) != 0) {
         sw(OV(0x00184414), lwu(0x0015ed84));
+        level_slots_list_back();  // enhancement: the current level again (src/host/level_slots.h; else nothing)
         return 1;
     }
     if ((b & 0x40) != 0) {
         moby_sound_start(0, 0x11, lwu(w + 0x14));
         return 1;
     }
-    if ((b & 0x20) != 0) {
+    if ((b & 0x20) != 0 && !level_slots_map_row()) {  // (enhancement: a level mod's row has no movie)
         sw(MS + 0xe4, lwu(OV(0x00184414)));
         sw(MS + 0xf0, lwu(MS + 4));
         sw(MS + 0xf4, 0xf);
@@ -125,6 +132,7 @@ int32_t galmap_planet_update(uint32_t w) {
 // The planet page's model (transliterated: galactic_map_tr.cpp).
 // orig: 0x0027cbc0
 int32_t galmap_planet_draw(uint32_t w) {
+    if (level_slots_map_row()) return 8;  // enhancement: a level mod's row: not the base level's gold bolts (src/host/level_slots.h)
     return static_cast<int32_t>(galmap_planet_draw_u(w, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f).v0);
 }
 

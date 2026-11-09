@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <chrono>
 #include <vector>
 
 struct GLFWwindow;
@@ -104,12 +105,27 @@ void shutdown();
 bool is_active();
 void wait_idle();
 void set_vsync(bool vsync);
+// The frame extrapolation's measures (orig_main.cpp): with set_frame_timing each frame's GPU time (two timestamps), read when its
+// slot comes round again: last_frame_gpu_ms gives the newest one and its frame_number (< 0: none yet); last_fence_wait_ms how
+// long begin_frame waited for the slot's fence (the GPU behind). set_force_fifo: the FIFO present mode whatever V-Sync and the
+// platform (Wayland too: a hidden window then stops the presents). With VK_KHR_present_id / present_wait (a window, the device
+// has them): set_present_feedback numbers the presents, poll_presents (no wait) notes the time each one was found shown,
+// take_present_times hands those times over (in order; a present replaced before it was shown is found with the one after it)
+void set_frame_timing(bool on);
+double last_frame_gpu_ms(uint64_t* frame = nullptr);
+double last_fence_wait_ms();
+void set_force_fifo(bool on);
+bool present_feedback_supported();
+void set_present_feedback(bool on);
+void poll_presents();
+void take_present_times(std::vector<std::chrono::steady_clock::time_point>& out);
 
 // Frame boundaries
 void begin_frame(int win_w, int win_h, float clear_r, float clear_g, float clear_b, float clear_a = 1.0f);
 void render_imgui(ImDrawData* draw_data);
 void end_frame();
 void flush_cmd();
+// `fn`'s commands run and waited for (between frames after the upload batch's, in the same submit; inside a frame as flush_cmd)
 void submit_immediate(const std::function<void(VkCommandBuffer)>& fn);
 // `record`'s commands in a submit of their own, waited for (inside a frame: the frame's commands before them submitted first,
 // as flush_cmd), and their time on the GPU in ms by two timestamps; < 0 when the device has none (issue #113: the tfrag
@@ -187,6 +203,9 @@ bool create_image(uint32_t w, uint32_t h, VkFormat format, VkImageUsageFlags usa
 void destroy_image(GpuImage& img);
 void destroy_image_now(GpuImage& img);
 void transition_image(VkCommandBuffer cb, GpuImage& img, VkImageLayout new_layout);
+// upload_image_2d, blit_image, copy_image: inside a frame, in the frame's command buffer; between frames (a level's load), in the
+// upload batch - one command buffer, its texels in staging chunks, submitted at the next begin_frame without a wait (or waited for
+// by submit_immediate, wait_idle, a destroy_*_now) - never a submit and a wait of their own
 void upload_image_2d(GpuImage& img, const void* data, size_t byte_size, int x = 0, int y = 0, int w = -1, int h = -1,
                      int row_length = 0, uint32_t layer = 0, uint32_t mip_level = 0);
 void blit_image(GpuImage& src, int sx0, int sy0, int sx1, int sy1, GpuImage& dst, int dx0, int dy0, int dx1, int dy1,

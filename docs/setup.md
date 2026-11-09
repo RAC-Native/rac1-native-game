@@ -598,6 +598,15 @@ name, so a copy works the same), and does the same for the other packages' linke
 launcher's Set up) again. If clang.exe is still missing after that, an antivirus may be removing it: see below. Moving
 the game's folder to an NTFS drive (the one Windows is on) avoids the copies.
 
+**Windows: "lld: error: unable to find library -lmsvcrt"** while CMake tests the C compiler (#140): a file of the
+compiler's C runtime (`libmsvcrt.a`, MSYS2's `mingw-w64-clang-x86_64-crt` package) is missing from `.toolchain`, while
+the package counts as installed (an antivirus that removed it, an update or an unpacking stopped halfway). The setup
+(`tools\windows\toolchain.ps1`) now checks the files of the runtime packages (`crt`, `headers`, `winpthreads`,
+`libc++`, `libunwind`, `compiler-rt`) with `pacman -Qk` and installs again any package that misses one: run
+`setup.cmd` (or the launcher's Set up) again. If it says the files are still missing, look in the antivirus' protection
+history, or delete the `.toolchain` folder and run the setup again. With your own MSYS2, in its CLANG64 shell:
+`pacman -S mingw-w64-clang-x86_64-crt mingw-w64-clang-x86_64-headers`.
+
 **Windows: "... rac1-native.exe is missing after the build, although the build finished"**: an
 antivirus (Windows Security too) removed the newly built program, which it does not know. Look in
 its protection history, allow the file (or exclude the game's folder), and run the setup again.
