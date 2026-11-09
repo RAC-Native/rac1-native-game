@@ -788,6 +788,12 @@ struct PoolObj {
     float anchor[3] = {0, 0, 0};
     float start[4] = {0, 0, 0, 0};
     std::vector<size_t> troops;
+    // (a jetpack trooper, 638: kal_trooper) its flight position at the last frame, its climb and stuck frames, the home it
+    // was last sent to (hunting: a flight there asked)
+    float jprev[3] = {0, 0, 0};
+    bool jprev_ok = false, jgo = false;
+    int32_t jclimb = 0, jstuck = 0;
+    float jhome[3] = {0, 0, 0};
 };
 std::vector<PoolObj> g_pool;
 void kal_pool_take();
@@ -912,8 +918,9 @@ std::vector<Hunter> g_hunters;
 //   moved 4 units.
 // - 638, the jetpack troopers (0x2d2cf0): on their level each starts on a random point of its path (+0x120) and, carried
 //   (+0x128), waits hidden (state 10) for its dropship. Here: no path (it starts where spawned), not carried, its area
-//   (+0x12c) a square of 24 round its start. Hunting: its alert timer (+0x2e0: the range 255, target_select_any) kept
-//   running and its home (+0x2b0, +0x2c0) 10 units from Ratchet on its side, again when he has moved 4 units.
+//   (+0x12c) a square of 24 round its start; its flight kept out of walls and over the floor (kal_trooper). Hunting: its
+//   alert timer (+0x2e0: the range 255, target_select_any) kept running and its home (+0x2b0) 10 units from Ratchet on its
+//   side (short of a wall between them), again when he has moved 4 units, flown to (state 1, as from its dropship).
 // - 1356, the dropships (0x2e22d8): fly in along a path (+0xd8) when Ratchet is in an area (+0xd4), unload the troopers named
 //   in +0xc0..+0xcc (moby indices: up to 4, -1 none; 0x2d3dc0 boards them, 0x2d3de0 drops one every half second), then fly
 //   off along a path (+0xdc) and go, or with none stay and fight (shots of class 50) what target_select finds in the area
@@ -988,6 +995,9 @@ void kal_spawned(size_t i) {
     o.woke = false;
     o.hunt = false;
     o.troops.clear();
+    o.jprev_ok = o.jgo = false;
+    o.jclimb = o.jstuck = 0;
+    o.jhome[0] = o.jhome[1] = o.jhome[2] = 1e9f;
     if (!o.adapted || !on_kalebo()) return;
     const uint32_t pv = o.pvars;
     const float x = o.start[0], y = o.start[1], z = o.start[2], c = std::cos(o.start[3]), sn = std::sin(o.start[3]);
@@ -1052,6 +1062,126 @@ void kal_hunt_on(PoolObj& o) {
     }
 }
 
+// ---- the jetpack troopers' flight (638) on a level mod ----
+// Their own code (0x2d2cf0) flies a point of theirs (pvars +0x2c0; the moby is put there plus a bob of 0.25 each frame) straight
+// at its target (0x2d3eb8: the home +0x2b0 in state 1, a path's points in states 3 / 7) through anything, at the target's
+// height: on Kalebo III the level's paths keep them clear of walls, 0 to 2 units over the floor (measured: their points). On
+// a level mod they have no such path. After their update, in their flying states (not 0 starting, 9 falling dead - the game's
+// enemy_physics has the floor -, 10 carried), kal_trooper takes their point's move back from a wall it would cross (sliding
+// along it when it can, rising over it - a jetpack - when it cannot) and keeps them JET_HOVER over the floor under them (up a
+// ramp's slope at their pace, down a ledge more slowly); their home's height made the same, so they arrive (the game's test:
+// within 1 unit, in 3D).
+constexpr float JET_HOVER = 0.5f;     // over the floor (their own level's points: 0..2 over it, most within 0.4)
+constexpr float JET_BODY = 0.8f;      // the wall test's height over their point
+constexpr float JET_RISE = 0.1f;      // units a frame up to their height (a slope), down
+constexpr float JET_SINK = 0.05f;
+constexpr float JET_CLIMB = 0.08f;    // units a frame up a wall in their way, at most JET_CLIMB_MAX over the floor
+constexpr float JET_CLIMB_MAX = 14.0f;
+
+// the level's collision between a and b (the mobys passed through; `self` left out): the point hit and its normal
+bool level_hit(const float a[3], const float b[3], uint32_t self, float* point, float* normal) {
+    Vec4 s{a[0], a[1], a[2], 1.0f};
+    const Vec4 e{b[0], b[1], b[2], 1.0f};
+    uint32_t skip = self;
+    const uint32_t outb = OV(0x00173e40);
+    for (int k = 0; k < 4; ++k) {
+        if (segment_collide_v(s, e, 0, skip, nullptr) == 0) return false;
+        const uint32_t m = lwu(outb + 0x18);
+        if (!is_moby(m)) {
+            for (uint32_t c = 0; c < 3; ++c) {
+                if (point != nullptr) point[c] = lwc1(outb + 0x20 + 4 * c);
+                if (normal != nullptr) normal[c] = lwc1(outb + 0x40 + 4 * c);
+            }
+            return true;
+        }
+        skip = m;  // (a moby: through it, on from where it was hit)
+        s = Vec4{lwc1(outb + 0x20), lwc1(outb + 0x24), lwc1(outb + 0x28), 1.0f};
+    }
+    return false;
+}
+
+// the level's floor under (x, y) from height z down, NAN none within 60
+float level_floor(float x, float y, float z, uint32_t self) {
+    const float a[3] = {x, y, z}, b[3] = {x, y, z - 60.0f};
+    float p[3];
+    return level_hit(a, b, self, p, nullptr) ? p[2] : NAN;
+}
+
+void kal_trooper(PoolObj& o, uint32_t st) {
+    const uint32_t m = o.moby, pv = o.pvars;
+    if (st == 0 || st == 9 || st == 10) {
+        o.jprev_ok = false;
+        return;
+    }
+    if (lw(pv + 0x128) != 0) sw(pv + 0x128, 0);  // (carried: only state 10 is; out of its dropship, no more)
+    // its home: at the height over the floor there (once each time it changes)
+    const float hx = lwc1(pv + 0x2b0), hy = lwc1(pv + 0x2b4), hz = lwc1(pv + 0x2b8);
+    if (hx != o.jhome[0] || hy != o.jhome[1] || hz != o.jhome[2]) {
+        const float g = level_floor(hx, hy, hz + 3.0f, m);
+        if (!std::isnan(g)) swc1(pv + 0x2b8, g + JET_HOVER);
+        o.jhome[0] = hx, o.jhome[1] = hy, o.jhome[2] = lwc1(pv + 0x2b8);
+    }
+    float b[3], off[3];
+    for (uint32_t c = 0; c < 3; ++c) {
+        b[c] = lwc1(pv + 0x2c0 + 4 * c);
+        off[c] = lwc1(m + 0x10 + 4 * c) - b[c];  // (its bob)
+    }
+    if (!o.jprev_ok) {
+        std::memcpy(o.jprev, b, sizeof b);
+        o.jprev_ok = true;
+        o.jclimb = o.jstuck = 0;
+        return;
+    }
+    const float* p = o.jprev;
+    const float mx = b[0] - p[0], my = b[1] - p[1];
+    bool blocked = false;
+    if (std::fabs(mx) + std::fabs(my) > 1e-4f) {
+        const float a[3] = {p[0], p[1], p[2] + JET_BODY};
+        const float e[3] = {b[0], b[1], p[2] + JET_BODY};
+        float hit[3], n[3];
+        if (level_hit(a, e, m, hit, n)) {
+            // along the wall: the move less its part into the wall
+            float sx = 0.0f, sy = 0.0f;
+            const float nn = n[0] * n[0] + n[1] * n[1];
+            if (nn > 0.01f) {
+                const float d = (mx * n[0] + my * n[1]) / nn;
+                sx = mx - d * n[0], sy = my - d * n[1];
+            }
+            const float e2[3] = {p[0] + sx, p[1] + sy, p[2] + JET_BODY};
+            if (std::fabs(sx) + std::fabs(sy) > 1e-4f && !level_hit(a, e2, m, nullptr, nullptr)) {
+                b[0] = p[0] + sx, b[1] = p[1] + sy;
+            } else {
+                b[0] = p[0], b[1] = p[1];
+                blocked = true;
+            }
+            o.jclimb = 20;
+        }
+    }
+    const float g = level_floor(b[0], b[1], p[2] + JET_BODY + 0.5f, m);
+    float z = p[2];
+    if (o.jclimb > 0) {
+        --o.jclimb;
+        if (std::isnan(g) || z < g + JET_CLIMB_MAX) z += JET_CLIMB;
+        if (!std::isnan(g) && z < g + JET_HOVER) z = std::min(g + JET_HOVER, p[2] + JET_RISE);
+    } else if (!std::isnan(g)) {
+        z += std::clamp(g + JET_HOVER - z, -JET_SINK, JET_RISE);
+    }
+    b[2] = z;
+    // a wall it cannot get past nor over for 3 s: it stays where it is (its home there)
+    o.jstuck = blocked ? o.jstuck + 1 : 0;
+    if (o.jstuck > 180 && st == 1) {
+        for (uint32_t c = 0; c < 3; ++c) swc1(pv + 0x2b0 + 4 * c, b[c]);
+        o.jhome[0] = b[0], o.jhome[1] = b[1], o.jhome[2] = b[2];
+        o.jstuck = 0;
+    }
+    for (uint32_t c = 0; c < 3; ++c) {
+        swc1(pv + 0x2c0 + 4 * c, b[c]);
+        swc1(m + 0x10 + 4 * c, b[c] + off[c]);
+    }
+    api_moby_moved(m);
+    std::memcpy(o.jprev, b, sizeof b);
+}
+
 // after the frame's updates: each started object's fixes, and the hunt
 void kal_frame() {
     const uint32_t hero = moby_base();
@@ -1107,15 +1237,26 @@ void kal_frame() {
         case 638:
             if (o.hunt) {
                 sw(pv + 0x2e0, 120);
-                if (moved && st != 10) {
-                    for (uint32_t base : {0x2b0u, 0x2c0u}) {
-                        swc1(pv + base, hx + 10.0f * dx);
-                        swc1(pv + base + 4, hy + 10.0f * dy);
-                        swc1(pv + base + 8, hz);
-                    }
+                if (moved && st != 10 && st != 0) {  // (a home 10 units from him on its side, short of a wall between: flown to;
+                                                       // a few units aside each, not all on one point)
+                    const float side = static_cast<float>(static_cast<int>(&o - g_pool.data()) % 5 - 2) * 2.0f;
+                    const float ux = 10.0f * dx - side * dy, uy = 10.0f * dy + side * dx, ul = std::hypot(ux, uy);
+                    const float a[3] = {hx, hy, hz + JET_BODY}, e[3] = {hx + ux, hy + uy, hz + JET_BODY};
+                    float hit[3], r = ul;
+                    if (level_hit(a, e, 0, hit, nullptr)) r = std::max(0.0f, std::hypot(hit[0] - hx, hit[1] - hy) - 1.5f);
+                    swc1(pv + 0x2b0, hx + ux / ul * r);
+                    swc1(pv + 0x2b4, hy + uy / ul * r);
+                    swc1(pv + 0x2b8, hz);
+                    o.jgo = true;
                     o.anchor[0] = hx, o.anchor[1] = hy, o.anchor[2] = hz;
                 }
+                if (o.jgo && st == 2) {  // (hovering: off to it, as when dropped - state 1, its drop's time over)
+                    sb(m + 0x20, 1);
+                    sh(pv + 0x2dc, 0);
+                    o.jgo = false;
+                }
             }
+            kal_trooper(o, lbu(m + 0x20));
             break;
         default:
             break;
@@ -1213,6 +1354,7 @@ bool weapon_item(uint32_t i) { return i >= 0x09 && i <= 0x19 && i != 0x0c && i !
 bool item_owned(uint32_t i) { return i < 0x25 && lbu(W_OWNED + i) != 0; }
 uint8_t g_allow[0x25];  // weapon_allow's (g_mod_weapons_limited: only these)
 uint32_t g_w_last = W_WRENCH;  // the last item in hand that was allowed
+uint32_t g_w_wait = 0;          // frames a weapon not allowed has stayed in hand while a switch to an allowed one was pending
 
 int32_t api_weapons_owned(int32_t* out, int32_t max) {
     int32_t n = 0;
@@ -1265,6 +1407,7 @@ void api_weapon_allow(const int32_t* items, int32_t n) {
     std::memset(g_allow, 0, sizeof g_allow);
     g_mod_weapons_limited = items != nullptr && n > 0;
     g_w_last = W_WRENCH;
+    g_w_wait = 0;
     if (!g_mod_weapons_limited) return;
     for (int32_t k = 0; k < n; ++k)
         if (items[k] >= 0 && items[k] < 0x25) g_allow[items[k]] = 1;
@@ -1278,21 +1421,34 @@ int api_ammo_fill(int32_t item) {
     return 1;
 }
 
+// an item the hand may go to while weapon_allow limits the weapons: the wrench, an allowed weapon
+bool weapon_target_ok(uint32_t i) { return i == W_WRENCH || (i < 0x25 && weapon_item(i) && g_allow[i] != 0); }
+
 // after the frame's updates, while weapon_allow limits them: a weapon not allowed asked in hand (the game's own return to the
 // weapon before a gadget, Triangle's double press in a level's own build of the hero code, an item given with its equip) not
 // taken; one in hand (asked and switched within the frame) put back for the last item in hand that was allowed (else the
-// wrench)
+// wrench) - but not while a switch to an allowed item is under way: asked (+0x20b8: weapon_equip's, the quick select's) or
+// taken by the hero's slot update (0x20fea0 moves the request into the slot's kind +0x20d4 and clears it; the hand +0x10b8
+// is 0 while the old item goes away, then the new one, some frames later). So weapon_allow({new}) and weapon_equip(new), in
+// either order, in one frame or across frames, end with the new weapon in hand, not the wrench. (A switch still pending
+// after 2 s is overruled.)
 void weapons_frame() {
     const uint32_t req = lwu(W_P + 0x20b8);
     if (req < 0x25 && weapon_item(req) && g_allow[req] == 0) sw(W_P + 0x20b8, 0);
     const uint32_t now = lwu(W_P + 0x10b8);
     const bool bad = now < 0x25 && weapon_item(now) && g_allow[now] == 0;
     if (!bad) {
+        g_w_wait = 0;
         if (now != 0 && now < 0x25 && (now == W_WRENCH || weapon_item(now))) g_w_last = now;
-    } else if (lwu(W_P + 0x20b8) == 0) {
-        const bool ok = g_w_last == W_WRENCH || (weapon_item(g_w_last) && item_owned(g_w_last) && g_allow[g_w_last] != 0);
-        weapon_request(ok ? g_w_last : W_WRENCH);
+        return;
     }
+    const uint32_t asked = lwu(W_P + 0x20b8), taking = lwu(W_P + 0x20d4);
+    const bool pending = weapon_target_ok(asked) || (asked == 0 && taking != now && weapon_target_ok(taking));
+    if (pending && ++g_w_wait <= 120) return;
+    if (asked != 0 && !weapon_target_ok(asked)) return;  // (another item asked: a gadget's own switch)
+    g_w_wait = 0;
+    const bool ok = g_w_last == W_WRENCH || (weapon_item(g_w_last) && item_owned(g_w_last) && g_allow[g_w_last] != 0);
+    weapon_request(ok ? g_w_last : W_WRENCH);
 }
 
 
