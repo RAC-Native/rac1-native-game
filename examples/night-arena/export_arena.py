@@ -69,8 +69,9 @@ LEVEL = {
     "background": (120, 80, 58),  # a warm haze: the lava, Veldin's low sun
     "fog": (120, 80, 58),
     # room for the base level's objects the plugin starts (base_spawn): 24 robots, 8 bomb bots, 6 Gadgetron robots,
-    # 8 jetpack troopers (the dropships' too), 2 dropships (SDK ABI 5), the hub's 4 crates of each kind
-    "spawn": {1445: 24, 52: 8, 541: 6, 638: 8, 1356: 2, 501: 4, 511: 4},
+    # 8 jetpack troopers (the dropships' too), 2 dropships (SDK ABI 5), the hub's 4 crates of each kind, the grind
+    # course's 14 rail mines (933: Kalebo III's, on its rails)
+    "spawn": {1445: 24, 52: 8, 541: 6, 638: 8, 1356: 2, 501: 4, 511: 4, 933: 14},
     # (text, box in the scene's coordinates or None): embers rising from the lava (on a level mod `source lava` reads
     # the collision's type 3 faces too), as on Gaspar, and a little ash
     "particles": [
@@ -87,6 +88,8 @@ LEVEL = {
         "challenge_fail challenge_fail.wav volume 0.8",
         "bomb_whistle bomb_whistle.wav volume 0.7 range 4 50",
         "bomb_boom bomb_boom.wav volume 1 range 6 70",
+        "zap_crackle zap_crackle.wav volume 0.7 range 3 35",
+        "zap_buzz zap_buzz.wav loop volume 0.6 range 3 35",
     ],
 }
 MAX_REPEAT = 8.0         # a texture across a triangle, at most (the format's)
@@ -98,8 +101,7 @@ CLASSES = [              # the level's own classes: (name, model, its line's opt
     ("bomb", "bomb.obj", "size 1 ghost", ["metal 0.35 0.8 glow 2 0.6"]),  # (the plugin's bombardment)
     ("mark", "mark.obj", "size 1 ghost", ["emissive 2.5"]),               # (where a bomb falls)
     ("mine", "mine.obj", "size 1 ghost", ["metal 0.35 0.8 glow 2 0.6"]),  # (the course's: on a rail, jumped)
-    ("barrier", "barrier.obj", "size 1 ghost", ["metal 0.5 0.6"]),       # (across a lane: change lane)
-    ("drone", "drone.obj", "size 1 ghost", ["metal 0.3 0.9 glow 2 0.5"]),  # (over a lane: the wrench)
+    ("zap", "zap.obj", "size 1 ghost", ["emissive 3"]),                  # (a drop zone's ring electrified: Grate impazzite)
 ]
 
 errors, warnings = [], []
@@ -498,43 +500,27 @@ def mine_colour(p):
     return (1.0, 0.3, 0.12) if abs(p[2] - 0.42) < 0.08 else (0.22, 0.22, 0.25)
 
 
-def barrier_tris():
-    """A barrier across a lane (x along the rail, y across it): two posts and a striped panel from 0.2 to 2.2 high."""
-    def block(x0, y0, z0, x1, y1, z1):
-        q = [(x, y, z) for z in (z0, z1) for y in (y0, y1) for x in (x0, x1)]
-        faces = [(0, 2, 3, 1), (4, 5, 7, 6), (0, 1, 5, 4), (2, 6, 7, 3), (0, 4, 6, 2), (1, 3, 7, 5)]
-        return [t for f in faces for t in ((q[f[0]], q[f[1]], q[f[2]]), (q[f[0]], q[f[2]], q[f[3]]))]
-    out = block(-0.12, -0.95, 0.0, 0.12, -0.76, 2.4) + block(-0.12, 0.76, 0.0, 0.12, 0.95, 2.4)
-    z = 0.2
-    while z < 2.19:
-        out += block(-0.08, -0.72, z, 0.08, 0.72, z + 0.24)  # (a stripe; the next one 0.01 over it: each its colour)
-        z += 0.25
-    return out
-
-
-def barrier_colour(p):
-    if abs(p[1]) > 0.74:
-        return (0.3, 0.3, 0.33)  # (the posts)
-    return (1.0, 0.75, 0.1) if int((p[2] - 0.2) / 0.25 + 0.001) % 2 == 0 else (0.1, 0.1, 0.1)
-
-
-def drone_tris():
-    """A drone round its origin (it hovers): a flattened ball, a glowing ring round its middle."""
+def zap_tris():
+    """A drop zone's ring electrified, flat on the floor over the texture's ring (5 to 5.6 from its middle): the ring
+    and twelve jagged sparks across the grated middle."""
     out = []
-    for t in ball_tris(0.45):
-        out.append(tuple((p[0], p[1], (p[2] - 0.45) * 0.55) for p in t))
-    for k in range(16):
-        a0, a1 = 2 * math.pi * k / 16, 2 * math.pi * (k + 1) / 16
-        p = [(0.62 * math.cos(a0), 0.62 * math.sin(a0), 0.0), (0.42 * math.cos(a0), 0.42 * math.sin(a0), 0.0),
-             (0.42 * math.cos(a1), 0.42 * math.sin(a1), 0.0), (0.62 * math.cos(a1), 0.62 * math.sin(a1), 0.0)]
-        out += [(p[0], p[1], p[2]), (p[0], p[2], p[3]), (p[0], p[2], p[1]), (p[0], p[3], p[2])]
+    for k in range(48):
+        a0, a1 = 2 * math.pi * k / 48, 2 * math.pi * (k + 1) / 48
+        p = [(r * math.cos(a), r * math.sin(a), 0.05) for r, a in ((4.95, a0), (5.65, a0), (5.65, a1), (4.95, a1))]
+        out += [(p[0], p[1], p[2]), (p[0], p[2], p[3])]
+    for k in range(12):
+        a = 2 * math.pi * k / 12 + 0.13
+        pts = [(4.95 * t, 0.35 * math.sin(t * 17 + k) * (1 - t)) for t in (1.0, 0.75, 0.5, 0.25, 0.08)]
+        for (r0, o0), (r1, o1) in zip(pts, pts[1:]):
+            c, s_ = math.cos(a), math.sin(a)
+            q = [(r0 * c - (o0 - 0.06) * s_, r0 * s_ + (o0 - 0.06) * c, 0.06), (r0 * c - (o0 + 0.06) * s_, r0 * s_ + (o0 + 0.06) * c, 0.06),
+                 (r1 * c - (o1 + 0.06) * s_, r1 * s_ + (o1 + 0.06) * c, 0.06), (r1 * c - (o1 - 0.06) * s_, r1 * s_ + (o1 - 0.06) * c, 0.06)]
+            out += [(q[0], q[1], q[2]), (q[0], q[2], q[3])]
     return out
 
 
-def drone_colour(p):
-    if abs(p[2]) < 0.01 and math.hypot(p[0], p[1]) > 0.41:
-        return (0.3, 0.9, 1.0)  # (the ring)
-    return (0.55, 0.6, 0.7) if p[2] > 0.0 else (0.2, 0.22, 0.26)
+def zap_colour(p):
+    return (0.55, 0.9, 1.0) if math.hypot(p[0], p[1]) > 4.9 else (0.75, 0.95, 1.0)
 
 
 def flame_tris():
@@ -829,6 +815,16 @@ def sounds(level):
         [(0.85 * b + 0.35 * c * math.exp(-i / (rate * 0.05))) * min(1.0, i / 60.0) * math.exp(-i / (rate * 0.35))
          for i, (b, c) in enumerate(zip(boom, crack))])
 
+    # an electrified drop zone: a crackle (its warning: noise in bursts), a buzz (live, a loop: a 120 Hz saw, noise)
+    cr = rumble(int(rate * 1.5), 19, 6000, rate)
+    wav(os.path.join(level, "zap_crackle.wav"), rate,
+        [0.6 * v * (1.0 if (i // 700) % 3 != 1 else 0.15) * min(1.0, i / 300.0) * min(1.0, (int(rate * 1.5) - i) / 2000.0)
+         for i, v in enumerate(cr)])
+    n = int(rate / 120.0) * 240
+    hum = rumble(n, 23, 4000, rate)
+    wav(os.path.join(level, "zap_buzz.wav"), rate,
+        [0.45 * (2.0 * ((i * 120.0 / rate) % 1.0) - 1.0) * 0.7 + 0.25 * h for i, h in enumerate(hum)])
+
     # a wave starts: two horn blasts; the challenge won: a rising arpeggio; lost: two falling notes
     wav(os.path.join(level, "wave_start.wav"), rate, notes((220.0, 330.0), 0.35, 3.0, 1.6))
     wav(os.path.join(level, "challenge_win.wav"), rate, notes((523.3, 659.3, 784.0, 1046.5), 0.18, 4.0) + notes((1046.5,), 0.6, 3.0))
@@ -863,8 +859,7 @@ def export(out=None, install=False):
     model(level, "bomb", bomb_tris(), bomb_colour)
     model(level, "mark", ring_tris(), lambda p: (1.0, 0.18, 0.1))
     model(level, "mine", mine_tris(), mine_colour)
-    model(level, "barrier", barrier_tris(), barrier_colour)
-    model(level, "drone", drone_tris(), drone_colour)
+    model(level, "zap", zap_tris(), zap_colour)
     rails = export_rails(level, offset, depsgraph)
     sounds(level)
     pictures = {}  # (level.txt's picture lines: the planet made by make_textures.py, the map's view rendered here)
@@ -942,9 +937,9 @@ def export(out=None, install=False):
         name = o.name[6:]
         p = o.matrix_world.translation
         L.append("object spawn %s %s %s %s name=%s kind=%s" % (num(p.x), num(p.y), num(p.z), num(yaw(o)), name, name.split("_")[0]))
-    obstacles = [o for o in markers if base_name(o).startswith(("mine_", "barrier_", "drone_"))]
+    obstacles = [o for o in markers if base_name(o).startswith("mine_")]
     if obstacles:
-        L.append("# the grind course's obstacles (mine_<n>, barrier_<n>, drone_<n> markers): the plugin's, hidden but in it")
+        L.append("# the grind course's mines to jump (mine_<n> markers): the plugin's, hidden but in it")
     for o in obstacles:
         p = o.matrix_world.translation
         L.append("object %s %s %s %s %s name=%s" % (base_name(o).split("_")[0], num(p.x), num(p.y), num(p.z), num(yaw(o)),
@@ -968,7 +963,7 @@ def export(out=None, install=False):
         L.append("trigger %s %s" % (o.name[8:], " ".join(num(c) for c in a + b)))
     for o in markers:
         n = base_name(o)
-        if n not in ("hero", "ship") and not n.startswith(("obj_", "spawn_", "trigger_", "flame_", "mine_", "barrier_", "drone_")):
+        if n not in ("hero", "ship") and not n.startswith(("obj_", "spawn_", "trigger_", "flame_", "mine_")):
             warn("marker %s: not hero, ship, spawn_*, trigger_*, obj_*, flame_*: left out" % o.name)
     with open(os.path.join(level, "level.txt"), "w") as f:
         f.write("\n".join(L) + "\n")
@@ -1020,7 +1015,7 @@ def export(out=None, install=False):
         json.dump({"name": LEVEL["name"][""], "author": "Daino Selvatico", "version": "0.3",
                    "description": "An arena in a lava lake ringed by mountains, with challenges against Kalebo III's enemies "
                                   "(waves, bombs, flame vents, weapon limits, championships) and grind rails (a test rail, a "
-                                  "course of three lanes with mines, barriers and drones).",
+                                  "course of three lanes with mines to jump and Kalebo III's rail mines to break).",
                    "kind": "level", "level": {"id": LEVEL["id"], "format": LEVEL["format"], "base": LEVEL["base"]}}, f, indent=2)
         f.write("\n")
 

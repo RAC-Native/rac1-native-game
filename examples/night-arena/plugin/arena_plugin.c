@@ -25,8 +25,8 @@
  * - spawn (the level's class): the spawn points, hidden at their spawn.
  * - The rails (rails.txt, the classes rail_<name>): a rail challenge (for those who have the Grindscarponi) puts
  *   Ratchet on the station outside the walls and its rails into the game's rail table: "Test Grindscarponi" one rail
- *   down into the arena, "Grindscarponi: Discesa" a course of three lanes with mines, barriers and drones (the classes
- *   mine, barrier, drone), then a last wave in the arena (the grind section below).
+ *   down into the arena, "Grindscarponi: Discesa" a course of three lanes with mines (ours, the class mine, to jump;
+ *   Kalebo III's rail mines, class 933, to break), then a last wave in the arena (the grind section below).
  *
  * RAC1_MOD_TEST=arena (headless): Ratchet put on the hub at frame 100, the first challenge started at frame 160, a
  * line every second. The other tests: before test() below.
@@ -120,7 +120,7 @@ typedef struct challenge_def {
     int hidden;        /* 1: in the menu once every other challenge is won */
     const char* rails; /* RAIL: its rails (rails.txt's names, the first the one whose end finishes it) */
     const char* start; /* RAIL: the spawn point Ratchet starts from */
-    int obstacles;     /* RAIL: the course's obstacles (mines, barriers, drones) on */
+    int obstacles;     /* RAIL: the course's obstacles (our mines, Kalebo III's rail mines) on */
 } challenge_def;
 
 static const challenge_def CHALLENGES[] = {
@@ -156,7 +156,7 @@ static const challenge_def CHALLENGES[] = {
     {"Campionato", "15 round, le modalita' a caso", CUP, 0, 15, {{0}}, 0, 25, 0, 0, W_ANY, 20000},
     {"Test Grindscarponi", "prova: giu' per la rotaia fino all'arena", RAIL, 45, 1, {{0}}, 0, 0, 0, 0, W_ANY, 1000, 0,
      "test", "rail_start", 0},
-    {"Grindscarponi: Discesa", "3 corsie, ostacoli e droni, poi l'ultima ondata", RAIL, 90, 1, {{8, 6, 25, "RRB"}}, 0, 20,
+    {"Grindscarponi: Discesa", "3 corsie di mine, poi l'ultima ondata", RAIL, 90, 1, {{8, 6, 25, "RRB"}}, 0, 20,
      0, 0, W_ANY, 3000, 0, "lane_c lane_l lane_r", "rail_course", 1},
     {"Impossibile", "il campionato, 50 round", CUP, 0, 50, {{0}}, 0, 20, 0, 0, W_ANY, 100000, 1},
 };
@@ -223,6 +223,7 @@ enum { FREE, MENU, INTRO, FIGHT, BREAK, RESULT };
 
 static struct {
     int mine;
+    int level;    /* the game's level number now (a level mod's: its base level's) */
     int mode, t;  /* the mode, frames in it */
     int look;     /* (RAC1_MOD_TEST=arena_look: the flames kept burning) */
     int sel;      /* the menu's line (in the list it shows) */
@@ -408,9 +409,8 @@ static const char* const TEXTS[][N_LANGS] = {
     {"prova: giu' per la rotaia fino all'arena", "a test: down the rail into the arena", "un essai: le rail jusqu'a l'arene",
      "ein Test: die Schiene hinab in die Arena", "una prueba: baja por el rail hasta la arena"},
     {"Grindscarponi: Discesa", "%s: Descent", "%s: Descente", "%s: Abfahrt", "%s: Descenso"},
-    {"3 corsie, ostacoli e droni, poi l'ultima ondata", "3 lanes, obstacles and drones, then a last wave",
-     "3 voies, obstacles et drones, puis une derniere vague", "3 Spuren, Hindernisse und Drohnen, dann eine letzte Welle",
-     "3 carriles, obstaculos y drones, y una ultima oleada"},
+    {"3 corsie di mine, poi l'ultima ondata", "3 lanes of mines, then a last wave", "3 voies de mines, puis une derniere vague",
+     "3 Spuren voller Minen, dann eine letzte Welle", "3 carriles de minas, y una ultima oleada"},
     {"Impossibile", "Impossible", "Impossible", "Unmoeglich", "Imposible"},
     {"il campionato, 50 round", "the championship, 50 rounds", "le championnat, 50 manches", "die Meisterschaft, 50 Runden",
      "el campeonato, 50 rondas"},
@@ -446,9 +446,12 @@ static const char* const TEXTS[][N_LANGS] = {
     {"Nemici %d   %d:%02d", "Enemies %d   %d:%02d", "Ennemis %d   %d:%02d", "Gegner %d   %d:%02d", "Enemigos %d   %d:%02d"},
     {"Nemici %d   restano %d:%02d", "Enemies %d   left %d:%02d", "Ennemis %d   reste %d:%02d", "Gegner %d   noch %d:%02d",
      "Enemigos %d   quedan %d:%02d"},
-    {"Droni %d/%d   Cadute %d", "Drones %d/%d   Falls %d", "Drones %d/%d   Chutes %d", "Drohnen %d/%d   Stuerze %d",
-     "Drones %d/%d   Caidas %d"},
+    {"Mine %d/%d   Cadute %d", "Mines %d/%d   Falls %d", "Mines %d/%d   Chutes %d", "Minen %d/%d   Stuerze %d",
+     "Minas %d/%d   Caidas %d"},
     {"Cadute: %d", "Falls: %d", "Chutes: %d", "Stuerze: %d", "Caidas: %d"},
+    {"Zone elettrificate: stai lontano dai cerchi!", "Electrified zones: keep off the rings!",
+     "Zones electrifiees: evite les cercles!", "Landezonen unter Strom: weg von den Ringen!",
+     "Zonas electrificadas: alejate de los circulos!"},
     /* the rails */
     {"Nessuna rotaia (rails.txt)", "No rails (rails.txt)", "Aucun rail (rails.txt)", "Keine Schienen (rails.txt)",
      "Sin railes (rails.txt)"},
@@ -886,6 +889,21 @@ static void rail_stop(void);
 #define GADGET_HIT 8    /* a Gadgetron robot's state while a hit throws it */
 
 /* the enemies still alive (the dead ones counted: killed, felled); a trooper still in a dropship shot down goes with it */
+#define MOBY_HIDDEN 0x1u  /* the moby's flags (+0x34): not drawn */
+
+/* an enemy the Suck Cannon took: hidden and held at Ratchet (in the cannon: its ammo until fired, when it dies). It
+   counts as felled at once (else a wave would wait for it while it is never fired: the weapon changed, Caos, Roulette);
+   its moby is left to the cannon */
+static int sucked(const enemy* e, uint32_t m) {
+    if (e->kind == K_JET && rac1_lb(api, m + 0x20) == JET_CARRIED) return 0;  /* (a trooper still in its dropship) */
+    if ((rac1_lh(api, m + 0x34) & MOBY_HIDDEN) == 0) return 0;
+    float r[3], h[3];
+    pos_of(m, r);
+    pos_of(api->hero(), h);
+    const float dx = r[0] - h[0], dy = r[1] - h[1], dz = r[2] - h[2];
+    return dx * dx + dy * dy + dz * dz < 9.0f;
+}
+
 static int enemies_alive(void) {
     int n = 0;
     for (int i = 0; i < s.nen;) {
@@ -895,6 +913,7 @@ static int enemies_alive(void) {
             api->moby_remove(m);
             m = 0;
         }
+        if (m != 0 && api->hero() != 0 && sucked(e, m)) m = 0;  /* (felled: the cannon keeps it) */
         if (m != 0) {
             ++n;
             ++i;
@@ -991,9 +1010,10 @@ static rules rules_of(int ch, int wave) {
 
 /* the rules on: the weapons allowed (Roulette: a new one each time; Caos: one now, then its turns), the vents */
 static void rules_set(rules nr) {
-    const int was = s.rule.weapons;
+    const int was = s.rule.weapons, was_vents = s.rule.vents;
     s.rule = nr;
     s.frenzy = nr.vents;
+    if (nr.vents && !was_vents) toast(tr("Zone elettrificate: stai lontano dai cerchi!"));
     if (nr.weapons == W_ANY) {
         if (s.wpn != 0) api->weapon_allow(NULL, 0);
         s.wpn = 0;
@@ -1547,7 +1567,124 @@ static void supplies_update(void) {
     const challenge_def* c = &CHALLENGES[s.ch];
     if (c->supplies <= 0 || --s.supply_wait > 0) return;
     s.supply_wait = (int)((float)(c->supplies * 60) * (0.75f + 0.5f * rnd()));
-    supplies_drop(rnd() < 0.5f || s.rule.weapons == W_WRENCH ? CRATE_NANO : CRATE_AMMO, 2);  /* (the wrench only: no ammo) */
+    /* a nanotech crate now and then (one delivery in five; the wrench only, needing no ammo: one in three), else two
+       ammo crates */
+    const float r = rnd();
+    if (s.rule.weapons == W_WRENCH) {
+        if (r < 0.33f) supplies_drop(CRATE_NANO, 1);
+    } else {
+        supplies_drop(r < 0.2f ? CRATE_NANO : CRATE_AMMO, r < 0.2f ? 1 : 2);
+    }
+}
+
+/* ---- the electrified drop zones (the rules' vents: Grate impazzite) ----
+   While the vents burn faster the three drop zones' grated circles take turns at being electrified: a warning (their
+   ring, the class zap's object, blinking over the texture's ring, a crackle), then live (the ring lit, a cyan light, a
+   buzz): Ratchet standing in one is hurt by one every ZAP_HURT frames, the enemies in one are hit (the zones are a
+   trap for them too). One at a time, a few seconds apart. */
+#define ZAP_R 5.4f       /* the ring of the drop zone's texture: 5 to 5.6 from its middle */
+#define ZAP_WARN 90
+#define ZAP_LIVE 150
+#define ZAP_HURT 40
+#define ZAP_HIT 30       /* frames between two hits on an enemy in it */
+enum { Z_REST, Z_WARN, Z_LIVE };
+
+static struct {
+    int32_t cls, snd_crackle, snd_buzz;
+    int n;
+    uint32_t obj[N_POINTS];
+    float p[N_POINTS][3];
+    int phase[N_POINTS], t[N_POINTS];
+    int32_t buzz[N_POINTS];  /* its buzz's sound slot, -1 none */
+    int wait, hurt_t;
+} zap;
+
+/* at the level's start: a hidden ring on each drop zone */
+static void zap_start(void) {
+    zap.cls = api->class_find("zap");
+    zap.snd_crackle = api->sfx_find("zap_crackle");
+    zap.snd_buzz = api->sfx_find("zap_buzz");
+    zap.n = 0;
+    zap.wait = 180;
+    for (int i = 0; i < s.npoints && zap.cls >= 0; ++i) {
+        if (!s.is_drop[i]) continue;
+        memcpy(zap.p[zap.n], s.points[i], sizeof zap.p[0]);
+        const float ring[3] = {zap.p[zap.n][0], zap.p[zap.n][1], zap.p[zap.n][2] + 0.12f};  /* (just over the floor) */
+        zap.obj[zap.n] = api->object_spawn(zap.cls, ring, 0.0f);
+        if (zap.obj[zap.n] != 0) api->object_show(zap.obj[zap.n], 0);
+        zap.phase[zap.n] = Z_REST;
+        zap.buzz[zap.n] = -1;
+        ++zap.n;
+    }
+}
+
+/* its ring shown or not (placed again when shown: its matrix kept up, as the bombs' rings) */
+static void zap_ring(int i, int on) {
+    if (zap.obj[i] == 0) return;
+    api->object_show(zap.obj[i], on);
+    if (on) {
+        const float rot[3] = {0.0f, 0.0f, 0.0f}, at[3] = {zap.p[i][0], zap.p[i][1], zap.p[i][2] + 0.12f};
+        api->object_place(zap.obj[i], at, rot, 1.0f);
+    }
+}
+
+static void zap_rest(int i) {
+    zap.phase[i] = Z_REST;
+    if (zap.obj[i] != 0) api->object_show(zap.obj[i], 0);
+    if (zap.buzz[i] >= 0 && api->sfx_active(zap.buzz[i], zap.snd_buzz)) api->sfx_stop(zap.buzz[i]);
+    zap.buzz[i] = -1;
+}
+
+/* each frame: the zones' turns while the rules have the vents on (a challenge running), else all at rest */
+static void zap_update(const float h[3]) {
+    const int on = s.rule.vents && (s.mode == FIGHT || s.mode == BREAK);
+    if (zap.hurt_t > 0) --zap.hurt_t;
+    for (int i = 0; i < zap.n; ++i)
+        if (!on && zap.phase[i] != Z_REST) zap_rest(i);
+    if (!on || zap.n == 0) return;
+    if (--zap.wait <= 0) {
+        const int i = (int)(rnd() * (float)zap.n) % zap.n;
+        if (zap.phase[i] == Z_REST) {
+            zap.phase[i] = Z_WARN;
+            zap.t[i] = 0;
+            if (zap.snd_crackle >= 0) api->sfx_play(zap.snd_crackle, 0, zap.p[i]);
+        }
+        zap.wait = ZAP_WARN + ZAP_LIVE + 90 + (int)(rnd() * 180.0f);
+    }
+    static const float cyan[3] = {0.45f, 0.85f, 1.0f};
+    for (int i = 0; i < zap.n; ++i) {
+        const float up[3] = {zap.p[i][0], zap.p[i][1], zap.p[i][2] + 1.0f};
+        if (zap.phase[i] == Z_WARN) {
+            zap_ring(i, (zap.t[i] / 6) % 2 == 0);
+            api->light_add(up, cyan, 0.6f + 0.8f * rnd(), 9.0f);
+            if (++zap.t[i] >= ZAP_WARN) {
+                zap.phase[i] = Z_LIVE;
+                zap.t[i] = 0;
+                char msg[64];
+                snprintf(msg, sizeof msg, "zap: drop zone %d live", i);
+                api->log(msg);
+                if (zap.snd_buzz >= 0) zap.buzz[i] = api->sfx_play(zap.snd_buzz, 0, zap.p[i]);
+            }
+        } else if (zap.phase[i] == Z_LIVE) {
+            zap_ring(i, zap.t[i] % 3 != 0);
+            api->light_add(up, cyan, 2.5f + 2.0f * rnd(), 11.0f);
+            const float dx = h[0] - zap.p[i][0], dy = h[1] - zap.p[i][1];
+            if (dx * dx + dy * dy < ZAP_R * ZAP_R && h[2] < zap.p[i][2] + 1.5f && zap.hurt_t == 0) {
+                api->hero_damage(1, 0);
+                zap.hurt_t = ZAP_HURT;
+            }
+            if (zap.t[i] % ZAP_HIT == 0)
+                for (int k = 0; k < s.nen; ++k) {
+                    const uint32_t m = api->base_moby(s.en[k].h);
+                    if (m == 0) continue;
+                    float r[3];
+                    pos_of(m, r);
+                    const float ex = r[0] - zap.p[i][0], ey = r[1] - zap.p[i][1];
+                    if (ex * ex + ey * ey < ZAP_R * ZAP_R && r[2] < zap.p[i][2] + 2.0f) api->hit_send(m, RAC1_HIT_ENEMY, 3.0f, api->hero());
+                }
+            if (++zap.t[i] >= ZAP_LIVE) zap_rest(i);
+        }
+    }
 }
 
 /* ---- the grind rails (RAIL; rails.txt: export_arena.py's, from build_rails.py's curves) ----
@@ -1558,9 +1695,10 @@ static void supplies_update(void) {
    its own level's two rail spots (hero_rail_land_check 0x20cf58): the rails start by one, at the station. Once on one,
    its jumps and the side jumps to a rail beside it (2..4.5 away: the lanes) work anywhere. The challenges need the Grind
    Scarponi (0x13d4dd, the grind boots): without them the menu does not start them.
-   The course ("Grindscarponi: Discesa") has obstacles on its lanes (the level's objects of the classes mine, barrier,
-   drone): a mine is jumped, a barrier is passed on another lane, a drone is broken with the wrench (Square on the rail)
-   or zaps him as he passes; each hurts him by one. Its end leads to a last wave in the arena. */
+   The course ("Grindscarponi: Discesa") has obstacles on its lanes: our mines (the class mine's objects) are jumped;
+   Kalebo III's rail mines (class 933, started by base_spawn where the spawn points with kind=kmine are) are broken with
+   the wrench (Square on the rail) or passed on another lane; each hurts him by one. Its end leads to a last wave in the
+   arena. */
 #define RAIL_TABLE 0x0015f70cu
 #define RAIL_COUNT 0x0015f710u
 #define GRIND_BOOTS 0x0013d4ddu
@@ -1569,9 +1707,12 @@ static void supplies_update(void) {
 #define RAIL_END 2.5f  /* the rail ridden to its end: this near its last point */
 #define RAIL_ATTACK 0x2b  /* his wrench swing on a rail */
 #define MAX_OBST 48
-#define DRONE_BOLTS 50
+#define MINE_BOLTS 50      /* a rail mine broken with the wrench */
+#define RAIL_MINE 933      /* Kalebo III's rail mine (level.txt's spawn 933 14): it floats 0.7 over the rail */
+#define MINE_SWING 2.6f    /* the wrench's swing on the rail breaks one this near his middle */
+#define MINE_TOUCH 1.6f    /* nearer, and not swinging, it blows up on him (before its own reaction, at about 1.4) */
 
-enum { O_MINE, O_BARRIER, O_DRONE };
+enum { O_MINE, O_KMINE };
 
 static struct {
     int n;
@@ -1592,11 +1733,12 @@ static struct {
     int falls;
     int reached;  /* the finishing rail's end reached: done once he is off it */
     struct {
-        uint32_t obj;
+        uint32_t obj;  /* O_MINE: our object; O_KMINE: its spawn point's (kind=kmine) */
+        uint32_t h;    /* O_KMINE: base_spawn's handle while it is out */
         int kind, alive;
         float p[3];
     } obs[MAX_OBST];
-    int nobs, drones, drones_hit, use_obs;
+    int nobs, kmines, kmines_hit, use_obs;
     int warned;  /* the lanes whose end was told (bits by their place in set) */
 } rails;
 
@@ -1738,72 +1880,98 @@ static int has_boots(void) {
 static void hero_move(const float p[3], float yaw) {
     api->hero_place(p, yaw);
     s.placed = 3;
+    s.have_last = 0;  /* (also when moved from outside frame: the test callback) */
 }
 
-/* the course's obstacles (the level's objects of the classes mine, barrier, drone), found at the level's start */
+/* the course's obstacles, found at the level's start: our mines (the class mine's objects) and the places of Kalebo
+   III's rail mines (the spawn points with kind=kmine) */
 static void obstacles_find(void) {
-    const int32_t cls[3] = {api->class_find("mine"), api->class_find("barrier"), api->class_find("drone")};
-    rails.nobs = rails.drones = 0;
+    const int32_t mine = api->class_find("mine"), spawn = api->class_find("spawn");
+    rails.nobs = rails.kmines = 0;
     for (int32_t i = 0; i < api->object_count() && rails.nobs < MAX_OBST; ++i) {
         const uint32_t o = api->object_at(i);
         const int32_t c = api->object_class(o);
-        for (int k = 0; k < 3; ++k) {
-            if (c < 0 || c != cls[k]) continue;
-            rails.obs[rails.nobs].obj = o;
-            rails.obs[rails.nobs].kind = k;
-            rails.obs[rails.nobs].alive = 0;
-            pos_of(api->object_moby(o), rails.obs[rails.nobs].p);
-            api->object_show(o, 0);
-            rails.drones += k == O_DRONE;
-            ++rails.nobs;
-        }
+        char kind[16] = "";
+        if (c < 0 || (c != mine && c != spawn)) continue;
+        if (c == spawn && (!api->object_param(o, "kind", kind, sizeof kind) || strcmp(kind, "kmine") != 0)) continue;
+        rails.obs[rails.nobs].obj = o;
+        rails.obs[rails.nobs].h = 0;
+        rails.obs[rails.nobs].kind = c == mine ? O_MINE : O_KMINE;
+        rails.obs[rails.nobs].alive = 0;
+        pos_of(api->object_moby(o), rails.obs[rails.nobs].p);
+        if (c == mine) api->object_show(o, 0);
+        rails.kmines += c != mine;
+        ++rails.nobs;
     }
 }
 
-/* all of them back (a new try) or all gone */
+/* a rail mine's moby while it is out, else 0 */
+static uint32_t kmine_moby(int i) {
+    return rails.obs[i].h != 0 ? api->base_moby(rails.obs[i].h) : 0;
+}
+
+/* all of them back (a new try: the rail mines started again where they were) or all gone */
 static void obstacles_reset(int on) {
     for (int i = 0; i < rails.nobs; ++i) {
-        rails.obs[i].alive = on;
-        api->object_show(rails.obs[i].obj, on);
+        if (rails.obs[i].kind == O_KMINE) {
+            const uint32_t m = kmine_moby(i);
+            if (m != 0) api->moby_remove(m);
+            rails.obs[i].h = on ? api->base_spawn(RAIL_MINE, rails.obs[i].p, 0.0f) : 0;
+            rails.obs[i].alive = rails.obs[i].h != 0;
+        } else {
+            rails.obs[i].alive = on;
+            api->object_show(rails.obs[i].obj, on);
+        }
     }
-    rails.drones_hit = 0;
+    rails.kmines_hit = 0;
 }
 
-/* one blown up: smoke, a flash, the boom */
-static void obstacle_blast(int i) {
-    float* p = rails.obs[i].p;
+/* one blown up: smoke, a flash, the boom; the object hidden or the rail mine taken away */
+static void obstacle_blast(int i, const float at[3]) {
     const float up[3] = {0.0f, 0.0f, 0.04f}, fire[3] = {1.0f, 0.55f, 0.2f};
-    for (int k = 0; k < 4; ++k) api->smoke(p, up, 1.2f + 0.4f * (float)k);
-    api->light_add(p, fire, 3.0f, 8.0f);
-    if (snd_boom >= 0) api->sfx_play(snd_boom, 0, p);
+    for (int k = 0; k < 4; ++k) api->smoke(at, up, 1.2f + 0.4f * (float)k);
+    api->light_add(at, fire, 3.0f, 8.0f);
+    if (snd_boom >= 0) api->sfx_play(snd_boom, 0, at);
     rails.obs[i].alive = 0;
-    api->object_show(rails.obs[i].obj, 0);
+    if (rails.obs[i].kind == O_KMINE) {
+        const uint32_t m = kmine_moby(i);
+        if (m != 0) api->moby_remove(m);
+        rails.obs[i].h = 0;
+    } else {
+        api->object_show(rails.obs[i].obj, 0);
+    }
 }
 
-/* riding past them: a mine under his feet, a barrier in his way, a drone at his height hurt him (one each); his wrench
-   swing on the rail (Square) breaks a drone within 2.4 of his middle */
+/* riding past them: our mine under his feet hurts him (jump it); a rail mine breaks under his wrench's swing (bolts)
+   or blows up on him when he comes too near without one (he jumps over it: his middle stays away) */
 static void obstacles_update(const float h[3]) {
     const int swing = rac1_lw(api, HERO_STATE) == RAIL_ATTACK;
     const float mid[3] = {h[0], h[1], h[2] + 0.9f};
     for (int i = 0; i < rails.nobs; ++i) {
         if (!rails.obs[i].alive) continue;
-        const float* p = rails.obs[i].p;
-        const float dxy = sqrtf((h[0] - p[0]) * (h[0] - p[0]) + (h[1] - p[1]) * (h[1] - p[1])), dz = h[2] - p[2];
-        int hurt = 0;
         if (rails.obs[i].kind == O_MINE) {
-            hurt = dxy < 0.8f && dz > -0.6f && dz < 1.1f;
-        } else if (rails.obs[i].kind == O_BARRIER) {
-            hurt = dxy < 0.9f && dz > -0.6f && dz < 2.3f;
-        } else if (swing && dist3(mid, p) < 2.4f) {
-            obstacle_blast(i);
-            ++rails.drones_hit;
-            api->bolts_add(DRONE_BOLTS);
+            const float* p = rails.obs[i].p;
+            const float dxy = sqrtf((h[0] - p[0]) * (h[0] - p[0]) + (h[1] - p[1]) * (h[1] - p[1])), dz = h[2] - p[2];
+            if (dxy < 0.8f && dz > -0.6f && dz < 1.1f) {
+                obstacle_blast(i, p);
+                api->hero_damage(1, 0);
+            }
             continue;
-        } else {
-            hurt = dxy < 1.0f && fabsf(mid[2] - p[2]) < 1.3f;
         }
-        if (hurt) {
-            obstacle_blast(i);
+        const uint32_t m = kmine_moby(i);
+        if (m == 0) {  /* (gone by itself) */
+            rails.obs[i].alive = 0;
+            continue;
+        }
+        float q[3];
+        pos_of(m, q);
+        const float d = dist3(mid, q);
+        if (swing && d < MINE_SWING) {
+            obstacle_blast(i, q);
+            ++rails.kmines_hit;
+            api->bolts_add(MINE_BOLTS);
+        } else if (!swing && d < MINE_TOUCH) {
+            obstacle_blast(i, q);
             api->hero_damage(1, 0);
         }
     }
@@ -2057,6 +2225,7 @@ static void frame(void* user) {
     flames_light();
     bombs_update();
     supplies_update();
+    zap_update(h);
     ++s.t;
     switch (s.mode) {
     case FREE:
@@ -2129,8 +2298,8 @@ static void frame(void* user) {
             else if (s.rule.weapons == W_ROULETTE || (s.rule.weapons == W_WRENCH && !isc)) snprintf(wl, sizeof wl, "%s", weapon_name(s.wpn));
             if (isc) snprintf(third, sizeof third, "%s%s%s", tr(MODES[cup[s.wave < c->waves ? s.wave : c->waves - 1].mode].name), wl[0] ? " - " : "", wl);
             else if (wl[0]) snprintf(third, sizeof third, tr("Arma: %s"), wl);
-            else if (c->kind == RAIL && rails.phase < 2 && (rails.falls > 0 || rails.drones > 0)) {
-                if (rails.use_obs && rails.drones > 0) snprintf(third, sizeof third, tr("Droni %d/%d   Cadute %d"), rails.drones_hit, rails.drones, rails.falls);
+            else if (c->kind == RAIL && rails.phase < 2 && (rails.falls > 0 || rails.kmines > 0)) {
+                if (rails.use_obs && rails.kmines > 0) snprintf(third, sizeof third, tr("Mine %d/%d   Cadute %d"), rails.kmines_hit, rails.kmines, rails.falls);
                 else snprintf(third, sizeof third, tr("Cadute: %d"), rails.falls);
             }
             const int y = 84, bh = third[0] ? 72 : 50, box = s.nrects, first = s.nlines;
@@ -2246,6 +2415,7 @@ static void look_up_sounds(void);
 static void level_start(void* user, const rac1_level_info* level) {
     (void)user;
     s.mine = level->mine;
+    s.level = level->level;
     s.mode = FREE;
     s.t = 0;
     s.nen = 0;
@@ -2278,7 +2448,7 @@ static void level_start(void* user, const rac1_level_info* level) {
     cls_mark = api->class_find("mark");
     for (int i = 0; i < MAX_BOMBS; ++i) bombs[i].bomb = bombs[i].mark = 0, bombs[i].flash = 0;
     for (int i = 0; i < N_SLOTS; ++i) slot_crate[i] = 0, slot_flash[i] = 0;
-    supplies_drop(CRATE_NANO, 2);  /* (two nanotech crates there from the start) */
+    zap_start();
     if (!rails.loaded) rails_load();
     rails.on = 0;  /* (the level's table is its own again) */
     rails.phase = 0;
@@ -2305,6 +2475,7 @@ static void level_end(void* user) {
     (void)user;
     s.lost_reload = s.mine && (s.mode == INTRO || s.mode == FIGHT || s.mode == BREAK);
     if (s.mine) rails.on = 0;
+    zap.n = 0;  /* (its rings gone with the level) */
     s.mine = 0;
     s.nen = 0;  /* (the level's objects are gone with it) */
     s.ships[0] = s.ships[1] = 0;
@@ -2390,7 +2561,10 @@ static void new_game(void* user) {
    then down to the floor at 1500 (the robots come down); arena_bombs: "Pioggia di fuoco" from 420, the bombs counted;
    arena_ch<N> (arena_ch<N>k: an enemy taken away every 1.5 s, f: every third of a second): Ratchet south of the hub,
    four weapons if he owns one,
-   challenge N from 420, the enemies by kind, the dropships, the weapon in his hand */
+   challenge N from 420, the enemies by kind, the dropships, the weapon in his hand. And: arena_rail*, arena_course* (the
+   rail challenges), arena_mines (Kalebo III's rail mines on the test rail), arena_suck (the Suck Cannon's beam on the
+   enemies, with RAC1_SIM_INPUT=hold), arena_zap (an electrified drop zone, Ratchet in it), arena_texts (the game's text
+   table and the items' names), kalebo_rails (on Kalebo III itself: its rails and the mobys on them) */
 static void test(void* user, const char* text, uint64_t frame) {
     (void)user;
     const int near = strcmp(text, "arena_near") == 0, win = strcmp(text, "arena_win") == 0, lava = strcmp(text, "arena_lava") == 0;
@@ -2410,6 +2584,43 @@ static void test(void* user, const char* text, uint64_t frame) {
     const int fall = strcmp(text, "arena_fall") == 0;    /* the tower, then down to the floor at frame 1500: they come down */
     const int tower = strcmp(text, "arena_tower") == 0 || fall;  /* on the north-east tower's top: up the ramps (the paths) */
     const int bombs_t = strcmp(text, "arena_bombs") == 0;  /* "Pioggia di fuoco", his health kept full */
+    static uint64_t kalebo_at;  /* (kalebo_rails: two seconds into Kalebo III) */
+    if (!s.mine && s.level == 16 && strcmp(text, "kalebo_rails") == 0 && kalebo_at == 0) kalebo_at = frame + 120;
+    if (!s.mine && s.level == 16 && strcmp(text, "kalebo_rails") == 0 && frame == kalebo_at) {
+        /* (on Kalebo III itself) its rails, and the mobys on them: class, place, state */
+        const uint32_t table = rac1_lw(api, api->ov(RAIL_TABLE));
+        const int32_t n = (int32_t)rac1_lw(api, api->ov(RAIL_COUNT));
+        uint32_t seen[64];
+        int nseen = 0;
+        for (int32_t r = 0; r < n && table != 0; ++r) {
+            const uint32_t path = rac1_lw(api, table + 0x20u * (uint32_t)r + 0x10);
+            const int32_t np = (int32_t)rac1_lw(api, path);
+            char b[200];
+            snprintf(b, sizeof b, "kalebo rail %d: %d points, from %.1f %.1f %.1f to %.1f %.1f %.1f, loop %d", (int)r, (int)np,
+                     rac1_lwf(api, path + 0x10), rac1_lwf(api, path + 0x14), rac1_lwf(api, path + 0x18),
+                     rac1_lwf(api, path + 0x10 + 16u * (uint32_t)(np - 1)), rac1_lwf(api, path + 0x14 + 16u * (uint32_t)(np - 1)),
+                     rac1_lwf(api, path + 0x18 + 16u * (uint32_t)(np - 1)), (int)rac1_lw(api, table + 0x20u * (uint32_t)r + 0x14));
+            api->log(b);
+            for (int32_t k = 0; k < np; k += 2) {
+                float p[3];
+                for (int a = 0; a < 3; ++a) p[a] = rac1_lwf(api, path + 0x10 + 16u * (uint32_t)k + 4u * (uint32_t)a);
+                uint32_t near[16];
+                const int32_t m = api->mobys_near(p, 3.0f, -1, near, 16);
+                for (int32_t j = 0; j < m && j < 16; ++j) {
+                    int dup = 0;
+                    for (int q = 0; q < nseen; ++q) dup |= seen[q] == near[j];
+                    if (dup || nseen >= 64 || near[j] == api->hero()) continue;
+                    seen[nseen++] = near[j];
+                    float at[3];
+                    pos_of(near[j], at);
+                    snprintf(b, sizeof b, "  on rail %d by point %d: class %d at %.1f %.1f %.1f, state %d", (int)r, (int)k,
+                             (int)(int16_t)rac1_lh(api, near[j] + 0xa6), at[0], at[1], at[2], (int)(int8_t)rac1_lb(api, near[j] + 0x20));
+                    api->log(b);
+                }
+            }
+        }
+        return;
+    }
     if (s.mine && strcmp(text, "arena_texts") == 0 && frame == 300) {  /* the game's text table, every record, then the
                                                                           items' names as the plugin reads them */
         for (int32_t item = 0x08; item <= 0x1d; ++item) {
@@ -2427,6 +2638,117 @@ static void test(void* user, const char* text, uint64_t frame) {
                 const uint8_t ch = rac1_lb(api, str + j);
                 if (ch == 0) break;
                 k += snprintf(b + k, sizeof b - (size_t)k, ch >= 0x20 && ch < 0x7f ? "%c" : "<%02x>", ch);
+            }
+            api->log(b);
+        }
+        return;
+    }
+    if (s.mine && strcmp(text, "arena_zap") == 0) {
+        /* (Assedio from 420, Ratchet 9 units south of the north drop zone facing it; that zone electrified at 700 and at
+           1000, Ratchet put in its middle at 1050) the zone, his health */
+        if (frame == 420) challenge_start(3);
+        if ((frame == 430 || frame == 1050) && zap.n > 0) {
+            const float at[3] = {zap.p[0][0], zap.p[0][1] - (frame == 430 ? 9.0f : 0.0f), zap.p[0][2] + 0.5f};
+            hero_move(at, 1.5708f);
+        }
+        if (frame == 450 || frame == 760 || frame == 830) {
+            char b[160];
+            float q[3] = {0, 0, 0};
+            const uint32_t m = zap.n > 0 && zap.obj[0] ? api->object_moby(zap.obj[0]) : 0;
+            if (m) pos_of(m, q);
+            snprintf(b, sizeof b, "zap test %llu: class %d, %d zones, ring 0x%x moby 0x%x at %.2f %.2f %.2f flags 0x%x, zone at %.2f %.2f %.2f",
+                     (unsigned long long)frame, (int)zap.cls, zap.n, zap.n ? (unsigned)zap.obj[0] : 0, (unsigned)m, q[0], q[1], q[2],
+                     m ? (unsigned)rac1_lh(api, m + 0x34) : 0, zap.n ? zap.p[0][0] : 0, zap.n ? zap.p[0][1] : 0, zap.n ? zap.p[0][2] : 0);
+            api->log(b);
+        }
+        if ((frame == 700 || frame == 1000) && zap.n > 0) {
+            zap.phase[0] = Z_WARN;
+            zap.t[0] = 0;
+            zap.wait = 2000;
+        }
+        if (frame >= 1000 && frame <= 1300 && frame % 20 == 0) {
+            char b[96];
+            snprintf(b, sizeof b, "zap test %llu: zone 0 phase %d t %d, health %d, mode %d vents %d", (unsigned long long)frame, zap.phase[0], zap.t[0], (int)api->health(), s.mode, s.rule.vents);
+            api->log(b);
+        }
+        return;
+    }
+    if (s.mine && strcmp(text, "arena_suck") == 0) {
+        /* (Primo sangue from 420 with the Suck Cannon in hand: RAC1_SIM_INPUT=hold keeps its beam on) the enemies as the
+           plugin sees them: their mobys' state, class, pvars, place */
+        if (frame == 100) {
+            const float at[3] = {s.centre[0], s.centre[1] - 20.0f, nav.floor_z + 0.5f};
+            hero_move(at, 1.5708f);
+            api->sb(0x0013d4c0u + 0x09, 1);
+        }
+        if (frame >= 300 && frame < 2000 && frame % 10 == 0 && rac1_lw(api, HERO_ITEM) != 0x09) api->weapon_equip(0x09);
+        if (frame % 30 == 0 && api->health() > 0 && api->health() < 4) api->sw(0x001415f8u, 4);
+        if (frame == 420) challenge_start(0);
+        if (frame >= 600 && frame % 30 == 0) {
+            float h[3];
+            pos_of(api->hero(), h);
+            char b[160];
+            snprintf(b, sizeof b, "suck %llu: in hand 0x%x, killed %d felled %d, %d enemies, hero %.1f %.1f", (unsigned long long)frame,
+                     (unsigned)rac1_lw(api, HERO_ITEM), s.killed, s.felled, s.nen, h[0], h[1]);
+            api->log(b);
+            for (int i = 0; i < s.nen; ++i) {
+                const uint32_t m = api->base_moby(s.en[i].h);
+                float r[3] = {0, 0, 0};
+                if (m) pos_of(m, r);
+                snprintf(b, sizeof b, "  %c %d: moby 0x%x state %d class %d update 0x%x +0x34 0x%x +0x38 0x%x at %.1f %.1f %.1f (%.1f away)",
+                         KIND[s.en[i].kind].letter, i, (unsigned)m, m ? (int)(int8_t)rac1_lb(api, m + 0x20) : -99,
+                         m ? (int)(int16_t)rac1_lh(api, m + 0xa6) : 0, m ? (unsigned)rac1_lw(api, m + 0x74) : 0,
+                         m ? (unsigned)rac1_lw(api, m + 0x34) : 0, m ? (unsigned)rac1_lw(api, m + 0x38) : 0, r[0], r[1], r[2],
+                         m ? dist3(r, h) : 0.0f);
+                api->log(b);
+            }
+        }
+        return;
+    }
+    if (s.mine && strncmp(text, "arena_mines", 11) == 0) {
+        /* (the test rail with a Kalebo III mine of class 257 at its 15th point, one of 933 at its 30th; Ratchet dropped on
+           it at 640) their state and his, every 6 frames */
+        static uint32_t mh[2];
+        int ch = -1;
+        for (int i = 0; i < N_CHALLENGES; ++i)
+            if (strcmp(CHALLENGES[i].name, "Test Grindscarponi") == 0) ch = i;
+        if (frame == 100) api->sb(GRIND_BOOTS, 1);
+        if (frame == 420 && ch >= 0) challenge_start(ch);
+        if (frame == 610 && rails.nset > 0) {
+            static const int32_t CLS[2] = {RAIL_MINE, RAIL_MINE};
+            static const int PT[2] = {15, 30};
+            for (int k = 0; k < 2; ++k) {
+                const float* p = rails.r[rails.set[0]].pt[PT[k]];
+                const float* q = rails.r[rails.set[0]].pt[PT[k] + 1];
+                mh[k] = api->base_spawn(CLS[k], p, atan2f(q[1] - p[1], q[0] - p[0]));
+                char b[96];
+                snprintf(b, sizeof b, "mines: class %d spawned: handle 0x%x, moby 0x%x", (int)CLS[k], (unsigned)mh[k], (unsigned)api->base_moby(mh[k]));
+                api->log(b);
+            }
+        }
+        if (strcmp(text, "arena_mines_hit") == 0 && (frame == 620 || frame == 625)) {  /* (a hit sent to each: the player's
+                                                                                          kinds, then a prop's) */
+            const uint32_t m = api->base_moby(mh[frame == 620 ? 0 : 1]);
+            if (m != 0) api->hit_send(m, frame == 620 ? RAC1_HIT_PLAYER : RAC1_HIT_PROP, 10.0f, api->hero());
+            api->log(frame == 620 ? "mines: a player's hit sent to the 1st" : "mines: a prop's hit sent to the 2nd");
+        }
+        if (frame == 640 && rails.nset > 0) {
+            const float *a = rails.r[rails.set[0]].pt[2], *b = rails.r[rails.set[0]].pt[4];
+            const float at[3] = {a[0], a[1], a[2] + 1.5f};
+            hero_move(at, atan2f(b[1] - a[1], b[0] - a[0]));
+        }
+        if (frame >= 610 && frame <= 1400 && frame % 6 == 0) {
+            float h[3];
+            pos_of(api->hero(), h);
+            char b[200];
+            int k = snprintf(b, sizeof b, "mines %llu: hero %.1f %.1f %.1f state 0x%x health %d", (unsigned long long)frame, h[0], h[1], h[2],
+                             (unsigned)rac1_lw(api, HERO_STATE), (int)api->health());
+            for (int j = 0; j < 2; ++j) {
+                const uint32_t m = api->base_moby(mh[j]);
+                float r[3] = {0, 0, 0};
+                if (m) pos_of(m, r);
+                k += snprintf(b + k, sizeof b - (size_t)k, " | %s moby 0x%x state %d at %.1f %.1f %.1f (%.1f)", j ? "2nd" : "1st", (unsigned)m,
+                              m ? (int)(int8_t)rac1_lb(api, m + 0x20) : -99, r[0], r[1], r[2], m ? dist3(r, h) : 0.0f);
             }
             api->log(b);
         }
@@ -2469,9 +2791,9 @@ static void test(void* user, const char* text, uint64_t frame) {
             int alive = 0;
             for (int i = 0; i < rails.nobs; ++i) alive += rails.obs[i].alive;
             char b[240];
-            snprintf(b, sizeof b, "test %llu: mode %d phase %d, hero %.2f %.2f %.2f, state 0x%x, rail %s point %d at %.2f, health %d, obstacles %d, drones %d/%d, falls %d, table %d, alive %d",
+            snprintf(b, sizeof b, "test %llu: mode %d phase %d, hero %.2f %.2f %.2f, state 0x%x, rail %s point %d at %.2f, health %d, obstacles %d, rail mines %d/%d, falls %d, table %d, alive %d",
                      (unsigned long long)frame, s.mode, rails.phase, h[0], h[1], h[2], (unsigned)rac1_lw(api, HERO_STATE), rails.r[lane].name, best, bd,
-                     (int)api->health(), alive, rails.drones_hit, rails.drones, rails.falls, (int)rac1_lw(api, api->ov(RAIL_COUNT)), s.nen);
+                     (int)api->health(), alive, rails.kmines_hit, rails.kmines, rails.falls, (int)rac1_lw(api, api->ov(RAIL_COUNT)), s.nen);
             api->log(b);
         }
         return;

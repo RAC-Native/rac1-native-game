@@ -13,16 +13,18 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   cover, four flame vents, floodlight masts, a corridor to the ship's plaza; the lava (surface type 3) all round.
 - **The menu:** on the hub's top, Triangle opens the challenges (Cross starts one, Square opens the vendor).
 - **The challenges:** waves of Kalebo III's robots, bomb bots, Gadgetron robots (bomb launcher, club, flamethrower),
-  jetpack troopers and dropships; some with bombs from the sky, the vents burning faster, a time limit, no hit allowed,
+  jetpack troopers and dropships; some with bombs from the sky, the vents burning faster and the three drop zones'
+  circles electrified in turn (they hurt Ratchet and the enemies standing in them), a time limit, no hit allowed,
   the wrench only, a random weapon each wave, a new one every 20 seconds; two championships (15 and 50 rounds) mixing
   those modes. The won ones, and their best times, are kept with the save.
 - **Grind rails**, for players who have the Grind Boots (Grindscarponi), from a station outside the north-west wall:
   - "Test Grindscarponi": one rail down into the arena (our first try);
-  - "Grindscarponi: Discesa": a course of three lanes along the north wall (a side jump changes lane), mines to jump,
-    barriers that close two lanes at a time, drones to break with the wrench (Square on the rail) or they zap you, the
-    side lanes ending before the north-east corner; then one rail round the corner, down the east side and over the
-    wall into the arena, where a last wave of robots waits. A hit costs one health point and slows Ratchet (the game's
-    own hop on the rail); a fall puts him back on the station, the obstacles back too.
+  - "Grindscarponi: Discesa": a course of three lanes along the north wall (a side jump changes lane), our mines to
+    jump, Kalebo III's own rail mines (class 933, started on the lanes by the plugin) to break with the wrench (Square
+    on the rail) or to pass on another lane, two of them closing two lanes at a time, the side lanes ending before the
+    north-east corner; then one rail round the corner, down the east side and over the wall into the arena, where a
+    last wave of robots waits. A hit costs one health point and slows Ratchet (the game's own hop on the rail); a fall
+    puts him back on the station, the mines back too.
 
   Kalebo III's hero code takes a rail only within 12 units of two points of its own level, (115, 264, 133) and
   (257, 301, 128) in the game's coordinates, so the station is by the first one; once on a rail, its jumps and the side
