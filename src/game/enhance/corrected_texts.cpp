@@ -153,18 +153,23 @@ void corrections_build() {
             src.push_back(std::move(t));
         }
         for (const auto& [lang, table] : base) {
+            // the sources' tables of this language that are used: a table whose ids are not the North American ones is
+            // not (the PAL disc 2.00's lacks its credits only). Decided once a table (compared again for each of its
+            // ~1700 strings, the ids' sets made each time, it took 20..30 s on the game's thread at the title's load)
             const std::set<int32_t> ids = ids_of(table);
+            std::vector<const Table*> usable(src.size(), nullptr);
+            for (size_t k = 0; k < src.size(); ++k) {
+                const auto it = src[k].find(lang);
+                if (it == src[k].end()) continue;
+                std::set<int32_t> want = ids;
+                if (sources[k].first->platinum)
+                    for (int32_t c = CREDITS_FIRST; c <= CREDITS_LAST; ++c) want.erase(c);
+                if (ids_of(it->second) == want) usable[k] = &it->second;
+            }
             for (const auto& [id, text] : table) {
                 for (size_t k = 0; k < src.size(); ++k) {
-                    const auto it = src[k].find(lang);
-                    if (it == src[k].end()) continue;
-                    const Table& t = it->second;
-                    // (a table whose ids are not the North American ones is not used: the PAL disc 2.00's lacks its
-                    // credits only)
-                    std::set<int32_t> want = ids;
-                    if (sources[k].first->platinum)
-                        for (int32_t c = CREDITS_FIRST; c <= CREDITS_LAST; ++c) want.erase(c);
-                    if (ids_of(t) != want) continue;
+                    if (usable[k] == nullptr) continue;
+                    const Table& t = *usable[k];
                     const auto s = t.find(id);
                     if (s == t.end()) continue;  // (the PAL disc 2.00's credits: the next disc's)
                     // (Spanish 20172: the PAL disc 1.00 made it a copy of 20171, the PAL disc 2.00 put it back;

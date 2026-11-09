@@ -12,6 +12,9 @@ What changed in each release. Releases are source only: you build the game with 
   wheel); the same weapon may be in several rings. A new weapon that finds ring 1 full goes to ring 2, then 3. Ring 1 is
   still the game's (its save unchanged); rings 2 and 3 are kept in the save's `save<N>.pc`. A plugin's `weapon_allow`
   blanks its disallowed weapons in every ring. See docs/advanced.md.
+- **No more long freeze before the main menu** (after the intro movie, skipped or not) with Corrected Texts on (Options >
+  Advanced): finding the corrected strings compared each data disc's text table with the game's again for every one
+  of its strings, 20 to 30 s on the game's thread. Each table is now compared once: 0.4 s, the same strings corrected.
 - Vulkan: **no more long freezes when a level loads** (after the intro movie, before the main menu; any planet). Every
   texture level a load sent to the GPU was a submit of its own and a wait for it (about 1600 for Veldin): alone each wait
   is short, but with another program using the GPU (another game, a second copy) each lasted as long as that program's
