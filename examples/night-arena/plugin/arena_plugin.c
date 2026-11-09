@@ -2232,14 +2232,16 @@ static void test(void* user, const char* text, uint64_t frame) {
             const uint32_t m = api->base_moby(s.en[0].h);
             if (m != 0) api->moby_remove(m);
         }
-        if (frame % 120 == 0) {
+        if (frame % 120 == 0 || (frame >= 840 && frame <= 1260 && frame % 30 == 0)) {  /* (often round a quick select test's) */
             int by[N_KINDS] = {0};
             for (int i = 0; i < s.nen; ++i) ++by[s.en[i].kind];
             float h[3];
             pos_of(api->hero(), h);
-            char b[256];
-            snprintf(b, sizeof b, "test %llu: mode %d wave %d spawned %d killed %d felled %d alive R%d B%d L%d C%d F%d J%d G%d, ships %d %d, in hand 0x%x (asked 0x%x), health %d, hero %.1f %.1f %.1f",
-                     (unsigned long long)frame, s.mode, s.wave, s.spawned, s.killed, s.felled, by[K_ROBOT], by[K_BOMBER], by[K_LAUNCHER], by[K_CLUB], by[K_FLAMER],
+            char b[320];
+            float e0[3] = {0.0f, 0.0f, 0.0f};
+            if (s.nen > 0 && api->base_moby(s.en[0].h) != 0) pos_of(api->base_moby(s.en[0].h), e0);
+            snprintf(b, sizeof b, "test %llu: clock %d, enemy 0 at %.2f %.2f, mode %d wave %d spawned %d killed %d felled %d alive R%d B%d L%d C%d F%d J%d G%d, ships %d %d, in hand 0x%x (asked 0x%x), health %d, hero %.1f %.1f %.1f",
+                     (unsigned long long)frame, s.clock, e0[0], e0[1], s.mode, s.wave, s.spawned, s.killed, s.felled, by[K_ROBOT], by[K_BOMBER], by[K_LAUNCHER], by[K_CLUB], by[K_FLAMER],
                      by[K_JET], by[K_GUNSHIP], s.ships[0] && api->base_moby(s.ships[0]) ? 1 : 0, s.ships[1] && api->base_moby(s.ships[1]) ? 1 : 0,
                      (unsigned)rac1_lw(api, HERO_ITEM), (unsigned)s.wpn, (int)api->health(), h[0], h[1], h[2]);
             api->log(b);
