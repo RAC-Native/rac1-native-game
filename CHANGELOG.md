@@ -5,6 +5,12 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Level mods: pictures of the level's own. level.txt's `picture` (the loading screen's planet, 128 x 128), `banner` /
+  `banner.<lang>` (the name under it, 256 x 32; made from `name` and each `name.<lang>` when the mod has none) and
+  `map_picture` (the ship's map's picture under the galaxy; made from `picture` when none): PNG files the composer
+  scales and turns into the game's 8-bit images. On the ship's map a custom level's row shows its picture, and its
+  planet page its planet picture, with none of the base level's planet, missions, gold bolts or Infobot. The example
+  level has a planet of its own (a checkered sphere) and a generated name banner.
 - Level mods: a custom level is arrived at as a planet. The loading screen's full flight (its sound, the ship and its
   trails, the planet's picture and name at the end), then the ship's landing at level.txt's `ship` and Ratchet stepping
   off; before, the level got Veldin's arrival as the game's first level (a short flight, no landing). `hero auto` (the

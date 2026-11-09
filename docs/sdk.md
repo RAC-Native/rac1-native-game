@@ -129,7 +129,7 @@ Fill them in `rac1_mod_main`; all are optional (NULL: none). Each gets your `mod
 
 | Callback | ABI | When | Notes |
 |---|---|---|---|
-| `level_start(user, level)` | 1 | a level's first frame of play, its objects spawned | `rac1_level_info`: `level` (the game's level number: a level mod's is its base level's), `slot` (19.. for a level mod), `level_id`, `mine` (1: your mod's level), `objects` (its placed mobys: uids 1..objects) |
+| `level_start(user, level)` | 1 | a level's first frame of play, its objects spawned (with a ship: after the landing) | `rac1_level_info`: `level` (the game's level number: a level mod's is its base level's), `slot` (19.. for a level mod), `level_id`, `mine` (1: your mod's level), `objects` (its placed mobys: uids 1..objects) |
 | `level_end(user)` | 1 | the level is left (another loads, a save is loaded) | after the objects' `remove` |
 | `frame(user)` | 1 | once a frame of play, after the objects' pass | not in menus, not in replays |
 | `hud(user)` | 1 | the HUD is drawn | `hud_text` works only here; may run twice a frame: draw only |

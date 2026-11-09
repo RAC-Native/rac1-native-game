@@ -9,7 +9,7 @@ a ramp up to a raised platform, a few blocks (their vertices coloured), a ship p
 number), another level's sky and a short tune of our own as the music, made round (0, 0, 0) and moved by level.txt's
 offset line; and a plugin (plugin/: a moving platform, a HUD line, a sound, a counter in the save; sentries and gems of the
 level's own classes, its own sounds, a trigger: docs/sdk.md). The files are the level folder's format 1: level.txt,
-collision.obj, meshes.obj / meshes.mtl, two PNG textures, lights.txt and plateau.vag; the objects' models orb.obj and
+collision.obj, meshes.obj / meshes.mtl, two PNG textures, the loading screen's planet (planet.png), lights.txt and plateau.vag; the objects' models orb.obj and
 gem.obj (with their .mtl), the sounds' WAV files.
 """
 import json
@@ -21,15 +21,15 @@ import wave
 import zlib
 
 
-def png(path, w, h, pixel):
-    """An RGB PNG of w x h, pixel(x, y) -> (r, g, b) (standard library only)."""
+def png(path, w, h, pixel, alpha=False):
+    """An RGB PNG of w x h, pixel(x, y) -> (r, g, b) (with alpha: (r, g, b, a)) (standard library only)."""
     raw = b"".join(b"\x00" + b"".join(bytes(pixel(x, y)) for x in range(w)) for y in range(h))
 
     def chunk(kind, data):
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
 
     with open(path, "wb") as f:
-        f.write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) +
+        f.write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6 if alpha else 2, 0, 0, 0)) +
                 chunk(b"IDAT", zlib.compress(raw, 9)) + chunk(b"IEND", b""))
 
 
@@ -210,6 +210,23 @@ def tune(rate):
     return out
 
 
+def planet_pixel(x, y):
+    """The loading screen's planet: a lit sphere with the level's checker on it, on nothing (alpha 0 round it)."""
+    nx, ny = (x + 0.5 - 64) / 60.0, (y + 0.5 - 64) / 60.0
+    d = nx * nx + ny * ny
+    if d >= 1.0:
+        return (0, 0, 0, 0)
+    nz = math.sqrt(1.0 - d)
+    light = max(0.0, -0.5 * nx - 0.45 * ny + 0.74 * nz) * 0.85 + 0.15
+    lon, lat = math.atan2(nx, nz), math.asin(max(-1.0, min(1.0, ny)))
+    green = (int(lon * 5) + int(lat * 5)) % 2 == 0
+    base = (200, 200, 190) if green else (120, 150, 110)
+    rim = min(1.0, max(0.0, (d - 0.8) / 0.2))  # (a blue haze at the rim)
+    rgb = tuple(int(min(255, c * light * (1 - rim) + h * rim)) for c, h in zip(base, (90, 150, 230)))
+    edge = min(1.0, (1.0 - math.sqrt(d)) * 60.0)  # (a soft edge)
+    return rgb + (int(255 * edge),)
+
+
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else os.path.join("mods", "example-plateau")
     lvl = os.path.join(out, "level")
@@ -265,7 +282,9 @@ def main():
                 "sound chime chime.wav\n"
                 "sound hum hum.wav loop volume 0.5 range 2 14\n"
                 "# a box round the ramp: the plugin's trigger callback\n"
-                "trigger ramp -21 -8 -1 -15 8 6\n" % (ORIGIN + (0, 18, 0.2, -30) +
+                "trigger ramp -21 -8 -1 -15 8 6\n"
+                "# the loading screen's planet (and the ship's map's picture, made from it); the name under it is made from name\n"
+                "picture planet.png\n" % (ORIGIN + (0, 18, 0.2, -30) +
                                        tuple(c for x, y in ((4, 2), (6, 2), (8, 2), (-4, 2), (-6, 2), (-8, 10)) for c in (x, y, 0.5))))
     # the shapes: the floor 64 x 64 at z 0 (four objects), a ramp to a platform 4 high, three blocks
     mesh, coll = Mesh(), Mesh()
@@ -326,6 +345,7 @@ def main():
         lambda x, y: (200, 200, 190) if ((x // 32) + (y // 32)) % 2 == 0 else (120, 150, 110))
     png(os.path.join(lvl, "stone.png"), 32, 32,
         lambda x, y: tuple(int(c * (0.85 + 0.15 * math.sin(x * 0.7) * math.cos(y * 0.9))) for c in (150, 140, 130)))
+    png(os.path.join(lvl, "planet.png"), 128, 128, planet_pixel, alpha=True)
     # the plugin (its code: examples/custom-level/plugin/, copied as it is; the setup builds it)
     here = os.path.dirname(os.path.abspath(__file__))
     os.makedirs(os.path.join(out, "plugin"), exist_ok=True)

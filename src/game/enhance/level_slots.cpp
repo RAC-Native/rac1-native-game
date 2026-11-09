@@ -8,6 +8,8 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/pause_menu.h>
+#include <game/ovl/pause_menu_pages.h>
+#include <game/ovl/planet_map.h>
 #include <runtime/kernel/disc.h>
 #include <runtime/kernel/mods.h>
 
@@ -502,6 +504,139 @@ void level_slots_landing_end(uint32_t hero) {
                 "the hero put at (%.3f %.3f %.3f), turned %.3f (the ship's yaw %.3f)\n",
                 lw(LEVEL), level_slot_current(), static_cast<int>(lh(0x0013e056u)), a[0], a[1], a[2], yaw_wrap(u2f(lwu(hero + 0x48)) - yaw), b[0], b[1], b[2],
                 yaw_wrap(u2f(lwu(0x0013e0a8u)) - yaw), yaw);
+}
+
+namespace {
+
+// orig: (none) — enhancement: a file of slot `slot`'s build (picture.img, banner.img, map.img: images in the layout
+// tex_image_upload reads, made by the composer), empty when it has none
+std::vector<uint8_t> build_image(int slot, const std::string& name) {
+    std::vector<uint8_t> d;
+    const std::string dir = level_slot_build_dir(slot);
+    if (dir.empty()) return d;
+    std::ifstream f(dir + "/" + name, std::ios::binary);
+    if (f) d.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+    return d;
+}
+
+// orig: (none) — enhancement: an image (`img`, the layout of tex_image_upload: +8 / +0xc its size, +0x10 PSMT8, the palette
+// at +0x20, the pixels at +0x420) written over the image at `at` in EE memory when they have the same size and format
+bool image_over(uint32_t at, const std::vector<uint8_t>& img, const char* what) {
+    auto u32 = [&img](size_t o) { return o + 4 <= img.size() ? static_cast<uint32_t>(img[o] | img[o + 1] << 8 | img[o + 2] << 16 | static_cast<uint32_t>(img[o + 3]) << 24) : 0u; };
+    const uint32_t w = u32(8), h = u32(0xc);
+    if (img.empty()) return false;
+    if (u32(0x10) != 0x13 || w != lwu(at + 8) || h != lwu(at + 0xc) || lwu(at + 0x10) != 0x13 || img.size() != 0x420u + w * h) {
+        std::fprintf(stderr, "[levels] the level's %s is not the game's size (%u x %u, 8-bit: %u x %u): not used\n", what, w, h, lwu(at + 8), lwu(at + 0xc));
+        return false;
+    }
+    for (size_t i = 0; i < img.size(); ++i) sb(at + static_cast<uint32_t>(i), img[i]);
+    return true;
+}
+
+}  // namespace
+
+// orig: (none) — enhancement (level_slots.h)
+void level_slots_loading_pictures(uint32_t pics, int32_t lang) {
+    if (!level_slots_planet_arrival()) return;
+    const int slot = g_s.pending, base = lw(LEVEL);
+    const bool planet = image_over(pics + lwu(pics + 4 + static_cast<uint32_t>(base) * 4), build_image(slot, "picture.img"), "picture");
+    // the name: the language's banner (banner.<lang>.img), else banner.img (the mod's, or the one the composer made from its name)
+    const uint32_t at = pics + lwu(pics + 0x50 + static_cast<uint32_t>(lang * 0x13 + base) * 4);
+    uint32_t tl = lwu(0x0015ed88);
+    if (tl >= 6) tl = 0;
+    std::vector<uint8_t> b = build_image(slot, std::string("banner.") + kLangs[tl] + ".img");
+    if (b.empty()) b = build_image(slot, "banner.img");
+    const bool banner = image_over(at, b, "banner");
+    std::printf("[levels] the loading screen: level slot %d's planet picture %s, its name %s\n", slot, planet ? "the mod's" : "the base level's",
+                banner ? "the mod's" : "the base level's");
+}
+
+// orig: (none) — enhancement (level_slots.h)
+bool level_slots_map_row() {
+    if (!rows_on() || g_s.row_sel < 0) return false;
+    const uint32_t ms = lwu(MENU_STATE);
+    return (ms == 0xf || ms == 0x10) && lw(MENU_PLANET) == base_of(g_s.row_sel);
+}
+
+namespace {
+bool g_map_ours = false;           // the map's picture widget shows one of our rows (its picture, or none)
+int g_map_slot = -1;               // ... that slot's (its map.img at the map's +0x258, or none): -1 when gone
+int g_planet_slot = -1;            // the planet page's planet is that slot's (its picture.img at the map's +0x258, or none)
+bool g_planet_shown = false;
+}  // namespace
+
+// orig: (none) — enhancement (level_slots.h)
+bool level_slots_map_picture(uint32_t w) {
+    if (!level_slots_map_row()) {
+        if (g_map_ours && lw(w + 0x50) >= 0x100) sw(w + 0x50, 0xffffffffu);  // (ours shown: the game's read again)
+        g_map_ours = false;
+        g_map_slot = g_planet_slot = -1;  // (the game's pictures and planets go to the map's +0x258 now)
+        return false;
+    }
+    const int slot = g_s.row_sel;
+    const int32_t key = 0x100 + slot;  // (not a planet: the game's picture is read again when it is one)
+    const int32_t st = lw(w + 0x44);
+    if ((lw(w + 0x50) == key && g_map_slot == slot) || (st != 0 && st != 2)) return true;
+    const uint32_t buf = lwu(w + 0x48);
+    if (buf == 0 || lh(0x001516d8) != 0) return true;
+    const std::vector<uint8_t> img = build_image(slot, "map.img");
+    auto u32 = [&img](size_t o) { return o + 4 <= img.size() ? static_cast<uint32_t>(img[o] | img[o + 1] << 8 | img[o + 2] << 16 | static_cast<uint32_t>(img[o + 3]) << 24) : 0u; };
+    const uint32_t iw = u32(8), ih = u32(0xc);
+    const bool fits = !img.empty() && u32(0x10) == 0x13 && iw == 512 && ih == 128 && img.size() == 0x420u + iw * ih &&
+                      static_cast<int32_t>(img.size()) <= menu_buf_size(buf);
+    sw(w + 0x50, static_cast<uint32_t>(key));
+    if (!fits) {  // (none: no picture, not the base level's)
+        if (!img.empty()) std::fprintf(stderr, "[levels] level slot %d's map.img is not the map's size (512 x 128, 8-bit): not shown\n", slot);
+        sw(w + 0x44, 0);
+        g_map_ours = true;
+        g_map_slot = slot;
+        return true;
+    }
+    for (size_t i = 0; i < img.size(); ++i) sb(buf + static_cast<uint32_t>(i), img[i]);
+    constexpr OvConst<0x001841f0u> MAP{};
+    const uint64_t t = image_upload_at(highest_bit_index(static_cast<int32_t>(iw)), highest_bit_index(static_cast<int32_t>(ih)), buf + 0x20, buf + 0x420, lw(MAP + 0x244),
+                                       lw(MAP + 0x248));
+    sd(MAP + 0x258, t);
+    texture_uploads();
+    sw(w + 0x44, 2);
+    g_map_ours = true;
+    g_map_slot = slot;
+    g_planet_slot = -1;
+    if (trace()) std::printf("[levels] the ship's map: level slot %d's picture (%u x %u)\n", slot, iw, ih);
+    return true;
+}
+
+// orig: (none) — enhancement (level_slots.h)
+void level_slots_map_planet_upload() {
+    constexpr OvConst<0x001841f0u> MAP{};
+    if (lwu(MENU_STATE) != 0x10 || !level_slots_map_row()) return;
+    const int slot = g_s.row_sel;
+    if (g_planet_slot == slot && lw(MAP + 0x228) == -1) return;  // (+0x228 kept -1: no planet's tables, the game's read again after)
+    // the planet page's planet: the level's picture (as the planets' surface, 128 x 128 at the map's +0x258)
+    const std::vector<uint8_t> img = build_image(slot, "picture.img");
+    const uint32_t tmp = img.size() == 0x4420 ? menu_buf_alloc(0) : 0;
+    if (tmp == 0 || menu_buf_size(tmp) < static_cast<int32_t>(img.size())) {
+        if (tmp != 0) menu_buf_free(tmp);
+        sw(MAP + 0x228, 0xffffffffu);
+        g_planet_slot = slot;  // (none: nothing drawn; tried once until another row)
+        g_planet_shown = false;
+        return;
+    }
+    for (size_t i = 0; i < img.size(); ++i) sb(tmp + static_cast<uint32_t>(i), img[i]);
+    sd(MAP + 0x258, image_upload_at(7, 7, tmp + 0x20, tmp + 0x420, lw(MAP + 0x244), lw(MAP + 0x248)));
+    texture_uploads();
+    menu_buf_free(tmp);
+    sw(MAP + 0x228, 0xffffffffu);
+    g_planet_slot = slot;
+    g_planet_shown = true;
+    g_map_slot = -1;  // (the galaxy page's picture is gone from there)
+    if (trace()) std::printf("[levels] the ship's map's planet page: level slot %d's picture\n", slot);
+}
+
+// orig: (none) — enhancement (level_slots.h)
+bool level_slots_map_planet_shown() {
+    constexpr OvConst<0x001841f0u> MAP{};
+    return level_slots_map_row() && g_s.row_sel >= 0 && g_planet_slot == g_s.row_sel && g_planet_shown && lw(MAP + 0x228) == -1;
 }
 
 // orig: (none) — enhancement (level_slots.h)

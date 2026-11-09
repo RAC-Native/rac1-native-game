@@ -95,6 +95,27 @@ bool level_slots_planet_arrival();
 // its gadget in the quick select, its visited flag)
 bool level_slots_keep_base_progress();
 
+// orig: (none) — enhancement: the loading screen's pictures (loading_screen_setup, before their uploads: `pics` the
+// transition file's picture table in EE memory, `lang` its language row): for a slot's level, the build's picture.img and
+// banner[.<lang>].img (the mod's, or made from its name by the composer) written over the base level's entries
+void level_slots_loading_pictures(uint32_t pics, int32_t lang);
+
+// orig: (none) — enhancement: the ship's map shows one of our rows (its planet page: no missions, no gold bolts, no movie)
+bool level_slots_map_row();
+
+// orig: (none) — enhancement: the galaxy page's planet picture (mission_picture_update of the picture of the map's planet,
+// its widget `w`): true when it is ours to show (one of our rows: the build's map.img uploaded instead of the disc's
+// picture, or none)
+bool level_slots_map_picture(uint32_t w);
+
+// orig: (none) — enhancement: the planet page's planet (planet_map_update on the ship's map's planet page): for one of our
+// rows the level's picture.img uploaded as the planet's picture (the map's +0x258; +0x228 0x100 + its slot), not the base
+// planet's
+void level_slots_map_planet_upload();
+
+// orig: (none) — enhancement: the planet page's planet is our row's picture (planet_picture_draw draws it, still)
+bool level_slots_map_planet_shown();
+
 // orig: (none) — testing: the landing's end (ship_sequence_update, before the scene's mobys go; `hero` the scene's Ratchet):
 // with RAC1_LEVEL_TRACE, where the scene leaves him and where the hero is put, in the ship's frame (any level)
 void level_slots_landing_end(uint32_t hero);

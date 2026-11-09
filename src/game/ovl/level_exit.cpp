@@ -307,6 +307,7 @@ void loading_screen_setup() {
     int32_t lang = lw(0x0015ed88) - 1;
     if (!(-1 < lang)) lang = 0;
     const uint32_t regs = ee_stack_alloc(0x20);
+    level_slots_loading_pictures(pics, lang);  // enhancement: a level mod's level's own picture and name (src/host/level_slots.h)
     tex_image_upload(pics + lwu(lwu(0x0015ed84) * 4 + pics + 4), regs);
     sd(OV(0x00160640), ld(regs));
     tex_image_upload(pics + lwu((static_cast<uint32_t>(lang * 0x13) + lwu(0x0015ed84)) * 4 + pics + 0x50), regs);

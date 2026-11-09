@@ -119,7 +119,7 @@ int32_t galmap_planet_update(uint32_t w) {
         moby_sound_start(0, 0x11, lwu(w + 0x14));
         return 1;
     }
-    if ((b & 0x20) != 0) {
+    if ((b & 0x20) != 0 && !level_slots_map_row()) {  // (enhancement: a level mod's row has no movie)
         sw(MS + 0xe4, lwu(OV(0x00184414)));
         sw(MS + 0xf0, lwu(MS + 4));
         sw(MS + 0xf4, 0xf);
@@ -132,6 +132,7 @@ int32_t galmap_planet_update(uint32_t w) {
 // The planet page's model (transliterated: galactic_map_tr.cpp).
 // orig: 0x0027cbc0
 int32_t galmap_planet_draw(uint32_t w) {
+    if (level_slots_map_row()) return 8;  // enhancement: a level mod's row: not the base level's gold bolts (src/host/level_slots.h)
     return static_cast<int32_t>(galmap_planet_draw_u(w, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f).v0);
 }
 
