@@ -2277,6 +2277,8 @@ void pad_packet(GLFWwindow* win, uint64_t frame, int pre = -1) {
                     case 'e': held |= 0x0100; break;
                     case '1': held |= 0x0004; break;
                     case '2': held |= 0x0008; break;
+                    case '3': held |= 0x0001; break;
+                    case '4': held |= 0x0002; break;
                 }
             }
         }
@@ -2288,7 +2290,7 @@ void pad_packet(GLFWwindow* win, uint64_t frame, int pre = -1) {
         }
         if (std::strncmp(sim, "menu:", 5) == 0 || std::strncmp(sim, "map:", 4) == 0) {  // the pause menu opened (Start at 120;
             // map: Select), then one key every 30 frames from 60 frames after it is up (game mode 3, 0x15f5c4): u d l r up /
-            // down / left / right, x cross, o circle, t triangle, s Start, e Select, 1 / 2 L1 / R1, . nothing
+            // down / left / right, x cross, o circle, t triangle, s Start, e Select, 1 / 2 L1 / R1, 3 / 4 L2 / R2, . nothing
             static uint64_t open = 0;
             const bool map = sim[1] == 'a';
             const char* keys = sim + (map ? 4 : 5);
@@ -2311,6 +2313,8 @@ void pad_packet(GLFWwindow* win, uint64_t frame, int pre = -1) {
                     case 'e': held |= 0x0100; break;
                     case '1': held |= 0x0004; break;
                     case '2': held |= 0x0008; break;
+                    case '3': held |= 0x0001; break;
+                    case '4': held |= 0x0002; break;
                     case 'h': sim_host_press(keys, (frame - open) / 30); break;  // (RAC1_SIM_HOST's next input)
                     default: break;
                 }

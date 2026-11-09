@@ -262,6 +262,7 @@ Two pages of the same name. **The pause menu's** holds a playthrough's settings,
 | Row | Values (default first) | Kept |
 |---|---|---|
 | Quick Select | Normal, Pause | with the save |
+| Quick Select Rings | 1, 3 | with the save (rings 2 and 3 too) |
 | Aiming | Original, Modern, Modern, No Zoom | with the save |
 | Movement | Original, Strafing, RAC 3 | with the save |
 | Fades | Fast, Original | with the save |
@@ -395,6 +396,7 @@ New Game opens two windows before the game starts, in the game's own style (copi
 | | Original | Modern |
 |---|---|---|
 | Quick Select | Normal | Pause |
+| Quick Select Rings | 1 | 3 |
 | Aiming | Original | Modern |
 | Movement | Original | RAC 3 |
 | Buy All Ammo (the Vendor) | Off | On |

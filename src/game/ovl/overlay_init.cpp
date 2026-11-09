@@ -5,6 +5,7 @@
 #include <game/lib/snd989.h>
 #include <game/port_stubs.h>
 #include <host/level_slots.h>
+#include <host/quick_rings.h>
 
 namespace rac1 {
 
@@ -134,6 +135,7 @@ void item_give(int32_t id, int32_t equip) {
             return;
         }
     }
+    quick_rings_give(static_cast<uint32_t>(id));  // (enhancement: ring 1 full, ring 2's or 3's place, src/host/quick_rings.h)
 }
 
 // orig: 0x0023d198 — the inventory at a level start: the wrench (item 10) for a fresh game,

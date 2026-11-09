@@ -22,6 +22,7 @@
 #include <game/ovl/pause_menu.h>
 #include <game/ovl/pause_menu_pages.h>
 #include <game/ovl/planet_map.h>
+#include <host/quick_rings.h>
 
 #include <vector>
 
@@ -495,6 +496,7 @@ void challenge_game_image(int32_t n) {
     mem_copy(0x70000150, 0x00141ea0, 0x20);
     mem_copy(0x70000170, 0x0015edd0, 0xc);
     mem_copy(0x70000180, 0x0013d408, 0x20);
+    quick_rings_challenge_keep();  // (enhancement: rings 2 and 3 kept as ring 1, src/host/quick_rings.h)
     const uint32_t bolts = lwu(0x0015ed98);
     const int32_t count = lw(0x0015ee20);
     const bool f4 = lbu(0x0013d388 + 4) != 0, f5 = lbu(0x0013d388 + 5) != 0;
@@ -511,6 +513,7 @@ void challenge_game_image(int32_t n) {
         const uint32_t item = lwu(0x70000150 + i * 4);
         sw(0x00141ea0 + i * 4, lbu(item + 0x0013d4c0) == 0 ? 0u : item);
     }
+    quick_rings_challenge_restore();  // (enhancement)
     mem_copy(0x0015edd0, 0x70000170, 0xc);
     mem_copy(0x0013d408, 0x70000180, 0x20);
     sw(0x0015ed98, bolts);

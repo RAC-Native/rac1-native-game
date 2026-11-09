@@ -20,6 +20,7 @@ The Advanced page has these rows:
 | Row | Values (default first) | Kind |
 |---|---|---|
 | Quick Select | Normal, Pause | enhancement |
+| Quick Select Rings | 1, 3 | enhancement |
 | Aiming | Original, Modern, Modern, No Zoom | enhancement |
 | Movement | Original, Strafing, RAC 3 | enhancement |
 | Fades | Fast, Original | a removed compromise: Fast is the port's default, Original the PS2's |
@@ -64,7 +65,7 @@ port's fast fades). Left and right on a row step the value (`advanced_settings_d
   `update_channel`, and `update_skip`, the version the update notice's Skip Version chose), nor are
   Vibration and Adaptive Triggers (the machine's pad).
 
-The ids in `save<N>.pc`: Quick Select 1, Aiming 2, Movement 3, Fades 4, Buy All Ammo 5, Skip Cutscenes 10 (Vibration 6,
+The ids in `save<N>.pc`: Quick Select 1, Quick Select Rings 16, Aiming 2, Movement 3, Fades 4, Buy All Ammo 5, Skip Cutscenes 10 (Vibration 6,
 Adaptive Triggers 9 have ids but are not written with the saves; 7 and 8 are removed rows, and 11 was the Voice row,
 now on the Language page, never written with the saves; 12, Cut Content, 13, Corrected Texts, 14, 1.02 Fixes, and 15,
 1.02 Gameplay, are global and never written with the saves either: none reused).
@@ -79,7 +80,7 @@ A preferences file or a `save<N>.pc` written by an earlier build may hold a sett
 removed (`ship` and `clank`, the ship selector and Clank's movement, ids 7 and 8): it loads, and those
 lines are ignored.
 
-**The New Game choice.** Picking "Modern" in New Game's first window turns Quick Select, Aiming
+**The New Game choice.** Picking "Modern" in New Game's first window turns Quick Select, Quick Select Rings (3), Aiming
 (Modern), Movement (RAC 3), Buy All Ammo, Vibration (High), Skip Cutscenes (Always) and, when the pad in use is a
 DualSense, Adaptive Triggers on; "Original" turns them all off
 (`advanced_apply_mode`). Fades and the global rows are left as they are. Every setting can be changed at any time
@@ -98,6 +99,57 @@ Pause, it holds still.
 element is the one open (its update function is 0x237ba0, or 0x238b80 for the variant the hero opens
 in his other mode). `gameplay_frame` (0x297f78, `src/game/ovl/game_frame.cpp`) then skips the hero,
 the mobys, the particles and the camera for that frame, and the play-time statistic does not count it.
+
+## Quick Select Rings: 1 or 3
+
+With 3, the quick select has three rings of eight places, as in the later games: ring 1 is the game's own, rings 2 and 3
+are extra. At 1 (the default, and New Game's Original) the game is the original's; New Game's Modern turns it to 3.
+
+- **In game**, while the ring is open (Triangle held): **L1 or L2** shows the ring on the left, **R1 or R2** the ring on
+  the right. They wrap (left of ring 1 is ring 3). Those presses never reach the game: no crouch, no first-person view,
+  no Modern aiming's fire, until the button is let go (a button held before the ring opened stays the game's). Above
+  the ring: the L1 / R1 arrows (the pause page's frame 0xe99e and the font's L1 / R1 glyphs) and three dots, the ring
+  shown lit; the new ring's icons fade in. The selection stays on its place when the new ring has an item there. The
+  stick, the d-pad and the PC's next / previous weapon (mouse wheel, X) choose inside the ring shown; letting go of
+  Triangle equips from it, as the game does (gadgets too: the Drone Device's own request).
+- **Which ring opens**: the one shown when the quick select last closed. Closed, the PC's next / previous weapon steps
+  through that ring.
+- **Pause menu > Quick Select**: L1 / R1 still turn the selected place; **L2 / R2** change the ring being edited, shown
+  in the wheel's centre ("Ring 2", its dots under it) with the L2 / R2 arrows in the page's bottom corners. The page
+  opens on the ring the quick select shows. Cross puts the focused item in the ring edited: the same item may be in more
+  than one ring, and placing it takes it only from its old place in that ring.
+- **New items**: a weapon the game would put in ring 1's first free place goes, when ring 1 is full, to ring 2's first
+  free place, then ring 3's.
+- **Mods**: a plugin's `weapon_allow` leaves the weapons it does not allow out of every ring (empty places), as it does
+  for ring 1.
+
+**Where they are kept.** Ring 1 stays the game's list 0x141ea0, in the game's own save as before. Rings 2 and 3 and the
+ring last used are item 0x400 of `save<N>.pc` (18 bytes: version 1, the ring last used 0..2, then rings 2 and 3, one byte
+an item id, 0 empty), written only when there is something in them ([Saves](saves.md)). The original game, PCSX2 or a PS2
+read the card as before and never see them. A new game empties them; a save without the item loads with them empty; a
+challenge mode's new game keeps them, as it keeps ring 1 (items no longer owned dropped); deleting the save data deletes
+the `.pc` files with it.
+
+**How it is built** (`src/game/enhance/quick_rings.cpp`, `src/host/quick_rings.h`; the row's byte in `advanced.cpp`):
+
+- `pad_build` (the pad state the game reads) passes the controller's buttons through `quick_rings_pad` first: with the
+  quick select open (the HUD's slot 3 updated by 0x237ba0) a shoulder button's press is noted as a ring switch and taken
+  out of the buttons the game sees until it is let go.
+- `quick_select_start` (0x237ae8) fills the eight slots from ring 1 as the original; then the ring last used is put in
+  them. `quick_select_update` (0x237ba0) switches the ring asked for (the slots' items and icons again, the plugin's
+  disallowed items blanked); `quick_select_draw` (0x2382a0) draws the arrows and dots above the box and reads the
+  shown ring's item for the ammo and the name. The equip path is the game's: the slot's item.
+- `menu_quick_focus_in` / `focus_out` / `update` / `draw` (0x27a610, 0x27a6a8, 0x27a3e8, 0x27e768) read and write the ring
+  edited instead of 0x141ea0 when it is ring 2 or 3.
+- `item_give` (0x260860) calls `quick_rings_give` when ring 1 had no free place.
+- The texts: the row 0x7f22 ("Quick Select Rings"), its values 0x7f23 / 0x7f24 ("1", "3"); "Ring 1".."Ring 3" 0x7a00..0x7a02,
+  made at each lookup in the block 0xfa100..0xfa200 (the buttons' glyph strings there too).
+- The log: `[quick rings] opened on ring N (in hand 0x..)`, `ring N shown`, `closed on ring N, place P, item 0x..`,
+  `shoulder buttons 0x.. kept from the game`, `rings 2 and 3 loaded with the save`.
+
+At 1, and with every enhancement off (the headless tests), none of it runs: a scripted run with the ring opened and the
+shoulder buttons pressed, in game and on the pause page, gives the same RAM, frame by frame, as the build before it but for
+the Advanced page's own block (its new row and texts).
 
 ## Vibration (#10)
 

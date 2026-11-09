@@ -4,6 +4,7 @@
 #include <game/input/pad_build.h>
 #include <game/ovl/ovl_common.h>
 #include <host/mod_code.h>
+#include <host/quick_rings.h>
 
 namespace rac1 {
 
@@ -42,8 +43,9 @@ uint32_t swap_lr(uint32_t b) {
 // pressed history +0x1e0 (30 words, count +0x190); the auto-repeat of held buttons (+0x34d..f).
 // orig: 0x002671b0 (the overlay's copy of the base ELF's 0x00217328)
 void pad_build(uint32_t pad, const uint8_t* data, int32_t len) {
-    // (enhancement: the modern controls remap L2 / R2 in gameplay)
-    const uint32_t word = advanced_pad_remap(pad, ((static_cast<uint32_t>(data[0]) << 8) | data[1]) ^ 0xffffu);
+    // (enhancement: the modern controls remap L2 / R2 in gameplay; with three quick select rings, the shoulder buttons that
+    // switch the ring are not the game's, src/host/quick_rings.h)
+    const uint32_t word = advanced_pad_remap(pad, quick_rings_pad(pad, ((static_cast<uint32_t>(data[0]) << 8) | data[1]) ^ 0xffffu));
     sw(pad + 0x1b0, word);
     sw(pad + 0x1a0, word);
     for (uint32_t o = 0x13c; o >= 0x100; o -= 4) sw(pad + o, 0);
