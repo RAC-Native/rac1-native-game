@@ -127,10 +127,10 @@ void patch_tie(float s) {
     const int32_t n = lw(OV(0x00160fbcu));
     for (int32_t c = 0; c < n && c < 4096; ++c) {
         const uint32_t r = lwu(OV(0x001c5800u) + 4 * static_cast<uint32_t>(c));
-        if (r == 0 || r >= 0x02000000u) continue;
+        if (r == 0 || r >= ee_game_ram_end()) continue;
         for (uint32_t k = 0; k < 3; ++k) swc1(r + 0x10 + 4 * k, scaled(lwc1(r + 0x10 + 4 * k), s));
         const uint32_t b = lwu(r + 0x28), m = lhu(r + 0x26);
-        if (b == 0 || b >= 0x02000000u) continue;
+        if (b == 0 || b >= ee_game_ram_end()) continue;
         for (uint32_t i = 0; i < m; ++i) sw(b + i * 0x20 + 0x14, scaled_bits(lwu(b + i * 0x20 + 0x14), s));
     }
 }
@@ -146,9 +146,9 @@ void patch_shrub(float s) {
     const int32_t n = lw(OV(0x0016048cu));
     for (int32_t c = 0; c < n && c < 4096; ++c) {
         const uint32_t r = lwu(OV(0x001bc030u) + 4 * static_cast<uint32_t>(c));
-        if (r == 0 || r >= 0x02000000u) continue;
+        if (r == 0 || r >= ee_game_ram_end()) continue;
         const uint32_t b = lwu(r + 0x18), m = lhu(r + 0x16);
-        if (b == 0 || b >= 0x02000000u) continue;
+        if (b == 0 || b >= ee_game_ram_end()) continue;
         for (uint32_t i = 0; i < m; ++i) sw(b + i * 0x20 + 0x10, scaled_bits(lwu(b + i * 0x20 + 0x10), s));
         static const bool keep_fade = std::getenv("RAC1_MRP_LOD_KEEP_FADE") != nullptr;  // (testing: the switch distance not scaled)
         if (lwu(r + 0x1c) == 0 || keep_fade) continue;
@@ -912,7 +912,7 @@ void patch_moby(float s) {
     sw(OV(0x0015fff0u), static_cast<uint32_t>(dist(lw(OV(0x0015fff0u)), 0x7fff)));
     uint32_t m = lwu(OV(0x0015ffd8u));
     if (g_lod_patch == 0) {
-        for (int guard = 0; guard < 4096 && m != 0 && m < 0x02000000u && lbu(m + 0x20) != 0xff; ++guard, m += 0x100) {
+        for (int guard = 0; guard < 4096 && m != 0 && m < ee_game_ram_end() && lbu(m + 0x20) != 0xff; ++guard, m += 0x100) {
             const int32_t d = lh(m + 0x32);
             // a moby whose class is not loaded (+0x24 = 0: no model; e.g. class 805 on level 9) keeps the game's distances: drawn,
             // the loop would walk a null class's packets (lbu(0 + 4) = 0 -> the parts loop never meets its end) past the scratchpad's end; the
@@ -927,7 +927,7 @@ void patch_moby(float s) {
     g_moby_undo.clear();
     if (s == 1.0f && g_lod_patch != 2) return;
     uint8_t* const ram = ee_get_ram_base();
-    for (int guard = 0; guard < 4096 && m != 0 && m < 0x02000000u - 0x100u && ram[m + 0x20] != 0xff; ++guard, m += 0x100) {
+    for (int guard = 0; guard < 4096 && m != 0 && m < ee_game_ram_end() - 0x100u && ram[m + 0x20] != 0xff; ++guard, m += 0x100) {
         uint8_t* const p = ram + m;
         uint32_t cls;
         std::memcpy(&cls, p + 0x24, 4);
@@ -1003,10 +1003,10 @@ void mrp_lod_moby_shadow(void (*pass)()) {
         uint32_t m = lwu(OV(0x0015ffd8u));
         if (g_lod_patch != 0) {  // (the bytes straight from RAM: reads)
             const uint8_t* const ram = ee_get_ram_base();
-            for (int guard = 0; guard < 4096 && m != 0 && m < 0x02000000u - 0x100u && ram[m + 0x20] != 0xff; ++guard, m += 0x100)
+            for (int guard = 0; guard < 4096 && m != 0 && m < ee_game_ram_end() - 0x100u && ram[m + 0x20] != 0xff; ++guard, m += 0x100)
                 g_ps.drawn.emplace_back(m, ram[m + 0x31]);
         } else
-            for (int guard = 0; guard < 4096 && m != 0 && m < 0x02000000u && lbu(m + 0x20) != 0xff; ++guard, m += 0x100)
+            for (int guard = 0; guard < 4096 && m != 0 && m < ee_game_ram_end() && lbu(m + 0x20) != 0xff; ++guard, m += 0x100)
                 g_ps.drawn.emplace_back(m, static_cast<uint8_t>(lbu(m + 0x31)));
         g_ps.drawn_valid = true;
     }

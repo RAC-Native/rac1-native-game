@@ -455,7 +455,7 @@ std::unique_ptr<ClassGpu> build_class(std::unique_ptr<mrp::MobyClass> asset, uin
             const uint32_t vif = ptab != 0 ? lwu(ptab + static_cast<uint32_t>(pi) * 0x10) : 0;
             for (size_t k = 0; k < p.textures.size(); ++k) {
                 bool fm = false;
-                pg.prims.push_back(prim_info(p.textures[k], vif != 0 && vif < 0x02000000u ? vif + p.vif_tex_off + static_cast<uint32_t>(k) * 0x40 : 0, fm));
+                pg.prims.push_back(prim_info(p.textures[k], vif != 0 && vif < ee_game_ram_end() ? vif + p.vif_tex_off + static_cast<uint32_t>(k) * 0x40 : 0, fm));
             }
             pg.last_prim = static_cast<int>(p.textures.size()) - 1;
             continue;
@@ -464,7 +464,7 @@ std::unique_ptr<ClassGpu> build_class(std::unique_ptr<mrp::MobyClass> asset, uin
         pg.tint_part = c.tint_first[p.lod] != 0xff && p.index_in_lod >= c.tint_first[p.lod];
         const uint32_t vif = ptab != 0 ? lwu(ptab + static_cast<uint32_t>(pi) * 0x10) : 0;
         for (size_t k = 0; k < p.textures.size(); ++k) {
-            const uint32_t mem_prim = vif != 0 && vif < 0x02000000u ? vif + p.vif_tex_off + static_cast<uint32_t>(k) * 0x40 : 0;
+            const uint32_t mem_prim = vif != 0 && vif < ee_game_ram_end() ? vif + p.vif_tex_off + static_cast<uint32_t>(k) * 0x40 : 0;
             bool fm = false;
             PrimInfo info = prim_info(p.textures[k], mem_prim, fm);
             if (fm) cg->from_memory_prims = true;
@@ -820,7 +820,7 @@ void load_level(int id) {
 ClassGpu* class_of(uint32_t class_ptr, int class_id) {
     Level& L = g_level;
     const uint32_t pt = lwu(class_ptr);
-    const uint32_t vd = pt != 0 && pt < 0x02000000u ? lwu(pt + 8) : 0;  // the first packet's vertex data
+    const uint32_t vd = pt != 0 && pt < ee_game_ram_end() ? lwu(pt + 8) : 0;  // the first packet's vertex data
     const uint64_t key = static_cast<uint64_t>(class_ptr) | (static_cast<uint64_t>(static_cast<uint16_t>(class_id)) << 32);
     auto it = L.by_ptr.find(key);
     if (it != L.by_ptr.end()) {
@@ -843,7 +843,7 @@ ClassGpu* class_of(uint32_t class_ptr, int class_id) {
         if (f != L.files.end()) asset = std::make_unique<mrp::MobyClass>(*f->second);
     }
     int class_armor = -1;
-    if (vd != 0 && vd < 0x02000000u)  // the armor's classes: their file k names the armor's two textures
+    if (vd != 0 && vd < ee_game_ram_end())  // the armor's classes: their file k names the armor's two textures
         for (size_t i = 0; i < L.armor.size(); ++i) {
             const auto& v0 = L.armor[i]->packets[0].vdata;
             bool same = lbu(pt + 0xc) * 16u == v0.size();
@@ -2071,7 +2071,7 @@ void build_frame() {
         static const bool class_check = std::getenv("RAC1_MRP_CLASS_CHECK") != nullptr;  // (testing: the class the MRP draws vs the game's)
         if (class_check) {
             ++g_st.cc_mobys;
-            const uint32_t pt = lwu(m.class_ptr), vd = pt != 0 && pt < 0x02000000u ? lwu(pt + 8) : 0, vn = pt != 0 && pt < 0x02000000u ? lbu(pt + 0xc) * 16u : 0;
+            const uint32_t pt = lwu(m.class_ptr), vd = pt != 0 && pt < ee_game_ram_end() ? lwu(pt + 8) : 0, vn = pt != 0 && pt < ee_game_ram_end() ? lbu(pt + 0xc) * 16u : 0;
             const auto& v0 = cg->asset->packets.empty() ? std::vector<uint8_t>{} : cg->asset->packets[0].vdata;
             bool same = vd != 0 && vn == v0.size();
             for (size_t i = 0; same && i < v0.size(); ++i) same = lbu(vd + static_cast<uint32_t>(i)) == v0[i];

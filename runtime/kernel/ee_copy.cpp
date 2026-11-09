@@ -37,7 +37,7 @@ void ee_copy_take(const EeCopyRange* ranges, int n) {
     using namespace ee_copy_detail;
     const uint8_t* ram = ee_get_ram_base();
     for (int i = 0; i < kRanges; ++i) {
-        const bool ok = ram != nullptr && i < n && ranges[i].first != 0 && ranges[i].end > ranges[i].first && ranges[i].end <= 0x02000000u;
+        const bool ok = ram != nullptr && i < n && ranges[i].first != 0 && ranges[i].end > ranges[i].first && ranges[i].end <= ee_game_ram_end();
         if (!ok) {
             g_ranges[i] = Range{};
             continue;

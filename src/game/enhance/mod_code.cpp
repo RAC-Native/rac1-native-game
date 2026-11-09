@@ -64,7 +64,6 @@ constexpr uint32_t HEAP = 0x000e2000u, HEAP_END = 0x000ef400u;
 constexpr uint32_t SFX_DEFS = 0x000ef800u, SFX_MAX = 64;
 constexpr uint32_t PC_ITEM = 0x300;  // our item in save<N>.pc: a plugin's bytes (level mods' items are 0x200)
 constexpr uint32_t PC_VERSION = 1;
-constexpr uint32_t RAM_SIZE = 0x02000000u;
 constexpr uint32_t LEVEL = 0x0015ed84u;
 
 // An angle (radians) folded into -pi..pi. The game's rotation matrix (euler_to_mat3_vu, the VU0 program 0x1a3) folds its
@@ -174,7 +173,7 @@ void with(Plugin& p, F&& f) {
     g_cur = prev;
 }
 
-bool addr_ok(uint32_t a, uint32_t n) { return a != 0 && a < RAM_SIZE && n <= RAM_SIZE - a; }
+bool addr_ok(uint32_t a, uint32_t n) { return a != 0 && a < ee_game_ram_end() && n <= ee_game_ram_end() - a; }
 
 void say(const char* what, uint32_t a) {
     std::fprintf(stderr, "[mod %s] %s at %#x: not in the game's memory, ignored\n", g_cur != nullptr ? g_cur->mod->folder.c_str() : "?", what, a);

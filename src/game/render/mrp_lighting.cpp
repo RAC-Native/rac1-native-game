@@ -555,7 +555,7 @@ void tfrag_light_trace() {
     for (int32_t i = 0; i < count; ++i) {
         const uint32_t ent = table + 0x40 * static_cast<uint32_t>(i);
         const uint32_t data = draw_lwu(ent + 0x10);
-        if (data == 0 || data >= 0x02000000u) continue;
+        if (data == 0 || data >= ee_game_ram_end()) continue;
         const int8_t single = static_cast<int8_t>(draw_lbu(ent + 0x34));  // (>= 0: one set for the whole entry, its count +0x29 pairs)
         const uint32_t va = data + static_cast<uint32_t>(static_cast<int32_t>(draw_lh(ent + 0x30))) + 0x10;
         const uint32_t nv = single >= 0 ? 2u * draw_lbu(ent + 0x29) : draw_lbu(ent + 0x3c);
