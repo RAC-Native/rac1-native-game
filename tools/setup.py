@@ -2514,6 +2514,10 @@ def main():
     if sys.argv[1:] == ["--check-system"]:  # step 1 only: exit status 0, 1 (missing), or 20 (build in a container)
         check_system()
         return
+    if "--wiiu" in sys.argv[1:]:  # the Wii U: its build and its SD card's tree, after this setup (ports/wiiu/tools/wiiu_setup.py)
+        sys.path.insert(0, str(ROOT / "ports/wiiu/tools"))
+        import wiiu_setup
+        sys.exit(wiiu_setup.main([a for a in sys.argv[1:] if a != "--wiiu"]))
     if sys.argv[1:] == ["--check"]:  # exit status 10 when a setup is due (what it would redo, one per line)
         due = setup_due()
         print("\n".join(due) if due else "up to date")

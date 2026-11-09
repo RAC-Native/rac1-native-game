@@ -9,7 +9,8 @@ measures the link. It does not start the game yet, and it carries no game code o
 | `core/` | The receiver: protocol, pipeline, manifest, path whitelist, hashes. Portable C11 + POSIX + pthreads. The **same code** runs on the console and in the PC stand-in. |
 | `console/` | The Wii U app (`rac1-link.rpx` / `.wuhb`): WHB console text on TV + GamePad, ProcUI, network wait, somemopt option. |
 | `host/` | `rac1-link-host`: the receiver built for a PC (a folder stands in for the SD card), for the loopback test. |
-| `pc/rac1_link.py` | The PC side, Python 3 standard library only: discover, pair, status, send, bench, config, quit. |
+| `pc/rac1_link.py` | The PC side, Python 3 standard library only: discover, pair, status, send, adopt, bench, config, quit, launch. |
+| `../../../tools/wiiu_backend.py` | The PC backend on top of it (setup, send of the staged SD tree, launch): see below. |
 | `pc/test_loopback.py` | The loopback test (generated data only). |
 
 ## Build
@@ -97,6 +98,16 @@ prints one line per file of 1 MiB or more, a progress line every 2 s, and the sa
   thread (a ring of 6), fsyncs and sends `ACK offset` every 16 MiB, checks the SHA-1, renames (an existing file goes
   to `.old` first, then is removed). A chunk with a bad CRC gets `RESEND offset`; three bad chunks fail the file and
   delete the `.part`.
+- **Small files in a row** (`BEGIN_FILE` flag `PIPE`, 8): no `READY` (the file starts at 0, no resume), the PC sends
+  `BEGIN_FILE`, the `DATA` and `END_FILE` of the next files without waiting, up to 16 MiB / 256 files unanswered;
+  `FILE_OK` / `FILE_BAD` answer each in order. A refused file (path, space, card) gets `FILE_BAD` with `code=` and its
+  frames are dropped, so the files after it go on; a bad CRC fails the file (the backend sends it again alone); no
+  fsync of its own (closing it flushes it). `rac1_link.py send` and the backend use it for runs of files up to 4 MiB
+  (`--no-pipe`: one by one). The console also measures the free space at most every 10 s and makes a folder once.
+- **Adopt** (`ADOPT` 26 → `ADOPT_OK` 27): the PC lists `size sha1 path`; the console records as committed each file
+  already on its card with that size and SHA-1 (it reads and hashes them, `ACK` every 2 s meanwhile), and answers the
+  counts plus `M path` (not on the card) / `D path` (another size or other bytes). A card filled by hand is then sent
+  only what differs: `rac1_link.py adopt LOCAL --dest ...`, and the backend's `send` does it by itself.
 - **Manifest** `sd:/rac1-native/.link/manifest.txt`: `F` (committed: size, SHA-1, path) and `P` (a `.part` of 8 MiB or
   more in progress). `send` skips files the console has with the same size and SHA-1; a file counts as installed only
   if it is also on the card with that size. Resume restarts from the `.part`'s size rounded down to 1 MiB; the console
@@ -118,6 +129,21 @@ stand-in), CRC failures (two resent chunks; every chunk bad → `FILE_BAD`, `.pa
 with nothing written outside, a 30-file folder and its update (1 sent, 29 skipped, no `.old` left), the bench modes,
 `config` (new listener) and `quit`.
 
+## The PC backend (`tools/wiiu_backend.py`)
+
+```sh
+python3 tools/wiiu_backend.py setup                 # the PC setup when due, then setup.py --wiiu: build-wiiu/sd + sd-manifest.txt
+python3 tools/wiiu_backend.py pair --code NNNNNN    # once (the code is on the TV)
+python3 tools/wiiu_backend.py status                # per component: up to date / to send
+python3 tools/wiiu_backend.py send --launch         # what changed, in order: game, shaders, run.cfg (only if none), core, levels, movies
+python3 tools/wiiu_backend.py sync --launch         # setup + send
+```
+
+`setup.py --wiiu` (`ports/wiiu/tools/wiiu_setup.py`) stages the tree as the console reads it (hard links into `assets/`
+and the build: no second copy of the 4.7 GB) and writes `build-wiiu/sd-manifest.txt` (`sha1 size component path`).
+`send` diffs it against the console's manifest, has the console adopt what is already on its card, then sends the rest
+(`--component`, `--level N`, `--no-movies`, `--dry-run`); `--json` gives JSON lines for the launcher's Wii U page.
+
 ## Known limits (prototype)
 
 - **First console run (2026-11-09, Daino's Wii U on Wi-Fi, Aroma):** pairing, the benches, a real send with SHA-1
@@ -137,8 +163,8 @@ with nothing written outside, a 30-file folder and its update (1 sent, 29 skippe
 - The console's random numbers are the time base hashed with SHA-256, not a CSPRNG.
 - No `COMMIT`/generation, no `commit.log`, no `.wuhb` swap, no launching of the game, no self-update, no free-space
   check across a whole folder (per file only), no `PROGRESS` from a PC setup (only the file name).
-- Small files are written and fsync'd one by one (no batching); the manifest is a linear list (thousands of files
-  are fine, not tens of thousands), saved after big files and every 5 s.
+- The manifest is a linear list (thousands of files are fine, not tens of thousands), saved after big files and every
+  5 s; `GET_MANIFEST` stats every committed file on the card.
 - Discovery sends only to 255.255.255.255 (or `--broadcast ADDR`, repeatable), not to each interface's directed
   broadcast.
 - The UI is the scrolling WHB log: no progress bar, no menu; A shows the IP and code again.
