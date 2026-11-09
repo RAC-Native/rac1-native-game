@@ -44,6 +44,7 @@ enum link_msg {
     LINK_CANCEL = 22,       // PC->C  inside a file: stop, keep the .part (answered with ACK)
     LINK_BYE = 23,
     LINK_QUIT = 24,         // PC->C  close rac1-link and go back to the Wii U Menu (remote tests)
+    LINK_LAUNCH = 25,       // PC->C  start the game (sd:/wiiu/apps/rac1-native/rac1-native.rpx); the session ends
 };
 
 // BEGIN_FILE flags

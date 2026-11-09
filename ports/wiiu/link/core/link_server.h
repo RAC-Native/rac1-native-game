@@ -35,7 +35,8 @@ typedef struct link_status {
     uint64_t done, total;
     uint64_t file_start_us;
     unsigned files_ok, files_bad, sessions;
-    int quit_requested;  // the PC sent QUIT
+    int quit_requested;    // the PC sent QUIT
+    int launch_requested;  // the PC sent LAUNCH (the platform starts the game)
 } link_status;
 
 typedef struct link_server link_server;

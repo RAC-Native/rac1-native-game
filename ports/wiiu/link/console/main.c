@@ -24,6 +24,7 @@
 #include <nn/nets2/somemopt.h>
 #include <nsysnet/_socket.h>
 #include <proc_ui/procui.h>
+#include <rpxloader/rpxloader.h>
 #include <pthread.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -178,7 +179,29 @@ static void banner(link_server *s)
     WHBLogPrintf("IP %s   TCP %d   discovery UDP %d   log UDP 4405", g_ip, LINK_TCP_PORT, LINK_UDP_PORT);
     WHBLogPrintf("Pairing code: %s", link_server_code(s));
     WHBLogPrintf("Writes only to sd:/rac1-native/ and sd:/wiiu/apps/rac1-native/");
-    WHBLogPrintf("HOME: exit   A: show this again");
+    WHBLogPrintf("A: start the game   Y: show this again   HOME: exit");
+}
+
+// the game, as the PC put it on the card, started through Aroma's RPX loader (its wrapper app); 1 when it is on its way
+#define GAME_RPX "wiiu/apps/rac1-native/rac1-native.rpx"
+static int launch_game(void)
+{
+    FILE *f = fopen(SD_ROOT "/" GAME_RPX, "rb");
+    if (!f) {
+        WHBLogPrintf("The game is not on the SD card yet: send it from the PC first.");
+        return 0;
+    }
+    fclose(f);
+    if (RPXLoader_InitLibrary() != RPX_LOADER_RESULT_SUCCESS) {
+        WHBLogPrintf("Cannot start the game: Aroma's RPX loader is missing.");
+        return 0;
+    }
+    WHBLogPrintf("Starting the game...");
+    if (RPXLoader_LaunchHomebrew(GAME_RPX) != RPX_LOADER_RESULT_SUCCESS) {
+        WHBLogPrintf("The RPX loader could not start the game.");
+        return 0;
+    }
+    return 1;
 }
 
 int main(int argc, char **argv)
@@ -261,6 +284,8 @@ int main(int argc, char **argv)
                 banner(s);
             }
             last_state = st.state;
+            if (st.launch_requested && !quitting && launch_game())
+                quitting = 1;
             if (st.quit_requested && !quitting) {
                 quitting = 1;
                 WHBLogPrintf("rac1-link: auto-exit (asked by the PC)");
@@ -269,8 +294,12 @@ int main(int argc, char **argv)
             }
             VPADStatus vs;
             VPADReadError err;
-            if (VPADRead(VPAD_CHAN_0, &vs, 1, &err) == 1 && err == VPAD_READ_SUCCESS && (vs.trigger & VPAD_BUTTON_A))
-                banner(s);
+            if (VPADRead(VPAD_CHAN_0, &vs, 1, &err) == 1 && err == VPAD_READ_SUCCESS) {
+                if ((vs.trigger & VPAD_BUTTON_A) && !quitting && launch_game())
+                    quitting = 1;
+                if (vs.trigger & VPAD_BUTTON_Y)
+                    banner(s);
+            }
         }
         WHBLogConsoleDraw();
         OSSleepTicks(OSMillisecondsToTicks(16));

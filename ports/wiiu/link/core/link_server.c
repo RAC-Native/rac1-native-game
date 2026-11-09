@@ -1212,6 +1212,13 @@ static void session(link_server *s, int fd, const char *peer)
             pthread_mutex_unlock(&s->lock);
             r = -1;
         }
+        else if (h.type == LINK_LAUNCH) {
+            lp_log("the PC asked to start the game");
+            pthread_mutex_lock(&s->lock);
+            s->st.launch_requested = 1;
+            pthread_mutex_unlock(&s->lock);
+            r = -1;
+        }
         else if (h.type == LINK_PROGRESS) {
             char t[120];
             if (kv_get(body, "text", t, sizeof t) == 0)

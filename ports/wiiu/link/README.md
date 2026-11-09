@@ -124,6 +124,10 @@ with nothing written outside, a 30-file folder and its update (1 sent, 29 skippe
   and `quit` all work. Measured: `net` 0.88 MiB/s, `sd` 16.3 MiB/s write / 21.5 read (one 64 MiB file, aligned 1 MiB
   writes), `both` 0.87 MiB/s with the card never waited for, hashing 38-45 MiB/s. The network is the whole limit on
   this console (wiiload ~1 MB/s, BaristaMAN 0.45): the full SD tree (~4.7 GB) is ~1.5 h over this Wi-Fi.
+- **Starting the game (2026-11-09):** `LAUNCH` (25, `rac1_link.py launch`) or **A** on the GamePad starts
+  `sd:/wiiu/apps/rac1-native/rac1-native.rpx` through Aroma's RPX loader (wums' librpxloader); Y shows the banner again.
+  Tested on the console: a sent `.rpx` started, rac1-link closed by itself. 199 small files (8.8 MiB): 24.4 s, ~0.12 s a
+  file of round trips and card work (the full SD tree's ~6,850 files: ~14 min of that besides the bytes).
 - Still open from the first test: FSA's behaviour on `ftruncate` and re-opening a `.part`
   on resume, `statvfs` on `fs:/vol/external01`, whether pthreads from wut land on a sensible core (`affinity=1` in
   `link.cfg` pins net to core 2, writer to core 0), and somemopt (3 MiB, `socket_lib_finish` at exit to end it).

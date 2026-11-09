@@ -34,7 +34,7 @@ CHUNK = 1 << 20
 FILE_MAX = 0xFFFFFFFF
 
 HELLO, AUTH, AUTH_OK, ERROR, GET_MANIFEST, MANIFEST, BEGIN_FILE, READY, DATA, ACK, RESEND, END_FILE, FILE_OK, \
-    FILE_BAD, BENCH_SD, BENCH_RESULT, CONFIG, CONFIG_OK, PROGRESS, PING, PONG, CANCEL, BYE, QUIT = range(1, 25)
+    FILE_BAD, BENCH_SD, BENCH_RESULT, CONFIG, CONFIG_OK, PROGRESS, PING, PONG, CANCEL, BYE, QUIT, LAUNCH = range(1, 26)
 NAMES = {v: k for k, v in globals().items() if isinstance(v, int) and k.isupper() and 1 <= v <= 24 and k not in
          ("PROTO",)}
 F_DISCARD, F_NOHASH, F_BENCH = 1, 2, 4
@@ -601,6 +601,14 @@ def cmd_quit(args, out):
     return 0
 
 
+def cmd_launch(args, out):
+    s = connect(args, out)
+    s.send(LAUNCH)
+    s.sock.close()
+    out.info("asked rac1-link on %s to start the game" % s.host)
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--console", help="the console's IP (default: discovery, then the last one)")
@@ -636,11 +644,13 @@ def main(argv=None):
     for o in ("rcvbuf", "winscale", "sack", "noslowstart", "rusrbuf", "somemopt", "somemopt_big"):
         p.add_argument("--" + o.replace("_", "-"), dest=o, type=int)
     sub.add_parser("quit", help="close rac1-link on the console (back to the Wii U Menu)")
+    sub.add_parser("launch", help="start the game on the console (sd:/wiiu/apps/rac1-native/rac1-native.rpx)")
     args = ap.parse_args(argv)
     out = Out(args.json, args.quiet)
     try:
         return {"discover": cmd_discover, "pair": cmd_pair, "status": cmd_status, "send": cmd_send,
-                "bench": cmd_bench, "config": cmd_config, "quit": cmd_quit}[args.cmd](args, out)
+                "bench": cmd_bench, "config": cmd_config, "quit": cmd_quit,
+                "launch": cmd_launch}[args.cmd](args, out)
     except (LinkError, OSError) as e:
         out.info("error: %s" % e)
         out.event("error", text=str(e))
