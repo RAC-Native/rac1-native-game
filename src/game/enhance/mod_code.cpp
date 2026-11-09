@@ -47,6 +47,7 @@ namespace rac1 {
 bool g_mod_code_any = false;
 bool g_mod_code_objects = false;
 bool g_mod_update_all = false;
+bool g_mod_weapons_limited = false;
 
 namespace {
 
@@ -56,6 +57,7 @@ namespace {
 // (advanced.cpp).
 constexpr uint32_t SCRATCH = 0x000e1000u, STRINGS = 0x000e1100u, STRING_SIZE = 0x100, STRING_COUNT = 15;
 constexpr uint32_t HEAP = 0x000e2000u, HEAP_END = 0x000ef400u;
+// (ABI 5) 0xdf000..0xe0000 below it: Kalebo III's enemies' paths (KAL_MEM, below), written only on a level mod's level
 // (ABI 4) the frame's lights of the plugins (light_add), 0xef400..0xef800: their count, then MOD_LIGHT_MAX of 0x20 bytes (x y z
 // radius, r g b, 0): in the game's memory, so that a frame's drawing reads its own frame's (the copy taken at its prepare,
 // orig_main.cpp's draw_memory_take; mrp_lighting.cpp's mod_lights_add)
@@ -778,8 +780,18 @@ struct PoolObj {
     std::vector<uint8_t> m, pv;  // (as loaded)
     bool out = false;            // started by base_spawn (until it is gone)
     uint16_t gen = 0;
+    // (ABI 5) Kalebo III's enemies (kal_*): the level's paths this object owns (the path table's index and its memory, -1 none),
+    // its start (woken), base_hunt's, the place its hunt last aimed from, a dropship's troopers (pool indices)
+    int16_t path[2] = {-1, -1};
+    uint32_t pmem[2] = {0, 0};
+    bool adapted = false, refused = false, woke = false, hunt = false;
+    float anchor[3] = {0, 0, 0};
+    float start[4] = {0, 0, 0, 0};
+    std::vector<size_t> troops;
 };
 std::vector<PoolObj> g_pool;
+void kal_pool_take();
+void kal_spawned(size_t i);
 
 // a started pool object still lives (its moby its class's, its pvars its own, in play)
 bool pool_alive(const PoolObj& o) {
@@ -813,13 +825,14 @@ void pool_take(int slot) {
             ++n;
         }
     std::printf("[sdk] level slot %d: %zu objects in the spawn pools (base_spawn)\n", slot, n);
+    kal_pool_take();
 }
 
 uint32_t api_base_spawn(int32_t cls, const float pos[3], float yaw) {
     if (pos == nullptr) return 0;
     for (size_t i = 0; i < g_pool.size(); ++i) {
         PoolObj& o = g_pool[i];
-        if (o.cls != cls) continue;
+        if (o.cls != cls || o.refused) continue;
         if (o.out && pool_alive(o)) continue;
         if (o.out) o.out = false;  // (gone: its room free again)
         if (static_cast<int8_t>(lbu(o.moby + 0x20)) >= 0) continue;  // (in play otherwise: not ours to take)
@@ -833,6 +846,8 @@ uint32_t api_base_spawn(int32_t cls, const float pos[3], float yaw) {
         swc1(m + 0x48, fold_angle(yaw));
         moby_update_transform(m);
         o.out = true;
+        o.start[0] = pos[0], o.start[1] = pos[1], o.start[2] = pos[2], o.start[3] = fold_angle(yaw);
+        kal_spawned(i);
         ++o.gen;
         if (o.gen == 0) o.gen = 1;
         return static_cast<uint32_t>(o.gen) << 16 | static_cast<uint32_t>(i + 1);
@@ -875,12 +890,292 @@ struct Hunter {
 };
 std::vector<Hunter> g_hunters;
 
+// ---- (ABI 5) Kalebo III's enemies started by base_spawn on a level mod ----
+// On Kalebo III's own level these wait for its data: the level's paths (the table 0x1b04b0, Kalebo's 0x1b0930: a path is its
+// point count, 12 bytes, then points of 16 bytes), its moby groups, its markers, a trigger class that wakes them. A level mod
+// has none of them (the composer keeps the flight path only), so a pool object of these classes is given what it reads, at
+// its base_spawn: paths of its own (kept in the mods' block below the level mods' texts, their indices in the path table's
+// entries the level does not use, from its end), the indices its pvars name set to them or to none. Per class (the updates'
+// addresses are Kalebo III's):
+// - 52, the bomb bots (0x2a1088): its area (+0x180, the polygon target_select reads) a square of 24 round where it starts.
+//   Hunting: its alert timer (+0x190) kept running, whose target search (0x25fcb8) takes Ratchet at any distance and skips
+//   the give-up test (24 units on the ground, 3 above or below).
+// - 541, the Gadgetron robots (0x2cddb8), its weapon +0xc0 (0 a launcher, 1 a club, 2 a flamethrower, class 863 / 884 / 876
+//   in its hand +0x104): on their level they stand hidden in an alcove (state 1) until class 654 opens the door of their group
+//   (+0xcc) and walks them out along a path (+0xc4); then they patrol between its first two points (the club: along all of
+//   it) and attack what target_select finds in the area polygon +0xd8 or, half the time, the level's markers +0xd0 / +0xd4
+//   (+0xb4 = 2). They come back (+0xc8 lives) from their alcove. Here: no lives, no group (no door: 0x2d5e80 would write
+//   through a null door's pvars), a path of two points (where it starts, 5 ahead), the area the whole level; after its first
+//   update (hidden, state 1) it is shown and put in its weapon's patrol state (3, 5, 7: as state 2 leaves it at the path's
+//   start); after each update a marker target (+0xb4 = 2) becomes Ratchet. Hunting: the path's two points put beside
+//   Ratchet on the robot's side (the launcher 9 units away, the flamethrower 3.5, the club through him), again when he has
+//   moved 4 units.
+// - 638, the jetpack troopers (0x2d2cf0): on their level each starts on a random point of its path (+0x120) and, carried
+//   (+0x128), waits hidden (state 10) for its dropship. Here: no path (it starts where spawned), not carried, its area
+//   (+0x12c) a square of 24 round its start. Hunting: its alert timer (+0x2e0: the range 255, target_select_any) kept
+//   running and its home (+0x2b0, +0x2c0) 10 units from Ratchet on its side, again when he has moved 4 units.
+// - 1356, the dropships (0x2e22d8): fly in along a path (+0xd8) when Ratchet is in an area (+0xd4), unload the troopers named
+//   in +0xc0..+0xcc (moby indices: up to 4, -1 none; 0x2d3dc0 boards them, 0x2d3de0 drops one every half second), then fly
+//   off along a path (+0xdc) and go, or with none stay and fight (shots of class 50) what target_select finds in the area
+//   +0xd0 (-1: none, never fights). Here: the arrival a path of four points coming down from 60 units behind (its yaw) and 25
+//   up to 9 above the point spawned at, no area to wait for, no troopers (base_option's), the leave path up and ahead. Hunting:
+//   no leave (it stays over the landing point and fights), the area the whole level, its troopers hunting too.
+constexpr uint32_t KAL_MEM = 0x000df000u, KAL_MEM_END = 0x000e0000u;
+constexpr OvConst<0x001b04b0u> PATH_TABLE{};
+constexpr OvConst<0x00160104u> PATH_COUNT{};
+constexpr int32_t PATH_TABLE_MAX = 176;  // (0x1b04b0..0x1b0770)
+uint32_t g_kal_mem = KAL_MEM;
+int32_t g_kal_slot = PATH_TABLE_MAX;
+int16_t g_kal_world = -1;  // the whole level's square (shared)
+bool g_kal_any = false;
+
+bool kal_class(int32_t cls) { return cls == 52 || cls == 541 || cls == 638 || cls == 1356; }
+bool on_kalebo() { return lw(LEVEL) == 16; }
+
+// a path of `n` points of the level's own: its table entry and its memory
+bool kal_path_reserve(int n, int16_t& slot, uint32_t& mem) {
+    const uint32_t size = 0x10 + 0x10 * static_cast<uint32_t>(n);
+    if (g_kal_slot - 1 < lw(PATH_COUNT) || g_kal_mem + size > KAL_MEM_END) return false;
+    slot = static_cast<int16_t>(--g_kal_slot);
+    mem = g_kal_mem;
+    g_kal_mem += size;
+    for (uint32_t k = 0; k < size; k += 4) sw(mem + k, 0);
+    sw(PATH_TABLE + static_cast<uint32_t>(slot) * 4, mem);
+    return true;
+}
+void kal_path_set(uint32_t mem, const float (*pts)[3], int n) {
+    sw(mem, static_cast<uint32_t>(n));
+    for (int k = 0; k < n; ++k)
+        for (uint32_t c = 0; c < 4; ++c) swc1(mem + 0x10 + 0x10 * static_cast<uint32_t>(k) + 4 * c, c < 3 ? pts[k][c] : 0.0f);
+}
+void kal_square(uint32_t mem, float x, float y, float z, float r) {
+    const float q[4][3] = {{x - r, y - r, z}, {x + r, y - r, z}, {x + r, y + r, z}, {x - r, y + r, z}};
+    kal_path_set(mem, q, 4);
+}
+
+void kal_pool_take() {
+    g_kal_mem = KAL_MEM;
+    g_kal_slot = PATH_TABLE_MAX;
+    g_kal_world = -1;
+    g_kal_any = false;
+    if (!on_kalebo()) return;
+    size_t n = 0, refused = 0;
+    for (PoolObj& o : g_pool) {
+        if (!kal_class(o.cls)) continue;
+        if (g_kal_world < 0) {
+            uint32_t mem = 0;
+            if (!kal_path_reserve(4, g_kal_world, mem)) break;
+            kal_square(mem, 0.0f, 0.0f, 0.0f, 4000.0f);
+        }
+        const int paths = o.cls == 1356 ? 2 : 1, pts = o.cls == 1356 ? 4 : o.cls == 541 ? 2 : 4;
+        bool ok = true;
+        for (int k = 0; k < paths && ok; ++k) ok = kal_path_reserve(pts, o.path[k], o.pmem[k]);
+        o.adapted = ok;
+        o.refused = !ok;
+        ok ? ++n : ++refused;
+    }
+    g_kal_any = n > 0;
+    if (n + refused > 0)
+        std::printf("[sdk] Kalebo III's enemies: %zu pool objects given paths of their own%s\n", n,
+                    refused > 0 ? (" (" + std::to_string(refused) + " not: no room, base_spawn refuses them)").c_str() : "");
+}
+
+uint32_t pool_moby_index(const PoolObj& o) { return (o.moby - moby_base()) >> 8; }
+
+// its pvars as the class needs them on a level mod (base_spawn's copy of the pool's first placement just written)
+void kal_spawned(size_t i) {
+    PoolObj& o = g_pool[i];
+    o.woke = false;
+    o.hunt = false;
+    o.troops.clear();
+    if (!o.adapted || !on_kalebo()) return;
+    const uint32_t pv = o.pvars;
+    const float x = o.start[0], y = o.start[1], z = o.start[2], c = std::cos(o.start[3]), sn = std::sin(o.start[3]);
+    switch (o.cls) {
+    case 52:
+        sw(pv + 0x180, static_cast<uint32_t>(o.path[0]));
+        kal_square(o.pmem[0], x, y, z, 24.0f);
+        break;
+    case 541: {
+        sw(pv + 0xc8, 0);                                 // (no lives: killed for good)
+        sw(pv + 0xcc, 0);                                 // (group 0: none on a level mod, no door)
+        sw(pv + 0xd0, 0xffffffffu);                       // (no markers)
+        sw(pv + 0xd4, 0xffffffffu);
+        sw(pv + 0xc4, static_cast<uint32_t>(o.path[0]));  // its patrol
+        sw(pv + 0xd8, static_cast<uint32_t>(g_kal_world));
+        const float p[2][3] = {{x, y, z}, {x + 5.0f * c, y + 5.0f * sn, z}};
+        kal_path_set(o.pmem[0], p, 2);
+        break;
+    }
+    case 638:
+        sw(pv + 0x120, 0xffffffffu);
+        sw(pv + 0x128, 0);
+        sw(pv + 0x12c, static_cast<uint32_t>(o.path[0]));
+        kal_square(o.pmem[0], x, y, z, 24.0f);
+        break;
+    case 1356: {
+        for (uint32_t k = 0; k < 4; ++k) sw(pv + 0xc0 + 4 * k, 0xffffffffu);
+        sw(pv + 0xd0, 0xffffffffu);
+        sw(pv + 0xd4, 0xffffffffu);
+        sw(pv + 0xd8, static_cast<uint32_t>(o.path[0]));
+        sw(pv + 0xdc, static_cast<uint32_t>(o.path[1]));
+        const float h = 9.0f;
+        const float in[4][3] = {{x - 60.0f * c, y - 60.0f * sn, z + h + 25.0f},
+                                {x - 32.0f * c, y - 32.0f * sn, z + h + 12.0f},
+                                {x - 12.0f * c, y - 12.0f * sn, z + h + 3.0f},
+                                {x, y, z + h}};
+        kal_path_set(o.pmem[0], in, 4);
+        const float out[4][3] = {{x, y, z + h}, {x + 15.0f * c, y + 15.0f * sn, z + h + 6.0f}, {x + 45.0f * c, y + 45.0f * sn, z + h + 25.0f},
+                                 {x + 90.0f * c, y + 90.0f * sn, z + h + 50.0f}};
+        kal_path_set(o.pmem[1], out, 4);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+uint32_t pool_index_of(uint32_t m) {
+    for (size_t i = 0; i < g_pool.size(); ++i)
+        if (g_pool[i].moby == m && pool_alive(g_pool[i])) return static_cast<uint32_t>(i + 1);
+    return 0;
+}
+
+void kal_hunt_on(PoolObj& o) {
+    o.hunt = true;
+    o.anchor[0] = o.anchor[1] = o.anchor[2] = 1e9f;  // (aimed at the next frame)
+    if (o.cls == 1356) {
+        sw(o.pvars + 0xd0, static_cast<uint32_t>(g_kal_world));
+        if (lbu(o.moby + 0x20) < 4) sw(o.pvars + 0xdc, 0xffffffffu);
+        for (size_t t : o.troops)
+            if (pool_alive(g_pool[t])) kal_hunt_on(g_pool[t]);
+    }
+}
+
+// after the frame's updates: each started object's fixes, and the hunt
+void kal_frame() {
+    const uint32_t hero = moby_base();
+    if (hero == 0) return;
+    const float hx = lwc1(hero + 0x10), hy = lwc1(hero + 0x14), hz = lwc1(hero + 0x18);
+    for (PoolObj& o : g_pool) {
+        if (!o.adapted || !pool_alive(o)) continue;
+        const uint32_t m = o.moby, pv = o.pvars;
+        const uint32_t st = lbu(m + 0x20);
+        const float mx = lwc1(m + 0x10), my = lwc1(m + 0x14), mz = lwc1(m + 0x18);
+        float dx = mx - hx, dy = my - hy;
+        const float d = std::sqrt(dx * dx + dy * dy);
+        if (d > 0.01f) dx /= d, dy /= d;
+        else dx = 1.0f, dy = 0.0f;
+        const bool moved = std::fabs(o.anchor[0] - hx) + std::fabs(o.anchor[1] - hy) > 4.0f;
+        switch (o.cls) {
+        case 52:
+            if (o.hunt) sw(pv + 0x190, 60);
+            break;
+        case 541: {
+            if (!o.woke && st == 1) {  // (hidden in its alcove: out, as class 654's wake 0x2ceca8 and state 2's end)
+                o.woke = true;
+                sb(m + 0x31, 1);
+                sh(m + 0x34, lhu(m + 0x34) & 0xfffeu);
+                sw(pv + 0xf0, 30);
+                sw(pv + 0xdc, 1);
+                sw(pv + 0x108, 1);
+                const int32_t w = lw(pv + 0xc0);
+                sb(m + 0x20, w == 0 ? 3u : w == 1 ? 5u : 7u);
+            }
+            if (lw(pv + 0xb4) == 2) {  // (a marker's turn, or none found: Ratchet)
+                sw(pv + 0xb4, 0);
+                for (uint32_t k = 0; k < 3; ++k) swc1(pv + 0x70 + 4 * k, lwc1(hero + 0x10 + 4 * k));
+            }
+            if (o.hunt && o.woke && moved) {
+                const int32_t w = lw(pv + 0xc0);
+                const float px = -dy, py = dx;
+                float p[2][3];
+                if (w == 1) {
+                    p[0][0] = hx + 3.0f * dx, p[0][1] = hy + 3.0f * dy;
+                    p[1][0] = hx - 4.0f * dx, p[1][1] = hy - 4.0f * dy;
+                } else {
+                    const float r = w == 0 ? 9.0f : 3.5f, side = w == 0 ? 3.0f : 1.5f;
+                    p[0][0] = hx + r * dx + side * px, p[0][1] = hy + r * dy + side * py;
+                    p[1][0] = hx + r * dx - side * px, p[1][1] = hy + r * dy - side * py;
+                }
+                p[0][2] = p[1][2] = mz;  // (on its own floor)
+                kal_path_set(o.pmem[0], p, 2);
+                o.anchor[0] = hx, o.anchor[1] = hy, o.anchor[2] = hz;
+            }
+            break;
+        }
+        case 638:
+            if (o.hunt) {
+                sw(pv + 0x2e0, 120);
+                if (moved && st != 10) {
+                    for (uint32_t base : {0x2b0u, 0x2c0u}) {
+                        swc1(pv + base, hx + 10.0f * dx);
+                        swc1(pv + base + 4, hy + 10.0f * dy);
+                        swc1(pv + base + 8, hz);
+                    }
+                    o.anchor[0] = hx, o.anchor[1] = hy, o.anchor[2] = hz;
+                }
+            }
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+// (ABI 5) base_option: a class's choice for an object base_spawn has just started (before its first update)
+int api_base_option(uint32_t h, int32_t option, int32_t value) {
+    const size_t i = (h & 0xffffu) - 1;
+    if (h == 0 || i >= g_pool.size()) return 0;
+    PoolObj& o = g_pool[i];
+    if (o.gen != (h >> 16) || !pool_alive(o) || !o.adapted || lbu(o.moby + 0x20) != 0) return 0;
+    if (option == RAC1_BASE_WEAPON && o.cls == 541) {
+        if (value < 0 || value > 2) return 0;
+        sw(o.pvars + 0xc0, static_cast<uint32_t>(value));
+        return 1;
+    }
+    if (option == RAC1_BASE_TROOPS && o.cls == 1356) {
+        int32_t n = 0;
+        for (size_t t : o.troops) (void)t, ++n;
+        const float at[3] = {o.start[0], o.start[1], o.start[2]};
+        const float yaw = o.start[3];
+        for (; n < value && n < 4;) {
+            const uint32_t th = api_base_spawn(638, at, yaw);
+            if (th == 0) break;
+            PoolObj& t = g_pool[(th & 0xffffu) - 1];
+            sw(t.pvars + 0x128, 1);  // (carried: hidden until its dropship drops it)
+            sw(o.pvars + 0xc0 + 4 * static_cast<uint32_t>(n), pool_moby_index(t));
+            o.troops.push_back((th & 0xffffu) - 1);
+            ++n;
+        }
+        return n;
+    }
+    return 0;
+}
+
+// (ABI 5) base_handle: the handle of a moby base_spawn started (one a dropship brought, found with mobys_near)
+uint32_t api_base_handle(uint32_t m) {
+    const uint32_t pi = m != 0 ? pool_index_of(m) : 0;
+    return pi == 0 ? 0 : static_cast<uint32_t>(g_pool[pi - 1].gen) << 16 | pi;
+}
+
 bool hunt_known(int32_t cls) { return cls == 1445 && lw(LEVEL) == 16; }
 
 int api_base_hunt(uint32_t m, int on) {
     if (!is_moby(m) || static_cast<int8_t>(lbu(m + 0x20)) < 0) return 0;
     const int32_t cls = lh(m + 0xa6);
     g_hunters.erase(std::remove_if(g_hunters.begin(), g_hunters.end(), [&](const Hunter& h) { return h.moby == m; }), g_hunters.end());
+    if (kal_class(cls) && on_kalebo()) {
+        const uint32_t pi = pool_index_of(m);
+        if (pi == 0 || !g_pool[pi - 1].adapted) return 0;
+        PoolObj& o = g_pool[pi - 1];
+        if (on == 0) {
+            o.hunt = false;
+            return 1;
+        }
+        kal_hunt_on(o);
+        return 1;
+    }
     if (on == 0) return 1;
     if (!hunt_known(cls) || lwu(m + 0x78) == 0) return 0;
     g_hunters.push_back({m, cls, lwu(m + 0x78)});
@@ -903,6 +1198,103 @@ void hunters_update() {
         ++i;
     }
 }
+
+// ---- (ABI 5) the weapons: owned, equipped, allowed, ammo ----
+// The game's tables: the items owned 0x13d4c0[0x25] (a byte each, item_give 0x260860 sets it), the ammo 0x13d428[item] and its
+// most, the item table 0x1c40b0 (0x18 a row: +8 non-zero for an item that takes ammo, +0xe the most: what the HUD, the ammo
+// pickups 0x2a5bd8 and the quick select stop at), the item asked in hand P+0x20b8 (what the quick select writes when Triangle
+// is let go, 0x237ba0; the hero's slot update 0x20fea0 then switches, its animation and its sound as for the quick select;
+// the Drone Device 0x18 by P+0x1ff5), the item in hand P+0x10b8, the quick select's ring 0x141ea0[8].
+constexpr uint32_t W_P = 0x0013f350u, W_OWNED = 0x0013d4c0u, W_AMMO = 0x0013d428u, W_RING = 0x00141ea0u, W_WRENCH = 8;
+constexpr OvConst<0x001c40b0u> W_ROWS{};
+// the pause menu's Weapons page's items (the weapons: 0x09 Suck Cannon .. 0x19 Decoy Glove, not the Swingshot 0x0c nor the
+// Hydrodisplacer 0x16)
+bool weapon_item(uint32_t i) { return i >= 0x09 && i <= 0x19 && i != 0x0c && i != 0x16; }
+bool item_owned(uint32_t i) { return i < 0x25 && lbu(W_OWNED + i) != 0; }
+uint8_t g_allow[0x25];  // weapon_allow's (g_mod_weapons_limited: only these)
+uint32_t g_w_last = W_WRENCH;  // the last item in hand that was allowed
+
+int32_t api_weapons_owned(int32_t* out, int32_t max) {
+    int32_t n = 0;
+    for (uint32_t i = 0; i < 0x25; ++i)
+        if (weapon_item(i) && item_owned(i)) {
+            if (out != nullptr && n < max) out[n] = static_cast<int32_t>(i);
+            ++n;
+        }
+    return n;
+}
+
+// where the hero could open the quick select (hero_input_update 0x229b70's conditions, as advanced.cpp's item_cycle): standing,
+// walking, running, crouching, the jumps and falls the quick select opens in, strafing; not swinging the wrench nor throwing
+// it, not in a vehicle, a ship or on a hoverboard (+0x20a4 not 0 or 3), not while an item is being switched or used (+0x10ac
+// 2, +0x20ac / +0x20a7), nor with the game's input taken (0x15f594)
+bool hero_can_switch() {
+    const int32_t st = lw(W_P + 0x2084);
+    const bool aim = st == 0 || st == 2 || st == 3 || st == 0x73 || st == 7 || (st >= 9 && st <= 0x12) || st == 0x1c || st == 0x3c || st == 0x49 ||
+                     st == 0x4c || st == 0x5e || st == 0x69;
+    const uint32_t mode = lbu(W_P + 0x20a4);
+    if (!aim || lbu(W_P + 0x10ac) == 2 || lw(OV(0x0015f594)) != 0 || (mode != 0 && mode != 3)) return false;
+    if (!(lbu(W_P + 0x20ac) == 0 || mode == 1 || lh(W_P + 0x1b2) != 0)) return false;
+    if (!(lbu(W_P + 0x20a7) == 0 || mode == 1 || lh(W_P + 0x1b2) != 0)) return false;
+    return true;
+}
+
+// the quick select's equip (0x237ba0 on Triangle's release): the request, the ammo clamped to its most
+void weapon_request(uint32_t item) {
+    if (item == 0x18) sb(W_P + 0x1ff5, 1);
+    else sw(W_P + 0x20b8, item);
+    const uint32_t row = item * 0x18 + W_ROWS;
+    if (lhu(row + 8) != 0) {
+        const uint32_t a = W_AMMO + item * 4;
+        const int32_t mx = static_cast<int32_t>(lhu(row + 0xe));
+        if (mx < lw(a)) sw(a, static_cast<uint32_t>(mx));
+    }
+}
+
+int api_weapon_equip(int32_t item) {
+    if (g_in_hud || ee_journal_active() || moby_base() == 0 || lw(OV(0x0015f5c4)) != 0) return 0;
+    const uint32_t i = static_cast<uint32_t>(item);
+    if (item < 0 || !weapon_item(i) || !item_owned(i) || !mod_code_weapon_allowed(i)) return 0;
+    if (lwu(W_P + 0x10b8) == i) return 1;  // (in hand already)
+    if (!hero_can_switch()) return 0;
+    weapon_request(i);
+    return 1;
+}
+
+void api_weapon_allow(const int32_t* items, int32_t n) {
+    std::memset(g_allow, 0, sizeof g_allow);
+    g_mod_weapons_limited = items != nullptr && n > 0;
+    g_w_last = W_WRENCH;
+    if (!g_mod_weapons_limited) return;
+    for (int32_t k = 0; k < n; ++k)
+        if (items[k] >= 0 && items[k] < 0x25) g_allow[items[k]] = 1;
+}
+
+int api_ammo_fill(int32_t item) {
+    if (item < 0 || item >= 0x25 || !item_owned(static_cast<uint32_t>(item))) return 0;
+    const uint32_t row = static_cast<uint32_t>(item) * 0x18 + W_ROWS;
+    if (lhu(row + 8) == 0) return 0;
+    sw(W_AMMO + static_cast<uint32_t>(item) * 4, lhu(row + 0xe));
+    return 1;
+}
+
+// after the frame's updates, while weapon_allow limits them: a weapon not allowed asked in hand (the game's own return to the
+// weapon before a gadget, Triangle's double press in a level's own build of the hero code, an item given with its equip) not
+// taken; one in hand (asked and switched within the frame) put back for the last item in hand that was allowed (else the
+// wrench)
+void weapons_frame() {
+    const uint32_t req = lwu(W_P + 0x20b8);
+    if (req < 0x25 && weapon_item(req) && g_allow[req] == 0) sw(W_P + 0x20b8, 0);
+    const uint32_t now = lwu(W_P + 0x10b8);
+    const bool bad = now < 0x25 && weapon_item(now) && g_allow[now] == 0;
+    if (!bad) {
+        if (now != 0 && now < 0x25 && (now == W_WRENCH || weapon_item(now))) g_w_last = now;
+    } else if (lwu(W_P + 0x20b8) == 0) {
+        const bool ok = g_w_last == W_WRENCH || (weapon_item(g_w_last) && item_owned(g_w_last) && g_allow[g_w_last] != 0);
+        weapon_request(ok ? g_w_last : W_WRENCH);
+    }
+}
+
 
 int api_light_add(const float pos[3], const float rgb[3], float intensity, float radius) {
     if (pos == nullptr || rgb == nullptr || g_in_hud || ee_journal_active()) return 0;
@@ -1116,6 +1508,12 @@ void load_all() {
     g_api.hud_text_width = api_hud_text_width;
     g_api.base_hunt = api_base_hunt;
     g_api.light_add = api_light_add;
+    g_api.base_option = api_base_option;
+    g_api.base_handle = api_base_handle;
+    g_api.weapons_owned = api_weapons_owned;
+    g_api.weapon_equip = api_weapon_equip;
+    g_api.weapon_allow = api_weapon_allow;
+    g_api.ammo_fill = api_ammo_fill;
     g_plugins.reserve(mods.size());  // (g_cur points into it)
     for (const ModInfo* m : mods) {
         std::string err;
@@ -1370,6 +1768,9 @@ void level_started() {
 
 }  // namespace
 
+// orig: (none) — enhancement (mod_code.h): weapon_allow's list
+bool mod_code_weapon_allowed_slow(uint32_t item) { return item >= 0x25 || !weapon_item(item) || g_allow[item] != 0; }
+
 // orig: (none) — enhancement (mod_code.h)
 void mod_code_start() {
     if (!g_tried) load_all();
@@ -1389,6 +1790,7 @@ void mod_code_level_load() {
     g_hunters.clear();
     if (lwu(MOD_LIGHTS) != 0) sw(MOD_LIGHTS, 0);
     g_hold = false;  // (input_hold: the pad the game's again on every level's start)
+    g_mod_weapons_limited = false;  // (weapon_allow: all again)
     g_hold_sticky = 0;
     sdk_level_load(level_slot());
     // (the hooks' gate: a plugin, or the level's own content)
@@ -1399,6 +1801,7 @@ void mod_code_level_load() {
 void mod_code_level_loaded() {
     if (level_slot() < kFirstLevelSlot) {
         g_pool.clear();
+        g_kal_any = false;
         return;
     }
     pool_take(level_slot());
@@ -1410,6 +1813,8 @@ void mod_code_frame() {
     if (!g_started) level_started();
     if (g_sdk.on) sdk_triggers();
     if (!g_hunters.empty()) hunters_update();
+    if (g_kal_any) kal_frame();
+    if (g_mod_weapons_limited) weapons_frame();
     if (lwu(MOD_LIGHTS) != 0) sw(MOD_LIGHTS, 0);  // (light_add: the frame's own, from its frame callbacks)
     for (Plugin& p : g_plugins)
         if (p.cb.frame != nullptr) with(p, [&] { p.cb.frame(p.cb.user); });

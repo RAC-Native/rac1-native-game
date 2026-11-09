@@ -705,14 +705,19 @@ standing, then swinging the wrench, `RAC1_SIM_INPUT=attack`):
 | Class | Placed on Kalebo III | Seen |
 |---|---|---|
 | `1445` | 52 | **the robots**: walk to Ratchet, hit him, take the wrench's hits, die (blown up), drop their bolts. Placed and with `base_spawn` |
-| `52` | 21 | small flying drones: hover where placed, did not attack in 30 seconds (they wait for their mission's group: untested further) |
-| `541`, `470`, `471`, `546`, `552`, `654`, `758`, `805`, `1135`, `1455`, `270` | | stay where placed, no attack (props, triggers, hazards that need the base level's links, or idle enemies: not identified) |
-| `638`, `556`, `1410`, `1356` | | move to (0, 0, 0) at once: they follow another object or a path of the base level's. Do not use |
+| `52` | 21 | **the bomb bots** (round, a red eye: they roll at Ratchet and blow up). Placed they watch an area of the base level's (a path): use `base_spawn`, which gives them their own (SDK ABI 5) |
+| `541` | 29 | **the Gadgetron robots** (crash-test-dummy markings; a bomb launcher, a club or a flamethrower): on their level hidden behind the doors of a Gadgetron hall until a trigger (654) walks them out. Placed they stay hidden; with `base_spawn` (ABI 5) they come out at once and fight |
+| `638` | 19 | **the jetpack troopers**: start on a path of the base level's or inside a dropship. Placed they move to (0, 0, 0); with `base_spawn` (ABI 5) they hover and fight where spawned |
+| `1356` | 5 | **the dropships**: fly in along a path, drop their troopers, fly off. Placed they move to (0, 0, 0); with `base_spawn` (ABI 5) they come down to the point spawned at with up to 4 troopers |
+| `470`, `471`, `546`, `552`, `654`, `758`, `805`, `1135`, `1455`, `270` | | stay where placed, no attack (props, triggers (654 wakes the Gadgetron robots), hazards that need the base level's links, a character (1455)) |
+| `556`, `1410` | | move to (0, 0, 0) at once: they follow another object or a path of the base level's. Do not use |
 | `1826` | | drops through the floor (a path of the base level's). Do not use |
 | `1377` | | starts a cutscene of the base level's when Ratchet is near. Do not use |
 | `1401` | | gone at the start. Do not use |
 
-`spawn` lines and the SDK's `base_spawn` give the robots at run time (waves): [The mod SDK](sdk.md#base-level-objects).
+`spawn` lines and the SDK's `base_spawn` give the robots at run time (waves): [The mod SDK](sdk.md#base-level-objects); the
+bomb bots, the Gadgetron robots, the jetpack troopers and the dropships too from ABI 5
+([Kalebo III's enemies](sdk.md#kalebo-iiis-enemies-abi-5)).
 Testing another base: `RAC1_DEBUG_TOOLS=1 RAC1_LEVEL_BASE_ANY=1` lets the setup compose and the game run a level on any
 of the game's levels (every one composes; only the four above were run).
 

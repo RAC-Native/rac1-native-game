@@ -10,6 +10,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/port_stubs.h>
+#include <host/mod_code.h>
 
 #include <vector>
 
@@ -79,7 +80,8 @@ void quick_select_start(uint32_t e) {
     sw(e + 0x70, 0);
     sw(OV(0x0015f72c), 0);
     for (uint32_t i = 0; i < 8; ++i) {
-        const uint32_t item = lwu(0x00141ea0 + i * 4);
+        uint32_t item = lwu(0x00141ea0 + i * 4);
+        if (!mod_code_weapon_allowed(item)) item = 0;  // (enhancement: a plugin's weapon_allow, the slot shown empty)
         sw(OV(0x0017dac0) + i * 0x1c + 0x18, item);
         sw(OV(0x0017dac0) + i * 0x1c, lhu(item * 0x4c + OV(0x00179ac0) + 0x38));
     }
