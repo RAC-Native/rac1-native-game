@@ -299,7 +299,10 @@ RAC1_MOD_EXPORT int rac1_mod_main(const rac1_api* game, rac1_mod* mod) {
   order you should rely on). A callback may spawn and remove objects, its own too: an object removed in `hit` gets no
   `update`; one spawned during the pass first updates next frame.
 - **Moving one.** `object_place`, or write its moby's position / rotation and call `moby_moved`. Its model follows
-  each frame.
+  each frame. Angles may grow as you like (a yaw you add to every frame): `object_place`, `object_spawn`, `hero_place`
+  and `moby_moved` fold them into -pi..pi. (The game's rotation matrix folds its angles once only: past about 3 pi / 2
+  its sine runs away and the model grows huge. If you write +0x40..+0x48 yourself, keep them in range or call
+  `moby_moved`.)
 - **What the game does not do for it.** It does not fall, collide with the level or animate by itself: your `update`
   moves it (use `collide_ray` to find the ground). It is not remembered in a save: placed objects are there again
   each time the level loads (keep what was collected or broken yourself, in `save` / `load`, and `object_remove` it

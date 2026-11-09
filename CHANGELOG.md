@@ -5,6 +5,10 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Mod SDK: angles a plugin gives (`object_place`, `object_spawn`, `hero_place`, a rotation written then `moby_moved`)
+  are folded into -pi..pi. The example level's gems and sentries turn by adding to their angle every frame: after a
+  few seconds the game's rotation matrix (whose sine folds an angle only once) made them huge, a flat plane across the
+  level at Ratchet's height that stayed until the level loaded again.
 - Profiler (debug tools): with the frame extrapolation on, the Profiler tab and its overlay show the pictures presented
   a second beside the fps (which count host frames, one a game step there), and the CSV has a `pictures` column.
 - Main menu > Options > Bug Fixes (right after Advanced): a page for fixes of the original game's own bugs, each its own

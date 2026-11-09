@@ -57,6 +57,17 @@ constexpr uint32_t PC_VERSION = 1;
 constexpr uint32_t RAM_SIZE = 0x02000000u;
 constexpr uint32_t LEVEL = 0x0015ed84u;
 
+// An angle (radians) folded into -pi..pi. The game's rotation matrix (euler_to_mat3_vu, the VU0 program 0x1a3) folds its
+// angles only once: past about 3 pi / 2 its sine polynomial runs away and the model grows without bound (a plugin turning an
+// object by adding to its angle every frame made it a huge plane across the level after a few seconds). The game's own code
+// keeps its angles in range; what a plugin gives us is folded here. An angle already in range is kept as it is.
+float fold_angle(float a) {
+    constexpr float kPi = 3.14159265f;
+    if (!std::isfinite(a)) return 0.0f;
+    if (a >= -kPi && a <= kPi) return a;
+    return static_cast<float>(std::remainder(static_cast<double>(a), 2.0 * 3.14159265358979323846));
+}
+
 using MainFn = int (*)(const rac1_api*, rac1_mod*);
 using AbiFn = unsigned (*)();
 
@@ -223,7 +234,12 @@ void api_moby_remove(uint32_t m) {
 }
 
 void api_moby_moved(uint32_t m) {
-    if (is_moby(m) && lwu(m + 0x24) != 0) moby_update_transform(m);
+    if (!is_moby(m) || lwu(m + 0x24) == 0) return;
+    for (uint32_t k = 0; k < 3; ++k) {  // (a rotation the plugin wrote: folded, as object_place's)
+        const float a = lwc1(m + 0x40 + 4 * k);
+        if (!(a >= -3.14159265f && a <= 3.14159265f)) swc1(m + 0x40 + 4 * k, fold_angle(a));
+    }
+    moby_update_transform(m);
 }
 
 uint32_t api_moby_link(uint32_t m, uint32_t off) {
@@ -257,7 +273,7 @@ void api_hero_place(const float pos[3], float yaw) {
     swc1(SCRATCH + 0x2c, 1.0f);
     swc1(SCRATCH + 0x30, 0.0f);
     swc1(SCRATCH + 0x34, 0.0f);
-    swc1(SCRATCH + 0x38, yaw);
+    swc1(SCRATCH + 0x38, fold_angle(yaw));
     swc1(SCRATCH + 0x3c, 0.0f);
     hero_place(SCRATCH + 0x20, SCRATCH + 0x30, 0, 1);  // (state 0, standing, as the game's own teleports: -1 left a blend between two animations without its second, a crash)
 }
@@ -387,7 +403,7 @@ uint32_t obj_spawn(int32_t cls, const float pos[3], float yaw, int32_t placed) {
     for (uint32_t k = 0; k < 3; ++k) swc1(m + 0x10 + 4 * k, pos[k]);
     swc1(m + 0x40, 0.0f);
     swc1(m + 0x44, 0.0f);
-    swc1(m + 0x48, yaw);
+    swc1(m + 0x48, fold_angle(yaw));
     o.coll = lwu(m + 0x94);
     o.solid = !c.ghost;
     if (c.ghost) sw(m + 0x94, 0);
@@ -551,7 +567,7 @@ void api_object_place(uint32_t h, const float pos[3], const float rot[3], float 
     Obj& o = g_sdk.objs[static_cast<size_t>(i)];
     for (uint32_t k = 0; k < 3; ++k) {
         if (pos != nullptr) swc1(o.moby + 0x10 + 4 * k, pos[k]);
-        if (rot != nullptr) swc1(o.moby + 0x40 + 4 * k, rot[k]);
+        if (rot != nullptr) swc1(o.moby + 0x40 + 4 * k, fold_angle(rot[k]));
     }
     if (scale > 0.0f) {
         o.scale = scale;
