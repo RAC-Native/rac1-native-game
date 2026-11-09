@@ -3,6 +3,7 @@
 // level setup (src/game/ovl/level_setup.cpp, level_load.cpp) reads.
 #include "level_compose.h"
 
+#include "level_music.h"
 #include "mrp_export.h"
 
 #include <formats/host_meshes.h>
@@ -53,7 +54,7 @@ namespace {
     "up z | up y                               the OBJ files' up axis (default z; y: Blender's default OBJ export)\n"
     "scale <s>                                 the OBJ files' units to game units (default 1)\n"
     "moby <class> <x> <y> <z> [<yaw>]          an object of the base level's class <class>, as its first placement there\n"
-    "music <level> | music <loop.vag> [<intro.vag>] | music none   the level's music\n"
+    "music <level> | music <loop> [<intro>] | music none   the level's music (<loop>, <intro>: a VAG, or a WAV encoded)\n"
     "sky <level>                               the sky of the game's level <level> (default: the base level's)\n"
     "offset auto | offset <x> <y> <z>          moved by that much (auto: as far as the collision needs to be above 0)\n"
     "class <name> <model.obj> [size <s>] [solid|ghost] [scale <k>]   a class of the level's own objects (docs/sdk.md)\n"
@@ -1880,20 +1881,43 @@ bool compose_level_mod(const std::string& folder, bool force) {
         music_json = std::to_string(lt.music_level);
         log.say(fmt("music: level %d's", lt.music_level));
     } else if (!lt.music_loop.empty()) {
+        // each a VAG (mono or stereo) or a WAV (encoded), src/setup/level_music.h; an intro's and its loop's rate the
+        // same (the stream keeps its first part's pitch: a WAV encoded at the other's rate, the loop's if both are WAVs),
+        // one stereo: both made stereo
         std::vector<std::string> names;
-        for (const auto& [src, dst] : {std::pair<std::string, std::string>{lt.music_intro, "music_intro.vag"}, {lt.music_loop, "music_loop.vag"}}) {
-            if (src.empty()) continue;
-            std::vector<uint8_t> v;
-            if (!read_file(ldir / src, v)) return fail(src + " cannot be read");
-            if (v.size() < 0x30 || std::memcmp(v.data(), "VAGp", 4) != 0) return fail(src + ": not a VAG (no \"VAGp\" header): see docs/mods.md, \"Level mods\"");
-            const uint32_t size = static_cast<uint32_t>(v[12]) << 24 | static_cast<uint32_t>(v[13]) << 16 | static_cast<uint32_t>(v[14]) << 8 | v[15];
-            const uint32_t rate = static_cast<uint32_t>(v[16]) << 24 | static_cast<uint32_t>(v[17]) << 16 | static_cast<uint32_t>(v[18]) << 8 | v[19];
-            if (size == 0 || size + 0x30 > v.size() || rate < 8000 || rate > 48000)
-                return fail(fmt("%s: its VAG header's size %u or rate %u do not fit the file (%zu bytes)", src.c_str(), size, rate, v.size()));
+        std::vector<std::pair<std::string, std::string>> files;
+        if (!lt.music_intro.empty()) files.push_back({lt.music_intro, "music_intro.vag"});
+        files.push_back({lt.music_loop, "music_loop.vag"});
+        std::vector<std::vector<uint8_t>> inputs(files.size());
+        std::vector<MusicVag> made(files.size());
+        auto make = [&](size_t i, int channels, uint32_t rate) {
+            std::string why;
+            if (music_vag_make(inputs[i], files[i].second == "music_loop.vag", channels, rate, made[i], why)) return true;
+            fail(files[i].first + ": " + why + ": see docs/mods.md, \"Level mods\", Music");
+            return false;
+        };
+        for (size_t i = 0; i < files.size(); ++i) {
+            if (!read_file(ldir / files[i].first, inputs[i])) return fail(files[i].first + " cannot be read");
+            if (!make(i, 0, 0)) return false;
+        }
+        if (files.size() == 2 && made[0].rate != made[1].rate) {
+            const size_t redo = made[0].encoded ? 0 : made[1].encoded ? 1 : 2;  // (the intro first: the loop's rate kept)
+            if (redo == 2)
+                return fail(fmt("music: %s is %u Hz, %s %u Hz: an intro and its loop need the same rate (or give a WAV)", files[0].first.c_str(), made[0].rate,
+                                files[1].first.c_str(), made[1].rate));
+            if (!make(redo, made[redo].channels, made[1 - redo].rate)) return false;
+        }
+        if (std::any_of(made.begin(), made.end(), [](const MusicVag& v) { return v.channels == 2; }))
+            for (size_t i = 0; i < files.size(); ++i)
+                if (made[i].channels != 2 && !make(i, 2, made[i].rate)) return false;
+        for (size_t i = 0; i < files.size(); ++i) {
+            const MusicVag& m = made[i];
+            std::vector<uint8_t> v = m.file;
             v.resize(align_up(v.size(), 2048), 0);
-            if (!write_file(out_dir / dst, v)) return fail("cannot write into " + out_dir.generic_string());
-            names.push_back("\"" + dst + "\"");
-            log.say(fmt("music: %s, %u Hz, %.1f s, as %s", src.c_str(), rate, static_cast<double>(size) / 16.0 * 28.0 / rate, dst.c_str()));
+            if (!write_file(out_dir / files[i].second, v)) return fail("cannot write into " + out_dir.generic_string());
+            names.push_back("\"" + files[i].second + "\"");
+            log.say(fmt("music: %s, %u Hz, %s, %.1f s, as %s (%s)", files[i].first.c_str(), m.rate, m.channels == 2 ? "stereo" : "mono",
+                        static_cast<double>(m.samples) / m.rate, files[i].second.c_str(), m.how.c_str()));
         }
         music_json = "[" + names[0] + (names.size() > 1 ? ", " + names[1] : std::string()) + "]";
     }
