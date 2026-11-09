@@ -157,6 +157,7 @@ add_library(rac1_game STATIC
     ovl/quick_select.cpp
     ovl/gadgebot_commands.cpp
     enhance/advanced.cpp
+    enhance/quick_rings.cpp
     enhance/graphics.cpp
     enhance/controls.cpp
     enhance/update_notice.cpp

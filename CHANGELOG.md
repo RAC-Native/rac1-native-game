@@ -5,6 +5,13 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Quick Select Rings** (Options > Advanced in the pause menu: 1 / 3, 1 by default; New Game's Modern turns it to 3):
+  three quick select rings as in the later games. While the ring is open, L1 / L2 show the ring on the left and R1 / R2
+  the one on the right (those presses never reach the game), with the L1 / R1 arrows and three dots above the ring; it
+  opens on the ring last used. The pause menu's Quick Select page edits each ring (L2 / R2 change it, its number in the
+  wheel); the same weapon may be in several rings. A new weapon that finds ring 1 full goes to ring 2, then 3. Ring 1 is
+  still the game's (its save unchanged); rings 2 and 3 are kept in the save's `save<N>.pc`. A plugin's `weapon_allow`
+  blanks its disallowed weapons in every ring. See docs/advanced.md.
 - Vulkan: **no more long freezes when a level loads** (after the intro movie, before the main menu; any planet). Every
   texture level a load sent to the GPU was a submit of its own and a wait for it (about 1600 for Veldin): alone each wait
   is short, but with another program using the GPU (another game, a second copy) each lasted as long as that program's

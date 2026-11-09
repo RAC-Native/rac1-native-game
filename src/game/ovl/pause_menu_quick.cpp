@@ -3,6 +3,7 @@
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_reloc.h>
 #include <host/level_slots.h>
+#include <host/quick_rings.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/moby_pass.h>
 #include <game/ovl/pause_menu.h>
@@ -71,6 +72,7 @@ int32_t bytes_14bec0_left() {
 // time in 600ths of 0x15eea4, 0x1418f4 the levels).
 // orig: 0x0027a3e8
 int32_t menu_quick_update(uint32_t w) {
+    quick_rings_menu_update(w);  // (enhancement: L2 / R2 change the ring edited, src/host/quick_rings.h)
     const int32_t item = focused_item();
     const int32_t old = lw(w + 0x50);
     if ((lwu(PAD + 0x1c4) & 8) != 0) sw(w + 0x50, static_cast<uint32_t>(rem8(old + 1)));
@@ -99,7 +101,8 @@ int32_t menu_quick_update(uint32_t w) {
 // The ring focused in: its items from 0x141ea0, the selection on the first empty place.
 // orig: 0x0027a610
 int32_t menu_quick_focus_in(uint32_t w) {
-    for (uint32_t i = 0; i < 8; ++i) sw(w + 0x30 + i * 4, lwu(QS + i * 4));
+    // (enhancement: with three rings, the ring the quick select shows: ring 1's are 0x141ea0's, src/host/quick_rings.h)
+    for (uint32_t i = 0; i < 8; ++i) sw(w + 0x30 + i * 4, quick_rings_menu_item(w, static_cast<int>(i)));
     sw(w + 0x50, 0);
     if (lwu(w + 0x30) != 0) {
         for (;;) {
@@ -116,6 +119,7 @@ int32_t menu_quick_focus_in(uint32_t w) {
 // The ring focused out: its items back to 0x141ea0.
 // orig: 0x0027a6a8
 int32_t menu_quick_focus_out(uint32_t w) {
+    if (quick_rings_menu_focus_out(w)) return 0;  // (enhancement: ring 2 or 3 edited, src/host/quick_rings.h)
     for (uint32_t i = 0; i < 8; ++i) sw(QS + i * 4, lwu(w + 0x30 + i * 4));
     return 0;
 }
@@ -152,6 +156,7 @@ int32_t menu_quick_draw(uint32_t w) {
     hud_sprite(hud_frame(0xe99e, 0), lw(w + 0x20) - 10, 0x27, -0x20, -0x20, 0x80);
     text_small(0x28, 0xf, 0x80ffa888ull, OV(0x00160398), -1);
     text_small(lw(w + 0x20) - 0x3c, 0xf, 0x80ffa888ull, OV(0x001603a0), -1);
+    quick_rings_menu_draw(w);  // (enhancement: L2 / R2 and the ring edited, src/host/quick_rings.h)
     texture_block_end();
     return 2;
 }
