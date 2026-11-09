@@ -10,8 +10,9 @@ Headless (after build_arena.py):   blender -b --python build_arena.py --python b
                    spawn_rail_course (markers: where a rail challenge puts Ratchet)
   the course       "Grind Scarponi: Discesa": its centre rail (rail_lane_c, a Bezier) and two lanes 3 units to its sides
                    for its first part (rail_lane_l, rail_lane_r: made from the centre's line, so run this again after
-                   editing it); on the lanes, mines (jump them), barriers (change lane) and drones (the wrench: they
-                   zap whoever passes them whole): the markers mine_<n>, barrier_<n>, drone_<n> (arena_markers)
+                   editing it); on the lanes, our mines (jump them: markers mine_<n>, the class mine) and Kalebo III's
+                   own rail mines (class 933: break them with the wrench or change lane; markers spawn_kmine_<n>, the
+                   plugin starts them with base_spawn), two of them closing two lanes at a time
 
 Kalebo III's hero code (the base level's, hero_rail_land_check 0x20cf58) takes a rail only within 12 units of two
 spots of its own level: (115, 264, 133) and (257, 301, 128) in the game's coordinates, (-61, 76, 29) and (81, 113, 24)
@@ -43,15 +44,15 @@ COURSE = [(-56.5, 80.0, 24.5), (-40.0, 79.0, 22.0), (-15.0, 77.0, 19.0), (10.0, 
           (58.0, -2.0, 10.0), (44.0, -2.0, 8.5), (37.0, 0.0, 8.0)]
 LANE = 3.0                  # the lanes' distance from the centre (a side jump finds a rail 2..4.5 away)
 LANE_END = {"l": 125.0, "r": 150.0}  # where each side lane ends, along the centre (units from its start)
-# (along the centre, the lane: l, c, r, the kind): two barriers make a gate (one lane free)
+# (along the centre, the lane: l, c, r, the kind: mine ours, to jump; kmine Kalebo III's, to break or pass on another
+# lane): two of them make a gate (one lane free)
 OBSTACLES = [(28, "c", "mine"),
-             (40, "l", "barrier"), (40, "c", "barrier"), (52, "r", "drone"),     # the right lane free
-             (64, "r", "barrier"), (64, "l", "barrier"), (74, "c", "drone"),     # the centre free
-             (88, "c", "barrier"), (88, "r", "barrier"), (98, "l", "drone"),     # the left free
-             (110, "l", "mine"),                                                   # (the left lane ends at 125)
-             (135, "r", "barrier"),                                                # (the right one at 150)
-             (162, "c", "drone"), (176, "c", "mine"), (190, "c", "drone"), (204, "c", "mine"), (214, "c", "drone")]
-DRONE_HIGH = 1.7            # a drone hovers this much over its lane's line
+             (40, "l", "kmine"), (40, "c", "kmine"), (52, "r", "kmine"),       # the right lane free
+             (64, "r", "kmine"), (64, "l", "kmine"), (74, "c", "kmine"),       # the centre free
+             (88, "c", "kmine"), (88, "r", "kmine"), (98, "l", "kmine"),       # the left free
+             (110, "l", "mine"),                                               # (the left lane ends at 125)
+             (135, "r", "kmine"),                                              # (the right one at 150)
+             (162, "c", "kmine"), (176, "c", "mine"), (190, "c", "kmine"), (204, "c", "mine"), (214, "c", "kmine")]
 
 
 def remove(name):
@@ -141,11 +142,10 @@ def course(crail, cmark):
     for s, lane, kind in OBSTACLES:
         p, side = along(line, dist, s)
         p = p + side * ({"l": -LANE, "c": 0.0, "r": LANE}[lane])
-        if kind == "drone":
-            p.z += DRONE_HIGH
         d = along(line, dist, s + 1.0)[0] - along(line, dist, s - 1.0)[0]
         count[kind] = count.get(kind, 0) + 1
-        B["empty"](cmark, "%s_%d" % (kind, count[kind]), tuple(p), "SPHERE", 0.6, yaw=math.degrees(math.atan2(d.y, d.x)))
+        name = ("spawn_kmine_%d" if kind == "kmine" else "mine_%d") % count[kind]
+        B["empty"](cmark, name, tuple(p), "SPHERE", 0.6, yaw=math.degrees(math.atan2(d.y, d.x)))
     return dist[-1]
 
 
@@ -158,7 +158,7 @@ def main():
     for n in ("rail_station", "col_rail_station", "spawn_rail_start", "spawn_rail_course", "light_rail_station"):
         remove(n)
     for ob in list(cmark.objects):
-        if ob.name.startswith(("mine_", "barrier_", "drone_")):
+        if ob.name.startswith(("mine_", "barrier_", "drone_", "spawn_kmine_")):
             bpy.data.objects.remove(ob, do_unlink=True)
     crail = B["collection"]("arena_rails", scene.collection)
 
