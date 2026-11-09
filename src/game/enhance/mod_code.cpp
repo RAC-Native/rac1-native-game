@@ -757,6 +757,102 @@ int api_trigger_inside(int32_t i) { return i >= 0 && static_cast<size_t>(i) < g_
 
 uint64_t api_frame_count() { return g_frames; }
 
+// ---- (ABI 3) the base level's objects at run time: the spawn pools (level.txt's spawn lines) ----
+// The composer places each pool's objects as level.txt's moby lines are placed (copies of the base level's first placement
+// of the class, their pvars copied); when the level has loaded they are taken out of play (0xfd: a slot of the level's
+// placed range, which the game's moby_spawn never gives out again), each one's moby and pvars kept as the load left
+// them. base_spawn starts one again where the plugin says: its moby and pvars as kept (the pvars' own pointers stay
+// right: the same block), not in the grid (moby_update_transform puts it there), its bolts on (+0xb1, moby_drop_bolts).
+struct PoolObj {
+    int32_t cls = 0;
+    uint32_t moby = 0, pvars = 0;
+    std::vector<uint8_t> m, pv;  // (as loaded)
+    bool out = false;            // started by base_spawn (until it is gone)
+    uint16_t gen = 0;
+};
+std::vector<PoolObj> g_pool;
+
+// a started pool object still lives (its moby its class's, its pvars its own, in play)
+bool pool_alive(const PoolObj& o) {
+    return o.out && static_cast<int8_t>(lbu(o.moby + 0x20)) >= 0 && lh(o.moby + 0xa6) == o.cls && lwu(o.moby + 0x78) == o.pvars;
+}
+
+void pool_take(int slot) {
+    g_pool.clear();
+    const ModInfo* lm = slot >= kFirstLevelSlot ? mods_level_at_slot(slot) : nullptr;
+    if (lm == nullptr || lm->level_pools.empty()) return;
+    size_t n = 0;
+    for (const ModInfo::LevelPool& lp : lm->level_pools)
+        for (int uid : lp.uids) {
+            const uint32_t m = api_moby_by_uid(uid);
+            if (m == 0 || lh(m + 0xa6) != lp.cls) {
+                std::fprintf(stderr, "[sdk] the spawn pool's object %d (class %d) is not on the level\n", uid, lp.cls);
+                continue;
+            }
+            PoolObj o;
+            o.cls = lp.cls;
+            o.moby = m;
+            o.pvars = lwu(m + 0x78);
+            o.m.resize(0x100);
+            for (uint32_t i = 0; i < 0x100; ++i) o.m[i] = static_cast<uint8_t>(lbu(m + i));
+            if (o.pvars != 0 && lp.pvar_size > 0 && addr_ok(o.pvars, static_cast<uint32_t>(lp.pvar_size))) {
+                o.pv.resize(static_cast<size_t>(lp.pvar_size));
+                for (uint32_t i = 0; i < o.pv.size(); ++i) o.pv[i] = static_cast<uint8_t>(lbu(o.pvars + i));
+            }
+            moby_retire(m);
+            g_pool.push_back(std::move(o));
+            ++n;
+        }
+    std::printf("[sdk] level slot %d: %zu objects in the spawn pools (base_spawn)\n", slot, n);
+}
+
+uint32_t api_base_spawn(int32_t cls, const float pos[3], float yaw) {
+    if (pos == nullptr) return 0;
+    for (size_t i = 0; i < g_pool.size(); ++i) {
+        PoolObj& o = g_pool[i];
+        if (o.cls != cls) continue;
+        if (o.out && pool_alive(o)) continue;
+        if (o.out) o.out = false;  // (gone: its room free again)
+        if (static_cast<int8_t>(lbu(o.moby + 0x20)) >= 0) continue;  // (in play otherwise: not ours to take)
+        const uint32_t m = o.moby;
+        const uint32_t grid = lwu(m + 0xa0);  // (the grid's rectangle as the retire left it: none)
+        for (uint32_t k = 0; k < 0x100; ++k) sb(m + k, o.m[k]);
+        sw(m + 0xa0, grid);
+        for (uint32_t k = 0; k < o.pv.size(); ++k) sb(o.pvars + k, o.pv[k]);
+        sb(m + 0xb1, 0xff);  // (its bolts: moby_drop_bolts drops none for 0xfe, a placement with no spawn rule)
+        for (uint32_t k = 0; k < 3; ++k) swc1(m + 0x10 + 4 * k, pos[k]);
+        swc1(m + 0x48, fold_angle(yaw));
+        moby_update_transform(m);
+        o.out = true;
+        ++o.gen;
+        if (o.gen == 0) o.gen = 1;
+        return static_cast<uint32_t>(o.gen) << 16 | static_cast<uint32_t>(i + 1);
+    }
+    return 0;
+}
+
+uint32_t api_base_moby(uint32_t h) {
+    const size_t i = (h & 0xffffu) - 1;
+    if (h == 0 || i >= g_pool.size()) return 0;
+    PoolObj& o = g_pool[i];
+    if (o.gen != (h >> 16) || !o.out) return 0;
+    if (!pool_alive(o)) {
+        o.out = false;
+        return 0;
+    }
+    return o.moby;
+}
+
+int32_t api_base_free(int32_t cls) {
+    int32_t n = 0;
+    for (PoolObj& o : g_pool) {
+        if (o.cls != cls) continue;
+        if (o.out && !pool_alive(o)) o.out = false;
+        if (!o.out && static_cast<int8_t>(lbu(o.moby + 0x20)) < 0) ++n;
+    }
+    return n;
+}
+
 // ---- loading ----
 void* lib_open(const std::string& path, std::string& err) {
 #if defined(_WIN32)
@@ -863,6 +959,9 @@ void load_all() {
     g_api.trigger_find = api_trigger_find;
     g_api.trigger_inside = api_trigger_inside;
     g_api.frame_count = api_frame_count;
+    g_api.base_spawn = api_base_spawn;
+    g_api.base_moby = api_base_moby;
+    g_api.base_free = api_base_free;
     g_plugins.reserve(mods.size());  // (g_cur points into it)
     for (const ModInfo* m : mods) {
         std::string err;
@@ -1129,6 +1228,15 @@ void mod_code_level_load() {
     sdk_level_load(level_slot());
     // (the hooks' gate: a plugin, or the level's own content)
     g_mod_code_any = !g_plugins.empty() || g_sdk.on;
+}
+
+// orig: (none) — enhancement (mod_code.h)
+void mod_code_level_loaded() {
+    if (level_slot() < kFirstLevelSlot) {
+        g_pool.clear();
+        return;
+    }
+    pool_take(level_slot());
 }
 
 // orig: (none) — enhancement (mod_code.h)

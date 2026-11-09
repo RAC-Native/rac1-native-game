@@ -44,8 +44,9 @@ extern "C" {
 #endif
 
 /* The ABI this header describes. 1: the first; 2: the level's own object classes, ray and near queries, damage both
-   ways, the mod's own sounds, triggers (docs/sdk.md lists what each version added). */
-#define RAC1_MOD_ABI 2
+   ways, the mod's own sounds, triggers; 3: the base level's objects spawned at run time (base_spawn) (docs/sdk.md lists
+   what each version added). */
+#define RAC1_MOD_ABI 3
 
 #if defined(_WIN32)
 #define RAC1_MOD_EXPORT __declspec(dllexport)
@@ -254,6 +255,19 @@ typedef struct rac1_api {
 
     /* -- time -- */
     uint64_t (*frame_count)(void);  /* the frames of play since the game started (the frame callback's count) */
+
+    /* ======== ABI 3 (test RAC1_API_HAS(api, base_spawn)) ======== */
+
+    /* -- the base level's objects at run time (docs/sdk.md, "Base level objects"): a level mod's level.txt `spawn <class>
+          <count>` lines give room for <count> live objects of the base level's class <class> at once -- */
+    /* a new object of the base level's class `cls` at `pos` turned `yaw`, as the base level's first placement of the class
+       (its settings, its pvars, its bolts), its class's own behaviour: a handle, 0 when none (no spawn line for the class,
+       all of its room in use) */
+    uint32_t (*base_spawn)(int32_t cls, const float pos[3], float yaw);
+    /* its moby while it lives, 0 once it is gone (killed, removed, the level left): its death */
+    uint32_t (*base_moby)(uint32_t handle);
+    /* how many more of class `cls` base_spawn can start now (0: none, or no spawn line for it) */
+    int32_t (*base_free)(int32_t cls);
 } rac1_api;
 
 #define RAC1_API_HAS(api, field) ((api)->size >= offsetof(rac1_api, field) + sizeof((api)->field))
