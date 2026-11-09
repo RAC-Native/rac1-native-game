@@ -91,9 +91,9 @@ inline void ram_load_vf(V& u, int r, uint32_t a) {
 }
 template <class V>
 inline void ram_store_vf(const V& u, int r, uint32_t a) {
-    Qw v{};
-    std::memcpy(&v, &u.vf[r], 16);
-    ram_setq(a, v);
+    uint32_t w[4];  // (its lanes as words: a memcpy into the two doublewords pairs them up the wrong way round on a big-endian host)
+    std::memcpy(w, &u.vf[r], 16);
+    ram_setq(a, Qw{w[0] | static_cast<uint64_t>(w[1]) << 32, w[2] | static_cast<uint64_t>(w[3]) << 32});
 }
 
 // orig: (helper) the scratchpad DMA channels' kicks as the culls write them: the address, count and scratchpad address
