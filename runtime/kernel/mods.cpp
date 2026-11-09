@@ -139,18 +139,32 @@ bool mods_manifest_read(ModInfo& m) {
         }
         const auto fmt = l->find("format");
         m.level_format = fmt != l->end() && fmt->is_number_integer() ? static_cast<int>(std::clamp<int64_t>(fmt->get<int64_t>(), 0, 1000)) : 0;
-        if (m.level_format != kLevelFormat) {
+        if (m.level_format < 1 || m.level_format > kLevelFormat) {
             m.error = "level.format " + std::to_string(m.level_format) + " (this game reads format " + std::to_string(kLevelFormat) + "): needs a newer game";
             return false;
         }
         const auto base = l->find("base");
         m.level_base = base != l->end() && base->is_number_integer() ? static_cast<int>(std::clamp<int64_t>(base->get<int64_t>(), -1, 1000)) : 0;
-        if (m.level_base != 0) {  // (format 1: Veldin's code only, the one level the ship's list never shows)
-            m.error = "level.base " + std::to_string(m.level_base) + ": format 1 runs on level 0 (Veldin) only";
+        if (m.level_format == 1 && m.level_base != 0) {  // (format 1: Veldin's code only, the one level the ship's list never shows)
+            m.error = "level.base " + std::to_string(m.level_base) + ": format 1 runs on level 0 (Veldin) only (format 2 for another base level)";
+            return false;
+        }
+        if (!mods_level_base_allowed(m.level_base)) {
+            std::string list;
+            for (int b : kLevelBases) list += (list.empty() ? "" : ", ") + std::to_string(b);
+            m.error = "level.base " + std::to_string(m.level_base) + ": not a base level this game runs a level on (" + list + ")";
             return false;
         }
     }
     return true;
+}
+
+// orig: (none) — enhancement (mods.h)
+bool mods_level_base_allowed(int base) {
+    for (int b : kLevelBases)
+        if (b == base) return true;
+    static const bool any = std::getenv("RAC1_LEVEL_BASE_ANY") != nullptr;  // (testing: any of the game's levels, untested ones too)
+    return any && base >= 0 && base <= 18;
 }
 
 // orig: (none) — enhancement: a level mod's build's choices (build.json: its music) into `m`
@@ -161,6 +175,18 @@ static void level_build_choices(ModInfo& m) {
     const nlohmann::json j = nlohmann::json::parse(ss.str(), nullptr, false);
     if (j.is_discarded() || !j.is_object()) return;
     if (const auto ob = j.find("objects"); ob != j.end() && ob->is_number_integer()) m.level_objects = static_cast<int>(std::clamp<int64_t>(ob->get<int64_t>(), 0, 4096));
+    if (const auto po = j.find("pools"); po != j.end() && po->is_array())
+        for (const auto& e : *po) {
+            if (!e.is_object()) continue;
+            ModInfo::LevelPool lp;
+            const auto c = e.find("class"), u = e.find("uids"), z = e.find("pvars");
+            if (c == e.end() || !c->is_number_integer() || u == e.end() || !u->is_array()) continue;
+            lp.cls = static_cast<int>(std::clamp<int64_t>(c->get<int64_t>(), 0, 0x7ff));
+            if (z != e.end() && z->is_number_integer()) lp.pvar_size = static_cast<int>(std::clamp<int64_t>(z->get<int64_t>(), 0, 0x10000));
+            for (const auto& x : *u)
+                if (x.is_number_integer()) lp.uids.push_back(static_cast<int>(std::clamp<int64_t>(x.get<int64_t>(), 0, 0x7fff)));
+            m.level_pools.push_back(std::move(lp));
+        }
     const auto mu = j.find("music");
     if (mu == j.end()) return;
     if (mu->is_number_integer()) m.level_music = static_cast<int>(std::clamp<int64_t>(mu->get<int64_t>(), -2, 18));

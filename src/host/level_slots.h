@@ -86,6 +86,10 @@ void level_slots_level_start(int32_t level);
 // from a slot's level
 bool level_slots_skip_story();
 
+// orig: (none) — enhancement: the travel is to a slot's level whose base level is `next`: the base level's story cards and
+// movies of the first flight there (Eudora, Gemlik Base, Kalebo III) are left out
+bool level_slots_story_to(int32_t next);
+
 // orig: (none) — enhancement: a slot's level is the level the game loads or plays (its row chosen, its save loaded): the
 // game's tests of Veldin (level 0) as the first level (no landing, the loading screen's "to Veldin" flight, the flight's
 // sound, the ship hidden, no trails) treat it as any planet. False with no level mod on

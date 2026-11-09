@@ -479,6 +479,9 @@ void level_slots_level_start(int32_t level) {
 bool level_slots_skip_story() { return level_slots_on() && (g_s.pending >= 0 || level_slot_current() >= 0); }
 
 // orig: (none) — enhancement (level_slots.h)
+bool level_slots_story_to(int32_t next) { return level_slots_on() && g_s.pending >= 0 && next == base_of(g_s.pending); }
+
+// orig: (none) — enhancement (level_slots.h)
 bool level_slots_planet_arrival() { return level_slots_on() && g_s.pending >= 0 && lw(LEVEL) == base_of(g_s.pending); }
 
 // orig: (none) — enhancement (level_slots.h)
