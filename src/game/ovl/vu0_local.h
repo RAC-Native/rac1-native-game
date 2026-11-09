@@ -89,8 +89,22 @@ struct VuT {
     [[gnu::always_inline]] void sub(int d, int a, int b, int m) { d == 0 ? put(d, vu0m::vsub4(op(a), op(b)), m) : fm<kSub, false>(vf[d], vf[a], &vf[b], 0.0f, m); }
     [[gnu::always_inline]] void mul(int d, int a, int b, int m) { d == 0 ? put(d, vu0m::vmul4(op(a), op(b)), m) : fm<kMul, false>(vf[d], vf[a], &vf[b], 0.0f, m); }
     [[gnu::always_inline]] void addbc(int d, int a, float b, int m) { d == 0 ? put(d, vu0m::vadd4(op(a), vu0m::bc4(b)), m) : fm<kAdd, true>(vf[d], vf[a], nullptr, b, m); }
-    [[gnu::always_inline]] void subbc(int d, int a, float b, int m) { d == 0 ? put(d, vu0m::vsub4(op(a), vu0m::bc4(b)), m) : fm<kSub, true>(vf[d], vf[a], nullptr, b, m); }
+    [[gnu::always_inline]] void subbc(int d, int a, float b, int m) { d == 0 ? sub0bc(a, b, m) : fm<kSub, true>(vf[d], vf[a], nullptr, b, m); }
     [[gnu::always_inline]] void mulbc(int d, int a, float b, int m) { d == 0 ? put(d, vu0m::vmul4(op(a), vu0m::bc4(b)), m) : fm<kMul, true>(vf[d], vf[a], nullptr, b, m); }
+    // ((2026-11-09) the Wii U: VSUBbc into vf0 - the tfrag lighting's point light range test, every vertex - with the lanes one by one:
+    // cop4's clamp is vuc's, _mm_sub_ps the lanes' float subtraction, fin_lanes the flag word fin_m's movemask makes; the shim's
+    // SSE through memory was 2.4% of Blarg's game thread)
+    void sub0bc(int a, float b, int m) {
+        const float y = vuc(b);
+        uint32_t raw[4], out[4];
+        for (int i = 0; i < 4; ++i) raw[i] = f2u(vuc(vf[a].v[i]) - y);
+        sync();
+        const uint32_t x = vu0m::fin_lanes(raw, out, m);
+        mac = x;
+        const uint32_t st = vu0m::status_bits(x);
+        status = (status & 0xfc0) | st | (st << 6);
+        vf[0].v[0] = 0.0f, vf[0].v[1] = 0.0f, vf[0].v[2] = 0.0f, vf[0].v[3] = 1.0f;
+    }
     // d = ACC + a b.bc
     [[gnu::always_inline]] void maddbc(int d, int a, float b, int m) {
         d == 0 ? put(d, vu0m::vadd4(opacc(), vu0m::vmul4(op(a), vu0m::bc4(b))), m) : fm<kMadd, true>(vf[d], vf[a], nullptr, b, m);
