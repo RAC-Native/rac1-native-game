@@ -23,9 +23,9 @@
  * - flame (the level's class): a flame vent in the floor: rests, warns (smoke, a hiss), bursts (a roar), hurts
  *   Ratchet standing in it; the vents take turns ("delay=" in frames).
  * - spawn (the level's class): the spawn points, hidden at their spawn.
- * - The rails (rails.txt, the classes rail_<name>): a rail challenge (for those who have the Grind Scarponi) puts
- *   Ratchet on the station outside the walls and its rails into the game's rail table: "Test Grind Scarponi" one rail
- *   down into the arena, "Grind Scarponi: Discesa" a course of three lanes with mines, barriers and drones (the classes
+ * - The rails (rails.txt, the classes rail_<name>): a rail challenge (for those who have the Grindscarponi) puts
+ *   Ratchet on the station outside the walls and its rails into the game's rail table: "Test Grindscarponi" one rail
+ *   down into the arena, "Grindscarponi: Discesa" a course of three lanes with mines, barriers and drones (the classes
  *   mine, barrier, drone), then a last wave in the arena (the grind section below).
  *
  * RAC1_MOD_TEST=arena (headless): Ratchet put on the hub at frame 100, the first challenge started at frame 160, a
@@ -154,9 +154,9 @@ static const challenge_def CHALLENGES[] = {
       {22, 16, 10, "RBFLCJ"}, {24, 16, 9, "RBFLCJS"}, {20, 16, 8, "GRBFJ"}},
      120, 25, 1, 0, W_ANY, 12000},
     {"Campionato", "15 round, le modalita' a caso", CUP, 0, 15, {{0}}, 0, 25, 0, 0, W_ANY, 20000},
-    {"Test Grind Scarponi", "prova: giu' per la rotaia fino all'arena", RAIL, 45, 1, {{0}}, 0, 0, 0, 0, W_ANY, 1000, 0,
+    {"Test Grindscarponi", "prova: giu' per la rotaia fino all'arena", RAIL, 45, 1, {{0}}, 0, 0, 0, 0, W_ANY, 1000, 0,
      "test", "rail_start", 0},
-    {"Grind Scarponi: Discesa", "3 corsie, ostacoli e droni, poi l'ultima ondata", RAIL, 90, 1, {{8, 6, 25, "RRB"}}, 0, 20,
+    {"Grindscarponi: Discesa", "3 corsie, ostacoli e droni, poi l'ultima ondata", RAIL, 90, 1, {{8, 6, 25, "RRB"}}, 0, 20,
      0, 0, W_ANY, 3000, 0, "lane_c lane_l lane_r", "rail_course", 1},
     {"Impossibile", "il campionato, 50 round", CUP, 0, 50, {{0}}, 0, 20, 0, 0, W_ANY, 100000, 1},
 };
@@ -360,8 +360,8 @@ static void toast(const char* text) {
    4 Spanish, 5 Italian; Japanese gets the English ones). The plugin's texts are written in Italian (the challenges'
    names are their keys in the save too); tr() gives one in the game's language, the Italian one when the table has
    none. Plain ASCII, as the HUD's font takes it (no accents: e', ae / oe / ue). A row: Italian, English, French,
-   German, Spanish, the same % conversions in each (texts_check logs a row that has not). The weapons keep their
-   names (Gadgetron's). ---- */
+   German, Spanish, the same % conversions in each (texts_check logs a row that has not). The weapons', the wrench's
+   and the Grindscarponi's names are the game's own (item_name, below), and so are the words for bolts. ---- */
 #define GAME_LANGUAGE 0x0015ed88u
 enum { L_IT, L_EN, L_FR, L_DE, L_ES, N_LANGS };
 
@@ -404,11 +404,10 @@ static const char* const TEXTS[][N_LANGS] = {
     {"Campionato", "Championship", "Championnat", "Meisterschaft", "Campeonato"},
     {"15 round, le modalita' a caso", "15 rounds, the modes at random", "15 manches, les modes au hasard",
      "15 Runden, die Modi per Zufall", "15 rondas, los modos al azar"},
-    {"Test Grind Scarponi", "Grindboots Test", "Test des Bottes de glisse", "Grindstiefel-Test", "Prueba de Botas de grind"},
+    {"Test Grindscarponi", "%s Test", "Test des %s", "%s-Test", "Prueba de %s"},
     {"prova: giu' per la rotaia fino all'arena", "a test: down the rail into the arena", "un essai: le rail jusqu'a l'arene",
      "ein Test: die Schiene hinab in die Arena", "una prueba: baja por el rail hasta la arena"},
-    {"Grind Scarponi: Discesa", "Grindboots: Descent", "Bottes de glisse: Descente", "Grindstiefel: Abfahrt",
-     "Botas de grind: Descenso"},
+    {"Grindscarponi: Discesa", "%s: Descent", "%s: Descente", "%s: Abfahrt", "%s: Descenso"},
     {"3 corsie, ostacoli e droni, poi l'ultima ondata", "3 lanes, obstacles and drones, then a last wave",
      "3 voies, obstacles et drones, puis une derniere vague", "3 Spuren, Hindernisse und Drohnen, dann eine letzte Welle",
      "3 carriles, obstaculos y drones, y una ultima oleada"},
@@ -420,11 +419,10 @@ static const char* const TEXTS[][N_LANGS] = {
     {"Grate impazzite", "Wild Vents", "Grilles dechainees", "Wilde Gitter", "Rejillas locas"},
     /* the menu */
     {"ARENA - SFIDE", "ARENA - CHALLENGES", "ARENE - DEFIS", "ARENA - HERAUSFORDERUNGEN", "ARENA - DESAFIOS"},
-    {"Servono i Grind Scarponi", "You need the Grindboots", "Il faut les Bottes de glisse", "Du brauchst die Grindstiefel",
-     "Necesitas las Botas de grind"},
-    {"Premio %d bulloni   Record %u:%02u", "Prize %d bolts   Record %u:%02u", "Prix %d boulons   Record %u:%02u",
-     "Preis %d Bolzen   Rekord %u:%02u", "Premio %d tornillos   Record %u:%02u"},
-    {"Premio %d bulloni", "Prize %d bolts", "Prix %d boulons", "Preis %d Bolzen", "Premio %d tornillos"},
+    {"Servono i Grindscarponi", "You need the %s", "Il faut les %s", "Du brauchst die %s", "Necesitas las %s"},
+    {"Premio %d bolts   Record %u:%02u", "Prize %d bolts   Record %u:%02u", "Prix %d boulons   Record %u:%02u",
+     "Preis %d Bolts   Rekord %u:%02u", "Premio %d guitones   Record %u:%02u"},
+    {"Premio %d bolts", "Prize %d bolts", "Prix %d boulons", "Preis %d Bolts", "Premio %d guitones"},
     {"Croce: inizia      Cerchio: esci", "Cross: start      Circle: leave", "Croix: commencer      Rond: quitter",
      "Kreuz: starten      Kreis: verlassen", "Equis: empezar      Circulo: salir"},
     {"Quadrato: rivenditore", "Square: vendor", "Carre: vendeur", "Quadrat: Haendler", "Cuadrado: vendedor"},
@@ -440,7 +438,6 @@ static const char* const TEXTS[][N_LANGS] = {
     {"Round superato!", "Round cleared!", "Manche reussie!", "Runde geschafft!", "Ronda superada!"},
     {"Ondata superata!", "Wave cleared!", "Vague repoussee!", "Welle geschafft!", "Oleada superada!"},
     {"Arma: %s", "Weapon: %s", "Arme: %s", "Waffe: %s", "Arma: %s"},
-    {"chiave inglese", "Wrench", "Cle", "Schraubenschluessel", "Llave"},
     {"Nessuna arma: solo la chiave", "No weapons: the wrench only", "Aucune arme: la cle seulement",
      "Keine Waffen: nur der Schluessel", "Sin armas: solo la llave"},
     {"Resisti %d:%02d   Abbattuti %d", "Hold out %d:%02d   Downed %d", "Tiens %d:%02d   Abattus %d",
@@ -465,15 +462,88 @@ static const char* const TEXTS[][N_LANGS] = {
     /* the result */
     {"SFIDA COMPLETATA!", "CHALLENGE COMPLETE!", "DEFI REUSSI!", "HERAUSFORDERUNG GESCHAFFT!", "DESAFIO COMPLETADO!"},
     {"SFIDA FALLITA", "CHALLENGE FAILED", "DEFI RATE", "HERAUSFORDERUNG VERLOREN", "DESAFIO FALLIDO"},
-    {"+%d bulloni   %d abbattuti", "+%d bolts   %d downed", "+%d boulons   %d abattus", "+%d Bolzen   %d erledigt",
-     "+%d tornillos   %d abatidos"},
-    {"+%d bulloni   %d:%02d", "+%d bolts   %d:%02d", "+%d boulons   %d:%02d", "+%d Bolzen   %d:%02d", "+%d tornillos   %d:%02d"},
+    {"+%d bolts   %d abbattuti", "+%d bolts   %d downed", "+%d boulons   %d abattus", "+%d Bolts   %d erledigt",
+     "+%d guitones   %d abatidos"},
+    {"+%d bolts   %d:%02d", "+%d bolts   %d:%02d", "+%d boulons   %d:%02d", "+%d Bolts   %d:%02d", "+%d guitones   %d:%02d"},
     {"Ti hanno colpito", "You were hit", "Tu as ete touche", "Du wurdest getroffen", "Te han dado"},
     {"Tempo scaduto", "Time's up", "Temps ecoule", "Zeit abgelaufen", "Se acabo el tiempo"},
     {"Ratchet e' caduto", "Ratchet fell", "Ratchet est tombe", "Ratchet ist gefallen", "Ratchet ha caido"},
     {"Sbloccata: %s", "Unlocked: %s", "Debloque: %s", "Freigeschaltet: %s", "Desbloqueado: %s"},
 };
 #define N_TEXTS ((int)(sizeof TEXTS / sizeof TEXTS[0]))
+
+/* The game's own names (its texts, in its language): the level's text table (at Veldin's overlay address 0x15f660, its
+   count at 0x17943c; 16 bytes a text: +0 the string, +4 its id, as the game's lookup 0x203ad8 reads it), an item's name
+   in the item table (0x179ac0, 0x4c bytes an item: +0x46 its name's id, +0x48 its gold version's, the gold one owned
+   when 0x13e520 + the item is set). In plain ASCII for the HUD: the font's accented vowels (0x80..0xa7, four a vowel:
+   A a E e I i O o U u, each acute, grave, circumflex, diaeresis) as the vowel (in German a diaeresis as ae, oe, ue),
+   0xa8 / 0xa9 / 0xaa / 0xab / 0xac (N n C c with their marks, the sharp s) as N n C c ss, its colour and button codes
+   left out, and the space after a hyphen (where the quick select breaks a name in two lines) too. */
+#define TEXT_LIST 0x0015f660u
+#define TEXT_COUNT 0x0017943cu
+#define ITEM_TABLE 0x00179ac0u
+#define GOLD_ITEMS 0x0013e520u
+#define BOOTS_ITEM 0x1d  /* the Grindscarponi's item (owned: GRIND_BOOTS, 0x13d4c0 + it) */
+
+/* the game's text `id` in ASCII into out (empty when the level has none) */
+static int lang_now(void);
+
+static const char* game_text(int32_t id, char* out, size_t cap) {
+    out[0] = 0;
+    const int german = lang_now() == L_DE;
+    const uint32_t list = rac1_lw(api, api->ov(TEXT_LIST));
+    const int32_t n = (int32_t)rac1_lw(api, api->ov(TEXT_COUNT));
+    uint32_t str = 0;
+    for (int32_t i = 0; i < n && list != 0 && str == 0; ++i)
+        if ((int32_t)rac1_lw(api, list + 16u * (uint32_t)i + 4) == id) str = rac1_lw(api, list + 16u * (uint32_t)i);
+    size_t k = 0;
+    for (uint32_t j = 0; str != 0 && j < 96; ++j) {
+        const uint8_t c = rac1_lb(api, str + j);
+        if (c == 0) break;
+        const char* add = NULL;
+        char one[3] = {0, 0, 0};
+        if (c == ' ' && k > 0 && out[k - 1] == '-') continue;
+        if (c >= 0x20 && c < 0x7f) one[0] = (char)c;
+        else if (c >= 0x80 && c <= 0xa7) {
+            one[0] = "AaEeIiOoUu"[(c - 0x80) / 4];
+            if (german && (c - 0x80) % 4 == 3 && strchr("AaOoUu", one[0])) one[1] = 'e';
+        }
+        else if (c >= 0xa8 && c <= 0xab) one[0] = "NnCc"[c - 0xa8];
+        else if (c == 0xac) add = "ss";
+        if (one[0]) add = one;
+        for (; add != NULL && *add && k + 1 < cap; ++add) out[k++] = *add;
+    }
+    out[k] = 0;
+    return out;
+}
+
+/* an item's name as the game shows it (its gold version's when that is owned), "" when the level's texts have none */
+static const char* item_name(int32_t item, char* out, size_t cap) {
+    const uint32_t rec = api->ov(ITEM_TABLE) + 0x4cu * (uint32_t)item;
+    const int gold = item > 0 && item < 0x40 && rac1_lb(api, GOLD_ITEMS + (uint32_t)item) != 0;
+    return game_text((int16_t)rac1_lh(api, rec + (gold ? 0x48 : 0x46)), out, cap);
+}
+
+static const char* tr(const char* it);
+
+/* an Italian text naming the Grindscarponi, in the game's language: the other languages' rows hold a %s for the game's
+   own name of them */
+static const char* with_boots(const char* it) {
+    static char buf[2][96];
+    static int k;
+    char* out = buf[k++ & 1];
+    const char* t = tr(it);
+    if (strstr(t, "%s") == NULL) return t;
+    char name[48];
+    if (!item_name(BOOTS_ITEM, name, sizeof name)[0]) snprintf(name, sizeof name, "Grindboots");
+    snprintf(out, sizeof buf[0], t, name);
+    return out;
+}
+
+/* a challenge's name in the game's language */
+static const char* ch_title(int ch) {
+    return with_boots(CHALLENGES[ch].name);
+}
 
 /* the game's text language as a column of TEXTS */
 static int lang_now(void) {
@@ -510,7 +580,8 @@ static void texts_check(void) {
             }
             got[n] = 0;
             if (l == L_IT) snprintf(want, sizeof want, "%s", got);
-            else if (strcmp(want, got) != 0) {
+            else if (strcmp(want, got) != 0 && !(strstr(TEXTS[i][L_IT], "Grindscarponi") && strcmp(got, "s") == 0 && !want[0])) {
+                /* (the rows naming the Grindscarponi: the other languages' %s is the game's own name of them) */
                 char msg[160];
                 snprintf(msg, sizeof msg, "texts: \"%s\" has other conversions in language %d", TEXTS[i][L_IT], l);
                 api->log(msg);
@@ -996,7 +1067,7 @@ static void challenge_end(int won, const char* why) {
         play(s.snd_win);
         if (locked >= 0 && unlocked(locked)) {
             char t[64];
-            snprintf(t, sizeof t, tr("Sbloccata: %s"), tr(CHALLENGES[locked].name));
+            snprintf(t, sizeof t, tr("Sbloccata: %s"), ch_title(locked));
             toast(t);
         }
     } else {
@@ -1009,8 +1080,13 @@ static void challenge_end(int won, const char* why) {
 
 /* ---- the weapons (Roulette, Caos) ---- */
 
+/* a weapon's name as the game shows it (the table's English one when the level's texts have none) */
 static const char* weapon_name(int32_t item) {
-    if (item == WRENCH) return tr("chiave inglese");
+    static char buf[2][48];
+    static int k;
+    char* out = buf[k++ & 1];
+    if (item_name(item, out, sizeof buf[0])[0]) return out;
+    if (item == WRENCH) return "OmniWrench";
     for (int i = 0; i < N_WEAPONS; ++i)
         if (WEAPONS[i].item == item && WEAPONS[i].name) return WEAPONS[i].name;
     return "?";
@@ -1482,7 +1558,7 @@ static void supplies_update(void) {
    its own level's two rail spots (hero_rail_land_check 0x20cf58): the rails start by one, at the station. Once on one,
    its jumps and the side jumps to a rail beside it (2..4.5 away: the lanes) work anywhere. The challenges need the Grind
    Scarponi (0x13d4dd, the grind boots): without them the menu does not start them.
-   The course ("Grind Scarponi: Discesa") has obstacles on its lanes (the level's objects of the classes mine, barrier,
+   The course ("Grindscarponi: Discesa") has obstacles on its lanes (the level's objects of the classes mine, barrier,
    drone): a mine is jumped, a barrier is passed on another lane, a drone is broken with the wrench (Square on the rail)
    or zaps him as he passes; each hurts him by one. Its end leads to a last wave in the arena. */
 #define RAIL_TABLE 0x0015f70cu
@@ -1653,7 +1729,7 @@ static void rails_uninstall(void) {
     rails.on = 0;
 }
 
-/* Ratchet has the Grind Scarponi (the rail challenges need them) */
+/* Ratchet has the Grindscarponi (the rail challenges need them) */
 static int has_boots(void) {
     return rac1_lb(api, GRIND_BOOTS) != 0;
 }
@@ -1936,7 +2012,7 @@ static void menu_lines(void) {
             hud_panel(x + 8, y - 3, 3, step - 2, BAR, C);
         }
         hud_panel(x + 20, y + 4, 7, 7, (s.done >> i) & 1 ? GREEN : BOX_EMPTY, C);
-        hud_text_at(x + 36, y, CHALLENGES[i].kind == RAIL && !has_boots() ? GREY : chosen ? WHITE : CYAN, 1.1f, C, 0, "%s", tr(CHALLENGES[i].name));
+        hud_text_at(x + 36, y, CHALLENGES[i].kind == RAIL && !has_boots() ? GREY : chosen ? WHITE : CYAN, 1.1f, C, 0, "%s", ch_title(i));
         hud_maxw(w - 60);
     }
     if (n > MENU_ROWS) {  /* the scroll bar: its track, the part shown */
@@ -1947,14 +2023,14 @@ static void menu_lines(void) {
     const int ch = list[s.sel];
     const challenge_def* c = &CHALLENGES[ch];
     if (s.toast_t > 0) hud_text_at(256, info_y, YELLOW, 1.05f, C, 1, "%s", s.toast);
-    else if (c->kind == RAIL && !has_boots()) hud_text_at(256, info_y, GREY, 1.05f, C, 1, "%s", tr("Servono i Grind Scarponi"));
+    else if (c->kind == RAIL && !has_boots()) hud_text_at(256, info_y, GREY, 1.05f, C, 1, "%s", with_boots("Servono i Grindscarponi"));
     else hud_text_at(256, info_y, WHITE, 1.05f, C, 1, "%s", tr(c->text));
     hud_maxw(w - 32);
     if (s.best[ch])
-        hud_text_at(256, info_y + 19, YELLOW, 1.0f, C, 1, tr("Premio %d bulloni   Record %u:%02u"), c->reward, (unsigned)(s.best[ch] / 3600),
+        hud_text_at(256, info_y + 19, YELLOW, 1.0f, C, 1, tr("Premio %d bolts   Record %u:%02u"), c->reward, (unsigned)(s.best[ch] / 3600),
                     (unsigned)(s.best[ch] / 60 % 60));
     else
-        hud_text_at(256, info_y + 19, YELLOW, 1.0f, C, 1, tr("Premio %d bulloni"), c->reward);
+        hud_text_at(256, info_y + 19, YELLOW, 1.0f, C, 1, tr("Premio %d bolts"), c->reward);
     hud_maxw(w - 32);
     hud_text_at(256, info_y + 46, GREY, 0.95f, C, 1, "%s", tr("Croce: inizia      Cerchio: esci"));
     hud_maxw(w - 32);
@@ -2012,7 +2088,7 @@ static void frame(void* user) {
                 const challenge_def* c = &CHALLENGES[list[s.sel]];
                 const int need = c->weapons == W_ROULETTE || c->weapons == W_CHAOS || c->kind == CUP ? 2 : 0;
                 if (c->kind == RAIL && !has_boots()) {
-                    toast(tr("Servono i Grind Scarponi"));
+                    toast(with_boots("Servono i Grindscarponi"));
                 } else if (need > 0 && weapons_usable(w) < need) {
                     toast(tr("Servono almeno 2 armi"));
                 } else {
@@ -2027,7 +2103,7 @@ static void frame(void* user) {
     case INTRO: {
         char cd[32];
         snprintf(cd, sizeof cd, tr("Si comincia tra %d"), 3 - s.t / 60);
-        banner(YELLOW, tr(CHALLENGES[s.ch].name), cd);
+        banner(YELLOW, ch_title(s.ch), cd);
         weapon_update();
         if (s.t >= INTRO_FRAMES) wave_start();
         break;
@@ -2063,14 +2139,14 @@ static void frame(void* user) {
             if (third[0]) hud_text_at(22, y + 50, CYAN, 1.1f, RAC1_HUD_LEFT, 0, "%s", third);
             if (c->kind == SURVIVE) {
                 const int left = c->time * 60 - s.clock;
-                hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", tr(c->name));
+                hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", ch_title(s.ch));
                 hud_text_at(22, y + 28, WHITE, 1.1f, RAC1_HUD_LEFT, 0, tr("Resisti %d:%02d   Abbattuti %d"), left / 3600, left / 60 % 60, s.felled);
             } else if (c->kind == RAIL && rails.phase < 2) {
                 const int left = c->time * 60 - rails.ride;
-                hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", tr(c->name));
+                hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", ch_title(s.ch));
                 hud_text_at(22, y + 28, left < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0, tr("Restano %d:%02d"), left / 3600, left / 60 % 60);
             } else {
-                hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s  %d/%d", tr(c->name), s.wave + 1, c->waves);
+                hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s  %d/%d", ch_title(s.ch), s.wave + 1, c->waves);
                 const int timed = c->kind == TIMED || s.rule.time > 0;
                 const int t = c->kind == TIMED ? c->time * 60 - s.clock : s.rule.time > 0 ? s.rule.time * 60 - s.round_clock : s.clock;
                 hud_text_at(22, y + 28, timed && t < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0,
@@ -2088,9 +2164,9 @@ static void frame(void* user) {
         if (s.won) {
             char line[48];
             if (CHALLENGES[s.ch].kind == SURVIVE)
-                snprintf(line, sizeof line, tr("+%d bulloni   %d abbattuti"), CHALLENGES[s.ch].reward, s.felled);
+                snprintf(line, sizeof line, tr("+%d bolts   %d abbattuti"), CHALLENGES[s.ch].reward, s.felled);
             else
-                snprintf(line, sizeof line, tr("+%d bulloni   %d:%02d"), CHALLENGES[s.ch].reward, s.clock / 3600, s.clock / 60 % 60);
+                snprintf(line, sizeof line, tr("+%d bolts   %d:%02d"), CHALLENGES[s.ch].reward, s.clock / 3600, s.clock / 60 % 60);
             banner(GREEN, tr("SFIDA COMPLETATA!"), line);
         } else {
             banner(RED, tr("SFIDA FALLITA"), s.why[0] ? s.why : NULL);
@@ -2334,17 +2410,39 @@ static void test(void* user, const char* text, uint64_t frame) {
     const int fall = strcmp(text, "arena_fall") == 0;    /* the tower, then down to the floor at frame 1500: they come down */
     const int tower = strcmp(text, "arena_tower") == 0 || fall;  /* on the north-east tower's top: up the ramps (the paths) */
     const int bombs_t = strcmp(text, "arena_bombs") == 0;  /* "Pioggia di fuoco", his health kept full */
+    if (s.mine && strcmp(text, "arena_texts") == 0 && frame == 300) {  /* the game's text table, every record, then the
+                                                                          items' names as the plugin reads them */
+        for (int32_t item = 0x08; item <= 0x1d; ++item) {
+            char name[48], b[96];
+            snprintf(b, sizeof b, "item 0x%x: \"%s\"", (unsigned)item, item_name(item, name, sizeof name));
+            api->log(b);
+        }
+        const uint32_t list = rac1_lw(api, api->ov(0x0015f660u));
+        const int32_t n = (int32_t)rac1_lw(api, api->ov(0x0017943cu));
+        for (int32_t i = 0; i < n; ++i) {
+            const uint32_t str = rac1_lw(api, list + 16u * (uint32_t)i), id = rac1_lw(api, list + 16u * (uint32_t)i + 4);
+            char b[200];
+            int k = snprintf(b, sizeof b, "text 0x%x: ", (unsigned)id);
+            for (uint32_t j = 0; str != 0 && j < 120 && k < (int)sizeof b - 5; ++j) {
+                const uint8_t ch = rac1_lb(api, str + j);
+                if (ch == 0) break;
+                k += snprintf(b + k, sizeof b - (size_t)k, ch >= 0x20 && ch < 0x7f ? "%c" : "<%02x>", ch);
+            }
+            api->log(b);
+        }
+        return;
+    }
     const int course_t = strncmp(text, "arena_course", 12) == 0;
     if (s.mine && (strncmp(text, "arena_rail", 10) == 0 || course_t)) {
-        /* a rail challenge from 420 (arena_rail*: the test rail, arena_course*: the course), the Grind Scarponi given;
+        /* a rail challenge from 420 (arena_rail*: the test rail, arena_course*: the course), the Grindscarponi given;
            arena_rail / arena_course: Ratchet dropped onto the first rail's third point at 640 (arena_railwalk /
            arena_coursewalk: left on the station, for a RAC1_SIM_INPUT script); his health kept up; the course's last
            wave: an enemy taken away every 1.5 s */
-        const char* want = course_t ? "Grind Scarponi: Discesa" : "Test Grind Scarponi";
+        const char* want = course_t ? "Grindscarponi: Discesa" : "Test Grindscarponi";
         int ch = -1;
         for (int i = 0; i < N_CHALLENGES; ++i)
             if (strcmp(CHALLENGES[i].name, want) == 0) ch = i;
-        if (frame == 100) api->sb(GRIND_BOOTS, 1);  /* (a test's game has no Grind Scarponi) */
+        if (frame == 100) api->sb(GRIND_BOOTS, 1);  /* (a test's game has no Grindscarponi) */
         if (frame == 420 && ch >= 0) challenge_start(ch);
         if (frame == 640 && (strcmp(text, "arena_rail") == 0 || strcmp(text, "arena_course") == 0) && rails.nset > 0) {
             const float *a = rails.r[rails.set[0]].pt[2], *b = rails.r[rails.set[0]].pt[4];
@@ -2470,6 +2568,7 @@ static void test(void* user, const char* text, uint64_t frame) {
         return;
     }
     if (menu) {  /* the menu opened at frame 200 and closed at 500 (with RAC1_SIM_INPUT=forward: he must not move in between) */
+        if (frame == 100) api->sb(GRIND_BOOTS, 1);  /* (the rail challenges in the list as for one who has them) */
         if (frame == 200) {
             s.mode = MENU;
             s.t = 0;
