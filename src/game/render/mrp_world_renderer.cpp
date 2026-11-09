@@ -596,11 +596,24 @@ void load_level(int id) {
         L.world.reset();
         return;
     }
+#if defined(__WIIU__)  // (RAC1_LOAD_PROF: the load's parts)
+    const double t_w = now_ms();
+#endif
     L.idx = std::make_unique<WorldIndex>();
     L.idx->add(L.world.get());
+#if defined(__WIIU__)
+    const double t_i = now_ms();
+#endif
     load_textures(L);
+#if defined(__WIIU__)
+    const double t_t = now_ms();
+#endif
     // the GPU path's templates (static)
     build_templates(L);
+#if defined(__WIIU__)
+    if (std::getenv("RAC1_LOAD_PROF") != nullptr)
+        std::printf("[load] mrp world: asset %.0f ms, index %.0f ms, textures %.0f ms, templates %.0f ms\n", t_w - t0, t_i - t_w, t_t - t_i, now_ms() - t_t);
+#endif
     ++g_level_loads;
 #if !defined(__WIIU__)  // (the Wii U: no GL / Vulkan; the GX2 backend makes its buffers from the level's data, mrpwb::level_view)
     if (vk::is_active()) {

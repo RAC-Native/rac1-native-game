@@ -802,8 +802,15 @@ void load_level(int id) {
         else std::fprintf(stderr, "[mrp] no guest class %s\n", path.c_str());
     }
     MRP_WIIU_ONCE("classes read");
+#if defined(__WIIU__)  // (RAC1_LOAD_PROF: the load's parts)
+    const double t_cls = now_ms();
+#endif
     load_textures(L);
     MRP_WIIU_ONCE("textures read");
+#if defined(__WIIU__)
+    if (std::getenv("RAC1_LOAD_PROF") != nullptr)
+        std::printf("[load] mrp mobys: %zu classes read %.0f ms, textures %.0f ms\n", L.files.size(), t_cls - t0, now_ms() - t_cls);
+#endif
     ++g_level_loads;
     if (vk::is_active()) {
         L.vk_loaded = true;

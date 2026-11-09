@@ -16,7 +16,9 @@
 #include <cstring>
 #include <malloc.h>
 #include <memory>
+#include <fstream>
 #include <map>
+#include <sstream>
 #include <mutex>
 #include <string>
 #include <unistd.h>
@@ -80,7 +82,16 @@ struct Handle {
     std::uint64_t pos = ~0ull;  // (where its next read starts; ~0: unknown)
     std::uint64_t used = 0;
 };
-using Bytes = std::shared_ptr<const std::vector<std::uint8_t>>;
+// a file's bytes, not zeroed when made (a vector's 55 MB of zeros, written over at once: ~0.3 s of a load)
+struct Blob {
+    std::unique_ptr<std::uint8_t[]> p;
+    std::size_t n = 0;
+    explicit Blob(std::size_t size) : p(new std::uint8_t[size]), n(size) {}
+    std::uint8_t* data() { return p.get(); }
+    const std::uint8_t* data() const { return p.get(); }
+    std::size_t size() const { return n; }
+};
+using Bytes = std::shared_ptr<const Blob>;
 struct Handles {
     std::mutex m;  // (its handles and their positions)
     std::string path;
@@ -142,7 +153,7 @@ void keep_in_memory(int group, const std::vector<std::filesystem::path>& paths) 
             if (g_ram.count(path) != 0) continue;
             kept = g_ram_bytes;
         }
-        std::shared_ptr<std::vector<std::uint8_t>> v;
+        std::shared_ptr<Blob> v;
         std::FILE* f = nullptr;
         long size = 0;
         {
@@ -154,7 +165,7 @@ void keep_in_memory(int group, const std::vector<std::filesystem::path>& paths) 
             std::fseek(f, 0, SEEK_SET);
         }
         if (size > 0 && kept + static_cast<std::uint64_t>(size) <= preload_cap() && memory_left() > (192ull << 20) + static_cast<std::uint64_t>(size)) {
-            v = std::make_shared<std::vector<std::uint8_t>>(static_cast<std::size_t>(size));
+            v = std::make_shared<Blob>(static_cast<std::size_t>(size));
             // in pieces of 512 KB, as read_at: read whole under the card's lock (25-55 MB, 1.3-3 s) it held the music's and the
             // sounds' streams that long - the sound stalled right before a landing
             for (std::size_t at = 0; at < v->size();) {
@@ -217,6 +228,80 @@ std::FILE* open_file(const std::filesystem::path& path, const char* mode) {
         hs.ram = ram;
     }
     return f;
+}
+
+bool read_packed(const std::string& path, std::vector<std::uint8_t>& out) {
+    using Index = std::map<std::string, std::pair<std::uint64_t, std::uint64_t>>;  // (a file's offset and size in the pack)
+    static std::mutex m;
+    static std::map<std::string, Index> indexes;  // (by folder, read once; empty: no pack)
+    static std::string loaded;                    // (the folder whose pack is in memory)
+    static std::vector<std::uint8_t> pack;
+    const size_t slash = path.find_last_of('/');
+    if (slash == std::string::npos) return false;
+    const std::string dir = path.substr(0, slash);
+    std::scoped_lock lock(m);
+    auto ix_it = indexes.find(dir);
+    if (ix_it == indexes.end()) {
+        Index ix;
+        std::ifstream in(dir + "/files.pack.txt");
+        std::string line;
+        if (in && std::getline(in, line) && line == "rac1-native files pack 1")
+            while (std::getline(in, line)) {
+                std::istringstream ls(line);
+                std::string name;
+                std::uint64_t off = 0, size = 0;
+                if (ls >> name >> off >> size) ix[name] = {off, size};
+            }
+        ix_it = indexes.emplace(dir, std::move(ix)).first;
+    }
+    const auto it = ix_it->second.find(path.substr(slash + 1));
+    if (it == ix_it->second.end()) return false;
+    if (loaded != dir) {  // (the folder's pack read whole, in pieces of 512 KB as read_at: the sound's streams between them)
+        loaded.clear();
+        pack.clear();
+        pack.shrink_to_fit();
+        const OSTime t0 = OSGetTime();
+        std::FILE* f;
+        long size;
+        {
+            std::scoped_lock fs(g_fs_m);
+            f = std::fopen((dir + "/files.pack").c_str(), "rb");
+            if (f == nullptr) return false;
+            std::fseek(f, 0, SEEK_END);
+            size = std::ftell(f);
+            std::fseek(f, 0, SEEK_SET);
+        }
+        pack.resize(size > 0 ? static_cast<std::size_t>(size) : 0);
+        bool ok = true;
+        for (std::size_t at = 0; at < pack.size();) {
+            const std::size_t k = std::min<std::size_t>(512 * 1024, pack.size() - at);
+            std::size_t got;
+            {
+                std::scoped_lock fs(g_fs_m);
+                got = std::fread(pack.data() + at, 1, k, f);
+            }
+            at += got;
+            if (got < k) {
+                ok = false;
+                break;
+            }
+        }
+        {
+            std::scoped_lock fs(g_fs_m);
+            std::fclose(f);
+        }
+        if (!ok) {
+            pack.clear();
+            return false;
+        }
+        loaded = dir;
+        if (std::getenv("RAC1_LOAD_PROF") != nullptr)
+            std::printf("[load] %s/files.pack: %zu files, %zu KB in %.0f ms\n", dir.c_str(), ix_it->second.size(), pack.size() >> 10,
+                        static_cast<double>(OSTicksToMicroseconds(OSGetTime() - t0)) / 1000.0);
+    }
+    if (it->second.first + it->second.second > pack.size()) return false;
+    out.assign(pack.begin() + static_cast<std::ptrdiff_t>(it->second.first), pack.begin() + static_cast<std::ptrdiff_t>(it->second.first + it->second.second));
+    return true;
 }
 
 void close_file(std::FILE* f) {

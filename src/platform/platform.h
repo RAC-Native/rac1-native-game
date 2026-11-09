@@ -86,6 +86,14 @@ void close_file(std::FILE* f);
 #else
 inline void close_file(std::FILE* f) { std::fclose(f); }
 #endif
+// A file of a folder packed whole (<folder>/files.pack and its index files.pack.txt: ports/wiiu/tools/sd_mrp_packs.py), read from the
+// pack: on the Wii U, where each open on the card costs 10-28 ms (a level's ~200 MRP moby classes: 3.1 s), the pack read whole once
+// and its files taken from memory (the folder's pack kept until another folder's is asked for). False: not packed, read the file.
+#if defined(__WIIU__)
+bool read_packed(const std::string& path, std::vector<std::uint8_t>& out);
+#else
+inline bool read_packed(const std::string&, std::vector<std::uint8_t>&) { return false; }
+#endif
 // A hint that these bytes are read soon (nothing where the system has no such hint).
 void will_need(std::FILE* f, std::uint64_t offset, std::uint64_t bytes);
 // The whole file mapped read-only into memory. False when it cannot be opened, is empty, or cannot be mapped.

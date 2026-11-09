@@ -272,13 +272,16 @@ void level_files_kept(const DiscFiles& d, uint32_t file) {
 
 bool files_read(DiscFiles& d, uint64_t offset, size_t n, char* dst) {
     if (!d.ok || offset + n > d.image_bytes) return false;
-    std::memset(dst, 0, n);  // (what no piece holds)
+    uint64_t zeroed = offset;  // (what no piece holds, zeroed: the gaps between the pieces, in order - not the whole buffer first, 17 MB
+                               // for a level's data.wad, 0.45 s of a load on the Wii U)
     // (testing, RAC1_DISC_SLOWLOG=<ms>: a read slower than that on the log - its file, its size, the open's share)
     static const double slow = std::getenv("RAC1_DISC_SLOWLOG") != nullptr ? std::atof(std::getenv("RAC1_DISC_SLOWLOG")) : -1.0;
     const auto t0 = std::chrono::steady_clock::now();
     double open_ms = 0.0;
     uint32_t last_file = 0;
     const bool ok = files_find(d, offset, n, [&](const DiscPiece& p, uint64_t a, uint64_t b) {
+        if (a > zeroed) std::memset(dst + (zeroed - offset), 0, static_cast<size_t>(a - zeroed));
+        zeroed = std::max(zeroed, b);
 #if defined(__WIIU__)  // (a file kept in memory: no handle opened for it - its open alone 50-100 ms on the SD card)
         if (&d == &files()) level_files_kept(d, p.file);
         if (platform::read_kept(d.paths[p.file], p.file_offset + (a - p.first), dst + (a - offset), static_cast<size_t>(b - a))) return true;
@@ -289,6 +292,7 @@ bool files_read(DiscFiles& d, uint64_t offset, size_t n, char* dst) {
         last_file = p.file;
         return f && read_full(f.get(), p.file_offset + (a - p.first), dst + (a - offset), static_cast<size_t>(b - a));
     });
+    if (zeroed < offset + n) std::memset(dst + (zeroed - offset), 0, static_cast<size_t>(offset + n - zeroed));
     if (slow >= 0.0) {
         const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
         if (ms > slow)

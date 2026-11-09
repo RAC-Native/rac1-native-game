@@ -3,6 +3,7 @@
 #include <formats/moby_mrp.h>
 
 #include "io/host_endian.h"
+#include <platform/platform.h>
 
 #include <algorithm>
 #include <cmath>
@@ -456,6 +457,7 @@ bool save(const std::string& path, const std::vector<uint8_t>& b) {
     return std::fclose(f) == 0 && ok;
 }
 bool load(const std::string& path, std::vector<uint8_t>& b) {
+    if (platform::read_packed(path, b)) return true;  // (the Wii U: from its folder's pack)
     FILE* f = std::fopen(path.c_str(), "rb");
     if (f == nullptr) return false;
     std::fseek(f, 0, SEEK_END);
