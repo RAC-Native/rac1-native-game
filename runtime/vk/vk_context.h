@@ -125,6 +125,7 @@ void begin_frame(int win_w, int win_h, float clear_r, float clear_g, float clear
 void render_imgui(ImDrawData* draw_data);
 void end_frame();
 void flush_cmd();
+// `fn`'s commands run and waited for (between frames after the upload batch's, in the same submit; inside a frame as flush_cmd)
 void submit_immediate(const std::function<void(VkCommandBuffer)>& fn);
 // `record`'s commands in a submit of their own, waited for (inside a frame: the frame's commands before them submitted first,
 // as flush_cmd), and their time on the GPU in ms by two timestamps; < 0 when the device has none (issue #113: the tfrag
@@ -202,6 +203,9 @@ bool create_image(uint32_t w, uint32_t h, VkFormat format, VkImageUsageFlags usa
 void destroy_image(GpuImage& img);
 void destroy_image_now(GpuImage& img);
 void transition_image(VkCommandBuffer cb, GpuImage& img, VkImageLayout new_layout);
+// upload_image_2d, blit_image, copy_image: inside a frame, in the frame's command buffer; between frames (a level's load), in the
+// upload batch - one command buffer, its texels in staging chunks, submitted at the next begin_frame without a wait (or waited for
+// by submit_immediate, wait_idle, a destroy_*_now) - never a submit and a wait of their own
 void upload_image_2d(GpuImage& img, const void* data, size_t byte_size, int x = 0, int y = 0, int w = -1, int h = -1,
                      int row_length = 0, uint32_t layer = 0, uint32_t mip_level = 0);
 void blit_image(GpuImage& src, int sx0, int sy0, int sx1, int sy1, GpuImage& dst, int dx0, int dy0, int dx1, int dy1,

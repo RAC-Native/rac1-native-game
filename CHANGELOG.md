@@ -5,6 +5,11 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Vulkan: **no more long freezes when a level loads** (after the intro movie, before the main menu; any planet). Every
+  texture level a load sent to the GPU was a submit of its own and a wait for it (about 1600 for Veldin): alone each wait
+  is short, but with another program using the GPU (another game, a second copy) each lasted as long as that program's
+  work, up to 40 s in all. The uploads made between two frames now go together in one command buffer, submitted with the
+  next frame without a wait. Veldin with a heavy GPU program beside it: 6.8 + 8.7 s before, 0.03 + 0.13 s now.
 - Mod SDK **ABI 4** (the tables grow at their end: older plugins keep loading): `vendor_open` (the vendor's screens from a
   plugin, on any base level; `call_port` never reached them), `input_hold` (the pad kept from the game while a plugin's
   menu is open: Start and Select still the game's, so pausing and quitting work; `pad_held` / `pad_pressed` read the real
