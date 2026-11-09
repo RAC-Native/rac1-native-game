@@ -10,6 +10,10 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/veldin_mobys.h>
+#include <game/ovl/vendor_tr.h>
+#include <game/ovl/pause_menu.h>
+#include <game/render/mrp_lod.h>
+#include <game/render/render_view.h>
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/kernel/mods.h>
 #include <formats/host_meshes.h>
@@ -42,6 +46,7 @@ namespace rac1 {
 
 bool g_mod_code_any = false;
 bool g_mod_code_objects = false;
+bool g_mod_update_all = false;
 
 namespace {
 
@@ -50,7 +55,10 @@ namespace {
 // (ee_alloc), 0xef800..0xf0000 the level's own sounds' definitions (64 of 0x20 bytes). The ADV block starts at 0xf0000
 // (advanced.cpp).
 constexpr uint32_t SCRATCH = 0x000e1000u, STRINGS = 0x000e1100u, STRING_SIZE = 0x100, STRING_COUNT = 15;
-constexpr uint32_t HEAP = 0x000e2000u, HEAP_END = 0x000ef800u;
+constexpr uint32_t HEAP = 0x000e2000u, HEAP_END = 0x000ef400u;
+// (ABI 4) the frame's lights of the plugins (light_add), 0xef400..0xef800: their count, then MOD_LIGHT_MAX of 0x20 bytes (x y z
+// radius, r g b, 0): in the game's memory, so that a frame's drawing reads its own frame's (the copy taken at its prepare,
+// orig_main.cpp's draw_memory_take; mrp_lighting.cpp's mod_lights_add)
 constexpr uint32_t SFX_DEFS = 0x000ef800u, SFX_MAX = 64;
 constexpr uint32_t PC_ITEM = 0x300;  // our item in save<N>.pc: a plugin's bytes (level mods' items are 0x200)
 constexpr uint32_t PC_VERSION = 1;
@@ -140,6 +148,7 @@ struct Sdk {
     std::vector<int16_t> of_slot;  // moby slot -> object index + 1 (0 none)
     uint32_t bank = 0;          // the sound bank's handle on the game's IOP (0 none)
     bool spawned = false;       // the placed objects spawned (the level's first frame)
+    bool update_all = false;    // level.txt's update_all: every moby updated wherever the camera is (moby_visible_queue)
 } g_sdk;
 uint64_t g_frames = 0;
 
@@ -298,15 +307,11 @@ void api_smoke(const float pos[3], const float vel[3], float size) {
     smoke_burst_v(a, a, v, size, size);
 }
 
+uint32_t hud_string(const char* text);
+
 void api_hud_text(int32_t x, int32_t y, uint32_t abgr, const char* text) {
     if (!g_in_hud || text == nullptr) return;
-    const uint32_t s = STRINGS + (g_hud_string++ % STRING_COUNT) * STRING_SIZE;
-    uint32_t i = 0;
-    for (; text[i] != 0 && i + 1 < STRING_SIZE; ++i) {
-        const char c = text[i];
-        sb(s + i, c >= 0x20 && c < 0x7f ? static_cast<uint32_t>(static_cast<uint8_t>(c)) : static_cast<uint32_t>('?'));
-    }
-    sb(s + i, 0);
+    const uint32_t s = hud_string(text);
     text_draw(x, y, static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(abgr))), s, -1, effect_tex0(1), OV(0x001c3150));
 }
 
@@ -314,8 +319,12 @@ void api_camera_position(float out[3]) {
     for (int i = 0; i < 3; ++i) out[i] = lwc1(OV(0x00166dc0) + 4 * static_cast<uint32_t>(i));
 }
 
-uint32_t api_pad_held() { return lwu(0x0013c940 + 0x1b0); }
-uint32_t api_pad_pressed() { return lwu(0x0013c940 + 0x1c4); }
+// (ABI 4) the pad as read this frame, before input_hold kept it from the game (mod_code_pad_read)
+constexpr uint32_t PAD = 0x0013c940;
+bool g_pad_seen = false;
+uint32_t g_pad_held = 0, g_pad_pressed = 0;
+uint32_t api_pad_held() { return g_pad_seen ? g_pad_held : lwu(PAD + 0x1b0); }
+uint32_t api_pad_pressed() { return g_pad_seen ? g_pad_pressed : lwu(PAD + 0x1c4); }
 
 uint32_t api_random() {
     if (g_cur == nullptr) return 0;
@@ -853,6 +862,144 @@ int32_t api_base_free(int32_t cls) {
     return n;
 }
 
+// (ABI 4) base_hunt: the base level's enemies that guard a place made to hunt Ratchet wherever he is. Kalebo III's robots
+// (class 1445, L16:0x2e5e08 / 0x2e6208): their first update keeps where they stand as their guard point (pvars +0x1d0); each
+// frame the target's place (+0x180, Ratchet's: +0x1c0 the target) is tested against it, and a target more than 16 units (on
+// the ground) from it or 3 units above or below the robot makes them give up for good (+0x1c4 = 2, which nothing clears):
+// they walk back to it and stand there. Hunting: after the frame's updates the guard point is put on Ratchet and the giving
+// up cleared, so that the next frame's test passes.
+struct Hunter {
+    uint32_t moby = 0;
+    int32_t cls = 0;
+    uint32_t pvars = 0;
+};
+std::vector<Hunter> g_hunters;
+
+bool hunt_known(int32_t cls) { return cls == 1445 && lw(LEVEL) == 16; }
+
+int api_base_hunt(uint32_t m, int on) {
+    if (!is_moby(m) || static_cast<int8_t>(lbu(m + 0x20)) < 0) return 0;
+    const int32_t cls = lh(m + 0xa6);
+    g_hunters.erase(std::remove_if(g_hunters.begin(), g_hunters.end(), [&](const Hunter& h) { return h.moby == m; }), g_hunters.end());
+    if (on == 0) return 1;
+    if (!hunt_known(cls) || lwu(m + 0x78) == 0) return 0;
+    g_hunters.push_back({m, cls, lwu(m + 0x78)});
+    return 1;
+}
+
+// after the frame's updates (mod_code_frame)
+void hunters_update() {
+    const uint32_t h = moby_base();
+    for (size_t i = 0; i < g_hunters.size();) {
+        const Hunter& u = g_hunters[i];
+        if (static_cast<int8_t>(lbu(u.moby + 0x20)) < 0 || lh(u.moby + 0xa6) != u.cls || lwu(u.moby + 0x78) != u.pvars) {
+            g_hunters.erase(g_hunters.begin() + static_cast<std::ptrdiff_t>(i));  // (gone: killed, removed)
+            continue;
+        }
+        if (h != 0 && lbu(u.moby + 0x20) != 0) {  // (once its first update kept its guard point)
+            for (uint32_t k = 0; k < 3; ++k) swc1(u.pvars + 0x1d0 + 4 * k, lwc1(h + 0x10 + 4 * k));
+            if (lw(u.pvars + 0x1c4) == 2) sw(u.pvars + 0x1c4, 0);
+        }
+        ++i;
+    }
+}
+
+int api_light_add(const float pos[3], const float rgb[3], float intensity, float radius) {
+    if (pos == nullptr || rgb == nullptr || g_in_hud || ee_journal_active()) return 0;
+    if (!(radius > 0.0f) || !(intensity > 0.0f) || !std::isfinite(radius) || !std::isfinite(intensity)) return 0;
+    const uint32_t n = lwu(MOD_LIGHTS);
+    if (n >= MOD_LIGHT_MAX) return 0;
+    const uint32_t e = MOD_LIGHTS + 0x10 + n * 0x20;
+    for (uint32_t k = 0; k < 3; ++k) {
+        if (!std::isfinite(pos[k]) || !std::isfinite(rgb[k])) return 0;
+        swc1(e + 4 * k, pos[k]);
+        swc1(e + 0x10 + 4 * k, std::clamp(rgb[k], 0.0f, 1.0f) * std::min(intensity, 8.0f));
+    }
+    swc1(e + 0xc, std::min(radius, 60.0f));
+    sw(e + 0x1c, 0);
+    sw(MOD_LIGHTS, n + 1);
+    return 1;
+}
+
+// ---- (ABI 4) the vendor, the pad held, the HUD's panels, anchors and sizes ----
+int api_vendor_open() {
+    // as the game's own item 0x20 opens them (hero_item_use: 0x29a6b0 with no Vendor moby), in play only (game mode 0), not
+    // from the HUD callback nor while the renderer replays a frame
+    if (g_in_hud || ee_journal_active() || lw(OV(0x0015f5c4)) != 0 || moby_base() == 0) return 0;
+    vendor_screen_start_tr(0);
+    return lw(OV(0x0015f5c4)) == 5 ? 1 : 0;
+}
+
+// input_hold: the pad kept from the game while on (but Start and Select: the pause menu, the map), in play (game mode 0)
+// only; the buttons still held when it is let go stay the game's no more until released (a Cross that closed the plugin's
+// menu does not jump)
+constexpr uint32_t HOLD_KEEP = 0x0900u;  // (Start 0x800, Select 0x100)
+bool g_hold = false;
+uint32_t g_hold_sticky = 0;
+bool g_pad_masked = false;  // (the game's pad fields masked by us: the real ones put back before the next read)
+uint32_t g_pad_real_1a0 = 0, g_pad_real_1b0 = 0, g_pad_real_348 = 0;
+
+void api_input_hold(int on) {
+    if (on != 0) {
+        g_hold = true;
+        return;
+    }
+    if (g_hold) g_hold_sticky = (g_pad_real_1a0 | g_pad_real_1b0) & ~HOLD_KEEP;
+    g_hold = false;
+}
+
+// the anchor of a HUD element (RAC1_HUD_*): the side whose edge it moves to with a HUD wider than 4:3 (render_view_hud_note,
+// as the game's own side elements; not on the vendor's screens, 4:3 there)
+uint8_t hud_side(int32_t anchor) {
+    if (anchor != 1 && anchor != 2) return 0;
+    if (!render_view_hud_wide() || mrp_lod_shadow_slot() >= 0 || lw(OV(0x0015f5c4)) == 5) return 0;
+    return static_cast<uint8_t>(anchor);
+}
+constexpr OvConst<0x001611c0u> HUD_CUR{};  // (the packet's cursor)
+
+uint32_t hud_string(const char* text) {
+    const uint32_t s = STRINGS + (g_hud_string++ % STRING_COUNT) * STRING_SIZE;
+    uint32_t i = 0;
+    for (; text[i] != 0 && i + 1 < STRING_SIZE; ++i) {
+        const char c = text[i];
+        sb(s + i, c >= 0x20 && c < 0x7f ? static_cast<uint32_t>(static_cast<uint8_t>(c)) : static_cast<uint32_t>('?'));
+    }
+    sb(s + i, 0);
+    return s;
+}
+
+void api_hud_rect(int32_t x, int32_t y, int32_t w, int32_t h, uint32_t abgr, int32_t anchor) {
+    if (!g_in_hud || w <= 0 || h <= 0) return;
+    const uint8_t side = hud_side(anchor);
+    const uint32_t at = lwu(HUD_CUR);
+    gs_flat_rect(x, y, x + w, y + h, static_cast<uint64_t>(abgr), 0);
+    if (side != 0) render_view_hud_note(at, lwu(HUD_CUR), side);
+}
+
+void api_hud_text_ex(int32_t x, int32_t y, uint32_t abgr, float scale, int32_t anchor, const char* text) {
+    if (!g_in_hud || text == nullptr || !(scale > 0.0f) || !std::isfinite(scale)) return;
+    scale = std::min(scale, 8.0f);
+    const uint8_t side = hud_side(anchor);
+    const uint32_t s = hud_string(text);
+    const uint32_t at = lwu(HUD_CUR);
+    const uint64_t c = static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(abgr)));
+    if (scale == 1.0f) text_draw(x, y, c, s, -1, effect_tex0(1), OV(0x001c3150));
+    else text_draw_f(c, s, -1, effect_tex0(1), OV(0x001c3150), static_cast<float>(x), static_cast<float>(y), scale);
+    if (side != 0) render_view_hud_note(at, lwu(HUD_CUR), side);
+}
+
+int32_t api_hud_text_width(const char* text, float scale) {
+    if (text == nullptr || !(scale > 0.0f)) return 0;
+    // (the small font's advances, as text_width_small counts them: a copy in host memory, the HUD's strings are the HUD's)
+    const uint32_t t = OV(0x001c3150);
+    int32_t w = 0;
+    for (const char* p = text; *p != 0; ++p) {
+        const uint8_t c = static_cast<uint8_t>(*p >= 0x20 && *p < 0x7f ? *p : '?');
+        w += static_cast<int8_t>(lbu(t + c * 4u + 3));
+    }
+    return static_cast<int32_t>(static_cast<float>(w) * std::min(scale, 8.0f) + 0.5f);
+}
+
 // ---- loading ----
 void* lib_open(const std::string& path, std::string& err) {
 #if defined(_WIN32)
@@ -962,6 +1109,13 @@ void load_all() {
     g_api.base_spawn = api_base_spawn;
     g_api.base_moby = api_base_moby;
     g_api.base_free = api_base_free;
+    g_api.vendor_open = api_vendor_open;
+    g_api.input_hold = api_input_hold;
+    g_api.hud_rect = api_hud_rect;
+    g_api.hud_text_ex = api_hud_text_ex;
+    g_api.hud_text_width = api_hud_text_width;
+    g_api.base_hunt = api_base_hunt;
+    g_api.light_add = api_light_add;
     g_plugins.reserve(mods.size());  // (g_cur points into it)
     for (const ModInfo* m : mods) {
         std::string err;
@@ -1053,6 +1207,10 @@ bool sdk_read(const std::string& path, Sdk& out) {
             if (!in) return false;
             d.loop = loop != 0;
             out.sounds.push_back(std::move(d));
+        } else if (k == "update_all") {
+            int v = 0;
+            in >> v;
+            out.update_all = v != 0;
         } else if (k == "trigger") {
             SdkTrigger t;
             in >> t.name >> t.lo[0] >> t.lo[1] >> t.lo[2] >> t.hi[0] >> t.hi[1] >> t.hi[2];
@@ -1068,6 +1226,7 @@ bool sdk_read(const std::string& path, Sdk& out) {
 // the level `slot` loads: its content read (none on the game's levels)
 void sdk_level_load(int slot) {
     g_sdk = Sdk{};
+    g_mod_update_all = false;
     mrpw::host_meshes_dynamic_set({});
     if (slot < kFirstLevelSlot) return;
     const std::string dir = level_slot_build_dir(slot);
@@ -1083,6 +1242,8 @@ void sdk_level_load(int slot) {
     s.on = true;
     s.objs.reserve(MAX_OBJECTS);
     g_sdk = std::move(s);
+    g_mod_update_all = g_sdk.update_all;
+    if (g_mod_update_all) std::printf("[sdk] level slot %d: every moby updated wherever the camera is (update_all)\n", slot);
     // the classes' behaviour: the level's own mod's plugin first, then the others' in load order
     const ModInfo* lm = mods_level_at_slot(slot);
     for (SdkClass& c : g_sdk.classes)
@@ -1225,6 +1386,10 @@ void mod_code_level_load() {
     }
     g_started = false;
     g_mod_code_objects = false;
+    g_hunters.clear();
+    if (lwu(MOD_LIGHTS) != 0) sw(MOD_LIGHTS, 0);
+    g_hold = false;  // (input_hold: the pad the game's again on every level's start)
+    g_hold_sticky = 0;
     sdk_level_load(level_slot());
     // (the hooks' gate: a plugin, or the level's own content)
     g_mod_code_any = !g_plugins.empty() || g_sdk.on;
@@ -1244,6 +1409,8 @@ void mod_code_frame() {
     if (!g_mod_code_any || ee_journal_active()) return;
     if (!g_started) level_started();
     if (g_sdk.on) sdk_triggers();
+    if (!g_hunters.empty()) hunters_update();
+    if (lwu(MOD_LIGHTS) != 0) sw(MOD_LIGHTS, 0);  // (light_add: the frame's own, from its frame callbacks)
     for (Plugin& p : g_plugins)
         if (p.cb.frame != nullptr) with(p, [&] { p.cb.frame(p.cb.user); });
     static const char* test = std::getenv("RAC1_MOD_TEST");
@@ -1252,6 +1419,40 @@ void mod_code_frame() {
         for (Plugin& p : g_plugins)
             if (p.cb.test != nullptr) with(p, [&] { p.cb.test(p.cb.user, test, frame); });
     if (g_sdk.on) sdk_publish();
+}
+
+// orig: (none) — enhancement (mod_code.h)
+void mod_code_pad_before(uint32_t pad) {
+    if (pad != PAD || !g_pad_masked) return;
+    // (the edges of the next read from the real buttons: the previous held sets as the pad gave them)
+    sw(PAD + 0x348, g_pad_real_348);
+    sw(PAD + 0x1b0, g_pad_real_1b0);
+    g_pad_masked = false;
+}
+
+// orig: (none) — enhancement (mod_code.h)
+void mod_code_pad_after(uint32_t pad) {
+    if (pad != PAD) return;
+    g_pad_seen = true;
+    g_pad_held = lwu(PAD + 0x1b0);
+    g_pad_pressed = lwu(PAD + 0x1c4);
+    g_pad_real_1a0 = lwu(PAD + 0x1a0);
+    g_pad_real_1b0 = g_pad_held;
+    g_pad_real_348 = lwu(PAD + 0x348);
+    g_hold_sticky &= g_pad_real_1a0 | g_pad_real_1b0;
+    if ((!g_hold && g_hold_sticky == 0) || lw(OV(0x0015f5c4)) != 0) return;  // (the menus, the vendor: theirs)
+    const uint32_t keep = g_hold ? HOLD_KEEP : ~g_hold_sticky;
+    for (const uint32_t f : {0x1a0u, 0x1a4u, 0x1a8u, 0x1b0u, 0x1b4u, 0x1b8u, 0x1c0u, 0x1c4u, 0x1c8u, 0x348u}) sw(PAD + f, lwu(PAD + f) & keep);
+    // (the presses' history the hero's moves read, pad_button_history: the entry this read wrote, before +0x18e moved on)
+    const uint32_t last = PAD + 0x1e0 + static_cast<uint32_t>((lh(PAD + 0x18e) + 29) % 30) * 4;
+    sw(last, lwu(last) & keep);
+    if (g_hold) {
+        for (uint32_t o = 0x100; o < 0x180; o += 4) sw(PAD + o, 0);  // (the sticks, the pressures and their copies)
+        sw(PAD + 0x1d0, (lwu(PAD + 0x1a0) == 0) ? 1u : 0u);
+        sw(PAD + 0x1d4, 1);
+        sw(PAD + 0x1d8, 0);
+    }
+    g_pad_masked = true;
 }
 
 // orig: (none) — enhancement (mod_code.h)
@@ -1264,6 +1465,7 @@ void mod_code_camera() {
 // orig: (none) — enhancement (mod_code.h)
 void mod_code_hud() {
     if (!g_mod_code_any || !g_started) return;
+    if (lw(OV(0x0015f5c4)) == 5) return;  // (the vendor's screens, vendor_open: theirs alone)
     g_in_hud = true;
     for (Plugin& p : g_plugins)
         if (p.cb.hud != nullptr) with(p, [&] { p.cb.hud(p.cb.user); });

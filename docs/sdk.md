@@ -30,7 +30,8 @@ Contents:
 |---|---|---|
 | 1 | the first with code | the callbacks level_start .. shutdown; the services log .. call_port |
 | 2 | the first with level objects | level objects of the level's own classes (`class_define` .. `object_at`, `rac1_class_def`, `rac1_spawn`), `collide_ray`, `objects_near`, `mobys_near`, `hero_damage`, `hit_send`, `hit_take`, the level's own sounds (`sfx_*`), triggers (`trigger_find`, `trigger_inside`, the `trigger` callback), `frame_count` |
-| 3 | this one | the base level's objects at run time: `base_spawn`, `base_moby`, `base_free` (level.txt's `spawn` lines) |
+| 3 | the first with base levels | the base level's objects at run time: `base_spawn`, `base_moby`, `base_free` (level.txt's `spawn` lines) |
+| 4 | this one | `vendor_open`, `input_hold`, the HUD's panels, anchors and sizes (`hud_rect`, `hud_text_ex`, `hud_text_width`, `RAC1_HUD_*`), `base_hunt`, `light_add`; level.txt's `update_all` line |
 
 How compatibility works:
 
@@ -134,7 +135,7 @@ Fill them in `rac1_mod_main`; all are optional (NULL: none). Each gets your `mod
 | `level_start(user, level)` | 1 | a level's first frame of play, its objects spawned (with a ship: after the landing) | `rac1_level_info`: `level` (the game's level number: a level mod's is its base level's), `slot` (19.. for a level mod), `level_id`, `mine` (1: your mod's level), `objects` (its placed mobys: uids 1..objects) |
 | `level_end(user)` | 1 | the level is left (another loads, a save is loaded) | after the objects' `remove` |
 | `frame(user)` | 1 | once a frame of play, after the objects' pass | not in menus, not in replays |
-| `hud(user)` | 1 | the HUD is drawn | `hud_text` works only here; may run twice a frame: draw only |
+| `hud(user)` | 1 | the HUD is drawn (not under the vendor's screens, ABI 4 games) | `hud_text` (and ABI 4's `hud_rect`, `hud_text_ex`) work only here; may run twice a frame: draw only |
 | `camera(user)` | 1 | after the game's camera update | change the camera's memory here |
 | `object_update(user, moby, uid, cls)` | 1 | before one of your level's placed mobys (level.txt's `moby` lines) is updated | return 1: its class's code skipped (yours instead), 0: it runs |
 | `new_game(user)` | 1 | a new game starts | reset your progress |
@@ -164,7 +165,7 @@ A class's own callbacks are in its `rac1_class_def` ([Objects](#objects)).
 | `const uint8_t* ram` | the game's memory (32 MB), read-only: `rac1_lw`, `rac1_lh`, `rac1_lb`, `rac1_lwf` |
 | `uint32_t ov(uint32_t veldin_addr)` | where Veldin's overlay address is on the current level |
 | `void sw / sh / sb(uint32_t addr, uint32_t v)`, `void swf(uint32_t addr, float v)` | writes (journaled); an address outside the memory is ignored (logged) |
-| `uint32_t ee_alloc(uint32_t size)` | `size` bytes of the game's memory of your own (16-byte aligned, zeroed), 0 when the block is full (54 KB shared by all plugins, for the whole run: take it once) |
+| `uint32_t ee_alloc(uint32_t size)` | `size` bytes of the game's memory of your own (16-byte aligned, zeroed), 0 when the block is full (53 KB shared by all plugins, for the whole run: take it once) |
 | `int replaying(void)` | 1 while the renderer replays a frame |
 
 ### Mobys (ABI 1)
@@ -226,7 +227,38 @@ See [Base level objects](#base-level-objects) below.
 | `uint32_t pad_held(void)`, `uint32_t pad_pressed(void)` | 1 | pad 1's bits: 0x10 triangle, 0x20 circle, 0x40 cross, 0x80 square, 0x800 start, 0x1000 up, 0x2000 right, 0x4000 down, 0x8000 left, 1 L2, 2 R2, 4 L1, 8 R1 |
 | `uint32_t random(void)` | 1 | your own numbers (the game's untouched), the same each run from a level's start |
 | `uint64_t frame_count(void)` | 2 | the frames of play since the game started (the `test` callback's frame) |
-| `int call_port(veldin_addr, arg)` | 1 | one of the game's functions it calls through a pointer, with one argument; 0 when the port has none |
+| `int call_port(veldin_addr, arg)` | 1 | one of the game's functions it calls through a pointer (the objects' updates and the like), with one argument; 0 when the port has none. Not the vendor's screens (0x29a6b0: the game calls it directly, never through a pointer): `vendor_open` |
+
+### The vendor, the pad, the HUD's panels, lights (ABI 4)
+
+Test `RAC1_API_HAS(api, vendor_open)` before using them (a game older than ABI 4 has none of them).
+
+| Service | Does |
+|---|---|
+| `int vendor_open(void)` | the vendor's screens (weapons and ammo to buy), as the game's own vendor item opens them (0x29a6b0 with no Vendor moby): 1 opened, 0 not (not in play - a menu, a cutscene, the landing, the vendor already open -, or called from `hud` or while replaying). Call it from `frame` (or an object's update, a trigger). The game stays paused under them: `frame` and `hud` are not called until the player leaves them (triangle), then play goes on where it was. Works on every base level (the vendor's code is in every level's overlay); tested on Kalebo III |
+| `void input_hold(int on)` | on: from the next frame the game gets nothing from the pad in play (no walking, jumping, attacking, no camera stick) but **Start and Select**, so the pause menu (and quitting from it) and the map work as always; menus, the vendor and cutscenes get the pad as always. `pad_held` / `pad_pressed` still read the real pad, for your own menu. Off: the pad is the game's again, except the buttons still held at that moment, until released (the Cross that closed your menu does not make him jump). Off again at every level's start. Use it instead of writing the pad's fields at 0x13c940 (the game's own pad read writes them every frame, before your callbacks, and its moves read the presses' history too) |
+| `void hud_rect(x, y, w, h, abgr, anchor)` | in `hud` only: a flat rectangle `w` x `h` from (`x`, `y`) of the 512 x 448 HUD, colour 0xAABBGGRR (alpha 0x80 opaque, 0x40 half transparent): a panel behind your texts (draw it first) |
+| `void hud_text_ex(x, y, abgr, scale, anchor, text)` | in `hud` only: `hud_text` at `scale` times the font's size (1: `hud_text`'s, 2: twice; at most 8) |
+| `int32_t hud_text_width(text, scale)` | `text`'s width in HUD units at `scale` (to centre or right-align it: `x = 256 - w / 2`) |
+| `int base_hunt(uint32_t moby, int on)` | the base level's enemy `moby` (`base_moby`'s, or a `moby` line's) hunts Ratchet wherever he is instead of guarding where it started: [Base level objects](#base-level-objects). 1 done, 0 not (no such moby, a class not known: Kalebo III's robots 1445 only) |
+| `int light_add(pos, rgb, intensity, radius)` | a light for this frame only (call it every frame it shines, from `frame`): at `pos`, colour `rgb` (0..1) times `intensity` (0..8, 1 as a lamp of the debug menu's Lights tab), reaching `radius` units (at most 60). 1 taken, 0 not (31 a frame for all the plugins taken, bad values, from `hud`) |
+
+**Anchors** (`hud_rect`, `hud_text_ex`): `RAC1_HUD_CENTRE` (0) is the 4:3 frame `hud_text` draws in, in the middle of the
+screen; `RAC1_HUD_LEFT` (1) and `RAC1_HUD_RIGHT` (2) move the element with the game's own side elements (the health on the
+left, the bolts on the right) toward that edge of the screen when the HUD is wider than 4:3 (Options > Display > HUD
+16:9, 21:9, 32:9 or Fit, over a widened view). At 4:3 the three are the same. Coordinates stay the 512 x 448 HUD's: a
+panel at x 10 anchored left is 10 units from the screen's left edge, one ending at x 502 anchored right ends 10 from its
+right edge. Not on the vendor's screens (4:3 there, and the `hud` callback is not called under them).
+
+**Lights** (`light_add`): drawn by the modern lighting's point lights per pixel, as the lights placed by hand in a
+level's `lights.txt` and Veldin's plasma beams: on the world, the mobys and the level's meshes, with no shadow (no
+shadow cube) and no light of their own on the faithful renderer. Only when the modern lighting draws point lights
+(Options > Graphics: Lighting modern, Secondary Lights on; a headless test: `RAC1_SHADOWS=1`); off, or on the
+faithful renderer, they draw nothing and cost nothing. A light more than the shadows' second split (about 60 units)
+from the camera is left out. They are kept in the game's memory with the frame (the last 1 KB of the mods' block), so a
+pipelined frame and the pause show the lights of their own frame. Cost: each one is a point light of the 96 the
+lighting's shaders take a pixel, before the automatic emitters (which then get fewer); a few dozen lights near the
+camera cost about as much as the same number of hand-placed lamps.
 
 ### Classes and objects (ABI 2)
 
@@ -346,6 +378,18 @@ static void frame(void* user) {
 }
 ```
 
+**Kalebo III's robots (1445) guard a place.** Their first update keeps where they stand as their guard point (pvars
++0x1d0..+0x1d8); each frame they pick a target (Ratchet: its moby at +0x1c0, its position at +0x180..+0x188) and give up
+for good (+0x1c4 = 2, which nothing clears) when it is more than 16 units from the guard point on the ground or more than
+3 units above or below the robot: they walk back to the guard point and stand there. `base_spawn` starts each one fresh,
+so its guard point is where it was spawned (tested: +0x1d0 is the spawn position after its first update), not the pool's
+placement; but a robot spawned 17 units from Ratchet gives up at once. `base_hunt(base_moby(h), 1)` makes it hunt him
+anywhere: after each frame's updates the game puts its guard point on Ratchet and clears its giving up. Kept until the
+moby is gone (the level left, killed, removed); `base_hunt(moby, 0)` stops it. The robots walk straight at Ratchet (no
+paths): a wall between stops them. The game updates a moby only within its update distance of the camera (moby +0x30,
+64 units for the robots; 0xff: always): level.txt's `update_all` line ([Base levels](mods.md#base-levels)) updates every
+moby of a level mod's level wherever the camera is.
+
 What works per class is the base level's class's own business: an enemy that walks and fights on flat ground works; one
 that follows the base level's paths, waits for another object, a mission or a cutscene does not (docs/mods.md,
 [Base levels](mods.md#base-levels) lists what was tried on Kalebo III). Test with `RAC1_MODS=1 RAC1_MOD_CODE=1` and
@@ -436,8 +480,9 @@ typedef struct rac1_ray_hit {       /* (ABI 2) collide_ray */
 | Sounds a level | 64; 26 playing at once in all (the game's slots, its own sounds included) |
 | A sound | 8000 .. 48000 Hz, mono (stereo is mixed down); the bank goes into the sound driver's memory (no fixed limit, keep it to a few MB) |
 | Triggers | no fixed limit (tested once a frame each) |
-| `ee_alloc` | 54 KB for all the plugins, for the whole run |
-| HUD lines | 15 a frame (`hud_text`), 255 characters each |
+| `ee_alloc` | 53 KB for all the plugins, for the whole run (54 KB up to ABI 3: the last KB holds the frame's lights, `light_add`) |
+| Lights (`light_add`) | 31 a frame for all the plugins, within the point lights' 96 a pixel (the game's 8, the hand-placed and the per-class lights before them, the automatic emitters after) |
+| HUD lines | 15 a frame (`hud_text`, `hud_text_ex` together), 255 characters each; `hud_text_ex`'s scale at most 8 |
 | A save's bytes | about 64 KB a plugin |
 
 ## The game's memory

@@ -472,3 +472,10 @@ L17 0x002ebc68: render_view_hud_begin(1);  // (a missile)
 L17 0x002ebc70: render_view_hud_end();
 L17 0x002ebca8: render_view_hud_begin(1);
 L17 0x002ebcb0: render_view_hud_end();
+# A level mod's level on Kalebo III (docs/mods.md, "Base levels"): Kalebo's hero_surface_update (L16:0x2097a0) has no lava (surface
+# kind 3) nor deadly liquid (kind 1); after its flags (s2 the kind), the generic build's, with the states Kalebo's hero has
+# (src/game/enhance/level_mod_hero.h; nothing on the original's Kalebo III)
+L16 0x00209a34: if (level_mod_kalebo_surface(static_cast<int32_t>(s2.w()))) goto L_209b10;  // enhancement: a level mod's lava
+# ... and Kalebo's ground probe (hero_ground_update, L16:0x20ffb0) has no lava either: the generic build's (0x2127b8's kind 3, as
+# its own kind 0xd above): the lava's top kept (+0x2f4) and the probe again from just under it, so that the lava is not a floor
+L16 0x002101e4: if (level_mod_kalebo_lava_ground()) { fr[1] = u2f(lw_(L16_ADDR(0x00174268u))); fr[0] = fpu_sub(fr[1], u2f(0x3c23d70au)); sw_(0x13f644u, f2u(fr[1])); sw_(sp.w() + 0x18, f2u(fr[0])); if (segment_collide_v(V(s3.w()), V(sp.w()), 4, lw_(0x1413d0u), nullptr) == 0) { set32(v0, 0x140000u); goto L_210408; } set32(s0, 0x13f350u); }  // enhancement: a level mod's lava

@@ -60,7 +60,8 @@ uint32_t moby_visible_queue() {
         const uint32_t dist = lbu(m + 0x30);
         const uint32_t flags = lhu(m + 0x34);
         if ((flags & 2u) != 0) continue;
-        if (lbu(m + 0x31) == 0 && dist != 0xff) {  // VU0: d = dist^2 - dx^2 - dy^2 - dz^2 (ACC.x)
+        // (enhancement: a level mod's update_all line, src/host/mod_code.h: as the distance 0xff, every moby)
+        if (lbu(m + 0x31) == 0 && dist != 0xff && !g_mod_update_all) {  // VU0: d = dist^2 - dx^2 - dy^2 - dz^2 (ACC.x)
             const float dx = lwc1(m + 0x10) - cx, dy = lwc1(m + 0x14) - cy, dz = lwc1(m + 0x18) - cz;
             const float fd = static_cast<float>(dist);
             float acc = fd * fd;

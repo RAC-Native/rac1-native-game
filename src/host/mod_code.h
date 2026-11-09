@@ -14,6 +14,14 @@ namespace rac1 {
 extern bool g_mod_code_any;
 // (true while the current level has placed objects a plugin updates: moby_update_visible's gate)
 extern bool g_mod_code_objects;
+// (true while a level mod's level has level.txt's update_all line: moby_visible_queue updates every moby, wherever the camera
+// is, as a moby whose update distance +0x30 is 0xff)
+extern bool g_mod_update_all;
+
+// (ABI 4) the plugins' lights of a frame (light_add) in EE memory: the count at MOD_LIGHTS, then MOD_LIGHT_MAX entries of 0x20
+// bytes from MOD_LIGHTS + 0x10 (x y z radius, r g b already times the intensity, 0). The modern lighting reads them from the
+// frame's copy (src/game/render/mrp_lighting.cpp); draw_memory_take copies the block while a plugin is loaded
+constexpr uint32_t MOD_LIGHTS = 0x000ef400u, MOD_LIGHTS_END = 0x000ef800u, MOD_LIGHT_MAX = 31;
 
 // orig: (none) — enhancement: the game's start, its EE memory made: the plugins loaded (their failures noted on their mods,
 // runtime/kernel/mods.h's mods_code_failed: Options > Mods shows them)
@@ -30,6 +38,12 @@ void mod_code_level_loaded();
 // orig: (none) — enhancement: a frame of play (gameplay_frame, past its menus): the level's start (its first frame), the
 // plugins' frame and test callbacks
 void mod_code_frame();
+
+// orig: (none) — enhancement: pad_read_packet (the game's pad read, every game mode): before it, the real buttons put back
+// where input_hold masked them (the edges come from the pad); after it, the frame's real buttons kept for pad_held /
+// pad_pressed and, in play while a plugin holds the input (input_hold), the game's fields masked (Start and Select left)
+void mod_code_pad_before(uint32_t pad);
+void mod_code_pad_after(uint32_t pad);
 
 // orig: (none) — enhancement: after the game's camera update
 void mod_code_camera();

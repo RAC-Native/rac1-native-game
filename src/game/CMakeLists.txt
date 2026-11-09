@@ -173,6 +173,7 @@ add_library(rac1_game STATIC
     enhance/bug_fixes.cpp
     enhance/level_slots.cpp
     enhance/mod_code.cpp
+    enhance/level_mod_hero.cpp
     ovl/bomb_glove.cpp
     ovl/pyrocitor.cpp
     ovl/blaster.cpp

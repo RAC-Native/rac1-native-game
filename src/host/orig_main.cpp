@@ -1945,11 +1945,12 @@ void sim_host_press(const char* keys, size_t pos) {
 // below it: tools/overlay_match's maps) - the lights, the light sets, the hero, the camera, the level's state -, and the moby
 // array (0x15ffd8 .. 0x15ffe0, a moby 0x100 bytes, the end's sentinel with it)
 void draw_memory_take() {
-    rac1::EeCopyRange r[2];
+    rac1::EeCopyRange r[3];
     r[0] = {0x00130000u, 0x00220000u};
     const uint32_t first = lwu(OV(0x0015ffd8u)), last = lwu(OV(0x0015ffe0u));
     if (first >= 0x00100000u && last >= first && last - first < (4u << 20) && last + 0x200u <= 0x02000000u) r[1] = {first, last + 0x200u};
-    rac1::ee_copy_take(r, 2);
+    if (rac1::g_mod_code_any) r[2] = {rac1::MOD_LIGHTS, rac1::MOD_LIGHTS_END};  // (the plugins' lights, light_add: src/host/mod_code.h)
+    rac1::ee_copy_take(r, rac1::g_mod_code_any ? 3 : 2);
 }
 uint64_t g_overlapped = 0;  // (the host frames whose game frames ran on the game thread: reported at the end)
 // The devices read for the game frames the game thread runs (pad_presample): GLFW's input is the main thread's. One state per

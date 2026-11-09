@@ -44,9 +44,9 @@ extern "C" {
 #endif
 
 /* The ABI this header describes. 1: the first; 2: the level's own object classes, ray and near queries, damage both
-   ways, the mod's own sounds, triggers; 3: the base level's objects spawned at run time (base_spawn) (docs/sdk.md lists
-   what each version added). */
-#define RAC1_MOD_ABI 3
+   ways, the mod's own sounds, triggers; 3: the base level's objects spawned at run time (base_spawn); 4: the vendor, the
+   pad held from the game, the HUD's panels, anchors and text sizes (docs/sdk.md lists what each version added). */
+#define RAC1_MOD_ABI 4
 
 #if defined(_WIN32)
 #define RAC1_MOD_EXPORT __declspec(dllexport)
@@ -63,6 +63,12 @@ typedef struct rac1_level_info {
     int32_t objects;       /* (mine) the placed objects (level.txt's moby lines): their uids are 1..objects (the hero's
                               uid skipped) */
 } rac1_level_info;
+
+/* (ABI 4) hud_rect's / hud_text_ex's anchor: with a HUD wider than 4:3 (Options > Display > HUD) the element moves with the
+   game's own side elements toward that edge of the screen; at 4:3 (the default) all three are the same */
+#define RAC1_HUD_CENTRE 0   /* the 4:3 frame, in the middle of the screen (as hud_text) */
+#define RAC1_HUD_LEFT 1     /* toward the screen's left edge */
+#define RAC1_HUD_RIGHT 2    /* toward the screen's right edge */
 
 /* (ABI 2) A level object's spawn: given to its class's spawn callback */
 typedef struct rac1_spawn {
@@ -138,7 +144,7 @@ typedef struct rac1_api {
     void (*sh)(uint32_t addr, uint32_t v);
     void (*sb)(uint32_t addr, uint32_t v);
     void (*swf)(uint32_t addr, float v);
-    /* `size` bytes of the mods' block of EE memory (16-byte aligned, zeroed), 0 when it is full (54 KB in all, shared by
+    /* `size` bytes of the mods' block of EE memory (16-byte aligned, zeroed), 0 when it is full (53 KB in all, shared by
        the plugins on, kept for the whole run: take what you need once, in rac1_mod_main or the first level_start) */
     uint32_t (*ee_alloc)(uint32_t size);
     int (*replaying)(void);  /* 1 while the renderer replays a frame (see the rules above) */
@@ -268,6 +274,46 @@ typedef struct rac1_api {
     uint32_t (*base_moby)(uint32_t handle);
     /* how many more of class `cls` base_spawn can start now (0: none, or no spawn line for it) */
     int32_t (*base_free)(int32_t cls);
+
+    /* ======== ABI 4 (test RAC1_API_HAS(api, vendor_open)) ======== */
+
+    /* -- the vendor -- */
+    /* the vendor's screens (buying weapons and ammo), as the game's own vendor item opens them (no Vendor moby needed): 1
+       opened, 0 not (not in play: a menu, a cutscene, the vendor already open; or called from the HUD callback or while
+       replaying). Call it from the frame callback (or an object's update or a trigger callback). The game is paused under
+       them: the frame and hud callbacks are not called until they close */
+    int (*vendor_open)(void);
+
+    /* -- the pad held -- */
+    /* on: the game gets no input from the pad (Ratchet neither moves nor jumps nor attacks, the camera stick does nothing)
+       but Start and Select (the pause menu, the map: quitting works as always), from the next frame on, in play only (the
+       menus, the vendor's screens and the cutscenes get the pad as always); pad_held / pad_pressed read the real pad. Off:
+       the game gets the pad again, but the buttons still held at that moment, until they are released (a Cross that closed
+       your menu does not make him jump). Off again at every level's start */
+    void (*input_hold)(int on);
+
+    /* -- the HUD (from the hud callback only) -- */
+    /* a flat rectangle w x h from (x, y) (512 x 448 HUD units, as hud_text), colour 0xAABBGGRR, alpha 0x80 opaque, 0x40 half
+       transparent: a panel behind your texts (draw it first). anchor: RAC1_HUD_* */
+    void (*hud_rect)(int32_t x, int32_t y, int32_t w, int32_t h, uint32_t abgr, int32_t anchor);
+    /* hud_text at `scale` times the font's size (1: hud_text's, 2: twice as large; at most 8), anchor RAC1_HUD_* */
+    void (*hud_text_ex)(int32_t x, int32_t y, uint32_t abgr, float scale, int32_t anchor, const char* text);
+    /* the width of `text` in HUD units at `scale` (to centre or right-align it) */
+    int32_t (*hud_text_width)(const char* text, float scale);
+
+    /* -- the base level's enemies -- */
+    /* on: the moby `moby` (a base level's enemy: base_moby's, a moby line's) hunts Ratchet wherever he is, instead of
+       guarding the place where it started (docs/sdk.md, "Base level objects"); off: as its class does. 1 done, 0 not (no
+       such moby, or a class the game does not know how to: Kalebo III's robots 1445 only). Kept until the moby is gone */
+    int (*base_hunt)(uint32_t moby, int on);
+
+    /* -- lights -- */
+    /* a light for this frame (call it every frame it shines, from the frame callback): at `pos`, colour `rgb` (0..1 each)
+       times `intensity` (0..8; 1 as a lamp placed in the debug menu's Lights tab), reaching `radius` units (at most 60).
+       Drawn by the modern lighting (Options > Graphics: Lighting modern, Secondary Lights on) per pixel, as the lights placed by hand, without
+       shadows; the faithful renderer and point lights off draw none. 31 at most a frame for all the plugins; 1 taken,
+       0 not (full, or bad values) */
+    int (*light_add)(const float pos[3], const float rgb[3], float intensity, float radius);
 } rac1_api;
 
 #define RAC1_API_HAS(api, field) ((api)->size >= offsetof(rac1_api, field) + sizeof((api)->field))

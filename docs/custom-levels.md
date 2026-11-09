@@ -102,7 +102,7 @@ A save's bytes of a mod that is off or missing are kept: saving again writes the
 | Group | Services |
 |---|---|
 | The log, files | `log(text)` (`[mod <folder>] text`), `mod_path(name, out, cap)` (a file of your mod's folder) |
-| Memory | `ram` (read the game's memory inline: `rac1_lw`, `rac1_lh`, `rac1_lb`, `rac1_lwf`), `sw`, `sh`, `sb`, `swf` (write it), `ov(addr)` (Veldin's overlay address on the current level), `ee_alloc(size)` (game memory of your own, 54 KB shared by the plugins: take it once), `replaying()` |
+| Memory | `ram` (read the game's memory inline: `rac1_lw`, `rac1_lh`, `rac1_lb`, `rac1_lwf`), `sw`, `sh`, `sb`, `swf` (write it), `ov(addr)` (Veldin's overlay address on the current level), `ee_alloc(size)` (game memory of your own, 53 KB shared by the plugins: take it once), `replaying()` |
 | Objects (mobys) | `moby_by_uid`, `moby_spawn(class)`, `moby_remove`, `moby_moved` (after writing a position, rotation or scale), `moby_link` / `moby_set_link` (a pvar word naming another moby) |
 | Collision | `collide_line(from, to, hit)`: the level's collision and the mobys |
 | The hero | `hero()` (his moby), `hero_place(pos, yaw)`, `bolts()`, `bolts_add(n)`, `health()` |
@@ -119,6 +119,7 @@ A save's bytes of a mod that is off or missing are kept: saving again writes the
 | (ABI 2) The level's sounds | `sfx_find(name)`, `sfx_play(sound, moby, pos)`, `sfx_stop(slot)`, `sfx_active(slot, sound)` |
 | (ABI 2) Triggers, time | `trigger_find(name)`, `trigger_inside(index)`, `frame_count()` |
 | (ABI 3) The base level's objects | `base_spawn(class, pos, yaw)` (an object of the base level's class, its own behaviour: level.txt's `spawn` lines give the room), `base_moby(handle)` (0 once it died), `base_free(class)`: [The mod SDK](sdk.md#base-level-objects) |
+| (ABI 4) The vendor, the pad, the HUD, lights | `vendor_open()`, `input_hold(on)` (your menu has the pad: Start and Select stay the game's), `hud_rect`, `hud_text_ex` (larger text, anchored left / centre / right for a wide HUD), `hud_text_width`, `base_hunt(moby, on)`, `light_add(pos, rgb, intensity, radius)`: [The mod SDK](sdk.md#the-vendor-the-pad-the-huds-panels-lights-abi-4) |
 
 A moby is 0x100 bytes of the game's memory: +0x10 its position (x y z), +0x20 its state (negative: gone), +0x24 its
 class data, +0x2c its scale, +0x40 its rotation (Euler angles), +0x74 its update function, +0x78 its pvars (its class's

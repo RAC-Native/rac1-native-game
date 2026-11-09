@@ -98,6 +98,10 @@ fields and arenas have them and its other places (indoors, away from the lava) n
   frames with its collision unchanged, the collision tree the game loaded (`*(0x173e40)`, read only) is read on a thread of its
   own (Umbris about 20 ms, Gaspar about 60 ms) and its lava gets a point every 1.5 square units, spread by area with a fixed seed:
   the same points in every run. Only levels whose file has a `source lava` line are read.
+- **A level mod's lava**: on a level mod's level ([Mods, "Level mods"](mods.md#level-mods)) the faces of surface kind 3 too
+  (`usemtl type3` in its `collision.obj`: the generic hero code's lava, +0x12e6), besides kind 1: a level mod marks its lava so
+  (the night arena's lava lake: 43 264 faces of kind 3, 21 110 points). The game's own levels: kind 1 alone, as before (Aridia's
+  kind 3 is its quicksand). The material's lava (below) needs no collision at all.
 - **Which lava**: the levels' kind 1 faces, in the NTSC game: Umbris (the Snagglebeast's arena and its cave, 10 700 square units),
   Gaspar (the lava sea under the level, 168 000), and the green liquids of Blarg, Orxon and Drek's fleet, which are not lava (Orxon's
   green embers rise from its toxic pools this way; Blarg and Drek's fleet have no line). The other levels have none (Aridia's quicksand is kind 3).

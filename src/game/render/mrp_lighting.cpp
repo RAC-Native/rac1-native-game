@@ -10,6 +10,7 @@
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/render_view.h>
 #include <host/level_slots.h>
+#include <host/mod_code.h>
 #include <profiler/host_profiler.h>
 #include <runtime/kernel/ee_copy.h>
 #include <runtime/vk/vk_context.h>
@@ -5308,6 +5309,24 @@ void beam_lights_add() {
         }
     }
 }
+
+// orig: (host) the mods' plugins' lights of the frame (light_add, src/host/mod_code.h: in the frame's copy of EE memory), as the
+// lights placed by hand: per pixel, no shadow cube, within the shadows' second split of the camera
+void mod_lights_add() {
+    if (!g_mod_code_any) return;
+    const uint32_t n = std::min(draw_lwu(MOD_LIGHTS), MOD_LIGHT_MAX);
+    for (uint32_t i = 0; i < n && g_sh.npts < kMaxPts; ++i) {
+        const uint32_t e = MOD_LIGHTS + 0x10 + i * 0x20;
+        const glm::vec3 p(draw_lwc1(e), draw_lwc1(e + 4), draw_lwc1(e + 8)), col(draw_lwc1(e + 0x10), draw_lwc1(e + 0x14), draw_lwc1(e + 0x18));
+        const float r = draw_lwc1(e + 0xc);
+        if (!(r > 0.0f) || glm::length(p - g_sh.cam) - r > g_sh.splits[1]) continue;
+        g_sh.pt_pos[g_sh.npts] = glm::vec4(p, r);
+        g_sh.pt_col[g_sh.npts] = glm::vec4(col, -1.0f);
+        g_sh.pt_slot[g_sh.npts] = -2;  // (no shadow cube)
+        g_sh.pt_down[g_sh.npts] = 0.0f;
+        ++g_sh.npts;
+    }
+}
 }  // namespace
 
 // orig: (host) see mrp_lighting.h
@@ -5370,6 +5389,7 @@ void mrp_lighting_shadow_pass() {
         class_lights_add(t);
         beam_lights_add();
     }
+    if (g_modern_points != 0) mod_lights_add();  // (the mods' plugins' lights: before the automatic emitters)
     if (g_modern_points != 0 && g_auto_lights != 0) {  // the automatic emitters near the camera, the nearest first
         float pr[4 * kMaxPts], pc[4 * kMaxPts];
         const float cam[3] = {g_sh.cam.x, g_sh.cam.y, g_sh.cam.z};
