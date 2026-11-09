@@ -4,6 +4,7 @@
 
 #include <host/level_slots.h>
 #include <runtime/iop/snd989_iop.h>
+#include <game/enhance/advanced.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/music_streams.h>
 #include <game/ovl/ovl.h>
@@ -1967,13 +1968,17 @@ void mod_code_level_loaded() {
 void mod_code_frame() {
     if (!g_mod_code_any || ee_journal_active()) return;
     if (!g_started) level_started();
-    if (g_sdk.on) sdk_triggers();
-    if (!g_hunters.empty()) hunters_update();
-    if (g_kal_any) kal_frame();
+    // the world held (Advanced > pause in the quick select: no hero, mobys, particles nor camera this frame): the
+    // triggers, the hunters' and Kalebo III's enemies' logic and the plugins' frame callbacks wait too (their timers,
+    // their objects moved by hand); their lights stay as they were, the HUD callback still draws
+    const bool held = advanced_world_paused();
+    if (g_sdk.on && !held) sdk_triggers();
+    if (!g_hunters.empty() && !held) hunters_update();
+    if (g_kal_any && !held) kal_frame();
     if (g_mod_weapons_limited) weapons_frame();
-    if (lwu(MOD_LIGHTS) != 0) sw(MOD_LIGHTS, 0);  // (light_add: the frame's own, from its frame callbacks)
+    if (!held && lwu(MOD_LIGHTS) != 0) sw(MOD_LIGHTS, 0);  // (light_add: the frame's own, from its frame callbacks)
     for (Plugin& p : g_plugins)
-        if (p.cb.frame != nullptr) with(p, [&] { p.cb.frame(p.cb.user); });
+        if (p.cb.frame != nullptr && !held) with(p, [&] { p.cb.frame(p.cb.user); });
     static const char* test = std::getenv("RAC1_MOD_TEST");
     const uint64_t frame = ++g_frames;
     if (test != nullptr)
