@@ -56,12 +56,12 @@ namespace {
     "up z | up y                               the OBJ files' up axis (default z; y: Blender's default OBJ export)\n"
     "scale <s>                                 the OBJ files' units to game units (default 1)\n"
     "moby <class> <x> <y> <z> [<yaw>]          an object of the base level's class <class>, as its first placement there\n"
-    "music <level> | music <loop> [<intro>] | music none   the level's music (<loop>, <intro>: a VAG, or a WAV encoded)\n"
+    "music <level> | music <loop> [<intro>] | music none   the level's music (<loop>, <intro>: a VAG, or a WAV or .ogg encoded)\n"
     "sky <level>                               the sky of the game's level <level> (default: the base level's)\n"
     "offset auto | offset <x> <y> <z>          moved by that much (auto: as far as the collision needs to be above 0)\n"
     "class <name> <model.obj> [size <s>] [solid|ghost] [scale <k>]   a class of the level's own objects (docs/sdk.md)\n"
     "object <class> <x> <y> <z> [<yaw>] [<key>=<value> ...]           an object of a level class\n"
-    "sound <name> <file.wav|.vag> [volume <v>] [range <near> <far>] [loop] [pitch <semitones>]   a sound of the level's own\n"
+    "sound <name> <file.wav|.ogg|.vag> [volume <v>] [range <near> <far>] [loop] [pitch <semitones>]   a sound of the level's own\n"
     "trigger <name> <x0> <y0> <z0> <x1> <y1> <z1>                    a box Ratchet enters and leaves (the plugin's trigger callback)\n"
     "picture <file.png>                        the planet on the loading screen (128 x 128; default: none, the base level's)\n"
     "banner <file.png> / banner.<lang> <file.png>   the name on the loading screen (256 x 32; default: made from name)\n"
@@ -1897,7 +1897,14 @@ bool compose_level_mod(const std::string& folder, bool force) {
             if (!read_vag(f, d.loop, b.adpcm, b.rate, why)) return fail(fmt("level.txt:%d: %s: ", d.line, d.file.c_str()) + why);
         } else {
             Pcm pcm;
-            if (!read_wav(f, pcm, why)) return fail(fmt("level.txt:%d: %s: ", d.line, d.file.c_str()) + why + " (a WAV or a VAG)");
+            if (f.size() >= 4 && std::memcmp(f.data(), "OggS", 4) == 0) {  // an Ogg Vorbis file (level_music.h): mixed to mono
+                std::vector<std::vector<int16_t>> ch;
+                if (!ogg_decode(f, ch, pcm.rate, why)) return fail(fmt("level.txt:%d: %s: ", d.line, d.file.c_str()) + why);
+                pcm.s.resize(ch[0].size());
+                for (size_t i = 0; i < pcm.s.size(); ++i) pcm.s[i] = static_cast<int16_t>(ch.size() == 2 ? (ch[0][i] + ch[1][i]) / 2 : ch[0][i]);
+            } else if (!read_wav(f, pcm, why)) {
+                return fail(fmt("level.txt:%d: %s: ", d.line, d.file.c_str()) + why + " (a WAV, an Ogg Vorbis file or a VAG)");
+            }
             if (pcm.rate < 8000 || pcm.rate > 48000) return fail(fmt("level.txt:%d: %s: its rate %u Hz (8000 .. 48000)", d.line, d.file.c_str(), pcm.rate));
             b.rate = pcm.rate;
             b.adpcm = adpcm_encode(pcm.s, d.loop);
@@ -1922,9 +1929,9 @@ bool compose_level_mod(const std::string& folder, bool force) {
         music_json = std::to_string(lt.music_level);
         log.say(fmt("music: level %d's", lt.music_level));
     } else if (!lt.music_loop.empty()) {
-        // each a VAG (mono or stereo) or a WAV (encoded), src/setup/level_music.h; an intro's and its loop's rate the
-        // same (the stream keeps its first part's pitch: a WAV encoded at the other's rate, the loop's if both are WAVs),
-        // one stereo: both made stereo
+        // each a VAG (mono or stereo), a WAV or an Ogg Vorbis file (encoded), src/setup/level_music.h; an intro's and its
+        // loop's rate the same (the stream keeps its first part's pitch: a WAV or an Ogg encoded at the other's rate, the
+        // loop's if neither is a VAG), one stereo: both made stereo
         std::vector<std::string> names;
         std::vector<std::pair<std::string, std::string>> files;
         if (!lt.music_intro.empty()) files.push_back({lt.music_intro, "music_intro.vag"});
@@ -1944,7 +1951,7 @@ bool compose_level_mod(const std::string& folder, bool force) {
         if (files.size() == 2 && made[0].rate != made[1].rate) {
             const size_t redo = made[0].encoded ? 0 : made[1].encoded ? 1 : 2;  // (the intro first: the loop's rate kept)
             if (redo == 2)
-                return fail(fmt("music: %s is %u Hz, %s %u Hz: an intro and its loop need the same rate (or give a WAV)", files[0].first.c_str(), made[0].rate,
+                return fail(fmt("music: %s is %u Hz, %s %u Hz: an intro and its loop need the same rate (or give a WAV or an .ogg)", files[0].first.c_str(), made[0].rate,
                                 files[1].first.c_str(), made[1].rate));
             if (!make(redo, made[redo].channels, made[1 - redo].rate)) return false;
         }

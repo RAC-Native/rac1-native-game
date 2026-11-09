@@ -140,7 +140,7 @@ what there is, the plugin says what it does:
 ```
 class sentry orb.obj size 1.2            (level.txt: a class, its model, its hit box)
 object sentry 12 14 2 name=east          (an object of it, placed; key=value words for the plugin)
-sound zap zap.wav range 6 60             (a sound of the level's own: a WAV or a VAG)
+sound zap zap.wav range 6 60             (a sound of the level's own: a WAV, an .ogg or a VAG)
 trigger ramp -21 -8 -1 -15 8 6           (a box: the trigger callback)
 ```
 
