@@ -12,6 +12,18 @@ What changed in each release. Releases are source only: you build the game with 
   chunks). A stereo track plays on two voices in step, left and right, as one stream of the game's music: its music
   volume, pauses, fades and track changes as the original's. Mono VAGs play as before; the disc's music is unchanged.
   See docs/mods.md, "Level mods", Music.
+- Level mods: pictures of the level's own. level.txt's `picture` (the loading screen's planet, 128 x 128), `banner` /
+  `banner.<lang>` (the name under it, 256 x 32; made from `name` and each `name.<lang>` when the mod has none) and
+  `map_picture` (the ship's map's picture under the galaxy; made from `picture` when none): PNG files the composer
+  scales and turns into the game's 8-bit images. On the ship's map a custom level's row shows its picture, and its
+  planet page its planet picture, with none of the base level's planet, missions, gold bolts or Infobot. The example
+  level has a planet of its own (a checkered sphere) and a generated name banner.
+- Level mods: a custom level is arrived at as a planet. The loading screen's full flight (its sound, the ship and its
+  trails, the planet's picture and name at the end), then the ship's landing at level.txt's `ship` and Ratchet stepping
+  off; before, the level got Veldin's arrival as the game's first level (a short flight, no landing). `hero auto` (the
+  default when there is a ship) starts Ratchet where he steps off the ship; an explicit `hero` place still wins. A
+  custom level no longer touches its base level's progress (its visits and time, its gadget in the quick select). The
+  level composer is version 4: level mods are composed again by the setup.
 - Mod SDK: angles a plugin gives (`object_place`, `object_spawn`, `hero_place`, a rotation written then `moby_moved`)
   are folded into -pi..pi. The example level's gems and sentries turn by adding to their angle every frame: after a
   few seconds the game's rotation matrix (whose sine folds an angle only once) made them huge, a flat plane across the

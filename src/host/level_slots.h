@@ -86,6 +86,40 @@ void level_slots_level_start(int32_t level);
 // from a slot's level
 bool level_slots_skip_story();
 
+// orig: (none) — enhancement: a slot's level is the level the game loads or plays (its row chosen, its save loaded): the
+// game's tests of Veldin (level 0) as the first level (no landing, the loading screen's "to Veldin" flight, the flight's
+// sound, the ship hidden, no trails) treat it as any planet. False with no level mod on
+bool level_slots_planet_arrival();
+
+// orig: (none) — enhancement: a slot's level is current: the base level's progress is left alone (its visits, its stats,
+// its gadget in the quick select, its visited flag)
+bool level_slots_keep_base_progress();
+
+// orig: (none) — enhancement: the loading screen's pictures (loading_screen_setup, before their uploads: `pics` the
+// transition file's picture table in EE memory, `lang` its language row): for a slot's level, the build's picture.img and
+// banner[.<lang>].img (the mod's, or made from its name by the composer) written over the base level's entries
+void level_slots_loading_pictures(uint32_t pics, int32_t lang);
+
+// orig: (none) — enhancement: the ship's map shows one of our rows (its planet page: no missions, no gold bolts, no movie)
+bool level_slots_map_row();
+
+// orig: (none) — enhancement: the galaxy page's planet picture (mission_picture_update of the picture of the map's planet,
+// its widget `w`): true when it is ours to show (one of our rows: the build's map.img uploaded instead of the disc's
+// picture, or none)
+bool level_slots_map_picture(uint32_t w);
+
+// orig: (none) — enhancement: the planet page's planet (planet_map_update on the ship's map's planet page): for one of our
+// rows the level's picture.img uploaded as the planet's picture (the map's +0x258; +0x228 0x100 + its slot), not the base
+// planet's
+void level_slots_map_planet_upload();
+
+// orig: (none) — enhancement: the planet page's planet is our row's picture (planet_picture_draw draws it, still)
+bool level_slots_map_planet_shown();
+
+// orig: (none) — testing: the landing's end (ship_sequence_update, before the scene's mobys go; `hero` the scene's Ratchet):
+// with RAC1_LEVEL_TRACE, where the scene leaves him and where the hero is put, in the ship's frame (any level)
+void level_slots_landing_end(uint32_t hero);
+
 // orig: (none) — enhancement: the text of our ids (0x7dc0..), 0 for the others (the text lookup 0x203ad8)
 uint32_t level_slots_text(int32_t id);
 

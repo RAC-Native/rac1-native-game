@@ -80,7 +80,7 @@ Every callback gets your `mod->user` back. All are optional.
 
 | Callback | When |
 |---|---|
-| `level_start(user, level)` | a level's first frame of play (its objects spawned). `level->mine` is 1 on your own mod's level; `level->objects` its placed objects' count (uids 1..objects, the hero's skipped) |
+| `level_start(user, level)` | a level's first frame of play (its objects spawned; on a level with a ship, after its landing, Ratchet off the ship). `level->mine` is 1 on your own mod's level; `level->objects` its placed objects' count (uids 1..objects, the hero's skipped) |
 | `level_end(user)` | the level is left (another level loads, a save is loaded) |
 | `frame(user)` | once a frame of play (not while a menu is open), after the objects' updates |
 | `camera(user)` | after the game's camera update: change the camera's memory here |

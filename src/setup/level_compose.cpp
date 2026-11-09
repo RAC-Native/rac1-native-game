@@ -4,6 +4,7 @@
 #include "level_compose.h"
 
 #include "level_music.h"
+#include "level_pictures.h"
 #include "mrp_export.h"
 
 #include <formats/host_meshes.h>
@@ -43,7 +44,8 @@ namespace {
 [[maybe_unused]] constexpr const char* kLevelTxtHelp =
     "name <text> / name.<fr|de|es|it> <text>   the ship's list's row and the planet page's title\n"
     "region <text> / region.<lang> <text>      the line above it\n"
-    "hero <x> <y> <z> [<yaw>]                  where Ratchet starts (game units, z up; yaw in radians)\n"
+    "hero <x> <y> <z> [<yaw>] | hero auto      where Ratchet starts (game units, z up; yaw in radians); auto (the default\n"
+    "                                          with a ship): where he steps off the ship after the landing\n"
     "ship <x> <y> <z> <yaw> | ship none        where the ship stands (none: no way out but the pause menu)\n"
     "death_height <z>                          below it Ratchet dies\n"
     "background <r> <g> <b>                    the sky's colour behind everything (0..255)\n"
@@ -60,11 +62,15 @@ namespace {
     "class <name> <model.obj> [size <s>] [solid|ghost] [scale <k>]   a class of the level's own objects (docs/sdk.md)\n"
     "object <class> <x> <y> <z> [<yaw>] [<key>=<value> ...]           an object of a level class\n"
     "sound <name> <file.wav|.vag> [volume <v>] [range <near> <far>] [loop] [pitch <semitones>]   a sound of the level's own\n"
-    "trigger <name> <x0> <y0> <z0> <x1> <y1> <z1>                    a box Ratchet enters and leaves (the plugin's trigger callback)\n";
+    "trigger <name> <x0> <y0> <z0> <x1> <y1> <z1>                    a box Ratchet enters and leaves (the plugin's trigger callback)\n"
+    "picture <file.png>                        the planet on the loading screen (128 x 128; default: none, the base level's)\n"
+    "banner <file.png> / banner.<lang> <file.png>   the name on the loading screen (256 x 32; default: made from name)\n"
+    "map_picture <file.png>                    the ship's map's picture (306 x 108 shown; default: made from picture)\n";
 
 struct LevelTxt {
     float hero[4] = {0, 0, 1, 0};
     bool has_hero = false;
+    bool hero_auto = false;             // hero auto (or no hero line, with a ship): beside the ship, where the landing leaves him
     bool ship = false;
     float ship_at[4] = {};
     bool has_death = false;
@@ -115,6 +121,9 @@ struct LevelTxt {
     std::vector<Object> objects;
     std::vector<Sound> sounds;
     std::vector<Trigger> triggers;
+    // the pictures (level_pictures.h): the files given, and the names (by language: "" the default, fr de es it)
+    std::string picture, map_picture;
+    std::map<std::string, std::string> banners, names;
 };
 
 // a name of the level's own (a class, a sound, a trigger): letters, digits, - _ .
@@ -193,11 +202,31 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
             err = fmt("%s:%d: \"%s\" not understood", p.generic_string().c_str(), n, line.c_str());
             return false;
         };
-        if (key.rfind("name", 0) == 0 || key.rfind("region", 0) == 0) continue;  // (the game's: src/game/enhance/level_slots.cpp)
+        if (key == "name" || key.rfind("name.", 0) == 0) {  // (the game's too: src/game/enhance/level_slots.cpp; here the banner's)
+            std::string rest;
+            std::getline(in >> std::ws, rest);
+            t.names[key.size() > 4 ? key.substr(5) : std::string()] = rest;
+            continue;
+        }
+        if (key.rfind("region", 0) == 0) continue;  // (the game's: src/game/enhance/level_slots.cpp)
+        if (key == "picture" || key == "map_picture" || key == "banner" || key.rfind("banner.", 0) == 0) {
+            std::string f;
+            if (!(in >> f)) return bad();
+            const std::string lang = key.size() > 6 && key[6] == '.' ? key.substr(7) : std::string();
+            if (key.rfind("banner.", 0) == 0 && lang != "fr" && lang != "de" && lang != "es" && lang != "it") return bad();
+            (key == "picture" ? t.picture : key == "map_picture" ? t.map_picture : t.banners[lang]) = f;
+            continue;
+        }
         if (key == "hero") {
-            if (!(in >> t.hero[0] >> t.hero[1] >> t.hero[2])) return bad();
-            if (!(in >> t.hero[3])) t.hero[3] = 0;
+            std::string w;
+            in >> w;
             t.has_hero = true;
+            t.hero_auto = w == "auto";
+            if (!t.hero_auto) {
+                std::istringstream in2(line.substr(line.find(key) + key.size()));
+                if (!(in2 >> t.hero[0] >> t.hero[1] >> t.hero[2])) return bad();
+                if (!(in2 >> t.hero[3])) t.hero[3] = 0;
+            }
         } else if (key == "ship") {
             std::string w;
             in >> w;
@@ -336,8 +365,9 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
             return bad();
         }
     }
-    if (!t.has_hero) {
-        err = p.generic_string() + ": no \"hero <x> <y> <z>\" line (where Ratchet starts)";
+    if (!t.has_hero) t.hero_auto = t.ship;  // (no hero line: where he steps off the ship)
+    if (t.hero_auto && !t.ship) {
+        err = p.generic_string() + ": no \"hero <x> <y> <z>\" line (where Ratchet starts; \"hero auto\" needs a ship)";
         return false;
     }
     for (const LevelTxt::Object& o : t.objects) {
@@ -1778,6 +1808,17 @@ bool compose_level_mod(const std::string& folder, bool force) {
         log.say(fmt("offset: (%g %g %g) added to every coordinate%s (lights.txt's are the game's: not moved)", lt.offset[0], lt.offset[1], lt.offset[2],
                     lt.offset_auto ? " (auto)" : ""));
     }
+    // hero auto: where the landing scene leaves Ratchet (the same in every ship's scene: measured, the game's
+    // RAC1_LEVEL_TRACE "the landing's end" line), in the ship's frame (x along its yaw, y to its left), facing away from it
+    if (lt.hero_auto) {
+        constexpr float kStepX = 2.513f, kStepY = 3.526f;
+        const float yaw = lt.ship_at[3], c = std::cos(yaw), s = std::sin(yaw);
+        lt.hero[0] = lt.ship_at[0] + c * kStepX - s * kStepY;
+        lt.hero[1] = lt.ship_at[1] + s * kStepX + c * kStepY;
+        lt.hero[2] = lt.ship_at[2];
+        lt.hero[3] = std::remainder(yaw + std::atan2(kStepY, kStepX), 6.2831853f);
+        log.say(fmt("hero auto: Ratchet steps off the ship at (%g %g %g), turned %g", lt.hero[0], lt.hero[1], lt.hero[2], lt.hero[3]));
+    }
     // the collision
     Obj co;
     if (!read_obj(ldir / lt.collision, lt, false, co, err)) return fail(err);
@@ -1949,6 +1990,47 @@ bool compose_level_mod(const std::string& folder, bool force) {
         const std::string t = o.str();
         if (!write_file(out_dir / "level.sdk", std::vector<uint8_t>(t.begin(), t.end()))) return fail("cannot write into " + out_dir.generic_string());
         log.say(fmt("level.sdk: %zu classes, %zu objects, %zu sounds, %zu triggers", lt.classes.size(), lt.objects.size(), lt.sounds.size(), lt.triggers.size()));
+    }
+    // the pictures (level_pictures.h): the loading screen's planet and name, the ship's map's picture
+    {
+        auto image = [&](const std::string& src, int w, int h, const char* what, const std::string& dst) {
+            Rgba in;
+            if (!picture_read(ldir / src, in, err)) return false;
+            if (in.w != w || in.h != h) log.say(fmt("%s: %s is %d x %d: scaled to %d x %d", what, src.c_str(), in.w, in.h, w, h));
+            const std::vector<uint8_t> img = picture_image(picture_scaled(in, w, h));
+            if (!write_file(out_dir / dst, img)) {
+                err = "cannot write into " + out_dir.generic_string();
+                return false;
+            }
+            log.say(fmt("%s: %s as %s", what, src.c_str(), dst.c_str()));
+            return true;
+        };
+        if (!lt.picture.empty() && !image(lt.picture, kPictureW, kPictureH, "picture", "picture.img")) return fail(err);
+        for (const auto& [lang, f] : lt.banners)
+            if (!image(f, kBannerW, kBannerH, "banner", lang.empty() ? "banner.img" : "banner." + lang + ".img")) return fail(err);
+        // a name with no banner of the mod's: its banner made from it (the default's, and each language's whose name differs)
+        if (lt.names.count("") == 0) lt.names[""] = m.name;  // (no name line: the mod's name, as the ship's list has it)
+        for (const auto& [lang, name] : lt.names) {
+            if (lt.banners.count(lang) != 0 || (!lang.empty() && (lt.banners.count("") != 0 || name == lt.names.at("")))) continue;
+            std::string why;
+            const std::vector<uint8_t> img = picture_image(banner_from_text(name, why));
+            if (!why.empty()) log.say("banner: " + why);
+            const std::string dst = lang.empty() ? "banner.img" : "banner." + lang + ".img";
+            if (!write_file(out_dir / dst, img)) return fail("cannot write into " + out_dir.generic_string());
+            log.say(fmt("banner: made from the name \"%s\" as %s", name.c_str(), dst.c_str()));
+        }
+        Rgba map;
+        if (!lt.map_picture.empty()) {
+            if (!picture_read(ldir / lt.map_picture, map, err)) return fail(err);
+            map = map_from_picture(map);
+            log.say(fmt("map picture: %s (%d x %d shown of %d x %d) as map.img", lt.map_picture.c_str(), kMapShownW, kMapShownH, kMapW, kMapH));
+        } else if (!lt.picture.empty()) {
+            Rgba planet;
+            if (!picture_read(ldir / lt.picture, planet, err)) return fail(err);
+            map = map_from_planet(planet);
+            log.say("map picture: made from the picture as map.img");
+        }
+        if (map.w != 0 && !write_file(out_dir / "map.img", picture_image(map))) return fail("cannot write into " + out_dir.generic_string());
     }
     // the MRP world of the composed data file, the host meshes' classes and textures added
     const fs::path wdir = out_dir / "mrp" / "world" / ("level" + std::to_string(m.level_base));

@@ -469,8 +469,8 @@ mods/example-plateau/
 |---|---|
 | `name <text>`, `name.<fr\|de\|es\|it> <text>` | the row's name (and the planet page's title), per text language |
 | `region <text>`, `region.<lang> <text>` | the line above it |
-| `hero <x> <y> <z> [<yaw>]` | where Ratchet starts (required) |
-| `ship <x> <y> <z> <yaw>` or `ship none` | where the ship stands (none: no way out but loading a save) |
+| `hero auto`, `hero <x> <y> <z> [<yaw>]` | where Ratchet starts (and comes back after a death). `auto` (the default when there is a ship): where he steps off the ship after the landing, beside it, facing away from it. A place of your own puts him there when the landing ends (as the game's planets do: the landing's last shot cuts to him there). Without a ship, a place is required |
+| `ship <x> <y> <z> <yaw>` or `ship none` | where the ship stands and lands: the landing's camera and Ratchet stepping off follow its place and yaw, so keep about 20 units round it open (none: no landing, no way out but loading a save) |
 | `death_height <z>` | below it Ratchet dies |
 | `background <r> <g> <b>`, `fog <r> <g> <b>` | colours (0..255) |
 | `collision <file>`, `meshes <file>` | other file names (default `collision.obj`, `meshes.obj`) |
@@ -485,6 +485,21 @@ mods/example-plateau/
 | `object <class> <x> <y> <z> [<yaw>] [<key>=<value> ...]` | an object of one of the level's classes |
 | `sound <name> <file.wav\|.vag> [volume <v>] [range <near> <far>] [loop] [pitch <s>]` | a sound of the level's own (the plugin plays it) |
 | `trigger <name> <x0> <y0> <z0> <x1> <y1> <z1>` | a box Ratchet enters and leaves (the plugin's trigger callback) |
+| `picture <file.png>` | the planet on the loading screen and on the ship's map's planet page (below) |
+| `banner <file.png>`, `banner.<fr\|de\|es\|it> <file.png>` | the name under it on the loading screen, per text language; default: made from `name` (and each `name.<lang>`) |
+| `map_picture <file.png>` | the picture under the galaxy on the ship's map while the level's row is selected; default: made from `picture` |
+
+**Pictures**: PNG files (any size: the composer scales them, 256 colours at most after it, as the game's are), with
+alpha where nothing is to show:
+
+| Line | The game's size | Shown |
+|---|---|---|
+| `picture` | 128 x 128 | the loading screen's planet, growing in the flight's last part; the ship's map's planet page (as it is: no turning, no map of it) |
+| `banner` | 256 x 32 | under it, fading in (the game's own are blue letters about 12 pixels high, centred, on nothing) |
+| `map_picture` | 306 x 108 | scaled to cover it, its middle kept |
+
+With no `picture` the loading screen shows the base level's planet and the ship's map no picture (no planet). With no
+`banner` the composer writes the name in a plain font in the game's blue (Latin letters; others become `?`).
 
 **Objects** (`moby` lines): each is a copy of the first object of class `<class>` the base level places (its settings
 and its private values), put at `<x> <y> <z>` turned `<yaw>` radians; it drops to the ground under it when its class
@@ -555,6 +570,8 @@ last step. The build goes to `assets/generated/mods/<folder>/` (made from your d
 - `level.sdk`, `sounds.bnk`: your classes, placed objects, sounds and triggers ([The mod SDK](sdk.md)); your sounds as
   one sound bank of the game's format.
 - `mrp/world/level0/`: the modern renderer's world of the composed level (the meshes added).
+- `picture.img`, `banner[.<lang>].img`, `map.img`: the pictures (level.txt's `picture`, `banner`, `map_picture`, or
+  made by the composer), in the layout of the game's own pictures.
 - `build.json` (the stamp), `compose.log` (what the composer did).
 
 ### How the game runs it: the level's slot
@@ -564,10 +581,21 @@ base level's code (Veldin's). Its files are read through a window of sectors of 
 replaced or padded), its lights file and world are its own, and the game's level number stays the base level's, so the
 game's code is untouched.
 
+- **The arrival** is a planet's: the loading screen's flight (its sound, the ship and its trails, the last segment with
+  the planet's picture and name), then the ship's landing at level.txt's `ship` and Ratchet stepping off (`hero auto`),
+  as on any planet. The game's special cases of Veldin as the first level (no landing, the short flight "to Veldin")
+  are not used for the level, though its code is Veldin's. With `ship none` there is no landing: Ratchet starts at
+  `hero`.
+- **The base level's progress is left alone**: the level never counts as a visit of Veldin (its visits, its time
+  played, its visited flag), never unlocks it nor adds its gadget, and the base level's story cards and movies are
+  left out on the way there and back.
+
 - **The ship's list**: one row per level mod on, in load order, after the unlocked planets (each its own host slot: 19,
   20, ..., 16 at most; the list's 20 rows permitting: with every planet unlocked there is room for two, the log says
   which levels have no row). Choosing one flies there; from it the ship flies anywhere as usual, to another level mod's
-  level too. While a row is selected the planet page shows its name.
+  level too. While a row is selected the galaxy page shows the level's `map_picture`, and its planet page the level's
+  name and region and its `picture`, nothing of the base level's (no missions, no gold bolts, no Infobot: circle does
+  nothing there).
 - **Its state** (what Ratchet picked up and broke there) is its own: the save's per-level records of the base level hold
   the level's while you are on it, Veldin's are kept aside and come back when you leave.
 - **Saves**: a memory card save made on the level is the game's own save, byte for byte (Veldin's records, the level
@@ -593,7 +621,7 @@ Format 1 is the first step:
 - the sky: a game level's (`sky`); a sky of your own is a later step (a texture mod can change a sky's textures in the
   modern renderer). Another level's sky is right in the modern renderer; the faithful renderer may show it with wrong
   colours;
-- the base level is Veldin (the ship's planet page for the level shows Veldin's planet and missions): see
+- the base level is Veldin: see
   [Other base levels](#other-base-levels-not-yet);
 - the level's size: the composed asset data (the base level's classes, sky and effects, and your collision) must not be
   larger than the base level's own (what the game's memory holds there: on Veldin 16 MB, of which the kept parts take
@@ -621,8 +649,10 @@ objects' classes, its gadgets' effects, its enemies) needs three things not done
   first visit's cards and movies are left out (done); each other level's need finding and leaving out the same way,
   level by level, and testing.
 - **The ship's list and the planet page**: the base planet is on the list itself (Veldin never is), so its own row
-  and the level's row stand for one planet (the rows are told apart already: the list's selection is ours to know),
-  and the planet page would show the base planet's picture and missions.
+  and the level's row stand for one planet (the rows are told apart already: the list's selection is ours to know;
+  the level's row shows its own pictures and none of the base planet's missions).
+- **The base level's progress**: on Veldin nothing to do (it is always visited); on another base, the guards that keep
+  a custom level from touching it (visits, stats, gadget, visited flag: done) and its story cards to and from it.
 
 ### Level mods: log lines
 
@@ -638,13 +668,17 @@ objects' classes, its gadgets' effects, its enemies) needs three things not done
 | `[levels] level slot 19's music: ...` | the level's music: none, a game level's, or the mod's (its sectors in the window) |
 | `[levels] the save was made on the level "<id>", whose mod is off or missing` | the planet prompt |
 | `[compose] offset: (x y z) added to every coordinate` | level.txt's offset (or auto's) |
+| `[compose] hero auto: Ratchet steps off the ship at (x y z)` | where he starts (`hero auto`, or no `hero` line with a ship) |
+| `[compose] picture: ...`, `banner: ...`, `map picture: ...` | the pictures written (`picture.img`, `banner[.<lang>].img`, `map.img`) |
+| `[levels] the loading screen: level slot 19's planet picture the mod's, its name the mod's` | the loading screen's pictures (or the base level's when the build has none) |
 | `[compose] budget: asset data X MB of the base level's Y MB` | how much of the base level's room the level takes |
 | `[compose] ...` | the composer's steps; its errors name the file and line |
 
 ### Testing a level mod
 
 `RAC1_MODS=1 RAC1_GOTO=<level.id>@60` (headless: also `RAC1_HEADLESS=1`) starts on Veldin and goes to the level at
-frame 60. `RAC1_LEVEL_TRACE=1` prints the records' swaps and the `.pc` items; `RAC1_LEVEL_SAVE_IMAGE=<frame>:<prefix>`
+frame 60. `RAC1_LEVEL_TRACE=1` prints the records' swaps, the `.pc` items and where the landing leaves Ratchet (`the landing's
+end`, in the ship's frame); `RAC1_LEVEL_SAVE_IMAGE=<frame>:<prefix>`
 writes the card's save blocks and our items at that frame (a save made on the level must give the same level blocks as
 one made just before flying there). `RAC1_LEVEL_MAP_AT=<frame>` opens the ship's planet map at that frame (as a take-off
 does), to choose a row with a `RAC1_SIM_INPUT=seq:` script; with `RAC1_LEVEL_TRACE=1` the list's rows and the row

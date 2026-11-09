@@ -331,6 +331,7 @@ add_library(rac1_setup STATIC
     src/setup/setup_manager.cpp
     src/setup/level_compose.cpp
     src/setup/level_music.cpp
+    src/setup/level_pictures.cpp
     src/setup/mod_plugins.cpp
 )
 target_include_directories(rac1_setup PUBLIC ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src)
