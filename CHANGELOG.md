@@ -12,6 +12,10 @@ What changed in each release. Releases are source only: you build the game with 
   Original 0.68 to 0.54 ms.
   The same game state and picture (RAC1_PERF_POSE_MEMO, RAC1_PERF_SCENE_READS, RAC1_PERF_LOD_PATCH = 0 to compare); see
   docs/performance.md.
+- The moby pass's draw loop (both the game's own pass and the widened view's second one) runs a faster form of the same code:
+  the VU0 registers as a local copy and the memory reached without a call per access. About 15 % of the loop's time (Kerwan
+  widened at LOD High: the second pass 1.08 to 1.01 ms a frame). The same game state and picture (RAC1_PERF_MOBY_DRAW=0 to
+  compare, =2 to check one against the other).
 - docs/mods.md, a modder's guide: a texture mod and a .vag sound swap step by step, the limits, every `[mods]` log
   line and what it means, sharing a mod.
 - Graphics: Enhanced, Lighting: Original (#138): the original game's lighting and drop shadows with the modern lighting's sun
