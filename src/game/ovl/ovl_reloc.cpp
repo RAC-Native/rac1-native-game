@@ -33,6 +33,12 @@ std::map<uint32_t, uint32_t> g_code;               // Veldin -> level (fn lines)
 std::map<uint32_t, uint32_t> g_code_rev;           // level -> Veldin
 std::unordered_map<uint32_t, uint32_t> g_code_size;  // Veldin function -> its size (bytes)
 std::set<uint32_t> g_code_kept;                     // Veldin addresses handed out untranslated
+// The extents of the engine's data blocks (levelN.ext, tools/overlay_match/extents.py): Veldin's start -> [level start, size],
+// and by the level's start; empty when the file is missing (another region's disc, an old setup): today's rules then
+struct Extent {
+    uint32_t veldin, level, size;
+};
+std::map<uint32_t, Extent> g_ext_v, g_ext_l;
 // Veldin -> level code pointers the matched code builds (lui + addiu: callbacks, table entries)
 // whose function is not the same code in the level (not an `fn` line: a variant); and back
 std::map<uint32_t, uint32_t> g_code_ptr, g_code_ptr_rev;
@@ -145,6 +151,8 @@ void ovl_reloc_set_level(int level) {
     g_code_size.clear();
     g_code_ptr.clear();
     g_code_ptr_rev.clear();
+    g_ext_v.clear();
+    g_ext_l.clear();
     g_level = level == OVL_NONE ? 0 : level;
     g_identity = true;
     ++g_ovl_gen;
@@ -173,6 +181,21 @@ void ovl_reloc_set_level(int level) {
             g_code_rev[l] = v;
             g_code_size[v] = n;
         }
+    }
+    // the engine's data blocks with their extents (a level's own build only: not the boot module's, nor another region's)
+    if (level != OVL_FRONT && !disc_other_region()) {
+        std::ifstream ext("assets/generated/overlay_map/level" + std::to_string(level) + ".ext");
+        while (std::getline(ext, line)) {
+            std::istringstream s(line);
+            std::string kind;
+            Extent e{};
+            s >> kind >> std::hex >> e.veldin >> e.level >> e.size;
+            if (kind != "ext" || e.size == 0) continue;
+            g_ext_v[e.veldin] = e;
+            g_ext_l[e.level] = e;
+        }
+        if (g_ext_v.empty())
+            std::fprintf(stderr, "[ovl_reloc] level %d: no extents (assets/generated/overlay_map/level%d.ext: ./setup.sh): the nearest mapped address's rule\n", level, level);
     }
     // the rows' level addresses are NTSC-U level N's: on another region's disc, the region
     // table's (a function the region changed: its entry, the NTSC-U port standing in; none: the row dropped)
@@ -209,27 +232,78 @@ int ovl_reloc_level() { return g_level; }
 // orig: (host) see ovl_reloc.h
 bool ovl_reloc_identity() { return g_identity; }
 
-// orig: (host) see ovl_reloc.h
-uint32_t ovl_xlate_data(uint32_t a) {
-    if (g_identity) return a;
-    const auto it = g_data.find(a);
-    if (it != g_data.end()) return it->second;
-    // an offset into a mapped object (a port's folded field offset): the nearest mapped address
-    // below, close enough, with its displacement -- certain when the mapped address above moved
-    // by the same amount (the block between them moved as one), else a guess (reported)
+namespace {
+// orig: (host) the rule without extents: an offset into a mapped object (a port's folded field offset) is the nearest
+// mapped address below, close enough, with its displacement -- certain when the mapped address above moved by the same
+// amount (the block between them moved as one), else a guess (`*how` says so; kept, without a translation, too)
+uint32_t nearest_rule(uint32_t a, const char** how) {
+    *how = nullptr;
     auto hi = g_data.upper_bound(a);
     if (hi != g_data.begin()) {
         const auto lo = std::prev(hi);
         const uint32_t d = lo->second - lo->first;
         if (hi != g_data.end() && hi->second - hi->first == d) return a + d;
         if (a - lo->first < 0x100) {
-            log_once("data", a, "guessed from the object below");
+            *how = "guessed from the object below";
             return a + d;
         }
     }
-    log_once("data", a);
+    *how = "has no translation: kept";
     return a;
 }
+
+// orig: (host) Veldin's address `a` inside an engine block of the level: its address there (with `*found`), else a
+uint32_t ext_fwd(uint32_t a, bool* found) {
+    auto it = g_ext_v.upper_bound(a);
+    if (it != g_ext_v.begin() && a - std::prev(it)->first < std::prev(it)->second.size) {
+        const Extent& e = std::prev(it)->second;
+        *found = true;
+        return a - e.veldin + e.level;
+    }
+    *found = false;
+    return a;
+}
+}  // namespace
+
+// orig: (host) see ovl_reloc.h
+uint32_t ovl_xlate_data(uint32_t a) {
+    if (g_identity) return a;
+    const auto it = g_data.find(a);
+    if (it != g_data.end()) return it->second;
+    if (!g_ext_v.empty()) {
+        // an offset into an engine block (a port's folded field offset, an element of an engine array): its displacement
+        bool found = false;
+        const uint32_t l = ext_fwd(a, &found);
+        if (!found) log_once("data", a, "is in no engine object of the level (its own data, or Veldin's): kept");
+        static const bool diff = std::getenv("RAC1_OVL_EXT_DIFF") != nullptr;
+        if (diff) {  // (testing) where the extents and the nearest mapped address's rule disagree
+            const char* how = nullptr;
+            const uint32_t old = nearest_rule(a, &how);
+            if (old != l) {
+                char msg[96];
+                std::snprintf(msg, sizeof msg, "the extents give %08x, the nearest mapped address's rule %08x", l, old);
+                log_once("data", a, msg);
+            }
+        }
+        return l;
+    }
+    const char* how = nullptr;
+    const uint32_t l = nearest_rule(a, &how);
+    if (how != nullptr) log_once("data", a, how);
+    return l;
+}
+
+// orig: (host) see ovl_reloc.h
+uint32_t ovl_data_to_veldin(uint32_t a) {
+    if (g_identity) return a;
+    auto it = g_ext_l.upper_bound(a);
+    if (it == g_ext_l.begin()) return 0;
+    const Extent& e = std::prev(it)->second;
+    return a - e.level < e.size ? a - e.level + e.veldin : 0;
+}
+
+// orig: (host) see ovl_reloc.h
+bool ovl_has_extents() { return g_identity || !g_ext_v.empty(); }
 
 // orig: (host) see ovl_reloc.h
 uint32_t ovl_code_lookup(uint32_t a) {

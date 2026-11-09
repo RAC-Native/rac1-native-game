@@ -179,6 +179,12 @@ bool overlay_maps(const fs::path& assets, const std::string& iso_path, const Kno
         r = run_quiet({platform::python_program(), (tools / "overlay_match.py").string(), "--iso", iso_path, "--out", out.string(),
                        "--levels", std::to_string(lv)});
     }
+    // the extents of the engine's data objects in each level (levelN.ext: the open engine's classification of engine
+    // and own data, docs/open-engine.md); the North American disc's maps only
+    if (r == 0 && std::string(disc->region) == "NTSC-U") {
+        std::cout << " extents" << std::flush;
+        r = run_quiet({py, (tools / "extents.py").string(), "--iso", iso_path, "--maps", out.string()});
+    }
     if (r != 0) {
         std::cerr << "\n[setup] Error: the overlay matcher failed (" << (r < 0 ? platform::python_program() + " not found"
                                                                              : "exit code " + std::to_string(r)) << ").\n";
