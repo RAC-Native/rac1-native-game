@@ -8,7 +8,9 @@ What changed in each release. Releases are source only: you build the game with 
 - Level mods: **Ogg Vorbis** music and sounds. level.txt's `music` and `sound` lines take an `.ogg` (mono or stereo)
   wherever they take a WAV: the composer decodes it (with [stb_vorbis](https://github.com/nothings/stb) v1.22, in
   `third_party/stb_vorbis`) and encodes it as a WAV, its exact length kept, so a seamless loop stays seamless. The game
-  never reads Ogg. See docs/mods.md, "Level mods", Music.
+  never reads Ogg. The example level's music is now **"Overworld" by Daino Selvatico** (a stereo Ogg, 44.1 kHz, 110.8 s,
+  `examples/custom-level/music/overworld.ogg`, under CC BY 4.0, not MIT: `examples/custom-level/README.md`) in place
+  of the short synthesized tune. See docs/mods.md, "Level mods", Music.
 - Level mods: **stereo music, and WAV music**. level.txt's `music <loop> [<intro>]` takes a WAV (PCM 8 to 32 bits or
   float, mono or stereo, any common rate: 8000 .. 48000 Hz kept, others resampled) that the composer encodes as the
   game's music (PS-ADPCM, its length made whole ADPCM blocks and its first block independent, so the loop is seamless),

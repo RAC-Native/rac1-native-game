@@ -253,7 +253,9 @@ For contributors, and for reverse-engineering and decompilation people:
 ## Licence
 
 The project's own code is under the [MIT licence](LICENSE). The third-party components it uses are
-listed, with their licences, in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+listed, with their licences, in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The example level's music,
+"Overworld" by Daino Selvatico (`examples/custom-level/music/overworld.ogg`), is under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), not MIT.
 
 ## Acknowledgements
 

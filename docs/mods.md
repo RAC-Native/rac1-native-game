@@ -421,9 +421,10 @@ python3 examples/custom-level/make_example.py mods/example-plateau
 ```
 
 The first line writes the example mod (a floor, a ramp up to a platform, a few blocks coloured per vertex, a ship pad,
-five crates, Kerwan's sky and a short tune as its music, made round (0, 0, 0) and moved by its offset; two classes of
-its own, sentries and gems, with their models, seven sounds and a trigger; everything in it is made by the script, the
-tune and the sounds too), and copies its plugin (`examples/custom-level/plugin/`: a sixth crate that glides back and
+five crates, Kerwan's sky and "Overworld" by Daino Selvatico as its music (a stereo `.ogg`, CC BY 4.0:
+`examples/custom-level/README.md`), made round (0, 0, 0) and moved by its offset; two classes of its own, sentries and
+gems, with their models, seven sounds and a trigger; everything else in it is made by the script, the sounds too), and
+copies its plugin (`examples/custom-level/plugin/`: a sixth crate that glides back and
 forth as a platform, a HUD line, a sound where it turns, a visits counter in the save; the sentries' and gems'
 behaviour, the trigger's chime). The second
 composes it with your disc and builds the plugin (the setup does it too, as its last step: CMake and the compiler the
@@ -523,12 +524,13 @@ level's first one and its loop). Your own: `music <loop> [<intro>]`, `<loop>` lo
 - an **Ogg Vorbis** file (`.ogg`, mono or stereo, any rate as a WAV's): decoded when the level is composed (by
   [stb_vorbis](https://github.com/nothings/stb)), then encoded as a WAV is. The decoded length is the stream's own (its
   last granule position), so a loop that is seamless as a WAV stays seamless as an `.ogg` made from it: encode it as
-  usual, for example `ffmpeg -i loop.wav -c:a libvorbis -q:a 6 loop.ogg` (about a tenth of the WAV's size).
+  usual, for example `ffmpeg -i loop.wav -c:a libvorbis -q:a 6 loop.ogg` (about a tenth of the WAV's size). The
+  example level's music is one.
 - a **VAG** as the disc's music files (`levels/levelNN/hdr_014c.vag`): a 0x30-byte `VAGp` header (big endian: the
   data's size at +0xc, the rate at +0x10, 8000 to 48000 Hz), then mono PS-ADPCM, copied as it is. A **stereo VAG**
   (ours): byte +0x1e of the header 2, the size at +0xc one channel's, the left and the right channel's ADPCM
-  interleaved in chunks of 0x800 bytes (the last chunk of each padded with zeros). The example's `make_example.py` has
-  a small mono encoder (`vag()`); the PS2 tools (MFAudio, ...) make mono ones too.
+  interleaved in chunks of 0x800 bytes (the last chunk of each padded with zeros). The PS2 tools (MFAudio, ...) make
+  mono ones.
 
 **Stereo** plays on two of the sound chip's voices started together, the left channel's voice on the left and the
 right one's on the right (as the game's own stereo, the movies' sound, is played), stepping through the file in sync;
