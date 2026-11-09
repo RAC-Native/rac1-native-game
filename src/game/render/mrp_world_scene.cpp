@@ -1379,7 +1379,7 @@ bool scan_world(SceneInput& in, uint32_t addr, std::vector<uint32_t>& stack, uin
     std::vector<uint8_t> span;
     bool ok = true;
     for (int guard = 0; guard < 400000; ++guard) {
-        if (addr == (in.chain_end & 0x01fffff0u) || addr == last_end) break;
+        if (addr == (in.chain_end & ee_dma_addr_mask()) || addr == last_end) break;
         const uint8_t* t = static_cast<const uint8_t*>(ee_ram_ptr_read(addr));
         if (t == nullptr) {
             ok = false;
@@ -1388,7 +1388,7 @@ bool scan_world(SceneInput& in, uint32_t addr, std::vector<uint32_t>& stack, uin
         ++dw.tags;
         const uint64_t lo = r64(t);
         const uint32_t qwc = lo & 0xffff, id = (lo >> 28) & 7;
-        const uint32_t a = static_cast<uint32_t>(lo >> 32) & 0x01fffff0u;
+        const uint32_t a = static_cast<uint32_t>(lo >> 32) & ee_dma_addr_mask();
         uint32_t data = addr + 16, next = addr + 16 + qwc * 16;
         bool stop = false;
         switch (id) {
@@ -1619,11 +1619,11 @@ void scene_capture(uint32_t chain_start, uint32_t chain_end, SceneInput& in, con
     std::vector<uint32_t> stack;
     const Shadow* sh = nullptr;
     auto in_sh = [&sh](uint32_t a) { return sh != nullptr && a >= sh->base && a - sh->base < sh->bytes.size(); };
-    uint32_t addr = chain_start & 0x01fffff0u;
+    uint32_t addr = chain_start & ee_dma_addr_mask();
     bool scanned = false;
     for (int guard = 0; guard < 400000; ++guard) {
         if (sh == nullptr) {
-            if (addr == (chain_end & 0x01fffff0u) || addr == last_end) break;
+            if (addr == (chain_end & ee_dma_addr_mask()) || addr == last_end) break;
             if (direct && !scanned) {
                 int pass = -1;
                 for (const PassRange& r : in.passes)
@@ -1664,7 +1664,7 @@ void scene_capture(uint32_t chain_start, uint32_t chain_end, SceneInput& in, con
             std::memcpy(&lo, t, 8);
         }
         const uint32_t qwc = lo & 0xffff, id = (lo >> 28) & 7;
-        const uint32_t a = static_cast<uint32_t>(lo >> 32) & 0x01fffff0u;
+        const uint32_t a = static_cast<uint32_t>(lo >> 32) & ee_dma_addr_mask();
         uint32_t data = addr + 16, next = addr + 16 + qwc * 16;
         bool stop = false;
         switch (id) {
@@ -2039,10 +2039,10 @@ bool scene_build(const WorldIndex& idx, const SceneInput& in, SceneFrame& f, boo
         ++g_capture_misses;  // (never seen: the walk and the capture follow the same tags)
         return static_cast<const uint8_t*>(ee_ram_ptr_read(a));
     };
-    uint32_t addr = chain_start & 0x01fffff0u;
+    uint32_t addr = chain_start & ee_dma_addr_mask();
     for (int guard = 0; guard < 400000; ++guard) {
         if (sh == nullptr) {
-            if (addr == (chain_end & 0x01fffff0u) || addr == last_end) break;
+            if (addr == (chain_end & ee_dma_addr_mask()) || addr == last_end) break;
             if (in.dw.ok && addr == in.dw.start) break;  // (the direct world: the world's ranges were scanned at the capture)
             for (const Shadow& s : in.shadows)
                 if (s.first == addr) {
@@ -2058,7 +2058,7 @@ bool scene_build(const WorldIndex& idx, const SceneInput& in, SceneFrame& f, boo
         if (t == nullptr) break;
         const uint64_t lo = r64(t);
         const uint32_t qwc = lo & 0xffff, id = (lo >> 28) & 7;
-        const uint32_t a = static_cast<uint32_t>(lo >> 32) & 0x01fffff0u;
+        const uint32_t a = static_cast<uint32_t>(lo >> 32) & ee_dma_addr_mask();
         uint32_t data = addr + 16, next = addr + 16 + qwc * 16;
         bool stop = false;
         switch (id) {

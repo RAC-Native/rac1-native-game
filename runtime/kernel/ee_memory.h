@@ -49,6 +49,9 @@ bool ee_session_memory(u32 bytes);
 // orig: (host) the end of the game's memory for the host's sanity checks of the game's pointers (a class's packets, a
 // moby walk, a DMA source): the PS2's 32 MB, or the session's whole RAM while a session's memory is on
 RAC1_HOT_INLINE u32 ee_game_ram_end() { return ee_detail::g_game_end; }
+// orig: (host) the mask of a DMA tag's address as the chain walkers read it (the 32 MB the PS2's DMA reaches, quadword
+// aligned; a session's whole RAM while its memory is on: its classes' packets above 64 MB)
+RAC1_HOT_INLINE u32 ee_dma_addr_mask() { return ee_detail::g_mirror_mask & ~0xfu; }
 // orig: (host) the RAM offset a kseg0 / kseg1 / uncached-mirror address reads (the 32 MB fold, or the session's RAM),
 // 0xffffffff for none (hardware registers)
 u32 ee_mirror_phys(u32 vaddr);
