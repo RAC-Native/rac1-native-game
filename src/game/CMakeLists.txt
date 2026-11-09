@@ -170,6 +170,7 @@ add_library(rac1_game STATIC
     enhance/corrected_texts.cpp
     enhance/cut_content.cpp
     enhance/fixes102.cpp
+    enhance/bug_fixes.cpp
     enhance/level_slots.cpp
     enhance/mod_code.cpp
     ovl/bomb_glove.cpp

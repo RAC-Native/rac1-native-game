@@ -1,7 +1,7 @@
 # Settings
 
 The port's own settings: the Language page and four pages added to the game's Options (Display, Graphics, Controls, Advanced), the
-New Game choices (Original or Modern, then a graphics preset), the update check, where settings are kept, and the debug tools.
+main menu's Bug Fixes page, the New Game choices (Original or Modern, then a graphics preset), the update check, where settings are kept, and the debug tools.
 
 ## Removed compromises and enhancements
 
@@ -285,6 +285,17 @@ menu's Options has an Advanced entry only while there is a global row.
 
 See [Advanced options](advanced.md) for what each one does and how it is built.
 
+### Bug Fixes (main menu)
+
+Right after Advanced, the main menu's Options has **Bug Fixes**: fixes of the original game's own bugs, one row each,
+all off by default (the original's behaviour), kept in the preferences only, like the global Advanced rows:
+
+| Row | Values (default first) | Kept |
+|---|---|---|
+| Race Music After Quitting | Off, On: quitting Rilgar's hoverboard race from its results brings the planet's music back (the original keeps the race's music playing) | the preferences |
+
+See [Advanced options](advanced.md#bug-fixes) for each fix and for what belongs on the page.
+
 ### Language
 
 Everything about language is on one page, **Options > Language**, in the main menu (the game's own Language entry
@@ -455,7 +466,7 @@ To try the panel without a new release: `RAC1_UPDATE_FAKE=0.9.0` (or `dev:12`) w
 | What | Where |
 |---|---|
 | Display and Graphics pages | `~/.config/rac1-native/graphics_options.txt` |
-| Advanced page, the Language page's Voice and Subtitles (and the update check's Skip Version, the Sound page's 5.1 / 7.1 and Mix) | `~/.config/rac1-native/advanced_options.txt` |
+| Advanced and Bug Fixes pages, the Language page's Voice and Subtitles (and the update check's Skip Version, the Sound page's 5.1 / 7.1 and Mix) | `~/.config/rac1-native/advanced_options.txt` |
 | The Mods page (which mods are on) | `~/.config/rac1-native/mods.txt` (see [Mods](mods.md)) |
 | The update check's last answer | `~/.config/rac1-native/update_check.txt` |
 | Controls | `~/.config/rac1-native/controls.txt` (see [Input](input.md#the-bindings-file-controlstxt)) |

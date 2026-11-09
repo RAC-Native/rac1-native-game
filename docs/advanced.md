@@ -3,8 +3,9 @@
 Options > Advanced holds the settings that change how the game plays. The pause menu's page holds a playthrough's
 settings (the rows below, set first by New Game's Original / Modern and kept with the save); the main menu's holds only
 the global ones, settings of the whole game rather than of a playthrough: [Cut Content](#cut-content),
-[Corrected Texts](#corrected-texts), [1.02 Fixes](#102-fixes) and [1.02 Gameplay](#102-gameplay). They are different
-in kind
+[Corrected Texts](#corrected-texts), [1.02 Fixes](#102-fixes) and [1.02 Gameplay](#102-gameplay). Beside it, the main
+menu's Options has a page of its own for fixes of the original game's own bugs, [Bug Fixes](#bug-fixes). They are
+different in kind
 from the PS2 compromises the port removes (see [Overview](overview.md#faithful-to-the-games-code-not-to-the-ps2s-limits)):
 
 - **A removed compromise** keeps the game's behaviour and state exactly the original's and only drops
@@ -698,6 +699,33 @@ The others, read in the North American and the 1.02 build's code (PAL disc 2.00,
   removed, Quartu's own placement 0x274af8); Drek's fleet's 1448 and
   Veldin's finale's 1381 (a counter against a random wait); Pokitaru's 0x2d14b0 / 0x312838 and Gemlik's class 63 (large
   rewrites).
+
+## Bug Fixes
+
+The main menu's Options has a page **Bug Fixes**, right after Advanced, for small fixes of the original game's own bugs:
+the ones no later build of the game fixed (the 1.02 build's own fixes are [1.02 Fixes](#102-fixes)), each a row of its
+own, **Off / On**, off by default. With every row off the original's code runs and the game's memory is the same frame by
+frame (RAC1_RAMHASH). Like the Advanced page's global rows they are settings of the whole game, kept in the preferences
+only (one `bugfix_<name> 0|1` line each in `advanced_options.txt`), never with a save, and changed on the main menu only
+(the pause menu has no Bug Fixes page), so a playthrough sees them from its start. The help box under the rows says what
+the selected one changes.
+
+This is where a future fix of the same kind goes: a bug of the original's code, with a small, local change that a player
+may want, kept off by default so the original stays as it was. Each one gets a number (`RAC1_BUG_FIXES`), a row on the
+page and a section in the table below; its change sits where the original goes wrong, behind its own test
+(`bug_fix_on(n)`, `src/game/enhance/bug_fixes.{h,cpp}`, with an `enhancement: Bug Fixes, fix n` note at the site). A
+change that alters how the game plays (an exploit closed, a difficulty changed) is not a bug fix in this sense: it
+belongs with the gameplay rows.
+
+| Fix | Row | What it changes | Where |
+|---|---|---|---|
+| 1 | Race Music After Quitting | Rilgar's hoverboard race: quitting from its results screen (game mode 4, kind 0, Cross) brings the planet's music back. The original never switches back there: the race organiser (class 918) restarts the level's music only for the race's other endings (its states 1 and 2, the call `ril_28f5c8_l5(0, 8)`; the 1.02 build added it to its state 3 too, [1.02 Fixes](#102-fixes) fix 22), so after a quit the race's track (track 2) kept playing on the planet (issue #132). The fix makes the same call at the quit: the level's music routine L5:0x28f5c8 with the track 0 (the level's music) as the next track, faded over through the track 8, as those endings do. Kalebo III's hoverbike race keeps the planet's music throughout and needs none | `screen_update` 0x202aa0 (kind 0, the quit's step 2), `bug_fixes_race_quit` |
+
+The page is built as the Mods page: a copy of the Camera page with its settings widget in the tall box and a copy of the
+Options help label (its EE block 0xf1000..0xf2000, the Advanced block's free second half; its text ids 0x7b00..,
+German, Spanish and Italian translated, French in English). It is not there with every enhancement off (the headless
+default, the oracle). `RAC1_BUG_FIXES=<n>,<n>...` (`all`, `none`) turns single fixes on for testing
+([Environment variables](env-vars.md)).
 
 ## Limits
 

@@ -7,6 +7,11 @@ What changed in each release. Releases are source only: you build the game with 
 
 - Profiler (debug tools): with the frame extrapolation on, the Profiler tab and its overlay show the pictures presented
   a second beside the fps (which count host frames, one a game step there), and the CSV has a `pictures` column.
+- Main menu > Options > Bug Fixes (right after Advanced): a page for fixes of the original game's own bugs, each its own
+  row, all Off by default (the original's behaviour, unchanged byte for byte), kept in the preferences only
+  (RAC1_BUG_FIXES=<n>,... for testing). First row, Race Music After Quitting (#132): quitting Rilgar's hoverboard race
+  from its results screen brings the planet's music back, with the call the race's other endings make; the original
+  kept the race's music playing on the planet. See docs/advanced.md#bug-fixes.
 - Main menu > Exit: the main menu's last entry, below Updates, closes the game after a confirmation in the
   game's own style (the pause menu's Quit Game page: Circle Yes, Triangle No), the same way as closing the window
   (Alt+F4) does. Translated ("Esci", "Beenden", "Salir"); pad, keyboard and mouse through the bindings. Only on the PC
