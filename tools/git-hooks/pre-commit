@@ -55,8 +55,12 @@ while IFS= read -r -d '' path; do
     esac
 
     size=$(git cat-file -s ":$path" 2>/dev/null || echo 0)
-    if [ "$size" -gt "$max_bytes" ]; then
-        refuse "$path" "$size bytes, over the 1 MiB limit"
+    limit=$max_bytes
+    case "$path" in
+        examples/*/music/*.ogg) limit=$((4 * 1024 * 1024)) ;;  # (an example level's own music, ours: up to 4 MiB)
+    esac
+    if [ "$size" -gt "$limit" ]; then
+        refuse "$path" "$size bytes, over the $((limit / 1024 / 1024)) MiB limit"
         continue
     fi
 
