@@ -143,17 +143,36 @@ void keep_in_memory(int group, const std::vector<std::filesystem::path>& paths) 
             kept = g_ram_bytes;
         }
         std::shared_ptr<std::vector<std::uint8_t>> v;
+        std::FILE* f = nullptr;
+        long size = 0;
         {
             std::scoped_lock fs(g_fs_m);
-            std::FILE* f = std::fopen(path.c_str(), "rb");
+            f = std::fopen(path.c_str(), "rb");
             if (f == nullptr) continue;
             std::fseek(f, 0, SEEK_END);
-            const long size = std::ftell(f);
+            size = std::ftell(f);
             std::fseek(f, 0, SEEK_SET);
-            if (size > 0 && kept + static_cast<std::uint64_t>(size) <= preload_cap() && memory_left() > (192ull << 20) + static_cast<std::uint64_t>(size)) {
-                v = std::make_shared<std::vector<std::uint8_t>>(static_cast<std::size_t>(size));
-                if (std::fread(v->data(), 1, v->size(), f) != v->size()) v.reset();
+        }
+        if (size > 0 && kept + static_cast<std::uint64_t>(size) <= preload_cap() && memory_left() > (192ull << 20) + static_cast<std::uint64_t>(size)) {
+            v = std::make_shared<std::vector<std::uint8_t>>(static_cast<std::size_t>(size));
+            // in pieces of 512 KB, as read_at: read whole under the card's lock (25-55 MB, 1.3-3 s) it held the music's and the
+            // sounds' streams that long - the sound stalled right before a landing
+            for (std::size_t at = 0; at < v->size();) {
+                const std::size_t k = std::min<std::size_t>(512 * 1024, v->size() - at);
+                std::size_t got;
+                {
+                    std::scoped_lock fs(g_fs_m);
+                    got = std::fread(v->data() + at, 1, k, f);
+                }
+                at += got;
+                if (got < k) {
+                    v.reset();
+                    break;
+                }
             }
+        }
+        {
+            std::scoped_lock fs(g_fs_m);
             std::fclose(f);
         }
         if (v == nullptr) continue;

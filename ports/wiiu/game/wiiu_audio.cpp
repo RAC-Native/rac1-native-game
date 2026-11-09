@@ -22,7 +22,7 @@
 #include <cstring>
 
 namespace {
-constexpr uint32_t kRing = 9600;     // each channel's buffer: 0.2 s at 48 kHz (12 game frames)
+constexpr uint32_t kRing = 24000;    // each channel's buffer: 0.5 s at 48 kHz (30 game frames; the lead kept at kAhead: a backlog fits)
 constexpr uint32_t kAhead = 2400;    // the writer's lead: 3 game frames (50 ms)
 constexpr int kFrame = 800;          // a game frame's samples
 int16_t* g_buf[2] = {};              // the left and right channels' buffers (the DSP reads them: flushed after each write)
@@ -58,6 +58,9 @@ void write_frame(const int16_t* pcm, int frames) {
     if (ahead < 400 || ahead > kRing / 2) {
         g_w = (pos + kAhead) % kRing;
         ++g_resyncs;
+        // (testing, RAC1_WIIU_AUDIO_LOG=1: each resync on the log - the voices ran dry, or the writer too far ahead)
+        static const bool log = std::getenv("RAC1_WIIU_AUDIO_LOG") != nullptr;
+        if (log) std::printf("[audio] resync at %.0f ms: %s (%u samples ahead)\n", now_ms(), ahead > kRing / 2 ? "the voices ran dry" : "short", ahead);
     }
     uint32_t w = g_w;
     for (int i = 0; i < frames; ++i) {
@@ -71,6 +74,15 @@ void write_frame(const int16_t* pcm, int frames) {
         if (n1 < static_cast<uint32_t>(frames)) DCFlushRange(g_buf[c], (static_cast<uint32_t>(frames) - n1) * 2);
     }
     g_w = w;
+    // two frames of silence after it: voices that run past the writer (a stall the alone frames did not cover) play a gap, not
+    // the ring's old samples again (the stutter heard around loads)
+    for (int c = 0; c < 2; ++c)
+        for (uint32_t i = 0, z = w; i < 2 * kFrame; ++i, z = (z + 1) % kRing) g_buf[c][z] = 0;
+    const uint32_t z1 = 2 * kFrame <= kRing - w ? 2 * kFrame : kRing - w;
+    for (int c = 0; c < 2; ++c) {
+        DCFlushRange(g_buf[c] + w, z1 * 2);
+        if (z1 < 2 * kFrame) DCFlushRange(g_buf[c], (2 * kFrame - z1) * 2);
+    }
 }
 
 // orig: (host) the IOP's own processor (audio_out.cpp's iop_loop): the mirror's frames written as the game's vsyncs come;
@@ -81,8 +93,15 @@ int iop_main(int, const char**) {
     double last = 0.0;
     int run = 0;
     while (g_iop_run.load(std::memory_order_relaxed)) {
+        // paced: past kAhead + half a frame ahead of the voices (and not past half the ring: there the voices ran past the writer),
+        // the next vsync waits - with a backlog after a stall (the game's frames caught up at once) written as it came, the writer
+        // went past half the ring and was put back (the sound skipped, around every load); a backlog of 16 vsyncs or more not waited for
+        if (const uint32_t l = lead(); l > kAhead + kFrame / 2 && l < kRing / 2 && rac1::snd989_mirror_queued() < 16) {
+            OSSleepTicks(OSMillisecondsToTicks(2));
+            continue;
+        }
         bool did = false;
-        while (rac1::snd989_mirror_next(buf, nullptr, 2)) {
+        if (rac1::snd989_mirror_next(buf, nullptr, 2)) {
             write_frame(buf, kFrame);
             last = now_ms();
             did = true;
@@ -98,7 +117,9 @@ int iop_main(int, const char**) {
         // While a .pss movie is open (30 fps: 2 vsyncs every 33.3 ms, with movie_hw_audio_take samples recorded per vsync for
         // snd989_mirror_next), do not trigger the 20 ms stall heuristic in the middle of a movie frame decode.
         const bool movie_open = rac1::movie_hw_is_open();
-        const bool stalled = (!movie_open && step_t0 != 0.0 && t - step_t0 > 20.0 && t - last > 20.0) || t - last > 100.0;
+        // Between steps (a load's host work: step_t0 0) after 34 ms without a vsync - two frames; the voices hold kAhead, 50 ms: at
+        // 100 ms they ran dry (the sound stalled right before a load, a landing's); with a movie open still 100 ms
+        const bool stalled = (!movie_open && step_t0 != 0.0 && t - step_t0 > 20.0 && t - last > 20.0) || t - last > (movie_open ? 100.0 : 34.0);
         if (g_alone_ok.load(std::memory_order_relaxed) && last != 0.0 && stalled && lead() < static_cast<uint32_t>(kFrame + kFrame / 2)) {
             ++run;
             rac1::snd989_mirror_alone(buf, nullptr, 2);
