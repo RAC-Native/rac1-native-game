@@ -39,6 +39,7 @@
 #include <game/ovl/empty_class_updates.h>
 #include <game/ovl/weapon_classes_tr.h>
 #include <game/port_stubs.h>
+#include <game/enhance/twin.h>
 
 #include <cstdio>
 #include <set>
@@ -237,6 +238,11 @@ MobyFn ovl_moby_fn_resolve(uint32_t addr) {
 // orig: (none) — `jalr fn` with a0 = moby.
 void ovl_call_moby_fn(uint32_t fn, uint32_t moby) {
     if (const MobyFn resolved = resolve_moby_fn(fn); __builtin_expect(resolved != nullptr, 1)) {
+        if (__builtin_expect(g_twin_moby != 0, 0)) {  // (the twin run: its moby, the others held: twin.h)
+            const int k = twin_kind(moby);
+            if (k == 2) return twin_call(resolved, moby);
+            if (k == 1) return;
+        }
         resolved(moby);
         return;
     }

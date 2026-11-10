@@ -79,6 +79,7 @@
 #include <mutex>
 
 #include <game/enhance/session.h>
+#include <game/enhance/twin.h>
 #include <game/enhance/advanced.h>
 #include <host/level_slots.h>
 #include <host/mod_code.h>
@@ -3872,6 +3873,8 @@ int main(int argc, char** argv) {
                     }
                 }
             }
+            // testing: RAC1_SESSION_TWIN (the open engine's twin run: game/enhance/twin.h)
+            if (!exiting && !ee_thread_suspended()) rac1::twin_frame(frame);
             // testing: RAC1_UNLOCK_PLANETS=<l>,<l>..: at the first gameplay frame those planets made reachable by
             // the ship (the game's own 0x2607d0, as a level's infobot does: 0x13dd40[l], the list 0x13d510 the galactic map shows)
             if (const char* up = std::getenv("RAC1_UNLOCK_PLANETS"); up != nullptr && !unlock_done && !exiting && !ee_thread_suspended() && lw(OV(0x0015f5c4)) == 0) {

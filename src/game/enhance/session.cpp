@@ -3,6 +3,7 @@
 
 #include <game/enhance/context.h>
 #include <game/enhance/pool.h>
+#include <game/enhance/twin.h>
 #include <game/render/mrp_moby_renderer.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -301,6 +302,7 @@ bool session_class_source(uint32_t cls, int* level, uint32_t* src) {
 
 // orig: (host) see session.h
 void session_start_tests() {
+    twin_start_tests();  // (RAC1_SESSION_TWIN: twin.h)
     if (const char* t = std::getenv("RAC1_SESSION_HEAP_TEST"); t != nullptr && std::atoi(t) != 0) heap_test();
     const char* e = std::getenv("RAC1_SESSION_MEM");
     if (e != nullptr && std::atoi(e) != 0) session_memory_begin();
