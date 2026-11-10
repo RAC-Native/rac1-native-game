@@ -24,7 +24,12 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
     on the rail) or to pass on another lane, two of them closing two lanes at a time, the side lanes ending before the
     north-east corner; then one rail round the corner, down the east side and over the wall into the arena, where a
     last wave of robots waits. A hit costs one health point and slows Ratchet (the game's own hop on the rail); a fall
-    puts him back on the station, the mines back too.
+    puts him back on the station, the mines back too;
+  - "La grande fuga" (The Great Escape), the longest but Impossibile: the same course, two rounds in the arena, then
+    the lava floods the arena and an escape rail from the hub's top leads west over the wall, round the south-west
+    corner over the lava lake (our mines and Kalebo III's again) and into a portal; beyond it the session's other
+    section, "prova" (a test: a round platform under Quartu's sky, `build_prova.py`), where the last two robots wait.
+    Won or lost there, Ratchet is taken back to the arena.
 
   The rails are level.txt's `rail` lines (the composer puts them in the game's rail table, a thin collision strip under
   each: the game lets go of a rail with nothing under Ratchet's feet). The plugin turns them all off at the level's
@@ -40,7 +45,11 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   German, Spanish or Italian (plain ASCII, as the HUD's font takes it). The table is in the plugin (`TEXTS`); the
   weapons', the wrench's and the Grind Boots' names are read from the game's own texts, as it shows them.
 
-It needs a game with the mod SDK's ABI 11 or later (the rails; the rest of the plugin ABI 5).
+- **A session** (`level.format` 3, the open engine's): the level is loaded once at the arrival. A death is a soft
+  reset at a checkpoint (south of the hub), and a challenge he dies in is lost there, with no level load. Main's objects
+  are frozen while he is in the section `prova`.
+
+It needs a game with the mod SDK's ABI 11 or later (the rails, the sessions and sections; the rest of the plugin ABI 5).
 
 ## Making it
 
@@ -55,10 +64,10 @@ You need Python 3 with Pillow and Blender (made with 5.2).
 2. The scene and the mod folder (`out/night-arena`; `--install` also copies it to the game's `mods/night-arena`):
 
    ```
-   blender -b --factory-startup --python build_arena.py --python build_rails.py --python export_arena.py -- --install
+   blender -b --factory-startup --python build_arena.py --python build_rails.py --python build_prova.py --python export_arena.py -- --install
    ```
 
-   Or in Blender's GUI, run `build_arena.py` and `build_rails.py` (each rebuilds only its own collections), edit the
+   Or in Blender's GUI, run `build_arena.py`, `build_rails.py` and `build_prova.py` (each rebuilds only its own collections), edit the
    scene, then run `export_arena.py` and call `export(None, True)` (the scripts' headers show how). The game's checkout
    is the repository these scripts are in; a `local.json` beside them (`{"game": "/path/to/rac1-native-game"}`) names
    another one.
@@ -79,8 +88,9 @@ You need Python 3 with Pillow and Blender (made with 5.2).
 |---|---|
 | `make_textures.py` | the arena's textures (PIL): floor, walls, grating, hazard stripes, lava, rock, the flames' sprites..., and the planet's picture |
 | `build_arena.py` | the arena in Blender: the collections `arena_visual`, `arena_collision`, `arena_markers`, `arena_lights` |
-| `build_rails.py` | the rails (`arena_rails`: a curve each; the course's side lanes made from its centre rail), their station, the course's obstacles (markers) |
-| `export_arena.py` | the mod folder (and the map's picture, rendered): `level.txt`, `collision.obj`, `meshes.obj`, `lights.txt`, the classes' models (the rails' and the mines' too), the rails (level.txt's `rail` lines), the sounds (synthesized), `mod.json`, the plugin's source |
+| `build_rails.py` | the rails (`arena_rails`: a curve each; the course's side lanes made from its centre rail), their station, the course's and the escape's obstacles (markers), the portal's marker |
+| `build_prova.py` | the section `prova` beyond the portal (`prova_visual`, `prova_collision`, `prova_markers`: its entry) |
+| `export_arena.py` | the mod folder (and the map's picture, rendered): `level.txt`, `collision.obj`, `meshes.obj`, `lights.txt`, the classes' models (the rails' and the mines' too), the rails (level.txt's `rail` lines), the session's lines and its section's block (`prova_collision.obj`, `prova_meshes.obj`), the sounds (synthesized), `mod.json`, the plugin's source |
 | `plugin/arena_plugin.c` | the menu, the challenges, the enemies' paths (a navigation grid and a flow field), the flame vents, the bombs, the supplies, the rails |
 
 ## Testing

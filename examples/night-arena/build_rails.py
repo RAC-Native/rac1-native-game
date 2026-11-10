@@ -54,6 +54,15 @@ OBSTACLES = [(28, "c", "mine"),
              (110, "l", "mine"),                                               # (the left lane ends at 125)
              (135, "r", "kmine"),                                              # (the right one at 150)
              (162, "c", "kmine"), (176, "c", "mine"), (190, "c", "kmine"), (204, "c", "mine"), (214, "c", "kmine")]
+# the escape ("La grande fuga": the lava floods the arena): from the hub's top (3 high), west over the arena's wall, south
+# along its outside over the lava, round the south-west corner and up into the portal (the marker portal_fuga, past its
+# end), west of the ship's plaza
+ESCAPE = [(5.0, 0.0, 3.6), (-4.0, 0.0, 3.8), (-14.0, -1.0, 5.5), (-26.0, -4.0, 8.5), (-38.0, -8.0, 11.0),
+          (-50.0, -12.0, 12.5), (-62.0, -16.0, 12.0), (-72.0, -26.0, 11.0), (-76.0, -40.0, 10.0), (-72.0, -54.0, 9.5),
+          (-62.0, -66.0, 9.5), (-48.0, -72.0, 10.5), (-34.0, -74.0, 12.5)]
+ESCAPE_OBSTACLES = [(30, "mine"), (44, "kmine"), (58, "kmine"), (72, "mine"), (86, "kmine"), (100, "kmine"),
+                    (114, "mine"), (128, "kmine"), (142, "kmine")]  # (along it; mine_e<n>, spawn_kmine_e<n>)
+PORTAL_PAST = 4.0  # the portal's ring this far past the escape's end
 
 
 def remove(name):
@@ -150,6 +159,23 @@ def course(crail, cmark):
     return dist[-1]
 
 
+def escape(crail, cmark):
+    """The escape's rail, its obstacles' markers (mine_e<n>, spawn_kmine_e<n>: the plugin keeps them apart from the
+    course's) and the portal's marker past its end."""
+    rail_curve(crail, "rail_escape", ESCAPE)
+    line, dist = bezier_line(ESCAPE)
+    count = {}
+    for s, kind in ESCAPE_OBSTACLES:
+        p = along(line, dist, s)[0]
+        d = along(line, dist, s + 1.0)[0] - along(line, dist, s - 1.0)[0]
+        count[kind] = count.get(kind, 0) + 1
+        name = ("spawn_kmine_e%d" if kind == "kmine" else "mine_e%d") % count[kind]
+        B["empty"](cmark, name, tuple(p), "SPHERE", 0.6, yaw=math.degrees(math.atan2(d.y, d.x)))
+    d = (line[-1] - line[-4]).normalized()
+    B["empty"](cmark, "portal_fuga", tuple(line[-1] + d * PORTAL_PAST), "CIRCLE", 3.0, yaw=math.degrees(math.atan2(d.y, d.x)))
+    return dist[-1]
+
+
 def main():
     scene = bpy.context.scene
     cvis = bpy.data.collections["arena_visual"]
@@ -159,7 +185,7 @@ def main():
     for n in ("rail_station", "col_rail_station", "spawn_rail_start", "spawn_rail_course", "light_rail_station"):
         remove(n)
     for ob in list(cmark.objects):
-        if ob.name.startswith(("mine_", "barrier_", "drone_", "spawn_kmine_")):
+        if ob.name.startswith(("mine_", "barrier_", "drone_", "spawn_kmine_", "portal_")):
             bpy.data.objects.remove(ob, do_unlink=True)
     crail = B["collection"]("arena_rails", scene.collection)
 
@@ -185,6 +211,7 @@ def main():
     starts = [COURSE[0]] + [(COURSE[0][0], COURSE[0][1] + k * LANE, COURSE[0][2]) for k in (-1, 1)]
     print("rails: the course, %.0f units; its lanes' starts %.1f..%.1f from the spot; %d obstacles" % (
         total, min(math.dist(p, SPOT) for p in starts), max(math.dist(p, SPOT) for p in starts), len(OBSTACLES)))
+    print("rails: the escape, %.0f units, %d obstacles, the portal past its end" % (escape(crail, cmark), len(ESCAPE_OBSTACLES)))
 
 
 main()
