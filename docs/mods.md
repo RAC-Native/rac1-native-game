@@ -787,8 +787,10 @@ end
   rules apply as on a first visit (objects that appear only after a story event there do not). `compose.log` lists them:
   `[compose] section kalebo: level 16's world (...); 59 of its 1568 objects in its box: 52 x5, 500 x35 (the base's), 638 x8,
   1445 x11, uids 10..68`. The game keeps at most 224 classes at once (the base level's and every import of the session):
-  `objects all` in a large box can reach it (objects of classes of code alone, such as cameras and triggers, are not placed:
-  the log says so). An object resting on another object needs that one chosen too: Kerwan's two crates by its start sit on
+  `objects all` in a large box can reach it. Objects of classes of code alone (no model: a planet's lava or water sea, its
+  triggers, its cameras' helpers) are placed too when named (composer 9; before, never): Umbris's cave's lava is class 460's
+  sea, drawn by its object (`objects ... 460`); without it the cave's lava is a flat orange surface. Name the code-alone
+  classes you want: `objects all` takes every one, triggers included. An object resting on another object needs that one chosen too: Kerwan's two crates by its start sit on
   a lift (class 1210); without `1210` they fall through when the section is entered (they are not broken, so a death does not
   bring them back).
 - **"(the base's)"** in `compose.log` (Umbris's `605 x10`, `805`, `1135`; Quartu's `605`; Rilgar's `1139`): a class the base

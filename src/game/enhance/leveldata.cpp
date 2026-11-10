@@ -386,6 +386,20 @@ bool ld_group_set(int level, int32_t g, const uint32_t* mobys, int n) {
 }
 
 // orig: (host) see leveldata.h
+void ld_rails_put(int level, uint32_t table, uint32_t count) {
+    if (!ld_registry_has(level)) return;
+    sw(g_reg[level]->block + R_RAILS, table);
+    sw(g_reg[level]->block + R_RAILS + 4, count);
+}
+
+// orig: (host) see leveldata.h
+uint32_t ld_camera_pvars(int level, uint32_t k) {
+    if (!ld_registry_has(level)) return 0;
+    const uint32_t r = g_reg[level]->block, tab = lwu(r + R_CAMERAS);
+    return tab != 0 && k < lwu(r + R_CAMERAS + 4) ? lwu(tab + k * 0x20 + 0x1c) : 0u;
+}
+
+// orig: (host) see leveldata.h
 bool ld_group_put(int level, int32_t g, const uint32_t* mobys, int n, const std::string& own) {
     if (!ld_registry_has(level) || g < 0 || g >= static_cast<int32_t>(LD_GROUP_MAX)) return false;
     Registry& R = *g_reg[level];

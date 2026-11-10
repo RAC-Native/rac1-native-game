@@ -5,6 +5,12 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: a planet's world in a section looks and films as the planet** (level mods must be set up again: the composer's
+  version 9). Umbris's cave: its lava is animated again (its sea, an object of a class with no model, can now be placed:
+  `objects ... 460`), and its boss camera turns toward the Snagglebeast instead
+  of away from it (the level's cameras naming an object now name it where the section placed it). Batalia's rail camera no
+  longer shakes (its own code and the engine now see the same rails). Testing: `RAC1_SESSION_SAVE_AT` no longer leaves the
+  game on the card's notice (mode 4) on a level mod off Veldin's base.
 - **Level mods: a planet's world as a section, its objects and effects.** Coming back to main from Umbris's cave with its
   class 529 placed (Ratchet's ship parked there, which makes itself the ship class 533) crashed the game; it now leaves with
   the section's other objects. What a world's objects spawn (a boss's helpers, debris, explosions) leaves with them too, and a

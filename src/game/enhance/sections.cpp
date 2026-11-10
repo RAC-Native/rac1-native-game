@@ -627,6 +627,36 @@ void world_groups(Section& s) {
     }
 }
 
+// (a world's) its level's cameras' pvar words naming a placement (the gameplay file's +0x50 list, as for the objects' pvars:
+// Umbris's boss camera, type 0x12, names the Snagglebeast) made the slots of the section's objects placed from them (-1: never
+// placed). The level's own load leaves them as they are, a placement's index being its slot there; in a section the objects
+// are elsewhere in the moby array, and the camera turned toward an empty slot's (0, 0, 0)
+void world_camera_links(const Section& s) {
+    if (s.gp == 0 || lw(s.gp + 0x50) == 0 || lw(s.gp + 8) == 0 || lw(s.gp + 0x54) == 0 || !ld_registry_has(s.world)) return;
+    std::map<int32_t, uint32_t> by_src;
+    for (const Obj& o : s.objs)
+        if (o.src >= 0 && alive(o)) by_src[o.src] = o.moby;
+    std::map<int32_t, uint32_t> cams;  // (a camera's pvar index -> its pvar block in the registry)
+    const uint32_t c0 = s.gp + lwu(s.gp + 8);
+    for (int32_t k = 0; k < lw(c0); ++k) {
+        const int32_t pv = lw(c0 + 0x10 + static_cast<uint32_t>(k) * 0x20 + 0x1c);
+        const uint32_t blk = ld_camera_pvars(s.world, static_cast<uint32_t>(k));
+        if (pv >= 0 && blk != 0) cams[pv] = blk;
+    }
+    if (cams.empty()) return;
+    const uint32_t tab = s.gp + lwu(s.gp + 0x54), data = s.gp + lwu(s.gp + 0x58), base = lwu(OV(0x0015ffd8));
+    for (uint32_t a = s.gp + lwu(s.gp + 0x50); lw(a) >= 0; a += 8) {
+        const auto it = cams.find(lw(a));
+        if (it == cams.end()) continue;
+        const int32_t v = lw(data + lwu(tab + static_cast<uint32_t>(lw(a)) * 8) + lwu(a + 4));  // (the level's own value: its placement)
+        if (v < 0) continue;
+        const auto m = by_src.find(v);
+        const uint32_t w = it->second + lwu(a + 4);
+        if (m != by_src.end()) sw(w, (m->second - base) >> 8);
+        else if (lw(w) == v) sw(w, 0xffffffffu);  // (never placed: none, the game's own word for it; once placed, its slot kept: out of play there)
+    }
+}
+
 // a section's objects placed (its gameplay's placements but the uids in `skip`, or only those in `only`; its classes of other
 // levels but those in `skip_imp`, or only those in `only_imp`), their slots set (level.txt's moby lines' `slot=value`)
 // (stage 10) A world's level state: the per-level records the game keeps for the current level and its objects read (its row of
@@ -734,7 +764,10 @@ size_t spawn_objects(Section& s, const std::set<int32_t>* only, const std::set<i
         ++n;
     }
     s.spawned = true;
-    if (s.world >= 0) world_groups(s);
+    if (s.world >= 0) {
+        world_groups(s);
+        world_camera_links(s);
+    }
     if (g_worlds) rows_put(rows_was);
     return n;
 }
@@ -894,6 +927,9 @@ void apply_state(int idx) {
     // (stage 7) its grind rails the game's (the hero's rail search reads the current section's): none when it has none
     sw(OV(0x0015f70c), idx != 0 ? s.rails : g_main.rails);
     sw(OV(0x0015f710), idx != 0 ? static_cast<uint32_t>(s.rail_count) : g_main.rail_count);
+    // (a world's) the same table its level's own code sees (its sites read its registry's rails: a rail camera's test of the rail
+    // Ratchet grinds, Batalia's type 3, compared another copy's points and let go of him every other frame)
+    if (g_worlds && world && s.world != lw(LEVEL)) ld_rails_put(s.world, s.rails, static_cast<uint32_t>(s.rail_count));
     setpieces_section(idx);
     uint32_t w[15] = {};
     if (idx == 0 || s.music == -2 || !s.music_known) std::memcpy(w, g_main.music, sizeof w);

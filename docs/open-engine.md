@@ -618,7 +618,12 @@ RAC1_MEMCARD_DIR=<card> ... RAC1_GOTO=3@60 RAC1_SESSION_LOAD_AT=1200:2 RAC1_FRAM
 the card's operation 0x13; `save<N>.pc` with it), `RAC1_SESSION_LOAD_AT=<frame>:<slot>` loads as its Load page does (the
 card's operation 0xd, then the level left for the save's). A run started by `RAC1_GOTO` never read the card, so the port's
 record still says "unchecked" and the game refuses to save over it: the test marks it read, as a game loaded from the title
-has it.
+has it. Such a run had no save in use either, and the game shows its once-a-boot card notice (screen kind 5: game mode 4
+until Cross, after 2 seconds) the first frame there is one, on any planet but Veldin: right after the test's save, on a level
+mod on Kalebo III's base, for ever in a headless run without input (a plateau on Veldin's base never showed it). The test
+marks the notice shown too, as a game loaded from the title showed it at its first planet. A save made leaving a planet for
+the session's level (the ship, `RAC1_GOTO`) has no session item 0x201: it is made before the session's arrival, and a
+load of it starts the session at its arrival as any level mod's.
 
 Results (headless, the arena's test copy `s5-arena`: Kalebo III's base, the six imported enemies of stage 4, two placed
 robots; and a copy of the example level, `s5-plateau`, on Veldin's engine with Kalebo III's robot imported):
@@ -1380,6 +1385,44 @@ the world's state (their cached TEX0s cleared when it is swapped in or out). Wit
 Umbris itself (pictures at the same frames after the arrival, 60 to 360: on Umbris, before only sparks at the boss's feet, now
 the rings).
 A base enemy in a world's section (`base_spawn`) draws its own effects past the 40 with the world's pictures.
+
+## A world's looks and its cameras: the planet's own, by what its code reads
+
+Umbris's cave in `world umbris` (the arena's "La grande fuga", the request with its pictures beside native Umbris at the same
+place) had a flat orange lava, its ceiling's ring out of the picture and its camera on the other side of Ratchet; Batalia's rail
+(`world batalia`) shook its camera, 1.2 to 1.4 units one frame and 0.2 the next. Each was a part of the planet's state its
+own code reads that a world's section did not give it, and each is now given for every world's section:
+
+1. **Its classes of code alone** (composer 9: level mods must be set up again). A class with no block in the level's asset
+   data but an update function (the pool's row with no data) was "not placed" by the composer. Umbris's lava is no tfrag: it
+   is VU1 program 7's sea drawn by an object of class 460 (its draw callback, `L7:0x2f8038`, its sea at `L7:0x1d3400`); under
+   it the world has only the orange it is drawn over. Such a class is now imported as its level's setup registers it, with no
+   header (`moby_class_register`'s own case; `session.cpp`'s `import_one`), and placed when `objects` names it (or takes
+   `all`). The cave's sea is 460, in the arena's box; class 1018 is Umbris's other sea, outside it.
+2. **Its effect textures** (the section above): the 460 sea's frames are Umbris's effect textures past the 40 (the lava's two
+   animations of 16 palettes each); with Kalebo III's in their place the sea was black.
+3. **The level data's words naming a placement** (`sections.cpp`'s `world_camera_links`). The gameplay file's +0x50 list (the
+   pvar words naming a placement, which the objects' get as the slots of the objects placed) names the cameras' too, and the
+   level's own load leaves those as they are: there a placement's index is its slot. Umbris's camera 0 (type 0x12, its pvar
+   +0x28) names placement 541, the Snagglebeast; Umbris's camera code (`L7:0x3287e8`) turns the follow camera toward that
+   slot's moby (`cam0_turn_point`). In a section the boss is in another slot, and the camera turned toward an empty slot's
+   (0, 0, 0): from Ratchet at 263.35 483.16 facing -1.13 it swung to 268.0 491.8 instead of the native 259.2 492.0, and the
+   ring, which is the world's (a tie up in the cave's roof), was out of the picture. Those words in the level's registry are
+   now the slots of the section's objects placed from them (-1 never placed; a slot kept once out of play), made again at
+   each placement (a death's soft reset places the boss again).
+4. **Its rails, the same table for its code and the engine's** (`ld_rails_put`). A world's section's rail table (the level's
+   grind lines first, the mod's after them) is the engine's 0x15f70c; its level's own code reads its registry's (the
+   context's view of 0x15f70c), a copy of the same rails from the pool's level data. Batalia's rail camera (type 3, its accept
+   in the engine: the hero's rail's points 0x13f8b0 against the table's) took over in the engine's test, then its own
+   pre-update (`L8:0x312a28`) compared the registry's copy, asked out (+0x7e 3), and the follow camera took over again: every
+   other frame, the camera alternately carried by one and the other. The mod's rail was not the cause: Batalia's own rail 2
+   with no rail of the mod's shook alike. The registry's rails are now the section's table while it is current.
+
+| Test (local copies of the arena, format 3 on Kalebo III's base, `hero generic`) | Result |
+|---|---|
+| `world umbris`, `objects` the arena's and 460, Ratchet at its entry (263.35 483.16 36.5, -1.13), against Umbris (`RAC1_GOTO=7@60 RAC1_HERO_AT=-1@4500,...`) | the camera 259.17 492.01 39.44 (native 259.24 491.87 39.40), turned toward the boss at 278.40 451.23 as on Umbris; the lava's sea animated (GL and Vulkan); the ring in the picture; the boss in view |
+| the same, the boss's camera with only `objects 1106 460` | the same camera |
+| `world batalia`, down Batalia's rail 2 from 378.34 170.07 (the planet's collision, then the composer's copy with the mod's strip, then on the mod's rail `batalia_in`), the camera each frame | the largest step of the camera 0.57 (Batalia itself 0.57; before: 1.38, every other frame), the rail camera (type 3) held as on Batalia |
 
 ## What the next stage builds on
 
