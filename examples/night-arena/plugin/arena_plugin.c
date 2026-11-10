@@ -1807,6 +1807,19 @@ static void rail_show(const char* name, int on) {
     if (o != 0) api->object_show(o, on);
 }
 
+/* a rail's collision strips (export_arena.py's objects strip_<rail>_<k>: the grind lets go of a rail with nothing under
+   Ratchet's feet): solid only while the rail is on (else a ledge in the air: he walked on it over the hub), never drawn */
+static void rail_strips(const char* name, int on) {
+    for (int k = 0; k < 8; ++k) {
+        char n[40];
+        snprintf(n, sizeof n, "strip_%s_%d", name, k);
+        const uint32_t o = api->object_named(n);
+        if (o == 0) break;
+        api->object_show(o, 0);
+        api->object_solid(o, on);
+    }
+}
+
 static float dist3(const float a[3], const float b[3]) {
     const float x = a[0] - b[0], y = a[1] - b[1], z = a[2] - b[2];
     return sqrtf(x * x + y * y + z * z);
@@ -1820,6 +1833,7 @@ static void rails_all_off(void) {
     for (int32_t r = 1; api->rail_info(r, name, sizeof name, NULL, NULL); ++r, ++n) {
         api->rail_enable(r, 0);
         rail_show(name, 0);
+        rail_strips(name, 0);
     }
     char msg[64];
     snprintf(msg, sizeof msg, "rails: %d, all off", n);
@@ -1828,7 +1842,10 @@ static void rails_all_off(void) {
 
 /* the challenge's rails in the game's search (on) or out of it */
 static void rails_switch(int on) {
-    for (int j = 0; j < rails.nset; ++j) api->rail_enable(rails.set[j], on);
+    for (int j = 0; j < rails.nset; ++j) {
+        api->rail_enable(rails.set[j], on);
+        rail_strips(rails.name[j], on);
+    }
     rails.on = on;
     if (on) {
         char msg[96];
@@ -2055,6 +2072,7 @@ static void rail_stop(void) {
     if (rails.escape != 0) {
         api->rail_enable(rails.escape, 0);
         rail_show("escape", 0);
+        rail_strips("escape", 0);
     }
     flood_reset();
     rails.phase = 0;
@@ -2167,6 +2185,7 @@ static void lava_start(void) {
     if (rails.escape != 0) {
         api->rail_enable(rails.escape, 1);
         rail_show("escape", 1);
+        rail_strips("escape", 1);
     }
     rails.use_obs = 2;
     obstacles_reset(2);
@@ -2892,6 +2911,24 @@ static void test(void* user, const char* text, uint64_t frame) {
         }
         return;
     }
+    if (s.mine && strcmp(text, "arena_hubwalk") == 0) {
+        /* (on the hub's top by the escape's start, facing west along it, at 200: with RAC1_SIM_INPUT=forward he walks over
+           where the escape's rail runs; his height every 10 frames: on the floor 3 over the arena's, not on its strip) */
+        if (frame == 200) {
+            float p[3];
+            hub_top(p);
+            hero_move(p, 3.1416f);
+        }
+        if (frame > 200 && frame < 420 && frame % 10 == 0) {
+            float h[3];
+            pos_of(api->hero(), h);
+            char b[96];
+            snprintf(b, sizeof b, "hubwalk %llu: hero %.2f %.2f, %.2f over the arena's floor", (unsigned long long)frame, h[0] - s.centre[0],
+                     h[1] - s.centre[1], h[2] - nav.floor_z);
+            api->log(b);
+        }
+        return;
+    }
     if (s.mine && strcmp(text, "arena_quartu") == 0) {
         /* (a test of Quartu's world as a section: Ratchet there at 600, two of Kalebo III's robots by him at 800, where
            they are every second) */
@@ -2979,6 +3016,19 @@ static void test(void* user, const char* text, uint64_t frame) {
                      on[0] == '-' ? 0.0f : ri.distance, on[0] == '-' ? 0.0f : ri.length, (int)api->health(), alive, rails.kmines_hit,
                      rails.kmines, rails.falls, rails.on, s.nen);
             api->log(b);
+            float near_d = 1e9f, near_q[3] = {0, 0, 0};  /* (the nearest rail mine out: where, how far from his middle) */
+            for (int i = 0; i < rails.nobs; ++i) {
+                const uint32_t km = rails.obs[i].alive && rails.obs[i].kind == O_KMINE ? kmine_moby(i) : 0;
+                if (km == 0) continue;
+                float q[3];
+                pos_of(km, q);
+                const float mid[3] = {h[0], h[1], h[2] + 0.9f}, dm = dist3(mid, q);
+                if (dm < near_d) near_d = dm, memcpy(near_q, q, sizeof q);
+            }
+            if (near_d < 6.0f) {
+                snprintf(b, sizeof b, "  rail mine at %.2f %.2f %.2f, %.2f from his middle", near_q[0], near_q[1], near_q[2], near_d);
+                api->log(b);
+            }
             for (int i = 0; rails.phase == 5 && i < s.nen; ++i) {  /* (beyond the portal: the enemies, where and how) */
                 const uint32_t m = api->base_moby(s.en[i].h);
                 float q[3] = {0, 0, 0};
