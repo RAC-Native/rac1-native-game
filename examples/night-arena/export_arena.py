@@ -17,8 +17,9 @@ It reads four collections (build_arena.py makes them; edit them freely in Blende
                    flame_<name> (a flame vent: the plugin's class "flame"; a "delay" property in frames)
   arena_lights     light_sun (a sun lamp: its direction is lights.txt's sun line) and point lamps light_<name>
                    (their colour; "intensity", "radius", "flicker" properties)
-  arena_rails      (build_rails.py; optional) curves rail_<name>: rails.txt (their points every RAIL_STEP units, the
-                   game's coordinates: the plugin's) and a class rail_<name> each (a tube on pylons, one object)
+  arena_rails      (build_rails.py; optional) curves rail_<name>: level.txt's rail lines (their points every RAIL_STEP
+                   units; the composer puts a collision strip under each) and a class rail_<name> each (a tube on
+                   pylons, one object)
 
 and writes <out>/mod.json, <out>/plugin/ (the flame vents' code), <out>/level/{level.txt, collision.obj,
 meshes.obj, meshes.mtl, *.png, lights.txt, the classes' models, the sounds, the music}. The level is made round
@@ -178,31 +179,6 @@ def export_collision(path, depsgraph):
                 walk += 1
             total += 1
         ev.to_mesh_clear()
-    # the rails' strips: a ribbon RAIL_WIDE wide just under each rail's line. The game's grind lets go of a rail after
-    # half a second with nothing under Ratchet's feet (grind_rail_update: his height over the ground, +0x2dc, over
-    # 0.87): its rails stand on their collision
-    rail_obs = sorted((o for o in bpy.data.collections["arena_rails"].all_objects if o.type == "CURVE"), key=lambda o: o.name) \
-        if bpy.data.collections.get("arena_rails") else []
-    for ob in rail_obs:
-        pts = rail_points(ob)
-        if len(pts) < 2:
-            continue
-        base = len(verts)
-        for i, p in enumerate(pts):
-            t = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
-            n = t.cross(Vector((0, 0, 1)))
-            n = n.normalized() * (RAIL_WIDE / 2) if n.length > 1e-4 else Vector((RAIL_WIDE / 2, 0, 0))
-            q = p - Vector((0, 0, 0.02))
-            verts += [q + n, q - n]
-        tl = []
-        for i in range(len(pts) - 1):
-            a, b, c, d = base + 2 * i + 1, base + 2 * i + 2, base + 2 * i + 4, base + 2 * i + 3  # (left, right; 1-based)
-            for tri in ((a, b, c), (a, c, d)):
-                pa, pb, pc = (verts[k - 1] for k in tri)
-                tl.append(tri if (pb - pa).cross(pc - pa).z > 0 else (tri[0], tri[2], tri[1]))
-        faces.append(("col_" + base_name(ob), 31, tl))
-        total += len(tl)
-        walk += len(tl)
     lowest(lo, verts)
     if not verts:
         err("collision: no triangles")
@@ -548,10 +524,8 @@ def flame_colour(p):
 
 # ---------------------------------------------------------------- the grind rails (arena_rails: build_rails.py)
 
-RAIL_STEP = 1.5      # a rail's points, units apart along it (rails.txt)
-RAIL_MAX = 200       # its points at most (the plugin's room for them)
+RAIL_STEP = 1.5      # a rail's points, units apart along it (the composer's step too)
 RAIL_R = 0.12        # the tube's radius: its top is the rail's line (where Ratchet's feet go)
-RAIL_WIDE = 0.5      # the collision strip under a rail's line (export_collision)
 PYLON_EVERY = 14.0   # a pylon under a rail every so many units
 RAIL_SPEC = "metal 0.3 1"  # the rails' models' material line
 
@@ -657,35 +631,30 @@ def rail_model(level, name, pts, centre, depsgraph, pylons_on=True, beam=0.45, b
     return len(tube) + len(pylons) + len(bars) + len(stop)
 
 
-def export_rails(level, offset, depsgraph):
-    """rails.txt (each rail's points, the game's coordinates: the plugin's) and each rail's class model; the rails as
-    (class name, centre)."""
+def export_rails(level, depsgraph):
+    """Each rail's class model; the rails as (class name, centre, level.txt's rail line: its points, made round (0, 0, 0)
+    as every coordinate there)."""
     rails = []
     obs = sorted((o for o in bpy.data.collections["arena_rails"].all_objects if o.type == "CURVE"), key=lambda o: o.name) \
         if bpy.data.collections.get("arena_rails") else []
-    L = ["# the arena's grind rails (export_arena.py): \"rail <name> <points>\", then its points, the game's coordinates",
-         "# (the plugin puts them in the game's rail table during a rail challenge)"]
     for ob in obs:
         name = base_name(ob)
         if not name.startswith("rail_"):
             warn("%s: a rail curve is named rail_<name>: left out" % ob.name)
             continue
         pts = rail_points(ob)
-        if len(pts) < 2 or len(pts) > RAIL_MAX:
-            err("%s: %d points (2..%d: %s units apart)" % (ob.name, len(pts), RAIL_MAX, num(RAIL_STEP)))
+        if len(pts) < 2:
+            err("%s: %d points (2 at least)" % (ob.name, len(pts)))
             continue
         lo = [min(p[i] for p in pts) for i in range(3)]
         hi = [max(p[i] for p in pts) for i in range(3)]
         centre = Vector([(a + b) / 2 for a, b in zip(lo, hi)])
         ntris = rail_model(level, name, pts, centre, depsgraph, bool(ob.get("pylons", 1)), float(ob.get("beam", 0.45)),
                            float(ob.get("beam_until", 1e9)), bool(ob.get("end_stop", 0)))
-        L.append("rail %s %d" % (name[5:], len(pts)))
-        L += ["%s %s %s" % tuple(num(p[i] + offset[i]) for i in range(3)) for p in pts]
-        rails.append((name, centre))
+        line = "rail %s %s" % (name[5:], " ".join("%s %s %s" % (num(p.x), num(p.y), num(p.z)) for p in pts))
+        rails.append((name, centre, line))
         print("rail %s: %d points, %s units, its model %d triangles" % (
             name, len(pts), num(sum((pts[i + 1] - pts[i]).length for i in range(len(pts) - 1))), ntris))
-    with open(os.path.join(level, "rails.txt"), "w") as f:
-        f.write("\n".join(L) + "\n")
     return rails
 
 
@@ -860,7 +829,7 @@ def export(out=None, install=False):
     model(level, "mark", ring_tris(), lambda p: (1.0, 0.18, 0.1))
     model(level, "mine", mine_tris(), mine_colour)
     model(level, "zap", zap_tris(), zap_colour)
-    rails = export_rails(level, offset, depsgraph)
+    rails = export_rails(level, depsgraph)
     sounds(level)
     pictures = {}  # (level.txt's picture lines: the planet made by make_textures.py, the map's view rendered here)
     if os.path.exists(os.path.join(HERE, "textures", "planet.png")):
@@ -928,8 +897,9 @@ def export(out=None, install=False):
     for name, mdl, opts, _ in CLASSES:
         L.append("class %s %s %s" % (name, mdl, opts))
     if rails:
-        L.append("# the grind rails' looks (rails.txt has their lines): shown by the plugin during a rail challenge")
-    for name, centre in rails:
+        L.append("# the grind rails (rail_<name> curves): the plugin turns a challenge's on (rail_enable) and shows their looks")
+    for name, centre, line in rails:
+        L.append(line)
         L.append("class %s %s.obj size 1 ghost" % (name, name))
         L.append("object %s %s %s %s 0 name=%s" % (name, num(centre.x), num(centre.y), num(centre.z), name))
     spawns = [o for o in markers if o.name.startswith("spawn_")]
@@ -998,7 +968,7 @@ def export(out=None, install=False):
         for t, spec in enumerate(specs):
             LL.append("# the %s class's model, its texture %d" % (name, t))
             LL.append("material tie %d tex %d %s" % (n_meshes + i, t, spec))
-    for j, (name, _) in enumerate(rails):
+    for j, (name, _, _) in enumerate(rails):
         LL.append("# the %s class's model (a rail)" % name)
         LL.append("material tie %d tex 0 %s" % (n_meshes + len(CLASSES) + j, RAIL_SPEC))
     LL.append("# ambient particles: embers rising from the lava, a little ash")
@@ -1012,7 +982,7 @@ def export(out=None, install=False):
         f.write("\n".join(LL) + "\n")
 
     with open(os.path.join(out, "mod.json"), "w") as f:
-        json.dump({"name": LEVEL["name"][""], "author": "Daino Selvatico", "version": "0.3",
+        json.dump({"name": LEVEL["name"][""], "author": "Daino Selvatico", "version": "0.4",
                    "description": "An arena in a lava lake ringed by mountains, with challenges against Kalebo III's enemies "
                                   "(waves, bombs, flame vents, weapon limits, championships) and grind rails (a test rail, a "
                                   "course of three lanes with mines to jump and Kalebo III's rail mines to break).",
