@@ -29,6 +29,9 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
     the lava floods the arena and an escape rail from the hub's top leads west over the wall, round the south-west
     corner over the lava lake (our mines and Kalebo III's again) and through a portal's ring, grinding: a white flash,
     and Ratchet is in other planets' worlds (sections of the session, each with its own music), one after the other:
+    - **Quartu**, down our rail from high south of its Giant Clank's pad (its model drawn in the world), then on Kalebo
+      III's hoverboard (free: no race; a fall back by the pad) east across the Giant Clank's round arena to the ring in its
+      middle, ramming the robots and bomb bots in the way (the board knocks down what it touches);
     - **Batalia**, its long rail from its start (its own: Ratchet comes in just over it and lands on it), with its spiked
       rail mines (jumped, or broken with the wrench), to our portal's ring just before its end, where the rail leaps:
       another flash;
@@ -36,8 +39,7 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
       beaten. The challenge's box and its messages go up over its health bar.
 
     A death anywhere is the challenge lost (it is meant to be hard); won or lost, Ratchet is taken back to the arena.
-    To come, when the engine can: Quartu on Kalebo III's hoverboard to the middle of its Giant Clank's arena, ramming
-    its small robots, and Rilgar's hoverboard race from its finish line to the small platform past the big ramp.
+    To come: Rilgar's hoverboard race from its finish line to the small platform past the big ramp.
   - The session's other section, "prova" (`build_prova.py`: a round platform under Quartu's sky with its own rail in),
     where the escape went before Quartu's world could take a mod's rails, is still there, used by no challenge.
 
@@ -71,8 +73,9 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   touching it he jumps out burnt, a health point lost each time, and with none left he sinks. (Type 3 is Aridia's
   quicksand: there he would sink and be bounced out with Cross.)
 
-It needs a game with the mod SDK's ABI 15 or later (a win's save, `game_save`; ABI 13 the mod's rail in a planet's
-world, the boss; `hero generic` ABI 12; the rails, the sessions and sections ABI 11; the rest of the plugin ABI 5).
+It needs a game with the mod SDK's ABI 16 or later (the hoverboard outside a race; ABI 15 a win's save, `game_save`;
+ABI 13 the mod's rail in a planet's world, the boss; `hero generic` ABI 12; the rails, the sessions and sections ABI
+11; the rest of the plugin ABI 5).
 
 ## Making it
 

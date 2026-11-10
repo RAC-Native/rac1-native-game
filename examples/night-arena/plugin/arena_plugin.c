@@ -162,8 +162,8 @@ static const challenge_def CHALLENGES[] = {
     {"Campionato", "15 round, le modalita' a caso", CUP, 0, 15, {{0}}, 0, 25, 0, 0, W_ANY, 20000},
     {"Grindscarponi: Discesa", "3 corsie di mine, poi l'ultima ondata", RAIL, 90, 1, {{8, 6, 25, "RRB"}}, 0, 20,
      0, 0, W_ANY, 3000, 0, "lane_c lane_l lane_r", "rail_course", 1},
-    {"La grande fuga", "percorso, lava, Batalia, Snagglebeast", RAIL, 90, 2, {{10, 7, 30, "RRB"}, {12, 8, 28, "RRBF"}},
-     0, 25, 0, 0, W_ANY, 10000, 0, "lane_c lane_l lane_r", "rail_course", 1, "escape", "batalia umbris"},
+    {"La grande fuga", "percorso, lava, Quartu, Batalia, Snagglebeast", RAIL, 90, 2, {{10, 7, 30, "RRB"}, {12, 8, 28, "RRBF"}},
+     0, 25, 0, 0, W_ANY, 10000, 0, "lane_c lane_l lane_r", "rail_course", 1, "escape", "quartu batalia umbris"},
     {"Impossibile", "il campionato, 50 round", CUP, 0, 50, {{0}}, 0, 20, 0, 0, W_ANY, 100000, 1},
 };
 #define N_CHALLENGES ((int)(sizeof CHALLENGES / sizeof CHALLENGES[0]))
@@ -480,8 +480,9 @@ static const char* const TEXTS[][N_LANGS] = {
     {"Nessuna rotaia", "No rails", "Aucun rail", "Keine Schienen", "Sin railes"},
     {"Salta sulla rotaia!", "Jump on the rail!", "Saute sur le rail!", "Spring auf die Schiene!", "Salta al rail!"},
     {"La grande fuga", "The Great Escape", "La Grande Evasion", "Die grosse Flucht", "La gran fuga"},
-    {"percorso, lava, Batalia, Snagglebeast", "course, lava, Batalia, Snagglebeast", "parcours, lave, Batalia, Snagglebeast",
-     "Strecke, Lava, Batalia, Snagglebeast", "recorrido, lava, Batalia, Snagglebeast"},
+    {"percorso, lava, Quartu, Batalia, Snagglebeast", "course, lava, Quartu, Batalia, Snagglebeast",
+     "parcours, lave, Quartu, Batalia, Snagglebeast", "Strecke, Lava, Quartu, Batalia, Snagglebeast",
+     "recorrido, lava, Quartu, Batalia, Snagglebeast"},
     {"La lava sale! Sali al centro e prendi la rotaia", "The lava is rising! Up the centre, onto the rail",
      "La lave monte! Monte au centre, prends le rail", "Die Lava steigt! Hoch zur Mitte, auf die Schiene",
      "La lava sube! Sube al centro y toma el rail"},
@@ -494,6 +495,8 @@ static const char* const TEXTS[][N_LANGS] = {
      "Batalia: die Schiene bis ans Ende", "Batalia: el rail hasta el final"},
     {"Umbris: sconfiggi lo Snagglebeast", "Umbris: defeat the Snagglebeast", "Umbris: bats le Snagglebeast",
      "Umbris: besiege das Snagglebeast", "Umbris: derrota al Snagglebeast"},
+    {"Quartu: in tavola fino al centro dell'arena", "Quartu: board to the arena's middle", "Quartu: en planche au centre de l'arene",
+     "Quartu: mit dem Board zur Arenamitte", "Quartu: en tabla al centro de la arena"},
     {"Caduto! Di nuovo dalla stazione", "You fell! Back to the station", "Tombe! Retour a la station",
      "Gestuerzt! Zurueck zur Station", "Caiste! De vuelta a la estacion"},
     /* the result */
@@ -1065,6 +1068,7 @@ static void rules_set(rules nr) {
 }
 
 static void portal_reset(void);
+static void board_off(void);
 
 static void wave_start(void) {
     s.mode = FIGHT;
@@ -1138,6 +1142,7 @@ static void challenge_end(int won, const char* why) {
     enemies_clear();
     bombs_clear();
     if (CHALLENGES[s.ch].kind == RAIL) rail_stop();
+    board_off();     /* (a board world's: Ratchet himself again) */
     portal_reset();  /* (a section's challenge: its spawn points no longer the next's; the result takes him back) */
     const rules none = {W_ANY, 0, 0, 0};
     rules_set(none);
@@ -1821,6 +1826,12 @@ static struct {
     float goal[3];       /* reaching it (the world's ring) leads on to the next one */
     uint32_t ring;       /* the portal's ring there (the class portal's object: drawn in a world's section since composer 7) */
     int has_goal, off_rail;  /* (a rail world: frames off its rail before its ring, a fall) */
+    int32_t stage_rail;  /* the world's rail of ours <section>_in (Ratchet put on it as he comes in), 0 none */
+    int stage_step;      /* (a board world) 0 down its rail, 1 on the board */
+    int stage_t;         /* frames in the world */
+    int rail_done;       /* its rail's end reached (the rail callback) */
+    uint32_t board;      /* the board (base_spawn's handle) */
+    int rammed;          /* foes knocked down by the board */
 } rails;
 
 /* the game has the rail services (ABI 11) */
@@ -1894,6 +1905,7 @@ static void portal_go(void);
 
 static void rail_event(void* user, int32_t rail, const char* name, int32_t event) {
     (void)user, (void)name;
+    if (rails.phase == 5 && rails.stage_rail != 0 && rail == rails.stage_rail && event == RAC1_RAIL_END) rails.rail_done = 1;
     if (rails.on && rails.phase == 1 && rail == rails.set[0] && event == RAC1_RAIL_END) rails.reached = 1;
     if ((rails.phase == 3 || rails.phase == 4) && rail != 0 && rail == rails.escape && event == RAC1_RAIL_END) portal_go();
 }
@@ -2183,15 +2195,24 @@ static int in_main(void) {
 static const struct chain_def {
     const char* name;
     const char* goal;  /* the HUD's line (TEXTS) */
-    int rail;          /* 1: ridden on the planet's rail to the ring */
-    float ring[3];     /* the ring's place (the planet's coordinates: on the rail), its yaw (along the rail) */
+    int rail;          /* 1: ridden on the planet's rail to the ring (off it: a fall); 0 none */
+    float ring[3];     /* the ring's place (the planet's coordinates), its yaw (the way through it) */
     float ring_yaw;
+    int board;         /* 1: down our rail <section>_in, then Kalebo III's hoverboard to the ring (ABI 16), ramming foes */
+    float start[3];    /* (board) where a fall puts him back on it, turned start_yaw; under fall_z he falls */
+    float start_yaw, fall_z;
+    const char* foes;  /* (board) the foes on the way (KIND letters, one each), between start and ring */
 } CHAIN[] = {
+    /* Quartu: our rail quartu_in from high south of its Giant Clank's pad down by it, then the board east across the
+       Giant Clank's round arena to its middle (195 235: the ring), Kalebo III's robots and bomb bots in the way */
+    {"quartu", "Quartu: in tavola fino al centro dell'arena", 0, {195.0f, 235.0f, 26.0f}, 0.0f, 1, {133.0f, 222.0f, 26.0f}, 0.0f, 24.0f,
+     "RBRRBRBRRB"},
     /* Batalia's long rail (its rail 2: 359 units, from 289.5 86.4 31.9 to 328.9 104.2 49.2, where it leaps), the ring 6
        before its end */
-    {"batalia", "Batalia: fino in fondo alla rotaia", 1, {334.2f, 106.7f, 46.3f}, -2.69f},
-    {"umbris", "Umbris: sconfiggi lo Snagglebeast", 0, {0.0f, 0.0f, 0.0f}, 0.0f},
+    {"batalia", "Batalia: fino in fondo alla rotaia", 1, {334.2f, 106.7f, 46.3f}, -2.69f, 0, {0}, 0.0f, 0.0f, NULL},
+    {"umbris", "Umbris: sconfiggi lo Snagglebeast", 0, {0.0f, 0.0f, 0.0f}, 0.0f, 0, {0}, 0.0f, 0.0f, NULL},
 };
+#define BOARD_CLASS 439    /* Kalebo III's hoverboard (level.txt's spawn 439 1) */
 #define N_CHAIN ((int)(sizeof CHAIN / sizeof CHAIN[0]))
 #define GOAL_NEAR 2.5f     /* the section's goal (its portal) reached this near */
 #define OFF_RAIL 120       /* frames off a world's rail before its ring (or before he first lands on it): lost, he fell */
@@ -2272,9 +2293,13 @@ static void portal_go(void) {
 }
 
 /* the flash's white held: the switch (no fade of its own) */
+static void board_off(void);
+
 static void portal_switch(void) {
     if (rails.sec_asked || api->fade_active() != 2) return;
     rails.sec_asked = 1;
+    board_off();  /* (the world left: its board and its foes with it) */
+    enemies_clear();
     if (!api->section_enter(rails.stage_name[rails.stage], SECTION_ENTRY, 0)) {
         challenge_end(0, "nessun portale");
         return;
@@ -2339,7 +2364,12 @@ static void section_entered(void* user, const char* name, const char* entry) {
         entry[0] == 0)
         return;
     const struct chain_def* d = chain_of(name);
-    rails.has_goal = d != NULL && d->rail;
+    rails.stage_step = rails.stage_t = rails.rail_done = rails.rammed = 0;
+    char rn[40];
+    snprintf(rn, sizeof rn, "%s_in", name);  /* (its rail of ours: Ratchet goes on grinding on it) */
+    rails.stage_rail = api->rail_find(rn);
+    if (rails.stage_rail != 0 && !api->hero_rail_attach(rails.stage_rail, 0.0f, 1)) api->log("the section: its rail did not take Ratchet");
+    rails.has_goal = d != NULL && (d->rail || d->board);
     if (rails.has_goal) {  /* (the portal's ring on its rail: through it, the next world) */
         memcpy(rails.goal, d->ring, sizeof rails.goal);
         const float at[3] = {d->ring[0], d->ring[1], d->ring[2] + 0.9f};
@@ -2389,7 +2419,73 @@ static void boss_event(void* user, const char* section, int32_t cls, uint32_t ob
 }
 
 /* in a world beyond the portal: its goal reached leads on (the last one's wins); off its rail too long, a fall */
+/* a board world's board taken away (Ratchet himself again, where he is) */
+static void board_off(void) {
+    if (rails.board == 0) return;
+    if (RAC1_API_HAS(api, hero_mode) && api->hero_mode_now() == RAC1_HERO_BOARD) api->hero_mode(RAC1_HERO_NONE, 0);
+    const uint32_t m = api->base_moby(rails.board);
+    if (m != 0) api->moby_remove(m);
+    rails.board = 0;
+}
+
+/* a board world: off its rail, Ratchet on Kalebo III's hoverboard (ABI 16: free, a fall back at its start), the foes in
+   the way between there and the ring, hunting him */
+static void board_start(const struct chain_def* d, const float h[3]) {
+    rails.stage_step = 1;
+    if (api->abi < 16) {
+        challenge_end(0, "nessuna tavola");
+        return;
+    }
+    const float yaw = atan2f(d->ring[1] - h[1], d->ring[0] - h[0]);
+    rails.board = api->base_spawn(BOARD_CLASS, h, yaw);
+    const uint32_t bm = rails.board ? api->base_moby(rails.board) : 0;
+    api->hero_build(16);  /* (Kalebo III's hero code rides it) */
+    const int on = bm != 0 && api->hero_mode(RAC1_HERO_BOARD, bm);
+    api->board_rule(RAC1_BOARD_FREE);
+    api->board_return(d->start, d->start_yaw);
+    api->board_fall(1, d->fall_z);
+    const int n = d->foes ? (int)strlen(d->foes) : 0;
+    for (int i = 0; i < n && s.nen < MAX_EN; ++i) {  /* (along the way, from a third of it to near the ring, either side) */
+        const int k = kind_of(d->foes[i]);
+        if (k < 0 || !kind_ready(k)) continue;
+        const float t = 0.3f + 0.6f * (float)i / (float)(n > 1 ? n - 1 : 1), side = (i & 1) ? 5.0f : -5.0f;
+        const float dx = d->ring[0] - d->start[0], dy = d->ring[1] - d->start[1], len = sqrtf(dx * dx + dy * dy);
+        const float at[3] = {d->start[0] + dx * t - side * dy / len, d->start[1] + dy * t + side * dx / len, d->ring[2] + 0.5f};
+        const uint32_t e = api->base_spawn(KIND[k].cls, at, yaw + 3.1416f);
+        if (e == 0) continue;
+        enemy_add(e, k, 0, at);
+        const uint32_t m = api->base_moby(e);
+        if (m != 0) api->base_hunt(m, 1);
+    }
+    char b[96];
+    snprintf(b, sizeof b, "the board: %s (moby %08x), %d foes", on ? "on it" : "NOT on it", (unsigned)bm, s.nen);
+    api->log(b);
+}
+
+/* in a world beyond the portal: its goal reached leads on (the last one's wins); off its rail too long, a fall */
 static void stage_update(const float h[3]) {
+    const struct chain_def* d = chain_of(rails.stage_name[rails.stage]);
+    ++rails.stage_t;
+    if (d != NULL && d->board) {
+        if (rails.stage_step == 0) {  /* (down its rail: at its end, or off it, the board) */
+            if (rails.rail_done || (!on_rail() && rails.stage_t > 90) || rails.stage_rail == 0) board_start(d, h);
+            return;
+        }
+        uint32_t m[8];
+        const int n = api->board_touching(m, 8);
+        for (int k = 0; k < n; ++k)
+            for (int i = 0; i < s.nen; ++i)
+                if (api->base_moby(s.en[i].h) == m[k]) {  /* (one of the foes: knocked down) */
+                    api->hit_send(m[k], RAC1_HIT_PLAYER, 10.0f, api->hero());
+                    ++rails.rammed;
+                }
+        const float dx = h[0] - rails.goal[0], dy = h[1] - rails.goal[1];
+        if (dx * dx + dy * dy < 9.0f && fabsf(h[2] - rails.goal[2]) < 4.0f) {
+            if (rails.stage + 1 < rails.nstages) portal_go();
+            else challenge_end(1, NULL);
+        }
+        return;
+    }
     if (rails.has_goal) {
         if (dist3(h, rails.goal) < GOAL_NEAR && on_rail()) {
             if (rails.stage + 1 < rails.nstages) portal_go();
@@ -2670,7 +2766,8 @@ static void frame(void* user) {
             hud_grow(box, first, 300);  /* (wider round long texts; smaller texts past 300) */
         }
         const float jx = h[0] - s.last_h[0], jy = h[1] - s.last_h[1], jz = h[2] - s.last_h[2];
-        if (s.mode != RESULT && (api->health() <= 0 || (s.have_last && jx * jx + jy * jy + jz * jz > 64.0f)))
+        const int boarding = rails.phase == 5 && rails.board != 0;  /* (the board's own returns: a wipe-out, a fall) */
+        if (s.mode != RESULT && (api->health() <= 0 || (!boarding && s.have_last && jx * jx + jy * jy + jz * jz > 64.0f)))
             challenge_end(0, "Ratchet e' caduto");  /* (dead: his health gone, or back at his start - the lava, a fall) */
         else if (s.mode != RESULT && s.t_pad >= 0 && api->trigger_inside(s.t_pad)) challenge_end(0, "abbandonata");
         break;
@@ -2829,6 +2926,7 @@ static void level_start(void* user, const rac1_level_info* level) {
     rails.on = 0;  /* (the level's rails are all in the game's search again) */
     rails.phase = 0;
     rails.ring = 0;  /* (a world's ring: gone with the level's objects) */
+    rails.board = 0;
     rails_all_off();
     rails.flood = api->object_named("flood");  /* (La grande fuga's lava: down under the lava, hidden) */
     if (rails.flood != 0) {
@@ -3339,6 +3437,14 @@ static void test(void* user, const char* text, uint64_t frame) {
             if (hp_was >= 0) api->log(b);
             hp_was = api->health();
         }
+        static uint64_t q_at;  /* (arena_fuga: on Quartu's board 360 frames, then put by the ring - it does not steer) */
+        if (rails.phase == 5 && rails.sec_in && strcmp(rails.stage_name[rails.stage], "quartu") == 0 && rails.stage_step == 1 && q_at == 0)
+            q_at = frame + 360;
+        if (fuga_t && strstr(text, "ride") == NULL && frame == q_at) {
+            const float at[3] = {192.0f, 235.0f, 26.5f};
+            hero_move(at, 0.0f);
+            api->log("test: Ratchet put by Quartu's ring");
+        }
         static uint64_t bat_at;  /* (arena_fuga: on Batalia's rail, Ratchet put past its tower at its middle - he does not jump
                                     its obstacles; arena_fuga_ride: left to ride it all) */
         if (rails.phase == 5 && rails.sec_in && strcmp(rails.stage_name[rails.stage], "batalia") == 0 && bat_at == 0) bat_at = frame + 60;
@@ -3412,9 +3518,10 @@ static void test(void* user, const char* text, uint64_t frame) {
                 api->log(b);
             }
             if (rails.phase == 5) {  /* (beyond the portal: the world, its goal) */
-                snprintf(b, sizeof b, "  world %d/%d %s, in %d, its goal %.1f away, off its rail %d", rails.stage + 1, rails.nstages,
-                         rails.stage < rails.nstages ? rails.stage_name[rails.stage] : "-", rails.sec_in,
-                         rails.has_goal ? dist3(h, rails.goal) : -1.0f, rails.off_rail);
+                snprintf(b, sizeof b, "  world %d/%d %s, in %d, its goal %.1f away, off its rail %d, step %d, rammed %d, foes %d, mode %d",
+                         rails.stage + 1, rails.nstages, rails.stage < rails.nstages ? rails.stage_name[rails.stage] : "-", rails.sec_in,
+                         rails.has_goal ? dist3(h, rails.goal) : -1.0f, rails.off_rail, rails.stage_step, rails.rammed, s.nen,
+                         (int)api->hero_mode_now());
                 api->log(b);
             }
         }

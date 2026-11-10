@@ -80,7 +80,7 @@ LEVEL = {
     # room for the base level's objects the plugin starts (base_spawn): 24 robots, 8 bomb bots, 6 Gadgetron robots,
     # 8 jetpack troopers (the dropships' too), 2 dropships (SDK ABI 5), the hub's 4 crates of each kind, the grind
     # course's 13 rail mines and the escape's 6 (933: Kalebo III's, on its rails)
-    "spawn": {1445: 24, 52: 8, 541: 6, 638: 8, 1356: 2, 501: 4, 511: 4, 933: 22},
+    "spawn": {1445: 24, 52: 8, 541: 6, 638: 8, 1356: 2, 501: 4, 511: 4, 933: 22, 439: 1},  # (439: Kalebo III's hoverboard)
     # (text, box in the scene's coordinates or None): embers rising from the lava (on a level mod `source lava` reads
     # the collision's type 3 faces too), as on Gaspar, and a little ash
     "particles": [
@@ -120,6 +120,13 @@ SECTIONS = [("prova", {"sky": 15, "background": (34, 44, 92), "fog": (34, 44, 92
             # game planets' worlds as sections (no collections: their scenery, collision, sky and music are the planets',
             # their coordinates too; only the objects an "objects" line names): the worlds "La grande fuga" goes through
             # after the escape's portal, each reached through a flash of white (the plugin's: its CHAIN)
+            # - Quartu: our rail quartu_in (its model drawn: composer 7) from high south of its Giant Clank's pad down by it,
+            #   then Kalebo III's hoverboard (the plugin's, ABI 16) east across the Giant Clank's round arena (every zone
+            #   drawn: zones all) to the ring in its middle; none of Quartu's objects (its 1451, the pad, shows a broken help text)
+            ("quartu", {"world": "quartu", "zones_all": True, "entries": [("arrivo", (130.5, 186.0, 61.0), 1.5708)],
+                        "rails": [("quartu_in", [(130.5, 186.0, 60.0), (130.5, 200.0, 48.0), (130.5, 210.0, 36.0),
+                                                 (130.5, 216.0, 28.0)])],
+                        "rail_mesh": True, "death_height": 8.0}),
             # - Batalia: its long rail (its own, drawn), from its start to its end, where it leaps: Ratchet comes in just over
             #   its start and lands on it (no rail of ours on top: the section keeps the planet's own collision; with one, the
             #   composer's copy of it with the rail's strip, the camera shook on the way down)
@@ -816,6 +823,8 @@ def export_section(level, name, opts, depsgraph, first):
     if opts.get("world"):
         L = ["# the section %s: %s's world (its scenery, collision, sky, music; the planet's coordinates)" % (name, opts["world"]),
              "section %s remove respawn reset" % name, "  world %s" % opts["world"]]
+        if opts.get("zones_all"):  # (every zone of the world drawn wherever the camera is: Quartu's Giant Clank arena)
+            L.append("  zones all")
         if opts.get("hero"):  # (the planet's hero code, a mode: board, clank, giantclank)
             L.append("  hero %s" % opts["hero"])
         if opts.get("objects"):  # (its placed objects of these classes, or all; in the box)
@@ -829,7 +838,8 @@ def export_section(level, name, opts, depsgraph, first):
         for c, at, a in opts.get("checkpoints", []):
             L.append("  checkpoint %s %s %s %s %s" % (c, num(at[0]), num(at[1]), num(at[2]), num(a)))
         for r, pts in opts.get("rails", []):  # (added to the planet's own rails)
-            L.append("  rail %s %s" % (r, " ".join("%s %s %s" % (num(x), num(y), num(z)) for x, y, z in pts)))
+            L.append("  rail %s%s %s" % (r, " mesh" if opts.get("rail_mesh") else "",
+                                          " ".join("%s %s %s" % (num(x), num(y), num(z)) for x, y, z in pts)))
         if opts.get("death_height") is not None:  # (the planet's coordinates: not main's, which is the arena's)
             L.append("  death_height %s" % num(opts["death_height"]))
         L.append("end")
