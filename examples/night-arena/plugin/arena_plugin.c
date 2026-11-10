@@ -2855,8 +2855,78 @@ static void new_game(void* user) {
    there), arena_mine* (a rail mine on its own code before him: _send the plugin's hit, _bomb the Bomb Glove with
    RAC1_SIM_INPUT=shoot, _held held), arena_suck (the Suck Cannon's beam on the enemies, with RAC1_SIM_INPUT=hold), arena_zap (an
    electrified drop zone, Ratchet in it), arena_texts (the game's text table and the items' names) */
+/* RAC1_MOD_TEST=arena_dump (any level: RAC1_GOTO=<level>): at frame 300 the level's grind rails, paths and mobys in the
+   log (where a world section's rails, race track and enemies are) */
+static void dump_level(void) {
+    char b[256];
+    float h[3];
+    pos_of(api->hero(), h);
+    snprintf(b, sizeof b, "dump: level %d, Ratchet at %.2f %.2f %.2f", (int)rac1_lw(api, 0x0015ed84u), h[0], h[1], h[2]);
+    api->log(b);
+    const uint32_t rails_at = rac1_lw(api, api->ov(0x0015f70cu));
+    const int32_t nrails = (int32_t)rac1_lw(api, api->ov(0x0015f710u));
+    for (int32_t i = 0; i < nrails && i < 64; ++i) {
+        const uint32_t e = rails_at + 0x20u * (uint32_t)i, path = rac1_lw(api, e + 0x10);
+        const int32_t n = path ? (int32_t)rac1_lw(api, path) : 0;
+        float len = 0.0f;
+        for (int32_t k = 0; k + 1 < n; ++k) len += rac1_lwf(api, path + 0x10 + 16u * (uint32_t)k + 12);
+        snprintf(b, sizeof b, "dump rail %d: centre %.1f %.1f %.1f reach %.1f, %d points, length %.1f, loop %d", (int)i,
+                 rac1_lwf(api, e), rac1_lwf(api, e + 4), rac1_lwf(api, e + 8), rac1_lwf(api, e + 12), (int)n, len,
+                 (int)rac1_lw(api, e + 0x14));
+        api->log(b);
+        for (int32_t k = 0; k < n; ++k) {
+            if (k % 4 != 0 && k != n - 1) continue;
+            const uint32_t p = path + 0x10 + 16u * (uint32_t)k;
+            snprintf(b, sizeof b, "dump rail %d pt %d: %.2f %.2f %.2f w %.2f", (int)i, (int)k, rac1_lwf(api, p), rac1_lwf(api, p + 4),
+                     rac1_lwf(api, p + 8), rac1_lwf(api, p + 12));
+            api->log(b);
+        }
+    }
+    const uint32_t table = api->ov(0x001b04b0u);
+    const int32_t npaths = (int32_t)rac1_lw(api, api->ov(0x00160104u));
+    for (int32_t i = 0; i < npaths && i < 176; ++i) {
+        const uint32_t path = rac1_lw(api, table + 4u * (uint32_t)i);
+        const int32_t n = path ? (int32_t)rac1_lw(api, path) : 0;
+        snprintf(b, sizeof b, "dump path %d: %d points", (int)i, (int)n);
+        api->log(b);
+        for (int32_t k = 0; k < n && k < 400; ++k) {
+            const uint32_t p = path + 0x10 + 16u * (uint32_t)k;
+            snprintf(b, sizeof b, "dump path %d pt %d: %.2f %.2f %.2f", (int)i, (int)k, rac1_lwf(api, p), rac1_lwf(api, p + 4),
+                     rac1_lwf(api, p + 8));
+            api->log(b);
+        }
+    }
+    float g[7];  /* ARENA_PROBE=x0,y0,x1,y1,step,ztop,zbottom: the ground's height on a grid (rays down; '.' none) */
+    if (getenv("ARENA_PROBE") && sscanf(getenv("ARENA_PROBE"), "%f,%f,%f,%f,%f,%f,%f", &g[0], &g[1], &g[2], &g[3], &g[4], &g[5], &g[6]) == 7)
+        for (float y = g[3]; y >= g[1]; y -= g[4]) {
+            int k = snprintf(b, sizeof b, "probe y %6.1f:", y);
+            for (float x = g[0]; x <= g[2] && k < (int)sizeof b - 6; x += g[4]) {
+                const float from[3] = {x, y, g[5]}, to[3] = {x, y, g[6]};
+                rac1_ray_hit r = {sizeof r};
+                k += api->collide_ray(from, to, 0, RAC1_RAY_NO_LEVEL * 0, &r) ? snprintf(b + k, sizeof b - (size_t)k, " %3d", (int)lroundf(r.point[2]))
+                                                                         : snprintf(b + k, sizeof b - (size_t)k, "   .");
+            }
+            api->log(b);
+        }
+    static uint32_t m[2048];
+    const int32_t nm = api->mobys_near(h, 100000.0f, -1, m, 2048);
+    for (int32_t i = 0; i < nm; ++i) {
+        float p[3];
+        pos_of(m[i], p);
+        snprintf(b, sizeof b, "dump moby %d: class %d uid %d at %.2f %.2f %.2f state %d", (int)i, (int)rac1_lh(api, m[i] + 0xa6),
+                 (int)(int16_t)rac1_lh(api, m[i] + 0xb2), p[0], p[1], p[2], (int)(int8_t)rac1_lb(api, m[i] + 0x20));
+        api->log(b);
+    }
+}
+
 static void test(void* user, const char* text, uint64_t frame) {
     (void)user;
+    {  /* (ARENA_DUMP_AT=<frame>: the dump with any test too) */
+        static int dumped;
+        const char* at = getenv("ARENA_DUMP_AT");
+        if (!dumped && frame >= (uint64_t)(at ? atoll(at) : 300) && (at || strcmp(text, "arena_dump") == 0)) dump_level(), dumped = 1;
+        if (strcmp(text, "arena_dump") == 0) return;
+    }
     const int near = strcmp(text, "arena_near") == 0, win = strcmp(text, "arena_win") == 0, lava = strcmp(text, "arena_lava") == 0;
     /* the menu left open (the run's last frame's screenshot); arena_menushot_all: every challenge won but the hidden
        one (shown now), the list's last chosen (scrolled) */
@@ -3011,6 +3081,98 @@ static void test(void* user, const char* text, uint64_t frame) {
             snprintf(b, sizeof b, "mine %llu: moby %08x state %d flags %#x at %.2f %.2f %.2f, health %d, in hand %#x", (unsigned long long)frame, (unsigned)m,
                      m ? (int)(int8_t)rac1_lb(api, m + 0x20) : -1, m ? (unsigned)rac1_lh(api, m + 0x34) : 0u, (double)q[0], (double)q[1], (double)q[2],
                      (int)api->health(), (unsigned)rac1_lw(api, HERO_ITEM));
+            api->log(b);
+        }
+        return;
+    }
+    if (s.mine && strcmp(text, "arena_go") == 0) {
+        /* (a look round a section: ARENA_SEC=<section> ARENA_ENTRY=<entry> entered at 600; ARENA_AT="<frame>:<x>,<y>,<z>,<yaw>;..."
+           Ratchet put there at those frames; ARENA_BOOTS=1 the Grindscarponi; ARENA_RAIL=<n>@<frame>:<distance> him on
+           level.txt's rail <n>; where he is every second) */
+        const char* sec = getenv("ARENA_SEC");
+        const char* entry = getenv("ARENA_ENTRY");
+        if (frame == 100 && getenv("ARENA_BOOTS")) api->sb(GRIND_BOOTS, 1);
+        if (frame == 600 && sec) {
+            char b[96];
+            snprintf(b, sizeof b, "test: into %s at %s: %d", sec, entry ? entry : "", api->section_enter(sec, entry ? entry : "", 0));
+            api->log(b);
+        }
+        for (const char* a = getenv("ARENA_AT"); a && *a;) {
+            unsigned long long f = 0;
+            float p[3], yaw = 0.0f;
+            if (sscanf(a, "%llu:%f,%f,%f,%f", &f, &p[0], &p[1], &p[2], &yaw) == 5 && f == frame) {
+                hero_move(p, yaw);
+                api->log("test: Ratchet put");
+            }
+            a = strchr(a, ';');
+            if (a) ++a;
+        }
+        for (const char* a = getenv("ARENA_CAM"); a && *a;) {  /* ("<frame>:<x>,<y>,<z>,<yaw>,<pitch>;...": a fixed camera) */
+            unsigned long long f = 0;
+            rac1_camera c = {sizeof c};
+            if (sscanf(a, "%llu:%f,%f,%f,%f,%f", &f, &c.pos[0], &c.pos[1], &c.pos[2], &c.yaw, &c.pitch) == 6 && f == frame) {
+                c.mode = RAC1_CAMERA_FIXED;
+                api->camera_set(&c);
+            }
+            a = strchr(a, ';');
+            if (a) ++a;
+        }
+        for (const char* a = getenv("ARENA_LOOK"); a && *a;) {  /* ("<frame>:<class>;...": the camera on a moby of that class) */
+            unsigned long long f = 0;
+            int cls = 0;
+            if (sscanf(a, "%llu:%d", &f, &cls) == 2 && f == frame) {
+                float h[3];
+                pos_of(api->hero(), h);
+                uint32_t m = 0;
+                if (api->mobys_near(h, 400.0f, cls, &m, 1) == 1) {
+                    rac1_camera c = {sizeof c};
+                    float p[3];
+                    pos_of(m, p);
+                    c.mode = RAC1_CAMERA_LOOK;
+                    c.pos[0] = p[0] - 5.0f, c.pos[1] = p[1] - 5.0f, c.pos[2] = p[2] + 3.5f;
+                    c.moby = m;
+                    api->camera_set(&c);
+                    char b[96];
+                    snprintf(b, sizeof b, "test: the camera on class %d at %.1f %.1f %.1f", cls, p[0], p[1], p[2]);
+                    api->log(b);
+                }
+            }
+            a = strchr(a, ';');
+            if (a) ++a;
+        }
+        if (getenv("ARENA_BOARD") && frame == (uint64_t)atoll(getenv("ARENA_BOARD"))) {  /* (the hoverboard: Kalebo III's) */
+            float h[3];
+            pos_of(api->hero(), h);
+            const int b16 = api->hero_build(16);
+            const int32_t c = api->import_class("16:439");
+            uint32_t m = c >= 0 ? api->import_spawn(c, h, rac1_lwf(api, api->hero() + 0x48)) : 0;
+            if (m == 0) {  /* (the base's own class: level.txt's spawn 439 1) */
+                const uint32_t bh = api->base_spawn(439, h, rac1_lwf(api, api->hero() + 0x48));
+                m = bh ? api->base_moby(bh) : 0;
+            }
+            const int on = m ? api->hero_mode(RAC1_HERO_BOARD, m) : -1;
+            char b[128];
+            snprintf(b, sizeof b, "test: the board: hero_build %d, class %d, moby %08x, hero_mode %d", b16, (int)c, (unsigned)m, on);
+            api->log(b);
+        }
+        if (getenv("ARENA_RAIL")) {
+            char name[32];
+            unsigned long long f = 0;
+            float d = 0.0f;
+            if (sscanf(getenv("ARENA_RAIL"), "%31[^@]@%llu:%f", name, &f, &d) == 3 && f == frame) {
+                char b[96];
+                snprintf(b, sizeof b, "test: on the rail %s at %.1f: %d", name, d, api->hero_rail_attach(api->rail_find(name), d, 1));
+                api->log(b);
+            }
+        }
+        if (frame % 60 == 0) {
+            float h[3];
+            pos_of(api->hero(), h);
+            rac1_rail_info ri = {sizeof ri};
+            const int g = api->hero_rail(&ri);
+            char b[200];
+            snprintf(b, sizeof b, "go %llu: hero %.2f %.2f %.2f state 0x%x health %d mode %d%s", (unsigned long long)frame, h[0], h[1], h[2],
+                     (unsigned)rac1_lw(api, HERO_STATE), (int)api->health(), (int)api->hero_mode_now(), g ? " grinding" : "");
             api->log(b);
         }
         return;
