@@ -805,4 +805,5 @@ same as a level mod's main `sky 7` line: not a sections matter); Kerwan's, Kaleb
   which is the cheap form); per-section `object` / `trigger` lines (the level's own classes' objects and triggers are
   session-wide); a section's own music files (a game level's tracks or none); a section's `path` lines' base-view paths are
   not freed with the section; streaming the meshes' GPU data (the host meshes of every section are built with the level's
-  world at the arrival: 54 KB for the test); `start` is composed and read but untested.
+  world at the arrival: 54 KB for the test). (`start cave:door` tested: after the landing the switch to the cave, Ratchet at
+  its door.)
