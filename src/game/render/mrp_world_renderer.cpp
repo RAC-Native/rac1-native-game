@@ -165,7 +165,7 @@ struct Level {
     // texture uploads of the sky's chain send), each a bucket of its own; by (image, palette, TEX0's format and size fields)
     std::map<std::tuple<uint32_t, uint32_t, uint64_t>, TexRef> sky_tex;
     // the world GIF streams' textures (the shrub billboards: the level's GS RAM block gs_ram_upload 0x240498 put in GS
-    // memory at the level load), decoded from the GS replica's local memory at their first use; by (TEX0 but TCC / TFX, MIPTBP1, mips)
+    // memory at the level load), decoded from the GS's local memory (gs_memory.h) at their first use; by (TEX0 but TCC / TFX, MIPTBP1, mips)
     std::map<std::tuple<uint64_t, uint64_t, uint32_t>, TexRef> vram_tex;
 };
 Level g_level;
@@ -335,9 +335,9 @@ struct Frame {
     std::vector<DrawCmd> draws;
     std::vector<std::pair<uint32_t, uint32_t>> skips;
     uint64_t env_xyoff = 0;
-    // The scene built on the worker thread while the host runs the GS replica's chain (mrp_world_begin_frame_async /
-    // mrp_world_finish_frame): the skip ranges known before (they depend on the passes alone), the GS registers as the replica had
-    // them before the chain (build_triangles' start)
+    // The scene built on the worker thread while the host reads the frame's chain (mrp_world_begin_frame_async /
+    // mrp_world_finish_frame): the skip ranges known before (they depend on the passes alone), the GS registers as the last chain
+    // read left them (mrp_chain_gs_reg: build_triangles' start)
     bool skips_ready = false;
     bool pending = false;
     std::array<uint64_t, 128> gs_regs{};
@@ -1727,9 +1727,9 @@ const TexRef* sky_texture(Level& L, const SceneFrame& S, uint64_t tex0) {
 // orig: (host) a world GIF stream's texture (the shrub far variants' billboards): TEX0 names it in GS
 // memory, which holds it since the level load (gs_ram_upload 0x240498: the core's GS RAM block, the shrub classes' billboard images
 // and palettes; shrub_class_register 0x240e80 writes the variant record's TEX0 / TEX1 / MIPTBP1 from the class entry), so it is
-// decoded from the GS replica's local memory (PSMT8 + PSMCT32 CLUT, CSM1, as Gs::texel reads it; the GS's 0..0x80 alpha kept),
+// decoded from the GS's local memory (PSMT8 + PSMCT32 CLUT, CSM1, as Gs::texel reads it; the GS's 0..0x80 alpha kept),
 // the levels below 0 from MIPTBP1 (TEX1 MXL of them, 3 at most), once per level. (The frame's own uploads start past that block,
-// 0x15ee78: the replica's chain, which may be running, does not write it.)
+// 0x15ee78: the frame's chain, which may be being read, does not write it.)
 const TexRef* vram_texture(Level& L, uint64_t tex0, uint64_t tex1, uint64_t mip1) {
     const uint32_t mxl = std::min(field(tex1, 2, 3), 3u);
     const uint64_t fmt = tex0 & ~((1ull << 34) | (3ull << 35) | (7ull << 61));
@@ -3062,8 +3062,8 @@ void build_triangles(Frame& F) {
         F.merge_afail = env != nullptr ? std::atoi(env) != 0 : (F.scene.stat_draws[0] + F.scene.stat_draws[1]) != 0;
     }
     GsFront g(F);
-    // the GS's registers as the replica has them before this frame's chain (the frame packets set them again: the scene's
-    // DIRECT writes from the chain's start)
+    // the GS's registers as the last chain read left them, before this frame's chain (the frame packets set them again: the
+    // scene's DIRECT writes from the chain's start)
     for (uint32_t r = 0; r < 128; ++r) g.regs[r] = F.gs_regs[r];  // (taken before the frame's chain: mrp_world_begin_frame_async)
     g_pkt_memo.valid = false;  // (RAC1_PERF_PKT_MEMO: nothing kept from another build - its view-projection, its templates)
     g_pkt_memo.vv_view = -2;
@@ -4414,7 +4414,7 @@ bool mrp_world_testing() { return g_world_mrp && (g_env_check || g_env_diff); }
 
 namespace {
 // orig: (host) the scene's worker: one thread, one job a frame (scene_build reads EE memory, the level's assets and
-// its own walker; the host thread meanwhile runs the GS replica's chain, which only reads EE memory)
+// its own walker; the host thread meanwhile reads the frame's chain, which only reads EE memory)
 // ---- the automatic emitters: the ties whose textures glow -----------------------------------------------------------
 //
 // Our art choice, not the game's: a tie class's triangles textured with bright, saturated texels (lamps, glowing
@@ -5058,8 +5058,8 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
     {  // the GS registers before the frame's chain (build_triangles): as the last chain read left them
         for (uint32_t r = 0; r < 128; ++r) F.gs_regs[r] = mrp_chain_gs_reg(r);
     }
-    // the passes' ranges the replica skips: scene_build builds a scene exactly when there are passes and a chain
-    static const bool sky_noskip = std::getenv("RAC1_MRPW_SKY_NOSKIP") != nullptr;  // (testing: the replica runs the sky's range too, drawn twice)
+    // the passes' ranges the chain's reader skips: scene_build builds a scene exactly when there are passes and a chain
+    static const bool sky_noskip = std::getenv("RAC1_MRPW_SKY_NOSKIP") != nullptr;  // (testing: the sky's range not skipped by the chain's reader)
     if (!scene_passes().empty() && chain_start != 0) {
         for (const PassRange& r : scene_passes())
             if (r.pass != 3 || !sky_noskip) F.skips.push_back({r.first, r.end - 16});

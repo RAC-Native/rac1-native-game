@@ -760,7 +760,7 @@ void mrp_fx_window(bool on) { g_window = on; }
 void mrp_fx_note(uint8_t kind, uint32_t first, uint32_t end) {
     if (!g_window || end <= first || kind == 0 || kind >= kMrpFxKinds) return;
     Notes& N = notes_now();
-    if (kind == kMrpFxPrimList && N.vu7_cur < 0) return;  // (no 0x1fc740 seen: its projection unknown, the replica draws it)
+    if (kind == kMrpFxPrimList && N.vu7_cur < 0) return;  // (no 0x1fc740 seen: its projection unknown, not an effects range)
     g_covered += end - first;
     // (the quads of one effect follow each other in the chain: one range)
     if (!g_env_verify && !N.list.empty() && N.list.back().kind == kind && N.list.back().end == first && (kind != kMrpFxPrimList || N.list.back().vu7 == N.vu7_cur)) {
@@ -1331,7 +1331,7 @@ uint32_t tex_average(const gs::TexImage& t, bool alpha) {
 // themselves - in the world when M is the frame's 0x1fc740 matrix (less its Z bias), else taken there through it - with the world's
 // projection: the GL clips what the program clipped at the guard band (and the triangles its side test dropped).
 // orig: (host) the batch of type-9 primitive `p` into g_v7 / g_b7 (false: not drawn)
-// the replica's depth map of the frame (render_gs_depth: window depth = a + b Z), for the surfaces' depth
+// the host's map of the GS's Z onto the depth buffer (render_gs_depth: window depth = a + b Z), for the surfaces' depth
 bool g_v7_depth = false;
 double g_v7_da = 0.0, g_v7_db = 0.0;
 bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {

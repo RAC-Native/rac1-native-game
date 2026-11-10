@@ -13,8 +13,9 @@
 //    same GL state merged into one glMultiDrawElementsIndirect.
 // Shaders: the vertex shader is mrp::skin_packet (the VU0 skinning + lighting, the EE's fixed-point
 // colour step included) followed by the VU1 program's transform (mrp::vu1_vertex / kick_triangles);
-// the fragment shader is the GS state (texture function, alpha test, the GS's per-pixel mip level as
-// gs_draw.cpp has it, or the full texture chain).
+// the fragment shader applies the draw state the game set (the GS's texture function and alpha test,
+// the full texture chain or, with Texture Detail Original, the GS's per-pixel mip level as gs_draw.cpp has it);
+// the GPU rasterises.
 #ifndef RAC1_GAME_RENDER_MRP_MOBY_RENDERER_H
 #define RAC1_GAME_RENDER_MRP_MOBY_RENDERER_H
 

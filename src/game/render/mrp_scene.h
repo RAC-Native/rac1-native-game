@@ -129,7 +129,7 @@ void mrp_scene_end_frame();
 // orig: (host) the frame's scene (valid until the next begin_frame)
 const MrpFrame& mrp_scene();
 // orig: (host) the scene the MRP draws: the moby pass's shadow run's (mrp_lod.h: the LOD slider / the widened view)
-// when this update made one, else mrp_scene(). (mrp_scene() stays the real pass's: the GS replica's skips follow its chain.)
+// when this update made one, else mrp_scene(). (mrp_scene() stays the real pass's: the chain's skips follow its chain.)
 const MrpFrame& mrp_scene_draw();
 // orig: (host) around the moby pass's shadow run (inside its memory journal): begin keeps the frame observed so
 // far aside and starts an empty one; end decodes the shadow's chains while their memory is there (the parts' DIRECT state
