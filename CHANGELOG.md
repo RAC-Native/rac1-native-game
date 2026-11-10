@@ -5,6 +5,16 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: every zone of a world's section drawn** (`zones all` in a `world` section; level mods must be set up again:
+  the composer's version 8). A planet's world shows what the planet itself draws from the camera's place (its zone grid);
+  `zones all` draws all of it wherever the camera is, for views the planet never had.
+- **Level mods: the hoverboard outside a race** (the mod SDK's ABI 16). Kalebo III's board ridden on a level mod's own
+  geometry or in another planet's world (`world quartu`) ran its race's logic there: the race HUD (lap, time, place), and in
+  Quartu's world a fall at once and for ever ("back on the track" of Kalebo III's race); on the mod's own ground its first
+  fall or crash killed Ratchet. Now it rides free there: no laps, no race HUD, a fall puts him back on the board where he got
+  on (or where the plugin says: `board_return`, `board_fall`), a crash a little before it. In Rilgar's world (`world rilgar`,
+  `hero rilgar board`) the race is Rilgar's own (it stood at the start for ever). `board_rule` forces free or race, and
+  `board_touching` says which enemies the board runs into (the plugin knocks them down with `hit_send`).
 - **The mod SDK: saving from a plugin** (ABI 15): `game_save()` saves the game into the slot the player chose, as leaving a
   planet does (a level mod's level, a session and its checkpoint included), and `game_saving()` says while the save is
   being written, so a mod can save when a challenge ends and show "Saving...". Every plugin's records go into the save

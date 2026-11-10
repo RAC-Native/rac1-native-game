@@ -1053,6 +1053,10 @@ int32_t api_section_policy(const char* name, int32_t policy) { return name != nu
 // ---- (ABI 12) hero contexts and modes (hero_modes.h) ----
 int api_hero_build(int32_t level) { return hero_build_set(level, "the plugin's hero_build") ? 1 : 0; }
 int32_t api_hero_build_now() { return hero_build_level(); }
+int32_t api_board_rule(int32_t rule) { return hero_board_rule(rule); }
+void api_board_return(const float pos[3], float yaw) { hero_board_return(pos, yaw); }
+void api_board_fall(int32_t set, float z) { hero_board_fall(set != 0, z); }
+int32_t api_board_touching(uint32_t* out, int32_t max) { return out == nullptr || max <= 0 ? 0 : hero_board_touching(out, max); }
 int api_hero_mode(int32_t mode, uint32_t obj) { return g_session_rt && hero_mode_set(mode, obj, "the plugin's hero_mode") ? 1 : 0; }
 int32_t api_hero_mode_now() { return hero_mode_now(); }
 
@@ -1691,6 +1695,10 @@ void load_all() {
     g_api.hud_width = api_hud_width;  // (ABI 14)
     g_api.game_save = api_game_save;  // (ABI 15)
     g_api.game_saving = api_game_saving;
+    g_api.board_rule = api_board_rule;  // (ABI 16)
+    g_api.board_return = api_board_return;
+    g_api.board_fall = api_board_fall;
+    g_api.board_touching = api_board_touching;
     {
         SetpiecesHost h;
         h.hero_damage = api_hero_damage;
