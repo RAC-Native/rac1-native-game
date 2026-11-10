@@ -87,10 +87,9 @@ the world passes' culls (the profiler's `Game: world passes`).
   Kerwan 1.52 to 1.33, Rilgar 0.90 to 0.82, Blarg Station 1.05 to 0.96, Hoven 1.16 to 0.99 (9 to 15 % less); `Game: moby
   joints / skinning` 20 to 37 % less, `Game: world passes` 16 to 20 %, `Game: moby updates` 5 to 13 %. The program's code
   38.2 to 39.7 MB (4 % more), a full build with four jobs 8.5 minutes as before. `-DRAC1_ACCESSORS_INLINE=OFF` gives the
-  accessors as they were. Not done: the `is_hw` test (a hardware register's address) left out of `lw_` / `sw_` where the
-  address is a constant or relative to the stack pointer (35,000 and 15,000 of their 152,000 sites: a change of the
-  generators), and the stack frames' spills (a third of the generated code's 254,000 access sites are stack-relative,
-  21,000 of them the prologues' saves of registers that are locals of the routine).
+  accessors as they were. The two steps after it - the `is_hw` test (a hardware register's address) of `lw_` / `sw_`, and
+  the stack frames' accesses - were tried and are not in: no gain beyond the runs' spread (see what was looked at and
+  left, before the switches' table).
 - **The three culls by hand** (`world_cull_tfrag.cpp`, `world_cull_tie.cpp`, `world_cull_shrub.cpp`; `RAC1_WORLD_CULL_FAST`):
   the same arithmetic and the same memory written, organised by what the routines do (the view test, the LOD and its morph,
   the chain's records), the VU0 registers in a local copy (`vu0_local.h`) written back at the end, the scratchpad as a byte
@@ -692,6 +691,31 @@ Looked at and left, or tried and taken out again:
   a smaller copy, are what would change that.
 - **`-march=native`** (`RAC1_NATIVE_ARCH`) on top of the above: the game's code -8.5 to +5.2 % over the five levels, no
   level outside the runs' spread; `RAC1_RAMHASH` identical on four levels. The default stays off.
+- **The generated code's hardware-register test and its stack frames** (November 2026; the two steps the accessors' change
+  left open): both exact, neither a gain beyond the runs' spread. Not merged.
+  `lw_` / `sw_` (152,000 of the generated code's 254,000 access sites) test their address for a DMA channel's register
+  before the memory's own ranges. With the RAM's and the scratchpad's ranges first, and that test only for what is left,
+  their common path is 7 instructions for 12.
+  A transliterated function's stack frame is a block of the EE stack and each access to it an accessor on `sp.w() + k`: a
+  third of the access sites (85,725; 21,000 of them the prologues' saves of registers that are locals of the C++ function).
+  `mips2cpp.py` was made to write them as accesses to a view of the frame - a load or a store at the host's pointer of
+  the frame, taken once - wherever sp is provably the frame's base: 3,410 of the 3,417 frames, 80,129 sites. A saved
+  register's reload is then dead code, and the frame's clearing a `memset` of a constant size.
+  Proved: the generated sources with the frame forms turned back by text were the sources before, byte for byte; a build
+  comparing every such access with the accessors' own pointer on the 19 levels (4:3: 19.5 million frames, 394 million
+  accesses; 16:9 with LOD High: 9.2 million frames, 371,000 of them started inside a journal, and 214 million accesses),
+  0 differing; `RAC1_RAMHASH` identical to the build before on the 19 levels both ways, the reference images, the oracle's
+  reference batches of levels 0 to 11.
+  Measured (4:3; four builds, seven runs of each taken in turn on Veldin, Kerwan, Rilgar, Blarg Station and Hoven; the
+  median of the 35 runs' ratios to the build before, and how many of the 35 are below it): the test's order, the game's
+  code +0.4 % (17); the frames, -1.0 % (21) and `Game: moby updates` -3.4 % (26); both, -0.1 % (19) and -1.8 % (26). One
+  build's own runs spread over 5 % and more (Kerwan 1.35 to 1.55 ms), and Blarg Station's `Game: moby updates` "gained"
+  7 to 12 % with 140 such frames in a game frame: the builds' different layouts, not the change.
+  The stack is not where the accesses are. The comparing build counts, in a game frame, 10 of those frames on Veldin (its
+  code is ported by hand), 1,850 on Kerwan, 350 on Rilgar, 140 on Blarg Station, 970 on Hoven; their accesses are 3.2 % of
+  all the accessors' calls over the 19 levels (Kerwan 8.7 %: 34,000 of 390,000 a frame). And a call to an accessor,
+  well predicted, costs next to nothing on this processor: Kerwan's 34,000 a frame are worth some microseconds at most.
+  A target with a weaker core may differ.
 - **The frame loop's `getenv` calls** (about forty testing variables read every frame in `orig_main.cpp`,
   `mrp_lighting.cpp` and `mrp_world_renderer.cpp`): microseconds on Linux, nothing a run here can show; a change of some
   hundred call sites. Not done.
