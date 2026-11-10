@@ -40,8 +40,12 @@ What changed in each release. Releases are source only: you build the game with 
 - **Level mods: your own grind rails in a planet's world** (format 3): a `world <planet>` section takes `rail` / `rails`
   lines in the planet's coordinates, added to the planet's own rails, with their collision strips (a grind continued through
   a portal into Quartu's arena lands Ratchet on its floor); a section without a `hero` line keeps main's (`hero generic`), and
-  a base level's enemies hunting Ratchet (Kalebo III's robots) follow him into the world and fight there. A rail's model is
-  not drawn in a world section yet.
+  a base level's enemies hunting Ratchet (Kalebo III's robots) follow him into the world and fight there.
+- **Level mods: your rail's model and your objects in a planet's world** (format 3): a `rail ... mesh` line of a `world
+  <planet>` section is now drawn there, and the level's own objects are there too: `object` lines inside a section block,
+  and the objects the plugin spawns, moves (`object_place`) or shows there (main's objects, at main's coordinates, are
+  neither drawn nor solid in the planet's world). A world section's rail model comes after
+  every other mesh, so it changes no `material tie` index of lights.txt. Level mods are composed again (composer 7).
 - **Level mods: the Save and Load pages show a level mod's level.** A save made on it showed its base planet (Kalebo III's
   name and picture for a level on Kalebo III's code); now the level's own name, region and picture, as the ship's map shows
   them. With the level's mod off or missing, the pages show the planet loading the save lands on (the one flown from, where
