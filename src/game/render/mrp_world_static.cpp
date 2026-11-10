@@ -1,5 +1,6 @@
 // orig: (host) The MRP world's static data (see mrp_world_static.h).
 #include <game/render/mrp_world_static.h>
+#include <game/render/vec_room.h>
 #include "mrp_world_wiiu.inc"
 
 #include <game/ovl/ovl_common.h>
@@ -640,11 +641,14 @@ void static_frame_build_at(const StaticLevel& L, const ResidentColours& rc, Stat
                 si.slot = static_cast<uint32_t>(slot);
                 instance_rows(mr, S, data, sway, false, si.rows);
                 lists[lod].push_back(static_cast<uint32_t>(f.insts.size()));
+                vec_room_zeroed(f.insts, 1);
                 f.insts.push_back(si);
             }
             for (int lod = 0; lod < 3; ++lod)
-                for (const StaticPacket& pk : c.lod[lod])
+                for (const StaticPacket& pk : c.lod[lod]) {
+                    vec_room_zeroed(f.draws[0], lists[lod].size());
                     for (auto it = lists[lod].rbegin(); it != lists[lod].rend(); ++it) f.draws[0].push_back({&pk, *it});
+                }
         }
     }
     // ---- shrubs (0x286f10): per class record (+0x14 flags, +0x16 instances, +0x18 their bounds: sphere, +0x10 the draw distance, +0x17 the
@@ -720,12 +724,15 @@ void static_frame_build_at(const StaticLevel& L, const ResidentColours& rc, Stat
                 if (src < 0) continue;
                 si.alpha = static_cast<uint32_t>(std::min<int64_t>(src, 0x8000)) >> 8;
                 const uint32_t at = static_cast<uint32_t>(f.insts.size());
+                vec_room_zeroed(f.insts, 1);
                 f.insts.push_back(si);
                 if (si.alpha == 0x80) opaque.push_back(at);
                 else faded[static_cast<size_t>(&c - L.shrubs.data())].push_back(at);
             }
-            for (const StaticPacket& pk : c.packets)
+            for (const StaticPacket& pk : c.packets) {
+                vec_room_zeroed(f.draws[1], opaque.size());
                 for (uint32_t at : opaque) f.draws[1].push_back({&pk, at});
+            }
         }
         // (the faded ones after every class's opaque ones, per class, per packet: 0x287a04.., the counts at SPR 0x3680)
         for (size_t k = 0; k < L.shrubs.size(); ++k)
@@ -927,6 +934,7 @@ void static_shadow_build(const StaticLevel& L, const ResidentColours& rc, Static
             si.mask = views;
             instance_rows(EeRead{}, S, data, sway, false, si.rows);
             lists[lod].push_back(static_cast<uint32_t>(f.insts.size()));
+            vec_room_zeroed(f.insts, 1);
             f.insts.push_back(si);
         }
         for (int lod = 0; lod < 3; ++lod)
@@ -958,6 +966,7 @@ void static_shadow_build(const StaticLevel& L, const ResidentColours& rc, Static
             si.mask = views;
             instance_rows(EeRead{}, S, S.shrub_data + 0x40 * idx, sway, true, si.rows);
             list.push_back(static_cast<uint32_t>(f.insts.size()));
+            vec_room_zeroed(f.insts, 1);
             f.insts.push_back(si);
         }
         for (const StaticPacket& pk : sc.packets)
