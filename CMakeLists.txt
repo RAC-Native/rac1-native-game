@@ -323,6 +323,18 @@ if(RAC1_NEON_TEST)
     add_test(NAME vu_neon_equiv COMMAND vu_neon_equiv)
 endif()
 
+# ---- tests/fp/ : the float helpers' raw forms against their rule-by-rule forms (tests/fp/fp_raw_equiv.cpp) ----
+# Off by default: ./setup.sh never builds it. It needs no generated sources and no disc: the EE FPU's and the VU0 macro ops'
+# raw forms (RAC1_PERF_FPU_RAW, RAC1_PERF_VU0_RAW: runtime/ee/ps2_fpu.h) compared bit for bit with the forms they replace, on
+# random and edge operands, in the game's float mode.
+option(RAC1_FP_TEST "Build the float helpers' equivalence test (tests/fp: build/fp_raw_equiv)" OFF)
+if(RAC1_FP_TEST)
+    enable_testing()
+    add_executable(fp_raw_equiv tests/fp/fp_raw_equiv.cpp)
+    target_include_directories(fp_raw_equiv PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME fp_raw_equiv COMMAND fp_raw_equiv 0.1)
+endif()
+
 # ---- src/setup/ : setup & asset extraction ----
 add_library(rac1_setup STATIC
     src/setup/kick_trace.cpp

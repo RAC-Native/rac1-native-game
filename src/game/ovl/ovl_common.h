@@ -64,11 +64,60 @@ inline float fpu_div(float s, float t) {
     if (b == 0.0) return (std::signbit(a) != std::signbit(b)) ? -FLT_MAX : FLT_MAX;
     return fpu_out(ps2fpu::div_nearest(a, b));
 }
-// orig: (helper) EE FPU MUL.S — an overflowing product clamps to +-FLT_MAX, denormals flush.
-RAC1_HOT_INLINE float fpu_mul(float s, float t) { return fpu_out(fpu_in(s) * fpu_in(t)); }
-// orig: (helper) EE FPU ADD.S / SUB.S with the PS2 operand and result rules.
-RAC1_HOT_INLINE float fpu_add(float s, float t) { return fpu_out(fpu_in(s) + fpu_in(t)); }
-RAC1_HOT_INLINE float fpu_sub(float s, float t) { return fpu_out(fpu_in(s) - fpu_in(t)); }
+// orig: (helper) a float's exponent is not 255 (a raw result the PS2 rules would leave as it is: ps2_fpu.h's raw forms)
+[[gnu::always_inline]] inline bool raw_ok(float r) { return (f2u(r) & 0x7f800000u) != 0x7f800000u; }
+// orig: (host) RAC1_PERF_FPU_RAW=2 / RAC1_PERF_VU0_RAW=2: one op's rule-by-rule result against its raw one (ps2_fpu.h's account)
+[[gnu::noinline, gnu::cold]] inline void raw_check(ps2fpu::RawCheck& k, uint32_t kind, float raw, float rules, float x, float y, float c = 0.0f) {
+    if (!ps2fpu::thread_chops()) k.off_thread.fetch_add(1, std::memory_order_relaxed);
+    if (!raw_ok(raw)) {
+        k.by_rules.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    k.compared.fetch_add(1, std::memory_order_relaxed);
+    if (f2u(raw) != f2u(rules)) k.differ(kind, 1, f2u(x), f2u(y), f2u(c), f2u(raw), f2u(rules));
+}
+// orig: (helper) EE FPU MUL.S / ADD.S / SUB.S by the PS2's rules: the operands as doubles (exponent 255 a number, a denormal the
+// signed zero), an overflowing result clamped to +-FLT_MAX, a denormal one flushed. Out of line: the forms below reach them
+// only for an operand with exponent 255, or with the raw forms off (RAC1_PERF_FPU_RAW=0, =2: compared).
+[[gnu::noinline]] inline float fpu_mul_rules(float s, float t) {
+    const float r = fpu_out(fpu_in(s) * fpu_in(t));
+    if (__builtin_expect(ps2fpu::g_fpu_raw == 2, 0)) raw_check(ps2fpu::g_fpu_raw_check, 2, s * t, r, s, t);
+    return r;
+}
+[[gnu::noinline]] inline float fpu_add_rules(float s, float t) {
+    const float r = fpu_out(fpu_in(s) + fpu_in(t));
+    if (__builtin_expect(ps2fpu::g_fpu_raw == 2, 0)) raw_check(ps2fpu::g_fpu_raw_check, 0, s + t, r, s, t);
+    return r;
+}
+[[gnu::noinline]] inline float fpu_sub_rules(float s, float t) {
+    const float r = fpu_out(fpu_in(s) - fpu_in(t));
+    if (__builtin_expect(ps2fpu::g_fpu_raw == 2, 0)) raw_check(ps2fpu::g_fpu_raw_check, 1, s - t, r, s, t);
+    return r;
+}
+// orig: (helper) EE FPU MUL.S — an overflowing product clamps to +-FLT_MAX, denormals flush. The host's own multiply in the
+// thread's mode (toward zero, no denormals) gives just that unless an operand's exponent is 255, and then its result's is.
+RAC1_HOT_INLINE float fpu_mul(float s, float t) {
+    if (__builtin_expect(ps2fpu::g_fpu_raw == 1, 1)) {
+        const float r = s * t;
+        if (__builtin_expect(raw_ok(r), 1)) return r;
+    }
+    return fpu_mul_rules(s, t);
+}
+// orig: (helper) EE FPU ADD.S / SUB.S with the PS2 operand and result rules (the same way).
+RAC1_HOT_INLINE float fpu_add(float s, float t) {
+    if (__builtin_expect(ps2fpu::g_fpu_raw == 1, 1)) {
+        const float r = s + t;
+        if (__builtin_expect(raw_ok(r), 1)) return r;
+    }
+    return fpu_add_rules(s, t);
+}
+RAC1_HOT_INLINE float fpu_sub(float s, float t) {
+    if (__builtin_expect(ps2fpu::g_fpu_raw == 1, 1)) {
+        const float r = s - t;
+        if (__builtin_expect(raw_ok(r), 1)) return r;
+    }
+    return fpu_sub_rules(s, t);
+}
 // orig: (helper) R5900 DIV quotient (LO): x/0 gives -1 (x >= 0) or 1, INT_MIN/-1 gives INT_MIN; no trap.
 inline int32_t ee_div(int32_t a, int32_t b) { return b == 0 ? (a >= 0 ? -1 : 1) : (b == -1 ? static_cast<int32_t>(0u - static_cast<uint32_t>(a)) : a / b); }
 // orig: (helper) R5900 DIV remainder (HI): x/0 leaves HI = x, INT_MIN/-1 gives 0.

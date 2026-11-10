@@ -115,6 +115,39 @@ the world passes' culls (the profiler's `Game: world passes`).
   the tie lighting is 0.2-0.5 % of the main thread (1.7 % on Hoven, a third of it its VU0 micro program, which a rewrite
   would not change), the shrub lighting 0.2 % or less, and neither shows at a level's load. At most 0.01-0.03 ms to win.
 
+## The float helpers' raw forms
+
+The helpers that apply the PS2's float rules did so by hand at every operation: the EE FPU's `fpu_add` / `fpu_sub` /
+`fpu_mul` (`ovl_common.h`: one call for each of the generated code's 31,000 COP1 adds, subtracts and multiplies) through
+doubles with three classifications, the VU0 macro ops with a clamp of every operand and of the result. But the thread they
+run on is in the EE's float mode already (`runtime/ee/ps2_fpu.h`: toward zero, flush-to-zero, denormals-are-zero), and there
+the host's own operation gives those rules' result: a denormal operand reads as the signed zero, a denormal result comes
+back as the signed zero, a result past the range as the signed largest float. Only an operand with exponent 255 differs - a
+number on the PS2, an infinity or a NaN on the host - and the host's result then has exponent 255 too, whatever the other
+operand. So a helper does the plain operation, and takes its rule-by-rule form (the code it had, out of line) only when the
+result has exponent 255. With `RAC1_FPU_NEAREST=1` the thread is not in that mode, and the rule-by-rule forms stay.
+
+**The EE FPU** (`RAC1_PERF_FPU_RAW`; `=0`: the rule-by-rule forms, `=2`: those, each compared with what the raw form would
+give, the account at the end of the run): `fpu_add`, `fpu_sub` and `fpu_mul` are `s op t` and a test of the result's
+exponent. `fpu_div` is as it was (the division's own cost, and its rounding to nearest). Proved:
+
+- `tests/fp/fp_raw_equiv.cpp` (CMake `RAC1_FP_TEST`; no disc, no generated code): each helper run with the raw form off and
+  on, on the same operands, the result compared bit for bit - random words mixed with the edges (exponents 0, 1 to 3, 252 to
+  255 and around 127, mantissas zero, one bit, all ones; pairs made to cancel or to land at either end of the range): 540
+  million cases of the three, 0 differing. With the flush-to-zero bit cleared the same test reports differences at once.
+- `=2` in the game: 245.7 million operations compared over the 19 levels (2000 frames each at 4:3, 900 widened to 16:9 with
+  LOD High on the game thread), 0 differing, 0 left to the rules, none on a thread outside the EE's mode; in the
+  oracle's batches the same (batch 63: 4,952 compared, 2 left to the rules).
+- `RAC1_RAMHASH` identical to the build before on the 19 levels, at 4:3 and widened; the reference images; the oracle's
+  batches (63, 79, 93, 101, 118, 125, 141, 470 on Veldin; 480 to 483 on their seven levels; 112, 138, 140, 91, 120, 44 and 50
+  on their own) pass with it on, off and at `=2`.
+
+Measured headless (4:3, `RAC1_PIPELINE=1`, forward, the profiler's medians over the last 600 of 1860 frames, three runs of
+each taken in turn on the fast cores), against the same build with it off: the game's code within the noise on Veldin
+(0.901 to 0.907 ms a frame) and Hoven (1.189 to 1.184), 2 to 5 % less on Kerwan (1.544 to 1.518), Rilgar (0.950 to 0.925)
+and Blarg Station (1.107 to 1.053). A frame's FPU operations are few beside its VU0's (below): on Kerwan 21 million against
+296 million in 2000 frames.
+
 ## The widened view's and the LOD slider's shadow runs
 
 With the view wider than the game's 4:3 frustum (16:9 and wider, the sides filled) or the LOD slider off Original, the moby pass,
@@ -506,6 +539,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_UPLOAD_MEMO=0` | every texture upload's piece written into the GS memory model, as before (`=2`: both, checked) |
 | `RAC1_PERF_DIRECT_WORLD=0` | the world passes' chain ranges copied and walked when the host makes the world (`=2`: both, compared; `=3`: the direct world at 4:3 Original too) |
 | `RAC1_PERF_SKY_LATE=1` | the sky after the leading opaque tfrag batches (off by default: not exact) |
+| `RAC1_PERF_FPU_RAW=0` | the EE FPU helpers by the PS2 rules at every operation, through doubles (`=2`: those, compared with the raw forms) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
