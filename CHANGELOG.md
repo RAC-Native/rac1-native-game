@@ -5,6 +5,13 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: classes of other planets** (`import` lines in `level.txt`, the mod SDK's ABI 6): a level mod can bring a
+  class of another game level, with what it spawns (its shots, their explosions, its debris), and its plugin starts them
+  (`import_class`, `import_spawn`) or brings them in and out during play (`import_load`, `import_release`). They are
+  the open engine's first part for level mods (docs/open-engine.md): for now classes that read no paths or groups of
+  their own planet, such as Umbris's turret (`import umbris.turret`) and Orxon's spore plant (`import
+  orxon.spore_plant`), drawn by the modern renderer. The setup's composer makes the asset pool from your disc when a
+  level needs it. See docs/mods.md and docs/sdk.md.
 - **The development channel follows the `dev` branch** (#141): the work lands on `dev` first and is merged into `main`
   from time to time, so following `main` missed the newest changes. The update check (Main menu > Updates) now counts
   the commits on `dev` the installed build lacks, and an update on Development checks out `dev` (a clone on `main` or
