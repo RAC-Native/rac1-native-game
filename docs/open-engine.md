@@ -1005,7 +1005,7 @@ classes imported, the class table 218 of 224).
 | `s8_walk` (forward from Kerwan's start) | the same path as on Kerwan: over the bridge, down the steps, stopped by the wall at 264.18 151.49 50.00 (the native run's stop: 264.18 151.49 50.00) |
 | `s8_robots` (`RAC1_SIM_INPUT=attack`) | Kalebo III's six robots walk to Ratchet and hit him (4 -> 3), die to the wrench, drop bolts (20); a death there: back at the checkpoint in kalebo, the six robots back, fighting again |
 | `s8_rail` | dropped onto Kalebo III's own rail 4: carried along it (the section's rail table: its gameplay file's) |
-| `s8_die` | a death in each world: back at its checkpoint, in it |
+| `s8_die` | a death in each world: back at its checkpoint, in it (two Kerwan crates missing afterwards were not the respawn's: they sit on Kerwan's lift 1210, which the test's `objects` did not choose, and fell through at the entry; with 1210 chosen all nine are there before and after the death: stage 9's `s9_die`) |
 | A save in kalebo (`s8_save`, a crate taken out, `RAC1_SESSION_SAVE_AT=1800:2`), loaded on Kerwan (`RAC1_GOTO=3@60 RAC1_SESSION_LOAD_AT=1200:2`) | the item: checkpoint `arrive` in kalebo; after the load's landing kalebo streamed in, the switch, Ratchet at its checkpoint, the crate still out |
 | `s8_unload` | kerwan left, unloaded (its 19 MB given back), entered again: streamed in again while playing, the renderer's kept level taken back (the tables at the same addresses) |
 | The original; formats 2 and 3 | the reference pictures and RAMHASH unchanged; `RAC1_SECTION_EQUIV` all 19 levels ok; the arena's format 2 regression and stage 5's format 3 runs with the same RAMHASH; the composer's output for the regression mods byte for byte the same |

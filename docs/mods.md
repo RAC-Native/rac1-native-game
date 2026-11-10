@@ -782,7 +782,9 @@ end
   `[compose] section kalebo: level 16's world (...); 59 of its 1568 objects in its box: 52 x5, 500 x35 (the base's), 638 x8,
   1445 x11, uids 10..68`. The game keeps at most 224 classes at once (the base level's and every import of the session):
   `objects all` in a large box can reach it (objects of classes of code alone, such as cameras and triggers, are not placed:
-  the log says so).
+  the log says so). An object resting on another object needs that one chosen too: Kerwan's two crates by its start sit on
+  a lift (class 1210); without `1210` they fall through when the section is entered (they are not broken, so a death does not
+  bring them back).
 - **Memory**: a world takes about 18 to 20 MB of the session's memory above 64 MB (Kerwan 19.2 MB, Kalebo III 18.0 MB), read
   from your disc while you play, before you enter it (the log's `[section] kalebo: level 16's world: ...`).
 - **Not in a world's section**: `meshes`, `rail` / `rails` and `moby` lines of the base level's classes (its own scenery and
