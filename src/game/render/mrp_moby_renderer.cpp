@@ -214,6 +214,8 @@ struct Level {
     // textures renumbered into this level's (after the armors' and the guest's); the list's generation loaded
     std::map<int, std::unique_ptr<mrp::MobyClass>> imports;
     uint32_t imports_gen = 0;
+    std::map<int, std::vector<mrp::Texture>> foreign;  // (the import list's levels' textures, read once while the level is loaded)
+    size_t imports_orphaned = 0;  // (textures of imports removed since the load: their layers stay until the next full load)
     // the class header in EE memory and the moby's class id (+0xa6) -> GPU data (the weapons share one header, the class
     // table naming it under each weapon's id: the header alone named the last of them)
     std::unordered_map<uint64_t, std::unique_ptr<ClassGpu>> by_ptr;
@@ -640,7 +642,7 @@ void import_classes(Level& L) {
         list = g_imports;
     }
     L.imports_gen = g_imports_gen.load();
-    std::map<int, std::vector<mrp::Texture>> cache;
+    std::map<int, std::vector<mrp::Texture>>& cache = L.foreign;
     for (int key : list) {
         const int lvl = key / 10000, cls = key % 10000;
         if (lvl == L.id || L.imports.count(key) != 0) continue;
@@ -654,6 +656,44 @@ void import_classes(Level& L) {
     }
     if (!L.imports.empty() || L.imports_gen != 0)
         std::printf("[mrp] level %d: %zu imported classes (another level's), %zu moby textures\n", L.id, L.imports.size(), L.textures.size());
+}
+
+void upload_buckets(Level& L, size_t first);
+
+// orig: (host) the import list changed during play (a session's class loaded or released): the new classes read and their
+// textures uploaded into arrays of their own, the released ones dropped; the level's own classes, textures and vertex data
+// kept (no reload of the level's moby assets). False when a full load is better (too many textures left behind by releases)
+bool import_incremental(Level& L) {
+    const double t0 = now_ms();
+    std::vector<int> list;
+    {
+        std::lock_guard<std::mutex> lock(g_imports_mu);
+        list = g_imports;
+    }
+    size_t removed = 0;
+    for (auto it = L.imports.begin(); it != L.imports.end();) {
+        if (std::find(list.begin(), list.end(), it->first) == list.end()) {
+            std::set<int> own;  // (its textures: left in their arrays, unused, until the next full load)
+            for (const mrp::Packet& p : it->second->packets)
+                for (const mrp::TexturePrim& t : p.textures)
+                    if (t.texture >= 0) own.insert(t.texture);
+            L.imports_orphaned += own.size();
+            it = L.imports.erase(it);
+            ++removed;
+        } else {
+            ++it;
+        }
+    }
+    if (L.imports_orphaned > 256) return false;
+    const size_t classes = L.imports.size(), first = L.textures.size();
+    import_classes(L);
+    L.tex_bucket.resize(L.textures.size(), -1);
+    L.tex_layer.resize(L.textures.size(), 0);
+    if (L.textures.size() > first) upload_buckets(L, first);
+    std::printf("[mrp] level %d: the import list changed: %zu classes read, %zu dropped, %zu textures added in %zu arrays (%.1f ms; the level's "
+                "own assets kept)\n",
+                L.id, L.imports.size() - classes, removed, L.textures.size() - first, L.buckets.size(), now_ms() - t0);
+    return true;
 }
 
 // orig: (host) the level's moby textures (textures.mrpt) decoded to RGBA (palette[CSM1 index], the GS's
@@ -696,13 +736,21 @@ void load_textures(Level& L) {
     import_classes(L);
     L.tex_bucket.assign(L.textures.size(), -1);
     L.tex_layer.assign(L.textures.size(), 0);
+    upload_buckets(L, 0);
+}
+
+// orig: (host) the textures from `first` on put in texture arrays of their own (one per size: the buckets the draws bind) and
+// uploaded: all of a level's at its load, an import's appended ones when the import list grows during play (the level's own
+// arrays kept as they are)
+void upload_buckets(Level& L, size_t first) {
+    const size_t first_bucket = L.buckets.size();
     auto csm1 = [](uint32_t i) { return ((i & 0x08) != 0) != ((i & 0x10) != 0) ? i ^ 0x18u : i; };
     std::vector<uint32_t> px;
     // the mods' replacements (texture_mods.h), by the texture's level 0 as uploaded below; a replaced texture goes in the
     // bucket of the replacement's size
     std::vector<std::shared_ptr<const texture_mods::Image>> rep(L.textures.size());
     if (texture_mods::on())
-        for (size_t i = 0; i < L.textures.size(); ++i) {
+        for (size_t i = first; i < L.textures.size(); ++i) {
             const mrp::Texture& t = L.textures[i];
             if (t.width == 0 || t.height == 0 || t.mips.empty() || t.mips[0].size() < static_cast<size_t>(t.width) * t.height) continue;
             px.resize(static_cast<size_t>(t.width) * t.height);
@@ -710,7 +758,7 @@ void load_textures(Level& L) {
             rep[i] = texture_mods::find(t.width, t.height, px.data(), "moby");
         }
     std::map<std::pair<uint32_t, uint32_t>, int> by_size;
-    for (size_t i = 0; i < L.textures.size(); ++i) {
+    for (size_t i = first; i < L.textures.size(); ++i) {
         const mrp::Texture& t = L.textures[i];
         if (t.width == 0 || t.height == 0 || t.mips.empty() || t.mips[0].size() < static_cast<size_t>(t.width) * t.height) continue;
         const uint32_t tw = rep[i] != nullptr ? rep[i]->w : t.width, th = rep[i] != nullptr ? rep[i]->h : t.height;
@@ -727,7 +775,8 @@ void load_textures(Level& L) {
         b.textures.push_back(static_cast<int>(i));
         b.levels = std::max<uint32_t>(b.levels, static_cast<uint32_t>(std::min<size_t>(rep[i] != nullptr ? rep[i]->mips.size() : t.mips.size(), 4)));
     }
-    for (Bucket& b : L.buckets) {
+    for (size_t bi = first_bucket; bi < L.buckets.size(); ++bi) {
+        Bucket& b = L.buckets[bi];
         uint32_t maxl = 1;
         while ((b.w >> maxl) > 0 && (b.h >> maxl) > 0 && maxl < b.levels) ++maxl;
         b.levels = std::max(1u, std::min(b.levels, maxl));
@@ -1862,9 +1911,8 @@ void mrp_moby_begin_frame(bool title, bool menu_mode, bool title_menu) {
     const int guest = g_mrp_guest_class.load();  // (the free hoverboard's class asked for after the level's load: loaded again with it)
     const bool guest_new = guest >= 0 && guest != g_level.guest_key && guest / 10000 != id;
     const bool imports_new = g_imports_gen.load() != g_level.imports_gen;  // (the import list changed: a session's classes)
-    if (g_level.id != id || (!g_level.missing && ((vk::is_active() && !g_level.vk_loaded) || (!vk::is_active() && !g_level.gl_loaded))) || guest_new ||
-        imports_new)
-        load_level(id);
+    const bool whole = g_level.id != id || (!g_level.missing && ((vk::is_active() && !g_level.vk_loaded) || (!vk::is_active() && !g_level.gl_loaded))) || guest_new;
+    if (whole || (imports_new && (g_level.missing || !g_level.loaded || !import_incremental(g_level)))) load_level(id);
     // the level's loaded classes (0x197300 / 0x197a00, count 0x15ffc0): a new set (the level entered
     // again, a class loaded) forgets the classes resolved by header address
     uint64_t h = 1469598103934665603ull;
