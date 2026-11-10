@@ -148,6 +148,27 @@ each taken in turn on the fast cores), against the same build with it off: the g
 and Blarg Station (1.107 to 1.053). A frame's FPU operations are few beside its VU0's (below): on Kerwan 21 million against
 296 million in 2000 frames.
 
+**The VU0 macro ops** (`RAC1_PERF_VU0_RAW`, the same values): the adds, subtracts, multiplies and multiply-adds in every
+form - `vu0_macro.h`'s lane ops, `vu0_regs.h`'s ops with their flags (on the VU0's state and on a `LocalFlags`), `vu0_nf.h`'s
+without, `vu0_local.h`'s on a routine's local copy - clamped every operand and the result, about nine SSE instructions each
+around one `mulps` or `addps`. They now compute the lanes as they are, and compute them again by the rules, out of line,
+only when a lane the op writes has exponent 255. An op that makes flags makes the zero and the sign bits from the raw
+result: in the thread's mode the rules never set the underflow or the overflow bit either (their operands clamped, no result
+is a denormal or has exponent 255). Divisions, square roots, conversions, `VOPMULA`'s lane loop are as they were. Proved:
+
+- `tests/fp/fp_raw_equiv.cpp`: each op run with the raw form off and on from the same VU0 state - every lane mask, vf0 as a
+  destination, an operand that is the destination, ACC near the opposite of the product - the registers, ACC, Q and the
+  flags compared: 2.7 billion lane results with the FPU's, 0 differing; rounding to nearest, the flags differ at once.
+- `=2` in the game: 8.4 billion ops compared over the same runs, 0 differing, 8,207 left to the rules, none on
+  a thread outside the mode; in the oracle (batch 79: 12.4 million compared, 53 left to the rules).
+- `RAC1_RAMHASH` identical to the build before on the 19 levels at 4:3 and widened with LOD High on the game thread (there
+  `RAC1_MRP_SCENE_HASH` identical and `RAC1_MRP_LOD_VERIFY=1` without a difference too); the check modes of the routines
+  written by hand, which compare their local-copy ops with the transliterations' (`RAC1_WORLD_CULL_FAST=2`,
+  `RAC1_PERF_MOBY_DRAW=2`, `RAC1_DROP_SHADOWS_FAST=2`, `RAC1_SKY_FAST=2`, `RAC1_WORLD_LIGHTING_FAST=2`,
+  `RAC1_PERF_POSE_MEMO=2`): 0 differing on the 19 levels; the oracle's batches as above; the reference images.
+- Not run on AArch64 (no cross compiler or emulator on the development machine): the forms use only intrinsics the NEON
+  shim (`runtime/vu/vu_simd_shim.h`) already has, and `tests/fp/fp_raw_equiv.cpp` builds there as it is.
+
 ## The widened view's and the LOD slider's shadow runs
 
 With the view wider than the game's 4:3 frustum (16:9 and wider, the sides filled) or the LOD slider off Original, the moby pass,
@@ -540,6 +561,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_DIRECT_WORLD=0` | the world passes' chain ranges copied and walked when the host makes the world (`=2`: both, compared; `=3`: the direct world at 4:3 Original too) |
 | `RAC1_PERF_SKY_LATE=1` | the sky after the leading opaque tfrag batches (off by default: not exact) |
 | `RAC1_PERF_FPU_RAW=0` | the EE FPU helpers by the PS2 rules at every operation, through doubles (`=2`: those, compared with the raw forms) |
+| `RAC1_PERF_VU0_RAW=0` | the VU0 macro ops clamping every operand and result at every op, the pose's loops too (`=2`: those, the ops compared with the raw forms) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
