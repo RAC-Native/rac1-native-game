@@ -1,0 +1,15 @@
+# A class profile (docs/open-engine.md, "Class profiles"): our knowledge of a game class's level data, ids and offsets only.
+class 16:638 the jetpack trooper (shoots class 49; update 0x2d2cf0)
+pvar_size 0x310
+slot 0x120 path  start      # on its level it starts on a random point of this path
+slot 0x128 word  carried    # carried by a dropship (state 10 aboard)
+slot 0x12c area  area       # the polygon target_select reads
+slot 0x2b0 vec3  home       # where it flies to in state 1
+slot 0x2e0 word  alert      # its alert timer (the range 255: target_select_any)
+# a spawn: no start path (it starts where spawned), not carried, its area a square of 24 round its start
+default start none
+default carried value 0
+default area square 24
+# its flight kept out of walls and over the floor; hunting: its home 10 units from Ratchet on its side (kal_trooper)
+hunt object
+frame host kal_trooper
