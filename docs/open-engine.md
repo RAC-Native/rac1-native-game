@@ -22,7 +22,8 @@ of their values are level data, what a spawn gives them), and brings in enemies 
 from six planets, fight in the arena example's test copy. Stage 5 makes a level mod a **session** (`level.format 3`): the
 level is loaded once, at the arrival, and a death is a **soft reset** (Ratchet back at a checkpoint, no level load, the
 weapons, the ammo, the bolts, the plugins' state and their objects kept); a save made in a session brings the player back
-into it.
+into it. Stage 6 splits a session into **sections** (each its own collision, meshes, sky, lights, music and objects) switched
+by **portals** in one frame, streamed in on a worker thread and committed a little each frame, with no level load.
 
 ## Session memory
 
@@ -621,13 +622,187 @@ robots; and a copy of the example level, `s5-plateau`, on Veldin's engine with K
 | Veldin's engine (`s5-plateau`, `s5_robots`) | three of Kalebo III's robots (imported) and the level's sentries kill Ratchet: a respawn at the checkpoint `pad` |
 | The original | the reference pictures and RAMHASH unchanged; the arena's format 2 regression (six challenges, no import lines) unchanged |
 
-## What stage 6 builds on
+## Sections (stage 6)
 
-- The session runtime (`session_runtime.cpp`): one section (`main`) today; the `.pc` item already has a list of sections
-  (each its checkpoint and records), `session.txt` its lines. A section switch needs the hero's soft placement
-  (`session_respawn`'s first half without the death), the placed objects' snapshot per section, and the respawn policy per
-  section (DESIGN 7.6: `remove` / `freeze` / `keep`).
-- `ld_base_reset` frees the base view's heap blocks; a section's level data is the next owner of its own blocks.
-- Not done yet: sections and portals, streaming; placing imported classes with `moby` lines (only the base level's classes
-  are placed; imports are started by the plugin); a section's placed objects' equivalence test (DESIGN 7.4); the game's own
-  checkpoint saves of imported bosses (the hook is there: `session_checkpoint_game`) are untested with a boss.
+A session can be made of **sections** (DESIGN section 7): parts of the level with their own collision, meshes, sky, lights,
+music, fog, background, death height and objects, switched by **portals** while the game runs. A switch is no level load and
+no reset: Ratchet, his weapons, ammo and bolts, the plugins' state, the session's imported classes and every object that is
+not a section's stay as they are. The code: `src/game/enhance/sections.{h,cpp}` (gated by `g_sections_on`: a format 3 build
+with a `sections.txt`), the composer's `compose_sections` (`src/setup/level_compose.cpp`).
+
+### The level
+
+level.txt's lines outside any section block are the section **main** (where the ship lands, the level's own collision,
+meshes and sky as in format 1). The others are blocks:
+
+```
+leave remove                                  # main's objects when Ratchet leaves main: remove (default), freeze, keep
+entry from_yard 20 -4 0.5 3.1416              # where portals and section_enter put Ratchet in main
+portal east_gate 26 -4 0 31 4 6 to yard:west  # a box in main: Ratchet stepping in goes to the yard's entry west
+moby 16:1445 -10 -20 0.5 0                    # a class of another level placed (in main: at the arrival)
+
+section yard remove respawn reset             # its objects when it is left; its own respawn policy (default the session's)
+  offset 400 0 0                              # added to the level's offset, for its files and its lines
+  collision collision.obj                     # its own collision (none: main's stays)
+  meshes meshes.obj                           # its meshes (drawn only while it is the current section)
+  sky 16                                      # a game level's sky (none: main's)
+  music 16                                    # a game level's tracks, or none (none given: main's)
+  fog 120 60 40                               # and background, death_height: as the level's lines, for the section
+  lights lights_yard.txt                      # the modern lighting's file while it is current (none: main's)
+  entry west -20 4 0.5 0
+  checkpoint yard_mid 0 0 0.5 0               # checkpoint_set finds it by name; a death there brings Ratchet back in the yard
+  portal back -31 -4 0 -26 4 6 to main:from_yard
+  portal to_cave 26 -4 0 31 4 6 to cave:door fade 15
+  moby 500 4 -6 0.5                           # the base level's classes, placed by the game's rules (below)
+  moby 16:1445 10 14 0.5 3.14                 # classes of other levels (an import of each is added)
+end
+start yard:west                               # optional: the session starts there once the landing is over
+```
+
+The composer writes, per section, `section_<name>/collision.bin` (its own collision block, `build_collision`), `sky.bin`
+(the game level's sky block, as a level mod's `sky` line copies it) and `gameplay.bin` (a gameplay file with its placements
+only: the records as format 1 copies them from the base level's first placement of each class, their pvar entries and data,
+the fix-up lists, the shared pvar data; 0.3 KB for the test's four crates), and `sections.txt` (the sections, their
+settings, entries, checkpoints, portals, the classes of other levels placed, each section's range of the meshes in
+`host_meshes.mrpc`). The objects' uids continue from main's (the game's per-uid records stay distinct; at most 2047). A
+section's objects are spawned in the moby array's room for spawned objects. `compose.log` says per section what it has:
+
+```
+[compose] section gameplay: 1808 bytes (4 placements, 4 pvar entries, 1024 pvar bytes), packed 292
+[compose] section yard (remove when left, respawn reset): collision 83.7 KB, sky level 16's (228416 bytes), 6 meshes, 4 objects of the base level's classes (uids 7..10), 2 of other levels', 1 entries, 1 checkpoints, 2 portals, death height -10.0
+[compose] sections: main and 2 more, 5 portals, 8 objects in the sections (spawned when they are entered: in the room for spawned objects), 1 classes of other levels placed in main
+```
+
+### Streaming
+
+At the arrival every section is asked for: a worker thread (`std::async`) reads its files and decompresses its gameplay file;
+then, at the start of a game frame, the game's thread **commits** it within a budget (`RAC1_SECTION_BUDGET_MS`, 2 ms): the
+session heap's blocks it owns (`section <name>`: freed together by `section_unload`), the copies in chunks of 64 KB, its
+collision list relocated (as `level_collision_set` does), its sky relocated (`sub_0023f848`, the current sky's pointer kept),
+another level's music table read from that level's header, its objects placed and **frozen** (flag 2 of +0x34: not queued,
+neither updated nor drawn; out of the collision grid) until it is entered. A portal to a section not in yet waits for it
+(Ratchet keeps playing). The plugin streams with `section_load` / `section_unload` (ABI 10).
+
+```
+[section] yard streamed in: asked at frame 730, read and decompressed on the worker in 0.42 ms, committed in 1 frames (at most 0.447 ms a frame, 0.447 ms in all; the budget 2.0 ms), ready at frame 730 (19.9 ms after it was asked); collision 85744 bytes, sky 228416, gameplay 1808, 6 objects placed (frozen until it is entered)
+```
+
+### A switch
+
+A portal (Ratchet's position stepping into its box: entries outside the boxes, a box Ratchet is put in waits to be left
+first), the plugin's `section_enter`, a death whose checkpoint is in another section, or a loaded save: at the start of the
+game frame, once the section is in, after the fade's frames (a black rectangle over the HUD, darker each frame; the same
+back after the switch):
+
+1. the leaving section's objects by its policy: **remove** (taken out of play as the game takes a moby out; those already
+   killed are remembered and not placed again when it is entered, until a death there), **freeze** (above), **keep**
+   (left running). Main's placed objects are main's soft-reset snapshot's: removed ones come back as the arrival placed them.
+2. the entering section's state made the game's: the collision's tree and list (`0x173e40`, `0x15f618`), the sky's pointer
+   (`0x16051c`), the background (S + 0x23c..) and fog colours (`0x15f444..`, `fog_setup`, `bg_color_set`), the death height
+   (`0x15f638`), the music table (the level header's 15 words at +0x148, the track restarted when it changed), the lights
+   file (`mrp_user_lights_section`: the render thread reads it again), the meshes drawn (`host_meshes_sections`: the frame's
+   capture carries the mask, so the switch shows on the frame the game made it).
+3. its objects placed (when the leaving policy removed them) or unfrozen.
+4. Ratchet put at the entry (`hero_place`: his state 0, the camera cut behind him); the entry is the current checkpoint.
+5. the plugins' `section_leave` and `section_enter` callbacks.
+
+```
+[section] frame 1738: main -> yard at entry west (portal east_gate): the switch 0.167 ms (objects left 0.019, state 0.017, objects entered 0.006, Ratchet 0.123); main's objects removed: 7, yard's in play: 6; collision its own, sky level 16's, music level 16's; the session heap 1862 KB
+```
+
+### section_spawn_placements and its equivalence test
+
+`section_spawn_placements` (DESIGN 7.4) is `gameplay_load`'s moby part for one gameplay file, into the running session (new
+code beside the game's, which is not touched): each placement passing its spawn rule into a free slot of the moby array
+(`moby_spawn`'s; a session places an enemy killed "for the visit" again: DECISIONS 4), `moby_init`, its record's fields,
+its pvar block into the session heap (packed in placement order as `pvar_move` packs them), the fix-ups (the pvar words
+naming a placement: its slot; the offsets into its own block; the pointers into the shared pvar data, one block a section).
+The groups are not placed (the mod's sections have none: stage 8's hook).
+
+The test (`RAC1_SECTION_EQUIV=1 RAC1_SESSION_MEM=1 RAC1_LEVEL=<n>`): at the end of `gameplay_load`'s pvar fix-ups the level's
+gameplay file is read again from the disc, the native mobys taken out of the grid and cleared, and the file placed again by
+`section_spawn_placements` into the same slots (in order from the array's start, the moby queries' stamp counter as the
+load had it): every moby record must be the native load's byte for byte, every pvar block too with its own offsets and its
+shared-data pointers rebased, and the placement -> slot map the same. On all 19 levels:
+
+| Level | Mobys | Pvar words (rebased) | Result |
+|---|---|---|---|
+| 0 Veldin | 296 | 12 668 (359) | ok |
+| 1 Novalis | 929 | 39 440 (825) | ok |
+| 2 Aridia | 742 | 39 508 (977) | ok |
+| 3 Kerwan | 965 | 62 284 (1 274) | ok |
+| 4 Eudora | 494 | 31 764 (624) | ok |
+| 5 Rilgar | 1 405 | 86 252 (2 026) | ok |
+| 6 Blarg | 719 | 54 544 (1 213) | ok |
+| 7 Umbris | 648 | 29 576 (864) | ok |
+| 8 Batalia | 783 | 33 692 (645) | ok |
+| 9 Gaspar | 862 | 38 768 (1 068) | ok |
+| 10 Orxon | 828 | 79 132 (1 364) | ok |
+| 11 Pokitaru | 720 | 67 484 (1 641) | ok |
+| 12 Hoven | 678 | 79 084 (1 101) | ok |
+| 13 Gemlik | 943 | 47 400 (1 293) | ok |
+| 14 Oltanis | 542 | 40 252 (647) | ok |
+| 15 Quartu | 850 | 46 180 (1 253) | ok |
+| 16 Kalebo III | 1 534 | 54 568 (1 408) | ok |
+| 17 Drek's fleet | 728 | 41 780 (887) | ok |
+| 18 Veldin (finale) | 991 | 52 848 (1 516) | ok |
+
+(The first try differed on four levels in +0x9c only: the moby queries' stamp, a counter at `0x173e50` the ground probes
+count up; the test now starts it where the load did.) The test covers the placements' rules and fields; a session's own
+placing differs only in the slots (free ones of the spawned room) and the pvars' address.
+
+### Deaths, saves, leaving
+
+- **A death** in a section: `session_respawn` first makes the checkpoint's section the current one (at once, no fade), then
+  puts Ratchet there as before, then resets the current section's objects by its policy (its own `respawn`, else the
+  session's): `reset` places again its killed ones (and those killed before it was last left), the game's killed-for-good
+  ones not; in main, as stage 5 (its snapshot) plus its classes of other levels.
+- **Checkpoints** belong to a section: level.txt's in a block, an entry Ratchet came in by, `checkpoint_at` / the game's
+  own in the current one.
+- **Saves**: the `.pc` item's version 2 lists every section (its name; the checkpoint in the checkpoint's section; its
+  objects gone); a load streams the checkpoint's section in and switches to it once the landing is over, before Ratchet
+  is put at the checkpoint. Stage 5's version 1 items are read as main's.
+- **Leaving** (the ship, a save of another level): the sections dropped with the session (their heap blocks freed, all
+  meshes drawn again, the lights file the level's).
+
+### Testing
+
+The stage's test mod is a copy of the example level (`s6-sections`: main the plateau, `yard` the plateau again 400 units
+east with Kalebo III's sky and music, four crates and two of Kalebo III's robots, `cave` a room of our own 400 units north
+with Veldin's sky and no music, a crate and a robot; five portals) with plugin test hooks (`RAC1_MOD_TEST=s6_tour`,
+`s6_switch50`, `s6_walk`, `s6_save`, `s6_load`, `s6_ship`):
+
+| Test | Result |
+|---|---|
+| `s6_walk` (`RAC1_SIM_INPUT=forward`) | Ratchet walks from main into the east portal, across the yard on its own collision (44 units at z 20, 400 units from main's ground), into its east portal, and in the cave stops against its pillar (main's collision has nothing there) |
+| `s6_tour` | main -> yard (plugin) -> a death in the yard (back at its entry, in the yard) -> cave with a 15-frame fade -> a death in the cave -> main through the cave's portal (20-frame fade) -> a death in main -> yard by main's portal -> a crate taken out -> main by the yard's portal -> yard (the crate still out) -> a death (the crate back) -> the cave unloaded and entered again (streamed while playing: 3.7 ms on the worker, 0.28 ms committed, the switch 5 frames after the ask) |
+| `s6_switch50` | 50 switches main <-> yard, 25 by portals, 25 by `section_enter`: each 0.06 to 1.07 ms (median 0.33), the session heap the same after them |
+| Pictures (`RAC1_SECTION_DRAW_ALL` to compare) | each section's sky and meshes; with the mask off, the cave's walls show at main's horizon, with it they do not |
+| A save in the yard (`s6_save`, `RAC1_SESSION_SAVE_AT=2100:2`), loaded on Kerwan (`RAC1_GOTO=3@60 RAC1_SESSION_LOAD_AT=1200:2`) | the item: 3 sections, checkpoint `yard_mid` in the yard, its crate gone; after the load's landing the yard streamed in, the switch, Ratchet at `yard_mid`, the crate still gone |
+| The ship (`s6_ship`: to the yard and back by its portal; `RAC1_UNLOCK_PLANETS=3 RAC1_LEVEL_MAP_AT=2200` and a pad script choosing Kerwan) | the session left at Kerwan's header, its sections dropped, Kerwan played; choosing the level again enters it anew |
+| The original; formats 2 and 3 | the reference pictures and RAMHASH unchanged; the arena's format 2 regression and stage 5's format 3 runs (`s5-arena` 50 deaths, `s5-plateau`) with the same RAMHASH as before |
+
+**Not every game level's sky works on Veldin's engine**: Umbris's (7) and Gemlik's (13) end the game in the sky's draw (the
+same as a level mod's main `sky 7` line: not a sections matter); Kerwan's, Kalebo III's and Veldin's work.
+
+## What stages 7 and 8 build on
+
+- **Stage 7 (rails, Magneboots, set pieces)**: the rails are level data per section: the session view's rail table (0x15f70c,
+  0x15f710) should be swapped at a switch as the collision is (`apply_state`); a section's gameplay file can carry grind lines
+  (+0x74) as the game's does, `section_spawn_placements`' sibling to place them. ABI 7 is still reserved. The landing gate,
+  the Magneboots surfaces (collision types per section: they come with the section's own collision already) and the camera
+  service are not started.
+- **Stage 8 (game worlds as sections)**: a section of a game level's scenery needs (a) its world as host meshes (the MRP
+  world export into the section's own range of `host_meshes.mrpc`: the meshes' section tags and mask are there), (b) its
+  collision (a game level's block: `collision.bin` is the game's format already, so a level's own block can be copied as the
+  sky is), (c) its placements from the level's own gameplay file: `section_spawn_placements` places a game level's gameplay
+  as the native load does (the equivalence test), but a section of another level needs its uids mapped to session uids
+  (DESIGN 7.4: section index x 4096 + uid; today the composer numbers a mod's own sections' uids after main's), its moby
+  groups placed (+0x48: not yet) and its classes imported with their contexts (stage 3/4's), and the level's own level data
+  per section (paths, cameras, volumes in the registries: `ld_*` has no section owner yet). The sky and lights of a game level
+  per section already work (`sky <level>`, `lights`).
+- Not done: merged collisions (one collision for far-apart sections: a section without a `collision` line keeps main's,
+  which is the cheap form); per-section `object` / `trigger` lines (the level's own classes' objects and triggers are
+  session-wide); a section's own music files (a game level's tracks or none); a section's `path` lines' base-view paths are
+  not freed with the section; streaming the meshes' GPU data (the host meshes of every section are built with the level's
+  world at the arrival: 54 KB for the test); `start` is composed and read but untested.

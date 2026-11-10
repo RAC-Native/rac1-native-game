@@ -5,6 +5,15 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: sections and portals** (`level.format` 3, the mod SDK's ABI 10): a session can be made of **sections**
+  (`section <name> ... end` blocks in `level.txt`), each with its own collision, meshes, sky, music, lights, fog and
+  objects, and Ratchet goes between them through **portals** (boxes he walks into, with an optional fade) without any
+  loading: nothing is reset, only the section you are in is drawn, and the others are loaded in the background while you
+  play. Each section chooses what happens to its objects when you leave it (removed, frozen or left running); a death
+  brings you back at the checkpoint of the section you are in, with that section's enemies back; a save brings you back to
+  its section. `moby` lines can now place classes of other planets by name (`moby kalebo.robot ...`). The plugin can load,
+  enter and unload sections (`section_enter`, ...) and is told when Ratchet goes from one to another. See docs/mods.md
+  ("Sections") and docs/sdk.md.
 - Debug menu, **Hoverboard anywhere**: the board no longer falls through the ground at speed (#120; Kerwan's avenue at full
   speed went through the street within seconds) and slides along walls: the collision query's hit normal, which is not of
   unit length, is now normalised before the ride's floor and wall tests.
