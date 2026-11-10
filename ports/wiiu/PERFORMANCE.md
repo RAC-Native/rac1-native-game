@@ -1715,3 +1715,37 @@ one, the same runs). The game code stays 22 ms a step on Kerwan.
   step** (two A/B pairs); the frame stays 38.7: the three CPU chains are balanced (core 2: the world's first half, then the game step to
   the frame's end). Tried and removed: prefetching in the moby LOD patch's loop and its undo (`patch_moby_logged`, ~3.8% of the game
   thread with Daino's `lod 3`, waiting on each moby's cache lines): no gain.
+
+## The slow planets' night: lighting, the moby LOD read, zeroed cache lines, bigger display lists (2026-11-09/10)
+
+Deterministic runs (`RAC1_REALTIME=0`, 1500 steps, 47 windows), A/B pairs on the console; every change exact unless said.
+- **Blarg's world lighting:** the hand-written tfrag lighting (main's; the Wii U's own from 2026-11-01 was replaced in the merge of
+  main) made its point light range test - VSUBbc into vf0, for its MAC flags - through the SSE shim: now lane by lane with
+  `fin_lanes` (vu0_local.h `sub0bc`). `RAC1_WORLD_LIGHTING_FAST=2` on the console: 403 calls, 0 differing. Game code 29.15 -> 28.45
+  ms a step, the lighting 6.17 -> 5.45. Dropped: skipping the operand clamps when every memory input is VU-clean (exact, -0.1 ms).
+- **The moby LOD slider read, not patched** (`RAC1_WIIU_LOD_READ`, default 1; moby_draw.h `g_moby_lod_read_scale`): with Daino's
+  `lod 3` the real pass patched every moby's +0x32 / +0x72 and put them back each frame (patch_moby_logged and its undo: two cache
+  lines a moby, twice; 2.4-5% of the game thread). The draw loop now scales them where it reads them (including the next moby's
+  +0x32 it reads early), the same rule (x scale in double, capped; a class not loaded, a distance <= 0 and the list's end kept); the
+  global 0x15fff0 still patched. Proved: the MRP scene hashed every frame (`RAC1_MRP_SCENE_HASH=frame`) patch vs read, Kalebo /
+  Kerwan / Quartu ~600 frames each, 0 differing. With the scalar VU helpers forced inline (ovl_24_25.cpp, ovl_1e_1f.cpp,
+  particles_draw.cpp: one call per lane before): game code Kalebo 24.7 -> 22.7, Quartu 22.5 -> 20.9, Kerwan 21.8 -> 20.5.
+- **Zeroed cache lines** (`src/game/render/vec_room.h`, Wii U only: `dcbz` on the lines of the room a vector is about to be filled
+  in): the 750 reads a line from memory before any store to it, and the frame's big lists were read before being written. Applied to
+  the scene's packets and instances (first half), the world's draw records / draws / instances (build_triangles), the mobys'
+  prepare (poses, parts, records, draws), the scene observers on the game thread (joints, records, mobys). The chain's capture too: no change (dropped).
+  Kalebo: scene_from_static_k 9.37 -> 5.05 ms, build_triangles 26.96 -> 22.67, gpu_packet's replays 9.87 -> 7.19; Kerwan 3.68 ->
+  1.91 and 10.28 -> 9.56; the mobys' prepare Kerwan 5.43 -> 4.43, Kalebo 6.68 -> 5.21, Quartu 6.02 -> 4.62. Dropped: software
+  prefetch (dcbt) in build_triangles' packet loop and the merged plan's loop - both slower.
+- **The mobys' display lists:** kDlBytes 1.5 -> 3 MB, kRingBytes 16 -> 32 MB. The estimate (640 bytes a draw, ~170 measured) refused
+  Kalebo's ~2,400 draws in 503 frames of 504 and Quartu's in 277: drawn directly on the main thread. **Kalebo 50.5 -> 44.0 ms a
+  frame, Quartu 47.2 -> 44.1.** The Kalebo shot at frame 600: 608 pixels differ (max 71: moby edges, the list's order), not visible.
+- **The real-time sweep after these** (as "Every planet on the console"): Veldin 26.5, Novalis 34.5, Aridia 57.0 (60.9), Kerwan
+  38.2, Eudora 36.0 (37.8), Rilgar 32.5 (34.4), Blarg 46.0 (49.2), Umbris 26.6, Gaspar 46.6, Orxon 43.1 (46.1), Pokitaru 28.2, Hoven
+  33.6, Gemlik 28.2 (32.3), Oltanis 36.7, Quartu 44.3 (50.9), Kalebo 40.5 (46.7), Drek's fleet 26.2, Veldin 2nd 39.5 (41.6).
+  Batalia not run at night (a hang would have left the console stuck until morning).
+- **What bounds the frame now:** it is locked to the vsync through the GPU - the swap's flip waits for a vsync, the next frame waits
+  for the frame before last's timestamp, which comes after its swap -, so a frame past 33.3 ms is shown at 50 (the averages mix the
+  two). Kerwan's slow windows end the game thread at ~32 ms: it starts at ~9 ms, after the world's first half on core 2. Dropped:
+  the flip's wait moved from before the draws to before the copy into the scan buffer (`RAC1_WIIU_LATE_FLIP`): the wait moves to the
+  GPU's timestamp, the frame the same; `RAC1_WIIU_HEAD_CORE=-1` again (Kalebo 49 -> 54).
