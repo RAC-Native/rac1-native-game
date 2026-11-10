@@ -183,8 +183,6 @@ struct ParticleSpec {
     bool same_as(const ParticleSpec& o) const;
 };
 std::vector<ParticleSpec>& mrp_user_particles();
-// orig: (host) the particle lines as the file was read (the debug menu's edits compared with them: a line not edited written as it was)
-const std::vector<ParticleSpec>& mrp_user_particles_read();
 // orig: (host) the current level's file read when the level changed (what the shadow pass does at its start; the particles call it
 // with the lighting off as well)
 void mrp_user_lights_ensure();
@@ -430,8 +428,6 @@ bool mrp_lighting_camera(float cam[3]);
 void mrp_moby_draw_casters(const float* light_vp, const float* sphere = nullptr, const float* within = nullptr);
 // the distance from a point to the nearest moby part the frame draws (a large value when none)
 float mrp_moby_nearest_part(const float p[3]);
-// the light's clip-space rectangle (x0, y0, x1, y1) holding every moby part a caster pass draws (false: none)
-bool mrp_moby_caster_rect(const float* light_vp, float rect[4], const float* within = nullptr);
 
 }  // namespace rac1
 

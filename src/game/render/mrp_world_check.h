@@ -1,7 +1,8 @@
 // The proof of the MRP world assets: at a world VU1 program start, the packet in VU1 memory is found in the
-// assets, the CPU reference (src/formats/world_mrp.h) evaluates its kick program with the instance data and constants the
-// VU1 memory / registers hold, and the result is compared with the GIF packets the ported program kicks. Used by (captured
-// states, the levels' passes) and by the running game (RAC1_WORLD_MRP_CHECK=1).
+// assets (WorldIndex), the CPU reference (src/formats/world_mrp.h) evaluates its kick program with the instance data and
+// constants the VU1 memory / registers hold, and the result is compared with the GIF packets the ported program kicks
+// (compare_draw). Used by the running game's check (RAC1_WORLD_MRP_CHECK=1, mrp_world_scene.h); the world scene also finds
+// its packets with WorldIndex.
 #ifndef RAC1_GAME_RENDER_MRP_WORLD_CHECK_H
 #define RAC1_GAME_RENDER_MRP_WORLD_CHECK_H
 
@@ -53,9 +54,6 @@ struct CheckStats {
     std::map<std::string, uint64_t> cover;  // what ran: per program and start
     std::string summary() const;
 };
-
-// One program start: `st` the VU1 state as the program starts (not modified), `start` its micro address.
-void check_start(const WorldIndex& idx, const VUState& st, const uint64_t* micro, uint32_t start, CheckStats& stats);
 
 // One draw start's kicks as the CPU reference made them (`want`) against the GIF packets the program kicked (`got`): the A
 // programs qword by qword, the clipping programs (B) by the triangles their clip test leaves alone (the in-game check of the

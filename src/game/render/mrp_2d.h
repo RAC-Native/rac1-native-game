@@ -27,8 +27,6 @@ void mrp_2d_draw(const MrpChainFrame& f, int win_w, int win_h, float fb_w, float
 // orig: (host) the 2D's GPU textures and render targets forgotten (a level change; the GPU idle for them: Vulkan's are destroyed
 // when the frames using them are done). Returns the textures' count before.
 size_t mrp_2d_clear_caches();
-// orig: (host) the textures held now (the profiler, the tests)
-size_t mrp_2d_texture_count();
 
 }  // namespace rac1
 

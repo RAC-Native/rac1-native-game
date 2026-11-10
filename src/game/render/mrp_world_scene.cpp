@@ -1886,13 +1886,6 @@ bool scene_compare(const SceneFrame& w0, const SceneFrame& d0) {
     return st.check.check(ok, why);
 }
 
-// orig: (host) see mrp_world_scene.h: the capture and the build at once (the testing modes)
-bool scene_build(const WorldIndex& idx, uint32_t chain_start, uint32_t chain_end, SceneFrame& f, bool reset, bool kicks) {
-    static SceneInput in;
-    scene_capture(chain_start, chain_end, in);
-    return scene_build(idx, in, f, reset, kicks);
-}
-
 // orig: (host) see mrp_world_scene.h
 bool scene_build(const WorldIndex& idx, const SceneInput& in, SceneFrame& f, bool reset, bool kicks) {
     const uint32_t chain_start = in.chain_start, chain_end = in.chain_end;

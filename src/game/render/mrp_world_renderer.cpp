@@ -5219,12 +5219,6 @@ void mrp_world_finish_frame() {
     F.active = true;
 }
 
-// orig: (host) see mrp_world_renderer.h
-void mrp_world_begin_frame(bool active, uint32_t chain_start, uint32_t chain_end) {
-    mrp_world_begin_frame_async(active, chain_start, chain_end);
-    mrp_world_finish_frame();
-}
-
 int g_last_vp[4] = {};  // (mrp_world_last_viewport)
 // orig: (host) see mrp_world_renderer.h
 bool mrp_world_last_viewport(int out[4]) {

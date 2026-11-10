@@ -1728,7 +1728,4 @@ size_t mrp_2d_clear_caches() {
     return n;
 }
 
-// orig: (host) see mrp_2d.h
-size_t mrp_2d_texture_count() { return g_gl_tex.size() + g_vk_tex.size(); }
-
 }  // namespace rac1
