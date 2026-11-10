@@ -5,6 +5,12 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **A faster game frame** (no change to the pictures or the game): the game's own code takes 27 to 34 % less time a frame
+  and a frame at 16:9 with LOD High 16 to 18 % less. The PS2's float rules are no longer applied by hand at every
+  operation where the processor's mode already gives them (the VU0's and the FPU's adds and multiplies), the memory
+  accessors are no longer a call each, and work the renderer repeated every frame is done once (the reflections' cull
+  boxes with reflections off, the tfrags' opacity table, Vulkan's copy of every tie's colours, a megabyte of the game's
+  memory copied for readers that were off). See docs/performance.md.
 - **The renderer's code, cleaned up** (no change to the pictures or the game): functions nobody called removed from the
   Modern Rendering Pipeline (MRP) and the older renderers, and docs/rendering.md rewritten to say plainly what the MRP is
   and is not: the game's code still produces its draw commands, the MRP interprets them with its own OpenGL / Vulkan

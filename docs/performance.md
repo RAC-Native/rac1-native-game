@@ -180,7 +180,9 @@ is a denormal or has exponent 255). Divisions, square roots, conversions, `VOPMU
   `RAC1_MRP_SCENE_HASH` identical and `RAC1_MRP_LOD_VERIFY=1` without a difference too); the check modes of the routines
   written by hand, which compare their local-copy ops with the transliterations' (`RAC1_WORLD_CULL_FAST=2`,
   `RAC1_PERF_MOBY_DRAW=2`, `RAC1_DROP_SHADOWS_FAST=2`, `RAC1_SKY_FAST=2`, `RAC1_WORLD_LIGHTING_FAST=2`,
-  `RAC1_PERF_POSE_MEMO=2`): 0 differing on the 19 levels; the oracle's batches as above; the reference images.
+  `RAC1_PERF_POSE_MEMO=2`): 0 differing on the 19 levels widened (the culls 19,879 calls, the drop shadows 471,635, the sky
+  253,481, the lighting 6,673, the pose memo 694,563; every call on five levels, one in ten on the others; the moby draw
+  loop 7,793 calls on nine levels); the oracle's batches as above; the reference images.
 - Not run on AArch64 (no cross compiler or emulator on the development machine): the forms use only intrinsics the NEON
   shim (`runtime/vu/vu_simd_shim.h`) already has, and `tests/fp/fp_raw_equiv.cpp` builds there as it is.
 
@@ -657,6 +659,43 @@ thread, `RAC1_PIPELINE=1`, the last 1500 of 2400 frames of a forward walk) on Ke
   VU0 registers held before the pass - after the real pass, no longer what they held before it. The 16 pictures compared
   (Veldin, Kerwan, Rilgar, Hoven at 16:9 with LOD High, OpenGL and Vulkan, frames 300 and 600) are the same; whether
   anything ever reads those words was not established. `RAC1_MRP_SCENE_HASH` now prints the scene's kinds of data apart.
+All of this page's November changes together, the build before them against the build after (the same two ways of measuring,
+three runs of each taken in turn), ms a frame:
+
+| | Veldin | Kerwan | Rilgar | Blarg Station | Hoven |
+|---|---|---|---|---|---|
+| 4:3: the game's code | 1.09 -> 0.78 | 1.82 -> 1.30 | 1.11 -> 0.80 | 1.37 -> 0.94 | 1.47 -> 0.98 |
+| 4:3: `Game: world passes` | 0.42 -> 0.22 | 0.62 -> 0.30 | 0.34 -> 0.16 | 0.48 -> 0.25 | 0.61 -> 0.27 |
+| 4:3: `Game: moby joints / skinning` | 0.086 -> 0.044 | 0.134 -> 0.066 | 0.104 -> 0.049 | 0.048 -> 0.027 | 0.134 -> 0.063 |
+| 4:3: the main thread's CPU | 1.65 -> 1.31 | 3.00 -> 2.36 | 1.84 -> 1.49 | 2.23 -> 1.70 | 2.30 -> 1.75 |
+| 16:9, LOD High: the host frame | | 5.20 -> 4.37 | 4.06 -> 3.33 | | |
+| 16:9, LOD High: the game thread busy | | 4.07 -> 3.31 | 3.12 -> 2.60 | | |
+| 16:9, LOD High: the scene worker busy | | 1.92 -> 1.62 | 1.65 -> 1.23 | | |
+| 16:9, LOD High: `Prepare` | | 0.098 -> 0.022 | 0.095 -> 0.017 | | |
+
+The game's code 27 to 34 % less, the host frame at 16:9 with LOD High 16 to 18 % less. Every figure is of a shared machine:
+the runs of one table were taken together, the tables hours apart.
+
+Looked at and left, or tried and taken out again:
+
+- **The chain reader's skip lookup** (`mrp_chain.cpp` `skip_of`): for a tag outside every range it walks back over the ranges
+  before it. An early out by the ranges' largest end gave the same answer 654 million times of 654 million, and no time: the
+  chain worker and the capture within the noise at 4:3 and at 16:9, five runs each. Taken out. Its `marks()` only for the
+  tags that are read was not tried: it sets `fx_mark`, which a skipped tag inside an effect's range sets today.
+- **The scene capture's table** (`mrp_world_scene.cpp`: 393 KB zeroed at each capture): emptied by a generation instead, the
+  capture's time within the noise. Taken out.
+- **The materials' capture asked for by a moby's metal** (`mrp_lighting.cpp` `material_uniforms`): a moby's shader never reads
+  the capture, but leaving its metals out of the flag changes nothing: every level's own file has polished metals on its
+  ties, shrubs or tfrags (6 to 62 of them), which ask for it by themselves. Taken out. The new stage measures the capture:
+  0.43 to 0.46 ms of GPU a frame at 1920 x 1080 and 1.39 to 1.44 at 5120 x 1440 (Veldin, Kerwan, Rilgar; of 14.7 to 18.1
+  ms), on every level with Surface Detail on. Asking for it only when a drawn batch carries a material that reads it, and
+  a smaller copy, are what would change that.
+- **`-march=native`** (`RAC1_NATIVE_ARCH`) on top of the above: the game's code -8.5 to +5.2 % over the five levels, no
+  level outside the runs' spread; `RAC1_RAMHASH` identical on four levels. The default stays off.
+- **The frame loop's `getenv` calls** (about forty testing variables read every frame in `orig_main.cpp`,
+  `mrp_lighting.cpp` and `mrp_world_renderer.cpp`): microseconds on Linux, nothing a run here can show; a change of some
+  hundred call sites. Not done.
+
 ## Switches to compare
 
 These are testing variables: they are honoured in a headless run, or in a window started with `--debug-tools`
