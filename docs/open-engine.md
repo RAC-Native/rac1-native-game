@@ -782,8 +782,12 @@ with Veldin's sky and no music, a crate and a robot; five portals) with plugin t
 | The ship (`s6_ship`: to the yard and back by its portal; `RAC1_UNLOCK_PLANETS=3 RAC1_LEVEL_MAP_AT=2200` and a pad script choosing Kerwan) | the session left at Kerwan's header, its sections dropped, Kerwan played; choosing the level again enters it anew |
 | The original; formats 2 and 3 | the reference pictures and RAMHASH unchanged; the arena's format 2 regression and stage 5's format 3 runs (`s5-arena` 50 deaths, `s5-plateau`) with the same RAMHASH as before |
 
-**Not every game level's sky works on Veldin's engine**: Umbris's (7) and Gemlik's (13) end the game in the sky's draw (the
-same as a level mod's main `sky 7` line: not a sections matter); Kerwan's, Kalebo III's and Veldin's work.
+**Another level's sky** (a section's or the level's `sky` line) is drawn by that level's own sky variant, not the base's
+(`sky_render`, `src/game/ovl/sky_levels.cpp`; the level from build.json's `sky` and sections.txt): each variant is made for its
+own sky. Before, the base's ran on it: Veldin's makes 256 stars in the sky's sprite list (the header's +0x1c, room for +0xa
+entries), so Umbris's (7), Gemlik's (13), Rilgar's (5) and Quartu's (15), with room for 128, had their first shell's header
+overwritten by the 129th star (a cluster count of about 0x08000000: the game ended in the sky's draw), and the skies
+with no list had 256 stars written at EE address 0.
 
 ## What stages 7 and 8 build on
 

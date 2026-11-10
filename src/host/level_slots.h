@@ -47,6 +47,10 @@ int level_slot_current();
 // orig: (none) — enhancement: slot `slot`'s base level (-1: no such slot)
 int level_slot_base(int slot);
 
+// orig: (none) — enhancement: the level whose sky slot `slot`'s build has (its level.txt's sky line), -1 the base level's (or no
+// such slot)
+int level_slot_sky(int slot);
+
 // orig: (none) — enhancement: slot `slot`'s build folder ("" when none) and its mod's folder (its level/ files)
 std::string level_slot_build_dir(int slot);
 std::string level_slot_mod_dir(int slot);
