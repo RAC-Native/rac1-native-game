@@ -50,6 +50,12 @@ int32_t sections_rail_first(int index);
 // sections_save_end to put it back after the image
 int sections_save_begin();
 void sections_save_end(int level);
+// orig: (host) moby_spawn gave slot `moby` (`by`: the moby whose update or callback runs, 0 none): a moby one of a section's objects (or
+// one of theirs) spawned is that section's, taken out with them when it is left (frozen with them) and with a boss placed again
+void sections_moby_spawned(uint32_t moby, uint32_t by);
+// orig: (host) `moby` one of the current section's objects (or a moby they spawned) while that section is a game world's: the
+// world's own (leveldata.cpp: its level's data, not the base's, for a class the base has a profile for)
+bool sections_world_object(uint32_t moby);
 // orig: (host) the session's arrival (session_rt_loaded): main's collision, sky, settings and music taken as the game set
 // them, main's classes of other levels placed, the other sections' streaming started
 void sections_arrival();

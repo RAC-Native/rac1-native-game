@@ -1329,6 +1329,58 @@ current (`apply_state`, after its world state): every zone drawn wherever the ca
 own visibility, before any drawing). At 150 236 28: 124 of 124 tfrags and 118 of 118 ties; the pictures there the same within
 82 pixels (the sky's stars). For a camera the planet never had, or one off the grid whose last list is another place's.
 
+## A world's objects: what they spawn, which class they are, their effects
+
+Three things found with the arena's escape into Umbris's cave (`sections.cpp`, `section_world.cpp`, `leveldata.cpp`,
+`moby_spawn` in `ovl_24_25.cpp`).
+
+**An object whose code changes its class id.** A section knew its objects by slot, uid (+0xb2) and class id (+0xa6). Umbris's
+class 529 (Ratchet's ship parked on the planet: its update queues the ships' canopy draw, L7:0x2ba260 = Veldin's 0x2935b8)
+writes 533 into its own +0xa6 at its first update, as every ship class does (0x212..0x215). Its object then looked gone:
+leaving the section did not take it out, and it stayed in play in main with Umbris's class block under the session's own ship
+id 533 (the arena's ship): at the first frame there `moby_update_visible` -> `moby_anim_advance` read an animation pointer out of
+range (`Pointer resolution out of bounds: 0x131c0657`; the arena's 0x7a020000). It showed only with the arena's `update_all`
+line: without it the 529 is out of its update range at the cave's entry and never runs. An object is now known by its slot and
+uid with its class id or, when its code changed that, its class block (+0x24 as placed).
+
+**What the objects spawn.** `moby_spawn` tells the sections (`sections_moby_spawned`, while a session with sections is on)
+which moby's update or callback runs (`g_spawn_updating`): a moby spawned by one of a section's objects, or by one of those,
+is that section's. Leaving the section (`remove`) takes them out with the objects; `freeze` freezes them too; a death takes a
+boss's out before it is placed again (before: the Snagglebeast's three 1046 stayed beside the new boss's). In the arena's
+cave (`objects all`, 109 objects): 24 to 67 such mobys at the return to main (the debris and bolts of crates 13, 14, 226, 315,
+357, 358, 806, the boss's 1046), all of them before left running in main on Umbris's code.
+
+**Same-id classes.** The pool's block hashes said a class id is the same class on every level; the code was not compared.
+`tools/overlay_match/class_code.py <levelA> <levelB> [class...]` compares a class's update function on two levels on the
+disc's own MIPS, instruction by instruction with the relocated fields masked, each jal and lui + lo address classified (the
+base executable's, the engine's data or function through the map and its extents, a label of the same function, a function
+of the level's own compared in turn, own data), every function it calls followed. Against Kalebo III, of the 108 to 118 ids
+each level shares with it, every one with an update function has the same code but 1134 on every level (a helper it calls,
+built otherwise in Kalebo III), Eudora's 605, Rilgar's 439 (the board) and Veldin 2's 638 (the same: engine helpers each
+build compiled its own way). Umbris's 605 (an invisible zone marker, no model: novalis_props.cpp's zone_marker_update_at; the
+hero's camera may turn to the nearest within 20 units), 805 (the checkpoint), 1135 (a teleporter pad), Quartu's 605 and
+Rilgar's 1139: the same block, the same textures (the MRP's texture data), the same sounds (the banks' samples), the same code.
+Placed as the base's class they are the planet's objects (their placements' pvars are the planet's); there was nothing to
+import under another id. What still differs is the engine's: the level number they read is the base's (605's hint row
+0x14bf10 + level * 16, 805's checkpoint rows) and the class table's +0x2c word is the base level's (one list for all its
+classes).
+
+One caveat of stage 10 was a real difference: a world's own objects of a class the base has a profile for (Gaspar's 52 on
+Kalebo III's base) updated on the base's level data (`LD_BASE_IN_WORLD`), meant for the base's enemies a plugin brings into
+the world. They now keep the world's (`sections_world_object`): Gaspar's 52 by its start in `world gaspar` stays as on Gaspar
+(state 1) where it read Kalebo III's paths and walked off (state 4).
+
+**The effect textures.** The level's effect textures (the asset index's +0x58 count, +0x5c entries, +0x68 data: the
+particles', the Snagglebeast's fire rings and flames, drawn through `effect_tex0`) were the base's in a world's section. The
+first 40 are the same on every level; the rest are each level's own (Umbris 79, Kalebo III 56, Aridia 106; Batalia shares 54
+with Kalebo III). The rings (class 1046's draw callback, L7:0x30dcf0) take one past the 40: on Kalebo III's base nothing or
+the wrong picture was drawn. A world's build now copies its effect texture block (Umbris 0.4 MB) and makes the table as
+level_setup_body does (`sub_0023f768`); the data word 0x15f420, the count 0x15f41c and the table 0x16d180..0x16d880 are part of
+the world's state (their cached TEX0s cleared when it is swapped in or out). With Umbris's: the shock waves' fire rings as on
+Umbris itself (pictures at the same frames after the arrival, 60 to 360: on Umbris, before only sparks at the boss's feet, now
+the rings).
+A base enemy in a world's section (`base_spawn`) draws its own effects past the 40 with the world's pictures.
+
 ## What the next stage builds on
 
 - **Hero contexts (stage 9)** and **the camera level (stage 10)**: a planet's own hero code and camera code in its world.

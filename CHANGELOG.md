@@ -5,6 +5,13 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: a planet's world as a section, its objects and effects.** Coming back to main from Umbris's cave with its
+  class 529 placed (Ratchet's ship parked there, which makes itself the ship class 533) crashed the game; it now leaves with
+  the section's other objects. What a world's objects spawn (a boss's helpers, debris, explosions) leaves with them too, and a
+  death takes a boss's out before it comes back. The Snagglebeast's fire rings and the planet's other effects draw with the
+  planet's own effect textures (they were the base level's: missing or wrong). A world's objects of a class the base level
+  also uses keep reading their planet's paths (Gaspar's 52 on Kalebo III's base). Classes "(the base's)" in compose.log are
+  the planet's own (the same model, sounds and code).
 - **A faster game frame** (no change to the pictures or the game): the game's own code takes 27 to 34 % less time a frame
   and a frame at 16:9 with LOD High 16 to 18 % less. The PS2's float rules are no longer applied by hand at every
   operation where the processor's mode already gives them (the VU0's and the FPU's adds and multiplies), the memory

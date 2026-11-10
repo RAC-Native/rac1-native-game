@@ -4,6 +4,7 @@
 #include <game/enhance/class_profiles.h>
 #include <game/enhance/context.h>
 #include <game/enhance/pool.h>
+#include <game/enhance/sections.h>
 #include <game/enhance/session.h>
 #include <game/enhance/session_runtime.h>
 #include <game/ovl/ovl_common.h>
@@ -415,8 +416,9 @@ int ld_enter(uint32_t moby) {
     const int level = cls < 0x1ec0 ? g_ld_class_level[cls] - 1 : -1;
     // (stage 10) a world's section is current (its level's objects the engine's): an enemy of the session base's own (a class the
     // base has a profile for: Kalebo III's robots of a level mod on its base, base_spawn's) updates on the base's objects, kept by
-    // ld_engine_take, as everywhere else in the session (its patrol, its hunt)
-    if (level < 0 && g_taken >= 0 && cls != 0 && profile_find(lw(0x0015ed84), cls) != nullptr) {
+    // ld_engine_take, as everywhere else in the session (its patrol, its hunt); not the world's own objects of that class (its
+    // placements, what they spawned: their pvars name the world's paths and volumes)
+    if (level < 0 && g_taken >= 0 && cls != 0 && profile_find(lw(0x0015ed84), cls) != nullptr && !sections_world_object(moby)) {
         uint32_t* s = g_saved;
         const uint32_t* b0 = g_taken_saved;
         for (const Obj& o : OBJS) {
