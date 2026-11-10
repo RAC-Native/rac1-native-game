@@ -103,6 +103,15 @@ struct Obj {
     int32_t src = -1;   // (a world section's: its placement's index in its level's file)
     bool boss = false;  // (stage 10: one of its section's bosses: a `boss` line's class, or the plugin's boss_set)
     float at[4] = {};   // (a boss the plugin spawned: where it was when set, to spawn it again after a death)
+    uint32_t cptr = 0;  // (its class's block as placed, +0x24: its class id +0xa6 may change, its own code's doing - Umbris's 529 becomes 533)
+};
+// a moby spawned by one of a section's objects (or by one of those), while it was in play: taken out with them when the section is
+// left (frozen with them), and with a boss placed again after a death
+struct Kid {
+    uint32_t root = 0;  // (the section's object it comes from)
+    uint32_t cptr = 0;  // (+0x24 and +0xb2 as spawned: its slot not reused since)
+    int16_t b2 = 0;
+    uint32_t f34 = 0;   // (frozen: its +0x34 flags before)
 };
 // the files of a section as the worker read them
 struct Bytes {
@@ -148,6 +157,7 @@ struct Section {
     // its objects
     bool spawned = false, frozen = false;
     std::vector<Obj> objs;
+    std::map<uint32_t, Kid> kids;  // (the mobys its objects spawned, by slot)
     std::set<int32_t> dead;   // (uids killed since it was entered: not placed again until a death there)
     std::set<int> dead_imp;   // (the same for its classes of other levels, by line)
     uint32_t shared = 0;      // (its gameplay's shared pvar data, made at the first placement after an entry)
@@ -216,8 +226,39 @@ bool g_mode_pending = false;  // (stage 9: the current section's hero mode to en
 std::string owner_files(const Section& s) { return "section " + s.name; }
 std::string owner_objects(const Section& s) { return "section " + s.name + " objects"; }
 
+// an object still in play in its slot: its uid there, its class id or (a class id its code changed) its class's block
 bool alive(const Obj& o) {
-    return static_cast<int8_t>(lbu(o.moby + 0x20)) >= 0 && lhu(o.moby + 0xa6) == o.cls && lh(o.moby + 0xb2) == static_cast<int16_t>(o.uid);
+    return static_cast<int8_t>(lbu(o.moby + 0x20)) >= 0 && lh(o.moby + 0xb2) == static_cast<int16_t>(o.uid) &&
+           (lhu(o.moby + 0xa6) == o.cls || (o.cptr != 0 && lwu(o.moby + 0x24) == o.cptr));
+}
+
+bool kid_alive(uint32_t m, const Kid& k) {
+    return static_cast<int8_t>(lbu(m + 0x20)) >= 0 && lwu(m + 0x24) == k.cptr && lh(m + 0xb2) == k.b2;
+}
+
+// the mobys section `s`'s objects spawned taken out of play (`root` 0: all; else those of that object), logged by class: their count
+size_t kids_retire(Section& s, uint32_t root) {
+    std::map<uint32_t, size_t> by;
+    size_t n = 0;
+    for (auto it = s.kids.begin(); it != s.kids.end();) {
+        if (root != 0 && it->second.root != root) {
+            ++it;
+            continue;
+        }
+        if (kid_alive(it->first, it->second)) {
+            ++by[lhu(it->first + 0xa6)];
+            moby_retire(it->first);
+            ++n;
+        }
+        it = s.kids.erase(it);
+    }
+    if (n != 0) {
+        std::string l;
+        for (const auto& [c, k] : by) l += (l.empty() ? "" : ", ") + std::to_string(c) + " x" + std::to_string(k);
+        std::printf("[section] %s: %zu mobys its %s spawned taken out with %s (%s)\n", s.name.c_str(), n, root != 0 ? "boss" : "objects",
+                    root != 0 ? "it: the fight from its start" : "them", l.c_str());
+    }
+    return n;
 }
 
 // ---- section_spawn_placements: gameplay_load's moby part (level_load.cpp) for one section's gameplay file ----
@@ -695,6 +736,7 @@ size_t spawn_objects(Section& s, const std::set<int32_t>* only, const std::set<i
         for (const Spawned& sp : r.mobys) {
             s.objs.push_back({sp.moby, static_cast<int16_t>(lh(sp.moby + 0xb2)), sp.cls, -1, 0, sp.src});
             s.objs.back().boss = boss_class(s, sp.cls);
+            s.objs.back().cptr = lwu(sp.moby + 0x24);
             for (const Bind& b : s.binds)
                 if (b.uid == sp.uid && b.cls == sp.cls) session_bind(sp.moby, lw(LEVEL), sp.cls, b.slot, b.value);
             ++n;
@@ -718,6 +760,7 @@ size_t spawn_objects(Section& s, const std::set<int32_t>* only, const std::set<i
         for (const auto& [slot, value] : ip.binds) session_bind(m, ip.level, ip.cls, slot, value);
         s.objs.push_back({m, static_cast<int16_t>(lh(m + 0xb2)), lhu(m + 0xa6), ji, 0});
         s.objs.back().boss = boss_class(s, lhu(m + 0xa6));
+        s.objs.back().cptr = lwu(m + 0x24);
         ++n;
     }
     s.spawned = true;
@@ -736,6 +779,12 @@ void freeze(Section& s) {
         sh(o.moby + 0x34, o.f34 | 2u);  // (not queued: neither updated nor drawn)
         moby_grid_move(o.moby, GRID_OUT);
     }
+    for (auto& [m, k] : s.kids) {
+        if (!kid_alive(m, k)) continue;
+        k.f34 = lhu(m + 0x34);
+        sh(m + 0x34, k.f34 | 2u);
+        moby_grid_move(m, GRID_OUT);
+    }
     s.frozen = true;
 }
 
@@ -744,6 +793,11 @@ void unfreeze(Section& s) {
         if (!alive(o)) continue;
         sh(o.moby + 0x34, (lhu(o.moby + 0x34) & ~2u) | (o.f34 & 2u));
         moby_update_transform(o.moby);  // (in the grid again where it stands)
+    }
+    for (const auto& [m, k] : s.kids) {
+        if (!kid_alive(m, k)) continue;
+        sh(m + 0x34, (lhu(m + 0x34) & ~2u) | (k.f34 & 2u));
+        moby_update_transform(m);
     }
     s.frozen = false;
 }
@@ -768,6 +822,8 @@ size_t leave_objects(Section& s, int idx) {
             s.dead.insert(o.uid);
         }
     }
+    // what they spawned (a boss's helpers and effects): their level's code must not go on running outside its section
+    kids_retire(s, 0);
     s.objs.clear();
     s.spawned = false;
     s.frozen = false;
@@ -1129,10 +1185,11 @@ void commit_frame() {
         size_t copied = 0;
         for (const WorldBuild::At& a : w.map) copied += a.size;
         std::printf("[section] %s: level %d's world: %zu blocks, %.1f MB copied of its %.1f MB of asset data; %u tfrags, %u tie classes with %u instances, %u shrub "
-                    "classes with %u instances, zone grid %s; built on the game's thread in %.2f ms over the commit's frames; in the session heap %.1f MB (world "
+                    "classes with %u instances, zone grid %s, %u effect textures%s; built on the game's thread in %.2f ms over the commit's frames; in the session heap %.1f MB (world "
                     "%.1f, collision %.1f, sky %.2f, gameplay %.1f); the session heap %u KB\n",
                     s.name.c_str(), s.world, w.map.size(), static_cast<double>(copied) / 1048576.0, static_cast<double>(s.b.world != nullptr ? s.b.world->core : 0) / 1048576.0,
-                    w.tfrag_n, lwu(s.wb->index + 0x20), w.tie_n, lwu(s.wb->index + 0x28), w.shrub_n, w.masks ? "its own" : "none", w.ms,
+                    w.tfrag_n, lwu(s.wb->index + 0x20), w.tie_n, lwu(s.wb->index + 0x28), w.shrub_n, w.masks ? "its own" : "none", w.fx_n,
+                    w.fx_out != 0 ? (" (" + std::to_string(w.fx_out) + " past their block)").c_str() : "", w.ms,
                     static_cast<double>(w.bytes + s.b.coll.size() + s.b.sky.size() + s.b.gp.size()) / 1048576.0, static_cast<double>(w.bytes) / 1048576.0,
                     static_cast<double>(s.b.coll.size()) / 1048576.0, static_cast<double>(s.b.sky.size()) / 1048576.0, static_cast<double>(s.b.gp.size()) / 1048576.0,
                     session_heap_used() >> 10);
@@ -1161,6 +1218,45 @@ void ask_switch(int to, const Entry* e, int fade, const std::string& why) {
 }  // namespace
 
 // orig: (host) see sections.h
+void sections_moby_spawned(uint32_t moby, uint32_t by) {
+    if (!g_sections_on || moby == 0) return;
+    for (Section& s : g_secs) s.kids.erase(moby);  // (its slot used again)
+    if (by == 0 || by == moby) return;
+    for (Section& s : g_secs) {
+        if (!s.spawned) continue;
+        uint32_t root = 0;
+        for (const Obj& o : s.objs)
+            if (o.moby == by && alive(o)) root = by;
+        for (const Obj& o : s.pboss)
+            if (o.moby == by && o.moby != 0 && alive(o)) root = by;
+        if (root == 0)
+            if (const auto it = s.kids.find(by); it != s.kids.end() && kid_alive(by, it->second)) root = it->second.root;
+        if (root == 0) continue;
+        Kid k;
+        k.root = root;
+        k.cptr = lwu(moby + 0x24);
+        k.b2 = lh(moby + 0xb2);
+        if (s.frozen) {  // (spawned by a frozen one: frozen with it)
+            k.f34 = lhu(moby + 0x34);
+            sh(moby + 0x34, k.f34 | 2u);
+        }
+        s.kids[moby] = k;
+        return;
+    }
+}
+
+// orig: (host) see sections.h
+bool sections_world_object(uint32_t moby) {
+    if (!g_sections_on || g_cur <= 0) return false;
+    const Section& s = g_secs[static_cast<size_t>(g_cur)];
+    if (s.world < 0) return false;
+    for (const Obj& o : s.objs)
+        if (o.moby == moby) return alive(o);
+    const auto it = s.kids.find(moby);
+    return it != s.kids.end() && kid_alive(moby, it->second);
+}
+
+// orig: (host) see sections.h
 bool sections_boss_set(uint32_t moby) {
     if (!g_sections_on || g_cur < 0 || moby == 0 || static_cast<int8_t>(lbu(moby + 0x20)) < 0) return false;
     Section& s = g_secs[static_cast<size_t>(g_cur)];
@@ -1175,6 +1271,7 @@ bool sections_boss_set(uint32_t moby) {
     o.moby = moby;
     o.uid = static_cast<int16_t>(lh(moby + 0xb2));
     o.cls = lhu(moby + 0xa6);
+    o.cptr = lwu(moby + 0x24);
     o.boss = true;
     for (int k = 0; k < 3; ++k) o.at[k] = lwc1(moby + 0x10 + 4 * static_cast<uint32_t>(k));
     o.at[3] = lwc1(moby + 0x48);
@@ -1361,8 +1458,10 @@ void sections_arrival() {
     g_cur = 0;
     mrpw::host_meshes_sections_set(1u);
     mrp_user_lights_section("");
+    g_spawn_watch = true;  // (moby_spawn tells sections_moby_spawned: the mobys the sections' objects spawn)
     for (Section& s : g_secs) {  // (a save's load or the ship's return: fresh)
         s.objs.clear();
+        s.kids.clear();
         s.spawned = s.frozen = false;
         for (Portal& pt : s.portals) pt.inside = false;
     }
@@ -1563,6 +1662,7 @@ void sections_respawn_objects(int32_t policy, size_t* back, size_t* kept_dead) {
     for (const Obj& o : s.objs) {
         if (o.boss && alive(o)) {
             moby_retire(o.moby);
+            kids_retire(s, o.moby);  // (what it spawned: its fight from its start)
             if (o.imp >= 0) imps.insert(o.imp);
             else uids.insert(o.uid);
             again.push_back(o.imp >= 0 ? -1 - o.imp : o.uid);
@@ -1591,10 +1691,14 @@ void sections_respawn_objects(int32_t policy, size_t* back, size_t* kept_dead) {
             }
     for (Obj& o : s.pboss) {
         if (o.moby == 0) continue;
-        if (alive(o)) moby_retire(o.moby);
+        if (alive(o)) {
+            moby_retire(o.moby);
+            kids_retire(s, o.moby);
+        }
         o.moby = session_import_spawn(o.cls, o.at, o.at[3]);
         if (o.moby == 0) continue;
         o.uid = static_cast<int16_t>(lh(o.moby + 0xb2));
+        o.cptr = lwu(o.moby + 0x24);
         std::printf("[section] %s: its boss (class %u, the plugin's) spawned again after the death: moby %08x\n", s.name.c_str(), o.cls, o.moby);
         mod_code_boss(s.name.c_str(), static_cast<int32_t>(o.cls), o.moby, 2);
     }
@@ -1675,6 +1779,7 @@ int section_unload(const std::string& name) {
         if (alive(o)) moby_retire(o.moby);
         else if (o.imp >= 0) s.dead_imp.insert(o.imp);
         else s.dead.insert(o.uid);
+    kids_retire(s, 0);
     s.objs.clear();
     s.spawned = s.frozen = false;
     free_section(s);

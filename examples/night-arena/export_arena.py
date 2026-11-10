@@ -80,7 +80,7 @@ LEVEL = {
     # room for the base level's objects the plugin starts (base_spawn): 24 robots, 8 bomb bots, 6 Gadgetron robots,
     # 8 jetpack troopers (the dropships' too), 2 dropships (SDK ABI 5), the hub's 4 crates of each kind, the grind
     # course's 13 rail mines and the escape's 6 (933: Kalebo III's, on its rails)
-    "spawn": {1445: 24, 52: 8, 541: 6, 638: 8, 1356: 2, 501: 4, 511: 4, 933: 22},
+    "spawn": {1445: 24, 52: 8, 541: 6, 638: 8, 1356: 2, 501: 4, 511: 4, 933: 22, 439: 1},  # (439: Kalebo III's hoverboard)
     # (text, box in the scene's coordinates or None): embers rising from the lava (on a level mod `source lava` reads
     # the collision's type 3 faces too), as on Gaspar, and a little ash
     "particles": [
@@ -120,30 +120,23 @@ SECTIONS = [("prova", {"sky": 15, "background": (34, 44, 92), "fog": (34, 44, 92
             # game planets' worlds as sections (no collections: their scenery, collision, sky and music are the planets',
             # their coordinates too; only the objects an "objects" line names): the worlds "La grande fuga" goes through
             # after the escape's portal, each reached through a flash of white (the plugin's: its CHAIN)
-            # - Batalia: its long rail (its own model, drawn), from halfway to its end, where it ends in a jump. batalia_in is
-            #   ours on top of it (its points, every 4th of the game's), for the plugin's hero_rail_attach and its end
-            ("batalia", {"world": "batalia", "entries": [("arrivo", (378.34, 170.07, 59.8), 0.27)],
-                         "rails": [("batalia_in", [(378.34, 170.07, 58.8), (380.64, 170.72, 58.94), (382.95, 171.29, 59.18), (385.27, 171.76, 59.52),
-                                    (387.59, 172.13, 60), (389.89, 172.4, 60.6), (392.17, 172.54, 61.31), (394.44, 172.54, 62.1),
-                                    (396.68, 172.36, 62.92), (398.9, 171.97, 63.74), (401.07, 171.35, 64.54), (403.16, 170.46, 65.26),
-                                    (405.15, 169.27, 65.87), (406.99, 167.81, 66.34), (408.65, 166.12, 66.7), (410.11, 164.25, 67),
-                                    (411.35, 162.22, 67.26), (412.35, 160.06, 67.54), (413.07, 157.8, 67.86), (413.44, 155.47, 68.27),
-                                    (413.39, 153.15, 68.83), (412.9, 150.91, 69.52), (412.04, 148.81, 70.27), (410.88, 146.86, 71.04),
-                                    (409.48, 145.06, 71.77), (407.87, 143.4, 72.41), (406.09, 141.88, 72.9), (404.15, 140.5, 73.17),
-                                    (402.1, 139.28, 73.11), (399.99, 138.24, 72.64), (397.95, 137.36, 71.77), (396.03, 136.61, 70.56),
-                                    (394.25, 135.93, 69.1), (392.61, 135.29, 67.48), (391.07, 134.68, 65.74), (389.64, 134.08, 63.92),
-                                    (388.28, 133.47, 62.05), (386.96, 132.87, 60.14), (385.68, 132.27, 58.21), (384.42, 131.66, 56.26),
-                                    (383.18, 131.04, 54.31), (381.93, 130.42, 52.36), (380.68, 129.79, 50.42), (379.43, 129.15, 48.48),
-                                    (378.15, 128.49, 46.56), (376.84, 127.82, 44.67), (375.5, 127.13, 42.81), (374.1, 126.41, 41.01),
-                                    (372.63, 125.66, 39.27), (371.06, 124.86, 37.65), (369.37, 124.02, 36.17), (367.55, 123.12, 34.9),
-                                    (365.6, 122.17, 33.89), (363.54, 121.17, 33.21), (361.4, 120.14, 32.9), (359.25, 119.11, 32.97),
-                                    (357.12, 118.08, 33.38), (355.06, 117.08, 34.06), (353.07, 116.1, 34.96), (351.14, 115.14, 36),
-                                    (349.26, 114.2, 37.16), (347.43, 113.28, 38.39), (345.61, 112.36, 39.66), (343.8, 111.45, 40.94),
-                                    (341.96, 110.53, 42.16), (340.07, 109.58, 43.29), (338.14, 108.63, 44.33), (336.18, 107.68, 45.34),
-                                    (334.22, 106.74, 46.34), (332.27, 105.8, 47.36), (330.32, 104.86, 48.4), (328.87, 104.16, 49.19)])],
+            # - Quartu: our rail quartu_in (its model drawn: composer 7) from high south of its Giant Clank's pad down by it,
+            #   then Kalebo III's hoverboard (the plugin's, ABI 16) east across the Giant Clank's round arena (every zone
+            #   drawn: zones all) to the ring in its middle; none of Quartu's objects (its 1451, the pad, shows a broken help text)
+            ("quartu", {"world": "quartu", "zones_all": True, "entries": [("arrivo", (130.5, 186.0, 61.0), 1.5708)],
+                        "rails": [("quartu_in", [(130.5, 186.0, 60.0), (130.5, 200.0, 48.0), (130.5, 210.0, 36.0),
+                                                 (130.5, 216.0, 28.0)])],
+                        "rail_mesh": True, "death_height": 8.0}),
+            # - Batalia: its long rail (its own, drawn), from its start to its end, where it leaps: Ratchet comes in just over
+            #   its start and lands on it (no rail of ours on top: the section keeps the planet's own collision; with one, the
+            #   composer's copy of it with the rail's strip, the camera shook on the way down)
+            #   With its spiked rail mines (621: jumped, or broken with the wrench, as on Batalia).
+            ("batalia", {"world": "batalia", "objects": "621", "entries": [("arrivo", (286.0, 86.9, 33.0), 2.91)],
                          "death_height": 15.0}),
-            # - (to come: Rilgar on its race's hoverboard, hero rilgar board, from the finish line 275.49 334.35 73.61 to the
-            #   small platform of bolt crates past the big ramp, 264 440 80: its board waits for its race's start, 0x6e)
+            # - Rilgar: its hoverboard race (its own hero code and board: hero rilgar board; its HUD) from its finish line, to
+            #   the small platform past the big ramp (the plugin's ring there), with its bolt crates
+            ("rilgar", {"world": "rilgar", "hero": "rilgar board", "objects": "500", "box": (250, 425, 70, 280, 455, 95),
+                        "entries": [("arrivo", (275.49, 334.35, 73.61), -2.04)], "death_height": 30.0}),
             # - Umbris: the Snagglebeast's cave, its boss (the challenge won when it is beaten). Its objects but 529 (with it in
             #   play, back in main the moby pass crashed: an engine's matter, asked) and those whose class ids Kalebo III's
             #   classes have (605, 805, 1135: the composer takes the base's, not Umbris's)
@@ -832,6 +825,8 @@ def export_section(level, name, opts, depsgraph, first):
     if opts.get("world"):
         L = ["# the section %s: %s's world (its scenery, collision, sky, music; the planet's coordinates)" % (name, opts["world"]),
              "section %s remove respawn reset" % name, "  world %s" % opts["world"]]
+        if opts.get("zones_all"):  # (every zone of the world drawn wherever the camera is: Quartu's Giant Clank arena)
+            L.append("  zones all")
         if opts.get("hero"):  # (the planet's hero code, a mode: board, clank, giantclank)
             L.append("  hero %s" % opts["hero"])
         if opts.get("objects"):  # (its placed objects of these classes, or all; in the box)
@@ -845,7 +840,8 @@ def export_section(level, name, opts, depsgraph, first):
         for c, at, a in opts.get("checkpoints", []):
             L.append("  checkpoint %s %s %s %s %s" % (c, num(at[0]), num(at[1]), num(at[2]), num(a)))
         for r, pts in opts.get("rails", []):  # (added to the planet's own rails)
-            L.append("  rail %s %s" % (r, " ".join("%s %s %s" % (num(x), num(y), num(z)) for x, y, z in pts)))
+            L.append("  rail %s%s %s" % (r, " mesh" if opts.get("rail_mesh") else "",
+                                          " ".join("%s %s %s" % (num(x), num(y), num(z)) for x, y, z in pts)))
         if opts.get("death_height") is not None:  # (the planet's coordinates: not main's, which is the arena's)
             L.append("  death_height %s" % num(opts["death_height"]))
         L.append("end")
