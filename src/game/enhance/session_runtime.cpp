@@ -550,6 +550,10 @@ void session_rt_test_frame(uint64_t frame) {
         sw(S + 0xe0, 0);
         sw(S + 0xdc, 0x15);
         o.step = 1;
+        // (a run started by RAC1_GOTO had no save in use: the first one makes the game show its once-a-boot card notice, screen
+        // kind 5, at once - mode 4 until Cross, with a save in use and its flag +0x108 clear, off Veldin. A game loaded from the
+        // title showed it at its first planet: as that one)
+        if (lw(S + 0xf4) == 0) sb(S + 0x108, 1);
     };
     if (save_op.slot >= 0 && save_op.step == 0 && frame >= save_op.at && lw(OV(0x0015f5c4)) == 0 && ready) {
         summaries(save_op);

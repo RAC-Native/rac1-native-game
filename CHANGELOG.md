@@ -5,6 +5,12 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: a planet's world in a section looks and films as the planet** (level mods must be set up again: the composer's
+  version 9). Umbris's cave: its lava is animated again (its sea, an object of a class with no model, can now be placed:
+  `objects ... 460`; a world's effect textures are its planet's), and its boss camera turns toward the Snagglebeast instead
+  of away from it (the level's cameras naming an object now name it where the section placed it). Batalia's rail camera no
+  longer shakes (its own code and the engine now see the same rails). Testing: `RAC1_SESSION_SAVE_AT` no longer leaves the
+  game on the card's notice (mode 4) on a level mod off Veldin's base.
 - **A faster game frame** (no change to the pictures or the game): the game's own code takes 27 to 34 % less time a frame
   and a frame at 16:9 with LOD High 16 to 18 % less. The PS2's float rules are no longer applied by hand at every
   operation where the processor's mode already gives them (the VU0's and the FPU's adds and multiplies), the memory

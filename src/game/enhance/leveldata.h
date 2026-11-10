@@ -55,6 +55,11 @@ int32_t ld_group_create(int level, const uint32_t* mobys, int n);
 // orig: (host) group `g` of level `level`'s registry set to the mobys `mobys` (moby addresses; the twin run: its level's group
 // at its own index, as its pvars name it): false without a registry
 bool ld_group_set(int level, int32_t g, const uint32_t* mobys, int n);
+// orig: (host) level `level`'s registry's grind rails made the table `table` of `count` records (a world section's rail table, the
+// engine's while it is current: the level's own sites, which see the registry's, then compare the same rails the hero rides)
+void ld_rails_put(int level, uint32_t table, uint32_t count);
+// orig: (host) camera `k`'s pvar block in level `level`'s registry (its level's cameras, as lay_out copied them): 0 when none
+uint32_t ld_camera_pvars(int level, uint32_t k);
 // orig: (host) level `level`'s registry's path count (its level's own paths)
 int32_t ld_path_count(int level);
 // orig: (host) path `index` of level `index`'s own level data (the leveldata file): its points (false: none)

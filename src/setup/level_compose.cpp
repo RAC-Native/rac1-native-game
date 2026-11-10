@@ -3208,8 +3208,8 @@ bool compose_imports(const LevelTxt& lt, int base, const fs::path& out_dir, Log&
             return false;
         }
         const PoolClass* row = pool_find(l, c);
-        if ((row == nullptr || row->block_size == 0) && !im.world.empty() && pool_find(base, c) == nullptr) {  // (a world's object of a class with no data: not placed)
-            log.say(fmt("imports: section %s's objects of class %d:%u (no data in the pool: a class of code alone) are not placed", im.world.c_str(), l, c));
+        if (row == nullptr && !im.world.empty() && pool_find(base, c) == nullptr) {  // (a world's object of a class its level does not have)
+            log.say(fmt("imports: section %s's objects of class %d:%u (not in the pool) are not placed", im.world.c_str(), l, c));
             continue;
         }
         if ((row == nullptr || row->block_size == 0) && im.world.empty()) {
@@ -3233,7 +3233,10 @@ bool compose_imports(const LevelTxt& lt, int base, const fs::path& out_dir, Log&
             continue;
         }
         const PoolClass* row = pool_find(w.level, w.cls);
-        if (row == nullptr || row->block_size == 0) {
+        // (a world's object of a class of code alone - no block, an update function: its level's lava sea, a trigger - is
+        // imported as its level registers it, with no header; composer 9)
+        const bool code_alone = row != nullptr && row->block_size == 0 && row->update_fn != 0 && w.why.rfind("world-of-", 0) == 0;
+        if (row == nullptr || (row->block_size == 0 && !code_alone)) {
             log.say(fmt("import: warning: %d:%u (%s) has no data in the pool: not imported", w.level, w.cls, w.why.c_str()));
             continue;
         }

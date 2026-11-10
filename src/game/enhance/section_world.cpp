@@ -49,12 +49,19 @@ constexpr uint32_t kWords[] = {0x00160f4cu, 0x00160f50u, 0x00160f60u, 0x00160f64
                                // (stage 10) the gameplay file's per-level grids the frame reads by position: the objects' light grid and
                                // its lights (moby_update_light's grid_find: a ship flown over another level's coordinates read the
                                // session's grid out of its bounds), their count, and the camera's block (gameplay_load: +0x78, +0x7c, +0x84)
-                               0x0015fbc0u, 0x0015fb80u, 0x0015fb50u, 0x0015ef80u};
+                               0x0015fbc0u, 0x0015fb80u, 0x0015fb50u, 0x0015ef80u,
+                               // the effect textures' count and their texels' base (level_setup: the level's own past the engine's 40
+                               // - its seas' animated frames, its particles' and its objects' effects -, the table below)
+                               0x0015f41cu, 0x0015f420u};
 // the tables (from, to): the LOD bands; the tfrag textures' table; the tie classes' headers, ids, id map and textures' table, their
 // radii, their palettes; the shrubs' headers, ids, id map and textures' table, their radii, their palettes (the per-frame
 // arrays between them are not the level's: left)
 constexpr uint32_t kTables[][2] = {{0x001c28f0u, 0x001c2930u}, {0x001c4a00u, 0x001c4d00u}, {0x001c5800u, 0x001c6b00u}, {0x001c6f00u, 0x001c7100u},
-                                   {0x001c7700u, 0x001c7f00u}, {0x001bc030u, 0x001bc9b0u}, {0x001bcdb0u, 0x001bceb0u}, {0x001bd3b0u, 0x001bd7b0u}};
+                                   {0x001c7700u, 0x001c7f00u}, {0x001bc030u, 0x001bc9b0u}, {0x001bcdb0u, 0x001bceb0u}, {0x001bd3b0u, 0x001bd7b0u},
+                                   {0x0016d180u, 0x0016d880u}};
+// the effect textures' table (above: 0x10 bytes each, at most 112 before the draw lists 0x16d880): +0 the TEX0 effect_tex0 makes once
+// a frame (texture_block_begin clears it), kept out of a state taken (a state put has its TEX0s made again in the frame)
+constexpr uint32_t kEffectTex = 0x0016d180u, kEffectTexMax = 0x70;
 // the lights: the light grid (its points, its records), the directional lights and what the load clears after them
 constexpr uint32_t kLights[][2] = {{0x0017ecc0u, 0x001803c0u}, {0x001804c0u, 0x00180640u}};
 constexpr uint32_t kGridCount = 0x0015fbc4u;
@@ -168,6 +175,7 @@ bool world_read(int level, bool pal, bool coll, bool sky, WorldBytes& out, std::
     block(H(0x08), "tfrags", nullptr);
     if (H(0x0c) != 0) block(H(0x0c), "zone grid", nullptr);
     block(H(0x60), "texels", nullptr);
+    block(H(0x68), "effect textures", nullptr);
     for (uint32_t k = 0; k < H(0x20); ++k) block(rd32(I, H(0x24) + 32 * k), "tie class", nullptr);
     for (uint32_t k = 0; k < H(0x28); ++k) block(rd32(I, H(0x2c) + 0x30 * k), "shrub class", nullptr);
     if (coll) block(H(0x14), "collision", &out.coll);
@@ -188,7 +196,10 @@ void world_state_get(WorldState& s) {
     for (const auto& t : kTables) {
         const uint32_t lo = ov(t[0]), n = t[1] - t[0];
         const uint8_t* p = static_cast<const uint8_t*>(ee_ram_ptr(lo));
+        const size_t at = s.tables.size();
         s.tables.insert(s.tables.end(), p, p + n);
+        if (t[0] == kEffectTex)
+            for (uint32_t k = 0; k < kEffectTexMax; ++k) std::memset(s.tables.data() + at + k * 0x10, 0, 8);
     }
 }
 
@@ -292,6 +303,11 @@ bool world_build_step(WorldBuild& w, const WorldBytes& b, const std::string& own
         sw(OV(0x001604ac), Hx(0x48));
         tex_table(OV(0x001bc5b0), I + Hx(0x4c), static_cast<int32_t>(Hx(0x48)), texels);
         moby_lod_set(w.core(Hx(0x08)), I + Hx(0x34));
+        // its effect textures (level_setup_body's: the table from the index, the texels' base its block)
+        if (Hx(0x58) <= kEffectTexMax && w.core(Hx(0x68)) != 0) {
+            sub_0023f768(I + Hx(0x5c), static_cast<int32_t>(Hx(0x58)));
+            sw(OV(0x0015f420), w.core(Hx(0x68)));
+        }
         sw(OV(0x0015f600), Hx(0x0c) != 0 ? w.core(Hx(0x0c)) : 0u);
         sw(OV(0x0016c074), 0);
         uint32_t e = I + Hx(0x24);
