@@ -5,6 +5,16 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: Clank, Giant Clank and the hoverboard** (`level.format` 3, the mod SDK's ABI 12): a section's `hero` line
+  runs Ratchet on another planet's own hero code and camera code there, and can make him Clank (`hero orxon clank`), Giant
+  Clank (`hero quartu giantclank`: his walk, punches and ground pound, his camera) or put him on Kalebo III's hoverboard
+  (`hero kalebo` with the race's board: he gets on it, rides, jumps and wipes out as in the race, with its camera). Leaving
+  the section he is Ratchet again, with his health as before; a death in a mode brings him back in it at the checkpoint. A
+  plugin does the same at any moment with `hero_build` and `hero_mode`. On a base level whose hero lacks the magnetic walk's
+  animation (Kalebo III's), Ratchet on Magneboots walkways now looks right (the animation is taken from Veldin's, from your
+  disc). `hero generic` (any format) runs Ratchet on the generic hero code on a Kalebo III base: the game's own lava there
+  (he sinks, Cross bounces him out, left in it he is lost), with its animation, instead of the stand-in hop. See docs/mods.md
+  ("Hero modes") and docs/sdk.md.
 - **Level mods: a game planet as a section** (`level.format` 3): a section block with `world <planet>` (`world kalebo`,
   `world 3`, ...) is that planet's world: its scenery drawn exactly as on the planet (modern renderer, OpenGL and Vulkan),
   its collision, sky, music, fog, lights, cameras and grind rails, with no loading screen when Ratchet steps through a
