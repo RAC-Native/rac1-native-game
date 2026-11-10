@@ -23,7 +23,10 @@ from six planets, fight in the arena example's test copy. Stage 5 makes a level 
 level is loaded once, at the arrival, and a death is a **soft reset** (Ratchet back at a checkpoint, no level load, the
 weapons, the ammo, the bolts, the plugins' state and their objects kept); a save made in a session brings the player back
 into it. Stage 6 splits a session into **sections** (each its own collision, meshes, sky, lights, music and objects) switched
-by **portals** in one frame, streamed in on a worker thread and committed a little each frame, with no level load.
+by **portals** in one frame, streamed in on a worker thread and committed a little each frame, with no level load. Stage 7
+adds **grind rails** (level.txt's, per section; the hero code's landing gate skipped), **items for the visit**, tested
+**Magneboots surfaces** and the **set-piece kit** (a fade, a camera service, hazards, moving platforms Ratchet rides,
+classes with a collision mesh of their own), the SDK's ABI 7 room filled (ABI 11).
 
 ## Session memory
 
@@ -785,13 +788,101 @@ with Veldin's sky and no music, a crate and a robot; five portals) with plugin t
 **Not every game level's sky works on Veldin's engine**: Umbris's (7) and Gemlik's (13) end the game in the sky's draw (the
 same as a level mod's main `sky 7` line: not a sections matter); Kerwan's, Kalebo III's and Veldin's work.
 
-## What stages 7 and 8 build on
+## Rails and set pieces (stage 7)
 
-- **Stage 7 (rails, Magneboots, set pieces)**: the rails are level data per section: the session view's rail table (0x15f70c,
-  0x15f710) should be swapped at a switch as the collision is (`apply_state`); a section's gameplay file can carry grind lines
-  (+0x74) as the game's does, `section_spawn_placements`' sibling to place them. ABI 7 is still reserved. The landing gate,
-  the Magneboots surfaces (collision types per section: they come with the section's own collision already) and the camera
-  service are not started.
+DESIGN stage 7 and the study's 5.1 to 5.5: grind rails from level.txt, the hero code's landing gate, items for the visit,
+Magneboots surfaces, and the set-piece kit's services (a fade, a camera service, hazards, moving platforms, classes with a
+collision mesh of their own). The code: the composer's rails and collision meshes (`src/setup/level_compose.cpp`:
+`rails_resolve`, `grind_block`, `rail_strip`, `rail_model`, `class_collision`), `src/game/enhance/setpieces.{h,cpp}` (rails at
+run time, items, the fade, the camera, the hazards), `mod_code.cpp` (the collision meshes, `object_follow_path`, the SDK's
+table), `sections.cpp` (a section's rail table).
+
+### Rails
+
+- **The composer** reads `rail <name> [loop] [mesh [<material>]] [nostrip] <points>` and `rails <file.obj>` (each OBJ object's
+  line elements one rail: its edges chained, a closed chain a loop) in main and in section blocks, moves them by the
+  offsets, puts a point every 1.5 units, and writes the gameplay file's block +0x74 as the game's levels have it
+  (`level_load.cpp`'s grind lines: n, the points' offset and size; n records of 0x20, the bounding sphere and the loop flag;
+  n path offsets; the paths: a count, then x y z and the length to the next point). Main's go into `gameplay.bin` (the
+  level's load lays them out: no run-time code), a section's into its own `gameplay.bin` (a gameplay file of rails only when
+  it places no objects). Under each rail a collision strip (0.5 wide, 0.02 under the line) goes into the collision it rides
+  over (the section's own, else main's): `grind_rail_update` lets go of a rail when the ground under Ratchet is more than
+  0.87 away (+0x2dc). `mesh` adds a model (a 0.2 x 0.2 bar whose top is the line) to the host meshes, in the section's range.
+  level.sdk lists them (`rail <name> <section> <index> <loop> <points>`) for the SDK.
+- **Sections**: at a section's commit its rail table is made from its gameplay file's copy in the session heap (the records
+  in a block the section owns, their paths pointing into the copy), and `apply_state` makes it the game's (0x15f70c /
+  0x15f710; main's as the arrival found it; none for a section without rails), so the hero's rail search reads the current
+  section's only.
+- **The landing gate**: `hero_rail_land_check` (0x20cf58) takes a rail on Kalebo III (16), Oltanis (14) and Blarg's station
+  (6) only within 12 (14) units of their own rail spots; on a level mod with rails of its own (`setpieces_rails_anywhere`:
+  its level.sdk lists rails, the level a level mod's) the gate is skipped. A level mod without composer rails (the night
+  arena's plugin-made table) keeps it, as before.
+- **At run time** (`setpieces_frame`, once a frame before the plugins' frame callbacks): the rail Ratchet is on (states
+  0x28..0x2b and 0x42; his path +0x560 against the current table's records), the `rail` callback's ENTER / END / LEAVE;
+  `rail_enable` takes a rail out of the search by its record's reach (-1: `find_rail_v` skips it), put back at each switch to
+  its section; `rail_speed` scales +0x574 (the next frame's step); `hero_rail_attach` puts Ratchet standing on the rail's
+  line facing along it (`hero_place`): the next hero update's landing check latches it and state 0 takes it (0x28). The
+  game's grind always starts along the points (+0x578 = 1): riding back, the attach sets -1 once he is on it.
+
+### Items, Magneboots
+
+- `items` (level.sdk) and `item_visit`: the owned byte 0x13d4c0 + item set at the level's start when not owned, cleared
+  when a level loads after it; `save_blocks_write` (the card's save image) is written with them cleared
+  (`setpieces_save_begin` / `_end`). Proof: a save in the session, loaded from Kerwan: back in the session the two items are
+  given again (they were not in the save); `RAC1_GOTO=s7-kalebo@60,3@1700`: `2 items of the visit taken back` at Kerwan's
+  load.
+- **Magneboots surfaces** need nothing new: `usemtl type2` faces set the hero's +0x12e7 (`hero_surface_update`) and the
+  Magneboots (0x13d4dc) do the rest. Tested on a quarter-pipe of our own (a floor arc, a wall 10 high, an arc, a ceiling at
+  30): Ratchet walks up the wall and onto the ceiling (state 0x3f) on Veldin's code (format 3) and on Kalebo III's (format
+  2); on Kalebo III's his model is drawn wrong in the magnetic walk (its hero class lacks those animations: stage 9's hero
+  contexts).
+
+### The set-piece kit
+
+- **Fade**: `fade(out, hold, in, rgb)`, drawn over the HUD (`gs_flat_rect`) as the section switch's fade; `fade_active`.
+- **Camera**: `camera_set` writes the view after the game's camera update (`mod_code_camera`): the position 0x166dc0, the
+  rows 0x166fd0.. from the Euler angles (`euler_to_mat4_vu`) and the angles 0x166dd0 (the game's pitch is down positive;
+  the SDK's up positive); modes fixed, look-at (a point or a moby), along a path (looking at a point, a moby or ahead), follow
+  (behind a moby); a blend from the view at the call; `camera_release` blends back to the game's live camera.
+- **Hazards**: boxes or spheres, on a timer, optionally moving with an object, tested against Ratchet's middle each frame:
+  the game's own hurt (`hero_damage`: his knock-back and grace time).
+- **Moving platforms**: `object_follow_path` moves a level object in the objects' pass (before its class's update). Ratchet
+  rides it with the game's own ride (`hero_platform_ride` 0x2134c0): the object's moby is given flag 0x20 and pvars whose
+  word +8 names a platform block (`moby_pvar_word2`), into which each frame's move is written (+0x10; the turn +0x00 none):
+  the game's platforms do the same.
+- **Collision meshes**: `class ... collision <coll.obj>`: the composer writes the game's moby collision format (as the
+  bolt crate's box, read at run time: a 0x10-byte header with no joints and no primitives, int16 vertices at 1/1024 of a unit
+  of the moby's scale, triangles clockwise seen from outside with the flag byte 0x7f) into `class_<name>.col`; the game
+  copies it into the mods' block (8 KB for a level's) and sets the carrier's +0x94 to it; since the carrier crate's
+  bounding sphere is a 1-unit box's, the object's sphere and its place in the moby grid are made from the mesh's (its
+  transform ours: flag 4).
+
+### Testing
+
+Test mods (`openengine/s7/make_s7.py`): `s7-kalebo` (format 2 on Kalebo III) and `s7-sections` (format 3 on Veldin, a yard
+section 400 units east with a rail of its own), the example plateau with two straight rails 3 units apart, a ring (a loop)
+and a slope from `rails.obj`, the magnetic quarter-pipe, a deck class (a U shape: a floor and two walls, its collision mesh)
+riding a path, a post (a box); plugin hooks `RAC1_MOD_TEST=s7_*`:
+
+| Test | Result |
+|---|---|
+| `s7_rail` (Kalebo III) | `hero_rail_attach` at 2 units: ENTER the next frame, 0.2 units a frame after the start, END at 47.1 of 48, LEAVE as he flies off the end (far from Kalebo III's rail spots: the gate skipped) |
+| `s7_back` | attached at 46 riding back: rides to its first point (END at 0.9, LEAVE) |
+| `s7_speed` | `rail_speed` 2: the end 138 frames after the start instead of 250 |
+| `s7_side` | on `low`, a jump with the stick left: across to `high` 3 units beside (LEAVE low, ENTER high at the jump's start), its end reached |
+| `s7_land`, `s7_disable` | dropped 2.5 over the ring: lands on it (ENTER); taken out first: falls through, put back: lands |
+| `s7_magnet` (both bases) | forward from the floor: up the arc (`+0x12e7` 1, state 0x3f), up the wall to z 20, onto the ceiling at z 29.8 |
+| `s7_deck` | Ratchet placed on the deck (moving 3 units a second back and forth, rising 4): rides it across both ends of its path; walking north he stops at its wall (y 1.23 from its middle: the mesh's wall at 1.7) |
+| `s7_spin` | the deck stopped and turned 0.02 a frame by `object_place`: Ratchet 1.0 off its middle goes round with it, full turns |
+| `s7_hazard` | a box on 60 off 120: hurt when it comes on (4 -> 3), then the game's grace time |
+| `s7_cam` | fixed, looking at the post (centred), along `cam_path` looking at Ratchet, following him, released over 30 frames: pictures |
+| `s7_fade` | out 20, held 30 (the picture black), in 20 |
+| `s7_items`, a save | given at the arrival, `item_visit` off / on, the save without them, taken back at another level |
+| `s7_sec` (Veldin, sections) | to the yard: its rail attachable, main's not (not the current table); back to main: main's attachable, the yard's not; ENTER / END / LEAVE on both; Veldin's hero grinds as Kalebo III's |
+| The original; formats 2 and 3 | the reference pictures and RAMHASH unchanged; the arena's format 2 regression and stage 5's format 3 runs with the same RAMHASH; the composer's output for the four regression mods byte for byte the same as before |
+
+## What stage 8 builds on
+
 - **Stage 8 (game worlds as sections)**: a section of a game level's scenery needs (a) its world as host meshes (the MRP
   world export into the section's own range of `host_meshes.mrpc`: the meshes' section tags and mask are there), (b) its
   collision (a game level's block: `collision.bin` is the game's format already, so a level's own block can be copied as the
