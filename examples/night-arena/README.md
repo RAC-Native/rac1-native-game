@@ -16,9 +16,9 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   jetpack troopers and dropships; some with bombs from the sky, the vents burning faster and the three drop zones'
   circles electrified in turn (they hurt Ratchet and the enemies standing in them), a time limit, no hit allowed,
   the wrench only, a random weapon each wave, a new one every 20 seconds; two championships (15 and 50 rounds) mixing
-  those modes. The won ones, and their best times, are kept with the save.
+  those modes. The won ones, and their best times, are kept with the save; a win saves the game (into the player's slot,
+  as leaving a planet does) once Ratchet is back in the arena.
 - **Grind rails**, for players who have the Grind Boots (Grindscarponi), from a station outside the north-west wall:
-  - "Test Grindscarponi": one rail down into the arena (our first try);
   - "Grindscarponi: Discesa": a course of three lanes along the north wall (a side jump changes lane), our mines to
     jump, Kalebo III's own rail mines (class 933, started on the lanes by the plugin, on their own code: broken by the
     wrench (Square on the rail) or a weapon from afar, they blow up as on Kalebo III) to break or to pass on another lane, two of them closing two lanes at a time, the side lanes ending before the
@@ -27,13 +27,16 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
     puts him back on the station, the mines back too;
   - "La grande fuga" (The Great Escape), the longest but Impossibile: the same course, two rounds in the arena, then
     the lava floods the arena and an escape rail from the hub's top leads west over the wall, round the south-west
-    corner over the lava lake (our mines and Kalebo III's again) and through a portal's ring, grinding: a white flash, and
-    the rail goes on in Quartu's world (the section `quartu`), from high south of the arena where its Giant Clank fights
-    down onto its floor, where the last two robots wait. Won or lost there, Ratchet is taken back to the arena. (That
-    rail is not drawn there yet: the game does not draw a mod's rail models in a planet's world.)
+    corner over the lava lake (our mines and Kalebo III's again) and through a portal's ring, grinding: a white flash,
+    and Ratchet is in other planets' worlds (sections of the session, each with its own music), one after the other:
+    - **Batalia**, halfway along its long rail (its own, drawn: the plugin's rail `batalia_in` lies on top of it, for
+      putting Ratchet on it), down it to our portal's ring just before its end, where the game's rail leaps: another flash;
+    - **Umbris**, the Snagglebeast's cave (its objects, its boss line): the challenge is won when the Snagglebeast is
+      beaten. The challenge's box and its messages go up over its health bar.
 
-  - "Test Quartu": after the countdown a flash, Ratchet on the same rail into Quartu's world (its scenery, collision,
-    sky, music; none of its objects) and two robots by the arena where its Giant Clank fights; then back.
+    A death anywhere is the challenge lost (it is meant to be hard); won or lost, Ratchet is taken back to the arena.
+    To come, when the engine can: Quartu on Kalebo III's hoverboard to the middle of its Giant Clank's arena, ramming
+    its small robots, and Rilgar's hoverboard race from its finish line to the small platform past the big ramp.
   - The session's other section, "prova" (`build_prova.py`: a round platform under Quartu's sky with its own rail in),
     where the escape went before Quartu's world could take a mod's rails, is still there, used by no challenge.
 
@@ -67,8 +70,8 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   touching it he jumps out burnt, a health point lost each time, and with none left he sinks. (Type 3 is Aridia's
   quicksand: there he would sink and be bounced out with Cross.)
 
-It needs a game with the mod SDK's ABI 13 or later (the rail in Quartu's world; `hero generic` ABI 12; the rails, the
-sessions and sections ABI 11; the rest of the plugin ABI 5).
+It needs a game with the mod SDK's ABI 15 or later (a win's save, `game_save`; ABI 13 the mod's rail in a planet's
+world, the boss; `hero generic` ABI 12; the rails, the sessions and sections ABI 11; the rest of the plugin ABI 5).
 
 ## Making it
 
