@@ -612,6 +612,12 @@ thread, `RAC1_PIPELINE=1`, the last 1500 of 2400 frames of a forward walk) on Ke
   worker's `texture uploads` part: Kerwan 0.097 to 0.070 ms a frame; Hoven, whose uploads change every frame, 0.79 to 0.78
   (within the noise). The pieces written again at the log's floor turned out few (28 in 7000 frames on Kerwan): the gain is
   the walk of the log.
+- **The chain's hash** (`RAC1_PERF_CHAIN_HASH`, `orig_main.cpp` `chain_bytes_hash`): every frame's preparation hashes the whole
+  chain (some hundreds of KB) for the moby skips' memo, which a later frame reads only if it walks that chain again (a fade,
+  a frame not drawn). The hash took a word at a time into one sum, each multiply waiting for the last; it takes four words
+  into four sums. It stays a hash of the chain's bytes at the time of the note: a count of the frames built instead was
+  weighed and left, since a chain rebuilt with the same bytes must still be found, and each level runs its own copy of
+  the routines that start a chain. `Chain capture / scene start`: Kerwan 0.29 to 0.24 ms a frame, Rilgar 0.23 to 0.19.
 ## Switches to compare
 
 These are testing variables: they are honoured in a headless run, or in a window started with `--debug-tools`
@@ -657,6 +663,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_RCOL_KEEP=0` | Vulkan: the whole mirror of the resident colours copied every frame (`=2`: the kept buffers checked against it) |
 | `RAC1_PERF_SCENE_KEEP=0` | the moby scene of the shadow run a new frame every time, its vectors grown from nothing |
 | `RAC1_PERF_UPLOAD_MEMO_KEEP=0` | a skipped upload piece keeps the write log's number of its last write (its checks walk the log back to it) |
+| `RAC1_PERF_CHAIN_HASH=0` | the frame's chain hashed a word at a time into one sum |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
