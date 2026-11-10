@@ -1265,7 +1265,17 @@ struct VkWorldState {
     vk::RingAlloc cmds_alloc{};
     vk::RingAlloc rcols_alloc{};
     vk::RingAlloc indirect_alloc{};
+    // (RAC1_PERF_RCOL_KEEP) the resident colours in a buffer per frame in flight, kept from frame to frame: a slot is written
+    // with the changes since it was last written (upload_resident_colours), not the whole mirror into the ring each frame
+    vk::GpuBuffer rcol_buf[vk::kFramesInFlight]{};
+    uint64_t rcol_at[vk::kFramesInFlight]{};  // (the upload a slot holds, 0: none)
+    uint64_t rcol_seq = 0;                     // (the uploads so far)
+    std::vector<std::pair<uint32_t, uint32_t>> rcol_prev_dirty;  // (the last upload's changes)
+    std::vector<uint32_t> rcol_prev_words;
 } g_vk_world;
+struct RcolKeepStats {
+    uint64_t uploads = 0, whole = 0, checked = 0, differing = 0;
+} g_rcol_keep;
 
 void shutdown_vk_world() {
     VkDevice dev = vk::device();
@@ -1297,6 +1307,7 @@ void shutdown_vk_world() {
             g_vk_world.set0_layout = VK_NULL_HANDLE;
         }
     }
+    for (vk::GpuBuffer& b : g_vk_world.rcol_buf) vk::destroy_buffer_now(b);
     free_level(g_level);
     g_vk_world = VkWorldState{};
 }
@@ -3232,6 +3243,59 @@ void set_frame_uniforms(const Loc& l, const gs::Viewport* vp, int mode) {
 void upload_resident_colours() {
     ResidentColours& rc = g_rcols;
     const size_t bytes = std::max<size_t>(rc.mirror.size() * 4, 16);
+    // (Vulkan, RAC1_PERF_RCOL_KEEP; 0: the whole mirror copied into the frame's ring every frame, as before; 2: the kept buffer
+    // compared with the mirror after every upload) a buffer per frame in flight holds the colours as of the upload that wrote
+    // it last: the slot of the upload before this one takes this one's changes, the slot of the one before that the last
+    // upload's then this one's, any other the whole mirror - the tfrag colours' scheme (tfrag_gpu_colours)
+    static const int keep = perf::switch_value("RAC1_PERF_RCOL_KEEP", 1);
+    if (vk::is_active() && keep != 0) {
+        VkWorldState& w = g_vk_world;
+        const uint32_t fi = vk::frame_index() % vk::kFramesInFlight;
+        if (rc.all_dirty || bytes != g_rcol_size)
+            for (uint64_t& at : w.rcol_at) at = 0;  // (a new table: every slot written whole when its turn comes)
+        vk::GpuBuffer& buf = w.rcol_buf[fi];
+        if (buf.buffer == VK_NULL_HANDLE || buf.size < bytes) {
+            vk::destroy_buffer(buf);
+            vk::create_buffer(bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, buf, true);
+            w.rcol_at[fi] = 0;
+        }
+        const uint64_t seq = ++w.rcol_seq;
+        ++g_rcol_keep.uploads;
+        if (buf.mapped != nullptr) {
+            auto apply = [&](const std::vector<std::pair<uint32_t, uint32_t>>& ranges, const std::vector<uint32_t>& words) {
+                size_t at = 0;
+                uint8_t* dst = static_cast<uint8_t*>(buf.mapped);
+                for (const auto& [first, n] : ranges) {
+                    if (static_cast<size_t>(first + n) * 4 <= buf.size) std::memcpy(dst + static_cast<size_t>(first) * 4, words.data() + at, static_cast<size_t>(n) * 4);
+                    at += n;
+                }
+                rc.words_uploaded += at;
+            };
+            if (w.rcol_at[fi] != 0 && w.rcol_at[fi] + 1 == seq) {
+                apply(rc.dirty, rc.dirty_words);
+            } else if (w.rcol_at[fi] != 0 && w.rcol_at[fi] + 2 == seq) {
+                apply(w.rcol_prev_dirty, w.rcol_prev_words);
+                apply(rc.dirty, rc.dirty_words);
+            } else {
+                if (!rc.mirror.empty()) std::memcpy(buf.mapped, rc.mirror.data(), rc.mirror.size() * 4);
+                rc.words_uploaded += rc.mirror.size();
+                ++g_rcol_keep.whole;
+            }
+            if (keep == 2) {
+                ++g_rcol_keep.checked;
+                if (!rc.mirror.empty() && std::memcmp(buf.mapped, rc.mirror.data(), rc.mirror.size() * 4) != 0) ++g_rcol_keep.differing;
+            }
+        }
+        w.rcol_at[fi] = seq;
+        w.rcol_prev_dirty.swap(rc.dirty);
+        w.rcol_prev_words.swap(rc.dirty_words);
+        g_rcol_size = bytes;
+        rc.all_dirty = false;
+        rc.dirty.clear();
+        rc.dirty_words.clear();
+        w.rcols_alloc = vk::RingAlloc{buf.buffer, 0, buf.mapped};
+        return;
+    }
     if (vk::is_active()) {
         if (rc.all_dirty || bytes != g_rcol_size) {
             g_rcol_size = bytes;
@@ -6053,6 +6117,10 @@ void mrp_world_report() {
                         static_cast<unsigned long long>(g_opq_chk.runs), static_cast<unsigned long long>(g_opq_chk.units), static_cast<unsigned long long>(g_opq_chk.bad_runs),
                         static_cast<unsigned long long>(g_opq_chk.pixels));
     }
+    if (g_rcol_keep.uploads != 0)
+        std::printf("[perf] resident colours kept (RAC1_PERF_RCOL_KEEP): %llu uploads, %llu of the whole table; check: %llu compared with the mirror, %llu differing\n",
+                    static_cast<unsigned long long>(g_rcol_keep.uploads), static_cast<unsigned long long>(g_rcol_keep.whole),
+                    static_cast<unsigned long long>(g_rcol_keep.checked), static_cast<unsigned long long>(g_rcol_keep.differing));
     if (scene_capture_misses() != 0) std::printf("[mrpw] WARNING: %llu scene reads not captured\n", static_cast<unsigned long long>(scene_capture_misses()));
     if (direct_world_mode() != 0) {  // (RAC1_PERF_DIRECT_WORLD: mrp_world_scene.h)
         const DirectStats& d = direct_world_stats();

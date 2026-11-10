@@ -592,6 +592,12 @@ thread, `RAC1_PIPELINE=1`, the last 1500 of 2400 frames of a forward walk) on Ke
   (`reflect_cull_prepare`). It is made only when the row is on with Surface Detail, without which `mrp_reflect_pass` draws
   none; an instance without a box is never left out of a view, as before the views culled. The scene worker's `triangles`
   part: Kerwan 0.68 to 0.49 ms a frame, Rilgar 0.73 to 0.41; the worker busy 1.56 to 1.36 and 1.39 to 1.06.
+- **The resident colours on Vulkan** (`RAC1_PERF_RCOL_KEEP`, `mrp_world_renderer.cpp` `upload_resident_colours`): the Vulkan
+  branch copied the whole mirror of the ties' and shrubs' colours (64 and 24 words an instance) into the frame's ring every
+  frame, where OpenGL sent the changed ranges alone. It now keeps a buffer per frame in flight and writes each with the
+  ranges changed since that buffer was last written (this upload's, and the one before's): the tfrag colours' scheme. `=2`
+  compares the buffer with the mirror after every upload: 17,076 uploads over the 19 levels, 0 differing (3 of a
+  walk's 900 are the whole table). The main thread's `World` stage: Kerwan 0.23 to 0.14 ms a frame, Rilgar 0.11 to 0.07.
 ## Switches to compare
 
 These are testing variables: they are honoured in a headless run, or in a window started with `--debug-tools`
@@ -634,6 +640,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_CODE_MEMO=0` | a level's code address translated to Veldin's by searching the maps at every call (`=2`: both, compared) |
 | `RAC1_PERF_OPAQUE_KEEP_TFRAG=0` | the tfrag entries' opacity table made again every frame |
 | `RAC1_PERF_REFLECT_BOX=0` | the reflections' per-instance cull boxes made for every packet, whatever the options |
+| `RAC1_PERF_RCOL_KEEP=0` | Vulkan: the whole mirror of the resident colours copied every frame (`=2`: the kept buffers checked against it) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
