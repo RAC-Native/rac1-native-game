@@ -70,6 +70,18 @@ void ld_leave(int level);
 extern uint8_t g_ld_class_level[0x1ec0];
 extern bool g_ld_any;  // (some class reads a registry: the dispatch asks)
 
+// A section of a game level's world (stage 8, sections.h): while it is the current section, the engine's own objects are its
+// level's registry's (the level's paths, volumes, cameras, rails, groups: what the base's engine code reads, a camera zone, a
+// volume), the engine's before put back when it is left. The imported classes' swap (ld_enter / ld_leave) nests inside.
+// orig: (host) level `level`'s registry's objects made the engine's (the engine's kept): false without a registry
+bool ld_engine_take(int level);
+// orig: (host) the engine's objects put back as ld_engine_take found them (the registry keeping what the engine changed in the
+// objects while they were the engine's); nothing when none were taken
+void ld_engine_restore();
+// orig: (host) group `g` of level `level`'s registry set to the mobys `mobys` (moby addresses), its list a heap block of `owner`
+// (a section's objects: freed with them); n 0 empties it. False without a registry
+bool ld_group_put(int level, int32_t g, const uint32_t* mobys, int n, const std::string& owner);
+
 // A placement of a level's own gameplay file (by its moby uid, or a class's first): what a session spawns it from
 struct LdPlacement {
     int32_t uid = -1;

@@ -57,6 +57,9 @@ struct Registry {
     uint32_t shared = 0;            // its level's shared pvar data (a block)
 };
 std::unique_ptr<Registry> g_reg[32];
+// (stage 8) a world section's level whose registry's objects are the engine's (ld_engine_take), the engine's before
+int g_taken = -1;
+uint32_t g_taken_saved[LD_PATH_MAX + LD_GROUP_MAX + 32];
 
 std::string owner(int level) { return "level data " + std::to_string(level); }
 
@@ -205,6 +208,7 @@ bool ld_registry_make(int level) {
 // orig: (host) see leveldata.h
 void ld_registry_drop(int level) {
     if (!ld_registry_has(level)) return;
+    if (g_taken == level) ld_engine_restore();  // (a world section's: the engine's objects back first)
     session_heap_free_owner(owner(level));
     g_reg[level].reset();
     for (uint8_t& l : g_ld_class_level)
@@ -378,6 +382,25 @@ bool ld_group_set(int level, int32_t g, const uint32_t* mobys, int n) {
     return true;
 }
 
+// orig: (host) see leveldata.h
+bool ld_group_put(int level, int32_t g, const uint32_t* mobys, int n, const std::string& own) {
+    if (!ld_registry_has(level) || g < 0 || g >= static_cast<int32_t>(LD_GROUP_MAX)) return false;
+    Registry& R = *g_reg[level];
+    uint32_t a = 0;
+    if (n > 0) {
+        a = session_heap_alloc(static_cast<uint32_t>(n) * 2, own);
+        if (a == 0) return false;
+        const uint32_t base = lwu(OV(0x0015ffd8));
+        for (int k = 0; k < n; ++k) sh(a + 2 * static_cast<uint32_t>(k), ((mobys[k] - base) >> 8) | (k == n - 1 ? 0x8000u : 0u));
+    }
+    // (its objects the engine's now, ld_engine_take: the engine's table is the live one, the registry's its copy until they are given back)
+    const uint32_t table = g_taken == level ? ovl_xlate_data(LD_GROUPS) : R.block + R_GROUPS;
+    const uint32_t count = g_taken == level ? ovl_xlate_data(LD_GROUP_COUNT) : R.block + R_GROUP_COUNT;
+    sw(table + 4 * static_cast<uint32_t>(g), a);
+    if (n > 0 && lw(count) < g + 1) sw(count, static_cast<uint32_t>(g + 1));
+    return true;
+}
+
 // ---- the swap ----
 namespace {
 uint32_t g_saved[LD_PATH_MAX + LD_GROUP_MAX + 32];
@@ -412,6 +435,40 @@ void ld_leave(int level) {
             sw(b + k, *s++);
         }
     }
+}
+
+// ---- a world section's objects the engine's (stage 8) ----
+// orig: (host) see leveldata.h
+bool ld_engine_take(int level) {
+    ld_engine_restore();
+    if (!ld_registry_has(level)) return false;
+    const uint32_t r = g_reg[level]->block;
+    uint32_t* s = g_taken_saved;
+    for (const Obj& o : OBJS) {
+        const uint32_t b = ovl_xlate_data(o.veldin);
+        for (uint32_t k = 0; k < o.size; k += 4) {
+            *s++ = lwu(b + k);
+            sw(b + k, lwu(r + o.off + k));
+        }
+    }
+    g_taken = level;
+    return true;
+}
+
+// orig: (host) see leveldata.h
+void ld_engine_restore() {
+    if (g_taken < 0) return;
+    const bool has = ld_registry_has(g_taken);
+    const uint32_t r = has ? g_reg[g_taken]->block : 0;
+    const uint32_t* s = g_taken_saved;
+    for (const Obj& o : OBJS) {
+        const uint32_t b = ovl_xlate_data(o.veldin);
+        for (uint32_t k = 0; k < o.size; k += 4) {
+            if (has) sw(r + o.off + k, lwu(b + k));
+            sw(b + k, *s++);
+        }
+    }
+    g_taken = -1;
 }
 
 // ---- placements ----
