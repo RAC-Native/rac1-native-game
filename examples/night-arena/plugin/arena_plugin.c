@@ -3007,14 +3007,16 @@ static void dump_level(void) {
     float g[7];  /* ARENA_PROBE=x0,y0,x1,y1,step,ztop,zbottom: the ground's height on a grid (rays down; '.' none) */
     if (getenv("ARENA_PROBE") && sscanf(getenv("ARENA_PROBE"), "%f,%f,%f,%f,%f,%f,%f", &g[0], &g[1], &g[2], &g[3], &g[4], &g[5], &g[6]) == 7)
         for (float y = g[3]; y >= g[1]; y -= g[4]) {
-            int k = snprintf(b, sizeof b, "probe y %6.1f:", y);
-            for (float x = g[0]; x <= g[2] && k < (int)sizeof b - 6; x += g[4]) {
+            static char row[4096];
+            int k = snprintf(row, sizeof row, "probe y %6.1f:", y);
+            for (float x = g[0]; x <= g[2] && k < (int)sizeof row - 6; x += g[4]) {
                 const float from[3] = {x, y, g[5]}, to[3] = {x, y, g[6]};
                 rac1_ray_hit r = {sizeof r};
-                k += api->collide_ray(from, to, 0, getenv("ARENA_PROBE_MOBYS") ? RAC1_RAY_NO_LEVEL : 0u, &r) ? snprintf(b + k, sizeof b - (size_t)k, " %3d", (int)lroundf(r.point[2]))
-                                                                         : snprintf(b + k, sizeof b - (size_t)k, "   .");
+                k += api->collide_ray(from, to, 0, getenv("ARENA_PROBE_MOBYS") ? RAC1_RAY_NO_LEVEL : 0u, &r)
+                         ? snprintf(row + k, sizeof row - (size_t)k, " %3d", (int)lroundf(r.point[2]))
+                         : snprintf(row + k, sizeof row - (size_t)k, "   .");
             }
-            api->log(b);
+            api->log(row);
         }
     static uint32_t m[2048];
     const int32_t nm = api->mobys_near(h, 100000.0f, -1, m, 2048);
@@ -3249,6 +3251,21 @@ static void test(void* user, const char* text, uint64_t frame) {
                     snprintf(b, sizeof b, "test: the camera on class %d at %.1f %.1f %.1f", cls, p[0], p[1], p[2]);
                     api->log(b);
                 }
+            }
+            a = strchr(a, ';');
+            if (a) ++a;
+        }
+        for (const char* a = getenv("ARENA_SPAWN"); a && *a;) {  /* ("<frame>:<level>:<class>:<x>,<y>,<z>;...": an import) */
+            unsigned long long f = 0;
+            int lv = 0, cl = 0;
+            float p[3];
+            if (sscanf(a, "%llu:%d:%d:%f,%f,%f", &f, &lv, &cl, &p[0], &p[1], &p[2]) == 6 && f == frame) {
+                char n[16], b[96];
+                snprintf(n, sizeof n, "%d:%d", lv, cl);
+                const int32_t c = api->import_class(n);
+                const uint32_t m = c >= 0 ? api->import_spawn(c, p, 0.0f) : 0;
+                snprintf(b, sizeof b, "test: %s spawned: class %d, moby %08x", n, (int)c, (unsigned)m);
+                api->log(b);
             }
             a = strchr(a, ';');
             if (a) ++a;
