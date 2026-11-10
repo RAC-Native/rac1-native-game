@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 472 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 473 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 25 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 341 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 342 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 106 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -117,6 +117,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_PERF_VU0_RAW` | 0 = off, 2 = check; default 1 | The VU0 macro ops' adds, subtracts, multiplies and multiply-adds (src/game/ovl/vu0_macro.h, vu0_regs.h, vu0_nf.h, vu0_local.h, the pose's loops in moby_joints.cpp) compute the lanes as they are - the thread's float mode already gives the VU rules' result - and by the rules only when a lane they write has exponent 255; 0: every operand and result clamped at every op, as before; 2: those, each compared with the raw form (`[perf] vu0 raw check` at the end of the run; the pose's loops run by the rules). Off with RAC1_FPU_NEAREST=1. The same game state (docs/performance.md). |
 | `RAC1_SURFACE_DETAIL` | 0, 1 or 2; default: Options > Graphics > Surface Detail (Off) | With the modern lighting, the materials of the level files' `material` lines: 0 off, 1 Low, 2 High (also the reflections and the lava's heat shimmer), whatever the option says. |
 | `RAC1_GRASS` | 0, 1 or 2; default: Options > Graphics > Grass (Off) | With the modern lighting, the `grass` material on tfrags: 0 off, 1 Low (a detail relief of blades, no geometry), 2 High (also very low shells of blades near the camera), whatever the option says. |
+| `RAC1_TFRAG_TIME_ONCE` | 0 or 1; default 1 | Vulkan: the tfrag compute's timed first dispatches of a level (chunks submitted and waited for, to give a slow GPU's tfrags to the CPU) are not made again once a level of the session timed the device at under half the limit; 0: at every level's arrival, as before. |
 | `RAC1_WATER_REFLECTIONS` | 0 to 4; default: Options > Graphics > Water Reflections (Medium) | With Surface Detail on, what the water mirrors: 1 Low (the cube map), 2 Medium (the planar view, the cube map where it has nothing), 3 Medium (RT) (ray traced: Vulkan with ray queries, else Medium), 4 High (RT) (the mobys traced too), 0 none (the level's sky colour), whatever the option says ([Materials](materials.md#water-reflections)). |
 | `RAC1_GRASS_SHELLS` | 1 to 32; default 0 (4) | The Grass option High's number of shells (the debug menu's Enhancements tab sets it too). |
 | `RAC1_GRASS_DIST` | units, 4 to 200; default 40 | How far from the camera the Grass option's blades are drawn (Low faded out over the last 40 %, the shells from 30 % of it on). |

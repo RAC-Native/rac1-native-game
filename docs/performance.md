@@ -630,6 +630,12 @@ thread, `RAC1_PIPELINE=1`, the last 1500 of 2400 frames of a forward walk) on Ke
   at each planet: on a slow disc or with a scanner watching the folder, a late frame. The text is made there and handed to
   a writer thread; the end of the run waits for the last write. The file is the same (a headless run with `RAC1_PROGRESS`
   set, both ways). Not measured: on this machine the write is under a millisecond.
+- **The tfrag compute's timing, once** (`RAC1_TFRAG_TIME_ONCE`, `mrp_tfrag_gpu.cpp`; Vulkan): at every level's arrival the first
+  512 tfrag draws are dispatched in chunks of 64, each a submit of its own waited for and timed (a GPU too slow for them
+  gets the tfrags from the CPU). A device a level of the session has timed at under half the limit, on a full sample, is not
+  timed again: on the route through four levels one level is timed, not four (here 2.5 to 3.2 ms for 1500 draws against a
+  limit of 12). The same vertices either way; `RAC1_RAMHASH` and the pictures unchanged. Eight waited submits less over a
+  later level's first frames.
 ## Switches to compare
 
 These are testing variables: they are honoured in a headless run, or in a window started with `--debug-tools`
@@ -678,6 +684,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_CHAIN_HASH=0` | the frame's chain hashed a word at a time into one sum |
 | `RAC1_PERF_DRAW_MEM=0` | the drawing's copy of the game's memory taken every frame, whatever the options |
 | `RAC1_PERF_PROGRESS_THREAD=0` | `progress.json` written by the thread that runs the game frame |
+| `RAC1_TFRAG_TIME_ONCE=0` | Vulkan: the tfrag compute's first dispatches timed, in waited chunks, at every level's arrival |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's

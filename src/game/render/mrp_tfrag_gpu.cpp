@@ -1,6 +1,7 @@
 // orig: (host) The MRP world's terrain on the GPU (see mrp_tfrag_gpu.h).
 #include <game/render/mrp_tfrag_gpu.h>
 #include <profiler/host_profiler.h>
+#include <profiler/perf_switch.h>
 #include <game/render/mrp_world_static.h>
 
 #include <game/ovl/ovl_common.h>
@@ -1217,6 +1218,8 @@ struct VkGpu {
     uint32_t timed_draws = 0, timed_frames = 0;
     double timed_ms = 0.0, timed_worst = 0.0;
     bool timed_done = false;
+    bool timed_fast = false;      // (a level of this device timed under half the limit: the later ones not timed)
+    uint32_t timed_skipped = 0;  // (the levels not timed for it)
 } g_vk_gpu;
 // (the GPU path given up for the rest of the session: its dispatch too slow, tfrag_gpu_dispatch; read by the game's thread too)
 std::atomic<bool> g_vk_given_up{false};
@@ -1596,7 +1599,12 @@ void tfrag_gpu_dispatch(const TfragGpuFrame& f, uint32_t vertex_bytes) {
             g_vk_gpu.timed_gen = g_vk_gpu.level_gen;
             g_vk_gpu.timed_draws = g_vk_gpu.timed_frames = 0;
             g_vk_gpu.timed_ms = g_vk_gpu.timed_worst = 0.0;
-            g_vk_gpu.timed_done = false;
+            // (a GPU a level of this session already timed at under half the limit, on a full sample, is not timed again: every
+            // chunk is a submit waited for, eight or more at each level's arrival. RAC1_TFRAG_TIME_ONCE=0: every level)
+            static const bool once = perf::switch_value("RAC1_TFRAG_TIME_ONCE", 1) != 0;
+            g_vk_gpu.timed_done = once && g_vk_gpu.timed_fast;
+            if (g_vk_gpu.timed_done && ++g_vk_gpu.timed_skipped == 1)
+                std::fprintf(stderr, "[mrpw tfrag] the first dispatches of the levels from here on not timed: the GPU's were under half the limit\n");
         }
         if (!g_vk_gpu.timed_done) {
             // a level's first dispatches (until kSample draws, or kFrames frames): in chunks of kChunk draws, each its own submit
@@ -1650,6 +1658,7 @@ void tfrag_gpu_dispatch(const TfragGpuFrame& f, uint32_t vertex_bytes) {
                              g_vk_gpu.timed_draws, kChunk, g_vk_gpu.timed_frames, g_vk_gpu.timed_ms, g_vk_gpu.timed_worst, per, per * kFrameDraws, kFrameDraws,
                              slow ? ": too slow, the tfrags made on the CPU from now on (RAC1_TFRAG_CPU=0 for the GPU)" : "");
                 if (slow) g_vk_given_up.store(true, std::memory_order_relaxed);
+                if (g_vk_gpu.timed_draws >= kSample && per * kFrameDraws < kSlowMs * 0.5) g_vk_gpu.timed_fast = true;
             }
             cb = vk::cmd();
         } else {
