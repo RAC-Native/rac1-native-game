@@ -2375,7 +2375,9 @@ void tab_textures() {
         return;
     }
     const float avail = ImGui::GetContentRegionAvail().x;
-    const float step = size + ImGui::GetStyle().ItemSpacing.x;
+    // (a thumbnail's button is its image and the frame padding on both sides: without the padding the row's last one went past the
+    // grid's right edge, cut, #120)
+    const float step = size + 2.0f * ImGui::GetStyle().FramePadding.x + ImGui::GetStyle().ItemSpacing.x;
     const int cols = std::max(1, static_cast<int>((avail + ImGui::GetStyle().ItemSpacing.x) / step));
     int shown = 0;
     for (size_t i = 0; i < g_tex.list.size(); ++i) {

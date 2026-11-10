@@ -5,6 +5,11 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Debug menu, **Hoverboard anywhere**: the board no longer falls through the ground at speed (#120; Kerwan's avenue at full
+  speed went through the street within seconds) and slides along walls: the collision query's hit normal, which is not of
+  unit length, is now normalised before the ride's floor and wall tests.
+- Debug menu, Textures tab: the grid's last column of thumbnails is no longer cut at the right edge (#120): the row's width
+  left out each thumbnail's frame padding.
 - **Bug Fixes: Hydrodisplacer Faucets** (#131; main menu > Options > Bug Fixes, off by default): stepping onto Rilgar's
   first Hydrodisplacer faucet (or Hoven's first) from some sides and pressing circle, Ratchet started the faucet's
   animation, slipped off it and the water stayed; circle then did nothing until he stepped off and on again or put the
