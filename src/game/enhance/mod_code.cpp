@@ -121,7 +121,7 @@ struct SdkSound {
     std::string name;
     int32_t index = 0;          // in the bank
     int32_t volume = 0x400;
-    float near = 10, far = 60;
+    float near_dist = 10, far_dist = 60;  // (not "near" and "far": <windows.h> defines both as nothing, GitHub issue #142)
     bool loop = false;
 };
 struct SdkTrigger {
@@ -1757,7 +1757,7 @@ bool sdk_read(const std::string& path, Sdk& out) {
         } else if (k == "sound") {
             SdkSound d;
             int loop = 0;
-            in >> d.name >> d.index >> d.volume >> d.near >> d.far >> loop;
+            in >> d.name >> d.index >> d.volume >> d.near_dist >> d.far_dist >> loop;
             if (!in) return false;
             d.loop = loop != 0;
             out.sounds.push_back(std::move(d));
@@ -1834,8 +1834,8 @@ void sdk_level_start() {
             for (size_t i = 0; i < g_sdk.sounds.size() && i < SFX_MAX; ++i) {
                 const SdkSound& d = g_sdk.sounds[i];
                 const uint32_t e = SFX_DEFS + static_cast<uint32_t>(i) * 0x20;
-                swc1(e + 0x00, d.near);
-                swc1(e + 0x04, d.far);
+                swc1(e + 0x00, d.near_dist);
+                swc1(e + 0x04, d.far_dist);
                 sw(e + 0x08, 0);
                 sw(e + 0x0c, static_cast<uint32_t>(d.volume));
                 sw(e + 0x10, 0);
