@@ -677,9 +677,12 @@ void emit_host_meshes(Build& b) {
     for (size_t ii = 0; ii < n_static + in.host_dyn.size(); ++ii) {
         // (the static ones, then the level's objects': src/formats/host_meshes.h host_meshes_dynamic)
         const HostMeshInstance& ci = ii < n_static ? w->host_meshes[ii] : in.host_dyn[ii - n_static];
-        if (ci.cls >= w->ties.size()) continue;
+        uint32_t cls = ci.cls;
+        if (ii >= n_static && !w->host_class_map.empty())  // (a world section's level: the session's classes it has, at their ties here)
+            cls = ci.cls < w->host_class_map.size() && w->host_class_map[ci.cls] >= 0 ? static_cast<uint32_t>(w->host_class_map[ci.cls]) : 0xffffffffu;
+        if (cls >= w->ties.size()) continue;
         if (ii < n_static && ((in.host_sections >> (ci.section & 31u)) & 1u) == 0) continue;  // (another section's than the current: not drawn)
-        const TieClass& c = w->ties[ci.cls];
+        const TieClass& c = w->ties[cls];
         float sph[4];
         std::memcpy(sph, c.header.data() + 0x30, sizeof sph);
         const float sc = c.scale * ci.scale;

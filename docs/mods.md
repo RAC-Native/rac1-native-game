@@ -795,8 +795,13 @@ end
 - **Rails of your own** in a world's section: `rail` / `rails` lines, in the planet's coordinates (as its entries): the planet's
   own rails stay, yours are added (the SDK's `rail_find` and `hero_rail_attach` find them). A rail's collision strip goes into
   a copy of the planet's collision the composer makes for the section (the planet's faces with the strips: without a strip
-  the grind drops Ratchet), so the section's `collision.bin` is about the size of the planet's. A rail's `mesh` model is not
-  drawn there (yet). Example (the arena's escape continued into Quartu's arena, Ratchet attached by the plugin in its
+  the grind drops Ratchet), so the section's `collision.bin` is about the size of the planet's. A rail's `mesh` model is
+  drawn in the planet's world while the section is shown (GL and Vulkan). Its model is a host mesh like the others, but it
+  comes **after all of them, the `class` lines' models included**: a world section's rail model shifts no `material tie
+  <n>` index of lights.txt (the order: `meshes.obj`'s objects, main's rail models, the other sections' meshes and rail
+  models, the `class` models, then the world sections' rail models, section by section). `compose.log` says where they
+  went: `[compose] section quartu: its rails' 1 models drawn in level 15's world, host meshes 7..7 (after the classes': no
+  other index moves)`. Example (the arena's escape continued into Quartu's arena, Ratchet attached by the plugin in its
   `section_enter` callback):
 
   ```
@@ -810,8 +815,18 @@ end
 - **The base level's enemies** (a level on Kalebo III's code: its robots spawned with `base_spawn`, hunting with `base_hunt`)
   follow Ratchet into a world's section and fight there as anywhere in the session.
 - **Not in a world's section**: `meshes` and `moby` lines of the base level's classes (its own scenery is the planet's;
-  `moby <name>|<level>:<class>` lines are fine). The level's own objects drawn with a model (`object` lines) are not drawn
-  while Ratchet is in a world's section.
+  `moby <name>|<level>:<class>` lines are fine).
+- **The level's own objects in a world's section**: `object` lines inside a section block (any section: a world's in its
+  planet's coordinates, another's moved by its `offset`) place objects of the level's classes there; they are spawned at
+  the level's start with main's. An object belongs to its section (its `object` line's), or to the section it was spawned in
+  (`object_spawn`), or last moved or shown in (`object_place`, `object_show(obj, 1)`). While a world's section is current
+  only its objects are there: drawn, and solid as their class is; every other object is neither drawn nor solid (main's,
+  at main's coordinates, would stand somewhere in the planet's space). Outside world sections a world section's objects are
+  neither drawn nor solid, and the rest is as before (drawn in every section). So the plugin brings main's ring to the top
+  of the Quartu rail with `object_place(ring, top, rot, 0)` in its `section_enter` callback (or an `object ring ...` line in
+  the `section quartu` block puts one there); back in main, an object brought into the world is there again once it is
+  placed or shown in main. Tested (`rm-escape`): main's pillar hit by a ray in main and not in Quartu, Quartu's pillar the
+  other way round, before and after a return to main.
 
 #### Hero modes
 
