@@ -1253,6 +1253,49 @@ context` and `[section] quartu: level 15's context or registry cannot be made`, 
 - A world's HUD copy takes the level's whole set (about 330 KB a world); a boss's music changes, if any, are its planet's
   music in its world's section.
 
+## The board outside a race
+
+Kalebo III's and Rilgar's board code is their race's. Its riding state compares the game's level number (on a level mod its
+base's: 16 on Kalebo III's base, whatever world the section shows): on 16 a z under 76 is a fall (state 0x6e, Rilgar's 61.4 on
+5), and a fall or a wipe-out (0x6d, 0x6f) ends "back on the track" (L16:0x225ac0, L5:0x254358: the nearest point of the
+board's race path, the board's pvars +0x24 an index into the level's path table); at the mount it asks for the race HUD (the
+HUD requests 5 and 7: lap, time, place) and its race code (0x225d70) counts laps on the path its pvars +0x20 name. What the
+arena saw follows from that:
+
+- **`world quartu`** (Quartu's arena floor at z 26): every frame a fall (26 < 76), "back on the track" at a point of Quartu's
+  path table (the board's index into Quartu's paths: 248.2 386.9), still under 76: 0x6e for ever; the race HUD (lap 1/3,
+  the time, 6th).
+- **main on the mod's own geometry** (above 76): it rides; the first fall or wipe-out (the arena's 0x6d after 60 frames:
+  `forward` held from the mount drove him into a wall; `forward` itself is not the cause) went "back on the track" of a
+  path table with no such path: (0, 0, 0.01), under the death height, so a death and the soft reset at the checkpoint, on
+  foot. A bug (the race's logic on a level that has no race): fixed below.
+- **`world rilgar` with `hero rilgar board`** (Rilgar's finish line at z 73.6): Rilgar's code read 16, so Kalebo III's 76: a
+  fall at once, for ever (the "wait for the start" the arena saw).
+
+The fix (hooks in both builds, tools/codegen/hooks.glue, `level_mod_hero.h`; the original's levels as transliterated): on a
+level mod's level the compares see **the board's planet** when the current section's world is Kalebo III's or Rilgar's
+(`world rilgar`: 5, its own heights and start line, its race as on Rilgar), and elsewhere the board is **free**
+(`hero_modes.cpp`): its race path none (pvars +0x20 -1, the player's +0x8b4 0: no laps), no race HUD at the mount, its own
+fall test (under 2 units over the death height, or the plugin's `board_fall`), "back on the track" replaced by where he got
+on (or the plugin's `board_return`) for a fall and by where he rode 40 frames before for a wipe-out. The plugin's
+`board_rule` forces either; `board_touching` lists the mobys his body touches on the board (the game's `mobys_in_sphere` on
+their collision), for the plugin's `hit_send` (the SDK's ABI 16).
+
+```
+[hero] on the board at 134.60 235.00 25.51: free (no race: no laps, no race HUD, a fall back where he got on or at the plugin's place)
+[hero] the free board: a fall (23.99 under 24.00)
+[hero] the free board: back on it at 134.60 235.00 25.51 (where he got on)
+[hero] on the board at 275.48 334.34 73.60: the race of its planet's world
+```
+
+| Test (local test mod, format 3 on Kalebo III's base, `hero generic`) | Result |
+|---|---|
+| `world quartu`: `hero_build(16)`, `base_spawn(439)`, `hero_mode(BOARD)` at 159.9 241.7, stick forward | rides (0x6b) across the arena floor at z 26, no race HUD; a wall at 172.2 250.2: a wipe-out (0x6f), back 8 units before it, riding again |
+| the same from 134.6 235 facing west | off the floor's edge: a fall under 24 (Quartu's death height 22 + 2), 0x6e, back on the board where he got on, again each time |
+| main (the plateau at z 100), `board_return(205 190 100.5)` | off the edge: a fall under 72, back at the plugin's place, riding on (before: (0, 0, 0.01), a death, on foot at the checkpoint) |
+| a robot (1445) in the board's way, `board_touching` + `hit_send` | touched once at 1.1 units, knocked down (state 8) |
+| `world rilgar`, `hero rilgar board`, stick forward | Rilgar's race: rides the track from the finish line, its race HUD (lap 1/3, the time, 1st), a fall under 61.4 back on its track (before: 0x6e at the start for ever) |
+
 ## What the next stage builds on
 
 - **Hero contexts (stage 9)** and **the camera level (stage 10)**: a planet's own hero code and camera code in its world.
