@@ -1,0 +1,16 @@
+# The asset pool's names (the open engine, docs/open-engine.md): a stable name for a class of a game level, for a level
+# mod's `import <name>` lines (level.txt) and a plugin's import services (docs/sdk.md). A name never changes once given;
+# a class without one is named `<level>:<class>`. Names are ours (what the class is or does in play), the numbers the game's.
+# <name> <level>:<class> <what it is>
+
+# Kalebo III (16)
+kalebo.robot 16:1445 the walking robot (a path read: its patrol)
+kalebo.rail_mine 16:933 the mine on the grind rails
+
+# Umbris (7)
+umbris.turret 7:1041 a turret that fires at Ratchet (no level data read)
+umbris.turret_shot 7:882 its shot (explodes: the engine's effects 112, 639)
+
+# Orxon (10)
+orxon.spore_plant 10:939 a plant that spits pods (no level data read)
+orxon.spore_pod 10:938 its pod (bursts: the engine's effects 112, 639)
