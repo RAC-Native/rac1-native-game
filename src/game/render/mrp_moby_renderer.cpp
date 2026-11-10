@@ -2,6 +2,7 @@
 #include <game/render/mrp_moby_renderer.h>
 #include "mrp_moby_backend.inc"
 #include <game/render/gl_draws.h>
+#include <game/render/vec_room.h>
 #include <profiler/host_profiler.h>
 #include <jobs/job_pool.h>
 
@@ -1991,6 +1992,8 @@ void build_frame() {
     F.rt_views.clear();
     const MrpFrame& f = mrp_scene_draw();
     for (uint32_t i = 0; i < 0x200; ++i) F.normals[i] = lwc1(OV(0x00166080) + 4 * i);  // the normal table (the overlay's 0x166080: 256 x 2 floats)
+    F.joints_all.clear();
+    vec_room_zeroed(F.joints_all, f.joints.size());  // (the Wii U: the frame's poses - ~0.6 MB on Kerwan - into zeroed cache lines, vec_room.h)
     F.joints_all.assign(f.joints.begin(), f.joints.end());
     F.mode = F.menu ? 1 : g_mrp_moby_projection;
     F.fog_min = f.proj[0].x;
@@ -2200,6 +2203,7 @@ void build_frame() {
             P.info[2] = tint ? 1 : 0;
             P.info[3] = part.mscal == 0x00a ? 1 : 0;  // the clipping program: the fog per vertex
             const uint32_t part_index = static_cast<uint32_t>(F.parts.size());
+            vec_room_zeroed(F.parts, 1);
             F.parts.push_back(P);
             if (extras) {
             F.part_pos.push_back(pre.pos);
@@ -2257,6 +2261,7 @@ void build_frame() {
                 uint32_t slot = 0;  // (an emissive surface's or a material's slot: the command's fourth word)
                 if (emis && pi.local >= 0)
                     if (const auto es = g_memis.slot.find(emis_key(m.class_id, pi.local)); es != g_memis.slot.end()) slot = es->second;
+                vec_room_zeroed(F.cmds, 4);
                 F.cmds.insert(F.cmds.end(), {part_index, word, pi.layer, slot});
                 Key key;
                 key.bucket = pi.bucket;
@@ -2277,6 +2282,7 @@ void build_frame() {
                     F.batches.push_back(Batch{key, static_cast<uint32_t>(F.draws.size()), 0});
                     b = &F.batches.back();
                 }
+                vec_room_zeroed(F.draws, 1);
                 F.draws.push_back(DrawCmd{run.count, 1, run.first_index, 0, ci});
                 ++b->count;
                 ++g_st.draws;

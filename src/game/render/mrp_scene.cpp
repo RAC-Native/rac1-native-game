@@ -6,6 +6,7 @@
 //  - the pose observer (moby_skin.h) gives the joint matrices on the scratchpad the skinning reads;
 //  - the chain (DMA tags + VIF codes in the packet buffer) is decoded into the parts and UNPACKs.
 #include <game/render/mrp_scene.h>
+#include <game/render/vec_room.h>
 
 #include <game/ovl/moby_draw.h>
 #include <game/ovl/moby_pass.h>
@@ -161,6 +162,7 @@ void on_draw(uint32_t moby, uint32_t chain_begin, uint32_t chain_end, uint32_t r
     // good part of the observer's time (=0: built aside and copied, as before)
     static const bool in_place = std::getenv("RAC1_PERF_COPIES") == nullptr || std::atoi(std::getenv("RAC1_PERF_COPIES")) != 0;
     std::optional<MrpMoby> aside;
+    if (in_place) vec_room_zeroed(f.mobys, 1);
     MrpMoby& m = in_place ? f.mobys.emplace_back() : aside.emplace();
     const uint32_t mi = static_cast<uint32_t>(f.mobys.size()) - (in_place ? 1u : 0u);  // (its index in the frame's list)
     if (!rt) {  // (the view the loop uses now against the frame's)
@@ -198,6 +200,7 @@ void on_draw(uint32_t moby, uint32_t chain_begin, uint32_t chain_end, uint32_t r
     if ((spr_rec & 3u) == 0 && spr_rec - SPR_BASE < static_cast<uint32_t>(SPR_SIZE) && nbytes <= SPR_SIZE - (spr_rec - SPR_BASE)) {
         // (the scratchpad's words in the host's order, as lwu reads them: one copy, the same bytes; appended, not zeroed first)
         const uint8_t* src = static_cast<const uint8_t*>(ee_ram_ptr_read(spr_rec));
+        vec_room_zeroed(f.records, nbytes);
         f.records.insert(f.records.end(), src, src + nbytes);
     } else {
         f.records.resize(f.records.size() + nbytes);
@@ -247,6 +250,7 @@ void on_pose(uint32_t rec, uint32_t /*work*/) {
     static_assert(sizeof(MrpMat4) == 64 && std::is_trivially_copyable_v<MrpMat4>, "the scratchpad's matrices as they are");
     if (count * 64u <= static_cast<uint32_t>(SPR_SIZE)) {
         const MrpMat4* src = static_cast<const MrpMat4*>(ee_ram_ptr_read(SPR));
+        vec_room_zeroed(f.joints, count);
         f.joints.insert(f.joints.end(), src, src + count);
     } else {
         for (uint32_t j = 0; j < count; ++j) f.joints.push_back(mat4_at(SPR + 0x40 * j));
