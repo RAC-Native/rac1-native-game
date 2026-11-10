@@ -8,9 +8,9 @@ namespace rac1 {
 bool g_render_tfrag = true;
 bool g_render_tie = true;
 bool g_render_shrub = true;
-bool g_render_moby = true;
+bool g_render_moby = std::getenv("RAC1_RENDER_MOBY") == nullptr || std::atoi(std::getenv("RAC1_RENDER_MOBY")) != 0;  // (testing: 0 the world alone, the debug menu's toggle)
 bool g_render_sky = true;
-bool g_render_fx = true;
+bool g_render_fx = std::getenv("RAC1_RENDER_FX") == nullptr || std::atoi(std::getenv("RAC1_RENDER_FX")) != 0;  // (testing: 0 no effects, the debug menu's toggle)
 bool g_draw_from_snapshot = false;
 bool g_world_faithful = false;
 bool g_world_mrp = false;

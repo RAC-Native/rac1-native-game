@@ -491,7 +491,7 @@ void session_level_mod(const std::string& build_dir) {
         std::string kind, name, why;
         int l = -1;
         uint32_t c = 0;
-        if (s >> kind >> l >> c >> name >> why && kind == "import" && l >= 0 && l < 19 && why == "imported") {
+        if (s >> kind >> l >> c >> name >> why && kind == "import" && l >= 0 && l < 19 && (why == "imported" || why.rfind("world-of-", 0) == 0)) {  // (stage 8: a world section's objects' classes)
             session_import_request(l, c, "mod");
             ++n;
         }

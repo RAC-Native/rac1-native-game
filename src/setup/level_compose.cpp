@@ -181,6 +181,7 @@ struct LevelTxt {
     struct Import {
         std::string name;
         int line = 0;
+        std::string world;  // (stage 8: a class of a section's world's objects: the base level's own serves when it has it)
     };
     std::vector<Import> imports;
     // (format 3) the session (docs/open-engine.md, "Sessions"): its line, its checkpoints, the respawn policy
@@ -222,6 +223,16 @@ struct LevelTxt {
         std::vector<Entry> entries;
         std::vector<Portal> portals;
         std::vector<Rail> rails;
+        // (stage 8) a game level's world as its scenery: `world <level>` (its geometry, collision, sky, music, fog, lights, level
+        // data), `objects all|<class>...` (its placed objects of those classes come with it; none by default), `box x0 y0 z0 x1 y1 z1`
+        // (only its objects inside); the composer's choice: their uids there -> the session's
+        int world = -1;
+        int world_line = 0;
+        bool objects_all = false;
+        std::vector<std::string> objects;
+        bool has_box = false;
+        float box_lo[3] = {}, box_hi[3] = {};
+        std::vector<std::pair<int32_t, int32_t>> wuids;
     };
     std::vector<Section> sections;
     std::vector<Entry> entries;    // (main's)
@@ -469,9 +480,36 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
                 if (!rail_line(in, r, key == "rails")) return bad();
                 r.line = n;
                 S.rails.push_back(r);
+            } else if (key == "world") {
+                std::string a;
+                if (!(in >> a)) return bad();
+                for (char& c : a) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                static const std::map<std::string, int> kWorlds = {{"veldin", 0}, {"novalis", 1}, {"aridia", 2}, {"kerwan", 3}, {"eudora", 4}, {"rilgar", 5},
+                                                                   {"blarg", 6}, {"umbris", 7}, {"batalia", 8}, {"gaspar", 9}, {"orxon", 10}, {"pokitaru", 11},
+                                                                   {"hoven", 12}, {"gemlik", 13}, {"oltanis", 14}, {"quartu", 15}, {"kalebo", 16}, {"fleet", 17},
+                                                                   {"veldin2", 18}};
+                if (const auto it = kWorlds.find(a); it != kWorlds.end()) S.world = it->second;
+                else if (!a.empty() && a.find_first_not_of("0123456789") == std::string::npos) S.world = std::atoi(a.c_str());
+                else return bad();
+                if (S.world > 18) return bad();
+                S.world_line = n;
+            } else if (key == "objects") {
+                std::string w;
+                bool any = false;
+                while (in >> w) {
+                    any = true;
+                    if (w == "all") S.objects_all = true;
+                    else if (w != "none") S.objects.push_back(w);
+                }
+                if (!any) return bad();
+            } else if (key == "box") {
+                if (!(in >> S.box_lo[0] >> S.box_lo[1] >> S.box_lo[2] >> S.box_hi[0] >> S.box_hi[1] >> S.box_hi[2])) return bad();
+                for (int i = 0; i < 3; ++i)
+                    if (S.box_lo[i] > S.box_hi[i]) std::swap(S.box_lo[i], S.box_hi[i]);
+                S.has_box = true;
             } else {
                 err = fmt("%s:%d: \"%s\": not a line of a section (its own: collision, meshes, lights, sky, music, fog, background, death_height, offset, "
-                          "entry, checkpoint, moby, portal, respawn, rail, rails; end closes it)",
+                          "entry, checkpoint, moby, portal, respawn, rail, rails, world, objects, box; end closes it)",
                           p.generic_string().c_str(), n, line.c_str());
                 return false;
             }
@@ -2775,8 +2813,102 @@ struct SectionOut {
     float death = 0;
     int objects = 0, imported = 0;
 };
-bool compose_sections(const fs::path& ldir, LevelTxt& lt, const std::vector<uint8_t>& base_gp, mrpw::HostMeshFile& hm, const std::vector<ObjMaterial>& mats,
-                      std::vector<SectionOut>& outs, Log& log, std::string& err) {
+// (stage 8) a section's game level world: its level's placed objects the section brings (`objects`, `box`), each given a session
+// uid after the others', their classes imported (the base level's own when it has them); what a world's section cannot have
+bool compose_world(LevelTxt::Section& S, LevelTxt& lt, int base, int& uid_next, Log& log, std::string& err) {
+    if (!S.meshes.empty() || !S.rails.empty()) {
+        err = "a world's section draws its level's world and has its level's rails: no meshes, rail or rails lines (stage 8)";
+        return false;
+    }
+    for (const LevelTxt::Moby& mb : S.mobys)
+        if (mb.import.empty()) {
+            err = fmt("moby line %d: a world's section places its level's objects (an objects line) and classes of other levels, not the base level's own", mb.line);
+            return false;
+        }
+    if (S.offset[0] != 0 || S.offset[1] != 0 || S.offset[2] != 0) {
+        err = "a world's section is where its level has it: no offset (its lines are in its level's coordinates)";
+        return false;
+    }
+    if (S.world == base) {
+        err = fmt("level %d's world is the base level's: a world's section of another level", S.world);
+        return false;
+    }
+    if (!disc_is_open() && !disc_open()) {
+        err = "the game's disc cannot be read: a world's section needs the asset pool, made from it (./setup.sh first)";
+        return false;
+    }
+    if (!pool_open(true)) {
+        err = "the asset pool cannot be made (a world's section needs it: its level's context and level data)";
+        return false;
+    }
+    // its level's gameplay file: the placements (+0x44: a count, then records of their own size: +0xc the uid, +0x18 the class,
+    // +0x30 the position)
+    const fs::path gpath = fs::path("assets/disc") / fmt("levels/level%02d", S.world) / "gameplay_ntsc.bin";
+    std::vector<uint8_t> packed, g;
+    if (!read_file(gpath, packed) || !decompress_wad(std::span<const std::byte>(reinterpret_cast<const std::byte*>(packed.data()), packed.size()), g)) {
+        err = gpath.generic_string() + " cannot be read";
+        return false;
+    }
+    std::set<uint32_t> want;
+    for (const std::string& w : S.objects) {
+        int l = S.world;
+        uint32_t c = 0;
+        if (!w.empty() && w.find_first_not_of("0123456789") == std::string::npos) c = static_cast<uint32_t>(std::atoi(w.c_str()));
+        else if (!pool_name(w, &l, &c)) {
+            err = fmt("objects %s: no such class (its level's class id, a name of data/pool/names.txt, or <level>:<class>)", w.c_str());
+            return false;
+        }
+        if (l != S.world) {
+            err = fmt("objects %s: level %d's class, not the world's (level %d)", w.c_str(), l, S.world);
+            return false;
+        }
+        want.insert(c);
+    }
+    const size_t mo = static_cast<size_t>(rd32(g, 0x44));
+    if (mo == 0 || mo + 0x10 > g.size()) {
+        err = gpath.generic_string() + ": no placements";
+        return false;
+    }
+    const int32_t n1 = rd32(g, mo);
+    size_t p = mo + 0x10, total = 0;
+    std::map<uint32_t, int> classes;
+    const int first = uid_next + 1;
+    for (int32_t k = 0; k < n1 && p + 0x40 <= g.size(); ++k) {
+        const int32_t sz = rd32(g, p);
+        if (sz < 0x40 || p + static_cast<size_t>(sz) > g.size()) break;
+        const int32_t uid = rd32(g, p + 0xc);
+        const uint32_t cls = static_cast<uint32_t>(rd32(g, p + 0x18));
+        float at[3];
+        std::memcpy(at, g.data() + p + 0x30, 12);
+        p += static_cast<size_t>(sz);
+        if (cls == 0) continue;  // (the hero's record)
+        ++total;
+        if (!S.objects_all && want.count(cls) == 0) continue;
+        if (S.has_box && (at[0] < S.box_lo[0] || at[0] > S.box_hi[0] || at[1] < S.box_lo[1] || at[1] > S.box_hi[1] || at[2] < S.box_lo[2] || at[2] > S.box_hi[2]))
+            continue;
+        S.wuids.push_back({uid, ++uid_next});
+        ++classes[cls];
+    }
+    std::string list;
+    for (const auto& [c, nc] : classes) {
+        list += fmt("%s%u x%d%s", list.empty() ? "" : ", ", c, nc, pool_find(base, c) != nullptr ? " (the base's)" : "");
+        LevelTxt::Import im;
+        im.name = fmt("%d:%u", S.world, c);
+        im.line = S.world_line;
+        im.world = S.name;
+        bool have = false;
+        for (const LevelTxt::Import& o : lt.imports) have = have || o.name == im.name;
+        if (!have) lt.imports.push_back(im);
+    }
+    log.say(fmt("section %s: level %d's world (its geometry, collision%s, sky%s, music, lights, fog, level data from the disc when it streams in); %zu of its %zu "
+                "objects%s%s%s, uids %d..%d",
+                S.name.c_str(), S.world, S.collision.empty() ? "" : " (its own instead)", (S.sky_level >= 0 ? " (level " + std::to_string(S.sky_level) + "'s instead)" : std::string()).c_str(),
+                S.wuids.size(), total, S.has_box ? " in its box" : "", classes.empty() ? "" : ": ", list.c_str(), first, uid_next));
+    return true;
+}
+
+bool compose_sections(const fs::path& ldir, LevelTxt& lt, int base, const std::vector<uint8_t>& base_gp, mrpw::HostMeshFile& hm,
+                      const std::vector<ObjMaterial>& mats, std::vector<SectionOut>& outs, Log& log, std::string& err) {
     int uid_next = lt.uid_first;
     for (LevelTxt::Section& S : lt.sections) {
         SectionOut o;
@@ -2787,6 +2919,7 @@ bool compose_sections(const fs::path& ldir, LevelTxt& lt, const std::vector<uint
             return false;
         };
         o.death = S.has_death ? S.death : lt.death;
+        if (S.world >= 0 && !compose_world(S, lt, base, uid_next, log, err)) return fail(err);
         if (!S.collision.empty()) {
             Obj co;
             if (!read_obj(ldir / S.collision, slt, false, co, err)) return fail(err);
@@ -2841,8 +2974,9 @@ bool compose_sections(const fs::path& ldir, LevelTxt& lt, const std::vector<uint
         log.say(fmt("section %s (%s when left, respawn %s): collision %s, sky %s, %zu meshes, %d objects of the base level's classes%s, %d of other levels', "
                     "%zu entries, %zu checkpoints, %zu portals, death height %.1f",
                     S.name.c_str(), S.policy.c_str(), S.respawn.empty() ? "the session's" : S.respawn.c_str(),
-                    o.coll.empty() ? "the session's" : fmt("%.1f KB", static_cast<double>(o.coll.size()) / 1024.0).c_str(),
-                    S.sky_level >= 0 ? fmt("level %d's (%zu bytes)", S.sky_level, o.sky.size()).c_str() : "the session's", o.count, o.objects,
+                    o.coll.empty() ? (S.world >= 0 ? "its world's" : "the session's") : fmt("%.1f KB", static_cast<double>(o.coll.size()) / 1024.0).c_str(),
+                    S.sky_level >= 0 ? fmt("level %d's (%zu bytes)", S.sky_level, o.sky.size()).c_str() : S.world >= 0 ? "its world's" : "the session's", o.count,
+                    o.objects,
                     o.objects > 0 ? fmt(" (uids %d..%d)", slt.uid_first + 1, uid_next).c_str() : "", o.imported, S.entries.size(), S.checkpoints.size(),
                     S.portals.size(), o.death));
         outs.push_back(std::move(o));
@@ -2887,11 +3021,15 @@ bool compose_imports(const LevelTxt& lt, int base, const fs::path& out_dir, Log&
             return false;
         }
         const PoolClass* row = pool_find(l, c);
-        if (row == nullptr || row->block_size == 0) {
+        if ((row == nullptr || row->block_size == 0) && !im.world.empty() && pool_find(base, c) == nullptr) {  // (a world's object of a class with no data: not placed)
+            log.say(fmt("imports: section %s's objects of class %d:%u (no data in the pool: a class of code alone) are not placed", im.world.c_str(), l, c));
+            continue;
+        }
+        if ((row == nullptr || row->block_size == 0) && im.world.empty()) {
             err = fmt("level.txt:%d: import %s: level %d has no class %u with data", im.line, im.name.c_str(), l, c);
             return false;
         }
-        todo.push_back({l, c, "imported (level.txt:" + std::to_string(im.line) + ")"});
+        todo.push_back({l, c, !im.world.empty() ? "world-of-" + im.world : "imported (level.txt:" + std::to_string(im.line) + ")"});
     }
     std::string out = "# the classes the level imports from other levels, with their closure (the composer's: docs/open-engine.md)\n"
                       "# import <level> <class> <name> <why>\n";
@@ -3068,7 +3206,7 @@ bool compose_level_mod(const std::string& folder, bool force) {
     // (format 3) the sections' lines moved by the level's offset and their own
     for (LevelTxt::Section& S : lt.sections) {
         for (int l = 0; l < 3; ++l) {
-            const float o = lt.offset[l] + S.offset[l];
+            const float o = S.world >= 0 ? 0.0f : lt.offset[l] + S.offset[l];  // (stage 8: a world's section's lines are its level's coordinates)
             for (LevelTxt::Moby& mb : S.mobys) mb.at[l] += o;
             for (LevelTxt::Checkpoint& c : S.checkpoints) c.at[l] += o;
             for (LevelTxt::Entry& e : S.entries) e.at[l] += o;
@@ -3077,7 +3215,7 @@ bool compose_level_mod(const std::string& folder, bool force) {
                 pt.hi[l] += o;
             }
         }
-        if (S.has_death) S.death += lt.offset[2] + S.offset[2];
+        if (S.has_death && S.world < 0) S.death += lt.offset[2] + S.offset[2];
     }
     // (stage 7) the grind rails: their files read, their points moved and densified; their names once in the level
     size_t rails_all = 0;
@@ -3220,7 +3358,7 @@ bool compose_level_mod(const std::string& folder, bool force) {
     std::vector<SectionOut> souts;
     if (!lt.sections.empty()) {
         for (const LevelTxt::Moby& mb : lt.mobys) lt.uid_first = std::max(lt.uid_first, mb.uid);
-        if (!compose_sections(ldir, lt, base_gp, hm, mesh_mats, souts, log, err)) return fail(err);
+        if (!compose_sections(ldir, lt, m.level_base, base_gp, hm, mesh_mats, souts, log, err)) return fail(err);
     }
     // the level's own classes: their models, more host meshes (no placement: the objects are placed by the game)
     std::vector<ClassModel> models;
@@ -3430,7 +3568,11 @@ bool compose_level_mod(const std::string& folder, bool force) {
             o << fmt("music\t%d\t%d\n", i, S.music_level);
             if (S.has_fog) o << fmt("fog\t%d\t%d\t%d\t%d\n", i, S.fog[0], S.fog[1], S.fog[2]);
             if (S.has_background) o << fmt("background\t%d\t%d\t%d\t%d\n", i, S.background[0], S.background[1], S.background[2]);
-            o << fmt("death\t%d\t%.6g\n", i, so.death);
+            if (S.world < 0 || S.has_death) o << fmt("death\t%d\t%.6g\n", i, so.death);  // (a world's: its level's unless given)
+            if (S.world >= 0) {  // (stage 8) its level's world, its objects (their uids there -> the session's)
+                o << fmt("world\t%d\t%d\n", i, S.world);
+                for (const auto& [from, to] : S.wuids) o << fmt("wuid\t%d\t%d\t%d\n", i, from, to);
+            }
             if (!S.lights.empty()) o << fmt("lights\t%d\t%s\n", i, S.lights.c_str());
             for (const LevelTxt::Checkpoint& c : S.checkpoints)
                 o << fmt("checkpoint\t%d\t%s\t%.6g\t%.6g\t%.6g\t%.6g\n", i, c.name.c_str(), c.at[0], c.at[1], c.at[2], c.at[3]);

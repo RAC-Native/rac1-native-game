@@ -388,6 +388,11 @@ section is streamed in while the landing plays; a switch is made at the start of
 | `int32_t section_current(char* name, int32_t cap)` | the current section's name into `name`; its index (0 main), -1 no session with sections |
 | `int32_t section_policy(const char* name, int32_t policy)` | its objects when Ratchet leaves it: `RAC1_SECTION_REMOVE` (out of play; the killed ones stay so), `RAC1_SECTION_FREEZE` (kept, not updated nor drawn), `RAC1_SECTION_KEEP` (kept running); -1 only asks |
 
+The same services serve a section of a game planet's world ([Game worlds as sections](mods.md#game-worlds-as-sections)):
+`section_load` reads its planet's files from the disc in the background (about 20 MB, a fraction of a second), and while it
+is the current section the planet's objects there (`mobys_near`, the objects' memory) run on their own code with their
+planet's level data; `section_unload` gives its memory back.
+
 Callbacks: `section_leave(user, name)`, then `section_enter(user, name, entry)` (`entry` "" when the switch was a death's
 checkpoint or a save's). The objects your plugin started are not a section's: a switch never touches them (remove them in
 `section_leave` when they belong to the place left).

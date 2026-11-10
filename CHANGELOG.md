@@ -5,6 +5,14 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: a game planet as a section** (`level.format` 3): a section block with `world <planet>` (`world kalebo`,
+  `world 3`, ...) is that planet's world: its scenery drawn exactly as on the planet (modern renderer, OpenGL and Vulkan),
+  its collision, sky, music, fog, lights, cameras and grind rails, with no loading screen when Ratchet steps through a
+  portal into it. `objects <classes>` (and an optional `box`) brings the planet's own objects along: its enemies fight on
+  their own code (Kalebo III's robots walk up, hit, die to the wrench and drop bolts), its crates break; a death there
+  brings Ratchet back at the section's checkpoint with its enemies back, and a save there brings you back into it. A world
+  takes about 20 MB of memory and is loaded in the background while you play. See docs/mods.md ("Game worlds as
+  sections").
 - **Movement = Strafing / RAC 3** (the Modern preset) on the hoverboard: L2 and R2 are the board's tricks again (#28). The
   strafe took them on the board too (and Aiming = Modern turned R2 into circle), so only the R1 and L1 tricks could be
   done and the skill point Tricky (the Twisty McMarx: R1, L1, R2 and L2 in one jump) could not be earned with those
