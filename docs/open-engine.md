@@ -16,7 +16,10 @@ addresses translated, its own code handed out as tags), classes **imported** fro
 run** that compares such a class with itself on its own level. Neither ships a visible feature: their proof is the tests
 below. Stage 3 completes the pool: a class comes with what it spawns (its **dependencies**), its sounds, and it can be
 **unloaded** during play; contexts work on any base (Kalebo III's, a level mod's); a level mod brings classes of other
-planets with **`import` lines** and its plugin spawns them (the first part level-mod authors can use).
+planets with **`import` lines** and its plugin spawns them (the first part level-mod authors can use). Stage 4 gives each
+context its own **level data** (paths, groups, cameras, volumes, rails: a registry), describes classes in **profiles** (which
+of their values are level data, what a spawn gives them), and brings in enemies that read their planet's data: six of them,
+from six planets, fight in the arena example's test copy.
 
 ## Session memory
 
@@ -109,6 +112,7 @@ repository and never shared, like every generated file.
 | `sounds/levelNN.bnk` | the level's sound bank as its data file holds it (an imported class's sounds, as a host bank) |
 | `placements/levelNN.bin` | each class's first placement in the level's gameplay file (its record and its pvars, the pvar words that are offsets into its own pvars, name other mobys or point into the level's shared pvar data): a session spawns an imported class from it |
 | `deps/levelNN.txt` | each class's dependencies (below), written by `tools/overlay_match/deps.py` |
+| `leveldata/levelNN.bin` | the level's gameplay file, unpacked (the disc's region's): its paths, groups, cameras, volumes, rails and placements, for a context's registry (below); made from the disc the first time a session needs that level's |
 | `sites/levelNN.txt` | the sites report (below), written by `tools/overlay_match/sites.py` |
 | `pool.json` | the stamp: the version (5) and the disc; a pool made from another disc or by an older version is made again |
 
@@ -122,7 +126,7 @@ bytes there; `classes.bin` is 1183 blocks, 41.7 MB.
 level setup gives the classes' sound definitions against the rows' (`[pool] check level N: the sounds of ...`). Every class
 of all 19 levels is equal.
 
-Still to come in the pool (stage 4): level data (paths, cameras, volumes, rails), profiles.
+The level data is in `leveldata/` (stage 4, below); the profiles are in the repository (`data/pool/profiles`).
 
 **Names.** `data/pool/names.txt` (in the repository) gives a class of a level a stable name (`umbris.turret` is Umbris's
 class 1041), for level.txt's `import` lines and the plugins; a class without a name is `<level>:<class>`. The file starts
@@ -189,7 +193,9 @@ level's paths this way.
 
 **Any base.** A context translates a level's engine data and paired functions to the session base's, through the base's
 map (as the ports' `OV` / `OVF`): Veldin's objects on Veldin's engine, Kalebo III's on Kalebo III's (a level mod on
-Kalebo III's code). Views (`ctx_view`) are still keyed by Veldin's address.
+Kalebo III's code). Views (`ctx_view`) are keyed by the level's own addresses (Veldin's object found in the level through its
+extents, word by word): they hold on any base, and on a level whose object Veldin's map does not pair one to one (Kalebo
+III's and Rilgar's rail table is at 0x15f71c, Veldin's at 0x15f70c).
 
 **What is not done yet:** the context init (A's own data its level start writes: no class tried so far needed one), the
 current level (0x15ed84 stays the base's: hand ports' `on_level` tests take the base's branch), the other region's discs
@@ -309,7 +315,7 @@ id map, the header, the update function, the +0x2c word); the class index is giv
 registration, so the 224 entries of the class table only ever hold what is resident. Their heap blocks (the class block,
 its texture remap), and their level's context and bank when no class of the level is left, are freed three frames later
 (the renderer's thread may still draw the frame before from a class block). The modern renderer's import list is shortened
-(its moby assets loaded again at the next frame: 22 to 30 ms on Kalebo III). `session_import_load` brings a class (and its
+(from stage 4 without loading the level's moby assets again: below). `session_import_load` brings a class (and its
 closure) in during play.
 
 `RAC1_SESSION_CYCLE=umbris.turret@1500,100,12` on Kalebo III: 100 rounds of unload and load again, two turrets spawned
@@ -323,9 +329,9 @@ At a level setup every pool class, the twin's blocks and the spawns' pvars are f
 `[session] memory: ...` after each change (the imports registered, an unload's frees):
 
 ```
-[session] memory: 6 classes imported (62 KB), 2 contexts (1226 KB), other blocks 0 KB (spawned pvars, the twin's);
-heap 1289 KB used, 195318 KB free in 1 runs; 2 sound banks 3504 KB (host memory); class table 198 of 224
-(0 indices free); the MRP's import list 6 classes
+[session] memory: 11 classes imported (1157 KB), 6 contexts (3943 KB), their level data 504 KB, other blocks 0 KB
+(spawned pvars, the twin's); heap 5604 KB used, 191003 KB free in 1 runs; 6 sound banks 10251 KB (host memory); class
+table 203 of 224 (0 indices free); the MRP's import list 11 classes
 ```
 
 A context image (0.5 to 0.75 MB) is the largest part of an import; the classes themselves are a few KB to a few hundred.
@@ -350,8 +356,9 @@ The plugin (ABI 6, [The mod SDK](sdk.md)) spawns them: `import_class(name)` give
 settings and pvars; the mobys its pvars name and its level's shared data none, its pvars in the heap when they are larger
 than a spawn's 0x80 bytes, freed when it is gone), `import_load` / `import_release` bring a class in or take it out.
 
-What a level mod gets so far: classes that read no level data of their own level (`reads -` in the report). A class that
-reads its level's paths, groups or cameras needs stage 4's per-class level data.
+What a level mod gets: classes that read no level data of their own level (`reads -` in the report) as they are; classes
+that do read it (paths, areas, boxes) find their planet's in their context's registry, and their profile gives a spawn
+level data of its own round where it is spawned (stage 4, below).
 
 ## Stage 3's classes and their twin runs
 
@@ -367,14 +374,112 @@ the capture (classes keep times of it in their pvars: the turret's next shot), a
 (the session has none of its level's groups, and a moby of a group is updated only through its group's list: the turret
 was never updated). The robot of stage 2 (Kalebo III's 1445) runs as before; on a Kalebo III base it is the base's own.
 
-## What stage 4 builds on
+## Level data per context: the registries
 
-- `pool_deps`, the closure and the spawn watch; `session_import_load` / `_unload` / `_spawn`; `pool_placement`; the
-  names file; contexts on any base.
-- Level data: the report's `reads` column lists, for every class, the level data it reads; the turret and the spore plant
-  read none. A class that reads paths (Kalebo III's robot, most enemies) needs its level's paths in a view of its context
-  moved to the session's places, and its placement's pvars (path indices) bound to them.
-- A spawned class's pvars that name other mobys (a robot's attached part) are none, and its level's shared pvar data is not
-  copied: stage 4's profiles.
-- The renderer's import list reloads the level's moby assets at each change (22 to 30 ms): an incremental import for
-  loads during play.
+Most enemies read their planet's level data: a path they patrol or fly along, an area (a path's points as a polygon) they
+watch, a box that wakes them, a group of mobys they act with. The engine keeps these in its objects: the path table
+(0x1b04b0, 176 entries, its count 0x160104), the groups (0x1ab840, 112), the cameras (0x15ef50 / 0x15ef54), the volumes (the
+0x90-byte records 0x1600e4 and three lists of 0x80-byte records 0x1600ec..0x160100: `point_in_box` reads the first), the grind
+rails (0x15f70c / 0x15f710). In a session each context has its own copy, a **registry** (`src/game/enhance/leveldata.cpp`):
+
+- **Made with the context** (the first import of a level), in the session heap (owner `level data N`): the level's own
+  paths, cameras, volumes and rails as its load lays them out, from the pool's `leveldata/levelNN.bin`, at the same indices
+  as on the level; its groups none (they name the level's own mobys); its shared pvar data (below) copied.
+  `[ld] level 17's registry at 04088b00 (0x118d0 bytes): 43 paths, 9 cameras, 0 volumes, 0 rails of its own ...`
+- **Its sites see it.** Views of the context (`ctx_view`) for each object: level A's code naming the path table reads A's.
+- **So do the engine's functions it calls.** Many classes give an engine function an index, not a pointer
+  (`path_crossing`, `path_push_out_2d`, `path_crossed`, `point_in_box`): the engine reads the base's objects. Around the
+  update of a moby of an imported class, the moby dispatch swaps the registry's objects into the engine's and back
+  (`ld_enter` / `ld_leave`: about 300 words each way); what the engine wrote meanwhile goes back into the registry.
+- **No index competition.** Each registry's indices are its own: what a mod or a profile adds is taken from the table's end
+  down to the level's own count (`ld_path_reserve`), and given back when the moby it was for is gone.
+- **The base's own classes** (Kalebo III's enemies on a Kalebo III level mod) read the base's objects, the session's view:
+  what is added there goes into the path table's free entries from its end, its points in the mods' block of memory
+  0xdf000..0xe0000, as the SDK's ABI 5 did.
+
+**A spawn's parts and shared data.** `import_spawn` starts an object from its class's first placement on its planet (the
+pool's level data): the mobys its values name (an attached part, a carried trooper) are spawned with it, placed and turned
+as they are relative to it on its planet, their classes brought in with the import's closure (`named by ... (a part)`);
+its pointers into its planet's shared pvar data point into the registry's copy. A profile that gives such a value a default
+of its own (none, a value) overrules the part.
+
+## Class profiles
+
+`data/pool/profiles/L<level>_<class>.txt` (in the repository: ids and offsets only, our knowledge of the class) says which
+private values (pvars) of a class are level data and what a spawn gives them; `src/game/enhance/class_profiles.cpp` reads
+them:
+
+```
+class 16:1356 the dropship (flies in, drops jetpack troopers, shoots class 50; update 0x2e22d8)
+pvar_size 0x1a0
+slot 0xc0 moby   trooper_a  # the troopers it carries (moby indices, -1 none)
+slot 0xd0 area   fight      # with no troopers it stays and fights what target_select finds here (-1: never fights)
+slot 0xd8 path   arrive     # its arrival
+slot 0xdc path   leave      # its leave (-1: it stays)
+default trooper_a none
+default fight none
+default arrive points lift 9 -60 0 25, -32 0 12, -12 0 3, 0 0 0
+default leave points lift 9 0 0 0, 15 0 6, 45 0 25, 90 0 50
+option troops host kal_dropship_troops
+hunt object host kal_dropship
+```
+
+| Line | Means |
+|---|---|
+| `slot <offset> <kind> <name>` | a pvar word: `path`, `area` (a path's points as a polygon), `group`, `moby` (another moby's index), `word`, `vec3` |
+| `default <slot> none` / `value <n>` | at a spawn: -1 / the word |
+| `default <slot> world` | the whole level's area (a square of 4000 round the origin, one a registry, shared) |
+| `default <slot> square <r>` | a path of its own: a square of `r` round where it is spawned |
+| `default <slot> points [lift <h>] <ahead> <left> <up>, ...` | a path of its own: points relative to the spawn in its yaw (`lift` raises the spawn's point first) |
+| `option <name> slot <slot> <min> <max>` / `option <name> host <fn>` | what the SDK's `base_option` may set |
+| `hunt object [host <fn>]` / `hunt moby host <fn>` | what `base_hunt` does: an object of a spawn pool, or any moby of the class |
+| `frame host <fn>` | a host behaviour run after each frame's updates |
+
+Host behaviours are the C++ data cannot say, registered by name in `class_profiles.cpp`: the SDK's ABI 5 fixes for Kalebo
+III's enemies moved there unchanged (`kal_bomb_bot`, `kal_gadgetron`, `kal_trooper`, `kal_dropship`, `kal_dropship_troops`,
+`kal_robot_guard`). Profiles serve the base level's classes started by `base_spawn` (their paths in the base's objects) and
+the imported classes `import_spawn` starts (their paths in their context's registry); a plugin rebinds an imported object's
+slots by name (SDK ABI 8: `object_bind_path`, `object_bind`, `group_create`, `object_slots`; level.txt's `path` lines). A
+class without a profile is imported as before: its values as its first placement has them, indices into its own planet's
+level data (its registry has them, at their places on its planet).
+
+**The ABI 5 enemies on profiles, checked.** The arena example (a copy composed under `s4-night-arena`) run through six of
+its plugin's test hooks before and after the move (`RAC1_MOD_TEST=arena_ch0k` the robots, `arena_ch1k` the Gadgetron robots,
+`arena_ch2k` the dropships and troopers, `arena_ch10k` every kind, `arena_ch11k` the gunship and the bombs, `arena_course`
+the grind course; 5 200 to 9 000 frames each): the same RAM hash in all six (`4c521f97`, `ab6c6324`, `f4ea2ab7`, `2cc9f4d5`,
+`879ae774`, `cc7934da`), the challenges won as before.
+
+## Stage 4's enemies
+
+Each from another planet, its profile and name made, accepted by the twin run on Veldin's engine (the session spawned where
+Veldin's floor puts the hero as on its planet) and then fought in the arena's test copy (`s4_enemies`: the six imported by
+`import` lines and spawned by its plugin in front of Ratchet, the wrench swinging):
+
+| Name | Class | Its level data (profile) | The twin run | In the arena |
+|---|---|---|---|---|
+| `fleet.blarg_trooper` | 17:1382 | an area, four boxes that wake it (`point_in_box`: the volumes moved with the twin) | the same states at the same places (5 at +120, 11 at +300), Ratchet hit at +300 in both; its words differ from +1 in the heights it reads of its floor | wakes, shoots, hits Ratchet |
+| `gemlik.flying_robot` | 13:63 | two paths (none on its planet) | the same states and places, Ratchet 4 to 3 to 2 at the same frames; the words differ in two floor heights | flies at Ratchet, killed by the wrench |
+| `gaspar.walking_robot` | 9:193 | a path (none on its planet) | the same states, Ratchet 4 to 3 to 2 at +120 / +300 in both, killed in both | walks at him, killed |
+| `blarg.serpent` | 6:1048 | its pen (an area it is kept inside: `path_push_out_2d`) | equal 46 frames, then the same states, Ratchet hit in both (4 to 3) | stays in its pen (bound to level.txt's `path pen` by the plugin), strikes |
+| `pokitaru.amoeboid` | 11:572 | two areas (one path on its planet) | its pvars equal 153 frames; Ratchet hurt in both | comes at him, killed |
+| `hoven.flying_trooper` | 12:294 | a patrol, an area, three lines | equal in all 600 frames, but idle in both: it does not wake for a hero placed beside it on its own level either | spawned, killed by the wrench |
+
+In the arena run (5 400 frames): every class drawn on the modern renderer, Ratchet hurt down to 0 by the second wave, no
+refused spawn, no unported call.
+
+## Importing during play: the renderer
+
+A change of the modern renderer's import list (an `import_load` or `import_release` during play) reads only the new classes'
+files and uploads their textures into texture arrays of their own; the level's own classes, textures and vertex data stay.
+`RAC1_SESSION_CYCLE=umbris.turret@1500,100,12` on Kalebo III: each load 1.1 ms (it was 22 to 30 ms, a reload of the level's
+moby assets); a release keeps its textures' layers (unused) until more than 256 are left behind, then the level's assets are
+loaded again once.
+
+## What stage 5 builds on
+
+- `ld_registry_make` / `ld_path_reserve` / `ld_group_create` / `ld_enter`, the profiles (`profile_find`,
+  `profiles_session_spawn`), `ld_placement` (any placement of a level by uid), the incremental renderer import.
+- Not done yet: groups of a level are none in its registry (a class that needs its group's mobys gets them only from a mod's
+  `group_create`); the twin run captures paths, not groups; cameras and the 0x90-byte records are copied but no class tried
+  needed them moved; rails are readable in a registry, placed by mods in stage 7; profiles are written by hand from the
+  generated code (which pvar words index which table) and the twin run.

@@ -33,7 +33,9 @@ Contents:
 | 3 | the first with base levels | the base level's objects at run time: `base_spawn`, `base_moby`, `base_free` (level.txt's `spawn` lines) |
 | 4 | the first with the vendor | `vendor_open`, `input_hold`, the HUD's panels, anchors and sizes (`hud_rect`, `hud_text_ex`, `hud_text_width`, `RAC1_HUD_*`), `base_hunt`, `light_add`; level.txt's `update_all` line |
 | 5 | the first with Kalebo III's enemies | Kalebo III's enemies: `base_option` (`RAC1_BASE_WEAPON`, `RAC1_BASE_TROOPS`), `base_handle`, `base_hunt` and `base_spawn` for the bomb bots 52, the Gadgetron robots 541, the jetpack troopers 638 and the dropships 1356; the weapons: `weapons_owned`, `weapon_equip`, `weapon_allow`, `ammo_fill` |
-| 6 | this one | classes of other levels (level.txt's `import` lines): `import_class`, `import_spawn`, `import_load`, `import_release` |
+| 6 | the first with imports | classes of other levels (level.txt's `import` lines): `import_class`, `import_spawn`, `import_load`, `import_release` |
+| 7 | (reserved) | the rails and the set pieces, still to come: their room in `rac1_api` (`reserved_abi7`, 16 entries) is kept, so ABI 8's services do not move when they come; never call them |
+| 8 | this one | the level data of imported classes: `path_find`, `path_create`, `object_bind_path`, `object_bind`, `group_create`, `object_slots`; level.txt's `path` lines; imported enemies that read their planet's paths and areas |
 
 How compatibility works:
 
@@ -290,9 +292,44 @@ They are in the level from its load; these services spawn them and bring them in
 | `int32_t import_load(const char* name)` | the class brought into the level now, with what it spawns (drawn from the next frame; the modern renderer loads the level's moby assets again, about 25 ms): its id, -1 when it cannot be |
 | `int32_t import_release(const char* name)` | the class taken out of the level: its objects removed at once, its memory given back a few frames later, the classes only it needed with it; how many classes went (0: not one of the level's imports). A class `level.txt` imports is back at the level's next load |
 
-What works so far: classes that read no level data of their own planet (their paths, groups, cameras: the composer's
-`compose.log` says `reads -` for them); the game's tests use Umbris's turret (`umbris.turret`) and Orxon's spore plant
-(`orxon.spore_plant`). A class that reads its planet's paths does not find them yet.
+Classes that read no level data of their own planet (`compose.log` says `reads -`) work as they are (Umbris's turret
+`umbris.turret`, Orxon's spore plant `orxon.spore_plant`). From ABI 8's game on, classes that read their planet's paths,
+areas or boxes work too: they find their planet's level data at their planet's indices, and a class with a **profile** (the
+game's `data/pool/profiles`) is given level data of its own round where `import_spawn` starts it (an area round it, its
+patrol ahead of it...), which the next section's services change. The mobys a placement names (an attached part, the
+troopers a ship carries) are spawned with it, and `import_load` no longer reloads the level's moby assets (about 1 ms).
+
+### The level data of imported classes (ABI 8)
+
+Test `RAC1_API_HAS(api, object_bind_path)` first. An imported object's private values that name its planet's paths,
+areas, groups or other objects are its class's **slots**, named by its profile ([The open engine](open-engine.md#class-profiles));
+`object_slots` lists them. A class without a profile has none.
+
+| Service | Does |
+|---|---|
+| `int32_t path_find(const char* name)` | level.txt's `path <name> x y z ...` line `name` (its points moved by the level's `offset`, as every coordinate): its handle, 0 when there is none |
+| `int32_t path_create(const float* xyz, int32_t n)` | a path of the plugin's own: `n` points (1 to 64), `xyz[3 * n]` in the game's coordinates: its handle (until the level's next load), 0 when it cannot be |
+| `int object_bind_path(uint32_t moby, const char* slot, int32_t path)` | the slot (a path or an area) of the imported object `moby` given the path's points: they are copied into the object's planet's level data (a path of the object's own there, freed when it is gone). 1 done, 0 not (no such object or slot, not a path's slot, no room) |
+| `int object_bind(uint32_t moby, const char* slot, uint32_t value)` | the slot set to `value`: a `moby` slot takes another object's moby address (0: none), a `group` slot a `group_create` handle, a `word` slot the word. 1 done, 0 not |
+| `int32_t group_create(uint32_t owner, const uint32_t* mobys, int32_t n)` | a group of `n` objects (moby addresses, 1 to 64) in the planet's level data of the imported object `owner`: its handle for `object_bind`, -1 when it cannot be |
+| `int32_t object_slots(uint32_t moby, char* out, int32_t cap)` | the slots of the object's class, `"name:kind name:kind ..."` (kinds: path, area, group, moby, word, vec3), into `out`: their count, 0 when it has no profile |
+
+The enemies with profiles (their names in the game's `data/pool/names.txt`; each fought in the arena example's test copy):
+
+| Name | What | Slots (their defaults at `import_spawn`) |
+|---|---|---|
+| `fleet.blarg_trooper` (17:1382) | Drek's fleet's Blarg trooper | `area` (a square of 24 round it); `box_a`..`box_d` (none: always awake) |
+| `gemlik.flying_robot` (13:63) | Gemlik's flying robot | `path_a`, `path_b` (none, as on its planet) |
+| `gaspar.walking_robot` (9:193) | Gaspar's walking robot | `path` (none, as on its planet) |
+| `blarg.serpent` (6:1048) | Blarg's serpent: kept inside its pen | `pen` (a square of 8 round it) |
+| `pokitaru.amoeboid` (11:572) | Pokitaru's amoeboid | `area`, `home` (squares of 12 round it) |
+| `hoven.flying_trooper` (12:294) | Hoven's flying trooper (it does not wake for Ratchet beside it, on its planet either) | `patrol`, `line_a`..`line_c` (none), `area` (a square of 24 round it) |
+
+```c
+/* level.txt: import blarg.serpent / path pen 2 -20 0  14 -20 0  14 -8 0  2 -8 0 */
+uint32_t m = api->import_spawn(api->import_class("blarg.serpent"), at, yaw);
+if (m && RAC1_API_HAS(api, object_bind_path)) api->object_bind_path(m, "pen", api->path_find("pen"));
+```
 
 ### Classes and objects (ABI 2)
 
@@ -432,6 +469,9 @@ tried on Kalebo III). Test with `RAC1_MODS=1 RAC1_MOD_CODE=1` and
 
 ### Kalebo III's enemies (ABI 5)
 
+(Since ABI 8's game what follows is these classes' profiles, `data/pool/profiles/L16_*.txt`, and their host behaviours: the
+same values and the same behaviour, checked by the arena example's challenges giving the same RAM hashes.)
+
 On Kalebo III's own level its enemies wait for the level's data: its paths (the walks, the flights, the areas they watch),
 its moby groups (the Gadgetron robots' doors), its markers, a trigger object that wakes them. A level mod has none of it
 (the composer keeps the ship's flight path only), so a `base_spawn` of these classes on a Kalebo III base gives the object
@@ -548,6 +588,7 @@ typedef struct rac1_ray_hit {       /* (ABI 2) collide_ray */
 | Triggers | no fixed limit (tested once a frame each) |
 | `ee_alloc` | 53 KB for all the plugins, for the whole run (54 KB up to ABI 3: the last KB holds the frame's lights, `light_add`) |
 | Kalebo III's enemies' paths (ABI 5) | 4 KB of paths for the `spawn` lines' objects of classes 52, 541, 638, 1356 (about 40 objects), and the path table's free entries (176 less the level's) |
+| Imported objects' level data (ABI 8) | a planet's paths: its own count, the rest of 176 for the paths spawns and binds add (given back when their object is gone); groups: 112 a planet; a bound path 64 points |
 | Jetpack troopers' flight (ABI 5) | half a unit over the floor under them; a wall in their way flown over up to 14 units over the floor; a sudden drop (a ledge) followed down at 0.05 units a frame |
 | Lights (`light_add`) | 31 a frame for all the plugins, within the point lights' 96 a pixel (the game's 8, the hand-placed and the per-class lights before them, the automatic emitters after) |
 | HUD lines | 15 a frame (`hud_text`, `hud_text_ex` together), 255 characters each; `hud_text_ex`'s scale at most 8 |

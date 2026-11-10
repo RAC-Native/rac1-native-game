@@ -10,6 +10,15 @@ What changed in each release. Releases are source only: you build the game with 
   animation, slipped off it and the water stayed; circle then did nothing until he stepped off and on again or put the
   Hydrodisplacer away. It is the original game's own bug (the faucet's pull lands him exactly on a seam of its collision);
   with the row on he stays on the faucet.
+- **Level mods: enemies of other planets** (the mod SDK's ABI 8): imported classes that read their planet's level data
+  (the paths they patrol, the areas they watch, the boxes that wake them) now work: they find their planet's data, and
+  a spawn gives them level data of their own round where it starts them (their **profiles**, `data/pool/profiles`), which
+  the plugin can change (`object_bind_path` with a `path` line of `level.txt` or `path_create`, `object_bind`,
+  `group_create`, `object_slots`). Six enemies have names and profiles: Drek's fleet's Blarg trooper
+  (`fleet.blarg_trooper`), Gemlik's flying robot, Gaspar's walking robot, Blarg's serpent, Pokitaru's amoeboid and Hoven's
+  flying trooper. The parts an object's placement names come with it, and bringing a class in during play no longer
+  reloads the level's models (about 1 ms instead of 25). ABI 7 is kept for the rails. See docs/sdk.md and
+  docs/open-engine.md.
 - **Level mods: classes of other planets** (`import` lines in `level.txt`, the mod SDK's ABI 6): a level mod can bring a
   class of another game level, with what it spawns (its shots, their explosions, its debris), and its plugin starts them
   (`import_class`, `import_spawn`) or brings them in and out during play (`import_load`, `import_release`). They are
