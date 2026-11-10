@@ -1123,25 +1123,135 @@ on the worker (134 of Veldin's) in 1.4 to 3.2 s while a level loads.
 
 ### Not done, and what stage 10 needs
 
-- **Gemlik's ship** (above): a planet's own objects run with the level state of a first visit and without their level's own
-  setup code; a boss needs the same (Qwark's fight starts from the ship).
-- **A level's HUD pictures**: Giant Clank's energy bar shows another picture (its texture is Quartu's HUD's); bosses' bars
-  likewise.
-- **Camera types without a hero context**: the type table copy comes with `hero_build`; a boss's camera requests need it alone
-  (Umbris 0x12, Blarg 0x12, Quartu 0x16, Gemlik 0x13).
+- **Gemlik's ship**, **a level's HUD pictures**, **camera types without a hero context**: done in stage 10 ([Bosses](#bosses-stage-10)).
 - A plugin's `hero_build` lasts until the next section switch (the entered section's line decides); a section with a board but
   no `hero kalebo` leaves Ratchet standing on it in 0x6b (Veldin's code has no riding).
 
-## What stage 10 builds on
+## Bosses (stage 10)
 
-- **Hero contexts (stage 9)**: a boss that forces hero states only its planet's build has (Giant Clank's fight) takes that
-  build with `hero <planet>`; its camera types come with it.
-- **Stage 10 (bosses)**: a boss's arena can be its planet's world as a section with the boss's class chosen by `objects`;
-  what a boss reads beyond its level data (its cameras: already the engine's in a world's section; its cutscenes, its music
-  changes) is the per-boss work.
-- **Not done**: a world's spawn rules use the session's level state (a first visit), not the planet's story; its objects
-  outside the chosen set do not come (the planet's glass and water on Kalebo III are objects); the GS's VRAM image and the
-  chrome / glass map registers stay the session's (the modern renderer does not read them for the world, the faithful
-  renderer would); the renderer's first entry into a world takes one frame of 43 to 73 ms; a world on another session base
-  than Veldin's was not tried. Umbris's and Gemlik's worlds come with their own skies (drawn by their own sky code since the
-  level mods' sky fix: `world umbris` and `world gemlik` sections tried, both renderers, entered and left again).
+DESIGN stage 10 (section 9's table): the game's bosses in a session, first the Snagglebeast. The code: `section_world.cpp`
+(a world's HUD pictures, its light grid), `sections.cpp` (a world's level state, the `boss` lines, the bosses' soft reset and
+win, the mod's rails in a world), `hero_modes.cpp` (the camera level; `RAC1_MOBY_WATCH` / `RAC1_MOBY_POKE`), `variants.h`
+(`g_camera_level`), `leveldata.cpp` (the base's enemies in a world), the composer's `boss` lines and a world's rails
+(`level_compose.cpp`), the SDK's ABI 13.
+
+### What the design said, and what was done
+
+DESIGN 9 listed per boss what it needs on top of stages 1 to 6. What the Snagglebeast needed was not boss-specific: it is what
+every planet's objects need in a world's section, and it is now there for every world:
+
+1. **The planet's camera code** (`g_camera_level`, variants.h): while a world's section is current its level's camera sites
+   run (`on_camera_level(n)` for every level's camera types, camera hooks and callbacks: Umbris's, Blarg's, Batalia's... not
+   only the hero contexts' five), and its own camera types are in the session's type table copy (stage 9's, now without a
+   hero context: Umbris's 0x12, whose accept is its own and whose init / update / exit are Veldin's: a row's words are taken
+   through the level's context, a table its map pairs with Veldin's keeps raw addresses in the image). A hero context's level
+   gives the table when there is one.
+2. **The planet's HUD pictures** (`world_hud_build`): the HUD's animations of the level the session's HUD data lacks (Umbris's
+   and Gemlik's 0x7562, the boss bar with its portrait; Quartu's 0x7558, Giant Clank's energy bar; Orxon's 0x7553) are added
+   to a copy of the session's HUD tables (animations, frames, palettes, textures: 0x17e4d8 +0x1c..+0x28), with their textures
+   and palettes from the level's own set (the level file's part 6, decompressed: 327 KB in the heap), uploaded to the GS
+   memory on demand as the game's level set is (the per-frame residence reset walks the copy's counts). Only animations whose
+   frames are all the level set's are added; the tables are the HUD's while the section is current.
+3. **The planet's level state** (`rows_put`): the level records the engine keeps under the current level number (the
+   collected things 0x14c050, the killed-for-good bits 0x14c190, the group counts 0x14d590) and the level's live copy 0x15fc88
+   are, in a session, the level mod's own (level_slots swaps them in). A world's objects now read and write a copy of their
+   own planet's, kept by the session for the visit (zero at the session's start: a first visit), in while the section is
+   current and while its objects are placed or placed again; the session's own for a card save (`sections_save_begin`) and
+   when the session ends. The planet's real records (its own level number's row) are never touched. Gemlik's ship read the
+   level mod's 0x15fc88 and ran its return from a flight: with Gemlik's state it waits at its pad.
+4. **The planet's per-position grids**: gameplay_load points 0x15fbc0 (the objects' light grid), 0x15fb80 / 0x15fb50 (its
+   lights) and 0x15ef80 (a camera block) at the level's gameplay file; a world kept the session's, and moby_update_light's
+   grid lookup at the world's coordinates read past it (Gemlik's ship over the canyon: an out-of-range read). They are the
+   world's state now.
+
+And for the bosses themselves:
+
+5. **`boss` lines** (`boss <class|name|level:class>...` in a section; the SDK's `boss_set` for an object of the plugin's): a
+   death of Ratchet's in the section takes a boss still in play out and places it again (`spawn_objects` of its uid: its
+   placement's record and pvars, the fight from its start; the plugin's `boss` callback `RAC1_BOSS_AGAIN` with the new
+   object); a boss leaving play otherwise is **beaten**: logged, the callback `RAC1_BOSS_BEATEN`, its uid never placed again in
+   the visit (a save keeps it out: the session item's gone objects). Nothing ends: what the original does after a win (the
+   Snagglebeast: its bolts, its level's collected-thing flag, its checkpoint; no cutscene, no level change) happens in the
+   world's state, and what follows is the plugin's (DECISIONS 8).
+
+DESIGN 9 also expected the Snagglebeast's path reads, its HUD draw (a tag) and its checkpoint saves to need work of their own:
+they did not (the registry of its level's data, the context's tags and stage 5's checkpoint hook covered them).
+
+### The Snagglebeast
+
+```
+section cave remove respawn reset
+  world umbris
+  objects all
+  box 195 355 25 320 500 90
+  boss umbris.snagglebeast
+  entry pit 263.35 483.16 36.5 -1.13
+  checkpoint cave_start 263.35 483.16 36.5 -1.13
+end
+```
+
+| Test (`s10-bosses`, `openengine/s10`) | Result |
+|---|---|
+| `s10_pit`: into the cave on its platform, idle | the boss wakes as on Umbris (state 0 to 3, then 3 / 1 / 4: its throws), facing Ratchet (yaw 2.01 on both); its health bar with its portrait (Umbris's HUD picture); Umbris's camera types in the table |
+| `RAC1_MOBY_WATCH=1106:1` on Umbris itself (`RAC1_HERO_AT=605@1000`, the arrival skipped) and in the session, the same `RAC1_MOBY_POKE` (its last hit: state 14, health 0.5, one hit pending) 900 frames after Ratchet arrives | the death frame for frame: 411 of 412 frames equal (state, animation and its frame, place, yaw, +0x2c), state 10 with animation 8 for 410 frames, then 16, then out of play; before the poke the phases match once their random choices are taken out (the two runs' random numbers differ: one animation of two chosen at random, 6 frames apart after 400) |
+| `s10_kill` / `s10_killdie` | beaten: `[section] ... its boss (class 1106, ...) beaten (1 in this visit); the session goes on`, the callback; the boss's own checkpoint save at its death is the session's ("game", 268.90 449.93 36.00); a death afterwards: back there, the boss not back (1 placed object back, 8 killed for good) |
+| `s10_die`: its health set to 60 of 120, then a death | the soft reset at the checkpoint, the boss placed again (a new object, health 120, from its state 0), the callback `RAC1_BOSS_AGAIN` |
+| a save after the win (`RAC1_SESSION_SAVE_AT`), loaded from Kerwan | back in the cave at the boss's checkpoint, the boss not there |
+| the full fight played | not tried: the phases need a player (it takes its damage from the player's weapons and its own shock waves); `RAC1_SIM_INPUT=attack` on its platform does not reach it |
+
+### Gemlik's ship (`world gemlik`, `objects 69 388`, `hero gemlik`)
+
+It waits at its pad (state 1, its level's state); triangle boards it (state 2, then 4 flying, Ratchet in state 0x32); its
+flight with the stick is Gemlik's own frame for frame (`RAC1_MOBY_WATCH=69` against Gemlik itself, the same input after the
+same boarding: 760 frames equal to 0.01); a crash (state 7) is a death: the soft reset at the section's checkpoint and the
+ship back at its pad (Gemlik itself goes back to its own checkpoint). Its flight ends at once with nothing to shoot at (its
+draw counts the targets, `pv+0xe8`: Qwark's ship 388 must come with it); with 388 placed, Qwark's ship flies its route
+(states 1 to 4) for the whole flight tried (1900 frames).
+
+### The mod's own rails in a world's section (the arena's escape into Quartu)
+
+`rail` / `rails` lines in a world's section (the composer: in the planet's coordinates; their points into the section's own
+gameplay file; their strips into a copy of the planet's collision: its cells' faces once each, whole, with the strips, built
+again, its hero groups kept): the runtime puts the level's rails first in the section's rail table and the mod's after them
+(`sections_rail_first`: the SDK's rails find them). Test `s10-escape` (format 3 on Kalebo III's base, `hero generic`): a
+rail in main through a portal into `world quartu`, the plugin attaching Ratchet to `quartu_in` in its `section_enter`
+callback: he grinds the whole rail down (44 units) and lands on Giant Clank's arena floor (130.50 218.56 25.51); the hero
+code main's generic one there; Kalebo III's robots (`base_spawn`, `base_hunt`) beside him walk up and hit him (they stood
+still: a base enemy in a world's section now updates on the base's level data, `ld_enter`'s `LD_BASE_IN_WORLD`). Quartu's
+collision probed (`RAC1_COLL_PROBE`, 6561 points of its arena) against Quartu itself: 6485 the same height; the others are
+Quartu's placed objects the section does not place. A rail's model is not drawn in a world's section.
+
+A world's section needs its planet's context, so the overlay maps' extents (`assets/generated/overlay_map/levelN.ext`,
+stage 1's `extents.py`, made by `./setup.sh`): without them the log says `[ctx] level 15: ... .ext missing (./setup.sh): no
+context` and `[section] quartu: level 15's context or registry cannot be made`, and the world comes without its level data
+(cameras, paths, volumes) and its camera code.
+
+### Not done, and what the other bosses need
+
+- **The Snagglebeast in a mod's own arena**: it waits for Ratchet inside its level's cuboid 10 (its pvar +0x1a4) and follows
+  its routes (17 path reads) at Umbris's coordinates; a mod's arena needs a profile binding those slots to its own volume and
+  paths (stage 4's `object_bind` kinds `area` / `path`), the camera level for its section (a `camera <level>` line or SDK call
+  setting `g_camera_level` without a world) and the HUD pictures likewise (`world_hud_build` from a level other than the
+  section's world).
+- **Qwark's space fight** (Gemlik, 388): with the ship working, what remains is 388's closure (it spawns class 401, which
+  the measured spawns do not list: `data/pool/spawns.txt`'s `13:388` line needs 401, and the deps made again), its three camera
+  requests (Gemlik's camera type 0x13: in the table with `world gemlik`), its HUD element 0x11 (the HUD picture path above),
+  then the fight played to its end (its death and what Gemlik does then: the beaten callback with a `boss 388` line).
+- **Nebula G34's creature** (Blarg, 1051 with 857 / 302 / 303): Blarg's world as a section with `objects` of its room; its
+  camera type 0x16 / Blarg's 0x12 now come with the camera level; its HUD element L6:0x249738's pictures with the world's HUD
+  copy; its 7 group reads (the world's groups, stage 8); then the same boss line and tests.
+- **Giant Clank's fight** (Quartu): `hero quartu giantclank` exists (stage 9); his energy bar now has its picture in
+  `world quartu`; the drones (44, 655) with `objects`, their paths from Quartu's registry.
+- **Drek** (Veldin finale, 1422): its 7 cutscene starts and the game's end (the credits) must be cut off by a profile hook
+  (DECISIONS 8), its 11 group reads.
+- A world's HUD copy takes the level's whole set (about 330 KB a world); a boss's music changes, if any, are its planet's
+  music in its world's section.
+
+## What the next stage builds on
+
+- **Hero contexts (stage 9)** and **the camera level (stage 10)**: a planet's own hero code and camera code in its world.
+- **A world's planet state, HUD pictures and grids (stage 10)**: its objects behave as on a first visit to it.
+- **Not done**: a world's objects outside the chosen set do not come (the planet's glass and water on Kalebo III are objects);
+  the GS's VRAM image and the chrome / glass map registers stay the session's; the renderer's first entry into a world takes
+  one frame of 43 to 73 ms; the mod's own meshes (and rail models) are not drawn in a world's section; a world on a session
+  base other than Veldin's and Kalebo III's was not tried.

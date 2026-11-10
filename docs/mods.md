@@ -481,6 +481,7 @@ mods/example-plateau/
 | `session`, `checkpoint <name> <x> <y> <z> [<yaw>]`, `respawn reset\|keep` | format 3 only: [Sessions](#sessions-format-3) |
 | `section <name> ... end`, `entry`, `portal`, `start`, `leave`, `moby <name>\|<level>:<class> ...` | format 3 only: [Sections](#sections); a section can be a game planet's world (`world`, `objects`, `box`: [Game worlds as sections](#game-worlds-as-sections)) |
 | `hero <planet> [clank\|giantclank\|board]` | format 3 only, in main or a section: another planet's hero code and camera code run Ratchet there, as Clank, Giant Clank or on the hoverboard: [Hero modes](#hero-modes) |
+| `boss <class\|name\|level:class>...` | format 3 only, in a section: its objects of those classes are its bosses (a death there starts the fight over; a boss beaten is not placed again, the plugin is told): [Bosses](#bosses) |
 | `hero generic` | any format, on a base with hero code of its own (Kalebo III, Quartu, Rilgar): Ratchet runs on the generic hero code (Veldin's, Gaspar's, Umbris's): the game's own lava ([Hero modes](#hero-modes)) |
 | `update_all` | every moby of the level is updated each frame wherever the camera is (the game updates a moby only within its update distance of the camera, moby +0x30: 64 units for Kalebo III's robots, a crate's less): enemies far away keep moving and fighting. Costs the updates of the mobys out of sight; the original's levels never |
 | `background <r> <g> <b>`, `fog <r> <g> <b>` | colours (0..255) |
@@ -790,9 +791,26 @@ end
   bring them back).
 - **Memory**: a world takes about 18 to 20 MB of the session's memory above 64 MB (Kerwan 19.2 MB, Kalebo III 18.0 MB), read
   from your disc while you play, before you enter it (the log's `[section] kalebo: level 16's world: ...`).
-- **Not in a world's section**: `meshes`, `rail` / `rails` and `moby` lines of the base level's classes (its own scenery and
-  rails are the planet's; `moby <name>|<level>:<class>` lines are fine). The level's own objects drawn with a model (`object`
-  lines) are not drawn while Ratchet is in a world's section.
+- **Rails of your own** in a world's section: `rail` / `rails` lines, in the planet's coordinates (as its entries): the planet's
+  own rails stay, yours are added (the SDK's `rail_find` and `hero_rail_attach` find them). A rail's collision strip goes into
+  a copy of the planet's collision the composer makes for the section (the planet's faces with the strips: without a strip
+  the grind drops Ratchet), so the section's `collision.bin` is about the size of the planet's. A rail's `mesh` model is not
+  drawn there (yet). Example (the arena's escape continued into Quartu's arena, Ratchet attached by the plugin in its
+  `section_enter` callback):
+
+  ```
+  section quartu remove respawn reset
+    world quartu
+    entry arrivo 130.5 186 61 1.5708
+    rail quartu_in 130.5 186 60 130.5 200 48 130.5 210 36 130.5 216 28
+  end
+  ```
+- **The hero code** there is main's (`hero generic` in main holds in every section without a `hero` line of its own).
+- **The base level's enemies** (a level on Kalebo III's code: its robots spawned with `base_spawn`, hunting with `base_hunt`)
+  follow Ratchet into a world's section and fight there as anywhere in the session.
+- **Not in a world's section**: `meshes` and `moby` lines of the base level's classes (its own scenery is the planet's;
+  `moby <name>|<level>:<class>` lines are fine). The level's own objects drawn with a model (`object` lines) are not drawn
+  while Ratchet is in a world's section.
 
 #### Hero modes
 
@@ -830,9 +848,12 @@ end
   (`objects 439`): he gets on it by walking up to it, as on the planet. A death in a mode brings him back at the checkpoint
   in it again.
 - **Not here**: the race's other racers and its laps' rules (the HUD shows the race: lap 1/3); Giant Clank's HUD picture
-  (his energy bar's picture is Quartu's: another one shows); Gemlik's ship (its own code puts Ratchet out of it on a session's
-  planet: [docs/open-engine.md](open-engine.md#hero-contexts-stage-9)). Off a world's planet the Kalebo III board rides
-  anywhere (its jumps, its falls: back where he got on).
+  in a section without `world quartu` (a world's section brings its planet's HUD pictures: [Bosses](#bosses)). Off a world's
+  planet the Kalebo III board rides anywhere (its jumps, its falls: back where he got on).
+- **Gemlik's ship** (`world gemlik` with `objects 69`, `hero gemlik`): it waits at its pad, Ratchet boards it with triangle
+  and flies it as on Gemlik Base; a crash brings him back at the section's checkpoint with the ship at its pad. Its flight
+  ends at once when nothing is left to shoot at: `objects 69 388` brings Qwark's ship, which flies its route. Qwark's fight
+  itself is not done ([docs/open-engine.md](open-engine.md#bosses-stage-10)).
 - **`hero generic`** (main's line, **any format**: also a format 2 level on Kalebo III's base): Ratchet runs on the generic hero
   code, the one Veldin, Gaspar and Umbris run, instead of the base's own (Kalebo III's): the game's own **lava** (`type3`
   faces: he sinks in it (0x68) and Cross bounces him out (0x69); left in it he is lost, the level loaded again in formats 1
@@ -848,6 +869,40 @@ end
 - Log lines: `[compose] section race: Ratchet runs on level 16's hero code and camera code`, `[hero] the hero context: level
   16's hero code and camera code run Ratchet (...)`, `[hero] mode 2 entered (section giant): ...`, `[hero] the hero's sequence
   91 (empty in his class) from level 0's core: ...`.
+
+#### Bosses
+
+(The open engine's stage 10: [docs/open-engine.md](open-engine.md#bosses-stage-10).) A boss fights in its planet's world as a
+section, on its own code: the **Snagglebeast** in Umbris's cave:
+
+```
+section cave remove respawn reset
+  world umbris
+  objects all                      # the cave's objects: the boss, its pillars, the platforms, the crates
+  box 195 355 25 320 500 90
+  boss umbris.snagglebeast         # (or 1106, or 7:1106) the section's boss
+  entry pit 263.35 483.16 36.5 -1.13
+  checkpoint cave_start 263.35 483.16 36.5 -1.13
+end
+```
+
+- **What comes with a world's section** (any world's, boss or not): its planet's **camera code** (its own camera types and
+  camera hooks, as on the planet), its planet's **HUD pictures** the session lacks
+  (the boss's health bar with its portrait; Giant Clank's energy bar in `world quartu`), and its planet's **level state** as
+  on a first visit: the records its objects read and write (what was collected, what was killed for good) are the session's
+  own copy for that planet, never the planet's in your game (beating the Snagglebeast in a level mod does not beat it on
+  Umbris, and the planet's progress does not hide the boss from the level mod).
+- **`boss <class|name|level:class>...`**: the section's objects of those classes are its bosses (the section must place them:
+  `objects` or a `moby` line). **Ratchet's death in the section** starts the fight over: Ratchet back at the checkpoint (the
+  boss's own checkpoints count: the Snagglebeast's at its death), the boss placed again as at the start (its health, its
+  phase). **A boss beaten** (it leaves play: the Snagglebeast's death sequence, about 7 seconds) is never placed again in this
+  visit; the game does not end, nothing else happens by itself: your plugin is told (the SDK's `boss` callback, ABI 13) and
+  does what follows (a portal, a reward, a fade back to main). A save made after it keeps it beaten.
+- **Not yet**: a boss in a section of the mod's own geometry (the Snagglebeast waits for Ratchet inside its cave's box and
+  follows its routes there: Umbris's coordinates); the other bosses (Qwark's space fight, Nebula G34's creature, Drek).
+- Log lines: `[hero] the camera level: level 7's camera code runs the cameras (...)`, `[section] level 7's HUD: 1 animations
+  the session lacks added (...)`, `[section] cave: its boss (class 1106) placed again after the death: ...`, `[section] frame
+  2384: cave: its boss (class 1106, moby 01085c00) beaten (1 in this visit); the session goes on`.
 
 ### Grind rails and set pieces
 

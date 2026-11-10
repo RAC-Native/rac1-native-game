@@ -39,7 +39,8 @@ Contents:
 | 9 | the first with sessions | sessions (level.format 3): `session_on`, `checkpoint_set`, `checkpoint_at`, `checkpoint_get`, `respawn_policy`, `rac1_respawn`, `RAC1_RESPAWN_*`; the callbacks `respawn`, `session_save`, `session_load`; `object_bind`, `object_bind_path`, `group_create`, `object_slots` on the base level's own objects too (a `base_spawn` object of a class with a profile) |
 | 10 | the first with sections | sections (a session's `section` blocks and portals): `section_load`, `section_ready`, `section_enter`, `section_unload`, `section_current`, `section_policy`, `RAC1_SECTION_*`; the callbacks `section_leave`, `section_enter` |
 | 11 | the first with rails | grind rails and the set-piece kit, in ABI 7's room of the table: `rail_find`, `hero_rail`, `rail_point`, `rail_enable`, `hero_rail_attach`, `rail_speed`, `rail_info`, `item_visit`, `fade`, `fade_active`, `camera_set`, `camera_release`, `hazard_add`, `hazard_set`, `object_follow_path`, `object_path_at` (`rac1_rail_info`, `rac1_camera`, `rac1_hazard`, `RAC1_RAIL_*`, `RAC1_CAMERA_*`, `RAC1_HAZARD_*`, `RAC1_PATH_*`); the callback `rail`; level.txt's `rail`, `rails`, `items` lines and `class ... collision <file>` |
-| 12 | this one | hero contexts and modes (a session): `hero_build`, `hero_build_now`, `hero_mode`, `hero_mode_now`, `RAC1_HERO_*`; level.txt's `hero` line |
+| 12 | the first with hero modes | hero contexts and modes (a session): `hero_build`, `hero_build_now`, `hero_mode`, `hero_mode_now`, `RAC1_HERO_*`; level.txt's `hero` line |
+| 13 | this one | bosses (a session's sections): `boss_set`, `boss_beaten`, `RAC1_BOSS_*`; the callback `boss`; level.txt's `boss` line |
 
 How compatibility works:
 
@@ -160,6 +161,7 @@ Fill them in `rac1_mod_main`; all are optional (NULL: none). Each gets your `mod
 | `session_save(user, buf, cap)` | 9 | a save is written in a session | your bytes of the session's state (at most `cap`, 16 KB), their count; kept in the session's item of `save<N>.pc`, apart from `save`'s |
 | `session_load(user, data, size)` | 9 | a save made in a session was loaded, back in it | after `level_start`; the game does not save the objects' places: a battle running at the save is not resumed |
 | `section_leave(user, name)`, `section_enter(user, name, entry)` | 10 | a section switch | [Sections](#sections-abi-10) |
+| `boss(user, name, cls, obj, event)` | 13 | a boss of section `name` (`cls` its class as the session numbers it, `obj` its object): `RAC1_BOSS_BEATEN` (it left play: beaten; the session goes on, the game never ends there), `RAC1_BOSS_AGAIN` (placed again after a death of Ratchet's in its section: `obj` the new object, the fight from its start) | before `frame`; every plugin gets it ([Bosses](#bosses-abi-13)) |
 | `rail(user, rail, name, event)` | 11 | Ratchet and one of level.txt's rails: `RAC1_RAIL_ENTER` (he is on it: landed, jumped across to it, `hero_rail_attach`), `RAC1_RAIL_END` (he reached its end: its last point riding along its points, its first riding back; not for a loop), `RAC1_RAIL_LEAVE` (off it: jumped off, fell, flew off its end, a switch) | once a frame of play, before `frame` (what the hero did the frame before); every plugin gets it ([Rails](#rails-and-the-set-piece-kit-abi-11)) |
 
 A class's own callbacks are in its `rac1_class_def` ([Objects](#objects)).
@@ -478,6 +480,31 @@ const uint32_t gc = api->import_spawn(c, p, 0.0f);
 api->hero_build(15);                                /* Quartu's hero code and Giant Clank's camera */
 api->hero_mode(RAC1_HERO_GIANT_CLANK, gc);
 /* ... later: */ api->hero_mode(RAC1_HERO_NONE, 0); api->hero_build(-1); api->moby_remove(gc);
+```
+
+### Bosses (ABI 13)
+
+Test `RAC1_API_HAS(api, boss_set)` first. A section's level.txt `boss` line ([Bosses](mods.md#bosses)) names its bosses by
+class: a death of Ratchet's in the section takes a boss still in play out and places it again (the fight starts over: its
+health, its phase), and a boss leaving play otherwise is **beaten**: the `boss` callback says so, and it is not placed again
+in this visit of the session. The game itself never ends there: what follows a win (a door opened, a portal, a reward) is
+your plugin's.
+
+| Service | Does |
+|---|---|
+| `int boss_set(uint32_t obj)` | the object `obj` (in play in the current section: one of its placed objects, or one you spawned with `import_spawn`) one of the section's bosses, as a `boss` line makes it: one you spawned is spawned again where it was when you set it after a death. 1 done, 0 not (no sections, no such object) |
+| `int32_t boss_beaten(const char* name)` | the bosses beaten in section `name` (`""` or NULL: the current one) in this visit of the session; -1 no such section |
+
+```c
+/* the Snagglebeast beaten in the cave: back to main after a moment, with a fade (your own reward, door or portal here) */
+static uint64_t won_at;
+static void on_boss(void* user, const char* section, int32_t cls, uint32_t obj, int32_t event) {
+    if (event == RAC1_BOSS_BEATEN && strcmp(section, "cave") == 0) won_at = api->frame_count();
+}
+static void on_frame(void* user) {
+    if (won_at != 0 && api->frame_count() == won_at + 300) api->section_enter("main", "from_cave", 30);
+}
+/* rac1_mod_main: */ mod->boss = on_boss; mod->frame = on_frame;
 ```
 
 ### Classes and objects (ABI 2)

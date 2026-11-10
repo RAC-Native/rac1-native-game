@@ -5,6 +5,19 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: bosses** (`level.format` 3, the mod SDK's ABI 13): the **Snagglebeast** fights in Umbris's cave as a section
+  (`world umbris`, `objects all` in a box round the cave, `boss umbris.snagglebeast`), on its own code, with its health bar
+  and portrait. A death in the fight starts it over (Ratchet back at the checkpoint, the boss whole again, no loading
+  screen); beating it never ends the game or changes your Umbris: the session goes on, the boss stays beaten for the visit
+  (and in a save made there), and your plugin is told (the `boss` callback) to open the way on. Every planet's world as a
+  section now also brings that planet's camera code, its HUD pictures (Giant Clank's energy bar in `world quartu`) and its
+  own level state as on a first visit: **Gemlik's ship** waits at its pad, Ratchet boards it and flies it as on Gemlik Base.
+  See docs/mods.md ("Bosses").
+- **Level mods: your own grind rails in a planet's world** (format 3): a `world <planet>` section takes `rail` / `rails`
+  lines in the planet's coordinates, added to the planet's own rails, with their collision strips (a grind continued through
+  a portal into Quartu's arena lands Ratchet on its floor); a section without a `hero` line keeps main's (`hero generic`), and
+  a base level's enemies hunting Ratchet (Kalebo III's robots) follow him into the world and fight there. A rail's model is
+  not drawn in a world section yet.
 - **Level mods: the Save and Load pages show a level mod's level.** A save made on it showed its base planet (Kalebo III's
   name and picture for a level on Kalebo III's code); now the level's own name, region and picture, as the ship's map shows
   them. With the level's mod off or missing, the pages show the planet loading the save lands on (the one flown from, where

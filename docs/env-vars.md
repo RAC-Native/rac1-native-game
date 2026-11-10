@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 459 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 461 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 25 | Settings a player may want to change: files, window, audio, the ISO |
 | [Debugging](#debugging-variables) | 330 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 104 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Automated testing](#automated-testing-variables) | 106 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -443,6 +443,8 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_LEVEL_TRACE` | set (any value) = on; default off | Prints `[levels]` lines for a level mod's records swapped in and out of the save's per-level records, for its save<N>.pc items written and read, and for the ship's planet list's rows and the row selected. |
 | `RAC1_MENU_AT` | integer frame number; default 120 | In a scripted menu input run (simulated keys), the frame at which the simulated button press happens instead of the default, with Start also pressed at frame 120 to skip the arrival scene. |
 | `RAC1_MIRROR_DUMP` | file path; default none | With RAC1_IOP_MIRROR_TEST, writes the mirror's output (48 kHz stereo 16-bit) to the file. |
+| `RAC1_MOBY_POKE` | `<class>@<frame>:<m\|p\|M\|P><offset>=<value>[,...]` (offset and value hex); unset = off | At that game frame, on any level, writes the values into the first live moby of that class: `m` a word of its record, `p` a word of its pvars, `M` / `P` a byte. Takes a boss's fight to a given state on its own level and in a session alike ([The open engine](open-engine.md#bosses-stage-10)). |
+| `RAC1_MOBY_WATCH` | `<class>[:<n>[:<offset>]]`; unset = off | Every n frames (default 30), on any level: the first live moby of that class (its state, animation and frame, place, yaw, +0x2c, four words of its pvars at the offset (hex, default 0), its update function) and the hero's place and health: `[watch] frame ...`. A class on its own level and in a session compared frame by frame. |
 | `RAC1_MODS_DIR` | folder path; default `mods` | Where the mods are looked for (docs/mods.md): the tests of a sample mod. |
 | `RAC1_MOVIE_AT` | [h]<n>@<frame>; unset = off | At that game frame (in play) starts the game's movie n in its movie mode: the story movie n, as the pause menu plays them, or with `h` the level's help movie n, as a help desk plays them; with RAC1_GOTO later, it tests a level change in the middle of a movie. |
 | `RAC1_MOVIE_SUBTITLES` | on / off (or 1 / 0); unset = the player's setting (Options > Language > Movie Subtitles; off in headless runs) | Shows or hides the movie subtitles (the files in `assets/movie-subtitles/`, docs/movie-subtitles.md), also in headless runs, in the text language (RAC1_LANGUAGE). |
