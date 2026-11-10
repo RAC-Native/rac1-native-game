@@ -5,6 +5,9 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Windows: the build failed in `mod_code.cpp`** (#142; the update from 0.7.0 to `main` at 98e966f stopped there and
+  kept the previous build): the mod SDK's sound fields were named `near` and `far`, which `<windows.h>` defines as
+  nothing. Renamed.
 - **Daino's Arena** (`examples/night-arena`): a larger example level mod made in Blender, an arena in a lava lake on
   Kalebo III's code, with a plugin running challenges against Kalebo III's enemies (waves, bombs from the sky, flame
   vents, weapon limits, two championships) and, for players who have the Grind Boots, grind rails of its own: a test
