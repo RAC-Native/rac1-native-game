@@ -144,7 +144,8 @@ namespace Rac1Launcher
             }
         }
 
-        /// <summary>The commit of main a development-channel download unpacked ("commit" in assets\update-version.txt,
+        /// <summary>The commit of the dev branch (or of main, before GitHub issue #141) a development-channel download unpacked
+        /// ("commit" in assets\update-version.txt,
         /// written by the launcher and by tools\setup.py --update), or null.</summary>
         public string InstalledCommit
         {
@@ -154,14 +155,14 @@ namespace Rac1Launcher
                 {
                     string f = P("assets", "update-version.txt");
                     if (!File.Exists(f)) return null;
-                    bool main = false;
+                    bool dev = false;
                     string commit = null;
                     foreach (var line in File.ReadAllLines(f))
                     {
-                        if (line == "branch main") main = true;
+                        if (line == "branch " + GitHub.DevBranch || line == "branch main") dev = true;
                         else if (line.StartsWith("commit ") && line.Length > 7) commit = line.Substring(7).Trim();
                     }
-                    return main && !string.IsNullOrEmpty(commit) ? commit : null;
+                    return dev && !string.IsNullOrEmpty(commit) ? commit : null;
                 }
                 catch (IOException) { return null; }
             }
@@ -247,11 +248,15 @@ namespace Rac1Launcher
             return r;
         }
 
-        /// <summary>The newest commit on main (the development channel), its full hash.</summary>
-        public static string MainCommit()
+        /// <summary>The development channel's branch: the work lands on dev first and is merged into main from time to time
+        /// (GitHub issue #141: following main alone missed it; tools\setup.py and tools\update_check.py follow dev too).</summary>
+        public const string DevBranch = "dev";
+
+        /// <summary>The newest commit on the dev branch (the development channel), its full hash.</summary>
+        public static string DevCommit()
         {
             string json;
-            using (var resp = Request(Api + "/commits/main").GetResponse())
+            using (var resp = Request(Api + "/commits/" + DevBranch).GetResponse())
             using (var rd = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
                 json = rd.ReadToEnd();
             string sha = JsonString(json, "sha");
@@ -318,7 +323,7 @@ namespace Rac1Launcher
         /// tools\setup.py --update does (assets\update-version.txt for the version the game shows, and the files'
         /// hashes, so a later update removes the files a new version no longer has).</summary>
         /// <param name="versionLines">assets\update-version.txt's lines, as tools\setup.py --update writes them: for a
-        /// release "describe v1.2.3", "commit ", "branch "; for main "describe abc1234", "commit &lt;hash&gt;", "branch main".</param>
+        /// release "describe v1.2.3", "commit ", "branch "; for dev "describe abc1234", "commit &lt;hash&gt;", "branch dev".</param>
         public static void Unpack(string zip, string dir, string[] versionLines, Action<string> log)
         {
             var hashes = new SortedDictionary<string, string>(StringComparer.Ordinal);

@@ -80,7 +80,7 @@ constexpr uint32_t CONTROLS = SETTINGS + 1;    // 1: the modern controls (L2 aim
 constexpr uint32_t MOVEMENT = SETTINGS + 2;    // 1: the strafe with R&C 1's movement, 2: R&C 3's on-foot movement
 constexpr uint32_t FADES = SETTINGS + 3;       // 1: the original's screen fades shown (0: run in one host frame)
 constexpr uint32_t UPDATE_OFF = SETTINGS + 4;  // 1: no update check at start (update_notice.h)
-constexpr uint32_t UPDATE_DEV = SETTINGS + 5;  // 1: the update check's development channel (main), 0 the releases
+constexpr uint32_t UPDATE_DEV = SETTINGS + 5;  // 1: the update check's development channel (the dev branch), 0 the releases
 constexpr uint32_t VENDOR_ALL = SETTINGS + 6;  // 1: the Vendor's "All Ammo" entry (vendor_buy_all.h)
 constexpr uint32_t VIBRATION = SETTINGS + 7;   // the controller's vibration: 0 off, 1 low, 2 high (vibration.h, #10)
 constexpr uint32_t TRIGGERS = SETTINGS + 8;    // 1: a DualSense's adaptive triggers and light bar (vibration.h, #10)
@@ -227,7 +227,7 @@ std::filesystem::path prefs_path() {
 
 int g_audio_channels = 0;   // Options > Sound's 5.1 / 7.1 (6 / 8), else 2; 0: not read yet (advanced_audio_channels)
 int g_audio_mix = -1;       // Options > Sound's Mix: 1 High Precision, 0 Original; -1: not read yet (audio_mix_pref)
-std::string g_update_skip;  // the update "Skip Version" chose (update_notice.h): a release's tag, or main's commit
+std::string g_update_skip;  // the update "Skip Version" chose (update_notice.h): a release's tag, or the dev branch's commit
 
 // orig: (none) — enhancement: a preferences file's "name value" lines, each given to `line`; false when none
 template <typename F>
