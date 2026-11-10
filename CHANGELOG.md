@@ -5,6 +5,8 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: the screen fades cover an ultra-wide screen.** A plugin's `fade()` and a section switch's fade stopped at
+  the 4:3 frame's right side on a widened view (an ultra-wide screen): now the whole width.
 - **Level mods: the Save and Load pages show a level mod's level.** A save made on it showed its base planet (Kalebo III's
   name and picture for a level on Kalebo III's code); now the level's own name, region and picture, as the ship's map shows
   them. With the level's mod off or missing, the pages show the planet loading the save lands on (the one flown from, where

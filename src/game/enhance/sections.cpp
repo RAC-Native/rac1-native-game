@@ -1265,7 +1265,7 @@ void sections_frame(uint64_t frame) {
 // orig: (host) see sections.h
 void sections_hud() {
     if (!g_sections_on || g_fade_alpha <= 0) return;
-    gs_flat_rect(0, 0, 512, 448, static_cast<uint64_t>(static_cast<uint32_t>(std::min(g_fade_alpha, 0x80)) << 24), 0);
+    gs_flat_rect(0, 0, 513, 449, static_cast<uint64_t>(static_cast<uint32_t>(std::min(g_fade_alpha, 0x80)) << 24), 0);  // (513 x 449: setpieces_hud's)
 }
 
 // orig: (host) see sections.h

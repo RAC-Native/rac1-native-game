@@ -476,7 +476,9 @@ void setpieces_camera() {
 // orig: (host) see setpieces.h
 void setpieces_hud() {
     if (g_sp.f_alpha <= 0) return;
-    gs_flat_rect(0, 0, 512, 448, static_cast<uint64_t>(static_cast<uint32_t>(std::min(g_sp.f_alpha, 0x80)) << 24 | (g_sp.f_rgb & 0xffffffu)), 0);
+    // (to 513 x 449: gs_flat_rect's corners are a pixel in, and a fill reaching the frame's right edge is what a widened view
+    // stretches to the window's: 512 stopped at the 4:3 frame's right side on an ultra-wide screen)
+    gs_flat_rect(0, 0, 513, 449, static_cast<uint64_t>(static_cast<uint32_t>(std::min(g_sp.f_alpha, 0x80)) << 24 | (g_sp.f_rgb & 0xffffffu)), 0);
 }
 
 // ---- the SDK's services ----
