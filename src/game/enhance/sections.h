@@ -35,6 +35,21 @@ constexpr int32_t SECTION_KEEP = 2;    // kept running
 // orig: (host) a session's level header read (session_rt_level): the build's sections.txt read (its sections, entries,
 // checkpoints, portals, settings); "" (or none): off
 void sections_level(const std::string& build_dir);
+// (stage 10) Bosses: a section's `boss` lines name classes whose objects are its bosses (and the plugin's boss_set names one).
+// A death in the section takes a boss still in play out and places it again (the fight from its start); a boss leaving play
+// otherwise is beaten: logged, the plugin's boss callback, never placed again in this visit of the session.
+// orig: (host) the object `moby` (in play, in the current section) one of its bosses: false when not (no sections, gone)
+bool sections_boss_set(uint32_t moby);
+// orig: (host) the bosses beaten in section `name` ("" the current one) in this visit of the session; -1 no such section
+int sections_boss_beaten(const std::string& name);
+// orig: (host) (stage 10) section `index`'s rail table: where the mod's own rails start (a world's section: after its level's; 0
+// otherwise)
+int32_t sections_rail_first(int index);
+// orig: (host) (stage 10) a memory card save's image about to be made: the session's own level state (its level records) put back
+// in place of a world section's (sections.cpp: a world's level state); the level whose state was in (-1 none), for
+// sections_save_end to put it back after the image
+int sections_save_begin();
+void sections_save_end(int level);
 // orig: (host) the session's arrival (session_rt_loaded): main's collision, sky, settings and music taken as the game set
 // them, main's classes of other levels placed, the other sections' streaming started
 void sections_arrival();

@@ -146,6 +146,7 @@ uint32_t seq_place(const std::vector<uint8_t>& b) {
 constexpr OvConst<0x001ea880u> CAM_TYPES{};
 uint32_t g_cam_table = 0;  // (the copy's heap block)
 bool g_cam_added = false;  // (rows added: the cameras made again when it goes)
+int g_cam_table_level = -1;  // (the level whose rows the copy has)
 
 // the cameras made again from the level's (as a level start makes them: their rows +0x8c found in the table now; a camera made
 // with the table before would name another row: the end row's index is an added type's in the copy)
@@ -160,6 +161,7 @@ void camera_types_restore() {
     g_camera_types_table = 0;
     session_heap_free(g_cam_table);
     g_cam_table = 0;
+    g_cam_table_level = -1;
     if (g_cam_added) cameras_again();
     g_cam_added = false;
 }
@@ -167,7 +169,10 @@ void camera_types_restore() {
 // orig: (host) level `level`'s own camera types made the session's: their count
 int camera_types_take(int level) {
     const uint32_t la = ctx_level_addr(level, 0x001ea880u), img = ctx_image(level);
-    if (la == 0 || img == 0) return 0;
+    if (la == 0 || img == 0) {
+        std::printf("[hero] level %d's camera type table: %s\n", level, img == 0 ? "no context" : "no place in its map");
+        return 0;
+    }
     struct Row {
         uint32_t w[5];
     };
@@ -189,8 +194,15 @@ int camera_types_take(int level) {
         Row r;
         for (uint32_t k = 0; k < 5; ++k) r.w[k] = lwu(src + 4 * k);
         if (static_cast<int32_t>(r.w[0]) == -1) break;
+        // (the words as the level's sites see them: a table its map pairs with Veldin's keeps its level's addresses in the image
+        // unless its own-code-tables pass made them tags (Kalebo III's): its own functions tags, a paired function's start
+        // Veldin's)
+        for (uint32_t k = 1; k < 5; ++k)
+            if (!ctx_is_tag(r.w[k]) && r.w[k] >= CTX_CODE_LO) r.w[k] = ctx_xlate(level, r.w[k]);
         bool own = false;
         for (uint32_t k = 1; k < 5; ++k) own = own || ctx_is_tag(r.w[k]);
+        if (std::getenv("RAC1_CAM_TRACE") != nullptr)
+            std::printf("[hero] level %d's camera type %#x: %08x %08x %08x %08x%s\n", level, r.w[0], r.w[1], r.w[2], r.w[3], r.w[4], own ? " (its own)" : "");
         if (!own) continue;
         bool put = false;
         for (Row& s : rows)
@@ -205,10 +217,20 @@ int camera_types_take(int level) {
     for (size_t q = 0; q < rows.size(); ++q)
         for (uint32_t k = 0; k < 5; ++k) sw(t + static_cast<uint32_t>(q) * 0x14 + 4 * k, rows[q].w[k]);
     g_cam_table = t;
+    g_cam_table_level = level;
     g_cam_added = added;
     g_camera_types_table = t;
     if (added) cameras_again();
     return n;
+}
+
+// the session's camera type table made the one of the hero context's level, else of the camera level's (stage 10): its count of
+// own rows
+int camera_types_sync() {
+    const int want = g_hero_level >= 0 ? g_hero_level : g_camera_level;
+    if (want == g_cam_table_level && (want < 0 || g_cam_table != 0)) return 0;
+    camera_types_restore();
+    return want >= 0 ? camera_types_take(want) : 0;
 }
 
 // the board's builds: Kalebo III's and Rilgar's (their board state 0x6b rides it)
@@ -253,8 +275,7 @@ bool hero_build_set(int level, const char* why) {
     if (hero_mode_now() == HERO_MODE_BOARD) hero_mode_set(HERO_MODE_NONE, 0, "the hero context changes");
     const int was = g_hero_level;
     g_hero_level = level;
-    camera_types_restore();
-    const int cams = level >= 0 ? camera_types_take(level) : 0;
+    const int cams = camera_types_sync();
     if (level >= 0) donor_ask(level);
     if (level == HERO_GENERIC) donor_ask(0);  // (the generic code's sequences the base's hero class lacks: Veldin's core has them all)
     auto name = [](int l) {
@@ -263,6 +284,25 @@ bool hero_build_set(int level, const char* why) {
     std::printf("[hero] the hero context: %s hero code runs Ratchet (before: %s's), %d camera types of its own (%s): %.3f ms\n", name(level).c_str(),
                 name(was).c_str(), cams, why, now_ms() - t0);
     return true;
+}
+
+// orig: (host) see hero_modes.h
+bool hero_camera_level_set(int level, const char* why) {
+    if (level == ovl_reloc_level()) level = -1;  // (the overlay's own camera code)
+    if (level == g_camera_level) return true;
+    if (level >= 0 && (!g_session_rt || !ctx_create(level))) {
+        std::printf("[hero] level %d's camera code not taken (%s): %s\n", level, why, !g_session_rt ? "not in a session" : "its context cannot be made");
+        level = -1;
+        if (level == g_camera_level) return false;
+    }
+    const double t0 = now_ms();
+    const int was = g_camera_level;
+    g_camera_level = level;
+    const int cams = camera_types_sync();
+    std::printf("[hero] the camera level: %s's camera code runs the cameras (before: %s), %d camera types of its own in the table%s (%s): %.3f ms\n",
+                level >= 0 ? ("level " + std::to_string(level)).c_str() : "the base", was >= 0 ? ("level " + std::to_string(was)).c_str() : "the base's", cams,
+                g_hero_level >= 0 ? " (the hero context's level gives the table)" : "", why, now_ms() - t0);
+    return level >= 0;
 }
 
 // orig: (host) see hero_modes.h
@@ -370,8 +410,10 @@ void hero_seq_need(uint32_t set) {
 void hero_modes_level(bool level_mod, bool session, int base) {
     if (g_hero_level >= 0) std::printf("[hero] the hero context dropped with the level (it was level %d's)\n", g_hero_level);
     g_hero_level = -1;
+    g_camera_level = -1;
     g_camera_types_table = 0;  // (the session heap goes with the level)
     g_cam_table = 0;
+    g_cam_table_level = -1;
     g_cam_added = false;
     g_hero_seq_on = level_mod;
     g_session = session;
@@ -403,6 +445,55 @@ void hero_modes_frame(uint64_t frame) {
             const uint32_t hm = lwu(HERO);
             if (hm != 0 && lbu(hm + 0x53) == static_cast<uint32_t>(g_wanted)) hero_seq_need(static_cast<uint32_t>(g_wanted));
             else g_wanted = -1;
+        }
+    }
+    // (testing: RAC1_MOBY_WATCH=<class>[:<n>[:<offset>]]: the first live moby of that class every n frames (default 30), on any
+    // level: its state, animation, place, +0x2c, four words of its pvars at the offset (hex, default 0); a boss's fight on its level against the same in a session)
+    // (testing: RAC1_MOBY_POKE=<class>@<frame>:<m|p|M|P><offset>=<value>[,...]: at that game frame, values written into the first
+    // live moby of that class (m: a word of its record, p: of its pvars, M / P: a byte; offset and value in hex): a boss's fight taken to a given state on its level
+    // and in a session alike, then compared with RAC1_MOBY_WATCH)
+    static const char* poke = std::getenv("RAC1_MOBY_POKE");
+    if (poke != nullptr) {
+        static const int pcls = std::atoi(poke);
+        static const uint64_t pat = std::strchr(poke, '@') != nullptr ? std::strtoull(std::strchr(poke, '@') + 1, nullptr, 10) : 0;
+        if (frame == pat && std::strchr(poke, ':') != nullptr) {
+            const uint32_t first = lwu(OV(0x0015ffd8));
+            for (uint32_t m = first; m != 0 && lbu(m + 0x20) != 0xffu && m < first + 0x100u * 2048; m += 0x100) {
+                if (static_cast<int8_t>(lbu(m + 0x20)) < 0 || lhu(m + 0xa6) != static_cast<uint32_t>(pcls)) continue;
+                for (const char* p = std::strchr(poke, ':') + 1; p != nullptr && *p != 0;) {
+                    const char where = *p++;
+                    char* e = nullptr;
+                    const uint32_t off = static_cast<uint32_t>(std::strtoul(p, &e, 16));
+                    if (e == nullptr || *e != '=') break;
+                    const uint32_t v = static_cast<uint32_t>(std::strtoul(e + 1, &e, 16));
+                    const uint32_t base = where == 'p' || where == 'P' ? lwu(m + 0x78) : m;
+                    if (base != 0 && (where == 'M' || where == 'P')) sb(base + off, v);  // (M / P: a byte)
+                    else if (base != 0) sw(base + off, v);
+                    std::printf("[watch] frame %llu: class %d moby %08x: %c+%#x = %08x\n", static_cast<unsigned long long>(frame), pcls, m, where, off, v);
+                    p = e != nullptr && *e == ',' ? e + 1 : nullptr;
+                }
+                break;
+            }
+        }
+    }
+    static const char* watch = std::getenv("RAC1_MOBY_WATCH");
+    if (watch != nullptr) {
+        static const int cls = std::atoi(watch);
+        static const char* c1 = std::strchr(watch, ':');
+        static const int n = c1 != nullptr ? std::max(1, std::atoi(c1 + 1)) : 30;
+        static const uint32_t pvo = c1 != nullptr && std::strchr(c1 + 1, ':') != nullptr ? static_cast<uint32_t>(std::strtoul(std::strchr(c1 + 1, ':') + 1, nullptr, 16)) : 0;
+        if (frame % static_cast<uint64_t>(n) == 0) {
+            const uint32_t first = lwu(OV(0x0015ffd8));
+            for (uint32_t m = first; m != 0 && lbu(m + 0x20) != 0xffu && m < first + 0x100u * 2048; m += 0x100) {
+                if (static_cast<int8_t>(lbu(m + 0x20)) < 0 || lhu(m + 0xa6) != static_cast<uint32_t>(cls)) continue;
+                const uint32_t pv = lwu(m + 0x78);
+                std::printf("[watch] frame %llu: class %d moby %08x state %u anim %u frame %u at %.2f %.2f %.2f yaw %.2f +0x2c %d, pvars %08x: %08x %08x %08x %08x; "
+                            "hero %.2f %.2f %.2f health %d; update %08x\n",
+                            static_cast<unsigned long long>(frame), cls, m, lbu(m + 0x20), lbu(m + 0x53), lbu(m + 0x51), lwc1(m + 0x10), lwc1(m + 0x14),
+                            lwc1(m + 0x18), lwc1(m + 0x48), static_cast<int8_t>(lbu(m + 0x2c)), pv, pv != 0 ? lwu(pv + pvo) : 0u, pv != 0 ? lwu(pv + pvo + 4) : 0u,
+                            pv != 0 ? lwu(pv + pvo + 8) : 0u, pv != 0 ? lwu(pv + pvo + 0xc) : 0u, lwc1(P + 0x80), lwc1(P + 0x84), lwc1(P + 0x88), lw(HEALTH), lwu(m + 0x74));
+                break;
+            }
         }
     }
     // (testing: RAC1_HERO_STATE=<n>: the hero's state, sub-state, form, place and animation every n frames, on any level)

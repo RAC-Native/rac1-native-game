@@ -241,13 +241,13 @@ MobyFn ovl_moby_fn_resolve(uint32_t addr) {
 void ovl_call_moby_fn(uint32_t fn, uint32_t moby) {
     if (const MobyFn resolved = resolve_moby_fn(fn); __builtin_expect(resolved != nullptr, 1)) {
         // (the twin run: its moby, the others held: twin.h; a session's spawn watch: the moby whose update spawns, session.h)
-        if (__builtin_expect(g_twin_moby != 0 || g_spawn_watch, 0)) {
+        if (__builtin_expect(g_twin_moby != 0 || g_spawn_watch || g_ld_world, 0)) {
             const int k = g_twin_moby != 0 ? twin_kind(moby) : 0;
             if (k == 1) return;
             const uint32_t was = g_spawn_updating;
             g_spawn_updating = moby;
             // (a class of another level: its level's registry swapped in for the engine's functions it calls, leveldata.h)
-            const int ld = g_ld_any ? ld_enter(moby) : -1;
+            const int ld = g_ld_any || g_ld_world ? ld_enter(moby) : -1;
             if (k == 2) twin_call(resolved, moby);
             else resolved(moby);
             if (ld >= 0) ld_leave(ld);

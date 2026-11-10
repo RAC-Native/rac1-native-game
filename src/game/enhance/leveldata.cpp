@@ -1,6 +1,7 @@
 // See leveldata.h.
 #include <game/enhance/leveldata.h>
 
+#include <game/enhance/class_profiles.h>
 #include <game/enhance/context.h>
 #include <game/enhance/pool.h>
 #include <game/enhance/session.h>
@@ -21,6 +22,7 @@ namespace rac1 {
 
 uint8_t g_ld_class_level[0x1ec0];
 bool g_ld_any = false;
+bool g_ld_world = false;
 
 namespace {
 
@@ -404,12 +406,31 @@ bool ld_group_put(int level, int32_t g, const uint32_t* mobys, int n, const std:
 // ---- the swap ----
 namespace {
 uint32_t g_saved[LD_PATH_MAX + LD_GROUP_MAX + 32];
+constexpr int LD_BASE_IN_WORLD = 1000;  // (ld_enter's: a base enemy's update in a world's section)
 }
 
 // orig: (host) see leveldata.h
 int ld_enter(uint32_t moby) {
     const uint32_t cls = lhu(moby + 0xa6);
     const int level = cls < 0x1ec0 ? g_ld_class_level[cls] - 1 : -1;
+    // (stage 10) a world's section is current (its level's objects the engine's): an enemy of the session base's own (a class the
+    // base has a profile for: Kalebo III's robots of a level mod on its base, base_spawn's) updates on the base's objects, kept by
+    // ld_engine_take, as everywhere else in the session (its patrol, its hunt)
+    if (level < 0 && g_taken >= 0 && cls != 0 && profile_find(lw(0x0015ed84), cls) != nullptr) {
+        uint32_t* s = g_saved;
+        const uint32_t* b0 = g_taken_saved;
+        for (const Obj& o : OBJS) {
+            const uint32_t b = ovl_xlate_data(o.veldin);
+            for (uint32_t k = 0; k < o.size; k += 4) {
+                *s++ = lwu(b + k);
+                sw(b + k, *b0++);
+            }
+        }
+        static bool said = false;
+        if (!said) std::printf("[ld] the base's enemies update on the base's level data in level %d's world (class %u first)\n", g_taken, cls);
+        said = true;
+        return LD_BASE_IN_WORLD;
+    }
     if (level < 0 || !ld_registry_has(level)) return -1;
     const uint32_t r = g_reg[level]->block;
     uint32_t* s = g_saved;
@@ -425,6 +446,18 @@ int ld_enter(uint32_t moby) {
 
 // orig: (host) see leveldata.h
 void ld_leave(int level) {
+    if (level == LD_BASE_IN_WORLD) {  // (stage 10: the base's objects back where ld_engine_take keeps them, the world's the engine's again)
+        const uint32_t* s = g_saved;
+        uint32_t* b0 = g_taken_saved;
+        for (const Obj& o : OBJS) {
+            const uint32_t b = ovl_xlate_data(o.veldin);
+            for (uint32_t k = 0; k < o.size; k += 4) {
+                *b0++ = lwu(b + k);
+                sw(b + k, *s++);
+            }
+        }
+        return;
+    }
     if (level < 0 || !ld_registry_has(level)) return;
     const uint32_t r = g_reg[level]->block;
     const uint32_t* s = g_saved;
@@ -452,6 +485,7 @@ bool ld_engine_take(int level) {
         }
     }
     g_taken = level;
+    g_ld_world = true;
     return true;
 }
 
@@ -469,6 +503,7 @@ void ld_engine_restore() {
         }
     }
     g_taken = -1;
+    g_ld_world = false;
 }
 
 // ---- placements ----

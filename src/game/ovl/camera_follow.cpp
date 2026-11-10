@@ -511,28 +511,28 @@ void cam0_nop_d(uint32_t) {}
 // orig: (helper) jalr to the per-frame camera hook *(0x167010): the levels' own hooks (Aridia's 0x2fa710: the look height from the
 // float 0x16760c; Eudora's 0x2f0448, set by 0x2f0410: its camera's look height follows a value)
 void cam0_hook_call(uint32_t fn) {
-    if (on_aridia() && fn == L2_ADDR(0x002fa710)) {
+    if (on_camera_level(ARIDIA) && fn == L2_ADDR(0x002fa710)) {
         cam_mode_hook_2fa710_l2(0);
         return;
     }
-    if (on_eudora() && fn == L4_ADDR(0x002f0448)) {
+    if (on_camera_level(EUDORA) && fn == L4_ADDR(0x002f0448)) {
         eud_cam0_hook_l4(0);
         return;
     }
     if (on_camera_level(ORXON) && orxon_camera_hook_call(fn)) return;  // (level 10's own: 0x2f4b18)
-    if (on_pokitaru() && pokitaru_camera_hook_call(fn)) return;  // (level 11's own: 0x327a90)
-    if (on_hoven() && hoven_camera_hook_call(fn)) return;  // (level 12's own: 0x3148f0)
+    if (on_camera_level(POKITARU) && pokitaru_camera_hook_call(fn)) return;  // (level 11's own: 0x327a90)
+    if (on_camera_level(HOVEN) && hoven_camera_hook_call(fn)) return;  // (level 12's own: 0x3148f0)
     if (on_camera_level(GEMLIK) && gemlik_camera_hook_call(fn)) return;  // (level 13's own: 0x316b48)
-    if (on_oltanis() && oltanis_camera_hook_call(fn)) return;  // (level 14's own: 0x3131e0)
+    if (on_camera_level(OLTANIS) && oltanis_camera_hook_call(fn)) return;  // (level 14's own: 0x3131e0)
     if (on_camera_level(QUARTU) && quartu_camera_hook_call(fn)) return;  // (level 15's own: 0x2f6980)
     if (on_camera_level(KALEBO) && kalebo_camera_hook_call(fn)) return;  // (level 16's own: 0x2f3a88)
-    if (on_veldin_orbit() && veldin_orbit_camera_hook_call(fn)) return;  // (level 17's own: 0x2fff38)
-    if (on_veldin_finale() && veldin_finale_camera_hook_call(fn)) return;  // (level 18's own: 0x305318)
-    if (on_gaspar() && gaspar_camera_hook_call(fn)) return;  // (level 9's own: 0x314220)
-    if (on_umbris() && umbris_camera_hook_call(fn)) return;  // (level 7's own: 0x328090)
-    if (on_blarg() && blarg_camera_hook_call(fn)) return;  // (level 6's own: 0x3147b0)
+    if (on_camera_level(VELDIN_ORBIT) && veldin_orbit_camera_hook_call(fn)) return;  // (level 17's own: 0x2fff38)
+    if (on_camera_level(VELDIN_FINALE) && veldin_finale_camera_hook_call(fn)) return;  // (level 18's own: 0x305318)
+    if (on_camera_level(GASPAR) && gaspar_camera_hook_call(fn)) return;  // (level 9's own: 0x314220)
+    if (on_camera_level(UMBRIS) && umbris_camera_hook_call(fn)) return;  // (level 7's own: 0x328090)
+    if (on_camera_level(BLARG) && blarg_camera_hook_call(fn)) return;  // (level 6's own: 0x3147b0)
     if (on_camera_level(RILGAR) && rilgar_camera_hook_call(fn)) return;  // (Rilgar's own: 0x328f80)
-    if (on_kerwan() && fn == L3_ADDR(0x002eb408)) {  // (Kerwan's own: kerwan_camera_tr.cpp)
+    if (on_camera_level(KERWAN) && fn == L3_ADDR(0x002eb408)) {  // (Kerwan's own: kerwan_camera_tr.cpp)
         ker_cam0_hook_l3(0);
         return;
     }
