@@ -155,6 +155,13 @@ void level_slots_frame();
 // RAC1_LEVEL_MAP_AT's ship's map
 void level_slots_test_frame(uint64_t frame);
 
+// (a session's sections, src/game/enhance/sections.h) the level's music table (its header's 15 words at +0x148: the sectors of
+// the tracks the level's code plays): the current one read, another written, a game level's read from its header on the disc
+// orig: (none) — enhancement
+void level_music_words_get(uint32_t w[15]);
+void level_music_words_put(const uint32_t w[15]);
+bool level_music_words_of(int level, uint32_t w[15]);
+
 }  // namespace rac1
 
 #endif

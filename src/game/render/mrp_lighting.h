@@ -69,6 +69,9 @@ int mrp_user_lights_level();
 // orig: (host) the level's file: written (true when it was), read again (the edits since the last save dropped)
 bool mrp_user_lights_save();
 void mrp_user_lights_reload();
+// orig: (host) a session's section (format 3, src/game/enhance/sections.h): its lights file instead of the level mod's
+// level/lights.txt ("": the level's own again); read again by the render thread at its next frame
+void mrp_user_lights_section(const std::string& path);
 const char* mrp_user_lights_path();
 // orig: (host) the debug menu's selected light (-1 none): it pulses, so that it is found
 extern int g_user_light_selected;

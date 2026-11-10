@@ -49,9 +49,10 @@ extern "C" {
    classes), the weapons; 6: classes of other levels (a level mod's `import` lines: import_class, import_spawn, import_load,
    import_release); 7: reserved (the rails, still to come: its room is kept in the table below); 8: the level data of
    imported classes (path_find, path_create, object_bind_path, object_bind, group_create, object_slots); 9: sessions (a level
-   mod of format 3: session_on, checkpoints, the respawn policy; the respawn, session_save and session_load callbacks)
-   (docs/sdk.md lists what each version added). */
-#define RAC1_MOD_ABI 9
+   mod of format 3: session_on, checkpoints, the respawn policy; the respawn, session_save and session_load callbacks); 10:
+   sections (a session's sections and portals: section_load, section_ready, section_enter, section_unload, section_current,
+   section_policy; the section_leave and section_enter callbacks) (docs/sdk.md lists what each version added). */
+#define RAC1_MOD_ABI 10
 
 #if defined(_WIN32)
 #define RAC1_MOD_EXPORT __declspec(dllexport)
@@ -83,6 +84,12 @@ typedef struct rac1_level_info {
    lines; the base level's objects your plugin started are yours to handle in the respawn callback) */
 #define RAC1_RESPAWN_RESET 0  /* those killed since the arrival come back as placed (not the ones the game keeps killed) */
 #define RAC1_RESPAWN_KEEP 1   /* they stay as they are */
+
+/* (ABI 10) section_policy's policies: what happens to a section's objects when Ratchet leaves it (level.txt's `section <name>
+   remove|freeze|keep`, main's `leave`) */
+#define RAC1_SECTION_REMOVE 0  /* taken out of play (the killed ones stay so when it is entered again, the others come back) */
+#define RAC1_SECTION_FREEZE 1  /* kept, neither updated nor drawn */
+#define RAC1_SECTION_KEEP 2    /* kept running */
 
 /* (ABI 9) A session's respawn: given to the respawn callback */
 typedef struct rac1_respawn {
@@ -432,6 +439,26 @@ typedef struct rac1_api {
     /* the level's placed objects at a respawn: RAC1_RESPAWN_RESET (level.txt's `respawn reset`, the default) or
        RAC1_RESPAWN_KEEP; -1 only asks. The policy now, -1 outside a session */
     int32_t (*respawn_policy)(int32_t policy);
+
+    /* ======== ABI 10 (test RAC1_API_HAS(api, section_enter)) ======== */
+    /* -- sections (docs/open-engine.md, "Sections"): a session's level.txt `section <name> ... end` blocks, each its own
+          collision, meshes, sky, lights, music and objects; "main" is the lines outside them (where the ship lands). A switch
+          keeps everything of the session (Ratchet, his weapons, your state); only the current section is drawn -- */
+    /* section `name` streamed in (read on a worker, committed a little each frame): 1 started or in already, 0 no such section
+       (every section is streamed in at the arrival: call it after section_unload) */
+    int (*section_load)(const char* name);
+    /* 1: section `name` is in (a switch to it is made at once), 0 not yet, -1 no such section */
+    int (*section_ready)(const char* name);
+    /* Ratchet to section `name`'s entry `entry` (NULL or "": its first), the screen faded out and in over `fade` frames (0:
+       none), at the next frame's start once the section is in: 1 asked, 0 no such section or entry. To an entry of the
+       current section: Ratchet put there */
+    int (*section_enter)(const char* name, const char* entry, int32_t fade);
+    /* section `name` unloaded (its objects out of play, its memory given back): 1 done, 0 not (main, the current one, no such) */
+    int (*section_unload)(const char* name);
+    /* the current section: its name into `name` (`cap` bytes, may be NULL); its index (0 main), -1 no session with sections */
+    int32_t (*section_current)(char* name, int32_t cap);
+    /* section `name`'s objects when it is left: RAC1_SECTION_REMOVE, _FREEZE or _KEEP; -1 only asks. The policy now, -1 no such */
+    int32_t (*section_policy)(const char* name, int32_t policy);
 } rac1_api;
 
 #define RAC1_API_HAS(api, field) ((api)->size >= offsetof(rac1_api, field) + sizeof((api)->field))
@@ -492,6 +519,13 @@ typedef struct rac1_mod {
     uint32_t (*session_save)(void* user, uint8_t* buf, uint32_t cap);
     /* (a session) a save made in it was loaded: your session bytes as saved, after the level's level_start */
     void (*session_load)(void* user, const uint8_t* data, uint32_t size);
+
+    /* ======== ABI 10 ======== */
+    /* (sections) Ratchet left section `name` (a portal, section_enter, a death in another section's checkpoint), before the
+       next section's section_enter */
+    void (*section_leave)(void* user, const char* name);
+    /* (sections) Ratchet is in section `name` now, at its entry `entry` ("" when none: a death's checkpoint, a save's) */
+    void (*section_enter)(void* user, const char* name, const char* entry);
 } rac1_mod;
 
 /* The ABI the plugin was built with (rac1_mod_abi): put RAC1_MOD_DECLARE_ABI() once in a source file */

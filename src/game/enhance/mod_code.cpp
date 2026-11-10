@@ -8,6 +8,7 @@
 #include <game/enhance/class_profiles.h>
 #include <game/enhance/leveldata.h>
 #include <game/enhance/pool.h>
+#include <game/enhance/sections.h>
 #include <game/enhance/session.h>
 #include <game/enhance/session_runtime.h>
 #include <game/ovl/arrival.h>
@@ -916,6 +917,25 @@ int32_t api_checkpoint_get(float pos[3], float* yaw, char* name, int32_t cap) {
 
 int32_t api_respawn_policy(int32_t policy) { return session_respawn_policy(policy); }
 
+// ---- (ABI 10) sections (sections.h) ----
+int api_section_load(const char* name) { return name != nullptr ? section_load(name) : 0; }
+int api_section_ready(const char* name) { return name != nullptr ? section_ready(name) : -1; }
+int api_section_enter(const char* name, const char* entry, int32_t fade) {
+    return name != nullptr ? section_enter(name, entry != nullptr ? entry : "", fade) : 0;
+}
+int api_section_unload(const char* name) { return name != nullptr ? section_unload(name) : 0; }
+int32_t api_section_current(char* name, int32_t cap) {
+    const int32_t i = sections_current();
+    if (name != nullptr && cap > 0) {
+        const std::string n = i >= 0 ? sections_name(i) : std::string();
+        const size_t k = std::min<size_t>(n.size(), static_cast<size_t>(cap) - 1);
+        std::memcpy(name, n.data(), k);
+        name[k] = 0;
+    }
+    return i;
+}
+int32_t api_section_policy(const char* name, int32_t policy) { return name != nullptr ? section_policy(name, policy) : -1; }
+
 // a loaded save's session bytes of the plugins (session_load), given after their level_start
 std::vector<std::pair<std::string, std::vector<uint8_t>>> g_session_bytes;
 
@@ -1376,6 +1396,12 @@ void load_all() {
     g_api.checkpoint_at = api_checkpoint_at;
     g_api.checkpoint_get = api_checkpoint_get;
     g_api.respawn_policy = api_respawn_policy;
+    g_api.section_load = api_section_load;
+    g_api.section_ready = api_section_ready;
+    g_api.section_enter = api_section_enter;
+    g_api.section_unload = api_section_unload;
+    g_api.section_current = api_section_current;
+    g_api.section_policy = api_section_policy;
     g_plugins.reserve(mods.size());  // (g_cur points into it)
     for (const ModInfo* m : mods) {
         std::string err;
@@ -1749,6 +1775,7 @@ void mod_code_camera() {
 
 // orig: (none) — enhancement (mod_code.h)
 void mod_code_hud() {
+    if (g_sections_on) sections_hud();  // (a session's section switch: its fade, sections.h)
     if (!g_mod_code_any || !g_started) return;
     if (lw(OV(0x0015f5c4)) == 5) return;  // (the vendor's screens, vendor_open: theirs alone)
     g_in_hud = true;
@@ -1872,6 +1899,15 @@ void mod_code_respawn(uint32_t count, const char* checkpoint, const float pos[3]
     r.yaw = yaw;
     for (Plugin& p : g_plugins)
         if (p.cb.size >= offsetof(rac1_mod, respawn) + sizeof(p.cb.respawn) && p.cb.respawn != nullptr) with(p, [&] { p.cb.respawn(p.cb.user, &r); });
+}
+
+// orig: (none) — enhancement (mod_code.h)
+void mod_code_section_switch(const char* from, const char* to, const char* entry) {
+    for (Plugin& p : g_plugins) {
+        if (p.cb.size < offsetof(rac1_mod, section_enter) + sizeof(p.cb.section_enter)) continue;
+        if (p.cb.section_leave != nullptr) with(p, [&] { p.cb.section_leave(p.cb.user, from); });
+        if (p.cb.section_enter != nullptr) with(p, [&] { p.cb.section_enter(p.cb.user, to, entry); });
+    }
 }
 
 // orig: (none) — enhancement (mod_code.h)

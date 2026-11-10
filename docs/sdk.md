@@ -36,7 +36,8 @@ Contents:
 | 6 | the first with imports | classes of other levels (level.txt's `import` lines): `import_class`, `import_spawn`, `import_load`, `import_release` |
 | 7 | (reserved) | the rails and the set pieces, still to come: their room in `rac1_api` (`reserved_abi7`, 16 entries) is kept, so ABI 8's services do not move when they come; never call them |
 | 8 | the first with profiles | the level data of imported classes: `path_find`, `path_create`, `object_bind_path`, `object_bind`, `group_create`, `object_slots`; level.txt's `path` lines; imported enemies that read their planet's paths and areas |
-| 9 | this one | sessions (level.format 3): `session_on`, `checkpoint_set`, `checkpoint_at`, `checkpoint_get`, `respawn_policy`, `rac1_respawn`, `RAC1_RESPAWN_*`; the callbacks `respawn`, `session_save`, `session_load`; `object_bind`, `object_bind_path`, `group_create`, `object_slots` on the base level's own objects too (a `base_spawn` object of a class with a profile) |
+| 9 | the first with sessions | sessions (level.format 3): `session_on`, `checkpoint_set`, `checkpoint_at`, `checkpoint_get`, `respawn_policy`, `rac1_respawn`, `RAC1_RESPAWN_*`; the callbacks `respawn`, `session_save`, `session_load`; `object_bind`, `object_bind_path`, `group_create`, `object_slots` on the base level's own objects too (a `base_spawn` object of a class with a profile) |
+| 10 | this one | sections (a session's `section` blocks and portals): `section_load`, `section_ready`, `section_enter`, `section_unload`, `section_current`, `section_policy`, `RAC1_SECTION_*`; the callbacks `section_leave`, `section_enter` |
 
 How compatibility works:
 
@@ -366,6 +367,33 @@ static void respawn(void* user, const rac1_respawn* r) {
 }
 /* in rac1_mod_main: */ mod->respawn = respawn;
 /* at a battle's start: */ if (RAC1_API_HAS(api, session_on) && api->session_on()) api->checkpoint_set("arena");
+```
+
+### Sections (ABI 10)
+
+Test `RAC1_API_HAS(api, section_enter)` first. A session's level.txt can have `section` blocks and portals
+([Sections](mods.md#sections), [The open engine](open-engine.md#sections-stage-6)); `main` is the part outside them. Every
+section is streamed in while the landing plays; a switch is made at the start of a frame, in one frame, with no level load.
+
+| Service | Does |
+|---|---|
+| `int section_load(const char* name)` | section `name` streamed in (read on a worker, committed a little each frame): 1 started or in already, 0 no such section |
+| `int section_ready(const char* name)` | 1: it is in (a switch to it is made at once), 0 not yet, -1 no such section |
+| `int section_enter(const char* name, const char* entry, int32_t fade)` | Ratchet to its entry `entry` (NULL or "": its first), the screen faded out and in over `fade` frames (0 none), at the next frame once it is in: 1 asked, 0 no such section or entry. The entry becomes the checkpoint |
+| `int section_unload(const char* name)` | its objects out of play, its memory given back: 1, 0 not (main, the current one, no such) |
+| `int32_t section_current(char* name, int32_t cap)` | the current section's name into `name`; its index (0 main), -1 no session with sections |
+| `int32_t section_policy(const char* name, int32_t policy)` | its objects when Ratchet leaves it: `RAC1_SECTION_REMOVE` (out of play; the killed ones stay so), `RAC1_SECTION_FREEZE` (kept, not updated nor drawn), `RAC1_SECTION_KEEP` (kept running); -1 only asks |
+
+Callbacks: `section_leave(user, name)`, then `section_enter(user, name, entry)` (`entry` "" when the switch was a death's
+checkpoint or a save's). The objects your plugin started are not a section's: a switch never touches them (remove them in
+`section_leave` when they belong to the place left).
+
+```c
+static void enter(void* user, const char* name, const char* entry) {
+    if (strcmp(name, "arena") == 0) wave_start(0);   /* the arena's battle as Ratchet comes in */
+}
+/* in rac1_mod_main: */ mod->section_enter = enter;
+/* a door the plugin opens: */ api->section_enter("vault", "door", 20);
 ```
 
 ### Classes and objects (ABI 2)

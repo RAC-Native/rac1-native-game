@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 451 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 455 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 25 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 326 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 100 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Debugging](#debugging-variables) | 328 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Automated testing](#automated-testing-variables) | 102 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -387,6 +387,8 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_WORLD_SHADOW` | share; unset = off | With the modern lighting, a sun shadow on the world removes a fixed share of the colour (`RAC1_SHADOW_STRENGTH`, scaled by how much the surface faces the sun) as in 0.4.0, instead of the key light's own term. To compare. See [Lighting](lighting.md). |
 | `RAC1_OVL_EXT_DIFF` | any value = on; default off | Logs once each overlay address where the extents of the engine's data objects (`assets/generated/overlay_map/levelN.ext`, [The open engine](open-engine.md)) and the older nearest-mapped-address rule translate it differently. |
 | `RAC1_SESSION_TRACE` | number, 0 = off; default off | Logs every block the session heap gives and takes back ([The open engine](open-engine.md)). |
+| `RAC1_SECTION_TRACE` | number, 0 = off; default off | Logs a session's sections' streaming as it is asked and committed, and the relocated sky's lists ([The open engine](open-engine.md#sections-stage-6)). |
+| `RAC1_SECTION_BUDGET_MS` | milliseconds; default 2 | How long a frame a section's commit may take (its copies into the session heap, its relocations, its objects placed) before the rest waits for the next frame ([The open engine](open-engine.md#sections-stage-6)). |
 | `RAC1_CTX_TRACE` | number, 0 = off; default off | Logs each level-only address a session's context translates, with what it is (engine data, own data, a paired function, own code: a tag) and where it goes ([The open engine](open-engine.md)). |
 | `RAC1_CTX_POISON` | number, 0 = off; default off | Testing: fills the engine objects' part of each context image with a pattern, so that a class reading the copy instead of the session's object shows at once ([The open engine](open-engine.md)). |
 
@@ -466,6 +468,8 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_SESSION_RAM_MB` | power of two, 64 to 512; default 256 | The size a session grows EE memory to. |
 | `RAC1_SESSION_SAVE_AT` | `<frame>:<slot>` (slot 0..4); unset = off | Saves the game into the memory card's slot at that frame of play as the pause menu's Save page does (the card's summaries read, then its save; `save<slot>.pc` with it): a save made in a session ([The open engine](open-engine.md#sessions-stage-5)). Needs a card (`RAC1_MEMCARD_DIR`). |
 | `RAC1_SESSION_LOAD_AT` | `<frame>:<slot>` (slot 0..4); unset = off | Loads the memory card's slot at that frame of play as the pause menu's Load page does (then the level left for the save's): a session's save loaded. Needs a card (`RAC1_MEMCARD_DIR`). |
+| `RAC1_SECTION_EQUIV` | number, 0 = off; default off | The sections' equivalence test: with a session's memory (`RAC1_SESSION_MEM=1`), each level's gameplay file read again from the disc and placed by `section_spawn_placements` into the moby slots the native load used, every moby record and pvar block compared with the native load's (`[section] equivalence level N: ... ok`) ([The open engine](open-engine.md#sections-stage-6)). |
+| `RAC1_SECTION_DRAW_ALL` | number, 0 = off; default off | A session's sections: every section's meshes drawn, not the current one's only (to compare pictures). |
 | `RAC1_SESSION_TWIN` | `<level>:<class>@<frame>`; unset = off | The twin run ([The open engine](open-engine.md)): on its own level, the class's live moby nearest the hero taken at that frame (when the hero stands) and written to RAC1_TWIN_FILE; on another level, the class imported and spawned from that file in a session. Both runs log it to RAC1_TWIN_LOG for tools/twin_compare.py. |
 | `RAC1_SHOTS` | comma-separated list of frame numbers, e.g. 100,300; default none | Saves a screenshot shot_<frame>.ppm in the current directory when each listed game frame is shown, and prints a line with the game state at that frame. |
 | `RAC1_SIM_DELAY` | integer N frames; default 0 | Delays the RAC1_SIM_INPUT script by N frames (for example to skip a level's arrival scene). |

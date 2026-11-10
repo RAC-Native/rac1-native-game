@@ -479,6 +479,7 @@ mods/example-plateau/
 | `import <name>`, `import <level>:<class>` | a class of another planet (a name of the game's `data/pool/names.txt`, as `umbris.turret`, or its level and class), in the level with what it spawns; the plugin spawns it (ABI 6, [The mod SDK](sdk.md#classes-of-other-levels-abi-6)). The setup's composer makes the asset pool from your disc the first time (a few seconds) and says in `compose.log` what each import brings. Classes that read their planet's paths or areas are given their own round where they are spawned, by their profile, which the plugin can change (ABI 8, [The mod SDK](sdk.md#the-level-data-of-imported-classes-abi-8)); drawn by the modern renderer only |
 | `path <name> <x> <y> <z> [<x> <y> <z> ...]` | a path (1 to 64 points, moved by `offset` as every coordinate) for the plugin to give an imported object (`path_find`, `object_bind_path`: ABI 8), or a `moby` line's slot (format 3) |
 | `session`, `checkpoint <name> <x> <y> <z> [<yaw>]`, `respawn reset\|keep` | format 3 only: [Sessions](#sessions-format-3) |
+| `section <name> ... end`, `entry`, `portal`, `start`, `leave`, `moby <name>\|<level>:<class> ...` | format 3 only: [Sections](#sections) |
 | `update_all` | every moby of the level is updated each frame wherever the camera is (the game updates a moby only within its update distance of the camera, moby +0x30: 64 units for Kalebo III's robots, a crate's less): enemies far away keep moving and fighting. Costs the updates of the mobys out of sight; the original's levels never |
 | `background <r> <g> <b>`, `fog <r> <g> <b>` | colours (0..255) |
 | `collision <file>`, `meshes <file>` | other file names (default `collision.obj`, `meshes.obj`) |
@@ -704,6 +705,48 @@ respawn reset
 Log lines: `[session] the session "<id>": N checkpoints, respawn reset; no level load until it is left`, `[session] respawn N
 at checkpoint "<name>" (...): no level load; placed objects reset: N back, N killed for good`, `[session] the session "<id>"
 left (N respawns)`.
+
+#### Sections
+
+A session can have **sections**: parts with their own collision, meshes, sky, lights, music, fog, background, death height
+and objects, which Ratchet goes between through **portals** (boxes he steps into) with no loading and nothing reset: his
+weapons, ammo, bolts and health, the plugin's state and the objects it started stay. The lines outside any section block
+are the section `main` (where the ship lands); each `section` block is another, its lines moved by the level's `offset` and
+its own:
+
+```
+entry from_yard 20 -4 0.5 3.1416               # an entry of main (where a portal puts Ratchet, facing yaw)
+portal east_gate 26 -4 0 31 4 6 to yard:west   # main's box: into it, Ratchet is in the yard at its entry west
+leave remove                                   # main's objects when Ratchet leaves it: remove (default), freeze or keep
+
+section yard remove respawn reset              # remove / freeze / keep its objects when it is left; its respawn policy
+  offset 400 0 0                               # added to the level's offset
+  collision collision.obj                      # its own (none: main's)
+  meshes meshes.obj                            # drawn only while Ratchet is in it
+  sky 16                                       # a game level's sky (none: main's)
+  music 16                                     # a game level's music, or none (no line: main's)
+  fog 120 60 40                                # background, death_height, lights <file>: as the level's lines
+  entry west -20 4 0.5 0
+  checkpoint yard_mid 0 0 0.5 0
+  portal back -31 -4 0 -26 4 6 to main:from_yard fade 15   # fade: the screen darkened and back over 15 frames
+  moby 500 4 -6 0.5                            # objects of the base level's classes, and of other planets':
+  moby kalebo.robot 10 14 0.5 3.14             # a name or <level>:<class> places that class (it is imported)
+end
+start yard:west                                # optional: the session starts there once the landing is over
+```
+
+- **Its objects** are placed when the section is first in (frozen until Ratchet enters it). When he leaves it they are
+  removed (the ones killed stay so when he comes back; the others come back as placed), frozen or kept running. A death in a
+  section brings him back at the checkpoint there (the entry he came in by, or a `checkpoint_set`), and that section's
+  killed objects back (its `respawn` policy, else the level's).
+- **Saves**: a save in a section brings you back to that section at its checkpoint.
+- **Only the current section is drawn**; sections may be anywhere (far apart is simplest: each has its own collision).
+- The plugin goes between sections and streams them with the SDK's ABI 10 ([The mod SDK](sdk.md#sections-abi-10)).
+- Log lines: `[compose] section <name> (...)`, `[section] <name> streamed in: ...`, `[section] frame N: main -> yard at entry
+  west (portal east_gate): the switch 0.17 ms ...`.
+- Limits: at most 31 sections; the level's own classes' objects (`object` lines) and triggers belong to the whole level; a
+  section's music is a game level's or none. Not every game level's sky works on Veldin's code (Umbris's and Gemlik's do
+  not: [The open engine](open-engine.md#sections-stage-6)).
 
 ### Base levels
 

@@ -48,6 +48,7 @@
 #include <thread>
 #include <cmath>
 #include <cstdio>
+#include <fstream>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -603,8 +604,21 @@ void load_level(int id) {
             std::fprintf(stderr, "[mrpw] %s: %zu meshes, the world %zu tie classes (run the setup again)\n", path.c_str(), hm.classes.size(), L.world->ties.size());
         } else {
             L.world->host_meshes = std::move(hm.instances);
+            // (a session's sections, format 3: each instance's section, from the build's sections.txt `meshes <section> <first>
+            // <count>` lines; drawn while its section is current, host_meshes_sections)
+            size_t tagged = 0;
+            if (std::ifstream sf(level_slot_build_dir(id) + "/sections.txt"); sf) {
+                std::string line;
+                while (std::getline(sf, line)) {
+                    unsigned sec = 0;
+                    unsigned long long first = 0, count = 0;
+                    if (std::sscanf(line.c_str(), "meshes %u %llu %llu", &sec, &first, &count) != 3 || sec == 0 || sec > 31) continue;
+                    for (size_t k = first; k < first + count && k < L.world->host_meshes.size(); ++k, ++tagged) L.world->host_meshes[k].section = static_cast<uint8_t>(sec);
+                }
+            }
             host_meshes_bind(L.idx.get(), L.world.get());
-            std::printf("[mrpw] level slot %d: %zu host meshes drawn by the host\n", id, L.world->host_meshes.size());
+            std::printf("[mrpw] level slot %d: %zu host meshes drawn by the host%s\n", id, L.world->host_meshes.size(),
+                        tagged != 0 ? (" (" + std::to_string(tagged) + " of them the sections')").c_str() : "");
         }
     }
     load_textures(L);
