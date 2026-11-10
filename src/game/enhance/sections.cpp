@@ -107,6 +107,7 @@ struct Obj {
 // the files of a section as the worker read them
 struct Bytes {
     std::vector<uint8_t> coll, sky, gp;
+    std::vector<uint8_t> own_gp;  // (stage 10: a world's section's own gameplay file: the mod's rails in it, added to its level's)
     double ms = 0;
     std::string err;
     std::unique_ptr<WorldBytes> world;  // (stage 8: a game level's world, its files from the disc)
@@ -137,6 +138,7 @@ struct Section {
     uint32_t coll = 0, coll_tree = 0, coll_list = 0, sky = 0, gp = 0;
     uint32_t rails = 0;      // (stage 7) its rail table (the game's 0x20-byte records, in its heap block), 0 none
     int32_t rail_count = 0;
+    int32_t own_rail_first = 0;  // (stage 10: a world's section: where the mod's own rails start in its table, after its level's)
     int step = 0;
     size_t copied = 0;
     int commit_frames = 0;
@@ -161,6 +163,7 @@ struct Section {
     // (stage 9) its hero line: the level whose hero code runs Ratchet in it (-1 the session base's), the mode he is in there
     // (clank, giantclank, board; "" none) and the object of it spawned for him (0 none)
     int hero_level = -1;
+    bool has_hero = false;  // (stage 10: its own hero line; a section without one runs main's hero code)
     std::string hero_mode;
     uint32_t hero_obj = 0;
     // (stage 10) its bosses: the `boss` lines' classes (level, class), the uids of its placed bosses beaten (never placed again in
@@ -497,10 +500,11 @@ Bytes read_section(std::string dir, bool c, bool s, bool g) {
 
 // orig: (host) the worker's part for a section of a game level's world (stage 8): its own files (a collision or sky of its own),
 // the level's from the disc (section_world.h: its world's blocks, its collision and sky unless its own, its gameplay file)
-Bytes read_section_world(std::string dir, int level, bool pal, bool c, bool s) {
+Bytes read_section_world(std::string dir, int level, bool pal, bool c, bool s, bool g) {
     const double t0 = now_ms();
-    Bytes b = read_section(dir, c, s, false);
+    Bytes b = read_section(dir, c, s, g);
     if (!b.err.empty()) return b;
+    b.own_gp = std::move(b.gp);  // (stage 10: its own rails)
     b.world = std::make_unique<WorldBytes>();
     std::string err;
     if (!world_read(level, pal, !c, !s, *b.world, err)) {
@@ -522,7 +526,7 @@ void request(int idx) {
     s.req_ms = now_ms();
     if (s.world >= 0) mrp_world_prefetch(s.world);  // (the modern renderer's: its world asset read on a worker too)
     if (s.world >= 0)
-        s.fut = std::async(std::launch::async, read_section_world, g_build + "/section_" + s.name, s.world, lw(0x0015ed80) != 0, s.f_coll, s.f_sky);
+        s.fut = std::async(std::launch::async, read_section_world, g_build + "/section_" + s.name, s.world, lw(0x0015ed80) != 0, s.f_coll, s.f_sky, s.f_gp);
     else
         s.fut = std::async(std::launch::async, read_section, g_build + "/section_" + s.name, s.f_coll, s.f_sky, s.f_gp);
     if (trace()) std::printf("[section] %s: streaming asked at frame %llu\n", s.name.c_str(), static_cast<unsigned long long>(g_frame));
@@ -542,6 +546,7 @@ void free_section(Section& s) {
     s.coll = s.coll_tree = s.coll_list = s.sky = s.gp = 0;
     s.rails = 0;
     s.rail_count = 0;
+    s.own_rail_first = 0;
     s.shared = 0;
     s.wb.reset();
     s.hud = WorldHud{};
@@ -840,7 +845,9 @@ void apply_state(int idx) {
     // (stage 10) its world's camera code (its camera types, hooks and callbacks: a boss's camera on its planet's world), then (stage 9)
     // its hero code (and camera code): its hero line's level, or the session base's
     if (g_worlds) hero_camera_level_set(world ? s.world : -1, ("section " + s.name).c_str());
-    hero_build_set(s.hero_level, ("section " + s.name).c_str());
+    // (stage 10: a section without a hero line runs main's hero code: main's `hero generic` holds in a world's section too; not
+    // main's mode)
+    hero_build_set(idx == 0 || s.has_hero ? s.hero_level : g_secs[0].hero_level, ("section " + s.name).c_str());
     static const bool all = std::getenv("RAC1_SECTION_DRAW_ALL") != nullptr && std::atoi(std::getenv("RAC1_SECTION_DRAW_ALL")) != 0;  // (testing)
     mrpw::host_meshes_sections_set(all ? 0xffffffffu : 1u << static_cast<uint32_t>(idx));
 }
@@ -964,22 +971,36 @@ bool commit_step(Section& s, int idx) {
         if (s.gp == 0 || copy(s.gp, s.b.gp)) {
             // (stage 7) its rail table, as the level's load makes it from the block +0x74 (level_load.cpp's grind lines): the
             // records in a block of its own, their paths in the gameplay file's copy
-            if (s.gp != 0 && lw(s.gp + 0x74) != 0) {
-                const uint32_t p = s.gp + lwu(s.gp + 0x74);
-                const int32_t n = lw(p);
-                const uint32_t pts = p + lwu(p + 4);
-                s.rails = n > 0 ? session_heap_alloc(static_cast<uint32_t>(n) * 0x20, owner_files(s)) : 0;
-                if (s.rails != 0) {
-                    for (int32_t k = 0; k < n; ++k) {
-                        const uint32_t d = s.rails + static_cast<uint32_t>(k) * 0x20, r = p + 0x10 + static_cast<uint32_t>(k) * 0x20;
+            // (stage 10) a world's section: its level's rails (their indices its objects know), then the mod's own (its own gameplay
+            // file, in the heap beside: the SDK's rails find them after the level's, sections_rail_first)
+            uint32_t own = 0;
+            if (!s.b.own_gp.empty()) {
+                own = session_heap_alloc(static_cast<uint32_t>(s.b.own_gp.size()) + 0x10, owner_files(s));
+                if (own != 0) std::memcpy(ee_ram_ptr_write(own, static_cast<uint32_t>(s.b.own_gp.size())), s.b.own_gp.data(), s.b.own_gp.size());
+            }
+            const uint32_t files[2] = {s.gp, own};
+            int32_t total = 0;
+            for (const uint32_t G : files)
+                if (G != 0 && lw(G + 0x74) != 0) total += std::max(lw(G + lwu(G + 0x74)), 0);
+            s.rails = total > 0 ? session_heap_alloc(static_cast<uint32_t>(total) * 0x20, owner_files(s)) : 0;
+            if (s.rails != 0) {
+                int32_t at = 0;
+                for (const uint32_t G : files) {
+                    if (G == 0 || lw(G + 0x74) == 0) continue;
+                    const uint32_t p = G + lwu(G + 0x74);
+                    const int32_t n = lw(p);
+                    const uint32_t pts = p + lwu(p + 4);
+                    for (int32_t k = 0; k < n; ++k, ++at) {
+                        const uint32_t d = s.rails + static_cast<uint32_t>(at) * 0x20, r = p + 0x10 + static_cast<uint32_t>(k) * 0x20;
                         for (uint32_t w = 0; w < 0x10; w += 4) sw(d + w, lwu(r + w));
                         sw(d + 0x10, pts + lwu(p + 0x10 + static_cast<uint32_t>(n) * 0x20 + static_cast<uint32_t>(k) * 4));
                         sw(d + 0x14, lwu(r + 0x10));
                         sw(d + 0x18, 0);
                         sw(d + 0x1c, 0);
                     }
-                    s.rail_count = n;
+                    if (G == s.gp && own != 0) s.own_rail_first = at;
                 }
+                s.rail_count = at;
             }
             // (stage 8) a world's settings, as gameplay_load reads them from its gameplay file, unless the section gives its own: the
             // background, the fog's colour and words, the death height; its level's music
@@ -1132,6 +1153,12 @@ int sections_boss_beaten(const std::string& name) {
 }
 
 // orig: (host) see sections.h
+int32_t sections_rail_first(int index) {
+    if (!g_sections_on || index <= 0 || static_cast<size_t>(index) >= g_secs.size()) return 0;
+    return g_secs[static_cast<size_t>(index)].own_rail_first;
+}
+
+// orig: (host) see sections.h
 int sections_save_begin() { return g_worlds ? rows_put(-1) : -1; }
 
 // orig: (host) see sections.h
@@ -1240,6 +1267,7 @@ void sections_level(const std::string& build_dir) {
         } else if (k == "hero") {
             l >> s.hero_level >> s.hero_mode;
             if (s.hero_mode == "-") s.hero_mode.clear();
+            s.has_hero = true;
         } else if (k == "wuid") {
             int32_t from = 0, to = 0;
             if (l >> from >> to) s.wuids[from] = to;

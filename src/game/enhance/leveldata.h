@@ -69,6 +69,7 @@ void ld_leave(int level);
 // a session class's level + 1 (session.cpp: the classes of other levels), per class id (0x1ec0 ids): 0 none
 extern uint8_t g_ld_class_level[0x1ec0];
 extern bool g_ld_any;  // (some class reads a registry: the dispatch asks)
+extern bool g_ld_world;  // (stage 10: a world section's objects are the engine's: the dispatch asks for the base's enemies)
 
 // A section of a game level's world (stage 8, sections.h): while it is the current section, the engine's own objects are its
 // level's registry's (the level's paths, volumes, cameras, rails, groups: what the base's engine code reads, a camera zone, a

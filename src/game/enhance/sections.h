@@ -42,6 +42,9 @@ void sections_level(const std::string& build_dir);
 bool sections_boss_set(uint32_t moby);
 // orig: (host) the bosses beaten in section `name` ("" the current one) in this visit of the session; -1 no such section
 int sections_boss_beaten(const std::string& name);
+// orig: (host) (stage 10) section `index`'s rail table: where the mod's own rails start (a world's section: after its level's; 0
+// otherwise)
+int32_t sections_rail_first(int index);
 // orig: (host) (stage 10) a memory card save's image about to be made: the session's own level state (its level records) put back
 // in place of a world section's (sections.cpp: a world's level state); the level whose state was in (-1 none), for
 // sections_save_end to put it back after the image

@@ -100,8 +100,9 @@ Rail* rail_of(int32_t h) { return h >= 1 && static_cast<size_t>(h) <= g_sp.rails
 uint32_t rail_entry(const Rail& r) {
     if (r.section != current_section()) return 0;
     const uint32_t t = lwu(OV(RAIL_TABLE));
-    if (t == 0 || r.index >= lw(OV(RAIL_COUNT))) return 0;
-    return t + static_cast<uint32_t>(r.index) * 0x20;
+    const int32_t at = r.index + sections_rail_first(r.section);  // (stage 10: a world's section has its level's rails first)
+    if (t == 0 || at >= lw(OV(RAIL_COUNT))) return 0;
+    return t + static_cast<uint32_t>(at) * 0x20;
 }
 
 void rail_apply(Rail& r) {
