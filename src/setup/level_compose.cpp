@@ -242,6 +242,12 @@ struct LevelTxt {
         float box_lo[3] = {}, box_hi[3] = {};
         std::vector<std::pair<int32_t, int32_t>> wuids;
         Hero hero;  // (stage 9)
+        // (stage 10) `boss <class|name|level:class>...`: its objects of those classes are its bosses (a death in the section starts
+        // the fight over: a boss still in play placed again; one leaving play otherwise is beaten: the plugin told). Resolved by
+        // the composer into (level, class)
+        std::vector<std::string> bosses;
+        std::vector<std::pair<int, uint32_t>> boss_classes;
+        int boss_line = 0;
     };
     std::vector<Section> sections;
     std::vector<Entry> entries;    // (main's)
@@ -549,9 +555,15 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
             } else if (key == "hero") {
                 if (!hero_line(in, S.hero)) return bad();
                 S.hero.line = n;
+            } else if (key == "boss") {
+                std::string w;
+                bool any = false;
+                while (in >> w) any = true, S.bosses.push_back(w);
+                if (!any) return bad();
+                S.boss_line = n;
             } else {
                 err = fmt("%s:%d: \"%s\": not a line of a section (its own: collision, meshes, lights, sky, music, fog, background, death_height, offset, "
-                          "entry, checkpoint, moby, portal, respawn, rail, rails, world, objects, box, hero; end closes it)",
+                          "entry, checkpoint, moby, portal, respawn, rail, rails, world, objects, box, hero, boss; end closes it)",
                           p.generic_string().c_str(), n, line.c_str());
                 return false;
             }
@@ -2974,6 +2986,29 @@ bool compose_sections(const fs::path& ldir, LevelTxt& lt, int base, const std::v
         };
         o.death = S.has_death ? S.death : lt.death;
         if (S.world >= 0 && !compose_world(S, lt, base, uid_next, log, err)) return fail(err);
+        // (stage 10) its boss lines: each a class of its world's level (an id there), a pool name or <level>:<class>; a class it does
+        // not place (by `objects` or a `moby` line) is refused
+        for (const std::string& w : S.bosses) {
+            int l = S.world >= 0 ? S.world : base;
+            uint32_t c = 0;
+            if (!w.empty() && w.find_first_not_of("0123456789") == std::string::npos) c = static_cast<uint32_t>(std::atoi(w.c_str()));
+            else if (!pool_name(w, &l, &c)) return fail(fmt("boss %s (line %d): no such class (its world's class id, a name of data/pool/names.txt, or <level>:<class>)", w.c_str(), S.boss_line));
+            bool placed = false;
+            for (const LevelTxt::Moby& mb : S.mobys)
+                placed = placed || (mb.import.empty() ? (l == base && static_cast<uint32_t>(mb.cls) == c) : (mb.import == w || (mb.ilevel == l && mb.icls == c)));
+            if (S.world == l) {
+                if (S.objects_all) placed = true;
+                for (const std::string& o : S.objects) {
+                    int ol = S.world;
+                    uint32_t oc = 0;
+                    if (!o.empty() && o.find_first_not_of("0123456789") == std::string::npos) oc = static_cast<uint32_t>(std::atoi(o.c_str()));
+                    else pool_name(o, &ol, &oc);
+                    placed = placed || (ol == l && oc == c);
+                }
+            }
+            if (!placed) return fail(fmt("boss %s (line %d): the section places no object of class %d:%u (an objects or moby line)", w.c_str(), S.boss_line, l, c));
+            S.boss_classes.emplace_back(l, c);
+        }
         if (!S.collision.empty()) {
             Obj co;
             if (!read_obj(ldir / S.collision, slt, false, co, err)) return fail(err);
@@ -3674,6 +3709,7 @@ bool compose_level_mod(const std::string& folder, bool force) {
             }
             if (!S.lights.empty()) o << fmt("lights\t%d\t%s\n", i, S.lights.c_str());
             if (S.hero.line != 0) o << fmt("hero\t%d\t%d\t%s\n", i, S.hero.level, S.hero.mode.empty() ? "-" : S.hero.mode.c_str());
+            for (const auto& [bl, bc] : S.boss_classes) o << fmt("boss\t%d\t%d\t%u\n", i, bl, bc);  // (stage 10)
             for (const LevelTxt::Checkpoint& c : S.checkpoints)
                 o << fmt("checkpoint\t%d\t%s\t%.6g\t%.6g\t%.6g\t%.6g\n", i, c.name.c_str(), c.at[0], c.at[1], c.at[2], c.at[3]);
             put_common(i, S.entries, S.portals, S.mobys);

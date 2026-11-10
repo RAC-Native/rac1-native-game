@@ -22,3 +22,10 @@ gemlik.flying_robot 13:63 Gemlik's flying robot (two optional paths)
 gaspar.walking_robot 9:193 Gaspar's walking robot (an optional path)
 blarg.serpent 6:1048 Blarg's serpent (its pen: a path it is kept inside)
 pokitaru.amoeboid 11:572 Pokitaru's amoeboid (its area: a path)
+
+# The open engine's stage 10: bosses (docs/open-engine.md, "Bosses")
+umbris.snagglebeast 7:1106 the Snagglebeast, Umbris's boss (its cave: Umbris's world as a section, `boss` line)
+umbris.shock_wave 7:1049 the Snagglebeast's shock wave
+gemlik.ship 13:69 the player's ship on Gemlik Base (its flight: Qwark's space fight)
+gemlik.qwark_ship 13:388 Qwark's ship, Gemlik Base's boss
+blarg.creature 6:1051 Nebula G34's giant creature, Blarg's station's boss
