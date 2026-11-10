@@ -6,6 +6,8 @@
 #define RAC1_HOST_MOD_CODE_H
 
 #include <cstdint>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace rac1 {
@@ -70,6 +72,17 @@ uint32_t mod_code_pc_items(std::vector<uint8_t>& d);
 bool mod_code_pc_item(uint32_t id, const uint8_t* p, uint32_t size);
 void mod_code_pc_reset();
 void mod_code_save_loaded();
+
+// orig: (none) — enhancement: level.txt's path `name` of the current level mod (its level.sdk): its points, x y z each; false none
+bool mod_code_path_points(const std::string& name, std::vector<float>& xyz);
+// orig: (none) — enhancement: a session's soft reset done (session_runtime.h): the plugins' respawn callback (ABI 9), Ratchet
+// back at the checkpoint `checkpoint` (pos, yaw), the session's `count`th respawn
+void mod_code_respawn(uint32_t count, const char* checkpoint, const float pos[3], float yaw);
+// orig: (none) — enhancement: a save made in a session: each plugin's session bytes (session_save, ABI 9) by its mod's folder
+void mod_code_session_save(std::vector<std::pair<std::string, std::vector<uint8_t>>>& out);
+// orig: (none) — enhancement: a loaded save's session bytes of the plugin of `folder` (session_load, ABI 9): given after the
+// level's level_start
+void mod_code_session_load(const std::string& folder, const uint8_t* data, uint32_t size);
 
 }  // namespace rac1
 

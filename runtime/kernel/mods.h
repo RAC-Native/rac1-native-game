@@ -78,8 +78,9 @@ constexpr const char* kPluginFile = "rac1_mod.so";  // (CMake's MODULE suffix on
 // The level composer's version (src/setup/level_compose.cpp): a build made by another version is made again by the
 // setup, and the game does not use it ("needs setup")
 constexpr int kLevelComposerVersion = 5;
-// The level folder formats this build reads (level.format): 1 (on Veldin, level 0), 2 (on a base level of the allow-list)
-constexpr int kLevelFormat = 2;
+// The level folder formats this build reads (level.format): 1 (on Veldin, level 0), 2 (on a base level of the allow-list), 3 (a
+// session: loaded once, a death a soft reset; on Veldin by default, or a base level of the allow-list: docs/open-engine.md)
+constexpr int kLevelFormat = 3;
 // The base levels a level mod may run on (level.base, format 2; format 1: 0 only), each tested: Veldin (0), Kerwan (3),
 // Eudora (4), Kalebo III (16). docs/mods.md, "Base levels"
 constexpr int kLevelBases[] = {0, 3, 4, 16};

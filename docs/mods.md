@@ -462,8 +462,8 @@ mods/example-plateau/
 |---|---|
 | `kind` | `"level"` |
 | `level.id` | the level's key: its progress in your saves and `RAC1_GOTO=<id>@<frame>` use it, never the folder's name. Letters, digits, `-`, `_`, `.` |
-| `level.format` | `1` (the level runs on Veldin's code) or `2` (on `level.base`'s); a newer game may read newer ones |
-| `level.base` | the game's level whose code the level runs: `0` (Veldin) in format 1; in format 2 one of `0`, `3` (Kerwan), `4` (Eudora), `16` (Kalebo III): [Base levels](#base-levels) |
+| `level.format` | `1` (the level runs on Veldin's code), `2` (on `level.base`'s) or `3` (a **session**: loaded once, a death brings Ratchet back to a checkpoint without loading the level again; Veldin's code by default, or `level.base`'s: [Sessions](#sessions-format-3)); a newer game may read newer ones |
+| `level.base` | the game's level whose code the level runs: `0` (Veldin) in format 1; in formats 2 and 3 one of `0`, `3` (Kerwan), `4` (Eudora), `16` (Kalebo III): [Base levels](#base-levels) |
 
 `level.txt`, one setting a line (`#` starts a comment):
 
@@ -471,13 +471,14 @@ mods/example-plateau/
 |---|---|
 | `name <text>`, `name.<fr\|de\|es\|it> <text>` | the row's name (and the planet page's title), per text language |
 | `region <text>`, `region.<lang> <text>` | the line above it |
-| `hero auto`, `hero <x> <y> <z> [<yaw>]` | where Ratchet starts (and comes back after a death). `auto` (the default when there is a ship): where he steps off the ship after the landing, beside it, facing away from it. A place of your own puts him there when the landing ends (as the game's planets do: the landing's last shot cuts to him there). Without a ship, a place is required |
+| `hero auto`, `hero <x> <y> <z> [<yaw>]` | where Ratchet starts (and comes back after a death; in a session, format 3, the checkpoint `start` unless a `checkpoint start` line says otherwise). `auto` (the default when there is a ship): where he steps off the ship after the landing, beside it, facing away from it. A place of your own puts him there when the landing ends (as the game's planets do: the landing's last shot cuts to him there). Without a ship, a place is required |
 | `ship <x> <y> <z> <yaw>` or `ship none` | where the ship stands and lands: the landing's camera and Ratchet stepping off follow its place and yaw, so keep about 20 units round it open (none: no landing, no way out but loading a save) |
 | `death_height <z>` | below it Ratchet dies; default the base level's, or 8 under the collision's lowest point when the base level's is above it (the log says so) |
 | `base <level\|name>` | the base level, as mod.json's `level.base` (a number, or `veldin`, `kerwan`, `eudora`, `kalebo`, ...): the composer checks they are the same (mod.json decides) |
 | `spawn <class> <count>` | room for `<count>` objects of the base level's class `<class>` at once, for the plugin's `base_spawn` (ABI 3, [The mod SDK](sdk.md#base-level-objects)) |
 | `import <name>`, `import <level>:<class>` | a class of another planet (a name of the game's `data/pool/names.txt`, as `umbris.turret`, or its level and class), in the level with what it spawns; the plugin spawns it (ABI 6, [The mod SDK](sdk.md#classes-of-other-levels-abi-6)). The setup's composer makes the asset pool from your disc the first time (a few seconds) and says in `compose.log` what each import brings. Classes that read their planet's paths or areas are given their own round where they are spawned, by their profile, which the plugin can change (ABI 8, [The mod SDK](sdk.md#the-level-data-of-imported-classes-abi-8)); drawn by the modern renderer only |
-| `path <name> <x> <y> <z> [<x> <y> <z> ...]` | a path (1 to 64 points, moved by `offset` as every coordinate) for the plugin to give an imported object (`path_find`, `object_bind_path`: ABI 8) |
+| `path <name> <x> <y> <z> [<x> <y> <z> ...]` | a path (1 to 64 points, moved by `offset` as every coordinate) for the plugin to give an imported object (`path_find`, `object_bind_path`: ABI 8), or a `moby` line's slot (format 3) |
+| `session`, `checkpoint <name> <x> <y> <z> [<yaw>]`, `respawn reset\|keep` | format 3 only: [Sessions](#sessions-format-3) |
 | `update_all` | every moby of the level is updated each frame wherever the camera is (the game updates a moby only within its update distance of the camera, moby +0x30: 64 units for Kalebo III's robots, a crate's less): enemies far away keep moving and fighting. Costs the updates of the mobys out of sight; the original's levels never |
 | `background <r> <g> <b>`, `fog <r> <g> <b>` | colours (0..255) |
 | `collision <file>`, `meshes <file>` | other file names (default `collision.obj`, `meshes.obj`) |
@@ -485,7 +486,7 @@ mods/example-plateau/
 | `up z` or `up y` | the OBJ files' up axis: `z` (the game's, the default) or `y` (Blender's default OBJ export) |
 | `offset <x> <y> <z>`, `offset auto` | added to every coordinate of the OBJ files (after `up` and `scale`) and of level.txt; `auto`: as much as the collision needs (below) |
 | `scale <s>` | the OBJ files' units to the game's (default 1; Ratchet is about 1.5 units tall) |
-| `moby <class> <x> <y> <z> [<yaw>]` | an object (below) |
+| `moby <class> <x> <y> <z> [<yaw>]` | an object (below); format 3 also `[<slot>=<value> ...]`: its class's profile's slots ([Sessions](#sessions-format-3)) |
 | `music <level>`, `music <loop> [<intro>]`, `music none` | the music: the game level's (0..18), your own (a WAV, an Ogg Vorbis file or a VAG, mono or stereo: below), or none; default the base level's |
 | `sky <level>` | the sky of the game's level (0..18); default the base level's |
 | `class <name> <model.obj> [size <s>] [solid\|ghost] [scale <k>]` | a class of the level's own objects (its model, its hit box; its behaviour in the mod's plugin): [The mod SDK](sdk.md#the-levels-own-content-leveltxt) |
@@ -664,6 +665,45 @@ Format 1 is the first step:
 - the meshes are drawn by the modern renderer only (the faithful renderer, a debug choice, draws what the game's code
   sends: the meshes have no EE data), lit by the modern lighting;
 - the North American disc (`SCUS-97199`); the PAL disc is not tested.
+
+### Sessions (format 3)
+
+A level of `"format": 3` is a **session** (the open engine's: [docs/open-engine.md](open-engine.md#sessions-stage-5)). It is
+built and flown to as any level mod, and then:
+
+- **It is loaded once**, at the arrival: until you leave it (the ship, a save of another level loaded) nothing loads it
+  again.
+- **A death is a soft reset**: Ratchet is back at the current checkpoint with his health full and the camera behind him; his
+  weapons, ammo, bolts and items stay, and so do the plugin's state and the objects it started (its `respawn` callback
+  decides what comes back: [The mod SDK](sdk.md#sessions-abi-9)). The level's placed objects (`moby` lines) killed since
+  the arrival come back as placed (`respawn reset`, the default), except what the level's records keep (a crate broken
+  stays broken); `respawn keep` leaves them as they are. On formats 1 and 2 a death loads the level again, as before.
+- **Checkpoints**: `checkpoint <name> <x> <y> <z> [<yaw>]` lines (the level's `offset` applies); `start` is where the
+  session starts Ratchet (without one, the `hero` line's place); the plugin chooses the current one (`checkpoint_set`,
+  `checkpoint_at`).
+- **Saves**: a save made in a session is the game's own save, as on any level mod's level; `save<N>.pc` also keeps the
+  session's checkpoint and the plugin's session bytes, and loading the save brings you back there.
+- **`moby` lines' slots**: `moby 1445 40 40 0.5 3.9 given_up=0` sets a slot of the class's profile (the game's
+  `data/pool/profiles`) at the arrival: a `path` or `area` slot takes a `path` line's name, the others a number or `none`.
+  The composer checks the slots against the profile (and every format's `import` lines of classes that read their planet's
+  level data without a profile) and warns in `compose.log`.
+- **Room for spawned objects**: as many as the base level's own placed objects leave free (`[compose] session: room for
+  545 spawned objects` on Veldin).
+
+```json
+"level": { "id": "my-arena", "format": 3, "base": 0 }
+```
+
+```
+session
+checkpoint start 0 -60 0.5 1.571
+checkpoint arena 0 -20 0.5 1.571
+respawn reset
+```
+
+Log lines: `[session] the session "<id>": N checkpoints, respawn reset; no level load until it is left`, `[session] respawn N
+at checkpoint "<name>" (...): no level load; placed objects reset: N back, N killed for good`, `[session] the session "<id>"
+left (N respawns)`.
 
 ### Base levels
 

@@ -733,9 +733,20 @@ ProfObj* profiles_session_obj(uint32_t moby) {
     return nullptr;
 }
 
+std::vector<ProfObj>* g_prof_pool = nullptr;
+
+// orig: (host) see class_profiles.h
+ProfObj* profiles_obj(uint32_t moby) {
+    if (ProfObj* o = profiles_session_obj(moby)) return o;
+    if (g_prof_pool != nullptr)
+        for (ProfObj& o : *g_prof_pool)
+            if (o.moby == moby && o.out && o.prof != nullptr && prof_alive(o)) return &o;
+    return nullptr;
+}
+
 // orig: (host) see class_profiles.h
 int profiles_bind_points(uint32_t moby, const std::string& name, const float (*pts)[3], int n) {
-    ProfObj* o = profiles_session_obj(moby);
+    ProfObj* o = profiles_obj(moby);
     if (o == nullptr || n < 1 || n > 64) return 0;
     const Profile::Slot* s = slot_of(*o->prof, name);
     if (s == nullptr || (s->kind != "path" && s->kind != "area")) return 0;
@@ -768,7 +779,7 @@ int profiles_bind_points(uint32_t moby, const std::string& name, const float (*p
 
 // orig: (host) see class_profiles.h
 int profiles_bind_word(uint32_t moby, const std::string& name, uint32_t value) {
-    ProfObj* o = profiles_session_obj(moby);
+    ProfObj* o = profiles_obj(moby);
     if (o == nullptr) return 0;
     const Profile::Slot* s = slot_of(*o->prof, name);
     if (s == nullptr) return 0;

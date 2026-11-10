@@ -73,7 +73,11 @@ namespace {
     "banner <file.png> / banner.<lang> <file.png>   the name on the loading screen (256 x 32; default: made from name)\n"
     "map_picture <file.png>                    the ship's map's picture (306 x 108 shown; default: made from picture)\n"
     "import <name> | import <level>:<class>    a class of another level, with what it spawns (the open engine: docs/open-engine.md)\n"
-    "path <name> <x> <y> <z> [<x> <y> <z> ...]  a path (1 to 64 points) the plugin gives an imported object (object_bind_path)\n";
+    "path <name> <x> <y> <z> [<x> <y> <z> ...]  a path (1 to 64 points) the plugin gives an imported object (object_bind_path)\n"
+    "session                                   (format 3) the level is a session: loaded once, a death a soft reset (mod.json's level.format 3)\n"
+    "checkpoint <name> <x> <y> <z> [<yaw>]     (format 3) a place Ratchet comes back to after a death (\"start\": the first one)\n"
+    "respawn reset | respawn keep              (format 3) the placed objects at a respawn: those killed come back (default) or not\n"
+    "moby <class> <x> <y> <z> [<yaw>] [<slot>=<value> ...]   (format 3) slots of the class's profile set (a path's name, a number)\n";
 
 struct LevelTxt {
     float hero[4] = {0, 0, 1, 0};
@@ -94,6 +98,7 @@ struct LevelTxt {
         int cls = 0;
         float at[4] = {};  // x y z yaw
         int line = 0;
+        std::vector<std::pair<std::string, std::string>> binds;  // (format 3) slot=value: its profile's slots
         bool pool = false;  // (a spawn line's: for base_spawn, no spawn rules)
         int uid = 0;        // (its uid, given by place_mobys)
         int pvars = 0;      // (its pvars' size)
@@ -151,6 +156,17 @@ struct LevelTxt {
         int line = 0;
     };
     std::vector<Import> imports;
+    // (format 3) the session (docs/open-engine.md, "Sessions"): its line, its checkpoints, the respawn policy
+    int format = 1;                     // (mod.json's level.format, set by the composer)
+    int session_line = 0;
+    struct Checkpoint {
+        std::string name;
+        float at[4] = {};
+        int line = 0;
+    };
+    std::vector<Checkpoint> checkpoints;
+    std::string respawn;
+    int respawn_line = 0;
     // the pictures (level_pictures.h): the files given, and the names (by language: "" the default, fr de es it)
     std::string picture, map_picture;
     std::map<std::string, std::string> banners, names;
@@ -293,9 +309,37 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
         } else if (key == "moby") {
             LevelTxt::Moby m;
             if (!(in >> m.cls >> m.at[0] >> m.at[1] >> m.at[2]) || m.cls < 0) return bad();
-            if (!(in >> m.at[3])) m.at[3] = 0;
+            m.at[3] = 0;
+            std::string w;
+            for (bool first = true; in >> w; first = false) {  // ([yaw] then (format 3) slot=value words)
+                const size_t eq = w.find('=');
+                if (eq == std::string::npos) {
+                    char* e = nullptr;
+                    m.at[3] = std::strtof(w.c_str(), &e);
+                    if (!first || e == w.c_str() || *e != 0) return bad();
+                    continue;
+                }
+                if (eq == 0 || eq + 1 == w.size()) return bad();
+                m.binds.emplace_back(w.substr(0, eq), w.substr(eq + 1));
+            }
             m.line = n;
             t.mobys.push_back(m);
+        } else if (key == "session") {
+            t.session_line = n;
+        } else if (key == "checkpoint") {
+            LevelTxt::Checkpoint c;
+            if (!(in >> c.name >> c.at[0] >> c.at[1] >> c.at[2]) || !sdk_name_ok(c.name)) return bad();
+            if (!(in >> c.at[3])) c.at[3] = 0;
+            for (const LevelTxt::Checkpoint& o : t.checkpoints)
+                if (o.name == c.name) {
+                    err = fmt("%s:%d: the checkpoint \"%s\" twice", p.generic_string().c_str(), n, c.name.c_str());
+                    return false;
+                }
+            c.line = n;
+            t.checkpoints.push_back(c);
+        } else if (key == "respawn") {
+            if (!(in >> t.respawn) || (t.respawn != "reset" && t.respawn != "keep")) return bad();
+            t.respawn_line = n;
         } else if (key == "music") {
             std::string a, b;
             in >> a >> b;
@@ -1615,7 +1659,22 @@ bool build_gameplay(const std::vector<uint8_t>& g, LevelTxt& lt, std::vector<uin
         wrf(hero, 0x40, 0.0f);
         wrf(hero, 0x44, lt.hero[3]);
         std::vector<uint8_t> b(0x10, 0);
-        wr32(b, 4, n2);
+        // (format 3, a session: the room for spawned objects as large as the base level's placed ones leave free, the moby
+        // array no larger than the base level's own, at most 2047 mobys (the game's per-moby tables: 0x7ff entries); their
+        // 0x80-byte pvars in the room the base level's placed pvars took)
+        int32_t spawn_room = n2;
+        if (lt.format >= 3) {
+            const uint32_t pd = G[0x58 / 4], pt = G[0x54 / 4];
+            int64_t base_pvars = 0;
+            if (pt != 0 && pd != 0)
+                for (size_t q = pt; q + 8 <= pd && q + 8 <= g.size(); q += 8) base_pvars += std::max(0, rd32(g, q + 4));
+            const int64_t free_mobys = static_cast<int64_t>(n1) - 1 - static_cast<int64_t>(lt.mobys.size());
+            const int64_t by_pvars = base_pvars / 0x80;
+            const int64_t more = std::max<int64_t>(0, std::min({free_mobys, by_pvars, static_cast<int64_t>(0x7ff) - n1 - n2}));
+            spawn_room = n2 + static_cast<int32_t>(more);
+            log.say(fmt("session: room for %d spawned objects (the base level's %d, and %lld its placed ones leave)", spawn_room, n2, static_cast<long long>(more)));
+        }
+        wr32(b, 4, spawn_room);
         b.insert(b.end(), hero.begin(), hero.end());
         // the placed objects (level.txt's moby lines): each a copy of its class's first placement in the base level (its
         // settings, its pvars copied into entries of their own), at the line's place; uids of our own, 1, 2, ... in the
@@ -1883,6 +1942,74 @@ std::string stamp_hex(uint64_t v) { return fmt("%016llx", static_cast<unsigned l
 // level.txt's import lines resolved (the pool's names, data/pool/names.txt, or <level>:<class>) with their closure (the
 // classes each spawns: the pool's dependencies, tools/overlay_match/deps.py), each from its level unless the base level
 // has it; written to the build's imports.txt for the game (src/game/enhance/session.cpp), one line a class to import
+// A class profile as the composer checks level.txt against it (the game's reader: src/game/enhance/class_profiles.cpp):
+// data/pool/profiles/L<level>_<class>.txt's slots (name -> kind) and the slots a spawn gives a default
+struct ProfileSlots {
+    bool found = false;
+    std::map<std::string, std::string> kinds;
+    std::set<std::string> defaults;
+};
+ProfileSlots profile_slots(int level, uint32_t cls) {
+    ProfileSlots r;
+    std::ifstream f(fmt("data/pool/profiles/L%d_%u.txt", level, cls));
+    if (!f) return r;
+    r.found = true;
+    std::string line;
+    while (std::getline(f, line)) {
+        const size_t h = line.find('#');
+        if (h != std::string::npos) line.resize(h);
+        std::istringstream in(line);
+        std::string k, a, b, c;
+        if (!(in >> k)) continue;
+        if (k == "slot" && in >> a >> b >> c) r.kinds[c] = b;
+        if (k == "default" && in >> a) r.defaults.insert(a);
+    }
+    return r;
+}
+
+// level.txt against the class profiles (DESIGN 6.3): a moby line's slot=value words (format 3) name its class's profile's
+// slots (unknown: warned), a path's or an area's value is a path line's name, a number else; a path or area slot the
+// profile gives no default and the line no value is warned (the object keeps its placement's word: an index into the base
+// level's own paths). Warnings only: the level is composed
+void check_profiles(const LevelTxt& lt, int base, Log& log) {
+    for (const LevelTxt::Moby& mb : lt.mobys) {
+        if (mb.pool) continue;
+        const ProfileSlots ps = profile_slots(base, static_cast<uint32_t>(mb.cls));
+        if (!ps.found) {
+            if (!mb.binds.empty())
+                log.say(fmt("profiles: warning: level.txt:%d: class %d has no profile (data/pool/profiles/L%d_%d.txt): its slots %s are unknown, not set", mb.line,
+                            mb.cls, base, mb.cls, mb.binds.front().first.c_str()));
+            continue;
+        }
+        std::set<std::string> given;
+        for (const auto& [slot, value] : mb.binds) {
+            const auto k = ps.kinds.find(slot);
+            if (k == ps.kinds.end()) {
+                std::string names;
+                for (const auto& [n, kind] : ps.kinds) names += (names.empty() ? "" : ", ") + n;
+                log.say(fmt("profiles: warning: level.txt:%d: class %d has no slot \"%s\" (its profile's: %s): not set", mb.line, mb.cls, slot.c_str(), names.c_str()));
+                continue;
+            }
+            given.insert(slot);
+            if (k->second == "path" || k->second == "area") {
+                bool have = false;
+                for (const LevelTxt::Path& pa : lt.paths) have = have || pa.name == value;
+                if (!have) log.say(fmt("profiles: warning: level.txt:%d: slot %s=%s: no path line \"%s\" (a %s slot takes a path's name)", mb.line, slot.c_str(), value.c_str(),
+                                       value.c_str(), k->second.c_str()));
+            } else {
+                char* e = nullptr;
+                (void)std::strtol(value.c_str(), &e, 0);
+                if (value != "none" && (e == value.c_str() || *e != 0))
+                    log.say(fmt("profiles: warning: level.txt:%d: slot %s=%s: a %s slot takes a number (or none)", mb.line, slot.c_str(), value.c_str(), k->second.c_str()));
+            }
+        }
+        for (const auto& [n, kind] : ps.kinds)
+            if ((kind == "path" || kind == "area") && given.count(n) == 0 && ps.defaults.count(n) == 0)
+                log.say(fmt("profiles: warning: level.txt:%d: class %d's slot %s (%s) has no value and no default: it keeps its placement's (the base level's own "
+                            "level data)", mb.line, mb.cls, n.c_str(), kind.c_str()));
+    }
+}
+
 bool compose_imports(const LevelTxt& lt, int base, const fs::path& out_dir, Log& log, std::string& err) {
     std::error_code ec;
     if (lt.imports.empty()) {
@@ -1953,6 +2080,11 @@ bool compose_imports(const LevelTxt& lt, int base, const fs::path& out_dir, Log&
                 return r.empty() ? std::string("none") : r;
             };
             line += "; spawns " + list(d->own) + "; the engine for it " + list(d->engine) + "; seen spawning " + list(d->seen) + "; reads " + d->reads;
+            // (the profiles: a class that reads its planet's level data and has none is spawned as its first placement there)
+            if (root && d->reads != "-" && !d->reads.empty() && !profile_slots(w.level, w.cls).found)
+                line += fmt("\n[compose] profiles: warning: %s reads its planet's level data (%s) but has no profile (data/pool/profiles/L%d_%u.txt): spawned "
+                            "as its first placement there, its values indices into its planet's data (its registry's); the plugin cannot bind its slots",
+                            pool_name_of(w.level, w.cls).c_str(), d->reads.c_str(), w.level, w.cls);
             const std::string by = std::to_string(w.level) + ":" + std::to_string(w.cls);
             for (uint32_t c : d->own) todo.push_back({w.level, c, "spawned-by-" + by});
             for (uint32_t c : d->engine) todo.push_back({w.level, c, "spawned-for-" + by});
@@ -2000,6 +2132,15 @@ bool compose_level_mod(const std::string& folder, bool force) {
         return false;
     };
     if (!read_level_txt(ldir / "level.txt", lt, err)) return fail(err);
+    lt.format = m.level_format;
+    if (m.level_format < 3) {  // (the session's lines: format 3's)
+        int line = lt.session_line != 0 ? lt.session_line : lt.respawn_line != 0 ? lt.respawn_line : !lt.checkpoints.empty() ? lt.checkpoints.front().line : 0;
+        for (const LevelTxt::Moby& mb : lt.mobys)
+            if (line == 0 && !mb.binds.empty()) line = mb.line;
+        if (line != 0)
+            return fail(fmt("level.txt:%d: a session's line (session, checkpoint, respawn, a moby line's slots): format 3 only (mod.json's level.format is %d)",
+                            line, m.level_format));
+    }
     if (lt.base >= 0 && lt.base != m.level_base)
         return fail(fmt("level.txt's base is level %d, mod.json's level.base %d: make them the same (mod.json's decides which code the level runs)", lt.base, m.level_base));
     // the offset: `offset auto` as far as the collision's lowest corner needs to be 16 units above 0 (in whole cells of 4)
@@ -2024,6 +2165,7 @@ bool compose_level_mod(const std::string& folder, bool force) {
             }
             for (LevelTxt::Path& pa : lt.paths)
                 for (auto& v : pa.pts) v[static_cast<size_t>(l)] += lt.offset[l];
+            for (LevelTxt::Checkpoint& c : lt.checkpoints) c.at[l] += lt.offset[l];
         }
         lt.death += lt.offset[2];
         log.say(fmt("offset: (%g %g %g) added to every coordinate%s (lights.txt's are the game's: not moved)", lt.offset[0], lt.offset[1], lt.offset[2],
@@ -2216,6 +2358,25 @@ bool compose_level_mod(const std::string& folder, bool force) {
     if (!hm.classes.empty() && !mrpw::write_host_meshes((out_dir / "host_meshes.mrpc").string(), hm, err)) return fail(err);
     if (!bank_sounds.empty() && !write_file(out_dir / "sounds.bnk", sound_bank(bank_sounds))) return fail("cannot write into " + out_dir.generic_string());
     if (!compose_imports(lt, m.level_base, out_dir, log, err)) return fail(err);
+    check_profiles(lt, m.level_base, log);
+    // (format 3) session.txt: the session's checkpoints and policy (src/game/enhance/session_runtime.cpp reads it)
+    if (m.level_format >= 3) {
+        std::ostringstream o;
+        o << "session\t1\n";
+        bool start = false;
+        for (const LevelTxt::Checkpoint& c : lt.checkpoints) start = start || c.name == "start";
+        if (!start) o << fmt("checkpoint\tstart\t%.6g\t%.6g\t%.6g\t%.6g\n", lt.hero[0], lt.hero[1], lt.hero[2], lt.hero[3]);  // (where Ratchet starts)
+        for (const LevelTxt::Checkpoint& c : lt.checkpoints) o << fmt("checkpoint\t%s\t%.6g\t%.6g\t%.6g\t%.6g\n", c.name.c_str(), c.at[0], c.at[1], c.at[2], c.at[3]);
+        o << "respawn\t" << (lt.respawn.empty() ? "reset" : lt.respawn) << "\n";
+        for (size_t i = 0; i < lt.mobys.size(); ++i) {  // (the moby lines' slots: set at the arrival, by the objects' uids)
+            const LevelTxt::Moby& mb = lt.mobys[i];
+            for (const auto& [slot, value] : mb.binds) o << fmt("bind\t%d\t%d\t%s\t%s\n", mb.uid, mb.cls, slot.c_str(), value.c_str());
+        }
+        const std::string t = o.str();
+        if (!write_file(out_dir / "session.txt", std::vector<uint8_t>(t.begin(), t.end()))) return fail("cannot write into " + out_dir.generic_string());
+        log.say(fmt("session: %zu checkpoints%s, respawn %s", lt.checkpoints.size() + (start ? 0 : 1), start ? "" : " (\"start\": where Ratchet starts)",
+                    lt.respawn.empty() ? "reset" : lt.respawn.c_str()));
+    }
     // level.sdk: the level's own content for the game (src/game/enhance/mod_code.cpp reads it)
     if (!lt.classes.empty() || !lt.sounds.empty() || !lt.triggers.empty() || !lt.paths.empty() || lt.update_all) {
         std::ostringstream o;

@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 449 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 451 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 25 | Settings a player may want to change: files, window, audio, the ISO |
 | [Debugging](#debugging-variables) | 326 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 98 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Automated testing](#automated-testing-variables) | 100 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -464,6 +464,8 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_SESSION_HIGH_CLASS` | `<class>` or `<class>:<session id>` (2048..7871); unset = off | A session's memory on, and the level's own class registered from a copy of its asset pool block in the session heap above 64 MB (with an id: besides the native class, under that session class id, the level's mobys of the class placed as it). The test of [The open engine](open-engine.md): the pictures and the game's state must be the original's. |
 | `RAC1_SESSION_MEM` | number, 0 = off; default off | Turns a custom-level session's memory on for the whole run: EE memory grown to 256 MB and the session heap. The original's levels must play the same with it ([The open engine](open-engine.md)). |
 | `RAC1_SESSION_RAM_MB` | power of two, 64 to 512; default 256 | The size a session grows EE memory to. |
+| `RAC1_SESSION_SAVE_AT` | `<frame>:<slot>` (slot 0..4); unset = off | Saves the game into the memory card's slot at that frame of play as the pause menu's Save page does (the card's summaries read, then its save; `save<slot>.pc` with it): a save made in a session ([The open engine](open-engine.md#sessions-stage-5)). Needs a card (`RAC1_MEMCARD_DIR`). |
+| `RAC1_SESSION_LOAD_AT` | `<frame>:<slot>` (slot 0..4); unset = off | Loads the memory card's slot at that frame of play as the pause menu's Load page does (then the level left for the save's): a session's save loaded. Needs a card (`RAC1_MEMCARD_DIR`). |
 | `RAC1_SESSION_TWIN` | `<level>:<class>@<frame>`; unset = off | The twin run ([The open engine](open-engine.md)): on its own level, the class's live moby nearest the hero taken at that frame (when the hero stands) and written to RAC1_TWIN_FILE; on another level, the class imported and spawned from that file in a session. Both runs log it to RAC1_TWIN_LOG for tools/twin_compare.py. |
 | `RAC1_SHOTS` | comma-separated list of frame numbers, e.g. 100,300; default none | Saves a screenshot shot_<frame>.ppm in the current directory when each listed game frame is shown, and prints a line with the game state at that frame. |
 | `RAC1_SIM_DELAY` | integer N frames; default 0 | Delays the RAC1_SIM_INPUT script by N frames (for example to skip a level's arrival scene). |

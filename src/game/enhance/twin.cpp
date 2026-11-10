@@ -1,6 +1,7 @@
 // See twin.h.
 #include <game/enhance/twin.h>
 
+#include <game/enhance/class_profiles.h>
 #include <game/enhance/context.h>
 #include <game/enhance/leveldata.h>
 #include <game/enhance/pool.h>
@@ -19,6 +20,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <set>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -49,6 +52,9 @@ struct Capture {
     // the level's paths (the path table 0x1b04b0's entries: a point count, 12 bytes, then 16-byte points), for a view of the
     // level's own in the session (ctx_view: the level data a class reads, DESIGN 6.2)
     std::vector<std::vector<uint8_t>> paths;
+    // the level's moby groups the twin is in or names (its +0x21, its profile's group slots): each its index and its members
+    // (indices into m: the members taken with the twin, -1 one not taken)
+    std::vector<std::pair<uint32_t, std::vector<int32_t>>> groups;
 };
 constexpr uint32_t PATH_TABLE = 0x001b04b0u, PATH_COUNT = 0x00160104u, PATH_MAX = 176;
 constexpr uint32_t CLOCK = 0x0015f5ccu;  // (the game's frame clock: a class's timers are times of it)
@@ -184,7 +190,7 @@ Member take(uint32_t m) {
 bool write_capture(const Capture& c) {
     FILE* f = std::fopen(g_t.file.c_str(), "wb");
     if (f == nullptr) return false;
-    put(f, "TWN3", 4);
+    put(f, "TWN4", 4);
     const uint32_t head[] = {c.level, c.cls, c.hero, c.pool_lo, c.pool_hi, static_cast<uint32_t>(c.m.size()), c.hero_state, c.clock};
     put(f, head, sizeof head);
     put(f, c.hero_pos, 12);
@@ -201,6 +207,12 @@ bool write_capture(const Capture& c) {
         put32(f, static_cast<uint32_t>(p.size()));
         put(f, p.data(), p.size());
     }
+    put32(f, static_cast<uint32_t>(c.groups.size()));
+    for (const auto& [g, members] : c.groups) {
+        put32(f, g);
+        put32(f, static_cast<uint32_t>(members.size()));
+        for (const int32_t k : members) put32(f, static_cast<uint32_t>(k));
+    }
     std::fclose(f);
     return true;
 }
@@ -210,7 +222,9 @@ bool read_capture(Capture& c) {
     if (f == nullptr) return false;
     char magic[4];
     uint32_t head[8];
-    bool ok = get(f, magic, 4) && std::memcmp(magic, "TWN3", 4) == 0 && get(f, head, sizeof head) && get(f, c.hero_pos, 12) && get(f, &c.hero_yaw, 4);
+    bool ok = get(f, magic, 4) && (std::memcmp(magic, "TWN3", 4) == 0 || std::memcmp(magic, "TWN4", 4) == 0) && get(f, head, sizeof head) && get(f, c.hero_pos, 12) &&
+              get(f, &c.hero_yaw, 4);
+    const bool v4 = ok && magic[3] == '4';
     if (ok) {
         c.level = head[0], c.cls = head[1], c.hero = head[2], c.pool_lo = head[3], c.pool_hi = head[4], c.hero_state = head[6], c.clock = head[7];
         c.m.resize(std::min<uint32_t>(head[5], 16));
@@ -230,6 +244,15 @@ bool read_capture(Capture& c) {
                 if (!ok) break;
                 c.paths.emplace_back(n);
                 ok = get(f, c.paths.back().data(), n);
+            }
+        uint32_t ng = 0;
+        if (ok && v4 && get(f, &ng, 4))
+            for (uint32_t k = 0; k < ng && k < LD_GROUP_MAX && ok; ++k) {
+                uint32_t g = 0, n = 0;
+                ok = get(f, &g, 4) && get(f, &n, 4) && n <= 0x800;
+                std::vector<int32_t> members(ok ? n : 0);
+                for (uint32_t i = 0; i < members.size() && ok; ++i) ok = get(f, &members[i], 4);
+                if (ok) c.groups.emplace_back(g, std::move(members));
             }
     }
     std::fclose(f);
@@ -279,6 +302,58 @@ bool capture() {
         c.m.push_back(take(w));
         std::printf("[twin] native: its %s +%#x names moby %08x of class %u (state %02x): taken with it\n", i < 0x100 ? "record" : "pvars",
                     i < 0x100 ? i : i - 0x100, w, c.m.back().cls, lbu(w + 0x20));
+    }
+    // the level's moby groups the twin is in or names (its +0x21, its profile's group slots), their members taken with it (the
+    // session makes them again, at the same indices, in its context's registry: what the class's code reads by index)
+    {
+        const uint32_t self = (best - c.pool_lo) >> 8;
+        std::set<uint32_t> gs;
+        if (lbu(best + 0x21) < LD_GROUP_MAX) gs.insert(lbu(best + 0x21));
+        const uint32_t count = std::min<uint32_t>(lwu(OV(LD_GROUP_COUNT)), LD_GROUP_MAX);
+        auto members_of = [](uint32_t g) {
+            std::vector<uint32_t> v;
+            const uint32_t list = lwu(OV(LD_GROUPS) + 4 * g);
+            for (uint32_t a = list; list != 0 && v.size() < 0x800; a += 2) {
+                const uint32_t e = lhu(a);
+                v.push_back(e & 0x7fffu);
+                if ((e & 0x8000u) != 0) break;
+            }
+            return v;
+        };
+        for (uint32_t g = 0; g < count; ++g)
+            for (const uint32_t k : members_of(g))
+                if (k == self) gs.insert(g);
+        if (const Profile* prof = profile_find(g_t.level, g_t.cls)) {
+            std::istringstream slots(profile_slots_text(prof));
+            std::string w;
+            while (slots >> w) {
+                const size_t colon = w.find(':');
+                uint32_t off = 0;
+                std::string kind;
+                if (colon == std::string::npos || w.substr(colon + 1) != "group" || !profile_slot(prof, w.substr(0, colon), &off, &kind) || off + 4 > t.pvars_size) continue;
+                int32_t v = 0;
+                std::memcpy(&v, t.pv.data() + off, 4);
+                if (v >= 0 && v < static_cast<int32_t>(LD_GROUP_MAX)) gs.insert(static_cast<uint32_t>(v));
+            }
+        }
+        for (const uint32_t g : gs) {
+            std::vector<int32_t> idx;
+            size_t taken = 0;
+            for (const uint32_t k : members_of(g)) {
+                const uint32_t m = c.pool_lo + (k << 8);
+                int32_t at = -1;
+                for (size_t i = 0; i < c.m.size(); ++i)
+                    if (c.m[i].moby == m) at = static_cast<int32_t>(i);
+                if (at < 0 && m < c.pool_hi && live(m) && m != h && c.m.size() < 16) {
+                    c.m.push_back(take(m));
+                    at = static_cast<int32_t>(c.m.size() - 1);
+                    ++taken;
+                }
+                idx.push_back(at);
+            }
+            std::printf("[twin] native: group %u (%zu members, %zu taken with it)%s\n", g, idx.size(), taken, lbu(best + 0x21) == g ? ": its own (+0x21)" : "");
+            c.groups.emplace_back(g, std::move(idx));
+        }
     }
     // the level's paths (RAC1_TWIN_PATHS=1: the session's twin sees them, through a view of its context)
     if (const char* e = std::getenv("RAC1_TWIN_PATHS"); e != nullptr && std::atoi(e) != 0) {
@@ -449,6 +524,15 @@ bool spawn() {
             ctx_view(g_t.level, PATH_COUNT, 4, table + PATH_MAX * 4);
             std::printf("[twin] session: level %d's %zu paths in a view of its context's own\n", g_t.level, c.paths.size());
         }
+    }
+    // the level's groups it is in or names: made again at their indices in its context's registry, of the session's mobys
+    for (const auto& [g, members] : c.groups) {
+        std::vector<uint32_t> list;
+        for (const int32_t k : members)
+            if (k >= 0 && static_cast<size_t>(k) < sm.size()) list.push_back(sm[static_cast<size_t>(k)]);
+        const bool ok = !list.empty() && ld_group_set(g_t.level, static_cast<int32_t>(g), list.data(), static_cast<int>(list.size()));
+        std::printf("[twin] session: group %u of level %d: %zu of its %zu members %s\n", g, g_t.level, list.size(), members.size(),
+                    ok ? "in its context's registry" : "not made (no registry, or none of them taken)");
     }
     g_twin_moby = sm[0];
     g_t.pvars = spv[0];

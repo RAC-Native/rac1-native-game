@@ -91,6 +91,11 @@ void profiles_session_frame();
 void profiles_session_clear();
 // orig: (host) the session spawn of moby `moby` (its profile object), nullptr when it is none
 ProfObj* profiles_session_obj(uint32_t moby);
+// The base level's spawn pool (mod_code.cpp's base_spawn objects), for the binds below: set by mod_code.cpp
+extern std::vector<ProfObj>* g_prof_pool;
+// orig: (host) the profiled object of moby `moby`: a session spawn of an imported class, or a started object of the base
+// level's spawn pool (its class's profile); nullptr when it is neither
+ProfObj* profiles_obj(uint32_t moby);
 
 // A slot bound by a mod (the plugin's object_bind, ABI 8): `value` a path's points (kind path / area), a moby (kind moby:
 // its address, 0 none), a word
