@@ -791,6 +791,19 @@ end
   the log says so). An object resting on another object needs that one chosen too: Kerwan's two crates by its start sit on
   a lift (class 1210); without `1210` they fall through when the section is entered (they are not broken, so a death does not
   bring them back).
+- **"(the base's)"** in `compose.log` (Umbris's `605 x10`, `805`, `1135`; Quartu's `605`; Rilgar's `1139`): a class the base
+  level has too is placed as the base's, and that is the planet's own class: the same block (model, animations, textures,
+  collision), the same sounds and the same code on both planets (compared instruction by instruction, every function it calls
+  followed), and the objects keep their planet's placement (their own pvars, paths and volumes). Umbris's ten 605 are invisible
+  zone markers (no model: the hero's camera may turn to the nearest when Ratchet comes within 20 units of it), 805 is the
+  checkpoint, 1135 a teleporter pad: none of them is part of the cave's floor. Leave out **Umbris's 529** (Ratchet's ship parked on the planet): its code
+  makes it the ship class 533, which is the session's own ship too.
+- **Leaving** a world's section (`remove`) takes out its objects and what they spawned there (a boss's helpers, debris,
+  explosions); `freeze` freezes them with their objects. A death in the section takes a boss's spawns out with it before it is
+  placed again.
+- **Effects**: the planet's effect textures (its particles', its bosses' fire rings and flames) are the ones drawn while the
+  section is current; the first 40 are the same on every planet, the rest each planet's own. A base level's enemy brought into the
+  world (`base_spawn`) draws its own planet's effects past the 40 with the world's pictures there.
 - **What is drawn** of the planet's world is what the planet itself draws from the camera's place: its zone grid (cells of 4
   units, each with the list of the world's zones seen from there) leaves out what that cell does not see, and a camera off
   the grid (high above the planet, or out of its paths) keeps the last cell's list. A `zones all` line in the section draws

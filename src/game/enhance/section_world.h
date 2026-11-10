@@ -71,6 +71,7 @@ struct WorldBuild {
     int32_t k = 0, last = -1;
     uint32_t tie_n = 0, shrub_n = 0, tfrag_n = 0;
     bool masks = false;
+    uint32_t fx_n = 0, fx_out = 0;  // (its effect textures, those whose texels or palette lie past their copied block)
     size_t bytes = 0;  // (the heap bytes: the world block, the instances)
     double ms = 0;     // (the build's time on the game's thread, every step)
     double step_max[9] = {};  // (the longest call of each step)
