@@ -573,6 +573,13 @@ thread, `RAC1_PIPELINE=1`, the last 1500 of 2400 frames of a forward walk) on Ke
   an upper bound. The answers are kept by address in a 1024-slot table, emptied when the translation's maps change. 13 to
   45 translations a frame (Kerwan the most), all but a few dozen of a run answered from the table; `=2` compares each with
   the search: 840,467 over the 19 levels, 0 differing. A few microseconds a frame: under what a frame's time shows.
+- **`vu0::running()` inline in every build** (`runtime/vu/vu0.h`; it was inline only with `RAC1_INLINE_HELPERS`): `vmacro()`,
+  which the transliterated code calls before a VU0 macro op (a running micro program ends first), asked it through a call
+  into another library: 1,000 times a frame on Veldin, 3,500 on Kerwan, 8,200 on Rilgar, 16,400 on Blarg Station. It is a
+  load and a test. No switch: the same expression. Not done: `vmacro()` once per run of macro ops in `mips2cpp.py` and
+  `asm2fn.py`, as `asm2cpp.py` emits it - the calls are in 34 of the generated files (1,953 sites), not in all of them, and
+  with the test inline a call left out saves about a nanosecond: at most some microseconds a frame, for a change of the
+  generated code to prove on every level.
 ## Switches to compare
 
 These are testing variables: they are honoured in a headless run, or in a window started with `--debug-tools`
