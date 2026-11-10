@@ -28,13 +28,14 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   - "La grande fuga" (The Great Escape), the longest but Impossibile: the same course, two rounds in the arena, then
     the lava floods the arena and an escape rail from the hub's top leads west over the wall, round the south-west
     corner over the lava lake (our mines and Kalebo III's again) and through a portal's ring, grinding: a white flash, and
-    the rail goes on in the session's other section, "prova" (a test: a round platform under Quartu's sky,
-    `build_prova.py`), down onto the platform where the last two robots wait. Won or lost there, Ratchet is taken back
-    to the arena.
+    the rail goes on in Quartu's world (the section `quartu`), from high south of the arena where its Giant Clank fights
+    down onto its floor, where the last two robots wait. Won or lost there, Ratchet is taken back to the arena. (That
+    rail is not drawn there yet: the game does not draw a mod's rail models in a planet's world.)
 
-  - "Test Quartu": after the countdown a flash, and two robots in the level's third section, `quartu`: Quartu's own
-    world (its scenery, collision, sky, music; none of its objects), by the arena where its Giant Clank fights; then
-    back. (The escape does not go on into it: a world's section takes no rail lines of a mod yet.)
+  - "Test Quartu": after the countdown a flash, Ratchet on the same rail into Quartu's world (its scenery, collision,
+    sky, music; none of its objects) and two robots by the arena where its Giant Clank fights; then back.
+  - The session's other section, "prova" (`build_prova.py`: a round platform under Quartu's sky with its own rail in),
+    where the escape went before Quartu's world could take a mod's rails, is still there, used by no challenge.
 
   The rails are level.txt's `rail` lines (the composer puts them in the game's rail table). Under each runs a thin
   collision strip (the game lets go of a rail with nothing under Ratchet's feet): near the ground Ratchet walks on (by the
@@ -55,13 +56,13 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
 
 - **A session** (`level.format` 3, the open engine's): the level is loaded once at the arrival. A death is a soft
   reset at a checkpoint (south of the hub), and a challenge he dies in is lost there, with no level load. Main's objects
-  are frozen while he is in the section `prova`.
+  are frozen while he is in another section.
 
 - **The game's own lava**: Ratchet runs on the generic hero code (level.txt's `hero generic`: the one Veldin, Gaspar and
   Umbris run, not Kalebo III's own), so in the lava lake he sinks, Cross bounces him out, and left in it he is lost.
 
-It needs a game with the mod SDK's ABI 12 or later (`hero generic`; the rails, the sessions and sections ABI 11; the rest
-of the plugin ABI 5).
+It needs a game with the mod SDK's ABI 13 or later (the rail in Quartu's world; `hero generic` ABI 12; the rails, the
+sessions and sections ABI 11; the rest of the plugin ABI 5).
 
 ## Making it
 
