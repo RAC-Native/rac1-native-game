@@ -787,8 +787,7 @@ end
   from your disc while you play, before you enter it (the log's `[section] kalebo: level 16's world: ...`).
 - **Not in a world's section**: `meshes`, `rail` / `rails` and `moby` lines of the base level's classes (its own scenery and
   rails are the planet's; `moby <name>|<level>:<class>` lines are fine). The level's own objects drawn with a model (`object`
-  lines) are not drawn while Ratchet is in a world's section. Umbris's and Gemlik's skies do not work on Veldin's code yet:
-  give such a world `sky` of another planet.
+  lines) are not drawn while Ratchet is in a world's section.
 
 ### Grind rails and set pieces
 

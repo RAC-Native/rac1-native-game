@@ -1021,6 +1021,6 @@ classes imported, the class table 218 of 224).
 - **Not done**: a world's spawn rules use the session's level state (a first visit), not the planet's story; its objects
   outside the chosen set do not come (the planet's glass and water on Kalebo III are objects); the GS's VRAM image and the
   chrome / glass map registers stay the session's (the modern renderer does not read them for the world, the faithful
-  renderer would); the renderer's first entry into a world takes one frame of 43 to 73 ms; Umbris's and Gemlik's skies still
-  end the game on Veldin's code (a world section of them needs another planet's sky); a world on another session base than
-  Veldin's was not tried.
+  renderer would); the renderer's first entry into a world takes one frame of 43 to 73 ms; a world on another session base
+  than Veldin's was not tried. Umbris's and Gemlik's worlds come with their own skies (drawn by their own sky code since the
+  level mods' sky fix: `world umbris` and `world gemlik` sections tried, both renderers, entered and left again).
