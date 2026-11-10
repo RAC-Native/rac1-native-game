@@ -84,7 +84,11 @@ namespace {
     "entry <name> <x> <y> <z> [<yaw>]          (format 3) where a portal or section_enter puts Ratchet in the section\n"
     "portal <name> <x0> <y0> <z0> <x1> <y1> <z1> to <section>:<entry> [fade <frames>]   (format 3) a box that switches sections\n"
     "start <section>:<entry>                   (format 3) the session starts there once the landing is over\n"
-    "leave remove|freeze|keep                  (format 3) main's objects when main is left (default remove)\n";
+    "leave remove|freeze|keep                  (format 3) main's objects when main is left (default remove)\n"
+    "rail <name> [loop] [mesh [<material>]] [nostrip] <x> <y> <z> <x> <y> <z> ...   a grind rail (in main or a section)\n"
+    "rails <file.obj> [loop] [mesh [<material>]] [nostrip]   grind rails: each object of line elements in the OBJ one, named as it\n"
+    "items <item> ...                          items given for the visit (grindboots, magneboots, ...): taken back when leaving\n"
+    "class <name> <model.obj> collision <coll.obj>   (with the class line's other words) a collision mesh of the class's own\n";
 
 struct LevelTxt {
     float hero[4] = {0, 0, 1, 0};
@@ -135,6 +139,7 @@ struct LevelTxt {
         float size = 0;                 // (0: the model's largest extent)
         float scale = 1;
         bool ghost = false;
+        std::string collision;  // (stage 7) `collision <coll.obj>`: a collision mesh of its own (else its box)
         int line = 0;
     };
     struct Object {
@@ -162,6 +167,16 @@ struct LevelTxt {
         std::vector<std::array<float, 3>> pts;
     };
     std::vector<Path> paths;
+    // (stage 7) grind rails: `rail <name> [loop] [mesh [<material>]] [nostrip] x y z ...` and `rails <file.obj> [...]` (each OBJ object
+    // of line elements a rail), in main or a section; the block +0x74 of its gameplay file (the game's rail table)
+    struct Rail {
+        std::string name, file, material;
+        bool loop = false, mesh = false, strip = true;
+        std::vector<std::array<float, 3>> pts;
+        int line = 0;
+    };
+    std::vector<Rail> rails;
+    std::vector<int> items;  // (stage 7) `items grindboots magneboots ...`: the items given for the visit (the game's item ids)
     // the classes imported from other levels (import <name|level:class>: the open engine's pool)
     struct Import {
         std::string name;
@@ -206,6 +221,7 @@ struct LevelTxt {
         std::vector<Checkpoint> checkpoints;
         std::vector<Entry> entries;
         std::vector<Portal> portals;
+        std::vector<Rail> rails;
     };
     std::vector<Section> sections;
     std::vector<Entry> entries;    // (main's)
@@ -324,6 +340,59 @@ bool portal_line(std::istringstream& in, LevelTxt::Portal& p) {
     return true;
 }
 
+// (stage 7) `rail <name> [loop] [mesh [<material>]] [nostrip] <x y z> ...` / `rails <file.obj> [loop] [mesh [<material>]] [nostrip]`:
+// the options, then (a rail line) its points
+bool rail_line(std::istringstream& in, LevelTxt::Rail& r, bool file) {
+    if (!(in >> (file ? r.file : r.name))) return false;
+    if (!file && !sdk_name_ok(r.name)) return false;
+    std::vector<std::string> w;
+    for (std::string x; in >> x;) w.push_back(x);
+    auto number = [](const std::string& x, float& v) {
+        char* end = nullptr;
+        v = std::strtof(x.c_str(), &end);
+        return end != nullptr && end != x.c_str() && *end == 0;
+    };
+    size_t i = 0;
+    float v = 0;
+    for (; i < w.size() && !number(w[i], v); ++i) {
+        if (w[i] == "loop") {
+            r.loop = true;
+        } else if (w[i] == "nostrip") {
+            r.strip = false;
+        } else if (w[i] == "mesh") {
+            r.mesh = true;
+            if (i + 1 < w.size() && w[i + 1] != "loop" && w[i + 1] != "nostrip" && !number(w[i + 1], v)) r.material = w[++i];
+        } else {
+            return false;
+        }
+    }
+    if (file) return i == w.size();
+    if ((w.size() - i) % 3 != 0 || w.size() - i < 6) return false;  // (two points at least)
+    for (; i < w.size(); i += 3) {
+        std::array<float, 3> p{};
+        for (size_t k = 0; k < 3; ++k)
+            if (!number(w[i + k], p[k])) return false;
+        r.pts.push_back(p);
+    }
+    return true;
+}
+
+// (stage 7) `items grindboots magneboots ...`: the items given for the visit (names, or the game's item ids)
+bool items_line(std::istringstream& in, std::vector<int>& items) {
+    static const std::map<std::string, int> kItems = {{"helipack", 0x02}, {"thrusterpack", 0x03}, {"hydropack", 0x04}, {"o2mask", 0x06},
+                                                      {"pilotshelmet", 0x07}, {"magneboots", 0x1c}, {"grindboots", 0x1d}};
+    bool any = false;
+    for (std::string w; in >> w;) {
+        int id = -1;
+        if (const auto it = kItems.find(w); it != kItems.end()) id = it->second;
+        else if (!w.empty() && w.find_first_not_of("0123456789abcdefx") == std::string::npos) id = static_cast<int>(std::strtol(w.c_str(), nullptr, 0));
+        if (id < 1 || id > 0x24) return false;
+        if (std::find(items.begin(), items.end(), id) == items.end()) items.push_back(id);
+        any = true;
+    }
+    return any;
+}
+
 bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
     std::ifstream f(p);
     if (!f) {
@@ -395,9 +464,14 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
                 S.portals.push_back(pt);
             } else if (key == "respawn") {
                 if (!(in >> S.respawn) || (S.respawn != "reset" && S.respawn != "keep")) return bad();
+            } else if (key == "rail" || key == "rails") {
+                LevelTxt::Rail r;
+                if (!rail_line(in, r, key == "rails")) return bad();
+                r.line = n;
+                S.rails.push_back(r);
             } else {
                 err = fmt("%s:%d: \"%s\": not a line of a section (its own: collision, meshes, lights, sky, music, fog, background, death_height, offset, "
-                          "entry, checkpoint, moby, portal, respawn; end closes it)",
+                          "entry, checkpoint, moby, portal, respawn, rail, rails; end closes it)",
                           p.generic_string().c_str(), n, line.c_str());
                 return false;
             }
@@ -598,6 +672,8 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
                     if (!(in >> c.scale) || !(c.scale > 0)) return bad();
                 } else if (w == "ghost" || w == "solid") {
                     c.ghost = w == "ghost";
+                } else if (w == "collision") {
+                    if (!(in >> c.collision)) return bad();
                 } else {
                     return bad();
                 }
@@ -664,6 +740,13 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
             }
             if (pa.pts.empty() || pa.pts.size() > 64) return bad();
             t.paths.push_back(pa);
+        } else if (key == "rail" || key == "rails") {
+            LevelTxt::Rail r;
+            if (!rail_line(in, r, key == "rails")) return bad();
+            r.line = n;
+            t.rails.push_back(r);
+        } else if (key == "items") {
+            if (!items_line(in, t.items)) return bad();
         } else if (key == "trigger") {
             LevelTxt::Trigger g;
             if (!(in >> g.name >> g.lo[0] >> g.lo[1] >> g.lo[2] >> g.hi[0] >> g.hi[1] >> g.hi[2]) || !sdk_name_ok(g.name)) return bad();
@@ -718,6 +801,9 @@ struct Obj {
     std::vector<ObjTri> tris;
     std::vector<ObjMaterial> materials;
     std::vector<std::string> objects = {"(default)"};
+    // (stage 7) the line elements (`l a b c ...`): per object, its edges between the file's vertices (positions moved as the faces')
+    std::vector<std::array<float, 3>> line_verts;
+    std::vector<std::pair<int, std::array<int, 2>>> edges;  // (object, its two vertices)
 };
 
 int obj_index(const std::string& s, size_t n) {
@@ -810,6 +896,19 @@ bool read_obj(const fs::path& p, const LevelTxt& lt, bool with_materials, Obj& o
             std::getline(in >> std::ws, name);
             o.objects.push_back(name);
             object = static_cast<int>(o.objects.size()) - 1;
+        } else if (k == "l") {
+            std::vector<int> ids;
+            std::string w;
+            while (in >> w) {
+                const int vi = obj_index(w.substr(0, w.find('/')), vs.size());
+                if (vi < 0 || vi >= static_cast<int>(vs.size())) {
+                    err = fmt("%s:%d: a line's vertex that is not there", p.generic_string().c_str(), n);
+                    return false;
+                }
+                ids.push_back(vi);
+            }
+            if (o.line_verts.size() < vs.size()) o.line_verts = vs;
+            for (size_t i = 1; i < ids.size(); ++i) o.edges.push_back({object, {ids[i - 1], ids[i]}});
         } else if (k == "f") {
             std::vector<ObjVert> poly;
             std::string w;
@@ -1050,6 +1149,299 @@ bool build_collision(const std::vector<CTri>& in, std::vector<uint8_t>& out, Log
     out.insert(out.end(), g.begin(), g.end());
     log.say(fmt("collision: %zu triangles (%zu after splitting), %zu cells, %zu faces (%zu references), %zu points, %zu bytes", in.size(), tris.size(), ncells, faces,
                 refs, points, out.size()));
+    return true;
+}
+
+// ---- (stage 7) grind rails: the gameplay file's block +0x74 (level_load.cpp's "grind lines"; STUDY 5.1) ----
+// The block: n, the offset of the points' data, its size, 0; n records of 0x20 (the bounding sphere x y z r, the loop flag,
+// 12 bytes); n words (each rail's path: its offset in the points' data); the points' data: per path its count, 12 bytes, then
+// its points (x y z, w the length to the next one; a loop's last one to its first)
+constexpr float kRailStep = 1.5f;   // a rail's points at most this far apart (the arena's rails: 1.5)
+constexpr size_t kRailPoints = 2048, kRails = 64;
+constexpr float kRailStrip = 0.5f;  // the collision strip under a rail (the grind lets go with nothing under Ratchet's feet)
+
+// the rails' files read (each OBJ object of line elements a rail) and the lines' points moved by `off`; densified
+bool rails_resolve(const fs::path& ldir, const LevelTxt& lt, const float off[3], std::vector<LevelTxt::Rail>& rails, std::string& err) {
+    std::vector<LevelTxt::Rail> out;
+    for (const LevelTxt::Rail& r : rails) {
+        if (r.file.empty()) {
+            LevelTxt::Rail q = r;
+            for (auto& v : q.pts)
+                for (size_t l = 0; l < 3; ++l) v[l] += off[l];
+            out.push_back(q);
+            continue;
+        }
+        LevelTxt slt = lt;
+        for (int l = 0; l < 3; ++l) slt.offset[l] = off[l];
+        Obj o;
+        if (!read_obj(ldir / r.file, slt, false, o, err)) return false;
+        std::map<int, std::vector<std::array<int, 2>>> by_object;
+        for (const auto& [ob, e] : o.edges) by_object[ob].push_back(e);
+        if (by_object.empty()) {
+            err = fmt("level.txt:%d: %s has no line elements (`l`: a curve converted to a mesh, its edges)", r.line, r.file.c_str());
+            return false;
+        }
+        for (const auto& [ob, es] : by_object) {
+            std::map<int, std::vector<int>> adj;
+            for (const auto& e : es) {
+                if (e[0] == e[1]) continue;
+                adj[e[0]].push_back(e[1]);
+                adj[e[1]].push_back(e[0]);
+            }
+            std::set<int> seen;
+            int part = 0;
+            for (const auto& [v0, nb0] : adj) {
+                if (seen.count(v0) != 0) continue;
+                // the chain's component: its ends (degree 1); none: a loop
+                std::vector<int> comp{v0};
+                std::set<int> cs{v0};
+                for (size_t k = 0; k < comp.size(); ++k)
+                    for (int w : adj[comp[k]])
+                        if (cs.insert(w).second) comp.push_back(w);
+                int start = -1;
+                for (int v : comp) {
+                    if (adj[v].size() > 2) {
+                        err = fmt("%s: the object %s branches (a rail is one line)", r.file.c_str(), o.objects[static_cast<size_t>(ob)].c_str());
+                        return false;
+                    }
+                    if (adj[v].size() == 1 && (start < 0 || v < start)) start = v;
+                }
+                const bool closed = start < 0;
+                if (closed) start = *std::min_element(comp.begin(), comp.end());
+                LevelTxt::Rail q = r;
+                q.file.clear();
+                q.loop = r.loop || closed;
+                q.name = o.objects[static_cast<size_t>(ob)] + (part > 0 ? "_" + std::to_string(part + 1) : std::string());
+                for (char& c : q.name)
+                    if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.')) c = '_';
+                ++part;
+                int prev = -1, cur = start;
+                while (cur >= 0 && seen.insert(cur).second) {
+                    q.pts.push_back(o.line_verts[static_cast<size_t>(cur)]);
+                    int next = -1;
+                    for (int w : adj[cur])
+                        if (w != prev && seen.count(w) == 0) next = w;
+                    prev = cur;
+                    cur = next;
+                }
+                if (q.pts.size() >= 2) out.push_back(q);
+            }
+        }
+    }
+    for (LevelTxt::Rail& q : out) {  // densified (the game's closest-point search walks a few points either way)
+        std::vector<std::array<float, 3>> d;
+        const size_t n = q.pts.size();
+        for (size_t i = 0; i < n; ++i) {
+            if (!d.empty() && dist3(d.back(), q.pts[i]) < 1e-3f) continue;
+            if (!d.empty()) {
+                const std::array<float, 3> a = d.back(), b = q.pts[i];
+                const int k = static_cast<int>(std::ceil(dist3(a, b) / kRailStep));
+                for (int j = 1; j < k; ++j) {
+                    const float t = static_cast<float>(j) / static_cast<float>(k);
+                    d.push_back({a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t});
+                }
+            }
+            d.push_back(q.pts[i]);
+        }
+        if (q.loop && d.size() > 2 && dist3(d.front(), d.back()) < 1e-3f) d.pop_back();  // (a loop's end on its start)
+        if (q.loop && d.size() > 2) {  // the closing segment's points
+            const std::array<float, 3> a = d.back(), b = d.front();
+            const int k = static_cast<int>(std::ceil(dist3(a, b) / kRailStep));
+            for (int j = 1; j < k; ++j) {
+                const float t = static_cast<float>(j) / static_cast<float>(k);
+                d.push_back({a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t});
+            }
+        }
+        if (d.size() < 2) {
+            err = fmt("level.txt:%d: the rail %s has less than two points", q.line, q.name.c_str());
+            return false;
+        }
+        if (d.size() > kRailPoints) {
+            err = fmt("level.txt:%d: the rail %s is too long (%zu points of %.1f units, at most %zu)", q.line, q.name.c_str(), d.size(), kRailStep, kRailPoints);
+            return false;
+        }
+        q.pts = d;
+    }
+    rails = out;
+    return true;
+}
+
+float rail_length(const LevelTxt::Rail& r) {
+    float len = 0;
+    for (size_t i = 1; i < r.pts.size(); ++i) len += dist3(r.pts[i - 1], r.pts[i]);
+    if (r.loop) len += dist3(r.pts.back(), r.pts.front());
+    return len;
+}
+
+std::vector<uint8_t> grind_block(const std::vector<LevelTxt::Rail>& rails) {
+    const size_t n = rails.size();
+    std::vector<uint8_t> b(0x10 + 0x20 * n + 4 * n, 0);
+    b.resize(align_up(b.size(), 0x10), 0);
+    const size_t pts_at = b.size();
+    std::vector<uint8_t> pts;
+    for (size_t k = 0; k < n; ++k) {
+        const LevelTxt::Rail& r = rails[k];
+        float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f};
+        for (const auto& v : r.pts)
+            for (size_t l = 0; l < 3; ++l) lo[l] = std::min(lo[l], v[l]), hi[l] = std::max(hi[l], v[l]);
+        const std::array<float, 3> c{(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2};
+        float rad = 0;
+        for (const auto& v : r.pts) rad = std::max(rad, dist3(c, v));
+        const size_t e = 0x10 + 0x20 * k;
+        for (size_t l = 0; l < 3; ++l) wrf(b, e + 4 * l, c[l]);
+        wrf(b, e + 0xc, rad + 4.0f);  // (the search's reach: the sphere a little larger than the rail)
+        wr32(b, e + 0x10, r.loop ? 1 : 0);
+        wr32(b, 0x10 + 0x20 * n + 4 * k, static_cast<int32_t>(pts.size()));
+        const size_t at = pts.size();
+        pts.resize(at + 0x10 + 0x10 * r.pts.size(), 0);
+        wr32(pts, at, static_cast<int32_t>(r.pts.size()));
+        for (size_t i = 0; i < r.pts.size(); ++i) {
+            const auto& v = r.pts[i];
+            const bool last = i + 1 == r.pts.size();
+            const float len = last ? (r.loop ? dist3(v, r.pts.front()) : 0.0f) : dist3(v, r.pts[i + 1]);
+            for (size_t l = 0; l < 3; ++l) wrf(pts, at + 0x10 + 0x10 * i + 4 * l, v[l]);
+            wrf(pts, at + 0x10 + 0x10 * i + 0xc, len);
+        }
+    }
+    wr32(b, 0, static_cast<int32_t>(n));
+    wr32(b, 4, static_cast<int32_t>(pts_at));
+    wr32(b, 8, static_cast<int32_t>(pts.size()));
+    b.insert(b.end(), pts.begin(), pts.end());
+    return b;
+}
+
+// a rail's collision strip: a ribbon kRailStrip wide just under its line (faces up)
+void rail_strip(const LevelTxt::Rail& r, uint8_t type, std::vector<CTri>& out) {
+    const size_t n = r.pts.size(), segs = r.loop ? n : n - 1;
+    auto side = [&](size_t i) {
+        const auto& a = r.pts[r.loop ? (i + n - 1) % n : (i == 0 ? 0 : i - 1)];
+        const auto& b = r.pts[r.loop ? (i + 1) % n : std::min(i + 1, n - 1)];
+        float tx = b[0] - a[0], ty = b[1] - a[1];
+        const float l = std::sqrt(tx * tx + ty * ty);
+        if (l < 1e-4f) return std::array<float, 2>{kRailStrip / 2, 0};
+        tx /= l;
+        ty /= l;
+        return std::array<float, 2>{ty * kRailStrip / 2, -tx * kRailStrip / 2};
+    };
+    for (size_t i = 0; i < segs; ++i) {
+        const size_t j = (i + 1) % n;
+        const auto sa = side(i), sb = side(j);
+        const std::array<float, 3> a0{r.pts[i][0] + sa[0], r.pts[i][1] + sa[1], r.pts[i][2] - 0.02f}, a1{r.pts[i][0] - sa[0], r.pts[i][1] - sa[1], r.pts[i][2] - 0.02f};
+        const std::array<float, 3> b0{r.pts[j][0] + sb[0], r.pts[j][1] + sb[1], r.pts[j][2] - 0.02f}, b1{r.pts[j][0] - sb[0], r.pts[j][1] - sb[1], r.pts[j][2] - 0.02f};
+        for (const auto& tri : {std::array<std::array<float, 3>, 3>{a0, a1, b1}, std::array<std::array<float, 3>, 3>{a0, b1, b0}}) {
+            CTri c;
+            c.p = tri;
+            const float nz = (c.p[1][0] - c.p[0][0]) * (c.p[2][1] - c.p[0][1]) - (c.p[1][1] - c.p[0][1]) * (c.p[2][0] - c.p[0][0]);
+            if (nz < 0) std::swap(c.p[1], c.p[2]);  // (facing up, as the level's floors)
+            c.type = type;
+            out.push_back(c);
+        }
+    }
+}
+
+// a rail's model: a bar 0.2 wide and 0.2 deep whose top is the rail's line (Ratchet's feet go there), as faces of an OBJ
+void rail_model(const LevelTxt::Rail& r, int material, Obj& o) {
+    const size_t n = r.pts.size(), segs = r.loop ? n : n - 1;
+    constexpr float W = 0.1f, D = 0.2f;
+    auto ring = [&](size_t i) {
+        const auto& a = r.pts[r.loop ? (i + n - 1) % n : (i == 0 ? 0 : i - 1)];
+        const auto& b = r.pts[r.loop ? (i + 1) % n : std::min(i + 1, n - 1)];
+        float tx = b[0] - a[0], ty = b[1] - a[1];
+        const float l = std::sqrt(tx * tx + ty * ty);
+        const float sx = l < 1e-4f ? W : ty / l * W, sy = l < 1e-4f ? 0 : -tx / l * W;
+        const auto& p = r.pts[i];
+        return std::array<std::array<float, 3>, 4>{{{p[0] + sx, p[1] + sy, p[2]}, {p[0] - sx, p[1] - sy, p[2]}, {p[0] - sx, p[1] - sy, p[2] - D},
+                                                    {p[0] + sx, p[1] + sy, p[2] - D}}};
+    };
+    auto quad = [&](const std::array<float, 3>& a, const std::array<float, 3>& b, const std::array<float, 3>& c, const std::array<float, 3>& d, float v0, float v1) {
+        ObjVert va{}, vb{}, vc{}, vd{};
+        for (int l = 0; l < 3; ++l) {
+            va.p[l] = a[static_cast<size_t>(l)];
+            vb.p[l] = b[static_cast<size_t>(l)];
+            vc.p[l] = c[static_cast<size_t>(l)];
+            vd.p[l] = d[static_cast<size_t>(l)];
+            va.col[l] = vb.col[l] = vc.col[l] = vd.col[l] = 1.0f;
+        }
+        va.uv[1] = vb.uv[1] = v0;
+        vc.uv[1] = vd.uv[1] = v1;
+        vb.uv[0] = vc.uv[0] = 1.0f;
+        ObjTri t1, t2;
+        t1.v[0] = va, t1.v[1] = vb, t1.v[2] = vc;
+        t2.v[0] = va, t2.v[1] = vc, t2.v[2] = vd;
+        t1.material = t2.material = material;
+        o.tris.push_back(t1);
+        o.tris.push_back(t2);
+    };
+    float v = 0;
+    for (size_t i = 0; i < segs; ++i) {
+        const size_t j = (i + 1) % n;
+        const auto A = ring(i), B = ring(j);
+        const float v1 = v + dist3(r.pts[i], r.pts[j]);
+        for (size_t f = 0; f < 4; ++f) quad(A[f], A[(f + 1) % 4], B[(f + 1) % 4], B[f], v, v1);
+        v = v1;
+    }
+    if (!r.loop) {  // the ends closed
+        const auto A = ring(0), B = ring(n - 1);
+        quad(A[3], A[2], A[1], A[0], 0, 1);
+        quad(B[0], B[1], B[2], B[3], 0, 1);
+    }
+}
+
+// the rails' models (`mesh`) as more host meshes: their material the named one of the level's meshes' (else a grey metal)
+bool rails_meshes(const std::vector<LevelTxt::Rail>& rails, const std::vector<ObjMaterial>& mats, mrpw::HostMeshFile& hm, Log& log, std::string& err);
+
+// (stage 7) a class's collision mesh (`class ... collision <coll.obj>`) as a moby's collision (the carrier's +0x94; the game's
+// moby collision format, mobys_in_sphere's: 0x10 bytes of header (joints 0, primitives 0, the triangles' bytes, the
+// vertices' bytes), the vertices (x y z as int16 at 1/1024 of a unit of the moby's scale, a pad), the triangles (three vertex
+// indices, clockwise seen from outside, and a byte of flags: the bolt crate's box has 0x7f)). `k`: a model unit's int16 steps (1024 / the carrier's scale)
+bool class_collision(const Obj& co, float k, std::vector<uint8_t>& out, std::string& err) {
+    std::vector<std::array<int16_t, 3>> vs;
+    std::vector<std::array<uint8_t, 4>> ts;
+    auto vert = [&](const ObjVert& v) -> int {
+        std::array<int16_t, 3> q{};
+        for (int l = 0; l < 3; ++l) {
+            const float f = std::round(v.p[l] * k);
+            if (std::fabs(f) > 32000.0f) return -2;
+            q[static_cast<size_t>(l)] = static_cast<int16_t>(f);
+        }
+        for (size_t i = 0; i < vs.size(); ++i)
+            if (vs[i] == q) return static_cast<int>(i);
+        vs.push_back(q);
+        return static_cast<int>(vs.size()) - 1;
+    };
+    for (const ObjTri& t : co.tris) {
+        int id[3];
+        for (int i = 0; i < 3; ++i) {
+            id[i] = vert(t.v[i]);
+            if (id[i] == -2) {
+                err = "a vertex too far from the model's origin for the class's size (give a larger size)";
+                return false;
+            }
+        }
+        if (vs.size() > 255) {
+            err = "more than 255 vertices (the game's moby collision indexes them with a byte)";
+            return false;
+        }
+        if (id[0] == id[1] || id[1] == id[2] || id[0] == id[2]) continue;
+        // (the game's winding: clockwise seen from outside, the bolt crate's; the flag byte its 0x7f)
+        ts.push_back({static_cast<uint8_t>(id[0]), static_cast<uint8_t>(id[2]), static_cast<uint8_t>(id[1]), 0x7f});
+    }
+    if (ts.empty()) {
+        err = "no faces";
+        return false;
+    }
+    if (vs.size() % 2 != 0) vs.push_back(vs.back());  // (the vertices read two at a time: 16 bytes)
+    out.assign(0x10, 0);
+    wr32(out, 8, static_cast<int32_t>(ts.size() * 4));
+    wr32(out, 0xc, static_cast<int32_t>(vs.size() * 8));
+    for (const auto& v : vs)
+        for (int l = 0; l < 4; ++l) {
+            const int16_t x = l < 3 ? v[static_cast<size_t>(l)] : 0;
+            out.push_back(static_cast<uint8_t>(x));
+            out.push_back(static_cast<uint8_t>(static_cast<uint16_t>(x) >> 8));
+        }
+    for (const auto& t : ts) out.insert(out.end(), t.begin(), t.end());
+    out.resize(align_up(out.size(), 0x10), 0);
     return true;
 }
 
@@ -1347,6 +1739,41 @@ bool build_host_meshes(const Obj& o, mrpw::HostMeshFile& out, Log& log, std::str
         out.classes.push_back(std::move(c));
     }
     if (as_class == nullptr) log.say(fmt("host meshes: %zu meshes, %zu triangles, %zu textures", out.classes.size(), total_tris, out.textures.size()));
+    return true;
+}
+
+// (stage 7) the rails' models (`mesh`): more host meshes, their material the named one of the level's meshes' (else grey metal)
+bool rails_meshes(const std::vector<LevelTxt::Rail>& rails, const std::vector<ObjMaterial>& mats, mrpw::HostMeshFile& hm, Log& log, std::string& err) {
+    Obj o;
+    size_t made = 0;
+    for (const LevelTxt::Rail& r : rails) {
+        if (!r.mesh) continue;
+        int mat = -1;
+        for (size_t i = 0; i < o.materials.size() && mat < 0; ++i)
+            if (o.materials[i].name == (r.material.empty() ? std::string("(rail)") : r.material)) mat = static_cast<int>(i);
+        if (mat < 0) {
+            ObjMaterial m;
+            if (r.material.empty()) {
+                m.name = "(rail)";
+                m.kd[0] = 0.55f, m.kd[1] = 0.57f, m.kd[2] = 0.62f;
+            } else {
+                bool found = false;
+                for (const ObjMaterial& x : mats)
+                    if (x.name == r.material) m = x, found = true;
+                if (!found) {
+                    err = fmt("level.txt:%d: the rail %s's mesh material \"%s\" is not one of the meshes' (their .mtl)", r.line, r.name.c_str(), r.material.c_str());
+                    return false;
+                }
+            }
+            o.materials.push_back(m);
+            mat = static_cast<int>(o.materials.size()) - 1;
+        }
+        rail_model(r, mat, o);
+        ++made;
+    }
+    if (made == 0) return true;
+    if (!build_host_meshes(o, hm, log, err)) return false;
+    log.say(fmt("rails: %zu models made (%zu triangles)", made, o.tris.size()));
     return true;
 }
 
@@ -1825,10 +2252,12 @@ bool build_gameplay(const std::vector<uint8_t>& g, LevelTxt& lt, std::vector<uin
         blocks[0x08] = cams;
     }
     blocks[0x70] = lt.ship ? flight_path(lt.ship_at) : std::vector<uint8_t>(0x10, 0);  // the paths
-    {
+    if (lt.rails.empty()) {
         std::vector<uint8_t> grind(0x10, 0);  // the grind lines: none
         wr32(grind, 4, 0x10);
         blocks[0x74] = grind;
+    } else {
+        blocks[0x74] = grind_block(lt.rails);  // (stage 7) level.txt's rails
     }
     // the mobys: the hero only (the base level's class 0 record), at the start
     {
@@ -2256,7 +2685,7 @@ bool build_section_gameplay(const std::vector<uint8_t>& g, LevelTxt& lt, std::ve
     }
     std::vector<uint8_t> recs;
     std::map<uint32_t, std::vector<uint8_t>> blocks;
-    if (!place_mobys(g, G, mo, n1, hero_uid, lt, recs, blocks, log, err)) return false;
+    if (!lt.mobys.empty() && !place_mobys(g, G, mo, n1, hero_uid, lt, recs, blocks, log, err)) return false;
     // the pvar entries the placements name, renumbered from 0 with their data
     const std::vector<uint8_t>& table = blocks[0x54];
     const std::vector<uint8_t>& data = blocks[0x58];
@@ -2298,6 +2727,7 @@ bool build_section_gameplay(const std::vector<uint8_t>& g, LevelTxt& lt, std::ve
     nb[0x58] = ndata;
     nb[0x50] = rows(0x50);
     nb[0x5c] = rows(0x5c);
+    if (!lt.rails.empty()) nb[0x74] = grind_block(lt.rails);  // (stage 7) the section's rails
     if (const auto sh = blocks.find(0x4c); sh != blocks.end() && sh->second.size() >= 0x10) {
         const std::vector<uint8_t>& s = sh->second;
         const int32_t size = rd32(s, 0), n = rd32(s, 4);
@@ -2330,8 +2760,8 @@ bool build_section_gameplay(const std::vector<uint8_t>& g, LevelTxt& lt, std::ve
         err = "the section's gameplay file does not decode back through the game's decoder: " + why;
         return false;
     }
-    log.say(fmt("section gameplay: %zu bytes (%zu placements, %zu pvar entries, %zu pvar bytes), packed %zu", ng.size(), lt.mobys.size(), renum.size(), ndata.size(),
-                out.size()));
+    log.say(fmt("section gameplay: %zu bytes (%zu placements, %zu pvar entries, %zu pvar bytes, %zu rails), packed %zu", ng.size(), lt.mobys.size(), renum.size(),
+                ndata.size(), lt.rails.size(), out.size()));
     return true;
 }
 
@@ -2340,12 +2770,13 @@ bool build_section_gameplay(const std::vector<uint8_t>& g, LevelTxt& lt, std::ve
 // gameplay file of the game's format with only them: the session places them with the game's rules, section_spawn_placements)
 struct SectionOut {
     std::vector<uint8_t> coll, sky, gameplay;
+    size_t rails = 0;
     size_t first = 0, count = 0;  // (its meshes' instances in host_meshes.mrpc)
     float death = 0;
     int objects = 0, imported = 0;
 };
-bool compose_sections(const fs::path& ldir, LevelTxt& lt, const std::vector<uint8_t>& base_gp, mrpw::HostMeshFile& hm, std::vector<SectionOut>& outs, Log& log,
-                      std::string& err) {
+bool compose_sections(const fs::path& ldir, LevelTxt& lt, const std::vector<uint8_t>& base_gp, mrpw::HostMeshFile& hm, const std::vector<ObjMaterial>& mats,
+                      std::vector<SectionOut>& outs, Log& log, std::string& err) {
     int uid_next = lt.uid_first;
     for (LevelTxt::Section& S : lt.sections) {
         SectionOut o;
@@ -2359,8 +2790,10 @@ bool compose_sections(const fs::path& ldir, LevelTxt& lt, const std::vector<uint
         if (!S.collision.empty()) {
             Obj co;
             if (!read_obj(ldir / S.collision, slt, false, co, err)) return fail(err);
-            const std::vector<CTri> ct = collision_tris(co, lt.collision_type);
+            std::vector<CTri> ct = collision_tris(co, lt.collision_type);
             if (ct.empty()) return fail(S.collision + " has no faces");
+            for (const LevelTxt::Rail& r : S.rails)
+                if (r.strip) rail_strip(r, static_cast<uint8_t>(lt.collision_type), ct);  // (stage 7) its rails' strips
             if (!build_collision(ct, o.coll, log, err)) return fail(err);
             float lo = 1e30f;
             for (const CTri& c : ct)
@@ -2381,13 +2814,16 @@ bool compose_sections(const fs::path& ldir, LevelTxt& lt, const std::vector<uint
             if (!read_obj(ldir / S.meshes, slt, true, mo, err)) return fail(err);
             if (!build_host_meshes(mo, hm, log, err)) return fail(err);
         }
+        if (!rails_meshes(S.rails, mats, hm, log, err)) return fail(err);  // (stage 7) its rails' models
         o.count = hm.instances.size() - o.first;
         slt.mobys.clear();
         for (const LevelTxt::Moby& mb : S.mobys)
             if (mb.import.empty()) slt.mobys.push_back(mb);
         o.objects = static_cast<int>(slt.mobys.size());
         o.imported = static_cast<int>(S.mobys.size()) - o.objects;
-        if (!slt.mobys.empty()) {
+        o.rails = S.rails.size();
+        slt.rails = S.rails;
+        if (!slt.mobys.empty() || !slt.rails.empty()) {
             slt.pools.clear();
             slt.ship = false;
             slt.format = 2;
@@ -2643,6 +3079,32 @@ bool compose_level_mod(const std::string& folder, bool force) {
         }
         if (S.has_death) S.death += lt.offset[2] + S.offset[2];
     }
+    // (stage 7) the grind rails: their files read, their points moved and densified; their names once in the level
+    size_t rails_all = 0;
+    {
+        if (!rails_resolve(ldir, lt, lt.offset, lt.rails, err)) return fail(err);
+        std::set<std::string> names;
+        auto check = [&](const std::vector<LevelTxt::Rail>& rs, const char* where) {
+            for (const LevelTxt::Rail& r : rs)
+                if (!names.insert(r.name).second) return fmt("level.txt:%d: the rail %s twice", r.line, r.name.c_str());
+            if (rs.size() > kRails) return fmt("%s: more than %zu rails", where, kRails);
+            return std::string();
+        };
+        if (const std::string w = check(lt.rails, "main"); !w.empty()) return fail(w);
+        for (LevelTxt::Section& S : lt.sections) {
+            const float o[3] = {lt.offset[0] + S.offset[0], lt.offset[1] + S.offset[1], lt.offset[2] + S.offset[2]};
+            if (!rails_resolve(ldir, lt, o, S.rails, err)) return fail(err);
+            if (const std::string w = check(S.rails, S.name.c_str()); !w.empty()) return fail(w);
+        }
+        rails_all = names.size();
+        auto say = [&](const std::vector<LevelTxt::Rail>& rs, const std::string& where) {
+            for (const LevelTxt::Rail& r : rs)
+                log.say(fmt("rail %s (%s): %zu points, %.1f units%s%s%s", r.name.c_str(), where.c_str(), r.pts.size(), rail_length(r), r.loop ? ", a loop" : "",
+                            r.mesh ? ", its model" : "", r.strip ? "" : ", no collision strip"));
+        };
+        say(lt.rails, "main");
+        for (const LevelTxt::Section& S : lt.sections) say(S.rails, "section " + S.name);
+    }
     // (format 3) classes of other levels placed (moby lines naming one): spawned by the session with their section, each an
     // import of the level (added when no import line names it)
     std::vector<LevelTxt::Moby> main_imports;
@@ -2694,6 +3156,16 @@ bool compose_level_mod(const std::string& folder, bool force) {
         }
         ctris.push_back(c);
     }
+    {  // (stage 7) the rails' collision strips: main's, and those of the sections that keep main's collision
+        const size_t before = ctris.size();
+        for (const LevelTxt::Rail& r : lt.rails)
+            if (r.strip) rail_strip(r, static_cast<uint8_t>(lt.collision_type), ctris);
+        for (const LevelTxt::Section& S : lt.sections)
+            if (S.collision.empty())
+                for (const LevelTxt::Rail& r : S.rails)
+                    if (r.strip) rail_strip(r, static_cast<uint8_t>(lt.collision_type), ctris);
+        if (ctris.size() != before) log.say(fmt("rails: their collision strips, %zu triangles", ctris.size() - before));
+    }
     std::vector<uint8_t> coll;
     if (!build_collision(ctris, coll, log, err)) return fail(err);
     for (const CTri& c : ctris)
@@ -2733,23 +3205,31 @@ bool compose_level_mod(const std::string& folder, bool force) {
     // the host meshes
     mrpw::HostMeshFile hm;
     const bool has_meshes = fs::exists(ldir / lt.meshes);
+    std::vector<ObjMaterial> mesh_mats;  // (the meshes' materials: a rail's model may name one)
     if (has_meshes) {
         Obj mo;
         if (!read_obj(ldir / lt.meshes, lt, true, mo, err)) return fail(err);
         if (!build_host_meshes(mo, hm, log, err)) return fail(err);
+        mesh_mats = mo.materials;
     } else {
         log.say("host meshes: none (no " + lt.meshes + ")");
     }
+    if (!rails_meshes(lt.rails, mesh_mats, hm, log, err)) return fail(err);  // (stage 7) main's rails' models
     // (format 3) the sections: their collisions, skies, meshes (after the level's own, before its classes' models) and objects
     const size_t main_instances = hm.instances.size();
     std::vector<SectionOut> souts;
     if (!lt.sections.empty()) {
         for (const LevelTxt::Moby& mb : lt.mobys) lt.uid_first = std::max(lt.uid_first, mb.uid);
-        if (!compose_sections(ldir, lt, base_gp, hm, souts, log, err)) return fail(err);
+        if (!compose_sections(ldir, lt, base_gp, hm, mesh_mats, souts, log, err)) return fail(err);
     }
     // the level's own classes: their models, more host meshes (no placement: the objects are placed by the game)
     std::vector<ClassModel> models;
-    for (const LevelTxt::Class& c : lt.classes) {
+    struct ClassColl {
+        std::vector<uint8_t> blob;
+        float centre[3] = {}, radius = 0;  // (its bounding sphere, model units times the class's scale)
+    };
+    std::vector<ClassColl> colls(lt.classes.size());
+    for (LevelTxt::Class& c : lt.classes) {
         LevelTxt unmoved = lt;  // (a model is made round its own origin: level.txt's up and scale, not its offset)
         for (float& o : unmoved.offset) o = 0;
         Obj mo;
@@ -2757,6 +3237,32 @@ bool compose_level_mod(const std::string& folder, bool force) {
         ClassModel cm;
         if (!build_host_meshes(mo, hm, log, err, c.name.c_str(), &cm)) return fail(fmt("level.txt:%d: ", c.line) + err);
         models.push_back(cm);
+        if (!c.collision.empty()) {  // (stage 7) a collision mesh of its own: the carrier's moby collision
+            Obj cc;
+            if (!read_obj(ldir / c.collision, unmoved, false, cc, err)) return fail(fmt("level.txt:%d: ", c.line) + err);
+            float lo[3] = {1e30f, 1e30f, 1e30f}, hi[3] = {-1e30f, -1e30f, -1e30f}, maxabs = 0;
+            for (const ObjTri& t : cc.tris)
+                for (const ObjVert& v : t.v)
+                    for (int l = 0; l < 3; ++l) {
+                        lo[l] = std::min(lo[l], v.p[l]);
+                        hi[l] = std::max(hi[l], v.p[l]);
+                        maxabs = std::max(maxabs, std::fabs(v.p[l]));
+                    }
+            const float need = maxabs * c.scale * 0.77f;  // (the carrier's scale size / 24: int16 vertices at 1/1024 of its units)
+            float size = c.size > 0 ? c.size : std::max(cm.extent * c.scale, 0.1f);
+            if (size < need) size = need;
+            c.size = size;
+            ClassColl& k = colls[static_cast<size_t>(&c - lt.classes.data())];
+            if (!class_collision(cc, c.scale * 24576.0f / size, k.blob, err)) return fail(fmt("level.txt:%d: %s: ", c.line, c.collision.c_str()) + err);
+            for (int l = 0; l < 3; ++l) k.centre[l] = (lo[l] + hi[l]) / 2 * c.scale;
+            for (const ObjTri& t : cc.tris)
+                for (const ObjVert& v : t.v) {
+                    const std::array<float, 3> a{v.p[0] * c.scale, v.p[1] * c.scale, v.p[2] * c.scale}, b{k.centre[0], k.centre[1], k.centre[2]};
+                    k.radius = std::max(k.radius, dist3(a, b));
+                }
+            log.say(fmt("class \"%s\": its collision mesh %s, %zu triangles, %zu bytes; its size %.2f", c.name.c_str(), c.collision.c_str(), cc.tris.size(),
+                        k.blob.size(), size));
+        }
         log.say(fmt("class \"%s\": %s, its hit box %.2f units%s%s", c.name.c_str(), c.model.c_str(), c.size > 0 ? c.size : std::max(cm.extent, 0.1f),
                     c.size > 0 ? "" : " (the model's extent)", c.ghost ? ", ghost (no collision)" : ""));
     }
@@ -2960,7 +3466,7 @@ bool compose_level_mod(const std::string& folder, bool force) {
                     lt.respawn.empty() ? "reset" : lt.respawn.c_str()));
     }
     // level.sdk: the level's own content for the game (src/game/enhance/mod_code.cpp reads it)
-    if (!lt.classes.empty() || !lt.sounds.empty() || !lt.triggers.empty() || !lt.paths.empty() || lt.update_all) {
+    if (!lt.classes.empty() || !lt.sounds.empty() || !lt.triggers.empty() || !lt.paths.empty() || lt.update_all || rails_all > 0 || !lt.items.empty()) {
         std::ostringstream o;
         o << "sdk\t1\n";
         if (lt.update_all) o << "update_all\t1\n";
@@ -2988,9 +3494,32 @@ bool compose_level_mod(const std::string& folder, bool force) {
             for (const auto& v : pa.pts) o << fmt("\t%.6g\t%.6g\t%.6g", v[0], v[1], v[2]);
             o << "\n";
         }
+        // (stage 7) the rails (their section, their index in its table, their points as the table has them), the items for the
+        // visit, the classes' collision meshes (their files)
+        auto rails_of = [&](int sec, const std::vector<LevelTxt::Rail>& rs) {
+            for (size_t k = 0; k < rs.size(); ++k) {
+                o << fmt("rail\t%s\t%d\t%zu\t%d\t%zu", rs[k].name.c_str(), sec, k, rs[k].loop ? 1 : 0, rs[k].pts.size());
+                for (const auto& v : rs[k].pts) o << fmt("\t%.6g\t%.6g\t%.6g", v[0], v[1], v[2]);
+                o << "\n";
+            }
+        };
+        rails_of(0, lt.rails);
+        for (size_t k = 0; k < lt.sections.size(); ++k) rails_of(static_cast<int>(k + 1), lt.sections[k].rails);
+        if (!lt.items.empty()) {
+            o << "items";
+            for (int id : lt.items) o << fmt("\t%d", id);
+            o << "\n";
+        }
+        for (size_t i = 0; i < lt.classes.size(); ++i) {
+            if (colls[i].blob.empty()) continue;
+            const std::string f = "class_" + lt.classes[i].name + ".col";
+            if (!write_file(out_dir / f, colls[i].blob)) return fail("cannot write into " + out_dir.generic_string());
+            o << fmt("collision\t%zu\t%s\t%.6g\t%.6g\t%.6g\t%.6g\n", i, f.c_str(), colls[i].centre[0], colls[i].centre[1], colls[i].centre[2], colls[i].radius);
+        }
         const std::string t = o.str();
         if (!write_file(out_dir / "level.sdk", std::vector<uint8_t>(t.begin(), t.end()))) return fail("cannot write into " + out_dir.generic_string());
-        log.say(fmt("level.sdk: %zu classes, %zu objects, %zu sounds, %zu triggers, %zu paths", lt.classes.size(), lt.objects.size(), lt.sounds.size(), lt.triggers.size(), lt.paths.size()));
+        log.say(fmt("level.sdk: %zu classes, %zu objects, %zu sounds, %zu triggers, %zu paths, %zu rails, %zu items for the visit", lt.classes.size(), lt.objects.size(),
+                    lt.sounds.size(), lt.triggers.size(), lt.paths.size(), rails_all, lt.items.size()));
     }
     // the pictures (level_pictures.h): the loading screen's planet and name, the ship's map's picture
     {
