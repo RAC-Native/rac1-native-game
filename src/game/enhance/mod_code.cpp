@@ -1427,6 +1427,14 @@ void api_hud_text_ex(int32_t x, int32_t y, uint32_t abgr, float scale, int32_t a
     if (side != 0) render_view_hud_note(at, lwu(HUD_CUR), side);
 }
 
+// (ABI 14) the HUD's width in HUD units: 512 at 4:3, more with a HUD wider than 4:3 over a widened view (Options > Display >
+// HUD, never wider than the view): where the RAC1_HUD_LEFT / _RIGHT elements go, as render_view_hud_shift moves them (half the
+// widening on each side); 512 where hud_side keeps them in the 4:3 frame (the vendor's screens)
+int32_t api_hud_width() {
+    if (lw(OV(0x0015f5c4)) == 5) return 512;
+    return static_cast<int32_t>(512.0f * render_view_hud_widen() + 0.5f);
+}
+
 int32_t api_hud_text_width(const char* text, float scale) {
     if (text == nullptr || !(scale > 0.0f)) return 0;
     // (the small font's advances, as text_width_small counts them: a copy in host memory, the HUD's strings are the HUD's)
@@ -1607,6 +1615,7 @@ void load_all() {
     g_api.hero_mode_now = api_hero_mode_now;
     g_api.boss_set = api_boss_set;  // (ABI 13)
     g_api.boss_beaten = api_boss_beaten;
+    g_api.hud_width = api_hud_width;  // (ABI 14)
     {
         SetpiecesHost h;
         h.hero_damage = api_hero_damage;

@@ -40,7 +40,8 @@ Contents:
 | 10 | the first with sections | sections (a session's `section` blocks and portals): `section_load`, `section_ready`, `section_enter`, `section_unload`, `section_current`, `section_policy`, `RAC1_SECTION_*`; the callbacks `section_leave`, `section_enter` |
 | 11 | the first with rails | grind rails and the set-piece kit, in ABI 7's room of the table: `rail_find`, `hero_rail`, `rail_point`, `rail_enable`, `hero_rail_attach`, `rail_speed`, `rail_info`, `item_visit`, `fade`, `fade_active`, `camera_set`, `camera_release`, `hazard_add`, `hazard_set`, `object_follow_path`, `object_path_at` (`rac1_rail_info`, `rac1_camera`, `rac1_hazard`, `RAC1_RAIL_*`, `RAC1_CAMERA_*`, `RAC1_HAZARD_*`, `RAC1_PATH_*`); the callback `rail`; level.txt's `rail`, `rails`, `items` lines and `class ... collision <file>` |
 | 12 | the first with hero modes | hero contexts and modes (a session): `hero_build`, `hero_build_now`, `hero_mode`, `hero_mode_now`, `RAC1_HERO_*`; level.txt's `hero` line |
-| 13 | this one | bosses (a session's sections): `boss_set`, `boss_beaten`, `RAC1_BOSS_*`; the callback `boss`; level.txt's `boss` line |
+| 13 | the first with bosses | bosses (a session's sections): `boss_set`, `boss_beaten`, `RAC1_BOSS_*`; the callback `boss`; level.txt's `boss` line |
+| 14 | this one | the HUD's width: `hud_width`; `RAC1_HUD_HEIGHT` ([The HUD's area](#the-huds-area)) |
 
 How compatibility works:
 
@@ -241,7 +242,7 @@ See [Base level objects](#base-level-objects) below.
 
 | Service | ABI | Does |
 |---|---|---|
-| `void hud_text(x, y, abgr, text)` | 1 | in `hud` only: plain ASCII in the small font at (x, y) of 512 x 448, colour 0xAABBGGRR (alpha 0x80 opaque); 15 lines a frame at most |
+| `void hud_text(x, y, abgr, text)` | 1 | in `hud` only: plain ASCII in the small font at (x, y) of 512 x 416 ([The HUD's area](#the-huds-area)), colour 0xAABBGGRR (alpha 0x80 opaque); 15 lines a frame at most |
 | `void camera_position(float out[3])` | 1 | |
 | `uint32_t pad_held(void)`, `uint32_t pad_pressed(void)` | 1 | pad 1's bits: 0x10 triangle, 0x20 circle, 0x40 cross, 0x80 square, 0x800 start, 0x1000 up, 0x2000 right, 0x4000 down, 0x8000 left, 1 L2, 2 R2, 4 L1, 8 R1 |
 | `uint32_t random(void)` | 1 | your own numbers (the game's untouched), the same each run from a level's start |
@@ -256,7 +257,7 @@ Test `RAC1_API_HAS(api, vendor_open)` before using them (a game older than ABI 4
 |---|---|
 | `int vendor_open(void)` | the vendor's screens (weapons and ammo to buy), as the game's own vendor item opens them (0x29a6b0 with no Vendor moby): 1 opened, 0 not (not in play - a menu, a cutscene, the landing, the vendor already open -, or called from `hud` or while replaying). Call it from `frame` (or an object's update, a trigger). The game stays paused under them: `frame` and `hud` are not called until the player leaves them (triangle), then play goes on where it was. Works on every base level (the vendor's code is in every level's overlay); tested on Kalebo III |
 | `void input_hold(int on)` | on: from the next frame the game gets nothing from the pad in play (no walking, jumping, attacking, no camera stick) but **Start and Select**, so the pause menu (and quitting from it) and the map work as always; menus, the vendor and cutscenes get the pad as always. `pad_held` / `pad_pressed` still read the real pad, for your own menu. Off: the pad is the game's again, except the buttons still held at that moment, until released (the Cross that closed your menu does not make him jump). Off again at every level's start. Use it instead of writing the pad's fields at 0x13c940 (the game's own pad read writes them every frame, before your callbacks, and its moves read the presses' history too) |
-| `void hud_rect(x, y, w, h, abgr, anchor)` | in `hud` only: a flat rectangle `w` x `h` from (`x`, `y`) of the 512 x 448 HUD, colour 0xAABBGGRR (alpha 0x80 opaque, 0x40 half transparent): a panel behind your texts (draw it first) |
+| `void hud_rect(x, y, w, h, abgr, anchor)` | in `hud` only: a flat rectangle `w` x `h` from (`x`, `y`) of the 512 x 416 HUD, colour 0xAABBGGRR (alpha 0x80 opaque, 0x40 half transparent): a panel behind your texts (draw it first) |
 | `void hud_text_ex(x, y, abgr, scale, anchor, text)` | in `hud` only: `hud_text` at `scale` times the font's size (1: `hud_text`'s, 2: twice; at most 8) |
 | `int32_t hud_text_width(text, scale)` | `text`'s width in HUD units at `scale` (to centre or right-align it: `x = 256 - w / 2`) |
 | `int base_hunt(uint32_t moby, int on)` | the base level's enemy `moby` (`base_moby`'s, or a `moby` line's) hunts Ratchet wherever he is instead of guarding where it started: [Base level objects](#base-level-objects). 1 done, 0 not (no such moby, a class not known: Kalebo III's robots 1445; from ABI 5 also `base_spawn`'s 52, 541, 638 and 1356, [Kalebo III's enemies](#kalebo-iiis-enemies-abi-5)) |
@@ -265,7 +266,7 @@ Test `RAC1_API_HAS(api, vendor_open)` before using them (a game older than ABI 4
 **Anchors** (`hud_rect`, `hud_text_ex`): `RAC1_HUD_CENTRE` (0) is the 4:3 frame `hud_text` draws in, in the middle of the
 screen; `RAC1_HUD_LEFT` (1) and `RAC1_HUD_RIGHT` (2) move the element with the game's own side elements (the health on the
 left, the bolts on the right) toward that edge of the screen when the HUD is wider than 4:3 (Options > Display > HUD
-16:9, 21:9, 32:9 or Fit, over a widened view). At 4:3 the three are the same. Coordinates stay the 512 x 448 HUD's: a
+16:9, 21:9, 32:9 or Fit, over a widened view). At 4:3 the three are the same. Coordinates stay the 512 x 416 HUD's: a
 panel at x 10 anchored left is 10 units from the screen's left edge, one ending at x 502 anchored right ends 10 from its
 right edge. Not on the vendor's screens (4:3 there, and the `hud` callback is not called under them).
 
@@ -278,6 +279,47 @@ from the camera is left out. They are kept in the game's memory with the frame (
 pipelined frame and the pause show the lights of their own frame. Cost: each one is a point light of the 96 the
 lighting's shaders take a pixel, before the automatic emitters (which then get fewer); a few dozen lights near the
 camera cost about as much as the same number of hand-placed lamps.
+
+### The HUD's area
+
+The HUD's units are the game's frame's pixels: **512 x 416** (`RAC1_HUD_HEIGHT`), x 0 at the 4:3 frame's left edge, y 0
+at the top row and 415 the bottom one. All of it is on the screen, on every renderer and window: the frame is scaled to
+the window's height (at 1280 x 720, 1.73 pixels a unit), and nothing is cut off at its top or bottom. Nothing past
+y 416 is drawn (a panel from y 400 with `h` 32 shows its top 16 units). (The PS2's display window was 448 lines, the
+game's frame the top 416 of them, the last 32 lines black under it: the port shows the frame only. A TV's overscan cut
+about 4 more units off the frame's top and sides, never its bottom, and the game's own HUD keeps 15 to 20 units from
+the frame's edges; `RAC1_OVERSCAN=1` shows a test run as a TV did.)
+
+The width depends on the HUD (Options > Display > HUD over a widened view):
+
+| Service | ABI | Does |
+|---|---|---|
+| `int32_t hud_width(void)` | 14 | the HUD's width in HUD units: 512 at 4:3 (the default, or a view not wider than 4:3, or the vendor's screens), about 683 with a 16:9 HUD, 910 with a 21:9 one; never wider than the view (Fit: the view's own). Test `api->abi >= 14` (or `RAC1_API_HAS(api, hud_width)`) before calling it |
+
+The `RAC1_HUD_LEFT` elements move `(hud_width() - 512) / 2` units to the left, the `RAC1_HUD_RIGHT` ones as many to
+the right, the `RAC1_HUD_CENTRE` ones (and `hud_text`) stay where they are. So an element anchored left at x `x` is at
+`x - (hud_width() - 512) / 2` in the centre's units: compare it with your centred elements there. It is a display value
+(the player's window and options): use it to lay out what you draw, in `hud` or `frame`, never to change the game's
+state (a replay, another player's window would differ). It can change from one frame to the next (the window resized,
+the option changed): ask it each frame.
+
+A banner at the bottom centre that never touches a box at the bottom left, moved right only when it would:
+
+```c
+static void my_hud(void* user) {
+    const int32_t w = api->abi >= 14 ? api->hud_width() : 512;
+    const int32_t box_x = 10, box_w = 230, y = RAC1_HUD_HEIGHT - 40;
+    api->hud_rect(box_x, y, box_w, 30, 0x40000000u, RAC1_HUD_LEFT);              /* the box, at the left edge */
+    const int32_t box_right = box_x + box_w - (w - 512) / 2;                     /* its right edge, in the centre's units */
+    const int32_t tw = api->hud_text_width(g_banner, 2.0f);
+    int32_t x = 256 - tw / 2;                                                    /* centred */
+    if (x < box_right + 8) x = box_right + 8;                                    /* or just right of the box */
+    api->hud_text_ex(x, y + 5, 0x80ffffffu, 2.0f, RAC1_HUD_CENTRE, g_banner);
+}
+```
+
+With a 4:3 HUD the box ends at x 240 and the banner (158 units wide) starts at 248; with a 16:9 HUD the box ends at
+155 and the banner is centred (177..335).
 
 ### Kalebo III's enemies, the weapons (ABI 5)
 

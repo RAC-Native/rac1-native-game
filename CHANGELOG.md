@@ -5,6 +5,13 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: the hero's missing sounds.** On a level mod on another base than Veldin's, Ratchet's sounds that base's
+  bank lacks were silent: with `hero generic` on Kalebo III's base, his burn in the lava and his sinking. They now play,
+  from Veldin's bank.
+- **The mod SDK: the HUD's width** (ABI 14): `hud_width()` says how wide the HUD is (512 units at 4:3, about 683 at 16:9,
+  910 at 21:9), so a plugin knows how far its `RAC1_HUD_LEFT` / `RAC1_HUD_RIGHT` elements move and can keep a centred banner
+  off a box at the side. docs/sdk.md's "The HUD's area": the HUD is 512 x 416 units (the docs said 448), all of it on the
+  screen (`RAC1_HUD_HEIGHT`).
 - **The renderer's code, cleaned up** (no change to the pictures or the game): functions nobody called removed from the
   Modern Rendering Pipeline (MRP) and the older renderers, and docs/rendering.md rewritten to say plainly what the MRP is
   and is not: the game's code still produces its draw commands, the MRP interprets them with its own OpenGL / Vulkan
