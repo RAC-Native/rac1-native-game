@@ -21,6 +21,9 @@
 
 namespace rac1 {
 
+// (see variants.h: none until a session's hero context names one)
+int g_hero_level = -1;
+
 // orig: (host) see variants.h
 const VariantRow* ovl_variants(int level, size_t* count) {
     switch (level) {

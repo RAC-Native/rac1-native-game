@@ -189,6 +189,56 @@ void relocate(Context& c) {
                 counts[static_cast<int>(CtxKind::OwnCode)], counts[static_cast<int>(CtxKind::EngineCode)], poison ? " (its engine objects poisoned)" : "");
 }
 
+// The level's own builds of engine functions (its hero controller's: variants.h) have switches whose jump tables lie in data
+// blocks its map pairs with Veldin's (an engine object, extents and all): through them the level's own code would read
+// Veldin's labels, which its `case`s never match (Kalebo III's hero_set_state found no case for the board state 0x6b in
+// Veldin's table). A run of two or more words of an engine block that are addresses of the level's own code (labels: a jump
+// table; a function's start may be among them) is such a table: the level sees its own copy (a view onto the image, its
+// words relocated: labels made tags, paired functions' starts Veldin's), as on its own level. Veldin's code never reads the
+// level's copy (its sites are Veldin's).
+void own_code_tables(Context& c) {
+    uint8_t* ram = ee_get_ram_base();
+    size_t tables = 0, words = 0;
+    auto word = [&](uint32_t a) {
+        uint32_t w = 0;
+        std::memcpy(&w, ram + c.image + (a - CONTEXT_BASE), 4);
+        return w;
+    };
+    // (the kind of a word: an own code label 2, a paired function's start 1, other 0)
+    auto kind = [&](uint32_t w) {
+        if (w < c.code_lo || w >= c.code_hi || (w & 3u) != 0) return 0;
+        uint32_t to = 0;
+        const CtxKind k = classify(c, w, &to);
+        return k == CtxKind::OwnCode ? 2 : k == CtxKind::EngineCode ? 1 : 0;
+    };
+    for (const auto& [at, e] : c.ext) {
+        const uint32_t lo = (at + 3u) & ~3u, hi = std::min(at + e.size, CONTEXT_BASE + c.image_size);
+        for (uint32_t a = lo; a + 4 <= hi;) {
+            uint32_t b = a;
+            int own = 0;
+            for (; b + 4 <= hi; b += 4) {
+                const int k = kind(word(b));
+                if (k == 0) break;
+                own += k == 2 ? 1 : 0;
+            }
+            if (b - a >= 8 && own >= 2) {
+                for (uint32_t x = a; x < b; x += 4) {
+                    uint32_t to = 0;
+                    classify(c, word(x), &to);
+                    std::memcpy(ram + c.image + (x - CONTEXT_BASE), &to, 4);
+                }
+                c.views.push_back(Context::View{a, b - a, c.image + (a - CONTEXT_BASE)});
+                ++tables;
+                words += (b - a) / 4;
+            }
+            a = b == a ? a + 4 : b;
+        }
+    }
+    if (tables != 0)
+        std::printf("[ctx] level %d: %zu tables of its own code in its engine data blocks (its own builds' jump tables: %zu words): its own copies\n", c.level,
+                    tables, words);
+}
+
 }  // namespace
 
 // orig: (host) see context.h
@@ -230,6 +280,7 @@ bool ctx_create(int level) {
     if (c->image == 0) return false;
     std::memcpy(ee_get_ram_base() + c->image, img.data(), img.size());
     relocate(*c);
+    own_code_tables(*c);
     g_ctx[level] = std::move(c);
     g_ctx_xlate = site_xlate;
     g_ctx_levels |= 1u << level;

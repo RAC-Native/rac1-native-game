@@ -329,6 +329,9 @@ void camera_masks();                                                         // 
 void camera_timer_tick();                                                    // orig: 0x001ed060
 void camera_update();                                                        // orig: 0x001ed0a8
 int32_t camera_type_row(int32_t type);                                       // orig: 0x001ed230
+// enhancement (the open engine's hero contexts, src/game/enhance/hero_modes.cpp): the camera type table the camera system reads
+// instead of the overlay's 0x1ea880 (a session's larger copy, the hero context's level's own types added); 0 the overlay's
+extern uint32_t g_camera_types_table;
 void camera_select_first();                                                  // orig: 0x001ed280
 void camera_init();                                                          // orig: 0x001ed358
 void camera_fog(uint32_t pos);                                               // orig: 0x001ee6b8

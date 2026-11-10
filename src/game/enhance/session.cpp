@@ -4,6 +4,7 @@
 
 #include <game/enhance/class_profiles.h>
 #include <game/enhance/context.h>
+#include <game/enhance/hero_modes.h>
 #include <game/enhance/leveldata.h>
 #include <game/enhance/pool.h>
 #include <game/enhance/twin.h>
@@ -796,6 +797,7 @@ void cycle_check() {
 // orig: (host) see session.h
 void session_frame(uint64_t frame) {
     g_frame = frame;
+    hero_modes_frame(frame);  // (hero_modes.h)
     if (g_spawn_probe && frame % 600 == 0) spawn_probe_end();  // (the probe's lines so far)
     session_rt_test_frame(frame);  // (testing: RAC1_SESSION_SAVE_AT / _LOAD_AT, nothing unless set)
     if (!g_on) return;

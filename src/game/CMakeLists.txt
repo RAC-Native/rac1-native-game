@@ -178,6 +178,7 @@ add_library(rac1_game STATIC
     enhance/session.cpp
     enhance/session_runtime.cpp
     enhance/sections.cpp
+    enhance/hero_modes.cpp
     enhance/section_world.cpp
     enhance/setpieces.cpp
     enhance/pool.cpp

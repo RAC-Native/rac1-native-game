@@ -1,4 +1,5 @@
 // Ported overlay code 0x00230000..0x0023ffff.
+#include <game/enhance/hero_modes.h>
 #include <game/ovl/hero_l1.h>
 #include <game/ovl/ovl_common.h>
 
@@ -1042,6 +1043,7 @@ void hero_pair_anim(int32_t key, int32_t frame, float blend) {
 // update the hands / pair mobys to match.
 void hero_anim_set(uint32_t set, uint32_t frame, float blend) {
     const uint32_t P = g::PLAYER;
+    if (g_hero_seq_on) hero_seq_need(set);  // enhancement: a level mod's hero class's empty slot filled first (hero_modes.h)
     const uint32_t hm = lwu(P + 0x2080);
     if ((lwu(P + 0xa98) & 2) != 0) sw(hm + 0x54, 0);
     if (lbu(0x0015edb5) != 0) {
