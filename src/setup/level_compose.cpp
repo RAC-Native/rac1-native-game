@@ -3109,7 +3109,7 @@ bool compose_sections(const fs::path& ldir, LevelTxt& lt, int base, const std::v
             if (!read_obj(ldir / S.meshes, slt, true, mo, err)) return fail(err);
             if (!build_host_meshes(mo, hm, log, err)) return fail(err);
         }
-        if (!rails_meshes(S.rails, mats, hm, log, err)) return fail(err);  // (stage 7) its rails' models
+        if (S.world < 0 && !rails_meshes(S.rails, mats, hm, log, err)) return fail(err);  // (stage 7) its rails' models (a world's: after the classes')
         o.count = hm.instances.size() - o.first;
         slt.mobys.clear();
         for (const LevelTxt::Moby& mb : S.mobys)
@@ -3609,6 +3609,19 @@ bool compose_level_mod(const std::string& folder, bool force) {
         }
         log.say(fmt("class \"%s\": %s, its hit box %.2f units%s%s", c.name.c_str(), c.model.c_str(), c.size > 0 ? c.size : std::max(cm.extent, 0.1f),
                     c.size > 0 ? "" : " (the model's extent)", c.ghost ? ", ghost (no collision)" : ""));
+    }
+    // (a world section's rails' models: more host meshes after all the others - the classes' models included -, so that they shift
+    // no index lights.txt's `material tie <n>` lines give; the renderer adds them to the world's level when the section is shown)
+    for (size_t k = 0; k < lt.sections.size(); ++k) {
+        const LevelTxt::Section& S = lt.sections[k];
+        if (S.world < 0) continue;
+        souts[k].first = hm.instances.size();
+        const size_t classes0 = hm.classes.size();
+        if (!rails_meshes(S.rails, mesh_mats, hm, log, err)) return fail(fmt("level.txt:%d: section %s: ", S.line, S.name.c_str()) + err);
+        souts[k].count = hm.instances.size() - souts[k].first;
+        if (souts[k].count != 0)
+            log.say(fmt("section %s: its rails' %zu models drawn in level %d's world, host meshes %zu..%zu (after the classes': no other index moves)", S.name.c_str(),
+                        souts[k].count, S.world, classes0, hm.classes.size() - 1));
     }
     for (const LevelTxt::Object& o : lt.objects) log.say(fmt("object \"%s\" at (%g %g %g)%s%s", o.cls.c_str(), o.at[0], o.at[1], o.at[2], o.params.empty() ? "" : " ", o.params.c_str()));
     for (const LevelTxt::Trigger& g : lt.triggers)
