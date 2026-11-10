@@ -165,7 +165,7 @@ struct Level {
     // texture uploads of the sky's chain send), each a bucket of its own; by (image, palette, TEX0's format and size fields)
     std::map<std::tuple<uint32_t, uint32_t, uint64_t>, TexRef> sky_tex;
     // the world GIF streams' textures (the shrub billboards: the level's GS RAM block gs_ram_upload 0x240498 put in GS
-    // memory at the level load), decoded from the GS replica's local memory at their first use; by (TEX0 but TCC / TFX, MIPTBP1, mips)
+    // memory at the level load), decoded from the GS's local memory (gs_memory.h) at their first use; by (TEX0 but TCC / TFX, MIPTBP1, mips)
     std::map<std::tuple<uint64_t, uint64_t, uint32_t>, TexRef> vram_tex;
 };
 Level g_level;
@@ -335,9 +335,9 @@ struct Frame {
     std::vector<DrawCmd> draws;
     std::vector<std::pair<uint32_t, uint32_t>> skips;
     uint64_t env_xyoff = 0;
-    // The scene built on the worker thread while the host runs the GS replica's chain (mrp_world_begin_frame_async /
-    // mrp_world_finish_frame): the skip ranges known before (they depend on the passes alone), the GS registers as the replica had
-    // them before the chain (build_triangles' start)
+    // The scene built on the worker thread while the host reads the frame's chain (mrp_world_begin_frame_async /
+    // mrp_world_finish_frame): the skip ranges known before (they depend on the passes alone), the GS registers as the last chain
+    // read left them (mrp_chain_gs_reg: build_triangles' start)
     bool skips_ready = false;
     bool pending = false;
     std::array<uint64_t, 128> gs_regs{};
@@ -1528,18 +1528,18 @@ bool init_gl() {
 
 // ---- the frame's GS stream to GPU triangles ------------------------------------------------------
 
-uint32_t fld(uint64_t v, int lo, int n) { return static_cast<uint32_t>((v >> lo) & ((1ull << n) - 1)); }
+using gs::field;
 
 // orig: (host) a draw's GS state as the fragment shader's data (see RKey): TME, IIP, FGE (and the fog switch), the alpha test's
 // mode (on, not ALWAYS, its failing pixels not drawn as passing: the AFAIL FB_ONLY without a depth write is one pass), ATST, AREF, the
 // texture unit
 uint32_t draw_flags(const Key& k, uint32_t unit) {
-    const uint32_t ate = fld(k.test, 0, 1), atst = fld(k.test, 1, 3), afail = fld(k.test, 12, 2);
-    const bool zwrite = fld(k.zbuf, 32, 1) == 0;
-    const bool z_effective = zwrite && fld(k.test, 16, 1) != 0 && fld(k.test, 17, 2) != 1;
+    const uint32_t ate = field(k.test, 0, 1), atst = field(k.test, 1, 3), afail = field(k.test, 12, 2);
+    const bool zwrite = field(k.zbuf, 32, 1) == 0;
+    const bool z_effective = zwrite && field(k.test, 16, 1) != 0 && field(k.test, 17, 2) != 1;
     const uint32_t mode = ate != 0 && atst != 1 && !(afail == 1 && !z_effective) ? 1u : 0u;
-    const uint32_t fge = g_mrp_world_fog != 0 && fld(k.prim, 5, 1) != 0 ? 1u : 0u;
-    return fld(k.prim, 4, 1) | (fld(k.prim, 3, 1) << 1) | (fge << 2) | (mode << 3) | (atst << 4) | (fld(k.test, 4, 8) << 8) | (unit << 16);
+    const uint32_t fge = g_mrp_world_fog != 0 && field(k.prim, 5, 1) != 0 ? 1u : 0u;
+    return field(k.prim, 4, 1) | (field(k.prim, 3, 1) << 1) | (fge << 2) | (mode << 3) | (atst << 4) | (field(k.test, 4, 8) << 8) | (unit << 16);
 }
 
 // ---- (host) the alpha test's passes left out where no pixel can fail it (RAC1_PERF_OPAQUE; found while profiling a low-end target) --
@@ -1599,12 +1599,12 @@ RKey batch_key(const Key& k, bool gpu, bool sky) {
     r.view_only = g_view_only_emit;
     r.gpu = gpu;
     r.sky = sky;
-    r.abe = fld(k.prim, 6, 1);
+    r.abe = field(k.prim, 6, 1);
     r.alpha = k.alpha;
-    r.ztest = fld(k.test, 16, 3);
-    r.zwrite = fld(k.zbuf, 32, 1) == 0 ? 1u : 0u;
+    r.ztest = field(k.test, 16, 3);
+    r.zwrite = field(k.zbuf, 32, 1) == 0 ? 1u : 0u;
     r.fogcol = k.fogcol | ((draw_flags(k, 0) & 4u) << 22);  // (FOGCOL and FGE: uniforms, see kFs)
-    r.pass2 = (draw_flags(k, 0) & 8u) != 0 ? fld(k.test, 12, 2) : 0u;
+    r.pass2 = (draw_flags(k, 0) & 8u) != 0 ? field(k.test, 12, 2) : 0u;
     static const bool unit_key = std::getenv("RAC1_MRPW_UNITKEY") != nullptr;  // (testing: the GPU path's texture in the key too)
     if (!gpu || unit_key) {
         r.bucket = k.bucket;
@@ -1689,7 +1689,7 @@ const TexRef* sky_texture(Level& L, const SceneFrame& S, uint64_t tex0) {
     const auto it = L.sky_tex.find(key);
     if (it != L.sky_tex.end()) return it->second.bucket >= 0 ? &it->second : nullptr;
     TexRef& r = L.sky_tex[key];
-    const uint32_t psm = fld(tex0, 20, 6), tw = fld(tex0, 26, 4), th = fld(tex0, 30, 4), cpsm = fld(tex0, 51, 4), csm = fld(tex0, 55, 1);
+    const uint32_t psm = field(tex0, 20, 6), tw = field(tex0, 26, 4), th = field(tex0, 30, 4), cpsm = field(tex0, 51, 4), csm = field(tex0, 55, 1);
     const uint32_t w = 1u << tw, h = 1u << th;
     if ((psm != 0x13 && psm != 0x14) || cpsm != 0 || w > 1024 || h > 1024) {
         std::fprintf(stderr, "[mrpw] sky texture TEX0 %016llx: format not decoded (psm %x cpsm %x)\n", static_cast<unsigned long long>(tex0), psm, cpsm);
@@ -1727,18 +1727,18 @@ const TexRef* sky_texture(Level& L, const SceneFrame& S, uint64_t tex0) {
 // orig: (host) a world GIF stream's texture (the shrub far variants' billboards): TEX0 names it in GS
 // memory, which holds it since the level load (gs_ram_upload 0x240498: the core's GS RAM block, the shrub classes' billboard images
 // and palettes; shrub_class_register 0x240e80 writes the variant record's TEX0 / TEX1 / MIPTBP1 from the class entry), so it is
-// decoded from the GS replica's local memory (PSMT8 + PSMCT32 CLUT, CSM1, as Gs::texel reads it; the GS's 0..0x80 alpha kept),
+// decoded from the GS's local memory (PSMT8 + PSMCT32 CLUT, CSM1, as Gs::texel reads it; the GS's 0..0x80 alpha kept),
 // the levels below 0 from MIPTBP1 (TEX1 MXL of them, 3 at most), once per level. (The frame's own uploads start past that block,
-// 0x15ee78: the replica's chain, which may be running, does not write it.)
+// 0x15ee78: the frame's chain, which may be being read, does not write it.)
 const TexRef* vram_texture(Level& L, uint64_t tex0, uint64_t tex1, uint64_t mip1) {
-    const uint32_t mxl = std::min(fld(tex1, 2, 3), 3u);
+    const uint32_t mxl = std::min(field(tex1, 2, 3), 3u);
     const uint64_t fmt = tex0 & ~((1ull << 34) | (3ull << 35) | (7ull << 61));
     const auto key = std::make_tuple(fmt, mxl != 0 ? mip1 : 0ull, mxl);
     const auto it = L.vram_tex.find(key);
     if (it != L.vram_tex.end()) return it->second.bucket >= 0 ? &it->second : nullptr;
     TexRef& r = L.vram_tex[key];
-    const uint32_t psm = fld(tex0, 20, 6), tw = fld(tex0, 26, 4), th = fld(tex0, 30, 4), cpsm = fld(tex0, 51, 4), csa = fld(tex0, 56, 5);
-    const uint32_t cbp = fld(tex0, 37, 14);
+    const uint32_t psm = field(tex0, 20, 6), tw = field(tex0, 26, 4), th = field(tex0, 30, 4), cpsm = field(tex0, 51, 4), csa = field(tex0, 56, 5);
+    const uint32_t cbp = field(tex0, 37, 14);
     const uint32_t w = 1u << tw, h = 1u << th;
     if (psm != 0x13 || cpsm != 0 || csa != 0 || w > 1024 || h > 1024) {
         std::fprintf(stderr, "[mrpw] world GIF texture TEX0 %016llx: format not decoded (psm %x cpsm %x csa %x)\n", static_cast<unsigned long long>(tex0), psm, cpsm, csa);
@@ -1754,8 +1754,8 @@ const TexRef* vram_texture(Level& L, uint64_t tex0, uint64_t tex1, uint64_t mip1
     while (levels <= mxl && (w >> levels) >= 1 && (h >> levels) >= 1) ++levels;
     std::vector<std::vector<uint32_t>> lv(levels);
     for (uint32_t l = 0; l < levels; ++l) {
-        const uint32_t tbp = l == 0 ? fld(tex0, 0, 14) : fld(mip1, 20 * (l - 1), 14);
-        const uint32_t tbw = l == 0 ? fld(tex0, 14, 6) : fld(mip1, 20 * (l - 1) + 14, 6);
+        const uint32_t tbp = l == 0 ? field(tex0, 0, 14) : field(mip1, 20 * (l - 1), 14);
+        const uint32_t tbw = l == 0 ? field(tex0, 14, 6) : field(mip1, 20 * (l - 1) + 14, 6);
         const uint32_t lw = w >> l, lh = h >> l;
         std::vector<uint32_t>& px = lv[l];
         px.resize(static_cast<size_t>(lw) * lh);
@@ -1866,7 +1866,7 @@ struct GsFront {
     const SceneFrame& S;
     explicit GsFront(Frame& f) : F(f), S(f.scene) {}
 
-    uint64_t prim() const { return fld(regs[0x1a], 0, 1) != 0 ? regs[0x00] : ((regs[0x1b] & ~7ull) | (regs[0x00] & 7)); }
+    uint64_t prim() const { return field(regs[0x1a], 0, 1) != 0 ? regs[0x00] : ((regs[0x1b] & ~7ull) | (regs[0x00] & 7)); }
     uint64_t gen = 0;  // (host) the writes that changed a register's value (gpu_packet's memo, RAC1_PERF_PKT_MEMO)
     void write(uint32_t reg, uint64_t v) {
         reg &= 0x7f;
@@ -1885,19 +1885,19 @@ struct GsFront {
     }
     Key key_now(int table) {
         const uint64_t p = prim();
-        const int ctx = static_cast<int>(fld(p, 9, 1));
+        const int ctx = static_cast<int>(field(p, 9, 1));
         Key k;
         k.prim = p;
         k.test = regs[0x47 + ctx];
         k.alpha = regs[0x42 + ctx];
         k.zbuf = regs[0x4e + ctx];
         k.fogcol = static_cast<uint32_t>(regs[0x3d] & 0xffffff);
-        if (fld(p, 4, 1) == 0) return k;  // (no texture)
+        if (field(p, 4, 1) == 0) return k;  // (no texture)
         const uint64_t tex0 = regs[0x06 + ctx], tex1 = regs[0x14 + ctx], clamp = regs[0x08 + ctx];
-        const uint32_t tfx = fld(tex0, 35, 2), tcc = fld(tex0, 34, 1);
-        const uint32_t mxl = std::min(fld(tex1, 2, 3), 3u), lcm = fld(tex1, 0, 1), l = fld(tex1, 19, 2), kk = fld(tex1, 32, 12);
+        const uint32_t tfx = field(tex0, 35, 2), tcc = field(tex0, 34, 1);
+        const uint32_t mxl = std::min(field(tex1, 2, 3), 3u), lcm = field(tex1, 0, 1), l = field(tex1, 19, 2), kk = field(tex1, 32, 12);
         k.word = (tfx << 1) | (tcc << 3) | (mxl << 4) | (lcm << 7) | (l << 8) | (kk << 10);
-        k.sampler = (fld(tex1, 5, 1) != 0 ? 1u : 0u) | (fld(tex1, 6, 3) >= 4 ? 2u : 0u) | (fld(clamp, 0, 2) == 0 ? 4u : 0u) | (fld(clamp, 2, 2) == 0 ? 8u : 0u);
+        k.sampler = (field(tex1, 5, 1) != 0 ? 1u : 0u) | (field(tex1, 6, 3) >= 4 ? 2u : 0u) | (field(clamp, 0, 2) == 0 ? 4u : 0u) | (field(clamp, 2, 2) == 0 ? 8u : 0u);
         if (gif_now) {  // a world GIF stream's: by its TEX0 in GS memory
             const TexRef* r = vram_texture(g_level, tex0, tex1, regs[0x34 + ctx]);
             if (r == nullptr) {
@@ -1967,7 +1967,7 @@ struct GsFront {
         }
         note_run(F.p2runs, F.batches.back(), static_cast<uint32_t>(F.idx.size()), 3, astate);
         F.idx.insert(F.idx.end(), {a, b, c});
-        if (fld(k.test, 0, 1) != 0 && fld(k.test, 1, 3) != 1) F.batches.back().ate = true;  // (ATST ALWAYS: no test)
+        if (field(k.test, 0, 1) != 0 && field(k.test, 1, 3) != 1) F.batches.back().ate = true;  // (ATST ALWAYS: no test)
         F.batches.back().count += 3;
         ++g_st.triangles;
     }
@@ -2040,7 +2040,7 @@ struct GsFront {
                  static_cast<float>(xyzf ? (v >> 56) & 0xff : fogreg), rgba};
         r.index = sky_gpuv(r.x, r.y, r.z, r.s, r.t, r.q, r.rgba, r.fog);
         sq.push_back(r);
-        const int type = static_cast<int>(fld(regs[0x00], 0, 3));
+        const int type = static_cast<int>(field(regs[0x00], 0, 3));
         const size_t need = type == 0 ? 1 : type <= 2 || type == 6 ? 2 : type <= 5 ? 3 : 0;
         if (need == 0) {
             sq.clear();
@@ -2178,7 +2178,7 @@ struct GsFront {
         ++g_st.vertices;
         const bool adc = ((q[3] >> 15) & 1) != 0;
         queue.push_back({index, flagged});
-        const int type = static_cast<int>(fld(regs[0x00], 0, 3));
+        const int type = static_cast<int>(field(regs[0x00], 0, 3));
         if (type != 3 && type != 4 && type != 5) {
             queue.clear();
             return;
@@ -2521,12 +2521,12 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
             note_read(0x1a);
             note_read(0x1b);
             const uint64_t pr = g.prim();
-            const uint32_t ctx = fld(pr, 9, 1);
+            const uint32_t ctx = field(pr, 9, 1);
             note_read(0x47 + ctx);
             note_read(0x42 + ctx);
             note_read(0x4e + ctx);
             note_read(0x3d);
-            if (fld(pr, 4, 1) != 0) {
+            if (field(pr, 4, 1) != 0) {
                 note_read(0x06 + ctx);
                 note_read(0x14 + ctx);
                 note_read(0x08 + ctx);
@@ -2537,7 +2537,7 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
         const uint32_t cmd = static_cast<uint32_t>(F.cmds.size() / 8);
         // (the texture's unit in the frame's current epoch; a new epoch, so a new batch, when the 15 units are taken)
         uint32_t unit = 0;
-        if (k.bucket >= 0 && fld(k.prim, 4, 1) != 0) {
+        if (k.bucket >= 0 && field(k.prim, 4, 1) != 0) {
             if (F.epochs.empty()) F.epochs.emplace_back();
             auto& ep = F.epochs.back();
             const std::pair<int, uint32_t> combo{k.bucket, k.sampler};
@@ -2567,7 +2567,7 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
         if (unit != 0) F.batches.back().epoch = epoch;
         note_run(F.p2runs, F.batches.back(), static_cast<uint32_t>(F.draws.size()), 1, astate);
         F.draws.push_back(DrawCmd{run.count, 1, t.first_index + run.first, static_cast<int32_t>(t.first_vertex), cmd});
-        const bool ate = fld(k.test, 0, 1) != 0 && fld(k.test, 1, 3) != 1;
+        const bool ate = field(k.test, 0, 1) != 0 && field(k.test, 1, 3) != 1;
         if (ate) F.batches.back().ate = true;  // (ATST ALWAYS: no test)
         ++F.batches.back().count;
         g_st.triangles += run.count / 3;
@@ -2665,7 +2665,7 @@ RtLevelGeometry rt_gather(const Level& L) {
     // a triangle's texture from the replay's state (`table`: 0 tfrag, 1 tie, 2 shrub)
     auto tri_tex = [&](int table, RtTri& t) {
         const Key k = gs.key_now(table);
-        if (fld(k.prim, 4, 1) == 0 || k.bucket < 0 || (k.word & 1u) != 0) {
+        if (field(k.prim, 4, 1) == 0 || k.bucket < 0 || (k.word & 1u) != 0) {
             t.tex = 0xffu;
             t.word = 1u;
             return true;
@@ -2971,7 +2971,7 @@ void tfrag_packet(GsFront& g, Frame& F, const ScenePacket& p) {
         // the texture's unit in the frame's epoch, as the tie / shrub GPU path (gpu_packet): a batch's draws then share the GL state only
         // (the CPU path's batches break at every texture bucket / sampler change: ~60..180 tfrag batches a frame)
         uint32_t unit = 0;
-        if (ntri != 0 && k.bucket >= 0 && fld(k.prim, 4, 1) != 0) {
+        if (ntri != 0 && k.bucket >= 0 && field(k.prim, 4, 1) != 0) {
             if (F.epochs.empty()) F.epochs.emplace_back();
             auto& ep = F.epochs.back();
             const std::pair<int, uint32_t> combo{k.bucket, k.sampler};
@@ -3002,7 +3002,7 @@ void tfrag_packet(GsFront& g, Frame& F, const ScenePacket& p) {
             F.batches.back().tfrag = true;
         }
         if (unit != 0) F.batches.back().epoch = epoch;
-        if (fld(k.test, 0, 1) != 0 && fld(k.test, 1, 3) != 1) F.batches.back().ate = true;  // (ATST ALWAYS: no test)
+        if (field(k.test, 0, 1) != 0 && field(k.test, 1, 3) != 1) F.batches.back().ate = true;  // (ATST ALWAYS: no test)
         note_run(F.p2runs, F.batches.back(), gd.ibase + 3 * pl->runs[r].first_tri, 3 * ntri, astate);
         F.batches.back().count += 3 * ntri;
         g_st.triangles += ntri;
@@ -3062,8 +3062,8 @@ void build_triangles(Frame& F) {
         F.merge_afail = env != nullptr ? std::atoi(env) != 0 : (F.scene.stat_draws[0] + F.scene.stat_draws[1]) != 0;
     }
     GsFront g(F);
-    // the GS's registers as the replica has them before this frame's chain (the frame packets set them again: the scene's
-    // DIRECT writes from the chain's start)
+    // the GS's registers as the last chain read left them, before this frame's chain (the frame packets set them again: the
+    // scene's DIRECT writes from the chain's start)
     for (uint32_t r = 0; r < 128; ++r) g.regs[r] = F.gs_regs[r];  // (taken before the frame's chain: mrp_world_begin_frame_async)
     g_pkt_memo.valid = false;  // (RAC1_PERF_PKT_MEMO: nothing kept from another build - its view-projection, its templates)
     g_pkt_memo.vv_view = -2;
@@ -3427,8 +3427,8 @@ int perf_sky_late() {
 // orig: (host) a batch that may be drawn before the sky (see above)
 bool sky_late_lead(const Frame& F, const Level& L, const Batch& b) {
     if (b.sky || !b.tfrag || b.rk.shadow || b.rn == 0 || !b.runs_ok || batch_refused(F, L, b) != nullptr) return false;
-    const uint32_t ztst = fld(b.key.test, 17, 2);
-    if (fld(b.key.test, 16, 1) == 0 || (ztst != 2 && ztst != 3) || b.rk.zwrite == 0) return false;
+    const uint32_t ztst = field(b.key.test, 17, 2);
+    if (field(b.key.test, 16, 1) == 0 || (ztst != 2 && ztst != 3) || b.rk.zwrite == 0) return false;
     const bool blend = b.rk.abe != 0;
     if (blend && (b.rk.alpha & 0xffu) != 0x44u) return false;
     for (uint32_t r = b.r0; r < b.r0 + b.rn; ++r) {
@@ -3732,8 +3732,8 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
             push.uFogCol_Pad[2] = static_cast<float>((rk.fogcol >> 16) & 0xff) / 255.0f;
             push.uFge = (rk.fogcol >> 24) & 1 ? 1 : 0;
 
-            const uint32_t ztst = fld(k.test, 17, 2);
-            const bool ztest = caster || late_sky ? true : (fld(k.test, 16, 1) != 0 && ztst != 1);
+            const uint32_t ztst = field(k.test, 17, 2);
+            const bool ztest = caster || late_sky ? true : (field(k.test, 16, 1) != 0 && ztst != 1);
             const VkCompareOp zcmp = caster || late_sky ? VK_COMPARE_OP_LESS_OR_EQUAL
                                                         : (ztst == 0 ? VK_COMPARE_OP_NEVER : ztst == 2 ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_LESS);
             const bool zwrite = rk.zwrite != 0;
@@ -4133,8 +4133,8 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
         (void)lc;
         if (!caster && (!have || rk.ztest != cur.ztest || late_sky != cur_late)) {
             cur_late = late_sky;
-            const uint32_t ztst = late_sky ? 2u : fld(k.test, 17, 2);  // (the late sky: LEQUAL at depth 1.0)
-            if (late_sky || (fld(k.test, 16, 1) != 0 && ztst != 1)) {  // the GS's GEQUAL / GREATER on the host's depth: LEQUAL / LESS
+            const uint32_t ztst = late_sky ? 2u : field(k.test, 17, 2);  // (the late sky: LEQUAL at depth 1.0)
+            if (late_sky || (field(k.test, 16, 1) != 0 && ztst != 1)) {  // the GS's GEQUAL / GREATER on the host's depth: LEQUAL / LESS
                 glEnable(GL_DEPTH_TEST);
                 glDepthFunc(ztst == 0 ? GL_NEVER : ztst == 2 ? GL_LEQUAL : GL_LESS);
             } else {
@@ -4214,7 +4214,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
         if (rk.pass2 != 0 && !one_pass && !all_opq) {
             const uint32_t afail = rk.pass2;
             static const bool p2_less_orig = std::getenv("RAC1_PERF_P2_LESS") != nullptr && std::atoi(std::getenv("RAC1_PERF_P2_LESS")) != 0;
-            const bool less = g_p2_less && (variant.on || p2_less_orig) && !(afail == 2 && zwrite) && fld(k.test, 16, 1) != 0 && fld(k.test, 17, 2) == 2 && !late_sky;  // (as the Vulkan path: g_p2_less)
+            const bool less = g_p2_less && (variant.on || p2_less_orig) && !(afail == 2 && zwrite) && field(k.test, 16, 1) != 0 && field(k.test, 17, 2) == 2 && !late_sky;  // (as the Vulkan path: g_p2_less)
             if (by_runs) {
                 use_path(path_of(false));
                 set_fog();
@@ -4257,8 +4257,8 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
                                     b.gpu ? "draw commands" : "indices", b.tfrag ? "tfrag" : b.gpu ? "tie / shrub" : "CPU path", n);
                 }
             }
-            const uint32_t ztst = fld(k.test, 17, 2);  // (the batch's depth test back)
-            if (late_sky || (fld(k.test, 16, 1) != 0 && ztst != 1)) glEnable(GL_DEPTH_TEST);
+            const uint32_t ztst = field(k.test, 17, 2);  // (the batch's depth test back)
+            if (late_sky || (field(k.test, 16, 1) != 0 && ztst != 1)) glEnable(GL_DEPTH_TEST);
         }
         cur = rk;
         have = true;
@@ -4414,7 +4414,7 @@ bool mrp_world_testing() { return g_world_mrp && (g_env_check || g_env_diff); }
 
 namespace {
 // orig: (host) the scene's worker: one thread, one job a frame (scene_build reads EE memory, the level's assets and
-// its own walker; the host thread meanwhile runs the GS replica's chain, which only reads EE memory)
+// its own walker; the host thread meanwhile reads the frame's chain, which only reads EE memory)
 // ---- the automatic emitters: the ties whose textures glow -----------------------------------------------------------
 //
 // Our art choice, not the game's: a tie class's triangles textured with bright, saturated texels (lamps, glowing
@@ -5058,8 +5058,8 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
     {  // the GS registers before the frame's chain (build_triangles): as the last chain read left them
         for (uint32_t r = 0; r < 128; ++r) F.gs_regs[r] = mrp_chain_gs_reg(r);
     }
-    // the passes' ranges the replica skips: scene_build builds a scene exactly when there are passes and a chain
-    static const bool sky_noskip = std::getenv("RAC1_MRPW_SKY_NOSKIP") != nullptr;  // (testing: the replica runs the sky's range too, drawn twice)
+    // the passes' ranges the chain's reader skips: scene_build builds a scene exactly when there are passes and a chain
+    static const bool sky_noskip = std::getenv("RAC1_MRPW_SKY_NOSKIP") != nullptr;  // (testing: the sky's range not skipped by the chain's reader)
     if (!scene_passes().empty() && chain_start != 0) {
         for (const PassRange& r : scene_passes())
             if (r.pass != 3 || !sky_noskip) F.skips.push_back({r.first, r.end - 16});
@@ -5217,12 +5217,6 @@ void mrp_world_finish_frame() {
     g_st.ms_wait += t1 - g_t_begin;
     g_st.ms_build += F.ms_build;
     F.active = true;
-}
-
-// orig: (host) see mrp_world_renderer.h
-void mrp_world_begin_frame(bool active, uint32_t chain_start, uint32_t chain_end) {
-    mrp_world_begin_frame_async(active, chain_start, chain_end);
-    mrp_world_finish_frame();
 }
 
 int g_last_vp[4] = {};  // (mrp_world_last_viewport)

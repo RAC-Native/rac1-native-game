@@ -297,12 +297,11 @@ struct SceneInput {
     uint32_t host_sections = 0xffffffffu;  // (a session's current sections: their static host meshes drawn, host_meshes_sections)
 };
 
-// orig: (host) the frame's chain [chain_start, chain_end) walked to the end of its last world range: the world's packets
-// in `out` (the sky's range: its DIRECT GIF streams and the particle program's kicks for its sprites, run on the private VU1) (the assets in `idx`; `reset`: the private VU1 started again, e.g. a new level)
-// (`kicks`: the GPU path's packets get their CPU reference kicks as well, for the check)
-bool scene_build(const WorldIndex& idx, uint32_t chain_start, uint32_t chain_end, SceneFrame& out, bool reset, bool kicks);
-// orig: (host) the same in two steps: the capture (after the update, while the game's state does not change; the frame's shadow chains
-// copied into the input) and the build from it (any thread)
+// orig: (host) the frame's world scene, in two steps: the capture of the chain [chain_start, chain_end) (after the update, while the
+// game's state does not change; the frame's shadow chains copied into the input), then the build from it (any thread): the chain
+// walked to the end of its last world range, the world's packets in `out` (the sky's range: its DIRECT GIF streams and the
+// particle program's kicks for its sprites, run on the private VU1) (the assets in `idx`; `reset`: the private VU1 started again,
+// e.g. a new level; `kicks`: the GPU path's packets get their CPU reference kicks as well, for the check)
 void scene_capture(uint32_t chain_start, uint32_t chain_end, SceneInput& in);
 // orig: (host) the overlay addresses the capture reads (translated on the game's thread: OV sites are not for other threads), and the
 // capture from them (any thread, while the game's state does not change; the passes' notes and shadow chains are not touched meanwhile)

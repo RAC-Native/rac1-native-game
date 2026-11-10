@@ -50,9 +50,7 @@ bool mrp_world_static_lod();
 bool mrp_world_tfrag_lod();
 // orig: (host) per host frame, before the world is drawn: the level's assets (re)loaded when the level changed, the frame's
 // scene built from the chain [chain_start, chain_end) (`active`: a frame whose world is drawn: not the title, a level exit,
-// a movie, the full-screen menu)
-void mrp_world_begin_frame(bool active, uint32_t chain_start, uint32_t chain_end);
-// orig: (host) the same in two halves: _async starts the scene's build (on a worker thread, RAC1_MRPW_THREAD=0 not),
+// a movie, the full-screen menu), in two halves: _async starts the scene's build (on a worker thread, RAC1_MRPW_THREAD=0 not),
 // after it mrp_world_skip_ranges() is known; the host may then read the frame's chain (it only reads EE memory) and must
 // call mrp_world_finish_frame() before anything else reads or writes EE memory, the scene, or the chain reader's GS registers'
 // use by the world (the scene waited for, its triangles and draw lists built)

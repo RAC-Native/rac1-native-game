@@ -34,7 +34,7 @@ using gs::TexImage;
 using gs::Vertex;
 using gs::Viewport;
 
-uint32_t field(uint64_t v, int lo, int n) { return static_cast<uint32_t>((v >> lo) & ((1ull << n) - 1)); }
+using gs::field;
 
 // ---- the shaders (OpenGL; Vulkan's are the same, made by tools/gen_vk_shaders.py: kMrp2dVs / kMrp2dFs) ----
 
@@ -1727,8 +1727,5 @@ size_t mrp_2d_clear_caches() {
     g_vk_rt_spare.clear();
     return n;
 }
-
-// orig: (host) see mrp_2d.h
-size_t mrp_2d_texture_count() { return g_gl_tex.size() + g_vk_tex.size(); }
 
 }  // namespace rac1

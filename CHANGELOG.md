@@ -5,6 +5,10 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **The renderer's code, cleaned up** (no change to the pictures or the game): functions nobody called removed from the
+  Modern Rendering Pipeline (MRP) and the older renderers, and docs/rendering.md rewritten to say plainly what the MRP is
+  and is not: the game's code still produces its draw commands, the MRP interprets them with its own OpenGL / Vulkan
+  drawing, and it never rasterises through an emulation of the PS2's graphics chip.
 - **Level mods: the screen fades cover an ultra-wide screen.** A plugin's `fade()` and a section switch's fade stopped at
   the 4:3 frame's right side on a widened view (an ultra-wide screen): now the whole width.
 - **Level mods: bosses** (`level.format` 3, the mod SDK's ABI 13): the **Snagglebeast** fights in Umbris's cave as a section

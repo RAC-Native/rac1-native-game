@@ -10,7 +10,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <memory>
 #include <vector>
 
 namespace rac1::mrpw {
@@ -21,12 +20,6 @@ uint32_t w32(const uint8_t* mem, uint32_t qw, int lane) {
     uint32_t v;
     std::memcpy(&v, mem + (((qw & 0x3ff) << 4) + 4 * static_cast<uint32_t>(lane)), 4);
     return v;
-}
-float f32(const uint8_t* mem, uint32_t qw, int lane) {
-    const uint32_t u = w32(mem, qw, lane);
-    float f;
-    std::memcpy(&f, &u, 4);
-    return f;
 }
 uint32_t bits(float f) {
     uint32_t u;
@@ -269,28 +262,6 @@ namespace {
 
 using Packets = std::vector<std::vector<std::array<uint32_t, 4>>>;
 
-// the ported program from `start` on a copy of the state, its kicked GIF packets
-Packets run_kicks(const VUState& st0, Program prog, uint32_t start) {
-    int n = 0;
-    const WorldVu1Program* p = world_vu1_programs(n);
-    auto st = std::make_unique<VUState>(st0);
-    Packets out;
-    st->xgkick_hook = [&](uint32_t addr) {
-        const uint32_t qwc = vu1::gif_packet_qwc(*st, addr);
-        std::vector<std::array<uint32_t, 4>> pk(qwc);
-        for (uint32_t q = 0; q < qwc; ++q) std::memcpy(pk[q].data(), &st->mem[((addr + q) & 0x3ff) << 4], 16);
-        out.push_back(std::move(pk));
-    };
-    VuMicroRun r;
-    r.start(*st, nullptr, 2048, start, p[static_cast<int>(prog)].fast);
-    r.limit_issue(4000000);
-    while (r.pipe().issued < 4000000 && r.step()) {
-    }
-    r.finish();
-    st->xgkick_hook = nullptr;
-    return out;
-}
-
 // one qword compared: 0 exact, 1 within tolerance, 2 differ
 int compare(uint8_t part, const std::array<uint32_t, 4>& want, const std::array<uint32_t, 4>& got) {
     int lanes = 4;
@@ -480,201 +451,6 @@ void compare_triangles(const std::vector<Kicked>& want, const Packets& got, Chec
     for (uint8_t u : used) k.tri_kicked_unmatched += u == 0 ? 1 : 0;
 }
 
-void check_shrub(const WorldIndex& idx, const VUState& st, Program prog, uint32_t start, CheckStats& stats) {
-    CheckStats::Kind& k = stats.kind[static_cast<int>(prog)];
-    if (start != 0x063) return;  // (the set-up starts kick nothing)
-    ++k.starts;
-    const uint8_t* mem = st.mem.data();
-    const uint32_t base = static_cast<uint32_t>(st.vi[11]) & 0x3ff;
-    WorldIndex::Hit hit;
-    if (!idx.find_shrub(mem, base, hit)) {
-        ++k.unknown;
-        return;
-    }
-    const ShrubPacket& p = hit.world->shrubs[static_cast<size_t>(hit.cls)].packets[static_cast<size_t>(hit.packet)];
-    const Packets got = run_kicks(st, prog, start);
-    const uint32_t block = (0x269u - (w32(mem, 1, 1) & 0xffff)) & 0x3ff;
-    const uint32_t count = w32(mem, block, 0) & 0xffff;
-    if (got.size() != count) ++k.kick_count_differ;
-    ShrubConsts c;
-    if (prog == Program::ShrubB) {
-        c.clip = true;
-        for (int l = 0; l < 4; ++l) {
-            c.scale[l] = st.vf[22].f[l];
-            c.offset[l] = st.vf[23].f[l];
-        }
-    }
-    c.fog_scale = st.vf[30].f[2];
-    c.fog_offset = st.vf[30].f[3];
-    c.fog_min = st.vf[29].f[0];
-    c.fog_max = st.vf[29].f[1];
-    std::vector<std::array<uint32_t, 4>> tex;
-    const uint32_t ta = base + 1 + static_cast<uint32_t>(p.header[1]);
-    for (uint32_t q = 0; q < 4 * p.textures.size(); ++q) tex.push_back({w32(mem, ta + q, 0), w32(mem, ta + q, 1), w32(mem, ta + q, 2), w32(mem, ta + q, 3)});
-    for (uint32_t i = 0; i < count && i < got.size(); ++i) {
-        ShrubInstance in;
-        in.block = block + 0x1c * i;
-        in.vu_mem = mem;
-        for (int r = 0; r < 4; ++r)
-            for (int l = 0; l < 4; ++l) in.rows[r][l] = f32(mem, in.block + 1 + static_cast<uint32_t>(r), l);
-        for (uint32_t cc = 0; cc < 24; ++cc)
-            for (int l = 0; l < 4; ++l) in.colour[cc][l] = static_cast<int32_t>(w32(mem, in.block + 5 + cc, l));
-        in.alpha = static_cast<int32_t>(w32(mem, in.block + 5, 3));
-        Kicked want;
-        shrub_kick(p, in, c, tex, want);
-        ++k.kicks;
-        if (prog == Program::ShrubB) {
-            if (i == 0) {
-                // (the clipping program's kicks of all the start's instances against their references together)
-                std::vector<Kicked> all;
-                for (uint32_t j = 0; j < count; ++j) {
-                    ShrubInstance jn = in;
-                    jn.block = block + 0x1c * j;
-                    for (int r = 0; r < 4; ++r)
-                        for (int l = 0; l < 4; ++l) jn.rows[r][l] = f32(mem, jn.block + 1 + static_cast<uint32_t>(r), l);
-                    for (uint32_t cc = 0; cc < 24; ++cc)
-                        for (int l = 0; l < 4; ++l) jn.colour[cc][l] = static_cast<int32_t>(w32(mem, jn.block + 5 + cc, l));
-                    jn.alpha = static_cast<int32_t>(w32(mem, jn.block + 5, 3));
-                    all.emplace_back();
-                    shrub_kick(p, jn, c, tex, all.back());
-                }
-                char w2[96];
-                std::snprintf(w2, sizeof w2, "shrub B class %d packet %d", hit.world->shrubs[static_cast<size_t>(hit.cls)].o_class, hit.packet);
-                compare_triangles(all, got, k, stats, w2);
-            }
-            continue;
-        }
-        char what[96];
-        std::snprintf(what, sizeof what, "shrub class %d packet %d instance %u", hit.world->shrubs[static_cast<size_t>(hit.cls)].o_class, hit.packet, i);
-        compare_kick(want, got[i], k, stats, what);
-    }
-}
-
-void check_tie(const WorldIndex& idx, const VUState& st, Program prog, uint32_t start, CheckStats& stats) {
-    CheckStats::Kind& k = stats.kind[static_cast<int>(prog)];
-    if (start != 0x000) return;  // (0x004 / 0x006 / 0x008: the set-up programs)
-    ++k.starts;
-    const uint8_t* mem = st.mem.data();
-    WorldIndex::Hit hit;
-    if (!idx.find_tie(mem, hit)) {
-        ++k.unknown;
-        return;
-    }
-    const TieClass& cls = hit.world->ties[static_cast<size_t>(hit.cls)];
-    const TiePacket& p = cls.packets[static_cast<size_t>(hit.packet)];
-    Packets got = run_kicks(st, prog, start);
-    // (the alpha-test state packet the program may send first: no vertices)
-    std::vector<std::array<uint32_t, 4>> draw;
-    int draws = 0;
-    for (auto& g : got) {
-        bool v = false;
-        for (const auto& q : g)
-            if ((q[1] >> 28) == 3 && (q[2] & 0xfff) == 0x412) v = true;
-        if (v) {
-            draw = g;
-            ++draws;
-        }
-    }
-    if (prog != Program::TieB && draws != 1) {
-        ++k.kick_count_differ;
-        return;
-    }
-    // the instance: the block the program reads (vf22.x as the start finds it: its vi3 is set from it at the set-up's end)
-    const uint32_t block = static_cast<uint32_t>(st.vi[3]) & 0x3ff;
-    TieInstance in;
-    for (int r = 0; r < 4; ++r)
-        for (int l = 0; l < 4; ++l) in.rows[r][l] = f32(mem, block + static_cast<uint32_t>(r), l);
-    for (int l = 0; l < 4; ++l) {
-        in.morph[l] = f32(mem, block + 4, l);
-        in.fog[l] = f32(mem, block + 5, l);
-    }
-    const uint32_t table = block == 0xf2 ? 0x386 : 0x346;
-    for (uint32_t c = 0; c < 64; ++c)
-        for (int l = 0; l < 4; ++l) in.colour[c][l] = w32(mem, table + c, l);
-    std::vector<std::array<uint32_t, 4>> tex;
-    for (uint32_t q = 0; q < 5 * p.prims.size(); ++q) tex.push_back({w32(mem, 1 + q, 0), w32(mem, 1 + q, 1), w32(mem, 1 + q, 2), w32(mem, 1 + q, 3)});
-    if (prog == Program::TieB) {
-        in.clip = true;
-        for (int l = 0; l < 4; ++l) {
-            in.scale[l] = f32(mem, 0x3ce, l);
-            in.offset[l] = f32(mem, 0x3cd, l);
-        }
-    }
-    Kicked want;
-    tie_kick(p, in, tex, want);
-    ++k.kicks;
-    if (prog == Program::TieB) {
-        char w2[96];
-        std::snprintf(w2, sizeof w2, "level %d tie B class %d lod %d packet %d", hit.world->level, cls.o_class, p.lod, p.index_in_lod);
-        compare_triangles({want}, got, k, stats, w2);
-        return;
-    }
-    char what[96];
-    std::snprintf(what, sizeof what, "level %d tie class %d lod %d packet %d block %03x morph %g %g %g %g fat %u", hit.world->level, cls.o_class, p.lod, p.index_in_lod, block, static_cast<double>(in.morph[0]), static_cast<double>(in.morph[1]), static_cast<double>(in.morph[2]), static_cast<double>(in.morph[3]), p.n_fat);
-    compare_kick(want, draw, k, stats, what);
-}
-
-// the LOD image a tfrag start uses: A 0x006 / 0x00c / 0x014 far, 0x008 / 0x00a mid, 0x00e / 0x010 / 0x012 / 0x004 near; B 0x002 near
-int tfrag_lod_of(Program prog, uint32_t start) {
-    if (prog == Program::TfragB) return start == 0x002 ? 2 : -1;
-    switch (start) {
-    case 0x006: case 0x00c: return 0;
-    case 0x008: case 0x00a: return 1;
-    case 0x004: case 0x00e: case 0x010: case 0x012: case 0x014: return 2;
-    default: return -1;
-    }
-}
-
-void check_tfrag(const WorldIndex& idx, const VUState& st, Program prog, uint32_t start, CheckStats& stats) {
-    CheckStats::Kind& k = stats.kind[static_cast<int>(prog)];
-    const int lod = tfrag_lod_of(prog, start);
-    if (lod < 0) return;
-    ++k.starts;
-    WorldIndex::Hit hit;
-    if (!idx.find_tfrag(st.mem.data(), st.xtop, lod, hit)) {
-        if (std::getenv("MRPW_TFDBG") != nullptr)
-            for (int l = 0; l < 3; ++l)
-                if (idx.find_tfrag(st.mem.data(), st.xtop, l, hit)) std::fprintf(stderr, "[tfdbg] start %03x matches lod %d\n", start, l);
-        ++k.unknown;
-        if (stats.notes.size() < 40) {
-            char buf[120];
-            std::snprintf(buf, sizeof buf, "tfrag start %03x (lod %d) xtop %03x: no image matches", start, lod, st.xtop);
-            stats.notes.push_back(buf);
-        }
-        return;
-    }
-    if (prog == Program::TfragB) {
-        std::vector<Kicked> want;
-        tfrag_b_kick(st.mem.data(), st.xtop, want);
-        const Packets got = run_kicks(st, prog, start);
-        ++k.kicks;
-        char w2[96];
-        std::snprintf(w2, sizeof w2, "level %d tfrag B %d", hit.world->level, hit.cls);
-        compare_triangles(want, got, k, stats, w2);
-        return;
-    }
-    const Packets got = run_kicks(st, prog, start);
-    std::vector<Kicked> want;
-    if (!tfrag_kick(st.mem.data(), st.xtop, start, want)) {
-        ++k.unknown;
-        return;
-    }
-    if (want.size() != got.size()) {
-        ++k.kick_count_differ;
-        if (stats.notes.size() < 40) {
-            char buf[160];
-            std::snprintf(buf, sizeof buf, "level %d tfrag %d start %03x: %zu kicks, the reference %zu", hit.world->level, hit.cls, start, got.size(), want.size());
-            stats.notes.push_back(buf);
-        }
-    }
-    for (size_t i = 0; i < std::min(want.size(), got.size()); ++i) {
-        ++k.kicks;
-        char what[96];
-        std::snprintf(what, sizeof what, "level %d tfrag %d start %03x kick %zu", hit.world->level, hit.cls, start, i);
-        compare_kick(want[i], got[i], k, stats, what);
-    }
-}
-
 }  // namespace
 
 void compare_draw(Program prog, const std::vector<Kicked>& want, const std::vector<std::vector<std::array<uint32_t, 4>>>& got, CheckStats& stats, const char* what) {
@@ -711,19 +487,6 @@ void compare_draw(Program prog, const std::vector<Kicked>& want, const std::vect
         ++k.kicks;
         compare_kick(want[i], got[i], k, stats, what);
     }
-}
-
-void check_start(const WorldIndex& idx, const VUState& st, const uint64_t* micro, uint32_t start, CheckStats& stats) {
-    const Program prog = program_of(micro);
-    if (prog != Program::None) {
-        static const char* names[6] = {"tfrag A", "tfrag B", "tie A", "tie B", "shrub A", "shrub B"};
-        char key[48];
-        std::snprintf(key, sizeof key, "%s start %03x", names[static_cast<int>(prog)], start);
-        ++stats.cover[key];
-    }
-    if (prog == Program::ShrubA || prog == Program::ShrubB) check_shrub(idx, st, prog, start, stats);
-    if (prog == Program::TieA || prog == Program::TieB) check_tie(idx, st, prog, start, stats);
-    if (prog == Program::TfragA || prog == Program::TfragB) check_tfrag(idx, st, prog, start, stats);
 }
 
 }  // namespace rac1::mrpw

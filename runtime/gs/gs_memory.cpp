@@ -67,7 +67,6 @@ uint32_t r32(const uint8_t* p) {
     std::memcpy(&v, p, 4);
     return v;
 }
-uint32_t bits(uint64_t v, int lo, int n) { return static_cast<uint32_t>((v >> lo) & ((1ull << n) - 1)); }
 
 enum Psm : uint32_t { CT32 = 0, CT24 = 1, CT16 = 2, CT16S = 0xa, T8 = 0x13, T4 = 0x14, T8H = 0x1b, T4HL = 0x24, T4HH = 0x2c };
 
@@ -371,8 +370,8 @@ void LocalMemory::write_pixel_raw(uint32_t psm, uint32_t bp, uint32_t bw, uint32
 }
 
 uint32_t LocalMemory::texel(uint64_t tex0, uint64_t texa, int x, int y) const {
-    const uint32_t tbp = bits(tex0, 0, 14), tbw = bits(tex0, 14, 6), psm = bits(tex0, 20, 6);
-    const uint32_t ta0 = bits(texa, 0, 8), aem = bits(texa, 15, 1), ta1 = bits(texa, 32, 8);
+    const uint32_t tbp = field(tex0, 0, 14), tbw = field(tex0, 14, 6), psm = field(tex0, 20, 6);
+    const uint32_t ta0 = field(texa, 0, 8), aem = field(texa, 15, 1), ta1 = field(texa, 32, 8);
     auto c16 = [&](uint32_t v) {
         const uint32_t r = (v & 0x1f) << 3, g = ((v >> 5) & 0x1f) << 3, b = ((v >> 10) & 0x1f) << 3;
         uint32_t a = (v & 0x8000) ? ta1 : ta0;
@@ -395,9 +394,9 @@ uint32_t LocalMemory::texel(uint64_t tex0, uint64_t texa, int x, int y) const {
 
 // orig: (host) the CLUT's colour of index `raw` of an indexed texture (CSM1 from CBP; its bytes noted as the CLUT's range)
 uint32_t LocalMemory::texel_clut(uint64_t tex0, uint64_t texa, uint32_t raw) const {
-    const uint32_t psm = bits(tex0, 20, 6);
-    const uint32_t cbp = bits(tex0, 37, 14), cpsm = bits(tex0, 51, 4), csa = bits(tex0, 56, 5);
-    const uint32_t ta0 = bits(texa, 0, 8), aem = bits(texa, 15, 1), ta1 = bits(texa, 32, 8);
+    const uint32_t psm = field(tex0, 20, 6);
+    const uint32_t cbp = field(tex0, 37, 14), cpsm = field(tex0, 51, 4), csa = field(tex0, 56, 5);
+    const uint32_t ta0 = field(texa, 0, 8), aem = field(texa, 15, 1), ta1 = field(texa, 32, 8);
     auto c16 = [&](uint32_t v) {
         const uint32_t r = (v & 0x1f) << 3, g = ((v >> 5) & 0x1f) << 3, b = ((v >> 10) & 0x1f) << 3;
         uint32_t a = (v & 0x8000) ? ta1 : ta0;
@@ -426,7 +425,7 @@ uint32_t LocalMemory::texel_clut(uint64_t tex0, uint64_t texa, uint32_t raw) con
 // TEXA only for a 16 / 24-bit texture or a 16-bit CLUT. A texture drawn with another texture function is the same image.)
 // orig: (host)
 std::pair<uint64_t, uint64_t> LocalMemory::texture_key(uint64_t tex0, uint64_t texa) {
-    const uint32_t psm = bits(tex0, 20, 6), cpsm = bits(tex0, 51, 4);
+    const uint32_t psm = field(tex0, 20, 6), cpsm = field(tex0, 51, 4);
     const bool indexed = psm == T8 || psm == T8H || psm == T4 || psm == T4HL || psm == T4HH;
     uint64_t k = tex0 & 0x3ffffffffull;  // TBP0, TBW, PSM, TW, TH
     if (indexed) k |= tex0 & (0x1ffffffull << 37);  // CBP, CPSM, CSM, CSA
@@ -445,18 +444,18 @@ std::shared_ptr<const TexImage> LocalMemory::texture_at_kick(uint64_t tex0, uint
             return s.img;
         }
     }
-    const int w = 1 << std::min(10u, bits(tex0, 26, 4)), h = 1 << std::min(10u, bits(tex0, 30, 4));
+    const int w = 1 << std::min(10u, field(tex0, 26, 4)), h = 1 << std::min(10u, field(tex0, 30, 4));
     dec_.resize(static_cast<size_t>(w) * h);
     for (int k = 0; k < 2; ++k) {
         rd_lo_[k] = 0xffffffffu;
         rd_hi_[k] = 0;
     }
-    const uint32_t psm = bits(tex0, 20, 6);
+    const uint32_t psm = field(tex0, 20, 6);
     const bool eight = psm == T8 || psm == T8H, four = psm == T4 || psm == T4HL || psm == T4HH;
     if (perf_gs() && (eight || four)) {
         // (an indexed texture: its CLUT decoded once - every entry, as texel reads one: its bytes noted as read - then the indices
         // looked up; the texels' bytes noted as one range, as read_pixel notes them one by one)
-        const uint32_t tbp = bits(tex0, 0, 14), tbw = bits(tex0, 14, 6);
+        const uint32_t tbp = field(tex0, 0, 14), tbw = field(tex0, 14, 6);
         uint32_t clut[256];
         rd_track_ = true;
         const uint32_t nclut = eight ? 256u : 16u;
@@ -569,9 +568,9 @@ constexpr size_t kMemoBytes = 48u << 20;  // (the memo's copies of the pieces at
 // in between)
 void LocalMemory::transfer_data(uint64_t bb, uint64_t pos, uint64_t rg, const uint8_t* p, uint32_t n) {
     if (!xfer_) return;
-    const uint32_t dbp = bits(bb, 32, 14), dbw = bits(bb, 48, 6), dpsm = bits(bb, 56, 6);
-    const uint32_t sx = bits(pos, 32, 11), sy = bits(pos, 48, 11);
-    const uint32_t w = bits(rg, 0, 12), h = bits(rg, 32, 12);
+    const uint32_t dbp = field(bb, 32, 14), dbw = field(bb, 48, 6), dpsm = field(bb, 56, 6);
+    const uint32_t sx = field(pos, 32, 11), sy = field(pos, 48, 11);
+    const uint32_t w = field(rg, 0, 12), h = field(rg, 32, 12);
     if (w == 0 || h == 0) return;
     // the memo: the piece's key (the registers, where the transfer is, the size), its last write's bytes and range
     const int memo_mode = upload_memo_mode();

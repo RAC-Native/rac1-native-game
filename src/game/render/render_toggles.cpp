@@ -16,7 +16,7 @@ bool g_world_faithful = false;
 bool g_world_mrp = false;
 bool g_world_chain_forced = false;
 bool g_title_scene_host = false;
-bool g_moby_vu1_pass = true;  // (the faithful pass by default; the GLB drawer a debug fallback)
+bool g_moby_vu1_pass = true;  // (the game's moby pass runs, as the MRP and the faithful path need; false: the GLB drawer, RAC1_MOBY_VU1=0)
 MobyRenderer g_moby_renderer = MobyRenderer::kFaithful;
 bool g_render_gs2d = true;
 bool g_render_wireframe = false;

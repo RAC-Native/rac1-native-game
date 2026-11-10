@@ -10,7 +10,6 @@ public:
     static ShaderManager& get();
 
     bool init();
-    void shutdown();
 
     // Standard shaders for different primitive types
     GLuint get_moby_shader() const { return m_moby_shader; }

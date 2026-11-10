@@ -242,16 +242,5 @@ void ShaderManager::set_debug_shade(int mode) {
     glUseProgram(static_cast<GLuint>(prev));
 }
 
-void ShaderManager::shutdown() {
-    if (m_tfrag_shader) glDeleteProgram(m_tfrag_shader);
-    if (m_tie_shader) glDeleteProgram(m_tie_shader);
-    if (m_shrub_shader) glDeleteProgram(m_shrub_shader);
-    if (m_sky_shader) glDeleteProgram(m_sky_shader);
-    if (m_moby_shader) glDeleteProgram(m_moby_shader);
-    if (m_static_skinned_shader) glDeleteProgram(m_static_skinned_shader);
-    
-    m_tfrag_shader = m_tie_shader = m_shrub_shader = m_sky_shader = m_moby_shader = m_static_skinned_shader = 0;
-}
-
 } // namespace rac1
 

@@ -23,8 +23,8 @@ goes through a table of where its build put the same code (see
 [Setup](docs/setup.md#the-european-pal-disc)). The Japanese release (`SCPS-15037`) can be given as a data
 disc beside the game's disc, for the Japanese voices (see [Setup](docs/setup.md)); as the game's disc it is
 not supported yet (#64). It is not an emulator: all of the game's
-code, the PS2's vector-unit microcode included, runs as native C++ while you play. The 3D is drawn by
-a native renderer (OpenGL, or Vulkan as an option) from the game's own decisions, which
+code, the PS2's vector-unit microcode included, runs as native C++ while you play. The game is drawn by
+a native renderer (Vulkan or OpenGL; Metal on macOS) from the game's own decisions, which
 makes widescreen, high resolutions, full-detail textures and longer draw distances possible without
 changing how the game behaves.
 
@@ -47,10 +47,11 @@ changing how the game behaves.
    program. While you play nothing is emulated or interpreted: the disc's files, which the setup
    extracts from your image, are only read for data (a level, streamed music and voices), and the PS2's hardware (DMA, GS, sound processor, memory card,
    pads) is replaced by host code in `runtime/`.
-4. **A renderer of its own.** The game is not drawn by emulating the PS2's graphics chip: the renderer
-   (OpenGL, or Vulkan) reads what the game has decided to draw (its objects, world, effects, water and
-   lava, and the 2D: HUD, menus, text) and draws it natively. A replica of the PS2's graphics chip is
-   kept only as the faithful reference. That is what makes widescreen, a wider HUD, high resolutions
+4. **A renderer of its own.** The game is not drawn by emulating the PS2's graphics chip. The game's
+   code still produces its draw commands, and the renderer (Vulkan or OpenGL; Metal on macOS) interprets
+   them natively: its objects, world, effects, water and lava, and the 2D (HUD, menus, text), with the
+   game's own lighting and effects. A replica of the PS2's graphics chip is kept only as the faithful
+   reference (see [Rendering](docs/rendering.md#what-the-mrp-is-and-what-it-is-not)). That is what makes widescreen, a wider HUD, high resolutions
    and the optional modern lighting possible, while the game's own logic stays unchanged.
 5. **Proved against the original.** The oracle runs the original code in an R5900 interpreter beside
    each port and compares the results bit for bit; the reference images and per-frame RAM hashes
