@@ -54,8 +54,9 @@ extern "C" {
    section_policy; the section_leave and section_enter callbacks); 11: the rails and the set-piece kit, in ABI 7's room of the
    table (rail_find .. fade_active; the rail callback); 12: hero contexts and modes (another planet's hero code, Ratchet as
    Clank, Giant Clank or on the hoverboard: hero_build, hero_build_now, hero_mode, hero_mode_now); 13: bosses (a section's
-   bosses: boss_set, boss_beaten; the boss callback) (docs/sdk.md lists what each version added). */
-#define RAC1_MOD_ABI 13
+   bosses: boss_set, boss_beaten; the boss callback); 14: the HUD's width (hud_width) (docs/sdk.md lists what each version
+   added). */
+#define RAC1_MOD_ABI 14
 
 #if defined(_WIN32)
 #define RAC1_MOD_EXPORT __declspec(dllexport)
@@ -78,6 +79,10 @@ typedef struct rac1_level_info {
 #define RAC1_HUD_CENTRE 0   /* the 4:3 frame, in the middle of the screen (as hud_text) */
 #define RAC1_HUD_LEFT 1     /* toward the screen's left edge */
 #define RAC1_HUD_RIGHT 2    /* toward the screen's right edge */
+/* The HUD's height in HUD units: the game's frame is 512 x 416 and all of it is on the screen (y 0 its top row, 415 its
+   bottom one; nothing past 416 is drawn). Its width is 512 for RAC1_HUD_CENTRE; api->hud_width() (ABI 14) says how wide the
+   HUD is for LEFT / RIGHT */
+#define RAC1_HUD_HEIGHT 416
 
 /* (ABI 5) base_option's options */
 #define RAC1_BASE_WEAPON 1  /* Kalebo III's Gadgetron robots (541): their weapon 0..2 */
@@ -290,7 +295,7 @@ typedef struct rac1_api {
     void (*smoke)(const float pos[3], const float vel[3], float size);
 
     /* -- the HUD (from the hud callback only) -- */
-    /* `text` (plain ASCII) in the game's small font at (x, y) of the 512 x 448 HUD, colour 0xAABBGGRR (alpha 0x80 opaque) */
+    /* `text` (plain ASCII) in the game's small font at (x, y) of the 512 x 416 HUD, colour 0xAABBGGRR (alpha 0x80 opaque) */
     void (*hud_text)(int32_t x, int32_t y, uint32_t abgr, const char* text);
 
     /* -- the camera -- */
@@ -402,7 +407,7 @@ typedef struct rac1_api {
     void (*input_hold)(int on);
 
     /* -- the HUD (from the hud callback only) -- */
-    /* a flat rectangle w x h from (x, y) (512 x 448 HUD units, as hud_text), colour 0xAABBGGRR, alpha 0x80 opaque, 0x40 half
+    /* a flat rectangle w x h from (x, y) (512 x 416 HUD units, as hud_text), colour 0xAABBGGRR, alpha 0x80 opaque, 0x40 half
        transparent: a panel behind your texts (draw it first). anchor: RAC1_HUD_* */
     void (*hud_rect)(int32_t x, int32_t y, int32_t w, int32_t h, uint32_t abgr, int32_t anchor);
     /* hud_text at `scale` times the font's size (1: hud_text's, 2: twice as large; at most 8), anchor RAC1_HUD_* */
@@ -617,6 +622,14 @@ typedef struct rac1_api {
     int (*boss_set)(uint32_t obj);
     /* the bosses beaten in section `name` ("" or NULL: the current one) in this visit of the session; -1 no such section */
     int32_t (*boss_beaten)(const char* name);
+
+    /* ======== ABI 14 (test api->abi >= 14, or RAC1_API_HAS(api, hud_width)) ======== */
+    /* -- the HUD's width (docs/sdk.md, "The HUD's area") -- */
+    /* the HUD's width in HUD units: 512 with the original's 4:3 HUD (the default), more with a wider one over a widened view
+       (Options > Display > HUD: about 683 at 16:9, 910 at 21:9; never wider than the view). The RAC1_HUD_LEFT elements move
+       (hud_width() - 512) / 2 units to the left, the RAC1_HUD_RIGHT ones as far to the right; RAC1_HUD_CENTRE's stay put. A
+       display value (the player's window and options): use it to lay out what you draw, never for the game's state */
+    int32_t (*hud_width)(void);
 } rac1_api;
 
 #define RAC1_API_HAS(api, field) ((api)->size >= offsetof(rac1_api, field) + sizeof((api)->field))

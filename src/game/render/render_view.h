@@ -85,6 +85,9 @@ extern float g_hud_aspect;
 // 0 at 4:3 (g_hud_aspect 0, or a view not wider than 4:3), else half the frame's width times the HUD's widening (min(g_hud_aspect,
 // the view's aspect) over 4:3) less one
 float render_view_hud_shift(float fb_w);
+// orig: (host) the HUD's width over the 4:3 frame's: 1 at 4:3 (g_hud_aspect 0, or a view not wider than 4:3), else min(g_hud_aspect,
+// the view's aspect) over 4:3 (render_view_hud_shift moves the side elements by half of it less one; the SDK's hud_width)
+float render_view_hud_widen();
 // orig: (host) the HUD elements the frame drew at the frame's sides, for a HUD wider than 4:3 (gs::Primitive::hud): render_frame
 // clears the notes (render_view_layers_begin), the HUD's drawing (hud_draw, ...) notes each side element's chain range
 // [first, end) (side 1 left, 2 right; the packet cursor's values before and after its draw function); the chain's stage takes them
