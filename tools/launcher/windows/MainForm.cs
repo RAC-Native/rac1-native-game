@@ -249,7 +249,7 @@ namespace Rac1Launcher
             AddRow(t, "Disc image", txtIso, Btn("Change...", (s, e) => { if (AskIso(true) != null) txtIso.Text = ctl.Settings.Iso; }, true));
 
             cmbChannel.DropDownStyle = ComboBoxStyle.DropDownList;
-            cmbChannel.Items.AddRange(new object[] { "Stable: the releases (recommended)", "Development: the newest changes on main" });
+            cmbChannel.Items.AddRange(new object[] { "Stable: the releases (recommended)", "Development: the newest changes (the dev branch)" });
             cmbChannel.SelectedIndex = Channel.Development ? 1 : 0;
             cmbChannel.SelectedIndexChanged += (s, e) => ChangeChannel(cmbChannel.SelectedIndex == 1);
             AddRow(t, "Update channel", cmbChannel, new Label
@@ -446,7 +446,7 @@ namespace Rac1Launcher
                 cmbChannel.SelectedIndex = Channel.Development ? 1 : 0;
                 return;
             }
-            ctl.MainCommit = null;
+            ctl.DevCommit = null;
             ShowUpdate();
             CheckUpdates(false);
         }

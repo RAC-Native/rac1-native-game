@@ -5,6 +5,11 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **The development channel follows the `dev` branch** (#141): the work lands on `dev` first and is merged into `main`
+  from time to time, so following `main` missed the newest changes. The update check (Main menu > Updates) now counts
+  the commits on `dev` the installed build lacks, and an update on Development checks out `dev` (a clone on `main` or
+  on a release's tag switches to it; a zip download gets `dev`'s source zip; local commits are never overwritten). The
+  launcher's Development channel downloads `dev` too, from its next release. The Updates page and the notice say `dev`.
 - **Windows: the build failed in `mod_code.cpp`** (#142; the update from 0.7.0 to `main` at 98e966f stopped there and
   kept the previous build): the mod SDK's sound fields were named `near` and `far`, which `<windows.h>` defines as
   nothing. Renamed.
