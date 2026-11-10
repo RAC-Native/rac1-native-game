@@ -10,6 +10,7 @@
 #include <game/ovl/variants_sky.h>
 #include <game/ovl/world_vu1.h>
 #include <game/render/mrp_lod.h>
+#include <game/render/vec_room.h>
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/vu/vu0.h>
 #include <runtime/vu/vu1.h>
@@ -642,8 +643,10 @@ void static_draws(SceneFrame& f, const StaticFrame& sf, const StaticLevel& sl, i
                 fog = std::min(fog, shrub_fog[3]);
                 x.fog = (static_cast<uint32_t>(ftoi4(fog)) >> 4) & 0xff;
             }
+            vec_room_zeroed(f.insts, 1);
             f.insts.push_back(x);
         }
+        vec_room_zeroed(f.packets, 1);
         ScenePacket& sp = f.packets.emplace_back();  // ((2026-10-31) made in place)
         sp.prog = kind == 0 ? Program::TieA : Program::ShrubA;
         sp.start = static_cast<uint16_t>(kind == 0 ? 0x000 : 0x063);

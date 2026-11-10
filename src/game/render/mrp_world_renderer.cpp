@@ -1,6 +1,7 @@
 // orig: (host) The MRP world renderer (see mrp_world_renderer.h).
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/texture_mods.h>
+#include <game/render/vec_room.h>
 #include <game/render/gl_draws.h>
 #include <game/render/mrp_chain.h>
 #include "mrp_world_backend.inc"
@@ -2465,6 +2466,9 @@ struct PktMemo {
 PktMemo g_pkt_memo;
 // orig: (host) a draw record's 8 words appended (the vector's initializer-list insert, generic, was ~10% of gpu_packet on the Wii U)
 inline void cmds_put(std::vector<uint32_t>& c, uint32_t a, uint32_t b, uint32_t d, uint32_t e, uint32_t f, uint32_t g) {
+#if defined(__WIIU__)
+    vec_room_zeroed(c, 8);
+#endif
     c.push_back(a);
     c.push_back(b);
     c.push_back(d);
@@ -2559,6 +2563,9 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
     ig.info[3] = (p.shrub != nullptr ? 1u : 0u) | (si.resident ? 2u : 0u);
     inst = static_cast<uint32_t>(F.insts.size());
     F.inst_of[p.inst] = inst;
+#if defined(__WIIU__)
+    vec_room_zeroed(F.insts, 1);
+#endif
     F.insts.push_back(ig);
     F.inst_box.push_back({1.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f});  // (none yet: its packets' boxes below)
 #if defined(__WIIU__)
@@ -2613,6 +2620,9 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
             }
             if (r.unit != 0) F.batches.back().epoch = r.epoch;
             note_run(F.p2runs, F.batches.back(), static_cast<uint32_t>(F.draws.size()), 1, r.astate[vert_opq ? 1 : 0]);
+#if defined(__WIIU__)
+            vec_room_zeroed(F.draws, 1);
+#endif
             F.draws.push_back(DrawCmd{r.count, 1, r.first, static_cast<int32_t>(t.first_vertex), cmd});
             if (r.ate) F.batches.back().ate = true;
             ++F.batches.back().count;
@@ -2753,6 +2763,9 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
         }
         if (unit != 0) F.batches.back().epoch = epoch;
         note_run(F.p2runs, F.batches.back(), static_cast<uint32_t>(F.draws.size()), 1, astate);
+#if defined(__WIIU__)
+        vec_room_zeroed(F.draws, 1);
+#endif
         F.draws.push_back(DrawCmd{run.count, 1, t.first_index + run.first, static_cast<int32_t>(t.first_vertex), cmd});
         const bool ate = fld(k.test, 0, 1) != 0 && fld(k.test, 1, 3) != 1;
         if (ate) F.batches.back().ate = true;  // (ATST ALWAYS: no test)

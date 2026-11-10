@@ -197,7 +197,7 @@ GX2Sampler g_samplers[2][16];  // [mip mode][TEX1 / CLAMP bits: 0 MMAG linear, 1
 // The uniform blocks, appended to a ring in MEM2 (gs_draw_gx2.cpp's): before the ring wraps over what the GPU may still read
 // the CPU waits for it (GX2DrawDone) only if the current frame's allocations exceed half the ring.
 const bool g_ring_nowait = std::getenv("RAC1_WIIU_RING_NOWAIT") == nullptr || std::atoi(std::getenv("RAC1_WIIU_RING_NOWAIT")) != 0;
-constexpr uint32_t kRingBytes = 16u << 20;
+constexpr uint32_t kRingBytes = 32u << 20;  // ((2026-11-10) 16 -> 32 MB: a display list may take a quarter - Kalebo's ~2,400 draws and their joints were past 4 MB and drawn without one)
 uint8_t* g_ring = nullptr;
 uint32_t g_ring_off = 0;
 Gx2RingUse g_ring_use;  // (Gx2RingUse: this host frame's bytes and the frame before's)
@@ -1051,7 +1051,7 @@ void mrp_moby_gx2_draw(const GX2ColorBuffer* cb, GX2DepthBuffer* db, const gs::V
 // must still wait inside it gives no block: ring_alloc), the list's estimate within its buffer. Two buffers (frames in flight: the one
 // the GPU may still read is the other one)
 namespace {
-constexpr uint32_t kDlBytes = 3u << 19;  // (1.5 MB: ~2200 draw commands)
+constexpr uint32_t kDlBytes = 3u << 20;  // (3 MB: ~4,400 draw commands by the estimate - 640 bytes each, ~170 measured; 1.5 MB until 2026-11-10: Kalebo past it every frame)
 constexpr int kDlSlots = 2;
 uint8_t* g_dl_buf[kDlSlots] = {};
 int g_dl_slot = 0;
