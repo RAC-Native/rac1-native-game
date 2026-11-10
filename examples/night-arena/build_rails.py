@@ -4,8 +4,8 @@ In Blender (the GUI):   p = "<this folder>/build_rails.py"; exec(open(p).read(),
 Headless (after build_arena.py):   blender -b --python build_arena.py --python build_rails.py ...
 
   arena_rails      a curve object per rail, rail_<name> (a Bezier: edit its points in Blender). export_arena.py writes
-                   its points (rails.txt, the game's coordinates) for the plugin, which hands them to the game's rail
-                   table during a rail challenge, and its look (a tube on pylons: the class rail_<name>, shown only then)
+                   its points (level.txt's rail line: the composer puts it in the game's rail table) and its look (a
+                   tube on pylons: the class rail_<name>); the plugin turns a rail on, and shows it, during its challenge
   rail_station     the start's platform (arena_visual, arena_collision: col_rail_station); spawn_rail_start and
                    spawn_rail_course (markers: where a rail challenge puts Ratchet)
   the course       "Grind Scarponi: Discesa": its centre rail (rail_lane_c, a Bezier) and two lanes 3 units to its sides
@@ -14,9 +14,10 @@ Headless (after build_arena.py):   blender -b --python build_arena.py --python b
                    own rail mines (class 933: break them with the wrench or change lane; markers spawn_kmine_<n>, the
                    plugin starts them with base_spawn), two of them closing two lanes at a time
 
-Kalebo III's hero code (the base level's, hero_rail_land_check 0x20cf58) takes a rail only within 12 units of two
-spots of its own level: (115, 264, 133) and (257, 301, 128) in the game's coordinates, (-61, 76, 29) and (81, 113, 24)
-in the scene's (the offset 176 188 104). So a rail starts by the first one; once on it, Ratchet rides it to its end.
+The station is by one of Kalebo III's own rail spots, (-61, 76, 29) in the scene's coordinates ((115, 264, 133) in the
+game's: the offset 176 188 104): its hero code (hero_rail_land_check 0x20cf58) took a rail only within 12 units of them
+while the plugin made the rails. With level.txt's rail lines (the SDK's ABI 11) it takes one anywhere: the station could
+move.
 """
 import math
 import os

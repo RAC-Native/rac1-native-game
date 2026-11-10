@@ -26,11 +26,11 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
     last wave of robots waits. A hit costs one health point and slows Ratchet (the game's own hop on the rail); a fall
     puts him back on the station, the mines back too.
 
-  Kalebo III's hero code takes a rail only within 12 units of two points of its own level, (115, 264, 133) and
-  (257, 301, 128) in the game's coordinates, so the station is by the first one; once on a rail, its jumps and the side
-  jumps to another rail work anywhere. The plugin puts the challenge's rails in the game's rail table only while it
-  runs, and a thin collision strip runs under each rail (the game lets go of a rail with nothing under Ratchet's
-  feet).
+  The rails are level.txt's `rail` lines (the composer puts them in the game's rail table, a thin collision strip under
+  each: the game lets go of a rail with nothing under Ratchet's feet). The plugin turns them all off at the level's
+  start (`rail_enable`) and a challenge's own on only while it runs. The station is by one of Kalebo III's own rail
+  spots, (115, 264, 133) in the game's coordinates: its hero code took a rail only near them while the plugin made the
+  rails itself. With rails of the level's own it takes one anywhere.
 
 - **Its planet:** a picture of its own on the loading screen and the ship's map's planet page (`make_textures.py` paints
   it), and under the galaxy a view of the arena rendered from the scene when it is exported; its name in five languages
@@ -40,7 +40,7 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   German, Spanish or Italian (plain ASCII, as the HUD's font takes it). The table is in the plugin (`TEXTS`); the
   weapons', the wrench's and the Grind Boots' names are read from the game's own texts, as it shows them.
 
-It needs a game with the mod SDK's ABI 5 or later.
+It needs a game with the mod SDK's ABI 11 or later (the rails; the rest of the plugin ABI 5).
 
 ## Making it
 
@@ -70,7 +70,7 @@ You need Python 3 with Pillow and Blender (made with 5.2).
    ./build/rac1-native --setup --mod-plugin night-arena
    ```
 
-   Again after any change to `mods/night-arena`. In the game, Options > Mods: turn **Night Arena** on and confirm its
+   Again after any change to `mods/night-arena`. In the game, Options > Mods: turn **Daino's Arena** on and confirm its
    code; the level is then a planet on the ship's map.
 
 ## Files
@@ -80,7 +80,7 @@ You need Python 3 with Pillow and Blender (made with 5.2).
 | `make_textures.py` | the arena's textures (PIL): floor, walls, grating, hazard stripes, lava, rock, the flames' sprites..., and the planet's picture |
 | `build_arena.py` | the arena in Blender: the collections `arena_visual`, `arena_collision`, `arena_markers`, `arena_lights` |
 | `build_rails.py` | the rails (`arena_rails`: a curve each; the course's side lanes made from its centre rail), their station, the course's obstacles (markers) |
-| `export_arena.py` | the mod folder (and the map's picture, rendered): `level.txt`, `collision.obj`, `meshes.obj`, `lights.txt`, the classes' models (the rails', the mines', barriers' and drones' too), the rails (`rails.txt`), the sounds (synthesized), `mod.json`, the plugin's source |
+| `export_arena.py` | the mod folder (and the map's picture, rendered): `level.txt`, `collision.obj`, `meshes.obj`, `lights.txt`, the classes' models (the rails' and the mines' too), the rails (level.txt's `rail` lines), the sounds (synthesized), `mod.json`, the plugin's source |
 | `plugin/arena_plugin.c` | the menu, the challenges, the enemies' paths (a navigation grid and a flow field), the flame vents, the bombs, the supplies, the rails |
 
 ## Testing
