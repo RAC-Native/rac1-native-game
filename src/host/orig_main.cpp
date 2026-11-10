@@ -4677,6 +4677,7 @@ int main(int argc, char** argv) {
             mrp_fx_report();
             mrp_reflect_report();
             rac1::ps2fpu::raw_report();
+            rac1::ovl_code_memo_report();
             if (s_mrp_skip_mode != 0)
                 std::printf("[mrp-skip] mode %d: chain tags walked dry %llu; verify: skipped skinning's next record equal %llu, different %llu\n", s_mrp_skip_mode,
                             static_cast<unsigned long long>(rac1::gs::gs_global().skipped_tags()), static_cast<unsigned long long>(g_moby_mrp_skip_next_ok),

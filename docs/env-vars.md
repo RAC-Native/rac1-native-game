@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 463 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 464 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 25 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 332 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 333 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 106 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -104,6 +104,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_GT_SERIAL` | set (any value) = on; default off | Debugging the game thread: its game frames joined before the drawing (on the game thread, but not beside the drawing), to tell a difference of the thread from one of the overlap. |
 | `RAC1_GL_SINGLE_DRAWS` | 1 = on, 0 = off; default on with Intel's Windows OpenGL driver, else off | With OpenGL, issues the MRP world's and mobys' multi-draws (glMultiDrawElementsIndirect) as one glDrawElementsInstancedBaseVertexBaseInstance per command, for drivers whose multi-draws draw the ties, shrubs and mobys with the wrong records (#113). The same picture. See [Rendering](rendering.md). |
 | `RAC1_MRPW_BUILD_THREAD` | 0 = off; default on (off when `RAC1_MRPW_THREAD=0`, a check mode, `RAC1_MRPW_CPU` or `RAC1_MRPW_TFRAG_VERIFY`) | The MRP world's frame triangles and batches (build_triangles) made on the scene's worker after its scene, the new textures' images made by the main thread when it takes the frame; 0 makes them on the main thread when the frame is drawn, as before, for comparison (the same output). |
+| `RAC1_PERF_CODE_MEMO` | 0 = off, 2 = check; default 1 | ovl_code_to_veldin's answers (a level's code address as Veldin's: the transliterated code's jump tables, the callbacks' dispatch) kept by address in a small table emptied when the translation's maps change; 0: the maps searched at every call, as before; 2: both, compared (`[perf] code memo` at the end of the run). The same answers. |
 | `RAC1_PERF_FPU_RAW` | 0 = off, 2 = check; default 1 | The EE FPU helpers fpu_add / fpu_sub / fpu_mul (src/game/ovl/ovl_common.h) do the host's own operation - the thread's float mode (toward zero, no denormals) already gives the PS2's result - and take their rule-by-rule form only when the result has exponent 255; 0: the rule-by-rule forms always, as before; 2: those, each compared with the raw form's result (the account at the end of the run: `[perf] fpu raw check`). Off with RAC1_FPU_NEAREST=1. The same game state (docs/performance.md). |
 | `RAC1_PERF_VU0_RAW` | 0 = off, 2 = check; default 1 | The VU0 macro ops' adds, subtracts, multiplies and multiply-adds (src/game/ovl/vu0_macro.h, vu0_regs.h, vu0_nf.h, vu0_local.h, the pose's loops in moby_joints.cpp) compute the lanes as they are - the thread's float mode already gives the VU rules' result - and by the rules only when a lane they write has exponent 255; 0: every operand and result clamped at every op, as before; 2: those, each compared with the raw form (`[perf] vu0 raw check` at the end of the run; the pose's loops run by the rules). Off with RAC1_FPU_NEAREST=1. The same game state (docs/performance.md). |
 | `RAC1_SURFACE_DETAIL` | 0, 1 or 2; default: Options > Graphics > Surface Detail (Off) | With the modern lighting, the materials of the level files' `material` lines: 0 off, 1 Low, 2 High (also the reflections and the lava's heat shimmer), whatever the option says. |

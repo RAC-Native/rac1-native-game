@@ -560,6 +560,19 @@ terrain.
   and 2.72-2.74 / 2.72-2.75, Kerwan 3.06 / 3.07 and 3.30 / 3.29, Eudora 3.58 / 3.57 and 3.89 / 3.94. Left off, for a GPU where the
   sky's fill rate costs.
 
+## Smaller ones, found reading the code
+
+Found in November 2026 by reading the code against these pages, not from a profile. Each is exact - the same pictures and the
+same game state - behind a switch, and on by default but where said. The measures are the profiler's medians, three runs of
+each taken in turn on the fast cores, a switch off against all of them on: at 16:9 widened with LOD High (Vulkan, the game
+thread, `RAC1_PIPELINE=1`, the last 1500 of 2400 frames of a forward walk) on Kerwan and Rilgar unless said.
+
+- **A level's code address as Veldin's** (`RAC1_PERF_CODE_MEMO`, `ovl_reloc.cpp`): every `switch` of the transliterated code,
+  and the dispatch of the camera's, the menus' and the sound's callbacks, translates a level's code address
+  (`ovl_code_to_veldin`); for a jump table's label, which is not a function's start, that is a map search, a set search and
+  an upper bound. The answers are kept by address in a 1024-slot table, emptied when the translation's maps change. 13 to
+  45 translations a frame (Kerwan the most), all but a few dozen of a run answered from the table; `=2` compares each with
+  the search: 840,467 over the 19 levels, 0 differing. A few microseconds a frame: under what a frame's time shows.
 ## Switches to compare
 
 These are testing variables: they are honoured in a headless run, or in a window started with `--debug-tools`
@@ -599,6 +612,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_SKY_LATE=1` | the sky after the leading opaque tfrag batches (off by default: not exact) |
 | `RAC1_PERF_FPU_RAW=0` | the EE FPU helpers by the PS2 rules at every operation, through doubles (`=2`: those, compared with the raw forms) |
 | `RAC1_PERF_VU0_RAW=0` | the VU0 macro ops clamping every operand and result at every op, the pose's loops too (`=2`: those, the ops compared with the raw forms) |
+| `RAC1_PERF_CODE_MEMO=0` | a level's code address translated to Veldin's by searching the maps at every call (`=2`: both, compared) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
