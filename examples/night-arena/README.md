@@ -10,7 +10,7 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
 ## What is in it
 
 - **The arena:** a 96 x 96 floor inside a wall, three gates with drop zones in front, a hub with ramps, four towers,
-  cover, four flame vents, floodlight masts, a corridor to the ship's plaza; the lava (surface type 3) all round.
+  cover, four flame vents, floodlight masts, a corridor to the ship's plaza; the lava (surface type 1, the game's lava) all round.
 - **The menu:** on the hub's top, Triangle opens the challenges (Cross starts one, Square opens the vendor).
 - **The challenges:** waves of Kalebo III's robots, bomb bots, Gadgetron robots (bomb launcher, club, flamethrower),
   jetpack troopers and dropships; some with bombs from the sky, the vents burning faster and the three drop zones'
@@ -20,8 +20,8 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
 - **Grind rails**, for players who have the Grind Boots (Grindscarponi), from a station outside the north-west wall:
   - "Test Grindscarponi": one rail down into the arena (our first try);
   - "Grindscarponi: Discesa": a course of three lanes along the north wall (a side jump changes lane), our mines to
-    jump, Kalebo III's own rail mines (class 933, started on the lanes by the plugin) to break with the wrench (Square
-    on the rail) or to pass on another lane, two of them closing two lanes at a time, the side lanes ending before the
+    jump, Kalebo III's own rail mines (class 933, started on the lanes by the plugin, on their own code: broken by the
+    wrench (Square on the rail) or a weapon from afar, they blow up as on Kalebo III) to break or to pass on another lane, two of them closing two lanes at a time, the side lanes ending before the
     north-east corner; then one rail round the corner, down the east side and over the wall into the arena, where a
     last wave of robots waits. A hit costs one health point and slows Ratchet (the game's own hop on the rail); a fall
     puts him back on the station, the mines back too;
@@ -59,7 +59,9 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   are frozen while he is in another section.
 
 - **The game's own lava**: Ratchet runs on the generic hero code (level.txt's `hero generic`: the one Veldin, Gaspar and
-  Umbris run, not Kalebo III's own), so in the lava lake he sinks, Cross bounces him out, and left in it he is lost.
+  Umbris run, not Kalebo III's own), and the lake is surface type 1, the one Gaspar's and Umbris's lava is made of: as there,
+  touching it he jumps out burnt, a health point lost each time, and with none left he sinks. (Type 3 is Aridia's
+  quicksand: there he would sink and be bounced out with Cross.)
 
 It needs a game with the mod SDK's ABI 13 or later (the rail in Quartu's world; `hero generic` ABI 12; the rails, the
 sessions and sections ABI 11; the rest of the plugin ABI 5).
