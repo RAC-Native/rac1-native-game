@@ -29,8 +29,9 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
     the lava floods the arena and an escape rail from the hub's top leads west over the wall, round the south-west
     corner over the lava lake (our mines and Kalebo III's again) and through a portal's ring, grinding: a white flash,
     and Ratchet is in other planets' worlds (sections of the session, each with its own music), one after the other:
-    - **Batalia**, halfway along its long rail (its own, drawn: the plugin's rail `batalia_in` lies on top of it, for
-      putting Ratchet on it), down it to our portal's ring just before its end, where the game's rail leaps: another flash;
+    - **Batalia**, its long rail from its start (its own: Ratchet comes in just over it and lands on it), with its spiked
+      rail mines (jumped, or broken with the wrench), to our portal's ring just before its end, where the rail leaps:
+      another flash;
     - **Umbris**, the Snagglebeast's cave (its objects, its boss line): the challenge is won when the Snagglebeast is
       beaten. The challenge's box and its messages go up over its health bar.
 
