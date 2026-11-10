@@ -91,6 +91,11 @@ bool read_map(Context& c) {
     return true;
 }
 
+// Veldin's engine data / function as the session base's: the identity on Veldin's engine; on another base (Kalebo III's,
+// a level mod's) the base's own object or function, through the base's map (as the ports' OV / OVF)
+uint32_t base_data(uint32_t veldin) { return ovl_reloc_identity() ? veldin : ovl_xlate_data(veldin); }
+uint32_t base_code(uint32_t veldin) { return ovl_reloc_identity() ? veldin : ovl_xlate_code(veldin); }
+
 CtxKind classify(const Context& c, uint32_t a, uint32_t* to) {
     if (a < CONTEXT_BASE) {
         *to = a;
@@ -102,7 +107,7 @@ CtxKind classify(const Context& c, uint32_t a, uint32_t* to) {
         // it is the level's, as on its own level, where its dispatch finds the level's first. Only its start: an address
         // inside a function is a label of its own, a jump table's entry its switch compares as the level's: a tag)
         if (it != c.fns.begin() && a == std::prev(it)->first && !ovl_level_moby_fn_has(c.level, region_xlate(c.level, a))) {
-            *to = a - std::prev(it)->first + std::prev(it)->second.veldin;
+            *to = base_code(a - std::prev(it)->first + std::prev(it)->second.veldin);
             return CtxKind::EngineCode;
         }
         *to = ctx_tag(c.level, a);
@@ -112,9 +117,10 @@ CtxKind classify(const Context& c, uint32_t a, uint32_t* to) {
         auto it = c.ext.upper_bound(a);
         if (it != c.ext.begin() && a - std::prev(it)->first < std::prev(it)->second.size) {
             const Extent& e = std::prev(it)->second;
-            *to = a - e.level + e.veldin;  // (the session's map: Veldin's own, the identity)
-            for (const Context::View& v : c.views)  // (an object the level sees a view of its own of: its copy)
-                if (*to >= v.veldin && *to - v.veldin < v.size) *to = *to - v.veldin + v.to;
+            const uint32_t v = a - e.level + e.veldin;
+            *to = base_data(v);
+            for (const Context::View& w : c.views)  // (an object the level sees a view of its own of: its copy)
+                if (v >= w.veldin && v - w.veldin < w.size) *to = v - w.veldin + w.to;
             return CtxKind::EngineData;
         }
         *to = c.image + (a - CONTEXT_BASE);
@@ -239,6 +245,23 @@ void ctx_drop_all() {
     }
     g_ctx_levels = 0;
     if (any) ++g_region_gen;
+}
+
+// orig: (host) see context.h
+void ctx_drop(int level) {
+    if (!ctx_exists(level)) return;
+    std::printf("[ctx] level %d's context dropped (%zu sites translated through it)\n", level, g_ctx[level]->sites);
+    session_heap_free_owner(owner(level));
+    g_ctx[level].reset();
+    g_ctx_levels &= ~(1u << level);
+    ++g_region_gen;
+}
+
+// orig: (host) see context.h
+int ctx_count() {
+    int n = 0;
+    for (const auto& c : g_ctx) n += c != nullptr;
+    return n;
 }
 
 // orig: (host) see context.h

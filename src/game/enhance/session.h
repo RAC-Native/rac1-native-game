@@ -68,8 +68,52 @@ void session_classes_register(int level, uint32_t tex);
 // imported: each from its pool block in the session heap, its level's context made (context.h), registered under its own
 // class id (a class the base has already: a session id, for a second copy), its update function and +0x2c word through
 // the context (its level's own code: a tag), drawn by the modern renderer from its own level's class file (the import list)
-// orig: (host) class `cls` of level `level` added to the session's imports (registered at the next level setup)
+// orig: (host) class `cls` of level `level` added to the session's imports (registered at the next level setup), as the
+// testing switches' (RAC1_SESSION_IMPORT, the twin run)
 void session_import_add(int level, uint32_t cls);
+// ---- The pool complete (the open engine's stage 3) ----
+// An import brings its closure: the classes it spawns (its own code's and the engine's for it: pool/deps, made by
+// tools/overlay_match/deps.py), each from the import's level unless the base has it, their sounds in their level's bank
+// (one host bank a level, shared, unloaded with the level's last class). A class can be unloaded during play (its mobys
+// retired, its class table entries cleared and its index given back, its heap blocks, context and bank freed a few frames
+// later) and loaded again.
+// orig: (host) class `cls` of level `level` added to the session's imports, by `from` ("test", "mod", "plugin")
+void session_import_request(int level, uint32_t cls, const char* from);
+// orig: (host) a level's header read (level_slots.cpp): the level mod's imports (its build's imports.txt, the composer's
+// closure of its level.txt's `import` lines) for this level, none for a game level ("": the mod's of the level before go);
+// the session's memory on when it has some
+void session_level_mod(const std::string& build_dir);
+// orig: (host) the class id under which class `cls` of level `level` is in the session (an import's, or the base's own
+// class), -1 when it is not
+int32_t session_import_id(int level, uint32_t cls);
+// orig: (host) class `cls` of level `level` imported now, during play (with its closure): its id, -1 when it cannot be (or
+// before the level's setup: then registered at it)
+int32_t session_import_load(int level, uint32_t cls, const char* from);
+// orig: (host) the import of class `cls` of level `level` dropped: it and the dependencies no other import needs unloaded;
+// how many classes went
+size_t session_import_unload(int level, uint32_t cls);
+// orig: (host) a moby of session class `id` spawned at `pos` turned `yaw`, from the class's first placement on its own level
+// (the pool's placements: its scale, update distance, flags, colour, pvars); 0 when it cannot be (no such class, no room)
+uint32_t session_import_spawn(uint32_t id, const float pos[3], float yaw);
+// The spawn watch (a session with classes of other levels, or the probe): moby_spawn asks session_spawn_check first, the
+// moby dispatch notes whose update runs
+extern bool g_spawn_watch;
+extern uint32_t g_spawn_updating;  // (the moby whose update runs, 0: none)
+// orig: (host) moby_spawn about to spawn class `cls`: false when the session lacks the class (refused, as when the moby
+// array is full; logged once per spawner and class: a dependency the closure missed)
+bool session_spawn_check(uint32_t cls);
+// The spawn probe (RAC1_DEPS_PROBE=1, testing, on the game's own levels): every class a moby's update spawns, by the
+// spawner's class, logged per level (`[deps] probe level N: class C spawned D x n,...`): the check of deps.py's report
+extern bool g_spawn_probe;
+bool spawn_probe_on();
+void spawn_probe_note(uint32_t cls);
+void spawn_probe_end();
+// orig: (host) a game frame begins (the host's loop, game thread): the unloads' frees when due, the spawns' pvars of
+// mobys gone, the residency test (RAC1_SESSION_CYCLE)
+void session_frame(uint64_t frame);
+// orig: (host) the session's memory logged: the imported classes, the contexts, the other blocks, the heap, the sound
+// banks, the class table, the renderer's import list (`[session] memory: ...`, after each change)
+void session_memory_log();
 // orig: (host) a placed moby's class id: the session class id it is placed as, else `cls`
 uint32_t session_placed_class(uint32_t cls);
 // orig: (host) session class `cls`'s class table row (its update function, its +0x2c word); false when it is not one

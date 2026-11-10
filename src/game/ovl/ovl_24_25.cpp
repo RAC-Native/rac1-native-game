@@ -1,4 +1,5 @@
 // Ported overlay code 0x00240000..0x0025ffff.
+#include <game/enhance/session.h>
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl_common.h>
@@ -1177,6 +1178,7 @@ void moby_init(uint32_t m, uint32_t cls) {
 // time +0x38 has passed (*(0x15f5cc)); 0xff marks the end of the used range and moves one
 // slot up. Also hands it its 0x80-byte pvar block (*(0x15ffe8)). 0 (and a debug print) if full.
 uint32_t moby_spawn(uint32_t cls) {
+    if (__builtin_expect(g_spawn_watch, 0) && !session_spawn_check(cls)) return 0;  // (a session lacking the class: refused)
     const uint32_t end = lwu(OV(0x0015ffe0));
     uint32_t m = lwu(OV(0x0015ffdc));
     for (; m < end; m += 0x100) {

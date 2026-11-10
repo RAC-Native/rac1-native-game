@@ -43,12 +43,14 @@ struct Capture {
     uint32_t level = 0, cls = 0, hero = 0, pool_lo = 0, pool_hi = 0;
     float hero_pos[3] = {}, hero_yaw = 0;
     uint32_t hero_state = 0;
+    uint32_t clock = 0;     // (the game's frame clock 0x15f5cc at the capture: classes keep times of it in their pvars)
     std::vector<Member> m;  // (the twin first)
     // the level's paths (the path table 0x1b04b0's entries: a point count, 12 bytes, then 16-byte points), for a view of the
     // level's own in the session (ctx_view: the level data a class reads, DESIGN 6.2)
     std::vector<std::vector<uint8_t>> paths;
 };
 constexpr uint32_t PATH_TABLE = 0x001b04b0u, PATH_COUNT = 0x00160104u, PATH_MAX = 176;
+constexpr uint32_t CLOCK = 0x0015f5ccu;  // (the game's frame clock: a class's timers are times of it)
 
 struct Twin {
     bool on = false;
@@ -74,6 +76,7 @@ struct Twin {
         float pos[3];
     };
     std::vector<Spawned> spawned;
+    std::map<uint32_t, size_t> spawned_all;  // (class -> count since its start: the 60-frame lines)
     std::vector<uint8_t> free_before;
     bool alone = false;
     std::vector<uint32_t> held;  // (RAC1_TWIN_ALONE: the mobys live at its start, sorted)
@@ -149,11 +152,15 @@ void log_frame(uint64_t frame) {
         }
         std::fflush(g_t.out);
     }
-    if (k % 60 == 0)
-        std::printf("[twin] %s frame +%u: state %02x at %.2f %.2f %.2f (from its start), hero at %.2f %.2f %.2f, health %d, %zu spawned\n",
+    for (const auto& sp : g_t.spawned) ++g_t.spawned_all[sp.cls];
+    if (k % 60 == 0) {
+        std::string all;
+        for (const auto& [c, n] : g_t.spawned_all) all += (all.empty() ? "" : ",") + std::to_string(c) + "x" + std::to_string(n);
+        std::printf("[twin] %s frame +%u: state %02x at %.2f %.2f %.2f (from its start), hero at %.2f %.2f %.2f, health %d, %zu spawned (in all: %s)\n",
                     g_t.native ? "native" : "session", k, lbu(m + 0x20), lwc1(m + 0x10) - g_t.origin[0], lwc1(m + 0x14) - g_t.origin[1],
                     lwc1(m + 0x18) - g_t.origin[2], lwc1(h + 0x10) - g_t.origin[0], lwc1(h + 0x14) - g_t.origin[1], lwc1(h + 0x18) - g_t.origin[2],
-                    lw(HEALTH), g_t.spawned.size());
+                    lw(HEALTH), g_t.spawned.size(), all.empty() ? "none" : all.c_str());
+    }
     g_t.spawned.clear();
 }
 
@@ -176,8 +183,8 @@ Member take(uint32_t m) {
 bool write_capture(const Capture& c) {
     FILE* f = std::fopen(g_t.file.c_str(), "wb");
     if (f == nullptr) return false;
-    put(f, "TWN2", 4);
-    const uint32_t head[] = {c.level, c.cls, c.hero, c.pool_lo, c.pool_hi, static_cast<uint32_t>(c.m.size()), c.hero_state};
+    put(f, "TWN3", 4);
+    const uint32_t head[] = {c.level, c.cls, c.hero, c.pool_lo, c.pool_hi, static_cast<uint32_t>(c.m.size()), c.hero_state, c.clock};
     put(f, head, sizeof head);
     put(f, c.hero_pos, 12);
     put(f, &c.hero_yaw, 4);
@@ -201,10 +208,10 @@ bool read_capture(Capture& c) {
     FILE* f = std::fopen(g_t.file.c_str(), "rb");
     if (f == nullptr) return false;
     char magic[4];
-    uint32_t head[7];
-    bool ok = get(f, magic, 4) && std::memcmp(magic, "TWN2", 4) == 0 && get(f, head, sizeof head) && get(f, c.hero_pos, 12) && get(f, &c.hero_yaw, 4);
+    uint32_t head[8];
+    bool ok = get(f, magic, 4) && std::memcmp(magic, "TWN3", 4) == 0 && get(f, head, sizeof head) && get(f, c.hero_pos, 12) && get(f, &c.hero_yaw, 4);
     if (ok) {
-        c.level = head[0], c.cls = head[1], c.hero = head[2], c.pool_lo = head[3], c.pool_hi = head[4], c.hero_state = head[6];
+        c.level = head[0], c.cls = head[1], c.hero = head[2], c.pool_lo = head[3], c.pool_hi = head[4], c.hero_state = head[6], c.clock = head[7];
         c.m.resize(std::min<uint32_t>(head[5], 16));
         for (Member& e : c.m) {
             uint32_t mh[6];
@@ -255,6 +262,7 @@ bool capture() {
     for (int i = 0; i < 3; ++i) c.hero_pos[i] = lwc1(h + 0x10 + 4 * static_cast<uint32_t>(i));
     c.hero_yaw = lwc1(h + 0x48);
     c.hero_state = lwu(g::HERO_STATE);
+    c.clock = lwu(OV(CLOCK));
     c.m.reserve(16);  // (t below stays valid)
     c.m.push_back(take(best));
     // the mobys it names (its record's and pvars' words into the level's moby pool): taken with it
@@ -327,6 +335,11 @@ bool spawn() {
     const Member& t = c.m[0];
     const float* o = g_t.spawn_at_set ? g_t.spawn_at : t.pos;
     const uint32_t h = lwu(g::HERO_MOBY);
+    // the game's frame clock as the native run's at the capture (the class's pvars hold times of it: a turret's next shot)
+    if (lwu(OV(CLOCK)) != c.clock) {
+        std::printf("[twin] session: the frame clock %u set to the native run's %u\n", lwu(OV(CLOCK)), c.clock);
+        sw(OV(CLOCK), c.clock);
+    }
     // each member's moby, block and pvars in the session
     std::vector<uint32_t> sm(c.m.size()), sblk(c.m.size()), spv(c.m.size());
     for (size_t i = 0; i < c.m.size(); ++i) {
@@ -404,6 +417,9 @@ bool spawn() {
             }
             sw(m + 0x78, spv[n]);
         }
+        // (its moby group +0x21: the session has none of its level's groups, and a moby of a group is updated only through
+        // its group's list: none, as an import_spawn's)
+        sb(m + 0x21, 0xff);
         moby_update_transform(m);
         g_t.seed[m] = TWIN_SEED + e.cls;
     }
@@ -513,6 +529,17 @@ void twin_frame(uint64_t frame) {
             if (g_t.out != nullptr) std::fclose(g_t.out), g_t.out = nullptr;
         }
     }
+}
+
+// orig: (host) see twin.h
+void twin_level_begin() {
+    if (!g_t.on) return;
+    if (g_twin_moby != 0 && g_t.started) std::printf("[twin] a level setup: the twin is gone with the level\n");
+    g_twin_moby = 0;
+    g_t.views_made = false;
+    g_t.held.clear();
+    g_t.seed.clear();
+    if (g_t.out != nullptr) std::fclose(g_t.out), g_t.out = nullptr;
 }
 
 // orig: (host) see twin.h

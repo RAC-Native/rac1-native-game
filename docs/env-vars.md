@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 447 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 449 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 25 | Settings a player may want to change: files, window, audio, the ISO |
 | [Debugging](#debugging-variables) | 326 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 96 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Automated testing](#automated-testing-variables) | 98 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -458,7 +458,9 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_SEQ_TRACE` | integer n; default 0 (off) | During a simulated-input script, every n frames prints the hero state, position, game mode, level and bolts. |
 | `RAC1_SEQ_WATCH` | integer moby class; default off | During a simulated-input script, traces every moby of that class each frame (state, flags, position, first pvar words), plus the hero-freeze word and the active camera. |
 | `RAC1_SESSION_HEAP_TEST` | number, 0 = off; default off | At start, exercises a session's memory and heap (the RAM's ends and mirrors, 100 rounds of blocks, the memory off and on again) and prints `[session] heap test: ok` or the failure. |
-| `RAC1_SESSION_IMPORT` | `<level>:<class>` entries separated by `,`; unset = off | A session's memory on, and at each level setup those classes of other levels imported: each from its asset pool block, its level's context made, under its own class id, its sounds on its level's bank, drawn by the modern renderer from its own level's class file ([The open engine](open-engine.md)). |
+| `RAC1_SESSION_IMPORT` | `<level>:<class>` entries or names of `data/pool/names.txt`, separated by `,`; unset = off | A session's memory on, and at each level setup those classes of other levels imported with what they spawn (their closure, the pool's dependencies): each from its asset pool block, its level's context made, under its own class id, its sounds on its level's bank, drawn by the modern renderer from its own level's class file ([The open engine](open-engine.md)). |
+| `RAC1_SESSION_CYCLE` | `<level>:<class>` or a name, `@<frame>`, then optionally `,<rounds>` (100) and `,<period>` (frames, 12, at least 6); unset = off | The residency test: that class imported, and from that frame in play unloaded and loaded again `<rounds>` times (two of it spawned in front of Ratchet after each load); `[session] cycle test ...: ok` when the heap, the class table and the renderer's import list end as after the first round ([The open engine](open-engine.md)). |
+| `RAC1_DEPS_PROBE` | number, 0 = off; default off | The spawn probe: every class a moby's update spawns, by the spawner's class, logged per level every 600 frames (`[deps] probe level N: class C spawned D xN,...`); `tools/overlay_match/deps.py --probe <logs>` merges them into `data/pool/spawns.txt` ([The open engine](open-engine.md)). |
 | `RAC1_SESSION_HIGH_CLASS` | `<class>` or `<class>:<session id>` (2048..7871); unset = off | A session's memory on, and the level's own class registered from a copy of its asset pool block in the session heap above 64 MB (with an id: besides the native class, under that session class id, the level's mobys of the class placed as it). The test of [The open engine](open-engine.md): the pictures and the game's state must be the original's. |
 | `RAC1_SESSION_MEM` | number, 0 = off; default off | Turns a custom-level session's memory on for the whole run: EE memory grown to 256 MB and the session heap. The original's levels must play the same with it ([The open engine](open-engine.md)). |
 | `RAC1_SESSION_RAM_MB` | power of two, 64 to 512; default 256 | The size a session grows EE memory to. |

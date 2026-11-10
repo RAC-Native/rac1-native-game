@@ -46,8 +46,9 @@ extern "C" {
 /* The ABI this header describes. 1: the first; 2: the level's own object classes, ray and near queries, damage both
    ways, the mod's own sounds, triggers; 3: the base level's objects spawned at run time (base_spawn); 4: the vendor, the
    pad held from the game, the HUD's panels, anchors and text sizes; 5: Kalebo III's enemies (base_option, base_hunt for more
-   classes), the weapons (docs/sdk.md lists what each version added). */
-#define RAC1_MOD_ABI 5
+   classes), the weapons; 6: classes of other levels (a level mod's `import` lines: import_class, import_spawn, import_load,
+   import_release) (docs/sdk.md lists what each version added). */
+#define RAC1_MOD_ABI 6
 
 #if defined(_WIN32)
 #define RAC1_MOD_EXPORT __declspec(dllexport)
@@ -350,6 +351,25 @@ typedef struct rac1_api {
     void (*weapon_allow)(const int32_t* items, int32_t n);
     /* that item's ammo to its most (the HUD's, the pickups'): 1, 0 not (not owned, an item with no ammo) */
     int (*ammo_fill)(int32_t item);
+
+    /* ======== ABI 6 (test RAC1_API_HAS(api, import_class)) ======== */
+    /* -- classes of other levels (docs/open-engine.md): a level mod's level.txt `import <name>` / `import <level>:<class>`
+          lines bring them, with what they spawn (their projectiles, effects, drops), into the level at its load. `name` is
+          one of the game's data/pool/names.txt ("gemlik.turret") or "<level>:<class>" -- */
+    /* the class id the import `name` has in the level now (its own id, the same as on its level, unless the base level has
+       that id: then one of 2048 and up); the base level's own class when `name` is one of its; -1 when it is not in the level */
+    int32_t (*import_class)(const char* name);
+    /* an object of that class (import_class's id) started at `pos` turned `yaw` radians, as its level first places one (its
+       size, its settings, its private values: what names other objects of its level, or its level's paths, is none); it
+       drops its bolts when killed, and is gone for good once killed. Its moby's address (as mobys_near's), 0 when it cannot
+       be (no such class, no room) */
+    uint32_t (*import_spawn)(int32_t cls, const float pos[3], float yaw);
+    /* the class `name` brought into the level now, with what it spawns (it is drawn from the next frame): its id, -1 when it
+       cannot be (no such class, the class table full, no pool) */
+    int32_t (*import_load)(const char* name);
+    /* the class `name` taken out of the level: its objects removed at once, its memory given back a few frames later, the
+       classes only it needed with it; how many classes went (0: not imported) */
+    int32_t (*import_release)(const char* name);
 } rac1_api;
 
 #define RAC1_API_HAS(api, field) ((api)->size >= offsetof(rac1_api, field) + sizeof((api)->field))

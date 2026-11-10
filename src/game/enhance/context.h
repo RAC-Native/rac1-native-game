@@ -35,6 +35,10 @@ const char* ctx_kind_name(CtxKind k);
 bool ctx_create(int level);
 // orig: (host) every context dropped (a level's full setup: a new session base): their heap blocks freed, the sites native
 void ctx_drop_all();
+// orig: (host) level `level`'s context dropped (its last class unloaded): its heap block freed, its sites native again
+void ctx_drop(int level);
+// orig: (host) the contexts that exist
+int ctx_count();
 // orig: (host) level `level` has a context
 bool ctx_exists(int level);
 // orig: (host) where level `level`'s context image is (its address CONTEXT_BASE there), 0 without a context

@@ -32,6 +32,8 @@ int twin_kind(uint32_t moby);
 void twin_start_tests();
 // orig: (host) a game frame begins (the host's loop, game thread): the capture, the spawn, the log
 void twin_frame(uint64_t frame);
+// orig: (host) a level's full setup (session_level_begin: the twin's heap blocks are freed): the twin and its views gone
+void twin_level_begin();
 
 }  // namespace rac1
 

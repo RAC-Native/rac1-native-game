@@ -21,9 +21,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BASE = 0x15EF00
-KEPT = {0x22, 0x24, 0x25, 0x26, 0x27, *range(0x74, 0x7C), 0xA0, 0xA1, 0xA2, 0xA3, *range(0xA8, 0xB0),
+KEPT = {0x21, 0x22, 0x24, 0x25, 0x26, 0x27, *range(0x74, 0x7C), 0xA0, 0xA1, 0xA2, 0xA3, *range(0xA8, 0xB0),
         *range(0x9C, 0xA0), *range(0x28, 0x2C)}  # (+0x9c: the collision queries' stamp, a counter of the whole game;
-#                                                     +0x28: the frame's chain of the mobys to update: bookkeeping)
+#                                                     +0x28: the frame's chain of the mobys to update: bookkeeping;
+#                                                     +0x21: its moby group, none in a session: its level's groups are not there)
 
 
 def read_log(path):

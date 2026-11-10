@@ -652,7 +652,8 @@ void import_classes(Level& L) {
         }
         L.imports[key] = std::move(c);
     }
-    if (!L.imports.empty()) std::printf("[mrp] level %d: %zu imported classes (another level's)\n", L.id, L.imports.size());
+    if (!L.imports.empty() || L.imports_gen != 0)
+        std::printf("[mrp] level %d: %zu imported classes (another level's), %zu moby textures\n", L.id, L.imports.size(), L.textures.size());
 }
 
 // orig: (host) the level's moby textures (textures.mrpt) decoded to RGBA (palette[CSM1 index], the GS's
@@ -930,6 +931,22 @@ void mrp_moby_import(int level, uint32_t cls) {
         if (k == key) return;
     g_imports.push_back(key);
     ++g_imports_gen;
+}
+
+// orig: (host) see mrp_moby_renderer.h
+void mrp_moby_import_remove(int level, uint32_t cls) {
+    std::lock_guard<std::mutex> lock(g_imports_mu);
+    const int key = level * 10000 + static_cast<int>(cls);
+    const auto it = std::find(g_imports.begin(), g_imports.end(), key);
+    if (it == g_imports.end()) return;
+    g_imports.erase(it);
+    ++g_imports_gen;
+}
+
+// orig: (host) see mrp_moby_renderer.h
+int mrp_moby_imports_count() {
+    std::lock_guard<std::mutex> lock(g_imports_mu);
+    return static_cast<int>(g_imports.size());
 }
 
 // orig: (host) see mrp_moby_renderer.h

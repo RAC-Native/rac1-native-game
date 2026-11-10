@@ -3,6 +3,7 @@
 
 #include <formats/scene_wad.h>
 #include <game/ovl/ovl_common.h>
+#include <game/ovl/ovl_reloc.h>
 #include <platform/platform.h>
 #include <runtime/kernel/disc.h>
 #include <runtime/kernel/ee_memory.h>
@@ -60,6 +61,7 @@ struct LevelFiles {
     // the overlay's data sections 0..5 as loaded (0x15ef00 up to its code: a bss as zeros) and its code section
     std::vector<uint8_t> image;
     uint32_t code_lo = 0, code_hi = 0;
+    std::vector<uint8_t> gameplay;  // the gameplay file, unpacked (the region's: NTSC's or PAL's)
 };
 
 bool read_level(int level, LevelFiles& f, std::string* why) {
@@ -78,6 +80,15 @@ bool read_level(int level, LevelFiles& f, std::string* why) {
     }
     const auto* d = reinterpret_cast<const uint8_t*>(wad.data()) + at;
     f.data.assign(d, d + n);
+    {  // the gameplay file (the disc's region's): unpacked, for the classes' first placements
+        uint32_t go = 0, gn = 0;
+        std::memcpy(&go, wad.data() + (region_other() ? 0x20 : 0x18), 4);
+        std::memcpy(&gn, wad.data() + (region_other() ? 0x24 : 0x1c), 4);
+        const size_t ga = static_cast<size_t>(go) * 2048, gs = static_cast<size_t>(gn) * 2048;
+        if (gn != 0 && ga + gs <= wad.size() &&
+            !decompress_wad(std::span<const std::byte>(wad.data() + ga, gs), f.gameplay))
+            f.gameplay.clear();
+    }
     std::memcpy(f.parts, f.data.data(), sizeof f.parts);
     auto part_ok = [&](int k) {
         return f.parts[2 * k] > 0 && f.parts[2 * k + 1] > 0 && static_cast<size_t>(f.parts[2 * k]) + static_cast<size_t>(f.parts[2 * k + 1]) <= f.data.size();
@@ -160,6 +171,94 @@ std::string hex(uint32_t v) {
 
 fs::path dir() { return fs::path(pool_dir()); }
 
+void put32(std::vector<uint8_t>& b, uint32_t v) {
+    const size_t at = b.size();
+    b.resize(at + 4);
+    std::memcpy(b.data() + at, &v, 4);
+}
+
+// The level's classes' first placements (placements/levelNN.bin): "PLC1", the count, then per class: class, record size,
+// pvar size, link / pointer / shared counts, the record, the pvars, the three offset lists
+std::vector<uint8_t> placements(const LevelFiles& f, size_t* count) {
+    const std::vector<uint8_t>& g = f.gameplay;
+    std::vector<uint8_t> out;
+    out.insert(out.end(), {'P', 'L', 'C', '1'});
+    put32(out, 0);
+    *count = 0;
+    if (g.size() < 0xa0) return out;
+    uint32_t G[36];
+    std::memcpy(G, g.data(), sizeof G);
+    std::vector<uint32_t> offs;
+    for (uint32_t v : G)
+        if (v != 0 && v < g.size()) offs.push_back(v);
+    offs.push_back(static_cast<uint32_t>(g.size()));
+    std::sort(offs.begin(), offs.end());
+    auto block = [&](uint32_t field, size_t* n) -> const uint8_t* {
+        const uint32_t o = G[field / 4];
+        *n = 0;
+        if (o == 0 || o >= g.size()) return nullptr;
+        *n = *std::upper_bound(offs.begin(), offs.end(), o) - o;
+        return g.data() + o;
+    };
+    size_t tn = 0, dn = 0, ln = 0, pn = 0, sn = 0, mn = 0;
+    const uint8_t* table = block(0x54, &tn);
+    const uint8_t* data = block(0x58, &dn);
+    const uint8_t* links = block(0x50, &ln);
+    const uint8_t* ptrs = block(0x5c, &pn);
+    const uint8_t* shared = block(0x4c, &sn);
+    const uint8_t* mo = block(0x44, &mn);
+    if (mo == nullptr || mn < 0x10) return out;
+    // (pvar index, offset) rows to the first negative index
+    auto rows = [](const uint8_t* b, size_t n, int32_t pi, std::vector<uint32_t>& to) {
+        for (size_t r = 0; b != nullptr && r + 8 <= n && rd32(b + r) >= 0; r += 8)
+            if (rd32(b + r) == pi) to.push_back(static_cast<uint32_t>(rd32(b + r + 4)));
+    };
+    std::set<int32_t> seen;
+    const int32_t n1 = rd32(mo);
+    size_t p = 0x10;
+    for (int32_t i = 0; i < n1 && p + 0x78 <= mn; ++i) {
+        const int32_t sz = rd32(mo + p);
+        if (sz < 0x78 || p + static_cast<size_t>(sz) > mn) break;
+        const int32_t cls = rd32(mo + p + 0x18);
+        if (cls > 0 && seen.insert(cls).second) {
+            std::vector<uint8_t> pv;
+            std::vector<uint32_t> ln2, pt2, sh2;
+            const int32_t pi = rd32(mo + p + 0x58);
+            if (pi >= 0 && table != nullptr && static_cast<size_t>(pi) * 8 + 8 <= tn) {
+                const int32_t off = rd32(table + 8 * pi), size = rd32(table + 8 * pi + 4);
+                if (off >= 0 && size > 0 && data != nullptr && static_cast<size_t>(off) + static_cast<size_t>(size) <= dn) {
+                    pv.assign(data + off, data + off + size);
+                    rows(links, ln, pi, ln2);
+                    rows(ptrs, pn, pi, pt2);
+                    // the shared pvar pointers: (data size, count, -, -), the data, then (pvar index | offset << 16, data offset)
+                    if (shared != nullptr && sn >= 0x10) {
+                        const int32_t ds = rd32(shared), dc = rd32(shared + 4);
+                        for (int32_t k = 0; ds >= 0 && k < dc && 0x10 + static_cast<size_t>(ds) + 8 * static_cast<size_t>(k) + 8 <= sn; ++k) {
+                            const uint32_t w = static_cast<uint32_t>(rd32(shared + 0x10 + ds + 8 * k));
+                            if (static_cast<int32_t>(w & 0xffffu) == pi) sh2.push_back(w >> 16);
+                        }
+                    }
+                }
+            }
+            put32(out, static_cast<uint32_t>(cls));
+            put32(out, static_cast<uint32_t>(sz));
+            put32(out, static_cast<uint32_t>(pv.size()));
+            put32(out, static_cast<uint32_t>(ln2.size()));
+            put32(out, static_cast<uint32_t>(pt2.size()));
+            put32(out, static_cast<uint32_t>(sh2.size()));
+            out.insert(out.end(), mo + p, mo + p + sz);
+            out.insert(out.end(), pv.begin(), pv.end());
+            for (const auto* l : {&ln2, &pt2, &sh2})
+                for (uint32_t v : *l) put32(out, v);
+            ++*count;
+        }
+        p += static_cast<size_t>(sz);
+    }
+    const uint32_t c = static_cast<uint32_t>(*count);
+    std::memcpy(out.data() + 4, &c, 4);
+    return out;
+}
+
 std::string stamp_disc() { return disc_boot_elf(); }
 
 // the stamp's version and disc, "" when there is none
@@ -226,7 +325,8 @@ bool pool_build(std::string* why) {
                       "# class <level> <id> <block offset> <block size> <hash> <update function> <word 2c> <texture remap> <sounds> (hex)\n";
     idx += "pool " + std::to_string(POOL_VERSION) + " " + stamp_disc() + "\n";
     size_t rows = 0, levels = 0;
-    std::vector<std::pair<int, std::vector<uint8_t>>> contexts, banks;
+    std::vector<std::pair<int, std::vector<uint8_t>>> contexts, banks, places;
+    size_t placed = 0;
     for (int level = 0; level < 19; ++level) {
         if (!disc_has_level(level)) continue;
         LevelFiles f;
@@ -321,6 +421,11 @@ bool pool_build(std::string* why) {
             if (bo > 0 && bn > 0 && static_cast<size_t>(bo) + static_cast<size_t>(bn) <= f.data.size())
                 banks.emplace_back(level, std::vector<uint8_t>(f.data.begin() + bo, f.data.begin() + bo + bn));
         }
+        {  // the classes' first placements (a session spawns an imported class from its own)
+            size_t n = 0;
+            places.emplace_back(level, placements(f, &n));
+            placed += n;
+        }
         {  // the level's context image (its data sections, for a session's context of the level: context.h)
             std::vector<uint8_t> img(16 + f.image.size());
             const uint32_t head[4] = {0x31585443u /* CTX1 */, CONTEXT_BASE, f.code_lo, f.code_hi};
@@ -361,12 +466,22 @@ bool pool_build(std::string* why) {
             return false;
         }
     }
+    fs::create_directories(dir() / "placements", ec);
+    for (const auto& [level, b] : places) {
+        char name[32];
+        std::snprintf(name, sizeof name, "level%02d.bin", level);
+        if (!platform::write_file_replace(dir() / "placements" / name, b.data(), b.size())) {
+            *why = "the pool's placements could not be written in " + (dir() / "placements").string();
+            return false;
+        }
+    }
     if (!platform::write_file_replace(dir() / "classes.bin", blocks.data(), blocks.size()) || !platform::write_file_replace(dir() / "pool.idx", idx) ||
         !platform::write_file_replace(dir() / "pool.json", json)) {
         *why = "the pool's files could not be written in " + dir().string();
         return false;
     }
-    std::printf("[pool] made from %s: %zu levels, %zu class rows, %zu distinct blocks, %.1f MB\n", stamp_disc().c_str(), levels, rows,
+    std::printf("[pool] made from %s: %zu levels, %zu class rows (%zu with a placement), %zu distinct blocks, %.1f MB\n", stamp_disc().c_str(), levels, rows,
+                placed,
                 [&] {
                     size_t n = 0;
                     for (const auto& [h2, v] : by_hash) n += v.size();
@@ -470,6 +585,124 @@ void pool_report() {
     std::printf("all levels: %zu class rows, %.1f MB of class blocks; %zu distinct class ids, %zu in more than one level, of those %zu with "
                 "different bytes; classes.bin %zu blocks, %.1f MB\n",
                 rows, bytes / 1048576.0, levels_of.size(), multi, differ, distinct_blocks.size(), pooled / 1048576.0);
+}
+
+// orig: (host) see pool.h
+bool pool_placement(int level, uint32_t cls, PoolPlacement& out) {
+    static std::map<int, std::vector<uint8_t>> files;  // (each level's file read once)
+    auto it = files.find(level);
+    if (it == files.end()) {
+        char name[32];
+        std::snprintf(name, sizeof name, "level%02d.bin", level);
+        std::ifstream in(dir() / "placements" / name, std::ios::binary);
+        it = files.emplace(level, std::vector<uint8_t>((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>())).first;
+    }
+    const std::vector<uint8_t>& b = it->second;
+    if (b.size() < 8 || std::memcmp(b.data(), "PLC1", 4) != 0) return false;
+    size_t p = 8;
+    for (int32_t k = 0, n = rd32(b.data() + 4); k < n && p + 24 <= b.size(); ++k) {
+        uint32_t h[6];
+        std::memcpy(h, b.data() + p, sizeof h);
+        p += sizeof h;
+        const size_t need = static_cast<size_t>(h[1]) + h[2] + 4 * (static_cast<size_t>(h[3]) + h[4] + h[5]);
+        if (p + need > b.size()) return false;
+        if (h[0] == cls) {
+            out.rec.assign(b.begin() + static_cast<long>(p), b.begin() + static_cast<long>(p + h[1]));
+            p += h[1];
+            out.pvars.assign(b.begin() + static_cast<long>(p), b.begin() + static_cast<long>(p + h[2]));
+            p += h[2];
+            for (auto [list, cnt] : {std::pair{&out.links, h[3]}, std::pair{&out.ptrs, h[4]}, std::pair{&out.shared, h[5]}}) {
+                list->clear();
+                for (uint32_t j = 0; j < cnt; ++j, p += 4) list->push_back(static_cast<uint32_t>(rd32(b.data() + p)));
+            }
+            return true;
+        }
+        p += need;
+    }
+    return false;
+}
+
+namespace {
+std::map<std::pair<int, uint32_t>, PoolDeps> g_deps;
+std::set<int> g_deps_read;
+std::vector<std::pair<std::string, std::pair<int, uint32_t>>> g_names;
+bool g_names_read = false;
+
+uint32_t num(const std::string& s) { return static_cast<uint32_t>(std::strtoul(s.c_str(), nullptr, 10)); }
+std::vector<uint32_t> id_list(const std::string& s) {
+    std::vector<uint32_t> v;
+    for (size_t p = 0; s != "-" && p < s.size();) {
+        const size_t q = std::min(s.find(',', p), s.size());
+        v.push_back(num(s.substr(p, q - p)));
+        p = q + 1;
+    }
+    return v;
+}
+
+void read_names() {
+    if (g_names_read) return;
+    g_names_read = true;
+    std::ifstream in("data/pool/names.txt");
+    std::string line;
+    while (std::getline(in, line)) {
+        std::istringstream s(line);
+        std::string name, lc;
+        if (!(s >> name >> lc) || name[0] == '#') continue;
+        unsigned l = 0, c = 0;
+        if (std::sscanf(lc.c_str(), "%u:%u", &l, &c) == 2) g_names.push_back({name, {static_cast<int>(l), c}});
+    }
+}
+}  // namespace
+
+// orig: (host) see pool.h
+const PoolDeps* pool_deps(int level, uint32_t cls) {
+    if (g_deps_read.insert(level).second) {
+        char name[32];
+        std::snprintf(name, sizeof name, "level%02d.txt", level);
+        std::ifstream in(dir() / "deps" / name);
+        if (!in) std::fprintf(stderr, "[pool] no dependencies report for level %d (%s): tools/overlay_match/deps.py makes it\n", level, (dir() / "deps" / name).string().c_str());
+        std::string line;
+        while (std::getline(in, line)) {
+            std::istringstream s(line);
+            std::string kind, c, k1, own, k2, eng, k3, seen, k4, reads;
+            if (!(s >> kind >> c >> k1 >> own >> k2 >> eng >> k3 >> seen >> k4 >> reads) || kind != "class" || k3 != "seen") continue;
+            PoolDeps d;
+            d.own = id_list(own);
+            d.engine = id_list(eng);
+            d.seen = id_list(seen);
+            d.reads = reads;
+            g_deps[{level, num(c)}] = d;
+        }
+    }
+    const auto it = g_deps.find({level, cls});
+    return it != g_deps.end() ? &it->second : nullptr;
+}
+
+// orig: (host) see pool.h
+bool pool_name(const std::string& name, int* level, uint32_t* cls) {
+    unsigned l = 0, c = 0;
+    char extra = 0;
+    if (std::sscanf(name.c_str(), "%u:%u%c", &l, &c, &extra) == 2 && l < 19) {
+        *level = static_cast<int>(l);
+        *cls = c;
+        return true;
+    }
+    read_names();
+    for (const auto& [n, lc] : g_names)
+        if (n == name) {
+            *level = lc.first;
+            *cls = lc.second;
+            return true;
+        }
+    return false;
+}
+
+// orig: (host) see pool.h
+std::string pool_name_of(int level, uint32_t cls) {
+    read_names();
+    for (const auto& [n, lc] : g_names)
+        if (lc.first == level && lc.second == cls) return n;
+    return std::to_string(level) + ":" + std::to_string(cls);
 }
 
 // ---- the check against the native loads ----

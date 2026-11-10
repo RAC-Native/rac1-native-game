@@ -32,7 +32,8 @@ Contents:
 | 2 | the first with level objects | level objects of the level's own classes (`class_define` .. `object_at`, `rac1_class_def`, `rac1_spawn`), `collide_ray`, `objects_near`, `mobys_near`, `hero_damage`, `hit_send`, `hit_take`, the level's own sounds (`sfx_*`), triggers (`trigger_find`, `trigger_inside`, the `trigger` callback), `frame_count` |
 | 3 | the first with base levels | the base level's objects at run time: `base_spawn`, `base_moby`, `base_free` (level.txt's `spawn` lines) |
 | 4 | the first with the vendor | `vendor_open`, `input_hold`, the HUD's panels, anchors and sizes (`hud_rect`, `hud_text_ex`, `hud_text_width`, `RAC1_HUD_*`), `base_hunt`, `light_add`; level.txt's `update_all` line |
-| 5 | this one | Kalebo III's enemies: `base_option` (`RAC1_BASE_WEAPON`, `RAC1_BASE_TROOPS`), `base_handle`, `base_hunt` and `base_spawn` for the bomb bots 52, the Gadgetron robots 541, the jetpack troopers 638 and the dropships 1356; the weapons: `weapons_owned`, `weapon_equip`, `weapon_allow`, `ammo_fill` |
+| 5 | the first with Kalebo III's enemies | Kalebo III's enemies: `base_option` (`RAC1_BASE_WEAPON`, `RAC1_BASE_TROOPS`), `base_handle`, `base_hunt` and `base_spawn` for the bomb bots 52, the Gadgetron robots 541, the jetpack troopers 638 and the dropships 1356; the weapons: `weapons_owned`, `weapon_equip`, `weapon_allow`, `ammo_fill` |
+| 6 | this one | classes of other levels (level.txt's `import` lines): `import_class`, `import_spawn`, `import_load`, `import_release` |
 
 How compatibility works:
 
@@ -273,6 +274,25 @@ Test `RAC1_API_HAS(api, base_option)` before using them (a game older than ABI 5
 | `int weapon_equip(int32_t item)` | that weapon in his hand as the quick select puts it there (the request P+0x20b8 when Triangle is let go: the game's switch follows, its animation and sound, in the next frames; the ammo clamped to its most). 1 asked (or in hand already); 0 not: not owned, not allowed (`weapon_allow`), not in play (a menu, a cutscene, from `hud`), or where the quick select could not be opened now: swinging or throwing the wrench (state 0x13 and the like), an item being switched or used, in a vehicle, the ship or on a hoverboard. Standing, walking, running, crouching, strafing, jumping and falling it works. Call it again a frame later when it says 0 |
 | `void weapon_allow(const int32_t* items, int32_t n)` | only those `n` weapons can be chosen: the others are not shown in the quick select's ring (empty slots), the PC's next / previous weapon skips them, Triangle's double press does not swap to one, and one the game asks for itself (its return to the weapon used before a gadget, a level's own build of the double press) is not taken; one that reached his hand anyway is put back for the last allowed item he held (else the wrench), unless a switch to an allowed weapon is under way (`weapon_equip`'s, the quick select's): that one is left to finish. So `weapon_allow` of a new weapon without the one in hand and `weapon_equip` of the new one, in either order, in one frame or across frames, end with the new one in hand (no need to keep the old one allowed until the switch is done). Only weapons are limited: the wrench and the gadgets never. NULL or 0: all again. Off at every level's start |
 | `int ammo_fill(int32_t item)` | that item's ammo (0x13d428) to its most (the item table's, as the HUD and the pickups): 1; 0 not (not owned, an item with no ammo) |
+
+### Classes of other levels (ABI 6)
+
+Test `RAC1_API_HAS(api, import_class)` first. A level mod's `level.txt` brings classes of other planets with `import <name>`
+or `import <level>:<class>` lines ([Level mods](mods.md#the-level-folder); the names are the game's
+`data/pool/names.txt`), each with what it spawns (its shots, effects, debris: [The open engine](open-engine.md#dependencies)).
+They are in the level from its load; these services spawn them and bring them in or out during play. `name` is a name or
+`"<level>:<class>"`.
+
+| Service | Does |
+|---|---|
+| `int32_t import_class(const char* name)` | the class id the import has in the level now (its own id, as on its planet, unless the base level has that id: then one of 2048 and up), for `import_spawn`, `mobys_near` and the moby's +0xa6; the base level's own class when `name` is one of its; -1 when it is not in the level |
+| `uint32_t import_spawn(int32_t cls, const float pos[3], float yaw)` | an object of that class started at `pos`, turned `yaw` radians, as its planet first places one: its size, update distance, settings and private values (what names other objects of its planet, or its planet's shared data, is none); it drops its bolts when killed and is gone once killed. Its moby's address, 0 when it cannot be (no such class, no room in the moby array, not in play) |
+| `int32_t import_load(const char* name)` | the class brought into the level now, with what it spawns (drawn from the next frame; the modern renderer loads the level's moby assets again, about 25 ms): its id, -1 when it cannot be |
+| `int32_t import_release(const char* name)` | the class taken out of the level: its objects removed at once, its memory given back a few frames later, the classes only it needed with it; how many classes went (0: not one of the level's imports). A class `level.txt` imports is back at the level's next load |
+
+What works so far: classes that read no level data of their own planet (their paths, groups, cameras: the composer's
+`compose.log` says `reads -` for them); the game's tests use Umbris's turret (`umbris.turret`) and Orxon's spore plant
+(`orxon.spore_plant`). A class that reads its planet's paths does not find them yet.
 
 ### Classes and objects (ABI 2)
 
