@@ -1969,6 +1969,14 @@ void sim_host_press(const char* keys, size_t pos) {
 // below it: tools/overlay_match's maps) - the lights, the light sets, the hero, the camera, the level's state -, and the moby
 // array (0x15ffd8 .. 0x15ffe0, a moby 0x100 bytes, the end's sentinel with it)
 void draw_memory_take() {
+    // (RAC1_PERF_DRAW_MEM; 0: copied every frame, as before) the copy's readers are the modern lighting and the ambient particles
+    // (mrp_lighting.cpp, mrp_particles.cpp): with both off - the original graphics - nothing reads it, and the megabyte is not
+    // copied (no range: a read would go to the live memory, and RAC1_DRAW_MEM_CHECK=1 would name it)
+    static const bool always = rac1::perf::switch_value("RAC1_PERF_DRAW_MEM", 1) == 0;
+    if (!always && g_modern_shadows == 0 && g_ambient_particles <= 0) {
+        rac1::ee_copy_take(nullptr, 0);
+        return;
+    }
     rac1::EeCopyRange r[3];
     r[0] = {0x00130000u, 0x00220000u};
     const uint32_t first = lwu(OV(0x0015ffd8u)), last = lwu(OV(0x0015ffe0u));

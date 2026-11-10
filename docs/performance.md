@@ -618,6 +618,13 @@ thread, `RAC1_PIPELINE=1`, the last 1500 of 2400 frames of a forward walk) on Ke
   into four sums. It stays a hash of the chain's bytes at the time of the note: a count of the frames built instead was
   weighed and left, since a chain rebuilt with the same bytes must still be found, and each level runs its own copy of
   the routines that start a chain. `Chain capture / scene start`: Kerwan 0.29 to 0.24 ms a frame, Rilgar 0.23 to 0.19.
+- **The draw's copy of the game's memory** (`RAC1_PERF_DRAW_MEM`, `orig_main.cpp` `draw_memory_take`): a pipelined frame's
+  preparation copied about 1 MB (the executable's and the overlay's data, the moby array) for the drawing to read beside
+  the next update. Its readers are the modern lighting and the ambient particles (`mrp_lighting.cpp`, `mrp_particles.cpp`,
+  through `ee_copy.h`); with both off - the original graphics - nothing reads it, and it is not taken.
+  `RAC1_DRAW_MEM_CHECK=1` names any read of the game's memory the drawing makes outside the copy: none over the 19 levels
+  widened with LOD High on the game thread. The main thread's `Prepare` stage: Kerwan 0.074 to 0.017 ms a frame, Rilgar
+  0.075 to 0.015.
 ## Switches to compare
 
 These are testing variables: they are honoured in a headless run, or in a window started with `--debug-tools`
@@ -664,6 +671,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_SCENE_KEEP=0` | the moby scene of the shadow run a new frame every time, its vectors grown from nothing |
 | `RAC1_PERF_UPLOAD_MEMO_KEEP=0` | a skipped upload piece keeps the write log's number of its last write (its checks walk the log back to it) |
 | `RAC1_PERF_CHAIN_HASH=0` | the frame's chain hashed a word at a time into one sum |
+| `RAC1_PERF_DRAW_MEM=0` | the drawing's copy of the game's memory taken every frame, whatever the options |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
