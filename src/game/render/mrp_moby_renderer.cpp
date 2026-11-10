@@ -2411,7 +2411,7 @@ void build_frame() {
     }
     if (g_mrp_guest_on.load()) append_guest(F, f, vinv, vp, turned, turn);
     if (!caching) return;
-    // the cached mobys the frame did not draw: kept while the moby is alive, of its class and still (the moby's EE state now;
+    // the cached mobys the frame did not draw: kept while the moby is alive, shown, of its class and still (the moby's EE state now;
     // a slot reused or a moby moved drops its copy), drawn as casters within reach of the shadows
     const glm::dvec3 cam = vinv.cam;
     for (auto it = g_mcache.begin(); it != g_mcache.end();) {
@@ -2422,7 +2422,9 @@ void build_frame() {
         }
         const uint32_t mb = it->first;
         const int8_t state = static_cast<int8_t>(lbu(mb + 0x20));
-        bool keep = state >= 0 && lh(mb + 0xa6) == c.class_id;
+        // (and not hidden by the game: the draw loop 0x2559c0 skips a moby whose +0x34 has 0x81 - Ratchet and Clank while Giant
+        // Clank stands in for them on Quartu, objects of its arena hidden in place - and its copy cast a shadow with nothing there, #74)
+        bool keep = state >= 0 && lh(mb + 0xa6) == c.class_id && (lhu(mb + 0x34) & 0x81u) == 0;
         for (int i = 0; keep && i < 3; ++i) keep = std::fabs(lwc1(mb + 0x10 + 4 * static_cast<uint32_t>(i)) - c.pos[i]) < 1e-3f;
         if (!keep) {
             it = g_mcache.erase(it);
