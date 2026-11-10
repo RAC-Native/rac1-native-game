@@ -165,7 +165,7 @@ static const challenge_def CHALLENGES[] = {
     {"Grindscarponi: Discesa", "3 corsie di mine, poi l'ultima ondata", RAIL, 90, 1, {{8, 6, 25, "RRB"}}, 0, 20,
      0, 0, W_ANY, 3000, 0, "lane_c lane_l lane_r", "rail_course", 1},
     {"La grande fuga", "percorso, round, lava, fuga, portale", RAIL, 90, 3, {{10, 7, 30, "RRB"}, {12, 8, 28, "RRBF"}, {2, 2, 30, "R"}},
-     0, 25, 0, 0, W_ANY, 8000, 0, "lane_c lane_l lane_r", "rail_course", 1, "escape", "prova"},
+     0, 25, 0, 0, W_ANY, 8000, 0, "lane_c lane_l lane_r", "rail_course", 1, "escape", "quartu"},
     {"Test Quartu", "prova: due robot nell'arena di Quartu", WAVES, 0, 1, {{2, 2, 30, "R"}}, 0, 0, 0, 0, W_ANY, 1000, 0, NULL, NULL,
      0, NULL, "quartu"},
     {"Impossibile", "il campionato, 50 round", CUP, 0, 50, {{0}}, 0, 20, 0, 0, W_ANY, 100000, 1},
@@ -2274,13 +2274,16 @@ static void section_entered(void* user, const char* name, const char* entry) {
     const char* sec = CHALLENGES[s.ch].section;
     if (sec == NULL || strcmp(name, sec) != 0 || s.mode != FIGHT || rails.phase != 5 || entry[0] == 0) return;
     char n[40];
-    snprintf(n, sizeof n, "%s_in", sec);  /* (its rail: Ratchet goes on grinding on it) */
-    const int32_t r = api->rail_find(n);
-    if (r != 0 && !api->hero_rail_attach(r, 0.0f, 1)) api->log("the section: its rail did not take Ratchet");
     snprintf(n, sizeof n, "%s_piano", sec);  /* (a death there: back on its ground, not at the entry: maybe in the air) */
     api->checkpoint_set(n);
     float c[3], yaw = 0.0f;
     api->checkpoint_get(c, &yaw, NULL, 0);
+    snprintf(n, sizeof n, "%s_in", sec);  /* (its rail: Ratchet goes on grinding on it) */
+    const int32_t r = api->rail_find(n);
+    if (r != 0 && !api->hero_rail_attach(r, 0.0f, 1)) {  /* (no Grind Boots: Test Quartu needs none) */
+        api->log("the section: its rail did not take Ratchet (no Grind Boots?): put on its ground");
+        hero_move(c, yaw);
+    }
     for (int k = 0; k < 2; ++k) {
         const float side = k ? 6.0f : -6.0f;
         rails.sec_pts[k][0] = c[0] + 14.0f * cosf(yaw) - side * sinf(yaw);
@@ -2930,13 +2933,21 @@ static void test(void* user, const char* text, uint64_t frame) {
         return;
     }
     if (s.mine && strcmp(text, "arena_quartu") == 0) {
-        /* (a test of Quartu's world as a section: Ratchet there at 600, two of Kalebo III's robots by him at 800, where
-           they are every second) */
+        /* (a test of Quartu's world as a section: Ratchet there at 600, on its rail quartu_in down into its arena (its
+           entry is the rail's start, high in the air), two of Kalebo III's robots by him at 800, where they are every
+           second) */
         static uint32_t qr[2];
+        if (frame == 100) api->sb(GRIND_BOOTS, 1);  /* (a test's game has no Grindscarponi) */
         if (frame == 600) {
             char b[64];
             snprintf(b, sizeof b, "test: into Quartu's world: %d", api->section_enter("quartu", "arrivo", 0));
             api->log(b);
+        }
+        if (frame == 610) {  /* (the switch made) */
+            char b[64];
+            snprintf(b, sizeof b, "test: on the rail quartu_in: %d", api->hero_rail_attach(api->rail_find("quartu_in"), 0.0f, 1));
+            api->log(b);
+            api->checkpoint_set("quartu_piano");
         }
         float h[3];
         pos_of(api->hero(), h);

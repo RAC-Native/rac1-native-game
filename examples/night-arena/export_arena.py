@@ -118,8 +118,16 @@ CLASSES = [              # the level's own classes: (name, model, its line's opt
 # with another planet's sky round it
 SECTIONS = [("prova", {"sky": 15, "background": (34, 44, 92), "fog": (34, 44, 92), "death_height": -12.0}),
             # a game planet's world as a section (no collections: its scenery, collision, sky and music are the planet's, its
-            # coordinates too; none of its objects): Quartu's, by the arena where its Giant Clank fights (a test, the plugin's)
-            ("quartu", {"world": "quartu", "entries": [("arrivo", (130.5, 222.4, 26.0), 0.0)], "death_height": 8.0})]
+            # coordinates too; none of its objects): Quartu's, the arena where its Giant Clank fights, where "La grande fuga"
+            # ends. The escape goes on there on the rail quartu_in, from high south of the arena down onto its floor (the
+            # entry arrivo at its start, the checkpoint quartu_piano on the floor). Its strip is the composer's (in its copy of
+            # Quartu's collision); no `mesh`: a rail's model is not drawn in a world's section yet (and it would be one more
+            # host mesh before the classes' models)
+            ("quartu", {"world": "quartu", "entries": [("arrivo", (130.5, 186.0, 61.0), 1.5708)],
+                        "checkpoints": [("quartu_piano", (130.5, 222.4, 26.0), 1.5708)],
+                        "rails": [("quartu_in", [(130.5, 186.0, 60.0), (130.5, 200.0, 48.0), (130.5, 210.0, 36.0),
+                                                 (130.5, 216.0, 28.0)])],
+                        "death_height": 8.0})]
 
 errors, warnings = [], []
 
@@ -802,6 +810,10 @@ def export_section(level, name, opts, depsgraph, first):
              "section %s remove respawn reset" % name, "  world %s" % opts["world"]]
         for e, at, a in opts.get("entries", []):
             L.append("  entry %s %s %s %s %s" % (e, num(at[0]), num(at[1]), num(at[2]), num(a)))
+        for c, at, a in opts.get("checkpoints", []):
+            L.append("  checkpoint %s %s %s %s %s" % (c, num(at[0]), num(at[1]), num(at[2]), num(a)))
+        for r, pts in opts.get("rails", []):  # (added to the planet's own rails)
+            L.append("  rail %s %s" % (r, " ".join("%s %s %s" % (num(x), num(y), num(z)) for x, y, z in pts)))
         if opts.get("death_height") is not None:  # (the planet's coordinates: not main's, which is the arena's)
             L.append("  death_height %s" % num(opts["death_height"]))
         L.append("end")
