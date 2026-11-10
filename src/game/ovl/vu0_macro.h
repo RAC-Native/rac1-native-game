@@ -30,16 +30,75 @@ RAC1_HOT_INLINE void sqc2(uint32_t a, const Vf& r) {
     }
     for (int i = 0; i < 4; ++i) swc1(a + 4 * static_cast<uint32_t>(i), r.v[i]);
 }
-// orig: (helper) the lane ops: a op b by the VU rules
-RAC1_HOT_INLINE float mul(float a, float b) { return vuc(vuc(a) * vuc(b)); }
+// orig: (helper) the lane ops by the VU rules, rule by rule: the operands clamped (vuc), the op, the result clamped. Out of line:
+// the lane ops below reach them only for an operand with exponent 255, or with the raw forms off (RAC1_PERF_VU0_RAW=0, =2:
+// compared; runtime/ee/ps2_fpu.h)
+[[gnu::noinline]] inline float mul_rules(float a, float b) {
+    const float r = vuc(vuc(a) * vuc(b));
+    if (__builtin_expect(ps2fpu::g_vu0_raw == 2, 0)) raw_check(ps2fpu::g_vu0_raw_check, 2, a * b, r, a, b);
+    return r;
+}
+[[gnu::noinline]] inline float add_rules(float a, float b) {
+    const float r = vuc(vuc(a) + vuc(b));
+    if (__builtin_expect(ps2fpu::g_vu0_raw == 2, 0)) raw_check(ps2fpu::g_vu0_raw_check, 0, a + b, r, a, b);
+    return r;
+}
+[[gnu::noinline]] inline float sub_rules(float a, float b) {
+    const float r = vuc(vuc(a) - vuc(b));
+    if (__builtin_expect(ps2fpu::g_vu0_raw == 2, 0)) raw_check(ps2fpu::g_vu0_raw_check, 1, a - b, r, a, b);
+    return r;
+}
+[[gnu::noinline]] inline float madd_rules(float acc, float a, float b) {
+    const float r = vuc(vuc(acc) + vuc(a) * vuc(b));
+    if (__builtin_expect(ps2fpu::g_vu0_raw == 2, 0)) raw_check(ps2fpu::g_vu0_raw_check, 3, acc + a * b, r, a, b, acc);
+    return r;
+}
+[[gnu::noinline]] inline float msub_rules(float acc, float a, float b) {
+    const float r = vuc(vuc(acc) - vuc(a) * vuc(b));
+    if (__builtin_expect(ps2fpu::g_vu0_raw == 2, 0)) raw_check(ps2fpu::g_vu0_raw_check, 4, acc - a * b, r, a, b, acc);
+    return r;
+}
+// orig: (helper) the lane ops: a op b by the VU rules. The host's own op in the thread's mode (toward zero, no denormals) gives
+// just that unless an operand's exponent is 255, and then its result's is: the rules' form then
+RAC1_HOT_INLINE float mul(float a, float b) {
+    if (__builtin_expect(ps2fpu::g_vu0_raw == 1, 1)) {
+        const float r = a * b;
+        if (__builtin_expect(raw_ok(r), 1)) return r;
+    }
+    return mul_rules(a, b);
+}
 // orig: (helper) VADD lane
-RAC1_HOT_INLINE float add(float a, float b) { return vuc(vuc(a) + vuc(b)); }
+RAC1_HOT_INLINE float add(float a, float b) {
+    if (__builtin_expect(ps2fpu::g_vu0_raw == 1, 1)) {
+        const float r = a + b;
+        if (__builtin_expect(raw_ok(r), 1)) return r;
+    }
+    return add_rules(a, b);
+}
 // orig: (helper) VSUB lane
-RAC1_HOT_INLINE float sub(float a, float b) { return vuc(vuc(a) - vuc(b)); }
-// orig: (helper) VMADD lane: acc + a * b
-RAC1_HOT_INLINE float madd(float acc, float a, float b) { return vuc(vuc(acc) + vuc(a) * vuc(b)); }
+RAC1_HOT_INLINE float sub(float a, float b) {
+    if (__builtin_expect(ps2fpu::g_vu0_raw == 1, 1)) {
+        const float r = a - b;
+        if (__builtin_expect(raw_ok(r), 1)) return r;
+    }
+    return sub_rules(a, b);
+}
+// orig: (helper) VMADD lane: acc + a * b (the product rounded on its own, then the sum)
+RAC1_HOT_INLINE float madd(float acc, float a, float b) {
+    if (__builtin_expect(ps2fpu::g_vu0_raw == 1, 1)) {
+        const float r = acc + a * b;
+        if (__builtin_expect(raw_ok(r), 1)) return r;
+    }
+    return madd_rules(acc, a, b);
+}
 // orig: (helper) VMSUB lane: acc - a * b
-RAC1_HOT_INLINE float msub(float acc, float a, float b) { return vuc(vuc(acc) - vuc(a) * vuc(b)); }
+RAC1_HOT_INLINE float msub(float acc, float a, float b) {
+    if (__builtin_expect(ps2fpu::g_vu0_raw == 1, 1)) {
+        const float r = acc - a * b;
+        if (__builtin_expect(raw_ok(r), 1)) return r;
+    }
+    return msub_rules(acc, a, b);
+}
 // orig: (helper) VFTOIn: x 2^n truncated, saturating (the operand not clamped)
 RAC1_HOT_INLINE uint32_t ftoi(float f, float scale) {
     f *= scale;

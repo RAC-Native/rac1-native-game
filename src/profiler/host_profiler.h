@@ -73,6 +73,9 @@ enum Stage : int {
     kScreenshots,       // testing: screenshots
     kPacing,            // the frame cap's wait
     kPresent,           // the swap (the present: the v-sync's wait, the driver's queue full)
+    kFrameBegin,        // Vulkan: the frame begun (its fence waited for, its pools reset, the clears); inside the draw
+    kAcquire,           // Vulkan: the wait for the swapchain's next image (vkAcquireNextImageKHR: a full FIFO queue blocks here)
+    kMatCapture,        // Surface Detail: the frame's colour and depth copied for the materials' reflections (mrp_lighting_material_capture)
     kStageCount
 };
 
@@ -226,6 +229,8 @@ struct Summary {
     double waits = 0;       // the main thread's waits (the stages marked wait)
     double game_code = 0, host_work = 0;
     double main_cpu = 0;
+    double prepare_total = 0;  // the Prepare stage with the stages inside it (the chain's capture, the scene capture's wait, the moby lists)
+    int steps_hist[4] = {};    // the host frames that ran 0, 1, 2 and 3 or more game frames
     double worker_busy[kWorkerCount] = {}, worker_cpu[kWorkerCount] = {};
     double part[kPartCount] = {};
     double steps = 0;

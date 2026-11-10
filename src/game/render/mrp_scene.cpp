@@ -14,6 +14,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/vu/vu_interpreter.h>
 #include <jobs/job_pool.h>
+#include <profiler/perf_switch.h>
 
 #include <algorithm>
 #include <chrono>
@@ -521,10 +522,34 @@ void mrp_scene_install() {
 const MrpFrame& mrp_scene() { return g_frame; }
 const MrpFrame& mrp_scene_draw() { return g_shadow_valid ? g_shadow_frame : g_frame; }
 
+namespace {
+// orig: (host) RAC1_PERF_SCENE_KEEP (docs/performance.md): the shadow run's scene, the real pass's and the one kept aside take
+// turns in three MrpFrames whose vectors keep their storage (the shadow run's scene, the larger one, grew again from nothing
+// every frame). 0: a new MrpFrame at every shadow run, as before
+const bool g_scene_keep = perf::switch_value("RAC1_PERF_SCENE_KEEP", 1) != 0;
+// orig: (host) `f` as a new MrpFrame is, its vectors' storage kept
+void frame_reset(MrpFrame& f) {
+    for (MrpVec4& v : f.proj) v = MrpVec4{};
+    f.cam_pos = MrpVec4{};
+    for (MrpVec4& v : f.view_rows) v = MrpVec4{};
+    f.view_trans = MrpVec4{};
+    f.mobys.clear();
+    f.parts.clear();
+    f.unpacks.clear();
+    f.joints.clear();
+    f.records.clear();
+}
+}  // namespace
+
 // orig: (host) see mrp_scene.h
 void mrp_scene_shadow_begin() {
-    g_kept_frame = std::move(g_frame);
-    g_frame = MrpFrame();
+    if (g_scene_keep) {  // (the frame observed so far aside; the one put aside last, emptied, takes the shadow run's scene)
+        std::swap(g_kept_frame, g_frame);
+        frame_reset(g_frame);
+    } else {
+        g_kept_frame = std::move(g_frame);
+        g_frame = MrpFrame();
+    }
     g_next_pose = 0;
     g_last_pose = ~size_t(0);
     g_have_camera = false;
@@ -577,10 +602,16 @@ void mrp_scene_shadow_end() {
             if ((lo >> 15) & 1) break;
         }
     }
-    g_shadow_frame = std::move(f);
+    if (g_scene_keep) {  // (the shadow's scene kept, the frame observed before it back; the last shadow's scene emptied, aside)
+        std::swap(g_shadow_frame, g_frame);
+        std::swap(g_frame, g_kept_frame);
+        frame_reset(g_kept_frame);
+    } else {
+        g_shadow_frame = std::move(f);
+        g_frame = std::move(g_kept_frame);
+        g_kept_frame = MrpFrame();
+    }
     g_shadow_valid = true;
-    g_frame = std::move(g_kept_frame);
-    g_kept_frame = MrpFrame();
     g_next_pose = 0;
     g_last_pose = ~size_t(0);
     g_have_camera = !g_frame.mobys.empty();
@@ -806,35 +837,44 @@ void mrp_scene_end_frame() {
         lod_keep_real(f, g_shadow_frame);
     }
     if (std::getenv("RAC1_MRP_SCENE_HASH") != nullptr) {  // (testing: a hash of every drawn scene, to compare two runs draw for draw)
+        // (the whole scene in h; its kinds of data apart in hk - the mobys and their matrices, the joints, the records, the parts,
+        // the unpacks' shape, the unpacks' data addresses - to tell what differs between two runs)
         static uint64_t h = 0xcbf29ce484222325ull, n = 0;
-        auto add = [](const void* p, size_t k) {
+        static uint64_t hk[6] = {0xcbf29ce484222325ull, 0xcbf29ce484222325ull, 0xcbf29ce484222325ull, 0xcbf29ce484222325ull, 0xcbf29ce484222325ull, 0xcbf29ce484222325ull};
+        auto add = [](int kind, const void* p, size_t k) {
             const uint8_t* b = static_cast<const uint8_t*>(p);
-            for (size_t i = 0; i < k; ++i) h = (h ^ b[i]) * 0x100000001b3ull;
+            for (size_t i = 0; i < k; ++i) {
+                h = (h ^ b[i]) * 0x100000001b3ull;
+                hk[kind] = (hk[kind] ^ b[i]) * 0x100000001b3ull;
+            }
         };
         const MrpFrame& d = mrp_scene_draw();
         for (const MrpMoby& m : d.mobys) {
-            add(&m.moby, 4);
-            add(&m.far_lod, 1);
-            add(&m.model_to_view, sizeof m.model_to_view);
-            add(&m.tint, 4);
-            if (m.joint_count != 0) add(&d.joints[m.joint_first], sizeof(MrpMat4) * m.joint_count);
-            if (m.record_qwords != 0) add(&d.records[m.record_first], 16u * m.record_qwords);
+            add(0, &m.moby, 4);
+            add(0, &m.far_lod, 1);
+            add(0, &m.model_to_view, sizeof m.model_to_view);
+            add(0, &m.tint, 4);
+            if (m.joint_count != 0) add(1, &d.joints[m.joint_first], sizeof(MrpMat4) * m.joint_count);
+            if (m.record_qwords != 0) add(2, &d.records[m.record_first], 16u * m.record_qwords);
             for (uint32_t k = 0; k < m.part_count; ++k) {
                 const MrpPart& p = d.parts[m.part_first + k];
-                add(&p.mscal, 2);
-                add(&p.model_to_view, sizeof p.model_to_view);
-                add(&p.test, 8);
-                add(&p.alpha, 8);
+                add(3, &p.mscal, 2);
+                add(3, &p.model_to_view, sizeof p.model_to_view);
+                add(3, &p.test, 8);
+                add(3, &p.alpha, 8);
                 for (uint32_t u = 0; u < p.unpack_count; ++u) {
                     const MrpUnpack& up = d.unpacks[p.unpack_first + u];
-                    add(&up.cmd, 1);
-                    add(&up.dest, 2);
-                    add(&up.num, 2);
-                    add(&up.data, 4);
+                    add(4, &up.cmd, 1);
+                    add(4, &up.dest, 2);
+                    add(4, &up.num, 2);
+                    add(5, &up.data, 4);
                 }
             }
         }
-        if (++n % 100 == 0) std::fprintf(stderr, "[scene-hash] %llu frames: %016llx\n", static_cast<unsigned long long>(n), static_cast<unsigned long long>(h));
+        if (++n % 100 == 0)
+            std::fprintf(stderr, "[scene-hash] %llu frames: %016llx (mobys %08x joints %08x records %08x parts %08x unpacks %08x data %08x)\n", static_cast<unsigned long long>(n),
+                         static_cast<unsigned long long>(h), static_cast<uint32_t>(hk[0]), static_cast<uint32_t>(hk[1]), static_cast<uint32_t>(hk[2]), static_cast<uint32_t>(hk[3]),
+                         static_cast<uint32_t>(hk[4]), static_cast<uint32_t>(hk[5]));
     }
     if (g_prof) {
         g_prof_decode_ms += now_ms() - t0;

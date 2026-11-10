@@ -13,6 +13,8 @@
 #include <emmintrin.h>
 #endif
 
+#include <runtime/ee/ps2_fpu.h>
+
 #include <concepts>
 
 namespace rac1::vu0m {
@@ -46,6 +48,93 @@ RAC1_HOT_INLINE __m128i bc4(float b) { return _mm_set1_epi32(static_cast<int>(f2
 RAC1_HOT_INLINE __m128i vadd4(__m128i a, __m128i b) { return _mm_castps_si128(_mm_add_ps(_mm_castsi128_ps(a), _mm_castsi128_ps(b))); }
 RAC1_HOT_INLINE __m128i vsub4(__m128i a, __m128i b) { return _mm_castps_si128(_mm_sub_ps(_mm_castsi128_ps(a), _mm_castsi128_ps(b))); }
 RAC1_HOT_INLINE __m128i vmul4(__m128i a, __m128i b) { return _mm_castps_si128(_mm_mul_ps(_mm_castsi128_ps(a), _mm_castsi128_ps(b))); }
+// ---- The raw forms (RAC1_PERF_VU0_RAW; runtime/ee/ps2_fpu.h) ----
+// In the thread's mode (toward zero, no denormals) the host's own add, subtract and multiply of the lanes as they are give the
+// result of the VU rules - the operands clamped, the op, the result clamped - unless an operand lane has exponent 255, and then
+// the raw result's lane has it too (an infinity or a NaN). So an FMAC op computes the raw lanes, and only when a lane it writes
+// has exponent 255 computes them again by the rules, out of line. A result the rules leave as it is has no denormal lane
+// either, so its flags are the zero and the sign bits alone.
+namespace raw {
+enum : int { kAdd, kSub, kMul, kMadd, kMsub };
+// orig: (host) the raw forms on (RAC1_PERF_VU0_RAW at 1, the thread's mode the EE's)
+[[gnu::always_inline]] inline bool on() { return __builtin_expect(ps2fpu::g_vu0_raw == 1, 1); }
+// orig: (helper) no ACC operand; a broadcast operand's lanes as they are
+[[gnu::always_inline]] inline __m128i none() { return _mm_setzero_si128(); }
+[[gnu::always_inline]] inline __m128i bcr(float b) { return _mm_set1_epi32(static_cast<int>(f2u(b))); }
+// orig: (helper) the op on the lanes given: x op y, or c +- x y (the product rounded on its own, then the sum)
+template <int K>
+[[gnu::always_inline]] inline __m128i calc(__m128i x, __m128i y, __m128i c) {
+    if constexpr (K == kAdd) {
+        return vadd4(x, y);
+    } else if constexpr (K == kSub) {
+        return vsub4(x, y);
+    } else if constexpr (K == kMul) {
+        return vmul4(x, y);
+    } else if constexpr (K == kMadd) {
+        return vadd4(c, vmul4(x, y));
+    } else {
+        return vsub4(c, vmul4(x, y));
+    }
+}
+inline __m128i calc_k(int k, __m128i x, __m128i y, __m128i c) {
+    switch (k) {
+    case kAdd: return calc<kAdd>(x, y, c);
+    case kSub: return calc<kSub>(x, y, c);
+    case kMul: return calc<kMul>(x, y, c);
+    case kMadd: return calc<kMadd>(x, y, c);
+    default: return calc<kMsub>(x, y, c);
+    }
+}
+// orig: (helper) a raw result has exponent 255 in one of the lanes `m`
+[[gnu::always_inline]] inline bool bad(__m128i r, int m) {
+    const __m128i expm = _mm_set1_epi32(0x7f800000);
+    return (_mm_movemask_ps(_mm_castsi128_ps(_mm_cmpeq_epi32(_mm_and_si128(r, expm), expm))) & m) != 0;
+}
+// orig: (helper) the op by the VU rules, lane by lane: the operands clamped, the op, the result clamped (the form every op had:
+// reached for an operand with exponent 255)
+[[gnu::noinline, gnu::cold]] inline __m128i rules(int k, __m128i x, __m128i y, __m128i c) { return cop4(calc_k(k, cop4(x), cop4(y), cop4(c))); }
+// orig: (host) RAC1_PERF_VU0_RAW=2: an op the rules computed, against its raw form: the lanes `m` the same words, and no
+// underflow or overflow flag (ps2_fpu.h's account)
+[[gnu::noinline, gnu::cold]] inline void check(int k, __m128i x, __m128i y, __m128i c, int m) {
+    ps2fpu::RawCheck& a = ps2fpu::g_vu0_raw_check;
+    if (!ps2fpu::thread_chops()) a.off_thread.fetch_add(1, std::memory_order_relaxed);
+    const __m128i r = calc_k(k, x, y, c);
+    if (bad(r, m)) {
+        a.by_rules.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    a.compared.fetch_add(1, std::memory_order_relaxed);
+    const __m128i o = calc_k(k, cop4(x), cop4(y), cop4(c));  // (the rules' result before its clamp: what the flags are made of)
+    const __m128i expm = _mm_set1_epi32(0x7f800000);
+    const __m128i e = _mm_and_si128(o, expm);
+    const __m128i den = _mm_andnot_si128(_mm_cmpeq_epi32(_mm_and_si128(o, _mm_set1_epi32(0x007fffff)), _mm_setzero_si128()), _mm_cmpeq_epi32(e, _mm_setzero_si128()));
+    const __m128i wrong = _mm_or_si128(_mm_or_si128(den, _mm_cmpeq_epi32(e, expm)), _mm_xor_si128(_mm_cmpeq_epi32(r, cop4(o)), _mm_set1_epi32(-1)));
+    const int lanes = _mm_movemask_ps(_mm_castsi128_ps(wrong)) & m;
+    if (lanes == 0) return;
+    alignas(16) uint32_t xw[4], yw[4], cw[4], rw[4], ow[4];
+    _mm_store_si128(reinterpret_cast<__m128i*>(xw), x);
+    _mm_store_si128(reinterpret_cast<__m128i*>(yw), y);
+    _mm_store_si128(reinterpret_cast<__m128i*>(cw), c);
+    _mm_store_si128(reinterpret_cast<__m128i*>(rw), r);
+    _mm_store_si128(reinterpret_cast<__m128i*>(ow), o);
+    const int l = __builtin_ctz(static_cast<unsigned>(lanes));
+    a.differ(static_cast<uint32_t>(k), static_cast<uint32_t>(lanes), xw[l], yw[l], cw[l], rw[l], ow[l]);
+}
+// orig: (helper) an op's lanes with no flags (vu0_nf.h's and vu0_local.h's ops): raw, by the rules where a lane of `m` asks; or
+// as before, operand by operand (the raw forms off)
+template <int K>
+[[gnu::always_inline]] inline __m128i value(__m128i x, __m128i y, __m128i c, int m) {
+    if (on()) {
+        __m128i r = calc<K>(x, y, c);
+        if (__builtin_expect(bad(r, m), 0)) r = rules(K, x, y, c);
+        return r;
+    }
+    const __m128i r = cop4(calc<K>(cop4(x), cop4(y), cop4(c)));
+    if (__builtin_expect(ps2fpu::g_vu0_raw == 2, 0)) check(K, x, y, c, m);
+    return r;
+}
+}  // namespace raw
+
 // orig: (helper) the status flag's four current bits (Z S U O: any lane's) from the MAC flags
 inline uint32_t status_bits(uint32_t mac) {
     const uint32_t t = (mac | (mac >> 1) | (mac >> 2) | (mac >> 3)) & 0x1111u;
@@ -94,6 +183,23 @@ constexpr uint32_t mask_rev(int m) {
 // MAC / status flags for the written lanes `m` (zero, sign, underflow, overflow; the lanes not written clear); the
 // status flag's sticky bits kept. The flags are built on the lanes reversed (w first: the flag's bit order) and packed
 // into one mask with a single movemask.
+// orig: (helper) an op's flag bytes `b` (fin_m's: zero, sign, underflow, overflow per lane, w first) into the sink, the lanes `m`
+template <FlagSink F>
+[[gnu::always_inline]] inline void fin_flags(F& R, __m128i b, int m) {
+    if constexpr (std::same_as<F, LocalFlags>) {  // (the flag bytes of the written lanes kept: LocalFlags)
+        const __m128i k = _mm_set1_epi32(static_cast<int>(((m & 8) != 0 ? 0xffu : 0u) | ((m & 4) != 0 ? 0xff00u : 0u) |
+                                                          ((m & 2) != 0 ? 0xff0000u : 0u) | ((m & 1) != 0 ? 0xff000000u : 0u)));
+        const __m128i x = _mm_and_si128(b, k);
+        R.last = x;
+        R.sticky = _mm_or_si128(R.sticky, x);
+        R.pending = true;
+    } else {
+        const uint32_t x = static_cast<uint32_t>(_mm_movemask_epi8(b)) & (mask_rev(m) * 0x1111u);
+        R.macflag = x;
+        const uint32_t st = status_bits(x);
+        R.statusflag = (R.statusflag & 0xfc0) | st | (st << 6);
+    }
+}
 template <FlagSink F>
 [[gnu::always_inline]] inline __m128i fin_m(F& R, __m128i v, int m) {
     const __m128i vr = _mm_shuffle_epi32(v, _MM_SHUFFLE(0, 1, 2, 3));  // (w z y x)
@@ -108,21 +214,16 @@ template <FlagSink F>
     r = _mm_andnot_si128(_mm_and_si128(isz, _mm_set1_epi32(0x7fffffff)), r);
     const __m128i den = _mm_andnot_si128(_mm_cmpeq_epi32(_mm_and_si128(vr, _mm_set1_epi32(0x007fffff)), _mm_setzero_si128()), isz);  // (underflow)
     // the four masks' lanes as bytes: zero (bits 0..3), sign (4..7), underflow (8..11), overflow (12..15), w..x in each
-    const __m128i b = _mm_packs_epi16(_mm_packs_epi32(isz, sgn), _mm_packs_epi32(den, isi));
-    if constexpr (std::same_as<F, LocalFlags>) {  // (the flag bytes of the written lanes kept: LocalFlags)
-        const __m128i k = _mm_set1_epi32(static_cast<int>(((m & 8) != 0 ? 0xffu : 0u) | ((m & 4) != 0 ? 0xff00u : 0u) |
-                                                          ((m & 2) != 0 ? 0xff0000u : 0u) | ((m & 1) != 0 ? 0xff000000u : 0u)));
-        const __m128i x = _mm_and_si128(b, k);
-        R.last = x;
-        R.sticky = _mm_or_si128(R.sticky, x);
-        R.pending = true;
-    } else {
-        const uint32_t x = static_cast<uint32_t>(_mm_movemask_epi8(b)) & (mask_rev(m) * 0x1111u);
-        R.macflag = x;
-        const uint32_t st = status_bits(x);
-        R.statusflag = (R.statusflag & 0xfc0) | st | (st << 6);
-    }
+    fin_flags(R, _mm_packs_epi16(_mm_packs_epi32(isz, sgn), _mm_packs_epi32(den, isi)), m);
     return _mm_shuffle_epi32(r, _MM_SHUFFLE(0, 1, 2, 3));
+}
+// orig: (helper) fin_m's flags of a result the rules leave as it is (the raw forms: no lane of `m` with exponent 255, and in the
+// thread's mode no denormal): the zero and the sign bits, the underflow and overflow ones clear; nothing to clamp
+template <FlagSink F>
+[[gnu::always_inline]] inline void flags_raw(F& R, __m128i v, int m) {
+    const __m128i vr = _mm_shuffle_epi32(v, _MM_SHUFFLE(0, 1, 2, 3));  // (w z y x)
+    const __m128i isz = _mm_cmpeq_epi32(_mm_and_si128(vr, _mm_set1_epi32(0x7f800000)), _mm_setzero_si128());
+    fin_flags(R, _mm_packs_epi16(_mm_packs_epi32(isz, _mm_srai_epi32(vr, 31)), _mm_setzero_si128()), m);
 }
 template <FlagSink F>
 [[gnu::always_inline]] inline void fmac4(F& fl, Vf& d, int m, __m128i raw) {
@@ -140,6 +241,36 @@ template <FlagSink F>
 }
 inline void fmac4(Vf& d, int m, __m128i raw) { fmac4(regs(), d, m, raw); }
 inline void fmac4_acc(int m, __m128i raw) { fmac4_acc(regs(), m, raw); }
+// orig: (helper) one FMAC op on the lanes x, y (c: ACC's, for VMADD / VMSUB) as the registers hold them, into the lanes `m` of d
+// (fmac_acc_k: of ACC), its flags into fl. The raw form (see raw above), or as before: the operands clamped, fin_m
+template <int K, FlagSink F>
+[[gnu::always_inline]] inline void fmac_k(F& fl, Vf& d, int m, __m128i x, __m128i y, __m128i c) {
+    if (raw::on()) {
+        __m128i r = raw::calc<K>(x, y, c);
+        if (__builtin_expect(raw::bad(r, m), 0)) r = raw::rules(K, x, y, c);
+        flags_raw(fl, r, m);
+        if (__builtin_expect(&d == regs().vf.data(), 0)) {
+            _mm_store_ps(d.v, _mm_set_ps(1.0f, 0.0f, 0.0f, 0.0f));
+        } else {
+            st4_m(d, r, m);
+        }
+        return;
+    }
+    fmac4(fl, d, m, raw::calc<K>(cop4(x), cop4(y), cop4(c)));
+    if (__builtin_expect(ps2fpu::g_vu0_raw == 2, 0)) raw::check(K, x, y, c, m);
+}
+template <int K, FlagSink F>
+[[gnu::always_inline]] inline void fmac_acc_k(F& fl, int m, __m128i x, __m128i y, __m128i c) {
+    if (raw::on()) {
+        __m128i r = raw::calc<K>(x, y, c);
+        if (__builtin_expect(raw::bad(r, m), 0)) r = raw::rules(K, x, y, c);
+        flags_raw(fl, r, m);
+        st4_m(regs().acc, r, m);
+        return;
+    }
+    fmac4_acc(fl, m, raw::calc<K>(cop4(x), cop4(y), cop4(c)));
+    if (__builtin_expect(ps2fpu::g_vu0_raw == 2, 0)) raw::check(K, x, y, c, m);
+}
 
 // orig: (helper) a lane-masked VU0 op: the lanes computed from the operands first, then written
 template <class F>
@@ -201,12 +332,12 @@ inline void fmac(Vf& d, int m, F raw) {
 }
 // orig: (helper) VADD / VSUB / VMUL (lane by lane) and their broadcast forms. Each op in two forms: on the VU0's flags,
 // and on a LocalFlags (`fl` first: the same op, its flags kept in the scope's locals)
-template <FlagSink F> [[gnu::always_inline]] inline void add(F& fl, Vf& d, const Vf& a, const Vf& b, int m) { fmac4(fl, d, m, vadd4(cop4(ld4(a)), cop4(ld4(b)))); }
-template <FlagSink F> [[gnu::always_inline]] inline void sub(F& fl, Vf& d, const Vf& a, const Vf& b, int m) { fmac4(fl, d, m, vsub4(cop4(ld4(a)), cop4(ld4(b)))); }
-template <FlagSink F> [[gnu::always_inline]] inline void mul(F& fl, Vf& d, const Vf& a, const Vf& b, int m) { fmac4(fl, d, m, vmul4(cop4(ld4(a)), cop4(ld4(b)))); }
-template <FlagSink F> [[gnu::always_inline]] inline void addbc(F& fl, Vf& d, const Vf& a, float b, int m) { fmac4(fl, d, m, vadd4(cop4(ld4(a)), bc4(b))); }
-template <FlagSink F> [[gnu::always_inline]] inline void subbc(F& fl, Vf& d, const Vf& a, float b, int m) { fmac4(fl, d, m, vsub4(cop4(ld4(a)), bc4(b))); }
-template <FlagSink F> [[gnu::always_inline]] inline void mulbc(F& fl, Vf& d, const Vf& a, float b, int m) { fmac4(fl, d, m, vmul4(cop4(ld4(a)), bc4(b))); }
+template <FlagSink F> [[gnu::always_inline]] inline void add(F& fl, Vf& d, const Vf& a, const Vf& b, int m) { fmac_k<raw::kAdd>(fl, d, m, ld4(a), ld4(b), raw::none()); }
+template <FlagSink F> [[gnu::always_inline]] inline void sub(F& fl, Vf& d, const Vf& a, const Vf& b, int m) { fmac_k<raw::kSub>(fl, d, m, ld4(a), ld4(b), raw::none()); }
+template <FlagSink F> [[gnu::always_inline]] inline void mul(F& fl, Vf& d, const Vf& a, const Vf& b, int m) { fmac_k<raw::kMul>(fl, d, m, ld4(a), ld4(b), raw::none()); }
+template <FlagSink F> [[gnu::always_inline]] inline void addbc(F& fl, Vf& d, const Vf& a, float b, int m) { fmac_k<raw::kAdd>(fl, d, m, ld4(a), raw::bcr(b), raw::none()); }
+template <FlagSink F> [[gnu::always_inline]] inline void subbc(F& fl, Vf& d, const Vf& a, float b, int m) { fmac_k<raw::kSub>(fl, d, m, ld4(a), raw::bcr(b), raw::none()); }
+template <FlagSink F> [[gnu::always_inline]] inline void mulbc(F& fl, Vf& d, const Vf& a, float b, int m) { fmac_k<raw::kMul>(fl, d, m, ld4(a), raw::bcr(b), raw::none()); }
 inline void add(Vf& d, const Vf& a, const Vf& b, int m) { add(regs(), d, a, b, m); }
 inline void sub(Vf& d, const Vf& a, const Vf& b, int m) { sub(regs(), d, a, b, m); }
 inline void mul(Vf& d, const Vf& a, const Vf& b, int m) { mul(regs(), d, a, b, m); }
@@ -214,17 +345,17 @@ inline void addbc(Vf& d, const Vf& a, float b, int m) { addbc(regs(), d, a, b, m
 inline void subbc(Vf& d, const Vf& a, float b, int m) { subbc(regs(), d, a, b, m); }
 inline void mulbc(Vf& d, const Vf& a, float b, int m) { mulbc(regs(), d, a, b, m); }
 // orig: (helper) VADDA / VMULA / VMADDA (broadcast) into ACC, VMADD from ACC
-template <FlagSink F> [[gnu::always_inline]] inline void addabc(F& fl, const Vf& a, float b, int m) { fmac4_acc(fl, m, vadd4(cop4(ld4(a)), bc4(b))); }
-template <FlagSink F> [[gnu::always_inline]] inline void mulabc(F& fl, const Vf& a, float b, int m) { fmac4_acc(fl, m, vmul4(cop4(ld4(a)), bc4(b))); }
+template <FlagSink F> [[gnu::always_inline]] inline void addabc(F& fl, const Vf& a, float b, int m) { fmac_acc_k<raw::kAdd>(fl, m, ld4(a), raw::bcr(b), raw::none()); }
+template <FlagSink F> [[gnu::always_inline]] inline void mulabc(F& fl, const Vf& a, float b, int m) { fmac_acc_k<raw::kMul>(fl, m, ld4(a), raw::bcr(b), raw::none()); }
 template <FlagSink F> [[gnu::always_inline]] inline void maddabc(F& fl, const Vf& a, float b, int m) {
-    fmac4_acc(fl, m, vadd4(cop4(ld4(acc())), vmul4(cop4(ld4(a)), bc4(b))));
+    fmac_acc_k<raw::kMadd>(fl, m, ld4(a), raw::bcr(b), ld4(acc()));
 }
 inline void addabc(const Vf& a, float b, int m) { addabc(regs(), a, b, m); }
 inline void mulabc(const Vf& a, float b, int m) { mulabc(regs(), a, b, m); }
 inline void maddabc(const Vf& a, float b, int m) { maddabc(regs(), a, b, m); }
 // orig: (helper) VMADD (broadcast): ACC + a b
 template <FlagSink F> [[gnu::always_inline]] inline void maddbc(F& fl, Vf& d, const Vf& a, float b, int m) {
-    fmac4(fl, d, m, vadd4(cop4(ld4(acc())), vmul4(cop4(ld4(a)), bc4(b))));
+    fmac_k<raw::kMadd>(fl, d, m, ld4(a), raw::bcr(b), ld4(acc()));
 }
 inline void maddbc(Vf& d, const Vf& a, float b, int m) { maddbc(regs(), d, a, b, m); }
 // orig: (helper) VMULAx / VMADDAy / VMADDz: d = r0 p.x + r1 p.y + r2 p.z on the masked lanes
@@ -277,28 +408,28 @@ inline void qset_xy(Vf& d, uint64_t lo) {
 
 // orig: (helper) the remaining macro forms: ACC-vector ops and their broadcast / Q / I kinds
 inline void msubbc(Vf& d, const Vf& a, float b, int m) {
-    fmac4(d, m, vsub4(cop4(ld4(acc())), vmul4(cop4(ld4(a)), bc4(b))));
+    fmac_k<raw::kMsub>(regs(), d, m, ld4(a), raw::bcr(b), ld4(acc()));
 }
 // orig: (helper) VMADD / VMSUB (vector): ACC +- a b
 inline void maddv(Vf& d, const Vf& a, const Vf& b, int m) {
-    fmac4(d, m, vadd4(cop4(ld4(acc())), vmul4(cop4(ld4(a)), cop4(ld4(b)))));
+    fmac_k<raw::kMadd>(regs(), d, m, ld4(a), ld4(b), ld4(acc()));
 }
 inline void msubv(Vf& d, const Vf& a, const Vf& b, int m) {
-    fmac4(d, m, vsub4(cop4(ld4(acc())), vmul4(cop4(ld4(a)), cop4(ld4(b)))));
+    fmac_k<raw::kMsub>(regs(), d, m, ld4(a), ld4(b), ld4(acc()));
 }
 // orig: (helper) VMULA / VADDA / VSUBA / VMADDA / VMSUBA (vector) and VSUBA / VMSUBA (broadcast)
-inline void mulav(const Vf& a, const Vf& b, int m) { fmac4_acc(m, vmul4(cop4(ld4(a)), cop4(ld4(b)))); }
-inline void addav(const Vf& a, const Vf& b, int m) { fmac4_acc(m, vadd4(cop4(ld4(a)), cop4(ld4(b)))); }
-inline void subav(const Vf& a, const Vf& b, int m) { fmac4_acc(m, vsub4(cop4(ld4(a)), cop4(ld4(b)))); }
-inline void subabc(const Vf& a, float b, int m) { fmac4_acc(m, vsub4(cop4(ld4(a)), bc4(b))); }
+inline void mulav(const Vf& a, const Vf& b, int m) { fmac_acc_k<raw::kMul>(regs(), m, ld4(a), ld4(b), raw::none()); }
+inline void addav(const Vf& a, const Vf& b, int m) { fmac_acc_k<raw::kAdd>(regs(), m, ld4(a), ld4(b), raw::none()); }
+inline void subav(const Vf& a, const Vf& b, int m) { fmac_acc_k<raw::kSub>(regs(), m, ld4(a), ld4(b), raw::none()); }
+inline void subabc(const Vf& a, float b, int m) { fmac_acc_k<raw::kSub>(regs(), m, ld4(a), raw::bcr(b), raw::none()); }
 inline void maddav(const Vf& a, const Vf& b, int m) {
-    fmac4_acc(m, vadd4(cop4(ld4(acc())), vmul4(cop4(ld4(a)), cop4(ld4(b)))));
+    fmac_acc_k<raw::kMadd>(regs(), m, ld4(a), ld4(b), ld4(acc()));
 }
 inline void msubav(const Vf& a, const Vf& b, int m) {
-    fmac4_acc(m, vsub4(cop4(ld4(acc())), vmul4(cop4(ld4(a)), cop4(ld4(b)))));
+    fmac_acc_k<raw::kMsub>(regs(), m, ld4(a), ld4(b), ld4(acc()));
 }
 inline void msubabc(const Vf& a, float b, int m) {
-    fmac4_acc(m, vsub4(cop4(ld4(acc())), vmul4(cop4(ld4(a)), bc4(b))));
+    fmac_acc_k<raw::kMsub>(regs(), m, ld4(a), raw::bcr(b), ld4(acc()));
 }
 // orig: (helper) VMINI on float bits (both negative: the larger word)
 RAC1_HOT_INLINE float vmini(float a, float b) {
@@ -313,10 +444,9 @@ template <FlagSink F> [[gnu::always_inline]] inline void opmula(F& fl, const Vf&
     fl.statusflag = status_of(fl.macflag, fl.statusflag);
 }
 template <FlagSink F> [[gnu::always_inline]] inline void opmsub(F& fl, Vf& d, const Vf& a, const Vf& b) {
-    const __m128i sa = cop4(ld4(a)), sb = cop4(ld4(b)), c = cop4(ld4(acc()));
-    const __m128i a_yzx = _mm_shuffle_epi32(sa, _MM_SHUFFLE(3, 0, 2, 1));
-    const __m128i b_zxy = _mm_shuffle_epi32(sb, _MM_SHUFFLE(3, 1, 0, 2));
-    fmac4(fl, d, XYZ, vsub4(c, vmul4(a_yzx, b_zxy)));
+    const __m128i a_yzx = _mm_shuffle_epi32(ld4(a), _MM_SHUFFLE(3, 0, 2, 1));
+    const __m128i b_zxy = _mm_shuffle_epi32(ld4(b), _MM_SHUFFLE(3, 1, 0, 2));
+    fmac_k<raw::kMsub>(fl, d, XYZ, a_yzx, b_zxy, ld4(acc()));
 }
 inline void opmula(const Vf& a, const Vf& b) { opmula(regs(), a, b); }
 inline void opmsub(Vf& d, const Vf& a, const Vf& b) { opmsub(regs(), d, a, b); }

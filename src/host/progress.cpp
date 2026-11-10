@@ -5,12 +5,15 @@
 
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <filesystem>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace rac1::progress {
@@ -85,7 +88,58 @@ int percent() {
 }
 
 // Written to a temporary file and renamed over the old one: the launcher never reads half a file.
-void write() {
+void write_file(const std::string& path, const std::string& text) {
+    std::error_code ec;
+    std::filesystem::create_directories(std::filesystem::path(path).parent_path(), ec);
+    const std::string tmp = path + ".tmp";
+    std::FILE* f = std::fopen(tmp.c_str(), "wb");
+    if (f == nullptr) return;
+    const bool ok = std::fwrite(text.data(), 1, text.size(), f) == text.size();
+    if (std::fclose(f) != 0 || !ok) return;
+    std::filesystem::rename(tmp, path, ec);
+}
+
+// The file's writer: one thread, started at the first write, that writes the last text handed to it (a text not yet
+// written when the next comes is dropped: the file holds the latest).
+struct Writer {
+    std::mutex m;
+    std::condition_variable cv;
+    std::string path, text;
+    bool pending = false, busy = false, started = false;
+} g_writer;
+void writer_post(const std::string& path, std::string&& text) {
+    Writer& w = g_writer;
+    std::lock_guard<std::mutex> lk(w.m);
+    w.path = path;
+    w.text = std::move(text);
+    w.pending = true;
+    if (!w.started) {
+        w.started = true;
+        std::thread([&w] {
+            std::unique_lock<std::mutex> lk(w.m);
+            for (;;) {
+                w.cv.wait(lk, [&w] { return w.pending; });
+                const std::string path = std::move(w.path), text = std::move(w.text);
+                w.pending = false;
+                w.busy = true;
+                lk.unlock();
+                write_file(path, text);
+                lk.lock();
+                w.busy = false;
+                w.cv.notify_all();
+            }
+        }).detach();  // (the process ends with std::_Exit: finish() waits for the last write)
+    }
+    w.cv.notify_all();
+}
+// the writer's last text on the disc
+void writer_wait() {
+    Writer& w = g_writer;
+    std::unique_lock<std::mutex> lk(w.m);
+    w.cv.wait(lk, [&w] { return !w.pending && !w.busy; });
+}
+
+void write(bool now_sync = false) {
     g.unwritten = 0.0;
     std::string s = "{";
     if (g.level >= 0)
@@ -104,15 +158,18 @@ void write() {
 #endif
     std::strftime(when, sizeof when, "%Y-%m-%dT%H:%M:%SZ", &utc);
     s += ", \"updated\": \"" + std::string(when) + "\"}\n";
-
-    std::error_code ec;
-    std::filesystem::create_directories(std::filesystem::path(g.path).parent_path(), ec);
-    const std::string tmp = g.path + ".tmp";
-    std::FILE* f = std::fopen(tmp.c_str(), "wb");
-    if (f == nullptr) return;
-    const bool ok = std::fwrite(s.data(), 1, s.size(), f) == s.size();
-    if (std::fclose(f) != 0 || !ok) return;
-    std::filesystem::rename(tmp, g.path, ec);
+    // (the file's write off the caller's thread - the game's, once a minute and at each planet: a slow disc or a scanner made
+    // that frame late. RAC1_PERF_PROGRESS_THREAD=0: written here, as before)
+    static const bool threaded = [] {
+        const char* e = std::getenv("RAC1_PERF_PROGRESS_THREAD");
+        return e == nullptr || std::atoi(e) != 0;
+    }();
+    if (now_sync || !threaded) {
+        writer_wait();
+        write_file(g.path, s);
+    } else {
+        writer_post(g.path, std::move(s));
+    }
 }
 
 }  // namespace
@@ -132,7 +189,8 @@ void start(bool headless) {
 }
 
 void finish() {
-    if (g.on && g.level >= 0 && g.unwritten > 0.0) write();
+    if (g.on && g.level >= 0 && g.unwritten > 0.0) write(true);
+    else if (g.on) writer_wait();
 }
 
 void frame(int level, bool title, bool exiting) {

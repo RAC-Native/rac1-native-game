@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -143,6 +144,22 @@ void log_once(const char* what, uint32_t a, const char* how = "has no translatio
     if (seen.insert({what, a}).second) std::fprintf(stderr, "[ovl_reloc] level %d: %s %08x %s\n", g_level, what, a, how);
 }
 
+
+// orig: (host) RAC1_PERF_CODE_MEMO (docs/performance.md): ovl_code_to_veldin's answers kept by address. A level's code address
+// that is not a function's start (a jump table's label: every `switch` of the transliterated code asks for one) goes through
+// three tree searches; the answer depends only on the translation's maps, so it is kept in a direct-mapped table, emptied
+// whenever the maps change (ovl_reloc_set_level, an address ovl_xlate_code keeps). A slot is one word, the address above the
+// answer: read and written whole, whichever thread asks. 0: no memo; 2: both, compared (ovl_code_memo_report's account).
+constexpr uint32_t kCodeMemoSlots = 1024;
+std::atomic<uint64_t> g_code_memo[kCodeMemoSlots];
+uint64_t g_code_memo_calls = 0, g_code_memo_hits = 0, g_code_memo_checked = 0, g_code_memo_bad = 0;
+const int g_code_memo_mode = [] {
+    const char* e = std::getenv("RAC1_PERF_CODE_MEMO");
+    return e == nullptr || *e == '\0' ? 1 : std::atoi(e);
+}();
+void code_memo_clear() {
+    for (std::atomic<uint64_t>& m : g_code_memo) m.store(0, std::memory_order_relaxed);
+}
 }  // namespace
 
 // orig: (host) see ovl_reloc.h
@@ -158,6 +175,7 @@ void ovl_reloc_set_level(int level) {
     g_ext_l.clear();
     g_level = level == OVL_NONE ? 0 : level;
     g_identity = true;
+    code_memo_clear();
     ++g_ovl_gen;
     ++g_region_gen;  // (the loaded level's sites are native again; a context's level is foreign)
     // Veldin is the identity on the NTSC-U disc only: on another region's disc its overlay is the
@@ -336,14 +354,52 @@ uint32_t ovl_xlate_code(uint32_t a) {
     // (a variant): the level's own function
     if (const auto p = g_code_ptr.find(a); p != g_code_ptr.end()) return p->second;
     log_once("code", a);
-    g_code_kept.insert(a);
+    if (g_code_kept.insert(a).second) code_memo_clear();  // (ovl_code_to_veldin now answers `a` for it)
     return a;
+}
+
+namespace {
+uint32_t code_to_veldin_search(uint32_t a);
+}  // namespace
+
+// orig: (host) see ovl_reloc.h
+void ovl_code_memo_report() {
+    if (g_code_memo_calls == 0) return;
+    std::printf("[perf] code memo (RAC1_PERF_CODE_MEMO=%d): %llu translations of a level's code address, %llu from the memo", g_code_memo_mode,
+                static_cast<unsigned long long>(g_code_memo_calls), static_cast<unsigned long long>(g_code_memo_hits));
+    if (g_code_memo_mode == 2)
+        std::printf("; check: %llu compared, %llu differing", static_cast<unsigned long long>(g_code_memo_checked), static_cast<unsigned long long>(g_code_memo_bad));
+    std::printf("\n");
 }
 
 // orig: (host) see ovl_reloc.h
 uint32_t ovl_code_to_veldin(uint32_t a) {
     if (g_ctx_levels != 0 && ctx_is_tag(a)) return 0;  // (a session: a level's own function, through its context: no Veldin one)
     if (g_identity) return a;
+    if (g_code_memo_mode == 0 || a == 0) return code_to_veldin_search(a);
+    ++g_code_memo_calls;
+    std::atomic<uint64_t>& slot = g_code_memo[(a * 0x9e3779b9u) >> 22];
+    const uint64_t e = slot.load(std::memory_order_relaxed);
+    if (static_cast<uint32_t>(e >> 32) == a) {
+        ++g_code_memo_hits;
+        if (g_code_memo_mode == 2) {
+            ++g_code_memo_checked;
+            const uint32_t v = code_to_veldin_search(a);
+            if (v != static_cast<uint32_t>(e)) {
+                if (g_code_memo_bad++ < 8) std::fprintf(stderr, "[perf] code memo: %08x kept as %08x, is %08x\n", a, static_cast<uint32_t>(e), v);
+                return v;
+            }
+        }
+        return static_cast<uint32_t>(e);
+    }
+    const uint32_t v = code_to_veldin_search(a);
+    slot.store(static_cast<uint64_t>(a) << 32 | v, std::memory_order_relaxed);
+    return v;
+}
+
+namespace {
+// orig: (host) ovl_code_to_veldin's search of the maps
+uint32_t code_to_veldin_search(uint32_t a) {
     const auto it = g_code_rev.find(a);
     if (it != g_code_rev.end()) return it->second;
     if (g_code_kept.count(a) != 0) return a;  // (a Veldin address the translation kept: its port)
@@ -356,6 +412,7 @@ uint32_t ovl_code_to_veldin(uint32_t a) {
     if (const auto p = g_code_ptr_rev.find(a); p != g_code_ptr_rev.end()) return p->second;
     return g_code_kept.count(a) != 0 ? a : 0;  // (a Veldin address the translation kept)
 }
+}  // namespace
 
 // orig: (host) see ovl_reloc.h
 bool region_other() {

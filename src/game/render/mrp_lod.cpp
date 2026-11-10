@@ -22,6 +22,7 @@
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/vu/vu0.h>
 #include <profiler/host_profiler.h>
+#include <profiler/perf_switch.h>
 
 #include <algorithm>
 #include <array>
@@ -961,6 +962,19 @@ struct MobyStats {
     double ms = 0;
 } g_mst;
 }  // namespace
+
+// orig: (host) see mrp_lod.h
+bool mrp_lod_moby_shadow_after() {
+    static const bool after = perf::switch_value("RAC1_PERF_POSE_ORDER", 0) != 0;
+    return after;
+}
+
+// orig: (host) see mrp_lod.h (mrp_lod_moby_shadow's own conditions, but the VU0 program's, known only when it starts)
+bool mrp_lod_moby_shadow_due() {
+    if (!mrp_moby_ready()) return false;
+    if (mrp_lod_scale(g_mrp_lod) == 1.0f && fill_widen() <= 1.0f) return false;
+    return g_mrp_lod_frame_drawn;
+}
 
 // orig: (host) see mrp_lod.h
 void mrp_lod_moby_shadow(void (*pass)()) {

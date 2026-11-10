@@ -585,6 +585,15 @@ void LocalMemory::transfer_data(uint64_t bb, uint64_t pos, uint64_t rg, const ui
         m = &memo_[static_cast<size_t>(k * 0xBF58476D1CE4E5B9ull >> 52) & (kMemoSlots - 1)];
         hit = m->bb == bb && m->pos == pos && m->rg == rg && m->xx0 == xx_ && m->xy0 == xy_ && m->src.size() == n && m->hi > m->lo &&
               std::memcmp(m->src.data(), p, n) == 0 && !changed_since(m->seq, m->lo, m->hi);
+        if (hit) {
+            // (the piece is as good as written now: its number moved up to the log's, so it does not fall behind the log's floor
+            // - a piece skipped every frame kept the number of its one write, and after the 4096 to 8192 later entries the log
+            // forgets, every such piece was written again at once. An entry still open may yet grow: the number before it.
+            // RAC1_PERF_UPLOAD_MEMO_KEEP=0: the number kept, as before)
+            static const bool keep = perf::switch_value("RAC1_PERF_UPLOAD_MEMO_KEEP", 1) != 0;
+            const uint64_t now = wr_open_ && wr_seq_ != 0 ? wr_seq_ - 1 : wr_seq_;
+            if (keep && now > m->seq) m->seq = now;
+        }
         if (hit && memo_mode != 2) {
             xx_ = m->xx1;
             xy_ = m->xy1;
