@@ -580,6 +580,12 @@ thread, `RAC1_PIPELINE=1`, the last 1500 of 2400 frames of a forward walk) on Ke
   `asm2fn.py`, as `asm2cpp.py` emits it - the calls are in 34 of the generated files (1,953 sites), not in all of them, and
   with the test inline a call left out saves about a nanosecond: at most some microseconds a frame, for a change of the
   generated code to prove on every level.
+- **The tfrags' opacity table** (`RAC1_PERF_OPAQUE_KEEP_TFRAG`, `mrp_world_renderer.cpp` `tfrag_entry_opaque`): the table of
+  the tfrag entries whose colours are all opaque (`RAC1_PERF_OPAQUE`'s test) was keyed on the colour mirror's update count,
+  one a frame, so it was made again over every entry every frame - the fault the ties' table had (`RAC1_PERF_OPAQUE_KEEP`).
+  It is keyed on the count of entries whose colours changed (and on the mirror's size and its resets at a level's arrival).
+  The same table, so the same draws: the pictures at 16:9 widened with LOD High (OpenGL, Vulkan) and with every enhancement
+  on are those of the build before. The scene worker's `triangles` part: Kerwan 0.52 to 0.49 ms a frame, Rilgar 0.44 to 0.41.
 ## Switches to compare
 
 These are testing variables: they are honoured in a headless run, or in a window started with `--debug-tools`
@@ -620,6 +626,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_FPU_RAW=0` | the EE FPU helpers by the PS2 rules at every operation, through doubles (`=2`: those, compared with the raw forms) |
 | `RAC1_PERF_VU0_RAW=0` | the VU0 macro ops clamping every operand and result at every op, the pose's loops too (`=2`: those, the ops compared with the raw forms) |
 | `RAC1_PERF_CODE_MEMO=0` | a level's code address translated to Veldin's by searching the maps at every call (`=2`: both, compared) |
+| `RAC1_PERF_OPAQUE_KEEP_TFRAG=0` | the tfrag entries' opacity table made again every frame |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's

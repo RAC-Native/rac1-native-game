@@ -27,6 +27,7 @@
 #include <game/render/render_view.h>
 #include <host/level_slots.h>
 #include <profiler/host_profiler.h>
+#include <profiler/perf_switch.h>
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
 #include <runtime/kernel/ee_memory.h>
@@ -175,6 +176,7 @@ StaticLevel g_slevel;
 // compute program writes; RAC1_MRPW_TFRAG_VERIFY=1: the GPU's vertices / triangles read back and compared with the CPU reference's
 TfragLevel g_tlevel;
 TfragColours g_tcols;
+uint64_t g_tcols_resets = 0;  // (g_tcols made anew: a level's arrival; its counters start again)
 GLuint g_tfrag_vao = 0;
 // The GPU path's draws find their command (cmds[2 x i]) by an instanced vertex attribute (location 8, divisor 1) over the
 // integers 0, 1, 2..: a draw's base instance offsets it, as the core profile does for every instanced attribute (the hardware's own
@@ -656,6 +658,7 @@ void load_level(int id) {
             g_slevel = std::move(c.s);
             g_tlevel = std::move(c.t);
             g_tcols = TfragColours{};
+            ++g_tcols_resets;
             if (mrp_rt_active()) mrp_rt_level(rt_gather(g_level));
             else mrp_rt_level_drop();
             g_level.reset_walker = true;
@@ -770,6 +773,7 @@ void load_level(int id) {
     const double t_ee = now_ms();
     if (world_renderer_level_get() == id && level_slot() >= 19) g_wkey[id] = world_cache_key();  // (a world section's: kept when left)
     g_tcols = TfragColours{};
+    ++g_tcols_resets;
     if (mrp_rt_active()) mrp_rt_level(rt_gather(L));  // (Water Reflections (RT): the static world's acceleration structures)
     else mrp_rt_level_drop();                          // (the last level's freed; made at the frame the row turns an RT value on)
     L.reset_walker = true;
@@ -2276,10 +2280,20 @@ bool tie_vert_opaque(const SceneInst& si) {
 }
 std::vector<uint8_t> g_tfrag_entry_opq;
 uint64_t g_tfrag_entry_opq_updates = ~0ull, g_tfrag_entry_opq_gen = ~0ull;
+size_t g_tfrag_entry_opq_size = 0;
+uint64_t g_tfrag_entry_opq_resets = ~0ull;
 // orig: (host)
 bool tfrag_entry_opaque(uint32_t entry) {
-    if (g_tfrag_entry_opq_updates != g_tcols.updates || g_tfrag_entry_opq_gen != g_tlevel.generation) {
-        g_tfrag_entry_opq_updates = g_tcols.updates;
+    // (remade when an entry's colours changed - the mirror's count of entries changed, which also counts a new level's first fill -
+    // not at every update of the mirror, one a frame: the ties' table above had the same fault. RAC1_PERF_OPAQUE_KEEP_TFRAG=0: as
+    // before)
+    static const bool keep = perf::switch_value("RAC1_PERF_OPAQUE_KEEP_TFRAG", 1) != 0;
+    const uint64_t key = keep ? g_tcols.entries_changed : g_tcols.updates;
+    if (g_tfrag_entry_opq_updates != key || g_tfrag_entry_opq_gen != g_tlevel.generation || g_tfrag_entry_opq_size != g_tcols.mirror.size() ||
+        g_tfrag_entry_opq_resets != g_tcols_resets) {
+        g_tfrag_entry_opq_updates = key;
+        g_tfrag_entry_opq_size = g_tcols.mirror.size();
+        g_tfrag_entry_opq_resets = g_tcols_resets;
         g_tfrag_entry_opq_gen = g_tlevel.generation;
         g_tfrag_entry_opq.assign(g_tlevel.entries.size(), 0);
         for (size_t i = 0; i < g_tlevel.entries.size(); ++i) {
