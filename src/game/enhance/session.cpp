@@ -1,5 +1,6 @@
 // See session.h.
 #include <game/enhance/session.h>
+#include <game/enhance/session_runtime.h>
 
 #include <game/enhance/class_profiles.h>
 #include <game/enhance/context.h>
@@ -796,7 +797,9 @@ void cycle_check() {
 void session_frame(uint64_t frame) {
     g_frame = frame;
     if (g_spawn_probe && frame % 600 == 0) spawn_probe_end();  // (the probe's lines so far)
+    session_rt_test_frame(frame);  // (testing: RAC1_SESSION_SAVE_AT / _LOAD_AT, nothing unless set)
     if (!g_on) return;
+    if (g_session_rt) session_rt_frame(frame);  // (a format 3 level's session: session_runtime.h)
     cycle_frame(frame);
     cycle_check();
     // the spawns' heap pvars of mobys gone (out of play, or another class in the slot now)

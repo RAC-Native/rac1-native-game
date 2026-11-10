@@ -2,6 +2,7 @@
 // loop), the per-frame helpers it calls and the render view setup 0x1f6e48.
 // Callees not ported (or not yet proven with the oracle) are TODO_PORT. The hardware the loop
 // waits on (the RCNT1 counter, vsync, DMA kicks) is the host's: see host_rcnt1().
+#include <game/enhance/session_runtime.h>
 #include <game/ovl/credits_tr.h>
 #include <game/ovl/screen_flash.h>
 #include <game/ovl/memory_card.h>
@@ -780,7 +781,11 @@ static bool overlay_frame_end(int32_t mode) {
         snd_flush();
         sound_stop_all();
         music_stop_all();
-        level_setup(0, 1);
+        if (g_session_rt) {
+            session_respawn();  // (enhancement: a session's soft reset, no level setup: src/game/enhance/session_runtime.h)
+        } else {
+            level_setup(0, 1);
+        }
         sw(OV(0x0015f5c4), 0);
         music_start(lh(0x00151708), 1, 0x400);
         hud_init();

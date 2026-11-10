@@ -3,6 +3,7 @@
 #include <host/level_slots.h>
 
 #include <game/enhance/session.h>
+#include <game/enhance/session_runtime.h>
 #include <host/mod_code.h>
 
 #include <game/ovl/level_change.h>
@@ -456,9 +457,11 @@ void level_slots_header_read(int32_t level) {
         g_current.store(slot);
         std::printf("[levels] level %d's header: level slot %d's (\"%s\", flown from level %d)\n", level, slot, names(slot).names[0].c_str(), g_s.from);
         session_level_mod(level_slot_build_dir(slot));  // (its imports: the open engine's sessions)
+        session_rt_level(level_slot_build_dir(slot), slot_mod(slot)->level_id);  // (a format 3 level: its session, session_runtime.h)
         return;
     }
     session_level_mod("");
+    session_rt_level("", "");
     // one of the game's own levels
     g_s.pending = -1;
     g_s.current = -1;
@@ -730,6 +733,7 @@ uint32_t level_slots_pc_items(std::vector<uint8_t>& d) {
         if (!c.id.empty() && raw.size() >= 8) std::fill(raw.begin() + 4, raw.begin() + 8, uint8_t{0});
         put_item(raw);
     }
+    count += session_rt_pc_items(d);  // (a save made in a session: its item, session_runtime.h)
     if (!level_slots_on()) return count;
     const int cur = level_slot_current();
     for (const ModInfo* m : mods_levels()) {
@@ -756,6 +760,7 @@ uint32_t level_slots_pc_items(std::vector<uint8_t>& d) {
 
 // orig: (none) — enhancement (level_slots.h)
 void level_slots_pc_reset() {
+    session_rt_pc_reset();
     g_s.carried.clear();
     g_s.saved_on.clear();
     g_s.saved_from = -1;
@@ -764,6 +769,7 @@ void level_slots_pc_reset() {
 
 // orig: (none) — enhancement (level_slots.h)
 bool level_slots_pc_item(uint32_t id, const uint8_t* p, uint32_t size) {
+    if (session_rt_pc_item(id, p, size)) return true;  // (a session's item, session_runtime.h)
     if (id != PC_ITEM) return false;
     auto u32 = [p, size](uint32_t at) { return at + 4 <= size ? static_cast<uint32_t>(p[at] | p[at + 1] << 8 | p[at + 2] << 16 | static_cast<uint32_t>(p[at + 3]) << 24) : 0u; };
     PcItem it;

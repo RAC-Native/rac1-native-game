@@ -4,6 +4,7 @@
 #include <game/enhance/context.h>
 #include <game/enhance/pool.h>
 #include <game/enhance/session.h>
+#include <game/enhance/session_runtime.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/kernel/ee_memory.h>
@@ -36,6 +37,11 @@ constexpr OvConst<LD_PATH_TABLE> PATH_TABLE{};
 constexpr OvConst<0x00160104u> PATH_COUNT{};
 uint32_t g_base_mem = BASE_MEM;
 int32_t g_base_slot = LD_PATH_MAX;
+// (a session, format 3: the base's view's own paths and groups in the session heap instead of the mods' block; the slots
+// given back are taken again first)
+const char* const BASE_OWNER = "level data base";
+std::map<int32_t, uint32_t> g_base_added;  // path index -> its heap block
+std::vector<int32_t> g_base_free;
 
 // A context's registry: one block of the session heap (its owner "level data L") holding the objects, in the layout below,
 // its level's level data after them; the paths added later each a block of their own
@@ -216,11 +222,33 @@ void ld_registry_drop_all() {
 void ld_base_reset() {
     g_base_mem = BASE_MEM;
     g_base_slot = LD_PATH_MAX;
+    if (session_memory_on()) session_heap_free_owner(BASE_OWNER);
+    g_base_added.clear();
+    g_base_free.clear();
 }
 
 // orig: (host) see leveldata.h
 int32_t ld_path_reserve(int level, int n, uint32_t* mem) {
     const uint32_t size = 0x10 + 0x10 * static_cast<uint32_t>(n);
+    if (!ld_registry_has(level) && g_session_rt) {  // (the base's own objects in a session: the session heap)
+        int32_t slot = -1;
+        if (!g_base_free.empty()) {
+            slot = g_base_free.back();
+            g_base_free.pop_back();
+        } else if (g_base_slot - 1 >= lw(PATH_COUNT)) {
+            slot = --g_base_slot;
+        }
+        if (slot < 0) return -1;
+        const uint32_t a = session_heap_alloc(size, BASE_OWNER);
+        if (a == 0) {
+            g_base_free.push_back(slot);
+            return -1;
+        }
+        g_base_added[slot] = a;
+        sw(PATH_TABLE + static_cast<uint32_t>(slot) * 4, a);
+        *mem = a;
+        return slot;
+    }
     if (!ld_registry_has(level)) {  // (the base's own objects)
         if (g_base_slot - 1 < lw(PATH_COUNT) || g_base_mem + size > BASE_MEM_END) return -1;
         const int32_t slot = --g_base_slot;
@@ -252,7 +280,15 @@ int32_t ld_path_reserve(int level, int n, uint32_t* mem) {
 
 // orig: (host) see leveldata.h
 void ld_path_release(int level, int32_t index) {
-    if (!ld_registry_has(level)) return;
+    if (!ld_registry_has(level)) {  // (the base's: given back in a session only, the mods' block is a level's)
+        const auto it = g_base_added.find(index);
+        if (it == g_base_added.end()) return;
+        session_heap_free(it->second);
+        g_base_added.erase(it);
+        sw(PATH_TABLE + static_cast<uint32_t>(index) * 4, 0);
+        g_base_free.push_back(index);
+        return;
+    }
     Registry& R = *g_reg[level];
     const auto it = R.added.find(index);
     if (it == R.added.end()) return;
@@ -310,13 +346,36 @@ int32_t ld_group_create(int level, const uint32_t* mobys, int n) {
             break;
         }
     if (g < 0) return -1;
-    const uint32_t a = own ? session_heap_alloc(static_cast<uint32_t>(n) * 2, owner(level)) : 0;
-    if (a == 0) return -1;  // (the base's groups: not made here)
+    // (the list: a registry's in the heap; the base's own in a session in the heap too, else in the mods' block after the
+    // paths there)
+    uint32_t a = 0;
+    if (own) {
+        a = session_heap_alloc(static_cast<uint32_t>(n) * 2, owner(level));
+    } else if (g_session_rt) {
+        a = session_heap_alloc(static_cast<uint32_t>(n) * 2, BASE_OWNER);
+    } else if (g_base_mem + align16(static_cast<uint32_t>(n) * 2) <= BASE_MEM_END) {
+        a = g_base_mem;
+        g_base_mem += align16(static_cast<uint32_t>(n) * 2);
+    }
+    if (a == 0) return -1;
     const uint32_t base = lwu(OV(0x0015ffd8));
     for (int k = 0; k < n; ++k) sh(a + 2 * static_cast<uint32_t>(k), ((mobys[k] - base) >> 8) | (k == n - 1 ? 0x8000u : 0u));
     sw(table + 4 * static_cast<uint32_t>(g), a);
     if (lw(count) < g + 1) sw(count, static_cast<uint32_t>(g + 1));
     return g;
+}
+
+// orig: (host) see leveldata.h
+bool ld_group_set(int level, int32_t g, const uint32_t* mobys, int n) {
+    if (!ld_registry_has(level) || g < 0 || g >= static_cast<int32_t>(LD_GROUP_MAX) || n <= 0) return false;
+    Registry& R = *g_reg[level];
+    const uint32_t a = session_heap_alloc(static_cast<uint32_t>(n) * 2, owner(level));
+    if (a == 0) return false;
+    const uint32_t base = lwu(OV(0x0015ffd8));
+    for (int k = 0; k < n; ++k) sh(a + 2 * static_cast<uint32_t>(k), ((mobys[k] - base) >> 8) | (k == n - 1 ? 0x8000u : 0u));
+    sw(R.block + R_GROUPS + 4 * static_cast<uint32_t>(g), a);
+    if (lw(R.block + R_GROUP_COUNT) < g + 1) sw(R.block + R_GROUP_COUNT, static_cast<uint32_t>(g + 1));
+    return true;
 }
 
 // ---- the swap ----

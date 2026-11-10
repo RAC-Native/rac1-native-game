@@ -9,6 +9,7 @@
 #include <game/enhance/leveldata.h>
 #include <game/enhance/pool.h>
 #include <game/enhance/session.h>
+#include <game/enhance/session_runtime.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/music_streams.h>
 #include <game/ovl/ovl.h>
@@ -893,6 +894,39 @@ int32_t api_import_load(const char* name) {
     return session_import_load(l, c, "plugin");
 }
 
+// ---- (ABI 9) sessions (session_runtime.h) ----
+int api_session_on() { return g_session_rt ? 1 : 0; }
+
+int api_checkpoint_set(const char* name) { return name != nullptr && session_checkpoint_set(name) ? 1 : 0; }
+
+int api_checkpoint_at(const float pos[3], float yaw, const char* name) {
+    return pos != nullptr && session_checkpoint_at(pos, yaw, name != nullptr ? name : "") ? 1 : 0;
+}
+
+int32_t api_checkpoint_get(float pos[3], float* yaw, char* name, int32_t cap) {
+    if (!g_session_rt) return -1;
+    const std::string n = session_checkpoint(pos, yaw);
+    if (name != nullptr && cap > 0) {
+        const size_t k = std::min<size_t>(n.size(), static_cast<size_t>(cap) - 1);
+        std::memcpy(name, n.data(), k);
+        name[k] = 0;
+    }
+    return static_cast<int32_t>(session_respawns());
+}
+
+int32_t api_respawn_policy(int32_t policy) { return session_respawn_policy(policy); }
+
+// a loaded save's session bytes of the plugins (session_load), given after their level_start
+std::vector<std::pair<std::string, std::vector<uint8_t>>> g_session_bytes;
+
+void session_bytes_give() {
+    for (const auto& [folder, bytes] : g_session_bytes)
+        for (Plugin& p : g_plugins)
+            if (p.mod->folder == folder && p.cb.size >= offsetof(rac1_mod, session_load) + sizeof(p.cb.session_load) && p.cb.session_load != nullptr)
+                with(p, [&] { p.cb.session_load(p.cb.user, bytes.data(), static_cast<uint32_t>(bytes.size())); });
+    g_session_bytes.clear();
+}
+
 // ---- (ABI 8) the level data of imported classes (class_profiles.h) ----
 // the plugins' paths (path_create, handles 0x10001..; level.txt's are 1..): the level's start empties them
 std::vector<SdkPath> g_plugin_paths;
@@ -932,7 +966,7 @@ int api_object_bind_path(uint32_t m, const char* slot, int32_t path) {
 
 int api_object_bind(uint32_t m, const char* slot, uint32_t value) {
     if (slot == nullptr || !is_moby(m)) return 0;
-    const ProfObj* o = profiles_session_obj(m);
+    const ProfObj* o = profiles_obj(m);
     uint32_t off = 0;
     std::string kind;
     if (o == nullptr || !profile_slot(o->prof, slot, &off, &kind) || kind == "path" || kind == "area") return 0;
@@ -941,7 +975,7 @@ int api_object_bind(uint32_t m, const char* slot, uint32_t value) {
 }
 
 int32_t api_group_create(uint32_t owner, const uint32_t* mobys, int32_t n) {
-    const ProfObj* o = is_moby(owner) ? profiles_session_obj(owner) : nullptr;
+    const ProfObj* o = is_moby(owner) ? profiles_obj(owner) : nullptr;  // (an imported object, or the base level's own: ABI 9)
     if (o == nullptr || mobys == nullptr || n < 1 || n > 64) return -1;
     for (int32_t i = 0; i < n; ++i)
         if (!is_moby(mobys[i])) return -1;
@@ -949,7 +983,7 @@ int32_t api_group_create(uint32_t owner, const uint32_t* mobys, int32_t n) {
 }
 
 int32_t api_object_slots(uint32_t m, char* out, int32_t cap) {
-    const ProfObj* o = is_moby(m) ? profiles_session_obj(m) : nullptr;
+    const ProfObj* o = is_moby(m) ? profiles_obj(m) : nullptr;
     if (o == nullptr) return 0;
     const std::string t = profile_slots_text(o->prof);
     if (out != nullptr && cap > 0) {
@@ -1311,6 +1345,7 @@ void load_all() {
     g_api.frame_count = api_frame_count;
     g_api.base_spawn = api_base_spawn;
     g_prof_base_spawn = api_base_spawn;
+    g_prof_pool = &g_pool;
     g_api.base_moby = api_base_moby;
     g_api.base_free = api_base_free;
     g_api.vendor_open = api_vendor_open;
@@ -1336,6 +1371,11 @@ void load_all() {
     g_api.object_bind = api_object_bind;
     g_api.group_create = api_group_create;
     g_api.object_slots = api_object_slots;
+    g_api.session_on = api_session_on;
+    g_api.checkpoint_set = api_checkpoint_set;
+    g_api.checkpoint_at = api_checkpoint_at;
+    g_api.checkpoint_get = api_checkpoint_get;
+    g_api.respawn_policy = api_respawn_policy;
     g_plugins.reserve(mods.size());  // (g_cur points into it)
     for (const ModInfo* m : mods) {
         std::string err;
@@ -1598,6 +1638,7 @@ void level_started() {
         p.rng = 0x9e3779b97f4a7c15ull ^ (static_cast<uint64_t>(slot) + 1) * 0xbf58476d1ce4e5b9ull;
         if (p.cb.level_start != nullptr) with(p, [&] { p.cb.level_start(p.cb.user, &info); });
     }
+    if (!g_session_bytes.empty()) session_bytes_give();  // (a save's session: the plugins' bytes after their start)
 }
 
 }  // namespace
@@ -1639,6 +1680,7 @@ void mod_code_level_loaded() {
         return;
     }
     pool_take(level_slot());
+    if (g_session_rt) session_rt_loaded();  // (a session's arrival: its soft resets' snapshot, session_runtime.h)
 }
 
 // orig: (none) — enhancement (mod_code.h)
@@ -1807,6 +1849,48 @@ bool mod_code_pc_item(uint32_t id, const uint8_t* p, uint32_t size) {
     }
     g_carried.emplace_back(p, p + size);  // (a plugin not loaded, or a newer version's item: written back as it was)
     return true;
+}
+
+// orig: (none) — enhancement (mod_code.h)
+bool mod_code_path_points(const std::string& name, std::vector<float>& xyz) {
+    xyz.clear();
+    for (const SdkPath& p : g_sdk.paths)
+        if (p.name == name) {
+            for (const auto& v : p.pts) xyz.insert(xyz.end(), v.begin(), v.end());
+            return true;
+        }
+    return false;
+}
+
+// orig: (none) — enhancement (mod_code.h)
+void mod_code_respawn(uint32_t count, const char* checkpoint, const float pos[3], float yaw) {
+    rac1_respawn r{};
+    r.size = sizeof r;
+    r.count = count;
+    r.checkpoint = checkpoint;
+    std::memcpy(r.pos, pos, sizeof r.pos);
+    r.yaw = yaw;
+    for (Plugin& p : g_plugins)
+        if (p.cb.size >= offsetof(rac1_mod, respawn) + sizeof(p.cb.respawn) && p.cb.respawn != nullptr) with(p, [&] { p.cb.respawn(p.cb.user, &r); });
+}
+
+// orig: (none) — enhancement (mod_code.h)
+void mod_code_session_save(std::vector<std::pair<std::string, std::vector<uint8_t>>>& out) {
+    for (Plugin& p : g_plugins) {
+        if (p.cb.size < offsetof(rac1_mod, session_save) + sizeof(p.cb.session_save) || p.cb.session_save == nullptr) continue;
+        std::vector<uint8_t> buf(0x4000);
+        uint32_t n = 0;
+        with(p, [&] { n = p.cb.session_save(p.cb.user, buf.data(), static_cast<uint32_t>(buf.size())); });
+        if (n == 0) continue;
+        buf.resize(std::min<size_t>(n, buf.size()));
+        out.emplace_back(p.mod->folder, std::move(buf));
+    }
+}
+
+// orig: (none) — enhancement (mod_code.h)
+void mod_code_session_load(const std::string& folder, const uint8_t* data, uint32_t size) {
+    g_session_bytes.emplace_back(folder, std::vector<uint8_t>(data, data + size));
+    if (g_started) session_bytes_give();
 }
 
 // orig: (none) — enhancement (mod_code.h)

@@ -48,9 +48,10 @@ extern "C" {
    pad held from the game, the HUD's panels, anchors and text sizes; 5: Kalebo III's enemies (base_option, base_hunt for more
    classes), the weapons; 6: classes of other levels (a level mod's `import` lines: import_class, import_spawn, import_load,
    import_release); 7: reserved (the rails, still to come: its room is kept in the table below); 8: the level data of
-   imported classes (path_find, path_create, object_bind_path, object_bind, group_create, object_slots) (docs/sdk.md lists
-   what each version added). */
-#define RAC1_MOD_ABI 8
+   imported classes (path_find, path_create, object_bind_path, object_bind, group_create, object_slots); 9: sessions (a level
+   mod of format 3: session_on, checkpoints, the respawn policy; the respawn, session_save and session_load callbacks)
+   (docs/sdk.md lists what each version added). */
+#define RAC1_MOD_ABI 9
 
 #if defined(_WIN32)
 #define RAC1_MOD_EXPORT __declspec(dllexport)
@@ -77,6 +78,20 @@ typedef struct rac1_level_info {
 /* (ABI 5) base_option's options */
 #define RAC1_BASE_WEAPON 1  /* Kalebo III's Gadgetron robots (541): their weapon 0..2 */
 #define RAC1_BASE_TROOPS 2  /* Kalebo III's dropships (1356): the jetpack troopers they bring, 0..4 */
+
+/* (ABI 9) respawn_policy's policies: what a session's soft reset does with the level's placed objects (level.txt's moby
+   lines; the base level's objects your plugin started are yours to handle in the respawn callback) */
+#define RAC1_RESPAWN_RESET 0  /* those killed since the arrival come back as placed (not the ones the game keeps killed) */
+#define RAC1_RESPAWN_KEEP 1   /* they stay as they are */
+
+/* (ABI 9) A session's respawn: given to the respawn callback */
+typedef struct rac1_respawn {
+    uint32_t size;           /* sizeof the game's struct */
+    uint32_t count;          /* the session's respawns so far, this one included */
+    const char* checkpoint;  /* the checkpoint Ratchet is back at (level.txt's name, checkpoint_at's, "game", "start") */
+    float pos[3];            /* where */
+    float yaw;
+} rac1_respawn;
 
 /* (ABI 2) A level object's spawn: given to its class's spawn callback */
 typedef struct rac1_spawn {
@@ -399,6 +414,24 @@ typedef struct rac1_api {
     /* the slots of the imported object `moby`'s class, "name:kind name:kind ..." (kind: path, area, group, moby, word, vec3)
        into `out` (`cap` bytes): their count, 0 when it has no profile */
     int32_t (*object_slots)(uint32_t moby, char* out, int32_t cap);
+
+    /* ======== ABI 9 (test RAC1_API_HAS(api, session_on)) ======== */
+    /* -- sessions (docs/open-engine.md, "Sessions"): a level mod of format 3 is loaded once, at the arrival; a death is a soft
+          reset (Ratchet back at the current checkpoint, no level load: his weapons, ammo and bolts, your state and your
+          objects kept; the respawn callback tells you) -- */
+    /* 1: the level is a session (format 3), 0 not (the services below then do nothing) */
+    int (*session_on)(void);
+    /* level.txt's `checkpoint <name> x y z [yaw]` the current one (where the next respawn puts Ratchet): 1, 0 none of that
+       name */
+    int (*checkpoint_set)(const char* name);
+    /* a checkpoint of your own at `pos` turned `yaw` (radians), named `name` (NULL: "plugin") the current one: 1 done */
+    int (*checkpoint_at)(const float pos[3], float yaw, const char* name);
+    /* the current checkpoint: its place and yaw (either may be NULL), its name into `name` (`cap` bytes, may be NULL); the
+       session's respawns so far, -1 outside a session */
+    int32_t (*checkpoint_get)(float pos[3], float* yaw, char* name, int32_t cap);
+    /* the level's placed objects at a respawn: RAC1_RESPAWN_RESET (level.txt's `respawn reset`, the default) or
+       RAC1_RESPAWN_KEEP; -1 only asks. The policy now, -1 outside a session */
+    int32_t (*respawn_policy)(int32_t policy);
 } rac1_api;
 
 #define RAC1_API_HAS(api, field) ((api)->size >= offsetof(rac1_api, field) + sizeof((api)->field))
@@ -447,6 +480,18 @@ typedef struct rac1_mod {
     /* ======== ABI 2 ======== */
     /* Ratchet entered (inside 1) or left (0) level.txt's trigger `index` (its `name`), before the frame callback */
     void (*trigger)(void* user, int32_t index, const char* name, int32_t inside);
+
+    /* ======== ABI 9 ======== */
+    /* (a session) Ratchet died and is back at the checkpoint: a soft reset, no level load (level_start and level_end are not
+       called; his weapons, ammo and bolts, your state and the objects you started are as they were): bring back what the
+       battle he died in needs (its enemies), before the next frame */
+    void (*respawn)(void* user, const rac1_respawn* r);
+    /* (a session) a save is written in it: the session's state of yours (where the player is in it: a wave, a door opened),
+       at most `cap` bytes into `buf`, their count returned (0: none); kept with the session's item in save<N>.pc, apart
+       from your save callback's progress */
+    uint32_t (*session_save)(void* user, uint8_t* buf, uint32_t cap);
+    /* (a session) a save made in it was loaded: your session bytes as saved, after the level's level_start */
+    void (*session_load)(void* user, const uint8_t* data, uint32_t size);
 } rac1_mod;
 
 /* The ABI the plugin was built with (rac1_mod_abi): put RAC1_MOD_DECLARE_ABI() once in a source file */

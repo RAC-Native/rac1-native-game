@@ -52,6 +52,9 @@ void ld_path_set(uint32_t mem, const float (*pts)[3], int n);
 uint32_t ld_path_mem(int level, int32_t index);
 // orig: (host) a group of the mobys `mobys` (moby addresses) in level `level`'s registry: its index, -1 when no room
 int32_t ld_group_create(int level, const uint32_t* mobys, int n);
+// orig: (host) group `g` of level `level`'s registry set to the mobys `mobys` (moby addresses; the twin run: its level's group
+// at its own index, as its pvars name it): false without a registry
+bool ld_group_set(int level, int32_t g, const uint32_t* mobys, int n);
 // orig: (host) level `level`'s registry's path count (its level's own paths)
 int32_t ld_path_count(int level);
 // orig: (host) path `index` of level `index`'s own level data (the leveldata file): its points (false: none)

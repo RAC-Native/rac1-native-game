@@ -176,6 +176,7 @@ add_library(rac1_game STATIC
     enhance/mod_code.cpp
     enhance/level_mod_hero.cpp
     enhance/session.cpp
+    enhance/session_runtime.cpp
     enhance/pool.cpp
     enhance/context.cpp
     enhance/leveldata.cpp
