@@ -4042,6 +4042,7 @@ int main(int argc, char** argv) {
             if (menu_mode || fd.fade || fd.vendor_pic || title || movie_pic != nullptr || fd.exiting) g_lazy_shown.resolve();
             else g_lazy_shown.pending = false;  // (a frame of the game: it will be the last shown)
             if (rac1::vk::is_active()) {
+                RAC1_PROF_ZONE(kFrameBegin);
                 rac1::vk::begin_frame(w, h, 0.02f, 0.02f, 0.04f, 1.0f);  // (colour, depth and stencil cleared)
                 rac1::vk::set_viewport(vx, vy, vw, vh);
             } else {

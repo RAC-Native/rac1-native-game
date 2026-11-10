@@ -1576,6 +1576,7 @@ struct OpaqueCheck {
     uint64_t runs = 0, units = 0, bad_runs = 0, pixels = 0;
     uint64_t built[2][3] = {};  // (the frames' runs' units by state: [0] draw commands, [1] indices)
 } g_opq_chk;
+uint64_t g_opq_by_level[32][3] = {};  // (the GPU path's draw commands of g_opq_chk.built by level: the report)
 // orig: (host) whether a draw's pixels can fail its alpha test (P2Run's state): `fl` its draw_flags, `k` its key (the full texture
 // word), `vert_opq` every vertex colour it draws with has an alpha >= 0x80
 uint8_t alpha_state(const Key& k, uint32_t fl, bool vert_opq) {
@@ -3207,7 +3208,10 @@ void build_triangles(Frame& F) {
     }
     g_st.batches += F.batches.size();
     for (const Batch& b : F.batches)
-        for (uint32_t r = b.r0; r < b.r0 + b.rn; ++r) g_opq_chk.built[b.gpu ? 0 : 1][F.p2runs[r].state] += F.p2runs[r].count;
+        for (uint32_t r = b.r0; r < b.r0 + b.rn; ++r) {
+            g_opq_chk.built[b.gpu ? 0 : 1][F.p2runs[r].state] += F.p2runs[r].count;
+            if (b.gpu) g_opq_by_level[static_cast<size_t>(g_level.id) & 31][F.p2runs[r].state] += F.p2runs[r].count;
+        }
 }
 
 // ---- drawing -----------------------------------------------------------------------------------
@@ -6112,6 +6116,14 @@ void mrp_world_report() {
         std::printf("[perf] opaque draws (RAC1_PERF_OPAQUE=%d): draw commands without the test %llu, with it but opaque %llu, may fail %llu; indices %llu / %llu / %llu\n",
                     perf_opaque(), static_cast<unsigned long long>(c[0][0]), static_cast<unsigned long long>(c[0][1]), static_cast<unsigned long long>(c[0][2]),
                     static_cast<unsigned long long>(c[1][0]), static_cast<unsigned long long>(c[1][1]), static_cast<unsigned long long>(c[1][2]));
+        for (int l = 0; l < 32; ++l) {  // (the GPU path's draw commands by level: how many still take the second pass)
+            const uint64_t* v = g_opq_by_level[l];
+            const uint64_t all = v[0] + v[1] + v[2];
+            if (all != 0)
+                std::printf("[perf] opaque draws, level %d: draw commands without the test %llu, with it but opaque %llu, may fail %llu (%.0f %% in the second pass)\n", l,
+                            static_cast<unsigned long long>(v[0]), static_cast<unsigned long long>(v[1]), static_cast<unsigned long long>(v[2]),
+                            100.0 * static_cast<double>(v[2]) / static_cast<double>(all));
+        }
         if (perf_opaque() == 2)
             std::printf("[perf] opaque check: %llu runs (%llu draw commands / indices) drawn again, %llu with pixels failing the alpha test (%llu pixels)\n",
                         static_cast<unsigned long long>(g_opq_chk.runs), static_cast<unsigned long long>(g_opq_chk.units), static_cast<unsigned long long>(g_opq_chk.bad_runs),

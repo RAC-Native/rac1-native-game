@@ -692,7 +692,7 @@ moby shadows are drawn; `RAC1_MRPW_P2_LESS` a few pixels).
 
 ## Measuring
 
-The profiler's CSV (`RAC1_PROFILER_CSV=<file>`) has, per host frame, its period, the game frames it ran (`steps`), the pictures it presented (`pictures`: k with the frame extrapolation, whose pictures a second the Profiler tab and its overlay show beside the fps, which count host frames), the main
+The profiler's CSV (`RAC1_PROFILER_CSV=<file>`) has, per host frame, its period, the game frames it ran (`steps`), the pictures it presented (`pictures`: k with the frame extrapolation, whose pictures a second the Profiler tab and its overlay show beside the fps, which count host frames), the preparation's whole time (`prepare_total_ms`: the `Prepare` stage with the stages inside it - the chain's capture, the wait for the scene's capture, the moby lists -, since a stage's own column leaves out the stages it holds), the main
 thread's CPU time, every stage's CPU and GPU time, and the workers' busy and CPU time (the game thread's: `busy: Game thread`;
 its stages are counted in the stage columns, the main thread's wait for it in `Wait: game thread`), and the workers' parts (`part:`
 columns: the chain reader's uploads and VU1 programs, the scene worker's decisions, capture, walk and triangles). Two ways to use it
@@ -703,6 +703,15 @@ headless (the window's size and the Options as a player has them: a copy of `gra
   game frame per host frame as fast as it goes: the period is the cost of a game frame, the same game frames in every run.
 - **As a player**: `RAC1_REALTIME=1 RAC1_FPS_CAP=0 RAC1_AUDIO_DEVICE=null RAC1_PIPELINE=1` steps the game by the wall clock
   and paces as a window does: the `steps` column's distribution is how often a host frame ran two game frames.
+
+Three stages were outside every other one and are now their own (November 2026): `Frame begin (Vulkan)` (the frame's fence,
+its pools, the clears: it was in `Draw (other)`), `Wait: swapchain image` inside it (`vkAcquireNextImageKHR`: with FIFO and a
+full queue the main thread waits there a refresh or more; a headless run has no swapchain and shows none) and `Materials:
+frame capture` (Surface Detail's copy of the frame's colour and depth, CPU and GPU: it was in no stage). The dump
+(`RAC1_PROFILER_DUMP`) says how many host frames ran none, one, two and three or more game frames - in a paced run
+(`RAC1_REALTIME=1`), how often the picture's rate halved or a frame was shown twice - and the preparation's whole time. The
+end of a run with `RAC1_PERF_OPAQUE` lists, per level, the GPU path's draw commands without the alpha test, with it but held
+opaque, and those that still take the second pass (`[perf] opaque draws, level N`).
 
 The GPU's stages (`gpu: ...` columns) are best compared as medians of a deterministic run's frames (a hitch in one frame
 does not move them), and between runs taken in turn: the GPU is shared with every other program drawing on the machine, and a
