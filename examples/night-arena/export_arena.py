@@ -133,8 +133,10 @@ SECTIONS = [("prova", {"sky": 15, "background": (34, 44, 92), "fog": (34, 44, 92
             #   With its spiked rail mines (621: jumped, or broken with the wrench, as on Batalia).
             ("batalia", {"world": "batalia", "objects": "621", "entries": [("arrivo", (286.0, 86.9, 33.0), 2.91)],
                          "death_height": 15.0}),
-            # - (to come: Rilgar on its race's hoverboard, hero rilgar board, from the finish line 275.49 334.35 73.61 to the
-            #   small platform of bolt crates past the big ramp, 264 440 80: its board waits for its race's start, 0x6e)
+            # - Rilgar: its hoverboard race (its own hero code and board: hero rilgar board; its HUD) from its finish line, to
+            #   the small platform past the big ramp (the plugin's ring there), with its bolt crates
+            ("rilgar", {"world": "rilgar", "hero": "rilgar board", "objects": "500", "box": (250, 425, 70, 280, 455, 95),
+                        "entries": [("arrivo", (275.49, 334.35, 73.61), -2.04)], "death_height": 30.0}),
             # - Umbris: the Snagglebeast's cave, its boss (the challenge won when it is beaten). Its objects but 529 (with it in
             #   play, back in main the moby pass crashed: an engine's matter, asked) and those whose class ids Kalebo III's
             #   classes have (605, 805, 1135: the composer takes the base's, not Umbris's)

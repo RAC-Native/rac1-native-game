@@ -162,8 +162,8 @@ static const challenge_def CHALLENGES[] = {
     {"Campionato", "15 round, le modalita' a caso", CUP, 0, 15, {{0}}, 0, 25, 0, 0, W_ANY, 20000},
     {"Grindscarponi: Discesa", "3 corsie di mine, poi l'ultima ondata", RAIL, 90, 1, {{8, 6, 25, "RRB"}}, 0, 20,
      0, 0, W_ANY, 3000, 0, "lane_c lane_l lane_r", "rail_course", 1},
-    {"La grande fuga", "percorso, lava, Quartu, Batalia, Snagglebeast", RAIL, 90, 2, {{10, 7, 30, "RRB"}, {12, 8, 28, "RRBF"}},
-     0, 25, 0, 0, W_ANY, 10000, 0, "lane_c lane_l lane_r", "rail_course", 1, "escape", "quartu batalia umbris"},
+    {"La grande fuga", "lava, Quartu, Batalia, Rilgar, Snagglebeast", RAIL, 90, 2, {{10, 7, 30, "RRB"}, {12, 8, 28, "RRBF"}},
+     0, 25, 0, 0, W_ANY, 10000, 0, "lane_c lane_l lane_r", "rail_course", 1, "escape", "quartu batalia rilgar umbris"},
     {"Impossibile", "il campionato, 50 round", CUP, 0, 50, {{0}}, 0, 20, 0, 0, W_ANY, 100000, 1},
 };
 #define N_CHALLENGES ((int)(sizeof CHALLENGES / sizeof CHALLENGES[0]))
@@ -359,7 +359,8 @@ static void hud_grow(int rect, int first, int wmax) {
 
 /* the HUD's bottom row (Daino: nothing in the middle of the screen, nor over the quick select's ring at the left): the
    challenge's box at the left, the banners and the toasts in the middle, all ending this far down */
-#define BOSS_BAR_H 46  /* a boss's health bar at the bottom (the game's: the Snagglebeast's), under the box and the messages */
+#define BOSS_BAR_H 46  /* the game's own row at the bottom (the Snagglebeast's health bar, Rilgar's race: lap, time, place),
+                          under the box and the messages */
 #define HUD_BOTTOM (RAC1_HUD_HEIGHT - 10 - s.boss_hud)
 #define TOAST_H 26
 #define MSG_W 440  /* the banners' and toasts' texts at most this wide (smaller past it; hud moves them off the box) */
@@ -480,9 +481,12 @@ static const char* const TEXTS[][N_LANGS] = {
     {"Nessuna rotaia", "No rails", "Aucun rail", "Keine Schienen", "Sin railes"},
     {"Salta sulla rotaia!", "Jump on the rail!", "Saute sur le rail!", "Spring auf die Schiene!", "Salta al rail!"},
     {"La grande fuga", "The Great Escape", "La Grande Evasion", "Die grosse Flucht", "La gran fuga"},
-    {"percorso, lava, Quartu, Batalia, Snagglebeast", "course, lava, Quartu, Batalia, Snagglebeast",
-     "parcours, lave, Quartu, Batalia, Snagglebeast", "Strecke, Lava, Quartu, Batalia, Snagglebeast",
-     "recorrido, lava, Quartu, Batalia, Snagglebeast"},
+    {"lava, Quartu, Batalia, Rilgar, Snagglebeast", "lava, Quartu, Batalia, Rilgar, Snagglebeast",
+     "lave, Quartu, Batalia, Rilgar, Snagglebeast", "Lava, Quartu, Batalia, Rilgar, Snagglebeast",
+     "lava, Quartu, Batalia, Rilgar, Snagglebeast"},
+    {"Rilgar: salta dalla rampa grande sulla piattaforma", "Rilgar: big ramp, jump onto the platform",
+     "Rilgar: grand tremplin, saute sur la plateforme", "Rilgar: grosse Rampe, Sprung auf die Plattform",
+     "Rilgar: rampa grande, salta a la plataforma"},
     {"La lava sale! Sali al centro e prendi la rotaia", "The lava is rising! Up the centre, onto the rail",
      "La lave monte! Monte au centre, prends le rail", "Die Lava steigt! Hoch zur Mitte, auf die Schiene",
      "La lava sube! Sube al centro y toma el rail"},
@@ -2202,15 +2206,19 @@ static const struct chain_def {
     float start[3];    /* (board) where a fall puts him back on it, turned start_yaw; under fall_z he falls */
     float start_yaw, fall_z;
     const char* foes;  /* (board) the foes on the way (KIND letters, one each), between start and ring */
+    float reach;       /* > 0: the ring reached within this (across; 4 up or down) leads on, however he gets there */
 } CHAIN[] = {
     /* Quartu: our rail quartu_in from high south of its Giant Clank's pad down by it, then the board east across the
        Giant Clank's round arena to its middle (195 235: the ring), Kalebo III's robots and bomb bots in the way */
     {"quartu", "Quartu: in tavola fino al centro dell'arena", 0, {195.0f, 235.0f, 26.0f}, 0.0f, 1, {133.0f, 222.0f, 26.0f}, 0.0f, 24.0f,
-     "RBRRBRBRRB"},
+     "RBRRBRBRRB", 3.0f},
     /* Batalia's long rail (its rail 2: 359 units, from 289.5 86.4 31.9 to 328.9 104.2 49.2, where it leaps), the ring 6
        before its end */
-    {"batalia", "Batalia: fino in fondo alla rotaia", 1, {334.2f, 106.7f, 46.3f}, -2.69f, 0, {0}, 0.0f, 0.0f, NULL},
-    {"umbris", "Umbris: sconfiggi lo Snagglebeast", 0, {0.0f, 0.0f, 0.0f}, 0.0f, 0, {0}, 0.0f, 0.0f, NULL},
+    {"batalia", "Batalia: fino in fondo alla rotaia", 1, {334.2f, 106.7f, 46.3f}, -2.69f, 0, {0}, 0.0f, 0.0f, NULL, 0.0f},
+    /* Rilgar: its hoverboard race (its own: hero rilgar board, its HUD, back on the track after a fall) from its finish
+       line, round two thirds of its lap to the big ramp, whose jump lands on the small platform of bolt crates: the ring */
+    {"rilgar", "Rilgar: salta dalla rampa grande sulla piattaforma", 0, {264.0f, 440.0f, 80.0f}, 0.24f, 0, {0}, 0.0f, 0.0f, NULL, 7.0f},
+    {"umbris", "Umbris: sconfiggi lo Snagglebeast", 0, {0.0f, 0.0f, 0.0f}, 0.0f, 0, {0}, 0.0f, 0.0f, NULL, 0.0f},
 };
 #define BOARD_CLASS 439    /* Kalebo III's hoverboard (level.txt's spawn 439 1) */
 #define N_CHAIN ((int)(sizeof CHAIN / sizeof CHAIN[0]))
@@ -2369,7 +2377,7 @@ static void section_entered(void* user, const char* name, const char* entry) {
     snprintf(rn, sizeof rn, "%s_in", name);  /* (its rail of ours: Ratchet goes on grinding on it) */
     rails.stage_rail = api->rail_find(rn);
     if (rails.stage_rail != 0 && !api->hero_rail_attach(rails.stage_rail, 0.0f, 1)) api->log("the section: its rail did not take Ratchet");
-    rails.has_goal = d != NULL && (d->rail || d->board);
+    rails.has_goal = d != NULL && (d->rail || d->board || d->reach > 0.0f);
     if (rails.has_goal) {  /* (the portal's ring on its rail: through it, the next world) */
         memcpy(rails.goal, d->ring, sizeof rails.goal);
         const float at[3] = {d->ring[0], d->ring[1], d->ring[2] + 0.9f};
@@ -2422,6 +2430,11 @@ static void boss_event(void* user, const char* section, int32_t cls, uint32_t ob
 /* a board world's board taken away (Ratchet himself again, where he is) */
 static void board_off(void) {
     if (rails.board == 0) return;
+    if (api->abi >= 16) {  /* (the board's rules back to the game's: they last until the level ends, Rilgar's race too) */
+        api->board_rule(RAC1_BOARD_AUTO);
+        api->board_return(NULL, 0.0f);
+        api->board_fall(0, 0.0f);
+    }
     if (RAC1_API_HAS(api, hero_mode) && api->hero_mode_now() == RAC1_HERO_BOARD) api->hero_mode(RAC1_HERO_NONE, 0);
     const uint32_t m = api->base_moby(rails.board);
     if (m != 0) api->moby_remove(m);
@@ -2479,8 +2492,10 @@ static void stage_update(const float h[3]) {
                     api->hit_send(m[k], RAC1_HIT_PLAYER, 10.0f, api->hero());
                     ++rails.rammed;
                 }
+    }
+    if (d != NULL && d->reach > 0.0f) {  /* (the ring's place reached: on the board, on foot, landing from a jump) */
         const float dx = h[0] - rails.goal[0], dy = h[1] - rails.goal[1];
-        if (dx * dx + dy * dy < 9.0f && fabsf(h[2] - rails.goal[2]) < 4.0f) {
+        if (dx * dx + dy * dy < d->reach * d->reach && fabsf(h[2] - rails.goal[2]) < 4.0f) {
             if (rails.stage + 1 < rails.nstages) portal_go();
             else challenge_end(1, NULL);
         }
@@ -2640,8 +2655,8 @@ static void frame(void* user) {
     s.boss_hud = 0;
     if (!s.mine) return;
     if (s.mode == FIGHT && rails.phase == 5 && rails.sec_in && rails.stage < rails.nstages &&
-        strcmp(rails.stage_name[rails.stage], "umbris") == 0)  /* (the Snagglebeast's bar at the bottom: the HUD's row over it) */
-        s.boss_hud = BOSS_BAR_H;
+        (strcmp(rails.stage_name[rails.stage], "umbris") == 0 || strcmp(rails.stage_name[rails.stage], "rilgar") == 0))
+        s.boss_hud = BOSS_BAR_H;  /* (the Snagglebeast's bar, Rilgar's race's row at the bottom: the HUD's row over them) */
     const uint32_t hero = api->hero();
     if (hero == 0) return;
     float h[3];
@@ -2766,7 +2781,9 @@ static void frame(void* user) {
             hud_grow(box, first, 300);  /* (wider round long texts; smaller texts past 300) */
         }
         const float jx = h[0] - s.last_h[0], jy = h[1] - s.last_h[1], jz = h[2] - s.last_h[2];
-        const int boarding = rails.phase == 5 && rails.board != 0;  /* (the board's own returns: a wipe-out, a fall) */
+        const int boarding = rails.phase == 5 && (rails.board != 0 || (RAC1_API_HAS(api, hero_mode_now) &&
+                                                  api->hero_mode_now() == RAC1_HERO_BOARD));  /* (the board's own returns: a
+                                                                                                 wipe-out, a fall, the race's) */
         if (s.mode != RESULT && (api->health() <= 0 || (!boarding && s.have_last && jx * jx + jy * jy + jz * jz > 64.0f)))
             challenge_end(0, "Ratchet e' caduto");  /* (dead: his health gone, or back at his start - the lava, a fall) */
         else if (s.mode != RESULT && s.t_pad >= 0 && api->trigger_inside(s.t_pad)) challenge_end(0, "abbandonata");
@@ -3444,6 +3461,13 @@ static void test(void* user, const char* text, uint64_t frame) {
             const float at[3] = {192.0f, 235.0f, 26.5f};
             hero_move(at, 0.0f);
             api->log("test: Ratchet put by Quartu's ring");
+        }
+        static uint64_t ril_at;  /* (arena_fuga: on Rilgar's board 300 frames, then put on the crates' platform) */
+        if (rails.phase == 5 && rails.sec_in && strcmp(rails.stage_name[rails.stage], "rilgar") == 0 && ril_at == 0) ril_at = frame + 300;
+        if (fuga_t && strstr(text, "ride") == NULL && frame == ril_at) {
+            const float at[3] = {264.0f, 438.0f, 81.0f};
+            hero_move(at, 0.24f);
+            api->log("test: Ratchet put on Rilgar's platform");
         }
         static uint64_t bat_at;  /* (arena_fuga: on Batalia's rail, Ratchet put past its tower at its middle - he does not jump
                                     its obstacles; arena_fuga_ride: left to ride it all) */

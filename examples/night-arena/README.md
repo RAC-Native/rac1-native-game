@@ -35,11 +35,12 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
     - **Batalia**, its long rail from its start (its own: Ratchet comes in just over it and lands on it), with its spiked
       rail mines (jumped, or broken with the wrench), to our portal's ring just before its end, where the rail leaps:
       another flash;
+    - **Rilgar**, its own hoverboard race (its hero code, its board, its HUD: lap, time, place) from its finish line
+      round to the big ramp, whose jump lands on the small platform of bolt crates: the ring there;
     - **Umbris**, the Snagglebeast's cave (its objects, its boss line): the challenge is won when the Snagglebeast is
       beaten. The challenge's box and its messages go up over its health bar.
 
     A death anywhere is the challenge lost (it is meant to be hard); won or lost, Ratchet is taken back to the arena.
-    To come: Rilgar's hoverboard race from its finish line to the small platform past the big ramp.
   - The session's other section, "prova" (`build_prova.py`: a round platform under Quartu's sky with its own rail in),
     where the escape went before Quartu's world could take a mod's rails, is still there, used by no challenge.
 
@@ -73,9 +74,9 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   touching it he jumps out burnt, a health point lost each time, and with none left he sinks. (Type 3 is Aridia's
   quicksand: there he would sink and be bounced out with Cross.)
 
-It needs a game with the mod SDK's ABI 16 or later (the hoverboard outside a race; ABI 15 a win's save, `game_save`;
-ABI 13 the mod's rail in a planet's world, the boss; `hero generic` ABI 12; the rails, the sessions and sections ABI
-11; the rest of the plugin ABI 5).
+It needs a game with the mod SDK's ABI 16 or later (the hoverboard outside a race, Rilgar's race in its world; ABI 15 a
+win's save, `game_save`; ABI 13 the mod's rail in a planet's world, the boss; `hero generic` ABI 12; the rails, the
+sessions and sections ABI 11; the rest of the plugin ABI 5).
 
 ## Making it
 
