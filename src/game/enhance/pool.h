@@ -23,8 +23,8 @@ namespace rac1 {
 
 // The pool's format version (pool.json's "version"): a change of what is in it makes every player's pool again
 // (2: the levels' context images)
-// (3: each level's sound bank, each class's sounds)
-constexpr int POOL_VERSION = 3;
+// (3: each level's sound bank, each class's sounds; 4: as many sounds as the class block's definitions)
+constexpr int POOL_VERSION = 4;
 // The overlays' first address (their data section 0): a context image starts there
 constexpr uint32_t CONTEXT_BASE = 0x0015ef00u;
 

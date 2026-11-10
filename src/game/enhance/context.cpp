@@ -278,17 +278,4 @@ uint32_t ctx_xlate(int level, uint32_t a) {
     return to;
 }
 
-// orig: (host) see context.h
-uint32_t ctx_to_level(int level, uint32_t s) {
-    if (!ctx_exists(level)) return 0;
-    const Context& c = *g_ctx[level];
-    if (ctx_is_tag(s)) return ctx_tag_level(s) == level ? ctx_tag_addr(s) : 0;
-    if (s >= c.image && s < c.image + c.image_size) return CONTEXT_BASE + (s - c.image);
-    for (const auto& [l, e] : c.ext)  // (Veldin's object back to the level's)
-        if (s >= e.veldin && s - e.veldin < e.size) return s - e.veldin + e.level;
-    for (const auto& [l, f] : c.fns)
-        if (s >= f.veldin && s - f.veldin < f.size) return s - f.veldin + l;
-    return 0;
-}
-
 }  // namespace rac1

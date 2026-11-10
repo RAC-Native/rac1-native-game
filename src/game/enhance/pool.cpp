@@ -292,7 +292,11 @@ bool pool_build(std::string* why) {
                 int16_t off = 0, cnt = 0;
                 std::memcpy(&off, e2, 2);
                 std::memcpy(&cnt, e2 + 2, 2);
-                for (int16_t j = 0; j < cnt && j < 64; ++j) {
+                // (the level setup reads as many as the class block has definitions, +0xd, past the list when it is
+                // shorter: Orxon's 1229 has 12 for a list of 6; a class without data reads its list's own count)
+                const int32_t bo = rd32(e);
+                if (bo > 0 && static_cast<size_t>(bo) + 0xe <= f.asset.size()) cnt = f.asset[static_cast<size_t>(bo) + 0xd];
+                for (int16_t j = 0; j < cnt && j < 256; ++j) {
                     uint16_t v = 0;
                     std::memcpy(&v, s6 + off + 4 * j, 2);
                     c.sounds.push_back(v);
@@ -538,17 +542,25 @@ void pool_check_registered(int level, uint32_t id, uint32_t idx) {
 void pool_check_sounds(int level) {
     size_t classes = 0, sounds = 0, differ = 0;
     const uint32_t n = std::min<uint32_t>(lwu(OV(0x0015ffc0)), 0x100);
-    for (uint32_t i = 0; i < n; ++i) {
+    std::set<uint32_t> seen;  // (a header several class ids share - the weapons' -: the last one's sounds are in it)
+    for (uint32_t i = n; i-- > 0;) {
         const uint32_t hdr = lwu(OV(0x00197300) + i * 4);
         const PoolClass* c = pool_find(level, lhu(OV(0x00197a00) + i * 2));
-        if (hdr == 0 || c == nullptr || lwu(hdr + 0x28) == 0) continue;
+        if (hdr == 0 || c == nullptr || lwu(hdr + 0x28) == 0 || !seen.insert(hdr).second) continue;
         ++classes;
         const uint32_t cnt = lbu(hdr + 0xd);
         for (uint32_t j = 0; j < cnt; ++j) {
             ++sounds;
-            if (j >= c->sounds.size() || lhu(lwu(hdr + 0x28) + 32 * j + 0x1a) != c->sounds[j]) ++differ;
+            if (j >= c->sounds.size() || lhu(lwu(hdr + 0x28) + 32 * j + 0x1a) != c->sounds[j]) {
+                ++differ;
+                std::printf("[pool] check level %d: class %u's sound %u is %#x, the pool's %#x\n", level, c->id, j, lhu(lwu(hdr + 0x28) + 32 * j + 0x1a),
+                            j < c->sounds.size() ? c->sounds[j] : 0xffffu);
+            }
         }
-        if (cnt != c->sounds.size()) ++differ;
+        if (cnt != c->sounds.size()) {
+            ++differ;
+            std::printf("[pool] check level %d: class %u has %u sounds, the pool's row %zu\n", level, c->id, cnt, c->sounds.size());
+        }
     }
     std::printf("[pool] check level %d: the sounds of %zu classes, %zu definitions, %zu differ: %s\n", level, classes, sounds, differ,
                 differ == 0 ? "ok" : "FAILED");

@@ -49,9 +49,6 @@ uint32_t ctx_xlate(int level, uint32_t a);
 // `veldin` (`size` bytes) is, for level `level`'s sites, the copy at `to` (a level's paths seen by its own classes, the
 // session's engine keeping its own); `to` 0 drops the view. The level must have a context
 bool ctx_view(int level, uint32_t veldin, uint32_t size, uint32_t to);
-// orig: (host) a session address (or a tag, or a Veldin function) back as level `level`'s own address: the inverse of
-// ctx_xlate for its own data, own code and engine objects; 0 when it is none of them (the twin run's comparisons)
-uint32_t ctx_to_level(int level, uint32_t s);
 
 }  // namespace rac1
 
