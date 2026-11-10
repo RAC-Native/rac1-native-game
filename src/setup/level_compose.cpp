@@ -8,6 +8,7 @@
 #include "mrp_export.h"
 
 #include <formats/host_meshes.h>
+#include <formats/level_collision.h>
 #include <formats/level_file.h>
 #include <formats/moby_mrp.h>
 #include <formats/scene_wad.h>
@@ -1052,6 +1053,7 @@ bool read_obj(const fs::path& p, const LevelTxt& lt, bool with_materials, Obj& o
 struct CTri {
     std::array<std::array<float, 3>, 3> p;
     uint8_t type = 31;
+    bool whole = false;  // (stage 10: a game level's own face: kept whole, as its level has it in its cells)
 };
 
 float dist3(const std::array<float, 3>& a, const std::array<float, 3>& b) {
@@ -1109,7 +1111,10 @@ struct CCell {
 
 bool build_collision(const std::vector<CTri>& in, std::vector<uint8_t>& out, Log& log, std::string& err) {
     std::vector<CTri> tris;
-    for (const CTri& t : in) subdivide(t, 6.0f, tris);
+    for (const CTri& t : in) {
+        if (t.whole) tris.push_back(t);
+        else subdivide(t, 6.0f, tris);
+    }
     std::map<std::tuple<int, int, int>, CCell> cells;  // (z, y, x)
     size_t refs = 0;
     for (const CTri& t : tris) {
@@ -1493,6 +1498,69 @@ void rail_model(const LevelTxt::Rail& r, int material, Obj& o) {
 
 // the rails' models (`mesh`) as more host meshes: their material the named one of the level's meshes' (else a grey metal)
 bool rails_meshes(const std::vector<LevelTxt::Rail>& rails, const std::vector<ObjMaterial>& mats, mrpw::HostMeshFile& hm, Log& log, std::string& err);
+
+// (stage 10) a world's section with rails of the mod's own: its level's collision (from the disc: data.wad's collision block, every
+// face of its cells, a face seen in several cells once) with the rails' collision strips added (the grind needs ground under the
+// rail), built again as the composer builds a collision; the level's hero groups (their own block, its offsets its own) kept
+bool world_collision_with_rails(int level, const std::vector<LevelTxt::Rail>& rails, uint8_t type, std::vector<uint8_t>& out, Log& log,
+                                std::string& err) {
+    const fs::path wp = fs::path("assets/disc") / fmt("levels/level%02d", level) / "data.wad";
+    std::vector<uint8_t> wad, blob;
+    uint32_t off = 0, size = 0;
+    bool packed = false;
+    if (!read_file(wp, wad) ||
+        !extract_collision_from_level_wad(std::span<const std::byte>(reinterpret_cast<const std::byte*>(wad.data()), wad.size()), blob, off, size, packed)) {
+        err = wp.generic_string() + ": its collision cannot be read";
+        return false;
+    }
+    DecodedCollision dc;
+    try {
+        dc = decode_level_collision(std::span<const std::byte>(reinterpret_cast<const std::byte*>(blob.data()), blob.size()));
+    } catch (const std::exception& e) {
+        err = fmt("level %d's collision cannot be decoded (%s)", level, e.what());
+        return false;
+    }
+    std::vector<CTri> ct;
+    std::set<std::array<int32_t, 10>> seen;
+    size_t faces = 0;
+    for (const DecodedCollisionOctant& c : dc.octants) {
+        auto at = [&](uint8_t i) {
+            const CollisionVec3& v = c.vertices[i];
+            return std::array<float, 3>{c.displacement.x + v.x, c.displacement.y + v.y, c.displacement.z + v.z};
+        };
+        auto add = [&](uint8_t a, uint8_t b, uint8_t d, uint8_t ty) {
+            if (a >= c.vertices.size() || b >= c.vertices.size() || d >= c.vertices.size()) return;
+            CTri tr;
+            tr.p = {at(a), at(d), at(b)};  // (as an OBJ's turn: build_collision turns them back to the game's)
+            tr.type = ty;
+            tr.whole = true;
+            std::array<int32_t, 10> key{};  // (the face as its points at 1/64 and its type: once)
+            for (int i = 0; i < 3; ++i)
+                for (int l = 0; l < 3; ++l) key[static_cast<size_t>(i * 3 + l)] = static_cast<int32_t>(std::lround(tr.p[static_cast<size_t>(i)][static_cast<size_t>(l)] * 64.0f));
+            key[9] = ty;
+            if (seen.insert(key).second) ct.push_back(tr);
+        };
+        for (const DecodedCollFace& fc : c.faces) {
+            ++faces;
+            add(fc.v0, fc.v1, fc.v2, fc.type);
+            if (fc.is_quad) add(fc.v0, fc.v2, fc.v3, fc.type);
+        }
+    }
+    const size_t level_tris = ct.size();
+    for (const LevelTxt::Rail& r : rails)
+        if (r.strip) rail_strip(r, type, ct);
+    if (!build_collision(ct, out, log, err)) return false;
+    if (dc.hero_groups_offset > 0 && static_cast<size_t>(dc.hero_groups_offset) < blob.size()) {
+        const size_t at = (out.size() + 0xf) & ~size_t{0xf};
+        out.resize(at, 0);
+        out.insert(out.end(), blob.begin() + dc.hero_groups_offset, blob.end());
+        wr32(out, 4, static_cast<int32_t>(at));
+    }
+    log.say(fmt("its level %d's collision with its rails' strips: %zu of the level's faces in %zu cells (%zu triangles once), %zu triangles of the strips; "
+                "%zu bytes (the level's %u)%s",
+                level, faces, dc.octants.size(), level_tris, ct.size() - level_tris, out.size(), size, dc.hero_groups.empty() ? "" : ", its hero groups kept"));
+    return true;
+}
 
 // (stage 7) a class's collision mesh (`class ... collision <coll.obj>`) as a moby's collision (the carrier's +0x94; the game's
 // moby collision format, mobys_in_sphere's: 0x10 bytes of header (joints 0, primitives 0, the triangles' bytes, the
@@ -2882,8 +2950,8 @@ struct SectionOut {
 // (stage 8) a section's game level world: its level's placed objects the section brings (`objects`, `box`), each given a session
 // uid after the others', their classes imported (the base level's own when it has them); what a world's section cannot have
 bool compose_world(LevelTxt::Section& S, LevelTxt& lt, int base, int& uid_next, Log& log, std::string& err) {
-    if (!S.meshes.empty() || !S.rails.empty()) {
-        err = "a world's section draws its level's world and has its level's rails: no meshes, rail or rails lines (stage 8)";
+    if (!S.meshes.empty()) {
+        err = "a world's section draws its level's world: no meshes line (stage 8; its rail and rails lines add to its level's rails)";
         return false;
     }
     for (const LevelTxt::Moby& mb : S.mobys)
@@ -3008,6 +3076,11 @@ bool compose_sections(const fs::path& ldir, LevelTxt& lt, int base, const std::v
             }
             if (!placed) return fail(fmt("boss %s (line %d): the section places no object of class %d:%u (an objects or moby line)", w.c_str(), S.boss_line, l, c));
             S.boss_classes.emplace_back(l, c);
+        }
+        bool strips = false;
+        for (const LevelTxt::Rail& r : S.rails) strips = strips || r.strip;
+        if (S.world >= 0 && S.collision.empty() && strips) {  // (stage 10: the mod's rails in a world: their strips in its level's collision)
+            if (!world_collision_with_rails(S.world, S.rails, static_cast<uint8_t>(lt.collision_type), o.coll, log, err)) return fail(err);
         }
         if (!S.collision.empty()) {
             Obj co;
@@ -3320,7 +3393,8 @@ bool compose_level_mod(const std::string& folder, bool force) {
         };
         if (const std::string w = check(lt.rails, "main"); !w.empty()) return fail(w);
         for (LevelTxt::Section& S : lt.sections) {
-            const float o[3] = {lt.offset[0] + S.offset[0], lt.offset[1] + S.offset[1], lt.offset[2] + S.offset[2]};
+            float o[3] = {lt.offset[0] + S.offset[0], lt.offset[1] + S.offset[1], lt.offset[2] + S.offset[2]};
+            if (S.world >= 0) o[0] = o[1] = o[2] = 0;  // (a world's section: its lines are in its level's coordinates)
             if (!rails_resolve(ldir, lt, o, S.rails, err)) return fail(err);
             if (const std::string w = check(S.rails, S.name.c_str()); !w.empty()) return fail(w);
         }
