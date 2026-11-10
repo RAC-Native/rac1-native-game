@@ -1,6 +1,7 @@
 // Ported overlay code 0x00200000..0x0020ffff.
 #include <game/enhance/advanced.h>
 #include <game/enhance/fixes102.h>
+#include <game/enhance/setpieces.h>
 #include <game/ovl/hero_l1.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -1839,7 +1840,7 @@ void hero_rail_land_check() {
     if (lbu(0x0013d4dd) == 0) return;
     sw(P + 0x56c, 0);
     if (lh(P + 0x1c8) != 0) return;
-    const int32_t level = lw(0x0015ed84);
+    const int32_t level = setpieces_rails_anywhere() ? -1 : lw(0x0015ed84);  // (enhancement: a level mod's own rails, anywhere: setpieces.h)
     if (level == 0x10) {
         if (!near_point(115.0f, 264.0f, 133.0f, 12.0f) && !near_point(257.0f, 301.0f, 128.0f, 12.0f)) return;
     } else if (level == 0xe) {

@@ -5,6 +5,7 @@
 #include <formats/scene_wad.h>
 #include <game/enhance/session.h>
 #include <game/enhance/session_runtime.h>
+#include <game/enhance/setpieces.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/music_streams.h>
 #include <game/ovl/ovl.h>
@@ -124,6 +125,8 @@ struct Section {
     uint64_t req_frame = 0;
     double req_ms = 0;
     uint32_t coll = 0, coll_tree = 0, coll_list = 0, sky = 0, gp = 0;
+    uint32_t rails = 0;      // (stage 7) its rail table (the game's 0x20-byte records, in its heap block), 0 none
+    int32_t rail_count = 0;
     int step = 0;
     size_t copied = 0;
     int commit_frames = 0;
@@ -145,6 +148,7 @@ struct Main {
     uint8_t fog[3] = {};
     uint32_t death = 0;
     uint32_t music[15] = {};
+    uint32_t rails = 0, rail_count = 0;  // (stage 7) its rail table (the level's load's)
 };
 
 struct Pending {
@@ -444,6 +448,8 @@ void free_section(Section& s) {
     session_heap_free_owner(owner_files(s));
     session_heap_free_owner(owner_objects(s));
     s.coll = s.coll_tree = s.coll_list = s.sky = s.gp = 0;
+    s.rails = 0;
+    s.rail_count = 0;
     s.shared = 0;
     s.st = St::Absent;
     s.b = Bytes{};
@@ -455,7 +461,7 @@ void free_section(Section& s) {
 // levels but those in `skip_imp`, or only those in `only_imp`), their slots set (level.txt's moby lines' `slot=value`)
 size_t spawn_objects(Section& s, const std::set<int32_t>* only, const std::set<int>* only_imp, size_t* refused) {
     size_t n = 0;
-    if (s.gp != 0) {
+    if (s.gp != 0 && lw(s.gp + 0x44) != 0 && lw(s.gp + lwu(s.gp + 0x44)) > 0) {  // (a gameplay file of rails only: no placements)
         SpawnOpts o;
         o.only = only;
         o.skip = only == nullptr ? &s.dead : nullptr;
@@ -571,6 +577,10 @@ void apply_state(int idx) {
     bg_color_set(lwu(S + 0x23c), lwu(S + 0x240), lwu(S + 0x244));
     if (idx != 0 && s.has_death) swc1(OV(0x0015f638), s.death);
     else sw(OV(0x0015f638), g_main.death);
+    // (stage 7) its grind rails the game's (the hero's rail search reads the current section's): none when it has none
+    sw(OV(0x0015f70c), idx != 0 ? s.rails : g_main.rails);
+    sw(OV(0x0015f710), idx != 0 ? static_cast<uint32_t>(s.rail_count) : g_main.rail_count);
+    setpieces_section(idx);
     uint32_t w[15] = {};
     if (idx == 0 || s.music == -2 || !s.music_known) std::memcpy(w, g_main.music, sizeof w);
     else if (s.music >= 0) std::memcpy(w, s.music_words, sizeof w);
@@ -688,7 +698,28 @@ bool commit_step(Section& s, int idx) {
         ++s.step;
         return true;
     case 5:
-        if (s.gp == 0 || copy(s.gp, s.b.gp)) ++s.step;
+        if (s.gp == 0 || copy(s.gp, s.b.gp)) {
+            // (stage 7) its rail table, as the level's load makes it from the block +0x74 (level_load.cpp's grind lines): the
+            // records in a block of its own, their paths in the gameplay file's copy
+            if (s.gp != 0 && lw(s.gp + 0x74) != 0) {
+                const uint32_t p = s.gp + lwu(s.gp + 0x74);
+                const int32_t n = lw(p);
+                const uint32_t pts = p + lwu(p + 4);
+                s.rails = n > 0 ? session_heap_alloc(static_cast<uint32_t>(n) * 0x20, owner_files(s)) : 0;
+                if (s.rails != 0) {
+                    for (int32_t k = 0; k < n; ++k) {
+                        const uint32_t d = s.rails + static_cast<uint32_t>(k) * 0x20, r = p + 0x10 + static_cast<uint32_t>(k) * 0x20;
+                        for (uint32_t w = 0; w < 0x10; w += 4) sw(d + w, lwu(r + w));
+                        sw(d + 0x10, pts + lwu(p + 0x10 + static_cast<uint32_t>(n) * 0x20 + static_cast<uint32_t>(k) * 4));
+                        sw(d + 0x14, lwu(r + 0x10));
+                        sw(d + 0x18, 0);
+                        sw(d + 0x1c, 0);
+                    }
+                    s.rail_count = n;
+                }
+            }
+            ++s.step;
+        }
         return true;
     case 6:  // its music (another level's tracks: that level's header)
         if (s.music >= 0) s.music_known = level_music_words_of(s.music, s.music_words);
@@ -742,10 +773,10 @@ void commit_frame() {
     s.st = St::Ready;
     std::printf("[section] %s streamed in: asked at frame %llu, read and decompressed on the worker in %.2f ms, committed in %d frames (at most %.3f ms a "
                 "frame, %.3f ms in all; the budget %.1f ms), ready at frame %llu (%.1f ms after it was asked); collision %zu bytes, sky %zu, gameplay %zu, "
-                "%zu objects placed (%s)\n",
+                "%zu objects placed (%s), %d rails\n",
                 s.name.c_str(), static_cast<unsigned long long>(s.req_frame), s.b.ms, s.commit_frames, s.commit_max, s.commit_ms, budget_ms(),
                 static_cast<unsigned long long>(g_frame), now_ms() - s.req_ms, s.b.coll.size(), s.b.sky.size(), s.b.gp.size(), s.objs.size(),
-                which == g_cur ? "in play" : "frozen until it is entered");
+                which == g_cur ? "in play" : "frozen until it is entered", s.rail_count);
     s.b = Bytes{};  // (the host's copies dropped: the heap holds them)
 }
 
@@ -880,6 +911,8 @@ void sections_arrival() {
         g_main.fog[k] = static_cast<uint8_t>(lbu(OV(0x0015f444) + k));
     }
     g_main.death = lwu(OV(0x0015f638));
+    g_main.rails = lwu(OV(0x0015f70c));
+    g_main.rail_count = lwu(OV(0x0015f710));
     level_music_words_get(g_main.music);
     std::memcpy(g_cur_music, g_main.music, sizeof g_cur_music);
     g_cur = 0;
