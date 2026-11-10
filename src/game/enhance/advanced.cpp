@@ -821,6 +821,14 @@ bool aim_state(int32_t st) {
     if (st == 0x43 || st == 0x44 || st == 0x50 || st == 0x5a || st == 0x5b) return true;
     return st == 7 || (st >= 9 && st <= 0x12) || st == 0x1c || st == 0x3c || st == 0x49 || st == 0x4c || st == 0x5e || st == 0x69;
 }
+
+// orig: (none) — enhancement: the hero on a magnetic surface with the Magneboots (#136): the ground's surface type 2 with
+// the boots on (+0x308, hero_surface_update 0x20b960), or a ground mode of its own (+0x20b3: 1 the magnetic walk along the
+// surface's normal, set in the walk 0x3f and its stance / jump 0x70 / 0x71 too, sub_00233440; 2 the down axis toward a
+// point). There the hero's frame is the surface's: his heading +0x98 is in it and "horizontal" is along it, so the modern
+// controls' rules made for the world's up (the aim's heading and pitch held on the camera's, R&C 3's run speed, turn and
+// stop on the world's x / y) are not applied: the original's own rules hold there
+bool on_magnet() { return lbu(HERO + 0x20b3) != 0 || lh(HERO + 0x308) != 0; }
 }  // namespace
 
 // orig: (none) — enhancement (advanced.h)
@@ -847,7 +855,9 @@ bool advanced_strafing() {
     const int32_t st = lw(HERO + 0x2084);
     // (with the modern aim also the gloves' standing throw 0x23: the aim held through it, so the
     // gloves' camera aim and its pitch are those of the reticle when the throw leaves the hand)
-    return g_aim_button && lbu(MOVEMENT) != 0 && lw(OV(0x0015f5c4)) == 0 && (aim_state(st) || (st == 0x23 && modern_aim()));
+    // (not on a magnetic surface, #136: there L2 does nothing, as the original's crouch walk turn does not either)
+    return g_aim_button && lbu(MOVEMENT) != 0 && lw(OV(0x0015f5c4)) == 0 && (aim_state(st) || (st == 0x23 && modern_aim())) &&
+           !on_magnet();
 }
 
 // orig: (none) — enhancement (advanced.h)
@@ -1368,7 +1378,8 @@ void advanced_mouse_camera(uint32_t cam, float& b) {
 // untouched with Movement = Original.
 
 // orig: (none) — enhancement (advanced.h)
-bool advanced_rac3_movement() { return lbu(MOVEMENT) == 2; }
+// (the original's rules on a magnetic surface, #136: R&C 3's speed, turn, stop and jump rules are for the world's up)
+bool advanced_rac3_movement() { return lbu(MOVEMENT) == 2 && !on_magnet(); }
 
 // orig: (none) — enhancement (advanced.h)
 void advanced_rac3_along_stick() {
@@ -1482,7 +1493,7 @@ void combo_table_sync() {
         for (uint32_t i = 0; ours && i < COMBO_COUNT; ++i) ours = lw(table + COMBO_RAC3[i].offset) == COMBO_RAC3[i].value;
         if (!ours) g_combo_table = 0;
     }
-    const bool want = advanced_rac3_movement();
+    const bool want = lbu(MOVEMENT) == 2;  // (the setting: the table kept patched on a magnetic surface too)
     if (want && g_combo_table == 0) {
         for (uint32_t i = 0; i < COMBO_COUNT; ++i) {
             g_combo_orig[i] = lw(table + COMBO_RAC3[i].offset);

@@ -529,6 +529,18 @@ shoulder weight: only its wall test runs). The screen's centre is above Ratchet'
 reticle is not hidden by him. It is the Aiming byte's third value (2): everything that tests "Modern"
 (the trigger mapping, the pitch, the reticle, the shots) takes it too.
 
+### On magnetic surfaces (#136)
+
+On a magnetic surface with the Magneboots (its collision's surface type 2 under the boots, `+0x308`, or a ground mode of
+its own, `+0x20b3`: the magnetic walk 0x3f and its stance / jump 0x70 / 0x71) the hero's frame is the surface's: his
+heading is measured in it and "horizontal" lies along it. The strafe, the modern aim and R&C 3's movement are made for
+the world's up (the aim's heading spring writes a world heading, the camera is held on the aim's heading and pitch about
+the world's up, R&C 3's stop caps the world's x / y), so there they are not applied (`on_magnet` in `advanced.cpp`,
+tested by `advanced_strafing` and `advanced_rac3_movement`): the original's own rules and camera hold, L2 does nothing
+(the original's first-person view stays on L1), and the aim comes back when he steps off. Before, holding L2 on a
+magnetic wall turned the hero's whole frame off the wall (measured on Orxon's tube: his angles +0x90 went from -1.37 to
++1.42 radians while standing) and held the camera on the aim as on flat ground.
+
 ### What the RAC 3 movement measured
 
 In the project's automated runs: top running speed 6.17 units/s (Original 5.7), 95 % of

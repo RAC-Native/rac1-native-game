@@ -120,7 +120,8 @@ void advanced_set_original_fades(bool on);
 // L2 taken as the aim, R2 as circle)
 uint32_t advanced_pad_remap(uint32_t pad, uint32_t held);
 // orig: (none) — enhancement: strafing now (Movement = RAC 3: L2 / R2 held — L2 with Aiming =
-// Modern —, gameplay, the hero on the ground or jumping): facing held, moving along the stick
+// Modern —, gameplay, the hero on the ground or jumping, not on a magnetic surface: #136): facing held, moving along the
+// stick
 bool advanced_strafing();
 // orig: (none) — enhancement: aiming now (strafing with Aiming = Modern, which needs RAC 3): the
 // shoulder view, the pitch, the reticle, the weapons along the camera
@@ -181,7 +182,7 @@ bool advanced_mouse_direct();
 void advanced_mouse_camera(uint32_t cam, float& b);
 
 // --- R&C 3's on-foot movement ---
-// orig: (none) — enhancement: Movement = RAC 3
+// orig: (none) — enhancement: Movement = RAC 3, the hero not on a magnetic surface (#136: the original's rules there)
 bool advanced_rac3_movement();
 // orig: (none) — enhancement: run_update's "move along the stick" flag (+0x3b8), R&C 3's rule
 void advanced_rac3_along_stick();

@@ -5,6 +5,10 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Aiming = Modern / Modern, No Zoom on magnetic surfaces** (#136): on the Magneboots' walkways the modern controls
+  now leave the hero to the original's rules: L2 no longer turns him (aiming there turned his whole frame off the wall,
+  so he could come off the walkway) and the camera is no longer held on the aim (it acted like the aiming view);
+  R&C 3's run speed, turn and stop rules, made for flat ground, wait too. Off the walkway everything is as before.
 - Debug menu, **Hoverboard anywhere**: the board no longer falls through the ground at speed (#120; Kerwan's avenue at full
   speed went through the street within seconds) and slides along walls: the collision query's hit normal, which is not of
   unit length, is now normalised before the ride's floor and wall tests.
