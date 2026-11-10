@@ -61,6 +61,8 @@ void sections_hud();
 
 // orig: (host) a session with sections is on
 bool sections_any();
+// orig: (host) a section switch asked and not over (its streaming, its fade): the SDK's game_save waits for it
+bool sections_switching();
 // orig: (host) the sections' count (main included; 0 none), the current one (0 main; -1 no session with sections), a
 // section's name (index) and index (name; -1 none)
 int sections_count();
