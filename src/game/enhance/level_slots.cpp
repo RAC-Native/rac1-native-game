@@ -1,6 +1,8 @@
 // See level_slots.h. Not a port: the host's level slots, written on top of the game's own level change, saves and planet
 // list (the experiment that tried a level mod on Veldin's slot first is its source for the records' swap and the row).
 #include <host/level_slots.h>
+
+#include <game/enhance/session.h>
 #include <host/mod_code.h>
 
 #include <game/ovl/level_change.h>
@@ -453,8 +455,10 @@ void level_slots_header_read(int32_t level) {
         g_s.current = slot;
         g_current.store(slot);
         std::printf("[levels] level %d's header: level slot %d's (\"%s\", flown from level %d)\n", level, slot, names(slot).names[0].c_str(), g_s.from);
+        session_level_mod(level_slot_build_dir(slot));  // (its imports: the open engine's sessions)
         return;
     }
+    session_level_mod("");
     // one of the game's own levels
     g_s.pending = -1;
     g_s.current = -1;

@@ -5,6 +5,8 @@
 #include <host/level_slots.h>
 #include <runtime/iop/snd989_iop.h>
 #include <game/enhance/advanced.h>
+#include <game/enhance/pool.h>
+#include <game/enhance/session.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/music_streams.h>
 #include <game/ovl/ovl.h>
@@ -1264,6 +1266,33 @@ void kal_frame() {
     }
 }
 
+// ---- (ABI 6) classes of other levels (the open engine: session.h) ----
+int32_t api_import_class(const char* name) {
+    int l = -1;
+    uint32_t c = 0;
+    return name != nullptr && pool_name(name, &l, &c) ? session_import_id(l, c) : -1;
+}
+
+uint32_t api_import_spawn(int32_t cls, const float pos[3], float yaw) {
+    if (cls < 0 || pos == nullptr || lw(OV(0x0015f5c4)) != 0) return 0;
+    if (static_cast<uint32_t>(cls) < 2048 && lbu(OV(0x00197bc0) + static_cast<uint32_t>(cls)) == 0xffu) return 0;
+    return session_import_spawn(static_cast<uint32_t>(cls), pos, yaw);
+}
+
+int32_t api_import_load(const char* name) {
+    int l = -1;
+    uint32_t c = 0;
+    if (name == nullptr || !pool_name(name, &l, &c)) return -1;
+    return session_import_load(l, c, "plugin");
+}
+
+int32_t api_import_release(const char* name) {
+    int l = -1;
+    uint32_t c = 0;
+    if (name == nullptr || !pool_name(name, &l, &c)) return 0;
+    return static_cast<int32_t>(session_import_unload(l, c));
+}
+
 // (ABI 5) base_option: a class's choice for an object base_spawn has just started (before its first update)
 int api_base_option(uint32_t h, int32_t option, int32_t value) {
     const size_t i = (h & 0xffffu) - 1;
@@ -1670,6 +1699,10 @@ void load_all() {
     g_api.weapon_equip = api_weapon_equip;
     g_api.weapon_allow = api_weapon_allow;
     g_api.ammo_fill = api_ammo_fill;
+    g_api.import_class = api_import_class;
+    g_api.import_spawn = api_import_spawn;
+    g_api.import_load = api_import_load;
+    g_api.import_release = api_import_release;
     g_plugins.reserve(mods.size());  // (g_cur points into it)
     for (const ModInfo* m : mods) {
         std::string err;

@@ -13,6 +13,9 @@
 #include <formats/scene_wad.h>
 #include <formats/wad_encode.h>
 #include <formats/world_mrp.h>
+#include <game/enhance/pool.h>
+#include <platform/platform.h>
+#include <runtime/kernel/disc.h>
 #include <runtime/kernel/mods.h>
 
 #include <stb_image.h>  // (its implementation: static_skinned_render.cpp)
@@ -29,6 +32,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -67,7 +71,8 @@ namespace {
     "trigger <name> <x0> <y0> <z0> <x1> <y1> <z1>                    a box Ratchet enters and leaves (the plugin's trigger callback)\n"
     "picture <file.png>                        the planet on the loading screen (128 x 128; default: none, the base level's)\n"
     "banner <file.png> / banner.<lang> <file.png>   the name on the loading screen (256 x 32; default: made from name)\n"
-    "map_picture <file.png>                    the ship's map's picture (306 x 108 shown; default: made from picture)\n";
+    "map_picture <file.png>                    the ship's map's picture (306 x 108 shown; default: made from picture)\n"
+    "import <name> | import <level>:<class>    a class of another level, with what it spawns (the open engine: docs/open-engine.md)\n";
 
 struct LevelTxt {
     float hero[4] = {0, 0, 1, 0};
@@ -134,6 +139,12 @@ struct LevelTxt {
     std::vector<Object> objects;
     std::vector<Sound> sounds;
     std::vector<Trigger> triggers;
+    // the classes imported from other levels (import <name|level:class>: the open engine's pool)
+    struct Import {
+        std::string name;
+        int line = 0;
+    };
+    std::vector<Import> imports;
     // the pictures (level_pictures.h): the files given, and the names (by language: "" the default, fr de es it)
     std::string picture, map_picture;
     std::map<std::string, std::string> banners, names;
@@ -389,6 +400,11 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
                 }
             }
             t.sounds.push_back(d);
+        } else if (key == "import") {
+            LevelTxt::Import im;
+            im.line = n;
+            if (!(in >> im.name)) return bad();
+            t.imports.push_back(im);
         } else if (key == "trigger") {
             LevelTxt::Trigger g;
             if (!(in >> g.name >> g.lo[0] >> g.lo[1] >> g.lo[2] >> g.hi[0] >> g.hi[1] >> g.hi[2]) || !sdk_name_ok(g.name)) return bad();
@@ -1842,6 +1858,97 @@ bool build_data(const std::vector<uint8_t>& wad, const std::vector<uint8_t>& col
 // a stamp as build.json writes it
 std::string stamp_hex(uint64_t v) { return fmt("%016llx", static_cast<unsigned long long>(v)); }
 
+
+// level.txt's import lines resolved (the pool's names, data/pool/names.txt, or <level>:<class>) with their closure (the
+// classes each spawns: the pool's dependencies, tools/overlay_match/deps.py), each from its level unless the base level
+// has it; written to the build's imports.txt for the game (src/game/enhance/session.cpp), one line a class to import
+bool compose_imports(const LevelTxt& lt, int base, const fs::path& out_dir, Log& log, std::string& err) {
+    std::error_code ec;
+    if (lt.imports.empty()) {
+        fs::remove(out_dir / "imports.txt", ec);
+        return true;
+    }
+    if (!disc_is_open() && !disc_open()) {
+        err = "the game's disc cannot be read: the import lines need the asset pool, made from it (./setup.sh first)";
+        return false;
+    }
+    if (!pool_open(true)) {
+        err = "the asset pool cannot be made (the import lines need it)";
+        return false;
+    }
+    if (!fs::exists(fs::path(pool_dir()) / "deps", ec)) {  // (the classes' dependencies: made once, from the generated code)
+        const int r = platform::run_quiet({platform::python_program(), "tools/overlay_match/deps.py"});
+        log.say(r == 0 ? "imports: the classes' dependencies made (tools/overlay_match/deps.py)"
+                       : "imports: warning: the classes' dependencies could not be made (tools/overlay_match/deps.py): the imports bring no dependencies");
+    }
+    struct Want {
+        int level;
+        uint32_t cls;
+        std::string why;
+    };
+    std::vector<Want> todo;
+    for (const LevelTxt::Import& im : lt.imports) {
+        int l = -1;
+        uint32_t c = 0;
+        if (!pool_name(im.name, &l, &c)) {
+            err = fmt("level.txt:%d: import %s: no such class (a name of data/pool/names.txt, or <level>:<class>)", im.line, im.name.c_str());
+            return false;
+        }
+        const PoolClass* row = pool_find(l, c);
+        if (row == nullptr || row->block_size == 0) {
+            err = fmt("level.txt:%d: import %s: level %d has no class %u with data", im.line, im.name.c_str(), l, c);
+            return false;
+        }
+        todo.push_back({l, c, "imported (level.txt:" + std::to_string(im.line) + ")"});
+    }
+    std::string out = "# the classes the level imports from other levels, with their closure (the composer's: docs/open-engine.md)\n"
+                      "# import <level> <class> <name> <why>\n";
+    std::set<std::pair<int, uint32_t>> seen;
+    size_t n = 0, native = 0;
+    for (size_t k = 0; k < todo.size(); ++k) {
+        const Want w = todo[k];
+        if (!seen.insert({w.level, w.cls}).second) continue;
+        const bool root = w.why.rfind("imported", 0) == 0;
+        // (the base level's own classes: its own serve, a class id being the same class on every level)
+        if (w.level == base || (!root && pool_find(base, w.cls) != nullptr)) {
+            ++native;
+            if (root) log.say(fmt("import %s: the base level's own class", pool_name_of(w.level, w.cls).c_str()));
+            continue;
+        }
+        const PoolClass* row = pool_find(w.level, w.cls);
+        if (row == nullptr || row->block_size == 0) {
+            log.say(fmt("import: warning: %d:%u (%s) has no data in the pool: not imported", w.level, w.cls, w.why.c_str()));
+            continue;
+        }
+        out += fmt("import %d %u %s %s\n", w.level, w.cls, pool_name_of(w.level, w.cls).c_str(), w.why.c_str());
+        ++n;
+        const PoolDeps* d = pool_deps(w.level, w.cls);
+        std::string line = fmt("import %s (%d:%u, %s): %u KB, %zu sounds", pool_name_of(w.level, w.cls).c_str(), w.level, w.cls, w.why.c_str(),
+                               row->block_size >> 10, row->sounds.size());
+        if (d != nullptr) {
+            auto list = [&](const std::vector<uint32_t>& v) {
+                std::string r;
+                for (uint32_t c : v) r += (r.empty() ? "" : ",") + std::to_string(c) + (pool_find(base, c) != nullptr ? " (the base's)" : "");
+                return r.empty() ? std::string("none") : r;
+            };
+            line += "; spawns " + list(d->own) + "; the engine for it " + list(d->engine) + "; seen spawning " + list(d->seen) + "; reads " + d->reads;
+            const std::string by = std::to_string(w.level) + ":" + std::to_string(w.cls);
+            for (uint32_t c : d->own) todo.push_back({w.level, c, "spawned-by-" + by});
+            for (uint32_t c : d->engine) todo.push_back({w.level, c, "spawned-for-" + by});
+            for (uint32_t c : d->seen) todo.push_back({w.level, c, "seen-spawned-by-" + by});
+        } else {
+            line += "; no dependencies known";
+        }
+        log.say(line);
+    }
+    if (!write_file(out_dir / "imports.txt", std::vector<uint8_t>(out.begin(), out.end()))) {
+        err = "cannot write into " + out_dir.generic_string();
+        return false;
+    }
+    log.say(fmt("imports: %zu classes from other levels (%zu lines, their closure), %zu the base level's own", n, lt.imports.size(), native));
+    return true;
+}
+
 }  // namespace
 
 // orig: (host) see level_compose.h
@@ -2085,6 +2192,7 @@ bool compose_level_mod(const std::string& folder, bool force) {
     }
     if (!hm.classes.empty() && !mrpw::write_host_meshes((out_dir / "host_meshes.mrpc").string(), hm, err)) return fail(err);
     if (!bank_sounds.empty() && !write_file(out_dir / "sounds.bnk", sound_bank(bank_sounds))) return fail("cannot write into " + out_dir.generic_string());
+    if (!compose_imports(lt, m.level_base, out_dir, log, err)) return fail(err);
     // level.sdk: the level's own content for the game (src/game/enhance/mod_code.cpp reads it)
     if (!lt.classes.empty() || !lt.sounds.empty() || !lt.triggers.empty() || lt.update_all) {
         std::ostringstream o;
