@@ -981,7 +981,16 @@ textures are read on a worker when its section streams in (`mrp_world_prefetch`)
 the classes' and tfrags' tables from EE memory (43 to 73 ms in the tests, under the fade), and a world level is kept when its
 section is left (at most two, with their GPU textures and buffers) and taken back in 0 ms while its section's tables are where
 they were. The session's own level (its host meshes) is loaded again when Ratchet comes back (0 to 12 ms). While a world's
-section is current the level mod's host meshes (main's, the level's own classes' objects) are not drawn.
+section is current the level mod's own meshes (main's, the other sections') are not drawn; what the world's level gets of
+them (`world_host_meshes`, `mrp_world_renderer.cpp`, at its load) is the session's host mesh classes it shows: its sections'
+own instances (the mod's rail models there, `sections.txt`'s `meshes` range of a `world` section of that level) and the
+models of level.sdk's classes, added after the planet's tie classes (`World::host_class_map`: a session class to its tie
+there, for the objects' instances), their textures after its tie textures (CLAMP_1's MINV moved past them), then bound as
+the session's level binds its own: the scene draws them as it draws the session's (GL and Vulkan alike: one scene). A world
+level kept and taken back keeps them. The objects there are those of that section: its `object` lines (level.sdk's
+`sobject` lines), and those spawned, placed or shown in it (`mod_code.cpp`'s `Obj::section`; `sdk_publish` draws them and
+takes the others' collision away, `Obj::away`, giving it back when they are there again). The composer puts a world section's rail models after every other host
+mesh (the classes' models included), so adding one moves no index lights.txt's `material tie` lines name (composer 7).
 
 ### Objects
 
@@ -1225,7 +1234,11 @@ callback: he grinds the whole rail down (44 units) and lands on Giant Clank's ar
 code main's generic one there; Kalebo III's robots (`base_spawn`, `base_hunt`) beside him walk up and hit him (they stood
 still: a base enemy in a world's section now updates on the base's level data, `ld_enter`'s `LD_BASE_IN_WORLD`). Quartu's
 collision probed (`RAC1_COLL_PROBE`, 6561 points of its arena) against Quartu itself: 6485 the same height; the others are
-Quartu's placed objects the section does not place. A rail's model is not drawn in a world's section.
+Quartu's placed objects the section does not place. A rail's model (`mesh`) is drawn in the world (above, "the modern
+renderer"); test `rm-escape` (s10-escape with `rail quartu_in mesh ...`, a ring class placed in main and moved by the plugin
+to the rail's top in `section_enter`, a second one spawned at its foot): the rail, the rings and Ratchet riding the rail in
+GL and Vulkan pictures, the ride unchanged (`rail_find` 2, `hero_rail_attach` 1, the landing at 130.50 218.56 25.51), and the
+same after main and back into Quartu (its kept level).
 
 A world's section needs its planet's context, so the overlay maps' extents (`assets/generated/overlay_map/levelN.ext`,
 stage 1's `extents.py`, made by `./setup.sh`): without them the log says `[ctx] level 15: ... .ext missing (./setup.sh): no
@@ -1259,5 +1272,6 @@ context` and `[section] quartu: level 15's context or registry cannot be made`, 
 - **A world's planet state, HUD pictures and grids (stage 10)**: its objects behave as on a first visit to it.
 - **Not done**: a world's objects outside the chosen set do not come (the planet's glass and water on Kalebo III are objects);
   the GS's VRAM image and the chrome / glass map registers stay the session's; the renderer's first entry into a world takes
-  one frame of 43 to 73 ms; the mod's own meshes (and rail models) are not drawn in a world's section; a world on a session
+  one frame of 43 to 73 ms; the mod's own meshes are not drawn in a world's section (its own rail models and objects are);
+materials and emissive lines (lights.txt) do not reach them there; a world on a session
   base other than Veldin's and Kalebo III's was not tried.
