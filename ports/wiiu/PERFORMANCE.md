@@ -1749,3 +1749,10 @@ Deterministic runs (`RAC1_REALTIME=0`, 1500 steps, 47 windows), A/B pairs on the
   two). Kerwan's slow windows end the game thread at ~32 ms: it starts at ~9 ms, after the world's first half on core 2. Dropped:
   the flip's wait moved from before the draws to before the copy into the scan buffer (`RAC1_WIIU_LATE_FLIP`): the wait moves to the
   GPU's timestamp, the frame the same; `RAC1_WIIU_HEAD_CORE=-1` again (Kalebo 49 -> 54).
+- **Later the same night:** the ties' / shrubs' static frame into zeroed lines too (its build Kerwan 2.40 -> 1.96 ms, Kalebo 4.85 ->
+  3.49; the game thread starts 0.3 / 0.65 ms sooner; Kalebo 44.6 -> 44.1 ms a frame). Dropped: the plan made batch by batch while the
+  build closes them (no gain - its cost is not the cache - and it changed the picture: 4,626 pixels on Kalebo's frame 600).
+- **The shots' determinism** (Kalebo, frame 600, `RAC1_REALTIME=0`): one build gives the same shot run after run (<= 3 pixels), but the
+  builds up to bk28 did not - a far moby at the top changed between runs (2,129 pixels). Since the mobys' prepare writes into zeroed
+  lines it is always the same: something reads past the frame's own data there (likely the 8 KB joints' uniform block a moby, read
+  from joints_all past its poses) - stale data before, zeros now. To look at.
