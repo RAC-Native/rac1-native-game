@@ -625,6 +625,11 @@ thread, `RAC1_PIPELINE=1`, the last 1500 of 2400 frames of a forward walk) on Ke
   `RAC1_DRAW_MEM_CHECK=1` names any read of the game's memory the drawing makes outside the copy: none over the 19 levels
   widened with LOD High on the game thread. The main thread's `Prepare` stage: Kerwan 0.074 to 0.017 ms a frame, Rilgar
   0.075 to 0.015.
+- **The launcher's progress file off the game's thread** (`RAC1_PERF_PROGRESS_THREAD`, `src/host/progress.cpp`):
+  `progress.json` was written - a temporary file, then a rename - by the thread running the game frame, once a minute and
+  at each planet: on a slow disc or with a scanner watching the folder, a late frame. The text is made there and handed to
+  a writer thread; the end of the run waits for the last write. The file is the same (a headless run with `RAC1_PROGRESS`
+  set, both ways). Not measured: on this machine the write is under a millisecond.
 ## Switches to compare
 
 These are testing variables: they are honoured in a headless run, or in a window started with `--debug-tools`
@@ -672,6 +677,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_UPLOAD_MEMO_KEEP=0` | a skipped upload piece keeps the write log's number of its last write (its checks walk the log back to it) |
 | `RAC1_PERF_CHAIN_HASH=0` | the frame's chain hashed a word at a time into one sum |
 | `RAC1_PERF_DRAW_MEM=0` | the drawing's copy of the game's memory taken every frame, whatever the options |
+| `RAC1_PERF_PROGRESS_THREAD=0` | `progress.json` written by the thread that runs the game frame |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
