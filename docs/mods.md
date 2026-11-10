@@ -480,6 +480,8 @@ mods/example-plateau/
 | `path <name> <x> <y> <z> [<x> <y> <z> ...]` | a path (1 to 64 points, moved by `offset` as every coordinate) for the plugin to give an imported object (`path_find`, `object_bind_path`: ABI 8), or a `moby` line's slot (format 3) |
 | `session`, `checkpoint <name> <x> <y> <z> [<yaw>]`, `respawn reset\|keep` | format 3 only: [Sessions](#sessions-format-3) |
 | `section <name> ... end`, `entry`, `portal`, `start`, `leave`, `moby <name>\|<level>:<class> ...` | format 3 only: [Sections](#sections); a section can be a game planet's world (`world`, `objects`, `box`: [Game worlds as sections](#game-worlds-as-sections)) |
+| `hero <planet> [clank\|giantclank\|board]` | format 3 only, in main or a section: another planet's hero code and camera code run Ratchet there, as Clank, Giant Clank or on the hoverboard: [Hero modes](#hero-modes) |
+| `hero generic` | any format, on a base with hero code of its own (Kalebo III, Quartu, Rilgar): Ratchet runs on the generic hero code (Veldin's, Gaspar's, Umbris's): the game's own lava ([Hero modes](#hero-modes)) |
 | `update_all` | every moby of the level is updated each frame wherever the camera is (the game updates a moby only within its update distance of the camera, moby +0x30: 64 units for Kalebo III's robots, a crate's less): enemies far away keep moving and fighting. Costs the updates of the mobys out of sight; the original's levels never |
 | `background <r> <g> <b>`, `fog <r> <g> <b>` | colours (0..255) |
 | `collision <file>`, `meshes <file>` | other file names (default `collision.obj`, `meshes.obj`) |
@@ -783,13 +785,69 @@ end
   `[compose] section kalebo: level 16's world (...); 59 of its 1568 objects in its box: 52 x5, 500 x35 (the base's), 638 x8,
   1445 x11, uids 10..68`. The game keeps at most 224 classes at once (the base level's and every import of the session):
   `objects all` in a large box can reach it (objects of classes of code alone, such as cameras and triggers, are not placed:
-  the log says so).
+  the log says so). An object resting on another object needs that one chosen too: Kerwan's two crates by its start sit on
+  a lift (class 1210); without `1210` they fall through when the section is entered (they are not broken, so a death does not
+  bring them back).
 - **Memory**: a world takes about 18 to 20 MB of the session's memory above 64 MB (Kerwan 19.2 MB, Kalebo III 18.0 MB), read
   from your disc while you play, before you enter it (the log's `[section] kalebo: level 16's world: ...`).
 - **Not in a world's section**: `meshes`, `rail` / `rails` and `moby` lines of the base level's classes (its own scenery and
   rails are the planet's; `moby <name>|<level>:<class>` lines are fine). The level's own objects drawn with a model (`object`
-  lines) are not drawn while Ratchet is in a world's section. Umbris's and Gemlik's skies do not work on Veldin's code yet:
-  give such a world `sky` of another planet.
+  lines) are not drawn while Ratchet is in a world's section.
+
+#### Hero modes
+
+(The open engine's stage 9: [docs/open-engine.md](open-engine.md#hero-contexts-stage-9).) In a session Ratchet runs on
+Veldin's hero code (every move: rails, Magneboots, swimming, lava). A section (or main, outside every block) can have him run
+on **another planet's own hero code** and that planet's own camera code instead, and be **Clank**, **Giant Clank** or on the
+**hoverboard**, with the game's own code for each:
+
+```
+section race remove respawn reset
+  world kalebo
+  hero kalebo                      # Kalebo III's hero code: his own board riding, its race camera
+  objects 439                      # Kalebo III's race board: he gets on it when he walks up to it
+  entry board 145.3 90.3 83.7 -1.5708
+end
+section giant remove respawn reset
+  world quartu
+  hero quartu giantclank           # Quartu's hero code and Giant Clank's camera; Ratchet is Giant Clank in the section
+  entry start 130.5 222.4 26 0
+end
+section clank remove respawn reset
+  world orxon
+  hero orxon clank                 # Clank (Orxon's), on Orxon's camera code
+  entry start 229.65 203.13 49.3 0
+end
+```
+
+- **The planets** with hero or camera code of their own: `kalebo` (16: the hoverboard, its race camera), `quartu` (15: Giant
+  Clank's states and camera), `gemlik` (13: its camera type), `orxon` (10: its camera type), `rilgar` (5: its board, held to
+  Rilgar's race track). Another planet is refused by the composer.
+- **The modes**: `clank` (the composer imports Orxon's Clank, 10:87), `giantclank` (Quartu's Giant Clank, 15:419), `board`
+  (the planet's board, 16:439 or 5:439; needs `hero kalebo` or `hero rilgar`). The mode's object is spawned where Ratchet comes
+  in, and he becomes it once he stands there (after the switch's fade); leaving the section he is himself again at the next
+  section's entry, his health as before (Clank's is his own while he is Clank). A board can also be one of a world's objects
+  (`objects 439`): he gets on it by walking up to it, as on the planet. A death in a mode brings him back at the checkpoint
+  in it again.
+- **Not here**: the race's other racers and its laps' rules (the HUD shows the race: lap 1/3); Giant Clank's HUD picture
+  (his energy bar's picture is Quartu's: another one shows); Gemlik's ship (its own code puts Ratchet out of it on a session's
+  planet: [docs/open-engine.md](open-engine.md#hero-contexts-stage-9)). Off a world's planet the Kalebo III board rides
+  anywhere (its jumps, its falls: back where he got on).
+- **`hero generic`** (main's line, **any format**: also a format 2 level on Kalebo III's base): Ratchet runs on the generic hero
+  code, the one Veldin, Gaspar and Umbris run, instead of the base's own (Kalebo III's): the game's own **lava** (`type3`
+  faces: he sinks in it (0x68) and Cross bounces him out (0x69); left in it he is lost, the level loaded again in formats 1
+  and 2 as a fall; no damage of its own) with its animation (from Veldin's core, read from your disc at the level's load), and
+  every generic move. Everything else stays the base's: its objects and enemies on its own code, its cameras, rails ridden as
+  before. Only the base's own riding goes (Kalebo III's hoverboard). Kalebo III's lava stand-in (the hop out, below) is then
+  not used. `hero generic` with the start's numbers is still Ratchet's start (`hero 0 -67 0.5 1.571`).
+- The plugin does the same with the SDK's ABI 12 ([The mod SDK](sdk.md#hero-modes-abi-12)): `hero_build`, `hero_mode`
+  (`hero_build(RAC1_HERO_BUILD_GENERIC)` on any format).
+- **Magneboots on a base other than Veldin**: a base level whose hero has no magnetic-walk animation (Kalebo III's) gets it
+  from Veldin's (read from your disc the first time Ratchet steps on a magnetic face, put in his class): he no longer looks
+  wrong on Magneboots walkways there (any format).
+- Log lines: `[compose] section race: Ratchet runs on level 16's hero code and camera code`, `[hero] the hero context: level
+  16's hero code and camera code run Ratchet (...)`, `[hero] mode 2 entered (section giant): ...`, `[hero] the hero's sequence
+  91 (empty in his class) from level 0's core: ...`.
 
 ### Grind rails and set pieces
 
@@ -823,8 +881,9 @@ class deck deck.obj collision deck_col.obj        # the class's collision a mesh
   given nor taken.
 - **Magnetic surfaces**: `usemtl type2` faces in the collision. With the Magneboots, Ratchet walks onto them and stays on
   them up curves, walls and upside down on ceilings (the game's magnetic walk: the camera turns with him). Tested on
-  Veldin's code (format 1, and sessions) and on Kalebo III's: on Kalebo III's he walks them but his magnetic walk is drawn
-  wrong (Kalebo III's hero class lacks those animations): build magnetic walkways on Veldin's code.
+  Veldin's code (format 1, and sessions) and on Kalebo III's: Kalebo III's hero class lacks the magnetic walk's animation, so
+  there it is taken from Veldin's (read from your disc the first time he steps on a magnetic face; before stage 9 his model
+  was drawn wrong there).
 - **Collision meshes**: `class <name> <model.obj> collision <coll.obj>`: its objects collide as that mesh (made round the
   model's origin, `up` and `scale` as the model's; 255 vertices at most), turned and scaled with the object, not its box: a
   deck with walls, an arch, a ring. The plugin moves one along a path with Ratchet riding it (`object_follow_path`), or
@@ -857,7 +916,7 @@ Kalebo III's) or of leaving it are left out on the way to and from the level. Th
 SDK's `sound(index)` (its indices change with the base). The faithful renderer's look of another level's sky on a base
 is not checked.
 
-**Kalebo III's lava.** Kalebo III's own build of the hero code (its surface update L16:0x2097a0, its ground probe
+**Kalebo III's lava.** (Or the game's own lava with `hero generic`: [Hero modes](#hero-modes).) Kalebo III's own build of the hero code (its surface update L16:0x2097a0, its ground probe
 L16:0x20ffb0) has no surface type 3 (lava) nor 1 (deadly liquid): on its own level those faces are plain ground. On a
 level mod's level (never on the original's Kalebo III) the game adds the generic build's: the faces flagged as on the
 other levels (the hero's +0x12e6, +0x12e5), the lava not a floor (its top kept, the ground probed under it), and, as

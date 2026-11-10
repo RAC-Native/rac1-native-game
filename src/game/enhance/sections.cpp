@@ -4,6 +4,7 @@
 #include <formats/host_meshes.h>
 #include <formats/scene_wad.h>
 #include <game/enhance/context.h>
+#include <game/enhance/hero_modes.h>
 #include <game/enhance/leveldata.h>
 #include <game/enhance/section_world.h>
 #include <game/enhance/session.h>
@@ -154,6 +155,11 @@ struct Section {
     bool has_fogw = false;
     uint32_t fogw[4] = {};
     std::vector<int32_t> groups;
+    // (stage 9) its hero line: the level whose hero code runs Ratchet in it (-1 the session base's), the mode he is in there
+    // (clank, giantclank, board; "" none) and the object of it spawned for him (0 none)
+    int hero_level = -1;
+    std::string hero_mode;
+    uint32_t hero_obj = 0;
 };
 
 // main's state as the game set it at the arrival
@@ -191,6 +197,7 @@ int g_fade_alpha = 0;
 uint64_t g_frame = 0;
 uint32_t g_cur_music[15] = {};
 bool g_worlds = false;  // (stage 8: a section of the session is a game level's world)
+bool g_mode_pending = false;  // (stage 9: the current section's hero mode to enter at the next frame of play)
 
 std::string owner_files(const Section& s) { return "section " + s.name; }
 std::string owner_objects(const Section& s) { return "section " + s.name + " objects"; }
@@ -667,6 +674,52 @@ size_t enter_objects(Section& s, int idx) {
     return n;
 }
 
+void hero_pos(float p[3]) {
+    const uint32_t hm = lwu(P + 0x2080);
+    for (uint32_t k = 0; k < 3; ++k) p[k] = hm != 0 ? lwc1(hm + 0x10 + 4 * k) : 0.0f;
+}
+
+// (stage 9) a section's hero mode: the game's (hero_modes.h) by its level.txt name
+int32_t mode_of(const std::string& m) {
+    return m == "clank" ? HERO_MODE_CLANK : m == "giantclank" ? HERO_MODE_GIANT_CLANK : m == "board" ? HERO_MODE_BOARD : HERO_MODE_NONE;
+}
+
+// out of section `s`'s hero mode (when Ratchet is in one), the object spawned for it taken out
+void hero_mode_leave(Section& s) {
+    if (s.hero_mode.empty()) return;
+    if (hero_mode_now() != HERO_MODE_NONE) hero_mode_set(HERO_MODE_NONE, 0, ("leaving section " + s.name).c_str());
+    if (s.hero_obj != 0 && static_cast<int8_t>(lbu(s.hero_obj + 0x20)) >= 0) moby_retire(s.hero_obj);
+    s.hero_obj = 0;
+}
+
+// the current section's hero mode entered where Ratchet stands (its object spawned there): at the first frame of play after
+// the switch (or a respawn, or the arrival)
+void hero_mode_frame() {
+    if (!g_mode_pending || g_cur < 0) return;
+    Section& s = g_secs[static_cast<size_t>(g_cur)];
+    if (s.hero_mode.empty()) {
+        g_mode_pending = false;
+        return;
+    }
+    if (lw(OV(0x0015f5c4)) != 0 || lwu(P + 0x2080) == 0 || lbu(P + 0x20b1) != 0 || g_pend.on) return;  // (not playing yet: a fade, a scene)
+    g_mode_pending = false;
+    const int32_t mode = mode_of(s.hero_mode);
+    if (hero_mode_now() == mode) return;
+    const int level = mode == HERO_MODE_CLANK ? 10 : mode == HERO_MODE_GIANT_CLANK ? 15 : s.hero_level;
+    const int32_t id = session_import_id(level, hero_mode_class(mode));
+    float p[3];
+    hero_pos(p);
+    const float yaw = lwc1(lwu(P + 0x2080) + 0x48);
+    if (s.hero_obj != 0 && static_cast<int8_t>(lbu(s.hero_obj + 0x20)) >= 0) moby_retire(s.hero_obj);
+    s.hero_obj = id >= 0 ? session_import_spawn(static_cast<uint32_t>(id), p, yaw) : 0;
+    if (s.hero_obj == 0) {
+        std::fprintf(stderr, "[section] %s: its hero mode %s: no object of class %d:%u could be spawned\n", s.name.c_str(), s.hero_mode.c_str(), level,
+                     hero_mode_class(mode));
+        return;
+    }
+    hero_mode_set(mode, s.hero_obj, ("section " + s.name).c_str());
+}
+
 void apply_music(const uint32_t w[15]) {
     if (std::memcmp(w, g_cur_music, sizeof g_cur_music) == 0) return;
     std::memcpy(g_cur_music, w, sizeof g_cur_music);
@@ -710,13 +763,10 @@ void apply_state(int idx) {
     else if (s.music >= 0) std::memcpy(w, s.music_words, sizeof w);
     apply_music(w);
     mrp_user_lights_section(idx != 0 && !s.lights.empty() ? g_mod_dir + "/level/" + s.lights : std::string());
+    // (stage 9) its hero code (and camera code): its hero line's level, or the session base's
+    hero_build_set(s.hero_level, ("section " + s.name).c_str());
     static const bool all = std::getenv("RAC1_SECTION_DRAW_ALL") != nullptr && std::atoi(std::getenv("RAC1_SECTION_DRAW_ALL")) != 0;  // (testing)
     mrpw::host_meshes_sections_set(all ? 0xffffffffu : 1u << static_cast<uint32_t>(idx));
-}
-
-void hero_pos(float p[3]) {
-    const uint32_t hm = lwu(P + 0x2080);
-    for (uint32_t k = 0; k < 3; ++k) p[k] = hm != 0 ? lwc1(hm + 0x10 + 4 * k) : 0.0f;
 }
 
 bool in_box(const Portal& pt, const float p[3]) {
@@ -732,6 +782,7 @@ void do_switch(int to, const Entry* e, const std::string& why) {
     const int from = g_cur;
     Section& F = g_secs[static_cast<size_t>(from)];
     Section& T = g_secs[static_cast<size_t>(to)];
+    hero_mode_leave(F);  // (stage 9: out of its hero mode first, his own moby the hero's)
     const size_t left = leave_objects(F, from);
     const double t1 = now_ms();
     g_cur = to;
@@ -753,6 +804,7 @@ void do_switch(int to, const Entry* e, const std::string& why) {
     float hp[3];
     hero_pos(hp);
     for (Portal& pt : T.portals) pt.inside = in_box(pt, hp);  // (an entry inside a portal's box: it waits to be left first)
+    g_mode_pending = !T.hero_mode.empty();  // (stage 9: its hero mode entered at the next frame of play)
     const double t4 = now_ms();
     std::printf("[section] frame %llu: %s -> %s%s%s (%s): the switch %.3f ms (objects left %.3f, state %.3f, objects entered %.3f, Ratchet %.3f); %s's objects "
                 "%s: %zu, %s's in play: %zu; collision %s, sky %s, music %s; the session heap %u KB\n",
@@ -1066,6 +1118,9 @@ void sections_level(const std::string& build_dir) {
             if (l >> b.uid >> b.cls >> b.slot >> b.value) s.binds.push_back(b);
         } else if (k == "world") {
             l >> s.world;
+        } else if (k == "hero") {
+            l >> s.hero_level >> s.hero_mode;
+            if (s.hero_mode == "-") s.hero_mode.clear();
         } else if (k == "wuid") {
             int32_t from = 0, to = 0;
             if (l >> from >> to) s.wuids[from] = to;
@@ -1128,6 +1183,13 @@ void sections_arrival() {
         if (!ctx_create(L) || !ld_registry_make(L))
             std::fprintf(stderr, "[section] %s: level %d's context or registry cannot be made: its level data is not the engine's there\n", g_secs[i].name.c_str(), L);
     }
+    // (stage 9) the hero lines' levels' contexts made now too; main's hero code and mode (the mode once the landing is over)
+    for (const Section& s : g_secs)
+        if (s.hero_level >= 0 && s.hero_level != lw(LEVEL) && !ctx_create(s.hero_level))
+            std::fprintf(stderr, "[section] %s: level %d's context cannot be made: its hero code cannot run Ratchet\n", s.name.c_str(), s.hero_level);
+    hero_build_set(m.hero_level, "section main at the arrival");
+    m.hero_obj = 0;
+    g_mode_pending = !m.hero_mode.empty();
     for (size_t i = 1; i < g_secs.size(); ++i) request(static_cast<int>(i));  // (every section streamed in while the landing plays)
     std::printf("[section] the arrival: main's collision %08x, sky %08x taken; %zu classes of other levels placed in main; %zu sections streaming in\n",
                 g_main.coll_tree, g_main.sky, n, g_secs.size() - 1);
@@ -1138,6 +1200,7 @@ void sections_frame(uint64_t frame) {
     if (!g_sections_on || g_cur < 0) return;
     g_frame = frame;
     commit_frame();
+    hero_mode_frame();
     // a switch asked (a portal, the plugin, a respawn's): once its section is in, with its fade
     if (g_pend.on) {
         if (!ready(g_pend.to)) {
@@ -1261,6 +1324,12 @@ void sections_respawn_prepare(int index) {
     g_pend = Pending{};
     g_fade_alpha = 0;
     do_switch(index, nullptr, "a death: the checkpoint's section");
+}
+
+// orig: (host) see sections.h
+void sections_hero_respawned() {
+    if (!g_sections_on || g_cur < 0) return;
+    g_mode_pending = !g_secs[static_cast<size_t>(g_cur)].hero_mode.empty();
 }
 
 // orig: (host) see sections.h

@@ -183,6 +183,14 @@ struct LevelTxt {
         int line = 0;
         std::string world;  // (stage 8: a class of a section's world's objects: the base level's own serves when it has it)
     };
+    // (stage 9) `hero <level> [clank|giantclank|board]`: the hero code (and camera code) of another level runs Ratchet in the
+    // section (main's: outside every section block), and the mode he is in there (its object spawned at his entry)
+    struct Hero {
+        int level = -1;  // (-1: the session base's own)
+        std::string mode;
+        int line = 0;
+    };
+    Hero hero_ctx;
     std::vector<Import> imports;
     // (format 3) the session (docs/open-engine.md, "Sessions"): its line, its checkpoints, the respawn policy
     int format = 1;                     // (mod.json's level.format, set by the composer)
@@ -233,6 +241,7 @@ struct LevelTxt {
         bool has_box = false;
         float box_lo[3] = {}, box_hi[3] = {};
         std::vector<std::pair<int32_t, int32_t>> wuids;
+        Hero hero;  // (stage 9)
     };
     std::vector<Section> sections;
     std::vector<Entry> entries;    // (main's)
@@ -404,6 +413,36 @@ bool items_line(std::istringstream& in, std::vector<int>& items) {
     return any;
 }
 
+// a game level by its name (`kalebo`) or its number: -1 none
+int level_by_name(std::string a) {
+    for (char& c : a) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    static const std::map<std::string, int> kLevels = {{"veldin", 0}, {"novalis", 1}, {"aridia", 2}, {"kerwan", 3}, {"eudora", 4}, {"rilgar", 5},
+                                                       {"blarg", 6}, {"umbris", 7}, {"batalia", 8}, {"gaspar", 9}, {"orxon", 10}, {"pokitaru", 11},
+                                                       {"hoven", 12}, {"gemlik", 13}, {"oltanis", 14}, {"quartu", 15}, {"kalebo", 16}, {"fleet", 17},
+                                                       {"veldin2", 18}};
+    if (const auto it = kLevels.find(a); it != kLevels.end()) return it->second;
+    if (!a.empty() && a.find_first_not_of("0123456789") == std::string::npos && std::atoi(a.c_str()) <= 18) return std::atoi(a.c_str());
+    return -1;
+}
+
+// (stage 9) the hero line's generic hero code (the runtime's HERO_GENERIC, variants.h)
+constexpr int kHeroGeneric = -2;
+
+// (stage 9) `hero <level> [clank|giantclank|board]`: false when not understood (the level and mode checked later)
+bool hero_line(std::istringstream& in, LevelTxt::Hero& h) {
+    std::string a, mode;
+    if (!(in >> a)) return false;
+    // (the generic hero code, Veldin's: what Veldin, Gaspar and Umbris run; on a base with a build of its own, its stand-in)
+    h.level = a == "generic" || a == "veldin" || a == "gaspar" || a == "umbris" ? kHeroGeneric : level_by_name(a);
+    if (h.level == -1) return false;
+    if (in >> mode) {
+        if (mode != "clank" && mode != "giantclank" && mode != "board") return false;
+        h.mode = mode;
+    }
+    std::string more;
+    return !(in >> more);
+}
+
 bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
     std::ifstream f(p);
     if (!f) {
@@ -507,9 +546,12 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
                 for (int i = 0; i < 3; ++i)
                     if (S.box_lo[i] > S.box_hi[i]) std::swap(S.box_lo[i], S.box_hi[i]);
                 S.has_box = true;
+            } else if (key == "hero") {
+                if (!hero_line(in, S.hero)) return bad();
+                S.hero.line = n;
             } else {
                 err = fmt("%s:%d: \"%s\": not a line of a section (its own: collision, meshes, lights, sky, music, fog, background, death_height, offset, "
-                          "entry, checkpoint, moby, portal, respawn, rail, rails, world, objects, box; end closes it)",
+                          "entry, checkpoint, moby, portal, respawn, rail, rails, world, objects, box, hero; end closes it)",
                           p.generic_string().c_str(), n, line.c_str());
                 return false;
             }
@@ -585,6 +627,18 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
         if (key == "hero") {
             std::string w;
             in >> w;
+            // (stage 9) `hero <planet>|generic [mode]`: the hero code (a name, or one number); else Ratchet's start (x y z [yaw], auto)
+            {
+                std::istringstream all(line.substr(line.find(key) + key.size()));
+                std::vector<std::string> ws;
+                for (std::string x; all >> x;) ws.push_back(x);
+                if (w != "auto" && ws.size() < 3) {
+                    std::istringstream again(line.substr(line.find(key) + key.size()));
+                    if (!hero_line(again, t.hero_ctx)) return bad();
+                    t.hero_ctx.line = n;
+                    continue;
+                }
+            }
             t.has_hero = true;
             t.hero_auto = w == "auto";
             if (!t.hero_auto) {
@@ -3123,8 +3177,9 @@ bool compose_level_mod(const std::string& folder, bool force) {
         if (line == 0 && !lt.portals.empty()) line = lt.portals.front().line;
         if (line == 0 && !lt.entries.empty()) line = lt.entries.front().line;
         if (line == 0) line = lt.start_line != 0 ? lt.start_line : lt.leave_line;
+        if (line == 0 && lt.hero_ctx.level != kHeroGeneric) line = lt.hero_ctx.line;  // (`hero generic`: format 2 too)
         if (line != 0)
-            return fail(fmt("level.txt:%d: a session's line (session, checkpoint, respawn, section, portal, entry, start, leave, a moby line's slots or "
+            return fail(fmt("level.txt:%d: a session's line (session, checkpoint, respawn, section, portal, entry, start, leave, hero, a moby line's slots or "
                             "another level's class): format 3 only (mod.json's level.format is %d)",
                             line, m.level_format));
     }
@@ -3242,6 +3297,48 @@ bool compose_level_mod(const std::string& folder, bool force) {
         };
         say(lt.rails, "main");
         for (const LevelTxt::Section& S : lt.sections) say(S.rails, "section " + S.name);
+    }
+    // (stage 9) the hero lines: a level with hero or camera code of its own (Rilgar, Orxon, Gemlik, Quartu, Kalebo III), a mode's
+    // class imported (Clank 10:87, Giant Clank 15:419, a board 16:439 or Rilgar's 5:439)
+    {
+        auto check = [&](const LevelTxt::Hero& h, const std::string& where) -> std::string {
+            if (h.line == 0) return "";
+            if (h.level == kHeroGeneric) {
+                if (m.level_base != 5 && m.level_base != 15 && m.level_base != 16)
+                    return fmt("level.txt:%d: the base level %d's hero code is the generic one already (hero generic is for Rilgar 5, Quartu 15, Kalebo III 16)",
+                               h.line, m.level_base);
+                if (!h.mode.empty() && m.level_format < 3) return fmt("level.txt:%d: a hero mode is format 3's (a session's)", h.line);
+                log.say(fmt("%s: Ratchet runs on the generic hero code (Veldin's: its lava, its states), not level %d's own", where.c_str(), m.level_base));
+                if (h.mode.empty()) return "";
+            }
+            if (h.level != kHeroGeneric && h.level != 5 && h.level != 10 && h.level != 13 && h.level != 15 && h.level != 16 && h.level != m.level_base)
+                return fmt("level.txt:%d: level %d has no hero code of its own to run Ratchet (Rilgar 5, Orxon 10, Gemlik 13, Quartu 15, Kalebo III 16)", h.line,
+                           h.level);
+            if (h.mode == "board" && h.level != 16 && h.level != 5)
+                return fmt("level.txt:%d: the board needs the hero code of a level that rides it: hero kalebo board (or rilgar)", h.line);
+            std::string imp;
+            if (h.mode == "clank") imp = "10:87";
+            if (h.mode == "giantclank") imp = "15:419";
+            if (h.mode == "board") imp = fmt("%d:439", h.level);
+            if (!imp.empty()) {
+                bool have = false;
+                for (const LevelTxt::Import& o : lt.imports) have = have || o.name == imp;
+                if (!have) {
+                    LevelTxt::Import im;
+                    im.name = imp;
+                    im.line = h.line;
+                    lt.imports.push_back(im);
+                }
+            }
+            if (h.level != kHeroGeneric)
+            log.say(fmt("%s: Ratchet runs on level %d's hero code and camera code%s", where.c_str(), h.level,
+                        h.mode.empty() ? "" : (", as " + std::string(h.mode == "clank" ? "Clank" : h.mode == "giantclank" ? "Giant Clank" : "on the hoverboard") +
+                                               " (" + imp + ", spawned at his entry)").c_str()));
+            return "";
+        };
+        if (const std::string w = check(lt.hero_ctx, "main"); !w.empty()) return fail(w);
+        for (const LevelTxt::Section& S : lt.sections)
+            if (const std::string w = check(S.hero, "section " + S.name); !w.empty()) return fail(w);
     }
     // (format 3) classes of other levels placed (moby lines naming one): spawned by the session with their section, each an
     // import of the level (added when no import line names it)
@@ -3530,7 +3627,8 @@ bool compose_level_mod(const std::string& folder, bool force) {
     }
     // (format 3) sections.txt: the sections, their entries, checkpoints, portals, settings, meshes and placed classes of other
     // levels (src/game/enhance/sections.cpp reads it)
-    if (m.level_format >= 3 && (!lt.sections.empty() || !lt.portals.empty() || !lt.entries.empty() || !main_imports.empty() || lt.start_line != 0)) {
+    if (m.level_format >= 3 && (!lt.sections.empty() || !lt.portals.empty() || !lt.entries.empty() || !main_imports.empty() || lt.start_line != 0 ||
+                                 lt.hero_ctx.line != 0)) {
         std::ostringstream o;
         o << "sections\t1\n";
         auto index_of = [&](const std::string& s) {
@@ -3556,6 +3654,7 @@ bool compose_level_mod(const std::string& folder, bool force) {
         };
         o << fmt("section\t0\tmain\t%s\t-\n", lt.leave.c_str());
         o << fmt("meshes\t0\t0\t%zu\n", main_instances);
+        if (lt.hero_ctx.line != 0) o << fmt("hero\t0\t%d\t%s\n", lt.hero_ctx.level, lt.hero_ctx.mode.empty() ? "-" : lt.hero_ctx.mode.c_str());
         put_common(0, lt.entries, lt.portals, main_imports);
         for (size_t k = 0; k < lt.sections.size(); ++k) {
             const LevelTxt::Section& S = lt.sections[k];
@@ -3574,6 +3673,7 @@ bool compose_level_mod(const std::string& folder, bool force) {
                 for (const auto& [from, to] : S.wuids) o << fmt("wuid\t%d\t%d\t%d\n", i, from, to);
             }
             if (!S.lights.empty()) o << fmt("lights\t%d\t%s\n", i, S.lights.c_str());
+            if (S.hero.line != 0) o << fmt("hero\t%d\t%d\t%s\n", i, S.hero.level, S.hero.mode.empty() ? "-" : S.hero.mode.c_str());
             for (const LevelTxt::Checkpoint& c : S.checkpoints)
                 o << fmt("checkpoint\t%d\t%s\t%.6g\t%.6g\t%.6g\t%.6g\n", i, c.name.c_str(), c.at[0], c.at[1], c.at[2], c.at[3]);
             put_common(i, S.entries, S.portals, S.mobys);
@@ -3588,6 +3688,16 @@ bool compose_level_mod(const std::string& folder, bool force) {
                     "%zu classes of other levels placed in main%s",
                     lt.sections.size(), np, nobj, main_imports.size(),
                     lt.start_line != 0 ? fmt("; the session starts in %s at %s", lt.start_section.c_str(), lt.start_entry.c_str()).c_str() : ""));
+    }
+    // (stage 9) hero.txt: a format 1 / 2 level's `hero generic` (src/game/enhance/hero_modes.cpp reads it)
+    {
+        std::error_code ec;
+        if (m.level_format < 3 && lt.hero_ctx.line != 0) {
+            const std::string t = "hero\tgeneric\n";
+            if (!write_file(out_dir / "hero.txt", std::vector<uint8_t>(t.begin(), t.end()))) return fail("cannot write into " + out_dir.generic_string());
+        } else {
+            fs::remove(out_dir / "hero.txt", ec);
+        }
     }
     // (format 3) session.txt: the session's checkpoints and policy (src/game/enhance/session_runtime.cpp reads it)
     if (m.level_format >= 3) {

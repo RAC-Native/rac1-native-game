@@ -70,6 +70,10 @@ int32_t sections_respawn_policy(int32_t session_policy);
 // as at its entry, the game's killed-for-good ones not; main's classes of other levels placed too): their counts
 void sections_respawn_objects(int32_t policy, size_t* back, size_t* kept_dead);
 
+// orig: (host) after the soft reset (stage 9): the current section's hero mode (its hero line's) entered again at the next
+// frame of play, a new object of it where Ratchet stands
+void sections_hero_respawned();
+
 // Saves (session_runtime.cpp's .pc item)
 // orig: (host) section `index`'s objects gone (killed since it was entered: not to come back until a death there), by uid
 void sections_gone_of(int index, std::vector<int32_t>& uids);

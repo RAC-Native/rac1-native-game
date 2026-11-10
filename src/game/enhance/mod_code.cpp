@@ -6,6 +6,7 @@
 #include <runtime/iop/snd989_iop.h>
 #include <game/enhance/advanced.h>
 #include <game/enhance/class_profiles.h>
+#include <game/enhance/hero_modes.h>
 #include <game/enhance/leveldata.h>
 #include <game/enhance/pool.h>
 #include <game/enhance/sections.h>
@@ -1035,6 +1036,12 @@ int32_t api_section_current(char* name, int32_t cap) {
 }
 int32_t api_section_policy(const char* name, int32_t policy) { return name != nullptr ? section_policy(name, policy) : -1; }
 
+// ---- (ABI 12) hero contexts and modes (hero_modes.h) ----
+int api_hero_build(int32_t level) { return hero_build_set(level, "the plugin's hero_build") ? 1 : 0; }
+int32_t api_hero_build_now() { return hero_build_level(); }
+int api_hero_mode(int32_t mode, uint32_t obj) { return g_session_rt && hero_mode_set(mode, obj, "the plugin's hero_mode") ? 1 : 0; }
+int32_t api_hero_mode_now() { return hero_mode_now(); }
+
 // a loaded save's session bytes of the plugins (session_load), given after their level_start
 std::vector<std::pair<std::string, std::vector<uint8_t>>> g_session_bytes;
 
@@ -1590,6 +1597,10 @@ void load_all() {
     g_api.object_path_at = api_object_path_at;
     g_api.rail_info = sp_rail_info;
     g_api.fade_active = sp_fade_active;
+    g_api.hero_build = api_hero_build;  // (ABI 12)
+    g_api.hero_build_now = api_hero_build_now;
+    g_api.hero_mode = api_hero_mode;
+    g_api.hero_mode_now = api_hero_mode_now;
     {
         SetpiecesHost h;
         h.hero_damage = api_hero_damage;

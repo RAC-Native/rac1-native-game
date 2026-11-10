@@ -52,8 +52,10 @@ extern "C" {
    mod of format 3: session_on, checkpoints, the respawn policy; the respawn, session_save and session_load callbacks); 10:
    sections (a session's sections and portals: section_load, section_ready, section_enter, section_unload, section_current,
    section_policy; the section_leave and section_enter callbacks); 11: the rails and the set-piece kit, in ABI 7's room of the
-   table (rail_find .. fade_active; the rail callback) (docs/sdk.md lists what each version added). */
-#define RAC1_MOD_ABI 11
+   table (rail_find .. fade_active; the rail callback); 12: hero contexts and modes (another planet's hero code, Ratchet as
+   Clank, Giant Clank or on the hoverboard: hero_build, hero_build_now, hero_mode, hero_mode_now) (docs/sdk.md lists what each
+   version added). */
+#define RAC1_MOD_ABI 12
 
 #if defined(_WIN32)
 #define RAC1_MOD_EXPORT __declspec(dllexport)
@@ -153,6 +155,15 @@ typedef struct rac1_hazard {
 #define RAC1_PATH_ONCE 0      /* to its last point, then it stops */
 #define RAC1_PATH_LOOP 1      /* from its last point to its first, round again */
 #define RAC1_PATH_PINGPONG 2  /* back and forth */
+
+/* (ABI 12) hero_mode's modes: Ratchet as himself, as Clank, as Giant Clank, on a hoverboard */
+#define RAC1_HERO_NONE 0
+#define RAC1_HERO_CLANK 1       /* riding an object of Orxon's Clank class (import "10:87") */
+#define RAC1_HERO_GIANT_CLANK 2 /* riding an object of Quartu's Giant Clank class (import "15:419") */
+#define RAC1_HERO_BOARD 4       /* on a hoverboard (import "16:439"), with Kalebo III's hero code (hero_build(16)) */
+/* (ABI 12) hero_build's generic hero code (Veldin's, Gaspar's, Umbris's: their lava), on a level mod of any format whose base
+   level has hero code of its own (Kalebo III, Quartu, Rilgar) */
+#define RAC1_HERO_BUILD_GENERIC (-2)
 
 /* (ABI 9) A session's respawn: given to the respawn callback */
 typedef struct rac1_respawn {
@@ -575,6 +586,23 @@ typedef struct rac1_api {
     int32_t (*section_current)(char* name, int32_t cap);
     /* section `name`'s objects when it is left: RAC1_SECTION_REMOVE, _FREEZE or _KEEP; -1 only asks. The policy now, -1 no such */
     int32_t (*section_policy)(const char* name, int32_t policy);
+
+    /* ======== ABI 12 (test RAC1_API_HAS(api, hero_build)) ======== */
+    /* -- hero contexts and modes (docs/sdk.md, "Hero modes"; a session only): another planet's own hero code, Ratchet as Clank,
+          Giant Clank or on a hoverboard. level.txt's `hero` line does the same for a section -- */
+    /* (a session) the hero code and camera code of level `level` run Ratchet from now on, as on that planet: 16 Kalebo III (its
+       hero rides the hoverboard), 15 Quartu, 13 Gemlik, 10 Orxon, 5 Rilgar; -1 the session's own (Veldin's);
+       RAC1_HERO_BUILD_GENERIC the generic code on a level mod of any format on such a base. 1 done, 0 not (no session, a level
+       without hero code of its own). Off a hoverboard first when the new code has none */
+    int (*hero_build)(int32_t level);
+    /* the level whose hero code runs Ratchet now, -1 the session's own */
+    int32_t (*hero_build_now)(void);
+    /* Ratchet in mode `mode` riding the object `obj` (RAC1_HERO_CLANK, _GIANT_CLANK: it becomes the hero, his health and weapons
+       kept for his return; RAC1_HERO_BOARD: on it, with hero_build(16)); RAC1_HERO_NONE (obj ignored): out of the mode he is
+       in, back as Ratchet where the object is. 1 done, 0 not (dying, already in a mode, no such object) */
+    int (*hero_mode)(int32_t mode, uint32_t obj);
+    /* Ratchet's mode now (RAC1_HERO_*) */
+    int32_t (*hero_mode_now)(void);
 } rac1_api;
 
 #define RAC1_API_HAS(api, field) ((api)->size >= offsetof(rac1_api, field) + sizeof((api)->field))

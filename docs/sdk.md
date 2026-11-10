@@ -38,7 +38,8 @@ Contents:
 | 8 | the first with profiles | the level data of imported classes: `path_find`, `path_create`, `object_bind_path`, `object_bind`, `group_create`, `object_slots`; level.txt's `path` lines; imported enemies that read their planet's paths and areas |
 | 9 | the first with sessions | sessions (level.format 3): `session_on`, `checkpoint_set`, `checkpoint_at`, `checkpoint_get`, `respawn_policy`, `rac1_respawn`, `RAC1_RESPAWN_*`; the callbacks `respawn`, `session_save`, `session_load`; `object_bind`, `object_bind_path`, `group_create`, `object_slots` on the base level's own objects too (a `base_spawn` object of a class with a profile) |
 | 10 | the first with sections | sections (a session's `section` blocks and portals): `section_load`, `section_ready`, `section_enter`, `section_unload`, `section_current`, `section_policy`, `RAC1_SECTION_*`; the callbacks `section_leave`, `section_enter` |
-| 11 | this one | grind rails and the set-piece kit, in ABI 7's room of the table: `rail_find`, `hero_rail`, `rail_point`, `rail_enable`, `hero_rail_attach`, `rail_speed`, `rail_info`, `item_visit`, `fade`, `fade_active`, `camera_set`, `camera_release`, `hazard_add`, `hazard_set`, `object_follow_path`, `object_path_at` (`rac1_rail_info`, `rac1_camera`, `rac1_hazard`, `RAC1_RAIL_*`, `RAC1_CAMERA_*`, `RAC1_HAZARD_*`, `RAC1_PATH_*`); the callback `rail`; level.txt's `rail`, `rails`, `items` lines and `class ... collision <file>` |
+| 11 | the first with rails | grind rails and the set-piece kit, in ABI 7's room of the table: `rail_find`, `hero_rail`, `rail_point`, `rail_enable`, `hero_rail_attach`, `rail_speed`, `rail_info`, `item_visit`, `fade`, `fade_active`, `camera_set`, `camera_release`, `hazard_add`, `hazard_set`, `object_follow_path`, `object_path_at` (`rac1_rail_info`, `rac1_camera`, `rac1_hazard`, `RAC1_RAIL_*`, `RAC1_CAMERA_*`, `RAC1_HAZARD_*`, `RAC1_PATH_*`); the callback `rail`; level.txt's `rail`, `rails`, `items` lines and `class ... collision <file>` |
+| 12 | this one | hero contexts and modes (a session): `hero_build`, `hero_build_now`, `hero_mode`, `hero_mode_now`, `RAC1_HERO_*`; level.txt's `hero` line |
 
 How compatibility works:
 
@@ -446,6 +447,37 @@ static void on_rail(void* user, int32_t r, const char* name, int32_t ev) {
 /* the escape's start, the screen faded: */ api->fade(15, 20, 15, 0);
 /* ... at fade_active() == 2: */ api->hero_rail_attach(rail, 0.0f, 1);
 /* in rac1_mod_main: */ mod->rail = on_rail;
+```
+
+### Hero modes (ABI 12)
+
+Test `RAC1_API_HAS(api, hero_build)` first. In a session ([The open engine](open-engine.md#hero-contexts-stage-9)) Ratchet runs
+on Veldin's hero code; another planet's own hero code can run him instead, with that planet's camera code (the cameras of its
+own types: Kalebo III's race camera, Quartu's Giant Clank camera), and he can become Clank, Giant Clank or ride a hoverboard,
+with the game's own code for each. A section's level.txt `hero` line does the same when Ratchet enters it
+([Hero modes](mods.md#hero-modes)); a switch sets the entered section's (its line's, or Veldin's), so call these after the
+`section_enter` callback.
+
+| Service | Does |
+|---|---|
+| `int hero_build(int32_t level)` | the hero code and camera code of `level` run Ratchet from now on: 16 Kalebo III (its hero rides the hoverboard), 15 Quartu, 13 Gemlik, 10 Orxon, 5 Rilgar; -1 the session's own (Veldin's). `RAC1_HERO_BUILD_GENERIC` (-2): the generic hero code (the game's lava) on a level mod of **any format** whose base has hero code of its own (Kalebo III's: level.txt's `hero generic` does it at the load). 1 done, 0 not (no session, a level without hero code of its own). Off a hoverboard first when the new code has none |
+| `int32_t hero_build_now(void)` | the level whose hero code runs Ratchet, -1 the session's own |
+| `int hero_mode(int32_t mode, uint32_t obj)` | Ratchet becomes `mode` riding the object `obj` (an object of that mode's class: `import_spawn`'s): `RAC1_HERO_CLANK` (Orxon's Clank, `"10:87"`), `RAC1_HERO_GIANT_CLANK` (Quartu's Giant Clank, `"15:419"`: with `hero_build(15)` for his camera), `RAC1_HERO_BOARD` (a hoverboard, `"16:439"`, with `hero_build(16)`); `RAC1_HERO_NONE` (`obj` 0): back to Ratchet where the object is (Clank's health given back as the game does). 1 done, 0 not (dying, already in a mode: leave it first, no such object, no board code) |
+| `int32_t hero_mode_now(void)` | `RAC1_HERO_NONE`, `_CLANK`, `_GIANT_CLANK` or `_BOARD` |
+
+The classes must be in the level: an `import` line (`import 10:87`), or a section's `hero ... clank` line imports them. As
+Clank or Giant Clank the hero's moby (`PLAYER + 0x2080`) is the mode's object; `hero()` stays Ratchet's. A death in a mode
+brings Ratchet back as himself at the checkpoint (a section's `hero` mode is entered again there). Your plugin's object
+for the mode stays when he leaves it: remove it (`moby_remove`) if it should go.
+
+```c
+/* Giant Clank where Ratchet stands, from a plugin (the section has no hero line) */
+float p[3]; /* Ratchet's position */
+const int32_t c = api->import_class("15:419");     /* level.txt: import 15:419 */
+const uint32_t gc = api->import_spawn(c, p, 0.0f);
+api->hero_build(15);                                /* Quartu's hero code and Giant Clank's camera */
+api->hero_mode(RAC1_HERO_GIANT_CLANK, gc);
+/* ... later: */ api->hero_mode(RAC1_HERO_NONE, 0); api->hero_build(-1); api->moby_remove(gc);
 ```
 
 ### Classes and objects (ABI 2)

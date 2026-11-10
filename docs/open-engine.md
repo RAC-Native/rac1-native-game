@@ -29,7 +29,10 @@ adds **grind rails** (level.txt's, per section; the hero code's landing gate ski
 classes with a collision mesh of their own), the SDK's ABI 7 room filled (ABI 11). Stage 8 makes a section a **game planet's
 world** (`world <level>`): its scenery drawn by the game's own world passes and the modern renderer from that planet's
 assets, its collision, sky, lights, fog, music and level data the engine's while Ratchet is in it, and the planet's own
-objects a mod chooses placed with their uids mapped to the session's, running on their planet's code.
+objects a mod chooses placed with their uids mapped to the session's, running on their planet's code. Stage 9 adds **hero
+contexts**: another planet's own hero code and camera code run Ratchet in a section (Kalebo III's, which rides the race's
+hoverboard with its race camera), and the game's own **hero modes** (Clank, Giant Clank, the board) are entered from a
+section's `hero` line or a plugin (ABI 12); a base whose hero lacks an animation gets it from Veldin's core.
 
 ## Session memory
 
@@ -841,8 +844,8 @@ table), `sections.cpp` (a section's rail table).
 - **Magneboots surfaces** need nothing new: `usemtl type2` faces set the hero's +0x12e7 (`hero_surface_update`) and the
   Magneboots (0x13d4dc) do the rest. Tested on a quarter-pipe of our own (a floor arc, a wall 10 high, an arc, a ceiling at
   30): Ratchet walks up the wall and onto the ceiling (state 0x3f) on Veldin's code (format 3) and on Kalebo III's (format
-  2); on Kalebo III's his model is drawn wrong in the magnetic walk (its hero class lacks those animations: stage 9's hero
-  contexts).
+  2); on Kalebo III's his model was drawn wrong in the magnetic walk (its hero class lacks that animation: given by stage 9,
+  [Hero contexts](#hero-contexts-stage-9)).
 
 ### The set-piece kit
 
@@ -1005,22 +1008,140 @@ classes imported, the class table 218 of 224).
 | `s8_walk` (forward from Kerwan's start) | the same path as on Kerwan: over the bridge, down the steps, stopped by the wall at 264.18 151.49 50.00 (the native run's stop: 264.18 151.49 50.00) |
 | `s8_robots` (`RAC1_SIM_INPUT=attack`) | Kalebo III's six robots walk to Ratchet and hit him (4 -> 3), die to the wrench, drop bolts (20); a death there: back at the checkpoint in kalebo, the six robots back, fighting again |
 | `s8_rail` | dropped onto Kalebo III's own rail 4: carried along it (the section's rail table: its gameplay file's) |
-| `s8_die` | a death in each world: back at its checkpoint, in it |
+| `s8_die` | a death in each world: back at its checkpoint, in it (two Kerwan crates missing afterwards were not the respawn's: they sit on Kerwan's lift 1210, which the test's `objects` did not choose, and fell through at the entry; with 1210 chosen all nine are there before and after the death: stage 9's `s9_die`) |
 | A save in kalebo (`s8_save`, a crate taken out, `RAC1_SESSION_SAVE_AT=1800:2`), loaded on Kerwan (`RAC1_GOTO=3@60 RAC1_SESSION_LOAD_AT=1200:2`) | the item: checkpoint `arrive` in kalebo; after the load's landing kalebo streamed in, the switch, Ratchet at its checkpoint, the crate still out |
 | `s8_unload` | kerwan left, unloaded (its 19 MB given back), entered again: streamed in again while playing, the renderer's kept level taken back (the tables at the same addresses) |
 | The original; formats 2 and 3 | the reference pictures and RAMHASH unchanged; `RAC1_SECTION_EQUIV` all 19 levels ok; the arena's format 2 regression and stage 5's format 3 runs with the same RAMHASH; the composer's output for the regression mods byte for byte the same |
 
-## What stages 9 and 10 build on
+## Hero contexts (stage 9)
 
-- **Stage 9 (hero contexts)**: a world's section is where another level's hero build matters most (Kalebo III's rails and
-  hoverboard, Gemlik's ship); `world_renderer_level` and `ld_engine_take` show the pattern for a per-section switch of the
-  engine's state; the hero's would be his class's update function and animations.
+DESIGN stage 9 (and 5.8): Ratchet run by another level's own hero code in a session, and the game's own hero modes (Clank,
+Giant Clank, the hoverboard) entered from a section or a plugin. The code: `src/game/enhance/hero_modes.{h,cpp}` (the hero
+context, the modes, the hero's sequences), `variants.h` (`on_hero_level`), `context.cpp` (`own_code_tables`), `camera.cpp`
+(`g_camera_types_table`), `sections.cpp` (a section's `hero` line), the composer's `hero` lines (`level_compose.cpp`), the SDK's
+ABI 12 (`mod_code.cpp`).
+
+### What the design said, and what was done
+
+DESIGN 5.8 set moby 0's update function to a tag of A's hero update. That was not needed: the hero's update is Veldin's port
+on every level, and the ports of the hero controller already dispatch, line by line, to a level's transliterated build
+(`if (on_kalebo()) { kal_call(kal_hero_set_state_u ...) }`) while that level is the translation target. A **hero context** is
+a second target for those lines only: `g_hero_level` (variants.h), which `on_kalebo()`, `on_quartu()`, `on_gemlik()`,
+`on_orxon()` and `on_rilgar()` also accept (`on_hero_level`). Their sites are the hero controller's and the camera system's
+(camera types, camera hooks); the sound emitters' and the cutscene extras' lines ask `on_level` (the overlay's only). The
+build's own addresses go through the level's context as any of its classes' do. -1 always on the original's levels.
+
+Three things the build needed beyond the dispatch:
+
+1. **Its jump tables.** A level's own build of an engine function (a variant) keeps its `switch` tables in data blocks its map
+   pairs with Veldin's (the same place in the overlay): through the context its code read Veldin's table, whose labels its
+   `case`s never match. Kalebo III's `hero_set_state` found no case for the board state 0x6b: Ratchet stood on the board
+   without riding it. `own_code_tables` (context.cpp): in a context's engine blocks, a run of two or more words that are
+   labels of the level's own code is such a table: the level sees its own copy (a view onto its image, the words made tags;
+   a paired function's start in it Veldin's). Kalebo III: 87 tables, 1245 words; Kerwan 87 (1369), Umbris 82 (1353), Gemlik
+   87 (1365). The imported classes' code never read those tables (their own functions' tables are their own data already):
+   every regression of stages 5 to 8 has the same RAMHASH with them.
+2. **Its camera types.** Kalebo III's race camera is its own camera type 8 (3 and 8 are its own), Quartu's Giant Clank's 0x16;
+   the camera system finds a type's functions in the overlay's type table (0x1ea880), and Veldin's has no rows 3, 8 or 0x16.
+   The hero context copies the session's table into the session heap with the level's own rows (from its context image: the
+   functions tags) put in place of the same id's or added before the end row, and the camera system reads the copy
+   (`g_camera_types_table`); the cameras are made again (`camera_init`, as a level start) since their rows (+0x8c) are indices
+   into the table. Back to the overlay's table when the context goes.
+3. **Its hero's sequences.** The hero's animations are his class's 256 slots, filled from the level's core at its load
+   (dev_hoverboard.cpp found it). Veldin's core has every one; another base's lacks some (Kalebo III's: 91, the magnetic
+   walk). On a level mod's level, when the hero is about to play a sequence his class has no slot for (`hero_anim_set`'s two
+   ports ask `hero_seq_need`), it is copied from a donor level's core (the hero context's level, else Veldin's), read from the
+   disc on a worker, into `host_layout::HERO_SEQS` (0x02000000, 3 MB above the game's 32 MB), its frame table and trigger
+   block made addresses as the game's load does. In a format 1 / 2 level mod only the magnetic walk's (Ratchet on a
+   Magneboots surface, +0x12e7): its core is read the first time he is on one.
+
+The modes are the game's own: `hero_mode_enter(form, state, object)` (Clank, the form 1: Orxon's class 87, state 0x43; Giant
+Clank, the form 2: Quartu's class 419, state 0x5a, as `level_setup` starts a level in a vehicle) and `hero_mode_exit` (Ratchet's
+moby back at the object's place, state 0, Clank's health swapped back); the board is the board's own mount (Kalebo III's or
+Rilgar's class 439: the board given to the hero +0x86c, the board state 0x6b, the board in its riding state, as its update does
+when he walks up to it). Veldin's hero code has Clank's and Giant Clank's states (Orxon and Gemlik run on it natively); the
+board's riding is Kalebo III's and Rilgar's own.
+
+Not every planet's hero code differs from Veldin's: Orxon and Gemlik run Veldin's (their contexts give only their camera
+code), and Veldin's has Clank's and Giant Clank's states. **The generic hero code** (`hero generic`, `HERO_GENERIC`) is the other
+way round: on a level mod whose base has a build of its own (Kalebo III, Quartu, Rilgar), the base's own hero lines are turned
+off (`on_hero_level` false for every level) while its camera code stays (`on_camera_level`, the camera system's sites): Veldin's
+ports run the hero on the base's overlay, translated as on any level whose hero is the generic one (Gaspar, Umbris). Any
+format: the arena (format 2 on Kalebo III) gets the game's lava (0x68 sinking, Cross 0x69 out, lost when left in it: the
+level loaded again) with its animation (113, from Veldin's core: the whole hero set is read at the load when the generic code
+is asked), its waves and rail course the same as on Kalebo III's code (the same challenge lines and results).
+
+### The level
+
+```
+section race remove respawn reset
+  world kalebo
+  hero kalebo                      # level 16's hero code and camera code while Ratchet is in the section
+  objects 439                      # its race board: he gets on it when he walks up to it
+  entry board 145.3 90.3 83.7 -1.5708
+end
+section giant remove respawn reset
+  world quartu
+  hero quartu giantclank           # Quartu's code; Giant Clank (15:419 imported, spawned at his entry)
+  entry start 130.5 222.4 26 0
+end
+```
+
+`hero <level> [clank|giantclank|board]` in main or a section (format 3; main's `hero` line with a name is this line, with numbers
+Ratchet's start as before; `hero generic` in any format): the composer checks the level (5, 10, 13, 15, 16),
+imports the mode's class (10:87, 15:419, `<level>:439`) and writes `hero <section> <level> <mode>` into `sections.txt`. The
+switch (`apply_state`) sets the entered section's hero context (its line's, or the base's); the leaving section's mode is left
+first (`hero_mode_leave`), the entered one's object spawned where Ratchet stands and the mode entered at the first frame of
+play after the switch (after its fade). At the arrival the hero lines' contexts are made with the worlds' (not within a frame).
+A death in a mode: the mode left before the soft reset makes the hero again, entered again (a new object) once he stands at
+the checkpoint.
+
+### Testing
+
+Test mod `s9-heroes` (`openengine/s9/mods`): stage 8's main, kerwan and kalebo, with `world umbris`, `world gemlik` (`hero
+gemlik`, its ship 69), `race` (Kalebo III's world, `hero kalebo`, its board), `clank` (Orxon's world, `hero orxon clank`),
+`giant` (Quartu's, `hero quartu giantclank`); plugin hooks `RAC1_MOD_TEST=s9_*`; `RAC1_HERO_STATE=<n>` prints the hero's
+state, sub-state, form, place and animation every n frames on any level (the native runs' traces).
+
+| Test | Result |
+|---|---|
+| `s9_board` (`race`: `hero kalebo`, the board 16:439, stick forward, a jump) | the board's own code mounts him at once (state 0x6b, sub 0x16, the board +0x86c), Kalebo III's code rides it: along the track at 0.24 units a frame, jumps (85), a wipe-out on a wall (0x6d, 97), back on the track; the race's HUD (lap 1/3, the time) and its camera (Kalebo III's type 8) following him; out of the section: Veldin's code, Ratchet on foot |
+| `s9_boardp`, `s9_free`, `s9_freemain` (the plugin: `hero_build(16)`, `import_spawn` 16:439, `hero_mode(BOARD)`) | a board ridden anywhere: Kalebo III's courtyards (off an edge: back where he got on), the plateau of main; `hero_mode(NONE)` gets him off where he is |
+| `s9_clank` (`clank`: `hero orxon clank`) | Clank (10:87) spawned at the entry and made the hero (form 1, state 0x43): walks (0x44), jumps; back in main as Ratchet, health 4 |
+| `s9_clankdie` | Clank walked into Orxon's toxic water: his death (0x7d), the soft reset (the mode left first), Clank again at the checkpoint |
+| `s9_giant` (`giant`: `hero quartu giantclank`) | Giant Clank (15:419, form 2, 0x5a): walks (0x5b), punches (0x60) on Quartu's code and camera; back in main as Ratchet |
+| `s9_modes` (main, Veldin's code) | Clank from the plugin (`import_spawn` 10:87, `hero_mode(CLANK)`), out; Giant Clank (`hero_build(15)`), walks and punches, out: Ratchet where Giant Clank stood |
+| `s7_magnet` on `s7-kalebo` (format 2, Kalebo III's base) | sequence 91 (the magnetic walk) filled from Veldin's core when he steps on the magnetic arc: walked up the wall drawn right (`RAC1_HERO_SEQS=0`: the old garbled model) |
+| `arena_lava` on the arena's copy with `hero generic` | 0x68 in the lava, Cross: 0x69 out and back, left in it: lost, the level loaded again (the plugin's `level_end` / `level_start`); `arena_ch0k`, `arena_ch10k`, `arena_course`: the same waves and the course won as on Kalebo III's code |
+| `s9_sky`, `s9_die` | Umbris's and Gemlik's worlds with their skies; Kerwan's crates (with its lift 1210) all there after a death |
+| `s9_ship` (`gemlik`: `hero gemlik`, its ship 69) | not done: the ship's own code, spawned in the section, runs its return from a flight (Ratchet put out at 457.8 578.2, the ship gone) instead of waiting at its pad for "Enter ship" (Gemlik's own level state its level's setup makes: stage 10) |
+| The original; the regressions | the reference pictures and RAMHASH unchanged; the arena's format 2 regression and stage 5's format 3 runs: the same RAMHASH as the branch's start (dev with the level mods' sky fix, which changed them from stage 8's); the equivalence test on all 19 levels |
+
+Timings: a hero context taken 0.03 to 0.2 ms (the camera table copied, the cameras made again); a section switch into a hero
+section 0.2 to 1.0 ms; a mode entered in under 0.1 ms; a sequence copied in its frame (32 to 39 KB); a core's hero sequences read
+on the worker (134 of Veldin's) in 1.4 to 3.2 s while a level loads.
+
+### Not done, and what stage 10 needs
+
+- **Gemlik's ship** (above): a planet's own objects run with the level state of a first visit and without their level's own
+  setup code; a boss needs the same (Qwark's fight starts from the ship).
+- **A level's HUD pictures**: Giant Clank's energy bar shows another picture (its texture is Quartu's HUD's); bosses' bars
+  likewise.
+- **Camera types without a hero context**: the type table copy comes with `hero_build`; a boss's camera requests need it alone
+  (Umbris 0x12, Blarg 0x12, Quartu 0x16, Gemlik 0x13).
+- A plugin's `hero_build` lasts until the next section switch (the entered section's line decides); a section with a board but
+  no `hero kalebo` leaves Ratchet standing on it in 0x6b (Veldin's code has no riding).
+
+## What stage 10 builds on
+
+- **Hero contexts (stage 9)**: a boss that forces hero states only its planet's build has (Giant Clank's fight) takes that
+  build with `hero <planet>`; its camera types come with it.
 - **Stage 10 (bosses)**: a boss's arena can be its planet's world as a section with the boss's class chosen by `objects`;
   what a boss reads beyond its level data (its cameras: already the engine's in a world's section; its cutscenes, its music
   changes) is the per-boss work.
 - **Not done**: a world's spawn rules use the session's level state (a first visit), not the planet's story; its objects
   outside the chosen set do not come (the planet's glass and water on Kalebo III are objects); the GS's VRAM image and the
   chrome / glass map registers stay the session's (the modern renderer does not read them for the world, the faithful
-  renderer would); the renderer's first entry into a world takes one frame of 43 to 73 ms; Umbris's and Gemlik's skies still
-  end the game on Veldin's code (a world section of them needs another planet's sky); a world on another session base than
-  Veldin's was not tried.
+  renderer would); the renderer's first entry into a world takes one frame of 43 to 73 ms; a world on another session base
+  than Veldin's was not tried. Umbris's and Gemlik's worlds come with their own skies (drawn by their own sky code since the
+  level mods' sky fix: `world umbris` and `world gemlik` sections tried, both renderers, entered and left again).

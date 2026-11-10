@@ -2,6 +2,7 @@
 #include <game/enhance/session_runtime.h>
 
 #include <game/enhance/class_profiles.h>
+#include <game/enhance/hero_modes.h>
 #include <game/enhance/leveldata.h>
 #include <game/enhance/sections.h>
 #include <game/enhance/session.h>
@@ -14,6 +15,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <host/level_slots.h>
 #include <host/mod_code.h>
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/kernel/mods.h>
@@ -206,7 +208,9 @@ void session_rt_level(const std::string& build_dir, const std::string& level_id)
     g_session_rt = false;
     g_rt = Rt{};
     sections_level("");  // (the sections of the session before dropped: sections.h)
+    hero_modes_level(!build_dir.empty(), false, level_slots_on() && level_slot() >= 0 ? level_slot_base(level_slot()) : 0);  // (hero_modes.h)
     if (build_dir.empty()) return;
+    hero_modes_build_file(build_dir);  // (a format 1 / 2 level's `hero generic`)
     std::ifstream in(build_dir + "/session.txt");
     if (!in) return;
     std::string line;
@@ -231,6 +235,7 @@ void session_rt_level(const std::string& build_dir, const std::string& level_id)
         return;
     }
     g_session_rt = true;
+    hero_modes_level(true, true, 0);  // (a session: every empty slot of the hero's, its hero contexts)
     g_rt.build = build_dir;
     g_rt.id = level_id;
     g_rt.cur = start_checkpoint();
@@ -439,6 +444,7 @@ void session_rt_loaded() {
 // orig: (host) see session_runtime.h
 void session_respawn() {
     ++g_rt.respawns;
+    hero_modes_respawn_begin();  // (in Clank's or Giant Clank's form: Ratchet's own moby the hero's again first: hero_modes.h)
     // (sections: the checkpoint's section made the current one first, at once, no fade: sections.h)
     sections_respawn_prepare(g_rt.cur.section);
     // the hero: his moby as the arrival placed it, at the checkpoint, then as gameplay_load's end starts him (the player block
@@ -487,6 +493,7 @@ void session_respawn() {
                 g_rt.cur.name.c_str(), g_rt.cur.pos[0], g_rt.cur.pos[1], g_rt.cur.pos[2],
                 sections_any() ? (" in section " + sections_name(sections_current())).c_str() : "", policy == SESSION_RESPAWN_KEEP ? "kept" : "reset", back,
                 kept_dead);
+    sections_hero_respawned();  // (stage 9: the section's hero mode again, at the next frame of play)
     mod_code_respawn(g_rt.respawns, g_rt.cur.name.c_str(), g_rt.cur.pos, g_rt.cur.yaw);
 }
 

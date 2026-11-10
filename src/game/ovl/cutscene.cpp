@@ -324,7 +324,7 @@ void cutscene_end() {
 void cutscene_level_extras() {
     if (on_umbris()) { umb_call(umb_cutscene_level_extras_u); return; }  // (level 7's own: L7:0x00265bd8)
     if (on_oltanis()) { olt_cutscene_level_extras_l14(0); return; }  // (level 14's own: L14:0x002460f8, its scene 0 effect and draw)
-    if (on_quartu()) { qua_call(qua_cutscene_level_extras_u); return; }  // (level 15's own: L15:0x0022db50)
+    if (on_level(QUARTU)) { qua_call(qua_cutscene_level_extras_u); return; }  // (level 15's own: L15:0x0022db50; its overlay's only, never a hero context's)
     if (lw(0x0015ed84) == 0) {
         for (int32_t i = 0; i < lh(SC + 0x44); ++i) {
             const uint32_t m = lwu(SC + 0x178 + static_cast<uint32_t>(i) * 4);

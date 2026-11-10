@@ -9,6 +9,10 @@
 namespace rac1::host_layout {
 
 inline constexpr std::uint32_t EE_END = 0x04000000;         // the end of the host's EE memory (64 MB)
+// the open engine's hero sequences (src/game/enhance/hero_modes.cpp): another level's hero sequences put in a level mod's hero
+// class's empty slots (Kalebo III's base: the magnetic walk), 3 MB
+inline constexpr std::uint32_t HERO_SEQS = 0x02000000;
+inline constexpr std::uint32_t HERO_SEQS_SIZE = 0x00300000;
 // the debug menu's free hoverboard (src/_devtools/dev_hoverboard.cpp): the hero's board sequences of another level, 256 KB
 inline constexpr std::uint32_t DEV_BOARD_SEQS = 0x02300000;
 // Cut Content's Kerwan citizens (src/game/enhance/cut_content.cpp): the idle of another level's class, one sequence for
