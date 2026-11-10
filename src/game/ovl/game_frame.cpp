@@ -1,6 +1,7 @@
 // Ported overlay code: the gameplay frame (0x297f78) and the overlay's empty debug hooks.
 //. Callees not ported (or not yet proven with the oracle) are TODO_PORT.
 #include <game/enhance/advanced.h>
+#include <game/enhance/bug_fixes.h>
 #include <game/enhance/fixes102.h>
 #include <host/level_slots.h>
 #include <host/mod_code.h>
@@ -166,6 +167,7 @@ void gameplay_frame() {
     advanced_aim_before_hero();  // enhancement: the modern controls' aim
     if (on(1)) {
         RAC1_PROF_ZONE(kGameHero);
+        bug_fixes_faucet_ride();  // enhancement: Bug Fixes, fix 2 (the faucet's ride kept off its origin)
         hero_frame_update();
     }
     if (on(1)) advanced_aim_after_hero();

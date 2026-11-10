@@ -12,6 +12,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/rilgar_mobys.h>
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -41,22 +42,31 @@ constexpr uint32_t LANGUAGE = 0x0015ed88u;   // the game's language
 
 // The texts (ids TEXT_FIRST + T_*): the page's own, then a name and a help per fix
 constexpr int32_t TEXT_FIRST = 0x7b00;
-enum : int32_t { T_TITLE, T_OFF, T_ON, T_RACE_MUSIC, H_RACE_MUSIC, T_COUNT };
+enum : int32_t { T_TITLE, T_OFF, T_ON, T_RACE_MUSIC, H_RACE_MUSIC, T_FAUCET_RIDE, H_FAUCET_RIDE, T_COUNT };
 constexpr uint32_t STRING_SIZE = 0xa0;
 static_assert(TEXT_FIRST + T_COUNT <= 0x7c00, "the Bug Fixes texts end where the Exit page's begin");
 static_assert(STRINGS + T_COUNT * STRING_SIZE <= 0x000f2000u, "the Bug Fixes texts end at the Graphics block");
 // per language (0x15ed88: 0 English, 2 French (in English for now, as the other pages), 3 German, 4 Spanish, 5 Italian)
 constexpr const char* TEXTS[4][T_COUNT] = {
     {"Bug Fixes", "Off", "On", "Race Music After Quitting",
-     "Quitting the hoverboard race from its results brings the planet's music back (the original keeps the race's)."},
+     "Quitting the hoverboard race from its results brings the planet's music back (the original keeps the race's).",
+     "Hydrodisplacer Faucets",
+     "Ratchet no longer slips off a Hydrodisplacer faucet when he steps onto it from some sides (the water then stayed)."},
     {"Fehlerkorrekturen", "Aus", "An", "Rennmusik nach Abbruch",
      "Wer das Hoverboard-Rennen bei den Ergebnissen beendet, hoert wieder die Musik des Planeten (im Original laeuft die "
-     "Rennmusik weiter)."},
+     "Rennmusik weiter).",
+     "Hydrobeamer-Haehne",
+     "Ratchet rutscht nicht mehr von einem Hahn des Hydrobeamers, wenn er ihn von manchen Seiten betritt (das "
+     "Wasser blieb dann)."},
     {"Correcciones", "No", "Si", "Musica tras abandonar la carrera",
      "Abandonar la carrera de aerotabla desde sus resultados devuelve la musica del planeta (el original deja la de la "
-     "carrera)."},
+     "carrera).",
+     "Grifos del Hidrodesplazador",
+     "Ratchet ya no se cae de un grifo del Hidrodesplazador al subir desde algunos lados (el agua se quedaba)."},
     {"Correzioni", "No", "Si", "Musica dopo l'abbandono",
-     "Abbandonando la gara di hoverboard dai risultati torna la musica del pianeta (l'originale lascia quella della gara)."},
+     "Abbandonando la gara di hoverboard dai risultati torna la musica del pianeta (l'originale lascia quella della gara).",
+     "Rubinetti dell'Idrosostitutore",
+     "Ratchet non scivola piu' da un rubinetto dell'Idrosostitutore salendoci da certi lati (l'acqua allora restava)."},
 };
 
 // The fixes, one row each (in their numbers' order): its number, its preferences key, its name and help texts
@@ -68,6 +78,7 @@ struct Fix {
 };
 constexpr Fix FIXES[] = {
     {BUG_FIX_RACE_MUSIC, "bugfix_race_music", T_RACE_MUSIC, H_RACE_MUSIC},
+    {BUG_FIX_FAUCET_RIDE, "bugfix_faucet_ride", T_FAUCET_RIDE, H_FAUCET_RIDE},
 };
 constexpr uint32_t FIX_COUNT = sizeof(FIXES) / sizeof(Fix);
 static_assert(FIX_COUNT <= 10 && ROW_HELP + FIX_COUNT * 4 <= ROWS && ROWS + (FIX_COUNT + 1) * 0x18 <= STRINGS,
@@ -234,6 +245,23 @@ void bug_fixes_race_quit() {
     if (lw(0x0015ed84) != 5 || !bug_fix_on(BUG_FIX_RACE_MUSIC)) return;  // (Rilgar's race alone changes the music)
     ril_28f5c8_l5(0, 8, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
     std::printf("[bug-fixes] race quit: the level's music back (track 0 over 8)\n");
+}
+
+// orig: (none) — enhancement (bug_fixes.h)
+void bug_fixes_faucet_ride() {
+    constexpr uint32_t P = 0x0013f350u;  // the hero (g::PLAYER)
+    const int32_t st = lw(P + 0x2084);
+    if (st < 0x38 || st > 0x3a) return;
+    const uint32_t m = lwu(P + 0x2fc);  // the moby he stands on: the faucet while he rides it
+    if (m == 0 || lh(m + 0xa6) != 0x155 || !bug_fix_on(BUG_FIX_FAUCET_RIDE)) return;
+    // on each axis: on the origin, or close to it on the side away from zero, the hero is put one step short of it on
+    // the side toward zero (the ride's pull, rounded toward zero, stops there)
+    for (uint32_t k = 0; k < 2; ++k) {
+        const float o = lwc1(m + 0x10 + k * 4), p = lwc1(P + 0x80 + k * 4);
+        if (o == 0.0f || !(std::fabs(p) >= std::fabs(o)) || std::signbit(p) != std::signbit(o) || std::fabs(p - o) > 0.01f)
+            continue;
+        swc1(P + 0x80 + k * 4, std::nextafter(o, 0.0f));
+    }
 }
 
 }  // namespace rac1
