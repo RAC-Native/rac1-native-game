@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 473 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 474 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 25 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 342 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 343 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 106 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -101,6 +101,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_EXTRAP_ADAPT` | 0 = off; default on | With `RAC1_EXTRAP`: 0 draws the most pictures a step always and never leaves one out (the first prototype's behaviour, to compare). |
 | `RAC1_EXTRAP_FIFO` | 1 = on, 0 = off; unset = the debug menu's setting (Display: "Extrapolation: FIFO presents", off) | With `RAC1_EXTRAP` and Vulkan: the FIFO present mode while extrapolating, whatever V-Sync and the platform: each picture on a refresh of its own, in order. On Wayland a hidden window then stops the presents (and the game) until it is shown. |
 | `RAC1_GAME_THREAD` | 0 = off, 1 = on, 2 = also in a deterministic headless run (with `RAC1_PIPELINE=1`); unset = the debug menu's setting (Display: "Game update on its own thread", on by default) | With the pipelined frames, a host frame that draws a pipelined frame runs its game frames on the game thread while the main thread draws (runtime/ee/game_thread.h). Off: the game frames before the drawing, on the main thread, as before. 2 is for testing: its `RAC1_RAMHASH` is the same as 0's. |
+| `RAC1_GT_JOIN_SLEEP` | 0 or 1; default 0 | The main thread's wait for the game thread's update (game_thread::finish): 1 sleeps until a millisecond before the shortest of the last eight updates would end, then polls; 0 (default) polls from the start. Timing only. Off by default: unpaced, the host frame measured 4 % longer with it (docs/performance.md). |
 | `RAC1_GT_SERIAL` | set (any value) = on; default off | Debugging the game thread: its game frames joined before the drawing (on the game thread, but not beside the drawing), to tell a difference of the thread from one of the overlap. |
 | `RAC1_GL_SINGLE_DRAWS` | 1 = on, 0 = off; default on with Intel's Windows OpenGL driver, else off | With OpenGL, issues the MRP world's and mobys' multi-draws (glMultiDrawElementsIndirect) as one glDrawElementsInstancedBaseVertexBaseInstance per command, for drivers whose multi-draws draw the ties, shrubs and mobys with the wrong records (#113). The same picture. See [Rendering](rendering.md). |
 | `RAC1_MRPW_BUILD_THREAD` | 0 = off; default on (off when `RAC1_MRPW_THREAD=0`, a check mode, `RAC1_MRPW_CPU` or `RAC1_MRPW_TFRAG_VERIFY`) | The MRP world's frame triangles and batches (build_triangles) made on the scene's worker after its scene, the new textures' images made by the main thread when it takes the frame; 0 makes them on the main thread when the frame is drawn, as before, for comparison (the same output). |

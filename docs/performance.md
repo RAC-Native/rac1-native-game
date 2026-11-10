@@ -636,6 +636,15 @@ thread, `RAC1_PIPELINE=1`, the last 1500 of 2400 frames of a forward walk) on Ke
   timed again: on the route through four levels one level is timed, not four (here 2.5 to 3.2 ms for 1500 draws against a
   limit of 12). The same vertices either way; `RAC1_RAMHASH` and the pictures unchanged. Eight waited submits less over a
   later level's first frames.
+- **The join's sleep** (`RAC1_GT_JOIN_SLEEP=1`, off by default; `runtime/ee/game_thread.cpp` `finish`): when the drawing ends
+  before the update, the main thread polls for the game thread's job to end, spinning on a core for the whole of the
+  update's lead (2 to 4 ms a frame on Kerwan). With the switch it sleeps first - woken by the job's end or a request -
+  until a millisecond before the shortest of the last eight jobs would end, then polls. Unpaced (the throughput run above,
+  Kerwan, three runs of each taken in turn) the main thread's CPU time fell from 3.51 to 2.95 ms a frame, but the host
+  frame grew from 4.31 to 4.48 ms and the game thread's update from 3.27 to 3.42: the wake-up, or the core the main thread
+  gave up. Left off: its place is a paced frame on a machine with few cores, where it has not been measured. The job
+  pool's thread count (`job_pool.cpp`: half the logical CPUs less two, which does not count the game thread) was not
+  changed: nothing to measure it with on a 24-thread machine.
 ## Switches to compare
 
 These are testing variables: they are honoured in a headless run, or in a window started with `--debug-tools`
@@ -685,6 +694,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_DRAW_MEM=0` | the drawing's copy of the game's memory taken every frame, whatever the options |
 | `RAC1_PERF_PROGRESS_THREAD=0` | `progress.json` written by the thread that runs the game frame |
 | `RAC1_TFRAG_TIME_ONCE=0` | Vulkan: the tfrag compute's first dispatches timed, in waited chunks, at every level's arrival |
+| `RAC1_GT_JOIN_SLEEP=1` | the main thread sleeps for most of its wait for the game thread, then polls (off by default: a longer frame unpaced) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
