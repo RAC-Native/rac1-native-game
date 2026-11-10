@@ -20,6 +20,7 @@ void moby_joints_pose(uint32_t job, uint32_t work);
 struct MobyPoseMemo {
     bool (*lookup)(uint32_t job) = nullptr;
     void (*store)(uint32_t job) = nullptr;
+    bool fill = false;  // (the real pass, a shadow run to follow it: its poses run and are kept for that run, mrp_lod.h)
 };
 extern MobyPoseMemo g_moby_pose_memo;
 

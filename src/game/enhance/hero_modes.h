@@ -61,6 +61,20 @@ extern bool g_hero_seq_on;  // (a level mod's level: hero_anim_set asks hero_seq
 // level's core (the hero context's level's, else Veldin's) if that core has it
 void hero_seq_need(uint32_t set);
 
+// The board outside a race (a level mod's level; docs/open-engine.md, "The board outside a race"): free on the mod's own
+// geometry and in other planets' worlds (no laps, no race HUD, no "back on the track": a fall puts him back where he got on, or
+// at the plugin's place), its planet's race in that planet's world (`world kalebo`, `world rilgar`)
+constexpr int32_t HERO_BOARD_AUTO = 0, HERO_BOARD_FREE = 1, HERO_BOARD_RACE = 2;
+// orig: (host) the rule (HERO_BOARD_*; another value only asks): the rule in force now, HERO_BOARD_FREE or HERO_BOARD_RACE
+int32_t hero_board_rule(int32_t rule);
+// orig: (host) where a free board's fall puts him back (nullptr: where he got on)
+void hero_board_return(const float* pos, float yaw);
+// orig: (host) a free board's fall height (`set` false: 2 units over the death height)
+void hero_board_fall(bool set, float z);
+// orig: (host) the mobys the board's rider touches now (the game's sphere query on their collision, about his body): their
+// count, at most `max` into `out`; 0 off the board
+int32_t hero_board_touching(uint32_t* out, int32_t max);
+
 // The level's lifecycle
 // orig: (host) a level's header read (session_rt_level): `level_mod` a level mod's (any format, its base level `base`),
 // `session` a format 3 one's: the hero context forgotten (the game's load makes the hero again), the sequences' slots

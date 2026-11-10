@@ -3,11 +3,13 @@
 
 #include <profiler/host_profiler.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cfenv>
 #include <condition_variable>
 #include <cstdio>
+#include <cstdlib>
 #include <exception>
 #include <mutex>
 #include <thread>
@@ -72,6 +74,15 @@ struct Runner {
     Clock::time_point t_post{}, t_end{}, t_last_end{};
     double ms_start = 0, ms_job = 0, ms_join = 0;
     uint64_t jobs = 0;
+    // (finish's sleep: the last jobs' times from run_async to their end, the least of them)
+    double recent_ms[8] = {};
+    double recent_low() const {
+        double low = recent_ms[0];
+        for (double v : recent_ms) low = std::min(low, v);
+        return low;
+    }
+    uint64_t slept = 0;
+    double ms_slept = 0;
     void loop() {
         rac1::prof::thread_name("Game thread (EE update)");
         rac1::prof::game_thread_attach();
@@ -103,6 +114,7 @@ struct Runner {
             t_end = Clock::now();
             t_last_end = t_end;
             ms_job += std::chrono::duration<double, std::milli>(t_end - t_start).count();
+            recent_ms[jobs & 7] = std::chrono::duration<double, std::milli>(t_end - t_post).count();
             ++jobs;
             busy = false;
             running.store(false, std::memory_order_release);
@@ -151,6 +163,25 @@ void finish() {
         r.drawn = true;
     }
     r.cv.notify_all();
+    // (RAC1_GT_JOIN_SLEEP=1; off by default: polled from the start) the job's end is rarely near when the drawing ends first:
+    // slept for - woken by the job's end or a request - until a millisecond before the shortest of the last eight jobs would
+    // end, then polled as before; the main thread then does not spin on a core through the whole of the update's lead over the
+    // drawing. Off: unpaced, the host frame measured 4 % longer with it for 16 % less of the main thread's CPU
+    // (docs/performance.md); to be measured paced, on a machine with few cores.
+    static const bool join_sleep = [] {
+        const char* e = std::getenv("RAC1_GT_JOIN_SLEEP");
+        return e != nullptr && std::atoi(e) != 0;
+    }();
+    if (join_sleep) {
+        std::unique_lock<std::mutex> lk(r.m);
+        const Runner::Clock::time_point until = r.t_post + std::chrono::duration_cast<Runner::Clock::duration>(std::chrono::duration<double, std::milli>(r.recent_low() - 1.0));
+        const Runner::Clock::time_point now = Runner::Clock::now();
+        if (r.busy && r.jobs >= 8 && until - now > std::chrono::microseconds(500)) {
+            r.cv.wait_until(lk, until, [&r] { return !r.busy || (r.request != nullptr && !r.request_done); });
+            ++r.slept;
+            r.ms_slept += std::chrono::duration<double, std::milli>(Runner::Clock::now() - now).count();
+        }
+    }
     // (polled: the job's end or a request; the wait below then returns at once)
     while (r.a_busy.load(std::memory_order_acquire) && !r.a_request.load(std::memory_order_acquire)) spin_pause();
     std::unique_lock<std::mutex> lk(r.m);
@@ -191,6 +222,9 @@ void report() {
     const double n = static_cast<double>(r.jobs);
     std::printf("[game-thread] %llu jobs: %.3f ms from the start asked to the job's start, %.3f ms the job, %.3f ms from its end to the join (means)\n",
                 static_cast<unsigned long long>(r.jobs), r.ms_start / n, r.ms_job / n, r.ms_join / n);
+    if (r.slept != 0)
+        std::printf("[game-thread] the join slept before polling in %llu of them, %.3f ms each (RAC1_GT_JOIN_SLEEP)\n", static_cast<unsigned long long>(r.slept),
+                    r.ms_slept / static_cast<double>(r.slept));
 }
 
 // orig: (host) see game_thread.h

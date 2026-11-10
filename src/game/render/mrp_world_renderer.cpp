@@ -17,6 +17,7 @@
 #include <game/render/mrp_lighting.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_moby_renderer.h>
+#include <game/render/mrp_reflect.h>
 #include <game/render/mrp_rt.h>
 #include <game/render/mrp_tfrag_gpu.h>
 #include <game/render/mrp_world_assets.h>
@@ -27,6 +28,7 @@
 #include <game/render/render_view.h>
 #include <host/level_slots.h>
 #include <profiler/host_profiler.h>
+#include <profiler/perf_switch.h>
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
 #include <runtime/kernel/ee_memory.h>
@@ -179,6 +181,7 @@ StaticLevel g_slevel;
 // compute program writes; RAC1_MRPW_TFRAG_VERIFY=1: the GPU's vertices / triangles read back and compared with the CPU reference's
 TfragLevel g_tlevel;
 TfragColours g_tcols;
+uint64_t g_tcols_resets = 0;  // (g_tcols made anew: a level's arrival; its counters start again)
 GLuint g_tfrag_vao = 0;
 // The GPU path's draws find their command (cmds[2 x i]) by an instanced vertex attribute (location 8, divisor 1) over the
 // integers 0, 1, 2..: a draw's base instance offsets it, as the core profile does for every instanced attribute (the hardware's own
@@ -757,6 +760,7 @@ void load_level(int id) {
             g_slevel = std::move(c.s);
             g_tlevel = std::move(c.t);
             g_tcols = TfragColours{};
+            ++g_tcols_resets;
             if (mrp_rt_active()) mrp_rt_level(rt_gather(g_level));
             else mrp_rt_level_drop();
             g_level.reset_walker = true;
@@ -874,6 +878,7 @@ void load_level(int id) {
     const double t_ee = now_ms();
     if (world_renderer_level_get() == id && level_slot() >= 19) g_wkey[id] = world_cache_key();  // (a world section's: kept when left)
     g_tcols = TfragColours{};
+    ++g_tcols_resets;
     if (mrp_rt_active()) mrp_rt_level(rt_gather(L));  // (Water Reflections (RT): the static world's acceleration structures)
     else mrp_rt_level_drop();                          // (the last level's freed; made at the frame the row turns an RT value on)
     L.reset_walker = true;
@@ -1364,7 +1369,17 @@ struct VkWorldState {
     vk::RingAlloc cmds_alloc{};
     vk::RingAlloc rcols_alloc{};
     vk::RingAlloc indirect_alloc{};
+    // (RAC1_PERF_RCOL_KEEP) the resident colours in a buffer per frame in flight, kept from frame to frame: a slot is written
+    // with the changes since it was last written (upload_resident_colours), not the whole mirror into the ring each frame
+    vk::GpuBuffer rcol_buf[vk::kFramesInFlight]{};
+    uint64_t rcol_at[vk::kFramesInFlight]{};  // (the upload a slot holds, 0: none)
+    uint64_t rcol_seq = 0;                     // (the uploads so far)
+    std::vector<std::pair<uint32_t, uint32_t>> rcol_prev_dirty;  // (the last upload's changes)
+    std::vector<uint32_t> rcol_prev_words;
 } g_vk_world;
+struct RcolKeepStats {
+    uint64_t uploads = 0, whole = 0, checked = 0, differing = 0;
+} g_rcol_keep;
 
 void shutdown_vk_world() {
     VkDevice dev = vk::device();
@@ -1396,6 +1411,7 @@ void shutdown_vk_world() {
             g_vk_world.set0_layout = VK_NULL_HANDLE;
         }
     }
+    for (vk::GpuBuffer& b : g_vk_world.rcol_buf) vk::destroy_buffer_now(b);
     free_level(g_level);
     g_vk_world = VkWorldState{};
 }
@@ -1664,6 +1680,7 @@ struct OpaqueCheck {
     uint64_t runs = 0, units = 0, bad_runs = 0, pixels = 0;
     uint64_t built[2][3] = {};  // (the frames' runs' units by state: [0] draw commands, [1] indices)
 } g_opq_chk;
+uint64_t g_opq_by_level[32][3] = {};  // (the GPU path's draw commands of g_opq_chk.built by level: the report)
 // orig: (host) whether a draw's pixels can fail its alpha test (P2Run's state): `fl` its draw_flags, `k` its key (the full texture
 // word), `vert_opq` every vertex colour it draws with has an alpha >= 0x80
 uint8_t alpha_state(const Key& k, uint32_t fl, bool vert_opq) {
@@ -2380,10 +2397,20 @@ bool tie_vert_opaque(const SceneInst& si) {
 }
 std::vector<uint8_t> g_tfrag_entry_opq;
 uint64_t g_tfrag_entry_opq_updates = ~0ull, g_tfrag_entry_opq_gen = ~0ull;
+size_t g_tfrag_entry_opq_size = 0;
+uint64_t g_tfrag_entry_opq_resets = ~0ull;
 // orig: (host)
 bool tfrag_entry_opaque(uint32_t entry) {
-    if (g_tfrag_entry_opq_updates != g_tcols.updates || g_tfrag_entry_opq_gen != g_tlevel.generation) {
-        g_tfrag_entry_opq_updates = g_tcols.updates;
+    // (remade when an entry's colours changed - the mirror's count of entries changed, which also counts a new level's first fill -
+    // not at every update of the mirror, one a frame: the ties' table above had the same fault. RAC1_PERF_OPAQUE_KEEP_TFRAG=0: as
+    // before)
+    static const bool keep = perf::switch_value("RAC1_PERF_OPAQUE_KEEP_TFRAG", 1) != 0;
+    const uint64_t key = keep ? g_tcols.entries_changed : g_tcols.updates;
+    if (g_tfrag_entry_opq_updates != key || g_tfrag_entry_opq_gen != g_tlevel.generation || g_tfrag_entry_opq_size != g_tcols.mirror.size() ||
+        g_tfrag_entry_opq_resets != g_tcols_resets) {
+        g_tfrag_entry_opq_updates = key;
+        g_tfrag_entry_opq_size = g_tcols.mirror.size();
+        g_tfrag_entry_opq_resets = g_tcols_resets;
         g_tfrag_entry_opq_gen = g_tlevel.generation;
         g_tfrag_entry_opq.assign(g_tlevel.entries.size(), 0);
         for (size_t i = 0; i < g_tlevel.entries.size(); ++i) {
@@ -2492,8 +2519,12 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
     F.insts.push_back(ig);
     F.inst_box.push_back({1.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f});  // (none yet: its packets' boxes below)
     }
-    {  // (Water Reflections' views cull by it: the instance's world bounding sphere grown by this packet's template's box, through the
-       // view's matrix to the world and the instance's rows - an instance is drawn by several packets, each a part of it)
+    // (Water Reflections' views cull by it: the instance's world bounding sphere grown by this packet's template's box, through the
+    // view's matrix to the world and the instance's rows - an instance is drawn by several packets, each a part of it. Made only
+    // when such a view can be drawn this frame (the row on, with Surface Detail: mrp_reflect_pass draws none otherwise); an
+    // instance without a box is never left out, as before the views culled. RAC1_PERF_REFLECT_BOX=0: always, as before)
+    static const bool box_always = perf::switch_value("RAC1_PERF_REFLECT_BOX", 1) == 0;
+    if (box_always || (g_water_reflections > 0 && g_surface_detail > 0)) {
         std::array<float, 6>& bx = F.inst_box[inst];
         if (std::isnan(bx[0])) {
             // (a box that could not be taken: never left out)
@@ -3281,7 +3312,10 @@ void build_triangles(Frame& F) {
     }
     g_st.batches += F.batches.size();
     for (const Batch& b : F.batches)
-        for (uint32_t r = b.r0; r < b.r0 + b.rn; ++r) g_opq_chk.built[b.gpu ? 0 : 1][F.p2runs[r].state] += F.p2runs[r].count;
+        for (uint32_t r = b.r0; r < b.r0 + b.rn; ++r) {
+            g_opq_chk.built[b.gpu ? 0 : 1][F.p2runs[r].state] += F.p2runs[r].count;
+            if (b.gpu) g_opq_by_level[static_cast<size_t>(g_level.id) & 31][F.p2runs[r].state] += F.p2runs[r].count;
+        }
 }
 
 // ---- drawing -----------------------------------------------------------------------------------
@@ -3317,6 +3351,59 @@ void set_frame_uniforms(const Loc& l, const gs::Viewport* vp, int mode) {
 void upload_resident_colours() {
     ResidentColours& rc = g_rcols;
     const size_t bytes = std::max<size_t>(rc.mirror.size() * 4, 16);
+    // (Vulkan, RAC1_PERF_RCOL_KEEP; 0: the whole mirror copied into the frame's ring every frame, as before; 2: the kept buffer
+    // compared with the mirror after every upload) a buffer per frame in flight holds the colours as of the upload that wrote
+    // it last: the slot of the upload before this one takes this one's changes, the slot of the one before that the last
+    // upload's then this one's, any other the whole mirror - the tfrag colours' scheme (tfrag_gpu_colours)
+    static const int keep = perf::switch_value("RAC1_PERF_RCOL_KEEP", 1);
+    if (vk::is_active() && keep != 0) {
+        VkWorldState& w = g_vk_world;
+        const uint32_t fi = vk::frame_index() % vk::kFramesInFlight;
+        if (rc.all_dirty || bytes != g_rcol_size)
+            for (uint64_t& at : w.rcol_at) at = 0;  // (a new table: every slot written whole when its turn comes)
+        vk::GpuBuffer& buf = w.rcol_buf[fi];
+        if (buf.buffer == VK_NULL_HANDLE || buf.size < bytes) {
+            vk::destroy_buffer(buf);
+            vk::create_buffer(bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, buf, true);
+            w.rcol_at[fi] = 0;
+        }
+        const uint64_t seq = ++w.rcol_seq;
+        ++g_rcol_keep.uploads;
+        if (buf.mapped != nullptr) {
+            auto apply = [&](const std::vector<std::pair<uint32_t, uint32_t>>& ranges, const std::vector<uint32_t>& words) {
+                size_t at = 0;
+                uint8_t* dst = static_cast<uint8_t*>(buf.mapped);
+                for (const auto& [first, n] : ranges) {
+                    if (static_cast<size_t>(first + n) * 4 <= buf.size) std::memcpy(dst + static_cast<size_t>(first) * 4, words.data() + at, static_cast<size_t>(n) * 4);
+                    at += n;
+                }
+                rc.words_uploaded += at;
+            };
+            if (w.rcol_at[fi] != 0 && w.rcol_at[fi] + 1 == seq) {
+                apply(rc.dirty, rc.dirty_words);
+            } else if (w.rcol_at[fi] != 0 && w.rcol_at[fi] + 2 == seq) {
+                apply(w.rcol_prev_dirty, w.rcol_prev_words);
+                apply(rc.dirty, rc.dirty_words);
+            } else {
+                if (!rc.mirror.empty()) std::memcpy(buf.mapped, rc.mirror.data(), rc.mirror.size() * 4);
+                rc.words_uploaded += rc.mirror.size();
+                ++g_rcol_keep.whole;
+            }
+            if (keep == 2) {
+                ++g_rcol_keep.checked;
+                if (!rc.mirror.empty() && std::memcmp(buf.mapped, rc.mirror.data(), rc.mirror.size() * 4) != 0) ++g_rcol_keep.differing;
+            }
+        }
+        w.rcol_at[fi] = seq;
+        w.rcol_prev_dirty.swap(rc.dirty);
+        w.rcol_prev_words.swap(rc.dirty_words);
+        g_rcol_size = bytes;
+        rc.all_dirty = false;
+        rc.dirty.clear();
+        rc.dirty_words.clear();
+        w.rcols_alloc = vk::RingAlloc{buf.buffer, 0, buf.mapped};
+        return;
+    }
     if (vk::is_active()) {
         if (rc.all_dirty || bytes != g_rcol_size) {
             g_rcol_size = bytes;
@@ -6133,11 +6220,23 @@ void mrp_world_report() {
         std::printf("[perf] opaque draws (RAC1_PERF_OPAQUE=%d): draw commands without the test %llu, with it but opaque %llu, may fail %llu; indices %llu / %llu / %llu\n",
                     perf_opaque(), static_cast<unsigned long long>(c[0][0]), static_cast<unsigned long long>(c[0][1]), static_cast<unsigned long long>(c[0][2]),
                     static_cast<unsigned long long>(c[1][0]), static_cast<unsigned long long>(c[1][1]), static_cast<unsigned long long>(c[1][2]));
+        for (int l = 0; l < 32; ++l) {  // (the GPU path's draw commands by level: how many still take the second pass)
+            const uint64_t* v = g_opq_by_level[l];
+            const uint64_t all = v[0] + v[1] + v[2];
+            if (all != 0)
+                std::printf("[perf] opaque draws, level %d: draw commands without the test %llu, with it but opaque %llu, may fail %llu (%.0f %% in the second pass)\n", l,
+                            static_cast<unsigned long long>(v[0]), static_cast<unsigned long long>(v[1]), static_cast<unsigned long long>(v[2]),
+                            100.0 * static_cast<double>(v[2]) / static_cast<double>(all));
+        }
         if (perf_opaque() == 2)
             std::printf("[perf] opaque check: %llu runs (%llu draw commands / indices) drawn again, %llu with pixels failing the alpha test (%llu pixels)\n",
                         static_cast<unsigned long long>(g_opq_chk.runs), static_cast<unsigned long long>(g_opq_chk.units), static_cast<unsigned long long>(g_opq_chk.bad_runs),
                         static_cast<unsigned long long>(g_opq_chk.pixels));
     }
+    if (g_rcol_keep.uploads != 0)
+        std::printf("[perf] resident colours kept (RAC1_PERF_RCOL_KEEP): %llu uploads, %llu of the whole table; check: %llu compared with the mirror, %llu differing\n",
+                    static_cast<unsigned long long>(g_rcol_keep.uploads), static_cast<unsigned long long>(g_rcol_keep.whole),
+                    static_cast<unsigned long long>(g_rcol_keep.checked), static_cast<unsigned long long>(g_rcol_keep.differing));
     if (scene_capture_misses() != 0) std::printf("[mrpw] WARNING: %llu scene reads not captured\n", static_cast<unsigned long long>(scene_capture_misses()));
     if (direct_world_mode() != 0) {  // (RAC1_PERF_DIRECT_WORLD: mrp_world_scene.h)
         const DirectStats& d = direct_world_stats();

@@ -3242,6 +3242,7 @@ void vk_mat_shutdown() {
 // orig: (host) see mrp_lighting.h
 void mrp_lighting_material_capture(const int vp[4]) {
     if (!mat_ssr_now()) return;
+    RAC1_PROF_ZONE(kMatCapture);
     const int w = vp[2], h = vp[3];
     if (w <= 0 || h <= 0) return;
     float vpf[16];

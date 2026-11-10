@@ -55,8 +55,9 @@ extern "C" {
    table (rail_find .. fade_active; the rail callback); 12: hero contexts and modes (another planet's hero code, Ratchet as
    Clank, Giant Clank or on the hoverboard: hero_build, hero_build_now, hero_mode, hero_mode_now); 13: bosses (a section's
    bosses: boss_set, boss_beaten; the boss callback); 14: the HUD's width (hud_width); 15: saving from a plugin (game_save,
-   game_saving) (docs/sdk.md lists what each version added). */
-#define RAC1_MOD_ABI 15
+   game_saving); 16: the hoverboard outside a race (board_rule, board_return, board_fall, board_touching) (docs/sdk.md lists
+   what each version added). */
+#define RAC1_MOD_ABI 16
 
 #if defined(_WIN32)
 #define RAC1_MOD_EXPORT __declspec(dllexport)
@@ -170,6 +171,13 @@ typedef struct rac1_hazard {
    its section (the fight from its start: `obj` its new object) */
 #define RAC1_BOSS_BEATEN 1
 #define RAC1_BOSS_AGAIN 2
+
+/* (ABI 16) board_rule's rules: the hoverboard free (no race: no laps, no race HUD, a fall back where he got on or at
+   board_return's place) or in its planet's race. RAC1_BOARD_AUTO: free on the mod's own geometry and in other planets'
+   worlds, the race in its own planet's world (`world kalebo`, `world rilgar`) */
+#define RAC1_BOARD_AUTO 0
+#define RAC1_BOARD_FREE 1
+#define RAC1_BOARD_RACE 2
 
 /* (ABI 12) hero_build's generic hero code (Veldin's, Gaspar's, Umbris's: their lava), on a level mod of any format whose base
    level has hero code of its own (Kalebo III, Quartu, Rilgar) */
@@ -642,6 +650,19 @@ typedef struct rac1_api {
     int (*game_save)(void);
     /* 1 while a save of the game is being written to the card (one game_save started, a menu's, a planet's), else 0 */
     int (*game_saving)(void);
+
+    /* ======== ABI 16 (test api->abi >= 16, or RAC1_API_HAS(api, board_rule)) ======== */
+    /* -- the hoverboard outside a race (docs/sdk.md, "The hoverboard outside a race"; a level mod's level). Until the level
+          ends: a section switch keeps them -- */
+    /* the board's rule (RAC1_BOARD_AUTO, _FREE, _RACE; -1 only asks): the rule in force now, RAC1_BOARD_FREE or RAC1_BOARD_RACE */
+    int32_t (*board_rule)(int32_t rule);
+    /* where a free board's fall puts Ratchet back on it, turned `yaw`; NULL: where he got on (the default) */
+    void (*board_return)(const float pos[3], float yaw);
+    /* a free board's fall height: below `z` he falls (and is put back); `set` 0: 2 units over the death height (the default) */
+    void (*board_fall)(int32_t set, float z);
+    /* the objects (mobys) Ratchet on the board touches now: the game's own sphere query on their collision about his body, the
+       board and Ratchet left out. Their count, at most `max` into `out`; 0 off the board. Hit them yourself (hit_send) */
+    int32_t (*board_touching)(uint32_t* out, int32_t max);
 } rac1_api;
 
 #define RAC1_API_HAS(api, field) ((api)->size >= offsetof(rac1_api, field) + sizeof((api)->field))

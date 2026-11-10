@@ -19,10 +19,12 @@
 // Vendor orb's scale (+0x90 x 2.5 x the class scale) went negative enough to turn its grid rect
 // inside out (x0 > x1) and moby_grid_move (0x250b20) never left its cell loop (Nebula G34,
 // Pokitaru).
+#include <atomic>
 #include <cfenv>
 #include <cmath>
 #include <cfloat>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #if defined(__SSE__) || defined(__x86_64__)
@@ -33,6 +35,61 @@ namespace rac1::ps2fpu {
 
 // enter_ee_rounding() ran (the thread rounds toward zero)
 inline bool g_ee_chop = false;
+
+// The helpers' raw forms (docs/performance.md, "The float helpers' raw forms"). In the thread's mode below an add, a subtract or
+// a multiply of two floats already is the PS2's: a denormal operand reads as the signed zero (DAZ), a denormal result comes
+// back as the signed zero (FTZ), a result beyond the range as the signed largest float (toward zero). Only an operand with
+// exponent 255 differs - a number on the PS2, an infinity or a NaN on the host - and the host's result then has exponent 255
+// too, whatever the other operand. So the EE FPU helpers (ovl_common.h's fpu_add / fpu_sub / fpu_mul) and the VU0 macro ops
+// (vu0_macro.h, vu0_regs.h, vu0_nf.h, vu0_local.h) do the plain operation, and take their rule-by-rule form only when a result
+// they would write has exponent 255. 0: the rule-by-rule forms always (as before; and whenever the thread does not chop:
+// RAC1_FPU_NEAREST); 1: the raw forms; 2: the rule-by-rule forms, each compared with what the raw form would give (the
+// account at the end of the run: raw_report).
+inline int g_fpu_raw = 0;  // RAC1_PERF_FPU_RAW (set by enter_ee_rounding)
+inline int g_vu0_raw = 0;  // RAC1_PERF_VU0_RAW
+
+// Whether the calling thread's float mode is the EE's (toward zero, no denormals): the raw forms hold only there.
+inline bool thread_chops() {
+#if defined(__SSE__) || defined(__x86_64__)
+    return (_mm_getcsr() & 0xe040u) == 0xe040u;  // RC = toward zero, FTZ, DAZ
+#elif defined(__aarch64__)
+    uint64_t fpcr;
+    __asm__ volatile("mrs %0, fpcr" : "=r"(fpcr));
+    return (fpcr & (7ull << 22)) == (7ull << 22);  // RMode = toward zero, FZ
+#else
+    return std::fegetround() == FE_TOWARDZERO;
+#endif
+}
+
+// The =2 modes' account (one for the FPU helpers, one for the VU0 ops): the ops compared, those whose raw form would have
+// differed, those the raw form hands to the rules (a result with exponent 255), those run on a thread that does not chop.
+struct RawCheck {
+    std::atomic<uint64_t> compared{0}, differing{0}, by_rules{0}, off_thread{0};
+    uint32_t note[4][8] = {};  // the first differences: kind, lanes, the operands' words
+    std::atomic<int> notes{0};
+    void differ(uint32_t kind, uint32_t lanes, uint32_t x, uint32_t y, uint32_t c, uint32_t raw, uint32_t rules) {
+        differing.fetch_add(1, std::memory_order_relaxed);
+        const int n = notes.fetch_add(1, std::memory_order_relaxed);
+        if (n < 4) {
+            const uint32_t v[8] = {kind, lanes, x, y, c, raw, rules, 0};
+            std::memcpy(note[n], v, sizeof(v));
+        }
+    }
+    void report(const char* what) const {
+        std::printf("[perf] %s check: %llu ops compared, %llu differing; %llu left to the rules (exponent 255), %llu on a thread that does not chop\n", what,
+                    static_cast<unsigned long long>(compared.load()), static_cast<unsigned long long>(differing.load()),
+                    static_cast<unsigned long long>(by_rules.load()), static_cast<unsigned long long>(off_thread.load()));
+        for (int i = 0; i < notes.load() && i < 4; ++i)
+            std::printf("[perf] %s check: op %u lanes %x: %08x, %08x, %08x: raw %08x, rules %08x\n", what, note[i][0], note[i][1], note[i][2], note[i][3], note[i][4],
+                        note[i][5], note[i][6]);
+    }
+};
+inline RawCheck g_fpu_raw_check, g_vu0_raw_check;
+// The account's lines, when a =2 mode ran (the end of a run; the oracle's end).
+inline void raw_report() {
+    if (g_fpu_raw == 2) g_fpu_raw_check.report("fpu raw");
+    if (g_vu0_raw == 2) g_vu0_raw_check.report("vu0 raw");
+}
 
 // The calling thread's float arithmetic rounds toward zero from now on (the EE's mode).
 // Also no denormals (the PS2's FPU and VUs have none; PCSX2's "DenormalsAreZero"): the host's
@@ -57,6 +114,13 @@ inline void enter_ee_rounding() {
     __asm__ volatile("msr fpcr, %0" ::"r"(fpcr));
 #endif
     g_ee_chop = true;
+    // (the raw forms: only on a thread that chops; on by default)
+    const auto mode = [](const char* name) {
+        const char* e = std::getenv(name);
+        return e == nullptr || *e == '\0' ? 1 : std::atoi(e);
+    };
+    g_fpu_raw = mode("RAC1_PERF_FPU_RAW");
+    g_vu0_raw = mode("RAC1_PERF_VU0_RAW");
 }
 
 // The calling thread rounds to nearest while this lives (the mode it had put back after): for the host's text <-> float

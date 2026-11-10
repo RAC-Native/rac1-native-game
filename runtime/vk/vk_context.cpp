@@ -1476,6 +1476,7 @@ void begin_frame(int win_w, int win_h, float clear_r, float clear_g, float clear
             recreate_swapchain(win_w, win_h);
         }
         if (g_ctx.swapchain != VK_NULL_HANDLE) {
+            RAC1_PROF_ZONE(kAcquire);  // (the wait for the swapchain's image: with FIFO and a full queue, a refresh or more)
             VkResult res = vkAcquireNextImageKHR(g_ctx.device, g_ctx.swapchain, UINT64_MAX, f.image_available,
                                                  VK_NULL_HANDLE, &g_ctx.swap_img_idx);
             if (res == VK_ERROR_OUT_OF_DATE_KHR) {

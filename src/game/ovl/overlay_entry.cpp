@@ -10,6 +10,7 @@
 #include <game/input/pad_build.h>
 #include <game/math/vecmath.h>
 #include <game/lib/snd989.h>
+#include <game/ovl/moby_joints.h>
 #include <game/ovl/moby_pass.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/music_streams.h>
@@ -494,9 +495,17 @@ void render_frame() {
     if (lw(EN + 0x34) != 0 && lw(OV(0x0015f430)) != 0) draw_list_block_run(1);
     if ((flags() & 0x10) != 0) {
         if (g_moby_vu1_pass) {
-            mrp_lod_moby_shadow(moby_pass);  // (the MRP's LOD slider / widened view, the memory put back)
-            RAC1_PROF_ZONE(kGameMobyPass);
-            moby_pass();
+            // (host: the MRP's LOD slider / widened view runs the pass again as a shadow, the memory put back: after the real
+            // pass, whose poses the shadow then finds in the pose memo - RAC1_PERF_POSE_ORDER=0: before it, every pose of its own)
+            const bool after = mrp_lod_moby_shadow_after();
+            if (!after) mrp_lod_moby_shadow(moby_pass);
+            {
+                RAC1_PROF_ZONE(kGameMobyPass);
+                g_moby_pose_memo.fill = after && mrp_lod_moby_shadow_due();
+                moby_pass();
+                g_moby_pose_memo.fill = false;
+            }
+            if (after) mrp_lod_moby_shadow(moby_pass);
         }
         else TODO_PORT(0x00250038, "mobys (VU1): the host's model drawer instead")();
     }

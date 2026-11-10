@@ -42,6 +42,8 @@ uint32_t ovl_code_lookup(uint32_t veldin);
 // orig: (host) a code address of the current level's overlay as Veldin's (0: none) -- the
 // dispatch of the level's code pointers to the ports
 uint32_t ovl_code_to_veldin(uint32_t level_addr);
+// orig: (host) RAC1_PERF_CODE_MEMO's account at the end of a run (ovl_reloc.cpp)
+void ovl_code_memo_report();
 
 // orig: (host) one use site's cached translation
 template <uint32_t A>

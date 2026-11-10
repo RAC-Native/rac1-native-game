@@ -63,6 +63,12 @@ void mrp_lod_world_after(int kind, uint32_t cur, uint32_t real_end);
 // what the MRP draws this frame (mrp_scene_draw()): its mobys at their near model, with the poses the pass computed for them.
 // The drop shadows stay the real pass's.
 void mrp_lod_moby_shadow(void (*pass)());
+// orig: (host) RAC1_PERF_POSE_ORDER (docs/performance.md; 0: the shadow run before the real pass, as before): the moby pass's
+// shadow run made after the real pass, whose poses fill the pose memo (mrp_pose_memo.h) - an animated moby the two passes both
+// draw is then posed once a frame, not twice. True when the run comes after; mrp_lod_moby_shadow_due(): it will be made this
+// frame (the real pass keeps its poses only then)
+bool mrp_lod_moby_shadow_after();
+bool mrp_lod_moby_shadow_due();
 
 // orig: (host) the 3D effects (render_frame's block after the moby pass: the draw lists' callbacks - the
 // glows of the lights, the ships' canopy shine, through quad_draw 0x1fd228 -, the lens flare, the decals, the particles 0x267c98,

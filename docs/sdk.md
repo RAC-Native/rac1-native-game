@@ -42,7 +42,8 @@ Contents:
 | 12 | the first with hero modes | hero contexts and modes (a session): `hero_build`, `hero_build_now`, `hero_mode`, `hero_mode_now`, `RAC1_HERO_*`; level.txt's `hero` line |
 | 13 | the first with bosses | bosses (a session's sections): `boss_set`, `boss_beaten`, `RAC1_BOSS_*`; the callback `boss`; level.txt's `boss` line |
 | 14 | the first with the HUD's width | the HUD's width: `hud_width`; `RAC1_HUD_HEIGHT` ([The HUD's area](#the-huds-area)) |
-| 15 | this one | saving from a plugin: `game_save`, `game_saving` ([Saving](#saving-abi-15)) |
+| 15 | the first with saving | saving from a plugin: `game_save`, `game_saving` ([Saving](#saving-abi-15)) |
+| 16 | this one | the hoverboard outside a race: `board_rule`, `board_return`, `board_fall`, `board_touching`, `RAC1_BOARD_*` ([The hoverboard outside a race](#the-hoverboard-outside-a-race-abi-16)) |
 
 How compatibility works:
 
@@ -548,6 +549,35 @@ static void on_frame(void* user) {
     if (won_at != 0 && api->frame_count() == won_at + 300) api->section_enter("main", "from_cave", 30);
 }
 /* rac1_mod_main: */ mod->boss = on_boss; mod->frame = on_frame;
+```
+
+### The hoverboard outside a race (ABI 16)
+
+Test `api->abi >= 16` (or `RAC1_API_HAS(api, board_rule)`) first. Kalebo III's and Rilgar's hoverboard (`RAC1_HERO_BOARD`)
+is their race's: its code counts the laps on its planet's race path, shows the race HUD (lap, time, place), and puts a fall
+"back on the track" (z under 76 on Kalebo III, 61.4 on Rilgar, the nearest point of the race path). On a level mod's level
+the board is **free** where there is no such race (by default: main and the mod's own sections, and other planets' worlds:
+`world quartu`): no laps, no race HUD, and a fall (under the fall height) puts Ratchet back on the board where he got on
+(or at your place); a wipe-out (a wall met) puts him back where he rode 40 frames before. In its own planet's world
+(`world rilgar` with `hero rilgar board`, `world kalebo` on a session on another base) it is that planet's race, on its own
+heights. These last until the level ends (a section switch keeps them).
+
+| Service | Does |
+|---|---|
+| `int32_t board_rule(int32_t rule)` | `RAC1_BOARD_AUTO` (the default above), `RAC1_BOARD_FREE` (free everywhere), `RAC1_BOARD_RACE` (the race's code as on its planet, wherever he is; -1 only asks): the rule in force now, `RAC1_BOARD_FREE` or `RAC1_BOARD_RACE` |
+| `void board_return(const float pos[3], float yaw)` | where a free board's fall puts him back on it, turned `yaw`; `NULL`: where he got on (the default) |
+| `void board_fall(int32_t set, float z)` | a free board's fall height: under `z` he falls (the race's fall: a moment in the air, then back on the board at the place above); `set` 0: 2 units over the death height (the section's `death_height`, else its world's or the level's) |
+| `int32_t board_touching(uint32_t* out, int32_t max)` | the mobys Ratchet on the board touches now (the game's own sphere query on their collision, about his body; the board and Ratchet left out): their count, at most `max` into `out`; 0 off the board. The game does nothing to them: `hit_send` them yourself |
+
+```c
+/* Quartu's world as a section: the board ridden free from where Ratchet stands; the robots it runs into knocked down */
+const uint32_t bh = api->base_spawn(439, here, yaw);      /* level.txt: spawn 439 1 (Kalebo III's base) */
+api->hero_build(16);                                       /* Kalebo III's hero code rides it */
+api->hero_mode(RAC1_HERO_BOARD, api->base_moby(bh));
+api->board_return(start, 0.6f);                            /* a fall: back at the arena's start */
+/* in the frame callback: */
+uint32_t m[8];
+for (int k = 0, n = api->board_touching(m, 8); k < n; ++k) api->hit_send(m[k], RAC1_HIT_PLAYER, 10.0f, api->hero());
 ```
 
 ### Saving (ABI 15)

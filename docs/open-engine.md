@@ -1266,6 +1266,69 @@ context` and `[section] quartu: level 15's context or registry cannot be made`, 
 - A world's HUD copy takes the level's whole set (about 330 KB a world); a boss's music changes, if any, are its planet's
   music in its world's section.
 
+## The board outside a race
+
+Kalebo III's and Rilgar's board code is their race's. Its riding state compares the game's level number (on a level mod its
+base's: 16 on Kalebo III's base, whatever world the section shows): on 16 a z under 76 is a fall (state 0x6e, Rilgar's 61.4 on
+5), and a fall or a wipe-out (0x6d, 0x6f) ends "back on the track" (L16:0x225ac0, L5:0x254358: the nearest point of the
+board's race path, the board's pvars +0x24 an index into the level's path table); at the mount it asks for the race HUD (the
+HUD requests 5 and 7: lap, time, place) and its race code (0x225d70) counts laps on the path its pvars +0x20 name. What the
+arena saw follows from that:
+
+- **`world quartu`** (Quartu's arena floor at z 26): every frame a fall (26 < 76), "back on the track" at a point of Quartu's
+  path table (the board's index into Quartu's paths: 248.2 386.9), still under 76: 0x6e for ever; the race HUD (lap 1/3,
+  the time, 6th).
+- **main on the mod's own geometry** (above 76): it rides; the first fall or wipe-out (the arena's 0x6d after 60 frames:
+  `forward` held from the mount drove him into a wall; `forward` itself is not the cause) went "back on the track" of a
+  path table with no such path: (0, 0, 0.01), under the death height, so a death and the soft reset at the checkpoint, on
+  foot. A bug (the race's logic on a level that has no race): fixed below.
+- **`world rilgar` with `hero rilgar board`** (Rilgar's finish line at z 73.6): Rilgar's code read 16, so Kalebo III's 76: a
+  fall at once, for ever (the "wait for the start" the arena saw).
+
+The fix (hooks in both builds, tools/codegen/hooks.glue, `level_mod_hero.h`; the original's levels as transliterated): on a
+level mod's level the compares see **the board's planet** when the current section's world is Kalebo III's or Rilgar's
+(`world rilgar`: 5, its own heights and start line, its race as on Rilgar), and elsewhere the board is **free**
+(`hero_modes.cpp`): its race path none (pvars +0x20 -1, the player's +0x8b4 0: no laps), no race HUD at the mount, its own
+fall test (under 2 units over the death height, or the plugin's `board_fall`), "back on the track" replaced by where he got
+on (or the plugin's `board_return`) for a fall and by where he rode 40 frames before for a wipe-out. The plugin's
+`board_rule` forces either; `board_touching` lists the mobys his body touches on the board (the game's `mobys_in_sphere` on
+their collision), for the plugin's `hit_send` (the SDK's ABI 16).
+
+```
+[hero] on the board at 134.60 235.00 25.51: free (no race: no laps, no race HUD, a fall back where he got on or at the plugin's place)
+[hero] the free board: a fall (23.99 under 24.00)
+[hero] the free board: back on it at 134.60 235.00 25.51 (where he got on)
+[hero] on the board at 275.48 334.34 73.60: the race of its planet's world
+```
+
+| Test (local test mod, format 3 on Kalebo III's base, `hero generic`) | Result |
+|---|---|
+| `world quartu`: `hero_build(16)`, `base_spawn(439)`, `hero_mode(BOARD)` at 159.9 241.7, stick forward | rides (0x6b) across the arena floor at z 26, no race HUD; a wall at 172.2 250.2: a wipe-out (0x6f), back 8 units before it, riding again |
+| the same from 134.6 235 facing west | off the floor's edge: a fall under 24 (Quartu's death height 22 + 2), 0x6e, back on the board where he got on, again each time |
+| main (the plateau at z 100), `board_return(205 190 100.5)` | off the edge: a fall under 72, back at the plugin's place, riding on (before: (0, 0, 0.01), a death, on foot at the checkpoint) |
+| a robot (1445) in the board's way, `board_touching` + `hit_send` | touched once at 1.1 units, knocked down (state 8) |
+| `world rilgar`, `hero rilgar board`, stick forward | Rilgar's race: rides the track from the finish line, its race HUD (lap 1/3, the time, 1st), a fall under 61.4 back on its track (before: 0x6e at the start for ever) |
+
+## A world's zones: what is drawn (`zones all`)
+
+What a world's section draws of its planet is the planet's own culling: the zone grid (`0x15f600`, gameplay's: cells of 4
+units, each a 128-byte list of the zones seen from it) gives the visible zones `0x173d00` for the camera's place each frame
+(`zones_from_camera`, 0x1f7408: the cell's list, else its neighbours', else the last list `0x15f610`, else all), and every tfrag,
+tie, shrub and moby whose zone bit (+0x3a, +0x18, +0x36: the gameplay file's +0x8c lists) is not in it is not drawn. The zone
+mode `0x16c074` (one of a world's state words) is 2 with a grid, 0 for all zones (`zones_update`, 0x1f77f8). Quartu's Giant
+Clank arena (around 170 240 26) is no special case: no Quartu code changes the grid, the mode or the masks (its classes' and
+hero code's builds name none of them), and in `world quartu` it is drawn and solid from the camera's places tried (the board
+on its floor, fixed cameras inside it at 34, 45 and 60 high and over it from 150 200 70 and 130.5 180 66; GL and Vulkan): from
+inside the arena at 150 236 28 its cell sees 78 of the 124 tfrags within 50 units and 77 of the 118 ties, the rest behind its
+walls. On Quartu itself at its start Ratchet put at 140 215 27 falls through (there is no floor there: the gap between the
+platform and the arena), and walking from the platform he meets the arena's wall: the arena is reached as Giant Clank, whose
+camera (122.8 222.6 40.6) sees 103 of those tfrags.
+
+A section's `zones all` line (composer 8: `zones <section> all` in `sections.txt`) sets the zone mode to 0 while the section is
+current (`apply_state`, after its world state): every zone drawn wherever the camera is, on every renderer (it is the game's
+own visibility, before any drawing). At 150 236 28: 124 of 124 tfrags and 118 of 118 ties; the pictures there the same within
+82 pixels (the sky's stars). For a camera the planet never had, or one off the grid whose last list is another place's.
+
 ## What the next stage builds on
 
 - **Hero contexts (stage 9)** and **the camera level (stage 10)**: a planet's own hero code and camera code in its world.

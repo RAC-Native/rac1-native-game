@@ -479,3 +479,31 @@ L16 0x00209a34: if (level_mod_kalebo_surface(static_cast<int32_t>(s2.w()))) goto
 # ... and Kalebo's ground probe (hero_ground_update, L16:0x20ffb0) has no lava either: the generic build's (0x2127b8's kind 3, as
 # its own kind 0xd above): the lava's top kept (+0x2f4) and the probe again from just under it, so that the lava is not a floor
 L16 0x002101e4: if (level_mod_kalebo_lava_ground()) { fr[1] = u2f(lw_(L16_ADDR(0x00174268u))); fr[0] = fpu_sub(fr[1], u2f(0x3c23d70au)); sw_(0x13f644u, f2u(fr[1])); sw_(sp.w() + 0x18, f2u(fr[0])); if (segment_collide_v(V(s3.w()), V(sp.w()), 4, lw_(0x1413d0u), nullptr) == 0) { set32(v0, 0x140000u); goto L_210408; } set32(s0, 0x13f350u); }  // enhancement: a level mod's lava
+# The board outside a race, on a level mod's level (src/game/enhance/level_mod_hero.h; docs/open-engine.md, "The board outside a
+# race"; nothing on the original's Kalebo III and Rilgar). The board's race code compares the level number: its fall test (z
+# under 76 on Kalebo III, 61.4 on Rilgar: the race's fall state 0x6e, then "back on the track") and its race's start line read it,
+# and a level mod's number is its base's. In a world of the board's planet (`world rilgar` on Kalebo III's base) the compares see
+# that planet (level_mod_board_planet); a free board (the mod's own geometry, another planet's world) has its own fall test
+# (level_mod_board_fell), its "back on the track" place is the plugin's or where he got on (level_mod_board_back) and its race
+# HUD (the requests 5 and 7 at the mount) is not asked for (level_mod_board_hud_off).
+# Kalebo III: the race (0x225d70: the start line, the laps)
+L16 0x00225de0: set32(a1, level_mod_board_planet(a1.w()));  // enhancement: the board outside a race
+L16 0x00225fb0: set32(v1, level_mod_board_planet(v1.w()));  // enhancement: the board outside a race
+L16 0x00226440: set32(v1, level_mod_board_planet(v1.w()));  // enhancement: the board outside a race
+L16 0x00226484: set32(v1, level_mod_board_planet(v1.w()));  // enhancement: the board outside a race
+# ... its riding (0x226970's fall test, the next state in a0), the fall state's own test (0x22cef4)
+L16 0x00226b74: if (level_mod_board_free()) { set32(v1, s4.w() + -0xcb0); if (level_mod_board_fell(u2f(lw_(v1.w() + 0x88)))) { set32(a0, 0x6e); goto L_226e88; } goto L_226be0; } set32(v1, level_mod_board_planet(v1.w()));  // enhancement: the board outside a race
+L16 0x0022cefc: if (level_mod_board_free()) { set32(s1, s4.w() + -0xcb0); if (level_mod_board_fell(u2f(lw_(s1.w() + 0x88)))) goto L_22cf58; goto L_22d018; } set32(v1, level_mod_board_planet(v1.w()));  // enhancement: the board outside a race
+# ... "back on the track" (0x225ac0: the nearest point of the board's race path; s6 / s7 the place and rotation asked)
+L16 0x00225b30: if (level_mod_board_back(s6.w(), s7.w())) { ra = lq(sp.w() + 0xa0); goto L_225d38; }  // enhancement: the board outside a race
+# ... the mount's race HUD (the requests 5 and 7, 0x238a30 / 0x238e20: the lap, the time, the place)
+L16 0x0021f288: if (level_mod_board_hud_off()) { sw_(s4.w() + 0x874, lw_(s4.w() + 0x98)); goto L_21f304; }  // enhancement: the board outside a race
+# Rilgar: the same code (0x254608, 0x255238's fall test at 0x25540c, the fall state's at 0x25a7f4, 0x254358, the mount 0x24dd7c)
+L5 0x00254678: set32(a1, level_mod_board_planet(a1.w()));  // enhancement: the board outside a race
+L5 0x00254848: set32(v1, level_mod_board_planet(v1.w()));  // enhancement: the board outside a race
+L5 0x00254cd8: set32(v1, level_mod_board_planet(v1.w()));  // enhancement: the board outside a race
+L5 0x00254d1c: set32(v1, level_mod_board_planet(v1.w()));  // enhancement: the board outside a race
+L5 0x0025540c: if (level_mod_board_free()) { set32(v1, s4.w() + -0xcb0); if (level_mod_board_fell(u2f(lw_(v1.w() + 0x88)))) { set32(a0, 0x6e); goto L_255720; } goto L_255478; } set32(v1, level_mod_board_planet(v1.w()));  // enhancement: the board outside a race
+L5 0x0025a7fc: if (level_mod_board_free()) { set32(s1, s4.w() + -0xcb0); if (level_mod_board_fell(u2f(lw_(s1.w() + 0x88)))) goto L_25a858; goto L_25a918; } set32(v1, level_mod_board_planet(v1.w()));  // enhancement: the board outside a race
+L5 0x002543c8: if (level_mod_board_back(s6.w(), s7.w())) { ra = lq(sp.w() + 0xa0); goto L_2545d0; }  // enhancement: the board outside a race
+L5 0x0024dd7c: if (level_mod_board_hud_off()) { sw_(s4.w() + 0x874, lw_(s4.w() + 0x98)); goto L_24ddf8; }  // enhancement: the board outside a race
