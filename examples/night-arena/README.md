@@ -50,6 +50,10 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   it), and under the galaxy a view of the arena rendered from the scene when it is exported; its name in five languages
   (Arena di Daino, Dainos Arena, Arena de Daino, Arène de Daino).
 
+- **Its HUD** is at the bottom of the screen: the challenge's box at the left (under the quick select's ring), its banners
+  and messages in the middle, at the same height (side by side with a HUD of 21:9 or wider; narrower they overlap: the
+  SDK does not tell the HUD's width yet).
+
 - **Its texts** (the menu, the challenges, the HUD, the banners) follow the game's text language: English, French,
   German, Spanish or Italian (plain ASCII, as the HUD's font takes it). The table is in the plugin (`TEXTS`); the
   weapons', the wrench's and the Grind Boots' names are read from the game's own texts, as it shows them.

@@ -274,6 +274,7 @@ static struct {
     int32_t snd_wave, snd_win, snd_fail;
     char toast[80];
     int toast_t;
+    int banner_y;  /* this frame's banner's top (the toast goes over it), 0 none */
     /* the HUD's texts and panels, made in frame (hud may run twice a frame: it only draws them) */
     int nlines, nrects;
     struct {
@@ -352,15 +353,24 @@ static void hud_grow(int rect, int first, int wmax) {
             s.line[k].maxw = (int16_t)(wmax - (s.line[k].x - s.rect[rect].x) - 10);
 }
 
-/* a banner in the middle of the screen: a panel, a large line, a smaller one under it (or none) */
+/* the HUD's bottom row (Daino: nothing in the middle of the screen, nor over the quick select's ring at the left): the
+   challenge's box at the left, the banners and the toasts in the middle, all ending this far down */
+#define HUD_BOTTOM 406  /* (the HUD's 448 units reach past the screen's bottom: about 420 are seen) */
+#define TOAST_H 26
+#define MSG_W 330  /* the banners' and toasts' texts at most this wide (smaller past it): beside the box with a HUD of 21:9 or
+                      wider (narrower, they reach it: the SDK does not tell the HUD's width) */
+
+/* a banner at the bottom of the screen, in the middle: a panel, a large line, a smaller one under it (or none) */
 static void banner(uint32_t colour, const char* big, const char* small) {
-    hud_panel(116, 136, 280, small ? 66 : 44, PANEL, RAC1_HUD_CENTRE);
-    hud_panel(116, 136, 280, 3, BAR, RAC1_HUD_CENTRE);
-    hud_text_at(256, 146, colour, 1.6f, RAC1_HUD_CENTRE, 1, "%s", big);
-    hud_maxw(440);
-    if (small) hud_text_at(256, 174, WHITE, 1.2f, RAC1_HUD_CENTRE, 1, "%s", small);
-    if (small) hud_maxw(440);
+    const int h = small ? 66 : 44, y = HUD_BOTTOM - h;
+    hud_panel(116, y, 280, h, PANEL, RAC1_HUD_CENTRE);
+    hud_panel(116, y, 280, 3, BAR, RAC1_HUD_CENTRE);
+    hud_text_at(256, y + 10, colour, 1.6f, RAC1_HUD_CENTRE, 1, "%s", big);
+    hud_maxw(MSG_W);
+    if (small) hud_text_at(256, y + 38, WHITE, 1.2f, RAC1_HUD_CENTRE, 1, "%s", small);
+    if (small) hud_maxw(MSG_W);
     hud_fit(2, small ? 2 : 1);
+    s.banner_y = y;
 }
 
 static void toast(const char* text) {
@@ -480,10 +490,6 @@ static const char* const TEXTS[][N_LANGS] = {
      "Test: zwei Roboter in Quartus Arena", "prueba: dos robots en la arena de Quartu"},
     {"Un altro mondo! Abbatti gli ultimi due", "Another world! Take down the last two", "Un autre monde! Abats les deux derniers",
      "Eine andere Welt! Erledige die letzten zwei", "Otro mundo! Acaba con los dos ultimos"},
-    {"La corsia finisce! Cambia corsia", "The lane ends! Switch lanes", "La voie se termine! Change de voie",
-     "Die Spur endet! Wechsle die Spur", "El carril se acaba! Cambia de carril"},
-    {"Atterrato! Ora l'ultima ondata", "Landed! Now the last wave", "Atterri! Place a la derniere vague",
-     "Gelandet! Jetzt die letzte Welle", "Aterrizado! Ahora la ultima oleada"},
     {"Caduto! Di nuovo dalla stazione", "You fell! Back to the station", "Tombe! Retour a la station",
      "Gestuerzt! Zurueck zur Station", "Caiste! De vuelta a la estacion"},
     /* the result */
@@ -1745,7 +1751,6 @@ static void zap_update(const float h[3]) {
    his attacks. Its end leads to a last wave in the arena. */
 #define GRIND_BOOTS 0x0013d4ddu
 #define MAX_RAILS 6
-#define LANE_WARN 20.0f   /* a lane that ends: told this far from its end */
 #define RAIL_ATTACK 0x2b  /* his wrench swing on a rail */
 #define MAX_OBST 48
 #define MINE_BOLTS 50      /* a rail mine broken with the wrench */
@@ -1782,7 +1787,6 @@ static struct {
     } obs[MAX_OBST];
     int nobs, kmines, kmines_e, kmines_hit;  /* (the course's rail mines, the escape's, those broken) */
     int use_obs;  /* the obstacles on: bit 0 the course's, bit 1 the escape's */
-    int warned;   /* the lanes whose end was told (bits by their place in set) */
     /* La grande fuga: phase 3 the lava rising (Ratchet to the hub's top), 4 riding the escape, 5 the section beyond its
        portal (its last wave) */
     int32_t escape;      /* the escape's rail (rail_find's), 0 none */
@@ -2025,7 +2029,6 @@ static void rail_to_start(void) {
     pos_of(api->object_moby(o), p);
     hero_move(p, atan2f(a[1] - p[1], a[0] - p[0]));
     rails.reached = 0;
-    rails.warned = 0;
     if (rails.use_obs) obstacles_reset(rails.use_obs);
 }
 
@@ -2109,23 +2112,10 @@ static void rail_update(const float h[3]) {
     if (rails.nset == 0) return;
     ++rails.ride;
     if (rails.use_obs) obstacles_update(h);
-    rac1_rail_info ri = {sizeof ri};
-    if (s.t % 10 == 0 && api->hero_rail(&ri))  /* on a lane that ends (not the finishing rail) near its end: told once */
-        for (int j = 1; j < rails.nset; ++j)
-            if (ri.rail == rails.set[j] && !((rails.warned >> j) & 1) && ri.length - ri.distance < LANE_WARN) {
-                rails.warned |= 1 << j;
-                toast(tr("La corsia finisce! Cambia corsia"));
-                if (s.test_log) {
-                    char b[96];
-                    snprintf(b, sizeof b, "lane %s: its end told, at %.1f of %.1f", rails.name[j], ri.distance, ri.length);
-                    api->log(b);
-                }
-            }
     if (rails.reached && !on_rail()) {
         if (c->wave[0].count > 0) {  /* (down in the arena: the last wave) */
             rails_away();
             rails.phase = 2;
-            toast(tr("Atterrato! Ora l'ultima ondata"));
             wave_start();
         } else {
             challenge_end(1, NULL);
@@ -2450,6 +2440,7 @@ static void menu_close(void) {
 static void frame(void* user) {
     (void)user;
     s.nlines = s.nrects = 0;
+    s.banner_y = 0;
     if (!s.mine) return;
     const uint32_t hero = api->hero();
     if (hero == 0) return;
@@ -2465,8 +2456,8 @@ static void frame(void* user) {
     switch (s.mode) {
     case FREE:
         if (s.t_center >= 0 && api->trigger_inside(s.t_center)) {
-            hud_panel(150, 370, 212, 26, PANEL, RAC1_HUD_CENTRE);
-            hud_text_at(256, 375, WHITE, 1.2f, RAC1_HUD_CENTRE, 1, "%s", tr("Triangolo: menu arena"));
+            hud_panel(150, HUD_BOTTOM - TOAST_H, 212, TOAST_H, PANEL, RAC1_HUD_CENTRE);
+            hud_text_at(256, HUD_BOTTOM - TOAST_H + 5, WHITE, 1.2f, RAC1_HUD_CENTRE, 1, "%s", tr("Triangolo: menu arena"));
             hud_maxw(440);
             hud_fit(1, 1);
             if (pressed & PAD_TRIANGLE) {
@@ -2524,7 +2515,7 @@ static void frame(void* user) {
             if (isc && cup[s.wave].mode != cup[s.wave - 1].mode) snprintf(next, sizeof next, tr("Prossimo: %s"), tr(MODES[cup[s.wave].mode].name));
             banner(GREEN, isc ? tr("Round superato!") : tr("Ondata superata!"), next[0] ? next : NULL);
         }
-        if (s.mode != RESULT) {  /* the challenge's box, at the screen's left, under the game's weapon and ammo */
+        if (s.mode != RESULT) {  /* the challenge's box, at the screen's bottom left (under the quick select's ring) */
             const challenge_def* c = &CHALLENGES[s.ch];
             const int isc = c->kind == CUP;
             char third[64] = "";  /* the mode (a championship's round), the weapon (a limited one) */
@@ -2539,7 +2530,7 @@ static void frame(void* user) {
             } else if (c->kind == RAIL && (rails.phase == 3 || rails.phase == 4 || (rails.phase == 5 && !rails.sec_in))) {
                 snprintf(third, sizeof third, tr("Mine %d/%d   Cadute %d"), rails.kmines_hit, rails.kmines + rails.kmines_e, rails.falls);
             }
-            const int y = 84, bh = third[0] ? 72 : 50, box = s.nrects, first = s.nlines;
+            const int bh = third[0] ? 72 : 50, y = HUD_BOTTOM - bh, box = s.nrects, first = s.nlines;
             hud_panel(12, y, 230, bh, PANEL, RAC1_HUD_LEFT);
             hud_panel(12, y, 3, bh, BAR, RAC1_HUD_LEFT);
             if (third[0]) hud_text_at(22, y + 50, CYAN, 1.1f, RAC1_HUD_LEFT, 0, "%s", third);
@@ -2599,10 +2590,11 @@ static void frame(void* user) {
     }
     if (s.toast_t > 0) {
         --s.toast_t;
-        if (s.mode != MENU) {
-            hud_panel(126, 232, 260, 26, PANEL, RAC1_HUD_CENTRE);
-            hud_text_at(256, 237, YELLOW, 1.2f, RAC1_HUD_CENTRE, 1, "%s", s.toast);
-            hud_maxw(440);
+        if (s.mode != MENU) {  /* (at the bottom, over this frame's banner if there is one) */
+            const int y = (s.banner_y > 0 ? s.banner_y - 6 : HUD_BOTTOM) - TOAST_H;
+            hud_panel(126, y, 260, TOAST_H, PANEL, RAC1_HUD_CENTRE);
+            hud_text_at(256, y + 5, YELLOW, 1.2f, RAC1_HUD_CENTRE, 1, "%s", s.toast);
+            hud_maxw(MSG_W);
             hud_fit(1, 1);
         }
     }
