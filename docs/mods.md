@@ -657,8 +657,9 @@ Format 1 is the first step:
   scripted events, no objects of other levels' classes. Objects of **your own classes** (`class` / `object` lines: a
   model, a hit box, behaviour in your plugin) and sounds of your own (`sound` lines) are the SDK's: see
   [The mod SDK](sdk.md);
-- the sky: a game level's (`sky`); a sky of your own is a later step (a texture mod can change a sky's textures in the
-  modern renderer). Another level's sky is right in the modern renderer; the faithful renderer may show it with wrong
+- the sky: a game level's (`sky`), drawn by that level's own sky code (its stars, its turning shells) whatever the base
+  level; a sky of your own is a later step (a texture mod can change a sky's textures in the modern renderer). Another
+  level's sky is right in the modern renderer; the faithful renderer may show it with wrong
   colours;
 - the base level: Veldin, Kerwan, Eudora or Kalebo III, each with its caveats: [Base levels](#base-levels);
 - the level's size: the composed asset data (the base level's classes, sky and effects, and your collision) must not be
@@ -750,8 +751,7 @@ start yard:west                                # optional: the session starts th
 - Log lines: `[compose] section <name> (...)`, `[section] <name> streamed in: ...`, `[section] frame N: main -> yard at entry
   west (portal east_gate): the switch 0.17 ms ...`.
 - Limits: at most 31 sections; the level's own classes' objects (`object` lines) and triggers belong to the whole level; a
-  section's music is a game level's or none. Not every game level's sky works on Veldin's code (Umbris's and Gemlik's do
-  not: [The open engine](open-engine.md#sections-stage-6)).
+  section's music is a game level's or none.
 
 ### Grind rails and set pieces
 

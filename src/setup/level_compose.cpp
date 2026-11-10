@@ -3597,7 +3597,8 @@ bool compose_level_mod(const std::string& folder, bool force) {
     if (!pools_json.empty()) pools_json += "]";
     std::ofstream bj(out_dir / "build.json");
     bj << "{\n  \"composer\": " << kLevelComposerVersion << ",\n  \"format\": " << m.level_format << ",\n  \"id\": \"" << m.level_id << "\",\n  \"base\": " << m.level_base
-       << (music_json.empty() ? std::string() : ",\n  \"music\": " + music_json) << ",\n  \"objects\": " << placed_objects << pools_json << ",\n  \"inputs\": \"" << stamp_hex(mods_level_inputs_stamp(m.dir)) << "\"\n}\n";
+       << (music_json.empty() ? std::string() : ",\n  \"music\": " + music_json)
+       << (lt.sky_level >= 0 && lt.sky_level != m.level_base ? fmt(",\n  \"sky\": %d", lt.sky_level) : std::string()) << ",\n  \"objects\": " << placed_objects << pools_json << ",\n  \"inputs\": \"" << stamp_hex(mods_level_inputs_stamp(m.dir)) << "\"\n}\n";
     if (!bj) return fail("cannot write build.json");
     std::cout << "[compose] " << folder << ": built into " << out_dir.generic_string() << "\n";
     return true;

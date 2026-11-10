@@ -299,6 +299,12 @@ int level_slot_current() { return g_s.current >= 0 && lw(LEVEL) == base_of(g_s.c
 int level_slot_base(int slot) { return base_of(slot); }
 
 // orig: (none) — enhancement (level_slots.h)
+int level_slot_sky(int slot) {
+    const ModInfo* m = slot_mod(slot);
+    return m != nullptr ? m->level_sky : -1;
+}
+
+// orig: (none) — enhancement (level_slots.h)
 std::string level_slot_build_dir(int slot) {
     const ModInfo* m = slot_mod(slot);
     return m != nullptr ? mods_level_build_dir(m->folder).string() : std::string();

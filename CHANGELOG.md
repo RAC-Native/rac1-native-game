@@ -26,6 +26,13 @@ What changed in each release. Releases are source only: you build the game with 
   `hero_rail_attach`, the `rail` callback, ...); fade the screen; take the camera (fixed, looking at something, along a
   path, following) and give it back blended; add hazards (volumes that hurt on a timer); move an object along a path with
   Ratchet riding it (`object_follow_path`). See docs/mods.md ("Grind rails and set pieces") and docs/sdk.md.
+- **Level mods: another level's sky** (a level's or a section's `sky` line) no longer ends the game or writes where it
+  should not: it is now drawn by that level's own sky code, as on its planet, whatever the base level. Before, the base
+  level's ran on it: on Veldin's code Umbris's and Gemlik's skies crashed in the sky's draw (Veldin's 256 stars overwrote
+  their first layer; Rilgar's and Quartu's have the same room for 128 stars) and the others got Veldin's stars written
+  at the bottom of the game's memory.
+  All 19 skies were checked on the four bases, as a level's sky and as a section's, on OpenGL and Vulkan. The level
+  composer is version 6: level mods are composed again by the setup.
 - **Aiming = Modern / Modern, No Zoom on magnetic surfaces** (#136): on the Magneboots' walkways the modern controls
   now leave the hero to the original's rules: L2 no longer turns him (aiming there turned his whole frame off the wall,
   so he could come off the walkway) and the camera is no longer held on the aim (it acted like the aiming view);

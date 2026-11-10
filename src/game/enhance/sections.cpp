@@ -1011,6 +1011,12 @@ bool sections_any() { return g_sections_on; }
 int sections_count() { return g_sections_on ? static_cast<int>(g_secs.size()) : 0; }
 // orig: (host) see sections.h
 int sections_current() { return g_sections_on ? g_cur : -1; }
+// orig: (host) see sections.h (the section's own sky as apply_state made it the game's)
+int sections_sky_level() {
+    if (!g_sections_on || g_cur <= 0 || static_cast<size_t>(g_cur) >= g_secs.size()) return -1;
+    const Section& s = g_secs[static_cast<size_t>(g_cur)];
+    return s.sky != 0 && lwu(OV(0x0016051c)) == s.sky ? s.sky_level : -1;
+}
 // orig: (host) see sections.h
 std::string sections_name(int index) { return g_sections_on && index >= 0 && static_cast<size_t>(index) < g_secs.size() ? g_secs[static_cast<size_t>(index)].name : std::string(); }
 // orig: (host) see sections.h
