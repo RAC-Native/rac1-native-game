@@ -40,6 +40,7 @@
 #include <cstring>
 #include <filesystem>
 #include <map>
+#include <mutex>
 #include <memory>
 #include <string>
 #include <set>
@@ -66,6 +67,10 @@ int g_mrp_moby_fog = 1;
 std::atomic<int> g_mrp_guest_class{-1};
 std::atomic<bool> g_mrp_guest_on{false};
 std::atomic<float> g_mrp_guest_lift{0.0f};
+// the import list (mrp_moby_import): level * 10000 + class, and its generation (the level's assets loaded again at a change)
+std::mutex g_imports_mu;
+std::vector<int> g_imports;
+std::atomic<uint32_t> g_imports_gen{0};
 
 namespace {
 
@@ -205,6 +210,10 @@ struct Level {
     std::unique_ptr<mrp::MobyClass> guest;
     std::unique_ptr<ClassGpu> guest_gpu;
     int guest_key = -1;  // the g_mrp_guest_class loaded (or tried)
+    // the import list's classes (mrp_moby_import: another level's, in a session): level * 10000 + class -> asset, their
+    // textures renumbered into this level's (after the armors' and the guest's); the list's generation loaded
+    std::map<int, std::unique_ptr<mrp::MobyClass>> imports;
+    uint32_t imports_gen = 0;
     // the class header in EE memory and the moby's class id (+0xa6) -> GPU data (the weapons share one header, the class
     // table naming it under each weapon's id: the header alone named the last of them)
     std::unordered_map<uint64_t, std::unique_ptr<ClassGpu>> by_ptr;
@@ -588,15 +597,17 @@ std::unique_ptr<ClassGpu> build_class(std::unique_ptr<mrp::MobyClass> asset, uin
 
 // orig: (host) the free hoverboard's class (Level::guest): the textures its prims name, read from its own level's
 // textures.mrpt, appended to this level's and the prims renumbered to them
-void guest_textures(Level& L) {
-    std::vector<mrp::Texture> theirs;
-    const int lvl = L.guest->level >= 0 ? L.guest->level : L.guest_key / 10000;
-    if (!mrp::read_textures(asset_root() + "/" + mrpw::level_dir_name(lvl) + "/textures.mrpt", theirs)) {
-        L.guest.reset();
-        return;
+// (any other level's class: the import list's too) false when that level's textures cannot be read
+bool foreign_textures(Level& L, mrp::MobyClass& cls, int lvl, std::map<int, std::vector<mrp::Texture>>& cache) {
+    auto t = cache.find(lvl);
+    if (t == cache.end()) {
+        std::vector<mrp::Texture> v;
+        if (!mrp::read_textures(asset_root() + "/" + mrpw::level_dir_name(lvl) + "/textures.mrpt", v)) return false;
+        t = cache.emplace(lvl, std::move(v)).first;
     }
+    const std::vector<mrp::Texture>& theirs = t->second;
     std::map<int, int> remap;
-    for (mrp::Packet& p : L.guest->packets)
+    for (mrp::Packet& p : cls.packets)
         for (mrp::TexturePrim& t : p.textures) {
             if (t.texture < 0) continue;
             auto it = remap.find(t.texture);
@@ -612,6 +623,36 @@ void guest_textures(Level& L) {
             }
             t.texture = it->second;
         }
+    return true;
+}
+
+void guest_textures(Level& L) {
+    std::map<int, std::vector<mrp::Texture>> cache;
+    const int lvl = L.guest->level >= 0 ? L.guest->level : L.guest_key / 10000;
+    if (!foreign_textures(L, *L.guest, lvl, cache)) L.guest.reset();
+}
+
+// orig: (host) the import list's classes read from their levels' files, their textures appended (mrp_moby_import)
+void import_classes(Level& L) {
+    std::vector<int> list;
+    {
+        std::lock_guard<std::mutex> lock(g_imports_mu);
+        list = g_imports;
+    }
+    L.imports_gen = g_imports_gen.load();
+    std::map<int, std::vector<mrp::Texture>> cache;
+    for (int key : list) {
+        const int lvl = key / 10000, cls = key % 10000;
+        if (lvl == L.id || L.imports.count(key) != 0) continue;
+        auto c = std::make_unique<mrp::MobyClass>();
+        const std::string path = asset_root() + "/" + mrpw::level_dir_name(lvl) + "/" + std::to_string(cls) + ".mrpm";
+        if (!mrp::read_class(path, *c) || c->packets.empty() || !foreign_textures(L, *c, lvl, cache)) {
+            std::fprintf(stderr, "[mrp] imported class %d:%d: no class file %s (or its level's textures)\n", lvl, cls, path.c_str());
+            continue;
+        }
+        L.imports[key] = std::move(c);
+    }
+    if (!L.imports.empty()) std::printf("[mrp] level %d: %zu imported classes (another level's)\n", L.id, L.imports.size());
 }
 
 // orig: (host) the level's moby textures (textures.mrpt) decoded to RGBA (palette[CSM1 index], the GS's
@@ -651,6 +692,7 @@ void load_textures(Level& L) {
         }
     }
     if (L.guest != nullptr) guest_textures(L);
+    import_classes(L);
     L.tex_bucket.assign(L.textures.size(), -1);
     L.tex_layer.assign(L.textures.size(), 0);
     auto csm1 = [](uint32_t i) { return ((i & 0x08) != 0) != ((i & 0x10) != 0) ? i ^ 0x18u : i; };
@@ -844,12 +886,13 @@ ClassGpu* class_of(uint32_t class_ptr, int class_id) {
         int src_level = 0;
         uint32_t src = 0;
         if (f == L.files.end() && g_session_classes && session_class_source(static_cast<uint32_t>(oc), &src_level, &src)) {
-            // (a session class id: its source class's file; stage 1, the level's own classes only - another level's
-            // class and its textures come with the import list of stage 2)
+            // (a session class: its source class's file, the level's own or, another level's, the import list's)
             if (src_level == L.id) f = L.files.find(static_cast<int>(src));
-            else std::fprintf(stderr, "[mrp] session class %d is level %d's class %u: not drawn (another level's classes: stage 2)\n", oc, src_level, src);
+            else if (auto im = L.imports.find(src_level * 10000 + static_cast<int>(src)); im != L.imports.end())
+                asset = std::make_unique<mrp::MobyClass>(*im->second);
+            else std::fprintf(stderr, "[mrp] session class %d is level %d's class %u: not in the import list, not drawn\n", oc, src_level, src);
         }
-        if (f != L.files.end()) asset = std::make_unique<mrp::MobyClass>(*f->second);
+        if (asset == nullptr && f != L.files.end()) asset = std::make_unique<mrp::MobyClass>(*f->second);
     }
     int class_armor = -1;
     if (vd != 0 && vd < ee_game_ram_end())  // the armor's classes: their file k names the armor's two textures
@@ -876,6 +919,28 @@ ClassGpu* class_of(uint32_t class_ptr, int class_id) {
     L.by_ptr[key] = std::move(cg);
     return r;
 }
+
+}  // namespace
+
+// orig: (host) see mrp_moby_renderer.h
+void mrp_moby_import(int level, uint32_t cls) {
+    std::lock_guard<std::mutex> lock(g_imports_mu);
+    const int key = level * 10000 + static_cast<int>(cls);
+    for (int k : g_imports)
+        if (k == key) return;
+    g_imports.push_back(key);
+    ++g_imports_gen;
+}
+
+// orig: (host) see mrp_moby_renderer.h
+void mrp_moby_imports_clear() {
+    std::lock_guard<std::mutex> lock(g_imports_mu);
+    if (g_imports.empty()) return;
+    g_imports.clear();
+    ++g_imports_gen;
+}
+
+namespace {
 
 // ---- shaders -----------------------------------------------------------------------------------
 
@@ -1779,7 +1844,10 @@ void mrp_moby_begin_frame(bool title, bool menu_mode, bool title_menu) {
     const int id = moby_level_id();
     const int guest = g_mrp_guest_class.load();  // (the free hoverboard's class asked for after the level's load: loaded again with it)
     const bool guest_new = guest >= 0 && guest != g_level.guest_key && guest / 10000 != id;
-    if (g_level.id != id || (!g_level.missing && ((vk::is_active() && !g_level.vk_loaded) || (!vk::is_active() && !g_level.gl_loaded))) || guest_new) load_level(id);
+    const bool imports_new = g_imports_gen.load() != g_level.imports_gen;  // (the import list changed: a session's classes)
+    if (g_level.id != id || (!g_level.missing && ((vk::is_active() && !g_level.vk_loaded) || (!vk::is_active() && !g_level.gl_loaded))) || guest_new ||
+        imports_new)
+        load_level(id);
     // the level's loaded classes (0x197300 / 0x197a00, count 0x15ffc0): a new set (the level entered
     // again, a class loaded) forgets the classes resolved by header address
     uint64_t h = 1469598103934665603ull;

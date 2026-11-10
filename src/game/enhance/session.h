@@ -63,6 +63,13 @@ uint32_t session_class_block(int level, uint32_t cls, uint32_t native);
 // orig: (host) the level's own classes registered (its moby textures at `tex`), before its gameplay: the session classes
 // registered
 void session_classes_register(int level, uint32_t tex);
+// ---- Classes of other levels (the open engine's stage 2: context.h) ----
+// RAC1_SESSION_IMPORT=<level>:<class>[,...] (testing): the session's memory on, and at each level setup the classes
+// imported: each from its pool block in the session heap, its level's context made (context.h), registered under its own
+// class id (a class the base has already: a session id, for a second copy), its update function and +0x2c word through
+// the context (its level's own code: a tag), drawn by the modern renderer from its own level's class file (the import list)
+// orig: (host) class `cls` of level `level` added to the session's imports (registered at the next level setup)
+void session_import_add(int level, uint32_t cls);
 // orig: (host) a placed moby's class id: the session class id it is placed as, else `cls`
 uint32_t session_placed_class(uint32_t cls);
 // orig: (host) session class `cls`'s class table row (its update function, its +0x2c word); false when it is not one
