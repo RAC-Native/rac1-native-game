@@ -14,6 +14,18 @@ What changed in each release. Releases are source only: you build the game with 
   casting a shadow. The shadows of objects out of view are cast from a copy of how they were last drawn, and that copy
   was kept while the object stayed alive and in place even after the game hid it: on Quartu, Ratchet and Clank while Giant
   Clank stands in for them, and other objects of the arena hidden in place. Original rendering is unchanged.
+- **Level mods: grind rails, Magneboots walkways and set pieces** (the mod SDK's ABI 11): `level.txt` can have **grind
+  rails** (`rail <name> <points>`, or `rails <file.obj>` with one rail per object of a curve exported from Blender), in the
+  level or in a section, ridden with the game's own grind (landing on them anywhere, jumping between rails side by side,
+  the wrench, flying off the end); `mesh` makes their model and a thin collision strip is added under each. `items
+  grindboots magneboots` gives Ratchet those items while he is on the level, never in a save (they are taken back when he
+  leaves). Faces of `usemtl type2` in the collision are **magnetic**: with the Magneboots he walks up curves, walls and
+  ceilings (on Veldin's code; on Kalebo III's he walks them but looks wrong). A class can have a **collision mesh** of its
+  own (`class ... collision <file>`): a deck with walls, an arch. The plugin can find rails and put Ratchet on one, take one
+  out (a broken rail), change his speed on it and is told when he gets on, reaches the end and gets off (`rail_find`,
+  `hero_rail_attach`, the `rail` callback, ...); fade the screen; take the camera (fixed, looking at something, along a
+  path, following) and give it back blended; add hazards (volumes that hurt on a timer); move an object along a path with
+  Ratchet riding it (`object_follow_path`). See docs/mods.md ("Grind rails and set pieces") and docs/sdk.md.
 - **Aiming = Modern / Modern, No Zoom on magnetic surfaces** (#136): on the Magneboots' walkways the modern controls
   now leave the hero to the original's rules: L2 no longer turns him (aiming there turned his whole frame off the wall,
   so he could come off the walkway) and the camera is no longer held on the aim (it acted like the aiming view);

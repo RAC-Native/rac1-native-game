@@ -389,6 +389,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_SESSION_TRACE` | number, 0 = off; default off | Logs every block the session heap gives and takes back ([The open engine](open-engine.md)). |
 | `RAC1_SECTION_TRACE` | number, 0 = off; default off | Logs a session's sections' streaming as it is asked and committed, and the relocated sky's lists ([The open engine](open-engine.md#sections-stage-6)). |
 | `RAC1_SECTION_BUDGET_MS` | milliseconds; default 2 | How long a frame a section's commit may take (its copies into the session heap, its relocations, its objects placed) before the rest waits for the next frame ([The open engine](open-engine.md#sections-stage-6)). |
+| `RAC1_SETPIECE_TRACE` | set = on; default off | Logs a level mod's rails as Ratchet gets on, reaches the end and gets off them, `hero_rail_attach`, the hazards' hurts, the plugin's camera and a save written without the items of the visit ([The open engine](open-engine.md#rails-and-set-pieces-stage-7)). |
 | `RAC1_CTX_TRACE` | number, 0 = off; default off | Logs each level-only address a session's context translates, with what it is (engine data, own data, a paired function, own code: a tag) and where it goes ([The open engine](open-engine.md)). |
 | `RAC1_CTX_POISON` | number, 0 = off; default off | Testing: fills the engine objects' part of each context image with a pattern, so that a class reading the copy instead of the session's object shows at once ([The open engine](open-engine.md)). |
 

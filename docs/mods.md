@@ -494,6 +494,9 @@ mods/example-plateau/
 | `object <class> <x> <y> <z> [<yaw>] [<key>=<value> ...]` | an object of one of the level's classes |
 | `sound <name> <file.wav\|.ogg\|.vag> [volume <v>] [range <near> <far>] [loop] [pitch <s>]` | a sound of the level's own (the plugin plays it) |
 | `trigger <name> <x0> <y0> <z0> <x1> <y1> <z1>` | a box Ratchet enters and leaves (the plugin's trigger callback) |
+| `rail <name> [loop] [mesh [<material>]] [nostrip] <x> <y> <z> <x> <y> <z> ...`, `rails <file.obj> [...]` | grind rails (in main or a section block): [Grind rails and set pieces](#grind-rails-and-set-pieces) |
+| `items <item> ...` | items Ratchet has while he is on the level (`grindboots`, `magneboots`, ...), never in a save: [Grind rails and set pieces](#grind-rails-and-set-pieces) |
+| `class <name> <model.obj> ... collision <coll.obj>` | the class's collision a mesh of its own instead of its box: [Grind rails and set pieces](#grind-rails-and-set-pieces) |
 | `picture <file.png>` | the planet on the loading screen and on the ship's map's planet page (below) |
 | `banner <file.png>`, `banner.<fr\|de\|es\|it> <file.png>` | the name under it on the loading screen, per text language; default: made from `name` (and each `name.<lang>`) |
 | `map_picture <file.png>` | the picture under the galaxy on the ship's map while the level's row is selected; default: made from `picture` |
@@ -568,6 +571,8 @@ OBJ's usual front). `usemtl type<N>` before faces gives them surface type N. No 
 The surface types the base level's hero code knows act on Ratchet as on the game's levels: `type3` is **lava** (he sinks
 into it and is bounced out, three times in a row and he is lost), `type1` the deadly liquid (he jumps out of it while he has health, else he is lost), `type31`
 plain ground; Kalebo III's own hero code knows neither: on a level mod's level it gets them ([Base levels](#base-levels)).
+`type2` is **magnetic**: with the Magneboots (owned, or level.txt's `items magneboots`) Ratchet walks up it, up walls and
+onto ceilings ([Grind rails and set pieces](#grind-rails-and-set-pieces)).
 The ambient particles' `source lava` line rises from a level mod's `type1` and `type3` faces ([Particles](particles.md#from-the-lava)).
 
 **Materials on the meshes**: `lights.txt`'s `material` and `emissive` lines ([Materials](materials.md)) work on the level's own
@@ -747,6 +752,51 @@ start yard:west                                # optional: the session starts th
 - Limits: at most 31 sections; the level's own classes' objects (`object` lines) and triggers belong to the whole level; a
   section's music is a game level's or none. Not every game level's sky works on Veldin's code (Umbris's and Gemlik's do
   not: [The open engine](open-engine.md#sections-stage-6)).
+
+### Grind rails and set pieces
+
+(The open engine's stage 7: [docs/open-engine.md](open-engine.md#rails-and-set-pieces-stage-7).) Every format, in main or in a
+section block:
+
+```
+items grindboots magneboots                       # his for the visit: given at the arrival, taken back when he leaves,
+                                                  # never in a save (the card's save is written without them)
+rail low mesh -24 -20 1.2 24 -20 1.2              # a rail from its points (two at least); `mesh`: its model made (a bar
+                                                  # 0.2 wide whose top is the line, grey metal, or `mesh <material>` of
+                                                  # meshes.obj's .mtl)
+rail circuit loop 0 0 3 10 0 3 10 10 3 0 10 3     # `loop`: its end joins its start
+rails rails.obj mesh pad                          # each object of the OBJ's line elements a rail named as the object
+                                                  # (a curve converted to a mesh in Blender, its edges: `l`); a closed
+                                                  # one is a loop
+class deck deck.obj collision deck_col.obj        # the class's collision a mesh of its own (below)
+```
+
+- **Rails**: the points are moved by `offset` (and the section's) as every coordinate; the composer puts a point every 1.5
+  units along them and writes them into the gameplay file's rail block (main's, or the section's own: the game's rail
+  table is the current section's). Ratchet rides them with the game's own grind: the Grind Boots, landing on them, jumping
+  along and across (to a rail 2 to 4.5 units beside: lanes), swinging the wrench, flying off the end. A rail rides along its
+  points' order. A thin collision strip (0.5 wide, just under the line, `collision_type`'s surface) is added under each:
+  the game's grind lets go of a rail with nothing under Ratchet's feet (`nostrip`: none, for a rail over your own
+  collision). On a level mod with rails of its own, the landing works anywhere: Kalebo III's, Oltanis's and Blarg's hero code
+  otherwise takes a rail only near its own level's rail spots. The plugin finds them by name (ABI 11: `rail_find`,
+  `hero_rail`, `rail_point`, `rail_enable`, `hero_rail_attach`, the `rail` callback: [The mod SDK](sdk.md#rails-and-the-set-piece-kit-abi-11)).
+- **Items for the visit**: `grindboots`, `magneboots`, `helipack`, `thrusterpack`, `hydropack`, `o2mask`, `pilotshelmet`,
+  or an item id (its owned flag only: the held gadgets need the quick select). One he owns already is his own: neither
+  given nor taken.
+- **Magnetic surfaces**: `usemtl type2` faces in the collision. With the Magneboots, Ratchet walks onto them and stays on
+  them up curves, walls and upside down on ceilings (the game's magnetic walk: the camera turns with him). Tested on
+  Veldin's code (format 1, and sessions) and on Kalebo III's: on Kalebo III's he walks them but his magnetic walk is drawn
+  wrong (Kalebo III's hero class lacks those animations): build magnetic walkways on Veldin's code.
+- **Collision meshes**: `class <name> <model.obj> collision <coll.obj>`: its objects collide as that mesh (made round the
+  model's origin, `up` and `scale` as the model's; 255 vertices at most), turned and scaled with the object, not its box: a
+  deck with walls, an arch, a ring. The plugin moves one along a path with Ratchet riding it (`object_follow_path`), or
+  where it likes (`object_place`).
+- The plugin's set-piece services: a screen fade, a camera of its own (fixed, looking at, along a path, following), hazards
+  (volumes that hurt on a timer): [The mod SDK](sdk.md#rails-and-the-set-piece-kit-abi-11).
+- Log lines: `[compose] rail <name> (main): 33 points, 48.0 units, its model`, `[compose] rails: their collision strips, N
+  triangles`, `[compose] class "deck": its collision mesh deck_col.obj, 36 triangles`; `[setpiece] level slot 19: 4 rails of
+  its own (the hero code's rail spots not needed), 2 items for the visit`, `[setpiece] 2 items given for the visit`,
+  `[setpiece] 2 items of the visit taken back` (`RAC1_SETPIECE_TRACE=1`: the rails' events, the hazards, the camera).
 
 ### Base levels
 
