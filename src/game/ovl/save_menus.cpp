@@ -22,6 +22,7 @@
 #include <game/ovl/pause_menu.h>
 #include <game/ovl/pause_menu_pages.h>
 #include <game/ovl/planet_map.h>
+#include <host/level_slots.h>
 #include <host/quick_rings.h>
 
 #include <vector>
@@ -328,16 +329,19 @@ int32_t save_slots_draw(uint32_t w) {
 // idle.
 // orig: 0x002809e0
 int32_t save_slot_planet_draw(uint32_t w) {
-    const int32_t level = lw(summary(lw(lwu(lwu(MS + 4) + 0x40) + 0x40)) + 0x20);
+    const int32_t slot = lw(lwu(lwu(MS + 4) + 0x40) + 0x40);
+    int32_t level = lw(summary(slot) + 0x20);
     texture_block_begin(0);
     if (card_ready() && lw(S + 8) == 2) {
         if (level == -1) {
             const int32_t y = lw(w + 0x24) / 2 - 8;
             text_centered_small(lw(w + 0x20) / 2, y, 0x80ffa888u, sub_00203ad8(TXT(0x5217)), -1);
         } else {
+            int32_t ids[2];
+            const bool ours = level_slots_save_planet(slot, level, ids);  // enhancement: a save made on a level mod's level (src/host/level_slots.h)
             const uint32_t names = OV(0x001c1e40) + static_cast<uint32_t>(level * 0xc);
-            text_centered_small(lw(w + 0x20) / 2, 4, 0x80ffa888u, sub_00203ad8(lw(names)), -1);
-            text_centered_small(lw(w + 0x20) / 2, 0x14, 0x80ffa888u, sub_00203ad8(lw(names + 4)), -1);
+            text_centered_small(lw(w + 0x20) / 2, 4, 0x80ffa888u, sub_00203ad8(ours ? ids[0] : lw(names)), -1);
+            text_centered_small(lw(w + 0x20) / 2, 0x14, 0x80ffa888u, sub_00203ad8(ours ? ids[1] : lw(names + 4)), -1);
         }
     }
     texture_block_end();

@@ -5,6 +5,10 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: the Save and Load pages show a level mod's level.** A save made on it showed its base planet (Kalebo III's
+  name and picture for a level on Kalebo III's code); now the level's own name, region and picture, as the ship's map shows
+  them. With the level's mod off or missing, the pages show the planet loading the save lands on (the one flown from, where
+  the planet prompt opens).
 - **Level mods: a game planet as a section** (`level.format` 3): a section block with `world <planet>` (`world kalebo`,
   `world 3`, ...) is that planet's world: its scenery drawn exactly as on the planet (modern renderer, OpenGL and Vulkan),
   its collision, sky, music, fog, lights, cameras and grind rails, with no loading screen when Ratchet steps through a
