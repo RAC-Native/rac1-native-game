@@ -51,8 +51,8 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   (Arena di Daino, Dainos Arena, Arena de Daino, Arène de Daino).
 
 - **Its HUD** is at the bottom of the screen: the challenge's box at the left (under the quick select's ring), its banners
-  and messages in the middle, at the same height (side by side with a HUD of 21:9 or wider; narrower they overlap: the
-  SDK does not tell the HUD's width yet).
+  and messages in the middle, at the same height: moved right just past the box when they would touch it, and made
+  smaller when they do not fit there (the SDK's `hud_width`, ABI 14).
 
 - **Its texts** (the menu, the challenges, the HUD, the banners) follow the game's text language: English, French,
   German, Spanish or Italian (plain ASCII, as the HUD's font takes it). The table is in the plugin (`TEXTS`); the
