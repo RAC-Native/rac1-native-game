@@ -28,16 +28,6 @@ uint8_t swizzle_palette_index_psmt4(uint8_t index) {
     return map16[index];
 }
 
-// Returns the virtual address of the TextureHeader for a given pixel virtual address.
-// Returns 0 if pixel_vaddr is 0.
-// orig: Inline address math
-uint32_t get_texture_header_addr(uint32_t pixel_vaddr) {
-    if (pixel_vaddr == 0) {
-        return 0;
-    }
-    return pixel_vaddr - 1024 - sizeof(TextureHeader);
-}
-
 // Safely retrieves the TextureHeader from EE RAM.
 // Returns nullptr if pixel_vaddr is 0 or if the header address is invalid in EE RAM.
 // orig: Inline address math

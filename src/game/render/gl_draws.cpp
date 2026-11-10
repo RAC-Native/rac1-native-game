@@ -68,9 +68,6 @@ void gl_draws_init() {
 }
 
 // orig: (host) see gl_draws.h
-bool gl_single_draws() { return g_single; }
-
-// orig: (host) see gl_draws.h
 void gl_multi_draw_elements(const void* cpu, uint32_t first, uint32_t count) {
     if (count == 0) return;
     if (!g_inited) gl_draws_init();
