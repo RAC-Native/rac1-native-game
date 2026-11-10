@@ -17,6 +17,7 @@
 #include <game/render/mrp_lighting.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_moby_renderer.h>
+#include <game/render/mrp_reflect.h>
 #include <game/render/mrp_rt.h>
 #include <game/render/mrp_tfrag_gpu.h>
 #include <game/render/mrp_world_assets.h>
@@ -2402,8 +2403,12 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
     F.insts.push_back(ig);
     F.inst_box.push_back({1.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f});  // (none yet: its packets' boxes below)
     }
-    {  // (Water Reflections' views cull by it: the instance's world bounding sphere grown by this packet's template's box, through the
-       // view's matrix to the world and the instance's rows - an instance is drawn by several packets, each a part of it)
+    // (Water Reflections' views cull by it: the instance's world bounding sphere grown by this packet's template's box, through the
+    // view's matrix to the world and the instance's rows - an instance is drawn by several packets, each a part of it. Made only
+    // when such a view can be drawn this frame (the row on, with Surface Detail: mrp_reflect_pass draws none otherwise); an
+    // instance without a box is never left out, as before the views culled. RAC1_PERF_REFLECT_BOX=0: always, as before)
+    static const bool box_always = perf::switch_value("RAC1_PERF_REFLECT_BOX", 1) == 0;
+    if (box_always || (g_water_reflections > 0 && g_surface_detail > 0)) {
         std::array<float, 6>& bx = F.inst_box[inst];
         if (std::isnan(bx[0])) {
             // (a box that could not be taken: never left out)
