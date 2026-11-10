@@ -20,6 +20,7 @@ using MobyFn = void (*)(uint32_t moby);
 void ovl_register_moby_fn(uint32_t addr, MobyFn fn);     // port table for `jalr` targets
 void ovl_call_moby_fn(uint32_t fn, uint32_t moby);       // `jalr fn` with a0 = moby
 bool ovl_moby_fn_ported(uint32_t addr);
+bool ovl_level_moby_fn_has(int level, uint32_t addr);  // (host) level-only function `addr` of `level` has its own port
 MobyFn ovl_moby_fn_resolve(uint32_t addr);               // (host) the port `jalr addr` calls (nullptr: none)
 
 // ---- 0x001exxxx -------------------------------------------------------------

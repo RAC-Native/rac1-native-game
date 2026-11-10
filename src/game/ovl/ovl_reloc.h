@@ -76,10 +76,40 @@ uint32_t region_xlate(int unit, uint32_t a);
 uint32_t region_to_ntsc(int unit, uint32_t p);
 // orig: (host) the disc is another region's (the identity otherwise; cached)
 bool region_other();
-// orig: (host) one use site's translation (fixed for the process: the disc does not change)
+// The open engine's contexts (docs/open-engine.md, src/game/enhance/context.h): in a custom-level session, level N's own
+// code runs while another level's overlay (the session's base: Veldin's) is loaded. A site of level N then translates
+// through N's context: N's engine data to the session's (N -> Veldin through N's map), N's own data to a relocated copy of
+// N's data sections in the session heap, N's own code to a tag (below). Without a context for N, or with N's own overlay
+// loaded, a site is region_xlate's, as on every level of the original.
+// The bit of each level that has a context (0: none, the original's case: one test)
+extern uint32_t g_ctx_levels;
+// Bumped by every change of a site's translation: an overlay loaded (the level whose overlay is loaded is native), a
+// context created or dropped
+extern uint32_t g_region_gen;
+// orig: (host) the context's translation of level `unit`'s address `a`, set by the contexts (context.cpp)
+extern uint32_t (*g_ctx_xlate)(int unit, uint32_t a);
+// orig: (host) one site's translation: through level `unit`'s context in a session (`unit` not the loaded overlay's),
+// region_xlate otherwise
+uint32_t region_site_xlate(int unit, uint32_t a);
+// A tag: a code address of level A's own code handed out by A's context (a site naming it, a word of A's copied data:
+// an update function, a callback, a jump table's entry). Bit 30 set: outside the EE memory, its mirrors and every
+// session's RAM (512 MB at most); never a Veldin address. `A << 22 | (a - 0x1d0000)`: every level's code lies in
+// 0x1d0000..0x5d0000. The dispatchers (ovl_dispatch.cpp) and lvl_key untag it; the address is NTSC-U level A's.
+constexpr uint32_t CTX_TAG = 0x40000000u;
+constexpr uint32_t CTX_CODE_LO = 0x001d0000u;
+inline bool ctx_is_tag(uint32_t p) { return (p & 0xc0000000u) == CTX_TAG; }
+inline uint32_t ctx_tag(int level, uint32_t a) { return CTX_TAG | static_cast<uint32_t>(level) << 22 | (a - CTX_CODE_LO); }
+inline int ctx_tag_level(uint32_t p) { return static_cast<int>((p >> 22) & 0xffu); }
+inline uint32_t ctx_tag_addr(uint32_t p) { return (p & 0x003fffffu) + CTX_CODE_LO; }
+// orig: (host) one use site's translation: cached until the translation changes (the region's is fixed for the process;
+// a context's lasts while it lives)
 template <int N, uint32_t A>
 inline uint32_t region_site() {
-    static const uint32_t v = region_xlate(N, A);
+    static uint32_t gen = 0xffffffffu, v = 0;
+    if (gen != g_region_gen) {
+        v = region_site_xlate(N, A);
+        gen = g_region_gen;
+    }
     return v;
 }
 // A `lui` half of a level-only address that the transliteration keeps apart from its low
@@ -91,7 +121,11 @@ extern uint32_t g_page_poison;
 inline uint32_t lvl_page(uint32_t a) { return a ^ g_page_poison; }
 // orig: (host) a code pointer of the current level's overlay as NTSC-U's: a `switch` over
 // `case L<n>_CASE(...)` labels
-inline uint32_t lvl_key(uint32_t p) { return region_other() ? region_to_ntsc(ovl_reloc_level(), p) : p; }
+// (a context's tag: its NTSC-U address)
+inline uint32_t lvl_key(uint32_t p) {
+    if (g_ctx_levels != 0 && ctx_is_tag(p)) return ctx_tag_addr(p);
+    return region_other() ? region_to_ntsc(ovl_reloc_level(), p) : p;
+}
 
 // A named level-only address (a namespace-scope constant of a level's port): converts on use.
 template <int N, uint32_t A>

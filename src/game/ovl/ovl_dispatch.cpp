@@ -40,6 +40,8 @@
 #include <game/ovl/weapon_classes_tr.h>
 #include <game/port_stubs.h>
 
+#include <cstdio>
+#include <set>
 #include <vector>
 
 namespace rac1 {
@@ -143,7 +145,22 @@ static inline MobyFn resolve_moby_fn(uint32_t fn) {
     }
     MobyFn resolved = nullptr;
     const int level = ovl_reloc_level();
-    if (level != 0) {
+    if (g_ctx_levels != 0 && ctx_is_tag(fn)) {
+        // (a session: level A's own function, handed out as a tag by A's context: found by (A, its address on the disc))
+        const int a = ctx_tag_level(fn);
+        const uint32_t at = region_xlate(a, ctx_tag_addr(fn));
+        for (const LevelMobyFnEntry& e : lfns)
+            if (e.level == a && e.addr == at) {
+                resolved = e.fn;
+                break;
+            }
+        if (resolved == nullptr) {
+            static std::set<uint32_t> told;
+            if (told.insert(fn).second)
+                std::fprintf(stderr, "[session] level %d's function %08x has no port (a context's tag %08x)\n", a, ctx_tag_addr(fn), fn);
+            return nullptr;
+        }
+    } else if (level != 0) {
         for (const LevelMobyFnEntry& e : lfns) {
             if (e.level == level && e.addr == fn) {
                 resolved = e.fn;
@@ -151,7 +168,7 @@ static inline MobyFn resolve_moby_fn(uint32_t fn) {
             }
         }
     }
-    if (resolved == nullptr) {
+    if (resolved == nullptr && !ctx_is_tag(fn)) {
         const uint32_t v = ovl_code_to_veldin(fn);
         for (const MobyFnEntry& e : mfns) {
             if (e.addr == v) {
@@ -185,6 +202,7 @@ void ovl_register_moby_fn(uint32_t addr, MobyFn fn) {
 // orig: (host) see novalis_mobys.h
 void ovl_register_level_moby_fn(int level, uint32_t addr, MobyFn fn) {
     ++g_moby_reg_gen;
+    if (ctx_is_tag(addr)) addr = region_xlate(level, ctx_tag_addr(addr));  // (registered while level's context lives: its address)
     for (LevelMobyFnEntry& e : level_moby_fns()) {
         if (e.level == level && e.addr == addr) {
             e.fn = fn;
@@ -196,6 +214,14 @@ void ovl_register_level_moby_fn(int level, uint32_t addr, MobyFn fn) {
     entry.addr = addr;
     entry.fn = fn;
     level_moby_fns().push_back(entry);
+}
+
+// orig: (host) level `level`'s own function at `addr` (its address on the disc) has a port of its own (a level-only
+// function: the contexts hand out a tag for it even where the map pairs it with a Veldin function: its level runs its own)
+bool ovl_level_moby_fn_has(int level, uint32_t addr) {
+    for (const LevelMobyFnEntry& e : level_moby_fns())
+        if (e.level == level && e.addr == addr) return true;
+    return false;
 }
 
 // orig: (none) — whether the EE function at `addr` has a registered port.
