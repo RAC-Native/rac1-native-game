@@ -238,6 +238,8 @@ struct LevelTxt {
         // (only its objects inside); the composer's choice: their uids there -> the session's
         int world = -1;
         int world_line = 0;
+        bool zones_all = false;  // (`zones all`: every zone of the world drawn wherever the camera is, not the zone grid's choice)
+        int zones_line = 0;
         bool objects_all = false;
         std::vector<std::string> objects;
         bool has_box = false;
@@ -573,6 +575,11 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
                     else if (w != "none") S.objects.push_back(w);
                 }
                 if (!any) return bad();
+            } else if (key == "zones") {
+                std::string w;
+                if (!(in >> w) || (w != "all" && w != "grid")) return bad();
+                S.zones_all = w == "all";
+                S.zones_line = n;
             } else if (key == "box") {
                 if (!(in >> S.box_lo[0] >> S.box_lo[1] >> S.box_lo[2] >> S.box_hi[0] >> S.box_hi[1] >> S.box_hi[2])) return bad();
                 for (int i = 0; i < 3; ++i)
@@ -589,7 +596,7 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
                 S.boss_line = n;
             } else {
                 err = fmt("%s:%d: \"%s\": not a line of a section (its own: collision, meshes, lights, sky, music, fog, background, death_height, offset, "
-                          "entry, checkpoint, moby, object, portal, respawn, rail, rails, world, objects, box, hero, boss; end closes it)",
+                          "entry, checkpoint, moby, object, portal, respawn, rail, rails, world, objects, box, zones, hero, boss; end closes it)",
                           p.generic_string().c_str(), n, line.c_str());
                 return false;
             }
@@ -3067,6 +3074,11 @@ bool compose_sections(const fs::path& ldir, LevelTxt& lt, int base, const std::v
         };
         o.death = S.has_death ? S.death : lt.death;
         if (S.world >= 0 && !compose_world(S, lt, base, uid_next, log, err)) return fail(err);
+        if (S.zones_line != 0 && S.world < 0) {
+            err = fmt("level.txt:%d: section %s: \"zones\" is a world's section's line (its level's zone grid): no world line", S.zones_line, S.name.c_str());
+            return false;
+        }
+        if (S.zones_all) log.say(fmt("section %s: every zone of level %d's world drawn (zones all), wherever the camera is", S.name.c_str(), S.world));
         // (stage 10) its boss lines: each a class of its world's level (an id there), a pool name or <level>:<class>; a class it does
         // not place (by `objects` or a `moby` line) is refused
         for (const std::string& w : S.bosses) {
@@ -3810,6 +3822,7 @@ bool compose_level_mod(const std::string& folder, bool force) {
             if (S.world < 0 || S.has_death) o << fmt("death\t%d\t%.6g\n", i, so.death);  // (a world's: its level's unless given)
             if (S.world >= 0) {  // (stage 8) its level's world, its objects (their uids there -> the session's)
                 o << fmt("world\t%d\t%d\n", i, S.world);
+                if (S.zones_all) o << fmt("zones\t%d\tall\n", i);
                 for (const auto& [from, to] : S.wuids) o << fmt("wuid\t%d\t%d\t%d\n", i, from, to);
             }
             if (!S.lights.empty()) o << fmt("lights\t%d\t%s\n", i, S.lights.c_str());

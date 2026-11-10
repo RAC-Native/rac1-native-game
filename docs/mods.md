@@ -774,6 +774,7 @@ section kalebo remove respawn reset
   checkpoint kalebo_start 146.43 133.23 128.3 1.46
   portal back 140 136 125 144 140 132 to main:from_kalebo fade 10
   sky 3                            # optional: another sky, music, fog, background, death_height, collision instead of its own
+  zones all                        # optional: every zone of its world drawn wherever the camera is (default: zones grid)
 end
 ```
 
@@ -790,6 +791,12 @@ end
   the log says so). An object resting on another object needs that one chosen too: Kerwan's two crates by its start sit on
   a lift (class 1210); without `1210` they fall through when the section is entered (they are not broken, so a death does not
   bring them back).
+- **What is drawn** of the planet's world is what the planet itself draws from the camera's place: its zone grid (cells of 4
+  units, each with the list of the world's zones seen from there) leaves out what that cell does not see, and a camera off
+  the grid (high above the planet, or out of its paths) keeps the last cell's list. A `zones all` line in the section draws
+  every zone of the world wherever the camera is (the planet's tfrags, ties, shrubs and objects; a little more to draw):
+  for a camera the planet never had, such as over Quartu's Giant Clank arena, which Ratchet on foot never sees from inside.
+  `zones grid` is the default.
 - **Memory**: a world takes about 18 to 20 MB of the session's memory above 64 MB (Kerwan 19.2 MB, Kalebo III 18.0 MB), read
   from your disc while you play, before you enter it (the log's `[section] kalebo: level 16's world: ...`).
 - **Rails of your own** in a world's section: `rail` / `rails` lines, in the planet's coordinates (as its entries): the planet's

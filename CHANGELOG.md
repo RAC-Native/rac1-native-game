@@ -5,6 +5,9 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: every zone of a world's section drawn** (`zones all` in a `world` section; level mods must be set up again:
+  the composer's version 8). A planet's world shows what the planet itself draws from the camera's place (its zone grid);
+  `zones all` draws all of it wherever the camera is, for views the planet never had.
 - **Level mods: the hoverboard outside a race** (the mod SDK's ABI 16). Kalebo III's board ridden on a level mod's own
   geometry or in another planet's world (`world quartu`) ran its race's logic there: the race HUD (lap, time, place), and in
   Quartu's world a fall at once and for ever ("back on the track" of Kalebo III's race); on the mod's own ground its first

@@ -1309,6 +1309,26 @@ their collision), for the plugin's `hit_send` (the SDK's ABI 16).
 | a robot (1445) in the board's way, `board_touching` + `hit_send` | touched once at 1.1 units, knocked down (state 8) |
 | `world rilgar`, `hero rilgar board`, stick forward | Rilgar's race: rides the track from the finish line, its race HUD (lap 1/3, the time, 1st), a fall under 61.4 back on its track (before: 0x6e at the start for ever) |
 
+## A world's zones: what is drawn (`zones all`)
+
+What a world's section draws of its planet is the planet's own culling: the zone grid (`0x15f600`, gameplay's: cells of 4
+units, each a 128-byte list of the zones seen from it) gives the visible zones `0x173d00` for the camera's place each frame
+(`zones_from_camera`, 0x1f7408: the cell's list, else its neighbours', else the last list `0x15f610`, else all), and every tfrag,
+tie, shrub and moby whose zone bit (+0x3a, +0x18, +0x36: the gameplay file's +0x8c lists) is not in it is not drawn. The zone
+mode `0x16c074` (one of a world's state words) is 2 with a grid, 0 for all zones (`zones_update`, 0x1f77f8). Quartu's Giant
+Clank arena (around 170 240 26) is no special case: no Quartu code changes the grid, the mode or the masks (its classes' and
+hero code's builds name none of them), and in `world quartu` it is drawn and solid from the camera's places tried (the board
+on its floor, fixed cameras inside it at 34, 45 and 60 high and over it from 150 200 70 and 130.5 180 66; GL and Vulkan): from
+inside the arena at 150 236 28 its cell sees 78 of the 124 tfrags within 50 units and 77 of the 118 ties, the rest behind its
+walls. On Quartu itself at its start Ratchet put at 140 215 27 falls through (there is no floor there: the gap between the
+platform and the arena), and walking from the platform he meets the arena's wall: the arena is reached as Giant Clank, whose
+camera (122.8 222.6 40.6) sees 103 of those tfrags.
+
+A section's `zones all` line (composer 8: `zones <section> all` in `sections.txt`) sets the zone mode to 0 while the section is
+current (`apply_state`, after its world state): every zone drawn wherever the camera is, on every renderer (it is the game's
+own visibility, before any drawing). At 150 236 28: 124 of 124 tfrags and 118 of 118 ties; the pictures there the same within
+82 pixels (the sky's stars). For a camera the planet never had, or one off the grid whose last list is another place's.
+
 ## What the next stage builds on
 
 - **Hero contexts (stage 9)** and **the camera level (stage 10)**: a planet's own hero code and camera code in its world.
