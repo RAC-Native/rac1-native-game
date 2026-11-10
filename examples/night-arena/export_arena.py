@@ -195,6 +195,17 @@ def export_collision(path, depsgraph, collection="arena_collision"):
                 walk += 1
             total += 1
         ev.to_mesh_clear()
+    if collection == "arena_collision" and bpy.data.collections.get("arena_rails"):  # (the rails' strips, past their objects')
+        for ob in sorted((o for o in bpy.data.collections["arena_rails"].all_objects if o.type == "CURVE"), key=lambda o: o.name):
+            pts = strip_split(base_name(ob), rail_points(ob))[1]
+            if len(pts) < 2:
+                continue
+            sv, st = strip_quads(pts)
+            base = len(verts)
+            verts += sv
+            faces.append(("col_" + base_name(ob), 31, [[base + j + 1 for j in tri] for tri in st]))
+            total += len(st)
+            walk += len(st)
     lowest(lo, verts)
     if not verts:
         err("%s: no triangles" % collection)
@@ -590,6 +601,36 @@ def flame_colour(p):
 
 RAIL_STEP = 1.5      # a rail's points, units apart along it (the composer's step too)
 RAIL_R = 0.12        # the tube's radius: its top is the rail's line (where Ratchet's feet go)
+RAIL_WIDE = 0.5      # the collision strip under a rail's line (rail_strips, export_collision)
+STRIP_POINTS = 120   # a strip's points per object at most (a class's collision mesh: 255 vertices at most)
+# a rail's strip near the ground Ratchet walks on (from its start) is an object the plugin makes solid only while the rail is
+# on (else he walks on it, in the air); the rest is the level's collision, solid always, too high to be walked onto (and
+# what Kalebo III's rail mines float over: their floor probe sees the level's collision, not objects'): those units
+STRIP_TOGGLE = {"rail_escape": 24.0}  # (over the hub's top and its west ramp)
+STRIP_TOGGLE_DEFAULT = 8.0            # (by the station's platform)
+
+
+def strip_split(name, pts):
+    """A rail's points: its strip's object part (from its start, STRIP_TOGGLE) and the level's part (sharing a point)."""
+    k = min(len(pts) - 1, max(1, int(math.ceil(STRIP_TOGGLE.get(name, STRIP_TOGGLE_DEFAULT) / RAIL_STEP))))
+    return pts[:k + 1], pts[k:]
+
+
+def strip_quads(pts):
+    """A strip's vertices under the points (left, right of each) and its triangles (indices, facing up)."""
+    verts = []
+    for i in range(len(pts)):
+        t = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
+        n = t.cross(Vector((0, 0, 1)))
+        n = n.normalized() * (RAIL_WIDE / 2) if n.length > 1e-4 else Vector((RAIL_WIDE / 2, 0, 0))
+        q = pts[i] - Vector((0, 0, 0.02))
+        verts += [q + n, q - n]
+    tris = []
+    for i in range(len(pts) - 1):
+        for tri in ((2 * i, 2 * i + 1, 2 * i + 3), (2 * i, 2 * i + 3, 2 * i + 2)):
+            pa, pb, pc = (verts[j] for j in tri)
+            tris.append(tri if (pb - pa).cross(pc - pa).z > 0 else (tri[0], tri[2], tri[1]))
+    return verts, tris
 PYLON_EVERY = 14.0   # a pylon under a rail every so many units
 RAIL_SPEC = "metal 0.3 1"  # the rails' models' material line
 
@@ -695,9 +736,38 @@ def rail_model(level, name, pts, centre, depsgraph, pylons_on=True, beam=0.45, b
     return len(tube) + len(pylons) + len(bars) + len(stop)
 
 
+def rail_strips(level, name, pts):
+    """A rail's collision strip near the ground (strip_split's first part; RAIL_WIDE wide just under its line: the game's
+    grind lets go of a rail with nothing under Ratchet's feet) as objects of their own: classes strip_<rail>_<k> of at most
+    STRIP_POINTS points each, a collision mesh of their own, solid only while the plugin has the rail on (the composer's
+    strips, `nostrip` not given, are always solid: a ledge in the air where a rail is off, walked on over the hub). Their
+    models are the strips too, hidden by the plugin. [(class, centre)]"""
+    pts = strip_split(name, pts)[0]
+    out, k, i0 = [], 0, 0
+    while i0 < len(pts) - 1:
+        i1 = min(len(pts), i0 + STRIP_POINTS)
+        verts, tris = strip_quads(pts[i0:i1])
+        lo = [min(v[a] for v in verts) for a in range(3)]
+        hi = [max(v[a] for v in verts) for a in range(3)]
+        c = Vector([(a + b) / 2 for a, b in zip(lo, hi)])
+        rel = [v - c for v in verts]
+        cls = "strip_%s_%d" % (name[5:], k)
+        with open(os.path.join(level, cls + "_col.obj"), "w") as f:
+            f.write("# the arena: the %s class's collision (export_arena.py: a rail's strip), round its origin\no %s\nusemtl type31\n" % (cls, cls))
+            for v in rel:
+                f.write("v %s %s %s\n" % (num(v.x), num(v.y), num(v.z)))
+            for tri in tris:
+                f.write("f %d %d %d\n" % tuple(j + 1 for j in tri))
+        model(level, cls, [tuple(tuple(rel[j]) for j in tri) for tri in tris], lambda p: (0.3, 0.3, 0.3))
+        out.append((cls, c))
+        k += 1
+        i0 = i1 - 1  # (one point shared: the strips join)
+    return out
+
+
 def export_rails(level, depsgraph):
-    """Each rail's class model; the rails as (class name, centre, level.txt's rail line: its points, made round (0, 0, 0)
-    as every coordinate there)."""
+    """Each rail's class model and its strips (rail_strips); the rails as (class name, centre, level.txt's rail line: its
+    points, made round (0, 0, 0) as every coordinate there, its strips)."""
     rails = []
     obs = sorted((o for o in bpy.data.collections["arena_rails"].all_objects if o.type == "CURVE"), key=lambda o: o.name) \
         if bpy.data.collections.get("arena_rails") else []
@@ -715,8 +785,8 @@ def export_rails(level, depsgraph):
         centre = Vector([(a + b) / 2 for a, b in zip(lo, hi)])
         ntris = rail_model(level, name, pts, centre, depsgraph, bool(ob.get("pylons", 1)), float(ob.get("beam", 0.45)),
                            float(ob.get("beam_until", 1e9)), bool(ob.get("end_stop", 0)))
-        line = "rail %s %s" % (name[5:], " ".join("%s %s %s" % (num(p.x), num(p.y), num(p.z)) for p in pts))
-        rails.append((name, centre, line))
+        line = "rail %s nostrip %s" % (name[5:], " ".join("%s %s %s" % (num(p.x), num(p.y), num(p.z)) for p in pts))
+        rails.append((name, centre, line, rail_strips(level, name, pts)))
         print("rail %s: %d points, %s units, its model %d triangles" % (
             name, len(pts), num(sum((pts[i + 1] - pts[i]).length for i in range(len(pts) - 1))), ntris))
     return rails
@@ -1025,10 +1095,16 @@ def export(out=None, install=False):
         L.append("class %s %s %s" % (name, mdl, opts))
     if rails:
         L.append("# the grind rails (rail_<name> curves): the plugin turns a challenge's on (rail_enable) and shows their looks")
-    for name, centre, line in rails:
+    for name, centre, line, _ in rails:
         L.append(line)
         L.append("class %s %s.obj size 1 ghost" % (name, name))
         L.append("object %s %s %s %s 0 name=%s" % (name, num(centre.x), num(centre.y), num(centre.z), name))
+    if rails:
+        L.append("# the rails' collision strips (their own objects: the plugin makes a rail's solid only while it is on)")
+    for _, _, _, strips in rails:
+        for cls, c in strips:
+            L.append("class %s %s.obj collision %s_col.obj size 1" % (cls, cls, cls))
+            L.append("object %s %s %s %s 0 name=%s" % (cls, num(c.x), num(c.y), num(c.z), cls))
     spawns = [o for o in markers if o.name.startswith("spawn_")]
     for o in spawns:
         name = o.name[6:]
@@ -1114,7 +1190,7 @@ def export(out=None, install=False):
         for t, spec in enumerate(specs):
             LL.append("# the %s class's model, its texture %d" % (name, t))
             LL.append("material tie %d tex %d %s" % (n_meshes + n_sec + i, t, spec))
-    for j, (name, _, _) in enumerate(rails):
+    for j, (name, _, _, _) in enumerate(rails):
         LL.append("# the %s class's model (a rail)" % name)
         LL.append("material tie %d tex 0 %s" % (n_meshes + n_sec + len(CLASSES) + j, RAIL_SPEC))
     LL.append("# ambient particles: embers rising from the lava, a little ash")

@@ -36,9 +36,12 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
     world (its scenery, collision, sky, music; none of its objects), by the arena where its Giant Clank fights; then
     back. (The escape does not go on into it: a world's section takes no rail lines of a mod yet.)
 
-  The rails are level.txt's `rail` lines (the composer puts them in the game's rail table, a thin collision strip under
-  each: the game lets go of a rail with nothing under Ratchet's feet). The plugin turns them all off at the level's
-  start (`rail_enable`) and a challenge's own on only while it runs. The station is by one of Kalebo III's own rail
+  The rails are level.txt's `rail` lines (the composer puts them in the game's rail table). Under each runs a thin
+  collision strip (the game lets go of a rail with nothing under Ratchet's feet): near the ground Ratchet walks on (by the
+  station, over the hub) it is an object of its own (`class ... collision`), solid only while its rail is on, so he does
+  not walk on it in the air; the rest is the level's collision, too high to be walked onto, which Kalebo III's rail mines
+  need to float over (their floor probe does not see objects). The plugin turns the rails all off at the level's start
+  (`rail_enable`) and a challenge's own on only while it runs. The station is by one of Kalebo III's own rail
   spots, (115, 264, 133) in the game's coordinates: its hero code took a rail only near them while the plugin made the
   rails itself. With rails of the level's own it takes one anywhere.
 

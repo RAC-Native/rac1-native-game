@@ -27,9 +27,9 @@ CENTRE = (600.0, 0.0)  # the platform's centre (the scene's; a section has its o
 R = 20.0               # its radius (an octagon's corners)
 DEPTH = 3.0            # its edge's height under the top (z 0)
 SIDES = 8
-# the rail Ratchet arrives on: from high south of the platform (the entry arrivo at its start) down to its south edge, where
-# he flies off it onto the platform
-RAIL_IN = [(600.0, -62.0, 16.0), (600.0, -48.0, 13.0), (600.0, -34.0, 8.0), (600.0, -25.0, 3.6), (600.0, -19.5, 1.7)]
+# the rail Ratchet arrives on: from high south of the platform (the entry arrivo at its start) down to just short of its south
+# edge, where he flies off it onto the platform (its strip, the composer's, so never over the platform: no ledge there)
+RAIL_IN = [(600.0, -62.0, 16.0), (600.0, -48.0, 13.0), (600.0, -34.0, 8.0), (600.0, -26.0, 3.8), (600.0, -21.0, 1.9)]
 
 
 def corners(r, z):
