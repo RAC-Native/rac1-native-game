@@ -294,6 +294,7 @@ all off by default (the original's behaviour), kept in the preferences only, lik
 | Row | Values (default first) | Kept |
 |---|---|---|
 | Race Music After Quitting | Off, On: quitting Rilgar's hoverboard race from its results brings the planet's music back (the original keeps the race's music playing) | the preferences |
+| Hydrodisplacer Faucets | Off, On: Ratchet no longer slips off a Hydrodisplacer faucet he steps onto from some sides (the original leaves the water as it was, #131) | the preferences |
 
 See [Advanced options](advanced.md#bug-fixes) for each fix and for what belongs on the page.
 

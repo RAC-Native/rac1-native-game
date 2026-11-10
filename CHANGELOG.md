@@ -5,6 +5,11 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Bug Fixes: Hydrodisplacer Faucets** (#131; main menu > Options > Bug Fixes, off by default): stepping onto Rilgar's
+  first Hydrodisplacer faucet (or Hoven's first) from some sides and pressing circle, Ratchet started the faucet's
+  animation, slipped off it and the water stayed; circle then did nothing until he stepped off and on again or put the
+  Hydrodisplacer away. It is the original game's own bug (the faucet's pull lands him exactly on a seam of its collision);
+  with the row on he stays on the faucet.
 - **The development channel follows the `dev` branch** (#141): the work lands on `dev` first and is merged into `main`
   from time to time, so following `main` missed the newest changes. The update check (Main menu > Updates) now counts
   the commits on `dev` the installed build lacks, and an update on Development checks out `dev` (a clone on `main` or
