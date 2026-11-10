@@ -1,0 +1,24 @@
+# A class profile (docs/open-engine.md, "Class profiles"): our knowledge of a game class's level data, ids and offsets only.
+class 16:541 the Gadgetron robot (the crash-test dummies' robots; update 0x2cddb8)
+pvar_size 0x1a0
+slot 0xc0 word   weapon     # 0 a bomb launcher (lobs class 281), 1 a club, 2 a flamethrower (in its hand +0x104: 863 / 884 / 876)
+slot 0xc4 path   patrol     # walked out along from its alcove, then patrolled between its first two points (the club: all)
+slot 0xc8 word   lives      # it comes back from its alcove this many times
+slot 0xcc group  door       # its alcove's group (class 654 opens its door: 0x2d5e80 writes through a door's pvars)
+slot 0xd0 word   marker_a   # the level's markers it attacks half the time (+0xb4 = 2)
+slot 0xd4 word   marker_b
+slot 0xd8 area   area       # the polygon target_select reads
+# a spawn: no lives (killed for good), no group (no door), no markers, a path of two points (where it starts, 5 ahead), the
+# area the whole level
+default lives value 0
+default door value 0
+default marker_a none
+default marker_b none
+default patrol points 0 0 0, 5 0 0
+default area world
+# base_option RAC1_BASE_WEAPON
+option weapon slot weapon 0 2
+# after its first update (hidden in its alcove, state 1) shown and put in its weapon's patrol; a marker target becomes
+# Ratchet; hunting: its patrol's points beside Ratchet (kal_gadgetron)
+hunt object
+frame host kal_gadgetron

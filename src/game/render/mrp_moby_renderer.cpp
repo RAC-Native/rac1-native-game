@@ -40,6 +40,7 @@
 #include <cstring>
 #include <filesystem>
 #include <map>
+#include <mutex>
 #include <memory>
 #include <string>
 #include <set>
@@ -66,6 +67,10 @@ int g_mrp_moby_fog = 1;
 std::atomic<int> g_mrp_guest_class{-1};
 std::atomic<bool> g_mrp_guest_on{false};
 std::atomic<float> g_mrp_guest_lift{0.0f};
+// the import list (mrp_moby_import): level * 10000 + class, and its generation (the level's assets loaded again at a change)
+std::mutex g_imports_mu;
+std::vector<int> g_imports;
+std::atomic<uint32_t> g_imports_gen{0};
 
 namespace {
 
@@ -205,6 +210,12 @@ struct Level {
     std::unique_ptr<mrp::MobyClass> guest;
     std::unique_ptr<ClassGpu> guest_gpu;
     int guest_key = -1;  // the g_mrp_guest_class loaded (or tried)
+    // the import list's classes (mrp_moby_import: another level's, in a session): level * 10000 + class -> asset, their
+    // textures renumbered into this level's (after the armors' and the guest's); the list's generation loaded
+    std::map<int, std::unique_ptr<mrp::MobyClass>> imports;
+    uint32_t imports_gen = 0;
+    std::map<int, std::vector<mrp::Texture>> foreign;  // (the import list's levels' textures, read once while the level is loaded)
+    size_t imports_orphaned = 0;  // (textures of imports removed since the load: their layers stay until the next full load)
     // the class header in EE memory and the moby's class id (+0xa6) -> GPU data (the weapons share one header, the class
     // table naming it under each weapon's id: the header alone named the last of them)
     std::unordered_map<uint64_t, std::unique_ptr<ClassGpu>> by_ptr;
@@ -588,15 +599,17 @@ std::unique_ptr<ClassGpu> build_class(std::unique_ptr<mrp::MobyClass> asset, uin
 
 // orig: (host) the free hoverboard's class (Level::guest): the textures its prims name, read from its own level's
 // textures.mrpt, appended to this level's and the prims renumbered to them
-void guest_textures(Level& L) {
-    std::vector<mrp::Texture> theirs;
-    const int lvl = L.guest->level >= 0 ? L.guest->level : L.guest_key / 10000;
-    if (!mrp::read_textures(asset_root() + "/" + mrpw::level_dir_name(lvl) + "/textures.mrpt", theirs)) {
-        L.guest.reset();
-        return;
+// (any other level's class: the import list's too) false when that level's textures cannot be read
+bool foreign_textures(Level& L, mrp::MobyClass& cls, int lvl, std::map<int, std::vector<mrp::Texture>>& cache) {
+    auto t = cache.find(lvl);
+    if (t == cache.end()) {
+        std::vector<mrp::Texture> v;
+        if (!mrp::read_textures(asset_root() + "/" + mrpw::level_dir_name(lvl) + "/textures.mrpt", v)) return false;
+        t = cache.emplace(lvl, std::move(v)).first;
     }
+    const std::vector<mrp::Texture>& theirs = t->second;
     std::map<int, int> remap;
-    for (mrp::Packet& p : L.guest->packets)
+    for (mrp::Packet& p : cls.packets)
         for (mrp::TexturePrim& t : p.textures) {
             if (t.texture < 0) continue;
             auto it = remap.find(t.texture);
@@ -612,6 +625,75 @@ void guest_textures(Level& L) {
             }
             t.texture = it->second;
         }
+    return true;
+}
+
+void guest_textures(Level& L) {
+    std::map<int, std::vector<mrp::Texture>> cache;
+    const int lvl = L.guest->level >= 0 ? L.guest->level : L.guest_key / 10000;
+    if (!foreign_textures(L, *L.guest, lvl, cache)) L.guest.reset();
+}
+
+// orig: (host) the import list's classes read from their levels' files, their textures appended (mrp_moby_import)
+void import_classes(Level& L) {
+    std::vector<int> list;
+    {
+        std::lock_guard<std::mutex> lock(g_imports_mu);
+        list = g_imports;
+    }
+    L.imports_gen = g_imports_gen.load();
+    std::map<int, std::vector<mrp::Texture>>& cache = L.foreign;
+    for (int key : list) {
+        const int lvl = key / 10000, cls = key % 10000;
+        if (lvl == L.id || L.imports.count(key) != 0) continue;
+        auto c = std::make_unique<mrp::MobyClass>();
+        const std::string path = asset_root() + "/" + mrpw::level_dir_name(lvl) + "/" + std::to_string(cls) + ".mrpm";
+        if (!mrp::read_class(path, *c) || c->packets.empty() || !foreign_textures(L, *c, lvl, cache)) {
+            std::fprintf(stderr, "[mrp] imported class %d:%d: no class file %s (or its level's textures)\n", lvl, cls, path.c_str());
+            continue;
+        }
+        L.imports[key] = std::move(c);
+    }
+    if (!L.imports.empty() || L.imports_gen != 0)
+        std::printf("[mrp] level %d: %zu imported classes (another level's), %zu moby textures\n", L.id, L.imports.size(), L.textures.size());
+}
+
+void upload_buckets(Level& L, size_t first);
+
+// orig: (host) the import list changed during play (a session's class loaded or released): the new classes read and their
+// textures uploaded into arrays of their own, the released ones dropped; the level's own classes, textures and vertex data
+// kept (no reload of the level's moby assets). False when a full load is better (too many textures left behind by releases)
+bool import_incremental(Level& L) {
+    const double t0 = now_ms();
+    std::vector<int> list;
+    {
+        std::lock_guard<std::mutex> lock(g_imports_mu);
+        list = g_imports;
+    }
+    size_t removed = 0;
+    for (auto it = L.imports.begin(); it != L.imports.end();) {
+        if (std::find(list.begin(), list.end(), it->first) == list.end()) {
+            std::set<int> own;  // (its textures: left in their arrays, unused, until the next full load)
+            for (const mrp::Packet& p : it->second->packets)
+                for (const mrp::TexturePrim& t : p.textures)
+                    if (t.texture >= 0) own.insert(t.texture);
+            L.imports_orphaned += own.size();
+            it = L.imports.erase(it);
+            ++removed;
+        } else {
+            ++it;
+        }
+    }
+    if (L.imports_orphaned > 256) return false;
+    const size_t classes = L.imports.size(), first = L.textures.size();
+    import_classes(L);
+    L.tex_bucket.resize(L.textures.size(), -1);
+    L.tex_layer.resize(L.textures.size(), 0);
+    if (L.textures.size() > first) upload_buckets(L, first);
+    std::printf("[mrp] level %d: the import list changed: %zu classes read, %zu dropped, %zu textures added in %zu arrays (%.1f ms; the level's "
+                "own assets kept)\n",
+                L.id, L.imports.size() - classes, removed, L.textures.size() - first, L.buckets.size(), now_ms() - t0);
+    return true;
 }
 
 // orig: (host) the level's moby textures (textures.mrpt) decoded to RGBA (palette[CSM1 index], the GS's
@@ -651,15 +733,24 @@ void load_textures(Level& L) {
         }
     }
     if (L.guest != nullptr) guest_textures(L);
+    import_classes(L);
     L.tex_bucket.assign(L.textures.size(), -1);
     L.tex_layer.assign(L.textures.size(), 0);
+    upload_buckets(L, 0);
+}
+
+// orig: (host) the textures from `first` on put in texture arrays of their own (one per size: the buckets the draws bind) and
+// uploaded: all of a level's at its load, an import's appended ones when the import list grows during play (the level's own
+// arrays kept as they are)
+void upload_buckets(Level& L, size_t first) {
+    const size_t first_bucket = L.buckets.size();
     auto csm1 = [](uint32_t i) { return ((i & 0x08) != 0) != ((i & 0x10) != 0) ? i ^ 0x18u : i; };
     std::vector<uint32_t> px;
     // the mods' replacements (texture_mods.h), by the texture's level 0 as uploaded below; a replaced texture goes in the
     // bucket of the replacement's size
     std::vector<std::shared_ptr<const texture_mods::Image>> rep(L.textures.size());
     if (texture_mods::on())
-        for (size_t i = 0; i < L.textures.size(); ++i) {
+        for (size_t i = first; i < L.textures.size(); ++i) {
             const mrp::Texture& t = L.textures[i];
             if (t.width == 0 || t.height == 0 || t.mips.empty() || t.mips[0].size() < static_cast<size_t>(t.width) * t.height) continue;
             px.resize(static_cast<size_t>(t.width) * t.height);
@@ -667,7 +758,7 @@ void load_textures(Level& L) {
             rep[i] = texture_mods::find(t.width, t.height, px.data(), "moby");
         }
     std::map<std::pair<uint32_t, uint32_t>, int> by_size;
-    for (size_t i = 0; i < L.textures.size(); ++i) {
+    for (size_t i = first; i < L.textures.size(); ++i) {
         const mrp::Texture& t = L.textures[i];
         if (t.width == 0 || t.height == 0 || t.mips.empty() || t.mips[0].size() < static_cast<size_t>(t.width) * t.height) continue;
         const uint32_t tw = rep[i] != nullptr ? rep[i]->w : t.width, th = rep[i] != nullptr ? rep[i]->h : t.height;
@@ -684,7 +775,8 @@ void load_textures(Level& L) {
         b.textures.push_back(static_cast<int>(i));
         b.levels = std::max<uint32_t>(b.levels, static_cast<uint32_t>(std::min<size_t>(rep[i] != nullptr ? rep[i]->mips.size() : t.mips.size(), 4)));
     }
-    for (Bucket& b : L.buckets) {
+    for (size_t bi = first_bucket; bi < L.buckets.size(); ++bi) {
+        Bucket& b = L.buckets[bi];
         uint32_t maxl = 1;
         while ((b.w >> maxl) > 0 && (b.h >> maxl) > 0 && maxl < b.levels) ++maxl;
         b.levels = std::max(1u, std::min(b.levels, maxl));
@@ -844,12 +936,13 @@ ClassGpu* class_of(uint32_t class_ptr, int class_id) {
         int src_level = 0;
         uint32_t src = 0;
         if (f == L.files.end() && g_session_classes && session_class_source(static_cast<uint32_t>(oc), &src_level, &src)) {
-            // (a session class id: its source class's file; stage 1, the level's own classes only - another level's
-            // class and its textures come with the import list of stage 2)
+            // (a session class: its source class's file, the level's own or, another level's, the import list's)
             if (src_level == L.id) f = L.files.find(static_cast<int>(src));
-            else std::fprintf(stderr, "[mrp] session class %d is level %d's class %u: not drawn (another level's classes: stage 2)\n", oc, src_level, src);
+            else if (auto im = L.imports.find(src_level * 10000 + static_cast<int>(src)); im != L.imports.end())
+                asset = std::make_unique<mrp::MobyClass>(*im->second);
+            else std::fprintf(stderr, "[mrp] session class %d is level %d's class %u: not in the import list, not drawn\n", oc, src_level, src);
         }
-        if (f != L.files.end()) asset = std::make_unique<mrp::MobyClass>(*f->second);
+        if (asset == nullptr && f != L.files.end()) asset = std::make_unique<mrp::MobyClass>(*f->second);
     }
     int class_armor = -1;
     if (vd != 0 && vd < ee_game_ram_end())  // the armor's classes: their file k names the armor's two textures
@@ -876,6 +969,44 @@ ClassGpu* class_of(uint32_t class_ptr, int class_id) {
     L.by_ptr[key] = std::move(cg);
     return r;
 }
+
+}  // namespace
+
+// orig: (host) see mrp_moby_renderer.h
+void mrp_moby_import(int level, uint32_t cls) {
+    std::lock_guard<std::mutex> lock(g_imports_mu);
+    const int key = level * 10000 + static_cast<int>(cls);
+    for (int k : g_imports)
+        if (k == key) return;
+    g_imports.push_back(key);
+    ++g_imports_gen;
+}
+
+// orig: (host) see mrp_moby_renderer.h
+void mrp_moby_import_remove(int level, uint32_t cls) {
+    std::lock_guard<std::mutex> lock(g_imports_mu);
+    const int key = level * 10000 + static_cast<int>(cls);
+    const auto it = std::find(g_imports.begin(), g_imports.end(), key);
+    if (it == g_imports.end()) return;
+    g_imports.erase(it);
+    ++g_imports_gen;
+}
+
+// orig: (host) see mrp_moby_renderer.h
+int mrp_moby_imports_count() {
+    std::lock_guard<std::mutex> lock(g_imports_mu);
+    return static_cast<int>(g_imports.size());
+}
+
+// orig: (host) see mrp_moby_renderer.h
+void mrp_moby_imports_clear() {
+    std::lock_guard<std::mutex> lock(g_imports_mu);
+    if (g_imports.empty()) return;
+    g_imports.clear();
+    ++g_imports_gen;
+}
+
+namespace {
 
 // ---- shaders -----------------------------------------------------------------------------------
 
@@ -1779,7 +1910,9 @@ void mrp_moby_begin_frame(bool title, bool menu_mode, bool title_menu) {
     const int id = moby_level_id();
     const int guest = g_mrp_guest_class.load();  // (the free hoverboard's class asked for after the level's load: loaded again with it)
     const bool guest_new = guest >= 0 && guest != g_level.guest_key && guest / 10000 != id;
-    if (g_level.id != id || (!g_level.missing && ((vk::is_active() && !g_level.vk_loaded) || (!vk::is_active() && !g_level.gl_loaded))) || guest_new) load_level(id);
+    const bool imports_new = g_imports_gen.load() != g_level.imports_gen;  // (the import list changed: a session's classes)
+    const bool whole = g_level.id != id || (!g_level.missing && ((vk::is_active() && !g_level.vk_loaded) || (!vk::is_active() && !g_level.gl_loaded))) || guest_new;
+    if (whole || (imports_new && (g_level.missing || !g_level.loaded || !import_incremental(g_level)))) load_level(id);
     // the level's loaded classes (0x197300 / 0x197a00, count 0x15ffc0): a new set (the level entered
     // again, a class loaded) forgets the classes resolved by header address
     uint64_t h = 1469598103934665603ull;
@@ -2278,7 +2411,7 @@ void build_frame() {
     }
     if (g_mrp_guest_on.load()) append_guest(F, f, vinv, vp, turned, turn);
     if (!caching) return;
-    // the cached mobys the frame did not draw: kept while the moby is alive, of its class and still (the moby's EE state now;
+    // the cached mobys the frame did not draw: kept while the moby is alive, shown, of its class and still (the moby's EE state now;
     // a slot reused or a moby moved drops its copy), drawn as casters within reach of the shadows
     const glm::dvec3 cam = vinv.cam;
     for (auto it = g_mcache.begin(); it != g_mcache.end();) {
@@ -2289,7 +2422,9 @@ void build_frame() {
         }
         const uint32_t mb = it->first;
         const int8_t state = static_cast<int8_t>(lbu(mb + 0x20));
-        bool keep = state >= 0 && lh(mb + 0xa6) == c.class_id;
+        // (and not hidden by the game: the draw loop 0x2559c0 skips a moby whose +0x34 has 0x81 - Ratchet and Clank while Giant
+        // Clank stands in for them on Quartu, objects of its arena hidden in place - and its copy cast a shadow with nothing there, #74)
+        bool keep = state >= 0 && lh(mb + 0xa6) == c.class_id && (lhu(mb + 0x34) & 0x81u) == 0;
         for (int i = 0; keep && i < 3; ++i) keep = std::fabs(lwc1(mb + 0x10 + 4 * static_cast<uint32_t>(i)) - c.pos[i]) < 1e-3f;
         if (!keep) {
             it = g_mcache.erase(it);

@@ -45,6 +45,19 @@ extern int g_mrp_moby_fog;
 
 // orig: (host) true when the MRP draws this frame's mobys (the renderer chosen and the level's assets
 // loaded): the faithful VU1 moby programs are then not run
+// The import list (the open engine, docs/open-engine.md): another level's classes a session brought in, drawn from their
+// own level's class files (mrp/moby/levelNN/<class>.mrpm) with their textures appended to the level's. A moby of one is
+// matched as any class (its header's class id), its source found by the session (session_class_source). The list is
+// read at the next frame (the level's moby assets loaded again with them).
+// orig: (host) class `cls` of level `level` added to the import list
+void mrp_moby_import(int level, uint32_t cls);
+// orig: (host) the import list emptied
+void mrp_moby_imports_clear();
+// orig: (host) class `cls` of level `level` taken off the import list (a session's class unloaded: its file and textures
+// dropped at the next frame, with the level's moby assets loaded again)
+void mrp_moby_import_remove(int level, uint32_t cls);
+// orig: (host) the import list's length
+int mrp_moby_imports_count();
 bool mrp_moby_active();
 // orig: (host) true when the renderer is the MRP and its assets for the level now running are loaded (GL ready):
 // the frame's mobys will be drawn by it (asked before the game's update, to skip what only the GS /

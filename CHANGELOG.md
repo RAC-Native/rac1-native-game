@@ -5,6 +5,97 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: a game planet as a section** (`level.format` 3): a section block with `world <planet>` (`world kalebo`,
+  `world 3`, ...) is that planet's world: its scenery drawn exactly as on the planet (modern renderer, OpenGL and Vulkan),
+  its collision, sky, music, fog, lights, cameras and grind rails, with no loading screen when Ratchet steps through a
+  portal into it. `objects <classes>` (and an optional `box`) brings the planet's own objects along: its enemies fight on
+  their own code (Kalebo III's robots walk up, hit, die to the wrench and drop bolts), its crates break; a death there
+  brings Ratchet back at the section's checkpoint with its enemies back, and a save there brings you back into it. A world
+  takes about 20 MB of memory and is loaded in the background while you play. See docs/mods.md ("Game worlds as
+  sections").
+- **Movement = Strafing / RAC 3** (the Modern preset) on the hoverboard: L2 and R2 are the board's tricks again (#28). The
+  strafe took them on the board too (and Aiming = Modern turned R2 into circle), so only the R1 and L1 tricks could be
+  done and the skill point Tricky (the Twisty McMarx: R1, L1, R2 and L2 in one jump) could not be earned with those
+  settings. On the board (Rilgar and Kalebo III) the pad is now the original's whatever the Movement row; Original is
+  unchanged.
+- Modern lighting, sun shadows (#74, a likely cause; not yet confirmed by the reporter): an object the game hides stops
+  casting a shadow. The shadows of objects out of view are cast from a copy of how they were last drawn, and that copy
+  was kept while the object stayed alive and in place even after the game hid it: on Quartu, Ratchet and Clank while Giant
+  Clank stands in for them, and other objects of the arena hidden in place. Original rendering is unchanged.
+- **Level mods: grind rails, Magneboots walkways and set pieces** (the mod SDK's ABI 11): `level.txt` can have **grind
+  rails** (`rail <name> <points>`, or `rails <file.obj>` with one rail per object of a curve exported from Blender), in the
+  level or in a section, ridden with the game's own grind (landing on them anywhere, jumping between rails side by side,
+  the wrench, flying off the end); `mesh` makes their model and a thin collision strip is added under each. `items
+  grindboots magneboots` gives Ratchet those items while he is on the level, never in a save (they are taken back when he
+  leaves). Faces of `usemtl type2` in the collision are **magnetic**: with the Magneboots he walks up curves, walls and
+  ceilings (on Veldin's code; on Kalebo III's he walks them but looks wrong). A class can have a **collision mesh** of its
+  own (`class ... collision <file>`): a deck with walls, an arch. The plugin can find rails and put Ratchet on one, take one
+  out (a broken rail), change his speed on it and is told when he gets on, reaches the end and gets off (`rail_find`,
+  `hero_rail_attach`, the `rail` callback, ...); fade the screen; take the camera (fixed, looking at something, along a
+  path, following) and give it back blended; add hazards (volumes that hurt on a timer); move an object along a path with
+  Ratchet riding it (`object_follow_path`). See docs/mods.md ("Grind rails and set pieces") and docs/sdk.md.
+- **Level mods: another level's sky** (a level's or a section's `sky` line) no longer ends the game or writes where it
+  should not: it is now drawn by that level's own sky code, as on its planet, whatever the base level. Before, the base
+  level's ran on it: on Veldin's code Umbris's and Gemlik's skies crashed in the sky's draw (Veldin's 256 stars overwrote
+  their first layer; Rilgar's and Quartu's have the same room for 128 stars) and the others got Veldin's stars written
+  at the bottom of the game's memory.
+  All 19 skies were checked on the four bases, as a level's sky and as a section's, on OpenGL and Vulkan. The level
+  composer is version 6: level mods are composed again by the setup.
+- **Aiming = Modern / Modern, No Zoom on magnetic surfaces** (#136): on the Magneboots' walkways the modern controls
+  now leave the hero to the original's rules: L2 no longer turns him (aiming there turned his whole frame off the wall,
+  so he could come off the walkway) and the camera is no longer held on the aim (it acted like the aiming view);
+  R&C 3's run speed, turn and stop rules, made for flat ground, wait too. Off the walkway everything is as before.
+- **Level mods: sections and portals** (`level.format` 3, the mod SDK's ABI 10): a session can be made of **sections**
+  (`section <name> ... end` blocks in `level.txt`), each with its own collision, meshes, sky, music, lights, fog and
+  objects, and Ratchet goes between them through **portals** (boxes he walks into, with an optional fade) without any
+  loading: nothing is reset, only the section you are in is drawn, and the others are loaded in the background while you
+  play. Each section chooses what happens to its objects when you leave it (removed, frozen or left running); a death
+  brings you back at the checkpoint of the section you are in, with that section's enemies back; a save brings you back to
+  its section. `moby` lines can now place classes of other planets by name (`moby kalebo.robot ...`). The plugin can load,
+  enter and unload sections (`section_enter`, ...) and is told when Ratchet goes from one to another. See docs/mods.md
+  ("Sections") and docs/sdk.md.
+- Debug menu, **Hoverboard anywhere**: the board no longer falls through the ground at speed (#120; Kerwan's avenue at full
+  speed went through the street within seconds) and slides along walls: the collision query's hit normal, which is not of
+  unit length, is now normalised before the ride's floor and wall tests.
+- Debug menu, Textures tab: the grid's last column of thumbnails is no longer cut at the right edge (#120): the row's width
+  left out each thumbnail's frame padding.
+- **Level mods: sessions** (`level.format` 3, the mod SDK's ABI 9): a level mod can be a **session**, loaded once at the
+  arrival. A death no longer loads the level again: Ratchet is back at a checkpoint with his health full, and everything
+  else stays as it was (his weapons, ammo and bolts, the plugin's state and the enemies it started, the classes of other
+  planets the level brought). The level's placed objects killed since the arrival come back (`respawn reset`, the
+  default; a crate broken stays broken) or stay as they are (`respawn keep`); the plugin's new `respawn` callback brings
+  back what the battle needs. Checkpoints are `checkpoint` lines in `level.txt` and the SDK's `checkpoint_set` /
+  `checkpoint_at`; a save made in a session brings you back to its checkpoint (the plugin's `session_save` /
+  `session_load` keep where the player was in it). Sessions run on Veldin's code by default, or on a base level. `moby`
+  lines set the slots of their class's profile, and the setup's composer checks them (and imports that would need a
+  profile) against the profiles. On the base level's own objects too: `group_create`, `object_bind`, `object_bind_path`.
+  Formats 1 and 2 are unchanged. See docs/mods.md ("Sessions") and docs/sdk.md.
+- **Bug Fixes: Hydrodisplacer Faucets** (#131; main menu > Options > Bug Fixes, off by default): stepping onto Rilgar's
+  first Hydrodisplacer faucet (or Hoven's first) from some sides and pressing circle, Ratchet started the faucet's
+  animation, slipped off it and the water stayed; circle then did nothing until he stepped off and on again or put the
+  Hydrodisplacer away. It is the original game's own bug (the faucet's pull lands him exactly on a seam of its collision);
+  with the row on he stays on the faucet.
+- **Level mods: enemies of other planets** (the mod SDK's ABI 8): imported classes that read their planet's level data
+  (the paths they patrol, the areas they watch, the boxes that wake them) now work: they find their planet's data, and
+  a spawn gives them level data of their own round where it starts them (their **profiles**, `data/pool/profiles`), which
+  the plugin can change (`object_bind_path` with a `path` line of `level.txt` or `path_create`, `object_bind`,
+  `group_create`, `object_slots`). Six enemies have names and profiles: Drek's fleet's Blarg trooper
+  (`fleet.blarg_trooper`), Gemlik's flying robot, Gaspar's walking robot, Blarg's serpent, Pokitaru's amoeboid and Hoven's
+  flying trooper. The parts an object's placement names come with it, and bringing a class in during play no longer
+  reloads the level's models (about 1 ms instead of 25). ABI 7 is kept for the rails. See docs/sdk.md and
+  docs/open-engine.md.
+- **Level mods: classes of other planets** (`import` lines in `level.txt`, the mod SDK's ABI 6): a level mod can bring a
+  class of another game level, with what it spawns (its shots, their explosions, its debris), and its plugin starts them
+  (`import_class`, `import_spawn`) or brings them in and out during play (`import_load`, `import_release`). They are
+  the open engine's first part for level mods (docs/open-engine.md): for now classes that read no paths or groups of
+  their own planet, such as Umbris's turret (`import umbris.turret`) and Orxon's spore plant (`import
+  orxon.spore_plant`), drawn by the modern renderer. The setup's composer makes the asset pool from your disc when a
+  level needs it. See docs/mods.md and docs/sdk.md.
+- **The development channel follows the `dev` branch** (#141): the work lands on `dev` first and is merged into `main`
+  from time to time, so following `main` missed the newest changes. The update check (Main menu > Updates) now counts
+  the commits on `dev` the installed build lacks, and an update on Development checks out `dev` (a clone on `main` or
+  on a release's tag switches to it; a zip download gets `dev`'s source zip; local commits are never overwritten). The
+  launcher's Development channel downloads `dev` too, from its next release. The Updates page and the notice say `dev`.
 - **Windows: the build failed in `mod_code.cpp`** (#142; the update from 0.7.0 to `main` at 98e966f stopped there and
   kept the previous build): the mod SDK's sound fields were named `near` and `far`, which `<windows.h>` defines as
   nothing. Renamed.
@@ -286,8 +377,10 @@ What changed in each release. Releases are source only: you build the game with 
   (Daino on Pokitaru at 5120x1440): the sky's cube faces were read by an alpha the sky's blended layers leave at 0 over the
   lower sky and the horizon, and the probe's horizon - the islands' silhouettes - was spread over all the water past its
   sphere. Medium's picture is unchanged.
-- Clank (Movement Strafing or RAC 3, any Aiming) plays as the original: L2 crouches him again, and the strafe / modern
-  aim no longer turns on in his jump only (#129).
+- Clank and Giant Clank strafe and aim like Ratchet (#129): with Movement Strafing or RAC 3, L2 held keeps him facing
+  the aim while he walks in any direction, standing, walking and jumping (it worked in his jump only), the right stick
+  turns the aim, and with Aiming Modern (or Modern, No Zoom) the view is the aim's and R2 is circle; his kicks and
+  punches go where he faces. No reticle (he has no weapon), L1 still his first-person view.
 - Linux launcher: a dark theme (#99): it follows the desktop's light or dark setting (it was always light), or
   Settings > Theme chooses Light or Dark.
 - PAL disc 2.00: the title screen's sounds are the right ones again (#137): the region table placed the title's sound

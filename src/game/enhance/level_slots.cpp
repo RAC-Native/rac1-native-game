@@ -1,6 +1,9 @@
 // See level_slots.h. Not a port: the host's level slots, written on top of the game's own level change, saves and planet
 // list (the experiment that tried a level mod on Veldin's slot first is its source for the records' swap and the row).
 #include <host/level_slots.h>
+
+#include <game/enhance/session.h>
+#include <game/enhance/session_runtime.h>
 #include <host/mod_code.h>
 
 #include <game/ovl/level_change.h>
@@ -296,6 +299,12 @@ int level_slot_current() { return g_s.current >= 0 && lw(LEVEL) == base_of(g_s.c
 int level_slot_base(int slot) { return base_of(slot); }
 
 // orig: (none) — enhancement (level_slots.h)
+int level_slot_sky(int slot) {
+    const ModInfo* m = slot_mod(slot);
+    return m != nullptr ? m->level_sky : -1;
+}
+
+// orig: (none) — enhancement (level_slots.h)
 std::string level_slot_build_dir(int slot) {
     const ModInfo* m = slot_mod(slot);
     return m != nullptr ? mods_level_build_dir(m->folder).string() : std::string();
@@ -453,8 +462,12 @@ void level_slots_header_read(int32_t level) {
         g_s.current = slot;
         g_current.store(slot);
         std::printf("[levels] level %d's header: level slot %d's (\"%s\", flown from level %d)\n", level, slot, names(slot).names[0].c_str(), g_s.from);
+        session_level_mod(level_slot_build_dir(slot));  // (its imports: the open engine's sessions)
+        session_rt_level(level_slot_build_dir(slot), slot_mod(slot)->level_id);  // (a format 3 level: its session, session_runtime.h)
         return;
     }
+    session_level_mod("");
+    session_rt_level("", "");
     // one of the game's own levels
     g_s.pending = -1;
     g_s.current = -1;
@@ -726,6 +739,7 @@ uint32_t level_slots_pc_items(std::vector<uint8_t>& d) {
         if (!c.id.empty() && raw.size() >= 8) std::fill(raw.begin() + 4, raw.begin() + 8, uint8_t{0});
         put_item(raw);
     }
+    count += session_rt_pc_items(d);  // (a save made in a session: its item, session_runtime.h)
     if (!level_slots_on()) return count;
     const int cur = level_slot_current();
     for (const ModInfo* m : mods_levels()) {
@@ -752,6 +766,7 @@ uint32_t level_slots_pc_items(std::vector<uint8_t>& d) {
 
 // orig: (none) — enhancement (level_slots.h)
 void level_slots_pc_reset() {
+    session_rt_pc_reset();
     g_s.carried.clear();
     g_s.saved_on.clear();
     g_s.saved_from = -1;
@@ -760,6 +775,7 @@ void level_slots_pc_reset() {
 
 // orig: (none) — enhancement (level_slots.h)
 bool level_slots_pc_item(uint32_t id, const uint8_t* p, uint32_t size) {
+    if (session_rt_pc_item(id, p, size)) return true;  // (a session's item, session_runtime.h)
     if (id != PC_ITEM) return false;
     auto u32 = [p, size](uint32_t at) { return at + 4 <= size ? static_cast<uint32_t>(p[at] | p[at + 1] << 8 | p[at + 2] << 16 | static_cast<uint32_t>(p[at + 3]) << 24) : 0u; };
     PcItem it;
@@ -874,6 +890,23 @@ void level_slots_test_frame(uint64_t frame) {
     std::printf("[levels] RAC1_LEVEL_SAVE_IMAGE: frame %llu: game block %zu bytes (%08x), level blocks %zu bytes (%08x), .pc items %zu bytes -> %s.*\n",
                 static_cast<unsigned long long>(frame), game, bytes_sum(std::vector<uint8_t>(out.begin(), out.begin() + static_cast<std::ptrdiff_t>(game))), out.size() - game,
                 bytes_sum(std::vector<uint8_t>(out.begin() + static_cast<std::ptrdiff_t>(game), out.end())), pc.size(), base.c_str());
+}
+
+// orig: (none) — enhancement: see level_slots.h
+void level_music_words_get(uint32_t w[15]) {
+    for (uint32_t i = 0; i < 15; ++i) w[i] = lwu(HEADER + 0x148 + i * 4);
+}
+// orig: (none) — enhancement: see level_slots.h
+void level_music_words_put(const uint32_t w[15]) {
+    for (uint32_t i = 0; i < 15; ++i) sw(HEADER + 0x148 + i * 4, w[i]);
+}
+// orig: (none) — enhancement: see level_slots.h
+bool level_music_words_of(int level, uint32_t w[15]) {
+    if (level < 0 || level >= 19) return false;
+    std::vector<uint8_t> h(5 * 2048);
+    if (!disc_read(lwu(0x0013a448 + static_cast<uint32_t>(level) * 8), 5, h.data())) return false;
+    std::memcpy(w, h.data() + 0x148, 15 * 4);
+    return true;
 }
 
 }  // namespace rac1

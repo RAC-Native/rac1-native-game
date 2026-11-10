@@ -36,7 +36,7 @@ namespace Rac1Launcher
         public readonly Settings Settings = Settings.Load();
         public GameDir Game;
         public GitHub.Release Latest;
-        public string MainCommit;   // (the newest commit on main, for the development channel)
+        public string DevCommit;    // (the newest commit on the dev branch, for the development channel)
         public string Failure;      // (why the last task failed, for the player)
         public readonly StringBuilder FullLog = new StringBuilder();
         public static readonly Version LauncherVersion = Assembly.GetExecutingAssembly().GetName().Version;
@@ -103,7 +103,7 @@ namespace Rac1Launcher
                 case GameState.Ready:
                     string commit = Game.InstalledCommit;
                     return ("Ready to play",
-                            "Version " + VersionText(Game.SourceVersion) + (commit != null ? $" (development: main at {Short(commit)})" : "")
+                            "Version " + VersionText(Game.SourceVersion) + (commit != null ? $" (development: dev at {Short(commit)})" : "")
                             + (Game.IsGitClone ? " (a git clone)" : "") + ", in " + Game.Dir,
                             "Play");
                 default:
@@ -113,29 +113,29 @@ namespace Rac1Launcher
 
         // --- Updates ------------------------------------------------------------------------------------------
 
-        /// <summary>The latest release, and main's newest commit on the development channel (throws when GitHub cannot
+        /// <summary>The latest release, and the dev branch's newest commit on the development channel (throws when GitHub cannot
         /// be reached). Off the window's thread.</summary>
         public void FetchUpdates()
         {
             var r = GitHub.Latest();
-            string main = Channel.Development ? GitHub.MainCommit() : null;
+            string dev = Channel.Development ? GitHub.DevCommit() : null;
             Latest = r;
-            if (main != null) MainCommit = main;
+            if (dev != null) DevCommit = dev;
         }
 
         /// <summary>What is newer on the chosen channel than what is installed, or null (nothing newer, or not known).
-        /// Stable: a release newer than the sources' version. Development: main, when it moved since the commit the last
-        /// download unpacked (a stable install on the development channel: main is always newer).</summary>
+        /// Stable: a release newer than the sources' version. Development: the dev branch, when it moved since the commit the last
+        /// download unpacked (a stable install on the development channel: dev is always newer).</summary>
         public string UpdateMessage()
         {
             var v = Game.SourceVersion;
             if (Channel.Development)
             {
-                if (MainCommit == null || Game.IsGitClone && Game.InstalledCommit == null) return null;
+                if (DevCommit == null || Game.IsGitClone && Game.InstalledCommit == null) return null;
                 string have = Game.InstalledCommit;
-                if (have == MainCommit) return null;
-                return have == null ? $"You are on the development channel: main ({Short(MainCommit)}) has the newest changes."
-                                    : $"There are new changes on main ({Short(MainCommit)}; you have {Short(have)}).";
+                if (have == DevCommit) return null;
+                return have == null ? $"You are on the development channel: the dev branch ({Short(DevCommit)}) has the newest changes."
+                                    : $"There are new changes on the dev branch ({Short(DevCommit)}; you have {Short(have)}).";
             }
             if (Latest?.Version != null && v != null && Latest.Version > v)
                 return $"Version {VersionText(Latest.Version)} is out (you have {VersionText(v)}).";
@@ -147,17 +147,17 @@ namespace Rac1Launcher
         {
             var v = Game.SourceVersion;
             string newer = UpdateMessage();
-            string main = Channel.Development ? MainCommit : null;
+            string dev = Channel.Development ? DevCommit : null;
             if (!Game.Downloaded)
-                return main != null ? $"Install gets main ({Short(main)})." : $"The latest version is {Latest?.Tag}: Install gets it.";
+                return dev != null ? $"Install gets the dev branch ({Short(dev)})." : $"The latest version is {Latest?.Tag}: Install gets it.";
             if (newer != null) return newer + " Use Update on the Play page.";
-            if (main != null && Game.IsGitClone && Game.InstalledCommit == null)
-                return $"This folder is a git clone: Update brings it to main's newest changes ({Short(main)}).";
-            if (main != null) return $"You have the newest changes on main ({Short(main)}).";
+            if (dev != null && Game.IsGitClone && Game.InstalledCommit == null)
+                return $"This folder is a git clone: Update brings it to the dev branch's newest changes ({Short(dev)}).";
+            if (dev != null) return $"You have the newest changes on the dev branch ({Short(dev)}).";
             return $"You have the latest version ({VersionText(v)}).";
         }
 
-        public const string DevelopmentWarning = "The development channel gets the newest changes on main, before they are released: "
+        public const string DevelopmentWarning = "The development channel gets the newest changes from the dev branch, where they land before main and the releases: "
             + "new fixes sooner, but also new bugs. The game's own Update Channel option changes too.\n\nSwitch to the development channel?";
 
         /// <summary>The latest release's launcher version when it is newer than this one (after FetchUpdates), or null.
@@ -209,7 +209,7 @@ namespace Rac1Launcher
 
         // --- The work: download, setup ------------------------------------------------------------------------
 
-        /// <summary>The source zip of the chosen channel (the latest release, or main), unpacked into the game folder.</summary>
+        /// <summary>The source zip of the chosen channel (the latest release, or the dev branch), unpacked into the game folder.</summary>
         public bool Download(Runner r, CancellationToken cancel)
         {
             view.Step("Finding the latest version");
@@ -219,11 +219,11 @@ namespace Rac1Launcher
             {
                 if (Channel.Development)
                 {
-                    string sha = GitHub.MainCommit();
-                    MainCommit = sha;
-                    label = "main " + Short(sha);
-                    url = $"{GitHub.Page}/archive/{sha}.zip";  // (that commit, even if main moves meanwhile)
-                    version = new[] { "describe " + Short(sha), "commit " + sha, "branch main" };
+                    string sha = GitHub.DevCommit();
+                    DevCommit = sha;
+                    label = GitHub.DevBranch + " " + Short(sha);
+                    url = $"{GitHub.Page}/archive/{sha}.zip";  // (that commit, even if dev moves meanwhile)
+                    version = new[] { "describe " + Short(sha), "commit " + sha, "branch " + GitHub.DevBranch };
                 }
                 else
                 {

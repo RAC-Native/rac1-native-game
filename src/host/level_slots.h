@@ -47,6 +47,10 @@ int level_slot_current();
 // orig: (none) — enhancement: slot `slot`'s base level (-1: no such slot)
 int level_slot_base(int slot);
 
+// orig: (none) — enhancement: the level whose sky slot `slot`'s build has (its level.txt's sky line), -1 the base level's (or no
+// such slot)
+int level_slot_sky(int slot);
+
 // orig: (none) — enhancement: slot `slot`'s build folder ("" when none) and its mod's folder (its level/ files)
 std::string level_slot_build_dir(int slot);
 std::string level_slot_mod_dir(int slot);
@@ -154,6 +158,13 @@ void level_slots_frame();
 // orig: (none) — enhancement: testing: once per game frame (the host's frame loop): RAC1_LEVEL_SAVE_IMAGE's save images,
 // RAC1_LEVEL_MAP_AT's ship's map
 void level_slots_test_frame(uint64_t frame);
+
+// (a session's sections, src/game/enhance/sections.h) the level's music table (its header's 15 words at +0x148: the sectors of
+// the tracks the level's code plays): the current one read, another written, a game level's read from its header on the disc
+// orig: (none) — enhancement
+void level_music_words_get(uint32_t w[15]);
+void level_music_words_put(const uint32_t w[15]);
+bool level_music_words_of(int level, uint32_t w[15]);
 
 }  // namespace rac1
 

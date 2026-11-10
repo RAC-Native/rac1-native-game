@@ -362,9 +362,22 @@ held makes him strafe.
 - **Movement = RAC 3** brings UYA's full on-foot movement and wrench feel to the first game's hero
   code, together with the strafe.
 
-Both are Ratchet's: as Clank (and Giant Clank) the pad is the original's, L2 and R2 included (L2 crouches him, as
-L1), with any Movement or Aiming. Clank has no weapon to aim and no strafe in his own walk; the strafe and
-the modern aim worked only in his jump up to 0.7.0 (#129).
+On the hoverboard (Rilgar's and Kalebo III's board, the hero states 0x6b..0x6f) L2 and R2 are the game's own with
+either value (#28): they are two of the board's four tricks (R1, L1, R2, L2), and the skill point Tricky (the Twisty
+McMarx: all four in one jump) needs them. Up to 0.7.0 the strafe took them there too (and Aiming = Modern turned R2
+into circle), so only the R1 and L1 tricks could be done and Tricky could not be earned.
+
+Clank (and Giant Clank) strafe too (#129): with Movement = Strafing or RAC 3, L2 held (L2 or R2 with Aiming =
+Original) keeps him facing the camera's heading while the left stick moves him in any direction, standing,
+walking and jumping (his stand 0x43, walk 0x44 / 0x50 and jumps 0x49 / 0x4c; Giant Clank's 0x5a, 0x5b, 0x5e:
+`aim_state`), and the right stick turns the aim and him with it; with Aiming = Modern (or Modern, No Zoom) the view is
+the aim's, as Ratchet's, and R2 is circle (Giant Clank's missiles). His attacks (square: the kick 0x51, Giant Clank's
+punches 0x60) go the way he faces, the aim's heading; the strafe pauses during them, as during Ratchet's wrench
+swing. There is no reticle (he has no weapon that aims at it), L1 is still his first-person view, and the Hologuise
+(form 3) plays as the original. His walks cut their acceleration by the angle between his facing and the stick (to
+almost nothing backwards), which makes no sense while the facing is held: strafing, the acceleration is the walk's
+full one (`advanced_strafe_accel`, in 0x212088, the step every build of the hero code calls). Up to 0.7.0 the strafe
+and the modern aim turned on in Clank's jump only, since only it was among the strafe's states.
 
 ### How it was built: a study of UYA's code
 
@@ -520,6 +533,18 @@ aim's heading and turned about the point 1.2 above him for the pitch (`aim_shoul
 shoulder weight: only its wall test runs). The screen's centre is above Ratchet's head there, so the
 reticle is not hidden by him. It is the Aiming byte's third value (2): everything that tests "Modern"
 (the trigger mapping, the pitch, the reticle, the shots) takes it too.
+
+### On magnetic surfaces (#136)
+
+On a magnetic surface with the Magneboots (its collision's surface type 2 under the boots, `+0x308`, or a ground mode of
+its own, `+0x20b3`: the magnetic walk 0x3f and its stance / jump 0x70 / 0x71) the hero's frame is the surface's: his
+heading is measured in it and "horizontal" lies along it. The strafe, the modern aim and R&C 3's movement are made for
+the world's up (the aim's heading spring writes a world heading, the camera is held on the aim's heading and pitch about
+the world's up, R&C 3's stop caps the world's x / y), so there they are not applied (`on_magnet` in `advanced.cpp`,
+tested by `advanced_strafing` and `advanced_rac3_movement`): the original's own rules and camera hold, L2 does nothing
+(the original's first-person view stays on L1), and the aim comes back when he steps off. Before, holding L2 on a
+magnetic wall turned the hero's whole frame off the wall (measured on Orxon's tube: his angles +0x90 went from -1.37 to
++1.42 radians while standing) and held the camera on the aim as on flat ground.
 
 ### What the RAC 3 movement measured
 
@@ -772,6 +797,7 @@ belongs with the gameplay rows.
 | Fix | Row | What it changes | Where |
 |---|---|---|---|
 | 1 | Race Music After Quitting | Rilgar's hoverboard race: quitting from its results screen (game mode 4, kind 0, Cross) brings the planet's music back. The original never switches back there: the race organiser (class 918) restarts the level's music only for the race's other endings (its states 1 and 2, the call `ril_28f5c8_l5(0, 8)`; the 1.02 build added it to its state 3 too, [1.02 Fixes](#102-fixes) fix 22), so after a quit the race's track (track 2) kept playing on the planet (issue #132). The fix makes the same call at the quit: the level's music routine L5:0x28f5c8 with the track 0 (the level's music) as the next track, faded over through the track 8, as those endings do. Kalebo III's hoverbike race keeps the planet's music throughout and needs none | `screen_update` 0x202aa0 (kind 0, the quit's step 2), `bug_fixes_race_quit` |
+| 2 | Hydrodisplacer Faucets | The Hydrodisplacer's faucets (class 0x155) keep Ratchet (issue #131). In the faucet's states 0x38..0x3a the hero is pulled onto the faucet's origin (the ride: 0x217970 block 0x21969c, and Rilgar's and Hoven's own builds of it); coming from the side away from zero, the position, rounded toward zero, lands exactly on that origin (from the other side it stops one float step short). Where an edge of the faucet's collision passes through its origin (Rilgar's first faucet, Hoven's first) the hero's ground probe then misses both triangles: he drops 0.06 onto the floor and leaves the ride, and the Hydrodisplacer's hand (0x2df9a0) waits for him on a faucet, so the water stays and circle does nothing until he steps off and on again or draws the item again (oracle batch 330: the original code does the same on the same memory). The fix, before the hero's update, puts him one float step short of the origin on the side toward zero, on each axis where he is on it or within 0.01 of it on the other side, while he rides a faucet: the pull stops there, as it does coming from that side | `gameplay_frame` 0x297f78, before `hero_frame_update`: `bug_fixes_faucet_ride` |
 
 The page is built as the Mods page: a copy of the Camera page with its settings widget in the tall box and a copy of the
 Options help label (its EE block 0xf1000..0xf2000, the Advanced block's free second half; its text ids 0x7b00..,

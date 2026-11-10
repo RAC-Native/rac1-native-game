@@ -6,6 +6,7 @@
 #include <game/render/mrp_chain.h>
 
 #include <formats/host_meshes.h>
+#include <game/enhance/section_world.h>
 #include <formats/moby_mrp.h>
 #include <formats/world_mrp.h>
 #include <game/boot/front_end.h>
@@ -48,9 +49,12 @@
 #include <thread>
 #include <cmath>
 #include <cstdio>
+#include <fstream>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <future>
+#include <map>
 #include <map>
 #include <memory>
 #include <string>
@@ -86,7 +90,13 @@ std::string asset_root() {
 // sets 0x15ed84 to 0, its scene is its own level)
 // (while the loading screen shows, its own scene: the flight's assets)
 // (a level mod's level, src/host/level_slots.h: its host slot, 19..)
-int world_level_id() { return level_exit_loading_screen() ? kFlightLevel : boot_active() ? kTitleLevel : level_slot(); }
+// (a session's section of a game level's world, src/game/enhance/section_world.h: that level's while it is the current section)
+int world_level_id() {
+    if (level_exit_loading_screen()) return kFlightLevel;
+    if (boot_active()) return kTitleLevel;
+    const int w = world_renderer_level_get();
+    return w >= 0 ? w : level_slot();
+}
 
 // orig: (host) the folder of level `id`'s level folders, and the level whose folder it is: a level mod's slot's, its build's
 // (rac1-native --setup --level-mods writes it: <build>/mrp/world/level<base>), else asset_root() and `id`
@@ -356,7 +366,30 @@ Frame g_frame;
 
 // orig: (host) the level's tfrag / tie / shrub textures (textures_<kind>.mrpt) to RGBA (palette[CSM1 index], the GS's 0..0x80
 // alpha kept) in one texture array per size, every mip
-void load_textures(Level& L) {
+// (a session's game world sections, src/game/enhance/section_world.h: a level's world asset and textures read and derived on a
+// worker while its section streams in, taken by load_level when the section is entered)
+struct Prefetched {
+    std::unique_ptr<World> world;
+    std::vector<mrp::Texture> tex[3];
+    bool ok = false;
+};
+std::mutex g_pf_mu;
+std::map<int, std::shared_future<std::shared_ptr<Prefetched>>> g_pf;
+const char* const kTexNames[3] = {"tfrag", "tie", "shrub"};
+
+std::shared_ptr<Prefetched> prefetch_take(int id) {
+    std::shared_future<std::shared_ptr<Prefetched>> f;
+    {
+        std::lock_guard<std::mutex> lk(g_pf_mu);
+        const auto it = g_pf.find(id);
+        if (it == g_pf.end()) return nullptr;
+        f = it->second;
+        g_pf.erase(it);
+    }
+    return f.get();
+}
+
+void load_textures(Level& L, Prefetched* pf = nullptr) {
     static const char* names[3] = {"tfrag", "tie", "shrub"};
     std::map<std::pair<uint32_t, uint32_t>, int> by_size;
     // the mods' replacements (texture_mods.h), by the texture's level 0 as uploaded below; a replaced texture goes in the
@@ -366,7 +399,8 @@ void load_textures(Level& L) {
         int dir_level = L.id;
         const std::string root = world_root(L.id, dir_level);
         const std::string path = root + "/" + level_dir_name(dir_level) + "/textures_" + names[k] + ".mrpt";
-        if (!mrp::read_textures(path, L.tex[k])) std::fprintf(stderr, "[mrpw] no %s textures %s\n", names[k], path.c_str());
+        if (pf != nullptr && pf->ok) L.tex[k] = std::move(pf->tex[k]);
+        else if (!mrp::read_textures(path, L.tex[k])) std::fprintf(stderr, "[mrpw] no %s textures %s\n", names[k], path.c_str());
         L.ref[k].assign(L.tex[k].size(), TexRef{});
         rep[k].assign(L.tex[k].size(), nullptr);
         for (size_t i = 0; i < L.tex[k].size(); ++i) {
@@ -573,9 +607,63 @@ void build_templates(Level& L) {
 // (RAC1_RT, testing: the static world as clusters and instances; below, after the GS state replay it uses)
 RtLevelGeometry rt_gather(const Level& L);
 
+// (a session's game world sections, src/game/enhance/section_world.h: a world's level kept when the section is left - its GPU
+// textures and buffers, its classes and tfrag plans as the passes find them in EE memory - and taken back when it is entered
+// again, its section's tables at the same addresses; at most two)
+struct CachedWorld {
+    Level L;
+    StaticLevel s;
+    TfragLevel t;
+    uint32_t key = 0;
+};
+std::map<int, CachedWorld> g_wcache;
+std::map<int, uint32_t> g_wkey;  // (each world level's key as its level was built)
+// orig: (host) where a world section's tables are now (the tie classes' headers, the tfrag entries): its kept level's key
+uint32_t world_cache_key() { return lwu(OV(0x001c5800)) ^ (lwu(OV(0x00160f4c)) << 1) ^ lwu(OV(0x00160fc0)); }
+
 // orig: (host) the level's world asset, its index, its textures, the GL buffers
 void load_level(int id) {
     host_meshes_bind(nullptr, nullptr);  // (a level mod's host meshes: the world about to be freed)
+    const bool session = level_slot() >= 19;  // (a level mod's slot: its world sections' levels kept)
+    if (session && g_level.loaded && g_level.id != id && g_wkey.count(g_level.id) != 0) {  // (a world section's level only)
+        CachedWorld& c = g_wcache[g_level.id];
+        free_level(c.L);
+        c.L = std::move(g_level);
+        c.s = std::move(g_slevel);
+        c.t = std::move(g_tlevel);
+        c.key = g_wkey[c.L.id];
+        g_level = Level{};
+        g_slevel = StaticLevel{};
+        g_tlevel = TfragLevel{};
+        while (g_wcache.size() > 2) {
+            auto it = g_wcache.begin();
+            if (it->first == c.L.id) ++it;
+            free_level(it->second.L);
+            g_wcache.erase(it);
+        }
+    }
+    if (!session)
+        for (auto& [lv, c] : g_wcache) free_level(c.L);
+    if (!session) g_wcache.clear(), g_wkey.clear();
+    const std::shared_ptr<Prefetched> pf = prefetch_take(id);  // (a world section's: read on a worker already)
+    if (const auto it = g_wcache.find(id); it != g_wcache.end()) {
+        CachedWorld c = std::move(it->second);
+        g_wcache.erase(it);
+        if (c.key == world_cache_key() && c.L.loaded) {
+            free_level(g_level);
+            const double t0 = now_ms();
+            g_level = std::move(c.L);
+            g_slevel = std::move(c.s);
+            g_tlevel = std::move(c.t);
+            g_tcols = TfragColours{};
+            if (mrp_rt_active()) mrp_rt_level(rt_gather(g_level));
+            else mrp_rt_level_drop();
+            g_level.reset_walker = true;
+            std::printf("[mrpw] level %d (a world section's): kept since it was left, taken back (%.1f ms)\n", id, now_ms() - t0);
+            return;
+        }
+        free_level(c.L);
+    }
     free_level(g_level);
     Level& L = g_level;
     L.id = id;
@@ -584,11 +672,13 @@ void load_level(int id) {
     L.world = std::make_unique<World>();
     int dir_level = id;
     const std::string root = world_root(id, dir_level);
-    if (!load_world(root, dir_level, *L.world)) {
+    if (pf != nullptr && pf->ok) L.world = std::move(pf->world);
+    else if (!load_world(root, dir_level, *L.world)) {
         std::fprintf(stderr, "[mrpw] no MRP world asset for level %d (%s/%s/world.mrpw): run setup.sh\n", id, root.c_str(), level_dir_name(dir_level).c_str());
         L.world.reset();
         return;
     }
+    const double t_world = now_ms();
     L.idx = std::make_unique<WorldIndex>();
     L.idx->add(L.world.get());
     if (level_slot_base(id) >= 0) {  // (a level mod's host meshes, src/formats/host_meshes.h: their placements, drawn by the scene itself)
@@ -603,11 +693,26 @@ void load_level(int id) {
             std::fprintf(stderr, "[mrpw] %s: %zu meshes, the world %zu tie classes (run the setup again)\n", path.c_str(), hm.classes.size(), L.world->ties.size());
         } else {
             L.world->host_meshes = std::move(hm.instances);
+            // (a session's sections, format 3: each instance's section, from the build's sections.txt `meshes <section> <first>
+            // <count>` lines; drawn while its section is current, host_meshes_sections)
+            size_t tagged = 0;
+            if (std::ifstream sf(level_slot_build_dir(id) + "/sections.txt"); sf) {
+                std::string line;
+                while (std::getline(sf, line)) {
+                    unsigned sec = 0;
+                    unsigned long long first = 0, count = 0;
+                    if (std::sscanf(line.c_str(), "meshes %u %llu %llu", &sec, &first, &count) != 3 || sec == 0 || sec > 31) continue;
+                    for (size_t k = first; k < first + count && k < L.world->host_meshes.size(); ++k, ++tagged) L.world->host_meshes[k].section = static_cast<uint8_t>(sec);
+                }
+            }
             host_meshes_bind(L.idx.get(), L.world.get());
-            std::printf("[mrpw] level slot %d: %zu host meshes drawn by the host\n", id, L.world->host_meshes.size());
+            std::printf("[mrpw] level slot %d: %zu host meshes drawn by the host%s\n", id, L.world->host_meshes.size(),
+                        tagged != 0 ? (" (" + std::to_string(tagged) + " of them the sections')").c_str() : "");
         }
     }
-    load_textures(L);
+    const double t_index = now_ms();
+    load_textures(L, pf.get());
+    const double t_tex = now_ms();
     // the GPU path's templates (static)
     build_templates(L);
     if (vk::is_active()) {
@@ -659,8 +764,11 @@ void load_level(int id) {
         glBindVertexArray(0);
     }
     L.loaded = true;
+    const double t_gpu = now_ms();
     static_level_build(g_slevel, *L.world);  // (the classes as the passes find them in EE memory)
     tfrag_level_build(g_tlevel, *L.world);   // (the tfrag images / plans from EE memory)
+    const double t_ee = now_ms();
+    if (world_renderer_level_get() == id && level_slot() >= 19) g_wkey[id] = world_cache_key();  // (a world section's: kept when left)
     g_tcols = TfragColours{};
     if (mrp_rt_active()) mrp_rt_level(rt_gather(L));  // (Water Reflections (RT): the static world's acceleration structures)
     else mrp_rt_level_drop();                          // (the last level's freed; made at the frame the row turns an RT value on)
@@ -670,6 +778,11 @@ void load_level(int id) {
     for (const auto& c : L.world->ties) nt += c.packets.size();
     std::printf("[mrpw] level %d: %zu shrub classes (%zu packets), %zu tie classes (%zu packets), %zu tfrags; %zu / %zu / %zu textures in %zu arrays (%.0f ms)\n", id,
                 L.world->shrubs.size(), ns, L.world->ties.size(), nt, L.world->tfrags.size(), L.tex[0].size(), L.tex[1].size(), L.tex[2].size(), L.buckets.size(), now_ms() - t0);
+    if (world_renderer_level_get() == id)  // (a session's game world section: where its load's time went)
+        std::printf("[mrpw] level %d (a world section's, %s): the world %.0f ms, its index %.0f, textures %.0f, templates and buffers %.0f, the EE tables %.0f, "
+                    "the rest %.0f\n",
+                    id, pf != nullptr && pf->ok ? "read on a worker before" : "read now", t_world - t0, t_index - t_world, t_tex - t_index, t_gpu - t_tex, t_ee - t_gpu,
+                    now_ms() - t_ee);
 }
 
 // ---- shaders -----------------------------------------------------------------------------------
@@ -4264,6 +4377,22 @@ int program_index(uint64_t hash) {
 }  // namespace
 
 // orig: (host) see mrp_world_renderer.h
+// orig: (host) see mrp_world_renderer.h
+void mrp_world_prefetch(int level) {
+    if (!g_world_mrp || level < 0 || level >= 19) return;
+    std::lock_guard<std::mutex> lk(g_pf_mu);
+    if (g_pf.count(level) != 0) return;
+    g_pf[level] = std::async(std::launch::async, [level] {
+                      auto p = std::make_shared<Prefetched>();
+                      p->world = std::make_unique<World>();
+                      const std::string root = asset_root();
+                      p->ok = load_world(root, level, *p->world);
+                      for (int k = 0; k < 3 && p->ok; ++k)
+                          mrp::read_textures(root + "/" + level_dir_name(level) + "/textures_" + kTexNames[k] + ".mrpt", p->tex[k]);
+                      return p;
+                  }).share();
+}
+
 bool mrp_world_ready() { return g_world_mrp && (vk::is_active() ? g_vk_world.inited : g_prog != 0) && g_level.loaded && g_level.id == world_level_id(); }
 
 // orig: (host) see mrp_world_renderer.h

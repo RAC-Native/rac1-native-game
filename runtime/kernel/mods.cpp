@@ -167,13 +167,14 @@ bool mods_level_base_allowed(int base) {
     return any && base >= 0 && base <= 18;
 }
 
-// orig: (none) — enhancement: a level mod's build's choices (build.json: its music) into `m`
+// orig: (none) — enhancement: a level mod's build's choices (build.json: its music, its sky's level) into `m`
 static void level_build_choices(ModInfo& m) {
     std::ifstream f(mods_level_build_dir(m.folder) / "build.json", std::ios::binary);
     std::stringstream ss;
     ss << f.rdbuf();
     const nlohmann::json j = nlohmann::json::parse(ss.str(), nullptr, false);
     if (j.is_discarded() || !j.is_object()) return;
+    if (const auto sk = j.find("sky"); sk != j.end() && sk->is_number_integer()) m.level_sky = static_cast<int>(std::clamp<int64_t>(sk->get<int64_t>(), -1, 18));
     if (const auto ob = j.find("objects"); ob != j.end() && ob->is_number_integer()) m.level_objects = static_cast<int>(std::clamp<int64_t>(ob->get<int64_t>(), 0, 4096));
     if (const auto po = j.find("pools"); po != j.end() && po->is_array())
         for (const auto& e : *po) {

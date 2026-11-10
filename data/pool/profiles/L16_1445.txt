@@ -1,0 +1,8 @@
+# A class profile (docs/open-engine.md, "Class profiles"): our knowledge of a game class's level data, ids and offsets only.
+class 16:1445 the walking robot (update 0x2e5e08 / 0x2e6208)
+pvar_size 0x260
+slot 0x1c0 moby  target     # its target (Ratchet)
+slot 0x1c4 word  given_up   # 2: given up for good (nothing clears it)
+slot 0x1d0 vec3  guard      # its guard point (where it stood at its first update): a target 16 units from it is given up
+# base_hunt (any of its mobys): the guard point put on Ratchet after each frame and the giving up cleared (kal_robot_guard)
+hunt moby host kal_robot_guard

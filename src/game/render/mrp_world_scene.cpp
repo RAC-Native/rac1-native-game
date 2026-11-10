@@ -678,6 +678,7 @@ void emit_host_meshes(Build& b) {
         // (the static ones, then the level's objects': src/formats/host_meshes.h host_meshes_dynamic)
         const HostMeshInstance& ci = ii < n_static ? w->host_meshes[ii] : in.host_dyn[ii - n_static];
         if (ci.cls >= w->ties.size()) continue;
+        if (ii < n_static && ((in.host_sections >> (ci.section & 31u)) & 1u) == 0) continue;  // (another section's than the current: not drawn)
         const TieClass& c = w->ties[ci.cls];
         float sph[4];
         std::memcpy(sph, c.header.data() + 0x30, sizeof sph);
@@ -1578,8 +1579,10 @@ void scene_capture(uint32_t chain_start, uint32_t chain_end, SceneInput& in, con
         for (uint32_t k = 0; k < 4; ++k) fog[k] = lwc1(OV(0x0016cc60u) + 4 * k);
         host_meshes_fog_set(fog);
         host_meshes_dynamic(in.host_dyn);  // (the level's objects' models: their places this frame)
+        in.host_sections = host_meshes_sections();  // (a session's current section: its meshes drawn)
     } else {
         in.host_dyn.clear();
+        in.host_sections = 0xffffffffu;
     }
     uint32_t last_end = 0;
     for (const PassRange& r : in.passes) last_end = std::max(last_end, r.end);

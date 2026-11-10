@@ -294,6 +294,7 @@ struct SceneInput {
     const TfragColours* tfrag_cpu_colours = nullptr;
     // a level mod's objects' models this frame (src/formats/host_meshes.h host_meshes_dynamic): drawn after its host meshes
     std::vector<HostMeshInstance> host_dyn;
+    uint32_t host_sections = 0xffffffffu;  // (a session's current sections: their static host meshes drawn, host_meshes_sections)
 };
 
 // orig: (host) the frame's chain [chain_start, chain_end) walked to the end of its last world range: the world's packets

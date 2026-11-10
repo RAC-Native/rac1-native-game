@@ -7,8 +7,9 @@ no telemetry, nothing about the machine or the player is sent (the request carri
 which GitHub requires, and nothing more).
 
   Stable channel:      GET /repos/<repo>/releases/latest: its tag compared with the installed version.
-  Development channel: GET /repos/<repo>/compare/<installed commit>...main: the commits on main the
-                       installed build does not have (only for a build from a git clone on main).
+  Development channel: GET /repos/<repo>/compare/<installed commit>...dev: the commits on the dev branch
+                       (where the work goes first; merged into main from time to time) the installed build
+                       does not have (GitHub issue #141: main alone missed them).
 
 The result is written to --out as "key value" lines, which the game reads (src/host/update_check.cpp):
 
@@ -17,9 +18,9 @@ The result is written to --out as "key value" lines, which the game reads (src/h
   installed <version>        (stable) the installed version / (development) the installed commit
   status ok
   newer 0|1                  something newer than the installed build
-  id <tag or commit>         what is newer: the release's tag / main's commit (what "Skip Version" keeps)
+  id <tag or commit>         what is newer: the release's tag / dev's commit (what "Skip Version" keeps)
   version <x.y.z>            (stable) the release's version
-  commits <n>                (development) the commits on main not in the installed build
+  commits <n>                (development) the commits on dev not in the installed build
   notes <text>               (stable) the release notes in short: one line, plain ASCII
 
 A result for the same channel and installed build younger than --max-age seconds is kept as it is,
@@ -41,6 +42,7 @@ import urllib.request
 from pathlib import Path
 
 REPO = "RAC-Native/rac1-native-game"
+DEV_BRANCH = "dev"  # the development channel's branch (tools/setup.py's too)
 API = "https://api.github.com"
 TIMEOUT = 10  # seconds, the connection and each read
 NOTES_MAX = 120  # characters of the release notes kept (the menu's help box scrolls slowly)
@@ -111,7 +113,7 @@ def main():
     ap.add_argument("--channel", choices=("stable", "development"), default="stable")
     ap.add_argument("--installed", default="", help="stable: the installed version (x.y.z)")
     ap.add_argument("--describe", default="", help="stable: git describe of the installed build (detects switching from main to stable)")
-    ap.add_argument("--branch", default="", help="stable: git branch of the installed build")
+    ap.add_argument("--branch", default="", help="stable: git branch of the installed build (main or dev: ahead of the release)")
     ap.add_argument("--commit", default="", help="development: the installed commit or v<version> tag")
     ap.add_argument("--max-age", type=int, default=6 * 3600, help="seconds a result is kept without asking again")
     ap.add_argument("--force", action="store_true", help="ask GitHub even when the result is recent")
@@ -140,8 +142,8 @@ def main():
             latest = version_tuple(tag)
             if latest is None:
                 return 1
-            # switching from Development (main, ahead of the release tag) to Stable also offers the latest release
-            on_dev_main = (args.branch == "main" and bool(args.describe) and
+            # switching from Development (main or dev, ahead of the release tag) to Stable also offers the latest release
+            on_dev_main = (args.branch in ("main", DEV_BRANCH) and bool(args.describe) and
                            args.describe != tag and args.describe != f"{tag}-dirty")
             newer = latest > version_tuple(installed) or on_dev_main
             lines += [f"newer {int(newer)}", f"id {plain_ascii(tag)}", "version " + ".".join(map(str, latest)),
@@ -149,12 +151,12 @@ def main():
         else:
             if not (re.fullmatch(r"[0-9a-f]{7,40}", installed) or re.fullmatch(r"v\d+(?:\.\d+)*", installed)):
                 return 1
-            cmp = get_json(args.api, f"/repos/{REPO}/compare/{installed}...main")
-            ahead = int(cmp.get("ahead_by", 0))  # (main's commits the installed build lacks)
+            cmp = get_json(args.api, f"/repos/{REPO}/compare/{installed}...{DEV_BRANCH}")
+            ahead = int(cmp.get("ahead_by", 0))  # (dev's commits the installed build lacks)
             commits = cmp.get("commits") or []
             head = str(commits[-1].get("sha", "")) if commits else installed
-            if len(commits) < ahead:  # (the compare lists main's first 250 new commits only: its tip asked for itself)
-                head = str(get_json(args.api, f"/repos/{REPO}/commits/main").get("sha", "")) or head
+            if len(commits) < ahead:  # (the compare lists dev's first 250 new commits only: its tip asked for itself)
+                head = str(get_json(args.api, f"/repos/{REPO}/commits/{DEV_BRANCH}").get("sha", "")) or head
             lines += [f"newer {int(ahead > 0)}", f"id {head[:40]}", f"commits {ahead}"]
     except Exception:  # (no network, an HTTP error, the rate limit, an unexpected answer: silent)
         return 1

@@ -47,6 +47,7 @@ struct ModInfo {
     // none, 0..18 that level's tracks, kLevelMusicOwn the build's music files: level_music_files, the intro then the loop)
     int level_music = -2;
     std::vector<std::string> level_music_files;
+    int level_sky = -1;             // the level whose sky the build has (level.txt's sky line: 0..18), -1 the base level's
     int level_objects = 0;          // the placed objects (level.txt's moby lines): uids 1..level_objects (the hero's skipped)
     // the spawn pools (level.txt's spawn lines): per class, the uids of the objects the composer placed for the plugins'
     // base_spawn (taken out of play when the level loads, each one's moby and pvars kept to start again)
@@ -77,9 +78,10 @@ constexpr const char* kPluginFile = "rac1_mod.so";  // (CMake's MODULE suffix on
 
 // The level composer's version (src/setup/level_compose.cpp): a build made by another version is made again by the
 // setup, and the game does not use it ("needs setup")
-constexpr int kLevelComposerVersion = 5;
-// The level folder formats this build reads (level.format): 1 (on Veldin, level 0), 2 (on a base level of the allow-list)
-constexpr int kLevelFormat = 2;
+constexpr int kLevelComposerVersion = 6;
+// The level folder formats this build reads (level.format): 1 (on Veldin, level 0), 2 (on a base level of the allow-list), 3 (a
+// session: loaded once, a death a soft reset; on Veldin by default, or a base level of the allow-list: docs/open-engine.md)
+constexpr int kLevelFormat = 3;
 // The base levels a level mod may run on (level.base, format 2; format 1: 0 only), each tested: Veldin (0), Kerwan (3),
 // Eudora (4), Kalebo III (16). docs/mods.md, "Base levels"
 constexpr int kLevelBases[] = {0, 3, 4, 16};

@@ -51,10 +51,11 @@ bool g_headless = false;
 AdvancedUpdatePrefs g_last_prefs;
 std::string g_skipped;  // "Skip Version"'s choice, as at start
 
-// orig: (none) — host: true when the build is not on a developer branch other than main (main, a release tag's
-// detached HEAD, or a zip download can all check and switch to the development channel)
+// orig: (none) — host: true when the build is not on a developer branch other than main and dev (main, dev, a release
+// tag's detached HEAD, or a zip download can all check and switch to the development channel: the dev branch, #141)
 bool can_check_dev() {
-    return *RAC1_GIT_BRANCH == 0 || std::strcmp(RAC1_GIT_BRANCH, "main") == 0 || std::strcmp(RAC1_GIT_BRANCH, "HEAD") == 0;
+    return *RAC1_GIT_BRANCH == 0 || std::strcmp(RAC1_GIT_BRANCH, "main") == 0 || std::strcmp(RAC1_GIT_BRANCH, "dev") == 0 ||
+           std::strcmp(RAC1_GIT_BRANCH, "HEAD") == 0;
 }
 
 // orig: (none) — host: short installed version/commit string for the Updates page help text
@@ -110,7 +111,7 @@ UpdateOffer offer_base() {
     return o;
 }
 
-// orig: (none) — testing: RAC1_UPDATE_FAKE=<x.y.z> (a release) or dev:<n> (n commits on main): a made-up offer
+// orig: (none) — testing: RAC1_UPDATE_FAKE=<x.y.z> (a release) or dev:<n> (n commits on the dev branch): a made-up offer
 bool fake(const char* v, bool manual) {
     UpdateOffer o = offer_base();
     if (std::strncmp(v, "dev:", 4) == 0) {
@@ -171,7 +172,7 @@ void start_check(const AdvancedUpdatePrefs& prefs, bool force, bool manual) {
     g_handled = false;
     update_notice_set_status(1, c->installed_short);
     std::printf("[update] checking for a newer %s in the background (Updates > Update Check)\n",
-                c->development ? "commit on main" : "release");
+                c->development ? "commit on the dev branch" : "release");
     std::thread([c, args] {
         c->exit_code = platform::run_quiet(args);
         c->done.store(true, std::memory_order_release);
@@ -248,7 +249,7 @@ void poll() {
     }
     if (r["newer"] != "1") {
         update_notice_set_status(2, c.installed_short);
-        std::printf("[update] this build is the latest%s\n", c.development ? " on main" : " release");
+        std::printf("[update] this build is the latest%s\n", c.development ? " on the dev branch" : " release");
         return;
     }
     UpdateOffer o = offer_base();
@@ -262,11 +263,12 @@ void poll() {
     if (c.development) {
         o.commits = std::atoi(r["commits"].c_str());
         o.installed = std::strlen(RAC1_GIT_COMMIT) >= 7 ? std::string(RAC1_GIT_COMMIT).substr(0, 7) : std::string(RAC1_VERSION);
-        std::printf("[update] %d new commit(s) on main\n", o.commits);
+        std::printf("[update] %d new commit(s) on the dev branch\n", o.commits);
     } else {
         o.version = r["version"];
         const std::string tag = "v" + o.version;
-        const bool on_dev_main = std::strcmp(RAC1_GIT_BRANCH, "main") == 0 && *RAC1_GIT_DESCRIBE != 0 &&
+        const bool on_dev_main = (std::strcmp(RAC1_GIT_BRANCH, "main") == 0 || std::strcmp(RAC1_GIT_BRANCH, "dev") == 0) &&
+                                 *RAC1_GIT_DESCRIBE != 0 &&
                                  std::string(RAC1_GIT_DESCRIBE) != tag && std::string(RAC1_GIT_DESCRIBE) != tag + "-dirty";
         o.installed = on_dev_main ? std::string(RAC1_GIT_DESCRIBE) : c.installed;
         o.notes = r["notes"];

@@ -8,6 +8,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl_common.h>
 #include <game/enhance/session.h>
+#include <game/enhance/sections.h>
 #include <array>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
@@ -613,6 +614,7 @@ uint32_t gameplay_load(int32_t level) {
             sw(static_cast<uint32_t>(pv) + static_cast<uint32_t>(static_cast<int32_t>(w) >> 16), base + lwu(p + 4));
         }
     }
+    if (__builtin_expect(g_section_equiv, 0)) section_equiv_native(H);  // (testing, RAC1_SECTION_EQUIV: src/game/enhance/sections.h)
     // the paths (0x160104 count, 0x160108 data, pointers at 0x1b04b0)
     if (lw(H + 0x70) != 0) {
         uint32_t p = H + lwu(H + 0x70);

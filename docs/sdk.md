@@ -32,7 +32,13 @@ Contents:
 | 2 | the first with level objects | level objects of the level's own classes (`class_define` .. `object_at`, `rac1_class_def`, `rac1_spawn`), `collide_ray`, `objects_near`, `mobys_near`, `hero_damage`, `hit_send`, `hit_take`, the level's own sounds (`sfx_*`), triggers (`trigger_find`, `trigger_inside`, the `trigger` callback), `frame_count` |
 | 3 | the first with base levels | the base level's objects at run time: `base_spawn`, `base_moby`, `base_free` (level.txt's `spawn` lines) |
 | 4 | the first with the vendor | `vendor_open`, `input_hold`, the HUD's panels, anchors and sizes (`hud_rect`, `hud_text_ex`, `hud_text_width`, `RAC1_HUD_*`), `base_hunt`, `light_add`; level.txt's `update_all` line |
-| 5 | this one | Kalebo III's enemies: `base_option` (`RAC1_BASE_WEAPON`, `RAC1_BASE_TROOPS`), `base_handle`, `base_hunt` and `base_spawn` for the bomb bots 52, the Gadgetron robots 541, the jetpack troopers 638 and the dropships 1356; the weapons: `weapons_owned`, `weapon_equip`, `weapon_allow`, `ammo_fill` |
+| 5 | the first with Kalebo III's enemies | Kalebo III's enemies: `base_option` (`RAC1_BASE_WEAPON`, `RAC1_BASE_TROOPS`), `base_handle`, `base_hunt` and `base_spawn` for the bomb bots 52, the Gadgetron robots 541, the jetpack troopers 638 and the dropships 1356; the weapons: `weapons_owned`, `weapon_equip`, `weapon_allow`, `ammo_fill` |
+| 6 | the first with imports | classes of other levels (level.txt's `import` lines): `import_class`, `import_spawn`, `import_load`, `import_release` |
+| 7 | (the room of ABI 11) | `rac1_api`'s 16 entries after ABI 6's (`reserved_abi7` until ABI 10: NULL on those games) are ABI 11's rails and set-piece services, so ABI 8's services stay where they were |
+| 8 | the first with profiles | the level data of imported classes: `path_find`, `path_create`, `object_bind_path`, `object_bind`, `group_create`, `object_slots`; level.txt's `path` lines; imported enemies that read their planet's paths and areas |
+| 9 | the first with sessions | sessions (level.format 3): `session_on`, `checkpoint_set`, `checkpoint_at`, `checkpoint_get`, `respawn_policy`, `rac1_respawn`, `RAC1_RESPAWN_*`; the callbacks `respawn`, `session_save`, `session_load`; `object_bind`, `object_bind_path`, `group_create`, `object_slots` on the base level's own objects too (a `base_spawn` object of a class with a profile) |
+| 10 | the first with sections | sections (a session's `section` blocks and portals): `section_load`, `section_ready`, `section_enter`, `section_unload`, `section_current`, `section_policy`, `RAC1_SECTION_*`; the callbacks `section_leave`, `section_enter` |
+| 11 | this one | grind rails and the set-piece kit, in ABI 7's room of the table: `rail_find`, `hero_rail`, `rail_point`, `rail_enable`, `hero_rail_attach`, `rail_speed`, `rail_info`, `item_visit`, `fade`, `fade_active`, `camera_set`, `camera_release`, `hazard_add`, `hazard_set`, `object_follow_path`, `object_path_at` (`rac1_rail_info`, `rac1_camera`, `rac1_hazard`, `RAC1_RAIL_*`, `RAC1_CAMERA_*`, `RAC1_HAZARD_*`, `RAC1_PATH_*`); the callback `rail`; level.txt's `rail`, `rails`, `items` lines and `class ... collision <file>` |
 
 How compatibility works:
 
@@ -43,14 +49,16 @@ How compatibility works:
 - **A plugin built for a newer ABI than the game's is refused** ("needs a newer game" in Options > Mods and the log).
   To run on older games too, build against the older header, or test each newer service before using it:
   `RAC1_API_HAS(api, service)` is true when the game's table has it (`api->size` is the game's `sizeof(rac1_api)`).
-  `api->abi` is the game's ABI.
+  `api->abi` is the game's ABI. **ABI 11's services sit in ABI 7's room**, which games of ABI 8 to 10 have as NULL
+  entries: `RAC1_API_HAS(api, rail_find)` is true there too, so test `api->abi >= 11` (or the entry not NULL) for them.
 - **Structs carry their size.** Each struct the SDK passes starts with `uint32_t size`. In the ones you fill
   (`rac1_class_def`) set it to `sizeof`; in the ones the game fills for you (`rac1_ray_hit`, `rac1_hit` given to
   `hit_take`) set it to `sizeof` and the game fills only what fits (0 counts as the whole struct of the game's
   version); the ones the game gives you (`rac1_spawn`, `rac1_hit` in the `hit` callback) carry the game's size.
 
 The level folder's own version is `level.format`: 1 runs on Veldin's code (level 0), 2 names another base level
-(`level.base`, [Base levels](mods.md#base-levels)). The lines below are additions both formats read; a game without them
+(`level.base`, [Base levels](mods.md#base-levels)), 3 is a **session** (Veldin's code by default, or a base level: loaded once,
+a death a soft reset; [The open engine](open-engine.md#sessions-stage-5)). The lines below are additions both formats read; a game without them
 refuses the level with the line's number.
 
 ## Lifecycle
@@ -71,7 +79,9 @@ game start ──> plugins loaded (load order), rac1_mod_main(api, mod) each: re
    │      ... the hero, particles, the camera ─> camera
    │      HUD drawn ─> hud (may run twice: draw only)
    │
-   ├─ a save is written ──> save
+   ├─ (a session, format 3) Ratchet died ──> [the soft reset: back at the checkpoint, no level load] ──> respawn
+   │      (no level_end / level_start: your state and your objects stay)
+   ├─ a save is written ──> save (and in a session: session_save)
    └─ game end ──> shutdown
 ```
 
@@ -145,6 +155,11 @@ Fill them in `rac1_mod_main`; all are optional (NULL: none). Each gets your `mod
 | `test(user, text, frame)` | 1 | `RAC1_MOD_TEST=<text>` given, once a frame of play | for scripted tests |
 | `shutdown(user)` | 1 | the game ends | |
 | `trigger(user, index, name, inside)` | 2 | Ratchet entered (`inside` 1) or left (0) one of level.txt's triggers | before `frame`; once per change |
+| `respawn(user, r)` | 9 | a session's soft reset: Ratchet died and is back at the checkpoint (no level load) | `rac1_respawn`: `count` (the session's respawns, this one included), `checkpoint` (its name), `pos`, `yaw`. Every plugin gets it (test your `level_start`'s `mine`). Bring back what the battle needs (its enemies); the level's placed objects are the respawn policy's |
+| `session_save(user, buf, cap)` | 9 | a save is written in a session | your bytes of the session's state (at most `cap`, 16 KB), their count; kept in the session's item of `save<N>.pc`, apart from `save`'s |
+| `session_load(user, data, size)` | 9 | a save made in a session was loaded, back in it | after `level_start`; the game does not save the objects' places: a battle running at the save is not resumed |
+| `section_leave(user, name)`, `section_enter(user, name, entry)` | 10 | a section switch | [Sections](#sections-abi-10) |
+| `rail(user, rail, name, event)` | 11 | Ratchet and one of level.txt's rails: `RAC1_RAIL_ENTER` (he is on it: landed, jumped across to it, `hero_rail_attach`), `RAC1_RAIL_END` (he reached its end: its last point riding along its points, its first riding back; not for a loop), `RAC1_RAIL_LEAVE` (off it: jumped off, fell, flew off its end, a switch) | once a frame of play, before `frame` (what the hero did the frame before); every plugin gets it ([Rails](#rails-and-the-set-piece-kit-abi-11)) |
 
 A class's own callbacks are in its `rac1_class_def` ([Objects](#objects)).
 
@@ -274,6 +289,165 @@ Test `RAC1_API_HAS(api, base_option)` before using them (a game older than ABI 5
 | `void weapon_allow(const int32_t* items, int32_t n)` | only those `n` weapons can be chosen: the others are not shown in the quick select's ring (empty slots), the PC's next / previous weapon skips them, Triangle's double press does not swap to one, and one the game asks for itself (its return to the weapon used before a gadget, a level's own build of the double press) is not taken; one that reached his hand anyway is put back for the last allowed item he held (else the wrench), unless a switch to an allowed weapon is under way (`weapon_equip`'s, the quick select's): that one is left to finish. So `weapon_allow` of a new weapon without the one in hand and `weapon_equip` of the new one, in either order, in one frame or across frames, end with the new one in hand (no need to keep the old one allowed until the switch is done). Only weapons are limited: the wrench and the gadgets never. NULL or 0: all again. Off at every level's start |
 | `int ammo_fill(int32_t item)` | that item's ammo (0x13d428) to its most (the item table's, as the HUD and the pickups): 1; 0 not (not owned, an item with no ammo) |
 
+### Classes of other levels (ABI 6)
+
+Test `RAC1_API_HAS(api, import_class)` first. A level mod's `level.txt` brings classes of other planets with `import <name>`
+or `import <level>:<class>` lines ([Level mods](mods.md#the-level-folder); the names are the game's
+`data/pool/names.txt`), each with what it spawns (its shots, effects, debris: [The open engine](open-engine.md#dependencies)).
+They are in the level from its load; these services spawn them and bring them in or out during play. `name` is a name or
+`"<level>:<class>"`.
+
+| Service | Does |
+|---|---|
+| `int32_t import_class(const char* name)` | the class id the import has in the level now (its own id, as on its planet, unless the base level has that id: then one of 2048 and up), for `import_spawn`, `mobys_near` and the moby's +0xa6; the base level's own class when `name` is one of its; -1 when it is not in the level |
+| `uint32_t import_spawn(int32_t cls, const float pos[3], float yaw)` | an object of that class started at `pos`, turned `yaw` radians, as its planet first places one: its size, update distance, settings and private values (what names other objects of its planet, or its planet's shared data, is none); it drops its bolts when killed and is gone once killed. Its moby's address, 0 when it cannot be (no such class, no room in the moby array, not in play) |
+| `int32_t import_load(const char* name)` | the class brought into the level now, with what it spawns (drawn from the next frame; the modern renderer loads the level's moby assets again, about 25 ms): its id, -1 when it cannot be |
+| `int32_t import_release(const char* name)` | the class taken out of the level: its objects removed at once, its memory given back a few frames later, the classes only it needed with it; how many classes went (0: not one of the level's imports). A class `level.txt` imports is back at the level's next load |
+
+Classes that read no level data of their own planet (`compose.log` says `reads -`) work as they are (Umbris's turret
+`umbris.turret`, Orxon's spore plant `orxon.spore_plant`). From ABI 8's game on, classes that read their planet's paths,
+areas or boxes work too: they find their planet's level data at their planet's indices, and a class with a **profile** (the
+game's `data/pool/profiles`) is given level data of its own round where `import_spawn` starts it (an area round it, its
+patrol ahead of it...), which the next section's services change. The mobys a placement names (an attached part, the
+troopers a ship carries) are spawned with it, and `import_load` no longer reloads the level's moby assets (about 1 ms).
+
+### The level data of imported classes (ABI 8)
+
+Test `RAC1_API_HAS(api, object_bind_path)` first. An imported object's private values that name its planet's paths,
+areas, groups or other objects are its class's **slots**, named by its profile ([The open engine](open-engine.md#class-profiles));
+`object_slots` lists them. A class without a profile has none. From ABI 9's game these services take the base level's own
+objects too (a `base_spawn` object of a class with a profile, such as Kalebo III's robots on a Kalebo III level mod).
+
+| Service | Does |
+|---|---|
+| `int32_t path_find(const char* name)` | level.txt's `path <name> x y z ...` line `name` (its points moved by the level's `offset`, as every coordinate): its handle, 0 when there is none |
+| `int32_t path_create(const float* xyz, int32_t n)` | a path of the plugin's own: `n` points (1 to 64), `xyz[3 * n]` in the game's coordinates: its handle (until the level's next load), 0 when it cannot be |
+| `int object_bind_path(uint32_t moby, const char* slot, int32_t path)` | the slot (a path or an area) of the imported object `moby` given the path's points: they are copied into the object's planet's level data (a path of the object's own there, freed when it is gone). 1 done, 0 not (no such object or slot, not a path's slot, no room) |
+| `int object_bind(uint32_t moby, const char* slot, uint32_t value)` | the slot set to `value`: a `moby` slot takes another object's moby address (0: none), a `group` slot a `group_create` handle, a `word` slot the word. 1 done, 0 not |
+| `int32_t group_create(uint32_t owner, const uint32_t* mobys, int32_t n)` | a group of `n` objects (moby addresses, 1 to 64) in the planet's level data of the imported object `owner` (from ABI 9's game also a `base_spawn` object of the base level's own class with a profile: in the base's groups): its handle for `object_bind`, -1 when it cannot be |
+| `int32_t object_slots(uint32_t moby, char* out, int32_t cap)` | the slots of the object's class, `"name:kind name:kind ..."` (kinds: path, area, group, moby, word, vec3), into `out`: their count, 0 when it has no profile |
+
+The enemies with profiles (their names in the game's `data/pool/names.txt`; each fought in the arena example's test copy):
+
+| Name | What | Slots (their defaults at `import_spawn`) |
+|---|---|---|
+| `fleet.blarg_trooper` (17:1382) | Drek's fleet's Blarg trooper | `area` (a square of 24 round it); `box_a`..`box_d` (none: always awake) |
+| `gemlik.flying_robot` (13:63) | Gemlik's flying robot | `path_a`, `path_b` (none, as on its planet) |
+| `gaspar.walking_robot` (9:193) | Gaspar's walking robot | `path` (none, as on its planet) |
+| `blarg.serpent` (6:1048) | Blarg's serpent: kept inside its pen | `pen` (a square of 8 round it) |
+| `pokitaru.amoeboid` (11:572) | Pokitaru's amoeboid | `area`, `home` (squares of 12 round it) |
+| `hoven.flying_trooper` (12:294) | Hoven's flying trooper (it does not wake for Ratchet beside it, on its planet either) | `patrol`, `line_a`..`line_c` (none), `area` (a square of 24 round it) |
+
+```c
+/* level.txt: import blarg.serpent / path pen 2 -20 0  14 -20 0  14 -8 0  2 -8 0 */
+uint32_t m = api->import_spawn(api->import_class("blarg.serpent"), at, yaw);
+if (m && RAC1_API_HAS(api, object_bind_path)) api->object_bind_path(m, "pen", api->path_find("pen"));
+```
+
+### Sessions (ABI 9)
+
+Test `RAC1_API_HAS(api, session_on)` first. A level mod of `level.format` 3 is a session ([The open engine](open-engine.md#sessions-stage-5)):
+loaded once, at the arrival; a death is a soft reset (Ratchet back at the current checkpoint with his health, no level
+load, the `respawn` callback). level.txt's `checkpoint <name> x y z [yaw]` lines name the places; `start` (or, without
+one, where the level starts Ratchet) is the first.
+
+| Service | Does |
+|---|---|
+| `int session_on(void)` | 1: the level is a session, 0 not (the services below then do nothing and return 0 / -1) |
+| `int checkpoint_set(const char* name)` | level.txt's checkpoint `name` the current one (where the next respawn puts Ratchet, and a save in the session keeps): 1, 0 none of that name |
+| `int checkpoint_at(const float pos[3], float yaw, const char* name)` | a checkpoint of your own at `pos` turned `yaw` (radians), named `name` (NULL: `plugin`), the current one: 1 done |
+| `int32_t checkpoint_get(float pos[3], float* yaw, char* name, int32_t cap)` | the current checkpoint (any pointer may be NULL): its place, yaw and name; the session's respawns so far, -1 outside a session |
+| `int32_t respawn_policy(int32_t policy)` | the level's placed objects (level.txt's `moby` lines) at a respawn: `RAC1_RESPAWN_RESET` (those killed since the arrival come back as placed, except what the level's records keep killed for good: a crate broken, a pickup taken; level.txt's `respawn reset`, the default) or `RAC1_RESPAWN_KEEP` (they stay as they are); -1 only asks. The policy now, -1 outside a session |
+
+The objects your plugin started (`base_spawn`, `import_spawn`, `object_spawn`) are never touched by a respawn: the
+`respawn` callback is where you remove them or start them again. On a level of format 1 or 2 a death loads the level
+again, as before: `level_end`, `level_start`.
+
+```c
+static void respawn(void* user, const rac1_respawn* r) {
+    if (!mine || !fighting) return;
+    enemies_remove_all();   /* the wave he died in: from its start again */
+    wave_start(wave);
+}
+/* in rac1_mod_main: */ mod->respawn = respawn;
+/* at a battle's start: */ if (RAC1_API_HAS(api, session_on) && api->session_on()) api->checkpoint_set("arena");
+```
+
+### Sections (ABI 10)
+
+Test `RAC1_API_HAS(api, section_enter)` first. A session's level.txt can have `section` blocks and portals
+([Sections](mods.md#sections), [The open engine](open-engine.md#sections-stage-6)); `main` is the part outside them. Every
+section is streamed in while the landing plays; a switch is made at the start of a frame, in one frame, with no level load.
+
+| Service | Does |
+|---|---|
+| `int section_load(const char* name)` | section `name` streamed in (read on a worker, committed a little each frame): 1 started or in already, 0 no such section |
+| `int section_ready(const char* name)` | 1: it is in (a switch to it is made at once), 0 not yet, -1 no such section |
+| `int section_enter(const char* name, const char* entry, int32_t fade)` | Ratchet to its entry `entry` (NULL or "": its first), the screen faded out and in over `fade` frames (0 none), at the next frame once it is in: 1 asked, 0 no such section or entry. The entry becomes the checkpoint |
+| `int section_unload(const char* name)` | its objects out of play, its memory given back: 1, 0 not (main, the current one, no such) |
+| `int32_t section_current(char* name, int32_t cap)` | the current section's name into `name`; its index (0 main), -1 no session with sections |
+| `int32_t section_policy(const char* name, int32_t policy)` | its objects when Ratchet leaves it: `RAC1_SECTION_REMOVE` (out of play; the killed ones stay so), `RAC1_SECTION_FREEZE` (kept, not updated nor drawn), `RAC1_SECTION_KEEP` (kept running); -1 only asks |
+
+The same services serve a section of a game planet's world ([Game worlds as sections](mods.md#game-worlds-as-sections)):
+`section_load` reads its planet's files from the disc in the background (about 20 MB, a fraction of a second), and while it
+is the current section the planet's objects there (`mobys_near`, the objects' memory) run on their own code with their
+planet's level data; `section_unload` gives its memory back.
+
+Callbacks: `section_leave(user, name)`, then `section_enter(user, name, entry)` (`entry` "" when the switch was a death's
+checkpoint or a save's). The objects your plugin started are not a section's: a switch never touches them (remove them in
+`section_leave` when they belong to the place left).
+
+```c
+static void enter(void* user, const char* name, const char* entry) {
+    if (strcmp(name, "arena") == 0) wave_start(0);   /* the arena's battle as Ratchet comes in */
+}
+/* in rac1_mod_main: */ mod->section_enter = enter;
+/* a door the plugin opens: */ api->section_enter("vault", "door", 20);
+```
+
+### Rails and the set-piece kit (ABI 11)
+
+Test `api->abi >= 11` first (these entries are in ABI 7's room: NULL on games of ABI 8 to 10). The rails are level.txt's
+`rail` and `rails` lines ([Grind rails](mods.md#grind-rails-and-set-pieces)), in main or a section: the game's own rail code
+rides them (the Grind Boots needed: level.txt's `items grindboots` or `item_visit`). A rail is in the game's rail table
+while its section is the current one (main's always, in a level without sections). On a level mod with rails of its own the
+hero code's landing check takes a rail anywhere (Kalebo III's, Oltanis's and Blarg's builds limit it to their own levels'
+rail spots: not on such a level mod).
+
+| Service | Does |
+|---|---|
+| `int32_t rail_find(const char* name)` | the rail's handle (1..), 0 none |
+| `int rail_info(int32_t rail, char* name, int32_t cap, float* length, int32_t* section)` | its name, its length in units, its section's index (0 main); any pointer may be NULL: 1, 0 no such |
+| `int hero_rail(rac1_rail_info* out)` | 1 while Ratchet grinds (states 0x28 grinding, 0x29 / 0x2a jumping, 0x2b swinging the wrench, 0x42 hopping off), `out` filled: `rail` (its handle; 0 a rail of a plugin's own table), `state`, `segment`, `distance` along it, `length`, `speed` (units a frame), `direction` (1 along its points, -1 back), `pos` (the rail's point under him); 0 not |
+| `int rail_point(int32_t rail, float distance, float out[3], float dir[3])` | the point `distance` units along it (clamped; a loop's wraps) and its direction there (unit); either may be NULL: for hazards and triggers along a rail |
+| `int rail_enable(int32_t rail, int on)` | the rail out of the game's search (off: Ratchet cannot land on it nor jump across to it; one he is on he rides to its end) or back: 1 |
+| `int hero_rail_attach(int32_t rail, float distance, int32_t direction)` | Ratchet put on the rail `distance` along it, riding `direction` (1 along its points, -1 back: the game's own grind always starts along them), as if he had landed: he is on it the next frame (the `rail` callback's ENTER). 0 not: no such rail, not in the current section, no Grind Boots, no hero |
+| `int rail_speed(int32_t rail, float scale)` | his speed on that rail times `scale` (0.25 .. 4; 1 the game's): 1 |
+| `int item_visit(int32_t item, int on)` | the item (0x1c Magneboots, 0x1d Grind Boots, 0x02 Heli-Pack, 0x03 Thruster-Pack, 0x04 Hydro-Pack, 0x06 O2 Mask, 0x07 Pilot's Helmet; others: their owned flag only) his for this level (on), or taken back (off: only one given this way or by level.txt's `items`): 1, 0 not (he owns it already: his own; not a level mod's level). Never in a save: the card's save is written without it; taken back when the level is left |
+| `int fade(int32_t out_frames, int32_t hold_frames, int32_t in_frames, uint32_t rgb)` | the screen faded to `rgb` (0xBBGGRR) over `out_frames`, held `hold_frames`, faded back over `in_frames` (drawn over the HUD): 1 |
+| `int fade_active(void)` | 0 none, 1 fading out, 2 held (the screen covered: the time for a `hero_place`, a `camera_set`), 3 fading back |
+| `int camera_set(const rac1_camera* cam)` | the camera the plugin's from the next frame (`size` set; `blend` frames from the view now, 0 a cut): `RAC1_CAMERA_FIXED` (`pos`, `yaw` 0 along +x, `pitch` up positive), `RAC1_CAMERA_LOOK` (`pos`, looking at `target`, or at the moby `moby`, following it), `RAC1_CAMERA_PATH` (along the path `path` at `speed` units a second, `loop`, looking at `target` / `moby`, or ahead along the path when both are none), `RAC1_CAMERA_FOLLOW` (behind the moby `moby`, Ratchet's when 0: `pos` its offset in the moby's frame, x ahead y left z up, looking at the moby `target[2]` over its feet): 1, 0 bad. Until `camera_release` or the level's end; the pad still moves Ratchet (hold it with `input_hold` for a cutscene) |
+| `int camera_release(int32_t blend_frames)` | the game's camera back, blended over `blend_frames` (0: a cut): 1 |
+| `int32_t hazard_add(const rac1_hazard* h)` | a volume that hurts Ratchet while he is in it (his middle): `shape` `RAC1_HAZARD_BOX` (`lo` .. `hi`) or `RAC1_HAZARD_SPHERE` (centre `lo`, radius `hi[0]`), `damage` a hurt (the game's own: his knock-back, then its grace time), on a timer (`on_frames` on, `off_frames` off, `phase` frames into the round; `on_frames` 0: always on), moving with the level object `object` (its volume relative to the object's place; 0 none): its handle, 0 not (bad, 64 already) |
+| `int hazard_set(int32_t hazard, int on)` | on (1), off (0), removed (-1): 1, 0 no such |
+| `int object_follow_path(uint32_t obj, int32_t path, float speed, int32_t mode)` | a level object moved along a path (`path_find`'s, `path_create`'s) at `speed` units a second, from its first point, `RAC1_PATH_ONCE` (to its last point, then stopped), `RAC1_PATH_LOOP` (round again) or `RAC1_PATH_PINGPONG` (back and forth), in the objects' pass: Ratchet standing on it rides it (the game's own moving-platform ride: its move each frame given to his). `path` 0 or `speed` 0: stopped where it is. 1, 0 no such object or path. 16 such objects at once |
+| `float object_path_at(uint32_t obj)` | how far along its path it is (units), -1 none |
+
+A moving platform's shape is its class's collision: its box, or a mesh of its own (`class <name> <model.obj> collision
+<coll.obj>`, [Objects](#objects)), so a deck with rails or walls carries Ratchet and keeps him in.
+
+```c
+static int32_t rail;
+static void on_rail(void* user, int32_t r, const char* name, int32_t ev) {
+    if (r == rail && ev == RAC1_RAIL_END) escape_done();        /* the escape's rail ridden to its end */
+    if (r == rail && ev == RAC1_RAIL_LEAVE && !done) escape_failed();
+}
+/* level_start: */ rail = api->rail_find("escape");
+/* the escape's start, the screen faded: */ api->fade(15, 20, 15, 0);
+/* ... at fade_active() == 2: */ api->hero_rail_attach(rail, 0.0f, 1);
+/* in rac1_mod_main: */ mod->rail = on_rail;
+```
+
 ### Classes and objects (ABI 2)
 
 | Service | Does |
@@ -315,7 +489,9 @@ A **level object** is an object of one of the level's own classes. What it is, i
   as any of its objects: Ratchet stands on it and bumps into it, the game's rays hit it, his weapons and wrench hit it
   (hit records), sounds can follow it. Its crate code never runs, the game does not draw it, and it is updated at any
   distance. Its collision is the crate's box, scaled to the class's `size`: a cube, `size` on each side, centred on the
-  object's x and y, rising from its origin. (A `ghost` class has none.)
+  object's x and y, rising from its origin. (A `ghost` class has none.) A class with a collision mesh of its own (level.txt's
+  `class <name> <model.obj> collision <coll.obj>`, ABI 11) has that mesh instead, turned and scaled with the object: a
+  ring, an arch, a deck with walls, stood on and bumped into where they are drawn (255 vertices at most).
 - **A model**: the class's model, drawn by the modern renderer (the GL and Vulkan renderers) at the moby's position,
   rotation and scale, lit and fogged as the level's meshes. The faithful renderer (a debug choice) does not draw it.
 - **Behaviour**: the class's callbacks in your plugin, and a state block per object.
@@ -411,6 +587,9 @@ tried on Kalebo III). Test with `RAC1_MODS=1 RAC1_MOD_CODE=1` and
 `RAC1_SIM_INPUT=attack` (Ratchet swinging the wrench) headless.
 
 ### Kalebo III's enemies (ABI 5)
+
+(Since ABI 8's game what follows is these classes' profiles, `data/pool/profiles/L16_*.txt`, and their host behaviours: the
+same values and the same behaviour, checked by the arena example's challenges giving the same RAM hashes.)
 
 On Kalebo III's own level its enemies wait for the level's data: its paths (the walks, the flights, the areas they watch),
 its moby groups (the Gadgetron robots' doors), its markers, a trigger object that wakes them. A level mod has none of it
@@ -528,6 +707,12 @@ typedef struct rac1_ray_hit {       /* (ABI 2) collide_ray */
 | Triggers | no fixed limit (tested once a frame each) |
 | `ee_alloc` | 53 KB for all the plugins, for the whole run (54 KB up to ABI 3: the last KB holds the frame's lights, `light_add`) |
 | Kalebo III's enemies' paths (ABI 5) | 4 KB of paths for the `spawn` lines' objects of classes 52, 541, 638, 1356 (about 40 objects), and the path table's free entries (176 less the level's) |
+| Imported objects' level data (ABI 8) | a planet's paths: its own count, the rest of 176 for the paths spawns and binds add (given back when their object is gone); groups: 112 a planet; a bound path 64 points |
+| The base level's objects' level data in a session (ABI 9) | the path table's free entries (176 less the level's), their points and the groups in the session heap (no 4 KB limit) |
+| A session's bytes (`session_save`) | 16 KB a plugin |
+| Rails (ABI 11) | 64 a section (main's, each section's), 2048 points a rail (the composer puts a point every 1.5 units) |
+| Classes' collision meshes (ABI 11) | 255 vertices a class; 8 KB for a level's (taken from the mods' block at the first level with one: `ee_alloc` has 8 KB less from then on) |
+| Moving platforms, hazards (ABI 11) | 16 objects following a path at once (their blocks, 1.5 KB of the mods' block from the first `object_follow_path`); 64 hazards |
 | Jetpack troopers' flight (ABI 5) | half a unit over the floor under them; a wall in their way flown over up to 14 units over the floor; a sudden drop (a ledge) followed down at 0.05 units a frame |
 | Lights (`light_add`) | 31 a frame for all the plugins, within the point lights' 96 a pixel (the game's 8, the hand-placed and the per-class lights before them, the automatic emitters after) |
 | HUD lines | 15 a frame (`hud_text`, `hud_text_ex` together), 255 characters each; `hud_text_ex`'s scale at most 8 |

@@ -1,0 +1,25 @@
+# A class profile (docs/open-engine.md, "Class profiles"): our knowledge of a game class's level data, ids and offsets only.
+class 16:1356 the dropship (flies in, drops jetpack troopers, shoots class 50; update 0x2e22d8)
+pvar_size 0x1a0
+slot 0xc0 moby   trooper_a  # the troopers it carries (moby indices, -1 none; 0x2d3dc0 boards them, 0x2d3de0 drops one a half second)
+slot 0xc4 moby   trooper_b
+slot 0xc8 moby   trooper_c
+slot 0xcc moby   trooper_d
+slot 0xd0 area   fight      # with no troopers it stays and fights what target_select finds here (-1: never fights)
+slot 0xd4 area   wait       # it flies in when Ratchet is here
+slot 0xd8 path   arrive     # its arrival
+slot 0xdc path   leave      # its leave (-1: it stays)
+# a spawn: no troopers (base_option's), no area to wait for, never fights; the arrival four points coming down from 60 behind
+# and 25 up to 9 above the point spawned at, the leave up and ahead
+default trooper_a none
+default trooper_b none
+default trooper_c none
+default trooper_d none
+default fight none
+default wait none
+default arrive points lift 9 -60 0 25, -32 0 12, -12 0 3, 0 0 0
+default leave points lift 9 0 0 0, 15 0 6, 45 0 25, 90 0 50
+# base_option RAC1_BASE_TROOPS: jetpack troopers (638) from 638's spawn pool, carried
+option troops host kal_dropship_troops
+# hunting: no leave (it stays over the landing point and fights), its area the whole level, its troopers hunting too
+hunt object host kal_dropship

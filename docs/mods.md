@@ -462,8 +462,8 @@ mods/example-plateau/
 |---|---|
 | `kind` | `"level"` |
 | `level.id` | the level's key: its progress in your saves and `RAC1_GOTO=<id>@<frame>` use it, never the folder's name. Letters, digits, `-`, `_`, `.` |
-| `level.format` | `1` (the level runs on Veldin's code) or `2` (on `level.base`'s); a newer game may read newer ones |
-| `level.base` | the game's level whose code the level runs: `0` (Veldin) in format 1; in format 2 one of `0`, `3` (Kerwan), `4` (Eudora), `16` (Kalebo III): [Base levels](#base-levels) |
+| `level.format` | `1` (the level runs on Veldin's code), `2` (on `level.base`'s) or `3` (a **session**: loaded once, a death brings Ratchet back to a checkpoint without loading the level again; Veldin's code by default, or `level.base`'s: [Sessions](#sessions-format-3)); a newer game may read newer ones |
+| `level.base` | the game's level whose code the level runs: `0` (Veldin) in format 1; in formats 2 and 3 one of `0`, `3` (Kerwan), `4` (Eudora), `16` (Kalebo III): [Base levels](#base-levels) |
 
 `level.txt`, one setting a line (`#` starts a comment):
 
@@ -471,11 +471,15 @@ mods/example-plateau/
 |---|---|
 | `name <text>`, `name.<fr\|de\|es\|it> <text>` | the row's name (and the planet page's title), per text language |
 | `region <text>`, `region.<lang> <text>` | the line above it |
-| `hero auto`, `hero <x> <y> <z> [<yaw>]` | where Ratchet starts (and comes back after a death). `auto` (the default when there is a ship): where he steps off the ship after the landing, beside it, facing away from it. A place of your own puts him there when the landing ends (as the game's planets do: the landing's last shot cuts to him there). Without a ship, a place is required |
+| `hero auto`, `hero <x> <y> <z> [<yaw>]` | where Ratchet starts (and comes back after a death; in a session, format 3, the checkpoint `start` unless a `checkpoint start` line says otherwise). `auto` (the default when there is a ship): where he steps off the ship after the landing, beside it, facing away from it. A place of your own puts him there when the landing ends (as the game's planets do: the landing's last shot cuts to him there). Without a ship, a place is required |
 | `ship <x> <y> <z> <yaw>` or `ship none` | where the ship stands and lands: the landing's camera and Ratchet stepping off follow its place and yaw, so keep about 20 units round it open (none: no landing, no way out but loading a save) |
 | `death_height <z>` | below it Ratchet dies; default the base level's, or 8 under the collision's lowest point when the base level's is above it (the log says so) |
 | `base <level\|name>` | the base level, as mod.json's `level.base` (a number, or `veldin`, `kerwan`, `eudora`, `kalebo`, ...): the composer checks they are the same (mod.json decides) |
 | `spawn <class> <count>` | room for `<count>` objects of the base level's class `<class>` at once, for the plugin's `base_spawn` (ABI 3, [The mod SDK](sdk.md#base-level-objects)) |
+| `import <name>`, `import <level>:<class>` | a class of another planet (a name of the game's `data/pool/names.txt`, as `umbris.turret`, or its level and class), in the level with what it spawns; the plugin spawns it (ABI 6, [The mod SDK](sdk.md#classes-of-other-levels-abi-6)). The setup's composer makes the asset pool from your disc the first time (a few seconds) and says in `compose.log` what each import brings. Classes that read their planet's paths or areas are given their own round where they are spawned, by their profile, which the plugin can change (ABI 8, [The mod SDK](sdk.md#the-level-data-of-imported-classes-abi-8)); drawn by the modern renderer only |
+| `path <name> <x> <y> <z> [<x> <y> <z> ...]` | a path (1 to 64 points, moved by `offset` as every coordinate) for the plugin to give an imported object (`path_find`, `object_bind_path`: ABI 8), or a `moby` line's slot (format 3) |
+| `session`, `checkpoint <name> <x> <y> <z> [<yaw>]`, `respawn reset\|keep` | format 3 only: [Sessions](#sessions-format-3) |
+| `section <name> ... end`, `entry`, `portal`, `start`, `leave`, `moby <name>\|<level>:<class> ...` | format 3 only: [Sections](#sections); a section can be a game planet's world (`world`, `objects`, `box`: [Game worlds as sections](#game-worlds-as-sections)) |
 | `update_all` | every moby of the level is updated each frame wherever the camera is (the game updates a moby only within its update distance of the camera, moby +0x30: 64 units for Kalebo III's robots, a crate's less): enemies far away keep moving and fighting. Costs the updates of the mobys out of sight; the original's levels never |
 | `background <r> <g> <b>`, `fog <r> <g> <b>` | colours (0..255) |
 | `collision <file>`, `meshes <file>` | other file names (default `collision.obj`, `meshes.obj`) |
@@ -483,13 +487,16 @@ mods/example-plateau/
 | `up z` or `up y` | the OBJ files' up axis: `z` (the game's, the default) or `y` (Blender's default OBJ export) |
 | `offset <x> <y> <z>`, `offset auto` | added to every coordinate of the OBJ files (after `up` and `scale`) and of level.txt; `auto`: as much as the collision needs (below) |
 | `scale <s>` | the OBJ files' units to the game's (default 1; Ratchet is about 1.5 units tall) |
-| `moby <class> <x> <y> <z> [<yaw>]` | an object (below) |
+| `moby <class> <x> <y> <z> [<yaw>]` | an object (below); format 3 also `[<slot>=<value> ...]`: its class's profile's slots ([Sessions](#sessions-format-3)) |
 | `music <level>`, `music <loop> [<intro>]`, `music none` | the music: the game level's (0..18), your own (a WAV, an Ogg Vorbis file or a VAG, mono or stereo: below), or none; default the base level's |
 | `sky <level>` | the sky of the game's level (0..18); default the base level's |
 | `class <name> <model.obj> [size <s>] [solid\|ghost] [scale <k>]` | a class of the level's own objects (its model, its hit box; its behaviour in the mod's plugin): [The mod SDK](sdk.md#the-levels-own-content-leveltxt) |
 | `object <class> <x> <y> <z> [<yaw>] [<key>=<value> ...]` | an object of one of the level's classes |
 | `sound <name> <file.wav\|.ogg\|.vag> [volume <v>] [range <near> <far>] [loop] [pitch <s>]` | a sound of the level's own (the plugin plays it) |
 | `trigger <name> <x0> <y0> <z0> <x1> <y1> <z1>` | a box Ratchet enters and leaves (the plugin's trigger callback) |
+| `rail <name> [loop] [mesh [<material>]] [nostrip] <x> <y> <z> <x> <y> <z> ...`, `rails <file.obj> [...]` | grind rails (in main or a section block): [Grind rails and set pieces](#grind-rails-and-set-pieces) |
+| `items <item> ...` | items Ratchet has while he is on the level (`grindboots`, `magneboots`, ...), never in a save: [Grind rails and set pieces](#grind-rails-and-set-pieces) |
+| `class <name> <model.obj> ... collision <coll.obj>` | the class's collision a mesh of its own instead of its box: [Grind rails and set pieces](#grind-rails-and-set-pieces) |
 | `picture <file.png>` | the planet on the loading screen and on the ship's map's planet page (below) |
 | `banner <file.png>`, `banner.<fr\|de\|es\|it> <file.png>` | the name under it on the loading screen, per text language; default: made from `name` (and each `name.<lang>`) |
 | `map_picture <file.png>` | the picture under the galaxy on the ship's map while the level's row is selected; default: made from `picture` |
@@ -564,6 +571,8 @@ OBJ's usual front). `usemtl type<N>` before faces gives them surface type N. No 
 The surface types the base level's hero code knows act on Ratchet as on the game's levels: `type3` is **lava** (he sinks
 into it and is bounced out, three times in a row and he is lost), `type1` the deadly liquid (he jumps out of it while he has health, else he is lost), `type31`
 plain ground; Kalebo III's own hero code knows neither: on a level mod's level it gets them ([Base levels](#base-levels)).
+`type2` is **magnetic**: with the Magneboots (owned, or level.txt's `items magneboots`) Ratchet walks up it, up walls and
+onto ceilings ([Grind rails and set pieces](#grind-rails-and-set-pieces)).
 The ambient particles' `source lava` line rises from a level mod's `type1` and `type3` faces ([Particles](particles.md#from-the-lava)).
 
 **Materials on the meshes**: `lights.txt`'s `material` and `emissive` lines ([Materials](materials.md)) work on the level's own
@@ -648,8 +657,9 @@ Format 1 is the first step:
   scripted events, no objects of other levels' classes. Objects of **your own classes** (`class` / `object` lines: a
   model, a hit box, behaviour in your plugin) and sounds of your own (`sound` lines) are the SDK's: see
   [The mod SDK](sdk.md);
-- the sky: a game level's (`sky`); a sky of your own is a later step (a texture mod can change a sky's textures in the
-  modern renderer). Another level's sky is right in the modern renderer; the faithful renderer may show it with wrong
+- the sky: a game level's (`sky`), drawn by that level's own sky code (its stars, its turning shells) whatever the base
+  level; a sky of your own is a later step (a texture mod can change a sky's textures in the modern renderer). Another
+  level's sky is right in the modern renderer; the faithful renderer may show it with wrong
   colours;
 - the base level: Veldin, Kerwan, Eudora or Kalebo III, each with its caveats: [Base levels](#base-levels);
 - the level's size: the composed asset data (the base level's classes, sky and effects, and your collision) must not be
@@ -662,6 +672,168 @@ Format 1 is the first step:
 - the meshes are drawn by the modern renderer only (the faithful renderer, a debug choice, draws what the game's code
   sends: the meshes have no EE data), lit by the modern lighting;
 - the North American disc (`SCUS-97199`); the PAL disc is not tested.
+
+### Sessions (format 3)
+
+A level of `"format": 3` is a **session** (the open engine's: [docs/open-engine.md](open-engine.md#sessions-stage-5)). It is
+built and flown to as any level mod, and then:
+
+- **It is loaded once**, at the arrival: until you leave it (the ship, a save of another level loaded) nothing loads it
+  again.
+- **A death is a soft reset**: Ratchet is back at the current checkpoint with his health full and the camera behind him; his
+  weapons, ammo, bolts and items stay, and so do the plugin's state and the objects it started (its `respawn` callback
+  decides what comes back: [The mod SDK](sdk.md#sessions-abi-9)). The level's placed objects (`moby` lines) killed since
+  the arrival come back as placed (`respawn reset`, the default), except what the level's records keep (a crate broken
+  stays broken); `respawn keep` leaves them as they are. On formats 1 and 2 a death loads the level again, as before.
+- **Checkpoints**: `checkpoint <name> <x> <y> <z> [<yaw>]` lines (the level's `offset` applies); `start` is where the
+  session starts Ratchet (without one, the `hero` line's place); the plugin chooses the current one (`checkpoint_set`,
+  `checkpoint_at`).
+- **Saves**: a save made in a session is the game's own save, as on any level mod's level; `save<N>.pc` also keeps the
+  session's checkpoint and the plugin's session bytes, and loading the save brings you back there.
+- **`moby` lines' slots**: `moby 1445 40 40 0.5 3.9 given_up=0` sets a slot of the class's profile (the game's
+  `data/pool/profiles`) at the arrival: a `path` or `area` slot takes a `path` line's name, the others a number or `none`.
+  The composer checks the slots against the profile (and every format's `import` lines of classes that read their planet's
+  level data without a profile) and warns in `compose.log`.
+- **Room for spawned objects**: as many as the base level's own placed objects leave free (`[compose] session: room for
+  545 spawned objects` on Veldin).
+
+```json
+"level": { "id": "my-arena", "format": 3, "base": 0 }
+```
+
+```
+session
+checkpoint start 0 -60 0.5 1.571
+checkpoint arena 0 -20 0.5 1.571
+respawn reset
+```
+
+Log lines: `[session] the session "<id>": N checkpoints, respawn reset; no level load until it is left`, `[session] respawn N
+at checkpoint "<name>" (...): no level load; placed objects reset: N back, N killed for good`, `[session] the session "<id>"
+left (N respawns)`.
+
+#### Sections
+
+A session can have **sections**: parts with their own collision, meshes, sky, lights, music, fog, background, death height
+and objects, which Ratchet goes between through **portals** (boxes he steps into) with no loading and nothing reset: his
+weapons, ammo, bolts and health, the plugin's state and the objects it started stay. The lines outside any section block
+are the section `main` (where the ship lands); each `section` block is another, its lines moved by the level's `offset` and
+its own:
+
+```
+entry from_yard 20 -4 0.5 3.1416               # an entry of main (where a portal puts Ratchet, facing yaw)
+portal east_gate 26 -4 0 31 4 6 to yard:west   # main's box: into it, Ratchet is in the yard at its entry west
+leave remove                                   # main's objects when Ratchet leaves it: remove (default), freeze or keep
+
+section yard remove respawn reset              # remove / freeze / keep its objects when it is left; its respawn policy
+  offset 400 0 0                               # added to the level's offset
+  collision collision.obj                      # its own (none: main's)
+  meshes meshes.obj                            # drawn only while Ratchet is in it
+  sky 16                                       # a game level's sky (none: main's)
+  music 16                                     # a game level's music, or none (no line: main's)
+  fog 120 60 40                                # background, death_height, lights <file>: as the level's lines
+  entry west -20 4 0.5 0
+  checkpoint yard_mid 0 0 0.5 0
+  portal back -31 -4 0 -26 4 6 to main:from_yard fade 15   # fade: the screen darkened and back over 15 frames
+  moby 500 4 -6 0.5                            # objects of the base level's classes, and of other planets':
+  moby kalebo.robot 10 14 0.5 3.14             # a name or <level>:<class> places that class (it is imported)
+end
+start yard:west                                # optional: the session starts there once the landing is over
+```
+
+- **Its objects** are placed when the section is first in (frozen until Ratchet enters it). When he leaves it they are
+  removed (the ones killed stay so when he comes back; the others come back as placed), frozen or kept running. A death in a
+  section brings him back at the checkpoint there (the entry he came in by, or a `checkpoint_set`), and that section's
+  killed objects back (its `respawn` policy, else the level's).
+- **Saves**: a save in a section brings you back to that section at its checkpoint.
+- **Only the current section is drawn**; sections may be anywhere (far apart is simplest: each has its own collision).
+- The plugin goes between sections and streams them with the SDK's ABI 10 ([The mod SDK](sdk.md#sections-abi-10)).
+- Log lines: `[compose] section <name> (...)`, `[section] <name> streamed in: ...`, `[section] frame N: main -> yard at entry
+  west (portal east_gate): the switch 0.17 ms ...`.
+- Limits: at most 31 sections; the level's own classes' objects (`object` lines) and triggers belong to the whole level; a
+  section's music is a game level's or none.
+
+#### Game worlds as sections
+
+(The open engine's stage 8: [docs/open-engine.md](open-engine.md#game-worlds-as-sections-stage-8).) A section can be a **game
+planet's world**: its scenery (drawn as on its planet, by the modern renderer), its collision, sky, music, fog and background,
+its lights and death height, its level data (its cameras, paths, volumes and grind rails) and the planet's own objects you
+choose (its enemies, crates, platforms), running on its own code:
+
+```
+section kalebo remove respawn reset
+  world kalebo                     # (or a number: 16) the planet's world: everything below its lines can change
+  objects kalebo.robot 52 638 500  # its placed objects of these classes come with it (a name, its class id, or `all`)
+  box 130 110 110 200 275 140      # (optional) only its objects inside this box (x0 y0 z0 x1 y1 z1)
+  entry arrive 146.43 133.23 128.3 1.46     # the planet's own coordinates (no offset in a world's section)
+  checkpoint kalebo_start 146.43 133.23 128.3 1.46
+  portal back 140 136 125 144 140 132 to main:from_kalebo fade 10
+  sky 3                            # optional: another sky, music, fog, background, death_height, collision instead of its own
+end
+```
+
+- **Coordinates** in a world's section are its planet's (the level's `offset` does not move them, and the section has no
+  `offset`): put entries where Ratchet stands on that planet (where its level starts him: Kerwan 263.98 102.09 54.5 facing
+  1.5708, Kalebo III 146.43 133.23 128.3 facing 1.46). The section's camera is the planet's own (its first camera, as at its
+  start).
+- **Objects**: none come unless an `objects` line names them. Each chosen class is imported (the composer adds an import of
+  it and of what it spawns; the base level's own classes, such as the crates 500..511, are the base's); the planet's spawn
+  rules apply as on a first visit (objects that appear only after a story event there do not). `compose.log` lists them:
+  `[compose] section kalebo: level 16's world (...); 59 of its 1568 objects in its box: 52 x5, 500 x35 (the base's), 638 x8,
+  1445 x11, uids 10..68`. The game keeps at most 224 classes at once (the base level's and every import of the session):
+  `objects all` in a large box can reach it (objects of classes of code alone, such as cameras and triggers, are not placed:
+  the log says so).
+- **Memory**: a world takes about 18 to 20 MB of the session's memory above 64 MB (Kerwan 19.2 MB, Kalebo III 18.0 MB), read
+  from your disc while you play, before you enter it (the log's `[section] kalebo: level 16's world: ...`).
+- **Not in a world's section**: `meshes`, `rail` / `rails` and `moby` lines of the base level's classes (its own scenery and
+  rails are the planet's; `moby <name>|<level>:<class>` lines are fine). The level's own objects drawn with a model (`object`
+  lines) are not drawn while Ratchet is in a world's section. Umbris's and Gemlik's skies do not work on Veldin's code yet:
+  give such a world `sky` of another planet.
+
+### Grind rails and set pieces
+
+(The open engine's stage 7: [docs/open-engine.md](open-engine.md#rails-and-set-pieces-stage-7).) Every format, in main or in a
+section block:
+
+```
+items grindboots magneboots                       # his for the visit: given at the arrival, taken back when he leaves,
+                                                  # never in a save (the card's save is written without them)
+rail low mesh -24 -20 1.2 24 -20 1.2              # a rail from its points (two at least); `mesh`: its model made (a bar
+                                                  # 0.2 wide whose top is the line, grey metal, or `mesh <material>` of
+                                                  # meshes.obj's .mtl)
+rail circuit loop 0 0 3 10 0 3 10 10 3 0 10 3     # `loop`: its end joins its start
+rails rails.obj mesh pad                          # each object of the OBJ's line elements a rail named as the object
+                                                  # (a curve converted to a mesh in Blender, its edges: `l`); a closed
+                                                  # one is a loop
+class deck deck.obj collision deck_col.obj        # the class's collision a mesh of its own (below)
+```
+
+- **Rails**: the points are moved by `offset` (and the section's) as every coordinate; the composer puts a point every 1.5
+  units along them and writes them into the gameplay file's rail block (main's, or the section's own: the game's rail
+  table is the current section's). Ratchet rides them with the game's own grind: the Grind Boots, landing on them, jumping
+  along and across (to a rail 2 to 4.5 units beside: lanes), swinging the wrench, flying off the end. A rail rides along its
+  points' order. A thin collision strip (0.5 wide, just under the line, `collision_type`'s surface) is added under each:
+  the game's grind lets go of a rail with nothing under Ratchet's feet (`nostrip`: none, for a rail over your own
+  collision). On a level mod with rails of its own, the landing works anywhere: Kalebo III's, Oltanis's and Blarg's hero code
+  otherwise takes a rail only near its own level's rail spots. The plugin finds them by name (ABI 11: `rail_find`,
+  `hero_rail`, `rail_point`, `rail_enable`, `hero_rail_attach`, the `rail` callback: [The mod SDK](sdk.md#rails-and-the-set-piece-kit-abi-11)).
+- **Items for the visit**: `grindboots`, `magneboots`, `helipack`, `thrusterpack`, `hydropack`, `o2mask`, `pilotshelmet`,
+  or an item id (its owned flag only: the held gadgets need the quick select). One he owns already is his own: neither
+  given nor taken.
+- **Magnetic surfaces**: `usemtl type2` faces in the collision. With the Magneboots, Ratchet walks onto them and stays on
+  them up curves, walls and upside down on ceilings (the game's magnetic walk: the camera turns with him). Tested on
+  Veldin's code (format 1, and sessions) and on Kalebo III's: on Kalebo III's he walks them but his magnetic walk is drawn
+  wrong (Kalebo III's hero class lacks those animations): build magnetic walkways on Veldin's code.
+- **Collision meshes**: `class <name> <model.obj> collision <coll.obj>`: its objects collide as that mesh (made round the
+  model's origin, `up` and `scale` as the model's; 255 vertices at most), turned and scaled with the object, not its box: a
+  deck with walls, an arch, a ring. The plugin moves one along a path with Ratchet riding it (`object_follow_path`), or
+  where it likes (`object_place`).
+- The plugin's set-piece services: a screen fade, a camera of its own (fixed, looking at, along a path, following), hazards
+  (volumes that hurt on a timer): [The mod SDK](sdk.md#rails-and-the-set-piece-kit-abi-11).
+- Log lines: `[compose] rail <name> (main): 33 points, 48.0 units, its model`, `[compose] rails: their collision strips, N
+  triangles`, `[compose] class "deck": its collision mesh deck_col.obj, 36 triangles`; `[setpiece] level slot 19: 4 rails of
+  its own (the hero code's rail spots not needed), 2 items for the visit`, `[setpiece] 2 items given for the visit`,
+  `[setpiece] 2 items of the visit taken back` (`RAC1_SETPIECE_TRACE=1`: the rails' events, the hazards, the camera).
 
 ### Base levels
 

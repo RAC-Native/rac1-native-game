@@ -5,6 +5,13 @@
 #include <host/level_slots.h>
 #include <runtime/iop/snd989_iop.h>
 #include <game/enhance/advanced.h>
+#include <game/enhance/class_profiles.h>
+#include <game/enhance/leveldata.h>
+#include <game/enhance/pool.h>
+#include <game/enhance/sections.h>
+#include <game/enhance/session.h>
+#include <game/enhance/session_runtime.h>
+#include <game/enhance/setpieces.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/music_streams.h>
 #include <game/ovl/ovl.h>
@@ -43,6 +50,9 @@
 
 #include "../../../sdk/rac1_mod.h"
 
+// (stage 7) ABI 7's room filled with its 16 services: the services after it where they were (ABI 8's path_find first)
+static_assert(offsetof(rac1_api, path_find) == offsetof(rac1_api, rail_find) + 16 * sizeof(void (*)(void)), "ABI 7's room is 16 entries");
+
 namespace rac1 {
 
 bool g_mod_code_any = false;
@@ -58,7 +68,8 @@ namespace {
 // (advanced.cpp).
 constexpr uint32_t SCRATCH = 0x000e1000u, STRINGS = 0x000e1100u, STRING_SIZE = 0x100, STRING_COUNT = 15;
 constexpr uint32_t HEAP = 0x000e2000u, HEAP_END = 0x000ef400u;
-// (ABI 5) 0xdf000..0xe0000 below it: Kalebo III's enemies' paths (KAL_MEM, below), written only on a level mod's level
+// (ABI 5) 0xdf000..0xe0000 below it: the paths the base level's profiled enemies are given (Kalebo III's: leveldata.cpp's
+// BASE_MEM, class_profiles.h), written only on a level mod's level
 // (ABI 4) the frame's lights of the plugins (light_add), 0xef400..0xef800: their count, then MOD_LIGHT_MAX of 0x20 bytes (x y z
 // radius, r g b, 0): in the game's memory, so that a frame's drawing reads its own frame's (the copy taken at its prepare,
 // orig_main.cpp's draw_memory_take; mrp_lighting.cpp's mod_lights_add)
@@ -107,6 +118,10 @@ struct SdkClass {
     float size = 1.0f;          // its hit box's edge
     float scale = 1.0f;         // its model's scale
     bool ghost = false;         // no collision
+    // (stage 7) its collision mesh (level.txt's `class ... collision <file>`: the composer's class_<name>.col, the game's moby
+    // collision format) in the game's memory, 0 none (the carrier's box); its bounding sphere in model units times its scale
+    uint32_t coll = 0;
+    float coll_c[3] = {}, coll_r = 0;
     std::vector<std::array<uint8_t, 4>> palette;
     Plugin* owner = nullptr;    // its behaviour's plugin (class_define), null none
     const ClassDef* def = nullptr;
@@ -129,6 +144,10 @@ struct SdkTrigger {
     float lo[3] = {}, hi[3] = {};
     bool inside = false;
 };
+struct SdkPath {  // (ABI 8) level.txt's path lines (and the plugins' path_create, after them)
+    std::string name;
+    std::vector<std::array<float, 3>> pts;
+};
 struct Obj {
     bool live = false;
     uint16_t gen = 0;
@@ -139,6 +158,15 @@ struct Obj {
     float scale = 1.0f;
     int32_t placed = -1;        // its object line, -1 spawned
     std::vector<uint8_t> state;
+    // (stage 7) object_follow_path: the path's points, their distances, the speed (units a second), the mode, where it is
+    std::vector<std::array<float, 3>> fpath;
+    std::vector<float> fcum;
+    float fspeed = 0, fat = 0;
+    int32_t fmode = 0, fdir = 1;
+    // (stage 7) a moving platform's block in the game's memory (its moby's pvars +0x78: the word +8 names the platform block
+    // the hero's ride reads, hero_platform_ride 0x2134c0's moby_pvar_word2: +0x00 this frame's turn, +0x10 its move), 0 none
+    uint32_t plat = 0, plat_pvars = 0;
+    float last[3] = {}, last_rot[3] = {};
 };
 struct Sdk {
     bool on = false;            // the current level has a level.sdk
@@ -146,12 +174,23 @@ struct Sdk {
     std::vector<SdkPlaced> placed;
     std::vector<SdkSound> sounds;
     std::vector<SdkTrigger> triggers;
+    std::vector<SdkPath> paths;
     std::vector<Obj> objs;
     std::vector<int16_t> of_slot;  // moby slot -> object index + 1 (0 none)
     uint32_t bank = 0;          // the sound bank's handle on the game's IOP (0 none)
     bool spawned = false;       // the placed objects spawned (the level's first frame)
     bool update_all = false;    // level.txt's update_all: every moby updated wherever the camera is (moby_visible_queue)
+    std::vector<std::pair<size_t, std::string>> coll_files;  // (stage 7) the classes' collision meshes: class index, file
 } g_sdk;
+// (stage 7) the classes' collision meshes in the game's memory: a block of the mods' block taken at the first level that has one,
+// used again by every level after it
+uint32_t g_coll_block = 0;
+constexpr uint32_t COLL_BLOCK = 0x2000;
+// (stage 7) the moving platforms' blocks (0x60 each: three pvar words, then the platform block of 0x40), taken at the first
+// object_follow_path, used again by every level after it
+uint32_t g_plat_block = 0;
+constexpr uint32_t PLAT_SIZE = 0x60, PLAT_MAX = 16;
+uint32_t g_plat_used = 0;  // (a bit a block, this level's)
 uint64_t g_frames = 0;
 
 std::vector<Plugin> g_plugins;
@@ -370,6 +409,65 @@ void obj_carrier_scale(const Obj& o) {
     swc1(o.moby + 0x2c, c.size * o.scale / CARRIER_EDGE);
 }
 
+// (stage 7) an object of a class with a collision mesh: its moby's bounding sphere (+0x00..+0x0c, 1024ths of a unit) and its
+// place in the collision grid made from the mesh's sphere, not the carrier crate's (moby_update_transform's, done again here
+// after it)
+void obj_mesh_sphere(const Obj& o) {
+    const SdkClass& c = g_sdk.classes[static_cast<size_t>(o.cls)];
+    if (c.coll == 0 || !o.solid) return;
+    const uint32_t m = o.moby;
+    float w[3];
+    for (uint32_t k = 0; k < 3; ++k) {
+        float v = lwc1(m + 0x10 + 4 * k);
+        for (uint32_t r = 0; r < 3; ++r) v += lwc1(m + 0xc0 + r * 0x10 + 4 * k) * c.coll_c[r] * o.scale;
+        w[k] = v * 1024.0f;
+    }
+    const float radius = (c.coll_r * o.scale + 0.5f) * 1024.0f;
+    for (uint32_t k = 0; k < 3; ++k) swc1(m + 4 * k, w[k]);
+    swc1(m + 0xc, radius);
+    auto cell = [](float v) { return static_cast<uint32_t>(static_cast<int32_t>(v) >> 14) & 0xffu; };
+    const uint64_t rect = cell(w[0] - radius) | cell(w[1] - radius) << 8 | cell(w[0] + radius) << 16 | static_cast<uint64_t>(cell(w[1] + radius)) << 24;
+    if (rect != static_cast<uint64_t>(static_cast<int64_t>(lw(m + 0xa0))) && (rect & 0xc0c0u) == 0) moby_grid_move64(m, rect);
+}
+
+void obj_transform(Obj& o) {
+    moby_update_transform(o.moby);
+    obj_mesh_sphere(o);
+    if (o.plat != 0) {  // (a moving platform: its move and its turn since the frame's start, for the hero's ride)
+        for (uint32_t k = 0; k < 3; ++k) {
+            const float p = lwc1(o.moby + 0x10 + 4 * k), r = lwc1(o.moby + 0x40 + 4 * k);
+            swc1(o.plat + 0x10 + 4 * k, lwc1(o.plat + 0x10 + 4 * k) + p - o.last[k]);
+            swc1(o.plat + 4 * k, fold_angle(lwc1(o.plat + 4 * k) + fold_angle(r - o.last_rot[k])));
+            o.last[k] = p;
+            o.last_rot[k] = r;
+        }
+    }
+}
+
+// (stage 7) object `o` made a moving platform: its moby's pvars a block whose word +8 names a platform block (flag 0x20 of +0x34:
+// moby_pvar_word2's test), its move each frame written there
+bool obj_platform(Obj& o) {
+    if (o.plat != 0) return true;
+    if (g_plat_block == 0) g_plat_block = api_ee_alloc(PLAT_SIZE * PLAT_MAX);
+    if (g_plat_block == 0) return false;
+    uint32_t k = 0;
+    while (k < PLAT_MAX && (g_plat_used >> k & 1u) != 0) ++k;
+    if (k == PLAT_MAX) {
+        std::fprintf(stderr, "[sdk] more than %u moving platforms: this one does not carry Ratchet\n", PLAT_MAX);
+        return false;
+    }
+    g_plat_used |= 1u << k;
+    const uint32_t b = g_plat_block + k * PLAT_SIZE;
+    for (uint32_t i = 0; i < PLAT_SIZE; i += 4) sw(b + i, 0);
+    sw(b + 8, b + 0x20);
+    o.plat = b + 0x20;
+    o.plat_pvars = lwu(o.moby + 0x78);
+    sw(o.moby + 0x78, b);
+    sh(o.moby + 0x34, lhu(o.moby + 0x34) | 0x20u);
+    for (uint32_t i = 0; i < 3; ++i) o.last[i] = lwc1(o.moby + 0x10 + 4 * i), o.last_rot[i] = lwc1(o.moby + 0x40 + 4 * i);
+    return true;
+}
+
 // a class's callback for object `i`, run with its plugin current (none: nothing)
 template <typename F>
 void obj_call(size_t i, F&& f) {
@@ -415,11 +513,15 @@ uint32_t obj_spawn(int32_t cls, const float pos[3], float yaw, int32_t placed) {
     swc1(m + 0x40, 0.0f);
     swc1(m + 0x44, 0.0f);
     swc1(m + 0x48, fold_angle(yaw));
-    o.coll = lwu(m + 0x94);
+    o.coll = c.coll != 0 ? c.coll : lwu(m + 0x94);  // (stage 7) its own collision mesh, else the crate's box
     o.solid = !c.ghost;
-    if (c.ghost) sw(m + 0x94, 0);
+    o.fpath.clear();
+    o.fcum.clear();
+    o.fspeed = o.fat = 0;
+    sw(m + 0x94, c.ghost ? 0 : o.coll);
+    if (c.coll != 0) sh(m + 0x34, lhu(m + 0x34) | 4u);  // (its transform ours: obj_transform keeps its mesh's sphere)
     obj_carrier_scale(o);
-    moby_update_transform(m);
+    obj_transform(o);
     const uint32_t slot = (m - moby_base()) >> 8;
     if (slot >= g_sdk.of_slot.size()) g_sdk.of_slot.resize(slot + 1, 0);
     g_sdk.of_slot[slot] = static_cast<int16_t>(i + 1);
@@ -446,6 +548,14 @@ void obj_remove(int i, bool retire) {
         if (d.remove != nullptr) d.remove(d.user, h);
     });
     if (!o.live || o.gen != (h >> 16)) return;  // (removed meanwhile)
+    if (o.plat != 0) {  // (its platform block given back; its moby's pvars as they were)
+        g_plat_used &= ~(1u << ((o.plat - 0x20 - g_plat_block) / PLAT_SIZE));
+        if (is_moby(o.moby)) {
+            sw(o.moby + 0x78, o.plat_pvars);
+            sh(o.moby + 0x34, lhu(o.moby + 0x34) & ~0x20u);
+        }
+        o.plat = 0;
+    }
     if (retire && is_moby(o.moby) && static_cast<int8_t>(lbu(o.moby + 0x20)) >= 0) moby_retire(o.moby);
     const uint32_t slot = (o.moby - moby_base()) >> 8;
     if (slot < g_sdk.of_slot.size()) g_sdk.of_slot[slot] = 0;
@@ -584,7 +694,7 @@ void api_object_place(uint32_t h, const float pos[3], const float rot[3], float 
         o.scale = scale;
         obj_carrier_scale(o);
     }
-    moby_update_transform(o.moby);
+    obj_transform(o);
 }
 
 void api_object_show(uint32_t h, int on) {
@@ -598,6 +708,7 @@ void api_object_solid(uint32_t h, int on) {
     Obj& o = g_sdk.objs[static_cast<size_t>(i)];
     o.solid = on != 0;
     sw(o.moby + 0x94, o.solid ? o.coll : 0);
+    obj_mesh_sphere(o);
 }
 
 int32_t api_object_count() {
@@ -774,35 +885,12 @@ uint64_t api_frame_count() { return g_frames; }
 // placed range, which the game's moby_spawn never gives out again), each one's moby and pvars kept as the load left
 // them. base_spawn starts one again where the plugin says: its moby and pvars as kept (the pvars' own pointers stay
 // right: the same block), not in the grid (moby_update_transform puts it there), its bolts on (+0xb1, moby_drop_bolts).
-struct PoolObj {
-    int32_t cls = 0;
-    uint32_t moby = 0, pvars = 0;
-    std::vector<uint8_t> m, pv;  // (as loaded)
-    bool out = false;            // started by base_spawn (until it is gone)
-    uint16_t gen = 0;
-    // (ABI 5) Kalebo III's enemies (kal_*): the level's paths this object owns (the path table's index and its memory, -1 none),
-    // its start (woken), base_hunt's, the place its hunt last aimed from, a dropship's troopers (pool indices)
-    int16_t path[2] = {-1, -1};
-    uint32_t pmem[2] = {0, 0};
-    bool adapted = false, refused = false, woke = false, hunt = false;
-    float anchor[3] = {0, 0, 0};
-    float start[4] = {0, 0, 0, 0};
-    std::vector<size_t> troops;
-    // (a jetpack trooper, 638: kal_trooper) its flight position at the last frame, its climb and stuck frames, the home it
-    // was last sent to (hunting: a flight there asked)
-    float jprev[3] = {0, 0, 0};
-    bool jprev_ok = false, jgo = false;
-    int32_t jclimb = 0, jstuck = 0;
-    float jhome[3] = {0, 0, 0};
-};
+// (its profile's data and host behaviours, class_profiles.h: the paths of Kalebo III's enemies, ABI 5)
+using PoolObj = ProfObj;
 std::vector<PoolObj> g_pool;
-void kal_pool_take();
-void kal_spawned(size_t i);
 
 // a started pool object still lives (its moby its class's, its pvars its own, in play)
-bool pool_alive(const PoolObj& o) {
-    return o.out && static_cast<int8_t>(lbu(o.moby + 0x20)) >= 0 && lh(o.moby + 0xa6) == o.cls && lwu(o.moby + 0x78) == o.pvars;
-}
+bool pool_alive(const PoolObj& o) { return prof_alive(o); }
 
 void pool_take(int slot) {
     g_pool.clear();
@@ -831,7 +919,7 @@ void pool_take(int slot) {
             ++n;
         }
     std::printf("[sdk] level slot %d: %zu objects in the spawn pools (base_spawn)\n", slot, n);
-    kal_pool_take();
+    profiles_pool_take(g_pool, lw(LEVEL));
 }
 
 uint32_t api_base_spawn(int32_t cls, const float pos[3], float yaw) {
@@ -853,7 +941,7 @@ uint32_t api_base_spawn(int32_t cls, const float pos[3], float yaw) {
         moby_update_transform(m);
         o.out = true;
         o.start[0] = pos[0], o.start[1] = pos[1], o.start[2] = pos[2], o.start[3] = fold_angle(yaw);
-        kal_spawned(i);
+        profiles_spawned(g_pool, i);
         ++o.gen;
         if (o.gen == 0) o.gen = 1;
         return static_cast<uint32_t>(o.gen) << 16 | static_cast<uint32_t>(i + 1);
@@ -883,414 +971,240 @@ int32_t api_base_free(int32_t cls) {
     return n;
 }
 
-// (ABI 4) base_hunt: the base level's enemies that guard a place made to hunt Ratchet wherever he is. Kalebo III's robots
-// (class 1445, L16:0x2e5e08 / 0x2e6208): their first update keeps where they stand as their guard point (pvars +0x1d0); each
-// frame the target's place (+0x180, Ratchet's: +0x1c0 the target) is tested against it, and a target more than 16 units (on
-// the ground) from it or 3 units above or below the robot makes them give up for good (+0x1c4 = 2, which nothing clears):
-// they walk back to it and stand there. Hunting: after the frame's updates the guard point is put on Ratchet and the giving
-// up cleared, so that the next frame's test passes.
-struct Hunter {
-    uint32_t moby = 0;
-    int32_t cls = 0;
-    uint32_t pvars = 0;
-};
-std::vector<Hunter> g_hunters;
+// (ABI 4 / 5) base_hunt, base_option and Kalebo III's enemies on a level mod: their profiles (data/pool/profiles) and host
+// behaviours, class_profiles.cpp
 
-// ---- (ABI 5) Kalebo III's enemies started by base_spawn on a level mod ----
-// On Kalebo III's own level these wait for its data: the level's paths (the table 0x1b04b0, Kalebo's 0x1b0930: a path is its
-// point count, 12 bytes, then points of 16 bytes), its moby groups, its markers, a trigger class that wakes them. A level mod
-// has none of them (the composer keeps the flight path only), so a pool object of these classes is given what it reads, at
-// its base_spawn: paths of its own (kept in the mods' block below the level mods' texts, their indices in the path table's
-// entries the level does not use, from its end), the indices its pvars name set to them or to none. Per class (the updates'
-// addresses are Kalebo III's):
-// - 52, the bomb bots (0x2a1088): its area (+0x180, the polygon target_select reads) a square of 24 round where it starts.
-//   Hunting: its alert timer (+0x190) kept running, whose target search (0x25fcb8) takes Ratchet at any distance and skips
-//   the give-up test (24 units on the ground, 3 above or below).
-// - 541, the Gadgetron robots (0x2cddb8), its weapon +0xc0 (0 a launcher, 1 a club, 2 a flamethrower, class 863 / 884 / 876
-//   in its hand +0x104): on their level they stand hidden in an alcove (state 1) until class 654 opens the door of their group
-//   (+0xcc) and walks them out along a path (+0xc4); then they patrol between its first two points (the club: along all of
-//   it) and attack what target_select finds in the area polygon +0xd8 or, half the time, the level's markers +0xd0 / +0xd4
-//   (+0xb4 = 2). They come back (+0xc8 lives) from their alcove. Here: no lives, no group (no door: 0x2d5e80 would write
-//   through a null door's pvars), a path of two points (where it starts, 5 ahead), the area the whole level; after its first
-//   update (hidden, state 1) it is shown and put in its weapon's patrol state (3, 5, 7: as state 2 leaves it at the path's
-//   start); after each update a marker target (+0xb4 = 2) becomes Ratchet. Hunting: the path's two points put beside
-//   Ratchet on the robot's side (the launcher 9 units away, the flamethrower 3.5, the club through him), again when he has
-//   moved 4 units.
-// - 638, the jetpack troopers (0x2d2cf0): on their level each starts on a random point of its path (+0x120) and, carried
-//   (+0x128), waits hidden (state 10) for its dropship. Here: no path (it starts where spawned), not carried, its area
-//   (+0x12c) a square of 24 round its start; its flight kept out of walls and over the floor (kal_trooper). Hunting: its
-//   alert timer (+0x2e0: the range 255, target_select_any) kept running and its home (+0x2b0) 10 units from Ratchet on its
-//   side (short of a wall between them), again when he has moved 4 units, flown to (state 1, as from its dropship).
-// - 1356, the dropships (0x2e22d8): fly in along a path (+0xd8) when Ratchet is in an area (+0xd4), unload the troopers named
-//   in +0xc0..+0xcc (moby indices: up to 4, -1 none; 0x2d3dc0 boards them, 0x2d3de0 drops one every half second), then fly
-//   off along a path (+0xdc) and go, or with none stay and fight (shots of class 50) what target_select finds in the area
-//   +0xd0 (-1: none, never fights). Here: the arrival a path of four points coming down from 60 units behind (its yaw) and 25
-//   up to 9 above the point spawned at, no area to wait for, no troopers (base_option's), the leave path up and ahead. Hunting:
-//   no leave (it stays over the landing point and fights), the area the whole level, its troopers hunting too.
-constexpr uint32_t KAL_MEM = 0x000df000u, KAL_MEM_END = 0x000e0000u;
-constexpr OvConst<0x001b04b0u> PATH_TABLE{};
-constexpr OvConst<0x00160104u> PATH_COUNT{};
-constexpr int32_t PATH_TABLE_MAX = 176;  // (0x1b04b0..0x1b0770)
-uint32_t g_kal_mem = KAL_MEM;
-int32_t g_kal_slot = PATH_TABLE_MAX;
-int16_t g_kal_world = -1;  // the whole level's square (shared)
-bool g_kal_any = false;
-
-bool kal_class(int32_t cls) { return cls == 52 || cls == 541 || cls == 638 || cls == 1356; }
-bool on_kalebo() { return lw(LEVEL) == 16; }
-
-// a path of `n` points of the level's own: its table entry and its memory
-bool kal_path_reserve(int n, int16_t& slot, uint32_t& mem) {
-    const uint32_t size = 0x10 + 0x10 * static_cast<uint32_t>(n);
-    if (g_kal_slot - 1 < lw(PATH_COUNT) || g_kal_mem + size > KAL_MEM_END) return false;
-    slot = static_cast<int16_t>(--g_kal_slot);
-    mem = g_kal_mem;
-    g_kal_mem += size;
-    for (uint32_t k = 0; k < size; k += 4) sw(mem + k, 0);
-    sw(PATH_TABLE + static_cast<uint32_t>(slot) * 4, mem);
-    return true;
-}
-void kal_path_set(uint32_t mem, const float (*pts)[3], int n) {
-    sw(mem, static_cast<uint32_t>(n));
-    for (int k = 0; k < n; ++k)
-        for (uint32_t c = 0; c < 4; ++c) swc1(mem + 0x10 + 0x10 * static_cast<uint32_t>(k) + 4 * c, c < 3 ? pts[k][c] : 0.0f);
-}
-void kal_square(uint32_t mem, float x, float y, float z, float r) {
-    const float q[4][3] = {{x - r, y - r, z}, {x + r, y - r, z}, {x + r, y + r, z}, {x - r, y + r, z}};
-    kal_path_set(mem, q, 4);
+// ---- (ABI 6) classes of other levels (the open engine: session.h) ----
+int32_t api_import_class(const char* name) {
+    int l = -1;
+    uint32_t c = 0;
+    return name != nullptr && pool_name(name, &l, &c) ? session_import_id(l, c) : -1;
 }
 
-void kal_pool_take() {
-    g_kal_mem = KAL_MEM;
-    g_kal_slot = PATH_TABLE_MAX;
-    g_kal_world = -1;
-    g_kal_any = false;
-    if (!on_kalebo()) return;
-    size_t n = 0, refused = 0;
-    for (PoolObj& o : g_pool) {
-        if (!kal_class(o.cls)) continue;
-        if (g_kal_world < 0) {
-            uint32_t mem = 0;
-            if (!kal_path_reserve(4, g_kal_world, mem)) break;
-            kal_square(mem, 0.0f, 0.0f, 0.0f, 4000.0f);
-        }
-        const int paths = o.cls == 1356 ? 2 : 1, pts = o.cls == 1356 ? 4 : o.cls == 541 ? 2 : 4;
-        bool ok = true;
-        for (int k = 0; k < paths && ok; ++k) ok = kal_path_reserve(pts, o.path[k], o.pmem[k]);
-        o.adapted = ok;
-        o.refused = !ok;
-        ok ? ++n : ++refused;
+uint32_t api_import_spawn(int32_t cls, const float pos[3], float yaw) {
+    if (cls < 0 || pos == nullptr || lw(OV(0x0015f5c4)) != 0) return 0;
+    if (static_cast<uint32_t>(cls) < 2048 && lbu(OV(0x00197bc0) + static_cast<uint32_t>(cls)) == 0xffu) return 0;
+    return session_import_spawn(static_cast<uint32_t>(cls), pos, yaw);
+}
+
+int32_t api_import_load(const char* name) {
+    int l = -1;
+    uint32_t c = 0;
+    if (name == nullptr || !pool_name(name, &l, &c)) return -1;
+    return session_import_load(l, c, "plugin");
+}
+
+// ---- (ABI 9) sessions (session_runtime.h) ----
+int api_session_on() { return g_session_rt ? 1 : 0; }
+
+int api_checkpoint_set(const char* name) { return name != nullptr && session_checkpoint_set(name) ? 1 : 0; }
+
+int api_checkpoint_at(const float pos[3], float yaw, const char* name) {
+    return pos != nullptr && session_checkpoint_at(pos, yaw, name != nullptr ? name : "") ? 1 : 0;
+}
+
+int32_t api_checkpoint_get(float pos[3], float* yaw, char* name, int32_t cap) {
+    if (!g_session_rt) return -1;
+    const std::string n = session_checkpoint(pos, yaw);
+    if (name != nullptr && cap > 0) {
+        const size_t k = std::min<size_t>(n.size(), static_cast<size_t>(cap) - 1);
+        std::memcpy(name, n.data(), k);
+        name[k] = 0;
     }
-    g_kal_any = n > 0;
-    if (n + refused > 0)
-        std::printf("[sdk] Kalebo III's enemies: %zu pool objects given paths of their own%s\n", n,
-                    refused > 0 ? (" (" + std::to_string(refused) + " not: no room, base_spawn refuses them)").c_str() : "");
+    return static_cast<int32_t>(session_respawns());
 }
 
-uint32_t pool_moby_index(const PoolObj& o) { return (o.moby - moby_base()) >> 8; }
+int32_t api_respawn_policy(int32_t policy) { return session_respawn_policy(policy); }
 
-// its pvars as the class needs them on a level mod (base_spawn's copy of the pool's first placement just written)
-void kal_spawned(size_t i) {
-    PoolObj& o = g_pool[i];
-    o.woke = false;
-    o.hunt = false;
-    o.troops.clear();
-    o.jprev_ok = o.jgo = false;
-    o.jclimb = o.jstuck = 0;
-    o.jhome[0] = o.jhome[1] = o.jhome[2] = 1e9f;
-    if (!o.adapted || !on_kalebo()) return;
-    const uint32_t pv = o.pvars;
-    const float x = o.start[0], y = o.start[1], z = o.start[2], c = std::cos(o.start[3]), sn = std::sin(o.start[3]);
-    switch (o.cls) {
-    case 52:
-        sw(pv + 0x180, static_cast<uint32_t>(o.path[0]));
-        kal_square(o.pmem[0], x, y, z, 24.0f);
-        break;
-    case 541: {
-        sw(pv + 0xc8, 0);                                 // (no lives: killed for good)
-        sw(pv + 0xcc, 0);                                 // (group 0: none on a level mod, no door)
-        sw(pv + 0xd0, 0xffffffffu);                       // (no markers)
-        sw(pv + 0xd4, 0xffffffffu);
-        sw(pv + 0xc4, static_cast<uint32_t>(o.path[0]));  // its patrol
-        sw(pv + 0xd8, static_cast<uint32_t>(g_kal_world));
-        const float p[2][3] = {{x, y, z}, {x + 5.0f * c, y + 5.0f * sn, z}};
-        kal_path_set(o.pmem[0], p, 2);
-        break;
+// ---- (ABI 10) sections (sections.h) ----
+int api_section_load(const char* name) { return name != nullptr ? section_load(name) : 0; }
+int api_section_ready(const char* name) { return name != nullptr ? section_ready(name) : -1; }
+int api_section_enter(const char* name, const char* entry, int32_t fade) {
+    return name != nullptr ? section_enter(name, entry != nullptr ? entry : "", fade) : 0;
+}
+int api_section_unload(const char* name) { return name != nullptr ? section_unload(name) : 0; }
+int32_t api_section_current(char* name, int32_t cap) {
+    const int32_t i = sections_current();
+    if (name != nullptr && cap > 0) {
+        const std::string n = i >= 0 ? sections_name(i) : std::string();
+        const size_t k = std::min<size_t>(n.size(), static_cast<size_t>(cap) - 1);
+        std::memcpy(name, n.data(), k);
+        name[k] = 0;
     }
-    case 638:
-        sw(pv + 0x120, 0xffffffffu);
-        sw(pv + 0x128, 0);
-        sw(pv + 0x12c, static_cast<uint32_t>(o.path[0]));
-        kal_square(o.pmem[0], x, y, z, 24.0f);
-        break;
-    case 1356: {
-        for (uint32_t k = 0; k < 4; ++k) sw(pv + 0xc0 + 4 * k, 0xffffffffu);
-        sw(pv + 0xd0, 0xffffffffu);
-        sw(pv + 0xd4, 0xffffffffu);
-        sw(pv + 0xd8, static_cast<uint32_t>(o.path[0]));
-        sw(pv + 0xdc, static_cast<uint32_t>(o.path[1]));
-        const float h = 9.0f;
-        const float in[4][3] = {{x - 60.0f * c, y - 60.0f * sn, z + h + 25.0f},
-                                {x - 32.0f * c, y - 32.0f * sn, z + h + 12.0f},
-                                {x - 12.0f * c, y - 12.0f * sn, z + h + 3.0f},
-                                {x, y, z + h}};
-        kal_path_set(o.pmem[0], in, 4);
-        const float out[4][3] = {{x, y, z + h}, {x + 15.0f * c, y + 15.0f * sn, z + h + 6.0f}, {x + 45.0f * c, y + 45.0f * sn, z + h + 25.0f},
-                                 {x + 90.0f * c, y + 90.0f * sn, z + h + 50.0f}};
-        kal_path_set(o.pmem[1], out, 4);
-        break;
-    }
-    default:
-        break;
-    }
+    return i;
+}
+int32_t api_section_policy(const char* name, int32_t policy) { return name != nullptr ? section_policy(name, policy) : -1; }
+
+// a loaded save's session bytes of the plugins (session_load), given after their level_start
+std::vector<std::pair<std::string, std::vector<uint8_t>>> g_session_bytes;
+
+void session_bytes_give() {
+    for (const auto& [folder, bytes] : g_session_bytes)
+        for (Plugin& p : g_plugins)
+            if (p.mod->folder == folder && p.cb.size >= offsetof(rac1_mod, session_load) + sizeof(p.cb.session_load) && p.cb.session_load != nullptr)
+                with(p, [&] { p.cb.session_load(p.cb.user, bytes.data(), static_cast<uint32_t>(bytes.size())); });
+    g_session_bytes.clear();
 }
 
-uint32_t pool_index_of(uint32_t m) {
-    for (size_t i = 0; i < g_pool.size(); ++i)
-        if (g_pool[i].moby == m && pool_alive(g_pool[i])) return static_cast<uint32_t>(i + 1);
+// ---- (ABI 8) the level data of imported classes (class_profiles.h) ----
+// the plugins' paths (path_create, handles 0x10001..; level.txt's are 1..): the level's start empties them
+std::vector<SdkPath> g_plugin_paths;
+
+const SdkPath* path_of(int32_t h) {
+    if (h >= 1 && static_cast<size_t>(h) <= g_sdk.paths.size()) return &g_sdk.paths[static_cast<size_t>(h) - 1];
+    if (h > 0x10000 && static_cast<size_t>(h - 0x10000) <= g_plugin_paths.size()) return &g_plugin_paths[static_cast<size_t>(h - 0x10000) - 1];
+    return nullptr;
+}
+
+int32_t api_path_find(const char* name) {
+    if (name == nullptr) return 0;
+    for (size_t i = 0; i < g_sdk.paths.size(); ++i)
+        if (g_sdk.paths[i].name == name) return static_cast<int32_t>(i + 1);
     return 0;
 }
 
-void kal_hunt_on(PoolObj& o) {
-    o.hunt = true;
-    o.anchor[0] = o.anchor[1] = o.anchor[2] = 1e9f;  // (aimed at the next frame)
-    if (o.cls == 1356) {
-        sw(o.pvars + 0xd0, static_cast<uint32_t>(g_kal_world));
-        if (lbu(o.moby + 0x20) < 4) sw(o.pvars + 0xdc, 0xffffffffu);
-        for (size_t t : o.troops)
-            if (pool_alive(g_pool[t])) kal_hunt_on(g_pool[t]);
+int32_t api_path_create(const float* xyz, int32_t n) {
+    if (xyz == nullptr || n < 1 || n > 64 || g_plugin_paths.size() >= 4096) return 0;
+    SdkPath p;
+    for (int32_t i = 0; i < n; ++i) {
+        if (!std::isfinite(xyz[3 * i]) || !std::isfinite(xyz[3 * i + 1]) || !std::isfinite(xyz[3 * i + 2])) return 0;
+        p.pts.push_back({xyz[3 * i], xyz[3 * i + 1], xyz[3 * i + 2]});
     }
+    g_plugin_paths.push_back(std::move(p));
+    return static_cast<int32_t>(0x10000 + g_plugin_paths.size());
 }
 
-// ---- the jetpack troopers' flight (638) on a level mod ----
-// Their own code (0x2d2cf0) flies a point of theirs (pvars +0x2c0; the moby is put there plus a bob of 0.25 each frame) straight
-// at its target (0x2d3eb8: the home +0x2b0 in state 1, a path's points in states 3 / 7) through anything, at the target's
-// height: on Kalebo III the level's paths keep them clear of walls, 0 to 2 units over the floor (measured: their points). On
-// a level mod they have no such path. After their update, in their flying states (not 0 starting, 9 falling dead - the game's
-// enemy_physics has the floor -, 10 carried), kal_trooper takes their point's move back from a wall it would cross (sliding
-// along it when it can, rising over it - a jetpack - when it cannot) and keeps them JET_HOVER over the floor under them (up a
-// ramp's slope at their pace, down a ledge more slowly); their home's height made the same, so they arrive (the game's test:
-// within 1 unit, in 3D).
-constexpr float JET_HOVER = 0.5f;     // over the floor (their own level's points: 0..2 over it, most within 0.4)
-constexpr float JET_BODY = 0.8f;      // the wall test's height over their point
-constexpr float JET_RISE = 0.1f;      // units a frame up to their height (a slope), down
-constexpr float JET_SINK = 0.05f;
-constexpr float JET_CLIMB = 0.08f;    // units a frame up a wall in their way, at most JET_CLIMB_MAX over the floor
-constexpr float JET_CLIMB_MAX = 14.0f;
-
-// the level's collision between a and b (the mobys passed through; `self` left out): the point hit and its normal
-bool level_hit(const float a[3], const float b[3], uint32_t self, float* point, float* normal) {
-    Vec4 s{a[0], a[1], a[2], 1.0f};
-    const Vec4 e{b[0], b[1], b[2], 1.0f};
-    uint32_t skip = self;
-    const uint32_t outb = OV(0x00173e40);
-    for (int k = 0; k < 4; ++k) {
-        if (segment_collide_v(s, e, 0, skip, nullptr) == 0) return false;
-        const uint32_t m = lwu(outb + 0x18);
-        if (!is_moby(m)) {
-            for (uint32_t c = 0; c < 3; ++c) {
-                if (point != nullptr) point[c] = lwc1(outb + 0x20 + 4 * c);
-                if (normal != nullptr) normal[c] = lwc1(outb + 0x40 + 4 * c);
-            }
-            return true;
-        }
-        skip = m;  // (a moby: through it, on from where it was hit)
-        s = Vec4{lwc1(outb + 0x20), lwc1(outb + 0x24), lwc1(outb + 0x28), 1.0f};
-    }
-    return false;
+// (stage 7) the points of a path handle (path_find's, path_create's)
+bool path_points_of(int32_t h, std::vector<std::array<float, 3>>& out) {
+    const SdkPath* p = path_of(h);
+    if (p == nullptr) return false;
+    out = p->pts;
+    return true;
 }
 
-// the level's floor under (x, y) from height z down, NAN none within 60
-float level_floor(float x, float y, float z, uint32_t self) {
-    const float a[3] = {x, y, z}, b[3] = {x, y, z - 60.0f};
-    float p[3];
-    return level_hit(a, b, self, p, nullptr) ? p[2] : NAN;
+// (stage 7) object_follow_path: the object moved along the path each frame of the objects' pass (obj_follow_step)
+int api_object_follow_path(uint32_t h, int32_t path, float speed, int32_t mode) {
+    const int i = obj_index(h);
+    if (i < 0) return 0;
+    Obj& o = g_sdk.objs[static_cast<size_t>(i)];
+    const SdkPath* p = path != 0 ? path_of(path) : nullptr;
+    if (p == nullptr || !(speed > 0.0f) || !std::isfinite(speed) || p->pts.size() < 2) {
+        o.fspeed = 0;
+        return path == 0 || speed == 0.0f ? 1 : 0;
+    }
+    o.fpath = p->pts;
+    o.fcum.assign(1, 0.0f);
+    for (size_t k = 1; k < o.fpath.size(); ++k) {
+        float d = 0;
+        for (size_t l = 0; l < 3; ++l) d += (o.fpath[k][l] - o.fpath[k - 1][l]) * (o.fpath[k][l] - o.fpath[k - 1][l]);
+        o.fcum.push_back(o.fcum.back() + std::sqrt(d));
+    }
+    if (mode == RAC1_PATH_LOOP) {  // (the closing segment)
+        float d = 0;
+        for (size_t l = 0; l < 3; ++l) d += (o.fpath.front()[l] - o.fpath.back()[l]) * (o.fpath.front()[l] - o.fpath.back()[l]);
+        o.fpath.push_back(o.fpath.front());
+        o.fcum.push_back(o.fcum.back() + std::sqrt(d));
+    }
+    obj_platform(o);  // (Ratchet standing on it rides it)
+    o.fspeed = speed;
+    o.fmode = std::clamp(mode, RAC1_PATH_ONCE, RAC1_PATH_PINGPONG);
+    o.fat = 0;
+    o.fdir = 1;
+    return 1;
 }
 
-void kal_trooper(PoolObj& o, uint32_t st) {
-    const uint32_t m = o.moby, pv = o.pvars;
-    if (st == 0 || st == 9 || st == 10) {
-        o.jprev_ok = false;
-        return;
-    }
-    if (lw(pv + 0x128) != 0) sw(pv + 0x128, 0);  // (carried: only state 10 is; out of its dropship, no more)
-    // its home: at the height over the floor there (once each time it changes)
-    const float hx = lwc1(pv + 0x2b0), hy = lwc1(pv + 0x2b4), hz = lwc1(pv + 0x2b8);
-    if (hx != o.jhome[0] || hy != o.jhome[1] || hz != o.jhome[2]) {
-        const float g = level_floor(hx, hy, hz + 3.0f, m);
-        if (!std::isnan(g)) swc1(pv + 0x2b8, g + JET_HOVER);
-        o.jhome[0] = hx, o.jhome[1] = hy, o.jhome[2] = lwc1(pv + 0x2b8);
-    }
-    float b[3], off[3];
-    for (uint32_t c = 0; c < 3; ++c) {
-        b[c] = lwc1(pv + 0x2c0 + 4 * c);
-        off[c] = lwc1(m + 0x10 + 4 * c) - b[c];  // (its bob)
-    }
-    if (!o.jprev_ok) {
-        std::memcpy(o.jprev, b, sizeof b);
-        o.jprev_ok = true;
-        o.jclimb = o.jstuck = 0;
-        return;
-    }
-    const float* p = o.jprev;
-    const float mx = b[0] - p[0], my = b[1] - p[1];
-    bool blocked = false;
-    if (std::fabs(mx) + std::fabs(my) > 1e-4f) {
-        const float a[3] = {p[0], p[1], p[2] + JET_BODY};
-        const float e[3] = {b[0], b[1], p[2] + JET_BODY};
-        float hit[3], n[3];
-        if (level_hit(a, e, m, hit, n)) {
-            // along the wall: the move less its part into the wall
-            float sx = 0.0f, sy = 0.0f;
-            const float nn = n[0] * n[0] + n[1] * n[1];
-            if (nn > 0.01f) {
-                const float d = (mx * n[0] + my * n[1]) / nn;
-                sx = mx - d * n[0], sy = my - d * n[1];
-            }
-            const float e2[3] = {p[0] + sx, p[1] + sy, p[2] + JET_BODY};
-            if (std::fabs(sx) + std::fabs(sy) > 1e-4f && !level_hit(a, e2, m, nullptr, nullptr)) {
-                b[0] = p[0] + sx, b[1] = p[1] + sy;
-            } else {
-                b[0] = p[0], b[1] = p[1];
-                blocked = true;
-            }
-            o.jclimb = 20;
-        }
-    }
-    const float g = level_floor(b[0], b[1], p[2] + JET_BODY + 0.5f, m);
-    float z = p[2];
-    if (o.jclimb > 0) {
-        --o.jclimb;
-        if (std::isnan(g) || z < g + JET_CLIMB_MAX) z += JET_CLIMB;
-        if (!std::isnan(g) && z < g + JET_HOVER) z = std::min(g + JET_HOVER, p[2] + JET_RISE);
-    } else if (!std::isnan(g)) {
-        z += std::clamp(g + JET_HOVER - z, -JET_SINK, JET_RISE);
-    }
-    b[2] = z;
-    // a wall it cannot get past nor over for 3 s: it stays where it is (its home there)
-    o.jstuck = blocked ? o.jstuck + 1 : 0;
-    if (o.jstuck > 180 && st == 1) {
-        for (uint32_t c = 0; c < 3; ++c) swc1(pv + 0x2b0 + 4 * c, b[c]);
-        o.jhome[0] = b[0], o.jhome[1] = b[1], o.jhome[2] = b[2];
-        o.jstuck = 0;
-    }
-    for (uint32_t c = 0; c < 3; ++c) {
-        swc1(pv + 0x2c0 + 4 * c, b[c]);
-        swc1(m + 0x10 + 4 * c, b[c] + off[c]);
-    }
-    api_moby_moved(m);
-    std::memcpy(o.jprev, b, sizeof b);
+float api_object_path_at(uint32_t h) {
+    const int i = obj_index(h);
+    if (i < 0) return -1.0f;
+    const Obj& o = g_sdk.objs[static_cast<size_t>(i)];
+    return o.fcum.empty() ? -1.0f : o.fat;
 }
 
-// after the frame's updates: each started object's fixes, and the hunt
-void kal_frame() {
-    const uint32_t hero = moby_base();
-    if (hero == 0) return;
-    const float hx = lwc1(hero + 0x10), hy = lwc1(hero + 0x14), hz = lwc1(hero + 0x18);
-    for (PoolObj& o : g_pool) {
-        if (!o.adapted || !pool_alive(o)) continue;
-        const uint32_t m = o.moby, pv = o.pvars;
-        const uint32_t st = lbu(m + 0x20);
-        const float mx = lwc1(m + 0x10), my = lwc1(m + 0x14), mz = lwc1(m + 0x18);
-        float dx = mx - hx, dy = my - hy;
-        const float d = std::sqrt(dx * dx + dy * dy);
-        if (d > 0.01f) dx /= d, dy /= d;
-        else dx = 1.0f, dy = 0.0f;
-        const bool moved = std::fabs(o.anchor[0] - hx) + std::fabs(o.anchor[1] - hy) > 4.0f;
-        switch (o.cls) {
-        case 52:
-            if (o.hunt) sw(pv + 0x190, 60);
-            break;
-        case 541: {
-            if (!o.woke && st == 1) {  // (hidden in its alcove: out, as class 654's wake 0x2ceca8 and state 2's end)
-                o.woke = true;
-                sb(m + 0x31, 1);
-                sh(m + 0x34, lhu(m + 0x34) & 0xfffeu);
-                sw(pv + 0xf0, 30);
-                sw(pv + 0xdc, 1);
-                sw(pv + 0x108, 1);
-                const int32_t w = lw(pv + 0xc0);
-                sb(m + 0x20, w == 0 ? 3u : w == 1 ? 5u : 7u);
-            }
-            if (lw(pv + 0xb4) == 2) {  // (a marker's turn, or none found: Ratchet)
-                sw(pv + 0xb4, 0);
-                for (uint32_t k = 0; k < 3; ++k) swc1(pv + 0x70 + 4 * k, lwc1(hero + 0x10 + 4 * k));
-            }
-            if (o.hunt && o.woke && moved) {
-                const int32_t w = lw(pv + 0xc0);
-                const float px = -dy, py = dx;
-                float p[2][3];
-                if (w == 1) {
-                    p[0][0] = hx + 3.0f * dx, p[0][1] = hy + 3.0f * dy;
-                    p[1][0] = hx - 4.0f * dx, p[1][1] = hy - 4.0f * dy;
-                } else {
-                    const float r = w == 0 ? 9.0f : 3.5f, side = w == 0 ? 3.0f : 1.5f;
-                    p[0][0] = hx + r * dx + side * px, p[0][1] = hy + r * dy + side * py;
-                    p[1][0] = hx + r * dx - side * px, p[1][1] = hy + r * dy - side * py;
-                }
-                p[0][2] = p[1][2] = mz;  // (on its own floor)
-                kal_path_set(o.pmem[0], p, 2);
-                o.anchor[0] = hx, o.anchor[1] = hy, o.anchor[2] = hz;
-            }
-            break;
-        }
-        case 638:
-            if (o.hunt) {
-                sw(pv + 0x2e0, 120);
-                if (moved && st != 10 && st != 0) {  // (a home 10 units from him on its side, short of a wall between: flown to;
-                                                       // a few units aside each, not all on one point)
-                    const float side = static_cast<float>(static_cast<int>(&o - g_pool.data()) % 5 - 2) * 2.0f;
-                    const float ux = 10.0f * dx - side * dy, uy = 10.0f * dy + side * dx, ul = std::hypot(ux, uy);
-                    const float a[3] = {hx, hy, hz + JET_BODY}, e[3] = {hx + ux, hy + uy, hz + JET_BODY};
-                    float hit[3], r = ul;
-                    if (level_hit(a, e, 0, hit, nullptr)) r = std::max(0.0f, std::hypot(hit[0] - hx, hit[1] - hy) - 1.5f);
-                    swc1(pv + 0x2b0, hx + ux / ul * r);
-                    swc1(pv + 0x2b4, hy + uy / ul * r);
-                    swc1(pv + 0x2b8, hz);
-                    o.jgo = true;
-                    o.anchor[0] = hx, o.anchor[1] = hy, o.anchor[2] = hz;
-                }
-                if (o.jgo && st == 2) {  // (hovering: off to it, as when dropped - state 1, its drop's time over)
-                    sb(m + 0x20, 1);
-                    sh(pv + 0x2dc, 0);
-                    o.jgo = false;
-                }
-            }
-            kal_trooper(o, lbu(m + 0x20));
-            break;
-        default:
-            break;
-        }
+// a frame of the objects' pass: a following object a step along its path (before its class's update)
+void obj_follow_step(Obj& o) {
+    if (o.plat != 0)  // (a frame's move starts at none)
+        for (uint32_t k = 0; k < 8; ++k) sw(o.plat + 4 * k, 0);
+    if (!(o.fspeed > 0.0f) || o.fcum.size() < 2) return;
+    const float total = o.fcum.back();
+    o.fat += static_cast<float>(o.fdir) * o.fspeed / 60.0f;
+    if (o.fmode == RAC1_PATH_LOOP) {
+        o.fat = std::fmod(o.fat, total);
+        if (o.fat < 0) o.fat += total;
+    } else if (o.fmode == RAC1_PATH_PINGPONG) {
+        if (o.fat > total) o.fat = 2 * total - o.fat, o.fdir = -1;
+        if (o.fat < 0) o.fat = -o.fat, o.fdir = 1;
+    } else if (o.fat >= total) {
+        o.fat = total;
+        o.fspeed = 0;
     }
+    const float d = std::clamp(o.fat, 0.0f, total);
+    size_t k = static_cast<size_t>(std::upper_bound(o.fcum.begin(), o.fcum.end(), d) - o.fcum.begin());
+    k = std::min(k == 0 ? 0 : k - 1, o.fpath.size() - 2);
+    const float seg = std::max(1e-6f, o.fcum[k + 1] - o.fcum[k]);
+    const float t = std::clamp((d - o.fcum[k]) / seg, 0.0f, 1.0f);
+    for (uint32_t l = 0; l < 3; ++l) swc1(o.moby + 0x10 + 4 * l, o.fpath[k][l] + (o.fpath[k + 1][l] - o.fpath[k][l]) * t);
+    obj_transform(o);
 }
 
-// (ABI 5) base_option: a class's choice for an object base_spawn has just started (before its first update)
+int api_object_bind_path(uint32_t m, const char* slot, int32_t path) {
+    const SdkPath* p = path_of(path);
+    if (slot == nullptr || p == nullptr || !is_moby(m)) return 0;
+    float pts[64][3];
+    for (size_t i = 0; i < p->pts.size() && i < 64; ++i)
+        for (int c = 0; c < 3; ++c) pts[i][c] = p->pts[i][static_cast<size_t>(c)];
+    return profiles_bind_points(m, slot, pts, static_cast<int>(std::min<size_t>(p->pts.size(), 64)));
+}
+
+int api_object_bind(uint32_t m, const char* slot, uint32_t value) {
+    if (slot == nullptr || !is_moby(m)) return 0;
+    const ProfObj* o = profiles_obj(m);
+    uint32_t off = 0;
+    std::string kind;
+    if (o == nullptr || !profile_slot(o->prof, slot, &off, &kind) || kind == "path" || kind == "area") return 0;
+    if (kind == "moby") value = value == 0 ? 0xffffffffu : is_moby(value) ? (value - moby_base()) >> 8 : 0xffffffffu;
+    return profiles_bind_word(m, slot, value);
+}
+
+int32_t api_group_create(uint32_t owner, const uint32_t* mobys, int32_t n) {
+    const ProfObj* o = is_moby(owner) ? profiles_obj(owner) : nullptr;  // (an imported object, or the base level's own: ABI 9)
+    if (o == nullptr || mobys == nullptr || n < 1 || n > 64) return -1;
+    for (int32_t i = 0; i < n; ++i)
+        if (!is_moby(mobys[i])) return -1;
+    return ld_group_create(o->level, mobys, n);
+}
+
+int32_t api_object_slots(uint32_t m, char* out, int32_t cap) {
+    const ProfObj* o = is_moby(m) ? profiles_obj(m) : nullptr;
+    if (o == nullptr) return 0;
+    const std::string t = profile_slots_text(o->prof);
+    if (out != nullptr && cap > 0) {
+        const size_t k = std::min<size_t>(t.size(), static_cast<size_t>(cap) - 1);
+        std::memcpy(out, t.data(), k);
+        out[k] = 0;
+    }
+    return static_cast<int32_t>(std::count(t.begin(), t.end(), ':'));
+}
+
+int32_t api_import_release(const char* name) {
+    int l = -1;
+    uint32_t c = 0;
+    if (name == nullptr || !pool_name(name, &l, &c)) return 0;
+    return static_cast<int32_t>(session_import_unload(l, c));
+}
+
+// (ABI 5) base_option: a class's choice for an object base_spawn has just started (before its first update): its profile's
+// options (class_profiles.h)
 int api_base_option(uint32_t h, int32_t option, int32_t value) {
     const size_t i = (h & 0xffffu) - 1;
     if (h == 0 || i >= g_pool.size()) return 0;
     PoolObj& o = g_pool[i];
     if (o.gen != (h >> 16) || !pool_alive(o) || !o.adapted || lbu(o.moby + 0x20) != 0) return 0;
-    if (option == RAC1_BASE_WEAPON && o.cls == 541) {
-        if (value < 0 || value > 2) return 0;
-        sw(o.pvars + 0xc0, static_cast<uint32_t>(value));
-        return 1;
-    }
-    if (option == RAC1_BASE_TROOPS && o.cls == 1356) {
-        int32_t n = 0;
-        for (size_t t : o.troops) (void)t, ++n;
-        const float at[3] = {o.start[0], o.start[1], o.start[2]};
-        const float yaw = o.start[3];
-        for (; n < value && n < 4;) {
-            const uint32_t th = api_base_spawn(638, at, yaw);
-            if (th == 0) break;
-            PoolObj& t = g_pool[(th & 0xffffu) - 1];
-            sw(t.pvars + 0x128, 1);  // (carried: hidden until its dropship drops it)
-            sw(o.pvars + 0xc0 + 4 * static_cast<uint32_t>(n), pool_moby_index(t));
-            o.troops.push_back((th & 0xffffu) - 1);
-            ++n;
-        }
-        return n;
-    }
+    return std::max<int32_t>(0, profiles_option(g_pool, i, option, value));
+}
+
+uint32_t pool_index_of(uint32_t m) {
+    for (size_t i = 0; i < g_pool.size(); ++i)
+        if (g_pool[i].moby == m && pool_alive(g_pool[i])) return static_cast<uint32_t>(i + 1);
     return 0;
 }
 
@@ -1300,44 +1214,10 @@ uint32_t api_base_handle(uint32_t m) {
     return pi == 0 ? 0 : static_cast<uint32_t>(g_pool[pi - 1].gen) << 16 | pi;
 }
 
-bool hunt_known(int32_t cls) { return cls == 1445 && lw(LEVEL) == 16; }
-
 int api_base_hunt(uint32_t m, int on) {
     if (!is_moby(m) || static_cast<int8_t>(lbu(m + 0x20)) < 0) return 0;
-    const int32_t cls = lh(m + 0xa6);
-    g_hunters.erase(std::remove_if(g_hunters.begin(), g_hunters.end(), [&](const Hunter& h) { return h.moby == m; }), g_hunters.end());
-    if (kal_class(cls) && on_kalebo()) {
-        const uint32_t pi = pool_index_of(m);
-        if (pi == 0 || !g_pool[pi - 1].adapted) return 0;
-        PoolObj& o = g_pool[pi - 1];
-        if (on == 0) {
-            o.hunt = false;
-            return 1;
-        }
-        kal_hunt_on(o);
-        return 1;
-    }
-    if (on == 0) return 1;
-    if (!hunt_known(cls) || lwu(m + 0x78) == 0) return 0;
-    g_hunters.push_back({m, cls, lwu(m + 0x78)});
-    return 1;
-}
-
-// after the frame's updates (mod_code_frame)
-void hunters_update() {
-    const uint32_t h = moby_base();
-    for (size_t i = 0; i < g_hunters.size();) {
-        const Hunter& u = g_hunters[i];
-        if (static_cast<int8_t>(lbu(u.moby + 0x20)) < 0 || lh(u.moby + 0xa6) != u.cls || lwu(u.moby + 0x78) != u.pvars) {
-            g_hunters.erase(g_hunters.begin() + static_cast<std::ptrdiff_t>(i));  // (gone: killed, removed)
-            continue;
-        }
-        if (h != 0 && lbu(u.moby + 0x20) != 0) {  // (once its first update kept its guard point)
-            for (uint32_t k = 0; k < 3; ++k) swc1(u.pvars + 0x1d0 + 4 * k, lwc1(h + 0x10 + 4 * k));
-            if (lw(u.pvars + 0x1c4) == 2) sw(u.pvars + 0x1c4, 0);
-        }
-        ++i;
-    }
+    const int r = profiles_hunt(g_pool, m, on);  // (its profile's hunt: class_profiles.h)
+    return r >= 0 ? r : on == 0 ? 1 : 0;
 }
 
 // ---- (ABI 5) the weapons: owned, equipped, allowed, ammo ----
@@ -1655,6 +1535,8 @@ void load_all() {
     g_api.trigger_inside = api_trigger_inside;
     g_api.frame_count = api_frame_count;
     g_api.base_spawn = api_base_spawn;
+    g_prof_base_spawn = api_base_spawn;
+    g_prof_pool = &g_pool;
     g_api.base_moby = api_base_moby;
     g_api.base_free = api_base_free;
     g_api.vendor_open = api_vendor_open;
@@ -1670,6 +1552,56 @@ void load_all() {
     g_api.weapon_equip = api_weapon_equip;
     g_api.weapon_allow = api_weapon_allow;
     g_api.ammo_fill = api_ammo_fill;
+    g_api.import_class = api_import_class;
+    g_api.import_spawn = api_import_spawn;
+    g_api.import_load = api_import_load;
+    g_api.import_release = api_import_release;
+    g_api.path_find = api_path_find;
+    g_api.path_create = api_path_create;
+    g_api.object_bind_path = api_object_bind_path;
+    g_api.object_bind = api_object_bind;
+    g_api.group_create = api_group_create;
+    g_api.object_slots = api_object_slots;
+    g_api.session_on = api_session_on;
+    g_api.checkpoint_set = api_checkpoint_set;
+    g_api.checkpoint_at = api_checkpoint_at;
+    g_api.checkpoint_get = api_checkpoint_get;
+    g_api.respawn_policy = api_respawn_policy;
+    g_api.section_load = api_section_load;
+    g_api.section_ready = api_section_ready;
+    g_api.section_enter = api_section_enter;
+    g_api.section_unload = api_section_unload;
+    g_api.section_current = api_section_current;
+    g_api.section_policy = api_section_policy;
+    // (ABI 11: the rails and the set-piece kit, in ABI 7's room)
+    g_api.rail_find = sp_rail_find;
+    g_api.hero_rail = sp_hero_rail;
+    g_api.rail_point = sp_rail_point;
+    g_api.rail_enable = sp_rail_enable;
+    g_api.hero_rail_attach = sp_hero_rail_attach;
+    g_api.rail_speed = sp_rail_speed;
+    g_api.item_visit = sp_item_visit;
+    g_api.fade = sp_fade;
+    g_api.camera_set = sp_camera_set;
+    g_api.camera_release = sp_camera_release;
+    g_api.hazard_add = sp_hazard_add;
+    g_api.hazard_set = sp_hazard_set;
+    g_api.object_follow_path = api_object_follow_path;
+    g_api.object_path_at = api_object_path_at;
+    g_api.rail_info = sp_rail_info;
+    g_api.fade_active = sp_fade_active;
+    {
+        SetpiecesHost h;
+        h.hero_damage = api_hero_damage;
+        h.path = path_points_of;
+        h.object_moby = api_object_moby;
+        h.hero_place = api_hero_place;
+        h.rail_event = [](int32_t rail, const char* name, int32_t event) {
+            for (Plugin& p : g_plugins)
+                if (p.cb.size >= offsetof(rac1_mod, rail) + sizeof(p.cb.rail) && p.cb.rail != nullptr) with(p, [&] { p.cb.rail(p.cb.user, rail, name, event); });
+        };
+        setpieces_host(h);
+    }
     g_plugins.reserve(mods.size());  // (g_cur points into it)
     for (const ModInfo* m : mods) {
         std::string err;
@@ -1772,6 +1704,26 @@ bool sdk_read(const std::string& path, Sdk& out) {
             for (int l = 0; l < 3; ++l)
                 if (t.hi[l] < t.lo[l]) std::swap(t.lo[l], t.hi[l]);
             out.triggers.push_back(std::move(t));
+        } else if (k == "collision") {  // (stage 7) collision <class index> <file> <cx> <cy> <cz> <radius>
+            size_t ci = 0;
+            std::string file;
+            float c[3] = {}, r = 0;
+            in >> ci >> file >> c[0] >> c[1] >> c[2] >> r;
+            if (!in || ci >= out.classes.size()) return false;
+            out.coll_files.emplace_back(ci, file);
+            std::memcpy(out.classes[ci].coll_c, c, sizeof c);
+            out.classes[ci].coll_r = r;
+        } else if (k == "path") {
+            SdkPath pa;
+            size_t n = 0;
+            in >> pa.name >> n;
+            for (size_t i = 0; i < n && in; ++i) {
+                std::array<float, 3> v{};
+                in >> v[0] >> v[1] >> v[2];
+                pa.pts.push_back(v);
+            }
+            if (!in || pa.pts.empty()) return false;
+            out.paths.push_back(std::move(pa));
         }
     }
     return head;
@@ -1780,6 +1732,8 @@ bool sdk_read(const std::string& path, Sdk& out) {
 // the level `slot` loads: its content read (none on the game's levels)
 void sdk_level_load(int slot) {
     g_sdk = Sdk{};
+    g_plat_used = 0;
+    g_plugin_paths.clear();
     g_mod_update_all = false;
     mrpw::host_meshes_dynamic_set({});
     if (slot < kFirstLevelSlot) return;
@@ -1795,6 +1749,25 @@ void sdk_level_load(int slot) {
     }
     s.on = true;
     s.objs.reserve(MAX_OBJECTS);
+    // (stage 7) the classes' collision meshes into the game's memory
+    if (!s.coll_files.empty()) {
+        if (g_coll_block == 0) g_coll_block = api_ee_alloc(COLL_BLOCK);
+        uint32_t at = g_coll_block;
+        for (const auto& [ci, file] : s.coll_files) {
+            std::ifstream f(dir + "/" + file, std::ios::binary);
+            const std::vector<uint8_t> b((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+            if (g_coll_block == 0 || b.size() < 0x10 || at + b.size() > g_coll_block + COLL_BLOCK) {
+                std::fprintf(stderr, "[sdk] class \"%s\": its collision mesh %s cannot be used (%s): its box instead\n", s.classes[ci].name.c_str(), file.c_str(),
+                             b.size() < 0x10 ? "not read" : "the meshes' room of 8 KB is full");
+                continue;
+            }
+            std::memcpy(ee_ram_ptr_write(at, static_cast<uint32_t>(b.size())), b.data(), b.size());
+            s.classes[ci].coll = at;
+            at += static_cast<uint32_t>((b.size() + 15) & ~size_t{15});
+            std::printf("[sdk] class \"%s\": its collision mesh %s at %08x (%zu bytes, %d triangles)\n", s.classes[ci].name.c_str(), file.c_str(), s.classes[ci].coll,
+                        b.size(), lw(s.classes[ci].coll + 8) / 4);
+        }
+    }
     g_sdk = std::move(s);
     g_mod_update_all = g_sdk.update_all;
     if (g_mod_update_all) std::printf("[sdk] level slot %d: every moby updated wherever the camera is (update_all)\n", slot);
@@ -1811,8 +1784,8 @@ void sdk_level_load(int slot) {
                     }
                 if (c.def != nullptr) break;
             }
-    std::printf("[sdk] level slot %d: %zu classes, %zu objects, %zu sounds, %zu triggers\n", slot, g_sdk.classes.size(), g_sdk.placed.size(), g_sdk.sounds.size(),
-                g_sdk.triggers.size());
+    std::printf("[sdk] level slot %d: %zu classes, %zu objects, %zu sounds, %zu triggers%s\n", slot, g_sdk.classes.size(), g_sdk.placed.size(), g_sdk.sounds.size(),
+                g_sdk.triggers.size(), g_sdk.paths.empty() ? "" : (", " + std::to_string(g_sdk.paths.size()) + " paths").c_str());
     for (const SdkClass& c : g_sdk.classes)
         std::printf("[sdk] class \"%s\": %s\n", c.name.c_str(), c.def != nullptr ? ("its behaviour: " + c.owner->mod->folder + "'s plugin").c_str() : "no behaviour (no plugin defines it)");
 }
@@ -1909,6 +1882,7 @@ void level_started() {
     const ModInfo* lm = slot >= kFirstLevelSlot ? mods_level_at_slot(slot) : nullptr;
     g_mod_code_objects = g_sdk.on;
     sdk_level_start();
+    setpieces_level_start();  // (stage 7) its items for the visit, its rails' states
     for (Plugin& p : g_plugins) {
         rac1_level_info info{};
         info.level = lw(LEVEL);
@@ -1920,6 +1894,7 @@ void level_started() {
         p.rng = 0x9e3779b97f4a7c15ull ^ (static_cast<uint64_t>(slot) + 1) * 0xbf58476d1ce4e5b9ull;
         if (p.cb.level_start != nullptr) with(p, [&] { p.cb.level_start(p.cb.user, &info); });
     }
+    if (!g_session_bytes.empty()) session_bytes_give();  // (a save's session: the plugins' bytes after their start)
 }
 
 }  // namespace
@@ -1935,6 +1910,12 @@ void mod_code_start() {
 // orig: (none) — enhancement (mod_code.h)
 void mod_code_level_load() {
     if (!g_tried) load_all();
+    {  // (stage 7) the items of the last level's visit taken back; this level's rails and items (setpieces.h)
+        const int slot = level_slot();
+        const std::string dir = slot >= kFirstLevelSlot ? level_slot_build_dir(slot) : std::string();
+        std::error_code ec;
+        setpieces_level_load(slot, !dir.empty() && std::filesystem::exists(dir + "/level.sdk", ec) ? dir + "/level.sdk" : std::string());
+    }
     if (!g_mod_code_any && level_slot() < kFirstLevelSlot) return;  // (the original's levels, no plugin: nothing)
     if (g_started && g_level_slot >= 0) {
         sdk_level_end();
@@ -1943,7 +1924,7 @@ void mod_code_level_load() {
     }
     g_started = false;
     g_mod_code_objects = false;
-    g_hunters.clear();
+    profiles_level();
     if (lwu(MOD_LIGHTS) != 0) sw(MOD_LIGHTS, 0);
     g_hold = false;  // (input_hold: the pad the game's again on every level's start)
     g_mod_weapons_limited = false;  // (weapon_allow: all again)
@@ -1957,10 +1938,11 @@ void mod_code_level_load() {
 void mod_code_level_loaded() {
     if (level_slot() < kFirstLevelSlot) {
         g_pool.clear();
-        g_kal_any = false;
+        profiles_pool_take(g_pool, lw(LEVEL));  // (none)
         return;
     }
     pool_take(level_slot());
+    if (g_session_rt) session_rt_loaded();  // (a session's arrival: its soft resets' snapshot, session_runtime.h)
 }
 
 // orig: (none) — enhancement (mod_code.h)
@@ -1972,9 +1954,10 @@ void mod_code_frame() {
     // their objects moved by hand); their lights stay as they were, the HUD callback still draws
     const bool held = advanced_world_paused();
     if (g_sdk.on && !held) sdk_triggers();
-    if (!g_hunters.empty() && !held) hunters_update();
-    if (g_kal_any && !held) kal_frame();
+    if (profiles_any() && !held) profiles_frame(g_pool);  // (base_hunt's hunters, Kalebo III's enemies: class_profiles.h)
+    if (!held) profiles_session_frame();                   // (a session's imported spawns with a profile)
     if (g_mod_weapons_limited) weapons_frame();
+    if (!held) setpieces_frame();  // (stage 7) the rails' events, the hazards, the fade (setpieces.h)
     if (!held && lwu(MOD_LIGHTS) != 0) sw(MOD_LIGHTS, 0);  // (light_add: the frame's own, from its frame callbacks)
     for (Plugin& p : g_plugins)
         if (p.cb.frame != nullptr && !held) with(p, [&] { p.cb.frame(p.cb.user); });
@@ -2023,12 +2006,15 @@ void mod_code_pad_after(uint32_t pad) {
 // orig: (none) — enhancement (mod_code.h)
 void mod_code_camera() {
     if (!g_mod_code_any || ee_journal_active() || !g_started) return;
+    setpieces_camera();  // (stage 7) the plugin's camera_set (setpieces.h)
     for (Plugin& p : g_plugins)
         if (p.cb.camera != nullptr) with(p, [&] { p.cb.camera(p.cb.user); });
 }
 
 // orig: (none) — enhancement (mod_code.h)
 void mod_code_hud() {
+    if (g_sections_on) sections_hud();  // (a session's section switch: its fade, sections.h)
+    setpieces_hud();                     // (stage 7) the plugin's fade (setpieces.h)
     if (!g_mod_code_any || !g_started) return;
     if (lw(OV(0x0015f5c4)) == 5) return;  // (the vendor's screens, vendor_open: theirs alone)
     g_in_hud = true;
@@ -2042,6 +2028,7 @@ bool mod_code_object_update(uint32_t m) {
     if (const int i = obj_of_moby(m); i >= 0) {  // (ABI 2) a level object: its hit, its class's update (never in a replay)
         if (ee_journal_active()) return true;
         const uint32_t h = obj_handle(static_cast<size_t>(i));
+        obj_follow_step(g_sdk.objs[static_cast<size_t>(i)]);  // (stage 7) a moving platform: before its class's update
         const SdkClass& c = g_sdk.classes[static_cast<size_t>(g_sdk.objs[static_cast<size_t>(i)].cls)];
         if (c.def == nullptr) return true;
         rac1_hit hit{};
@@ -2129,6 +2116,57 @@ bool mod_code_pc_item(uint32_t id, const uint8_t* p, uint32_t size) {
     }
     g_carried.emplace_back(p, p + size);  // (a plugin not loaded, or a newer version's item: written back as it was)
     return true;
+}
+
+// orig: (none) — enhancement (mod_code.h)
+bool mod_code_path_points(const std::string& name, std::vector<float>& xyz) {
+    xyz.clear();
+    for (const SdkPath& p : g_sdk.paths)
+        if (p.name == name) {
+            for (const auto& v : p.pts) xyz.insert(xyz.end(), v.begin(), v.end());
+            return true;
+        }
+    return false;
+}
+
+// orig: (none) — enhancement (mod_code.h)
+void mod_code_respawn(uint32_t count, const char* checkpoint, const float pos[3], float yaw) {
+    rac1_respawn r{};
+    r.size = sizeof r;
+    r.count = count;
+    r.checkpoint = checkpoint;
+    std::memcpy(r.pos, pos, sizeof r.pos);
+    r.yaw = yaw;
+    for (Plugin& p : g_plugins)
+        if (p.cb.size >= offsetof(rac1_mod, respawn) + sizeof(p.cb.respawn) && p.cb.respawn != nullptr) with(p, [&] { p.cb.respawn(p.cb.user, &r); });
+}
+
+// orig: (none) — enhancement (mod_code.h)
+void mod_code_section_switch(const char* from, const char* to, const char* entry) {
+    for (Plugin& p : g_plugins) {
+        if (p.cb.size < offsetof(rac1_mod, section_enter) + sizeof(p.cb.section_enter)) continue;
+        if (p.cb.section_leave != nullptr) with(p, [&] { p.cb.section_leave(p.cb.user, from); });
+        if (p.cb.section_enter != nullptr) with(p, [&] { p.cb.section_enter(p.cb.user, to, entry); });
+    }
+}
+
+// orig: (none) — enhancement (mod_code.h)
+void mod_code_session_save(std::vector<std::pair<std::string, std::vector<uint8_t>>>& out) {
+    for (Plugin& p : g_plugins) {
+        if (p.cb.size < offsetof(rac1_mod, session_save) + sizeof(p.cb.session_save) || p.cb.session_save == nullptr) continue;
+        std::vector<uint8_t> buf(0x4000);
+        uint32_t n = 0;
+        with(p, [&] { n = p.cb.session_save(p.cb.user, buf.data(), static_cast<uint32_t>(buf.size())); });
+        if (n == 0) continue;
+        buf.resize(std::min<size_t>(n, buf.size()));
+        out.emplace_back(p.mod->folder, std::move(buf));
+    }
+}
+
+// orig: (none) — enhancement (mod_code.h)
+void mod_code_session_load(const std::string& folder, const uint8_t* data, uint32_t size) {
+    g_session_bytes.emplace_back(folder, std::vector<uint8_t>(data, data + size));
+    if (g_started) session_bytes_give();
 }
 
 // orig: (none) — enhancement (mod_code.h)

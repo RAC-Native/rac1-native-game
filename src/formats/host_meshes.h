@@ -92,6 +92,13 @@ void host_meshes_fog(float fog[4]);
 void host_meshes_dynamic_set(std::vector<HostMeshInstance> v);
 // orig: (host) a copy of the last set
 void host_meshes_dynamic(std::vector<HostMeshInstance>& out);
+// A session's sections (format 3, src/game/enhance/sections.h): the static host meshes drawn are those whose section's bit is
+// in the mask (HostMeshInstance::section; all by default). Set by the game's thread at a section switch; the scene's capture
+// copies it with the frame (its SceneInput), so the switch shows on the frame the game made it
+// orig: (host)
+void host_meshes_sections_set(uint32_t mask);
+// orig: (host) the mask as last set
+uint32_t host_meshes_sections();
 
 }  // namespace rac1::mrpw
 

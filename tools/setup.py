@@ -1775,6 +1775,9 @@ def game_env():
 REPO = "RAC-Native/rac1-native-game"
 GITHUB_API = f"https://api.github.com/repos/{REPO}"
 GITHUB_ZIP = f"https://github.com/{REPO}/archive/refs"
+# The development channel's branch: the work lands on dev first and is merged into main from time to time (GitHub
+# issue #141: following main alone missed what was new on dev). tools/update_check.py compares against it too.
+DEV_BRANCH = "dev"
 UPDATE_VERSION_FILE = ASSETS_DIR / "update-version.txt"
 
 
@@ -1862,8 +1865,12 @@ def git_problem():
     return None
 
 
+def git_ok(*args):
+    return subprocess.run(["git", *args], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+
 def update_git(channel):
-    """Updates a git clone (`git fetch`, then checks out the release tag or fast-forwards main).
+    """Updates a git clone (`git fetch`, then checks out the release tag, or brings the local dev branch to origin's).
     Returns a restore callback on success, or None if nothing was changed."""
     dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=ROOT,
                            capture_output=True, text=True).stdout.strip()
@@ -1872,14 +1879,14 @@ def update_git(channel):
     branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=ROOT,
                             capture_output=True, text=True).stdout.strip()
     old_head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
-    if branch not in ("main", "HEAD"):
-        warn(f"This clone is on branch '{branch}' (not main): leaving the branch as it is.")
+    if branch not in ("main", DEV_BRANCH, "HEAD"):
+        warn(f"This clone is on branch '{branch}' (not main or {DEV_BRANCH}): leaving the branch as it is.")
         return None
-    restore_ref = branch if branch == "main" else old_head
+    restore_ref = old_head if branch == "HEAD" else branch
 
     def restore():
         subprocess.run(["git", "checkout", "-q", restore_ref], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if branch == "main" and old_head:
+        if branch != "HEAD" and old_head:
             subprocess.run(["git", "reset", "--hard", "-q", old_head], cwd=ROOT,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -1901,31 +1908,43 @@ def update_git(channel):
         ok(f"Checked out release {tag}.")
         return restore
 
-    print("  Fetching main from origin...", flush=True)
-    if subprocess.run(["git", "fetch", "origin", "main"], cwd=ROOT).returncode != 0:
-        fail("git fetch origin main failed (check your internet connection). Your current build was not changed.")
-    if subprocess.run(["git", "merge-base", "--is-ancestor", old_head, "origin/main"], cwd=ROOT).returncode != 0:
-        fail("This clone has local commits not on origin/main. They are never overwritten.")
-    new_head = subprocess.run(["git", "rev-parse", "origin/main"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
-    if branch != "main":
-        # (checkout -B resets the local main: never when it has commits origin/main lacks - a detached HEAD, a release
-        # tag checked out by the stable channel, says nothing about them)
-        has_main = subprocess.run(["git", "rev-parse", "-q", "--verify", "refs/heads/main"], cwd=ROOT,
-                                  capture_output=True).returncode == 0
-        if has_main and subprocess.run(["git", "merge-base", "--is-ancestor", "refs/heads/main", "origin/main"],
-                                       cwd=ROOT).returncode != 0:
-            fail("The local branch main has commits not on origin/main. They are never overwritten.")
-        if subprocess.run(["git", "checkout", "-B", "main", "origin/main"], cwd=ROOT).returncode != 0:
+    # The development channel: the dev branch (main is dev merged from time to time: a clone on main, or on a release's
+    # tag, switches to dev)
+    dev, origin_dev = DEV_BRANCH, f"origin/{DEV_BRANCH}"
+    print(f"  Fetching the {dev} branch (and main) from origin...", flush=True)
+    if subprocess.run(["git", "fetch", "origin", f"+refs/heads/{dev}:refs/remotes/{origin_dev}",
+                       "+refs/heads/main:refs/remotes/origin/main"], cwd=ROOT).returncode != 0:
+        fail(f"git fetch origin {dev} failed (check your internet connection). Your current build was not changed.")
+    # (what is checked out must be published: on origin's dev or main - a main's merge commit is not on dev - or a
+    # release's tag; local commits are never left behind)
+    if not (git_ok("merge-base", "--is-ancestor", old_head, origin_dev) or
+            git_ok("merge-base", "--is-ancestor", old_head, "origin/main") or
+            (branch == "HEAD" and git_ok("describe", "--tags", "--exact-match", old_head))):
+        fail(f"This clone has local commits not on origin/{dev} nor origin/main. They are never overwritten.")
+    new_head = subprocess.run(["git", "rev-parse", origin_dev], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+    if branch != dev:
+        # (checkout -B resets the local dev branch: never when it has commits origin's lacks)
+        has_dev = git_ok("rev-parse", "-q", "--verify", f"refs/heads/{dev}")
+        if has_dev and not git_ok("merge-base", "--is-ancestor", f"refs/heads/{dev}", origin_dev):
+            fail(f"The local branch {dev} has commits not on origin/{dev}. They are never overwritten.")
+        if subprocess.run(["git", "checkout", "-B", dev, origin_dev], cwd=ROOT).returncode != 0:
             restore()
-            fail("Could not switch to main. Your current build was not changed.")
+            fail(f"Could not switch to the {dev} branch. Your current build was not changed.")
+        # (its upstream set by hand: a clone made with --single-branch fetches main only, and `git branch
+        # --set-upstream-to` refuses a branch outside the remote's fetch refspec; a plain `git pull` then works)
+        git_ok("config", f"branch.{dev}.remote", "origin")
+        git_ok("config", f"branch.{dev}.merge", f"refs/heads/{dev}")
     elif new_head != old_head:
-        if subprocess.run(["git", "merge", "--ff-only", "origin/main"], cwd=ROOT).returncode != 0:
+        if subprocess.run(["git", "merge", "--ff-only", origin_dev], cwd=ROOT).returncode != 0:
             restore()
-            fail("Could not fast-forward main. Your current build was not changed.")
-    if new_head == old_head and branch == "main":
-        ok(f"Already up to date on main ({new_head[:7]}).")
+            fail(f"Could not fast-forward the {dev} branch. Your current build was not changed.")
+    if new_head == old_head and branch == dev:
+        ok(f"Already up to date on the {dev} branch ({new_head[:7]}).")
+    elif branch != dev:
+        ok(f"Switched from {'main' if branch == 'main' else old_head[:7]} to the {dev} branch ({new_head[:7]}), "
+           "where changes land before main.")
     else:
-        ok(f"Updated to main ({new_head[:7]}).")
+        ok(f"Updated to the {dev} branch ({new_head[:7]}).")
     return restore
 
 
@@ -2019,12 +2038,13 @@ def update_zip(channel, over_git=False):
         ver_lines = [f"describe {tag}", "commit ", "branch "]
     else:
         try:
-            sha = str(github_get_json("/commits/main").get("sha") or "").strip()
+            sha = str(github_get_json(f"/commits/{DEV_BRANCH}").get("sha") or "").strip()
         except Exception:
             sha = ""
-        url = f"{GITHUB_ZIP}/heads/main.zip"
-        label = f"main ({sha[:7]})" if sha else "main"
-        ver_lines = [f"describe {sha[:7]}" if sha else "describe main", f"commit {sha}", "branch main"]
+        # (that commit's archive, even if dev moves meanwhile, as the launcher does)
+        url = f"https://github.com/{REPO}/archive/{sha}.zip" if sha else f"{GITHUB_ZIP}/heads/{DEV_BRANCH}.zip"
+        label = f"the {DEV_BRANCH} branch ({sha[:7]})" if sha else f"the {DEV_BRANCH} branch"
+        ver_lines = [f"describe {sha[:7]}" if sha else f"describe {DEV_BRANCH}", f"commit {sha}", f"branch {DEV_BRANCH}"]
 
     BUILD_DIR.mkdir(exist_ok=True)
     archive = BUILD_DIR / "update-download.zip"
@@ -2127,7 +2147,7 @@ def run_update(args):
     channel = configured_channel(args.channel)
     print(color("1", f"\nRatchet & Clank (rac1-native) update ({channel} channel)"))
     wait_for_exe()
-    step(1, 2, f"Fetching the latest {'release' if channel == 'stable' else 'commits on main'}")
+    step(1, 2, f"Fetching the latest {'release' if channel == 'stable' else f'commits on the {DEV_BRANCH} branch'}")
     exe_bak = EXE.with_name(EXE.name + ".bak")
     state_bak = STATE_FILE.with_name(STATE_FILE.name + ".bak")
     gen_bak = CODE_ROOT / "src.bak"
@@ -2176,11 +2196,11 @@ def fetch_update(channel):
             restore_sources = update_git(channel)
         else:
             warn(f"This folder is a git clone, but it cannot be updated with git: {problem}.")
-            print(f"      Downloading the {'release' if channel == 'stable' else 'main branch'}'s source zip from GitHub "
+            print(f"      Downloading the {'release' if channel == 'stable' else f'{DEV_BRANCH} branch'}'s source zip from GitHub "
                   "instead (no git needed): it replaces the source files,\n"
                   "      and leaves assets/, build/, .git/ and any file of yours alone. "
                   "(To update with git again later: install Git, then\n"
-                  "      `git fetch` and `git reset --hard origin/main`, or the release's tag.)", flush=True)
+                  f"      `git fetch` and `git reset --hard origin/{DEV_BRANCH}`, or the release's tag.)", flush=True)
             restore_sources = update_zip(channel, over_git=True)
     return restore_sources
 
@@ -2589,7 +2609,7 @@ def main():
     ap.add_argument("--discs", action="store_true",
                     help="print the disc images found and what each one is for (game, data or unused), then stop")
     ap.add_argument("--update", action="store_true",
-                    help="update to the latest release (or main on the development channel), then rebuild what changed")
+                    help=f"update to the latest release (or the {DEV_BRANCH} branch on the development channel), then rebuild what changed")
     ap.add_argument("--channel", choices=("stable", "development"), default=None,
                     help="with --update: the channel to update to (default: Main menu > Updates > Update Channel)")
     ap.add_argument("--force", nargs="?", const="all", default=set(), type=parse_force, metavar="STEPS",

@@ -1,0 +1,14 @@
+# A class profile (docs/open-engine.md, "Class profiles"): our knowledge of a game class's level data, ids and offsets only.
+class 17:1382 Drek's fleet's Blarg trooper (update 0x2eeb68)
+pvar_size 0x2c0
+slot 0x1d0 area  area       # the polygon it watches (point_in_polygon; target_select)
+slot 0x2b0 word  box_a      # boxes (the volumes' first list: point_in_box) that show it while the camera is in them
+slot 0x2b4 word  box_b      #   (all -1: always shown and active)
+slot 0x2b8 word  box_c
+slot 0x2bc word  box_d
+# a spawn: always active (no boxes), its area a square of 24 round where it starts
+default box_a none
+default box_b none
+default box_c none
+default box_d none
+default area square 24

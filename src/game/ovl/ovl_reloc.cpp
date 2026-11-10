@@ -21,6 +21,9 @@
 namespace rac1 {
 
 uint32_t g_ovl_gen = 0;
+uint32_t g_ctx_levels = 0;
+uint32_t g_region_gen = 0;
+uint32_t (*g_ctx_xlate)(int unit, uint32_t a) = nullptr;
 // orig: (host) see ovl_reloc.h's lvl_page
 uint32_t g_page_poison = std::getenv("RAC1_PAGE_POISON") != nullptr ? 0x01000000u : 0u;
 
@@ -156,6 +159,7 @@ void ovl_reloc_set_level(int level) {
     g_level = level == OVL_NONE ? 0 : level;
     g_identity = true;
     ++g_ovl_gen;
+    ++g_region_gen;  // (the loaded level's sites are native again; a context's level is foreign)
     // Veldin is the identity on the NTSC-U disc only: on another region's disc its overlay is the
     // region's own build, translated like any level's (level0.txt)
     if (level == OVL_NONE || (level == 0 && !disc_other_region())) return;
@@ -338,6 +342,7 @@ uint32_t ovl_xlate_code(uint32_t a) {
 
 // orig: (host) see ovl_reloc.h
 uint32_t ovl_code_to_veldin(uint32_t a) {
+    if (g_ctx_levels != 0 && ctx_is_tag(a)) return 0;  // (a session: a level's own function, through its context: no Veldin one)
     if (g_identity) return a;
     const auto it = g_code_rev.find(a);
     if (it != g_code_rev.end()) return it->second;
@@ -375,6 +380,13 @@ uint32_t region_xlate(int unit, uint32_t a) {
     if (rr.entry.count(a) != 0 && seen.insert({unit, a}).second)
         std::fprintf(stderr, "[region] %s %d: %08x is a function the region changed: the port at that address runs for the disc's at %08x\n", who, unit, a, v);
     return v;
+}
+
+// orig: (host) see ovl_reloc.h
+uint32_t region_site_xlate(int unit, uint32_t a) {
+    if (g_ctx_levels != 0 && unit >= 0 && unit < 32 && (g_ctx_levels >> unit & 1u) != 0 && unit != g_level && g_ctx_xlate != nullptr)
+        return g_ctx_xlate(unit, a);
+    return region_xlate(unit, a);
 }
 
 // orig: (host) see ovl_reloc.h

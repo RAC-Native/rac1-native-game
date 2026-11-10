@@ -416,7 +416,7 @@ void hud_draw() {
             ovl_call_moby_fn(lwu(e + 0x18), e);
             if (side != 0) render_view_hud_note(at, lwu(CUR), side);  // (host)
         }
-    if (g_mod_code_any) mod_code_hud();  // enhancement: the mods' code's HUD lines (src/host/mod_code.h)
+    if (g_mod_code_any || g_sections_on) mod_code_hud();  // enhancement: the mods' code's HUD lines (src/host/mod_code.h), a section switch's fade
     const int32_t t = lw(OV(0x0015f640));
     if ((t == 0 && lw(OV(0x0015f644)) == 0) || lw(OV(0x0015f5c4)) != 0) {
         sw(OV(0x0015f648), 100);

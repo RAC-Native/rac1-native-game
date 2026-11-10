@@ -80,7 +80,7 @@ constexpr uint32_t CONTROLS = SETTINGS + 1;    // 1: the modern controls (L2 aim
 constexpr uint32_t MOVEMENT = SETTINGS + 2;    // 1: the strafe with R&C 1's movement, 2: R&C 3's on-foot movement
 constexpr uint32_t FADES = SETTINGS + 3;       // 1: the original's screen fades shown (0: run in one host frame)
 constexpr uint32_t UPDATE_OFF = SETTINGS + 4;  // 1: no update check at start (update_notice.h)
-constexpr uint32_t UPDATE_DEV = SETTINGS + 5;  // 1: the update check's development channel (main), 0 the releases
+constexpr uint32_t UPDATE_DEV = SETTINGS + 5;  // 1: the update check's development channel (the dev branch), 0 the releases
 constexpr uint32_t VENDOR_ALL = SETTINGS + 6;  // 1: the Vendor's "All Ammo" entry (vendor_buy_all.h)
 constexpr uint32_t VIBRATION = SETTINGS + 7;   // the controller's vibration: 0 off, 1 low, 2 high (vibration.h, #10)
 constexpr uint32_t TRIGGERS = SETTINGS + 8;    // 1: a DualSense's adaptive triggers and light bar (vibration.h, #10)
@@ -227,7 +227,7 @@ std::filesystem::path prefs_path() {
 
 int g_audio_channels = 0;   // Options > Sound's 5.1 / 7.1 (6 / 8), else 2; 0: not read yet (advanced_audio_channels)
 int g_audio_mix = -1;       // Options > Sound's Mix: 1 High Precision, 0 Original; -1: not read yet (audio_mix_pref)
-std::string g_update_skip;  // the update "Skip Version" chose (update_notice.h): a release's tag, or main's commit
+std::string g_update_skip;  // the update "Skip Version" chose (update_notice.h): a release's tag, or the dev branch's commit
 
 // orig: (none) — enhancement: a preferences file's "name value" lines, each given to `line`; false when none
 template <typename F>
@@ -814,11 +814,21 @@ float rac3_tilt() {
 // (jump_update, 0x217970 block 0x21ead0: 7, 9..0x12, 0x1c, 0x3c, 0x49, 0x4c, 0x5e, 0x69)
 bool modern_aim() { return lbu(CONTROLS) != 0 && lbu(MOVEMENT) != 0; }  // orig: (none) — Aiming = Modern (needs RAC 3)
 
-// orig: (none) — enhancement: the states the strafe works in
+// orig: (none) — enhancement: the states the strafe works in (#129: also Clank's and Giant Clank's stand and walk, the 0x43
+// set's 0x43 / 0x44 / 0x50 and the 0x5a set's 0x5a / 0x5b; their jumps 0x49 / 0x4c / 0x5e are the jump family's)
 bool aim_state(int32_t st) {
     if (st == 0 || st == 2 || st == 3 || st == 0x73) return true;
+    if (st == 0x43 || st == 0x44 || st == 0x50 || st == 0x5a || st == 0x5b) return true;
     return st == 7 || (st >= 9 && st <= 0x12) || st == 0x1c || st == 0x3c || st == 0x49 || st == 0x4c || st == 0x5e || st == 0x69;
 }
+
+// orig: (none) — enhancement: the hero on a magnetic surface with the Magneboots (#136): the ground's surface type 2 with
+// the boots on (+0x308, hero_surface_update 0x20b960), or a ground mode of its own (+0x20b3: 1 the magnetic walk along the
+// surface's normal, set in the walk 0x3f and its stance / jump 0x70 / 0x71 too, sub_00233440; 2 the down axis toward a
+// point). There the hero's frame is the surface's: his heading +0x98 is in it and "horizontal" is along it, so the modern
+// controls' rules made for the world's up (the aim's heading and pitch held on the camera's, R&C 3's run speed, turn and
+// stop on the world's x / y) are not applied: the original's own rules hold there
+bool on_magnet() { return lbu(HERO + 0x20b3) != 0 || lh(HERO + 0x308) != 0; }
 }  // namespace
 
 // orig: (none) — enhancement (advanced.h)
@@ -828,10 +838,14 @@ uint32_t advanced_pad_remap(uint32_t pad, uint32_t held) {
     g_aim_button = false;
     // only with Movement = RAC 3, in gameplay (circle confirms Quit Game in the menus)
     if (lbu(MOVEMENT) == 0 || lw(OV(0x0015f5c4)) != 0) return held;
-    // and not as Clank (the hero's form +0x20a4: 1 Clank, 2 Giant Clank; #129): he has no weapon to aim, his walk and
-    // stand states (the 0x43 set) have no strafe, and his L2 is the original's (state 0x43: the crouch 1, as L1); the
-    // aim and the strafe used to work only in his jump 0x49, so he plays as the original
-    if (lbu(HERO + 0x20a4) != 0) return held;
+    // as Ratchet, Clank and Giant Clank (the hero's form +0x20a4: 1 / 2; #129: their stand and walk are aim_state's too,
+    // L1 keeps their first-person view 1, R2 is Giant Clank's missiles); not in the Hologuise (3), whose states have no strafe
+    if (2 < lbu(HERO + 0x20a4)) return held;
+    // on the hoverboard (its states 0x6b..0x6f: Rilgar's and Kalebo III's own code) L2 and R2 stay the game's: they are two
+    // of the board's four tricks (its trick code reads R1, L2, R2 and L1 of the pad: L5:0x253850), and the skill point
+    // "Tricky" (the Twisty McMarx, 0x13d40f) needs all four in one jump (#28); the board has no strafe or aim
+    const int32_t st = lw(HERO + 0x2084);
+    if (0x6b <= st && st <= 0x6f) return held;
     if (modern_aim()) {                     // Aiming = Modern: L2 aims (strafing), R2 fires
         g_aim_button = (held & 0x1u) != 0;
         if ((held & 0x2u) != 0) held |= 0x20u;  // R2: circle
@@ -846,7 +860,9 @@ bool advanced_strafing() {
     const int32_t st = lw(HERO + 0x2084);
     // (with the modern aim also the gloves' standing throw 0x23: the aim held through it, so the
     // gloves' camera aim and its pitch are those of the reticle when the throw leaves the hand)
-    return g_aim_button && lbu(MOVEMENT) != 0 && lw(OV(0x0015f5c4)) == 0 && (aim_state(st) || (st == 0x23 && modern_aim()));
+    // (not on a magnetic surface, #136: there L2 does nothing, as the original's crouch walk turn does not either)
+    return g_aim_button && lbu(MOVEMENT) != 0 && lw(OV(0x0015f5c4)) == 0 && (aim_state(st) || (st == 0x23 && modern_aim())) &&
+           !on_magnet();
 }
 
 // orig: (none) — enhancement (advanced.h)
@@ -889,6 +905,14 @@ void advanced_move_speed() {
         }
     }
     if (advanced_strafing()) swc1(HERO + 0x190, lwc1(HERO + 0x190) * AIM_SPEED);
+}
+
+// orig: (none) — enhancement (advanced.h)
+float advanced_strafe_accel(float up) {
+    if (lbu(HERO + 0x20a4) == 0 || lbu(HERO + 0x20a4) > 2 || !advanced_strafing()) return up;
+    const int32_t st = lw(HERO + 0x2084);
+    if (st != 0x44 && st != 0x50 && st != 0x5b) return up;
+    return lwc1(0x0015ed70) * 7.5f;  // (the walks' own step, fs70 x 7.5 x their turn cut: wade_update, clank_walk_update)
 }
 
 // orig: (none) — enhancement (advanced.h)
@@ -1138,7 +1162,7 @@ void advanced_aim_after_hero() {
     backpedal_show();
     // the reticle at the screen's centre while aiming (the Blaster, item 0xf, draws its own: its
     // first-person reticle, blaster.cpp), for every item in hand but the wrench (8)
-    if (advanced_aiming()) {
+    if (advanced_aiming() && lbu(HERO + 0x20a4) == 0) {  // (not as Clank: no weapon of his aims at it)
         const uint32_t item = lwu(HERO + 0x10b8), m = lwu(HERO + 0x2080);
         if (item != 0xf && item != 8 && m != 0 && lbu(HERO + 0x20ac) == 0) cam_effect_add(m, 0xff0f0fffu, nullptr, 0x26, -1, 1.0f, 0.0f, 90.0f);
     }
@@ -1359,7 +1383,8 @@ void advanced_mouse_camera(uint32_t cam, float& b) {
 // untouched with Movement = Original.
 
 // orig: (none) — enhancement (advanced.h)
-bool advanced_rac3_movement() { return lbu(MOVEMENT) == 2; }
+// (the original's rules on a magnetic surface, #136: R&C 3's speed, turn, stop and jump rules are for the world's up)
+bool advanced_rac3_movement() { return lbu(MOVEMENT) == 2 && !on_magnet(); }
 
 // orig: (none) — enhancement (advanced.h)
 void advanced_rac3_along_stick() {
@@ -1473,7 +1498,7 @@ void combo_table_sync() {
         for (uint32_t i = 0; ours && i < COMBO_COUNT; ++i) ours = lw(table + COMBO_RAC3[i].offset) == COMBO_RAC3[i].value;
         if (!ours) g_combo_table = 0;
     }
-    const bool want = advanced_rac3_movement();
+    const bool want = lbu(MOVEMENT) == 2;  // (the setting: the table kept patched on a magnetic surface too)
     if (want && g_combo_table == 0) {
         for (uint32_t i = 0; i < COMBO_COUNT; ++i) {
             g_combo_orig[i] = lw(table + COMBO_RAC3[i].offset);

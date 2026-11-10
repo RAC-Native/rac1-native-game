@@ -38,6 +38,9 @@ extern int g_mrp_world_fog;
 
 // orig: (host) true when the MRP draws this frame's world: the switch on and the level's assets loaded (GL ready)
 bool mrp_world_ready();
+// orig: (host) game level `level`'s world asset and textures read on a worker now, for its next load (a session's game world
+// section streaming in: src/game/enhance/section_world.h)
+void mrp_world_prefetch(int level);
 // orig: (host) true when the MRP makes the ties / shrubs of a pass whose distances / frustum the LOD slider or the
 // widening change itself (mrp_world_static.h), so that pass's shadow run is not needed (the world projection, RAC1_MRPW_STATIC on,
 // not the testing modes)

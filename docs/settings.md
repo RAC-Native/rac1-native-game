@@ -294,6 +294,7 @@ all off by default (the original's behaviour), kept in the preferences only, lik
 | Row | Values (default first) | Kept |
 |---|---|---|
 | Race Music After Quitting | Off, On: quitting Rilgar's hoverboard race from its results brings the planet's music back (the original keeps the race's music playing) | the preferences |
+| Hydrodisplacer Faucets | Off, On: Ratchet no longer slips off a Hydrodisplacer faucet he steps onto from some sides (the original leaves the water as it was, #131) | the preferences |
 
 See [Advanced options](advanced.md#bug-fixes) for each fix and for what belongs on the page.
 
@@ -428,7 +429,7 @@ and leaves the graphics alone.
 When the player opens the main menu on the title screen (or presses **Check Now** in the main menu's
 **Updates** page), the game asks GitHub whether there is something newer than the installed build. When there
 is, a panel at the main menu says so: the new version (or, on the development channel, how many new
-commits there are on `main`), the release notes in short, and three choices:
+commits there are on the `dev` branch), the release notes in short, and three choices:
 
 - **Update Now** quits the game, runs `./setup.sh --update --play` (`setup.cmd --update --play` on
   Windows) to fetch the new sources and rebuild only what changed, and restarts the game when it is
@@ -440,7 +441,7 @@ Details:
 
 - **What is sent:** one anonymous HTTPS request to the GitHub API (`api.github.com`), for this
   repository only: `GET /repos/RAC-Native/rac1-native-game/releases/latest` (Stable), or the
-  comparison of the installed build with `main` (Development). Nothing else: no identifier, no
+  comparison of the installed build with the `dev` branch (Development). Nothing else: no identifier, no
   telemetry, nothing about the player or the machine (GitHub sees the request's IP address, as for any
   web request). The answer is kept for 6 hours in `update_check.txt` (in the settings' folder below):
   an automatic check within them asks nothing (**Check Now** always asks GitHub).
@@ -452,8 +453,10 @@ Details:
 - **Turning it off:** Main menu > Updates > Update Check = Off (in `advanced_options.txt`:
   `update_check_off 1`).
 - **The channel:** Main menu > Updates > Update Channel. Players can switch between **Stable** (the
-  latest release) and **Development** (`main`) at any time. A developer clone on a branch other than
-  `main` stays on its branch.
+  latest release) and **Development** (the `dev` branch: the work lands there first and is merged into
+  `main` from time to time, so `dev` has the newest changes; GitHub issue #141) at any time. An update on
+  Development checks out `dev` (a clone on `main` or on a release's tag switches to it; a zip download gets
+  `dev`'s source zip). A developer clone on a branch other than `main` and `dev` stays on its branch.
 - **The installed version** is printed at start (`[orig] rac1-native 0.7.0 (v0.7.0-12-g1a2b3c4, main)`):
   the release's version and, for a git clone, `git describe` and the branch, recorded by the build
   (`cmake/version.cmake`).
