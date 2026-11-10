@@ -123,11 +123,11 @@ void cam_trace_list() {
 // The camera type functions of the table at 0x1ea880, called through their EE addresses.
 // orig: (helper) jalr to a camera type function: accept (cam, current) returns -1 / 0 / 1
 int32_t camera_type_call(uint32_t fn, uint32_t cam, uint32_t other) {
-    if (on_batalia()) {  // level 8's own camera types (3 and 0x12: accept / init / update / exit at its own addresses)
+    if (on_camera_level(BATALIA)) {  // level 8's own camera types (3 and 0x12: accept / init / update / exit at its own addresses)
         int32_t r = 0;
         if (batalia_camera_type_call(fn, cam, other, &r)) return r;
     }
-    if (on_oltanis()) {  // level 14's own camera types (0x13, 0x14, 0x15: accept / init / update / exit at its own addresses)
+    if (on_camera_level(OLTANIS)) {  // level 14's own camera types (0x13, 0x14, 0x15: accept / init / update / exit at its own addresses)
         int32_t r = 0;
         if (oltanis_camera_type_call(fn, cam, other, &r)) return r;
     }
@@ -147,19 +147,19 @@ int32_t camera_type_call(uint32_t fn, uint32_t cam, uint32_t other) {
         int32_t r = 0;
         if (orxon_camera_type_call(fn, cam, other, &r)) return r;
     }
-    if (on_veldin_orbit()) {  // level 17's own camera type (3: accept / init / update / exit at its own addresses)
+    if (on_camera_level(VELDIN_ORBIT)) {  // level 17's own camera type (3: accept / init / update / exit at its own addresses)
         int32_t r = 0;
         if (veldin_orbit_camera_type_call(fn, cam, other, &r)) return r;
     }
-    if (on_veldin_finale()) {  // level 18's own camera type 0x12's accept (its init / update / exit are Veldin's)
+    if (on_camera_level(VELDIN_FINALE)) {  // level 18's own camera type 0x12's accept (its init / update / exit are Veldin's)
         int32_t r = 0;
         if (veldin_finale_camera_type_call(fn, cam, other, &r)) return r;
     }
-    if (on_umbris()) {  // level 7's own camera type (0x12: accept / init / update / exit at its own addresses)
+    if (on_camera_level(UMBRIS)) {  // level 7's own camera type (0x12: accept / init / update / exit at its own addresses)
         int32_t r = 0;
         if (umbris_camera_type_call(fn, cam, other, &r)) return r;
     }
-    if (on_blarg()) {  // level 6's own camera type (0x12: accept / init / update / exit at its own addresses)
+    if (on_camera_level(BLARG)) {  // level 6's own camera type (0x12: accept / init / update / exit at its own addresses)
         int32_t r = 0;
         if (blarg_camera_type_call(fn, cam, other, &r)) return r;
     }
@@ -167,11 +167,11 @@ int32_t camera_type_call(uint32_t fn, uint32_t cam, uint32_t other) {
         int32_t r = 0;
         if (rilgar_camera_type_call(fn, cam, other, &r)) return r;
     }
-    if (on_hoven()) {  // level 12's own camera type function (type 0x12's accept; its init / update / exit are Veldin's)
+    if (on_camera_level(HOVEN)) {  // level 12's own camera type function (type 0x12's accept; its init / update / exit are Veldin's)
         int32_t r = 0;
         if (hoven_camera_type_call(fn, cam, other, &r)) return r;
     }
-    if (on_eudora()) {  // Eudora's own camera type (1: accept / init / update / exit at its own addresses, no Veldin equivalent)
+    if (on_camera_level(EUDORA)) {  // Eudora's own camera type (1: accept / init / update / exit at its own addresses, no Veldin equivalent)
         switch (lvl_key(fn)) {
         case L4_CASE(0x002ed850): return static_cast<int32_t>(eud_cam_type1_accept_u(cam, other, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f).v0);
         case L4_CASE(0x002ed920): eud_cam_type1_init_l4(cam); return 0;
@@ -204,7 +204,7 @@ int32_t camera_type_call(uint32_t fn, uint32_t cam, uint32_t other) {
     case 0x002eb270: case 0x002ebbd0: return 0;                   // types 2 / 3's exit: empty
     default:
         // Aridia's own type 0x12 (its accept function: the modifier 6's, forked)
-        if (on_aridia() && fn == L2_ADDR(0x002fc298)) return static_cast<int32_t>(cam_type_12_accept_l2(cam, other));
+        if (on_camera_level(ARIDIA) && fn == L2_ADDR(0x002fc298)) return static_cast<int32_t>(cam_type_12_accept_l2(cam, other));
         if (int32_t r = 0; level_camera_type_call(fn, cam, other, r)) return r;  // (a level's own camera type)
         TODO_PORT(fn, "camera type function")(cam, other);
         return 0;
@@ -213,28 +213,28 @@ int32_t camera_type_call(uint32_t fn, uint32_t cam, uint32_t other) {
 
 // orig: (helper) jalr to one of the end-of-update callbacks queued at 0x168ff0
 void camera_callback_call(uint32_t fn) {
-    if (on_aridia() && fn == L2_ADDR(0x002fa770)) {  // Aridia's own callback (queued by the camera hook 0x2fa710)
+    if (on_camera_level(ARIDIA) && fn == L2_ADDR(0x002fa770)) {  // Aridia's own callback (queued by the camera hook 0x2fa710)
         cam_callback_2fa770_l2(0);
         return;
     }
-    if (on_eudora() && fn == L4_ADDR(0x002f04a8)) {  // Eudora's own callback (queued by the camera hook 0x2f0448)
+    if (on_camera_level(EUDORA) && fn == L4_ADDR(0x002f04a8)) {  // Eudora's own callback (queued by the camera hook 0x2f0448)
         eud_cam_callback_l4(0);
         return;
     }
     if (on_camera_level(ORXON) && orxon_camera_callback_call(fn)) return;  // (level 10's own: 0x2f4b78, queued by the camera hook 0x2f4b18)
-    if (on_pokitaru() && pokitaru_camera_callback_call(fn)) return;  // (level 11's own: 0x327af0, queued by the camera hook 0x327a90)
-    if (on_hoven() && hoven_camera_callback_call(fn)) return;  // (level 12's own: 0x314950, queued by the camera hook 0x3148f0)
+    if (on_camera_level(POKITARU) && pokitaru_camera_callback_call(fn)) return;  // (level 11's own: 0x327af0, queued by the camera hook 0x327a90)
+    if (on_camera_level(HOVEN) && hoven_camera_callback_call(fn)) return;  // (level 12's own: 0x314950, queued by the camera hook 0x3148f0)
     if (on_camera_level(GEMLIK) && gemlik_camera_callback_call(fn)) return;  // (level 13's own: 0x316ba8, queued by the camera hook 0x316b48)
-    if (on_oltanis() && oltanis_camera_callback_call(fn)) return;  // (level 14's own: 0x313240, queued by the camera hook 0x3131e0)
+    if (on_camera_level(OLTANIS) && oltanis_camera_callback_call(fn)) return;  // (level 14's own: 0x313240, queued by the camera hook 0x3131e0)
     if (on_camera_level(QUARTU) && quartu_camera_callback_call(fn)) return;  // (level 15's own: 0x2f69e0, queued by the camera hook 0x2f6980)
     if (on_camera_level(KALEBO) && kalebo_camera_callback_call(fn)) return;  // (level 16's own: 0x2f3ae8, queued by the camera hook 0x2f3a88)
-    if (on_veldin_orbit() && veldin_orbit_camera_callback_call(fn)) return;  // (level 17's own: 0x2fff98, queued by the camera hook 0x2fff38)
-    if (on_veldin_finale() && veldin_finale_camera_callback_call(fn)) return;  // (level 18's own: 0x305378, queued by the camera hook 0x305318)
-    if (on_gaspar() && gaspar_camera_callback_call(fn)) return;  // (level 9's own: 0x314280, queued by the camera hook 0x314220)
-    if (on_umbris() && umbris_camera_callback_call(fn)) return;  // (level 7's own: 0x3280f0, queued by the camera hook 0x328090)
-    if (on_blarg() && blarg_camera_callback_call(fn)) return;  // (level 6's own: 0x314810, queued by the camera hook 0x3147b0)
+    if (on_camera_level(VELDIN_ORBIT) && veldin_orbit_camera_callback_call(fn)) return;  // (level 17's own: 0x2fff98, queued by the camera hook 0x2fff38)
+    if (on_camera_level(VELDIN_FINALE) && veldin_finale_camera_callback_call(fn)) return;  // (level 18's own: 0x305378, queued by the camera hook 0x305318)
+    if (on_camera_level(GASPAR) && gaspar_camera_callback_call(fn)) return;  // (level 9's own: 0x314280, queued by the camera hook 0x314220)
+    if (on_camera_level(UMBRIS) && umbris_camera_callback_call(fn)) return;  // (level 7's own: 0x3280f0, queued by the camera hook 0x328090)
+    if (on_camera_level(BLARG) && blarg_camera_callback_call(fn)) return;  // (level 6's own: 0x314810, queued by the camera hook 0x3147b0)
     if (on_camera_level(RILGAR) && rilgar_camera_callback_call(fn)) return;  // (Rilgar's own: 0x328fe0, queued by the camera hook 0x328f80)
-    if (on_kerwan() && fn == L3_ADDR(0x002eb468)) {  // (Kerwan's own, queued by the camera hook 0x2eb408: kerwan_camera_tr.cpp)
+    if (on_camera_level(KERWAN) && fn == L3_ADDR(0x002eb468)) {  // (Kerwan's own, queued by the camera hook 0x2eb408: kerwan_camera_tr.cpp)
         ker_cam_callback_l3(0);
         return;
     }

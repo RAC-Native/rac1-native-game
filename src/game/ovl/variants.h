@@ -46,8 +46,13 @@ constexpr int HERO_GENERIC = -2;
 // orig: (host) the hero code of level `n` runs: its overlay is loaded (unless the generic hero code was asked for), or it is
 // the session's hero context
 inline bool on_hero_level(int n) { return g_hero_level == HERO_GENERIC ? false : ovl_reloc_level() == n || g_hero_level == n; }
+// The open engine's camera level (stage 10): in a session, the level whose world is the current section's (a `world <level>`
+// section), whose camera code runs the cameras there (its camera types, its camera hooks and callbacks: a boss's camera on its
+// planet's world) as the hero context's does. -1 (always, outside a session): none
+extern int g_camera_level;
 // orig: (host) the camera code of level `n` runs (its camera types and hooks): its overlay is loaded, or it is the hero context
-inline bool on_camera_level(int n) { return ovl_reloc_level() == n || g_hero_level == n; }
+// or the camera level
+inline bool on_camera_level(int n) { return ovl_reloc_level() == n || g_hero_level == n || g_camera_level == n; }
 
 // orig: (host) the variants of a level: Veldin function -> the level's own function (the per-level
 // oracle's equivalents, the code-pointer dispatch); null / 0 for a level with none

@@ -101,6 +101,8 @@ struct Obj {
     int imp = -1;
     uint32_t f34 = 0;   // (frozen: its +0x34 flags before)
     int32_t src = -1;   // (a world section's: its placement's index in its level's file)
+    bool boss = false;  // (stage 10: one of its section's bosses: a `boss` line's class, or the plugin's boss_set)
+    float at[4] = {};   // (a boss the plugin spawned: where it was when set, to spawn it again after a death)
 };
 // the files of a section as the worker read them
 struct Bytes {
@@ -152,6 +154,7 @@ struct Section {
     int world = -1;
     std::map<int32_t, int32_t> wuids;
     std::unique_ptr<WorldBuild> wb;
+    WorldHud hud;  // (stage 10) its level's HUD pictures the session lacks (a boss's health bar)
     bool has_fogw = false;
     uint32_t fogw[4] = {};
     std::vector<int32_t> groups;
@@ -160,6 +163,13 @@ struct Section {
     int hero_level = -1;
     std::string hero_mode;
     uint32_t hero_obj = 0;
+    // (stage 10) its bosses: the `boss` lines' classes (level, class), the uids of its placed bosses beaten (never placed again in
+    // this session's visit), how many were beaten, the bosses the plugin spawned and named (boss_set)
+    std::vector<std::pair<int, uint32_t>> boss_cls;
+    std::set<int32_t> beaten;
+    std::set<int> beaten_imp;
+    int beaten_n = 0;
+    std::vector<Obj> pboss;
 };
 
 // main's state as the game set it at the arrival
@@ -534,6 +544,7 @@ void free_section(Section& s) {
     s.rail_count = 0;
     s.shared = 0;
     s.wb.reset();
+    s.hud = WorldHud{};
     s.st = St::Absent;
     s.b = Bytes{};
     s.step = 0;
@@ -571,12 +582,69 @@ void world_groups(Section& s) {
 
 // a section's objects placed (its gameplay's placements but the uids in `skip`, or only those in `only`; its classes of other
 // levels but those in `skip_imp`, or only those in `only_imp`), their slots set (level.txt's moby lines' `slot=value`)
+// (stage 10) A world's level state: the per-level records the game keeps for the current level and its objects read (its row of
+// the collected-things table 0x14c050, its killed-for-good bits 0x14c190, its group counts 0x14d590: the rows of the session's
+// level number, the base's) and the level's live copy of its collected things (0x15fc88, made from its row at a level's start).
+// In a session these are the level mod's own (level_slots swaps them in for its level), and a world section's objects would
+// read and write the session's: a world's level gets rows of its own, kept by the session for the visit (a first visit's, all
+// zero, when the session starts), put in while its section is current and while its objects are placed or placed again. The
+// planet's real records (its row of its own level number) are never touched: a boss beaten in a session stays to beat on the
+// planet itself (DECISIONS 8)
+std::map<int, std::vector<uint8_t>> g_rows;  // (each world level's rows while not in; -1 the session's own)
+int g_rows_level = -1;                       // (whose rows are the engine's)
+uint32_t g_rows_lv = 0;                      // (the session's level number: its rows' row)
+constexpr uint32_t kRowSizes[4] = {0x10, 0x100, 0x100, 0x10};
+uint32_t row_addr(int k) {
+    const uint32_t lv = g_rows_lv;
+    switch (k) {
+    case 0: return 0x0014c050u + lv * 0x10;
+    case 1: return 0x0014c190u + lv * 0x100;
+    case 2: return 0x0014d590u + lv * 0x100;
+    default: return OV(0x0015fc88u);
+    }
+}
+std::vector<uint8_t> rows_read() {
+    std::vector<uint8_t> b;
+    for (int k = 0; k < 4; ++k)
+        for (uint32_t i = 0; i < kRowSizes[k]; ++i) b.push_back(static_cast<uint8_t>(lbu(row_addr(k) + i)));
+    return b;
+}
+void rows_write(const std::vector<uint8_t>& b) {
+    size_t at = 0;
+    for (int k = 0; k < 4; ++k)
+        for (uint32_t i = 0; i < kRowSizes[k]; ++i, ++at) sb(row_addr(k) + i, at < b.size() ? b[at] : 0u);
+}
+// orig: (host) level `level`'s rows (-1 the session's own) made the engine's: the level whose rows were
+int rows_put(int level) {
+    const int was = g_rows_level;
+    if (level == was) return was;
+    if (was == -1) g_rows_lv = lwu(LEVEL);  // (taken while the session's own are in: its level number now)
+    g_rows[was] = rows_read();
+    const auto it = g_rows.find(level);
+    rows_write(it != g_rows.end() ? it->second : std::vector<uint8_t>{});
+    g_rows_level = level;
+    return was;
+}
+
+// (stage 10) an object of class `cls` (the session's id) is one of section `s`'s bosses by its `boss` lines
+bool boss_class(const Section& s, uint32_t cls) {
+    for (const auto& [l, c] : s.boss_cls) {
+        int32_t id = session_import_id(l, c);
+        if (id < 0 && l == lw(LEVEL)) id = static_cast<int32_t>(c);
+        if (id >= 0 && static_cast<uint32_t>(id) == cls) return true;
+    }
+    return false;
+}
+
 size_t spawn_objects(Section& s, const std::set<int32_t>* only, const std::set<int>* only_imp, size_t* refused) {
     size_t n = 0;
+    const int rows_was = s.world >= 0 && g_worlds ? rows_put(s.world) : g_rows_level;  // (stage 10: the spawn rules read its level's state)
     if (s.gp != 0 && lw(s.gp + 0x44) != 0 && lw(s.gp + lwu(s.gp + 0x44)) > 0) {  // (a gameplay file of rails only: no placements)
         SpawnOpts o;
+        std::set<int32_t> skip = s.beaten;  // (stage 10: a boss beaten is never placed again in the visit)
+        if (only == nullptr) skip.insert(s.dead.begin(), s.dead.end());
         o.only = only;
-        o.skip = only == nullptr ? &s.dead : nullptr;
+        o.skip = &skip;
         o.owner = owner_objects(s);
         o.shared = &s.shared;
         if (s.world >= 0) {  // (stage 8: a game level's world: its objects the composer chose, by their uids there)
@@ -590,6 +658,7 @@ size_t spawn_objects(Section& s, const std::set<int32_t>* only, const std::set<i
         if (r.absent != 0) std::fprintf(stderr, "[section] %s: %zu objects of level %d's classes the session lacks: not placed\n", s.name.c_str(), r.absent, s.world);
         for (const Spawned& sp : r.mobys) {
             s.objs.push_back({sp.moby, static_cast<int16_t>(lh(sp.moby + 0xb2)), sp.cls, -1, 0, sp.src});
+            s.objs.back().boss = boss_class(s, sp.cls);
             for (const Bind& b : s.binds)
                 if (b.uid == sp.uid && b.cls == sp.cls) session_bind(sp.moby, lw(LEVEL), sp.cls, b.slot, b.value);
             ++n;
@@ -598,6 +667,7 @@ size_t spawn_objects(Section& s, const std::set<int32_t>* only, const std::set<i
     for (size_t j = 0; j < s.imports.size(); ++j) {
         const int ji = static_cast<int>(j);
         if (only_imp != nullptr ? only_imp->count(ji) == 0 : (only != nullptr || s.dead_imp.count(ji) != 0)) continue;
+        if (s.beaten_imp.count(ji) != 0) continue;  // (stage 10: a boss beaten)
         const ImportPlace& ip = s.imports[j];
         const int32_t id = session_import_id(ip.level, ip.cls);
         if (id < 0) {
@@ -611,10 +681,12 @@ size_t spawn_objects(Section& s, const std::set<int32_t>* only, const std::set<i
         }
         for (const auto& [slot, value] : ip.binds) session_bind(m, ip.level, ip.cls, slot, value);
         s.objs.push_back({m, static_cast<int16_t>(lh(m + 0xb2)), lhu(m + 0xa6), ji, 0});
+        s.objs.back().boss = boss_class(s, lhu(m + 0xa6));
         ++n;
     }
     s.spawned = true;
     if (s.world >= 0) world_groups(s);
+    if (g_worlds) rows_put(rows_was);
     return n;
 }
 
@@ -741,6 +813,8 @@ void apply_state(int idx) {
         if (world && s.world != lw(LEVEL)) ld_engine_take(s.world);
         else ld_engine_restore();
         world_renderer_level(world ? s.world : -1);
+        world_hud_put(world ? &s.hud : nullptr);  // (stage 10: its level's HUD pictures)
+        rows_put(world ? s.world : -1);           // (stage 10: its level's state, the session's own outside)
     }
     const bool own_coll = idx != 0 && s.coll_tree != 0;
     sw(OV(0x00173e40), own_coll ? s.coll_tree : g_main.coll_tree);
@@ -763,7 +837,9 @@ void apply_state(int idx) {
     else if (s.music >= 0) std::memcpy(w, s.music_words, sizeof w);
     apply_music(w);
     mrp_user_lights_section(idx != 0 && !s.lights.empty() ? g_mod_dir + "/level/" + s.lights : std::string());
-    // (stage 9) its hero code (and camera code): its hero line's level, or the session base's
+    // (stage 10) its world's camera code (its camera types, hooks and callbacks: a boss's camera on its planet's world), then (stage 9)
+    // its hero code (and camera code): its hero line's level, or the session base's
+    if (g_worlds) hero_camera_level_set(world ? s.world : -1, ("section " + s.name).c_str());
     hero_build_set(s.hero_level, ("section " + s.name).c_str());
     static const bool all = std::getenv("RAC1_SECTION_DRAW_ALL") != nullptr && std::atoi(std::getenv("RAC1_SECTION_DRAW_ALL")) != 0;  // (testing)
     mrpw::host_meshes_sections_set(all ? 0xffffffffu : 1u << static_cast<uint32_t>(idx));
@@ -933,6 +1009,7 @@ bool commit_step(Section& s, int idx) {
     case 7:  // (stage 8) its world: copied, registered and lit a step at a time; its level's context and registry (its level data)
         if (s.wb != nullptr && s.b.world != nullptr) {
             if (world_build_step(*s.wb, *s.b.world, owner_files(s))) return true;
+            world_hud_build(s.hud, s.world, *s.b.world, owner_files(s));  // (stage 10: its level's HUD pictures the session lacks)
         }
         ++s.step;
         return true;
@@ -1025,6 +1102,44 @@ void ask_switch(int to, const Entry* e, int fade, const std::string& why) {
 }  // namespace
 
 // orig: (host) see sections.h
+bool sections_boss_set(uint32_t moby) {
+    if (!g_sections_on || g_cur < 0 || moby == 0 || static_cast<int8_t>(lbu(moby + 0x20)) < 0) return false;
+    Section& s = g_secs[static_cast<size_t>(g_cur)];
+    for (Obj& o : s.objs)
+        if (o.moby == moby && alive(o)) {
+            o.boss = true;
+            return true;
+        }
+    for (const Obj& o : s.pboss)
+        if (o.moby == moby) return true;
+    Obj o;
+    o.moby = moby;
+    o.uid = static_cast<int16_t>(lh(moby + 0xb2));
+    o.cls = lhu(moby + 0xa6);
+    o.boss = true;
+    for (int k = 0; k < 3; ++k) o.at[k] = lwc1(moby + 0x10 + 4 * static_cast<uint32_t>(k));
+    o.at[3] = lwc1(moby + 0x48);
+    s.pboss.push_back(o);
+    return true;
+}
+
+// orig: (host) see sections.h
+int sections_boss_beaten(const std::string& name) {
+    if (!g_sections_on) return -1;
+    const int i = name.empty() ? g_cur : sections_index(name);
+    if (i < 0 || static_cast<size_t>(i) >= g_secs.size()) return -1;
+    return g_secs[static_cast<size_t>(i)].beaten_n;
+}
+
+// orig: (host) see sections.h
+int sections_save_begin() { return g_worlds ? rows_put(-1) : -1; }
+
+// orig: (host) see sections.h
+void sections_save_end(int level) {
+    if (g_worlds && level >= 0) rows_put(level);
+}
+
+// orig: (host) see sections.h
 void sections_level(const std::string& build_dir) {
     if (g_sections_on) {
         ld_engine_restore();
@@ -1034,8 +1149,12 @@ void sections_level(const std::string& build_dir) {
         mrp_user_lights_section("");
         std::printf("[section] the session's sections dropped\n");
     }
+    if (g_worlds) rows_put(-1);  // (stage 10: the session's own level state back before the level mod's records are kept)
+    g_rows.clear();
+    g_rows_level = -1;
     g_sections_on = false;
     g_worlds = false;
+    world_hud_reset();
     g_secs.clear();
     g_cur = -1;
     g_start = 0;
@@ -1124,6 +1243,10 @@ void sections_level(const std::string& build_dir) {
         } else if (k == "wuid") {
             int32_t from = 0, to = 0;
             if (l >> from >> to) s.wuids[from] = to;
+        } else if (k == "boss") {  // (stage 10)
+            int bl = -1;
+            uint32_t bc = 0;
+            if (l >> bl >> bc) s.boss_cls.emplace_back(bl, bc);
         }
     }
     if (g_secs.empty() || g_secs[0].name != "main") {
@@ -1195,6 +1318,8 @@ void sections_arrival() {
                 g_main.coll_tree, g_main.sky, n, g_secs.size() - 1);
 }
 
+void bosses_frame(Section& s);  // (stage 10: below, beside the soft reset of the bosses)
+
 // orig: (host) see sections.h
 void sections_frame(uint64_t frame) {
     if (!g_sections_on || g_cur < 0) return;
@@ -1248,6 +1373,7 @@ void sections_frame(uint64_t frame) {
     float hp[3];
     hero_pos(hp);
     Section& c = g_secs[static_cast<size_t>(g_cur)];
+    bosses_frame(c);  // (stage 10)
     for (Portal& pt : c.portals) {
         const bool in = in_box(pt, hp);
         const bool entered = in && !pt.inside;
@@ -1353,7 +1479,15 @@ void sections_respawn_objects(int32_t policy, size_t* back, size_t* kept_dead) {
     std::set<int32_t> uids = s.dead;
     std::set<int> imps = s.dead_imp;
     std::vector<Obj> keep;
+    std::vector<int32_t> again;  // (stage 10: its bosses in play taken out, placed again: the fight from its start)
     for (const Obj& o : s.objs) {
+        if (o.boss && alive(o)) {
+            moby_retire(o.moby);
+            if (o.imp >= 0) imps.insert(o.imp);
+            else uids.insert(o.uid);
+            again.push_back(o.imp >= 0 ? -1 - o.imp : o.uid);
+            continue;
+        }
         if (alive(o)) {
             keep.push_back(o);
         } else if (o.imp >= 0) {
@@ -1368,6 +1502,45 @@ void sections_respawn_objects(int32_t policy, size_t* back, size_t* kept_dead) {
     size_t refused = 0;
     if (!uids.empty() || !imps.empty()) *back += spawn_objects(s, &uids, &imps, &refused);
     *kept_dead += refused;
+    // (stage 10) the bosses placed again: the plugin told (their new objects); those the plugin spawned and named, spawned again
+    for (const int32_t a : again)
+        for (const Obj& o : s.objs)
+            if (o.boss && alive(o) && (a >= 0 ? o.imp < 0 && o.uid == a : o.imp == -1 - a)) {
+                std::printf("[section] %s: its boss (class %u) placed again after the death: moby %08x, the fight from its start\n", s.name.c_str(), o.cls, o.moby);
+                mod_code_boss(s.name.c_str(), static_cast<int32_t>(o.cls), o.moby, 2);
+            }
+    for (Obj& o : s.pboss) {
+        if (o.moby == 0) continue;
+        if (alive(o)) moby_retire(o.moby);
+        o.moby = session_import_spawn(o.cls, o.at, o.at[3]);
+        if (o.moby == 0) continue;
+        o.uid = static_cast<int16_t>(lh(o.moby + 0xb2));
+        std::printf("[section] %s: its boss (class %u, the plugin's) spawned again after the death: moby %08x\n", s.name.c_str(), o.cls, o.moby);
+        mod_code_boss(s.name.c_str(), static_cast<int32_t>(o.cls), o.moby, 2);
+    }
+}
+
+// orig: (host) (stage 10) the current section's bosses: one that left play since the last frame (not taken out by the session: a death's
+// reset, the section left) is beaten: the log, the plugin's boss callback; a placed one is never placed again in the visit
+void bosses_frame(Section& s) {
+    auto beaten = [&](Obj& o, const char* whose) {
+        ++s.beaten_n;
+        std::printf("[section] frame %llu: %s: its boss (class %u%s, moby %08x) beaten (%d in this visit); the session goes on\n",
+                    static_cast<unsigned long long>(g_frame), s.name.c_str(), o.cls, whose, o.moby, s.beaten_n);
+        mod_code_boss(s.name.c_str(), static_cast<int32_t>(o.cls), o.moby, 1);
+        o.boss = false;
+    };
+    for (Obj& o : s.objs)
+        if (o.boss && !alive(o)) {
+            if (o.imp < 0) s.beaten.insert(o.uid);
+            else s.beaten_imp.insert(o.imp);
+            beaten(o, "");
+        }
+    for (Obj& o : s.pboss)
+        if (o.moby != 0 && !alive(o)) {
+            beaten(o, ", the plugin's");
+            o.moby = 0;
+        }
 }
 
 // orig: (host) see sections.h

@@ -53,9 +53,9 @@ extern "C" {
    sections (a session's sections and portals: section_load, section_ready, section_enter, section_unload, section_current,
    section_policy; the section_leave and section_enter callbacks); 11: the rails and the set-piece kit, in ABI 7's room of the
    table (rail_find .. fade_active; the rail callback); 12: hero contexts and modes (another planet's hero code, Ratchet as
-   Clank, Giant Clank or on the hoverboard: hero_build, hero_build_now, hero_mode, hero_mode_now) (docs/sdk.md lists what each
-   version added). */
-#define RAC1_MOD_ABI 12
+   Clank, Giant Clank or on the hoverboard: hero_build, hero_build_now, hero_mode, hero_mode_now); 13: bosses (a section's
+   bosses: boss_set, boss_beaten; the boss callback) (docs/sdk.md lists what each version added). */
+#define RAC1_MOD_ABI 13
 
 #if defined(_WIN32)
 #define RAC1_MOD_EXPORT __declspec(dllexport)
@@ -161,6 +161,11 @@ typedef struct rac1_hazard {
 #define RAC1_HERO_CLANK 1       /* riding an object of Orxon's Clank class (import "10:87") */
 #define RAC1_HERO_GIANT_CLANK 2 /* riding an object of Quartu's Giant Clank class (import "15:419") */
 #define RAC1_HERO_BOARD 4       /* on a hoverboard (import "16:439"), with Kalebo III's hero code (hero_build(16)) */
+/* (ABI 13) the boss callback's events: a boss beaten (it left play: the session goes on), a boss placed again after a death in
+   its section (the fight from its start: `obj` its new object) */
+#define RAC1_BOSS_BEATEN 1
+#define RAC1_BOSS_AGAIN 2
+
 /* (ABI 12) hero_build's generic hero code (Veldin's, Gaspar's, Umbris's: their lava), on a level mod of any format whose base
    level has hero code of its own (Kalebo III, Quartu, Rilgar) */
 #define RAC1_HERO_BUILD_GENERIC (-2)
@@ -603,6 +608,15 @@ typedef struct rac1_api {
     int (*hero_mode)(int32_t mode, uint32_t obj);
     /* Ratchet's mode now (RAC1_HERO_*) */
     int32_t (*hero_mode_now)(void);
+
+    /* ======== ABI 13 (test RAC1_API_HAS(api, boss_set)) ======== */
+    /* -- bosses (docs/sdk.md, "Bosses"; a session with sections): level.txt's `boss` line names a section's bosses by class -- */
+    /* the object `obj` (in play in the current section: one of its placed objects, or one you spawned) one of the section's
+       bosses: a death of Ratchet's in the section takes it out and places (or spawns) it again, the fight from its start; its
+       leaving play otherwise is beaten (the boss callback). 1 done, 0 not (no sections, no such object) */
+    int (*boss_set)(uint32_t obj);
+    /* the bosses beaten in section `name` ("" or NULL: the current one) in this visit of the session; -1 no such section */
+    int32_t (*boss_beaten)(const char* name);
 } rac1_api;
 
 #define RAC1_API_HAS(api, field) ((api)->size >= offsetof(rac1_api, field) + sizeof((api)->field))
@@ -675,6 +689,12 @@ typedef struct rac1_mod {
     /* Ratchet and a rail of level.txt's (`rail`: rail_find's handle, `name` its name): RAC1_RAIL_ENTER, _END, _LEAVE, after the
        hero's update, before the frame callback */
     void (*rail)(void* user, int32_t rail, const char* name, int32_t event);
+
+    /* ======== ABI 13 ======== */
+    /* (sections) a boss of section `name` (`cls` its class, as the session numbers it; `obj` its object): RAC1_BOSS_BEATEN (it left
+       play: beaten; the session goes on, the game never ends there), RAC1_BOSS_AGAIN (placed again after a death of Ratchet's in
+       the section: `obj` the new object), before the frame callback */
+    void (*boss)(void* user, const char* name, int32_t cls, uint32_t obj, int32_t event);
 } rac1_mod;
 
 /* The ABI the plugin was built with (rac1_mod_abi): put RAC1_MOD_DECLARE_ABI() once in a source file */

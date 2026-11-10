@@ -123,6 +123,10 @@ bool world_read(int level, bool pal, bool coll, bool sky, WorldBytes& out, std::
         v.assign(wad.begin() + o, wad.begin() + o + n);
         return true;
     };
+    // (stage 10) its HUD: the header and its level's set (a boss's health bar's pictures)
+    if (part(4, out.hud) && part(6, packed) &&
+        !decompress_wad(std::span<const std::byte>(reinterpret_cast<const std::byte*>(packed.data()), packed.size()), out.hud_set))
+        out.hud_set.clear();
     std::vector<uint8_t> core;
     if (!part(2, out.index) || out.index.size() < 0xc0 || !part(10, packed) ||
         !decompress_wad(std::span<const std::byte>(reinterpret_cast<const std::byte*>(packed.data()), packed.size()), core)) {
@@ -627,6 +631,146 @@ void world_probe_frame(uint64_t frame) {
     std::printf("[probe] frame %llu, the collision %08x: %d points, %d hit the floor, their heights' sum %.3f, hash %016llx\n", static_cast<unsigned long long>(frame),
                 lwu(OV(0x00173e40)), n, hits, sum, static_cast<unsigned long long>(h));
 }
+
+namespace {
+constexpr OvConst<0x0017e4d8u> HUD{};  // (the HUD data: +0x18 its header, +0x1c animations, +0x20 frames, +0x24 textures, +0x28 palettes)
+struct HudTables {
+    uint32_t w[4] = {};  // (+0x1c..+0x28)
+    int32_t pal_n = 0, tex_n = 0;
+};
+bool g_hud_world = false;  // (a world's tables are the HUD's: the session's kept in g_hud_own)
+HudTables g_hud_own;
+
+HudTables hud_now() {
+    HudTables t;
+    for (uint32_t k = 0; k < 4; ++k) t.w[k] = lwu(HUD + 0x1c + 4 * k);
+    const uint32_t hdr = lwu(HUD + 0x18);
+    t.pal_n = lw(hdr + 0x24);
+    t.tex_n = lw(hdr + 0x44);
+    return t;
+}
+void hud_set_tables(const HudTables& t) {
+    for (uint32_t k = 0; k < 4; ++k) sw(HUD + 0x1c + 4 * k, t.w[k]);
+    const uint32_t hdr = lwu(HUD + 0x18);
+    sw(hdr + 0x24, static_cast<uint32_t>(t.pal_n));
+    sw(hdr + 0x44, static_cast<uint32_t>(t.tex_n));
+}
+}  // namespace
+
+// orig: (host) see section_world.h
+bool world_hud_build(WorldHud& h, int level, const WorldBytes& b, const std::string& owner) {
+    h = WorldHud{};
+    const std::vector<uint8_t>& L = b.hud;
+    if (L.size() < 0x80 || b.hud_set.empty() || lwu(HUD + 0x18) == 0) return false;
+    const HudTables own = g_hud_world ? g_hud_own : hud_now();
+    const uint32_t anims = own.w[0], frames = own.w[1], texs = own.w[2], pals = own.w[3];
+    auto lh16 = [&](uint32_t o) -> uint32_t { return o + 2 <= L.size() ? static_cast<uint32_t>(L[o] | L[o + 1] << 8) : 0xffffu; };
+    // the session's animations (their keys) and frames (as many as the animations name)
+    std::set<uint32_t> have;
+    uint32_t n_anim = 0, n_frame = 0;
+    for (uint32_t p = anims; lhu(p) != 0xffffu && n_anim < 4096; p += 8, ++n_anim) {
+        have.insert(lhu(p));
+        n_frame = std::max<uint32_t>(n_frame, lhu(p + 4) + lhu(p + 2));
+    }
+    // the level's: those the session lacks, whose frames are all its level set's (the set's palettes and textures)
+    const uint32_t la = rd32(L, 4), lf = rd32(L, 8), lp = rd32(L, 0xc), lt = rd32(L, 0x10);
+    const int32_t p0 = static_cast<int32_t>(rd32(L, 0x14)), p1 = static_cast<int32_t>(rd32(L, 0x18));
+    const int32_t t0 = static_cast<int32_t>(rd32(L, 0x34)), t1 = static_cast<int32_t>(rd32(L, 0x38));
+    struct Add {
+        uint32_t row;  // (its row's offset in L)
+        uint32_t count, first;
+    };
+    std::vector<Add> add;
+    size_t skipped = 0;
+    for (uint32_t p = la; p + 8 <= L.size() && lh16(p) != 0xffffu; p += 8) {
+        if (have.count(lh16(p)) != 0) continue;
+        const uint32_t c = lh16(p + 2), first = lh16(p + 4);
+        bool ok = c != 0;
+        for (uint32_t i = 0; i < c && ok; ++i) {
+            const int32_t pi = static_cast<int16_t>(lh16(lf + 4 * (first + i))), ti = static_cast<int16_t>(lh16(lf + 4 * (first + i) + 2));
+            ok = pi >= p0 && pi < p1 && ti >= t0 && ti < t1;
+        }
+        if (ok) add.push_back({p, c, first});
+        else ++skipped;
+    }
+    if (add.empty()) {
+        if (skipped != 0) std::printf("[section] level %d's HUD: %zu animations the session lacks, none from its level set: not added\n", level, skipped);
+        return false;
+    }
+    // the copy: the tables (the session's rows, then the added ones) and the level set's bytes (its textures' and palettes' data)
+    uint32_t n_add_frames = 0;
+    for (const Add& a : add) n_add_frames += a.count;
+    const uint32_t n_pal = static_cast<uint32_t>(own.pal_n), n_tex = static_cast<uint32_t>(own.tex_n);
+    const uint32_t sz_anim = (n_anim + static_cast<uint32_t>(add.size()) + 1) * 8, sz_frame = (n_frame + n_add_frames) * 4;
+    const uint32_t sz_pal = (n_pal + n_add_frames) * 8, sz_tex = (n_tex + n_add_frames) * 8;
+    auto al = [](uint32_t v) { return (v + 0x3f) & ~0x3fu; };
+    const uint32_t total = al(sz_anim) + al(sz_frame) + al(sz_pal) + al(sz_tex) + al(static_cast<uint32_t>(b.hud_set.size()));
+    const uint32_t blk = session_heap_alloc(total, owner);
+    if (blk == 0) return false;
+    h.block = blk;
+    h.anims = blk;
+    h.frames = h.anims + al(sz_anim);
+    h.pals = h.frames + al(sz_frame);
+    h.texs = h.pals + al(sz_pal);
+    const uint32_t set = h.texs + al(sz_tex);
+    std::memcpy(ee_ram_ptr_write(set, static_cast<uint32_t>(b.hud_set.size())), b.hud_set.data(), b.hud_set.size());
+    mem_copy(h.anims, anims, static_cast<int32_t>(n_anim * 8));
+    mem_copy(h.frames, frames, static_cast<int32_t>(n_frame * 4));
+    mem_copy(h.pals, pals, static_cast<int32_t>(n_pal * 8));
+    mem_copy(h.texs, texs, static_cast<int32_t>(n_tex * 8));
+    uint32_t row = h.anims + n_anim * 8, fr = n_frame, pi = n_pal, ti = n_tex;
+    for (const Add& a : add) {
+        for (uint32_t k = 0; k < 8; k += 4) sw(row + k, rd32(L, a.row + k));
+        sh(row + 4, fr);
+        row += 8;
+        for (uint32_t i = 0; i < a.count; ++i, ++fr, ++pi, ++ti) {
+            const uint32_t src = lf + 4 * (a.first + i);
+            const uint32_t sp = lp + 8 * static_cast<uint32_t>(static_cast<int16_t>(lh16(src))), st = lt + 8 * static_cast<uint32_t>(static_cast<int16_t>(lh16(src + 2)));
+            sh(h.frames + fr * 4, pi);
+            sh(h.frames + fr * 4 + 2, ti);
+            // (a set's entry: its offset in the set's bytes, bit 31 until the game relocates it; +4 its GS block: none, uploaded on demand)
+            sw(h.pals + pi * 8, (rd32(L, sp) & 0x7fffffffu) + set);
+            sw(h.pals + pi * 8 + 4, rd32(L, sp + 4) & 0xffff0000u);
+            sw(h.texs + ti * 8, (rd32(L, st) & 0x7fffffffu) + set);
+            sw(h.texs + ti * 8 + 4, rd32(L, st + 4) & 0xffff0000u);
+        }
+        h.keys.push_back(lh16(a.row));
+    }
+    sw(row, 0xffffffffu);
+    sw(row + 4, 0xffffffffu);
+    h.pal_n = static_cast<int32_t>(pi);
+    h.tex_n = static_cast<int32_t>(ti);
+    std::string ks;
+    for (uint32_t k : h.keys) ks += (ks.empty() ? "" : " ") + std::to_string(k);
+    std::printf("[section] level %d's HUD: %zu animations the session lacks added (keys %s; %u frames), its level set's %zu bytes; %zu others not from its set; "
+                "the HUD's tables in the session heap at %08x (%u bytes)\n",
+                level, add.size(), ks.c_str(), n_add_frames, b.hud_set.size(), skipped, blk, total);
+    return true;
+}
+
+// orig: (host) see section_world.h
+void world_hud_put(const WorldHud* h) {
+    if (lwu(HUD + 0x18) == 0) return;
+    if (h == nullptr || h->block == 0) {
+        if (!g_hud_world) return;
+        hud_set_tables(g_hud_own);
+        g_hud_world = false;
+        return;
+    }
+    if (!g_hud_world) g_hud_own = hud_now();
+    HudTables t;
+    t.w[0] = h->anims;
+    t.w[1] = h->frames;
+    t.w[2] = h->texs;
+    t.w[3] = h->pals;
+    t.pal_n = h->pal_n;
+    t.tex_n = h->tex_n;
+    hud_set_tables(t);
+    g_hud_world = true;
+}
+
+// orig: (host) see section_world.h
+void world_hud_reset() { g_hud_world = false; }
 
 // orig: (host) see section_world.h
 void world_renderer_level(int level) { g_renderer_level.store(level); }

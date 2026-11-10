@@ -41,6 +41,10 @@ bool hero_build_known(int level);
 bool hero_build_set(int level, const char* why);
 // orig: (host) the hero context now: its level, -1 the base's
 int hero_build_level();
+// orig: (host) (stage 10) the camera level (variants.h g_camera_level): the current section's world's level (-1 none): its camera
+// code runs the cameras (its camera types in the session's type table, its camera hooks and callbacks) while no hero context
+// names another level (a hero context's level gives both). False when it cannot be (outside a session, no context for it)
+bool hero_camera_level_set(int level, const char* why);
 
 // orig: (host) Ratchet in mode `mode` (HERO_MODE_*) riding the object `moby` (an object of that mode's class), or out of the
 // mode he is in (HERO_MODE_NONE, moby ignored). False when it cannot be: no hero, dying or lost, another mode first, the

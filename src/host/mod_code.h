@@ -84,6 +84,9 @@ void mod_code_respawn(uint32_t count, const char* checkpoint, const float pos[3]
 // orig: (none) — enhancement: a session's section switch (src/game/enhance/sections.h): the plugins' section_leave (`from`) and
 // section_enter (`to`, at its entry `entry`, "" none) callbacks (ABI 10)
 void mod_code_section_switch(const char* from, const char* to, const char* entry);
+// orig: (none) — enhancement: a section's boss (src/game/enhance/sections.h): the plugins' boss callback (ABI 13), `event`
+// RAC1_BOSS_BEATEN (1) or RAC1_BOSS_AGAIN (2)
+void mod_code_boss(const char* section, int32_t cls, uint32_t obj, int32_t event);
 // orig: (none) — enhancement: a save made in a session: each plugin's session bytes (session_save, ABI 9) by its mod's folder
 void mod_code_session_save(std::vector<std::pair<std::string, std::vector<uint8_t>>>& out);
 // orig: (none) — enhancement: a loaded save's session bytes of the plugin of `folder` (session_load, ABI 9): given after the

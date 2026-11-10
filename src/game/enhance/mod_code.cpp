@@ -1042,6 +1042,10 @@ int32_t api_hero_build_now() { return hero_build_level(); }
 int api_hero_mode(int32_t mode, uint32_t obj) { return g_session_rt && hero_mode_set(mode, obj, "the plugin's hero_mode") ? 1 : 0; }
 int32_t api_hero_mode_now() { return hero_mode_now(); }
 
+// ---- (ABI 13) bosses (sections.h) ----
+int api_boss_set(uint32_t obj) { return sections_boss_set(obj) ? 1 : 0; }
+int32_t api_boss_beaten(const char* name) { return sections_boss_beaten(name != nullptr ? name : ""); }
+
 // a loaded save's session bytes of the plugins (session_load), given after their level_start
 std::vector<std::pair<std::string, std::vector<uint8_t>>> g_session_bytes;
 
@@ -1601,6 +1605,8 @@ void load_all() {
     g_api.hero_build_now = api_hero_build_now;
     g_api.hero_mode = api_hero_mode;
     g_api.hero_mode_now = api_hero_mode_now;
+    g_api.boss_set = api_boss_set;  // (ABI 13)
+    g_api.boss_beaten = api_boss_beaten;
     {
         SetpiecesHost h;
         h.hero_damage = api_hero_damage;
@@ -2159,6 +2165,12 @@ void mod_code_section_switch(const char* from, const char* to, const char* entry
         if (p.cb.section_leave != nullptr) with(p, [&] { p.cb.section_leave(p.cb.user, from); });
         if (p.cb.section_enter != nullptr) with(p, [&] { p.cb.section_enter(p.cb.user, to, entry); });
     }
+}
+
+// orig: (none) — enhancement (mod_code.h)
+void mod_code_boss(const char* section, int32_t cls, uint32_t obj, int32_t event) {
+    for (Plugin& p : g_plugins)
+        if (p.cb.size >= offsetof(rac1_mod, boss) + sizeof(p.cb.boss) && p.cb.boss != nullptr) with(p, [&] { p.cb.boss(p.cb.user, section, cls, obj, event); });
 }
 
 // orig: (none) — enhancement (mod_code.h)
