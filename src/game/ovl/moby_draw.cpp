@@ -25,6 +25,7 @@ namespace rac1 {
 
 // orig: (host) the MRP scene state's observer of the draw loop (mrp_scene.h); null: nothing
 MobyDrawObserver g_moby_draw_observer = nullptr;
+float g_moby_lod_read_scale = 1.0f;
 
 namespace {
 
@@ -95,6 +96,15 @@ void part_end(uint32_t mscal) {
 }
 
 #include "moby_draw_fast.inc"
+
+// orig: (host) see moby_draw.h g_moby_lod_read_scale: `d` as patch_moby makes it
+int32_t lod_read(uint32_t m, int32_t d, int32_t cap) {
+    const float s = g_moby_lod_read_scale;
+    if (s == 1.0f || lbu(m + 0x20) == 0xff || lwu(m + 0x24) == 0) return d;  // (the list's end and a class not loaded: never patched)
+    if (s == 0.0f) return cap;
+    const double v = static_cast<double>(d) * static_cast<double>(s);
+    return v > static_cast<double>(cap) ? cap : static_cast<int32_t>(v);
+}
 
 // orig: (host) RAC1_WIIU_FAST_MOBY_LOOP (moby_draw_fast.inc): the loop's ops without their flags - 1 the Wii U's default, 0 the PC's
 const bool g_fast_loop = [] {
@@ -217,7 +227,7 @@ uint32_t draw_loop(FL& fl, uint32_t a0_in, uint32_t a1_in, int32_t a2_in, uint32
     Vf t3v;  // t3 as QMFC2 of vf1 left it (the deferred path)
 
 L_255d18:
-    v0 = sx(static_cast<uint32_t>(lh(s8 + 0x132)));
+    v0 = sx(static_cast<uint32_t>(lh(s8 + 0x132) > 0 ? lod_read(s8 + 0x100, lh(s8 + 0x132), 0x7fff) : lh(s8 + 0x132)));  // (the next moby's)
     s8 += 0x100;
     v[1] = vu0m::lqc2(s8);
     if (s8 == s5) goto L_2566e0;
@@ -346,7 +356,7 @@ L_255e48:
     s1 = lwu(s8 + 0x24);
     t7 = lbu(s8 + 0x73);
     t1 = t1 + SPR + 0x2600;
-    at = lbu(s8 + 0x72);
+    at = static_cast<uint32_t>(lod_read(s8, static_cast<int32_t>(lbu(s8 + 0x72)), 0xff));
     t0 = qlo(v[1]);
     if (t7 != 0) goto L_256b20;
 L_255fd0:
@@ -737,7 +747,7 @@ L_256840: {
     t3 = sx(static_cast<uint32_t>(lw(r + 0xc)));
     t6 = lhu(s8 + 0x34);
     a3 = (t1 << 1) + SPR;
-    at = sx(static_cast<uint32_t>(lh(s8 + 0x32)));
+    at = sx(static_cast<uint32_t>(lh(s8 + 0x32) > 0 ? lod_read(s8, lh(s8 + 0x32), 0x7fff) : lh(s8 + 0x32)));
     s3 = sx(static_cast<uint32_t>(lh(r + 0xa)));
     r += 0x10;
     sw(SPR + 0x3ef0, r);
@@ -863,7 +873,7 @@ L_256a78:
     s5_hi = static_cast<uint32_t>(t5);
     goto L_255d18;
 L_256a90:  // its shadow not seen: the moby drawn now
-    at = sx(static_cast<uint32_t>(lh(s8 + 0x32)));
+    at = sx(static_cast<uint32_t>(lh(s8 + 0x32) > 0 ? lod_read(s8, lh(s8 + 0x32), 0x7fff) : lh(s8 + 0x32)));
     if (s3 == 0) goto L_255d18;
     at = sx((static_cast<uint32_t>(at) << 10) - static_cast<uint32_t>(t3));
     v[1] = t3v;

@@ -36,11 +36,11 @@ void stv(uint32_t a, const Vf& r) {
     for (int i = 0; i < 4; ++i) swc1(a + 4 * static_cast<uint32_t>(i), r.v[i]);
 }
 // orig: (helper) the VU0 float ops (operands and results by the VU rules)
-float vmul(float a, float b) { return vuc(vuc(a) * vuc(b)); }
-float vadd(float a, float b) { return vuc(vuc(a) + vuc(b)); }
-float vsub(float a, float b) { return vuc(vuc(a) - vuc(b)); }
-float vmadd(float acc, float a, float b) { return vuc(vuc(acc) + vuc(a) * vuc(b)); }
-float vmsub(float acc, float a, float b) { return vuc(vuc(acc) - vuc(a) * vuc(b)); }
+RAC1_HOT_INLINE float vmul(float a, float b) { return vuc(vuc(a) * vuc(b)); }
+RAC1_HOT_INLINE float vadd(float a, float b) { return vuc(vuc(a) + vuc(b)); }
+RAC1_HOT_INLINE float vsub(float a, float b) { return vuc(vuc(a) - vuc(b)); }
+RAC1_HOT_INLINE float vmadd(float acc, float a, float b) { return vuc(vuc(acc) + vuc(a) * vuc(b)); }
+RAC1_HOT_INLINE float vmsub(float acc, float a, float b) { return vuc(vuc(acc) - vuc(a) * vuc(b)); }
 // orig: (helper) VFTOI12: x 4096 truncated, saturating
 int32_t ftoi12(float f) {
     f *= 4096.0f;

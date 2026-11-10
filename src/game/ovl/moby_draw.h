@@ -37,6 +37,10 @@ struct MobyDrawPart {
 using MobyDrawObserver = void (*)(uint32_t moby, uint32_t chain_begin, uint32_t chain_end, uint32_t ring, uint32_t spr_rec, uint32_t qwords, uint32_t far_lod,
                                   uint32_t deferred, const MobyDrawPart* parts, uint32_t nparts);
 extern MobyDrawObserver g_moby_draw_observer;
+// orig: (host) the LOD slider applied where the draw loop reads a moby's draw distances (+0x32, the far mesh's +0x72), as
+// mrp_lod.cpp's patch_moby writes them (the same rule: x scale in double, capped; a class not loaded and a distance <= 0 kept):
+// set by the Wii U's real pass (mrp_lod.cpp widen_real) instead of patching every moby and putting it back; 1 off
+extern float g_moby_lod_read_scale;
 
 }  // namespace rac1
 

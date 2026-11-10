@@ -1,4 +1,5 @@
 // orig: (host) The MRP's level of detail slider (see mrp_lod.h).
+#include <game/ovl/moby_draw.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_fx.h>
 
@@ -940,6 +941,21 @@ void patch_moby_logged(float s) {
         put(m + 0x72, 1, b, static_cast<uint32_t>(dist(static_cast<int32_t>(b), 0xff)) & 0xffu);
     }
 }
+#if defined(__WIIU__)
+// (the Wii U, RAC1_WIIU_LOD_READ) patch_moby_logged's global draw distance (0x15fff0) alone, the mobys' scaled as the draw loop reads them
+void patch_moby_global_logged(float s) {
+    g_moby_undo.clear();
+    const uint32_t before = lwu(OV(0x0015fff0u));
+    uint32_t after = 0x7fff;
+    if (s != 0.0f) {
+        const double v = static_cast<double>(static_cast<int32_t>(before)) * static_cast<double>(s);
+        after = v > static_cast<double>(0x7fff) ? 0x7fffu : static_cast<uint32_t>(static_cast<int32_t>(v));
+    }
+    if (before == after) return;
+    sw(OV(0x0015fff0u), after);
+    g_moby_undo.push_back({OV(0x0015fff0u), 4, before, after});
+}
+#endif
 void patch_moby_undo() {
     for (auto it = g_moby_undo.rbegin(); it != g_moby_undo.rend(); ++it) {
         const uint32_t now = it->size == 4 ? lwu(it->addr) : it->size == 2 ? lhu(it->addr) : lbu(it->addr);
@@ -1037,7 +1053,20 @@ void widen_real(void (*pass)(), float w, float wy, float lod_s, bool projection,
     const Vu0Save vu0_saved(false);
     std::vector<EeByteRun> runs;
     const bool lod = !projection && lod_s != 1.0f;
+#if defined(__WIIU__)
+    // ((2026-11-10) RAC1_WIIU_LOD_READ, default 1: the mobys' distances scaled where the draw loop reads them (moby_draw.h
+    // g_moby_lod_read_scale), only the global one patched: patch_moby_logged and its undo walked every moby's two cache lines twice a
+    // frame - 2.4-5% of the game thread (Kalebo 5%) with Daino's lod 3; the pass never writes those fields)
+    static const bool lod_read = std::getenv("RAC1_WIIU_LOD_READ") == nullptr || std::atoi(std::getenv("RAC1_WIIU_LOD_READ")) != 0;
+    if (lod && lod_read) {
+        patch_moby_global_logged(lod_s);
+        g_moby_lod_read_scale = lod_s;
+    } else if (lod) {
+        patch_moby_logged(lod_s);
+    }
+#else
     if (lod) patch_moby_logged(lod_s);  // (its own undo log: patch_moby_undo below)
+#endif
     const bool widen = w > 1.0f || wy > 1.0f;
     if (widen) {
         ee_journal_begin();
@@ -1057,6 +1086,9 @@ void widen_real(void (*pass)(), float w, float wy, float lod_s, bool projection,
         std::memcpy(p, it->before.data(), it->before.size());
     }
     if (lod) patch_moby_undo();
+#if defined(__WIIU__)
+    g_moby_lod_read_scale = 1.0f;
+#endif
 }
 }  // namespace
 

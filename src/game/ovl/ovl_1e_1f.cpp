@@ -98,11 +98,11 @@ void sub_001fa050(int64_t r, int64_t g, int64_t b, int64_t a) {
 
 namespace {
 // VU0 macro-mode lane arithmetic as the interpreter models it (operands and results clamped)
-static float qadd(float a, float b) { return vuc(vuc(a) + vuc(b)); }
-static float qsub(float a, float b) { return vuc(vuc(a) - vuc(b)); }
-static float qmul(float a, float b) { return vuc(vuc(a) * vuc(b)); }
-static float qmadd(float acc, float a, float b) { return vuc(vuc(acc) + vuc(a) * vuc(b)); }
-static float qmsub(float acc, float a, float b) { return vuc(vuc(acc) - vuc(a) * vuc(b)); }
+RAC1_HOT_INLINE float qadd(float a, float b) { return vuc(vuc(a) + vuc(b)); }
+RAC1_HOT_INLINE float qsub(float a, float b) { return vuc(vuc(a) - vuc(b)); }
+RAC1_HOT_INLINE float qmul(float a, float b) { return vuc(vuc(a) * vuc(b)); }
+RAC1_HOT_INLINE float qmadd(float acc, float a, float b) { return vuc(vuc(acc) + vuc(a) * vuc(b)); }
+RAC1_HOT_INLINE float qmsub(float acc, float a, float b) { return vuc(vuc(acc) - vuc(a) * vuc(b)); }
 static uint32_t fbits(float f) { uint32_t u; std::memcpy(&u, &f, 4); return u; }
 static float qdiv(float s, float t) {
     const float a = vuc(s), b = vuc(t);

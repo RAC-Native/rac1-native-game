@@ -1863,9 +1863,9 @@ int32_t path_closest_point(uint32_t path, uint32_t p, uint32_t out, int32_t* idx
 
 namespace {
 // VU0 macro-mode lane arithmetic as the interpreter models it (operands and results clamped)
-static float vmul(float a, float b) { return vuc(vuc(a) * vuc(b)); }
-static float vmadd(float acc, float a, float b) { return vuc(vuc(acc) + vuc(a) * vuc(b)); }
-static float vmsub(float acc, float a, float b) { return vuc(vuc(acc) - vuc(a) * vuc(b)); }
+RAC1_HOT_INLINE float vmul(float a, float b) { return vuc(vuc(a) * vuc(b)); }
+RAC1_HOT_INLINE float vmadd(float acc, float a, float b) { return vuc(vuc(acc) + vuc(a) * vuc(b)); }
+RAC1_HOT_INLINE float vmsub(float acc, float a, float b) { return vuc(vuc(acc) - vuc(a) * vuc(b)); }
 static int32_t vftoi0(float f) {
     uint32_t u;
     std::memcpy(&u, &f, 4);
@@ -2319,8 +2319,8 @@ struct Q4 {
 };
 static Q4 lq4(uint32_t a) { return Q4{{lwc1(a), lwc1(a + 4), lwc1(a + 8), lwc1(a + 12)}}; }
 static void sq4(uint32_t a, const Q4& q) { for (uint32_t i = 0; i < 4; ++i) swc1(a + i * 4, q.v[i]); }
-static float vadd(float a, float b) { return vuc(vuc(a) + vuc(b)); }
-static float vsub(float a, float b) { return vuc(vuc(a) - vuc(b)); }
+RAC1_HOT_INLINE float vadd(float a, float b) { return vuc(vuc(a) + vuc(b)); }
+RAC1_HOT_INLINE float vsub(float a, float b) { return vuc(vuc(a) - vuc(b)); }
 // VRSQRT Q = 1 / sqrt(|t|) with the VU zero-divisor rule (s = +1)
 static float vrsqrt1(float t) {
     const float b = vuc(t);
