@@ -41,7 +41,8 @@ Contents:
 | 11 | the first with rails | grind rails and the set-piece kit, in ABI 7's room of the table: `rail_find`, `hero_rail`, `rail_point`, `rail_enable`, `hero_rail_attach`, `rail_speed`, `rail_info`, `item_visit`, `fade`, `fade_active`, `camera_set`, `camera_release`, `hazard_add`, `hazard_set`, `object_follow_path`, `object_path_at` (`rac1_rail_info`, `rac1_camera`, `rac1_hazard`, `RAC1_RAIL_*`, `RAC1_CAMERA_*`, `RAC1_HAZARD_*`, `RAC1_PATH_*`); the callback `rail`; level.txt's `rail`, `rails`, `items` lines and `class ... collision <file>` |
 | 12 | the first with hero modes | hero contexts and modes (a session): `hero_build`, `hero_build_now`, `hero_mode`, `hero_mode_now`, `RAC1_HERO_*`; level.txt's `hero` line |
 | 13 | the first with bosses | bosses (a session's sections): `boss_set`, `boss_beaten`, `RAC1_BOSS_*`; the callback `boss`; level.txt's `boss` line |
-| 14 | this one | the HUD's width: `hud_width`; `RAC1_HUD_HEIGHT` ([The HUD's area](#the-huds-area)) |
+| 14 | the first with the HUD's width | the HUD's width: `hud_width`; `RAC1_HUD_HEIGHT` ([The HUD's area](#the-huds-area)) |
+| 15 | this one | saving from a plugin: `game_save`, `game_saving` ([Saving](#saving-abi-15)) |
 
 How compatibility works:
 
@@ -84,7 +85,7 @@ game start ──> plugins loaded (load order), rac1_mod_main(api, mod) each: re
    │
    ├─ (a session, format 3) Ratchet died ──> [the soft reset: back at the checkpoint, no level load] ──> respawn
    │      (no level_end / level_start: your state and your objects stay)
-   ├─ a save is written ──> save (and in a session: session_save)
+   ├─ a save is written (a menu's, a planet's, game_save's) ──> save (and in a session: session_save)
    └─ game end ──> shutdown
 ```
 
@@ -547,6 +548,55 @@ static void on_frame(void* user) {
     if (won_at != 0 && api->frame_count() == won_at + 300) api->section_enter("main", "from_cave", 30);
 }
 /* rac1_mod_main: */ mod->boss = on_boss; mod->frame = on_frame;
+```
+
+### Saving (ABI 15)
+
+Test `api->abi >= 15` (or `RAC1_API_HAS(api, game_save)`) first. A plugin can save the game, as leaving a planet does: into
+the memory card's slot the player chose (the one the game was loaded from, saved to, or started in), with no menu.
+
+| Service | Does |
+|---|---|
+| `int game_save(void)` | a save of the game into the player's slot started: 1 started, 0 not (see below). The game's own save on leaving a planet (`level_change_request`, 0x24d430): the clock, the level's talkers and map kept, the slot's record and the game's and this level's blocks made at once, then written by the card over the next frames |
+| `int game_saving(void)` | 1 while a save of the game is being written to the card (a `game_save`'s, the Save page's, a planet's, a new game's), else 0 |
+
+- **Asynchronous.** `game_save` makes the save's blocks at once (the game as it is in that frame) and returns; the card
+  writes them over the next few frames (`game_saving` is 1 until then). When the write is over, `save<N>.pc` is written
+  beside it, and every plugin's `save` callback (and in a session `session_save`) runs then, as in every save: your records
+  go into the save with it. Update them before calling `game_save` (or at the latest in `save`).
+- **What it saves** is what a planet's save saves: the game's block (bolts, items, weapons, the time played, ...) and the
+  current level's block; the other levels' blocks on the card stay as they were. On a level mod's level it is the game's
+  save made there ([Mods, "Saves"](mods.md#level-mods)): the base level's number in the save, the level's progress in
+  `save<N>.pc`; loading it with the mod on brings the player back to the level (in a session: at its current checkpoint,
+  in its section, your `session_load` bytes given back). The items `item_visit` gave are not saved.
+- **0, not started**, when: no slot was chosen (a game started by `RAC1_GOTO`, or never saved nor loaded); no save is in
+  use (the card was pulled out or failed since: the game no longer saves on leaving a planet either); a save is being written or the card is
+  busy (another `game_save`, so calling it twice in a row starts one save); the slot's save was read with problems (the
+  game refuses to save over it); not in play: a menu, the pause menu, a cutscene, a movie, the ship, the vendor, a memory
+  card screen (game mode not 0); the level being left (a level change, a save being loaded); Ratchet dead (from his
+  health at 0 to the respawn); a section switch running (its streaming, its fade); a loaded save's checkpoint not taken
+  yet; the HUD callback or a replay; the last `game_save` started less than a second (60 frames of play) ago. The log
+  says why (`[mods] game_save: not now (...)`, each reason once in a row).
+- **Calling it every frame** is safe: it starts a save at most once a second, and never while one is written. Do not:
+  each save writes the slot's files on the player's disk. Call it at a moment worth saving (a challenge won).
+- **A death, a section switch or a level change after it** does not cancel it: the blocks were made in the call, the card
+  finishes writing them (after the level's load, for a level change). Your `save` callback then runs at that later moment.
+- **The card's errors** are the game's, as for a planet's save (its memory card screens); `game_saving` goes back to 0
+  either way. On a PC the card's files are written through to the disk: a disk that cannot take them (full, not writable)
+  is not an error the game sees, the log says `[memcard] cannot write ...`.
+- **It takes about 18 frames** (the card machine's steps: the open, the seeks, the writes and the close, one a frame).
+- From the callbacks of play (`frame`, `trigger`, `rail`, `boss`, `test`, ...), never from `hud` nor during a replay.
+
+```c
+/* a challenge won: the record kept, then the game saved, "Saved" shown while it is written */
+static int g_saved_msg;
+static void challenge_end(int won) {
+    if (won) g_record.wins++;
+    if (api->abi >= 15 && api->game_save()) g_saved_msg = 1;
+}
+static void my_hud(void* user) {
+    if (g_saved_msg && api->game_saving()) api->hud_text(20, 380, 0x80ffffffu, "Saving...");
+}
 ```
 
 ### Classes and objects (ABI 2)

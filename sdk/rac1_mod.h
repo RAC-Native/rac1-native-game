@@ -54,9 +54,9 @@ extern "C" {
    section_policy; the section_leave and section_enter callbacks); 11: the rails and the set-piece kit, in ABI 7's room of the
    table (rail_find .. fade_active; the rail callback); 12: hero contexts and modes (another planet's hero code, Ratchet as
    Clank, Giant Clank or on the hoverboard: hero_build, hero_build_now, hero_mode, hero_mode_now); 13: bosses (a section's
-   bosses: boss_set, boss_beaten; the boss callback); 14: the HUD's width (hud_width) (docs/sdk.md lists what each version
-   added). */
-#define RAC1_MOD_ABI 14
+   bosses: boss_set, boss_beaten; the boss callback); 14: the HUD's width (hud_width); 15: saving from a plugin (game_save,
+   game_saving) (docs/sdk.md lists what each version added). */
+#define RAC1_MOD_ABI 15
 
 #if defined(_WIN32)
 #define RAC1_MOD_EXPORT __declspec(dllexport)
@@ -630,6 +630,18 @@ typedef struct rac1_api {
        (hud_width() - 512) / 2 units to the left, the RAC1_HUD_RIGHT ones as far to the right; RAC1_HUD_CENTRE's stay put. A
        display value (the player's window and options): use it to lay out what you draw, never for the game's state */
     int32_t (*hud_width)(void);
+
+    /* ======== ABI 15 (test api->abi >= 15, or RAC1_API_HAS(api, game_save)) ======== */
+    /* -- saving (docs/sdk.md, "Saving (ABI 15)") -- */
+    /* a save of the game into the memory card's slot the player chose, as leaving a planet makes one (the game's
+       level_change_request): 1 started, 0 not (no slot chosen, the card busy or a save in progress, not in play: a menu, a
+       cutscene, the ship, the vendor, a level change, a death, a section switch; the last game_save started less than a
+       second ago). Asynchronous: the card writes it over the next frames; every plugin's save (and session_save) callback
+       runs as in every save, when it is written, so your records go into save<N>.pc with it. From the frame, trigger, rail,
+       boss and test callbacks (not from hud, nor during a replay). At most one a second: do not call it every frame */
+    int (*game_save)(void);
+    /* 1 while a save of the game is being written to the card (one game_save started, a menu's, a planet's), else 0 */
+    int (*game_saving)(void);
 } rac1_api;
 
 #define RAC1_API_HAS(api, field) ((api)->size >= offsetof(rac1_api, field) + sizeof((api)->field))

@@ -5,6 +5,10 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **The mod SDK: saving from a plugin** (ABI 15): `game_save()` saves the game into the slot the player chose, as leaving a
+  planet does (a level mod's level, a session and its checkpoint included), and `game_saving()` says while the save is
+  being written, so a mod can save when a challenge ends and show "Saving...". Every plugin's records go into the save
+  as in every save. A planet left from a level mod's level no longer saves the items the level lent for the visit.
 - **Level mods: the hero's missing sounds.** On a level mod on another base than Veldin's, Ratchet's sounds that base's
   bank lacks were silent: with `hero generic` on Kalebo III's base, his burn in the lava and his sinking. They now play,
   from Veldin's bank.

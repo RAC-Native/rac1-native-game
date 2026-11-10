@@ -644,7 +644,8 @@ game's code is untouched.
   number the game wrote). The level's progress goes in our `save<N>.pc` beside it, as an item of its own (its id,
   whether the save was made there, the level you flew from, its records). Loading that save with the mod on brings you
   back to the level. The Save and Load pages show the slot's planet from that item: the level's name, region and picture
-  (its `map_picture`), or, with its mod off or missing, the level you flew from (where loading it lands).
+  (its `map_picture`), or, with its mod off or missing, the level you flew from (where loading it lands). The level's
+  plugin can save there itself, with no menu: the SDK's `game_save` ([Saving](sdk.md#saving-abi-15)).
 - **The mod off or missing**: loading a save made on the level puts you on the level you flew there from, and opens the
   ship's planet map there: the **planet prompt**. Its list is the save's unlocked planets with the level you flew from
   first (and selected), then the other level mods on. Choose where to land, as from the ship; leaving the map

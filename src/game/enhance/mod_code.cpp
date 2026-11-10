@@ -14,6 +14,7 @@
 #include <game/enhance/session_runtime.h>
 #include <game/enhance/setpieces.h>
 #include <game/ovl/arrival.h>
+#include <game/ovl/level_change.h>
 #include <game/ovl/music_streams.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -1435,6 +1436,65 @@ int32_t api_hud_width() {
     return static_cast<int32_t>(512.0f * render_view_hud_widen() + 0.5f);
 }
 
+// ---- (ABI 15) saving from a plugin ----
+// The save block 0x13d290 (memory_card_ops.cpp): +0xc0 the port saved to (-1: no slot chosen), its record's +0x14 the slot, +0xac
+// the slot's save's problems (-1: the card not read yet), +0xd4 the card machine's state (< 3 idle), +0xdc an operation asked
+// for (-1 none), +0xf4 a save in use (level_change_request saves only then: a save loaded, made or started, the card not pulled
+// out since); the menus' card state 0x15eeb0 and its flags 0x15eeb4 (logged)
+constexpr uint32_t SAVE_BLOCK = 0x0013d290u, CARD_UI = 0x0015eeb0u, CARD_FLAGS = 0x0015eeb4u;
+uint64_t g_game_save_at = 0;              // (the frame count + 1 of the last game_save started, 0 none)
+const char* g_game_save_why = nullptr;    // (the last refusal logged: a plugin may ask every frame, each reason logged once in a row)
+
+// a save of the game being written: a card operation that writes one asked for or running (0xf / 0x10 a planet's and
+// game_save's, 0x13 / 0x14 a save image: the Save page's, a new game's; 0x11 / 0x12 the disc's default save read for one)
+int api_game_saving() {
+    const int32_t st = lw(SAVE_BLOCK + 0xd4), op = lw(SAVE_BLOCK + 0xdc);
+    return (st >= 0xf && st <= 0x14) || op == 0xf || op == 0x11 || op == 0x13 ? 1 : 0;
+}
+
+// why game_save cannot start a save now ("" it can): the card's state as level_change_request needs it to save at once, and
+// the game in play (game mode 0, a level in, the hero alive, no level change, no section switch, no save loaded being placed)
+const char* game_save_refusal() {
+    if (g_in_hud || ee_journal_active()) return "from the HUD callback or a replay";
+    if (!g_started || moby_base() == 0) return "no level in play";
+    if (lw(OV(0x0015f5c4)) != 0) return "not in play (a menu, a cutscene, the ship, the vendor, a screen)";
+    if (lw(OV(0x0015f5d8)) != 0 || lw(OV(0x0015f570)) != 0) return "the level is being left";
+    if (lbu(0x00141401) != 0 || lw(0x001415f8) <= 0) return "Ratchet is dead";
+    if (sections_switching()) return "a section switch";
+    if (session_rt_placing()) return "a loaded save not placed yet";
+    const int32_t port = lw(SAVE_BLOCK + 0xc0);
+    if (port != 0 || lw(SAVE_BLOCK + 0x14) < 0) return "no save slot chosen";
+    if (lw(SAVE_BLOCK + 0xf4) == 0) return "no save in use (the card pulled out or failed since)";
+    if (api_game_saving() != 0 || !(lw(SAVE_BLOCK + 0xd4) < 3) || lw(SAVE_BLOCK + 0xdc) >= 0) return "the card busy";
+    if (lw(SAVE_BLOCK + 0xac) != 0) return "the slot's save not read or damaged";
+    if (g_game_save_at != 0 && g_frames + 1 < g_game_save_at + 60) return "a game_save less than a second ago";
+    return "";
+}
+
+// (ABI 15) the game saved into the slot the player chose, as leaving a planet saves (level_change_request(0, -1): the level's
+// state kept, the save's record and the game's and this level's blocks written now, the card asked to write them; the
+// menus' card state shows its error, if any, as for a planet's)
+int api_game_save() {
+    const char* why = game_save_refusal();
+    if (why[0] != 0) {
+        if (why != g_game_save_why)
+            std::printf("[mods] game_save: not now (%s; the card: state %d, operation %d, menus' state %d, flags %#x, a save in use %d)\n", why,
+                        lw(SAVE_BLOCK + 0xd4), lw(SAVE_BLOCK + 0xdc), lw(CARD_UI), lwu(CARD_FLAGS), lw(SAVE_BLOCK + 0xf4));
+        g_game_save_why = why;
+        return 0;
+    }
+    level_change_request(0, -1);
+    if (lw(SAVE_BLOCK + 0xdc) != 0xf) {  // (cannot happen with the checks above)
+        std::fprintf(stderr, "[mods] game_save: the card did not take the save\n");
+        return 0;
+    }
+    g_game_save_at = g_frames + 1;
+    g_game_save_why = nullptr;
+    std::printf("[mods] game_save: a save into slot %d started%s%s (frame %llu)\n", lw(SAVE_BLOCK + 0x14), g_cur != nullptr ? " by " : "",
+                g_cur != nullptr ? g_cur->mod->folder.c_str() : "", static_cast<unsigned long long>(g_frames));
+    return 1;
+}
+
 int32_t api_hud_text_width(const char* text, float scale) {
     if (text == nullptr || !(scale > 0.0f)) return 0;
     // (the small font's advances, as text_width_small counts them: a copy in host memory, the HUD's strings are the HUD's)
@@ -1616,6 +1676,8 @@ void load_all() {
     g_api.boss_set = api_boss_set;  // (ABI 13)
     g_api.boss_beaten = api_boss_beaten;
     g_api.hud_width = api_hud_width;  // (ABI 14)
+    g_api.game_save = api_game_save;  // (ABI 15)
+    g_api.game_saving = api_game_saving;
     {
         SetpiecesHost h;
         h.hero_damage = api_hero_damage;

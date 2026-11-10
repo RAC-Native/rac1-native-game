@@ -1162,6 +1162,9 @@ int32_t sections_rail_first(int index) {
 int sections_save_begin() { return g_worlds ? rows_put(-1) : -1; }
 
 // orig: (host) see sections.h
+bool sections_switching() { return g_sections_on && g_pend.on; }
+
+// orig: (host) see sections.h
 void sections_save_end(int level) {
     if (g_worlds && level >= 0) rows_put(level);
 }
