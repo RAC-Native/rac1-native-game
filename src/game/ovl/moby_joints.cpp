@@ -100,6 +100,11 @@ void blend_quats_norm(LocalFlags& fl, int a, int b) {
 // (the registers live in locals through a loop; ACC too), and an operand clamped once for all its uses. The registers, ACC, Q and
 // the flags are written back where the loop ends: the VU0's state is the per-op form's, word for word (oracle batch 470,
 // joints_simd; batches 79 / 93 on the original). No FMA, no reassociation: each multiply and add rounds as one VU0 op.
+// The raw form (RAC1_PERF_VU0_RAW, runtime/ee/ps2_fpu.h; vu0_regs.h's raw): every step of a loop is written once for two
+// policies, Raw = false the clamps as above, Raw = true none - the operands as they are, the result as the host's op leaves it,
+// its flags the zero and the sign alone. In the thread's mode the two give the same words whenever no lane the step reads from
+// memory or from the registers the loop found has exponent 255 (then no result has it either, and none is a denormal): a step
+// is run raw when its inputs pass that test (finite), by the rules otherwise. Batch 470's joints_raw compares the two.
 const bool g_pose_simd = [] {
     const char* e = std::getenv("RAC1_VU0_SIMD");
     return e == nullptr || std::atoi(e) != 0;
@@ -135,15 +140,45 @@ inline I blend(I old, I nw) {
         return _mm_or_si128(_mm_and_si128(k, nw), _mm_andnot_si128(k, old));
     }
 }
+// orig: (helper) an operand as the policy reads it: clamped (cop4), or as it is (Raw)
+template <bool Raw>
+[[gnu::always_inline]] inline I cop(I x) {
+    if constexpr (Raw) {
+        return x;
+    } else {
+        return cop4(x);
+    }
+}
+// orig: (helper) an op's result and its flags for the lanes M: fin_m's, or (Raw) the result as it is and flags_raw's
+template <int M, bool Raw>
+[[gnu::always_inline]] inline I fin(LocalFlags& fl, I raw) {
+    if constexpr (Raw) {
+        flags_raw(fl, raw, M);
+        return raw;
+    } else {
+        return fin_m(fl, raw, M);
+    }
+}
 // orig: (helper) an FMAC op writing the lanes M of `d` (its flags those lanes')
-template <int M>
+template <int M, bool Raw = false>
 [[gnu::always_inline]] inline void op(LocalFlags& fl, I& d, I raw) {
-    d = blend<M>(d, fin_m(fl, raw, M));
+    d = blend<M>(d, fin<M, Raw>(fl, raw));
 }
 // orig: (helper) the same into a register whose lanes outside M nothing reads before they are written whole
-template <int M>
+template <int M, bool Raw = false>
 [[gnu::always_inline]] inline I opt(LocalFlags& fl, I raw) {
-    return fin_m(fl, raw, M);
+    return fin<M, Raw>(fl, raw);
+}
+// orig: (host) the raw form on (RAC1_PERF_VU0_RAW at 1, the thread's mode the EE's)
+[[gnu::always_inline]] inline bool raw_on() { return ps2fpu::g_vu0_raw == 1; }
+// orig: (helper) the lanes with exponent 255 of `x` ORed into `acc` (all ones in such a lane); none of the lanes M of `acc`
+[[gnu::always_inline]] inline I inf_or(I acc, I x) {
+    const I expm = _mm_set1_epi32(0x7f800000);
+    return _mm_or_si128(acc, _mm_cmpeq_epi32(_mm_and_si128(x, expm), expm));
+}
+template <int M = 15>
+[[gnu::always_inline]] inline bool finite(I acc) {
+    return (_mm_movemask_ps(_mm_castsi128_ps(acc)) & M) == 0;
 }
 inline I add(I a, I b) { return vadd4(a, b); }
 inline I sub(I a, I b) { return vsub4(a, b); }
@@ -157,43 +192,49 @@ inline I itof_s16(uint64_t x, float scale) {
 }
 inline float lane0(I x) { return u2f(static_cast<uint32_t>(_mm_cvtsi128_si32(x))); }
 // orig: (helper) dot_y / sum_x on registers (vf4 = 1: its clamped lanes `c4`; `a` ACC)
-inline void dot_y(LocalFlags& fl, I& d, I& a, I c4) {
-    const I c = cop4(d);
-    op<Y>(fl, a, add(c, bc<0>(c)));
-    op<Y>(fl, a, add(a, mul(c4, bc<2>(c))));
-    op<Y>(fl, d, add(a, mul(c4, bc<3>(c))));
+template <bool Raw>
+[[gnu::always_inline]] inline void dot_y(LocalFlags& fl, I& d, I& a, I c4) {
+    const I c = cop<Raw>(d);
+    op<Y, Raw>(fl, a, add(c, bc<0>(c)));
+    op<Y, Raw>(fl, a, add(a, mul(c4, bc<2>(c))));
+    op<Y, Raw>(fl, d, add(a, mul(c4, bc<3>(c))));
 }
-inline void sum_x(LocalFlags& fl, I& d, I& a, I c4) {
-    const I c = cop4(d);
-    op<X>(fl, a, add(c, bc<1>(c)));
-    op<X>(fl, a, add(a, mul(c4, bc<2>(c))));
-    op<X>(fl, d, add(a, mul(c4, bc<3>(c))));
+template <bool Raw>
+[[gnu::always_inline]] inline void sum_x(LocalFlags& fl, I& d, I& a, I c4) {
+    const I c = cop<Raw>(d);
+    op<X, Raw>(fl, a, add(c, bc<1>(c)));
+    op<X, Raw>(fl, a, add(a, mul(c4, bc<2>(c))));
+    op<X, Raw>(fl, d, add(a, mul(c4, bc<3>(c))));
 }
 // orig: (helper) rotate / transform (vu0_regs.h) on clamped rows r0..r3 and point `s` (clamped)
+template <bool Raw>
 [[gnu::always_inline]] inline I rotate(LocalFlags& fl, I& a, I r0, I r1, I r2, I s) {
-    a = opt<XYZW>(fl, mul(r0, bc<0>(s)));
-    a = opt<XYZW>(fl, add(a, mul(r1, bc<1>(s))));
-    return opt<XYZW>(fl, add(a, mul(r2, bc<2>(s))));
+    a = opt<XYZW, Raw>(fl, mul(r0, bc<0>(s)));
+    a = opt<XYZW, Raw>(fl, add(a, mul(r1, bc<1>(s))));
+    return opt<XYZW, Raw>(fl, add(a, mul(r2, bc<2>(s))));
 }
+template <bool Raw>
 [[gnu::always_inline]] inline I transform(LocalFlags& fl, I& a, I r0, I r1, I r2, I r3, I s, I w) {
-    a = opt<XYZW>(fl, mul(r0, bc<0>(s)));
-    a = opt<XYZW>(fl, add(a, mul(r1, bc<1>(s))));
-    a = opt<XYZW>(fl, add(a, mul(r2, bc<2>(s))));
-    return opt<XYZW>(fl, add(a, mul(r3, w)));
+    a = opt<XYZW, Raw>(fl, mul(r0, bc<0>(s)));
+    a = opt<XYZW, Raw>(fl, add(a, mul(r1, bc<1>(s))));
+    a = opt<XYZW, Raw>(fl, add(a, mul(r2, bc<2>(s))));
+    return opt<XYZW, Raw>(fl, add(a, mul(r3, w)));
 }
 // orig: (helper) a joint's matrix under its parent's: rotate x3 (the rows `r`, the points p0..p2) and transform (p3, w): o0..o3
+template <bool Raw>
 [[gnu::always_inline]] inline void compose_joint(LocalFlags& fl, I& a, const I r[4], const I p[4], I w, I o[4]) {
-    o[0] = rotate(fl, a, r[0], r[1], r[2], p[0]);
-    o[1] = rotate(fl, a, r[0], r[1], r[2], p[1]);
-    o[2] = rotate(fl, a, r[0], r[1], r[2], p[2]);
-    o[3] = transform(fl, a, r[0], r[1], r[2], r[3], p[3], w);
+    o[0] = rotate<Raw>(fl, a, r[0], r[1], r[2], p[0]);
+    o[1] = rotate<Raw>(fl, a, r[0], r[1], r[2], p[1]);
+    o[2] = rotate<Raw>(fl, a, r[0], r[1], r[2], p[2]);
+    o[3] = transform<Raw>(fl, a, r[0], r[1], r[2], r[3], p[3], w);
 }
 // orig: (helper) a joint's matrix times its bind matrix: transform (p3, w) first, then rotate x3 (p0..p2): o0..o3
+template <bool Raw>
 [[gnu::always_inline]] inline void compose_bind(LocalFlags& fl, I& a, const I r[4], const I p[4], I w, I o[4]) {
-    o[3] = transform(fl, a, r[0], r[1], r[2], r[3], p[3], w);
-    o[0] = rotate(fl, a, r[0], r[1], r[2], p[0]);
-    o[1] = rotate(fl, a, r[0], r[1], r[2], p[1]);
-    o[2] = rotate(fl, a, r[0], r[1], r[2], p[2]);
+    o[3] = transform<Raw>(fl, a, r[0], r[1], r[2], r[3], p[3], w);
+    o[0] = rotate<Raw>(fl, a, r[0], r[1], r[2], p[0]);
+    o[1] = rotate<Raw>(fl, a, r[0], r[1], r[2], p[1]);
+    o[2] = rotate<Raw>(fl, a, r[0], r[1], r[2], p[2]);
 }
 }  // namespace simd
 
@@ -222,69 +263,88 @@ RAC1_T_AVX2 inline J mul(J a, J b) { return _mm256_castps_si256(_mm256_mul_ps(_m
 struct Fl {
     I sticky = _mm_setzero_si128(), last = _mm_setzero_si128();
 };
+template <bool Raw>
 RAC1_T_AVX2 inline J fin2(Fl& fl, J v, bool last_hi) {
     const J vr = _mm256_shuffle_epi32(v, _MM_SHUFFLE(0, 1, 2, 3));
     const J expm = _mm256_set1_epi32(0x7f800000);
     const J e = _mm256_and_si256(vr, expm);
     const J isz = _mm256_cmpeq_epi32(e, _mm256_setzero_si256());
-    const J isi = _mm256_cmpeq_epi32(e, expm);
     const J sgn = _mm256_srai_epi32(vr, 31);
-    J r = _mm256_or_si256(vr, _mm256_and_si256(isi, _mm256_set1_epi32(0x007fffff)));
-    r = _mm256_add_epi32(r, _mm256_slli_epi32(isi, 23));
-    r = _mm256_andnot_si256(_mm256_and_si256(isz, _mm256_set1_epi32(0x7fffffff)), r);
-    const J den = _mm256_andnot_si256(_mm256_cmpeq_epi32(_mm256_and_si256(vr, _mm256_set1_epi32(0x007fffff)), _mm256_setzero_si256()), isz);
-    const J b = _mm256_packs_epi16(_mm256_packs_epi32(isz, sgn), _mm256_packs_epi32(den, isi));
+    J b, out;
+    if constexpr (Raw) {  // (no lane with exponent 255, none a denormal: nothing to clamp, the zero and the sign flags alone)
+        b = _mm256_packs_epi16(_mm256_packs_epi32(isz, sgn), _mm256_setzero_si256());
+        out = v;
+    } else {
+        const J isi = _mm256_cmpeq_epi32(e, expm);
+        J r = _mm256_or_si256(vr, _mm256_and_si256(isi, _mm256_set1_epi32(0x007fffff)));
+        r = _mm256_add_epi32(r, _mm256_slli_epi32(isi, 23));
+        r = _mm256_andnot_si256(_mm256_and_si256(isz, _mm256_set1_epi32(0x7fffffff)), r);
+        const J den = _mm256_andnot_si256(_mm256_cmpeq_epi32(_mm256_and_si256(vr, _mm256_set1_epi32(0x007fffff)), _mm256_setzero_si256()), isz);
+        b = _mm256_packs_epi16(_mm256_packs_epi32(isz, sgn), _mm256_packs_epi32(den, isi));
+        out = _mm256_shuffle_epi32(r, _MM_SHUFFLE(0, 1, 2, 3));
+    }
     const I bl = lo(b), bh = hi(b);
     fl.last = last_hi ? bh : bl;
     fl.sticky = _mm_or_si128(fl.sticky, _mm_or_si128(bl, bh));
-    return _mm256_shuffle_epi32(r, _MM_SHUFFLE(0, 1, 2, 3));
+    return out;
 }
 // orig: (helper) fin_m of one XYZW op into an Fl (as fin_m's LocalFlags form)
+template <bool Raw>
 RAC1_T_AVX2 inline I fin1(Fl& fl, I v) {
     const I vr = _mm_shuffle_epi32(v, _MM_SHUFFLE(0, 1, 2, 3));
     const I expm = _mm_set1_epi32(0x7f800000);
     const I e = _mm_and_si128(vr, expm);
     const I isz = _mm_cmpeq_epi32(e, _mm_setzero_si128());
-    const I isi = _mm_cmpeq_epi32(e, expm);
     const I sgn = _mm_srai_epi32(vr, 31);
-    I r = _mm_or_si128(vr, _mm_and_si128(isi, _mm_set1_epi32(0x007fffff)));
-    r = _mm_add_epi32(r, _mm_slli_epi32(isi, 23));
-    r = _mm_andnot_si128(_mm_and_si128(isz, _mm_set1_epi32(0x7fffffff)), r);
-    const I den = _mm_andnot_si128(_mm_cmpeq_epi32(_mm_and_si128(vr, _mm_set1_epi32(0x007fffff)), _mm_setzero_si128()), isz);
-    const I b = _mm_packs_epi16(_mm_packs_epi32(isz, sgn), _mm_packs_epi32(den, isi));
+    I b, out;
+    if constexpr (Raw) {
+        b = _mm_packs_epi16(_mm_packs_epi32(isz, sgn), _mm_setzero_si128());
+        out = v;
+    } else {
+        const I isi = _mm_cmpeq_epi32(e, expm);
+        I r = _mm_or_si128(vr, _mm_and_si128(isi, _mm_set1_epi32(0x007fffff)));
+        r = _mm_add_epi32(r, _mm_slli_epi32(isi, 23));
+        r = _mm_andnot_si128(_mm_and_si128(isz, _mm_set1_epi32(0x7fffffff)), r);
+        const I den = _mm_andnot_si128(_mm_cmpeq_epi32(_mm_and_si128(vr, _mm_set1_epi32(0x007fffff)), _mm_setzero_si128()), isz);
+        b = _mm_packs_epi16(_mm_packs_epi32(isz, sgn), _mm_packs_epi32(den, isi));
+        out = _mm_shuffle_epi32(r, _MM_SHUFFLE(0, 1, 2, 3));
+    }
     fl.last = b;
     fl.sticky = _mm_or_si128(fl.sticky, b);
-    return _mm_shuffle_epi32(r, _MM_SHUFFLE(0, 1, 2, 3));
+    return out;
 }
 // orig: (helper) the three ops of two rotates (or a rotate and a transform's first three) side by side: rows `r` the same, points p
+template <bool Raw>
 RAC1_T_AVX2 inline J rotate2(Fl& fl, J& a, J r0, J r1, J r2, J p, bool last_hi) {
-    a = fin2(fl, mul(r0, bc<0>(p)), last_hi);
-    a = fin2(fl, add(a, mul(r1, bc<1>(p))), last_hi);
-    return fin2(fl, add(a, mul(r2, bc<2>(p))), last_hi);
+    a = fin2<Raw>(fl, mul(r0, bc<0>(p)), last_hi);
+    a = fin2<Raw>(fl, add(a, mul(r1, bc<1>(p))), last_hi);
+    return fin2<Raw>(fl, add(a, mul(r2, bc<2>(p))), last_hi);
 }
 // orig: (helper) compose_joint with AVX2: rotates 0 and 1 together, rotate 2 with the transform's first three ops, its last alone
+template <bool Raw>
 RAC1_T_AVX2 __attribute__((noinline)) Fl compose_joint(I& a, const I r[4], const I p[4], I w, I o[4]) {
     Fl fl;
     const J r0 = two(r[0], r[0]), r1 = two(r[1], r[1]), r2 = two(r[2], r[2]);
     J acc2;
-    const J d01 = rotate2(fl, acc2, r0, r1, r2, two(p[0], p[1]), true);
-    const J d23 = rotate2(fl, acc2, r0, r1, r2, two(p[2], p[3]), true);
+    const J d01 = rotate2<Raw>(fl, acc2, r0, r1, r2, two(p[0], p[1]), true);
+    const J d23 = rotate2<Raw>(fl, acc2, r0, r1, r2, two(p[2], p[3]), true);
     o[0] = lo(d01);
     o[1] = hi(d01);
     o[2] = lo(d23);
     a = hi(d23);  // (the transform's third op: ACC)
-    o[3] = fin1(fl, simd::add(a, simd::mul(r[3], w)));
+    o[3] = fin1<Raw>(fl, simd::add(a, simd::mul(r[3], w)));
     return fl;
 }
 // orig: (helper) compose_bind with AVX2: the transform's first three ops with rotate 0, its last, then rotates 1 and 2 together
+template <bool Raw>
 RAC1_T_AVX2 __attribute__((noinline)) Fl compose_bind(I& a, const I r[4], const I p[4], I w, I o[4]) {
     Fl fl;
     const J r0 = two(r[0], r[0]), r1 = two(r[1], r[1]), r2 = two(r[2], r[2]);
     J acc2;
-    const J d30 = rotate2(fl, acc2, r0, r1, r2, two(p[3], p[0]), false);
+    const J d30 = rotate2<Raw>(fl, acc2, r0, r1, r2, two(p[3], p[0]), false);
     o[0] = hi(d30);
-    o[3] = fin1(fl, simd::add(lo(d30), simd::mul(r[3], w)));
-    const J d12 = rotate2(fl, acc2, r0, r1, r2, two(p[1], p[2]), true);
+    o[3] = fin1<Raw>(fl, simd::add(lo(d30), simd::mul(r[3], w)));
+    const J d12 = rotate2<Raw>(fl, acc2, r0, r1, r2, two(p[1], p[2]), true);
     o[1] = lo(d12);
     o[2] = hi(d12);
     a = hi(acc2);  // (rotate 2's second op: ACC)
@@ -305,19 +365,30 @@ int g_pose_wide = [] {
 #endif
 }();
 
+// orig: (helper) one listed vector lerped: ACC = r8 (1 - t), vf10 = ACC + r9 t on x y z (b6 / b7 the broadcast 1 - t and t)
+template <bool Raw>
+[[gnu::always_inline]] inline void lerp_step(LocalFlags& fl, simd::I& a, simd::I& r10, simd::I r8, simd::I r9, simd::I b6, simd::I b7) {
+    using namespace simd;
+    op<XYZ, Raw>(fl, a, mul(cop<Raw>(r8), b6));
+    op<XYZ, Raw>(fl, r10, add(a, mul(cop<Raw>(r9), b7)));
+}
 // orig: (helper) the listed scales and translations lerped by t (1 - t in vf6.x, t in vf7.x): ACC = a (1 - t), vf10 = ACC + b t on
 // x y z (vf10.w the 1 set before); the scales' list from *(t5 - 0x10) (+0 / +0x10, the link +0xc, the result into +0x10), then
 // the translations' from *(t5 - 0xc) (a joint +0x20 / +0x30, the link +0x3c, the result into +0x20, its +0x2c kept)
 [[gnu::always_inline]] inline void lerp_lists_simd(LocalFlags& fl, uint32_t t5) {
     using namespace simd;
     Vf* const v = vf();
-    const I b6 = bc<0>(cop4(ldv(v[6]))), b7 = bc<0>(cop4(ldv(v[7])));
+    const I v6 = ldv(v[6]), v7 = ldv(v[7]);
+    const I b6 = bc<0>(cop4(v6)), b7 = bc<0>(cop4(v7));
+    // (raw: t and 1 - t as they are - their x lanes alone are read - and each pair of vectors whose x y z are finite)
+    const bool raw = raw_on() && finite<X>(inf_or(inf_or(_mm_setzero_si128(), v6), v7));
+    const I b6r = bc<0>(v6), b7r = bc<0>(v7);
     I a = ldv(acc()), r8 = ldv(v[8]), r9 = ldv(v[9]), r10 = ldv(v[10]);
     for (uint32_t p = lwu(t5 - 0x10); p != 0;) {
         r8 = lqv(p);
         r9 = lqv(p + 0x10);
-        op<XYZ>(fl, a, mul(cop4(r8), b6));
-        op<XYZ>(fl, r10, add(a, mul(cop4(r9), b7)));
+        if (raw && finite<XYZ>(inf_or(inf_or(_mm_setzero_si128(), r8), r9))) lerp_step<true>(fl, a, r10, r8, r9, b6r, b7r);
+        else lerp_step<false>(fl, a, r10, r8, r9, b6, b7);
         const uint32_t nx = lwu(p + 0xc);
         sqv(p + 0x10, r10);
         p = nx;
@@ -325,8 +396,8 @@ int g_pose_wide = [] {
     for (uint32_t p = lwu(t5 - 0xc); p != 0;) {
         r8 = lqv(p + 0x20);
         r9 = lqv(p + 0x30);
-        op<XYZ>(fl, a, mul(cop4(r8), b6));
-        op<XYZ>(fl, r10, add(a, mul(cop4(r9), b7)));
+        if (raw && finite<XYZ>(inf_or(inf_or(_mm_setzero_si128(), r8), r9))) lerp_step<true>(fl, a, r10, r8, r9, b6r, b7r);
+        else lerp_step<false>(fl, a, r10, r8, r9, b6, b7);
         const uint32_t keep = lwu(p + 0x2c);
         sqv(p + 0x20, r10);
         sw(p + 0x2c, keep);
@@ -339,12 +410,14 @@ int g_pose_wide = [] {
 }
 
 // orig: (helper) the rotations lerped two joints at a time (the first key's at `at`, the second's at `k2`), along the shorter arc
-// and normalised unless `plain`: the scratchpad's joint records from 0 (+0, every 0x40)
-[[gnu::always_inline]] inline void lerp_rotations_simd(LocalFlags& fl, int32_t n, uint32_t at, uint32_t k2, bool plain) {
+// and normalised unless `plain`: the scratchpad's joint records from 0 (+0, every 0x40). Raw: the loop's inputs from memory are
+// halfwords made floats (finite), so the whole loop is raw when the four registers it finds (vf4 .. vf7) are
+template <bool Raw>
+[[gnu::always_inline]] inline void lerp_rotations_simd_t(LocalFlags& fl, int32_t n, uint32_t at, uint32_t k2, bool plain) {
     using namespace simd;
     Vf* const v = vf();
-    const I b6 = bc<0>(cop4(ldv(v[6]))), b7 = bc<0>(cop4(ldv(v[7]))), b5 = bc<0>(cop4(ldv(v[5])));
-    const I c4 = cop4(ldv(v[4]));
+    const I b6 = bc<0>(cop<Raw>(ldv(v[6]))), b7 = bc<0>(cop<Raw>(ldv(v[7]))), b5 = bc<0>(cop<Raw>(ldv(v[5])));
+    const I c4 = cop<Raw>(ldv(v[4]));
     const float one = v[0].v[3];
     I a = ldv(acc());
     I r8 = ldv(v[8]), r9 = ldv(v[9]), r10 = ldv(v[10]), r11 = ldv(v[11]), r12 = ldv(v[12]), r13 = ldv(v[13]), r14 = ldv(v[14]), r15 = ldv(v[15]);
@@ -359,45 +432,46 @@ int g_pose_wide = [] {
         p += 0x80;
         at += 0x10;
         k2 += 0x10;
-        const I c8 = cop4(r8), c9 = cop4(r9), c10 = cop4(r10), c11 = cop4(r11);
+        const I c8 = cop<Raw>(r8), c9 = cop<Raw>(r9), c10 = cop<Raw>(r10), c11 = cop<Raw>(r11);
         if (plain) {
-            a = opt<XYZW>(fl, mul(c8, b6));
-            r8 = opt<XYZW>(fl, add(a, mul(c9, b7)));
-            a = opt<XYZW>(fl, mul(c10, b6));
-            r10 = opt<XYZW>(fl, add(a, mul(c11, b7)));
+            a = opt<XYZW, Raw>(fl, mul(c8, b6));
+            r8 = opt<XYZW, Raw>(fl, add(a, mul(c9, b7)));
+            a = opt<XYZW, Raw>(fl, mul(c10, b6));
+            r10 = opt<XYZW, Raw>(fl, add(a, mul(c11, b7)));
         } else {
-            r12 = opt<XYZW>(fl, mul(c8, c9));
-            r13 = opt<XYZW>(fl, mul(c10, c11));
-            r14 = opt<XYZW>(fl, mul(c9, b5));
-            r15 = opt<XYZW>(fl, mul(c11, b5));
-            a = opt<XYZW>(fl, mul(c8, b6));
-            r8 = opt<XYZW>(fl, add(a, mul(c9, b7)));
-            r9 = opt<XYZW>(fl, add(a, mul(r14, b7)));
-            dot_y(fl, r12, a, c4);
-            dot_y(fl, r13, a, c4);
-            a = opt<XYZW>(fl, mul(c10, b6));
+            r12 = opt<XYZW, Raw>(fl, mul(c8, c9));
+            r13 = opt<XYZW, Raw>(fl, mul(c10, c11));
+            r14 = opt<XYZW, Raw>(fl, mul(c9, b5));
+            r15 = opt<XYZW, Raw>(fl, mul(c11, b5));
+            a = opt<XYZW, Raw>(fl, mul(c8, b6));
+            r8 = opt<XYZW, Raw>(fl, add(a, mul(c9, b7)));
+            r9 = opt<XYZW, Raw>(fl, add(a, mul(r14, b7)));
+            dot_y<Raw>(fl, r12, a, c4);
+            dot_y<Raw>(fl, r13, a, c4);
+            a = opt<XYZW, Raw>(fl, mul(c10, b6));
             const bool na = _mm_cvtsi128_si32(_mm_srli_si128(r12, 4)) < 0;  // (qlo(vf12) < 0: the y lane's sign)
-            r10 = opt<XYZW>(fl, add(a, mul(c11, b7)));
-            r11 = opt<XYZW>(fl, add(a, mul(r15, b7)));
+            r10 = opt<XYZW, Raw>(fl, add(a, mul(c11, b7)));
+            r11 = opt<XYZW, Raw>(fl, add(a, mul(r15, b7)));
             const bool nb = _mm_cvtsi128_si32(_mm_srli_si128(r13, 4)) < 0;
             if (!na) {
-                r9 = opt<XYZW>(fl, mul(r8, r8));
+                r9 = opt<XYZW, Raw>(fl, mul(r8, r8));
             } else {
                 r8 = r9;
-                r9 = opt<XYZW>(fl, mul(r9, r9));
+                r9 = opt<XYZW, Raw>(fl, mul(r9, r9));
             }
             if (!nb) {
-                r11 = opt<XYZW>(fl, mul(r10, r10));
+                r11 = opt<XYZW, Raw>(fl, mul(r10, r10));
             } else {
                 r10 = r11;
-                r11 = opt<XYZW>(fl, mul(r11, r11));
+                r11 = opt<XYZW, Raw>(fl, mul(r11, r11));
             }
-            sum_x(fl, r9, a, c4);
-            sum_x(fl, r11, a, c4);
+            sum_x<Raw>(fl, r9, a, c4);
+            sum_x<Raw>(fl, r11, a, c4);
+            // (Q is a VRSQRT's, clamped as the broadcast operand it is: the largest float for a zero sum, never exponent 255)
             qv = vrsqrt(one, lane0(r9));
-            r8 = opt<XYZW>(fl, mul(r8, _mm_set1_epi32(static_cast<int>(f2u(vuc(qv))))));
+            r8 = opt<XYZW, Raw>(fl, mul(r8, _mm_set1_epi32(static_cast<int>(f2u(vuc(qv))))));
             qv = vrsqrt(one, lane0(r11));
-            r10 = opt<XYZW>(fl, mul(r10, _mm_set1_epi32(static_cast<int>(f2u(vuc(qv))))));
+            r10 = opt<XYZW, Raw>(fl, mul(r10, _mm_set1_epi32(static_cast<int>(f2u(vuc(qv))))));
         }
         sqv(p, r8);
         sqv(p + 0x40, r10);
@@ -413,82 +487,113 @@ int g_pose_wide = [] {
     stv(v[15], r15);
     q() = qv;
 }
+[[gnu::always_inline]] inline void lerp_rotations_simd(LocalFlags& fl, int32_t n, uint32_t at, uint32_t k2, bool plain) {
+    using namespace simd;
+    Vf* const v = vf();
+    // (vf5 .. vf7's x lanes and vf4 whole are what the loop reads of the registers it finds)
+    const I x567 = inf_or(inf_or(inf_or(_mm_setzero_si128(), ldv(v[5])), ldv(v[6])), ldv(v[7]));
+    if (raw_on() && finite<X>(x567) && finite<>(inf_or(_mm_setzero_si128(), ldv(v[4])))) lerp_rotations_simd_t<true>(fl, n, at, k2, plain);
+    else lerp_rotations_simd_t<false>(fl, n, at, k2, plain);
+}
+
+// orig: (helper) one joint's matrix from its quaternion r10, its scale r8 (`scaled`) and translation r9 under its parent's rows
+// (r12 .. r15 as loaded: the parent's, or vf1 vf2 vf3 vf0): the registers vf11 and vf16 .. vf19 as the ops leave them, the
+// matrix in o. V0 .. V3 are vf0 .. vf3, C0 vf0 as an operand, w1 its w broadcast
+template <bool Raw>
+[[gnu::always_inline]] inline void joint_step(LocalFlags& fl, simd::I& a, simd::I r10, simd::I r8, simd::I r9, bool scaled, const simd::I prow[4], const simd::I V[4],
+                                              simd::I C0, simd::I w1, simd::I& r11, simd::I r16_19[4], simd::I o[4]) {
+    using namespace simd;
+    I r16 = V[1], r17 = V[2], r18 = V[3], r19 = V[0];
+    const I c10 = cop<Raw>(r10);
+    r11 = opt<XYZW, Raw>(fl, add(c10, c10));
+    // (vf12 .. vf15's lanes these ops leave unwritten are never read: the four are loaded whole below)
+    const I t12 = opt<XYZ, Raw>(fl, mul(r11, bc<3>(c10)));
+    const I t13 = opt<XYZ, Raw>(fl, mul(r11, bc<0>(c10)));
+    const I t14 = opt<YZ, Raw>(fl, mul(r11, bc<1>(c10)));
+    const I t15 = opt<Z, Raw>(fl, mul(r11, bc<2>(c10)));
+    op<X, Raw>(fl, r17, add(C0, bc<2>(t12)));
+    op<X, Raw>(fl, r18, sub(C0, bc<1>(t12)));
+    op<Y, Raw>(fl, r18, add(C0, bc<0>(t12)));
+    op<X, Raw>(fl, r16, sub(cop<Raw>(r16), bc<1>(t14)));
+    op<Y, Raw>(fl, r17, sub(cop<Raw>(r17), bc<0>(t13)));
+    op<Z, Raw>(fl, r18, sub(cop<Raw>(r18), bc<0>(t13)));
+    op<Y, Raw>(fl, r16, sub(t13, bc<2>(t12)));
+    op<Z, Raw>(fl, r16, add(t13, bc<1>(t12)));
+    op<Z, Raw>(fl, r17, sub(t14, bc<0>(t12)));
+    op<X, Raw>(fl, r17, add(cop<Raw>(r17), bc<1>(t13)));
+    op<X, Raw>(fl, r18, add(cop<Raw>(r18), bc<2>(t13)));
+    op<Y, Raw>(fl, r18, add(cop<Raw>(r18), bc<2>(t14)));
+    op<X, Raw>(fl, r16, sub(cop<Raw>(r16), bc<2>(t15)));
+    op<Y, Raw>(fl, r17, sub(cop<Raw>(r17), bc<2>(t15)));
+    op<Z, Raw>(fl, r18, sub(cop<Raw>(r18), bc<1>(t14)));
+    if (scaled) {
+        const I c8 = cop<Raw>(r8);
+        op<XYZ, Raw>(fl, r16, mul(cop<Raw>(r16), bc<0>(c8)));
+        op<XYZ, Raw>(fl, r17, mul(cop<Raw>(r17), bc<1>(c8)));
+        op<XYZ, Raw>(fl, r18, mul(cop<Raw>(r18), bc<2>(c8)));
+    }
+    op<XYZ, Raw>(fl, r19, add(cop<Raw>(r19), cop<Raw>(r9)));
+    const I rows[4] = {cop<Raw>(prow[0]), cop<Raw>(prow[1]), cop<Raw>(prow[2]), cop<Raw>(prow[3])};
+    const I pts[4] = {cop<Raw>(r16), cop<Raw>(r17), cop<Raw>(r18), cop<Raw>(r19)};
+#ifdef RAC1_POSE_AVX2
+    if (g_pose_wide != 0) {
+        const simd2::Fl f = simd2::compose_joint<Raw>(a, rows, pts, w1, o);
+        fl.sticky = _mm_or_si128(fl.sticky, f.sticky);
+        fl.last = f.last;
+        fl.pending = true;
+    } else
+#endif
+    {
+        compose_joint<Raw>(fl, a, rows, pts, w1, o);
+    }
+    r16_19[0] = r16, r16_19[1] = r17, r16_19[2] = r18, r16_19[3] = r19;
+}
 
 // orig: (helper) the joints' matrices from their quaternion (+0), scale (+0x10, +0x1c set: scaled) and translation (+0x20) under
-// their parent's (+0x2c), the scratchpad's joint records from 0 to `last`
+// their parent's (+0x2c), the scratchpad's joint records from 0 to `last`. A joint's record and its parent's matrix are read
+// before its first op (no op writes memory: the matrix is stored at the joint's end), so that the joint is run raw when they
+// and vf0 .. vf3 are finite
 [[gnu::always_inline]] inline void joint_matrices_simd(LocalFlags& fl, uint32_t last) {
     using namespace simd;
     Vf* const v = vf();
-    const I V0 = ldv(v[0]), V1 = ldv(v[1]), V2 = ldv(v[2]), V3 = ldv(v[3]);
-    const I C0 = cop4(V0), w1 = bc<3>(C0);
+    const I V[4] = {ldv(v[0]), ldv(v[1]), ldv(v[2]), ldv(v[3])};
+    const I C0 = cop4(V[0]), w1 = bc<3>(C0);
+    const I w1r = bc<3>(V[0]);
+    const I vinf = inf_or(inf_or(inf_or(inf_or(_mm_setzero_si128(), V[0]), V[1]), V[2]), V[3]);
+    const bool raw = raw_on() && finite<>(vinf);
     I a = ldv(acc());
     I r8 = ldv(v[8]), r9 = ldv(v[9]), r10 = ldv(v[10]), r11 = ldv(v[11]), r12 = ldv(v[12]), r13 = ldv(v[13]), r14 = ldv(v[14]), r15 = ldv(v[15]);
     I r16 = ldv(v[16]), r17 = ldv(v[17]), r18 = ldv(v[18]), r19 = ldv(v[19]), r20 = ldv(v[20]), r21 = ldv(v[21]), r22 = ldv(v[22]), r23 = ldv(v[23]);
     for (uint32_t a3 = SPR;;) {
         r10 = lqv(a3);
-        const I c10 = cop4(r10);
-        r16 = V1;
-        r11 = opt<XYZW>(fl, add(c10, c10));
-        r17 = V2;
-        r18 = V3;
-        r19 = V0;
-        // (vf12 .. vf15's lanes these ops leave unwritten are never read: the four are loaded whole below)
-        const I t12 = opt<XYZ>(fl, mul(r11, bc<3>(c10)));
-        const I t13 = opt<XYZ>(fl, mul(r11, bc<0>(c10)));
-        const I t14 = opt<YZ>(fl, mul(r11, bc<1>(c10)));
-        const I t15 = opt<Z>(fl, mul(r11, bc<2>(c10)));
-        op<X>(fl, r17, add(C0, bc<2>(t12)));
-        op<X>(fl, r18, sub(C0, bc<1>(t12)));
-        op<Y>(fl, r18, add(C0, bc<0>(t12)));
-        op<X>(fl, r16, sub(cop4(r16), bc<1>(t14)));
-        op<Y>(fl, r17, sub(cop4(r17), bc<0>(t13)));
-        op<Z>(fl, r18, sub(cop4(r18), bc<0>(t13)));
-        op<Y>(fl, r16, sub(t13, bc<2>(t12)));
-        op<Z>(fl, r16, add(t13, bc<1>(t12)));
-        op<Z>(fl, r17, sub(t14, bc<0>(t12)));
-        op<X>(fl, r17, add(cop4(r17), bc<1>(t13)));
-        op<X>(fl, r18, add(cop4(r18), bc<2>(t13)));
-        op<Y>(fl, r18, add(cop4(r18), bc<2>(t14)));
         a3 += 0x40;
-        op<X>(fl, r16, sub(cop4(r16), bc<2>(t15)));
         const uint32_t scaled = lwu(a3 - 0x24);
-        op<Y>(fl, r17, sub(cop4(r17), bc<2>(t15)));
         const uint32_t parent = lwu(a3 - 0x14);
-        op<Z>(fl, r18, sub(cop4(r18), bc<1>(t14)));
         r8 = lqv(a3 - 0x30);
         r9 = lqv(a3 - 0x20);
-        if (scaled != 0) {
-            const I c8 = cop4(r8);
-            op<XYZ>(fl, r16, mul(cop4(r16), bc<0>(c8)));
-            op<XYZ>(fl, r17, mul(cop4(r17), bc<1>(c8)));
-            op<XYZ>(fl, r18, mul(cop4(r18), bc<2>(c8)));
-        }
-        r12 = V1;
+        r12 = V[1];
         if (parent == 0) {
-            r13 = V2;
-            r14 = V3;
-            r15 = V0;
+            r13 = V[2];
+            r14 = V[3];
+            r15 = V[0];
         } else {
             r12 = lqv(parent);
             r13 = lqv(parent + 0x10);
             r14 = lqv(parent + 0x20);
             r15 = lqv(parent + 0x30);
         }
-        op<XYZ>(fl, r19, add(cop4(r19), cop4(r9)));
-        const I rows[4] = {cop4(r12), cop4(r13), cop4(r14), cop4(r15)};
-        const I pts[4] = {cop4(r16), cop4(r17), cop4(r18), cop4(r19)};
-        I o[4];
-#ifdef RAC1_POSE_AVX2
-        if (g_pose_wide != 0) {
-            const simd2::Fl f = simd2::compose_joint(a, rows, pts, w1, o);
-            fl.sticky = _mm_or_si128(fl.sticky, f.sticky);
-            fl.last = f.last;
-            fl.pending = true;
-        } else
-#endif
-        {
-            compose_joint(fl, a, rows, pts, w1, o);
-        }
+        const I prow[4] = {r12, r13, r14, r15};
+        I pts[4], o[4];
+        // (the quaternion and the parent's rows whole, the translation's x y z, the scale's when it is used)
+        I inf = inf_or(inf_or(inf_or(inf_or(inf_or(_mm_setzero_si128(), r10), r12), r13), r14), r15);
+        I inf3 = inf_or(_mm_setzero_si128(), r9);
+        if (scaled != 0) inf3 = inf_or(inf3, r8);
+        if (raw && finite<>(inf) && finite<XYZ>(inf3)) joint_step<true>(fl, a, r10, r8, r9, scaled != 0, prow, V, V[0], w1r, r11, pts, o);
+        else joint_step<false>(fl, a, r10, r8, r9, scaled != 0, prow, V, C0, w1, r11, pts, o);
+        r16 = pts[0];
+        r17 = pts[1];
+        r18 = pts[2];
+        r19 = pts[3];
         r20 = o[0];
         r21 = o[1];
         r22 = o[2];
@@ -504,11 +609,33 @@ int g_pose_wide = [] {
     for (int i = 0; i < 16; ++i) stv(v[8 + i], *out[i]);
 }
 
-// orig: (helper) each joint's matrix (from 0) times its bind matrix (from 0x1c00), to `last`
+// orig: (helper) one joint's matrix (the rows r20 .. r23) times its bind matrix (the points r12 .. r15): o
+template <bool Raw>
+[[gnu::always_inline]] inline void bind_step(LocalFlags& fl, simd::I& a, const simd::I r[4], const simd::I p[4], simd::I w1, simd::I o[4]) {
+    using namespace simd;
+    const I rows[4] = {cop<Raw>(r[0]), cop<Raw>(r[1]), cop<Raw>(r[2]), cop<Raw>(r[3])};
+    const I pts[4] = {cop<Raw>(p[0]), cop<Raw>(p[1]), cop<Raw>(p[2]), cop<Raw>(p[3])};
+#ifdef RAC1_POSE_AVX2
+    if (g_pose_wide != 0) {
+        const simd2::Fl f = simd2::compose_bind<Raw>(a, rows, pts, w1, o);
+        fl.sticky = _mm_or_si128(fl.sticky, f.sticky);
+        fl.last = f.last;
+        fl.pending = true;
+    } else
+#endif
+    {
+        compose_bind<Raw>(fl, a, rows, pts, w1, o);
+    }
+}
+
+// orig: (helper) each joint's matrix (from 0) times its bind matrix (from 0x1c00), to `last`; a joint raw when its two matrices
+// and vf0's w are finite
 [[gnu::always_inline]] inline void bind_matrices_simd(LocalFlags& fl, uint32_t last) {
     using namespace simd;
     Vf* const v = vf();
-    const I w1 = bc<3>(cop4(ldv(v[0])));
+    const I V0 = ldv(v[0]);
+    const I w1 = bc<3>(cop4(V0)), w1r = bc<3>(V0);
+    const bool raw = raw_on() && finite<W>(inf_or(_mm_setzero_si128(), V0));
     I a = ldv(acc());
     I r12 = ldv(v[12]), r13 = ldv(v[13]), r14 = ldv(v[14]), r15 = ldv(v[15]), r16 = ldv(v[16]), r17 = ldv(v[17]), r18 = ldv(v[18]), r19 = ldv(v[19]);
     I r20 = ldv(v[20]), r21 = ldv(v[21]), r22 = ldv(v[22]), r23 = ldv(v[23]);
@@ -522,20 +649,13 @@ int g_pose_wide = [] {
         r21 = lqv(m + 0x10);
         r22 = lqv(m + 0x20);
         r23 = lqv(m + 0x30);
-        const I rows[4] = {cop4(r20), cop4(r21), cop4(r22), cop4(r23)};
-        const I pts[4] = {cop4(r12), cop4(r13), cop4(r14), cop4(r15)};
+        const I rows[4] = {r20, r21, r22, r23};
+        const I pts[4] = {r12, r13, r14, r15};
         I o[4];
-#ifdef RAC1_POSE_AVX2
-        if (g_pose_wide != 0) {
-            const simd2::Fl f = simd2::compose_bind(a, rows, pts, w1, o);
-            fl.sticky = _mm_or_si128(fl.sticky, f.sticky);
-            fl.last = f.last;
-            fl.pending = true;
-        } else
-#endif
-        {
-            compose_bind(fl, a, rows, pts, w1, o);
-        }
+        I inf = inf_or(inf_or(inf_or(inf_or(_mm_setzero_si128(), r12), r13), r14), r15);
+        inf = inf_or(inf_or(inf_or(inf_or(inf, r20), r21), r22), r23);
+        if (raw && finite<>(inf)) bind_step<true>(fl, a, rows, pts, w1r, o);
+        else bind_step<false>(fl, a, rows, pts, w1, o);
         r16 = o[0];
         r17 = o[1];
         r18 = o[2];

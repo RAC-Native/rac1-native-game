@@ -169,6 +169,28 @@ is a denormal or has exponent 255). Divisions, square roots, conversions, `VOPMU
 - Not run on AArch64 (no cross compiler or emulator on the development machine): the forms use only intrinsics the NEON
   shim (`runtime/vu/vu_simd_shim.h`) already has, and `tests/fp/fp_raw_equiv.cpp` builds there as it is.
 
+**The pose's loops** (`moby_joints.cpp`, the same switch): the four hot loops keep their registers in SIMD locals and clamped
+operands and results themselves. Each step - a listed vector, a joint's matrix, a bind matrix; the rotations' loop whole - is
+now written once for two policies and run raw when nothing it reads from memory, or from the registers the loop found, has
+exponent 255 (the record and the parent's matrix are read before the joint's first op: no op of a joint writes memory), by
+the rules otherwise. Oracle batch 470's new `joints_raw` runs the loops per-op, SIMD and AVX2 with the raw forms on against
+the per-op form by the rules: 8000 cases, a third of them with such an input, 0 differing (with one finiteness test taken
+out, 1311 fail). `=2` runs the loops by the rules.
+
+Measured as above, the build before -> the FPU's and the VU0's raw forms, ms a game frame:
+
+| | Veldin | Kerwan | Rilgar | Blarg Station | Hoven |
+|---|---|---|---|---|---|
+| The game's code | 1.13 -> 0.91 | 1.89 -> 1.52 | 1.16 -> 0.93 | 1.38 -> 1.05 | 1.52 -> 1.18 |
+| `Game: world passes` | 0.43 -> 0.27 | 0.64 -> 0.37 | 0.36 -> 0.21 | 0.48 -> 0.32 | 0.62 -> 0.35 |
+| `Game: moby pass (draw loop)` | 0.23 -> 0.19 | 0.26 -> 0.21 | 0.11 -> 0.08 | 0.27 -> 0.21 | 0.22 -> 0.19 |
+| `Game: moby joints / skinning` | 0.088 -> 0.072 | 0.139 -> 0.108 | 0.106 -> 0.083 | 0.049 -> 0.039 | 0.135 -> 0.104 |
+| The main thread's CPU | 1.73 -> 1.53 | 3.19 -> 2.81 | 1.93 -> 1.72 | 2.30 -> 2.00 | 2.44 -> 2.12 |
+
+The game's code a fifth less (19.5 to 23.9 %), the world passes 37 to 43 % less. The same binary with both switches at 0 is
+7 to 12 % slower than the build before (the rule-by-rule forms are a call further away now): the figures are against the
+build before, not against `=0`.
+
 ## The widened view's and the LOD slider's shadow runs
 
 With the view wider than the game's 4:3 frustum (16:9 and wider, the sides filled) or the LOD slider off Original, the moby pass,
