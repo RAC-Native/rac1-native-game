@@ -4,9 +4,9 @@ It (re)makes four collections and leaves the rest of the scene alone:
 
   arena_visual     the meshes drawn (meshes.obj): textured, vertex coloured, faces split so that a
                    texture repeats at most MAXREP times across a triangle (the format allows 8)
-  arena_collision  the simplified collision (collision.obj), shown as wireframe; col_lava is surface type 3
-                   (the game's lava: Ratchet burns and bounces; Kalebo III's hero code has no lava yet, the plugin
-                   kills him at the third bounce or when he stays in it)
+  arena_collision  the simplified collision (collision.obj), shown as wireframe; col_lava is surface type 1
+                   (the game's lava, Gaspar's and Umbris's: on the generic hero code Ratchet jumps out burnt, a
+                   health point each time; type 3 would be Aridia's quicksand)
   arena_markers    empties: hero, ship, spawn_<kind>_<name>, trigger_<name> (cubes), obj_<class>,
                    flame_<name> (the flame vents: the plugin's)
   arena_lights     light_sun (Veldin's key light's direction: the sun Veldin's sky shows) and light_<name>
@@ -273,7 +273,7 @@ def layout():
     quad_floor(V["south_area"], C["col_south"], "grating", -5, -64, 5, -H)
     quad_floor(V["south_area"], C["col_south"], "floor", -12, -88, 12, -64)
 
-    # the lava lake: under everything, to the mountains' foot and beyond; its collision is surface type 3 (lava)
+    # the lava lake: under everything, to the mountains' foot and beyond; its collision is surface type 1 (lava)
     quad_floor(V["lava"], C["col_lava"], "lava", -104, -116, 104, 92, z=LAVA_Z)
 
     # the perimeter wall (6 high, 2 thick, outside the floor, its foot in the lava), gaps for the gates and the
@@ -608,7 +608,7 @@ def mesh_object(name, geo, col, collision):
     col.objects.link(ob)
     if collision:
         ob.display_type = "WIRE"
-        ob["rac1_collision_type"] = 3 if name == "col_lava" else 31
+        ob["rac1_collision_type"] = 1 if name == "col_lava" else 31
     return ob
 
 

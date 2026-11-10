@@ -1740,8 +1740,9 @@ static void zap_update(const float h[3]) {
    grind boots) and the SDK's ABI 11: without them the menu does not start them.
    The course ("Grindscarponi: Discesa") has obstacles on its lanes: our mines (the class mine's objects) are jumped;
    Kalebo III's rail mines (class 933, started by base_spawn where the spawn points with kind=kmine are) are broken with
-   the wrench (Square on the rail) or passed on another lane; each hurts him by one. Its end leads to a last wave in the
-   arena. */
+   the wrench (Square on the rail) or a weapon from afar, or passed on another lane; each hurts him by one. They blow up
+   with their own code (its explosion): near him the plugin decides (and sends the hit), farther their own code takes
+   his attacks. Its end leads to a last wave in the arena. */
 #define GRIND_BOOTS 0x0013d4ddu
 #define MAX_RAILS 6
 #define LANE_WARN 20.0f   /* a lane that ends: told this far from its end */
@@ -1751,11 +1752,15 @@ static void zap_update(const float h[3]) {
 #define RAIL_MINE 933      /* Kalebo III's rail mine (level.txt's spawn 933 14): it floats 0.7 over the rail */
 #define MINE_SWING 2.6f    /* the wrench's swing on the rail breaks one this near his middle */
 #define MINE_TOUCH 2.0f    /* nearer, and not swinging, it blows up on him (before he bumps into it, at about 1.4) */
-#define MINE_HELD 4        /* the rail mine's state the plugin keeps it in once it floats: its own code off. In its own
+#define MINE_HELD 4        /* the rail mine's state the plugin keeps it in while he is near: its own code off. In its own
                               state 1 it blows up when he passes within 3 or 4 (also on the next lane), hurting him unless
-                              he swings, hides in its state 2 and comes back 50 frames later */
+                              he swings, or when an attack hits it (a weapon, the wrench): its explosion, then hidden in
+                              its state 2 until off screen */
+#define MINE_GONE 5        /* blown up for good: hidden, its own code off (taken away at the next try) */
+#define MINE_NEAR 6.0f     /* held this near him; farther, its own code (his weapons break it, as on Kalebo III) */
 
 enum { O_MINE, O_KMINE };
+enum { BLOW_NONE, BLOW_BROKEN, BLOW_TOUCH };  /* a rail mine blown up by its own code on the plugin's hit: broken, or on him */
 
 static struct {
     int32_t set[MAX_RAILS];    /* the challenge's rails (rail_find's handles; set[0]: the one whose end finishes it) */
@@ -1771,6 +1776,7 @@ static struct {
         uint32_t obj;  /* O_MINE: our object; O_KMINE: its spawn point's (kind=kmine) */
         uint32_t h;    /* O_KMINE: base_spawn's handle while it is out */
         int kind, alive;
+        int blow;      /* O_KMINE: BLOW_*, the plugin's hit sent (its own code blows it up) */
         int course;    /* 0 the course's, 1 the escape's (named mine_e<n>, kmine_e<n>) */
         float p[3];
     } obs[MAX_OBST];
@@ -1915,6 +1921,7 @@ static void obstacles_reset(int mask) {
             if (m != 0) api->moby_remove(m);
             rails.obs[i].h = on ? api->base_spawn(RAIL_MINE, rails.obs[i].p, 0.0f) : 0;
             rails.obs[i].alive = rails.obs[i].h != 0;
+            rails.obs[i].blow = BLOW_NONE;
         } else {
             rails.obs[i].alive = on;
             api->object_show(rails.obs[i].obj, on);
@@ -1923,20 +1930,22 @@ static void obstacles_reset(int mask) {
     rails.kmines_hit = 0;
 }
 
-/* one blown up: smoke, a flash, the boom; the object hidden or the rail mine taken away */
+/* our mine blown up: smoke, a flash, the boom; the object hidden */
 static void obstacle_blast(int i, const float at[3]) {
     const float up[3] = {0.0f, 0.0f, 0.04f}, fire[3] = {1.0f, 0.55f, 0.2f};
     for (int k = 0; k < 4; ++k) api->smoke(at, up, 1.2f + 0.4f * (float)k);
     api->light_add(at, fire, 3.0f, 8.0f);
     if (snd_boom >= 0) api->sfx_play(snd_boom, 0, at);
     rails.obs[i].alive = 0;
-    if (rails.obs[i].kind == O_KMINE) {
-        const uint32_t m = kmine_moby(i);
-        if (m != 0) api->moby_remove(m);
-        rails.obs[i].h = 0;
-    } else {
-        api->object_show(rails.obs[i].obj, 0);
-    }
+    api->object_show(rails.obs[i].obj, 0);
+}
+
+/* a rail mine blown up by its own code (its explosion, its sound): back in its state 1 with a hit of the player's, which
+   it takes at its next update */
+static void kmine_blow(int i, uint32_t m, int how) {
+    rails.obs[i].blow = how;
+    api->sb(m + 0x20, 1);
+    api->hit_send(m, RAC1_HIT_PLAYER, 1.0f, api->hero());
 }
 
 /* riding past them: our mine under his feet hurts him (jump it); a rail mine breaks under his wrench's swing (bolts)
@@ -1960,44 +1969,50 @@ static void obstacles_update(const float h[3]) {
             rails.obs[i].alive = 0;
             continue;
         }
-        if ((int8_t)rac1_lb(api, m + 0x20) == 1) api->sb(m + 0x20, MINE_HELD);  /* (floating: its own code off) */
         float q[3];
         pos_of(m, q);
         const float d = dist3(mid, q);
-        /* its own code blew it up (the wrench's hit at about 1.4, or his touch, which hurt him): hidden in its state 2,
-           back 50 frames later. Taken away for good: broken when he was swinging, else his touch (no second hurt) */
-        if ((int8_t)rac1_lb(api, m + 0x20) == 2 || (rac1_lh(api, m + 0x34) & MOBY_HIDDEN) != 0) {
-            api->moby_remove(m);
-            rails.obs[i].h = 0;
+        const int st = (int8_t)rac1_lb(api, m + 0x20);
+        /* blown up by its own code (in its state 2, hidden): by a hit (his weapon or wrench from afar, the plugin's below)
+           or on him. Gone for good, its explosion playing on (its own code would put it back once off screen; the next try
+           takes it away); broken unless on him */
+        if (st == 2 || (rac1_lh(api, m + 0x34) & MOBY_HIDDEN) != 0) {
+            api->sb(m + 0x20, MINE_GONE);
             rails.obs[i].alive = 0;
-            if (swing) {
+            const int broken = rails.obs[i].blow != BLOW_TOUCH && (rails.obs[i].blow == BLOW_BROKEN || swing || d >= MINE_NEAR);
+            if (broken) {
                 ++rails.kmines_hit;
                 api->bolts_add(MINE_BOLTS);
             }
             if (s.test_log) {
                 char b[96];
-                snprintf(b, sizeof b, "rail mine %d blown up by itself at %.2f (%s)", i, d, swing ? "broken" : "touched");
+                snprintf(b, sizeof b, "rail mine %d blown up at %.2f (%s)", i, d, broken ? "broken" : "on him");
                 api->log(b);
             }
             continue;
         }
-        if (swing && d < MINE_SWING) {
-            obstacle_blast(i, q);
-            ++rails.kmines_hit;
-            api->bolts_add(MINE_BOLTS);
+        if (rails.obs[i].blow != BLOW_NONE || st == 0) continue;  /* (the plugin's hit sent; still starting) */
+        rac1_hit hit = {sizeof hit};
+        const int shot = st == MINE_HELD && api->hit_take(m, RAC1_HIT_PLAYER, &hit);  /* (held: an attack of his kept) */
+        if (shot || (swing && d < MINE_SWING)) {
+            kmine_blow(i, m, BLOW_BROKEN);
             if (s.test_log) {
                 char b[96];
-                snprintf(b, sizeof b, "rail mine %d broken at %.2f", i, d);
+                snprintf(b, sizeof b, "rail mine %d broken at %.2f (%s)", i, d, shot ? "hit" : "the swing");
                 api->log(b);
             }
         } else if (!swing && d < MINE_TOUCH) {
-            obstacle_blast(i, q);
-            api->hero_damage(1, 0);
+            kmine_blow(i, m, BLOW_TOUCH);
+            api->hero_damage(1, m);
             if (s.test_log) {
                 char b[96];
                 snprintf(b, sizeof b, "rail mine %d hit him at %.2f", i, d);
                 api->log(b);
             }
+        } else if (d < MINE_NEAR) {
+            if (st == 1) api->sb(m + 0x20, MINE_HELD);  /* (near him: its own code off, the next lane safe) */
+        } else if (st == MINE_HELD) {
+            api->sb(m + 0x20, 1);  /* (away from him: its own code again) */
         }
     }
 }
@@ -2809,7 +2824,8 @@ static void new_game(void* user) {
    challenge N from 420, the enemies by kind, the dropships, the weapon in his hand. And: arena_rail*, arena_course*, arena_fuga* (the
    rail challenges; arena_fuga: La grande fuga, Ratchet put on the escape when the lava rises; arena_fuga_fight: the
    section's two robots left to fight, with RAC1_SIM_INPUT=attack), arena_quartu (Quartu's world as a section, two robots
-   there), arena_suck (the Suck Cannon's beam on the enemies, with RAC1_SIM_INPUT=hold), arena_zap (an
+   there), arena_mine* (a rail mine on its own code before him: _send the plugin's hit, _bomb the Bomb Glove with
+   RAC1_SIM_INPUT=shoot, _held held), arena_suck (the Suck Cannon's beam on the enemies, with RAC1_SIM_INPUT=hold), arena_zap (an
    electrified drop zone, Ratchet in it), arena_texts (the game's text table and the items' names) */
 static void test(void* user, const char* text, uint64_t frame) {
     (void)user;
@@ -2928,6 +2944,45 @@ static void test(void* user, const char* text, uint64_t frame) {
             char b[96];
             snprintf(b, sizeof b, "hubwalk %llu: hero %.2f %.2f, %.2f over the arena's floor", (unsigned long long)frame, h[0] - s.centre[0],
                      h[1] - s.centre[1], h[2] - nav.floor_z);
+            api->log(b);
+        }
+        return;
+    }
+    if (s.mine && strncmp(text, "arena_mine", 10) == 0) {
+        /* (a rail mine 8 ahead of Ratchet on the arena's floor, the Blaster in his hand, its state every 10 frames:
+           arena_mine its own code (shot at with RAC1_SIM_INPUT=shoot), arena_mine_send the plugin's hit at 300,
+           arena_mine_held held in MINE_HELD, a player's hit taken with hit_take) */
+        static uint32_t mh;
+        const int held = strcmp(text, "arena_mine_held") == 0;
+        const int32_t gun = strcmp(text, "arena_mine_bomb") == 0 ? 0x0a : 0x0f;  /* (arena_mine_bomb: the Bomb Glove) */
+        if (frame == 100) {
+            const float at[3] = {s.centre[0], s.centre[1] - 20.0f, nav.floor_z + 0.5f};
+            hero_move(at, 1.5708f);
+            api->sb(0x0013d4c0u + (uint32_t)gun, 1);
+            const float p[3] = {at[0], at[1] + 8.0f, nav.floor_z + 0.5f};
+            mh = api->base_spawn(RAIL_MINE, p, 0.0f);
+        }
+        if (frame >= 110 && frame < 1500 && frame % 10 == 0 && rac1_lw(api, HERO_ITEM) != (uint32_t)gun) api->weapon_equip(gun);
+        const uint32_t m = mh ? api->base_moby(mh) : 0;
+        if (held && m != 0 && (int8_t)rac1_lb(api, m + 0x20) == 1) api->sb(m + 0x20, MINE_HELD);
+        rac1_hit hit = {sizeof hit};
+        if (held && m != 0 && api->hit_take(m, RAC1_HIT_PLAYER, &hit)) {
+            char b[120];
+            snprintf(b, sizeof b, "mine %llu: a hit taken, kinds %#x strength %.2f from %08x", (unsigned long long)frame, (unsigned)hit.kinds,
+                     (double)hit.strength, (unsigned)hit.from);
+            api->log(b);
+        }
+        if (frame == 300 && m != 0 && strcmp(text, "arena_mine_send") == 0) {
+            api->hit_send(m, RAC1_HIT_PLAYER, 1.0f, api->hero());
+            api->log("mine 300: the plugin's hit sent");
+        }
+        if (frame >= 100 && frame % 10 == 0) {
+            float q[3] = {0, 0, 0};
+            if (m != 0) pos_of(m, q);
+            char b[160];
+            snprintf(b, sizeof b, "mine %llu: moby %08x state %d flags %#x at %.2f %.2f %.2f, health %d, in hand %#x", (unsigned long long)frame, (unsigned)m,
+                     m ? (int)(int8_t)rac1_lb(api, m + 0x20) : -1, m ? (unsigned)rac1_lh(api, m + 0x34) : 0u, (double)q[0], (double)q[1], (double)q[2],
+                     (int)api->health(), (unsigned)rac1_lw(api, HERO_ITEM));
             api->log(b);
         }
         return;
