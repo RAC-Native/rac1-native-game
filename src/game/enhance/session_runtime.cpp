@@ -3,6 +3,7 @@
 
 #include <game/enhance/class_profiles.h>
 #include <game/enhance/leveldata.h>
+#include <game/enhance/sections.h>
 #include <game/enhance/session.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>
@@ -36,12 +37,13 @@ constexpr uint32_t P = 0x0013f350u;          // the player block (the hero's sta
 constexpr uint32_t LEVEL = 0x0015ed84u;      // the game's level number (a level mod's: its base's)
 constexpr uint32_t GRID_OUT = 0x80807f7fu;   // a moby's grid rectangle outside the grid (moby_retire's, moby_init's)
 constexpr uint32_t PC_ITEM = 0x201;          // our item in save<N>.pc (the level mods' items are 0x200, the plugins' 0x300)
-constexpr uint32_t PC_VERSION = 1;
+constexpr uint32_t PC_VERSION = 2;           // (1: stage 5's, one section; 2: the sections, each its objects gone, the current one's checkpoint)
 
 struct Checkpoint {
     std::string name;
     float pos[3] = {0, 0, 0};
     float yaw = 0;
+    int section = 0;  // (the section it is in: sections.h, 0 main)
 };
 
 // a placed object as the arrival left it (the soft resets' source), and the game's spawn rule of its placement
@@ -51,6 +53,8 @@ struct Placed {
     uint32_t flags = 0, wl = 0;  // (its placement record's flags and +4 byte: gameplay_load's spawn rule)
     uint8_t rec[0x100] = {};
     std::vector<uint8_t> pv;
+    bool left_alive = false;     // (main left by a portal: it was in play then)
+    uint32_t flags34 = 0;        // (frozen: its +0x34 flags before)
 };
 
 struct Rt {
@@ -82,8 +86,10 @@ struct Loaded {
     bool valid = false;
     std::string id;
     Checkpoint cp;
+    std::string cp_section;     // (the checkpoint's section by name: "main" or a section's)
     uint32_t respawns = 0;
-    std::vector<int32_t> gone;  // (the section's placed objects gone for good at the save)
+    std::vector<int32_t> gone;  // (main's placed objects gone for good at the save)
+    std::vector<std::pair<std::string, std::vector<int32_t>>> section_gone;  // (each other section's objects gone at the save)
     std::vector<std::pair<std::string, std::vector<uint8_t>>> plugins;
     std::vector<uint8_t> raw;
 };
@@ -199,6 +205,7 @@ void session_rt_level(const std::string& build_dir, const std::string& level_id)
     }
     g_session_rt = false;
     g_rt = Rt{};
+    sections_level("");  // (the sections of the session before dropped: sections.h)
     if (build_dir.empty()) return;
     std::ifstream in(build_dir + "/session.txt");
     if (!in) return;
@@ -229,6 +236,114 @@ void session_rt_level(const std::string& build_dir, const std::string& level_id)
     g_rt.cur = start_checkpoint();
     std::printf("[session] the session \"%s\": %zu checkpoints, respawn %s; no level load until it is left\n", level_id.c_str(), g_rt.checkpoints.size(),
                 g_rt.policy == SESSION_RESPAWN_KEEP ? "keep" : "reset");
+    sections_level(build_dir);  // (its sections, when it has some: sections.h)
+}
+
+// orig: (host) see session_runtime.h
+void session_rt_checkpoint_add(const std::string& name, int section, const float pos[3], float yaw) {
+    Checkpoint c;
+    c.name = name;
+    std::memcpy(c.pos, pos, 12);
+    c.yaw = yaw;
+    c.section = section;
+    g_rt.checkpoints.push_back(c);
+}
+
+// orig: (host) see session_runtime.h
+void session_rt_checkpoint_enter(const std::string& name, int section, const float pos[3], float yaw) {
+    if (!g_session_rt) return;
+    Checkpoint c;
+    c.name = name;
+    std::memcpy(c.pos, pos, 12);
+    c.yaw = yaw;
+    c.section = section;
+    g_rt.cur = c;
+}
+
+// orig: (host) see session_runtime.h
+int session_rt_checkpoint_section() { return g_session_rt ? g_rt.cur.section : 0; }
+
+// orig: (host) see session_runtime.h
+void session_rt_hero_put(const float pos[3], float yaw) {
+    Checkpoint c;
+    std::memcpy(c.pos, pos, 12);
+    c.yaw = yaw;
+    hero_put(c);
+}
+
+// orig: (host) see session_runtime.h
+bool session_bind(uint32_t m, int level, uint32_t cls, const std::string& slot, const std::string& value) {
+    const Profile* prof = profile_find(level, cls);
+    uint32_t off = 0;
+    std::string kind;
+    if (m == 0 || lwu(m + 0x78) == 0 || prof == nullptr || !profile_slot(prof, slot, &off, &kind)) {
+        std::fprintf(stderr, "[session] level.txt's object of class %d:%u: no slot %s to set\n", level, cls, slot.c_str());
+        return false;
+    }
+    const uint32_t pv = lwu(m + 0x78);
+    if (kind == "path" || kind == "area") {
+        std::vector<float> xyz;
+        uint32_t mem = 0;
+        if (!mod_code_path_points(value, xyz) || xyz.empty()) {
+            std::fprintf(stderr, "[session] level.txt's object of class %d:%u: slot %s: no path \"%s\"\n", level, cls, slot.c_str(), value.c_str());
+            return false;
+        }
+        const int np = static_cast<int>(std::min<size_t>(xyz.size() / 3, 64));
+        const int32_t s = ld_path_reserve(level, np, &mem);
+        if (s < 0) return false;
+        float pts[64][3];
+        for (int k = 0; k < np; ++k)
+            for (int c = 0; c < 3; ++c) pts[k][c] = xyz[static_cast<size_t>(3 * k + c)];
+        ld_path_set(mem, pts, np);
+        sw(pv + off, static_cast<uint32_t>(s));
+    } else {
+        sw(pv + off, value == "none" ? 0xffffffffu : static_cast<uint32_t>(std::strtol(value.c_str(), nullptr, 0)));
+    }
+    return true;
+}
+
+// orig: (host) see session_runtime.h
+size_t session_rt_main_leave(int32_t policy) {
+    if (!g_session_rt) return 0;
+    size_t n = 0;
+    for (Placed& p : g_rt.placed) {
+        p.left_alive = static_cast<int8_t>(lbu(p.moby + 0x20)) >= 0;
+        if (!p.left_alive) continue;
+        if (policy == SECTION_KEEP) {
+            ++n;
+            continue;
+        }
+        if (policy == SECTION_FREEZE) {
+            p.flags34 = lhu(p.moby + 0x34);
+            sh(p.moby + 0x34, p.flags34 | 2u);  // (not queued: neither updated nor drawn)
+            moby_grid_move(p.moby, GRID_OUT);
+        } else {
+            moby_retire(p.moby);
+        }
+        ++n;
+    }
+    if (trace()) std::printf("[session] main left: %zu placed objects %s\n", n, policy == SECTION_FREEZE ? "frozen" : policy == SECTION_KEEP ? "kept" : "removed");
+    return n;
+}
+
+// orig: (host) see session_runtime.h
+size_t session_rt_main_enter(int32_t policy) {
+    if (!g_session_rt) return 0;
+    size_t n = 0;
+    for (Placed& p : g_rt.placed) {
+        if (!p.left_alive) continue;
+        p.left_alive = false;
+        if (policy == SECTION_FREEZE) {
+            if (static_cast<int8_t>(lbu(p.moby + 0x20)) < 0) continue;
+            sh(p.moby + 0x34, (lhu(p.moby + 0x34) & ~2u) | (p.flags34 & 2u));
+            moby_update_transform(p.moby);
+        } else if (policy == SECTION_REMOVE && static_cast<int8_t>(lbu(p.moby + 0x20)) < 0 && !stays_dead(p)) {
+            restore(p, false);  // (back as the arrival placed it: it was there when main was left)
+            moby_update_transform(p.moby);
+        }
+        n += static_cast<int8_t>(lbu(p.moby + 0x20)) >= 0 ? 1 : 0;
+    }
+    return n;
 }
 
 // orig: (host) see session_runtime.h
@@ -255,33 +370,7 @@ void session_rt_loaded() {
         uint32_t m = 0;
         for (uint32_t q = lo; q < hi && m == 0; q += 0x100)
             if (lh(q + 0xb2) == b.uid && lhu(q + 0xa6) == b.cls) m = q;
-        const Profile* prof = profile_find(lw(LEVEL), b.cls);
-        uint32_t off = 0;
-        std::string kind;
-        if (m == 0 || lwu(m + 0x78) == 0 || prof == nullptr || !profile_slot(prof, b.slot, &off, &kind)) {
-            std::fprintf(stderr, "[session] level.txt's object %d (class %u): no slot %s to set\n", b.uid, b.cls, b.slot.c_str());
-            continue;
-        }
-        const uint32_t pv = lwu(m + 0x78);
-        if (kind == "path" || kind == "area") {
-            std::vector<float> xyz;
-            uint32_t mem = 0;
-            if (!mod_code_path_points(b.value, xyz) || xyz.empty()) {
-                std::fprintf(stderr, "[session] level.txt's object %d: slot %s: no path \"%s\"\n", b.uid, b.slot.c_str(), b.value.c_str());
-                continue;
-            }
-            const int np = static_cast<int>(std::min<size_t>(xyz.size() / 3, 64));
-            const int32_t slot = ld_path_reserve(lw(LEVEL), np, &mem);
-            if (slot < 0) continue;
-            float pts[64][3];
-            for (int k = 0; k < np; ++k)
-                for (int c = 0; c < 3; ++c) pts[k][c] = xyz[static_cast<size_t>(3 * k + c)];
-            ld_path_set(mem, pts, np);
-            sw(pv + off, static_cast<uint32_t>(slot));
-        } else {
-            sw(pv + off, b.value == "none" ? 0xffffffffu : static_cast<uint32_t>(std::strtol(b.value.c_str(), nullptr, 0)));
-        }
-        ++bound;
+        if (session_bind(m, lw(LEVEL), b.cls, b.slot, b.value)) ++bound;
     }
     if (!g_rt.binds.empty()) std::printf("[session] level.txt's objects: %zu of %zu slots set (their profiles')\n", bound, g_rt.binds.size());
     g_rt.placed.clear();
@@ -308,8 +397,25 @@ void session_rt_loaded() {
         std::memcpy(g_rt.cur.pos, g_rt.hero.rec + 0x10, 12);
         std::memcpy(&g_rt.cur.yaw, g_rt.hero.rec + 0x48, 4);
     }
+    sections_arrival();  // (the session's sections: main's state taken, its classes of other levels placed, the others streamed in)
+    if (const int s = sections_start(); s > 0) {  // (level.txt's start line: the session starts in that section, once the landing is over)
+        float pos[3] = {0, 0, 0}, yaw = 0;
+        std::string name;
+        if (sections_start_entry(pos, &yaw, &name)) {
+            g_rt.cur = Checkpoint{};
+            g_rt.cur.name = name;
+            std::memcpy(g_rt.cur.pos, pos, 12);
+            g_rt.cur.yaw = yaw;
+            g_rt.cur.section = s;
+            g_rt.place_pending = true;
+            g_rt.place_frames = 0;
+        }
+    }
     if (g_loaded.valid && g_loaded.id == g_rt.id) {  // (a save made in the session: back at its checkpoint)
         g_rt.cur = g_loaded.cp;
+        g_rt.cur.section = sections_index(g_loaded.cp_section.empty() ? "main" : g_loaded.cp_section);
+        if (g_rt.cur.section < 0) g_rt.cur.section = 0;
+        for (const auto& [name, uids] : g_loaded.section_gone) sections_gone(name, uids);
         g_rt.respawns = g_loaded.respawns;
         g_rt.place_pending = true;
         g_rt.place_frames = 0;
@@ -333,6 +439,8 @@ void session_rt_loaded() {
 // orig: (host) see session_runtime.h
 void session_respawn() {
     ++g_rt.respawns;
+    // (sections: the checkpoint's section made the current one first, at once, no fade: sections.h)
+    sections_respawn_prepare(g_rt.cur.section);
     // the hero: his moby as the arrival placed it, at the checkpoint, then as gameplay_load's end starts him (the player block
     // cleared, dropped onto the floor there, the camera behind him)
     uint32_t hm = lwu(P + 0x2080);
@@ -356,9 +464,13 @@ void session_respawn() {
     sub_00266d48();
     sub_001fb028();
     if (const uint32_t ship = lwu(0x0013e030); ship != 0 && lwu(P + 0x2080) != 0) sd(ship + 0x38, ld(lwu(P + 0x2080) + 0x38));
-    // the placed objects, by the policy
+    // the placed objects, by the policy (the current section's: main's here, another's in sections.cpp)
     size_t back = 0, kept_dead = 0;
-    if (g_rt.policy == SESSION_RESPAWN_RESET)
+    const int32_t policy = sections_respawn_policy(g_rt.policy);
+    if (sections_current() > 0) {
+        sections_respawn_objects(policy, &back, &kept_dead);
+    } else if (policy == SESSION_RESPAWN_RESET) {
+        sections_respawn_objects(policy, &back, &kept_dead);  // (main's classes of other levels placed, when it has some)
         for (const Placed& p : g_rt.placed) {
             if (static_cast<int8_t>(lbu(p.moby + 0x20)) >= 0) continue;  // (alive: as it is)
             if (stays_dead(p)) {
@@ -369,9 +481,12 @@ void session_respawn() {
             moby_update_transform(p.moby);
             ++back;
         }
+    }
     if (hm != 0) moby_update_transform(hm);
-    std::printf("[session] respawn %u at checkpoint \"%s\" (%.2f %.2f %.2f): no level load; placed objects %s: %zu back, %zu killed for good\n", g_rt.respawns,
-                g_rt.cur.name.c_str(), g_rt.cur.pos[0], g_rt.cur.pos[1], g_rt.cur.pos[2], g_rt.policy == SESSION_RESPAWN_KEEP ? "kept" : "reset", back, kept_dead);
+    std::printf("[session] respawn %u at checkpoint \"%s\" (%.2f %.2f %.2f)%s: no level load; placed objects %s: %zu back, %zu killed for good\n", g_rt.respawns,
+                g_rt.cur.name.c_str(), g_rt.cur.pos[0], g_rt.cur.pos[1], g_rt.cur.pos[2],
+                sections_any() ? (" in section " + sections_name(sections_current())).c_str() : "", policy == SESSION_RESPAWN_KEEP ? "kept" : "reset", back,
+                kept_dead);
     mod_code_respawn(g_rt.respawns, g_rt.cur.name.c_str(), g_rt.cur.pos, g_rt.cur.yaw);
 }
 
@@ -379,6 +494,7 @@ void session_respawn() {
 void session_rt_frame(uint64_t frame) {
     if (!g_session_rt || !g_rt.loaded) return;
     if (g_rt.start_frame == 0) g_rt.start_frame = frame;
+    sections_frame(frame);  // (the sections' streaming, portals, fades: sections.h)
     if (!g_rt.place_pending) return;
     // a loaded save: once the arrival is over (the landing's scene done: game mode 0 for a few frames, the hero standing)
     if (lw(OV(0x0015f5c4)) != 0 || lwu(P + 0x2080) == 0 || lbu(P + 0x20b1) != 0) {
@@ -386,9 +502,11 @@ void session_rt_frame(uint64_t frame) {
         return;
     }
     if (++g_rt.place_frames < 10) return;
+    if (g_rt.cur.section != sections_current() && !sections_switch_now(g_rt.cur.section)) return;  // (its section streamed in first)
     g_rt.place_pending = false;
     hero_put(g_rt.cur);
-    std::printf("[session] Ratchet at the save's checkpoint \"%s\" (%.2f %.2f %.2f)\n", g_rt.cur.name.c_str(), g_rt.cur.pos[0], g_rt.cur.pos[1], g_rt.cur.pos[2]);
+    std::printf("[session] Ratchet at checkpoint \"%s\" (%.2f %.2f %.2f)%s once the arrival is over\n", g_rt.cur.name.c_str(), g_rt.cur.pos[0], g_rt.cur.pos[1],
+                g_rt.cur.pos[2], sections_any() ? (" in section " + sections_name(g_rt.cur.section)).c_str() : "");
 }
 
 // orig: (host) see session_runtime.h
@@ -482,6 +600,7 @@ void session_checkpoint_game(const float pos[3], float yaw) {
     c.name = "game";
     std::memcpy(c.pos, pos, 12);
     c.yaw = yaw;
+    c.section = sections_current() < 0 ? 0 : sections_current();
     g_rt.cur = c;
     if (trace()) std::printf("[session] the game's checkpoint at %.2f %.2f %.2f\n", pos[0], pos[1], pos[2]);
 }
@@ -505,6 +624,7 @@ bool session_checkpoint_at(const float pos[3], float yaw, const std::string& nam
     c.name = name.empty() ? "plugin" : name.substr(0, 31);
     std::memcpy(c.pos, pos, 12);
     c.yaw = yaw;
+    c.section = sections_current() < 0 ? 0 : sections_current();
     g_rt.cur = c;
     return true;
 }
@@ -533,18 +653,29 @@ uint32_t session_rt_pc_items(std::vector<uint8_t>& d) {
     if (g_session_rt && g_rt.loaded) {
         u32_put(item, PC_VERSION);
         str_put(item, g_rt.id);
-        // its sections (one for now, "main"): each its checkpoint and its placed objects gone for good
-        u32_put(item, 1);
-        str_put(item, "main");
-        str_put(item, g_rt.cur.name);
-        for (const float f : g_rt.cur.pos) f32_put(item, f);
-        f32_put(item, g_rt.cur.yaw);
-        u32_put(item, g_rt.respawns);
+        // its sections (main first): each the checkpoint when it is the checkpoint's section ("" else), the respawns, its placed
+        // objects gone (main's: for good; another's: killed, not to come back until a death there)
+        const int ns = sections_count() > 0 ? sections_count() : 1;
+        u32_put(item, static_cast<uint32_t>(ns));
         std::vector<int32_t> gone;
         for (const Placed& p : g_rt.placed)
             if (static_cast<int8_t>(lbu(p.moby + 0x20)) < 0 && stays_dead(p)) gone.push_back(p.uid);
-        u32_put(item, static_cast<uint32_t>(gone.size()));
-        for (const int32_t u : gone) u32_put(item, static_cast<uint32_t>(u));
+        size_t gone_all = gone.size();
+        for (int s = 0; s < ns; ++s) {
+            str_put(item, s == 0 ? std::string("main") : sections_name(s));
+            const bool here = g_rt.cur.section == s;
+            str_put(item, here ? g_rt.cur.name : std::string());
+            for (const float f : g_rt.cur.pos) f32_put(item, here ? f : 0.0f);
+            f32_put(item, here ? g_rt.cur.yaw : 0.0f);
+            u32_put(item, g_rt.respawns);
+            if (s > 0) {
+                gone.clear();
+                sections_gone_of(s, gone);
+                gone_all += gone.size();
+            }
+            u32_put(item, static_cast<uint32_t>(gone.size()));
+            for (const int32_t u : gone) u32_put(item, static_cast<uint32_t>(u));
+        }
         // the plugins' session bytes (session_save, ABI 9)
         std::vector<std::pair<std::string, std::vector<uint8_t>>> blobs;
         mod_code_session_save(blobs);
@@ -554,8 +685,9 @@ uint32_t session_rt_pc_items(std::vector<uint8_t>& d) {
             u32_put(item, static_cast<uint32_t>(bytes.size()));
             item.insert(item.end(), bytes.begin(), bytes.end());
         }
-        std::printf("[session] the save's session item: \"%s\", checkpoint \"%s\", %zu placed objects gone, %zu plugins' bytes (%zu bytes)\n", g_rt.id.c_str(),
-                    g_rt.cur.name.c_str(), gone.size(), blobs.size(), item.size());
+        std::printf("[session] the save's session item: \"%s\", %d sections, checkpoint \"%s\" in %s, %zu placed objects gone, %zu plugins' bytes (%zu bytes)\n",
+                    g_rt.id.c_str(), ns, g_rt.cur.name.c_str(), g_rt.cur.section == 0 ? "main" : sections_name(g_rt.cur.section).c_str(), gone_all, blobs.size(),
+                    item.size());
     } else if (g_loaded.valid && mods_level_by_id(g_loaded.id) == nullptr) {
         item = g_loaded.raw;  // (a session whose mod is off or missing: written back as it was read)
     }
@@ -597,7 +729,8 @@ bool session_rt_pc_item(uint32_t id, const uint8_t* p, uint32_t size) {
         return true;
     };
     uint32_t version = 0, sections = 0;
-    if (!u32(version) || version != PC_VERSION || !str(L.id) || !u32(sections) || sections == 0) return true;  // (another version's: not ours to read)
+    if (!u32(version) || (version != 1 && version != PC_VERSION) || !str(L.id) || !u32(sections) || sections == 0 || sections > 32)
+        return true;  // (another version's: not ours to read)
     for (uint32_t s = 0; s < sections && ok; ++s) {
         std::string name;
         Checkpoint c;
@@ -607,11 +740,17 @@ bool session_rt_pc_item(uint32_t id, const uint8_t* p, uint32_t size) {
         f32(c.pos[0]), f32(c.pos[1]), f32(c.pos[2]), f32(c.yaw);
         u32(L.respawns);
         if (!u32(ngone) || ngone > 0x800) break;
+        std::vector<int32_t> gone;
         for (uint32_t k = 0; k < ngone && ok; ++k) {
             uint32_t u = 0;
-            if (u32(u)) L.gone.push_back(static_cast<int32_t>(u));
+            if (u32(u)) gone.push_back(static_cast<int32_t>(u));
         }
-        if (s == 0) L.cp = c;
+        if (s == 0) L.gone = gone;
+        else L.section_gone.emplace_back(name, gone);
+        if (s == 0 || !c.name.empty()) {  // (version 1: main's; 2: the checkpoint's section's)
+            L.cp = c;
+            L.cp_section = name;
+        }
     }
     uint32_t nplug = 0;
     if (ok && u32(nplug))
@@ -623,8 +762,8 @@ bool session_rt_pc_item(uint32_t id, const uint8_t* p, uint32_t size) {
             at += n;
         }
     L.valid = true;
-    std::printf("[session] the save's session item read: \"%s\", checkpoint \"%s\" (%.2f %.2f %.2f)\n", L.id.c_str(), L.cp.name.c_str(), L.cp.pos[0], L.cp.pos[1],
-                L.cp.pos[2]);
+    std::printf("[session] the save's session item read: \"%s\", checkpoint \"%s\" (%.2f %.2f %.2f) in %s\n", L.id.c_str(), L.cp.name.c_str(), L.cp.pos[0], L.cp.pos[1],
+                L.cp.pos[2], L.cp_section.c_str());
     g_loaded = std::move(L);
     return true;
 }

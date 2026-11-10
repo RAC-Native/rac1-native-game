@@ -886,4 +886,21 @@ void level_slots_test_frame(uint64_t frame) {
                 bytes_sum(std::vector<uint8_t>(out.begin() + static_cast<std::ptrdiff_t>(game), out.end())), pc.size(), base.c_str());
 }
 
+// orig: (none) — enhancement: see level_slots.h
+void level_music_words_get(uint32_t w[15]) {
+    for (uint32_t i = 0; i < 15; ++i) w[i] = lwu(HEADER + 0x148 + i * 4);
+}
+// orig: (none) — enhancement: see level_slots.h
+void level_music_words_put(const uint32_t w[15]) {
+    for (uint32_t i = 0; i < 15; ++i) sw(HEADER + 0x148 + i * 4, w[i]);
+}
+// orig: (none) — enhancement: see level_slots.h
+bool level_music_words_of(int level, uint32_t w[15]) {
+    if (level < 0 || level >= 19) return false;
+    std::vector<uint8_t> h(5 * 2048);
+    if (!disc_read(lwu(0x0013a448 + static_cast<uint32_t>(level) * 8), 5, h.data())) return false;
+    std::memcpy(w, h.data() + 0x148, 15 * 4);
+    return true;
+}
+
 }  // namespace rac1

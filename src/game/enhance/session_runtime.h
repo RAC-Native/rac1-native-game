@@ -13,6 +13,7 @@
 #ifndef RAC1_GAME_ENHANCE_SESSION_RUNTIME_H
 #define RAC1_GAME_ENHANCE_SESSION_RUNTIME_H
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -65,6 +66,27 @@ uint32_t session_rt_pc_items(std::vector<uint8_t>& d);
 bool session_rt_pc_item(uint32_t id, const uint8_t* p, uint32_t size);
 // orig: (host) a .pc about to be read: the session item of the save before forgotten
 void session_rt_pc_reset();
+
+// The sections' side (sections.h, stage 6): the session's checkpoints and hero, main's placed objects
+// orig: (host) a checkpoint of a section (sections.txt's) added to the session's: checkpoint_set finds it by its name
+void session_rt_checkpoint_add(const std::string& name, int section, const float pos[3], float yaw);
+// orig: (host) the current checkpoint made `name` in `section` at `pos` turned `yaw` (a portal's entry: where a death there
+// brings Ratchet back)
+void session_rt_checkpoint_enter(const std::string& name, int section, const float pos[3], float yaw);
+// orig: (host) the current checkpoint's section (0 main)
+int session_rt_checkpoint_section();
+// orig: (host) Ratchet put at `pos` turned `yaw` (the game's hero_place: his state 0, the camera cut behind him)
+void session_rt_hero_put(const float pos[3], float yaw);
+// orig: (host) main left for another section (by its policy, sections.h's SECTION_*): its placed objects in play removed
+// (out of play, as the game takes a moby out), frozen (not updated nor drawn, out of the collision grid) or kept running: their
+// count (in play then)
+size_t session_rt_main_leave(int32_t policy);
+// orig: (host) main entered again: the placed objects its leaving removed back as the arrival placed them (not the ones the
+// game keeps killed for good), or unfrozen: their count in play
+size_t session_rt_main_enter(int32_t policy);
+// orig: (host) a level.txt object's slot `slot` of its class's profile (`level`'s class `cls`) set to `value` (a path line's
+// name for a path or area slot, a number or none): false when it has no such slot
+bool session_bind(uint32_t m, int level, uint32_t cls, const std::string& slot, const std::string& value);
 
 }  // namespace rac1
 

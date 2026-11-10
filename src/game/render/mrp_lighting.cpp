@@ -3783,9 +3783,19 @@ struct FileLine {
 std::vector<FileLine> g_user_layout;
 int g_user_level = -1;
 std::string g_user_path;
+// (a session's section's lights file, mrp_user_lights_section: set by the game's thread, read by the render thread's next
+// frame through the generation)
+std::mutex g_section_lights_m;
+std::string g_section_lights;
+std::atomic<uint32_t> g_section_lights_gen{0};
+uint32_t g_section_lights_seen = 0;
 // orig: (host) the level's lights file
 std::string user_path(int level) {
-    if (level_slot_base(level) >= 0) return level_slot_mod_dir(level) + "/level/lights.txt";  // (a level mod's slot: its own file, src/host/level_slots.h)
+    if (level_slot_base(level) >= 0) {  // (a level mod's slot: its own file, src/host/level_slots.h; a session's section's own)
+        std::scoped_lock lock(g_section_lights_m);
+        if (!g_section_lights.empty()) return g_section_lights;
+        return level_slot_mod_dir(level) + "/level/lights.txt";
+    }
     const char* dir = std::getenv("RAC1_LIGHTS_DIR");
     char name[32];
     std::snprintf(name, sizeof name, "level%02d.txt", level);
@@ -4333,7 +4343,8 @@ void user_load(int level) {
 // secondary lights' setting)
 void user_ensure() {
     const int level = level_slot_of(static_cast<int>(draw_lw(0x0015ed84)));
-    if (level != g_user_level) {
+    if (level != g_user_level || g_section_lights_gen.load() != g_section_lights_seen) {
+        g_section_lights_seen = g_section_lights_gen.load();
         user_load(level);
     } else if (level_moby_classes() != g_global_classes) {  // (the level's classes registered after its file was read: the lines for
         classes_unapply();                                   // every level matched to them again)
@@ -4633,6 +4644,15 @@ void mrp_user_lights_class_set_off(int o_class, bool off) {
 int mrp_user_lights_level() { return g_user_level; }
 // orig: (host) see mrp_lighting.h
 const char* mrp_user_lights_path() { return g_user_path.c_str(); }
+// orig: (host) see mrp_lighting.h
+void mrp_user_lights_section(const std::string& path) {
+    {
+        std::scoped_lock lock(g_section_lights_m);
+        if (g_section_lights == path) return;
+        g_section_lights = path;
+    }
+    g_section_lights_gen.fetch_add(1);
+}
 // orig: (host) see mrp_lighting.h
 void mrp_user_lights_reload() {
     if (g_user_level >= 0) user_load(g_user_level);
@@ -5367,7 +5387,10 @@ void mrp_lighting_shadow_pass() {
     g_sh.ngame = g_sh.npts;
     if (g_modern_points != 0 && g_auto_lights != 0) {  // (step 3) the lights placed by hand, before the emitters
         const int level = level_slot_of(static_cast<int>(draw_lw(0x0015ed84)));
-        if (level != g_user_level) user_load(level);
+        if (level != g_user_level || g_section_lights_gen.load() != g_section_lights_seen) {
+            g_section_lights_seen = g_section_lights_gen.load();
+            user_load(level);
+        }
         const double t = static_cast<double>(g_sh.frame) / 60.0;
         for (size_t i = 0; i < g_user.size() && g_sh.npts < kMaxPts; ++i) {
             const UserLight& l = g_user[i];

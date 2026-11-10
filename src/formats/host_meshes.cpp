@@ -2,6 +2,7 @@
 #include <formats/host_meshes.h>
 
 #include <algorithm>
+#include <atomic>
 
 #include <cstring>
 #include <cstdio>
@@ -326,5 +327,15 @@ void host_meshes_dynamic(std::vector<HostMeshInstance>& out) {
     std::scoped_lock lock(g_dyn_m);
     out = g_dyn;
 }
+
+namespace {
+std::atomic<uint32_t> g_sections{0xffffffffu};
+}  // namespace
+
+// orig: (host) see host_meshes.h
+void host_meshes_sections_set(uint32_t mask) { g_sections.store(mask); }
+
+// orig: (host) see host_meshes.h
+uint32_t host_meshes_sections() { return g_sections.load(); }
 
 }  // namespace rac1::mrpw
