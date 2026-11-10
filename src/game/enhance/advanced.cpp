@@ -814,9 +814,11 @@ float rac3_tilt() {
 // (jump_update, 0x217970 block 0x21ead0: 7, 9..0x12, 0x1c, 0x3c, 0x49, 0x4c, 0x5e, 0x69)
 bool modern_aim() { return lbu(CONTROLS) != 0 && lbu(MOVEMENT) != 0; }  // orig: (none) — Aiming = Modern (needs RAC 3)
 
-// orig: (none) — enhancement: the states the strafe works in
+// orig: (none) — enhancement: the states the strafe works in (#129: also Clank's and Giant Clank's stand and walk, the 0x43
+// set's 0x43 / 0x44 / 0x50 and the 0x5a set's 0x5a / 0x5b; their jumps 0x49 / 0x4c / 0x5e are the jump family's)
 bool aim_state(int32_t st) {
     if (st == 0 || st == 2 || st == 3 || st == 0x73) return true;
+    if (st == 0x43 || st == 0x44 || st == 0x50 || st == 0x5a || st == 0x5b) return true;
     return st == 7 || (st >= 9 && st <= 0x12) || st == 0x1c || st == 0x3c || st == 0x49 || st == 0x4c || st == 0x5e || st == 0x69;
 }
 }  // namespace
@@ -828,10 +830,9 @@ uint32_t advanced_pad_remap(uint32_t pad, uint32_t held) {
     g_aim_button = false;
     // only with Movement = RAC 3, in gameplay (circle confirms Quit Game in the menus)
     if (lbu(MOVEMENT) == 0 || lw(OV(0x0015f5c4)) != 0) return held;
-    // and not as Clank (the hero's form +0x20a4: 1 Clank, 2 Giant Clank; #129): he has no weapon to aim, his walk and
-    // stand states (the 0x43 set) have no strafe, and his L2 is the original's (state 0x43: the crouch 1, as L1); the
-    // aim and the strafe used to work only in his jump 0x49, so he plays as the original
-    if (lbu(HERO + 0x20a4) != 0) return held;
+    // as Ratchet, Clank and Giant Clank (the hero's form +0x20a4: 1 / 2; #129: their stand and walk are aim_state's too,
+    // L1 keeps their first-person view 1, R2 is Giant Clank's missiles); not in the Hologuise (3), whose states have no strafe
+    if (2 < lbu(HERO + 0x20a4)) return held;
     if (modern_aim()) {                     // Aiming = Modern: L2 aims (strafing), R2 fires
         g_aim_button = (held & 0x1u) != 0;
         if ((held & 0x2u) != 0) held |= 0x20u;  // R2: circle
@@ -889,6 +890,14 @@ void advanced_move_speed() {
         }
     }
     if (advanced_strafing()) swc1(HERO + 0x190, lwc1(HERO + 0x190) * AIM_SPEED);
+}
+
+// orig: (none) — enhancement (advanced.h)
+float advanced_strafe_accel(float up) {
+    if (lbu(HERO + 0x20a4) == 0 || lbu(HERO + 0x20a4) > 2 || !advanced_strafing()) return up;
+    const int32_t st = lw(HERO + 0x2084);
+    if (st != 0x44 && st != 0x50 && st != 0x5b) return up;
+    return lwc1(0x0015ed70) * 7.5f;  // (the walks' own step, fs70 x 7.5 x their turn cut: wade_update, clank_walk_update)
 }
 
 // orig: (none) — enhancement (advanced.h)
@@ -1138,7 +1147,7 @@ void advanced_aim_after_hero() {
     backpedal_show();
     // the reticle at the screen's centre while aiming (the Blaster, item 0xf, draws its own: its
     // first-person reticle, blaster.cpp), for every item in hand but the wrench (8)
-    if (advanced_aiming()) {
+    if (advanced_aiming() && lbu(HERO + 0x20a4) == 0) {  // (not as Clank: no weapon of his aims at it)
         const uint32_t item = lwu(HERO + 0x10b8), m = lwu(HERO + 0x2080);
         if (item != 0xf && item != 8 && m != 0 && lbu(HERO + 0x20ac) == 0) cam_effect_add(m, 0xff0f0fffu, nullptr, 0x26, -1, 1.0f, 0.0f, 90.0f);
     }
