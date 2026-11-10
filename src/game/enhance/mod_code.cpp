@@ -133,6 +133,7 @@ struct SdkPlaced {
     float pos[3] = {};
     float yaw = 0;
     std::string params;
+    int32_t section = 0;  // (format 3) a section's object line: its section (0 main's)
 };
 struct SdkSound {
     std::string name;
@@ -172,6 +173,7 @@ struct Obj {
     // (a session's sections) the section it was spawned, placed or shown in last (sections_current): while a game world's section
     // is current only that section's objects are drawn (main's, at main's coordinates, are not drawn in the planet's world)
     int32_t section = 0;
+    bool away = false;  // (not in the current section's world, or a world's object outside it: not drawn, not solid)
 };
 struct Sdk {
     bool on = false;            // the current level has a level.sdk
@@ -509,7 +511,10 @@ uint32_t obj_spawn(int32_t cls, const float pos[3], float yaw, int32_t placed) {
     o.scale = 1.0f;
     o.placed = placed;
     o.shown = true;
-    o.section = std::max(sections_current(), 0);
+    o.away = false;
+    o.section = placed >= 0 && static_cast<size_t>(placed) < g_sdk.placed.size() && g_sdk.placed[static_cast<size_t>(placed)].section > 0
+                    ? g_sdk.placed[static_cast<size_t>(placed)].section
+                    : std::max(sections_current(), 0);
     // the carrier: no class code (its crate's never runs), hidden from the game's draw (our model is drawn instead),
     // updated at any distance; its collision box the class's size, or none (ghost)
     sw(m + 0x74, 0);
@@ -1714,8 +1719,9 @@ bool sdk_read(const std::string& path, Sdk& out) {
             }
             if (!in || !(c.size > 0) || !(c.scale > 0)) return false;
             out.classes.push_back(std::move(c));
-        } else if (k == "object") {
+        } else if (k == "object" || k == "sobject") {  // (sobject: a section's object line, its section first)
             SdkPlaced o;
+            if (k == "sobject") in >> o.section;
             in >> o.cls >> o.pos[0] >> o.pos[1] >> o.pos[2] >> o.yaw;
             if (!in || o.cls < 0 || static_cast<size_t>(o.cls) >= out.classes.size()) return false;
             std::getline(in >> std::ws, o.params);
@@ -1892,10 +1898,19 @@ void sdk_triggers() {
 // the frame's objects for the modern renderer: each shown one's model at its moby's matrix
 void sdk_publish() {
     std::vector<mrpw::HostMeshInstance> v;
-    const int world_section = world_renderer_level_get() >= 0 ? sections_current() : -1;  // (a game world's section current: its objects only)
+    // (a session's game world sections: while one is current only its objects are there - drawn, and solid as they are -, and
+    // its objects are not there in the others; the rest as before: drawn in every section)
+    const int cur = sections_current();
+    const bool world_cur = cur > 0 && sections_world(cur);
+    for (Obj& o : g_sdk.objs) {
+        if (!o.live || !g_sections_on) continue;
+        const bool here = world_cur ? o.section == cur : !sections_world(o.section);
+        if (!here && lwu(o.moby + 0x94) != 0) sw(o.moby + 0x94, 0);
+        else if (here && o.away) sw(o.moby + 0x94, o.solid ? o.coll : 0);  // (back where it is: its collision as it was)
+        o.away = !here;
+    }
     for (const Obj& o : g_sdk.objs) {
-        if (!o.live || !o.shown || static_cast<int8_t>(lbu(o.moby + 0x20)) < 0) continue;
-        if (world_section >= 0 && o.section != world_section) continue;
+        if (!o.live || !o.shown || o.away || static_cast<int8_t>(lbu(o.moby + 0x20)) < 0) continue;
         const SdkClass& c = g_sdk.classes[static_cast<size_t>(o.cls)];
         if (c.mesh < 0) continue;
         mrpw::HostMeshInstance in;

@@ -148,6 +148,7 @@ struct LevelTxt {
         float at[4] = {};
         std::string params;
         int line = 0;
+        int section = 0;  // (format 3) the section block it is in (1.. its index + 1; 0 main's)
     };
     struct Sound {
         std::string name, file;
@@ -450,6 +451,24 @@ bool hero_line(std::istringstream& in, LevelTxt::Hero& h) {
     return !(in >> more);
 }
 
+// `object <class> <x> <y> <z> [<yaw>] [<key>=<value> ...]` (after its key)
+bool object_line(std::istringstream& in, LevelTxt::Object& o) {
+    if (!(in >> o.cls >> o.at[0] >> o.at[1] >> o.at[2])) return false;
+    std::string w;
+    while (in >> w) {
+        if (w.find('=') != std::string::npos) {
+            if (w.front() == '=') return false;
+            o.params += (o.params.empty() ? "" : " ") + w;
+        } else {
+            char* end = nullptr;
+            const float yaw = std::strtof(w.c_str(), &end);
+            if (end == nullptr || *end != 0 || !o.params.empty()) return false;
+            o.at[3] = yaw;
+        }
+    }
+    return true;
+}
+
 bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
     std::ifstream f(p);
     if (!f) {
@@ -514,6 +533,12 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
                 if (!moby_line(in, m)) return bad();
                 m.line = n;
                 S.mobys.push_back(m);
+            } else if (key == "object") {  // (a level class's object placed in the section: drawn while it is shown)
+                LevelTxt::Object o;
+                o.line = n;
+                o.section = sec + 1;
+                if (!object_line(in, o)) return bad();
+                t.objects.push_back(o);
             } else if (key == "portal") {
                 LevelTxt::Portal pt;
                 if (!portal_line(in, pt)) return bad();
@@ -564,7 +589,7 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
                 S.boss_line = n;
             } else {
                 err = fmt("%s:%d: \"%s\": not a line of a section (its own: collision, meshes, lights, sky, music, fog, background, death_height, offset, "
-                          "entry, checkpoint, moby, portal, respawn, rail, rails, world, objects, box, hero, boss; end closes it)",
+                          "entry, checkpoint, moby, object, portal, respawn, rail, rails, world, objects, box, hero, boss; end closes it)",
                           p.generic_string().c_str(), n, line.c_str());
                 return false;
             }
@@ -787,19 +812,7 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
         } else if (key == "object") {
             LevelTxt::Object o;
             o.line = n;
-            if (!(in >> o.cls >> o.at[0] >> o.at[1] >> o.at[2])) return bad();
-            std::string w;
-            while (in >> w) {
-                if (w.find('=') != std::string::npos) {
-                    if (w.front() == '=') return bad();
-                    o.params += (o.params.empty() ? "" : " ") + w;
-                } else {
-                    char* end = nullptr;
-                    const float yaw = std::strtof(w.c_str(), &end);
-                    if (end == nullptr || *end != 0 || !o.params.empty()) return bad();
-                    o.at[3] = yaw;
-                }
-            }
+            if (!object_line(in, o)) return bad();
             t.objects.push_back(o);
         } else if (key == "sound") {
             LevelTxt::Sound d;
@@ -3337,7 +3350,8 @@ bool compose_level_mod(const std::string& folder, bool force) {
             lt.hero[l] += lt.offset[l];
             lt.ship_at[l] += lt.offset[l];
             for (LevelTxt::Moby& mb : lt.mobys) mb.at[l] += lt.offset[l];
-            for (LevelTxt::Object& ob : lt.objects) ob.at[l] += lt.offset[l];
+            for (LevelTxt::Object& ob : lt.objects)
+                if (ob.section == 0) ob.at[l] += lt.offset[l];  // (a section's: below)
             for (LevelTxt::Trigger& tg : lt.triggers) {
                 tg.lo[l] += lt.offset[l];
                 tg.hi[l] += lt.offset[l];
@@ -3371,6 +3385,8 @@ bool compose_level_mod(const std::string& folder, bool force) {
         for (int l = 0; l < 3; ++l) {
             const float o = S.world >= 0 ? 0.0f : lt.offset[l] + S.offset[l];  // (stage 8: a world's section's lines are its level's coordinates)
             for (LevelTxt::Moby& mb : S.mobys) mb.at[l] += o;
+            for (LevelTxt::Object& ob : lt.objects)
+                if (ob.section == static_cast<int>(&S - lt.sections.data()) + 1) ob.at[l] += o;  // (its object lines)
             for (LevelTxt::Checkpoint& c : S.checkpoints) c.at[l] += o;
             for (LevelTxt::Entry& e : S.entries) e.at[l] += o;
             for (LevelTxt::Portal& pt : S.portals) {
@@ -3623,7 +3639,9 @@ bool compose_level_mod(const std::string& folder, bool force) {
             log.say(fmt("section %s: its rails' %zu models drawn in level %d's world, host meshes %zu..%zu (after the classes': no other index moves)", S.name.c_str(),
                         souts[k].count, S.world, classes0, hm.classes.size() - 1));
     }
-    for (const LevelTxt::Object& o : lt.objects) log.say(fmt("object \"%s\" at (%g %g %g)%s%s", o.cls.c_str(), o.at[0], o.at[1], o.at[2], o.params.empty() ? "" : " ", o.params.c_str()));
+    for (const LevelTxt::Object& o : lt.objects)
+        log.say(fmt("object \"%s\" at (%g %g %g)%s%s%s", o.cls.c_str(), o.at[0], o.at[1], o.at[2], o.section > 0 ? (" in section " + lt.sections[static_cast<size_t>(o.section - 1)].name).c_str() : "",
+                    o.params.empty() ? "" : " ", o.params.c_str()));
     for (const LevelTxt::Trigger& g : lt.triggers)
         log.say(fmt("trigger \"%s\": (%g %g %g) .. (%g %g %g)", g.name.c_str(), g.lo[0], g.lo[1], g.lo[2], g.hi[0], g.hi[1], g.hi[2]));
     // the level's own sounds: one bank
@@ -3856,7 +3874,8 @@ bool compose_level_mod(const std::string& folder, bool force) {
         for (const LevelTxt::Object& ob : lt.objects) {
             size_t ci = 0;
             while (lt.classes[ci].name != ob.cls) ++ci;
-            o << fmt("object\t%zu\t%.6g\t%.6g\t%.6g\t%.6g\t", ci, ob.at[0], ob.at[1], ob.at[2], ob.at[3]) << ob.params << "\n";
+            if (ob.section == 0) o << fmt("object\t%zu\t%.6g\t%.6g\t%.6g\t%.6g\t", ci, ob.at[0], ob.at[1], ob.at[2], ob.at[3]) << ob.params << "\n";
+            else o << fmt("sobject\t%d\t%zu\t%.6g\t%.6g\t%.6g\t%.6g\t", ob.section, ci, ob.at[0], ob.at[1], ob.at[2], ob.at[3]) << ob.params << "\n";  // (format 3)
         }
         for (size_t i = 0; i < lt.sounds.size(); ++i) {
             const LevelTxt::Sound& d = lt.sounds[i];

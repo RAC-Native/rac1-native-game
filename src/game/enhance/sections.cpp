@@ -1425,6 +1425,8 @@ void sections_hud() {
 // orig: (host) see sections.h
 bool sections_any() { return g_sections_on; }
 // orig: (host) see sections.h
+bool sections_world(int index) { return g_sections_on && index > 0 && static_cast<size_t>(index) < g_secs.size() && g_secs[static_cast<size_t>(index)].world >= 0; }
+// orig: (host) see sections.h
 int sections_count() { return g_sections_on ? static_cast<int>(g_secs.size()) : 0; }
 // orig: (host) see sections.h
 int sections_current() { return g_sections_on ? g_cur : -1; }

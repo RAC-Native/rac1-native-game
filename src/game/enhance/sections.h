@@ -61,6 +61,8 @@ void sections_hud();
 
 // orig: (host) a session with sections is on
 bool sections_any();
+// orig: (host) section `index` a game world's (`world <level>`)
+bool sections_world(int index);
 // orig: (host) the sections' count (main included; 0 none), the current one (0 main; -1 no session with sections), a
 // section's name (index) and index (name; -1 none)
 int sections_count();
