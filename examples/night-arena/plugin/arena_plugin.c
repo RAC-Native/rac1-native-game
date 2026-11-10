@@ -2574,6 +2574,7 @@ static void frame(void* user) {
 static void hud(void* user) {
     (void)user;
     if (!s.mine) return;
+    if (rails.phase == 5 && (api->fade_active() == 1 || api->fade_active() == 2)) return;  /* (the portal's flash: white alone) */
     float scale[15];  /* each text's scale: smaller when wider than its maxw */
     for (int i = 0; i < s.nlines; ++i) {
         scale[i] = s.line[i].scale;
