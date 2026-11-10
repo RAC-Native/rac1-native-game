@@ -479,7 +479,7 @@ mods/example-plateau/
 | `import <name>`, `import <level>:<class>` | a class of another planet (a name of the game's `data/pool/names.txt`, as `umbris.turret`, or its level and class), in the level with what it spawns; the plugin spawns it (ABI 6, [The mod SDK](sdk.md#classes-of-other-levels-abi-6)). The setup's composer makes the asset pool from your disc the first time (a few seconds) and says in `compose.log` what each import brings. Classes that read their planet's paths or areas are given their own round where they are spawned, by their profile, which the plugin can change (ABI 8, [The mod SDK](sdk.md#the-level-data-of-imported-classes-abi-8)); drawn by the modern renderer only |
 | `path <name> <x> <y> <z> [<x> <y> <z> ...]` | a path (1 to 64 points, moved by `offset` as every coordinate) for the plugin to give an imported object (`path_find`, `object_bind_path`: ABI 8), or a `moby` line's slot (format 3) |
 | `session`, `checkpoint <name> <x> <y> <z> [<yaw>]`, `respawn reset\|keep` | format 3 only: [Sessions](#sessions-format-3) |
-| `section <name> ... end`, `entry`, `portal`, `start`, `leave`, `moby <name>\|<level>:<class> ...` | format 3 only: [Sections](#sections) |
+| `section <name> ... end`, `entry`, `portal`, `start`, `leave`, `moby <name>\|<level>:<class> ...` | format 3 only: [Sections](#sections); a section can be a game planet's world (`world`, `objects`, `box`: [Game worlds as sections](#game-worlds-as-sections)) |
 | `update_all` | every moby of the level is updated each frame wherever the camera is (the game updates a moby only within its update distance of the camera, moby +0x30: 64 units for Kalebo III's robots, a crate's less): enemies far away keep moving and fighting. Costs the updates of the mobys out of sight; the original's levels never |
 | `background <r> <g> <b>`, `fog <r> <g> <b>` | colours (0..255) |
 | `collision <file>`, `meshes <file>` | other file names (default `collision.obj`, `meshes.obj`) |
@@ -752,6 +752,43 @@ start yard:west                                # optional: the session starts th
 - Limits: at most 31 sections; the level's own classes' objects (`object` lines) and triggers belong to the whole level; a
   section's music is a game level's or none. Not every game level's sky works on Veldin's code (Umbris's and Gemlik's do
   not: [The open engine](open-engine.md#sections-stage-6)).
+
+#### Game worlds as sections
+
+(The open engine's stage 8: [docs/open-engine.md](open-engine.md#game-worlds-as-sections-stage-8).) A section can be a **game
+planet's world**: its scenery (drawn as on its planet, by the modern renderer), its collision, sky, music, fog and background,
+its lights and death height, its level data (its cameras, paths, volumes and grind rails) and the planet's own objects you
+choose (its enemies, crates, platforms), running on its own code:
+
+```
+section kalebo remove respawn reset
+  world kalebo                     # (or a number: 16) the planet's world: everything below its lines can change
+  objects kalebo.robot 52 638 500  # its placed objects of these classes come with it (a name, its class id, or `all`)
+  box 130 110 110 200 275 140      # (optional) only its objects inside this box (x0 y0 z0 x1 y1 z1)
+  entry arrive 146.43 133.23 128.3 1.46     # the planet's own coordinates (no offset in a world's section)
+  checkpoint kalebo_start 146.43 133.23 128.3 1.46
+  portal back 140 136 125 144 140 132 to main:from_kalebo fade 10
+  sky 3                            # optional: another sky, music, fog, background, death_height, collision instead of its own
+end
+```
+
+- **Coordinates** in a world's section are its planet's (the level's `offset` does not move them, and the section has no
+  `offset`): put entries where Ratchet stands on that planet (where its level starts him: Kerwan 263.98 102.09 54.5 facing
+  1.5708, Kalebo III 146.43 133.23 128.3 facing 1.46). The section's camera is the planet's own (its first camera, as at its
+  start).
+- **Objects**: none come unless an `objects` line names them. Each chosen class is imported (the composer adds an import of
+  it and of what it spawns; the base level's own classes, such as the crates 500..511, are the base's); the planet's spawn
+  rules apply as on a first visit (objects that appear only after a story event there do not). `compose.log` lists them:
+  `[compose] section kalebo: level 16's world (...); 59 of its 1568 objects in its box: 52 x5, 500 x35 (the base's), 638 x8,
+  1445 x11, uids 10..68`. The game keeps at most 224 classes at once (the base level's and every import of the session):
+  `objects all` in a large box can reach it (objects of classes of code alone, such as cameras and triggers, are not placed:
+  the log says so).
+- **Memory**: a world takes about 18 to 20 MB of the session's memory above 64 MB (Kerwan 19.2 MB, Kalebo III 18.0 MB), read
+  from your disc while you play, before you enter it (the log's `[section] kalebo: level 16's world: ...`).
+- **Not in a world's section**: `meshes`, `rail` / `rails` and `moby` lines of the base level's classes (its own scenery and
+  rails are the planet's; `moby <name>|<level>:<class>` lines are fine). The level's own objects drawn with a model (`object`
+  lines) are not drawn while Ratchet is in a world's section. Umbris's and Gemlik's skies do not work on Veldin's code yet:
+  give such a world `sky` of another planet.
 
 ### Grind rails and set pieces
 

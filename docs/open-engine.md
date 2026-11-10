@@ -26,7 +26,10 @@ into it. Stage 6 splits a session into **sections** (each its own collision, mes
 by **portals** in one frame, streamed in on a worker thread and committed a little each frame, with no level load. Stage 7
 adds **grind rails** (level.txt's, per section; the hero code's landing gate skipped), **items for the visit**, tested
 **Magneboots surfaces** and the **set-piece kit** (a fade, a camera service, hazards, moving platforms Ratchet rides,
-classes with a collision mesh of their own), the SDK's ABI 7 room filled (ABI 11).
+classes with a collision mesh of their own), the SDK's ABI 7 room filled (ABI 11). Stage 8 makes a section a **game planet's
+world** (`world <level>`): its scenery drawn by the game's own world passes and the modern renderer from that planet's
+assets, its collision, sky, lights, fog, music and level data the engine's while Ratchet is in it, and the planet's own
+objects a mod chooses placed with their uids mapped to the session's, running on their planet's code.
 
 ## Session memory
 
@@ -881,20 +884,139 @@ riding a path, a post (a box); plugin hooks `RAC1_MOD_TEST=s7_*`:
 | `s7_sec` (Veldin, sections) | to the yard: its rail attachable, main's not (not the current table); back to main: main's attachable, the yard's not; ENTER / END / LEAVE on both; Veldin's hero grinds as Kalebo III's |
 | The original; formats 2 and 3 | the reference pictures and RAMHASH unchanged; the arena's format 2 regression and stage 5's format 3 runs with the same RAMHASH; the composer's output for the four regression mods byte for byte the same as before |
 
-## What stage 8 builds on
+## Game worlds as sections (stage 8)
 
-- **Stage 8 (game worlds as sections)**: a section of a game level's scenery needs (a) its world as host meshes (the MRP
-  world export into the section's own range of `host_meshes.mrpc`: the meshes' section tags and mask are there), (b) its
-  collision (a game level's block: `collision.bin` is the game's format already, so a level's own block can be copied as the
-  sky is), (c) its placements from the level's own gameplay file: `section_spawn_placements` places a game level's gameplay
-  as the native load does (the equivalence test), but a section of another level needs its uids mapped to session uids
-  (DESIGN 7.4: section index x 4096 + uid; today the composer numbers a mod's own sections' uids after main's), its moby
-  groups placed (+0x48: not yet) and its classes imported with their contexts (stage 3/4's), and the level's own level data
-  per section (paths, cameras, volumes in the registries: `ld_*` has no section owner yet). The sky and lights of a game level
-  per section already work (`sky <level>`, `lights`).
-- Not done: merged collisions (one collision for far-apart sections: a section without a `collision` line keeps main's,
-  which is the cheap form); per-section `object` / `trigger` lines (the level's own classes' objects and triggers are
-  session-wide); a section's own music files (a game level's tracks or none); a section's `path` lines' base-view paths are
-  not freed with the section; streaming the meshes' GPU data (the host meshes of every section are built with the level's
-  world at the arrival: 54 KB for the test). (`start cave:door` tested: after the landing the switch to the cave, Ratchet at
-  its door.)
+DESIGN stage 8: a section's scenery can be a game level's world. The code: `src/game/enhance/section_world.{h,cpp}` (the
+world's files, its build in the session heap, the engine's world state), `sections.cpp` (a world section's streaming, its
+switch, its objects and groups), `leveldata.cpp` (`ld_engine_take` / `ld_engine_restore`, `ld_group_put`), the composer's
+`compose_world` (`src/setup/level_compose.cpp`), the modern world renderer's level (`mrp_world_renderer.cpp`:
+`world_renderer_level_get`, `mrp_world_prefetch`, the kept world levels).
+
+### What the design said, and what was done
+
+DESIGN.md's stage 8 exported a level's world "as host meshes" (the composer converting tfrags, ties and shrubs into the level
+mod's own mesh format). That was not done: the world is the game's own, in EE memory, registered and lit by the game's own
+functions, culled by its own passes (their LODs, the zone grid, the frustum), and the modern renderer decodes the passes'
+chains as on the planet itself (its index already holds any world's packets by content). What it draws is the planet's world
+pixel for pixel where the camera and the frame are the same (below), and nothing is converted or approximated.
+
+### The level
+
+```
+section kalebo remove respawn reset
+  world kalebo                     # level 16's world (a name or a number)
+  objects kalebo.robot 52 638 500  # its placed objects of these classes (a name, its class id, `all`); none by default
+  box 130 110 110 200 275 140      # only its objects inside the box (optional)
+  entry arrive 146.43 133.23 128.3 1.46     # its level's coordinates: no offset in a world's section
+  portal back 140 136 125 144 140 132 to main:from_kalebo fade 10
+end
+```
+
+The composer (`compose_world`) reads the level's gameplay file from the disc, chooses the placements (class, box), gives each
+a **session uid** after main's and the other sections' (`wuid <section> <its uid there> <the session's>` in `sections.txt`:
+the game's per-uid records stay distinct and below 2048), and adds an import of each chosen class with the closure (an
+`imports.txt` line `world-of-<section>`; a class the base level has is the base's; a class with no data in the pool, code
+alone, is not placed and said so). A world's section has no `meshes`, `rail` lines, base-level `moby` lines or `offset`; its
+own `collision`, `sky`, `music`, `fog`, `background`, `death_height` and `lights` lines replace the world's. Its lines are not
+moved by the level's offset.
+
+### Streaming and the build
+
+The worker reads the level's `data.wad` (its index, its asset data decompressed: 21 MB) and its gameplay file
+(`gameplay_ntsc.bin`, `gameplay_pal.bin` on a PAL disc) and keeps of them the world's blocks, each up to the next block the
+index names: the tfrags (2.6 MB on Kerwan), the zone grid (1.4 MB), the texels of the world textures (4.5 MB: the passes
+upload them to the GS each frame, from the textures' tables), every tie class and shrub class, the collision and the sky. The
+game's thread then commits, within the budget a frame (`RAC1_SECTION_BUDGET_MS`, 2 ms), in steps of `world_build_step`:
+
+1. the blocks copied into one heap block of the section (64 KB a step), its index beside them;
+2. the registrations, as `level_setup_body` makes them: the three world textures' tables (the texel base the section's), the
+   tfrags (`moby_lod_set`: their LOD distances and texture words), the zone grid, every tie class (`tie_class_register`) and
+   shrub class (`shrub_class_register`);
+3. the tie instances (0x20-byte bounds, 0x1c0-byte data: gameplay_load's code, 256 a step), then their static lighting
+   (`world_tie_lighting`, 24 a step), the shrub instances and their lighting (`world_shrub_lighting`), the tfrag entries'
+   lighting (`world_tfrag_lighting`, 96 a step), all with the level's own lights (its directional lights and light grid);
+4. the LOD / visibility masks of its tfrags and ties (the gameplay file's +0x8c lists) and the zone mode.
+
+Each step puts the section's world state into the engine's (the words and tables below), runs, takes it back and puts the
+current section's back. The result is the section's **world state**: 25 words (the tfrag entries, their count, the LOD
+distances, the zone grid and its mode, the tie and shrub classes' counts and instance tables, the world textures' counts) and
+the tables (the LOD bands 0x1c28f0, the tfrag textures' table 0x1c4a00, the tie classes' headers, ids, id map and textures'
+table 0x1c5800..0x1c6b00, their radii and palettes, the shrubs' 0x1bc030..0x1bc9b0, radii, palettes), 11 KB, and its **lights**
+(the light grid and the directional lights, 0x17ecc0..0x1803c0 and 0x1804c0..0x180640). The level's context and registry
+(its level data) are made at the session's arrival, not within a frame (their files are read: 10 to 20 ms).
+
+```
+[section] kerwan streamed in: asked at frame 974, read and decompressed on the worker in 215.99 ms, committed in 60 frames (at most 3.064 ms a frame, 133.129 ms in all; the budget 2.0 ms), ready at frame 1033 (498.7 ms after it was asked); collision 3628992 bytes, sky 150912, gameplay 2395648, 9 objects placed (frozen until it is entered), 3 rails
+[section] kerwan: level 3's world: 160 blocks, 10.7 MB copied of its 21.4 MB of asset data; 1006 tfrags, 127 tie classes with 5105 instances, 30 shrub classes with 985 instances, zone grid its own; built on the game's thread in 69.47 ms over the commit's frames; in the session heap 19.2 MB (world 13.3, collision 3.4, sky 0.14, gameplay 2.2); the session heap 20303 KB
+[section] kerwan: the world's steps' longest calls (ms): copy 0.08, registrations 0.85, tie instances 0.21, their lighting 0.94, shrub instances 0.08, their lighting 0.58, tfrag lighting 0.95, masks 0.09
+```
+
+Memory: Kerwan's world 19.2 MB in the session heap (its blocks 13.3, collision 3.4, sky 0.14, gameplay file 2.2), Kalebo III's
+18.0 MB (13.3, 2.3, 0.21, 2.1): a whole world fits (no region of a world was needed); both with the session's imports: 40.1
+MB of the heap's 192. On the host, the worker's copy of the asset data (21 MB) is dropped once the section is committed.
+
+### The switch
+
+Into a world's section (`apply_state`): its world state and lights the engine's, its fog's words (0x15f448..0x15f454), its
+level's registry's objects the engine's (`ld_engine_take`: its paths, cameras, volumes, rails and groups are what the base's
+engine code reads, the camera zones, the volumes; the imported classes' own swap `ld_enter` nests inside), its collision, sky,
+background, fog, death height, music and rails (its gameplay file's grind lines, the section's rail table), and the modern
+renderer's level its level's (`world_renderer_level`). The camera system is made again from the cameras now the engine's
+(`camera_init` / `camera_update`, as a level start makes it: the planet's start camera). Out of it: the session's own,
+taken at the arrival. Ratchet, his weapons and the session's objects are untouched.
+
+```
+[section] frame 1798: kerwan -> kalebo at entry arrive (portal to_kalebo): the switch 0.114 ms (objects left 0.010, state 0.009, objects entered 0.010, Ratchet 0.084); kerwan's objects removed: 9, kalebo's in play: 53; collision its own, sky level 16's, music level 16's; the session heap 40109 KB
+```
+
+The modern renderer: when the current section's level changes, its world level is loaded (`load_level`); a world's asset and
+textures are read on a worker when its section streams in (`mrp_world_prefetch`), so the first entry costs the GPU uploads and
+the classes' and tfrags' tables from EE memory (43 to 73 ms in the tests, under the fade), and a world level is kept when its
+section is left (at most two, with their GPU textures and buffers) and taken back in 0 ms while its section's tables are where
+they were. The session's own level (its host meshes) is loaded again when Ratchet comes back (0 to 12 ms). While a world's
+section is current the level mod's host meshes (main's, the level's own classes' objects) are not drawn.
+
+### Objects
+
+A world's placements are placed by `section_spawn_placements` from the level's own gameplay file, with three options: the
+placements the composer chose, each with its session uid (the spawn rules and +0xb2 the session's uid; the rules' level state
+is the session's: a first visit), each class the session's id for it (an import's, else the base's own), and each moby's zone
+mask (+0x36) from the level's +0x8c list by its uid there. Then the level's **moby groups** (+0x48: lists of placement
+indices) are made in the level's registry from the objects in play (`ld_group_put`, the lists the section's objects' blocks;
+emptied when they go), so the objects that update as a group (+0x21) do. Removal, freezing, deaths and saves are stage 6's.
+
+### Testing
+
+The test mod `s8-worlds` (`openengine/s8/mods`): main the example plateau, `kerwan` (level 3's world, its crates near the
+start) and `kalebo` (level 16's world, its robots 1445, the pods 52, the turrets 638 and its crates in a box), portals both
+ways between all three; plugin hooks `RAC1_MOD_TEST=s8_*`. A variant `s8-full` takes `objects all` in a box of each (91
+classes imported, the class table 218 of 224).
+
+| Test | Result |
+|---|---|
+| `s8_tour` | main -> kerwan (plugin) -> kalebo (kerwan's portal) -> main (kalebo's portal) -> kalebo (main's portal) -> kerwan (kalebo's portal) -> main (kerwan's portal) -> kerwan (main's portal): each world its own, Ratchet on its collision at its entry |
+| `s8_switch` | 60 switches main -> kerwan -> kalebo -> main..., half by portals: 0.108 to 0.520 ms (median 0.199); the renderer's world level taken back 38 times in 0 ms; the session heap the same after them (40106 to 40131 KB: the objects' pvars) |
+| Pictures (GL, Vulkan), the same place and camera as the native level (its start camera) | the world alone (`RAC1_RENDER_MOBY=0 RAC1_RENDER_FX=0`): Kerwan 97.3 % of the pixels within 4 of the native picture's, Kalebo III 85.6 % (its clouds scroll with time: the rest is the sky and edges' subpixels); the full pictures differ by the planet's objects the section does not place |
+| Collision (`RAC1_COLL_PROBE`: the game's floor probe on a 2-unit grid) | Kalebo III: 8096 of 8181 points the same height as on Kalebo III; Kerwan 4339 of 4356; the others where the native level has objects the section does not place (the ship, crates, a bridge) |
+| `s8_walk` (forward from Kerwan's start) | the same path as on Kerwan: over the bridge, down the steps, stopped by the wall at 264.18 151.49 50.00 (the native run's stop: 264.18 151.49 50.00) |
+| `s8_robots` (`RAC1_SIM_INPUT=attack`) | Kalebo III's six robots walk to Ratchet and hit him (4 -> 3), die to the wrench, drop bolts (20); a death there: back at the checkpoint in kalebo, the six robots back, fighting again |
+| `s8_rail` | dropped onto Kalebo III's own rail 4: carried along it (the section's rail table: its gameplay file's) |
+| `s8_die` | a death in each world: back at its checkpoint, in it |
+| A save in kalebo (`s8_save`, a crate taken out, `RAC1_SESSION_SAVE_AT=1800:2`), loaded on Kerwan (`RAC1_GOTO=3@60 RAC1_SESSION_LOAD_AT=1200:2`) | the item: checkpoint `arrive` in kalebo; after the load's landing kalebo streamed in, the switch, Ratchet at its checkpoint, the crate still out |
+| `s8_unload` | kerwan left, unloaded (its 19 MB given back), entered again: streamed in again while playing, the renderer's kept level taken back (the tables at the same addresses) |
+| The original; formats 2 and 3 | the reference pictures and RAMHASH unchanged; `RAC1_SECTION_EQUIV` all 19 levels ok; the arena's format 2 regression and stage 5's format 3 runs with the same RAMHASH; the composer's output for the regression mods byte for byte the same |
+
+## What stages 9 and 10 build on
+
+- **Stage 9 (hero contexts)**: a world's section is where another level's hero build matters most (Kalebo III's rails and
+  hoverboard, Gemlik's ship); `world_renderer_level` and `ld_engine_take` show the pattern for a per-section switch of the
+  engine's state; the hero's would be his class's update function and animations.
+- **Stage 10 (bosses)**: a boss's arena can be its planet's world as a section with the boss's class chosen by `objects`;
+  what a boss reads beyond its level data (its cameras: already the engine's in a world's section; its cutscenes, its music
+  changes) is the per-boss work.
+- **Not done**: a world's spawn rules use the session's level state (a first visit), not the planet's story; its objects
+  outside the chosen set do not come (the planet's glass and water on Kalebo III are objects); the GS's VRAM image and the
+  chrome / glass map registers stay the session's (the modern renderer does not read them for the world, the faithful
+  renderer would); the renderer's first entry into a world takes one frame of 43 to 73 ms; Umbris's and Gemlik's skies still
+  end the game on Veldin's code (a world section of them needs another planet's sky); a world on another session base than
+  Veldin's was not tried.

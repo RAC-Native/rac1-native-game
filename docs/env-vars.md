@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 455 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 459 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 25 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 328 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 102 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Debugging](#debugging-variables) | 330 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Automated testing](#automated-testing-variables) | 104 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -274,6 +274,8 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_REFLECT_DUMP` | pass number; default off | Water Reflections (OpenGL): at that pass writes the planar view (`reflect_planar.ppm`) and the cube maps' faces (`reflect_cube.ppm`: the sky's six side by side above, the probe in use's six below) in the working directory. |
 | `RAC1_REFLECT_SCALE` | integer 1-8; default 2 | Water Reflections: the planar view drawn at 1 / n of the 3D's size (also the debug menu's Enhancements tab, 1/2 to 1/4, not saved). |
 | `RAC1_REFLECT_STATS` | set (any value) = on; default off | Water Reflections: prints each time a probe (cube map) is made or filled in, and at the end the passes, planar views, probes made and filled in, the planes chosen, the planar views' drawn share and the tie and shrub draws drawn and left out. |
+| `RAC1_RENDER_FX` | 0 = off, any other number = on; default on | Draws the effects (particles, sparkles, the effects' surfaces) or not, as the debug menu's switch; with RAC1_RENDER_MOBY=0, the world alone (the open engine's world sections compared with their levels: [The open engine](open-engine.md#game-worlds-as-sections-stage-8)). |
+| `RAC1_RENDER_MOBY` | 0 = off, any other number = on; default on | Draws the objects (mobys, Ratchet among them) or not, as the debug menu's switch. |
 | `RAC1_RENDER_SCALE` | integer percent; unset = the Options setting | Overrides the 3D render scale, as a percentage of the window. |
 | `RAC1_RENDER_SHADE` | integer; 1 = vertex colours alone; default 0 | Debug view that shades with the vertex colours alone. |
 | `RAC1_RT` | 1 = on, 0 = off; default: Options > Graphics > Water Reflections (on with Medium (RT)) | Vulkan only, testing (ray tracing, [Rendering](rendering.md#water-reflections-medium-rt)): 1 the seas' water traces its reflection through the level's static world (ties, shrubs, tfrags) with a ray query and shades the hit from its own triangle (texture, lit colours, fog), at half resolution, whatever the row holds - the planar view is not drawn; 0 never, and the device's ray tracing features are not turned on (an RT value plays as Medium). Needs VK_KHR_acceleration_structure, VK_KHR_ray_query and non-uniform sampled-image indexing (else a log line and nothing changes); ignored on OpenGL. Logs the acceleration structures' counts, memory and build times and the shading tables per level (`[rt]`). |
@@ -405,6 +407,8 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_BOOT` | 0 or 1; default depends on the start mode (the game's boot sequence with intro and menu runs in a normal window, not in headless runs or with a level request) | 1 forces the full game boot (title, main menu, New Game) even headless; 0 skips it and starts directly on the level. |
 | `RAC1_BUG_FIXES` | comma-separated fix numbers (1, 2), `all`; `none` or empty = none; unset = the Bug Fixes page's rows (main menu > Options > Bug Fixes) | Turns the listed fixes of the original game's own bugs on whatever the rows hold, for one run (1: the planet's music back after quitting Rilgar's hoverboard race from its results; 2: Ratchet kept on the Hydrodisplacer's faucets; each fix: [Advanced options](advanced.md#bug-fixes)). Needs the settings kept in a headless run (`RAC1_ADVANCED=1`): with every enhancement off (the headless default, the oracle) none runs. |
 | `RAC1_CLOCK` | integer Unix time (decimal or 0x hex); default fixed 1700000000 in headless, real clock otherwise | Fixes the clock the game sees to this time so runs are reproducible. |
+| `RAC1_COLL_PROBE` | `<frame>:<x0>,<y0>,<x1>,<y1>,<step>,<z>`; unset = off | At that game frame probes the current collision straight down from height z (the game's floor probe) at every point of the grid and prints the heights' count, sum and hash (`[probe] ...`): a session's world section against its native level ([The open engine](open-engine.md#game-worlds-as-sections-stage-8)). |
+| `RAC1_COLL_PROBE_FILE` | file path; unset = none | With RAC1_COLL_PROBE, writes every point's height there (x y z per line), to compare two runs point by point. |
 | `RAC1_CORRECTED_TEXTS` | 1 = on, 0 = off; unset = the Corrected Texts row (main menu > Options > Advanced) | Uses the corrected texts (the strings the PAL and Japanese discs correct, read from a data disc that gives them) whatever the row holds, for one run. Needs that data disc beside the North American disc, and the settings kept in a headless run (`RAC1_ADVANCED=1`): with every enhancement off (the headless default, the oracle) the texts are the disc's. See [Advanced options](advanced.md#corrected-texts). |
 | `RAC1_CUT_CONTENT` | comma-separated items (`fred`, `ships`); `none` or empty = none; unset = the Cut Content row (main menu > Options > Advanced) | Brings back the listed cut content items whatever the row holds, for one run (`fred`: Kerwan's citizens, classes 915..917; `ships`: Eudora's Transport Ships, class 484). Needs the settings kept in a headless run (`RAC1_ADVANCED=1`): with every enhancement off (the headless default, the oracle) nothing comes back. See [Advanced options](advanced.md#cut-content). |
 | `RAC1_DEVMENU_SHOT` | name of a debug-menu tab; unset = off | Opens the debug menu on the named tab even in a headless run, so a screenshot can capture it. |
