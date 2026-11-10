@@ -5,6 +5,11 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Movement = Strafing / RAC 3** (the Modern preset) on the hoverboard: L2 and R2 are the board's tricks again (#28). The
+  strafe took them on the board too (and Aiming = Modern turned R2 into circle), so only the R1 and L1 tricks could be
+  done and the skill point Tricky (the Twisty McMarx: R1, L1, R2 and L2 in one jump) could not be earned with those
+  settings. On the board (Rilgar and Kalebo III) the pad is now the original's whatever the Movement row; Original is
+  unchanged.
 - Modern lighting, sun shadows (#74, a likely cause; not yet confirmed by the reporter): an object the game hides stops
   casting a shadow. The shadows of objects out of view are cast from a copy of how they were last drawn, and that copy
   was kept while the object stayed alive and in place even after the game hid it: on Quartu, Ratchet and Clank while Giant

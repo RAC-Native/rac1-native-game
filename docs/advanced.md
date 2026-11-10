@@ -362,6 +362,11 @@ held makes him strafe.
 - **Movement = RAC 3** brings UYA's full on-foot movement and wrench feel to the first game's hero
   code, together with the strafe.
 
+On the hoverboard (Rilgar's and Kalebo III's board, the hero states 0x6b..0x6f) L2 and R2 are the game's own with
+either value (#28): they are two of the board's four tricks (R1, L1, R2, L2), and the skill point Tricky (the Twisty
+McMarx: all four in one jump) needs them. Up to 0.7.0 the strafe took them there too (and Aiming = Modern turned R2
+into circle), so only the R1 and L1 tricks could be done and Tricky could not be earned.
+
 Clank (and Giant Clank) strafe too (#129): with Movement = Strafing or RAC 3, L2 held (L2 or R2 with Aiming =
 Original) keeps him facing the camera's heading while the left stick moves him in any direction, standing,
 walking and jumping (his stand 0x43, walk 0x44 / 0x50 and jumps 0x49 / 0x4c; Giant Clank's 0x5a, 0x5b, 0x5e:

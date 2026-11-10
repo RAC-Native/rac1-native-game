@@ -841,6 +841,11 @@ uint32_t advanced_pad_remap(uint32_t pad, uint32_t held) {
     // as Ratchet, Clank and Giant Clank (the hero's form +0x20a4: 1 / 2; #129: their stand and walk are aim_state's too,
     // L1 keeps their first-person view 1, R2 is Giant Clank's missiles); not in the Hologuise (3), whose states have no strafe
     if (2 < lbu(HERO + 0x20a4)) return held;
+    // on the hoverboard (its states 0x6b..0x6f: Rilgar's and Kalebo III's own code) L2 and R2 stay the game's: they are two
+    // of the board's four tricks (its trick code reads R1, L2, R2 and L1 of the pad: L5:0x253850), and the skill point
+    // "Tricky" (the Twisty McMarx, 0x13d40f) needs all four in one jump (#28); the board has no strafe or aim
+    const int32_t st = lw(HERO + 0x2084);
+    if (0x6b <= st && st <= 0x6f) return held;
     if (modern_aim()) {                     // Aiming = Modern: L2 aims (strafing), R2 fires
         g_aim_button = (held & 0x1u) != 0;
         if ((held & 0x2u) != 0) held |= 0x20u;  // R2: circle
