@@ -27,9 +27,14 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
     puts him back on the station, the mines back too;
   - "La grande fuga" (The Great Escape), the longest but Impossibile: the same course, two rounds in the arena, then
     the lava floods the arena and an escape rail from the hub's top leads west over the wall, round the south-west
-    corner over the lava lake (our mines and Kalebo III's again) and into a portal; beyond it the session's other
-    section, "prova" (a test: a round platform under Quartu's sky, `build_prova.py`), where the last two robots wait.
-    Won or lost there, Ratchet is taken back to the arena.
+    corner over the lava lake (our mines and Kalebo III's again) and through a portal's ring, grinding: a white flash, and
+    the rail goes on in the session's other section, "prova" (a test: a round platform under Quartu's sky,
+    `build_prova.py`), down onto the platform where the last two robots wait. Won or lost there, Ratchet is taken back
+    to the arena.
+
+  - "Test Quartu": after the countdown a flash, and two robots in the level's third section, `quartu`: Quartu's own
+    world (its scenery, collision, sky, music; none of its objects), by the arena where its Giant Clank fights; then
+    back. (The escape does not go on into it: a world's section takes no rail lines of a mod yet.)
 
   The rails are level.txt's `rail` lines (the composer puts them in the game's rail table, a thin collision strip under
   each: the game lets go of a rail with nothing under Ratchet's feet). The plugin turns them all off at the level's

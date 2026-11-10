@@ -124,6 +124,9 @@ typedef struct challenge_def {
     const char* escape; /* RAIL: after the arena's rounds (all its waves but the last) the lava floods the arena and
                            this rail, from the hub's top, leads to a portal: the last wave is fought in the section
                            beyond it ("La grande fuga") */
+    const char* section; /* the section the last wave is fought in (level.txt's): through the escape's portal, or (a
+                            challenge without one) after the countdown, through a flash. Its rail <section>_in, when
+                            it has one, takes Ratchet on from the switch; its checkpoint <section>_piano a death there */
 } challenge_def;
 
 static const challenge_def CHALLENGES[] = {
@@ -162,7 +165,9 @@ static const challenge_def CHALLENGES[] = {
     {"Grindscarponi: Discesa", "3 corsie di mine, poi l'ultima ondata", RAIL, 90, 1, {{8, 6, 25, "RRB"}}, 0, 20,
      0, 0, W_ANY, 3000, 0, "lane_c lane_l lane_r", "rail_course", 1},
     {"La grande fuga", "percorso, round, lava, fuga, portale", RAIL, 90, 3, {{10, 7, 30, "RRB"}, {12, 8, 28, "RRBF"}, {2, 2, 30, "R"}},
-     0, 25, 0, 0, W_ANY, 8000, 0, "lane_c lane_l lane_r", "rail_course", 1, "escape"},
+     0, 25, 0, 0, W_ANY, 8000, 0, "lane_c lane_l lane_r", "rail_course", 1, "escape", "prova"},
+    {"Test Quartu", "prova: due robot nell'arena di Quartu", WAVES, 0, 1, {{2, 2, 30, "R"}}, 0, 0, 0, 0, W_ANY, 1000, 0, NULL, NULL,
+     0, NULL, "quartu"},
     {"Impossibile", "il campionato, 50 round", CUP, 0, 50, {{0}}, 0, 20, 0, 0, W_ANY, 100000, 1},
 };
 #define N_CHALLENGES ((int)(sizeof CHALLENGES / sizeof CHALLENGES[0]))
@@ -470,6 +475,9 @@ static const char* const TEXTS[][N_LANGS] = {
     {"Fuga: restano %d:%02d", "Escape: %d:%02d left", "Fuite: encore %d:%02d", "Flucht: noch %d:%02d", "Huida: quedan %d:%02d"},
     {"Caduto! Di nuovo dal centro", "You fell! Back to the centre", "Tombe! Retour au centre", "Gefallen! Zurueck zur Mitte",
      "Caiste! De vuelta al centro"},
+    {"Test Quartu", "Quartu test", "Test Quartu", "Quartu-Test", "Prueba de Quartu"},
+    {"prova: due robot nell'arena di Quartu", "test: two robots in Quartu's arena", "test: deux robots dans l'arene de Quartu",
+     "Test: zwei Roboter in Quartus Arena", "prueba: dos robots en la arena de Quartu"},
     {"Un altro mondo! Abbatti gli ultimi due", "Another world! Take down the last two", "Un autre monde! Abats les deux derniers",
      "Eine andere Welt! Erledige die letzten zwei", "Otro mundo! Acaba con los dos ultimos"},
     {"La corsia finisce! Cambia corsia", "The lane ends! Switch lanes", "La voie se termine! Change de voie",
@@ -1045,7 +1053,18 @@ static void rules_set(rules nr) {
     }
 }
 
+static void portal_go(void);
+static int beyond_portal(void);
+static void portal_reset(void);
+
 static void wave_start(void) {
+    const challenge_def* c = &CHALLENGES[s.ch];
+    if (c->section != NULL && c->escape == NULL && !beyond_portal()) {  /* (its waves in a section: there first) */
+        s.mode = FIGHT;
+        s.t = 0;
+        portal_go();
+        return;
+    }
     s.mode = FIGHT;
     s.t = 0;
     s.spawned = s.killed = 0;
@@ -1090,6 +1109,7 @@ static void challenge_end(int won, const char* why) {
     enemies_clear();
     bombs_clear();
     if (CHALLENGES[s.ch].kind == RAIL) rail_stop();
+    portal_reset();  /* (a section's challenge: its spawn points no longer the next's; the result takes him back) */
     const rules none = {W_ANY, 0, 0, 0};
     rules_set(none);
     s.won = won;
@@ -1764,6 +1784,7 @@ static struct {
     float flood_z0;      /* its place under the lava, where it rests */
     int flood_t, hurt_t, esc_ride;
     int sec_in;          /* phase 5: Ratchet is in the section (its switch made: section_entered) */
+    int sec_asked;       /* phase 5: the switch asked (the flash's white held) */
     float sec_pts[2][3]; /* the section's two spawn points, either side ahead of its entry */
 } rails;
 
@@ -2093,15 +2114,30 @@ static void rail_update(const float h[3]) {
 #define FLOOD_TOP 1.8f     /* its top over the floor at last (the hub's top is at 3: Ratchet waits there) */
 #define FLOOD_HURT 45      /* frames between two hurts while Ratchet stands in it */
 #define ESCAPE_TIME 120    /* seconds from the lava's start to the portal */
-#define SECTION "prova"    /* the section beyond the portal (level.txt's), its entry, main's entry back */
-#define SECTION_ENTRY "arrivo"
+#define SECTION_ENTRY "arrivo"  /* the entry of the challenge's section (challenge_def.section), main's entry back */
 #define MAIN_ENTRY "ritorno"
+#define PORTAL_BACK 6.0f   /* the portal's ring on the escape, this far before its end (build_rails.py's) */
+#define FLASH 0xffffffu    /* the portal's flash (a white screen: out, held, back) */
+#define FLASH_OUT 2        /* (frames: up to white, held while the switch is made, back) */
+#define FLASH_HOLD 3
+#define FLASH_IN 12
 #define RESULT_BACK 150    /* frames of the result's banner in the section before the way back to the arena */
 
 /* Ratchet is in main (the arena's part of the session), not in a section */
 static int in_main(void) {
     char n[24];
     return !RAC1_API_HAS(api, section_current) || api->section_current(n, sizeof n) <= 0;
+}
+
+/* through the portal (phase 5): the switch to the challenge's section asked, or made */
+static int beyond_portal(void) {
+    return rails.phase == 5;
+}
+
+/* the challenge's end: no longer beyond the portal (Ratchet may still be in its section: the result takes him back) */
+static void portal_reset(void) {
+    if (rails.phase == 5) rails.phase = 0;
+    rails.sec_in = rails.sec_asked = 0;
 }
 
 /* beyond the portal: the section's spawn point for the next enemy (either side ahead of its entry), else NULL */
@@ -2139,18 +2175,33 @@ static void lava_start(void) {
     api->log("the lava floods the arena: the escape's rail on");
 }
 
-/* the escape's end: through the portal into the section (its last wave there, section_entered) */
+/* through the portal's ring (on the escape, grinding): a white flash; while it covers the screen the switch to the section
+   (portal_switch), where the escape goes on: Ratchet put on its rail there, grinding on (section_entered) */
 static void portal_go(void) {
-    if (rails.phase != 3 && rails.phase != 4) return;
+    if (rails.phase == 5) return;
     rails.phase = 5;
-    rails.sec_in = 0;
+    rails.sec_in = rails.sec_asked = 0;
     obstacles_reset(0);
-    if (!RAC1_API_HAS(api, section_enter) || !api->section_enter(SECTION, SECTION_ENTRY, 20)) {
+    if (!RAC1_API_HAS(api, section_enter) || CHALLENGES[s.ch].section == NULL) {
         challenge_end(0, "nessun portale");
         return;
     }
+    api->fade(FLASH_OUT, FLASH_HOLD, FLASH_IN, FLASH);
     if (snd_boom >= 0) api->sfx_play(snd_boom, 0, NULL);
-    api->log("the portal: into the section " SECTION);
+    api->log("the portal: the flash");
+}
+
+/* the flash's white held: the switch (no fade of its own) */
+static void portal_switch(void) {
+    if (rails.sec_asked || api->fade_active() != 2) return;
+    rails.sec_asked = 1;
+    if (!api->section_enter(CHALLENGES[s.ch].section, SECTION_ENTRY, 0)) {
+        challenge_end(0, "nessun portale");
+        return;
+    }
+    char b[64];
+    snprintf(b, sizeof b, "the portal: into the section %s", CHALLENGES[s.ch].section);
+    api->log(b);
 }
 
 /* the lava rising (hurting Ratchet in it), the escape's ride (its obstacles; a fall from it: back on the hub's top),
@@ -2171,6 +2222,11 @@ static void escape_update(const float h[3]) {
         rails.hurt_t = FLOOD_HURT;
     }
     if (riding) rails.phase = 4;
+    rac1_rail_info ri = {sizeof ri};
+    if (riding && api->hero_rail(&ri) && ri.rail == rails.escape && ri.distance >= ri.length - PORTAL_BACK) {
+        portal_go();  /* (through the ring) */
+        return;
+    }
     obstacles_update(h);
     const int outside = fabsf(lx) > 48.0f || fabsf(ly) > 48.0f;
     if (rails.phase == 4 && !riding && s.placed == 0 && (h[2] < nav.floor_z - 1.2f || (outside && h[2] < nav.floor_z + 5.0f))) {
@@ -2196,9 +2252,16 @@ static void section_entered(void* user, const char* name, const char* entry) {
         rails_all_off();
         return;
     }
-    if (strcmp(name, SECTION) != 0 || s.mode != FIGHT || rails.phase != 5 || entry[0] == 0) return;
+    const char* sec = CHALLENGES[s.ch].section;
+    if (sec == NULL || strcmp(name, sec) != 0 || s.mode != FIGHT || rails.phase != 5 || entry[0] == 0) return;
+    char n[40];
+    snprintf(n, sizeof n, "%s_in", sec);  /* (its rail: Ratchet goes on grinding on it) */
+    const int32_t r = api->rail_find(n);
+    if (r != 0 && !api->hero_rail_attach(r, 0.0f, 1)) api->log("the section: its rail did not take Ratchet");
+    snprintf(n, sizeof n, "%s_piano", sec);  /* (a death there: back on its ground, not at the entry: maybe in the air) */
+    api->checkpoint_set(n);
     float c[3], yaw = 0.0f;
-    api->checkpoint_get(c, &yaw, NULL, 0);  /* (the entry: the checkpoint now) */
+    api->checkpoint_get(c, &yaw, NULL, 0);
     for (int k = 0; k < 2; ++k) {
         const float side = k ? 6.0f : -6.0f;
         rails.sec_pts[k][0] = c[0] + 14.0f * cosf(yaw) - side * sinf(yaw);
@@ -2221,7 +2284,10 @@ static void fight_update(const float h[3]) {
         escape_update(h);
         return;
     }
-    if (rails.phase == 5 && !rails.sec_in) return;  /* (through the portal: the switch to the section not made yet) */
+    if (rails.phase == 5 && !rails.sec_in) {  /* (through the portal: the switch to the section not made yet) */
+        portal_switch();
+        return;
+    }
     if (rails.phase != 5) {  /* (beyond the portal, the plugin's navigation is not the section's: they hunt straight) */
         nav_track(h);
         enemies_follow(h);
@@ -2433,7 +2499,7 @@ static void frame(void* user) {
             else if (c->kind == RAIL && rails.phase < 2 && (rails.falls > 0 || rails.kmines > 0)) {
                 if (rails.use_obs && rails.kmines > 0) snprintf(third, sizeof third, tr("Mine %d/%d   Cadute %d"), rails.kmines_hit, rails.kmines, rails.falls);
                 else snprintf(third, sizeof third, tr("Cadute: %d"), rails.falls);
-            } else if (c->kind == RAIL && (rails.phase == 3 || rails.phase == 4)) {
+            } else if (c->kind == RAIL && (rails.phase == 3 || rails.phase == 4 || (rails.phase == 5 && !rails.sec_in))) {
                 snprintf(third, sizeof third, tr("Mine %d/%d   Cadute %d"), rails.kmines_hit, rails.kmines + rails.kmines_e, rails.falls);
             }
             const int y = 84, bh = third[0] ? 72 : 50, box = s.nrects, first = s.nlines;
@@ -2448,7 +2514,7 @@ static void frame(void* user) {
                 const int left = c->time * 60 - rails.ride;
                 hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", ch_title(s.ch));
                 hud_text_at(22, y + 28, left < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0, tr("Restano %d:%02d"), left / 3600, left / 60 % 60);
-            } else if (c->kind == RAIL && (rails.phase == 3 || rails.phase == 4)) {
+            } else if (c->kind == RAIL && (rails.phase == 3 || rails.phase == 4 || (rails.phase == 5 && !rails.sec_in))) {
                 const int left = ESCAPE_TIME * 60 - rails.esc_ride;
                 hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", ch_title(s.ch));
                 hud_text_at(22, y + 28, left < 1200 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0, tr("Fuga: restano %d:%02d"), left / 3600, left / 60 % 60);
@@ -2719,7 +2785,8 @@ static void new_game(void* user) {
    four weapons if he owns one,
    challenge N from 420, the enemies by kind, the dropships, the weapon in his hand. And: arena_rail*, arena_course*, arena_fuga* (the
    rail challenges; arena_fuga: La grande fuga, Ratchet put on the escape when the lava rises; arena_fuga_fight: the
-   section's two robots left to fight, with RAC1_SIM_INPUT=attack), arena_suck (the Suck Cannon's beam on the enemies, with RAC1_SIM_INPUT=hold), arena_zap (an
+   section's two robots left to fight, with RAC1_SIM_INPUT=attack), arena_quartu (Quartu's world as a section, two robots
+   there), arena_suck (the Suck Cannon's beam on the enemies, with RAC1_SIM_INPUT=hold), arena_zap (an
    electrified drop zone, Ratchet in it), arena_texts (the game's text table and the items' names) */
 static void test(void* user, const char* text, uint64_t frame) {
     (void)user;
@@ -2821,6 +2888,37 @@ static void test(void* user, const char* text, uint64_t frame) {
                          m ? dist3(r, h) : 0.0f);
                 api->log(b);
             }
+        }
+        return;
+    }
+    if (s.mine && strcmp(text, "arena_quartu") == 0) {
+        /* (a test of Quartu's world as a section: Ratchet there at 600, two of Kalebo III's robots by him at 800, where
+           they are every second) */
+        static uint32_t qr[2];
+        if (frame == 600) {
+            char b[64];
+            snprintf(b, sizeof b, "test: into Quartu's world: %d", api->section_enter("quartu", "arrivo", 0));
+            api->log(b);
+        }
+        float h[3];
+        pos_of(api->hero(), h);
+        if (frame == 800)
+            for (int k = 0; k < 2; ++k) {
+                const float at[3] = {h[0] + 10.0f, h[1] + (k ? 4.0f : -4.0f), h[2] + 0.5f};
+                qr[k] = api->base_spawn(ROBOT, at, 3.1416f);
+                const uint32_t m = qr[k] ? api->base_moby(qr[k]) : 0;
+                if (m != 0) api->base_hunt(m, 1);
+            }
+        if (frame >= 600 && frame % 60 == 0) {
+            char b[200];
+            int n = snprintf(b, sizeof b, "quartu %llu: hero %.1f %.1f %.1f health %d", (unsigned long long)frame, h[0], h[1], h[2], (int)api->health());
+            for (int k = 0; k < 2; ++k) {
+                const uint32_t m = qr[k] ? api->base_moby(qr[k]) : 0;
+                float q[3] = {0, 0, 0};
+                if (m) pos_of(m, q);
+                n += snprintf(b + n, sizeof b - (size_t)n, " | robot %d %.1f %.1f %.1f state %d", k, q[0], q[1], q[2], m ? (int)(int8_t)rac1_lb(api, m + 0x20) : -1);
+            }
+            api->log(b);
         }
         return;
     }

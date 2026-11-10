@@ -116,7 +116,10 @@ CLASSES = [              # the level's own classes: (name, model, its line's opt
 ]
 # the session's sections (build_prova.py's collections <name>_visual, <name>_collision, <name>_markers: entry_<n>), each
 # with another planet's sky round it
-SECTIONS = [("prova", {"sky": 15, "background": (34, 44, 92), "fog": (34, 44, 92), "death_height": -12.0})]
+SECTIONS = [("prova", {"sky": 15, "background": (34, 44, 92), "fog": (34, 44, 92), "death_height": -12.0}),
+            # a game planet's world as a section (no collections: its scenery, collision, sky and music are the planet's, its
+            # coordinates too; none of its objects): Quartu's, by the arena where its Giant Clank fights (a test, the plugin's)
+            ("quartu", {"world": "quartu", "entries": [("arrivo", (130.5, 222.4, 26.0), 0.0)], "death_height": 8.0})]
 
 errors, warnings = [], []
 
@@ -724,6 +727,15 @@ def export_section(level, name, opts, depsgraph, first):
     <name>_meshes.obj from its collections), its sky and colours, its entries (entry_<n> markers). Its meshes are host
     mesh classes after main's (and before the classes' models: `first` the first's index): (the block, their material
     lines, their count)."""
+    if opts.get("world"):
+        L = ["# the section %s: %s's world (its scenery, collision, sky, music; the planet's coordinates)" % (name, opts["world"]),
+             "section %s remove respawn reset" % name, "  world %s" % opts["world"]]
+        for e, at, a in opts.get("entries", []):
+            L.append("  entry %s %s %s %s %s" % (e, num(at[0]), num(at[1]), num(at[2]), num(a)))
+        if opts.get("death_height") is not None:  # (the planet's coordinates: not main's, which is the arena's)
+            L.append("  death_height %s" % num(opts["death_height"]))
+        L.append("end")
+        return L, [], 0
     if not bpy.data.collections.get(name + "_visual"):
         warn("section %s: no collection %s_visual (build_prova.py): left out" % (name, name))
         return [], [], 0
@@ -748,8 +760,14 @@ def export_section(level, name, opts, depsgraph, first):
         p = o.matrix_world.translation
         if base_name(o).startswith("entry_"):
             L.append("  entry %s %s %s %s %s" % (base_name(o)[6:], num(p.x), num(p.y), num(p.z), num(yaw(o))))
+        elif base_name(o).startswith("checkpoint_"):
+            L.append("  checkpoint %s %s %s %s %s" % (base_name(o)[11:], num(p.x), num(p.y), num(p.z), num(yaw(o))))
         else:
-            warn("section %s: marker %s is not entry_*: left out" % (name, o.name))
+            warn("section %s: marker %s is not entry_* nor checkpoint_*: left out" % (name, o.name))
+    rails = bpy.data.collections.get(name + "_rails")  # (its rails: the composer's bar for their look, its collision strip)
+    for o in sorted((o for o in rails.all_objects if o.type == "CURVE") if rails else [], key=lambda o: o.name):
+        pts = rail_points(o)
+        L.append("  rail %s mesh %s" % (base_name(o)[5:], " ".join("%s %s %s" % (num(p.x), num(p.y), num(p.z)) for p in pts)))
     L.append("end")
     return L, mat_lines, n
 
