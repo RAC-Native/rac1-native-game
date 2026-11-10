@@ -1,16 +1,22 @@
 // See session.h.
 #include <game/enhance/session.h>
 
+#include <game/enhance/context.h>
 #include <game/enhance/pool.h>
+#include <game/enhance/twin.h>
+#include <game/render/mrp_moby_renderer.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <runtime/iop/snd989_iop.h>
 #include <runtime/kernel/ee_memory.h>
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iterator>
+#include <algorithm>
 #include <map>
+#include <vector>
 
 namespace rac1 {
 
@@ -131,6 +137,21 @@ struct SessionClass {
     uint32_t cls, fn, word, hdr;
 };
 std::map<uint32_t, SessionClass> g_session_ids;
+// the classes a session imports from other levels (RAC1_SESSION_IMPORT, the twin run; later level.txt's `import`)
+std::vector<std::pair<int, uint32_t>> g_imports;
+// their levels' sound banks, loaded as host banks (the level's whole bank for now): level -> handle
+std::map<int, uint32_t> g_banks;
+
+// level `level`'s bank as a host bank (loaded once), 0 when it cannot be had
+uint32_t level_bank(int level) {
+    if (const auto it = g_banks.find(level); it != g_banks.end()) return it->second;
+    std::vector<uint8_t> b;
+    const uint32_t h = pool_sound_bank(level, b) ? snd989_host_bank_load(b) : 0;
+    g_banks[level] = h;
+    if (h == 0) std::fprintf(stderr, "[session] level %d's sound bank could not be loaded: its classes are silent\n", level);
+    else std::printf("[session] level %d's sound bank loaded (%zu KB): host bank %#x\n", level, b.size() >> 10, h);
+    return h;
+}
 
 // a pool class's block copied into the session heap (its owner "pool L:C"): its address, 0 when it cannot be had
 uint32_t heap_copy(const PoolClass& c, const char* why) {
@@ -159,6 +180,11 @@ void session_level_begin() {
     g_session_ids.clear();
     g_session_classes = false;
     if (n != 0) std::printf("[session] a level setup: the pool classes' %zu blocks freed\n", n);
+    ctx_drop_all();  // (the contexts of the level before: made again by the imports)
+    for (const auto& [l, h] : g_banks)
+        if (h != 0) snd989_host_bank_unload(h);
+    g_banks.clear();
+    mrp_moby_imports_clear();
 }
 
 // orig: (host) see session.h
@@ -170,8 +196,70 @@ uint32_t session_class_block(int level, uint32_t cls, uint32_t native) {
     return a != 0 ? a : native;
 }
 
+namespace {
+// the session's imports registered: each class of another level from its pool block, under its own id (a second copy of
+// a class the base has: a session id), its update function and +0x2c word through its level's context
+void register_imports(int level, uint32_t tex) {
+    if (g_imports.empty() || !g_on || !pool_open(true)) return;
+    for (const auto& [from, cls] : g_imports) {
+        if (from == level) continue;  // (the base's own class: native)
+        const PoolClass* c = pool_find(from, cls);
+        if (c == nullptr || c->block_size == 0) {
+            std::fprintf(stderr, "[session] import %d:%u: no such class with data in the pool\n", from, cls);
+            continue;
+        }
+        bool done = false;
+        for (const auto& [id, sc] : g_session_ids) done |= sc.level == from && sc.cls == cls;
+        if (done) continue;  // (registered already: a death's setup keeps the classes)
+        if (lwu(OV(0x0015ffc0)) >= 224) {
+            std::fprintf(stderr, "[session] import %d:%u: the class table is full (224)\n", from, cls);
+            continue;
+        }
+        // its own id (a game class id is the same class on every level: the engine and the class's code test it), unless
+        // the base has it: then a session id (2048..), for a second copy
+        uint32_t id = cls;
+        if (cls >= 2048 || lbu(OV(0x00197bc0) + cls) != 0xffu) {
+            id = 2048;
+            while (g_session_ids.count(id) != 0 || lbu(OV(0x00197bc0) + id) != 0) ++id;
+            std::printf("[session] import %d:%u: the base has class %u: imported as session class %u\n", from, cls, cls, id);
+        }
+        if (!ctx_create(from)) continue;
+        const std::string own = "pool " + std::to_string(from) + ":" + std::to_string(cls);
+        const uint32_t remap = session_heap_alloc(16, own);
+        const uint32_t a = remap != 0 ? heap_copy(*c, ("imported from level " + std::to_string(from)).c_str()) : 0;
+        if (a == 0) continue;
+        // (its texture slots on the base's texture 0: the faithful renderer draws a session's classes wrongly; the modern
+        // renderer draws it from its own level's class file, the import list)
+        for (uint32_t k = 0; k < 16; ++k) sb(remap + k, c->remap[k] == 0xffu ? 0xffu : 0u);
+        const uint32_t fn = ctx_xlate(from, c->update_fn), word = ctx_xlate(from, c->word2c);
+        g_session_ids[id] = SessionClass{from, cls, fn, word, a};
+        g_session_classes = true;
+        moby_class_register(a, tex, remap, id);
+        mrp_moby_import(from, cls);
+        // its sounds: its definitions' bank sounds (the pool's row: its level's asset index) in its level's bank
+        if (lwu(a + 0x28) != 0 && lbu(a + 0xd) != 0) {
+            const uint32_t bank = level_bank(from), t = lwu(a + 0x28);
+            for (uint32_t j = 0; j < lbu(a + 0xd); ++j) {
+                sh(t + 32 * j + 0x1a, j < c->sounds.size() && bank != 0 ? c->sounds[j] : 0xffffu);
+                sw(t + 32 * j + 0x1c, bank);
+            }
+        }
+        std::printf("[session] import %d:%u as class %u (index %u): update %08x -> %08x, +0x2c %08x -> %08x\n", from, cls, id,
+                    lbu(OV(0x00197bc0) + id), c->update_fn, fn, c->word2c, word);
+    }
+}
+}  // namespace
+
+// orig: (host) see session.h
+void session_import_add(int level, uint32_t cls) {
+    for (const auto& im : g_imports)
+        if (im.first == level && im.second == cls) return;
+    g_imports.emplace_back(level, cls);
+}
+
 // orig: (host) see session.h
 void session_classes_register(int level, uint32_t tex) {
+    register_imports(level, tex);
     if (g_high_id == 0 || g_high_class == 0xffffffffu || !g_on || !pool_open(true)) return;
     const PoolClass* c = pool_find(level, g_high_class);
     if (c == nullptr || c->block_size == 0) {
@@ -214,9 +302,21 @@ bool session_class_source(uint32_t cls, int* level, uint32_t* src) {
 
 // orig: (host) see session.h
 void session_start_tests() {
+    twin_start_tests();  // (RAC1_SESSION_TWIN: twin.h)
     if (const char* t = std::getenv("RAC1_SESSION_HEAP_TEST"); t != nullptr && std::atoi(t) != 0) heap_test();
     const char* e = std::getenv("RAC1_SESSION_MEM");
     if (e != nullptr && std::atoi(e) != 0) session_memory_begin();
+    if (const char* im = std::getenv("RAC1_SESSION_IMPORT"); im != nullptr && *im != 0) {  // (testing: <level>:<class>,...)
+        std::string list = im;
+        for (size_t p = 0; p < list.size();) {
+            const size_t q = std::min(list.find(',', p), list.size());
+            unsigned l = 0, c = 0;
+            if (std::sscanf(list.substr(p, q - p).c_str(), "%u:%u", &l, &c) == 2 && l < 19) session_import_add(static_cast<int>(l), c);
+            else std::fprintf(stderr, "[session] RAC1_SESSION_IMPORT: %s is not <level>:<class>\n", list.substr(p, q - p).c_str());
+            p = q + 1;
+        }
+        if (!g_imports.empty() && session_memory_begin()) std::printf("[session] test: %zu classes imported from other levels\n", g_imports.size());
+    }
     if (const char* h = std::getenv("RAC1_SESSION_HIGH_CLASS"); h != nullptr && *h != 0) {
         unsigned c = 0, id = 0;
         const int n = std::sscanf(h, "%u:%u", &c, &id);

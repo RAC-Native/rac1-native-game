@@ -1221,6 +1221,7 @@ void level_setup_body(int32_t full, int32_t restore) {
             }
             s2 = s5;
         }
+        if (pool_checking()) pool_check_sounds(lw(0x0015ed84));  // (testing: the pool's class sounds against these)
         sw(OV(0x00173e18), armor_load(after & 0xffffffc0u, s3));
         if (session_memory_on()) session_classes_register(lw(0x0015ed84), s3 + lwu(s3 + 0x3c));  // (a session's classes from the pool)
     }

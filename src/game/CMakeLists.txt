@@ -177,6 +177,8 @@ add_library(rac1_game STATIC
     enhance/level_mod_hero.cpp
     enhance/session.cpp
     enhance/pool.cpp
+    enhance/context.cpp
+    enhance/twin.cpp
     ovl/bomb_glove.cpp
     ovl/pyrocitor.cpp
     ovl/blaster.cpp

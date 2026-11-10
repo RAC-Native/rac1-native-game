@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <iterator>
 #include <fstream>
 #include <map>
 #include <set>
@@ -56,6 +57,9 @@ struct LevelFiles {
     const uint8_t* core = nullptr;
     int32_t parts[22] = {};
     std::vector<std::array<uint32_t, 3>> class_table;  // the overlay's section 3: class, update function, word (to the -1 row)
+    // the overlay's data sections 0..5 as loaded (0x15ef00 up to its code: a bss as zeros) and its code section
+    std::vector<uint8_t> image;
+    uint32_t code_lo = 0, code_hi = 0;
 };
 
 bool read_level(int level, LevelFiles& f, std::string* why) {
@@ -96,6 +100,15 @@ bool read_level(int level, LevelFiles& f, std::string* why) {
         const int32_t n2 = rd32(o + p + 4), e = rd32(o + p + 12);
         if (k == 0) entry = e;
         if (e != entry || n2 < 0 || p + 16 + static_cast<size_t>(n2) > on) break;
+        const uint32_t dest = static_cast<uint32_t>(rd32(o + p));
+        if (k <= 5 && dest >= CONTEXT_BASE && dest + static_cast<uint32_t>(n2) <= 0x00400000u) {  // (a data section)
+            if (f.image.size() < dest + static_cast<uint32_t>(n2) - CONTEXT_BASE) f.image.resize(dest + static_cast<uint32_t>(n2) - CONTEXT_BASE, 0);
+            if (rd32(o + p + 8) != 8) std::memcpy(f.image.data() + (dest - CONTEXT_BASE), o + p + 16, static_cast<size_t>(n2));
+        }
+        if (static_cast<uint32_t>(entry) >= dest && static_cast<uint32_t>(entry) < dest + static_cast<uint32_t>(n2)) {  // (the code)
+            f.code_lo = dest;
+            f.code_hi = dest + static_cast<uint32_t>(n2);
+        }
         if (k == 3) {
             for (int32_t r = 0; r + 12 <= n2; r += 12) {
                 const uint8_t* row = o + p + 16 + r;
@@ -109,6 +122,11 @@ bool read_level(int level, LevelFiles& f, std::string* why) {
         *why = "level " + std::to_string(level) + "'s overlay has no class table";
         return false;
     }
+    if (f.code_lo <= CONTEXT_BASE || f.image.size() > f.code_lo - CONTEXT_BASE) {
+        *why = "level " + std::to_string(level) + "'s overlay has no code after its data";
+        return false;
+    }
+    f.image.resize(f.code_lo - CONTEXT_BASE, 0);
     return true;
 }
 
@@ -174,7 +192,13 @@ bool read_index() {
         } else if (kind == "class") {
             PoolClass c;
             std::string remap;
-            s >> std::dec >> c.level >> c.id >> std::hex >> c.block_off >> c.block_size >> c.hash >> c.update_fn >> c.word2c >> remap;
+            std::string sn;
+            s >> std::dec >> c.level >> c.id >> std::hex >> c.block_off >> c.block_size >> c.hash >> c.update_fn >> c.word2c >> remap >> sn;
+            for (size_t p = 0; sn != "-" && p < sn.size();) {
+                const size_t q = std::min(sn.find(',', p), sn.size());
+                c.sounds.push_back(static_cast<uint16_t>(std::stoul(sn.substr(p, q - p), nullptr, 16)));
+                p = q + 1;
+            }
             for (size_t k = 0; k < 16 && 2 * k + 1 < remap.size(); ++k)
                 c.remap[k] = static_cast<uint8_t>(std::stoul(remap.substr(2 * k, 2), nullptr, 16));
             g_by_key[{c.level, c.id}] = g_classes.size();
@@ -199,9 +223,10 @@ bool pool_build(std::string* why) {
     std::unordered_map<uint64_t, std::vector<uint32_t>> by_hash;  // content hash -> offsets in blocks (compared byte by byte)
     std::string idx = "# the asset pool's index (rac1-native, docs/open-engine.md): made from your disc, never shared\n"
                       "# level <n> <classes> <with data> <moby textures> <asset bytes> <class bytes> <collision> <sky> <bank> <vram> <overlay> (hex)\n"
-                      "# class <level> <id> <block offset> <block size> <hash> <update function> <word 2c> <texture remap> (hex)\n";
+                      "# class <level> <id> <block offset> <block size> <hash> <update function> <word 2c> <texture remap> <sounds> (hex)\n";
     idx += "pool " + std::to_string(POOL_VERSION) + " " + stamp_disc() + "\n";
     size_t rows = 0, levels = 0;
+    std::vector<std::pair<int, std::vector<uint8_t>>> contexts, banks;
     for (int level = 0; level < 19; ++level) {
         if (!disc_has_level(level)) continue;
         LevelFiles f;
@@ -259,6 +284,26 @@ bool pool_build(std::string* why) {
                 }
                 c.block_off = at;
             }
+            // its sounds: the level's bank sound of each of its sound definitions (the asset index +0x70's list for the
+            // class's place in the level's registration: level_setup.cpp gives the definitions +0x1a from it)
+            {
+                const uint8_t* s6 = f.core + rd32(f.core + 0x70);
+                const uint8_t* e2 = s6 + 8 + 4 * k;
+                int16_t off = 0, cnt = 0;
+                std::memcpy(&off, e2, 2);
+                std::memcpy(&cnt, e2 + 2, 2);
+                // (the level setup reads as many as the class block has definitions, +0xd, past the list when it is
+                // shorter: Orxon's 1229 has 12 for a list of 6; a class without data reads its list's own count)
+                const int32_t bo = rd32(e);
+                if (bo > 0 && static_cast<size_t>(bo) + 0xe <= f.asset.size()) cnt = f.asset[static_cast<size_t>(bo) + 0xd];
+                for (int16_t j = 0; j < cnt && j < 256; ++j) {
+                    uint16_t v = 0;
+                    std::memcpy(&v, s6 + off + 4 * j, 2);
+                    c.sounds.push_back(v);
+                }
+            }
+            std::string sn;
+            for (uint16_t v : c.sounds) sn += (sn.empty() ? "" : ",") + hex(v);
             std::string rm;
             for (uint8_t v : c.remap) {
                 char t[3];
@@ -268,8 +313,20 @@ bool pool_build(std::string* why) {
             char h[24];
             std::snprintf(h, sizeof h, "%016" PRIx64, c.hash);
             lines += "class " + std::to_string(level) + " " + std::to_string(c.id) + " " + hex(c.block_off) + " " + hex(c.block_size) + " " + h + " " +
-                     hex(c.update_fn) + " " + hex(c.word2c) + " " + rm + "\n";
+                     hex(c.update_fn) + " " + hex(c.word2c) + " " + rm + " " + (sn.empty() ? "-" : sn) + "\n";
             ++rows;
+        }
+        {  // the level's sound bank, as the disc has it (a host bank for its classes in a session)
+            const int32_t bo = f.parts[2], bn = f.parts[3];
+            if (bo > 0 && bn > 0 && static_cast<size_t>(bo) + static_cast<size_t>(bn) <= f.data.size())
+                banks.emplace_back(level, std::vector<uint8_t>(f.data.begin() + bo, f.data.begin() + bo + bn));
+        }
+        {  // the level's context image (its data sections, for a session's context of the level: context.h)
+            std::vector<uint8_t> img(16 + f.image.size());
+            const uint32_t head[4] = {0x31585443u /* CTX1 */, CONTEXT_BASE, f.code_lo, f.code_hi};
+            std::memcpy(img.data(), head, 16);
+            std::memcpy(img.data() + 16, f.image.data(), f.image.size());
+            contexts.emplace_back(level, std::move(img));
         }
         idx += "level " + std::to_string(level) + " " + hex(L.classes) + " " + hex(L.with_data) + " " + hex(L.moby_textures) + " " +
                hex(L.asset_bytes) + " " + hex(L.class_bytes) + " " + hex(L.collision_bytes) + " " + hex(L.sky_bytes) + " " +
@@ -286,6 +343,24 @@ bool pool_build(std::string* why) {
                              std::to_string(blocks.size()) + ",\n  \"hash\": \"" + hh + "\"\n}\n";
     // (the stamp last: a pool cut short has none, and is made again)
     fs::remove(dir() / "pool.json", ec);
+    fs::create_directories(dir() / "sounds", ec);
+    for (const auto& [level, b] : banks) {
+        char name[32];
+        std::snprintf(name, sizeof name, "level%02d.bnk", level);
+        if (!platform::write_file_replace(dir() / "sounds" / name, b.data(), b.size())) {
+            *why = "the pool's sound banks could not be written in " + (dir() / "sounds").string();
+            return false;
+        }
+    }
+    fs::create_directories(dir() / "context", ec);
+    for (const auto& [level, img] : contexts) {
+        char name[32];
+        std::snprintf(name, sizeof name, "level%02d.img", level);
+        if (!platform::write_file_replace(dir() / "context" / name, img.data(), img.size())) {
+            *why = "the pool's context images could not be written in " + (dir() / "context").string();
+            return false;
+        }
+    }
     if (!platform::write_file_replace(dir() / "classes.bin", blocks.data(), blocks.size()) || !platform::write_file_replace(dir() / "pool.idx", idx) ||
         !platform::write_file_replace(dir() / "pool.json", json)) {
         *why = "the pool's files could not be written in " + dir().string();
@@ -337,6 +412,33 @@ const PoolClass* pool_find(int level, uint32_t id) {
 const uint8_t* pool_block(const PoolClass& c) {
     if (c.block_size == 0 || g_blocks == nullptr || static_cast<size_t>(c.block_off) + c.block_size > g_blocks_size) return nullptr;
     return reinterpret_cast<const uint8_t*>(g_blocks) + c.block_off;
+}
+
+// orig: (host) see pool.h
+bool pool_sound_bank(int level, std::vector<uint8_t>& bank) {
+    char name[32];
+    std::snprintf(name, sizeof name, "level%02d.bnk", level);
+    std::ifstream in(dir() / "sounds" / name, std::ios::binary);
+    if (!in) return false;
+    bank.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    return !bank.empty();
+}
+
+// orig: (host) see pool.h
+bool pool_context_image(int level, std::vector<uint8_t>& image, uint32_t* code_lo, uint32_t* code_hi) {
+    char name[32];
+    std::snprintf(name, sizeof name, "level%02d.img", level);
+    std::ifstream in(dir() / "context" / name, std::ios::binary);
+    if (!in) return false;
+    std::vector<uint8_t> b((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    uint32_t head[4];
+    if (b.size() < 16) return false;
+    std::memcpy(head, b.data(), 16);
+    if (head[0] != 0x31585443u || head[1] != CONTEXT_BASE || head[2] < CONTEXT_BASE || b.size() - 16 != head[2] - CONTEXT_BASE) return false;
+    image.assign(b.begin() + 16, b.end());
+    *code_lo = head[2];
+    *code_hi = head[3];
+    return true;
 }
 
 // orig: (host) see pool.h
@@ -434,6 +536,34 @@ void pool_check_registered(int level, uint32_t id, uint32_t idx) {
         ++k.word_differ;
         std::printf("[pool] check level %d: class %u's +0x2c word %08x, the pool's %08x\n", level, id, lwu(hdr + 0x2c), c->word2c);
     }
+}
+
+// orig: (host) see pool.h
+void pool_check_sounds(int level) {
+    size_t classes = 0, sounds = 0, differ = 0;
+    const uint32_t n = std::min<uint32_t>(lwu(OV(0x0015ffc0)), 0x100);
+    std::set<uint32_t> seen;  // (a header several class ids share - the weapons' -: the last one's sounds are in it)
+    for (uint32_t i = n; i-- > 0;) {
+        const uint32_t hdr = lwu(OV(0x00197300) + i * 4);
+        const PoolClass* c = pool_find(level, lhu(OV(0x00197a00) + i * 2));
+        if (hdr == 0 || c == nullptr || lwu(hdr + 0x28) == 0 || !seen.insert(hdr).second) continue;
+        ++classes;
+        const uint32_t cnt = lbu(hdr + 0xd);
+        for (uint32_t j = 0; j < cnt; ++j) {
+            ++sounds;
+            if (j >= c->sounds.size() || lhu(lwu(hdr + 0x28) + 32 * j + 0x1a) != c->sounds[j]) {
+                ++differ;
+                std::printf("[pool] check level %d: class %u's sound %u is %#x, the pool's %#x\n", level, c->id, j, lhu(lwu(hdr + 0x28) + 32 * j + 0x1a),
+                            j < c->sounds.size() ? c->sounds[j] : 0xffffu);
+            }
+        }
+        if (cnt != c->sounds.size()) {
+            ++differ;
+            std::printf("[pool] check level %d: class %u has %u sounds, the pool's row %zu\n", level, c->id, cnt, c->sounds.size());
+        }
+    }
+    std::printf("[pool] check level %d: the sounds of %zu classes, %zu definitions, %zu differ: %s\n", level, classes, sounds, differ,
+                differ == 0 ? "ok" : "FAILED");
 }
 
 // orig: (host) see pool.h

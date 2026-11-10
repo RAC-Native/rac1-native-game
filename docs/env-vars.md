@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 437 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 447 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 25 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 324 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 88 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Debugging](#debugging-variables) | 326 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Automated testing](#automated-testing-variables) | 96 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -387,6 +387,8 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_WORLD_SHADOW` | share; unset = off | With the modern lighting, a sun shadow on the world removes a fixed share of the colour (`RAC1_SHADOW_STRENGTH`, scaled by how much the surface faces the sun) as in 0.4.0, instead of the key light's own term. To compare. See [Lighting](lighting.md). |
 | `RAC1_OVL_EXT_DIFF` | any value = on; default off | Logs once each overlay address where the extents of the engine's data objects (`assets/generated/overlay_map/levelN.ext`, [The open engine](open-engine.md)) and the older nearest-mapped-address rule translate it differently. |
 | `RAC1_SESSION_TRACE` | number, 0 = off; default off | Logs every block the session heap gives and takes back ([The open engine](open-engine.md)). |
+| `RAC1_CTX_TRACE` | number, 0 = off; default off | Logs each level-only address a session's context translates, with what it is (engine data, own data, a paired function, own code: a tag) and where it goes ([The open engine](open-engine.md)). |
+| `RAC1_CTX_POISON` | number, 0 = off; default off | Testing: fills the engine objects' part of each context image with a pattern, so that a class reading the copy instead of the session's object shows at once ([The open engine](open-engine.md)). |
 
 ## Automated testing variables
 
@@ -456,9 +458,11 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_SEQ_TRACE` | integer n; default 0 (off) | During a simulated-input script, every n frames prints the hero state, position, game mode, level and bolts. |
 | `RAC1_SEQ_WATCH` | integer moby class; default off | During a simulated-input script, traces every moby of that class each frame (state, flags, position, first pvar words), plus the hero-freeze word and the active camera. |
 | `RAC1_SESSION_HEAP_TEST` | number, 0 = off; default off | At start, exercises a session's memory and heap (the RAM's ends and mirrors, 100 rounds of blocks, the memory off and on again) and prints `[session] heap test: ok` or the failure. |
+| `RAC1_SESSION_IMPORT` | `<level>:<class>` entries separated by `,`; unset = off | A session's memory on, and at each level setup those classes of other levels imported: each from its asset pool block, its level's context made, under its own class id, its sounds on its level's bank, drawn by the modern renderer from its own level's class file ([The open engine](open-engine.md)). |
 | `RAC1_SESSION_HIGH_CLASS` | `<class>` or `<class>:<session id>` (2048..7871); unset = off | A session's memory on, and the level's own class registered from a copy of its asset pool block in the session heap above 64 MB (with an id: besides the native class, under that session class id, the level's mobys of the class placed as it). The test of [The open engine](open-engine.md): the pictures and the game's state must be the original's. |
 | `RAC1_SESSION_MEM` | number, 0 = off; default off | Turns a custom-level session's memory on for the whole run: EE memory grown to 256 MB and the session heap. The original's levels must play the same with it ([The open engine](open-engine.md)). |
 | `RAC1_SESSION_RAM_MB` | power of two, 64 to 512; default 256 | The size a session grows EE memory to. |
+| `RAC1_SESSION_TWIN` | `<level>:<class>@<frame>`; unset = off | The twin run ([The open engine](open-engine.md)): on its own level, the class's live moby nearest the hero taken at that frame (when the hero stands) and written to RAC1_TWIN_FILE; on another level, the class imported and spawned from that file in a session. Both runs log it to RAC1_TWIN_LOG for tools/twin_compare.py. |
 | `RAC1_SHOTS` | comma-separated list of frame numbers, e.g. 100,300; default none | Saves a screenshot shot_<frame>.ppm in the current directory when each listed game frame is shown, and prints a line with the game state at that frame. |
 | `RAC1_SIM_DELAY` | integer N frames; default 0 | Delays the RAC1_SIM_INPUT script by N frames (for example to skip a level's arrival scene). |
 | `RAC1_SIM_HOST` | comma-separated host input names (keys, mouse buttons, mouse axes); unset = none | Supplies the host-device inputs that the "h" keys of a menu: or title: RAC1_SIM_INPUT script press, in order. Unrecognised names are reported and skipped. |
@@ -471,6 +475,12 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_TEXT_TRACE` | set (any value) = on; default off | Prints every text id the game asks for that the level's text table lacks, with the level and the frame (`[text] id ... missing`). |
 | `RAC1_TITLE_HOST` | 0 or 1; unset = the title scene is drawn through the normal chain (modern or faithful) | 1 draws the title screen's scene with the older host renderers instead; 0 forces the normal chain. |
 | `RAC1_TITLE_WAIT` | integer frames; default 60 | With a RAC1_SIM_INPUT title: script, how many frames after the title appears before Start is pressed. |
+| `RAC1_TWIN_ALONE` | number, 0 = off; default off | In a twin run, the mobys live at the twin's start (the hero's and the twin's aside) are not updated: the twin meets the hero alone in both runs. |
+| `RAC1_TWIN_AT` | `<x>,<y>,<z>`; default the native place | In a twin run's session, where the twin is spawned (the hero at the native run's place relative to it). |
+| `RAC1_TWIN_FILE` | path; required by RAC1_SESSION_TWIN | The twin run's capture: written by the native run, read by the session's. |
+| `RAC1_TWIN_LOG` | path; unset = no log | The twin run's frame-by-frame log (the moby's record and pvars, the hero, what it spawned), for tools/twin_compare.py. |
+| `RAC1_TWIN_PATHS` | number, 0 = off; default off | In a twin run's native run, the level's paths taken too: the session's twin sees them through a view of its context's own (DESIGN's per-context level data, its first form). |
+| `RAC1_TWIN_RESPAWN` | integer frames; unset = off | In a twin run's session, the twin spawned again that many frames after it is gone (the long runs). |
 | `RAC1_UNLOCKS` | <frame>:<op>[,<frame>:<op>...]; unset = off | At those game frames applies the debug menu's Unlocks tab buttons (src/_devtools/dev_unlocks.cpp; builds with the dev tools only): `items+` / `items-` the non-weapon items and goodies, `weapons+` / `weapons-` the weapons, `bolts+` / `bolts-` the 40 gold bolts, `gold+` / `gold-` the ten gold weapons (`gold+` gives the weapons too), `skills+` / `skills-` the 30 skill points, `cheats+` / `cheats-` the cheats unlocked (`-` also switches them off), `cheatson+` / `cheatson-` the cheats switched on, `challenge+` / `challenge-` the challenge mode count (the pause menu's Goodies), `planets+` every planet on the ship's map, `ammo+` the ammo of every item owned at its maximum, `all+` everything ("Unlock everything") / `all-` everything but the planets and the ammo back. Each application prints the counts (gold bolts, gold weapons, skill points, cheats, challenge, planets). |
 | `RAC1_UNLOCK_PLANETS` | comma-separated level numbers, e.g. 2,3,4; unset = none | At the first gameplay frame, makes those planets reachable from the ship by calling the game's own unlock routine, so the galactic map shows them. |
 | `RAC1_UPDATE_FAKE` | x.y.z (a release) or dev:N (N new commits on main); unset = off | Offers a made-up update to the update notice instead of asking GitHub (no network), so the main menu's panel can be seen and tried: with `--debug-tools`, or headless with RAC1_ADVANCED=1 and RAC1_BOOT=1 (a headless run never checks for real). Skip Version applies to it as to a real one (`update_skip` in advanced_options.txt). |

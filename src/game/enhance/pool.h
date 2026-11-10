@@ -7,6 +7,8 @@
 //   classes.bin  the class blocks as the disc stores them (unrelocated: moby_class_register relocates a copy wherever it
 //                is put), each once by content, 64-byte aligned
 //   pool.idx     the index, text: a `pool` line, a `level` line per level, a `class` line per (level, class)
+//   context/levelNN.img  each level's overlay data sections (its context image: the open engine's stage 2)
+//   sounds/levelNN.bnk   each level's sound bank (a host bank for its classes in a session)
 //   pool.json    the stamp: the pool's version, the disc it was made from, the counts; a pool from another disc or an
 //                older version is made again
 #ifndef RAC1_GAME_ENHANCE_POOL_H
@@ -20,7 +22,11 @@
 namespace rac1 {
 
 // The pool's format version (pool.json's "version"): a change of what is in it makes every player's pool again
-constexpr int POOL_VERSION = 1;
+// (2: the levels' context images)
+// (3: each level's sound bank, each class's sounds; 4: as many sounds as the class block's definitions)
+constexpr int POOL_VERSION = 4;
+// The overlays' first address (their data section 0): a context image starts there
+constexpr uint32_t CONTEXT_BASE = 0x0015ef00u;
 
 // One (level, class) row of the index
 struct PoolClass {
@@ -32,6 +38,7 @@ struct PoolClass {
     uint32_t update_fn = 0;       // its update function in the level's overlay (the level's class table, section 3)
     uint32_t word2c = 0;          // the class table row's third word (the header's +0x2c once registered)
     uint8_t remap[16] = {};       // the class row's texture remap (into the level's moby textures)
+    std::vector<uint16_t> sounds; // its sound definitions' sounds in the level's bank (the asset index +0x70's list)
 };
 
 // One level's summary row
@@ -59,6 +66,12 @@ const std::vector<PoolLevel>& pool_levels();
 const PoolClass* pool_find(int level, uint32_t id);
 // orig: (host) the block's bytes in classes.bin (nullptr: a class without data)
 const uint8_t* pool_block(const PoolClass& c);
+// orig: (host) level `level`'s sound bank (sounds/levelNN.bnk: the level's 989snd bank as its data file holds it); false
+// when none
+bool pool_sound_bank(int level, std::vector<uint8_t>& bank);
+// orig: (host) level `level`'s context image (context/levelNN.img: its overlay's data sections 0..5 as the overlay load
+// puts them, from CONTEXT_BASE up to its code, a bss as zeros) and its code section [code_lo, code_hi); false when none
+bool pool_context_image(int level, std::vector<uint8_t>& image, uint32_t* code_lo, uint32_t* code_hi);
 // orig: (host) the pool's report (`rac1-native --setup --pool-report`): per level and in all, as docs/open-engine.md
 void pool_report();
 
@@ -71,6 +84,8 @@ bool pool_checking();
 void pool_check_class(int level, uint32_t id, uint32_t hdr, uint32_t remap);
 // orig: (host) ... and registered at class index `idx`
 void pool_check_registered(int level, uint32_t id, uint32_t idx);
+// orig: (host) the level's classes' sound definitions set (their bank sounds): each class's compared with its row's sounds
+void pool_check_sounds(int level);
 // orig: (host) the level's classes all registered: the line logged
 void pool_check_level_done(int level);
 
