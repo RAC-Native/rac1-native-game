@@ -275,6 +275,8 @@ static struct {
     char toast[80];
     int toast_t;
     int banner_y;  /* this frame's banner's top (the toast goes over it), 0 none */
+    int box_rect;  /* this frame's challenge box (its panel's index), -1 none */
+    int in_msg;    /* the panels and texts made now are a message of the bottom row (moved off the box) */
     /* the HUD's texts and panels, made in frame (hud may run twice a frame: it only draws them) */
     int nlines, nrects;
     struct {
@@ -282,13 +284,14 @@ static struct {
         uint32_t colour;
         float scale;
         uint8_t anchor, centred;  /* RAC1_HUD_*; centred on x */
+        uint8_t msg;              /* a message's (in_msg) */
         int16_t maxw;  /* its width at most (made smaller to fit), 0 any */
         char text[96];
     } line[15];  /* (the game draws 15 texts a frame at most) */
     struct {
         int16_t x, y, w, h;
         uint32_t colour;
-        uint8_t anchor;
+        uint8_t anchor, msg;
         int8_t fit_first, fit_n;  /* widened round these texts (20 units each side) when they reach past it */
         int16_t grow;             /* (a box at the screen's left) widened to the right instead, to this width at most */
     } rect[32];
@@ -310,6 +313,7 @@ static void hud_text_at(int x, int y, uint32_t colour, float scale, int anchor, 
     s.line[s.nlines].scale = scale;
     s.line[s.nlines].anchor = (uint8_t)anchor;
     s.line[s.nlines].centred = (uint8_t)centred;
+    s.line[s.nlines].msg = (uint8_t)s.in_msg;
     s.line[s.nlines].maxw = 0;
     ++s.nlines;
 }
@@ -328,6 +332,7 @@ static void hud_panel(int x, int y, int w, int h, uint32_t colour, int anchor) {
     s.rect[s.nrects].h = (int16_t)h;
     s.rect[s.nrects].colour = colour;
     s.rect[s.nrects].anchor = (uint8_t)anchor;
+    s.rect[s.nrects].msg = (uint8_t)s.in_msg;
     s.rect[s.nrects].fit_n = 0;
     s.rect[s.nrects].grow = 0;
     ++s.nrects;
@@ -355,14 +360,14 @@ static void hud_grow(int rect, int first, int wmax) {
 
 /* the HUD's bottom row (Daino: nothing in the middle of the screen, nor over the quick select's ring at the left): the
    challenge's box at the left, the banners and the toasts in the middle, all ending this far down */
-#define HUD_BOTTOM 406  /* (the HUD's 448 units reach past the screen's bottom: about 420 are seen) */
+#define HUD_BOTTOM (RAC1_HUD_HEIGHT - 10)
 #define TOAST_H 26
-#define MSG_W 330  /* the banners' and toasts' texts at most this wide (smaller past it): beside the box with a HUD of 21:9 or
-                      wider (narrower, they reach it: the SDK does not tell the HUD's width) */
+#define MSG_W 440  /* the banners' and toasts' texts at most this wide (smaller past it; hud moves them off the box) */
 
 /* a banner at the bottom of the screen, in the middle: a panel, a large line, a smaller one under it (or none) */
 static void banner(uint32_t colour, const char* big, const char* small) {
     const int h = small ? 66 : 44, y = HUD_BOTTOM - h;
+    s.in_msg = 1;
     hud_panel(116, y, 280, h, PANEL, RAC1_HUD_CENTRE);
     hud_panel(116, y, 280, 3, BAR, RAC1_HUD_CENTRE);
     hud_text_at(256, y + 10, colour, 1.6f, RAC1_HUD_CENTRE, 1, "%s", big);
@@ -370,6 +375,7 @@ static void banner(uint32_t colour, const char* big, const char* small) {
     if (small) hud_text_at(256, y + 38, WHITE, 1.2f, RAC1_HUD_CENTRE, 1, "%s", small);
     if (small) hud_maxw(MSG_W);
     hud_fit(2, small ? 2 : 1);
+    s.in_msg = 0;
     s.banner_y = y;
 }
 
@@ -2441,6 +2447,7 @@ static void frame(void* user) {
     (void)user;
     s.nlines = s.nrects = 0;
     s.banner_y = 0;
+    s.box_rect = -1;
     if (!s.mine) return;
     const uint32_t hero = api->hero();
     if (hero == 0) return;
@@ -2531,6 +2538,7 @@ static void frame(void* user) {
                 snprintf(third, sizeof third, tr("Mine %d/%d   Cadute %d"), rails.kmines_hit, rails.kmines + rails.kmines_e, rails.falls);
             }
             const int bh = third[0] ? 72 : 50, y = HUD_BOTTOM - bh, box = s.nrects, first = s.nlines;
+            s.box_rect = box;
             hud_panel(12, y, 230, bh, PANEL, RAC1_HUD_LEFT);
             hud_panel(12, y, 3, bh, BAR, RAC1_HUD_LEFT);
             if (third[0]) hud_text_at(22, y + 50, CYAN, 1.1f, RAC1_HUD_LEFT, 0, "%s", third);
@@ -2592,10 +2600,12 @@ static void frame(void* user) {
         --s.toast_t;
         if (s.mode != MENU) {  /* (at the bottom, over this frame's banner if there is one) */
             const int y = (s.banner_y > 0 ? s.banner_y - 6 : HUD_BOTTOM) - TOAST_H;
+            s.in_msg = 1;
             hud_panel(126, y, 260, TOAST_H, PANEL, RAC1_HUD_CENTRE);
             hud_text_at(256, y + 5, YELLOW, 1.2f, RAC1_HUD_CENTRE, 1, "%s", s.toast);
             hud_maxw(MSG_W);
             hud_fit(1, 1);
+            s.in_msg = 0;
         }
     }
 }
@@ -2610,6 +2620,7 @@ static void hud(void* user) {
         const int tw = s.line[i].maxw > 0 ? api->hud_text_width(s.line[i].text, scale[i]) : 0;
         if (tw > s.line[i].maxw) scale[i] *= (float)s.line[i].maxw / (float)tw;
     }
+    int rx[32], rw[32];
     for (int i = 0; i < s.nrects; ++i) {
         int x = s.rect[i].x, w = s.rect[i].w;
         if (s.rect[i].fit_n > 0 && s.rect[i].grow > 0) {  /* (hud_grow) its left edge kept: 10 units past its texts' ends */
@@ -2634,10 +2645,35 @@ static void hud(void* user) {
                 x = s.rect[i].x - grow / 2;
             }
         }
+        rx[i] = x, rw[i] = w;
+    }
+    /* the bottom row's messages (centred) off the challenge's box (at the left): moved right just past it, made smaller
+       when they do not fit there (the HUD's width: 512 at 4:3, the LEFT elements moved (width - 512) / 2 to the left) */
+    float f = 1.0f;
+    int left = 9999, right = -9999, to = 0;
+    for (int i = 0; i < s.nrects; ++i)
+        if (s.rect[i].msg) {
+            if (rx[i] < left) left = rx[i];
+            if (rx[i] + rw[i] > right) right = rx[i] + rw[i];
+        }
+    if (s.box_rect >= 0 && left < right) {
+        const int side = ((RAC1_API_HAS(api, hud_width) ? (int)api->hud_width() : 512) - 512) / 2;
+        to = rx[s.box_rect] + rw[s.box_rect] - side + 8;  /* (the box's right edge, in the centre's units) */
+        const int end = 504;  /* (a centred text is cut past the 4:3 frame's right edge, 512) */
+        if (left >= to) to = left;
+        else if (to + (right - left) > end) f = (float)(end - to) / (float)(right - left);
+    }
+    for (int i = 0; i < s.nrects; ++i) {
+        int x = rx[i], w = rw[i];
+        if (s.rect[i].msg && to != left) x = to + (int)((float)(x - left) * f), w = (int)((float)w * f);
         api->hud_rect(x, s.rect[i].y, w, s.rect[i].h, s.rect[i].colour, s.rect[i].anchor);
     }
     for (int i = 0; i < s.nlines; ++i) {
         int x = s.line[i].x;
+        if (s.line[i].msg && to != left) {
+            scale[i] *= f;
+            x = to + (int)((float)(x - left) * f);
+        }
         if (s.line[i].centred) x -= api->hud_text_width(s.line[i].text, scale[i]) / 2;
         api->hud_text_ex(x, s.line[i].y, s.line[i].colour, scale[i], s.line[i].anchor, s.line[i].text);
     }
