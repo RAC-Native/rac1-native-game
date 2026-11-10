@@ -16,15 +16,15 @@
  * (The lava's rules are the game's: on a level mod Ratchet sinks in its collision's lava, jumps out, and is lost at the
  * third jump in three seconds. Every moby is updated however far: level.txt's update_all line.)
  * It needs the SDK's ABI 5 (Kalebo III's enemies, the weapons; ABI 4: vendor_open, input_hold, the HUD's panels,
- * base_hunt, light_add).
+ * base_hunt, light_add); the rail challenges ABI 11 (the rails).
  * - The supplies: four places on the hub's top; during a challenge, every so often (the challenge's `supplies`
  *   seconds, give or take a quarter), two nanotech or two ammo crates come into the free ones (a place is free once its
  *   crate is broken: never one crate into another). Two nanotech crates there at the level's start.
  * - flame (the level's class): a flame vent in the floor: rests, warns (smoke, a hiss), bursts (a roar), hurts
  *   Ratchet standing in it; the vents take turns ("delay=" in frames).
  * - spawn (the level's class): the spawn points, hidden at their spawn.
- * - The rails (rails.txt, the classes rail_<name>): a rail challenge (for those who have the Grindscarponi) puts
- *   Ratchet on the station outside the walls and its rails into the game's rail table: "Test Grindscarponi" one rail
+ * - The rails (level.txt's rail lines, the classes rail_<name>): a rail challenge (for those who have the Grindscarponi)
+ *   puts Ratchet on the station outside the walls and turns its rails on: "Test Grindscarponi" one rail
  *   down into the arena, "Grindscarponi: Discesa" a course of three lanes with mines (ours, the class mine, to jump;
  *   Kalebo III's rail mines, class 933, to break), then a last wave in the arena (the grind section below).
  *
@@ -118,7 +118,7 @@ typedef struct challenge_def {
                           every CHAOS_FRAMES */
     int reward;        /* bolts */
     int hidden;        /* 1: in the menu once every other challenge is won */
-    const char* rails; /* RAIL: its rails (rails.txt's names, the first the one whose end finishes it) */
+    const char* rails; /* RAIL: its rails (level.txt's names, the first the one whose end finishes it) */
     const char* start; /* RAIL: the spawn point Ratchet starts from */
     int obstacles;     /* RAIL: the course's obstacles (our mines, Kalebo III's rail mines) on */
 } challenge_def;
@@ -454,8 +454,7 @@ static const char* const TEXTS[][N_LANGS] = {
      "Zones electrifiees: evite les cercles!", "Landezonen unter Strom: weg von den Ringen!",
      "Zonas electrificadas: alejate de los circulos!"},
     /* the rails */
-    {"Nessuna rotaia (rails.txt)", "No rails (rails.txt)", "Aucun rail (rails.txt)", "Keine Schienen (rails.txt)",
-     "Sin railes (rails.txt)"},
+    {"Nessuna rotaia", "No rails", "Aucun rail", "Keine Schienen", "Sin railes"},
     {"Salta sulla rotaia!", "Jump on the rail!", "Saute sur le rail!", "Spring auf die Schiene!", "Salta al rail!"},
     {"La corsia finisce! Cambia corsia", "The lane ends! Switch lanes", "La voie se termine! Change de voie",
      "Die Spur endet! Wechsle die Spur", "El carril se acaba! Cambia de carril"},
@@ -1688,24 +1687,20 @@ static void zap_update(const float h[3]) {
     }
 }
 
-/* ---- the grind rails (RAIL; rails.txt: export_arena.py's, from build_rails.py's curves) ----
-   The game's rail table (at Veldin's overlay address 0x15f70c, its count at 0x15f710; 0x20 bytes a rail: its centre,
-   its reach +0xc, its path +0x10, a loop +0x14; a path: its count, 12 bytes, then 16-byte points, w the length to the
-   next one) is empty on a level mod: a rail challenge points it at the plugin's own (ee_alloc) and back when it ends,
-   so its rails are there only then (their models too). Kalebo III's hero code takes a rail only within 12 units of
-   its own level's two rail spots (hero_rail_land_check 0x20cf58): the rails start by one, at the station. Once on one,
-   its jumps and the side jumps to a rail beside it (2..4.5 away: the lanes) work anywhere. The challenges need the Grind
-   Scarponi (0x13d4dd, the grind boots): without them the menu does not start them.
+/* ---- the grind rails (RAIL; level.txt's rail lines: export_arena.py's, from build_rails.py's curves) ----
+   The composer puts the level's rails into the game's rail table, a collision strip under each (the game's grind lets go
+   of a rail with nothing under Ratchet's feet); on a level mod with rails of its own the hero code takes one anywhere.
+   They are all out of the game's search from the level's start (rail_enable), their models hidden: a rail challenge
+   turns its own on once its countdown is over and off again when it ends. Once on one, the game's jumps and the side
+   jumps to a rail beside it (2..4.5 away: the lanes) do the rest. The challenges need the Grindscarponi (0x13d4dd, the
+   grind boots) and the SDK's ABI 11: without them the menu does not start them.
    The course ("Grindscarponi: Discesa") has obstacles on its lanes: our mines (the class mine's objects) are jumped;
    Kalebo III's rail mines (class 933, started by base_spawn where the spawn points with kind=kmine are) are broken with
    the wrench (Square on the rail) or passed on another lane; each hurts him by one. Its end leads to a last wave in the
    arena. */
-#define RAIL_TABLE 0x0015f70cu
-#define RAIL_COUNT 0x0015f710u
 #define GRIND_BOOTS 0x0013d4ddu
 #define MAX_RAILS 6
-#define RAIL_PTS 200
-#define RAIL_END 2.5f  /* the rail ridden to its end: this near its last point */
+#define LANE_WARN 20.0f   /* a lane that ends: told this far from its end */
 #define RAIL_ATTACK 0x2b  /* his wrench swing on a rail */
 #define MAX_OBST 48
 #define MINE_BOLTS 50      /* a rail mine broken with the wrench */
@@ -1719,23 +1714,15 @@ static void zap_update(const float h[3]) {
 enum { O_MINE, O_KMINE };
 
 static struct {
-    int n;
-    struct {
-        char name[24];
-        int npts;
-        float pt[RAIL_PTS][3];
-        uint32_t path;  /* its path in the game's memory (made at the first challenge), 0 not yet */
-    } r[MAX_RAILS];
-    int loaded;
-    uint32_t table;                /* (ee_alloc, once) the table's entries, then the paths */
-    uint32_t old_table, old_count; /* the level's own, put back */
-    int on;                        /* rails in the game's table now */
-    int set[MAX_RAILS], nset;      /* the challenge's rails (set[0]: the one whose end finishes it), its start's name */
-    const char* start;
-    int phase;                     /* 0 the countdown on the station, 1 riding, 2 the last wave in the arena */
-    int ride;                      /* frames riding (the time limit) */
+    int32_t set[MAX_RAILS];    /* the challenge's rails (rail_find's handles; set[0]: the one whose end finishes it) */
+    char name[MAX_RAILS][24];  /* their names (their models: the objects rail_<name>) */
+    int nset;
+    int on;                    /* the challenge's rails in the game's search now */
+    const char* start;         /* the spawn point Ratchet starts from */
+    int phase;                 /* 0 the countdown on the station, 1 riding, 2 the last wave in the arena */
+    int ride;                  /* frames riding (the time limit) */
     int falls;
-    int reached;  /* the finishing rail's end reached: done once he is off it */
+    int reached;  /* the finishing rail's end reached (the rail callback's END): done once he is off it */
     struct {
         uint32_t obj;  /* O_MINE: our object; O_KMINE: its spawn point's (kind=kmine) */
         uint32_t h;    /* O_KMINE: base_spawn's handle while it is out */
@@ -1746,51 +1733,21 @@ static struct {
     int warned;  /* the lanes whose end was told (bits by their place in set) */
 } rails;
 
+/* the game has the rail services (ABI 11) */
+static int rails_sdk(void) {
+    return api->abi >= 11;
+}
+
 /* his states on a rail: 0x28 grinding, 0x29 / 0x2a jumping, 0x2b attacking, 0x42 hopping off (hero_transitions) */
 static int on_rail(void) {
     const uint32_t st = rac1_lw(api, HERO_STATE);
     return (st >= 0x28 && st <= 0x2b) || st == 0x42;
 }
 
-/* rails.txt: "rail <name> <points>", then a point a line (the game's coordinates) */
-static void rails_load(void) {
-    rails.loaded = 1;
-    char path[512], line[128];
-    if (!api->mod_path("level/rails.txt", path, sizeof path)) return;
-    FILE* f = fopen(path, "r");
-    if (f == NULL) return;
-    int at = -1, want = 0;
-    while (fgets(line, sizeof line, f)) {
-        char name[24];
-        int n;
-        float x, y, z;
-        if (sscanf(line, "rail %23s %d", name, &n) == 2) {
-            at = rails.n < MAX_RAILS ? rails.n++ : -1;
-            if (at >= 0) snprintf(rails.r[at].name, sizeof rails.r[at].name, "%s", name), rails.r[at].npts = 0;
-            want = n;
-        } else if (at >= 0 && sscanf(line, "%f %f %f", &x, &y, &z) == 3 && rails.r[at].npts < RAIL_PTS && rails.r[at].npts < want) {
-            float* p = rails.r[at].pt[rails.r[at].npts++];
-            p[0] = x, p[1] = y, p[2] = z;
-        }
-    }
-    fclose(f);
-    char msg[160];
-    int len = snprintf(msg, sizeof msg, "rails: %d", rails.n);
-    for (int i = 0; i < rails.n && len < (int)sizeof msg - 32; ++i)
-        len += snprintf(msg + len, sizeof msg - (size_t)len, "%s %s (%d points)", i ? "," : ":", rails.r[i].name, rails.r[i].npts);
-    api->log(msg);
-}
-
-static int rail_find(const char* name) {
-    for (int i = 0; i < rails.n; ++i)
-        if (strcmp(rails.r[i].name, name) == 0) return i;
-    return -1;
-}
-
-/* its model (the class rail_<name>'s object) shown or not */
-static void rail_show(int i, int on) {
+/* a rail's model (the class rail_<name>'s object) shown or not */
+static void rail_show(const char* name, int on) {
     char n[32];
-    snprintf(n, sizeof n, "rail_%s", rails.r[i].name);
+    snprintf(n, sizeof n, "rail_%s", name);
     const uint32_t o = api->object_named(n);
     if (o != 0) api->object_show(o, on);
 }
@@ -1800,79 +1757,35 @@ static float dist3(const float a[3], const float b[3]) {
     return sqrtf(x * x + y * y + z * z);
 }
 
-/* every rail's path into the game's memory, once (they stay: the table points at them while a challenge runs) */
-static int rails_make(void) {
-    if (rails.table != 0) return 1;
-    uint32_t size = MAX_RAILS * 0x20u;
-    for (int i = 0; i < rails.n; ++i) size += 0x10u + 16u * (uint32_t)rails.r[i].npts;
-    rails.table = api->ee_alloc(size);
-    if (rails.table == 0) return 0;
-    uint32_t at = rails.table + MAX_RAILS * 0x20u;
-    for (int i = 0; i < rails.n; ++i) {
-        const int n = rails.r[i].npts;
-        rails.r[i].path = at;
-        api->sw(at, (uint32_t)n);
-        for (int k = 0; k < n; ++k) {
-            const float* p = rails.r[i].pt[k];
-            const uint32_t q = at + 0x10 + 16u * (uint32_t)k;
-            api->swf(q, p[0]);
-            api->swf(q + 4, p[1]);
-            api->swf(q + 8, p[2]);
-            api->swf(q + 12, k + 1 < n ? dist3(p, rails.r[i].pt[k + 1]) : 0.0f);
-        }
-        at += 0x10u + 16u * (uint32_t)n;
+/* the level's start: every rail out of the game's search, its model hidden */
+static void rails_all_off(void) {
+    if (!rails_sdk()) return;
+    char name[24];
+    int n = 0;
+    for (int32_t r = 1; api->rail_info(r, name, sizeof name, NULL, NULL); ++r, ++n) {
+        api->rail_enable(r, 0);
+        rail_show(name, 0);
     }
-    char msg[96];
-    snprintf(msg, sizeof msg, "rails: their paths in the game's memory at 0x%x (%u bytes)", (unsigned)rails.table, (unsigned)size);
+    char msg[64];
+    snprintf(msg, sizeof msg, "rails: %d, all off", n);
     api->log(msg);
-    return 1;
 }
 
-/* the challenge's rails into the game's table */
-static int rails_install(void) {
-    if (rails.nset == 0 || !rails_make()) return 0;
-    for (int j = 0; j < rails.nset; ++j) {
-        const int i = rails.set[j], n = rails.r[i].npts;
-        float lo[3], hi[3], c[3], reach = 0.0f;
-        for (int a = 0; a < 3; ++a) lo[a] = hi[a] = rails.r[i].pt[0][a];
-        for (int k = 0; k < n; ++k)
-            for (int a = 0; a < 3; ++a) {
-                if (rails.r[i].pt[k][a] < lo[a]) lo[a] = rails.r[i].pt[k][a];
-                if (rails.r[i].pt[k][a] > hi[a]) hi[a] = rails.r[i].pt[k][a];
-            }
-        for (int a = 0; a < 3; ++a) c[a] = (lo[a] + hi[a]) * 0.5f;
-        for (int k = 0; k < n; ++k) {
-            const float d = dist3(c, rails.r[i].pt[k]);
-            if (d > reach) reach = d;
-        }
-        const uint32_t e = rails.table + 0x20u * (uint32_t)j;
-        api->swf(e, c[0]);
-        api->swf(e + 4, c[1]);
-        api->swf(e + 8, c[2]);
-        api->swf(e + 12, reach + 2.0f);
-        api->sw(e + 0x10, rails.r[i].path);
-        api->sw(e + 0x14, 0);
+/* the challenge's rails in the game's search (on) or out of it */
+static void rails_switch(int on) {
+    for (int j = 0; j < rails.nset; ++j) api->rail_enable(rails.set[j], on);
+    rails.on = on;
+    if (on) {
+        char msg[96];
+        snprintf(msg, sizeof msg, "rails on: %d (the first: %s)", rails.nset, rails.name[0]);
+        api->log(msg);
     }
-    if (!rails.on) {
-        rails.old_table = rac1_lw(api, api->ov(RAIL_TABLE));
-        rails.old_count = rac1_lw(api, api->ov(RAIL_COUNT));
-    }
-    api->sw(api->ov(RAIL_TABLE), rails.table);
-    api->sw(api->ov(RAIL_COUNT), (uint32_t)rails.nset);
-    rails.on = rails.nset;
-    char msg[96];
-    snprintf(msg, sizeof msg, "rails on: %d (the first: %s)", rails.nset, rails.r[rails.set[0]].name);
-    api->log(msg);
-    return 1;
 }
 
-static void rails_uninstall(void) {
-    if (!rails.on) return;
-    if (rac1_lw(api, api->ov(RAIL_TABLE)) == rails.table) {  /* (still ours: not the level loaded again) */
-        api->sw(api->ov(RAIL_COUNT), rails.old_count);
-        api->sw(api->ov(RAIL_TABLE), rails.old_table);
-    }
-    rails.on = 0;
+/* the rail callback (ABI 11): the finishing rail ridden to its end */
+static void rail_event(void* user, int32_t rail, const char* name, int32_t event) {
+    (void)user, (void)name;
+    if (rails.on && rails.phase == 1 && rail == rails.set[0] && event == RAC1_RAIL_END) rails.reached = 1;
 }
 
 /* Ratchet has the Grindscarponi (the rail challenges need them) */
@@ -2012,10 +1925,9 @@ static void obstacles_update(const float h[3]) {
 /* on the station, facing the first rail's start; the obstacles back */
 static void rail_to_start(void) {
     const uint32_t o = rails.start ? api->object_named(rails.start) : 0;
-    if (o == 0 || rails.nset == 0) return;
-    float p[3];
+    float p[3], a[3];
+    if (o == 0 || rails.nset == 0 || !api->rail_point(rails.set[0], 0.0f, a, NULL)) return;
     pos_of(api->object_moby(o), p);
-    const float* a = rails.r[rails.set[0]].pt[0];
     hero_move(p, atan2f(a[1] - p[1], a[0] - p[0]));
     rails.reached = 0;
     rails.warned = 0;
@@ -2033,36 +1945,39 @@ static void rail_begin(void) {
     rails.start = c->start;
     rails.use_obs = c->obstacles;
     char names[64];
-    snprintf(names, sizeof names, "%s", c->rails ? c->rails : "");
+    snprintf(names, sizeof names, "%s", c->rails && rails_sdk() ? c->rails : "");
     for (char* t = strtok(names, " "); t != NULL && rails.nset < MAX_RAILS; t = strtok(NULL, " ")) {
-        const int i = rail_find(t);
-        if (i >= 0) rails.set[rails.nset++] = i;
+        const int32_t r = api->rail_find(t);
+        if (r == 0) continue;
+        snprintf(rails.name[rails.nset], sizeof rails.name[0], "%s", t);
+        rails.set[rails.nset++] = r;
     }
     if (rails.nset == 0) {
-        toast(tr("Nessuna rotaia (rails.txt)"));
+        toast(tr("Nessuna rotaia"));
         return;
     }
-    for (int j = 0; j < rails.nset; ++j) rail_show(rails.set[j], 1);
+    for (int j = 0; j < rails.nset; ++j) rail_show(rails.name[j], 1);
     rail_to_start();
     api->input_hold(1);
 }
 
-/* the countdown over: the rails in the game's table, Ratchet free */
+/* the countdown over: the rails in the game's search, Ratchet free */
 static void rail_go(void) {
     if (rails.phase != 0) return;
     api->input_hold(0);
-    if (!rails_install()) {
+    if (rails.nset == 0) {
         challenge_end(0, "nessuna rotaia");
         return;
     }
+    rails_switch(1);
     rails.phase = 1;
     toast(tr("Salta sulla rotaia!"));
 }
 
 /* the rails and their models gone (and the obstacles) */
 static void rails_away(void) {
-    rails_uninstall();
-    for (int j = 0; j < rails.nset; ++j) rail_show(rails.set[j], 0);
+    if (rails.on) rails_switch(0);
+    for (int j = 0; j < rails.nset; ++j) rail_show(rails.name[j], 0);
     if (rails.use_obs) obstacles_reset(0);
 }
 
@@ -2088,19 +2003,18 @@ static void rail_update(const float h[3]) {
     if (rails.nset == 0) return;
     ++rails.ride;
     if (rails.use_obs) obstacles_update(h);
-    const int fin = rails.set[0];
-    if (dist3(h, rails.r[fin].pt[rails.r[fin].npts - 1]) < RAIL_END) rails.reached = 1;
-    if (s.t % 10 == 0)  /* on a lane that ends (not the finishing rail) within 20 units of its end: told once */
-        for (int j = 1; j < rails.nset; ++j) {
-            const int i = rails.set[j], n = rails.r[i].npts;
-            if ((rails.warned >> j) & 1) continue;
-            for (int k = n > 14 ? n - 14 : 0; k < n; ++k)
-                if (dist3(h, rails.r[i].pt[k]) < 1.2f) {
-                    rails.warned |= 1 << j;
-                    toast(tr("La corsia finisce! Cambia corsia"));
-                    break;
+    rac1_rail_info ri = {sizeof ri};
+    if (s.t % 10 == 0 && api->hero_rail(&ri))  /* on a lane that ends (not the finishing rail) near its end: told once */
+        for (int j = 1; j < rails.nset; ++j)
+            if (ri.rail == rails.set[j] && !((rails.warned >> j) & 1) && ri.length - ri.distance < LANE_WARN) {
+                rails.warned |= 1 << j;
+                toast(tr("La corsia finisce! Cambia corsia"));
+                if (s.test_log) {
+                    char b[96];
+                    snprintf(b, sizeof b, "lane %s: its end told, at %.1f of %.1f", rails.name[j], ri.distance, ri.length);
+                    api->log(b);
                 }
-        }
+            }
     if (rails.reached && !on_rail()) {
         if (c->wave[0].count > 0) {  /* (down in the arena: the last wave) */
             rails_away();
@@ -2481,10 +2395,9 @@ static void level_start(void* user, const rac1_level_info* level) {
     for (int i = 0; i < MAX_BOMBS; ++i) bombs[i].bomb = bombs[i].mark = 0, bombs[i].flash = 0;
     for (int i = 0; i < N_SLOTS; ++i) slot_crate[i] = 0, slot_flash[i] = 0;
     zap_start();
-    if (!rails.loaded) rails_load();
-    rails.on = 0;  /* (the level's table is its own again) */
+    rails.on = 0;  /* (the level's rails are all in the game's search again) */
     rails.phase = 0;
-    for (int i = 0; i < rails.n; ++i) rail_show(i, 0);
+    rails_all_off();
     obstacles_find();
     if (s.lost_reload) {  /* (the challenge he died in: lost, its banner now) */
         s.lost_reload = 0;
@@ -2594,9 +2507,8 @@ static void new_game(void* user) {
    arena_ch<N> (arena_ch<N>k: an enemy taken away every 1.5 s, f: every third of a second): Ratchet south of the hub,
    four weapons if he owns one,
    challenge N from 420, the enemies by kind, the dropships, the weapon in his hand. And: arena_rail*, arena_course* (the
-   rail challenges), arena_mines (Kalebo III's rail mines on the test rail), arena_suck (the Suck Cannon's beam on the
-   enemies, with RAC1_SIM_INPUT=hold), arena_zap (an electrified drop zone, Ratchet in it), arena_texts (the game's text
-   table and the items' names), kalebo_rails (on Kalebo III itself: its rails and the mobys on them) */
+   rail challenges), arena_suck (the Suck Cannon's beam on the enemies, with RAC1_SIM_INPUT=hold), arena_zap (an
+   electrified drop zone, Ratchet in it), arena_texts (the game's text table and the items' names) */
 static void test(void* user, const char* text, uint64_t frame) {
     (void)user;
     const int near = strcmp(text, "arena_near") == 0, win = strcmp(text, "arena_win") == 0, lava = strcmp(text, "arena_lava") == 0;
@@ -2616,43 +2528,6 @@ static void test(void* user, const char* text, uint64_t frame) {
     const int fall = strcmp(text, "arena_fall") == 0;    /* the tower, then down to the floor at frame 1500: they come down */
     const int tower = strcmp(text, "arena_tower") == 0 || fall;  /* on the north-east tower's top: up the ramps (the paths) */
     const int bombs_t = strcmp(text, "arena_bombs") == 0;  /* "Pioggia di fuoco", his health kept full */
-    static uint64_t kalebo_at;  /* (kalebo_rails: two seconds into Kalebo III) */
-    if (!s.mine && s.level == 16 && strcmp(text, "kalebo_rails") == 0 && kalebo_at == 0) kalebo_at = frame + 120;
-    if (!s.mine && s.level == 16 && strcmp(text, "kalebo_rails") == 0 && frame == kalebo_at) {
-        /* (on Kalebo III itself) its rails, and the mobys on them: class, place, state */
-        const uint32_t table = rac1_lw(api, api->ov(RAIL_TABLE));
-        const int32_t n = (int32_t)rac1_lw(api, api->ov(RAIL_COUNT));
-        uint32_t seen[64];
-        int nseen = 0;
-        for (int32_t r = 0; r < n && table != 0; ++r) {
-            const uint32_t path = rac1_lw(api, table + 0x20u * (uint32_t)r + 0x10);
-            const int32_t np = (int32_t)rac1_lw(api, path);
-            char b[200];
-            snprintf(b, sizeof b, "kalebo rail %d: %d points, from %.1f %.1f %.1f to %.1f %.1f %.1f, loop %d", (int)r, (int)np,
-                     rac1_lwf(api, path + 0x10), rac1_lwf(api, path + 0x14), rac1_lwf(api, path + 0x18),
-                     rac1_lwf(api, path + 0x10 + 16u * (uint32_t)(np - 1)), rac1_lwf(api, path + 0x14 + 16u * (uint32_t)(np - 1)),
-                     rac1_lwf(api, path + 0x18 + 16u * (uint32_t)(np - 1)), (int)rac1_lw(api, table + 0x20u * (uint32_t)r + 0x14));
-            api->log(b);
-            for (int32_t k = 0; k < np; k += 2) {
-                float p[3];
-                for (int a = 0; a < 3; ++a) p[a] = rac1_lwf(api, path + 0x10 + 16u * (uint32_t)k + 4u * (uint32_t)a);
-                uint32_t near[16];
-                const int32_t m = api->mobys_near(p, 3.0f, -1, near, 16);
-                for (int32_t j = 0; j < m && j < 16; ++j) {
-                    int dup = 0;
-                    for (int q = 0; q < nseen; ++q) dup |= seen[q] == near[j];
-                    if (dup || nseen >= 64 || near[j] == api->hero()) continue;
-                    seen[nseen++] = near[j];
-                    float at[3];
-                    pos_of(near[j], at);
-                    snprintf(b, sizeof b, "  on rail %d by point %d: class %d at %.1f %.1f %.1f, state %d", (int)r, (int)k,
-                             (int)(int16_t)rac1_lh(api, near[j] + 0xa6), at[0], at[1], at[2], (int)(int8_t)rac1_lb(api, near[j] + 0x20));
-                    api->log(b);
-                }
-            }
-        }
-        return;
-    }
     if (s.mine && strcmp(text, "arena_texts") == 0 && frame == 300) {  /* the game's text table, every record, then the
                                                                           items' names as the plugin reads them */
         for (int32_t item = 0x08; item <= 0x1d; ++item) {
@@ -2737,49 +2612,6 @@ static void test(void* user, const char* text, uint64_t frame) {
         }
         return;
     }
-    if (s.mine && strncmp(text, "arena_mines", 11) == 0) {
-        /* (the test rail with a Kalebo III mine of class 257 at its 15th point, one of 933 at its 30th; Ratchet dropped on
-           it at 640) their state and his, every 6 frames */
-        static uint32_t mh[2];
-        int ch = -1;
-        for (int i = 0; i < N_CHALLENGES; ++i)
-            if (strcmp(CHALLENGES[i].name, "Test Grindscarponi") == 0) ch = i;
-        if (frame == 100) api->sb(GRIND_BOOTS, 1);
-        if (frame == 420 && ch >= 0) challenge_start(ch);
-        if (frame == 610 && rails.nset > 0) {
-            static const int32_t CLS[2] = {RAIL_MINE, RAIL_MINE};
-            static const int PT[2] = {15, 30};
-            for (int k = 0; k < 2; ++k) {
-                const float* p = rails.r[rails.set[0]].pt[PT[k]];
-                const float* q = rails.r[rails.set[0]].pt[PT[k] + 1];
-                mh[k] = api->base_spawn(CLS[k], p, atan2f(q[1] - p[1], q[0] - p[0]));
-                char b[96];
-                snprintf(b, sizeof b, "mines: class %d spawned: handle 0x%x, moby 0x%x", (int)CLS[k], (unsigned)mh[k], (unsigned)api->base_moby(mh[k]));
-                api->log(b);
-            }
-        }
-        if (frame == 640 && rails.nset > 0) {
-            const float *a = rails.r[rails.set[0]].pt[2], *b = rails.r[rails.set[0]].pt[4];
-            const float at[3] = {a[0], a[1], a[2] + 1.5f};
-            hero_move(at, atan2f(b[1] - a[1], b[0] - a[0]));
-        }
-        if (frame >= 610 && frame <= 1400 && frame % 6 == 0) {
-            float h[3];
-            pos_of(api->hero(), h);
-            char b[200];
-            int k = snprintf(b, sizeof b, "mines %llu: hero %.1f %.1f %.1f state 0x%x health %d", (unsigned long long)frame, h[0], h[1], h[2],
-                             (unsigned)rac1_lw(api, HERO_STATE), (int)api->health());
-            for (int j = 0; j < 2; ++j) {
-                const uint32_t m = api->base_moby(mh[j]);
-                float r[3] = {0, 0, 0};
-                if (m) pos_of(m, r);
-                k += snprintf(b + k, sizeof b - (size_t)k, " | %s state %d flags 0x%x z %.1f (%.1f)", j ? "2nd" : "1st",
-                              m ? (int)(int8_t)rac1_lb(api, m + 0x20) : -99, m ? (unsigned)rac1_lh(api, m + 0x34) : 0, r[2], m ? dist3(r, h) : 0.0f);
-            }
-            api->log(b);
-        }
-        return;
-    }
     const int course_t = strncmp(text, "arena_course", 12) == 0;
     if (s.mine && (strncmp(text, "arena_rail", 10) == 0 || course_t)) {
         /* a rail challenge from 420 (arena_rail*: the test rail, arena_course*: the course), the Grindscarponi given;
@@ -2792,11 +2624,11 @@ static void test(void* user, const char* text, uint64_t frame) {
             if (strcmp(CHALLENGES[i].name, want) == 0) ch = i;
         if (frame == 100) api->sb(GRIND_BOOTS, 1);  /* (a test's game has no Grindscarponi) */
         if (frame == 420 && ch >= 0) challenge_start(ch);
-        if (frame == 640 && strstr(text, "walk") == NULL && rails.nset > 0) {
-            const float *a = rails.r[rails.set[0]].pt[2], *b = rails.r[rails.set[0]].pt[4];
+        float a[3], d[3];
+        if (frame == 640 && strstr(text, "walk") == NULL && rails.nset > 0 && api->rail_point(rails.set[0], 3.0f, a, d)) {
             const float at[3] = {a[0], a[1], a[2] + 1.5f};
-            hero_move(at, atan2f(b[1] - a[1], b[0] - a[0]));
-            api->log("test: Ratchet dropped over the first rail's third point");
+            hero_move(at, atan2f(d[1], d[0]));
+            api->log("test: Ratchet dropped over the first rail, 3 units along it");
         }
         s.test_log = 1;
         static int32_t hp_was = -1;  /* (arena_course_nh: his health not kept up; each change logged) */
@@ -2816,19 +2648,16 @@ static void test(void* user, const char* text, uint64_t frame) {
         if (frame >= 420 && frame <= 4000 && api->hero() != 0 && rails.nset > 0 && (riding ? frame % 6 == 0 : frame % 60 == 0)) {
             float h[3];
             pos_of(api->hero(), h);
-            int best = 0, lane = 0;
-            float bd = 1e9f;
-            for (int j = 0; j < rails.nset; ++j)
-                for (int k = 0; k < rails.r[rails.set[j]].npts; ++k) {
-                    const float d = dist3(h, rails.r[rails.set[j]].pt[k]);
-                    if (d < bd) bd = d, best = k, lane = rails.set[j];
-                }
+            rac1_rail_info ri = {sizeof ri};
+            char on[24] = "-";
+            if (api->hero_rail(&ri) && !api->rail_info(ri.rail, on, sizeof on, NULL, NULL)) snprintf(on, sizeof on, "?");
             int alive = 0;
             for (int i = 0; i < rails.nobs; ++i) alive += rails.obs[i].alive;
             char b[240];
-            snprintf(b, sizeof b, "test %llu: mode %d phase %d, hero %.2f %.2f %.2f, state 0x%x, rail %s point %d at %.2f, health %d, obstacles %d, rail mines %d/%d, falls %d, table %d, alive %d",
-                     (unsigned long long)frame, s.mode, rails.phase, h[0], h[1], h[2], (unsigned)rac1_lw(api, HERO_STATE), rails.r[lane].name, best, bd,
-                     (int)api->health(), alive, rails.kmines_hit, rails.kmines, rails.falls, (int)rac1_lw(api, api->ov(RAIL_COUNT)), s.nen);
+            snprintf(b, sizeof b, "test %llu: mode %d phase %d, hero %.2f %.2f %.2f, state 0x%x, rail %s at %.1f of %.1f, health %d, obstacles %d, rail mines %d/%d, falls %d, on %d, alive %d",
+                     (unsigned long long)frame, s.mode, rails.phase, h[0], h[1], h[2], (unsigned)rac1_lw(api, HERO_STATE), on,
+                     on[0] == '-' ? 0.0f : ri.distance, on[0] == '-' ? 0.0f : ri.length, (int)api->health(), alive, rails.kmines_hit,
+                     rails.kmines, rails.falls, rails.on, s.nen);
             api->log(b);
         }
         return;
@@ -3217,6 +3046,7 @@ RAC1_MOD_EXPORT int rac1_mod_main(const rac1_api* game, rac1_mod* mod) {
     mod->load = load;
     mod->new_game = new_game;
     mod->test = test;
+    if (rails_sdk()) mod->rail = rail_event;
     rac1_class_def d = {sizeof d};
     d.name = "flame";
     d.state_size = sizeof(flame);

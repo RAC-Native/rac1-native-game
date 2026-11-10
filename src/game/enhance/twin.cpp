@@ -56,7 +56,7 @@ struct Capture {
     // (indices into m: the members taken with the twin, -1 one not taken)
     std::vector<std::pair<uint32_t, std::vector<int32_t>>> groups;
 };
-constexpr uint32_t PATH_TABLE = 0x001b04b0u, PATH_COUNT = 0x00160104u, PATH_MAX = 176;
+constexpr uint32_t PATH_TABLE = 0x001b04b0u, PATH_COUNT = 0x00160104u, TWIN_PATH_MAX = 176;
 constexpr uint32_t CLOCK = 0x0015f5ccu;  // (the game's frame clock: a class's timers are times of it)
 
 struct Twin {
@@ -238,7 +238,7 @@ bool read_capture(Capture& c) {
         }
         uint32_t np = 0;
         if (ok && get(f, &np, 4))
-            for (uint32_t k = 0; k < np && k < PATH_MAX && ok; ++k) {
+            for (uint32_t k = 0; k < np && k < TWIN_PATH_MAX && ok; ++k) {
                 uint32_t n = 0;
                 ok = get(f, &n, 4) && n <= 0x10000;
                 if (!ok) break;
@@ -357,7 +357,7 @@ bool capture() {
     }
     // the level's paths (RAC1_TWIN_PATHS=1: the session's twin sees them, through a view of its context)
     if (const char* e = std::getenv("RAC1_TWIN_PATHS"); e != nullptr && std::atoi(e) != 0) {
-        const uint32_t n = std::min<uint32_t>(lwu(OV(PATH_COUNT)), PATH_MAX);
+        const uint32_t n = std::min<uint32_t>(lwu(OV(PATH_COUNT)), TWIN_PATH_MAX);
         for (uint32_t k = 0; k < n; ++k) {
             const uint32_t p = lwu(OV(PATH_TABLE) + 4 * k);
             const uint32_t pts = p != 0 ? std::min<uint32_t>(lwu(p), 0x400) : 0;
@@ -502,8 +502,8 @@ bool spawn() {
     // the level's paths, its context's own view of the path table (their points moved with the twin)
     if (!c.paths.empty() && !g_t.views_made) {
         g_t.views_made = true;
-        const uint32_t table = session_heap_alloc(PATH_MAX * 4 + 16, "twin");
-        sw(table + PATH_MAX * 4, static_cast<uint32_t>(c.paths.size()));
+        const uint32_t table = session_heap_alloc(TWIN_PATH_MAX * 4 + 16, "twin");
+        sw(table + TWIN_PATH_MAX * 4, static_cast<uint32_t>(c.paths.size()));
         for (size_t k = 0; k < c.paths.size(); ++k) {
             const auto& b = c.paths[k];
             if (b.empty()) continue;
@@ -520,8 +520,8 @@ bool spawn() {
             const float d[3] = {o[0] - t.pos[0], o[1] - t.pos[1], o[2] - t.pos[2]};
             ld_registry_move(g_t.level, d);
         } else {
-            ctx_view(g_t.level, PATH_TABLE, PATH_MAX * 4, table);
-            ctx_view(g_t.level, PATH_COUNT, 4, table + PATH_MAX * 4);
+            ctx_view(g_t.level, PATH_TABLE, TWIN_PATH_MAX * 4, table);
+            ctx_view(g_t.level, PATH_COUNT, 4, table + TWIN_PATH_MAX * 4);
             std::printf("[twin] session: level %d's %zu paths in a view of its context's own\n", g_t.level, c.paths.size());
         }
     }
