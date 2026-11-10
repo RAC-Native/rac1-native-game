@@ -9,6 +9,7 @@
 #include <game/enhance/hero_modes.h>
 #include <game/enhance/leveldata.h>
 #include <game/enhance/pool.h>
+#include <game/enhance/section_world.h>
 #include <game/enhance/sections.h>
 #include <game/enhance/session.h>
 #include <game/enhance/session_runtime.h>
@@ -168,6 +169,9 @@ struct Obj {
     // the hero's ride reads, hero_platform_ride 0x2134c0's moby_pvar_word2: +0x00 this frame's turn, +0x10 its move), 0 none
     uint32_t plat = 0, plat_pvars = 0;
     float last[3] = {}, last_rot[3] = {};
+    // (a session's sections) the section it was spawned, placed or shown in last (sections_current): while a game world's section
+    // is current only that section's objects are drawn (main's, at main's coordinates, are not drawn in the planet's world)
+    int32_t section = 0;
 };
 struct Sdk {
     bool on = false;            // the current level has a level.sdk
@@ -505,6 +509,7 @@ uint32_t obj_spawn(int32_t cls, const float pos[3], float yaw, int32_t placed) {
     o.scale = 1.0f;
     o.placed = placed;
     o.shown = true;
+    o.section = std::max(sections_current(), 0);
     // the carrier: no class code (its crate's never runs), hidden from the game's draw (our model is drawn instead),
     // updated at any distance; its collision box the class's size, or none (ghost)
     sw(m + 0x74, 0);
@@ -687,6 +692,7 @@ void api_object_place(uint32_t h, const float pos[3], const float rot[3], float 
     const int i = obj_index(h);
     if (i < 0) return;
     Obj& o = g_sdk.objs[static_cast<size_t>(i)];
+    o.section = std::max(sections_current(), 0);  // (placed in the current section: drawn there, a game world's too)
     for (uint32_t k = 0; k < 3; ++k) {
         if (pos != nullptr) swc1(o.moby + 0x10 + 4 * k, pos[k]);
         if (rot != nullptr) swc1(o.moby + 0x40 + 4 * k, fold_angle(rot[k]));
@@ -700,7 +706,9 @@ void api_object_place(uint32_t h, const float pos[3], const float rot[3], float 
 
 void api_object_show(uint32_t h, int on) {
     const int i = obj_index(h);
-    if (i >= 0) g_sdk.objs[static_cast<size_t>(i)].shown = on != 0;
+    if (i < 0) return;
+    g_sdk.objs[static_cast<size_t>(i)].shown = on != 0;
+    if (on != 0) g_sdk.objs[static_cast<size_t>(i)].section = std::max(sections_current(), 0);  // (shown in the current section)
 }
 
 void api_object_solid(uint32_t h, int on) {
@@ -1884,8 +1892,10 @@ void sdk_triggers() {
 // the frame's objects for the modern renderer: each shown one's model at its moby's matrix
 void sdk_publish() {
     std::vector<mrpw::HostMeshInstance> v;
+    const int world_section = world_renderer_level_get() >= 0 ? sections_current() : -1;  // (a game world's section current: its objects only)
     for (const Obj& o : g_sdk.objs) {
         if (!o.live || !o.shown || static_cast<int8_t>(lbu(o.moby + 0x20)) < 0) continue;
+        if (world_section >= 0 && o.section != world_section) continue;
         const SdkClass& c = g_sdk.classes[static_cast<size_t>(o.cls)];
         if (c.mesh < 0) continue;
         mrpw::HostMeshInstance in;
