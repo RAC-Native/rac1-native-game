@@ -645,6 +645,18 @@ thread, `RAC1_PIPELINE=1`, the last 1500 of 2400 frames of a forward walk) on Ke
   gave up. Left off: its place is a paced frame on a machine with few cores, where it has not been measured. The job
   pool's thread count (`job_pool.cpp`: half the logical CPUs less two, which does not count the game thread) was not
   changed: nothing to measure it with on a 24-thread machine.
+- **The moby pass's shadow run after the real pass** (`RAC1_PERF_POSE_ORDER=1`, off by default; `overlay_entry.cpp`,
+  `mrp_lod.cpp`, `mrp_pose_memo.cpp`): the shadow run comes before the real pass and the pose memo works only inside it, so
+  an animated moby both passes draw is posed twice a frame. With the switch the real pass runs first and keeps each pose's
+  key and matrices (it skips nothing), and the shadow run after it finds them: on Kerwan the memo's misses fall from 4963
+  to 2212 in 900 frames, `Host: LOD / wide view moby re-run` from 0.57 to 0.54 ms a frame (Rilgar 0.53 to 0.51). Off,
+  because the shadow's scene is not the same: `RAC1_RAMHASH` is identical on the 19 levels (LOD High and Original),
+  `RAC1_MRP_LOD_VERIFY=1` finds no difference, `RAC1_PERF_POSE_MEMO=2` none, and of the scene's hash the mobys, their
+  matrices, the joints, the parts and the unpacks are identical - but the mobys' records differ on every level, in 20 of
+  their 157 words: the w lanes of vectors the pass writes on x y z, and six words at the record's head, which hold what the
+  VU0 registers held before the pass - after the real pass, no longer what they held before it. The 16 pictures compared
+  (Veldin, Kerwan, Rilgar, Hoven at 16:9 with LOD High, OpenGL and Vulkan, frames 300 and 600) are the same; whether
+  anything ever reads those words was not established. `RAC1_MRP_SCENE_HASH` now prints the scene's kinds of data apart.
 ## Switches to compare
 
 These are testing variables: they are honoured in a headless run, or in a window started with `--debug-tools`
@@ -695,6 +707,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_PROGRESS_THREAD=0` | `progress.json` written by the thread that runs the game frame |
 | `RAC1_TFRAG_TIME_ONCE=0` | Vulkan: the tfrag compute's first dispatches timed, in waited chunks, at every level's arrival |
 | `RAC1_GT_JOIN_SLEEP=1` | the main thread sleeps for most of its wait for the game thread, then polls (off by default: a longer frame unpaced) |
+| `RAC1_PERF_POSE_ORDER=1` | the moby pass's shadow run after the real pass, which fills the pose memo for it (off by default: the scene's records differ) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
