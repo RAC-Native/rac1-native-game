@@ -15,8 +15,6 @@ struct GraphicsPipelineDesc;
 
 namespace rac1::gs {
 
-// bits [lo, lo + n) of a GS register's value
-uint32_t field(uint64_t v, int lo, int n);
 // OpenGL: the blending of a primitive with state `st` (PRIM ABE, ALPHA); Vulkan: its FIX as the blend constant
 void blend_state(const DrawState& st, bool to_rt = false);
 // Vulkan: the same into a pipeline's description, FIX in `out_fix`

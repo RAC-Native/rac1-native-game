@@ -9,8 +9,6 @@
 
 namespace rac1::gs {
 
-uint32_t field(uint64_t v, int lo, int n) { return static_cast<uint32_t>((v >> lo) & ((1ull << n) - 1)); }
-
 void blend_state(const DrawState& st, bool to_rt) {
     if (vk::is_active()) {
         if (field(st.prim, 6, 1)) {

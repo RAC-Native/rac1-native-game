@@ -61,7 +61,7 @@ const bool g_env_hide = std::getenv("RAC1_MRP_FX_HIDE") != nullptr;
 const bool g_env_states = std::getenv("RAC1_MRP_FX_STATES") != nullptr;  // (testing: the effects' GS states counted, reported)
 std::map<uint64_t, uint64_t> g_states;  // (testing: the MRP's effects not drawn: what they change in the image)
 
-uint32_t fld(uint64_t v, int lo, int n) { return static_cast<uint32_t>((v >> lo) & ((1ull << n) - 1)); }
+using gs::field;
 
 // ---- the producers' ranges (game thread) ------------------------------------------------------------
 
@@ -1191,11 +1191,11 @@ std::vector<Step> g_steps;
 
 // orig: (host) the GL state of a primitive's GS state (BKey) and its fragment shader's flags word
 void key_and_flags(const gs::DrawState& st, bool lines, BKey& k, uint32_t& flags) {
-    const bool tme = fld(st.prim, 4, 1) != 0, fge = fld(st.prim, 5, 1) != 0;
-    const uint32_t ztst = fld(st.test, 17, 2);
+    const bool tme = field(st.prim, 4, 1) != 0, fge = field(st.prim, 5, 1) != 0;
+    const uint32_t ztst = field(st.test, 17, 2);
     k = BKey{};
     k.lines = lines;
-    k.blend = fld(st.prim, 6, 1) != 0;
+    k.blend = field(st.prim, 6, 1) != 0;
     k.alpha = k.blend ? st.alpha : 0;
     // the GS's Cv = (A - B) C + D as dual-source factors: none (0), additive 0x48 (1), alpha 0x44 (2); else the batch's own state (3)
     uint32_t bkind = 3;
@@ -1207,13 +1207,13 @@ void key_and_flags(const gs::DrawState& st, bool lines, BKey& k, uint32_t& flags
         k.blend = false;
         k.alpha = 0;
     }
-    k.ztest = fld(st.test, 16, 1) != 0 && ztst != 1;
+    k.ztest = field(st.test, 16, 1) != 0 && ztst != 1;
     k.ztst = ztst;
-    k.zwrite = k.ztest && fld(st.zbuf, 32, 1) == 0;
-    k.split = k.zwrite && fld(st.test, 0, 1) != 0 && fld(st.test, 1, 3) != 1 && fld(st.test, 12, 2) != 0;
-    flags = (tme ? 1u : 0u) | (fld(st.tex0, 35, 2) << 1) | (fld(st.tex0, 34, 1) << 3) | (fld(st.prim, 3, 1) << 4) | ((fge ? 1u : 0u) << 5) |
-            (fld(st.test, 0, 1) << 6) | (fld(st.test, 1, 3) << 7) | (fld(st.test, 4, 8) << 10) | (fld(st.tex1, 5, 1) << 18) |
-            ((fld(st.clamp, 0, 2) == 0 ? 1u : 0u) << 19) | ((fld(st.clamp, 2, 2) == 0 ? 1u : 0u) << 20) | (fld(st.test, 12, 2) << 22) | (bkind << 24);
+    k.zwrite = k.ztest && field(st.zbuf, 32, 1) == 0;
+    k.split = k.zwrite && field(st.test, 0, 1) != 0 && field(st.test, 1, 3) != 1 && field(st.test, 12, 2) != 0;
+    flags = (tme ? 1u : 0u) | (field(st.tex0, 35, 2) << 1) | (field(st.tex0, 34, 1) << 3) | (field(st.prim, 3, 1) << 4) | ((fge ? 1u : 0u) << 5) |
+            (field(st.test, 0, 1) << 6) | (field(st.test, 1, 3) << 7) | (field(st.test, 4, 8) << 10) | (field(st.tex1, 5, 1) << 18) |
+            ((field(st.clamp, 0, 2) == 0 ? 1u : 0u) << 19) | ((field(st.clamp, 2, 2) == 0 ? 1u : 0u) << 20) | (field(st.test, 12, 2) << 22) | (bkind << 24);
 }
 
 // ---- VU1 program 7's surfaces (kMrpFxVu7) ----------------------------------------------------------------------------
@@ -1338,7 +1338,7 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
     const auto& bs = gs.vu7_batches;
     if (p.fx_id >= bs.size()) return false;
     const gs::Vu7Batch& b = bs[p.fx_id];
-    const int type = static_cast<int>(fld(b.st.prim, 0, 3));
+    const int type = static_cast<int>(field(b.st.prim, 0, 3));
     if (type != 3 && type != 4 && type != 5) {
         ++g_s7.bad_type;
         return false;
@@ -1356,8 +1356,8 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
     auto state = [&](const gs::DrawState& st, const std::shared_ptr<const gs::TexImage>& tex) {
         State S;
         S.st = &st;
-        const bool tme = fld(st.prim, 4, 1) != 0;
-        S.fst = fld(st.prim, 8, 1) != 0;
+        const bool tme = field(st.prim, 4, 1) != 0;
+        S.fst = field(st.prim, 8, 1) != 0;
         if (tme) {
             if (tex == nullptr) {
                 ++g_s7.no_tex;
@@ -1369,7 +1369,7 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
             S.th = tex->h;
             // (an emissive surface or a material: the callback's class and its effect texture - the index, the texture's block when it
             // is not one -; a line naming the block, as the first ones did, still found by it)
-            const uint32_t cls = b.tag & 0xffffu, tbp = fld(st.tex0, 0, 14);
+            const uint32_t cls = b.tag & 0xffffu, tbp = field(st.tex0, 0, 14);
             int fx = -1;
             if (const uint32_t mi = b.tag >> 16; mi != 0 && mi - 1 < g_frame.fx_maps.size())
                 for (const auto& e : g_frame.fx_maps[mi - 1])
@@ -1386,8 +1386,8 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
                 std::printf("[lights] program 7 surface: class %u tex %u (%s, TBP %u, TEX0 %016llx, %d x %d) near %.1f %.1f %.1f, ABE %u ALPHA %02x ZWRITE %u: \"emissive surface %u tex %u\"\n",
                             cls, static_cast<uint32_t>(key & 0xffffffffu), fx >= 0 ? "effect texture" : "not an effect texture: its GS block", tbp,
                             static_cast<unsigned long long>(st.tex0), S.tw, S.th, b.n > 0 ? gs.vu7_verts[b.first].xyz[0] : 0.0f,
-                            b.n > 0 ? gs.vu7_verts[b.first].xyz[1] : 0.0f, b.n > 0 ? gs.vu7_verts[b.first].xyz[2] : 0.0f, fld(st.prim, 6, 1), static_cast<unsigned>(st.alpha & 0xff),
-                            fld(st.zbuf, 32, 1) == 0 ? 1u : 0u, cls, static_cast<uint32_t>(key & 0xffffffffu));
+                            b.n > 0 ? gs.vu7_verts[b.first].xyz[1] : 0.0f, b.n > 0 ? gs.vu7_verts[b.first].xyz[2] : 0.0f, field(st.prim, 6, 1), static_cast<unsigned>(st.alpha & 0xff),
+                            field(st.zbuf, 32, 1) == 0 ? 1u : 0u, cls, static_cast<uint32_t>(key & 0xffffffffu));
         }
         key_and_flags(st, false, S.k, S.flags);
         if (tme && g_e7.still) {
@@ -1398,10 +1398,10 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
             // colour - not over what the game draws behind the sea: Pokitaru's clear trapezoids where its islands' skirts of sand end)
             const uint32_t cls = static_cast<uint32_t>(S.key >> 32);
             const bool sea = S.emis != 0 && g_e7.water_slot[S.emis] != 0;
-            S.still = sea || (S.emis == 0 && fld(st.prim, 6, 1) != 0 && g_e7.water_cls.count(cls) != 0);
+            S.still = sea || (S.emis == 0 && field(st.prim, 6, 1) != 0 && g_e7.water_cls.count(cls) != 0);
             if (sea && ((S.flags >> 24) & 3u) == 2u && S.tw <= 256 && S.th <= 256) {
                 S.flags |= 1u << 27;
-                S.avg = tex_average(*tex, fld(st.tex0, 34, 1) != 0);
+                S.avg = tex_average(*tex, field(st.tex0, 34, 1) != 0);
             }
         }
         S.ok = true;
@@ -2171,7 +2171,7 @@ namespace {
 // mrp_fx_draw's pass: 0 everything, 1 only program 7's surfaces that write Z (mrp_fx_draw_surfaces), 2 everything but those
 int g_pass = 0;
 // a program-7 batch's primitive (type 9) whose surface writes Z: the levels' seas, lava, sand (drawn before the ambient particles)
-bool z_surface(const gs::Primitive& p) { return p.type == 9 && fld(p.st.test, 16, 1) != 0 && fld(p.st.zbuf, 32, 1) == 0; }
+bool z_surface(const gs::Primitive& p) { return p.type == 9 && field(p.st.test, 16, 1) != 0 && field(p.st.zbuf, 32, 1) == 0; }
 }  // namespace
 
 // orig: (host) see mrp_fx.h
@@ -2274,7 +2274,7 @@ void mrp_fx_draw(const MrpChainFrame& gs, int win_w, int win_h, const gs::Viewpo
         const gs::DrawState& st = p.st;
         // (the game's rain / snow, where our ambient particles replace it: not drawn - the game made it as ever)
         if (g_ambient_particles > 0 && mrp_particles_hide_fx(fn.kind, st.tex0, p.type)) continue;
-        const bool tme = fld(st.prim, 4, 1) != 0, fst = fld(st.prim, 8, 1) != 0;
+        const bool tme = field(st.prim, 4, 1) != 0, fst = field(st.prim, 8, 1) != 0;
         int layer = 0, tw = 1, th = 1;
         if (tme) {
             if (p.tex == nullptr) continue;
@@ -2285,20 +2285,20 @@ void mrp_fx_draw(const MrpChainFrame& gs, int win_w, int win_h, const gs::Viewpo
             if (p.mip_n > 0) ++g_st.tex_mip;  // (the base level only: the effects' TEX1 have none)
         }
         switch_to(kStepFx, pi);
-        if (fld(st.clamp, 0, 2) >= 2 || fld(st.clamp, 2, 2) >= 2) ++g_st.region;
+        if (field(st.clamp, 0, 2) >= 2 || field(st.clamp, 2, 2) >= 2) ++g_st.region;
         if (fst) ++g_st.fst;
-        const bool fge = fld(st.prim, 5, 1) != 0;
+        const bool fge = field(st.prim, 5, 1) != 0;
         if (fge) ++g_st.fge;
         if (g_env_states) {  // (testing: the GS states the effects are drawn with)
-            const uint64_t key = (static_cast<uint64_t>(fn.kind) << 60) ^ (st.test & 0xffffff) ^ (static_cast<uint64_t>(fld(st.zbuf, 32, 1)) << 24) ^
-                                 (static_cast<uint64_t>(fld(st.frame, 0, 9)) << 25) ^ ((st.alpha & 0xff) << 34) ^ (static_cast<uint64_t>(fld(st.prim, 6, 1)) << 42) ^
-                                 (static_cast<uint64_t>(fld(st.frame, 32, 32) != 0) << 43);
+            const uint64_t key = (static_cast<uint64_t>(fn.kind) << 60) ^ (st.test & 0xffffff) ^ (static_cast<uint64_t>(field(st.zbuf, 32, 1)) << 24) ^
+                                 (static_cast<uint64_t>(field(st.frame, 0, 9)) << 25) ^ ((st.alpha & 0xff) << 34) ^ (static_cast<uint64_t>(field(st.prim, 6, 1)) << 42) ^
+                                 (static_cast<uint64_t>(field(st.frame, 32, 32) != 0) << 43);
             ++g_states[key];
         }
         BKey k;
         uint32_t flags = 0;
         key_and_flags(st, p.type == 1, k, flags);
-        const double ox = static_cast<double>(fld(st.xyoffset, 0, 16)) / 16.0, oy = static_cast<double>(fld(st.xyoffset, 32, 16)) / 16.0;
+        const double ox = static_cast<double>(field(st.xyoffset, 0, 16)) / 16.0, oy = static_cast<double>(field(st.xyoffset, 32, 16)) / 16.0;
         env_xyoff = st.xyoffset;
         // a vertex of the GS's (its pixel x / y, Z, S, T, Q, colour, F) as the MRP's
         auto mk = [&](float x, float y, uint32_t z, float s, float t, float q, const gs::Vertex& col) {
@@ -2572,8 +2572,8 @@ void mrp_fx_draw(const MrpChainFrame& gs, int win_w, int win_h, const gs::Viewpo
             pc.uFrame[3] = 0.0f;
             double da = 0.0, db = 0.0;
             const bool has = render_gs_depth(da, db);
-            pc.uXyOff[0] = static_cast<float>(fld(env_xyoff, 0, 16)) / 16.0f + fb_w * 0.5f;
-            pc.uXyOff[1] = static_cast<float>(fld(env_xyoff, 32, 16)) / 16.0f + fb_h * 0.5f;
+            pc.uXyOff[0] = static_cast<float>(field(env_xyoff, 0, 16)) / 16.0f + fb_w * 0.5f;
+            pc.uXyOff[1] = static_cast<float>(field(env_xyoff, 32, 16)) / 16.0f + fb_h * 0.5f;
             pc.uXyOff[2] = has ? static_cast<float>(da) : 0.5f;
             pc.uXyOff[3] = has ? static_cast<float>(db) : 0.0f;
             pc.uMode = vu_mode ? 1 : 0;
@@ -2610,7 +2610,7 @@ void mrp_fx_draw(const MrpChainFrame& gs, int win_w, int win_h, const gs::Viewpo
             glUniform4f(g_loc_frame, fb_w, fb_h, vp != nullptr ? vp->xscale_3d : 1.0f, 0.0f);
             double da = 0.0, db = 0.0;
             const bool has = render_gs_depth(da, db);
-            glUniform4f(g_loc_xyoff, static_cast<float>(fld(env_xyoff, 0, 16)) / 16.0f + fb_w * 0.5f, static_cast<float>(fld(env_xyoff, 32, 16)) / 16.0f + fb_h * 0.5f,
+            glUniform4f(g_loc_xyoff, static_cast<float>(field(env_xyoff, 0, 16)) / 16.0f + fb_w * 0.5f, static_cast<float>(field(env_xyoff, 32, 16)) / 16.0f + fb_h * 0.5f,
                         has ? static_cast<float>(da) : 0.5f, has ? static_cast<float>(db) : 0.0f);
         }
         glActiveTexture(GL_TEXTURE0);
