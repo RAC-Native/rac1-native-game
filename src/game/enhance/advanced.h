@@ -130,6 +130,10 @@ bool advanced_aiming();
 float advanced_turn_target(float target, float& k, float& d, float& vmax);
 // orig: (none) — enhancement: the stick's move speed (+0x190) reduced while aiming
 void advanced_move_speed();
+// orig: (none) — enhancement: the speed's step towards the stick's (0x212088's `up`): strafing as Clank or Giant Clank,
+// in their walk (0x44 / 0x50, 0x5b), the full 7.5 / 3600 a frame; the walks cut it by the angle between the facing and
+// the stick (down to almost nothing backwards), which the strafe's held facing makes no sense of (#129); else `up`
+float advanced_strafe_accel(float up);
 // orig: (none) — enhancement: around the hero's update: standing still while aiming, the hero turned
 // to the camera when no state did
 void advanced_aim_before_hero();

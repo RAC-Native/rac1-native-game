@@ -362,9 +362,17 @@ held makes him strafe.
 - **Movement = RAC 3** brings UYA's full on-foot movement and wrench feel to the first game's hero
   code, together with the strafe.
 
-Both are Ratchet's: as Clank (and Giant Clank) the pad is the original's, L2 and R2 included (L2 crouches him, as
-L1), with any Movement or Aiming. Clank has no weapon to aim and no strafe in his own walk; the strafe and
-the modern aim worked only in his jump up to 0.7.0 (#129).
+Clank (and Giant Clank) strafe too (#129): with Movement = Strafing or RAC 3, L2 held (L2 or R2 with Aiming =
+Original) keeps him facing the camera's heading while the left stick moves him in any direction, standing,
+walking and jumping (his stand 0x43, walk 0x44 / 0x50 and jumps 0x49 / 0x4c; Giant Clank's 0x5a, 0x5b, 0x5e:
+`aim_state`), and the right stick turns the aim and him with it; with Aiming = Modern (or Modern, No Zoom) the view is
+the aim's, as Ratchet's, and R2 is circle (Giant Clank's missiles). His attacks (square: the kick 0x51, Giant Clank's
+punches 0x60) go the way he faces, the aim's heading; the strafe pauses during them, as during Ratchet's wrench
+swing. There is no reticle (he has no weapon that aims at it), L1 is still his first-person view, and the Hologuise
+(form 3) plays as the original. His walks cut their acceleration by the angle between his facing and the stick (to
+almost nothing backwards), which makes no sense while the facing is held: strafing, the acceleration is the walk's
+full one (`advanced_strafe_accel`, in 0x212088, the step every build of the hero code calls). Up to 0.7.0 the strafe
+and the modern aim turned on in Clank's jump only, since only it was among the strafe's states.
 
 ### How it was built: a study of UYA's code
 

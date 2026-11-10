@@ -283,8 +283,10 @@ What changed in each release. Releases are source only: you build the game with 
   (Daino on Pokitaru at 5120x1440): the sky's cube faces were read by an alpha the sky's blended layers leave at 0 over the
   lower sky and the horizon, and the probe's horizon - the islands' silhouettes - was spread over all the water past its
   sphere. Medium's picture is unchanged.
-- Clank (Movement Strafing or RAC 3, any Aiming) plays as the original: L2 crouches him again, and the strafe / modern
-  aim no longer turns on in his jump only (#129).
+- Clank and Giant Clank strafe and aim like Ratchet (#129): with Movement Strafing or RAC 3, L2 held keeps him facing
+  the aim while he walks in any direction, standing, walking and jumping (it worked in his jump only), the right stick
+  turns the aim, and with Aiming Modern (or Modern, No Zoom) the view is the aim's and R2 is circle; his kicks and
+  punches go where he faces. No reticle (he has no weapon), L1 still his first-person view.
 - Linux launcher: a dark theme (#99): it follows the desktop's light or dark setting (it was always light), or
   Settings > Theme chooses Light or Dark.
 - PAL disc 2.00: the title screen's sounds are the right ones again (#137): the region table placed the title's sound
