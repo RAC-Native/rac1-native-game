@@ -61,6 +61,10 @@ void sections_hud();
 
 // orig: (host) a session with sections is on
 bool sections_any();
+// orig: (host) a section switch asked and not over (its streaming, its fade): the SDK's game_save waits for it
+bool sections_switching();
+// orig: (host) section `index` a game world's (`world <level>`)
+bool sections_world(int index);
 // orig: (host) the sections' count (main included; 0 none), the current one (0 main; -1 no session with sections), a
 // section's name (index) and index (name; -1 none)
 int sections_count();
@@ -69,6 +73,8 @@ std::string sections_name(int index);
 int sections_index(const std::string& name);
 // orig: (host) the level whose sky the current section has drawn (its sky line), -1 when the sky is main's (or no sections)
 int sections_sky_level();
+// the current section's world (`world <level>`: that level's number), -1 none (main, a section of the mod's own, no sections)
+int sections_world();
 // orig: (host) level.txt's start line: the section the session starts in (0 none: main, where the ship lands), its entry
 int sections_start();
 bool sections_start_entry(float pos[3], float* yaw, std::string* name);

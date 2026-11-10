@@ -48,6 +48,8 @@ the one at 0x1848c0. Each block carries a 16-bit checksum (`save_checksum`, 0x24
   (`new_game_slots_update`, 0x281200).
 - On leaving a planet: `level_change_request` (0x24d430, `level_change.cpp`) saves into the slot the
   player chose, if one was chosen.
+- From a mod's code: the SDK's `game_save` (ABI 15, [The mod SDK](sdk.md#saving-abi-15)) makes the same save as
+  leaving a planet, in play.
 - At the start, the boot module checks the card (`boot_card_check`) and shows the PS2's memory card
   screens (game mode 4).
 

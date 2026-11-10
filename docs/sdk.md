@@ -40,7 +40,10 @@ Contents:
 | 10 | the first with sections | sections (a session's `section` blocks and portals): `section_load`, `section_ready`, `section_enter`, `section_unload`, `section_current`, `section_policy`, `RAC1_SECTION_*`; the callbacks `section_leave`, `section_enter` |
 | 11 | the first with rails | grind rails and the set-piece kit, in ABI 7's room of the table: `rail_find`, `hero_rail`, `rail_point`, `rail_enable`, `hero_rail_attach`, `rail_speed`, `rail_info`, `item_visit`, `fade`, `fade_active`, `camera_set`, `camera_release`, `hazard_add`, `hazard_set`, `object_follow_path`, `object_path_at` (`rac1_rail_info`, `rac1_camera`, `rac1_hazard`, `RAC1_RAIL_*`, `RAC1_CAMERA_*`, `RAC1_HAZARD_*`, `RAC1_PATH_*`); the callback `rail`; level.txt's `rail`, `rails`, `items` lines and `class ... collision <file>` |
 | 12 | the first with hero modes | hero contexts and modes (a session): `hero_build`, `hero_build_now`, `hero_mode`, `hero_mode_now`, `RAC1_HERO_*`; level.txt's `hero` line |
-| 13 | this one | bosses (a session's sections): `boss_set`, `boss_beaten`, `RAC1_BOSS_*`; the callback `boss`; level.txt's `boss` line |
+| 13 | the first with bosses | bosses (a session's sections): `boss_set`, `boss_beaten`, `RAC1_BOSS_*`; the callback `boss`; level.txt's `boss` line |
+| 14 | the first with the HUD's width | the HUD's width: `hud_width`; `RAC1_HUD_HEIGHT` ([The HUD's area](#the-huds-area)) |
+| 15 | the first with saving | saving from a plugin: `game_save`, `game_saving` ([Saving](#saving-abi-15)) |
+| 16 | this one | the hoverboard outside a race: `board_rule`, `board_return`, `board_fall`, `board_touching`, `RAC1_BOARD_*` ([The hoverboard outside a race](#the-hoverboard-outside-a-race-abi-16)) |
 
 How compatibility works:
 
@@ -83,7 +86,7 @@ game start ──> plugins loaded (load order), rac1_mod_main(api, mod) each: re
    │
    ├─ (a session, format 3) Ratchet died ──> [the soft reset: back at the checkpoint, no level load] ──> respawn
    │      (no level_end / level_start: your state and your objects stay)
-   ├─ a save is written ──> save (and in a session: session_save)
+   ├─ a save is written (a menu's, a planet's, game_save's) ──> save (and in a session: session_save)
    └─ game end ──> shutdown
 ```
 
@@ -241,7 +244,7 @@ See [Base level objects](#base-level-objects) below.
 
 | Service | ABI | Does |
 |---|---|---|
-| `void hud_text(x, y, abgr, text)` | 1 | in `hud` only: plain ASCII in the small font at (x, y) of 512 x 448, colour 0xAABBGGRR (alpha 0x80 opaque); 15 lines a frame at most |
+| `void hud_text(x, y, abgr, text)` | 1 | in `hud` only: plain ASCII in the small font at (x, y) of 512 x 416 ([The HUD's area](#the-huds-area)), colour 0xAABBGGRR (alpha 0x80 opaque); 15 lines a frame at most |
 | `void camera_position(float out[3])` | 1 | |
 | `uint32_t pad_held(void)`, `uint32_t pad_pressed(void)` | 1 | pad 1's bits: 0x10 triangle, 0x20 circle, 0x40 cross, 0x80 square, 0x800 start, 0x1000 up, 0x2000 right, 0x4000 down, 0x8000 left, 1 L2, 2 R2, 4 L1, 8 R1 |
 | `uint32_t random(void)` | 1 | your own numbers (the game's untouched), the same each run from a level's start |
@@ -256,7 +259,7 @@ Test `RAC1_API_HAS(api, vendor_open)` before using them (a game older than ABI 4
 |---|---|
 | `int vendor_open(void)` | the vendor's screens (weapons and ammo to buy), as the game's own vendor item opens them (0x29a6b0 with no Vendor moby): 1 opened, 0 not (not in play - a menu, a cutscene, the landing, the vendor already open -, or called from `hud` or while replaying). Call it from `frame` (or an object's update, a trigger). The game stays paused under them: `frame` and `hud` are not called until the player leaves them (triangle), then play goes on where it was. Works on every base level (the vendor's code is in every level's overlay); tested on Kalebo III |
 | `void input_hold(int on)` | on: from the next frame the game gets nothing from the pad in play (no walking, jumping, attacking, no camera stick) but **Start and Select**, so the pause menu (and quitting from it) and the map work as always; menus, the vendor and cutscenes get the pad as always. `pad_held` / `pad_pressed` still read the real pad, for your own menu. Off: the pad is the game's again, except the buttons still held at that moment, until released (the Cross that closed your menu does not make him jump). Off again at every level's start. Use it instead of writing the pad's fields at 0x13c940 (the game's own pad read writes them every frame, before your callbacks, and its moves read the presses' history too) |
-| `void hud_rect(x, y, w, h, abgr, anchor)` | in `hud` only: a flat rectangle `w` x `h` from (`x`, `y`) of the 512 x 448 HUD, colour 0xAABBGGRR (alpha 0x80 opaque, 0x40 half transparent): a panel behind your texts (draw it first) |
+| `void hud_rect(x, y, w, h, abgr, anchor)` | in `hud` only: a flat rectangle `w` x `h` from (`x`, `y`) of the 512 x 416 HUD, colour 0xAABBGGRR (alpha 0x80 opaque, 0x40 half transparent): a panel behind your texts (draw it first) |
 | `void hud_text_ex(x, y, abgr, scale, anchor, text)` | in `hud` only: `hud_text` at `scale` times the font's size (1: `hud_text`'s, 2: twice; at most 8) |
 | `int32_t hud_text_width(text, scale)` | `text`'s width in HUD units at `scale` (to centre or right-align it: `x = 256 - w / 2`) |
 | `int base_hunt(uint32_t moby, int on)` | the base level's enemy `moby` (`base_moby`'s, or a `moby` line's) hunts Ratchet wherever he is instead of guarding where it started: [Base level objects](#base-level-objects). 1 done, 0 not (no such moby, a class not known: Kalebo III's robots 1445; from ABI 5 also `base_spawn`'s 52, 541, 638 and 1356, [Kalebo III's enemies](#kalebo-iiis-enemies-abi-5)) |
@@ -265,7 +268,7 @@ Test `RAC1_API_HAS(api, vendor_open)` before using them (a game older than ABI 4
 **Anchors** (`hud_rect`, `hud_text_ex`): `RAC1_HUD_CENTRE` (0) is the 4:3 frame `hud_text` draws in, in the middle of the
 screen; `RAC1_HUD_LEFT` (1) and `RAC1_HUD_RIGHT` (2) move the element with the game's own side elements (the health on the
 left, the bolts on the right) toward that edge of the screen when the HUD is wider than 4:3 (Options > Display > HUD
-16:9, 21:9, 32:9 or Fit, over a widened view). At 4:3 the three are the same. Coordinates stay the 512 x 448 HUD's: a
+16:9, 21:9, 32:9 or Fit, over a widened view). At 4:3 the three are the same. Coordinates stay the 512 x 416 HUD's: a
 panel at x 10 anchored left is 10 units from the screen's left edge, one ending at x 502 anchored right ends 10 from its
 right edge. Not on the vendor's screens (4:3 there, and the `hud` callback is not called under them).
 
@@ -278,6 +281,47 @@ from the camera is left out. They are kept in the game's memory with the frame (
 pipelined frame and the pause show the lights of their own frame. Cost: each one is a point light of the 96 the
 lighting's shaders take a pixel, before the automatic emitters (which then get fewer); a few dozen lights near the
 camera cost about as much as the same number of hand-placed lamps.
+
+### The HUD's area
+
+The HUD's units are the game's frame's pixels: **512 x 416** (`RAC1_HUD_HEIGHT`), x 0 at the 4:3 frame's left edge, y 0
+at the top row and 415 the bottom one. All of it is on the screen, on every renderer and window: the frame is scaled to
+the window's height (at 1280 x 720, 1.73 pixels a unit), and nothing is cut off at its top or bottom. Nothing past
+y 416 is drawn (a panel from y 400 with `h` 32 shows its top 16 units). (The PS2's display window was 448 lines, the
+game's frame the top 416 of them, the last 32 lines black under it: the port shows the frame only. A TV's overscan cut
+about 4 more units off the frame's top and sides, never its bottom, and the game's own HUD keeps 15 to 20 units from
+the frame's edges; `RAC1_OVERSCAN=1` shows a test run as a TV did.)
+
+The width depends on the HUD (Options > Display > HUD over a widened view):
+
+| Service | ABI | Does |
+|---|---|---|
+| `int32_t hud_width(void)` | 14 | the HUD's width in HUD units: 512 at 4:3 (the default, or a view not wider than 4:3, or the vendor's screens), about 683 with a 16:9 HUD, 910 with a 21:9 one; never wider than the view (Fit: the view's own). Test `api->abi >= 14` (or `RAC1_API_HAS(api, hud_width)`) before calling it |
+
+The `RAC1_HUD_LEFT` elements move `(hud_width() - 512) / 2` units to the left, the `RAC1_HUD_RIGHT` ones as many to
+the right, the `RAC1_HUD_CENTRE` ones (and `hud_text`) stay where they are. So an element anchored left at x `x` is at
+`x - (hud_width() - 512) / 2` in the centre's units: compare it with your centred elements there. It is a display value
+(the player's window and options): use it to lay out what you draw, in `hud` or `frame`, never to change the game's
+state (a replay, another player's window would differ). It can change from one frame to the next (the window resized,
+the option changed): ask it each frame.
+
+A banner at the bottom centre that never touches a box at the bottom left, moved right only when it would:
+
+```c
+static void my_hud(void* user) {
+    const int32_t w = api->abi >= 14 ? api->hud_width() : 512;
+    const int32_t box_x = 10, box_w = 230, y = RAC1_HUD_HEIGHT - 40;
+    api->hud_rect(box_x, y, box_w, 30, 0x40000000u, RAC1_HUD_LEFT);              /* the box, at the left edge */
+    const int32_t box_right = box_x + box_w - (w - 512) / 2;                     /* its right edge, in the centre's units */
+    const int32_t tw = api->hud_text_width(g_banner, 2.0f);
+    int32_t x = 256 - tw / 2;                                                    /* centred */
+    if (x < box_right + 8) x = box_right + 8;                                    /* or just right of the box */
+    api->hud_text_ex(x, y + 5, 0x80ffffffu, 2.0f, RAC1_HUD_CENTRE, g_banner);
+}
+```
+
+With a 4:3 HUD the box ends at x 240 and the banner (158 units wide) starts at 248; with a 16:9 HUD the box ends at
+155 and the banner is centred (177..335).
 
 ### Kalebo III's enemies, the weapons (ABI 5)
 
@@ -505,6 +549,84 @@ static void on_frame(void* user) {
     if (won_at != 0 && api->frame_count() == won_at + 300) api->section_enter("main", "from_cave", 30);
 }
 /* rac1_mod_main: */ mod->boss = on_boss; mod->frame = on_frame;
+```
+
+### The hoverboard outside a race (ABI 16)
+
+Test `api->abi >= 16` (or `RAC1_API_HAS(api, board_rule)`) first. Kalebo III's and Rilgar's hoverboard (`RAC1_HERO_BOARD`)
+is their race's: its code counts the laps on its planet's race path, shows the race HUD (lap, time, place), and puts a fall
+"back on the track" (z under 76 on Kalebo III, 61.4 on Rilgar, the nearest point of the race path). On a level mod's level
+the board is **free** where there is no such race (by default: main and the mod's own sections, and other planets' worlds:
+`world quartu`): no laps, no race HUD, and a fall (under the fall height) puts Ratchet back on the board where he got on
+(or at your place); a wipe-out (a wall met) puts him back where he rode 40 frames before. In its own planet's world
+(`world rilgar` with `hero rilgar board`, `world kalebo` on a session on another base) it is that planet's race, on its own
+heights. These last until the level ends (a section switch keeps them).
+
+| Service | Does |
+|---|---|
+| `int32_t board_rule(int32_t rule)` | `RAC1_BOARD_AUTO` (the default above), `RAC1_BOARD_FREE` (free everywhere), `RAC1_BOARD_RACE` (the race's code as on its planet, wherever he is; -1 only asks): the rule in force now, `RAC1_BOARD_FREE` or `RAC1_BOARD_RACE` |
+| `void board_return(const float pos[3], float yaw)` | where a free board's fall puts him back on it, turned `yaw`; `NULL`: where he got on (the default) |
+| `void board_fall(int32_t set, float z)` | a free board's fall height: under `z` he falls (the race's fall: a moment in the air, then back on the board at the place above); `set` 0: 2 units over the death height (the section's `death_height`, else its world's or the level's) |
+| `int32_t board_touching(uint32_t* out, int32_t max)` | the mobys Ratchet on the board touches now (the game's own sphere query on their collision, about his body; the board and Ratchet left out): their count, at most `max` into `out`; 0 off the board. The game does nothing to them: `hit_send` them yourself |
+
+```c
+/* Quartu's world as a section: the board ridden free from where Ratchet stands; the robots it runs into knocked down */
+const uint32_t bh = api->base_spawn(439, here, yaw);      /* level.txt: spawn 439 1 (Kalebo III's base) */
+api->hero_build(16);                                       /* Kalebo III's hero code rides it */
+api->hero_mode(RAC1_HERO_BOARD, api->base_moby(bh));
+api->board_return(start, 0.6f);                            /* a fall: back at the arena's start */
+/* in the frame callback: */
+uint32_t m[8];
+for (int k = 0, n = api->board_touching(m, 8); k < n; ++k) api->hit_send(m[k], RAC1_HIT_PLAYER, 10.0f, api->hero());
+```
+
+### Saving (ABI 15)
+
+Test `api->abi >= 15` (or `RAC1_API_HAS(api, game_save)`) first. A plugin can save the game, as leaving a planet does: into
+the memory card's slot the player chose (the one the game was loaded from, saved to, or started in), with no menu.
+
+| Service | Does |
+|---|---|
+| `int game_save(void)` | a save of the game into the player's slot started: 1 started, 0 not (see below). The game's own save on leaving a planet (`level_change_request`, 0x24d430): the clock, the level's talkers and map kept, the slot's record and the game's and this level's blocks made at once, then written by the card over the next frames |
+| `int game_saving(void)` | 1 while a save of the game is being written to the card (a `game_save`'s, the Save page's, a planet's, a new game's), else 0 |
+
+- **Asynchronous.** `game_save` makes the save's blocks at once (the game as it is in that frame) and returns; the card
+  writes them over the next few frames (`game_saving` is 1 until then). When the write is over, `save<N>.pc` is written
+  beside it, and every plugin's `save` callback (and in a session `session_save`) runs then, as in every save: your records
+  go into the save with it. Update them before calling `game_save` (or at the latest in `save`).
+- **What it saves** is what a planet's save saves: the game's block (bolts, items, weapons, the time played, ...) and the
+  current level's block; the other levels' blocks on the card stay as they were. On a level mod's level it is the game's
+  save made there ([Mods, "Saves"](mods.md#level-mods)): the base level's number in the save, the level's progress in
+  `save<N>.pc`; loading it with the mod on brings the player back to the level (in a session: at its current checkpoint,
+  in its section, your `session_load` bytes given back). The items `item_visit` gave are not saved.
+- **0, not started**, when: no slot was chosen (a game started by `RAC1_GOTO`, or never saved nor loaded); no save is in
+  use (the card was pulled out or failed since: the game no longer saves on leaving a planet either); a save is being written or the card is
+  busy (another `game_save`, so calling it twice in a row starts one save); the slot's save was read with problems (the
+  game refuses to save over it); not in play: a menu, the pause menu, a cutscene, a movie, the ship, the vendor, a memory
+  card screen (game mode not 0); the level being left (a level change, a save being loaded); Ratchet dead (from his
+  health at 0 to the respawn); a section switch running (its streaming, its fade); a loaded save's checkpoint not taken
+  yet; the HUD callback or a replay; the last `game_save` started less than a second (60 frames of play) ago. The log
+  says why (`[mods] game_save: not now (...)`, each reason once in a row).
+- **Calling it every frame** is safe: it starts a save at most once a second, and never while one is written. Do not:
+  each save writes the slot's files on the player's disk. Call it at a moment worth saving (a challenge won).
+- **A death, a section switch or a level change after it** does not cancel it: the blocks were made in the call, the card
+  finishes writing them (after the level's load, for a level change). Your `save` callback then runs at that later moment.
+- **The card's errors** are the game's, as for a planet's save (its memory card screens); `game_saving` goes back to 0
+  either way. On a PC the card's files are written through to the disk: a disk that cannot take them (full, not writable)
+  is not an error the game sees, the log says `[memcard] cannot write ...`.
+- **It takes about 18 frames** (the card machine's steps: the open, the seeks, the writes and the close, one a frame).
+- From the callbacks of play (`frame`, `trigger`, `rail`, `boss`, `test`, ...), never from `hud` nor during a replay.
+
+```c
+/* a challenge won: the record kept, then the game saved, "Saved" shown while it is written */
+static int g_saved_msg;
+static void challenge_end(int won) {
+    if (won) g_record.wins++;
+    if (api->abi >= 15 && api->game_save()) g_saved_msg = 1;
+}
+static void my_hud(void* user) {
+    if (g_saved_msg && api->game_saving()) api->hud_text(20, 380, 0x80ffffffu, "Saving...");
+}
 ```
 
 ### Classes and objects (ABI 2)

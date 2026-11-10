@@ -154,6 +154,7 @@ struct Section {
     // (stage 8) a game level's world as its scenery (`world <level>`): its level, its objects (their uids there -> the session's),
     // its build in the session heap, its fog words, the groups its objects make in its level's registry
     int world = -1;
+    bool zones_all = false;  // (`zones all`: every zone of its world drawn, the zone grid's choice by the camera's place not asked)
     std::map<int32_t, int32_t> wuids;
     std::unique_ptr<WorldBuild> wb;
     WorldHud hud;  // (stage 10) its level's HUD pictures the session lacks (a boss's health bar)
@@ -813,6 +814,7 @@ void apply_state(int idx) {
     const bool world = idx != 0 && s.world >= 0 && s.wb != nullptr;
     if (g_worlds) {  // (a session with game worlds only: the others' switches are stage 6's)
         world_state_put(world ? s.wb->st : g_main.world);
+        if (world && s.zones_all) sw(OV(0x0016c074), 0);  // (the zone mode: 0 every zone visible, zones_update's; the world's own 2 the grid's)
         world_lights_put(world ? s.wb->lights : g_main.lights);
         for (uint32_t k = 0; k < 4; ++k) sw(OV(0x0015f448) + 4 * k, world && s.has_fogw ? s.fogw[k] : g_main.fogw[k]);
         if (world && s.world != lw(LEVEL)) ld_engine_take(s.world);
@@ -1162,6 +1164,9 @@ int32_t sections_rail_first(int index) {
 int sections_save_begin() { return g_worlds ? rows_put(-1) : -1; }
 
 // orig: (host) see sections.h
+bool sections_switching() { return g_sections_on && g_pend.on; }
+
+// orig: (host) see sections.h
 void sections_save_end(int level) {
     if (g_worlds && level >= 0) rows_put(level);
 }
@@ -1264,6 +1269,10 @@ void sections_level(const std::string& build_dir) {
             if (l >> b.uid >> b.cls >> b.slot >> b.value) s.binds.push_back(b);
         } else if (k == "world") {
             l >> s.world;
+        } else if (k == "zones") {
+            std::string w;
+            l >> w;
+            s.zones_all = w == "all";
         } else if (k == "hero") {
             l >> s.hero_level >> s.hero_mode;
             if (s.hero_mode == "-") s.hero_mode.clear();
@@ -1425,6 +1434,8 @@ void sections_hud() {
 // orig: (host) see sections.h
 bool sections_any() { return g_sections_on; }
 // orig: (host) see sections.h
+bool sections_world(int index) { return g_sections_on && index > 0 && static_cast<size_t>(index) < g_secs.size() && g_secs[static_cast<size_t>(index)].world >= 0; }
+// orig: (host) see sections.h
 int sections_count() { return g_sections_on ? static_cast<int>(g_secs.size()) : 0; }
 // orig: (host) see sections.h
 int sections_current() { return g_sections_on ? g_cur : -1; }
@@ -1433,6 +1444,11 @@ int sections_sky_level() {
     if (!g_sections_on || g_cur <= 0 || static_cast<size_t>(g_cur) >= g_secs.size()) return -1;
     const Section& s = g_secs[static_cast<size_t>(g_cur)];
     return s.sky != 0 && lwu(OV(0x0016051c)) == s.sky ? s.sky_level : -1;
+}
+// orig: (host) see sections.h
+int sections_world() {
+    if (!g_sections_on || g_cur < 0 || static_cast<size_t>(g_cur) >= g_secs.size()) return -1;
+    return g_secs[static_cast<size_t>(g_cur)].world;
 }
 // orig: (host) see sections.h
 std::string sections_name(int index) { return g_sections_on && index >= 0 && static_cast<size_t>(index) < g_secs.size() ? g_secs[static_cast<size_t>(index)].name : std::string(); }

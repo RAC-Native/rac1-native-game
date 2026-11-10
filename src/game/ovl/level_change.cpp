@@ -4,6 +4,8 @@
 // the memory card save asked for) and its callees; the level exit 0x292e08 (the overlay's main
 // loop left: the next level made current, its header and files read, back to the base ELF's
 // overlay load).
+#include <game/enhance/sections.h>
+#include <game/enhance/setpieces.h>
 #include <game/lib/libcdvd.h>
 #include <host/level_slots.h>
 #include <game/ovl/ovl_reloc.h>
@@ -232,12 +234,16 @@ bool level_change_request(int32_t force, int32_t level) {
     sw(SAVE + lwu(SAVE + 0x14) * 0x1c + 0x2c, lwu(0x0015ee24));
     sd(SAVE + 0x30 + lwu(SAVE + 0x14) * 0x1c, ld(0x0015ee98));
     sw(SAVE + lwu(SAVE + 0x14) * 0x1c + 0x28, lwu(0x0015ee20));
+    setpieces_save_begin();                        // enhancement: the items given for a level mod's visit are not saved (setpieces.h)
+    const int world_rows = sections_save_begin();  // enhancement: a world section's level state is the session's (sections.h)
     save_block_write(0x0014eed0, 0, OV(0x001845c0));
     save_block_write(0x001506d0, lw(SAVE + 0xc8), OV(0x001848c0));
     if (level >= 0) {
         sb(0x0013dd58 + lwu(0x0015ed84), visited);
         sw(0x0015ed84, lwu(SAVE + 0xc8));
     }
+    sections_save_end(world_rows);
+    setpieces_save_end();
     if (lw(SAVE + 0xdc) < 0) {
         sw(SAVE + 0xdc, 0xf);
         sw(SAVE + 0xe0, lwu(SAVE + 0xc0));

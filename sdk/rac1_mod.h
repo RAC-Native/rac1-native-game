@@ -54,8 +54,10 @@ extern "C" {
    section_policy; the section_leave and section_enter callbacks); 11: the rails and the set-piece kit, in ABI 7's room of the
    table (rail_find .. fade_active; the rail callback); 12: hero contexts and modes (another planet's hero code, Ratchet as
    Clank, Giant Clank or on the hoverboard: hero_build, hero_build_now, hero_mode, hero_mode_now); 13: bosses (a section's
-   bosses: boss_set, boss_beaten; the boss callback) (docs/sdk.md lists what each version added). */
-#define RAC1_MOD_ABI 13
+   bosses: boss_set, boss_beaten; the boss callback); 14: the HUD's width (hud_width); 15: saving from a plugin (game_save,
+   game_saving); 16: the hoverboard outside a race (board_rule, board_return, board_fall, board_touching) (docs/sdk.md lists
+   what each version added). */
+#define RAC1_MOD_ABI 16
 
 #if defined(_WIN32)
 #define RAC1_MOD_EXPORT __declspec(dllexport)
@@ -78,6 +80,10 @@ typedef struct rac1_level_info {
 #define RAC1_HUD_CENTRE 0   /* the 4:3 frame, in the middle of the screen (as hud_text) */
 #define RAC1_HUD_LEFT 1     /* toward the screen's left edge */
 #define RAC1_HUD_RIGHT 2    /* toward the screen's right edge */
+/* The HUD's height in HUD units: the game's frame is 512 x 416 and all of it is on the screen (y 0 its top row, 415 its
+   bottom one; nothing past 416 is drawn). Its width is 512 for RAC1_HUD_CENTRE; api->hud_width() (ABI 14) says how wide the
+   HUD is for LEFT / RIGHT */
+#define RAC1_HUD_HEIGHT 416
 
 /* (ABI 5) base_option's options */
 #define RAC1_BASE_WEAPON 1  /* Kalebo III's Gadgetron robots (541): their weapon 0..2 */
@@ -165,6 +171,13 @@ typedef struct rac1_hazard {
    its section (the fight from its start: `obj` its new object) */
 #define RAC1_BOSS_BEATEN 1
 #define RAC1_BOSS_AGAIN 2
+
+/* (ABI 16) board_rule's rules: the hoverboard free (no race: no laps, no race HUD, a fall back where he got on or at
+   board_return's place) or in its planet's race. RAC1_BOARD_AUTO: free on the mod's own geometry and in other planets'
+   worlds, the race in its own planet's world (`world kalebo`, `world rilgar`) */
+#define RAC1_BOARD_AUTO 0
+#define RAC1_BOARD_FREE 1
+#define RAC1_BOARD_RACE 2
 
 /* (ABI 12) hero_build's generic hero code (Veldin's, Gaspar's, Umbris's: their lava), on a level mod of any format whose base
    level has hero code of its own (Kalebo III, Quartu, Rilgar) */
@@ -290,7 +303,7 @@ typedef struct rac1_api {
     void (*smoke)(const float pos[3], const float vel[3], float size);
 
     /* -- the HUD (from the hud callback only) -- */
-    /* `text` (plain ASCII) in the game's small font at (x, y) of the 512 x 448 HUD, colour 0xAABBGGRR (alpha 0x80 opaque) */
+    /* `text` (plain ASCII) in the game's small font at (x, y) of the 512 x 416 HUD, colour 0xAABBGGRR (alpha 0x80 opaque) */
     void (*hud_text)(int32_t x, int32_t y, uint32_t abgr, const char* text);
 
     /* -- the camera -- */
@@ -402,7 +415,7 @@ typedef struct rac1_api {
     void (*input_hold)(int on);
 
     /* -- the HUD (from the hud callback only) -- */
-    /* a flat rectangle w x h from (x, y) (512 x 448 HUD units, as hud_text), colour 0xAABBGGRR, alpha 0x80 opaque, 0x40 half
+    /* a flat rectangle w x h from (x, y) (512 x 416 HUD units, as hud_text), colour 0xAABBGGRR, alpha 0x80 opaque, 0x40 half
        transparent: a panel behind your texts (draw it first). anchor: RAC1_HUD_* */
     void (*hud_rect)(int32_t x, int32_t y, int32_t w, int32_t h, uint32_t abgr, int32_t anchor);
     /* hud_text at `scale` times the font's size (1: hud_text's, 2: twice as large; at most 8), anchor RAC1_HUD_* */
@@ -617,6 +630,39 @@ typedef struct rac1_api {
     int (*boss_set)(uint32_t obj);
     /* the bosses beaten in section `name` ("" or NULL: the current one) in this visit of the session; -1 no such section */
     int32_t (*boss_beaten)(const char* name);
+
+    /* ======== ABI 14 (test api->abi >= 14, or RAC1_API_HAS(api, hud_width)) ======== */
+    /* -- the HUD's width (docs/sdk.md, "The HUD's area") -- */
+    /* the HUD's width in HUD units: 512 with the original's 4:3 HUD (the default), more with a wider one over a widened view
+       (Options > Display > HUD: about 683 at 16:9, 910 at 21:9; never wider than the view). The RAC1_HUD_LEFT elements move
+       (hud_width() - 512) / 2 units to the left, the RAC1_HUD_RIGHT ones as far to the right; RAC1_HUD_CENTRE's stay put. A
+       display value (the player's window and options): use it to lay out what you draw, never for the game's state */
+    int32_t (*hud_width)(void);
+
+    /* ======== ABI 15 (test api->abi >= 15, or RAC1_API_HAS(api, game_save)) ======== */
+    /* -- saving (docs/sdk.md, "Saving (ABI 15)") -- */
+    /* a save of the game into the memory card's slot the player chose, as leaving a planet makes one (the game's
+       level_change_request): 1 started, 0 not (no slot chosen, the card busy or a save in progress, not in play: a menu, a
+       cutscene, the ship, the vendor, a level change, a death, a section switch; the last game_save started less than a
+       second ago). Asynchronous: the card writes it over the next frames; every plugin's save (and session_save) callback
+       runs as in every save, when it is written, so your records go into save<N>.pc with it. From the frame, trigger, rail,
+       boss and test callbacks (not from hud, nor during a replay). At most one a second: do not call it every frame */
+    int (*game_save)(void);
+    /* 1 while a save of the game is being written to the card (one game_save started, a menu's, a planet's), else 0 */
+    int (*game_saving)(void);
+
+    /* ======== ABI 16 (test api->abi >= 16, or RAC1_API_HAS(api, board_rule)) ======== */
+    /* -- the hoverboard outside a race (docs/sdk.md, "The hoverboard outside a race"; a level mod's level). Until the level
+          ends: a section switch keeps them -- */
+    /* the board's rule (RAC1_BOARD_AUTO, _FREE, _RACE; -1 only asks): the rule in force now, RAC1_BOARD_FREE or RAC1_BOARD_RACE */
+    int32_t (*board_rule)(int32_t rule);
+    /* where a free board's fall puts Ratchet back on it, turned `yaw`; NULL: where he got on (the default) */
+    void (*board_return)(const float pos[3], float yaw);
+    /* a free board's fall height: below `z` he falls (and is put back); `set` 0: 2 units over the death height (the default) */
+    void (*board_fall)(int32_t set, float z);
+    /* the objects (mobys) Ratchet on the board touches now: the game's own sphere query on their collision about his body, the
+       board and Ratchet left out. Their count, at most `max` into `out`; 0 off the board. Hit them yourself (hit_send) */
+    int32_t (*board_touching)(uint32_t* out, int32_t max);
 } rac1_api;
 
 #define RAC1_API_HAS(api, field) ((api)->size >= offsetof(rac1_api, field) + sizeof((api)->field))

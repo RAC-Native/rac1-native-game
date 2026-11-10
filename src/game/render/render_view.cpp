@@ -274,9 +274,13 @@ void hud_note_add(uint32_t first, uint32_t end, uint8_t side, int8_t slot) {
 
 // orig: (host) see render_view.h
 bool render_view_hud_wide() { return g_hud_aspect > 4.0f / 3.0f && g_view_widen > 1.0f; }
-float render_view_hud_shift(float fb_w) {
-    if (!render_view_hud_wide()) return 0.0f;
+float render_view_hud_widen() {
+    if (!render_view_hud_wide()) return 1.0f;
     const float widen = std::min(g_hud_aspect * 0.75f, g_view_widen);  // (the HUD's width over the 4:3 frame's)
+    return widen > 1.0f ? widen : 1.0f;
+}
+float render_view_hud_shift(float fb_w) {
+    const float widen = render_view_hud_widen();
     return widen > 1.0f ? fb_w * 0.5f * (widen - 1.0f) : 0.0f;
 }
 void render_view_hud_note(uint32_t first, uint32_t end, uint8_t side) { hud_note_add(first, end, side, -1); }

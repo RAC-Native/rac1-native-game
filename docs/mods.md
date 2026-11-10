@@ -644,7 +644,8 @@ game's code is untouched.
   number the game wrote). The level's progress goes in our `save<N>.pc` beside it, as an item of its own (its id,
   whether the save was made there, the level you flew from, its records). Loading that save with the mod on brings you
   back to the level. The Save and Load pages show the slot's planet from that item: the level's name, region and picture
-  (its `map_picture`), or, with its mod off or missing, the level you flew from (where loading it lands).
+  (its `map_picture`), or, with its mod off or missing, the level you flew from (where loading it lands). The level's
+  plugin can save there itself, with no menu: the SDK's `game_save` ([Saving](sdk.md#saving-abi-15)).
 - **The mod off or missing**: loading a save made on the level puts you on the level you flew there from, and opens the
   ship's planet map there: the **planet prompt**. Its list is the save's unlocked planets with the level you flew from
   first (and selected), then the other level mods on. Choose where to land, as from the ship; leaving the map
@@ -773,6 +774,7 @@ section kalebo remove respawn reset
   checkpoint kalebo_start 146.43 133.23 128.3 1.46
   portal back 140 136 125 144 140 132 to main:from_kalebo fade 10
   sky 3                            # optional: another sky, music, fog, background, death_height, collision instead of its own
+  zones all                        # optional: every zone of its world drawn wherever the camera is (default: zones grid)
 end
 ```
 
@@ -789,13 +791,24 @@ end
   the log says so). An object resting on another object needs that one chosen too: Kerwan's two crates by its start sit on
   a lift (class 1210); without `1210` they fall through when the section is entered (they are not broken, so a death does not
   bring them back).
+- **What is drawn** of the planet's world is what the planet itself draws from the camera's place: its zone grid (cells of 4
+  units, each with the list of the world's zones seen from there) leaves out what that cell does not see, and a camera off
+  the grid (high above the planet, or out of its paths) keeps the last cell's list. A `zones all` line in the section draws
+  every zone of the world wherever the camera is (the planet's tfrags, ties, shrubs and objects; a little more to draw):
+  for a camera the planet never had, such as over Quartu's Giant Clank arena, which Ratchet on foot never sees from inside.
+  `zones grid` is the default.
 - **Memory**: a world takes about 18 to 20 MB of the session's memory above 64 MB (Kerwan 19.2 MB, Kalebo III 18.0 MB), read
   from your disc while you play, before you enter it (the log's `[section] kalebo: level 16's world: ...`).
 - **Rails of your own** in a world's section: `rail` / `rails` lines, in the planet's coordinates (as its entries): the planet's
   own rails stay, yours are added (the SDK's `rail_find` and `hero_rail_attach` find them). A rail's collision strip goes into
   a copy of the planet's collision the composer makes for the section (the planet's faces with the strips: without a strip
-  the grind drops Ratchet), so the section's `collision.bin` is about the size of the planet's. A rail's `mesh` model is not
-  drawn there (yet). Example (the arena's escape continued into Quartu's arena, Ratchet attached by the plugin in its
+  the grind drops Ratchet), so the section's `collision.bin` is about the size of the planet's. A rail's `mesh` model is
+  drawn in the planet's world while the section is shown (GL and Vulkan). Its model is a host mesh like the others, but it
+  comes **after all of them, the `class` lines' models included**: a world section's rail model shifts no `material tie
+  <n>` index of lights.txt (the order: `meshes.obj`'s objects, main's rail models, the other sections' meshes and rail
+  models, the `class` models, then the world sections' rail models, section by section). `compose.log` says where they
+  went: `[compose] section quartu: its rails' 1 models drawn in level 15's world, host meshes 7..7 (after the classes': no
+  other index moves)`. Example (the arena's escape continued into Quartu's arena, Ratchet attached by the plugin in its
   `section_enter` callback):
 
   ```
@@ -809,8 +822,18 @@ end
 - **The base level's enemies** (a level on Kalebo III's code: its robots spawned with `base_spawn`, hunting with `base_hunt`)
   follow Ratchet into a world's section and fight there as anywhere in the session.
 - **Not in a world's section**: `meshes` and `moby` lines of the base level's classes (its own scenery is the planet's;
-  `moby <name>|<level>:<class>` lines are fine). The level's own objects drawn with a model (`object` lines) are not drawn
-  while Ratchet is in a world's section.
+  `moby <name>|<level>:<class>` lines are fine).
+- **The level's own objects in a world's section**: `object` lines inside a section block (any section: a world's in its
+  planet's coordinates, another's moved by its `offset`) place objects of the level's classes there; they are spawned at
+  the level's start with main's. An object belongs to its section (its `object` line's), or to the section it was spawned in
+  (`object_spawn`), or last moved or shown in (`object_place`, `object_show(obj, 1)`). While a world's section is current
+  only its objects are there: drawn, and solid as their class is; every other object is neither drawn nor solid (main's,
+  at main's coordinates, would stand somewhere in the planet's space). Outside world sections a world section's objects are
+  neither drawn nor solid, and the rest is as before (drawn in every section). So the plugin brings main's ring to the top
+  of the Quartu rail with `object_place(ring, top, rot, 0)` in its `section_enter` callback (or an `object ring ...` line in
+  the `section quartu` block puts one there); back in main, an object brought into the world is there again once it is
+  placed or shown in main. Tested (`rm-escape`): main's pillar hit by a ray in main and not in Quartu, Quartu's pillar the
+  other way round, before and after a return to main.
 
 #### Hero modes
 
@@ -855,10 +878,11 @@ end
   ends at once when nothing is left to shoot at: `objects 69 388` brings Qwark's ship, which flies its route. Qwark's fight
   itself is not done ([docs/open-engine.md](open-engine.md#bosses-stage-10)).
 - **`hero generic`** (main's line, **any format**: also a format 2 level on Kalebo III's base): Ratchet runs on the generic hero
-  code, the one Veldin, Gaspar and Umbris run, instead of the base's own (Kalebo III's): the game's own **lava** (`type3`
-  faces: he sinks in it (0x68) and Cross bounces him out (0x69); left in it he is lost, the level loaded again in formats 1
-  and 2 as a fall; no damage of its own) with its animation (from Veldin's core, read from your disc at the level's load), and
-  every generic move. Everything else stays the base's: its objects and enemies on its own code, its cameras, rails ridden as
+  code, the one Veldin, Gaspar and Umbris run, instead of the base's own (Kalebo III's): the game's own **lava** (`type1`
+  faces, Gaspar's and Umbris's: he jumps out scorched (0x3c), a health point lost each time, and sinks (0x7c) with none
+  left) and its **sinking ground** (`type3` faces: he sinks in it (0x68) and Cross bounces him out (0x69); left in it he is
+  lost, the level loaded again in formats 1 and 2 as a fall; no damage of its own), with their animations (from Veldin's
+  core, read from your disc at the level's load) and their sounds (from Veldin's bank, below), and every generic move. Everything else stays the base's: its objects and enemies on its own code, its cameras, rails ridden as
   before. Only the base's own riding goes (Kalebo III's hoverboard). Kalebo III's lava stand-in (the hop out, below) is then
   not used. `hero generic` with the start's numbers is still Ratchet's start (`hero 0 -67 0.5 1.571`).
 - The plugin does the same with the SDK's ABI 12 ([The mod SDK](sdk.md#hero-modes-abi-12)): `hero_build`, `hero_mode`

@@ -59,6 +59,8 @@
 #include <map>
 #include <map>
 #include <memory>
+#include <set>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -153,6 +155,8 @@ struct Level {
     std::unique_ptr<World> world;
     std::unique_ptr<WorldIndex> idx;
     std::vector<mrp::Texture> tex[3];  // tfrag, tie, shrub
+    std::vector<mrp::Texture> host_tex;  // (a session's world section: the session's host mesh textures added after the tie ones)
+    size_t host_first_tie = 0;           // (and its first tie class of the session's, whose textures load_textures moves past the level's)
     std::vector<TexRef> ref[3];
     std::vector<Bucket> buckets;
     GLuint vao = 0, vbo = 0, ibo = 0;
@@ -404,6 +408,18 @@ void load_textures(Level& L, Prefetched* pf = nullptr) {
         const std::string path = root + "/" + level_dir_name(dir_level) + "/textures_" + names[k] + ".mrpt";
         if (pf != nullptr && pf->ok) L.tex[k] = std::move(pf->tex[k]);
         else if (!mrp::read_textures(path, L.tex[k])) std::fprintf(stderr, "[mrpw] no %s textures %s\n", names[k], path.c_str());
+        if (k == 1 && L.host_first_tie != 0 && L.world != nullptr) {  // (a session's world section: the host meshes' textures after the level's)
+            const uint64_t base = L.tex[1].size();
+            for (mrp::Texture& t : L.host_tex) L.tex[1].push_back(std::move(t));
+            L.host_tex.clear();
+            for (size_t c = L.host_first_tie; c < L.world->ties.size(); ++c)
+                for (TexturePrim& tp : L.world->ties[c].textures) {
+                    if (tp.texture < 0) continue;
+                    tp.texture += static_cast<int32_t>(base);
+                    tp.ad[1][0] = (tp.ad[1][0] & 0xffffffull) | ((static_cast<uint64_t>(tp.texture) & 0x3ffu) << 24);  // (CLAMP_1's MINV: its index)
+                }
+            if (L.tex[1].size() > 1024) std::fprintf(stderr, "[mrpw] level %d: %zu tie textures with the session's: past 1024 they are not found\n", L.id, L.tex[1].size());
+        }
         L.ref[k].assign(L.tex[k].size(), TexRef{});
         rep[k].assign(L.tex[k].size(), nullptr);
         for (size_t i = 0; i < L.tex[k].size(); ++i) {
@@ -624,6 +640,91 @@ std::map<int, uint32_t> g_wkey;  // (each world level's key as its level was bui
 // orig: (host) where a world section's tables are now (the tie classes' headers, the tfrag entries): its kept level's key
 uint32_t world_cache_key() { return lwu(OV(0x001c5800)) ^ (lwu(OV(0x00160f4c)) << 1) ^ lwu(OV(0x00160fc0)); }
 
+// orig: (host) a session's game world section (stage 8; open engine, its rails' models and objects): its level `L` (the planet's
+// world, not the session's) given the session's host meshes it shows - the static ones of its world sections (the mod's rails'
+// models, level.txt's `rail ... mesh` there) and the classes of the level's objects (level.sdk's, drawn where the objects are):
+// their classes added after the planet's ties (World::host_class_map), their textures after its tie textures (load_textures),
+// the static instances with their sections; the host meshes then bound to it
+void world_host_meshes(Level& L) {
+    const int slot = level_slot();
+    if (slot < 19 || world_renderer_level_get() != L.id || level_slot_base(L.id) >= 0 || L.world == nullptr) return;
+    const std::string dir = level_slot_build_dir(slot);
+    std::error_code ec;
+    if (dir.empty() || !std::filesystem::exists(dir + "/host_meshes.mrpc", ec)) return;
+    std::map<unsigned, std::pair<size_t, size_t>> ranges;  // section -> its static instances
+    std::set<unsigned> mine;                              // the sections whose world is this level
+    if (std::ifstream sf(dir + "/sections.txt"); sf) {
+        std::string line;
+        while (std::getline(sf, line)) {
+            unsigned sec = 0;
+            int level = -1;
+            unsigned long long first = 0, count = 0;
+            if (std::sscanf(line.c_str(), "meshes %u %llu %llu", &sec, &first, &count) == 3 && sec > 0 && sec <= 31) ranges[sec] = {first, count};
+            else if (std::sscanf(line.c_str(), "world %u %d", &sec, &level) == 2 && level == L.id && sec > 0 && sec <= 31) mine.insert(sec);
+        }
+    }
+    std::set<uint32_t> want;  // the classes: the objects' models, the world sections' instances
+    if (std::ifstream kf(dir + "/level.sdk"); kf) {
+        std::string line;
+        while (std::getline(kf, line)) {
+            std::istringstream in(line);
+            std::string k, name;
+            int mesh = -1;
+            if ((in >> k >> name >> mesh) && k == "class" && mesh >= 0) want.insert(static_cast<uint32_t>(mesh));
+        }
+    }
+    HostMeshes hm;
+    std::string err;
+    if (!read_host_meshes(dir + "/host_meshes.mrpc", hm, err)) {
+        std::fprintf(stderr, "[mrpw] %s\n", err.c_str());
+        return;
+    }
+    std::vector<HostMeshInstance> stat;
+    for (const unsigned sec : mine) {
+        const auto r = ranges.find(sec);
+        if (r == ranges.end()) continue;
+        for (size_t k = r->second.first; k < r->second.first + r->second.second && k < hm.instances.size(); ++k) {
+            HostMeshInstance in = hm.instances[k];
+            in.section = static_cast<uint8_t>(sec);
+            want.insert(in.cls);
+            stat.push_back(std::move(in));
+        }
+    }
+    if (want.empty()) return;
+    std::vector<int32_t> map(hm.classes.size(), -1), tex_map(hm.textures.size(), -1);
+    for (const uint32_t c : want) {
+        if (c >= hm.classes.size()) continue;
+        TieClass tc = std::move(hm.classes[c]);
+        for (TexturePrim& tp : tc.textures) {  // (its textures' indices among those added: load_textures puts them past the level's)
+            if (tp.texture < 0 || static_cast<size_t>(tp.texture) >= hm.textures.size()) {
+                tp.texture = -1;
+                continue;
+            }
+            int32_t& t = tex_map[static_cast<size_t>(tp.texture)];
+            if (t < 0) {
+                t = static_cast<int32_t>(L.host_tex.size());
+                L.host_tex.push_back(hm.textures[static_cast<size_t>(tp.texture)]);
+            }
+            tp.texture = t;
+        }
+        tc.texture_remap.fill(0xff);  // (read only from world.mrpw's classes)
+        if (L.host_first_tie == 0) L.host_first_tie = L.world->ties.size();
+        tc.index = static_cast<uint32_t>(L.world->ties.size());
+        map[c] = static_cast<int32_t>(L.world->ties.size());
+        L.world->ties.push_back(std::move(tc));
+    }
+    size_t drawn = 0;
+    for (HostMeshInstance& in : stat) {
+        if (map[in.cls] < 0) continue;
+        in.cls = static_cast<uint32_t>(map[in.cls]);
+        L.world->host_meshes.push_back(std::move(in));
+        ++drawn;
+    }
+    L.world->host_class_map = std::move(map);
+    std::printf("[mrpw] level %d (a world section's): %zu of the session's host mesh classes added (%zu textures), %zu meshes of its sections drawn\n", L.id,
+                want.size(), L.host_tex.size(), drawn);
+}
+
 // orig: (host) the level's world asset, its index, its textures, the GL buffers
 void load_level(int id) {
     host_meshes_bind(nullptr, nullptr);  // (a level mod's host meshes: the world about to be freed)
@@ -663,6 +764,7 @@ void load_level(int id) {
             if (mrp_rt_active()) mrp_rt_level(rt_gather(g_level));
             else mrp_rt_level_drop();
             g_level.reset_walker = true;
+            if (g_level.world != nullptr && !g_level.world->host_class_map.empty()) host_meshes_bind(g_level.idx.get(), g_level.world.get());
             std::printf("[mrpw] level %d (a world section's): kept since it was left, taken back (%.1f ms)\n", id, now_ms() - t0);
             return;
         }
@@ -714,6 +816,8 @@ void load_level(int id) {
                         tagged != 0 ? (" (" + std::to_string(tagged) + " of them the sections')").c_str() : "");
         }
     }
+    world_host_meshes(L);  // (a session's world section: the session's host meshes it shows)
+    if (!L.world->host_class_map.empty()) host_meshes_bind(L.idx.get(), L.world.get());
     const double t_index = now_ms();
     load_textures(L, pf.get());
     const double t_tex = now_ms();

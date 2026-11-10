@@ -156,6 +156,9 @@ struct World {
     std::vector<TieClass> ties;
     std::vector<TfragEntry> tfrags;
     std::vector<HostMeshInstance> host_meshes;  // (not in the file: a level mod's, see HostMeshInstance)
+    // (not in the file: a session's game world section, its level's world with the session's host meshes it needs added to its
+    // ties, mrp_world_renderer.cpp) a session host mesh class -> its tie here (-1: not added); empty: the classes are the ties
+    std::vector<int32_t> host_class_map;
 };
 
 bool write_world(const std::string& path, const World& w);

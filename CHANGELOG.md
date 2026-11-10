@@ -11,6 +11,27 @@ What changed in each release. Releases are source only: you build the game with 
   accessors are no longer a call each, and work the renderer repeated every frame is done once (the reflections' cull
   boxes with reflections off, the tfrags' opacity table, Vulkan's copy of every tie's colours, a megabyte of the game's
   memory copied for readers that were off). See docs/performance.md.
+- **Level mods: every zone of a world's section drawn** (`zones all` in a `world` section; level mods must be set up again:
+  the composer's version 8). A planet's world shows what the planet itself draws from the camera's place (its zone grid);
+  `zones all` draws all of it wherever the camera is, for views the planet never had.
+- **Level mods: the hoverboard outside a race** (the mod SDK's ABI 16). Kalebo III's board ridden on a level mod's own
+  geometry or in another planet's world (`world quartu`) ran its race's logic there: the race HUD (lap, time, place), and in
+  Quartu's world a fall at once and for ever ("back on the track" of Kalebo III's race); on the mod's own ground its first
+  fall or crash killed Ratchet. Now it rides free there: no laps, no race HUD, a fall puts him back on the board where he got
+  on (or where the plugin says: `board_return`, `board_fall`), a crash a little before it. In Rilgar's world (`world rilgar`,
+  `hero rilgar board`) the race is Rilgar's own (it stood at the start for ever). `board_rule` forces free or race, and
+  `board_touching` says which enemies the board runs into (the plugin knocks them down with `hit_send`).
+- **The mod SDK: saving from a plugin** (ABI 15): `game_save()` saves the game into the slot the player chose, as leaving a
+  planet does (a level mod's level, a session and its checkpoint included), and `game_saving()` says while the save is
+  being written, so a mod can save when a challenge ends and show "Saving...". Every plugin's records go into the save
+  as in every save. A planet left from a level mod's level no longer saves the items the level lent for the visit.
+- **Level mods: the hero's missing sounds.** On a level mod on another base than Veldin's, Ratchet's sounds that base's
+  bank lacks were silent: with `hero generic` on Kalebo III's base, his burn in the lava and his sinking. They now play,
+  from Veldin's bank.
+- **The mod SDK: the HUD's width** (ABI 14): `hud_width()` says how wide the HUD is (512 units at 4:3, about 683 at 16:9,
+  910 at 21:9), so a plugin knows how far its `RAC1_HUD_LEFT` / `RAC1_HUD_RIGHT` elements move and can keep a centred banner
+  off a box at the side. docs/sdk.md's "The HUD's area": the HUD is 512 x 416 units (the docs said 448), all of it on the
+  screen (`RAC1_HUD_HEIGHT`).
 - **The renderer's code, cleaned up** (no change to the pictures or the game): functions nobody called removed from the
   Modern Rendering Pipeline (MRP) and the older renderers, and docs/rendering.md rewritten to say plainly what the MRP is
   and is not: the game's code still produces its draw commands, the MRP interprets them with its own OpenGL / Vulkan
@@ -28,8 +49,12 @@ What changed in each release. Releases are source only: you build the game with 
 - **Level mods: your own grind rails in a planet's world** (format 3): a `world <planet>` section takes `rail` / `rails`
   lines in the planet's coordinates, added to the planet's own rails, with their collision strips (a grind continued through
   a portal into Quartu's arena lands Ratchet on its floor); a section without a `hero` line keeps main's (`hero generic`), and
-  a base level's enemies hunting Ratchet (Kalebo III's robots) follow him into the world and fight there. A rail's model is
-  not drawn in a world section yet.
+  a base level's enemies hunting Ratchet (Kalebo III's robots) follow him into the world and fight there.
+- **Level mods: your rail's model and your objects in a planet's world** (format 3): a `rail ... mesh` line of a `world
+  <planet>` section is now drawn there, and the level's own objects are there too: `object` lines inside a section block,
+  and the objects the plugin spawns, moves (`object_place`) or shows there (main's objects, at main's coordinates, are
+  neither drawn nor solid in the planet's world). A world section's rail model comes after
+  every other mesh, so it changes no `material tie` index of lights.txt. Level mods are composed again (composer 7).
 - **Level mods: the Save and Load pages show a level mod's level.** A save made on it showed its base planet (Kalebo III's
   name and picture for a level on Kalebo III's code); now the level's own name, region and picture, as the ship's map shows
   them. With the level's mod off or missing, the pages show the planet loading the save lands on (the one flown from, where

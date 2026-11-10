@@ -517,6 +517,9 @@ void session_rt_frame(uint64_t frame) {
 }
 
 // orig: (host) see session_runtime.h
+bool session_rt_placing() { return g_session_rt && g_rt.loaded && g_rt.place_pending; }
+
+// orig: (host) see session_runtime.h
 void session_rt_test_frame(uint64_t frame) {
     // testing: RAC1_SESSION_SAVE_AT=<frame>:<slot> saves the game into the card's slot (as the pause menu's Save page:
     // save_game_image, the card's operation 0x13; save<slot>.pc with it), RAC1_SESSION_LOAD_AT=<frame>:<slot> loads it (as

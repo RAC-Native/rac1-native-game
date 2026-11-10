@@ -66,6 +66,9 @@ uint32_t session_rt_pc_items(std::vector<uint8_t>& d);
 bool session_rt_pc_item(uint32_t id, const uint8_t* p, uint32_t size);
 // orig: (host) a .pc about to be read: the session item of the save before forgotten
 void session_rt_pc_reset();
+// orig: (host) a loaded save's checkpoint not taken yet (Ratchet placed there once the arrival is over): the SDK's game_save
+// waits for it
+bool session_rt_placing();
 
 // The sections' side (sections.h, stage 6): the session's checkpoints and hero, main's placed objects
 // orig: (host) a checkpoint of a section (sections.txt's) added to the session's: checkpoint_set finds it by its name
