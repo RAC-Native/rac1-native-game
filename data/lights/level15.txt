@@ -4,6 +4,7 @@
 # faces the sun saw it, 43 % at 50 degrees. Our choice (docs/lighting.md, "The level's own sun").
 # Quartu: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
 sun -0.0 5.0
+sun_rays_strength 0.31
 emit shrub 392  6.880 0.582 24.078  1.000 0.586 0.096  1.000 8.000 0.000  0.00
 emissive shrub 392 tex 1  3.56 0.00
 material shrub 392 tex 2 metal 0.35 1
@@ -76,3 +77,18 @@ material shrub 391 tex 1 metal 0.35 1
 material shrub 390 tex 4 metal 0.35 1
 emissive tie 1595 tex 3  2.62 0.29
 emissive tie 1595 tex 0  2.65 0.31
+emit tie 1764  10.817 -0.443 0.366  1.000 0.878 0.174  2.590 8.000 0.000  0.00
+emissive tie 1764 tex 5  2.58 0.00
+emissive tie 1764 tex 6  2.51 0.00
+material tfrag 0 tex 83 metal 0.35 1
+material tie 1787 tex 5 metal 0.35 1
+material tie 1787 tex 6 metal 0.35 1
+emissive tie 1784 tex 3  2.70 0.00
+emissive tie 1711 tex 1  2.66 0.65
+emissive moby 32 tex 0  1.00 0.00
+material tie 1812 tex 3 metal 1 1
+material tie 1812 tex 1 metal 1 1
+material tie 1812 tex 2 metal 1 1
+material tie 1813 tex 0 metal 1 1
+material tie 1813 tex 2 metal 1 1
+material tie 1812 tex 0 metal 1 1

@@ -5,7 +5,7 @@
 # the city backlit. Along the first walk the view facing the sun sees it as much as at the key light's direction raised to 50
 # (55 %, the covered views' measure); the plaza's facades facing the camera are in their own shade (the backlight).
 # Kerwan: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
-sun -108.5 45.0
+sun -13.9 45.0
 # The street lamps (moby class 1827, the posts with the white globes; 39 on the level): a warm white light in each globe, 3 units
 # over the post's foot, half of it aimed down (a pool on the pavement around the post). No shadow cube (the globe's own mesh
 # would hide it).
@@ -41,15 +41,14 @@ material tfrag 0 tex 11 metal 0.46 1
 material shrub 218 tex 0 metal 0.45 1
 material moby 71 tex 0 metal 0.35 1
 emissive shrub 283 tex 0  1.31 0.00
-material tie 885 tex 1 metal 0.35 1
 material moby 1210 tex 0 metal 0.35 1
 emissive moby 1210 tex 1  2.26 0.28
 emissive moby 1210 tex 2  2.26 0.27
 material moby 822 tex 2 metal 0.39 1.06
+material tfrag 0 tex 32 metal 0.41 1.06
 emit moby 822  -17.376 -0.013 8.271  0.850 0.920 1.000  1.000 8.000 0.000  0.00  joint 0
 emit moby 822  -14.739 -3.276 2.329  0.850 0.920 1.000  1.000 8.000 0.000  0.00  joint 0
 emit moby 822  -14.741 3.295 2.310  0.850 0.920 1.000  1.000 8.000 0.000  0.00  joint 0
-material tfrag 0 tex 32 metal 0.41 1.06
 material moby 825 tex 0 metal 0.35 1.21
 material moby 825 tex 1 metal 0.43 0.73
 material moby 825 tex 2 metal 0.71 0.86
@@ -64,6 +63,63 @@ material tie 1127 tex 0 metal 0.66 1.25
 material tie 729 tex 0 metal 0.46 1.06
 material moby 817 tex 1 metal 0.35 1.25
 material moby 817 tex 0 metal 0.35 1.26
-light 295.376 244.015 39.868  0.716 0.663 0.282  0.581 11.496 0.000 1
 material moby 909 tex 0 metal 1 0
+light 295.376 244.015 39.868  0.716 0.663 0.282  0.581 11.496 0.000 1
+material tie 885 tex 0 metal 0.35 1
 emit shrub 283  0.566 -1.975 5.979  0.850 0.920 1.000  1.000 4.380 0.000  0.00
+emissive tie 885 tex 1  2.76 0.00
+material tie 851 tex 1 metal 0.26 1
+material tfrag 0 tex 38 metal 0.71 1
+material tie 842 tex 0 metal 1 1
+material tie 842 tex 2 metal 1 1
+material tie 842 tex 1 metal 1 1
+material tie 842 tex 3 metal 1 1
+material tie 842 tex 7 metal 1 1
+material tie 840 tex 1 metal 0.35 1
+material tie 840 tex 3 metal 1 0.67
+material tfrag 0 tex 8 metal 1 1
+material tie 891 tex 0 metal 1 1
+material shrub 214 tex 0 metal 0.35 1
+material tfrag 0 tex 31 metal 1 0.68
+material tie 853 tex 0 metal 0.71 1
+material tie 853 tex 4 metal 0.46 1
+material tie 852 tex 3 metal 1 1
+material tie 852 tex 2 metal 1 1
+material tie 853 tex 1 metal 0.35 1
+material tie 854 tex 2 metal 1 1
+material tie 846 tex 1 metal 1 1
+material tie 846 tex 0 metal 1 1
+material tie 845 tex 4 metal 1 1
+material tie 845 tex 2 metal 1 1
+material tie 846 tex 4 metal 1 1
+material tie 847 tex 3 metal 1 1
+material tie 847 tex 0 metal 1 1
+material tie 847 tex 2 metal 0.35 1
+material tie 856 tex 1 metal 1 1
+material tie 856 tex 2 metal 1 1
+material tie 856 tex 0 metal 0.86 1
+material tie 856 tex 3 metal 0.86 1
+material tie 881 tex 1 metal 0.47 0.59
+material tie 969 tex 7 metal 1 1
+material tie 881 tex 2 metal 1 1
+material tie 1029 tex 4 metal 0.35 1
+material tie 1029 tex 3 metal 1 1
+material shrub 219 tex 0 metal 1 1
+material tfrag 0 tex 12 metal 1 1
+material tie 1039 tex 0 metal 0.97 0.45
+material tie 991 tex 3 metal 0.91 0.46
+material tie 969 tex 0 metal 0.91 0.46
+material tfrag 0 tex 6 metal 0.35 1
+material tie 1023 tex 0 metal 0.41 1
+material tfrag 0 tex 30 metal 1 1
+material tie 1024 tex 0 metal 0.4 1
+material tfrag 0 tex 57 metal 1 1
+material tfrag 0 tex 26 metal 1 1
+material shrub 228 tex 0 metal 0.35 1
+material tie 859 tex 3 metal 0.03 0.25
+material tie 859 tex 4 metal 0.03 0.25
+emit tie 885  1.093 -1.044 10.977  0.445 0.946 1.000  1.000 11.799 0.000  0.00
+material tie 885 tex 2 metal 1 1
+material tie 893 tex 0 metal 0.49 1
+material tie 866 tex 3 metal 0.35 0.81
+material tie 866 tex 4 metal 0.35 0.8
