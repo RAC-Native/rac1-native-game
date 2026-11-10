@@ -5,6 +5,10 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- Modern lighting, sun shadows (#74, a likely cause; not yet confirmed by the reporter): an object the game hides stops
+  casting a shadow. The shadows of objects out of view are cast from a copy of how they were last drawn, and that copy
+  was kept while the object stayed alive and in place even after the game hid it: on Quartu, Ratchet and Clank while Giant
+  Clank stands in for them, and other objects of the arena hidden in place. Original rendering is unchanged.
 - **Aiming = Modern / Modern, No Zoom on magnetic surfaces** (#136): on the Magneboots' walkways the modern controls
   now leave the hero to the original's rules: L2 no longer turns him (aiming there turned his whole frame off the wall,
   so he could come off the walkway) and the camera is no longer held on the aim (it acted like the aiming view);
