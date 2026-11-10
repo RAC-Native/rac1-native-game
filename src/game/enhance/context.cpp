@@ -10,6 +10,7 @@
 #include <platform/platform.h>
 #include <runtime/kernel/ee_memory.h>
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -41,7 +42,7 @@ struct Context {
     std::map<uint32_t, Fn> fns;         // its functions paired with Veldin's, by the level's start (levelN.txt fn lines, variants)
     size_t sites = 0;                   // sites translated through it
     struct View {
-        uint32_t veldin, size, to;
+        uint32_t at, size, to;  // (the level's own address of the object: a view is keyed by the source level's addresses)
     };
     std::vector<View> views;            // its views of engine objects (ctx_view)
 };
@@ -114,13 +115,16 @@ CtxKind classify(const Context& c, uint32_t a, uint32_t* to) {
         return CtxKind::OwnCode;
     }
     if (a < c.code_lo) {
+        for (const Context::View& w : c.views)  // (an object the level sees a view of its own of: its copy)
+            if (a >= w.at && a - w.at < w.size) {
+                *to = a - w.at + w.to;
+                return CtxKind::EngineData;
+            }
         auto it = c.ext.upper_bound(a);
         if (it != c.ext.begin() && a - std::prev(it)->first < std::prev(it)->second.size) {
             const Extent& e = std::prev(it)->second;
             const uint32_t v = a - e.level + e.veldin;
             *to = base_data(v);
-            for (const Context::View& w : c.views)  // (an object the level sees a view of its own of: its copy)
-                if (v >= w.veldin && v - w.veldin < w.size) *to = v - w.veldin + w.to;
             return CtxKind::EngineData;
         }
         *to = c.image + (a - CONTEXT_BASE);
@@ -267,16 +271,45 @@ int ctx_count() {
 // orig: (host) see context.h
 bool ctx_view(int level, uint32_t veldin, uint32_t size, uint32_t to) {
     if (!ctx_exists(level)) return false;
-    auto& vs = g_ctx[level]->views;
-    for (auto it = vs.begin(); it != vs.end(); ++it)
-        if (it->veldin == veldin) {
-            vs.erase(it);
-            break;
-        }
-    if (to != 0) vs.push_back(Context::View{veldin, size, to});
-    std::printf("[ctx] level %d: Veldin's object %08x+%#x seen by its sites as %08x\n", level, veldin, size, to);
+    Context& c = *g_ctx[level];
+    auto& vs = c.views;
+    // (keyed by the level's own addresses: Veldin's object found in the level through its extents, word by word - an object
+    // may lie in two blocks of the level's map -; the words the level has no place for are not its: no view of them)
+    std::vector<Context::View> add;
+    for (uint32_t off = 0; off < size; off += 4) {
+        const uint32_t v = veldin + off;
+        uint32_t at = 0;
+        for (const auto& [l, e] : c.ext)
+            if (v >= e.veldin && v - e.veldin < e.size) {
+                at = v - e.veldin + e.level;
+                break;
+            }
+        if (at == 0) continue;
+        if (!add.empty() && add.back().at + add.back().size == at && add.back().to + add.back().size == to + off) add.back().size += 4;
+        else add.push_back(Context::View{at, 4, to + off});
+    }
+    vs.erase(std::remove_if(vs.begin(), vs.end(),
+                            [&](const Context::View& w) {
+                                for (const Context::View& n : add)
+                                    if (w.at < n.at + n.size && n.at < w.at + w.size) return true;
+                                return false;
+                            }),
+             vs.end());
+    if (to != 0) vs.insert(vs.end(), add.begin(), add.end());
+    if (add.empty()) std::printf("[ctx] level %d: Veldin's object %08x+%#x has no place in the level's map: no view\n", level, veldin, size);
+    else
+        std::printf("[ctx] level %d: Veldin's object %08x+%#x (the level's %08x) seen by its sites as %08x%s\n", level, veldin, size, add.front().at, to,
+                    add.size() > 1 ? (" (" + std::to_string(add.size()) + " runs)").c_str() : "");
     ++g_region_gen;
-    return true;
+    return !add.empty();
+}
+
+// orig: (host) see context.h
+uint32_t ctx_level_addr(int level, uint32_t veldin) {
+    if (!ctx_exists(level)) return 0;
+    for (const auto& [l, e] : g_ctx[level]->ext)
+        if (veldin >= e.veldin && veldin - e.veldin < e.size) return veldin - e.veldin + e.level;
+    return 0;
 }
 
 // orig: (host) see context.h

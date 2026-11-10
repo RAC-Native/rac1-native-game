@@ -588,6 +588,41 @@ void pool_report() {
 }
 
 // orig: (host) see pool.h
+bool pool_leveldata(int level, std::vector<uint8_t>& out) {
+    static std::map<int, std::vector<uint8_t>> cache;  // (each level's file read once)
+    out.clear();
+    if (level < 0 || level >= 19) return false;
+    if (const auto it = cache.find(level); it != cache.end()) {
+        out = it->second;
+        return !out.empty();
+    }
+    char name[32];
+    std::snprintf(name, sizeof name, "level%02d.bin", level);
+    const fs::path path = dir() / "leveldata" / name;
+    if (std::ifstream in(path, std::ios::binary); in) out.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    if (out.size() < 0xa0) {  // (not made yet: from the disc, the gameplay file of the disc's region)
+        out.clear();
+        std::vector<std::byte> wad;
+        uint32_t go = 0, gn = 0;
+        if (disc_read_level_wad(level, wad) && wad.size() >= 0x30) {
+            std::memcpy(&go, wad.data() + (region_other() ? 0x20 : 0x18), 4);
+            std::memcpy(&gn, wad.data() + (region_other() ? 0x24 : 0x1c), 4);
+            const size_t ga = static_cast<size_t>(go) * 2048, gs = static_cast<size_t>(gn) * 2048;
+            if (gn == 0 || ga + gs > wad.size() || !decompress_wad(std::span<const std::byte>(wad.data() + ga, gs), out)) out.clear();
+        }
+        std::error_code ec;
+        fs::create_directories(dir() / "leveldata", ec);
+        if (out.size() >= 0xa0 && platform::write_file_replace(path, out.data(), out.size()))
+            std::printf("[pool] level %d's level data (its gameplay file, %zu KB) made from the disc: %s\n", level, out.size() >> 10, path.string().c_str());
+        else if (out.size() < 0xa0)
+            std::fprintf(stderr, "[pool] level %d's gameplay file could not be read from the disc: no level data\n", level);
+    }
+    if (out.size() < 0xa0) out.clear();
+    cache[level] = out;
+    return !out.empty();
+}
+
+// orig: (host) see pool.h
 bool pool_placement(int level, uint32_t cls, PoolPlacement& out) {
     static std::map<int, std::vector<uint8_t>> files;  // (each level's file read once)
     auto it = files.find(level);

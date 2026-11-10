@@ -47,8 +47,10 @@ extern "C" {
    ways, the mod's own sounds, triggers; 3: the base level's objects spawned at run time (base_spawn); 4: the vendor, the
    pad held from the game, the HUD's panels, anchors and text sizes; 5: Kalebo III's enemies (base_option, base_hunt for more
    classes), the weapons; 6: classes of other levels (a level mod's `import` lines: import_class, import_spawn, import_load,
-   import_release) (docs/sdk.md lists what each version added). */
-#define RAC1_MOD_ABI 6
+   import_release); 7: reserved (the rails, still to come: its room is kept in the table below); 8: the level data of
+   imported classes (path_find, path_create, object_bind_path, object_bind, group_create, object_slots) (docs/sdk.md lists
+   what each version added). */
+#define RAC1_MOD_ABI 8
 
 #if defined(_WIN32)
 #define RAC1_MOD_EXPORT __declspec(dllexport)
@@ -370,6 +372,33 @@ typedef struct rac1_api {
     /* the class `name` taken out of the level: its objects removed at once, its memory given back a few frames later, the
        classes only it needed with it; how many classes went (0: not imported) */
     int32_t (*import_release)(const char* name);
+
+    /* ======== ABI 7: reserved (the rails and the set pieces: docs/sdk.md). Not services yet: never call them ======== */
+    void (*reserved_abi7[16])(void);
+
+    /* ======== ABI 8 (test RAC1_API_HAS(api, object_bind_path)) ======== */
+    /* -- the level data of imported classes (docs/open-engine.md, "Class profiles"): an imported object's private values that
+          name its level's paths, areas, groups or other objects are its class's slots, named by its profile
+          (data/pool/profiles in the game's folder: "patrol", "area", "door"...); import_spawn gives them the profile's
+          defaults (a square round the object, points ahead of it, the whole level, none); these change them. A class
+          without a profile has no slots -- */
+    /* level.txt's `path <name> x y z x y z ...` line `name`: its handle, 0 when the level has none */
+    int32_t (*path_find)(const char* name);
+    /* a path of the plugin's own: `n` points (1 to 64), xyz[3 * n] in the game's coordinates: its handle, 0 when it cannot be */
+    int32_t (*path_create)(const float* xyz, int32_t n);
+    /* the slot `slot` (a path or an area) of the imported object `moby` (import_spawn's) given the path `path` (path_find's,
+       path_create's): its points copied into the object's level's data (its own path there). 1 done, 0 not (no such slot or
+       object, not a path's slot, no room) */
+    int (*object_bind_path)(uint32_t moby, const char* slot, int32_t path);
+    /* the slot `slot` of the imported object `moby` set to `value`: a moby's slot takes another object's moby address (0:
+       none), a group's slot a group_create handle, a word's slot the word. 1 done, 0 not */
+    int (*object_bind)(uint32_t moby, const char* slot, uint32_t value);
+    /* a group of `n` objects (moby addresses) for the imported object `owner`'s class (in its level's data, where its code
+       reads groups): the group's handle for object_bind (-1 when it cannot be) */
+    int32_t (*group_create)(uint32_t owner, const uint32_t* mobys, int32_t n);
+    /* the slots of the imported object `moby`'s class, "name:kind name:kind ..." (kind: path, area, group, moby, word, vec3)
+       into `out` (`cap` bytes): their count, 0 when it has no profile */
+    int32_t (*object_slots)(uint32_t moby, char* out, int32_t cap);
 } rac1_api;
 
 #define RAC1_API_HAS(api, field) ((api)->size >= offsetof(rac1_api, field) + sizeof((api)->field))

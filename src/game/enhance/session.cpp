@@ -1,7 +1,9 @@
 // See session.h.
 #include <game/enhance/session.h>
 
+#include <game/enhance/class_profiles.h>
 #include <game/enhance/context.h>
+#include <game/enhance/leveldata.h>
 #include <game/enhance/pool.h>
 #include <game/enhance/twin.h>
 #include <game/render/mrp_moby_renderer.h>
@@ -244,6 +246,7 @@ bool import_one(int from, uint32_t cls, const std::string& why) {
         std::printf("[session] import %d:%u: the base has class %u: imported as session class %u\n", from, cls, cls, id);
     }
     if (!ctx_create(from)) return false;
+    ld_registry_make(from);  // (its level data: a registry of its context's own, leveldata.h)
     const std::string own = pool_owner(from, cls);
     const uint32_t remap = session_heap_alloc(16, own);
     const uint32_t a = remap != 0 ? heap_copy(*c, ("imported from level " + std::to_string(from) + ": " + why).c_str()) : 0;
@@ -264,6 +267,10 @@ bool import_one(int from, uint32_t cls, const std::string& why) {
     g_spawn_watch = true;
     register_at_free(a, g_tex, remap, id);
     g_session_ids[id].idx = lbu(OV(0x00197bc0) + id);
+    if (ld_registry_has(from) && id < 0x1ec0) {  // (its updates read its level's registry: the dispatch swaps it in)
+        g_ld_class_level[id] = static_cast<uint8_t>(from + 1);
+        g_ld_any = true;
+    }
     mrp_moby_import(from, cls);
     // its sounds: its definitions' bank sounds (the pool's row: its level's asset index) in its level's bank
     if (lwu(a + 0x28) != 0 && lbu(a + 0xd) != 0) {
@@ -288,6 +295,23 @@ struct Need {
     std::string why;
     bool root;
 };
+// the classes of the mobys a class's first placement names (its parts, spawned with it: spawn_placement), unless its
+// profile gives those slots something of its own
+std::vector<uint32_t> linked_classes(int level, uint32_t cls) {
+    std::vector<uint32_t> out;
+    LdPlacement pl;
+    if (!ld_placement(level, -1, static_cast<int32_t>(cls), pl)) return out;
+    const Profile* prof = profile_find(level, cls);
+    for (const auto& [o, uid] : pl.links) {
+        LdPlacement lp;
+        uint32_t c = 0;
+        if (uid < 0 || profile_default_at(prof, o) || !ld_placement(level, uid, -1, lp) || lp.rec.size() < 0x78) continue;
+        std::memcpy(&c, lp.rec.data() + 0x18, 4);
+        if (c != cls && std::find(out.begin(), out.end(), c) == out.end()) out.push_back(c);
+    }
+    return out;
+}
+
 std::vector<Need> closure(int base) {
     std::vector<Need> out, todo;
     std::set<std::pair<int, uint32_t>> seen;
@@ -303,6 +327,7 @@ std::vector<Need> closure(int base) {
         for (uint32_t c : d->own) todo.push_back({n.level, c, "spawned by " + by, false});
         for (uint32_t c : d->engine) todo.push_back({n.level, c, "spawned for " + by + " by the engine", false});
         for (uint32_t c : d->seen) todo.push_back({n.level, c, "seen spawned by " + by, false});
+        for (uint32_t c : linked_classes(n.level, n.cls)) todo.push_back({n.level, c, "named by " + by + "'s placement (a part)", false});
     }
     return out;
 }
@@ -392,6 +417,7 @@ void unload_class(uint32_t id) {
         g_free_idx.push_back(idx);
     }
     mrp_moby_import_remove(sc.level, sc.cls);
+    if (id < 0x1ec0) g_ld_class_level[id] = 0;
     g_session_ids.erase(it);
     g_unload_pending.push_back({pool_owner(sc.level, sc.cls), g_frame + 3});
     bool level_left = false;
@@ -421,7 +447,9 @@ void session_level_begin() {
     g_spawn_watch = spawn_probe_on();
     if (n != 0) std::printf("[session] a level setup: the pool classes', the twin's and the spawns' %zu blocks freed\n", n);
     twin_level_begin();
-    ctx_drop_all();  // (the contexts of the level before: made again by the imports)
+    profiles_session_clear();
+    ld_registry_drop_all();  // (the registries and contexts of the level before: made again by the imports)
+    ctx_drop_all();
     for (const auto& [l, b] : g_banks)
         if (b.handle != 0) snd989_host_bank_unload(b.handle);
     g_banks.clear();
@@ -547,17 +575,18 @@ size_t session_import_unload(int level, uint32_t cls) {
     return go.size();
 }
 
-// orig: (host) see session.h
-uint32_t session_import_spawn(uint32_t id, const float pos[3], float yaw) {
-    const auto it = g_session_ids.find(id);
-    if (it == g_session_ids.end()) return 0;
-    PoolPlacement pl;
-    const bool have = pool_placement(it->second.level, it->second.cls, pl) && pl.rec.size() >= 0x78;
+namespace {
+// a moby of session class `id` (level `level`'s class) from placement `pl` at pos / yaw, as the level's load places one
+// (level_load.cpp): its scale, update distance, flags, colour and light, its pvars (their own pointers made addresses, those
+// into its level's shared pvar data pointed at its registry's copy, the mobys they name spawned with it - an attached part,
+// its own placement moved with it - when the session has their class and its profile gives the slot nothing of its own,
+// else none); its spawn rule: drops its bolts when killed. `made`: the level's uids spawned so far (a part named twice, or
+// naming its owner, is the one moby)
+uint32_t spawn_placement(uint32_t id, int level, const LdPlacement& pl, const float pos[3], float yaw, int depth, std::map<int32_t, uint32_t>& made) {
+    const bool have = pl.rec.size() >= 0x78;
     const uint32_t m = moby_spawn(id);
     if (m == 0) return 0;
-    // as the level's load places a moby (level_load.cpp), from the class's first placement on its own level: its scale, its
-    // update distance, its flags, its colour and light, its pvars (their own pointers made addresses, the mobys they name
-    // none); its place and yaw the caller's, its spawn rule: drops its bolts when killed
+    if (pl.uid >= 0) made[pl.uid] = m;
     auto r32 = [&](size_t o) {
         uint32_t v = 0;
         std::memcpy(&v, pl.rec.data() + o, 4);
@@ -607,12 +636,66 @@ uint32_t session_import_spawn(uint32_t id, const float pos[3], float yaw) {
         for (uint32_t i = 0; i < pl.pvars.size(); ++i) sb(pv + i, pl.pvars[i]);
         for (uint32_t o : pl.ptrs)
             if (o + 4 <= pl.pvars.size()) sw(pv + o, lwu(pv + o) + pv);
-        for (uint32_t o : pl.links)
-            if (o + 4 <= pl.pvars.size()) sw(pv + o, 0xffffffffu);
-        for (uint32_t o : pl.shared)
-            if (o + 4 <= pl.pvars.size()) sw(pv + o, 0);
+        const uint32_t shared = ld_shared_data(level);
+        for (const auto& [o, d] : pl.shared)
+            if (o + 4 <= pl.pvars.size()) sw(pv + o, shared != 0 ? shared + d : 0);
+        // the mobys it names: spawned with it (an attached part), unless its profile gives the slot something of its own
+        const Profile* prof = profile_find(level, g_session_ids[id].cls);
+        for (const auto& [o, uid] : pl.links) {
+            if (o + 4 > pl.pvars.size()) continue;
+            sw(pv + o, 0xffffffffu);
+            if (uid < 0 || depth >= 2 || profile_default_at(prof, o)) continue;
+            uint32_t part = 0;
+            if (const auto it = made.find(uid); it != made.end()) {
+                part = it->second;
+            } else {
+                LdPlacement lp;
+                uint32_t pc = 0;
+                if (ld_placement(level, uid, -1, lp) && lp.rec.size() >= 0x78) std::memcpy(&pc, lp.rec.data() + 0x18, 4);
+                const int32_t pid = pc != 0 ? session_import_id(level, pc) : -1;
+                if (pid >= 0 && have) {
+                    // (its place and yaw relative to its owner's on their level, turned with the owner)
+                    float lpos[3], opos[3];
+                    std::memcpy(lpos, lp.rec.data() + 0x30, 12);
+                    std::memcpy(opos, pl.rec.data() + 0x30, 12);
+                    const float turn = yaw - rf(0x44), c = std::cos(turn), sn = std::sin(turn);
+                    const float dx = lpos[0] - opos[0], dy = lpos[1] - opos[1];
+                    const float at[3] = {pos[0] + dx * c - dy * sn, pos[1] + dx * sn + dy * c, pos[2] + lpos[2] - opos[2]};
+                    float lyaw = 0;
+                    std::memcpy(&lyaw, lp.rec.data() + 0x44, 4);
+                    part = spawn_placement(static_cast<uint32_t>(pid), level, lp, at, std::remainder(lyaw + turn, 6.2831853f), depth + 1, made);
+                }
+            }
+            if (part != 0) sw(pv + o, (part - lwu(OV(0x0015ffd8))) >> 8);
+        }
     }
     if (lw(m + 0x24) != 0) moby_update_transform(m);
+    return m;
+}
+}  // namespace
+
+// orig: (host) see session.h
+uint32_t session_import_spawn(uint32_t id, const float pos[3], float yaw) {
+    const auto it = g_session_ids.find(id);
+    if (it == g_session_ids.end()) return 0;
+    const int level = it->second.level;
+    const uint32_t cls = it->second.cls;
+    // (its first placement on its own level: the pool's level data, else the pool's placements - no parts nor shared data then)
+    LdPlacement pl;
+    if (!ld_placement(level, -1, static_cast<int32_t>(cls), pl)) {
+        PoolPlacement pp;
+        if (pool_placement(level, cls, pp)) {
+            pl.rec = pp.rec;
+            pl.pvars = pp.pvars;
+            pl.ptrs = pp.ptrs;
+            for (uint32_t o : pp.links) pl.links.push_back({o, -1});
+            for (uint32_t o : pp.shared) pl.shared.push_back({o, 0});
+        }
+    }
+    std::map<int32_t, uint32_t> made;
+    const uint32_t m = spawn_placement(id, level, pl, pos, yaw, 0, made);
+    // its profile's defaults (its paths in its context's registry: class_profiles.h)
+    if (m != 0) profiles_session_spawn(level, cls, m, pos, yaw);
     return m;
 }
 
@@ -739,6 +822,7 @@ void session_frame(uint64_t frame) {
             bool again = false;  // (a class of the level imported again meanwhile)
             for (const auto& [id, sc] : g_session_ids) again |= sc.level == l;
             if (again) continue;
+            ld_registry_drop(l);
             ctx_drop(l);
             if (const auto b = g_banks.find(l); b != g_banks.end()) {
                 if (b->second.handle != 0) snd989_host_bank_unload(b->second.handle);
@@ -754,11 +838,12 @@ void session_frame(uint64_t frame) {
 // orig: (host) see session.h
 void session_memory_log() {
     if (!g_on) return;
-    uint32_t classes = 0, contexts = 0, other = 0;
+    uint32_t classes = 0, contexts = 0, other = 0, ld = 0;
     std::map<std::string, uint32_t> by;
     for (const auto& [a, b] : g_blocks) {
         if (b.owner.rfind("pool ", 0) == 0) classes += b.size;
         else if (b.owner.rfind("context ", 0) == 0) contexts += b.size;
+        else if (b.owner.rfind("level data ", 0) == 0) ld += b.size;
         else other += b.size;
     }
     size_t bank_bytes = 0, imported = 0;
@@ -766,9 +851,10 @@ void session_memory_log() {
     for (const auto& [id, sc] : g_session_ids) imported += sc.imported;
     uint32_t free = 0;
     for (const auto& [a, n] : g_free) free += n;
-    std::printf("[session] memory: %zu classes imported (%u KB), %zu contexts (%u KB), other blocks %u KB (spawned pvars, the twin's); heap %u KB used, "
-                "%u KB free in %zu runs; %zu sound banks %zu KB (host memory); class table %u of 224 (%zu indices free); the MRP's import list %d classes\n",
-                imported, classes >> 10, static_cast<size_t>(ctx_count()), contexts >> 10, other >> 10, session_heap_used() >> 10, free >> 10, g_free.size(),
+    std::printf("[session] memory: %zu classes imported (%u KB), %zu contexts (%u KB), their level data %u KB, other blocks %u KB (spawned pvars, the twin's); "
+                "heap %u KB used, %u KB free in %zu runs; %zu sound banks %zu KB (host memory); class table %u of 224 (%zu indices free); the MRP's import "
+                "list %d classes\n",
+                imported, classes >> 10, static_cast<size_t>(ctx_count()), contexts >> 10, ld >> 10, other >> 10, session_heap_used() >> 10, free >> 10, g_free.size(),
                 g_banks.size(), bank_bytes >> 10, lwu(OV(0x0015ffc0)), g_free_idx.size(), mrp_moby_imports_count());
 }
 

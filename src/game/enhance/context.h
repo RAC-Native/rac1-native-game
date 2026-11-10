@@ -52,7 +52,11 @@ uint32_t ctx_xlate(int level, uint32_t a);
 // orig: (host) a view of level `level`'s own (DESIGN 6.2's registries, their first form): the engine object at Veldin's
 // `veldin` (`size` bytes) is, for level `level`'s sites, the copy at `to` (a level's paths seen by its own classes, the
 // session's engine keeping its own); `to` 0 drops the view. The level must have a context
+// (stage 4: keyed by the level's own addresses - Veldin's object found in the level's map through its extents -, so that a
+// view holds whatever base the session runs on; ld_* (leveldata.h) makes a context's level-data registry this way)
 bool ctx_view(int level, uint32_t veldin, uint32_t size, uint32_t to);
+// orig: (host) Veldin's engine object `veldin` as level `level`'s own address (its extents), 0 when the level has none
+uint32_t ctx_level_addr(int level, uint32_t veldin);
 
 }  // namespace rac1
 

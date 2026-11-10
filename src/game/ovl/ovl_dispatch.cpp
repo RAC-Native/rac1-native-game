@@ -40,6 +40,7 @@
 #include <game/ovl/weapon_classes_tr.h>
 #include <game/port_stubs.h>
 #include <game/enhance/session.h>
+#include <game/enhance/leveldata.h>
 #include <game/enhance/twin.h>
 
 #include <cstdio>
@@ -245,8 +246,11 @@ void ovl_call_moby_fn(uint32_t fn, uint32_t moby) {
             if (k == 1) return;
             const uint32_t was = g_spawn_updating;
             g_spawn_updating = moby;
+            // (a class of another level: its level's registry swapped in for the engine's functions it calls, leveldata.h)
+            const int ld = g_ld_any ? ld_enter(moby) : -1;
             if (k == 2) twin_call(resolved, moby);
             else resolved(moby);
+            if (ld >= 0) ld_leave(ld);
             g_spawn_updating = was;
             return;
         }

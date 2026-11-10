@@ -72,7 +72,8 @@ namespace {
     "picture <file.png>                        the planet on the loading screen (128 x 128; default: none, the base level's)\n"
     "banner <file.png> / banner.<lang> <file.png>   the name on the loading screen (256 x 32; default: made from name)\n"
     "map_picture <file.png>                    the ship's map's picture (306 x 108 shown; default: made from picture)\n"
-    "import <name> | import <level>:<class>    a class of another level, with what it spawns (the open engine: docs/open-engine.md)\n";
+    "import <name> | import <level>:<class>    a class of another level, with what it spawns (the open engine: docs/open-engine.md)\n"
+    "path <name> <x> <y> <z> [<x> <y> <z> ...]  a path (1 to 64 points) the plugin gives an imported object (object_bind_path)\n";
 
 struct LevelTxt {
     float hero[4] = {0, 0, 1, 0};
@@ -139,6 +140,11 @@ struct LevelTxt {
     std::vector<Object> objects;
     std::vector<Sound> sounds;
     std::vector<Trigger> triggers;
+    struct Path {  // (the plugin binds them to imported objects' slots: object_bind_path, ABI 8)
+        std::string name;
+        std::vector<std::array<float, 3>> pts;
+    };
+    std::vector<Path> paths;
     // the classes imported from other levels (import <name|level:class>: the open engine's pool)
     struct Import {
         std::string name;
@@ -405,6 +411,21 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
             im.line = n;
             if (!(in >> im.name)) return bad();
             t.imports.push_back(im);
+        } else if (key == "path") {
+            LevelTxt::Path pa;
+            if (!(in >> pa.name) || !sdk_name_ok(pa.name)) return bad();
+            for (const LevelTxt::Path& o : t.paths)
+                if (o.name == pa.name) {
+                    err = fmt("%s:%d: the path \"%s\" twice", p.generic_string().c_str(), n, pa.name.c_str());
+                    return false;
+                }
+            std::array<float, 3> v{};
+            while (in >> v[0]) {
+                if (!(in >> v[1] >> v[2])) return bad();
+                pa.pts.push_back(v);
+            }
+            if (pa.pts.empty() || pa.pts.size() > 64) return bad();
+            t.paths.push_back(pa);
         } else if (key == "trigger") {
             LevelTxt::Trigger g;
             if (!(in >> g.name >> g.lo[0] >> g.lo[1] >> g.lo[2] >> g.hi[0] >> g.hi[1] >> g.hi[2]) || !sdk_name_ok(g.name)) return bad();
@@ -2001,6 +2022,8 @@ bool compose_level_mod(const std::string& folder, bool force) {
                 tg.lo[l] += lt.offset[l];
                 tg.hi[l] += lt.offset[l];
             }
+            for (LevelTxt::Path& pa : lt.paths)
+                for (auto& v : pa.pts) v[static_cast<size_t>(l)] += lt.offset[l];
         }
         lt.death += lt.offset[2];
         log.say(fmt("offset: (%g %g %g) added to every coordinate%s (lights.txt's are the game's: not moved)", lt.offset[0], lt.offset[1], lt.offset[2],
@@ -2194,7 +2217,7 @@ bool compose_level_mod(const std::string& folder, bool force) {
     if (!bank_sounds.empty() && !write_file(out_dir / "sounds.bnk", sound_bank(bank_sounds))) return fail("cannot write into " + out_dir.generic_string());
     if (!compose_imports(lt, m.level_base, out_dir, log, err)) return fail(err);
     // level.sdk: the level's own content for the game (src/game/enhance/mod_code.cpp reads it)
-    if (!lt.classes.empty() || !lt.sounds.empty() || !lt.triggers.empty() || lt.update_all) {
+    if (!lt.classes.empty() || !lt.sounds.empty() || !lt.triggers.empty() || !lt.paths.empty() || lt.update_all) {
         std::ostringstream o;
         o << "sdk\t1\n";
         if (lt.update_all) o << "update_all\t1\n";
@@ -2217,9 +2240,14 @@ bool compose_level_mod(const std::string& folder, bool force) {
         }
         for (const LevelTxt::Trigger& g : lt.triggers)
             o << fmt("trigger\t%s\t%.6g\t%.6g\t%.6g\t%.6g\t%.6g\t%.6g\n", g.name.c_str(), g.lo[0], g.lo[1], g.lo[2], g.hi[0], g.hi[1], g.hi[2]);
+        for (const LevelTxt::Path& pa : lt.paths) {
+            o << fmt("path\t%s\t%zu", pa.name.c_str(), pa.pts.size());
+            for (const auto& v : pa.pts) o << fmt("\t%.6g\t%.6g\t%.6g", v[0], v[1], v[2]);
+            o << "\n";
+        }
         const std::string t = o.str();
         if (!write_file(out_dir / "level.sdk", std::vector<uint8_t>(t.begin(), t.end()))) return fail("cannot write into " + out_dir.generic_string());
-        log.say(fmt("level.sdk: %zu classes, %zu objects, %zu sounds, %zu triggers", lt.classes.size(), lt.objects.size(), lt.sounds.size(), lt.triggers.size()));
+        log.say(fmt("level.sdk: %zu classes, %zu objects, %zu sounds, %zu triggers, %zu paths", lt.classes.size(), lt.objects.size(), lt.sounds.size(), lt.triggers.size(), lt.paths.size()));
     }
     // the pictures (level_pictures.h): the loading screen's planet and name, the ship's map's picture
     {

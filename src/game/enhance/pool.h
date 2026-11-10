@@ -11,6 +11,8 @@
 //   sounds/levelNN.bnk   each level's sound bank (a host bank for its classes in a session)
 //   placements/levelNN.bin  each class's first placement in its level's gameplay file (a session spawns an imported class
 //                from it: open engine stage 3)
+//   leveldata/levelNN.bin  each level's gameplay file, unpacked (its paths, groups, cameras, volumes, rails, placements:
+//                the open engine's stage 4 level data), made from the disc on demand when a context needs it
 //   deps/levelNN.txt     each class's dependencies, found in its code (tools/overlay_match/deps.py: not made by the game)
 //   pool.json    the stamp: the pool's version, the disc it was made from, the counts; a pool from another disc or an
 //                older version is made again
@@ -90,6 +92,10 @@ struct PoolPlacement {
 };
 // orig: (host) class `cls`'s first placement on level `level` (false: the level places none)
 bool pool_placement(int level, uint32_t cls, PoolPlacement& out);
+
+// orig: (host) level `level`'s gameplay file, unpacked (leveldata/levelNN.bin: the disc's region's), made from the disc the
+// first time it is asked for; false when it cannot be had
+bool pool_leveldata(int level, std::vector<uint8_t>& out);
 
 // A class's dependencies (tools/overlay_match/deps.py's report, pool/deps/levelNN.txt): the classes its own code spawns,
 // those the engine spawns for it, what of its level's data it reads

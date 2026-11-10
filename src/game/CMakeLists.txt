@@ -178,6 +178,8 @@ add_library(rac1_game STATIC
     enhance/session.cpp
     enhance/pool.cpp
     enhance/context.cpp
+    enhance/leveldata.cpp
+    enhance/class_profiles.cpp
     enhance/twin.cpp
     ovl/bomb_glove.cpp
     ovl/pyrocitor.cpp
