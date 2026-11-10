@@ -494,7 +494,7 @@ GLOW = (1.0, 0.5, 0.3)
 def colour(name, p):
     """The vertex colour: darker at the foot of walls and cover, the lava's glow low on the outer faces and the
     mountains' foot (1/16 steps)."""
-    if name in ("lamps", "trim", "lava"):
+    if name in ("lamps", "trim", "lava") or name.startswith("prova"):  # (prova: build_prova.py's, far from the lava)
         c = (1.0, 1.0, 1.0)
     elif name == "vents":
         t = max(0.0, min(1.0, -p[2] / 0.9))

@@ -20,6 +20,8 @@ It reads four collections (build_arena.py makes them; edit them freely in Blende
   arena_rails      (build_rails.py; optional) curves rail_<name>: level.txt's rail lines (their points every RAIL_STEP
                    units; the composer puts a collision strip under each) and a class rail_<name> each (a tube on
                    pylons, one object)
+  prova_*          (build_prova.py; optional) a section of the session (SECTIONS): <name>_visual, <name>_collision
+                   (<name>_meshes.obj, <name>_collision.obj) and <name>_markers (entry_<n>)
 
 and writes <out>/mod.json, <out>/plugin/ (the flame vents' code), <out>/level/{level.txt, collision.obj,
 meshes.obj, meshes.mtl, *.png, lights.txt, the classes' models, the sounds, the music}. The level is made round
@@ -60,19 +62,24 @@ LEVEL = {
              "fr": "Arène de Daino"},
     "region": {"": "Custom Levels", "it": "Livelli personalizzati", "de": "Eigene Level", "es": "Niveles propios",
                "fr": "Niveaux personnalisés"},
-    "format": 2,
+    "format": 3,            # a session (docs/mods.md): loaded once, a death a soft reset at a checkpoint, sections
     "base": 16,             # Kalebo III: its enemies (classes 1445, 52, 541, 638, 1356) for the waves
     "base_name": "kalebo",
     "floor_z": 104.0,       # the floor's height in the game: Kalebo III's hero code ends a fall under z 77
     "death_height": -6.0,   # (the scene's: under the lava)
+    # the session's checkpoints (the scene's coordinates, yaw): "arena" south of the hub, where a death during a challenge
+    # brings Ratchet back (the plugin's choice; outside a challenge the session's start, the landing)
+    "checkpoints": [("arena", (0.0, -20.0, 0.5), 1.5708)],
+    # main's entries (where a switch from a section puts Ratchet back): "ritorno" south of the hub
+    "entries": [("ritorno", (0.0, -20.0, 0.5), 1.5708)],
     "sky": 0,               # Veldin's sky (Quartu's, 15, crashed on Veldin's code: sky_hand::spheres)
     "music": ("overworld.ogg", os.path.join(GAME, "examples/custom-level/music/overworld.ogg")),
     "background": (120, 80, 58),  # a warm haze: the lava, Veldin's low sun
     "fog": (120, 80, 58),
     # room for the base level's objects the plugin starts (base_spawn): 24 robots, 8 bomb bots, 6 Gadgetron robots,
     # 8 jetpack troopers (the dropships' too), 2 dropships (SDK ABI 5), the hub's 4 crates of each kind, the grind
-    # course's 14 rail mines (933: Kalebo III's, on its rails)
-    "spawn": {1445: 24, 52: 8, 541: 6, 638: 8, 1356: 2, 501: 4, 511: 4, 933: 14},
+    # course's 13 rail mines and the escape's 6 (933: Kalebo III's, on its rails)
+    "spawn": {1445: 24, 52: 8, 541: 6, 638: 8, 1356: 2, 501: 4, 511: 4, 933: 22},
     # (text, box in the scene's coordinates or None): embers rising from the lava (on a level mod `source lava` reads
     # the collision's type 3 faces too), as on Gaspar, and a little ash
     "particles": [
@@ -103,7 +110,12 @@ CLASSES = [              # the level's own classes: (name, model, its line's opt
     ("mark", "mark.obj", "size 1 ghost", ["emissive 2.5"]),               # (where a bomb falls)
     ("mine", "mine.obj", "size 1 ghost", ["metal 0.35 0.8 glow 2 0.6"]),  # (the course's: on a rail, jumped)
     ("zap", "zap.obj", "size 1 ghost", ["emissive 3"]),                  # (a drop zone's ring electrified: Grate impazzite)
+    ("portal", "portal.obj", "size 1 ghost", ["emissive 3"]),            # (the escape's end: into the section prova)
+    ("flood", "flood.obj", "size 1 ghost", ["emissive 2.2"]),            # (the lava flooding the arena: La grande fuga)
 ]
+# the session's sections (build_prova.py's collections <name>_visual, <name>_collision, <name>_markers: entry_<n>), each
+# with another planet's sky round it
+SECTIONS = [("prova", {"sky": 15, "background": (34, 44, 92), "fog": (34, 44, 92), "death_height": -12.0})]
 
 errors, warnings = [], []
 
@@ -160,11 +172,11 @@ def lowest(lo, pts):
 
 # ---------------------------------------------------------------- collision
 
-def export_collision(path, depsgraph):
+def export_collision(path, depsgraph, collection="arena_collision"):
     verts, faces = [], []
     walk = total = 0
     lo = [1e9] * 3
-    for ob in sorted(coll("arena_collision"), key=lambda o: o.name):
+    for ob in sorted(coll(collection), key=lambda o: o.name):
         if ob.type != "MESH":
             continue
         pos, me, ev = mesh_of(ob, depsgraph)
@@ -181,7 +193,7 @@ def export_collision(path, depsgraph):
         ev.to_mesh_clear()
     lowest(lo, verts)
     if not verts:
-        err("collision: no triangles")
+        err("%s: no triangles" % collection)
     with open(path, "w") as f:
         f.write("# the arena: collision (export_arena.py), z up, game units, made round (0, 0, 0)\n")
         for p in verts:
@@ -190,8 +202,8 @@ def export_collision(path, depsgraph):
             f.write("o %s\nusemtl type%d\n" % (name, kind))
             for t in tl:
                 f.write("f %d %d %d\n" % tuple(t))
-    print("collision: %d triangles (%d walkable, normal up), lowest corner (%s %s %s)" % (
-        total, walk, num(lo[0]), num(lo[1]), num(lo[2])))
+    print("%s: %d triangles (%d walkable, normal up), lowest corner (%s %s %s)" % (
+        collection, total, walk, num(lo[0]), num(lo[1]), num(lo[2])))
     return lo
 
 
@@ -233,11 +245,11 @@ def is_lava(ob):
     return any(s.material and str(s.material.get("rac1_material", "")).startswith("lava") for s in ob.material_slots)
 
 
-def export_meshes(obj_path, mtl_path, depsgraph):
+def export_meshes(obj_path, mtl_path, depsgraph, collection="arena_visual", first=0):
     """meshes.obj / .mtl; returns (the PNGs, the lowest corner, the material lines, the meshes' count). The objects with
     lava go first; the material lines name a host mesh class (its index among the written objects) and a texture of
     its own (its index among the class's materials in the .mtl's order), as the composer numbers them."""
-    obs = [o for o in coll("arena_visual") if o.type == "MESH"]
+    obs = [o for o in coll(collection) if o.type == "MESH"]
     obs.sort(key=lambda o: (not is_lava(o), o.name))
     data = []
     used = {}
@@ -309,7 +321,7 @@ def export_meshes(obj_path, mtl_path, depsgraph):
             if spec and name not in done:
                 done.add(name)
                 lines.append("# %s (%s's texture %d)" % (name, base_name(ob), li_))
-                lines.append("material tie %d tex %d %s" % (k, li_, spec))
+                lines.append("material tie %d tex %d %s" % (first + k, li_, spec))
             out.write("usemtl %s\n" % name)
             for t in by_mat[name]:
                 corners = []
@@ -499,6 +511,54 @@ def zap_colour(p):
     return (0.55, 0.9, 1.0) if math.hypot(p[0], p[1]) > 4.9 else (0.75, 0.95, 1.0)
 
 
+def portal_tris():
+    """The portal: a ring standing across the way through it (its axis the object's x), 3 across inside, its tube 0.35
+    thick and eight-sided, and an inner ring of sparks."""
+    out = []
+    n, m, R, r = 40, 8, 3.35, 0.35
+
+    def at(a, b, rr=r, RR=R):
+        c = RR + rr * math.cos(b)
+        return (rr * math.sin(b), c * math.cos(a), c * math.sin(a))
+    for i in range(n):
+        a0, a1 = 2 * math.pi * i / n, 2 * math.pi * (i + 1) / n
+        for j in range(m):
+            b0, b1 = 2 * math.pi * j / m, 2 * math.pi * (j + 1) / m
+            p = [at(a0, b0), at(a1, b0), at(a1, b1), at(a0, b1)]
+            out += [(p[0], p[1], p[2]), (p[0], p[2], p[3])]
+    for i in range(24):  # (sparks: short flat bars across the inside, turning round it)
+        a = 2 * math.pi * i / 24
+        p = [at(a - 0.05, 0, 0.0, 2.2), at(a + 0.05, 0, 0.0, 2.2), at(a + 0.03, 0, 0.0, 2.95), at(a - 0.03, 0, 0.0, 2.95)]
+        out += [(p[0], p[1], p[2]), (p[0], p[2], p[3]), (p[0], p[2], p[1]), (p[0], p[3], p[2])]
+    return out
+
+
+def portal_colour(p):
+    rr = math.hypot(p[1], p[2])
+    return (0.55, 0.35, 1.0) if rr > 3.1 else (0.85, 0.7, 1.0) if rr > 2.9 else (0.4, 0.9, 1.0)
+
+
+FLOOD_HALF = 47.9  # the flood's square: the arena's floor inside its wall
+
+
+def flood_tris():
+    """The lava flooding the arena: a square over its floor in 4-unit cells (each cell's corners coloured apart)."""
+    out, n = [], 24
+    for i in range(n):
+        for j in range(n):
+            x0, x1 = -FLOOD_HALF + 2 * FLOOD_HALF * i / n, -FLOOD_HALF + 2 * FLOOD_HALF * (i + 1) / n
+            y0, y1 = -FLOOD_HALF + 2 * FLOOD_HALF * j / n, -FLOOD_HALF + 2 * FLOOD_HALF * (j + 1) / n
+            p = [(x0, y0, 0.0), (x1, y0, 0.0), (x1, y1, 0.0), (x0, y1, 0.0)]
+            out += [(p[0], p[1], p[2]), (p[0], p[2], p[3])]
+    return out
+
+
+def flood_colour(p):
+    h = math.sin(p[0] * 0.37 + math.sin(p[1] * 0.21) * 2.0) * math.cos(p[1] * 0.29 - math.sin(p[0] * 0.17) * 2.0)
+    t = 0.5 + 0.5 * h
+    return (1.0, 0.25 + 0.45 * t, 0.05 + 0.12 * t)
+
+
 def flame_tris():
     """Three tongues of fire: tapered six-sided cones, leaning out a little, the middle one tallest (3.2)."""
     out = []
@@ -658,6 +718,41 @@ def export_rails(level, depsgraph):
     return rails
 
 
+def export_section(level, name, opts, depsgraph, first):
+    """A section's block for level.txt (its lines after main's): its collision and meshes (<name>_collision.obj,
+    <name>_meshes.obj from its collections), its sky and colours, its entries (entry_<n> markers). Its meshes are host
+    mesh classes after main's (and before the classes' models: `first` the first's index): (the block, their material
+    lines, their count)."""
+    if not bpy.data.collections.get(name + "_visual"):
+        warn("section %s: no collection %s_visual (build_prova.py): left out" % (name, name))
+        return [], [], 0
+    export_collision(os.path.join(level, name + "_collision.obj"), depsgraph, name + "_collision")
+    pngs, _, mat_lines, n = export_meshes(os.path.join(level, name + "_meshes.obj"), os.path.join(level, name + "_meshes.mtl"),
+                                          depsgraph, name + "_visual", first)
+    for p in pngs:
+        png_check(p)
+        shutil.copy(p, os.path.join(level, os.path.basename(p)))
+    L = ["# the section %s (%s): its own collision, meshes and sky; Ratchet comes in by its entries" % (name, name + "_* collections"),
+         "section %s remove respawn reset" % name,
+         "  collision %s_collision.obj" % name,
+         "  meshes %s_meshes.obj" % name]
+    if opts.get("sky") is not None:
+        L.append("  sky %d" % opts["sky"])
+    for key in ("background", "fog"):
+        if opts.get(key):
+            L.append("  %s %d %d %d" % ((key,) + tuple(opts[key])))
+    if opts.get("death_height") is not None:
+        L.append("  death_height %s" % num(opts["death_height"]))
+    for o in sorted(coll(name + "_markers"), key=lambda o: o.name):
+        p = o.matrix_world.translation
+        if base_name(o).startswith("entry_"):
+            L.append("  entry %s %s %s %s %s" % (base_name(o)[6:], num(p.x), num(p.y), num(p.z), num(yaw(o))))
+        else:
+            warn("section %s: marker %s is not entry_*: left out" % (name, o.name))
+    L.append("end")
+    return L, mat_lines, n
+
+
 # ---------------------------------------------------------------- the ship's map's picture
 
 MAP_VIEW = {"eye": (-62.0, -118.0, 62.0), "at": (4.0, 6.0, 0.0), "lens": 34.0, "size": (612, 216)}
@@ -813,6 +908,7 @@ def export(out=None, install=False):
 
     lo_c = export_collision(os.path.join(level, "collision.obj"), depsgraph)
     pngs, lo_v, mat_lines, n_meshes = export_meshes(os.path.join(level, "meshes.obj"), os.path.join(level, "meshes.mtl"), depsgraph)
+    n_sec = 0  # (the sections' meshes: host mesh classes after main's, before the classes' models)
     for p in pngs:
         png_check(p)
         shutil.copy(p, os.path.join(level, os.path.basename(p)))
@@ -829,6 +925,8 @@ def export(out=None, install=False):
     model(level, "mark", ring_tris(), lambda p: (1.0, 0.18, 0.1))
     model(level, "mine", mine_tris(), mine_colour)
     model(level, "zap", zap_tris(), zap_colour)
+    model(level, "portal", portal_tris(), portal_colour)
+    model(level, "flood", flood_tris(), flood_colour)
     rails = export_rails(level, depsgraph)
     sounds(level)
     pictures = {}  # (level.txt's picture lines: the planet made by make_textures.py, the map's view rendered here)
@@ -865,6 +963,12 @@ def export(out=None, install=False):
         p = ob.matrix_world.translation
         L.append("%s %s %s %s %s" % (key, num(p.x), num(p.y), num(p.z), num(yaw(ob))))
     L.append("death_height %s" % num(LEVEL["death_height"]))
+    if LEVEL["format"] >= 3:
+        L.append("# a session: loaded once at the arrival; a death brings Ratchet back to the current checkpoint")
+        L.append("session")
+        for name, at, a in LEVEL["checkpoints"]:
+            L.append("checkpoint %s %s %s %s %s" % (name, num(at[0]), num(at[1]), num(at[2]), num(a)))
+        L.append("respawn reset")
     if LEVEL["sky"] is not None:
         L.append("sky %d" % LEVEL["sky"])
     L.append("music %s" % music)
@@ -914,6 +1018,14 @@ def export(out=None, install=False):
         p = o.matrix_world.translation
         L.append("object %s %s %s %s %s name=%s" % (base_name(o).split("_")[0], num(p.x), num(p.y), num(p.z), num(yaw(o)),
                                                   base_name(o)))
+    portals = [o for o in markers if base_name(o).startswith("portal_")]
+    if portals:
+        L.append("# the portals' rings (portal_<name> markers; the plugin's switch to a section as Ratchet goes through)")
+    for o in portals:
+        p = o.matrix_world.translation
+        L.append("object portal %s %s %s %s name=%s" % (num(p.x), num(p.y), num(p.z), num(yaw(o)), base_name(o)))
+    L.append("# the lava flooding the arena (La grande fuga): under the lava until the plugin raises it")
+    L.append("object flood 0 0 %s 0 name=flood" % num(-2.5))
     flames = [o for o in markers if o.name.startswith("flame_")]
     for i, o in enumerate(flames):
         p = o.matrix_world.translation
@@ -933,8 +1045,19 @@ def export(out=None, install=False):
         L.append("trigger %s %s" % (o.name[8:], " ".join(num(c) for c in a + b)))
     for o in markers:
         n = base_name(o)
-        if n not in ("hero", "ship") and not n.startswith(("obj_", "spawn_", "trigger_", "flame_", "mine_")):
-            warn("marker %s: not hero, ship, spawn_*, trigger_*, obj_*, flame_*: left out" % o.name)
+        if n not in ("hero", "ship") and not n.startswith(("obj_", "spawn_", "trigger_", "flame_", "mine_", "portal_")):
+            warn("marker %s: not hero, ship, spawn_*, trigger_*, obj_*, flame_*, portal_*: left out" % o.name)
+    if LEVEL["format"] >= 3:
+        for name, at, a in LEVEL.get("entries", []):
+            L.append("entry %s %s %s %s %s" % (name, num(at[0]), num(at[1]), num(at[2]), num(a)))
+        if SECTIONS:
+            L.append("# main's objects while Ratchet is in a section: kept as they are (the plugin holds them), not updated")
+            L.append("leave freeze")
+        for name, opts in SECTIONS:
+            block, lines, n = export_section(level, name, opts, depsgraph, n_meshes + n_sec)
+            L += block
+            mat_lines += lines
+            n_sec += n
     with open(os.path.join(level, "level.txt"), "w") as f:
         f.write("\n".join(L) + "\n")
 
@@ -962,15 +1085,15 @@ def export(out=None, install=False):
         LL.append("light %s %s %s  %.3f %.3f %.3f  %.3f %.3f %.3f 1" % (num(p.x), num(p.y), num(p.z), c[0], c[1], c[2],
                                                                     inten, radius, float(o.get("flicker", 0.0))))
         nlights += 1
-    LL.append("# the materials of the meshes' textures (host mesh classes 0.. in meshes.obj's order, then the classes' models)")
+    LL.append("# the materials of the meshes' textures (host mesh classes 0.. in meshes.obj's order, then the sections', then the classes' models)")
     LL += mat_lines
     for i, (name, _, _, specs) in enumerate(CLASSES):
         for t, spec in enumerate(specs):
             LL.append("# the %s class's model, its texture %d" % (name, t))
-            LL.append("material tie %d tex %d %s" % (n_meshes + i, t, spec))
+            LL.append("material tie %d tex %d %s" % (n_meshes + n_sec + i, t, spec))
     for j, (name, _, _) in enumerate(rails):
         LL.append("# the %s class's model (a rail)" % name)
-        LL.append("material tie %d tex 0 %s" % (n_meshes + len(CLASSES) + j, RAIL_SPEC))
+        LL.append("material tie %d tex 0 %s" % (n_meshes + n_sec + len(CLASSES) + j, RAIL_SPEC))
     LL.append("# ambient particles: embers rising from the lava, a little ash")
     for text, bx in LEVEL["particles"]:
         if bx:
@@ -982,10 +1105,11 @@ def export(out=None, install=False):
         f.write("\n".join(LL) + "\n")
 
     with open(os.path.join(out, "mod.json"), "w") as f:
-        json.dump({"name": LEVEL["name"][""], "author": "Daino Selvatico", "version": "0.4",
+        json.dump({"name": LEVEL["name"][""], "author": "Daino Selvatico", "version": "0.5",
                    "description": "An arena in a lava lake ringed by mountains, with challenges against Kalebo III's enemies "
                                   "(waves, bombs, flame vents, weapon limits, championships) and grind rails (a test rail, a "
-                                  "course of three lanes with mines to jump and Kalebo III's rail mines to break).",
+                                  "course of three lanes with mines to jump and Kalebo III's rail mines to break, and an escape from the lava "
+                                  "through a portal into another place).",
                    "kind": "level", "level": {"id": LEVEL["id"], "format": LEVEL["format"], "base": LEVEL["base"]}}, f, indent=2)
         f.write("\n")
 

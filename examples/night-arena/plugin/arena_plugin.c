@@ -121,6 +121,9 @@ typedef struct challenge_def {
     const char* rails; /* RAIL: its rails (level.txt's names, the first the one whose end finishes it) */
     const char* start; /* RAIL: the spawn point Ratchet starts from */
     int obstacles;     /* RAIL: the course's obstacles (our mines, Kalebo III's rail mines) on */
+    const char* escape; /* RAIL: after the arena's rounds (all its waves but the last) the lava floods the arena and
+                           this rail, from the hub's top, leads to a portal: the last wave is fought in the section
+                           beyond it ("La grande fuga") */
 } challenge_def;
 
 static const challenge_def CHALLENGES[] = {
@@ -158,6 +161,8 @@ static const challenge_def CHALLENGES[] = {
      "test", "rail_start", 0},
     {"Grindscarponi: Discesa", "3 corsie di mine, poi l'ultima ondata", RAIL, 90, 1, {{8, 6, 25, "RRB"}}, 0, 20,
      0, 0, W_ANY, 3000, 0, "lane_c lane_l lane_r", "rail_course", 1},
+    {"La grande fuga", "percorso, round, lava, fuga, portale", RAIL, 90, 3, {{10, 7, 30, "RRB"}, {12, 8, 28, "RRBF"}, {2, 2, 30, "R"}},
+     0, 25, 0, 0, W_ANY, 8000, 0, "lane_c lane_l lane_r", "rail_course", 1, "escape"},
     {"Impossibile", "il campionato, 50 round", CUP, 0, 50, {{0}}, 0, 20, 0, 0, W_ANY, 100000, 1},
 };
 #define N_CHALLENGES ((int)(sizeof CHALLENGES / sizeof CHALLENGES[0]))
@@ -456,6 +461,17 @@ static const char* const TEXTS[][N_LANGS] = {
     /* the rails */
     {"Nessuna rotaia", "No rails", "Aucun rail", "Keine Schienen", "Sin railes"},
     {"Salta sulla rotaia!", "Jump on the rail!", "Saute sur le rail!", "Spring auf die Schiene!", "Salta al rail!"},
+    {"La grande fuga", "The Great Escape", "La Grande Evasion", "Die grosse Flucht", "La gran fuga"},
+    {"percorso, round, lava, fuga, portale", "course, rounds, lava, escape, portal", "parcours, manches, lave, fuite, portail",
+     "Strecke, Runden, Lava, Flucht, Portal", "recorrido, rondas, lava, huida, portal"},
+    {"La lava sale! Sali al centro e prendi la rotaia", "The lava is rising! Up the centre, onto the rail",
+     "La lave monte! Monte au centre, prends le rail", "Die Lava steigt! Hoch zur Mitte, auf die Schiene",
+     "La lava sube! Sube al centro y toma el rail"},
+    {"Fuga: restano %d:%02d", "Escape: %d:%02d left", "Fuite: encore %d:%02d", "Flucht: noch %d:%02d", "Huida: quedan %d:%02d"},
+    {"Caduto! Di nuovo dal centro", "You fell! Back to the centre", "Tombe! Retour au centre", "Gefallen! Zurueck zur Mitte",
+     "Caiste! De vuelta al centro"},
+    {"Un altro mondo! Abbatti gli ultimi due", "Another world! Take down the last two", "Un autre monde! Abats les deux derniers",
+     "Eine andere Welt! Erledige die letzten zwei", "Otro mundo! Acaba con los dos ultimos"},
     {"La corsia finisce! Cambia corsia", "The lane ends! Switch lanes", "La voie se termine! Change de voie",
      "Die Spur endet! Wechsle die Spur", "El carril se acaba! Cambia de carril"},
     {"Atterrato! Ora l'ultima ondata", "Landed! Now the last wave", "Atterri! Place a la derniere vague",
@@ -1043,6 +1059,11 @@ static void wave_start(void) {
     if (CHALLENGES[s.ch].kind == RAIL) rail_go();  /* (the countdown's end: the rails on; not the last wave's start) */
 }
 
+/* the level is a session (format 3, ABI 9): a death a soft reset at the current checkpoint, no level load */
+static int session(void) {
+    return RAC1_API_HAS(api, session_on) && api->session_on();
+}
+
 static void challenge_start(int ch) {
     s.ch = ch;
     s.wave = 0;
@@ -1250,6 +1271,8 @@ static void ship_arrive(int k, const float h[3]) {
     api->log(msg);
 }
 
+static const float* section_point(void);
+
 static void spawn_one(const float h[3]) {
     const wave_def* w = cur_wave();
     if (s.npoints == 0 || s.nen >= MAX_EN) return;
@@ -1268,8 +1291,9 @@ static void spawn_one(const float h[3]) {
         ship_arrive(k, h);
         return;
     }
-    const float* p = s.points[s.next_point++ % s.npoints];
-    if (KIND[k].moves == 1) {  /* a trooper on a drop zone (open floor): at a gate's alcove, under its lintel, it would stay
+    const float* sec = section_point();
+    const float* p = sec != NULL ? sec : s.points[s.next_point++ % s.npoints];
+    if (KIND[k].moves == 1 && sec == NULL) {  /* a trooper on a drop zone (open floor): at a gate's alcove, under its lintel, it would stay
                                   stuck (they fly straight at Ratchet, and stop at a wall they cannot get past nor over) */
         int drops[N_POINTS], nd = 0;
         for (int i = 0; i < s.npoints; ++i)
@@ -1727,10 +1751,20 @@ static struct {
         uint32_t obj;  /* O_MINE: our object; O_KMINE: its spawn point's (kind=kmine) */
         uint32_t h;    /* O_KMINE: base_spawn's handle while it is out */
         int kind, alive;
+        int course;    /* 0 the course's, 1 the escape's (named mine_e<n>, kmine_e<n>) */
         float p[3];
     } obs[MAX_OBST];
-    int nobs, kmines, kmines_hit, use_obs;
-    int warned;  /* the lanes whose end was told (bits by their place in set) */
+    int nobs, kmines, kmines_e, kmines_hit;  /* (the course's rail mines, the escape's, those broken) */
+    int use_obs;  /* the obstacles on: bit 0 the course's, bit 1 the escape's */
+    int warned;   /* the lanes whose end was told (bits by their place in set) */
+    /* La grande fuga: phase 3 the lava rising (Ratchet to the hub's top), 4 riding the escape, 5 the section beyond its
+       portal (its last wave) */
+    int32_t escape;      /* the escape's rail (rail_find's), 0 none */
+    uint32_t flood;      /* the flood's object (the lava rising over the arena's floor) */
+    float flood_z0;      /* its place under the lava, where it rests */
+    int flood_t, hurt_t, esc_ride;
+    int sec_in;          /* phase 5: Ratchet is in the section (its switch made: section_entered) */
+    float sec_pts[2][3]; /* the section's two spawn points, either side ahead of its entry */
 } rails;
 
 /* the game has the rail services (ABI 11) */
@@ -1783,9 +1817,12 @@ static void rails_switch(int on) {
 }
 
 /* the rail callback (ABI 11): the finishing rail ridden to its end */
+static void portal_go(void);
+
 static void rail_event(void* user, int32_t rail, const char* name, int32_t event) {
     (void)user, (void)name;
     if (rails.on && rails.phase == 1 && rail == rails.set[0] && event == RAC1_RAIL_END) rails.reached = 1;
+    if ((rails.phase == 3 || rails.phase == 4) && rail != 0 && rail == rails.escape && event == RAC1_RAIL_END) portal_go();
 }
 
 /* Ratchet has the Grindscarponi (the rail challenges need them) */
@@ -1804,20 +1841,24 @@ static void hero_move(const float p[3], float yaw) {
    III's rail mines (the spawn points with kind=kmine) */
 static void obstacles_find(void) {
     const int32_t mine = api->class_find("mine"), spawn = api->class_find("spawn");
-    rails.nobs = rails.kmines = 0;
+    rails.nobs = rails.kmines = rails.kmines_e = 0;
     for (int32_t i = 0; i < api->object_count() && rails.nobs < MAX_OBST; ++i) {
         const uint32_t o = api->object_at(i);
         const int32_t c = api->object_class(o);
         char kind[16] = "";
         if (c < 0 || (c != mine && c != spawn)) continue;
         if (c == spawn && (!api->object_param(o, "kind", kind, sizeof kind) || strcmp(kind, "kmine") != 0)) continue;
+        char name[24] = "";
+        api->object_param(o, "name", name, sizeof name);
         rails.obs[rails.nobs].obj = o;
         rails.obs[rails.nobs].h = 0;
         rails.obs[rails.nobs].kind = c == mine ? O_MINE : O_KMINE;
+        rails.obs[rails.nobs].course = strstr(name, "_e") != NULL;
         rails.obs[rails.nobs].alive = 0;
         pos_of(api->object_moby(o), rails.obs[rails.nobs].p);
         if (c == mine) api->object_show(o, 0);
-        rails.kmines += c != mine;
+        if (c != mine && rails.obs[rails.nobs].course) ++rails.kmines_e;
+        else if (c != mine) ++rails.kmines;
         ++rails.nobs;
     }
 }
@@ -1827,9 +1868,10 @@ static uint32_t kmine_moby(int i) {
     return rails.obs[i].h != 0 ? api->base_moby(rails.obs[i].h) : 0;
 }
 
-/* all of them back (a new try: the rail mines started again where they were) or all gone */
-static void obstacles_reset(int on) {
+/* those of the courses in `mask` back (a new try: the rail mines started again where they were), the others gone */
+static void obstacles_reset(int mask) {
     for (int i = 0; i < rails.nobs; ++i) {
+        const int on = (mask >> rails.obs[i].course) & 1;
         if (rails.obs[i].kind == O_KMINE) {
             const uint32_t m = kmine_moby(i);
             if (m != 0) api->moby_remove(m);
@@ -1931,7 +1973,7 @@ static void rail_to_start(void) {
     hero_move(p, atan2f(a[1] - p[1], a[0] - p[0]));
     rails.reached = 0;
     rails.warned = 0;
-    if (rails.use_obs) obstacles_reset(1);
+    if (rails.use_obs) obstacles_reset(rails.use_obs);
 }
 
 /* the challenge's start: its rails shown, Ratchet on the station, held still through the countdown (the rails are not
@@ -1944,6 +1986,7 @@ static void rail_begin(void) {
     rails.falls = 0;
     rails.start = c->start;
     rails.use_obs = c->obstacles;
+    rails.escape = c->escape && rails_sdk() ? api->rail_find(c->escape) : 0;
     char names[64];
     snprintf(names, sizeof names, "%s", c->rails && rails_sdk() ? c->rails : "");
     for (char* t = strtok(names, " "); t != NULL && rails.nset < MAX_RAILS; t = strtok(NULL, " ")) {
@@ -1982,11 +2025,20 @@ static void rails_away(void) {
 }
 
 /* the end: all gone, Ratchet back in the arena if he is not */
+static void flood_reset(void);
+static int in_main(void);
+
 static void rail_stop(void) {
     api->input_hold(0);
     rails_away();
+    if (rails.escape != 0) {
+        api->rail_enable(rails.escape, 0);
+        rail_show("escape", 0);
+    }
+    flood_reset();
+    rails.phase = 0;
     const uint32_t hero = api->hero();
-    if (hero == 0) return;
+    if (hero == 0 || !in_main()) return;  /* (in the section beyond the portal: the result takes him back) */
     float h[3];
     pos_of(hero, h);
     const float lx = h[0] - s.centre[0], ly = h[1] - s.centre[1];
@@ -2036,14 +2088,144 @@ static void rail_update(const float h[3]) {
     if (rails.ride >= c->time * 60) challenge_end(0, "tempo scaduto");
 }
 
+/* ---- La grande fuga: the lava floods the arena, the escape's rail from the hub's top, its portal, the section ---- */
+#define FLOOD_RISE 600     /* frames the lava takes to flood the arena */
+#define FLOOD_TOP 1.8f     /* its top over the floor at last (the hub's top is at 3: Ratchet waits there) */
+#define FLOOD_HURT 45      /* frames between two hurts while Ratchet stands in it */
+#define ESCAPE_TIME 120    /* seconds from the lava's start to the portal */
+#define SECTION "prova"    /* the section beyond the portal (level.txt's), its entry, main's entry back */
+#define SECTION_ENTRY "arrivo"
+#define MAIN_ENTRY "ritorno"
+#define RESULT_BACK 150    /* frames of the result's banner in the section before the way back to the arena */
+
+/* Ratchet is in main (the arena's part of the session), not in a section */
+static int in_main(void) {
+    char n[24];
+    return !RAC1_API_HAS(api, section_current) || api->section_current(n, sizeof n) <= 0;
+}
+
+/* beyond the portal: the section's spawn point for the next enemy (either side ahead of its entry), else NULL */
+static const float* section_point(void) {
+    return rails.phase == 5 ? rails.sec_pts[s.spawned & 1] : NULL;
+}
+
+/* the hub's top, by the escape's start (Ratchet put back there after a fall from it), facing it */
+static void hub_top(float p[3]) {
+    p[0] = s.centre[0] + 7.0f, p[1] = s.centre[1], p[2] = nav.floor_z + 3.1f;
+}
+
+/* the flood down under the lava, hidden */
+static void flood_reset(void) {
+    rails.flood_t = 0;
+    if (rails.flood == 0) return;
+    const float p[3] = {s.centre[0], s.centre[1], rails.flood_z0};
+    api->object_place(rails.flood, p, NULL, 0.0f);
+    api->object_show(rails.flood, 0);
+}
+
+/* the arena's last round won: the lava rises, the escape's rail and its obstacles appear */
+static void lava_start(void) {
+    rails.phase = 3;
+    rails.flood_t = rails.hurt_t = rails.esc_ride = 0;
+    if (rails.flood != 0) api->object_show(rails.flood, 1);
+    if (rails.escape != 0) {
+        api->rail_enable(rails.escape, 1);
+        rail_show("escape", 1);
+    }
+    rails.use_obs = 2;
+    obstacles_reset(2);
+    play(s.snd_wave);
+    toast(tr("La lava sale! Sali al centro e prendi la rotaia"));
+    api->log("the lava floods the arena: the escape's rail on");
+}
+
+/* the escape's end: through the portal into the section (its last wave there, section_entered) */
+static void portal_go(void) {
+    if (rails.phase != 3 && rails.phase != 4) return;
+    rails.phase = 5;
+    rails.sec_in = 0;
+    obstacles_reset(0);
+    if (!RAC1_API_HAS(api, section_enter) || !api->section_enter(SECTION, SECTION_ENTRY, 20)) {
+        challenge_end(0, "nessun portale");
+        return;
+    }
+    if (snd_boom >= 0) api->sfx_play(snd_boom, 0, NULL);
+    api->log("the portal: into the section " SECTION);
+}
+
+/* the lava rising (hurting Ratchet in it), the escape's ride (its obstacles; a fall from it: back on the hub's top),
+   its time */
+static void escape_update(const float h[3]) {
+    ++rails.esc_ride;
+    if (rails.flood_t < FLOOD_RISE) ++rails.flood_t;
+    const float z = rails.flood_z0 + (nav.floor_z + FLOOD_TOP - rails.flood_z0) * (float)rails.flood_t / (float)FLOOD_RISE;
+    if (rails.flood != 0) {
+        const float p[3] = {s.centre[0], s.centre[1], z};
+        api->object_place(rails.flood, p, NULL, 0.0f);
+    }
+    const float lx = h[0] - s.centre[0], ly = h[1] - s.centre[1];
+    const int riding = on_rail();
+    if (rails.hurt_t > 0) --rails.hurt_t;
+    if (!riding && fabsf(lx) < 48.0f && fabsf(ly) < 48.0f && h[2] < z + 0.05f && rails.hurt_t == 0) {
+        api->hero_damage(1, 0);
+        rails.hurt_t = FLOOD_HURT;
+    }
+    if (riding) rails.phase = 4;
+    obstacles_update(h);
+    const int outside = fabsf(lx) > 48.0f || fabsf(ly) > 48.0f;
+    if (rails.phase == 4 && !riding && s.placed == 0 && (h[2] < nav.floor_z - 1.2f || (outside && h[2] < nav.floor_z + 5.0f))) {
+        float p[3];
+        hub_top(p);
+        hero_move(p, 3.1416f);
+        ++rails.falls;
+        rails.phase = 3;
+        obstacles_reset(2);
+        toast(tr("Caduto! Di nuovo dal centro"));
+    }
+    if (rails.esc_ride >= ESCAPE_TIME * 60) challenge_end(0, "tempo scaduto");
+}
+
+/* the section_enter callback (ABI 10): beyond the portal, the challenge's last wave by its entry; back in main, the
+   arena's rails all out of the search again (a switch puts a section's rails back) */
+static void section_entered(void* user, const char* name, const char* entry) {
+    (void)user;
+    if (!s.mine) return;
+    s.placed = 3;
+    s.have_last = 0;
+    if (strcmp(name, "main") == 0) {
+        rails_all_off();
+        return;
+    }
+    if (strcmp(name, SECTION) != 0 || s.mode != FIGHT || rails.phase != 5 || entry[0] == 0) return;
+    float c[3], yaw = 0.0f;
+    api->checkpoint_get(c, &yaw, NULL, 0);  /* (the entry: the checkpoint now) */
+    for (int k = 0; k < 2; ++k) {
+        const float side = k ? 6.0f : -6.0f;
+        rails.sec_pts[k][0] = c[0] + 14.0f * cosf(yaw) - side * sinf(yaw);
+        rails.sec_pts[k][1] = c[1] + 14.0f * sinf(yaw) + side * cosf(yaw);
+        rails.sec_pts[k][2] = c[2] + 0.5f;
+    }
+    rails.sec_in = 1;
+    s.wave = CHALLENGES[s.ch].waves - 1;
+    toast(tr("Un altro mondo! Abbatti gli ultimi due"));
+    wave_start();
+}
+
 static void fight_update(const float h[3]) {
     const challenge_def* c = &CHALLENGES[s.ch];
     if (c->kind == RAIL && rails.phase < 2) {
         rail_update(h);
         return;
     }
-    nav_track(h);
-    enemies_follow(h);
+    if (c->kind == RAIL && (rails.phase == 3 || rails.phase == 4)) {
+        escape_update(h);
+        return;
+    }
+    if (rails.phase == 5 && !rails.sec_in) return;  /* (through the portal: the switch to the section not made yet) */
+    if (rails.phase != 5) {  /* (beyond the portal, the plugin's navigation is not the section's: they hunt straight) */
+        nav_track(h);
+        enemies_follow(h);
+    }
     if (s.rule.bombs > 0 && --s.bomb_wait <= 0) {
         bomb_drop(h);
         s.bomb_wait = s.rule.bombs / 2 + (int)(rnd() * (float)s.rule.bombs);
@@ -2069,6 +2251,10 @@ static void fight_update(const float h[3]) {
         return;
     }
     if (s.spawned >= w->count && enemies_alive() == 0) {
+        if (c->escape != NULL && rails.phase == 2 && s.wave + 2 >= c->waves) {  /* (the arena's last round: the lava) */
+            lava_start();
+            return;
+        }
         if (++s.wave >= c->waves) {
             challenge_end(1, NULL);
             return;
@@ -2247,6 +2433,8 @@ static void frame(void* user) {
             else if (c->kind == RAIL && rails.phase < 2 && (rails.falls > 0 || rails.kmines > 0)) {
                 if (rails.use_obs && rails.kmines > 0) snprintf(third, sizeof third, tr("Mine %d/%d   Cadute %d"), rails.kmines_hit, rails.kmines, rails.falls);
                 else snprintf(third, sizeof third, tr("Cadute: %d"), rails.falls);
+            } else if (c->kind == RAIL && (rails.phase == 3 || rails.phase == 4)) {
+                snprintf(third, sizeof third, tr("Mine %d/%d   Cadute %d"), rails.kmines_hit, rails.kmines + rails.kmines_e, rails.falls);
             }
             const int y = 84, bh = third[0] ? 72 : 50, box = s.nrects, first = s.nlines;
             hud_panel(12, y, 230, bh, PANEL, RAC1_HUD_LEFT);
@@ -2260,6 +2448,10 @@ static void frame(void* user) {
                 const int left = c->time * 60 - rails.ride;
                 hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", ch_title(s.ch));
                 hud_text_at(22, y + 28, left < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0, tr("Restano %d:%02d"), left / 3600, left / 60 % 60);
+            } else if (c->kind == RAIL && (rails.phase == 3 || rails.phase == 4)) {
+                const int left = ESCAPE_TIME * 60 - rails.esc_ride;
+                hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", ch_title(s.ch));
+                hud_text_at(22, y + 28, left < 1200 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0, tr("Fuga: restano %d:%02d"), left / 3600, left / 60 % 60);
             } else {
                 hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s  %d/%d", ch_title(s.ch), s.wave + 1, c->waves);
                 const int timed = c->kind == TIMED || s.rule.time > 0;
@@ -2286,6 +2478,7 @@ static void frame(void* user) {
         } else {
             banner(RED, tr("SFIDA FALLITA"), s.why[0] ? s.why : NULL);
         }
+        if (s.t == RESULT_BACK && !in_main()) api->section_enter("main", MAIN_ENTRY, 20);  /* (beyond the portal: back) */
         if (s.t >= RESULT_FRAMES) {
             s.mode = FREE;
             s.t = 0;
@@ -2395,9 +2588,17 @@ static void level_start(void* user, const rac1_level_info* level) {
     for (int i = 0; i < MAX_BOMBS; ++i) bombs[i].bomb = bombs[i].mark = 0, bombs[i].flash = 0;
     for (int i = 0; i < N_SLOTS; ++i) slot_crate[i] = 0, slot_flash[i] = 0;
     zap_start();
+    if (session()) api->checkpoint_set("arena");  /* (a death: back south of the hub, not at the landing) */
     rails.on = 0;  /* (the level's rails are all in the game's search again) */
     rails.phase = 0;
     rails_all_off();
+    rails.flood = api->object_named("flood");  /* (La grande fuga's lava: down under the lava, hidden) */
+    if (rails.flood != 0) {
+        float p[3];
+        pos_of(api->object_moby(rails.flood), p);
+        rails.flood_z0 = p[2];
+        api->object_show(rails.flood, 0);
+    }
     obstacles_find();
     if (s.lost_reload) {  /* (the challenge he died in: lost, its banner now) */
         s.lost_reload = 0;
@@ -2414,6 +2615,16 @@ static void level_start(void* user, const rac1_level_info* level) {
              s.npoints, (int)api->base_free(ROBOT), (int)api->base_free(52), (int)api->base_free(541), (int)api->base_free(638),
              (int)api->base_free(1356), s.lava_z, (int)s.t_center, (int)s.t_pad);
     api->log(msg);
+}
+
+/* a session's soft reset (ABI 9): Ratchet back at the checkpoint with his health. The challenge he died in is lost
+   (frame() has usually seen it first: his health gone) */
+static void respawn(void* user, const rac1_respawn* r) {
+    (void)user, (void)r;
+    if (!s.mine) return;
+    s.placed = 3;
+    s.have_last = 0;
+    if (s.mode == INTRO || s.mode == FIGHT || s.mode == BREAK) challenge_end(0, "Ratchet e' caduto");
 }
 
 static void level_end(void* user) {
@@ -2506,8 +2717,9 @@ static void new_game(void* user) {
    then down to the floor at 1500 (the robots come down); arena_bombs: "Pioggia di fuoco" from 420, the bombs counted;
    arena_ch<N> (arena_ch<N>k: an enemy taken away every 1.5 s, f: every third of a second): Ratchet south of the hub,
    four weapons if he owns one,
-   challenge N from 420, the enemies by kind, the dropships, the weapon in his hand. And: arena_rail*, arena_course* (the
-   rail challenges), arena_suck (the Suck Cannon's beam on the enemies, with RAC1_SIM_INPUT=hold), arena_zap (an
+   challenge N from 420, the enemies by kind, the dropships, the weapon in his hand. And: arena_rail*, arena_course*, arena_fuga* (the
+   rail challenges; arena_fuga: La grande fuga, Ratchet put on the escape when the lava rises; arena_fuga_fight: the
+   section's two robots left to fight, with RAC1_SIM_INPUT=attack), arena_suck (the Suck Cannon's beam on the enemies, with RAC1_SIM_INPUT=hold), arena_zap (an
    electrified drop zone, Ratchet in it), arena_texts (the game's text table and the items' names) */
 static void test(void* user, const char* text, uint64_t frame) {
     (void)user;
@@ -2612,13 +2824,13 @@ static void test(void* user, const char* text, uint64_t frame) {
         }
         return;
     }
-    const int course_t = strncmp(text, "arena_course", 12) == 0;
-    if (s.mine && (strncmp(text, "arena_rail", 10) == 0 || course_t)) {
+    const int course_t = strncmp(text, "arena_course", 12) == 0, fuga_t = strncmp(text, "arena_fuga", 10) == 0;
+    if (s.mine && (strncmp(text, "arena_rail", 10) == 0 || course_t || fuga_t)) {
         /* a rail challenge from 420 (arena_rail*: the test rail, arena_course*: the course), the Grindscarponi given;
            arena_rail / arena_course: Ratchet dropped onto the first rail's third point at 640 (arena_railwalk /
            arena_coursewalk: left on the station, for a RAC1_SIM_INPUT script); his health kept up; the course's last
            wave: an enemy taken away every 1.5 s */
-        const char* want = course_t ? "Grindscarponi: Discesa" : "Test Grindscarponi";
+        const char* want = fuga_t ? "La grande fuga" : course_t ? "Grindscarponi: Discesa" : "Test Grindscarponi";
         int ch = -1;
         for (int i = 0; i < N_CHALLENGES; ++i)
             if (strcmp(CHALLENGES[i].name, want) == 0) ch = i;
@@ -2640,12 +2852,21 @@ static void test(void* user, const char* text, uint64_t frame) {
             if (hp_was >= 0) api->log(b);
             hp_was = api->health();
         }
-        if (rails.phase == 2 && s.mode == FIGHT && frame % 90 == 5 && s.nen > 0) {
+        if ((rails.phase == 2 || (rails.phase == 5 && strstr(text, "fight") == NULL)) && s.mode == FIGHT && frame % 90 == 5 && s.nen > 0) {
             const uint32_t m = api->base_moby(s.en[0].h);
             if (m != 0) api->moby_remove(m);
         }
-        const int riding = s.mode == FIGHT && rails.phase == 1;
-        if (frame >= 420 && frame <= 4000 && api->hero() != 0 && rails.nset > 0 && (riding ? frame % 6 == 0 : frame % 60 == 0)) {
+        static uint64_t esc_at;  /* (arena_fuga: the lava's start; two seconds later Ratchet put on the escape) */
+        if (rails.phase == 3 && esc_at == 0) esc_at = frame + 120;
+        if (fuga_t && strstr(text, "walk") == NULL && frame == esc_at && rails.escape != 0) {
+            char b[64];
+            s.placed = 3;  /* (moved: not a death) */
+            s.have_last = 0;
+            snprintf(b, sizeof b, "test: Ratchet put on the escape: %d", api->hero_rail_attach(rails.escape, 3.0f, 1));
+            api->log(b);
+        }
+        const int riding = s.mode == FIGHT && (rails.phase == 1 || rails.phase == 4);
+        if (frame >= 420 && frame <= 9000 && api->hero() != 0 && rails.nset > 0 && (riding ? frame % 6 == 0 : frame % 60 == 0)) {
             float h[3];
             pos_of(api->hero(), h);
             rac1_rail_info ri = {sizeof ri};
@@ -2659,6 +2880,14 @@ static void test(void* user, const char* text, uint64_t frame) {
                      on[0] == '-' ? 0.0f : ri.distance, on[0] == '-' ? 0.0f : ri.length, (int)api->health(), alive, rails.kmines_hit,
                      rails.kmines, rails.falls, rails.on, s.nen);
             api->log(b);
+            for (int i = 0; rails.phase == 5 && i < s.nen; ++i) {  /* (beyond the portal: the enemies, where and how) */
+                const uint32_t m = api->base_moby(s.en[i].h);
+                float q[3] = {0, 0, 0};
+                if (m != 0) pos_of(m, q);
+                snprintf(b, sizeof b, "  enemy %d: moby 0x%x at %.2f %.2f %.2f, state %d, %.1f from him", i, (unsigned)m, q[0], q[1], q[2],
+                         m ? (int)(int8_t)rac1_lb(api, m + 0x20) : -1, m ? dist3(q, h) : 0.0f);
+                api->log(b);
+            }
         }
         return;
     }
@@ -3046,6 +3275,8 @@ RAC1_MOD_EXPORT int rac1_mod_main(const rac1_api* game, rac1_mod* mod) {
     mod->load = load;
     mod->new_game = new_game;
     mod->test = test;
+    if (RAC1_API_HAS(api, session_on)) mod->respawn = respawn;
+    if (RAC1_API_HAS(api, section_enter)) mod->section_enter = section_entered;
     if (rails_sdk()) mod->rail = rail_event;
     rac1_class_def d = {sizeof d};
     d.name = "flame";
