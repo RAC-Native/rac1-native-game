@@ -35,7 +35,8 @@ Contents:
 | 5 | the first with Kalebo III's enemies | Kalebo III's enemies: `base_option` (`RAC1_BASE_WEAPON`, `RAC1_BASE_TROOPS`), `base_handle`, `base_hunt` and `base_spawn` for the bomb bots 52, the Gadgetron robots 541, the jetpack troopers 638 and the dropships 1356; the weapons: `weapons_owned`, `weapon_equip`, `weapon_allow`, `ammo_fill` |
 | 6 | the first with imports | classes of other levels (level.txt's `import` lines): `import_class`, `import_spawn`, `import_load`, `import_release` |
 | 7 | (reserved) | the rails and the set pieces, still to come: their room in `rac1_api` (`reserved_abi7`, 16 entries) is kept, so ABI 8's services do not move when they come; never call them |
-| 8 | this one | the level data of imported classes: `path_find`, `path_create`, `object_bind_path`, `object_bind`, `group_create`, `object_slots`; level.txt's `path` lines; imported enemies that read their planet's paths and areas |
+| 8 | the first with profiles | the level data of imported classes: `path_find`, `path_create`, `object_bind_path`, `object_bind`, `group_create`, `object_slots`; level.txt's `path` lines; imported enemies that read their planet's paths and areas |
+| 9 | this one | sessions (level.format 3): `session_on`, `checkpoint_set`, `checkpoint_at`, `checkpoint_get`, `respawn_policy`, `rac1_respawn`, `RAC1_RESPAWN_*`; the callbacks `respawn`, `session_save`, `session_load`; `object_bind`, `object_bind_path`, `group_create`, `object_slots` on the base level's own objects too (a `base_spawn` object of a class with a profile) |
 
 How compatibility works:
 
@@ -53,7 +54,8 @@ How compatibility works:
   version); the ones the game gives you (`rac1_spawn`, `rac1_hit` in the `hit` callback) carry the game's size.
 
 The level folder's own version is `level.format`: 1 runs on Veldin's code (level 0), 2 names another base level
-(`level.base`, [Base levels](mods.md#base-levels)). The lines below are additions both formats read; a game without them
+(`level.base`, [Base levels](mods.md#base-levels)), 3 is a **session** (Veldin's code by default, or a base level: loaded once,
+a death a soft reset; [The open engine](open-engine.md#sessions-stage-5)). The lines below are additions both formats read; a game without them
 refuses the level with the line's number.
 
 ## Lifecycle
@@ -74,7 +76,9 @@ game start ──> plugins loaded (load order), rac1_mod_main(api, mod) each: re
    │      ... the hero, particles, the camera ─> camera
    │      HUD drawn ─> hud (may run twice: draw only)
    │
-   ├─ a save is written ──> save
+   ├─ (a session, format 3) Ratchet died ──> [the soft reset: back at the checkpoint, no level load] ──> respawn
+   │      (no level_end / level_start: your state and your objects stay)
+   ├─ a save is written ──> save (and in a session: session_save)
    └─ game end ──> shutdown
 ```
 
@@ -148,6 +152,9 @@ Fill them in `rac1_mod_main`; all are optional (NULL: none). Each gets your `mod
 | `test(user, text, frame)` | 1 | `RAC1_MOD_TEST=<text>` given, once a frame of play | for scripted tests |
 | `shutdown(user)` | 1 | the game ends | |
 | `trigger(user, index, name, inside)` | 2 | Ratchet entered (`inside` 1) or left (0) one of level.txt's triggers | before `frame`; once per change |
+| `respawn(user, r)` | 9 | a session's soft reset: Ratchet died and is back at the checkpoint (no level load) | `rac1_respawn`: `count` (the session's respawns, this one included), `checkpoint` (its name), `pos`, `yaw`. Every plugin gets it (test your `level_start`'s `mine`). Bring back what the battle needs (its enemies); the level's placed objects are the respawn policy's |
+| `session_save(user, buf, cap)` | 9 | a save is written in a session | your bytes of the session's state (at most `cap`, 16 KB), their count; kept in the session's item of `save<N>.pc`, apart from `save`'s |
+| `session_load(user, data, size)` | 9 | a save made in a session was loaded, back in it | after `level_start`; the game does not save the objects' places: a battle running at the save is not resumed |
 
 A class's own callbacks are in its `rac1_class_def` ([Objects](#objects)).
 
@@ -303,7 +310,8 @@ troopers a ship carries) are spawned with it, and `import_load` no longer reload
 
 Test `RAC1_API_HAS(api, object_bind_path)` first. An imported object's private values that name its planet's paths,
 areas, groups or other objects are its class's **slots**, named by its profile ([The open engine](open-engine.md#class-profiles));
-`object_slots` lists them. A class without a profile has none.
+`object_slots` lists them. A class without a profile has none. From ABI 9's game these services take the base level's own
+objects too (a `base_spawn` object of a class with a profile, such as Kalebo III's robots on a Kalebo III level mod).
 
 | Service | Does |
 |---|---|
@@ -311,7 +319,7 @@ areas, groups or other objects are its class's **slots**, named by its profile (
 | `int32_t path_create(const float* xyz, int32_t n)` | a path of the plugin's own: `n` points (1 to 64), `xyz[3 * n]` in the game's coordinates: its handle (until the level's next load), 0 when it cannot be |
 | `int object_bind_path(uint32_t moby, const char* slot, int32_t path)` | the slot (a path or an area) of the imported object `moby` given the path's points: they are copied into the object's planet's level data (a path of the object's own there, freed when it is gone). 1 done, 0 not (no such object or slot, not a path's slot, no room) |
 | `int object_bind(uint32_t moby, const char* slot, uint32_t value)` | the slot set to `value`: a `moby` slot takes another object's moby address (0: none), a `group` slot a `group_create` handle, a `word` slot the word. 1 done, 0 not |
-| `int32_t group_create(uint32_t owner, const uint32_t* mobys, int32_t n)` | a group of `n` objects (moby addresses, 1 to 64) in the planet's level data of the imported object `owner`: its handle for `object_bind`, -1 when it cannot be |
+| `int32_t group_create(uint32_t owner, const uint32_t* mobys, int32_t n)` | a group of `n` objects (moby addresses, 1 to 64) in the planet's level data of the imported object `owner` (from ABI 9's game also a `base_spawn` object of the base level's own class with a profile: in the base's groups): its handle for `object_bind`, -1 when it cannot be |
 | `int32_t object_slots(uint32_t moby, char* out, int32_t cap)` | the slots of the object's class, `"name:kind name:kind ..."` (kinds: path, area, group, moby, word, vec3), into `out`: their count, 0 when it has no profile |
 
 The enemies with profiles (their names in the game's `data/pool/names.txt`; each fought in the arena example's test copy):
@@ -329,6 +337,35 @@ The enemies with profiles (their names in the game's `data/pool/names.txt`; each
 /* level.txt: import blarg.serpent / path pen 2 -20 0  14 -20 0  14 -8 0  2 -8 0 */
 uint32_t m = api->import_spawn(api->import_class("blarg.serpent"), at, yaw);
 if (m && RAC1_API_HAS(api, object_bind_path)) api->object_bind_path(m, "pen", api->path_find("pen"));
+```
+
+### Sessions (ABI 9)
+
+Test `RAC1_API_HAS(api, session_on)` first. A level mod of `level.format` 3 is a session ([The open engine](open-engine.md#sessions-stage-5)):
+loaded once, at the arrival; a death is a soft reset (Ratchet back at the current checkpoint with his health, no level
+load, the `respawn` callback). level.txt's `checkpoint <name> x y z [yaw]` lines name the places; `start` (or, without
+one, where the level starts Ratchet) is the first.
+
+| Service | Does |
+|---|---|
+| `int session_on(void)` | 1: the level is a session, 0 not (the services below then do nothing and return 0 / -1) |
+| `int checkpoint_set(const char* name)` | level.txt's checkpoint `name` the current one (where the next respawn puts Ratchet, and a save in the session keeps): 1, 0 none of that name |
+| `int checkpoint_at(const float pos[3], float yaw, const char* name)` | a checkpoint of your own at `pos` turned `yaw` (radians), named `name` (NULL: `plugin`), the current one: 1 done |
+| `int32_t checkpoint_get(float pos[3], float* yaw, char* name, int32_t cap)` | the current checkpoint (any pointer may be NULL): its place, yaw and name; the session's respawns so far, -1 outside a session |
+| `int32_t respawn_policy(int32_t policy)` | the level's placed objects (level.txt's `moby` lines) at a respawn: `RAC1_RESPAWN_RESET` (those killed since the arrival come back as placed, except what the level's records keep killed for good: a crate broken, a pickup taken; level.txt's `respawn reset`, the default) or `RAC1_RESPAWN_KEEP` (they stay as they are); -1 only asks. The policy now, -1 outside a session |
+
+The objects your plugin started (`base_spawn`, `import_spawn`, `object_spawn`) are never touched by a respawn: the
+`respawn` callback is where you remove them or start them again. On a level of format 1 or 2 a death loads the level
+again, as before: `level_end`, `level_start`.
+
+```c
+static void respawn(void* user, const rac1_respawn* r) {
+    if (!mine || !fighting) return;
+    enemies_remove_all();   /* the wave he died in: from its start again */
+    wave_start(wave);
+}
+/* in rac1_mod_main: */ mod->respawn = respawn;
+/* at a battle's start: */ if (RAC1_API_HAS(api, session_on) && api->session_on()) api->checkpoint_set("arena");
 ```
 
 ### Classes and objects (ABI 2)
@@ -589,6 +626,8 @@ typedef struct rac1_ray_hit {       /* (ABI 2) collide_ray */
 | `ee_alloc` | 53 KB for all the plugins, for the whole run (54 KB up to ABI 3: the last KB holds the frame's lights, `light_add`) |
 | Kalebo III's enemies' paths (ABI 5) | 4 KB of paths for the `spawn` lines' objects of classes 52, 541, 638, 1356 (about 40 objects), and the path table's free entries (176 less the level's) |
 | Imported objects' level data (ABI 8) | a planet's paths: its own count, the rest of 176 for the paths spawns and binds add (given back when their object is gone); groups: 112 a planet; a bound path 64 points |
+| The base level's objects' level data in a session (ABI 9) | the path table's free entries (176 less the level's), their points and the groups in the session heap (no 4 KB limit) |
+| A session's bytes (`session_save`) | 16 KB a plugin |
 | Jetpack troopers' flight (ABI 5) | half a unit over the floor under them; a wall in their way flown over up to 14 units over the floor; a sudden drop (a ledge) followed down at 0.05 units a frame |
 | Lights (`light_add`) | 31 a frame for all the plugins, within the point lights' 96 a pixel (the game's 8, the hand-placed and the per-class lights before them, the automatic emitters after) |
 | HUD lines | 15 a frame (`hud_text`, `hud_text_ex` together), 255 characters each; `hud_text_ex`'s scale at most 8 |

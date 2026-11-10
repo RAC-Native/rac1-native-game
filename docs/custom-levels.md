@@ -92,8 +92,13 @@ Every callback gets your `mod->user` back. All are optional.
 | `test(user, text, frame)` | testing: `RAC1_MOD_TEST=<text>` given, once a frame of play |
 | `shutdown(user)` | the game ends |
 | `trigger(user, index, name, inside)` | (ABI 2) Ratchet entered or left one of level.txt's `trigger` boxes |
+| `respawn(user, r)` | (ABI 9) a **session** (a level of `level.format` 3, [The open engine](open-engine.md#sessions-stage-5)): Ratchet died and is back at the checkpoint `r->checkpoint` without a level load (`level_end` and `level_start` are not called; your state and the objects you started are as they were): bring back what the battle he died in needs. Every plugin gets it: test your `level_start`'s `mine` |
+| `session_save(user, buf, cap)` / `session_load(user, data, size)` | (ABI 9) a save made in a session: your bytes of where the player is in it (a wave, a door opened), apart from `save`'s progress; given back when that save is loaded, after `level_start` |
 
 A save's bytes of a mod that is off or missing are kept: saving again writes them back as they were.
+
+On a level of format 1 or 2 a death loads the level again: `level_end`, then `level_start` (your objects spawned again).
+On a session's level (format 3) it does not: the `respawn` callback instead.
 
 ## Services
 

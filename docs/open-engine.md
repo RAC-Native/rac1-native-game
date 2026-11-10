@@ -19,7 +19,10 @@ below. Stage 3 completes the pool: a class comes with what it spawns (its **depe
 planets with **`import` lines** and its plugin spawns them (the first part level-mod authors can use). Stage 4 gives each
 context its own **level data** (paths, groups, cameras, volumes, rails: a registry), describes classes in **profiles** (which
 of their values are level data, what a spawn gives them), and brings in enemies that read their planet's data: six of them,
-from six planets, fight in the arena example's test copy.
+from six planets, fight in the arena example's test copy. Stage 5 makes a level mod a **session** (`level.format 3`): the
+level is loaded once, at the arrival, and a death is a **soft reset** (Ratchet back at a checkpoint, no level load, the
+weapons, the ammo, the bolts, the plugins' state and their objects kept); a save made in a session brings the player back
+into it.
 
 ## Session memory
 
@@ -475,11 +478,156 @@ files and uploads their textures into texture arrays of their own; the level's o
 moby assets); a release keeps its textures' layers (unused) until more than 256 are left behind, then the level's assets are
 loaded again once.
 
-## What stage 5 builds on
+## Sessions (stage 5)
 
-- `ld_registry_make` / `ld_path_reserve` / `ld_group_create` / `ld_enter`, the profiles (`profile_find`,
-  `profiles_session_spawn`), `ld_placement` (any placement of a level by uid), the incremental renderer import.
-- Not done yet: groups of a level are none in its registry (a class that needs its group's mobys gets them only from a mod's
-  `group_create`); the twin run captures paths, not groups; cameras and the 0x90-byte records are copied but no class tried
-  needed them moved; rails are readable in a registry, placed by mods in stage 7; profiles are written by hand from the
-  generated code (which pvar words index which table) and the twin run.
+A level mod of **format 3** (`mod.json`: `"level": { "format": 3 }`) is a session (DESIGN section 2): the game loads its level
+once, at the arrival (the ship's flight and landing, as any level mod's), and never again until the player leaves (the ship,
+a save of another level loaded). Its base is Veldin's engine by default (`level.base` 0, DECISIONS 1); the other bases of the
+allow-list stay possible (`level.base` 3, 4, 16: the arena's test copy runs on Kalebo III's, whose enemies are its own).
+Formats 1 and 2 are unchanged: nothing of the session runtime runs unless a format 3 level is current (`g_session_rt`, the
+one test of every hook; `src/game/enhance/session_runtime.cpp`).
+
+### The level
+
+The composer (`rac1-native --setup --level-mod`) composes a format 3 level as a format 2 one, with:
+
+- **level.txt's session lines** (refused below format 3, with the line's number):
+
+  | Line | What |
+  |---|---|
+  | `session` | the level is a session (mod.json's `level.format 3` decides; the line says so in level.txt) |
+  | `checkpoint <name> <x> <y> <z> [<yaw>]` | a place Ratchet comes back to after a death (the level's offset applies). `start` is where the session starts him; without one, the `hero` line's place (or `hero auto`'s) is `start` |
+  | `respawn reset` / `respawn keep` | the level's placed objects at a respawn (below); `reset` by default |
+  | `moby <class> <x> <y> <z> [<yaw>] [<slot>=<value> ...]` | a placed object as in format 1, its class's profile's slots set at the arrival: a `path` or `area` slot takes the name of a `path` line (its points become a path of the base's own, in the session heap), the other kinds a number or `none` |
+
+- **the moby array's room for spawned objects** as large as the base level's placed objects leave free (the array no larger
+  than the base level's own, at most 2047 mobys: the game's per-moby tables have 0x7ff entries; their 0x80-byte pvars in the
+  room the base level's placed pvars took): `[compose] session: room for 478 spawned objects (the base level's 256, and 222
+  its placed ones leave)` on Kalebo III, 545 on Veldin.
+- **`session.txt`** in the build: the checkpoints, the policy, the moby lines' slots (`bind <uid> <class> <slot> <value>`).
+- **the profiles' check** (all formats): a `moby` line's slots against its class's profile (`data/pool/profiles`), an
+  `import` of a class that reads its planet's level data without a profile. Warnings in `compose.log`, the level is composed:
+
+  ```
+  [compose] profiles: warning: level.txt:135: class 1445 has no slot "patrol" (its profile's: given_up, guard, target): not set
+  ```
+
+### The arrival
+
+When the level's header is read (`level_slots.cpp`) the build's `session.txt` turns the session on (its memory too:
+`[session] the session "night-arena": 2 checkpoints, respawn reset; no level load until it is left`). At the end of the
+level's gameplay load (after a level mod's spawn pools are taken out of play), the session keeps what its soft resets need:
+the hero's moby record as the load placed him, and each placed object alive then (its record, its pvars, its placement's
+spawn rule read from the gameplay file still in memory); the `moby` lines' slots are set first.
+
+### Death: the soft reset
+
+The game restarts a level when Ratchet has died (`overlay_entry.cpp`: the hero's respawn flag +0x20b1, then
+`level_setup(0, 1)`: the gameplay file read again, every moby of the level rebuilt, the plugins' level started again). In a
+session `session_respawn()` runs instead, between the same sound stops before and the music and HUD after:
+
+1. **The hero**: his moby put back as the arrival placed it, at the current checkpoint (its place and yaw), then as the end
+   of a gameplay load starts him (`hero_init`: the player block cleared, his health full, dropped onto the floor there;
+   `hero_level_reset`; the camera's view cleared, `camera_init`, `camera_update`). His moby leaves the moby grid and comes
+   back into it where he stands; its update chain's link (the frame's bookkeeping) is kept.
+2. **The level's placed objects**, by the policy: `reset` puts back as placed each one killed since the arrival, unless the
+   level's records keep it killed for good (the game's spawn rule: the checkpoint's state byte, the missions' rules, the
+   level's own bits: a crate broken, a pickup taken). The game's restart also keeps an enemy killed "for the visit" dead (its
+   placement's flag 8); a session brings it back (DECISIONS 4: a battle's enemies come back). The living stay as they are.
+   `keep` leaves them all.
+3. **Nothing else**: the weapons, the ammo, the bolts, the items, the session's imports and contexts, the plugins' state and
+   the objects they started (base level objects, imported ones, the level's own classes), the spawn pools, the frame clock.
+   No level load (one `[levels] level 16's header` line for the whole visit).
+4. **The plugins' `respawn` callback** (SDK ABI 9) with the checkpoint: what the battle needs back is the plugin's to decide
+   (the arena's test copy starts the wave Ratchet died in again, its enemies back).
+
+```
+[session] respawn 1 at checkpoint "arena" (176.00 168.00 104.50): no level load; placed objects reset: 2 back, 0 killed for good
+[mod s5-arena] respawn 1 at "arena" (176.0 168.0 104.5): challenge Primo sangue goes on, wave 0 again (4 of its enemies removed), health 4
+```
+
+**Checkpoints.** The current one is `start` at the arrival; a plugin chooses one of level.txt's (`checkpoint_set`) or
+makes one (`checkpoint_at`); the game's own checkpoint saves (0x284e50: an imported class's own, as the Snagglebeast's)
+make theirs the session's (`game`).
+
+### Saves
+
+A memory card save made in a session is the game's own save, byte for byte, as any level mod's (the base level's records,
+the level number the game wrote). `save<N>.pc` gets, beside the level mod's item (0x200: its records) and the plugins' (0x300),
+the session's item (0x201): its level's id, its sections (one now, `main`: the current checkpoint's name, place and yaw, the
+respawns so far, the placed objects gone for good), and each plugin's session bytes (the `session_save` callback, ABI 9).
+Loading the save brings the player back to the level (the level mod's own rule), and the session to its checkpoint: once the
+arrival's landing is over Ratchet is put there, and the plugins get their bytes after their `level_start`
+(`session_load`). What the game never saves (the mobys' places, their pvars) a session does not save either: a challenge
+running at the save is not resumed. A session whose mod is off or missing is written back as it was read (the planet prompt
+of level mods applies).
+
+```
+[session] the save's session item: "night-arena", checkpoint "arena", 0 placed objects gone, 1 plugins' bytes (100 bytes)
+...
+[session] the save's session: checkpoint "arena" (176.00 168.00 104.50), 0 respawns, 0 placed objects gone (0 taken out now), 1 plugins' bytes
+[mod s5-arena] session_load: the save was made in challenge Primo sangue (wave 0): the menu on it
+[session] Ratchet at the save's checkpoint "arena" (176.00 168.00 104.50)
+```
+
+**Leaving.** The ship (or any level change) reads another level's header: the session is off
+(`[session] the session "night-arena" left (5 respawns)`), the base's own paths and groups in the heap freed. The session's
+memory stays on (stage 3's call): the game's own levels play as before with it. A session is a planet of the ship's list
+like any level mod (DECISIONS 8: an extra planet, before the ending; it never ends the game).
+
+### The base's view in the session heap
+
+The base level's own objects (the session's view of the engine's level data: the base level's classes started by
+`base_spawn`, their profiles' paths; `moby` lines' slots) put the paths they add, and the groups `group_create` makes for
+them, in the session heap (owner `level data base`, given back when the session is left; a path's slot given back when
+its object is gone) instead of the mods' 4 KB block at 0xdf000, which formats 1 and 2 keep using as before.
+
+### Groups
+
+- `group_create` (ABI 8) takes the base level's own objects too (a `base_spawn` object of a class with a profile, ABI 9's
+  game): the group in the base's objects (the session heap in a session, the mods' block otherwise), for `object_bind`,
+  which, like `object_bind_path` and `object_slots`, now serves those objects as well as imported ones.
+- **The twin run captures groups**: the level's moby groups the twin is in or names (its +0x21, its profile's `group`
+  slots), their members taken with it (up to 16 mobys in all); the session run makes each again at its own index in the
+  twin's context's registry (`ld_group_set`), of the session's mobys. Gaspar's walking robot (9:193, `reads group:1`) on
+  Veldin's engine: `[twin] native: group 17 (3 members, 2 taken with it): its own (+0x21)`, `[twin] session: group 17 of
+  level 9: 3 of its 3 members in its context's registry`; its words (record, pvars, spawns) equal in all 313 frames
+  compared, the hero within 2 mm (the two floors). The capture file is `TWN4` (TWN3 files are still read).
+
+### Testing
+
+```
+# 50 deaths mid-challenge with the six imported enemies round the arena (the arena's test copy, format 3)
+RAC1_HEADLESS=1 RAC1_MODS=1 RAC1_MOD_CODE=1 RAC1_GOTO=night-arena@60 RAC1_MOD_TEST=arena_s5die0 RAC1_FRAMES=14500 ./build/rac1-native
+# a save in the session (the card's slot 2), then loaded from another planet
+RAC1_MEMCARD_DIR=<card> ... RAC1_MOD_TEST=arena_s5save RAC1_SESSION_SAVE_AT=2400:2 RAC1_FRAMES=3000
+RAC1_MEMCARD_DIR=<card> ... RAC1_GOTO=3@60 RAC1_SESSION_LOAD_AT=1200:2 RAC1_FRAMES=5000
+```
+
+`RAC1_SESSION_SAVE_AT=<frame>:<slot>` saves as the pause menu's Save page does (the card's summaries read, `save_game_image`,
+the card's operation 0x13; `save<N>.pc` with it), `RAC1_SESSION_LOAD_AT=<frame>:<slot>` loads as its Load page does (the
+card's operation 0xd, then the level left for the save's). A run started by `RAC1_GOTO` never read the card, so the port's
+record still says "unchecked" and the game refuses to save over it: the test marks it read, as a game loaded from the title
+has it.
+
+Results (headless, the arena's test copy `s5-arena`: Kalebo III's base, the six imported enemies of stage 4, two placed
+robots; and a copy of the example level, `s5-plateau`, on Veldin's engine with Kalebo III's robot imported):
+
+| Test | Result |
+|---|---|
+| 50 deaths in "Primo sangue" (`arena_s5die0`, 14 500 frames) | 50 soft resets, one level load in the whole run; the wave started again each time (its enemies back), the two placed robots removed at +700 back at the next respawn, the imported enemies kept; Ratchet back south of the hub with his health full, the camera behind him; no crash, no refused spawn |
+| The session left and entered again (`RAC1_GOTO=night-arena@60,3@3500,night-arena@6500`) | the session off at Kerwan's header (5 respawns), Kerwan playing, the session on again at the return, 10 more respawns there at `start` |
+| A save in the session, loaded on Kerwan | the card's save (the game's bytes), the session's item (checkpoint `arena`, the plugin's 16 bytes); the load back to the arena, the plugin's bytes after its start, Ratchet at `arena` |
+| Veldin's engine (`s5-plateau`, `s5_robots`) | three of Kalebo III's robots (imported) and the level's sentries kill Ratchet: a respawn at the checkpoint `pad` |
+| The original | the reference pictures and RAMHASH unchanged; the arena's format 2 regression (six challenges, no import lines) unchanged |
+
+## What stage 6 builds on
+
+- The session runtime (`session_runtime.cpp`): one section (`main`) today; the `.pc` item already has a list of sections
+  (each its checkpoint and records), `session.txt` its lines. A section switch needs the hero's soft placement
+  (`session_respawn`'s first half without the death), the placed objects' snapshot per section, and the respawn policy per
+  section (DESIGN 7.6: `remove` / `freeze` / `keep`).
+- `ld_base_reset` frees the base view's heap blocks; a section's level data is the next owner of its own blocks.
+- Not done yet: sections and portals, streaming; placing imported classes with `moby` lines (only the base level's classes
+  are placed; imports are started by the plugin); a section's placed objects' equivalence test (DESIGN 7.4); the game's own
+  checkpoint saves of imported bosses (the hook is there: `session_checkpoint_game`) are untested with a boss.

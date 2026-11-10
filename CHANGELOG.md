@@ -5,6 +5,17 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: sessions** (`level.format` 3, the mod SDK's ABI 9): a level mod can be a **session**, loaded once at the
+  arrival. A death no longer loads the level again: Ratchet is back at a checkpoint with his health full, and everything
+  else stays as it was (his weapons, ammo and bolts, the plugin's state and the enemies it started, the classes of other
+  planets the level brought). The level's placed objects killed since the arrival come back (`respawn reset`, the
+  default; a crate broken stays broken) or stay as they are (`respawn keep`); the plugin's new `respawn` callback brings
+  back what the battle needs. Checkpoints are `checkpoint` lines in `level.txt` and the SDK's `checkpoint_set` /
+  `checkpoint_at`; a save made in a session brings you back to its checkpoint (the plugin's `session_save` /
+  `session_load` keep where the player was in it). Sessions run on Veldin's code by default, or on a base level. `moby`
+  lines set the slots of their class's profile, and the setup's composer checks them (and imports that would need a
+  profile) against the profiles. On the base level's own objects too: `group_create`, `object_bind`, `object_bind_path`.
+  Formats 1 and 2 are unchanged. See docs/mods.md ("Sessions") and docs/sdk.md.
 - **Bug Fixes: Hydrodisplacer Faucets** (#131; main menu > Options > Bug Fixes, off by default): stepping onto Rilgar's
   first Hydrodisplacer faucet (or Hoven's first) from some sides and pressing circle, Ratchet started the faucet's
   animation, slipped off it and the water stayed; circle then did nothing until he stepped off and on again or put the
