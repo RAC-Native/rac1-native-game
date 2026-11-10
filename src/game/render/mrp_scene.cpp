@@ -14,6 +14,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/vu/vu_interpreter.h>
 #include <jobs/job_pool.h>
+#include <profiler/perf_switch.h>
 
 #include <algorithm>
 #include <chrono>
@@ -521,10 +522,34 @@ void mrp_scene_install() {
 const MrpFrame& mrp_scene() { return g_frame; }
 const MrpFrame& mrp_scene_draw() { return g_shadow_valid ? g_shadow_frame : g_frame; }
 
+namespace {
+// orig: (host) RAC1_PERF_SCENE_KEEP (docs/performance.md): the shadow run's scene, the real pass's and the one kept aside take
+// turns in three MrpFrames whose vectors keep their storage (the shadow run's scene, the larger one, grew again from nothing
+// every frame). 0: a new MrpFrame at every shadow run, as before
+const bool g_scene_keep = perf::switch_value("RAC1_PERF_SCENE_KEEP", 1) != 0;
+// orig: (host) `f` as a new MrpFrame is, its vectors' storage kept
+void frame_reset(MrpFrame& f) {
+    for (MrpVec4& v : f.proj) v = MrpVec4{};
+    f.cam_pos = MrpVec4{};
+    for (MrpVec4& v : f.view_rows) v = MrpVec4{};
+    f.view_trans = MrpVec4{};
+    f.mobys.clear();
+    f.parts.clear();
+    f.unpacks.clear();
+    f.joints.clear();
+    f.records.clear();
+}
+}  // namespace
+
 // orig: (host) see mrp_scene.h
 void mrp_scene_shadow_begin() {
-    g_kept_frame = std::move(g_frame);
-    g_frame = MrpFrame();
+    if (g_scene_keep) {  // (the frame observed so far aside; the one put aside last, emptied, takes the shadow run's scene)
+        std::swap(g_kept_frame, g_frame);
+        frame_reset(g_frame);
+    } else {
+        g_kept_frame = std::move(g_frame);
+        g_frame = MrpFrame();
+    }
     g_next_pose = 0;
     g_last_pose = ~size_t(0);
     g_have_camera = false;
@@ -577,10 +602,16 @@ void mrp_scene_shadow_end() {
             if ((lo >> 15) & 1) break;
         }
     }
-    g_shadow_frame = std::move(f);
+    if (g_scene_keep) {  // (the shadow's scene kept, the frame observed before it back; the last shadow's scene emptied, aside)
+        std::swap(g_shadow_frame, g_frame);
+        std::swap(g_frame, g_kept_frame);
+        frame_reset(g_kept_frame);
+    } else {
+        g_shadow_frame = std::move(f);
+        g_frame = std::move(g_kept_frame);
+        g_kept_frame = MrpFrame();
+    }
     g_shadow_valid = true;
-    g_frame = std::move(g_kept_frame);
-    g_kept_frame = MrpFrame();
     g_next_pose = 0;
     g_last_pose = ~size_t(0);
     g_have_camera = !g_frame.mobys.empty();

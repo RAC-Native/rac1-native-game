@@ -598,6 +598,11 @@ thread, `RAC1_PIPELINE=1`, the last 1500 of 2400 frames of a forward walk) on Ke
   ranges changed since that buffer was last written (this upload's, and the one before's): the tfrag colours' scheme. `=2`
   compares the buffer with the mirror after every upload: 17,076 uploads over the 19 levels, 0 differing (3 of a
   walk's 900 are the whole table). The main thread's `World` stage: Kerwan 0.23 to 0.14 ms a frame, Rilgar 0.11 to 0.07.
+- **The moby scenes' storage** (`RAC1_PERF_SCENE_KEEP`, `mrp_scene.cpp`): the shadow run's scene - the larger of the two,
+  some 0.8 MB at LOD High - was a new `MrpFrame` every frame, its vectors grown again from nothing on the game thread, and
+  the one before freed. The shadow's scene, the real pass's and the one put aside now take turns in three frames that keep
+  their vectors' storage. `RAC1_MRP_SCENE_HASH` identical on the 19 levels. `Host: LOD / wide view moby re-run`: Kerwan 0.63
+  to 0.57 ms a frame, Rilgar 0.57 to 0.53; the game thread busy 3.05 to 2.97 and 2.44 to 2.38.
 ## Switches to compare
 
 These are testing variables: they are honoured in a headless run, or in a window started with `--debug-tools`
@@ -641,6 +646,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_OPAQUE_KEEP_TFRAG=0` | the tfrag entries' opacity table made again every frame |
 | `RAC1_PERF_REFLECT_BOX=0` | the reflections' per-instance cull boxes made for every packet, whatever the options |
 | `RAC1_PERF_RCOL_KEEP=0` | Vulkan: the whole mirror of the resident colours copied every frame (`=2`: the kept buffers checked against it) |
+| `RAC1_PERF_SCENE_KEEP=0` | the moby scene of the shadow run a new frame every time, its vectors grown from nothing |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
