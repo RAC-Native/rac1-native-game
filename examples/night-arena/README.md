@@ -49,7 +49,11 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   reset at a checkpoint (south of the hub), and a challenge he dies in is lost there, with no level load. Main's objects
   are frozen while he is in the section `prova`.
 
-It needs a game with the mod SDK's ABI 11 or later (the rails, the sessions and sections; the rest of the plugin ABI 5).
+- **The game's own lava**: Ratchet runs on the generic hero code (level.txt's `hero generic`: the one Veldin, Gaspar and
+  Umbris run, not Kalebo III's own), so in the lava lake he sinks, Cross bounces him out, and left in it he is lost.
+
+It needs a game with the mod SDK's ABI 12 or later (`hero generic`; the rails, the sessions and sections ABI 11; the rest
+of the plugin ABI 5).
 
 ## Making it
 
