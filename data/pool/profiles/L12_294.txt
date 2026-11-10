@@ -1,0 +1,14 @@
+# A class profile (docs/open-engine.md, "Class profiles"): our knowledge of a game class's level data, ids and offsets only.
+class 12:294 Hoven's flying trooper (update 0x2e72c0)
+pvar_size 0x2a0
+slot 0x254 path  patrol     # the path it flies along (-1: none)
+slot 0x26c area  area       # the polygon it watches (path_crossing, point_in_polygon)
+slot 0x278 path  line_a     # short lines (two points) of its level
+slot 0x280 path  line_b
+slot 0x284 path  line_c
+# a spawn: no patrol, no lines, its area a square of 24 round where it starts
+default patrol none
+default line_a none
+default line_b none
+default line_c none
+default area square 24

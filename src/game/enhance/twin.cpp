@@ -442,6 +442,8 @@ bool spawn() {
         // view of the path table and its count)
         if (ld_paths_take(g_t.level, table, static_cast<uint32_t>(c.paths.size()))) {
             std::printf("[twin] session: level %d's %zu paths in its context's registry\n", g_t.level, c.paths.size());
+            const float d[3] = {o[0] - t.pos[0], o[1] - t.pos[1], o[2] - t.pos[2]};
+            ld_registry_move(g_t.level, d);
         } else {
             ctx_view(g_t.level, PATH_TABLE, PATH_MAX * 4, table);
             ctx_view(g_t.level, PATH_COUNT, 4, table + PATH_MAX * 4);

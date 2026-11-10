@@ -1,0 +1,5 @@
+# A class profile (docs/open-engine.md, "Class profiles"): our knowledge of a game class's level data, ids and offsets only.
+class 9:193 Gaspar's walking robot (update 0x2e27d8)
+pvar_size 0x270
+slot 0x21c path  path       # a path it follows when given one (its placements on Gaspar: none, -1)
+default path none

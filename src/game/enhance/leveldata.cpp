@@ -422,6 +422,19 @@ bool ld_paths_take(int level, uint32_t table, uint32_t n) {
 }
 
 // orig: (host) see leveldata.h
+void ld_registry_move(int level, const float d[3]) {
+    if (!ld_registry_has(level)) return;
+    const uint32_t r = g_reg[level]->block;
+    size_t n = 0;
+    for (uint32_t l = 0; l < 3; ++l) {  // (the three lists of 0x80-byte volumes: their centre at +0x30)
+        const uint32_t a = lwu(r + R_VOLUMES + 8 + 8 * l), c = lwu(r + R_VOLUMES + 12 + 8 * l);
+        for (uint32_t k = 0; a != 0 && k < c; ++k, ++n)
+            for (uint32_t i = 0; i < 3; ++i) swc1(a + k * 0x80 + 0x30 + 4 * i, lwc1(a + k * 0x80 + 0x30 + 4 * i) + d[i]);
+    }
+    std::printf("[ld] level %d's registry: its %zu volumes moved by %.2f %.2f %.2f\n", level, n, d[0], d[1], d[2]);
+}
+
+// orig: (host) see leveldata.h
 uint32_t ld_shared_data(int level) { return ld_registry_has(level) ? g_reg[level]->shared : 0; }
 
 }  // namespace rac1

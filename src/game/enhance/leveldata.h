@@ -81,6 +81,9 @@ bool ld_placement(int level, int32_t uid, int32_t cls, LdPlacement& out);
 // orig: (host) level `level`'s registry's paths replaced by the `n` path pointers at `table` (the twin run: its level's paths
 // as the native run had them, moved with it); false without a registry
 bool ld_paths_take(int level, uint32_t table, uint32_t n);
+// orig: (host) level `level`'s registry's volumes (the three lists of 0x80-byte records: boxes and the like, their centre at
+// +0x30) moved by `d` (the twin run: its level's volumes moved with it, as its paths)
+void ld_registry_move(int level, const float d[3]);
 // orig: (host) level `level`'s shared pvar data in the session heap (made once a context: a copy of its level's block, its
 // owner the level's registry); 0 none
 uint32_t ld_shared_data(int level);
