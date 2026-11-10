@@ -2903,7 +2903,7 @@ static void dump_level(void) {
             for (float x = g[0]; x <= g[2] && k < (int)sizeof b - 6; x += g[4]) {
                 const float from[3] = {x, y, g[5]}, to[3] = {x, y, g[6]};
                 rac1_ray_hit r = {sizeof r};
-                k += api->collide_ray(from, to, 0, RAC1_RAY_NO_LEVEL * 0, &r) ? snprintf(b + k, sizeof b - (size_t)k, " %3d", (int)lroundf(r.point[2]))
+                k += api->collide_ray(from, to, 0, getenv("ARENA_PROBE_MOBYS") ? RAC1_RAY_NO_LEVEL : 0u, &r) ? snprintf(b + k, sizeof b - (size_t)k, " %3d", (int)lroundf(r.point[2]))
                                                                          : snprintf(b + k, sizeof b - (size_t)k, "   .");
             }
             api->log(b);
