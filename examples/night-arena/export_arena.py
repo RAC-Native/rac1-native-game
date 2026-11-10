@@ -65,6 +65,7 @@ LEVEL = {
     "format": 3,            # a session (docs/mods.md): loaded once, a death a soft reset at a checkpoint, sections
     "base": 16,             # Kalebo III: its enemies (classes 1445, 52, 541, 638, 1356) for the waves
     "base_name": "kalebo",
+    "hero_build": "generic",  # Ratchet on the generic hero code (Veldin's, Gaspar's, Umbris's): the game's own lava
     "floor_z": 104.0,       # the floor's height in the game: Kalebo III's hero code ends a fall under z 77
     "death_height": -6.0,   # (the scene's: under the lava)
     # the session's checkpoints (the scene's coordinates, yaw): "arena" south of the hub, where a death during a challenge
@@ -963,6 +964,10 @@ def export(out=None, install=False):
         p = ob.matrix_world.translation
         L.append("%s %s %s %s %s" % (key, num(p.x), num(p.y), num(p.z), num(yaw(ob))))
     L.append("death_height %s" % num(LEVEL["death_height"]))
+    if LEVEL.get("hero_build"):
+        L.append("# Ratchet's moves from the generic hero code, not Kalebo III's own: the game's own lava (he sinks, Cross")
+        L.append("# bounces him out, left in it he is lost), with its animation")
+        L.append("hero %s" % LEVEL["hero_build"])
     if LEVEL["format"] >= 3:
         L.append("# a session: loaded once at the arrival; a death brings Ratchet back to the current checkpoint")
         L.append("session")
