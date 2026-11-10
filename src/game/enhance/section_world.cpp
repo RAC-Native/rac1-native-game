@@ -45,7 +45,11 @@ uint32_t rd32(const std::vector<uint8_t>& v, size_t o) {
 constexpr uint32_t kWords[] = {0x00160f4cu, 0x00160f50u, 0x00160f60u, 0x00160f64u, 0x00160f68u, 0x00160f70u, 0x00160f74u, 0x00160f78u,
                                0x00160f54u, 0x00160fd4u, 0x001604acu, 0x0015f600u, 0x0016c074u, 0x00160fbcu, 0x00160fc0u, 0x00160fc4u,
                                0x00160fc8u, 0x00160fccu, 0x0016048cu, 0x00160490u, 0x00160494u, 0x00160498u, 0x0016049cu, 0x001604a0u,
-                               0x00160b74u};
+                               0x00160b74u,
+                               // (stage 10) the gameplay file's per-level grids the frame reads by position: the objects' light grid and
+                               // its lights (moby_update_light's grid_find: a ship flown over another level's coordinates read the
+                               // session's grid out of its bounds), their count, and the camera's block (gameplay_load: +0x78, +0x7c, +0x84)
+                               0x0015fbc0u, 0x0015fb80u, 0x0015fb50u, 0x0015ef80u};
 // the tables (from, to): the LOD bands; the tfrag textures' table; the tie classes' headers, ids, id map and textures' table, their
 // radii, their palettes; the shrubs' headers, ids, id map and textures' table, their radii, their palettes (the per-frame
 // arrays between them are not the level's: left)
@@ -295,6 +299,15 @@ bool world_build_step(WorldBuild& w, const WorldBytes& b, const std::string& own
         e = I + Hx(0x2c);
         for (uint32_t i = 0; i < Hx(0x28); ++i, e += 0x30) shrub_class_register(w.core(lwu(e)), I + Hx(0x4c), e + 0x10, e + 0x20, lwu(e + 4));
         sw(OV(0x0015f40c), keep_texels);
+        // (stage 10) its gameplay file's grids as gameplay_load points at them (its copies: the same bytes, read in place in the heap)
+        if (G != 0) {
+            if (lw(G + 0x78) != 0) sw(OV(0x0015fbc0), G + lwu(G + 0x78) + 0x10);
+            if (lw(G + 0x84) != 0) sw(OV(0x0015ef80), G + lwu(G + 0x84) + 0x10);
+            if (lw(G + 0x7c) != 0) {
+                sw(OV(0x0015fb80), G + lwu(G + 0x7c) + 0x10);
+                sw(OV(0x0015fb50), lwu(G + lwu(G + 0x7c)));
+            }
+        }
         // no instances yet
         for (const uint32_t a : {0x00160fc0u, 0x00160fc4u, 0x00160fc8u, 0x00160fccu, 0x00160490u, 0x00160494u, 0x00160498u, 0x0016049cu, 0x001604a0u, 0x00160b74u})
             sw(ov(a), 0);
