@@ -1054,6 +1054,12 @@ Three things the build needed beyond the dispatch:
    disc on a worker, into `host_layout::HERO_SEQS` (0x02000000, 3 MB above the game's 32 MB), its frame table and trigger
    block made addresses as the game's load does. In a format 1 / 2 level mod only the magnetic walk's (Ratchet on a
    Magneboots surface, +0x12e7): its core is read the first time he is on one.
+   **His sounds** likewise: every level's hero class has the same 64 sound definitions, but each level's bank holds only the
+   sounds its own hero uses, the others' sound -1 (nothing plays): Kalebo III's bank lacks 28 (among them the burn in the
+   lava, definition 32, and the sinking, 9), Veldin's only 2 no level's bank has. On a level mod's level (any format), once
+   it is in play, the definitions its base's bank lacks are pointed at Veldin's bank (the pool's `sounds/level00.bnk`, loaded
+   once as a host bank and kept for the run, 1.4 MB of host memory) and its sounds (the pool's row of Veldin's class 0):
+   `[hero] 26 of the hero's 64 sounds are not in level 16's bank: Veldin's`. Without a pool they stay silent.
 
 The modes are the game's own: `hero_mode_enter(form, state, object)` (Clank, the form 1: Orxon's class 87, state 0x43; Giant
 Clank, the form 2: Quartu's class 419, state 0x5a, as `level_setup` starts a level in a vehicle) and `hero_mode_exit` (Ratchet's

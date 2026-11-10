@@ -855,10 +855,11 @@ end
   ends at once when nothing is left to shoot at: `objects 69 388` brings Qwark's ship, which flies its route. Qwark's fight
   itself is not done ([docs/open-engine.md](open-engine.md#bosses-stage-10)).
 - **`hero generic`** (main's line, **any format**: also a format 2 level on Kalebo III's base): Ratchet runs on the generic hero
-  code, the one Veldin, Gaspar and Umbris run, instead of the base's own (Kalebo III's): the game's own **lava** (`type3`
-  faces: he sinks in it (0x68) and Cross bounces him out (0x69); left in it he is lost, the level loaded again in formats 1
-  and 2 as a fall; no damage of its own) with its animation (from Veldin's core, read from your disc at the level's load), and
-  every generic move. Everything else stays the base's: its objects and enemies on its own code, its cameras, rails ridden as
+  code, the one Veldin, Gaspar and Umbris run, instead of the base's own (Kalebo III's): the game's own **lava** (`type1`
+  faces, Gaspar's and Umbris's: he jumps out scorched (0x3c), a health point lost each time, and sinks (0x7c) with none
+  left) and its **sinking ground** (`type3` faces: he sinks in it (0x68) and Cross bounces him out (0x69); left in it he is
+  lost, the level loaded again in formats 1 and 2 as a fall; no damage of its own), with their animations (from Veldin's
+  core, read from your disc at the level's load) and their sounds (from Veldin's bank, below), and every generic move. Everything else stays the base's: its objects and enemies on its own code, its cameras, rails ridden as
   before. Only the base's own riding goes (Kalebo III's hoverboard). Kalebo III's lava stand-in (the hop out, below) is then
   not used. `hero generic` with the start's numbers is still Ratchet's start (`hero 0 -67 0.5 1.571`).
 - The plugin does the same with the SDK's ABI 12 ([The mod SDK](sdk.md#hero-modes-abi-12)): `hero_build`, `hero_mode`

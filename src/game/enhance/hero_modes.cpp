@@ -13,6 +13,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants.h>
 #include <host/level_slots.h>
+#include <runtime/iop/snd989_iop.h>
 #include <runtime/kernel/disc.h>
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/level/host_layout.h>
@@ -121,6 +122,44 @@ bool g_seq_off() {
 uint32_t hero_class() {
     const uint32_t own = lwu(OWN) != 0 ? lwu(OWN) : lwu(HERO);
     return own != 0 ? lwu(own + 0x24) : 0;
+}
+
+// --- the hero's sounds the base's bank lacks ---
+// Each level's hero class has the same 64 sound definitions, but each level's bank holds only the sounds its own hero uses:
+// a definition of a sound the bank lacks has the sound -1 (sound_start's +0x1a), and the game plays nothing for it. Kalebo
+// III's lacks 28 of them (his burning in lava or a deadly liquid, 0x3c / 0x7c, among them), Veldin's only 2 that no level's
+// bank has (the pool's rows of class 0). On a level mod's level the definitions the base's bank lacks are pointed at Veldin's
+// bank (loaded once as a host bank, kept for the run: the sound driver's own copy, 1.4 MB of host memory) and its sounds,
+// once the level is in play. The original's levels never.
+uint32_t g_snd_bank = 0;     // (Veldin's bank, a host bank; 0 not loaded)
+bool g_snd_bank_tried = false;
+bool g_snd_done = false;     // (this level's definitions looked at)
+
+void hero_sounds_fill() {
+    g_snd_done = true;
+    const uint32_t c = hero_class();
+    if (c == 0 || lw(0x0015ed84) == 0) return;  // (no hero; a Veldin base: its own bank has them)
+    const uint32_t t = lwu(c + 0x28), n = lbu(c + 0xd);
+    if (t == 0 || n == 0 || !pool_open(false)) return;
+    const PoolClass* row = pool_find(0, 0);
+    if (row == nullptr) return;
+    std::vector<uint32_t> fill;
+    for (uint32_t j = 0; j < n && j < row->sounds.size(); ++j)
+        if (lhu(t + 32 * j + 0x1a) == 0xffffu && row->sounds[j] != 0xffffu) fill.push_back(j);
+    if (fill.empty()) return;
+    if (!g_snd_bank_tried) {
+        g_snd_bank_tried = true;
+        std::vector<uint8_t> b;
+        g_snd_bank = pool_sound_bank(0, b) ? snd989_host_bank_load(b) : 0;
+        if (g_snd_bank == 0) std::fprintf(stderr, "[hero] Veldin's sound bank could not be loaded: the hero's sounds the base's bank lacks are silent\n");
+        else std::printf("[hero] Veldin's sound bank loaded (%zu KB): host bank %#x, for the hero's sounds a base's bank lacks\n", b.size() >> 10, g_snd_bank);
+    }
+    if (g_snd_bank == 0) return;
+    for (const uint32_t j : fill) {
+        sh(t + 32 * j + 0x1a, row->sounds[j]);
+        sw(t + 32 * j + 0x1c, g_snd_bank);
+    }
+    std::printf("[hero] %zu of the hero's %u sounds are not in level %d's bank: Veldin's\n", fill.size(), n, lw(0x0015ed84));
 }
 
 // orig: (host) sequence bytes `b` (as stored in a core) put at the room's next place, their frame table and trigger block made
@@ -422,6 +461,7 @@ void hero_modes_level(bool level_mod, bool session, int base) {
     g_missing_logged.clear();
     g_base = base;
     g_wanted = -1;
+    g_snd_done = false;
 }
 
 // orig: (host) see hero_modes.h
@@ -434,6 +474,7 @@ void hero_modes_build_file(const std::string& build_dir) {
 
 // orig: (host) see hero_modes.h
 void hero_modes_frame(uint64_t frame) {
+    if (g_hero_seq_on && !g_snd_done && lw(OV(0x0015f5c4)) == 0) hero_sounds_fill();  // (a level mod's level in play: the hero's sounds)
     if (g_hero_seq_on && !g_seq_off()) {
         // a level mod of format 1 / 2 on a base whose core lacks hero sequences (every level's but Veldin's): Veldin's core read on
         // the worker the first time Ratchet is on a Magneboots surface (his magnetic walk's sequence may be empty; read at the
