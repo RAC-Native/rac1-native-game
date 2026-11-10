@@ -57,6 +57,15 @@ if(RAC1_INLINE_HELPERS)
     add_compile_definitions(RAC1_INLINE_HELPERS=1)
 endif()
 
+# Short of that: the same accessors declared inline without forcing them (the compiler's own choice per call site), their
+# null-address error out of line and cold - their body is then the pointer and the copy - and a quadword's load / store as one
+# access. The same C++ and the same game state; the game's code 9 to 15 % faster for 4 % more code and the same build time
+# (docs/performance.md), so ON; OFF gives the accessors as they were (to compare). RAC1_INLINE_HELPERS=ON overrides it.
+option(RAC1_ACCESSORS_INLINE "The memory accessors declared inline (not forced), a quadword in one access" ON)
+if(RAC1_ACCESSORS_INLINE)
+    add_compile_definitions(RAC1_ACCESSORS_INLINE=1)
+endif()
+
 # Windows (MinGW-w64, with clang or GCC): see docs/platforms.md
 if(WIN32)
     enable_language(RC)  # (the program's manifest: src/platform/win32/)

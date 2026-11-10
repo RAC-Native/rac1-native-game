@@ -76,6 +76,21 @@ the world passes' culls (the profiler's `Game: world passes`).
   770,000 accesses a frame on Kerwan (260,000 writes, 510,000 reads, of them 200,000 of the scratchpad); a cycle or two saved on
   each is at most 0.2 ms at best, unmeasurable here, while the null, scratchpad, DMA-register and journal cases would need guard
   pages and a fault handler.
+- **The accessors declared inline, not forced** (CMake `RAC1_ACCESSORS_INLINE`, on by default; November 2026): what lies
+  between the two. `ee_read` / `ee_write` were templates not declared `inline`, with a `throw` in their body: that, not their
+  size, kept them out of line. They are now declared `inline` with the null address's error out of line and cold - their
+  body is the pointer and the copy - and the compiler chooses per call site; and a quadword's load or store (`lq` / `sq`,
+  `ee_regs.h`) is one 16-byte access, not two doublewords (its address is aligned: one page). The same C++, so the same game
+  state: `RAC1_RAMHASH` identical to the build before on the 19 levels at 4:3 and widened to 16:9 with LOD High on the game
+  thread (the scene hash too), the reference images, the oracle's reference batches. Measured on top of the float helpers'
+  raw forms (below; the same method, three runs of each taken in turn): the game's code Veldin 0.91 to 0.79 ms a frame,
+  Kerwan 1.52 to 1.33, Rilgar 0.90 to 0.82, Blarg Station 1.05 to 0.96, Hoven 1.16 to 0.99 (9 to 15 % less); `Game: moby
+  joints / skinning` 20 to 37 % less, `Game: world passes` 16 to 20 %, `Game: moby updates` 5 to 13 %. The program's code
+  38.2 to 39.7 MB (4 % more), a full build with four jobs 8.5 minutes as before. `-DRAC1_ACCESSORS_INLINE=OFF` gives the
+  accessors as they were. Not done: the `is_hw` test (a hardware register's address) left out of `lw_` / `sw_` where the
+  address is a constant or relative to the stack pointer (35,000 and 15,000 of their 152,000 sites: a change of the
+  generators), and the stack frames' spills (a third of the generated code's 254,000 access sites are stack-relative,
+  21,000 of them the prologues' saves of registers that are locals of the routine).
 - **The three culls by hand** (`world_cull_tfrag.cpp`, `world_cull_tie.cpp`, `world_cull_shrub.cpp`; `RAC1_WORLD_CULL_FAST`):
   the same arithmetic and the same memory written, organised by what the routines do (the view test, the LOD and its morph,
   the chain's records), the VU0 registers in a local copy (`vu0_local.h`) written back at the end, the scratchpad as a byte
