@@ -603,6 +603,15 @@ thread, `RAC1_PIPELINE=1`, the last 1500 of 2400 frames of a forward walk) on Ke
   the one before freed. The shadow's scene, the real pass's and the one put aside now take turns in three frames that keep
   their vectors' storage. `RAC1_MRP_SCENE_HASH` identical on the 19 levels. `Host: LOD / wide view moby re-run`: Kerwan 0.63
   to 0.57 ms a frame, Rilgar 0.57 to 0.53; the game thread busy 3.05 to 2.97 and 2.44 to 2.38.
+- **The upload memo's pieces keep up with the write log** (`RAC1_PERF_UPLOAD_MEMO_KEEP`, `runtime/gs/gs_memory.cpp`): a piece of
+  a texture upload the memo skips kept the write log's number of its one write. Every later check of it then walked the
+  log back to that number - through up to 8192 entries, for every piece that never changes, every frame - and once the log
+  had forgotten that number the piece was written again. A skipped piece now takes the log's number at the skip (the
+  number before an entry still open, which may yet grow). `RAC1_PERF_UPLOAD_MEMO=2`, which writes every piece and so always
+  moved the number up, checks the skips as before: 893,233 skipped pieces over the 19 levels, 0 differing. The chain
+  worker's `texture uploads` part: Kerwan 0.097 to 0.070 ms a frame; Hoven, whose uploads change every frame, 0.79 to 0.78
+  (within the noise). The pieces written again at the log's floor turned out few (28 in 7000 frames on Kerwan): the gain is
+  the walk of the log.
 ## Switches to compare
 
 These are testing variables: they are honoured in a headless run, or in a window started with `--debug-tools`
@@ -647,6 +656,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_REFLECT_BOX=0` | the reflections' per-instance cull boxes made for every packet, whatever the options |
 | `RAC1_PERF_RCOL_KEEP=0` | Vulkan: the whole mirror of the resident colours copied every frame (`=2`: the kept buffers checked against it) |
 | `RAC1_PERF_SCENE_KEEP=0` | the moby scene of the shadow run a new frame every time, its vectors grown from nothing |
+| `RAC1_PERF_UPLOAD_MEMO_KEEP=0` | a skipped upload piece keeps the write log's number of its last write (its checks walk the log back to it) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's
