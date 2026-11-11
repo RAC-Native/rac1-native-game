@@ -904,13 +904,18 @@ struct MobyUndo {
 };
 std::vector<MobyUndo> g_moby_undo;
 uint64_t g_patch_written = 0, g_patch_runs = 0, g_patch_identity_bad = 0;
+// The mobys' draw distance never grows past the renderer's far plane (4000 units, or the game's own value when that is more): at
+// Maximum ("unlimited") a moby whose culling sphere the game keeps far away on purpose - Pokitaru's class 1161, a model of a
+// 38000-unit radius, its sphere 11000 units from the camera - is drawn in the second pass, and its cached copy cast a flat shadow
+// over the whole level (#144). Nothing beyond the far plane can show in the picture.
+constexpr int32_t kMobyReach = static_cast<int32_t>(kRenderFar);
 void patch_moby(float s) {
     auto dist = [s](int32_t d, int32_t cap) {
         if (s == 0.0f) return cap;
         const double v = static_cast<double>(d) * static_cast<double>(s);
         return v > static_cast<double>(cap) ? cap : static_cast<int32_t>(v);
     };
-    sw(OV(0x0015fff0u), static_cast<uint32_t>(dist(lw(OV(0x0015fff0u)), 0x7fff)));
+    sw(OV(0x0015fff0u), static_cast<uint32_t>(dist(lw(OV(0x0015fff0u)), std::clamp(lw(OV(0x0015fff0u)), kMobyReach, 0x7fff))));
     uint32_t m = lwu(OV(0x0015ffd8u));
     if (g_lod_patch == 0) {
         for (int guard = 0; guard < 4096 && m != 0 && m < ee_game_ram_end() && lbu(m + 0x20) != 0xff; ++guard, m += 0x100) {
@@ -919,7 +924,7 @@ void patch_moby(float s) {
             // the loop would walk a null class's packets (lbu(0 + 4) = 0 -> the parts loop never meets its end) past the scratchpad's end; the
             // game never has it within its draw distance
             if (lwu(m + 0x24) == 0) continue;
-            if (d > 0) sh(m + 0x32, static_cast<uint32_t>(dist(d, 0x7fff)));
+            if (d > 0) sh(m + 0x32, static_cast<uint32_t>(dist(d, std::max(d, kMobyReach))));
             sb(m + 0x72, static_cast<uint32_t>(dist(lbu(m + 0x72), 0xff)));
         }
         return;
@@ -935,7 +940,7 @@ void patch_moby(float s) {
         if (cls == 0) continue;  // (the class not loaded: see above)
         int16_t d;
         std::memcpy(&d, p + 0x32, 2);
-        const int16_t nd = d > 0 ? static_cast<int16_t>(dist(d, 0x7fff)) : d;
+        const int16_t nd = d > 0 ? static_cast<int16_t>(dist(d, std::max<int32_t>(d, kMobyReach))) : d;
         const uint8_t b = p[0x72], nb = static_cast<uint8_t>(dist(b, 0xff));
         if (nd == d && nb == b) continue;
         if (s == 1.0f) {  // (2: the identity checked)

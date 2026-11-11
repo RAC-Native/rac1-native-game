@@ -507,6 +507,11 @@ The game's own decisions are never changed, because they are game state. Instead
   stream (`variant_stream`). These copies were checked draw for draw against the game's own
   (`RAC1_MRPW_STATIC_CHECK=1`; the billboards' stream word for word).
 - **Original** runs no shadow run at all.
+- **Maximum's reach.** "Unlimited" is bounded for the mobys by the renderer's far plane (4000 units, or the game's own draw
+  distance when that is larger): nothing farther can show in the picture, and the game hides some mobys by keeping their
+  culling sphere far away on purpose. Pokitaru's class 1161 (a model of a 38000-unit radius, its sphere about 11000 units
+  from the camera) was drawn at Maximum, invisible but cast from the shadow cache over the whole level, so every sun shadow
+  went wrong (#144).
 
 With the whole of EE memory hashed after every frame, the game's state was identical at Original and
 at Maximum on Veldin, Novalis and Kerwan.
