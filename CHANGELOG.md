@@ -5,6 +5,12 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Gaspar: the lava torn across the sky down in the cave** (#144). The lava sea's surfaces are drawn from the game's own
+  screen matrix; when that differs from the frame's by a hair (the camera easing in the cave, a zoom: some dozens of frames
+  at a time) the renderer took them for a surface with a matrix of its own and sent their points through the inverse of the
+  frame's matrix, which on Gaspar turns a hair into points tens of thousands of units away: big stretched red sheets across
+  the view. A matrix that is the frame's times one common factor now counts as the frame's, its points the world's. The
+  Original picture and every other level are as before.
 - **Level mods: Rilgar's hoverboard race in its world's section films as on Rilgar.** Its race camera stayed high over the
   track (about 2.9 units over Ratchet instead of 2.1, 5.9 at the finish line, up to 18 in a fall instead of 8), looking down
   at the floor: its code kept the camera over Kalebo III's height, the base level's. Now the same camera as on Rilgar, frame
