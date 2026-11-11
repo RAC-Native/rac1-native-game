@@ -5,6 +5,12 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **A shorter frame at the default 4:3** (no change to the picture or the game): with the settings as they come - Aspect Ratio
+  4:3 Original, LOD Original - the renderer still decoded every tie and shrub of the frame from the game's draw commands on an
+  emulated VU1, and the frame waited for it. The game's own tie and shrub passes now tell the renderer what they drew, and it
+  makes those draws from that: a frame 13 to 32 % shorter on the eight levels measured (Kerwan 3.6 to 2.8 ms, Kalebo III 3.6 to
+  2.4, headless). 16:9 and the LOD slider were not affected: the renderer decides the world itself there. See
+  docs/performance.md.
 - **Gaspar: the lava torn across the sky down in the cave** (#144). The lava sea's surfaces are drawn from the game's own
   screen matrix; when that differs from the frame's by a hair (the camera easing in the cave, a zoom: some dozens of frames
   at a time) the renderer took them for a surface with a matrix of its own and sent their points through the inverse of the
