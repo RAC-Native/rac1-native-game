@@ -20,6 +20,7 @@
 // orig: (host)
 #include <game/ovl/world_cull.h>
 #include <game/ovl/world_cull_hand.h>
+#include <game/ovl/world_chained.h>
 
 #include <game/ovl/ovl.h>
 
@@ -55,6 +56,7 @@ struct Pass {
     uint32_t sp = 0;     // the packet buffer's cursor (scratchpad)
     uint32_t relight = RELIGHT, clipped = CLIPPED, pairs = PAIRS;
     Qw tpl[4];           // the chain records' templates (0x160a40 .. 0x160a70: two REF records, a CNT, the record's tail)
+    const bool noting = world_chained_noting();  // (host: the entries chained here noted for the MRP, world_chained.h)
 
     // orig: (helper) a quadword of the packet buffer written, the buffer flushed when its half is full (the original tests
     // `sp & 0x700 == 0x700` after each record: a half's last 0x100 bytes)
@@ -273,6 +275,7 @@ void Pass::draw(uint32_t e, uint32_t entry_addr, uint32_t base, uint32_t single_
     else if (le0(far2, dy) || le0(far2, dx)) lod = 16;
     else lod = 20;
     note_tfrag(entry_addr, lod);
+    if (noting) world_chained_tfrag(entry_addr, lod);
     if (lod >= 14) record_near(rd8, rd16, base, lod);
     else if (lod >= 8) record_short(rd8, rd16, base, lod, 0x16, 0x22, 0x25, tpl[2]);
     else record_short(rd8, rd16, base, lod, 0x14, 0x21, 0x24, tpl[1]);
@@ -360,6 +363,7 @@ void Pass::finish() {
         for (uint32_t c = CLIPPED; c != clipped; c += 4) {
             const uint32_t entry = spr.u32(c);
             note_tfrag(entry, 2);
+            if (noting) world_chained_tfrag(entry, 2);
             const uint32_t base = lwu(entry + 0x10);
             record_near([&](uint32_t o) { return static_cast<uint32_t>(lbu(entry + o)); },
                         [&](uint32_t o) { return static_cast<uint32_t>(lhu(entry + o)); }, base, 2);
@@ -382,6 +386,7 @@ bool tfrag_cull() {
     p.table();
     p.finish();
     p.u.store();
+    if (p.noting) world_chained_done();
     return true;
 }
 
