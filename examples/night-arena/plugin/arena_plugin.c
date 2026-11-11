@@ -216,7 +216,8 @@ static const challenge_def CHALLENGES[] = {
 #define CHAOS_FRAMES 1200  /* Caos: a new weapon every 20 seconds */
 
 /* ---- the championships (CUP): their rounds, made at the start; the modes take turns, a few rounds each ---- */
-enum { M_FREE, M_WRENCH, M_ROULETTE, M_CHAOS, M_BOMBS, M_VENTS, M_TIMED, N_MODES };
+enum { M_FREE, M_WRENCH, M_ROULETTE, M_CHAOS, M_BOMBS, M_VENTS, M_TIMED, M_GUESTS, M_TURRETS, M_GARDEN, M_HORDE, M_ZONE, M_BUMP,
+       N_MODES };
 
 static const struct {
     const char* name;
@@ -224,7 +225,11 @@ static const struct {
 } MODES[N_MODES] = {
     {"Libero", 1, 3}, {"Solo chiave", 1, 2}, {"Roulette", 2, 4}, {"Caos", 4, 5}, {"Pioggia di fuoco", 1, 3},
     {"Grate impazzite", 1, 3}, {"Contro il tempo", 1, 2},
+    /* other planets' enemies; Umbris's turrets; Orxon's spore plants; a horde; the hot zone (the bar to fill: Zona calda's);
+       on the hoverboard, ramming (Autoscontro's) */
+    {"Ospiti", 1, 3}, {"Torrette", 1, 2}, {"Giardino", 1, 2}, {"Orda", 1, 1}, {"Zona calda", 1, 1}, {"Autoscontro", 1, 1},
 };
+enum { OBJ_KILL, OBJ_ZONE, OBJ_BUMP };  /* a round's goal: every enemy felled; the zone's bar full; so many rammed */
 
 #define MAX_ROUNDS 50
 #define CUP_BOMBS 150  /* a bombs round's frames between two bombs */
@@ -233,11 +238,13 @@ static struct {
     wave_def w;
     char mix[16];
     int mode;
+    int target;  /* (an Autoscontro round) the enemies to ram */
 } cup[MAX_ROUNDS];
 
 /* the rules of a wave (a round): the weapons, the bombs, the vents, a round's time (seconds, 0 none) */
 typedef struct rules {
     int weapons, bombs, vents, time;
+    int obj;  /* OBJ_*: the round's goal */
 } rules;
 
 /* the weapons (weapons_owned's items), their names; the Taunter and the Decoy Glove kill nothing: never drawn */
@@ -585,6 +592,10 @@ static const char* const TEXTS[][N_LANGS] = {
     {"+5 secondi", "+5 seconds", "+5 secondes", "+5 Sekunden", "+5 segundos"},
     {"Clank Gigante", "Giant Clank", "Clank geant", "Riesen-Clank", "Clank gigante"},
     {"Zona calda", "Hot Zone", "Zone chaude", "Heisse Zone", "Zona caliente"},
+    {"Ospiti", "Guests", "Invites", "Gaeste", "Invitados"},
+    {"Torrette", "Turrets", "Tourelles", "Geschuetze", "Torretas"},
+    {"Giardino", "Garden", "Jardin", "Garten", "Jardin"},
+    {"Orda", "Horde", "Horde", "Horde", "Horda"},
     {"resta nel cerchio che si sposta: riempi la barra", "stay in the moving ring: fill the bar", "reste dans le cercle mobile: remplis la barre",
      "bleib im wandernden Ring: fuell den Balken", "quedate en el circulo que se mueve: llena la barra"},
     {"Zona %d/100   %d:%02d", "Zone %d/100   %d:%02d", "Zone %d/100   %d:%02d", "Zone %d/100   %d:%02d", "Zona %d/100   %d:%02d"},
@@ -1110,11 +1121,35 @@ static void cup_make(int rounds) {
         if (d >= 0.5f && !wrench) x[n++] = 'L';
         if (d >= 0.6f && !wrench) x[n++] = 'S';
         if (d >= 1.0f) x[n++] = 'B', x[n++] = wrench ? 'R' : 'J';
+        const int md = cup[r].mode;
+        if (md == M_GUESTS) {  /* (other planets': Gaspar's, Pokitaru's, Gemlik's, and Drek's troopers once harder) */
+            n = 0;
+            x[n++] = 'R', x[n++] = 'W', x[n++] = 'A', x[n++] = 'W';
+            if (d >= 0.3f) x[n++] = 'Y', x[n++] = 'A';
+            if (d >= 0.6f) x[n++] = 'K', x[n++] = 'K';
+        }
+        if (md == M_TURRETS && n < 14) x[n++] = 'T';  /* (hazards: Umbris's turrets on the towers) */
+        if (md == M_GARDEN && n < 13) x[n++] = 'P', x[n++] = 'W';  /* (Orxon's plants, Gaspar's walkers) */
+        if (md == M_BUMP) {  /* (walkers to ram, bomb bots to dodge) */
+            n = 0;
+            x[n++] = 'R', x[n++] = 'R', x[n++] = 'W', x[n++] = 'A', x[n++] = 'B';
+        }
         x[n] = 0;
         wave_def* w = &cup[r].w;
         w->count = (int)((8.0f + 14.0f * d) * (wrench ? 0.7f : 1.0f));
         w->at_once = (int)(5.0f + 9.0f * d);
         w->every = (int)fmaxf(8.0f, 40.0f - 24.0f * d);
+        if (md == M_HORDE) {  /* (more, more at once, faster) */
+            w->count = (int)((float)w->count * 2.5f);
+            w->at_once = (int)fminf(60.0f, (float)w->at_once * 2.5f);
+            w->every = (int)fmaxf(5.0f, (float)w->every * 0.5f);
+        }
+        cup[r].target = 0;
+        if (md == M_ZONE || md == M_BUMP) {  /* (without end: the goal is the zone's bar, the rammed) */
+            cup[r].target = (int)(15.0f + 20.0f * d);
+            w->count = 9999;
+            w->at_once = (int)(8.0f + 8.0f * d);
+        }
         w->mix = x;
     }
     char msg[160];
@@ -1126,11 +1161,14 @@ static void cup_make(int rounds) {
 /* a wave's rules: the challenge's, or its round's mode in a championship */
 static rules rules_of(int ch, int wave) {
     const challenge_def* c = &CHALLENGES[ch];
-    rules r = {c->weapons, c->bombs, c->vents, 0};
+    rules r = {c->weapons, c->bombs, c->vents, 0, c->kind == ZONE ? OBJ_ZONE : c->kind == BUMP ? OBJ_BUMP : OBJ_KILL};
     if (c->kind != CUP) return r;
     r.weapons = W_ANY;
     r.bombs = r.vents = 0;
+    r.obj = OBJ_KILL;
     switch (cup[wave].mode) {
+    case M_ZONE: r.obj = OBJ_ZONE; r.time = 120; break;  /* (the bar full within 2 minutes) */
+    case M_BUMP: r.obj = OBJ_BUMP; r.time = 90; break;   /* (so many rammed within 90 s) */
     case M_WRENCH: r.weapons = W_WRENCH; break;
     case M_ROULETTE: r.weapons = W_ROULETTE; break;
     case M_CHAOS: r.weapons = W_CHAOS; break;
@@ -1171,13 +1209,13 @@ static void escape_prepare(int ch);
 static void hazards_place(const char* mix);
 
 static void bump_start(void);
-static void bump_update(const float h[3]);
+static int bump_update(const float h[3], int target);
 static void bump_end(void);
 static void kaiju_start(void);
 static void kaiju_update(void);
 static void kaiju_end(void);
 static void zone_start(void);
-static void zone_update(const float h[3]);
+static int zone_update(const float h[3], float target);
 static void zone_end(void);
 
 static void wave_start(void) {
@@ -1193,10 +1231,10 @@ static void wave_start(void) {
         else if (s.rule.weapons == W_ROULETTE) weapon_pick();
     }
     play(s.snd_wave);
-    if (cur_wave()->count >= 100 && CHALLENGES[s.ch].kind != BUMP) toast(tr("INVASIONE TOTALE!"));  /* (Assalto Finale's last) */
-    if (CHALLENGES[s.ch].kind == BUMP) bump_start();
+    if (cur_wave()->count >= 100 && cur_wave()->count < 9999) toast(tr("INVASIONE TOTALE!"));  /* (Assalto Finale's last) */
+    if (s.rule.obj == OBJ_BUMP) bump_start();  /* (Autoscontro; a championship's round of its) */
     if (CHALLENGES[s.ch].kind == KAIJU) kaiju_start();
-    if (CHALLENGES[s.ch].kind == ZONE) zone_start();
+    if (s.rule.obj == OBJ_ZONE) zone_start();
     if (CHALLENGES[s.ch].kind == RAIL) rail_go();  /* (the countdown's end: the rails on; not the last wave's start) */
 }
 
@@ -1261,9 +1299,9 @@ static void challenge_end(int won, const char* why) {
     bombs_clear();
     if (CHALLENGES[s.ch].kind == RAIL || CHALLENGES[s.ch].escape != NULL) rail_stop();
     board_off();     /* (a board world's: Ratchet himself again) */
-    if (CHALLENGES[s.ch].kind == BUMP) bump_end();
+    if (s.rule.obj == OBJ_BUMP) bump_end();
     if (CHALLENGES[s.ch].kind == KAIJU) kaiju_end();
-    if (CHALLENGES[s.ch].kind == ZONE) zone_end();
+    if (s.rule.obj == OBJ_ZONE) zone_end();
     portal_reset();  /* (a section's challenge: its spawn points no longer the next's; the result takes him back) */
     const rules none = {W_ANY, 0, 0, 0};
     rules_set(none);
@@ -2906,8 +2944,8 @@ static void bump_start(void) {
 }
 
 /* riding: the enemies the board touches knocked down; a ring ridden through: time; the target felled wins, the time out loses */
-static void bump_update(const float h[3]) {
-    const challenge_def* c = &CHALLENGES[s.ch];
+/* returns 1 once `target` are felled in the round */
+static int bump_update(const float h[3], int target) {
     uint32_t m[8];
     const int n = rails.board != 0 ? api->board_touching(m, 8) : 0;
     for (int k = 0; k < n; ++k)
@@ -2922,16 +2960,13 @@ static void bump_update(const float h[3]) {
         const float dz = h[2] - nav.floor_z;
         if (dx * dx + dy * dy < 2.6f * 2.6f && dz > -1.0f && dz < 3.5f) {
             bump.bonus += BUMP_BONUS;
+            s.round_clock -= BUMP_BONUS;  /* (a championship's round: its time too) */
             play(s.snd_wave);
             toast(tr("+5 secondi"));
             bump_ring_move(i);
         }
     }
-    if (s.felled >= c->target) {
-        challenge_end(1, NULL);
-        return;
-    }
-    if (s.clock >= c->time * 60 + bump.bonus) challenge_end(0, "tempo scaduto");
+    return s.killed >= target;
 }
 
 /* ---- Clank Gigante (KAIJU): Ratchet as Quartu's Giant Clank in the arena; the plugin's hits: under his feet, before his fists ---- */
@@ -3000,7 +3035,7 @@ static struct {
     float p[3];
     int way;
     float fill;
-    int buzz;
+    int buzz, t;
 } zone;
 
 static void zone_start(void) {
@@ -3013,11 +3048,12 @@ static void zone_start(void) {
     toast(tr("Resta nel cerchio: la barra si riempie"));
 }
 
-static void zone_update(const float h[3]) {
-    const challenge_def* c = &CHALLENGES[s.ch];
+/* returns 1 once its bar is at `target` */
+static int zone_update(const float h[3], float target) {
     const float tx = s.centre[0] + ZONE_WAYS[zone.way][0], ty = s.centre[1] + ZONE_WAYS[zone.way][1];
     const float dx = tx - zone.p[0], dy = ty - zone.p[1], d = sqrtf(dx * dx + dy * dy);
-    const float step = ZONE_STEP * (1.0f + (float)s.clock / (float)(c->time * 60));  /* (faster as time goes) */
+    ++zone.t;
+    const float step = ZONE_STEP * (1.0f + (float)zone.t / 10800.0f);  /* (faster as time goes: twice in three minutes) */
     if (d < step) {
         zone.way = (zone.way + 1 + (int)(rnd() * 3.0f)) % N_ZONE_WAYS;  /* (the next way, now and then one skipped) */
         if (rnd() < 0.25f) toast(tr("Il cerchio si sposta!"));
@@ -3045,11 +3081,7 @@ static void zone_update(const float h[3]) {
             const float ex = r[0] - zone.p[0], ey = r[1] - zone.p[1];
             if (ex * ex + ey * ey < ZONE_R * ZONE_R && r[2] < zone.p[2] + 3.0f) api->hit_send(m, RAC1_HIT_ENEMY, 3.0f, api->hero());
         }
-    if (zone.fill >= (float)c->target) {
-        challenge_end(1, NULL);
-        return;
-    }
-    if (s.clock >= c->time * 60) challenge_end(0, "tempo scaduto");
+    return zone.fill >= target;
 }
 
 static void zone_end(void) {
@@ -3176,16 +3208,43 @@ static void fight_update(const float h[3]) {
     enemies_follow(h);
     guests_nudge();
     if (c->kind == BUMP) {
-        bump_update(h);
-        if (s.mode != FIGHT) return;
+        if (bump_update(h, c->target)) {
+            challenge_end(1, NULL);
+            return;
+        }
+        if (s.clock >= c->time * 60 + bump.bonus) {
+            challenge_end(0, "tempo scaduto");
+            return;
+        }
     }
     if (c->kind == KAIJU) {
         kaiju_update();
         if (s.mode != FIGHT) return;
     }
     if (c->kind == ZONE) {
-        zone_update(h);
-        if (s.mode != FIGHT) return;
+        if (zone_update(h, (float)c->target)) {
+            challenge_end(1, NULL);
+            return;
+        }
+        if (s.clock >= c->time * 60) {
+            challenge_end(0, "tempo scaduto");
+            return;
+        }
+    }
+    if (c->kind == CUP && s.rule.obj != OBJ_KILL) {  /* (a championship's round of Zona calda's, of Autoscontro's) */
+        const int done = s.rule.obj == OBJ_ZONE ? zone_update(h, 100.0f) : bump_update(h, cup[s.wave].target);
+        if (done) {
+            if (s.rule.obj == OBJ_ZONE) zone_end();
+            else bump_end();
+            enemies_clear();
+            if (++s.wave >= c->waves) {
+                challenge_end(1, NULL);
+                return;
+            }
+            s.mode = BREAK;
+            s.t = 0;
+            return;
+        }
     }
     if (s.rule.bombs > 0 && --s.bomb_wait <= 0) {
         bomb_drop(h);
@@ -3453,10 +3512,18 @@ static void frame(void* user) {
             } else {
                 hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s  %d/%d", ch_title(s.ch), s.wave + 1, c->waves);
                 const int timed = c->kind == TIMED || s.rule.time > 0;
-                const int t = c->kind == TIMED ? c->time * 60 - s.clock : s.rule.time > 0 ? s.rule.time * 60 - s.round_clock : s.clock;
-                hud_text_at(22, y + 28, timed && t < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0,
-                            timed ? tr("Nemici %d   restano %d:%02d") : tr("Nemici %d   %d:%02d"),
-                            s.mode == FIGHT ? cur_wave()->count - s.killed : 0, t / 3600, t / 60 % 60);
+                const int t0 = c->kind == TIMED ? c->time * 60 - s.clock : s.rule.time > 0 ? s.rule.time * 60 - s.round_clock : s.clock;
+                const int t = t0 > 0 ? t0 : 0;
+                if (s.mode == FIGHT && s.rule.obj == OBJ_ZONE)  /* (a championship's round of Zona calda's) */
+                    hud_text_at(22, y + 28, t < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0, tr("Zona %d/100   %d:%02d"), (int)zone.fill, t / 3600,
+                                t / 60 % 60);
+                else if (s.mode == FIGHT && s.rule.obj == OBJ_BUMP)  /* (of Autoscontro's) */
+                    hud_text_at(22, y + 28, t < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0, tr("Investiti %d/%d   %d:%02d"), s.killed,
+                                cup[s.wave].target, t / 3600, t / 60 % 60);
+                else
+                    hud_text_at(22, y + 28, timed && t < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0,
+                                timed ? tr("Nemici %d   restano %d:%02d") : tr("Nemici %d   %d:%02d"),
+                                s.mode == FIGHT ? cur_wave()->count - s.killed : 0, t / 3600, t / 60 % 60);
             }
             hud_grow(box, first, 300);  /* (wider round long texts; smaller texts past 300) */
         }
@@ -4365,7 +4432,7 @@ static void test(void* user, const char* text, uint64_t frame) {
         if (frame % 30 == 0 && api->health() > 0 && api->health() < 4) api->sw(0x001415f8u, 4);
         if (frame == 100 && ch >= 0 && ch < N_CHALLENGES && CHALLENGES[ch].escape != NULL) api->sb(GRIND_BOOTS, 1);
         if (frame == 420 && ch >= 0 && ch < N_CHALLENGES) challenge_start(ch);
-        if (strchr(text + 8, 'z') != NULL && s.mode == FIGHT && CHALLENGES[s.ch].kind == ZONE && frame % 30 == 0) {
+        if (strchr(text + 8, 'z') != NULL && s.mode == FIGHT && s.rule.obj == OBJ_ZONE && frame % 30 == 0) {
             const float at[3] = {zone.p[0], zone.p[1], nav.floor_z + 0.5f};  /* (arena_ch<N>z: Ratchet kept in the zone) */
             hero_move(at, 1.5708f);
         }
