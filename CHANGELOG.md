@@ -5,6 +5,11 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level of Detail Maximum: Pokitaru's sun shadows** (#144). At Maximum the mobys' draw distance was unlimited, past the
+  renderer's far plane too, and a Pokitaru object the game keeps out of sight (class 1161, a model 38000 units across with its
+  culling sphere far away) was drawn: nothing showed, but the shadow cache cast it, a flat shadow over the whole level. The
+  mobys' distance now stops at the far plane (4000 units, or the game's own value when larger). The Original picture and
+  every other level of detail are as before.
 - **Level mods: a planet's world in a section looks and films as the planet** (level mods must be set up again: the composer's
   version 9). Umbris's cave: its lava is animated again (its sea, an object of a class with no model, can now be placed:
   `objects ... 460`), and its boss camera turns toward the Snagglebeast instead
