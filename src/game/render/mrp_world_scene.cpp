@@ -196,6 +196,15 @@ struct Build {
     int64_t ch_run = -1, ch_table[2] = {-1, -1};
     std::vector<const StaticPacket*> ch_tie, ch_shrub;
     int64_t ch_tex = -1;
+    // (the tfrag range: its draws' entries from the pass's notes - the next, their end, each one's entry of the level's
+    // (-1: none) -; `ch_tf_keep`: a level whose shrubs read VU1 memory the tfrags' unpacks leave, which are then walked; the
+    // view last made from VU1 memory, and its 16 floats)
+    bool ch_tf = false, ch_tf_keep = false;
+    uint32_t ch_tf_at = 0, ch_tf_end = 0;
+    std::vector<int32_t> ch_tf_cls;
+    bool ch_tf_view_ok = false;
+    std::array<float, 16> ch_tf_floats{};
+    std::array<double, 16> ch_tf_view{};
     void push(Kicked&& k, Program prog, uint32_t start, int view, int table, bool state = false) {
         ScenePacket p;
         if (scr_scale != nullptr) {
@@ -603,6 +612,88 @@ void draw_tie(Build& b, VUState& st, Program prog) {
 
 // ---- the chained world (mrp_world_scene.h, RAC1_PERF_WORLD_CHAINED) ------------------------------------------------------------
 
+// orig: (host) the walk enters the tfrag pass's range that starts at `first`: its draws' entries come from the pass's notes when
+// that run's stand, the GPU path draws the tfrags and every note names an entry of the level's; else the range is walked as
+// before. In a level whose shrubs read VU1 memory the tfrags' unpacks leave (chained_enter) the unpacks are walked all the same
+void chained_level(Build& b);
+void chained_tfrag_enter(Build& b, uint32_t first) {
+    b.ch_tf = false;
+    static const bool selfcheck = std::getenv("RAC1_MRPW_TFRAG_SELFCHECK") != nullptr;
+    const ChainedWorld& cw = b.in.chained;
+    const TfragLevel* L = b.in.tfrag_level;
+    const StaticLevel* sl = b.in.stat_level;
+    if (!b.ch_on || L == nullptr || sl == nullptr || !sl->ok || b.tfrag_discard || b.in.tfrag_kicks || selfcheck) return;
+    const WorldChained::Run* run = nullptr;
+    for (const WorldChained::Run& r : cw.notes.runs)
+        if (r.kind == 0 && r.first == first) run = &r;
+    bool ok = run != nullptr && run->ok;
+    if (ok) {
+        if (b.ch_tf_cls.size() < cw.notes.tfrag.size()) b.ch_tf_cls.resize(cw.notes.tfrag.size(), -1);
+        for (uint32_t i = run->at; ok && i < run->at + run->n; ++i) {
+            const uint32_t k = (cw.notes.tfrag[i].entry - L->table) / 0x40;
+            ok = cw.notes.tfrag[i].entry >= L->table && k < L->by_ee.size() && L->by_ee[k] >= 0;
+            if (ok) b.ch_tf_cls[i] = L->by_ee[k];
+        }
+    }
+    if (!ok) {
+        ++g_cstats.walked[0];
+        return;
+    }
+    chained_level(b);
+    b.ch_tf = true;
+    b.ch_tf_keep = b.walker->twice;
+    b.ch_used = true;
+    b.ch_tf_at = run->at;
+    b.ch_tf_end = run->at + run->n;
+    b.ch_tf_view_ok = false;
+}
+
+// orig: (host) the walk leaves that range: every note was a draw start of the chain's
+void chained_tfrag_leave(Build& b) {
+    if (b.ch_tf && b.ch_tf_at != b.ch_tf_end) b.ch_bad = true;
+    b.ch_tf = false;
+}
+
+bool tfrag_gpu_draw(Build& b, const uint8_t* mem, uint32_t base, Program prog, uint32_t start, int cls, int lod);
+// orig: (host) a tfrag draw start of the chain (tfrag A's LOD starts, tfrag B's 0x002) made from the pass's note of it: the
+// entry is the note's - draw_tfrag finds it by a hash of the image its unpacks left -, the LOD and the program the chain's own
+// start; the view from VU1 memory at the double buffer's base (made again only when its floats changed), the GPU path's record
+// as draw_tfrag makes it. A note that is not this start's kind (a clipped entry for tfrag B), or an entry the GPU path has no
+// plan for (the walk draws it with the CPU reference, from VU1 memory): the scene is made again by the walk
+void draw_tfrag_chained(Build& b, VUState& st, Program prog, uint32_t start) {
+    if (b.ch_tf_at >= b.ch_tf_end) {
+        b.ch_bad = true;
+        return;
+    }
+    const uint32_t i = b.ch_tf_at++;
+    const bool isb = prog == Program::TfragB;
+    if (isb != (b.in.chained.notes.tfrag[i].lod == 2)) {
+        b.ch_bad = true;
+        return;
+    }
+    const uint8_t* mem = st.mem.data();
+    const int lod = tfrag_lod(prog, start);
+    const uint32_t base = st.xtop & 0x3ff;
+    std::array<float, 16> fl;
+    std::memcpy(fl.data(), mem + (((base + 5) & 0x3ff) << 4), sizeof fl);
+    if (!b.ch_tf_view_ok || std::memcmp(fl.data(), b.ch_tf_floats.data(), sizeof fl) != 0) {
+        b.ch_tf_floats = fl;
+        b.ch_tf_view = view_of_tfrag(mem, base);
+        b.ch_tf_view_ok = true;
+    }
+    if (b.last_tfrag_view < 0 || b.ch_tf_view != b.last_tfrag) {
+        b.last_tfrag = b.ch_tf_view;
+        b.last_tfrag_view = static_cast<int>(b.f.views.size());
+        b.f.views.push_back(b.ch_tf_view);
+    }
+    if (!tfrag_gpu_draw(b, mem, base, prog, start, b.ch_tf_cls[i], lod)) {
+        b.ch_bad = true;
+        return;
+    }
+    ++b.f.draws[static_cast<int>(prog)];
+    ++g_cstats.tfrags;
+}
+
 // orig: (host) the level's texture table's place in the frame's (StaticLevel::tex: kept at the frame's start, or put in now)
 uint32_t chained_tex_base(Build& b) {
     if (b.ch_tex < 0) {
@@ -622,6 +713,21 @@ uint32_t chained_tex_base(Build& b) {
 // range is walked as before. In a level with a shrub packet whose colours read VU1 memory past its instance's block (kTwiceBase:
 // the CPU path draws it with what the private VU1 holds there - the shrub pass's earlier unpacks, the tie pass's colour tables)
 // the shrub pass is walked whole and the tie A part's colour tables are kept (chained_tables)
+void chained_level(Build& b) {
+    const StaticLevel* sl = b.in.stat_level;
+    Walker& W = *b.walker;
+    if (W.cls_gen == sl->gen) return;
+    W.cls_gen = sl->gen;
+    W.tie_cls.clear();
+    W.shrub_cls.clear();
+    W.twice = false;
+    for (size_t c = 0; c < sl->ties.size(); ++c) W.tie_cls.emplace(sl->ties[c].rec, static_cast<uint32_t>(c));
+    for (size_t c = 0; c < sl->shrubs.size(); ++c) {
+        W.shrub_cls.emplace(sl->shrubs[c].rec, static_cast<uint32_t>(c));
+        for (const StaticPacket& pk : sl->shrubs[c].packets)
+            for (const ShrubKickVertex& v : pk.shrub->verts) W.twice = W.twice || v.colour >= kTwiceBase;
+    }
+}
 void chained_enter(Build& b, int kind, uint32_t first) {
     b.chained[kind] = false;
     const ChainedWorld& cw = b.in.chained;
@@ -633,18 +739,7 @@ void chained_enter(Build& b, int kind, uint32_t first) {
         if (r.kind == kind + 1 && r.first == first) run = &r;
     bool ok = run != nullptr && run->ok;
     Walker& W = *b.walker;
-    if (ok && W.cls_gen != sl->gen) {
-        W.cls_gen = sl->gen;
-        W.tie_cls.clear();
-        W.shrub_cls.clear();
-        W.twice = false;
-        for (size_t c = 0; c < sl->ties.size(); ++c) W.tie_cls.emplace(sl->ties[c].rec, static_cast<uint32_t>(c));
-        for (size_t c = 0; c < sl->shrubs.size(); ++c) {
-            W.shrub_cls.emplace(sl->shrubs[c].rec, static_cast<uint32_t>(c));
-            for (const StaticPacket& pk : sl->shrubs[c].packets)
-                for (const ShrubKickVertex& v : pk.shrub->verts) W.twice = W.twice || v.colour >= kTwiceBase;
-        }
-    }
+    if (ok) chained_level(b);
     ok = ok && !(kind == 1 && W.twice);
     if (ok && kind == 0) {
         if (b.ch_tie.size() < cw.notes.tie.size()) b.ch_tie.resize(cw.notes.tie.size(), nullptr);
@@ -679,7 +774,7 @@ void chained_enter(Build& b, int kind, uint32_t first) {
         }
     }
     if (!ok) {
-        ++g_cstats.walked[kind];
+        ++g_cstats.walked[kind + 1];
         return;
     }
     b.chained[kind] = true;
@@ -1810,7 +1905,7 @@ void chained_capture(ChainedWorld& c) {
                 if (p == nullptr) r.ok = false;
                 else std::memcpy(c.tie_tail[static_cast<size_t>(&r - c.notes.runs.data())].data() + 256 * k, p, 256);
             }
-        } else {
+        } else if (r.kind == 2) {
             for (uint32_t i = r.at; i < r.at + r.n; ++i) {
                 const WorldChained::Shrub& g = c.notes.shrub[i];
                 c.shrub_first[i] = static_cast<uint32_t>(c.shrub_alpha.size());
@@ -2347,7 +2442,8 @@ bool scene_build_run(const WorldIndex& idx, const SceneInput& in, SceneFrame& f,
         }
         return W.prog;
     };
-    // (`chained_draw`: the range's tie A / shrub A draws are the pass's notes': a draw start of that program is made from them)
+    // (`chained_draw`: the range's draws - 0 tie A's, 1 shrub A's, 2 the tfrags' - are the pass's notes': a draw start is made
+    // from them)
     auto on_start = [&](uint32_t start, bool world, int chained_draw = -1) {
         // the double buffer (vu1.cpp start_program)
         vu.top = vu.tops;
@@ -2357,7 +2453,8 @@ bool scene_build_run(const WorldIndex& idx, const SceneInput& in, SceneFrame& f,
         vu.st.xtop = vu.top;
         if (chained_draw >= 0 && is_draw_start(cur_prog(), start)) {
             if (chained_draw == 0) draw_tie_chained(b, vu.st);
-            else draw_shrub_chained(b, vu.st);
+            else if (chained_draw == 1) draw_shrub_chained(b, vu.st);
+            else draw_tfrag_chained(b, vu.st, W.prog, start);
             ++f.draw_starts;
             return;
         }
@@ -2471,7 +2568,9 @@ bool scene_build_run(const WorldIndex& idx, const SceneInput& in, SceneFrame& f,
         if (pass_prev != pass_now && (pass_prev == 1 || pass_prev == 2)) emit_static(b, vu.st, pass_prev - 1);
         if (pass_prev != pass_now) {  // (the chained world: the range left, the range entered)
             if (pass_prev == 1 || pass_prev == 2) chained_leave(b, vu.st, pass_prev - 1);
+            if (pass_prev == 0) chained_tfrag_leave(b);
             if (sh == nullptr && (pass_now == 1 || pass_now == 2)) chained_enter(b, pass_now - 1, pass_first(addr));
+            if (sh == nullptr && pass_now == 0) chained_tfrag_enter(b, pass_first(addr));
         }
         if (pass_prev != pass_now && pass_prev == 0) {
             emit_tfrag_host(b, vu.st);
@@ -2543,7 +2642,13 @@ bool scene_build_run(const WorldIndex& idx, const SceneInput& in, SceneFrame& f,
             // chained_tables puts back - and its packets' unpacks and set-up starts are walked: that memory as the walk leaves it)
             const bool keep = ck == 0 && b.ch_tables;
             auto instance_dest = [&]() { return (imm & 0x8000) != 0 || (imm & 0x3ff) >= 0x346; };
-            if (cmd == 0x14 || cmd == 0x15) {
+            // (the chained world's tfrag range: its draw starts are the notes', its other starts - the constants' - are run; of its
+            // unpacks the entries' - at the double buffer's base - are left out, the pass's own - the view, the constants - kept)
+            const bool ctf = sh == nullptr && pass_now == 0 && b.ch_tf && world;
+            if (ctf && (cmd == 0x14 || cmd == 0x15 || cmd == 0x17)) {
+                on_start(cmd == 0x17 ? vu.next_pc : imm, true, 2);
+                if (cmd != 0x17) vu.next_pc = imm;
+            } else if (cmd == 0x14 || cmd == 0x15) {
                 const bool cp = world && chained_part();
                 on_start(imm, world && (!(skip || (cp && !keep)) || constants_start(imm)), cp ? ck : -1);
                 vu.next_pc = imm;
@@ -2551,7 +2656,10 @@ bool scene_build_run(const WorldIndex& idx, const SceneInput& in, SceneFrame& f,
                 const bool cp = world && chained_part();
                 on_start(vu.next_pc, world && (!(skip || (cp && !keep)) || constants_start(vu.next_pc)), cp ? ck : -1);
             } else if (cmd == 0x4a || cmd >= 0x60) {  // MPG / UNPACK: the world's only
-                if (world && (cmd == 0x4a || !(skip || (chained_part() && (!keep || instance_dest()))) || constants_dest())) {
+                const bool run = cmd == 0x4a ? true
+                                 : ctf ? (imm & 0x8000) == 0 || b.ch_tf_keep
+                                       : !(skip || (chained_part() && (!keep || instance_dest()))) || constants_dest();
+                if (world && run) {
                     if (cmd == 0x4a) W.micro_dirty = true;
                     else W.unpack_src[((imm & 0x3ff) + ((imm & 0x8000) != 0 ? vu.tops : 0)) & 0x3ff] = i >= 16 ? data + (i - 16) : 0;
                     vu1::vif1_command(vu, code, at(i, nb), nullptr);
@@ -2607,6 +2715,7 @@ bool scene_build_run(const WorldIndex& idx, const SceneInput& in, SceneFrame& f,
         emit_static(b, vu.st, 1);
     }
     if (pass_prev == 1 || pass_prev == 2) chained_leave(b, vu.st, pass_prev - 1);  // (the chained world: a range the walk ended in)
+    if (pass_prev == 0) chained_tfrag_leave(b);
     chained_bad = b.ch_bad;
     if (b.ch_used && !b.ch_bad) ++g_cstats.scenes;
     emit_host_meshes(b);  // (the level mods' host meshes, after the world)

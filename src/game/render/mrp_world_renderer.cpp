@@ -6308,10 +6308,11 @@ void mrp_world_report() {
     }
     if (chained_world_mode() != 0) {
         const ChainedStats& c = chained_world_stats();
-        std::printf("[perf] chained world (RAC1_PERF_WORLD_CHAINED=%d): %llu scenes with a pass made from its notes, %llu tie draws and %llu shrub instances; passes "
-                    "walked whole: %llu tie, %llu shrub; scenes made again by the walk: %llu\n",
-                    chained_world_mode(), static_cast<unsigned long long>(c.scenes), static_cast<unsigned long long>(c.ties), static_cast<unsigned long long>(c.shrubs),
-                    static_cast<unsigned long long>(c.walked[0]), static_cast<unsigned long long>(c.walked[1]), static_cast<unsigned long long>(c.again));
+        std::printf("[perf] chained world (RAC1_PERF_WORLD_CHAINED=%d): %llu scenes with a pass made from its notes, %llu tfrag draws, %llu tie draws and %llu shrub "
+                    "instances; passes walked whole: %llu tfrag, %llu tie, %llu shrub; scenes made again by the walk: %llu\n",
+                    chained_world_mode(), static_cast<unsigned long long>(c.scenes), static_cast<unsigned long long>(c.tfrags), static_cast<unsigned long long>(c.ties),
+                    static_cast<unsigned long long>(c.shrubs), static_cast<unsigned long long>(c.walked[0]), static_cast<unsigned long long>(c.walked[1]),
+                    static_cast<unsigned long long>(c.walked[2]), static_cast<unsigned long long>(c.again));
         if (chained_world_mode() == 2) {
             std::printf("[perf] chained world check: %llu packets, %llu register writes compared\n", static_cast<unsigned long long>(c.packets), static_cast<unsigned long long>(c.regs));
             c.check.report("chained world", "frames");

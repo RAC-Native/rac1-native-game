@@ -16,6 +16,7 @@ const WorldChained& world_chained() { return g_chained; }
 
 // orig: (host) see world_chained.h
 void world_chained_clear() {
+    g_chained.tfrag.clear();
     g_chained.tie.clear();
     g_chained.shrub.clear();
     g_chained.runs.clear();
@@ -25,9 +26,10 @@ void world_chained_clear() {
 // orig: (host) see world_chained.h
 void world_chained_begin(int kind, uint32_t first) {
     g_open = -1;
-    if ((kind != 1 && kind != 2) || ee_journal_active()) return;
+    if (kind < 0 || kind > 2 || ee_journal_active()) return;
     g_open = static_cast<int>(g_chained.runs.size());
-    g_chained.runs.push_back({kind, first, static_cast<uint32_t>(kind == 1 ? g_chained.tie.size() : g_chained.shrub.size()), 0, false});
+    const size_t at = kind == 0 ? g_chained.tfrag.size() : kind == 1 ? g_chained.tie.size() : g_chained.shrub.size();
+    g_chained.runs.push_back({kind, first, static_cast<uint32_t>(at), 0, false});
 }
 
 // orig: (host) see world_chained.h
@@ -35,6 +37,12 @@ void world_chained_end() { g_open = -1; }
 
 // orig: (host) see world_chained.h
 bool world_chained_noting() { return g_open >= 0 && !ee_journal_active(); }
+
+// orig: (host) see world_chained.h
+void world_chained_tfrag(uint32_t entry, uint32_t lod) {
+    g_chained.tfrag.push_back({entry, static_cast<uint8_t>(lod)});
+    ++g_chained.runs[static_cast<size_t>(g_open)].n;
+}
 
 // orig: (host) see world_chained.h
 void world_chained_tie(const WorldChained::Tie& t) {

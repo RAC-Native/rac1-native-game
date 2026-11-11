@@ -323,7 +323,7 @@ void world_pass(void (*pass)(), int kind) {
     const bool keep = keep_env || g_world_faithful || g_world_mrp || g_world_chain_forced;  // (RAC1_WORLD_FAITHFUL / the debug menu: the chain is the world's drawing)
     const uint32_t cur = lwu(OV(0x001611c0));
     if (g_world_mrp) mrp_lod_world_shadow(kind >= 0 ? kind : 3, pass, cur);  // (the LOD slider's shadow run first, the memory put back)
-    // (the tie / shrub pass's notes of what it chains, for the MRP's chained world: world_chained.h, RAC1_PERF_WORLD_CHAINED)
+    // (the pass's notes of what it chains, for the MRP's chained world: world_chained.h, RAC1_PERF_WORLD_CHAINED)
     if (g_world_mrp && mrpw::chained_world_mode() != 0) world_chained_begin(kind, cur);
     pass();
     world_chained_end();
