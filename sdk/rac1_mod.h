@@ -56,9 +56,9 @@ extern "C" {
    Clank, Giant Clank or on the hoverboard: hero_build, hero_build_now, hero_mode, hero_mode_now); 13: bosses (a section's
    bosses: boss_set, boss_beaten; the boss callback); 14: the HUD's width (hud_width); 15: saving from a plugin (game_save,
    game_saving); 16: the hoverboard outside a race (board_rule, board_return, board_fall, board_touching); 17: a section put back
-   as at its first entry (section_reset; level.txt's `fresh`); 18: Giant Clank's energy (hero_energy) (docs/sdk.md lists what each
-   version added). */
-#define RAC1_MOD_ABI 18
+   as at its first entry (section_reset; level.txt's `fresh`); 18: Giant Clank's energy (hero_energy); 19: the mod's other music
+   (music_track, music_track_now; level.txt's music_track lines) (docs/sdk.md lists what each version added). */
+#define RAC1_MOD_ABI 19
 
 #if defined(_WIN32)
 #define RAC1_MOD_EXPORT __declspec(dllexport)
@@ -684,6 +684,16 @@ typedef struct rac1_api {
        RAC1_GIANT_ENERGY_MAX) refills it. Returns the energy now; -1 when Ratchet is not Giant Clank (nothing set). hero_mode
        starts him with the most */
     int32_t (*hero_energy)(int32_t set);
+
+    /* ======== ABI 19 (test api->abi >= 19, or RAC1_API_HAS(api, music_track)) ======== */
+    /* -- the mod's other music (docs/sdk.md, "Music tracks"; a level mod) -- */
+    /* level.txt's `music_track <name> ...` played instead of the level's music (fading the playing music out over `fade_frames`
+       frames first; 0 at once). While it plays a section switch and a death (a soft reset, a restart) do not change the music:
+       it ends with music_track(NULL, fade_frames) (back to the level's music, or the current section's) or by leaving the
+       level. 1 done; 0 no such track (the log says so) */
+    int32_t (*music_track)(const char* name, int32_t fade_frames);
+    /* the music_track playing (as named in level.txt), NULL none */
+    const char* (*music_track_now)(void);
 } rac1_api;
 
 #define RAC1_API_HAS(api, field) ((api)->size >= offsetof(rac1_api, field) + sizeof((api)->field))

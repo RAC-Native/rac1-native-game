@@ -492,6 +492,7 @@ mods/example-plateau/
 | `scale <s>` | the OBJ files' units to the game's (default 1; Ratchet is about 1.5 units tall) |
 | `moby <class> <x> <y> <z> [<yaw>]` | an object (below); format 3 also `[<slot>=<value> ...]`: its class's profile's slots ([Sessions](#sessions-format-3)) |
 | `music <level>`, `music <loop> [<intro>]`, `music none` | the music: the game level's (0..18), your own (a WAV, an Ogg Vorbis file or a VAG, mono or stereo: below), or none; default the base level's |
+| `music_track <name> <loop> [<intro>]` | more music of your own (as many lines as you like; the files as `music`'s), played by the plugin's `music_track(<name>)` instead of the level's music, through section switches and deaths ([The mod SDK](sdk.md#music-tracks-abi-19)) |
 | `sky <level>` | the sky of the game's level (0..18); default the base level's |
 | `class <name> <model.obj> [size <s>] [solid\|ghost] [scale <k>]` | a class of the level's own objects (its model, its hit box; its behaviour in the mod's plugin): [The mod SDK](sdk.md#the-levels-own-content-leveltxt) |
 | `object <class> <x> <y> <z> [<yaw>] [<key>=<value> ...]` | an object of one of the level's classes |
@@ -562,6 +563,13 @@ game's.
 The composer copies (or encodes) them into the build (they are read through the level's window); its log says what it
 made of each (`music: ...`).
 
+**More music**: `music_track <name> <loop> [<intro>]` lines (any number, each name once: letters, digits, `-`, `_`, `.`)
+are tracks of your own the level's code never plays: the mod's plugin plays one with `music_track(<name>, <fade>)` (a
+battle's music, say) and keeps it on through section switches and deaths until it calls `music_track(NULL, ...)` or the
+level is left ([The mod SDK, "Music tracks"](sdk.md#music-tracks-abi-19)). Their files are made as `music`'s (the same
+formats, stereo, an intro once then its loop), with or without a `music` line; the log says `music_track "<name>":` then
+its files' `music: ...` lines.
+
 Coordinates are the game's: z up, in game units. **Every coordinate of the collision must be above 0** (the game's
 collision grid starts at 0 and ignores what is below; the composer refuses a collision that reaches below). A level made
 round (0, 0, 0), as a modelling program has it, is moved with `offset`: the example is made round (0, 0, 0) and has
@@ -606,7 +614,8 @@ last step. The build goes to `assets/generated/mods/<folder>/` (made from your d
 - `gameplay.bin`: the base level's settings, lights, generic cameras and help texts; Ratchet at your start; the ship (and
   its take-off path) or none; your objects (`moby` lines).
 - `music_loop.vag`, `music_intro.vag`: your music, when level.txt names it (as the game plays it: a WAV or an `.ogg`
-  encoded).
+  encoded); `track<N>_loop.vag`, `track<N>_intro.vag`: the `music_track` lines' (the Nth line's; build.json's
+  `music_tracks` names them).
 - `host_meshes.mrpc`: your meshes, drawn by the modern renderer (not by the game's code: the faithful renderer, a debug
   choice, does not draw them), and your classes' models.
 - `level.sdk`, `sounds.bnk`: your classes, placed objects, sounds and triggers ([The mod SDK](sdk.md)); your sounds as

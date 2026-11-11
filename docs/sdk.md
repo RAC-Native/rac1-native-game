@@ -45,7 +45,8 @@ Contents:
 | 15 | the first with saving | saving from a plugin: `game_save`, `game_saving` ([Saving](#saving-abi-15)) |
 | 16 | the first with the free hoverboard | the hoverboard outside a race: `board_rule`, `board_return`, `board_fall`, `board_touching`, `RAC1_BOARD_*` ([The hoverboard outside a race](#the-hoverboard-outside-a-race-abi-16)) |
 | 17 | the first with fresh sections | a section put back as at its first entry: `section_reset`; level.txt's `fresh` ([Putting a section back](#putting-a-section-back-abi-17)) |
-| 18 | this one | Giant Clank's energy: `hero_energy`, `RAC1_GIANT_ENERGY_MAX` ([Hero modes](#hero-modes-abi-12)) |
+| 18 | the first with Giant Clank's energy | Giant Clank's energy: `hero_energy`, `RAC1_GIANT_ENERGY_MAX` ([Hero modes](#hero-modes-abi-12)) |
+| 19 | this one | the mod's other music: `music_track`, `music_track_now`; level.txt's `music_track` lines ([Music tracks](#music-tracks-abi-19)) |
 
 How compatibility works:
 
@@ -236,7 +237,9 @@ See [Base level objects](#base-level-objects) below.
 | Service | ABI | Does |
 |---|---|---|
 | `int32_t sound(int32_t index, uint32_t moby)` | 1 | the base level's sound `index` at `moby` (0: Ratchet): its slot, -1 |
-| `void music(int32_t track)` | 1 | the level's music table's track |
+| `void music(int32_t track)` | 1 | the level's music table's track (a `music_track` playing ends first) |
+| `int32_t music_track(const char* name, int32_t fade_frames)` | 19 | level.txt's `music_track <name>` instead of the level's music, kept through section switches and deaths; NULL: the level's music again ([Music tracks](#music-tracks-abi-19)) |
+| `const char* music_track_now(void)` | 19 | the `music_track` playing (its name), NULL none |
 | `int32_t sfx_find(const char* name)` | 2 | the current level's own sound of that name (level.txt's `sound` lines): its index, -1 |
 | `int32_t sfx_play(int32_t sound, uint32_t moby, const float pos[3])` | 2 | play it: on `moby` (it follows it), else at `pos`, else (0, NULL) everywhere (no distance, no pan). Its slot, -1 when none ([Sounds](#sounds)) |
 | `void sfx_stop(int32_t slot)` | 2 | stop it (a slot `sfx_play` gave that still plays one of the level's sounds) |
@@ -634,6 +637,33 @@ static const char* const WORLDS[] = {"quartu", "batalia", "rilgar", "umbris"};
 for (int i = 0; i < 4; ++i) api->section_reset(WORLDS[i]);      /* Ratchet is in the arena: none is the current section */
 api->section_enter("quartu", "in", 0);
 ```
+
+### Music tracks (ABI 19)
+
+Test `api->abi >= 19` (or `RAC1_API_HAS(api, music_track)`) first. A level mod can have more music than its level's:
+level.txt's `music_track <name> <loop> [<intro>]` lines (as many as you like; the files as the `music` line's: a WAV, an
+Ogg Vorbis file or a VAG, mono or stereo, an intro played once before its loop: [Mods, "Level mods"](mods.md#level-mods)).
+`<name>`: letters, digits, `-`, `_`, `.` (at most 31).
+
+- `music_track(name, fade_frames)` plays that track instead of the music: the playing music faded out over `fade_frames`
+  frames (at most 600; 0: stopped at once), then the track from its start (its intro, then its loop). **While it plays, the
+  music stays**: a section switch (a portal, `section_enter`, a death's checkpoint in another section) does not put the
+  section's music on, and a death (a session's soft reset, or a level mod's restart) does not restart it: it plays on.
+  The same track asked again while it plays goes on (no restart); another one replaces it. 1 done; 0 the level has no
+  such track (the log says so: `music_track("..."): the level has no such music_track`).
+- `music_track(NULL, fade_frames)` ends it: the level's music again (the current section's, in a session with sections:
+  the music the last switch would have put on), faded the same way. 1 (also when no track plays).
+- `music_track_now()`: the track playing (its level.txt name; also while fading to it), NULL none (also while fading back).
+- Leaving the level ends it (the next arrival plays the level's music); so does `music(track)`. A save does not keep it:
+  a save loaded (a level load) starts with the level's music (call `music_track` again from `session_load` if a battle
+  goes on). Its volume is the music's (Options), and it pauses with the game, as the level's music does.
+
+```c
+static void challenge_start(void) { if (api->abi >= 19) api->music_track("fight", 60); }
+static void challenge_end(void)   { if (api->abi >= 19) api->music_track(NULL, 60); }
+```
+
+The log says what plays: `[music_track] "fight" plays (sectors ...)`, `[music_track] the level's music again`.
 
 ### Saving (ABI 15)
 

@@ -62,6 +62,7 @@ namespace {
     "scale <s>                                 the OBJ files' units to game units (default 1)\n"
     "moby <class> <x> <y> <z> [<yaw>]          an object of the base level's class <class>, as its first placement there\n"
     "music <level> | music <loop> [<intro>] | music none   the level's music (<loop>, <intro>: a VAG, or a WAV or .ogg encoded)\n"
+    "music_track <name> <loop> [<intro>]       another music of the mod's, the plugin's music_track(<name>) plays it (as music's files)\n"
     "sky <level>                               the sky of the game's level <level> (default: the base level's)\n"
     "base <level|name>                         the base level (as mod.json's level.base: checked against it)\n"
     "spawn <class> <count>                     room for <count> objects of the base level's class at once (the plugin's base_spawn)\n"
@@ -124,6 +125,11 @@ struct LevelTxt {
     int music_level = -1;               // music <level>: that level's tracks
     bool music_none = false;            // music none
     std::string music_loop, music_intro;  // music <loop.vag> [<intro.vag>]: the mod's own
+    struct Track {                      // music_track <name> <loop> [<intro>]: another of the mod's (the plugin's music_track)
+        std::string name, loop, intro;
+        int line = 0;
+    };
+    std::vector<Track> tracks;
     int sky_level = -1;                 // sky <level>
     bool has_floor = false;
     float floor = 0;                    // (the collision's lowest z, after the offset: the default death height's check)
@@ -765,6 +771,21 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
             } else {
                 return bad();
             }
+        } else if (key == "music_track") {
+            LevelTxt::Track tr;
+            in >> tr.name >> tr.loop >> tr.intro;
+            if (tr.loop.empty()) return bad();
+            if (!sdk_name_ok(tr.name)) {
+                err = fmt("%s:%d: music_track \"%s\": a name of letters, digits, - _ . (at most 31)", p.generic_string().c_str(), n, tr.name.c_str());
+                return false;
+            }
+            for (const LevelTxt::Track& o : t.tracks)
+                if (o.name == tr.name) {
+                    err = fmt("%s:%d: the music_track \"%s\" twice", p.generic_string().c_str(), n, tr.name.c_str());
+                    return false;
+                }
+            tr.line = n;
+            t.tracks.push_back(tr);
         } else if (key == "offset") {
             std::string a;
             in >> a;
@@ -3719,26 +3740,20 @@ bool compose_level_mod(const std::string& folder, bool force) {
             return fail("cannot write into " + sd.generic_string());
     }
     // the music: the build's choice (build.json's "music"), the mod's own VAG files copied into the build
-    std::string music_json;
-    if (lt.music_none) {
-        music_json = "\"none\"";
-        log.say("music: none");
-    } else if (lt.music_level >= 0) {
-        music_json = std::to_string(lt.music_level);
-        log.say(fmt("music: level %d's", lt.music_level));
-    } else if (!lt.music_loop.empty()) {
-        // each a VAG (mono or stereo), a WAV or an Ogg Vorbis file (encoded), src/setup/level_music.h; an intro's and its
-        // loop's rate the same (the stream keeps its first part's pitch: a WAV or an Ogg encoded at the other's rate, the
-        // loop's if neither is a VAG), one stereo: both made stereo
+    // a music's files: each a VAG (mono or stereo), a WAV or an Ogg Vorbis file (encoded), src/setup/level_music.h; an intro's
+    // and its loop's rate the same (the stream keeps its first part's pitch: a WAV or an Ogg encoded at the other's rate, the
+    // loop's if neither is a VAG), one stereo: both made stereo. Written as <out>_intro.vag and <out>_loop.vag; their JSON
+    // array (the intro, then the loop) into `json`
+    auto music_files = [&](const std::string& loop, const std::string& intro, const std::string& out, std::string& json) {
         std::vector<std::string> names;
         std::vector<std::pair<std::string, std::string>> files;
-        if (!lt.music_intro.empty()) files.push_back({lt.music_intro, "music_intro.vag"});
-        files.push_back({lt.music_loop, "music_loop.vag"});
+        if (!intro.empty()) files.push_back({intro, out + "_intro.vag"});
+        files.push_back({loop, out + "_loop.vag"});
         std::vector<std::vector<uint8_t>> inputs(files.size());
         std::vector<MusicVag> made(files.size());
         auto make = [&](size_t i, int channels, uint32_t rate) {
             std::string why;
-            if (music_vag_make(inputs[i], files[i].second == "music_loop.vag", channels, rate, made[i], why)) return true;
+            if (music_vag_make(inputs[i], files[i].second == out + "_loop.vag", channels, rate, made[i], why)) return true;
             fail(files[i].first + ": " + why + ": see docs/mods.md, \"Level mods\", Music");
             return false;
         };
@@ -3765,8 +3780,27 @@ bool compose_level_mod(const std::string& folder, bool force) {
             log.say(fmt("music: %s, %u Hz, %s, %.1f s, as %s (%s)", files[i].first.c_str(), m.rate, m.channels == 2 ? "stereo" : "mono",
                         static_cast<double>(m.samples) / m.rate, files[i].second.c_str(), m.how.c_str()));
         }
-        music_json = "[" + names[0] + (names.size() > 1 ? ", " + names[1] : std::string()) + "]";
+        json = "[" + names[0] + (names.size() > 1 ? ", " + names[1] : std::string()) + "]";
+        return true;
+    };
+    std::string music_json;
+    if (lt.music_none) {
+        music_json = "\"none\"";
+        log.say("music: none");
+    } else if (lt.music_level >= 0) {
+        music_json = std::to_string(lt.music_level);
+        log.say(fmt("music: level %d's", lt.music_level));
+    } else if (!lt.music_loop.empty()) {
+        if (!music_files(lt.music_loop, lt.music_intro, "music", music_json)) return false;
     }
+    std::string tracks_json;  // (music_track lines: build.json's "music_tracks", only when there are some)
+    for (size_t k = 0; k < lt.tracks.size(); ++k) {
+        std::string a;
+        log.say(fmt("music_track \"%s\":", lt.tracks[k].name.c_str()));
+        if (!music_files(lt.tracks[k].loop, lt.tracks[k].intro, fmt("track%zu", k), a)) return false;
+        tracks_json += (tracks_json.empty() ? ",\n  \"music_tracks\": [" : ", ") + fmt("{\"name\": \"%s\", \"files\": %s}", lt.tracks[k].name.c_str(), a.c_str());
+    }
+    if (!tracks_json.empty()) tracks_json += "]";
     if (!hm.classes.empty() && !mrpw::write_host_meshes((out_dir / "host_meshes.mrpc").string(), hm, err)) return fail(err);
     if (!bank_sounds.empty() && !write_file(out_dir / "sounds.bnk", sound_bank(bank_sounds))) return fail("cannot write into " + out_dir.generic_string());
     if (!compose_imports(lt, m.level_base, out_dir, log, err)) return fail(err);
@@ -4023,7 +4057,7 @@ bool compose_level_mod(const std::string& folder, bool force) {
     if (!pools_json.empty()) pools_json += "]";
     std::ofstream bj(out_dir / "build.json");
     bj << "{\n  \"composer\": " << kLevelComposerVersion << ",\n  \"format\": " << m.level_format << ",\n  \"id\": \"" << m.level_id << "\",\n  \"base\": " << m.level_base
-       << (music_json.empty() ? std::string() : ",\n  \"music\": " + music_json)
+       << (music_json.empty() ? std::string() : ",\n  \"music\": " + music_json) << tracks_json
        << (lt.sky_level >= 0 && lt.sky_level != m.level_base ? fmt(",\n  \"sky\": %d", lt.sky_level) : std::string()) << ",\n  \"objects\": " << placed_objects << pools_json << ",\n  \"inputs\": \"" << stamp_hex(mods_level_inputs_stamp(m.dir)) << "\"\n}\n";
     if (!bj) return fail("cannot write build.json");
     std::cout << "[compose] " << folder << ": built into " << out_dir.generic_string() << "\n";
