@@ -142,6 +142,11 @@ SECTIONS = [("prova", {"sky": 15, "background": (34, 44, 92), "fog": (34, 44, 92
             #   start, and with them it was full (Umbris's objects not all placed, the vendor crashed)
             ("rilgar", {"world": "rilgar", "hero": "rilgar board", "objects": "1140",
                         "entries": [("arrivo", (275.49, 334.35, 73.61), -2.04)], "death_height": 30.0}),
+            # - Kalebo III (Assalto Finale's): its own long rail, from its station by the arena's (Ratchet comes in just over it)
+            #   to its leap, its rail mines the plugin's; Kalebo III is the session's base: none of its objects (main's spawn
+            #   pools serve the mines)
+            #   (not yet: the composer refuses the base level's own world as a section; asked)
+            # ("kalebo", {"world": "kalebo", "entries": [("arrivo", (111.6, 264.04, 134.6), 3.1416)], "death_height": 90.0}),
             # - Umbris: the Snagglebeast's cave, its boss (the challenge won when it is beaten). Its objects by class (all of
             #   them would place code-alone triggers too), 460 its lava's sea (code alone, no model); not 529, the parked ship
             ("umbris", {"world": "umbris", "objects": "187 341 447 460 500 501 505 511 605 805 886 902 968 1059 1063 1069 1106 "
