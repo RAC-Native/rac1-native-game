@@ -919,6 +919,10 @@ typedef struct rac1_ray_hit {       /* (ABI 2) collide_ray */
 |---|---|
 | Base level objects (`spawn` lines) | as the base level places objects: the placed ones and the pools' together at most as many as it places |
 | Level objects at once | 256, and the game's moby pool (the base level's: the objects share it with the game's own mobys) |
+| Mobys alive at once (any level) | the moby array: in a session the composer's `room for N spawned objects` (478 on Kalebo III's base) plus the level's placed objects; the game's shots, bolts, sparks and the plugin's enemies all share it. A spawn past it returns 0 and the log says `[mobys] the moby array is full (N slots): spawn of class C refused` (the first and every 256th). Measured on the arena's mix (Kalebo III's robots with Gemlik's, Gaspar's, Pokitaru's and Drek's fleet's classes imported): about 300 enemies alive at once with the game's other mobys, 70 refused spawns a second above that, no corruption |
+| Mobys drawn in a frame | the frame's packet buffer (two of 1.4 to 1.7 MB, the base level's size: 0x170000 on Kalebo III's): about 100 enemy-sized mobys (about 12 KB of packets each). The moby draw loop stops at its limit, so the last mobys in the list are not drawn (they stay alive and fight); the log says `[render] the frame's packet buffer is full`. The drop shadows (a shadow less) and the particles (a particle less) stop before the buffer's end: the original wrote past it (a crash with 110 enemies at once) |
+| Imported classes | 224 in the class table (the base level's and the session's); `the class table is full (224)` when an import finds none |
+| Paths of imported enemies' profiles | the path registry of their level (a Blarg trooper's 4 each): `no room for its paths in level N's registry: its defaults not written` when it is full; the object still spawns |
 | Classes a level | as many as the host meshes allow; 64 behaviours (`class_define`) a plugin |
 | A class's model | as `meshes.obj`'s meshes: 16 materials, 64 vertex colours, textures to 256 x 256 |
 | Sounds a level | 64; 26 playing at once in all (the game's slots, its own sounds included) |
