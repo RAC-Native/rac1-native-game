@@ -75,6 +75,9 @@ LEVEL = {
     "entries": [("ritorno", (0.0, -20.0, 0.5), 1.5708), ("rientro", (-16.0, 66.0, 20.6), -1.1903)],  # (rientro: rail_ritorno's start)
     "sky": 0,               # Veldin's sky (Quartu's, 15, crashed on Veldin's code: sky_hand::spheres)
     "music": ("overworld.ogg", os.path.join(GAME, "examples/custom-level/music/overworld.ogg")),
+    # the mod's other tracks (level.txt's music_track lines: the plugin's music_track, ABI 19): the challenges' music
+    "music_tracks": [("fight", "arena_fight.ogg", os.path.join(os.path.dirname(os.path.realpath(globals().get("__file__") or bpy.data.filepath)),
+                                                                "music", "arena_fight.ogg"))],
     "background": (120, 80, 58),  # a warm haze: the lava, Veldin's low sun
     "fog": (120, 80, 58),
     # room for the base level's objects the plugin starts (base_spawn): 24 robots, 8 bomb bots, 6 Gadgetron robots,
@@ -1086,6 +1089,11 @@ def export(out=None, install=False):
         err("no music file %s" % music_src)
     else:
         shutil.copy(music_src, os.path.join(level, music))
+    for _name, track, src in LEVEL.get("music_tracks", []):
+        if not os.path.exists(src):
+            err("no music file %s" % src)
+        else:
+            shutil.copy(src, os.path.join(level, track))
     if os.path.isdir(os.path.join(HERE, "plugin")):
         shutil.copytree(os.path.join(HERE, "plugin"), os.path.join(out, "plugin"))
 
@@ -1120,6 +1128,8 @@ def export(out=None, install=False):
     if LEVEL["sky"] is not None:
         L.append("sky %d" % LEVEL["sky"])
     L.append("music %s" % music)
+    for name, track, _src in LEVEL.get("music_tracks", []):
+        L.append("music_track %s %s" % (name, track))
     for key, f in pictures.items():
         L.append("%s %s" % (key, f))
     for key in ("background", "fog"):

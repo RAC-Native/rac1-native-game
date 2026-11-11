@@ -33,8 +33,10 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   seconds more each.
 - **"Zona calda"** (Hot Zone): an electrified ring wanders round the arena, faster as time goes; inside it the bar fills
   (outside it drains), the enemies standing in it are shocked; the bar full within 3 minutes wins.
-- (Written, not in the menu: **"Clank Gigante"**, Ratchet as Quartu's Giant Clank crushing a swarm in the arena; on the
-  arena's own geometry the plugin's Giant Clank does not work yet.)
+- **"Clank Gigante"** (Giant Clank): Ratchet becomes Quartu's Giant Clank in the arena (`hero_mode`, his energy full with
+  ABI 18's `hero_energy`; his missiles and energy bomb the game's) and crushes a swarm under his feet and his fists (the
+  plugin's hits), 100 within 2 minutes; the enemies' hits drain his energy. He steps over the arena's wall into the lava lake
+  as a giant does: himself again in the arena at the end.
 - **Grind rails**, for players who have the Grind Boots (Grindscarponi), from a station outside the north-west wall:
   - "Grindscarponi: Discesa": a course of three lanes along the north wall (a side jump changes lane), our mines to
     jump, Kalebo III's own rail mines (class 933, started on the lanes by the plugin, on their own code: broken by the
@@ -154,4 +156,6 @@ A `RAC1_SIM_INPUT=seq:` script's frames are the run's, about 1472 more than the 
 ## Music
 
 The level plays "Overworld" by Daino Selvatico (the example level's, `../custom-level/music/overworld.ogg`), licensed
-under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The challenges are to play "Arena Fight" by Daino Selvatico
+(`music/arena_fight.ogg`), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) too (unlike the rest of
+this repository, MIT), once the game can play a level mod's second track across its sections.
