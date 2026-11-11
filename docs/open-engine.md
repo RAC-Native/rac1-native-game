@@ -1510,10 +1510,32 @@ still did not come back (its death had written the checkpoint's copy `0x1bb684`,
 | `fresh` section after a kill | `0 placed objects gone`; loaded: 118, the boss there |
 | own section, crates broken: no reset / reset / `fresh` | `3 placed objects gone` and loaded without crates / `0` and 3 crates / `0` and 3 crates (a save's card bits cleared at the entry) |
 
-Limits found on the way: a world's level state is per **world level**, so two sections of the same planet (`cave` and `cave_f` of
-Umbris) share it, and two of them at once crashed the game once the first one's boss was beaten and the section left (not
-investigated: use one section per planet); and a load made while a session is running (the pause menu's, in the same
-process) crashed entering a world section afterwards, in `unfreeze` (`moby_update_transform` of a class with no block of
-its own, a code-alone class, from a slot left dirty by the first arrival: `+0x71`), idle save or not: it needs its own fix, it is not
-this feature's (the tests above load in a second run, as a player who starts the game and loads).
+Limits found on the way, both since looked into (the branch `fix/session-load-crashes`):
 
+- **A load made while a session is running** (the pause menu's Load, in the same process) crashed entering a world section
+  afterwards, in `unfreeze` -> `moby_update_transform`, idle save or not. The cause is not a dirty slot: `unfreeze` (and the
+  main section's `session_rt_main_enter` and the soft reset's restore) transformed every object put back in play, including
+  one of a class with **no block of its own** (`+0x24` 0: a class of code alone, such as Umbris's 258 and 1142), which no
+  placement ever transforms (`section_spawn_placements` and `session.cpp` guard it). The transform of such a moby reads the
+  class's animation table at EE address `0 + 0x48 + 4 * the animation` (the animation index is 0, the cached one `+0x71` 0xff),
+  low memory that held something harmless in the runs without a load, and a float after one went through the game's own
+  level exit (`0x3f9699a0`, read as an address: out of range). So a first arrival never failed. Fixed:
+  `moby_update_transform_placed` (session.cpp) skips a moby with no class block, used in `unfreeze`, `session_rt_main_enter` and
+  the respawn's restore. Tested with `RAC1_SESSION_SAVE_AT` / `RAC1_SESSION_LOAD_AT` and a `RAC1_SIM_INPUT=seq:` pressing Cross at
+  the planet prompt the load lands in (the Load page's end: `level_exit_to`), in the same process: arrival in the cave, back to
+  main, save, load, the cave again (the crash before the fix, the cave and its boss working after it, a death and its soft reset
+  included), and the same with the save made inside the cave.
+- **Two sections of the same planet** (`cave` and `cave2`, both `world umbris`) are **refused by the composer**: `level.txt:N:
+  section cave2: level 7's world is already section cave's ...`. A world's level state is per world level, one copy in the game:
+  its moby group lists (the engine's group table of the level, `world_groups`), its cameras' links (`world_camera_links`), the
+  rails and the host meshes drawn in it, the rows of its records. The second section's streaming and its objects' groups
+  overwrite the first's in that table, and the first one's leaving empties them (`groups_clear` zeroes the entries of its
+  `groups`, whoever owns them now), so the objects of the section in play read a group list that is gone. Measured on the arena
+  mod's Umbris (two `world umbris` sections, a boss beaten in each): after the first boss's death the other section's frozen
+  objects were in play in main (`+0x34` bit 2 cleared) and, in the second section, its objects' groups (2, 3, 25, 66, 77, 81..83)
+  had lists of 0; `moby_visible_queue` walks a marked group's list of ids from the table, here from address 0, so garbage ids reached the
+  look list (`0x1aba00`) and `hero_look_at_update` read a moby that is not one (`std::out_of_range`, 0xba96c291), 15 frames after
+  the second boss was beaten. Supporting it means a table per section (the groups and the camera links put at each entry and taken
+  out at each leave, the rows and the host meshes by section, not by level): not done, one section per planet is refused with its
+  reason instead of crashing later; the several places of one planet are one section with several `entry` lines and a `box`
+  that holds them all.

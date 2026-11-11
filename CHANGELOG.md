@@ -5,6 +5,14 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: loading a save while a session runs no longer crashes entering a planet's world; two sections of the same planet are
+  refused.** A load from the pause menu inside a session (a level mod of the open engine) and then a visit to a section that is a
+  planet's world (Umbris's cave) crashed the game: the objects put back in play at the entry included one of a class with no model or
+  data of its own (a class of code alone), whose position update read a table at the bottom of memory, harmless until a load had left
+  something else there. Those objects are no longer updated that way, as at their placement. Separately, a mod with two sections of the same
+  planet's world (two `world umbris`) crashed when a boss was beaten in one: the planet's level state is one copy in the game, so
+  the composer now refuses such a `level.txt` with a message saying to use one section with several entries. Nothing changes for
+  the original or for a mod that does neither; the composer's version stays 9 (mods need no recompose).
 - **Level mods: a section put back as at its first entry** (the mod SDK's ABI 17; a challenge played again). The objects a
   section's visit killed stay killed, and a boss beaten stays beaten, for the whole visit of a session: a challenge that
   uses a planet's world (Batalia's mines, the Snagglebeast) found them gone the second time. `section_reset(name)` puts a
