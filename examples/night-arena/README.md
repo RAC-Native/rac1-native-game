@@ -16,7 +16,9 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   jetpack troopers and dropships; some with bombs from the sky, the vents burning faster and the three drop zones'
   circles electrified in turn (they hurt Ratchet and the enemies standing in them), a time limit, no hit allowed,
   the wrench only, a random weapon each wave, a new one every 20 seconds; two championships (15 and 50 rounds) mixing
-  those modes. The won ones, and their best times, are kept with the save; a win saves the game (into the player's slot,
+  those modes and more: other planets' enemies (Ospiti), Umbris's turrets (Torrette), Orxon's spore plants (Giardino), a
+  horde (Orda), a round of Zona calda's (the moving ring's bar to fill) and one of Autoscontro's (so many to ram on the
+  hoverboard). The won ones, and their best times, are kept with the save; a win saves the game (into the player's slot,
   as leaving a planet does) once Ratchet is back in the arena.
 - **"Assalto Finale"** (Final Assault), one of the hardest: ten rounds of Kalebo III's enemies with other planets' (Gemlik's
   flying robots, Gaspar's walking robots, Pokitaru's amoeboids, Drek's fleet's Blarg troopers; Umbris's turrets on the
