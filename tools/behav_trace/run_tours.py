@@ -101,10 +101,10 @@ def build_tours() -> List[Tour]:
         #   - Group D: Gemlik (13), Oltanis (14), Quartu (15), Kalebo III (16)
         Tour(
             name="05_planets_13_16",
-            frames=3000,
+            frames=4200,
             env={
                 "RAC1_NO_MOVIES": "1",
-                "RAC1_GOTO": "13@80,14@800,15@1520,16@2240",
+                "RAC1_GOTO": "13@60,14@1200,15@2200,16@3200",
                 "RAC1_SIM_INPUT": PLAY_SEQ_MULTI,
             },
         ),
@@ -140,6 +140,7 @@ def build_tours() -> List[Tour]:
                 "RAC1_NO_MOVIES": "1",
                 "RAC1_MODS": "1",
                 "RAC1_MOD_CODE": "1",
+                "RAC1_SECTION_SYNC": "1",
                 "RAC1_GOTO": "night-arena@60",
                 "RAC1_MOD_TEST": "arena_rail",
             },
