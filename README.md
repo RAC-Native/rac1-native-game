@@ -28,6 +28,13 @@ a native renderer (Vulkan or OpenGL; Metal on macOS) from the game's own decisio
 makes widescreen, high resolutions, full-detail textures and longer draw distances possible without
 changing how the game behaves.
 
+> **Mods.** The port supports mods: texture and sound swaps, new levels, and native plugins with their own code
+> through the [mod SDK](docs/sdk.md). [Daino's Arena](examples/night-arena/README.md) is a complete example: an arena in
+> a lava lake with challenge waves, grind rails and trips into other planets' worlds; [the example level](examples/custom-level/README.md)
+> is a small one. **Heads-up:** version 1.0 will make the game fully native
+> ([#145](https://github.com/RAC-Native/rac1-native-game/issues/145)) and the SDK will change with it: mods made before
+> 1.0 will very likely break and need updating. See [Mods](docs/mods.md).
+
 <!-- Screenshot: to be added. -->
 
 ## How it works

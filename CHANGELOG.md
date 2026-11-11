@@ -5,9 +5,9 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
-- **SDK docs: the plan for mods that read the game's memory.** 1.0 (fully native, #145) replaces `api->ram` and the
-  moby offsets with a typed API; offset-based mods keep working through a compatibility layer for at least one release
-  after it arrives. See [the SDK](docs/sdk.md#the-games-memory).
+- **Mods and 1.0, said up front (README, SDK docs).** The port supports mods, with Daino's Arena as the complete
+  example; 1.0 (fully native, #145) replaces `api->ram` and the moby offsets with a typed API, and mods made before it
+  will very likely break and need updating. See [the SDK](docs/sdk.md#the-games-memory).
 - **Level mods: loading a save while a session runs no longer crashes entering a planet's world; two sections of the same planet are
   refused.** A load from the pause menu inside a session (a level mod of the open engine) and then a visit to a section that is a
   planet's world (Umbris's cave) crashed the game: the objects put back in play at the entry included one of a class with no model or
