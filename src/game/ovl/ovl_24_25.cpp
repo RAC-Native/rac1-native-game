@@ -1,6 +1,7 @@
 // Ported overlay code 0x00240000..0x0025ffff.
 #include <game/enhance/sections.h>
 #include <game/enhance/session.h>
+#include <game/enhance/session_runtime.h>
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl_common.h>
@@ -1194,7 +1195,10 @@ uint32_t moby_spawn(uint32_t cls) {
         mem_fill32(pv, 0, 0x80);
         const uint32_t c = lwu(OV(0x0015ffbc));
         if (c != 0) sw(OV(0x0015ffbc), c - 1u);
-        if (__builtin_expect(g_spawn_watch, 0)) sections_moby_spawned(m, g_spawn_updating);  // (a session's sections: whose objects spawned it)
+        if (__builtin_expect(g_spawn_watch, 0)) {
+            sections_moby_spawned(m, g_spawn_updating);  // (a session's sections: whose objects spawned it)
+            session_rt_moby_spawned(m, g_spawn_updating);  // (a session's soft reset: the hero's spawns)
+        }
         return m;
     }
     debug_printf_stub();  // "out of mobys" with *(0x15f5cc)

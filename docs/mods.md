@@ -686,7 +686,8 @@ built and flown to as any level mod, and then:
 - **It is loaded once**, at the arrival: until you leave it (the ship, a save of another level loaded) nothing loads it
   again.
 - **A death is a soft reset**: Ratchet is back at the current checkpoint with his health full and the camera behind him; his
-  weapons, ammo, bolts and items stay, and so do the plugin's state and the objects it started (its `respawn` callback
+  weapons, ammo, bolts and items stay (what they had spawned does not: the Glove of Doom's agents, mines, drones, decoys and
+  projectiles are taken out, as a level's start would), and so do the plugin's state and the objects it started (its `respawn` callback
   decides what comes back: [The mod SDK](sdk.md#sessions-abi-9)). The level's placed objects (`moby` lines) killed since
   the arrival come back as placed (`respawn reset`, the default), except what the level's records keep (a crate broken
   stays broken); `respawn keep` leaves them as they are. On formats 1 and 2 a death loads the level again, as before.

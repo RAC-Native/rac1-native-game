@@ -44,7 +44,9 @@ Contents:
 | 14 | the first with the HUD's width | the HUD's width: `hud_width`; `RAC1_HUD_HEIGHT` ([The HUD's area](#the-huds-area)) |
 | 15 | the first with saving | saving from a plugin: `game_save`, `game_saving` ([Saving](#saving-abi-15)) |
 | 16 | the first with the free hoverboard | the hoverboard outside a race: `board_rule`, `board_return`, `board_fall`, `board_touching`, `RAC1_BOARD_*` ([The hoverboard outside a race](#the-hoverboard-outside-a-race-abi-16)) |
-| 17 | this one | a section put back as at its first entry: `section_reset`; level.txt's `fresh` ([Putting a section back](#putting-a-section-back-abi-17)) |
+| 17 | the first with fresh sections | a section put back as at its first entry: `section_reset`; level.txt's `fresh` ([Putting a section back](#putting-a-section-back-abi-17)) |
+| 18 | (not in this build) | taken by another change |
+| 19 | this one | Giant Clank's energy: `hero_energy`, `RAC1_GIANT_ENERGY_MAX` ([Hero modes](#hero-modes-abi-12)) |
 
 How compatibility works:
 
@@ -162,7 +164,7 @@ Fill them in `rac1_mod_main`; all are optional (NULL: none). Each gets your `mod
 | `test(user, text, frame)` | 1 | `RAC1_MOD_TEST=<text>` given, once a frame of play | for scripted tests |
 | `shutdown(user)` | 1 | the game ends | |
 | `trigger(user, index, name, inside)` | 2 | Ratchet entered (`inside` 1) or left (0) one of level.txt's triggers | before `frame`; once per change |
-| `respawn(user, r)` | 9 | a session's soft reset: Ratchet died and is back at the checkpoint (no level load) | `rac1_respawn`: `count` (the session's respawns, this one included), `checkpoint` (its name), `pos`, `yaw`. Every plugin gets it (test your `level_start`'s `mine`). Bring back what the battle needs (its enemies); the level's placed objects are the respawn policy's |
+| `respawn(user, r)` | 9 | a session's soft reset: Ratchet died and is back at the checkpoint (no level load) | `rac1_respawn`: `count` (the session's respawns, this one included), `checkpoint` (its name), `pos`, `yaw`. Every plugin gets it (test your `level_start`'s `mine`). Bring back what the battle needs (its enemies); the level's placed objects are the respawn policy's. What Ratchet's own code spawned (his weapons' hand, agents, mines, drones, decoys, projectiles, his equipment) is already taken out by the reset, as a level's start would: do not remove them |
 | `session_save(user, buf, cap)` | 9 | a save is written in a session | your bytes of the session's state (at most `cap`, 16 KB), their count; kept in the session's item of `save<N>.pc`, apart from `save`'s |
 | `session_load(user, data, size)` | 9 | a save made in a session was loaded, back in it | after `level_start`; the game does not save the objects' places: a battle running at the save is not resumed |
 | `section_leave(user, name)`, `section_enter(user, name, entry)` | 10 | a section switch | [Sections](#sections-abi-10) |
@@ -512,6 +514,7 @@ with the game's own code for each. A section's level.txt `hero` line does the sa
 | `int32_t hero_build_now(void)` | the level whose hero code runs Ratchet, -1 the session's own |
 | `int hero_mode(int32_t mode, uint32_t obj)` | Ratchet becomes `mode` riding the object `obj` (an object of that mode's class: `import_spawn`'s): `RAC1_HERO_CLANK` (Orxon's Clank, `"10:87"`), `RAC1_HERO_GIANT_CLANK` (Quartu's Giant Clank, `"15:419"`: with `hero_build(15)` for his camera), `RAC1_HERO_BOARD` (a hoverboard, `"16:439"`, with `hero_build(16)`); `RAC1_HERO_NONE` (`obj` 0): back to Ratchet where the object is (Clank's health given back as the game does). 1 done, 0 not (dying, already in a mode: leave it first, no such object, no board code) |
 | `int32_t hero_mode_now(void)` | `RAC1_HERO_NONE`, `_CLANK`, `_GIANT_CLANK` or `_BOARD` |
+| `int32_t hero_energy(int32_t set)` (ABI 19) | Giant Clank's energy bar, 0 to `RAC1_GIANT_ENERGY_MAX` (200), the one on Quartu's HUD: `set` >= 0 sets it first (`hero_energy(RAC1_GIANT_ENERGY_MAX)` refills it), -1 reads it. Returns the energy now, -1 when Ratchet is not Giant Clank. `hero_mode` starts him with the most; the enemies' hits take from it, and at 0 he falls (state 0x62): Ratchet is dead and the session's soft reset follows |
 
 The classes must be in the level: an `import` line (`import 10:87`), or a section's `hero ... clank` line imports them. As
 Clank or Giant Clank the hero's moby (`PLAYER + 0x2080`) is the mode's object; `hero()` stays Ratchet's. A death in a mode
