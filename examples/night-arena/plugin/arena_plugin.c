@@ -1243,7 +1243,22 @@ static int session(void) {
     return RAC1_API_HAS(api, session_on) && api->session_on();
 }
 
+/* the challenges' music ("Arena Fight": level.txt's music_track fight, ABI 19): on through the worlds' sections and the soft
+   resets; the level's own again once the challenge is over and Ratchet back in the arena */
+static int music_back;
+
+static void fight_music(int on) {
+    if (api->abi < 19) return;
+    if (on) {
+        api->music_track("fight", 60);
+        music_back = 0;
+    } else {
+        music_back = 1;  /* (frame: once in main) */
+    }
+}
+
 static void challenge_start(int ch) {
+    fight_music(1);
     s.ch = ch;
     s.wave = 0;
     s.clock = 0;
@@ -1294,6 +1309,7 @@ static void save_update(void) {
 }
 
 static void challenge_end(int won, const char* why) {
+    fight_music(0);
     enemies_clear();
     guests_sync(NULL);  /* (other planets' classes released) */
     bombs_clear();
@@ -3389,6 +3405,10 @@ static void frame(void* user) {
     zap_update(h);
     save_update();
     home_update();
+    if (music_back && in_main() && home_ride != 1 && api->abi >= 19) {  /* (the arena's own music: back in it, not before) */
+        api->music_track(NULL, 60);
+        music_back = 0;
+    }
     ++s.t;
     switch (s.mode) {
     case FREE:
