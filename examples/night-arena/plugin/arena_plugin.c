@@ -98,7 +98,8 @@ static const struct kind_def {
     {'W', 193, -1, 0, 0.0f, "gaspar.walking_robot"},   /* Gaspar's walking robot */
     {'A', 572, -1, 0, 0.0f, "pokitaru.amoeboid"},      /* Pokitaru's amoeboid */
     {'K', 1382, -1, 0, 0.0f, "fleet.blarg_trooper"},   /* Drek's fleet's Blarg trooper */
-    {'T', 1041, -1, 3, 0.0f, "umbris.turret"},         /* Umbris's turret: on a tower's top or a pillar */
+    {'T', 1041, -1, 4, 0.0f, "umbris.turret"},         /* Umbris's turret: on a tower's top or a pillar (a hazard: it can be
+                                                          destroyed, but the round does not wait for it) */
     {'P', 939, -1, 4, 0.0f, "orxon.spore_plant"},      /* Orxon's spore plant: by a gate, by the hub (it cannot be killed) */
 };
 /* where the ones that stay are put (from the arena's centre; z over its floor): the towers' tops and the pillars' (the
@@ -1395,8 +1396,8 @@ static void ship_arrive(int k, const float h[3]) {
 /* ---- other planets' enemies (import_spawn): their classes loaded for the waves that have them (the game keeps 224 classes
    at once: La grande fuga's worlds take most; import_load / import_release, about a millisecond each) ---- */
 static uint32_t guests_loaded;  /* the kinds whose class the plugin loaded (bits) */
-static uint32_t haz_m[8];       /* the hazards in play (the spore plants: not enemies), their spots */
-static int haz_spot[8], nhaz;
+static uint32_t haz_m[16];      /* the hazards in play (the spore plants, the turrets: not enemies), their kinds and spots */
+static int haz_kind[16], haz_spot[16], nhaz;
 static int32_t arena_path;      /* the whole arena's floor as a path (path_create): their areas */
 
 static int static_spot(int k) {
@@ -1417,7 +1418,16 @@ static void guests_sync(const char* mix) {
             if (KIND[k].import == NULL) continue;
             const int need = mix != NULL && strchr(mix, KIND[k].letter) != NULL, have = (guests_loaded >> k) & 1u;
             if (pass == 0 && have && !need) {
-                if (KIND[k].moves == 4) nhaz = 0;  /* (the hazards: import_release takes them out) */
+                if (KIND[k].moves == 4)  /* (its hazards: import_release takes them out) */
+                    for (int i = 0; i < nhaz;) {
+                        if (haz_kind[i] == k) {
+                            haz_m[i] = haz_m[--nhaz];
+                            haz_kind[i] = haz_kind[nhaz];
+                            haz_spot[i] = haz_spot[nhaz];
+                        } else {
+                            ++i;
+                        }
+                    }
                 for (int i = 0; i < s.nen;) {
                     if (s.en[i].kind == k) {
                         const uint32_t m = en_moby(&s.en[i]);
@@ -1521,21 +1531,41 @@ static void guest_spawn(int k) {
     ++s.spawned;
 }
 
-/* the hazards of the wave's mix (P: the spore plants, 2 and one more every second wave, by the gates and the hub), placed at
-   its start where none is; not enemies: not counted, they stay until their class is released */
+/* the hazards of the wave's mix, placed at its start where none is: the spore plants (P, by the gates and the hub) and the
+   turrets (T, on the towers' tops and the pillars), 2 of each and one more every second wave. Not enemies: not counted (the
+   plants cannot be killed; the turrets can, the round does not wait for them); they stay until their class is released */
 static void hazards_place(const char* mix) {
-    const int32_t c = KIND[K_SPORE].import ? api->import_class(KIND[K_SPORE].import) : -1;
-    if (mix == NULL || strchr(mix, KIND[K_SPORE].letter) == NULL || c < 0) return;
-    const int n = (int)(sizeof SPORE_SPOTS / sizeof SPORE_SPOTS[0]), want = 2 + s.wave / 2;
-    for (int i = 0; i < n && nhaz < want && nhaz < 8; ++i) {
-        int used = 0;
-        for (int j = 0; j < nhaz && !used; ++j) used = haz_spot[j] == i;
-        if (used) continue;
-        const float at[3] = {s.centre[0] + SPORE_SPOTS[i][0], s.centre[1] + SPORE_SPOTS[i][1], nav.floor_z + SPORE_SPOTS[i][2]};
-        const uint32_t m = api->import_spawn(c, at, atan2f(s.centre[1] - at[1], s.centre[0] - at[0]));
-        if (m == 0) continue;
-        haz_m[nhaz] = m;
-        haz_spot[nhaz++] = i;
+    for (int k = 0; k < N_KINDS; ++k) {
+        if (KIND[k].moves != 4 || KIND[k].import == NULL || mix == NULL || strchr(mix, KIND[k].letter) == NULL) continue;
+        const int32_t c = api->import_class(KIND[k].import);
+        if (c < 0) continue;
+        const float(*spots)[3] = k == K_TURRET ? TURRET_SPOTS : SPORE_SPOTS;
+        const int n = k == K_TURRET ? (int)(sizeof TURRET_SPOTS / sizeof TURRET_SPOTS[0]) : (int)(sizeof SPORE_SPOTS / sizeof SPORE_SPOTS[0]);
+        int have = 0;
+        for (int j = 0; j < nhaz; ++j)  /* (still in play: a turret destroyed leaves its spot free) */
+            if (haz_kind[j] == k && (int32_t)rac1_lh(api, haz_m[j] + 0xa6) == c && (int8_t)rac1_lb(api, haz_m[j] + 0x20) >= 0) ++have;
+        const int want = 2 + s.wave / 2;
+        for (int i = 0; i < n && have < want && nhaz < 16; ++i) {
+            int used = 0;
+            for (int j = 0; j < nhaz && !used; ++j)
+                used = haz_kind[j] == k && haz_spot[j] == i && (int32_t)rac1_lh(api, haz_m[j] + 0xa6) == c &&
+                       (int8_t)rac1_lb(api, haz_m[j] + 0x20) >= 0;
+            if (used) continue;
+            const float at[3] = {s.centre[0] + spots[i][0], s.centre[1] + spots[i][1], nav.floor_z + spots[i][2]};
+            const uint32_t m = api->import_spawn(c, at, atan2f(s.centre[1] - at[1], s.centre[0] - at[0]));
+            if (m == 0) continue;
+            for (int j = 0; j < nhaz; ++j)  /* (a spot's old entry, its turret gone: replaced) */
+                if (haz_kind[j] == k && haz_spot[j] == i) {
+                    haz_m[j] = haz_m[--nhaz];
+                    haz_kind[j] = haz_kind[nhaz];
+                    haz_spot[j] = haz_spot[nhaz];
+                    break;
+                }
+            haz_m[nhaz] = m;
+            haz_kind[nhaz] = k;
+            haz_spot[nhaz++] = i;
+            ++have;
+        }
     }
 }
 
@@ -3268,6 +3298,11 @@ static void respawn(void* user, const rac1_respawn* r) {
     s.placed = 3;
     s.have_last = 0;
     if (s.mode == INTRO || s.mode == FIGHT || s.mode == BREAK) challenge_end(0, "Ratchet e' caduto");
+    if (s.mode == RESULT && !in_main()) {  /* (dead in a world: back to the arena at once, not left in it to fall again; the world
+                                               put back at its next entry: fresh) */
+        api->section_enter("main", MAIN_ENTRY, 15);
+        api->log("dead in a world: back to the arena");
+    }
 }
 
 static void level_end(void* user) {
