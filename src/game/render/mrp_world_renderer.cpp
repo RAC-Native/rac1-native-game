@@ -5099,6 +5099,7 @@ void chained_compare_inputs() {
     d.dw_reset = g_input.dw_reset;
     d.walker = 1;
     d.chained.want = true;
+    d.chained.scan = g_input.chained.scan;
     g_input.chained.want = false;
 }
 struct SceneWorker {
@@ -5326,6 +5327,7 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
     }
     g_input.direct = direct_world_on();  // (RAC1_PERF_DIRECT_WORLD: the world's ranges scanned, not walked, when the host makes them)
     g_input.chained.want = chained_world_mode() == 1;  // (RAC1_PERF_WORLD_CHAINED: the passes' own notes of their tie A / shrub A draws)
+    g_input.chained.scan = !kicks;  // (RAC1_PERF_WORLD_SCAN: its world ranges scanned in place, not copied and walked)
     g_input.dw_reset = g_level.reset_walker;
     g_input.walker = 0;
     if (scene_threaded()) {  // (the capture on the worker too: the host must call mrp_world_wait_captured before the game's state changes)
@@ -6313,6 +6315,11 @@ void mrp_world_report() {
                     chained_world_mode(), static_cast<unsigned long long>(c.scenes), static_cast<unsigned long long>(c.tfrags), static_cast<unsigned long long>(c.ties),
                     static_cast<unsigned long long>(c.shrubs), static_cast<unsigned long long>(c.walked[0]), static_cast<unsigned long long>(c.walked[1]),
                     static_cast<unsigned long long>(c.walked[2]), static_cast<unsigned long long>(c.again));
+        if (c.scanned != 0 || c.scan_failed != 0)
+            std::printf("[perf] chained world scan (RAC1_PERF_WORLD_SCAN): %llu scenes made from a scan of the world's ranges, %llu scans stopped (the ranges copied "
+                        "and walked), %llu scenes lost; %.3f ms a scan\n",
+                        static_cast<unsigned long long>(c.scanned), static_cast<unsigned long long>(c.scan_failed), static_cast<unsigned long long>(c.lost),
+                        c.scanned != 0 ? c.scan_ms / static_cast<double>(c.scanned) : 0.0);
         if (chained_world_mode() == 2) {
             std::printf("[perf] chained world check: %llu packets, %llu register writes compared\n", static_cast<unsigned long long>(c.packets), static_cast<unsigned long long>(c.regs));
             c.check.report("chained world", "frames");

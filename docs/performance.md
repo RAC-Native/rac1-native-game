@@ -426,6 +426,52 @@ sources, each behind a `RAC1_PERF_*` switch whose `=2` runs both ways and compar
   does there: the capture's copy of the ranges (0.14 to 0.36 ms: most of what it copies is no longer read), the reading of
   their tags and codes, the clipping programs' draws, and the frame's triangles.
 
+  **The capture's scan** (`RAC1_PERF_WORLD_SCAN`; November 2026). The capture copied the world's ranges for the walk - the
+  tags and the data they name, 1.4 MB a frame on Kerwan in 12,000 pieces - and the walk read them a second time, though the
+  draws now come from the notes. The capture reads those ranges in place instead, once, as the direct world's scan does when
+  the host makes the world (`scan_world`): the VIF's state and the double buffer followed code by code, the passes' constants
+  unpacked and their constants' starts run on a private VU1 kept for the scan, the register writes and the DIRECT vertices
+  (the far variants) noted in order. Each draw start of a pass's first program is counted against the pass's notes - a tfrag's
+  kind, entry and GPU plan checked too - and noted as an event, with the VU1 state its packet reads when that changed (the
+  tfrags' view and constants, tie A's alpha-test state packet, the shrubs' fog); what a draw leaves for the next is put on the
+  scan's VU1 as the walk put it on its own (tie A's alpha-test state and block queue, shrub A's block toggle). The build then
+  makes the scene from the events, each draw from its note exactly as the chained walk made it, and never reads that part of
+  the chain. The rest of a tie or shrub range - from the MPG after its first program to its end: the clipping program's part
+  - is still copied and walked, on a copy of the scan's VU1 as it was there. Kerwan's capture copies 0.19 MB a frame in 500
+  pieces.
+  Not on the six levels with a `kTwiceBase` packet (their shrubs read what the walk's unpacks leave in VU1 memory: walked as
+  before), nor in a frame where a world pass ran a shadow chain or a check takes the walk's own kicks; and a scan that stops -
+  a draw start that is not the notes', a part to walk that does not begin at a tag's first code - leaves the frame to the
+  copy and the walk (never in the runs below).
+  Proved with `RAC1_PERF_WORLD_CHAINED=2`, whose second scene is then the scan's, against the walk's: 0 differing frames of
+  37,954 over the 19 levels (25,968 scenes made from a scan on the 13 levels that have one, none stopped), and 0 of 18,976
+  with `RAC1_PERF_WORLD_SCAN=3`, which leaves every third frame to the walk (the change-over between the scan's VU1 and the
+  walker's, both ways); 0 differing on the five-level route, with the modern shadows on (the tfrag shadow draws, made where
+  the tfrag range ends) on Kerwan and Orxon, and without the pipeline or the game thread; and where the scan stands aside -
+  the hand-written culls checked or off, the CPU tfrags, the tfrag verification, 16:9 (the direct world's scan) - the scenes
+  are made as before, 0 differing. The pictures at frames 300, 600 and 1500 of the
+  19 levels, OpenGL and Vulkan, are the walk's (114 of 114); the reference images and the route's RAMHASH are unchanged;
+  RAMHASH on the 19 levels is the same with the switch at 0 and at 1. The scene builder ran four levels, with the scan and
+  with `=3`, and the route under the address sanitizer without a report.
+  Measured as above (seven runs of each in turn, a quiet machine; the scan off -> on, the median of the runs' ratios):
+
+  | | Veldin | Kerwan | Gaspar | Hoven | Kalebo III |
+  |---|---|---|---|---|---|
+  | Frame period | 1.51 -> 1.51 | 2.30 -> 2.17 | 2.52 -> 2.29 | 1.77 -> 1.75 | 2.11 -> 2.06 |
+  | | -0.1 % | -5.4 % | -8.8 % | -0.6 % | -3.3 % |
+  | Main thread's wait for the scene | 0.60 -> 0.39 | 0.95 -> 0.61 | 0.95 -> 0.65 | 0.65 -> 0.40 | 0.74 -> 0.35 |
+  | Scene worker busy | 0.92 -> 0.72 | 1.49 -> 1.15 | 1.44 -> 1.11 | 1.06 -> 0.82 | 1.22 -> 0.82 |
+  | | -23 % | -27 % | -23 % | -24 % | -33 % |
+  | its walk | 0.47 -> 0.23 | 0.65 -> 0.30 | 0.69 -> 0.36 | 0.50 -> 0.25 | 0.51 -> 0.14 |
+  | its capture | 0.18 -> 0.20 | 0.34 -> 0.35 | 0.30 -> 0.29 | 0.22 -> 0.23 | 0.28 -> 0.27 |
+
+  The worker's time is below the walk's in 7 of the 7 runs on every level; the period in 7 of 7 on Kerwan and Gaspar, 6 of 7
+  on Kalebo III, and within the runs' noise on Veldin and Hoven (Novalis, where nothing is scanned, measured the same way:
+  2.21 -> 2.26, +2.3 %): there the frame no longer waits for the scene but for the game thread (1.1 ms of Veldin's 1.5), so
+  a shorter scene does not shorten it. The capture's own time does not fall: reading the ranges' 8,000 tags and 40,000 VIF
+  codes a frame on Kerwan costs what copying them did (0.3 ms); what is gained is the walk's second reading. Left in the scene
+  worker at 4:3 Original: that reading, the clipping programs' draws, the packets made from the notes, the frame's triangles.
+
 Measured as the analysis was (headless, OpenGL, `RAC1_PIPELINE=1 RAC1_GAME_THREAD=0`, forward input, 1500 frames, the medians
 of frames 600-1450; Graphics Original, LOD Original but where said, HUD 4:3; 1920 x 1080 at 16:9, 5120 x 1440 Fill Screen widened).
 The before is the same build with `RAC1_PERF_UPLOAD_MEMO=0 RAC1_PERF_DIRECT_WORLD=0`, two interleaved runs each on a shared machine
@@ -823,6 +869,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_UPLOAD_MEMO=0` | every texture upload's piece written into the GS memory model, as before (`=2`: both, checked) |
 | `RAC1_PERF_DIRECT_WORLD=0` | the world passes' chain ranges copied and walked when the host makes the world (`=2`: both, compared; `=3`: the direct world at 4:3 Original too) |
 | `RAC1_PERF_WORLD_CHAINED=0` | at 4:3 Original the world passes' whole ranges unpacked and run on the scene worker's private VU1, the passes taking no notes (`=2`: both scenes, compared) |
+| `RAC1_PERF_WORLD_SCAN=0` | the chained world's ranges copied at the capture and read again by the walk (`=3`: every third frame so; compared with `RAC1_PERF_WORLD_CHAINED=2`) |
 | `RAC1_PERF_SKY_LATE=1` | the sky after the leading opaque tfrag batches (off by default: not exact) |
 | `RAC1_PERF_FPU_RAW=0` | the EE FPU helpers by the PS2 rules at every operation, through doubles (`=2`: those, compared with the raw forms) |
 | `RAC1_PERF_VU0_RAW=0` | the VU0 macro ops clamping every operand and result at every op, the pose's loops too (`=2`: those, the ops compared with the raw forms) |

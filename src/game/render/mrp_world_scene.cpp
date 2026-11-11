@@ -80,10 +80,8 @@ struct Walker {
     // level's class data does not move: a packet's content found once; checked against the memory's header at each use)
     std::array<uint32_t, 0x400> unpack_src{};
     std::unordered_map<uint64_t, WorldIndex::Hit> memo;
-    // (the chained world) the level's tie / shrub classes by their record's address (StaticLevel::gen's), and whether one of its
-    // shrub packets has colours that read the output buffers (kTwiceBase)
-    uint32_t cls_gen = 0;
-    std::unordered_map<uint32_t, uint32_t> tie_cls, shrub_cls;
+    // (the chained world's =2 comparison) the level it walked last has a shrub packet whose colours read VU1 memory past its
+    // block (kTwiceBase): ChainedWorld::twice
     bool twice = false;
 };
 Walker* g_walkers[2] = {};  // (1: the =2 comparison's direct build, RAC1_PERF_DIRECT_WORLD)
@@ -194,14 +192,12 @@ struct Build {
     // (a level whose shrubs read the tie pass's colour tables: the tie run and the last draw that used each table, 0x346 / 0x386)
     bool ch_tables = false;
     int64_t ch_run = -1, ch_table[2] = {-1, -1};
-    std::vector<const StaticPacket*> ch_tie, ch_shrub;
     int64_t ch_tex = -1;
     // (the tfrag range: its draws' entries from the pass's notes - the next, their end, each one's entry of the level's
     // (-1: none) -; `ch_tf_keep`: a level whose shrubs read VU1 memory the tfrags' unpacks leave, which are then walked; the
     // view last made from VU1 memory, and its 16 floats)
     bool ch_tf = false, ch_tf_keep = false;
     uint32_t ch_tf_at = 0, ch_tf_end = 0;
-    std::vector<int32_t> ch_tf_cls;
     bool ch_tf_view_ok = false;
     std::array<float, 16> ch_tf_floats{};
     std::array<double, 16> ch_tf_view{};
@@ -612,36 +608,25 @@ void draw_tie(Build& b, VUState& st, Program prog) {
 
 // ---- the chained world (mrp_world_scene.h, RAC1_PERF_WORLD_CHAINED) ------------------------------------------------------------
 
+// orig: (host) the run of the capture's notes for the pass `kind` (0 tfrag, 1 tie, 2 shrub) whose range starts at `first`, when the
+// capture decided its draws are made from the notes (chained_decide); else null: the range is walked as before
+const WorldChained::Run* chained_run(const Build& b, int kind, uint32_t first) {
+    const ChainedWorld& cw = b.in.chained;
+    if (!b.ch_on) return nullptr;
+    for (size_t r = 0; r < cw.notes.runs.size() && r < cw.run_chained.size(); ++r)
+        if (cw.notes.runs[r].kind == kind && cw.notes.runs[r].first == first) return cw.run_chained[r] != 0 ? &cw.notes.runs[r] : nullptr;
+    return nullptr;
+}
+
 // orig: (host) the walk enters the tfrag pass's range that starts at `first`: its draws' entries come from the pass's notes when
-// that run's stand, the GPU path draws the tfrags and every note names an entry of the level's; else the range is walked as
-// before. In a level whose shrubs read VU1 memory the tfrags' unpacks leave (chained_enter) the unpacks are walked all the same
-void chained_level(Build& b);
+// the capture decided so. In a level whose shrubs read VU1 memory the tfrags' unpacks leave (ChainedWorld::twice) the unpacks are
+// walked all the same
 void chained_tfrag_enter(Build& b, uint32_t first) {
     b.ch_tf = false;
-    static const bool selfcheck = std::getenv("RAC1_MRPW_TFRAG_SELFCHECK") != nullptr;
-    const ChainedWorld& cw = b.in.chained;
-    const TfragLevel* L = b.in.tfrag_level;
-    const StaticLevel* sl = b.in.stat_level;
-    if (!b.ch_on || L == nullptr || sl == nullptr || !sl->ok || b.tfrag_discard || b.in.tfrag_kicks || selfcheck) return;
-    const WorldChained::Run* run = nullptr;
-    for (const WorldChained::Run& r : cw.notes.runs)
-        if (r.kind == 0 && r.first == first) run = &r;
-    bool ok = run != nullptr && run->ok;
-    if (ok) {
-        if (b.ch_tf_cls.size() < cw.notes.tfrag.size()) b.ch_tf_cls.resize(cw.notes.tfrag.size(), -1);
-        for (uint32_t i = run->at; ok && i < run->at + run->n; ++i) {
-            const uint32_t k = (cw.notes.tfrag[i].entry - L->table) / 0x40;
-            ok = cw.notes.tfrag[i].entry >= L->table && k < L->by_ee.size() && L->by_ee[k] >= 0;
-            if (ok) b.ch_tf_cls[i] = L->by_ee[k];
-        }
-    }
-    if (!ok) {
-        ++g_cstats.walked[0];
-        return;
-    }
-    chained_level(b);
+    const WorldChained::Run* run = chained_run(b, 0, first);
+    if (run == nullptr) return;
     b.ch_tf = true;
-    b.ch_tf_keep = b.walker->twice;
+    b.ch_tf_keep = b.in.chained.twice;
     b.ch_used = true;
     b.ch_tf_at = run->at;
     b.ch_tf_end = run->at + run->n;
@@ -686,7 +671,7 @@ void draw_tfrag_chained(Build& b, VUState& st, Program prog, uint32_t start) {
         b.last_tfrag_view = static_cast<int>(b.f.views.size());
         b.f.views.push_back(b.ch_tf_view);
     }
-    if (!tfrag_gpu_draw(b, mem, base, prog, start, b.ch_tf_cls[i], lod)) {
+    if (!tfrag_gpu_draw(b, mem, base, prog, start, b.in.chained.tfrag_cls[i], lod)) {
         b.ch_bad = true;
         return;
     }
@@ -708,81 +693,23 @@ uint32_t chained_tex_base(Build& b) {
     return static_cast<uint32_t>(b.ch_tex);
 }
 
-// orig: (host) the walk enters the tie (kind 0) / shrub (1) pass's range that starts at `first`: its draws come from the pass's
-// notes when that run's stand and every one names a packet of the level's tables and colours of the resident table; else the
-// range is walked as before. In a level with a shrub packet whose colours read VU1 memory past its instance's block (kTwiceBase:
-// the CPU path draws it with what the private VU1 holds there - the shrub pass's earlier unpacks, the tie pass's colour tables)
-// the shrub pass is walked whole and the tie A part's colour tables are kept (chained_tables)
-void chained_level(Build& b) {
-    const StaticLevel* sl = b.in.stat_level;
-    Walker& W = *b.walker;
-    if (W.cls_gen == sl->gen) return;
-    W.cls_gen = sl->gen;
-    W.tie_cls.clear();
-    W.shrub_cls.clear();
-    W.twice = false;
-    for (size_t c = 0; c < sl->ties.size(); ++c) W.tie_cls.emplace(sl->ties[c].rec, static_cast<uint32_t>(c));
-    for (size_t c = 0; c < sl->shrubs.size(); ++c) {
-        W.shrub_cls.emplace(sl->shrubs[c].rec, static_cast<uint32_t>(c));
-        for (const StaticPacket& pk : sl->shrubs[c].packets)
-            for (const ShrubKickVertex& v : pk.shrub->verts) W.twice = W.twice || v.colour >= kTwiceBase;
-    }
-}
+// orig: (host) the walk enters the tie (kind 0) / shrub (1) pass's range that starts at `first`: its first program's draws come
+// from the pass's notes when the capture decided so (chained_decide); else the range is walked as before. In a level with a
+// shrub packet whose colours read VU1 memory past its instance's block (kTwiceBase: the CPU path draws it with what the private
+// VU1 holds there - the shrub pass's earlier unpacks, the tie pass's colour tables) the shrub pass is never chained and the tie A
+// part's colour tables are kept (chained_tables)
 void chained_enter(Build& b, int kind, uint32_t first) {
     b.chained[kind] = false;
     const ChainedWorld& cw = b.in.chained;
-    const StaticLevel* sl = b.in.stat_level;
-    const ResidentColours* rc = b.in.colours;
-    if (!b.ch_on || sl == nullptr || !sl->ok || rc == nullptr || b.discard[kind]) return;
-    const WorldChained::Run* run = nullptr;
-    for (const WorldChained::Run& r : cw.notes.runs)
-        if (r.kind == kind + 1 && r.first == first) run = &r;
-    bool ok = run != nullptr && run->ok;
-    Walker& W = *b.walker;
-    if (ok) chained_level(b);
-    ok = ok && !(kind == 1 && W.twice);
-    if (ok && kind == 0) {
-        if (b.ch_tie.size() < cw.notes.tie.size()) b.ch_tie.resize(cw.notes.tie.size(), nullptr);
-        uint32_t cls = 0;
-        const StaticTieClass* sc = nullptr;
-        for (uint32_t i = run->at; ok && i < run->at + run->n; ++i) {
-            const WorldChained::Tie& t = cw.notes.tie[i];
-            if (sc == nullptr || t.cls != cls) {
-                const auto it = W.tie_cls.find(t.cls);
-                sc = it != W.tie_cls.end() ? &sl->ties[it->second] : nullptr;
-                cls = t.cls;
-            }
-            ok = sc != nullptr && t.lod < 3 && t.packet < sc->lod[t.lod].size() && rc->tie_slot(t.colours) >= 0;
-            if (ok) b.ch_tie[i] = &sc->lod[t.lod][t.packet];
-        }
-    }
-    if (ok && kind == 1) {
-        if (b.ch_shrub.size() < cw.notes.shrub.size()) b.ch_shrub.resize(cw.notes.shrub.size(), nullptr);
-        uint32_t cls = 0;
-        const StaticShrubClass* sc = nullptr;
-        for (uint32_t i = run->at; ok && i < run->at + run->n; ++i) {
-            const WorldChained::Shrub& g = cw.notes.shrub[i];
-            if (sc == nullptr || g.cls != cls) {
-                const auto it = W.shrub_cls.find(g.cls);
-                sc = it != W.shrub_cls.end() ? &sl->shrubs[it->second] : nullptr;
-                cls = g.cls;
-            }
-            ok = sc != nullptr && g.packet < sc->packets.size();
-            if (!ok) break;
-            for (uint32_t k = 0; ok && k < g.n; ++k) ok = rc->shrub_slot(g.colours[k]) >= 0;
-            if (ok) b.ch_shrub[i] = &sc->packets[g.packet];
-        }
-    }
-    if (!ok) {
-        ++g_cstats.walked[kind + 1];
-        return;
-    }
+    b.walker->twice = b.ch_on && cw.twice;
+    const WorldChained::Run* run = chained_run(b, kind + 1, first);
+    if (run == nullptr) return;
     b.chained[kind] = true;
     b.ch_used = true;
     b.ch_at[kind] = run->at;
     b.ch_end[kind] = run->at + run->n;
     if (kind == 0) {
-        b.ch_tables = W.twice;
+        b.ch_tables = cw.twice;
         b.ch_run = run - cw.notes.runs.data();
         b.ch_table[0] = b.ch_table[1] = -1;
     }
@@ -830,7 +757,7 @@ void draw_tie_chained(Build& b, VUState& st) {
     }
     const ChainedWorld& cw = b.in.chained;
     const uint32_t i = b.ch_at[0]++;
-    const StaticPacket* pk = b.ch_tie[i];
+    const StaticPacket* pk = cw.tie_pk[i];
     const uint8_t* d = cw.tie_bytes.data() + 0x60 * static_cast<size_t>(i);
     uint8_t* mem = st.mem.data();
     const uint32_t state = r32(d + 0x50) & 0xffff;
@@ -876,7 +803,7 @@ void draw_shrub_chained(Build& b, VUState& st) {
     const ChainedWorld& cw = b.in.chained;
     const uint32_t i = b.ch_at[1]++;
     const WorldChained::Shrub& g = cw.notes.shrub[i];
-    const StaticPacket* pk = b.ch_shrub[i];
+    const StaticPacket* pk = cw.shrub_pk[i];
     const uint32_t tex = chained_tex_base(b);
     const int view = b.view(false);
     for (uint32_t k = 0; k < g.n; ++k) {
@@ -1167,6 +1094,16 @@ void static_check(Build& b) {
 
 // orig: (host) a tfrag draw for the GPU path (mrp_tfrag_gpu.h): the entry, its image / start, the view (VU1 base + 5..8)
 // and the pass's constants (0x290..0x29d) as VU1 memory holds them; false when the entry has no plan for it (the CPU reference then)
+// orig: (host) the GIF tags the tfrag plans assume (the renderer's replay), in the pass's constants: VU1 0x292 the strips' (PACKED,
+// PRE: PRIM, ST / RGBAQ / XYZF2), 0x294 the texture's (5 A+D)
+bool tfrag_tags_ok(const uint8_t* mem) {
+    const uint64_t s0 = static_cast<uint64_t>(w32(mem, 0x292, 0)) | static_cast<uint64_t>(w32(mem, 0x292, 1)) << 32, s1 = static_cast<uint64_t>(w32(mem, 0x292, 2));
+    const uint64_t t0 = static_cast<uint64_t>(w32(mem, 0x294, 0)) | static_cast<uint64_t>(w32(mem, 0x294, 1)) << 32, t1 = static_cast<uint64_t>(w32(mem, 0x294, 2));
+    const bool strip_ok = ((s0 >> 58) & 3) == 0 && ((s0 >> 46) & 1) == 1 && ((s0 >> 60) & 0xf) == 3 && (s1 & 0xfff) == 0x412;
+    const bool tex_ok = ((t0 >> 58) & 3) == 0 && ((t0 >> 46) & 1) == 0 && ((t0 >> 60) & 0xf) == 1 && (t1 & 0xf) == 0xe && (t0 & 0x7fff) == 5;
+    return strip_ok && tex_ok;
+}
+
 bool tfrag_gpu_draw(Build& b, const uint8_t* mem, uint32_t base, Program prog, uint32_t start, int cls, int lod) {
     if (b.in.tfrag_check && b.in.tfrag_host != nullptr) {  // (the check: the walker's draws recorded by the entry's EE index)
         const TfragLevel& L0 = *b.in.tfrag_level;
@@ -1187,13 +1124,7 @@ bool tfrag_gpu_draw(Build& b, const uint8_t* mem, uint32_t base, Program prog, u
     std::array<uint32_t, 4 * 14> consts;
     for (uint32_t c = 0; c < 14; ++c)
         for (int l = 0; l < 4; ++l) consts[4 * c + static_cast<uint32_t>(l)] = w32(mem, 0x290 + c, l);
-    {  // the GIF tags the plans assume (the renderer's replay): 0x292 the strips' (PACKED, PRE: PRIM, ST / RGBAQ / XYZF2), 0x294 the texture's (5 A+D)
-        const uint64_t s0 = static_cast<uint64_t>(consts[8]) | static_cast<uint64_t>(consts[9]) << 32, s1 = static_cast<uint64_t>(consts[10]);
-        const uint64_t t0 = static_cast<uint64_t>(consts[16]) | static_cast<uint64_t>(consts[17]) << 32, t1 = static_cast<uint64_t>(consts[18]);
-        const bool strip_ok = ((s0 >> 58) & 3) == 0 && ((s0 >> 46) & 1) == 1 && ((s0 >> 60) & 0xf) == 3 && (s1 & 0xfff) == 0x412;
-        const bool tex_ok = ((t0 >> 58) & 3) == 0 && ((t0 >> 46) & 1) == 0 && ((t0 >> 60) & 0xf) == 1 && (t1 & 0xf) == 0xe && (t0 & 0x7fff) == 5;
-        if (!strip_ok || !tex_ok) return false;
-    }
+    if (!tfrag_tags_ok(mem)) return false;
     if (T.views.empty() || T.views.back() != view) T.views.push_back(view);
     if (T.consts.empty() || T.consts.back() != consts) T.consts.push_back(consts);
     TfragDraw d;
@@ -1593,6 +1524,13 @@ struct SkyGif {
 
 // ---- the direct world (RAC1_PERF_DIRECT_WORLD, mrp_world_scene.h) ---------------------------------------------------------------
 
+}  // namespace
+// (the scan's private VU1 where a part the build walks begins: DirectWorld::sections)
+struct SectionVu {
+    vu1::Vu1 vu;
+};
+namespace {
+
 // The scan's private VU1 (its own: the walker's is the sky's and the set-up's; persistent as the walker's)
 struct ScanWalker {
     vu1::Vu1 vu;
@@ -1614,6 +1552,35 @@ bool direct_usable(const SceneInput& in) {
     return true;
 }
 
+// orig: (host) the chained world's scan can make this frame's scene (RAC1_PERF_WORLD_SCAN; 0: the ranges copied and walked): the
+// host makes none of the world's passes (the game's own 4:3 Original; else the direct world's scan), every world pass's range
+// has a run of notes the capture decided to chain, no pass ran a shadow chain, the build takes no kicks and no check wants the
+// walk's own draws, and the level has no shrub packet that reads VU1 memory past its block (its colours are what the walk's
+// unpacks left there: those levels are walked as before)
+bool chained_scan_usable(const SceneInput& in) {
+    static const int mode = perf::switch_value("RAC1_PERF_WORLD_SCAN", 1);
+    const ChainedWorld& c = in.chained;
+    if (mode == 0 || !c.want || !c.scan || c.twice || in.tfrag_level == nullptr) return false;
+    if ((in.stat != nullptr && (in.stat->on[0] || in.stat->on[1])) || in.stat_check) return false;  // (a pass the host makes: the direct world's)
+    if (in.tfrag_host != nullptr || in.tfrag_check || in.tfrag_kicks || in.tfrag_cpu != nullptr) return false;
+    if (mode == 3) {  // (testing: one frame in three walked - the change-over between the two)
+        static uint32_t n = 0;
+        if (++n % 3 == 0) return false;
+    }
+    for (const SceneShadow& s : in.shadows)
+        if (s.pass >= 0 && s.pass <= 2) return false;
+    bool any = false;
+    for (const PassRange& r : in.passes) {
+        if (r.pass < 0 || r.pass > 2) continue;
+        bool found = false;
+        for (size_t k = 0; k < c.notes.runs.size() && k < c.run_chained.size(); ++k)
+            found = found || (c.notes.runs[k].kind == r.pass && c.notes.runs[k].first == r.first && c.run_chained[k] != 0);
+        if (!found) return false;
+        any = true;
+    }
+    return any;
+}
+
 // the tfrag pass's qwords the host's tfrag draws read (the view at 5..8 of both buffers, the constants 0x290..0x29d): an UNPACK
 // writing any of `span` qwords from `d` reaches them
 bool tfrag_window(uint32_t d, uint32_t span) {
@@ -1625,19 +1592,24 @@ bool tfrag_window(uint32_t d, uint32_t span) {
 }
 
 // orig: (host) the VU1 state a pass's chain left, as the host's draws read it
-DirectState direct_state(const VUState& st) {
+DirectState direct_state(const vu1::Vu1& vu) {
+    const VUState& st = vu.st;
     DirectState s;
     for (uint32_t q = 0; q < 4; ++q) s.view[q] = q128(st.mem.data(), 5 + q);
     for (uint32_t q = 0; q < 14; ++q) s.consts[q] = q128(st.mem.data(), 0x290 + q);
-    for (uint32_t q = 0; q < 3; ++q) s.tie[q] = q128(st.mem.data(), 0x3cb + q);
+    for (uint32_t q = 0; q < 4; ++q) s.tie[q] = q128(st.mem.data(), 0x3cb + q);
     s.shrub_fog = {st.vf[30].f[2], st.vf[30].f[3], st.vf[29].f[0], st.vf[29].f[1]};
+    s.ofst = vu.ofst & 0x3ff;
+    for (uint32_t q = 0; q < 4; ++q) s.view_b[q] = q128(st.mem.data(), s.ofst + 5 + q);
     return s;
 }
 // orig: (host) the same put back into a VU1 state (the qwords and registers emit_* read)
 void direct_state_put(const DirectState& s, VUState& st) {
     for (uint32_t q = 0; q < 4; ++q) std::memcpy(st.mem.data() + (5 + q) * 16, s.view[q].data(), 16);
     for (uint32_t q = 0; q < 14; ++q) std::memcpy(st.mem.data() + (0x290 + q) * 16, s.consts[q].data(), 16);
-    for (uint32_t q = 0; q < 3; ++q) std::memcpy(st.mem.data() + (0x3cb + q) * 16, s.tie[q].data(), 16);
+    for (uint32_t q = 0; q < 4; ++q) std::memcpy(st.mem.data() + (0x3cb + q) * 16, s.tie[q].data(), 16);
+    if (s.ofst != 0)
+        for (uint32_t q = 0; q < 4; ++q) std::memcpy(st.mem.data() + ((s.ofst + 5 + q) & 0x3ff) * 16, s.view_b[q].data(), 16);
     st.vf[30].f[2] = s.shrub_fog[0];
     st.vf[30].f[3] = s.shrub_fog[1];
     st.vf[29].f[0] = s.shrub_fog[2];
@@ -1649,14 +1621,27 @@ void direct_state_put(const DirectState& s, VUState& st) {
 // only their constants (the skipped passes' rule), the tfrag range with only the UNPACKs that reach the view / constants and its
 // set-up starts, every DIRECT's register writes - but in place in EE memory (nothing copied) and the draws' data not unpacked.
 // false: a tag or its data not in memory (the capture walks the whole chain instead)
-bool scan_world(SceneInput& in, uint32_t addr, std::vector<uint32_t>& stack, uint32_t last_end, bool reset) {
+// `chained`: the chained world's scan (RAC1_PERF_WORLD_SCAN) - the host makes none of the passes (the game's own 4:3 Original),
+// and every pass's run of notes stands (chained_scan_usable). The ranges are read as the chained walk reads them - the same
+// unpacks and starts taken on this VU1 as it takes on its own - but each draw start of a pass's first program (the tfrags': of
+// tfrag A and B) is an event the build makes from the pass's next note, with the state the chain left for it (DirectState);
+// the tfrag range's vertices and the far variants' are events as the registers; and from the MPG that follows a tie / shrub
+// pass's first program to the range's end - the clipping program's part - nothing is read but the VIF's state: the build
+// walks that part, from the capture's copy, on a VU1 that starts as this one is there. What a draw leaves on the VU1 is put
+// there (tie A's alpha-test state and block queue, shrub A's block toggle). false too when the chain's draw starts are not
+// the notes', a tfrag's entry has no GPU plan, or a part to walk does not begin at a tag's first code
+bool scan_world(SceneInput& in, uint32_t addr, std::vector<uint32_t>& stack, uint32_t last_end, bool reset, bool chained) {
     DirectWorld& dw = in.dw;
     dw.ok = false;
     dw.start = addr;
     dw.events.clear();
     dw.writes.clear();
     dw.states.clear();
+    dw.chained = chained;
+    dw.sections.clear();
+    dw.section_stack.clear();
     dw.tags = dw.codes = dw.unpacks = dw.starts = 0;
+    uint64_t codes = 0;  // (DirectWorld::codes, counted here)
     static bool reset_pending = false;  // (a new level asked while no scan ran: the next scan's)
     reset_pending = reset_pending || reset;
     if (g_scan == nullptr || reset_pending) {
@@ -1678,13 +1663,13 @@ bool scan_world(SceneInput& in, uint32_t addr, std::vector<uint32_t>& stack, uin
     uint32_t draw_starts = 0;
     bool emitted[3] = {};
     auto emit = [&](int pass) {  // (where the walk leaves a pass's range: its host draws with the state its chain left)
-        if (pass < 0 || pass > 2 || emitted[pass]) return;
+        if (chained || pass < 0 || pass > 2 || emitted[pass]) return;
         emitted[pass] = true;
         DirectEvent e;
         e.kind = static_cast<uint8_t>(2 + pass);
         e.state = static_cast<uint32_t>(dw.states.size());
         e.draw_starts = draw_starts;
-        dw.states.push_back(direct_state(vu.st));
+        dw.states.push_back(direct_state(vu));
         dw.events.push_back(e);
     };
     auto on_start = [&](uint32_t start, bool world) {
@@ -1709,6 +1694,24 @@ bool scan_world(SceneInput& in, uint32_t addr, std::vector<uint32_t>& stack, uin
     int pass_prev = -1;
     std::vector<uint8_t> span;
     bool ok = true;
+    // (the chained world's scan) the range's run: its next note, their end, the range's end; its first program has started; the
+    // pass whose other programs' part is being read (-1: none); the state the next draw's event names must be taken again; a
+    // code of this tag was more than the VIF's state
+    const ChainedWorld& cw = in.chained;
+    uint32_t note_at = 0, note_end = 0;
+    bool seen_first = false, state_dirty = true, tag_dirty = false, bad = false;
+    int section = -1;
+    auto leave = [&](int pass) {  // (a world range's end: the state its chain left, as the walk's emit_* there read it)
+        if (pass < 0 || pass > 2) return;
+        if (state_dirty) dw.states.push_back(direct_state(vu));
+        state_dirty = false;
+        DirectEvent e;
+        e.kind = 8;
+        e.table = static_cast<uint8_t>(pass);
+        e.state = static_cast<uint32_t>(dw.states.size() - 1);
+        e.draw_starts = draw_starts;
+        dw.events.push_back(e);
+    };
     for (int guard = 0; guard < 400000; ++guard) {
         if (addr == (in.chain_end & ee_dma_addr_mask()) || addr == last_end) break;
         const uint8_t* t = static_cast<const uint8_t*>(ee_ram_ptr_read(addr));
@@ -1754,13 +1757,44 @@ bool scan_world(SceneInput& in, uint32_t addr, std::vector<uint32_t>& stack, uin
         };
         const int pass_now = pass_of(addr);
         if (pass_prev != pass_now) emit(pass_prev);
+        if (chained && pass_prev != pass_now) {  // (a range left: every note taken; a range entered: its run)
+            if (note_at != note_end) {
+                ok = false;
+                break;
+            }
+            leave(pass_prev);
+            section = -1;
+            seen_first = false;
+            if (pass_now >= 0 && pass_now <= 2) {
+                uint32_t first = 0;
+                for (const PassRange& r : in.passes)
+                    if (addr >= r.first && addr < r.end) first = r.first;
+                size_t run = cw.notes.runs.size();
+                for (size_t r = 0; r < cw.notes.runs.size() && r < cw.run_chained.size(); ++r)
+                    if (cw.notes.runs[r].kind == pass_now && cw.notes.runs[r].first == first && cw.run_chained[r] != 0) run = r;
+                if (run == cw.notes.runs.size()) {
+                    ok = false;
+                    break;
+                }
+                note_at = cw.notes.runs[run].at;
+                note_end = note_at + cw.notes.runs[run].n;
+                state_dirty = true;
+                DirectEvent e;
+                e.kind = 7;
+                e.table = static_cast<uint8_t>(pass_now);
+                e.first = static_cast<uint32_t>(run);
+                dw.events.push_back(e);
+            }
+        }
         pass_prev = pass_now;
         const bool world = pass_now >= 0 && pass_now <= 2;
         const bool skip = pass_now == 1 || pass_now == 2;  // (the host makes the ties / shrubs: their constants alone)
+        tag_dirty = false;
         for (uint32_t i = 0; i + 4 <= n;) {
             const uint32_t code = i >= 16 ? r32(dp + (i - 16)) : r32(at(i, 4));
             i += 4;
-            ++dw.codes;
+            ++codes;
+            if ((code & 0x7f000000u) == 0) continue;  // (NOP: the streams' padding, most of the codes)
             const uint32_t cmd = (code >> 24) & 0x7f, imm = code & 0xffff;
             switch (cmd) {  // (the VIF's state codes without data, as vif1_command sets them: the common case, inline)
             case 0x00: case 0x10: case 0x11: case 0x13: continue;  // NOP, FLUSHE, FLUSH, FLUSHA
@@ -1771,13 +1805,17 @@ bool scan_world(SceneInput& in, uint32_t addr, std::vector<uint32_t>& stack, uin
             case 0x05: vu.mode = imm & 3; continue;
             default: break;
             }
+            const bool tag_was_dirty = tag_dirty;  // (a code before this one in the tag that a second reading would not leave as it is)
+            tag_dirty = tag_dirty || cmd == 0x50 || cmd == 0x51 || cmd == 0x14 || cmd == 0x15 || cmd == 0x17 || cmd == 0x4a || cmd >= 0x60;
             if (cmd == 0x50 || cmd == 0x51) {  // DIRECT / DIRECTHL: the GS registers it writes (and a tfrag range's vertices, none so far)
                 const uint32_t q = imm == 0 ? 65536 : imm;
                 i = (i + 15) & ~15u;
-                const uint32_t take = std::min(q * 16, n - std::min(n, i));
-                gif.draw = world && pass_now == 0 && !no_gif;
-                gif.table = pass_now;
-                gif.data(at(i, take), take / 16, g_scan_dummy);
+                if (!(chained && section >= 0)) {  // (a part the build walks: its registers and vertices are that walk's)
+                    const uint32_t take = std::min(q * 16, n - std::min(n, i));
+                    gif.draw = world && (chained || pass_now == 0) && !no_gif;
+                    gif.table = pass_now;
+                    gif.data(at(i, take), take / 16, g_scan_dummy);
+                }
                 i += q * 16;
                 continue;
             }
@@ -1786,6 +1824,140 @@ bool scan_world(SceneInput& in, uint32_t addr, std::vector<uint32_t>& stack, uin
             auto constants_start = [&](uint32_t start) { return pass_now == 1 ? (start & 0x3ff) == 0x008 : (start & 0x3ff) == 0x000; };
             const uint32_t dest = ((imm & 0x3ff) + ((imm & 0x8000) != 0 ? vu.tops : 0)) & 0x3ff;
             auto constants_dest = [&]() { return pass_now == 1 ? dest >= 0x3c6 && dest < 0x3d0 : dest < 6; };
+            if (chained && world) {
+                if (cmd == 0x14 || cmd == 0x15 || cmd == 0x17) {  // a start: the double buffer (on_start), then by what it starts
+                    const uint32_t start = cmd == 0x17 ? vu.next_pc : imm;
+                    if (cmd != 0x17) vu.next_pc = imm;
+                    vu.top = vu.tops;
+                    vu.itop = vu.itops;
+                    vu.dbf = !vu.dbf;
+                    vu.tops = (vu.base + (vu.dbf ? vu.ofst : 0)) & 0x3ff;
+                    vu.st.xtop = vu.top;
+                    if (S.micro_dirty) {
+                        S.prog = program_of(vu.micro.data());
+                        S.micro_dirty = false;
+                    }
+                    const bool draw = S.prog != Program::None && is_draw_start(S.prog, start);
+                    if (section >= 0) {  // (a part the build walks: its draw starts counted)
+                        if (draw) ++draw_starts;
+                        continue;
+                    }
+                    const bool tfrag = pass_now == 0;
+                    const bool first = tfrag ? S.prog == Program::TfragA || S.prog == Program::TfragB : S.prog == (pass_now == 1 ? Program::TieA : Program::ShrubA);
+                    if (!first) {  // (not the pass's first program, before any part to walk: its set-up starts run, as the walk's)
+                        if (draw || tfrag) {
+                            bad = true;
+                            break;
+                        }
+                        if (S.prog != Program::None) {
+                            ++dw.starts;
+                            run_program(vu.st, S.prog, start);
+                            state_dirty = true;
+                        }
+                        continue;
+                    }
+                    seen_first = true;
+                    if (!draw) {  // (the constants' start: run; a tie / shrub packet's set-up start: its draws are the notes')
+                        if (tfrag || constants_start(start)) {
+                            ++dw.starts;
+                            run_program(vu.st, S.prog, start);
+                            state_dirty = true;
+                        }
+                        continue;
+                    }
+                    if (note_at >= note_end) {
+                        bad = true;
+                        break;
+                    }
+                    if (tfrag) {  // (the note is this start's kind, its entry has the GPU path's plan: draw_tfrag_chained)
+                        const TfragLevel& L = *in.tfrag_level;
+                        const bool isb = S.prog == Program::TfragB;
+                        const int32_t cls = cw.tfrag_cls[note_at];
+                        if (isb != (cw.notes.tfrag[note_at].lod == 2) || cls < 0 || static_cast<size_t>(cls) >= L.entries.size() || !L.entries[static_cast<size_t>(cls)].ok ||
+                            L.entries[static_cast<size_t>(cls)].plan(tfrag_lod(S.prog, start), start, isb) == nullptr || !tfrag_tags_ok(vu.st.mem.data()) ||
+                            ((vu.st.xtop & 0x3ff) != 0 && (vu.st.xtop & 0x3ff) != (vu.ofst & 0x3ff))) {  // (the view's two places: DirectState)
+                            bad = true;
+                            break;
+                        }
+                    }
+                    if (state_dirty) {
+                        dw.states.push_back(direct_state(vu));
+                        state_dirty = false;
+                    }
+                    DirectEvent e;
+                    e.kind = 5;
+                    e.table = static_cast<uint8_t>(pass_now);
+                    e.reg = static_cast<uint8_t>(S.prog);
+                    e.first = start;
+                    e.count = vu.st.xtop;
+                    e.state = static_cast<uint32_t>(dw.states.size() - 1);
+                    e.draw_starts = draw_starts;
+                    dw.events.push_back(e);
+                    ++note_at;
+                    ++draw_starts;
+                    if (pass_now == 1) {  // (what a tie A draw leaves for the next starts: its alpha-test state, the block queue - draw_tie_chained, tie_draw_end)
+                        const uint32_t state = r32(cw.tie_bytes.data() + 0x60 * static_cast<size_t>(note_at - 1) + 0x50) & 0xffff;
+                        put32(vu.st.mem.data(), 0x3cb, 0, state);
+                        put32(vu.st.mem.data(), 0x3cb, 1, state);
+                        VUVector& v = vu.st.vf[22];
+                        const VUVector o = v;
+                        v.u[0] = o.u[1];
+                        v.u[1] = o.u[2];
+                        v.u[2] = o.u[3];
+                        v.u[3] = o.u[0];
+                        vu.st.vi[3] = static_cast<int16_t>(v.u[0] & 0xffff);
+                    } else if (pass_now == 2) {  // (a shrub A draw: the instance block's toggle, draw_shrub_impl)
+                        uint8_t* mem = vu.st.mem.data();
+                        put32(mem, 1, 1, (0x269u - (w32(mem, 1, 1) & 0xffff)) & 0xffff);
+                    }
+                    continue;
+                }
+                if (cmd == 0x4a) {  // MPG: after a tie / shrub pass's first program, the part the build walks begins at this tag
+                    if (section < 0 && pass_now != 0 && seen_first) {
+                        if (tag_was_dirty || gif.left != 0) {
+                            bad = true;
+                            break;
+                        }
+                        section = pass_now;
+                        DirectEvent e;
+                        e.kind = 6;
+                        e.table = static_cast<uint8_t>(pass_now);
+                        e.first = addr;
+                        e.state = static_cast<uint32_t>(dw.sections.size());
+                        e.draw_starts = draw_starts;
+                        dw.events.push_back(e);
+                        auto sv = std::make_shared<SectionVu>();
+                        sv->vu = vu;
+                        dw.sections.push_back(std::move(sv));
+                        std::vector<uint32_t> before = stack;  // (the call stack as this tag found it)
+                        if (id == 5) before.pop_back();
+                        else if (id == 6 && !stop) before.push_back(next);
+                        dw.section_stack.push_back(std::move(before));
+                    }
+                    S.micro_dirty = true;
+                    vu1::vif1_command(vu, code, at(i, nb), nullptr);
+                    i += nb;
+                    continue;
+                }
+                if (cmd >= 0x60) {  // UNPACK, as the chained walk takes it: the tfrag range's own (not an entry's, at the double
+                                    // buffer's base); of a tie / shrub pass's first program's part the constants'
+                    if (S.micro_dirty) {
+                        S.prog = program_of(vu.micro.data());
+                        S.micro_dirty = false;
+                    }
+                    const bool take = pass_now == 0 ? (imm & 0x8000) == 0 : S.prog != (pass_now == 1 ? Program::TieA : Program::ShrubA) || constants_dest();
+                    if (section < 0 && take) {
+                        ++dw.unpacks;
+                        vu1::vif1_command(vu, code, at(i, nb), nullptr);
+                        state_dirty = true;
+                    }
+                    i += nb;
+                    continue;
+                }
+                vu1::vif1_command(vu, code, at(i, nb), nullptr);
+                i += nb;
+                continue;
+            }
             if (cmd == 0x14 || cmd == 0x15) {
                 on_start(imm, world && (!skip || constants_start(imm)));
                 vu.next_pc = imm;
@@ -1808,11 +1980,17 @@ bool scan_world(SceneInput& in, uint32_t addr, std::vector<uint32_t>& stack, uin
             }
             i += nb;
         }
+        if (bad) {
+            ok = false;
+            break;
+        }
         if (stop) break;
         addr = next;
     }
-    if (!ok) return false;
+    dw.codes = codes;
+    if (!ok || (chained && note_at != note_end)) return false;
     gif.close(g_scan_dummy);
+    if (chained) leave(pass_prev);
     emit(0);  // (the passes the walk ended in or never met: their host draws at its end, as scene_build's)
     emit(1);
     emit(2);
@@ -1928,6 +2106,86 @@ void chained_capture(ChainedWorld& c) {
 }
 }  // namespace
 
+// orig: (host) the chained world's decisions, at the capture: which runs' draws the build makes from the notes. A tie / shrub run:
+// the pass is not the host's (StaticFrame::on), every note names a class and packet of the level's tables and colours of the
+// resident table, and - a shrub run - the level has no kTwiceBase packet. A tfrag run: the GPU path draws the tfrags, the pass is
+// not the host's, and every note names an entry of the level's. Not with the checks that take the walk's own draws
+namespace {
+void chained_decide(SceneInput& in) {
+    ChainedWorld& c = in.chained;
+    const StaticLevel* sl = in.stat_level;
+    const ResidentColours* rc = in.colours;
+    const TfragLevel* L = in.tfrag_level;
+    c.run_chained.assign(c.notes.runs.size(), 0);
+    c.tie_pk.assign(c.notes.tie.size(), nullptr);
+    c.shrub_pk.assign(c.notes.shrub.size(), nullptr);
+    c.tfrag_cls.assign(c.notes.tfrag.size(), -1);
+    c.twice = false;
+    if (sl == nullptr || !sl->ok || rc == nullptr || in.stat_check || in.tfrag_check) return;
+    if (c.cls_gen != sl->gen) {
+        c.cls_gen = sl->gen;
+        c.tie_cls.clear();
+        c.shrub_cls.clear();
+        c.cls_twice = false;
+        for (size_t k = 0; k < sl->ties.size(); ++k) c.tie_cls.emplace(sl->ties[k].rec, static_cast<uint32_t>(k));
+        for (size_t k = 0; k < sl->shrubs.size(); ++k) {
+            c.shrub_cls.emplace(sl->shrubs[k].rec, static_cast<uint32_t>(k));
+            for (const StaticPacket& pk : sl->shrubs[k].packets)
+                for (const ShrubKickVertex& v : pk.shrub->verts) c.cls_twice = c.cls_twice || v.colour >= kTwiceBase;
+        }
+    }
+    c.twice = c.cls_twice;
+    static const bool selfcheck = std::getenv("RAC1_MRPW_TFRAG_SELFCHECK") != nullptr;
+    const bool host[2] = {in.stat != nullptr && in.stat->on[0], in.stat != nullptr && in.stat->on[1]};
+    const bool tfrag_host = in.tfrag_host != nullptr && L != nullptr;
+    for (size_t r = 0; r < c.notes.runs.size(); ++r) {
+        const WorldChained::Run& run = c.notes.runs[r];
+        bool ok = run.ok;
+        if (run.kind == 0) {
+            ok = ok && L != nullptr && !tfrag_host && !in.tfrag_kicks && !selfcheck;
+            for (uint32_t i = run.at; ok && i < run.at + run.n; ++i) {
+                const uint32_t k = (c.notes.tfrag[i].entry - L->table) / 0x40;
+                ok = c.notes.tfrag[i].entry >= L->table && k < L->by_ee.size() && L->by_ee[k] >= 0;
+                if (ok) c.tfrag_cls[i] = L->by_ee[k];
+            }
+        } else if (run.kind == 1) {
+            ok = ok && !host[0];
+            uint32_t cls = 0;
+            const StaticTieClass* sc = nullptr;
+            for (uint32_t i = run.at; ok && i < run.at + run.n; ++i) {
+                const WorldChained::Tie& t = c.notes.tie[i];
+                if (sc == nullptr || t.cls != cls) {
+                    const auto it = c.tie_cls.find(t.cls);
+                    sc = it != c.tie_cls.end() ? &sl->ties[it->second] : nullptr;
+                    cls = t.cls;
+                }
+                ok = sc != nullptr && t.lod < 3 && t.packet < sc->lod[t.lod].size() && rc->tie_slot(t.colours) >= 0;
+                if (ok) c.tie_pk[i] = &sc->lod[t.lod][t.packet];
+            }
+        } else if (run.kind == 2) {
+            ok = ok && !host[1] && !c.twice;
+            uint32_t cls = 0;
+            const StaticShrubClass* sc = nullptr;
+            for (uint32_t i = run.at; ok && i < run.at + run.n; ++i) {
+                const WorldChained::Shrub& g = c.notes.shrub[i];
+                if (sc == nullptr || g.cls != cls) {
+                    const auto it = c.shrub_cls.find(g.cls);
+                    sc = it != c.shrub_cls.end() ? &sl->shrubs[it->second] : nullptr;
+                    cls = g.cls;
+                }
+                ok = sc != nullptr && g.packet < sc->packets.size();
+                for (uint32_t k = 0; ok && k < g.n; ++k) ok = rc->shrub_slot(g.colours[k]) >= 0;
+                if (ok) c.shrub_pk[i] = &sc->packets[g.packet];
+            }
+        } else {
+            ok = false;
+        }
+        c.run_chained[r] = ok ? 1 : 0;
+        if (!ok && run.kind >= 0 && run.kind <= 2) ++g_cstats.walked[run.kind];
+    }
+}
+}  // namespace
+
 // orig: (host) see mrp_world_scene.h: the walk's EE reads in the order scene_build makes them, copied
 void scene_capture(uint32_t chain_start, uint32_t chain_end, SceneInput& in) {
     const SceneAddrs ad = scene_addrs();
@@ -1950,8 +2208,12 @@ void scene_capture(uint32_t chain_start, uint32_t chain_end, SceneInput& in, con
     in.sky_tex.clear();
     in.sky_asset = 0;
     in.chained.notes.runs.clear();
+    in.chained.run_chained.clear();
     if (!in.ok) return;
-    if (in.chained.want) chained_capture(in.chained);
+    if (in.chained.want) {
+        chained_capture(in.chained);
+        chained_decide(in);
+    }
     // the projections A (0x166d00, the clipping programs' 0x166d40) and the camera (0x166dc0) the views are made from
     for (uint32_t k = 0; k < 16; ++k) {
         in.a[k] = lwc1(ad.a + 4 * k);
@@ -2001,6 +2263,7 @@ void scene_capture(uint32_t chain_start, uint32_t chain_end, SceneInput& in, con
     // the direct world (RAC1_PERF_DIRECT_WORLD): the host makes every world draw and no pass ran a shadow chain - the world's ranges
     // scanned in place where the walk meets them, not copied (a scan that fails: the whole chain copied as before)
     const bool direct = in.direct && direct_usable(in);
+    const bool cscan = !direct && chained_scan_usable(in);  // (the chained world's scan: scan_world)
     in.dw.ok = false;
     // the walk as scene_build's (the tags followed, the shadow chains' ranges read from their copies)
     std::vector<uint32_t> stack;
@@ -2011,15 +2274,67 @@ void scene_capture(uint32_t chain_start, uint32_t chain_end, SceneInput& in, con
     for (int guard = 0; guard < 400000; ++guard) {
         if (sh == nullptr) {
             if (addr == (chain_end & ee_dma_addr_mask()) || addr == last_end) break;
-            if (direct && !scanned) {
+            if ((direct || cscan) && !scanned) {
                 int pass = -1;
                 for (const PassRange& r : in.passes)
                     if (addr >= r.first && addr < r.end) pass = r.pass;
-                if (pass >= 0 && pass <= 2) {
+                if (pass >= 0 && pass <= 2 && cscan) {
                     scanned = true;
                     const auto t0 = std::chrono::steady_clock::now();
                     std::vector<uint32_t> st2 = stack;
-                    if (scan_world(in, addr, st2, last_end, in.dw_reset)) {
+                    if (scan_world(in, addr, st2, last_end, in.dw_reset, true)) {
+                        // the parts the build walks (the clipping programs'): their tags and data copied, as this walk's
+                        bool copied = true;
+                        for (const DirectEvent& e : in.dw.events) {
+                            if (e.kind != 6) continue;
+                            std::vector<uint32_t> st3 = in.dw.section_stack[e.state];
+                            uint32_t a2 = e.first;
+                            for (int g2 = 0; g2 < 400000 && copied; ++g2) {
+                                if (a2 == (chain_end & ee_dma_addr_mask()) || a2 == last_end) break;
+                                int p2 = -1;
+                                for (const PassRange& r : in.passes)
+                                    if (a2 >= r.first && a2 < r.end) p2 = r.pass;
+                                if (p2 != e.table) break;
+                                const uint8_t* t = take(a2, 16);
+                                if (t == nullptr) {
+                                    copied = false;
+                                    break;
+                                }
+                                uint64_t lo2 = 0;
+                                std::memcpy(&lo2, t, 8);
+                                const uint32_t qwc = lo2 & 0xffff, id = (lo2 >> 28) & 7;
+                                const uint32_t a = static_cast<uint32_t>(lo2 >> 32) & ee_dma_addr_mask();
+                                uint32_t data = a2 + 16, next = a2 + 16 + qwc * 16;
+                                bool stop = false;
+                                switch (id) {
+                                case 0: data = a; stop = true; break;
+                                case 1: break;
+                                case 2: next = a; break;
+                                case 3: case 4: data = a; next = a2 + 16; break;
+                                case 5: st3.push_back(next); next = a; break;
+                                case 6:
+                                    if (st3.empty()) stop = true;
+                                    else { next = st3.back(); st3.pop_back(); }
+                                    break;
+                                case 7: stop = true; break;
+                                }
+                                if (qwc != 0 && take(data, qwc * 16) == nullptr) copied = false;
+                                if (stop) break;
+                                a2 = next;
+                            }
+                        }
+                        in.dw.ok = copied;
+                        in.dw.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+                        g_cstats.scan_ms += in.dw.ms;
+                        if (copied) break;
+                    }
+                    in.dw.ok = false;
+                    ++g_cstats.scan_failed;  // (the rest of the chain copied: the walk as before)
+                } else if (pass >= 0 && pass <= 2) {
+                    scanned = true;
+                    const auto t0 = std::chrono::steady_clock::now();
+                    std::vector<uint32_t> st2 = stack;
+                    if (scan_world(in, addr, st2, last_end, in.dw_reset, false)) {
                         g_dstats.tags += in.dw.tags;
                         g_dstats.codes += in.dw.codes;
                         g_dstats.unpacks += in.dw.unpacks;
@@ -2432,8 +2747,8 @@ bool scene_build_run(const WorldIndex& idx, const SceneInput& in, SceneFrame& f,
     int pass_prev = -1;
     b.kicks = kicks;
     b.walker = &W;
-    // (the chained world: not with the checks that take the walk's own draws or kicks)
-    b.ch_on = chained && !kicks && !in.stat_check && !in.tfrag_check;
+    // (the chained world: the capture's decisions, not with the kicks the checks take)
+    b.ch_on = chained && !kicks;
     // the program the micro memory holds now
     auto cur_prog = [&] {
         if (W.micro_dirty) {
@@ -2500,10 +2815,13 @@ bool scene_build_run(const WorldIndex& idx, const SceneInput& in, SceneFrame& f,
         return static_cast<const uint8_t*>(ee_ram_ptr_read(a));
     };
     uint32_t addr = chain_start & ee_dma_addr_mask();
+    // (`part`: -1 the chain from `addr` to the world's ranges the capture scanned, or its end; else the pass whose range's rest
+    // is walked - a part of the chained world's scan, DirectEvent's kind 6)
+    auto walk = [&](int part) {
     for (int guard = 0; guard < 400000; ++guard) {
         if (sh == nullptr) {
             if (addr == (chain_end & ee_dma_addr_mask()) || addr == last_end) break;
-            if (in.dw.ok && addr == in.dw.start) break;  // (the direct world: the world's ranges were scanned at the capture)
+            if (part >= 0 ? pass_of(addr) != part : in.dw.ok && addr == in.dw.start) break;  // (the world's ranges were scanned at the capture)
             for (const Shadow& s : in.shadows)
                 if (s.first == addr) {
                     sh = &s;
@@ -2676,8 +2994,11 @@ bool scene_build_run(const WorldIndex& idx, const SceneInput& in, SceneFrame& f,
         }
         addr = next;
     }
+    };
+    walk(-1);
     if (in.dw.ok) {  // the direct world: the scan's register writes, GIF vertices and the host's draws, in the walk's order
         static vu1::Vu1* tmp = new vu1::Vu1();  // (the VU1 state each pass's chain left: what emit_* read)
+        uint32_t state_at = 0xffffffffu;  // (the chained world's scan: the state `tmp` holds, with what its draws left there)
         for (const DirectEvent& e : in.dw.events) {
             if (e.kind == 0) {
                 f.regs.push_back({static_cast<uint32_t>(f.packets.size()), e.reg, e.value});
@@ -2696,6 +3017,51 @@ bool scene_build_run(const WorldIndex& idx, const SceneInput& in, SceneFrame& f,
                 ++f.gif_packets;
                 continue;
             }
+            if (e.kind >= 5) {  // the chained world's scan (scan_world): the chain's own draws, from the passes' notes
+                f.draw_starts = e.draw_starts;
+                if (e.kind == 7) {  // (a range entered, as the walk's)
+                    if (e.table == 0) chained_tfrag_enter(b, in.chained.notes.runs[e.first].first);
+                    else chained_enter(b, e.table - 1, in.chained.notes.runs[e.first].first);
+                    continue;
+                }
+                if (e.kind == 6) {  // (the pass's other programs' part: walked, on the VU1 the scan had where it begins)
+                    vu1::Vu1& part = in.dw.sections[e.state]->vu;
+                    const bool was = b.chained[e.table - 1];
+                    b.chained[e.table - 1] = false;
+                    std::swap(vu, part);
+                    W.micro_dirty = true;
+                    b.hit_ok = false;
+                    pass_prev = e.table;
+                    addr = e.first;
+                    stack = in.dw.section_stack[e.state];
+                    walk(e.table);
+                    std::swap(vu, part);
+                    W.micro_dirty = true;
+                    b.hit_ok = false;
+                    b.chained[e.table - 1] = was;
+                    continue;
+                }
+                if (e.state != state_at) {
+                    direct_state_put(in.dw.states[e.state], tmp->st);
+                    state_at = e.state;
+                }
+                if (e.kind == 8) {  // (a range left, as the walk's)
+                    if (e.table == 0) {
+                        chained_tfrag_leave(b);
+                        emit_tfrag_host(b, tmp->st);
+                        emit_tfrag_shadow(b, tmp->st);
+                    } else {
+                        emit_static(b, tmp->st, e.table - 1);
+                        chained_leave(b, tmp->st, e.table - 1);
+                    }
+                    continue;
+                }
+                tmp->st.xtop = e.count;
+                if (e.table == 0) draw_tfrag_chained(b, tmp->st, static_cast<Program>(e.reg), e.first);
+                else if (e.table == 1) draw_tie_chained(b, tmp->st);
+                else draw_shrub_chained(b, tmp->st);
+                continue;
+            }
             direct_state_put(in.dw.states[e.state], tmp->st);
             f.draw_starts = e.draw_starts;
             if (e.kind == 2) {
@@ -2707,7 +3073,12 @@ bool scene_build_run(const WorldIndex& idx, const SceneInput& in, SceneFrame& f,
             }
         }
         f.draw_starts = in.dw.draw_starts;
-        ++g_dstats.frames;
+        if (in.dw.chained) {
+            ++g_cstats.scanned;
+            pass_prev = -1;  // (its ranges were left in the events)
+        } else {
+            ++g_dstats.frames;
+        }
     } else {
         emit_tfrag_host(b, vu.st);  // (the walk ended in the tfrag pass)
         emit_tfrag_shadow(b, vu.st);
@@ -2736,7 +3107,9 @@ bool scene_build_run(const WorldIndex& idx, const SceneInput& in, SceneFrame& f,
 bool scene_build(const WorldIndex& idx, const SceneInput& in, SceneFrame& f, bool reset, bool kicks) {
     bool bad = false;
     bool ok = scene_build_run(idx, in, f, reset, kicks, in.chained.want, bad);
-    if (bad) {  // (the chained world: the chain's draw starts were not the passes' notes - the walk, as before)
+    if (bad && in.dw.ok && in.dw.chained) {  // (a scanned frame has no copy of the world's ranges to walk; the scan checked its notes: never seen)
+        if (g_cstats.lost++ == 0) std::fprintf(stderr, "[mrpw] the chained world's scan: a scene's notes were not its events'\n");
+    } else if (bad) {  // (the chained world: the chain's draw starts were not the passes' notes - the walk, as before)
         ++g_cstats.again;
         ok = scene_build_run(idx, in, f, false, kicks, false, bad);
     }
