@@ -1103,7 +1103,7 @@ game's `hero_mode_enter` for the form 2; hero_hurt takes from it, and with 0 lef
 dead and the soft reset follows). On a level mod whose base is Kalebo III the hero controller's dispatch takes Kalebo III's own
 `hero_mode_enter` (`on_kalebo()` is true on its overlay whatever the hero context), which has no form 2: the bar stayed 0 and a
 plugin's Giant Clank fell after ten to fourteen seconds (`go 1440: state 0x62 energy 0`). `hero_mode_set` now sets the energy
-to 200 itself after entering the form 2, and the SDK's `hero_energy` (ABI 19) reads and refills it. Checked: 2000 frames in
+to 200 itself after entering the form 2, and the SDK's `hero_energy` (ABI 18) reads and refills it. Checked: 2000 frames in
 Quartu's arena (as a plugin's Giant Clank in `world quartu`) with the energy at 200 throughout; set to 50 it stays 50, back to
 200, and 0 makes him fall (state 0x62, the soft reset, Ratchet back at the checkpoint).
 

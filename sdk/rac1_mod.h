@@ -56,9 +56,9 @@ extern "C" {
    Clank, Giant Clank or on the hoverboard: hero_build, hero_build_now, hero_mode, hero_mode_now); 13: bosses (a section's
    bosses: boss_set, boss_beaten; the boss callback); 14: the HUD's width (hud_width); 15: saving from a plugin (game_save,
    game_saving); 16: the hoverboard outside a race (board_rule, board_return, board_fall, board_touching); 17: a section put back
-   as at its first entry (section_reset; level.txt's `fresh`); 19: Giant Clank's energy (hero_energy) (docs/sdk.md lists what each
-   version added; 18 is another change's, not in this build). */
-#define RAC1_MOD_ABI 19
+   as at its first entry (section_reset; level.txt's `fresh`); 18: Giant Clank's energy (hero_energy) (docs/sdk.md lists what each
+   version added). */
+#define RAC1_MOD_ABI 18
 
 #if defined(_WIN32)
 #define RAC1_MOD_EXPORT __declspec(dllexport)
@@ -168,7 +168,7 @@ typedef struct rac1_hazard {
 #define RAC1_HERO_CLANK 1       /* riding an object of Orxon's Clank class (import "10:87") */
 #define RAC1_HERO_GIANT_CLANK 2 /* riding an object of Quartu's Giant Clank class (import "15:419") */
 #define RAC1_HERO_BOARD 4       /* on a hoverboard (import "16:439"), with Kalebo III's hero code (hero_build(16)) */
-/* (ABI 19) Giant Clank's energy bar: its most, what hero_mode(RAC1_HERO_GIANT_CLANK, ..) starts him with */
+/* (ABI 18) Giant Clank's energy bar: its most, what hero_mode(RAC1_HERO_GIANT_CLANK, ..) starts him with */
 #define RAC1_GIANT_ENERGY_MAX 200
 /* (ABI 13) the boss callback's events: a boss beaten (it left play: the session goes on), a boss placed again after a death in
    its section (the fight from its start: `obj` its new object) */
@@ -677,7 +677,7 @@ typedef struct rac1_api {
        every entry */
     int (*section_reset)(const char* name);
 
-    /* ======== ABI 19 (test api->abi >= 19, or RAC1_API_HAS(api, hero_energy)) ======== */
+    /* ======== ABI 18 (test api->abi >= 18, or RAC1_API_HAS(api, hero_energy)) ======== */
     /* -- Giant Clank's energy (docs/sdk.md, "Giant Clank's energy"; a session) -- */
     /* Giant Clank's energy bar (0 to RAC1_GIANT_ENERGY_MAX, the one on Quartu's HUD; at 0 he falls (state 0x62) and Ratchet is
        dead: the soft reset). `set` >= 0: the energy first set to it (at most RAC1_GIANT_ENERGY_MAX): hero_energy(
