@@ -190,7 +190,7 @@ static const challenge_def CHALLENGES[] = {
     {"Assalto Finale", "10 round, lava, Kalebo III, invasione", WAVES, 0, 10,
      {{14, 10, 30, "RRBWA"}, {18, 12, 26, "RBWAY"}, {22, 14, 24, "RBFWAYP"}, {26, 16, 22, "RBFLWAYP"}, {30, 18, 20, "RBFLCJWAYP"},
       {32, 20, 20, "RBKTFJ"}, {36, 22, 18, "RBKTFLJS"}, {40, 24, 16, "RBKTFLCJS"}, {44, 26, 14, "GRBKTFLCJS"},
-      {200, 70, 4, "GRBFLCJSKYWA"}},  /* (110 at once crashed the game once in headless: richiesta_invasione.md) */
+      {220, 110, 3, "GRBFLCJSKYWA"}},  /* (110 at once: about as many as the game draws in a frame; more live but unseen) */
      0, 20, 1, 0, W_ANY, 30000, 0, NULL, NULL, 0, "escape", "batalia", 5},  /* ("kalebo" once the composer takes the base's
                                                                                 own world as a section: CHAIN has it) */
     /* Autoscontro: on Kalebo III's hoverboard (free, ABI 16) round the arena, the enemies knocked down by ramming them (its
@@ -203,9 +203,11 @@ static const challenge_def CHALLENGES[] = {
        in it are shocked; the bar full within 3 minutes wins */
     {"Zona calda", "resta nel cerchio che si sposta: riempi la barra", ZONE, 180, 1, {{9999, 14, 30, "RRBFLJWA"}}, 0, 25, 0, 0, W_ANY,
      12000, 0, NULL, NULL, 0, NULL, NULL, 0, 100},
-    /* (not yet in the menu: the plugin's Giant Clank dies by itself after about ten seconds, 0x62: asked of the engine)
-    {"Clank Gigante", "sei Clank gigante: schiaccia 150 nemici in 2 minuti", KAIJU, 120, 1, {{9999, 40, 8, "RRRBBFCLJSWAK"}}, 0, 0, 0,
-     0, W_ANY, 20000, 0, NULL, NULL, 0, NULL, NULL, 0, 150}, */
+    /* Clank Gigante: Ratchet is Quartu's Giant Clank (ABI 12's hero_mode; his energy, ABI 18's hero_energy, full at the start)
+       in the arena, the enemies' swarm crushed under his feet and his fists (the plugin's hits: Giant Clank's own reach giants
+       only), 100 within 2 minutes; the enemies' hits drain his energy (none left: he falls, the challenge lost) */
+    {"Clank Gigante", "sei Clank gigante: schiaccia 100 nemici in 2 minuti", KAIJU, 120, 1, {{9999, 40, 8, "RRRBBFCLJSWAK"}}, 0, 0, 0,
+     0, W_ANY, 20000, 0, NULL, NULL, 0, NULL, NULL, 0, 100},
     {"Impossibile", "il campionato, 50 round", CUP, 0, 50, {{0}}, 0, 20, 0, 0, W_ANY, 100000, 1},
 };
 #define N_CHALLENGES ((int)(sizeof CHALLENGES / sizeof CHALLENGES[0]))
@@ -588,9 +590,9 @@ static const char* const TEXTS[][N_LANGS] = {
     {"Resta nel cerchio: la barra si riempie", "Stay in the ring: the bar fills", "Reste dans le cercle: la barre se remplit",
      "Bleib im Ring: der Balken fuellt sich", "Quedate en el circulo: la barra se llena"},
     {"Il cerchio si sposta!", "The ring moves!", "Le cercle bouge!", "Der Ring wandert!", "El circulo se mueve!"},
-    {"sei Clank gigante: schiaccia 150 nemici in 2 minuti", "you are Giant Clank: crush 150 enemies in 2 minutes",
-     "tu es Clank geant: ecrase 150 ennemis en 2 minutes", "du bist Riesen-Clank: zerquetsche 150 Gegner in 2 Minuten",
-     "eres Clank gigante: aplasta a 150 enemigos en 2 minutos"},
+    {"sei Clank gigante: schiaccia 100 nemici in 2 minuti", "you are Giant Clank: crush 100 enemies in 2 minutes",
+     "tu es Clank geant: ecrase 100 ennemis en 2 minutes", "du bist Riesen-Clank: zerquetsche 100 Gegner in 2 Minuten",
+     "eres Clank gigante: aplasta a 100 enemigos en 2 minutos"},
     {"Schiacciati %d/%d   %d:%02d", "Crushed %d/%d   %d:%02d", "Ecrases %d/%d   %d:%02d", "Zerquetscht %d/%d   %d:%02d",
      "Aplastados %d/%d   %d:%02d"},
     {"Schiacciali coi piedi e coi pugni!", "Crush them under your feet and fists!", "Ecrase-les du pied et du poing!",
@@ -2884,7 +2886,6 @@ static void bump_update(const float h[3]) {
 #define GIANT_CLASS "15:419"
 #define GIANT_FEET 3.5f    /* the enemies this near his middle (across) are crushed */
 #define GIANT_FIST 9.0f    /* punching: the enemies this near before him (within 60 degrees) knocked down */
-#define GIANT_LET 4        /* one hit in this many of the enemies' reaches him (the others taken away) */
 static uint32_t giant_m;   /* his object (import_spawn's) */
 
 static void kaiju_start(void) {
@@ -2893,6 +2894,7 @@ static void kaiju_start(void) {
     const int32_t c = RAC1_API_HAS(api, import_load) ? api->import_load(GIANT_CLASS) : -1;
     giant_m = c >= 0 ? api->import_spawn(c, h, rac1_lwf(api, api->hero() + 0x48)) : 0;
     const int on = giant_m != 0 && api->hero_build(15) && api->hero_mode(RAC1_HERO_GIANT_CLANK, giant_m);
+    if (on && RAC1_API_HAS(api, hero_energy)) api->hero_energy(RAC1_GIANT_ENERGY_MAX);  /* (full) */
     toast(tr("Schiacciali coi piedi e coi pugni!"));
     char b[64];
     snprintf(b, sizeof b, "clank gigante: %s", on ? "on" : "NOT on");
@@ -2906,13 +2908,6 @@ static void kaiju_update(void) {
     float g[3];
     pos_of(giant_m, g);
     const float yaw = rac1_lwf(api, giant_m + 0x48), fx = cosf(yaw), fy = sinf(yaw);
-    {  /* (the enemies' hits on him, most of them taken away: forty at once drained him in fourteen seconds) */
-        rac1_hit hit = {sizeof hit};
-        static int k;
-        while (api->hit_take(giant_m, 0xffffffffu, &hit))
-            if (++k % GIANT_LET != 0) continue;  /* (one in GIANT_LET left to him: sent back) */
-            else api->hit_send(giant_m, hit.kinds, hit.strength, hit.from);
-    }
     const uint32_t st = rac1_lw(api, HERO_STATE);
     const int punching = st >= 0x5d && st <= 0x61;
     for (int i = 0; i < s.nen; ++i) {
@@ -3374,6 +3369,7 @@ static void frame(void* user) {
                 hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", ch_title(s.ch));
                 hud_text_at(22, y + 28, left < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0, tr("Schiacciati %d/%d   %d:%02d"), s.felled, c->target,
                             (left > 0 ? left : 0) / 3600, (left > 0 ? left : 0) / 60 % 60);
+
             } else if (c->kind == BUMP) {
                 const int left = c->time * 60 + bump.bonus - s.clock;
                 hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", ch_title(s.ch));
@@ -3411,7 +3407,8 @@ static void frame(void* user) {
                                                                                                  wipe-out, a fall, the race's) */
         if (s.mode != RESULT && (api->health() <= 0 || (!boarding && s.have_last && jx * jx + jy * jy + jz * jz > 64.0f)))
             challenge_end(0, "Ratchet e' caduto");  /* (dead: his health gone, or back at his start - the lava, a fall) */
-        else if (s.mode != RESULT && s.t_pad >= 0 && api->trigger_inside(s.t_pad)) challenge_end(0, "abbandonata");
+        else if (s.mode != RESULT && CHALLENGES[s.ch].kind != KAIJU && s.t_pad >= 0 && api->trigger_inside(s.t_pad))
+            challenge_end(0, "abbandonata");
         break;
     case RESULT:
         if (s.won) {
@@ -3609,22 +3606,7 @@ static void level_start(void* user, const rac1_level_info* level) {
 static void respawn(void* user, const rac1_respawn* r) {
     (void)user, (void)r;
     if (!s.mine) return;
-    if (!getenv("ARENA_DOOM_KEEP")) {  /* (the Glove of Doom's agents (230) and theirs (186) the soft reset leaves in play, frozen
-                                           where he died: taken out, as a level's load would; with them in play his glove fired no
-                                           more and Daino's game crashed. ARENA_DOOM_KEEP: a test's, left) */
-        float h[3];
-        static uint32_t m[128];
-        pos_of(api->hero(), h);
-        static const int32_t AG[2] = {230, 186};
-        int n = 0;
-        for (int c = 0; c < 2; ++c) {
-            const int32_t k = api->mobys_near(h, 100000.0f, AG[c], m, 128);
-            for (int32_t i = 0; i < k; ++i, ++n) api->moby_remove(m[i]);
-        }
-        char b[64];
-        snprintf(b, sizeof b, "respawn: %d of the Glove of Doom's taken out", n);
-        api->log(b);
-    }
+    /* (the hero's spawns - the Glove of Doom's agents, mines, drones... - the session's soft reset takes out itself: ABI 18) */
     s.placed = 3;
     s.have_last = 0;
     if (s.mode == INTRO || s.mode == FIGHT || s.mode == BREAK) challenge_end(0, "Ratchet e' caduto");
