@@ -3390,6 +3390,11 @@ static void test(void* user, const char* text, uint64_t frame) {
             a = strchr(a, ';');
             if (a) ++a;
         }
+        if (getenv("ARENA_VENDOR") && frame == (uint64_t)atoll(getenv("ARENA_VENDOR"))) {  /* (the vendor's screens) */
+            char b[48];
+            snprintf(b, sizeof b, "test: the vendor: %d", api->vendor_open());
+            api->log(b);
+        }
         if (getenv("ARENA_BOARD") && frame == (uint64_t)atoll(getenv("ARENA_BOARD"))) {  /* (the hoverboard: Kalebo III's) */
             float h[3];
             pos_of(api->hero(), h);
