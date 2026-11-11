@@ -1202,6 +1202,11 @@ uint32_t moby_spawn(uint32_t cls) {
         return m;
     }
     debug_printf_stub();  // "out of mobys" with *(0x15f5cc)
+    {  // (host: a spawn refused is logged, the first and then every 256th: the plugins' and the game's spawns fail without a word otherwise)
+        static uint32_t refused = 0;
+        if ((refused++ & 255u) == 0)
+            std::fprintf(stderr, "[mobys] the moby array is full (%u slots): spawn of class %u refused (%u so far)\n", (end - lwu(OV(0x0015ffdc))) >> 8, cls, refused);
+    }
     return 0;
 }
 
