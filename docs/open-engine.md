@@ -1339,6 +1339,79 @@ transliterated). The higher camera in a fall is Rilgar's own: on Rilgar too it s
 | native Rilgar (`RAC1_GOTO=5`, `RAC1_HOVERBOARD_AT`, stick forward) against the arena's `world rilgar` (`arena_go`, `ARENA_SEC=rilgar`, the same stick), the frames where Ratchet is at the same place (to 0.01) | 1039 frames (riding 259, wipe-outs 354, falls 426): the camera the same to 0.000 (before: 0.80 riding, up to 10.3 in the falls) |
 | the same, from the finish line | 2.0 to 2.2 over him (before 5.2 to 6.0 for the first 150 frames) |
 
+## The base level's own world as a section (`world kalebo` on a Kalebo III level mod)
+
+A level mod runs on a base level's code and keeps its level number (the arena: Kalebo III's, 16), with its own geometry, collision,
+rails and level data in place of the planet's. Its main section is the mod's; a world section of **the base level's own planet**
+(`world kalebo` in a mod whose base is 16) brings Kalebo III itself back for a visit, its geometry, collision, rails, sky, music,
+zones and level data, with the mod's own out of the way while it is current and put back at the return. The composer refused it
+(`level 16's world is the base level's: a world's section of another level`, composer 9 and before); the check is gone, nothing
+else in the composer changed (a log line says so; mods composed before need no recompose, and none changes).
+
+```
+section kalebo remove respawn reset
+  world kalebo
+  hero kalebo                       # Kalebo III's own hero code there (below)
+  entry arrivo 111.6 264.04 134.6 3.1416
+  death_height 90
+  portal fine 318 200 120 340 215 145 to main:ritorno fade 10   # past the long rail's leap
+end
+```
+
+### What the base's code shares, and what was needed
+
+Everything a world section brings is the game's own work on that level's files, and the base's code is already the running code,
+so the section is the same as any world's (the same streaming, the same world state swapped in and out, collision, sky, fog,
+death height, music, lights, rail table, modern renderer's level) with one exception: its **level data**.
+
+| Shared state | The base's own world |
+|---|---|
+| geometry, collision, sky, music, fog, lights, rails | the section's own blocks, read from the level's files on disc as for any planet: nothing of the mod's is shared (the renderer keeps the world level 16 under its own key, the session's own level a host slot) |
+| the class table, the registrations | the world's tie and shrub classes are registered into the section's own tables (the session's imports and the base's classes are untouched); the base's classes placed there are the base's, `ctx` none |
+| the level data (the engine's paths, volumes, cameras, rails, moby groups) | the one thing keyed by the level's number: the base level's registry is **the session's view** (the mod's own objects, and what the profiles and the plugin add), so the planet's own level data had no place under 16. It is now a registry under its own key (`LD_BASE_WORLD`, `ld_world_key`, leveldata.h): made at the arrival from the pool's level data like any world's but with no context (the running code is the base's), the engine's while the section is current (`ld_engine_take`), the mod's put back after (`ld_engine_restore`) |
+| the level state (the spawn rules' rows) | already keyed apart (`rows_put`: the world's level has rows of its own, the session's are `-1`) |
+| the hero and camera code | the base's own build (`-1`) is Kalebo III's: `hero_build_set` and `hero_camera_level_set` already read the level as the base's when it is the loaded overlay's |
+
+Before the registry, the planet's cameras, paths and volumes were the mod's while Ratchet was in its world; the game's code read
+the mod's (the arena's own) instead of the planet's: no camera zones along the rail, no volumes. Now `[ld] level 16's world registry at
+...: 1 paths, 5 cameras, 0 volumes, 4 rails of its own` is made at the arrival and the engine's while the section is current.
+
+### The hero code
+
+A mod on Kalebo III's base that runs the generic hero code in main (`hero generic`, for the game's lava) runs it in the world's
+section too (a section without a `hero` line keeps main's). Kalebo III's long rail 1 (2800 points, 1109 units, from its station at
+114 264 133 to the leap at 317 206 130) is **not** ridden to its end by the generic code: it leaves the rail's state at the crest
+about point 1480 (state 0x6 for a few frames, then 0x74, the rail-grab's) and stops at point 2099 (304.17, 118.26,
+129.1), where it stays. With **`hero kalebo`** in the section (the base's own hero code, which is Kalebo III's: as on the planet) he
+rides it to its end and the portal beyond. The log: `[hero] the hero context: the base hero code runs Ratchet (before: the generic
+(Veldin's)'s)` at the entry and the generic one back at the return. The composer says so in `compose.log` when a base world's section
+has no hero line of its own.
+
+### The planet's hurts, its objects
+
+- The planet's rail is hard by itself: Ratchet is hurt on it (the game's hop, state 0x42, a health point) where the native game
+  hurts him, with no object in play: first at (88.2, 238.9, 132.0), then (115.2, 218.5, 118.7), (99.8, 219.4, 104.2) and
+  others (in the native Kalebo III, the same: 88.2 238.8 132.6 first, `RAC1_GOTO=16` with the same start and a scripted jump and
+  stick). Four health points are gone about half way along: a challenge on it wants health for him (crates by `objects`, or the
+  plugin).
+- `objects 933` (the planet's own rail mines, placed from its gameplay file: 3 in a box over the first stretch) are placed and
+  updated, and **retire themselves** at once: the planet's code keeps a placed rail mine only while Ratchet is grinding (his
+  sub-state 0xf), and at the entry he is in the air for a few frames. The mines the plugin spawns (`base_spawn`, the arena's)
+  are another case: they are not placed ones, and are not retired by that rule.
+
+### Testing
+
+Test mod: the arena copied (base 16, `hero generic` in main, its plugin) with the section above, `RAC1_MOD_TEST=arena_go
+ARENA_SEC=kalebo ARENA_BOOTS=1` (the plugin's look-round test: the Grindscarponi, into the section at frame 600), headless.
+
+| Test | Result |
+|---|---|
+| compose | `section kalebo: level 16's world is the base level's own ...; 0 of its 1568 objects`; the section streams in while the landing plays (`kalebo: level 16's world: 159 blocks, 11.9 MB copied of its 21.4 MB of asset data; 1769 tfrags, 124 tie classes with 3078 instances, 31 shrub classes with 1622 instances ...; in the session heap 18.3 MB`); `[ld] level 16's world registry at ...: 1 paths, 5 cameras, 0 volumes, 4 rails of its own` |
+| enter by the plugin (`section_enter`), ride rail 1 from its station to its end (`hero kalebo`; his health held at 4 by the test), the portal past the leap, back in the arena | `main -> kalebo at entry arrivo`, the switch 0.2 to 0.6 ms; Ratchet grinds the whole rail (5400 frames) to (339.9, 204.8, 133.3), `kalebo -> main at entry ritorno (portal fine)`: the arena as it was (its collision, sky, music, lights, the generic hero code again); pictures: Kalebo III's world with its sky and the rail's tower rings, then the arena |
+| the arena's collision after two visits | `RAC1_COLL_PROBE` over the arena (1443 points, the same collision block 006f2940): hash de29c52e9d225bee, sum 150609.009, as in a run that never left main |
+| the same with the generic hero code | stops at point 2099 (above) |
+| the native Kalebo III against the section | the same hurts at the same places; the world, sky and rail as drawn natively |
+
 ## A world's zones: what is drawn (`zones all`)
 
 What a world's section draws of its planet is the planet's own culling: the zone grid (`0x15f600`, gameplay's: cells of 4

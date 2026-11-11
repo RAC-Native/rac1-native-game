@@ -848,6 +848,14 @@ end
 - **The hero code** there is main's (`hero generic` in main holds in every section without a `hero` line of its own).
 - **The base level's enemies** (a level on Kalebo III's code: its robots spawned with `base_spawn`, hunting with `base_hunt`)
   follow Ratchet into a world's section and fight there as anywhere in the session.
+- **The base level's own planet** (`world kalebo` in a mod on Kalebo III's base, 16: the planet the mod replaces) is a section like
+  any other: its geometry, collision, rails (Kalebo III's long rail 1, from 114 264 133 to its leap at 317 206 130), sky, music,
+  zones and level data come back from your disc while it is current, and the mod's own are put back at the return. The same
+  one-section rule applies. Put **`hero kalebo`** in the section when Ratchet grinds there and main runs `hero generic`: the generic
+  hero code does not ride that rail to its end, the planet's own does. The planet's rail hurts him where it does on the planet
+  (a health point about every fifty units, with no object in play), and the rail mines placed from its gameplay file (`objects 933`)
+  go out at once unless he is already grinding; mines the plugin starts (`base_spawn`) are not placed ones
+  ([docs/open-engine.md](open-engine.md#the-base-levels-own-world-as-a-section-world-kalebo-on-a-kalebo-iii-level-mod)).
 - **Not in a world's section**: `meshes` and `moby` lines of the base level's classes (its own scenery is the planet's;
   `moby <name>|<level>:<class>` lines are fine).
 - **The level's own objects in a world's section**: `object` lines inside a section block (any section: a world's in its
