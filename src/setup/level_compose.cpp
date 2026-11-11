@@ -80,7 +80,7 @@ namespace {
     "respawn reset | respawn keep              (format 3) the placed objects at a respawn: those killed come back (default) or not\n"
     "moby <class> <x> <y> <z> [<yaw>] [<slot>=<value> ...]   (format 3) slots of the class's profile set (a path's name, a number)\n"
     "moby <name>|<level>:<class> <x> <y> <z> [<yaw>] [<slot>=<value> ...]   (format 3) a class of another level placed (imported)\n"
-    "section <name> [remove|freeze|keep] [respawn reset|keep] ... end   (format 3) a section: its own collision, meshes, lights,\n"
+    "section <name> [remove|freeze|keep] [respawn reset|keep] [fresh] ... end   (format 3) a section: its own collision, meshes, lights,\n"
     "                                          sky, music, fog, background, death_height, offset, entry, checkpoint, moby, portal lines\n"
     "entry <name> <x> <y> <z> [<yaw>]          (format 3) where a portal or section_enter puts Ratchet in the section\n"
     "portal <name> <x0> <y0> <z0> <x1> <y1> <z1> to <section>:<entry> [fade <frames>]   (format 3) a box that switches sections\n"
@@ -220,6 +220,7 @@ struct LevelTxt {
     };
     struct Section {
         std::string name, policy = "remove", respawn;
+        bool fresh = false;  // (`fresh`, SDK ABI 17: every entry puts its objects back as at the first)
         int line = 0;
         std::string collision, meshes, lights;  // ("": the session's collision stays, no meshes, the session's lights)
         int sky_level = -1;                     // (-1: the session's sky)
@@ -610,6 +611,7 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
             while (in >> w) {
                 if (w == "remove" || w == "freeze" || w == "keep") S.policy = w;
                 else if (w == "respawn" && in >> S.respawn && (S.respawn == "reset" || S.respawn == "keep")) continue;
+                else if (w == "fresh") S.fresh = true;
                 else return bad();
             }
             for (const LevelTxt::Section& o : t.sections)
@@ -3158,9 +3160,9 @@ bool compose_sections(const fs::path& ldir, LevelTxt& lt, int base, const std::v
                 ++k;
             }
         }
-        log.say(fmt("section %s (%s when left, respawn %s): collision %s, sky %s, %zu meshes, %d objects of the base level's classes%s, %d of other levels', "
+        log.say(fmt("section %s (%s when left%s, respawn %s): collision %s, sky %s, %zu meshes, %d objects of the base level's classes%s, %d of other levels', "
                     "%zu entries, %zu checkpoints, %zu portals, death height %.1f",
-                    S.name.c_str(), S.policy.c_str(), S.respawn.empty() ? "the session's" : S.respawn.c_str(),
+                    S.name.c_str(), S.policy.c_str(), S.fresh ? ", fresh at every entry" : "", S.respawn.empty() ? "the session's" : S.respawn.c_str(),
                     o.coll.empty() ? (S.world >= 0 ? "its world's" : "the session's") : fmt("%.1f KB", static_cast<double>(o.coll.size()) / 1024.0).c_str(),
                     S.sky_level >= 0 ? fmt("level %d's (%zu bytes)", S.sky_level, o.sky.size()).c_str() : S.world >= 0 ? "its world's" : "the session's", o.count,
                     o.objects,
@@ -3816,6 +3818,7 @@ bool compose_level_mod(const std::string& folder, bool force) {
             const SectionOut& so = souts[k];
             const int i = static_cast<int>(k + 1);
             o << fmt("section\t%d\t%s\t%s\t%s\n", i, S.name.c_str(), S.policy.c_str(), S.respawn.empty() ? "-" : S.respawn.c_str());
+            if (S.fresh) o << fmt("fresh\t%d\n", i);
             o << fmt("files\t%d\t%d\t%d\t%d\n", i, so.coll.empty() ? 0 : 1, so.sky.empty() ? 0 : 1, so.gameplay.empty() ? 0 : 1);
             o << fmt("meshes\t%d\t%zu\t%zu\n", i, so.first, so.count);
             if (S.sky_level >= 0) o << fmt("sky\t%d\t%d\n", i, S.sky_level);

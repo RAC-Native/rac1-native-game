@@ -1057,6 +1057,7 @@ int32_t api_board_rule(int32_t rule) { return hero_board_rule(rule); }
 void api_board_return(const float pos[3], float yaw) { hero_board_return(pos, yaw); }
 void api_board_fall(int32_t set, float z) { hero_board_fall(set != 0, z); }
 int32_t api_board_touching(uint32_t* out, int32_t max) { return out == nullptr || max <= 0 ? 0 : hero_board_touching(out, max); }
+int api_section_reset(const char* name) { return name != nullptr ? section_reset(name) : 0; }  // (ABI 17)
 int api_hero_mode(int32_t mode, uint32_t obj) { return g_session_rt && hero_mode_set(mode, obj, "the plugin's hero_mode") ? 1 : 0; }
 int32_t api_hero_mode_now() { return hero_mode_now(); }
 
@@ -1699,6 +1700,7 @@ void load_all() {
     g_api.board_return = api_board_return;
     g_api.board_fall = api_board_fall;
     g_api.board_touching = api_board_touching;
+    g_api.section_reset = api_section_reset;  // (ABI 17)
     {
         SetpiecesHost h;
         h.hero_damage = api_hero_damage;

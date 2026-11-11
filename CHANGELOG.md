@@ -5,6 +5,14 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: a section put back as at its first entry** (the mod SDK's ABI 17; a challenge played again). The objects a
+  section's visit killed stay killed, and a boss beaten stays beaten, for the whole visit of a session: a challenge that
+  uses a planet's world (Batalia's mines, the Snagglebeast) found them gone the second time. `section_reset(name)` puts a
+  section that is not the current one back: its killed and beaten objects placed again at its next entry (their spawns
+  gone, its bosses to beat again, what they wrote in the level's records cleared), and a `fresh` word on a section's line
+  in level.txt does it at every entry. A save holds a section put back as fresh. Tested on Umbris's cave (the boss and its
+  crates), on a section of the mod's own and with saves. Nothing changes for the original or for a mod that does not use
+  them; the composer's version stays 9 (the word is written only for the sections that have it).
 - **A shorter frame at the default 4:3** (no change to the picture or the game): with the settings as they come - Aspect Ratio
   4:3 Original, LOD Original - the renderer still decoded every tie and shrub of the frame from the game's draw commands on an
   emulated VU1, and the frame waited for it. The game's own tie and shrub passes now tell the renderer what they drew, and it
