@@ -191,8 +191,7 @@ static const challenge_def CHALLENGES[] = {
      {{14, 10, 30, "RRBWA"}, {18, 12, 26, "RBWAY"}, {22, 14, 24, "RBFWAYP"}, {26, 16, 22, "RBFLWAYP"}, {30, 18, 20, "RBFLCJWAYP"},
       {32, 20, 20, "RBKTFJ"}, {36, 22, 18, "RBKTFLJS"}, {40, 24, 16, "RBKTFLCJS"}, {44, 26, 14, "GRBKTFLCJS"},
       {220, 110, 3, "GRBFLCJSKYWA"}},  /* (110 at once: about as many as the game draws in a frame; more live but unseen) */
-     0, 20, 1, 0, W_ANY, 30000, 0, NULL, NULL, 0, "escape", "batalia", 5},  /* ("kalebo" once the composer takes the base's
-                                                                                own world as a section: CHAIN has it) */
+     0, 20, 1, 0, W_ANY, 30000, 0, NULL, NULL, 0, "escape", "kalebo", 5},
     /* Autoscontro: on Kalebo III's hoverboard (free, ABI 16) round the arena, the enemies knocked down by ramming them (its
        wave without end: walkers and bomb bots), 60 within 2 minutes; rings to ride through, 5 seconds more each */
     {"Autoscontro", "in tavola: investi 60 nemici in 2 minuti", BUMP, 120, 1, {{9999, 16, 30, "RRRWAB"}}, 0, 0, 0, 0, W_ANY, 15000, 0,
@@ -2148,6 +2147,7 @@ static struct {
     uint32_t wbase[N_WMOBYS];  /* Kalebo III's rail mines the plugin started in a world (base_spawn handles) */
     int nwbase;
     int going_home;      /* the last world's portal: back to the arena, the waves going on (escape_after) */
+    int hp_in;           /* his health as he came into the world (Kalebo III's rail: given back a point every RAIL_HEAL) */
 } rails;
 
 /* the game has the rail services (ABI 11) */
@@ -2719,6 +2719,7 @@ static void section_entered(void* user, const char* name, const char* entry) {
         return;
     const struct chain_def* d = chain_of(name);
     rails.stage_step = rails.stage_t = rails.rail_done = rails.rammed = 0;
+    rails.hp_in = (int)api->health();
     char rn[40];
     snprintf(rn, sizeof rn, "%s_in", name);  /* (its rail of ours: Ratchet goes on grinding on it) */
     rails.stage_rail = api->rail_find(rn);
@@ -3065,9 +3066,15 @@ static void stage_last_done(void) {
     api->log("the portal home: the flash");
 }
 
+#define RAIL_HEAL 600  /* frames: on Kalebo III's long rail (it hurts every fifty units or so, unless its fences are jumped)
+                          a health point given back, up to his health as he came in */
+
 static void stage_update(const float h[3]) {
     const struct chain_def* d = chain_of(rails.stage_name[rails.stage]);
     ++rails.stage_t;
+    if (strcmp(rails.stage_name[rails.stage], "kalebo") == 0 && rails.stage_t % RAIL_HEAL == 0 && api->health() > 0 &&
+        (int)api->health() < rails.hp_in)
+        api->sw(0x001415f8u, api->health() + 1);
     if (d != NULL && d->board) {
         if (rails.stage_step == 0) {  /* (down its rail: at its end, or off it, the board) */
             if (rails.rail_done || (!on_rail() && rails.stage_t > 90) || rails.stage_rail == 0) board_start(d, h);
@@ -4316,6 +4323,14 @@ static void test(void* user, const char* text, uint64_t frame) {
             char b[64];
             snprintf(b, sizeof b, "test: Ratchet put on the escape: %d", api->hero_rail_attach(rails.escape, 3.0f, 1));
             api->log(b);
+        }
+        static uint64_t kal_at;  /* (on Kalebo III's rail: put near its end after a minute - it neither jumps nor swings) */
+        if (rails.phase == 5 && rails.sec_in && strcmp(rails.stage_name[rails.stage], "kalebo") == 0 && kal_at == 0) kal_at = frame + 1800;
+        if (rails.phase != 5) kal_at = 0;
+        if (kal_at != 0 && frame == kal_at) {
+            const float at[3] = {332.7f, 205.6f, 132.4f};
+            hero_move(at, 3.1416f);
+            api->log("test: Ratchet put near the end of Kalebo III's rail");
         }
         static uint64_t bat2_at;  /* (on Batalia's rail: put past its tower, as arena_fuga does) */
         if (rails.phase == 5 && rails.sec_in && strcmp(rails.stage_name[rails.stage], "batalia") == 0 && bat2_at == 0) bat2_at = frame + 60;
