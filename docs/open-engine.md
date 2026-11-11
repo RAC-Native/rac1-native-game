@@ -839,6 +839,17 @@ table), `sections.cpp` (a section's rail table).
   line facing along it (`hero_place`): the next hero update's landing check latches it and state 0 takes it (0x28). The
   game's grind always starts along the points (+0x578 = 1): riding back, the attach sets -1 once he is on it.
 
+- **Grind or grab? One table.** A mod rail can be taken from below with the wrench, as Kerwan's overhead rails are (a jump under
+  it: Ratchet hangs from it, state 0x74, along its points). The game has no per-rail information to tell the two: a rail record
+  is the bounding sphere (file +0x0 .. +0xc), the loop flag (file +0x10) and three words that are zero in the original's
+  gameplay files of every level that has rails (the table the load makes: the sphere, the path +0x10, the loop flag +0x14,
+  zeros +0x18 and +0x1c); Kerwan's three rails (paths of two points) are records of the same layout as Blarg's, Batalia's,
+  Oltanis's, Quartu's, Kalebo III's and level 18's. `find_rail_v` (0x20cd08) scans that one table for both: `hero_rail_land_check` (0x20cf58, the feet, with the
+  grind boots) and `hero_rail_grab_check` (0x20d330, the hand point, a jump's state 2 or 4); what differs is the hero code (the
+  generic code calls both, every Novalis-family build only its own: Kerwan's the grab, none of them the landing) and where
+  Ratchet's feet and hands are. There is no `rail` option for it: a rail placed over where Ratchet jumps from below is grabbed;
+  place it out of the hand's reach (above the jump's) or run `rail_enable` (ABI 11) off while he is under it.
+
 ### Items, Magneboots
 
 - `items` (level.sdk) and `item_visit`: the owned byte 0x13d4c0 + item set at the level's start when not owned, cleared
@@ -1447,3 +1458,84 @@ own code reads that a world's section did not give it, and each is now given for
   one frame of 43 to 73 ms; the mod's own meshes are not drawn in a world's section (its own rail models and objects are);
 materials and emissive lines (lights.txt) do not reach them there; a world on a session
   base other than Veldin's and Kalebo III's was not tried.
+
+## Putting a section back (ABI 17)
+
+A section's placed objects killed "for good" stay so for the whole visit of a session, and a boss beaten stays beaten
+(`dead`, `beaten` of the section, and the records the game's spawn rule reads); a save keeps it. A challenge played again
+(the arena's Great Escape through Batalia's mines and the Snagglebeast) found the boss already beaten and the mines
+destroyed. The arena worked round it by creating them at each try.
+
+**What a section remembers** after it is left, and what `reset_section` (`sections.cpp`) puts back:
+
+| Memory | Where | Put back by |
+|---|---|---|
+| the placed objects killed in the visit | `Section::dead` (by uid), `dead_imp` (its other levels' classes), and what is not alive at the leave | cleared: placed again at the next entry |
+| the bosses beaten | `beaten`, `beaten_imp`, `beaten_n` (`boss_beaten`) | cleared: 0 |
+| what is in play of it | its objects (frozen, kept), the mobys they spawned (`kids`), the plugin's named bosses (`pboss`), its pvars' heap blocks | taken out (`moby_retire`), freed |
+| the level's records the spawn rule reads | a world's: the rows of its world's level (`g_rows`: the collected things, the killed-for-good bits, the group counts); a section of the mod's own: its placements' bits in the session's rows (the card's) | a world's rows erased (a first visit's: zero); an own section's uids' bits cleared (`Section::puids`, taken at its commit) |
+| the game's visit tables | `0x1ba4d0` (killed for the visit, a bit per uid), `0x1baa24` (live state byte), `0x1bb684` (the checkpoint's copy: a boss's death at its own checkpoint keeps it killed) | cleared for the section's uids (a world's `wuids`, an own section's `puids`) |
+
+The last two rows were found by testing: the first version cleared the section's sets and a world's rows and the Snagglebeast
+still did not come back (its death had written the checkpoint's copy `0x1bb684`, which the spawn rule reads first).
+
+- **`section_reset(name)`** (ABI 17): refused (0, a line on stderr) for no session with sections, no such section, **main**
+  (its objects are the session's own `g_rt.placed`, put back by a death's soft reset and kept by its policy), **the current
+  section** and one a switch into it is pending. For any other section, in whatever state (not in, in and frozen, kept running,
+  left removed): done at once, the objects placed again by `spawn_objects` at its next entry (or its streaming's commit, for a
+  section dropped with `section_unload`: its `puids` kept).
+- **`fresh`** (level.txt: `section <name> [remove|freeze|keep] [respawn ...] fresh`; `sections.txt`: a line `fresh <index>`):
+  `do_switch` resets the section it enters before it is entered (its state is applied after, so a world's rows are the
+  first visit's). A world section's first entry is not reset (its rows are the session's own, empty at the arrival, its objects
+  as placed); a section of the mod's own is reset at its first entry too, as a save's load can have brought the card's bits
+  (crates broken before the save) with it. The composer writes the line only for a section that has it: the output of every
+  existing mod is unchanged (composer version 9 still), a build made by a composer without `fresh` is a build without it.
+  Not a death's: `respawn` decides what a death does inside the section.
+- **Saves.** A section put back is a section with nothing gone: `sections_gone_of` (the save's session item) lists `dead` and
+  the objects not alive, so after a reset the item says 0 placed objects gone, and a `fresh` section's list is empty
+  whatever happened in it (`sections_gone` ignores such a list too). An own section's card bits are cleared by the reset, so
+  the records the game writes are the fresh ones. A world's rows are not in the card at all (a card save puts the session's own
+  in: `sections_save_begin`).
+
+| Test (local mods `sreset-test`: format 3 on Veldin's base, `world umbris` with `objects all`, `box`, `boss umbris.snagglebeast`; a section with three crates of the mod's own; `RAC1_MOD_TEST=sr_*`) | Result |
+|---|---|
+| `sr_noreset` (control): the Snagglebeast taken to its last hit and its crates hit as props (14 broke), out to main, back | beaten (1), back in with 103 of 118 objects and no boss: what the arena found |
+| `sr_world`: the same, then `section_reset("cave")` from main, in again, twice | each entry the same 118 objects (the boss, 500 x26, 501 x4, 511 x19 ...), `boss_beaten` 0, the boss beaten again each time (1) |
+| `sr_freeze` (policy freeze): the boss mid-fight, out, reset | `104 objects in play taken out, 40 mobys they spawned`, in again: 118 objects, the boss at its health 120, state 3 |
+| `sr_own`: three crates (500, 500, 501) broken, out, in (none there), reset, in | 3 again; broken again the same |
+| `sr_fresh`, `sr_own_f` (sreset-b: `fresh` on both sections), three rounds each | at every entry the same objects, the boss to beat each round; the first entry is not reset (118 objects), a section of the mod's own is |
+| `sr_refuse` | `section_reset("main")`, `("nope")`, `("")` and the current section: 0 each, the log says why; from main: 1 |
+| saves (one run saves into slot 3 of a scratch card, a second run loads it from Veldin: `RAC1_SESSION_SAVE_AT`, `RAC1_GOTO=0@60 RAC1_SESSION_LOAD_AT=300:3`): after a kill, no reset | `15 placed objects gone`; loaded: 103 objects in the cave, no boss, `boss_beaten` 0 |
+| after a kill and `section_reset("cave")` | `0 placed objects gone`; loaded: 118, the boss there, beaten again when fought |
+| `fresh` section after a kill | `0 placed objects gone`; loaded: 118, the boss there |
+| own section, crates broken: no reset / reset / `fresh` | `3 placed objects gone` and loaded without crates / `0` and 3 crates / `0` and 3 crates (a save's card bits cleared at the entry) |
+
+Limits found on the way, both since looked into (the branch `fix/session-load-crashes`):
+
+- **A load made while a session is running** (the pause menu's Load, in the same process) crashed entering a world section
+  afterwards, in `unfreeze` -> `moby_update_transform`, idle save or not. The cause is not a dirty slot: `unfreeze` (and the
+  main section's `session_rt_main_enter` and the soft reset's restore) transformed every object put back in play, including
+  one of a class with **no block of its own** (`+0x24` 0: a class of code alone, such as Umbris's 258 and 1142), which no
+  placement ever transforms (`section_spawn_placements` and `session.cpp` guard it). The transform of such a moby reads the
+  class's animation table at EE address `0 + 0x48 + 4 * the animation` (the animation index is 0, the cached one `+0x71` 0xff),
+  low memory that held something harmless in the runs without a load, and a float after one went through the game's own
+  level exit (`0x3f9699a0`, read as an address: out of range). So a first arrival never failed. Fixed:
+  `moby_update_transform_placed` (session.cpp) skips a moby with no class block, used in `unfreeze`, `session_rt_main_enter` and
+  the respawn's restore. Tested with `RAC1_SESSION_SAVE_AT` / `RAC1_SESSION_LOAD_AT` and a `RAC1_SIM_INPUT=seq:` pressing Cross at
+  the planet prompt the load lands in (the Load page's end: `level_exit_to`), in the same process: arrival in the cave, back to
+  main, save, load, the cave again (the crash before the fix, the cave and its boss working after it, a death and its soft reset
+  included), and the same with the save made inside the cave.
+- **Two sections of the same planet** (`cave` and `cave2`, both `world umbris`) are **refused by the composer**: `level.txt:N:
+  section cave2: level 7's world is already section cave's ...`. A world's level state is per world level, one copy in the game:
+  its moby group lists (the engine's group table of the level, `world_groups`), its cameras' links (`world_camera_links`), the
+  rails and the host meshes drawn in it, the rows of its records. The second section's streaming and its objects' groups
+  overwrite the first's in that table, and the first one's leaving empties them (`groups_clear` zeroes the entries of its
+  `groups`, whoever owns them now), so the objects of the section in play read a group list that is gone. Measured on the arena
+  mod's Umbris (two `world umbris` sections, a boss beaten in each): after the first boss's death the other section's frozen
+  objects were in play in main (`+0x34` bit 2 cleared) and, in the second section, its objects' groups (2, 3, 25, 66, 77, 81..83)
+  had lists of 0; `moby_visible_queue` walks a marked group's list of ids from the table, here from address 0, so garbage ids reached the
+  look list (`0x1aba00`) and `hero_look_at_update` read a moby that is not one (`std::out_of_range`, 0xba96c291), 15 frames after
+  the second boss was beaten. Supporting it means a table per section (the groups and the camera links put at each entry and taken
+  out at each leave, the rows and the host meshes by section, not by level): not done, one section per planet is refused with its
+  reason instead of crashing later; the several places of one planet are one section with several `entry` lines and a `box`
+  that holds them all.

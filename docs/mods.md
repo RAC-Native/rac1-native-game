@@ -731,6 +731,7 @@ portal east_gate 26 -4 0 31 4 6 to yard:west   # main's box: into it, Ratchet is
 leave remove                                   # main's objects when Ratchet leaves it: remove (default), freeze or keep
 
 section yard remove respawn reset              # remove / freeze / keep its objects when it is left; its respawn policy
+                                               # (add `fresh` to put it back as at its first entry at every entry: below)
   offset 400 0 0                               # added to the level's offset
   collision collision.obj                      # its own (none: main's)
   meshes meshes.obj                            # drawn only while Ratchet is in it
@@ -751,6 +752,14 @@ start yard:west                                # optional: the session starts th
   section brings him back at the checkpoint there (the entry he came in by, or a `checkpoint_set`), and that section's
   killed objects back (its `respawn` policy, else the level's).
 - **Saves**: a save in a section brings you back to that section at its checkpoint.
+- **Putting a section back** (`fresh`, composer 9 and SDK ABI 17): the killed objects of a section stay killed for the whole
+  visit, and a boss beaten stays beaten. A challenge that is played again wants them back: `section <name> ... fresh` puts the
+  section back as at its first entry at **every entry** (the killed placed again, their spawns gone, the bosses to beat again,
+  what they wrote in the level's records cleared: a crate broken, a thing taken), and the plugin's `section_reset(name)`
+  does it when it wants, for a section that is not the current one ([The mod SDK](sdk.md#putting-a-section-back-abi-17)).
+  It works for a planet's world as a section (`objects`) and for a section of the mod's own. A save holds a section put back as
+  fresh. A death inside the section is its `respawn` policy's, as before. The composer writes the word into the build only
+  for the sections that have it: a build composed before still plays, the mods that use `fresh` need a composer that knows it.
 - **Only the current section is drawn**; sections may be anywhere (far apart is simplest: each has its own collision).
 - The plugin goes between sections and streams them with the SDK's ABI 10 ([The mod SDK](sdk.md#sections-abi-10)).
 - Log lines: `[compose] section <name> (...)`, `[section] <name> streamed in: ...`, `[section] frame N: main -> yard at entry
@@ -778,6 +787,9 @@ section kalebo remove respawn reset
 end
 ```
 
+- **One section per planet.** A planet's world has one copy of its level state in the game (its moby groups, its cameras' links, its
+  rails, its records), so two sections of the same planet (two `world umbris`) are refused by the composer, with the line of the first.
+  Put the places of one planet in one section: several `entry` lines, a `box` that holds them all, and `portal`s inside it.
 - **Coordinates** in a world's section are its planet's (the level's `offset` does not move them, and the section has no
   `offset`): put entries where Ratchet stands on that planet (where its level starts him: Kerwan 263.98 102.09 54.5 facing
   1.5708, Kalebo III 146.43 133.23 128.3 facing 1.46). The section's camera is the planet's own (its first camera, as at its

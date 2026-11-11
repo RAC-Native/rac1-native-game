@@ -81,9 +81,8 @@ LEVEL = {
     # 8 jetpack troopers (the dropships' too), 2 dropships (SDK ABI 5), the hub's 4 crates of each kind, the grind
     # course's 13 rail mines and the escape's 6 (933: Kalebo III's, on its rails)
     "spawn": {1445: 24, 52: 8, 541: 6, 638: 8, 1356: 2, 501: 4, 511: 4, 933: 22, 439: 1},  # (439: Kalebo III's hoverboard)
-    # other planets' classes the plugin starts (import_spawn): Batalia's spiked rail mines, put on its rail at each try (its
-    # placed ones, once broken, would stay so for the session's visit and in its saves)
-    "imports": ["8:621"],
+    # other planets' classes in main from the load (level.txt's import lines; the challenges' enemies are loaded per wave)
+    "imports": [],
     # (text, box in the scene's coordinates or None): embers rising from the lava (on a level mod `source lava` reads
     # the collision's type 3 faces too), as on Gaspar, and a little ash
     "particles": [
@@ -126,25 +125,31 @@ SECTIONS = [("prova", {"sky": 15, "background": (34, 44, 92), "fog": (34, 44, 92
             # - Quartu: our rail quartu_in (its model drawn: composer 7) from high south of its Giant Clank's pad down by it,
             #   then Kalebo III's hoverboard (the plugin's, ABI 16) east across the Giant Clank's round arena (every zone
             #   drawn: zones all) to the ring in its middle; none of Quartu's objects (its 1451, the pad, shows a broken help text)
-            ("quartu", {"world": "quartu", "zones_all": True, "entries": [("arrivo", (130.5, 186.0, 61.0), 1.5708)],
+            ("quartu", {"world": "quartu", "fresh": True, "zones_all": True, "entries": [("arrivo", (130.5, 186.0, 61.0), 1.5708)],
                         "rails": [("quartu_in", [(130.5, 186.0, 60.0), (130.5, 200.0, 48.0), (130.5, 210.0, 36.0),
                                                  (130.5, 216.0, 28.0)])],
                         "rail_mesh": True, "death_height": 8.0}),
             # - Batalia: its long rail (its own, drawn), from its start to its end, where it leaps: Ratchet comes in just over
             #   its start and lands on it (no rail of ours on top: the section keeps the planet's own collision; with one, the
             #   composer's copy of it with the rail's strip, the camera shook on the way down)
-            #   With its spiked rail mines (8:621: jumped, or broken with the wrench, as on Batalia), the plugin's at each try.
-            ("batalia", {"world": "batalia", "entries": [("arrivo", (286.0, 86.9, 33.0), 2.91)],
+            #   With its spiked rail mines (621: jumped, or broken with the wrench, as on Batalia).
+            # (every world `fresh`: put back as at its first entry at every entry, its mines, its boss: a challenge played again)
+            ("batalia", {"world": "batalia", "fresh": True, "objects": "621", "entries": [("arrivo", (286.0, 86.9, 33.0), 2.91)],
                          "death_height": 15.0}),
             # - Rilgar: its hoverboard race (its own hero code and board: hero rilgar board; its HUD) from its finish line, to
             #   the small platform past the big ramp (the plugin's ring there), with its turbo pads (1140). Not its crates (500:
             #   346 of them, along the whole track): every section's objects take the game's moby array from the session's
             #   start, and with them it was full (Umbris's objects not all placed, the vendor crashed)
-            ("rilgar", {"world": "rilgar", "hero": "rilgar board", "objects": "1140",
+            ("rilgar", {"world": "rilgar", "fresh": True, "hero": "rilgar board", "objects": "1140",
                         "entries": [("arrivo", (275.49, 334.35, 73.61), -2.04)], "death_height": 30.0}),
+            # - Kalebo III (Assalto Finale's): its own long rail, from its station by the arena's (Ratchet comes in just over it)
+            #   to its leap, its rail mines the plugin's; Kalebo III is the session's base: none of its objects (main's spawn
+            #   pools serve the mines)
+            #   (not yet: the composer refuses the base level's own world as a section; asked)
+            # ("kalebo", {"world": "kalebo", "entries": [("arrivo", (111.6, 264.04, 134.6), 3.1416)], "death_height": 90.0}),
             # - Umbris: the Snagglebeast's cave, its boss (the challenge won when it is beaten). Its objects by class (all of
             #   them would place code-alone triggers too), 460 its lava's sea (code alone, no model); not 529, the parked ship
-            ("umbris", {"world": "umbris", "objects": "187 341 447 460 500 501 505 511 605 805 886 902 968 1059 1063 1069 1106 "
+            ("umbris", {"world": "umbris", "fresh": True, "objects": "187 341 447 460 500 501 505 511 605 805 886 902 968 1059 1063 1069 1106 "
                                                       "1113 1114 1115 1116 1128 1129 1131 1133 1135",
                         "box": (195, 355, 25, 320, 500, 90), "boss": "umbris.snagglebeast",
                         "entries": [("arrivo", (263.35, 483.16, 36.5), -1.13)],
@@ -828,7 +833,7 @@ def export_section(level, name, opts, depsgraph, first):
     lines, their count)."""
     if opts.get("world"):
         L = ["# the section %s: %s's world (its scenery, collision, sky, music; the planet's coordinates)" % (name, opts["world"]),
-             "section %s remove respawn reset" % name, "  world %s" % opts["world"]]
+             "section %s remove respawn reset%s" % (name, " fresh" if opts.get("fresh") else ""), "  world %s" % opts["world"]]
         if opts.get("zones_all"):  # (every zone of the world drawn wherever the camera is: Quartu's Giant Clank arena)
             L.append("  zones all")
         if opts.get("hero"):  # (the planet's hero code, a mode: board, clank, giantclank)

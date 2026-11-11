@@ -681,6 +681,11 @@ uint32_t spawn_placement(uint32_t id, int level, const LdPlacement& pl, const fl
 }  // namespace
 
 // orig: (host) see session.h
+void moby_update_transform_placed(uint32_t m) {
+    if (lw(m + 0x24) != 0) moby_update_transform(m);
+}
+
+// orig: (host) see session.h
 uint32_t session_import_spawn(uint32_t id, const float pos[3], float yaw) {
     const auto it = g_session_ids.find(id);
     if (it == g_session_ids.end()) return 0;

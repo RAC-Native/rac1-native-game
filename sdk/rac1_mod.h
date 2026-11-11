@@ -55,9 +55,9 @@ extern "C" {
    table (rail_find .. fade_active; the rail callback); 12: hero contexts and modes (another planet's hero code, Ratchet as
    Clank, Giant Clank or on the hoverboard: hero_build, hero_build_now, hero_mode, hero_mode_now); 13: bosses (a section's
    bosses: boss_set, boss_beaten; the boss callback); 14: the HUD's width (hud_width); 15: saving from a plugin (game_save,
-   game_saving); 16: the hoverboard outside a race (board_rule, board_return, board_fall, board_touching) (docs/sdk.md lists
-   what each version added). */
-#define RAC1_MOD_ABI 16
+   game_saving); 16: the hoverboard outside a race (board_rule, board_return, board_fall, board_touching); 17: a section put back
+   as at its first entry (section_reset; level.txt's `fresh`) (docs/sdk.md lists what each version added). */
+#define RAC1_MOD_ABI 17
 
 #if defined(_WIN32)
 #define RAC1_MOD_EXPORT __declspec(dllexport)
@@ -663,6 +663,16 @@ typedef struct rac1_api {
     /* the objects (mobys) Ratchet on the board touches now: the game's own sphere query on their collision about his body, the
        board and Ratchet left out. Their count, at most `max` into `out`; 0 off the board. Hit them yourself (hit_send) */
     int32_t (*board_touching)(uint32_t* out, int32_t max);
+
+    /* ======== ABI 17 (test api->abi >= 17, or RAC1_API_HAS(api, section_reset)) ======== */
+    /* -- a section put back (docs/sdk.md, "Putting a section back"; a session with sections) -- */
+    /* section `name`'s placed objects as at its first entry: those killed in this visit, which stay so otherwise (its policy,
+       a save), placed again at its next entry; the mobys its objects spawned and the plugin's bosses in it taken out; its
+       bosses to beat again (boss_beaten 0); a world section's level state (what its objects wrote: crates broken, things taken)
+       back to a first visit's. Not allowed on the current section, on main, or one a switch is pending into: 0, the log says
+       why. 1 done. A save made afterwards holds the section as fresh. level.txt's `fresh` on a `section` line does the same at
+       every entry */
+    int (*section_reset)(const char* name);
 } rac1_api;
 
 #define RAC1_API_HAS(api, field) ((api)->size >= offsetof(rac1_api, field) + sizeof((api)->field))
