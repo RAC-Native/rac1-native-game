@@ -429,6 +429,12 @@ The MRP draws them itself (`RAC1_MRP_SEAS`, on by default; `mrp_fx.cpp`, "progra
   numerator: a callback that scales the w row and the numerator together, for its own fog, Kerwan's class 994, projects the same):
   the points are world points, drawn with the MRP's view-projection into its depth buffer, so the GPU clips them. Nothing past the
   4:3 frame is lost: no side test, no guard band, no full-span rule (those stay for the replica's path).
+  A matrix whose x, y, z rows are the frame's times one common factor (any: the camera's zoom or the cave's camera easing a
+  step makes it differ by a hair, up to a thousandth, between the frame the callback built it in and the one the host reads) and
+  whose w row is the frame's is the same: its points are the world's too. Only a matrix that is not (a batch with a model matrix
+  of its own, a camera cut's frame) goes through the frame's inverse, which is ill-conditioned (Gaspar's z row has a ~1e7
+  translation): a hair of difference there made world points tens of thousands of units away, the lava sea torn across the sky
+  (#144).
 - **As the GS drew them.** Texture, texture function, alpha test, blending and the GS's fog as the effects' shader (the atlas shared);
   the fog per vertex as the program computes it (`clamp(w + vf30.w)`, its integer part), interpolated over the screen; the depth is
   the GS's Z through the host's map of it (`render_gs_depth`), linear on the screen as the GS's, so a surface meets the world as
