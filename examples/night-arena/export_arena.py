@@ -137,11 +137,10 @@ SECTIONS = [("prova", {"sky": 15, "background": (34, 44, 92), "fog": (34, 44, 92
             #   the small platform past the big ramp (the plugin's ring there), with its bolt crates
             ("rilgar", {"world": "rilgar", "hero": "rilgar board", "objects": "500", "box": (250, 425, 70, 280, 455, 95),
                         "entries": [("arrivo", (275.49, 334.35, 73.61), -2.04)], "death_height": 30.0}),
-            # - Umbris: the Snagglebeast's cave, its boss (the challenge won when it is beaten). Its objects but 529 (with it in
-            #   play, back in main the moby pass crashed: an engine's matter, asked) and those whose class ids Kalebo III's
-            #   classes have (605, 805, 1135: the composer takes the base's, not Umbris's)
-            ("umbris", {"world": "umbris", "objects": "187 341 447 500 501 505 511 886 902 968 1059 1063 1069 1106 1113 1114 1115 "
-                                                      "1116 1128 1129 1131 1133",
+            # - Umbris: the Snagglebeast's cave, its boss (the challenge won when it is beaten). Its objects by class (all of
+            #   them would place code-alone triggers too), 460 its lava's sea (code alone, no model); not 529, the parked ship
+            ("umbris", {"world": "umbris", "objects": "187 341 447 460 500 501 505 511 605 805 886 902 968 1059 1063 1069 1106 "
+                                                      "1113 1114 1115 1116 1128 1129 1131 1133 1135",
                         "box": (195, 355, 25, 320, 500, 90), "boss": "umbris.snagglebeast",
                         "entries": [("arrivo", (263.35, 483.16, 36.5), -1.13)],
                         "death_height": 20.0})]
