@@ -109,7 +109,8 @@ game start ──> plugins loaded (load order), rac1_mod_main(api, mod) each: re
   The objects' classes' callbacks never run in a replay; an object simply stays where it was for that pass.
 - **The game's memory.** Read it inline through `api->ram` (`rac1_lw`, `rac1_lh`, `rac1_lb`, `rac1_lwf`). Write it
   only through `sw`, `sh`, `sb`, `swf` (and the services): the writes go through the journal. Never write through
-  `api->ram`.
+  `api->ram`. Raw memory access is planned to go in 1.0, behind a compatibility layer for a while: see
+  [The game's memory](#the-games-memory).
 - **Your memory.** An object's state (`object_state`) is the host's memory, yours to read and write in your callbacks.
   It is not the game's memory: it is not journaled and not saved.
 - **Floats.** Your code runs with the PS2's rounding (toward zero); `rac1_mod.cmake` compiles with the game's float
@@ -935,6 +936,15 @@ typedef struct rac1_ray_hit {       /* (ABI 2) collide_ray */
 | A save's bytes | about 64 KB a plugin |
 
 ## The game's memory
+
+> **Planned for 1.0: offsets give way to a typed API.** Version 1.0 makes the game fully native ([#145](https://github.com/RAC-Native/rac1-native-game/issues/145)):
+> no emulated PS2 memory, so no `api->ram`, no game addresses and no moby offsets. A typed API on moby handles (class,
+> state, position, rotation, pvars, ...) replaces them, as a new ABI. Mods that read or write the game's memory by
+> address or offset (`rac1_lw` / `rac1_lh` / `rac1_lb` / `rac1_lwf`, `sw` / `sh` / `sb` / `swf`, `ov`, `ee_alloc`, the
+> tables below) keep working through a compatibility layer that maps the old offsets onto the native data, for at least
+> one release after the typed API arrives; then the layer goes. The 0.x releases are unchanged. To keep a mod easy to
+> move: use the services (`mobys_near`, `object_*`, `hero_*`, `hit_send`, ...) wherever one exists, and keep your
+> offset reads in a few helpers of your own instead of spread through the code.
 
 A moby is 0x100 bytes of the game's memory: +0x10 its position (x y z), +0x20 its state (negative: gone), +0x24 its
 class data, +0x2c its scale, +0x34 its flags, +0x40 its rotation (Euler angles x y z), +0x74 its update function,
