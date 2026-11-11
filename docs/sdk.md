@@ -515,7 +515,13 @@ with the game's own code for each. A section's level.txt `hero` line does the sa
 | `int32_t hero_mode_now(void)` | `RAC1_HERO_NONE`, `_CLANK`, `_GIANT_CLANK` or `_BOARD` |
 | `int32_t hero_energy(int32_t set)` (ABI 18) | Giant Clank's energy bar, 0 to `RAC1_GIANT_ENERGY_MAX` (200), the one on Quartu's HUD: `set` >= 0 sets it first (`hero_energy(RAC1_GIANT_ENERGY_MAX)` refills it), -1 reads it. Returns the energy now, -1 when Ratchet is not Giant Clank. `hero_mode` starts him with the most; the enemies' hits take from it, and at 0 he falls (state 0x62): Ratchet is dead and the session's soft reset follows |
 
-The classes must be in the level: an `import` line (`import 10:87`), or a section's `hero ... clank` line imports them. As
+The classes must be in the level: an `import` line (`import 10:87`), or a section's `hero ... clank` line imports them. Giant
+Clank spawns three classes of his own planet while he fights (the missiles of his hands, the energy bomb of his ground pound, the
+light shaft of his jump landing: `15:256`, `15:1523`, `15:1427`): `hero_mode` imports them itself when it enters the mode and
+takes them out when it leaves it (log: `[hero] Giant Clank's class 15:256 ... imported`), so a plugin needs only `15:419`. They
+need three free slots of the class table (224 classes at once, which the other planets' enemies and worlds of a big mod can
+fill: the log says `could not be imported`, and the rockets and the bomb are then not there): `import_release` what the
+challenge does not need first, or enter the mode before loading the enemies. As
 Clank or Giant Clank the hero's moby (`PLAYER + 0x2080`) is the mode's object; `hero()` stays Ratchet's. A death in a mode
 brings Ratchet back as himself at the checkpoint (a section's `hero` mode is entered again there). Your plugin's object
 for the mode stays when he leaves it: remove it (`moby_remove`) if it should go.
@@ -529,6 +535,17 @@ api->hero_build(15);                                /* Quartu's hero code and Gi
 api->hero_mode(RAC1_HERO_GIANT_CLANK, gc);
 /* ... later: */ api->hero_mode(RAC1_HERO_NONE, 0); api->hero_build(-1); api->moby_remove(gc);
 ```
+
+A hero build **replaces** the base's own hero code, it does not add to it: on a Kalebo III base (the arena) `hero_build(15)`
+runs Quartu's code alone, as on Quartu. The hero code of a section can change as often as the plugin likes: in one section
+(the arena's `quartu`) a challenge can ride the hoverboard (`hero_build(16)`, the board, `hero_mode(RAC1_HERO_BOARD, b)`), leave
+it (`hero_mode(RAC1_HERO_NONE, 0)`, `hero_build(RAC1_HERO_BUILD_GENERIC)` or `-1`) and the next one be Giant Clank
+(`hero_build(15)`, `hero_mode(RAC1_HERO_GIANT_CLANK, gc)`), then the board again: tested in `world quartu`, each mode's own states,
+camera and effects each time. Giant Clank's body (the collision capsule: 5.25 tall, 3.75 across) is Ratchet's at the start of
+the mode and grows to his in about two seconds, as on Quartu; Giant Clank walks on the mod's geometry with that body: steps and
+walls the size of Ratchet's are not steps for him (a 5-unit block can be walked onto, a 6-unit wall is stopped at), and what is
+thinner than his body (a rail's collision strip, a railing) can perch him: keep what he should not walk onto out of reach, or
+off the level while his mode lasts.
 
 ### Bosses (ABI 13)
 

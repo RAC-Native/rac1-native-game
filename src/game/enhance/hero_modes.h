@@ -17,6 +17,12 @@
 // core lacks some (Kalebo III's: no magnetic walk) gets them from another level's core when the hero is about to play one
 // (Veldin's has every one), read from the disc on a worker, put above the game's 32 MB (host_layout::HERO_SEQS).
 //
+// A hero context is the hero build that runs Ratchet: it replaces the overlay's own (variants.h on_hero_level: a Kalebo III base with
+// Quartu's context runs Quartu's code alone). Giant Clank's own hero code spawns classes of its planet the mode needs (his missiles
+// 15:256, his energy bomb 15:1523, the jump's light shaft 15:1427): imported with the mode, taken out with it. Ratchet riding on a
+// mode's object plays his sequence 0x81, which Kalebo III's class lacks: filled with the other sequences. Giant Clank's body (his
+// collision capsule) is given at once when the mode is entered in the air or in contact (the easing the game does stops in contact).
+//
 // Nothing here runs on the original's levels: the hero context only in a session, the sequences only on a level mod's level.
 #ifndef RAC1_GAME_ENHANCE_HERO_MODES_H
 #define RAC1_GAME_ENHANCE_HERO_MODES_H
