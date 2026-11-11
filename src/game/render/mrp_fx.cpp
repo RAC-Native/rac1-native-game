@@ -1433,6 +1433,25 @@ bool build_vu7(const MrpChainFrame& gs, const gs::Primitive& p) {
         for (int c = 0; c < 4 && same; ++c)
             if (std::fabs(Me[c][r] / sm - Ge[c][r] / sg) > 1e-5 * std::max(row, 1e-12)) same = false;
     }
+    if (!same && std::isfinite(sm) && b.k != 0.0f) {
+        // The batch's x, y, z rows are the frame's times one common factor (the callback's Q numerator k against the frame's 0x16cc50 as
+        // it stands when the chain is walked: after the camera's zoom or the cave's camera eased a step, they differ by a hair, up to a
+        // thousandth, for dozens of frames) and its w row the frame's: the same picture, so its points are the world's. Not "the same"
+        // to the 1e-5 per element above, the batch went through the general path's inverse of the frame's matrix, whose z row's
+        // ~1e7 translation turns a hair of difference into world points tens of thousands of units away: Gaspar's lava sea torn
+        // across the sky and the cave's openings (#144)
+        double num = 0.0, den = 0.0, wmax = 0.0, rmax = 0.0;
+        for (int c = 0; c < 4; ++c)
+            for (int r = 0; r < 3; ++r) {
+                num += Me[c][r] / sm * Ge[c][r] / sg;
+                den += Ge[c][r] / sg * Ge[c][r] / sg;
+            }
+        const double f = den > 0.0 ? num / den : 0.0;
+        for (int c = 0; c < 4; ++c) wmax = std::max(wmax, std::fabs(Me[c][3] / sm - Ge[c][3] / sg));
+        for (int c = 0; c < 4; ++c)
+            for (int r = 0; r < 3; ++r) rmax = std::max(rmax, std::fabs(Me[c][r] / sm - f * Ge[c][r] / sg) / std::max(std::fabs(Ge[c][r] / sg), 1e-3 * std::fabs(Ge[3][r] / sg)));
+        same = f > 0.01 && f < 100.0 && wmax < 1e-5 && rmax < 1e-4;
+    }
     ++(same ? g_s7.world : g_s7.general);
     ++g_s7.batches;
     ++g_st.by_kind[kMrpFxVu7];  // (the report's "by producer": batches)
