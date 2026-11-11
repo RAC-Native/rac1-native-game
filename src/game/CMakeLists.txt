@@ -154,6 +154,11 @@ add_library(rac1_game STATIC
     ovl/stash.cpp
     ovl/hud_elements.cpp
     ovl/hud_o2.cpp
+    ovl/hud_slot7.cpp
+    ovl/help_panel.cpp
+    ovl/aridia_hud.cpp
+    ovl/helmet.cpp
+    ovl/screen_flash.cpp
     ovl/quick_select.cpp
     ovl/gadgebot_commands.cpp
     enhance/advanced.cpp

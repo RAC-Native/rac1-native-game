@@ -5,7 +5,7 @@ Usage:
   run_tours.py --out-dir /path/to/traces [--preset all|quick|mods] [--only tour1,tour2]
                [--compare-dir /path/to/baseline] [--float-eps 0.0]
                [--run-sh /home/daino/progetti/rac1-scratch/native/run.sh]
-               [--mods-dir /home/daino/progetti/rac1-native-game-dev/mods]
+               [--mods-dir /path/to/mods]
 """
 
 from __future__ import annotations
@@ -196,7 +196,8 @@ def main() -> int:
     ap.add_argument("--compare-dir", default=None, help="Compare generated traces against this baseline directory")
     ap.add_argument("--float-eps", type=float, default=0.0, help="Float tolerance when --compare-dir is used")
     ap.add_argument("--run-sh", default="/home/daino/progetti/rac1-scratch/native/run.sh", help="Path to run.sh wrapper")
-    ap.add_argument("--mods-dir", default="/home/daino/progetti/rac1-native-game-dev/mods", help="Path to mods directory")
+    default_mods = os.path.abspath(os.path.join(HERE, "../../mods"))
+    ap.add_argument("--mods-dir", default=default_mods, help="Path to mods directory")
     ap.add_argument("--ramhash", action="store_true", help="Also emit <tour>.ramhash via RAC1_RAMHASH")
     args = ap.parse_args()
 
