@@ -202,7 +202,9 @@ The world passes are written by hand, and note what they chain as they write it 
 entries, the tie and shrub passes their first program's draws (`src/game/ovl/world_chained.h`): the
 walk makes those draws from the notes and the level's tables, without unpacking or running that part
 of the chain (`RAC1_PERF_WORLD_CHAINED`, docs/performance.md); the clipping programs' draws and the
-shrubs' far variants are walked.
+shrubs' far variants are walked. Where no shrub packet reads VU1 memory past its block, the capture
+reads the passes' ranges in place once and the scene is made from what it noted, the clipping
+programs' parts alone copied and walked (`RAC1_PERF_WORLD_SCAN`).
 
 **Effects, VU1 program 7 and the 2D: the MRP's chain reader.** `mrp_chain.cpp` reads the frame's chain
 (on the MRP chain worker): its GIF packets, its texture uploads, and in the effects' ranges the ported VU1

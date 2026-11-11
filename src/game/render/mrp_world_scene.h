@@ -167,7 +167,10 @@ void sky_texture_entries_at(std::vector<std::pair<uint64_t, uint32_t>>& out, uin
 // draws of a pass where the walk leaves its range, with the VU1 state the pass's chain left)
 struct DirectEvent {
     uint8_t kind = 0;   // 0 a register, 1 GIF vertices (writes [first, + count) of DirectWorld::writes, `table`), 2 the host's tfrag
-                        // draws, 3 the host's ties, 4 the host's shrubs (+ far variants)
+                        // draws, 3 the host's ties, 4 the host's shrubs (+ far variants); the chained world's scan: 5 a draw start
+                        // made from the pass's next note (`table` the pass, `reg` the program, `first` the start, `count` the
+                        // double buffer's base), 6 the pass's other programs' part, walked from its copy (`first` its first tag,
+                        // `state` DirectWorld::sections), 7 a pass's range begins (`first` its run), 8 it ends (`state`)
     uint8_t reg = 0, table = 0;
     uint64_t value = 0;
     uint32_t first = 0, count = 0;
@@ -178,9 +181,13 @@ struct DirectEvent {
 struct DirectState {
     std::array<std::array<uint32_t, 4>, 4> view{};    // tfrag: VU1 5..8
     std::array<std::array<uint32_t, 4>, 14> consts{}; // tfrag: VU1 0x290..0x29d
-    std::array<std::array<uint32_t, 4>, 3> tie{};     // tie: VU1 0x3cb..0x3cd
+    std::array<std::array<uint32_t, 4>, 4> tie{};     // tie: VU1 0x3cb..0x3ce
     std::array<float, 4> shrub_fog{};                 // shrub: vf30 z / w, vf29 x / y
+    // (the chained world's tfrag draws read the view at the double buffer's base: its other half's, VU1 `ofst` + 5..8)
+    uint32_t ofst = 0;
+    std::array<std::array<uint32_t, 4>, 4> view_b{};
 };
+struct SectionVu;  // (the scan's private VU1 where a part the build walks begins: mrp_world_scene.cpp)
 struct DirectWorld {
     bool ok = false;
     uint32_t start = 0;  // the first tag of the world's ranges: the walk of the captured chain stops there
@@ -188,6 +195,11 @@ struct DirectWorld {
     std::vector<SkyWrite> writes;
     std::vector<DirectState> states;
     uint32_t draw_starts = 0;  // (the walk's draw starts in the world's ranges: SceneFrame::draw_starts)
+    // the chained world's scan (RAC1_PERF_WORLD_SCAN): the events are the chain's own draw starts, made from the passes' notes; the
+    // parts the build walks (events of kind 6): the scan's VU1 and call stack where each begins
+    bool chained = false;
+    std::vector<std::shared_ptr<SectionVu>> sections;
+    std::vector<std::vector<uint32_t>> section_stack;
     uint64_t tags = 0, codes = 0, unpacks = 0, starts = 0;  // (the scan's work: statistics)
     double ms = 0;
 };
@@ -229,6 +241,7 @@ bool direct_world_forced();
 int chained_world_mode();
 struct ChainedWorld {
     bool want = false;                 // asked for this capture
+    bool scan = false;                 // the capture may scan the world's ranges (RAC1_PERF_WORLD_SCAN: the build takes no kicks)
     WorldChained notes;                // the frame's runs and their draws (world_chained.h)
     std::vector<uint8_t> tie_bytes;    // a tie draw's 0x60 bytes of the frame packet, in the draws' order
     std::vector<uint8_t> shrub_bytes;  // a shrub instance's 0x50 bytes, the groups' instances in a row
@@ -254,6 +267,10 @@ struct ChainedStats {
     uint64_t tfrags = 0, ties = 0, shrubs = 0;  // the draws made from them (tfrag draws, tie draws, shrub instances)
     uint64_t walked[3] = {};           // the tfrag / tie / shrub passes walked whole all the same (no notes that stand)
     uint64_t again = 0;                // the scenes made again without the notes (the chain's draw starts were not theirs)
+    // (RAC1_PERF_WORLD_SCAN) the scenes made from a scan of the world's ranges, the scans that stopped (the ranges copied and
+    // walked that frame), the scans' time, a scanned scene whose notes were not its events' (kept as made: never seen)
+    uint64_t scanned = 0, scan_failed = 0, lost = 0;
+    double scan_ms = 0;
     perf::DualCheck check;             // (=2) the frames compared
     uint64_t packets = 0, regs = 0;    // (=2) the packets / register writes compared
     // (=2, a level whose shrubs read VU1 memory past their block) the two walkers' private VU1 memory where those vertices can
