@@ -43,7 +43,8 @@ Contents:
 | 13 | the first with bosses | bosses (a session's sections): `boss_set`, `boss_beaten`, `RAC1_BOSS_*`; the callback `boss`; level.txt's `boss` line |
 | 14 | the first with the HUD's width | the HUD's width: `hud_width`; `RAC1_HUD_HEIGHT` ([The HUD's area](#the-huds-area)) |
 | 15 | the first with saving | saving from a plugin: `game_save`, `game_saving` ([Saving](#saving-abi-15)) |
-| 16 | this one | the hoverboard outside a race: `board_rule`, `board_return`, `board_fall`, `board_touching`, `RAC1_BOARD_*` ([The hoverboard outside a race](#the-hoverboard-outside-a-race-abi-16)) |
+| 16 | the first with the free hoverboard | the hoverboard outside a race: `board_rule`, `board_return`, `board_fall`, `board_touching`, `RAC1_BOARD_*` ([The hoverboard outside a race](#the-hoverboard-outside-a-race-abi-16)) |
+| 17 | this one | a section put back as at its first entry: `section_reset`; level.txt's `fresh` ([Putting a section back](#putting-a-section-back-abi-17)) |
 
 How compatibility works:
 
@@ -578,6 +579,40 @@ api->board_return(start, 0.6f);                            /* a fall: back at th
 /* in the frame callback: */
 uint32_t m[8];
 for (int k = 0, n = api->board_touching(m, 8); k < n; ++k) api->hit_send(m[k], RAC1_HIT_PLAYER, 10.0f, api->hero());
+```
+
+### Putting a section back (ABI 17)
+
+Test `api->abi >= 17` (or `RAC1_API_HAS(api, section_reset)`) first. A section's placed objects that were killed stay so for
+the whole visit of the session (the policy `RAC1_SECTION_REMOVE` brings back the living, not the killed; a save keeps it),
+and a boss beaten stays beaten (`boss_beaten`). A challenge that is played again, using the objects of a planet's world or
+of a section of the mod's own, wants the section as it was at its first entry:
+
+| Service | Does |
+|---|---|
+| `int section_reset(const char* name)` | section `name` as at its first entry: what is in play of it (its objects, the mobys they spawned, the bosses you named with `boss_set` and spawned) taken out; the killed and the beaten ones forgotten, placed again when it is entered next (their spawns gone, its bosses to beat again: `boss_beaten(name)` is 0, a boss fought from its start); its level state (the crates broken, the things taken, what the boss's death wrote: the records the game's spawn rule reads) back to a first visit's. 1 done; 0 not, and the log says why: no session with sections, no such section, **main** (its objects are the session's: a death's soft reset is its `respawn` policy), **the current section** (its objects are in play: leave it first), or one a switch into it is pending |
+
+Or in level.txt, a `fresh` word on the section's line (`section cave remove respawn reset fresh`): the section is put back
+at **every entry** (a switch into it, a portal, `section_enter`, a save's load), so the plugin has nothing to call. A death
+inside the section is not an entry: its `respawn` policy decides as before. Both are the same reset; `fresh` has no
+service: set it in level.txt.
+
+What a save holds after it: a section put back holds nothing of it. The save's session item lists a section's killed
+objects (not to come back until a death there); after a reset the list is empty ("0 placed objects gone"), a `fresh`
+section's is always empty, and the card's own records (the crates broken in a section of the mod's own) are cleared with the
+reset. A save made before the reset and loaded after it is as it was saved.
+
+Limits: a world's level state (its crates, things taken, a boss's death) is kept per **world level**, not per section: two
+sections of the same planet's world share it (a reset of one resets it for the other); give each planet's world one section
+(two sections of Umbris's world in one session crashed the game when the boss's cave was left, in the test: not looked into). The plugin's own objects (`import_spawn`, `base_spawn`) are the plugin's:
+remove them yourself. `boss` callback `RAC1_BOSS_AGAIN` is not sent for a boss placed again by a reset (look for it with
+`mobys_near` after the section is entered).
+
+```c
+/* the Great Escape again: every planet's world as at the first try */
+static const char* const WORLDS[] = {"quartu", "batalia", "rilgar", "umbris"};
+for (int i = 0; i < 4; ++i) api->section_reset(WORLDS[i]);      /* Ratchet is in the arena: none is the current section */
+api->section_enter("quartu", "in", 0);
 ```
 
 ### Saving (ABI 15)

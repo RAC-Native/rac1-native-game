@@ -184,6 +184,11 @@ struct Section {
     std::set<int> beaten_imp;
     int beaten_n = 0;
     std::vector<Obj> pboss;
+    // (ABI 17) `fresh`: every entry puts its objects back as at the first (reset_section); the uids of its own placements (a section
+    // of the mod's own: their killed-for-good bits in the session's level state, taken when its gameplay file is in)
+    bool fresh = false;
+    bool entered = false;  // (entered since it was last put back: what its objects wrote in the level's state is there)
+    std::vector<int32_t> puids;
 };
 
 // main's state as the game set it at the arrival
@@ -841,6 +846,92 @@ size_t enter_objects(Section& s, int idx) {
     return n;
 }
 
+// (ABI 17) the killed-for-good bit of placement `uid` in the session's own level state (the level records the game keeps for the
+// level mod's level: the bits a destroyed crate sets, which the spawn rule reads): cleared. The state is the engine's own while no
+// world section is current, else the session keeps it (rows_put)
+void session_bit_clear(int32_t uid) {
+    if (uid < 0 || uid >= 2048) return;
+    const uint32_t off = static_cast<uint32_t>(uid >> 5) * 4, bit = 1u << (uid & 0x1f);
+    if (g_rows_level == -1) {
+        const uint32_t a = 0x0014c190u + lwu(LEVEL) * 0x100 + off;
+        sw(a, lwu(a) & ~bit);
+        return;
+    }
+    const auto it = g_rows.find(-1);
+    if (it == g_rows.end() || it->second.size() < 0x10 + 0x100) return;
+    uint32_t w = 0;
+    std::memcpy(&w, it->second.data() + 0x10 + off, 4);
+    w &= ~bit;
+    std::memcpy(it->second.data() + 0x10 + off, &w, 4);
+}
+
+// (ABI 17) placement `uid`'s visit state in the game's tables the spawn rule reads besides the level's records: its visit bit (0x1ba4d0:
+// killed for the visit), its live state byte (0x1baa24: set when it breaks) and the checkpoint's copy of it (0x1bb684: a checkpoint's save
+// keeps a placement killed for good, the boss's own at its death): cleared
+void visit_state_clear(int32_t uid) {
+    if (uid < 0 || uid >= 0x7ff) return;
+    const uint32_t w = static_cast<uint32_t>(uid >> 5) * 4;
+    sw(OV(0x001ba4d0) + w, lwu(OV(0x001ba4d0) + w) & ~(1u << (uid & 0x1f)));
+    sb(OV(0x001baa24) + static_cast<uint32_t>(uid), 0);
+    sb(OV(0x001bb684) + static_cast<uint32_t>(uid), 0);
+}
+
+// (ABI 17) section `s` as at its first entry in the session: what is in play of it (its objects, the mobys they spawned, the bosses the
+// plugin named and their spawns) taken out, what was killed or beaten in it forgotten (placed again at the next entry, the bosses to
+// beat again: boss_beaten 0), its objects' blocks freed. The level state its objects wrote (the bits and flags of the spawn rule) put
+// back: a world section's level has rows of its own (the rows of its world's level, shared by every section of that world), a
+// section of the mod's own clears its placements' bits in the session's (the card's). Never the current section: its objects are in play
+// (and a death's reset is the respawn policy's)
+void reset_section(Section& s, const char* why) {
+    size_t out = 0;
+    for (const Obj& o : s.objs)
+        if (alive(o)) {
+            moby_retire(o.moby);
+            ++out;
+        }
+    size_t plug = 0;
+    for (const Obj& o : s.pboss)
+        if (o.moby != 0 && alive(o)) {
+            moby_retire(o.moby);
+            ++plug;
+        }
+    const size_t kids = kids_retire(s, 0);
+    const size_t forgot = s.dead.size() + s.dead_imp.size() + s.beaten.size() + s.beaten_imp.size();
+    std::set<int32_t> gone(s.dead);
+    gone.insert(s.beaten.begin(), s.beaten.end());
+    for (const Obj& o : s.objs)
+        if (o.imp < 0) gone.insert(o.uid);
+    const int beaten = s.beaten_n;
+    s.objs.clear();
+    s.pboss.clear();
+    s.dead.clear();
+    s.dead_imp.clear();
+    s.beaten.clear();
+    s.beaten_imp.clear();
+    s.beaten_n = 0;
+    s.spawned = s.frozen = false;
+    s.entered = false;
+    groups_clear(s);
+    session_heap_free_owner(owner_objects(s));
+    s.shared = 0;
+    std::set<int32_t> uids(s.puids.begin(), s.puids.end());
+    for (const auto& [from, to] : s.wuids) uids.insert(to);
+    for (const int32_t u : gone) uids.insert(u);
+    for (const int32_t u : uids) visit_state_clear(u);
+    const char* rows = "none";
+    if (g_worlds && s.world >= 0) {
+        g_rows.erase(s.world);
+        if (g_rows_level == s.world) rows_write({});  // (another section of the same world is current: its level state is the engine's now)
+        rows = "its world's level state back to a first visit's";
+    } else if (s.world < 0 && !s.puids.empty()) {
+        for (const int32_t u : s.puids) session_bit_clear(u);
+        rows = "its placements' killed-for-good bits cleared";
+    }
+    std::printf("[section] %s reset (%s): %zu objects in play taken out, %zu mobys they spawned and %zu of the plugin's, %zu killed or beaten forgotten (%d bosses "
+                "beaten), level state: %s, the visit's bits and state bytes of its %zu uids cleared; placed again at its next entry\n",
+                s.name.c_str(), why, out, kids, plug, forgot, beaten, rows, uids.size());
+}
+
 void hero_pos(float p[3]) {
     const uint32_t hm = lwu(P + 0x2080);
     for (uint32_t k = 0; k < 3; ++k) p[k] = hm != 0 ? lwc1(hm + 0x10 + 4 * k) : 0.0f;
@@ -961,11 +1052,15 @@ void do_switch(int to, const Entry* e, const std::string& why) {
     Section& T = g_secs[static_cast<size_t>(to)];
     hero_mode_leave(F);  // (stage 9: out of its hero mode first, his own moby the hero's)
     const size_t left = leave_objects(F, from);
+    // (ABI 17) fresh: every entry is the first. A world section's first entry finds it as it was placed (its level state is the session's
+    // own, empty at the arrival); one of the mod's own writes the card's records (a crate broken stays so in a save): put back at every entry
+    if (T.fresh && (T.entered || T.world < 0)) reset_section(T, "fresh: every entry is the first");
     const double t1 = now_ms();
     g_cur = to;
     apply_state(to);
     const double t2 = now_ms();
     const size_t in = enter_objects(T, to);
+    T.entered = true;
     const double t3 = now_ms();
     if (e != nullptr) {
         session_rt_hero_put(e->pos, e->yaw);
@@ -1063,6 +1158,16 @@ bool commit_step(Section& s, int idx) {
         return true;
     case 5:
         if (s.gp == 0 || copy(s.gp, s.b.gp)) {
+            if (s.world < 0 && s.gp != 0 && lw(s.gp + 0x44) != 0) {  // (its placements' uids: reset_section clears their killed-for-good bits)
+                s.puids.clear();
+                uint32_t r = s.gp + lwu(s.gp + 0x44);
+                const int32_t n1 = lw(r);
+                r += 0x10;
+                for (int32_t k = 0; k < n1 && k < 4096; ++k) {
+                    s.puids.push_back(lw(r + 12));
+                    r += static_cast<uint32_t>((lw(r) >> 2) << 2);
+                }
+            }
             // (stage 7) its rail table, as the level's load makes it from the block +0x74 (level_load.cpp's grind lines): the
             // records in a block of its own, their paths in the gameplay file's copy
             // (stage 10) a world's section: its level's rails (their indices its objects know), then the mod's own (its own gameplay
@@ -1413,6 +1518,8 @@ void sections_level(const std::string& build_dir) {
         } else if (k == "wuid") {
             int32_t from = 0, to = 0;
             if (l >> from >> to) s.wuids[from] = to;
+        } else if (k == "fresh") {  // (ABI 17: every entry as the first)
+            s.fresh = true;
         } else if (k == "boss") {  // (stage 10)
             int bl = -1;
             uint32_t bc = 0;
@@ -1462,7 +1569,7 @@ void sections_arrival() {
     for (Section& s : g_secs) {  // (a save's load or the ship's return: fresh)
         s.objs.clear();
         s.kids.clear();
-        s.spawned = s.frozen = false;
+        s.spawned = s.frozen = s.entered = false;
         for (Portal& pt : s.portals) pt.inside = false;
     }
     Section& m = g_secs[0];
@@ -1731,6 +1838,10 @@ void bosses_frame(Section& s) {
 void sections_gone_of(int index, std::vector<int32_t>& uids) {
     if (!g_sections_on || index <= 0 || static_cast<size_t>(index) >= g_secs.size()) return;
     const Section& s = g_secs[static_cast<size_t>(index)];
+    if (s.fresh) {  // (ABI 17: it is entered fresh whatever it held: a save holds nothing of it)
+        uids.clear();
+        return;
+    }
     std::set<int32_t> g = s.dead;
     for (const Obj& o : s.objs)
         if (o.imp < 0 && !alive(o)) g.insert(o.uid);
@@ -1742,6 +1853,7 @@ void sections_gone(const std::string& name, const std::vector<int32_t>& uids) {
     const int i = sections_index(name);
     if (i <= 0) return;
     Section& s = g_secs[static_cast<size_t>(i)];
+    if (s.fresh) return;  // (ABI 17)
     for (const int32_t u : uids) s.dead.insert(u);
     if (!s.spawned) return;
     for (Obj& o : s.objs)  // (placed already, frozen: the save's dead taken out)
@@ -1784,6 +1896,32 @@ int section_unload(const std::string& name) {
     s.spawned = s.frozen = false;
     free_section(s);
     std::printf("[section] %s unloaded at frame %llu (its heap blocks given back)\n", s.name.c_str(), static_cast<unsigned long long>(g_frame));
+    return 1;
+}
+// orig: (host) see sections.h
+int section_reset(const std::string& name) {
+    if (!g_sections_on) {
+        std::fprintf(stderr, "[section] section_reset(%s): no session with sections\n", name.c_str());
+        return 0;
+    }
+    const int i = sections_index(name);
+    if (i < 0) {
+        std::fprintf(stderr, "[section] section_reset(%s): no such section\n", name.c_str());
+        return 0;
+    }
+    if (i == 0) {
+        std::fprintf(stderr, "[section] section_reset(main): not allowed: main's objects are the session's own (a death's soft reset: the respawn policy)\n");
+        return 0;
+    }
+    if (i == g_cur) {
+        std::fprintf(stderr, "[section] section_reset(%s): not allowed on the current section (its objects are in play; leave it first)\n", name.c_str());
+        return 0;
+    }
+    if (g_pend.on && g_pend.to == i) {
+        std::fprintf(stderr, "[section] section_reset(%s): not allowed: a switch into it is pending\n", name.c_str());
+        return 0;
+    }
+    reset_section(g_secs[static_cast<size_t>(i)], "the plugin's section_reset");
     return 1;
 }
 // orig: (host) see sections.h
