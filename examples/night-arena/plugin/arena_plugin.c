@@ -205,10 +205,11 @@ static const challenge_def CHALLENGES[] = {
     /* Clank Gigante: Ratchet is Quartu's Giant Clank (ABI 12's hero_mode; his energy, ABI 18's hero_energy, full at the start)
        in the arena, the enemies' swarm crushed under his feet and his fists (the plugin's hits: Giant Clank's own reach giants
        only), 100 within 2 minutes; the enemies' hits drain his energy (none left: he falls, the challenge lost) */
-    /* (out of the menu again: on the arena's own geometry the plugin's Giant Clank is broken - stuck falling off a ramp, Ratchet
-       glitching, the Grind Boots' sound, his rockets and energy bomb unseen and harmless: asked of the engine)
+    /* Clank Gigante: Ratchet is Quartu's Giant Clank (ABI 12's hero_mode; his energy, ABI 18's hero_energy, full at the start)
+       in the arena, the enemies' swarm crushed under his feet and his fists (the plugin's hits), 100 within 2 minutes; the
+       enemies' hits drain his energy (none left: he falls, the challenge lost) */
     {"Clank Gigante", "sei Clank gigante: schiaccia 100 nemici in 2 minuti", KAIJU, 120, 1, {{9999, 40, 8, "RRRBBFCLJSWAK"}}, 0, 0, 0,
-     0, W_ANY, 20000, 0, NULL, NULL, 0, NULL, NULL, 0, 100}, */
+     0, W_ANY, 20000, 0, NULL, NULL, 0, NULL, NULL, 0, 100},
     {"Impossibile", "il campionato, 50 round", CUP, 0, 50, {{0}}, 0, 20, 0, 0, W_ANY, 100000, 1},
 };
 #define N_CHALLENGES ((int)(sizeof CHALLENGES / sizeof CHALLENGES[0]))
@@ -3031,7 +3032,15 @@ static void kaiju_update(void) {
 }
 
 static void kaiju_end(void) {
-    if (RAC1_API_HAS(api, hero_mode) && api->hero_mode_now() == RAC1_HERO_GIANT_CLANK) api->hero_mode(RAC1_HERO_NONE, 0);
+    const int was = RAC1_API_HAS(api, hero_mode) && api->hero_mode_now() == RAC1_HERO_GIANT_CLANK;
+    if (was) api->hero_mode(RAC1_HERO_NONE, 0);
+    float h[3];
+    pos_of(api->hero(), h);
+    if (was && (fabsf(h[0] - s.centre[0]) > 46.0f || fabsf(h[1] - s.centre[1]) > 46.0f || h[2] < nav.floor_z - 0.5f)) {
+        const float at[3] = {s.centre[0], s.centre[1] - 16.0f, nav.floor_z + 0.5f};  /* (himself again where the giant stood: out
+                                                                                       in the lava lake, say - back in the arena) */
+        hero_move(at, 1.5708f);
+    }
     if (giant_m != 0 && (int8_t)rac1_lb(api, giant_m + 0x20) >= 0) api->moby_remove(giant_m);
     giant_m = 0;
     api->hero_build(RAC1_HERO_BUILD_GENERIC);
