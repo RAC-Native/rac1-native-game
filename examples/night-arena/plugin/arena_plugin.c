@@ -3056,6 +3056,11 @@ static void load(void* user, const uint8_t* data, uint32_t size) {
                 s.best[i] = rec[2];
             }
     }
+    char b[64];
+    int won = 0;
+    for (int i = 0; i < N_CHALLENGES; ++i) won += (int)((s.done >> i) & 1u);
+    snprintf(b, sizeof b, "the records loaded: %d challenges won", won);
+    api->log(b);
 }
 
 static void new_game(void* user) {
