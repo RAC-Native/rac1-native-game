@@ -1432,8 +1432,53 @@ static void guests_sync(const char* mix) {
         }
 }
 
-/* one of another planet's: a flyer over a drop zone, a walker at a gate or a drop zone, a turret on a tower or a pillar, a
-   plant by a gate or the hub; its area the whole arena */
+static float floor_under(uint32_t self, const float p[3]);
+static float dist3(const float a[3], const float b[3]);
+
+/* a place on the arena's floor 14 to 24 units from Ratchet, in his sight (another planet's enemies wake for him only near
+   them: from the gates they stood idle), 0 none found */
+static int guest_near(float out[3]) {
+    float h[3];
+    pos_of(api->hero(), h);
+    for (int t = 0; t < 10; ++t) {
+        const float a = rnd() * 6.2832f, d = 14.0f + 10.0f * rnd();
+        const float p[3] = {h[0] + d * cosf(a), h[1] + d * sinf(a), nav.floor_z + 1.0f};
+        if (fabsf(p[0] - s.centre[0]) > 44.0f || fabsf(p[1] - s.centre[1]) > 44.0f) continue;
+        const float z = floor_under(0, p);
+        if (isnan(z) || fabsf(z - nav.floor_z) > 0.6f) continue;  /* (the arena's floor, not the hub, a tower, a cover) */
+        const float eye[3] = {h[0], h[1], h[2] + 1.0f}, to[3] = {p[0], p[1], z + 1.0f};
+        rac1_ray_hit r = {sizeof r};
+        if (api->collide_ray(eye, to, api->hero(), 0, &r)) continue;  /* (a wall between) */
+        out[0] = p[0], out[1] = p[1], out[2] = z;
+        return 1;
+    }
+    return 0;
+}
+
+/* other planets' movers that strayed far from Ratchet (more than 40 units, every 5 s) put back near him */
+static void guests_nudge(void) {
+    if (s.clock % 300 != 0) return;
+    float h[3];
+    pos_of(api->hero(), h);
+    for (int i = 0; i < s.nen; ++i) {
+        const enemy* e = &s.en[i];
+        if (KIND[e->kind].import == NULL || KIND[e->kind].moves == 3) continue;
+        const uint32_t m = en_moby(e);
+        float r[3], p[3];
+        if (m == 0) continue;
+        pos_of(m, r);
+        if (dist3(r, h) < 40.0f || !guest_near(p)) continue;
+        if (KIND[e->kind].moves == 1) p[2] += 3.0f;
+        else p[2] += 0.5f;
+        api->swf(m + 0x10, p[0]);
+        api->swf(m + 0x14, p[1]);
+        api->swf(m + 0x18, p[2]);
+        api->moby_moved(m);
+    }
+}
+
+/* one of another planet's: a walker or a flyer near Ratchet (else at a gate, a drop zone), a turret on a tower or a pillar,
+   a plant by a gate or the hub; its area the whole arena */
 static void guest_spawn(int k) {
     const int32_t c = api->import_class(KIND[k].import);
     if (c < 0 || s.nen >= MAX_EN) return;
@@ -1444,6 +1489,8 @@ static void guest_spawn(int k) {
         if (spot < 0) return;
         const float* o = k == K_TURRET ? TURRET_SPOTS[spot] : SPORE_SPOTS[spot];
         at[0] = s.centre[0] + o[0], at[1] = s.centre[1] + o[1], at[2] = nav.floor_z + o[2];
+    } else if (guest_near(at)) {
+        at[2] += KIND[k].moves == 1 ? 3.0f : 0.5f;
     } else {
         const float* p = s.points[s.next_point++ % s.npoints];
         if (KIND[k].moves == 1)
@@ -1984,9 +2031,6 @@ static struct {
     int rail_done;       /* its rail's end reached (the rail callback) */
     uint32_t board;      /* the board (base_spawn's handle) */
     int rammed;          /* foes knocked down by the board */
-    uint32_t wmoby[N_WMOBYS];  /* the world's objects the plugin started there (Batalia's mines), taken away when it is left */
-    int nwmoby;
-    uint32_t boss_m;     /* the Snagglebeast the plugin started (none placed: beaten before), taken away when Umbris is left */
     uint32_t wbase[N_WMOBYS];  /* Kalebo III's rail mines the plugin started in a world (base_spawn handles) */
     int nwbase;
     int going_home;      /* the last world's portal: back to the arena, the waves going on (escape_after) */
@@ -2390,21 +2434,10 @@ static const struct chain_def {
 };
 #define BOARD_CLASS 439    /* Kalebo III's hoverboard (level.txt's spawn 439 1) */
 
-/* Batalia's spiked rail mines on its long rail (its own class 8:621, level.txt's import: the planet's places), started by the
-   plugin at each try and taken away after: the planet's placed ones, once broken, would stay so for the session's visit
-   (and in its saves), and the next try would find none */
-static const float BATALIA_MINES[][3] = {
-    {305.81f, 121.89f, 44.17f}, {328.29f, 118.38f, 52.08f}, {340.98f, 130.62f, 59.10f}, {344.45f, 144.24f, 59.26f},
-    {352.78f, 157.35f, 59.10f}, {387.39f, 173.78f, 60.90f}, {412.35f, 160.07f, 67.94f}, {403.28f, 139.96f, 73.59f},
-};
+
 #define N_CHAIN ((int)(sizeof CHAIN / sizeof CHAIN[0]))
 #define GOAL_NEAR 2.5f     /* the section's goal (its portal) reached this near */
 #define OFF_RAIL 120       /* frames off a world's rail before its ring (or before he first lands on it): lost, he fell */
-#define BOSS_AT_X 278.4f   /* the Snagglebeast's place in its cave (Umbris's coordinates): placed again by the plugin
-                              when a win before in this visit took it out for good */
-#define BOSS_AT_Y 451.23f
-#define BOSS_AT_Z 36.0f
-#define BOSS_YAW 0.93f
 
 static const struct chain_def* chain_of(const char* name) {
     for (int i = 0; i < N_CHAIN; ++i)
@@ -2592,56 +2625,28 @@ static void section_entered(void* user, const char* name, const char* entry) {
         }
     }
     rails.off_rail = 0;
-    rails.nwmoby = 0;
     rails.nwbase = 0;
     if (strcmp(name, "kalebo") == 0)  /* (its rail mines: ours, at each try) */
         for (int i = 0; i < (int)(sizeof KALEBO_MINES / sizeof KALEBO_MINES[0]) && rails.nwbase < N_WMOBYS; ++i) {
             const uint32_t hm = api->base_spawn(RAIL_MINE, KALEBO_MINES[i], 0.0f);
             if (hm != 0) rails.wbase[rails.nwbase++] = hm;
         }
-    if (strcmp(name, "batalia") == 0) {  /* (its mines: ours, at each try) */
-        const int32_t mc = api->import_class("8:621");
-        for (int i = 0; mc >= 0 && i < (int)(sizeof BATALIA_MINES / sizeof BATALIA_MINES[0]) && rails.nwmoby < N_WMOBYS; ++i) {
-            const uint32_t m = api->import_spawn(mc, BATALIA_MINES[i], 0.0f);
-            if (m != 0) rails.wmoby[rails.nwmoby++] = m;
-        }
-    }
-    const int32_t bc = strcmp(name, "umbris") == 0 && RAC1_API_HAS(api, boss_set) ? api->import_class("umbris.snagglebeast") : -1;
-    uint32_t boss_m = 0;
-    const float boss_at[3] = {BOSS_AT_X, BOSS_AT_Y, BOSS_AT_Z};
-    if (bc >= 0 && api->mobys_near(boss_at, 120.0f, bc, &boss_m, 1) == 0) {  /* (no Snagglebeast: beaten in a try before, in
-                                                                                this visit or in the save loaded; ours again,
-                                                                                the same, its fight from its start) */
-        const uint32_t m = api->import_spawn(bc, boss_at, BOSS_YAW);
-        rails.boss_m = m;
-        char b[96];
-        snprintf(b, sizeof b, "the section %s: its boss beaten before; again: moby %08x, boss_set %d", name, (unsigned)m,
-                 m ? api->boss_set(m) : 0);
-        api->log(b);
-    }
+    /* (Batalia's mines, Umbris's Snagglebeast: the worlds' own, back at every entry: their sections are `fresh`) */
     rails.sec_in = 1;
     if (d != NULL) toast(tr(d->goal));
     char b[128];
     snprintf(b, sizeof b, "the section %s (%d of %d): its goal %s (%.1f %.1f %.1f), its ring %u, %d objects of ours", name, rails.stage + 1,
-             rails.nstages, rails.has_goal ? "its ring" : "none", rails.goal[0], rails.goal[1], rails.goal[2], (unsigned)rails.ring, rails.nwmoby);
+             rails.nstages, rails.has_goal ? "its ring" : "none", rails.goal[0], rails.goal[1], rails.goal[2], (unsigned)rails.ring, rails.nwbase);
     api->log(b);
 }
 
 /* the world's objects the plugin started there taken away (the mines a try left) */
 static void world_mobys_clear(void) {
-    const int32_t mc = api->import_class("8:621"), bc = api->import_class("umbris.snagglebeast");
-    for (int i = 0; i < rails.nwmoby; ++i)  /* (still in play, still a mine: not a moby given since to another) */
-        if ((int8_t)rac1_lb(api, rails.wmoby[i] + 0x20) >= 0 && (int32_t)rac1_lh(api, rails.wmoby[i] + 0xa6) == mc)
-            api->moby_remove(rails.wmoby[i]);
-    rails.nwmoby = 0;
-    for (int i = 0; i < rails.nwbase; ++i) {
+    for (int i = 0; i < rails.nwbase; ++i) {  /* (Kalebo III's rail mines the plugin started there) */
         const uint32_t m = api->base_moby(rails.wbase[i]);
         if (m != 0) api->moby_remove(m);
     }
     rails.nwbase = 0;
-    if (rails.boss_m != 0 && (int8_t)rac1_lb(api, rails.boss_m + 0x20) >= 0 && (int32_t)rac1_lh(api, rails.boss_m + 0xa6) == bc)
-        api->moby_remove(rails.boss_m);  /* (ours, not beaten: the next try starts it again) */
-    rails.boss_m = 0;
 }
 
 /* the section_leave callback (ABI 10): leaving a world of the chain, its ring and its mines gone */
@@ -2777,6 +2782,7 @@ static void fight_update(const float h[3]) {
     }
     nav_track(h);
     enemies_follow(h);
+    guests_nudge();
     if (s.rule.bombs > 0 && --s.bomb_wait <= 0) {
         bomb_drop(h);
         s.bomb_wait = s.rule.bombs / 2 + (int)(rnd() * (float)s.rule.bombs);
@@ -3201,8 +3207,7 @@ static void level_start(void* user, const rac1_level_info* level) {
     rails.phase = 0;
     rails.ring = 0;  /* (a world's ring: gone with the level's objects) */
     rails.board = 0;
-    rails.nwmoby = 0;
-    rails.boss_m = 0;
+
     rails_all_off();
     rails.flood = api->object_named("flood");  /* (La grande fuga's lava: down under the lava, hidden) */
     if (rails.flood != 0) {
@@ -3764,7 +3769,16 @@ static void test(void* user, const char* text, uint64_t frame) {
         }
         /* (arena_fuga: on Batalia's rail, Ratchet put past its tower at its middle - he does not jump
                                     its obstacles; arena_fuga_ride: left to ride it all) */
-        if (rails.phase == 5 && rails.sec_in && strcmp(rails.stage_name[rails.stage], "batalia") == 0 && bat_at == 0) bat_at = frame + 60;
+        if (rails.phase == 5 && rails.sec_in && strcmp(rails.stage_name[rails.stage], "batalia") == 0 && bat_at == 0) {
+            bat_at = frame + 60;
+            float h[3];
+            uint32_t mm[32];
+            pos_of(api->hero(), h);
+            const int32_t mc = api->import_class("8:621");
+            char b[80];
+            snprintf(b, sizeof b, "test: Batalia's mines in play: %d", mc >= 0 ? (int)api->mobys_near(h, 400.0f, mc, mm, 32) : -1);
+            api->log(b);
+        }
         if (fuga_t && strstr(text, "ride") == NULL && frame == bat_at) {
             const float at[3] = {378.34f, 170.07f, 59.8f};
             hero_move(at, 0.27f);
