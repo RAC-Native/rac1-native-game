@@ -5,6 +5,13 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: more music, kept through sections and deaths (SDK ABI 19).** level.txt's `music_track <name> <loop> [<intro>]`
+  lines (as many as wanted, the `music` line's formats: WAV, Ogg Vorbis or VAG, stereo, an intro then its loop) and the
+  plugin's `music_track(name, fade_frames)`: the track instead of the level's music, a fade out first; while it plays a
+  section switch does not put the section's music on and a death (a soft reset) does not restart it. `music_track(NULL, ...)`
+  brings back the level's music (the current section's), and leaving the level ends it; `music_track_now()` says which plays.
+  The composed output of existing mods is unchanged (no recompose needed); the original runs as before.
+
 - **Level mods: a plugin's Giant Clank works on a mod's own geometry** (rockets, energy bomb, walls, landings, Ratchet on his
   shoulder). On the arena (a Kalebo III base) the plugin's Giant Clank walked over the 6-unit wall, hung in the fall state (0x5c) for
   as long as the player watched, showed Ratchet on his shoulder as a flickering heap and had rockets and an energy bomb that

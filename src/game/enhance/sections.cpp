@@ -982,6 +982,7 @@ void hero_mode_frame() {
 void apply_music(const uint32_t w[15]) {
     if (std::memcmp(w, g_cur_music, sizeof g_cur_music) == 0) return;
     std::memcpy(g_cur_music, w, sizeof g_cur_music);
+    if (mod_code_music_defer(w)) return;  // (a plugin's music_track plays: this music after it, ABI 19)
     level_music_words_put(w);
     music_stop_all();
     music_start(lh(0x00151708), 1, 0x400);

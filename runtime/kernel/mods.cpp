@@ -188,6 +188,17 @@ static void level_build_choices(ModInfo& m) {
                 if (x.is_number_integer()) lp.uids.push_back(static_cast<int>(std::clamp<int64_t>(x.get<int64_t>(), 0, 0x7fff)));
             m.level_pools.push_back(std::move(lp));
         }
+    if (const auto mt = j.find("music_tracks"); mt != j.end() && mt->is_array())
+        for (const auto& e : *mt) {
+            if (!e.is_object()) continue;
+            const auto nm = e.find("name"), fs = e.find("files");
+            if (nm == e.end() || !nm->is_string() || fs == e.end() || !fs->is_array()) continue;
+            ModInfo::LevelTrack t;
+            t.name = nm->get<std::string>();
+            for (const auto& f : *fs)
+                if (f.is_string()) t.files.push_back((mods_level_build_dir(m.folder) / f.get<std::string>()).string());
+            if (!t.files.empty() && t.files.size() <= 2) m.level_tracks.push_back(std::move(t));
+        }
     const auto mu = j.find("music");
     if (mu == j.end()) return;
     if (mu->is_number_integer()) m.level_music = static_cast<int>(std::clamp<int64_t>(mu->get<int64_t>(), -2, 18));
