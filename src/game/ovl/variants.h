@@ -43,9 +43,13 @@ inline bool on_level(int n) { return ovl_reloc_level() == n; }
 // III's lava)
 extern int g_hero_level;
 constexpr int HERO_GENERIC = -2;
-// orig: (host) the hero code of level `n` runs: its overlay is loaded (unless the generic hero code was asked for), or it is
-// the session's hero context
-inline bool on_hero_level(int n) { return g_hero_level == HERO_GENERIC ? false : ovl_reloc_level() == n || g_hero_level == n; }
+// orig: (host) the hero code of level `n` runs: its overlay is loaded (unless the generic hero code was asked for or another
+// level is the session's hero context), or it is the session's hero context. A hero context REPLACES the overlay's own hero
+// build, it does not join it: on a Kalebo III base with Quartu's hero code (Giant Clank) both `on_quartu()` and `on_kalebo()` were
+// true, and the sites that ask Kalebo III's build but have none of Quartu's (the motion update, which runs Kalebo III's own
+// integration and ground code inside it, the mode's enter, the slot update...) ran Kalebo III's: Giant Clank's ground was
+// Kalebo III's and he never landed (state 0x5c for ever), he had no energy
+inline bool on_hero_level(int n) { return g_hero_level == HERO_GENERIC ? false : g_hero_level >= 0 ? g_hero_level == n : ovl_reloc_level() == n; }
 // The open engine's camera level (stage 10): in a session, the level whose world is the current section's (a `world <level>`
 // section), whose camera code runs the cameras there (its camera types, its camera hooks and callbacks: a boss's camera on its
 // planet's world) as the hero context's does. -1 (always, outside a session): none

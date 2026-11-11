@@ -5,6 +5,20 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: a plugin's Giant Clank works on a mod's own geometry** (rockets, energy bomb, walls, landings, Ratchet on his
+  shoulder). On the arena (a Kalebo III base) the plugin's Giant Clank walked over the 6-unit wall, hung in the fall state (0x5c) for
+  as long as the player watched, showed Ratchet on his shoulder as a flickering heap and had rockets and an energy bomb that
+  were never seen and hurt nothing. Four causes, none in Quartu's own code. A hero context (`hero_build(15)`) joined the
+  overlay's own hero build instead of replacing it, so the dispatch lines Quartu's build has no row for ran Kalebo III's
+  hoverboard motion, ground and slot code: the hero code of the context's level now runs alone; Kalebo III's Ratchet class has not
+  the sequence (0x81) Ratchet plays riding on a mode's object: filled from the donor core as the other missing sequences; the
+  missiles (`15:256`), the bomb's shock (`15:1523`) and the jump's light shaft (`15:1427`) are spawned by the hero's code, not
+  by class 419, and the base had none: imported with the mode (three class slots), taken out with it; and the body of Giant Clank
+  (his collision capsule, which grows from Ratchet's size in two seconds) stayed small and hovering when the mode was entered in
+  the air or just after a landing: given at once then. Switching the hero code in one section per challenge (the board, then
+  Giant Clank, then the board) works. A new test aid: `RAC1_HERO_DETAIL=1` with `RAC1_HERO_STATE=<n>` prints his capsule, contacts
+  and Ratchet's own moby. The original, the arena's Rilgar race and Kalebo world run frame for frame as before; mods need no
+  recompose (the composer's version stays 9), no new ABI.
 - **Level mods: a death no longer leaves the player's weapons behind, and a plugin's Giant Clank no longer dies by itself** (the mod
   SDK's ABI 18: `hero_energy`). The soft reset of a session left in play what Ratchet's weapons and equipment had spawned
   (the Glove of Doom's hand and agents, the Mine Glove's mines, the Drone Device's drones, the Decoy, the Taunter, the Visibomb,

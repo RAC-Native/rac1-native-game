@@ -1107,6 +1107,49 @@ to 200 itself after entering the form 2, and the SDK's `hero_energy` (ABI 18) re
 Quartu's arena (as a plugin's Giant Clank in `world quartu`) with the energy at 200 throughout; set to 50 it stays 50, back to
 200, and 0 makes him fall (state 0x62, the soft reset, Ratchet back at the checkpoint).
 
+**A plugin's Giant Clank on a mod's own geometry (fixed on a Kalebo III base).** Four faults, all of the plugin's Giant Clank on the
+arena's Kalebo III base (`hero generic`, `hero_build(15)` + `hero_mode(RAC1_HERO_GIANT_CLANK)`), none of Quartu's own:
+
+1. *A hero context joined the base's hero build instead of replacing it* (`on_hero_level`, variants.h). With `hero_build(15)` on a
+   Kalebo III overlay both `on_quartu()` and `on_kalebo()` were true; the dispatch lines of the hero controller ask Quartu's build
+   first where it has one of its own, but the ones it has none for (the motion update, the slot update, the water entry, the
+   mode's enter, the sub-state parameter helper) took Kalebo III's. The motion update of Kalebo III is a build of its own whose
+   calls go to its own integration and ground code, so Giant Clank's movement was half Quartu's and half the hoverboard's.
+   Measured before the change with `RAC1_HERO_STATE=20`: he walked over the arena's 6-unit wall to the lava, jumped to 107.7
+   and then hung at 106.58 in the air state 0x5c (anim 5, velocity -0.10, `air` counter growing, 0 over the floor) for ever, the
+   energy bar 0 (ABI 18's note); the arena's agent saw the same pinned in 0x5c. A hero context's level is now the **only** build whose hero lines run (`g_hero_level >= 0`: `on_hero_level(n)` is
+   `g_hero_level == n`, else the overlay's own, the generic code none); the original's levels and a base with no context are as
+   before (the reference pictures, RAMHASH and the arena's Rilgar race and Kalebo world sections with the same hero traces
+   frame for frame as dev's). Now: the wall stops him at its foot (his radius 3.75: y 134.24 before the wall at 138), the ramps are
+   walked down in 0x5b, a jump lands in 0x5a, and he lands from a fall: the same traces as `world quartu`.
+2. *Ratchet glitching.* Ratchet rides on Giant Clank's shoulder: his own moby, attached every frame to the mode object's chain
+   point 5 with his animation set 0x81 (`hero_rider_attach`). Every level's Ratchet class has that sequence but Kalebo III's (as the
+   magnetic walk's 91): on a Kalebo III base the slot was empty and the set every frame was none (`anim 129 frame 255` in the
+   trace), a flickering Ratchet. `hero_mode_set` now fills the slot from the donor cores (the hero context's level's, else
+   Veldin's) as `hero_seq_need` does for his other sequences (`[hero] the hero's sequence 129 ... from level 15's core`), waiting
+   for the worker's read at the mode's entry.
+3. *The rockets and the energy bomb.* The game's hero code spawns `15:256` (the missile, state 0x5f, `spawn_projectile_100`),
+   `15:1523` (the shock of the ground pound, a class of code alone, state 0x61, `place_moby_5f3`) and `15:1427` (the jump's light
+   shaft) for the mode, not through class 419, so the pool's closure of `15:419` (its own code's and the engine's spawns) has
+   none of them, and `moby_spawn` of a class the base has not refused each. `hero_mode_set` imports the three
+   (`session_import_load`) at the mode's entry and takes out those it brought when the mode is left. Needs three free class
+   slots (224 at once); the log says when it cannot. Seen: the missiles from both hands (picture), the pound's streaks, a swarm
+   of 100 crushed in the arena challenge.
+4. *A body that does not grow.* Giant Clank's collision capsule (top `+0x220`, its lower sphere's centre `+0x224`, radius
+   `+0x234`) is Ratchet's at the start and eases to the form's (5.25, 4.44, 3.75) in about two seconds; the gait update does
+   not ease it while a contact is within half a radius of his feet (the game's rule), and the sphere, growing faster than its
+   centre rises, dips under his feet at the start: entered in the air or just after a landing, the contact was there from the first
+   frame and the body stayed small and low (bottom 0.51, radius 2.58..3.75), the capsule's lower point 1.6 under his feet: the
+   ground test wants his feet on it, so he stood 1.6 units up in the fall state for ever. `hero_mode_set` gives him the
+   form's body at once when the hero is in the air or in contact at the entry (the targets recomputed for the new state first:
+   the enter's own were the falling Ratchet's, a bottom of 0.5). Standing, he grows as on Quartu.
+
+What was not reproduced: the Grind Boots' sound heard continuously. With the boots owned (`0x13d4dd`) and Giant Clank walking, falling,
+punching and crushing a swarm for 4000 frames no hero sound repeated (a trace of every `sound_start`); the boots' equipment
+(`0x141664`) cannot be had in a test's game, so the loop with them equipped is unproven. A guess, not tested: the surface sounds of the
+rails' collision strips (the arena's rails have a level collision under them, which Giant Clank's body can stand on) while he slid
+in the fall state before the fix.
+
 The modes are the game's own: `hero_mode_enter(form, state, object)` (Clank, the form 1: Orxon's class 87, state 0x43; Giant
 Clank, the form 2: Quartu's class 419, state 0x5a, as `level_setup` starts a level in a vehicle) and `hero_mode_exit` (Ratchet's
 moby back at the object's place, state 0, Clank's health swapped back); the board is the board's own mount (Kalebo III's or
