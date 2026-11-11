@@ -118,6 +118,10 @@ int section_enter(const std::string& name, const std::string& entry, int32_t fad
 // orig: (host) section `name` unloaded (its objects out of play, its heap blocks given back): 1 done, 0 not (the current one,
 // main, or no such section)
 int section_unload(const std::string& name);
+// orig: (host) (ABI 17) section `name`'s placed objects as at its first entry: the killed or beaten ones placed again at its next
+// entry (their spawns gone, its bosses to beat again), its level state back (docs/open-engine.md, "Putting a section back"). 1 done;
+// 0 not: no session with sections, no such section, main, the current one, one a switch is pending into (the log says which)
+int section_reset(const std::string& name);
 // orig: (host) section `name`'s policy when it is left (SECTION_*), -1 only asks: the policy now, -1 no such section
 int32_t section_policy(const std::string& name, int32_t policy);
 
