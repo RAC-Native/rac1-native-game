@@ -206,8 +206,10 @@ static const challenge_def CHALLENGES[] = {
     /* Clank Gigante: Ratchet is Quartu's Giant Clank (ABI 12's hero_mode; his energy, ABI 18's hero_energy, full at the start)
        in the arena, the enemies' swarm crushed under his feet and his fists (the plugin's hits: Giant Clank's own reach giants
        only), 100 within 2 minutes; the enemies' hits drain his energy (none left: he falls, the challenge lost) */
+    /* (out of the menu again: on the arena's own geometry the plugin's Giant Clank is broken - stuck falling off a ramp, Ratchet
+       glitching, the Grind Boots' sound, his rockets and energy bomb unseen and harmless: asked of the engine)
     {"Clank Gigante", "sei Clank gigante: schiaccia 100 nemici in 2 minuti", KAIJU, 120, 1, {{9999, 40, 8, "RRRBBFCLJSWAK"}}, 0, 0, 0,
-     0, W_ANY, 20000, 0, NULL, NULL, 0, NULL, NULL, 0, 100},
+     0, W_ANY, 20000, 0, NULL, NULL, 0, NULL, NULL, 0, 100}, */
     {"Impossibile", "il campionato, 50 round", CUP, 0, 50, {{0}}, 0, 20, 0, 0, W_ANY, 100000, 1},
 };
 #define N_CHALLENGES ((int)(sizeof CHALLENGES / sizeof CHALLENGES[0]))
