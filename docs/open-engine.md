@@ -1314,6 +1314,20 @@ their collision), for the plugin's `hit_send` (the SDK's ABI 16).
 | a robot (1445) in the board's way, `board_touching` + `hit_send` | touched once at 1.1 units, knocked down (state 8) |
 | `world rilgar`, `hero rilgar board`, stick forward | Rilgar's race: rides the track from the finish line, its race HUD (lap 1/3, the time, 1st), a fall under 61.4 back on its track (before: 0x6e at the start for ever) |
 
+**The race camera.** The board's race camera (camera type 8, the same code on both: L5:0x329358 and L16:0x2f3e60, called by its
+update) keeps its target over a floor chosen by the level number: on Rilgar 62.4 within 48 units of its big ramp (286.16
+447.82), else 67.2; on Kalebo III 77.5; none elsewhere. In `world rilgar` on Kalebo III's base it read 16: the target held at
+77.5, so the camera at 78.89 wherever Ratchet was (the arena's report: "the camera goes up, framing the floor"): 5.2 to 6 units
+over him from the finish line (z 73), 2.8 to 3.0 on the track at 76 (Rilgar 2.0 to 2.2), 17 to 18.5 in a fall (Rilgar 7 to
+8: the 67.2 floor). The compare now sees the current section's world (`level_mod_camera_planet`, hooks in both builds; none
+in main and the mod's own sections, so no floor of the base's on the mod's geometry; the original's levels as
+transliterated). The higher camera in a fall is Rilgar's own: on Rilgar too it stays over 67.2 while he falls under the track.
+
+| Test (`RAC1_HERO_STATE=1`: Ratchet and the camera each frame) | Result |
+|---|---|
+| native Rilgar (`RAC1_GOTO=5`, `RAC1_HOVERBOARD_AT`, stick forward) against the arena's `world rilgar` (`arena_go`, `ARENA_SEC=rilgar`, the same stick), the frames where Ratchet is at the same place (to 0.01) | 1039 frames (riding 259, wipe-outs 354, falls 426): the camera the same to 0.000 (before: 0.80 riding, up to 10.3 in the falls) |
+| the same, from the finish line | 2.0 to 2.2 over him (before 5.2 to 6.0 for the first 150 frames) |
+
 ## A world's zones: what is drawn (`zones all`)
 
 What a world's section draws of its planet is the planet's own culling: the zone grid (`0x15f600`, gameplay's: cells of 4

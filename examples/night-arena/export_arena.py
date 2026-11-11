@@ -81,6 +81,9 @@ LEVEL = {
     # 8 jetpack troopers (the dropships' too), 2 dropships (SDK ABI 5), the hub's 4 crates of each kind, the grind
     # course's 13 rail mines and the escape's 6 (933: Kalebo III's, on its rails)
     "spawn": {1445: 24, 52: 8, 541: 6, 638: 8, 1356: 2, 501: 4, 511: 4, 933: 22, 439: 1},  # (439: Kalebo III's hoverboard)
+    # other planets' classes the plugin starts (import_spawn): Batalia's spiked rail mines, put on its rail at each try (its
+    # placed ones, once broken, would stay so for the session's visit and in its saves)
+    "imports": ["8:621"],
     # (text, box in the scene's coordinates or None): embers rising from the lava (on a level mod `source lava` reads
     # the collision's type 3 faces too), as on Gaspar, and a little ash
     "particles": [
@@ -130,18 +133,19 @@ SECTIONS = [("prova", {"sky": 15, "background": (34, 44, 92), "fog": (34, 44, 92
             # - Batalia: its long rail (its own, drawn), from its start to its end, where it leaps: Ratchet comes in just over
             #   its start and lands on it (no rail of ours on top: the section keeps the planet's own collision; with one, the
             #   composer's copy of it with the rail's strip, the camera shook on the way down)
-            #   With its spiked rail mines (621: jumped, or broken with the wrench, as on Batalia).
-            ("batalia", {"world": "batalia", "objects": "621", "entries": [("arrivo", (286.0, 86.9, 33.0), 2.91)],
+            #   With its spiked rail mines (8:621: jumped, or broken with the wrench, as on Batalia), the plugin's at each try.
+            ("batalia", {"world": "batalia", "entries": [("arrivo", (286.0, 86.9, 33.0), 2.91)],
                          "death_height": 15.0}),
             # - Rilgar: its hoverboard race (its own hero code and board: hero rilgar board; its HUD) from its finish line, to
-            #   the small platform past the big ramp (the plugin's ring there), with its bolt crates
-            ("rilgar", {"world": "rilgar", "hero": "rilgar board", "objects": "500", "box": (250, 425, 70, 280, 455, 95),
+            #   the small platform past the big ramp (the plugin's ring there), with its turbo pads (1140). Not its crates (500:
+            #   346 of them, along the whole track): every section's objects take the game's moby array from the session's
+            #   start, and with them it was full (Umbris's objects not all placed, the vendor crashed)
+            ("rilgar", {"world": "rilgar", "hero": "rilgar board", "objects": "1140",
                         "entries": [("arrivo", (275.49, 334.35, 73.61), -2.04)], "death_height": 30.0}),
-            # - Umbris: the Snagglebeast's cave, its boss (the challenge won when it is beaten). Its objects but 529 (with it in
-            #   play, back in main the moby pass crashed: an engine's matter, asked) and those whose class ids Kalebo III's
-            #   classes have (605, 805, 1135: the composer takes the base's, not Umbris's)
-            ("umbris", {"world": "umbris", "objects": "187 341 447 500 501 505 511 886 902 968 1059 1063 1069 1106 1113 1114 1115 "
-                                                      "1116 1128 1129 1131 1133",
+            # - Umbris: the Snagglebeast's cave, its boss (the challenge won when it is beaten). Its objects by class (all of
+            #   them would place code-alone triggers too), 460 its lava's sea (code alone, no model); not 529, the parked ship
+            ("umbris", {"world": "umbris", "objects": "187 341 447 460 500 501 505 511 605 805 886 902 968 1059 1063 1069 1106 "
+                                                      "1113 1114 1115 1116 1128 1129 1131 1133 1135",
                         "box": (195, 355, 25, 320, 500, 90), "boss": "umbris.snagglebeast",
                         "entries": [("arrivo", (263.35, 483.16, 36.5), -1.13)],
                         "death_height": 20.0})]
@@ -1114,6 +1118,8 @@ def export(out=None, install=False):
         L.append("# room for the base level's objects the wave plugin starts (base_spawn)")
         for cls, count in sorted(LEVEL["spawn"].items()):
             L.append("spawn %d %d" % (cls, count))
+    for name in LEVEL.get("imports", []):
+        L.append("import %s" % name)
     L.append("# every moby updated however far the camera is (the robots across the arena do not freeze)")
     L.append("update_all")
 

@@ -11,6 +11,15 @@ What changed in each release. Releases are source only: you build the game with 
   makes those draws from that: a frame 13 to 32 % shorter on the eight levels measured (Kerwan 3.6 to 2.8 ms, Kalebo III 3.6 to
   2.4, headless). 16:9 and the LOD slider were not affected: the renderer decides the world itself there. See
   docs/performance.md.
+- **Level mods: Rilgar's hoverboard race in its world's section films as on Rilgar.** Its race camera stayed high over the
+  track (about 2.9 units over Ratchet instead of 2.1, 5.9 at the finish line, up to 18 in a fall instead of 8), looking down
+  at the floor: its code kept the camera over Kalebo III's height, the base level's. Now the same camera as on Rilgar, frame
+  for frame. Testing: `RAC1_HERO_STATE` also prints the camera's place and type.
+- **Level of Detail Maximum: Pokitaru's sun shadows** (#144). At Maximum the mobys' draw distance was unlimited, past the
+  renderer's far plane too, and a Pokitaru object the game keeps out of sight (class 1161, a model 38000 units across with its
+  culling sphere far away) was drawn: nothing showed, but the shadow cache cast it, a flat shadow over the whole level. The
+  mobys' distance now stops at the far plane (4000 units, or the game's own value when larger). The Original picture and
+  every other level of detail are as before.
 - **Level mods: a planet's world in a section looks and films as the planet** (level mods must be set up again: the composer's
   version 9). Umbris's cave: its lava is animated again (its sea, an object of a class with no model, can now be placed:
   `objects ... 460`), and its boss camera turns toward the Snagglebeast instead

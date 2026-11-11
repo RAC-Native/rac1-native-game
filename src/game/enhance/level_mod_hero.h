@@ -36,6 +36,10 @@ bool level_mod_board_fell(float z);
 bool level_mod_board_back(uint32_t pos, uint32_t rot);
 // orig: (none) — enhancement: true when the board's race HUD (lap, time, place: its requests 5 and 7) is not asked for
 bool level_mod_board_hud_off();
+// orig: (none) — enhancement: the level number the board's race camera compares (camera type 8's floor under its target: Rilgar's
+// 62.4 / 67.2, Kalebo III's 77.5): on a level mod's level the current section's world (`world rilgar`: 5), none (-1: no floor) in
+// main and the mod's own sections; `level` as read on the original's levels
+uint32_t level_mod_camera_planet(uint32_t level);
 
 }  // namespace rac1
 

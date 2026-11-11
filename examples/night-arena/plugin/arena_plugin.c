@@ -1781,6 +1781,7 @@ static void zap_update(const float h[3]) {
    his attacks. Its end leads to a last wave in the arena. */
 #define GRIND_BOOTS 0x0013d4ddu
 #define MAX_RAILS 6
+#define N_WMOBYS 16  /* a world's objects the plugin starts there (La grande fuga's worlds) */
 #define RAIL_ATTACK 0x2b  /* his wrench swing on a rail */
 #define MAX_OBST 48
 #define MINE_BOLTS 50      /* a rail mine broken with the wrench */
@@ -1836,6 +1837,9 @@ static struct {
     int rail_done;       /* its rail's end reached (the rail callback) */
     uint32_t board;      /* the board (base_spawn's handle) */
     int rammed;          /* foes knocked down by the board */
+    uint32_t wmoby[N_WMOBYS];  /* the world's objects the plugin started there (Batalia's mines), taken away when it is left */
+    int nwmoby;
+    uint32_t boss_m;     /* the Snagglebeast the plugin started (none placed: beaten before), taken away when Umbris is left */
 } rails;
 
 /* the game has the rail services (ABI 11) */
@@ -2221,6 +2225,14 @@ static const struct chain_def {
     {"umbris", "Umbris: sconfiggi lo Snagglebeast", 0, {0.0f, 0.0f, 0.0f}, 0.0f, 0, {0}, 0.0f, 0.0f, NULL, 0.0f},
 };
 #define BOARD_CLASS 439    /* Kalebo III's hoverboard (level.txt's spawn 439 1) */
+
+/* Batalia's spiked rail mines on its long rail (its own class 8:621, level.txt's import: the planet's places), started by the
+   plugin at each try and taken away after: the planet's placed ones, once broken, would stay so for the session's visit
+   (and in its saves), and the next try would find none */
+static const float BATALIA_MINES[][3] = {
+    {305.81f, 121.89f, 44.17f}, {328.29f, 118.38f, 52.08f}, {340.98f, 130.62f, 59.10f}, {344.45f, 144.24f, 59.26f},
+    {352.78f, 157.35f, 59.10f}, {387.39f, 173.78f, 60.90f}, {412.35f, 160.07f, 67.94f}, {403.28f, 139.96f, 73.59f},
+};
 #define N_CHAIN ((int)(sizeof CHAIN / sizeof CHAIN[0]))
 #define GOAL_NEAR 2.5f     /* the section's goal (its portal) reached this near */
 #define OFF_RAIL 120       /* frames off a world's rail before its ring (or before he first lands on it): lost, he fell */
@@ -2393,11 +2405,22 @@ static void section_entered(void* user, const char* name, const char* entry) {
         }
     }
     rails.off_rail = 0;
-    if (RAC1_API_HAS(api, boss_beaten) && api->boss_beaten(name) > 0) {  /* (beaten in a win before, in this visit: placed
-                                                                                  no more; ours again, the same) */
-        const int32_t c = api->import_class("umbris.snagglebeast");
-        const float at[3] = {BOSS_AT_X, BOSS_AT_Y, BOSS_AT_Z};
-        const uint32_t m = c >= 0 ? api->import_spawn(c, at, BOSS_YAW) : 0;
+    rails.nwmoby = 0;
+    if (strcmp(name, "batalia") == 0) {  /* (its mines: ours, at each try) */
+        const int32_t mc = api->import_class("8:621");
+        for (int i = 0; mc >= 0 && i < (int)(sizeof BATALIA_MINES / sizeof BATALIA_MINES[0]) && rails.nwmoby < N_WMOBYS; ++i) {
+            const uint32_t m = api->import_spawn(mc, BATALIA_MINES[i], 0.0f);
+            if (m != 0) rails.wmoby[rails.nwmoby++] = m;
+        }
+    }
+    const int32_t bc = strcmp(name, "umbris") == 0 && RAC1_API_HAS(api, boss_set) ? api->import_class("umbris.snagglebeast") : -1;
+    uint32_t boss_m = 0;
+    const float boss_at[3] = {BOSS_AT_X, BOSS_AT_Y, BOSS_AT_Z};
+    if (bc >= 0 && api->mobys_near(boss_at, 120.0f, bc, &boss_m, 1) == 0) {  /* (no Snagglebeast: beaten in a try before, in
+                                                                                this visit or in the save loaded; ours again,
+                                                                                the same, its fight from its start) */
+        const uint32_t m = api->import_spawn(bc, boss_at, BOSS_YAW);
+        rails.boss_m = m;
         char b[96];
         snprintf(b, sizeof b, "the section %s: its boss beaten before; again: moby %08x, boss_set %d", name, (unsigned)m,
                  m ? api->boss_set(m) : 0);
@@ -2406,17 +2429,30 @@ static void section_entered(void* user, const char* name, const char* entry) {
     rails.sec_in = 1;
     if (d != NULL) toast(tr(d->goal));
     char b[128];
-    snprintf(b, sizeof b, "the section %s (%d of %d): its goal %s (%.1f %.1f %.1f), its ring %u", name, rails.stage + 1, rails.nstages,
-             rails.has_goal ? "its ring" : "none", rails.goal[0], rails.goal[1], rails.goal[2], (unsigned)rails.ring);
+    snprintf(b, sizeof b, "the section %s (%d of %d): its goal %s (%.1f %.1f %.1f), its ring %u, %d objects of ours", name, rails.stage + 1,
+             rails.nstages, rails.has_goal ? "its ring" : "none", rails.goal[0], rails.goal[1], rails.goal[2], (unsigned)rails.ring, rails.nwmoby);
     api->log(b);
 }
 
-/* the section_leave callback (ABI 10): leaving a world of the chain, its ring gone */
+/* the world's objects the plugin started there taken away (the mines a try left) */
+static void world_mobys_clear(void) {
+    const int32_t mc = api->import_class("8:621"), bc = api->import_class("umbris.snagglebeast");
+    for (int i = 0; i < rails.nwmoby; ++i)  /* (still in play, still a mine: not a moby given since to another) */
+        if ((int8_t)rac1_lb(api, rails.wmoby[i] + 0x20) >= 0 && (int32_t)rac1_lh(api, rails.wmoby[i] + 0xa6) == mc)
+            api->moby_remove(rails.wmoby[i]);
+    rails.nwmoby = 0;
+    if (rails.boss_m != 0 && (int8_t)rac1_lb(api, rails.boss_m + 0x20) >= 0 && (int32_t)rac1_lh(api, rails.boss_m + 0xa6) == bc)
+        api->moby_remove(rails.boss_m);  /* (ours, not beaten: the next try starts it again) */
+    rails.boss_m = 0;
+}
+
+/* the section_leave callback (ABI 10): leaving a world of the chain, its ring and its mines gone */
 static void section_left(void* user, const char* name) {
     (void)user;
     if (!s.mine || chain_of(name) == NULL) return;
     if (rails.ring != 0) api->object_remove(rails.ring);
     rails.ring = 0;
+    world_mobys_clear();
 }
 
 /* the boss callback (ABI 13): the last world's boss beaten wins the challenge */
@@ -2944,6 +2980,8 @@ static void level_start(void* user, const rac1_level_info* level) {
     rails.phase = 0;
     rails.ring = 0;  /* (a world's ring: gone with the level's objects) */
     rails.board = 0;
+    rails.nwmoby = 0;
+    rails.boss_m = 0;
     rails_all_off();
     rails.flood = api->object_named("flood");  /* (La grande fuga's lava: down under the lava, hidden) */
     if (rails.flood != 0) {
@@ -3056,6 +3094,11 @@ static void load(void* user, const uint8_t* data, uint32_t size) {
                 s.best[i] = rec[2];
             }
     }
+    char b[64];
+    int won = 0;
+    for (int i = 0; i < N_CHALLENGES; ++i) won += (int)((s.done >> i) & 1u);
+    snprintf(b, sizeof b, "the records loaded: %d challenges won", won);
+    api->log(b);
 }
 
 static void new_game(void* user) {
@@ -3385,6 +3428,11 @@ static void test(void* user, const char* text, uint64_t frame) {
             a = strchr(a, ';');
             if (a) ++a;
         }
+        if (getenv("ARENA_VENDOR") && frame == (uint64_t)atoll(getenv("ARENA_VENDOR"))) {  /* (the vendor's screens) */
+            char b[48];
+            snprintf(b, sizeof b, "test: the vendor: %d", api->vendor_open());
+            api->log(b);
+        }
         if (getenv("ARENA_BOARD") && frame == (uint64_t)atoll(getenv("ARENA_BOARD"))) {  /* (the hoverboard: Kalebo III's) */
             float h[3];
             pos_of(api->hero(), h);
@@ -3438,8 +3486,20 @@ static void test(void* user, const char* text, uint64_t frame) {
             if (strcmp(CHALLENGES[i].name, want) == 0) ch = i;
         if (frame == 100) api->sb(GRIND_BOOTS, 1);  /* (a test's game has no Grindscarponi) */
         if (frame == 420 && ch >= 0) challenge_start(ch);
+        /* (arena_fuga_twice: the challenge again 300 frames after its first end, back in the arena: what a try leaves behind
+           must not stop the next one) */
+        static int tries = 1;
+        static uint64_t again_at, q_at, ril_at, bat_at, boss_at, esc_at;
+        if (strstr(text, "twice") != NULL && tries == 1 && s.mode == FREE && frame > 1000 && in_main() && again_at == 0) again_at = frame + 300;
+        if (again_at != 0 && frame == again_at && ch >= 0) {
+            tries = 2;
+            q_at = ril_at = bat_at = boss_at = esc_at = 0;
+            api->log("test: the challenge again");
+            challenge_start(ch);
+        }
         float a[3], d[3];
-        if (frame == 640 && strstr(text, "walk") == NULL && rails.nset > 0 && api->rail_point(rails.set[0], 3.0f, a, d)) {
+        if ((frame == 640 || (again_at != 0 && frame == again_at + 220)) && strstr(text, "walk") == NULL && rails.nset > 0 &&
+            api->rail_point(rails.set[0], 3.0f, a, d)) {
             const float at[3] = {a[0], a[1], a[2] + 1.5f};
             hero_move(at, atan2f(d[1], d[0]));
             api->log("test: Ratchet dropped over the first rail, 3 units along it");
@@ -3454,7 +3514,7 @@ static void test(void* user, const char* text, uint64_t frame) {
             if (hp_was >= 0) api->log(b);
             hp_was = api->health();
         }
-        static uint64_t q_at;  /* (arena_fuga: on Quartu's board 360 frames, then put by the ring - it does not steer) */
+        /* (arena_fuga: on Quartu's board 360 frames, then put by the ring - it does not steer) */
         if (rails.phase == 5 && rails.sec_in && strcmp(rails.stage_name[rails.stage], "quartu") == 0 && rails.stage_step == 1 && q_at == 0)
             q_at = frame + 360;
         if (fuga_t && strstr(text, "ride") == NULL && frame == q_at) {
@@ -3462,14 +3522,14 @@ static void test(void* user, const char* text, uint64_t frame) {
             hero_move(at, 0.0f);
             api->log("test: Ratchet put by Quartu's ring");
         }
-        static uint64_t ril_at;  /* (arena_fuga: on Rilgar's board 300 frames, then put on the crates' platform) */
+        /* (arena_fuga: on Rilgar's board 300 frames, then put on the crates' platform) */
         if (rails.phase == 5 && rails.sec_in && strcmp(rails.stage_name[rails.stage], "rilgar") == 0 && ril_at == 0) ril_at = frame + 300;
         if (fuga_t && strstr(text, "ride") == NULL && frame == ril_at) {
             const float at[3] = {264.0f, 438.0f, 81.0f};
             hero_move(at, 0.24f);
             api->log("test: Ratchet put on Rilgar's platform");
         }
-        static uint64_t bat_at;  /* (arena_fuga: on Batalia's rail, Ratchet put past its tower at its middle - he does not jump
+        /* (arena_fuga: on Batalia's rail, Ratchet put past its tower at its middle - he does not jump
                                     its obstacles; arena_fuga_ride: left to ride it all) */
         if (rails.phase == 5 && rails.sec_in && strcmp(rails.stage_name[rails.stage], "batalia") == 0 && bat_at == 0) bat_at = frame + 60;
         if (fuga_t && strstr(text, "ride") == NULL && frame == bat_at) {
@@ -3477,14 +3537,15 @@ static void test(void* user, const char* text, uint64_t frame) {
             hero_move(at, 0.27f);
             api->log("test: Ratchet put on Batalia's rail past its tower");
         }
-        static uint64_t boss_at;  /* (arena_fuga: in Umbris, the boss to its last hit) */
+        /* (arena_fuga: in Umbris, the boss to its last hit) */
         if (rails.phase == 5 && rails.sec_in && strcmp(rails.stage_name[rails.stage], "umbris") == 0 && boss_at == 0) boss_at = frame + 300;
         if (fuga_t && strstr(text, "die") != NULL && frame == boss_at) {  /* (arena_fuga_die: Ratchet dies in Umbris) */
             api->sw(0x001415f8u, 1);
             api->hero_damage(1, 0);
             api->log("test: Ratchet dies in Umbris");
         }
-        if (fuga_t && strstr(text, "noboss") == NULL && strstr(text, "die") == NULL && frame == boss_at) {
+        if (fuga_t && strstr(text, "noboss") == NULL && strstr(text, "die") == NULL && frame == boss_at &&
+            !(tries == 2 && strstr(text, "watch") != NULL)) {  /* (arena_fuga_twice_watch: the second boss left alone) */
             float h[3];
             uint32_t m = 0;
             pos_of(api->hero(), h);
@@ -3504,7 +3565,7 @@ static void test(void* user, const char* text, uint64_t frame) {
             const uint32_t m = api->base_moby(s.en[0].h);
             if (m != 0) api->moby_remove(m);
         }
-        static uint64_t esc_at;  /* (arena_fuga: the lava's start; two seconds later Ratchet put on the escape) */
+        /* (arena_fuga: the lava's start; two seconds later Ratchet put on the escape) */
         if (rails.phase == 3 && esc_at == 0) esc_at = frame + 120;
         if (fuga_t && strstr(text, "walk") == NULL && frame == esc_at && rails.escape != 0) {
             char b[64];
