@@ -150,3 +150,31 @@ The code is portable C++, but a device needs more than a renderer:
 Each such port is its own project. The first, to ARM64 and Android, is in progress on the
 `port/android` branch, not on `main` (#78); the CI's Linux ARM64 build does not pass yet (parts of
 the PS2 layer still use x86 instructions), so it does not block.
+
+## Specifications (Windows)
+
+Minimum Spec Recommended for Windows Users:
+
+CPU : AMD FX-8350 or Intel i5
+Memory: 2 GB
+GPU : AMD Radeon R3, Nvidia GeForce GT 220 or Intel HD Graphic 4000
+Disk: HDD
+Windows 10 / 11
+
+Recommended Original Spec for Windows Users:
+
+CPU : AMD FX-8350 or Intel i5
+Memory: 6 GB
+GPU : NVIDIA Geforce 1080 or AMD Radeon R9 / R10
+Disk: HDD
+Windows 10 / 11
+
+Recommended Maximum Spec for Windows Users:
+
+CPU : AMD Ryzen Series or Intel Core I Series
+Memory: 8 GB
+GPU : NVIDIA Geforce 1080
+Disk: HDD or SSD
+OS: Windows 10*
+
+*Maximum Settings still have unique issues for Windows 11 Users.
