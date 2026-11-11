@@ -465,6 +465,13 @@ uint32_t level_mod_board_planet(uint32_t level) {
 bool level_mod_board_free() { return board_free_now(); }
 
 // orig: (host) see level_mod_hero.h
+uint32_t level_mod_camera_planet(uint32_t level) {
+    if (!board_level_mod()) return level;
+    const int w = sections_world();
+    return w >= 0 ? static_cast<uint32_t>(w) : 0xffffffffu;
+}
+
+// orig: (host) see level_mod_hero.h
 bool level_mod_board_fell(float z) {
     const float f = board_fall_height();
     if (!(z < f)) return false;
@@ -683,9 +690,12 @@ void hero_modes_frame(uint64_t frame) {
     if (every == 0 || frame % static_cast<uint64_t>(every) != 0) return;
     const uint32_t hm = lwu(HERO);
     if (hm == 0) return;
-    std::printf("[hero] frame %llu: state %#x sub %#x form %u at %.2f %.2f %.2f, speed %.2f, anim %u frame %u, board %08x, build %d\n",
+    // (the camera: its place 0x166dc0 and the active camera's type, 0x166e00 +0x86)
+    const uint32_t cam = lwu(OV(0x00166e00));
+    std::printf("[hero] frame %llu: state %#x sub %#x form %u at %.2f %.2f %.2f, speed %.2f, anim %u frame %u, board %08x, build %d, camera %.2f %.2f %.2f type %d\n",
                 static_cast<unsigned long long>(frame), lwu(STATE), lwu(SUB), lbu(FORM), lwc1(hm + 0x10), lwc1(hm + 0x14), lwc1(hm + 0x18), lwc1(P + 0x160),
-                lbu(hm + 0x53), lbu(hm + 0x51), lwu(BOARD_RIDDEN), g_hero_level);
+                lbu(hm + 0x53), lbu(hm + 0x51), lwu(BOARD_RIDDEN), g_hero_level, lwc1(OV(0x00166dc0)), lwc1(OV(0x00166dc4)), lwc1(OV(0x00166dc8)),
+                cam != 0 ? lh(cam + 0x86) : -1);
 }
 
 // orig: (host) see hero_modes.h

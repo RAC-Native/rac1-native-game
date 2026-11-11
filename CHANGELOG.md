@@ -5,6 +5,10 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: Rilgar's hoverboard race in its world's section films as on Rilgar.** Its race camera stayed high over the
+  track (about 2.9 units over Ratchet instead of 2.1, 5.9 at the finish line, up to 18 in a fall instead of 8), looking down
+  at the floor: its code kept the camera over Kalebo III's height, the base level's. Now the same camera as on Rilgar, frame
+  for frame. Testing: `RAC1_HERO_STATE` also prints the camera's place and type.
 - **Level mods: a planet's world in a section looks and films as the planet** (level mods must be set up again: the composer's
   version 9). Umbris's cave: its lava is animated again (its sea, an object of a class with no model, can now be placed:
   `objects ... 460`), and its boss camera turns toward the Snagglebeast instead
