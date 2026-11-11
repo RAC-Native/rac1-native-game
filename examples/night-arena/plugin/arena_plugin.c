@@ -190,7 +190,7 @@ static const challenge_def CHALLENGES[] = {
     {"Assalto Finale", "10 round, lava, Kalebo III, invasione", WAVES, 0, 10,
      {{14, 10, 30, "RRBWA"}, {18, 12, 26, "RBWAY"}, {22, 14, 24, "RBFWAYP"}, {26, 16, 22, "RBFLWAYP"}, {30, 18, 20, "RBFLCJWAYP"},
       {32, 20, 20, "RBKTFJ"}, {36, 22, 18, "RBKTFLJS"}, {40, 24, 16, "RBKTFLCJS"}, {44, 26, 14, "GRBKTFLCJS"},
-      {200, 70, 4, "GRBFLCJSKYWA"}},  /* (110 at once crashed the game once in headless: richiesta_invasione.md) */
+      {220, 110, 3, "GRBFLCJSKYWA"}},  /* (110 at once: about as many as the game draws in a frame; more live but unseen) */
      0, 20, 1, 0, W_ANY, 30000, 0, NULL, NULL, 0, "escape", "batalia", 5},  /* ("kalebo" once the composer takes the base's
                                                                                 own world as a section: CHAIN has it) */
     /* Autoscontro: on Kalebo III's hoverboard (free, ABI 16) round the arena, the enemies knocked down by ramming them (its
