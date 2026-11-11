@@ -2626,13 +2626,61 @@ static void portal_go(void) {
 /* the flash's white held: the switch (no fade of its own) */
 static void board_off(void);
 
+/* ---- the way back: from any world to the arena, through a portal's ring onto the rail ritorno (from high outside the
+   north-west corner down to over the hub's top), grinding; Ratchet flies off its end into the arena's middle ---- */
+#define HOME_ENTRY "rientro"   /* main's entry at the rail's start */
+static int home_ride;          /* 1: the switch asked, 2: on the rail, 0 none */
+static int home_t;             /* frames on it */
+
+/* the switch to main at the way back's start (fade frames; 0: in a white flash already) */
+static int go_home(int32_t fade) {
+    home_ride = api->section_enter("main", HOME_ENTRY, fade) ? 1 : 0;
+    if (!home_ride) return api->section_enter("main", MAIN_ENTRY, fade);  /* (an older build of the level: no such entry) */
+    return 1;
+}
+
+/* the way back's rail and its ring shown and in the game's search (on) or not */
+static void home_rail(int on) {
+    const int32_t r = api->rail_find("ritorno");
+    if (r != 0) api->rail_enable(r, on);
+    rail_show("ritorno", on);
+    rail_strips("ritorno", on);
+    const uint32_t ring = api->object_named("portal_ritorno");
+    if (ring != 0) api->object_show(ring, on);
+}
+
+/* back in main from a world: on the rail (the Grind Boots needed: else on the arena's floor, south of the hub) */
+static void home_arrive(void) {
+    home_rail(1);
+    const int32_t r = api->rail_find("ritorno");
+    if (r != 0 && api->hero_rail_attach(r, 0.0f, 1)) {
+        home_ride = 2;
+        home_t = 0;
+        return;
+    }
+    home_ride = 0;
+    home_rail(0);
+    const float at[3] = {s.centre[0], s.centre[1] - 20.0f, nav.floor_z + 0.5f};
+    hero_move(at, 1.5708f);
+}
+
+/* riding it: off it (its end flown off, landed), the rail and its ring away */
+static void home_update(void) {
+    if (home_ride == 2 && home_t < 3) rail_strips("ritorno", 1);  /* (again once main's objects are in play: the switch's
+                                                                     callback came before) */
+    if (home_ride == 2 && ++home_t > 30 && !on_rail() && s.placed == 0) {
+        home_ride = 0;
+        home_rail(0);
+    }
+}
+
 static void portal_switch(void) {
     if (rails.sec_asked || api->fade_active() != 2) return;
     rails.sec_asked = 1;
     board_off();  /* (the world left: its board and its foes with it) */
     enemies_clear();
     if (rails.going_home) {  /* (the last world's portal: the arena again, where the waves go on) */
-        if (!api->section_enter("main", MAIN_ENTRY, 0)) challenge_end(0, "nessun portale");
+        if (!go_home(0)) challenge_end(0, "nessun portale");
         api->log("the portal: back into the arena");
         return;
     }
@@ -2693,6 +2741,7 @@ static void section_entered(void* user, const char* name, const char* entry) {
     s.have_last = 0;
     if (strcmp(name, "main") == 0) {
         rails_all_off();
+        if (home_ride == 1) home_arrive();  /* (the way back: on its rail) */
         if (rails.going_home && s.mode == FIGHT) {  /* (back from the worlds: no lava, the next wave after a break) */
             rails.going_home = 0;
             rails.phase = 0;
@@ -3280,6 +3329,7 @@ static void frame(void* user) {
     supplies_update();
     zap_update(h);
     save_update();
+    home_update();
     ++s.t;
     switch (s.mode) {
     case FREE:
@@ -3430,7 +3480,7 @@ static void frame(void* user) {
         } else {
             banner(RED, tr("SFIDA FALLITA"), s.why[0] ? s.why : NULL);
         }
-        if (s.t == RESULT_BACK && !in_main()) api->section_enter("main", MAIN_ENTRY, 20);  /* (beyond the portal: back) */
+        if (s.t == RESULT_BACK && !in_main()) go_home(20);  /* (beyond the portal: back, on the way back's rail) */
         if (s.t >= RESULT_FRAMES) {
             s.mode = FREE;
             s.t = 0;
@@ -3582,6 +3632,11 @@ static void level_start(void* user, const rac1_level_info* level) {
     rails.on = 0;  /* (the level's rails are all in the game's search again) */
     rails.phase = 0;
     rails.ring = 0;  /* (a world's ring: gone with the level's objects) */
+    home_ride = 0;
+    {
+        const uint32_t ring = api->object_named("portal_ritorno");  /* (the way back's ring: shown while it is ridden) */
+        if (ring != 0) api->object_show(ring, 0);
+    }
     rails.board = 0;
 
     rails_all_off();
@@ -3621,7 +3676,7 @@ static void respawn(void* user, const rac1_respawn* r) {
     if (s.mode == INTRO || s.mode == FIGHT || s.mode == BREAK) challenge_end(0, "Ratchet e' caduto");
     if (s.mode == RESULT && !in_main()) {  /* (dead in a world: back to the arena at once, not left in it to fall again; the world
                                                put back at its next entry: fresh) */
-        api->section_enter("main", MAIN_ENTRY, 15);
+        go_home(15);
         api->log("dead in a world: back to the arena");
     }
 }

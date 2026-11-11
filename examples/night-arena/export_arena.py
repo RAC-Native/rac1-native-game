@@ -72,7 +72,7 @@ LEVEL = {
     # brings Ratchet back (the plugin's choice; outside a challenge the session's start, the landing)
     "checkpoints": [("arena", (0.0, -20.0, 0.5), 1.5708)],
     # main's entries (where a switch from a section puts Ratchet back): "ritorno" south of the hub
-    "entries": [("ritorno", (0.0, -20.0, 0.5), 1.5708)],
+    "entries": [("ritorno", (0.0, -20.0, 0.5), 1.5708), ("rientro", (-16.0, 66.0, 20.6), -1.1903)],  # (rientro: rail_ritorno's start)
     "sky": 0,               # Veldin's sky (Quartu's, 15, crashed on Veldin's code: sky_hand::spheres)
     "music": ("overworld.ogg", os.path.join(GAME, "examples/custom-level/music/overworld.ogg")),
     "background": (120, 80, 58),  # a warm haze: the lava, Veldin's low sun
@@ -643,10 +643,15 @@ STRIP_POINTS = 120   # a strip's points per object at most (a class's collision 
 # what Kalebo III's rail mines float over: their floor probe sees the level's collision, not objects'): those units
 STRIP_TOGGLE = {"rail_escape": 24.0}  # (over the hub's top and its west ramp)
 STRIP_TOGGLE_DEFAULT = 8.0            # (by the station's platform)
+STRIP_TOGGLE_END = {"rail_ritorno": 40.0}  # (from its end: over the arena's floor and the hub's top)
 
 
 def strip_split(name, pts):
-    """A rail's points: its strip's object part (from its start, STRIP_TOGGLE) and the level's part (sharing a point)."""
+    """A rail's points: its strip's object part (from its start, STRIP_TOGGLE; or from its end, STRIP_TOGGLE_END) and the
+    level's part (sharing a point)."""
+    if name in STRIP_TOGGLE_END:
+        k = min(len(pts) - 1, max(1, int(math.ceil(STRIP_TOGGLE_END[name] / RAIL_STEP))))
+        return pts[len(pts) - 1 - k:], pts[:len(pts) - k]
     k = min(len(pts) - 1, max(1, int(math.ceil(STRIP_TOGGLE.get(name, STRIP_TOGGLE_DEFAULT) / RAIL_STEP))))
     return pts[:k + 1], pts[k:]
 
