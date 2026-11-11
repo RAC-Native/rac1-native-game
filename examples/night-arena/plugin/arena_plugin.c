@@ -79,7 +79,8 @@ static const struct kind_def {
     int32_t cls;   /* the class (level.txt's spawn line) */
     int weapon;    /* a Gadgetron robot's (base_option RAC1_BASE_WEAPON), -1 none */
     int moves;     /* 0 walks (the paths), 1 flies (its own flight: the game keeps it out of the walls), 2 a dropship,
-                      3 stays where it is put (a turret on a tower, a plant by a gate) */
+                      3 stays where it is put (a turret on a tower), 4 a hazard, not an enemy (a plant by a gate: it cannot
+                      be killed; put at the wave's start, not counted) */
     float step;    /* units a frame along a path (measured: their own pace) */
     const char* import;  /* another planet's (import_spawn; its class loaded for the waves that have it), NULL Kalebo III's */
 } KIND[N_KINDS] = {
@@ -98,7 +99,7 @@ static const struct kind_def {
     {'A', 572, -1, 0, 0.0f, "pokitaru.amoeboid"},      /* Pokitaru's amoeboid */
     {'K', 1382, -1, 0, 0.0f, "fleet.blarg_trooper"},   /* Drek's fleet's Blarg trooper */
     {'T', 1041, -1, 3, 0.0f, "umbris.turret"},         /* Umbris's turret: on a tower's top or a pillar */
-    {'P', 939, -1, 3, 0.0f, "orxon.spore_plant"},      /* Orxon's spore plant: by a gate, by the hub */
+    {'P', 939, -1, 4, 0.0f, "orxon.spore_plant"},      /* Orxon's spore plant: by a gate, by the hub (it cannot be killed) */
 };
 /* where the ones that stay are put (from the arena's centre; z over its floor): the towers' tops and the pillars' (the
    turrets), by the gates and the hub's corners (the plants) */
@@ -187,7 +188,7 @@ static const challenge_def CHALLENGES[] = {
     {"Assalto Finale", "10 round, lava, Kalebo III, invasione", WAVES, 0, 10,
      {{14, 10, 30, "RRBWA"}, {18, 12, 26, "RBWAY"}, {22, 14, 24, "RBFWAYP"}, {26, 16, 22, "RBFLWAYP"}, {30, 18, 20, "RBFLCJWAYP"},
       {32, 20, 20, "RBKTFJ"}, {36, 22, 18, "RBKTFLJS"}, {40, 24, 16, "RBKTFLCJS"}, {44, 26, 14, "GRBKTFLCJS"},
-      {220, 110, 3, "GRBFLCJSKYWA"}},
+      {200, 70, 4, "GRBFLCJSKYWA"}},  /* (110 at once crashed the game once in headless: richiesta_invasione.md) */
      0, 20, 1, 0, W_ANY, 30000, 0, NULL, NULL, 0, "escape", "batalia", 5},  /* ("kalebo" once the composer takes the base's
                                                                                 own world as a section: CHAIN has it) */
     {"Impossibile", "il campionato, 50 round", CUP, 0, 50, {{0}}, 0, 20, 0, 0, W_ANY, 100000, 1},
@@ -1124,8 +1125,11 @@ static void board_off(void);
 static void guests_sync(const char* mix);
 static void escape_prepare(int ch);
 
+static void hazards_place(const char* mix);
+
 static void wave_start(void) {
     guests_sync(cur_wave()->mix);  /* (other planets' classes for this wave's mix) */
+    hazards_place(cur_wave()->mix);
     s.mode = FIGHT;
     s.t = 0;
     s.spawned = s.killed = 0;
@@ -1391,6 +1395,8 @@ static void ship_arrive(int k, const float h[3]) {
 /* ---- other planets' enemies (import_spawn): their classes loaded for the waves that have them (the game keeps 224 classes
    at once: La grande fuga's worlds take most; import_load / import_release, about a millisecond each) ---- */
 static uint32_t guests_loaded;  /* the kinds whose class the plugin loaded (bits) */
+static uint32_t haz_m[8];       /* the hazards in play (the spore plants: not enemies), their spots */
+static int haz_spot[8], nhaz;
 static int32_t arena_path;      /* the whole arena's floor as a path (path_create): their areas */
 
 static int static_spot(int k) {
@@ -1411,6 +1417,7 @@ static void guests_sync(const char* mix) {
             if (KIND[k].import == NULL) continue;
             const int need = mix != NULL && strchr(mix, KIND[k].letter) != NULL, have = (guests_loaded >> k) & 1u;
             if (pass == 0 && have && !need) {
+                if (KIND[k].moves == 4) nhaz = 0;  /* (the hazards: import_release takes them out) */
                 for (int i = 0; i < s.nen;) {
                     if (s.en[i].kind == k) {
                         const uint32_t m = en_moby(&s.en[i]);
@@ -1514,6 +1521,24 @@ static void guest_spawn(int k) {
     ++s.spawned;
 }
 
+/* the hazards of the wave's mix (P: the spore plants, 2 and one more every second wave, by the gates and the hub), placed at
+   its start where none is; not enemies: not counted, they stay until their class is released */
+static void hazards_place(const char* mix) {
+    const int32_t c = KIND[K_SPORE].import ? api->import_class(KIND[K_SPORE].import) : -1;
+    if (mix == NULL || strchr(mix, KIND[K_SPORE].letter) == NULL || c < 0) return;
+    const int n = (int)(sizeof SPORE_SPOTS / sizeof SPORE_SPOTS[0]), want = 2 + s.wave / 2;
+    for (int i = 0; i < n && nhaz < want && nhaz < 8; ++i) {
+        int used = 0;
+        for (int j = 0; j < nhaz && !used; ++j) used = haz_spot[j] == i;
+        if (used) continue;
+        const float at[3] = {s.centre[0] + SPORE_SPOTS[i][0], s.centre[1] + SPORE_SPOTS[i][1], nav.floor_z + SPORE_SPOTS[i][2]};
+        const uint32_t m = api->import_spawn(c, at, atan2f(s.centre[1] - at[1], s.centre[0] - at[0]));
+        if (m == 0) continue;
+        haz_m[nhaz] = m;
+        haz_spot[nhaz++] = i;
+    }
+}
+
 static void spawn_one(const float h[3]) {
     const wave_def* w = cur_wave();
     if (s.npoints == 0 || s.nen >= MAX_EN) return;
@@ -1525,7 +1550,7 @@ static void spawn_one(const float h[3]) {
     const int len = (int)strlen(w->mix), first = (int)(rnd() * (float)len) % len;
     for (int j = 0; j < len && k < 0; ++j) {  /* the one drawn, else the next one in the mix with room */
         const int kk = kind_of(w->mix[(first + j) % len]);
-        if (kk >= 0 && kk != K_GUNSHIP && kind_ready(kk)) k = kk;
+        if (kk >= 0 && kk != K_GUNSHIP && KIND[kk].moves != 4 && kind_ready(kk)) k = kk;
     }
     if (k < 0) return;
     if (KIND[k].moves == 2) {
@@ -3191,6 +3216,7 @@ static void level_start(void* user, const rac1_level_info* level) {
     if (s.lava_ok) s.lava_z = rac1_lwf(api, api->object_moby(lava) + 0x18);
     nav_reset();
     guests_loaded = 0;  /* (the level's load: the imports of the challenges' waves gone) */
+    nhaz = 0;
     arena_path = 0;
     if (RAC1_API_HAS(api, path_create)) {  /* (other planets' enemies' areas: the arena's floor) */
         const float c[12] = {s.centre[0] - 47, s.centre[1] - 47, nav.floor_z, s.centre[0] + 47, s.centre[1] - 47, nav.floor_z,
@@ -3635,6 +3661,21 @@ static void test(void* user, const char* text, uint64_t frame) {
                     snprintf(b, sizeof b, "test: the camera on class %d at %.1f %.1f %.1f", cls, p[0], p[1], p[2]);
                     api->log(b);
                 }
+            }
+            a = strchr(a, ';');
+            if (a) ++a;
+        }
+        for (const char* a = getenv("ARENA_HIT"); a && *a;) {  /* ("<frame>:<class>;...": the player's hit on the nearest of a class) */
+            unsigned long long f = 0;
+            int cls = 0;
+            if (sscanf(a, "%llu:%d", &f, &cls) == 2 && f == frame) {
+                float h[3];
+                uint32_t m = 0;
+                pos_of(api->hero(), h);
+                if (api->mobys_near(h, 200.0f, cls, &m, 1) == 1) api->hit_send(m, RAC1_HIT_PLAYER, 10.0f, api->hero());
+                char b[96];
+                snprintf(b, sizeof b, "test: hit on class %d (moby %08x), state %d", cls, (unsigned)m, m ? (int)(int8_t)rac1_lb(api, m + 0x20) : -9);
+                api->log(b);
             }
             a = strchr(a, ';');
             if (a) ++a;
