@@ -5,6 +5,15 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Many mobys at once: a crash with about 110 enemies fixed; limits logged and documented.** With a crowd of mobys in a level
+  mod (the arena's last round: 110 enemies of five planets) the game died with `Pointer resolution out of bounds: 0x10000004`.
+  The cause: the frame's packet buffer (two rings of 1.4 to 1.7 MB) was filled by the moby draw loop up to its limit, and the passes
+  after it, the mobys' drop shadows (up to 0x3d000 bytes) and the particles, wrote on through the skinning ring and out of the
+  buffer's end into the HUD's tables. The shadows and the particles now stop before the buffer's end (a shadow or a particle less),
+  and so does the moby draw loop's skinning ring (a moby less); a frame the original drew without overflowing is unchanged. A moby
+  spawn past the moby array and a frame whose mobys do not all fit are logged (`[mobys] the moby array is full`, `[render] the
+  frame's packet buffer is full`). The limits (about 300 mobys alive in a session, about 100 drawn per frame) are in the SDK's Limits.
+  Nothing changes for the original's levels; no recompose.
 - **Mods and 1.0, said up front (README, SDK docs).** The port supports mods, with Daino's Arena as the complete
   example; 1.0 (fully native, #145) replaces `api->ram` and the moby offsets with a typed API, and mods made before it
   will very likely break and need updating. See [the SDK](docs/sdk.md#the-games-memory).

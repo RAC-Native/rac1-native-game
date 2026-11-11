@@ -9,6 +9,7 @@
 #include <game/ovl/moby_draw_hand.h>
 
 #include <game/ovl/moby_draw.h>
+#include <game/enhance/packet_rings.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/vu0_local.h>
@@ -139,6 +140,7 @@ uint32_t draw_loop(uint32_t a0_in, uint32_t a1_in, int32_t a2_in, uint32_t a3_in
     uint64_t t7 = 0;
     const Q128 tmpl = lq(OV(0x00160810));
     const uint32_t sp_hi = lwu(OV(0x001611c8));  // the packet buffer's limit
+    const uint32_t t9_hi = packet_joint_end() - 0x400;  // (host: the skinning ring's end: a record is at most 0x400 bytes; the original never bounded it)
     sq(SPR + 0x3f40, tmpl);
     U.vf[11].v[0] = vu0m::add(U.vf[0].v[0], U.vf[0].v[3]);
     U.vf[11].v[1] = vu0m::sub(U.vf[0].v[1], U.vf[0].v[3]);
@@ -334,7 +336,7 @@ L_255e48:
     U.vf[15] = lqc2(s8 + 0xc0);
     U.vf[16] = lqc2(s8 + 0xd0);
     U.vf[17] = lqc2(s8 + 0xe0);
-    if (neg(at)) goto L_2566e0;  // the packet buffer full
+    if (neg(at) || t9 >= t9_hi) goto L_2566e0;  // the packet buffer full (host: or the skinning ring)
     // the inverse rotation (negated transpose) for the lights, the model-to-view matrix
     U.vf[12].v[0] = vu0m::sub(U.vf[0].v[0], U.vf[15].v[0]);
     U.vf[13].v[1] = vu0m::sub(U.vf[0].v[1], U.vf[16].v[1]);

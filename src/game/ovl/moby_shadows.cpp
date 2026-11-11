@@ -4,6 +4,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
+#include <game/enhance/packet_rings.h>
 #include <game/ovl/ovl_common.h>
 
 namespace rac1 {
@@ -153,7 +154,8 @@ void drop_shadows_draw(uint32_t list) {
     swc1(f + 0x10, 0.0f);
     swc1(f + 4, 0.0f);
     sw(CUR, lwu(CUR) + 0x10);
-    while (lw(s2) != 0) {
+    // (host: a shadow less when the buffer is nearly full, never a write past its end: the share the effects and the HUD keep)
+    while (lw(s2) != 0 && packet_room() >= 0x10000) {
         lq_sq(f + 0x20, s0 + 0x10);
         s2 += 0x20;
         shadow_light_axes(f + 0x20, 1000.0f);
