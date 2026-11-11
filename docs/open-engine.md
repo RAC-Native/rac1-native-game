@@ -545,10 +545,22 @@ session `session_respawn()` runs instead, between the same sound stops before an
    level's own bits: a crate broken, a pickup taken). The game's restart also keeps an enemy killed "for the visit" dead (its
    placement's flag 8); a session brings it back (DECISIONS 4: a battle's enemies come back). The living stay as they are.
    `keep` leaves them all.
-3. **Nothing else**: the weapons, the ammo, the bolts, the items, the session's imports and contexts, the plugins' state and
+3. **The hero's spawns** (done first, before his state is cleared): a level's start clears the whole moby array, so no moby the
+   hero made survives it. The session remembers, from the arrival, every moby spawned while the hero's frame runs
+   (`hero_frame_update`: his equipment, the weapon in his hand, the pack, helmet and boots, the effects his states make) and
+   every moby spawned by one of those in its update (the Glove of Doom's hand's agents, the Mine Glove's mines, the Drone
+   Device's drones, the Decoy, the Taunter, the Visibomb, the Devastator's rocket and the other projectiles): the moby's
+   spawner is the moby whose update runs (`g_spawn_updating`), and the hero's frame names his moby. The soft reset takes them
+   all out (`moby_retire`, after giving back the animation layers a moby holds in the 6-entry pool at 0x18eb40) and gives back
+   the hero's own layers; `hero_init` then clears the player block and the game spawns his equipment again. Before this the old
+   ones stayed beside the new ones: frozen agents (class 230, state 3) where he died, two hand mobys and two packs, the old hand
+   running its aim code on the reset hero (the arms up, broken animations), more agents spawned until the moby array ran out.
+   The plugin's own objects, the placed ones and the imports are not the hero's: they are kept. The log line:
+   `[session] the soft reset takes out the hero's spawns: 21 mobys (186 x8, 229 x1, 230 x9, 601 x1, 607 x1, 1204 x1)`.
+4. **Nothing else**: the weapons, the ammo, the bolts, the items, the session's imports and contexts, the plugins' state and
    the objects they started (base level objects, imported ones, the level's own classes), the spawn pools, the frame clock.
    No level load (one `[levels] level 16's header` line for the whole visit).
-4. **The plugins' `respawn` callback** (SDK ABI 9) with the checkpoint: what the battle needs back is the plugin's to decide
+5. **The plugins' `respawn` callback** (SDK ABI 9) with the checkpoint: what the battle needs back is the plugin's to decide
    (the arena's test copy starts the wave Ratchet died in again, its enemies back).
 
 ```
@@ -1085,6 +1097,15 @@ Three things the build needed beyond the dispatch:
    it is in play, the definitions its base's bank lacks are pointed at Veldin's bank (the pool's `sounds/level00.bnk`, loaded
    once as a host bank and kept for the run, 1.4 MB of host memory) and its sounds (the pool's row of Veldin's class 0):
    `[hero] 26 of the hero's 64 sounds are not in level 16's bank: Veldin's`. Without a pool they stay silent.
+
+**Giant Clank's energy.** The bar (the player block's +0x1630, 0 to 200, the element 0xffff on Quartu's HUD) is set to 200 by the
+game's `hero_mode_enter` for the form 2; hero_hurt takes from it, and with 0 left the states choose 0x62 (he falls: Ratchet is
+dead and the soft reset follows). On a level mod whose base is Kalebo III the hero controller's dispatch takes Kalebo III's own
+`hero_mode_enter` (`on_kalebo()` is true on its overlay whatever the hero context), which has no form 2: the bar stayed 0 and a
+plugin's Giant Clank fell after ten to fourteen seconds (`go 1440: state 0x62 energy 0`). `hero_mode_set` now sets the energy
+to 200 itself after entering the form 2, and the SDK's `hero_energy` (ABI 19) reads and refills it. Checked: 2000 frames in
+Quartu's arena (as a plugin's Giant Clank in `world quartu`) with the energy at 200 throughout; set to 50 it stays 50, back to
+200, and 0 makes him fall (state 0x62, the soft reset, Ratchet back at the checkpoint).
 
 The modes are the game's own: `hero_mode_enter(form, state, object)` (Clank, the form 1: Orxon's class 87, state 0x43; Giant
 Clank, the form 2: Quartu's class 419, state 0x5a, as `level_setup` starts a level in a vehicle) and `hero_mode_exit` (Ratchet's

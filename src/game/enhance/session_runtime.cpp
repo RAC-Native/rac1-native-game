@@ -83,6 +83,62 @@ struct Rt {
 };
 Rt g_rt;
 
+// what the hero spawned (and what his spawns spawned) since the arrival: the soft reset takes it out. A moby is remembered with its class,
+// so that a slot used again by another (a placement, a plugin's) is not taken for it
+struct Kid {
+    uint32_t cptr = 0;
+    uint16_t cls = 0;
+};
+std::map<uint32_t, Kid> g_kids;
+
+bool kid_valid(uint32_t m, const Kid& k) {
+    return static_cast<int8_t>(lbu(m + 0x20)) >= 0 && lhu(m + 0xa6) == k.cls && lwu(m + 0x24) == k.cptr;
+}
+
+// the animation layers (a moby's list at +0x60: nodes of the 6-entry pool 0x18eb40) a moby holds given back: a level's start clears the
+// pool and every moby; the soft reset has the hero's moby (the arrival's record, its list kept) and the ones it takes out
+void release_layers(uint32_t m) {
+    constexpr uint32_t POOL = 0x0018eb40u;
+    uint32_t n = lwu(m + 0x60);
+    for (int guard = 0; n != 0 && guard < 16; ++guard) {
+        if (n < OV(POOL) || n >= OV(POOL) + 0x180) break;  // (not a pool's node: not ours to clear)
+        const uint32_t next = lwu(n + 0x1c);
+        mem_fill32(n, 0, 0x40);
+        n = next;
+    }
+    sw(m + 0x60, 0);
+}
+
+// The player's weapon mobys and the hero's state they leave, as a level's start leaves none (`gameplay_load`: the moby array and the
+// layer pool cleared, the player block cleared by `hero_init`): everything the hero spawned and what it spawned, and the hero's animation layers
+int layers_in_use() {
+    int k = 0;
+    for (uint32_t i = 0; i < 6; ++i) k += lbu(OV(0x0018eb40) + (i << 6) + 4) != 0 ? 1 : 0;
+    return k;
+}
+
+size_t weapons_reset(uint32_t hero_moby) {
+    size_t n = 0;
+    const int layers_before = layers_in_use();
+    std::map<uint16_t, size_t> by_class;
+    for (const auto& [m, k] : g_kids) {
+        if (m == hero_moby || !kid_valid(m, k)) continue;
+        release_layers(m);
+        moby_retire(m);
+        ++n;
+        ++by_class[k.cls];
+    }
+    g_kids.clear();
+    if (hero_moby != 0) release_layers(hero_moby);
+    if (n != 0 || layers_before != 0) {
+        std::string c;
+        for (const auto& [cls, k] : by_class) c += (c.empty() ? "" : ", ") + std::to_string(cls) + " x" + std::to_string(k);
+        std::printf("[session] the soft reset takes out the hero's spawns: %zu mobys (%s); the animation layer pool in use: %d of 6, then %d\n", n, c.c_str(),
+                    layers_before, layers_in_use());
+    }
+    return n;
+}
+
 // a loaded save's session item (its level's session not entered yet; kept to be written back when its mod is off)
 struct Loaded {
     bool valid = false;
@@ -380,6 +436,8 @@ void session_rt_loaded() {
     if (!g_rt.binds.empty()) std::printf("[session] level.txt's objects: %zu of %zu slots set (their profiles')\n", bound, g_rt.binds.size());
     g_rt.placed.clear();
     g_rt.hero_ok = false;
+    g_kids.clear();
+    g_spawn_watch = true;  // (moby_spawn tells session_rt_moby_spawned: the hero's spawns, taken out by the soft reset)
     for (uint32_t m = lo; m < hi; m += 0x100) {
         if (lhu(m + 0xa6) == 0 && !g_rt.hero_ok) {  // (the hero: the first moby of class 0, as hero_init takes it)
             take(g_rt.hero, m, lo, hi);
@@ -445,6 +503,7 @@ void session_rt_loaded() {
 void session_respawn() {
     ++g_rt.respawns;
     hero_modes_respawn_begin();  // (in Clank's or Giant Clank's form: Ratchet's own moby the hero's again first: hero_modes.h)
+    weapons_reset(lwu(P + 0x2080));  // (the weapons' mobys and the hero's layers: before his state is cleared, which forgets them)
     // (sections: the checkpoint's section made the current one first, at once, no fade: sections.h)
     sections_respawn_prepare(g_rt.cur.section);
     // the hero: his moby as the arrival placed it, at the checkpoint, then as gameplay_load's end starts him (the player block
@@ -496,6 +555,25 @@ void session_respawn() {
     sections_hero_respawned();  // (stage 9: the section's hero mode again, at the next frame of play)
     mod_code_respawn(g_rt.respawns, g_rt.cur.name.c_str(), g_rt.cur.pos, g_rt.cur.yaw);
 }
+
+// orig: (host) see session_runtime.h
+void session_rt_moby_spawned(uint32_t moby, uint32_t by) {
+    if (!g_session_rt || moby == 0) return;
+    g_kids.erase(moby);  // (its slot used again)
+    if (by == 0 || by == moby) return;
+    const auto it = g_kids.find(by);
+    if (by == lwu(P + 0x2080) || (it != g_kids.end() && kid_valid(by, it->second))) g_kids[moby] = Kid{lwu(moby + 0x24), static_cast<uint16_t>(lhu(moby + 0xa6))};
+}
+
+// orig: (host) see session_runtime.h
+uint32_t session_rt_hero_frame_begin() {
+    const uint32_t was = g_spawn_updating;
+    if (const uint32_t hm = lwu(P + 0x2080); hm != 0) g_spawn_updating = hm;
+    return was;
+}
+
+// orig: (host) see session_runtime.h
+void session_rt_hero_frame_end(uint32_t was) { g_spawn_updating = was; }
 
 // orig: (host) see session_runtime.h
 void session_rt_frame(uint64_t frame) {

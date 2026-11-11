@@ -52,6 +52,12 @@ bool hero_camera_level_set(int level, const char* why);
 bool hero_mode_set(int32_t mode, uint32_t moby, const char* why);
 // orig: (host) Ratchet's mode now (HERO_MODE_*): the game's form, or the board while he rides one
 int32_t hero_mode_now();
+// Giant Clank's energy (the bar, PLAYER+0x1630): its most, with which the mode starts him (Quartu's own code at its start, the game's
+// `hero_mode_enter`'s form 2)
+constexpr int32_t GIANT_ENERGY_MAX = 200;
+// orig: (host) (ABI 19) Giant Clank's energy: first set to `set` (0..GIANT_ENERGY_MAX) when >= 0; its value now, -1 when Ratchet is
+// not Giant Clank (nothing set)
+int32_t hero_giant_energy(int32_t set);
 // orig: (host) the class a mode's object is (87, 419, 439, 69), 0 none
 uint32_t hero_mode_class(int32_t mode);
 
