@@ -117,7 +117,7 @@ typedef struct wave_def {
                          a G first: the gunship opens the wave (once) */
 } wave_def;
 
-enum { WAVES, SURVIVE, TIMED, CUP, RAIL };
+enum { WAVES, SURVIVE, TIMED, CUP, RAIL, BUMP };
 enum { W_ANY, W_WRENCH, W_ROULETTE, W_CHAOS };  /* the weapons allowed */
 
 typedef struct challenge_def {
@@ -147,6 +147,7 @@ typedef struct challenge_def {
                             order, each reached through a flash of white; what each asks is CHAIN's */
     int escape_after;    /* WAVES with an escape: the lava after this many waves; the last world's portal leads back to the
                             arena (no lava), where the waves go on ("Assalto Finale"). 0: the escape after the last wave (RAIL) */
+    int target;          /* BUMP: the enemies to knock down (on Kalebo III's hoverboard, ramming them) within the time */
 } challenge_def;
 
 static const challenge_def CHALLENGES[] = {
@@ -192,6 +193,10 @@ static const challenge_def CHALLENGES[] = {
       {200, 70, 4, "GRBFLCJSKYWA"}},  /* (110 at once crashed the game once in headless: richiesta_invasione.md) */
      0, 20, 1, 0, W_ANY, 30000, 0, NULL, NULL, 0, "escape", "batalia", 5},  /* ("kalebo" once the composer takes the base's
                                                                                 own world as a section: CHAIN has it) */
+    /* Autoscontro: on Kalebo III's hoverboard (free, ABI 16) round the arena, the enemies knocked down by ramming them (its
+       wave without end: walkers and bomb bots), 60 within 2 minutes; rings to ride through, 5 seconds more each */
+    {"Autoscontro", "in tavola: investi 60 nemici in 2 minuti", BUMP, 120, 1, {{9999, 16, 30, "RRRWAB"}}, 0, 0, 0, 0, W_ANY, 15000, 0,
+     NULL, NULL, 0, NULL, NULL, 0, 60},
     {"Impossibile", "il campionato, 50 round", CUP, 0, 50, {{0}}, 0, 20, 0, 0, W_ANY, 100000, 1},
 };
 #define N_CHALLENGES ((int)(sizeof CHALLENGES / sizeof CHALLENGES[0]))
@@ -556,6 +561,16 @@ static const char* const TEXTS[][N_LANGS] = {
     {"Di nuovo nell'arena: si continua!", "Back in the arena: keep going!", "De retour dans l'arene: on continue!",
      "Zurueck in der Arena: weiter!", "De vuelta en la arena: sigue!"},
     {"INVASIONE TOTALE!", "TOTAL INVASION!", "INVASION TOTALE!", "TOTALE INVASION!", "INVASION TOTAL!"},
+    {"Autoscontro", "Bumper Boards", "Auto-tamponneuses", "Autoscooter", "Autos de choque"},
+    {"in tavola: investi 60 nemici in 2 minuti", "on the board: ram 60 enemies in 2 minutes",
+     "en planche: percute 60 ennemis en 2 minutes", "auf dem Board: ramm 60 Gegner in 2 Minuten",
+     "en tabla: embiste a 60 enemigos en 2 minutos"},
+    {"Investiti %d/%d   %d:%02d", "Rammed %d/%d   %d:%02d", "Percutes %d/%d   %d:%02d", "Gerammt %d/%d   %d:%02d",
+     "Embestidos %d/%d   %d:%02d"},
+    {"Investili con la tavola! Gli anelli danno tempo", "Ram them with the board! The rings give time",
+     "Percute-les avec la planche! Les anneaux donnent du temps", "Ramm sie mit dem Board! Die Ringe geben Zeit",
+     "Embistelos con la tabla! Los anillos dan tiempo"},
+    {"+5 secondi", "+5 seconds", "+5 secondes", "+5 Sekunden", "+5 segundos"},
     {"Salvataggio...", "Saving...", "Sauvegarde...", "Speichern...", "Guardando..."},
 };
 #define N_TEXTS ((int)(sizeof TEXTS / sizeof TEXTS[0]))
@@ -1128,6 +1143,10 @@ static void escape_prepare(int ch);
 
 static void hazards_place(const char* mix);
 
+static void bump_start(void);
+static void bump_update(const float h[3]);
+static void bump_end(void);
+
 static void wave_start(void) {
     guests_sync(cur_wave()->mix);  /* (other planets' classes for this wave's mix) */
     hazards_place(cur_wave()->mix);
@@ -1141,7 +1160,8 @@ static void wave_start(void) {
         else if (s.rule.weapons == W_ROULETTE) weapon_pick();
     }
     play(s.snd_wave);
-    if (cur_wave()->count >= 100) toast(tr("INVASIONE TOTALE!"));  /* (Assalto Finale's last round) */
+    if (cur_wave()->count >= 100 && CHALLENGES[s.ch].kind != BUMP) toast(tr("INVASIONE TOTALE!"));  /* (Assalto Finale's last) */
+    if (CHALLENGES[s.ch].kind == BUMP) bump_start();
     if (CHALLENGES[s.ch].kind == RAIL) rail_go();  /* (the countdown's end: the rails on; not the last wave's start) */
 }
 
@@ -1206,6 +1226,7 @@ static void challenge_end(int won, const char* why) {
     bombs_clear();
     if (CHALLENGES[s.ch].kind == RAIL || CHALLENGES[s.ch].escape != NULL) rail_stop();
     board_off();     /* (a board world's: Ratchet himself again) */
+    if (CHALLENGES[s.ch].kind == BUMP) bump_end();
     portal_reset();  /* (a section's challenge: its spawn points no longer the next's; the result takes him back) */
     const rules none = {W_ANY, 0, 0, 0};
     rules_set(none);
@@ -2733,6 +2754,104 @@ static void board_off(void) {
     const uint32_t m = api->base_moby(rails.board);
     if (m != 0) api->moby_remove(m);
     rails.board = 0;
+    if (in_main()) api->hero_build(RAC1_HERO_BUILD_GENERIC);  /* (main's own hero code again: level.txt's hero generic) */
+}
+
+/* ---- Autoscontro (BUMP): Kalebo III's hoverboard in the arena, the enemies knocked down by ramming them, rings for time ---- */
+#define BUMP_RINGS 4
+#define BUMP_BONUS 300  /* frames a ring gives */
+static const float BUMP_SPOTS[][2] = {{0, -30}, {30, 0}, {-30, 0}, {0, 30}, {21, 21}, {-21, 21}, {21, -21}, {-21, -21},
+                                      {38, -15}, {-38, 15}, {15, 38}, {-15, -38}};
+#define N_BUMP_SPOTS ((int)(sizeof BUMP_SPOTS / sizeof BUMP_SPOTS[0]))
+static struct {
+    uint32_t ring[BUMP_RINGS];
+    int spot[BUMP_RINGS];
+    int bonus;   /* frames won by the rings */
+    int rammed;
+} bump;
+
+/* a ring put on a free spot (not one of the others', not where it was) */
+static void bump_ring_move(int i) {
+    int spot = -1;
+    for (int t = 0; t < 20 && spot < 0; ++t) {
+        const int c = (int)(rnd() * (float)N_BUMP_SPOTS) % N_BUMP_SPOTS;
+        int used = c == bump.spot[i];
+        for (int j = 0; j < BUMP_RINGS && !used; ++j) used = j != i && bump.spot[j] == c;
+        if (!used) spot = c;
+    }
+    if (spot < 0) return;
+    bump.spot[i] = spot;
+    const float at[3] = {s.centre[0] + BUMP_SPOTS[spot][0], s.centre[1] + BUMP_SPOTS[spot][1], nav.floor_z + 1.6f};
+    const float rot[3] = {0.0f, 0.0f, atan2f(BUMP_SPOTS[spot][1], BUMP_SPOTS[spot][0]) + 1.5708f};  /* (across the way round) */
+    if (bump.ring[i] == 0) {
+        const int32_t pc = api->class_find("portal");
+        bump.ring[i] = pc >= 0 ? api->object_spawn(pc, at, rot[2]) : 0;
+    } else {
+        api->object_place(bump.ring[i], at, rot, 0.0f);
+    }
+}
+
+/* the countdown over: Ratchet on the board where he stands, the rings out */
+static void bump_start(void) {
+    float h[3];
+    pos_of(api->hero(), h);
+    memset(&bump, 0, sizeof bump);
+    for (int i = 0; i < BUMP_RINGS; ++i) bump.spot[i] = -1;
+    if (api->abi < 16) {
+        challenge_end(0, "nessuna tavola");
+        return;
+    }
+    const float yaw = rac1_lwf(api, api->hero() + 0x48);
+    rails.board = api->base_spawn(BOARD_CLASS, h, yaw);
+    const uint32_t bm = rails.board ? api->base_moby(rails.board) : 0;
+    api->hero_build(16);  /* (Kalebo III's hero code rides it) */
+    const int on = bm != 0 && api->hero_mode(RAC1_HERO_BOARD, bm);
+    api->board_rule(RAC1_BOARD_FREE);
+    const float back[3] = {s.centre[0], s.centre[1] - 16.0f, nav.floor_z + 0.5f};  /* (a fall into the lava: south of the hub) */
+    api->board_return(back, 1.5708f);
+    api->board_fall(1, nav.floor_z - 1.0f);
+    for (int i = 0; i < BUMP_RINGS; ++i) bump_ring_move(i);
+    toast(tr("Investili con la tavola! Gli anelli danno tempo"));
+    char b[64];
+    snprintf(b, sizeof b, "autoscontro: the board %s", on ? "on" : "NOT on");
+    api->log(b);
+}
+
+/* riding: the enemies the board touches knocked down; a ring ridden through: time; the target felled wins, the time out loses */
+static void bump_update(const float h[3]) {
+    const challenge_def* c = &CHALLENGES[s.ch];
+    uint32_t m[8];
+    const int n = rails.board != 0 ? api->board_touching(m, 8) : 0;
+    for (int k = 0; k < n; ++k)
+        for (int i = 0; i < s.nen; ++i)
+            if (en_moby(&s.en[i]) == m[k]) {
+                api->hit_send(m[k], RAC1_HIT_PLAYER, 10.0f, api->hero());
+                ++bump.rammed;
+            }
+    for (int i = 0; i < BUMP_RINGS; ++i) {
+        if (bump.ring[i] == 0 || bump.spot[i] < 0) continue;
+        const float dx = h[0] - (s.centre[0] + BUMP_SPOTS[bump.spot[i]][0]), dy = h[1] - (s.centre[1] + BUMP_SPOTS[bump.spot[i]][1]);
+        const float dz = h[2] - nav.floor_z;
+        if (dx * dx + dy * dy < 2.6f * 2.6f && dz > -1.0f && dz < 3.5f) {
+            bump.bonus += BUMP_BONUS;
+            play(s.snd_wave);
+            toast(tr("+5 secondi"));
+            bump_ring_move(i);
+        }
+    }
+    if (s.felled >= c->target) {
+        challenge_end(1, NULL);
+        return;
+    }
+    if (s.clock >= c->time * 60 + bump.bonus) challenge_end(0, "tempo scaduto");
+}
+
+/* the end: off the board, the rings gone */
+static void bump_end(void) {
+    board_off();
+    for (int i = 0; i < BUMP_RINGS; ++i)
+        if (bump.ring[i] != 0) api->object_remove(bump.ring[i]);
+    memset(&bump, 0, sizeof bump);
 }
 
 /* a board world: off its rail, Ratchet on Kalebo III's hoverboard (ABI 16: free, a fall back at its start), the foes in
@@ -2838,6 +2957,10 @@ static void fight_update(const float h[3]) {
     nav_track(h);
     enemies_follow(h);
     guests_nudge();
+    if (c->kind == BUMP) {
+        bump_update(h);
+        if (s.mode != FIGHT) return;
+    }
     if (s.rule.bombs > 0 && --s.bomb_wait <= 0) {
         bomb_drop(h);
         s.bomb_wait = s.rule.bombs / 2 + (int)(rnd() * (float)s.rule.bombs);
@@ -2858,6 +2981,7 @@ static void fight_update(const float h[3]) {
         if (s.clock >= c->time * 60) challenge_end(1, NULL);
         return;
     }
+    if (c->kind == BUMP) return;  /* (bump_update: the target, the time) */
     if ((c->kind == TIMED && s.clock >= c->time * 60) || (s.rule.time > 0 && ++s.round_clock >= s.rule.time * 60)) {
         challenge_end(0, "tempo scaduto");
         return;
@@ -3065,7 +3189,12 @@ static void frame(void* user) {
             hud_panel(12, y, 230, bh, PANEL, RAC1_HUD_LEFT);
             hud_panel(12, y, 3, bh, BAR, RAC1_HUD_LEFT);
             if (third[0]) hud_text_at(22, y + 50, CYAN, 1.1f, RAC1_HUD_LEFT, 0, "%s", third);
-            if (c->kind == SURVIVE) {
+            if (c->kind == BUMP) {
+                const int left = c->time * 60 + bump.bonus - s.clock;
+                hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", ch_title(s.ch));
+                hud_text_at(22, y + 28, left < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0, tr("Investiti %d/%d   %d:%02d"), s.felled, c->target,
+                            (left > 0 ? left : 0) / 3600, (left > 0 ? left : 0) / 60 % 60);
+            } else if (c->kind == SURVIVE) {
                 const int left = c->time * 60 - s.clock;
                 hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", ch_title(s.ch));
                 hud_text_at(22, y + 28, WHITE, 1.1f, RAC1_HUD_LEFT, 0, tr("Resisti %d:%02d   Abbattuti %d"), left / 3600, left / 60 % 60, s.felled);
@@ -3092,7 +3221,7 @@ static void frame(void* user) {
             hud_grow(box, first, 300);  /* (wider round long texts; smaller texts past 300) */
         }
         const float jx = h[0] - s.last_h[0], jy = h[1] - s.last_h[1], jz = h[2] - s.last_h[2];
-        const int boarding = rails.phase == 5 && (rails.board != 0 || (RAC1_API_HAS(api, hero_mode_now) &&
+        const int boarding = (rails.board != 0 || (RAC1_API_HAS(api, hero_mode_now) &&
                                                   api->hero_mode_now() == RAC1_HERO_BOARD));  /* (the board's own returns: a
                                                                                                  wipe-out, a fall, the race's) */
         if (s.mode != RESULT && (api->health() <= 0 || (!boarding && s.have_last && jx * jx + jy * jy + jz * jz > 64.0f)))
@@ -3762,6 +3891,17 @@ static void test(void* user, const char* text, uint64_t frame) {
             char b[48];
             snprintf(b, sizeof b, "test: the vendor: %d", api->vendor_open());
             api->log(b);
+        }
+        if (getenv("ARENA_GIANT") && frame == (uint64_t)atoll(getenv("ARENA_GIANT"))) {  /* (Giant Clank: Quartu's, 15:419) */
+            float h[3];
+            pos_of(api->hero(), h);
+            const int32_t c = api->import_load("15:419");
+            const uint32_t m = c >= 0 ? api->import_spawn(c, h, rac1_lwf(api, api->hero() + 0x48)) : 0;
+            const int b = api->hero_build(15);
+            const int on = m ? api->hero_mode(RAC1_HERO_GIANT_CLANK, m) : -1;
+            char b2[96];
+            snprintf(b2, sizeof b2, "test: Giant Clank: class %d moby %08x build %d mode %d", (int)c, (unsigned)m, b, on);
+            api->log(b2);
         }
         if (getenv("ARENA_BOARD") && frame == (uint64_t)atoll(getenv("ARENA_BOARD"))) {  /* (the hoverboard: Kalebo III's) */
             float h[3];
