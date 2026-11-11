@@ -14,6 +14,7 @@
 #define RAC1_GAME_RENDER_MRP_WORLD_SCENE_H
 
 #include <formats/world_mrp.h>
+#include <game/ovl/world_chained.h>
 #include <profiler/perf_switch.h>
 #include <game/render/mrp_world_check.h>
 #include <game/render/mrp_world_static.h>
@@ -202,6 +203,46 @@ bool direct_world_force();    // (3, 4: the host's decisions at every view)
 // world (the game's 4:3 Original: nothing scaled or widened): the =2 comparison's walk decodes the chain's draws then, as without it
 void direct_world_note_forced(bool forced);
 bool direct_world_forced();
+// The chained world (RAC1_PERF_WORLD_CHAINED): where the host does not make a tie / shrub pass (the game's own 4:3 Original), the
+// walk still read that pass's whole chain on its private VU1 - every packet's unpacks and set-up starts, every instance's matrix
+// and colours - to decode draws the pass itself had decided and written. The hand-written passes note what they chain for their
+// first program (tie A, shrub A: src/game/ovl/world_chained.h); the capture copies those notes with each instance's bytes of the
+// frame packet, and the walk then makes that part's scene packets from them - the class's packet template and texture qwords
+// from the level's tables (StaticLevel), the instance's rows, morph, state and fog as the pass wrote them, its colours' resident
+// slot - at each draw start of the chain, in the chain's order, without unpacking or running that part (its codes are still read:
+// the VIF state, the double buffer and the register writes stay the walk's). The pass's other programs (the clipping ones, the
+// shrubs' far variants) are walked as before. A pass without notes that stand (not run by hand, a class or packet the level's
+// tables do not have) is walked whole; a walk whose draw starts are not the notes' is made again without them.
+// Seven shrub packets of the game have vertices whose colour is whatever VU1 memory holds past their instance's block
+// (kTwiceBase): the shrub blocks of earlier draws, and the tie pass's two colour tables. In a level that has one, the shrub pass
+// is walked whole, and after the tie A part the walk writes the two tables as the part's last two draws left them.
+// 0: the walk as before; 1: the chained world; 2: both, the walker's scene drawn and the chained one compared with it field by
+// field (scene_compare; the packets by their content: the walk names an asset's packet by the first of its copies).
+int chained_world_mode();
+struct ChainedWorld {
+    bool want = false;                 // asked for this capture
+    WorldChained notes;                // the frame's runs and their draws (world_chained.h)
+    std::vector<uint8_t> tie_bytes;    // a tie draw's 0x60 bytes of the frame packet, in the draws' order
+    std::vector<uint8_t> shrub_bytes;  // a shrub instance's 0x50 bytes, the groups' instances in a row
+    std::vector<uint8_t> shrub_alpha;  // and its alpha as the program reads it (the first colour's w: the colours' byte 3, or its fade)
+    std::vector<uint32_t> shrub_first; // a group's first instance in the two above
+    // per run (a tie run's): the 64 colours (4 bytes each) of its last draw, then of the one before - the two tables the pass's
+    // tie A part leaves in VU1 memory (0x346 / 0x386), which the walk puts there in a level whose shrubs read them (kTwiceBase)
+    std::vector<std::array<uint8_t, 512>> tie_tail;
+};
+struct ChainedStats {
+    uint64_t scenes = 0;               // the scenes with a pass made from the notes
+    uint64_t ties = 0, shrubs = 0;     // the draws made from them (tie draws, shrub instances)
+    uint64_t walked[2] = {};           // the tie / shrub passes walked whole all the same (no notes that stand)
+    uint64_t again = 0;                // the scenes made again without the notes (the chain's draw starts were not theirs)
+    perf::DualCheck check;             // (=2) the frames compared
+    uint64_t packets = 0, regs = 0;    // (=2) the packets / register writes compared
+    // (=2, a level whose shrubs read VU1 memory past their block) the two walkers' private VU1 memory where those vertices can
+    // read (quadwords 0x1e6 .. 0x3ff, 0 and 1), after each frame
+    perf::DualCheck memory;
+};
+const ChainedStats& chained_world_stats();
+
 // The comparison's and the direct world's statistics, over the run
 struct DirectStats {
     uint64_t frames = 0, fallback = 0;      // the scenes built direct; the scans that failed (the chain copied and walked that frame)
@@ -212,8 +253,9 @@ struct DirectStats {
     double ms = 0;  // (the scans' time, summed)
 };
 const DirectStats& direct_world_stats();
-// orig: (host) (=2) the direct scene `d` against the walker's `w`: false at the first difference (noted)
-bool scene_compare(const SceneFrame& w, const SceneFrame& d);
+// orig: (host) (=2) the direct scene `d` against the walker's `w`: false at the first difference (noted). `chained`: the chained
+// world's comparison (its own account; a tie / shrub packet compared by its content)
+bool scene_compare(const SceneFrame& w, const SceneFrame& d, bool chained = false);
 
 // A pass's shadow chain (mrp_lod.h), by the real range it replaces
 struct SceneShadow {
@@ -288,6 +330,8 @@ struct SceneInput {
     // the build makes the world from it; else the walk as before). `tfrag_cpu`: the CPU tfrag fallback's level (no GPU path:
     // tfrag_level null) - the host's tfrag draws by the CPU reference on images made from the level's data
     bool direct = false, dw_reset = false;  // (`dw_reset`: the scan's private VU1 started again, a new level)
+    // the chained world (RAC1_PERF_WORLD_CHAINED): the passes' notes of their tie A / shrub A draws, captured with the chain
+    ChainedWorld chained;
     int walker = 0;                         // (the walker the build uses: 1 the =2 comparison's direct build's own)
     DirectWorld dw;
     const TfragLevel* tfrag_cpu = nullptr;

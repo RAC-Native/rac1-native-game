@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 481 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 482 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 25 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 347 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 348 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 109 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -118,6 +118,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_PERF_SCENE_KEEP` | 0 or 1; default 1 | The MRP moby scene's frames (the shadow run's, the real pass's, the one put aside) keep their vectors' storage from frame to frame; 0: a new frame at every shadow run, its vectors grown again, as before, to compare. The same scene. |
 | `RAC1_PERF_UPLOAD_MEMO_KEEP` | 0 or 1; default 1 | The upload memo (RAC1_PERF_UPLOAD_MEMO): a piece it skips takes the write log's current number, so its next check does not walk the log back to the piece's one write, nor does the piece fall behind the log's floor; 0: the number of its last write kept, as before, to compare. The same skips are exact either way. |
 | `RAC1_PERF_VU0_RAW` | 0 = off, 2 = check; default 1 | The VU0 macro ops' adds, subtracts, multiplies and multiply-adds (src/game/ovl/vu0_macro.h, vu0_regs.h, vu0_nf.h, vu0_local.h, the pose's loops in moby_joints.cpp) compute the lanes as they are - the thread's float mode already gives the VU rules' result - and by the rules only when a lane they write has exponent 255; 0: every operand and result clamped at every op, as before; 2: those, each compared with the raw form (`[perf] vu0 raw check` at the end of the run; the pose's loops run by the rules). Off with RAC1_FPU_NEAREST=1. The same game state (docs/performance.md). |
+| `RAC1_PERF_WORLD_CHAINED` | 0 = off, 1 = on, 2 = on with a check; default 1 | The chained world: where the host does not make a tie or shrub pass (the game's own 4:3 Original), the MRP makes the pass's tie A / shrub A draws from the hand-written pass's own notes of what it chained, instead of unpacking and running that part of the chain on its private VU1. 0 walks the whole chain as before (and the passes take no notes); 2 makes both scenes, draws the walker's and compares the other with it field by field, reporting differences. |
 | `RAC1_SURFACE_DETAIL` | 0, 1 or 2; default: Options > Graphics > Surface Detail (Off) | With the modern lighting, the materials of the level files' `material` lines: 0 off, 1 Low, 2 High (also the reflections and the lava's heat shimmer), whatever the option says. |
 | `RAC1_GRASS` | 0, 1 or 2; default: Options > Graphics > Grass (Off) | With the modern lighting, the `grass` material on tfrags: 0 off, 1 Low (a detail relief of blades, no geometry), 2 High (also very low shells of blades near the camera), whatever the option says. |
 | `RAC1_TFRAG_TIME_ONCE` | 0 or 1; default 1 | Vulkan: the tfrag compute's timed first dispatches of a level (chunks submitted and waited for, to give a slow GPU's tfrags to the CPU) are not made again once a level of the session timed the device at under half the limit; 0: at every level's arrival, as before. |

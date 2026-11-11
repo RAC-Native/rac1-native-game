@@ -364,6 +364,57 @@ sources, each behind a `RAC1_PERF_*` switch whose `=2` runs both ways and compar
     with `RAC1_PERF_DIRECT_WORLD_CMP=tfrag`) every vertex, colour and register write is the same but for the textures' place in
     VRAM (TEX0's TBP0 / CBP, MIPTBP): the images keep the level load's, the chain the frame's own placement, which the world's
     textures are not found by (CLAMP's MINV index names them).
+- **The chained world** (`RAC1_PERF_WORLD_CHAINED`, `mrp_world_scene.h`, `src/game/ovl/world_chained.h`; November 2026). At the
+  game's own 4:3 Original - the default settings - the host does not decide the world: the picture is the decode of the game's
+  chain, so the scene worker walked every world pass's range on its private VU1, and the main thread waited for it. On the 19
+  levels (headless, the game thread on, one run each) the main thread waits for the scene on 18 of them, 1.14 ms of a 2.00 ms
+  period at the median (Kerwan 2.66 of 4.35, Blarg Station 2.70 of 4.11); the walk itself is 1.02 ms at the median, and a 16:9
+  frame, where the host decides and nothing is walked, is shorter than a 4:3 one.
+  The tie and shrub passes are written by hand (`world_cull_tie.cpp`, `world_cull_shrub.cpp`) and build that chain themselves.
+  They now note each draw they chain for their first program (tie A, shrub A): its class and LOD packet, where its instance's
+  matrix is in the frame packet, where its colours are. The capture copies the notes with each instance's bytes of the frame
+  packet, and the walk makes those draws' scene packets from them at each draw start of the chain, in the chain's order: the
+  packet's template and texture qwords from the level's own tables, the instance's rows, morph, alpha-test state and fog as the
+  pass wrote them, its colours' resident slot. That part's unpacks and set-up starts are no longer run; its tags and codes are
+  still read, so the VIF state, the double buffer, the register writes and the order of the packets stay the walk's. The same
+  draws, as the pass decided them: nothing is decided again by the host (its own decisions at 4:3 Original, compared with the
+  walk's on the 19 levels, name the game's instances, LODs and tfrags every time, but a shrub's fade differs by one in 677
+  draws of 4.5 million and one far-variant stream of 141,489 on Gaspar: close, not the same).
+  What is still walked: the tfrag pass; the passes' clipping programs (4.2 % of the tie draws, 7.5 % of the shrubs') and the
+  shrubs' far variants; a pass that did not run by hand (`RAC1_WORLD_CULL_FAST=0`, or `=2`: the check runs it inside a journal)
+  or names a class the level's tables do not have; and the whole scene again when the chain's draw starts are not the notes'
+  (never in the runs below; tried by dropping a note every seventh frame: the scenes made again, 0 differing).
+  Seven shrub packets of the game have vertices whose colour is whatever VU1 memory holds past their instance's block
+  (`kTwiceBase`): earlier shrub draws' blocks, the tie pass's colour tables, a tie packet's first quadwords. Six of the 19 levels
+  have one (Novalis, Eudora, Rilgar, Blarg Station, Oltanis, Veldin's second visit). There the shrub pass is walked whole, the tie
+  packets' unpacks and set-up starts are walked too, and only the tie instances' unpacks are left out, their two colour tables
+  written back after the tie A part as its last two draws left them.
+  Proved with `=2`, which makes both scenes, draws the walker's and compares the other with it field by field (the packets in
+  order, the register writes before each, the instances' rows, morph, fog, alpha and colour slot, the texture qwords, the kicks
+  of the clipping programs, the GIF writes): 0 differing frames of 37,954 over the 19 levels (2000 frames each; 35.7 million
+  packets, 9.2 million register writes; 23.6 million tie draws and 3.9 million shrub instances made from the notes), and on a
+  route across five levels. Two things are compared by content: a packet the asset holds twice (the walk names the first copy
+  it finds, the notes the class and LOD the pass chained: the same VU1 image), and the texture qwords without the textures'
+  place in VRAM (as for the tfrags above: the level load's in the tables, the frame's in the chain; the world's textures are
+  not found by it). On the six levels with a `kTwiceBase` packet the two walkers' VU1 memory is compared too, wherever such a
+  vertex can read (quadwords 0x1e6 to 0x3ff, 0 and 1): 0 differing frames of 11,986. The pictures at frames 300, 600 and 1500
+  of the 19 levels, OpenGL and Vulkan, are the walk's (114 of 114); the reference images and the route's RAMHASH are unchanged;
+  RAMHASH on the 19 levels is the same with the switch at 0 and at 1 (the notes change nothing of the game's).
+  Measured (headless, 4:3 Original, the game thread on, the profiler's medians, seven runs of each taken in turn; ms a frame, the
+  walk -> the chained world; the percentage is the median of the seven runs' ratios):
+
+  | | Veldin | Novalis | Kerwan | Rilgar | Blarg Station | Gaspar | Hoven | Kalebo III |
+  |---|---|---|---|---|---|---|---|---|
+  | Frame period | 1.78 -> 1.50 | 2.79 -> 2.37 | 3.56 -> 2.77 | 1.74 -> 1.46 | 3.46 -> 2.85 | 3.35 -> 2.63 | 2.41 -> 1.80 | 3.58 -> 2.44 |
+  | | -15 % | -13 % | -23 % | -15 % | -19 % | -20 % | -25 % | -32 % |
+  | Main thread's wait for the scene | 1.11 -> 0.63 | 1.83 -> 1.40 | 2.28 -> 1.47 | 1.11 -> 0.79 | 2.34 -> 1.72 | 1.91 -> 1.16 | 1.50 -> 0.76 | 2.39 -> 1.23 |
+  | Scene worker busy | 1.38 -> 0.94 | 2.22 -> 1.80 | 2.84 -> 2.02 | 1.39 -> 1.07 | 2.80 -> 2.19 | 2.36 -> 1.62 | 1.90 -> 1.17 | 2.88 -> 1.71 |
+  | its walk | 0.95 -> 0.49 | 1.54 -> 1.18 | 1.93 -> 1.15 | 1.02 -> 0.70 | 1.96 -> 1.42 | 1.59 -> 0.90 | 1.31 -> 0.60 | 2.04 -> 1.02 |
+
+  The period is below the walk's in 5 to 7 of the 7 runs on every level. The levels with a `kTwiceBase` packet (Novalis, Rilgar,
+  Blarg Station) gain less. The game thread's and the main thread's own times rise by a few per cent in these unpaced runs (the
+  threads overlap more in a shorter frame); the notes themselves are a record a draw. What the walk still costs is mostly the
+  tfrag pass (0.6 ms of Kerwan's) and reading the ranges' tags; the capture still copies the ranges.
 
 Measured as the analysis was (headless, OpenGL, `RAC1_PIPELINE=1 RAC1_GAME_THREAD=0`, forward input, 1500 frames, the medians
 of frames 600-1450; Graphics Original, LOD Original but where said, HUD 4:3; 1920 x 1080 at 16:9, 5120 x 1440 Fill Screen widened).
@@ -436,6 +487,11 @@ surfaces and materials off moved it by 0 to 10 %. With a fragment shader that on
 5.2 ms (the vertices, the raster, the blending of two passes), and the ties and shrubs drawn by the GPU path are about 3.9 of it (about
 1.1 of that whatever the window's size: their roughly 5 500 draw commands, each drawn twice). The alpha-tested batches (nearly every
 tie and shrub: the GS's AFAIL RGB_ONLY) are drawn in two passes, the passing pixels then the failing ones.
+(Measured since, November 2026: the commands themselves are less than that 1.1 ms. `RAC1_MRPW_SPLIT_DRAWS=1` makes every such
+command two, the same triangles in the same order and the same picture: 6 000 to 10 500 more commands cost the GPU 0.16 to 0.51 ms -
+Kerwan 3.77 to 3.97 ms of `World` at 1920 x 1080 and 9.11 to 9.27 at 5120 x 1440, Rilgar 2.13 to 2.40 and 3.99 to 4.49, three runs
+of each taken in turn - so a command is 20 to 50 ns and a frame's own commands 0.2 to 0.5 ms; the rest of what does not depend on
+the window's size is the vertices.)
 
 | Change | Vulkan | OpenGL |
 |---|---|---|
@@ -756,6 +812,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_DROP_SHADOWS_FAST=0`, `RAC1_SKY_FAST=0` | the drop shadows' and the sky's routines as transliterated (`=2`: both, compared; `RAC1_HAND_CHECK_EVERY` to check one call in n) |
 | `RAC1_PERF_UPLOAD_MEMO=0` | every texture upload's piece written into the GS memory model, as before (`=2`: both, checked) |
 | `RAC1_PERF_DIRECT_WORLD=0` | the world passes' chain ranges copied and walked when the host makes the world (`=2`: both, compared; `=3`: the direct world at 4:3 Original too) |
+| `RAC1_PERF_WORLD_CHAINED=0` | at 4:3 Original the tie and shrub passes' whole ranges unpacked and run on the scene worker's private VU1, the passes taking no notes (`=2`: both scenes, compared) |
 | `RAC1_PERF_SKY_LATE=1` | the sky after the leading opaque tfrag batches (off by default: not exact) |
 | `RAC1_PERF_FPU_RAW=0` | the EE FPU helpers by the PS2 rules at every operation, through doubles (`=2`: those, compared with the raw forms) |
 | `RAC1_PERF_VU0_RAW=0` | the VU0 macro ops clamping every operand and result at every op, the pose's loops too (`=2`: those, the ops compared with the raw forms) |

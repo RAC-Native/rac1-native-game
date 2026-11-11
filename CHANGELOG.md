@@ -5,6 +5,12 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **A shorter frame at the default 4:3** (no change to the picture or the game): with the settings as they come - Aspect Ratio
+  4:3 Original, LOD Original - the renderer still decoded every tie and shrub of the frame from the game's draw commands on an
+  emulated VU1, and the frame waited for it. The game's own tie and shrub passes now tell the renderer what they drew, and it
+  makes those draws from that: a frame 13 to 32 % shorter on the eight levels measured (Kerwan 3.6 to 2.8 ms, Kalebo III 3.6 to
+  2.4, headless). 16:9 and the LOD slider were not affected: the renderer decides the world itself there. See
+  docs/performance.md.
 - **Level mods: a planet's world in a section looks and films as the planet** (level mods must be set up again: the composer's
   version 9). Umbris's cave: its lava is animated again (its sea, an object of a class with no model, can now be placed:
   `objects ... 460`), and its boss camera turns toward the Snagglebeast instead

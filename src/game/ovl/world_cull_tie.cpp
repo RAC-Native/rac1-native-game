@@ -27,6 +27,7 @@
 // orig: (host)
 #include <game/ovl/world_cull.h>
 #include <game/ovl/world_cull_hand.h>
+#include <game/ovl/world_chained.h>
 
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_reloc.h>
@@ -78,6 +79,7 @@ struct Pass {
     uint32_t pkt = 0;     // the frame packet's cursor (RAM)
     uint32_t sp = 0;      // the packet buffer's cursor (scratchpad)
     uint32_t parity = 0;  // the instances' alternating ITOP halves (0 / 0x40)
+    const bool noting = world_chained_noting();  // (host: the draws chained here noted for the MRP, world_chained.h)
     Qw tpl[8];            // the chain's templates (TEMPLATES)
     // the original's registers' upper halves that reach the VU0 (see the file's comment)
     uint64_t v0_hi = 0, v1_hi = 0, a0_hi = 0, t3_hi = 0;
@@ -596,13 +598,14 @@ void Pass::lists() {
         const uint32_t end = p + (static_cast<uint32_t>(lbu(cls + 0x20 + k)) << 4);
         uint32_t data = lwu(p);
         spr.set32(LIST_HEAD, list[k]);
-        while (p != end) {
+        for (uint32_t j = 0; p != end; ++j) {
             data = packet_header(p, data, lwu(cls + 0x2c), false);
             p += 0x10;
             for (uint32_t r = spr.u32(LIST_HEAD); r != 0;) {
                 const uint32_t matrix_pkt = spr.u32(r + 0xc), colours = spr.u32(r + 0x10) + 0x40;
                 r = spr.u32(r + 0x1c);
                 instance_ref(matrix_pkt, colours);
+                if (noting) world_chained_tie({cls, matrix_pkt, colours, static_cast<uint16_t>(j), static_cast<uint8_t>(k)});
             }
         }
     }
@@ -775,6 +778,7 @@ bool tie_cull() {
     p.classes();
     p.clipped();
     p.u.store();
+    if (p.noting) world_chained_done();
     return true;
 }
 

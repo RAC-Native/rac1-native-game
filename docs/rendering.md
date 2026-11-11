@@ -198,6 +198,10 @@ VU1 memory against the level's assets and evaluates the program's math (`src/for
 holds the CPU reference). So the culling, the level of detail and the lit vertex colours are exactly
 the original's. The walk, and then the frame's triangles, draw commands and batches
 (`build_triangles`), run on the scene worker thread (`mrp_world_renderer.cpp`).
+The tie and shrub passes are written by hand, and note what they chain for their first program as
+they write it (`src/game/ovl/world_chained.h`): the walk makes those draws from the notes and the
+level's tables, without unpacking or running that part of the chain (`RAC1_PERF_WORLD_CHAINED`,
+docs/performance.md); the tfrags, the clipping programs' draws and the shrubs' far variants are walked.
 
 **Effects, VU1 program 7 and the 2D: the MRP's chain reader.** `mrp_chain.cpp` reads the frame's chain
 (on the MRP chain worker): its GIF packets, its texture uploads, and in the effects' ranges the ported VU1

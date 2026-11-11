@@ -5077,6 +5077,30 @@ void direct_compare_inputs() {
         g_input.tfrag_host = nullptr;
     }
 }
+// orig: (host) the chained world's =2 comparison (RAC1_PERF_WORLD_CHAINED=2; not beside the direct world's): the walker's scene is
+// the frame's, made without the passes' notes; the second input asks for them, on the comparison's own walker
+bool chained_compare() { return chained_world_mode() == 2 && !direct_world_compare(); }
+void chained_compare_inputs() {
+    SceneInput& d = g_input_direct;
+    d.colours = g_input.colours;
+    d.stat = g_input.stat;
+    d.stat_level = g_input.stat_level;
+    d.stat_check = g_input.stat_check;
+    d.tfrag_level = g_input.tfrag_level;
+    d.tfrag_colours = g_input.tfrag_colours;
+    d.tfrag_kicks = g_input.tfrag_kicks;
+    d.tfrag_host = g_input.tfrag_host;
+    d.tfrag_check = g_input.tfrag_check;
+    d.tfrag_shadow = g_input.tfrag_shadow;
+    d.tfrag_shadow_views = g_input.tfrag_shadow_views;
+    d.tfrag_cpu = g_input.tfrag_cpu;
+    d.tfrag_cpu_colours = g_input.tfrag_cpu_colours;
+    d.direct = g_input.direct;
+    d.dw_reset = g_input.dw_reset;
+    d.walker = 1;
+    d.chained.want = true;
+    g_input.chained.want = false;
+}
 struct SceneWorker {
     std::mutex m;
     std::condition_variable cv;
@@ -5117,6 +5141,9 @@ struct SceneWorker {
                     if (direct_world_compare()) {
                         direct_compare_inputs();
                         scene_capture(chain_start, chain_end, g_input_direct, addrs);
+                    } else if (chained_compare()) {
+                        chained_compare_inputs();
+                        scene_capture(chain_start, chain_end, g_input_direct, addrs);
                     }
                     scene_capture(chain_start, chain_end, g_input, addrs);
                     {
@@ -5131,6 +5158,8 @@ struct SceneWorker {
                 }
                 if (built && direct_world_compare() && g_input_direct.dw.ok && scene_build(*g_level.idx, g_input_direct, g_scene_direct, reset, kicks))
                     scene_compare(g_frame.scene, g_scene_direct);  // (the direct world's scene against the walker's, which is drawn)
+                if (built && chained_compare() && scene_build(*g_level.idx, g_input_direct, g_scene_direct, reset, kicks))
+                    scene_compare(g_frame.scene, g_scene_direct, true);  // (the chained world's scene against the walker's, which is drawn)
                 if (built) direct_count(direct_world_compare() ? g_input_direct : g_input);
                 g_frame.built_on_worker = false;
                 if (built && build) {  // the frame's triangles too, its new textures' images left to the host thread
@@ -5296,6 +5325,7 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
         g_input.tfrag_shadow_views = &g_tshadow_views;
     }
     g_input.direct = direct_world_on();  // (RAC1_PERF_DIRECT_WORLD: the world's ranges scanned, not walked, when the host makes them)
+    g_input.chained.want = chained_world_mode() == 1;  // (RAC1_PERF_WORLD_CHAINED: the passes' own notes of their tie A / shrub A draws)
     g_input.dw_reset = g_level.reset_walker;
     g_input.walker = 0;
     if (scene_threaded()) {  // (the capture on the worker too: the host must call mrp_world_wait_captured before the game's state changes)
@@ -5313,11 +5343,16 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
         if (direct_world_compare()) {
             direct_compare_inputs();
             scene_capture(chain_start, chain_end, g_input_direct);
+        } else if (chained_compare()) {
+            chained_compare_inputs();
+            scene_capture(chain_start, chain_end, g_input_direct);
         }
         scene_capture(chain_start, chain_end, g_input);
         g_worker.built = scene_build(*g_level.idx, g_input, F.scene, g_level.reset_walker, kicks);
         if (g_worker.built && direct_world_compare() && g_input_direct.dw.ok && scene_build(*g_level.idx, g_input_direct, g_scene_direct, g_level.reset_walker, kicks))
             scene_compare(F.scene, g_scene_direct);
+        if (g_worker.built && chained_compare() && scene_build(*g_level.idx, g_input_direct, g_scene_direct, g_level.reset_walker, kicks))
+            scene_compare(F.scene, g_scene_direct, true);
         if (g_worker.built) direct_count(direct_world_compare() ? g_input_direct : g_input);
         g_worker.ms = now_ms() - g_t_begin;
     }
@@ -6269,6 +6304,18 @@ void mrp_world_report() {
         if (direct_world_compare()) {
             std::printf("[perf] direct world check: %llu packets, %llu register writes compared\n", static_cast<unsigned long long>(d.packets), static_cast<unsigned long long>(d.regs));
             d.check.report("direct world", "frames");
+        }
+    }
+    if (chained_world_mode() != 0) {
+        const ChainedStats& c = chained_world_stats();
+        std::printf("[perf] chained world (RAC1_PERF_WORLD_CHAINED=%d): %llu scenes with a pass made from its notes, %llu tie draws and %llu shrub instances; passes "
+                    "walked whole: %llu tie, %llu shrub; scenes made again by the walk: %llu\n",
+                    chained_world_mode(), static_cast<unsigned long long>(c.scenes), static_cast<unsigned long long>(c.ties), static_cast<unsigned long long>(c.shrubs),
+                    static_cast<unsigned long long>(c.walked[0]), static_cast<unsigned long long>(c.walked[1]), static_cast<unsigned long long>(c.again));
+        if (chained_world_mode() == 2) {
+            std::printf("[perf] chained world check: %llu packets, %llu register writes compared\n", static_cast<unsigned long long>(c.packets), static_cast<unsigned long long>(c.regs));
+            c.check.report("chained world", "frames");
+            if (c.memory.compared != 0) c.memory.report("chained world: the VU1 memory the shrubs' vertices can read,", "frames");
         }
     }
     static const char* names[6] = {"tfrag A", "tfrag B", "tie A", "tie B", "shrub A", "shrub B"};
