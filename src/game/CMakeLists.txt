@@ -92,6 +92,7 @@ add_library(rac1_game STATIC
     ovl/veldin_orbit_mobys.cpp
     ovl/veldin_finale_hooks.cpp
     ovl/veldin_finale_mobys.cpp
+    ovl/credits.cpp
     ovl/end_menu.cpp
     ovl/particle_types4.cpp
     ovl/variants.cpp

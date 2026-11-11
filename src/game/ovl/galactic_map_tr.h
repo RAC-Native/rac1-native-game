@@ -1,5 +1,4 @@
-// The galactic map's drawing: the galaxy view 0x2033c0 and the planet panel's model 0x27cbc0, transliterated
-// at Veldin's addresses, proved against the original.
+// Galactic map galaxy view (0x2033c0) and planet panel model (0x27cbc0; implemented in galactic_map.cpp).
 #ifndef RAC1_GAME_OVL_GALACTIC_MAP_TR_H
 #define RAC1_GAME_OVL_GALACTIC_MAP_TR_H
 
