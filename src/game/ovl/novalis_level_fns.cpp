@@ -4,8 +4,8 @@
 #include <game/ovl/novalis_level_fns.h>
 
 #include <game/ovl/help_panel_tr.h>
-#include <game/ovl/kerwan_camera_tr.h>
-#include <game/ovl/novalis_camera_tr.h>
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_camera.h>
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/novalis_sound_tr.h>
 #include <game/ovl/ovl.h>
@@ -25,7 +25,7 @@ namespace rac1 {
 static void vendor_draw_cb_29f990(uint32_t a0) { (void)ovl_29f990_tr(a0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f); }
 
 // The accept function of Novalis's camera type 3 (row 1: accept 0x315dd8, init 0x315de0, update 0x315358, exit 0x316030;
-// the other three are transliterated in novalis_camera_tr.cpp): `jr ra; move v0,zero`. The camera is taken
+// the other three are in novalis_camera.cpp): `jr ra; move v0,zero`. The camera is taken
 // by its trigger kind 7 (camera_accept: the hero's camera request 0x1415d4 = 3) and handed back by its exit.
 // orig: L1:0x00315dd8
 int32_t camera_type_315dd8_l1() { return 0; }
@@ -41,21 +41,17 @@ void class775_update_l1(uint32_t m) {
 
 // orig: (host) see novalis_level_fns.h
 bool level_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t& ret) {
-    if (on_kerwan()) {  // Kerwan's own camera types 1 and 14 and type 18's accept (kerwan_camera_tr.cpp)
-        auto acc = [&](TrRet (*f)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float)) {
-            ret = static_cast<int32_t>(f(cam, other, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f).v0);
-            return true;
-        };
+    if (on_kerwan()) {  // Kerwan's own camera types 1 and 14 and type 18's accept (kerwan_camera.cpp)
         switch (lvl_key(fn)) {
-        case L3_CASE(0x002e8870): return acc(ker_cam_type1_accept_u);
+        case L3_CASE(0x002e8870): ret = ker_cam_type1_accept_l3(cam, other); return true;
         case L3_CASE(0x002e8940): ker_cam_type1_init_l3(cam); ret = 0; return true;
         case L3_CASE(0x002e8960): ker_cam_type1_update_l3(cam); ret = 0; return true;
         case L3_CASE(0x002e8980): ker_cam_type1_exit_l3(cam); ret = 0; return true;
-        case L3_CASE(0x002ebd70): return acc(ker_cam_type14_accept_u);
+        case L3_CASE(0x002ebd70): ret = ker_cam_type14_accept_l3(cam, other); return true;
         case L3_CASE(0x002eb978): ker_cam_type14_init_l3(cam); ret = 0; return true;
         case L3_CASE(0x002ebdb0): ker_cam_type14_update_l3(cam); ret = 0; return true;
         case L3_CASE(0x002ebde8): ker_cam_type14_exit_l3(cam); ret = 0; return true;
-        case L3_CASE(0x002ed5f8): return acc(ker_cam_type18_accept_u);
+        case L3_CASE(0x002ed5f8): ret = ker_cam_type18_accept_l3(cam, other); return true;
         default: return false;
         }
     }

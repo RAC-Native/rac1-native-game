@@ -12,8 +12,8 @@
 #include "ovl_oracle.h"
 
 #include <game/ovl/hydro.h>
-#include <game/ovl/kerwan_camera_tr.h>
-#include <game/ovl/novalis_camera_tr.h>
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_camera.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants_l1.h>
 #include <game/ovl/variants_l3.h>
@@ -206,12 +206,12 @@ void batch_126() {
             }
             return cam;
         };
-        using Acc = TrRet (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float);
+        using Acc = int32_t (*)(uint32_t, uint32_t);
         struct CamT { int type; uint32_t accept, init, update, exit; Acc acc; void (*fi)(uint32_t); void (*fu)(uint32_t); void (*fe)(uint32_t); };
         static const CamT cams[] = {
-            {1, 0x002e8870, 0x002e8940, 0x002e8960, 0x002e8980, ker_cam_type1_accept_u, ker_cam_type1_init_l3, ker_cam_type1_update_l3, ker_cam_type1_exit_l3},
-            {14, 0x002ebd70, 0x002eb978, 0x002ebdb0, 0x002ebde8, ker_cam_type14_accept_u, ker_cam_type14_init_l3, ker_cam_type14_update_l3, ker_cam_type14_exit_l3},
-            {18, 0x002ed5f8, 0, 0, 0, ker_cam_type18_accept_u, nullptr, nullptr, nullptr},
+            {1, 0x002e8870, 0x002e8940, 0x002e8960, 0x002e8980, ker_cam_type1_accept_l3, ker_cam_type1_init_l3, ker_cam_type1_update_l3, ker_cam_type1_exit_l3},
+            {14, 0x002ebd70, 0x002eb978, 0x002ebdb0, 0x002ebde8, ker_cam_type14_accept_l3, ker_cam_type14_init_l3, ker_cam_type14_update_l3, ker_cam_type14_exit_l3},
+            {18, 0x002ed5f8, 0, 0, 0, ker_cam_type18_accept_l3, nullptr, nullptr, nullptr},
         };
         static char nm[16][48];
         int k = 0;
@@ -219,7 +219,7 @@ void batch_126() {
             auto name = [&](const char* what) { char* p = nm[k++ & 15]; std::snprintf(p, 48, "ker_cam_type%d_%s", ct.type, what); return static_cast<const char*>(p); };
             const CamT* c = &ct;
             lcheck(3, name("accept"), ct.accept, 300, Ret::Int32, [cam_setup, c] { uint32_t other = 0; const uint32_t cam = cam_setup(c->type, &other, 0, nullptr, nullptr); return Args{{cam, other}, {}}; },
-                   [c](A a) { return r32(a.i[0] != 0 ? c->acc(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0 : 0u); });
+                   [c](A a) { return r32(a.i[0] != 0 ? static_cast<uint32_t>(c->acc(a.i[0], a.i[1])) : 0u); });
             if (ct.init == 0) continue;
             lcheck(3, name("init"), ct.init, 100, Ret::None, [cam_setup, c] { return Args{{cam_setup(c->type, nullptr, 0, c->fi, c->fu)}, {}}; },
                    [c](A a) { if (a.i[0] != 0) c->fi(a.i[0]); return uint64_t{0}; });

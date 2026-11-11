@@ -269,6 +269,8 @@ add_library(rac1_game STATIC
     ovl/camera_mods.cpp
     ovl/camera_look.cpp
     ovl/camera_types.cpp
+    ovl/novalis_camera.cpp
+    ovl/kerwan_camera.cpp
     ovl/wind.cpp
     ovl/smoke_vent.cpp
     ovl/arrival.cpp

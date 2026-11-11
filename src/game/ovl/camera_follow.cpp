@@ -6,7 +6,7 @@
 // from the target and the distances (+0x15c / +0x160), +0x190 / +0x1a8 the springs, +0x1d0
 // the collision state, +0x220 the pitch state, +0x240 the previous target.
 #include <game/enhance/advanced.h>
-#include <game/ovl/kerwan_camera_tr.h>
+#include <game/ovl/kerwan_camera.h>
 #include <game/ovl/variants_l3.h>
 #include <game/ovl/eudora_mobys.h>
 #include <game/ovl/rilgar_hooks.h>

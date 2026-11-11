@@ -8,7 +8,7 @@
 // the renderer reads: position 0x166dc0, Euler angles 0x166dd0, rows 0x166fd0..0x167000.
 #include <game/ovl/aridia_classes_tr.h>
 #include <game/ovl/camera_types.h>
-#include <game/ovl/kerwan_camera_tr.h>
+#include <game/ovl/kerwan_camera.h>
 #include <game/ovl/variants_l3.h>
 #include <game/ovl/eudora_mobys.h>
 #include <game/ovl/rilgar_hooks.h>
