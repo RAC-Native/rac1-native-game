@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -236,6 +237,17 @@ struct ChainedWorld {
     // per run (a tie run's): the 64 colours (4 bytes each) of its last draw, then of the one before - the two tables the pass's
     // tie A part leaves in VU1 memory (0x346 / 0x386), which the walk puts there in a level whose shrubs read them (kTwiceBase)
     std::vector<std::array<uint8_t, 512>> tie_tail;
+    // the capture's decisions (while the level's tables and the frame's requests are as the build will see them): per run,
+    // whether its draws are made from the notes; each note's packet (ties, shrubs) or entry (tfrags) of the level's tables;
+    // `twice`: the level has a shrub packet whose colours read VU1 memory past its block (kTwiceBase)
+    std::vector<uint8_t> run_chained;
+    std::vector<const StaticPacket*> tie_pk, shrub_pk;
+    std::vector<int32_t> tfrag_cls;
+    bool twice = false;
+    // (the level's tie / shrub classes by their record's address, StaticLevel::gen's)
+    uint32_t cls_gen = 0;
+    std::unordered_map<uint32_t, uint32_t> tie_cls, shrub_cls;
+    bool cls_twice = false;
 };
 struct ChainedStats {
     uint64_t scenes = 0;               // the scenes with a pass made from the notes
