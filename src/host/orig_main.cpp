@@ -71,6 +71,7 @@
 #endif
 
 #include "audio_limiter.h"
+#include "behav_trace.h"
 #include "host_language.h"
 #include "dualsense.h"
 #include "rumble.h"
@@ -3068,6 +3069,7 @@ int main(int argc, char** argv) {
     // (testing) RAC1_RAMHASH=<file>: after each game frame's update the 4 KB pages' hashes of the game's EE RAM
     // (32 MB) and the scratchpad are appended to the file; RAC1_RAMDUMP=<frame>,<file>: that frame's RAM + scratchpad raw
     FILE* ramhash = std::getenv("RAC1_RAMHASH") ? std::fopen(std::getenv("RAC1_RAMHASH"), "wb") : nullptr;
+    behav_trace_init();
     uint32_t display_serial = rac1::graphics_display_serial();
     int windowed_pos[2] = {100, 100};
     int display_settle = 0;  // (frames after a change before the window's size is reported back: the window manager answers late)
@@ -3392,6 +3394,7 @@ int main(int argc, char** argv) {
                     vsync_passed();
                     // (a game frame's RAM, also with "Original fades": the hashes of a run compare to another's game frame by game frame)
                     if (ramhash != nullptr) ram_hash_frame(ramhash, game_frame);
+                    behav_trace_frame(game_frame);
                     ++game_frame;
                 }
                 {
@@ -4817,6 +4820,7 @@ int main(int argc, char** argv) {
     rac1::vu1::fallback_report();
     rac1::world_cull_check_report();  // (testing: RAC1_WORLD_CULL_FAST=2)
     if (std::getenv("RAC1_VU0_CHAIN") != nullptr) std::fprintf(stderr, "[vu0-chain] %016llx\n", static_cast<unsigned long long>(rac1::vu0::chain_hash()));
+    behav_trace_shutdown();
     rac1::progress::finish();  // (the launcher's progress.json: the time played since its last write)
     rac1::platform::process_end();  // (std::_Exit runs no atexit handler)
     rac1::update_check::run_update();
