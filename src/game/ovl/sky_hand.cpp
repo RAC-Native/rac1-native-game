@@ -431,7 +431,8 @@ struct Sky {
         return tex0;
     }
 
-    void spheres(uint32_t s, int32_t n, uint32_t out) {
+    template <class StoreByte>
+    void spheres_impl(uint32_t s, int32_t n, StoreByte store_byte) {
         using namespace vu0l;
         load(24, OV(0x0016ccf0u));
         load(6, OV(0x0016ccc0u));
@@ -449,6 +450,7 @@ struct Sky {
         u.rotate(25, 6, 7, 8, 11, XYZ);
         u.rotate(26, 6, 7, 8, 12, XYZ);
         u.rotate(27, 6, 7, 8, 13, XYZ);
+        int32_t idx = 0;
         do {
             load(1, s);
             u.mulbc(1, 1, u.lane(24, 3), XYZW);
@@ -458,31 +460,25 @@ struct Sky {
             s += 0x20;
             u.subbc(3, 0, u.lane(1, 3), Y);
             u.rotate(2, 25, 26, 27, 2, XYZ);
-            ++out;
             u.mulbc(8, 22, u.lane(1, 3), XY);
             u.mulbc(5, 20, u.lane(2, 2), XY);
             u.abs(2, 2, XY);
             u.sub(6, 2, 8, XY);
             u.sub(7, 5, 6, XY);
             // seen unless x or y of vf7 is negative
-            ee_write<uint8_t>(out - 1, (u.negative(7, 1) || u.negative(7, 0)) ? 0 : 1);
+            store_byte(idx++, static_cast<uint8_t>((u.negative(7, 1) || u.negative(7, 0)) ? 0 : 1));
         } while (n != 0);
     }
 };
 
 template <class F>
 bool run(F f) {
-#if defined(RAC1_VU0_EXACT)
-    (void)f;
-    return false;
-#else
-    if (!vu0l::usable()) return false;
+    if (vu0::running()) vu0::drain();
     Sky s;
     s.u.load();
     f(s);
     s.u.store();
     return true;
-#endif
 }
 
 }  // namespace
@@ -493,15 +489,10 @@ bool project(uint32_t v, uint32_t out, uint32_t n, uint32_t& ret) {
 }
 // orig: 0x0028c3c0 (its one VU0 op, a VITOF into vf10, made on a local register and vf10 written at the end)
 bool triangles(uint32_t n, uint32_t tri, uint32_t uvs, uint32_t verts, uint32_t& ret) {
-#if defined(RAC1_VU0_EXACT)
-    (void)n, (void)tri, (void)uvs, (void)verts, (void)ret;
-    return false;
-#else
-    if (!vu0l::usable()) return false;
+    if (vu0::running()) vu0::drain();
     Sky s;
     ret = s.triangles(static_cast<int32_t>(n), tri, uvs, verts);
     return true;
-#endif
 }
 // orig: 0x0028bd58
 bool sprites(uint32_t& ret) {
@@ -514,7 +505,12 @@ uint32_t colour_triangles(uint32_t n, uint32_t tri, uint32_t colours, uint32_t v
 }
 // orig: 0x0028c680
 bool spheres(uint32_t s, uint32_t n, uint32_t out) {
-    return run([&](Sky& k) { k.spheres(s, static_cast<int32_t>(n), out); });
+    return run([&](Sky& k) {
+        k.spheres_impl(s, static_cast<int32_t>(n), [&](int32_t idx, uint8_t vis) { ee_write<uint8_t>(out + static_cast<uint32_t>(idx), vis); });
+    });
+}
+void spheres_host(uint32_t s, uint32_t n, uint8_t* out) {
+    run([&](Sky& k) { k.spheres_impl(s, static_cast<int32_t>(n), [&](int32_t idx, uint8_t vis) { out[idx] = vis; }); });
 }
 
 }  // namespace rac1::sky_hand

@@ -1,7 +1,6 @@
-// Aridia's ocean (class 854's draw callback) and the background ships' glows: Aridia-only code, transliterated
-// (aridia_ocean_asm.cpp); the ocean's draw goes through VU1 program 7 (the shadow
-// program), its prim lists drawn by the MRP (aridia_ocean.cpp: the host's scope). Proved against the original.
-// (the ocean).
+// Aridia's ocean (class 854's draw callback), background ship glows (classes 1212, 1213), and Rocket Launcher rocket
+// (class 1208), ported by hand in aridia_ocean.cpp. The ocean draws through VU1 program 7 (the shadow program), its
+// prim lists rendered by the MRP (mrp_fx.h).
 #ifndef RAC1_GAME_OVL_ARIDIA_OCEAN_H
 #define RAC1_GAME_OVL_ARIDIA_OCEAN_H
 
@@ -9,7 +8,7 @@
 
 namespace rac1 {
 
-// transliterated (aridia_ocean_asm.cpp)
+// Aridia ocean, ship glows, and class 1208 update (aridia_ocean.cpp)
 void ari_ocean_draw_tr_l2(uint32_t m);  // orig: L2:0x002ea048
 void ari_ocean_setup_l2(uint32_t c0, uint32_t c1, uint32_t c2, uint32_t c3, uint32_t h0, uint32_t h1, uint32_t tex, float f12,
                         float f13, float f14, float f15);  // orig: L2:0x002a4818

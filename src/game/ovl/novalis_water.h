@@ -1,7 +1,6 @@
 // Novalis's scrolling surfaces (waterfalls / energy strips: classes 676, 678, 761, 1225) and its water (class 751), drawn by
-// Novalis-only code through VU1 program 7 (the shadow program the base ELF's 0x10e810 uploads). The draw callbacks
-// and the VU1 set-up are ported by hand (novalis_water.cpp), the rest transliterated (novalis_water_asm.cpp). Proved
-// against the original. (the water).
+// Novalis-only code through VU1 program 7 (the shadow program the base ELF's 0x10e810 uploads), ported by hand in
+// novalis_water.cpp.
 #ifndef RAC1_GAME_OVL_NOVALIS_WATER_H
 #define RAC1_GAME_OVL_NOVALIS_WATER_H
 
@@ -23,7 +22,7 @@ void nov_strips_vu7_setup_l1();             // orig: L1:0x002b96c0
 // about the camera, the fans' tag, vf29 / vf30 / the fog clamp, MSCALF 0, the fixed GS packet; the GS state cache reset
 void nov_water_vu7_setup_l1();              // orig: L1:0x002b8f98
 
-// transliterated (novalis_water_asm.cpp)
+// Strip vertices, water height/normal/lighting grid, UV scroll, and VU1 program 7 packet builders
 void nov_prim_list2_l1(int32_t n, uint32_t xyz, uint32_t rgba, uint32_t st, uint32_t st2, uint32_t clip);  // orig: L1:0x0021fa98
 void nov_strip_verts_l1(uint32_t rec);                       // orig: L1:0x00262618
 void nov_strips_draw_l1(int32_t n, uint32_t recs);           // orig: L1:0x002b96e0

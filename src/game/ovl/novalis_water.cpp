@@ -1,22 +1,95 @@
-// Ported overlay code: Novalis's scrolling surfaces and its water (see novalis_water.h): the draw callbacks the
-// classes queue and the two VU1 set-ups, by hand. The strips / water grid themselves: novalis_water_asm.cpp (transliterated).
-// Host: each callback's packets noted for the Modern Rendering Pipeline (mrp_fx.h: VU1 program 7's prim lists, drawn by the MRP
-// in the world's projection).
+// Hand-written overlay code: Novalis's scrolling surfaces (waterfalls / energy strips: classes 676, 678, 761, 1225) and
+// its water grid (class 751), drawn through VU1 program 7 and rendered by the Modern Rendering Pipeline (mrp_fx.h).
 #include <game/ovl/novalis_water.h>
 #include <game/ovl/novalis_draw_cbs.h>
 
 #include <game/math/vecmath.h>
+#include <game/ovl/enemy_749.h>
+#include <game/ovl/novalis_hooks.h>
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
+#include <game/ovl/ovl_reloc.h>
+#include <game/ovl/quad_draw.h>
 #include <game/ovl/shadows.h>
 #include <game/ovl/variants_l1.h>
+#include <game/ovl/vu0_local.h>
 #include <game/render/mrp_fx.h>
 
 namespace rac1 {
 
 namespace {
-constexpr LvlConst<1, 0x001611c0u> CUR{};  // the packet's cursor (gp - 0x5a40)
+
+constexpr LvlConst<1, 0x001611c0u> CUR{};  // DMA chain packet cursor on Novalis
+
+void load_vf(vu0l::Vu& u, int r, uint32_t addr) {
+    const uint32_t a = addr & ~15u;
+    u.set_words(r, lwu(a), lwu(a + 4), lwu(a + 8), lwu(a + 12));
+}
+
+void qmtc2_s32(vu0l::Vu& u, int r, uint32_t v) {
+    u.set_words(r, v, (v & 0x80000000u) != 0 ? 0xffffffffu : 0u, 0u, 0u);
+}
+
+void qmtc2_z_s32(vu0l::Vu& u, int r, uint32_t v) {
+    // Matches set32(at, v); at = pcpyld(at, zero); qmtc2(r, at): places v in lane Z (with sign extension in lane W).
+    u.set_words(r, 0u, 0u, v, (v & 0x80000000u) != 0 ? 0xffffffffu : 0u);
+}
+
+uint32_t pad_qword(uint32_t at) {
+    while ((at & 0xfu) != 0) {
+        sw(at, 0);
+        at += 4u;
+    }
+    return at;
+}
+
+void wrap_pm1(uint32_t addr) {
+    const float v = lwc1(addr);
+    if (1.0f < v) {
+        swc1(addr, fpu_sub(v, 1.0f));
+    } else if (v < -1.0f) {
+        swc1(addr, fpu_add(v, 1.0f));
+    }
+}
+
+void wrap_01(uint32_t addr) {
+    const float v = lwc1(addr);
+    if (1.0f < v) {
+        swc1(addr, fpu_sub(v, 1.0f));
+    }
+    const float v2 = lwc1(addr);
+    if (v2 < 0.0f) {
+        swc1(addr, fpu_add(v2, 1.0f));
+    }
+}
+
+void clip_corners_4(const Vec4 corners[4], uint32_t& inner_codes, uint32_t& outer_codes) {
+    const uint32_t cam = L1_ADDR(0x00167240u);
+    inner_codes = 0;
+    outer_codes = 0;
+    for (int i = 0; i < 4; ++i) {
+        Vec4 rel{};
+        Vec4 p_in{};
+        Vec4 p_out{};
+        vec3_sub(rel, corners[i], V(cam));
+        vec3_scale(p_in, rel, 1024.0f);
+        vec3_scale(p_out, rel, 1024.0f);
+        mat4_transform(p_in, p_in, M(cam - 0x80u));
+        mat4_transform(p_out, p_out, M(cam - 0x40u));
+        inner_codes = (inner_codes << 8) | static_cast<uint32_t>(clip_outcode(p_in));
+        outer_codes = (outer_codes << 8) | static_cast<uint32_t>(clip_outcode(p_out));
+    }
+}
+
+bool all_corners_outside(uint32_t codes) {
+    static constexpr uint32_t kPlanes[] = {0x01010101u, 0x02020202u, 0x04040404u, 0x08080808u, 0x20202020u};
+    for (uint32_t m : kPlanes) {
+        if ((codes & m) == m) return true;
+    }
+    return false;
+}
+
 }  // namespace
 
 // orig: L1:0x002b96c0
@@ -24,13 +97,14 @@ void nov_strips_vu7_setup_l1() { shadows_vu1_setup(); }
 
 // orig: L1:0x002b8f98
 void nov_water_vu7_setup_l1() {
-    const uint32_t sp = ee_stack_alloc(0x70);
-    const uint32_t s1 = L1_ADDR(0x00167240u);  // the camera's position
-    mat4_scale_diag(M(sp), 1024.0f);
-    vec3_scale(V(sp + 0x30), V(s1), -1024.0f);
-    swc1(sp + 0x3c, 1.0f);
+    const uint32_t s1 = L1_ADDR(0x00167240u);  // camera position
+    Mat4 scale_m{};
+    mat4_scale_diag(scale_m, 1024.0f);
+    vec3_scale(scale_m.r[3], V(s1), -1024.0f);
+    scale_m.r[3].w = 1.0f;
+
     if (lw(L1_ADDR(0x0015f5e0u)) != 7) {
-        packet_ref(0x0010e810, lhu(0x0010e800));  // the VU1 program
+        packet_ref(0x0010e810, lhu(0x0010e800));
         sw(L1_ADDR(0x0015f5e0u), 7);
     }
     sw(lwu(CUR), 0x10000000u);
@@ -42,19 +116,19 @@ void nov_water_vu7_setup_l1() {
     sw(s0 + 0x14, 0);
     sw(s0 + 0x18, 0);
     sw(s0 + 0x1c, 0x6c0c43a4u);  // UNPACK V4-32, 12 quadwords to 0x3a4
-    mat4_mul(M(s0 + 0x20), M(s1 - 0x100), M(sp));
-    mat4_mul(M(s0 + 0x60), M(s1 - 0x80), M(sp));
+    mat4_mul(M(s0 + 0x20), M(s1 - 0x100), scale_m);
+    mat4_mul(M(s0 + 0x60), M(s1 - 0x80), scale_m);
     const uint32_t v1 = L1_ADDR(0x0016cec0u);
     sw(s0 + 0xa8, 0x412);
-    sw(s0 + 0xa0, 0x8000);  // the clipped fans' GIF tag (vf31), w the screen scale
+    sw(s0 + 0xa0, 0x8000);
     sw(s0 + 0xa4, 0x303ec000u);
     swc1(s0 + 0xac, lwc1(v1 + 0x210));
-    lq_sq(s0 + 0xb0, v1 + 0x190);  // vf29: the screen scale
-    lq_sq(s0 + 0xc0, v1 + 0x1a0);  // vf30: the screen offset
+    lq_sq(s0 + 0xb0, v1 + 0x190);  // vf29: screen scale
+    lq_sq(s0 + 0xc0, v1 + 0x1a0);  // vf30: screen offset
     swc1(s0 + 0xd0, lwc1(v1 + 0x22c));
     sw(s0 + 0xe4, 0x020001d2u);  // OFFSET 0x1d2
     swc1(s0 + 0xd4, lwc1(v1 + 0x228));
-    sw(s0 + 0xe8, 0x15000000u);  // MSCALF 0: the start-up
+    sw(s0 + 0xe8, 0x15000000u);  // MSCALF 0
     sw(s0 + 0xe0, 0x03000000u);  // BASE 0
     sw(s0 + 0xd8, 0);
     sw(s0 + 0xdc, 0);
@@ -63,9 +137,8 @@ void nov_water_vu7_setup_l1() {
     const uint32_t a0 = lwu(CUR);
     sw(a0, lwu(a0) | static_cast<uint32_t>((static_cast<int32_t>(a2 - a0) >> 4) - 1));
     sw(CUR, a2);
-    mrp_fx_note_vu7(s0 + 0x20);  // (host: the prim lists' projection, mrp_fx.h)
+    mrp_fx_note_vu7(s0 + 0x20);
     packet_ref_13cf10();
-    // a REF of the 7-quadword GS packet 0x1cac80 (DIRECT 7); the GS state cache (gp - 0x59d8 .. - 0x59cc) forgotten
     sw(lwu(CUR), 0x30000007u);
     sw(lwu(CUR) + 4, L1_ADDR(0x001cac80u));
     sw(lwu(CUR) + 8, 0);
@@ -75,37 +148,660 @@ void nov_water_vu7_setup_l1() {
     sw(L1_ADDR(0x0016122cu), 0xffffffffu);
     sw(CUR, lwu(CUR) + 0x10);
     sw(L1_ADDR(0x00161230u), 0xffffffffu);
-    ee_stack_free(0x70);
+}
+
+// orig: L1:0x0021fa98
+void nov_prim_list2_l1(int32_t n, uint32_t xyz, uint32_t rgba, uint32_t st, uint32_t st2, uint32_t clip) {
+    const uint32_t un = static_cast<uint32_t>(n);
+    const uint32_t mscal = ((clip & 1u) << 1) + 0xcu;
+    const uint32_t n_hi = un << 16;
+
+    uint32_t pkt1 = lwu(CUR);
+    uint32_t at = pkt1;
+    for (uint32_t i = 0; i < 5; ++i, at += 0x10u) {
+        lq_sq(at, L1_ADDR(0x001c44a0u) + i * 0x10u);
+    }
+    sw(at - 0x40u, lwu(at - 0x40u) | un);
+
+    lq_sq(at, L1_ADDR(0x00160ec0u));
+    at += 0x10u;
+    sw(at - 4u, lwu(at - 4u) | n_hi);
+    for (uint32_t i = 0; i < un; ++i, at += 8u) {
+        sd(at, ld(st + i * 8u));
+    }
+    at = pad_qword(at);
+
+    const uint32_t rgba_xyz_start = at;
+    lq_sq(at, L1_ADDR(0x00160ee0u));
+    at += 0x10u;
+    sw(at - 4u, lwu(at - 4u) | n_hi);
+    for (uint32_t i = 0; i < un; ++i, at += 4u) {
+        sw(at, lwu(rgba + i * 4u));
+    }
+    at = pad_qword(at);
+
+    lq_sq(at, L1_ADDR(0x00160f00u));
+    at += 0x10u;
+    sw(at - 4u, lwu(at - 4u) | n_hi);
+    for (uint32_t i = 0; i < un; ++i, at += 0xcu) {
+        const uint32_t src = xyz + i * 0xcu;
+        sw(at + 0u, lwu(src + 0u));
+        sw(at + 4u, lwu(src + 4u));
+        sw(at + 8u, lwu(src + 8u));
+    }
+    at = pad_qword(at);
+
+    sw(at + 0u, 0x15000000u | mscal);
+    sw(at + 4u, 0x11000000u);
+    sd(at + 8u, 0ull);
+    at += 0x10u;
+    const uint32_t rgba_xyz_end = at;
+    sw(pkt1, lwu(pkt1) | (((at - pkt1) >> 4) - 1u));
+
+    const uint32_t pkt2 = at;
+    for (uint32_t i = 0; i < 5; ++i, at += 0x10u) {
+        lq_sq(at, L1_ADDR(0x001c44a0u) + i * 0x10u);
+    }
+    sw(at - 0x40u, lwu(at - 0x40u) | un);
+    sw(at - 0x3cu, lwu(at - 0x3cu) | 0x01000000u);
+    sw(at - 0x28u, lwu(at - 0x28u) | 0x01000000u);
+
+    lq_sq(at, L1_ADDR(0x00160ec0u));
+    at += 0x10u;
+    sw(at - 4u, lwu(at - 4u) | n_hi);
+    for (uint32_t i = 0; i < un; ++i, at += 8u) {
+        sd(at, ld(st2 + i * 8u));
+    }
+    at = pad_qword(at);
+    sw(pkt2, lwu(pkt2) | (((at - pkt2) >> 4) - 1u));
+
+    sw(at + 0u, 0x30000000u | ((rgba_xyz_end - rgba_xyz_start) >> 4));
+    sw(at + 4u, rgba_xyz_start);
+    sd(at + 8u, 0ull);
+    sw(CUR, at + 0x10u);
+}
+
+// orig: L1:0x00262618
+void nov_strip_verts_l1(uint32_t rec) {
+    if (vu0::running()) vu0::drain();
+    vu0l::Vu u;
+    u.load();
+
+    uint32_t pts = lwu(rec + 0x0u);
+    uint32_t uvs = lwu(rec + 0x4u);
+    uint32_t count = lwu(rec + 0xcu);
+    const uint32_t col = lwu(rec + 0x30u);
+    const uint32_t phase = lwu(rec + 0x50u);
+
+    load_vf(u, 10, rec + 0x10u);
+    load_vf(u, 12, rec + 0x40u);
+    qmtc2_s32(u, 15, 0x40c90fdbu);
+    qmtc2_s32(u, 16, 0x40490fdbu);
+    qmtc2_s32(u, 17, 0x3f000000u);
+
+    uint32_t out_xyz = 0x70000000u;
+    uint32_t out_st1 = 0x70001000u;
+    uint32_t out_st2 = 0x70002000u;
+    uint32_t out_col = 0x70003000u;
+    uint32_t v1_hi0 = 0;
+    uint32_t v1_hi1 = 0;
+
+    for (; count != 0; --count) {
+        const uint32_t px = lwu(pts + 0x0u);
+        const uint32_t py = lwu(pts + 0x4u);
+        const uint64_t heights = ld(pts + 0x8u);
+        sw(out_xyz + 0x0u, px);
+        sw(out_xyz + 0x4u, py);
+
+        const uint32_t ang_idx = ((((px + py) >> 16) & 0xffu) << 6);
+        const uint32_t ang_fixed = ((ang_idx + phase) << 3) & 0xfffu;
+        u.set_words(20, ang_fixed, 0u, 0u, 0u);
+        u.itof(20, 20, vu0l::X, 1.0f / 4096.0f);
+        u.mul(20, 20, 15, vu0l::X);
+        u.sub(20, 20, 16, vu0l::X);
+
+        u.move(1, 20, vu0l::X);
+        u.store();
+        vu0::call(0x192);
+        if (vu0::running()) vu0::drain();
+        u.load();
+        u.move(13, 1, vu0l::X);
+
+        u.move(1, 20, vu0l::X);
+        u.store();
+        vu0::call(0x190);
+        if (vu0::running()) vu0::drain();
+        u.load();
+        u.addbc(13, 0, u.lane(1, 0), vu0l::Y);
+
+        u.set_words(1, static_cast<uint32_t>(heights), static_cast<uint32_t>(heights >> 32), v1_hi0, v1_hi1);
+        qmtc2_s32(u, 3, lwu(rec + 0x5cu));
+        u.subbc(3, 0, u.lane(3, 0), vu0l::W);
+        u.mulbc(1, 1, u.lane(3, 0), vu0l::X);
+        u.mulbc(1, 1, u.lane(3, 3), vu0l::Y);
+        u.addbc(1, 1, u.lane(1, 1), vu0l::X);
+        v1_hi0 = u.word(1, 2);
+        v1_hi1 = u.word(1, 3);
+        sw(out_xyz + 0x8u, u.word(1, 0));
+
+        u.mulbc(4, 13, u.lane(10, 2), vu0l::XY);
+        const uint64_t uv = ld(uvs);
+        u.set_words(1, static_cast<uint32_t>(uv), static_cast<uint32_t>(uv >> 32), v1_hi0, v1_hi1);
+
+        u.add(2, 1, 12, vu0l::XY);
+        u.add(2, 2, 4, vu0l::XY);
+        sd(out_st1, static_cast<uint64_t>(u.word(2, 0)) | (static_cast<uint64_t>(u.word(2, 1)) << 32));
+
+        u.addbc(3, 1, u.lane(12, 2), vu0l::X);
+        u.addbc(3, 1, u.lane(12, 3), vu0l::Y);
+        u.sub(3, 3, 4, vu0l::XY);
+        v1_hi0 = u.word(3, 2);
+        v1_hi1 = u.word(3, 3);
+        sd(out_st2, static_cast<uint64_t>(u.word(3, 0)) | (static_cast<uint64_t>(u.word(3, 1)) << 32));
+
+        sw(out_col, col);
+
+        pts += 0x10u;
+        uvs += 0x8u;
+        out_xyz += 0xcu;
+        out_st1 += 0x8u;
+        out_st2 += 0x8u;
+        out_col += 0x4u;
+    }
+
+    u.store();
+}
+
+// orig: L1:0x002b96e0
+void nov_strips_draw_l1(int32_t n, uint32_t recs) {
+    if (n <= 0) return;
+    for (int32_t i = 0; i < n; ++i, recs += 0x60u) {
+        const float s1 = lwc1(recs + 0x10u);
+        swc1(recs + 0x40u, fpu_add(lwc1(recs + 0x40u), fpu_mul(lwc1(recs + 0x20u), s1)));
+        swc1(recs + 0x44u, fpu_add(lwc1(recs + 0x44u), fpu_mul(lwc1(recs + 0x24u), s1)));
+        wrap_pm1(recs + 0x40u);
+        wrap_pm1(recs + 0x44u);
+
+        const float s2 = lwc1(recs + 0x14u);
+        swc1(recs + 0x48u, fpu_add(lwc1(recs + 0x48u), fpu_mul(lwc1(recs + 0x28u), s2)));
+        swc1(recs + 0x4cu, fpu_add(lwc1(recs + 0x4cu), fpu_mul(lwc1(recs + 0x2cu), s2)));
+        wrap_pm1(recs + 0x48u);
+        wrap_pm1(recs + 0x4cu);
+
+        sw(recs + 0x50u, (lwu(recs + 0x50u) + lwu(recs + 0x1cu)) & 0x00ffffffu);
+
+        const int32_t vis = static_cast<int32_t>(point_on_screen(lwu(recs + 0x8u), 400.0f));
+        if (vis != -1) {
+            const uint32_t p = lwu(CUR);
+            sw(p + 0x00u, 0x30000007u);
+            sw(p + 0x04u, L1_ADDR(0x001cac80u));
+            sw(p + 0x08u, 0);
+            sw(p + 0x0cu, 0x50000007u);
+
+            const uint32_t gs = p + 0x10u;
+            sw(gs + 0x00u, 0x10000005u);
+            sw(gs + 0x04u, 0);
+            sw(gs + 0x08u, 0);
+            sw(gs + 0x0cu, 0x50000005u);
+            sd(gs + 0x10u, (0x8000ull << 47) | 0x8001ull);
+            sd(gs + 0x18u, 0xeeeeull);
+            sd(gs + 0x20u, (static_cast<uint64_t>(lbu(recs + 0x3cu)) << 32) | 0x64ull);
+            sd(gs + 0x28u, 0x42ull);
+            sd(gs + 0x30u, (static_cast<uint64_t>(lbu(recs + 0x3du)) << 32) | 0x64ull);
+            sd(gs + 0x38u, 0x43ull);
+            sd(gs + 0x40u, effect_tex0(lw(recs + 0x34u)));
+            sd(gs + 0x48u, 0x6ull);
+            sd(gs + 0x50u, effect_tex0(lw(recs + 0x38u)));
+            sd(gs + 0x58u, 0x7ull);
+            sw(CUR, gs + 0x60u);
+
+            nov_strip_verts_l1(recs);
+            nov_prim_list2_l1(lw(recs + 0xcu), 0x70000000u, 0x70003000u, 0x70001000u, 0x70002000u,
+                              static_cast<uint32_t>(1 - vis));
+        }
+    }
+}
+
+// orig: L1:0x00261c10
+void nov_water_grid_in_l1(uint32_t grid, uint32_t tile) {
+    uint32_t src = tile;
+    uint32_t dst_row = grid + 0x70u;
+    for (int r = 0; r < 16; ++r, dst_row += 0x60u) {
+        for (int q = 0; q < 4; ++q, src += 0x10u) {
+            lq_sq(dst_row + static_cast<uint32_t>(q) * 0x10u, src);
+        }
+    }
+    for (uint32_t q = 0; q < 4; ++q) {
+        lq_sq(grid + 0x10u + q * 0x10u, tile + 0x400u + q * 0x10u);
+        lq_sq(grid + 0x670u + q * 0x10u, tile + 0x480u + q * 0x10u);
+        lq_sq(grid + 0x6d0u + q * 0x10u, tile + 0x500u + q * 0x10u);
+    }
+    for (uint32_t r = 0; r < 16; ++r) {
+        sw(grid + 0x6cu + r * 0x60u, lwu(tile + 0x440u + r * 4u));
+        sw(grid + 0xb0u + r * 0x60u, lwu(tile + 0x4c0u + r * 4u));
+        sw(grid + 0xb4u + r * 0x60u, lwu(tile + 0x540u + r * 4u));
+    }
+    sw(grid + 0x0cu, lwu(tile + 0x580u));
+    sw(grid + 0x50u, lwu(tile + 0x584u));
+    sw(grid + 0x66cu, lwu(tile + 0x588u));
+    sw(grid + 0x6b0u, lwu(tile + 0x58cu));
+    sw(grid + 0x6b4u, lwu(tile + 0x590u));
+    sw(grid + 0x710u, lwu(tile + 0x594u));
+}
+
+// orig: L1:0x00261df8
+void nov_water_grid_light_l1(uint32_t tile) {
+    if (vu0::running()) vu0::drain();
+    vu0l::Vu u;
+    u.load();
+
+    qmtc2_s32(u, 14, 0x3f000000u);
+    qmtc2_s32(u, 1, 0x47800040u);
+    u.addbc(14, 0, u.lane(1, 0), vu0l::Y);
+    qmtc2_s32(u, 1, 0x3f12b021u);
+    u.addbc(14, 0, u.lane(1, 0), vu0l::Z);
+    qmtc2_s32(u, 1, 0x40500000u);
+    const uint32_t c_base = L1_ADDR(0x001cad00u);
+    load_vf(u, 15, c_base + 0x10u);
+    u.addbc(14, 0, u.lane(1, 0), vu0l::W);
+    load_vf(u, 16, c_base + 0x00u);
+    u.addbc(19, 0, u.lane(0, 3), vu0l::X);
+    load_vf(u, 21, c_base + 0x30u);
+    load_vf(u, 20, L1_ADDR(0x00167100u) + 0x140u);
+
+    for (int r = 10; r <= 13; ++r) u.addbc(r, 0, u.lane(0, 0), vu0l::XYZW);
+    u.subbc(10, 10, u.lane(15, 1), vu0l::Y);
+    u.addbc(11, 11, u.lane(15, 1), vu0l::Y);
+    u.addbc(12, 12, u.lane(15, 1), vu0l::Y);
+    u.subbc(13, 13, u.lane(15, 1), vu0l::Y);
+    u.subbc(11, 12, u.lane(15, 0), vu0l::X);
+    u.addbc(13, 13, u.lane(15, 0), vu0l::X);
+
+    load_vf(u, 17, tile);
+    u.addbc(18, 17, u.lane(16, 3), vu0l::Y);
+
+    uint32_t row_ptr = 0x70000070u;
+    uint32_t uv_out = 0x70000780u;
+    uint32_t col_out = 0x70001088u;
+
+    for (int iy = 0; iy < 17; ++iy, row_ptr += 0x60u) {
+        u.addbc(18, 17, u.lane(16, 2), vu0l::X);
+        uint32_t h_ptr = row_ptr;
+        qmtc2_s32(u, 25, lwu(h_ptr));
+        qmtc2_z_s32(u, 26, lwu(h_ptr - 0x4u));
+        qmtc2_z_s32(u, 27, lwu(h_ptr + 0x4u));
+        qmtc2_z_s32(u, 28, lwu(h_ptr - 0x60u));
+        qmtc2_z_s32(u, 29, lwu(h_ptr + 0x60u));
+        h_ptr += 4u;
+
+        for (int ix = 0; ix < 17; ++ix, h_ptr += 4u, col_out += 4u, uv_out += 8u) {
+            u.addbc(18, 0, u.lane(25, 0), vu0l::Z);
+            u.subbc(10, 18, u.lane(29, 2), vu0l::Z);
+            u.subbc(11, 29, u.lane(27, 2), vu0l::Z);
+            u.subbc(12, 18, u.lane(28, 2), vu0l::Z);
+            u.subbc(13, 28, u.lane(26, 2), vu0l::Z);
+
+            u.opmula(11, 10);
+            u.opmsub(1, 10, 11);
+            u.opmula(13, 12);
+            u.opmsub(2, 12, 13);
+            u.add(1, 1, 2, vu0l::XYZ);
+            u.mul(3, 1, 1, vu0l::XYZ);
+            u.addabc(3, u.lane(3, 1), vu0l::X);
+            u.maddbc(3, 19, u.lane(3, 2), vu0l::X);
+            u.rsqrt(u.lane(0, 3), u.lane(3, 0));
+
+            qmtc2_s32(u, 25, lwu(h_ptr));
+            u.addbc(18, 18, u.lane(17, 2), vu0l::Z);
+            qmtc2_z_s32(u, 26, lwu(h_ptr - 0x4u));
+            qmtc2_z_s32(u, 27, lwu(h_ptr + 0x4u));
+            qmtc2_z_s32(u, 28, lwu(h_ptr - 0x60u));
+            qmtc2_z_s32(u, 29, lwu(h_ptr + 0x60u));
+
+            u.mulbc(1, 1, u.q, vu0l::XYZ);
+            u.sub(2, 20, 18, vu0l::XYZ);
+            u.sub(1, 0, 1, vu0l::XYZ);
+            u.mul(4, 2, 2, vu0l::XYZ);
+            u.addabc(4, u.lane(4, 1), vu0l::X);
+            u.maddbc(3, 19, u.lane(4, 2), vu0l::X);
+            u.rsqrt(u.lane(0, 3), u.lane(3, 0));
+
+            u.mul(4, 21, 1, vu0l::XYZ);
+            u.addabc(4, u.lane(4, 1), vu0l::X);
+            u.maddbc(3, 19, u.lane(4, 2), vu0l::X);
+            u.subbc(3, 3, u.lane(14, 2), vu0l::X);
+            u.mulbc(3, 3, u.lane(14, 3), vu0l::X);
+            u.addbc(3, 3, u.lane(14, 2), vu0l::X);
+            u.max_lane(3, 0, u.lane(3, 0), u.lane(0, 0));
+            u.mini_lane(3, 0, u.lane(3, 0), u.lane(19, 0));
+
+            u.mulbc(2, 2, u.q, vu0l::XYZ);
+            u.addbc(3, 3, u.lane(14, 1), vu0l::X);
+            u.sub(5, 0, 2, vu0l::XYZ);
+            const uint32_t gray = (u.word(3, 0) & 0xffu) * 0x010101u;
+
+            u.mul(4, 5, 1, vu0l::XYZ);
+            u.addabc(4, u.lane(4, 1), vu0l::X);
+            u.maddbc(4, 19, u.lane(4, 2), vu0l::X);
+            const bool neg_dot = u.negative(4, 0);
+            u.mulbc(1, 1, u.lane(4, 0), vu0l::XYZ);
+            u.sub(1, 1, 5, vu0l::XYZ);
+            if (!neg_dot) {
+                u.add(1, 1, 1, vu0l::XYZ);
+                u.add(2, 5, 1, vu0l::XYZ);
+            }
+
+            u.mulbc(2, 2, u.lane(15, 2), vu0l::XY);
+            u.mulbc(2, 2, u.lane(14, 0), vu0l::XY);
+            u.addbc(2, 2, u.lane(14, 0), vu0l::XY);
+
+            sw(col_out, gray);
+            sd(uv_out, static_cast<uint64_t>(u.word(2, 0)) | (static_cast<uint64_t>(u.word(2, 1)) << 32));
+            u.addbc(18, 18, u.lane(15, 0), vu0l::X);
+        }
+        u.addbc(18, 18, u.lane(15, 1), vu0l::Y);
+    }
+
+    u.store();
+}
+
+// orig: L1:0x002b8c08
+void nov_water_grid_xyz_l1(uint32_t tile) {
+    const uint32_t c_base = L1_ADDR(0x001cad00u);
+    uint32_t out = 0x70002000u;
+    float y = fpu_add(lwc1(tile + 0x4u), lwc1(c_base + 0xcu));
+    for (int32_t row = 0; row < 17; ++row) {
+        float x = fpu_add(lwc1(tile + 0x0u), lwc1(c_base + 0x8u));
+        uint32_t h_ptr = 0x70000010u + static_cast<uint32_t>(row + 1) * 0x60u;
+        for (int col = 0; col < 17; ++col, h_ptr += 4u, out += 0xcu) {
+            swc1(out + 0u, x);
+            swc1(out + 4u, y);
+            swc1(out + 8u, fpu_add(lwc1(h_ptr), lwc1(tile + 0x8u)));
+            x = fpu_add(x, lwc1(c_base + 0x10u));
+        }
+        y = fpu_add(y, lwc1(c_base + 0x14u));
+    }
+}
+
+// orig: L1:0x002b80d0
+void nov_water_uv_scroll_l1(uint32_t tile) {
+    swc1(tile + 0x20u, fpu_add(lwc1(tile + 0x20u), lwc1(tile + 0x28u)));
+    wrap_01(tile + 0x20u);
+    swc1(tile + 0x24u, fpu_add(lwc1(tile + 0x24u), lwc1(tile + 0x2cu)));
+    wrap_01(tile + 0x24u);
+
+    swc1(tile + 0x30u, angle_add(lwc1(tile + 0x30u), lwc1(tile + 0x38u)));
+    swc1(tile + 0x34u, angle_add(lwc1(tile + 0x34u), lwc1(tile + 0x3cu)));
+
+    const float du0 = fpu_add(lwc1(tile + 0x20u), fpu_mul(cos_vu(lwc1(tile + 0x30u)), lwc1(tile + 0x40u)));
+    const float dv0 = fpu_add(lwc1(tile + 0x24u), fpu_mul(sin_vu(lwc1(tile + 0x30u)), lwc1(tile + 0x40u)));
+    const float du1 = fpu_add(lwc1(tile + 0x20u), fpu_mul(cos_vu(lwc1(tile + 0x34u)), lwc1(tile + 0x40u)));
+    const float dv1 = fpu_add(lwc1(tile + 0x24u), fpu_mul(sin_vu(lwc1(tile + 0x34u)), lwc1(tile + 0x40u)));
+
+    const uint32_t flags = L1_ADDR(0x001cb1b0u);
+    const uint32_t src = L1_ADDR(0x001cafe0u);
+    const uint32_t dst = L1_ADDR(0x001cae60u);
+    for (uint32_t i = 0; i < 46; ++i) {
+        const float u0 = lwc1(src + i * 8u + 0u);
+        const float v0 = lwc1(src + i * 8u + 4u);
+        if (lw(flags + i * 4u) == 0) {
+            swc1(dst + i * 8u + 0u, fpu_add(u0, du0));
+            swc1(dst + i * 8u + 4u, fpu_add(v0, dv0));
+        } else {
+            swc1(dst + i * 8u + 0u, fpu_add(u0, du1));
+            swc1(dst + i * 8u + 4u, fpu_add(v0, dv1));
+        }
+    }
+}
+
+// orig: L1:0x00262388
+void nov_water_cell_packet_l1(uint32_t mscal, int32_t cell) {
+    const uint32_t ucell = static_cast<uint32_t>(cell);
+    uint32_t pkt1 = lwu(CUR);
+    uint32_t at = pkt1;
+    for (uint32_t i = 0; i < 5; ++i, at += 0x10u) {
+        lq_sq(at, L1_ADDR(0x001cb160u) + i * 0x10u);
+    }
+    lq_sq(at, L1_ADDR(0x00161240u));
+    at += 0x10u;
+
+    for (uint32_t i = 0; i < 0x17u; ++i, at += 0x10u) {
+        const uint32_t s = L1_ADDR(0x001cae60u) + i * 0x10u;
+        sd(at + 0u, ld(s + 0u));
+        sd(at + 8u, ld(s + 8u));
+    }
+
+    const uint32_t rgba_xyz_start = at;
+    lq_sq(at, L1_ADDR(0x00161260u));
+    at += 0x10u;
+
+    const uint32_t col_base = 0x70001088u + (ucell << 2);
+    for (uint32_t i = 0; i < 0x2eu; ++i, at += 4u) {
+        const uint32_t off = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(lhu(L1_ADDR(0x001cad40u) + i * 2u))));
+        sw(at, lwu(col_base + off));
+    }
+    sd(at, 0ull);
+    at += 8u;
+
+    lq_sq(at, L1_ADDR(0x00161280u));
+    at += 0x10u;
+
+    const uint32_t xyz_base = 0x70002000u + ucell * 12u;
+    for (uint32_t i = 0; i < 0x17u; ++i, at += 0x18u) {
+        const uint32_t idx_pair = L1_ADDR(0x001cae00u) + i * 4u;
+        const uint32_t o0 = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(lhu(idx_pair + 0u))));
+        const uint32_t o1 = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(lhu(idx_pair + 2u))));
+        const uint32_t p0 = xyz_base + o0;
+        const uint32_t p1 = xyz_base + o1;
+        sw(at + 0x00u, lwu(p0 + 0u));
+        sw(at + 0x04u, lwu(p0 + 4u));
+        sw(at + 0x08u, lwu(p0 + 8u));
+        sw(at + 0x0cu, lwu(p1 + 0u));
+        sw(at + 0x10u, lwu(p1 + 4u));
+        sw(at + 0x14u, lwu(p1 + 8u));
+    }
+
+    sw(at + 0x00u, 0x14000000u | mscal);
+    sw(at + 0x04u, 0);
+    sd(at + 0x08u, 0ull);
+    sd(at + 0x10u, 0ull);
+    sw(at + 0x14u, 0x11000000u);
+    at += 0x18u;
+    sw(pkt1, lwu(pkt1) | (((at - pkt1) >> 4) - 1u));
+
+    const uint32_t pkt2 = at;
+    for (uint32_t i = 0; i < 5; ++i, at += 0x10u) {
+        lq_sq(at, L1_ADDR(0x001cb160u) + i * 0x10u);
+    }
+    sw(at - 0x3cu, lwu(at - 0x3cu) | 0x01000000u);
+    sw(at - 0x28u, lwu(at - 0x28u) | 0x01000000u);
+
+    lq_sq(at, L1_ADDR(0x00161240u));
+    at += 0x10u;
+
+    const uint32_t uv_base = 0x70000780u + (ucell << 3);
+    for (uint32_t i = 0; i < 0x2eu; ++i, at += 8u) {
+        const uint32_t off = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(lhu(L1_ADDR(0x001cada0u) + i * 2u))));
+        sd(at, ld(uv_base + off));
+    }
+    sw(pkt2, lwu(pkt2) | (((at - pkt2) >> 4) - 1u));
+
+    sw(at + 0u, 0x30000031u);
+    sw(at + 4u, rgba_xyz_start);
+    sd(at + 8u, 0ull);
+    sw(CUR, at + 0x10u);
+}
+
+// orig: L1:0x002b8cb0
+void nov_water_cell_l1(uint32_t tile, int32_t cell, int32_t clip) {
+    int32_t cur_clip = clip;
+    if (cur_clip != 0) {
+        const uint32_t c_base = L1_ADDR(0x001cad00u);
+        const float off_y = lwc1(c_base + 0xcu);
+        const float off_x = lwc1(c_base + 0x8u);
+        const float step_y = fpu_mul(-off_y, 0.5f);
+        const float step_x = fpu_mul(-off_x, 0.5f);
+        const float base_x = fpu_add(lwc1(tile + 0x0u), off_x);
+        const float base_y = fpu_add(lwc1(tile + 0x4u), off_y);
+        const float y0 = fpu_mul(step_y, int_to_float(cell >> 2));
+        const float x0 = fpu_mul(step_x, int_to_float(cell & 3));
+        const float y1 = fpu_add(y0, step_y);
+        const float x1 = fpu_add(x0, step_x);
+        const float wx0 = fpu_add(base_x, x0);
+        const float wy1 = fpu_add(base_y, y1);
+        const float wx1 = fpu_add(base_x, x1);
+        const float wy0 = fpu_add(base_y, y0);
+        const float wz = lwc1(tile + 0x8u);
+
+        const Vec4 corners[4] = {
+            {wx0, wy0, wz, 1.0f},
+            {wx1, wy0, wz, 1.0f},
+            {wx0, wy1, wz, 1.0f},
+            {wx1, wy1, wz, 1.0f},
+        };
+        uint32_t inner_codes = 0;
+        uint32_t outer_codes = 0;
+        clip_corners_4(corners, inner_codes, outer_codes);
+        if (all_corners_outside(outer_codes)) return;
+        if (cur_clip == 1) {
+            if (inner_codes == 0) cur_clip = 0;
+        } else {
+            cur_clip = 0;
+        }
+    }
+
+    const int32_t grid_cell = (cell >> 2) * 0x44 + ((cell & 3) << 2);
+    nov_water_cell_packet_l1(cur_clip != 0 ? 0xeu : 0xcu, grid_cell);
+}
+
+// orig: L1:0x002b91c8
+void nov_water_draw_l1(uint32_t tiles, int32_t n) {
+    nov_water_vu7_setup_l1();
+    const uint32_t c_base = L1_ADDR(0x001cad00u);
+    for (int32_t i = 0; i < n; ++i, tiles += 0x1190u) {
+        uint32_t cell_mask = lhu(tiles + 0x1eu);
+        if (cell_mask == 0) continue;
+
+        const float tx = lwc1(tiles + 0x0u);
+        const float ty = lwc1(tiles + 0x4u);
+        const float tz = lwc1(tiles + 0x8u);
+        const float ox = lwc1(c_base + 0x8u);
+        const float oy = lwc1(c_base + 0xcu);
+        const float x_hi = fpu_add(tx, ox);
+        const float x_lo = fpu_sub(tx, ox);
+        const float y_hi = fpu_add(ty, oy);
+        const float y_lo = fpu_sub(ty, oy);
+
+        const Vec4 corners[4] = {
+            {x_hi, y_hi, tz, 1.0f},
+            {x_lo, y_hi, tz, 1.0f},
+            {x_hi, y_lo, tz, 1.0f},
+            {x_lo, y_lo, tz, 1.0f},
+        };
+        uint32_t inner_codes = 0;
+        uint32_t outer_codes = 0;
+        clip_corners_4(corners, inner_codes, outer_codes);
+        if (all_corners_outside(outer_codes)) continue;
+
+        const uint32_t frame_idx = lwu(L1_ADDR(0x00161220u));
+        nov_water_grid_in_l1(0x70000000u, tiles + 0x50u + frame_idx * 0x5c0u);
+        nov_water_grid_light_l1(tiles);
+        nov_water_grid_xyz_l1(tiles);
+        nov_water_uv_scroll_l1(tiles);
+
+        const uint32_t flat = lwu(tiles + 0x44u);
+        if ((flat & 0x1u) != 0) {
+            for (uint32_t k = 0; k < 17; ++k) sw(0x70002008u + k * 0xcu, lwu(tiles + 0x8u));
+        }
+        if ((flat & 0x2u) != 0) {
+            for (uint32_t k = 0; k < 17; ++k) sw(0x700020c8u + k * 0xccu, lwu(tiles + 0x8u));
+        }
+        if ((flat & 0x4u) != 0) {
+            for (uint32_t k = 0; k < 17; ++k) sw(0x70002cc8u + k * 0xcu, lwu(tiles + 0x8u));
+        }
+        if ((flat & 0x8u) != 0) {
+            for (uint32_t k = 0; k < 17; ++k) sw(0x70002008u + k * 0xccu, lwu(tiles + 0x8u));
+        }
+
+        int32_t clip_mode = (inner_codes & 0x2f2f2f2fu) != 0 ? 1 : 0;
+        if (clip_mode == 0) {
+            clip_mode = (outer_codes & 0x2f2f2f2fu) != 0 ? 2 : 0;
+        }
+
+        const uint32_t tex_a = lwu(tiles + 0x14u);
+        const uint32_t tex_b = lwu(tiles + 0x18u);
+        const uint32_t alpha_a = lbu(tiles + 0x1cu);
+        const uint32_t alpha_b = lbu(tiles + 0x1du);
+        cell_mask = lhu(tiles + 0x1eu);
+
+        if (tex_a != lwu(L1_ADDR(0x00161228u)) || tex_b != lwu(L1_ADDR(0x0016122cu)) ||
+            alpha_a != lwu(L1_ADDR(0x00161230u)) || alpha_b != lwu(L1_ADDR(0x00161234u))) {
+            const uint32_t gs = lwu(CUR);
+            sw(gs + 0x00u, 0x10000005u);
+            sw(gs + 0x04u, 0);
+            sw(gs + 0x08u, 0x11000000u);
+            sw(gs + 0x0cu, 0x50000005u);
+            sd(gs + 0x10u, (0x8000ull << 47) | 0x8001ull);
+            sd(gs + 0x18u, 0xeeeeull);
+            sd(gs + 0x20u, (static_cast<uint64_t>(lbu(tiles + 0x1du)) << 32) | 0x64ull);
+            sd(gs + 0x28u, 0x42ull);
+            sd(gs + 0x30u, (static_cast<uint64_t>(lbu(tiles + 0x1cu)) << 32) | 0x64ull);
+            sd(gs + 0x38u, 0x43ull);
+            sd(gs + 0x40u, effect_tex0(lw(tiles + 0x18u)));
+            sd(gs + 0x48u, 0x6ull);
+            sd(gs + 0x50u, effect_tex0(lw(tiles + 0x14u)));
+            sd(gs + 0x58u, 0x7ull);
+            sw(CUR, gs + 0x60u);
+
+            sw(L1_ADDR(0x00161228u), lwu(tiles + 0x14u));
+            sw(L1_ADDR(0x0016122cu), lwu(tiles + 0x18u));
+            sw(L1_ADDR(0x00161230u), lbu(tiles + 0x1cu));
+            sw(L1_ADDR(0x00161234u), lbu(tiles + 0x1du));
+        }
+
+        for (int32_t cell = 0; cell < 16; ++cell, cell_mask >>= 1) {
+            if ((cell_mask & 1u) != 0) {
+                nov_water_cell_l1(tiles, cell, clip_mode);
+            }
+        }
+    }
+
+    const uint32_t end_pkt = lwu(CUR);
+    sw(end_pkt + 0x0u, 0x10000000u);
+    sw(end_pkt + 0x4u, 0);
+    sw(end_pkt + 0x8u, 0x13000000u);
+    sw(end_pkt + 0xcu, 0);
+    sw(CUR, end_pkt + 0x10u);
 }
 
 // The draw callbacks: VU1 program 7 set up, then the class's strips (the moby is not read).
 // orig: L1:0x002f60f8
 void nov_strips_676_draw_l1(uint32_t) {
-    const MrpFxScope fx(kMrpFxPrimList);  // (host: drawn by the MRP, mrp_fx.h)
+    const MrpFxScope fx(kMrpFxPrimList);
     nov_strips_vu7_setup_l1();
     nov_strips_draw_l1(8, L1_ADDR(0x001e2fc0u));
 }
 
 // orig: L1:0x002f6150
 void nov_strips_678_draw_l1(uint32_t) {
-    const MrpFxScope fx(kMrpFxPrimList);  // (host)
+    const MrpFxScope fx(kMrpFxPrimList);
     nov_strips_vu7_setup_l1();
     nov_strips_draw_l1(2, L1_ADDR(0x001e3380u));
 }
 
 // orig: L1:0x002feb28
 void nov_strips_761_draw_l1(uint32_t) {
-    const MrpFxScope fx(kMrpFxPrimList);  // (host)
+    const MrpFxScope fx(kMrpFxPrimList);
     nov_strips_vu7_setup_l1();
     nov_strips_draw_l1(4, L1_ADDR(0x001fbc80u));
 }
 
-// Class 1225's: its three strips drawn, then their wave height (+0x5c) set for the next frame to 0.5 + 0.5 sin((frame & 63) - 32)
+// Class 1225's: its three strips drawn, then their wave height (+0x5c) set for the next frame to 0.5 + 0.5 sin(((frame & 63) - 32)
 // x pi / 32) (the frame counter 0x15f5cc).
 // orig: L1:0x00309bf8
 void nov_strips_1225_draw_l1(uint32_t) {
     {
-        const MrpFxScope fx(kMrpFxPrimList);  // (host)
+        const MrpFxScope fx(kMrpFxPrimList);
         nov_strips_vu7_setup_l1();
         nov_strips_draw_l1(3, L1_ADDR(0x00202d80u));
     }
@@ -119,7 +815,7 @@ void nov_strips_1225_draw_l1(uint32_t) {
 // Class 751's: the 21 water tiles at 0x1e34c0.
 // orig: L1:0x002fd0c0
 void nov_water_751_draw_l1(uint32_t) {
-    const MrpFxScope fx(kMrpFxPrimList);  // (host)
+    const MrpFxScope fx(kMrpFxPrimList);
     nov_water_draw_l1(L1_ADDR(0x001e34c0u), 0x15);
 }
 
@@ -130,7 +826,7 @@ void novalis_water_fns_register() {
     ovl_register_level_moby_fn(NOVALIS, L1_ADDR(0x002feb28u), nov_strips_761_draw_l1);
     ovl_register_level_moby_fn(NOVALIS, L1_ADDR(0x00309bf8u), nov_strips_1225_draw_l1);
     ovl_register_level_moby_fn(NOVALIS, L1_ADDR(0x002fd0c0u), nov_water_751_draw_l1);
-    novalis_draw_cbs_register();  // (the other draw callbacks, novalis_draw_cbs.cpp)
+    novalis_draw_cbs_register();
 }
 
 }  // namespace rac1

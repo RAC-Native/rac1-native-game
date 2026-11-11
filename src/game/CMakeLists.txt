@@ -119,6 +119,7 @@ add_library(rac1_game STATIC
     ovl/novalis_level_fns.cpp
     ovl/vendor_frame.cpp
     ovl/galactic_map.cpp
+    ovl/sky.cpp
     ovl/sky_levels.cpp
     ovl/variants_sky.cpp
     ovl/checkpoint.cpp
@@ -137,6 +138,7 @@ add_library(rac1_game STATIC
     boot/title_load.cpp
     boot/title.cpp
     boot/title_menu.cpp
+    boot/title_sky.cpp
     ovl/level_load.cpp
     ovl/camera.cpp
     ovl/camera_follow.cpp
