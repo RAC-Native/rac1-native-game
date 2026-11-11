@@ -27,6 +27,13 @@ What changed in each release. Releases are source only: you build the game with 
   spawn past the moby array and a frame whose mobys do not all fit are logged (`[mobys] the moby array is full`, `[render] the
   frame's packet buffer is full`). The limits (about 300 mobys alive in a session, about 100 drawn per frame) are in the SDK's Limits.
   Nothing changes for the original's levels; no recompose.
+- **Level mods: the base level's own planet as a section** (`world kalebo` on a mod whose base is Kalebo III). The composer
+  refused it ("level 16's world is the base level's"); the section now brings the planet back for a visit, its geometry,
+  collision, rails (its long rail), sky, music, zones and level data from your disc, with the mod's own put back at the return (the
+  arena can send Ratchet down Kalebo III's rail 1 and back). The planet's level data (its cameras, paths, volumes, rails) is a registry of
+  its own, which the base level's own objects, being the session's view, could not be. Put `hero kalebo` in the section when
+  main runs `hero generic`: the generic hero code does not ride the long rail to its end. Nothing changes for the original or for
+  a mod that does not use it; the composer's version stays 9 (no mod needs a recompose).
 - **Mods and 1.0, said up front (README, SDK docs).** The port supports mods, with Daino's Arena as the complete
   example; 1.0 (fully native, #145) replaces `api->ram` and the moby offsets with a typed API, and mods made before it
   will very likely break and need updating. See [the SDK](docs/sdk.md#the-games-memory).

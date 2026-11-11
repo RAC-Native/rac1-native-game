@@ -2985,9 +2985,10 @@ bool compose_world(LevelTxt::Section& S, LevelTxt& lt, int base, int& uid_next, 
         err = "a world's section is where its level has it: no offset (its lines are in its level's coordinates)";
         return false;
     }
-    if (S.world == base) {
-        err = fmt("level %d's world is the base level's: a world's section of another level", S.world);
-        return false;
+    if (S.world == base) {  // (the base level's own world: the running code is its own; its level data a registry apart, the engine's while the section is current)
+        log.say(fmt("section %s: level %d's world is the base level's own: its geometry, collision, rails, sky and level data from the disc, the mod's own out of the way while it is current%s",
+                    S.name.c_str(), S.world,
+                    lt.hero_ctx.level == kHeroGeneric && S.hero.line == 0 ? " (Ratchet runs main's generic hero code there: for the planet's own rail code, `hero <planet>` in the section)" : ""));
     }
     if (!disc_is_open() && !disc_open()) {
         err = "the game's disc cannot be read: a world's section needs the asset pool, made from it (./setup.sh first)";
