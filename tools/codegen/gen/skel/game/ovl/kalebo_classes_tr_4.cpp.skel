@@ -3,6 +3,7 @@
 // the original's control flow and PS2 float rules by construction), reviewed in the oracle (batch 250, ORACLE_LEVEL=16), not rewritten
 // by hand: the names are the entries', the helpers `kal_<addr>_l16` (uniform ABI: TrRet).
 #include <game/enhance/fixes102.h>
+#include <game/enhance/level_mod_hero.h>
 #include <game/lib/libc.h>
 #include <game/ovl/kalebo_mobys.h>
 #include <game/ovl/quad_draw.h>

@@ -507,3 +507,10 @@ L5 0x0025540c: if (level_mod_board_free()) { set32(v1, s4.w() + -0xcb0); if (lev
 L5 0x0025a7fc: if (level_mod_board_free()) { set32(s1, s4.w() + -0xcb0); if (level_mod_board_fell(u2f(lw_(s1.w() + 0x88)))) goto L_25a858; goto L_25a918; } set32(v1, level_mod_board_planet(v1.w()));  // enhancement: the board outside a race
 L5 0x002543c8: if (level_mod_board_back(s6.w(), s7.w())) { ra = lq(sp.w() + 0xa0); goto L_2545d0; }  // enhancement: the board outside a race
 L5 0x0024dd7c: if (level_mod_board_hud_off()) { sw_(s4.w() + 0x874, lw_(s4.w() + 0x98)); goto L_24ddf8; }  // enhancement: the board outside a race
+# The board's race camera (camera type 8: its update 0x329358 on Rilgar, 0x2f3e60 on Kalebo III, the same code) keeps its target over a
+# floor by the level number: Rilgar 62.4 near its big ramp (286.16 447.82), else 67.2; Kalebo III 77.5. A level mod's number is its
+# base's: in `world rilgar` on Kalebo III's base the camera stayed over Kalebo III's 77.5 (2.9 units over Ratchet on the track, not
+# 2.1; 18 in a fall, not 8). The compare sees the current section's world (level_mod_camera_planet; none in main and the mod's own
+# sections: no floor); the original's levels as transliterated.
+L5 0x003293c8: set32(v1, level_mod_camera_planet(v1.w()));  // enhancement: the race camera in a world's section
+L16 0x002f3ed0: set32(v1, level_mod_camera_planet(v1.w()));  // enhancement: the race camera in a world's section
