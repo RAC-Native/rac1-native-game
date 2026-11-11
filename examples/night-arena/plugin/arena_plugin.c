@@ -3295,6 +3295,22 @@ static void level_start(void* user, const rac1_level_info* level) {
 static void respawn(void* user, const rac1_respawn* r) {
     (void)user, (void)r;
     if (!s.mine) return;
+    if (!getenv("ARENA_DOOM_KEEP")) {  /* (the Glove of Doom's agents (230) and theirs (186) the soft reset leaves in play, frozen
+                                           where he died: taken out, as a level's load would; with them in play his glove fired no
+                                           more and Daino's game crashed. ARENA_DOOM_KEEP: a test's, left) */
+        float h[3];
+        static uint32_t m[128];
+        pos_of(api->hero(), h);
+        static const int32_t AG[2] = {230, 186};
+        int n = 0;
+        for (int c = 0; c < 2; ++c) {
+            const int32_t k = api->mobys_near(h, 100000.0f, AG[c], m, 128);
+            for (int32_t i = 0; i < k; ++i, ++n) api->moby_remove(m[i]);
+        }
+        char b[64];
+        snprintf(b, sizeof b, "respawn: %d of the Glove of Doom's taken out", n);
+        api->log(b);
+    }
     s.placed = 3;
     s.have_last = 0;
     if (s.mode == INTRO || s.mode == FIGHT || s.mode == BREAK) challenge_end(0, "Ratchet e' caduto");
@@ -3932,6 +3948,34 @@ static void test(void* user, const char* text, uint64_t frame) {
                          (int)api->hero_mode_now());
                 api->log(b);
             }
+        }
+        return;
+    }
+    if (s.mine && strcmp(text, "arena_doom") == 0) {
+        /* (the Glove of Doom's agents and a death in the session: given and in hand from 100, RAC1_SIM_INPUT=shoot; at 700
+           his health to 1 and a hit: the soft reset; what is in play near him every second) */
+        if (frame == 100) {
+            api->sb(0x0013d4c0u + 0x14, 1);
+            api->ammo_fill(0x14);
+        }
+        if (frame >= 110 && frame % 10 == 0 && rac1_lw(api, HERO_ITEM) != 0x14) api->weapon_equip(0x14);
+        if (frame == 700) {
+            api->sw(0x001415f8u, 1);
+            api->hero_damage(1, 0);
+            api->log("test: Ratchet killed");
+        }
+        if (frame == 800) api->ammo_fill(0x14);
+        if (frame >= 300 && frame % 60 == 0) {
+            float h[3];
+            uint32_t m[64];
+            pos_of(api->hero(), h);
+            const int32_t n = api->mobys_near(h, 80.0f, -1, m, 64);
+            char b[400];
+            int k = snprintf(b, sizeof b, "doom %llu: state 0x%x item 0x%x health %d, near:", (unsigned long long)frame, (unsigned)rac1_lw(api, HERO_STATE),
+                             (unsigned)rac1_lw(api, HERO_ITEM), (int)api->health());
+            for (int32_t i = 0; i < n && k < (int)sizeof b - 16; ++i)
+                k += snprintf(b + k, sizeof b - (size_t)k, " %d/%d", (int)rac1_lh(api, m[i] + 0xa6), (int)(int8_t)rac1_lb(api, m[i] + 0x20));
+            api->log(b);
         }
         return;
     }
