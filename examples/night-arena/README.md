@@ -20,12 +20,19 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   as leaving a planet does) once Ratchet is back in the arena.
 - **"Assalto Finale"** (Final Assault), one of the hardest: ten rounds of Kalebo III's enemies with other planets' (Gemlik's
   flying robots, Gaspar's walking robots, Pokitaru's amoeboids, Drek's fleet's Blarg troopers; Umbris's turrets on the
-  towers' tops and pillars, Orxon's spore plants by the gates and the hub), more each round; their classes loaded for the
+  towers' tops and pillars, Orxon's spore plants by the gates and the hub: hazards, not counted), more each round; their classes loaded for the
   rounds that have them and released after (`import_load`, `import_release`: the game keeps 224 classes at once, and La
   grande fuga's worlds take most); they come in near Ratchet (they wake for him only near them). After the fifth round the
   lava floods the arena, the escape rail leads through a portal onto a world's rail (Batalia's for now: Kalebo III's own
   long rail once the engine takes the base level's world as a section), whose ring leads back to the arena, without the
   lava, where the rounds go on; the tenth is an invasion, 220 enemies, 110 at once. It needs the Grind Boots.
+- **"Autoscontro"** (Bumper Boards): Ratchet on Kalebo III's hoverboard round the arena (free: SDK ABI 16), the enemies
+  knocked down by ramming them (`board_touching`, the plugin's hits), 60 within 2 minutes; four rings to ride through, five
+  seconds more each.
+- **"Zona calda"** (Hot Zone): an electrified ring wanders round the arena, faster as time goes; inside it the bar fills
+  (outside it drains), the enemies standing in it are shocked; the bar full within 3 minutes wins.
+- (Written, not in the menu yet: **"Clank Gigante"**, Ratchet as Quartu's Giant Clank crushing a swarm; the plugin's Giant
+  Clank dies by itself after about ten seconds.)
 - **Grind rails**, for players who have the Grind Boots (Grindscarponi), from a station outside the north-west wall:
   - "Grindscarponi: Discesa": a course of three lanes along the north wall (a side jump changes lane), our mines to
     jump, Kalebo III's own rail mines (class 933, started on the lanes by the plugin, on their own code: broken by the
