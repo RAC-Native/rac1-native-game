@@ -134,8 +134,8 @@ SECTIONS = [("prova", {"sky": 15, "background": (34, 44, 92), "fog": (34, 44, 92
             ("batalia", {"world": "batalia", "objects": "621", "entries": [("arrivo", (286.0, 86.9, 33.0), 2.91)],
                          "death_height": 15.0}),
             # - Rilgar: its hoverboard race (its own hero code and board: hero rilgar board; its HUD) from its finish line, to
-            #   the small platform past the big ramp (the plugin's ring there), with its bolt crates
-            ("rilgar", {"world": "rilgar", "hero": "rilgar board", "objects": "500", "box": (250, 425, 70, 280, 455, 95),
+            #   the small platform past the big ramp (the plugin's ring there), with its turbo pads (1140) and bolt crates
+            ("rilgar", {"world": "rilgar", "hero": "rilgar board", "objects": "500 1140",
                         "entries": [("arrivo", (275.49, 334.35, 73.61), -2.04)], "death_height": 30.0}),
             # - Umbris: the Snagglebeast's cave, its boss (the challenge won when it is beaten). Its objects by class (all of
             #   them would place code-alone triggers too), 460 its lava's sea (code alone, no model); not 529, the parked ship
