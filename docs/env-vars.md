@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 480 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 481 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 25 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 346 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 347 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 109 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -105,6 +105,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_GT_SERIAL` | set (any value) = on; default off | Debugging the game thread: its game frames joined before the drawing (on the game thread, but not beside the drawing), to tell a difference of the thread from one of the overlap. |
 | `RAC1_GL_SINGLE_DRAWS` | 1 = on, 0 = off; default on with Intel's Windows OpenGL driver, else off | With OpenGL, issues the MRP world's and mobys' multi-draws (glMultiDrawElementsIndirect) as one glDrawElementsInstancedBaseVertexBaseInstance per command, for drivers whose multi-draws draw the ties, shrubs and mobys with the wrong records (#113). The same picture. See [Rendering](rendering.md). |
 | `RAC1_MRPW_BUILD_THREAD` | 0 = off; default on (off when `RAC1_MRPW_THREAD=0`, a check mode, `RAC1_MRPW_CPU` or `RAC1_MRPW_TFRAG_VERIFY`) | The MRP world's frame triangles and batches (build_triangles) made on the scene's worker after its scene, the new textures' images made by the main thread when it takes the frame; 0 makes them on the main thread when the frame is drawn, as before, for comparison (the same output). |
+| `RAC1_MRPW_SPLIT_DRAWS` | 1 = on; default off | Makes every draw command of the world's GPU path (ties, shrubs) two, with the same triangles in the same order: the picture is the same, and the GPU's time for the world shows what a draw command costs. |
 | `RAC1_PERF_CHAIN_HASH` | 0 or 1; default 1 | The host's hash of the frame's chain (the moby skips' memo: the chain walked again in a later frame must be the one noted) takes four words at a time into four sums; 0: one sum, a word at a time, as before, to compare. Another hash of the same bytes, used the same way. |
 | `RAC1_PERF_CODE_MEMO` | 0 = off, 2 = check; default 1 | ovl_code_to_veldin's answers (a level's code address as Veldin's: the transliterated code's jump tables, the callbacks' dispatch) kept by address in a small table emptied when the translation's maps change; 0: the maps searched at every call, as before; 2: both, compared (`[perf] code memo` at the end of the run). The same answers. |
 | `RAC1_PERF_DRAW_MEM` | 0 or 1; default 1 | The copy of the game's memory a pipelined frame's drawing reads (runtime/kernel/ee_copy.h) is taken only while one of its readers is on (the modern lighting, the ambient particles); 0: every frame, as before, to compare. RAC1_DRAW_MEM_CHECK=1 names a read outside the copy. |

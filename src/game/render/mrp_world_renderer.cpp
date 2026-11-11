@@ -1713,6 +1713,21 @@ void note_run(std::vector<P2Run>& runs, Batch& b, uint32_t first, uint32_t count
     ++b.rn;
 }
 
+// (testing, RAC1_MRPW_SPLIT_DRAWS=1: the GPU path's last draw command made two, the same triangles in the same order - what a
+// draw command costs the GPU, counted by doubling them)
+void split_last_draw(Frame& F, uint8_t state) {
+    static const bool on = std::getenv("RAC1_MRPW_SPLIT_DRAWS") != nullptr && std::atoi(std::getenv("RAC1_MRPW_SPLIT_DRAWS")) != 0;
+    if (!on || F.draws.back().count < 6) return;
+    DrawCmd second = F.draws.back();
+    const uint32_t c1 = (second.count / 6) * 3;
+    F.draws.back().count = c1;
+    second.count -= c1;
+    second.first_index += c1;
+    note_run(F.p2runs, F.batches.back(), static_cast<uint32_t>(F.draws.size()), 1, state);
+    F.draws.push_back(second);
+    ++F.batches.back().count;
+}
+
 // orig: (host) the batch key of a draw (RKey)
 bool g_view_only_emit = false;  // the batches made now are the view's only (RKey::view_only)
 RKey batch_key(const Key& k, bool gpu, bool sky) {
@@ -2568,6 +2583,7 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
             F.draws.push_back(DrawCmd{r.count, 1, r.first, static_cast<int32_t>(t.first_vertex), cmd});
             if (r.ate) F.batches.back().ate = true;
             ++F.batches.back().count;
+            split_last_draw(F, r.astate[vert_opq ? 1 : 0]);
             g_st.triangles += r.count / 3;
         }
         g_st.tex_ok += M.tex_ok;
@@ -2705,6 +2721,7 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
         const bool ate = field(k.test, 0, 1) != 0 && field(k.test, 1, 3) != 1;
         if (ate) F.batches.back().ate = true;  // (ATST ALWAYS: no test)
         ++F.batches.back().count;
+        split_last_draw(F, astate);
         g_st.triangles += run.count / 3;
         if (record) {
             PktMemo::Run r;
