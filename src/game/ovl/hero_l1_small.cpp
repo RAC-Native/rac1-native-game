@@ -3,10 +3,7 @@
 // Veldin-equivalent globals go through OV (the level's own address); the player block is in the
 // base ELF (the same on every overlay).
 #include <game/ovl/hero_l1.h>
-#include <game/ovl/hero_move_mode_l1.h>
-#include <game/ovl/hero_move_mode_l2.h>
-#include <game/ovl/hero_move_mode_l3.h>
-#include <game/ovl/hero_move_mode_l5.h>
+#include <game/ovl/hero_move_mode.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/screen_fade.h>
@@ -114,11 +111,7 @@ void hero_frame_update_l1() {
     sh(P + 0x1eb2, 0);
     sh(P + 0x1eb0, 0);
     if (lbu(P + 0x20a4) != 0) {
-        // (the level's own copy of the update, transliterated at its address: L1:0x00228000 L2:0x00217158 L3:0x001ffa88 L5:0x00234dd8; the translator)
-        if (on_novalis()) hero_move_mode_l1_u(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
-        else if (on_aridia()) hero_move_mode_l2_u(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
-        else if (on_kerwan()) hero_move_mode_l3_u(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
-        else hero_move_mode_l5_u(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);  // (Rilgar)
+        hero_move_mode_l1();
         return;
     }
     hero_anim_advance();

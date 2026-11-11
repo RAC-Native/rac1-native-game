@@ -94,6 +94,7 @@ add_library(rac1_game STATIC
     ovl/veldin_finale_mobys.cpp
     ovl/credits.cpp
     ovl/end_menu.cpp
+    ovl/hero_move_mode.cpp
     ovl/particle_types4.cpp
     ovl/variants.cpp
     ovl/novalis_mobys.cpp

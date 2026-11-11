@@ -498,7 +498,7 @@ void hero_frame_update() {
     if (lbu(P + 0x20a4) != 0) {
         // (the same code on Veldin, Eudora, Umbris, Gaspar and Orxon: one transliteration, OV addresses; Novalis's family, Blarg and Batalia dispatched above)
         if (on_veldin_orbit()) { vo_call(vo_hero_move_mode_u); return; }  // (level 17's own: L17:0x00203290, 0x8d0 bytes as Blarg's)
-        hero_move_mode_u(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
+        hero_move_mode();
         return;
     }
     hero_anim_advance();
