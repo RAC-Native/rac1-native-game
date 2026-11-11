@@ -797,12 +797,12 @@ void unfreeze(Section& s) {
     for (const Obj& o : s.objs) {
         if (!alive(o)) continue;
         sh(o.moby + 0x34, (lhu(o.moby + 0x34) & ~2u) | (o.f34 & 2u));
-        moby_update_transform(o.moby);  // (in the grid again where it stands)
+        moby_update_transform_placed(o.moby);  // (in the grid again where it stands)
     }
     for (const auto& [m, k] : s.kids) {
         if (!kid_alive(m, k)) continue;
         sh(m + 0x34, (lhu(m + 0x34) & ~2u) | (k.f34 & 2u));
-        moby_update_transform(m);
+        moby_update_transform_placed(m);
     }
     s.frozen = false;
 }

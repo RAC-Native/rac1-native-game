@@ -3075,6 +3075,18 @@ bool compose_sections(const fs::path& ldir, LevelTxt& lt, int base, const std::v
             return false;
         };
         o.death = S.has_death ? S.death : lt.death;
+        // a planet's world is one section: the level state its objects read and write is the planet's, one copy in the engine (its
+        // moby groups, the camera links of its cameras, its rails and host meshes): two sections of it would each overwrite and empty
+        // the other's (a boss beaten in one and the other's objects reading a group list that is gone: an out-of-range read)
+        if (S.world >= 0)
+            for (const LevelTxt::Section& P : lt.sections) {
+                if (&P == &S) break;
+                if (P.world == S.world)
+                    return fail(fmt("level %d's world is already section %s's (level.txt:%d). A planet's world is one section: its level state "
+                                    "(the moby groups its objects read, its cameras' links, its rails, the host meshes drawn in it) is the planet's, one copy "
+                                    "in the game, not one per section. Use one section for it, with several entries (and a box that holds them all)",
+                                    S.world, P.name.c_str(), P.world_line));
+            }
         if (S.world >= 0 && !compose_world(S, lt, base, uid_next, log, err)) return fail(err);
         if (S.zones_line != 0 && S.world < 0) {
             err = fmt("level.txt:%d: section %s: \"zones\" is a world's section's line (its level's zone grid): no world line", S.zones_line, S.name.c_str());

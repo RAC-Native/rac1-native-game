@@ -95,6 +95,11 @@ size_t session_import_unload(int level, uint32_t cls);
 // orig: (host) a moby of session class `id` spawned at `pos` turned `yaw`, from the class's first placement on its own level
 // (the pool's placements: its scale, update distance, flags, colour, pvars); 0 when it cannot be (no such class, no room)
 uint32_t session_import_spawn(uint32_t id, const float pos[3], float yaw);
+// orig: (host) moby_update_transform of a moby put back in play (a section's or main's objects unfrozen or restored): not for a moby
+// of a class with no block of its own (+0x24 0: a class of code alone), which no placement ever transforms - its transform reads
+// the class's animation table at EE address 0x48 + 4 * the animation, whatever the low memory holds then (a game load left a
+// pointer there: an out-of-range read)
+void moby_update_transform_placed(uint32_t m);
 // The spawn watch (a session with classes of other levels, or the probe): moby_spawn asks session_spawn_check first, the
 // moby dispatch notes whose update runs
 extern bool g_spawn_watch;

@@ -787,6 +787,9 @@ section kalebo remove respawn reset
 end
 ```
 
+- **One section per planet.** A planet's world has one copy of its level state in the game (its moby groups, its cameras' links, its
+  rails, its records), so two sections of the same planet (two `world umbris`) are refused by the composer, with the line of the first.
+  Put the places of one planet in one section: several `entry` lines, a `box` that holds them all, and `portal`s inside it.
 - **Coordinates** in a world's section are its planet's (the level's `offset` does not move them, and the section has no
   `offset`): put entries where Ratchet stands on that planet (where its level starts him: Kerwan 263.98 102.09 54.5 facing
   1.5708, Kalebo III 146.43 133.23 128.3 facing 1.46). The section's camera is the planet's own (its first camera, as at its

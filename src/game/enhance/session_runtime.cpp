@@ -341,10 +341,10 @@ size_t session_rt_main_enter(int32_t policy) {
         if (policy == SECTION_FREEZE) {
             if (static_cast<int8_t>(lbu(p.moby + 0x20)) < 0) continue;
             sh(p.moby + 0x34, (lhu(p.moby + 0x34) & ~2u) | (p.flags34 & 2u));
-            moby_update_transform(p.moby);
+            moby_update_transform_placed(p.moby);
         } else if (policy == SECTION_REMOVE && static_cast<int8_t>(lbu(p.moby + 0x20)) < 0 && !stays_dead(p)) {
             restore(p, false);  // (back as the arrival placed it: it was there when main was left)
-            moby_update_transform(p.moby);
+            moby_update_transform_placed(p.moby);
         }
         n += static_cast<int8_t>(lbu(p.moby + 0x20)) >= 0 ? 1 : 0;
     }
@@ -484,7 +484,7 @@ void session_respawn() {
                 continue;
             }
             restore(p, false);
-            moby_update_transform(p.moby);
+            moby_update_transform_placed(p.moby);
             ++back;
         }
     }
