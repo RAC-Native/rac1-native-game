@@ -44,6 +44,7 @@ constexpr uint32_t HERO = P + 0x2080;  // the hero's moby (a mode's object while
 constexpr uint32_t OWN = P + 0xa88;    // Ratchet's own moby
 constexpr uint32_t STATE = P + 0x2084, SUB = P + 0x208c, FORM = P + 0x20a4, LOST = P + 0x20b1;
 constexpr uint32_t HEALTH = P + 0x22a8;
+constexpr uint32_t ENERGY = P + 0x1630;  // Giant Clank's energy bar (form 2): 200 at the mode's start, hero_hurt takes from it, 0 is his fall (state 0x62)
 constexpr uint32_t BOARD_RIDDEN = P + 0x86c;  // the board he rides (Kalebo III's and Rilgar's builds)
 constexpr uint32_t BOARD_STATE = 0x6b, BOARD_SUB = 0x16;
 
@@ -395,6 +396,13 @@ int32_t hero_mode_now() {
 }
 
 // orig: (host) see hero_modes.h
+int32_t hero_giant_energy(int32_t set) {
+    if (hero_mode_now() != HERO_MODE_GIANT_CLANK) return -1;
+    if (set >= 0) sw(ENERGY, static_cast<uint32_t>(std::min(set, GIANT_ENERGY_MAX)));
+    return lw(ENERGY);
+}
+
+// orig: (host) see hero_modes.h
 uint32_t hero_mode_class(int32_t mode) {
     switch (mode) {
     case HERO_MODE_CLANK: return 87;
@@ -433,6 +441,10 @@ bool hero_mode_set(int32_t mode, uint32_t moby, const char* why) {
         // (the game's own: the object becomes the hero's moby, the form byte set, the form's idle state; level_setup's
         // start in a vehicle: 1 Clank, 2 Giant Clank)
         hero_mode_enter(static_cast<uint32_t>(mode), mode == HERO_MODE_CLANK ? 0x43u : 0x5au, moby);
+        // Veldin's hero_mode_enter starts Giant Clank's energy at 200 (form 2), and Quartu's has no enter of its own: but on a Kalebo III
+        // base the dispatch takes Kalebo III's (`on_kalebo()`, true whatever the hero context), which has no Giant Clank: the energy
+        // stayed 0 and, with the frame's check `energy > 0` failing, Giant Clank fell (state 0x62: a death) ten seconds after the start
+        if (mode == HERO_MODE_GIANT_CLANK) sw(ENERGY, static_cast<uint32_t>(GIANT_ENERGY_MAX));
     } else if (mode == HERO_MODE_BOARD) {
         if (!board_build()) return refuse("the hero code has no board state: a hero context of level 16 or 5 first");
         // the board's mount (what its own update does in its state 0 once Ratchet is near: dev_menu.cpp's)

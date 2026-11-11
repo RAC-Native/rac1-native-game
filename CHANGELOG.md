@@ -5,6 +5,22 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Level mods: a death no longer leaves the player's weapons behind, and a plugin's Giant Clank no longer dies by itself** (the mod
+  SDK's ABI 18: `hero_energy`). The soft reset of a session left in play what Ratchet's weapons and equipment had spawned
+  (the Glove of Doom's hand and agents, the Mine Glove's mines, the Drone Device's drones, the Decoy, the Taunter, the Visibomb,
+  the Devastator's and every other projectile, his pack, helmet and boots) and cleared the player block that remembers them: the
+  game spawned them again beside the old ones, which went on running with nothing to tell them the hero had been reset (frozen
+  agents, a second hand moby posing his arms, a game that crashed on aiming). A level's start clears them with the whole moby array;
+  the soft reset now takes out everything the hero spawned and what his spawns spawned (tracked in a session from the arrival), and
+  gives back the animation layers his moby held, before his state is cleared. Separately, a Giant Clank entered by a plugin
+  (`hero_mode(RAC1_HERO_GIANT_CLANK, ..)`, level.txt's `hero ... giantclank` line) on a Kalebo III base started with an energy bar
+  of 0, since the game's start of the form (energy 200) is Veldin's and the base's own hero code was taken: he fell (state 0x62,
+  a death) ten to fourteen seconds later. He starts with 200 now, and `hero_energy(set)` reads and refills it. Nothing changes for
+  the original or for a mod that is not a session; mods need no recompose (the composer's version stays 9), a plugin using
+  `hero_energy` is built for ABI 18.
+- **Mods and 1.0, said up front (README, SDK docs).** The port supports mods, with Daino's Arena as the complete
+  example; 1.0 (fully native, #145) replaces `api->ram` and the moby offsets with a typed API, and mods made before it
+  will very likely break and need updating. See [the SDK](docs/sdk.md#the-games-memory).
 - **Level mods: loading a save while a session runs no longer crashes entering a planet's world; two sections of the same planet are
   refused.** A load from the pause menu inside a session (a level mod of the open engine) and then a visit to a section that is a
   planet's world (Umbris's cave) crashed the game: the objects put back in play at the entry included one of a class with no model or
