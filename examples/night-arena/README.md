@@ -18,6 +18,14 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   the wrench only, a random weapon each wave, a new one every 20 seconds; two championships (15 and 50 rounds) mixing
   those modes. The won ones, and their best times, are kept with the save; a win saves the game (into the player's slot,
   as leaving a planet does) once Ratchet is back in the arena.
+- **"Assalto Finale"** (Final Assault), one of the hardest: ten rounds of Kalebo III's enemies with other planets' (Gemlik's
+  flying robots, Gaspar's walking robots, Pokitaru's amoeboids, Drek's fleet's Blarg troopers; Umbris's turrets on the
+  towers' tops and pillars, Orxon's spore plants by the gates and the hub), more each round; their classes loaded for the
+  rounds that have them and released after (`import_load`, `import_release`: the game keeps 224 classes at once, and La
+  grande fuga's worlds take most); they come in near Ratchet (they wake for him only near them). After the fifth round the
+  lava floods the arena, the escape rail leads through a portal onto a world's rail (Batalia's for now: Kalebo III's own
+  long rail once the engine takes the base level's world as a section), whose ring leads back to the arena, without the
+  lava, where the rounds go on; the tenth is an invasion, 220 enemies, 110 at once. It needs the Grind Boots.
 - **Grind rails**, for players who have the Grind Boots (Grindscarponi), from a station outside the north-west wall:
   - "Grindscarponi: Discesa": a course of three lanes along the north wall (a side jump changes lane), our mines to
     jump, Kalebo III's own rail mines (class 933, started on the lanes by the plugin, on their own code: broken by the
@@ -40,7 +48,9 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
     - **Umbris**, the Snagglebeast's cave (its objects, its boss line): the challenge is won when the Snagglebeast is
       beaten. The challenge's box and its messages go up over its health bar.
 
-    A death anywhere is the challenge lost (it is meant to be hard); won or lost, Ratchet is taken back to the arena.
+    A death anywhere is the challenge lost (it is meant to be hard); won or lost, Ratchet is taken back to the arena. The
+    worlds' sections are `fresh` (SDK ABI 17): put back as at their first entry at every entry, so the challenge can be
+    played again (the mines, the Snagglebeast back).
   - The session's other section, "prova" (`build_prova.py`: a round platform under Quartu's sky with its own rail in),
     where the escape went before Quartu's world could take a mod's rails, is still there, used by no challenge.
 
@@ -74,9 +84,9 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   touching it he jumps out burnt, a health point lost each time, and with none left he sinks. (Type 3 is Aridia's
   quicksand: there he would sink and be bounced out with Cross.)
 
-It needs a game with the mod SDK's ABI 16 or later (the hoverboard outside a race, Rilgar's race in its world; ABI 15 a
-win's save, `game_save`; ABI 13 the mod's rail in a planet's world, the boss; `hero generic` ABI 12; the rails, the
-sessions and sections ABI 11; the rest of the plugin ABI 5).
+It needs a game with the mod SDK's ABI 17 or later (the worlds put back at every entry; ABI 16 the hoverboard outside a
+race, Rilgar's race in its world; ABI 15 a win's save, `game_save`; ABI 13 the mod's rail in a planet's world, the
+boss; `hero generic` ABI 12; the rails, the sessions and sections ABI 11; the rest of the plugin ABI 5).
 
 ## Making it
 
