@@ -221,6 +221,22 @@ The first cut content came back as an option: Kerwan's citizens, then Eudora's T
 the beta build and the citizens' idle (#128, Anya-Thoughtmane). After a playtest on Linux it was
 released as 0.7.0 on 4 November.
 
+**4 to 12 November: 0.8.0.** The first thing after 0.7.0 was the work that made the Vulkan renderer the default, with a safety
+net that sends the next starts to OpenGL when it cannot start or crashes, and optional movie subtitles. Then mods: on 6
+November a `mods/` folder in front of the disc's files, with texture replacement and a Mods menu; on 8 and 9 November a plugin SDK
+(native code built on the player's machine) and level mods, new levels the ship flies to, made of our own files and the
+player's disc; a guide for modders. A Blender-made arena in a lava lake, Daino's Arena, was the test bed, and each thing it needed went
+into the SDK: Kalebo III's enemies, the weapons, the vendor, HUD panels, music in Ogg. On 10 November the open engine took
+shape beside it: sessions that keep the game going through a death, sections joined by portals, other planets' worlds
+drawn and played as sections, their enemies and bosses, grind rails, Clank, Giant Clank and the hoverboard, saves from a
+plugin. The arena grew into the one example, and on 12 November the old small example level was removed. In the same days
+Anya-Thoughtmane's lighting batch 4 and their Windows specifications were merged, the reports on 0.7.0 were worked through
+(a Platinum disc whose menus played the wrong sounds, #137; a Windows setup missing a runtime library, #140; a development
+channel that did not follow `dev`, #141; a build broken on Windows, #142; lava torn across Gaspar's cave and a flat shadow
+over Pokitaru, #144), and the frame got shorter: the renderer stopped decoding the world's draw commands again, 17 to 41 % less
+at the default 4:3. On 11 November Daino opened the 1.0 roadmap (#145), a fully native engine, to be built beside the 0.x
+releases; the README says it will break mods made before it.
+
 ## What came of it
 
 - Five months of trying became one rule: nothing is invented, and every port is checked against the

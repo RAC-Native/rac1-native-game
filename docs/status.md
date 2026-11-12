@@ -34,7 +34,15 @@ cycling (#117, #61), aiming without the zoom (#70), controller vibration with th
 adaptive triggers (experimental, #10) and Skip Cutscenes; macOS on Apple Silicon with a Metal renderer, a
 contributor's port (#116, #119); a cheaper frame; and fixes (#111, #113, #114, #115, #126). The Vulkan
 renderer is no longer experimental: it is an optional renderer, OpenGL still the default. 0.7.0
-has been playtested on Linux.
+has been playtested on Linux. 0.8.0 (see the [Changelog](../CHANGELOG.md#080)) is the release of mods: a
+`mods/` folder with texture and sound swaps and a Mods menu, level mods (new levels the ship flies to) with a native
+plugin SDK (ABI 19), and the open engine behind them (sessions, sections and portals, other planets' worlds, bosses,
+grind rails, Clank, Giant Clank and the hoverboard), with Daino's Arena as the one complete example (see
+[Mods](mods.md) and [The mod SDK](sdk.md)); mods made before 1.0 will very likely break then (#145). Vulkan is the default
+renderer, with OpenGL where it cannot start. It adds Anya-Thoughtmane's lighting batch 4, a frame 17 to 41 % shorter at the
+default 4:3 and a cheaper widened view, Quick Select Rings, a Bug Fixes page, movie subtitles, a high precision sound
+mix, Graphics: Enhanced with the original's lighting (#138), and fixes (#82, #129, #131, #132, #136, #137, #140, #141,
+#142, #144).
 
 Every planet of the milestone has its own classes ported and proved against the original code, and
 runs on its own overlay. The gaps that remain on them are listed below as **known issues**; they are
@@ -135,16 +143,17 @@ nothing, so an object whose class is not ported stands still or does not appear.
 | Pause menu (with its 3D models), HUD, Vendor, the ship's planet menu, the loading screen's flight | Ported. Known issue: the planet menu's information panels draw empty. |
 | Sound and music (989snd), dialogue streams, movies; 5.1 and 7.1 output | Working; see [Audio](audio.md). The sound mirror keeps music and sounds playing through loads, on by default (`RAC1_IOP_MIRROR=0` turns it off; see [Decisions](decisions.md#13-the-iops-sound-runs-twice)). |
 | Rendering (the MRP) | The default renderer; it draws the whole game itself: all of the 3D in play, the levels' water, lava and sand seas included, and the 2D (HUD, text, menus, fades), with the GS replica no longer running beside it (it stays the faithful reference, `RAC1_MRP=0`); see [Rendering](rendering.md). |
-| The Vulkan renderer (Options > Display > Renderer) | The default since the next release (OpenGL until 0.7.x): the same picture as OpenGL, which takes over when Vulkan cannot start and stays a choice in the row; see [Vulkan](vulkan.md). |
+| The Vulkan renderer (Options > Display > Renderer) | The default since 0.8.0 (OpenGL until 0.7.x): the same picture as OpenGL, which takes over when Vulkan cannot start and stays a choice in the row; see [Vulkan](vulkan.md). |
 | Modern lighting and the graphics additions (Options > Graphics: Enhanced) | Working, optional, off by default (Graphics: Original); with surface materials (Surface Detail), emissive surfaces, water reflections and grass; see [Lighting](lighting.md) and [Materials](materials.md). |
 | Water Reflections Medium (RT) and High (RT) | New, optional; they need the Vulkan renderer on a GPU with ray queries; measured on one GPU so far; see [Rendering](rendering.md#water-reflections-medium-rt). |
 | Ambient particles (optional) | Working, off by default, on seven levels; see [Ambient particles](particles.md). |
 | Options > Display (including Texture Detail and the widescreen HUD), Graphics (one Original / Enhanced switch and a preset over every addition), Controls, Advanced; New Game's Original / Modern choice and graphics preset | Implemented, known issues may remain; see [Settings](settings.md). |
 | Data discs (found in `assets/iso/`, or `--data-iso`): the Japanese disc's voices beside the game's disc, and a voice language apart from the text (Options > Language > Voice); the later discs' corrected texts | New, experimental; the Japanese efforts of Ratchet only partly checked. Known issue: with the Japanese voices the intro movie's sound is out of sync (the Japanese disc's movie sound over the North American picture: later sound heard early, and the sound ends before the picture); minor, being fixed. See [Setup](setup.md#data-discs) and [Settings](settings.md). |
-| Advanced: Corrected Texts, 1.02 Fixes, 1.02 Gameplay, Cut Content (main menu, global) | New, off by default; 1.02 Fixes is a first batch of the later build's fixes; see [Advanced options](advanced.md). |
+| Advanced: Corrected Texts, 1.02 Fixes, 1.02 Gameplay, Cut Content (main menu, global); Quick Select Rings and the Bug Fixes page (new in 0.8.0) | New, off by default; 1.02 Fixes is a first batch of the later build's fixes; see [Advanced options](advanced.md). |
 | Keyboard, mouse and controller mapping, remapping in Options > Controls | Implemented, known issues may remain; see [Input](input.md). |
 | Debug tools behind `--debug-tools` (with the Profiler and Unlocks tabs) | Implemented; see [Settings](settings.md#debug-tools). |
 | The launcher (Windows and Linux x86-64): install, update, play, saves | New in 0.5.0; on the Steam Deck, Bazzite and other immutable Linux systems it builds the game in a container (new in 0.6.0); Settings > Disc images lists the disc images and what each one is for (new in 0.7.0); see [The launcher](launcher.md). |
+| Mods: a `mods/` folder (disc file and texture replacement), level mods, native plugins (the mod SDK, ABI 19) and the open engine behind them | New in 0.8.0, experimental; Daino's Arena (`examples/night-arena`) is the one complete example. The SDK will change with 1.0: mods made before it will very likely break (#145). See [Mods](mods.md), [The mod SDK](sdk.md), [The open engine](open-engine.md). |
 
 ## Not done yet
 
