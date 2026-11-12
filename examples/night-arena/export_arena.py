@@ -1273,7 +1273,7 @@ def export(out=None, install=False, bundle=False):
         f.write("\n".join(LL) + "\n")
 
     with open(os.path.join(out, "mod.json"), "w") as f:
-        json.dump({"name": LEVEL["name"][""], "author": "Daino Selvatico", "version": "0.5",
+        json.dump({"name": LEVEL["name"][""], "author": "Daino Selvatico", "version": "0.6",
                    "description": "An arena in a lava lake ringed by mountains, with challenges against Kalebo III's enemies "
                                   "(waves, bombs, flame vents, weapon limits, championships) and grind rails (a test rail, a "
                                   "course of three lanes with mines to jump and Kalebo III's rail mines to break, and an escape from the lava "

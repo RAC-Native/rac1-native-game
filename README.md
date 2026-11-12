@@ -1,6 +1,6 @@
 # rac1-native
 
-> **Current state (0.8.0):** every planet of the game is ported, from Veldin to the final fight with
+> **Current state (0.8.1):** every planet of the game is ported, from Veldin to the final fight with
 > Drek, the credits and the end menu, and of the game's code the game runs, one function is left to
 > port. **The whole game has been played through to the end** on 0.4.0. 0.8.0 brings mods (a `mods/`
 > folder with texture and sound swaps, new levels, and a native plugin SDK, with Daino's Arena as the
@@ -9,7 +9,8 @@
 > a high precision sound mix, and the fixes from the 0.7.0 reports: see the
 > [Changelog](CHANGELOG.md#080). Windows is no longer experimental: players have played through the
 > game on it. Expect some bugs and glitches. 1.0 will make the game fully native and change the mod
-> SDK (#145). See [Status](docs/status.md).
+> SDK (#145). 0.8.1 adds new music for Daino's Arena, "Awaiting Challenge" by Anya-Thoughtmane, and a
+> shorter frame in the widened view. See [Status](docs/status.md).
 
 A native PC port of **Ratchet & Clank** (PlayStation 2, 2002), for Linux and Windows, and macOS on
 Apple Silicon.

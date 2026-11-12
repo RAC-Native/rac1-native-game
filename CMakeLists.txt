@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 # the release's version (semantic): bumped at each release, with its tag vX.Y.Z (the in-game update check compares
 # it with the latest release's: docs/settings.md)
-project(rac1-native VERSION 0.8.0 LANGUAGES C CXX)
+project(rac1-native VERSION 0.8.1 LANGUAGES C CXX)
 if(APPLE)
     enable_language(OBJC OBJCXX)  # (the Metal renderer: docs/metal.md; OBJC too, else GLFW's .m files build as C++)
 endif()

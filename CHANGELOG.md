@@ -3,16 +3,21 @@
 What changed in each release. Releases are source only: you build the game with `./setup.sh`
 (`setup.cmd` on Windows) from your own disc. Issue numbers refer to this repository's issues.
 
-## Unreleased
+## 0.8.1
 
+A small update: new music for Daino's Arena and a shorter frame in the widened view.
+
+- **Daino's Arena has new music: "Awaiting Challenge" by Anya-Thoughtmane** (`examples/night-arena/music/awaiting_challenge.ogg`,
+  CC BY 4.0 like the arena's other track, not MIT) plays in the arena while no challenge is on, in place of "Overworld"; the
+  challenges keep "Arena Fight". The arena is now version 0.6: the setup updates an arena it installed and you have not
+  changed; a `mods/night-arena` you made or changed yourself is kept as it is (move it aside and run the setup again to get
+  the new one).
 - **A shorter frame in the widened view at LOD Low to Maximum too** (no change to the picture or the game): the renderer's
   second run of the moby pass, for what a 16:9 view adds at the sides, now leaves out the mobys the longer draw distances do
   not change (the same fade, the same model), as it already did at LOD Original: that run 17 to 44 % shorter at Low on the
   four levels measured (a fifth to a half of its mobys), little at High and Maximum, where most of what it draws the game
   does not. The effects' and the draw lists' shadow runs were measured too and left as they are. See docs/performance.md
   (RAC1_PERF_MOBY_EXTRAS_LOD).
-
-- **Daino's Arena has new music: "Awaiting Challenge" by Anya-Thoughtmane** (`examples/night-arena/music/awaiting_challenge.ogg`, CC BY 4.0 like the arena's other track, not MIT) plays in the arena while no challenge is on, in place of "Overworld". The setup updates an installed arena that you have not changed.
 
 ## 0.8.0
 
