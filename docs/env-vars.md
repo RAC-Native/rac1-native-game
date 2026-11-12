@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 484 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 485 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 25 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 350 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 351 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 109 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -112,6 +112,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_PERF_FPU_RAW` | 0 = off, 2 = check; default 1 | The EE FPU helpers fpu_add / fpu_sub / fpu_mul (src/game/ovl/ovl_common.h) do the host's own operation - the thread's float mode (toward zero, no denormals) already gives the PS2's result - and take their rule-by-rule form only when the result has exponent 255; 0: the rule-by-rule forms always, as before; 2: those, each compared with the raw form's result (the account at the end of the run: `[perf] fpu raw check`). Off with RAC1_FPU_NEAREST=1. The same game state (docs/performance.md). |
 | `RAC1_PERF_OPAQUE_KEEP_TFRAG` | 0 or 1; default 1 | The MRP world's table of the tfrag entries whose colours are all opaque (RAC1_PERF_OPAQUE's test of a tfrag draw) kept until an entry's colours change; 0 makes it again at every update of the colour mirror (every frame), as before, to compare. The same draws. |
 | `RAC1_PERF_MOBY_EXTRAS` | 0 = off, 1 = on, 2 = on with a check; default 1 | With the view widened and the LOD at Original, the moby pass's shadow run (mrp_lod.cpp) is made after the real pass and leaves out the mobys the real pass drew with the same VU1 program: it draws only what the wider view adds, and the scene the MRP draws takes the others from the real pass, in the whole run's order. 0 runs the whole pass again before the real one, as before; 2 makes both runs and compares the merged scene with the whole run's, field by field. At another LOD the whole pass runs again whatever the value. |
+| `RAC1_PERF_MOBY_PARTS` | 0 = off, 1 = on, 2 = check; default 1 | The MRP makes each drawn moby's parts (the VU1 program, the matrix and the GS state packet of each packet of its mesh) from what the moby draw loop notes as it writes them, instead of decoding the moby's chain again. 0 decodes the chains, as before; 2 decodes them and compares the parts with the notes'. The checks that read the chain's unpacks (RAC1_MRP_CHECK, RAC1_MRP_SCENE_CHECK) decode whatever the value. |
 | `RAC1_PERF_POSE_ORDER` | 0 or 1; default 0 | 1: the widened view's / LOD slider's shadow run of the moby pass is made after the real pass, whose poses fill the pose memo (RAC1_PERF_POSE_MEMO) for it; 0 (default): before it, as always. Off by default: the game's state is the same, but the shadow run's moby records are not word for word (docs/performance.md). |
 | `RAC1_PERF_PROGRESS_THREAD` | 0 or 1; default 1 | progress.json (the launcher's) is written by a thread of its own, the game frame only making its text; 0: written by the frame's thread, as before, to compare. The same file. |
 | `RAC1_PERF_RCOL_KEEP` | 0 = off, 2 = check; default 1 | Vulkan: the MRP world's resident tie / shrub colours kept in a buffer per frame in flight, each written with the ranges changed since it was last written; 0 copies the whole mirror into the frame's ring every frame, as before; 2 compares the kept buffer with the mirror after every upload (`[perf] resident colours kept` at the end of the run). The same pictures. |

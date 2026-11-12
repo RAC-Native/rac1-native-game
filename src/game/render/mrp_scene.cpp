@@ -133,6 +133,7 @@ void on_draw(uint32_t moby, uint32_t chain_begin, uint32_t chain_end, uint32_t r
     m.far_lod = far_lod != 0;
     m.deferred = deferred != 0;
     m.mscal = static_cast<uint16_t>(g_moby_draw_mscal);
+    m.noted = g_moby_draw_parts;
     for (int i = 0; i < 3; ++i) m.pos[i] = lwc1(moby + 0x10 + 4 * static_cast<uint32_t>(i));
     m.scale = lwc1(moby + 0x2c);
     for (uint32_t i = 0; i < 3; ++i) m.rot[i] = vec4_at(moby + 0xc0 + 0x10 * i);
@@ -356,6 +357,47 @@ void decode_chain_to(MrpMoby& m, uint32_t mi, std::vector<MrpPart>& parts, std::
 
 void decode_chain(MrpFrame& f, uint32_t mi) { decode_chain_to(f.mobys[mi], mi, f.parts, f.unpacks, g_dec); }
 
+// orig: (host) RAC1_PERF_MOBY_PARTS (docs/performance.md): a moby's parts made from what the draw loop noted as it wrote them
+// (MobyDrawParts) instead of decoded from its chain - a part per packet of the mesh, then of the shadow mesh: the program's
+// start, the group's matrix (its first two parts upload it to VU1 0x129 / 0x28d by turns, the later ones use the buffer of
+// the part two before), the GS state packet before the group's first start. Without the unpacks, which only the checks read
+// (RAC1_MRP_CHECK, RAC1_MRP_SCENE_CHECK: the chains decoded as before). 0: decoded; 2: both, compared, the decoded ones used
+const int g_parts_mode = perf::switch_value("RAC1_PERF_MOBY_PARTS", 1);
+const bool g_parts_noted = g_parts_mode == 1 && !g_check && std::getenv("RAC1_MRP_CHECK") == nullptr;
+perf::DualCheck g_parts_check;
+uint64_t g_parts_decoded = 0;  // (mobys without the loop's notes: decoded)
+
+// orig: (host) the parts of `m` from the loop's notes, appended to `parts` (their unpacks none: `unpacks_at` the list's size);
+// false: no notes (the chain is decoded)
+bool parts_noted(MrpMoby& m, uint32_t mi, std::vector<MrpPart>& parts, uint32_t unpacks_at) {
+    const MobyDrawParts& n = m.noted;
+    if (n.groups == 0 || n.groups > 2) return false;
+    m.part_first = static_cast<uint32_t>(parts.size());
+    for (uint32_t g = 0; g < n.groups; ++g) {
+        const MobyDrawParts::Group& G = n.group[g];
+        const MrpMat4 mat = mat4_at(G.matrix_tag + 0x10);
+        if (g == 0) m.model_to_view = mat;
+        for (uint32_t k = 0; k < G.count; ++k) {
+            MrpPart p;
+            p.mscal = static_cast<uint16_t>(G.mscal);
+            p.moby_index = mi;
+            p.model_to_view = mat;
+            p.matrix_dest = static_cast<uint16_t>(k % 2 == 0 ? G.dest : (G.dest == 0x129 ? 0x28d : 0x129));
+            p.unpack_first = unpacks_at;
+            if (k == 0 && G.gs_tag != 0) {  // (the packet's DIRECT: one of the tag's two VIF codes, its data after the tag)
+                const uint32_t c0 = lwu(G.gs_tag + 8), c1 = lwu(G.gs_tag + 12);
+                const uint32_t c = ((c0 >> 24) & 0x7e) == 0x50 ? c0 : c1;
+                p.has_gs_state = true;
+                p.direct_qwc = static_cast<uint32_t>(vif_bytes(c, 1, 1) / 16);
+                p.direct_data = G.gs_tag + 0x10;
+            }
+            parts.push_back(p);
+        }
+    }
+    m.part_count = static_cast<uint32_t>(parts.size()) - m.part_first;
+    return true;
+}
+
 // ---- the record's fields ---------------------------------------------------------------------
 
 float rf(const MrpFrame& f, const MrpMoby& m, uint32_t off) {
@@ -403,6 +445,40 @@ constexpr size_t kDecodeGrain = 16;
 // (RAC1_JOBS=1), on any number of threads.
 void decode_all(MrpFrame& f) {
     const size_t n = f.mobys.size();
+    if (g_parts_noted) {  // (the parts from the loop's notes: no chain read, nothing for a job)
+        for (uint32_t i = 0; i < n; ++i) {
+            decode_record(f, f.mobys[i]);
+            if (!parts_noted(f.mobys[i], i, f.parts, static_cast<uint32_t>(f.unpacks.size()))) {
+                ++g_parts_decoded;
+                decode_chain(f, i);
+            }
+        }
+        return;
+    }
+    struct Compare {  // (=2: the decoded parts against the notes', moby by moby, once the frame is decoded)
+        MrpFrame& f;
+        ~Compare() {
+            if (g_parts_mode != 2) return;
+            static std::vector<MrpPart> noted;
+            for (uint32_t i = 0; i < f.mobys.size(); ++i) {
+                MrpMoby m = f.mobys[i];
+                noted.clear();
+                bool same = parts_noted(m, i, noted, 0) && m.part_count == f.mobys[i].part_count &&
+                            std::memcmp(&m.model_to_view, &f.mobys[i].model_to_view, sizeof m.model_to_view) == 0;
+                const char* what = same ? nullptr : "no notes, the part count or the moby's matrix";
+                for (uint32_t k = 0; same && k < m.part_count; ++k) {
+                    const MrpPart &a = noted[k], &b = f.parts[f.mobys[i].part_first + k];
+                    if (a.mscal != b.mscal) what = "a part's program";
+                    else if (std::memcmp(&a.model_to_view, &b.model_to_view, sizeof a.model_to_view) != 0 || a.matrix_dest != b.matrix_dest) what = "a part's matrix";
+                    else if (a.has_gs_state != b.has_gs_state || a.direct_data != b.direct_data || a.direct_qwc != b.direct_qwc) what = "a part's GS state packet";
+                    same = what == nullptr;
+                }
+                char t[160];
+                if (!same) std::snprintf(t, sizeof t, "moby %08x class %d (%u parts decoded, groups %u): %s", f.mobys[i].moby, f.mobys[i].class_id, f.mobys[i].part_count, m.noted.groups, what);
+                g_parts_check.check(same, same ? "" : t);
+            }
+        }
+    } compare{f};
     const size_t nc = jobs::chunks(n, kDecodeGrain);
     if (jobs::threads() <= 1 || nc <= 1) {
         for (uint32_t i = 0; i < n; ++i) {
@@ -896,6 +972,8 @@ void extras_merge(const MrpFrame& real, MrpFrame& sh) {
 
 // orig: (host) see mrp_scene.h
 void mrp_scene_extras_report() {
+    if (g_parts_mode == 2) g_parts_check.report("moby parts (RAC1_PERF_MOBY_PARTS=2)", "mobys");
+    if (g_parts_decoded != 0) std::printf("[perf] moby parts: %llu mobys without the draw loop's notes, their chains decoded\n", static_cast<unsigned long long>(g_parts_decoded));
     if (g_xs.frames == 0) return;
     const double n = static_cast<double>(g_xs.frames);
     std::printf("[lod] moby extras (RAC1_PERF_MOBY_EXTRAS): %llu shadow runs for the extras alone: %.1f mobys a frame kept from the real pass, %.1f drawn by the run, "
