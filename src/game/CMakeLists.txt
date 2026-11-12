@@ -202,6 +202,15 @@ add_library(rac1_game STATIC
     ovl/weapons_register.cpp
     ovl/mine_glove.cpp
     ovl/gadgets.cpp
+    ovl/grapple.cpp
+    ovl/hydro.cpp
+    ovl/metal.cpp
+    ovl/metal_obj.cpp
+    ovl/swingshot.cpp
+    ovl/aridia_fx.cpp
+    ovl/aridia_ship.cpp
+    ovl/fx_26a5b8.cpp
+    ovl/fx_26ee48.cpp
     ovl/weapon_fx.cpp
     ovl/mine.cpp
     ovl/taunter.cpp
