@@ -446,6 +446,40 @@ medians of the runs' ratios): at Low the moby pass's shadow run -17 to -44 % (No
 in 10 of 16: the load's noise, but Kalebo III's -15 % in 4 of 4). At High -9 % of the shadow run at the median, below in 11
 of 16: within that noise.
 
+### The effects' and the draw lists' shadow runs: measured, left as they are
+
+In a widened view the block of the 3D effects after the moby pass (the draw lists' callbacks, the particles, the lens flare,
+the decals, the HUD) runs twice a frame, and so do the two draw lists after the ties and the shrubs on the levels that queue
+them, and the sky. Sampled at 16:9 with LOD Original on seven levels, the effects' shadow run is 10 to 21 % of the game's
+code - more than the moby pass's shadow run after the two changes above (4 to 5 %): 0.09 to 0.37 ms a frame on the 19
+levels' walks, the list blocks' 0.01 to 0.20 on eight of them, the sky's 0.04 to 0.10. Nine tenths of it are the draw lists'
+callbacks (the levels' water, lava and ocean grids, the classes' surfaces, smoke, the nanotech orbs), the rest the particles;
+the journal's restore, its first touches and the chain's copy are 1.5 to 2.3 % of the game's code.
+
+The run is skipped already when nothing in it could differ (`RAC1_MRP_EFFECTS_SKIP`), but a draw list is never empty and
+nothing tells what its callbacks will draw: on these walks it ran every frame. Its chain is the real block's byte for byte in
+1 to 73 % of the frames (a third at the median, under a tenth on the levels where it costs most). Callback by callback it is
+another picture: weighted by their time, the callbacks whose shadow chain is the real one's are 73 to 99 % on 16 of the 19
+levels (Aridia's ocean and Gaspar's lava, which always draw more cells in the wider view, make theirs a fifth). Most of the
+run makes again what the real block is about to make. Three ways to know which callback before running it were looked at,
+and none is both exact and cheaper than the run:
+
+- What the shadow changes is EE memory the callbacks read: the tangent and the radius factors, `point_on_screen`'s terms,
+  the quad drawer's reject scale, the clip matrix. A callback that reads none of those words makes the same chain. A read
+  barrier on them (every read through the slow path, the address checked) made the real callbacks 1.9 to 3.9 times slower -
+  more than the shadow run it would save - and was not sound: hundreds of callbacks a level read none of the words and made
+  another chain all the same (a term held in a VU0 register from before, a read through a pointer taken lower).
+- Most callbacks do read them, test, and pass: the same chain again, and only the test's own site knows. Those sites are
+  some seventy places in the hand-written code and more in the generated update functions; each would need its own
+  observer, proved apart.
+- A callback's shadow run apart from the block's (run where the real one is about to, its chain in place of that range
+  alone) no longer has the block's textures: the effect textures get their GS memory on demand along the block and are
+  uploaded at its end, so a shadow callback that asks for one texture more than the real one does not fit the real block's
+  uploads.
+
+Left as they are. What removes them is not a prediction but one pass that culls for both views, each test site giving
+both answers (the `CullParams` of #153).
+
 ## The frame's chain
 
 The MRP chain worker reads each frame's chain beside the main thread (`mrp_chain.cpp`: the 2D, the effects' VU1 programs, the
