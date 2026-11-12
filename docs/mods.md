@@ -572,7 +572,7 @@ level's first one and its loop). Your own: `music <loop> [<intro>]`, `<loop>` lo
   [stb_vorbis](https://github.com/nothings/stb)), then encoded as a WAV is. The decoded length is the stream's own (its
   last granule position), so a loop that is seamless as a WAV stays seamless as an `.ogg` made from it: encode it as
   usual, for example `ffmpeg -i loop.wav -c:a libvorbis -q:a 6 loop.ogg` (about a tenth of the WAV's size). The
-  arena's music is one (`examples/night-arena/music/overworld.ogg`).
+  arena's music is one (`examples/night-arena/music/awaiting_challenge.ogg`).
 - a **VAG** as the disc's music files (`levels/levelNN/hdr_014c.vag`): a 0x30-byte `VAGp` header (big endian: the
   data's size at +0xc, the rate at +0x10, 8000 to 48000 Hz), then mono PS-ADPCM, copied as it is. A **stereo VAG**
   (ours): byte +0x1e of the header 2, the size at +0xc one channel's, the left and the right channel's ADPCM
