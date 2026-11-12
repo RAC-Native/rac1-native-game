@@ -44,6 +44,7 @@ import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import bundled_mods  # noqa: E402
 import disc_extract  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1675,7 +1676,12 @@ def level_mods():
     """The level mods in mods/ (docs/mods.md, "Level mods"): each one whose build is missing or old composed with the disc's
     files into assets/generated/mods/<folder>/, and the mods' plugins (their code, docs/custom-levels.md) built from their
     source (`rac1-native --setup --level-mods`: it checks their stamps itself). Not fatal: the game lists a mod with no
-    build as needing the setup."""
+    build as needing the setup. First the mods the game ships (bundled-mods/, tools/bundled_mods.py) are copied into mods/
+    when missing or older, never over the player's own changes."""
+    try:
+        bundled_mods.install(ROOT / "mods", lambda msg: ok(msg) if "installed" in msg or "updated" in msg else print("  " + msg, flush=True))
+    except Exception as e:  # (never fatal: the game's setup goes on)
+        warn(f"The mods that come with the game could not be installed: {e}")
     mods = ROOT / "mods"
     if not mods.is_dir():
         return
@@ -1757,6 +1763,10 @@ def setup_due():
     due += [f"a new data disc, {shown_path(d.path)}: {d.what} ({d.why})" for d in pick_discs().data if d.key not in have]
     if newest_mtime(BUILD_INPUTS) > EXE.stat().st_mtime:
         due.append("the game's program (its sources are newer)")
+    try:
+        due += [f"the mod that comes with the game, {n}" for n in bundled_mods.due(ROOT / "mods")]
+    except Exception:
+        pass
     return due
 
 
