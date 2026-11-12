@@ -143,7 +143,7 @@ shared code every level runs:
 | 14 | 44 .. 55, 221, 223 |
 | 15 | 240, 241, 242 (and the hero batches 44 .. 55, 123) |
 | 16 | 250, 242 (and the hero batches 44 .. 55, 123) |
-| 0 and 3 | 180 |
+| 0 and 3 (its dumps); 0 .. 18 (its level-built checks) | 180 (the shared weapon classes: the drones, the chicken and its debris, classes 804 and 166, the Morph-o-Ray's HUD element, particle types 5 and 0x37) |
 | 0, 1, 3 and 5 | 190 (it proves a fix of the code generator, `tools/codegen/mips2cpp.py`) |
 | 3, 6 and 10 | 191 |
 | 0, 1, 3, 4, 6, 8 and 9 | 192 (the particle types 0x0a, 0x0e, 0x27, 0x49; no dumps: states built from the level) |

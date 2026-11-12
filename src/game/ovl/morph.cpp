@@ -1,6 +1,6 @@
 // Ported overlay code: the Morph-o-Ray (item 0x15, hand update 0x2bc7e8), target selection (0x2bc3b0),
 // beam spine/helices/rings update (0x2bcf98 / 0x2bd0a0), particle 0x4e spawn (0x275910), and chicken
-// transformation (0x2c92d8 / 0x2c9348).
+// transformation (0x2c92d8 / 0x2c9348), and class 804 (0x2d7f88, a piece on the hand moby).
 #include <game/ovl/morph.h>
 
 #include <game/enhance/advanced.h>
@@ -9,6 +9,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/weapon_classes.h>
 #include <game/ovl/weapons.h>
 
 namespace rac1 {
@@ -795,6 +796,36 @@ void morph_update(uint32_t m) {
             sw(OV(0x001617c0u), 0xffffffffu);
         }
     }
+}
+
+// Class 804, a piece riding on the Morph-o-Ray's hand moby (pvar +0, class 0xb9): it slides out along the hand's axis
+// (+4, by twice the ray's range per second), fading past the range and gone at 1.1 times it, when its timer (+8) runs
+// out or the hand goes; its scale +0xc grows with the distance.
+// orig: 0x002d7f88
+void class804_update(uint32_t m) {
+    const uint32_t pv = lwu(m + 0x78);
+    const float range = lwc1(OV(0x001616dcu));
+    swc1(pv + 4, fpu_add(lwc1(pv + 4), fpu_mul(fpu_add(range, range), lwc1(0x0015ed6cu))));
+    const bool expired = timer_tick_i32(*static_cast<int32_t*>(ee_ram_ptr(pv + 8))) != 0;
+    const uint32_t hand = lwu(pv);
+    if (expired || fpu_mul(lwc1(OV(0x001616dcu)), u2f(0x3f8ccccdu)) <= lwc1(pv + 4) || hand == 0 || lh(hand + 0xa6) != 0xb9 ||
+        lbu(hand + 0x20) == 0xfe || lbu(hand + 0x20) == 0xfd) {
+        moby_retire(m);
+        return;
+    }
+    const uint32_t hand_pv = lwu(hand + 0x78);
+    vec_clear(V(m + 0x10));
+    swc1(m + 0x14, -lwc1(pv + 4));
+    mat3_transform(V(m + 0x10), V(m + 0x10), M(hand + 0xc0));
+    vec3_add(V(m + 0x10), V(m + 0x10), V(hand_pv));
+    V(m + 0x40) = V(hand + 0x40);
+    const float out = lwc1(pv + 4);
+    if (lwc1(OV(0x001616dcu)) < out) {
+        const float past = fpu_mul(fpu_sub(out, lwc1(OV(0x001616dcu))), 10.0f);
+        sb(m + 0x23, static_cast<uint32_t>(float_to_int(fpu_mul(fpu_sub(1.0f, past), 127.0f))));
+    }
+    const float grow = lwc1(pv + 0xc);
+    swc1(m + 0x2c, fpu_add(fpu_mul(grow, u2f(0x3dcccccdu)), fpu_div(fpu_mul(grow, lwc1(pv + 4)), lwc1(OV(0x001616dcu)))));
 }
 
 // orig: (none)

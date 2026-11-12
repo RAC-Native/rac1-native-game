@@ -222,8 +222,11 @@ add_library(rac1_game STATIC
     ovl/decoy_fx.cpp
     ovl/decoy_obj.cpp
     ovl/morph.cpp
+    ovl/morph_chicken.cpp
     ovl/morph_draw.cpp
     ovl/morph_fx.cpp
+    ovl/morph_hud.cpp
+    ovl/drone.cpp
     ovl/tesla.cpp
     ovl/tesla_ball.cpp
     ovl/fx1471.cpp
