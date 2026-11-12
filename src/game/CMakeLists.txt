@@ -218,6 +218,15 @@ add_library(rac1_game STATIC
     ovl/ryno_fx.cpp
     ovl/visibomb.cpp
     ovl/visibomb_ball.cpp
+    ovl/decoy.cpp
+    ovl/decoy_fx.cpp
+    ovl/decoy_obj.cpp
+    ovl/morph.cpp
+    ovl/morph_draw.cpp
+    ovl/morph_fx.cpp
+    ovl/tesla.cpp
+    ovl/tesla_ball.cpp
+    ovl/fx1471.cpp
     ovl/weapon_fx.cpp
     ovl/mine.cpp
     ovl/taunter.cpp
