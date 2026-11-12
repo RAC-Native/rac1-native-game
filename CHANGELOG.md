@@ -86,6 +86,11 @@ What changed in each release. Releases are source only: you build the game with 
   3.8 to 2.2, headless). It then stopped copying and reading those commands a second time: its thread is a quarter less busy,
   and the frame up to 9 % shorter again where it still waited for it (Gaspar 2.5 to 2.3 ms). 16:9 and the LOD slider were not
   affected: the renderer decides the world itself there. See docs/performance.md.
+- **Debug menu: the Profiler tab's frame rate was wrong without the overlay.** The tab alone could show several hundred fps
+  where the overlay showed 60: a turn of the host's loop that came before the next game frame was due (it runs no game
+  frame, draws nothing and waits) was counted as a frame of a millisecond or two, and without the overlay the profiler
+  recorded mostly those. Such a turn is no longer a frame: its wait belongs to the frame being recorded, so the tab and
+  the overlay now count the frames shown and agree (checked headless: 59.7 and 59.8 fps where the tab said 75.8).
 - **A shorter frame in widescreen at LOD Original** (no change to the picture or the game): with the view wider than 4:3
   the renderer ran the game's whole moby pass a second time each frame, to draw what the 4:3 view leaves out at the sides.
   That second run now draws only those extra mobys - about a fifth of the mobys at 16:9 - and takes the others from the pass the game
