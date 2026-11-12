@@ -36,7 +36,7 @@ const u8* g_jseen = nullptr;
 u32 g_game_end = 0x02000000u;
 u32 g_mirror_mask = 0x01FFFFFFu;
 }  // namespace ee_detail
-#if defined(RAC1_INLINE_HELPERS) && RAC1_INLINE_HELPERS
+#if (defined(RAC1_INLINE_HELPERS) && RAC1_INLINE_HELPERS) || (defined(RAC1_ACCESSORS_INLINE) && RAC1_ACCESSORS_INLINE)
 // (ee_read / ee_write's error for a null address: the same as their inline code without the switch)
 void ee_read_null() {
     ee_debug_backtrace();

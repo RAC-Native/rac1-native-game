@@ -52,8 +52,13 @@ extern "C" {
    mod of format 3: session_on, checkpoints, the respawn policy; the respawn, session_save and session_load callbacks); 10:
    sections (a session's sections and portals: section_load, section_ready, section_enter, section_unload, section_current,
    section_policy; the section_leave and section_enter callbacks); 11: the rails and the set-piece kit, in ABI 7's room of the
-   table (rail_find .. fade_active; the rail callback) (docs/sdk.md lists what each version added). */
-#define RAC1_MOD_ABI 11
+   table (rail_find .. fade_active; the rail callback); 12: hero contexts and modes (another planet's hero code, Ratchet as
+   Clank, Giant Clank or on the hoverboard: hero_build, hero_build_now, hero_mode, hero_mode_now); 13: bosses (a section's
+   bosses: boss_set, boss_beaten; the boss callback); 14: the HUD's width (hud_width); 15: saving from a plugin (game_save,
+   game_saving); 16: the hoverboard outside a race (board_rule, board_return, board_fall, board_touching); 17: a section put back
+   as at its first entry (section_reset; level.txt's `fresh`); 18: Giant Clank's energy (hero_energy); 19: the mod's other music
+   (music_track, music_track_now; level.txt's music_track lines) (docs/sdk.md lists what each version added). */
+#define RAC1_MOD_ABI 19
 
 #if defined(_WIN32)
 #define RAC1_MOD_EXPORT __declspec(dllexport)
@@ -76,6 +81,10 @@ typedef struct rac1_level_info {
 #define RAC1_HUD_CENTRE 0   /* the 4:3 frame, in the middle of the screen (as hud_text) */
 #define RAC1_HUD_LEFT 1     /* toward the screen's left edge */
 #define RAC1_HUD_RIGHT 2    /* toward the screen's right edge */
+/* The HUD's height in HUD units: the game's frame is 512 x 416 and all of it is on the screen (y 0 its top row, 415 its
+   bottom one; nothing past 416 is drawn). Its width is 512 for RAC1_HUD_CENTRE; api->hud_width() (ABI 14) says how wide the
+   HUD is for LEFT / RIGHT */
+#define RAC1_HUD_HEIGHT 416
 
 /* (ABI 5) base_option's options */
 #define RAC1_BASE_WEAPON 1  /* Kalebo III's Gadgetron robots (541): their weapon 0..2 */
@@ -153,6 +162,29 @@ typedef struct rac1_hazard {
 #define RAC1_PATH_ONCE 0      /* to its last point, then it stops */
 #define RAC1_PATH_LOOP 1      /* from its last point to its first, round again */
 #define RAC1_PATH_PINGPONG 2  /* back and forth */
+
+/* (ABI 12) hero_mode's modes: Ratchet as himself, as Clank, as Giant Clank, on a hoverboard */
+#define RAC1_HERO_NONE 0
+#define RAC1_HERO_CLANK 1       /* riding an object of Orxon's Clank class (import "10:87") */
+#define RAC1_HERO_GIANT_CLANK 2 /* riding an object of Quartu's Giant Clank class (import "15:419") */
+#define RAC1_HERO_BOARD 4       /* on a hoverboard (import "16:439"), with Kalebo III's hero code (hero_build(16)) */
+/* (ABI 18) Giant Clank's energy bar: its most, what hero_mode(RAC1_HERO_GIANT_CLANK, ..) starts him with */
+#define RAC1_GIANT_ENERGY_MAX 200
+/* (ABI 13) the boss callback's events: a boss beaten (it left play: the session goes on), a boss placed again after a death in
+   its section (the fight from its start: `obj` its new object) */
+#define RAC1_BOSS_BEATEN 1
+#define RAC1_BOSS_AGAIN 2
+
+/* (ABI 16) board_rule's rules: the hoverboard free (no race: no laps, no race HUD, a fall back where he got on or at
+   board_return's place) or in its planet's race. RAC1_BOARD_AUTO: free on the mod's own geometry and in other planets'
+   worlds, the race in its own planet's world (`world kalebo`, `world rilgar`) */
+#define RAC1_BOARD_AUTO 0
+#define RAC1_BOARD_FREE 1
+#define RAC1_BOARD_RACE 2
+
+/* (ABI 12) hero_build's generic hero code (Veldin's, Gaspar's, Umbris's: their lava), on a level mod of any format whose base
+   level has hero code of its own (Kalebo III, Quartu, Rilgar) */
+#define RAC1_HERO_BUILD_GENERIC (-2)
 
 /* (ABI 9) A session's respawn: given to the respawn callback */
 typedef struct rac1_respawn {
@@ -274,7 +306,7 @@ typedef struct rac1_api {
     void (*smoke)(const float pos[3], const float vel[3], float size);
 
     /* -- the HUD (from the hud callback only) -- */
-    /* `text` (plain ASCII) in the game's small font at (x, y) of the 512 x 448 HUD, colour 0xAABBGGRR (alpha 0x80 opaque) */
+    /* `text` (plain ASCII) in the game's small font at (x, y) of the 512 x 416 HUD, colour 0xAABBGGRR (alpha 0x80 opaque) */
     void (*hud_text)(int32_t x, int32_t y, uint32_t abgr, const char* text);
 
     /* -- the camera -- */
@@ -386,7 +418,7 @@ typedef struct rac1_api {
     void (*input_hold)(int on);
 
     /* -- the HUD (from the hud callback only) -- */
-    /* a flat rectangle w x h from (x, y) (512 x 448 HUD units, as hud_text), colour 0xAABBGGRR, alpha 0x80 opaque, 0x40 half
+    /* a flat rectangle w x h from (x, y) (512 x 416 HUD units, as hud_text), colour 0xAABBGGRR, alpha 0x80 opaque, 0x40 half
        transparent: a panel behind your texts (draw it first). anchor: RAC1_HUD_* */
     void (*hud_rect)(int32_t x, int32_t y, int32_t w, int32_t h, uint32_t abgr, int32_t anchor);
     /* hud_text at `scale` times the font's size (1: hud_text's, 2: twice as large; at most 8), anchor RAC1_HUD_* */
@@ -575,6 +607,93 @@ typedef struct rac1_api {
     int32_t (*section_current)(char* name, int32_t cap);
     /* section `name`'s objects when it is left: RAC1_SECTION_REMOVE, _FREEZE or _KEEP; -1 only asks. The policy now, -1 no such */
     int32_t (*section_policy)(const char* name, int32_t policy);
+
+    /* ======== ABI 12 (test RAC1_API_HAS(api, hero_build)) ======== */
+    /* -- hero contexts and modes (docs/sdk.md, "Hero modes"; a session only): another planet's own hero code, Ratchet as Clank,
+          Giant Clank or on a hoverboard. level.txt's `hero` line does the same for a section -- */
+    /* (a session) the hero code and camera code of level `level` run Ratchet from now on, as on that planet: 16 Kalebo III (its
+       hero rides the hoverboard), 15 Quartu, 13 Gemlik, 10 Orxon, 5 Rilgar; -1 the session's own (Veldin's);
+       RAC1_HERO_BUILD_GENERIC the generic code on a level mod of any format on such a base. 1 done, 0 not (no session, a level
+       without hero code of its own). Off a hoverboard first when the new code has none */
+    int (*hero_build)(int32_t level);
+    /* the level whose hero code runs Ratchet now, -1 the session's own */
+    int32_t (*hero_build_now)(void);
+    /* Ratchet in mode `mode` riding the object `obj` (RAC1_HERO_CLANK, _GIANT_CLANK: it becomes the hero, his health and weapons
+       kept for his return; RAC1_HERO_BOARD: on it, with hero_build(16)); RAC1_HERO_NONE (obj ignored): out of the mode he is
+       in, back as Ratchet where the object is. 1 done, 0 not (dying, already in a mode, no such object) */
+    int (*hero_mode)(int32_t mode, uint32_t obj);
+    /* Ratchet's mode now (RAC1_HERO_*) */
+    int32_t (*hero_mode_now)(void);
+
+    /* ======== ABI 13 (test RAC1_API_HAS(api, boss_set)) ======== */
+    /* -- bosses (docs/sdk.md, "Bosses"; a session with sections): level.txt's `boss` line names a section's bosses by class -- */
+    /* the object `obj` (in play in the current section: one of its placed objects, or one you spawned) one of the section's
+       bosses: a death of Ratchet's in the section takes it out and places (or spawns) it again, the fight from its start; its
+       leaving play otherwise is beaten (the boss callback). 1 done, 0 not (no sections, no such object) */
+    int (*boss_set)(uint32_t obj);
+    /* the bosses beaten in section `name` ("" or NULL: the current one) in this visit of the session; -1 no such section */
+    int32_t (*boss_beaten)(const char* name);
+
+    /* ======== ABI 14 (test api->abi >= 14, or RAC1_API_HAS(api, hud_width)) ======== */
+    /* -- the HUD's width (docs/sdk.md, "The HUD's area") -- */
+    /* the HUD's width in HUD units: 512 with the original's 4:3 HUD (the default), more with a wider one over a widened view
+       (Options > Display > HUD: about 683 at 16:9, 910 at 21:9; never wider than the view). The RAC1_HUD_LEFT elements move
+       (hud_width() - 512) / 2 units to the left, the RAC1_HUD_RIGHT ones as far to the right; RAC1_HUD_CENTRE's stay put. A
+       display value (the player's window and options): use it to lay out what you draw, never for the game's state */
+    int32_t (*hud_width)(void);
+
+    /* ======== ABI 15 (test api->abi >= 15, or RAC1_API_HAS(api, game_save)) ======== */
+    /* -- saving (docs/sdk.md, "Saving (ABI 15)") -- */
+    /* a save of the game into the memory card's slot the player chose, as leaving a planet makes one (the game's
+       level_change_request): 1 started, 0 not (no slot chosen, the card busy or a save in progress, not in play: a menu, a
+       cutscene, the ship, the vendor, a level change, a death, a section switch; the last game_save started less than a
+       second ago). Asynchronous: the card writes it over the next frames; every plugin's save (and session_save) callback
+       runs as in every save, when it is written, so your records go into save<N>.pc with it. From the frame, trigger, rail,
+       boss and test callbacks (not from hud, nor during a replay). At most one a second: do not call it every frame */
+    int (*game_save)(void);
+    /* 1 while a save of the game is being written to the card (one game_save started, a menu's, a planet's), else 0 */
+    int (*game_saving)(void);
+
+    /* ======== ABI 16 (test api->abi >= 16, or RAC1_API_HAS(api, board_rule)) ======== */
+    /* -- the hoverboard outside a race (docs/sdk.md, "The hoverboard outside a race"; a level mod's level). Until the level
+          ends: a section switch keeps them -- */
+    /* the board's rule (RAC1_BOARD_AUTO, _FREE, _RACE; -1 only asks): the rule in force now, RAC1_BOARD_FREE or RAC1_BOARD_RACE */
+    int32_t (*board_rule)(int32_t rule);
+    /* where a free board's fall puts Ratchet back on it, turned `yaw`; NULL: where he got on (the default) */
+    void (*board_return)(const float pos[3], float yaw);
+    /* a free board's fall height: below `z` he falls (and is put back); `set` 0: 2 units over the death height (the default) */
+    void (*board_fall)(int32_t set, float z);
+    /* the objects (mobys) Ratchet on the board touches now: the game's own sphere query on their collision about his body, the
+       board and Ratchet left out. Their count, at most `max` into `out`; 0 off the board. Hit them yourself (hit_send) */
+    int32_t (*board_touching)(uint32_t* out, int32_t max);
+
+    /* ======== ABI 17 (test api->abi >= 17, or RAC1_API_HAS(api, section_reset)) ======== */
+    /* -- a section put back (docs/sdk.md, "Putting a section back"; a session with sections) -- */
+    /* section `name`'s placed objects as at its first entry: those killed in this visit, which stay so otherwise (its policy,
+       a save), placed again at its next entry; the mobys its objects spawned and the plugin's bosses in it taken out; its
+       bosses to beat again (boss_beaten 0); a world section's level state (what its objects wrote: crates broken, things taken)
+       back to a first visit's. Not allowed on the current section, on main, or one a switch is pending into: 0, the log says
+       why. 1 done. A save made afterwards holds the section as fresh. level.txt's `fresh` on a `section` line does the same at
+       every entry */
+    int (*section_reset)(const char* name);
+
+    /* ======== ABI 18 (test api->abi >= 18, or RAC1_API_HAS(api, hero_energy)) ======== */
+    /* -- Giant Clank's energy (docs/sdk.md, "Giant Clank's energy"; a session) -- */
+    /* Giant Clank's energy bar (0 to RAC1_GIANT_ENERGY_MAX, the one on Quartu's HUD; at 0 he falls (state 0x62) and Ratchet is
+       dead: the soft reset). `set` >= 0: the energy first set to it (at most RAC1_GIANT_ENERGY_MAX): hero_energy(
+       RAC1_GIANT_ENERGY_MAX) refills it. Returns the energy now; -1 when Ratchet is not Giant Clank (nothing set). hero_mode
+       starts him with the most */
+    int32_t (*hero_energy)(int32_t set);
+
+    /* ======== ABI 19 (test api->abi >= 19, or RAC1_API_HAS(api, music_track)) ======== */
+    /* -- the mod's other music (docs/sdk.md, "Music tracks"; a level mod) -- */
+    /* level.txt's `music_track <name> ...` played instead of the level's music (fading the playing music out over `fade_frames`
+       frames first; 0 at once). While it plays a section switch and a death (a soft reset, a restart) do not change the music:
+       it ends with music_track(NULL, fade_frames) (back to the level's music, or the current section's) or by leaving the
+       level. 1 done; 0 no such track (the log says so) */
+    int32_t (*music_track)(const char* name, int32_t fade_frames);
+    /* the music_track playing (as named in level.txt), NULL none */
+    const char* (*music_track_now)(void);
 } rac1_api;
 
 #define RAC1_API_HAS(api, field) ((api)->size >= offsetof(rac1_api, field) + sizeof((api)->field))
@@ -647,6 +766,12 @@ typedef struct rac1_mod {
     /* Ratchet and a rail of level.txt's (`rail`: rail_find's handle, `name` its name): RAC1_RAIL_ENTER, _END, _LEAVE, after the
        hero's update, before the frame callback */
     void (*rail)(void* user, int32_t rail, const char* name, int32_t event);
+
+    /* ======== ABI 13 ======== */
+    /* (sections) a boss of section `name` (`cls` its class, as the session numbers it; `obj` its object): RAC1_BOSS_BEATEN (it left
+       play: beaten; the session goes on, the game never ends there), RAC1_BOSS_AGAIN (placed again after a death of Ratchet's in
+       the section: `obj` the new object), before the frame callback */
+    void (*boss)(void* user, const char* name, int32_t cls, uint32_t obj, int32_t event);
 } rac1_mod;
 
 /* The ABI the plugin was built with (rac1_mod_abi): put RAC1_MOD_DECLARE_ABI() once in a source file */

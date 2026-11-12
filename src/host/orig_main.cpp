@@ -165,6 +165,7 @@
 #include "host_input.h"
 #include "sample_prof.h"
 #include "profiler/host_profiler.h"
+#include "profiler/perf_switch.h"
 #include "sim_autopilot.h"
 #include "sim_script.h"
 #include "update_check.h"
@@ -385,12 +386,32 @@ struct MobySkipsMemo {
     std::vector<rac1::gs::Gs::SkipRange> ranges;
 };
 MobySkipsMemo g_moby_skips_memo;
-// orig: (host) the hash of a chain's bytes (a, e)
+// orig: (host) the hash of a chain's bytes (a, e): the memo's check that the chain walked again is the one noted. Four words at a
+// time, each into its own sum (the multiplies do not wait for one another: a chain is some hundreds of KB, hashed every frame
+// in the frame's preparation). RAC1_PERF_CHAIN_HASH=0: one sum, a word at a time, as before
 static uint64_t chain_bytes_hash(uint32_t a, uint32_t e) {
+    static const bool wide = rac1::perf::switch_value("RAC1_PERF_CHAIN_HASH", 1) != 0;
     uint64_t h = 1469598103934665603ull;
     const uint8_t* p = static_cast<const uint8_t*>(ee_ram_ptr_read(a));
     if (p == nullptr) return h;
-    for (uint32_t i = 0; i + 8 <= e - a; i += 8) {
+    const uint32_t n = e - a;
+    uint32_t i = 0;
+    if (wide) {
+        constexpr uint64_t k = 1099511628211ull;
+        uint64_t h1 = 0x9e3779b97f4a7c15ull, h2 = 0xc2b2ae3d27d4eb4full, h3 = 0x165667b19e3779f9ull;
+        for (; i + 32 <= n; i += 32) {
+            uint64_t w[4];
+            std::memcpy(w, p + i, 32);
+            h = (h ^ w[0]) * k;
+            h1 = (h1 ^ w[1]) * k;
+            h2 = (h2 ^ w[2]) * k;
+            h3 = (h3 ^ w[3]) * k;
+        }
+        h = (h ^ (h1 >> 29) ^ h1) * k;
+        h = (h ^ (h2 >> 31) ^ h2) * k;
+        h = (h ^ (h3 >> 27) ^ h3) * k;
+    }
+    for (; i + 8 <= n; i += 8) {
         uint64_t w;
         std::memcpy(&w, p + i, 8);
         h = (h ^ w) * 1099511628211ull;
@@ -1948,6 +1969,14 @@ void sim_host_press(const char* keys, size_t pos) {
 // below it: tools/overlay_match's maps) - the lights, the light sets, the hero, the camera, the level's state -, and the moby
 // array (0x15ffd8 .. 0x15ffe0, a moby 0x100 bytes, the end's sentinel with it)
 void draw_memory_take() {
+    // (RAC1_PERF_DRAW_MEM; 0: copied every frame, as before) the copy's readers are the modern lighting and the ambient particles
+    // (mrp_lighting.cpp, mrp_particles.cpp): with both off - the original graphics - nothing reads it, and the megabyte is not
+    // copied (no range: a read would go to the live memory, and RAC1_DRAW_MEM_CHECK=1 would name it)
+    static const bool always = rac1::perf::switch_value("RAC1_PERF_DRAW_MEM", 1) == 0;
+    if (!always && g_modern_shadows == 0 && g_ambient_particles <= 0) {
+        rac1::ee_copy_take(nullptr, 0);
+        return;
+    }
     rac1::EeCopyRange r[3];
     r[0] = {0x00130000u, 0x00220000u};
     const uint32_t first = lwu(OV(0x0015ffd8u)), last = lwu(OV(0x0015ffe0u));
@@ -3423,7 +3452,11 @@ int main(int argc, char** argv) {
         // its menu's frames gone, for that one frame (a flicker, on Windows above all)
         if (steps == 0 && !host_paused && (!headless || realtime_test)) {  // (RAC1_REALTIME: as a window does)
             const double wait_s = std::max(0.0, 0.5 - game_time) / 60.0;  // (the next game frame is due when game_time reaches 0.5)
-            std::this_thread::sleep_for(std::chrono::duration<double>(std::max(wait_s, 0.001)));
+            {  // (the debug menu's profiler: not a frame - the wait is the frame's that is being recorded, at its cap)
+                RAC1_PROF_ZONE(kPacing);
+                std::this_thread::sleep_for(std::chrono::duration<double>(std::max(wait_s, 0.001)));
+            }
+            rac1::prof::frame_hold();
             fprof.end_frame();
             continue;
         }
@@ -4013,6 +4046,7 @@ int main(int argc, char** argv) {
             if (menu_mode || fd.fade || fd.vendor_pic || title || movie_pic != nullptr || fd.exiting) g_lazy_shown.resolve();
             else g_lazy_shown.pending = false;  // (a frame of the game: it will be the last shown)
             if (rac1::vk::is_active()) {
+                RAC1_PROF_ZONE(kFrameBegin);
                 rac1::vk::begin_frame(w, h, 0.02f, 0.02f, 0.04f, 1.0f);  // (colour, depth and stencil cleared)
                 rac1::vk::set_viewport(vx, vy, vw, vh);
             } else {
@@ -4676,6 +4710,8 @@ int main(int argc, char** argv) {
             mrp_lod_report();
             mrp_fx_report();
             mrp_reflect_report();
+            rac1::ps2fpu::raw_report();
+            rac1::ovl_code_memo_report();
             if (s_mrp_skip_mode != 0)
                 std::printf("[mrp-skip] mode %d: chain tags walked dry %llu; verify: skipped skinning's next record equal %llu, different %llu\n", s_mrp_skip_mode,
                             static_cast<unsigned long long>(rac1::gs::gs_global().skipped_tags()), static_cast<unsigned long long>(g_moby_mrp_skip_next_ok),

@@ -176,8 +176,10 @@ add_library(rac1_game STATIC
     enhance/mod_code.cpp
     enhance/level_mod_hero.cpp
     enhance/session.cpp
+    enhance/packet_rings.cpp
     enhance/session_runtime.cpp
     enhance/sections.cpp
+    enhance/hero_modes.cpp
     enhance/section_world.cpp
     enhance/setpieces.cpp
     enhance/pool.cpp
@@ -222,6 +224,7 @@ add_library(rac1_game STATIC
     ovl/world_cull_tfrag.cpp
     ovl/world_cull_tie.cpp
     ovl/world_cull_shrub.cpp
+    ovl/world_chained.cpp
     ovl/world_lighting_fast.cpp
     ovl/world_lighting_tfrag.cpp
     ovl/moby_shadows_fast.cpp

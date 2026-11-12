@@ -47,6 +47,13 @@ struct ModInfo {
     // none, 0..18 that level's tracks, kLevelMusicOwn the build's music files: level_music_files, the intro then the loop)
     int level_music = -2;
     std::vector<std::string> level_music_files;
+    // its other music (level.txt's music_track lines, build.json's "music_tracks"): each a name and its files (the intro, then
+    // the loop), after the music's files in the level's window; the plugins' music_track plays one
+    struct LevelTrack {
+        std::string name;
+        std::vector<std::string> files;
+    };
+    std::vector<LevelTrack> level_tracks;
     int level_sky = -1;             // the level whose sky the build has (level.txt's sky line: 0..18), -1 the base level's
     int level_objects = 0;          // the placed objects (level.txt's moby lines): uids 1..level_objects (the hero's skipped)
     // the spawn pools (level.txt's spawn lines): per class, the uids of the objects the composer placed for the plugins'
@@ -78,7 +85,7 @@ constexpr const char* kPluginFile = "rac1_mod.so";  // (CMake's MODULE suffix on
 
 // The level composer's version (src/setup/level_compose.cpp): a build made by another version is made again by the
 // setup, and the game does not use it ("needs setup")
-constexpr int kLevelComposerVersion = 6;
+constexpr int kLevelComposerVersion = 9;
 // The level folder formats this build reads (level.format): 1 (on Veldin, level 0), 2 (on a base level of the allow-list), 3 (a
 // session: loaded once, a death a soft reset; on Veldin by default, or a base level of the allow-list: docs/open-engine.md)
 constexpr int kLevelFormat = 3;

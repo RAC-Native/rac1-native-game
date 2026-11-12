@@ -17,7 +17,8 @@ namespace rac1 {
 constexpr int GEMLIK = 13;
 
 // orig: (host) the current translation target is Gemlik Base's overlay (level 13)
-inline bool on_gemlik() { return on_level(GEMLIK); }
+// (its hero code and camera code also in a session whose hero context it is: variants.h on_hero_level)
+inline bool on_gemlik() { return on_hero_level(GEMLIK); }
 
 // A level-13 address of the port's own (level-only data / code, not a Veldin equivalent): no Veldin
 // translation; on another region's disc, the region table's.

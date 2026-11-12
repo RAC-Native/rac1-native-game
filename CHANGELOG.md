@@ -5,6 +5,191 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **One mod example: Daino's Arena.** The small example level (`examples/custom-level`: its script, its plugin, its README) is
+  removed; Daino's Arena (`examples/night-arena`) is the SDK's example, and the docs (Mods, Custom levels: code, the SDK, the
+  environment variables) are written around it. Its music "Overworld" by Daino Selvatico (CC BY 4.0) moved with it to
+  `examples/night-arena/music/overworld.ogg`. No game code changed; mods already composed need no recompose.
+
+- **Level mods: more music, kept through sections and deaths (SDK ABI 19).** level.txt's `music_track <name> <loop> [<intro>]`
+  lines (as many as wanted, the `music` line's formats: WAV, Ogg Vorbis or VAG, stereo, an intro then its loop) and the
+  plugin's `music_track(name, fade_frames)`: the track instead of the level's music, a fade out first; while it plays a
+  section switch does not put the section's music on and a death (a soft reset) does not restart it. `music_track(NULL, ...)`
+  brings back the level's music (the current section's), and leaving the level ends it; `music_track_now()` says which plays.
+  The composed output of existing mods is unchanged (no recompose needed); the original runs as before.
+
+- **Level mods: a plugin's Giant Clank works on a mod's own geometry** (rockets, energy bomb, walls, landings, Ratchet on his
+  shoulder). On the arena (a Kalebo III base) the plugin's Giant Clank walked over the 6-unit wall, hung in the fall state (0x5c) for
+  as long as the player watched, showed Ratchet on his shoulder as a flickering heap and had rockets and an energy bomb that
+  were never seen and hurt nothing. Four causes, none in Quartu's own code. A hero context (`hero_build(15)`) joined the
+  overlay's own hero build instead of replacing it, so the dispatch lines Quartu's build has no row for ran Kalebo III's
+  hoverboard motion, ground and slot code: the hero code of the context's level now runs alone; Kalebo III's Ratchet class has not
+  the sequence (0x81) Ratchet plays riding on a mode's object: filled from the donor core as the other missing sequences; the
+  missiles (`15:256`), the bomb's shock (`15:1523`) and the jump's light shaft (`15:1427`) are spawned by the hero's code, not
+  by class 419, and the base had none: imported with the mode (three class slots), taken out with it; and the body of Giant Clank
+  (his collision capsule, which grows from Ratchet's size in two seconds) stayed small and hovering when the mode was entered in
+  the air or just after a landing: given at once then. Switching the hero code in one section per challenge (the board, then
+  Giant Clank, then the board) works. A new test aid: `RAC1_HERO_DETAIL=1` with `RAC1_HERO_STATE=<n>` prints his capsule, contacts
+  and Ratchet's own moby. The original, the arena's Rilgar race and Kalebo world run frame for frame as before; mods need no
+  recompose (the composer's version stays 9), no new ABI.
+- **Level mods: a death no longer leaves the player's weapons behind, and a plugin's Giant Clank no longer dies by itself** (the mod
+  SDK's ABI 18: `hero_energy`). The soft reset of a session left in play what Ratchet's weapons and equipment had spawned
+  (the Glove of Doom's hand and agents, the Mine Glove's mines, the Drone Device's drones, the Decoy, the Taunter, the Visibomb,
+  the Devastator's and every other projectile, his pack, helmet and boots) and cleared the player block that remembers them: the
+  game spawned them again beside the old ones, which went on running with nothing to tell them the hero had been reset (frozen
+  agents, a second hand moby posing his arms, a game that crashed on aiming). A level's start clears them with the whole moby array;
+  the soft reset now takes out everything the hero spawned and what his spawns spawned (tracked in a session from the arrival), and
+  gives back the animation layers his moby held, before his state is cleared. Separately, a Giant Clank entered by a plugin
+  (`hero_mode(RAC1_HERO_GIANT_CLANK, ..)`, level.txt's `hero ... giantclank` line) on a Kalebo III base started with an energy bar
+  of 0, since the game's start of the form (energy 200) is Veldin's and the base's own hero code was taken: he fell (state 0x62,
+  a death) ten to fourteen seconds later. He starts with 200 now, and `hero_energy(set)` reads and refills it. Nothing changes for
+  the original or for a mod that is not a session; mods need no recompose (the composer's version stays 9), a plugin using
+  `hero_energy` is built for ABI 18.
+- **Many mobys at once: a crash with about 110 enemies fixed; limits logged and documented.** With a crowd of mobys in a level
+  mod (the arena's last round: 110 enemies of five planets) the game died with `Pointer resolution out of bounds: 0x10000004`.
+  The cause: the frame's packet buffer (two rings of 1.4 to 1.7 MB) was filled by the moby draw loop up to its limit, and the passes
+  after it, the mobys' drop shadows (up to 0x3d000 bytes) and the particles, wrote on through the skinning ring and out of the
+  buffer's end into the HUD's tables. The shadows and the particles now stop before the buffer's end (a shadow or a particle less),
+  and so does the moby draw loop's skinning ring (a moby less); a frame the original drew without overflowing is unchanged. A moby
+  spawn past the moby array and a frame whose mobys do not all fit are logged (`[mobys] the moby array is full`, `[render] the
+  frame's packet buffer is full`). The limits (about 300 mobys alive in a session, about 100 drawn per frame) are in the SDK's Limits.
+  Nothing changes for the original's levels; no recompose.
+- **Level mods: the base level's own planet as a section** (`world kalebo` on a mod whose base is Kalebo III). The composer
+  refused it ("level 16's world is the base level's"); the section now brings the planet back for a visit, its geometry,
+  collision, rails (its long rail), sky, music, zones and level data from your disc, with the mod's own put back at the return (the
+  arena can send Ratchet down Kalebo III's rail 1 and back). The planet's level data (its cameras, paths, volumes, rails) is a registry of
+  its own, which the base level's own objects, being the session's view, could not be. Put `hero kalebo` in the section when
+  main runs `hero generic`: the generic hero code does not ride the long rail to its end. Nothing changes for the original or for
+  a mod that does not use it; the composer's version stays 9 (no mod needs a recompose).
+- **Mods and 1.0, said up front (README, SDK docs).** The port supports mods, with Daino's Arena as the complete
+  example; 1.0 (fully native, #145) replaces `api->ram` and the moby offsets with a typed API, and mods made before it
+  will very likely break and need updating. See [the SDK](docs/sdk.md#the-games-memory).
+- **Level mods: loading a save while a session runs no longer crashes entering a planet's world; two sections of the same planet are
+  refused.** A load from the pause menu inside a session (a level mod of the open engine) and then a visit to a section that is a
+  planet's world (Umbris's cave) crashed the game: the objects put back in play at the entry included one of a class with no model or
+  data of its own (a class of code alone), whose position update read a table at the bottom of memory, harmless until a load had left
+  something else there. Those objects are no longer updated that way, as at their placement. Separately, a mod with two sections of the same
+  planet's world (two `world umbris`) crashed when a boss was beaten in one: the planet's level state is one copy in the game, so
+  the composer now refuses such a `level.txt` with a message saying to use one section with several entries. Nothing changes for
+  the original or for a mod that does neither; the composer's version stays 9 (mods need no recompose).
+- **Level mods: a section put back as at its first entry** (the mod SDK's ABI 17; a challenge played again). The objects a
+  section's visit killed stay killed, and a boss beaten stays beaten, for the whole visit of a session: a challenge that
+  uses a planet's world (Batalia's mines, the Snagglebeast) found them gone the second time. `section_reset(name)` puts a
+  section that is not the current one back: its killed and beaten objects placed again at its next entry (their spawns
+  gone, its bosses to beat again, what they wrote in the level's records cleared), and a `fresh` word on a section's line
+  in level.txt does it at every entry. A save holds a section put back as fresh. Tested on Umbris's cave (the boss and its
+  crates), on a section of the mod's own and with saves. Nothing changes for the original or for a mod that does not use
+  them; the composer's version stays 9 (the word is written only for the sections that have it).
+- **A shorter frame at the default 4:3** (no change to the picture or the game): with the settings as they come - Aspect Ratio
+  4:3 Original, LOD Original - the renderer still decoded the frame's world (its terrain, ties and shrubs) from the game's draw
+  commands on an emulated VU1, and the frame waited for it. The game's own world passes now tell the renderer what they drew,
+  and it makes those draws from that: a frame 17 to 41 % shorter on the eight levels measured (Kerwan 3.8 to 2.4 ms, Kalebo III
+  3.8 to 2.2, headless). It then stopped copying and reading those commands a second time: its thread is a quarter less busy,
+  and the frame up to 9 % shorter again where it still waited for it (Gaspar 2.5 to 2.3 ms). 16:9 and the LOD slider were not
+  affected: the renderer decides the world itself there. See docs/performance.md.
+- **Debug menu: the Profiler tab's frame rate was wrong without the overlay.** The tab alone could show several hundred fps
+  where the overlay showed 60: a turn of the host's loop that came before the next game frame was due (it runs no game
+  frame, draws nothing and waits) was counted as a frame of a millisecond or two, and without the overlay the profiler
+  recorded mostly those. Such a turn is no longer a frame: its wait belongs to the frame being recorded, so the tab and
+  the overlay now count the frames shown and agree (checked headless: 59.7 and 59.8 fps where the tab said 75.8).
+- **A shorter frame in widescreen at LOD Original** (no change to the picture or the game): with the view wider than 4:3
+  the renderer ran the game's whole moby pass a second time each frame, to draw what the 4:3 view leaves out at the sides.
+  That second run now draws only those extra mobys - about a fifth of the mobys at 16:9 - and takes the others from the pass the game
+  ran: the game's thread 5 to 11 % less busy and the frame 3 to 6 % shorter on the six levels measured at 16:9. At the LOD
+  slider's other settings the whole pass still runs again, but the renderer no longer decodes each moby's draw commands a
+  second time (the game's draw loop tells it what it wrote): that run 18 to 29 % shorter at LOD High. See
+  docs/performance.md.
+- **Gaspar: the lava torn across the sky down in the cave** (#144). The lava sea's surfaces are drawn from the game's own
+  screen matrix; when that differs from the frame's by a hair (the camera easing in the cave, a zoom: some dozens of frames
+  at a time) the renderer took them for a surface with a matrix of its own and sent their points through the inverse of the
+  frame's matrix, which on Gaspar turns a hair into points tens of thousands of units away: big stretched red sheets across
+  the view. A matrix that is the frame's times one common factor now counts as the frame's, its points the world's. The
+  Original picture and every other level are as before.
+- **Level mods: Rilgar's hoverboard race in its world's section films as on Rilgar.** Its race camera stayed high over the
+  track (about 2.9 units over Ratchet instead of 2.1, 5.9 at the finish line, up to 18 in a fall instead of 8), looking down
+  at the floor: its code kept the camera over Kalebo III's height, the base level's. Now the same camera as on Rilgar, frame
+  for frame. Testing: `RAC1_HERO_STATE` also prints the camera's place and type.
+- **Level of Detail Maximum: Pokitaru's sun shadows** (#144). At Maximum the mobys' draw distance was unlimited, past the
+  renderer's far plane too, and a Pokitaru object the game keeps out of sight (class 1161, a model 38000 units across with its
+  culling sphere far away) was drawn: nothing showed, but the shadow cache cast it, a flat shadow over the whole level. The
+  mobys' distance now stops at the far plane (4000 units, or the game's own value when larger). The Original picture and
+  every other level of detail are as before.
+- **Level mods: a planet's world in a section looks and films as the planet** (level mods must be set up again: the composer's
+  version 9). Umbris's cave: its lava is animated again (its sea, an object of a class with no model, can now be placed:
+  `objects ... 460`), and its boss camera turns toward the Snagglebeast instead
+  of away from it (the level's cameras naming an object now name it where the section placed it). Batalia's rail camera no
+  longer shakes (its own code and the engine now see the same rails). Testing: `RAC1_SESSION_SAVE_AT` no longer leaves the
+  game on the card's notice (mode 4) on a level mod off Veldin's base.
+- **Level mods: a planet's world as a section, its objects and effects.** Coming back to main from Umbris's cave with its
+  class 529 placed (Ratchet's ship parked there, which makes itself the ship class 533) crashed the game; it now leaves with
+  the section's other objects. What a world's objects spawn (a boss's helpers, debris, explosions) leaves with them too, and a
+  death takes a boss's out before it comes back. The Snagglebeast's fire rings and the planet's other effects draw with the
+  planet's own effect textures (they were the base level's: missing or wrong). A world's objects of a class the base level
+  also uses keep reading their planet's paths (Gaspar's 52 on Kalebo III's base). Classes "(the base's)" in compose.log are
+  the planet's own (the same model, sounds and code).
+- **A faster game frame** (no change to the pictures or the game): the game's own code takes 27 to 34 % less time a frame
+  and a frame at 16:9 with LOD High 16 to 18 % less. The PS2's float rules are no longer applied by hand at every
+  operation where the processor's mode already gives them (the VU0's and the FPU's adds and multiplies), the memory
+  accessors are no longer a call each, and work the renderer repeated every frame is done once (the reflections' cull
+  boxes with reflections off, the tfrags' opacity table, Vulkan's copy of every tie's colours, a megabyte of the game's
+  memory copied for readers that were off). See docs/performance.md.
+- **Level mods: every zone of a world's section drawn** (`zones all` in a `world` section; level mods must be set up again:
+  the composer's version 8). A planet's world shows what the planet itself draws from the camera's place (its zone grid);
+  `zones all` draws all of it wherever the camera is, for views the planet never had.
+- **Level mods: the hoverboard outside a race** (the mod SDK's ABI 16). Kalebo III's board ridden on a level mod's own
+  geometry or in another planet's world (`world quartu`) ran its race's logic there: the race HUD (lap, time, place), and in
+  Quartu's world a fall at once and for ever ("back on the track" of Kalebo III's race); on the mod's own ground its first
+  fall or crash killed Ratchet. Now it rides free there: no laps, no race HUD, a fall puts him back on the board where he got
+  on (or where the plugin says: `board_return`, `board_fall`), a crash a little before it. In Rilgar's world (`world rilgar`,
+  `hero rilgar board`) the race is Rilgar's own (it stood at the start for ever). `board_rule` forces free or race, and
+  `board_touching` says which enemies the board runs into (the plugin knocks them down with `hit_send`).
+- **The mod SDK: saving from a plugin** (ABI 15): `game_save()` saves the game into the slot the player chose, as leaving a
+  planet does (a level mod's level, a session and its checkpoint included), and `game_saving()` says while the save is
+  being written, so a mod can save when a challenge ends and show "Saving...". Every plugin's records go into the save
+  as in every save. A planet left from a level mod's level no longer saves the items the level lent for the visit.
+- **Level mods: the hero's missing sounds.** On a level mod on another base than Veldin's, Ratchet's sounds that base's
+  bank lacks were silent: with `hero generic` on Kalebo III's base, his burn in the lava and his sinking. They now play,
+  from Veldin's bank.
+- **The mod SDK: the HUD's width** (ABI 14): `hud_width()` says how wide the HUD is (512 units at 4:3, about 683 at 16:9,
+  910 at 21:9), so a plugin knows how far its `RAC1_HUD_LEFT` / `RAC1_HUD_RIGHT` elements move and can keep a centred banner
+  off a box at the side. docs/sdk.md's "The HUD's area": the HUD is 512 x 416 units (the docs said 448), all of it on the
+  screen (`RAC1_HUD_HEIGHT`).
+- **The renderer's code, cleaned up** (no change to the pictures or the game): functions nobody called removed from the
+  Modern Rendering Pipeline (MRP) and the older renderers, and docs/rendering.md rewritten to say plainly what the MRP is
+  and is not: the game's code still produces its draw commands, the MRP interprets them with its own OpenGL / Vulkan
+  drawing, and it never rasterises through an emulation of the PS2's graphics chip.
+- **Level mods: the screen fades cover an ultra-wide screen.** A plugin's `fade()` and a section switch's fade stopped at
+  the 4:3 frame's right side on a widened view (an ultra-wide screen): now the whole width.
+- **Level mods: bosses** (`level.format` 3, the mod SDK's ABI 13): the **Snagglebeast** fights in Umbris's cave as a section
+  (`world umbris`, `objects all` in a box round the cave, `boss umbris.snagglebeast`), on its own code, with its health bar
+  and portrait. A death in the fight starts it over (Ratchet back at the checkpoint, the boss whole again, no loading
+  screen); beating it never ends the game or changes your Umbris: the session goes on, the boss stays beaten for the visit
+  (and in a save made there), and your plugin is told (the `boss` callback) to open the way on. Every planet's world as a
+  section now also brings that planet's camera code, its HUD pictures (Giant Clank's energy bar in `world quartu`) and its
+  own level state as on a first visit: **Gemlik's ship** waits at its pad, Ratchet boards it and flies it as on Gemlik Base.
+  See docs/mods.md ("Bosses").
+- **Level mods: your own grind rails in a planet's world** (format 3): a `world <planet>` section takes `rail` / `rails`
+  lines in the planet's coordinates, added to the planet's own rails, with their collision strips (a grind continued through
+  a portal into Quartu's arena lands Ratchet on its floor); a section without a `hero` line keeps main's (`hero generic`), and
+  a base level's enemies hunting Ratchet (Kalebo III's robots) follow him into the world and fight there.
+- **Level mods: your rail's model and your objects in a planet's world** (format 3): a `rail ... mesh` line of a `world
+  <planet>` section is now drawn there, and the level's own objects are there too: `object` lines inside a section block,
+  and the objects the plugin spawns, moves (`object_place`) or shows there (main's objects, at main's coordinates, are
+  neither drawn nor solid in the planet's world). A world section's rail model comes after
+  every other mesh, so it changes no `material tie` index of lights.txt. Level mods are composed again (composer 7).
+- **Level mods: the Save and Load pages show a level mod's level.** A save made on it showed its base planet (Kalebo III's
+  name and picture for a level on Kalebo III's code); now the level's own name, region and picture, as the ship's map shows
+  them. With the level's mod off or missing, the pages show the planet loading the save lands on (the one flown from, where
+  the planet prompt opens).
+- **Level mods: Clank, Giant Clank and the hoverboard** (`level.format` 3, the mod SDK's ABI 12): a section's `hero` line
+  runs Ratchet on another planet's own hero code and camera code there, and can make him Clank (`hero orxon clank`), Giant
+  Clank (`hero quartu giantclank`: his walk, punches and ground pound, his camera) or put him on Kalebo III's hoverboard
+  (`hero kalebo` with the race's board: he gets on it, rides, jumps and wipes out as in the race, with its camera). Leaving
+  the section he is Ratchet again, with his health as before; a death in a mode brings him back in it at the checkpoint. A
+  plugin does the same at any moment with `hero_build` and `hero_mode`. On a base level whose hero lacks the magnetic walk's
+  animation (Kalebo III's), Ratchet on Magneboots walkways now looks right (the animation is taken from Veldin's, from your
+  disc). `hero generic` (any format) runs Ratchet on the generic hero code on a Kalebo III base: the game's own lava there
+  (he sinks, Cross bounces him out, left in it he is lost), with its animation, instead of the stand-in hop. See docs/mods.md
+  ("Hero modes") and docs/sdk.md.
 - **Level mods: a game planet as a section** (`level.format` 3): a section block with `world <planet>` (`world kalebo`,
   `world 3`, ...) is that planet's world: its scenery drawn exactly as on the planet (modern renderer, OpenGL and Vulkan),
   its collision, sky, music, fog, lights, cameras and grind rails, with no loading screen when Ratchet steps through a

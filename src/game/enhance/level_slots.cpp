@@ -84,6 +84,32 @@ struct PcItem {
     std::vector<uint8_t> raw;  // the item's bytes
 };
 
+// save<N>.pc's level item (`size` bytes at `p`) into `it`: its level.id, whether the save was made on it, the level flown
+// from, its records. 1 read, 0 another version's, -1 cut short
+int pc_item_parse(const uint8_t* p, uint32_t size, PcItem& it) {
+    auto u32 = [p, size](uint32_t at) { return at + 4 <= size ? static_cast<uint32_t>(p[at] | p[at + 1] << 8 | p[at + 2] << 16 | static_cast<uint32_t>(p[at + 3]) << 24) : 0u; };
+    if (u32(0) != PC_VERSION) return 0;
+    it.on = u32(4) != 0;
+    it.from = static_cast<int32_t>(u32(8));
+    const uint32_t nlen = u32(12);
+    if (16 + nlen + 4 > size) return -1;
+    it.id.assign(reinterpret_cast<const char*>(p + 16), nlen);
+    const uint32_t rlen = u32(16 + nlen);
+    if (20 + nlen + rlen > size) return -1;
+    it.records.assign(p + 20 + nlen, p + 20 + nlen + rlen);
+    return 1;
+}
+
+// The Save and Load pages' planet of each save slot: the level.id its save<N>.pc says it was made on ("" none) and the level
+// flown from; read again when the slot's summary changes (another save there) or a .pc is written
+struct SavePlanet {
+    bool read = false;
+    uint8_t summary[0x1c] = {};
+    std::string id;
+    int32_t from = -1;
+};
+constexpr uint32_t SUMMARIES = 0x0013d2b0u;  // the card's slot summaries (0x1c bytes a slot: +0 the level)
+
 struct State {
     int pending = -1;          // the slot chosen (the ship's row, a save made there): its base level's next load is it
     int current = -1;          // the slot whose level is current
@@ -112,6 +138,7 @@ struct State {
 } g_s;
 
 Names g_names[16];  // per slot - kFirstLevelSlot
+SavePlanet g_save_planets[8];  // per save slot
 std::atomic<int> g_current{-1};  // (g_s.current for the renderer's threads: level_slot_of)
 
 bool trace() {
@@ -438,6 +465,8 @@ void level_slots_header_read(int32_t level) {
             const std::string b = level_slot_build_dir(slot);
             std::vector<std::string> files = {b + "/data.wad", b + "/gameplay.bin"};
             if (m != nullptr) files.insert(files.end(), m->level_music_files.begin(), m->level_music_files.end());
+            if (m != nullptr)  // (its music_track lines' files after them: level_music_track_words)
+                for (const ModInfo::LevelTrack& t : m->level_tracks) files.insert(files.end(), t.files.begin(), t.files.end());
             if (m == nullptr || !disc_level_window_set(slot, files) || !disc_level_window_ranges(slot, dl, dn, gl, gn)) {
                 std::fprintf(stderr, "[levels] level slot %d's build cannot be read: level %d is the game's\n", slot, level);
                 g_s.pending = -1;
@@ -581,6 +610,44 @@ int g_planet_slot = -1;            // the planet page's planet is that slot's (i
 bool g_planet_shown = false;
 }  // namespace
 
+namespace {
+// a slot's build map.img: 512 x 128, 8-bit, as the game's planet pictures (the ship's map, the Save and Load pages)
+bool map_picture_fits(const std::vector<uint8_t>& img) {
+    auto u32 = [&img](size_t o) { return o + 4 <= img.size() ? static_cast<uint32_t>(img[o] | img[o + 1] << 8 | img[o + 2] << 16 | static_cast<uint32_t>(img[o + 3]) << 24) : 0u; };
+    return !img.empty() && u32(0x10) == 0x13 && u32(8) == 512 && u32(0xc) == 128 && img.size() == 0x420u + 512u * 128u;
+}
+
+// slot `slot` has a map.img of that size (read once)
+bool has_map_picture(int slot) {
+    static std::map<int, bool> known;
+    const auto it = known.find(slot);
+    if (it != known.end()) return it->second;
+    return known[slot] = map_picture_fits(build_image(slot, "map.img"));
+}
+
+constexpr int32_t SAVE_PICTURE = 0x100;  // the Save and Load pages' picture of a level mod's level: 0x100 + its level slot
+uint32_t g_fresh_pictures[4] = {};        // the menu pictures' buffers holding one of ours now (not packed: not unpacked)
+
+// slot `slot`'s build map.img (512 x 128, 8-bit) as the picture of the widget `w` (mission_picture_update's): read into its
+// buffer, uploaded as the map's +0x258 (what mission_picture_draw draws); false when there is none of that size
+bool picture_upload(uint32_t w, int slot) {
+    const uint32_t buf = lwu(w + 0x48);
+    const std::vector<uint8_t> img = build_image(slot, "map.img");
+    const uint32_t iw = 512, ih = 128;
+    if (!map_picture_fits(img) || static_cast<int32_t>(img.size()) > menu_buf_size(buf)) {
+        if (!img.empty()) std::fprintf(stderr, "[levels] level slot %d's map.img is not the map's size (512 x 128, 8-bit): not shown\n", slot);
+        return false;
+    }
+    for (size_t i = 0; i < img.size(); ++i) sb(buf + static_cast<uint32_t>(i), img[i]);
+    constexpr OvConst<0x001841f0u> MAP{};
+    const uint64_t t = image_upload_at(highest_bit_index(static_cast<int32_t>(iw)), highest_bit_index(static_cast<int32_t>(ih)), buf + 0x20, buf + 0x420, lw(MAP + 0x244),
+                                       lw(MAP + 0x248));
+    sd(MAP + 0x258, t);
+    texture_uploads();
+    return true;
+}
+}  // namespace
+
 // orig: (none) — enhancement (level_slots.h)
 bool level_slots_map_picture(uint32_t w) {
     if (!level_slots_map_row()) {
@@ -595,30 +662,16 @@ bool level_slots_map_picture(uint32_t w) {
     if ((lw(w + 0x50) == key && g_map_slot == slot) || (st != 0 && st != 2)) return true;
     const uint32_t buf = lwu(w + 0x48);
     if (buf == 0 || lh(0x001516d8) != 0) return true;
-    const std::vector<uint8_t> img = build_image(slot, "map.img");
-    auto u32 = [&img](size_t o) { return o + 4 <= img.size() ? static_cast<uint32_t>(img[o] | img[o + 1] << 8 | img[o + 2] << 16 | static_cast<uint32_t>(img[o + 3]) << 24) : 0u; };
-    const uint32_t iw = u32(8), ih = u32(0xc);
-    const bool fits = !img.empty() && u32(0x10) == 0x13 && iw == 512 && ih == 128 && img.size() == 0x420u + iw * ih &&
-                      static_cast<int32_t>(img.size()) <= menu_buf_size(buf);
     sw(w + 0x50, static_cast<uint32_t>(key));
-    if (!fits) {  // (none: no picture, not the base level's)
-        if (!img.empty()) std::fprintf(stderr, "[levels] level slot %d's map.img is not the map's size (512 x 128, 8-bit): not shown\n", slot);
-        sw(w + 0x44, 0);
-        g_map_ours = true;
-        g_map_slot = slot;
-        return true;
-    }
-    for (size_t i = 0; i < img.size(); ++i) sb(buf + static_cast<uint32_t>(i), img[i]);
-    constexpr OvConst<0x001841f0u> MAP{};
-    const uint64_t t = image_upload_at(highest_bit_index(static_cast<int32_t>(iw)), highest_bit_index(static_cast<int32_t>(ih)), buf + 0x20, buf + 0x420, lw(MAP + 0x244),
-                                       lw(MAP + 0x248));
-    sd(MAP + 0x258, t);
-    texture_uploads();
-    sw(w + 0x44, 2);
     g_map_ours = true;
     g_map_slot = slot;
+    if (!picture_upload(w, slot)) {  // (none: no picture, not the base level's)
+        sw(w + 0x44, 0);
+        return true;
+    }
+    sw(w + 0x44, 2);
     g_planet_slot = -1;
-    if (trace()) std::printf("[levels] the ship's map: level slot %d's picture (%u x %u)\n", slot, iw, ih);
+    if (trace()) std::printf("[levels] the ship's map: level slot %d's picture\n", slot);
     return true;
 }
 
@@ -724,6 +777,7 @@ void level_slots_new_game() {
 
 // orig: (none) — enhancement (level_slots.h)
 uint32_t level_slots_pc_items(std::vector<uint8_t>& d) {
+    for (SavePlanet& sp : g_save_planets) sp.read = false;  // (a .pc written: the pages read the slots' again)
     uint32_t count = 0;
     auto put_item = [&](const std::vector<uint8_t>& item) {
         if (item.size() > 0xffff) return;
@@ -777,21 +831,15 @@ void level_slots_pc_reset() {
 bool level_slots_pc_item(uint32_t id, const uint8_t* p, uint32_t size) {
     if (session_rt_pc_item(id, p, size)) return true;  // (a session's item, session_runtime.h)
     if (id != PC_ITEM) return false;
-    auto u32 = [p, size](uint32_t at) { return at + 4 <= size ? static_cast<uint32_t>(p[at] | p[at + 1] << 8 | p[at + 2] << 16 | static_cast<uint32_t>(p[at + 3]) << 24) : 0u; };
     PcItem it;
     it.raw.assign(p, p + size);
-    if (u32(0) != PC_VERSION) {  // (a newer version's: kept as it is)
+    const int read = pc_item_parse(p, size, it);
+    if (read == 0) {  // (a newer version's: kept as it is)
         g_s.carried.push_back(std::move(it));
         return true;
     }
-    it.on = u32(4) != 0;
-    it.from = static_cast<int32_t>(u32(8));
-    const uint32_t nlen = u32(12);
-    if (16 + nlen + 4 > size) return true;
-    it.id.assign(reinterpret_cast<const char*>(p + 16), nlen);
-    const uint32_t rlen = u32(16 + nlen);
-    if (20 + nlen + rlen > size) return true;
-    it.records.assign(p + 20 + nlen, p + 20 + nlen + rlen);
+    if (read < 0) return true;
+    const uint32_t rlen = static_cast<uint32_t>(it.records.size());
     if (it.on) {
         g_s.saved_on = it.id;
         g_s.saved_from = it.from;
@@ -825,6 +873,88 @@ void level_slots_save_loaded() {
     g_s.prompt = true;
     g_s.prompt_frames = 0;
     g_s.prompt_name = g_s.saved_on;
+}
+
+namespace {
+// save slot `slot`'s level as its save<N>.pc says: made on a level mod's level that is on, its mod; made on one whose mod is
+// off or missing, none and `level` set to the level it was flown from (where loading it lands)
+const ModInfo* save_slot_mod(int32_t slot, int32_t& level) {
+    if (slot < 0 || slot >= 8) return nullptr;
+    SavePlanet& sp = g_save_planets[slot];
+    uint8_t now[sizeof sp.summary];
+    for (uint32_t i = 0; i < sizeof now; ++i) now[i] = lbu(SUMMARIES + static_cast<uint32_t>(slot) * 0x1c + i);
+    if (!sp.read || std::memcmp(now, sp.summary, sizeof now) != 0) {
+        sp = SavePlanet{};
+        sp.read = true;
+        std::memcpy(sp.summary, now, sizeof now);
+        std::vector<uint8_t> d;  // (the .pc's items: u16 id, u16 size, the data, after "R1PC", its version, their count)
+        if (advanced_save_file_read(slot, d) && d.size() >= 8 && std::memcmp(d.data(), "R1PC", 4) == 0) {
+            const uint32_t n = d[6] | d[7] << 8;
+            size_t at = 8;
+            for (uint32_t i = 0; i < n && at + 4 <= d.size(); ++i) {
+                const uint32_t id = d[at] | d[at + 1] << 8, size = d[at + 2] | d[at + 3] << 8;
+                at += 4;
+                if (at + size > d.size()) break;
+                PcItem it;
+                if (id == PC_ITEM && pc_item_parse(d.data() + at, size, it) > 0 && it.on) sp.id = it.id, sp.from = it.from;
+                at += size;
+            }
+        }
+        if (trace() && !sp.id.empty()) std::printf("[levels] save slot %d: made on \"%s\" (flown from level %d)\n", slot, sp.id.c_str(), sp.from);
+    }
+    if (sp.id.empty()) return nullptr;
+    const ModInfo* m = level_slots_on() ? mods_level_by_id(sp.id) : nullptr;
+    if (m == nullptr && sp.from >= 0 && sp.from < 19) level = sp.from;  // (its mod off or missing: where loading it lands)
+    return m;
+}
+}  // namespace
+
+// orig: (none) — enhancement (level_slots.h)
+bool level_slots_save_planet(int32_t slot, int32_t& level, int32_t ids[2]) {
+    const ModInfo* m = save_slot_mod(slot, level);
+    const int k = m != nullptr ? slot_index(m->level_slot) : -1;
+    if (k < 0) return false;
+    ids[0] = TEXT_REGION + 2 * k;  // (the planet texts' order: the region, then the name)
+    ids[1] = TEXT_NAME + 2 * k;
+    return true;
+}
+
+// orig: (none) — enhancement (level_slots.h)
+void level_slots_save_picture(int32_t slot, int32_t& img) {
+    if (img < 0) return;
+    const ModInfo* m = save_slot_mod(slot, img);
+    if (m != nullptr && has_map_picture(m->level_slot)) img = SAVE_PICTURE + m->level_slot;
+}
+
+// orig: (none) — enhancement (level_slots.h)
+bool level_slots_picture_id(int32_t img) {
+    return img >= SAVE_PICTURE + kFirstLevelSlot && img < SAVE_PICTURE + kFirstLevelSlot + 16 && slot_mod(img - SAVE_PICTURE) != nullptr;
+}
+
+// orig: (none) — enhancement (level_slots.h)
+bool level_slots_picture_read(int32_t img, uint32_t buf) {
+    level_slots_picture_take(buf);  // (any read there: a picture of ours it held is gone)
+    if (!level_slots_picture_id(img)) return false;
+    const std::vector<uint8_t> pic = build_image(img - SAVE_PICTURE, "map.img");
+    if (pic.size() > static_cast<size_t>(menu_buf_size(buf))) return false;
+    for (size_t i = 0; i < pic.size(); ++i) sb(buf + static_cast<uint32_t>(i), pic[i]);
+    for (uint32_t& b : g_fresh_pictures)
+        if (b == 0) {
+            b = buf;
+            break;
+        }
+    if (trace()) std::printf("[levels] a save's picture: level slot %d's map.img\n", img - SAVE_PICTURE);
+    return true;
+}
+
+// orig: (none) — enhancement (level_slots.h)
+bool level_slots_picture_take(uint32_t buf) {
+    for (uint32_t& b : g_fresh_pictures)
+        if (b == buf) {
+            b = 0;
+            return true;
+        }
+    return false;
 }
 
 // orig: (none) — enhancement (level_slots.h)
@@ -899,6 +1029,28 @@ void level_music_words_get(uint32_t w[15]) {
 // orig: (none) — enhancement: see level_slots.h
 void level_music_words_put(const uint32_t w[15]) {
     for (uint32_t i = 0; i < 15; ++i) sw(HEADER + 0x148 + i * 4, w[i]);
+}
+// orig: (none) — enhancement: see level_slots.h
+bool level_music_track_words(const char* name, uint32_t w[15]) {
+    const int slot = level_slot_current();
+    const ModInfo* m = slot_mod(slot);
+    if (m == nullptr || name == nullptr) return false;
+    size_t file = 2 + m->level_music_files.size();  // (the window's files: data.wad, gameplay.bin, the music's, the tracks')
+    for (const ModInfo::LevelTrack& t : m->level_tracks) {
+        if (t.name != name) {
+            file += t.files.size();
+            continue;
+        }
+        uint32_t lba = 0, n = 0;
+        std::memset(w, 0, 15 * 4);
+        for (size_t i = 0; i < t.files.size() && i < 2; ++i) {
+            if (!disc_level_window_file(slot, file + i, lba, n)) return false;
+            w[i] = lba;
+        }
+        if (t.files.size() == 1) w[1] = w[0];  // (no intro: the loop twice, as music_set)
+        return true;
+    }
+    return false;
 }
 // orig: (none) — enhancement: see level_slots.h
 bool level_music_words_of(int level, uint32_t w[15]) {

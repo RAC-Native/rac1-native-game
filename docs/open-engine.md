@@ -29,7 +29,10 @@ adds **grind rails** (level.txt's, per section; the hero code's landing gate ski
 classes with a collision mesh of their own), the SDK's ABI 7 room filled (ABI 11). Stage 8 makes a section a **game planet's
 world** (`world <level>`): its scenery drawn by the game's own world passes and the modern renderer from that planet's
 assets, its collision, sky, lights, fog, music and level data the engine's while Ratchet is in it, and the planet's own
-objects a mod chooses placed with their uids mapped to the session's, running on their planet's code.
+objects a mod chooses placed with their uids mapped to the session's, running on their planet's code. Stage 9 adds **hero
+contexts**: another planet's own hero code and camera code run Ratchet in a section (Kalebo III's, which rides the race's
+hoverboard with its race camera), and the game's own **hero modes** (Clank, Giant Clank, the board) are entered from a
+section's `hero` line or a plugin (ABI 12); a base whose hero lacks an animation gets it from Veldin's core.
 
 ## Session memory
 
@@ -542,10 +545,22 @@ session `session_respawn()` runs instead, between the same sound stops before an
    level's own bits: a crate broken, a pickup taken). The game's restart also keeps an enemy killed "for the visit" dead (its
    placement's flag 8); a session brings it back (DECISIONS 4: a battle's enemies come back). The living stay as they are.
    `keep` leaves them all.
-3. **Nothing else**: the weapons, the ammo, the bolts, the items, the session's imports and contexts, the plugins' state and
+3. **The hero's spawns** (done first, before his state is cleared): a level's start clears the whole moby array, so no moby the
+   hero made survives it. The session remembers, from the arrival, every moby spawned while the hero's frame runs
+   (`hero_frame_update`: his equipment, the weapon in his hand, the pack, helmet and boots, the effects his states make) and
+   every moby spawned by one of those in its update (the Glove of Doom's hand's agents, the Mine Glove's mines, the Drone
+   Device's drones, the Decoy, the Taunter, the Visibomb, the Devastator's rocket and the other projectiles): the moby's
+   spawner is the moby whose update runs (`g_spawn_updating`), and the hero's frame names his moby. The soft reset takes them
+   all out (`moby_retire`, after giving back the animation layers a moby holds in the 6-entry pool at 0x18eb40) and gives back
+   the hero's own layers; `hero_init` then clears the player block and the game spawns his equipment again. Before this the old
+   ones stayed beside the new ones: frozen agents (class 230, state 3) where he died, two hand mobys and two packs, the old hand
+   running its aim code on the reset hero (the arms up, broken animations), more agents spawned until the moby array ran out.
+   The plugin's own objects, the placed ones and the imports are not the hero's: they are kept. The log line:
+   `[session] the soft reset takes out the hero's spawns: 21 mobys (186 x8, 229 x1, 230 x9, 601 x1, 607 x1, 1204 x1)`.
+4. **Nothing else**: the weapons, the ammo, the bolts, the items, the session's imports and contexts, the plugins' state and
    the objects they started (base level objects, imported ones, the level's own classes), the spawn pools, the frame clock.
    No level load (one `[levels] level 16's header` line for the whole visit).
-4. **The plugins' `respawn` callback** (SDK ABI 9) with the checkpoint: what the battle needs back is the plugin's to decide
+5. **The plugins' `respawn` callback** (SDK ABI 9) with the checkpoint: what the battle needs back is the plugin's to decide
    (the arena's test copy starts the wave Ratchet died in again, its enemies back).
 
 ```
@@ -615,10 +630,15 @@ RAC1_MEMCARD_DIR=<card> ... RAC1_GOTO=3@60 RAC1_SESSION_LOAD_AT=1200:2 RAC1_FRAM
 the card's operation 0x13; `save<N>.pc` with it), `RAC1_SESSION_LOAD_AT=<frame>:<slot>` loads as its Load page does (the
 card's operation 0xd, then the level left for the save's). A run started by `RAC1_GOTO` never read the card, so the port's
 record still says "unchecked" and the game refuses to save over it: the test marks it read, as a game loaded from the title
-has it.
+has it. Such a run had no save in use either, and the game shows its once-a-boot card notice (screen kind 5: game mode 4
+until Cross, after 2 seconds) the first frame there is one, on any planet but Veldin: right after the test's save, on a level
+mod on Kalebo III's base, for ever in a headless run without input (a plateau on Veldin's base never showed it). The test
+marks the notice shown too, as a game loaded from the title showed it at its first planet. A save made leaving a planet for
+the session's level (the ship, `RAC1_GOTO`) has no session item 0x201: it is made before the session's arrival, and a
+load of it starts the session at its arrival as any level mod's.
 
 Results (headless, the arena's test copy `s5-arena`: Kalebo III's base, the six imported enemies of stage 4, two placed
-robots; and a copy of the example level, `s5-plateau`, on Veldin's engine with Kalebo III's robot imported):
+robots; and a copy of the small example level (a plateau; since removed from the repository), `s5-plateau`, on Veldin's engine with Kalebo III's robot imported):
 
 | Test | Result |
 |---|---|
@@ -773,7 +793,7 @@ placing differs only in the slots (free ones of the spawned room) and the pvars'
 
 ### Testing
 
-The stage's test mod is a copy of the example level (`s6-sections`: main the plateau, `yard` the plateau again 400 units
+The stage's test mod is a copy of the small example level (a plateau; since removed from the repository: `s6-sections`: main the plateau, `yard` the plateau again 400 units
 east with Kalebo III's sky and music, four crates and two of Kalebo III's robots, `cave` a room of our own 400 units north
 with Veldin's sky and no music, a crate and a robot; five portals) with plugin test hooks (`RAC1_MOD_TEST=s6_tour`,
 `s6_switch50`, `s6_walk`, `s6_save`, `s6_load`, `s6_ship`):
@@ -831,6 +851,17 @@ table), `sections.cpp` (a section's rail table).
   line facing along it (`hero_place`): the next hero update's landing check latches it and state 0 takes it (0x28). The
   game's grind always starts along the points (+0x578 = 1): riding back, the attach sets -1 once he is on it.
 
+- **Grind or grab? One table.** A mod rail can be taken from below with the wrench, as Kerwan's overhead rails are (a jump under
+  it: Ratchet hangs from it, state 0x74, along its points). The game has no per-rail information to tell the two: a rail record
+  is the bounding sphere (file +0x0 .. +0xc), the loop flag (file +0x10) and three words that are zero in the original's
+  gameplay files of every level that has rails (the table the load makes: the sphere, the path +0x10, the loop flag +0x14,
+  zeros +0x18 and +0x1c); Kerwan's three rails (paths of two points) are records of the same layout as Blarg's, Batalia's,
+  Oltanis's, Quartu's, Kalebo III's and level 18's. `find_rail_v` (0x20cd08) scans that one table for both: `hero_rail_land_check` (0x20cf58, the feet, with the
+  grind boots) and `hero_rail_grab_check` (0x20d330, the hand point, a jump's state 2 or 4); what differs is the hero code (the
+  generic code calls both, every Novalis-family build only its own: Kerwan's the grab, none of them the landing) and where
+  Ratchet's feet and hands are. There is no `rail` option for it: a rail placed over where Ratchet jumps from below is grabbed;
+  place it out of the hand's reach (above the jump's) or run `rail_enable` (ABI 11) off while he is under it.
+
 ### Items, Magneboots
 
 - `items` (level.sdk) and `item_visit`: the owned byte 0x13d4c0 + item set at the level's start when not owned, cleared
@@ -841,8 +872,8 @@ table), `sections.cpp` (a section's rail table).
 - **Magneboots surfaces** need nothing new: `usemtl type2` faces set the hero's +0x12e7 (`hero_surface_update`) and the
   Magneboots (0x13d4dc) do the rest. Tested on a quarter-pipe of our own (a floor arc, a wall 10 high, an arc, a ceiling at
   30): Ratchet walks up the wall and onto the ceiling (state 0x3f) on Veldin's code (format 3) and on Kalebo III's (format
-  2); on Kalebo III's his model is drawn wrong in the magnetic walk (its hero class lacks those animations: stage 9's hero
-  contexts).
+  2); on Kalebo III's his model was drawn wrong in the magnetic walk (its hero class lacks that animation: given by stage 9,
+  [Hero contexts](#hero-contexts-stage-9)).
 
 ### The set-piece kit
 
@@ -978,7 +1009,16 @@ textures are read on a worker when its section streams in (`mrp_world_prefetch`)
 the classes' and tfrags' tables from EE memory (43 to 73 ms in the tests, under the fade), and a world level is kept when its
 section is left (at most two, with their GPU textures and buffers) and taken back in 0 ms while its section's tables are where
 they were. The session's own level (its host meshes) is loaded again when Ratchet comes back (0 to 12 ms). While a world's
-section is current the level mod's host meshes (main's, the level's own classes' objects) are not drawn.
+section is current the level mod's own meshes (main's, the other sections') are not drawn; what the world's level gets of
+them (`world_host_meshes`, `mrp_world_renderer.cpp`, at its load) is the session's host mesh classes it shows: its sections'
+own instances (the mod's rail models there, `sections.txt`'s `meshes` range of a `world` section of that level) and the
+models of level.sdk's classes, added after the planet's tie classes (`World::host_class_map`: a session class to its tie
+there, for the objects' instances), their textures after its tie textures (CLAMP_1's MINV moved past them), then bound as
+the session's level binds its own: the scene draws them as it draws the session's (GL and Vulkan alike: one scene). A world
+level kept and taken back keeps them. The objects there are those of that section: its `object` lines (level.sdk's
+`sobject` lines), and those spawned, placed or shown in it (`mod_code.cpp`'s `Obj::section`; `sdk_publish` draws them and
+takes the others' collision away, `Obj::away`, giving it back when they are there again). The composer puts a world section's rail models after every other host
+mesh (the classes' models included), so adding one moves no index lights.txt's `material tie` lines name (composer 7).
 
 ### Objects
 
@@ -1005,22 +1045,634 @@ classes imported, the class table 218 of 224).
 | `s8_walk` (forward from Kerwan's start) | the same path as on Kerwan: over the bridge, down the steps, stopped by the wall at 264.18 151.49 50.00 (the native run's stop: 264.18 151.49 50.00) |
 | `s8_robots` (`RAC1_SIM_INPUT=attack`) | Kalebo III's six robots walk to Ratchet and hit him (4 -> 3), die to the wrench, drop bolts (20); a death there: back at the checkpoint in kalebo, the six robots back, fighting again |
 | `s8_rail` | dropped onto Kalebo III's own rail 4: carried along it (the section's rail table: its gameplay file's) |
-| `s8_die` | a death in each world: back at its checkpoint, in it |
+| `s8_die` | a death in each world: back at its checkpoint, in it (two Kerwan crates missing afterwards were not the respawn's: they sit on Kerwan's lift 1210, which the test's `objects` did not choose, and fell through at the entry; with 1210 chosen all nine are there before and after the death: stage 9's `s9_die`) |
 | A save in kalebo (`s8_save`, a crate taken out, `RAC1_SESSION_SAVE_AT=1800:2`), loaded on Kerwan (`RAC1_GOTO=3@60 RAC1_SESSION_LOAD_AT=1200:2`) | the item: checkpoint `arrive` in kalebo; after the load's landing kalebo streamed in, the switch, Ratchet at its checkpoint, the crate still out |
 | `s8_unload` | kerwan left, unloaded (its 19 MB given back), entered again: streamed in again while playing, the renderer's kept level taken back (the tables at the same addresses) |
 | The original; formats 2 and 3 | the reference pictures and RAMHASH unchanged; `RAC1_SECTION_EQUIV` all 19 levels ok; the arena's format 2 regression and stage 5's format 3 runs with the same RAMHASH; the composer's output for the regression mods byte for byte the same |
 
-## What stages 9 and 10 build on
+## Hero contexts (stage 9)
 
-- **Stage 9 (hero contexts)**: a world's section is where another level's hero build matters most (Kalebo III's rails and
-  hoverboard, Gemlik's ship); `world_renderer_level` and `ld_engine_take` show the pattern for a per-section switch of the
-  engine's state; the hero's would be his class's update function and animations.
-- **Stage 10 (bosses)**: a boss's arena can be its planet's world as a section with the boss's class chosen by `objects`;
-  what a boss reads beyond its level data (its cameras: already the engine's in a world's section; its cutscenes, its music
-  changes) is the per-boss work.
-- **Not done**: a world's spawn rules use the session's level state (a first visit), not the planet's story; its objects
-  outside the chosen set do not come (the planet's glass and water on Kalebo III are objects); the GS's VRAM image and the
-  chrome / glass map registers stay the session's (the modern renderer does not read them for the world, the faithful
-  renderer would); the renderer's first entry into a world takes one frame of 43 to 73 ms; Umbris's and Gemlik's skies still
-  end the game on Veldin's code (a world section of them needs another planet's sky); a world on another session base than
-  Veldin's was not tried.
+DESIGN stage 9 (and 5.8): Ratchet run by another level's own hero code in a session, and the game's own hero modes (Clank,
+Giant Clank, the hoverboard) entered from a section or a plugin. The code: `src/game/enhance/hero_modes.{h,cpp}` (the hero
+context, the modes, the hero's sequences), `variants.h` (`on_hero_level`), `context.cpp` (`own_code_tables`), `camera.cpp`
+(`g_camera_types_table`), `sections.cpp` (a section's `hero` line), the composer's `hero` lines (`level_compose.cpp`), the SDK's
+ABI 12 (`mod_code.cpp`).
+
+### What the design said, and what was done
+
+DESIGN 5.8 set moby 0's update function to a tag of A's hero update. That was not needed: the hero's update is Veldin's port
+on every level, and the ports of the hero controller already dispatch, line by line, to a level's transliterated build
+(`if (on_kalebo()) { kal_call(kal_hero_set_state_u ...) }`) while that level is the translation target. A **hero context** is
+a second target for those lines only: `g_hero_level` (variants.h), which `on_kalebo()`, `on_quartu()`, `on_gemlik()`,
+`on_orxon()` and `on_rilgar()` also accept (`on_hero_level`). Their sites are the hero controller's and the camera system's
+(camera types, camera hooks); the sound emitters' and the cutscene extras' lines ask `on_level` (the overlay's only). The
+build's own addresses go through the level's context as any of its classes' do. -1 always on the original's levels.
+
+Three things the build needed beyond the dispatch:
+
+1. **Its jump tables.** A level's own build of an engine function (a variant) keeps its `switch` tables in data blocks its map
+   pairs with Veldin's (the same place in the overlay): through the context its code read Veldin's table, whose labels its
+   `case`s never match. Kalebo III's `hero_set_state` found no case for the board state 0x6b: Ratchet stood on the board
+   without riding it. `own_code_tables` (context.cpp): in a context's engine blocks, a run of two or more words that are
+   labels of the level's own code is such a table: the level sees its own copy (a view onto its image, the words made tags;
+   a paired function's start in it Veldin's). Kalebo III: 87 tables, 1245 words; Kerwan 87 (1369), Umbris 82 (1353), Gemlik
+   87 (1365). The imported classes' code never read those tables (their own functions' tables are their own data already):
+   every regression of stages 5 to 8 has the same RAMHASH with them.
+2. **Its camera types.** Kalebo III's race camera is its own camera type 8 (3 and 8 are its own), Quartu's Giant Clank's 0x16;
+   the camera system finds a type's functions in the overlay's type table (0x1ea880), and Veldin's has no rows 3, 8 or 0x16.
+   The hero context copies the session's table into the session heap with the level's own rows (from its context image: the
+   functions tags) put in place of the same id's or added before the end row, and the camera system reads the copy
+   (`g_camera_types_table`); the cameras are made again (`camera_init`, as a level start) since their rows (+0x8c) are indices
+   into the table. Back to the overlay's table when the context goes.
+3. **Its hero's sequences.** The hero's animations are his class's 256 slots, filled from the level's core at its load
+   (dev_hoverboard.cpp found it). Veldin's core has every one; another base's lacks some (Kalebo III's: 91, the magnetic
+   walk). On a level mod's level, when the hero is about to play a sequence his class has no slot for (`hero_anim_set`'s two
+   ports ask `hero_seq_need`), it is copied from a donor level's core (the hero context's level, else Veldin's), read from the
+   disc on a worker, into `host_layout::HERO_SEQS` (0x02000000, 3 MB above the game's 32 MB), its frame table and trigger
+   block made addresses as the game's load does. In a format 1 / 2 level mod only the magnetic walk's (Ratchet on a
+   Magneboots surface, +0x12e7): its core is read the first time he is on one.
+   **His sounds** likewise: every level's hero class has the same 64 sound definitions, but each level's bank holds only the
+   sounds its own hero uses, the others' sound -1 (nothing plays): Kalebo III's bank lacks 28 (among them the burn in the
+   lava, definition 32, and the sinking, 9), Veldin's only 2 no level's bank has. On a level mod's level (any format), once
+   it is in play, the definitions its base's bank lacks are pointed at Veldin's bank (the pool's `sounds/level00.bnk`, loaded
+   once as a host bank and kept for the run, 1.4 MB of host memory) and its sounds (the pool's row of Veldin's class 0):
+   `[hero] 26 of the hero's 64 sounds are not in level 16's bank: Veldin's`. Without a pool they stay silent.
+
+**Giant Clank's energy.** The bar (the player block's +0x1630, 0 to 200, the element 0xffff on Quartu's HUD) is set to 200 by the
+game's `hero_mode_enter` for the form 2; hero_hurt takes from it, and with 0 left the states choose 0x62 (he falls: Ratchet is
+dead and the soft reset follows). On a level mod whose base is Kalebo III the hero controller's dispatch takes Kalebo III's own
+`hero_mode_enter` (`on_kalebo()` is true on its overlay whatever the hero context), which has no form 2: the bar stayed 0 and a
+plugin's Giant Clank fell after ten to fourteen seconds (`go 1440: state 0x62 energy 0`). `hero_mode_set` now sets the energy
+to 200 itself after entering the form 2, and the SDK's `hero_energy` (ABI 18) reads and refills it. Checked: 2000 frames in
+Quartu's arena (as a plugin's Giant Clank in `world quartu`) with the energy at 200 throughout; set to 50 it stays 50, back to
+200, and 0 makes him fall (state 0x62, the soft reset, Ratchet back at the checkpoint).
+
+**A plugin's Giant Clank on a mod's own geometry (fixed on a Kalebo III base).** Four faults, all of the plugin's Giant Clank on the
+arena's Kalebo III base (`hero generic`, `hero_build(15)` + `hero_mode(RAC1_HERO_GIANT_CLANK)`), none of Quartu's own:
+
+1. *A hero context joined the base's hero build instead of replacing it* (`on_hero_level`, variants.h). With `hero_build(15)` on a
+   Kalebo III overlay both `on_quartu()` and `on_kalebo()` were true; the dispatch lines of the hero controller ask Quartu's build
+   first where it has one of its own, but the ones it has none for (the motion update, the slot update, the water entry, the
+   mode's enter, the sub-state parameter helper) took Kalebo III's. The motion update of Kalebo III is a build of its own whose
+   calls go to its own integration and ground code, so Giant Clank's movement was half Quartu's and half the hoverboard's.
+   Measured before the change with `RAC1_HERO_STATE=20`: he walked over the arena's 6-unit wall to the lava, jumped to 107.7
+   and then hung at 106.58 in the air state 0x5c (anim 5, velocity -0.10, `air` counter growing, 0 over the floor) for ever, the
+   energy bar 0 (ABI 18's note); the arena's agent saw the same pinned in 0x5c. A hero context's level is now the **only** build whose hero lines run (`g_hero_level >= 0`: `on_hero_level(n)` is
+   `g_hero_level == n`, else the overlay's own, the generic code none); the original's levels and a base with no context are as
+   before (the reference pictures, RAMHASH and the arena's Rilgar race and Kalebo world sections with the same hero traces
+   frame for frame as dev's). Now: the wall stops him at its foot (his radius 3.75: y 134.24 before the wall at 138), the ramps are
+   walked down in 0x5b, a jump lands in 0x5a, and he lands from a fall: the same traces as `world quartu`.
+2. *Ratchet glitching.* Ratchet rides on Giant Clank's shoulder: his own moby, attached every frame to the mode object's chain
+   point 5 with his animation set 0x81 (`hero_rider_attach`). Every level's Ratchet class has that sequence but Kalebo III's (as the
+   magnetic walk's 91): on a Kalebo III base the slot was empty and the set every frame was none (`anim 129 frame 255` in the
+   trace), a flickering Ratchet. `hero_mode_set` now fills the slot from the donor cores (the hero context's level's, else
+   Veldin's) as `hero_seq_need` does for his other sequences (`[hero] the hero's sequence 129 ... from level 15's core`), waiting
+   for the worker's read at the mode's entry.
+3. *The rockets and the energy bomb.* The game's hero code spawns `15:256` (the missile, state 0x5f, `spawn_projectile_100`),
+   `15:1523` (the shock of the ground pound, a class of code alone, state 0x61, `place_moby_5f3`) and `15:1427` (the jump's light
+   shaft) for the mode, not through class 419, so the pool's closure of `15:419` (its own code's and the engine's spawns) has
+   none of them, and `moby_spawn` of a class the base has not refused each. `hero_mode_set` imports the three
+   (`session_import_load`) at the mode's entry and takes out those it brought when the mode is left. Needs three free class
+   slots (224 at once); the log says when it cannot. Seen: the missiles from both hands (picture), the pound's streaks, a swarm
+   of 100 crushed in the arena challenge.
+4. *A body that does not grow.* Giant Clank's collision capsule (top `+0x220`, its lower sphere's centre `+0x224`, radius
+   `+0x234`) is Ratchet's at the start and eases to the form's (5.25, 4.44, 3.75) in about two seconds; the gait update does
+   not ease it while a contact is within half a radius of his feet (the game's rule), and the sphere, growing faster than its
+   centre rises, dips under his feet at the start: entered in the air or just after a landing, the contact was there from the first
+   frame and the body stayed small and low (bottom 0.51, radius 2.58..3.75), the capsule's lower point 1.6 under his feet: the
+   ground test wants his feet on it, so he stood 1.6 units up in the fall state for ever. `hero_mode_set` gives him the
+   form's body at once when the hero is in the air or in contact at the entry (the targets recomputed for the new state first:
+   the enter's own were the falling Ratchet's, a bottom of 0.5). Standing, he grows as on Quartu.
+
+What was not reproduced: the Grind Boots' sound heard continuously. With the boots owned (`0x13d4dd`) and Giant Clank walking, falling,
+punching and crushing a swarm for 4000 frames no hero sound repeated (a trace of every `sound_start`); the boots' equipment
+(`0x141664`) cannot be had in a test's game, so the loop with them equipped is unproven. A guess, not tested: the surface sounds of the
+rails' collision strips (the arena's rails have a level collision under them, which Giant Clank's body can stand on) while he slid
+in the fall state before the fix.
+
+The modes are the game's own: `hero_mode_enter(form, state, object)` (Clank, the form 1: Orxon's class 87, state 0x43; Giant
+Clank, the form 2: Quartu's class 419, state 0x5a, as `level_setup` starts a level in a vehicle) and `hero_mode_exit` (Ratchet's
+moby back at the object's place, state 0, Clank's health swapped back); the board is the board's own mount (Kalebo III's or
+Rilgar's class 439: the board given to the hero +0x86c, the board state 0x6b, the board in its riding state, as its update does
+when he walks up to it). Veldin's hero code has Clank's and Giant Clank's states (Orxon and Gemlik run on it natively); the
+board's riding is Kalebo III's and Rilgar's own.
+
+Not every planet's hero code differs from Veldin's: Orxon and Gemlik run Veldin's (their contexts give only their camera
+code), and Veldin's has Clank's and Giant Clank's states. **The generic hero code** (`hero generic`, `HERO_GENERIC`) is the other
+way round: on a level mod whose base has a build of its own (Kalebo III, Quartu, Rilgar), the base's own hero lines are turned
+off (`on_hero_level` false for every level) while its camera code stays (`on_camera_level`, the camera system's sites): Veldin's
+ports run the hero on the base's overlay, translated as on any level whose hero is the generic one (Gaspar, Umbris). Any
+format: the arena (format 2 on Kalebo III) gets the game's lava (0x68 sinking, Cross 0x69 out, lost when left in it: the
+level loaded again) with its animation (113, from Veldin's core: the whole hero set is read at the load when the generic code
+is asked), its waves and rail course the same as on Kalebo III's code (the same challenge lines and results).
+
+### The level
+
+```
+section race remove respawn reset
+  world kalebo
+  hero kalebo                      # level 16's hero code and camera code while Ratchet is in the section
+  objects 439                      # its race board: he gets on it when he walks up to it
+  entry board 145.3 90.3 83.7 -1.5708
+end
+section giant remove respawn reset
+  world quartu
+  hero quartu giantclank           # Quartu's code; Giant Clank (15:419 imported, spawned at his entry)
+  entry start 130.5 222.4 26 0
+end
+```
+
+`hero <level> [clank|giantclank|board]` in main or a section (format 3; main's `hero` line with a name is this line, with numbers
+Ratchet's start as before; `hero generic` in any format): the composer checks the level (5, 10, 13, 15, 16),
+imports the mode's class (10:87, 15:419, `<level>:439`) and writes `hero <section> <level> <mode>` into `sections.txt`. The
+switch (`apply_state`) sets the entered section's hero context (its line's, or the base's); the leaving section's mode is left
+first (`hero_mode_leave`), the entered one's object spawned where Ratchet stands and the mode entered at the first frame of
+play after the switch (after its fade). At the arrival the hero lines' contexts are made with the worlds' (not within a frame).
+A death in a mode: the mode left before the soft reset makes the hero again, entered again (a new object) once he stands at
+the checkpoint.
+
+### Testing
+
+Test mod `s9-heroes` (`openengine/s9/mods`): stage 8's main, kerwan and kalebo, with `world umbris`, `world gemlik` (`hero
+gemlik`, its ship 69), `race` (Kalebo III's world, `hero kalebo`, its board), `clank` (Orxon's world, `hero orxon clank`),
+`giant` (Quartu's, `hero quartu giantclank`); plugin hooks `RAC1_MOD_TEST=s9_*`; `RAC1_HERO_STATE=<n>` prints the hero's
+state, sub-state, form, place and animation every n frames on any level (the native runs' traces).
+
+| Test | Result |
+|---|---|
+| `s9_board` (`race`: `hero kalebo`, the board 16:439, stick forward, a jump) | the board's own code mounts him at once (state 0x6b, sub 0x16, the board +0x86c), Kalebo III's code rides it: along the track at 0.24 units a frame, jumps (85), a wipe-out on a wall (0x6d, 97), back on the track; the race's HUD (lap 1/3, the time) and its camera (Kalebo III's type 8) following him; out of the section: Veldin's code, Ratchet on foot |
+| `s9_boardp`, `s9_free`, `s9_freemain` (the plugin: `hero_build(16)`, `import_spawn` 16:439, `hero_mode(BOARD)`) | a board ridden anywhere: Kalebo III's courtyards (off an edge: back where he got on), the plateau of main; `hero_mode(NONE)` gets him off where he is |
+| `s9_clank` (`clank`: `hero orxon clank`) | Clank (10:87) spawned at the entry and made the hero (form 1, state 0x43): walks (0x44), jumps; back in main as Ratchet, health 4 |
+| `s9_clankdie` | Clank walked into Orxon's toxic water: his death (0x7d), the soft reset (the mode left first), Clank again at the checkpoint |
+| `s9_giant` (`giant`: `hero quartu giantclank`) | Giant Clank (15:419, form 2, 0x5a): walks (0x5b), punches (0x60) on Quartu's code and camera; back in main as Ratchet |
+| `s9_modes` (main, Veldin's code) | Clank from the plugin (`import_spawn` 10:87, `hero_mode(CLANK)`), out; Giant Clank (`hero_build(15)`), walks and punches, out: Ratchet where Giant Clank stood |
+| `s7_magnet` on `s7-kalebo` (format 2, Kalebo III's base) | sequence 91 (the magnetic walk) filled from Veldin's core when he steps on the magnetic arc: walked up the wall drawn right (`RAC1_HERO_SEQS=0`: the old garbled model) |
+| `arena_lava` on the arena's copy with `hero generic` | 0x68 in the lava, Cross: 0x69 out and back, left in it: lost, the level loaded again (the plugin's `level_end` / `level_start`); `arena_ch0k`, `arena_ch10k`, `arena_course`: the same waves and the course won as on Kalebo III's code |
+| `s9_sky`, `s9_die` | Umbris's and Gemlik's worlds with their skies; Kerwan's crates (with its lift 1210) all there after a death |
+| `s9_ship` (`gemlik`: `hero gemlik`, its ship 69) | not done: the ship's own code, spawned in the section, runs its return from a flight (Ratchet put out at 457.8 578.2, the ship gone) instead of waiting at its pad for "Enter ship" (Gemlik's own level state its level's setup makes: stage 10) |
+| The original; the regressions | the reference pictures and RAMHASH unchanged; the arena's format 2 regression and stage 5's format 3 runs: the same RAMHASH as the branch's start (dev with the level mods' sky fix, which changed them from stage 8's); the equivalence test on all 19 levels |
+
+Timings: a hero context taken 0.03 to 0.2 ms (the camera table copied, the cameras made again); a section switch into a hero
+section 0.2 to 1.0 ms; a mode entered in under 0.1 ms; a sequence copied in its frame (32 to 39 KB); a core's hero sequences read
+on the worker (134 of Veldin's) in 1.4 to 3.2 s while a level loads.
+
+### Not done, and what stage 10 needs
+
+- **Gemlik's ship**, **a level's HUD pictures**, **camera types without a hero context**: done in stage 10 ([Bosses](#bosses-stage-10)).
+- A plugin's `hero_build` lasts until the next section switch (the entered section's line decides); a section with a board but
+  no `hero kalebo` leaves Ratchet standing on it in 0x6b (Veldin's code has no riding).
+
+## Bosses (stage 10)
+
+DESIGN stage 10 (section 9's table): the game's bosses in a session, first the Snagglebeast. The code: `section_world.cpp`
+(a world's HUD pictures, its light grid), `sections.cpp` (a world's level state, the `boss` lines, the bosses' soft reset and
+win, the mod's rails in a world), `hero_modes.cpp` (the camera level; `RAC1_MOBY_WATCH` / `RAC1_MOBY_POKE`), `variants.h`
+(`g_camera_level`), `leveldata.cpp` (the base's enemies in a world), the composer's `boss` lines and a world's rails
+(`level_compose.cpp`), the SDK's ABI 13.
+
+### What the design said, and what was done
+
+DESIGN 9 listed per boss what it needs on top of stages 1 to 6. What the Snagglebeast needed was not boss-specific: it is what
+every planet's objects need in a world's section, and it is now there for every world:
+
+1. **The planet's camera code** (`g_camera_level`, variants.h): while a world's section is current its level's camera sites
+   run (`on_camera_level(n)` for every level's camera types, camera hooks and callbacks: Umbris's, Blarg's, Batalia's... not
+   only the hero contexts' five), and its own camera types are in the session's type table copy (stage 9's, now without a
+   hero context: Umbris's 0x12, whose accept is its own and whose init / update / exit are Veldin's: a row's words are taken
+   through the level's context, a table its map pairs with Veldin's keeps raw addresses in the image). A hero context's level
+   gives the table when there is one.
+2. **The planet's HUD pictures** (`world_hud_build`): the HUD's animations of the level the session's HUD data lacks (Umbris's
+   and Gemlik's 0x7562, the boss bar with its portrait; Quartu's 0x7558, Giant Clank's energy bar; Orxon's 0x7553) are added
+   to a copy of the session's HUD tables (animations, frames, palettes, textures: 0x17e4d8 +0x1c..+0x28), with their textures
+   and palettes from the level's own set (the level file's part 6, decompressed: 327 KB in the heap), uploaded to the GS
+   memory on demand as the game's level set is (the per-frame residence reset walks the copy's counts). Only animations whose
+   frames are all the level set's are added; the tables are the HUD's while the section is current.
+3. **The planet's level state** (`rows_put`): the level records the engine keeps under the current level number (the
+   collected things 0x14c050, the killed-for-good bits 0x14c190, the group counts 0x14d590) and the level's live copy 0x15fc88
+   are, in a session, the level mod's own (level_slots swaps them in). A world's objects now read and write a copy of their
+   own planet's, kept by the session for the visit (zero at the session's start: a first visit), in while the section is
+   current and while its objects are placed or placed again; the session's own for a card save (`sections_save_begin`) and
+   when the session ends. The planet's real records (its own level number's row) are never touched. Gemlik's ship read the
+   level mod's 0x15fc88 and ran its return from a flight: with Gemlik's state it waits at its pad.
+4. **The planet's per-position grids**: gameplay_load points 0x15fbc0 (the objects' light grid), 0x15fb80 / 0x15fb50 (its
+   lights) and 0x15ef80 (a camera block) at the level's gameplay file; a world kept the session's, and moby_update_light's
+   grid lookup at the world's coordinates read past it (Gemlik's ship over the canyon: an out-of-range read). They are the
+   world's state now.
+
+And for the bosses themselves:
+
+5. **`boss` lines** (`boss <class|name|level:class>...` in a section; the SDK's `boss_set` for an object of the plugin's): a
+   death of Ratchet's in the section takes a boss still in play out and places it again (`spawn_objects` of its uid: its
+   placement's record and pvars, the fight from its start; the plugin's `boss` callback `RAC1_BOSS_AGAIN` with the new
+   object); a boss leaving play otherwise is **beaten**: logged, the callback `RAC1_BOSS_BEATEN`, its uid never placed again in
+   the visit (a save keeps it out: the session item's gone objects). Nothing ends: what the original does after a win (the
+   Snagglebeast: its bolts, its level's collected-thing flag, its checkpoint; no cutscene, no level change) happens in the
+   world's state, and what follows is the plugin's (DECISIONS 8).
+
+DESIGN 9 also expected the Snagglebeast's path reads, its HUD draw (a tag) and its checkpoint saves to need work of their own:
+they did not (the registry of its level's data, the context's tags and stage 5's checkpoint hook covered them).
+
+### The Snagglebeast
+
+```
+section cave remove respawn reset
+  world umbris
+  objects all
+  box 195 355 25 320 500 90
+  boss umbris.snagglebeast
+  entry pit 263.35 483.16 36.5 -1.13
+  checkpoint cave_start 263.35 483.16 36.5 -1.13
+end
+```
+
+| Test (`s10-bosses`, `openengine/s10`) | Result |
+|---|---|
+| `s10_pit`: into the cave on its platform, idle | the boss wakes as on Umbris (state 0 to 3, then 3 / 1 / 4: its throws), facing Ratchet (yaw 2.01 on both); its health bar with its portrait (Umbris's HUD picture); Umbris's camera types in the table |
+| `RAC1_MOBY_WATCH=1106:1` on Umbris itself (`RAC1_HERO_AT=605@1000`, the arrival skipped) and in the session, the same `RAC1_MOBY_POKE` (its last hit: state 14, health 0.5, one hit pending) 900 frames after Ratchet arrives | the death frame for frame: 411 of 412 frames equal (state, animation and its frame, place, yaw, +0x2c), state 10 with animation 8 for 410 frames, then 16, then out of play; before the poke the phases match once their random choices are taken out (the two runs' random numbers differ: one animation of two chosen at random, 6 frames apart after 400) |
+| `s10_kill` / `s10_killdie` | beaten: `[section] ... its boss (class 1106, ...) beaten (1 in this visit); the session goes on`, the callback; the boss's own checkpoint save at its death is the session's ("game", 268.90 449.93 36.00); a death afterwards: back there, the boss not back (1 placed object back, 8 killed for good) |
+| `s10_die`: its health set to 60 of 120, then a death | the soft reset at the checkpoint, the boss placed again (a new object, health 120, from its state 0), the callback `RAC1_BOSS_AGAIN` |
+| a save after the win (`RAC1_SESSION_SAVE_AT`), loaded from Kerwan | back in the cave at the boss's checkpoint, the boss not there |
+| the full fight played | not tried: the phases need a player (it takes its damage from the player's weapons and its own shock waves); `RAC1_SIM_INPUT=attack` on its platform does not reach it |
+
+### Gemlik's ship (`world gemlik`, `objects 69 388`, `hero gemlik`)
+
+It waits at its pad (state 1, its level's state); triangle boards it (state 2, then 4 flying, Ratchet in state 0x32); its
+flight with the stick is Gemlik's own frame for frame (`RAC1_MOBY_WATCH=69` against Gemlik itself, the same input after the
+same boarding: 760 frames equal to 0.01); a crash (state 7) is a death: the soft reset at the section's checkpoint and the
+ship back at its pad (Gemlik itself goes back to its own checkpoint). Its flight ends at once with nothing to shoot at (its
+draw counts the targets, `pv+0xe8`: Qwark's ship 388 must come with it); with 388 placed, Qwark's ship flies its route
+(states 1 to 4) for the whole flight tried (1900 frames).
+
+### The mod's own rails in a world's section (the arena's escape into Quartu)
+
+`rail` / `rails` lines in a world's section (the composer: in the planet's coordinates; their points into the section's own
+gameplay file; their strips into a copy of the planet's collision: its cells' faces once each, whole, with the strips, built
+again, its hero groups kept): the runtime puts the level's rails first in the section's rail table and the mod's after them
+(`sections_rail_first`: the SDK's rails find them). Test `s10-escape` (format 3 on Kalebo III's base, `hero generic`): a
+rail in main through a portal into `world quartu`, the plugin attaching Ratchet to `quartu_in` in its `section_enter`
+callback: he grinds the whole rail down (44 units) and lands on Giant Clank's arena floor (130.50 218.56 25.51); the hero
+code main's generic one there; Kalebo III's robots (`base_spawn`, `base_hunt`) beside him walk up and hit him (they stood
+still: a base enemy in a world's section now updates on the base's level data, `ld_enter`'s `LD_BASE_IN_WORLD`). Quartu's
+collision probed (`RAC1_COLL_PROBE`, 6561 points of its arena) against Quartu itself: 6485 the same height; the others are
+Quartu's placed objects the section does not place. A rail's model (`mesh`) is drawn in the world (above, "the modern
+renderer"); test `rm-escape` (s10-escape with `rail quartu_in mesh ...`, a ring class placed in main and moved by the plugin
+to the rail's top in `section_enter`, a second one spawned at its foot): the rail, the rings and Ratchet riding the rail in
+GL and Vulkan pictures, the ride unchanged (`rail_find` 2, `hero_rail_attach` 1, the landing at 130.50 218.56 25.51), and the
+same after main and back into Quartu (its kept level).
+
+A world's section needs its planet's context, so the overlay maps' extents (`assets/generated/overlay_map/levelN.ext`,
+stage 1's `extents.py`, made by `./setup.sh`): without them the log says `[ctx] level 15: ... .ext missing (./setup.sh): no
+context` and `[section] quartu: level 15's context or registry cannot be made`, and the world comes without its level data
+(cameras, paths, volumes) and its camera code.
+
+### Not done, and what the other bosses need
+
+- **The Snagglebeast in a mod's own arena**: it waits for Ratchet inside its level's cuboid 10 (its pvar +0x1a4) and follows
+  its routes (17 path reads) at Umbris's coordinates; a mod's arena needs a profile binding those slots to its own volume and
+  paths (stage 4's `object_bind` kinds `area` / `path`), the camera level for its section (a `camera <level>` line or SDK call
+  setting `g_camera_level` without a world) and the HUD pictures likewise (`world_hud_build` from a level other than the
+  section's world).
+- **Qwark's space fight** (Gemlik, 388): with the ship working, what remains is 388's closure (it spawns class 401, which
+  the measured spawns do not list: `data/pool/spawns.txt`'s `13:388` line needs 401, and the deps made again), its three camera
+  requests (Gemlik's camera type 0x13: in the table with `world gemlik`), its HUD element 0x11 (the HUD picture path above),
+  then the fight played to its end (its death and what Gemlik does then: the beaten callback with a `boss 388` line).
+- **Nebula G34's creature** (Blarg, 1051 with 857 / 302 / 303): Blarg's world as a section with `objects` of its room; its
+  camera type 0x16 / Blarg's 0x12 now come with the camera level; its HUD element L6:0x249738's pictures with the world's HUD
+  copy; its 7 group reads (the world's groups, stage 8); then the same boss line and tests.
+- **Giant Clank's fight** (Quartu): `hero quartu giantclank` exists (stage 9); his energy bar now has its picture in
+  `world quartu`; the drones (44, 655) with `objects`, their paths from Quartu's registry.
+- **Drek** (Veldin finale, 1422): its 7 cutscene starts and the game's end (the credits) must be cut off by a profile hook
+  (DECISIONS 8), its 11 group reads.
+- A world's HUD copy takes the level's whole set (about 330 KB a world); a boss's music changes, if any, are its planet's
+  music in its world's section.
+
+## The board outside a race
+
+Kalebo III's and Rilgar's board code is their race's. Its riding state compares the game's level number (on a level mod its
+base's: 16 on Kalebo III's base, whatever world the section shows): on 16 a z under 76 is a fall (state 0x6e, Rilgar's 61.4 on
+5), and a fall or a wipe-out (0x6d, 0x6f) ends "back on the track" (L16:0x225ac0, L5:0x254358: the nearest point of the
+board's race path, the board's pvars +0x24 an index into the level's path table); at the mount it asks for the race HUD (the
+HUD requests 5 and 7: lap, time, place) and its race code (0x225d70) counts laps on the path its pvars +0x20 name. What the
+arena saw follows from that:
+
+- **`world quartu`** (Quartu's arena floor at z 26): every frame a fall (26 < 76), "back on the track" at a point of Quartu's
+  path table (the board's index into Quartu's paths: 248.2 386.9), still under 76: 0x6e for ever; the race HUD (lap 1/3,
+  the time, 6th).
+- **main on the mod's own geometry** (above 76): it rides; the first fall or wipe-out (the arena's 0x6d after 60 frames:
+  `forward` held from the mount drove him into a wall; `forward` itself is not the cause) went "back on the track" of a
+  path table with no such path: (0, 0, 0.01), under the death height, so a death and the soft reset at the checkpoint, on
+  foot. A bug (the race's logic on a level that has no race): fixed below.
+- **`world rilgar` with `hero rilgar board`** (Rilgar's finish line at z 73.6): Rilgar's code read 16, so Kalebo III's 76: a
+  fall at once, for ever (the "wait for the start" the arena saw).
+
+The fix (hooks in both builds, tools/codegen/hooks.glue, `level_mod_hero.h`; the original's levels as transliterated): on a
+level mod's level the compares see **the board's planet** when the current section's world is Kalebo III's or Rilgar's
+(`world rilgar`: 5, its own heights and start line, its race as on Rilgar), and elsewhere the board is **free**
+(`hero_modes.cpp`): its race path none (pvars +0x20 -1, the player's +0x8b4 0: no laps), no race HUD at the mount, its own
+fall test (under 2 units over the death height, or the plugin's `board_fall`), "back on the track" replaced by where he got
+on (or the plugin's `board_return`) for a fall and by where he rode 40 frames before for a wipe-out. The plugin's
+`board_rule` forces either; `board_touching` lists the mobys his body touches on the board (the game's `mobys_in_sphere` on
+their collision), for the plugin's `hit_send` (the SDK's ABI 16).
+
+```
+[hero] on the board at 134.60 235.00 25.51: free (no race: no laps, no race HUD, a fall back where he got on or at the plugin's place)
+[hero] the free board: a fall (23.99 under 24.00)
+[hero] the free board: back on it at 134.60 235.00 25.51 (where he got on)
+[hero] on the board at 275.48 334.34 73.60: the race of its planet's world
+```
+
+| Test (local test mod, format 3 on Kalebo III's base, `hero generic`) | Result |
+|---|---|
+| `world quartu`: `hero_build(16)`, `base_spawn(439)`, `hero_mode(BOARD)` at 159.9 241.7, stick forward | rides (0x6b) across the arena floor at z 26, no race HUD; a wall at 172.2 250.2: a wipe-out (0x6f), back 8 units before it, riding again |
+| the same from 134.6 235 facing west | off the floor's edge: a fall under 24 (Quartu's death height 22 + 2), 0x6e, back on the board where he got on, again each time |
+| main (the plateau at z 100), `board_return(205 190 100.5)` | off the edge: a fall under 72, back at the plugin's place, riding on (before: (0, 0, 0.01), a death, on foot at the checkpoint) |
+| a robot (1445) in the board's way, `board_touching` + `hit_send` | touched once at 1.1 units, knocked down (state 8) |
+| `world rilgar`, `hero rilgar board`, stick forward | Rilgar's race: rides the track from the finish line, its race HUD (lap 1/3, the time, 1st), a fall under 61.4 back on its track (before: 0x6e at the start for ever) |
+
+**The race camera.** The board's race camera (camera type 8, the same code on both: L5:0x329358 and L16:0x2f3e60, called by its
+update) keeps its target over a floor chosen by the level number: on Rilgar 62.4 within 48 units of its big ramp (286.16
+447.82), else 67.2; on Kalebo III 77.5; none elsewhere. In `world rilgar` on Kalebo III's base it read 16: the target held at
+77.5, so the camera at 78.89 wherever Ratchet was (the arena's report: "the camera goes up, framing the floor"): 5.2 to 6 units
+over him from the finish line (z 73), 2.8 to 3.0 on the track at 76 (Rilgar 2.0 to 2.2), 17 to 18.5 in a fall (Rilgar 7 to
+8: the 67.2 floor). The compare now sees the current section's world (`level_mod_camera_planet`, hooks in both builds; none
+in main and the mod's own sections, so no floor of the base's on the mod's geometry; the original's levels as
+transliterated). The higher camera in a fall is Rilgar's own: on Rilgar too it stays over 67.2 while he falls under the track.
+
+| Test (`RAC1_HERO_STATE=1`: Ratchet and the camera each frame) | Result |
+|---|---|
+| native Rilgar (`RAC1_GOTO=5`, `RAC1_HOVERBOARD_AT`, stick forward) against the arena's `world rilgar` (`arena_go`, `ARENA_SEC=rilgar`, the same stick), the frames where Ratchet is at the same place (to 0.01) | 1039 frames (riding 259, wipe-outs 354, falls 426): the camera the same to 0.000 (before: 0.80 riding, up to 10.3 in the falls) |
+| the same, from the finish line | 2.0 to 2.2 over him (before 5.2 to 6.0 for the first 150 frames) |
+
+## The base level's own world as a section (`world kalebo` on a Kalebo III level mod)
+
+A level mod runs on a base level's code and keeps its level number (the arena: Kalebo III's, 16), with its own geometry, collision,
+rails and level data in place of the planet's. Its main section is the mod's; a world section of **the base level's own planet**
+(`world kalebo` in a mod whose base is 16) brings Kalebo III itself back for a visit, its geometry, collision, rails, sky, music,
+zones and level data, with the mod's own out of the way while it is current and put back at the return. The composer refused it
+(`level 16's world is the base level's: a world's section of another level`, composer 9 and before); the check is gone, nothing
+else in the composer changed (a log line says so; mods composed before need no recompose, and none changes).
+
+```
+section kalebo remove respawn reset
+  world kalebo
+  hero kalebo                       # Kalebo III's own hero code there (below)
+  entry arrivo 111.6 264.04 134.6 3.1416
+  death_height 90
+  portal fine 318 200 120 340 215 145 to main:ritorno fade 10   # past the long rail's leap
+end
+```
+
+### What the base's code shares, and what was needed
+
+Everything a world section brings is the game's own work on that level's files, and the base's code is already the running code,
+so the section is the same as any world's (the same streaming, the same world state swapped in and out, collision, sky, fog,
+death height, music, lights, rail table, modern renderer's level) with one exception: its **level data**.
+
+| Shared state | The base's own world |
+|---|---|
+| geometry, collision, sky, music, fog, lights, rails | the section's own blocks, read from the level's files on disc as for any planet: nothing of the mod's is shared (the renderer keeps the world level 16 under its own key, the session's own level a host slot) |
+| the class table, the registrations | the world's tie and shrub classes are registered into the section's own tables (the session's imports and the base's classes are untouched); the base's classes placed there are the base's, `ctx` none |
+| the level data (the engine's paths, volumes, cameras, rails, moby groups) | the one thing keyed by the level's number: the base level's registry is **the session's view** (the mod's own objects, and what the profiles and the plugin add), so the planet's own level data had no place under 16. It is now a registry under its own key (`LD_BASE_WORLD`, `ld_world_key`, leveldata.h): made at the arrival from the pool's level data like any world's but with no context (the running code is the base's), the engine's while the section is current (`ld_engine_take`), the mod's put back after (`ld_engine_restore`) |
+| the level state (the spawn rules' rows) | already keyed apart (`rows_put`: the world's level has rows of its own, the session's are `-1`) |
+| the hero and camera code | the base's own build (`-1`) is Kalebo III's: `hero_build_set` and `hero_camera_level_set` already read the level as the base's when it is the loaded overlay's |
+
+Before the registry, the planet's cameras, paths and volumes were the mod's while Ratchet was in its world; the game's code read
+the mod's (the arena's own) instead of the planet's: no camera zones along the rail, no volumes. Now `[ld] level 16's world registry at
+...: 1 paths, 5 cameras, 0 volumes, 4 rails of its own` is made at the arrival and the engine's while the section is current.
+
+### The hero code
+
+A mod on Kalebo III's base that runs the generic hero code in main (`hero generic`, for the game's lava) runs it in the world's
+section too (a section without a `hero` line keeps main's). Kalebo III's long rail 1 (2800 points, 1109 units, from its station at
+114 264 133 to the leap at 317 206 130) is **not** ridden to its end by the generic code: it leaves the rail's state at the crest
+about point 1480 (state 0x6 for a few frames, then 0x74, the rail-grab's) and stops at point 2099 (304.17, 118.26,
+129.1), where it stays. With **`hero kalebo`** in the section (the base's own hero code, which is Kalebo III's: as on the planet) he
+rides it to its end and the portal beyond. The log: `[hero] the hero context: the base hero code runs Ratchet (before: the generic
+(Veldin's)'s)` at the entry and the generic one back at the return. The composer says so in `compose.log` when a base world's section
+has no hero line of its own.
+
+### The planet's hurts, its objects
+
+- The planet's rail is hard by itself: Ratchet is hurt on it (the game's hop, state 0x42, a health point) where the native game
+  hurts him, with no object in play: first at (88.2, 238.9, 132.0), then (115.2, 218.5, 118.7), (99.8, 219.4, 104.2) and
+  others (in the native Kalebo III, the same: 88.2 238.8 132.6 first, `RAC1_GOTO=16` with the same start and a scripted jump and
+  stick). Four health points are gone about half way along: a challenge on it wants health for him (crates by `objects`, or the
+  plugin).
+- `objects 933` (the planet's own rail mines, placed from its gameplay file: 3 in a box over the first stretch) are placed and
+  updated, and **retire themselves** at once: the planet's code keeps a placed rail mine only while Ratchet is grinding (his
+  sub-state 0xf), and at the entry he is in the air for a few frames. The mines the plugin spawns (`base_spawn`, the arena's)
+  are another case: they are not placed ones, and are not retired by that rule.
+
+### Testing
+
+Test mod: the arena copied (base 16, `hero generic` in main, its plugin) with the section above, `RAC1_MOD_TEST=arena_go
+ARENA_SEC=kalebo ARENA_BOOTS=1` (the plugin's look-round test: the Grindscarponi, into the section at frame 600), headless.
+
+| Test | Result |
+|---|---|
+| compose | `section kalebo: level 16's world is the base level's own ...; 0 of its 1568 objects`; the section streams in while the landing plays (`kalebo: level 16's world: 159 blocks, 11.9 MB copied of its 21.4 MB of asset data; 1769 tfrags, 124 tie classes with 3078 instances, 31 shrub classes with 1622 instances ...; in the session heap 18.3 MB`); `[ld] level 16's world registry at ...: 1 paths, 5 cameras, 0 volumes, 4 rails of its own` |
+| enter by the plugin (`section_enter`), ride rail 1 from its station to its end (`hero kalebo`; his health held at 4 by the test), the portal past the leap, back in the arena | `main -> kalebo at entry arrivo`, the switch 0.2 to 0.6 ms; Ratchet grinds the whole rail (5400 frames) to (339.9, 204.8, 133.3), `kalebo -> main at entry ritorno (portal fine)`: the arena as it was (its collision, sky, music, lights, the generic hero code again); pictures: Kalebo III's world with its sky and the rail's tower rings, then the arena |
+| the arena's collision after two visits | `RAC1_COLL_PROBE` over the arena (1443 points, the same collision block 006f2940): hash de29c52e9d225bee, sum 150609.009, as in a run that never left main |
+| the same with the generic hero code | stops at point 2099 (above) |
+| the native Kalebo III against the section | the same hurts at the same places; the world, sky and rail as drawn natively |
+
+## A world's zones: what is drawn (`zones all`)
+
+What a world's section draws of its planet is the planet's own culling: the zone grid (`0x15f600`, gameplay's: cells of 4
+units, each a 128-byte list of the zones seen from it) gives the visible zones `0x173d00` for the camera's place each frame
+(`zones_from_camera`, 0x1f7408: the cell's list, else its neighbours', else the last list `0x15f610`, else all), and every tfrag,
+tie, shrub and moby whose zone bit (+0x3a, +0x18, +0x36: the gameplay file's +0x8c lists) is not in it is not drawn. The zone
+mode `0x16c074` (one of a world's state words) is 2 with a grid, 0 for all zones (`zones_update`, 0x1f77f8). Quartu's Giant
+Clank arena (around 170 240 26) is no special case: no Quartu code changes the grid, the mode or the masks (its classes' and
+hero code's builds name none of them), and in `world quartu` it is drawn and solid from the camera's places tried (the board
+on its floor, fixed cameras inside it at 34, 45 and 60 high and over it from 150 200 70 and 130.5 180 66; GL and Vulkan): from
+inside the arena at 150 236 28 its cell sees 78 of the 124 tfrags within 50 units and 77 of the 118 ties, the rest behind its
+walls. On Quartu itself at its start Ratchet put at 140 215 27 falls through (there is no floor there: the gap between the
+platform and the arena), and walking from the platform he meets the arena's wall: the arena is reached as Giant Clank, whose
+camera (122.8 222.6 40.6) sees 103 of those tfrags.
+
+A section's `zones all` line (composer 8: `zones <section> all` in `sections.txt`) sets the zone mode to 0 while the section is
+current (`apply_state`, after its world state): every zone drawn wherever the camera is, on every renderer (it is the game's
+own visibility, before any drawing). At 150 236 28: 124 of 124 tfrags and 118 of 118 ties; the pictures there the same within
+82 pixels (the sky's stars). For a camera the planet never had, or one off the grid whose last list is another place's.
+
+## A world's objects: what they spawn, which class they are, their effects
+
+Three things found with the arena's escape into Umbris's cave (`sections.cpp`, `section_world.cpp`, `leveldata.cpp`,
+`moby_spawn` in `ovl_24_25.cpp`).
+
+**An object whose code changes its class id.** A section knew its objects by slot, uid (+0xb2) and class id (+0xa6). Umbris's
+class 529 (Ratchet's ship parked on the planet: its update queues the ships' canopy draw, L7:0x2ba260 = Veldin's 0x2935b8)
+writes 533 into its own +0xa6 at its first update, as every ship class does (0x212..0x215). Its object then looked gone:
+leaving the section did not take it out, and it stayed in play in main with Umbris's class block under the session's own ship
+id 533 (the arena's ship): at the first frame there `moby_update_visible` -> `moby_anim_advance` read an animation pointer out of
+range (`Pointer resolution out of bounds: 0x131c0657`; the arena's 0x7a020000). It showed only with the arena's `update_all`
+line: without it the 529 is out of its update range at the cave's entry and never runs. An object is now known by its slot and
+uid with its class id or, when its code changed that, its class block (+0x24 as placed).
+
+**What the objects spawn.** `moby_spawn` tells the sections (`sections_moby_spawned`, while a session with sections is on)
+which moby's update or callback runs (`g_spawn_updating`): a moby spawned by one of a section's objects, or by one of those,
+is that section's. Leaving the section (`remove`) takes them out with the objects; `freeze` freezes them too; a death takes a
+boss's out before it is placed again (before: the Snagglebeast's three 1046 stayed beside the new boss's). In the arena's
+cave (`objects all`, 109 objects): 24 to 67 such mobys at the return to main (the debris and bolts of crates 13, 14, 226, 315,
+357, 358, 806, the boss's 1046), all of them before left running in main on Umbris's code.
+
+**Same-id classes.** The pool's block hashes said a class id is the same class on every level; the code was not compared.
+`tools/overlay_match/class_code.py <levelA> <levelB> [class...]` compares a class's update function on two levels on the
+disc's own MIPS, instruction by instruction with the relocated fields masked, each jal and lui + lo address classified (the
+base executable's, the engine's data or function through the map and its extents, a label of the same function, a function
+of the level's own compared in turn, own data), every function it calls followed. Against Kalebo III, of the 108 to 118 ids
+each level shares with it, every one with an update function has the same code but 1134 on every level (a helper it calls,
+built otherwise in Kalebo III), Eudora's 605, Rilgar's 439 (the board) and Veldin 2's 638 (the same: engine helpers each
+build compiled its own way). Umbris's 605 (an invisible zone marker, no model: novalis_props.cpp's zone_marker_update_at; the
+hero's camera may turn to the nearest within 20 units), 805 (the checkpoint), 1135 (a teleporter pad), Quartu's 605 and
+Rilgar's 1139: the same block, the same textures (the MRP's texture data), the same sounds (the banks' samples), the same code.
+Placed as the base's class they are the planet's objects (their placements' pvars are the planet's); there was nothing to
+import under another id. What still differs is the engine's: the level number they read is the base's (605's hint row
+0x14bf10 + level * 16, 805's checkpoint rows) and the class table's +0x2c word is the base level's (one list for all its
+classes).
+
+One caveat of stage 10 was a real difference: a world's own objects of a class the base has a profile for (Gaspar's 52 on
+Kalebo III's base) updated on the base's level data (`LD_BASE_IN_WORLD`), meant for the base's enemies a plugin brings into
+the world. They now keep the world's (`sections_world_object`): Gaspar's 52 by its start in `world gaspar` stays as on Gaspar
+(state 1) where it read Kalebo III's paths and walked off (state 4).
+
+**The effect textures.** The level's effect textures (the asset index's +0x58 count, +0x5c entries, +0x68 data: the
+particles', the Snagglebeast's fire rings and flames, drawn through `effect_tex0`) were the base's in a world's section. The
+first 40 are the same on every level; the rest are each level's own (Umbris 79, Kalebo III 56, Aridia 106; Batalia shares 54
+with Kalebo III). The rings (class 1046's draw callback, L7:0x30dcf0) take one past the 40: on Kalebo III's base nothing or
+the wrong picture was drawn. A world's build now copies its effect texture block (Umbris 0.4 MB) and makes the table as
+level_setup_body does (`sub_0023f768`); the data word 0x15f420, the count 0x15f41c and the table 0x16d180..0x16d880 are part of
+the world's state (their cached TEX0s cleared when it is swapped in or out). With Umbris's: the shock waves' fire rings as on
+Umbris itself (pictures at the same frames after the arrival, 60 to 360: on Umbris, before only sparks at the boss's feet, now
+the rings).
+A base enemy in a world's section (`base_spawn`) draws its own effects past the 40 with the world's pictures.
+
+## A world's looks and its cameras: the planet's own, by what its code reads
+
+Umbris's cave in `world umbris` (the arena's "La grande fuga", the request with its pictures beside native Umbris at the same
+place) had a flat orange lava, its ceiling's ring out of the picture and its camera on the other side of Ratchet; Batalia's rail
+(`world batalia`) shook its camera, 1.2 to 1.4 units one frame and 0.2 the next. Each was a part of the planet's state its
+own code reads that a world's section did not give it, and each is now given for every world's section:
+
+1. **Its classes of code alone** (composer 9: level mods must be set up again). A class with no block in the level's asset
+   data but an update function (the pool's row with no data) was "not placed" by the composer. Umbris's lava is no tfrag: it
+   is VU1 program 7's sea drawn by an object of class 460 (its draw callback, `L7:0x2f8038`, its sea at `L7:0x1d3400`); under
+   it the world has only the orange it is drawn over. Such a class is now imported as its level's setup registers it, with no
+   header (`moby_class_register`'s own case; `session.cpp`'s `import_one`), and placed when `objects` names it (or takes
+   `all`). The cave's sea is 460, in the arena's box; class 1018 is Umbris's other sea, outside it.
+2. **Its effect textures** (the section above): the 460 sea's frames are Umbris's effect textures past the 40 (the lava's two
+   animations of 16 palettes each); with Kalebo III's in their place the sea was black.
+3. **The level data's words naming a placement** (`sections.cpp`'s `world_camera_links`). The gameplay file's +0x50 list (the
+   pvar words naming a placement, which the objects' get as the slots of the objects placed) names the cameras' too, and the
+   level's own load leaves those as they are: there a placement's index is its slot. Umbris's camera 0 (type 0x12, its pvar
+   +0x28) names placement 541, the Snagglebeast; Umbris's camera code (`L7:0x3287e8`) turns the follow camera toward that
+   slot's moby (`cam0_turn_point`). In a section the boss is in another slot, and the camera turned toward an empty slot's
+   (0, 0, 0): from Ratchet at 263.35 483.16 facing -1.13 it swung to 268.0 491.8 instead of the native 259.2 492.0, and the
+   ring, which is the world's (a tie up in the cave's roof), was out of the picture. Those words in the level's registry are
+   now the slots of the section's objects placed from them (-1 never placed; a slot kept once out of play), made again at
+   each placement (a death's soft reset places the boss again).
+4. **Its rails, the same table for its code and the engine's** (`ld_rails_put`). A world's section's rail table (the level's
+   grind lines first, the mod's after them) is the engine's 0x15f70c; its level's own code reads its registry's (the
+   context's view of 0x15f70c), a copy of the same rails from the pool's level data. Batalia's rail camera (type 3, its accept
+   in the engine: the hero's rail's points 0x13f8b0 against the table's) took over in the engine's test, then its own
+   pre-update (`L8:0x312a28`) compared the registry's copy, asked out (+0x7e 3), and the follow camera took over again: every
+   other frame, the camera alternately carried by one and the other. The mod's rail was not the cause: Batalia's own rail 2
+   with no rail of the mod's shook alike. The registry's rails are now the section's table while it is current.
+
+| Test (local copies of the arena, format 3 on Kalebo III's base, `hero generic`) | Result |
+|---|---|
+| `world umbris`, `objects` the arena's and 460, Ratchet at its entry (263.35 483.16 36.5, -1.13), against Umbris (`RAC1_GOTO=7@60 RAC1_HERO_AT=-1@4500,...`) | the camera 259.17 492.01 39.44 (native 259.24 491.87 39.40), turned toward the boss at 278.40 451.23 as on Umbris; the lava's sea animated (GL and Vulkan); the ring in the picture; the boss in view |
+| the same, the boss's camera with only `objects 1106 460` | the same camera |
+| `world batalia`, down Batalia's rail 2 from 378.34 170.07 (the planet's collision, then the composer's copy with the mod's strip, then on the mod's rail `batalia_in`), the camera each frame | the largest step of the camera 0.57 (Batalia itself 0.57; before: 1.38, every other frame), the rail camera (type 3) held as on Batalia |
+
+## What the next stage builds on
+
+- **Hero contexts (stage 9)** and **the camera level (stage 10)**: a planet's own hero code and camera code in its world.
+- **A world's planet state, HUD pictures and grids (stage 10)**: its objects behave as on a first visit to it.
+- **Not done**: a world's objects outside the chosen set do not come (the planet's glass and water on Kalebo III are objects);
+  the GS's VRAM image and the chrome / glass map registers stay the session's; the renderer's first entry into a world takes
+  one frame of 43 to 73 ms; the mod's own meshes are not drawn in a world's section (its own rail models and objects are);
+materials and emissive lines (lights.txt) do not reach them there; a world on a session
+  base other than Veldin's and Kalebo III's was not tried.
+
+## Putting a section back (ABI 17)
+
+A section's placed objects killed "for good" stay so for the whole visit of a session, and a boss beaten stays beaten
+(`dead`, `beaten` of the section, and the records the game's spawn rule reads); a save keeps it. A challenge played again
+(the arena's Great Escape through Batalia's mines and the Snagglebeast) found the boss already beaten and the mines
+destroyed. The arena worked round it by creating them at each try.
+
+**What a section remembers** after it is left, and what `reset_section` (`sections.cpp`) puts back:
+
+| Memory | Where | Put back by |
+|---|---|---|
+| the placed objects killed in the visit | `Section::dead` (by uid), `dead_imp` (its other levels' classes), and what is not alive at the leave | cleared: placed again at the next entry |
+| the bosses beaten | `beaten`, `beaten_imp`, `beaten_n` (`boss_beaten`) | cleared: 0 |
+| what is in play of it | its objects (frozen, kept), the mobys they spawned (`kids`), the plugin's named bosses (`pboss`), its pvars' heap blocks | taken out (`moby_retire`), freed |
+| the level's records the spawn rule reads | a world's: the rows of its world's level (`g_rows`: the collected things, the killed-for-good bits, the group counts); a section of the mod's own: its placements' bits in the session's rows (the card's) | a world's rows erased (a first visit's: zero); an own section's uids' bits cleared (`Section::puids`, taken at its commit) |
+| the game's visit tables | `0x1ba4d0` (killed for the visit, a bit per uid), `0x1baa24` (live state byte), `0x1bb684` (the checkpoint's copy: a boss's death at its own checkpoint keeps it killed) | cleared for the section's uids (a world's `wuids`, an own section's `puids`) |
+
+The last two rows were found by testing: the first version cleared the section's sets and a world's rows and the Snagglebeast
+still did not come back (its death had written the checkpoint's copy `0x1bb684`, which the spawn rule reads first).
+
+- **`section_reset(name)`** (ABI 17): refused (0, a line on stderr) for no session with sections, no such section, **main**
+  (its objects are the session's own `g_rt.placed`, put back by a death's soft reset and kept by its policy), **the current
+  section** and one a switch into it is pending. For any other section, in whatever state (not in, in and frozen, kept running,
+  left removed): done at once, the objects placed again by `spawn_objects` at its next entry (or its streaming's commit, for a
+  section dropped with `section_unload`: its `puids` kept).
+- **`fresh`** (level.txt: `section <name> [remove|freeze|keep] [respawn ...] fresh`; `sections.txt`: a line `fresh <index>`):
+  `do_switch` resets the section it enters before it is entered (its state is applied after, so a world's rows are the
+  first visit's). A world section's first entry is not reset (its rows are the session's own, empty at the arrival, its objects
+  as placed); a section of the mod's own is reset at its first entry too, as a save's load can have brought the card's bits
+  (crates broken before the save) with it. The composer writes the line only for a section that has it: the output of every
+  existing mod is unchanged (composer version 9 still), a build made by a composer without `fresh` is a build without it.
+  Not a death's: `respawn` decides what a death does inside the section.
+- **Saves.** A section put back is a section with nothing gone: `sections_gone_of` (the save's session item) lists `dead` and
+  the objects not alive, so after a reset the item says 0 placed objects gone, and a `fresh` section's list is empty
+  whatever happened in it (`sections_gone` ignores such a list too). An own section's card bits are cleared by the reset, so
+  the records the game writes are the fresh ones. A world's rows are not in the card at all (a card save puts the session's own
+  in: `sections_save_begin`).
+
+| Test (local mods `sreset-test`: format 3 on Veldin's base, `world umbris` with `objects all`, `box`, `boss umbris.snagglebeast`; a section with three crates of the mod's own; `RAC1_MOD_TEST=sr_*`) | Result |
+|---|---|
+| `sr_noreset` (control): the Snagglebeast taken to its last hit and its crates hit as props (14 broke), out to main, back | beaten (1), back in with 103 of 118 objects and no boss: what the arena found |
+| `sr_world`: the same, then `section_reset("cave")` from main, in again, twice | each entry the same 118 objects (the boss, 500 x26, 501 x4, 511 x19 ...), `boss_beaten` 0, the boss beaten again each time (1) |
+| `sr_freeze` (policy freeze): the boss mid-fight, out, reset | `104 objects in play taken out, 40 mobys they spawned`, in again: 118 objects, the boss at its health 120, state 3 |
+| `sr_own`: three crates (500, 500, 501) broken, out, in (none there), reset, in | 3 again; broken again the same |
+| `sr_fresh`, `sr_own_f` (sreset-b: `fresh` on both sections), three rounds each | at every entry the same objects, the boss to beat each round; the first entry is not reset (118 objects), a section of the mod's own is |
+| `sr_refuse` | `section_reset("main")`, `("nope")`, `("")` and the current section: 0 each, the log says why; from main: 1 |
+| saves (one run saves into slot 3 of a scratch card, a second run loads it from Veldin: `RAC1_SESSION_SAVE_AT`, `RAC1_GOTO=0@60 RAC1_SESSION_LOAD_AT=300:3`): after a kill, no reset | `15 placed objects gone`; loaded: 103 objects in the cave, no boss, `boss_beaten` 0 |
+| after a kill and `section_reset("cave")` | `0 placed objects gone`; loaded: 118, the boss there, beaten again when fought |
+| `fresh` section after a kill | `0 placed objects gone`; loaded: 118, the boss there |
+| own section, crates broken: no reset / reset / `fresh` | `3 placed objects gone` and loaded without crates / `0` and 3 crates / `0` and 3 crates (a save's card bits cleared at the entry) |
+
+Limits found on the way, both since looked into (the branch `fix/session-load-crashes`):
+
+- **A load made while a session is running** (the pause menu's Load, in the same process) crashed entering a world section
+  afterwards, in `unfreeze` -> `moby_update_transform`, idle save or not. The cause is not a dirty slot: `unfreeze` (and the
+  main section's `session_rt_main_enter` and the soft reset's restore) transformed every object put back in play, including
+  one of a class with **no block of its own** (`+0x24` 0: a class of code alone, such as Umbris's 258 and 1142), which no
+  placement ever transforms (`section_spawn_placements` and `session.cpp` guard it). The transform of such a moby reads the
+  class's animation table at EE address `0 + 0x48 + 4 * the animation` (the animation index is 0, the cached one `+0x71` 0xff),
+  low memory that held something harmless in the runs without a load, and a float after one went through the game's own
+  level exit (`0x3f9699a0`, read as an address: out of range). So a first arrival never failed. Fixed:
+  `moby_update_transform_placed` (session.cpp) skips a moby with no class block, used in `unfreeze`, `session_rt_main_enter` and
+  the respawn's restore. Tested with `RAC1_SESSION_SAVE_AT` / `RAC1_SESSION_LOAD_AT` and a `RAC1_SIM_INPUT=seq:` pressing Cross at
+  the planet prompt the load lands in (the Load page's end: `level_exit_to`), in the same process: arrival in the cave, back to
+  main, save, load, the cave again (the crash before the fix, the cave and its boss working after it, a death and its soft reset
+  included), and the same with the save made inside the cave.
+- **Two sections of the same planet** (`cave` and `cave2`, both `world umbris`) are **refused by the composer**: `level.txt:N:
+  section cave2: level 7's world is already section cave's ...`. A world's level state is per world level, one copy in the game:
+  its moby group lists (the engine's group table of the level, `world_groups`), its cameras' links (`world_camera_links`), the
+  rails and the host meshes drawn in it, the rows of its records. The second section's streaming and its objects' groups
+  overwrite the first's in that table, and the first one's leaving empties them (`groups_clear` zeroes the entries of its
+  `groups`, whoever owns them now), so the objects of the section in play read a group list that is gone. Measured on the arena
+  mod's Umbris (two `world umbris` sections, a boss beaten in each): after the first boss's death the other section's frozen
+  objects were in play in main (`+0x34` bit 2 cleared) and, in the second section, its objects' groups (2, 3, 25, 66, 77, 81..83)
+  had lists of 0; `moby_visible_queue` walks a marked group's list of ids from the table, here from address 0, so garbage ids reached the
+  look list (`0x1aba00`) and `hero_look_at_update` read a moby that is not one (`std::out_of_range`, 0xba96c291), 15 frames after
+  the second boss was beaten. Supporting it means a table per section (the groups and the camera links put at each entry and taken
+  out at each leave, the rows and the host meshes by section, not by level): not done, one section per planet is refused with its
+  reason instead of crashing later; the several places of one planet are one section with several `entry` lines and a `box`
+  that holds them all.

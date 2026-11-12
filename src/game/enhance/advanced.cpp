@@ -671,6 +671,11 @@ void advanced_save_loaded(int32_t slot) {
     }
 }
 
+// orig: (none) — enhancement (src/host/level_slots.h)
+bool advanced_save_file_read(int32_t slot, std::vector<uint8_t>& out) {
+    return mc_card_file_read(save_file_path(slot), out);
+}
+
 namespace {
 void combo_table_sync();  // the wrench section below
 void legs_update();       // the strafe's legs, below

@@ -4,6 +4,7 @@
 
 #include <game/enhance/class_profiles.h>
 #include <game/enhance/context.h>
+#include <game/enhance/hero_modes.h>
 #include <game/enhance/leveldata.h>
 #include <game/enhance/pool.h>
 #include <game/enhance/twin.h>
@@ -230,7 +231,11 @@ uint32_t g_tex = 0;  // (the level's moby textures, for a class registered after
 // its sounds pointed at its level's bank, the modern renderer's import list. False when it cannot be had (logged)
 bool import_one(int from, uint32_t cls, const std::string& why) {
     const PoolClass* c = pool_find(from, cls);
-    if (c == nullptr || c->block_size == 0) {
+    // (a class of code alone - no block, an update function: a world's lava sea, a trigger - is registered as its level's
+    // setup registers it, with no header: moby_class_register's own case; an import itself, a world's object's class, not a
+    // dependency)
+    const bool code_alone = c != nullptr && c->block_size == 0 && c->update_fn != 0 && why == "imported";
+    if (c == nullptr || (c->block_size == 0 && !code_alone)) {
         std::fprintf(stderr, "[session] import %d:%u (%s): no such class with data in the pool\n", from, cls, why.c_str());
         return false;
     }
@@ -250,8 +255,8 @@ bool import_one(int from, uint32_t cls, const std::string& why) {
     ld_registry_make(from);  // (its level data: a registry of its context's own, leveldata.h)
     const std::string own = pool_owner(from, cls);
     const uint32_t remap = session_heap_alloc(16, own);
-    const uint32_t a = remap != 0 ? heap_copy(*c, ("imported from level " + std::to_string(from) + ": " + why).c_str()) : 0;
-    if (a == 0) {
+    const uint32_t a = remap == 0 || code_alone ? 0 : heap_copy(*c, ("imported from level " + std::to_string(from) + ": " + why).c_str());
+    if (remap == 0 || (a == 0 && !code_alone)) {
         session_heap_free_owner(own);
         return false;
     }
@@ -272,9 +277,9 @@ bool import_one(int from, uint32_t cls, const std::string& why) {
         g_ld_class_level[id] = static_cast<uint8_t>(from + 1);
         g_ld_any = true;
     }
-    mrp_moby_import(from, cls);
+    if (!code_alone) mrp_moby_import(from, cls);
     // its sounds: its definitions' bank sounds (the pool's row: its level's asset index) in its level's bank
-    if (lwu(a + 0x28) != 0 && lbu(a + 0xd) != 0) {
+    if (a != 0 && lwu(a + 0x28) != 0 && lbu(a + 0xd) != 0) {
         const uint32_t bank = level_bank(from), t = lwu(a + 0x28);
         for (uint32_t j = 0; j < lbu(a + 0xd); ++j) {
             sh(t + 32 * j + 0x1a, j < c->sounds.size() && bank != 0 ? c->sounds[j] : 0xffffu);
@@ -282,8 +287,8 @@ bool import_one(int from, uint32_t cls, const std::string& why) {
         }
         g_session_ids[id].sounds = bank != 0;
     }
-    std::printf("[session] import %d:%u as class %u (index %u, %s): update %08x -> %08x, +0x2c %08x -> %08x, %u sounds\n", from, cls, id,
-                g_session_ids[id].idx, why.c_str(), c->update_fn, fn, c->word2c, word, lbu(a + 0xd));
+    std::printf("[session] import %d:%u as class %u (index %u, %s): update %08x -> %08x, +0x2c %08x -> %08x, %u sounds%s\n", from, cls, id,
+                g_session_ids[id].idx, why.c_str(), c->update_fn, fn, c->word2c, word, a != 0 ? lbu(a + 0xd) : 0u, code_alone ? " (a class of code alone)" : "");
     return true;
 }
 
@@ -377,7 +382,7 @@ void register_imports(int level) {
     size_t classes = 0, defs = 0, bad = 0;
     for (const auto& [id, sc] : g_session_ids) {
         const PoolClass* c = sc.imported ? pool_find(sc.level, sc.cls) : nullptr;
-        if (c == nullptr || lwu(sc.hdr + 0x28) == 0) continue;
+        if (c == nullptr || sc.hdr == 0 || lwu(sc.hdr + 0x28) == 0) continue;
         ++classes;
         const auto b = g_banks.find(sc.level);
         for (uint32_t j = 0, t = lwu(sc.hdr + 0x28); j < lbu(sc.hdr + 0xd); ++j, ++defs)
@@ -676,6 +681,11 @@ uint32_t spawn_placement(uint32_t id, int level, const LdPlacement& pl, const fl
 }  // namespace
 
 // orig: (host) see session.h
+void moby_update_transform_placed(uint32_t m) {
+    if (lw(m + 0x24) != 0) moby_update_transform(m);
+}
+
+// orig: (host) see session.h
 uint32_t session_import_spawn(uint32_t id, const float pos[3], float yaw) {
     const auto it = g_session_ids.find(id);
     if (it == g_session_ids.end()) return 0;
@@ -796,6 +806,7 @@ void cycle_check() {
 // orig: (host) see session.h
 void session_frame(uint64_t frame) {
     g_frame = frame;
+    hero_modes_frame(frame);  // (hero_modes.h)
     if (g_spawn_probe && frame % 600 == 0) spawn_probe_end();  // (the probe's lines so far)
     session_rt_test_frame(frame);  // (testing: RAC1_SESSION_SAVE_AT / _LOAD_AT, nothing unless set)
     if (!g_on) return;

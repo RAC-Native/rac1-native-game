@@ -2,6 +2,7 @@
 #include <game/enhance/session_runtime.h>
 
 #include <game/enhance/class_profiles.h>
+#include <game/enhance/hero_modes.h>
 #include <game/enhance/leveldata.h>
 #include <game/enhance/sections.h>
 #include <game/enhance/session.h>
@@ -14,6 +15,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <host/level_slots.h>
 #include <host/mod_code.h>
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/kernel/mods.h>
@@ -80,6 +82,62 @@ struct Rt {
     std::vector<Bind> binds;
 };
 Rt g_rt;
+
+// what the hero spawned (and what his spawns spawned) since the arrival: the soft reset takes it out. A moby is remembered with its class,
+// so that a slot used again by another (a placement, a plugin's) is not taken for it
+struct Kid {
+    uint32_t cptr = 0;
+    uint16_t cls = 0;
+};
+std::map<uint32_t, Kid> g_kids;
+
+bool kid_valid(uint32_t m, const Kid& k) {
+    return static_cast<int8_t>(lbu(m + 0x20)) >= 0 && lhu(m + 0xa6) == k.cls && lwu(m + 0x24) == k.cptr;
+}
+
+// the animation layers (a moby's list at +0x60: nodes of the 6-entry pool 0x18eb40) a moby holds given back: a level's start clears the
+// pool and every moby; the soft reset has the hero's moby (the arrival's record, its list kept) and the ones it takes out
+void release_layers(uint32_t m) {
+    constexpr uint32_t POOL = 0x0018eb40u;
+    uint32_t n = lwu(m + 0x60);
+    for (int guard = 0; n != 0 && guard < 16; ++guard) {
+        if (n < OV(POOL) || n >= OV(POOL) + 0x180) break;  // (not a pool's node: not ours to clear)
+        const uint32_t next = lwu(n + 0x1c);
+        mem_fill32(n, 0, 0x40);
+        n = next;
+    }
+    sw(m + 0x60, 0);
+}
+
+// The player's weapon mobys and the hero's state they leave, as a level's start leaves none (`gameplay_load`: the moby array and the
+// layer pool cleared, the player block cleared by `hero_init`): everything the hero spawned and what it spawned, and the hero's animation layers
+int layers_in_use() {
+    int k = 0;
+    for (uint32_t i = 0; i < 6; ++i) k += lbu(OV(0x0018eb40) + (i << 6) + 4) != 0 ? 1 : 0;
+    return k;
+}
+
+size_t weapons_reset(uint32_t hero_moby) {
+    size_t n = 0;
+    const int layers_before = layers_in_use();
+    std::map<uint16_t, size_t> by_class;
+    for (const auto& [m, k] : g_kids) {
+        if (m == hero_moby || !kid_valid(m, k)) continue;
+        release_layers(m);
+        moby_retire(m);
+        ++n;
+        ++by_class[k.cls];
+    }
+    g_kids.clear();
+    if (hero_moby != 0) release_layers(hero_moby);
+    if (n != 0 || layers_before != 0) {
+        std::string c;
+        for (const auto& [cls, k] : by_class) c += (c.empty() ? "" : ", ") + std::to_string(cls) + " x" + std::to_string(k);
+        std::printf("[session] the soft reset takes out the hero's spawns: %zu mobys (%s); the animation layer pool in use: %d of 6, then %d\n", n, c.c_str(),
+                    layers_before, layers_in_use());
+    }
+    return n;
+}
 
 // a loaded save's session item (its level's session not entered yet; kept to be written back when its mod is off)
 struct Loaded {
@@ -206,7 +264,9 @@ void session_rt_level(const std::string& build_dir, const std::string& level_id)
     g_session_rt = false;
     g_rt = Rt{};
     sections_level("");  // (the sections of the session before dropped: sections.h)
+    hero_modes_level(!build_dir.empty(), false, level_slots_on() && level_slot() >= 0 ? level_slot_base(level_slot()) : 0);  // (hero_modes.h)
     if (build_dir.empty()) return;
+    hero_modes_build_file(build_dir);  // (a format 1 / 2 level's `hero generic`)
     std::ifstream in(build_dir + "/session.txt");
     if (!in) return;
     std::string line;
@@ -231,6 +291,7 @@ void session_rt_level(const std::string& build_dir, const std::string& level_id)
         return;
     }
     g_session_rt = true;
+    hero_modes_level(true, true, 0);  // (a session: every empty slot of the hero's, its hero contexts)
     g_rt.build = build_dir;
     g_rt.id = level_id;
     g_rt.cur = start_checkpoint();
@@ -336,10 +397,10 @@ size_t session_rt_main_enter(int32_t policy) {
         if (policy == SECTION_FREEZE) {
             if (static_cast<int8_t>(lbu(p.moby + 0x20)) < 0) continue;
             sh(p.moby + 0x34, (lhu(p.moby + 0x34) & ~2u) | (p.flags34 & 2u));
-            moby_update_transform(p.moby);
+            moby_update_transform_placed(p.moby);
         } else if (policy == SECTION_REMOVE && static_cast<int8_t>(lbu(p.moby + 0x20)) < 0 && !stays_dead(p)) {
             restore(p, false);  // (back as the arrival placed it: it was there when main was left)
-            moby_update_transform(p.moby);
+            moby_update_transform_placed(p.moby);
         }
         n += static_cast<int8_t>(lbu(p.moby + 0x20)) >= 0 ? 1 : 0;
     }
@@ -375,6 +436,8 @@ void session_rt_loaded() {
     if (!g_rt.binds.empty()) std::printf("[session] level.txt's objects: %zu of %zu slots set (their profiles')\n", bound, g_rt.binds.size());
     g_rt.placed.clear();
     g_rt.hero_ok = false;
+    g_kids.clear();
+    g_spawn_watch = true;  // (moby_spawn tells session_rt_moby_spawned: the hero's spawns, taken out by the soft reset)
     for (uint32_t m = lo; m < hi; m += 0x100) {
         if (lhu(m + 0xa6) == 0 && !g_rt.hero_ok) {  // (the hero: the first moby of class 0, as hero_init takes it)
             take(g_rt.hero, m, lo, hi);
@@ -439,6 +502,8 @@ void session_rt_loaded() {
 // orig: (host) see session_runtime.h
 void session_respawn() {
     ++g_rt.respawns;
+    hero_modes_respawn_begin();  // (in Clank's or Giant Clank's form: Ratchet's own moby the hero's again first: hero_modes.h)
+    weapons_reset(lwu(P + 0x2080));  // (the weapons' mobys and the hero's layers: before his state is cleared, which forgets them)
     // (sections: the checkpoint's section made the current one first, at once, no fade: sections.h)
     sections_respawn_prepare(g_rt.cur.section);
     // the hero: his moby as the arrival placed it, at the checkpoint, then as gameplay_load's end starts him (the player block
@@ -478,7 +543,7 @@ void session_respawn() {
                 continue;
             }
             restore(p, false);
-            moby_update_transform(p.moby);
+            moby_update_transform_placed(p.moby);
             ++back;
         }
     }
@@ -487,8 +552,28 @@ void session_respawn() {
                 g_rt.cur.name.c_str(), g_rt.cur.pos[0], g_rt.cur.pos[1], g_rt.cur.pos[2],
                 sections_any() ? (" in section " + sections_name(sections_current())).c_str() : "", policy == SESSION_RESPAWN_KEEP ? "kept" : "reset", back,
                 kept_dead);
+    sections_hero_respawned();  // (stage 9: the section's hero mode again, at the next frame of play)
     mod_code_respawn(g_rt.respawns, g_rt.cur.name.c_str(), g_rt.cur.pos, g_rt.cur.yaw);
 }
+
+// orig: (host) see session_runtime.h
+void session_rt_moby_spawned(uint32_t moby, uint32_t by) {
+    if (!g_session_rt || moby == 0) return;
+    g_kids.erase(moby);  // (its slot used again)
+    if (by == 0 || by == moby) return;
+    const auto it = g_kids.find(by);
+    if (by == lwu(P + 0x2080) || (it != g_kids.end() && kid_valid(by, it->second))) g_kids[moby] = Kid{lwu(moby + 0x24), static_cast<uint16_t>(lhu(moby + 0xa6))};
+}
+
+// orig: (host) see session_runtime.h
+uint32_t session_rt_hero_frame_begin() {
+    const uint32_t was = g_spawn_updating;
+    if (const uint32_t hm = lwu(P + 0x2080); hm != 0) g_spawn_updating = hm;
+    return was;
+}
+
+// orig: (host) see session_runtime.h
+void session_rt_hero_frame_end(uint32_t was) { g_spawn_updating = was; }
 
 // orig: (host) see session_runtime.h
 void session_rt_frame(uint64_t frame) {
@@ -508,6 +593,9 @@ void session_rt_frame(uint64_t frame) {
     std::printf("[session] Ratchet at checkpoint \"%s\" (%.2f %.2f %.2f)%s once the arrival is over\n", g_rt.cur.name.c_str(), g_rt.cur.pos[0], g_rt.cur.pos[1],
                 g_rt.cur.pos[2], sections_any() ? (" in section " + sections_name(g_rt.cur.section)).c_str() : "");
 }
+
+// orig: (host) see session_runtime.h
+bool session_rt_placing() { return g_session_rt && g_rt.loaded && g_rt.place_pending; }
 
 // orig: (host) see session_runtime.h
 void session_rt_test_frame(uint64_t frame) {
@@ -540,6 +628,10 @@ void session_rt_test_frame(uint64_t frame) {
         sw(S + 0xe0, 0);
         sw(S + 0xdc, 0x15);
         o.step = 1;
+        // (a run started by RAC1_GOTO had no save in use: the first one makes the game show its once-a-boot card notice, screen
+        // kind 5, at once - mode 4 until Cross, with a save in use and its flag +0x108 clear, off Veldin. A game loaded from the
+        // title showed it at its first planet: as that one)
+        if (lw(S + 0xf4) == 0) sb(S + 0x108, 1);
     };
     if (save_op.slot >= 0 && save_op.step == 0 && frame >= save_op.at && lw(OV(0x0015f5c4)) == 0 && ready) {
         summaries(save_op);

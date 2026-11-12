@@ -6,8 +6,8 @@ Headless (after build_arena.py):   blender -b --python build_arena.py --python b
   arena_rails      a curve object per rail, rail_<name> (a Bezier: edit its points in Blender). export_arena.py writes
                    its points (level.txt's rail line: the composer puts it in the game's rail table) and its look (a
                    tube on pylons: the class rail_<name>); the plugin turns a rail on, and shows it, during its challenge
-  rail_station     the start's platform (arena_visual, arena_collision: col_rail_station); spawn_rail_start and
-                   spawn_rail_course (markers: where a rail challenge puts Ratchet)
+  rail_station     the start's platform (arena_visual, arena_collision: col_rail_station); spawn_rail_course (a
+                   marker: where a rail challenge puts Ratchet)
   the course       "Grind Scarponi: Discesa": its centre rail (rail_lane_c, a Bezier) and two lanes 3 units to its sides
                    for its first part (rail_lane_l, rail_lane_r: made from the centre's line, so run this again after
                    editing it); on the lanes, our mines (jump them: markers mine_<n>, the class mine) and Kalebo III's
@@ -32,12 +32,7 @@ exec(_src, B)  # (its helpers: Geo, box, mesh_object, empty, light, collection)
 
 SPOT = (-61.0, 76.0, 29.0)  # Kalebo III's rail spot, the scene's coordinates (the game's (115, 264, 133))
 TOP = 24.0                  # the station's floor
-PLAT = (-63.0, 72.0, -57.0, 85.0)  # its platform, x0 y0 x1 y1 (the test rail from its south end, the course's lanes
-                                   # from its north part)
-# the test rail: from the platform's east edge, half a unit over its floor, along the north wall's outside, over the
-# wall and down into the arena, ending 8 over the north drop zone (Ratchet flies off its end and lands there)
-RAIL_TEST = [(-57.0, 72.5, 24.5), (-46.0, 73.0, 22.5), (-32.0, 71.0, 19.0), (-20.0, 66.0, 15.0),
-             (-12.0, 57.0, 12.0), (-7.0, 46.0, 9.5), (-4.0, 37.0, 8.0)]
+PLAT = (-63.0, 72.0, -57.0, 85.0)  # its platform, x0 y0 x1 y1 (the course's lanes from its north part)
 # the course's centre rail: east along the north wall's outside, round the north-east corner, south along the east
 # wall's outside, over it and down into the arena, ending 8 over the east drop zone
 COURSE = [(-56.5, 80.0, 24.5), (-40.0, 79.0, 22.0), (-15.0, 77.0, 19.0), (10.0, 77.0, 17.0), (35.0, 76.0, 15.5),
@@ -54,6 +49,21 @@ OBSTACLES = [(28, "c", "mine"),
              (110, "l", "mine"),                                               # (the left lane ends at 125)
              (135, "r", "kmine"),                                              # (the right one at 150)
              (162, "c", "kmine"), (176, "c", "mine"), (190, "c", "kmine"), (204, "c", "mine"), (214, "c", "kmine")]
+# the escape ("La grande fuga": the lava floods the arena): from the hub's top (3 high), west over the arena's wall, south
+# along its outside over the lava, round the south-west corner and up through the portal (the marker portal_fuga, on it
+# PORTAL_BACK before its end: Ratchet goes through it grinding, the section's own rail goes on beyond), west of the ship's
+# plaza
+ESCAPE = [(5.0, 0.0, 3.6), (-4.0, 0.0, 3.8), (-14.0, -1.0, 5.5), (-26.0, -4.0, 8.5), (-38.0, -8.0, 11.0),
+          (-50.0, -12.0, 12.5), (-62.0, -16.0, 12.0), (-72.0, -26.0, 11.0), (-76.0, -40.0, 10.0), (-72.0, -54.0, 9.5),
+          (-62.0, -66.0, 9.5), (-48.0, -72.0, 10.5), (-34.0, -74.0, 12.5), (-24.0, -73.5, 13.5)]
+ESCAPE_OBSTACLES = [(30, "mine"), (44, "kmine"), (58, "kmine"), (72, "mine"), (86, "kmine"), (100, "kmine"),
+                    (114, "mine"), (128, "kmine"), (142, "kmine")]  # (along it; mine_e<n>, spawn_kmine_e<n>)
+PORTAL_BACK = 6.0  # the portal's ring on the escape, this far before its end (the plugin's switch as he goes through)
+# the way back (rail_ritorno): from a portal's ring high outside the north wall (clear of the corners' floodlight masts and
+# of the course's lanes), over the wall and down into the arena's middle, its end over the hub's top (Ratchet flies off it
+# there); a portal from any world brings him onto it, grinding (the plugin's hero_rail_attach at main's entry rientro, its start)
+RITORNO = [(-16.0, 66.0, 20.0), (-12.0, 56.0, 17.5), (-8.5, 46.0, 14.5), (-6.0, 34.0, 11.0), (-4.0, 22.0, 8.5), (-2.0, 12.0, 6.5),
+           (-1.0, 4.0, 5.2)]
 
 
 def remove(name):
@@ -150,16 +160,35 @@ def course(crail, cmark):
     return dist[-1]
 
 
+def escape(crail, cmark):
+    """The escape's rail, its obstacles' markers (mine_e<n>, spawn_kmine_e<n>: the plugin keeps them apart from the
+    course's) and the portal's marker past its end."""
+    rail_curve(crail, "rail_escape", ESCAPE)
+    line, dist = bezier_line(ESCAPE)
+    count = {}
+    for s, kind in ESCAPE_OBSTACLES:
+        p = along(line, dist, s)[0]
+        d = along(line, dist, s + 1.0)[0] - along(line, dist, s - 1.0)[0]
+        count[kind] = count.get(kind, 0) + 1
+        name = ("spawn_kmine_e%d" if kind == "kmine" else "mine_e%d") % count[kind]
+        B["empty"](cmark, name, tuple(p), "SPHERE", 0.6, yaw=math.degrees(math.atan2(d.y, d.x)))
+    p = along(line, dist, dist[-1] - PORTAL_BACK)[0]
+    d = along(line, dist, dist[-1] - PORTAL_BACK + 1.0)[0] - along(line, dist, dist[-1] - PORTAL_BACK - 1.0)[0]
+    B["empty"](cmark, "portal_fuga", (p.x, p.y, p.z + 0.9), "CIRCLE", 3.0, yaw=math.degrees(math.atan2(d.y, d.x)))
+    return dist[-1]
+
+
 def main():
     scene = bpy.context.scene
     cvis = bpy.data.collections["arena_visual"]
     ccol = bpy.data.collections["arena_collision"]
     cmark = bpy.data.collections["arena_markers"]
     clig = bpy.data.collections["arena_lights"]
-    for n in ("rail_station", "col_rail_station", "spawn_rail_start", "spawn_rail_course", "light_rail_station"):
+    for n in ("rail_station", "col_rail_station", "spawn_rail_start", "spawn_rail_course", "light_rail_station", "rail_test",
+              "rail_ritorno"):
         remove(n)
     for ob in list(cmark.objects):
-        if ob.name.startswith(("mine_", "barrier_", "drone_", "spawn_kmine_")):
+        if ob.name.startswith(("mine_", "barrier_", "drone_", "spawn_kmine_", "portal_")):
             bpy.data.objects.remove(ob, do_unlink=True)
     crail = B["collection"]("arena_rails", scene.collection)
 
@@ -174,17 +203,19 @@ def main():
     B["box"](v, None, "trim", x1 - 0.15, y0 + 0.3, TOP, x1, y1 - 0.3, TOP + 0.05)  # (a glowing edge: the jump's)
     B["mesh_object"]("rail_station", v, cvis, False)
     B["mesh_object"]("col_rail_station", c, ccol, True)
-    B["empty"](cmark, "spawn_rail_start", (-60.0, 75.0, TOP), "SINGLE_ARROW", 1.5, yaw=0.0)
     B["empty"](cmark, "spawn_rail_course", (-60.0, 80.0, TOP), "SINGLE_ARROW", 1.5, yaw=0.0)
     B["light"](clig, "light_rail_station", (-60.0, 78.5, TOP + 3.0), (0.3, 0.85, 1.0), 1.5, 14.0)
 
-    rail_curve(crail, "rail_test", RAIL_TEST)
-    d = min(math.dist(p, SPOT) for p in RAIL_TEST)
-    print("rails: rail_test, %d points; its start %.1f from Kalebo III's rail spot (12 at most)" % (len(RAIL_TEST), d))
     total = course(crail, cmark)
     starts = [COURSE[0]] + [(COURSE[0][0], COURSE[0][1] + k * LANE, COURSE[0][2]) for k in (-1, 1)]
     print("rails: the course, %.0f units; its lanes' starts %.1f..%.1f from the spot; %d obstacles" % (
         total, min(math.dist(p, SPOT) for p in starts), max(math.dist(p, SPOT) for p in starts), len(OBSTACLES)))
+    print("rails: the escape, %.0f units, %d obstacles, the portal %s before its end" % (escape(crail, cmark), len(ESCAPE_OBSTACLES), PORTAL_BACK))
+    rail_curve(crail, "rail_ritorno", RITORNO)
+    d0 = Vector(RITORNO[1]) - Vector(RITORNO[0])
+    B["empty"](cmark, "portal_ritorno", (RITORNO[0][0], RITORNO[0][1], RITORNO[0][2] + 0.9), "CIRCLE", 3.0,
+               yaw=math.degrees(math.atan2(d0.y, d0.x)))
+    print("rails: the way back, %d points" % len(RITORNO))
 
 
 main()

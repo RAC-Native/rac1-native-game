@@ -1,17 +1,97 @@
 # Rendering
 
-How a frame is drawn. In short: the game's own render code still runs, ported, and decides what is
-drawn, where, with which level of detail and which lighting. The **MRP** (Modern Rendering Pipeline)
-then draws those decisions natively, with OpenGL 4.6 or Vulkan 1.3, instead of sending them through an
-emulated PS2 graphics chip. The MRP draws all of it: the world, the sky, the mobys, the particles and
-effects, the water, lava and sand seas of VU1 program 7, and the 2D (the HUD, text, menus, fades),
-which it reads from the frame's chain itself ([The 2D](#the-2d)). The PS2's way of drawing - a GS
-replica and the ported VU1 programs - is kept as the reference that the MRP is proved against.
+How a frame is drawn, for a reader who does not know the PlayStation 2. In short: the game's own
+render code still runs, ported to C++, and decides what is drawn, where, with which level of detail,
+which lighting and which effects. It still produces its draw commands as it did on the PS2. The
+**MRP** (Modern Rendering Pipeline, `src/game/render/mrp_*`) interprets those commands natively and
+draws them with its own OpenGL 4.6 or Vulkan 1.3 code (Metal on macOS). It does not emulate the PS2's
+graphics chip. A faithful replica of the PS2's way of drawing is kept beside it only as the reference
+the MRP is checked against.
 
 The specialised pages: [Lighting](lighting.md) (the original lighting and the optional modern
 lighting), [Materials](materials.md) (Surface Detail), [Ambient particles](particles.md),
 [Performance](performance.md) (where a frame's CPU time goes, the threads) and [Vulkan](vulkan.md)
-(the second backend).
+(the second backend). The sections after [The world on the GPU](#the-world-on-the-gpu) are the
+reference for each part, with the measurements that decided it.
+
+## The words this page uses
+
+- **EE** (Emotion Engine): the PS2's main CPU. The game's code ran there; here it is C++. "EE memory"
+  is the game's 32 MB of RAM, which the port keeps as the PS2 laid it out.
+- **VU0, VU1** (vector units): two small vector processors. The game uploads short programs
+  ("microprograms") to them. VU1's programs transformed, lit and clipped geometry for the graphics
+  chip. The port has them translated to C++, instruction by instruction.
+- **DMA chain**: the list of data packets the game builds each frame for the hardware: geometry, VU
+  programs and their input, texture uploads, drawing commands.
+- **VIF** and **GIF**: the two gates of that chain. The VIF unpacks data into VU memory; the GIF
+  takes drawing commands (**GIF packets**) to the graphics chip.
+- **GS** (Graphics Synthesizer): the PS2's graphics chip, a rasteriser with 4 MB of its own memory.
+  A GIF packet sets its **registers** (which texture, how it blends, whether it is fogged, its alpha
+  test) and gives it vertices; the GS fills the pixels.
+- **tfrag, tie, shrub**: the game's three kinds of world geometry: the terrain, instanced objects
+  (buildings, rocks), small instanced details (plants, lights).
+- **moby**: any object with its own behaviour: Ratchet, enemies, crates, doors, ships.
+- **VU1 program 7**: the program that drew the levels' water, lava and sand seas and their baked
+  shadows.
+
+## What the MRP is, and what it is not
+
+**What it is.** The game's code still produces its draw commands: the DMA chain with its GIF packets
+and the input of its VU1 programs. The MRP interprets them natively, keeping the game's own lighting,
+fog and effects, and draws them with its own OpenGL / Vulkan code. Where it can, it does not even
+read the commands: the world and the mobys come from assets the setup made from the player's disc,
+positioned by the game's own decisions.
+
+| Part | Where the MRP takes it from | Drawn by |
+|---|---|---|
+| Mobys | Their models and textures: our assets (`.mrpm`, made by the setup). Which mobys, their level of detail, pose, lights and tint: observers in the game's ported moby pass (`mrp_scene.cpp`). How each part blends and is alpha-tested, and the fog colour: the values the game wrote for the graphics chip. | `mrp_moby_renderer.cpp` |
+| World (tfrag, tie, shrub) | Geometry and textures: our assets (`.mrpw`). Which pieces, their level of detail and lit colours: the world passes' own chain, walked on a private VU1 and evaluated from the assets (tfrag on a compute shader). Each run's texture and blending: the packets' register writes. | `mrp_world_renderer.cpp`, `mrp_tfrag_gpu.cpp` |
+| Sky | The sky pass's packets (its shells) and the particle program's output for its sprites, run on the walker's VU1; its textures from the sky's data in EE memory. | `mrp_world_renderer.cpp` |
+| Drop shadows | The game's shadow pass, observed (`mrp_shadows.cpp`). | stencil, `mrp_shadows.cpp` |
+| Particles and effects | The chain's effect ranges: their VU1 program (the particle program) run on a VU1 of the MRP's own, its primitives taken back to world space. | `mrp_fx.cpp` |
+| Program 7's seas | Each batch as the program finds it in VU1 memory, before it runs: its points, colours and texture coordinates. | `mrp_fx.cpp`, in the world's projection |
+| 2D (HUD, text, menus, fades) | The GIF packets, read directly (`mrp_chain.cpp`). | `mrp_2d.cpp` |
+| Modern lighting, reflections, ray tracing, ambient particles | Ours, from the game's state and our data files. | `mrp_lighting.cpp`, `mrp_reflect.cpp`, `mrp_rt.cpp`, `mrp_particles.cpp` |
+
+**What it is not.** It is not an emulation of the GS. Nothing the MRP draws is rasterised by a model
+of the graphics chip: the GPU rasterises, through our own shaders and our own render targets. With the
+MRP on (the default) the GS replica's drawer (`runtime/gs/gs_draw.cpp`) is never called.
+
+**Where GS concepts are still used, and why.** Some of the game's information exists only in the form
+it gave the graphics chip, so the MRP reads it in that form:
+
+- **Register values as draw state.** The game keeps no "material" for a 2D primitive, an effect or a
+  run of world geometry: how it is textured, blended, fogged and alpha-tested is written as GS register
+  values in its packets. The MRP reads those values and turns them into GPU state: the blending into
+  the GPU's own blend equations (`runtime/gs/gs_blend.cpp`), the texture function, alpha test and fog
+  into a few lines of its fragment shaders.
+- **The GS's memory, as game state.** The game uploads textures into the GS's 4 MB and, now and then,
+  reads parts of it back (the pause menu keeps its picture there). So that memory is kept
+  (`runtime/gs/gs_memory.cpp`), with its layouts, and the 2D's and the effects' textures are decoded
+  from it once per image. Nothing is drawn into it.
+- **GS coordinates.** The 2D and the effects come as GS vertices (screen pixels in 1/16ths, the GS's
+  depth). The effects are taken back to world space; the 2D is placed on the window; their depth is
+  mapped onto the GPU's depth buffer so they meet the 3D as on the PS2.
+- **Render-to-texture.** The game draws some menus into a part of its frame and uses it as a texture;
+  the MRP gives that part a GPU render target of its own.
+- **Ported VU1 programs** run on private VU1 instances where the game's data for the sky, the effects
+  and program 7's surfaces is the input of those programs. Their output is read; nothing is drawn by
+  them.
+
+**The reference.** The PS2's way of drawing is kept, ported: the VU programs and a replica of the GS
+(`runtime/gs/gs_emu.cpp`, `gs_draw.cpp`). It draws only on the faithful path (`RAC1_MRP=0`, the debug
+menu's "VU emulation") and in testing comparisons (`RAC1_MRP_CHAIN=0`, `RAC1_MRP_FX=0`,
+`RAC1_MRP_SEAS=0`, the `*_DIFF` and `*_CHECK` variables); none of them is a player's setting. See
+[The original rendering, kept as the reference](#the-original-rendering-kept-as-the-reference).
+
+**"A static recompilation that emulates the GS?"** Half of it describes the game logic, not the
+renderer. About 2,150 of the game's ported functions are its MIPS and VU code translated into C++
+instruction by instruction, by generators run at setup on the player's disc: that is static
+recompilation ([Architecture](architecture.md#the-generated-code)). About 1,600 more are ported by
+hand, and all of them are proved against the original ([The oracle](oracle.md)). The rendering is not
+GS emulation: the MRP reads the game's draw commands and draws them with its own OpenGL / Vulkan code.
+It does read GS-format data where that is the only place the game keeps it (the list above), and the
+faithful GS replica exists, as the reference only.
 
 ## How the PS2 drew a frame
 
@@ -56,15 +136,16 @@ All of their decisions are the game's own: which objects are visible, which leve
 uses, the animation pose and its bone matrices, the lights chosen for each moby, tints and fades.
 The MRP does not re-derive any of them.
 
-## Two backends
+## The backends
 
 The renderer has two backends, chosen at Options > Display > Renderer and read when the window is
 made: **Vulkan 1.3**, the default in a window, and **OpenGL 4.6**, the headless runs' and the fallback
-when Vulkan cannot start (`RAC1_RENDERER=vulkan` / `opengl` for one run). Each rendering module keeps its OpenGL code and has a Vulkan branch beside it
-(`vk::is_active()`); the shaders are the same GLSL, made Vulkan's by `tools/gen_vk_shaders.py` and
-compiled at build time. Both draw the same picture from the same scene, the modern lighting, the
-materials and the ambient particles included; when Vulkan cannot start the game opens with OpenGL.
-The reference images are OpenGL's. See [Vulkan](vulkan.md).
+when Vulkan cannot start (`RAC1_RENDERER=vulkan` / `opengl` for one run). On macOS the Vulkan code
+runs on Metal ([Metal](metal.md)). Each rendering module keeps its OpenGL code and has a Vulkan
+branch beside it (`vk::is_active()`); the shaders are the same GLSL, made Vulkan's by
+`tools/gen_vk_shaders.py` and compiled at build time. Both draw the same picture from the same scene,
+the modern lighting, the materials and the ambient particles included. The reference images are
+OpenGL's. See [Vulkan](vulkan.md).
 
 ## How the MRP gets the frame
 
@@ -117,6 +198,13 @@ VU1 memory against the level's assets and evaluates the program's math (`src/for
 holds the CPU reference). So the culling, the level of detail and the lit vertex colours are exactly
 the original's. The walk, and then the frame's triangles, draw commands and batches
 (`build_triangles`), run on the scene worker thread (`mrp_world_renderer.cpp`).
+The world passes are written by hand, and note what they chain as they write it - the tfrag pass its
+entries, the tie and shrub passes their first program's draws (`src/game/ovl/world_chained.h`): the
+walk makes those draws from the notes and the level's tables, without unpacking or running that part
+of the chain (`RAC1_PERF_WORLD_CHAINED`, docs/performance.md); the clipping programs' draws and the
+shrubs' far variants are walked. Where no shrub packet reads VU1 memory past its block, the capture
+reads the passes' ranges in place once and the scene is made from what it noted, the clipping
+programs' parts alone copied and walked (`RAC1_PERF_WORLD_SCAN`).
 
 **Effects, VU1 program 7 and the 2D: the MRP's chain reader.** `mrp_chain.cpp` reads the frame's chain
 (on the MRP chain worker): its GIF packets, its texture uploads, and in the effects' ranges the ported VU1
@@ -214,8 +302,9 @@ colours are built.
   `glBufferSubData`; no persistent mapping), so the driver keeps the previous frame's until the GPU
   is done with them.
 
-**The fragment shader is the GS**: its texture function, the alpha test including its "fail" modes
-(drawn in two passes where needed), its mip-level formula, and fog with the fog colour. The world
+**The fragment shader applies the draw state the game set**: the GS's texture function, the alpha
+test including its "fail" modes (drawn in two passes where needed), with Texture Detail Original the
+GS's mip-level formula, and fog with the fog colour. The GPU rasterises. The world
 passes draw with the alpha test on (GEQUAL 0x60, failing pixels drawn without depth: two passes), but
 most of their draws cannot fail it: every texel they sample has an alpha of at least 0x80 (known per
 texture at the level's load), and so has every vertex colour (a shrub's instance alpha; a tie's
@@ -280,8 +369,8 @@ joint or a blend of two or three joints.
 - the VU1 transform, declared `precise` so that no fused multiply-add changes a result;
 - the fog value, computed per vertex as the program does.
 
-**The fragment shader is the GS** (texture function, mip rule, fog, alpha test with its fail modes),
-with blending set from the GS state.
+**The fragment shader applies the draw state the game set** (the GS's texture function, mip rule with
+Texture Detail Original, fog, alpha test with its fail modes), with the GPU's blending set from it.
 
 **One projection.** The mobys are drawn through the same view-projection as the world, into the same
 depth buffer. In the PS2's way of drawing, the mobys' depth and the world's depth came from different
@@ -343,6 +432,12 @@ The MRP draws them itself (`RAC1_MRP_SEAS`, on by default; `mrp_fx.cpp`, "progra
   numerator: a callback that scales the w row and the numerator together, for its own fog, Kerwan's class 994, projects the same):
   the points are world points, drawn with the MRP's view-projection into its depth buffer, so the GPU clips them. Nothing past the
   4:3 frame is lost: no side test, no guard band, no full-span rule (those stay for the replica's path).
+  A matrix whose x, y, z rows are the frame's times one common factor (any: the camera's zoom or the cave's camera easing a
+  step makes it differ by a hair, up to a thousandth, between the frame the callback built it in and the one the host reads) and
+  whose w row is the frame's is the same: its points are the world's too. Only a matrix that is not (a batch with a model matrix
+  of its own, a camera cut's frame) goes through the frame's inverse, which is ill-conditioned (Gaspar's z row has a ~1e7
+  translation): a hair of difference there made world points tens of thousands of units away, the lava sea torn across the sky
+  (#144).
 - **As the GS drew them.** Texture, texture function, alpha test, blending and the GS's fog as the effects' shader (the atlas shared);
   the fog per vertex as the program computes it (`clamp(w + vf30.w)`, its integer part), interpolated over the screen; the depth is
   the GS's Z through the host's map of it (`render_gs_depth`), linear on the screen as the GS's, so a surface meets the world as
@@ -424,7 +519,15 @@ The game's own decisions are never changed, because they are game state. Instead
   afar), whose camera-facing quads the shrub pass writes as a GIF stream: the host writes the same
   stream (`variant_stream`). These copies were checked draw for draw against the game's own
   (`RAC1_MRPW_STATIC_CHECK=1`; the billboards' stream word for word).
-- **Original** runs no shadow run at all.
+- **Original** runs no shadow run at all at 4:3. In a widened view the moby pass's shadow run comes after
+  the real pass and draws only the mobys the wider frustum adds (or draws with the other VU1 program);
+  the others are taken from the real pass, in their places (`RAC1_PERF_MOBY_EXTRAS`,
+  docs/performance.md).
+- **Maximum's reach.** "Unlimited" is bounded for the mobys by the renderer's far plane (4000 units, or the game's own draw
+  distance when that is larger): nothing farther can show in the picture, and the game hides some mobys by keeping their
+  culling sphere far away on purpose. Pokitaru's class 1161 (a model of a 38000-unit radius, its sphere about 11000 units
+  from the camera) was drawn at Maximum, invisible but cast from the shadow cache over the whole level, so every sun shadow
+  went wrong (#144).
 
 With the whole of EE memory hashed after every frame, the game's state was identical at Original and
 at Maximum on Veldin, Novalis and Kerwan.

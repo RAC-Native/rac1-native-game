@@ -140,7 +140,7 @@ struct Cascade {
 }  // namespace
 // (mrp_moby_renderer.cpp: declared here, not in mrp_lighting.h - a game header is an input of the generated code's fingerprint, and
 // changing one asks for ./setup.sh again) the light's clip-space rectangle of each moby part a caster pass draws, 8 floats each
-// appended to `out` (x0, y0, x1, y1, its world centre, radius: the parts mrp_moby_caster_rect takes); the parts' count
+// appended to `out` (x0, y0, x1, y1, its world centre, radius); the parts' count
 int mrp_moby_caster_parts(const float* light_vp, std::vector<float>& out, const float* within = nullptr);
 namespace {
 // ---- the mobys over a cascade's static cache: their rectangles (RAC1_SHADOW_CLUSTERS) ---------------------------------------------
@@ -3242,6 +3242,7 @@ void vk_mat_shutdown() {
 // orig: (host) see mrp_lighting.h
 void mrp_lighting_material_capture(const int vp[4]) {
     if (!mat_ssr_now()) return;
+    RAC1_PROF_ZONE(kMatCapture);
     const int w = vp[2], h = vp[3];
     if (w <= 0 || h <= 0) return;
     float vpf[16];
@@ -4385,8 +4386,6 @@ bool ParticleSpec::same_as(const ParticleSpec& o) const {
 }
 // orig: (host) see mrp_lighting.h
 std::vector<ParticleSpec>& mrp_user_particles() { return g_particles; }
-// orig: (host) see mrp_lighting.h
-const std::vector<ParticleSpec>& mrp_user_particles_read() { return g_particles_read; }
 // orig: (host) see mrp_lighting.h
 void mrp_user_lights_ensure() { user_ensure(); }
 // orig: (host) see mrp_lighting.h

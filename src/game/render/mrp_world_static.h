@@ -172,8 +172,6 @@ struct CasterVolume {
     float cen[3][3] = {}, rad[3] = {}, sun[3] = {0.0f, 0.0f, 1.0f}, back[3] = {};  // (per cascade: to the cut plane, kBack from the camera)
     float pts[8][4] = {};  // the point lights' spheres by slot (radius 0: none)
     bool casc = true;      // the cascades' capsules looked at (false: the point lights' spheres alone)
-    // orig: (host) true when a sphere (x, y, z, r) reaches the volume
-    bool reaches(const float sph[4]) const;
     // orig: (host) the shadow views a sphere reaches (bit k: cascade k's capsule; bit 3 + i: point light slot i's sphere)
     uint16_t views(const float sph[4]) const;
 };

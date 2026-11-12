@@ -44,9 +44,8 @@ bool mrp_lod_world_shadows_needed(int kind, float* widen = nullptr);
 // false while the host runs a game frame whose picture it will not draw (several updates in one host frame: only
 // the last one's scene is drawn): the shadow runs, which only make the drawn scene, are not run for it. The main loop sets it.
 extern bool g_mrp_lod_frame_drawn;
-// orig: (host) the widening measured at the last update's tfrag pass (1 without the MRP world): the game's projection is the
-// 4:3 one during the update; the host's GS replica draws the game's projected 3D (the VU-kicked particles, glass) of that frame
-// narrowed by it to sit in the MRP's widened 3D (orig_main.cpp, gs::Viewport::xscale_3d)
+// orig: (host) the widening measured at the last update's tfrag pass (1 without the MRP world): how much wider than the game's
+// 4:3 frustum the MRP's world, sky and mobys are culled (the debug menu shows it)
 float mrp_lod_frame_widen();
 // orig: (host) the frame's widening captured for a frame drawn after the next update (render_toggles.h g_draw_from_snapshot)
 void mrp_lod_snapshot();
@@ -63,9 +62,19 @@ void mrp_lod_world_after(int kind, uint32_t cur, uint32_t real_end);
 // distances (+0x72) scaled and its frustum widened; the MRP scene observed during that run (mrp_scene_shadow_begin / end) is
 // what the MRP draws this frame (mrp_scene_draw()): its mobys at their near model, with the poses the pass computed for them.
 // The drop shadows stay the real pass's.
-void mrp_lod_moby_shadow(void (*pass)());
+// `real_first`, `real_count` (a run after the real pass): the mobys the real pass added to the frame's scene
+void mrp_lod_moby_shadow(void (*pass)(), size_t real_first = 0, size_t real_count = 0);
+// orig: (host) the run after the real pass fills the pose memo from it (RAC1_PERF_POSE_ORDER; not the extras' run, which
+// leaves out what the real pass drew)
+bool mrp_lod_moby_pose_fill();
+// orig: (host) RAC1_PERF_POSE_ORDER (docs/performance.md; 0: the shadow run before the real pass, as before): the moby pass's
+// shadow run made after the real pass, whose poses fill the pose memo (mrp_pose_memo.h) - an animated moby the two passes both
+// draw is then posed once a frame, not twice. True when the run comes after; mrp_lod_moby_shadow_due(): it will be made this
+// frame (the real pass keeps its poses only then)
+bool mrp_lod_moby_shadow_after();
+bool mrp_lod_moby_shadow_due();
 
-// orig: (host) the 3D effects the GS replica draws (render_frame's block after the moby pass: the draw lists' callbacks - the
+// orig: (host) the 3D effects (render_frame's block after the moby pass: the draw lists' callbacks - the
 // glows of the lights, the ships' canopy shine, through quad_draw 0x1fd228 -, the lens flare, the decals, the particles 0x267c98,
 // the sparkles) in a widened view. The particles are culled against the game's 4:3 frustum (the tangent 0x16caf0 / the radius
 // factor 0x16cc20: vf26 / vf27); the lights' glows (light_group_glows_draw 0x2df3d8) are drawn only for the mobys the moby pass drew
@@ -73,16 +82,17 @@ void mrp_lod_moby_shadow(void (*pass)());
 // the view is wider than the game's frustum and the MRP draws the world, the block is run as a shadow (the journal, as the world's)
 // with the tangent widened (patch_cull: the sphere test, not the projections A the block projects with: what it draws stays in the
 // game's 4:3 frame, past its sides for what is beyond them), the draw lists' clip matrix widened (mrp_lod_draw_list_widen) and the
-// mobys' +0x31 as the moby pass's shadow left them; mrp_lod_effects_after keeps its chain; mrp_lod_substitutes hands it to the GS
-// replica (gs::Gs::add_chain_substitute), whose projected 3D the window's side bands then show (gs_draw.cpp: past the frame's sides).
+// mobys' +0x31 as the moby pass's shadow left them; mrp_lod_effects_after keeps its chain; mrp_lod_substitutes hands it to the
+// chain reader (MrpChainInput::subs; on the faithful path to the GS replica, gs::Gs::add_chain_substitute), so the effects in the
+// window's side bands are drawn too.
 void mrp_lod_effects_shadow(void (*block)(), uint32_t cur);
 void mrp_lod_effects_after(uint32_t cur, uint32_t real_end);
 // orig: (host) the same for the draw lists render_frame runs between the world passes (0x16dc80 after the ties, 0x16de80 after the
 // shrubs; `list` 0 / 1): the levels' water and lava surfaces (Aridia's sand sea L2:0x2ea048, the water grids of Rilgar, Pokitaru,
 // Hoven, Gemlik Base, Umbris...) are queued there, and their cells / tiles are culled against the 4:3 clip matrix 0x166d80 (VCLIP /
 // clip_outcode of their corners). Before the real block (packet cursor `cur`) it is run as a shadow (the journal) with that matrix
-// widened (mrp_lod_draw_list_widen) and the sphere test's tangent (patch_cull); its chain stands in for the block's in the GS replica
-// as the effects shadow's does. Run whenever the list is not empty and the view is widened (nothing to predict it by).
+// widened (mrp_lod_draw_list_widen) and the sphere test's tangent (patch_cull); its chain stands in for the block's in the chain reader
+// (or the GS replica) as the effects shadow's does. Run whenever the list is not empty and the view is widened (nothing to predict it by).
 void mrp_lod_list_shadow(int list, void (*block)(), uint32_t cur);
 void mrp_lod_list_after(int list, uint32_t cur, uint32_t real_end);
 // orig: (host) the last drawn update's shadow chains, in the chain's order (the lists' blocks, then the effects'): the real range
@@ -93,9 +103,9 @@ struct MrpLodSubstitute {
     std::vector<uint8_t> bytes;
 };
 void mrp_lod_substitutes(std::vector<MrpLodSubstitute>& out);
-// orig: (host) the widening of the view the GS replica's chain is drawn into, x / y (1 1: none; the shadow runs' fill_widen /
-// fill_widen_y): handed to the replica (gs::Gs::set_side_widen) for the VU1 programs' tests that drop a primitive wholly past the
-// game's 4:3 sides. VU1 program 7 (shadows_vu1.cpp: the drop shadows, the prim lists of the levels' water and sand sea) drops a
+// orig: (host) the widening of the view, x / y (1 1: none; the shadow runs' fill_widen / fill_widen_y): handed to the chain reader
+// (MrpChainInput::side_widen) and on the faithful path to the GS replica (gs::Gs::set_side_widen), for the VU1 programs' tests that
+// drop a primitive wholly past the game's 4:3 sides. VU1 program 7 (shadows_vu1.cpp: the drop shadows, the prim lists of the levels' water and sand sea) drops a
 // clipped triangle past 4 / 3 of the frame's half width, which a 32:9 view shows (Aridia's sand sea near the camera at the far left).
 void mrp_lod_side_widen(float out[2]);
 // orig: (host) the shadow block running now: -1 none, 0 / 1 the draw lists' (mrp_lod_list_shadow), 2 the effects'

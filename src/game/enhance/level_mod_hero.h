@@ -20,6 +20,27 @@ bool level_mod_kalebo_surface(int32_t kind);
 // (0x002127b8: the lava's top +0x2f4, the ground under it) that Kalebo's build lacks
 bool level_mod_kalebo_lava_ground();
 
+// The board (Kalebo III's and Rilgar's builds: the generator's hooks, tools/codegen/hooks.glue) outside a race, on a level mod's
+// level (hero_modes.h's rules; the original's levels: as transliterated, every hook a test that fails):
+// orig: (none) — enhancement: the level number the board's race code compares (its fall test, its race's start line): the
+// planet whose race it rides (`world rilgar` on Kalebo III's base: 5), else `level` as read
+uint32_t level_mod_board_planet(uint32_t level);
+// orig: (none) — enhancement: true when the board rides free (no race: its fall test level_mod_board_fell's, no race HUD)
+bool level_mod_board_free();
+// orig: (none) — enhancement: a free board's fall test (the race's z below 76 on Kalebo III, 61.4 on Rilgar): true when he is
+// below the fall height (its +0x8a0 set), the race's fall state 0x6e then entered
+bool level_mod_board_fell(float z);
+// orig: (none) — enhancement: the race's "back on the track" place (L16:0x225ac0, L5:0x254358: the nearest point of the board's
+// race path) for a free board: a fall's place back (the plugin's, else where he got on), a wipe-out's where he is, into
+// `pos` / `rot` (the game's vectors); true when it did
+bool level_mod_board_back(uint32_t pos, uint32_t rot);
+// orig: (none) — enhancement: true when the board's race HUD (lap, time, place: its requests 5 and 7) is not asked for
+bool level_mod_board_hud_off();
+// orig: (none) — enhancement: the level number the board's race camera compares (camera type 8's floor under its target: Rilgar's
+// 62.4 / 67.2, Kalebo III's 77.5): on a level mod's level the current section's world (`world rilgar`: 5), none (-1: no floor) in
+// main and the mod's own sections; `level` as read on the original's levels
+uint32_t level_mod_camera_planet(uint32_t level);
+
 }  // namespace rac1
 
 #endif

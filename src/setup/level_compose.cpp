@@ -8,6 +8,7 @@
 #include "mrp_export.h"
 
 #include <formats/host_meshes.h>
+#include <formats/level_collision.h>
 #include <formats/level_file.h>
 #include <formats/moby_mrp.h>
 #include <formats/scene_wad.h>
@@ -61,6 +62,7 @@ namespace {
     "scale <s>                                 the OBJ files' units to game units (default 1)\n"
     "moby <class> <x> <y> <z> [<yaw>]          an object of the base level's class <class>, as its first placement there\n"
     "music <level> | music <loop> [<intro>] | music none   the level's music (<loop>, <intro>: a VAG, or a WAV or .ogg encoded)\n"
+    "music_track <name> <loop> [<intro>]       another music of the mod's, the plugin's music_track(<name>) plays it (as music's files)\n"
     "sky <level>                               the sky of the game's level <level> (default: the base level's)\n"
     "base <level|name>                         the base level (as mod.json's level.base: checked against it)\n"
     "spawn <class> <count>                     room for <count> objects of the base level's class at once (the plugin's base_spawn)\n"
@@ -79,7 +81,7 @@ namespace {
     "respawn reset | respawn keep              (format 3) the placed objects at a respawn: those killed come back (default) or not\n"
     "moby <class> <x> <y> <z> [<yaw>] [<slot>=<value> ...]   (format 3) slots of the class's profile set (a path's name, a number)\n"
     "moby <name>|<level>:<class> <x> <y> <z> [<yaw>] [<slot>=<value> ...]   (format 3) a class of another level placed (imported)\n"
-    "section <name> [remove|freeze|keep] [respawn reset|keep] ... end   (format 3) a section: its own collision, meshes, lights,\n"
+    "section <name> [remove|freeze|keep] [respawn reset|keep] [fresh] ... end   (format 3) a section: its own collision, meshes, lights,\n"
     "                                          sky, music, fog, background, death_height, offset, entry, checkpoint, moby, portal lines\n"
     "entry <name> <x> <y> <z> [<yaw>]          (format 3) where a portal or section_enter puts Ratchet in the section\n"
     "portal <name> <x0> <y0> <z0> <x1> <y1> <z1> to <section>:<entry> [fade <frames>]   (format 3) a box that switches sections\n"
@@ -123,6 +125,11 @@ struct LevelTxt {
     int music_level = -1;               // music <level>: that level's tracks
     bool music_none = false;            // music none
     std::string music_loop, music_intro;  // music <loop.vag> [<intro.vag>]: the mod's own
+    struct Track {                      // music_track <name> <loop> [<intro>]: another of the mod's (the plugin's music_track)
+        std::string name, loop, intro;
+        int line = 0;
+    };
+    std::vector<Track> tracks;
     int sky_level = -1;                 // sky <level>
     bool has_floor = false;
     float floor = 0;                    // (the collision's lowest z, after the offset: the default death height's check)
@@ -147,6 +154,7 @@ struct LevelTxt {
         float at[4] = {};
         std::string params;
         int line = 0;
+        int section = 0;  // (format 3) the section block it is in (1.. its index + 1; 0 main's)
     };
     struct Sound {
         std::string name, file;
@@ -183,6 +191,14 @@ struct LevelTxt {
         int line = 0;
         std::string world;  // (stage 8: a class of a section's world's objects: the base level's own serves when it has it)
     };
+    // (stage 9) `hero <level> [clank|giantclank|board]`: the hero code (and camera code) of another level runs Ratchet in the
+    // section (main's: outside every section block), and the mode he is in there (its object spawned at his entry)
+    struct Hero {
+        int level = -1;  // (-1: the session base's own)
+        std::string mode;
+        int line = 0;
+    };
+    Hero hero_ctx;
     std::vector<Import> imports;
     // (format 3) the session (docs/open-engine.md, "Sessions"): its line, its checkpoints, the respawn policy
     int format = 1;                     // (mod.json's level.format, set by the composer)
@@ -210,6 +226,7 @@ struct LevelTxt {
     };
     struct Section {
         std::string name, policy = "remove", respawn;
+        bool fresh = false;  // (`fresh`, SDK ABI 17: every entry puts its objects back as at the first)
         int line = 0;
         std::string collision, meshes, lights;  // ("": the session's collision stays, no meshes, the session's lights)
         int sky_level = -1;                     // (-1: the session's sky)
@@ -228,11 +245,20 @@ struct LevelTxt {
         // (only its objects inside); the composer's choice: their uids there -> the session's
         int world = -1;
         int world_line = 0;
+        bool zones_all = false;  // (`zones all`: every zone of the world drawn wherever the camera is, not the zone grid's choice)
+        int zones_line = 0;
         bool objects_all = false;
         std::vector<std::string> objects;
         bool has_box = false;
         float box_lo[3] = {}, box_hi[3] = {};
         std::vector<std::pair<int32_t, int32_t>> wuids;
+        Hero hero;  // (stage 9)
+        // (stage 10) `boss <class|name|level:class>...`: its objects of those classes are its bosses (a death in the section starts
+        // the fight over: a boss still in play placed again; one leaving play otherwise is beaten: the plugin told). Resolved by
+        // the composer into (level, class)
+        std::vector<std::string> bosses;
+        std::vector<std::pair<int, uint32_t>> boss_classes;
+        int boss_line = 0;
     };
     std::vector<Section> sections;
     std::vector<Entry> entries;    // (main's)
@@ -404,6 +430,54 @@ bool items_line(std::istringstream& in, std::vector<int>& items) {
     return any;
 }
 
+// a game level by its name (`kalebo`) or its number: -1 none
+int level_by_name(std::string a) {
+    for (char& c : a) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    static const std::map<std::string, int> kLevels = {{"veldin", 0}, {"novalis", 1}, {"aridia", 2}, {"kerwan", 3}, {"eudora", 4}, {"rilgar", 5},
+                                                       {"blarg", 6}, {"umbris", 7}, {"batalia", 8}, {"gaspar", 9}, {"orxon", 10}, {"pokitaru", 11},
+                                                       {"hoven", 12}, {"gemlik", 13}, {"oltanis", 14}, {"quartu", 15}, {"kalebo", 16}, {"fleet", 17},
+                                                       {"veldin2", 18}};
+    if (const auto it = kLevels.find(a); it != kLevels.end()) return it->second;
+    if (!a.empty() && a.find_first_not_of("0123456789") == std::string::npos && std::atoi(a.c_str()) <= 18) return std::atoi(a.c_str());
+    return -1;
+}
+
+// (stage 9) the hero line's generic hero code (the runtime's HERO_GENERIC, variants.h)
+constexpr int kHeroGeneric = -2;
+
+// (stage 9) `hero <level> [clank|giantclank|board]`: false when not understood (the level and mode checked later)
+bool hero_line(std::istringstream& in, LevelTxt::Hero& h) {
+    std::string a, mode;
+    if (!(in >> a)) return false;
+    // (the generic hero code, Veldin's: what Veldin, Gaspar and Umbris run; on a base with a build of its own, its stand-in)
+    h.level = a == "generic" || a == "veldin" || a == "gaspar" || a == "umbris" ? kHeroGeneric : level_by_name(a);
+    if (h.level == -1) return false;
+    if (in >> mode) {
+        if (mode != "clank" && mode != "giantclank" && mode != "board") return false;
+        h.mode = mode;
+    }
+    std::string more;
+    return !(in >> more);
+}
+
+// `object <class> <x> <y> <z> [<yaw>] [<key>=<value> ...]` (after its key)
+bool object_line(std::istringstream& in, LevelTxt::Object& o) {
+    if (!(in >> o.cls >> o.at[0] >> o.at[1] >> o.at[2])) return false;
+    std::string w;
+    while (in >> w) {
+        if (w.find('=') != std::string::npos) {
+            if (w.front() == '=') return false;
+            o.params += (o.params.empty() ? "" : " ") + w;
+        } else {
+            char* end = nullptr;
+            const float yaw = std::strtof(w.c_str(), &end);
+            if (end == nullptr || *end != 0 || !o.params.empty()) return false;
+            o.at[3] = yaw;
+        }
+    }
+    return true;
+}
+
 bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
     std::ifstream f(p);
     if (!f) {
@@ -468,6 +542,12 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
                 if (!moby_line(in, m)) return bad();
                 m.line = n;
                 S.mobys.push_back(m);
+            } else if (key == "object") {  // (a level class's object placed in the section: drawn while it is shown)
+                LevelTxt::Object o;
+                o.line = n;
+                o.section = sec + 1;
+                if (!object_line(in, o)) return bad();
+                t.objects.push_back(o);
             } else if (key == "portal") {
                 LevelTxt::Portal pt;
                 if (!portal_line(in, pt)) return bad();
@@ -502,14 +582,28 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
                     else if (w != "none") S.objects.push_back(w);
                 }
                 if (!any) return bad();
+            } else if (key == "zones") {
+                std::string w;
+                if (!(in >> w) || (w != "all" && w != "grid")) return bad();
+                S.zones_all = w == "all";
+                S.zones_line = n;
             } else if (key == "box") {
                 if (!(in >> S.box_lo[0] >> S.box_lo[1] >> S.box_lo[2] >> S.box_hi[0] >> S.box_hi[1] >> S.box_hi[2])) return bad();
                 for (int i = 0; i < 3; ++i)
                     if (S.box_lo[i] > S.box_hi[i]) std::swap(S.box_lo[i], S.box_hi[i]);
                 S.has_box = true;
+            } else if (key == "hero") {
+                if (!hero_line(in, S.hero)) return bad();
+                S.hero.line = n;
+            } else if (key == "boss") {
+                std::string w;
+                bool any = false;
+                while (in >> w) any = true, S.bosses.push_back(w);
+                if (!any) return bad();
+                S.boss_line = n;
             } else {
                 err = fmt("%s:%d: \"%s\": not a line of a section (its own: collision, meshes, lights, sky, music, fog, background, death_height, offset, "
-                          "entry, checkpoint, moby, portal, respawn, rail, rails, world, objects, box; end closes it)",
+                          "entry, checkpoint, moby, object, portal, respawn, rail, rails, world, objects, box, zones, hero, boss; end closes it)",
                           p.generic_string().c_str(), n, line.c_str());
                 return false;
             }
@@ -523,6 +617,7 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
             while (in >> w) {
                 if (w == "remove" || w == "freeze" || w == "keep") S.policy = w;
                 else if (w == "respawn" && in >> S.respawn && (S.respawn == "reset" || S.respawn == "keep")) continue;
+                else if (w == "fresh") S.fresh = true;
                 else return bad();
             }
             for (const LevelTxt::Section& o : t.sections)
@@ -585,6 +680,18 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
         if (key == "hero") {
             std::string w;
             in >> w;
+            // (stage 9) `hero <planet>|generic [mode]`: the hero code (a name, or one number); else Ratchet's start (x y z [yaw], auto)
+            {
+                std::istringstream all(line.substr(line.find(key) + key.size()));
+                std::vector<std::string> ws;
+                for (std::string x; all >> x;) ws.push_back(x);
+                if (w != "auto" && ws.size() < 3) {
+                    std::istringstream again(line.substr(line.find(key) + key.size()));
+                    if (!hero_line(again, t.hero_ctx)) return bad();
+                    t.hero_ctx.line = n;
+                    continue;
+                }
+            }
             t.has_hero = true;
             t.hero_auto = w == "auto";
             if (!t.hero_auto) {
@@ -664,6 +771,21 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
             } else {
                 return bad();
             }
+        } else if (key == "music_track") {
+            LevelTxt::Track tr;
+            in >> tr.name >> tr.loop >> tr.intro;
+            if (tr.loop.empty()) return bad();
+            if (!sdk_name_ok(tr.name)) {
+                err = fmt("%s:%d: music_track \"%s\": a name of letters, digits, - _ . (at most 31)", p.generic_string().c_str(), n, tr.name.c_str());
+                return false;
+            }
+            for (const LevelTxt::Track& o : t.tracks)
+                if (o.name == tr.name) {
+                    err = fmt("%s:%d: the music_track \"%s\" twice", p.generic_string().c_str(), n, tr.name.c_str());
+                    return false;
+                }
+            tr.line = n;
+            t.tracks.push_back(tr);
         } else if (key == "offset") {
             std::string a;
             in >> a;
@@ -720,19 +842,7 @@ bool read_level_txt(const fs::path& p, LevelTxt& t, std::string& err) {
         } else if (key == "object") {
             LevelTxt::Object o;
             o.line = n;
-            if (!(in >> o.cls >> o.at[0] >> o.at[1] >> o.at[2])) return bad();
-            std::string w;
-            while (in >> w) {
-                if (w.find('=') != std::string::npos) {
-                    if (w.front() == '=') return bad();
-                    o.params += (o.params.empty() ? "" : " ") + w;
-                } else {
-                    char* end = nullptr;
-                    const float yaw = std::strtof(w.c_str(), &end);
-                    if (end == nullptr || *end != 0 || !o.params.empty()) return bad();
-                    o.at[3] = yaw;
-                }
-            }
+            if (!object_line(in, o)) return bad();
             t.objects.push_back(o);
         } else if (key == "sound") {
             LevelTxt::Sound d;
@@ -986,6 +1096,7 @@ bool read_obj(const fs::path& p, const LevelTxt& lt, bool with_materials, Obj& o
 struct CTri {
     std::array<std::array<float, 3>, 3> p;
     uint8_t type = 31;
+    bool whole = false;  // (stage 10: a game level's own face: kept whole, as its level has it in its cells)
 };
 
 float dist3(const std::array<float, 3>& a, const std::array<float, 3>& b) {
@@ -1043,7 +1154,10 @@ struct CCell {
 
 bool build_collision(const std::vector<CTri>& in, std::vector<uint8_t>& out, Log& log, std::string& err) {
     std::vector<CTri> tris;
-    for (const CTri& t : in) subdivide(t, 6.0f, tris);
+    for (const CTri& t : in) {
+        if (t.whole) tris.push_back(t);
+        else subdivide(t, 6.0f, tris);
+    }
     std::map<std::tuple<int, int, int>, CCell> cells;  // (z, y, x)
     size_t refs = 0;
     for (const CTri& t : tris) {
@@ -1427,6 +1541,69 @@ void rail_model(const LevelTxt::Rail& r, int material, Obj& o) {
 
 // the rails' models (`mesh`) as more host meshes: their material the named one of the level's meshes' (else a grey metal)
 bool rails_meshes(const std::vector<LevelTxt::Rail>& rails, const std::vector<ObjMaterial>& mats, mrpw::HostMeshFile& hm, Log& log, std::string& err);
+
+// (stage 10) a world's section with rails of the mod's own: its level's collision (from the disc: data.wad's collision block, every
+// face of its cells, a face seen in several cells once) with the rails' collision strips added (the grind needs ground under the
+// rail), built again as the composer builds a collision; the level's hero groups (their own block, its offsets its own) kept
+bool world_collision_with_rails(int level, const std::vector<LevelTxt::Rail>& rails, uint8_t type, std::vector<uint8_t>& out, Log& log,
+                                std::string& err) {
+    const fs::path wp = fs::path("assets/disc") / fmt("levels/level%02d", level) / "data.wad";
+    std::vector<uint8_t> wad, blob;
+    uint32_t off = 0, size = 0;
+    bool packed = false;
+    if (!read_file(wp, wad) ||
+        !extract_collision_from_level_wad(std::span<const std::byte>(reinterpret_cast<const std::byte*>(wad.data()), wad.size()), blob, off, size, packed)) {
+        err = wp.generic_string() + ": its collision cannot be read";
+        return false;
+    }
+    DecodedCollision dc;
+    try {
+        dc = decode_level_collision(std::span<const std::byte>(reinterpret_cast<const std::byte*>(blob.data()), blob.size()));
+    } catch (const std::exception& e) {
+        err = fmt("level %d's collision cannot be decoded (%s)", level, e.what());
+        return false;
+    }
+    std::vector<CTri> ct;
+    std::set<std::array<int32_t, 10>> seen;
+    size_t faces = 0;
+    for (const DecodedCollisionOctant& c : dc.octants) {
+        auto at = [&](uint8_t i) {
+            const CollisionVec3& v = c.vertices[i];
+            return std::array<float, 3>{c.displacement.x + v.x, c.displacement.y + v.y, c.displacement.z + v.z};
+        };
+        auto add = [&](uint8_t a, uint8_t b, uint8_t d, uint8_t ty) {
+            if (a >= c.vertices.size() || b >= c.vertices.size() || d >= c.vertices.size()) return;
+            CTri tr;
+            tr.p = {at(a), at(d), at(b)};  // (as an OBJ's turn: build_collision turns them back to the game's)
+            tr.type = ty;
+            tr.whole = true;
+            std::array<int32_t, 10> key{};  // (the face as its points at 1/64 and its type: once)
+            for (int i = 0; i < 3; ++i)
+                for (int l = 0; l < 3; ++l) key[static_cast<size_t>(i * 3 + l)] = static_cast<int32_t>(std::lround(tr.p[static_cast<size_t>(i)][static_cast<size_t>(l)] * 64.0f));
+            key[9] = ty;
+            if (seen.insert(key).second) ct.push_back(tr);
+        };
+        for (const DecodedCollFace& fc : c.faces) {
+            ++faces;
+            add(fc.v0, fc.v1, fc.v2, fc.type);
+            if (fc.is_quad) add(fc.v0, fc.v2, fc.v3, fc.type);
+        }
+    }
+    const size_t level_tris = ct.size();
+    for (const LevelTxt::Rail& r : rails)
+        if (r.strip) rail_strip(r, type, ct);
+    if (!build_collision(ct, out, log, err)) return false;
+    if (dc.hero_groups_offset > 0 && static_cast<size_t>(dc.hero_groups_offset) < blob.size()) {
+        const size_t at = (out.size() + 0xf) & ~size_t{0xf};
+        out.resize(at, 0);
+        out.insert(out.end(), blob.begin() + dc.hero_groups_offset, blob.end());
+        wr32(out, 4, static_cast<int32_t>(at));
+    }
+    log.say(fmt("its level %d's collision with its rails' strips: %zu of the level's faces in %zu cells (%zu triangles once), %zu triangles of the strips; "
+                "%zu bytes (the level's %u)%s",
+                level, faces, dc.octants.size(), level_tris, ct.size() - level_tris, out.size(), size, dc.hero_groups.empty() ? "" : ", its hero groups kept"));
+    return true;
+}
 
 // (stage 7) a class's collision mesh (`class ... collision <coll.obj>`) as a moby's collision (the carrier's +0x94; the game's
 // moby collision format, mobys_in_sphere's: 0x10 bytes of header (joints 0, primitives 0, the triangles' bytes, the
@@ -2816,8 +2993,8 @@ struct SectionOut {
 // (stage 8) a section's game level world: its level's placed objects the section brings (`objects`, `box`), each given a session
 // uid after the others', their classes imported (the base level's own when it has them); what a world's section cannot have
 bool compose_world(LevelTxt::Section& S, LevelTxt& lt, int base, int& uid_next, Log& log, std::string& err) {
-    if (!S.meshes.empty() || !S.rails.empty()) {
-        err = "a world's section draws its level's world and has its level's rails: no meshes, rail or rails lines (stage 8)";
+    if (!S.meshes.empty()) {
+        err = "a world's section draws its level's world: no meshes line (stage 8; its rail and rails lines add to its level's rails)";
         return false;
     }
     for (const LevelTxt::Moby& mb : S.mobys)
@@ -2829,9 +3006,10 @@ bool compose_world(LevelTxt::Section& S, LevelTxt& lt, int base, int& uid_next, 
         err = "a world's section is where its level has it: no offset (its lines are in its level's coordinates)";
         return false;
     }
-    if (S.world == base) {
-        err = fmt("level %d's world is the base level's: a world's section of another level", S.world);
-        return false;
+    if (S.world == base) {  // (the base level's own world: the running code is its own; its level data a registry apart, the engine's while the section is current)
+        log.say(fmt("section %s: level %d's world is the base level's own: its geometry, collision, rails, sky and level data from the disc, the mod's own out of the way while it is current%s",
+                    S.name.c_str(), S.world,
+                    lt.hero_ctx.level == kHeroGeneric && S.hero.line == 0 ? " (Ratchet runs main's generic hero code there: for the planet's own rail code, `hero <planet>` in the section)" : ""));
     }
     if (!disc_is_open() && !disc_open()) {
         err = "the game's disc cannot be read: a world's section needs the asset pool, made from it (./setup.sh first)";
@@ -2919,7 +3097,52 @@ bool compose_sections(const fs::path& ldir, LevelTxt& lt, int base, const std::v
             return false;
         };
         o.death = S.has_death ? S.death : lt.death;
+        // a planet's world is one section: the level state its objects read and write is the planet's, one copy in the engine (its
+        // moby groups, the camera links of its cameras, its rails and host meshes): two sections of it would each overwrite and empty
+        // the other's (a boss beaten in one and the other's objects reading a group list that is gone: an out-of-range read)
+        if (S.world >= 0)
+            for (const LevelTxt::Section& P : lt.sections) {
+                if (&P == &S) break;
+                if (P.world == S.world)
+                    return fail(fmt("level %d's world is already section %s's (level.txt:%d). A planet's world is one section: its level state "
+                                    "(the moby groups its objects read, its cameras' links, its rails, the host meshes drawn in it) is the planet's, one copy "
+                                    "in the game, not one per section. Use one section for it, with several entries (and a box that holds them all)",
+                                    S.world, P.name.c_str(), P.world_line));
+            }
         if (S.world >= 0 && !compose_world(S, lt, base, uid_next, log, err)) return fail(err);
+        if (S.zones_line != 0 && S.world < 0) {
+            err = fmt("level.txt:%d: section %s: \"zones\" is a world's section's line (its level's zone grid): no world line", S.zones_line, S.name.c_str());
+            return false;
+        }
+        if (S.zones_all) log.say(fmt("section %s: every zone of level %d's world drawn (zones all), wherever the camera is", S.name.c_str(), S.world));
+        // (stage 10) its boss lines: each a class of its world's level (an id there), a pool name or <level>:<class>; a class it does
+        // not place (by `objects` or a `moby` line) is refused
+        for (const std::string& w : S.bosses) {
+            int l = S.world >= 0 ? S.world : base;
+            uint32_t c = 0;
+            if (!w.empty() && w.find_first_not_of("0123456789") == std::string::npos) c = static_cast<uint32_t>(std::atoi(w.c_str()));
+            else if (!pool_name(w, &l, &c)) return fail(fmt("boss %s (line %d): no such class (its world's class id, a name of data/pool/names.txt, or <level>:<class>)", w.c_str(), S.boss_line));
+            bool placed = false;
+            for (const LevelTxt::Moby& mb : S.mobys)
+                placed = placed || (mb.import.empty() ? (l == base && static_cast<uint32_t>(mb.cls) == c) : (mb.import == w || (mb.ilevel == l && mb.icls == c)));
+            if (S.world == l) {
+                if (S.objects_all) placed = true;
+                for (const std::string& o : S.objects) {
+                    int ol = S.world;
+                    uint32_t oc = 0;
+                    if (!o.empty() && o.find_first_not_of("0123456789") == std::string::npos) oc = static_cast<uint32_t>(std::atoi(o.c_str()));
+                    else pool_name(o, &ol, &oc);
+                    placed = placed || (ol == l && oc == c);
+                }
+            }
+            if (!placed) return fail(fmt("boss %s (line %d): the section places no object of class %d:%u (an objects or moby line)", w.c_str(), S.boss_line, l, c));
+            S.boss_classes.emplace_back(l, c);
+        }
+        bool strips = false;
+        for (const LevelTxt::Rail& r : S.rails) strips = strips || r.strip;
+        if (S.world >= 0 && S.collision.empty() && strips) {  // (stage 10: the mod's rails in a world: their strips in its level's collision)
+            if (!world_collision_with_rails(S.world, S.rails, static_cast<uint8_t>(lt.collision_type), o.coll, log, err)) return fail(err);
+        }
         if (!S.collision.empty()) {
             Obj co;
             if (!read_obj(ldir / S.collision, slt, false, co, err)) return fail(err);
@@ -2947,7 +3170,7 @@ bool compose_sections(const fs::path& ldir, LevelTxt& lt, int base, const std::v
             if (!read_obj(ldir / S.meshes, slt, true, mo, err)) return fail(err);
             if (!build_host_meshes(mo, hm, log, err)) return fail(err);
         }
-        if (!rails_meshes(S.rails, mats, hm, log, err)) return fail(err);  // (stage 7) its rails' models
+        if (S.world < 0 && !rails_meshes(S.rails, mats, hm, log, err)) return fail(err);  // (stage 7) its rails' models (a world's: after the classes')
         o.count = hm.instances.size() - o.first;
         slt.mobys.clear();
         for (const LevelTxt::Moby& mb : S.mobys)
@@ -2971,9 +3194,9 @@ bool compose_sections(const fs::path& ldir, LevelTxt& lt, int base, const std::v
                 ++k;
             }
         }
-        log.say(fmt("section %s (%s when left, respawn %s): collision %s, sky %s, %zu meshes, %d objects of the base level's classes%s, %d of other levels', "
+        log.say(fmt("section %s (%s when left%s, respawn %s): collision %s, sky %s, %zu meshes, %d objects of the base level's classes%s, %d of other levels', "
                     "%zu entries, %zu checkpoints, %zu portals, death height %.1f",
-                    S.name.c_str(), S.policy.c_str(), S.respawn.empty() ? "the session's" : S.respawn.c_str(),
+                    S.name.c_str(), S.policy.c_str(), S.fresh ? ", fresh at every entry" : "", S.respawn.empty() ? "the session's" : S.respawn.c_str(),
                     o.coll.empty() ? (S.world >= 0 ? "its world's" : "the session's") : fmt("%.1f KB", static_cast<double>(o.coll.size()) / 1024.0).c_str(),
                     S.sky_level >= 0 ? fmt("level %d's (%zu bytes)", S.sky_level, o.sky.size()).c_str() : S.world >= 0 ? "its world's" : "the session's", o.count,
                     o.objects,
@@ -3021,8 +3244,8 @@ bool compose_imports(const LevelTxt& lt, int base, const fs::path& out_dir, Log&
             return false;
         }
         const PoolClass* row = pool_find(l, c);
-        if ((row == nullptr || row->block_size == 0) && !im.world.empty() && pool_find(base, c) == nullptr) {  // (a world's object of a class with no data: not placed)
-            log.say(fmt("imports: section %s's objects of class %d:%u (no data in the pool: a class of code alone) are not placed", im.world.c_str(), l, c));
+        if (row == nullptr && !im.world.empty() && pool_find(base, c) == nullptr) {  // (a world's object of a class its level does not have)
+            log.say(fmt("imports: section %s's objects of class %d:%u (not in the pool) are not placed", im.world.c_str(), l, c));
             continue;
         }
         if ((row == nullptr || row->block_size == 0) && im.world.empty()) {
@@ -3046,7 +3269,10 @@ bool compose_imports(const LevelTxt& lt, int base, const fs::path& out_dir, Log&
             continue;
         }
         const PoolClass* row = pool_find(w.level, w.cls);
-        if (row == nullptr || row->block_size == 0) {
+        // (a world's object of a class of code alone - no block, an update function: its level's lava sea, a trigger - is
+        // imported as its level registers it, with no header; composer 9)
+        const bool code_alone = row != nullptr && row->block_size == 0 && row->update_fn != 0 && w.why.rfind("world-of-", 0) == 0;
+        if (row == nullptr || (row->block_size == 0 && !code_alone)) {
             log.say(fmt("import: warning: %d:%u (%s) has no data in the pool: not imported", w.level, w.cls, w.why.c_str()));
             continue;
         }
@@ -3123,8 +3349,9 @@ bool compose_level_mod(const std::string& folder, bool force) {
         if (line == 0 && !lt.portals.empty()) line = lt.portals.front().line;
         if (line == 0 && !lt.entries.empty()) line = lt.entries.front().line;
         if (line == 0) line = lt.start_line != 0 ? lt.start_line : lt.leave_line;
+        if (line == 0 && lt.hero_ctx.level != kHeroGeneric) line = lt.hero_ctx.line;  // (`hero generic`: format 2 too)
         if (line != 0)
-            return fail(fmt("level.txt:%d: a session's line (session, checkpoint, respawn, section, portal, entry, start, leave, a moby line's slots or "
+            return fail(fmt("level.txt:%d: a session's line (session, checkpoint, respawn, section, portal, entry, start, leave, hero, a moby line's slots or "
                             "another level's class): format 3 only (mod.json's level.format is %d)",
                             line, m.level_format));
     }
@@ -3174,7 +3401,8 @@ bool compose_level_mod(const std::string& folder, bool force) {
             lt.hero[l] += lt.offset[l];
             lt.ship_at[l] += lt.offset[l];
             for (LevelTxt::Moby& mb : lt.mobys) mb.at[l] += lt.offset[l];
-            for (LevelTxt::Object& ob : lt.objects) ob.at[l] += lt.offset[l];
+            for (LevelTxt::Object& ob : lt.objects)
+                if (ob.section == 0) ob.at[l] += lt.offset[l];  // (a section's: below)
             for (LevelTxt::Trigger& tg : lt.triggers) {
                 tg.lo[l] += lt.offset[l];
                 tg.hi[l] += lt.offset[l];
@@ -3208,6 +3436,8 @@ bool compose_level_mod(const std::string& folder, bool force) {
         for (int l = 0; l < 3; ++l) {
             const float o = S.world >= 0 ? 0.0f : lt.offset[l] + S.offset[l];  // (stage 8: a world's section's lines are its level's coordinates)
             for (LevelTxt::Moby& mb : S.mobys) mb.at[l] += o;
+            for (LevelTxt::Object& ob : lt.objects)
+                if (ob.section == static_cast<int>(&S - lt.sections.data()) + 1) ob.at[l] += o;  // (its object lines)
             for (LevelTxt::Checkpoint& c : S.checkpoints) c.at[l] += o;
             for (LevelTxt::Entry& e : S.entries) e.at[l] += o;
             for (LevelTxt::Portal& pt : S.portals) {
@@ -3230,7 +3460,8 @@ bool compose_level_mod(const std::string& folder, bool force) {
         };
         if (const std::string w = check(lt.rails, "main"); !w.empty()) return fail(w);
         for (LevelTxt::Section& S : lt.sections) {
-            const float o[3] = {lt.offset[0] + S.offset[0], lt.offset[1] + S.offset[1], lt.offset[2] + S.offset[2]};
+            float o[3] = {lt.offset[0] + S.offset[0], lt.offset[1] + S.offset[1], lt.offset[2] + S.offset[2]};
+            if (S.world >= 0) o[0] = o[1] = o[2] = 0;  // (a world's section: its lines are in its level's coordinates)
             if (!rails_resolve(ldir, lt, o, S.rails, err)) return fail(err);
             if (const std::string w = check(S.rails, S.name.c_str()); !w.empty()) return fail(w);
         }
@@ -3242,6 +3473,48 @@ bool compose_level_mod(const std::string& folder, bool force) {
         };
         say(lt.rails, "main");
         for (const LevelTxt::Section& S : lt.sections) say(S.rails, "section " + S.name);
+    }
+    // (stage 9) the hero lines: a level with hero or camera code of its own (Rilgar, Orxon, Gemlik, Quartu, Kalebo III), a mode's
+    // class imported (Clank 10:87, Giant Clank 15:419, a board 16:439 or Rilgar's 5:439)
+    {
+        auto check = [&](const LevelTxt::Hero& h, const std::string& where) -> std::string {
+            if (h.line == 0) return "";
+            if (h.level == kHeroGeneric) {
+                if (m.level_base != 5 && m.level_base != 15 && m.level_base != 16)
+                    return fmt("level.txt:%d: the base level %d's hero code is the generic one already (hero generic is for Rilgar 5, Quartu 15, Kalebo III 16)",
+                               h.line, m.level_base);
+                if (!h.mode.empty() && m.level_format < 3) return fmt("level.txt:%d: a hero mode is format 3's (a session's)", h.line);
+                log.say(fmt("%s: Ratchet runs on the generic hero code (Veldin's: its lava, its states), not level %d's own", where.c_str(), m.level_base));
+                if (h.mode.empty()) return "";
+            }
+            if (h.level != kHeroGeneric && h.level != 5 && h.level != 10 && h.level != 13 && h.level != 15 && h.level != 16 && h.level != m.level_base)
+                return fmt("level.txt:%d: level %d has no hero code of its own to run Ratchet (Rilgar 5, Orxon 10, Gemlik 13, Quartu 15, Kalebo III 16)", h.line,
+                           h.level);
+            if (h.mode == "board" && h.level != 16 && h.level != 5)
+                return fmt("level.txt:%d: the board needs the hero code of a level that rides it: hero kalebo board (or rilgar)", h.line);
+            std::string imp;
+            if (h.mode == "clank") imp = "10:87";
+            if (h.mode == "giantclank") imp = "15:419";
+            if (h.mode == "board") imp = fmt("%d:439", h.level);
+            if (!imp.empty()) {
+                bool have = false;
+                for (const LevelTxt::Import& o : lt.imports) have = have || o.name == imp;
+                if (!have) {
+                    LevelTxt::Import im;
+                    im.name = imp;
+                    im.line = h.line;
+                    lt.imports.push_back(im);
+                }
+            }
+            if (h.level != kHeroGeneric)
+            log.say(fmt("%s: Ratchet runs on level %d's hero code and camera code%s", where.c_str(), h.level,
+                        h.mode.empty() ? "" : (", as " + std::string(h.mode == "clank" ? "Clank" : h.mode == "giantclank" ? "Giant Clank" : "on the hoverboard") +
+                                               " (" + imp + ", spawned at his entry)").c_str()));
+            return "";
+        };
+        if (const std::string w = check(lt.hero_ctx, "main"); !w.empty()) return fail(w);
+        for (const LevelTxt::Section& S : lt.sections)
+            if (const std::string w = check(S.hero, "section " + S.name); !w.empty()) return fail(w);
     }
     // (format 3) classes of other levels placed (moby lines naming one): spawned by the session with their section, each an
     // import of the level (added when no import line names it)
@@ -3404,7 +3677,22 @@ bool compose_level_mod(const std::string& folder, bool force) {
         log.say(fmt("class \"%s\": %s, its hit box %.2f units%s%s", c.name.c_str(), c.model.c_str(), c.size > 0 ? c.size : std::max(cm.extent, 0.1f),
                     c.size > 0 ? "" : " (the model's extent)", c.ghost ? ", ghost (no collision)" : ""));
     }
-    for (const LevelTxt::Object& o : lt.objects) log.say(fmt("object \"%s\" at (%g %g %g)%s%s", o.cls.c_str(), o.at[0], o.at[1], o.at[2], o.params.empty() ? "" : " ", o.params.c_str()));
+    // (a world section's rails' models: more host meshes after all the others - the classes' models included -, so that they shift
+    // no index lights.txt's `material tie <n>` lines give; the renderer adds them to the world's level when the section is shown)
+    for (size_t k = 0; k < lt.sections.size(); ++k) {
+        const LevelTxt::Section& S = lt.sections[k];
+        if (S.world < 0) continue;
+        souts[k].first = hm.instances.size();
+        const size_t classes0 = hm.classes.size();
+        if (!rails_meshes(S.rails, mesh_mats, hm, log, err)) return fail(fmt("level.txt:%d: section %s: ", S.line, S.name.c_str()) + err);
+        souts[k].count = hm.instances.size() - souts[k].first;
+        if (souts[k].count != 0)
+            log.say(fmt("section %s: its rails' %zu models drawn in level %d's world, host meshes %zu..%zu (after the classes': no other index moves)", S.name.c_str(),
+                        souts[k].count, S.world, classes0, hm.classes.size() - 1));
+    }
+    for (const LevelTxt::Object& o : lt.objects)
+        log.say(fmt("object \"%s\" at (%g %g %g)%s%s%s", o.cls.c_str(), o.at[0], o.at[1], o.at[2], o.section > 0 ? (" in section " + lt.sections[static_cast<size_t>(o.section - 1)].name).c_str() : "",
+                    o.params.empty() ? "" : " ", o.params.c_str()));
     for (const LevelTxt::Trigger& g : lt.triggers)
         log.say(fmt("trigger \"%s\": (%g %g %g) .. (%g %g %g)", g.name.c_str(), g.lo[0], g.lo[1], g.lo[2], g.hi[0], g.hi[1], g.hi[2]));
     // the level's own sounds: one bank
@@ -3452,26 +3740,20 @@ bool compose_level_mod(const std::string& folder, bool force) {
             return fail("cannot write into " + sd.generic_string());
     }
     // the music: the build's choice (build.json's "music"), the mod's own VAG files copied into the build
-    std::string music_json;
-    if (lt.music_none) {
-        music_json = "\"none\"";
-        log.say("music: none");
-    } else if (lt.music_level >= 0) {
-        music_json = std::to_string(lt.music_level);
-        log.say(fmt("music: level %d's", lt.music_level));
-    } else if (!lt.music_loop.empty()) {
-        // each a VAG (mono or stereo), a WAV or an Ogg Vorbis file (encoded), src/setup/level_music.h; an intro's and its
-        // loop's rate the same (the stream keeps its first part's pitch: a WAV or an Ogg encoded at the other's rate, the
-        // loop's if neither is a VAG), one stereo: both made stereo
+    // a music's files: each a VAG (mono or stereo), a WAV or an Ogg Vorbis file (encoded), src/setup/level_music.h; an intro's
+    // and its loop's rate the same (the stream keeps its first part's pitch: a WAV or an Ogg encoded at the other's rate, the
+    // loop's if neither is a VAG), one stereo: both made stereo. Written as <out>_intro.vag and <out>_loop.vag; their JSON
+    // array (the intro, then the loop) into `json`
+    auto music_files = [&](const std::string& loop, const std::string& intro, const std::string& out, std::string& json) {
         std::vector<std::string> names;
         std::vector<std::pair<std::string, std::string>> files;
-        if (!lt.music_intro.empty()) files.push_back({lt.music_intro, "music_intro.vag"});
-        files.push_back({lt.music_loop, "music_loop.vag"});
+        if (!intro.empty()) files.push_back({intro, out + "_intro.vag"});
+        files.push_back({loop, out + "_loop.vag"});
         std::vector<std::vector<uint8_t>> inputs(files.size());
         std::vector<MusicVag> made(files.size());
         auto make = [&](size_t i, int channels, uint32_t rate) {
             std::string why;
-            if (music_vag_make(inputs[i], files[i].second == "music_loop.vag", channels, rate, made[i], why)) return true;
+            if (music_vag_make(inputs[i], files[i].second == out + "_loop.vag", channels, rate, made[i], why)) return true;
             fail(files[i].first + ": " + why + ": see docs/mods.md, \"Level mods\", Music");
             return false;
         };
@@ -3498,8 +3780,27 @@ bool compose_level_mod(const std::string& folder, bool force) {
             log.say(fmt("music: %s, %u Hz, %s, %.1f s, as %s (%s)", files[i].first.c_str(), m.rate, m.channels == 2 ? "stereo" : "mono",
                         static_cast<double>(m.samples) / m.rate, files[i].second.c_str(), m.how.c_str()));
         }
-        music_json = "[" + names[0] + (names.size() > 1 ? ", " + names[1] : std::string()) + "]";
+        json = "[" + names[0] + (names.size() > 1 ? ", " + names[1] : std::string()) + "]";
+        return true;
+    };
+    std::string music_json;
+    if (lt.music_none) {
+        music_json = "\"none\"";
+        log.say("music: none");
+    } else if (lt.music_level >= 0) {
+        music_json = std::to_string(lt.music_level);
+        log.say(fmt("music: level %d's", lt.music_level));
+    } else if (!lt.music_loop.empty()) {
+        if (!music_files(lt.music_loop, lt.music_intro, "music", music_json)) return false;
     }
+    std::string tracks_json;  // (music_track lines: build.json's "music_tracks", only when there are some)
+    for (size_t k = 0; k < lt.tracks.size(); ++k) {
+        std::string a;
+        log.say(fmt("music_track \"%s\":", lt.tracks[k].name.c_str()));
+        if (!music_files(lt.tracks[k].loop, lt.tracks[k].intro, fmt("track%zu", k), a)) return false;
+        tracks_json += (tracks_json.empty() ? ",\n  \"music_tracks\": [" : ", ") + fmt("{\"name\": \"%s\", \"files\": %s}", lt.tracks[k].name.c_str(), a.c_str());
+    }
+    if (!tracks_json.empty()) tracks_json += "]";
     if (!hm.classes.empty() && !mrpw::write_host_meshes((out_dir / "host_meshes.mrpc").string(), hm, err)) return fail(err);
     if (!bank_sounds.empty() && !write_file(out_dir / "sounds.bnk", sound_bank(bank_sounds))) return fail("cannot write into " + out_dir.generic_string());
     if (!compose_imports(lt, m.level_base, out_dir, log, err)) return fail(err);
@@ -3530,7 +3831,8 @@ bool compose_level_mod(const std::string& folder, bool force) {
     }
     // (format 3) sections.txt: the sections, their entries, checkpoints, portals, settings, meshes and placed classes of other
     // levels (src/game/enhance/sections.cpp reads it)
-    if (m.level_format >= 3 && (!lt.sections.empty() || !lt.portals.empty() || !lt.entries.empty() || !main_imports.empty() || lt.start_line != 0)) {
+    if (m.level_format >= 3 && (!lt.sections.empty() || !lt.portals.empty() || !lt.entries.empty() || !main_imports.empty() || lt.start_line != 0 ||
+                                 lt.hero_ctx.line != 0)) {
         std::ostringstream o;
         o << "sections\t1\n";
         auto index_of = [&](const std::string& s) {
@@ -3556,12 +3858,14 @@ bool compose_level_mod(const std::string& folder, bool force) {
         };
         o << fmt("section\t0\tmain\t%s\t-\n", lt.leave.c_str());
         o << fmt("meshes\t0\t0\t%zu\n", main_instances);
+        if (lt.hero_ctx.line != 0) o << fmt("hero\t0\t%d\t%s\n", lt.hero_ctx.level, lt.hero_ctx.mode.empty() ? "-" : lt.hero_ctx.mode.c_str());
         put_common(0, lt.entries, lt.portals, main_imports);
         for (size_t k = 0; k < lt.sections.size(); ++k) {
             const LevelTxt::Section& S = lt.sections[k];
             const SectionOut& so = souts[k];
             const int i = static_cast<int>(k + 1);
             o << fmt("section\t%d\t%s\t%s\t%s\n", i, S.name.c_str(), S.policy.c_str(), S.respawn.empty() ? "-" : S.respawn.c_str());
+            if (S.fresh) o << fmt("fresh\t%d\n", i);
             o << fmt("files\t%d\t%d\t%d\t%d\n", i, so.coll.empty() ? 0 : 1, so.sky.empty() ? 0 : 1, so.gameplay.empty() ? 0 : 1);
             o << fmt("meshes\t%d\t%zu\t%zu\n", i, so.first, so.count);
             if (S.sky_level >= 0) o << fmt("sky\t%d\t%d\n", i, S.sky_level);
@@ -3571,9 +3875,12 @@ bool compose_level_mod(const std::string& folder, bool force) {
             if (S.world < 0 || S.has_death) o << fmt("death\t%d\t%.6g\n", i, so.death);  // (a world's: its level's unless given)
             if (S.world >= 0) {  // (stage 8) its level's world, its objects (their uids there -> the session's)
                 o << fmt("world\t%d\t%d\n", i, S.world);
+                if (S.zones_all) o << fmt("zones\t%d\tall\n", i);
                 for (const auto& [from, to] : S.wuids) o << fmt("wuid\t%d\t%d\t%d\n", i, from, to);
             }
             if (!S.lights.empty()) o << fmt("lights\t%d\t%s\n", i, S.lights.c_str());
+            if (S.hero.line != 0) o << fmt("hero\t%d\t%d\t%s\n", i, S.hero.level, S.hero.mode.empty() ? "-" : S.hero.mode.c_str());
+            for (const auto& [bl, bc] : S.boss_classes) o << fmt("boss\t%d\t%d\t%u\n", i, bl, bc);  // (stage 10)
             for (const LevelTxt::Checkpoint& c : S.checkpoints)
                 o << fmt("checkpoint\t%d\t%s\t%.6g\t%.6g\t%.6g\t%.6g\n", i, c.name.c_str(), c.at[0], c.at[1], c.at[2], c.at[3]);
             put_common(i, S.entries, S.portals, S.mobys);
@@ -3588,6 +3895,16 @@ bool compose_level_mod(const std::string& folder, bool force) {
                     "%zu classes of other levels placed in main%s",
                     lt.sections.size(), np, nobj, main_imports.size(),
                     lt.start_line != 0 ? fmt("; the session starts in %s at %s", lt.start_section.c_str(), lt.start_entry.c_str()).c_str() : ""));
+    }
+    // (stage 9) hero.txt: a format 1 / 2 level's `hero generic` (src/game/enhance/hero_modes.cpp reads it)
+    {
+        std::error_code ec;
+        if (m.level_format < 3 && lt.hero_ctx.line != 0) {
+            const std::string t = "hero\tgeneric\n";
+            if (!write_file(out_dir / "hero.txt", std::vector<uint8_t>(t.begin(), t.end()))) return fail("cannot write into " + out_dir.generic_string());
+        } else {
+            fs::remove(out_dir / "hero.txt", ec);
+        }
     }
     // (format 3) session.txt: the session's checkpoints and policy (src/game/enhance/session_runtime.cpp reads it)
     if (m.level_format >= 3) {
@@ -3623,7 +3940,8 @@ bool compose_level_mod(const std::string& folder, bool force) {
         for (const LevelTxt::Object& ob : lt.objects) {
             size_t ci = 0;
             while (lt.classes[ci].name != ob.cls) ++ci;
-            o << fmt("object\t%zu\t%.6g\t%.6g\t%.6g\t%.6g\t", ci, ob.at[0], ob.at[1], ob.at[2], ob.at[3]) << ob.params << "\n";
+            if (ob.section == 0) o << fmt("object\t%zu\t%.6g\t%.6g\t%.6g\t%.6g\t", ci, ob.at[0], ob.at[1], ob.at[2], ob.at[3]) << ob.params << "\n";
+            else o << fmt("sobject\t%d\t%zu\t%.6g\t%.6g\t%.6g\t%.6g\t", ob.section, ci, ob.at[0], ob.at[1], ob.at[2], ob.at[3]) << ob.params << "\n";  // (format 3)
         }
         for (size_t i = 0; i < lt.sounds.size(); ++i) {
             const LevelTxt::Sound& d = lt.sounds[i];
@@ -3739,7 +4057,7 @@ bool compose_level_mod(const std::string& folder, bool force) {
     if (!pools_json.empty()) pools_json += "]";
     std::ofstream bj(out_dir / "build.json");
     bj << "{\n  \"composer\": " << kLevelComposerVersion << ",\n  \"format\": " << m.level_format << ",\n  \"id\": \"" << m.level_id << "\",\n  \"base\": " << m.level_base
-       << (music_json.empty() ? std::string() : ",\n  \"music\": " + music_json)
+       << (music_json.empty() ? std::string() : ",\n  \"music\": " + music_json) << tracks_json
        << (lt.sky_level >= 0 && lt.sky_level != m.level_base ? fmt(",\n  \"sky\": %d", lt.sky_level) : std::string()) << ",\n  \"objects\": " << placed_objects << pools_json << ",\n  \"inputs\": \"" << stamp_hex(mods_level_inputs_stamp(m.dir)) << "\"\n}\n";
     if (!bj) return fail("cannot write build.json");
     std::cout << "[compose] " << folder << ": built into " << out_dir.generic_string() << "\n";

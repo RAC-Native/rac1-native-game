@@ -17,6 +17,7 @@
 #include <game/render/mrp_lighting.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_moby_renderer.h>
+#include <game/render/mrp_reflect.h>
 #include <game/render/mrp_rt.h>
 #include <game/render/mrp_tfrag_gpu.h>
 #include <game/render/mrp_world_assets.h>
@@ -27,6 +28,7 @@
 #include <game/render/render_view.h>
 #include <host/level_slots.h>
 #include <profiler/host_profiler.h>
+#include <profiler/perf_switch.h>
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
 #include <runtime/kernel/ee_memory.h>
@@ -57,6 +59,8 @@
 #include <map>
 #include <map>
 #include <memory>
+#include <set>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -151,6 +155,8 @@ struct Level {
     std::unique_ptr<World> world;
     std::unique_ptr<WorldIndex> idx;
     std::vector<mrp::Texture> tex[3];  // tfrag, tie, shrub
+    std::vector<mrp::Texture> host_tex;  // (a session's world section: the session's host mesh textures added after the tie ones)
+    size_t host_first_tie = 0;           // (and its first tie class of the session's, whose textures load_textures moves past the level's)
     std::vector<TexRef> ref[3];
     std::vector<Bucket> buckets;
     GLuint vao = 0, vbo = 0, ibo = 0;
@@ -165,7 +171,7 @@ struct Level {
     // texture uploads of the sky's chain send), each a bucket of its own; by (image, palette, TEX0's format and size fields)
     std::map<std::tuple<uint32_t, uint32_t, uint64_t>, TexRef> sky_tex;
     // the world GIF streams' textures (the shrub billboards: the level's GS RAM block gs_ram_upload 0x240498 put in GS
-    // memory at the level load), decoded from the GS replica's local memory at their first use; by (TEX0 but TCC / TFX, MIPTBP1, mips)
+    // memory at the level load), decoded from the GS's local memory (gs_memory.h) at their first use; by (TEX0 but TCC / TFX, MIPTBP1, mips)
     std::map<std::tuple<uint64_t, uint64_t, uint32_t>, TexRef> vram_tex;
 };
 Level g_level;
@@ -175,6 +181,7 @@ StaticLevel g_slevel;
 // compute program writes; RAC1_MRPW_TFRAG_VERIFY=1: the GPU's vertices / triangles read back and compared with the CPU reference's
 TfragLevel g_tlevel;
 TfragColours g_tcols;
+uint64_t g_tcols_resets = 0;  // (g_tcols made anew: a level's arrival; its counters start again)
 GLuint g_tfrag_vao = 0;
 // The GPU path's draws find their command (cmds[2 x i]) by an instanced vertex attribute (location 8, divisor 1) over the
 // integers 0, 1, 2..: a draw's base instance offsets it, as the core profile does for every instanced attribute (the hardware's own
@@ -335,9 +342,9 @@ struct Frame {
     std::vector<DrawCmd> draws;
     std::vector<std::pair<uint32_t, uint32_t>> skips;
     uint64_t env_xyoff = 0;
-    // The scene built on the worker thread while the host runs the GS replica's chain (mrp_world_begin_frame_async /
-    // mrp_world_finish_frame): the skip ranges known before (they depend on the passes alone), the GS registers as the replica had
-    // them before the chain (build_triangles' start)
+    // The scene built on the worker thread while the host reads the frame's chain (mrp_world_begin_frame_async /
+    // mrp_world_finish_frame): the skip ranges known before (they depend on the passes alone), the GS registers as the last chain
+    // read left them (mrp_chain_gs_reg: build_triangles' start)
     bool skips_ready = false;
     bool pending = false;
     std::array<uint64_t, 128> gs_regs{};
@@ -401,6 +408,18 @@ void load_textures(Level& L, Prefetched* pf = nullptr) {
         const std::string path = root + "/" + level_dir_name(dir_level) + "/textures_" + names[k] + ".mrpt";
         if (pf != nullptr && pf->ok) L.tex[k] = std::move(pf->tex[k]);
         else if (!mrp::read_textures(path, L.tex[k])) std::fprintf(stderr, "[mrpw] no %s textures %s\n", names[k], path.c_str());
+        if (k == 1 && L.host_first_tie != 0 && L.world != nullptr) {  // (a session's world section: the host meshes' textures after the level's)
+            const uint64_t base = L.tex[1].size();
+            for (mrp::Texture& t : L.host_tex) L.tex[1].push_back(std::move(t));
+            L.host_tex.clear();
+            for (size_t c = L.host_first_tie; c < L.world->ties.size(); ++c)
+                for (TexturePrim& tp : L.world->ties[c].textures) {
+                    if (tp.texture < 0) continue;
+                    tp.texture += static_cast<int32_t>(base);
+                    tp.ad[1][0] = (tp.ad[1][0] & 0xffffffull) | ((static_cast<uint64_t>(tp.texture) & 0x3ffu) << 24);  // (CLAMP_1's MINV: its index)
+                }
+            if (L.tex[1].size() > 1024) std::fprintf(stderr, "[mrpw] level %d: %zu tie textures with the session's: past 1024 they are not found\n", L.id, L.tex[1].size());
+        }
         L.ref[k].assign(L.tex[k].size(), TexRef{});
         rep[k].assign(L.tex[k].size(), nullptr);
         for (size_t i = 0; i < L.tex[k].size(); ++i) {
@@ -621,6 +640,91 @@ std::map<int, uint32_t> g_wkey;  // (each world level's key as its level was bui
 // orig: (host) where a world section's tables are now (the tie classes' headers, the tfrag entries): its kept level's key
 uint32_t world_cache_key() { return lwu(OV(0x001c5800)) ^ (lwu(OV(0x00160f4c)) << 1) ^ lwu(OV(0x00160fc0)); }
 
+// orig: (host) a session's game world section (stage 8; open engine, its rails' models and objects): its level `L` (the planet's
+// world, not the session's) given the session's host meshes it shows - the static ones of its world sections (the mod's rails'
+// models, level.txt's `rail ... mesh` there) and the classes of the level's objects (level.sdk's, drawn where the objects are):
+// their classes added after the planet's ties (World::host_class_map), their textures after its tie textures (load_textures),
+// the static instances with their sections; the host meshes then bound to it
+void world_host_meshes(Level& L) {
+    const int slot = level_slot();
+    if (slot < 19 || world_renderer_level_get() != L.id || level_slot_base(L.id) >= 0 || L.world == nullptr) return;
+    const std::string dir = level_slot_build_dir(slot);
+    std::error_code ec;
+    if (dir.empty() || !std::filesystem::exists(dir + "/host_meshes.mrpc", ec)) return;
+    std::map<unsigned, std::pair<size_t, size_t>> ranges;  // section -> its static instances
+    std::set<unsigned> mine;                              // the sections whose world is this level
+    if (std::ifstream sf(dir + "/sections.txt"); sf) {
+        std::string line;
+        while (std::getline(sf, line)) {
+            unsigned sec = 0;
+            int level = -1;
+            unsigned long long first = 0, count = 0;
+            if (std::sscanf(line.c_str(), "meshes %u %llu %llu", &sec, &first, &count) == 3 && sec > 0 && sec <= 31) ranges[sec] = {first, count};
+            else if (std::sscanf(line.c_str(), "world %u %d", &sec, &level) == 2 && level == L.id && sec > 0 && sec <= 31) mine.insert(sec);
+        }
+    }
+    std::set<uint32_t> want;  // the classes: the objects' models, the world sections' instances
+    if (std::ifstream kf(dir + "/level.sdk"); kf) {
+        std::string line;
+        while (std::getline(kf, line)) {
+            std::istringstream in(line);
+            std::string k, name;
+            int mesh = -1;
+            if ((in >> k >> name >> mesh) && k == "class" && mesh >= 0) want.insert(static_cast<uint32_t>(mesh));
+        }
+    }
+    HostMeshes hm;
+    std::string err;
+    if (!read_host_meshes(dir + "/host_meshes.mrpc", hm, err)) {
+        std::fprintf(stderr, "[mrpw] %s\n", err.c_str());
+        return;
+    }
+    std::vector<HostMeshInstance> stat;
+    for (const unsigned sec : mine) {
+        const auto r = ranges.find(sec);
+        if (r == ranges.end()) continue;
+        for (size_t k = r->second.first; k < r->second.first + r->second.second && k < hm.instances.size(); ++k) {
+            HostMeshInstance in = hm.instances[k];
+            in.section = static_cast<uint8_t>(sec);
+            want.insert(in.cls);
+            stat.push_back(std::move(in));
+        }
+    }
+    if (want.empty()) return;
+    std::vector<int32_t> map(hm.classes.size(), -1), tex_map(hm.textures.size(), -1);
+    for (const uint32_t c : want) {
+        if (c >= hm.classes.size()) continue;
+        TieClass tc = std::move(hm.classes[c]);
+        for (TexturePrim& tp : tc.textures) {  // (its textures' indices among those added: load_textures puts them past the level's)
+            if (tp.texture < 0 || static_cast<size_t>(tp.texture) >= hm.textures.size()) {
+                tp.texture = -1;
+                continue;
+            }
+            int32_t& t = tex_map[static_cast<size_t>(tp.texture)];
+            if (t < 0) {
+                t = static_cast<int32_t>(L.host_tex.size());
+                L.host_tex.push_back(hm.textures[static_cast<size_t>(tp.texture)]);
+            }
+            tp.texture = t;
+        }
+        tc.texture_remap.fill(0xff);  // (read only from world.mrpw's classes)
+        if (L.host_first_tie == 0) L.host_first_tie = L.world->ties.size();
+        tc.index = static_cast<uint32_t>(L.world->ties.size());
+        map[c] = static_cast<int32_t>(L.world->ties.size());
+        L.world->ties.push_back(std::move(tc));
+    }
+    size_t drawn = 0;
+    for (HostMeshInstance& in : stat) {
+        if (map[in.cls] < 0) continue;
+        in.cls = static_cast<uint32_t>(map[in.cls]);
+        L.world->host_meshes.push_back(std::move(in));
+        ++drawn;
+    }
+    L.world->host_class_map = std::move(map);
+    std::printf("[mrpw] level %d (a world section's): %zu of the session's host mesh classes added (%zu textures), %zu meshes of its sections drawn\n", L.id,
+                want.size(), L.host_tex.size(), drawn);
+}
+
 // orig: (host) the level's world asset, its index, its textures, the GL buffers
 void load_level(int id) {
     host_meshes_bind(nullptr, nullptr);  // (a level mod's host meshes: the world about to be freed)
@@ -656,9 +760,11 @@ void load_level(int id) {
             g_slevel = std::move(c.s);
             g_tlevel = std::move(c.t);
             g_tcols = TfragColours{};
+            ++g_tcols_resets;
             if (mrp_rt_active()) mrp_rt_level(rt_gather(g_level));
             else mrp_rt_level_drop();
             g_level.reset_walker = true;
+            if (g_level.world != nullptr && !g_level.world->host_class_map.empty()) host_meshes_bind(g_level.idx.get(), g_level.world.get());
             std::printf("[mrpw] level %d (a world section's): kept since it was left, taken back (%.1f ms)\n", id, now_ms() - t0);
             return;
         }
@@ -710,6 +816,8 @@ void load_level(int id) {
                         tagged != 0 ? (" (" + std::to_string(tagged) + " of them the sections')").c_str() : "");
         }
     }
+    world_host_meshes(L);  // (a session's world section: the session's host meshes it shows)
+    if (!L.world->host_class_map.empty()) host_meshes_bind(L.idx.get(), L.world.get());
     const double t_index = now_ms();
     load_textures(L, pf.get());
     const double t_tex = now_ms();
@@ -770,6 +878,7 @@ void load_level(int id) {
     const double t_ee = now_ms();
     if (world_renderer_level_get() == id && level_slot() >= 19) g_wkey[id] = world_cache_key();  // (a world section's: kept when left)
     g_tcols = TfragColours{};
+    ++g_tcols_resets;
     if (mrp_rt_active()) mrp_rt_level(rt_gather(L));  // (Water Reflections (RT): the static world's acceleration structures)
     else mrp_rt_level_drop();                          // (the last level's freed; made at the frame the row turns an RT value on)
     L.reset_walker = true;
@@ -1260,7 +1369,17 @@ struct VkWorldState {
     vk::RingAlloc cmds_alloc{};
     vk::RingAlloc rcols_alloc{};
     vk::RingAlloc indirect_alloc{};
+    // (RAC1_PERF_RCOL_KEEP) the resident colours in a buffer per frame in flight, kept from frame to frame: a slot is written
+    // with the changes since it was last written (upload_resident_colours), not the whole mirror into the ring each frame
+    vk::GpuBuffer rcol_buf[vk::kFramesInFlight]{};
+    uint64_t rcol_at[vk::kFramesInFlight]{};  // (the upload a slot holds, 0: none)
+    uint64_t rcol_seq = 0;                     // (the uploads so far)
+    std::vector<std::pair<uint32_t, uint32_t>> rcol_prev_dirty;  // (the last upload's changes)
+    std::vector<uint32_t> rcol_prev_words;
 } g_vk_world;
+struct RcolKeepStats {
+    uint64_t uploads = 0, whole = 0, checked = 0, differing = 0;
+} g_rcol_keep;
 
 void shutdown_vk_world() {
     VkDevice dev = vk::device();
@@ -1292,6 +1411,7 @@ void shutdown_vk_world() {
             g_vk_world.set0_layout = VK_NULL_HANDLE;
         }
     }
+    for (vk::GpuBuffer& b : g_vk_world.rcol_buf) vk::destroy_buffer_now(b);
     free_level(g_level);
     g_vk_world = VkWorldState{};
 }
@@ -1528,18 +1648,18 @@ bool init_gl() {
 
 // ---- the frame's GS stream to GPU triangles ------------------------------------------------------
 
-uint32_t fld(uint64_t v, int lo, int n) { return static_cast<uint32_t>((v >> lo) & ((1ull << n) - 1)); }
+using gs::field;
 
 // orig: (host) a draw's GS state as the fragment shader's data (see RKey): TME, IIP, FGE (and the fog switch), the alpha test's
 // mode (on, not ALWAYS, its failing pixels not drawn as passing: the AFAIL FB_ONLY without a depth write is one pass), ATST, AREF, the
 // texture unit
 uint32_t draw_flags(const Key& k, uint32_t unit) {
-    const uint32_t ate = fld(k.test, 0, 1), atst = fld(k.test, 1, 3), afail = fld(k.test, 12, 2);
-    const bool zwrite = fld(k.zbuf, 32, 1) == 0;
-    const bool z_effective = zwrite && fld(k.test, 16, 1) != 0 && fld(k.test, 17, 2) != 1;
+    const uint32_t ate = field(k.test, 0, 1), atst = field(k.test, 1, 3), afail = field(k.test, 12, 2);
+    const bool zwrite = field(k.zbuf, 32, 1) == 0;
+    const bool z_effective = zwrite && field(k.test, 16, 1) != 0 && field(k.test, 17, 2) != 1;
     const uint32_t mode = ate != 0 && atst != 1 && !(afail == 1 && !z_effective) ? 1u : 0u;
-    const uint32_t fge = g_mrp_world_fog != 0 && fld(k.prim, 5, 1) != 0 ? 1u : 0u;
-    return fld(k.prim, 4, 1) | (fld(k.prim, 3, 1) << 1) | (fge << 2) | (mode << 3) | (atst << 4) | (fld(k.test, 4, 8) << 8) | (unit << 16);
+    const uint32_t fge = g_mrp_world_fog != 0 && field(k.prim, 5, 1) != 0 ? 1u : 0u;
+    return field(k.prim, 4, 1) | (field(k.prim, 3, 1) << 1) | (fge << 2) | (mode << 3) | (atst << 4) | (field(k.test, 4, 8) << 8) | (unit << 16);
 }
 
 // ---- (host) the alpha test's passes left out where no pixel can fail it (RAC1_PERF_OPAQUE; found while profiling a low-end target) --
@@ -1560,6 +1680,7 @@ struct OpaqueCheck {
     uint64_t runs = 0, units = 0, bad_runs = 0, pixels = 0;
     uint64_t built[2][3] = {};  // (the frames' runs' units by state: [0] draw commands, [1] indices)
 } g_opq_chk;
+uint64_t g_opq_by_level[32][3] = {};  // (the GPU path's draw commands of g_opq_chk.built by level: the report)
 // orig: (host) whether a draw's pixels can fail its alpha test (P2Run's state): `fl` its draw_flags, `k` its key (the full texture
 // word), `vert_opq` every vertex colour it draws with has an alpha >= 0x80
 uint8_t alpha_state(const Key& k, uint32_t fl, bool vert_opq) {
@@ -1592,6 +1713,21 @@ void note_run(std::vector<P2Run>& runs, Batch& b, uint32_t first, uint32_t count
     ++b.rn;
 }
 
+// (testing, RAC1_MRPW_SPLIT_DRAWS=1: the GPU path's last draw command made two, the same triangles in the same order - what a
+// draw command costs the GPU, counted by doubling them)
+void split_last_draw(Frame& F, uint8_t state) {
+    static const bool on = std::getenv("RAC1_MRPW_SPLIT_DRAWS") != nullptr && std::atoi(std::getenv("RAC1_MRPW_SPLIT_DRAWS")) != 0;
+    if (!on || F.draws.back().count < 6) return;
+    DrawCmd second = F.draws.back();
+    const uint32_t c1 = (second.count / 6) * 3;
+    F.draws.back().count = c1;
+    second.count -= c1;
+    second.first_index += c1;
+    note_run(F.p2runs, F.batches.back(), static_cast<uint32_t>(F.draws.size()), 1, state);
+    F.draws.push_back(second);
+    ++F.batches.back().count;
+}
+
 // orig: (host) the batch key of a draw (RKey)
 bool g_view_only_emit = false;  // the batches made now are the view's only (RKey::view_only)
 RKey batch_key(const Key& k, bool gpu, bool sky) {
@@ -1599,12 +1735,12 @@ RKey batch_key(const Key& k, bool gpu, bool sky) {
     r.view_only = g_view_only_emit;
     r.gpu = gpu;
     r.sky = sky;
-    r.abe = fld(k.prim, 6, 1);
+    r.abe = field(k.prim, 6, 1);
     r.alpha = k.alpha;
-    r.ztest = fld(k.test, 16, 3);
-    r.zwrite = fld(k.zbuf, 32, 1) == 0 ? 1u : 0u;
+    r.ztest = field(k.test, 16, 3);
+    r.zwrite = field(k.zbuf, 32, 1) == 0 ? 1u : 0u;
     r.fogcol = k.fogcol | ((draw_flags(k, 0) & 4u) << 22);  // (FOGCOL and FGE: uniforms, see kFs)
-    r.pass2 = (draw_flags(k, 0) & 8u) != 0 ? fld(k.test, 12, 2) : 0u;
+    r.pass2 = (draw_flags(k, 0) & 8u) != 0 ? field(k.test, 12, 2) : 0u;
     static const bool unit_key = std::getenv("RAC1_MRPW_UNITKEY") != nullptr;  // (testing: the GPU path's texture in the key too)
     if (!gpu || unit_key) {
         r.bucket = k.bucket;
@@ -1689,7 +1825,7 @@ const TexRef* sky_texture(Level& L, const SceneFrame& S, uint64_t tex0) {
     const auto it = L.sky_tex.find(key);
     if (it != L.sky_tex.end()) return it->second.bucket >= 0 ? &it->second : nullptr;
     TexRef& r = L.sky_tex[key];
-    const uint32_t psm = fld(tex0, 20, 6), tw = fld(tex0, 26, 4), th = fld(tex0, 30, 4), cpsm = fld(tex0, 51, 4), csm = fld(tex0, 55, 1);
+    const uint32_t psm = field(tex0, 20, 6), tw = field(tex0, 26, 4), th = field(tex0, 30, 4), cpsm = field(tex0, 51, 4), csm = field(tex0, 55, 1);
     const uint32_t w = 1u << tw, h = 1u << th;
     if ((psm != 0x13 && psm != 0x14) || cpsm != 0 || w > 1024 || h > 1024) {
         std::fprintf(stderr, "[mrpw] sky texture TEX0 %016llx: format not decoded (psm %x cpsm %x)\n", static_cast<unsigned long long>(tex0), psm, cpsm);
@@ -1727,18 +1863,18 @@ const TexRef* sky_texture(Level& L, const SceneFrame& S, uint64_t tex0) {
 // orig: (host) a world GIF stream's texture (the shrub far variants' billboards): TEX0 names it in GS
 // memory, which holds it since the level load (gs_ram_upload 0x240498: the core's GS RAM block, the shrub classes' billboard images
 // and palettes; shrub_class_register 0x240e80 writes the variant record's TEX0 / TEX1 / MIPTBP1 from the class entry), so it is
-// decoded from the GS replica's local memory (PSMT8 + PSMCT32 CLUT, CSM1, as Gs::texel reads it; the GS's 0..0x80 alpha kept),
+// decoded from the GS's local memory (PSMT8 + PSMCT32 CLUT, CSM1, as Gs::texel reads it; the GS's 0..0x80 alpha kept),
 // the levels below 0 from MIPTBP1 (TEX1 MXL of them, 3 at most), once per level. (The frame's own uploads start past that block,
-// 0x15ee78: the replica's chain, which may be running, does not write it.)
+// 0x15ee78: the frame's chain, which may be being read, does not write it.)
 const TexRef* vram_texture(Level& L, uint64_t tex0, uint64_t tex1, uint64_t mip1) {
-    const uint32_t mxl = std::min(fld(tex1, 2, 3), 3u);
+    const uint32_t mxl = std::min(field(tex1, 2, 3), 3u);
     const uint64_t fmt = tex0 & ~((1ull << 34) | (3ull << 35) | (7ull << 61));
     const auto key = std::make_tuple(fmt, mxl != 0 ? mip1 : 0ull, mxl);
     const auto it = L.vram_tex.find(key);
     if (it != L.vram_tex.end()) return it->second.bucket >= 0 ? &it->second : nullptr;
     TexRef& r = L.vram_tex[key];
-    const uint32_t psm = fld(tex0, 20, 6), tw = fld(tex0, 26, 4), th = fld(tex0, 30, 4), cpsm = fld(tex0, 51, 4), csa = fld(tex0, 56, 5);
-    const uint32_t cbp = fld(tex0, 37, 14);
+    const uint32_t psm = field(tex0, 20, 6), tw = field(tex0, 26, 4), th = field(tex0, 30, 4), cpsm = field(tex0, 51, 4), csa = field(tex0, 56, 5);
+    const uint32_t cbp = field(tex0, 37, 14);
     const uint32_t w = 1u << tw, h = 1u << th;
     if (psm != 0x13 || cpsm != 0 || csa != 0 || w > 1024 || h > 1024) {
         std::fprintf(stderr, "[mrpw] world GIF texture TEX0 %016llx: format not decoded (psm %x cpsm %x csa %x)\n", static_cast<unsigned long long>(tex0), psm, cpsm, csa);
@@ -1754,8 +1890,8 @@ const TexRef* vram_texture(Level& L, uint64_t tex0, uint64_t tex1, uint64_t mip1
     while (levels <= mxl && (w >> levels) >= 1 && (h >> levels) >= 1) ++levels;
     std::vector<std::vector<uint32_t>> lv(levels);
     for (uint32_t l = 0; l < levels; ++l) {
-        const uint32_t tbp = l == 0 ? fld(tex0, 0, 14) : fld(mip1, 20 * (l - 1), 14);
-        const uint32_t tbw = l == 0 ? fld(tex0, 14, 6) : fld(mip1, 20 * (l - 1) + 14, 6);
+        const uint32_t tbp = l == 0 ? field(tex0, 0, 14) : field(mip1, 20 * (l - 1), 14);
+        const uint32_t tbw = l == 0 ? field(tex0, 14, 6) : field(mip1, 20 * (l - 1) + 14, 6);
         const uint32_t lw = w >> l, lh = h >> l;
         std::vector<uint32_t>& px = lv[l];
         px.resize(static_cast<size_t>(lw) * lh);
@@ -1866,7 +2002,7 @@ struct GsFront {
     const SceneFrame& S;
     explicit GsFront(Frame& f) : F(f), S(f.scene) {}
 
-    uint64_t prim() const { return fld(regs[0x1a], 0, 1) != 0 ? regs[0x00] : ((regs[0x1b] & ~7ull) | (regs[0x00] & 7)); }
+    uint64_t prim() const { return field(regs[0x1a], 0, 1) != 0 ? regs[0x00] : ((regs[0x1b] & ~7ull) | (regs[0x00] & 7)); }
     uint64_t gen = 0;  // (host) the writes that changed a register's value (gpu_packet's memo, RAC1_PERF_PKT_MEMO)
     void write(uint32_t reg, uint64_t v) {
         reg &= 0x7f;
@@ -1885,19 +2021,19 @@ struct GsFront {
     }
     Key key_now(int table) {
         const uint64_t p = prim();
-        const int ctx = static_cast<int>(fld(p, 9, 1));
+        const int ctx = static_cast<int>(field(p, 9, 1));
         Key k;
         k.prim = p;
         k.test = regs[0x47 + ctx];
         k.alpha = regs[0x42 + ctx];
         k.zbuf = regs[0x4e + ctx];
         k.fogcol = static_cast<uint32_t>(regs[0x3d] & 0xffffff);
-        if (fld(p, 4, 1) == 0) return k;  // (no texture)
+        if (field(p, 4, 1) == 0) return k;  // (no texture)
         const uint64_t tex0 = regs[0x06 + ctx], tex1 = regs[0x14 + ctx], clamp = regs[0x08 + ctx];
-        const uint32_t tfx = fld(tex0, 35, 2), tcc = fld(tex0, 34, 1);
-        const uint32_t mxl = std::min(fld(tex1, 2, 3), 3u), lcm = fld(tex1, 0, 1), l = fld(tex1, 19, 2), kk = fld(tex1, 32, 12);
+        const uint32_t tfx = field(tex0, 35, 2), tcc = field(tex0, 34, 1);
+        const uint32_t mxl = std::min(field(tex1, 2, 3), 3u), lcm = field(tex1, 0, 1), l = field(tex1, 19, 2), kk = field(tex1, 32, 12);
         k.word = (tfx << 1) | (tcc << 3) | (mxl << 4) | (lcm << 7) | (l << 8) | (kk << 10);
-        k.sampler = (fld(tex1, 5, 1) != 0 ? 1u : 0u) | (fld(tex1, 6, 3) >= 4 ? 2u : 0u) | (fld(clamp, 0, 2) == 0 ? 4u : 0u) | (fld(clamp, 2, 2) == 0 ? 8u : 0u);
+        k.sampler = (field(tex1, 5, 1) != 0 ? 1u : 0u) | (field(tex1, 6, 3) >= 4 ? 2u : 0u) | (field(clamp, 0, 2) == 0 ? 4u : 0u) | (field(clamp, 2, 2) == 0 ? 8u : 0u);
         if (gif_now) {  // a world GIF stream's: by its TEX0 in GS memory
             const TexRef* r = vram_texture(g_level, tex0, tex1, regs[0x34 + ctx]);
             if (r == nullptr) {
@@ -1967,7 +2103,7 @@ struct GsFront {
         }
         note_run(F.p2runs, F.batches.back(), static_cast<uint32_t>(F.idx.size()), 3, astate);
         F.idx.insert(F.idx.end(), {a, b, c});
-        if (fld(k.test, 0, 1) != 0 && fld(k.test, 1, 3) != 1) F.batches.back().ate = true;  // (ATST ALWAYS: no test)
+        if (field(k.test, 0, 1) != 0 && field(k.test, 1, 3) != 1) F.batches.back().ate = true;  // (ATST ALWAYS: no test)
         F.batches.back().count += 3;
         ++g_st.triangles;
     }
@@ -2040,7 +2176,7 @@ struct GsFront {
                  static_cast<float>(xyzf ? (v >> 56) & 0xff : fogreg), rgba};
         r.index = sky_gpuv(r.x, r.y, r.z, r.s, r.t, r.q, r.rgba, r.fog);
         sq.push_back(r);
-        const int type = static_cast<int>(fld(regs[0x00], 0, 3));
+        const int type = static_cast<int>(field(regs[0x00], 0, 3));
         const size_t need = type == 0 ? 1 : type <= 2 || type == 6 ? 2 : type <= 5 ? 3 : 0;
         if (need == 0) {
             sq.clear();
@@ -2178,7 +2314,7 @@ struct GsFront {
         ++g_st.vertices;
         const bool adc = ((q[3] >> 15) & 1) != 0;
         queue.push_back({index, flagged});
-        const int type = static_cast<int>(fld(regs[0x00], 0, 3));
+        const int type = static_cast<int>(field(regs[0x00], 0, 3));
         if (type != 3 && type != 4 && type != 5) {
             queue.clear();
             return;
@@ -2276,10 +2412,20 @@ bool tie_vert_opaque(const SceneInst& si) {
 }
 std::vector<uint8_t> g_tfrag_entry_opq;
 uint64_t g_tfrag_entry_opq_updates = ~0ull, g_tfrag_entry_opq_gen = ~0ull;
+size_t g_tfrag_entry_opq_size = 0;
+uint64_t g_tfrag_entry_opq_resets = ~0ull;
 // orig: (host)
 bool tfrag_entry_opaque(uint32_t entry) {
-    if (g_tfrag_entry_opq_updates != g_tcols.updates || g_tfrag_entry_opq_gen != g_tlevel.generation) {
-        g_tfrag_entry_opq_updates = g_tcols.updates;
+    // (remade when an entry's colours changed - the mirror's count of entries changed, which also counts a new level's first fill -
+    // not at every update of the mirror, one a frame: the ties' table above had the same fault. RAC1_PERF_OPAQUE_KEEP_TFRAG=0: as
+    // before)
+    static const bool keep = perf::switch_value("RAC1_PERF_OPAQUE_KEEP_TFRAG", 1) != 0;
+    const uint64_t key = keep ? g_tcols.entries_changed : g_tcols.updates;
+    if (g_tfrag_entry_opq_updates != key || g_tfrag_entry_opq_gen != g_tlevel.generation || g_tfrag_entry_opq_size != g_tcols.mirror.size() ||
+        g_tfrag_entry_opq_resets != g_tcols_resets) {
+        g_tfrag_entry_opq_updates = key;
+        g_tfrag_entry_opq_size = g_tcols.mirror.size();
+        g_tfrag_entry_opq_resets = g_tcols_resets;
         g_tfrag_entry_opq_gen = g_tlevel.generation;
         g_tfrag_entry_opq.assign(g_tlevel.entries.size(), 0);
         for (size_t i = 0; i < g_tlevel.entries.size(); ++i) {
@@ -2388,8 +2534,12 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
     F.insts.push_back(ig);
     F.inst_box.push_back({1.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f});  // (none yet: its packets' boxes below)
     }
-    {  // (Water Reflections' views cull by it: the instance's world bounding sphere grown by this packet's template's box, through the
-       // view's matrix to the world and the instance's rows - an instance is drawn by several packets, each a part of it)
+    // (Water Reflections' views cull by it: the instance's world bounding sphere grown by this packet's template's box, through the
+    // view's matrix to the world and the instance's rows - an instance is drawn by several packets, each a part of it. Made only
+    // when such a view can be drawn this frame (the row on, with Surface Detail: mrp_reflect_pass draws none otherwise); an
+    // instance without a box is never left out, as before the views culled. RAC1_PERF_REFLECT_BOX=0: always, as before)
+    static const bool box_always = perf::switch_value("RAC1_PERF_REFLECT_BOX", 1) == 0;
+    if (box_always || (g_water_reflections > 0 && g_surface_detail > 0)) {
         std::array<float, 6>& bx = F.inst_box[inst];
         if (std::isnan(bx[0])) {
             // (a box that could not be taken: never left out)
@@ -2433,6 +2583,7 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
             F.draws.push_back(DrawCmd{r.count, 1, r.first, static_cast<int32_t>(t.first_vertex), cmd});
             if (r.ate) F.batches.back().ate = true;
             ++F.batches.back().count;
+            split_last_draw(F, r.astate[vert_opq ? 1 : 0]);
             g_st.triangles += r.count / 3;
         }
         g_st.tex_ok += M.tex_ok;
@@ -2521,12 +2672,12 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
             note_read(0x1a);
             note_read(0x1b);
             const uint64_t pr = g.prim();
-            const uint32_t ctx = fld(pr, 9, 1);
+            const uint32_t ctx = field(pr, 9, 1);
             note_read(0x47 + ctx);
             note_read(0x42 + ctx);
             note_read(0x4e + ctx);
             note_read(0x3d);
-            if (fld(pr, 4, 1) != 0) {
+            if (field(pr, 4, 1) != 0) {
                 note_read(0x06 + ctx);
                 note_read(0x14 + ctx);
                 note_read(0x08 + ctx);
@@ -2537,7 +2688,7 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
         const uint32_t cmd = static_cast<uint32_t>(F.cmds.size() / 8);
         // (the texture's unit in the frame's current epoch; a new epoch, so a new batch, when the 15 units are taken)
         uint32_t unit = 0;
-        if (k.bucket >= 0 && fld(k.prim, 4, 1) != 0) {
+        if (k.bucket >= 0 && field(k.prim, 4, 1) != 0) {
             if (F.epochs.empty()) F.epochs.emplace_back();
             auto& ep = F.epochs.back();
             const std::pair<int, uint32_t> combo{k.bucket, k.sampler};
@@ -2567,9 +2718,10 @@ void gpu_packet(GsFront& g, Frame& F, const ScenePacket& p, const glm::dmat4& vp
         if (unit != 0) F.batches.back().epoch = epoch;
         note_run(F.p2runs, F.batches.back(), static_cast<uint32_t>(F.draws.size()), 1, astate);
         F.draws.push_back(DrawCmd{run.count, 1, t.first_index + run.first, static_cast<int32_t>(t.first_vertex), cmd});
-        const bool ate = fld(k.test, 0, 1) != 0 && fld(k.test, 1, 3) != 1;
+        const bool ate = field(k.test, 0, 1) != 0 && field(k.test, 1, 3) != 1;
         if (ate) F.batches.back().ate = true;  // (ATST ALWAYS: no test)
         ++F.batches.back().count;
+        split_last_draw(F, astate);
         g_st.triangles += run.count / 3;
         if (record) {
             PktMemo::Run r;
@@ -2665,7 +2817,7 @@ RtLevelGeometry rt_gather(const Level& L) {
     // a triangle's texture from the replay's state (`table`: 0 tfrag, 1 tie, 2 shrub)
     auto tri_tex = [&](int table, RtTri& t) {
         const Key k = gs.key_now(table);
-        if (fld(k.prim, 4, 1) == 0 || k.bucket < 0 || (k.word & 1u) != 0) {
+        if (field(k.prim, 4, 1) == 0 || k.bucket < 0 || (k.word & 1u) != 0) {
             t.tex = 0xffu;
             t.word = 1u;
             return true;
@@ -2971,7 +3123,7 @@ void tfrag_packet(GsFront& g, Frame& F, const ScenePacket& p) {
         // the texture's unit in the frame's epoch, as the tie / shrub GPU path (gpu_packet): a batch's draws then share the GL state only
         // (the CPU path's batches break at every texture bucket / sampler change: ~60..180 tfrag batches a frame)
         uint32_t unit = 0;
-        if (ntri != 0 && k.bucket >= 0 && fld(k.prim, 4, 1) != 0) {
+        if (ntri != 0 && k.bucket >= 0 && field(k.prim, 4, 1) != 0) {
             if (F.epochs.empty()) F.epochs.emplace_back();
             auto& ep = F.epochs.back();
             const std::pair<int, uint32_t> combo{k.bucket, k.sampler};
@@ -3002,7 +3154,7 @@ void tfrag_packet(GsFront& g, Frame& F, const ScenePacket& p) {
             F.batches.back().tfrag = true;
         }
         if (unit != 0) F.batches.back().epoch = epoch;
-        if (fld(k.test, 0, 1) != 0 && fld(k.test, 1, 3) != 1) F.batches.back().ate = true;  // (ATST ALWAYS: no test)
+        if (field(k.test, 0, 1) != 0 && field(k.test, 1, 3) != 1) F.batches.back().ate = true;  // (ATST ALWAYS: no test)
         note_run(F.p2runs, F.batches.back(), gd.ibase + 3 * pl->runs[r].first_tri, 3 * ntri, astate);
         F.batches.back().count += 3 * ntri;
         g_st.triangles += ntri;
@@ -3062,8 +3214,8 @@ void build_triangles(Frame& F) {
         F.merge_afail = env != nullptr ? std::atoi(env) != 0 : (F.scene.stat_draws[0] + F.scene.stat_draws[1]) != 0;
     }
     GsFront g(F);
-    // the GS's registers as the replica has them before this frame's chain (the frame packets set them again: the scene's
-    // DIRECT writes from the chain's start)
+    // the GS's registers as the last chain read left them, before this frame's chain (the frame packets set them again: the
+    // scene's DIRECT writes from the chain's start)
     for (uint32_t r = 0; r < 128; ++r) g.regs[r] = F.gs_regs[r];  // (taken before the frame's chain: mrp_world_begin_frame_async)
     g_pkt_memo.valid = false;  // (RAC1_PERF_PKT_MEMO: nothing kept from another build - its view-projection, its templates)
     g_pkt_memo.vv_view = -2;
@@ -3177,7 +3329,10 @@ void build_triangles(Frame& F) {
     }
     g_st.batches += F.batches.size();
     for (const Batch& b : F.batches)
-        for (uint32_t r = b.r0; r < b.r0 + b.rn; ++r) g_opq_chk.built[b.gpu ? 0 : 1][F.p2runs[r].state] += F.p2runs[r].count;
+        for (uint32_t r = b.r0; r < b.r0 + b.rn; ++r) {
+            g_opq_chk.built[b.gpu ? 0 : 1][F.p2runs[r].state] += F.p2runs[r].count;
+            if (b.gpu) g_opq_by_level[static_cast<size_t>(g_level.id) & 31][F.p2runs[r].state] += F.p2runs[r].count;
+        }
 }
 
 // ---- drawing -----------------------------------------------------------------------------------
@@ -3213,6 +3368,59 @@ void set_frame_uniforms(const Loc& l, const gs::Viewport* vp, int mode) {
 void upload_resident_colours() {
     ResidentColours& rc = g_rcols;
     const size_t bytes = std::max<size_t>(rc.mirror.size() * 4, 16);
+    // (Vulkan, RAC1_PERF_RCOL_KEEP; 0: the whole mirror copied into the frame's ring every frame, as before; 2: the kept buffer
+    // compared with the mirror after every upload) a buffer per frame in flight holds the colours as of the upload that wrote
+    // it last: the slot of the upload before this one takes this one's changes, the slot of the one before that the last
+    // upload's then this one's, any other the whole mirror - the tfrag colours' scheme (tfrag_gpu_colours)
+    static const int keep = perf::switch_value("RAC1_PERF_RCOL_KEEP", 1);
+    if (vk::is_active() && keep != 0) {
+        VkWorldState& w = g_vk_world;
+        const uint32_t fi = vk::frame_index() % vk::kFramesInFlight;
+        if (rc.all_dirty || bytes != g_rcol_size)
+            for (uint64_t& at : w.rcol_at) at = 0;  // (a new table: every slot written whole when its turn comes)
+        vk::GpuBuffer& buf = w.rcol_buf[fi];
+        if (buf.buffer == VK_NULL_HANDLE || buf.size < bytes) {
+            vk::destroy_buffer(buf);
+            vk::create_buffer(bytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, buf, true);
+            w.rcol_at[fi] = 0;
+        }
+        const uint64_t seq = ++w.rcol_seq;
+        ++g_rcol_keep.uploads;
+        if (buf.mapped != nullptr) {
+            auto apply = [&](const std::vector<std::pair<uint32_t, uint32_t>>& ranges, const std::vector<uint32_t>& words) {
+                size_t at = 0;
+                uint8_t* dst = static_cast<uint8_t*>(buf.mapped);
+                for (const auto& [first, n] : ranges) {
+                    if (static_cast<size_t>(first + n) * 4 <= buf.size) std::memcpy(dst + static_cast<size_t>(first) * 4, words.data() + at, static_cast<size_t>(n) * 4);
+                    at += n;
+                }
+                rc.words_uploaded += at;
+            };
+            if (w.rcol_at[fi] != 0 && w.rcol_at[fi] + 1 == seq) {
+                apply(rc.dirty, rc.dirty_words);
+            } else if (w.rcol_at[fi] != 0 && w.rcol_at[fi] + 2 == seq) {
+                apply(w.rcol_prev_dirty, w.rcol_prev_words);
+                apply(rc.dirty, rc.dirty_words);
+            } else {
+                if (!rc.mirror.empty()) std::memcpy(buf.mapped, rc.mirror.data(), rc.mirror.size() * 4);
+                rc.words_uploaded += rc.mirror.size();
+                ++g_rcol_keep.whole;
+            }
+            if (keep == 2) {
+                ++g_rcol_keep.checked;
+                if (!rc.mirror.empty() && std::memcmp(buf.mapped, rc.mirror.data(), rc.mirror.size() * 4) != 0) ++g_rcol_keep.differing;
+            }
+        }
+        w.rcol_at[fi] = seq;
+        w.rcol_prev_dirty.swap(rc.dirty);
+        w.rcol_prev_words.swap(rc.dirty_words);
+        g_rcol_size = bytes;
+        rc.all_dirty = false;
+        rc.dirty.clear();
+        rc.dirty_words.clear();
+        w.rcols_alloc = vk::RingAlloc{buf.buffer, 0, buf.mapped};
+        return;
+    }
     if (vk::is_active()) {
         if (rc.all_dirty || bytes != g_rcol_size) {
             g_rcol_size = bytes;
@@ -3427,8 +3635,8 @@ int perf_sky_late() {
 // orig: (host) a batch that may be drawn before the sky (see above)
 bool sky_late_lead(const Frame& F, const Level& L, const Batch& b) {
     if (b.sky || !b.tfrag || b.rk.shadow || b.rn == 0 || !b.runs_ok || batch_refused(F, L, b) != nullptr) return false;
-    const uint32_t ztst = fld(b.key.test, 17, 2);
-    if (fld(b.key.test, 16, 1) == 0 || (ztst != 2 && ztst != 3) || b.rk.zwrite == 0) return false;
+    const uint32_t ztst = field(b.key.test, 17, 2);
+    if (field(b.key.test, 16, 1) == 0 || (ztst != 2 && ztst != 3) || b.rk.zwrite == 0) return false;
     const bool blend = b.rk.abe != 0;
     if (blend && (b.rk.alpha & 0xffu) != 0x44u) return false;
     for (uint32_t r = b.r0; r < b.r0 + b.rn; ++r) {
@@ -3732,8 +3940,8 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
             push.uFogCol_Pad[2] = static_cast<float>((rk.fogcol >> 16) & 0xff) / 255.0f;
             push.uFge = (rk.fogcol >> 24) & 1 ? 1 : 0;
 
-            const uint32_t ztst = fld(k.test, 17, 2);
-            const bool ztest = caster || late_sky ? true : (fld(k.test, 16, 1) != 0 && ztst != 1);
+            const uint32_t ztst = field(k.test, 17, 2);
+            const bool ztest = caster || late_sky ? true : (field(k.test, 16, 1) != 0 && ztst != 1);
             const VkCompareOp zcmp = caster || late_sky ? VK_COMPARE_OP_LESS_OR_EQUAL
                                                         : (ztst == 0 ? VK_COMPARE_OP_NEVER : ztst == 2 ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_LESS);
             const bool zwrite = rk.zwrite != 0;
@@ -4133,8 +4341,8 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
         (void)lc;
         if (!caster && (!have || rk.ztest != cur.ztest || late_sky != cur_late)) {
             cur_late = late_sky;
-            const uint32_t ztst = late_sky ? 2u : fld(k.test, 17, 2);  // (the late sky: LEQUAL at depth 1.0)
-            if (late_sky || (fld(k.test, 16, 1) != 0 && ztst != 1)) {  // the GS's GEQUAL / GREATER on the host's depth: LEQUAL / LESS
+            const uint32_t ztst = late_sky ? 2u : field(k.test, 17, 2);  // (the late sky: LEQUAL at depth 1.0)
+            if (late_sky || (field(k.test, 16, 1) != 0 && ztst != 1)) {  // the GS's GEQUAL / GREATER on the host's depth: LEQUAL / LESS
                 glEnable(GL_DEPTH_TEST);
                 glDepthFunc(ztst == 0 ? GL_NEVER : ztst == 2 ? GL_LEQUAL : GL_LESS);
             } else {
@@ -4214,7 +4422,7 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
         if (rk.pass2 != 0 && !one_pass && !all_opq) {
             const uint32_t afail = rk.pass2;
             static const bool p2_less_orig = std::getenv("RAC1_PERF_P2_LESS") != nullptr && std::atoi(std::getenv("RAC1_PERF_P2_LESS")) != 0;
-            const bool less = g_p2_less && (variant.on || p2_less_orig) && !(afail == 2 && zwrite) && fld(k.test, 16, 1) != 0 && fld(k.test, 17, 2) == 2 && !late_sky;  // (as the Vulkan path: g_p2_less)
+            const bool less = g_p2_less && (variant.on || p2_less_orig) && !(afail == 2 && zwrite) && field(k.test, 16, 1) != 0 && field(k.test, 17, 2) == 2 && !late_sky;  // (as the Vulkan path: g_p2_less)
             if (by_runs) {
                 use_path(path_of(false));
                 set_fog();
@@ -4257,8 +4465,8 @@ void draw_frame(const gs::Viewport* vp, bool with_sky = true, const float* caste
                                     b.gpu ? "draw commands" : "indices", b.tfrag ? "tfrag" : b.gpu ? "tie / shrub" : "CPU path", n);
                 }
             }
-            const uint32_t ztst = fld(k.test, 17, 2);  // (the batch's depth test back)
-            if (late_sky || (fld(k.test, 16, 1) != 0 && ztst != 1)) glEnable(GL_DEPTH_TEST);
+            const uint32_t ztst = field(k.test, 17, 2);  // (the batch's depth test back)
+            if (late_sky || (field(k.test, 16, 1) != 0 && ztst != 1)) glEnable(GL_DEPTH_TEST);
         }
         cur = rk;
         have = true;
@@ -4414,7 +4622,7 @@ bool mrp_world_testing() { return g_world_mrp && (g_env_check || g_env_diff); }
 
 namespace {
 // orig: (host) the scene's worker: one thread, one job a frame (scene_build reads EE memory, the level's assets and
-// its own walker; the host thread meanwhile runs the GS replica's chain, which only reads EE memory)
+// its own walker; the host thread meanwhile reads the frame's chain, which only reads EE memory)
 // ---- the automatic emitters: the ties whose textures glow -----------------------------------------------------------
 //
 // Our art choice, not the game's: a tie class's triangles textured with bright, saturated texels (lamps, glowing
@@ -4869,6 +5077,31 @@ void direct_compare_inputs() {
         g_input.tfrag_host = nullptr;
     }
 }
+// orig: (host) the chained world's =2 comparison (RAC1_PERF_WORLD_CHAINED=2; not beside the direct world's): the walker's scene is
+// the frame's, made without the passes' notes; the second input asks for them, on the comparison's own walker
+bool chained_compare() { return chained_world_mode() == 2 && !direct_world_compare(); }
+void chained_compare_inputs() {
+    SceneInput& d = g_input_direct;
+    d.colours = g_input.colours;
+    d.stat = g_input.stat;
+    d.stat_level = g_input.stat_level;
+    d.stat_check = g_input.stat_check;
+    d.tfrag_level = g_input.tfrag_level;
+    d.tfrag_colours = g_input.tfrag_colours;
+    d.tfrag_kicks = g_input.tfrag_kicks;
+    d.tfrag_host = g_input.tfrag_host;
+    d.tfrag_check = g_input.tfrag_check;
+    d.tfrag_shadow = g_input.tfrag_shadow;
+    d.tfrag_shadow_views = g_input.tfrag_shadow_views;
+    d.tfrag_cpu = g_input.tfrag_cpu;
+    d.tfrag_cpu_colours = g_input.tfrag_cpu_colours;
+    d.direct = g_input.direct;
+    d.dw_reset = g_input.dw_reset;
+    d.walker = 1;
+    d.chained.want = true;
+    d.chained.scan = g_input.chained.scan;
+    g_input.chained.want = false;
+}
 struct SceneWorker {
     std::mutex m;
     std::condition_variable cv;
@@ -4909,6 +5142,9 @@ struct SceneWorker {
                     if (direct_world_compare()) {
                         direct_compare_inputs();
                         scene_capture(chain_start, chain_end, g_input_direct, addrs);
+                    } else if (chained_compare()) {
+                        chained_compare_inputs();
+                        scene_capture(chain_start, chain_end, g_input_direct, addrs);
                     }
                     scene_capture(chain_start, chain_end, g_input, addrs);
                     {
@@ -4923,6 +5159,8 @@ struct SceneWorker {
                 }
                 if (built && direct_world_compare() && g_input_direct.dw.ok && scene_build(*g_level.idx, g_input_direct, g_scene_direct, reset, kicks))
                     scene_compare(g_frame.scene, g_scene_direct);  // (the direct world's scene against the walker's, which is drawn)
+                if (built && chained_compare() && scene_build(*g_level.idx, g_input_direct, g_scene_direct, reset, kicks))
+                    scene_compare(g_frame.scene, g_scene_direct, true);  // (the chained world's scene against the walker's, which is drawn)
                 if (built) direct_count(direct_world_compare() ? g_input_direct : g_input);
                 g_frame.built_on_worker = false;
                 if (built && build) {  // the frame's triangles too, its new textures' images left to the host thread
@@ -5058,8 +5296,8 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
     {  // the GS registers before the frame's chain (build_triangles): as the last chain read left them
         for (uint32_t r = 0; r < 128; ++r) F.gs_regs[r] = mrp_chain_gs_reg(r);
     }
-    // the passes' ranges the replica skips: scene_build builds a scene exactly when there are passes and a chain
-    static const bool sky_noskip = std::getenv("RAC1_MRPW_SKY_NOSKIP") != nullptr;  // (testing: the replica runs the sky's range too, drawn twice)
+    // the passes' ranges the chain's reader skips: scene_build builds a scene exactly when there are passes and a chain
+    static const bool sky_noskip = std::getenv("RAC1_MRPW_SKY_NOSKIP") != nullptr;  // (testing: the sky's range not skipped by the chain's reader)
     if (!scene_passes().empty() && chain_start != 0) {
         for (const PassRange& r : scene_passes())
             if (r.pass != 3 || !sky_noskip) F.skips.push_back({r.first, r.end - 16});
@@ -5088,6 +5326,8 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
         g_input.tfrag_shadow_views = &g_tshadow_views;
     }
     g_input.direct = direct_world_on();  // (RAC1_PERF_DIRECT_WORLD: the world's ranges scanned, not walked, when the host makes them)
+    g_input.chained.want = chained_world_mode() == 1;  // (RAC1_PERF_WORLD_CHAINED: the passes' own notes of their tie A / shrub A draws)
+    g_input.chained.scan = !kicks;  // (RAC1_PERF_WORLD_SCAN: its world ranges scanned in place, not copied and walked)
     g_input.dw_reset = g_level.reset_walker;
     g_input.walker = 0;
     if (scene_threaded()) {  // (the capture on the worker too: the host must call mrp_world_wait_captured before the game's state changes)
@@ -5105,11 +5345,16 @@ void mrp_world_begin_frame_async(bool active, uint32_t chain_start, uint32_t cha
         if (direct_world_compare()) {
             direct_compare_inputs();
             scene_capture(chain_start, chain_end, g_input_direct);
+        } else if (chained_compare()) {
+            chained_compare_inputs();
+            scene_capture(chain_start, chain_end, g_input_direct);
         }
         scene_capture(chain_start, chain_end, g_input);
         g_worker.built = scene_build(*g_level.idx, g_input, F.scene, g_level.reset_walker, kicks);
         if (g_worker.built && direct_world_compare() && g_input_direct.dw.ok && scene_build(*g_level.idx, g_input_direct, g_scene_direct, g_level.reset_walker, kicks))
             scene_compare(F.scene, g_scene_direct);
+        if (g_worker.built && chained_compare() && scene_build(*g_level.idx, g_input_direct, g_scene_direct, g_level.reset_walker, kicks))
+            scene_compare(F.scene, g_scene_direct, true);
         if (g_worker.built) direct_count(direct_world_compare() ? g_input_direct : g_input);
         g_worker.ms = now_ms() - g_t_begin;
     }
@@ -5217,12 +5462,6 @@ void mrp_world_finish_frame() {
     g_st.ms_wait += t1 - g_t_begin;
     g_st.ms_build += F.ms_build;
     F.active = true;
-}
-
-// orig: (host) see mrp_world_renderer.h
-void mrp_world_begin_frame(bool active, uint32_t chain_start, uint32_t chain_end) {
-    mrp_world_begin_frame_async(active, chain_start, chain_end);
-    mrp_world_finish_frame();
 }
 
 int g_last_vp[4] = {};  // (mrp_world_last_viewport)
@@ -6035,11 +6274,23 @@ void mrp_world_report() {
         std::printf("[perf] opaque draws (RAC1_PERF_OPAQUE=%d): draw commands without the test %llu, with it but opaque %llu, may fail %llu; indices %llu / %llu / %llu\n",
                     perf_opaque(), static_cast<unsigned long long>(c[0][0]), static_cast<unsigned long long>(c[0][1]), static_cast<unsigned long long>(c[0][2]),
                     static_cast<unsigned long long>(c[1][0]), static_cast<unsigned long long>(c[1][1]), static_cast<unsigned long long>(c[1][2]));
+        for (int l = 0; l < 32; ++l) {  // (the GPU path's draw commands by level: how many still take the second pass)
+            const uint64_t* v = g_opq_by_level[l];
+            const uint64_t all = v[0] + v[1] + v[2];
+            if (all != 0)
+                std::printf("[perf] opaque draws, level %d: draw commands without the test %llu, with it but opaque %llu, may fail %llu (%.0f %% in the second pass)\n", l,
+                            static_cast<unsigned long long>(v[0]), static_cast<unsigned long long>(v[1]), static_cast<unsigned long long>(v[2]),
+                            100.0 * static_cast<double>(v[2]) / static_cast<double>(all));
+        }
         if (perf_opaque() == 2)
             std::printf("[perf] opaque check: %llu runs (%llu draw commands / indices) drawn again, %llu with pixels failing the alpha test (%llu pixels)\n",
                         static_cast<unsigned long long>(g_opq_chk.runs), static_cast<unsigned long long>(g_opq_chk.units), static_cast<unsigned long long>(g_opq_chk.bad_runs),
                         static_cast<unsigned long long>(g_opq_chk.pixels));
     }
+    if (g_rcol_keep.uploads != 0)
+        std::printf("[perf] resident colours kept (RAC1_PERF_RCOL_KEEP): %llu uploads, %llu of the whole table; check: %llu compared with the mirror, %llu differing\n",
+                    static_cast<unsigned long long>(g_rcol_keep.uploads), static_cast<unsigned long long>(g_rcol_keep.whole),
+                    static_cast<unsigned long long>(g_rcol_keep.checked), static_cast<unsigned long long>(g_rcol_keep.differing));
     if (scene_capture_misses() != 0) std::printf("[mrpw] WARNING: %llu scene reads not captured\n", static_cast<unsigned long long>(scene_capture_misses()));
     if (direct_world_mode() != 0) {  // (RAC1_PERF_DIRECT_WORLD: mrp_world_scene.h)
         const DirectStats& d = direct_world_stats();
@@ -6055,6 +6306,24 @@ void mrp_world_report() {
         if (direct_world_compare()) {
             std::printf("[perf] direct world check: %llu packets, %llu register writes compared\n", static_cast<unsigned long long>(d.packets), static_cast<unsigned long long>(d.regs));
             d.check.report("direct world", "frames");
+        }
+    }
+    if (chained_world_mode() != 0) {
+        const ChainedStats& c = chained_world_stats();
+        std::printf("[perf] chained world (RAC1_PERF_WORLD_CHAINED=%d): %llu scenes with a pass made from its notes, %llu tfrag draws, %llu tie draws and %llu shrub "
+                    "instances; passes walked whole: %llu tfrag, %llu tie, %llu shrub; scenes made again by the walk: %llu\n",
+                    chained_world_mode(), static_cast<unsigned long long>(c.scenes), static_cast<unsigned long long>(c.tfrags), static_cast<unsigned long long>(c.ties),
+                    static_cast<unsigned long long>(c.shrubs), static_cast<unsigned long long>(c.walked[0]), static_cast<unsigned long long>(c.walked[1]),
+                    static_cast<unsigned long long>(c.walked[2]), static_cast<unsigned long long>(c.again));
+        if (c.scanned != 0 || c.scan_failed != 0)
+            std::printf("[perf] chained world scan (RAC1_PERF_WORLD_SCAN): %llu scenes made from a scan of the world's ranges, %llu scans stopped (the ranges copied "
+                        "and walked), %llu scenes lost; %.3f ms a scan\n",
+                        static_cast<unsigned long long>(c.scanned), static_cast<unsigned long long>(c.scan_failed), static_cast<unsigned long long>(c.lost),
+                        c.scanned != 0 ? c.scan_ms / static_cast<double>(c.scanned) : 0.0);
+        if (chained_world_mode() == 2) {
+            std::printf("[perf] chained world check: %llu packets, %llu register writes compared\n", static_cast<unsigned long long>(c.packets), static_cast<unsigned long long>(c.regs));
+            c.check.report("chained world", "frames");
+            if (c.memory.compared != 0) c.memory.report("chained world: the VU1 memory the shrubs' vertices can read,", "frames");
         }
     }
     static const char* names[6] = {"tfrag A", "tfrag B", "tie A", "tie B", "shrub A", "shrub B"};

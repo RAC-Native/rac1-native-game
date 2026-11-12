@@ -36,6 +36,26 @@ void session_rt_level(const std::string& build_dir, const std::string& level_id)
 void session_rt_loaded();
 // orig: (host) the hero died in a session (overlay_entry.cpp, in place of level_setup(0, 1)): the soft reset
 void session_respawn();
+// orig: (host) moby_spawn made `moby` in a session (g_spawn_watch): `by` is the moby whose update spawned it, or the hero's moby while his
+// frame runs (SessionHeroFrame), 0 none. What the hero spawns, and what his spawns spawn (his equipment, the weapons' hands, their
+// agents, mines, drones, decoys, projectiles) is remembered: the soft reset takes it out, as a level's start (the moby array cleared) does
+void session_rt_moby_spawned(uint32_t moby, uint32_t by);
+// orig: (host) the hero's frame begins / ends (hero_frame_update): in a session, the mobys spawned meanwhile are the hero's (the value
+// `begin` returns, the moby that was updating, goes back to `end`)
+uint32_t session_rt_hero_frame_begin();
+void session_rt_hero_frame_end(uint32_t was);
+struct SessionHeroFrame {
+    uint32_t was = 0;
+    bool on = false;
+    SessionHeroFrame() {
+        if (g_session_rt) was = session_rt_hero_frame_begin(), on = true;
+    }
+    ~SessionHeroFrame() {
+        if (on) session_rt_hero_frame_end(was);
+    }
+    SessionHeroFrame(const SessionHeroFrame&) = delete;
+    SessionHeroFrame& operator=(const SessionHeroFrame&) = delete;
+};
 // orig: (host) once a game frame (session_frame): a loaded save's checkpoint taken once the arrival is over; the testing
 // deaths (RAC1_SESSION_DIE)
 void session_rt_frame(uint64_t frame);
@@ -66,6 +86,9 @@ uint32_t session_rt_pc_items(std::vector<uint8_t>& d);
 bool session_rt_pc_item(uint32_t id, const uint8_t* p, uint32_t size);
 // orig: (host) a .pc about to be read: the session item of the save before forgotten
 void session_rt_pc_reset();
+// orig: (host) a loaded save's checkpoint not taken yet (Ratchet placed there once the arrival is over): the SDK's game_save
+// waits for it
+bool session_rt_placing();
 
 // The sections' side (sections.h, stage 6): the session's checkpoints and hero, main's placed objects
 // orig: (host) a checkpoint of a section (sections.txt's) added to the session's: checkpoint_set finds it by its name

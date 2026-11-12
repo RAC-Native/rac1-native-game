@@ -74,6 +74,25 @@ RAC1_HOT_INLINE void sw_(uint32_t a, uint32_t v) {
 RAC1_HOT_INLINE void sh_(uint32_t a, uint32_t v) { sh(a, v); }
 RAC1_HOT_INLINE void sb_(uint32_t a, uint32_t v) { sb(a, v); }
 RAC1_HOT_INLINE void sd_(uint32_t a, uint64_t v) { sd(a, v); }
+#if defined(RAC1_ACCESSORS_INLINE) && RAC1_ACCESSORS_INLINE
+// (RAC1_ACCESSORS_INLINE: the quadword in one access - its 16 bytes are aligned, so on one page - not two doublewords)
+RAC1_HOT_INLINE Q128 lq(uint32_t a) {
+    struct Qw {
+        uint64_t lo, hi;
+    };
+    const Qw q = ee_read<Qw>(a & ~15u);
+    Q128 r;
+    r.lo = q.lo;
+    r.hi = q.hi;
+    return r;
+}
+RAC1_HOT_INLINE void sq(uint32_t a, const Q128& v) {
+    struct Qw {
+        uint64_t lo, hi;
+    };
+    ee_write<Qw>(a & ~15u, Qw{v.lo, v.hi});
+}
+#else
 RAC1_HOT_INLINE Q128 lq(uint32_t a) {
     Q128 r;
     r.lo = ld(a & ~15u);
@@ -84,6 +103,7 @@ RAC1_HOT_INLINE void sq(uint32_t a, const Q128& v) {
     sd(a & ~15u, v.lo);
     sd((a & ~15u) + 8, v.hi);
 }
+#endif
 // orig: (helper) SDL / SDR (little-endian: the doubleword's high / low part at an unaligned address)
 inline void sdl(uint32_t a, const Q128& r) {
     const uint32_t s = (a & 7) * 8;

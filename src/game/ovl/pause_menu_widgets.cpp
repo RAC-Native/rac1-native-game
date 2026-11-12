@@ -489,6 +489,10 @@ uint64_t image_upload(uint32_t img) {
 // orig: (helper) repeated in 0x0027da10: the image `img`'s read into `buf` started (packed at
 // the buffer's end with flag 0x20); its byte count, 0 when the disc is busy.
 static int32_t picture_read(uint32_t w, uint32_t buf, int32_t img) {
+    if (level_slots_picture_read(img, buf)) {  // enhancement: a level mod's level's picture, made in the buffer (src/host/level_slots.h)
+        sw(w + 0x60, 0);
+        return 1;
+    }
     const uint32_t ent = static_cast<uint32_t>(img) * 8 + lwu(w + 0x30);
     if (advanced_picture(lwu(ent), buf)) {  // enhancement: one of our pictures, made in the buffer
         sw(w + 0x60, 0);
@@ -524,6 +528,7 @@ int32_t menu_picture_update(uint32_t w) {
         if (lw(G + 0xd4) < 3 && !(lw(G + 0xdc) >= 0)) {
             if (lw(w + 0x44) == -1) sw(w + 0x44, 0);
             img = lw(G + static_cast<uint32_t>(k) * 0x1c + 0x20);
+            level_slots_save_picture(k, img);  // enhancement: a save made on a level mod's level: its picture (src/host/level_slots.h)
             if (img == -1) sw(w + 0x44, 0xffffffffu);
             if (lw(G + 8) != 2) sw(w + 0x44, 0xffffffffu);
         } else {
@@ -554,7 +559,7 @@ int32_t menu_picture_update(uint32_t w) {
             const uint32_t buf = lwu(w + 0x48);
             if (buf == 0) return 0;
             if (lh(0x001516d8) != 0) return 0;
-            if (lwu(static_cast<uint32_t>(img) * 8 + lwu(w + 0x30) + 4) == 0) return 0;
+            if (!level_slots_picture_id(img) && lwu(static_cast<uint32_t>(img) * 8 + lwu(w + 0x30) + 4) == 0) return 0;  // (enhancement: ours have no entry)
             if (picture_read(w, buf, img) == 0) {
                 sw(w + 0x44, 0xffffffffu);
                 return 0;
@@ -572,7 +577,8 @@ int32_t menu_picture_update(uint32_t w) {
             if ((f2 & 0x20) != 0) {
                 const uint32_t pb = w + 0x48 + (lw(w + 0x44) == 3 ? 4u : 0u);
                 menu_buf_ready(lwu(pb));
-                if (!advanced_picture_take(lwu(pb)))  // enhancement: our pictures are not packed
+                const bool level_pic = level_slots_picture_take(lwu(pb));  // enhancement: a level mod's picture is not packed either
+                if (!advanced_picture_take(lwu(pb)) && !level_pic)  // enhancement: our pictures are not packed
                     wad_decompress(lwu(pb) + lwu(w + 0x60), lwu(pb));
                 sw(w + 0x60, 0);
             }
@@ -593,7 +599,7 @@ int32_t menu_picture_update(uint32_t w) {
                 return 0;
             }
             if (lh(0x001516d8) != 0) return 0;
-            if (lwu(static_cast<uint32_t>(img) * 8 + lwu(w + 0x30) + 4) == 0) return 0;
+            if (!level_slots_picture_id(img) && lwu(static_cast<uint32_t>(img) * 8 + lwu(w + 0x30) + 4) == 0) return 0;  // (enhancement: ours have no entry)
             if (picture_read(w, buf, img) == 0) {
                 sw(w + 0x44, 0xffffffffu);
                 return 0;
@@ -616,7 +622,7 @@ int32_t menu_picture_update(uint32_t w) {
                 return 0;
             }
             if (lh(0x001516d8) != 0) return 0;
-            if (lwu(static_cast<uint32_t>(img) * 8 + lwu(w + 0x30) + 4) == 0) return 0;
+            if (!level_slots_picture_id(img) && lwu(static_cast<uint32_t>(img) * 8 + lwu(w + 0x30) + 4) == 0) return 0;  // (enhancement: ours have no entry)
             if (picture_read(w, buf, img) == 0) {
                 sw(w + 0x44, 0xffffffffu);
                 return 0;

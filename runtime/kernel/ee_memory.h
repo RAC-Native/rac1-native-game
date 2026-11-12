@@ -131,6 +131,27 @@ RAC1_HOT_INLINE void ee_write(u32 vaddr, const T& val) {
     if (__builtin_expect(ptr == nullptr, 0)) ee_write_null();
     std::memcpy(ptr, &val, sizeof(T));
 }
+#elif defined(RAC1_ACCESSORS_INLINE) && RAC1_ACCESSORS_INLINE
+// (RAC1_ACCESSORS_INLINE: the accessors declared inline - not forced: the compiler decides per call site - and their error for a
+// null address out of line and cold, so that their body is the pointer and the copy; docs/performance.md)
+[[noreturn, gnu::cold, gnu::noinline]] void ee_read_null();
+[[noreturn, gnu::cold, gnu::noinline]] void ee_write_null();
+template <typename T>
+inline T ee_read(u32 vaddr) {
+    static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
+    const void* ptr = ee_ram_ptr_read(vaddr);
+    if (__builtin_expect(ptr == nullptr, 0)) ee_read_null();
+    T val;
+    std::memcpy(&val, ptr, sizeof(T));
+    return val;
+}
+template <typename T>
+inline void ee_write(u32 vaddr, const T& val) {
+    static_assert(std::is_trivially_copyable_v<T>, "T must be trivially copyable");
+    void* ptr = ee_ram_ptr_write(vaddr, static_cast<u32>(sizeof(T)));
+    if (__builtin_expect(ptr == nullptr, 0)) ee_write_null();
+    std::memcpy(ptr, &val, sizeof(T));
+}
 #else
 // Safe templated memory read.
 template <typename T>

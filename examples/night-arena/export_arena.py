@@ -3,7 +3,7 @@
 In Blender (the GUI):   p = "<this folder>/export_arena.py"; g = {"__file__": p}; exec(open(p).read(), g)
                         g["export"](None, True)   (True: also copied into the game's mods/)
 Headless:               blender -b arena.blend --python export_arena.py -- [<out folder>] [--install]
-The game's checkout (its mods/, the example level's music): local.json's "game" beside this script when there is one
+The game's checkout (its mods/): local.json's "game" beside this script when there is one
 ({"game": "/path/to/rac1-native-game"}), else the repository this script is in (examples/night-arena/../..).
 
 It reads four collections (build_arena.py makes them; edit them freely in Blender):
@@ -20,6 +20,8 @@ It reads four collections (build_arena.py makes them; edit them freely in Blende
   arena_rails      (build_rails.py; optional) curves rail_<name>: level.txt's rail lines (their points every RAIL_STEP
                    units; the composer puts a collision strip under each) and a class rail_<name> each (a tube on
                    pylons, one object)
+  prova_*          (build_prova.py; optional) a section of the session (SECTIONS): <name>_visual, <name>_collision
+                   (<name>_meshes.obj, <name>_collision.obj) and <name>_markers (entry_<n>)
 
 and writes <out>/mod.json, <out>/plugin/ (the flame vents' code), <out>/level/{level.txt, collision.obj,
 meshes.obj, meshes.mtl, *.png, lights.txt, the classes' models, the sounds, the music}. The level is made round
@@ -60,19 +62,31 @@ LEVEL = {
              "fr": "Arène de Daino"},
     "region": {"": "Custom Levels", "it": "Livelli personalizzati", "de": "Eigene Level", "es": "Niveles propios",
                "fr": "Niveaux personnalisés"},
-    "format": 2,
+    "format": 3,            # a session (docs/mods.md): loaded once, a death a soft reset at a checkpoint, sections
     "base": 16,             # Kalebo III: its enemies (classes 1445, 52, 541, 638, 1356) for the waves
     "base_name": "kalebo",
+    "hero_build": "generic",  # Ratchet on the generic hero code (Veldin's, Gaspar's, Umbris's): the game's own lava
     "floor_z": 104.0,       # the floor's height in the game: Kalebo III's hero code ends a fall under z 77
     "death_height": -6.0,   # (the scene's: under the lava)
+    # the session's checkpoints (the scene's coordinates, yaw): "arena" south of the hub, where a death during a challenge
+    # brings Ratchet back (the plugin's choice; outside a challenge the session's start, the landing)
+    "checkpoints": [("arena", (0.0, -20.0, 0.5), 1.5708)],
+    # main's entries (where a switch from a section puts Ratchet back): "ritorno" south of the hub
+    "entries": [("ritorno", (0.0, -20.0, 0.5), 1.5708), ("rientro", (-16.0, 66.0, 20.6), -1.1903)],  # (rientro: rail_ritorno's start)
     "sky": 0,               # Veldin's sky (Quartu's, 15, crashed on Veldin's code: sky_hand::spheres)
-    "music": ("overworld.ogg", os.path.join(GAME, "examples/custom-level/music/overworld.ogg")),
+    "music": ("overworld.ogg", os.path.join(os.path.dirname(os.path.realpath(globals().get("__file__") or bpy.data.filepath)),
+                                            "music", "overworld.ogg")),
+    # the mod's other tracks (level.txt's music_track lines: the plugin's music_track, ABI 19): the challenges' music
+    "music_tracks": [("fight", "arena_fight.ogg", os.path.join(os.path.dirname(os.path.realpath(globals().get("__file__") or bpy.data.filepath)),
+                                                                "music", "arena_fight.ogg"))],
     "background": (120, 80, 58),  # a warm haze: the lava, Veldin's low sun
     "fog": (120, 80, 58),
     # room for the base level's objects the plugin starts (base_spawn): 24 robots, 8 bomb bots, 6 Gadgetron robots,
     # 8 jetpack troopers (the dropships' too), 2 dropships (SDK ABI 5), the hub's 4 crates of each kind, the grind
-    # course's 14 rail mines (933: Kalebo III's, on its rails)
-    "spawn": {1445: 24, 52: 8, 541: 6, 638: 8, 1356: 2, 501: 4, 511: 4, 933: 14},
+    # course's 13 rail mines and the escape's 6 (933: Kalebo III's, on its rails)
+    "spawn": {1445: 24, 52: 8, 541: 6, 638: 8, 1356: 2, 501: 4, 511: 4, 933: 22, 439: 1},  # (439: Kalebo III's hoverboard)
+    # other planets' classes in main from the load (level.txt's import lines; the challenges' enemies are loaded per wave)
+    "imports": [],
     # (text, box in the scene's coordinates or None): embers rising from the lava (on a level mod `source lava` reads
     # the collision's type 3 faces too), as on Gaspar, and a little ash
     "particles": [
@@ -103,7 +117,48 @@ CLASSES = [              # the level's own classes: (name, model, its line's opt
     ("mark", "mark.obj", "size 1 ghost", ["emissive 2.5"]),               # (where a bomb falls)
     ("mine", "mine.obj", "size 1 ghost", ["metal 0.35 0.8 glow 2 0.6"]),  # (the course's: on a rail, jumped)
     ("zap", "zap.obj", "size 1 ghost", ["emissive 3"]),                  # (a drop zone's ring electrified: Grate impazzite)
+    ("portal", "portal.obj", "size 1 ghost", ["emissive 3"]),            # (the escape's end: into the section prova)
+    ("flood", "flood.obj", "size 1 ghost", ["emissive 2.2"]),            # (the lava flooding the arena: La grande fuga)
 ]
+# the session's sections (build_prova.py's collections <name>_visual, <name>_collision, <name>_markers: entry_<n>), each
+# with another planet's sky round it
+SECTIONS = [("prova", {"sky": 15, "background": (34, 44, 92), "fog": (34, 44, 92), "death_height": -12.0}),
+            # game planets' worlds as sections (no collections: their scenery, collision, sky and music are the planets',
+            # their coordinates too; only the objects an "objects" line names): the worlds "La grande fuga" goes through
+            # after the escape's portal, each reached through a flash of white (the plugin's: its CHAIN)
+            # - Quartu: our rail quartu_in (its model drawn: composer 7) from high south of its Giant Clank's pad down by it,
+            #   then Kalebo III's hoverboard (the plugin's, ABI 16) east across the Giant Clank's round arena (every zone
+            #   drawn: zones all) to the ring in its middle; none of Quartu's objects (its 1451, the pad, shows a broken help text)
+            ("quartu", {"world": "quartu", "fresh": True, "zones_all": True, "entries": [("arrivo", (130.5, 186.0, 61.0), 1.5708)],
+                        "rails": [("quartu_in", [(130.5, 186.0, 60.0), (130.5, 200.0, 48.0), (130.5, 210.0, 36.0),
+                                                 (130.5, 216.0, 28.0)])],
+                        "rail_mesh": True, "death_height": 8.0}),
+            # - Batalia: its long rail (its own, drawn), from its start to its end, where it leaps: Ratchet comes in just over
+            #   its start and lands on it (no rail of ours on top: the section keeps the planet's own collision; with one, the
+            #   composer's copy of it with the rail's strip, the camera shook on the way down)
+            #   With its spiked rail mines (621: jumped, or broken with the wrench, as on Batalia).
+            # (every world `fresh`: put back as at its first entry at every entry, its mines, its boss: a challenge played again)
+            ("batalia", {"world": "batalia", "fresh": True, "objects": "621", "entries": [("arrivo", (286.0, 86.9, 33.0), 2.91)],
+                         "death_height": 15.0}),
+            # - Rilgar: its hoverboard race (its own hero code and board: hero rilgar board; its HUD) from its finish line, to
+            #   the small platform past the big ramp (the plugin's ring there), with its turbo pads (1140). Not its crates (500:
+            #   346 of them, along the whole track): every section's objects take the game's moby array from the session's
+            #   start, and with them it was full (Umbris's objects not all placed, the vendor crashed)
+            ("rilgar", {"world": "rilgar", "fresh": True, "hero": "rilgar board", "objects": "1140",
+                        "entries": [("arrivo", (275.49, 334.35, 73.61), -2.04)], "death_height": 30.0}),
+            # - Kalebo III (Assalto Finale's): its own long rail, from its station by the arena's (Ratchet comes in just over it)
+            #   to its leap, its rail mines the plugin's; Kalebo III is the session's base: none of its objects (main's spawn
+            #   pools serve the mines)
+            #   (hero kalebo: its own hero code, which rides its rail to the end; the generic code stopped at its point 2099)
+            ("kalebo", {"world": "kalebo", "fresh": True, "hero": "kalebo", "entries": [("arrivo", (111.6, 264.04, 134.6), 3.1416)],
+                        "death_height": 90.0}),
+            # - Umbris: the Snagglebeast's cave, its boss (the challenge won when it is beaten). Its objects by class (all of
+            #   them would place code-alone triggers too), 460 its lava's sea (code alone, no model); not 529, the parked ship
+            ("umbris", {"world": "umbris", "fresh": True, "objects": "187 341 447 460 500 501 505 511 605 805 886 902 968 1059 1063 1069 1106 "
+                                                      "1113 1114 1115 1116 1128 1129 1131 1133 1135",
+                        "box": (195, 355, 25, 320, 500, 90), "boss": "umbris.snagglebeast",
+                        "entries": [("arrivo", (263.35, 483.16, 36.5), -1.13)],
+                        "death_height": 20.0})]
 
 errors, warnings = [], []
 
@@ -160,11 +215,11 @@ def lowest(lo, pts):
 
 # ---------------------------------------------------------------- collision
 
-def export_collision(path, depsgraph):
+def export_collision(path, depsgraph, collection="arena_collision"):
     verts, faces = [], []
     walk = total = 0
     lo = [1e9] * 3
-    for ob in sorted(coll("arena_collision"), key=lambda o: o.name):
+    for ob in sorted(coll(collection), key=lambda o: o.name):
         if ob.type != "MESH":
             continue
         pos, me, ev = mesh_of(ob, depsgraph)
@@ -179,9 +234,20 @@ def export_collision(path, depsgraph):
                 walk += 1
             total += 1
         ev.to_mesh_clear()
+    if collection == "arena_collision" and bpy.data.collections.get("arena_rails"):  # (the rails' strips, past their objects')
+        for ob in sorted((o for o in bpy.data.collections["arena_rails"].all_objects if o.type == "CURVE"), key=lambda o: o.name):
+            pts = strip_split(base_name(ob), rail_points(ob))[1]
+            if len(pts) < 2:
+                continue
+            sv, st = strip_quads(pts)
+            base = len(verts)
+            verts += sv
+            faces.append(("col_" + base_name(ob), 31, [[base + j + 1 for j in tri] for tri in st]))
+            total += len(st)
+            walk += len(st)
     lowest(lo, verts)
     if not verts:
-        err("collision: no triangles")
+        err("%s: no triangles" % collection)
     with open(path, "w") as f:
         f.write("# the arena: collision (export_arena.py), z up, game units, made round (0, 0, 0)\n")
         for p in verts:
@@ -190,8 +256,8 @@ def export_collision(path, depsgraph):
             f.write("o %s\nusemtl type%d\n" % (name, kind))
             for t in tl:
                 f.write("f %d %d %d\n" % tuple(t))
-    print("collision: %d triangles (%d walkable, normal up), lowest corner (%s %s %s)" % (
-        total, walk, num(lo[0]), num(lo[1]), num(lo[2])))
+    print("%s: %d triangles (%d walkable, normal up), lowest corner (%s %s %s)" % (
+        collection, total, walk, num(lo[0]), num(lo[1]), num(lo[2])))
     return lo
 
 
@@ -233,11 +299,11 @@ def is_lava(ob):
     return any(s.material and str(s.material.get("rac1_material", "")).startswith("lava") for s in ob.material_slots)
 
 
-def export_meshes(obj_path, mtl_path, depsgraph):
+def export_meshes(obj_path, mtl_path, depsgraph, collection="arena_visual", first=0):
     """meshes.obj / .mtl; returns (the PNGs, the lowest corner, the material lines, the meshes' count). The objects with
     lava go first; the material lines name a host mesh class (its index among the written objects) and a texture of
     its own (its index among the class's materials in the .mtl's order), as the composer numbers them."""
-    obs = [o for o in coll("arena_visual") if o.type == "MESH"]
+    obs = [o for o in coll(collection) if o.type == "MESH"]
     obs.sort(key=lambda o: (not is_lava(o), o.name))
     data = []
     used = {}
@@ -309,7 +375,7 @@ def export_meshes(obj_path, mtl_path, depsgraph):
             if spec and name not in done:
                 done.add(name)
                 lines.append("# %s (%s's texture %d)" % (name, base_name(ob), li_))
-                lines.append("material tie %d tex %d %s" % (k, li_, spec))
+                lines.append("material tie %d tex %d %s" % (first + k, li_, spec))
             out.write("usemtl %s\n" % name)
             for t in by_mat[name]:
                 corners = []
@@ -499,6 +565,54 @@ def zap_colour(p):
     return (0.55, 0.9, 1.0) if math.hypot(p[0], p[1]) > 4.9 else (0.75, 0.95, 1.0)
 
 
+def portal_tris():
+    """The portal: a ring standing across the way through it (its axis the object's x), 3 across inside, its tube 0.35
+    thick and eight-sided, and an inner ring of sparks."""
+    out = []
+    n, m, R, r = 40, 8, 3.35, 0.35
+
+    def at(a, b, rr=r, RR=R):
+        c = RR + rr * math.cos(b)
+        return (rr * math.sin(b), c * math.cos(a), c * math.sin(a))
+    for i in range(n):
+        a0, a1 = 2 * math.pi * i / n, 2 * math.pi * (i + 1) / n
+        for j in range(m):
+            b0, b1 = 2 * math.pi * j / m, 2 * math.pi * (j + 1) / m
+            p = [at(a0, b0), at(a1, b0), at(a1, b1), at(a0, b1)]
+            out += [(p[0], p[1], p[2]), (p[0], p[2], p[3])]
+    for i in range(24):  # (sparks: short flat bars across the inside, turning round it)
+        a = 2 * math.pi * i / 24
+        p = [at(a - 0.05, 0, 0.0, 2.2), at(a + 0.05, 0, 0.0, 2.2), at(a + 0.03, 0, 0.0, 2.95), at(a - 0.03, 0, 0.0, 2.95)]
+        out += [(p[0], p[1], p[2]), (p[0], p[2], p[3]), (p[0], p[2], p[1]), (p[0], p[3], p[2])]
+    return out
+
+
+def portal_colour(p):
+    rr = math.hypot(p[1], p[2])
+    return (0.55, 0.35, 1.0) if rr > 3.1 else (0.85, 0.7, 1.0) if rr > 2.9 else (0.4, 0.9, 1.0)
+
+
+FLOOD_HALF = 47.9  # the flood's square: the arena's floor inside its wall
+
+
+def flood_tris():
+    """The lava flooding the arena: a square over its floor in 4-unit cells (each cell's corners coloured apart)."""
+    out, n = [], 24
+    for i in range(n):
+        for j in range(n):
+            x0, x1 = -FLOOD_HALF + 2 * FLOOD_HALF * i / n, -FLOOD_HALF + 2 * FLOOD_HALF * (i + 1) / n
+            y0, y1 = -FLOOD_HALF + 2 * FLOOD_HALF * j / n, -FLOOD_HALF + 2 * FLOOD_HALF * (j + 1) / n
+            p = [(x0, y0, 0.0), (x1, y0, 0.0), (x1, y1, 0.0), (x0, y1, 0.0)]
+            out += [(p[0], p[1], p[2]), (p[0], p[2], p[3])]
+    return out
+
+
+def flood_colour(p):
+    h = math.sin(p[0] * 0.37 + math.sin(p[1] * 0.21) * 2.0) * math.cos(p[1] * 0.29 - math.sin(p[0] * 0.17) * 2.0)
+    t = 0.5 + 0.5 * h
+    return (1.0, 0.25 + 0.45 * t, 0.05 + 0.12 * t)
+
+
 def flame_tris():
     """Three tongues of fire: tapered six-sided cones, leaning out a little, the middle one tallest (3.2)."""
     out = []
@@ -526,6 +640,41 @@ def flame_colour(p):
 
 RAIL_STEP = 1.5      # a rail's points, units apart along it (the composer's step too)
 RAIL_R = 0.12        # the tube's radius: its top is the rail's line (where Ratchet's feet go)
+RAIL_WIDE = 0.5      # the collision strip under a rail's line (rail_strips, export_collision)
+STRIP_POINTS = 120   # a strip's points per object at most (a class's collision mesh: 255 vertices at most)
+# a rail's strip near the ground Ratchet walks on (from its start) is an object the plugin makes solid only while the rail is
+# on (else he walks on it, in the air); the rest is the level's collision, solid always, too high to be walked onto (and
+# what Kalebo III's rail mines float over: their floor probe sees the level's collision, not objects'): those units
+STRIP_TOGGLE = {"rail_escape": 24.0}  # (over the hub's top and its west ramp)
+STRIP_TOGGLE_DEFAULT = 8.0            # (by the station's platform)
+STRIP_TOGGLE_END = {"rail_ritorno": 40.0}  # (from its end: over the arena's floor and the hub's top)
+
+
+def strip_split(name, pts):
+    """A rail's points: its strip's object part (from its start, STRIP_TOGGLE; or from its end, STRIP_TOGGLE_END) and the
+    level's part (sharing a point)."""
+    if name in STRIP_TOGGLE_END:
+        k = min(len(pts) - 1, max(1, int(math.ceil(STRIP_TOGGLE_END[name] / RAIL_STEP))))
+        return pts[len(pts) - 1 - k:], pts[:len(pts) - k]
+    k = min(len(pts) - 1, max(1, int(math.ceil(STRIP_TOGGLE.get(name, STRIP_TOGGLE_DEFAULT) / RAIL_STEP))))
+    return pts[:k + 1], pts[k:]
+
+
+def strip_quads(pts):
+    """A strip's vertices under the points (left, right of each) and its triangles (indices, facing up)."""
+    verts = []
+    for i in range(len(pts)):
+        t = (pts[min(i + 1, len(pts) - 1)] - pts[max(i - 1, 0)]).normalized()
+        n = t.cross(Vector((0, 0, 1)))
+        n = n.normalized() * (RAIL_WIDE / 2) if n.length > 1e-4 else Vector((RAIL_WIDE / 2, 0, 0))
+        q = pts[i] - Vector((0, 0, 0.02))
+        verts += [q + n, q - n]
+    tris = []
+    for i in range(len(pts) - 1):
+        for tri in ((2 * i, 2 * i + 1, 2 * i + 3), (2 * i, 2 * i + 3, 2 * i + 2)):
+            pa, pb, pc = (verts[j] for j in tri)
+            tris.append(tri if (pb - pa).cross(pc - pa).z > 0 else (tri[0], tri[2], tri[1]))
+    return verts, tris
 PYLON_EVERY = 14.0   # a pylon under a rail every so many units
 RAIL_SPEC = "metal 0.3 1"  # the rails' models' material line
 
@@ -631,9 +780,38 @@ def rail_model(level, name, pts, centre, depsgraph, pylons_on=True, beam=0.45, b
     return len(tube) + len(pylons) + len(bars) + len(stop)
 
 
+def rail_strips(level, name, pts):
+    """A rail's collision strip near the ground (strip_split's first part; RAIL_WIDE wide just under its line: the game's
+    grind lets go of a rail with nothing under Ratchet's feet) as objects of their own: classes strip_<rail>_<k> of at most
+    STRIP_POINTS points each, a collision mesh of their own, solid only while the plugin has the rail on (the composer's
+    strips, `nostrip` not given, are always solid: a ledge in the air where a rail is off, walked on over the hub). Their
+    models are the strips too, hidden by the plugin. [(class, centre)]"""
+    pts = strip_split(name, pts)[0]
+    out, k, i0 = [], 0, 0
+    while i0 < len(pts) - 1:
+        i1 = min(len(pts), i0 + STRIP_POINTS)
+        verts, tris = strip_quads(pts[i0:i1])
+        lo = [min(v[a] for v in verts) for a in range(3)]
+        hi = [max(v[a] for v in verts) for a in range(3)]
+        c = Vector([(a + b) / 2 for a, b in zip(lo, hi)])
+        rel = [v - c for v in verts]
+        cls = "strip_%s_%d" % (name[5:], k)
+        with open(os.path.join(level, cls + "_col.obj"), "w") as f:
+            f.write("# the arena: the %s class's collision (export_arena.py: a rail's strip), round its origin\no %s\nusemtl type31\n" % (cls, cls))
+            for v in rel:
+                f.write("v %s %s %s\n" % (num(v.x), num(v.y), num(v.z)))
+            for tri in tris:
+                f.write("f %d %d %d\n" % tuple(j + 1 for j in tri))
+        model(level, cls, [tuple(tuple(rel[j]) for j in tri) for tri in tris], lambda p: (0.3, 0.3, 0.3))
+        out.append((cls, c))
+        k += 1
+        i0 = i1 - 1  # (one point shared: the strips join)
+    return out
+
+
 def export_rails(level, depsgraph):
-    """Each rail's class model; the rails as (class name, centre, level.txt's rail line: its points, made round (0, 0, 0)
-    as every coordinate there)."""
+    """Each rail's class model and its strips (rail_strips); the rails as (class name, centre, level.txt's rail line: its
+    points, made round (0, 0, 0) as every coordinate there, its strips)."""
     rails = []
     obs = sorted((o for o in bpy.data.collections["arena_rails"].all_objects if o.type == "CURVE"), key=lambda o: o.name) \
         if bpy.data.collections.get("arena_rails") else []
@@ -651,11 +829,76 @@ def export_rails(level, depsgraph):
         centre = Vector([(a + b) / 2 for a, b in zip(lo, hi)])
         ntris = rail_model(level, name, pts, centre, depsgraph, bool(ob.get("pylons", 1)), float(ob.get("beam", 0.45)),
                            float(ob.get("beam_until", 1e9)), bool(ob.get("end_stop", 0)))
-        line = "rail %s %s" % (name[5:], " ".join("%s %s %s" % (num(p.x), num(p.y), num(p.z)) for p in pts))
-        rails.append((name, centre, line))
+        line = "rail %s nostrip %s" % (name[5:], " ".join("%s %s %s" % (num(p.x), num(p.y), num(p.z)) for p in pts))
+        rails.append((name, centre, line, rail_strips(level, name, pts)))
         print("rail %s: %d points, %s units, its model %d triangles" % (
             name, len(pts), num(sum((pts[i + 1] - pts[i]).length for i in range(len(pts) - 1))), ntris))
     return rails
+
+
+def export_section(level, name, opts, depsgraph, first):
+    """A section's block for level.txt (its lines after main's): its collision and meshes (<name>_collision.obj,
+    <name>_meshes.obj from its collections), its sky and colours, its entries (entry_<n> markers). Its meshes are host
+    mesh classes after main's (and before the classes' models: `first` the first's index): (the block, their material
+    lines, their count)."""
+    if opts.get("world"):
+        L = ["# the section %s: %s's world (its scenery, collision, sky, music; the planet's coordinates)" % (name, opts["world"]),
+             "section %s remove respawn reset%s" % (name, " fresh" if opts.get("fresh") else ""), "  world %s" % opts["world"]]
+        if opts.get("zones_all"):  # (every zone of the world drawn wherever the camera is: Quartu's Giant Clank arena)
+            L.append("  zones all")
+        if opts.get("hero"):  # (the planet's hero code, a mode: board, clank, giantclank)
+            L.append("  hero %s" % opts["hero"])
+        if opts.get("objects"):  # (its placed objects of these classes, or all; in the box)
+            L.append("  objects %s" % opts["objects"])
+        if opts.get("box"):
+            L.append("  box %s" % " ".join(num(v) for v in opts["box"]))
+        if opts.get("boss"):
+            L.append("  boss %s" % opts["boss"])
+        for e, at, a in opts.get("entries", []):
+            L.append("  entry %s %s %s %s %s" % (e, num(at[0]), num(at[1]), num(at[2]), num(a)))
+        for c, at, a in opts.get("checkpoints", []):
+            L.append("  checkpoint %s %s %s %s %s" % (c, num(at[0]), num(at[1]), num(at[2]), num(a)))
+        for r, pts in opts.get("rails", []):  # (added to the planet's own rails)
+            L.append("  rail %s%s %s" % (r, " mesh" if opts.get("rail_mesh") else "",
+                                          " ".join("%s %s %s" % (num(x), num(y), num(z)) for x, y, z in pts)))
+        if opts.get("death_height") is not None:  # (the planet's coordinates: not main's, which is the arena's)
+            L.append("  death_height %s" % num(opts["death_height"]))
+        L.append("end")
+        return L, [], 0
+    if not bpy.data.collections.get(name + "_visual"):
+        warn("section %s: no collection %s_visual (build_prova.py): left out" % (name, name))
+        return [], [], 0
+    export_collision(os.path.join(level, name + "_collision.obj"), depsgraph, name + "_collision")
+    pngs, _, mat_lines, n = export_meshes(os.path.join(level, name + "_meshes.obj"), os.path.join(level, name + "_meshes.mtl"),
+                                          depsgraph, name + "_visual", first)
+    for p in pngs:
+        png_check(p)
+        shutil.copy(p, os.path.join(level, os.path.basename(p)))
+    L = ["# the section %s (%s): its own collision, meshes and sky; Ratchet comes in by its entries" % (name, name + "_* collections"),
+         "section %s remove respawn reset" % name,
+         "  collision %s_collision.obj" % name,
+         "  meshes %s_meshes.obj" % name]
+    if opts.get("sky") is not None:
+        L.append("  sky %d" % opts["sky"])
+    for key in ("background", "fog"):
+        if opts.get(key):
+            L.append("  %s %d %d %d" % ((key,) + tuple(opts[key])))
+    if opts.get("death_height") is not None:
+        L.append("  death_height %s" % num(opts["death_height"]))
+    for o in sorted(coll(name + "_markers"), key=lambda o: o.name):
+        p = o.matrix_world.translation
+        if base_name(o).startswith("entry_"):
+            L.append("  entry %s %s %s %s %s" % (base_name(o)[6:], num(p.x), num(p.y), num(p.z), num(yaw(o))))
+        elif base_name(o).startswith("checkpoint_"):
+            L.append("  checkpoint %s %s %s %s %s" % (base_name(o)[11:], num(p.x), num(p.y), num(p.z), num(yaw(o))))
+        else:
+            warn("section %s: marker %s is not entry_* nor checkpoint_*: left out" % (name, o.name))
+    rails = bpy.data.collections.get(name + "_rails")  # (its rails: the composer's bar for their look, its collision strip)
+    for o in sorted((o for o in rails.all_objects if o.type == "CURVE") if rails else [], key=lambda o: o.name):
+        pts = rail_points(o)
+        L.append("  rail %s mesh %s" % (base_name(o)[5:], " ".join("%s %s %s" % (num(p.x), num(p.y), num(p.z)) for p in pts)))
+    L.append("end")
+    return L, mat_lines, n
 
 
 # ---------------------------------------------------------------- the ship's map's picture
@@ -813,6 +1056,7 @@ def export(out=None, install=False):
 
     lo_c = export_collision(os.path.join(level, "collision.obj"), depsgraph)
     pngs, lo_v, mat_lines, n_meshes = export_meshes(os.path.join(level, "meshes.obj"), os.path.join(level, "meshes.mtl"), depsgraph)
+    n_sec = 0  # (the sections' meshes: host mesh classes after main's, before the classes' models)
     for p in pngs:
         png_check(p)
         shutil.copy(p, os.path.join(level, os.path.basename(p)))
@@ -829,6 +1073,8 @@ def export(out=None, install=False):
     model(level, "mark", ring_tris(), lambda p: (1.0, 0.18, 0.1))
     model(level, "mine", mine_tris(), mine_colour)
     model(level, "zap", zap_tris(), zap_colour)
+    model(level, "portal", portal_tris(), portal_colour)
+    model(level, "flood", flood_tris(), flood_colour)
     rails = export_rails(level, depsgraph)
     sounds(level)
     pictures = {}  # (level.txt's picture lines: the planet made by make_textures.py, the map's view rendered here)
@@ -844,6 +1090,11 @@ def export(out=None, install=False):
         err("no music file %s" % music_src)
     else:
         shutil.copy(music_src, os.path.join(level, music))
+    for _name, track, src in LEVEL.get("music_tracks", []):
+        if not os.path.exists(src):
+            err("no music file %s" % src)
+        else:
+            shutil.copy(src, os.path.join(level, track))
     if os.path.isdir(os.path.join(HERE, "plugin")):
         shutil.copytree(os.path.join(HERE, "plugin"), os.path.join(out, "plugin"))
 
@@ -865,9 +1116,21 @@ def export(out=None, install=False):
         p = ob.matrix_world.translation
         L.append("%s %s %s %s %s" % (key, num(p.x), num(p.y), num(p.z), num(yaw(ob))))
     L.append("death_height %s" % num(LEVEL["death_height"]))
+    if LEVEL.get("hero_build"):
+        L.append("# Ratchet's moves from the generic hero code, not Kalebo III's own: the game's own lava (he sinks, Cross")
+        L.append("# bounces him out, left in it he is lost), with its animation")
+        L.append("hero %s" % LEVEL["hero_build"])
+    if LEVEL["format"] >= 3:
+        L.append("# a session: loaded once at the arrival; a death brings Ratchet back to the current checkpoint")
+        L.append("session")
+        for name, at, a in LEVEL["checkpoints"]:
+            L.append("checkpoint %s %s %s %s %s" % (name, num(at[0]), num(at[1]), num(at[2]), num(a)))
+        L.append("respawn reset")
     if LEVEL["sky"] is not None:
         L.append("sky %d" % LEVEL["sky"])
     L.append("music %s" % music)
+    for name, track, _src in LEVEL.get("music_tracks", []):
+        L.append("music_track %s %s" % (name, track))
     for key, f in pictures.items():
         L.append("%s %s" % (key, f))
     for key in ("background", "fog"):
@@ -877,6 +1140,8 @@ def export(out=None, install=False):
         L.append("# room for the base level's objects the wave plugin starts (base_spawn)")
         for cls, count in sorted(LEVEL["spawn"].items()):
             L.append("spawn %d %d" % (cls, count))
+    for name in LEVEL.get("imports", []):
+        L.append("import %s" % name)
     L.append("# every moby updated however far the camera is (the robots across the arena do not freeze)")
     L.append("update_all")
 
@@ -898,10 +1163,16 @@ def export(out=None, install=False):
         L.append("class %s %s %s" % (name, mdl, opts))
     if rails:
         L.append("# the grind rails (rail_<name> curves): the plugin turns a challenge's on (rail_enable) and shows their looks")
-    for name, centre, line in rails:
+    for name, centre, line, _ in rails:
         L.append(line)
         L.append("class %s %s.obj size 1 ghost" % (name, name))
         L.append("object %s %s %s %s 0 name=%s" % (name, num(centre.x), num(centre.y), num(centre.z), name))
+    if rails:
+        L.append("# the rails' collision strips (their own objects: the plugin makes a rail's solid only while it is on)")
+    for _, _, _, strips in rails:
+        for cls, c in strips:
+            L.append("class %s %s.obj collision %s_col.obj size 1" % (cls, cls, cls))
+            L.append("object %s %s %s %s 0 name=%s" % (cls, num(c.x), num(c.y), num(c.z), cls))
     spawns = [o for o in markers if o.name.startswith("spawn_")]
     for o in spawns:
         name = o.name[6:]
@@ -914,6 +1185,14 @@ def export(out=None, install=False):
         p = o.matrix_world.translation
         L.append("object %s %s %s %s %s name=%s" % (base_name(o).split("_")[0], num(p.x), num(p.y), num(p.z), num(yaw(o)),
                                                   base_name(o)))
+    portals = [o for o in markers if base_name(o).startswith("portal_")]
+    if portals:
+        L.append("# the portals' rings (portal_<name> markers; the plugin's switch to a section as Ratchet goes through)")
+    for o in portals:
+        p = o.matrix_world.translation
+        L.append("object portal %s %s %s %s name=%s" % (num(p.x), num(p.y), num(p.z), num(yaw(o)), base_name(o)))
+    L.append("# the lava flooding the arena (La grande fuga): under the lava until the plugin raises it")
+    L.append("object flood 0 0 %s 0 name=flood" % num(-2.5))
     flames = [o for o in markers if o.name.startswith("flame_")]
     for i, o in enumerate(flames):
         p = o.matrix_world.translation
@@ -933,8 +1212,19 @@ def export(out=None, install=False):
         L.append("trigger %s %s" % (o.name[8:], " ".join(num(c) for c in a + b)))
     for o in markers:
         n = base_name(o)
-        if n not in ("hero", "ship") and not n.startswith(("obj_", "spawn_", "trigger_", "flame_", "mine_")):
-            warn("marker %s: not hero, ship, spawn_*, trigger_*, obj_*, flame_*: left out" % o.name)
+        if n not in ("hero", "ship") and not n.startswith(("obj_", "spawn_", "trigger_", "flame_", "mine_", "portal_")):
+            warn("marker %s: not hero, ship, spawn_*, trigger_*, obj_*, flame_*, portal_*: left out" % o.name)
+    if LEVEL["format"] >= 3:
+        for name, at, a in LEVEL.get("entries", []):
+            L.append("entry %s %s %s %s %s" % (name, num(at[0]), num(at[1]), num(at[2]), num(a)))
+        if SECTIONS:
+            L.append("# main's objects while Ratchet is in a section: kept as they are (the plugin holds them), not updated")
+            L.append("leave freeze")
+        for name, opts in SECTIONS:
+            block, lines, n = export_section(level, name, opts, depsgraph, n_meshes + n_sec)
+            L += block
+            mat_lines += lines
+            n_sec += n
     with open(os.path.join(level, "level.txt"), "w") as f:
         f.write("\n".join(L) + "\n")
 
@@ -962,15 +1252,15 @@ def export(out=None, install=False):
         LL.append("light %s %s %s  %.3f %.3f %.3f  %.3f %.3f %.3f 1" % (num(p.x), num(p.y), num(p.z), c[0], c[1], c[2],
                                                                     inten, radius, float(o.get("flicker", 0.0))))
         nlights += 1
-    LL.append("# the materials of the meshes' textures (host mesh classes 0.. in meshes.obj's order, then the classes' models)")
+    LL.append("# the materials of the meshes' textures (host mesh classes 0.. in meshes.obj's order, then the sections', then the classes' models)")
     LL += mat_lines
     for i, (name, _, _, specs) in enumerate(CLASSES):
         for t, spec in enumerate(specs):
             LL.append("# the %s class's model, its texture %d" % (name, t))
-            LL.append("material tie %d tex %d %s" % (n_meshes + i, t, spec))
-    for j, (name, _, _) in enumerate(rails):
+            LL.append("material tie %d tex %d %s" % (n_meshes + n_sec + i, t, spec))
+    for j, (name, _, _, _) in enumerate(rails):
         LL.append("# the %s class's model (a rail)" % name)
-        LL.append("material tie %d tex 0 %s" % (n_meshes + len(CLASSES) + j, RAIL_SPEC))
+        LL.append("material tie %d tex 0 %s" % (n_meshes + n_sec + len(CLASSES) + j, RAIL_SPEC))
     LL.append("# ambient particles: embers rising from the lava, a little ash")
     for text, bx in LEVEL["particles"]:
         if bx:
@@ -982,10 +1272,11 @@ def export(out=None, install=False):
         f.write("\n".join(LL) + "\n")
 
     with open(os.path.join(out, "mod.json"), "w") as f:
-        json.dump({"name": LEVEL["name"][""], "author": "Daino Selvatico", "version": "0.4",
+        json.dump({"name": LEVEL["name"][""], "author": "Daino Selvatico", "version": "0.5",
                    "description": "An arena in a lava lake ringed by mountains, with challenges against Kalebo III's enemies "
                                   "(waves, bombs, flame vents, weapon limits, championships) and grind rails (a test rail, a "
-                                  "course of three lanes with mines to jump and Kalebo III's rail mines to break).",
+                                  "course of three lanes with mines to jump and Kalebo III's rail mines to break, and an escape from the lava "
+                                  "through a portal into another place).",
                    "kind": "level", "level": {"id": LEVEL["id"], "format": LEVEL["format"], "base": LEVEL["base"]}}, f, indent=2)
         f.write("\n")
 

@@ -84,11 +84,20 @@ void mod_code_respawn(uint32_t count, const char* checkpoint, const float pos[3]
 // orig: (none) — enhancement: a session's section switch (src/game/enhance/sections.h): the plugins' section_leave (`from`) and
 // section_enter (`to`, at its entry `entry`, "" none) callbacks (ABI 10)
 void mod_code_section_switch(const char* from, const char* to, const char* entry);
+// orig: (none) — enhancement: a section's boss (src/game/enhance/sections.h): the plugins' boss callback (ABI 13), `event`
+// RAC1_BOSS_BEATEN (1) or RAC1_BOSS_AGAIN (2)
+void mod_code_boss(const char* section, int32_t cls, uint32_t obj, int32_t event);
 // orig: (none) — enhancement: a save made in a session: each plugin's session bytes (session_save, ABI 9) by its mod's folder
 void mod_code_session_save(std::vector<std::pair<std::string, std::vector<uint8_t>>>& out);
 // orig: (none) — enhancement: a loaded save's session bytes of the plugin of `folder` (session_load, ABI 9): given after the
 // level's level_start
 void mod_code_session_load(const std::string& folder, const uint8_t* data, uint32_t size);
+// orig: (none) — enhancement: a plugin's music_track (ABI 19) plays: the level's music is not changed by a death's restart (the
+// game's stop and start skipped while it is true) nor by a section switch (mod_code_music_defer)
+bool mod_code_music_track_on();
+// orig: (none) — enhancement: a section switch's music (its music table) while a music_track plays: kept for music_track(NULL),
+// true (the music not changed); false when no track plays (the switch's own)
+bool mod_code_music_defer(const uint32_t w[15]);
 
 }  // namespace rac1
 

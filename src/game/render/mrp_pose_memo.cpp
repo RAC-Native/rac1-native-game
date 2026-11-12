@@ -42,6 +42,7 @@ std::vector<uint8_t> g_expected;
 
 struct Stats {
     uint64_t asked = 0, no_joints = 0, hits = 0, misses = 0, bypass = 0, verified = 0, differing = 0, joints_hit = 0, joints_all = 0;
+    uint64_t filled = 0;  // (the real pass's poses kept for the shadow run)
 } g_st;
 
 // orig: (host) `n` bytes at the EE address `a` (RAM below 64 MB or the scratchpad) appended to the key; false: not plain memory
@@ -101,9 +102,24 @@ bool build_key(uint32_t job, int32_t n) {
 bool lookup(uint32_t job) {
     g_pending = false;
     g_expect = false;
-    if (!g_moby_pass_shadow_run || g_mode == 0) return false;
-    ++g_st.asked;
+    if (g_mode == 0) return false;
+    // (the real pass before a shadow run, RAC1_PERF_POSE_ORDER: its poses run - nothing of its state is skipped - and store keeps
+    // their key and matrices; the shadow run then asks for the same poses)
+    const bool fill = !g_moby_pass_shadow_run;
+    if (fill && !g_moby_pose_memo.fill) return false;
     const int32_t n = lh(job + 0x10);
+    if (fill) {
+        uint32_t moby = 0;
+        bool far = false;
+        if (n <= 0 || n > 0x70 || !g_moby_mrp_skip || (g_moby_mrp_skip_parts & 1) == 0 || g_moby_mrp_skip_verify || g_moby_skip_next == nullptr ||
+            !mrp_scene_pose_slot(job, moby, far) || !build_key(job, n))
+            return false;
+        ++g_st.filled;
+        g_slot = static_cast<uint64_t>(moby) << 1 | (far ? 1u : 0u);
+        g_pending = true;
+        return false;
+    }
+    ++g_st.asked;
     if (n <= 0) {  // (no joints: the identity, nothing to keep)
         ++g_st.no_joints;
         return false;
@@ -175,6 +191,7 @@ void mrp_pose_memo_report() {
                 g_st.joints_all != 0 ? 100.0 * static_cast<double>(g_st.joints_hit) / static_cast<double>(g_st.joints_all) : 0.0,
                 static_cast<unsigned long long>(g_st.misses), static_cast<unsigned long long>(g_st.bypass), static_cast<unsigned long long>(g_st.verified),
                 static_cast<unsigned long long>(g_st.differing));
+    if (g_st.filled != 0) std::printf("[lod] pose memo: %llu poses of the real pass kept for the shadow run (RAC1_PERF_POSE_ORDER)\n", static_cast<unsigned long long>(g_st.filled));
 }
 
 }  // namespace rac1

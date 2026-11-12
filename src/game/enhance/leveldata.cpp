@@ -1,8 +1,10 @@
 // See leveldata.h.
 #include <game/enhance/leveldata.h>
 
+#include <game/enhance/class_profiles.h>
 #include <game/enhance/context.h>
 #include <game/enhance/pool.h>
+#include <game/enhance/sections.h>
 #include <game/enhance/session.h>
 #include <game/enhance/session_runtime.h>
 #include <game/ovl/ovl_common.h>
@@ -21,6 +23,7 @@ namespace rac1 {
 
 uint8_t g_ld_class_level[0x1ec0];
 bool g_ld_any = false;
+bool g_ld_world = false;
 
 namespace {
 
@@ -174,17 +177,22 @@ uint32_t lay_out(const std::vector<uint8_t>& g, uint32_t r, int32_t* own_paths) 
 bool ld_registry_has(int level) { return level >= 0 && level < 32 && g_reg[level] != nullptr; }
 
 // orig: (host) see leveldata.h
+int ld_world_key(int level) { return level == lw(0x0015ed84) ? LD_BASE_WORLD : level; }
+
+// orig: (host) see leveldata.h
 bool ld_registry_make(int level) {
-    if (level < 0 || level >= 19) return false;
-    if (g_reg[level] != nullptr || level == lw(0x0015ed84)) return true;
-    if (!ctx_exists(level)) return false;
+    const bool base_world = level == LD_BASE_WORLD;
+    if (level < 0 || (level >= 19 && !base_world)) return false;
+    if (g_reg[level] != nullptr || (!base_world && level == lw(0x0015ed84))) return true;
+    if (!base_world && !ctx_exists(level)) return false;
+    const int real = base_world ? lw(0x0015ed84) : level;  // (the level whose level data it is)
     std::vector<uint8_t> g;
-    if (!pool_leveldata(level, g)) {
-        std::fprintf(stderr, "[ld] level %d: no level data in the pool: its classes read an empty registry\n", level);
+    if (!pool_leveldata(real, g)) {
+        std::fprintf(stderr, "[ld] level %d: no level data in the pool: its classes read an empty registry\n", real);
         g.clear();
     }
     auto R = std::make_unique<Registry>();
-    R->level = level;
+    R->level = real;
     int32_t n = 0;
     R->size = g.empty() ? R_DATA : lay_out(g, 0, &n);
     R->block = session_heap_alloc(R->size, owner(level));
@@ -196,10 +204,11 @@ bool ld_registry_make(int level) {
         if (size != 0 && p + 0x10 + size <= g.size() && (R->shared = session_heap_alloc(size, owner(level))) != 0)
             std::memcpy(ee_get_ram_base() + R->shared, g.data() + p + 0x10, size);
     }
-    for (const Obj& o : OBJS) ctx_view(level, o.veldin, o.size, R->block + o.off);
-    std::printf("[ld] level %d's registry at %08x (%#x bytes): %d paths, %u cameras, %u volumes, %u rails of its own; groups none (its level's "
+    if (!base_world)
+        for (const Obj& o : OBJS) ctx_view(level, o.veldin, o.size, R->block + o.off);
+    std::printf("[ld] level %d's %sregistry at %08x (%#x bytes): %d paths, %u cameras, %u volumes, %u rails of its own; groups none (its level's "
                 "name its own mobys); shared pvar data %s\n",
-                level, R->block, R->size, R->own_paths, lwu(R->block + R_CAMERAS + 4), lwu(R->block + R_VOLUMES + 4), lwu(R->block + R_RAILS + 4),
+                real, base_world ? "world " : "", R->block, R->size, R->own_paths, lwu(R->block + R_CAMERAS + 4), lwu(R->block + R_VOLUMES + 4), lwu(R->block + R_RAILS + 4),
                 R->shared != 0 ? "copied" : "none");
     g_reg[level] = std::move(R);
     return true;
@@ -383,6 +392,20 @@ bool ld_group_set(int level, int32_t g, const uint32_t* mobys, int n) {
 }
 
 // orig: (host) see leveldata.h
+void ld_rails_put(int level, uint32_t table, uint32_t count) {
+    if (!ld_registry_has(level)) return;
+    sw(g_reg[level]->block + R_RAILS, table);
+    sw(g_reg[level]->block + R_RAILS + 4, count);
+}
+
+// orig: (host) see leveldata.h
+uint32_t ld_camera_pvars(int level, uint32_t k) {
+    if (!ld_registry_has(level)) return 0;
+    const uint32_t r = g_reg[level]->block, tab = lwu(r + R_CAMERAS);
+    return tab != 0 && k < lwu(r + R_CAMERAS + 4) ? lwu(tab + k * 0x20 + 0x1c) : 0u;
+}
+
+// orig: (host) see leveldata.h
 bool ld_group_put(int level, int32_t g, const uint32_t* mobys, int n, const std::string& own) {
     if (!ld_registry_has(level) || g < 0 || g >= static_cast<int32_t>(LD_GROUP_MAX)) return false;
     Registry& R = *g_reg[level];
@@ -404,12 +427,32 @@ bool ld_group_put(int level, int32_t g, const uint32_t* mobys, int n, const std:
 // ---- the swap ----
 namespace {
 uint32_t g_saved[LD_PATH_MAX + LD_GROUP_MAX + 32];
+constexpr int LD_BASE_IN_WORLD = 1000;  // (ld_enter's: a base enemy's update in a world's section)
 }
 
 // orig: (host) see leveldata.h
 int ld_enter(uint32_t moby) {
     const uint32_t cls = lhu(moby + 0xa6);
     const int level = cls < 0x1ec0 ? g_ld_class_level[cls] - 1 : -1;
+    // (stage 10) a world's section is current (its level's objects the engine's): an enemy of the session base's own (a class the
+    // base has a profile for: Kalebo III's robots of a level mod on its base, base_spawn's) updates on the base's objects, kept by
+    // ld_engine_take, as everywhere else in the session (its patrol, its hunt); not the world's own objects of that class (its
+    // placements, what they spawned: their pvars name the world's paths and volumes)
+    if (level < 0 && g_taken >= 0 && cls != 0 && profile_find(lw(0x0015ed84), cls) != nullptr && !sections_world_object(moby)) {
+        uint32_t* s = g_saved;
+        const uint32_t* b0 = g_taken_saved;
+        for (const Obj& o : OBJS) {
+            const uint32_t b = ovl_xlate_data(o.veldin);
+            for (uint32_t k = 0; k < o.size; k += 4) {
+                *s++ = lwu(b + k);
+                sw(b + k, *b0++);
+            }
+        }
+        static bool said = false;
+        if (!said) std::printf("[ld] the base's enemies update on the base's level data in level %d's world (class %u first)\n", g_taken, cls);
+        said = true;
+        return LD_BASE_IN_WORLD;
+    }
     if (level < 0 || !ld_registry_has(level)) return -1;
     const uint32_t r = g_reg[level]->block;
     uint32_t* s = g_saved;
@@ -425,6 +468,18 @@ int ld_enter(uint32_t moby) {
 
 // orig: (host) see leveldata.h
 void ld_leave(int level) {
+    if (level == LD_BASE_IN_WORLD) {  // (stage 10: the base's objects back where ld_engine_take keeps them, the world's the engine's again)
+        const uint32_t* s = g_saved;
+        uint32_t* b0 = g_taken_saved;
+        for (const Obj& o : OBJS) {
+            const uint32_t b = ovl_xlate_data(o.veldin);
+            for (uint32_t k = 0; k < o.size; k += 4) {
+                *b0++ = lwu(b + k);
+                sw(b + k, *s++);
+            }
+        }
+        return;
+    }
     if (level < 0 || !ld_registry_has(level)) return;
     const uint32_t r = g_reg[level]->block;
     const uint32_t* s = g_saved;
@@ -452,6 +507,7 @@ bool ld_engine_take(int level) {
         }
     }
     g_taken = level;
+    g_ld_world = true;
     return true;
 }
 
@@ -469,6 +525,7 @@ void ld_engine_restore() {
         }
     }
     g_taken = -1;
+    g_ld_world = false;
 }
 
 // ---- placements ----

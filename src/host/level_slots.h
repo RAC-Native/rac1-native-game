@@ -19,6 +19,8 @@
 // - A save made on a level whose mod is off or missing: the player lands on the level flown from, and the ship's planet
 //   map opens there (the save's unlocked planets, that one first): the planet prompt. Leaving the map for that level
 //   (choosing it, or triangle / start) loads it again (Ratchet is not in his ship).
+// - The Save and Load pages show a slot's planet from its save<N>.pc: the level's name, region and picture (map.img) when
+//   the save was made on it and its mod is on, else the level it was flown from (the card's summary has the base level).
 // With no level mod on (headless, RAC1_MODS=0, no mods: the reference checks) nothing here does anything, except the
 // .pc items' carry-over and the prompt, which need a save that has our items.
 #ifndef RAC1_HOST_LEVEL_SLOTS_H
@@ -152,6 +154,25 @@ bool level_slots_pc_item(uint32_t id, const uint8_t* p, uint32_t size);
 void level_slots_pc_reset();
 void level_slots_save_loaded();
 
+// orig: (none) — enhancement: the Save and Load pages' planet of save slot `slot` (save_slot_planet_draw; `level` the slot's
+// summary's level, the base level for a save made on a level mod's level): made on a level mod's level that is on, the text
+// ids of its region and name in `ids` (true); made on one whose mod is off or missing, `level` set to the level it was flown
+// from (where loading it lands, the planet prompt there)
+bool level_slots_save_planet(int32_t slot, int32_t& level, int32_t ids[2]);
+// orig: (none) — enhancement: the Save and Load pages' picture of save slot `slot` (menu_picture_update's slot picture; `img`
+// the slot's summary's level): made on a level mod's level that is on, `img` set to a picture of ours (0x100 + its level
+// slot: its build's map.img); made on one whose mod is off or missing, to the level it was flown from (that planet's)
+void level_slots_save_picture(int32_t slot, int32_t& img);
+// orig: (none) — enhancement: `img` is one of those pictures (the picture table has no entry for it)
+bool level_slots_picture_id(int32_t img);
+// orig: (none) — enhancement: the menu picture read (picture_read): when `img` is ours, its map.img made in `buf` (true)
+bool level_slots_picture_read(int32_t img, uint32_t buf);
+// orig: (none) — enhancement: `buf` holds one of ours (not packed: not to be unpacked); once
+bool level_slots_picture_take(uint32_t buf);
+// orig: (none) — enhancement: save<slot>.pc's bytes (src/game/enhance/advanced.cpp: the card's file next to save<slot>.bin),
+// false when there is none
+bool advanced_save_file_read(int32_t slot, std::vector<uint8_t>& out);
+
 // orig: (none) — enhancement: once a frame of play (game_frame): the planet prompt opened when it waits
 void level_slots_frame();
 
@@ -165,6 +186,9 @@ void level_slots_test_frame(uint64_t frame);
 void level_music_words_get(uint32_t w[15]);
 void level_music_words_put(const uint32_t w[15]);
 bool level_music_words_of(int level, uint32_t w[15]);
+// (the plugins' music_track, src/game/enhance/music_track.h) the current level mod's music_track `name` as a music table (its
+// intro at 0, its loop at 1, as the mod's own music): false when the level is no level mod's or it has no such track
+bool level_music_track_words(const char* name, uint32_t w[15]);
 
 }  // namespace rac1
 

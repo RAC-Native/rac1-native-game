@@ -35,7 +35,6 @@ float f32(uint32_t v) {
     std::memcpy(&f, &v, 4);
     return f;
 }
-uint32_t bits(uint64_t v, int lo, int n) { return static_cast<uint32_t>((v >> lo) & ((1ull << n) - 1)); }
 }  // namespace
 
 Gs::Gs() : mem_(local_memory()) {}
@@ -47,17 +46,17 @@ Gs& gs_global() {
 
 void Gs::vertex_kick(const Vertex& vin, bool draw) {
     if (vu7_drop_ && vu_kick_ && !vu7_batches_.empty()) {  // (host: a kept batch's strip as the program kicked it, its ADC flags)
-        const uint32_t t = bits(regs_[0x00], 0, 3);
+        const uint32_t t = field(regs_[0x00], 0, 3);
         if (t == 3 || t == 4) vu7_batches_.back().kicked.push_back(draw ? 1 : 0);
     }
-    const uint64_t prim = bits(regs_[0x1a], 0, 1) ? regs_[0x00] : (regs_[0x1b] & ~7ull) | (regs_[0x00] & 7);
-    const int ctx = bits(prim, 9, 1);
+    const uint64_t prim = field(regs_[0x1a], 0, 1) ? regs_[0x00] : (regs_[0x1b] & ~7ull) | (regs_[0x00] & 7);
+    const int ctx = field(prim, 9, 1);
     const uint64_t off = regs_[0x18 + ctx];
     Vertex v = vin;
-    v.x = (v.x - static_cast<float>(bits(off, 0, 16))) / 16.0f;
-    v.y = (v.y - static_cast<float>(bits(off, 32, 16))) / 16.0f;
+    v.x = (v.x - static_cast<float>(field(off, 0, 16))) / 16.0f;
+    v.y = (v.y - static_cast<float>(field(off, 32, 16))) / 16.0f;
     queue_.push_back(v);
-    const int type = bits(regs_[0x00], 0, 3);
+    const int type = field(regs_[0x00], 0, 3);
     int need = 0, assembled = 0;
     switch (type) {
     case 0: need = 1; assembled = 0; break;
@@ -90,17 +89,17 @@ void Gs::vertex_kick(const Vertex& vin, bool draw) {
         s.dthe = regs_[0x45];
         s.xyoffset = off;
         p.v.assign(queue_.end() - need, queue_.end());
-        if (bits(prim, 4, 1) != 0) {
+        if (field(prim, 4, 1) != 0) {
             // mipmapping (TEX1 MXL > 0, MMIN *_MIPMAP_*): the GS picks the level per pixel from
             // its LOD (LCM 0: log2(1 / |Q|) << L + K, Q interpolated; LCM 1: K), rounded, clamped
             // to MXL; level n's base / width from MIPTBP1 (levels 1..3), its size halved n times.
             // The levels the primitive's vertices span are read at the kick; the draw picks per pixel.
-            const uint32_t mxl = std::min(bits(s.tex1, 2, 3), 3u);
-            if (mxl != 0 && !bits(prim, 8, 1) && bits(s.tex1, 6, 3) >= 2) {
-                const float k = static_cast<float>(static_cast<int32_t>(bits(s.tex1, 32, 12) << 20) >> 20) / 16.0f;
+            const uint32_t mxl = std::min(field(s.tex1, 2, 3), 3u);
+            if (mxl != 0 && !field(prim, 8, 1) && field(s.tex1, 6, 3) >= 2) {
+                const float k = static_cast<float>(static_cast<int32_t>(field(s.tex1, 32, 12) << 20) >> 20) / 16.0f;
                 auto level_of = [&](float q) {
                     if (std::isnan(q)) return 0;
-                    const float lod = bits(s.tex1, 0, 1) != 0 ? k : std::log2(1.0f / std::max(std::fabs(q), 1e-20f)) * static_cast<float>(1u << bits(s.tex1, 19, 2)) + k;
+                    const float lod = field(s.tex1, 0, 1) != 0 ? k : std::log2(1.0f / std::max(std::fabs(q), 1e-20f)) * static_cast<float>(1u << field(s.tex1, 19, 2)) + k;
                     if (std::isnan(lod) || lod <= 0.0f) return 0;
                     return std::min(static_cast<int>(std::floor(lod + 0.5f)), static_cast<int>(mxl));
                 };
@@ -114,8 +113,8 @@ void Gs::vertex_kick(const Vertex& vin, bool draw) {
                 auto level_tex0 = [&](int level) -> uint64_t {
                     if (level == 0) return s.tex0;
                     const uint32_t lv = static_cast<uint32_t>(level - 1);
-                    const uint64_t tbp = bits(s.miptbp1, static_cast<int>(20 * lv), 14), tbw = bits(s.miptbp1, static_cast<int>(20 * lv + 14), 6);
-                    const uint64_t tw = bits(s.tex0, 26, 4), th = bits(s.tex0, 30, 4);
+                    const uint64_t tbp = field(s.miptbp1, static_cast<int>(20 * lv), 14), tbw = field(s.miptbp1, static_cast<int>(20 * lv + 14), 6);
+                    const uint64_t tw = field(s.tex0, 26, 4), th = field(s.tex0, 30, 4);
                     const uint64_t ntw = tw > lv + 1 ? tw - lv - 1 : 0, nth = th > lv + 1 ? th - lv - 1 : 0;
                     return (s.tex0 & ~((0x3fffull) | (0x3full << 14) | (0xfull << 26) | (0xfull << 30))) | tbp | (tbw << 14) | (ntw << 26) | (nth << 30);
                 };
@@ -132,7 +131,7 @@ void Gs::vertex_kick(const Vertex& vin, bool draw) {
             }
             p.tex = mem_.texture_at_kick(s.tex0, s.texa);
         }
-        if (!bits(prim, 3, 1))  // flat: the last vertex's colour
+        if (!field(prim, 3, 1))  // flat: the last vertex's colour
             for (Vertex& w : p.v) { w.r = p.v.back().r; w.g = p.v.back().g; w.b = p.v.back().b; w.a = p.v.back().a; }
         p.vu = vu_kick_;
         p.vu_start = vu_kick_ ? vu1::g_last_start : 0;
@@ -166,28 +165,28 @@ void Gs::write_reg(uint32_t reg, uint64_t v) {
     switch (reg) {
     case 0x00: queue_.clear(); break;  // PRIM
     case 0x01:
-        cur_.r = bits(v, 0, 8); cur_.g = bits(v, 8, 8); cur_.b = bits(v, 16, 8); cur_.a = bits(v, 24, 8);
-        cur_.q = f32(bits(v, 32, 32));
+        cur_.r = field(v, 0, 8); cur_.g = field(v, 8, 8); cur_.b = field(v, 16, 8); cur_.a = field(v, 24, 8);
+        cur_.q = f32(field(v, 32, 32));
         break;
-    case 0x02: cur_.s = f32(bits(v, 0, 32)); cur_.t = f32(bits(v, 32, 32)); break;
-    case 0x03: cur_.u = bits(v, 0, 14) / 16.0f; cur_.v = bits(v, 16, 14) / 16.0f; break;
-    case 0x0a: cur_.fog = bits(v, 56, 8); break;
+    case 0x02: cur_.s = f32(field(v, 0, 32)); cur_.t = f32(field(v, 32, 32)); break;
+    case 0x03: cur_.u = field(v, 0, 14) / 16.0f; cur_.v = field(v, 16, 14) / 16.0f; break;
+    case 0x0a: cur_.fog = field(v, 56, 8); break;
     case 0x04: case 0x0c: {  // XYZF2 / XYZF3
         Vertex k = cur_;
-        k.x = static_cast<float>(bits(v, 0, 16)); k.y = static_cast<float>(bits(v, 16, 16)); k.z = bits(v, 32, 24); k.fog = bits(v, 56, 8);
+        k.x = static_cast<float>(field(v, 0, 16)); k.y = static_cast<float>(field(v, 16, 16)); k.z = field(v, 32, 24); k.fog = field(v, 56, 8);
         vertex_kick(k, reg == 0x04);
         break;
     }
     case 0x05: case 0x0d: {  // XYZ2 / XYZ3
         Vertex k = cur_;
-        k.x = static_cast<float>(bits(v, 0, 16)); k.y = static_cast<float>(bits(v, 16, 16)); k.z = bits(v, 32, 32);
+        k.x = static_cast<float>(field(v, 0, 16)); k.y = static_cast<float>(field(v, 16, 16)); k.z = field(v, 32, 32);
         vertex_kick(k, reg == 0x05);
         break;
     }
     case 0x53:  // TRXDIR: host -> local
-        if (bits(v, 0, 2) == 0) {
+        if (field(v, 0, 2) == 0) {
             mem_.transfer_start();
-            if (scr_bw_ != 0) screen_transfer(bits(regs_[0x50], 32, 14));
+            if (scr_bw_ != 0) screen_transfer(field(regs_[0x50], 32, 14));
         }
         else mem_.transfer_stop();
         break;
@@ -231,24 +230,24 @@ void Gs::gif(const uint8_t* p, uint32_t qwc) {
         const uint8_t* q = p + i * 16;
         if (tag_left_ == 0) {
             const uint64_t lo = r64(q), hi = r64(q + 8);
-            const uint32_t nloop = bits(lo, 0, 15);
-            tag_flg_ = bits(lo, 58, 2);
-            tag_nreg_ = bits(lo, 60, 4);
+            const uint32_t nloop = field(lo, 0, 15);
+            tag_flg_ = field(lo, 58, 2);
+            tag_nreg_ = field(lo, 60, 4);
             if (tag_nreg_ == 0) tag_nreg_ = 16;
             tag_regs_ = hi;
             tag_reg_ = 0;
-            if (tag_flg_ == 0 && bits(lo, 46, 1)) write_reg(0x00, bits(lo, 47, 11));
+            if (tag_flg_ == 0 && field(lo, 46, 1)) write_reg(0x00, field(lo, 47, 11));
             // the data's size: PACKED nloop x nreg quadwords, REGLIST nloop x nreg double words, IMAGE nloop quadwords
             tag_left_ = tag_flg_ == 0 ? nloop * tag_nreg_ : tag_flg_ == 1 ? nloop * tag_nreg_ : nloop;
             continue;
         }
         if (tag_flg_ == 0) {
-            packed(q, bits(tag_regs_, static_cast<int>(4 * tag_reg_), 4));
+            packed(q, field(tag_regs_, static_cast<int>(4 * tag_reg_), 4));
             tag_reg_ = (tag_reg_ + 1) % tag_nreg_;
             --tag_left_;
         } else if (tag_flg_ == 1) {
             for (int h = 0; h < 2 && tag_left_ != 0; ++h) {
-                const uint32_t d = bits(tag_regs_, static_cast<int>(4 * tag_reg_), 4);
+                const uint32_t d = field(tag_regs_, static_cast<int>(4 * tag_reg_), 4);
                 if (d != 0xe && d != 0xf) write_reg(d, r64(q + 8 * h));
                 tag_reg_ = (tag_reg_ + 1) % tag_nreg_;
                 --tag_left_;
@@ -363,9 +362,9 @@ void Gs::vu1_before(void* vu_p, uint32_t start, uint64_t hash) {
     Vu7Batch b;
     // the GS state a kick under a GIF tag `t` would have now (its PRIM when PRE, the context's registers)
     auto state_of = [this](uint64_t t, DrawState& s, std::shared_ptr<const TexImage>& tex, bool* mip) {
-        const uint64_t prim0 = bits(t, 46, 1) != 0 ? bits(t, 47, 11) : regs_[0x00];
-        const uint64_t prim = bits(regs_[0x1a], 0, 1) ? prim0 : (regs_[0x1b] & ~7ull) | (prim0 & 7);
-        const int ctx = bits(prim, 9, 1);
+        const uint64_t prim0 = field(t, 46, 1) != 0 ? field(t, 47, 11) : regs_[0x00];
+        const uint64_t prim = field(regs_[0x1a], 0, 1) ? prim0 : (regs_[0x1b] & ~7ull) | (prim0 & 7);
+        const int ctx = field(prim, 9, 1);
         s.prim = prim;
         s.tex0 = regs_[0x06 + ctx];
         s.clamp = regs_[0x08 + ctx];
@@ -383,9 +382,9 @@ void Gs::vu1_before(void* vu_p, uint32_t start, uint64_t hash) {
         s.fogcol = regs_[0x3d];
         s.dthe = regs_[0x45];
         s.xyoffset = regs_[0x18 + ctx];
-        if (bits(prim, 4, 1) != 0) {
+        if (field(prim, 4, 1) != 0) {
             tex = mem_.texture_at_kick(s.tex0, s.texa);
-            if (mip != nullptr) *mip = std::min(bits(s.tex1, 2, 3), 3u) != 0 && bits(s.tex1, 6, 3) >= 2;
+            if (mip != nullptr) *mip = std::min(field(s.tex1, 2, 3), 3u) != 0 && field(s.tex1, 6, 3) >= 2;
         }
     };
     state_of(tag, b.st, b.tex, &b.mip);
@@ -584,8 +583,8 @@ void Gs::chain_walk(uint32_t tag, uint32_t end, Mem&& mem) {
         const uint8_t* t = mem(sub_addr(addr), 16u);
         if (t == nullptr) return;
         const uint64_t lo = r64(t);
-        const uint32_t qwc = bits(lo, 0, 16), id = bits(lo, 28, 3);
-        const uint32_t a = bits(lo, 32, 31) & ee_dma_addr_mask();
+        const uint32_t qwc = field(lo, 0, 16), id = field(lo, 28, 3);
+        const uint32_t a = field(lo, 32, 31) & ee_dma_addr_mask();
         uint32_t data = addr + 16, next = addr + 16 + qwc * 16;
         bool stop = false;
         switch (id) {
@@ -764,8 +763,8 @@ void Gs::capture_chain(uint32_t tag, uint32_t end, ChainCapture& c) const {
         const uint8_t* t = take(sub_addr(addr), 16u);
         if (t == nullptr) return;
         const uint64_t lo = r64(t);
-        const uint32_t qwc = bits(lo, 0, 16), id = bits(lo, 28, 3);
-        const uint32_t a = bits(lo, 32, 31) & ee_dma_addr_mask();
+        const uint32_t qwc = field(lo, 0, 16), id = field(lo, 28, 3);
+        const uint32_t a = field(lo, 32, 31) & ee_dma_addr_mask();
         uint32_t data = addr + 16, next = addr + 16 + qwc * 16;
         bool stop = false;
         switch (id) {

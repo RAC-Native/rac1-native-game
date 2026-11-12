@@ -631,19 +631,6 @@ void static_frame_build(const StaticLevel& L, const ResidentColours& rc, StaticF
 }
 
 // orig: (host) see mrp_world_static.h
-bool CasterVolume::reaches(const float sph[4]) const {
-    if (!casc) return views(sph) != 0;
-    for (int k = 0; k < 3; ++k) {
-        const float d[3] = {sph[0] - cen[k][0], sph[1] - cen[k][1], sph[2] - cen[k][2]};
-        const float t = std::clamp(d[0] * sun[0] + d[1] * sun[1] + d[2] * sun[2], 0.0f, back[k]);
-        const float e[3] = {d[0] - sun[0] * t, d[1] - sun[1] * t, d[2] - sun[2] * t};
-        const float lim = rad[k] + sph[3];
-        if (e[0] * e[0] + e[1] * e[1] + e[2] * e[2] <= lim * lim) return true;
-    }
-    return false;
-}
-
-// orig: (host) see mrp_world_static.h
 uint16_t CasterVolume::views(const float sph[4]) const {
     uint16_t m = 0;
     for (int k = 0; k < 3 && casc; ++k) {

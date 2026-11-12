@@ -100,8 +100,9 @@ Rail* rail_of(int32_t h) { return h >= 1 && static_cast<size_t>(h) <= g_sp.rails
 uint32_t rail_entry(const Rail& r) {
     if (r.section != current_section()) return 0;
     const uint32_t t = lwu(OV(RAIL_TABLE));
-    if (t == 0 || r.index >= lw(OV(RAIL_COUNT))) return 0;
-    return t + static_cast<uint32_t>(r.index) * 0x20;
+    const int32_t at = r.index + sections_rail_first(r.section);  // (stage 10: a world's section has its level's rails first)
+    if (t == 0 || at >= lw(OV(RAIL_COUNT))) return 0;
+    return t + static_cast<uint32_t>(at) * 0x20;
 }
 
 void rail_apply(Rail& r) {
@@ -476,7 +477,9 @@ void setpieces_camera() {
 // orig: (host) see setpieces.h
 void setpieces_hud() {
     if (g_sp.f_alpha <= 0) return;
-    gs_flat_rect(0, 0, 512, 448, static_cast<uint64_t>(static_cast<uint32_t>(std::min(g_sp.f_alpha, 0x80)) << 24 | (g_sp.f_rgb & 0xffffffu)), 0);
+    // (to 513 x 449: gs_flat_rect's corners are a pixel in, and a fill reaching the frame's right edge is what a widened view
+    // stretches to the window's: 512 stopped at the 4:3 frame's right side on an ultra-wide screen)
+    gs_flat_rect(0, 0, 513, 449, static_cast<uint64_t>(static_cast<uint32_t>(std::min(g_sp.f_alpha, 0x80)) << 24 | (g_sp.f_rgb & 0xffffffu)), 0);
 }
 
 // ---- the SDK's services ----

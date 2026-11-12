@@ -71,6 +71,9 @@ const StageInfo kStages[kStageCount] = {
     {"Screenshots", false, true, rgb(110, 110, 110)},
     {"Wait: frame cap", true, false, rgb(70, 70, 70)},
     {"Present (swap, v-sync)", true, true, rgb(230, 60, 60)},
+    {"Frame begin (Vulkan)", false, false, rgb(150, 150, 110)},
+    {"Wait: swapchain image", true, false, rgb(210, 90, 90)},
+    {"Materials: frame capture", false, true, rgb(190, 150, 90)},
 };
 const char* const kWorkerNames[kWorkerCount] = {"Chain worker", "MRP scene worker", "Job workers (summed)", "Game thread"};
 const char* const kPartNames[kPartCount] = {"Chain worker: texture uploads", "Chain worker: VU1 programs", "Scene worker: host decisions",
@@ -120,6 +123,7 @@ struct State {
     uint64_t env_trace_from = 0;
     int env_trace_frames = 0;
     bool requested = false, pinned = false, frozen = false;
+    bool hold = false;  // (frame_hold: the next frame_mark is not a frame's end)
     bool want_prev = false;
     uint64_t frame_index = 0;
     bool rec = false;
@@ -176,7 +180,7 @@ bool g_api_ok = false;
 
 // the CSV's first row (the stages' names quoted: some hold commas)
 void csv_header(std::FILE* f) {
-    std::fprintf(f, "frame,period_ms,steps,pictures,main_cpu_ms,cpu_other_ms,gpu_ok,gpu_busy_ms,gpu_span_ms,gpu_other_ms");
+    std::fprintf(f, "frame,period_ms,steps,pictures,main_cpu_ms,cpu_other_ms,gpu_ok,gpu_busy_ms,gpu_span_ms,gpu_other_ms,prepare_total_ms");
     for (int i = 0; i < kStageCount; ++i) std::fprintf(f, ",\"cpu: %s\"", kStages[i].name);
     for (int i = 0; i < kStageCount; ++i)
         if (kStages[i].gpu) std::fprintf(f, ",\"gpu: %s\"", kStages[i].name);
@@ -215,9 +219,12 @@ FrameRec* hist_find(State& s, uint64_t index) {
     return nullptr;
 }
 
+// the Prepare stage with the stages its zone holds (a stage's own time leaves out the stages inside it)
+double prepare_total(const FrameRec& r) { return r.cpu[kPrepare] + r.cpu[kChainCapture] + r.cpu[kSceneCaptureWait] + r.cpu[kMobyLists]; }
+
 void csv_row(std::FILE* f, const FrameRec& r) {
-    std::fprintf(f, "%llu,%.4f,%d,%d,%.4f,%.4f,%d,%.4f,%.4f,%.4f", static_cast<unsigned long long>(r.index), r.period, r.steps, std::max(1, r.pictures), r.main_cpu, r.cpu_other, r.gpu_ok ? 1 : 0, r.gpu_busy, r.gpu_span,
-                 r.gpu_other);
+    std::fprintf(f, "%llu,%.4f,%d,%d,%.4f,%.4f,%d,%.4f,%.4f,%.4f,%.4f", static_cast<unsigned long long>(r.index), r.period, r.steps, std::max(1, r.pictures), r.main_cpu, r.cpu_other, r.gpu_ok ? 1 : 0, r.gpu_busy, r.gpu_span,
+                 r.gpu_other, prepare_total(r));
     for (int i = 0; i < kStageCount; ++i) std::fprintf(f, ",%.4f", r.cpu[i]);
     for (int i = 0; i < kStageCount; ++i)
         if (kStages[i].gpu) std::fprintf(f, ",%.4f", r.gpu[i]);
@@ -547,6 +554,7 @@ bool pinned() { return S().pinned; }
 void set_frozen(bool on) { S().frozen = on; }
 bool frozen() { return S().frozen; }
 void frame_steps(int steps) { S().steps = steps; }
+void frame_hold() { S().hold = true; }
 void frame_picture() { ++S().pictures; }
 
 void frame_mark() {
@@ -555,6 +563,10 @@ void frame_mark() {
     if (!t_main) {
         t_main = true;
         thread_name("main (game, GL)");
+    }
+    if (s.hold) {  // (the turn before was not a frame: the one being recorded goes on)
+        s.hold = false;
+        return;
     }
     const double now = now_ms();
     // the frame that ends here
@@ -713,6 +725,8 @@ Summary summarize(int frames) {
         m.cpu_other += r.cpu_other;
         m.main_cpu += r.main_cpu;
         m.steps += r.steps;
+        ++m.steps_hist[std::clamp(r.steps, 0, 3)];
+        m.prepare_total += prepare_total(r);
         m.pictures_fps += std::max(1, r.pictures);
         for (int w = 0; w < kWorkerCount; ++w) {
             m.worker_busy[w] += r.worker_busy[w];
@@ -737,6 +751,7 @@ Summary summarize(int frames) {
     m.cpu_other *= inv;
     m.main_cpu *= inv;
     m.steps *= inv;
+    m.prepare_total *= inv;
     m.waits *= inv;
     for (int w = 0; w < kWorkerCount; ++w) {
         m.worker_busy[w] *= inv;
@@ -968,6 +983,8 @@ void dump(std::FILE* f, int frames, bool with_gl_scan) {
     std::fprintf(f, "[profiler] host frames %llu..%llu (%d): %.1f fps, frame %.2f ms (min %.2f, max %.2f, p99 %.2f; 1%% low %.1f fps), %.2f game frames each\n",
                  static_cast<unsigned long long>(history_at(history_size() - m.frames).index), static_cast<unsigned long long>(history_at(history_size() - 1).index), m.frames, m.fps,
                  m.period_avg, m.period_min, m.period_max, m.period_p99, m.low1_fps, m.steps);
+    std::fprintf(f, "[profiler]   game frames a host frame: none in %d host frames, one in %d, two in %d, three or more in %d; the preparation with its stages %.2f ms\n",
+                 m.steps_hist[0], m.steps_hist[1], m.steps_hist[2], m.steps_hist[3], m.prepare_total);
     if (m.pictures_fps > m.fps + 0.5) std::fprintf(f, "[profiler]   frame extrapolation: %.1f pictures a second (%.2f a host frame)\n", m.pictures_fps, m.pictures_fps / std::max(m.fps, 1e-9));
     std::fprintf(f, "[profiler]   main thread: work %.2f ms (game code %.2f, host %.2f), waits %.2f, its CPU time %.2f; GPU busy %.2f ms (span %.2f, %d frames read back; the kernel's account %.2f)\n",
                  m.main_work, m.game_code, m.host_work, m.waits, m.main_cpu, m.gpu_busy, m.gpu_span, m.gpu_frames, m.gpu_kernel);

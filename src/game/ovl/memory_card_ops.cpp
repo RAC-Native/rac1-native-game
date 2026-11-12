@@ -13,6 +13,7 @@
 #include <game/ovl/memory_card_ops.h>
 
 #include <game/enhance/advanced.h>
+#include <game/enhance/sections.h>
 #include <game/enhance/setpieces.h>
 #include <game/lib/libc.h>
 #include <game/lib/libmc.h>
@@ -794,11 +795,13 @@ void save_slot_summary(uint32_t p, int32_t port, int32_t n) {
 // orig: 0x0024ce68
 void save_blocks_write(uint32_t p) {
     setpieces_save_begin();  // (enhancement: the items given for a level mod's visit are not saved, setpieces.h)
+    const int world_rows = sections_save_begin();  // (enhancement: a world section's level state is the session's, sections.h)
     sw(p, save_list_size(OV(0x001845c0)));
     sw(p + 4, save_list_size(OV(0x001848c0)));
     uint32_t q = p + 8;
     q += static_cast<uint32_t>(save_block_write(q, 0, OV(0x001845c0)));
     for (int32_t i = 0; i < 0x14; ++i) q += static_cast<uint32_t>(save_block_write(q, i, OV(0x001848c0)));
+    sections_save_end(world_rows);
     setpieces_save_end();
 }
 

@@ -29,6 +29,9 @@ struct WorldBytes {
     std::vector<Range> ranges;
     std::vector<uint8_t> coll, sky, gp;
     size_t core = 0;  // (the asset data's size: for the logs)
+    // (stage 10) its HUD: the HUD header (the level file's part 4: the animations, frames, palettes and textures) and its level's
+    // set (part 6, decompressed: the textures and palettes the level's own HUD elements draw, a boss's health bar)
+    std::vector<uint8_t> hud, hud_set;
 };
 // orig: (host) the worker's part: level `level`'s data file read (its index, its asset data decompressed: the world's blocks,
 // the collision and sky blocks when asked) and its gameplay file (`pal`: the PAL disc's) decompressed; false (`err`) when not
@@ -68,6 +71,7 @@ struct WorldBuild {
     int32_t k = 0, last = -1;
     uint32_t tie_n = 0, shrub_n = 0, tfrag_n = 0;
     bool masks = false;
+    uint32_t fx_n = 0, fx_out = 0;  // (its effect textures, those whose texels or palette lie past their copied block)
     size_t bytes = 0;  // (the heap bytes: the world block, the instances)
     double ms = 0;     // (the build's time on the game's thread, every step)
     double step_max[9] = {};  // (the longest call of each step)
@@ -80,6 +84,25 @@ bool world_build_begin(WorldBuild& w, int level, const WorldBytes& b, uint32_t g
 // false when it is done. The section's tables are the engine's during the step, the engine's own (the current section's) put
 // back after it
 bool world_build_step(WorldBuild& w, const WorldBytes& b, const std::string& owner);
+
+// (stage 10) A world's HUD pictures: the HUD animations of the world's level the session's HUD data lacks (a boss's health bar:
+// Umbris's 0x7562), added to a copy of the session's HUD tables (the animations, frames, palettes and textures: the HUD data's
+// tables at 0x17e4d8 +0x1c..+0x28) with their textures and palettes from the level's own set (copied into the session heap,
+// uploaded to the GS memory on demand as the game's level set is). The tables are the HUD's while the world's section is
+// current; the session's own otherwise.
+struct WorldHud {
+    uint32_t block = 0;                      // (the heap block: the tables and the level set's bytes; 0 none)
+    uint32_t anims = 0, frames = 0, pals = 0, texs = 0;
+    int32_t pal_n = 0, tex_n = 0;            // (the counts the HUD's per-frame residence reset walks)
+    std::vector<uint32_t> keys;              // (the animations added)
+};
+// orig: (host) the world's HUD made from its level's HUD bytes (`b.hud`, `b.hud_set`) and the session's HUD now (`owner` the
+// heap block's): false (nothing added) when its level has no animation the session lacks, or no room
+bool world_hud_build(WorldHud& h, int level, const WorldBytes& b, const std::string& owner);
+// orig: (host) the HUD's tables made a world's (`h`), or the session's own (null)
+void world_hud_put(const WorldHud* h);
+// orig: (host) a session's level start: the session's own HUD tables are the HUD's (nothing to put back)
+void world_hud_reset();
 
 // orig: (host) the world's level's placed objects' zone masks (+0x36, the gameplay file's +0x8c list by the placement's uid on
 // its level): set on the moby `m` placed from its level's uid `uid` (a world with a zone grid)

@@ -30,7 +30,7 @@ extern int g_ambient_particles;
 void mrp_particles_draw(uint64_t game_frame);
 
 // orig: (host) whether the game's own rain / snow is not to be drawn this frame (a rain or snow line of the level's file replacing it
-// while the option is on; RAC1_PARTICLES_GAME=1 keeps it, for comparing): read by the GS replica's draw of the frame's primitives
+// while the option is on; RAC1_PARTICLES_GAME=1 keeps it, for comparing): shown by the debug menu
 bool mrp_particles_hide_game();
 // orig: (host) whether one of the frame's 3D effect primitives (mrp_fx.h: its producer `kind`, its GS TEX0 and primitive type) is the
 // game's rain / snow that ours replace now: not drawn (mrp_fx_draw; the game made it as ever)

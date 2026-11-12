@@ -73,6 +73,9 @@ enum Stage : int {
     kScreenshots,       // testing: screenshots
     kPacing,            // the frame cap's wait
     kPresent,           // the swap (the present: the v-sync's wait, the driver's queue full)
+    kFrameBegin,        // Vulkan: the frame begun (its fence waited for, its pools reset, the clears); inside the draw
+    kAcquire,           // Vulkan: the wait for the swapchain's next image (vkAcquireNextImageKHR: a full FIFO queue blocks here)
+    kMatCapture,        // Surface Detail: the frame's colour and depth copied for the materials' reflections (mrp_lighting_material_capture)
     kStageCount
 };
 
@@ -178,6 +181,10 @@ void game_thread_attach();
 void frame_mark();
 // The game frames this host frame runs (its first zone's context).
 void frame_steps(int steps);
+// This turn of the main loop is not a frame: it ran no game frame and drew nothing (it came before the next game frame was
+// due, and waits for it). Its time goes on in the frame being recorded - the next frame_mark does not end it -, so the
+// frames counted are the frames shown, whether or not the view asked for the profiler in between.
+void frame_hold();
 // A picture presented by this host frame beyond the frame's own (the frame extrapolation's: k pictures a step).
 void frame_picture();
 
@@ -226,6 +233,8 @@ struct Summary {
     double waits = 0;       // the main thread's waits (the stages marked wait)
     double game_code = 0, host_work = 0;
     double main_cpu = 0;
+    double prepare_total = 0;  // the Prepare stage with the stages inside it (the chain's capture, the scene capture's wait, the moby lists)
+    int steps_hist[4] = {};    // the host frames that ran 0, 1, 2 and 3 or more game frames
     double worker_busy[kWorkerCount] = {}, worker_cpu[kWorkerCount] = {};
     double part[kPartCount] = {};
     double steps = 0;

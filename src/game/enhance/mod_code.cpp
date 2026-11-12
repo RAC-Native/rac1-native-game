@@ -6,14 +6,18 @@
 #include <runtime/iop/snd989_iop.h>
 #include <game/enhance/advanced.h>
 #include <game/enhance/class_profiles.h>
+#include <game/enhance/hero_modes.h>
 #include <game/enhance/leveldata.h>
 #include <game/enhance/pool.h>
+#include <game/enhance/section_world.h>
 #include <game/enhance/sections.h>
 #include <game/enhance/session.h>
 #include <game/enhance/session_runtime.h>
 #include <game/enhance/setpieces.h>
 #include <game/ovl/arrival.h>
+#include <game/ovl/level_change.h>
 #include <game/ovl/music_streams.h>
+#include <game/lib/snd989.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -131,6 +135,7 @@ struct SdkPlaced {
     float pos[3] = {};
     float yaw = 0;
     std::string params;
+    int32_t section = 0;  // (format 3) a section's object line: its section (0 main's)
 };
 struct SdkSound {
     std::string name;
@@ -167,6 +172,10 @@ struct Obj {
     // the hero's ride reads, hero_platform_ride 0x2134c0's moby_pvar_word2: +0x00 this frame's turn, +0x10 its move), 0 none
     uint32_t plat = 0, plat_pvars = 0;
     float last[3] = {}, last_rot[3] = {};
+    // (a session's sections) the section it was spawned, placed or shown in last (sections_current): while a game world's section
+    // is current only that section's objects are drawn (main's, at main's coordinates, are not drawn in the planet's world)
+    int32_t section = 0;
+    bool away = false;  // (not in the current section's world, or a world's object outside it: not drawn, not solid)
 };
 struct Sdk {
     bool on = false;            // the current level has a level.sdk
@@ -337,8 +346,92 @@ int32_t api_sound(int32_t idx, uint32_t m) {
     return sound_play_indexed(idx, 0, m != 0 && is_moby(m) ? m : moby_base());
 }
 
+// (ABI 19) a level mod's music_track: its music table in the level header's while it plays (the level's, or the current
+// section's, kept in g_mt.saved for music_track(NULL)); a fade lowers the playing music's volume first
+struct MusicTrackState {
+    std::string name;        // the track playing (or faded to), "" none
+    bool on = false;         // a track plays, or the fade back to the level's music has not ended
+    uint32_t saved[15] = {}; // the level's / the current section's music table
+    int32_t saved_track = 0; // the music slot's track (0x151708) then
+    uint32_t to[15] = {};    // the fade's next table (to_saved: g_mt.saved)
+    bool to_saved = false;
+    int32_t fade_total = 0, fade_left = 0, fade_vol = 0x400;
+};
+MusicTrackState g_mt;
+constexpr uint32_t MUSIC_SLOT = 0x001516d0 + 0x34;  // (music_streams.h: the music's stream slot; +4 its track, +6 its volume)
+
+void music_track_switch() {
+    g_mt.fade_left = 0;
+    if (g_mt.to_saved) {
+        level_music_words_put(g_mt.saved);
+        music_stop_all();
+        music_start(g_mt.saved_track, 1, 0x400);
+        g_mt.on = false;
+        std::printf("[music_track] the level's music again\n");
+    } else {
+        level_music_words_put(g_mt.to);
+        music_stop_all();
+        music_start(0, 1, 0x400);
+        std::printf("[music_track] \"%s\" plays (sectors %#x, %#x)\n", g_mt.name.c_str(), g_mt.to[0], g_mt.to[1]);
+    }
+}
+
+// once a frame of play: the fade's step (the music slot's volume, as the game's own fade sets it)
+void music_track_frame() {
+    if (g_mt.fade_left <= 0) return;
+    if (--g_mt.fade_left <= 0) {
+        music_track_switch();
+        return;
+    }
+    const uint32_t h = lwu(MUSIC_SLOT);
+    const int32_t st = static_cast<int16_t>(lh(MUSIC_SLOT + 0xa));
+    if (h == 0 || h == 0xffffffffu || st < 4 || st > 8) return;
+    sw(MUSIC_SLOT, 0xffffffffu);  // (the handle back with the reply)
+    snd_set_sound(h, 5, g_mt.fade_vol * g_mt.fade_left / g_mt.fade_total, 0, 0, 0, OVF(0x00266380), MUSIC_SLOT);
+}
+
+int32_t api_music_track(const char* name, int32_t fade_frames) {
+    const char* who = g_cur != nullptr ? g_cur->mod->folder.c_str() : "?";
+    if (name == nullptr) {
+        if (!g_mt.on || g_mt.to_saved) return 1;
+        g_mt.name.clear();
+        g_mt.to_saved = true;
+    } else {
+        if (g_mt.on && !g_mt.to_saved && g_mt.name == name) return 1;  // (playing already: it goes on)
+        uint32_t w[15];
+        if (!level_music_track_words(name, w)) {
+            std::fprintf(stderr, "[mod %s] music_track(\"%s\"): the level has no such music_track (level.txt's music_track lines)\n", who, name);
+            return 0;
+        }
+        if (!g_mt.on) {
+            level_music_words_get(g_mt.saved);
+            g_mt.saved_track = lh(MUSIC_SLOT + 4);
+        }
+        g_mt.on = true;
+        g_mt.name = name;
+        g_mt.to_saved = false;
+        std::memcpy(g_mt.to, w, sizeof w);
+    }
+    if (fade_frames <= 0) {
+        music_track_switch();
+    } else {
+        if (g_mt.fade_left <= 0) {
+            const int32_t v = lh(MUSIC_SLOT + 6);
+            g_mt.fade_vol = v > 0 ? v : 0x400;
+        }
+        g_mt.fade_total = g_mt.fade_left = std::min<int32_t>(fade_frames, 600);
+    }
+    return 1;
+}
+
+const char* api_music_track_now() { return g_mt.on && !g_mt.to_saved ? g_mt.name.c_str() : nullptr; }
+
 void api_music(int32_t track) {
     if (track < 0 || track >= 15) return;
+    if (g_mt.on) {  // (a music_track playing: the level's music table again first)
+        level_music_words_put(g_mt.saved);
+        g_mt = MusicTrackState{};
+    }
     music_stop_all();
     music_start(track, 1, 0x400);
 }
@@ -504,6 +597,10 @@ uint32_t obj_spawn(int32_t cls, const float pos[3], float yaw, int32_t placed) {
     o.scale = 1.0f;
     o.placed = placed;
     o.shown = true;
+    o.away = false;
+    o.section = placed >= 0 && static_cast<size_t>(placed) < g_sdk.placed.size() && g_sdk.placed[static_cast<size_t>(placed)].section > 0
+                    ? g_sdk.placed[static_cast<size_t>(placed)].section
+                    : std::max(sections_current(), 0);
     // the carrier: no class code (its crate's never runs), hidden from the game's draw (our model is drawn instead),
     // updated at any distance; its collision box the class's size, or none (ghost)
     sw(m + 0x74, 0);
@@ -686,6 +783,7 @@ void api_object_place(uint32_t h, const float pos[3], const float rot[3], float 
     const int i = obj_index(h);
     if (i < 0) return;
     Obj& o = g_sdk.objs[static_cast<size_t>(i)];
+    o.section = std::max(sections_current(), 0);  // (placed in the current section: drawn there, a game world's too)
     for (uint32_t k = 0; k < 3; ++k) {
         if (pos != nullptr) swc1(o.moby + 0x10 + 4 * k, pos[k]);
         if (rot != nullptr) swc1(o.moby + 0x40 + 4 * k, fold_angle(rot[k]));
@@ -699,7 +797,9 @@ void api_object_place(uint32_t h, const float pos[3], const float rot[3], float 
 
 void api_object_show(uint32_t h, int on) {
     const int i = obj_index(h);
-    if (i >= 0) g_sdk.objs[static_cast<size_t>(i)].shown = on != 0;
+    if (i < 0) return;
+    g_sdk.objs[static_cast<size_t>(i)].shown = on != 0;
+    if (on != 0) g_sdk.objs[static_cast<size_t>(i)].section = std::max(sections_current(), 0);  // (shown in the current section)
 }
 
 void api_object_solid(uint32_t h, int on) {
@@ -1034,6 +1134,22 @@ int32_t api_section_current(char* name, int32_t cap) {
     return i;
 }
 int32_t api_section_policy(const char* name, int32_t policy) { return name != nullptr ? section_policy(name, policy) : -1; }
+
+// ---- (ABI 12) hero contexts and modes (hero_modes.h) ----
+int api_hero_build(int32_t level) { return hero_build_set(level, "the plugin's hero_build") ? 1 : 0; }
+int32_t api_hero_build_now() { return hero_build_level(); }
+int32_t api_board_rule(int32_t rule) { return hero_board_rule(rule); }
+void api_board_return(const float pos[3], float yaw) { hero_board_return(pos, yaw); }
+void api_board_fall(int32_t set, float z) { hero_board_fall(set != 0, z); }
+int32_t api_board_touching(uint32_t* out, int32_t max) { return out == nullptr || max <= 0 ? 0 : hero_board_touching(out, max); }
+int api_section_reset(const char* name) { return name != nullptr ? section_reset(name) : 0; }  // (ABI 17)
+int api_hero_mode(int32_t mode, uint32_t obj) { return g_session_rt && hero_mode_set(mode, obj, "the plugin's hero_mode") ? 1 : 0; }
+int32_t api_hero_mode_now() { return hero_mode_now(); }
+int32_t api_hero_energy(int32_t set) { return g_session_rt ? hero_giant_energy(set) : -1; }  // (ABI 18)
+
+// ---- (ABI 13) bosses (sections.h) ----
+int api_boss_set(uint32_t obj) { return sections_boss_set(obj) ? 1 : 0; }
+int32_t api_boss_beaten(const char* name) { return sections_boss_beaten(name != nullptr ? name : ""); }
 
 // a loaded save's session bytes of the plugins (session_load), given after their level_start
 std::vector<std::pair<std::string, std::vector<uint8_t>>> g_session_bytes;
@@ -1416,6 +1532,73 @@ void api_hud_text_ex(int32_t x, int32_t y, uint32_t abgr, float scale, int32_t a
     if (side != 0) render_view_hud_note(at, lwu(HUD_CUR), side);
 }
 
+// (ABI 14) the HUD's width in HUD units: 512 at 4:3, more with a HUD wider than 4:3 over a widened view (Options > Display >
+// HUD, never wider than the view): where the RAC1_HUD_LEFT / _RIGHT elements go, as render_view_hud_shift moves them (half the
+// widening on each side); 512 where hud_side keeps them in the 4:3 frame (the vendor's screens)
+int32_t api_hud_width() {
+    if (lw(OV(0x0015f5c4)) == 5) return 512;
+    return static_cast<int32_t>(512.0f * render_view_hud_widen() + 0.5f);
+}
+
+// ---- (ABI 15) saving from a plugin ----
+// The save block 0x13d290 (memory_card_ops.cpp): +0xc0 the port saved to (-1: no slot chosen), its record's +0x14 the slot, +0xac
+// the slot's save's problems (-1: the card not read yet), +0xd4 the card machine's state (< 3 idle), +0xdc an operation asked
+// for (-1 none), +0xf4 a save in use (level_change_request saves only then: a save loaded, made or started, the card not pulled
+// out since); the menus' card state 0x15eeb0 and its flags 0x15eeb4 (logged)
+constexpr uint32_t SAVE_BLOCK = 0x0013d290u, CARD_UI = 0x0015eeb0u, CARD_FLAGS = 0x0015eeb4u;
+uint64_t g_game_save_at = 0;              // (the frame count + 1 of the last game_save started, 0 none)
+const char* g_game_save_why = nullptr;    // (the last refusal logged: a plugin may ask every frame, each reason logged once in a row)
+
+// a save of the game being written: a card operation that writes one asked for or running (0xf / 0x10 a planet's and
+// game_save's, 0x13 / 0x14 a save image: the Save page's, a new game's; 0x11 / 0x12 the disc's default save read for one)
+int api_game_saving() {
+    const int32_t st = lw(SAVE_BLOCK + 0xd4), op = lw(SAVE_BLOCK + 0xdc);
+    return (st >= 0xf && st <= 0x14) || op == 0xf || op == 0x11 || op == 0x13 ? 1 : 0;
+}
+
+// why game_save cannot start a save now ("" it can): the card's state as level_change_request needs it to save at once, and
+// the game in play (game mode 0, a level in, the hero alive, no level change, no section switch, no save loaded being placed)
+const char* game_save_refusal() {
+    if (g_in_hud || ee_journal_active()) return "from the HUD callback or a replay";
+    if (!g_started || moby_base() == 0) return "no level in play";
+    if (lw(OV(0x0015f5c4)) != 0) return "not in play (a menu, a cutscene, the ship, the vendor, a screen)";
+    if (lw(OV(0x0015f5d8)) != 0 || lw(OV(0x0015f570)) != 0) return "the level is being left";
+    if (lbu(0x00141401) != 0 || lw(0x001415f8) <= 0) return "Ratchet is dead";
+    if (sections_switching()) return "a section switch";
+    if (session_rt_placing()) return "a loaded save not placed yet";
+    const int32_t port = lw(SAVE_BLOCK + 0xc0);
+    if (port != 0 || lw(SAVE_BLOCK + 0x14) < 0) return "no save slot chosen";
+    if (lw(SAVE_BLOCK + 0xf4) == 0) return "no save in use (the card pulled out or failed since)";
+    if (api_game_saving() != 0 || !(lw(SAVE_BLOCK + 0xd4) < 3) || lw(SAVE_BLOCK + 0xdc) >= 0) return "the card busy";
+    if (lw(SAVE_BLOCK + 0xac) != 0) return "the slot's save not read or damaged";
+    if (g_game_save_at != 0 && g_frames + 1 < g_game_save_at + 60) return "a game_save less than a second ago";
+    return "";
+}
+
+// (ABI 15) the game saved into the slot the player chose, as leaving a planet saves (level_change_request(0, -1): the level's
+// state kept, the save's record and the game's and this level's blocks written now, the card asked to write them; the
+// menus' card state shows its error, if any, as for a planet's)
+int api_game_save() {
+    const char* why = game_save_refusal();
+    if (why[0] != 0) {
+        if (why != g_game_save_why)
+            std::printf("[mods] game_save: not now (%s; the card: state %d, operation %d, menus' state %d, flags %#x, a save in use %d)\n", why,
+                        lw(SAVE_BLOCK + 0xd4), lw(SAVE_BLOCK + 0xdc), lw(CARD_UI), lwu(CARD_FLAGS), lw(SAVE_BLOCK + 0xf4));
+        g_game_save_why = why;
+        return 0;
+    }
+    level_change_request(0, -1);
+    if (lw(SAVE_BLOCK + 0xdc) != 0xf) {  // (cannot happen with the checks above)
+        std::fprintf(stderr, "[mods] game_save: the card did not take the save\n");
+        return 0;
+    }
+    g_game_save_at = g_frames + 1;
+    g_game_save_why = nullptr;
+    std::printf("[mods] game_save: a save into slot %d started%s%s (frame %llu)\n", lw(SAVE_BLOCK + 0x14), g_cur != nullptr ? " by " : "",
+                g_cur != nullptr ? g_cur->mod->folder.c_str() : "", static_cast<unsigned long long>(g_frames));
+    return 1;
+}
+
 int32_t api_hud_text_width(const char* text, float scale) {
     if (text == nullptr || !(scale > 0.0f)) return 0;
     // (the small font's advances, as text_width_small counts them: a copy in host memory, the HUD's strings are the HUD's)
@@ -1590,6 +1773,23 @@ void load_all() {
     g_api.object_path_at = api_object_path_at;
     g_api.rail_info = sp_rail_info;
     g_api.fade_active = sp_fade_active;
+    g_api.hero_build = api_hero_build;  // (ABI 12)
+    g_api.hero_build_now = api_hero_build_now;
+    g_api.hero_mode = api_hero_mode;
+    g_api.hero_mode_now = api_hero_mode_now;
+    g_api.boss_set = api_boss_set;  // (ABI 13)
+    g_api.boss_beaten = api_boss_beaten;
+    g_api.hud_width = api_hud_width;  // (ABI 14)
+    g_api.game_save = api_game_save;  // (ABI 15)
+    g_api.game_saving = api_game_saving;
+    g_api.board_rule = api_board_rule;  // (ABI 16)
+    g_api.board_return = api_board_return;
+    g_api.board_fall = api_board_fall;
+    g_api.board_touching = api_board_touching;
+    g_api.section_reset = api_section_reset;  // (ABI 17)
+    g_api.hero_energy = api_hero_energy;      // (ABI 18)
+    g_api.music_track = api_music_track;      // (ABI 19)
+    g_api.music_track_now = api_music_track_now;
     {
         SetpiecesHost h;
         h.hero_damage = api_hero_damage;
@@ -1680,8 +1880,9 @@ bool sdk_read(const std::string& path, Sdk& out) {
             }
             if (!in || !(c.size > 0) || !(c.scale > 0)) return false;
             out.classes.push_back(std::move(c));
-        } else if (k == "object") {
+        } else if (k == "object" || k == "sobject") {  // (sobject: a section's object line, its section first)
             SdkPlaced o;
+            if (k == "sobject") in >> o.section;
             in >> o.cls >> o.pos[0] >> o.pos[1] >> o.pos[2] >> o.yaw;
             if (!in || o.cls < 0 || static_cast<size_t>(o.cls) >= out.classes.size()) return false;
             std::getline(in >> std::ws, o.params);
@@ -1858,8 +2059,19 @@ void sdk_triggers() {
 // the frame's objects for the modern renderer: each shown one's model at its moby's matrix
 void sdk_publish() {
     std::vector<mrpw::HostMeshInstance> v;
+    // (a session's game world sections: while one is current only its objects are there - drawn, and solid as they are -, and
+    // its objects are not there in the others; the rest as before: drawn in every section)
+    const int cur = sections_current();
+    const bool world_cur = cur > 0 && sections_world(cur);
+    for (Obj& o : g_sdk.objs) {
+        if (!o.live || !g_sections_on) continue;
+        const bool here = world_cur ? o.section == cur : !sections_world(o.section);
+        if (!here && lwu(o.moby + 0x94) != 0) sw(o.moby + 0x94, 0);
+        else if (here && o.away) sw(o.moby + 0x94, o.solid ? o.coll : 0);  // (back where it is: its collision as it was)
+        o.away = !here;
+    }
     for (const Obj& o : g_sdk.objs) {
-        if (!o.live || !o.shown || static_cast<int8_t>(lbu(o.moby + 0x20)) < 0) continue;
+        if (!o.live || !o.shown || o.away || static_cast<int8_t>(lbu(o.moby + 0x20)) < 0) continue;
         const SdkClass& c = g_sdk.classes[static_cast<size_t>(o.cls)];
         if (c.mesh < 0) continue;
         mrpw::HostMeshInstance in;
@@ -1908,8 +2120,19 @@ void mod_code_start() {
 }
 
 // orig: (none) — enhancement (mod_code.h)
+bool mod_code_music_track_on() { return g_mt.on; }
+
+// orig: (none) — enhancement (mod_code.h)
+bool mod_code_music_defer(const uint32_t w[15]) {
+    if (!g_mt.on) return false;
+    std::memcpy(g_mt.saved, w, sizeof g_mt.saved);
+    return true;
+}
+
+// orig: (none) — enhancement (mod_code.h)
 void mod_code_level_load() {
     if (!g_tried) load_all();
+    g_mt = MusicTrackState{};  // (a music_track: stops when the level is left)
     {  // (stage 7) the items of the last level's visit taken back; this level's rails and items (setpieces.h)
         const int slot = level_slot();
         const std::string dir = slot >= kFirstLevelSlot ? level_slot_build_dir(slot) : std::string();
@@ -1957,6 +2180,7 @@ void mod_code_frame() {
     if (profiles_any() && !held) profiles_frame(g_pool);  // (base_hunt's hunters, Kalebo III's enemies: class_profiles.h)
     if (!held) profiles_session_frame();                   // (a session's imported spawns with a profile)
     if (g_mod_weapons_limited) weapons_frame();
+    music_track_frame();  // (ABI 19: a music_track's fade)
     if (!held) setpieces_frame();  // (stage 7) the rails' events, the hazards, the fade (setpieces.h)
     if (!held && lwu(MOD_LIGHTS) != 0) sw(MOD_LIGHTS, 0);  // (light_add: the frame's own, from its frame callbacks)
     for (Plugin& p : g_plugins)
@@ -2148,6 +2372,12 @@ void mod_code_section_switch(const char* from, const char* to, const char* entry
         if (p.cb.section_leave != nullptr) with(p, [&] { p.cb.section_leave(p.cb.user, from); });
         if (p.cb.section_enter != nullptr) with(p, [&] { p.cb.section_enter(p.cb.user, to, entry); });
     }
+}
+
+// orig: (none) — enhancement (mod_code.h)
+void mod_code_boss(const char* section, int32_t cls, uint32_t obj, int32_t event) {
+    for (Plugin& p : g_plugins)
+        if (p.cb.size >= offsetof(rac1_mod, boss) + sizeof(p.cb.boss) && p.cb.boss != nullptr) with(p, [&] { p.cb.boss(p.cb.user, section, cls, obj, event); });
 }
 
 // orig: (none) — enhancement (mod_code.h)

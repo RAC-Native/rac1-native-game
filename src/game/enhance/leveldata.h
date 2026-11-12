@@ -29,8 +29,19 @@ constexpr uint32_t LD_GROUP_COUNT = 0x0015fff4u; // the groups' count (one past 
 constexpr uint32_t LD_GROUPS = 0x001ab840u;      // 112 words: a group's list of moby indices (the last flagged 0x8000)
 constexpr uint32_t LD_GROUP_MAX = 112;
 
+// (a world section of the session's own base level: `world kalebo` on a Kalebo III level mod) The base level's own objects are
+// the session's view (the engine's: its paths, volumes, rails and groups are the level mod's, the profiles' additions), so the
+// base level's world has no registry under its level number. Its level data (the real Kalebo III's cameras, paths, volumes,
+// rails, groups) is a registry of its own under this key, made from the pool like any other level's but with no context (the
+// base's code is the running code), made the engine's while the world's section is current (ld_engine_take) and put back after:
+// the same calls as any world's, with this key in place of the level's. ld_world_key maps a world section's level to its key.
+constexpr int LD_BASE_WORLD = 31;
+// orig: (host) the registry key of the level `level`'s world as a section's: LD_BASE_WORLD when `level` is the session base's, else `level`
+int ld_world_key(int level);
+
 // orig: (host) level `level`'s registry (a context's: made with its first import, from its level's leveldata): true when
-// it exists or was made now. The base level's (the session's view) always exists: its objects are the engine's own
+// it exists or was made now. The base level's (the session's view) always exists: its objects are the engine's own. The key
+// LD_BASE_WORLD: the base level's own world's, made now from its level's leveldata (no context)
 bool ld_registry_make(int level);
 // orig: (host) level `level`'s registry dropped (its context gone: ctx_drop / a level setup); all of them
 void ld_registry_drop(int level);
@@ -55,6 +66,11 @@ int32_t ld_group_create(int level, const uint32_t* mobys, int n);
 // orig: (host) group `g` of level `level`'s registry set to the mobys `mobys` (moby addresses; the twin run: its level's group
 // at its own index, as its pvars name it): false without a registry
 bool ld_group_set(int level, int32_t g, const uint32_t* mobys, int n);
+// orig: (host) level `level`'s registry's grind rails made the table `table` of `count` records (a world section's rail table, the
+// engine's while it is current: the level's own sites, which see the registry's, then compare the same rails the hero rides)
+void ld_rails_put(int level, uint32_t table, uint32_t count);
+// orig: (host) camera `k`'s pvar block in level `level`'s registry (its level's cameras, as lay_out copied them): 0 when none
+uint32_t ld_camera_pvars(int level, uint32_t k);
 // orig: (host) level `level`'s registry's path count (its level's own paths)
 int32_t ld_path_count(int level);
 // orig: (host) path `index` of level `index`'s own level data (the leveldata file): its points (false: none)
@@ -69,6 +85,7 @@ void ld_leave(int level);
 // a session class's level + 1 (session.cpp: the classes of other levels), per class id (0x1ec0 ids): 0 none
 extern uint8_t g_ld_class_level[0x1ec0];
 extern bool g_ld_any;  // (some class reads a registry: the dispatch asks)
+extern bool g_ld_world;  // (stage 10: a world section's objects are the engine's: the dispatch asks for the base's enemies)
 
 // A section of a game level's world (stage 8, sections.h): while it is the current section, the engine's own objects are its
 // level's registry's (the level's paths, volumes, cameras, rails, groups: what the base's engine code reads, a camera zone, a

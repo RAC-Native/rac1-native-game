@@ -35,6 +35,27 @@ constexpr int32_t SECTION_KEEP = 2;    // kept running
 // orig: (host) a session's level header read (session_rt_level): the build's sections.txt read (its sections, entries,
 // checkpoints, portals, settings); "" (or none): off
 void sections_level(const std::string& build_dir);
+// (stage 10) Bosses: a section's `boss` lines name classes whose objects are its bosses (and the plugin's boss_set names one).
+// A death in the section takes a boss still in play out and places it again (the fight from its start); a boss leaving play
+// otherwise is beaten: logged, the plugin's boss callback, never placed again in this visit of the session.
+// orig: (host) the object `moby` (in play, in the current section) one of its bosses: false when not (no sections, gone)
+bool sections_boss_set(uint32_t moby);
+// orig: (host) the bosses beaten in section `name` ("" the current one) in this visit of the session; -1 no such section
+int sections_boss_beaten(const std::string& name);
+// orig: (host) (stage 10) section `index`'s rail table: where the mod's own rails start (a world's section: after its level's; 0
+// otherwise)
+int32_t sections_rail_first(int index);
+// orig: (host) (stage 10) a memory card save's image about to be made: the session's own level state (its level records) put back
+// in place of a world section's (sections.cpp: a world's level state); the level whose state was in (-1 none), for
+// sections_save_end to put it back after the image
+int sections_save_begin();
+void sections_save_end(int level);
+// orig: (host) moby_spawn gave slot `moby` (`by`: the moby whose update or callback runs, 0 none): a moby one of a section's objects (or
+// one of theirs) spawned is that section's, taken out with them when it is left (frozen with them) and with a boss placed again
+void sections_moby_spawned(uint32_t moby, uint32_t by);
+// orig: (host) `moby` one of the current section's objects (or a moby they spawned) while that section is a game world's: the
+// world's own (leveldata.cpp: its level's data, not the base's, for a class the base has a profile for)
+bool sections_world_object(uint32_t moby);
 // orig: (host) the session's arrival (session_rt_loaded): main's collision, sky, settings and music taken as the game set
 // them, main's classes of other levels placed, the other sections' streaming started
 void sections_arrival();
@@ -46,6 +67,10 @@ void sections_hud();
 
 // orig: (host) a session with sections is on
 bool sections_any();
+// orig: (host) a section switch asked and not over (its streaming, its fade): the SDK's game_save waits for it
+bool sections_switching();
+// orig: (host) section `index` a game world's (`world <level>`)
+bool sections_world(int index);
 // orig: (host) the sections' count (main included; 0 none), the current one (0 main; -1 no session with sections), a
 // section's name (index) and index (name; -1 none)
 int sections_count();
@@ -54,6 +79,8 @@ std::string sections_name(int index);
 int sections_index(const std::string& name);
 // orig: (host) the level whose sky the current section has drawn (its sky line), -1 when the sky is main's (or no sections)
 int sections_sky_level();
+// the current section's world (`world <level>`: that level's number), -1 none (main, a section of the mod's own, no sections)
+int sections_world();
 // orig: (host) level.txt's start line: the section the session starts in (0 none: main, where the ship lands), its entry
 int sections_start();
 bool sections_start_entry(float pos[3], float* yaw, std::string* name);
@@ -69,6 +96,10 @@ int32_t sections_respawn_policy(int32_t session_policy);
 // orig: (host) the soft reset of the current section's objects (`policy` SESSION_RESPAWN_RESET: the killed ones placed again
 // as at its entry, the game's killed-for-good ones not; main's classes of other levels placed too): their counts
 void sections_respawn_objects(int32_t policy, size_t* back, size_t* kept_dead);
+
+// orig: (host) after the soft reset (stage 9): the current section's hero mode (its hero line's) entered again at the next
+// frame of play, a new object of it where Ratchet stands
+void sections_hero_respawned();
 
 // Saves (session_runtime.cpp's .pc item)
 // orig: (host) section `index`'s objects gone (killed since it was entered: not to come back until a death there), by uid
@@ -87,6 +118,10 @@ int section_enter(const std::string& name, const std::string& entry, int32_t fad
 // orig: (host) section `name` unloaded (its objects out of play, its heap blocks given back): 1 done, 0 not (the current one,
 // main, or no such section)
 int section_unload(const std::string& name);
+// orig: (host) (ABI 17) section `name`'s placed objects as at its first entry: the killed or beaten ones placed again at its next
+// entry (their spawns gone, its bosses to beat again), its level state back (docs/open-engine.md, "Putting a section back"). 1 done;
+// 0 not: no session with sections, no such section, main, the current one, one a switch is pending into (the log says which)
+int section_reset(const std::string& name);
 // orig: (host) section `name`'s policy when it is left (SECTION_*), -1 only asks: the policy now, -1 no such section
 int32_t section_policy(const std::string& name, int32_t policy);
 

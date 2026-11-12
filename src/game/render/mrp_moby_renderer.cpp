@@ -2973,7 +2973,7 @@ void draw_casters(const float* light_vp, const float* sphere, const float* withi
         for (size_t p = 0; p < nparts; ++p) {
             if (p < F.part_own.size() && F.part_own[p] != 0) continue;
             const glm::vec3 pos = F.part_pos[p];
-            if (ortho) {  // (the part's sphere - as mrp_moby_caster_rect takes it - against the cascade's square)
+            if (ortho) {  // (the part's sphere - as mrp_moby_caster_parts takes it - against the cascade's square)
                 const glm::vec4 q = vp * glm::vec4(pos, 1.0f);
                 const float r = p < F.part_rad.size() ? F.part_rad[p] : 4.0f;
                 if (std::abs(q.x) - r * osx > 1.0f || std::abs(q.y) - r * osy > 1.0f) continue;
@@ -3471,35 +3471,13 @@ void mrp_moby_draw_casters(const float* light_vp, const float* sphere, const flo
     draw_casters(light_vp, sphere, within);
 }
 
-// orig: (host) see mrp_lighting.h
-bool mrp_moby_caster_rect(const float* light_vp, float rect[4], const float* within) {
-    if (!g_frame.active || !g_frame.built || g_frame.mode != 0 || g_frame.part_pos.empty()) return false;
-    const glm::mat4 vp = glm::make_mat4(light_vp);
-    const float sx = glm::length(glm::vec3(vp[0][0], vp[1][0], vp[2][0])), sy = glm::length(glm::vec3(vp[0][1], vp[1][1], vp[2][1]));
-    rect[0] = rect[1] = 1e30f;
-    rect[2] = rect[3] = -1e30f;
-    bool any = false;
-    for (size_t i = 0; i < g_frame.part_pos.size(); ++i) {
-        if (i < g_frame.part_own.size() && g_frame.part_own[i] != 0) continue;
-        if (within != nullptr && glm::length(g_frame.part_pos[i] - glm::vec3(within[0], within[1], within[2])) > within[3]) continue;
-        any = true;
-        const glm::vec4 q = vp * glm::vec4(g_frame.part_pos[i], 1.0f);
-        const float r = i < g_frame.part_rad.size() ? g_frame.part_rad[i] : 4.0f;
-        rect[0] = std::min(rect[0], q.x - r * sx);
-        rect[1] = std::min(rect[1], q.y - r * sy);
-        rect[2] = std::max(rect[2], q.x + r * sx);
-        rect[3] = std::max(rect[3], q.y + r * sy);
-    }
-    return any;
-}
-
 // orig: (host) see mrp_lighting.cpp (its declaration)
 int mrp_moby_caster_parts(const float* light_vp, std::vector<float>& out, const float* within) {
     if (!g_frame.active || !g_frame.built || g_frame.mode != 0 || g_frame.part_pos.empty()) return 0;
     const glm::mat4 vp = glm::make_mat4(light_vp);
     const float sx = glm::length(glm::vec3(vp[0][0], vp[1][0], vp[2][0])), sy = glm::length(glm::vec3(vp[0][1], vp[1][1], vp[2][1]));
     int n = 0;
-    for (size_t i = 0; i < g_frame.part_pos.size(); ++i) {  // (the parts mrp_moby_caster_rect takes)
+    for (size_t i = 0; i < g_frame.part_pos.size(); ++i) {  // (the parts a caster pass draws)
         if (i < g_frame.part_own.size() && g_frame.part_own[i] != 0) continue;
         const glm::vec3 p = g_frame.part_pos[i];
         if (within != nullptr && glm::length(p - glm::vec3(within[0], within[1], within[2])) > within[3]) continue;
