@@ -227,6 +227,7 @@ uint32_t draw_loop(uint32_t a0_in, uint32_t a1_in, int32_t a2_in, uint32_t a3_in
     uint64_t t6 = 0, s3 = 0;
     uint32_t t6_hi = 0, s1 = 0, s0 = 0;
     uint32_t chain_begin = 0;  // (host) where the moby's chain parts begin, for the observer
+    uint32_t pg = 0;           // (host) the group of parts being written (g_moby_draw_parts)
     int32_t s2 = 0;
     Q128 t1q, t2q, t3q, t4q, t5q, t6q;
     Vf t3v;  // t3 as QMFC2 of vf1 left it (the deferred path)
@@ -305,6 +306,7 @@ L_255e48:
         if (ra >= 0) goto L_255d18;
         goto L_256840;
     }
+    g_moby_draw_parts = MobyDrawParts{};  // (host)
     chain_begin = sp;
     at = sx(static_cast<uint32_t>(lw(static_cast<uint32_t>(a3) + 0x3a00)));
     s2 = 2;
@@ -596,9 +598,12 @@ L_2564c8:
     t3q = lq(SPR + 0x3e90);
     t4q = lq(SPR + 0x3ec0);
     t5q = lq(SPR + 0x3ed0);
+    pg = g_moby_draw_parts.groups++;  // (host: the mesh's parts noted)
+    g_moby_draw_parts.group[pg] = MobyDrawParts::Group{0, sp, 0, s4 < 0 ? 0x28du : 0x129u, static_cast<uint32_t>(s3) & 0xffffu};
     // the chain, a part per packet of the class's mesh (s1..s0, 0x10 each): the matrices (the
     // first two parts, VU1 0x129 / 0x28d by turns), the vertex data references, the program call
     do {
+        ++g_moby_draw_parts.group[pg].count;  // (host)
         s4 = -s4;
         if (s2 > 0) {
             sq(sp, t1q);
@@ -638,6 +643,7 @@ L_2564c8:
         }
         if (s2 > 0 && t6 != 0) {  // the first part of a faded / alpha-tested moby: its GS state
             chain_gs_state(sp);
+            g_moby_draw_parts.group[pg].gs_tag = sp;  // (host)
             Q128 g;
             if ((t6 & 0x200) != 0) {
                 g = lq(SPR + 0x3f20);
@@ -655,6 +661,7 @@ L_2564c8:
     } while (s1 != s0);
     if (t6 != 0) {  // the GS state put back
         chain_gs_state(sp);
+        g_moby_draw_parts.put_back = sp;  // (host)
         const Q128 g = (t6 & 0x200) != 0 ? lq(SPR + 0x3f20) : lq(SPR + 0x3f30);
         sq(sp + 0x20, g);
         sp += 0x30;
@@ -944,7 +951,10 @@ L_256b50: {  // the shadow mesh (class +6 / +7 packets): flattened along the lig
     U.add(18, 18, 1, XYZW);
     s2 = 2;
     s3 = 0x1400000a;
+    pg = g_moby_draw_parts.groups++;  // (host: the shadow mesh's parts noted)
+    g_moby_draw_parts.group[pg] = MobyDrawParts::Group{0, sp, g_moby_draw_parts.put_back, s4 < 0 ? 0x28du : 0x129u, 0xau};
     do {
+        ++g_moby_draw_parts.group[pg].count;  // (host)
         s4 = -s4;
         if (s2 > 0) {
             sq(sp, t1q);

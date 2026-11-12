@@ -13,6 +13,8 @@
 #ifndef RAC1_GAME_RENDER_MRP_SCENE_H
 #define RAC1_GAME_RENDER_MRP_SCENE_H
 
+#include <game/ovl/moby_draw.h>
+
 #include <cstdint>
 #include <vector>
 
@@ -98,6 +100,7 @@ struct MrpMoby {
     uint32_t record_first = 0;                // into MrpFrame::records (bytes, 0x10 * record_qwords)
     uint32_t record_qwords = 0;
     uint32_t part_first = 0, part_count = 0;  // into MrpFrame::parts
+    MobyDrawParts noted{};                    // what the draw loop wrote of the moby's parts (moby_draw.h): the parts are made from it
     // drawn into a render target: the game's view was a texture's when the draw loop ran (render_target_view 0x1f7fa0 set
     // the screen globals 0x13e500 / 0x13e504 to the texture's size, not the display's 0x1518d0 / 0x1518d2): the menus' item models
     // (0x24ff08 called by the widgets' draws between 0x1fc928 and 0x1fca18). Then the projection block the loop sent at this call
