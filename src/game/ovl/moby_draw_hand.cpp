@@ -302,7 +302,8 @@ L_255e38:
     if (t0 == 0) sb(s8 + 0x31, 1);
 L_255e48:
     g_moby_draw_mscal = static_cast<uint32_t>(s3) & 0xffffu;  // (host)
-    if (g_moby_draw_skip != nullptr && g_moby_draw_skip(s8, g_moby_draw_mscal, ra < 0 ? 1u : 0u)) {  // (host: left out)
+    g_moby_draw_lod = moby_draw_lod_key(qlo(U.vf[3]), qlo(U.vf[1]), lbu(s8 + 0x72));  // (host)
+    if (g_moby_draw_skip != nullptr && g_moby_draw_skip(s8, g_moby_draw_mscal, ra < 0 ? 1u : 0u, g_moby_draw_lod)) {  // (host: left out)
         if (ra >= 0) goto L_255d18;
         goto L_256840;
     }

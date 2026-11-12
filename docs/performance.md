@@ -325,7 +325,7 @@ run. At the frame's end the draw scene is made of the run's mobys and the real p
 the whole run would have drawn it (the list's order, the deferred pass's mobys after the others), the real ones' GS state read
 from the real chain. The loop's other fixed capacities - 64 sub-mesh records, the packet buffer, the skinning ring - are not
 used by a moby left out: a run that would have filled one with them is made again whole (never in the runs below). At LOD Low
-to Maximum the distances differ and the whole pass runs again as before.
+to Maximum the distances differ too: see "The extras' run at the other draw distances" below.
 
 Proved: `=2` makes both runs each frame and compares the merged scene with the whole run's as the renderer reads them (the
 view, the mobys in order, every field of each, its pose, its record's lights and tint, its parts' program, matrix and GS
@@ -393,6 +393,58 @@ the game thread -6 to -12 %, the frame period -3 to -10 % (below in 3 to 5 runs 
 nothing beyond the noise: the real pass's decode ran on the job pool at the frame's end and was a few hundredths of a
 millisecond there (the `Moby draw lists` stage 0.15 to 0.20 ms either way); at 16:9 with LOD Original the extras' run
 had already left the shadow few chains to decode.
+
+### The extras' run at the other draw distances
+
+Off Original the slider scales the mobys' draw and detail distances for the shadow run (Low 2x, Medium 4x, High 8x, Maximum
+none), widened or not, and the run drew everything again, before the real pass. Of a moby's draw the distances decide three
+things and nothing else: whether it is drawn at all (its draw distance and the loop's maximum), the fade of its alpha in the
+last stretch before that distance, and the low detail model past its detail distance. A moby well inside the game's own
+distances is drawn the same by both passes.
+
+`RAC1_PERF_MOBY_EXTRAS_LOD` (`moby_draw.h`'s `g_moby_draw_lod`, `mrp_lod.cpp`): where the loop is about to draw a moby it
+also notes those two decisions - the fade (0..0x80) and the model, made there from the registers the loop itself reads next
+- ; the real pass's go into its scene entry, and the extras' run, now made at every setting that has a shadow run, leaves a
+moby out only when the program, the fade and the model are the real pass's. The observer checks the note against what the
+loop then did (the model it drew, the alpha of the record's tint): never different in the runs below. Two things changed
+with it. The 64 sub-mesh records are a run's own, so what a whole run would have used is this run's and one for each moby
+left out that has them (before: all of the real pass's, a bound too wide once both passes draw a moby). And from Medium up
+the whole run itself fills them on some levels in a widened view (Rilgar in 3 runs of 10 at Medium and 5 at High, Blarg in
+4 at High and Maximum, Kalebo III in 2 at Maximum), where a run made twice cost more than it saved: while the whole run
+fills them or nearly, and for thirty runs after the packet buffer or the ring filled, the whole run is made from the start
+(the scene is the same either way; 1 to 3 runs of 900 made twice on those levels).
+
+How much the run leaves out is how much of it the real pass drew the same - on Novalis, Kerwan, Blarg, Orxon and Kalebo
+III at 16:9, of the mobys a frame:
+
+| | Novalis | Kerwan | Blarg | Orxon | Kalebo III |
+|---|---|---|---|---|---|
+| Low | 9 of 23 | 14 of 69 | 7 of 27 | 19 of 61 | 80 of 157 |
+| Medium | 9 of 25 | 9 of 116 | 7 of 73 | 19 of 66 | 67 of 261 |
+| High | 8 of 25 | 9 of 139 | 4 of 105 | 19 of 66 | 18 of 262 |
+| Maximum | 8 of 25 | 9 of 139 | 3 of 115 | 19 of 66 | 14 of 262 |
+
+Most of what High and Maximum draw is beyond the game's own distances, or drawn by the game with the low detail model.
+
+Proved: `RAC1_PERF_MOBY_EXTRAS=2` makes both runs and compares the merged scene with the whole run's, as above: 0 differing
+frames of 63,401 - Low and High on the 19 levels at 16:9 (18,960 and 18,106), Medium and Maximum on six, High and Low at 4:3
+on eight and four, Maximum at 32:9 on four, Original at 16:9 on six - and of 12,979 in sixteen other modes at those settings
+(the draw loop's two forms compared - the note is part of that comparison -, the transliteration alone, the pose memo
+verified, the game thread off, no pipeline, the modern shadows, two game frames a host frame, the pose order, the parts
+decoded, a wider field of view, two routes, a walk with the pause menu). `RAC1_MRP_LOD_VERIFY=1` on three levels of each set
+and a route: the memory after every run as before it. With the switch at 0 (the whole run before the real pass) and at 1,
+`RAC1_MRP_SCENE_HASH`'s mobys, joints, parts and lights and RAMHASH are identical on the 19 levels at High, 16:9, on four at
+Low, 4:3, and on four at Maximum, 16:9 - Rilgar and Blarg among them, where the whole run is held; the pictures at frames
+300, 600 and 1500 identical on the 19 levels at High, 16:9, OpenGL, and on four with Vulkan, on four at Low and at Maximum,
+4:3 (93 of 93); the reference images and the route's RAMHASH unchanged. The moby scene and the LOD module ran four levels (a
+held whole run among them) and a route under the address sanitizer without a report; the generated sources regenerate the
+same.
+
+Measured on a machine busy with other work (a load of 25 to 40; four runs of each in turn at 16:9, the game thread on; the
+medians of the runs' ratios): at Low the moby pass's shadow run -17 to -44 % (Novalis 0.24 -> 0.20 ms a frame, Kerwan 0.65
+-> 0.52, Orxon 0.36 -> 0.23, Kalebo III 0.95 -> 0.52; below in 15 of the 16 runs), the game thread -7 % at the median (below
+in 10 of 16: the load's noise, but Kalebo III's -15 % in 4 of 4). At High -9 % of the shadow run at the median, below in 11
+of 16: within that noise.
 
 ## The frame's chain
 
@@ -973,6 +1025,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_GT_JOIN_SLEEP=1` | the main thread sleeps for most of its wait for the game thread, then polls (off by default: a longer frame unpaced) |
 | `RAC1_PERF_POSE_ORDER=1` | the moby pass's shadow run after the real pass, which fills the pose memo for it (off by default: the scene's records differ) |
 | `RAC1_PERF_MOBY_EXTRAS=0` | at 16:9 with LOD Original the moby pass's shadow run draws the real pass's mobys again, before the real pass (`=2`: both runs, the scenes compared) |
+| `RAC1_PERF_MOBY_EXTRAS_LOD=0` | at LOD Low to Maximum the moby pass's shadow run draws everything again, before the real pass (compared by `RAC1_PERF_MOBY_EXTRAS=2`) |
 | `RAC1_PERF_MOBY_PARTS=0` | each drawn moby's parts decoded from its chain (`=2`: decoded, and compared with the draw loop's notes) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 

@@ -522,7 +522,8 @@ The game's own decisions are never changed, because they are game state. Instead
 - **Original** runs no shadow run at all at 4:3. In a widened view the moby pass's shadow run comes after
   the real pass and draws only the mobys the wider frustum adds (or draws with the other VU1 program);
   the others are taken from the real pass, in their places (`RAC1_PERF_MOBY_EXTRAS`,
-  docs/performance.md).
+  docs/performance.md). At the other settings the run does the same for the mobys the scaled distances
+  leave as the game drew them (the same fade, the same model: `RAC1_PERF_MOBY_EXTRAS_LOD`).
 - **Maximum's reach.** "Unlimited" is bounded for the mobys by the renderer's far plane (4000 units, or the game's own draw
   distance when that is larger): nothing farther can show in the picture, and the game hides some mobys by keeping their
   culling sphere far away on purpose. Pokitaru's class 1161 (a model of a 38000-unit radius, its sphere about 11000 units

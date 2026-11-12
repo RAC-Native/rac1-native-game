@@ -27,6 +27,20 @@ extern MobyDrawObserver g_moby_draw_observer;
 // orig: (host) the VU1 program's start the loop chose for the moby it is drawing (its MSCAL: 0xa the clipping program - the
 // moby crosses the guard band -, 0xe the other), set where the moby's draw begins (0x255e48)
 extern uint32_t g_moby_draw_mscal;
+// orig: (host) what the loop decides of that moby from its distances, as it is about to (set at 0x255e48 too): the fade of its
+// alpha near its draw distance (0..0x80: the distance less the depth, >> 7; 0x80 none) in bits 0..7, and in bit 8 the low
+// detail model (the depth past +0x72 << 10). `vf3_lo` / `vf1_lo`: the low halves of vf3 (y: the draw distance less the depth)
+// and vf1 (x: the depth) there, `lod_dist` the moby's +0x72
+extern uint32_t g_moby_draw_lod;
+inline uint32_t moby_draw_lod_key(uint64_t vf3_lo, uint64_t vf1_lo, uint32_t lod_dist) {
+    int32_t fade = static_cast<int32_t>(vf3_lo >> 39);
+    if (fade > 0x80) fade = 0x80;
+    int32_t depth = static_cast<int32_t>(vf1_lo);
+    if (depth > 0x30000) depth = 0x30000;
+    if (depth < 0) depth = 0;
+    const bool low = static_cast<int32_t>(static_cast<uint32_t>(depth) - (lod_dist << 10)) > 0;
+    return (static_cast<uint32_t>(fade) & 0xffu) | (low ? 0x100u : 0u);
+}
 // orig: (host) what the loop wrote of the moby it is drawing in its chain: the parts of its mesh and, with a shadow mesh
 // (+0x73), that mesh's after them - a part per packet of the class, each ended by the VU1 program's start. Of a group: how
 // many parts; the tag of its first matrix upload (its first two parts upload the group's matrix, to VU1 0x129 / 0x28d by
@@ -43,10 +57,10 @@ struct MobyDrawParts {
 };
 extern MobyDrawParts g_moby_draw_parts;
 // orig: (host) asked where a moby's draw begins (0x255e48: the moby seen, its program chosen - `mscal` -; `deferred`: in the
-// deferred pass, its place in the deferred list taken): true leaves the moby out - nothing of it is written, the loop goes
-// on as after a moby drawn. The MRP's shadow run for the extras alone (render/mrp_lod.h) leaves out what the real pass drew
-// the same. Null: no moby left out
-using MobyDrawSkip = bool (*)(uint32_t moby, uint32_t mscal, uint32_t deferred);
+// deferred pass, its place in the deferred list taken; `lod`: g_moby_draw_lod): true leaves the moby out - nothing of it is
+// written, the loop goes on as after a moby drawn. The MRP's shadow run for the extras alone (render/mrp_lod.h) leaves out
+// what the real pass drew the same. Null: no moby left out
+using MobyDrawSkip = bool (*)(uint32_t moby, uint32_t mscal, uint32_t deferred, uint32_t lod);
 extern MobyDrawSkip g_moby_draw_skip;
 
 }  // namespace rac1

@@ -98,6 +98,9 @@ MrpMat4 mat4_at(uint32_t a) {
     return m;
 }
 
+// (the draw loop's key of a moby's distance decisions, g_moby_draw_lod, against what the loop then did: its model, its tint's alpha)
+uint64_t g_lod_key_bad = 0;
+
 // ---- observers -----------------------------------------------------------------------------
 
 // orig: (host) the draw loop's observer (0x002559c0, at the record's send, 0x256668)
@@ -133,6 +136,8 @@ void on_draw(uint32_t moby, uint32_t chain_begin, uint32_t chain_end, uint32_t r
     m.far_lod = far_lod != 0;
     m.deferred = deferred != 0;
     m.mscal = static_cast<uint16_t>(g_moby_draw_mscal);
+    m.lod_key = static_cast<uint16_t>(g_moby_draw_lod);
+    if (((g_moby_draw_lod & 0x100u) != 0) != (far_lod != 0)) ++g_lod_key_bad;  // (the key's model is the loop's own)
     m.noted = g_moby_draw_parts;
     for (int i = 0; i < 3; ++i) m.pos[i] = lwc1(moby + 0x10 + 4 * static_cast<uint32_t>(i));
     m.scale = lwc1(moby + 0x2c);
@@ -427,6 +432,7 @@ void decode_record(MrpFrame& f, MrpMoby& m) {
     m.light_w[0] = rf(f, m, 0xa0);
     m.light_w[1] = rf(f, m, 0xa4);
     for (uint32_t i = 0; i < 4; ++i) m.tint[i] = static_cast<uint8_t>(ru(f, m, 0xb0 + 4 * i) & 0xff);
+    if (m.tint[3] != static_cast<uint8_t>(((m.lod_key & 0xffu) * m.alpha_base) >> 7)) ++g_lod_key_bad;  // (the key's fade is the loop's own)
     m.first_packet = m.far_lod && m.class_ptr != 0 ? lbu(m.class_ptr + 4) : 0;
 }
 
@@ -700,7 +706,7 @@ void mrp_scene_real_same(size_t first, size_t count, std::vector<MrpSame>& out) 
     for (size_t i = first; i < first + count && i < f.mobys.size(); ++i) {
         const MrpMoby& m = f.mobys[i];
         if (m.mscal == 0 || m.rt || m.other_view || m.record_qwords == 0 || m.joint_count == 0) continue;
-        out.push_back(MrpSame{m.moby, m.mscal, m.deferred, m.chain_end - m.chain_begin, m.record_qwords * 16});
+        out.push_back(MrpSame{m.moby, m.mscal, m.lod_key, m.deferred, m.chain_end - m.chain_begin, m.record_qwords * 16, (m.flags & 0x10u) != 0 ? 0x10u : 0u});
     }
     std::sort(out.begin(), out.end(), [](const MrpSame& a, const MrpSame& b) { return a.moby < b.moby; });
     for (size_t i = 1; i < out.size(); ++i)
@@ -974,6 +980,9 @@ void extras_merge(const MrpFrame& real, MrpFrame& sh) {
 void mrp_scene_extras_report() {
     if (g_parts_mode == 2) g_parts_check.report("moby parts (RAC1_PERF_MOBY_PARTS=2)", "mobys");
     if (g_parts_decoded != 0) std::printf("[perf] moby parts: %llu mobys without the draw loop's notes, their chains decoded\n", static_cast<unsigned long long>(g_parts_decoded));
+    if (g_lod_key_bad != 0)
+        std::printf("[lod] moby extras: the draw loop's key of a moby's distance decisions differed from its model or its tint's alpha %llu times\n",
+                    static_cast<unsigned long long>(g_lod_key_bad));
     if (g_xs.frames == 0) return;
     const double n = static_cast<double>(g_xs.frames);
     std::printf("[lod] moby extras (RAC1_PERF_MOBY_EXTRAS): %llu shadow runs for the extras alone: %.1f mobys a frame kept from the real pass, %.1f drawn by the run, "

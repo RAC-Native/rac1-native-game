@@ -23,6 +23,7 @@ namespace rac1 {
 // orig: (host) the MRP scene state's observer of the draw loop (mrp_scene.h); null: nothing
 MobyDrawObserver g_moby_draw_observer = nullptr;
 uint32_t g_moby_draw_mscal = 0;
+uint32_t g_moby_draw_lod = 0;
 MobyDrawSkip g_moby_draw_skip = nullptr;
 MobyDrawParts g_moby_draw_parts = {};
 
@@ -246,7 +247,8 @@ L_255e38:
     if (t0 == 0) sb(s8 + 0x31, 1);
 L_255e48:
     g_moby_draw_mscal = static_cast<uint32_t>(s3) & 0xffffu;  // (host)
-    if (g_moby_draw_skip != nullptr && g_moby_draw_skip(s8, g_moby_draw_mscal, ra < 0 ? 1u : 0u)) {  // (host: left out)
+    g_moby_draw_lod = moby_draw_lod_key(qlo(v[3]), qlo(v[1]), lbu(s8 + 0x72));  // (host)
+    if (g_moby_draw_skip != nullptr && g_moby_draw_skip(s8, g_moby_draw_mscal, ra < 0 ? 1u : 0u, g_moby_draw_lod)) {  // (host: left out)
         if (ra >= 0) goto L_255d18;
         goto L_256840;
     }
