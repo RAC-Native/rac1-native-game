@@ -75,8 +75,8 @@ LEVEL = {
     # main's entries (where a switch from a section puts Ratchet back): "ritorno" south of the hub
     "entries": [("ritorno", (0.0, -20.0, 0.5), 1.5708), ("rientro", (-16.0, 66.0, 20.6), -1.1903)],  # (rientro: rail_ritorno's start)
     "sky": 0,               # Veldin's sky (Quartu's, 15, crashed on Veldin's code: sky_hand::spheres)
-    "music": ("overworld.ogg", os.path.join(os.path.dirname(os.path.realpath(globals().get("__file__") or bpy.data.filepath)),
-                                            "music", "overworld.ogg")),
+    "music": ("awaiting_challenge.ogg", os.path.join(os.path.dirname(os.path.realpath(globals().get("__file__") or bpy.data.filepath)),
+                                            "music", "awaiting_challenge.ogg")),
     # the mod's other tracks (level.txt's music_track lines: the plugin's music_track, ABI 19): the challenges' music
     "music_tracks": [("fight", "arena_fight.ogg", os.path.join(os.path.dirname(os.path.realpath(globals().get("__file__") or bpy.data.filepath)),
                                                                 "music", "arena_fight.ogg"))],

@@ -24,7 +24,7 @@ session
 checkpoint arena 0 -20 0.5 1.571
 respawn reset
 sky 0
-music overworld.ogg
+music awaiting_challenge.ogg
 music_track fight arena_fight.ogg
 picture planet.png
 map_picture map.png

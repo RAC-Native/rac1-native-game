@@ -12,6 +12,8 @@ What changed in each release. Releases are source only: you build the game with 
   does not. The effects' and the draw lists' shadow runs were measured too and left as they are. See docs/performance.md
   (RAC1_PERF_MOBY_EXTRAS_LOD).
 
+- **Daino's Arena has new music: "Awaiting Challenge" by Anya-Thoughtmane** (`examples/night-arena/music/awaiting_challenge.ogg`, CC BY 4.0 like the arena's other track, not MIT) plays in the arena while no challenge is on, in place of "Overworld". The setup updates an installed arena that you have not changed.
+
 ## 0.8.0
 
 The release of mods. A `mods/` folder in front of the extracted disc files, texture packs and sound swaps, a Mods menu, and

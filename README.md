@@ -265,7 +265,7 @@ For contributors, and for reverse-engineering and decompilation people:
 
 The project's own code is under the [MIT licence](LICENSE). The third-party components it uses are
 listed, with their licences, in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Daino's Arena's music,
-"Overworld" and "Arena Fight" by Daino Selvatico (`examples/night-arena/music/`), is under
+"Awaiting Challenge" by Anya-Thoughtmane and "Arena Fight" by Daino Selvatico (`examples/night-arena/music/`), is under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), not MIT.
 
 ## Acknowledgements

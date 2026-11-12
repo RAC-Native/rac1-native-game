@@ -3,7 +3,7 @@
   "shared": {
     "plugin/arena_plugin.c": "examples/night-arena/plugin/arena_plugin.c",
     "plugin/CMakeLists.txt": "examples/night-arena/plugin/CMakeLists.txt",
-    "level/overworld.ogg": "examples/night-arena/music/overworld.ogg",
+    "level/awaiting_challenge.ogg": "examples/night-arena/music/awaiting_challenge.ogg",
     "level/arena_fight.ogg": "examples/night-arena/music/arena_fight.ogg"
   },
   "export_sources": [
@@ -13,5 +13,5 @@
     "examples/night-arena/build_prova.py",
     "examples/night-arena/export_arena.py"
   ],
-  "export_stamp": "10845071f02829e53f4fea7a867d0966f8b66cd7263e227a480a2643cb9104d1"
+  "export_stamp": "f06e6d9a126f4e16ca3f96f19a53b151d96b74fd126aa52f9f270de38e88efcd"
 }
