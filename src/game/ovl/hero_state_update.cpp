@@ -166,7 +166,7 @@ void idle_update() {
         hero_wall_slide(0);
         ground_end();
     }
-    if (lw(P + 0x22f4) != 0) sub_00217450();
+    if (hero_has_state_7c() && lw(P + 0x22f4) != 0) sub_00217450();
 }
 
 // Running (states 2 / 0x73): dust and smoke by speed, skid (+0x3b8) and sharp-turn (+0x3be)
@@ -338,7 +338,7 @@ void jump_update() {
         }
     }
     if (lbu(P + 0x20a4) == 0) hero_run_lean();
-    if (lbu(P + 0x20a4) == 1) hero_body_lean();
+    if (hero_has_clank() && lbu(P + 0x20a4) == 1) hero_body_lean();
     if (lw(P + 0x2084) == 0x10 || lw(P + 0x2084) == 0xd) {
         trail_update(P + 0x1670, (frame_scale_i(0xc) < lw(P + 0x198) ? 1 : 0) << 1);
     }
@@ -355,7 +355,7 @@ void jump_update() {
             }
         }
     }
-    if (lw(P + 0x2084) == 0x3c && lh(P + 0x41e) == 0 && fs6c() * 1.5f < lwc1(P + 0xe8)) hero_smoke_fx();
+    if (hero_has_state_7c() && lw(P + 0x2084) == 0x3c && lh(P + 0x41e) == 0 && fs6c() * 1.5f < lwc1(P + 0xe8)) hero_smoke_fx();
     hero_vertical_velocity();
     hero_air_wall_check();
 }
@@ -2348,6 +2348,7 @@ void swim_update() {
 // orig: 0x00217970
 void update_state(uint32_t state, uint32_t hm) {
     if (!hero_has_giant_clank() && state >= 0x5au && state <= 0x62u && state != 0x5eu) return;
+    if (!hero_has_clank() && ((state >= 0x43u && state <= 0x52u && state != 0x49u && state != 0x4cu) || state == 0x7du)) return;
     switch (state) {
     case 0x00: case 0x01: case 0x03: case 0x04: case 0x17: case 0x1d: case 0x1e: case 0x1f:
     case 0x3d: case 0x70: case 0x71: case 0x72: case 0x80:
@@ -2626,10 +2627,6 @@ void hero_grind_update_v() { grind_update(); }
 // the sub-state +0x2088 resets the timer +0x1a0, a change of the hero moby's animation +0x53
 // resets +0x1a4.
 void hero_state_update() {
-    if (on_batalia()) { bat_call(bat_hero_state_update_u); return; }  // (level 8's own: L8:0x002284e0)
-    if (on_pokitaru()) { pok_call(pok_hero_state_update_u); return; }  // (level 11's own: L11:0x00246b70)
-    if (on_hoven()) { hov_call(hov_hero_state_update_u); return; }  // (level 12's own: L12:0x00238900)
-    if (on_oltanis()) { olt_call(olt_hero_state_update_u); return; }  // (level 14's own: L14:0x00228cd0)
     if (on_quartu()) { qua_call(qua_hero_state_update_u); return; }  // (level 15's own: L15:0x0020ed50)
     if (on_kalebo()) { kal_call(kal_hero_state_update_u); return; }  // (level 16's own: L16:0x00214598)
     if (on_veldin_finale()) { vf_call(vf_hero_state_update_u); return; }  // (level 18's own: L18:0x0021eac8)

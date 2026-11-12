@@ -78,10 +78,15 @@ inline bool hero_has_grind() {
            !on_hoven() && !on_quartu();
 }
 
-// Lava / quicksand states 0x68, 0x69, 0x7b (levels 0, 2, 4, 5, 7, 9, 10, 13, 15, 17, 18).
+// Lava / quicksand death states 0x68, 0x69, 0x7b (levels 0, 2, 4, 5, 7, 9, 10, 13, 15, 17, 18).
 inline bool hero_has_lava() {
     return !on_novalis() && !on_kerwan() && !on_blarg() && !on_batalia() && !on_pokitaru() &&
            !on_hoven() && !on_oltanis() && !on_kalebo();
+}
+
+// Quicksand surface kind 0xb probe / flag (all levels except Blarg and Hoven).
+inline bool hero_has_quicksand() {
+    return !on_blarg() && !on_hoven();
 }
 
 // Hydro-Pack states 0x38..0x3a (levels 0, 4, 5, 7, 9, 10, 11, 12, 13, 17, 18).

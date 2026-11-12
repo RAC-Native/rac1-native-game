@@ -38,10 +38,6 @@ int32_t ring32(int32_t i) { return i - ((i < 0 ? i + 31 : i) >> 5) * 32; }
 // ground, else +0xd0); lost below z 1.
 // orig: 0x002215c8
 void hero_timers_update() {
-    if (on_batalia()) { bat_call(bat_hero_timers_update_u); return; }  // (level 8's own: L8:0x0022fd98)
-    if (on_pokitaru()) { pok_call(pok_hero_timers_update_u); return; }  // (level 11's own: L11:0x0024cdb0)
-    if (on_hoven()) { hov_call(hov_hero_timers_update_u); return; }  // (level 12's own: L12:0x0023f330)
-    if (on_oltanis()) { olt_call(olt_hero_timers_update_u); return; }  // (level 14's own: L14:0x0022f1b8)
     if (on_quartu()) { qua_call(qua_hero_timers_update_u); return; }  // (level 15's own: L15:0x00215e58)
     if (on_kalebo()) { kal_call(kal_hero_timers_update_u); return; }  // (level 16's own: L16:0x0021d5f8)
     if (on_veldin_finale()) { vf_call(vf_hero_timers_update_u); return; }  // (level 18's own: L18:0x00226ff0)
@@ -201,10 +197,6 @@ bool sinking_into(float h) {
 // 0x68 / 0x7b and the quicksand's 0x7b once sunk in and coming down.
 // orig: 0x0020b960
 void hero_surface_update() {
-    if (on_batalia()) { bat_call(bat_hero_surface_update_u); return; }  // (level 8's own: L8:0x0021d9c0)
-    if (on_pokitaru()) { pok_call(pok_hero_surface_update_u); return; }  // (level 11's own: L11:0x0023c7a0)
-    if (on_hoven()) { hov_call(hov_hero_surface_update_u); return; }  // (level 12's own: L12:0x0022de30)
-    if (on_oltanis()) { olt_call(olt_hero_surface_update_u); return; }  // (level 14's own: L14:0x0021dd30)
     if (on_quartu()) { qua_call(qua_hero_surface_update_u); return; }  // (level 15's own: L15:0x002044c8)
     if (on_kalebo()) { kal_call(kal_hero_surface_update_u); return; }  // (level 16's own: L16:0x002097a0)
     if (on_veldin_finale()) { vf_call(vf_hero_surface_update_u); return; }  // (level 18's own: L18:0x00213b40)
@@ -238,14 +230,14 @@ void hero_surface_update() {
         sb(P + 0x12e4, 1);
     }
     if (hero_has_lava() && kind == 3) sb(P + 0x12e6, 1);
-    if (hero_has_lava() && lw(0x0015ed84) == 0xd && lw(P + 0x2084) != 0x7b) {
+    if (hero_has_quicksand() && lw(0x0015ed84) == 0xd && lw(P + 0x2084) != 0x7b) {
         const float r = lwc1(P + 0x234) + u2f(0x3cf5c28fu);
         if (sphere_collide_v(V(P + 0xd0), r, 2, 0) != 0 && sub_001f35d8() == 0xb) {
             set_state_forced(0x7b);
             return;
         }
     }
-    if (hero_has_lava() && kind == 0xb) sb(P + 0x12eb, 1);
+    if (hero_has_quicksand() && kind == 0xb) sb(P + 0x12eb, 1);
     if (hero_has_beam() && kind == 2) sb(P + 0x12e7, 1);
     if (hero_has_ice_slide() && kind == 4) sb(P + 0x12e3, 1);
     if (hero_has_skate() && kind == 7) sb(P + 0x12e2, 1);
@@ -474,10 +466,6 @@ void hero_items_update() {
 // hero moby's lighting, the clank glow and the shadow.
 // orig: 0x002070d0
 void hero_frame_update() {
-    if (on_batalia()) { bat_call(bat_hero_frame_update_u); return; }  // (level 8's own: L8:0x002194e0)
-    if (on_pokitaru()) { pok_call(pok_hero_frame_update_u); return; }  // (level 11's own: L11:0x002382c8)
-    if (on_hoven()) { hov_call(hov_hero_frame_update_u); return; }  // (level 12's own: L12:0x00229958)
-    if (on_oltanis()) { olt_call(olt_hero_frame_update_u); return; }  // (level 14's own: L14:0x0021a058)
     if (on_quartu()) { qua_call(qua_hero_frame_update_u); return; }  // (level 15's own: L15:0x00200228)
     if (on_kalebo()) { kal_call(kal_hero_frame_update_u); return; }  // (level 16's own: L16:0x002051c8)
     if (on_veldin_finale()) { vf_call(vf_hero_frame_update_u); return; }  // (level 18's own: L18:0x0020f898)

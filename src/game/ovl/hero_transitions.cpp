@@ -1261,7 +1261,7 @@ void state16_input() {
         set(6);
         return;
     }
-    if (lw(0x0015ed84) == 0x10 && lwc1(P + 0xe8) < 0.0f && lw(P + 0x22a8) == 0 && lw(P + 0x2094) == 0xf) {
+    if (hero_has_grind() && lw(0x0015ed84) == 0x10 && lwc1(P + 0xe8) < 0.0f && lw(P + 0x22a8) == 0 && lw(P + 0x2094) == 0xf) {
         set(0x77);
         return;
     }
@@ -1274,7 +1274,7 @@ void state16_input() {
         }
         return;
     }
-    set(lbu(P + 0x12e5) != 0 ? 0x7cu : 0x3du);
+    set((hero_has_state_7c() && lbu(P + 0x12e5) != 0) ? 0x7cu : 0x3du);
 }
 
 // State 0x43 (the stand of the 0x43..0x52 set): the 0x12 animation while +0x22fc runs out, the
@@ -2068,6 +2068,7 @@ void rail_hop_input() {
 // orig: 0x00229b70 (jump table 0x1e82b0)
 bool transitions(uint32_t state, uint32_t hm0) {
     if (!hero_has_giant_clank() && state >= 0x5au && state <= 0x61u) return false;
+    if (!hero_has_clank() && ((state >= 0x43u && state <= 0x52u && state != 0x47u) || state == 0x7du)) return false;
     switch (state) {
     case 0x77:
         return kill_fall_input();
@@ -2517,10 +2518,6 @@ bool transitions(uint32_t state, uint32_t hm0) {
 // hero moby's animation resets the timers +0x1a0 / +0x1a4.
 // orig: 0x00229b70
 void hero_input_update() {
-    if (on_batalia()) { bat_call(bat_hero_input_update_u); return; }  // (level 8's own: L8:0x002370d8)
-    if (on_pokitaru()) { pok_call(pok_hero_input_update_u); return; }  // (level 11's own: L11:0x00253a18)
-    if (on_hoven()) { hov_call(hov_hero_input_update_u); return; }  // (level 12's own: L12:0x002461f0)
-    if (on_oltanis()) { olt_call(olt_hero_input_update_u); return; }  // (level 14's own: L14:0x00235600)
     if (on_quartu()) { qua_call(qua_hero_input_update_u); return; }  // (level 15's own: L15:0x0021d040)
     if (on_kalebo()) { kal_call(kal_hero_input_update_u); return; }  // (level 16's own: L16:0x002270c8)
     if (on_veldin_finale()) { vf_call(vf_hero_input_update_u); return; }  // (level 18's own: L18:0x0022e8f8)
@@ -2544,7 +2541,7 @@ void hero_input_update() {
             const bool free_b = lbu(P + 0x20a7) == 0 || lbu(P + 0x20a4) == 1 || lh(P + 0x1b2) != 0;
             const uint32_t mode = lbu(P + 0x20a4);
             if (free_a && free_b) {
-                if (mode == 1) {
+                if (hero_has_clank() && mode == 1) {
                     camera_request(3, 0, OVF(0x00238b18), OVF(0x00238b80), OVF(0x00238f88), 0, 0);
                 } else if (mode == 0 || mode == 3) {
                     sh(P + 0x22d2, static_cast<uint32_t>(frame_scale_i(lh(P + 0x22d6) != 0 ? 0x1b : 0xf)));

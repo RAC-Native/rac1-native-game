@@ -147,8 +147,6 @@ int32_t hero_water_entry() {
 // or after a long fall the hard landing 3; else standing 0 (after a long jump, with the item's
 // landing animation).
 void hero_land() {
-    if (on_batalia()) { bat_call(bat_hero_land_u); return; }  // (level 8's own: L8:0x00236940)
-    if (on_pokitaru()) { pok_call(pok_hero_land_u); return; }  // (level 11's own: L11:0x00253280)
     if (on_quartu()) { qua_call(qua_hero_land_u); return; }  // (level 15's own: L15:0x0021c8a8)
     if (on_kalebo()) { kal_call(kal_hero_land_u); return; }  // (level 16's own: L16:0x00224a80)
     if (on_veldin_finale()) { vf_call(vf_hero_land_u); return; }  // (level 18's own: L18:0x0022e160)
@@ -243,10 +241,6 @@ int32_t hero_jump_input() {
 // push from the record's direction, the attacker or the facing is added to the velocities.
 // orig: 0x00210ce8
 int32_t hero_hurt(int32_t knock) {
-    if (on_batalia()) return static_cast<int32_t>(bat_call(bat_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 8's own: L8:0x00222800)
-    if (on_pokitaru()) return static_cast<int32_t>(pok_call(pok_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 11's own: L11:0x00240f88)
-    if (on_hoven()) return static_cast<int32_t>(hov_call(hov_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 12's own: L12:0x002325b8)
-    if (on_oltanis()) return static_cast<int32_t>(olt_call(olt_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 14's own: L14:0x00222aa8)
     if (on_quartu()) return static_cast<int32_t>(qua_call(qua_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 15's own: L15:0x00208e10)
     if (on_kalebo()) return static_cast<int32_t>(kal_call(kal_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 16's own: L16:0x0020e690)
     if (on_veldin_finale()) return static_cast<int32_t>(vf_call(vf_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 18's own: L18:0x00218a90)
@@ -270,7 +264,7 @@ int32_t hero_hurt(int32_t knock) {
     sw(0x0013df88 + lvl * 4, lwu(0x0013df88 + lvl * 4) + 1);
     sw(0x0015eea8, lwu(0x0015eea8) + 1);
     sw(P + 0x2280, lwu(rec + 0x20));
-    if (lw(P + 0x208c) == 0xf) {
+    if (hero_has_grind() && lw(P + 0x208c) == 0xf) {
         sh(P + 0x5be, 1);
         return 0;
     }
@@ -300,7 +294,7 @@ int32_t hero_hurt(int32_t knock) {
     } else if (mode == 0) {
         const uint32_t att = lwu(P + 0x2280);
         const int32_t cls = att != 0 ? lh(att + 0xa6) : -1;
-        if (hero_has_sink_7f() && att != 0 && (cls == 0x4eb || cls == 0x558)) {
+        if (att != 0 && (cls == 0x4eb || cls == 0x558)) {
             hero_set_state(0x80, 1);
             return 1;
         }
@@ -536,10 +530,6 @@ void hero_item_swingshot(uint32_t mask) { item_swingshot(mask); }
 // the state changed.
 // orig: 0x00227fa0
 int32_t hero_item_use() {
-    if (on_batalia()) return static_cast<int32_t>(bat_call(bat_hero_item_use_u).v0);  // (level 8's own: L8:0x00235550)
-    if (on_pokitaru()) return static_cast<int32_t>(pok_call(pok_hero_item_use_u).v0);  // (level 11's own: L11:0x00251e90)
-    if (on_hoven()) return static_cast<int32_t>(hov_call(hov_hero_item_use_u).v0);  // (level 12's own: L12:0x00244638)
-    if (on_oltanis()) return static_cast<int32_t>(olt_call(olt_hero_item_use_u).v0);  // (level 14's own: L14:0x00233a48)
     if (on_quartu()) return static_cast<int32_t>(qua_call(qua_hero_item_use_u).v0);  // (level 15's own: L15:0x0021b4b8)
     if (on_kalebo()) return static_cast<int32_t>(kal_call(kal_hero_item_use_u).v0);  // (level 16's own: L16:0x00223350)
     if (on_veldin_finale()) return static_cast<int32_t>(vf_call(vf_hero_item_use_u).v0);  // (level 18's own: L18:0x0022cd70)

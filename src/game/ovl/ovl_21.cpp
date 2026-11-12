@@ -330,12 +330,10 @@ void sub_00211f38() {
 // target (yaw PLAYER+0x180, speed +0x190) by at most dt x (1..3, faster when reversing);
 // modes 1/2: approach the speed along the local frame instead.
 void sub_00213e68(float dt) {
-    if (on_batalia()) { bat_callf(bat_sub_213e68_u, dt); return; }  // (level 8's own: L8:0x002256e8)
-    if (on_pokitaru()) { pok_callf(pok_sub_213e68_u, dt); return; }  // (level 11's own: L11:0x00243d78)
     if (on_quartu()) { qua_callf(qua_sub_00213e68_u, dt); return; }  // (level 15's own: L15:0x0020bd50)
     if (on_kalebo()) { kal_callf(kal_sub_00213e68_u, dt); return; }  // (level 16's own: L16:0x002117a0)
     if (on_veldin_finale()) { vf_callf(vf_sub_213e68_u, dt); return; }  // (level 18's own: L18:0x0021bac8)
-    if (on_l1_family() || on_rilgar() || on_blarg()) return sub_00213e68_l1(dt);
+    if (on_l1_family() || on_rilgar()) return sub_00213e68_l1(dt);
     constexpr uint32_t VEL = 0x0013f430;
     const uint32_t mode = lbu(g::PLAYER + 0x20b3);
     if (mode == 0) {
@@ -362,7 +360,7 @@ void sub_00213e68(float dt) {
         const float step = dt * f;
         if (step < vec2_length(d)) vec2_set_length(d, d, step);
         vec3_add(V(VEL), V(VEL), d);
-        lq_sq(VEL + 0x50, VEL);
+        if (hero_has_skate()) lq_sq(VEL + 0x50, VEL);
         const Vec4 t = V(VEL + 0x840);
         swc1(g::PLAYER + 0x194, lwc1(g::PLAYER + 0x168) - sub_00213350_v(t));
         return;
@@ -601,10 +599,6 @@ void hero_tilt_update() {
 // PLAYER+0x220/0x224 towards them and spring the height PLAYER+0x234 (unless the hero is
 // standing on a moving platform far from its anchor).
 void hero_gait_update() {
-    if (on_batalia()) { bat_call(bat_hero_gait_update_u); return; }  // (level 8's own: L8:0x00222d80)
-    if (on_pokitaru()) { pok_call(pok_hero_gait_update_u); return; }  // (level 11's own: L11:0x002414e8)
-    if (on_hoven()) { hov_call(hov_hero_gait_update_u); return; }  // (level 12's own: L12:0x00232b18)
-    if (on_oltanis()) { olt_call(olt_hero_gait_update_u); return; }  // (level 14's own: L14:0x00222f38)
     if (on_quartu()) { qua_call(qua_hero_gait_update_u); return; }  // (level 15's own: L15:0x00209450)
     if (on_kalebo()) { kal_call(kal_hero_gait_update_u); return; }  // (level 16's own: L16:0x0020ec10)
     if (on_veldin_finale()) { vf_call(vf_hero_gait_update_u); return; }  // (level 18's own: L18:0x002190f0)
@@ -645,7 +639,7 @@ void hero_gait_update() {
         } else if (hero_has_skate() && lbu(P + 0x12e2) != 0 && lw(P + 0x300) != 0) {
             swc1(P + 0x228, u2f(0x3f4ccccdu));
             swc1(P + 0x22c, u2f(0x3f666666u));
-        } else if (hero_has_sink_7f() && lw(g::HERO_STATE) == 0x7f) {
+        } else if (lw(g::HERO_STATE) == 0x7f) {
             swc1(P + 0x230, u2f(0x3f4ccccdu));
         }
     }
@@ -852,8 +846,6 @@ void hero_stick_speed_orig();
 // orig: 0x00211be8 — the original's body below, then (enhancement) the speed reduced
 // while the modern controls aim
 void hero_stick_speed() {
-    if (on_pokitaru()) { pok_call(pok_hero_stick_speed_u); return; }  // (level 11's own: L11:0x00241c98)
-    if (on_oltanis()) { olt_call(olt_hero_stick_speed_u); return; }  // (level 14's own: L14:0x00223710)
     if (on_quartu()) { qua_call(qua_hero_stick_speed_u); return; }  // (level 15's own: L15:0x00209c40)
     hero_stick_speed_orig();
     advanced_move_speed();
@@ -1013,10 +1005,6 @@ void hero_horizontal_velocity() {
     // (1.02 Fixes, fix 5: the 1.02 build, 0x214d60, starts the long / wall jumps' branch, states 0xb / 0xc, with the
     // Thruster-Pack's jump sound; here before the levels' own copies, nothing before that branch having made a sound)
     if (static_cast<uint32_t>(lw(g::HERO_STATE) - 0xb) < 2u) fixes102_thruster_jump_sound();
-    if (on_batalia()) { bat_call(bat_hero_horizontal_velocity_u); return; }  // (level 8's own: L8:0x00225ed0)
-    if (on_pokitaru()) { pok_call(pok_hero_horizontal_velocity_u); return; }  // (level 11's own: L11:0x00244560)
-    if (on_hoven()) { hov_call(hov_hero_horizontal_velocity_u); return; }  // (level 12's own: L12:0x00235c08)
-    if (on_oltanis()) { olt_call(olt_hero_horizontal_velocity_u); return; }  // (level 14's own: L14:0x00226020)
     if (on_quartu()) { qua_call(qua_hero_horizontal_velocity_u); return; }  // (level 15's own: L15:0x0020c538)
     if (on_kalebo()) { kal_call(kal_hero_horizontal_velocity_u); return; }  // (level 16's own: L16:0x00211f88)
     if (on_veldin_finale()) { vf_call(vf_hero_horizontal_velocity_u); return; }  // (level 18's own: L18:0x0021c2b0)
@@ -1047,7 +1035,7 @@ void hero_horizontal_velocity() {
         sub_00233708(VEL, VEL, lwc1(P + 0x194));
         return;
     }
-    if (st == 0x1c || st == 0x4c) {
+    if (st == 0x1c || (hero_has_clank() && st == 0x4c)) {
         float lo, hi, stop, go;
         if (st == 0x1c) {
             const float t = lwc1(0x0015ed64);
@@ -1436,10 +1424,6 @@ void hero_edge_brake(float k, float min_len) {
 // part into the wall's horizontal normal is removed.
 // orig: 0x00212318
 void hero_wall_slide(int32_t facing) {
-    if (on_batalia()) { bat_call(bat_hero_wall_slide_u, static_cast<uint32_t>(facing)); return; }  // (level 8's own: L8:0x00223c60)
-    if (on_pokitaru()) { pok_call(pok_hero_wall_slide_u, static_cast<uint32_t>(facing)); return; }  // (level 11's own: L11:0x00242380)
-    if (on_hoven()) { hov_call(hov_hero_wall_slide_u, static_cast<uint32_t>(facing)); return; }  // (level 12's own: L12:0x00233a38)
-    if (on_oltanis()) { olt_call(olt_hero_wall_slide_u, static_cast<uint32_t>(facing)); return; }  // (level 14's own: L14:0x00223de8)
     if (on_quartu()) { qua_call(qua_hero_wall_slide_u, static_cast<uint32_t>(facing)); return; }  // (level 15's own: L15:0x0020a328)
     if (on_kalebo()) { kal_call(kal_hero_wall_slide_u, static_cast<uint32_t>(facing)); return; }  // (level 16's own: L16:0x0020fb68)
     if (on_veldin_finale()) { vf_call(vf_hero_wall_slide_u, static_cast<uint32_t>(facing)); return; }  // (level 18's own: L18:0x0021a010)
@@ -1509,9 +1493,6 @@ void hero_wall_slide(int32_t facing) {
 // orig: 0x002133a8
 int32_t hero_collide_push(int32_t mode) {
     if (on_rilgar()) return static_cast<int32_t>(ril_call(ril_hero_collide_push_u, static_cast<uint32_t>(mode)).v0);  // (Rilgar's own: L5:0x00240ed0)
-    if (on_pokitaru()) return static_cast<int32_t>(pok_call(pok_hero_collide_push_u, static_cast<uint32_t>(mode)).v0);  // (level 11's own: L11:0x00243348)
-    if (on_hoven()) return static_cast<int32_t>(hov_call(hov_hero_collide_push_u, static_cast<uint32_t>(mode)).v0);  // (level 12's own: L12:0x002349e8)
-    if (on_oltanis()) return static_cast<int32_t>(olt_call(olt_hero_collide_push_u, static_cast<uint32_t>(mode)).v0);  // (level 14's own: L14:0x00224db0)
     if (on_quartu()) return static_cast<int32_t>(qua_call(qua_hero_collide_push_u, static_cast<uint32_t>(mode)).v0);  // (level 15's own: L15:0x0020b320)
     if (on_kalebo()) return static_cast<int32_t>(kal_call(kal_hero_collide_push_u, static_cast<uint32_t>(mode)).v0);  // (level 16's own: L16:0x00210b60)
     if (on_l1_family()) return hero_collide_push_l1(mode);
@@ -1535,14 +1516,14 @@ int32_t hero_collide_push(int32_t mode) {
         }
     }
     vec3_add(V(P + 0x80), V(P + 0x80), off);
-    const uint32_t flags = (on_blarg() || on_oltanis() || (hero_has_sink_7f() && lw(P + 0x2084) == 0x7f)) ? 0xd24u : 0x24u;
+    const uint32_t flags = (on_blarg() || on_oltanis() || lw(P + 0x2084) == 0x7f) ? 0xd24u : 0x24u;
     for (int32_t n = 0; n < 8; ++n) {
         int32_t hit;
         if (lbu(P + 0x20b3) != 0) {
             hit = sphere_collide(P + 0x80, lwc1(0x0015ed60) * u2f(0x3ecccccdu), flags, lwu(P + 0x2080));
         } else if (hero_has_water() && lw(P + 0x208c) == 0x11) {
             hit = sphere_collide(P + 0x80, u2f(0x3f19999au), flags, lwu(P + 0x2080));
-        } else if (lw(P + 0x208c) == 0xf) {
+        } else if (hero_has_grind() && lw(P + 0x208c) == 0xf) {
             hit = sphere_collide(P + 0x80, lwc1(0x0015ed60) * u2f(0x3ee66666u), flags, lwu(P + 0x2080));
         } else {
             float h = lwc1(P + 0x220) - lwc1(P + 0x224);
@@ -1700,10 +1681,6 @@ void hero_slide_move() {
 // the side heights +0x2c0 (within 0.4) and slope angles +0x2c8 / +0x2d0.
 // orig: 0x002127b8
 void hero_ground_update() {
-    if (on_batalia()) { bat_call(bat_hero_ground_update_u); return; }  // (level 8's own: L8:0x002240a8)
-    if (on_pokitaru()) { pok_call(pok_hero_ground_update_u); return; }  // (level 11's own: L11:0x002427c8)
-    if (on_hoven()) { hov_call(hov_hero_ground_update_u); return; }  // (level 12's own: L12:0x00233e80)
-    if (on_oltanis()) { olt_call(olt_hero_ground_update_u); return; }  // (level 14's own: L14:0x00224230)
     if (on_quartu()) { qua_call(qua_hero_ground_update_u); return; }  // (level 15's own: L15:0x0020a7a0)
     if (on_kalebo()) { kal_call(kal_hero_ground_update_u); return; }  // (level 16's own: L16:0x0020ffb0)
     if (on_veldin_finale()) { vf_call(vf_hero_ground_update_u); return; }  // (level 18's own: L18:0x0021a488)
@@ -1754,7 +1731,7 @@ void hero_ground_update() {
             a.z = cz - u2f(0x3c23d70au);
             if (segment_collide_v(a, b, 4, lwu(P + 0x2080), nullptr) == 0) return false;
         }
-        if (hero_has_lava() && lh(P + 0x12e0) == 0xb) {
+        if (hero_has_quicksand() && lh(P + 0x12e0) == 0xb) {
             swc1(P + 0x2f4, lwc1(OUTB + 0x28));
             return false;
         }
@@ -1850,8 +1827,6 @@ void hero_ground_update() {
 // orig: 0x00213880
 void hero_move_integrate() {
     if (on_rilgar()) { ril_call(ril_hero_move_integrate_u); return; }  // (Rilgar's own: L5:0x002413e0)
-    if (on_pokitaru()) { pok_call(pok_hero_move_integrate_u); return; }  // (level 11's own: L11:0x002437e8)
-    if (on_hoven()) { hov_call(hov_hero_move_integrate_u); return; }  // (level 12's own: L12:0x00234e88)
     if (on_quartu()) { qua_call(qua_hero_move_integrate_u); return; }  // (level 15's own: L15:0x0020b7c0)
     if (on_kalebo()) { kal_call(kal_hero_move_integrate_u); return; }  // (level 16's own: L16:0x00211098)
     if (on_l1_family()) return hero_move_integrate_l1();
@@ -1869,7 +1844,7 @@ void hero_move_integrate() {
         }
     } else {
         const int32_t sub = lw(P + 0x208c);
-        if (sub == 0xf) {
+        if (hero_has_grind() && sub == 0xf) {
             if (lw(P + 0x1cc) == 0 && r < vec2_length(V(P + 0xe0))) vec2_set_length(V(P + 0xe0), V(P + 0xe0), r);
         } else if (sub != 0xd && sub != 0xe) {
             if (lw(P + 0x1cc) == 0 && r < vec3_length(V(P + 0xe0))) vec3_set_length(V(P + 0xe0), V(P + 0xe0), r);

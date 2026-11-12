@@ -93,10 +93,6 @@ int32_t hero_item_idle() {
 // orig: 0x00227638 — enter the idle state of the movement mode PLAYER+0x20a4 (0: 0, 1: 0x43,
 // 2: 0x5a, 3: 0x53).
 void hero_enter_idle() {
-    if (on_batalia()) { bat_call(bat_hero_enter_idle_u); return; }  // (level 8's own: L8:0x00234c18)
-    if (on_pokitaru()) { pok_call(pok_hero_enter_idle_u); return; }  // (level 11's own: L11:0x00251558)
-    if (on_hoven()) { hov_call(hov_hero_enter_idle_u); return; }  // (level 12's own: L12:0x00243d00)
-    if (on_oltanis()) { olt_call(olt_hero_enter_idle_u); return; }  // (level 14's own: L14:0x002336d8)
     if (on_quartu()) { qua_call(qua_hero_enter_idle_u); return; }  // (level 15's own: L15:0x0021ab60)
     if (on_kalebo()) { kal_call(kal_hero_enter_idle_u); return; }  // (level 16's own: L16:0x002229f0)
     if (on_veldin_finale()) { vf_call(vf_hero_enter_idle_u); return; }  // (level 18's own: L18:0x0022c418)
@@ -120,10 +116,6 @@ void hero_enter_idle() {
 // mode 1 swaps the counter +0x22a8 with +0x22ac (saving it to +0x22b0), mode 2 sets +0x1630 to 200.
 // orig: 0x00210a08
 void hero_mode_enter(uint32_t mode, uint32_t state, uint32_t moby) {
-    if (on_batalia()) { bat_call(bat_hero_mode_enter_u, mode, state, moby); return; }  // (level 8's own: L8:0x002225c8)
-    if (on_pokitaru()) { pok_call(pok_hero_mode_enter_u, mode, state, moby); return; }  // (level 11's own: L11:0x00240d50)
-    if (on_hoven()) { hov_call(hov_hero_mode_enter_u, mode, state, moby); return; }  // (level 12's own: L12:0x00232380)
-    if (on_oltanis()) { olt_call(olt_hero_mode_enter_u, mode, state, moby); return; }  // (level 14's own: L14:0x00222870)
     if (on_kalebo()) { kal_call(kal_hero_mode_enter_u, mode, state, moby); return; }  // (level 16's own: L16:0x0020e458)
     if (on_l1_family() || on_rilgar()) return hero_mode_enter_l1(mode, state, moby);
     hero_hold_release();
@@ -165,10 +157,6 @@ void hero_mode_enter(uint32_t mode, uint32_t state, uint32_t moby) {
 // position (+0xa94 = 1) and the hero re-enters state 0 (not on levels 2 / 6 in state 0x64).
 // orig: 0x00210b30
 void hero_mode_exit() {
-    if (on_batalia()) { bat_call(bat_hero_mode_exit_u); return; }  // (level 8's own: L8:0x002226d0)
-    if (on_pokitaru()) { pok_call(pok_hero_mode_exit_u); return; }  // (level 11's own: L11:0x00240e58)
-    if (on_hoven()) { hov_call(hov_hero_mode_exit_u); return; }  // (level 12's own: L12:0x00232488)
-    if (on_oltanis()) { olt_call(olt_hero_mode_exit_u); return; }  // (level 14's own: L14:0x00222978)
     if (on_quartu()) { qua_call(qua_hero_mode_exit_u); return; }  // (level 15's own: L15:0x00208ca8)
     if (on_kalebo()) { kal_call(kal_hero_mode_exit_u); return; }  // (level 16's own: L16:0x0020e560)
     if (on_veldin_finale()) { vf_call(vf_hero_mode_exit_u); return; }  // (level 18's own: L18:0x00218928)
@@ -313,6 +301,7 @@ int32_t enter_jump(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_2
         sb(P + 0x20a7, 1);
         break;
     case 0x3c: {
+        if (!hero_has_state_7c()) break;
         jump_arc(5.5f, u2f(0x40b1999au), 5, k06, 18.0f, 26.0f, 13.0f, 2);
         sh(P + 0x49a, static_cast<uint32_t>(frame_scale_i(0x78)));
         hero_counter_use(1);
@@ -346,6 +335,7 @@ int32_t enter_jump(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_2
         break;
     }
     case 0x29:
+        if (!hero_has_grind()) break;
         jump_arc(u2f(0x4019999au), u2f(0x401ccccdu), 5, k08, 18.0f, 28.0f, 14.0f, 0x11);
         sw(P + 0x208c, 0xf);
         sw(P + 0x5c4, 0);
@@ -366,6 +356,7 @@ int32_t enter_jump(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_2
         }
         break;
     case 0x2a:
+        if (!hero_has_grind()) break;
         jump_arc(2.5f, u2f(0x40233333u), 2, k08, 18.0f, 31.0f, 14.0f, 10);
         sw(P + 0x208c, 0xf);
         sw(P + 0x5c4, 0);
@@ -389,6 +380,7 @@ int32_t enter_jump(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_2
         }
         break;
     case 0x49:
+        if (!hero_has_clank()) break;
         jump_arc(u2f(0x3fa66666u), u2f(0x3faccccdu), 5, k06, 18.0f, 27.0f, 27.0f, 0xe);
         swc1(P + 0x4a0, fs70 * 25.0f);
         swc1(P + 0x424, fs6c + fs6c);
@@ -429,6 +421,7 @@ int32_t enter_jump(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_2
         sb(P + 0x20a7, 1);
         break;
     case 0x4c:
+        if (!hero_has_clank()) break;
         jump_arc(u2f(0x3fc66666u), u2f(0x3fcb851fu), 0xd, k085, 10.0f, 18.0f, 18.0f, 1);
         sw(P + 0x45c, 0);
         swc1(P + 0x4a0, fs70 * 28.0f);
@@ -514,10 +507,11 @@ int32_t enter_jump(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_2
     switch (lw(P + 0x2084)) {
     case 0x07: anim_fs(7, 0, 5); break;
     case 0x12: if (hero_has_water()) hero_anim_set(0x72, 1, -1.0f); break;
-    case 0x3c: anim_fs(0x43, 0, 4); break;
+    case 0x3c: if (hero_has_state_7c()) anim_fs(0x43, 0, 4); break;
     case 0x69: if (hero_has_lava()) anim_fs(7, 0, 5); break;
-    case 0x29: anim_fs(0x50, 4, 5); break;
+    case 0x29: if (hero_has_grind()) anim_fs(0x50, 4, 5); break;
     case 0x2a: {
+        if (!hero_has_grind()) break;
         const float a = atan2_f(lwc1(P + 0x500) - lwc1(P + 0x540), lwc1(P + 0x504) - lwc1(P + 0x544));
         const uint32_t set = u2f(0x3fc90fdbu) < angle_dist(lwc1(P + 0x98), a) ? 0x1f : 0x1e;
         anim_fs(set, 0, 5);
@@ -531,7 +525,7 @@ int32_t enter_jump(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_2
         break;
     }
     case 0x5e: if (hero_has_giant_clank()) anim_fs(4, 0, 8); break;
-    case 0x49: anim_fs(7, 5, 5); break;
+    case 0x49: if (hero_has_clank()) anim_fs(7, 5, 5); break;
     case 0x0a: anim_fs(0x12, 0, 5); break;
     case 0x10:
         if (lw(P + 0x2094) == 4 || (lw(P + 0x2090) == 4 && lw(P + 0x198) < frame_scale_i(7))) {
@@ -542,7 +536,7 @@ int32_t enter_jump(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_2
         }
         break;
     case 0x1c: anim_fs(0x22, 0, 4); break;
-    case 0x4c: anim_fs(9, 0, 4); break;
+    case 0x4c: if (hero_has_clank()) anim_fs(9, 0, 4); break;
     case 0x11: anim_fs(0x23, 2, 7); break;
     case 0x0d: anim_fs(0x11, 0, 5); break;
     case 0x0e:
@@ -643,6 +637,7 @@ int32_t enter_attack(int32_t mode) {
         return 1;
     }
     case 0x51: {
+        if (!hero_has_clank()) return 1;
         const uint32_t e = lwu(P + 0xa60) * 0x2c + COMBO;
         int32_t step = 0;
         const bool chain = lw(P + 0x2094) == 6 || (lw(P + 0x20a0) == 6 && lbu(lwu(P + 0x2080) + 0x53) - 0xfu < 2u);
@@ -672,6 +667,7 @@ int32_t enter_attack(int32_t mode) {
 // orig: 0x002223f8 (jump table 0x1e8030)
 int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_2088) {
     if (!hero_has_giant_clank() && state >= 0x5au && state <= 0x62u && state != 0x5eu) return 1;
+    if (!hero_has_clank() && ((state >= 0x43u && state <= 0x52u && state != 0x49u && state != 0x4cu && state != 0x51u) || state == 0x7du)) return 1;
     switch (state) {
     case 0x00: {
         sw(P + 0x208c, 0);
@@ -1267,7 +1263,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         V(P + 0xe0) = V(P + 0x110);
         if (mode == 0) return 1;
         const uint32_t m = lbu(P + 0x20a4);
-        if (m == 1) {
+        if (hero_has_clank() && m == 1) {
             hero_anim_set(4, 0, static_cast<float>(frame_scale_i(8)));
             return 2;
         }
@@ -1615,7 +1611,6 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         if (mode != 0) scripted_anim(2, -3.0f);
         return 1;
     case 0x42: {  // (rail: +0x5b0 speed capped at 2.5)
-        if (!hero_has_grind()) return 1;
         sw(P + 0x208c, 0xf);
         sw(P + 0x2284, 0);
         if (lw(P + 0x570) == 0) hero_counter_use(1);
@@ -1701,10 +1696,6 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
 // state timers. Returns 1 when entered.
 // orig: 0x002223f8
 int32_t hero_set_state(uint32_t state, int32_t mode) {
-    if (on_batalia()) return static_cast<int32_t>(bat_call(bat_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (level 8's own: L8:0x00230b38)
-    if (on_pokitaru()) return static_cast<int32_t>(pok_call(pok_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (level 11's own: L11:0x0024db50)
-    if (on_hoven()) return static_cast<int32_t>(hov_call(hov_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (level 12's own: L12:0x002400d0)
-    if (on_oltanis()) return static_cast<int32_t>(olt_call(olt_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (level 14's own: L14:0x0022ff58)
     if (on_quartu()) return static_cast<int32_t>(qua_call(qua_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (level 15's own: L15:0x00216c38)
     if (on_kalebo()) return static_cast<int32_t>(kal_call(kal_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (level 16's own: L16:0x0021e398)
     if (on_veldin_finale()) return static_cast<int32_t>(vf_call(vf_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (level 18's own: L18:0x00227dd0)
