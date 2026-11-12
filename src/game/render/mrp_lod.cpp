@@ -978,25 +978,38 @@ struct MobyStats {
 // with them (64 sub-mesh records, the packet buffer, the skinning ring: the mobys after are not drawn) is made whole instead.
 // 0: the whole pass run again, before the real one, as before; 2: both runs, the merged scene compared with the whole run's
 const int g_moby_extras = perf::switch_value("RAC1_PERF_MOBY_EXTRAS", 1);
-bool moby_extras_now() { return g_moby_extras != 0 && mrp_lod_scale(g_mrp_lod) == 1.0f && fill_widen() > 1.0f; }
+// orig: (host) RAC1_PERF_MOBY_EXTRAS_LOD (docs/performance.md): the same at the other draw distances (the LOD slider off
+// Original, widened or not): of a moby's draw the distances decide only whether it is drawn, the fade of its alpha near its
+// draw distance and the low detail model (g_moby_draw_lod); the run leaves out a moby the real pass drew with the same of
+// those too. 0: the extras' run at the game's own distances only, as before
+const int g_moby_extras_lod = perf::switch_value("RAC1_PERF_MOBY_EXTRAS_LOD", 1);
+bool moby_extras_now() {
+    if (g_moby_extras == 0) return false;
+    return mrp_lod_scale(g_mrp_lod) == 1.0f ? fill_widen() > 1.0f : g_moby_extras_lod != 0;
+}
 struct ExtrasRun {
-    uint64_t runs = 0, whole = 0, left_out = 0, other_program = 0, capacity[3] = {}, drawn_bad = 0;
+    uint64_t runs = 0, whole = 0, whole_held = 0, left_out = 0, other_program = 0, other_lod = 0, capacity[3] = {}, drawn_bad = 0;
 } g_xr;
 // (the run's: the real pass's mobys it may leave out, sorted by the moby; those it left out, and what the whole run would
 // have used for them of its packet buffer and skinning ring)
 std::vector<MrpSame> g_extras_same;
 std::vector<uint32_t> g_extras_out;
-uint32_t g_extras_chain = 0, g_extras_ring = 0;
-bool extras_skip(uint32_t moby, uint32_t mscal, uint32_t deferred) {
+uint32_t g_extras_chain = 0, g_extras_ring = 0, g_extras_records = 0;
+bool extras_skip(uint32_t moby, uint32_t mscal, uint32_t deferred, uint32_t lod) {
     const auto it = std::lower_bound(g_extras_same.begin(), g_extras_same.end(), moby, [](const MrpSame& a, uint32_t k) { return a.moby < k; });
     if (it == g_extras_same.end() || it->moby != moby) return false;
     if (it->mscal != mscal || it->deferred != (deferred != 0)) {  // (the widened view's guard band crossed, or not: drawn by the run)
         ++g_xr.other_program;
         return false;
     }
+    if (it->lod != lod) {  // (the run's distances give it another fade or the other model: drawn by the run)
+        ++g_xr.other_lod;
+        return false;
+    }
     g_extras_out.push_back(moby);
     g_extras_chain += it->chain;
     g_extras_ring += it->ring;
+    g_extras_records += it->records;
     return true;
 }
 }  // namespace
@@ -1037,9 +1050,10 @@ void mrp_lod_moby_shadow(void (*pass)(), size_t real_first, size_t real_count) {
     // (RAC1_PERF_MOBY_EXTRAS) the real pass's mobys the run may leave out
     const bool extras = moby_extras_now() && real_count != 0;
     if (extras) mrp_scene_real_same(real_first, real_count, g_extras_same);
-    const uint32_t real_records = lwu(OV(0x0015fff8u));  // (the real pass's sub-mesh records, bytes)
     // one run of the pass inside the journal; `leave_out`: without the mobys the real pass drew the same. false: such a run
     // that would have filled a capacity with the mobys left out (nothing kept of it)
+    uint32_t records_used = 0;  // (the last run's sub-mesh records, bytes)
+    bool full_last[3] = {};     // (the capacities the last run without the left-out mobys would have filled with them)
     auto run = [&](bool leave_out) {
         // the host state the pass changes besides EE memory: the whole VU0 (the pass uploads its micro programs, the drop shadows run
         // them), the DMA registers, the pass's host notes and timers; the drop shadows' observer off (the MRP's are the real pass's)
@@ -1060,18 +1074,20 @@ void mrp_lod_moby_shadow(void (*pass)(), size_t real_first, size_t real_count) {
         mrp_scene_shadow_begin();
         g_moby_pass_shadow_run = true;  // (its drop shadows not made)
         g_extras_out.clear();
-        g_extras_chain = g_extras_ring = 0;
+        g_extras_chain = g_extras_ring = g_extras_records = 0;
         if (leave_out) g_moby_draw_skip = &extras_skip;
         pass();
         g_moby_draw_skip = nullptr;
         patch_clear();
         g_moby_pass_shadow_run = false;
+        records_used = lwu(OV(0x0015fff8u));
         bool ok = true;
         if (leave_out) {  // the whole run's use of the loop's capacities: this run's and the left-out mobys'
-            const bool full[3] = {real_records + lwu(OV(0x0015fff8u)) > 0x400u, lwu(OV(0x001611c0u)) + g_extras_chain > lwu(OV(0x001611c8u)),
+            const bool full[3] = {g_extras_records + lwu(OV(0x0015fff8u)) > 0x400u, lwu(OV(0x001611c0u)) + g_extras_chain > lwu(OV(0x001611c8u)),
                                   lwu(OV(0x0015ffd4u)) + g_extras_ring + 0x400u > packet_joint_end()};
             for (int k = 0; k < 3; ++k) {
                 g_xr.capacity[k] += full[k] ? 1u : 0u;
+                full_last[k] = full[k];
                 ok = ok && !full[k];
             }
             std::sort(g_extras_out.begin(), g_extras_out.end());
@@ -1114,9 +1130,21 @@ void mrp_lod_moby_shadow(void (*pass)(), size_t real_first, size_t real_count) {
             mrp_scene_shadow_keep_whole();
             drawn_whole = g_ps.drawn;
         }
-        if (!run(true)) {
+        // (a run made whole is two runs: while the whole run fills the sub-mesh records or nearly - LOD High and up on the
+        // levels with many such mobys - and for thirty runs after the packet buffer or the ring filled, the whole run alone
+        // from the start; the scene is the same either way)
+        static int hold = 0;
+        static bool hold_records = false;
+        if ((hold > 0 || hold_records) && g_moby_extras != 2) {
+            ++g_xr.whole_held;
+            run(false);
+            if (hold > 0) --hold;
+            if (records_used <= 0x400u - 0x40u) hold_records = false;
+        } else if (!run(true)) {
             ++g_xr.whole;
             run(false);
+            hold_records = full_last[0];
+            if (full_last[1] || full_last[2]) hold = 30;
         } else {
             g_xr.left_out += g_extras_out.size();
             if (g_moby_extras == 2 && drawn_whole != g_ps.drawn) ++g_xr.drawn_bad;
@@ -1142,11 +1170,13 @@ void mrp_lod_report() {
     mrp_scene_lod_drop_report();
     mrp_scene_extras_report();
     if (g_xr.runs != 0)
-        std::printf("[lod] moby extras (RAC1_PERF_MOBY_EXTRAS=%d): %llu runs, %.1f mobys left out a run, %llu drawn by the run with another program than the real "
-                    "pass's; made whole %llu (a capacity filled: sub-mesh records %llu, packets %llu, ring %llu); drawn flags differing from the whole run's %llu\n",
-                    g_moby_extras, static_cast<unsigned long long>(g_xr.runs), static_cast<double>(g_xr.left_out) / static_cast<double>(g_xr.runs),
-                    static_cast<unsigned long long>(g_xr.other_program), static_cast<unsigned long long>(g_xr.whole), static_cast<unsigned long long>(g_xr.capacity[0]),
-                    static_cast<unsigned long long>(g_xr.capacity[1]), static_cast<unsigned long long>(g_xr.capacity[2]), static_cast<unsigned long long>(g_xr.drawn_bad));
+        std::printf("[lod] moby extras (RAC1_PERF_MOBY_EXTRAS=%d, RAC1_PERF_MOBY_EXTRAS_LOD=%d): %llu runs, %.1f mobys left out a run, %llu drawn by the run with "
+                    "another program than the real pass's, %llu with another fade or model; made whole %llu (a capacity filled: sub-mesh records %llu, packets %llu, "
+                    "ring %llu), whole from the start %llu; drawn flags differing from the whole run's %llu\n",
+                    g_moby_extras, g_moby_extras_lod, static_cast<unsigned long long>(g_xr.runs), static_cast<double>(g_xr.left_out) / static_cast<double>(g_xr.runs),
+                    static_cast<unsigned long long>(g_xr.other_program), static_cast<unsigned long long>(g_xr.other_lod), static_cast<unsigned long long>(g_xr.whole),
+                    static_cast<unsigned long long>(g_xr.capacity[0]), static_cast<unsigned long long>(g_xr.capacity[1]), static_cast<unsigned long long>(g_xr.capacity[2]),
+                    static_cast<unsigned long long>(g_xr.whole_held), static_cast<unsigned long long>(g_xr.drawn_bad));
     mrp_pose_memo_report();
     if (g_patch_runs != 0)
         std::printf("[lod] moby distances (RAC1_PERF_LOD_PATCH=%d): %.1f fields written a run outside the journal; at a scale of 1, fields that would change %llu\n",

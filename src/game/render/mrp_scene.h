@@ -70,6 +70,7 @@ struct MrpMoby {
     uint32_t first_packet = 0, packet_count = 0;  // the class's packets (class +0: 0x10 bytes each) drawn: record +0 (count)
     bool deferred = false;    // drawn in the deferred pass (drop shadow seen, 0x256810)
     uint16_t mscal = 0;       // the VU1 program's start the loop chose where the draw began (g_moby_draw_mscal: 0xa the clipping program, 0xe the other)
+    uint16_t lod_key = 0;     // what the loop decided there from the moby's distances (g_moby_draw_lod: the fade, the low detail model)
     bool shadow_mesh = false; // the record's +0x14 != 0 (moby +0x73): the flattened shadow mesh (0x256b50)
     bool animated = false;    // record +0x10 low byte != 0 (class +8 / +9)
     // drawn from another view than the frame's (MrpFrame::cam_pos / view_rows: the first moby's): the boot's title main menu
@@ -145,15 +146,18 @@ void mrp_scene_shadow_begin();
 void mrp_scene_shadow_end(const std::vector<uint32_t>* left_out = nullptr);
 // orig: (host) the mobys the frame's scene has so far (the real pass's are those it adds)
 size_t mrp_scene_moby_count();
-// orig: (host) of the frame's mobys [first, first + count) - the real pass's -, those a shadow run of the widened view at the
-// game's own distances draws just the same when its loop chooses the same program for them (`mscal`; nothing else of a moby's
-// draw depends on the frustum): drawn once, in the frame's view, on the screen, posed. Sorted by the moby; `chain` / `ring`:
-// the bytes of the packet buffer and of the skinning ring the pass used for it
+// orig: (host) of the frame's mobys [first, first + count) - the real pass's -, those a shadow run (a widened view's, other
+// draw distances') draws just the same when its loop chooses the same program for them (`mscal`; nothing else of a moby's
+// draw depends on the frustum) and decides the same from their distances (`lod`: the fade, the low detail model; nothing
+// else depends on them): drawn once, in the frame's view, on the screen, posed. Sorted by the moby; `chain` / `ring`: the
+// bytes of the packet buffer and of the skinning ring the pass used for it; `records`: of the loop's sub-mesh records, at
+// most (one for a moby with +0x34 & 0x10)
 struct MrpSame {
     uint32_t moby = 0;
     uint16_t mscal = 0;
+    uint16_t lod = 0;
     bool deferred = false;
-    uint32_t chain = 0, ring = 0;
+    uint32_t chain = 0, ring = 0, records = 0;
 };
 void mrp_scene_real_same(size_t first, size_t count, std::vector<MrpSame>& out);
 // orig: (host) (=2) the shadow scene just ended is the whole run's: kept aside, the merged scene of the run that follows compared
