@@ -211,6 +211,13 @@ add_library(rac1_game STATIC
     ovl/aridia_ship.cpp
     ovl/fx_26a5b8.cpp
     ovl/fx_26ee48.cpp
+    ovl/dev_271450.cpp
+    ovl/devastator.cpp
+    ovl/rocket.cpp
+    ovl/ryno.cpp
+    ovl/ryno_fx.cpp
+    ovl/visibomb.cpp
+    ovl/visibomb_ball.cpp
     ovl/weapon_fx.cpp
     ovl/mine.cpp
     ovl/taunter.cpp
