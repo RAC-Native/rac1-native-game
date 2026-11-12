@@ -5,6 +5,11 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **One mod example: Daino's Arena.** The small example level (`examples/custom-level`: its script, its plugin, its README) is
+  removed; Daino's Arena (`examples/night-arena`) is the SDK's example, and the docs (Mods, Custom levels: code, the SDK, the
+  environment variables) are written around it. Its music "Overworld" by Daino Selvatico (CC BY 4.0) moved with it to
+  `examples/night-arena/music/overworld.ogg`. No game code changed; mods already composed need no recompose.
+
 - **Level mods: more music, kept through sections and deaths (SDK ABI 19).** level.txt's `music_track <name> <loop> [<intro>]`
   lines (as many as wanted, the `music` line's formats: WAV, Ogg Vorbis or VAG, stereo, an intro then its loop) and the
   plugin's `music_track(name, fade_frames)`: the track instead of the level's music, a fade out first; while it plays a

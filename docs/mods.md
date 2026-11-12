@@ -10,7 +10,7 @@ This page has five parts:
 1. [Making a mod](#making-a-mod): a texture mod step by step, a sound swap, sharing a mod.
 2. [Limits and gotchas](#limits-and-gotchas): what a mod can and cannot do today.
 3. [Troubleshooting](#troubleshooting): every `[mods]` line of the log, and a checklist.
-4. [Level mods](#level-mods): a new level the ship flies to (format 1), the example level, how it is built and saved.
+4. [Level mods](#level-mods): a new level the ship flies to (format 1), Daino's Arena as the example, how it is built and saved.
 5. [Reference](#reference): the folder, the manifest, the load order, the disc files, the textures, the dump.
 
 The code: `runtime/kernel/mods.cpp` (the folder, the manifests, the disc files), `src/game/render/texture_mods.cpp`
@@ -413,31 +413,34 @@ The code: `src/setup/level_compose.cpp` (the composer), `src/host/level_slots.h`
 (the level's slot, its row, its saves), `src/formats/host_meshes.h` (the meshes the host draws),
 `runtime/kernel/disc.cpp` (the level's files read as a disc's).
 
-### Try the example level
+### Try Daino's Arena
+
+[Daino's Arena](../examples/night-arena/README.md) (`examples/night-arena/`) is the example: a level mod made in
+Blender, on Kalebo III's code, with challenges, grind rails and a plugin. Its scripts write the whole mod folder (the
+geometry, the collision, the textures, the sounds, the lights, the objects, the plugin's source) and copy
+"Overworld" by Daino Selvatico (`examples/night-arena/music/overworld.ogg`, a stereo `.ogg`, CC BY 4.0) in as its music.
+You need Python 3 with Pillow and Blender; the README's "Making it" gives the commands, in short (from the arena's
+folder, then the game's):
 
 ```
-python3 examples/custom-level/make_example.py mods/example-plateau
-./build/rac1-native --setup --level-mods
+python3 make_textures.py
+blender -b --factory-startup --python build_arena.py --python build_rails.py --python build_prova.py --python export_arena.py -- --install
+./build/rac1-native --setup --level-mod night-arena
+./build/rac1-native --setup --mod-plugin night-arena
 ./build/rac1-native
 ```
 
-The first line writes the example mod (a floor, a ramp up to a platform, a few blocks coloured per vertex, a ship pad,
-five crates, Kerwan's sky and "Overworld" by Daino Selvatico as its music (a stereo `.ogg`, CC BY 4.0:
-`examples/custom-level/README.md`), made round (0, 0, 0) and moved by its offset; two classes of its own, sentries and
-gems, with their models, seven sounds and a trigger; everything else in it is made by the script, the sounds too), and
-copies its plugin (`examples/custom-level/plugin/`: a sixth crate that glides back and
-forth as a platform, a HUD line, a sound where it turns, a visits counter in the save; the sentries' and gems'
-behaviour, the trigger's chime). The second
-composes it with your disc and builds the plugin (the setup does it too, as its last step: CMake and the compiler the
-game was built with). In the game, the mod contains code: Options > Mods, turn **Example Plateau** on and confirm it
-(cross twice), restart. Then enter your ship: the planet list ends with **Custom Levels / Example Plateau**. Its log
-lines start with `[levels]`, `[compose]`, `[plugin]` and `[mod example-plateau]`. (A test run with `RAC1_MODS=1` but
-not `RAC1_MOD_CODE=1` has the level without its code: the sixth crate sits still.)
+The Blender line writes the mod and copies it to `mods/night-arena`; the setup lines compose it with your disc and
+build its plugin (CMake and the compiler the game was built with; a plain `--setup` does both too, as its last step).
+In the game, the mod contains code: Options > Mods, turn **Daino's Arena** on and confirm it (cross twice), restart.
+Then enter your ship: the planet list ends with **Custom Levels / Daino's Arena**. Its log lines start with `[levels]`,
+`[compose]`, `[plugin]` and `[mod night-arena]`. (A test run with `RAC1_MODS=1` but not `RAC1_MOD_CODE=1` has the level
+without its code: no menu, no challenges.)
 
 ### The level folder
 
 ```
-mods/example-plateau/
+mods/night-arena/
   mod.json
   level/
     level.txt          the level's settings (below)
@@ -452,9 +455,9 @@ mods/example-plateau/
 
 ```json
 {
-  "name": "Example Plateau",
+  "name": "Daino's Arena",
   "kind": "level",
-  "level": { "id": "example-plateau", "format": 1, "base": 0 }
+  "level": { "id": "night-arena", "format": 3, "base": 16 }
 }
 ```
 
@@ -545,7 +548,7 @@ level's first one and its loop). Your own: `music <loop> [<intro>]`, `<loop>` lo
   [stb_vorbis](https://github.com/nothings/stb)), then encoded as a WAV is. The decoded length is the stream's own (its
   last granule position), so a loop that is seamless as a WAV stays seamless as an `.ogg` made from it: encode it as
   usual, for example `ffmpeg -i loop.wav -c:a libvorbis -q:a 6 loop.ogg` (about a tenth of the WAV's size). The
-  example level's music is one.
+  arena's music is one (`examples/night-arena/music/overworld.ogg`).
 - a **VAG** as the disc's music files (`levels/levelNN/hdr_014c.vag`): a 0x30-byte `VAGp` header (big endian: the
   data's size at +0xc, the rate at +0x10, 8000 to 48000 Hz), then mono PS-ADPCM, copied as it is. A **stereo VAG**
   (ours): byte +0x1e of the header 2, the size at +0xc one channel's, the left and the right channel's ADPCM
@@ -572,8 +575,8 @@ its files' `music: ...` lines.
 
 Coordinates are the game's: z up, in game units. **Every coordinate of the collision must be above 0** (the game's
 collision grid starts at 0 and ignores what is below; the composer refuses a collision that reaches below). A level made
-round (0, 0, 0), as a modelling program has it, is moved with `offset`: the example is made round (0, 0, 0) and has
-`offset 200 200 20`; `offset auto` moves the level as far as its collision's lowest corner needs to be 16 units above 0
+round (0, 0, 0), as a modelling program has it, is moved with `offset`: Daino's Arena is made round (0, 0, 0) in Blender and its export writes the
+offset; `offset auto` moves the level as far as its collision's lowest corner needs to be 16 units above 0
 on each axis (in whole steps of 4; the composer's log says by how much). `lights.txt`'s coordinates are the game's
 (the debug menu's Lights tab writes them so): they are not moved.
 

@@ -30,8 +30,8 @@ changing how the game behaves.
 
 > **Mods.** The port supports mods: texture and sound swaps, new levels, and native plugins with their own code
 > through the [mod SDK](docs/sdk.md). [Daino's Arena](examples/night-arena/README.md) is a complete example: an arena in
-> a lava lake with challenge waves, grind rails and trips into other planets' worlds; [the example level](examples/custom-level/README.md)
-> is a small one. **Heads-up:** version 1.0 will make the game fully native
+> a lava lake with challenge waves, grind rails and trips into other planets' worlds; its Blender scripts, its plugin and its README
+> show how a mod is made. **Heads-up:** version 1.0 will make the game fully native
 > ([#145](https://github.com/RAC-Native/rac1-native-game/issues/145)) and the SDK will change with it: mods made before
 > 1.0 will very likely break and need updating. See [Mods](docs/mods.md).
 
@@ -263,8 +263,8 @@ For contributors, and for reverse-engineering and decompilation people:
 ## Licence
 
 The project's own code is under the [MIT licence](LICENSE). The third-party components it uses are
-listed, with their licences, in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The example level's music,
-"Overworld" by Daino Selvatico (`examples/custom-level/music/overworld.ogg`), is under
+listed, with their licences, in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Daino's Arena's music,
+"Overworld" and "Arena Fight" by Daino Selvatico (`examples/night-arena/music/`), is under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), not MIT.
 
 ## Acknowledgements

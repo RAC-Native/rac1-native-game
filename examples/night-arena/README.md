@@ -1,8 +1,7 @@
 # Daino's Arena
 
 (Its folder and level id: `night-arena`.) A level mod made in Blender: an arena in a lava lake ringed by mountains, on Kalebo III's code (base level 16), with a
-plugin that runs challenges against Kalebo III's enemies. It is the larger example next to
-[the example level](../custom-level/README.md): the scripts here write the whole mod (geometry, collision, textures,
+plugin that runs challenges against Kalebo III's enemies. It is the SDK's example: the scripts here write the whole mod (geometry, collision, textures,
 sounds, lights, objects and the plugin's source) into a mod folder, and the setup composes it with your disc. See
 [docs/mods.md](../../docs/mods.md) ("Level mods") and [docs/sdk.md](../../docs/sdk.md); everything here is our own,
 nothing of the game's (the enemies, the crates and the hero are the base level's, by their class numbers).
@@ -155,7 +154,7 @@ A `RAC1_SIM_INPUT=seq:` script's frames are the run's, about 1472 more than the 
 
 ## Music
 
-The level plays "Overworld" by Daino Selvatico (the example level's, `../custom-level/music/overworld.ogg`), licensed
+The level plays "Overworld" by Daino Selvatico (`music/overworld.ogg`), licensed
 under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The challenges are to play "Arena Fight" by Daino Selvatico
 (`music/arena_fight.ogg`), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) too (unlike the rest of
 this repository, MIT), once the game can play a level mod's second track across its sections.

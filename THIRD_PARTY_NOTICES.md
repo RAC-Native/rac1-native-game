@@ -35,9 +35,9 @@ These are stored in the repository, each with its licence next to it.
 
 ## Media under other licences
 
-- `examples/custom-level/music/overworld.ogg`: "Overworld", music © Daino Selvatico, licensed under
-  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), **not** under the MIT licence of the code. The example
-  level (`examples/custom-level/make_example.py`) plays it; see `examples/custom-level/README.md`.
+- `examples/night-arena/music/overworld.ogg`: "Overworld", music © Daino Selvatico, licensed under
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), **not** under the MIT licence of the code. Daino's Arena
+  (`examples/night-arena/export_arena.py`) plays it as its music; see `examples/night-arena/README.md`.
 
 ## Code derived from other projects
 

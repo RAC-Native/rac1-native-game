@@ -638,7 +638,7 @@ the session's level (the ship, `RAC1_GOTO`) has no session item 0x201: it is mad
 load of it starts the session at its arrival as any level mod's.
 
 Results (headless, the arena's test copy `s5-arena`: Kalebo III's base, the six imported enemies of stage 4, two placed
-robots; and a copy of the example level, `s5-plateau`, on Veldin's engine with Kalebo III's robot imported):
+robots; and a copy of the small example level (a plateau; since removed from the repository), `s5-plateau`, on Veldin's engine with Kalebo III's robot imported):
 
 | Test | Result |
 |---|---|
@@ -793,7 +793,7 @@ placing differs only in the slots (free ones of the spawned room) and the pvars'
 
 ### Testing
 
-The stage's test mod is a copy of the example level (`s6-sections`: main the plateau, `yard` the plateau again 400 units
+The stage's test mod is a copy of the small example level (a plateau; since removed from the repository: `s6-sections`: main the plateau, `yard` the plateau again 400 units
 east with Kalebo III's sky and music, four crates and two of Kalebo III's robots, `cave` a room of our own 400 units north
 with Veldin's sky and no music, a crate and a robot; five portals) with plugin test hooks (`RAC1_MOD_TEST=s6_tour`,
 `s6_switch50`, `s6_walk`, `s6_save`, `s6_load`, `s6_ship`):
