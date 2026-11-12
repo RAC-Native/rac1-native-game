@@ -1,0 +1,7 @@
+# the arena: the flame's materials
+newmtl flame_a
+Kd 1 1 1
+map_Kd flame.png
+newmtl flame_b
+Kd 1 1 1
+map_Kd flame_core.png
