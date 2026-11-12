@@ -842,7 +842,6 @@ float mat3_abs_diff(uint32_t a, uint32_t b) {
 
 // orig: 0x00205000 — kind of the current interaction (0 = none).
 uint32_t sub_00205000(int32_t flag) {
-    if (on_blarg()) return blg_call(blg_sub_205000_u, static_cast<uint32_t>(flag)).v0;  // (level 6's own: L6:0x0021d0a0)
     if (on_batalia()) return bat_call(bat_sub_205000_u, static_cast<uint32_t>(flag)).v0;  // (level 8's own: L8:0x00217b80)
     if (on_pokitaru()) return pok_call(pok_sub_205000_u, static_cast<uint32_t>(flag)).v0;  // (level 11's own: L11:0x00236968)
     if (on_hoven()) return hov_call(hov_sub_205000_u, static_cast<uint32_t>(flag)).v0;  // (level 12's own: L12:0x00227f10)
@@ -850,13 +849,12 @@ uint32_t sub_00205000(int32_t flag) {
     if (on_quartu()) return qua_call(qua_sub_00205000_u, static_cast<uint32_t>(flag)).v0;  // (level 15's own: L15:0x001fe778)
     if (on_kalebo()) return kal_call(kal_sub_00205000_u, static_cast<uint32_t>(flag)).v0;  // (level 16's own: L16:0x00203868)
     if (on_veldin_finale()) return vf_call(vf_sub_205000_u, static_cast<uint32_t>(flag)).v0;  // (level 18's own: L18:0x0020dde8)
-    if (on_veldin_orbit()) return vo_call(vo_sub_205000_u, static_cast<uint32_t>(flag)).v0;  // (level 17's own: L17:0x002020a8)
     if (on_l1_family() || on_rilgar()) return sub_00205000_l1(flag);
     const uint32_t mode = lbu(g::PLAYER + 0x20a4);
-    if (mode == 2) return 0;
-    if (mode == (mode < 3 ? 1u : 3u)) return 0;
+    if (hero_has_giant_clank() && mode == 2) return 0;
+    if ((hero_has_clank() && mode == 1) || mode == 3) return 0;
     if (lw(g::PLAYER + 0x22a8) == 1) return 0x54;
-    if (lbu(g::PLAYER + 0x12e2) != 0) return 0x6e;
+    if (hero_has_skate() && lbu(g::PLAYER + 0x12e2) != 0) return 0x6e;
     if (flag == 0) return 0;
     if (lbu(g::PLAYER + 0x20a8) == 0) return 0;
     if (lbu(g::PLAYER + 0x20aa) == 0) return 0;

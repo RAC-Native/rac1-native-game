@@ -93,7 +93,6 @@ int32_t hero_item_idle() {
 // orig: 0x00227638 — enter the idle state of the movement mode PLAYER+0x20a4 (0: 0, 1: 0x43,
 // 2: 0x5a, 3: 0x53).
 void hero_enter_idle() {
-    if (on_blarg()) { blg_call(blg_hero_enter_idle_u); return; }  // (level 6's own: L6:0x00239528)
     if (on_batalia()) { bat_call(bat_hero_enter_idle_u); return; }  // (level 8's own: L8:0x00234c18)
     if (on_pokitaru()) { pok_call(pok_hero_enter_idle_u); return; }  // (level 11's own: L11:0x00251558)
     if (on_hoven()) { hov_call(hov_hero_enter_idle_u); return; }  // (level 12's own: L12:0x00243d00)
@@ -101,14 +100,13 @@ void hero_enter_idle() {
     if (on_quartu()) { qua_call(qua_hero_enter_idle_u); return; }  // (level 15's own: L15:0x0021ab60)
     if (on_kalebo()) { kal_call(kal_hero_enter_idle_u); return; }  // (level 16's own: L16:0x002229f0)
     if (on_veldin_finale()) { vf_call(vf_hero_enter_idle_u); return; }  // (level 18's own: L18:0x0022c418)
-    if (on_veldin_orbit()) { vo_call(vo_hero_enter_idle_u); return; }  // (level 17's own: L17:0x00223380)
     if (on_l1_family() || on_rilgar()) return hero_enter_idle_l1();
     const uint32_t m = lbu(P + 0x20a4);
     if (m == 0) {
         hero_set_state(0, 1);
-    } else if (m == 1) {
+    } else if (hero_has_clank() && m == 1) {
         hero_set_state(0x43, 1);
-    } else if (m == 2) {
+    } else if (hero_has_giant_clank() && m == 2) {
         hero_set_state(0x5a, 1);
     } else if (m == 3) {
         hero_set_state(0x53, 1);
@@ -122,13 +120,11 @@ void hero_enter_idle() {
 // mode 1 swaps the counter +0x22a8 with +0x22ac (saving it to +0x22b0), mode 2 sets +0x1630 to 200.
 // orig: 0x00210a08
 void hero_mode_enter(uint32_t mode, uint32_t state, uint32_t moby) {
-    if (on_blarg()) { blg_call(blg_hero_mode_enter_u, mode, state, moby); return; }  // (level 6's own: L6:0x00227bf0)
     if (on_batalia()) { bat_call(bat_hero_mode_enter_u, mode, state, moby); return; }  // (level 8's own: L8:0x002225c8)
     if (on_pokitaru()) { pok_call(pok_hero_mode_enter_u, mode, state, moby); return; }  // (level 11's own: L11:0x00240d50)
     if (on_hoven()) { hov_call(hov_hero_mode_enter_u, mode, state, moby); return; }  // (level 12's own: L12:0x00232380)
     if (on_oltanis()) { olt_call(olt_hero_mode_enter_u, mode, state, moby); return; }  // (level 14's own: L14:0x00222870)
     if (on_kalebo()) { kal_call(kal_hero_mode_enter_u, mode, state, moby); return; }  // (level 16's own: L16:0x0020e458)
-    if (on_veldin_orbit()) { vo_call(vo_hero_mode_enter_u, mode, state, moby); return; }  // (level 17's own: L17:0x0020d960)
     if (on_l1_family() || on_rilgar()) return hero_mode_enter_l1(mode, state, moby);
     hero_hold_release();
     sb(P + 0x20a6, 1);
@@ -156,7 +152,7 @@ void hero_mode_enter(uint32_t mode, uint32_t state, uint32_t moby) {
     if (mode == 1) {
         sh(P + 0x22b0, lhu(P + 0x22a8));
         sw(P + 0x22a8, lwu(P + 0x22ac));
-    } else if (mode == 2) {
+    } else if (hero_has_giant_clank() && mode == 2) {
         sw(P + 0x1630, 200);
     }
     hero_set_state(state, 1);
@@ -169,7 +165,6 @@ void hero_mode_enter(uint32_t mode, uint32_t state, uint32_t moby) {
 // position (+0xa94 = 1) and the hero re-enters state 0 (not on levels 2 / 6 in state 0x64).
 // orig: 0x00210b30
 void hero_mode_exit() {
-    if (on_blarg()) { blg_call(blg_hero_mode_exit_u); return; }  // (level 6's own: L6:0x00227cf8)
     if (on_batalia()) { bat_call(bat_hero_mode_exit_u); return; }  // (level 8's own: L8:0x002226d0)
     if (on_pokitaru()) { pok_call(pok_hero_mode_exit_u); return; }  // (level 11's own: L11:0x00240e58)
     if (on_hoven()) { hov_call(hov_hero_mode_exit_u); return; }  // (level 12's own: L12:0x00232488)
@@ -177,9 +172,8 @@ void hero_mode_exit() {
     if (on_quartu()) { qua_call(qua_hero_mode_exit_u); return; }  // (level 15's own: L15:0x00208ca8)
     if (on_kalebo()) { kal_call(kal_hero_mode_exit_u); return; }  // (level 16's own: L16:0x0020e560)
     if (on_veldin_finale()) { vf_call(vf_hero_mode_exit_u); return; }  // (level 18's own: L18:0x00218928)
-    if (on_veldin_orbit()) { vo_call(vo_hero_mode_exit_u); return; }  // (level 17's own: L17:0x0020da68)
     if (on_l1_family() || on_rilgar()) return hero_mode_exit_l1();
-    if (lbu(P + 0x20a4) == 1) {
+    if (hero_has_clank() && lbu(P + 0x20a4) == 1) {
         sw(P + 0x22ac, lwu(P + 0x22a8));
         sw(P + 0x22a8, static_cast<uint32_t>(lh(P + 0x22b0)));
         if (lwu(P + 0x1620) != 0) {
@@ -191,7 +185,7 @@ void hero_mode_exit() {
             sw(P + 0x1624, 0);
         }
     }
-    if (lbu(P + 0x20a4) == 2 && lh(P + 0x1634) != -1) {
+    if (hero_has_giant_clank() && lbu(P + 0x20a4) == 2 && lh(P + 0x1634) != -1) {
         sub_002359f8(static_cast<uint32_t>(lh(P + 0x1634)), 0);
         sh(P + 0x1634, 0xffff);
     }
@@ -257,7 +251,7 @@ int32_t enter_jump(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_2
     if (lw(P + 0x2084) != 0x12 && lbu(P + 0x12e4) != 0 && lwc1(P + 0x88) < lwc1(P + 0x2f0) + 0.5f) {
         hero_land_fx(3, 0x10, 0);
     }
-    if (lw(P + 0x2084) == 0x69) hero_sound_start(10, 0);
+    if (hero_has_lava() && lw(P + 0x2084) == 0x69) hero_sound_start(10, 0);
     {
         const float fs70 = lwc1(0x0015ed70);
         swc1(P + 0x410, lwc1(P + 0x88));
@@ -299,6 +293,7 @@ int32_t enter_jump(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_2
         swc1(P + 0x3f8, lwc1(P + 0x4a0) * u2f(0x3f95c28fu));
         break;
     case 0x12:
+        if (!hero_has_water()) break;
         jump_arc(u2f(0x3dcccccdu), u2f(0x3e4ccccdu), 2, k06, 18.0f, 28.0f, 14.0f, 10);
         if (lwc1(P + 0x22a4) < 1.25f) {
             sw(P + 0x420, static_cast<uint32_t>(frame_scale_i(15)));
@@ -342,6 +337,7 @@ int32_t enter_jump(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_2
         break;
     }
     case 0x69: {
+        if (!hero_has_lava()) break;
         sw(P + 0x208c, 0x19);
         const float y = lwc1(P + 0x88), top = lwc1(P + 0x2f4);
         const float d = y < top ? top - y : lwc1(P + 0x3f8);
@@ -383,12 +379,14 @@ int32_t enter_jump(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_2
         swc1(P + 0x424, fs6c * u2f(0x40b66666u));
         break;
     case 0x5e:
-        jump_arc(u2f(0x40866666u), u2f(0x4089999au), 0x13, k06, 17.0f, 22.0f, 40.0f, 15);
-        swc1(P + 0x4a0, fs70 * 30.0f);
-        swc1(P + 0x414, fs6c * u2f(0x408ba058u));
-        swc1(P + 0x424, fs6c * 4.0f);
-        swc1(P + 0x3f8, fs70 * 50.0f);
-        swc1(P + 0x494, 2.0f);
+        if (hero_has_giant_clank()) {
+            jump_arc(u2f(0x40866666u), u2f(0x4089999au), 0x13, k06, 17.0f, 22.0f, 40.0f, 15);
+            swc1(P + 0x4a0, fs70 * 30.0f);
+            swc1(P + 0x414, fs6c * u2f(0x408ba058u));
+            swc1(P + 0x424, fs6c * 4.0f);
+            swc1(P + 0x3f8, fs70 * 50.0f);
+            swc1(P + 0x494, 2.0f);
+        }
         break;
     case 0x49:
         jump_arc(u2f(0x3fa66666u), u2f(0x3faccccdu), 5, k06, 18.0f, 27.0f, 27.0f, 0xe);
@@ -515,9 +513,9 @@ int32_t enter_jump(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_2
     if (mode == 0) return 1;
     switch (lw(P + 0x2084)) {
     case 0x07: anim_fs(7, 0, 5); break;
-    case 0x12: hero_anim_set(0x72, 1, -1.0f); break;
+    case 0x12: if (hero_has_water()) hero_anim_set(0x72, 1, -1.0f); break;
     case 0x3c: anim_fs(0x43, 0, 4); break;
-    case 0x69: anim_fs(7, 0, 5); break;
+    case 0x69: if (hero_has_lava()) anim_fs(7, 0, 5); break;
     case 0x29: anim_fs(0x50, 4, 5); break;
     case 0x2a: {
         const float a = atan2_f(lwc1(P + 0x500) - lwc1(P + 0x540), lwc1(P + 0x504) - lwc1(P + 0x544));
@@ -532,7 +530,7 @@ int32_t enter_jump(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_2
         anim_fs(set, 0, 5);
         break;
     }
-    case 0x5e: anim_fs(4, 0, 8); break;
+    case 0x5e: if (hero_has_giant_clank()) anim_fs(4, 0, 8); break;
     case 0x49: anim_fs(7, 5, 5); break;
     case 0x0a: anim_fs(0x12, 0, 5); break;
     case 0x10:
@@ -673,6 +671,7 @@ int32_t enter_attack(int32_t mode) {
 // abandoned for another state, 2 to return 1 at once, 1 to run the common tail.
 // orig: 0x002223f8 (jump table 0x1e8030)
 int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_2088) {
+    if (!hero_has_giant_clank() && state >= 0x5au && state <= 0x62u && state != 0x5eu) return 1;
     switch (state) {
     case 0x00: {
         sw(P + 0x208c, 0);
@@ -685,7 +684,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
             return 2;
         }
         copy_vel_150();
-        if (lbu(P + 0x12e2) != 0 && lwc1(0x0015ed6c) * 0.5f < vec2_length(V(P + 0x150))) return redirect(0x2f);
+        if (hero_has_skate() && lbu(P + 0x12e2) != 0 && lwc1(0x0015ed6c) * 0.5f < vec2_length(V(P + 0x150))) return redirect(0x2f);
         if (lbu(P + 0x12ea) != 0 && lh(P + 0x30c) == 0) return redirect(0x79);
         sw(P + 0xff8, 0x68);
         if (mode != 0) idle_anim();
@@ -711,6 +710,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         if (mode != 0) hero_anim_set(0x45, 0, static_cast<float>(frame_scale_i(0xc)));
         return 1;
     case 0x80:
+        if (!hero_has_sink_7f()) return 1;
         sw(P + 0x208c, 0x14);
         sw(P + 0x2284, 0);
         sw(P + 0x22a8, 0);
@@ -719,6 +719,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         if (mode != 0) hero_anim_set(0x7c, 0, static_cast<float>(frame_scale_i(0xc)));
         return 1;
     case 0x7f: {
+        if (!hero_has_sink_7f()) return 1;
         const float vz = lwc1(P + 0x108) * u2f(0x3e4ccccdu);
         const float lim = lwc1(0x0015ed6c) * -7.0f;
         sw(P + 0x208c, 0x14);
@@ -734,6 +735,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         return 1;
     }
     case 0x33: {
+        if (!hero_has_water()) return 1;
         sw(P + 0x208c, 0x11);
         sw(P + 0x2284, 0xb);
         sb(P + 0x20a7, 1);
@@ -751,6 +753,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         return 1;
     }
     case 0x35: {
+        if (!hero_has_water()) return 1;
         sw(P + 0x2284, 0xb);
         sw(P + 0x208c, 0x11);
         sb(P + 0x20a7, 1);
@@ -767,6 +770,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         return 1;
     }
     case 0x34: {
+        if (!hero_has_water()) return 1;
         sw(P + 0x208c, 0x11);
         sw(P + 0x2284, 0xb);
         sb(P + 0x20a7, 1);
@@ -778,6 +782,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         return 1;
     }
     case 0x37: {
+        if (!hero_has_water()) return 1;
         const int32_t old = lw(P + 0x2094);
         sw(P + 0x208c, 0x12);
         sb(P + 0x20a7, 1);
@@ -820,6 +825,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
     }
     case 0x75:
     case 0x76: {
+        if (!hero_has_water()) return 1;
         sw(P + 0x208c, 7);
         sw(P + 0x2284, 0);
         sub_00213de8(0.5f);
@@ -833,6 +839,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         return 1;
     }
     case 0x36:
+        if (!hero_has_water()) return 1;
         sb(P + 0x20a7, 1);
         sw(P + 0x208c, 0x12);
         sw(P + 0x2284, 0);
@@ -842,6 +849,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         if (mode != 0) hero_anim_set(0x65, 0, static_cast<float>(frame_scale_i(0x11)));
         return 1;
     case 0x6a: {
+        if (!hero_has_water()) return 1;
         constexpr uint32_t S = 0x00141848;  // the game statistics block
         const int32_t charge = lh(P + 0x90e);
         sw(P + 0x208c, 0x14);
@@ -867,6 +875,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         return 1;
     }
     case 0x82:
+        if (!hero_has_water()) return 1;
         sb(P + 0x20a7, 1);
         sw(P + 0x208c, 0x14);
         sw(P + 0x2284, 0);
@@ -877,6 +886,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
     case 0x38:
     case 0x39:
     case 0x3a:
+        if (!hero_has_hydropack()) return 1;
         sw(P + 0x208c, 0x13);
         sw(P + 0x2284, 0);
         if (mode != 0) hero_anim_set(0x46 + (state - 0x38), 0, static_cast<float>(frame_scale_i(8)));
@@ -911,8 +921,10 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         sh(P + 0x3b8, 0);
         hero_anim_set(0x2e, 0, static_cast<float>(frame_scale_i(5)));
         return 1;
-    case 0x02:
     case 0x2f:
+        if (!hero_has_skate()) return 1;
+        [[fallthrough]];
+    case 0x02:
     case 0x3f:
     case 0x73: {
         sw(P + 0x208c, 1);
@@ -927,7 +939,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         }
         sw(P + 0xff8, 0x68);
         if (lbu(P + 0x12ea) != 0 && lh(P + 0x30c) == 0) return redirect(0x79);
-        if (lbu(P + 0x12e2) != 0 || state == 0x2f) {  // sliding run
+        if (hero_has_skate() && (lbu(P + 0x12e2) != 0 || state == 0x2f)) {  // sliding run
             const float k = u2f(0x40f66666u);
             const float lim = lwc1(0x0015ed6c) * k;
             if (lim < lwc1(P + 0x194)) swc1(P + 0x194, lim);
@@ -938,12 +950,12 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
             hero_anim_set(0x37, 0, static_cast<float>(frame_scale_i(8)));
             return 1;
         }
-        if (lbu(P + 0x20a9) != 0 || state == 0x73) {
+        if (hero_has_water() && (lbu(P + 0x20a9) != 0 || state == 0x73)) {
             sw(P + 0x2084, 0x73);
             hero_anim_set(0x60, 0, static_cast<float>(frame_scale_i(8)));
             return 1;
         }
-        if (lh(P + 0x308) == 1 || state == 0x3f) {
+        if (hero_has_beam() && (lh(P + 0x308) == 1 || state == 0x3f)) {
             sw(P + 0x2084, 0x3f);
             hero_anim_set(0x5b, 0, static_cast<float>(frame_scale_i(8)));
             return 1;
@@ -962,6 +974,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         return 1;
     }
     case 0x71:
+        if (!hero_has_beam()) return 1;
         sw(P + 0x208c, 1);
         sw(P + 0x2284, 0);
         if (mode == 0) return 1;
@@ -991,6 +1004,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         return 1;
     }
     case 0x31:
+        if (!hero_has_ice_slide()) return 1;
         sb(P + 0x20a7, 1);
         sw(P + 0x2284, 3);
         sw(P + 0x208c, 0x10);
@@ -1002,7 +1016,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         sw(P + 0x208c, 1);
         sw(P + 0x2284, 0);
         copy_vel_150();
-        if (lbu(P + 0x12e2) != 0) return redirect(0x2f);
+        if (hero_has_skate() && lbu(P + 0x12e2) != 0) return redirect(0x2f);
         if (lbu(P + 0x12ea) != 0 && lh(P + 0x30c) == 0) return redirect(0x79);
         if (hero_item_idle() != 0) return 0;
         if (sub_00205000(0) == 0x54) {
@@ -1042,6 +1056,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         return 1;
     }
     case 0x24: {
+        if (!hero_has_swingshot()) return 1;
         constexpr uint32_t S = 0x00141680;
         sw(P + 0x208c, 0xd);
         sw(P + 0x2284, 7);
@@ -1058,6 +1073,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
     }
     case 0x25:
     case 0x26:
+        if (!hero_has_swingshot()) return 1;
         sb(P + 0x20ac, 1);
         sw(P + 0x208c, 0xd);
         sw(P + 0x2284, 7);
@@ -1067,6 +1083,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         if (mode != 0) hero_anim_set(0x30, 1, static_cast<float>(frame_scale_i(state == 0x25 ? 0xa : 5)));
         return 1;
     case 0x2c: {  // swing from the target picked by hero_pick_target_323 (+0x990)
+        if (!hero_has_swingshot()) return 1;
         constexpr uint32_t S = 0x00141680;
         sw(P + 0x208c, 0xe);
         sw(P + 0x2284, 7);
@@ -1130,6 +1147,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
     case 0x28:
     case 0x74: {  // on a rail (0x28: grind path +0x560..; 0x74: the path +0x5f0..)
         const bool grind = state == 0x28;
+        if (grind ? !hero_has_grind() : !hero_has_state_74()) return 1;
         const uint32_t R = grind ? P + 0x560 : P + 0x5f0;
         const int32_t old = lw(P + 0x2094);
         sw(P + 0x2284, 3);
@@ -1290,6 +1308,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
     case 0x13: case 0x14: case 0x15: case 0x20: case 0x23: case 0x51:
         return enter_attack(mode);
     case 0x70: {  // wrench throw / combo finisher: step 5, or 6 chained from a step-4 end
+        if (!hero_has_beam()) return 1;
         constexpr OvConst<0x0017bc28u> COMBO{};
         sw(P + 0x208c, 6);
         sw(P + 0xa64, 0);
@@ -1308,6 +1327,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         return 1;
     }
     case 0x2b: {
+        if (!hero_has_grind()) return 1;
         sw(P + 0x208c, 0xf);
         sw(P + 0xa64, 0);
         sw(P + 0xa60, lw(P + 0x2090) == 0x2b ? (lw(P + 0xa60) == 0 ? 1u : 0u) : 0u);
@@ -1354,6 +1374,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         return 1;
     }
     case 0x68: {  // (+0x1660 counts consecutive bounces off 0x69)
+        if (!hero_has_lava()) return 1;
         const int32_t prev = lw(P + 0x2090);
         if (prev == 0x69 || (lw(P + 0x209c) == 0x69 && lw(P + 0x2094) != 0 && prev != 7)) {
             sw(P + 0x1660, lwu(P + 0x1660) + 1);
@@ -1370,6 +1391,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         return 1;
     }
     case 0x7b:
+        if (!hero_has_lava()) return 1;
         sw(P + 0x208c, 0x19);
         sw(P + 0x2284, 0);
         if (lw(0x0015ed84) == 0xf) sub_00217450();
@@ -1379,6 +1401,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         if (mode != 0) anim_fs(0x71, 0, 8);
         return 1;
     case 0x7c:
+        if (!hero_has_state_7c()) return 1;
         if (lw(0x0015ed84) == 6) {
             hero_set_state(0x3d, 1);
             sw(P + 0x22f4, 1);
@@ -1592,6 +1615,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         if (mode != 0) scripted_anim(2, -3.0f);
         return 1;
     case 0x42: {  // (rail: +0x5b0 speed capped at 2.5)
+        if (!hero_has_grind()) return 1;
         sw(P + 0x208c, 0xf);
         sw(P + 0x2284, 0);
         if (lw(P + 0x570) == 0) hero_counter_use(1);
@@ -1644,6 +1668,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
         if (mode != 0) hero_anim_set(0xb, 0, -1.0f);
         return 1;
     case 0x3b: {
+        if (!hero_has_state_3b()) return 1;
         sb(P + 0x20ad, 1);
         sb(P + 0x20a7, 1);
         sw(P + 0x208c, 9);
@@ -1676,7 +1701,6 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
 // state timers. Returns 1 when entered.
 // orig: 0x002223f8
 int32_t hero_set_state(uint32_t state, int32_t mode) {
-    if (on_blarg()) return static_cast<int32_t>(blg_call(blg_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (level 6's own: L6:0x002356a0)
     if (on_batalia()) return static_cast<int32_t>(bat_call(bat_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (level 8's own: L8:0x00230b38)
     if (on_pokitaru()) return static_cast<int32_t>(pok_call(pok_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (level 11's own: L11:0x0024db50)
     if (on_hoven()) return static_cast<int32_t>(hov_call(hov_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (level 12's own: L12:0x002400d0)
@@ -1684,7 +1708,6 @@ int32_t hero_set_state(uint32_t state, int32_t mode) {
     if (on_quartu()) return static_cast<int32_t>(qua_call(qua_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (level 15's own: L15:0x00216c38)
     if (on_kalebo()) return static_cast<int32_t>(kal_call(kal_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (level 16's own: L16:0x0021e398)
     if (on_veldin_finale()) return static_cast<int32_t>(vf_call(vf_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (level 18's own: L18:0x00227dd0)
-    if (on_veldin_orbit()) return static_cast<int32_t>(vo_call(vo_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (level 17's own: L17:0x0021e530)
     if (on_rilgar()) return static_cast<int32_t>(ril_call(ril_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (Rilgar's own: L5:0x0024cee8)
     if (on_l1_family()) return hero_set_state_l1(state, mode);
     if (lw(P + 0x208c) == 0x14) {
@@ -1735,7 +1758,8 @@ int32_t hero_set_state(uint32_t state, int32_t mode) {
     }
     hero_layers_start(lw(P + 0x2090), lw(P + 0x2084));
     sw(P + 0xff8, 0);
-    if (state < 0x83) {
+    const uint32_t limit = hero_has_water() ? 0x83u : 0x82u;
+    if (state < limit) {
         const int32_t r = enter_state(state, mode, hm, old_2088);
         if (r == 0) return 0;
         if (r == 2) return 1;

@@ -1,5 +1,6 @@
 #include <game/ovl/hero_move_mode.h>
 
+#include <game/ovl/hero_l1.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 
@@ -294,7 +295,7 @@ void hero_move_mode_ex(bool has_mode_1, bool has_mode_2) {
 
 // orig: 0x002062b0
 void hero_move_mode() {
-    hero_move_mode_ex(true, true);
+    hero_move_mode_ex(hero_has_clank(), hero_has_giant_clank());
 }
 
 // orig: L1:0x00228000 L2:0x00217158 L3:0x001ffa88 L5:0x00234dd8

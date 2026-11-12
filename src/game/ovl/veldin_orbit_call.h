@@ -5,7 +5,6 @@
 
 #include <cstdint>
 
-#include <game/ovl/veldin_orbit_hero.h>
 #include <game/ovl/veldin_orbit_mobys.h>
 #include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/ovl_common.h>
