@@ -40,7 +40,6 @@ material tfrag 0 tex 69 metal 0.43 1
 material tfrag 0 tex 114 metal 0.81 1
 material tfrag 0 tex 102 metal 0.49 1
 material tie 1219 tex 0 metal 0.71 1
-material tie 1064 tex 3 metal 0.35 1
 material tie 1072 tex 3 metal 0.35 1
 emissive moby 1655 tex 12  1.75 0.00
 material moby 1655 tex 2 metal 0.35 1
@@ -72,9 +71,9 @@ material shrub 269 tex 2 metal 0.35 1
 material shrub 269 tex 0 metal 0.46 1
 material tfrag 0 tex 9 metal 0.56 1
 material tie 1296 tex 0 metal 0.35 1
+material tfrag 0 tex 39 metal 0.35 1
 light 355.831 267.867 138.746  0.428 1.000 0.702  1.000 14.489 0.000 1
 emit moby 1655  0.025 1.052 1.569  0.234 1.000 0.383  1.000 1.395 0.000  0.00  joint 0
-material tfrag 0 tex 39 metal 0.35 1
 emissive shrub 295 tex 0  1.78 0.00
 material tfrag 0 tex 11 metal 0.46 1
 emissive tie 1318 tex 0  2.01 0.31
@@ -82,8 +81,8 @@ material tie 1226 tex 3 metal 0.35 1
 emissive tfrag 0 tex 12  3.32 0.58
 material tie 1227 tex 1 metal 0.35 1
 material tie 1224 tex 0 metal 0.35 1
-light 360.993 329.112 147.090  0.550 1.000 0.754  1.000 18.883 0.000 1
 emissive surface 1123 tex 12831  2.26 0.00
+light 360.993 329.112 147.090  0.550 1.000 0.754  1.000 18.883 0.000 1
 emissive moby 1123 tex 0  2.61 0.35
 emissive moby 1123 tex 7  2.57 0.31
 material moby 1123 tex 6 metal 0.35 1
@@ -137,3 +136,62 @@ emissive moby 1096 tex 3  3.05 0.00
 emissive moby 1097 tex 3  2.22 0.00
 emissive moby 1098 tex 10  2.61 0.00
 emissive moby 1098 tex 6  2.58 0.66
+material tfrag 0 tex 89 metal 0.35 1
+material tfrag 0 tex 3 metal 0.42 1
+emissive tie 1043 tex 12  2.26 0.00
+emissive tie 1043 tex 13  2.26 0.00
+emissive tie 1064 tex 3  2.25 0.00
+emissive tie 1064 tex 4  2.25 0.00
+emissive tfrag 0 tex 121  2.63 0.00
+material tie 1246 tex 3 metal 0.35 1
+material tie 1246 tex 1 metal 0.35 1
+material moby 1055 tex 0 metal 0.35 1
+material moby 1055 tex 1 metal 0.35 1
+material moby 1054 tex 0 metal 0.35 1
+material moby 1054 tex 1 metal 0.35 1
+material tie 1246 tex 11 metal 0.35 1
+material moby 1054 tex 3 metal 0.35 1
+material moby 1055 tex 4 metal 0.35 1
+emissive tie 1245 tex 11  2.77 0.65
+material tie 1245 tex 1 metal 0.35 1
+material tfrag 0 tex 78 metal 0.35 1
+material tfrag 0 tex 75 metal 0.35 1
+emit shrub 284  0.053 -23.090 12.298  1.000 0.924 0.213  1.000 10.685 0.000  0.00
+emissive shrub 284 tex 1  1.62 0.00
+emissive shrub 284 tex 0  1.74 0.00
+emit shrub 273  -0.082 -2.476 15.824  0.429 1.000 0.406  1.302 3.264 0.000  0.00
+emissive shrub 273 tex 3  2.50 0.00
+emit tie 1268  0.261 7.686 20.188  0.281 1.000 0.644  1.000 8.000 0.000  0.00
+emissive tie 1268 tex 10  2.57 0.00
+emissive tie 1268 tex 2  2.81 0.00
+emissive tie 1268 tex 1  2.81 0.00
+emissive tie 1297 tex 3  2.72 0.58
+emissive moby 1125 tex 0  1.00 0.00
+emissive tie 1064 tex 5  2.26 0.00
+emit tie 1321  -8.014 -0.159 13.643  0.850 0.920 1.000  1.000 8.000 0.000  0.00
+material tfrag 0 tex 21 metal 0.35 1
+material tfrag 0 tex 93 metal 0.35 1
+material tie 1321 tex 2 metal 0.58 1  glow 2.40 0.55
+emit tie 1079  16.398 -0.009 7.528  1.000 0.723 0.000  1.000 8.000 0.000  0.00
+emissive tie 1321 tex 8  2.39 0.00
+emissive tie 1079 tex 2  2.64 0.00
+emissive tie 1066 tex 3  2.66 0.00
+emit shrub 231  -0.608 -18.026 -0.294  1.000 0.247 0.247  1.000 8.000 0.000  0.00
+emissive shrub 231 tex 1  1.16 0.00
+emissive shrub 231 tex 0  0.90 0.00
+emit shrub 265  0.026 0.317 18.045  0.445 0.917 1.000  1.000 8.000 0.000  0.00
+emissive tie 1289 tex 0  2.79 0.00
+emit tie 1321  11.968 2.299 18.209  1.000 0.901 0.187  1.714 3.349 0.000  0.00
+emissive tie 1077 tex 1  2.90 0.00
+emissive tie 1077 tex 2  2.87 0.00
+emissive tie 1077 tex 3  2.95 0.00
+emissive tfrag 0 tex 38  2.53 0.00
+sun 22.6 90.0
+material moby 1030 tex 1 metal 0.35 1
+material moby 1030 tex 0 metal 0.74 1
+emissive moby 1030 tex 4  3.06 0.00
+material tfrag 0 tex 62 metal 0.86 1
+material tfrag 0 tex 63 metal 0.86 1
+material tfrag 0 tex 68 metal 0.87 1
+material tfrag 0 tex 67 metal 0.86 1
+material tfrag 0 tex 91 metal 0.87 1
