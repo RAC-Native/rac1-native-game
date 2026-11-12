@@ -89,3 +89,5 @@ material tie 1492 tex 8 metal 0.53 0.45
 material tfrag 0 tex 0 metal 1 0.56
 material tfrag 0 tex 40 metal 1 0.56
 material tfrag 0 tex 38 metal 1 0.56
+material tfrag 0 tex 26 metal 1 1
+material tfrag 0 tex 24 metal 1 1
