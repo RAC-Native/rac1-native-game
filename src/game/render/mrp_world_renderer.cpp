@@ -749,7 +749,13 @@ void load_level(int id) {
     if (!session)
         for (auto& [lv, c] : g_wcache) free_level(c.L);
     if (!session) g_wcache.clear(), g_wkey.clear();
-    const std::shared_ptr<Prefetched> pf = prefetch_take(id);  // (a world section's: read on a worker already)
+    const std::shared_ptr<Prefetched> pf = prefetch_take(id);  // (a world section's, or the level exit's: read on a worker already)
+    if (!session) {  // (no sections: another level's read, for a level not entered after all, freed once done - the last
+                     // std::async future's end waits for its task)
+        std::lock_guard<std::mutex> lk(g_pf_mu);
+        for (auto it = g_pf.begin(); it != g_pf.end();)
+            it = it->second.wait_for(std::chrono::seconds(0)) == std::future_status::ready ? g_pf.erase(it) : std::next(it);
+    }
     if (const auto it = g_wcache.find(id); it != g_wcache.end()) {
         CachedWorld c = std::move(it->second);
         g_wcache.erase(it);
@@ -887,8 +893,8 @@ void load_level(int id) {
     for (const auto& c : L.world->ties) nt += c.packets.size();
     std::printf("[mrpw] level %d: %zu shrub classes (%zu packets), %zu tie classes (%zu packets), %zu tfrags; %zu / %zu / %zu textures in %zu arrays (%.0f ms)\n", id,
                 L.world->shrubs.size(), ns, L.world->ties.size(), nt, L.world->tfrags.size(), L.tex[0].size(), L.tex[1].size(), L.tex[2].size(), L.buckets.size(), now_ms() - t0);
-    if (world_renderer_level_get() == id)  // (a session's game world section: where its load's time went)
-        std::printf("[mrpw] level %d (a world section's, %s): the world %.0f ms, its index %.0f, textures %.0f, templates and buffers %.0f, the EE tables %.0f, "
+    // (where the load's time went: a session's game world section's, and every level's - its start's stall, on the main thread)
+    std::printf("[mrpw] level %d (%s): the world %.0f ms, its index %.0f, textures %.0f, templates and buffers %.0f, the EE tables %.0f, "
                     "the rest %.0f\n",
                     id, pf != nullptr && pf->ok ? "read on a worker before" : "read now", t_world - t0, t_index - t_world, t_tex - t_index, t_gpu - t_tex, t_ee - t_gpu,
                     now_ms() - t_ee);
