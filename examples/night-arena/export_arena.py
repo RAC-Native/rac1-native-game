@@ -2,7 +2,8 @@
 
 In Blender (the GUI):   p = "<this folder>/export_arena.py"; g = {"__file__": p}; exec(open(p).read(), g)
                         g["export"](None, True)   (True: also copied into the game's mods/)
-Headless:               blender -b arena.blend --python export_arena.py -- [<out folder>] [--install]
+Headless:               blender -b arena.blend --python export_arena.py -- [<out folder>] [--install] [--bundle]
+                        (--bundle: also writes bundled-mods/night-arena, the copy the game ships: docs/mods.md)
 The game's checkout (its mods/): local.json's "game" beside this script when there is one
 ({"game": "/path/to/rac1-native-game"}), else the repository this script is in (examples/night-arena/../..).
 
@@ -1045,7 +1046,7 @@ def sounds(level):
 
 # ---------------------------------------------------------------- level.txt, lights.txt
 
-def export(out=None, install=False):
+def export(out=None, install=False, bundle=False):
     del errors[:], warnings[:]
     out = out or os.path.join(HERE, "out", FOLDER)
     level = os.path.join(out, "level")
@@ -1296,11 +1297,15 @@ def export(out=None, install=False):
             shutil.rmtree(dst)
         shutil.copytree(out, dst)
         print("installed", dst)
+    if bundle:  # the copy the game ships (bundled-mods/, tools/bundled_mods.py): commit it with the scripts' changes
+        sys.path.insert(0, os.path.join(GAME, "tools"))
+        import bundled_mods
+        bundled_mods.refresh(FOLDER, out)
     return True
 
 
 if __name__ == "__main__":
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    ok = export(next((a for a in argv if not a.startswith("--")), None), "--install" in argv)
+    ok = export(next((a for a in argv if not a.startswith("--")), None), "--install" in argv, "--bundle" in argv)
     if bpy.app.background and not ok:
         sys.exit(1)
