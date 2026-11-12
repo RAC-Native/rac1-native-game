@@ -94,7 +94,7 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   touching it he jumps out burnt, a health point lost each time, and with none left he sinks. (Type 3 is Aridia's
   quicksand: there he would sink and be bounced out with Cross.)
 
-It needs a game with the mod SDK's ABI 17 or later (the worlds put back at every entry; ABI 16 the hoverboard outside a
+It needs a game with the mod SDK's ABI 19 or later (the arena's own music, `music_track`; ABI 18 Giant Clank's energy; ABI 17 the worlds put back at every entry; ABI 16 the hoverboard outside a
 race, Rilgar's race in its world; ABI 15 a win's save, `game_save`; ABI 13 the mod's rail in a planet's world, the
 boss; `hero generic` ABI 12; the rails, the sessions and sections ABI 11; the rest of the plugin ABI 5).
 

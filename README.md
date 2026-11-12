@@ -1,17 +1,15 @@
 # rac1-native
 
-> **Current state (0.7.0):** every planet of the game is ported, from Veldin to the final fight with
+> **Current state (0.8.0):** every planet of the game is ported, from Veldin to the final fight with
 > Drek, the credits and the end menu, and of the game's code the game runs, one function is left to
-> port. **The whole game has been played through to the end** on 0.4.0. 0.7.0 brings the European
-> Platinum disc (PAL 2.00) as the game's disc, the disc images found by the setup itself and listed
-> in the launcher, data discs for the Japanese voices and the later discs' corrected texts, the
-> later build's own fixes as options (1.02 Fixes, 1.02 Gameplay), Cut Content (Kerwan's citizens,
-> Eudora's Transport Ships), reorganised Options (Display, Graphics, Language), Water Reflections
-> (with ray-traced values on Vulkan), grass, Anya-Thoughtmane's lighting batches, a direct mouse and
-> experimental controller vibration, macOS on Apple Silicon, a faster frame, and the fixes from the
-> 0.6.0 reports: see the [Changelog](CHANGELOG.md#070). It has been playtested on Linux. Windows is
-> no longer experimental: players have played through the game on it. Expect some bugs and glitches.
-> See [Status](docs/status.md).
+> port. **The whole game has been played through to the end** on 0.4.0. 0.8.0 brings mods (a `mods/`
+> folder with texture and sound swaps, new levels, and a native plugin SDK, with Daino's Arena as the
+> complete example), Vulkan as the default renderer, Anya-Thoughtmane's lighting batch 4, a shorter
+> frame at the default 4:3 and in widescreen, Quick Select Rings, movie subtitles, a Bug Fixes page,
+> a high precision sound mix, and the fixes from the 0.7.0 reports: see the
+> [Changelog](CHANGELOG.md#080). Windows is no longer experimental: players have played through the
+> game on it. Expect some bugs and glitches. 1.0 will make the game fully native and change the mod
+> SDK (#145). See [Status](docs/status.md).
 
 A native PC port of **Ratchet & Clank** (PlayStation 2, 2002), for Linux and Windows, and macOS on
 Apple Silicon.
@@ -79,11 +77,14 @@ planets after Orxon have had one full playthrough so far (on Linux), so more pla
 is welcome. 0.5.0 added the launcher, the Vulkan renderer (experimental then), the widescreen HUD, a
 reworked modern lighting and 5.1 / 7.1 sound. 0.6.0 had the native renderer draw the whole game,
 the GS replica no longer running beside it, and the setup extract the whole disc, which the game reads
-instead of the image. 0.7.0 (see the [Changelog](CHANGELOG.md)) adds the European Platinum disc as
+instead of the image. 0.7.0 added the European Platinum disc as
 the game's disc, data discs (the Japanese voices, the corrected texts), the later build's fixes as
 options, Cut Content, reorganised Options, Water Reflections, grass, more of Anya-Thoughtmane's
 lighting, a direct mouse and an experimental controller vibration, macOS on Apple Silicon (a contributor's Metal
-renderer), a faster frame, and the fixes for the bugs reported on 0.6.0. Of the
+renderer), a faster frame, and the fixes for the bugs reported on 0.6.0. 0.8.0 (see the
+[Changelog](CHANGELOG.md)) adds mods (texture and sound swaps, level mods, a native plugin SDK and the open engine
+behind it, Daino's Arena as the example), Vulkan as the default renderer, Anya-Thoughtmane's lighting batch 4, a
+shorter frame, Quick Select Rings, movie subtitles, and the fixes for the bugs reported on 0.7.0. Of the
 code the game runs, one function is left to port (see the [Port inventory](docs/port-inventory.md)).
 The port as a whole still needs polishing. See [Status](docs/status.md) (which also maps the names
 the code uses for the levels to the names in the game), the [Roadmap](docs/roadmap.md) and the

@@ -3,22 +3,336 @@
 What changed in each release. Releases are source only: you build the game with `./setup.sh`
 (`setup.cmd` on Windows) from your own disc. Issue numbers refer to this repository's issues.
 
-## Unreleased
+## 0.8.0
 
+The release of mods. A `mods/` folder in front of the extracted disc files, texture packs and sound swaps, a Mods menu, and
+**level mods**: new levels the ship flies to, with their own geometry, music and objects, and a native plugin (the mod SDK,
+ABI 19) that gives them behaviour. The open engine grows with them: sessions with checkpoints, sections joined by portals,
+other planets' own worlds, bosses, grind rails and a set-piece kit, Kalebo III's enemies, the hoverboard, Clank and Giant
+Clank, more music, saves from a plugin. Mods are welcome, but this is a first version of the mod support: it
+will be revised for 1.0, the fully native version, whose typed API replaces `api->ram` and the moby offsets (#145), and mods
+made now will very likely need changes to work with it. Daino's Arena comes with the game as an included mod, ready to play
+(the setup installs it, no Blender needed): an example of what the current SDK can do, with its championships, a last wave
+of 110 enemies and a Giant Clank round. Also new: Vulkan is the default renderer (OpenGL where it cannot start),
+Anya-Thoughtmane's lighting batch 4, a frame 17 to 41 % shorter at the default 4:3 and a cheaper widened view, Quick Select
+Rings, a Bug Fixes page, movie subtitles, a high precision sound mix, Graphics: Enhanced with the original's lighting, and the
+fixes from the 0.7.0 reports (#137, #140, #142, #144).
+
+### Mods and the open engine
+- **Mods are welcome; this is a first version (README, SDK docs).** The port is open to mods, and this release is the
+  first version of the mod support. It will be revised for 1.0 (fully native, #145), which replaces `api->ram` and the
+  moby offsets with a typed API: we already know mods made before it will very likely need changes to work with the
+  final version. See [the SDK](docs/sdk.md#the-games-memory).
+- Mods, a first step (docs/mods.md): a `mods/` folder next to `assets/`, one folder per mod with a `mod.json` (name,
+  author, version, description, priority). A mod's `disc/` files, laid out as the extracted disc files and of the same
+  size, are read instead of the disc's; its `textures/<hash>.png` (any size) replace the game's textures by their content
+  hash in the modern renderer (the mobys, the world, the sky, the 2D). Main menu > Options > Mods turns each one on or
+  off (from the next start; `mods.txt` in the settings' folder); conflicts go to the higher priority and are logged; a
+  "Mods on" line at the bottom of the title screen and the main and pause menus while any is on. The debug menu's Dump textures (or
+  RAC1_TEX_DUMP) writes the textures with their hashes, to start a pack. Headless runs (the tests, the reference checks)
+  never load mods unless RAC1_MODS=1; RAC1_MODS=0 turns them all off.
+- docs/mods.md, a modder's guide: a texture mod and a .vag sound swap step by step, the limits, every `[mods]` log
+  line and what it means, sharing a mod.
+- **Daino's Arena** (`examples/night-arena`), an included mod and an example of what the current SDK can do: a level mod made in Blender, an arena in a lava lake on
+  Kalebo III's code, with a plugin running challenges against Kalebo III's enemies (waves, bombs from the sky, flame
+  vents, weapon limits, two championships) and, for players who have the Grind Boots, grind rails of its own: a test
+  rail and a course of three lanes with mines to jump and Kalebo III's rail mines to break, ending in a last wave; a planet picture of its own
+  and a view of the arena on the ship's map; its texts in the game's five text languages. Its scripts write the whole mod (see its README).
 - **Mods that come with the game: Daino's Arena is ready to play.** `bundled-mods/night-arena/` holds the exported mod (its plugin source and music stay in `examples/night-arena/`, kept once); the setup installs it into `mods/` when it is missing or older, never over a folder you changed, then composes it and builds its plugin, with no Blender or Python tools; turn it on in Options > Mods. `export_arena.py --bundle` refreshes the shipped copy and the `bundled_mods` ctest fails when it is older than the scripts. No game code changed.
 
-- **One mod example: Daino's Arena.** The small example level (`examples/custom-level`: its script, its plugin, its README) is
-  removed; Daino's Arena (`examples/night-arena`) is the SDK's example, and the docs (Mods, Custom levels: code, the SDK, the
-  environment variables) are written around it. Its music "Overworld" by Daino Selvatico (CC BY 4.0) moved with it to
-  `examples/night-arena/music/overworld.ogg`. No game code changed; mods already composed need no recompose.
-
-- **Level mods: more music, kept through sections and deaths (SDK ABI 19).** level.txt's `music_track <name> <loop> [<intro>]`
-  lines (as many as wanted, the `music` line's formats: WAV, Ogg Vorbis or VAG, stereo, an intro then its loop) and the
-  plugin's `music_track(name, fade_frames)`: the track instead of the level's music, a fade out first; while it plays a
-  section switch does not put the section's music on and a death (a soft reset) does not restart it. `music_track(NULL, ...)`
-  brings back the level's music (the current section's), and leaving the level ends it; `music_track_now()` says which plays.
-  The composed output of existing mods is unchanged (no recompose needed); the original runs as before.
-
+- Level mods: the meshes' vertex colours (`v x y z r g b`, 64 a mesh; a textured material's Kd tints), `offset x y z` /
+  `offset auto` (a level made round (0, 0, 0) moved above the collision grid's 0), and the composer's size checks (the
+  asset data within the base level's, the objects, the gameplay data). host_meshes.mrpc version 2 (the instances'
+  palettes).
+- Level mods: objects (`moby <class> x y z [yaw]`: copies of the base level's placements of that class, uids of their
+  own; Veldin's crates work), the music (`music <level>`, `music <loop.vag> [<intro.vag>]` read through the level's
+  window, `music none`) and another level's sky (`sky <level>`). The composer's version 2 (builds are made again).
+- Level mods: several at once, each on a host slot of its own (19, 20, ...) with a row of its own on the ship's list and
+  its own items in save<N>.pc. The planet prompt lists the level flown from first; leaving its map (triangle, start)
+  lands there. RAC1_LEVEL_MAP_AT=<frame> opens the ship's map in tests.
+- Level mods, format 1 (docs/mods.md, "Level mods"): a mod of `"kind": "level"` adds a new level the ship flies to (a
+  row under the unlocked planets). Its folder holds our own files only: `level.txt` (names per language, Ratchet's start,
+  the ship, the death height, colours), a collision mesh and drawn meshes (OBJ, PNG or colour materials). The setup
+  composes it with your disc's files (`rac1-native --setup --level-mods`, also the setup's last step) into
+  `assets/generated/mods/<folder>/`: a data file with no terrain of the base level and the collision made from the mod's
+  mesh, a gameplay file with Ratchet and the ship only, the meshes the modern renderer draws, its MRP world. The game runs
+  it on host level slot 19 over Veldin's code, its files read through a sector window of their own (no disc file
+  replaced), with its own lights file, world and state; a memory card save made there is the game's own (Veldin's
+  records), and the level's progress goes in save<N>.pc (kept and written back when the mod is off or missing; loading
+  such a save then lands on the planet flown from and opens the ship's planet map there). Options > Mods says "Needs
+  setup" for a level mod with no or an old build. With
+  no level mod on (headless runs, RAC1_MODS=0) nothing changes. RAC1_GOTO=<level.id>@F for tests.
+- Mods' code (docs/custom-levels.md): a mod's `plugin/` folder, a native plugin in C against sdk/rac1_mod.h (ABI 1,
+  append-only), built by the setup on the player's machine from its source (`--setup --level-mods`, `--mod-plugins`;
+  sdk/rac1_mod.cmake's float rules). Callbacks: level start / end, frame, camera, HUD, the level's placed objects'
+  updates, new game, its bytes in save<N>.pc, test, shutdown; services: memory (journaled writes, an allocator), mobys,
+  collision, the hero, sound, music, smoke, HUD text, camera, pad, random, the port's functions by address. A mod with
+  code is off when first found, Options > Mods asks to confirm turning it on ("Contains code."), and shows why one is
+  not loaded; a headless run loads code only with RAC1_MODS=1 RAC1_MOD_CODE=1 (RAC1_MOD_TEST for its test callback).
+- The mod SDK, ABI 2 (docs/sdk.md, a full reference: every struct, service and callback, the lifecycle, threading and
+  replays, the limits, the versions). A level mod can have **object classes of its own**: level.txt's `class` (an OBJ
+  model, a hit box or none) and `object` lines (placed, with key=value words for the plugin); the plugin gives a class
+  its behaviour (`class_define`: spawn, update, hit, remove, a state per object) and spawns, moves, shows, removes
+  objects. Each object is a moby of the game (Ratchet stands on it, his attacks hit it, the game's rays see it) drawn
+  with its model by the modern renderer (GL and Vulkan). Also: `collide_ray` (the point, the normal, the moby or object
+  hit), `objects_near`, `mobys_near`; damage both ways (`hero_damage`, `hit_send`, `hit_take`; the player's attacks
+  reach a class's `hit`); **sounds of the level's own** (`sound` lines: WAV or VAG, made into one sound bank of the
+  game's format, played through the game's own sound slots: distance, pan, walls, reverb, 5.1 / 7.1; `sfx_*`);
+  **triggers** (`trigger` boxes, the `trigger` callback); `frame_count`. ABI 1 plugins run unchanged. `hero_place` now resets Ratchet to standing, as the game's teleports (it could
+  crash after he was hurt). The plugins' `ee_alloc` block is 54 KB (was 56). The level composer is version 3: level
+  mods are composed again by the setup.
+- Mod SDK: angles a plugin gives (`object_place`, `object_spawn`, `hero_place`, a rotation written then `moby_moved`)
+  are folded into -pi..pi. Objects that turn by adding to their angle every frame (the arena's gems and sentries): after a
+  few seconds the game's rotation matrix (whose sine folds an angle only once) made them huge, a flat plane across the
+  level at Ratchet's height that stayed until the level loaded again.
+- Level mods: a custom level is arrived at as a planet. The loading screen's full flight (its sound, the ship and its
+  trails, the planet's picture and name at the end), then the ship's landing at level.txt's `ship` and Ratchet stepping
+  off; before, the level got Veldin's arrival as the game's first level (a short flight, no landing). `hero auto` (the
+  default when there is a ship) starts Ratchet where he steps off the ship; an explicit `hero` place still wins. A
+  custom level no longer touches its base level's progress (its visits and time, its gadget in the quick select). The
+  level composer is version 4: level mods are composed again by the setup.
+- Level mods: pictures of the level's own. level.txt's `picture` (the loading screen's planet, 128 x 128), `banner` /
+  `banner.<lang>` (the name under it, 256 x 32; made from `name` and each `name.<lang>` when the mod has none) and
+  `map_picture` (the ship's map's picture under the galaxy; made from `picture` when none): PNG files the composer
+  scales and turns into the game's 8-bit images. On the ship's map a custom level's row shows its picture, and its
+  planet page its planet picture, with none of the base level's planet, missions, gold bolts or Infobot.
+- Level mods: **stereo music, and WAV music**. level.txt's `music <loop> [<intro>]` takes a WAV (PCM 8 to 32 bits or
+  float, mono or stereo, any common rate: 8000 .. 48000 Hz kept, others resampled) that the composer encodes as the
+  game's music (PS-ADPCM, its length made whole ADPCM blocks and its first block independent, so the loop is seamless),
+  or a VAG as before, or a stereo VAG of ours (byte +0x1e of the header 2, the channels interleaved in 0x800-byte
+  chunks). A stereo track plays on two voices in step, left and right, as one stream of the game's music: its music
+  volume, pauses, fades and track changes as the original's. Mono VAGs play as before; the disc's music is unchanged.
+  See docs/mods.md, "Level mods", Music.
+- Level mods: **Ogg Vorbis** music and sounds. level.txt's `music` and `sound` lines take an `.ogg` (mono or stereo)
+  wherever they take a WAV: the composer decodes it (with [stb_vorbis](https://github.com/nothings/stb) v1.22, in
+  `third_party/stb_vorbis`) and encodes it as a WAV, its exact length kept, so a seamless loop stays seamless. The game
+  never reads Ogg. Daino's Arena's music **"Overworld" by Daino Selvatico** (a stereo Ogg, 44.1 kHz, 110.8 s, `examples/night-arena/music/overworld.ogg`) is under CC BY 4.0, not MIT. See docs/mods.md, "Level mods", Music.
+- Level mods: the generated name banner is written in the **game's own font** (read from your disc at setup time),
+  the plain font only for letters it has not; the ship's map's planet page of a custom level drops the "Planet" before
+  its name and hides "Play Infobot"; on a level on Veldin's code (which has no gold bolt class) the "Found" panels
+  show a bolt instead of nothing.
+- Level mods: **the base level's enemies**. A `moby` line of a class the base level's missions place now keeps a spawn
+  rule, so the object drops its bolts when killed (and is back the next visit); Kalebo III's robots (class 1445) walk
+  to Ratchet, fight, die and drop their bolts. level.txt's `spawn <class> <count>` and the mod SDK's **ABI 3**
+  (`base_spawn`, `base_moby`, `base_free`) start the base level's objects at run time, for waves, and tell when they
+  died. docs/mods.md lists what was tried of Kalebo III's classes; docs/sdk.md, "Base level objects".
+- Level mods: **a base level per mod**. `mod.json`'s `level.format` 2 with `level.base` 3 (Kerwan), 4 (Eudora) or
+  16 (Kalebo III), besides Veldin (0, format 1's): the level runs on that level's code, with its classes, its enemies,
+  its effects. The composer now keeps each block of the base level's asset data by its own extent, so every level of
+  the game composes (only the four tested ones are allowed; `RAC1_LEVEL_BASE_ANY=1` with the debug tools tries the
+  others). On any base the base planet's progress is untouched and its first-flight story cards and movies (Eudora,
+  Gemlik Base, Kalebo III) are left out for the level. level.txt's `base` line is checked against mod.json; with no
+  `death_height` the base level's is kept unless it is above the level's floor; a warning when the level reaches below
+  Kerwan's or Kalebo III's fixed kill height. See docs/mods.md, "Base levels".
+- Level mods: level.txt's **`update_all`** line updates every moby wherever the camera is (the game updates a moby only
+  near the camera). On **Kalebo III** as the base, the collision's lava (surface type 3) and deadly liquid (type 1) now act
+  on Ratchet (Kalebo's hero code has neither: a hop out, lost at the third), and the ambient particles' `source lava`
+  rises from a level mod's type 3 faces too. The `material` / `emissive` lines of a level mod's `lights.txt` apply to its
+  meshes (documented: `tie <n>` the mesh's class in meshes.obj's order). See docs/mods.md, "Level mods", "Base levels".
+- Mod SDK **ABI 4** (the tables grow at their end: older plugins keep loading): `vendor_open` (the vendor's screens from a
+  plugin, on any base level; `call_port` never reached them), `input_hold` (the pad kept from the game while a plugin's
+  menu is open: Start and Select still the game's, so pausing and quitting work; `pad_held` / `pad_pressed` read the real
+  pad; the buttons held at the release stay out of the game until let go), `hud_rect` (panels), `hud_text_ex` (text up to
+  8 times larger) and `hud_text_width`, with left / centre / right anchors that follow a HUD wider than 4:3,
+  `base_hunt` (Kalebo III's robots hunt Ratchet anywhere instead of guarding where they started) and `light_add` (a
+  plugin's own lights, per frame, drawn by the modern lighting as the hand-placed ones). The plugins' `ee_alloc` block is
+  53 KB (was 54). The `hud` callback is no longer called under the vendor's screens. See docs/sdk.md.
+- Mod SDK ABI 5 fixes: `weapon_allow` leaves a switch to an allowed weapon under way to finish, so `weapon_allow` of a
+  new weapon and `weapon_equip` of it, in either order, end with it in hand (the wrench took its place). The **jetpack
+  troopers** (638) on a level mod no longer fly through walls (a move into the level's collision is slid along or flown
+  over) and hover half a unit over the floor under them, spawned or dropped; hunting, they fly to their point near Ratchet
+  instead of jumping there, a few units apart.
+- Mod SDK **ABI 5** (the tables grow at their end: older plugins keep loading): **Kalebo III's enemies** on a level mod with
+  a Kalebo III base: `base_spawn` now starts the bomb bots (52), the Gadgetron robots (541), the jetpack troopers (638) and
+  the dropships (1356), which on their own level wait for its paths, doors and triggers: the game gives each one paths of
+  its own and starts it at once; `base_option` chooses a Gadgetron robot's weapon (bomb launcher, club, flamethrower) and a
+  dropship's troopers (up to 4, dropped at its landing point); `base_hunt` makes all four hunt Ratchet anywhere (the
+  dropship then stays and fights); `base_handle` gives the handles of the troopers a dropship brought. **The weapons**:
+  `weapons_owned`, `weapon_equip` (as the quick select does, refused where it could not open), `weapon_allow` (only some
+  weapons selectable: the others left out of the quick select's ring and the next / previous weapon; off at every level's
+  start), `ammo_fill`. See docs/sdk.md.
+- Mod SDK: while **pause in the quick select** holds the world still (Options > Advanced), the plugins' `frame`
+  callbacks, their triggers and the SDK's logic for Kalebo III's enemies and `base_hunt` wait too: a plugin's timers
+  stopped running and the enemies it steers stopped sliding while the ring was open.
+- **Level mods: classes of other planets** (`import` lines in `level.txt`, the mod SDK's ABI 6): a level mod can bring a
+  class of another game level, with what it spawns (its shots, their explosions, its debris), and its plugin starts them
+  (`import_class`, `import_spawn`) or brings them in and out during play (`import_load`, `import_release`). They are
+  the open engine's first part for level mods (docs/open-engine.md): for now classes that read no paths or groups of
+  their own planet, such as Umbris's turret (`import umbris.turret`) and Orxon's spore plant (`import
+  orxon.spore_plant`), drawn by the modern renderer. The setup's composer makes the asset pool from your disc when a
+  level needs it. See docs/mods.md and docs/sdk.md.
+- **Level mods: enemies of other planets** (the mod SDK's ABI 8): imported classes that read their planet's level data
+  (the paths they patrol, the areas they watch, the boxes that wake them) now work: they find their planet's data, and
+  a spawn gives them level data of their own round where it starts them (their **profiles**, `data/pool/profiles`), which
+  the plugin can change (`object_bind_path` with a `path` line of `level.txt` or `path_create`, `object_bind`,
+  `group_create`, `object_slots`). Six enemies have names and profiles: Drek's fleet's Blarg trooper
+  (`fleet.blarg_trooper`), Gemlik's flying robot, Gaspar's walking robot, Blarg's serpent, Pokitaru's amoeboid and Hoven's
+  flying trooper. The parts an object's placement names come with it, and bringing a class in during play no longer
+  reloads the level's models (about 1 ms instead of 25). ABI 7 is kept for the rails. See docs/sdk.md and
+  docs/open-engine.md.
+- **Level mods: sessions** (`level.format` 3, the mod SDK's ABI 9): a level mod can be a **session**, loaded once at the
+  arrival. A death no longer loads the level again: Ratchet is back at a checkpoint with his health full, and everything
+  else stays as it was (his weapons, ammo and bolts, the plugin's state and the enemies it started, the classes of other
+  planets the level brought). The level's placed objects killed since the arrival come back (`respawn reset`, the
+  default; a crate broken stays broken) or stay as they are (`respawn keep`); the plugin's new `respawn` callback brings
+  back what the battle needs. Checkpoints are `checkpoint` lines in `level.txt` and the SDK's `checkpoint_set` /
+  `checkpoint_at`; a save made in a session brings you back to its checkpoint (the plugin's `session_save` /
+  `session_load` keep where the player was in it). Sessions run on Veldin's code by default, or on a base level. `moby`
+  lines set the slots of their class's profile, and the setup's composer checks them (and imports that would need a
+  profile) against the profiles. On the base level's own objects too: `group_create`, `object_bind`, `object_bind_path`.
+  Formats 1 and 2 are unchanged. See docs/mods.md ("Sessions") and docs/sdk.md.
+- **Level mods: sections and portals** (`level.format` 3, the mod SDK's ABI 10): a session can be made of **sections**
+  (`section <name> ... end` blocks in `level.txt`), each with its own collision, meshes, sky, music, lights, fog and
+  objects, and Ratchet goes between them through **portals** (boxes he walks into, with an optional fade) without any
+  loading: nothing is reset, only the section you are in is drawn, and the others are loaded in the background while you
+  play. Each section chooses what happens to its objects when you leave it (removed, frozen or left running); a death
+  brings you back at the checkpoint of the section you are in, with that section's enemies back; a save brings you back to
+  its section. `moby` lines can now place classes of other planets by name (`moby kalebo.robot ...`). The plugin can load,
+  enter and unload sections (`section_enter`, ...) and is told when Ratchet goes from one to another. See docs/mods.md
+  ("Sections") and docs/sdk.md.
+- **Level mods: another level's sky** (a level's or a section's `sky` line) no longer ends the game or writes where it
+  should not: it is now drawn by that level's own sky code, as on its planet, whatever the base level. Before, the base
+  level's ran on it: on Veldin's code Umbris's and Gemlik's skies crashed in the sky's draw (Veldin's 256 stars overwrote
+  their first layer; Rilgar's and Quartu's have the same room for 128 stars) and the others got Veldin's stars written
+  at the bottom of the game's memory.
+  All 19 skies were checked on the four bases, as a level's sky and as a section's, on OpenGL and Vulkan. The level
+  composer is version 6: level mods are composed again by the setup.
+- **Level mods: grind rails, Magneboots walkways and set pieces** (the mod SDK's ABI 11): `level.txt` can have **grind
+  rails** (`rail <name> <points>`, or `rails <file.obj>` with one rail per object of a curve exported from Blender), in the
+  level or in a section, ridden with the game's own grind (landing on them anywhere, jumping between rails side by side,
+  the wrench, flying off the end); `mesh` makes their model and a thin collision strip is added under each. `items
+  grindboots magneboots` gives Ratchet those items while he is on the level, never in a save (they are taken back when he
+  leaves). Faces of `usemtl type2` in the collision are **magnetic**: with the Magneboots he walks up curves, walls and
+  ceilings (on Veldin's code; on Kalebo III's he walks them but looks wrong). A class can have a **collision mesh** of its
+  own (`class ... collision <file>`): a deck with walls, an arch. The plugin can find rails and put Ratchet on one, take one
+  out (a broken rail), change his speed on it and is told when he gets on, reaches the end and gets off (`rail_find`,
+  `hero_rail_attach`, the `rail` callback, ...); fade the screen; take the camera (fixed, looking at something, along a
+  path, following) and give it back blended; add hazards (volumes that hurt on a timer); move an object along a path with
+  Ratchet riding it (`object_follow_path`). See docs/mods.md ("Grind rails and set pieces") and docs/sdk.md.
+- **Level mods: a game planet as a section** (`level.format` 3): a section block with `world <planet>` (`world kalebo`,
+  `world 3`, ...) is that planet's world: its scenery drawn exactly as on the planet (modern renderer, OpenGL and Vulkan),
+  its collision, sky, music, fog, lights, cameras and grind rails, with no loading screen when Ratchet steps through a
+  portal into it. `objects <classes>` (and an optional `box`) brings the planet's own objects along: its enemies fight on
+  their own code (Kalebo III's robots walk up, hit, die to the wrench and drop bolts), its crates break; a death there
+  brings Ratchet back at the section's checkpoint with its enemies back, and a save there brings you back into it. A world
+  takes about 20 MB of memory and is loaded in the background while you play. See docs/mods.md ("Game worlds as
+  sections").
+- **Level mods: Clank, Giant Clank and the hoverboard** (`level.format` 3, the mod SDK's ABI 12): a section's `hero` line
+  runs Ratchet on another planet's own hero code and camera code there, and can make him Clank (`hero orxon clank`), Giant
+  Clank (`hero quartu giantclank`: his walk, punches and ground pound, his camera) or put him on Kalebo III's hoverboard
+  (`hero kalebo` with the race's board: he gets on it, rides, jumps and wipes out as in the race, with its camera). Leaving
+  the section he is Ratchet again, with his health as before; a death in a mode brings him back in it at the checkpoint. A
+  plugin does the same at any moment with `hero_build` and `hero_mode`. On a base level whose hero lacks the magnetic walk's
+  animation (Kalebo III's), Ratchet on Magneboots walkways now looks right (the animation is taken from Veldin's, from your
+  disc). `hero generic` (any format) runs Ratchet on the generic hero code on a Kalebo III base: the game's own lava there
+  (he sinks, Cross bounces him out, left in it he is lost), with its animation, instead of the stand-in hop. See docs/mods.md
+  ("Hero modes") and docs/sdk.md.
+- **Level mods: the Save and Load pages show a level mod's level.** A save made on it showed its base planet (Kalebo III's
+  name and picture for a level on Kalebo III's code); now the level's own name, region and picture, as the ship's map shows
+  them. With the level's mod off or missing, the pages show the planet loading the save lands on (the one flown from, where
+  the planet prompt opens).
+- **Level mods: your rail's model and your objects in a planet's world** (format 3): a `rail ... mesh` line of a `world
+  <planet>` section is now drawn there, and the level's own objects are there too: `object` lines inside a section block,
+  and the objects the plugin spawns, moves (`object_place`) or shows there (main's objects, at main's coordinates, are
+  neither drawn nor solid in the planet's world). A world section's rail model comes after
+  every other mesh, so it changes no `material tie` index of lights.txt. Level mods are composed again (composer 7).
+- **Level mods: your own grind rails in a planet's world** (format 3): a `world <planet>` section takes `rail` / `rails`
+  lines in the planet's coordinates, added to the planet's own rails, with their collision strips (a grind continued through
+  a portal into Quartu's arena lands Ratchet on its floor); a section without a `hero` line keeps main's (`hero generic`), and
+  a base level's enemies hunting Ratchet (Kalebo III's robots) follow him into the world and fight there.
+- **Level mods: bosses** (`level.format` 3, the mod SDK's ABI 13): the **Snagglebeast** fights in Umbris's cave as a section
+  (`world umbris`, `objects all` in a box round the cave, `boss umbris.snagglebeast`), on its own code, with its health bar
+  and portrait. A death in the fight starts it over (Ratchet back at the checkpoint, the boss whole again, no loading
+  screen); beating it never ends the game or changes your Umbris: the session goes on, the boss stays beaten for the visit
+  (and in a save made there), and your plugin is told (the `boss` callback) to open the way on. Every planet's world as a
+  section now also brings that planet's camera code, its HUD pictures (Giant Clank's energy bar in `world quartu`) and its
+  own level state as on a first visit: **Gemlik's ship** waits at its pad, Ratchet boards it and flies it as on Gemlik Base.
+  See docs/mods.md ("Bosses").
+- **Level mods: the screen fades cover an ultra-wide screen.** A plugin's `fade()` and a section switch's fade stopped at
+  the 4:3 frame's right side on a widened view (an ultra-wide screen): now the whole width.
+- **The mod SDK: the HUD's width** (ABI 14): `hud_width()` says how wide the HUD is (512 units at 4:3, about 683 at 16:9,
+  910 at 21:9), so a plugin knows how far its `RAC1_HUD_LEFT` / `RAC1_HUD_RIGHT` elements move and can keep a centred banner
+  off a box at the side. docs/sdk.md's "The HUD's area": the HUD is 512 x 416 units (the docs said 448), all of it on the
+  screen (`RAC1_HUD_HEIGHT`).
+- **Level mods: the hero's missing sounds.** On a level mod on another base than Veldin's, Ratchet's sounds that base's
+  bank lacks were silent: with `hero generic` on Kalebo III's base, his burn in the lava and his sinking. They now play,
+  from Veldin's bank.
+- **The mod SDK: saving from a plugin** (ABI 15): `game_save()` saves the game into the slot the player chose, as leaving a
+  planet does (a level mod's level, a session and its checkpoint included), and `game_saving()` says while the save is
+  being written, so a mod can save when a challenge ends and show "Saving...". Every plugin's records go into the save
+  as in every save. A planet left from a level mod's level no longer saves the items the level lent for the visit.
+- **Level mods: the hoverboard outside a race** (the mod SDK's ABI 16). Kalebo III's board ridden on a level mod's own
+  geometry or in another planet's world (`world quartu`) ran its race's logic there: the race HUD (lap, time, place), and in
+  Quartu's world a fall at once and for ever ("back on the track" of Kalebo III's race); on the mod's own ground its first
+  fall or crash killed Ratchet. Now it rides free there: no laps, no race HUD, a fall puts him back on the board where he got
+  on (or where the plugin says: `board_return`, `board_fall`), a crash a little before it. In Rilgar's world (`world rilgar`,
+  `hero rilgar board`) the race is Rilgar's own (it stood at the start for ever). `board_rule` forces free or race, and
+  `board_touching` says which enemies the board runs into (the plugin knocks them down with `hit_send`).
+- **Level mods: every zone of a world's section drawn** (`zones all` in a `world` section; level mods must be set up again:
+  the composer's version 8). A planet's world shows what the planet itself draws from the camera's place (its zone grid);
+  `zones all` draws all of it wherever the camera is, for views the planet never had.
+- **Level mods: a planet's world as a section, its objects and effects.** Coming back to main from Umbris's cave with its
+  class 529 placed (Ratchet's ship parked there, which makes itself the ship class 533) crashed the game; it now leaves with
+  the section's other objects. What a world's objects spawn (a boss's helpers, debris, explosions) leaves with them too, and a
+  death takes a boss's out before it comes back. The Snagglebeast's fire rings and the planet's other effects draw with the
+  planet's own effect textures (they were the base level's: missing or wrong). A world's objects of a class the base level
+  also uses keep reading their planet's paths (Gaspar's 52 on Kalebo III's base). Classes "(the base's)" in compose.log are
+  the planet's own (the same model, sounds and code).
+- **Level mods: a planet's world in a section looks and films as the planet** (level mods must be set up again: the composer's
+  version 9). Umbris's cave: its lava is animated again (its sea, an object of a class with no model, can now be placed:
+  `objects ... 460`), and its boss camera turns toward the Snagglebeast instead
+  of away from it (the level's cameras naming an object now name it where the section placed it). Batalia's rail camera no
+  longer shakes (its own code and the engine now see the same rails). Testing: `RAC1_SESSION_SAVE_AT` no longer leaves the
+  game on the card's notice (mode 4) on a level mod off Veldin's base.
+- **Level mods: Rilgar's hoverboard race in its world's section films as on Rilgar.** Its race camera stayed high over the
+  track (about 2.9 units over Ratchet instead of 2.1, 5.9 at the finish line, up to 18 in a fall instead of 8), looking down
+  at the floor: its code kept the camera over Kalebo III's height, the base level's. Now the same camera as on Rilgar, frame
+  for frame. Testing: `RAC1_HERO_STATE` also prints the camera's place and type.
+- **Level mods: a section put back as at its first entry** (the mod SDK's ABI 17; a challenge played again). The objects a
+  section's visit killed stay killed, and a boss beaten stays beaten, for the whole visit of a session: a challenge that
+  uses a planet's world (Batalia's mines, the Snagglebeast) found them gone the second time. `section_reset(name)` puts a
+  section that is not the current one back: its killed and beaten objects placed again at its next entry (their spawns
+  gone, its bosses to beat again, what they wrote in the level's records cleared), and a `fresh` word on a section's line
+  in level.txt does it at every entry. A save holds a section put back as fresh. Tested on Umbris's cave (the boss and its
+  crates), on a section of the mod's own and with saves. Nothing changes for the original or for a mod that does not use
+  them; the composer's version stays 9 (the word is written only for the sections that have it).
+- **Level mods: loading a save while a session runs no longer crashes entering a planet's world; two sections of the same planet are
+  refused.** A load from the pause menu inside a session (a level mod of the open engine) and then a visit to a section that is a
+  planet's world (Umbris's cave) crashed the game: the objects put back in play at the entry included one of a class with no model or
+  data of its own (a class of code alone), whose position update read a table at the bottom of memory, harmless until a load had left
+  something else there. Those objects are no longer updated that way, as at their placement. Separately, a mod with two sections of the same
+  planet's world (two `world umbris`) crashed when a boss was beaten in one: the planet's level state is one copy in the game, so
+  the composer now refuses such a `level.txt` with a message saying to use one section with several entries. Nothing changes for
+  the original or for a mod that does neither; the composer's version stays 9 (mods need no recompose).
+- **Level mods: the base level's own planet as a section** (`world kalebo` on a mod whose base is Kalebo III). The composer
+  refused it ("level 16's world is the base level's"); the section now brings the planet back for a visit, its geometry,
+  collision, rails (its long rail), sky, music, zones and level data from your disc, with the mod's own put back at the return (the
+  arena can send Ratchet down Kalebo III's rail 1 and back). The planet's level data (its cameras, paths, volumes, rails) is a registry of
+  its own, which the base level's own objects, being the session's view, could not be. Put `hero kalebo` in the section when
+  main runs `hero generic`: the generic hero code does not ride the long rail to its end. Nothing changes for the original or for
+  a mod that does not use it; the composer's version stays 9 (no mod needs a recompose).
+- **Many mobys at once: a crash with about 110 enemies fixed; limits logged and documented.** With a crowd of mobys in a level
+  mod (the arena's last round: 110 enemies of five planets) the game died with `Pointer resolution out of bounds: 0x10000004`.
+  The cause: the frame's packet buffer (two rings of 1.4 to 1.7 MB) was filled by the moby draw loop up to its limit, and the passes
+  after it, the mobys' drop shadows (up to 0x3d000 bytes) and the particles, wrote on through the skinning ring and out of the
+  buffer's end into the HUD's tables. The shadows and the particles now stop before the buffer's end (a shadow or a particle less),
+  and so does the moby draw loop's skinning ring (a moby less); a frame the original drew without overflowing is unchanged. A moby
+  spawn past the moby array and a frame whose mobys do not all fit are logged (`[mobys] the moby array is full`, `[render] the
+  frame's packet buffer is full`). The limits (about 300 mobys alive in a session, about 100 drawn per frame) are in the SDK's Limits.
+  Nothing changes for the original's levels; no recompose.
+- **Level mods: a death no longer leaves the player's weapons behind, and a plugin's Giant Clank no longer dies by itself** (the mod
+  SDK's ABI 18: `hero_energy`). The soft reset of a session left in play what Ratchet's weapons and equipment had spawned
+  (the Glove of Doom's hand and agents, the Mine Glove's mines, the Drone Device's drones, the Decoy, the Taunter, the Visibomb,
+  the Devastator's and every other projectile, his pack, helmet and boots) and cleared the player block that remembers them: the
+  game spawned them again beside the old ones, which went on running with nothing to tell them the hero had been reset (frozen
+  agents, a second hand moby posing his arms, a game that crashed on aiming). A level's start clears them with the whole moby array;
+  the soft reset now takes out everything the hero spawned and what his spawns spawned (tracked in a session from the arrival), and
+  gives back the animation layers his moby held, before his state is cleared. Separately, a Giant Clank entered by a plugin
+  (`hero_mode(RAC1_HERO_GIANT_CLANK, ..)`, level.txt's `hero ... giantclank` line) on a Kalebo III base started with an energy bar
+  of 0, since the game's start of the form (energy 200) is Veldin's and the base's own hero code was taken: he fell (state 0x62,
+  a death) ten to fourteen seconds later. He starts with 200 now, and `hero_energy(set)` reads and refills it. Nothing changes for
+  the original or for a mod that is not a session; mods need no recompose (the composer's version stays 9), a plugin using
+  `hero_energy` is built for ABI 18.
 - **Level mods: a plugin's Giant Clank works on a mod's own geometry** (rockets, energy bomb, walls, landings, Ratchet on his
   shoulder). On the arena (a Kalebo III base) the plugin's Giant Clank walked over the 6-unit wall, hung in the fall state (0x5c) for
   as long as the player watched, showed Ratchet on his shoulder as a flickering heap and had rockets and an energy bomb that
@@ -33,448 +347,14 @@ What changed in each release. Releases are source only: you build the game with 
   Giant Clank, then the board) works. A new test aid: `RAC1_HERO_DETAIL=1` with `RAC1_HERO_STATE=<n>` prints his capsule, contacts
   and Ratchet's own moby. The original, the arena's Rilgar race and Kalebo world run frame for frame as before; mods need no
   recompose (the composer's version stays 9), no new ABI.
-- **Level mods: a death no longer leaves the player's weapons behind, and a plugin's Giant Clank no longer dies by itself** (the mod
-  SDK's ABI 18: `hero_energy`). The soft reset of a session left in play what Ratchet's weapons and equipment had spawned
-  (the Glove of Doom's hand and agents, the Mine Glove's mines, the Drone Device's drones, the Decoy, the Taunter, the Visibomb,
-  the Devastator's and every other projectile, his pack, helmet and boots) and cleared the player block that remembers them: the
-  game spawned them again beside the old ones, which went on running with nothing to tell them the hero had been reset (frozen
-  agents, a second hand moby posing his arms, a game that crashed on aiming). A level's start clears them with the whole moby array;
-  the soft reset now takes out everything the hero spawned and what his spawns spawned (tracked in a session from the arrival), and
-  gives back the animation layers his moby held, before his state is cleared. Separately, a Giant Clank entered by a plugin
-  (`hero_mode(RAC1_HERO_GIANT_CLANK, ..)`, level.txt's `hero ... giantclank` line) on a Kalebo III base started with an energy bar
-  of 0, since the game's start of the form (energy 200) is Veldin's and the base's own hero code was taken: he fell (state 0x62,
-  a death) ten to fourteen seconds later. He starts with 200 now, and `hero_energy(set)` reads and refills it. Nothing changes for
-  the original or for a mod that is not a session; mods need no recompose (the composer's version stays 9), a plugin using
-  `hero_energy` is built for ABI 18.
-- **Many mobys at once: a crash with about 110 enemies fixed; limits logged and documented.** With a crowd of mobys in a level
-  mod (the arena's last round: 110 enemies of five planets) the game died with `Pointer resolution out of bounds: 0x10000004`.
-  The cause: the frame's packet buffer (two rings of 1.4 to 1.7 MB) was filled by the moby draw loop up to its limit, and the passes
-  after it, the mobys' drop shadows (up to 0x3d000 bytes) and the particles, wrote on through the skinning ring and out of the
-  buffer's end into the HUD's tables. The shadows and the particles now stop before the buffer's end (a shadow or a particle less),
-  and so does the moby draw loop's skinning ring (a moby less); a frame the original drew without overflowing is unchanged. A moby
-  spawn past the moby array and a frame whose mobys do not all fit are logged (`[mobys] the moby array is full`, `[render] the
-  frame's packet buffer is full`). The limits (about 300 mobys alive in a session, about 100 drawn per frame) are in the SDK's Limits.
-  Nothing changes for the original's levels; no recompose.
-- **Level mods: the base level's own planet as a section** (`world kalebo` on a mod whose base is Kalebo III). The composer
-  refused it ("level 16's world is the base level's"); the section now brings the planet back for a visit, its geometry,
-  collision, rails (its long rail), sky, music, zones and level data from your disc, with the mod's own put back at the return (the
-  arena can send Ratchet down Kalebo III's rail 1 and back). The planet's level data (its cameras, paths, volumes, rails) is a registry of
-  its own, which the base level's own objects, being the session's view, could not be. Put `hero kalebo` in the section when
-  main runs `hero generic`: the generic hero code does not ride the long rail to its end. Nothing changes for the original or for
-  a mod that does not use it; the composer's version stays 9 (no mod needs a recompose).
-- **Mods and 1.0, said up front (README, SDK docs).** The port supports mods, with Daino's Arena as the complete
-  example; 1.0 (fully native, #145) replaces `api->ram` and the moby offsets with a typed API, and mods made before it
-  will very likely break and need updating. See [the SDK](docs/sdk.md#the-games-memory).
-- **Level mods: loading a save while a session runs no longer crashes entering a planet's world; two sections of the same planet are
-  refused.** A load from the pause menu inside a session (a level mod of the open engine) and then a visit to a section that is a
-  planet's world (Umbris's cave) crashed the game: the objects put back in play at the entry included one of a class with no model or
-  data of its own (a class of code alone), whose position update read a table at the bottom of memory, harmless until a load had left
-  something else there. Those objects are no longer updated that way, as at their placement. Separately, a mod with two sections of the same
-  planet's world (two `world umbris`) crashed when a boss was beaten in one: the planet's level state is one copy in the game, so
-  the composer now refuses such a `level.txt` with a message saying to use one section with several entries. Nothing changes for
-  the original or for a mod that does neither; the composer's version stays 9 (mods need no recompose).
-- **Level mods: a section put back as at its first entry** (the mod SDK's ABI 17; a challenge played again). The objects a
-  section's visit killed stay killed, and a boss beaten stays beaten, for the whole visit of a session: a challenge that
-  uses a planet's world (Batalia's mines, the Snagglebeast) found them gone the second time. `section_reset(name)` puts a
-  section that is not the current one back: its killed and beaten objects placed again at its next entry (their spawns
-  gone, its bosses to beat again, what they wrote in the level's records cleared), and a `fresh` word on a section's line
-  in level.txt does it at every entry. A save holds a section put back as fresh. Tested on Umbris's cave (the boss and its
-  crates), on a section of the mod's own and with saves. Nothing changes for the original or for a mod that does not use
-  them; the composer's version stays 9 (the word is written only for the sections that have it).
-- **A shorter frame at the default 4:3** (no change to the picture or the game): with the settings as they come - Aspect Ratio
-  4:3 Original, LOD Original - the renderer still decoded the frame's world (its terrain, ties and shrubs) from the game's draw
-  commands on an emulated VU1, and the frame waited for it. The game's own world passes now tell the renderer what they drew,
-  and it makes those draws from that: a frame 17 to 41 % shorter on the eight levels measured (Kerwan 3.8 to 2.4 ms, Kalebo III
-  3.8 to 2.2, headless). It then stopped copying and reading those commands a second time: its thread is a quarter less busy,
-  and the frame up to 9 % shorter again where it still waited for it (Gaspar 2.5 to 2.3 ms). 16:9 and the LOD slider were not
-  affected: the renderer decides the world itself there. See docs/performance.md.
-- **Debug menu: the Profiler tab's frame rate was wrong without the overlay.** The tab alone could show several hundred fps
-  where the overlay showed 60: a turn of the host's loop that came before the next game frame was due (it runs no game
-  frame, draws nothing and waits) was counted as a frame of a millisecond or two, and without the overlay the profiler
-  recorded mostly those. Such a turn is no longer a frame: its wait belongs to the frame being recorded, so the tab and
-  the overlay now count the frames shown and agree (checked headless: 59.7 and 59.8 fps where the tab said 75.8).
-- **A shorter frame in widescreen at LOD Original** (no change to the picture or the game): with the view wider than 4:3
-  the renderer ran the game's whole moby pass a second time each frame, to draw what the 4:3 view leaves out at the sides.
-  That second run now draws only those extra mobys - about a fifth of the mobys at 16:9 - and takes the others from the pass the game
-  ran: the game's thread 5 to 11 % less busy and the frame 3 to 6 % shorter on the six levels measured at 16:9. At the LOD
-  slider's other settings the whole pass still runs again, but the renderer no longer decodes each moby's draw commands a
-  second time (the game's draw loop tells it what it wrote): that run 18 to 29 % shorter at LOD High. See
-  docs/performance.md.
-- **Gaspar: the lava torn across the sky down in the cave** (#144). The lava sea's surfaces are drawn from the game's own
-  screen matrix; when that differs from the frame's by a hair (the camera easing in the cave, a zoom: some dozens of frames
-  at a time) the renderer took them for a surface with a matrix of its own and sent their points through the inverse of the
-  frame's matrix, which on Gaspar turns a hair into points tens of thousands of units away: big stretched red sheets across
-  the view. A matrix that is the frame's times one common factor now counts as the frame's, its points the world's. The
-  Original picture and every other level are as before.
-- **Level mods: Rilgar's hoverboard race in its world's section films as on Rilgar.** Its race camera stayed high over the
-  track (about 2.9 units over Ratchet instead of 2.1, 5.9 at the finish line, up to 18 in a fall instead of 8), looking down
-  at the floor: its code kept the camera over Kalebo III's height, the base level's. Now the same camera as on Rilgar, frame
-  for frame. Testing: `RAC1_HERO_STATE` also prints the camera's place and type.
-- **Level of Detail Maximum: Pokitaru's sun shadows** (#144). At Maximum the mobys' draw distance was unlimited, past the
-  renderer's far plane too, and a Pokitaru object the game keeps out of sight (class 1161, a model 38000 units across with its
-  culling sphere far away) was drawn: nothing showed, but the shadow cache cast it, a flat shadow over the whole level. The
-  mobys' distance now stops at the far plane (4000 units, or the game's own value when larger). The Original picture and
-  every other level of detail are as before.
-- **Level mods: a planet's world in a section looks and films as the planet** (level mods must be set up again: the composer's
-  version 9). Umbris's cave: its lava is animated again (its sea, an object of a class with no model, can now be placed:
-  `objects ... 460`), and its boss camera turns toward the Snagglebeast instead
-  of away from it (the level's cameras naming an object now name it where the section placed it). Batalia's rail camera no
-  longer shakes (its own code and the engine now see the same rails). Testing: `RAC1_SESSION_SAVE_AT` no longer leaves the
-  game on the card's notice (mode 4) on a level mod off Veldin's base.
-- **Level mods: a planet's world as a section, its objects and effects.** Coming back to main from Umbris's cave with its
-  class 529 placed (Ratchet's ship parked there, which makes itself the ship class 533) crashed the game; it now leaves with
-  the section's other objects. What a world's objects spawn (a boss's helpers, debris, explosions) leaves with them too, and a
-  death takes a boss's out before it comes back. The Snagglebeast's fire rings and the planet's other effects draw with the
-  planet's own effect textures (they were the base level's: missing or wrong). A world's objects of a class the base level
-  also uses keep reading their planet's paths (Gaspar's 52 on Kalebo III's base). Classes "(the base's)" in compose.log are
-  the planet's own (the same model, sounds and code).
-- **A faster game frame** (no change to the pictures or the game): the game's own code takes 27 to 34 % less time a frame
-  and a frame at 16:9 with LOD High 16 to 18 % less. The PS2's float rules are no longer applied by hand at every
-  operation where the processor's mode already gives them (the VU0's and the FPU's adds and multiplies), the memory
-  accessors are no longer a call each, and work the renderer repeated every frame is done once (the reflections' cull
-  boxes with reflections off, the tfrags' opacity table, Vulkan's copy of every tie's colours, a megabyte of the game's
-  memory copied for readers that were off). See docs/performance.md.
-- **Level mods: every zone of a world's section drawn** (`zones all` in a `world` section; level mods must be set up again:
-  the composer's version 8). A planet's world shows what the planet itself draws from the camera's place (its zone grid);
-  `zones all` draws all of it wherever the camera is, for views the planet never had.
-- **Level mods: the hoverboard outside a race** (the mod SDK's ABI 16). Kalebo III's board ridden on a level mod's own
-  geometry or in another planet's world (`world quartu`) ran its race's logic there: the race HUD (lap, time, place), and in
-  Quartu's world a fall at once and for ever ("back on the track" of Kalebo III's race); on the mod's own ground its first
-  fall or crash killed Ratchet. Now it rides free there: no laps, no race HUD, a fall puts him back on the board where he got
-  on (or where the plugin says: `board_return`, `board_fall`), a crash a little before it. In Rilgar's world (`world rilgar`,
-  `hero rilgar board`) the race is Rilgar's own (it stood at the start for ever). `board_rule` forces free or race, and
-  `board_touching` says which enemies the board runs into (the plugin knocks them down with `hit_send`).
-- **The mod SDK: saving from a plugin** (ABI 15): `game_save()` saves the game into the slot the player chose, as leaving a
-  planet does (a level mod's level, a session and its checkpoint included), and `game_saving()` says while the save is
-  being written, so a mod can save when a challenge ends and show "Saving...". Every plugin's records go into the save
-  as in every save. A planet left from a level mod's level no longer saves the items the level lent for the visit.
-- **Level mods: the hero's missing sounds.** On a level mod on another base than Veldin's, Ratchet's sounds that base's
-  bank lacks were silent: with `hero generic` on Kalebo III's base, his burn in the lava and his sinking. They now play,
-  from Veldin's bank.
-- **The mod SDK: the HUD's width** (ABI 14): `hud_width()` says how wide the HUD is (512 units at 4:3, about 683 at 16:9,
-  910 at 21:9), so a plugin knows how far its `RAC1_HUD_LEFT` / `RAC1_HUD_RIGHT` elements move and can keep a centred banner
-  off a box at the side. docs/sdk.md's "The HUD's area": the HUD is 512 x 416 units (the docs said 448), all of it on the
-  screen (`RAC1_HUD_HEIGHT`).
-- **The renderer's code, cleaned up** (no change to the pictures or the game): functions nobody called removed from the
-  Modern Rendering Pipeline (MRP) and the older renderers, and docs/rendering.md rewritten to say plainly what the MRP is
-  and is not: the game's code still produces its draw commands, the MRP interprets them with its own OpenGL / Vulkan
-  drawing, and it never rasterises through an emulation of the PS2's graphics chip.
-- **Level mods: the screen fades cover an ultra-wide screen.** A plugin's `fade()` and a section switch's fade stopped at
-  the 4:3 frame's right side on a widened view (an ultra-wide screen): now the whole width.
-- **Level mods: bosses** (`level.format` 3, the mod SDK's ABI 13): the **Snagglebeast** fights in Umbris's cave as a section
-  (`world umbris`, `objects all` in a box round the cave, `boss umbris.snagglebeast`), on its own code, with its health bar
-  and portrait. A death in the fight starts it over (Ratchet back at the checkpoint, the boss whole again, no loading
-  screen); beating it never ends the game or changes your Umbris: the session goes on, the boss stays beaten for the visit
-  (and in a save made there), and your plugin is told (the `boss` callback) to open the way on. Every planet's world as a
-  section now also brings that planet's camera code, its HUD pictures (Giant Clank's energy bar in `world quartu`) and its
-  own level state as on a first visit: **Gemlik's ship** waits at its pad, Ratchet boards it and flies it as on Gemlik Base.
-  See docs/mods.md ("Bosses").
-- **Level mods: your own grind rails in a planet's world** (format 3): a `world <planet>` section takes `rail` / `rails`
-  lines in the planet's coordinates, added to the planet's own rails, with their collision strips (a grind continued through
-  a portal into Quartu's arena lands Ratchet on its floor); a section without a `hero` line keeps main's (`hero generic`), and
-  a base level's enemies hunting Ratchet (Kalebo III's robots) follow him into the world and fight there.
-- **Level mods: your rail's model and your objects in a planet's world** (format 3): a `rail ... mesh` line of a `world
-  <planet>` section is now drawn there, and the level's own objects are there too: `object` lines inside a section block,
-  and the objects the plugin spawns, moves (`object_place`) or shows there (main's objects, at main's coordinates, are
-  neither drawn nor solid in the planet's world). A world section's rail model comes after
-  every other mesh, so it changes no `material tie` index of lights.txt. Level mods are composed again (composer 7).
-- **Level mods: the Save and Load pages show a level mod's level.** A save made on it showed its base planet (Kalebo III's
-  name and picture for a level on Kalebo III's code); now the level's own name, region and picture, as the ship's map shows
-  them. With the level's mod off or missing, the pages show the planet loading the save lands on (the one flown from, where
-  the planet prompt opens).
-- **Level mods: Clank, Giant Clank and the hoverboard** (`level.format` 3, the mod SDK's ABI 12): a section's `hero` line
-  runs Ratchet on another planet's own hero code and camera code there, and can make him Clank (`hero orxon clank`), Giant
-  Clank (`hero quartu giantclank`: his walk, punches and ground pound, his camera) or put him on Kalebo III's hoverboard
-  (`hero kalebo` with the race's board: he gets on it, rides, jumps and wipes out as in the race, with its camera). Leaving
-  the section he is Ratchet again, with his health as before; a death in a mode brings him back in it at the checkpoint. A
-  plugin does the same at any moment with `hero_build` and `hero_mode`. On a base level whose hero lacks the magnetic walk's
-  animation (Kalebo III's), Ratchet on Magneboots walkways now looks right (the animation is taken from Veldin's, from your
-  disc). `hero generic` (any format) runs Ratchet on the generic hero code on a Kalebo III base: the game's own lava there
-  (he sinks, Cross bounces him out, left in it he is lost), with its animation, instead of the stand-in hop. See docs/mods.md
-  ("Hero modes") and docs/sdk.md.
-- **Level mods: a game planet as a section** (`level.format` 3): a section block with `world <planet>` (`world kalebo`,
-  `world 3`, ...) is that planet's world: its scenery drawn exactly as on the planet (modern renderer, OpenGL and Vulkan),
-  its collision, sky, music, fog, lights, cameras and grind rails, with no loading screen when Ratchet steps through a
-  portal into it. `objects <classes>` (and an optional `box`) brings the planet's own objects along: its enemies fight on
-  their own code (Kalebo III's robots walk up, hit, die to the wrench and drop bolts), its crates break; a death there
-  brings Ratchet back at the section's checkpoint with its enemies back, and a save there brings you back into it. A world
-  takes about 20 MB of memory and is loaded in the background while you play. See docs/mods.md ("Game worlds as
-  sections").
-- **Movement = Strafing / RAC 3** (the Modern preset) on the hoverboard: L2 and R2 are the board's tricks again (#28). The
-  strafe took them on the board too (and Aiming = Modern turned R2 into circle), so only the R1 and L1 tricks could be
-  done and the skill point Tricky (the Twisty McMarx: R1, L1, R2 and L2 in one jump) could not be earned with those
-  settings. On the board (Rilgar and Kalebo III) the pad is now the original's whatever the Movement row; Original is
-  unchanged.
-- Modern lighting, sun shadows (#74, a likely cause; not yet confirmed by the reporter): an object the game hides stops
-  casting a shadow. The shadows of objects out of view are cast from a copy of how they were last drawn, and that copy
-  was kept while the object stayed alive and in place even after the game hid it: on Quartu, Ratchet and Clank while Giant
-  Clank stands in for them, and other objects of the arena hidden in place. Original rendering is unchanged.
-- **Level mods: grind rails, Magneboots walkways and set pieces** (the mod SDK's ABI 11): `level.txt` can have **grind
-  rails** (`rail <name> <points>`, or `rails <file.obj>` with one rail per object of a curve exported from Blender), in the
-  level or in a section, ridden with the game's own grind (landing on them anywhere, jumping between rails side by side,
-  the wrench, flying off the end); `mesh` makes their model and a thin collision strip is added under each. `items
-  grindboots magneboots` gives Ratchet those items while he is on the level, never in a save (they are taken back when he
-  leaves). Faces of `usemtl type2` in the collision are **magnetic**: with the Magneboots he walks up curves, walls and
-  ceilings (on Veldin's code; on Kalebo III's he walks them but looks wrong). A class can have a **collision mesh** of its
-  own (`class ... collision <file>`): a deck with walls, an arch. The plugin can find rails and put Ratchet on one, take one
-  out (a broken rail), change his speed on it and is told when he gets on, reaches the end and gets off (`rail_find`,
-  `hero_rail_attach`, the `rail` callback, ...); fade the screen; take the camera (fixed, looking at something, along a
-  path, following) and give it back blended; add hazards (volumes that hurt on a timer); move an object along a path with
-  Ratchet riding it (`object_follow_path`). See docs/mods.md ("Grind rails and set pieces") and docs/sdk.md.
-- **Level mods: another level's sky** (a level's or a section's `sky` line) no longer ends the game or writes where it
-  should not: it is now drawn by that level's own sky code, as on its planet, whatever the base level. Before, the base
-  level's ran on it: on Veldin's code Umbris's and Gemlik's skies crashed in the sky's draw (Veldin's 256 stars overwrote
-  their first layer; Rilgar's and Quartu's have the same room for 128 stars) and the others got Veldin's stars written
-  at the bottom of the game's memory.
-  All 19 skies were checked on the four bases, as a level's sky and as a section's, on OpenGL and Vulkan. The level
-  composer is version 6: level mods are composed again by the setup.
-- **Aiming = Modern / Modern, No Zoom on magnetic surfaces** (#136): on the Magneboots' walkways the modern controls
-  now leave the hero to the original's rules: L2 no longer turns him (aiming there turned his whole frame off the wall,
-  so he could come off the walkway) and the camera is no longer held on the aim (it acted like the aiming view);
-  R&C 3's run speed, turn and stop rules, made for flat ground, wait too. Off the walkway everything is as before.
-- **Level mods: sections and portals** (`level.format` 3, the mod SDK's ABI 10): a session can be made of **sections**
-  (`section <name> ... end` blocks in `level.txt`), each with its own collision, meshes, sky, music, lights, fog and
-  objects, and Ratchet goes between them through **portals** (boxes he walks into, with an optional fade) without any
-  loading: nothing is reset, only the section you are in is drawn, and the others are loaded in the background while you
-  play. Each section chooses what happens to its objects when you leave it (removed, frozen or left running); a death
-  brings you back at the checkpoint of the section you are in, with that section's enemies back; a save brings you back to
-  its section. `moby` lines can now place classes of other planets by name (`moby kalebo.robot ...`). The plugin can load,
-  enter and unload sections (`section_enter`, ...) and is told when Ratchet goes from one to another. See docs/mods.md
-  ("Sections") and docs/sdk.md.
-- Debug menu, **Hoverboard anywhere**: the board no longer falls through the ground at speed (#120; Kerwan's avenue at full
-  speed went through the street within seconds) and slides along walls: the collision query's hit normal, which is not of
-  unit length, is now normalised before the ride's floor and wall tests.
-- Debug menu, Textures tab: the grid's last column of thumbnails is no longer cut at the right edge (#120): the row's width
-  left out each thumbnail's frame padding.
-- **Level mods: sessions** (`level.format` 3, the mod SDK's ABI 9): a level mod can be a **session**, loaded once at the
-  arrival. A death no longer loads the level again: Ratchet is back at a checkpoint with his health full, and everything
-  else stays as it was (his weapons, ammo and bolts, the plugin's state and the enemies it started, the classes of other
-  planets the level brought). The level's placed objects killed since the arrival come back (`respawn reset`, the
-  default; a crate broken stays broken) or stay as they are (`respawn keep`); the plugin's new `respawn` callback brings
-  back what the battle needs. Checkpoints are `checkpoint` lines in `level.txt` and the SDK's `checkpoint_set` /
-  `checkpoint_at`; a save made in a session brings you back to its checkpoint (the plugin's `session_save` /
-  `session_load` keep where the player was in it). Sessions run on Veldin's code by default, or on a base level. `moby`
-  lines set the slots of their class's profile, and the setup's composer checks them (and imports that would need a
-  profile) against the profiles. On the base level's own objects too: `group_create`, `object_bind`, `object_bind_path`.
-  Formats 1 and 2 are unchanged. See docs/mods.md ("Sessions") and docs/sdk.md.
-- **Bug Fixes: Hydrodisplacer Faucets** (#131; main menu > Options > Bug Fixes, off by default): stepping onto Rilgar's
-  first Hydrodisplacer faucet (or Hoven's first) from some sides and pressing circle, Ratchet started the faucet's
-  animation, slipped off it and the water stayed; circle then did nothing until he stepped off and on again or put the
-  Hydrodisplacer away. It is the original game's own bug (the faucet's pull lands him exactly on a seam of its collision);
-  with the row on he stays on the faucet.
-- **Level mods: enemies of other planets** (the mod SDK's ABI 8): imported classes that read their planet's level data
-  (the paths they patrol, the areas they watch, the boxes that wake them) now work: they find their planet's data, and
-  a spawn gives them level data of their own round where it starts them (their **profiles**, `data/pool/profiles`), which
-  the plugin can change (`object_bind_path` with a `path` line of `level.txt` or `path_create`, `object_bind`,
-  `group_create`, `object_slots`). Six enemies have names and profiles: Drek's fleet's Blarg trooper
-  (`fleet.blarg_trooper`), Gemlik's flying robot, Gaspar's walking robot, Blarg's serpent, Pokitaru's amoeboid and Hoven's
-  flying trooper. The parts an object's placement names come with it, and bringing a class in during play no longer
-  reloads the level's models (about 1 ms instead of 25). ABI 7 is kept for the rails. See docs/sdk.md and
-  docs/open-engine.md.
-- **Level mods: classes of other planets** (`import` lines in `level.txt`, the mod SDK's ABI 6): a level mod can bring a
-  class of another game level, with what it spawns (its shots, their explosions, its debris), and its plugin starts them
-  (`import_class`, `import_spawn`) or brings them in and out during play (`import_load`, `import_release`). They are
-  the open engine's first part for level mods (docs/open-engine.md): for now classes that read no paths or groups of
-  their own planet, such as Umbris's turret (`import umbris.turret`) and Orxon's spore plant (`import
-  orxon.spore_plant`), drawn by the modern renderer. The setup's composer makes the asset pool from your disc when a
-  level needs it. See docs/mods.md and docs/sdk.md.
-- **The development channel follows the `dev` branch** (#141): the work lands on `dev` first and is merged into `main`
-  from time to time, so following `main` missed the newest changes. The update check (Main menu > Updates) now counts
-  the commits on `dev` the installed build lacks, and an update on Development checks out `dev` (a clone on `main` or
-  on a release's tag switches to it; a zip download gets `dev`'s source zip; local commits are never overwritten). The
-  launcher's Development channel downloads `dev` too, from its next release. The Updates page and the notice say `dev`.
-- **Windows: the build failed in `mod_code.cpp`** (#142; the update from 0.7.0 to `main` at 98e966f stopped there and
-  kept the previous build): the mod SDK's sound fields were named `near` and `far`, which `<windows.h>` defines as
-  nothing. Renamed.
-- **Daino's Arena** (`examples/night-arena`): a larger example level mod made in Blender, an arena in a lava lake on
-  Kalebo III's code, with a plugin running challenges against Kalebo III's enemies (waves, bombs from the sky, flame
-  vents, weapon limits, two championships) and, for players who have the Grind Boots, grind rails of its own: a test
-  rail and a course of three lanes with mines to jump and Kalebo III's rail mines to break, ending in a last wave; a planet picture of its own
-  and a view of the arena on the ship's map; its texts in the game's five text languages. Its scripts write the whole mod (see its README).
-- Mod SDK: while **pause in the quick select** holds the world still (Options > Advanced), the plugins' `frame`
-  callbacks, their triggers and the SDK's logic for Kalebo III's enemies and `base_hunt` wait too: a plugin's timers
-  stopped running and the enemies it steers stopped sliding while the ring was open.
-- **Quick Select Rings** (Options > Advanced in the pause menu: 1 / 3, 1 by default; New Game's Modern turns it to 3):
-  three quick select rings as in the later games. While the ring is open, L1 / L2 show the ring on the left and R1 / R2
-  the one on the right (those presses never reach the game), with the L1 / R1 arrows and three dots above the ring; it
-  opens on the ring last used. The pause menu's Quick Select page edits each ring (L2 / R2 change it, its number in the
-  wheel); the same weapon may be in several rings. A new weapon that finds ring 1 full goes to ring 2, then 3. Ring 1 is
-  still the game's (its save unchanged); rings 2 and 3 are kept in the save's `save<N>.pc`. A plugin's `weapon_allow`
-  blanks its disallowed weapons in every ring. See docs/advanced.md.
-- **No more long freeze before the main menu** (after the intro movie, skipped or not) with Corrected Texts on (Options >
-  Advanced): finding the corrected strings compared each data disc's text table with the game's again for every one
-  of its strings, 20 to 30 s on the game's thread. Each table is now compared once: 0.4 s, the same strings corrected.
-- Vulkan: **no more long freezes when a level loads** (after the intro movie, before the main menu; any planet). Every
-  texture level a load sent to the GPU was a submit of its own and a wait for it (about 1600 for Veldin): alone each wait
-  is short, but with another program using the GPU (another game, a second copy) each lasted as long as that program's
-  work, up to 40 s in all. The uploads made between two frames now go together in one command buffer, submitted with the
-  next frame without a wait. Veldin with a heavy GPU program beside it: 6.8 + 8.7 s before, 0.03 + 0.13 s now.
-- Mod SDK **ABI 5** (the tables grow at their end: older plugins keep loading): **Kalebo III's enemies** on a level mod with
-  a Kalebo III base: `base_spawn` now starts the bomb bots (52), the Gadgetron robots (541), the jetpack troopers (638) and
-  the dropships (1356), which on their own level wait for its paths, doors and triggers: the game gives each one paths of
-  its own and starts it at once; `base_option` chooses a Gadgetron robot's weapon (bomb launcher, club, flamethrower) and a
-  dropship's troopers (up to 4, dropped at its landing point); `base_hunt` makes all four hunt Ratchet anywhere (the
-  dropship then stays and fights); `base_handle` gives the handles of the troopers a dropship brought. **The weapons**:
-  `weapons_owned`, `weapon_equip` (as the quick select does, refused where it could not open), `weapon_allow` (only some
-  weapons selectable: the others left out of the quick select's ring and the next / previous weapon; off at every level's
-  start), `ammo_fill`. See docs/sdk.md.
-- Mod SDK ABI 5 fixes: `weapon_allow` leaves a switch to an allowed weapon under way to finish, so `weapon_allow` of a
-  new weapon and `weapon_equip` of it, in either order, end with it in hand (the wrench took its place). The **jetpack
-  troopers** (638) on a level mod no longer fly through walls (a move into the level's collision is slid along or flown
-  over) and hover half a unit over the floor under them, spawned or dropped; hunting, they fly to their point near Ratchet
-  instead of jumping there, a few units apart.
-- Mod SDK **ABI 4** (the tables grow at their end: older plugins keep loading): `vendor_open` (the vendor's screens from a
-  plugin, on any base level; `call_port` never reached them), `input_hold` (the pad kept from the game while a plugin's
-  menu is open: Start and Select still the game's, so pausing and quitting work; `pad_held` / `pad_pressed` read the real
-  pad; the buttons held at the release stay out of the game until let go), `hud_rect` (panels), `hud_text_ex` (text up to
-  8 times larger) and `hud_text_width`, with left / centre / right anchors that follow a HUD wider than 4:3,
-  `base_hunt` (Kalebo III's robots hunt Ratchet anywhere instead of guarding where they started) and `light_add` (a
-  plugin's own lights, per frame, drawn by the modern lighting as the hand-placed ones). The plugins' `ee_alloc` block is
-  53 KB (was 54). The `hud` callback is no longer called under the vendor's screens. See docs/sdk.md.
-- Level mods: level.txt's **`update_all`** line updates every moby wherever the camera is (the game updates a moby only
-  near the camera). On **Kalebo III** as the base, the collision's lava (surface type 3) and deadly liquid (type 1) now act
-  on Ratchet (Kalebo's hero code has neither: a hop out, lost at the third), and the ambient particles' `source lava`
-  rises from a level mod's type 3 faces too. The `material` / `emissive` lines of a level mod's `lights.txt` apply to its
-  meshes (documented: `tie <n>` the mesh's class in meshes.obj's order). See docs/mods.md, "Level mods", "Base levels".
-- Level mods: **a base level per mod**. `mod.json`'s `level.format` 2 with `level.base` 3 (Kerwan), 4 (Eudora) or
-  16 (Kalebo III), besides Veldin (0, format 1's): the level runs on that level's code, with its classes, its enemies,
-  its effects. The composer now keeps each block of the base level's asset data by its own extent, so every level of
-  the game composes (only the four tested ones are allowed; `RAC1_LEVEL_BASE_ANY=1` with the debug tools tries the
-  others). On any base the base planet's progress is untouched and its first-flight story cards and movies (Eudora,
-  Gemlik Base, Kalebo III) are left out for the level. level.txt's `base` line is checked against mod.json; with no
-  `death_height` the base level's is kept unless it is above the level's floor; a warning when the level reaches below
-  Kerwan's or Kalebo III's fixed kill height. See docs/mods.md, "Base levels".
-- Level mods: **the base level's enemies**. A `moby` line of a class the base level's missions place now keeps a spawn
-  rule, so the object drops its bolts when killed (and is back the next visit); Kalebo III's robots (class 1445) walk
-  to Ratchet, fight, die and drop their bolts. level.txt's `spawn <class> <count>` and the mod SDK's **ABI 3**
-  (`base_spawn`, `base_moby`, `base_free`) start the base level's objects at run time, for waves, and tell when they
-  died. docs/mods.md lists what was tried of Kalebo III's classes; docs/sdk.md, "Base level objects".
-- Level mods: the generated name banner is written in the **game's own font** (read from your disc at setup time),
-  the plain font only for letters it has not; the ship's map's planet page of a custom level drops the "Planet" before
-  its name and hides "Play Infobot"; on a level on Veldin's code (which has no gold bolt class) the "Found" panels
-  show a bolt instead of nothing.
-- Level mods: **Ogg Vorbis** music and sounds. level.txt's `music` and `sound` lines take an `.ogg` (mono or stereo)
-  wherever they take a WAV: the composer decodes it (with [stb_vorbis](https://github.com/nothings/stb) v1.22, in
-  `third_party/stb_vorbis`) and encodes it as a WAV, its exact length kept, so a seamless loop stays seamless. The game
-  never reads Ogg. The example level's music is now **"Overworld" by Daino Selvatico** (a stereo Ogg, 44.1 kHz, 110.8 s,
-  `examples/custom-level/music/overworld.ogg`, under CC BY 4.0, not MIT: `examples/custom-level/README.md`) in place
-  of the short synthesized tune. See docs/mods.md, "Level mods", Music.
-- Level mods: **stereo music, and WAV music**. level.txt's `music <loop> [<intro>]` takes a WAV (PCM 8 to 32 bits or
-  float, mono or stereo, any common rate: 8000 .. 48000 Hz kept, others resampled) that the composer encodes as the
-  game's music (PS-ADPCM, its length made whole ADPCM blocks and its first block independent, so the loop is seamless),
-  or a VAG as before, or a stereo VAG of ours (byte +0x1e of the header 2, the channels interleaved in 0x800-byte
-  chunks). A stereo track plays on two voices in step, left and right, as one stream of the game's music: its music
-  volume, pauses, fades and track changes as the original's. Mono VAGs play as before; the disc's music is unchanged.
-  See docs/mods.md, "Level mods", Music.
-- Level mods: pictures of the level's own. level.txt's `picture` (the loading screen's planet, 128 x 128), `banner` /
-  `banner.<lang>` (the name under it, 256 x 32; made from `name` and each `name.<lang>` when the mod has none) and
-  `map_picture` (the ship's map's picture under the galaxy; made from `picture` when none): PNG files the composer
-  scales and turns into the game's 8-bit images. On the ship's map a custom level's row shows its picture, and its
-  planet page its planet picture, with none of the base level's planet, missions, gold bolts or Infobot. The example
-  level has a planet of its own (a checkered sphere) and a generated name banner.
-- Level mods: a custom level is arrived at as a planet. The loading screen's full flight (its sound, the ship and its
-  trails, the planet's picture and name at the end), then the ship's landing at level.txt's `ship` and Ratchet stepping
-  off; before, the level got Veldin's arrival as the game's first level (a short flight, no landing). `hero auto` (the
-  default when there is a ship) starts Ratchet where he steps off the ship; an explicit `hero` place still wins. A
-  custom level no longer touches its base level's progress (its visits and time, its gadget in the quick select). The
-  level composer is version 4: level mods are composed again by the setup.
-- Mod SDK: angles a plugin gives (`object_place`, `object_spawn`, `hero_place`, a rotation written then `moby_moved`)
-  are folded into -pi..pi. The example level's gems and sentries turn by adding to their angle every frame: after a
-  few seconds the game's rotation matrix (whose sine folds an angle only once) made them huge, a flat plane across the
-  level at Ratchet's height that stayed until the level loaded again.
-- Profiler (debug tools): with the frame extrapolation on, the Profiler tab and its overlay show the pictures presented
-  a second beside the fps (which count host frames, one a game step there), and the CSV has a `pictures` column.
-- Main menu > Options > Bug Fixes (right after Advanced): a page for fixes of the original game's own bugs, each its own
-  row, all Off by default (the original's behaviour, unchanged byte for byte), kept in the preferences only
-  (RAC1_BUG_FIXES=<n>,... for testing). First row, Race Music After Quitting (#132): quitting Rilgar's hoverboard race
-  from its results screen brings the planet's music back, with the call the race's other endings make; the original
-  kept the race's music playing on the planet. See docs/advanced.md#bug-fixes.
-- The mod SDK, ABI 2 (docs/sdk.md, a full reference: every struct, service and callback, the lifecycle, threading and
-  replays, the limits, the versions). A level mod can have **object classes of its own**: level.txt's `class` (an OBJ
-  model, a hit box or none) and `object` lines (placed, with key=value words for the plugin); the plugin gives a class
-  its behaviour (`class_define`: spawn, update, hit, remove, a state per object) and spawns, moves, shows, removes
-  objects. Each object is a moby of the game (Ratchet stands on it, his attacks hit it, the game's rays see it) drawn
-  with its model by the modern renderer (GL and Vulkan). Also: `collide_ray` (the point, the normal, the moby or object
-  hit), `objects_near`, `mobys_near`; damage both ways (`hero_damage`, `hit_send`, `hit_take`; the player's attacks
-  reach a class's `hit`); **sounds of the level's own** (`sound` lines: WAV or VAG, made into one sound bank of the
-  game's format, played through the game's own sound slots: distance, pan, walls, reverb, 5.1 / 7.1; `sfx_*`);
-  **triggers** (`trigger` boxes, the `trigger` callback); `frame_count`. ABI 1 plugins run unchanged. The example level
-  has sentries that watch and zap Ratchet and break into gems, gems to collect, seven sounds of its own and a trigger
-  (`RAC1_MOD_TEST=sdk` scripts them). `hero_place` now resets Ratchet to standing, as the game's teleports (it could
-  crash after he was hurt). The plugins' `ee_alloc` block is 54 KB (was 56). The level composer is version 3: level
-  mods are composed again by the setup.
-- Main menu > Exit: the main menu's last entry, below Updates, closes the game after a confirmation in the
-  game's own style (the pause menu's Quit Game page: Circle Yes, Triangle No), the same way as closing the window
-  (Alt+F4) does. Translated ("Esci", "Beenden", "Salir"); pad, keyboard and mouse through the bindings. Only on the PC
-  versions (none on Android or consoles); the pause menu's Quit Game still returns to the title. See
-  docs/settings.md#exit-main-menu.
-- Sound in 5.1 / 7.1: the few world sounds the game plays without a pan (Kalebo III's class 471, Rilgar's 855, Kerwan's
-  574, Quartu's and Drek's fleet's 655) are placed around the listener by their direction like the other world sounds,
-  and the ambience beds tied to the camera (the level emitters of type 4 / 5: Batalia, Hoven, Novalis and others) are
-  spread over all the speakers instead of the front left / right. Stereo and mono are unchanged sample for sample, and
-  nothing the game reads changes (RAC1_RAMHASH identical). See docs/audio.md, "Surround: 5.1 and 7.1".
-- Mods' code (docs/custom-levels.md): a mod's `plugin/` folder, a native plugin in C against sdk/rac1_mod.h (ABI 1,
-  append-only), built by the setup on the player's machine from its source (`--setup --level-mods`, `--mod-plugins`;
-  sdk/rac1_mod.cmake's float rules). Callbacks: level start / end, frame, camera, HUD, the level's placed objects'
-  updates, new game, its bytes in save<N>.pc, test, shutdown; services: memory (journaled writes, an allocator), mobys,
-  collision, the hero, sound, music, smoke, HUD text, camera, pad, random, the port's functions by address. A mod with
-  code is off when first found, Options > Mods asks to confirm turning it on ("Contains code."), and shows why one is
-  not loaded; a headless run loads code only with RAC1_MODS=1 RAC1_MOD_CODE=1 (RAC1_MOD_TEST for its test callback).
-  The example level has a plugin: a moving platform Ratchet rides, a HUD line, a sound, a visits counter in the save.
-- Level mods, format 1 (docs/mods.md, "Level mods"): a mod of `"kind": "level"` adds a new level the ship flies to (a
-  row under the unlocked planets). Its folder holds our own files only: `level.txt` (names per language, Ratchet's start,
-  the ship, the death height, colours), a collision mesh and drawn meshes (OBJ, PNG or colour materials). The setup
-  composes it with your disc's files (`rac1-native --setup --level-mods`, also the setup's last step) into
-  `assets/generated/mods/<folder>/`: a data file with no terrain of the base level and the collision made from the mod's
-  mesh, a gameplay file with Ratchet and the ship only, the meshes the modern renderer draws, its MRP world. The game runs
-  it on host level slot 19 over Veldin's code, its files read through a sector window of their own (no disc file
-  replaced), with its own lights file, world and state; a memory card save made there is the game's own (Veldin's
-  records), and the level's progress goes in save<N>.pc (kept and written back when the mod is off or missing; loading
-  such a save then lands on the planet flown from and opens the ship's planet map there). Options > Mods says "Needs
-  setup" for a level mod with no or an old build. `examples/custom-level/make_example.py` writes an example level. With
-  no level mod on (headless runs, RAC1_MODS=0) nothing changes. RAC1_GOTO=<level.id>@F for tests.
-- Level mods: several at once, each on a host slot of its own (19, 20, ...) with a row of its own on the ship's list and
-  its own items in save<N>.pc. The planet prompt lists the level flown from first; leaving its map (triangle, start)
-  lands there. RAC1_LEVEL_MAP_AT=<frame> opens the ship's map in tests.
-- Level mods: objects (`moby <class> x y z [yaw]`: copies of the base level's placements of that class, uids of their
-  own; Veldin's crates work), the music (`music <level>`, `music <loop.vag> [<intro.vag>]` read through the level's
-  window, `music none`) and another level's sky (`sky <level>`). The example level has five crates, Kerwan's sky and a
-  tune of its own (a small PS-ADPCM encoder in make_example.py). The composer's version 2 (builds are made again).
-- Level mods: the meshes' vertex colours (`v x y z r g b`, 64 a mesh; a textured material's Kd tints), `offset x y z` /
-  `offset auto` (a level made round (0, 0, 0) moved above the collision grid's 0), and the composer's size checks (the
-  asset data within the base level's, the objects, the gameplay data). host_meshes.mrpc version 2 (the instances'
-  palettes).
-- Faster widened view and LOD slider: the second moby pass (the one that fills the 16:9 sides and draws LOD High's farther
-  mobys) keeps the poses of mobys whose animation did not change instead of computing them again, its scene observers copy
-  what they read in one go, and it no longer saves and restores the whole moby list's memory each frame.
-  On Kerwan at 16:9 with LOD High that pass went from 2.2 to 1.5 ms a frame (the game thread 7.5 to 6.9 ms), at LOD
-  Original 0.68 to 0.54 ms.
-  The same game state and picture (RAC1_PERF_POSE_MEMO, RAC1_PERF_SCENE_READS, RAC1_PERF_LOD_PATCH = 0 to compare); see
-  docs/performance.md.
-- Ambient Particles, the `lava` material (#136): a tagged texture's faces give embers whichever way they face, so the lava on
-  the sides of a moby (Drek's broken plateaus in Veldin's finale) or of a tfrag / tie now gives off embers too; only the faces
-  turned up or down did. The collision's lava (Umbris, Gaspar, Orxon) is unchanged; the shipped levels have no such lines.
-- HUD wider than 4:3, the hoverboard races (Rilgar, Kalebo III; #132): the bottom bar ("Lap", "Time", "Place") stays
-  whole and centred as in 4:3. Its two HUD elements were moved apart as a left and a right one, so the bar split and
-  "Place" was drawn over "Time".
-- Cut Content, Kerwan's citizens (#136): they play the grind boots seller's own idle (Nebula G34's "Fred Prime",
-  the sequence his update plays while he waits: crouched, the hands together, 1 s loop) instead of his stiff standing one
-  where only the head moved; they stand 0.25 lower so the crouch keeps their feet on the ground. Read from the disc as
-  before; nothing changes with the item off.
-- Windows setup: "lld: error: unable to find library -lmsvcrt" while CMake tests the compiler (#140, #88): a file of
-  MSYS2's C runtime package was missing although the package counted as installed, and the setup never installed it
-  again. `tools\windows\toolchain.ps1` now checks the runtime packages' files (`pacman -Qk`: crt, headers, winpthreads,
-  libc++, libunwind, compiler-rt) and installs again the ones missing a file; a configuration that still fails that way
-  says which library is missing and what to do. See docs/setup.md.
-- The world's opaque draws (RAC1_PERF_OPAQUE) keep the late depth test in their first pass on OpenGL and Vulkan: with the
-  early one, a Radeon (radeonsi and RADV) drew a few pixels of foliage differently from one run to the next in a widened
-  view (Veldin at 16:9 / 32:9). The picture is now the same every run; the 4:3 reference pictures are unchanged.
-- The moby pass's draw loop (both the game's own pass and the widened view's second one) runs a faster form of the same code:
-  the VU0 registers as a local copy and the memory reached without a call per access. About 15 % of the loop's time (Kerwan
-  widened at LOD High: the second pass 1.08 to 1.01 ms a frame). The same game state and picture (RAC1_PERF_MOBY_DRAW=0 to
-  compare, =2 to check one against the other).
-- docs/mods.md, a modder's guide: a texture mod and a .vag sound swap step by step, the limits, every `[mods]` log
-  line and what it means, sharing a mod.
+- **Level mods: more music, kept through sections and deaths (SDK ABI 19).** level.txt's `music_track <name> <loop> [<intro>]`
+  lines (as many as wanted, the `music` line's formats: WAV, Ogg Vorbis or VAG, stereo, an intro then its loop) and the
+  plugin's `music_track(name, fade_frames)`: the track instead of the level's music, a fade out first; while it plays a
+  section switch does not put the section's music on and a death (a soft reset) does not restart it. `music_track(NULL, ...)`
+  brings back the level's music (the current section's), and leaving the level ends it; `music_track_now()` says which plays.
+  The composed output of existing mods is unchanged (no recompose needed); the original runs as before.
+
+### Graphics
 - Graphics: Enhanced, Lighting: Original (#138): the original game's lighting and drop shadows with the modern lighting's sun
   off everywhere (as in a level's interiors), the other rows still on top: Ambient Occlusion, Surface Detail, Water
   Reflections (RT too), Grass, Ambient Particles, Secondary Lights. Shadow Strength, Shadow Distance, Dynamic Shadows and Sun
@@ -487,60 +367,6 @@ What changed in each release. Releases are source only: you build the game with 
   do. The game's state is unchanged; a 4:3 view is unchanged. See docs/rendering.md, "The space fights' HUD".
 - HUD wider than 4:3: a help message wider than the 4:3 frame (Spanish prompts on Gemlik's gold weapon cases, #82) is
   drawn whole over the wider view instead of being cut at the frame's sides, as the original cuts it.
-- Options > Sound > Mix (Original by default, High Precision): the voices, their volumes, the reverb and the master
-  volume mixed in float without the SPU2's 16-bit truncations and clamps, a look-ahead limiter at the end instead of
-  clipping, the sound device opened in 32-bit float; also in 5.1 / 7.1 and for the movies' sound. Only the output
-  samples change: the voices' states and everything the game reads are computed as before (RAC1_RAMHASH identical).
-  RAC1_AUDIO_MIX=hp for testing. See docs/audio.md.
-- Mods, a first step (docs/mods.md): a `mods/` folder next to `assets/`, one folder per mod with a `mod.json` (name,
-  author, version, description, priority). A mod's `disc/` files, laid out as the extracted disc files and of the same
-  size, are read instead of the disc's; its `textures/<hash>.png` (any size) replace the game's textures by their content
-  hash in the modern renderer (the mobys, the world, the sky, the 2D). Main menu > Options > Mods turns each one on or
-  off (from the next start; `mods.txt` in the settings' folder); conflicts go to the higher priority and are logged; a
-  "Mods on" line at the bottom of the title screen and the main and pause menus while any is on. The debug menu's Dump textures (or
-  RAC1_TEX_DUMP) writes the textures with their hashes, to start a pack. Headless runs (the tests, the reference checks)
-  never load mods unless RAC1_MODS=1; RAC1_MODS=0 turns them all off.
-- Ambient Particles: the `lava` material gives lava particles (#136): tfrags, ties and shrubs whose texture a level's line
-  marks lava (points on their faces, read once per level) and mobys marked lava (points on their posed faces each frame,
-  moving with them) add to the collision's lava of Umbris, Gaspar and Orxon; a level with the material and no `source lava`
-  line draws embers from it. Nothing changes without the material or with Ambient Particles Off (docs/particles.md, From
-  the lava material).
-- Level light files: `sun_rays_strength <0..2>` scales the Sun Rays option's strength on that level (its added light and
-  limit; 0 none, 1 without the line), set in the debug menu's Sun tab (Sun Rays strength on this level) and saved with the
-  file (#121: the tutorial's rays were too strong). See docs/lighting.md, Sun rays.
-- Debug menu, Textures tab: every tie texture is listed and can be taken in hand (#136, #121). A tie class's texture prims
-  all named the class's first texture (the world files' decoder read each prim's TEX0 word, 0 in every class, for its local
-  texture; the game gives prim t the remap's byte t): the tab listed a class under its first texture alone, the crosshair's
-  preview pulsed that texture, and a `tie <class> tex <t>` line with t above 0 marked the class's first texture. Each prim
-  now takes its own texture at the level's load (checked against the game's registers on every level). With Graphics
-  Enhanced, the 80 shipped tie lines with t above 0 now mark the texture they name, and the automatic tie emitters judge
-  each texture of a class (docs/lighting.md, the Textures tab).
-- Movie subtitles (Options > Language > Movie Subtitles, Off by default; RAC1_MOVIE_SUBTITLES for testing): the original
-  shows none over its movies; the game shows SubRip files from `assets/movie-subtitles/` in the game's subtitle look, in
-  the text language. The setup makes them on request with speech to text from the disc's own sound tracks
-  (`./setup.sh --movie-subtitles [all|en,it,...]`, asked once by an interactive setup; Whisper in `assets/stt/`, or an
-  OpenAI-compatible server with `--stt-url`): names given as hotwords, cues cut at
-  sentences; an edited file, or one the setup did not make, is never written again. A missing or broken file shows
-  nothing and logs a line. See docs/movie-subtitles.md.
-- 1.02 Fixes, more of the later build's fixes (each its own number for RAC1_FIXES102): 15 the cutscenes (none started
-  inside one, the underwater view put aside over a scene, the draw lists emptied at its end), 17 the ship's scenes
-  skipped with circle too, 18 Aridia's sand sharks burst when killed, 19 the hoverbike races' place / poses / flips in
-  the game's language and singular, 20 Blarg's far breaking object without its debris, 22 Rilgar's race: the music back after it and its skill
-  point told. See docs/advanced.md.
-- 1.02 Gameplay, two more (RAC1_GAMEPLAY102): 14 the Decoy Glove's decoy pushed off by Ratchet swimming into it, 21
-  Rilgar's rising water carries Ratchet swimming in it. The level objects' other 1.02 changes are listed in
-  docs/advanced.md, with why each is left out.
-- Launcher, Settings: Movie subtitles (the languages, for every setup), Make movie subtitles, Install subtitle pack (the
-  .srt files of a .zip into `assets/movie-subtitles/`), and Enable debug tools (the game started with `--debug-tools`).
-- Vulkan: the mobys' shadow casters get OpenGL's depth bias (it was left unset, whatever the driver had: shadow acne or
-  gaps on mobys depending on the GPU); the validation layer's other errors fixed (the occlusion's and the sun rays'
-  pipelines made for their own targets' formats, discard's helper-invocation feature enabled and checked, the dummy
-  depth images' transfer usage, the particles' objects destroyed at the end).
-- Vulkan: the driver's compiled pipelines kept between starts (`vk_pipeline_cache.bin` in the settings' folder; not
-  headless unless RAC1_VK_PIPELINE_CACHE=1).
-- Setup: glslc is required on Linux and Windows (the private MSYS2 installs shaderc), the build configured with
-  RAC1_VULKAN=REQUIRED; a build made without glslc is configured again once glslc is installed (it kept a renderer
-  without shaders before); a warning when no Vulkan driver is installed.
 - Vulkan's safety net: every Vulkan 1.3 device is tried, best first, before OpenGL (a laptop's integrated GPU when the
   discrete one lacks something); a Vulkan start that crashed (in its first 600 frames) or a lost GPU (#113's case) sends
   the next starts to OpenGL until the Renderer row is chosen again; Options > Display > Renderer shows the renderer
@@ -552,24 +378,100 @@ What changed in each release. Releases are source only: you build the game with 
   Vulkan in a window, OpenGL when Vulkan cannot start or the safety net says not to try, the row showing the renderer
   running; choosing the row writes it with `renderer_set 1`, and `renderer vulkan` stays. Headless runs stay OpenGL
   (RAC1_RENDERER=auto takes the auto path headless too). 0.7.x reads `auto` as OpenGL.
-- Japanese voices: the boot's logo movie played the Japanese disc's own logo movie's sound, another edit (8.8 s against
-  the 14.5 s pictures): its later part early, then silence before the pictures ended. A movie takes the Japanese disc's
-  sound only when it is the same cut (the last group of pictures' time code the same on both discs); the logos and the
-  credits (16 s shorter in Japan) keep the text language's sound.
-- Water Reflections Medium (RT) and High (RT): no more flickering line under Pokitaru's far islands, at Hoven's posts and along
-  the shores: the seas read the half-resolution trace texel by texel, each kept where its distance is the one the pixel's own
-  water has there, instead of filtered reads that mixed a texel's distance with its neighbour's or an empty texel's (whether
-  they matched hung on where the pixel fell among the texels, which changed with every step of the camera).
-- Water Reflections Low: the far sea mirrors the sky, as Medium's does, instead of a flat dark patchwork with stepped edges
-  (Daino on Pokitaru at 5120x1440): the sky's cube faces were read by an alpha the sky's blended layers leave at 0 over the
-  lower sky and the horizon, and the probe's horizon - the islands' silhouettes - was spread over all the water past its
-  sphere. Medium's picture is unchanged.
+
+### Lighting (the optional modern lighting)
+- Lights: Anya-Thoughtmane's lighting batch 4: most levels rebalanced and every level marked more fully, with the areas, details
+  and other parts the earlier batches could not reach (`data/lights/classes.txt` and the light files of eighteen levels);
+  batch 4.1 fills a few spots it missed on levels 11 and 16.
+- Modern lighting, sun shadows (#74, a likely cause; not yet confirmed by the reporter): an object the game hides stops
+  casting a shadow. The shadows of objects out of view are cast from a copy of how they were last drawn, and that copy
+  was kept while the object stayed alive and in place even after the game hid it: on Quartu, Ratchet and Clank while Giant
+  Clank stands in for them, and other objects of the arena hidden in place. Original rendering is unchanged.
+- Ambient Particles, the `lava` material (#136): a tagged texture's faces give embers whichever way they face, so the lava on
+  the sides of a moby (Drek's broken plateaus in Veldin's finale) or of a tfrag / tie now gives off embers too; only the faces
+  turned up or down did. The collision's lava (Umbris, Gaspar, Orxon) is unchanged; the shipped levels have no such lines.
+- Ambient Particles: the `lava` material gives lava particles (#136): tfrags, ties and shrubs whose texture a level's line
+  marks lava (points on their faces, read once per level) and mobys marked lava (points on their posed faces each frame,
+  moving with them) add to the collision's lava of Umbris, Gaspar and Orxon; a level with the material and no `source lava`
+  line draws embers from it. Nothing changes without the material or with Ambient Particles Off (docs/particles.md, From
+  the lava material).
+- Level light files: `sun_rays_strength <0..2>` scales the Sun Rays option's strength on that level (its added light and
+  limit; 0 none, 1 without the line), set in the debug menu's Sun tab (Sun Rays strength on this level) and saved with the
+  file (#121: the tutorial's rays were too strong). See docs/lighting.md, Sun rays.
+
+### Gameplay
+- **Movement = Strafing / RAC 3** (the Modern preset) on the hoverboard: L2 and R2 are the board's tricks again (#28). The
+  strafe took them on the board too (and Aiming = Modern turned R2 into circle), so only the R1 and L1 tricks could be
+  done and the skill point Tricky (the Twisty McMarx: R1, L1, R2 and L2 in one jump) could not be earned with those
+  settings. On the board (Rilgar and Kalebo III) the pad is now the original's whatever the Movement row; Original is
+  unchanged.
+- **Aiming = Modern / Modern, No Zoom on magnetic surfaces** (#136): on the Magneboots' walkways the modern controls
+  now leave the hero to the original's rules: L2 no longer turns him (aiming there turned his whole frame off the wall,
+  so he could come off the walkway) and the camera is no longer held on the aim (it acted like the aiming view);
+  R&C 3's run speed, turn and stop rules, made for flat ground, wait too. Off the walkway everything is as before.
+- **Bug Fixes: Hydrodisplacer Faucets** (#131; main menu > Options > Bug Fixes, off by default): stepping onto Rilgar's
+  first Hydrodisplacer faucet (or Hoven's first) from some sides and pressing circle, Ratchet started the faucet's
+  animation, slipped off it and the water stayed; circle then did nothing until he stepped off and on again or put the
+  Hydrodisplacer away. It is the original game's own bug (the faucet's pull lands him exactly on a seam of its collision);
+  with the row on he stays on the faucet.
+- **Quick Select Rings** (Options > Advanced in the pause menu: 1 / 3, 1 by default; New Game's Modern turns it to 3):
+  three quick select rings as in the later games. While the ring is open, L1 / L2 show the ring on the left and R1 / R2
+  the one on the right (those presses never reach the game), with the L1 / R1 arrows and three dots above the ring; it
+  opens on the ring last used. The pause menu's Quick Select page edits each ring (L2 / R2 change it, its number in the
+  wheel); the same weapon may be in several rings. A new weapon that finds ring 1 full goes to ring 2, then 3. Ring 1 is
+  still the game's (its save unchanged); rings 2 and 3 are kept in the save's `save<N>.pc`. A plugin's `weapon_allow`
+  blanks its disallowed weapons in every ring. See docs/advanced.md.
+- Main menu > Options > Bug Fixes (right after Advanced): a page for fixes of the original game's own bugs, each its own
+  row, all Off by default (the original's behaviour, unchanged byte for byte), kept in the preferences only
+  (RAC1_BUG_FIXES=<n>,... for testing). First row, Race Music After Quitting (#132): quitting Rilgar's hoverboard race
+  from its results screen brings the planet's music back, with the call the race's other endings make; the original
+  kept the race's music playing on the planet. See docs/advanced.md#bug-fixes.
+- Main menu > Exit: the main menu's last entry, below Updates, closes the game after a confirmation in the
+  game's own style (the pause menu's Quit Game page: Circle Yes, Triangle No), the same way as closing the window
+  (Alt+F4) does. Translated ("Esci", "Beenden", "Salir"); pad, keyboard and mouse through the bindings. Only on the PC
+  versions (none on Android or consoles); the pause menu's Quit Game still returns to the title. See
+  docs/settings.md#exit-main-menu.
+- Cut Content, Kerwan's citizens (#136): they play the grind boots seller's own idle (Nebula G34's "Fred Prime",
+  the sequence his update plays while he waits: crouched, the hands together, 1 s loop) instead of his stiff standing one
+  where only the head moved; they stand 0.25 lower so the crouch keeps their feet on the ground. Read from the disc as
+  before; nothing changes with the item off.
+- Movie subtitles (Options > Language > Movie Subtitles, Off by default; RAC1_MOVIE_SUBTITLES for testing): the original
+  shows none over its movies; the game shows SubRip files from `assets/movie-subtitles/` in the game's subtitle look, in
+  the text language. The setup makes them on request with speech to text from the disc's own sound tracks
+  (`./setup.sh --movie-subtitles [all|en,it,...]`, asked once by an interactive setup; Whisper in `assets/stt/`, or an
+  OpenAI-compatible server with `--stt-url`): names given as hotwords, cues cut at
+  sentences; an edited file, or one the setup did not make, is never written again. A missing or broken file shows
+  nothing and logs a line. See docs/movie-subtitles.md.
 - Clank and Giant Clank strafe and aim like Ratchet (#129): with Movement Strafing or RAC 3, L2 held keeps him facing
   the aim while he walks in any direction, standing, walking and jumping (it worked in his jump only), the right stick
   turns the aim, and with Aiming Modern (or Modern, No Zoom) the view is the aim's and R2 is circle; his kicks and
   punches go where he faces. No reticle (he has no weapon), L1 still his first-person view.
-- Linux launcher: a dark theme (#99): it follows the desktop's light or dark setting (it was always light), or
-  Settings > Theme chooses Light or Dark.
+
+### Audio
+- Sound in 5.1 / 7.1: the few world sounds the game plays without a pan (Kalebo III's class 471, Rilgar's 855, Kerwan's
+  574, Quartu's and Drek's fleet's 655) are placed around the listener by their direction like the other world sounds,
+  and the ambience beds tied to the camera (the level emitters of type 4 / 5: Batalia, Hoven, Novalis and others) are
+  spread over all the speakers instead of the front left / right. Stereo and mono are unchanged sample for sample, and
+  nothing the game reads changes (RAC1_RAMHASH identical). See docs/audio.md, "Surround: 5.1 and 7.1".
+- Options > Sound > Mix (Original by default, High Precision): the voices, their volumes, the reverb and the master
+  volume mixed in float without the SPU2's 16-bit truncations and clamps, a look-ahead limiter at the end instead of
+  clipping, the sound device opened in 32-bit float; also in 5.1 / 7.1 and for the movies' sound. Only the output
+  samples change: the voices' states and everything the game reads are computed as before (RAC1_RAMHASH identical).
+  RAC1_AUDIO_MIX=hp for testing. See docs/audio.md.
+
+### Discs
+- 1.02 Fixes, more of the later build's fixes (each its own number for RAC1_FIXES102): 15 the cutscenes (none started
+  inside one, the underwater view put aside over a scene, the draw lists emptied at its end), 17 the ship's scenes
+  skipped with circle too, 18 Aridia's sand sharks burst when killed, 19 the hoverbike races' place / poses / flips in
+  the game's language and singular, 20 Blarg's far breaking object without its debris, 22 Rilgar's race: the music back after it and its skill
+  point told. See docs/advanced.md.
+- 1.02 Gameplay, two more (RAC1_GAMEPLAY102): 14 the Decoy Glove's decoy pushed off by Ratchet swimming into it, 21
+  Rilgar's rising water carries Ratchet swimming in it. The level objects' other 1.02 changes are listed in
+  docs/advanced.md, with why each is left out.
+- Japanese voices: the boot's logo movie played the Japanese disc's own logo movie's sound, another edit (8.8 s against
+  the 14.5 s pictures): its later part early, then silence before the pictures ended. A movie takes the Japanese disc's
+  sound only when it is the same cut (the last group of pictures' time code the same on both discs); the logos and the
+  credits (16 s shorter in Japan) keep the text language's sound.
 - PAL disc 2.00: the title screen's sounds are the right ones again (#137): the region table placed the title's sound
   tables 0x100 bytes off (data/regions/SCES-50916-2.00.txt, the boot module's run from 0x186100 as on PAL 1.00), so the
   menu played other sounds of the title's bank. The setup runs again on its own after the update.
@@ -580,9 +482,59 @@ What changed in each release. Releases are source only: you build the game with 
 - PAL disc 2.00: a level's start clears its own variables and only them (#137's region table): the clear began where the
   table guessed Veldin's variables start, off by up to 0x30 bytes on 2.00, so on Kerwan and Oltanis it zeroed the last
   constants of the level's data, and on Novalis and Batalia it left a few variables from the level before.
-- Debug menu: Kill Ratchet no longer crashes the game when Clank is the hero (#136): Clank gets his own death (state 0x47).
+
+### Launcher and setup
+- **The development channel follows the `dev` branch** (#141): the work lands on `dev` first and is merged into `main`
+  from time to time, so following `main` missed the newest changes. The update check (Main menu > Updates) now counts
+  the commits on `dev` the installed build lacks, and an update on Development checks out `dev` (a clone on `main` or
+  on a release's tag switches to it; a zip download gets `dev`'s source zip; local commits are never overwritten). The
+  launcher's Development channel downloads `dev` too, from its next release. The Updates page and the notice say `dev`.
+- Launcher, Settings: Movie subtitles (the languages, for every setup), Make movie subtitles, Install subtitle pack (the
+  .srt files of a .zip into `assets/movie-subtitles/`), and Enable debug tools (the game started with `--debug-tools`).
+- Setup: glslc is required on Linux and Windows (the private MSYS2 installs shaderc), the build configured with
+  RAC1_VULKAN=REQUIRED; a build made without glslc is configured again once glslc is installed (it kept a renderer
+  without shaders before); a warning when no Vulkan driver is installed.
+- Linux launcher: a dark theme (#99): it follows the desktop's light or dark setting (it was always light), or
+  Settings > Theme chooses Light or Dark.
+
+### Platforms
+- Windows: the specifications (docs/platforms.md, #67): Anya-Thoughtmane's minimum, recommended and maximum machines for Windows
+  players, with the note that the maximum settings still have their own issues on Windows 11.
 
 ### Performance
+- **A shorter frame at the default 4:3** (no change to the picture or the game): with the settings as they come - Aspect Ratio
+  4:3 Original, LOD Original - the renderer still decoded the frame's world (its terrain, ties and shrubs) from the game's draw
+  commands on an emulated VU1, and the frame waited for it. The game's own world passes now tell the renderer what they drew,
+  and it makes those draws from that: a frame 17 to 41 % shorter on the eight levels measured (Kerwan 3.8 to 2.4 ms, Kalebo III
+  3.8 to 2.2, headless). It then stopped copying and reading those commands a second time: its thread is a quarter less busy,
+  and the frame up to 9 % shorter again where it still waited for it (Gaspar 2.5 to 2.3 ms). 16:9 and the LOD slider were not
+  affected: the renderer decides the world itself there. See docs/performance.md.
+- **A shorter frame in widescreen at LOD Original** (no change to the picture or the game): with the view wider than 4:3
+  the renderer ran the game's whole moby pass a second time each frame, to draw what the 4:3 view leaves out at the sides.
+  That second run now draws only those extra mobys - about a fifth of the mobys at 16:9 - and takes the others from the pass the game
+  ran: the game's thread 5 to 11 % less busy and the frame 3 to 6 % shorter on the six levels measured at 16:9. At the LOD
+  slider's other settings the whole pass still runs again, but the renderer no longer decodes each moby's draw commands a
+  second time (the game's draw loop tells it what it wrote): that run 18 to 29 % shorter at LOD High. See
+  docs/performance.md.
+- **A faster game frame** (no change to the pictures or the game): the game's own code takes 27 to 34 % less time a frame
+  and a frame at 16:9 with LOD High 16 to 18 % less. The PS2's float rules are no longer applied by hand at every
+  operation where the processor's mode already gives them (the VU0's and the FPU's adds and multiplies), the memory
+  accessors are no longer a call each, and work the renderer repeated every frame is done once (the reflections' cull
+  boxes with reflections off, the tfrags' opacity table, Vulkan's copy of every tie's colours, a megabyte of the game's
+  memory copied for readers that were off). See docs/performance.md.
+- Faster widened view and LOD slider: the second moby pass (the one that fills the 16:9 sides and draws LOD High's farther
+  mobys) keeps the poses of mobys whose animation did not change instead of computing them again, its scene observers copy
+  what they read in one go, and it no longer saves and restores the whole moby list's memory each frame.
+  On Kerwan at 16:9 with LOD High that pass went from 2.2 to 1.5 ms a frame (the game thread 7.5 to 6.9 ms), at LOD
+  Original 0.68 to 0.54 ms.
+  The same game state and picture (RAC1_PERF_POSE_MEMO, RAC1_PERF_SCENE_READS, RAC1_PERF_LOD_PATCH = 0 to compare); see
+  docs/performance.md.
+- The moby pass's draw loop (both the game's own pass and the widened view's second one) runs a faster form of the same code:
+  the VU0 registers as a local copy and the memory reached without a call per access. About 15 % of the loop's time (Kerwan
+  widened at LOD High: the second pass 1.08 to 1.01 ms a frame). The same game state and picture (RAC1_PERF_MOBY_DRAW=0 to
+  compare, =2 to check one against the other).
+- Vulkan: the driver's compiled pipelines kept between starts (`vk_pipeline_cache.bin` in the settings' folder; not
+  headless unless RAC1_VK_PIPELINE_CACHE=1).
 - The memory accessors and the VU0 macro ops forced inline in the ported and generated code (CMake `RAC1_INLINE_HELPERS`, off
   by default for now): the world passes' time 15 to 37 % less, but the game code as a whole about the same, a program 2.5
   times bigger and a build twice as long; the same game state. See [Performance](docs/performance.md).
@@ -614,6 +566,80 @@ What changed in each release. Releases are source only: you build the game with 
   picture). The CPU tfrag fallback (`RAC1_TFRAG_CPU`) draws the host's decisions instead of running the tfrag pass a second time.
 - The profiler's CSV splits the workers' time into parts (the chain reader's uploads and VU1 programs, the scene worker's
   decisions, capture, walk and triangles). See [Performance](docs/performance.md#drawing-without-the-chains).
+
+### Fixes
+- **Gaspar: the lava torn across the sky down in the cave** (#144). The lava sea's surfaces are drawn from the game's own
+  screen matrix; when that differs from the frame's by a hair (the camera easing in the cave, a zoom: some dozens of frames
+  at a time) the renderer took them for a surface with a matrix of its own and sent their points through the inverse of the
+  frame's matrix, which on Gaspar turns a hair into points tens of thousands of units away: big stretched red sheets across
+  the view. A matrix that is the frame's times one common factor now counts as the frame's, its points the world's. The
+  Original picture and every other level are as before.
+- **Level of Detail Maximum: Pokitaru's sun shadows** (#144). At Maximum the mobys' draw distance was unlimited, past the
+  renderer's far plane too, and a Pokitaru object the game keeps out of sight (class 1161, a model 38000 units across with its
+  culling sphere far away) was drawn: nothing showed, but the shadow cache cast it, a flat shadow over the whole level. The
+  mobys' distance now stops at the far plane (4000 units, or the game's own value when larger). The Original picture and
+  every other level of detail are as before.
+- **Windows: the build failed in `mod_code.cpp`** (#142): the mod SDK's sound fields were named `near` and `far`, which
+  `<windows.h>` defines as nothing. Renamed.
+- **No more long freeze before the main menu** (after the intro movie, skipped or not) with Corrected Texts on (Options >
+  Advanced): finding the corrected strings compared each data disc's text table with the game's again for every one
+  of its strings, 20 to 30 s on the game's thread. Each table is now compared once: 0.4 s, the same strings corrected.
+- Vulkan: **no more long freezes when a level loads** (after the intro movie, before the main menu; any planet). Every
+  texture level a load sent to the GPU was a submit of its own and a wait for it (about 1600 for Veldin): alone each wait
+  is short, but with another program using the GPU (another game, a second copy) each lasted as long as that program's
+  work, up to 40 s in all. The uploads made between two frames now go together in one command buffer, submitted with the
+  next frame without a wait. Veldin with a heavy GPU program beside it: 6.8 + 8.7 s before, 0.03 + 0.13 s now.
+- HUD wider than 4:3, the hoverboard races (Rilgar, Kalebo III; #132): the bottom bar ("Lap", "Time", "Place") stays
+  whole and centred as in 4:3. Its two HUD elements were moved apart as a left and a right one, so the bar split and
+  "Place" was drawn over "Time".
+- Windows setup: "lld: error: unable to find library -lmsvcrt" while CMake tests the compiler (#140, #88): a file of
+  MSYS2's C runtime package was missing although the package counted as installed, and the setup never installed it
+  again. `tools\windows\toolchain.ps1` now checks the runtime packages' files (`pacman -Qk`: crt, headers, winpthreads,
+  libc++, libunwind, compiler-rt) and installs again the ones missing a file; a configuration that still fails that way
+  says which library is missing and what to do. See docs/setup.md.
+- The world's opaque draws (RAC1_PERF_OPAQUE) keep the late depth test in their first pass on OpenGL and Vulkan: with the
+  early one, a Radeon (radeonsi and RADV) drew a few pixels of foliage differently from one run to the next in a widened
+  view (Veldin at 16:9 / 32:9). The picture is now the same every run; the 4:3 reference pictures are unchanged.
+- Vulkan: the mobys' shadow casters get OpenGL's depth bias (it was left unset, whatever the driver had: shadow acne or
+  gaps on mobys depending on the GPU); the validation layer's other errors fixed (the occlusion's and the sun rays'
+  pipelines made for their own targets' formats, discard's helper-invocation feature enabled and checked, the dummy
+  depth images' transfer usage, the particles' objects destroyed at the end).
+- Water Reflections Medium (RT) and High (RT): no more flickering line under Pokitaru's far islands, at Hoven's posts and along
+  the shores: the seas read the half-resolution trace texel by texel, each kept where its distance is the one the pixel's own
+  water has there, instead of filtered reads that mixed a texel's distance with its neighbour's or an empty texel's (whether
+  they matched hung on where the pixel fell among the texels, which changed with every step of the camera).
+- Water Reflections Low: the far sea mirrors the sky, as Medium's does, instead of a flat dark patchwork with stepped edges
+  (Daino on Pokitaru at 5120x1440): the sky's cube faces were read by an alpha the sky's blended layers leave at 0 over the
+  lower sky and the horizon, and the probe's horizon - the islands' silhouettes - was spread over all the water past its
+  sphere. Medium's picture is unchanged.
+
+### Debug tools (`--debug-tools`)
+- **Debug menu: the Profiler tab's frame rate was wrong without the overlay.** The tab alone could show several hundred fps
+  where the overlay showed 60: a turn of the host's loop that came before the next game frame was due (it runs no game
+  frame, draws nothing and waits) was counted as a frame of a millisecond or two, and without the overlay the profiler
+  recorded mostly those. Such a turn is no longer a frame: its wait belongs to the frame being recorded, so the tab and
+  the overlay now count the frames shown and agree (checked headless: 59.7 and 59.8 fps where the tab said 75.8).
+- Debug menu, **Hoverboard anywhere**: the board no longer falls through the ground at speed (#120; Kerwan's avenue at full
+  speed went through the street within seconds) and slides along walls: the collision query's hit normal, which is not of
+  unit length, is now normalised before the ride's floor and wall tests.
+- Debug menu, Textures tab: the grid's last column of thumbnails is no longer cut at the right edge (#120): the row's width
+  left out each thumbnail's frame padding.
+- Profiler (debug tools): with the frame extrapolation on, the Profiler tab and its overlay show the pictures presented
+  a second beside the fps (which count host frames, one a game step there), and the CSV has a `pictures` column.
+- Debug menu, Textures tab: every tie texture is listed and can be taken in hand (#136, #121). A tie class's texture prims
+  all named the class's first texture (the world files' decoder read each prim's TEX0 word, 0 in every class, for its local
+  texture; the game gives prim t the remap's byte t): the tab listed a class under its first texture alone, the crosshair's
+  preview pulsed that texture, and a `tie <class> tex <t>` line with t above 0 marked the class's first texture. Each prim
+  now takes its own texture at the level's load (checked against the game's registers on every level). With Graphics
+  Enhanced, the 80 shipped tie lines with t above 0 now mark the texture they name, and the automatic tie emitters judge
+  each texture of a class (docs/lighting.md, the Textures tab).
+- Debug menu: Kill Ratchet no longer crashes the game when Clank is the hero (#136): Clank gets his own death (state 0x47).
+
+### Code clean-up
+- **The renderer's code, cleaned up** (no change to the pictures or the game): functions nobody called removed from the
+  Modern Rendering Pipeline (MRP) and the older renderers, and docs/rendering.md rewritten to say plainly what the MRP is
+  and is not: the game's code still produces its draw commands, the MRP interprets them with its own OpenGL / Vulkan
+  drawing, and it never rasterises through an emulation of the PS2's graphics chip.
 
 ## 0.7.0
 

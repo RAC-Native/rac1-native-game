@@ -132,8 +132,8 @@ In no fixed order. Each one is optional, and off by default if it changes the ga
   safe route is to draw extra frames *between* two logic frames, interpolating positions, the camera
   and the animation poses, with the logic untouched.
 - **HD textures**: for example upscaled textures, either generated on your machine from your own
-  disc by a tool, or made by modders. The renderer would load a replacement by the original
-  texture's fingerprint and fall back to the original.
+  disc by a tool, or made by modders. The renderer already loads a mod's replacement by the original
+  texture's fingerprint ([Mods](mods.md)) and falls back to the original; the pack itself is still to be made.
 - **Antialiasing and post-processing**: bloom, colour grading, depth of field, motion blur, each a
   separate toggle.
 - **More modern lighting**: more lights placed by hand where the automatic ones fall short (most
@@ -147,8 +147,9 @@ In no fixed order. Each one is optional, and off by default if it changes the ga
 - **A language switch** offering every language on the disc, without the console's system setting. Started:
   Options > Language sets the text, the voice and the subtitles apart ([Settings](settings.md#language)).
 - **Quality of life**: a level select and similar conveniences for players.
-- **Mods**: a mods folder in front of the disc's files the setup now extracts (`assets/disc/`, see
-  [Setup](setup.md#the-discs-files)), and a Mods menu in the game (see [Roadmap](roadmap.md)).
+- **Mods**: done, as a first version. A mods folder in front of the disc's files the setup extracts (`assets/disc/`, see
+  [Setup](setup.md#the-discs-files)) with texture and sound swaps, a Mods menu in the game, new levels the ship flies to, and a
+  native plugin SDK ([Mods](mods.md), [The mod SDK](sdk.md)); the SDK will change with 1.0 (see [Roadmap](roadmap.md)).
 
 ### Platforms
 
