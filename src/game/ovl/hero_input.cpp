@@ -147,9 +147,7 @@ int32_t hero_water_entry() {
 // or after a long fall the hard landing 3; else standing 0 (after a long jump, with the item's
 // landing animation).
 void hero_land() {
-    if (on_quartu()) { qua_call(qua_hero_land_u); return; }  // (level 15's own: L15:0x0021c8a8)
     if (on_kalebo()) { kal_call(kal_hero_land_u); return; }  // (level 16's own: L16:0x00224a80)
-    if (on_veldin_finale()) { vf_call(vf_hero_land_u); return; }  // (level 18's own: L18:0x0022e160)
     if (on_l1_family() || on_rilgar()) return hero_land_l1();
     sw(P + 0x2284, 0);
     if (hero_has_skate() && lbu(P + 0x12e2) != 0 && fs6c() * 0.5f < lwc1(P + 0x164)) {
@@ -241,9 +239,7 @@ int32_t hero_jump_input() {
 // push from the record's direction, the attacker or the facing is added to the velocities.
 // orig: 0x00210ce8
 int32_t hero_hurt(int32_t knock) {
-    if (on_quartu()) return static_cast<int32_t>(qua_call(qua_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 15's own: L15:0x00208e10)
     if (on_kalebo()) return static_cast<int32_t>(kal_call(kal_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 16's own: L16:0x0020e690)
-    if (on_veldin_finale()) return static_cast<int32_t>(vf_call(vf_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 18's own: L18:0x00218a90)
     if (on_l1_family() || on_rilgar()) return hero_hurt_l1(knock);
     if (lw(P + 0x208c) == 0x14 || lw(P + 0x208c) == 7) return 0;
     if (lw(P + 0x2084) == 0x32) return 0;
@@ -530,9 +526,7 @@ void hero_item_swingshot(uint32_t mask) { item_swingshot(mask); }
 // the state changed.
 // orig: 0x00227fa0
 int32_t hero_item_use() {
-    if (on_quartu()) return static_cast<int32_t>(qua_call(qua_hero_item_use_u).v0);  // (level 15's own: L15:0x0021b4b8)
     if (on_kalebo()) return static_cast<int32_t>(kal_call(kal_hero_item_use_u).v0);  // (level 16's own: L16:0x00223350)
-    if (on_veldin_finale()) return static_cast<int32_t>(vf_call(vf_hero_item_use_u).v0);  // (level 18's own: L18:0x0022cd70)
     if (on_rilgar()) return static_cast<int32_t>(ril_call(ril_hero_item_use_u).v0);  // (Rilgar's own: L5:0x00251be8)
     if (on_novalis() || on_aridia()) return hero_item_use_l1();
     if (lbu(P + 0x20ac) != 0 && (lw(P + 0x10b8) != 8 || lh(P + 0x308) != 1)) return 0;

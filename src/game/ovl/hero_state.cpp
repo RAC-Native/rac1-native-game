@@ -93,9 +93,7 @@ int32_t hero_item_idle() {
 // orig: 0x00227638 — enter the idle state of the movement mode PLAYER+0x20a4 (0: 0, 1: 0x43,
 // 2: 0x5a, 3: 0x53).
 void hero_enter_idle() {
-    if (on_quartu()) { qua_call(qua_hero_enter_idle_u); return; }  // (level 15's own: L15:0x0021ab60)
     if (on_kalebo()) { kal_call(kal_hero_enter_idle_u); return; }  // (level 16's own: L16:0x002229f0)
-    if (on_veldin_finale()) { vf_call(vf_hero_enter_idle_u); return; }  // (level 18's own: L18:0x0022c418)
     if (on_l1_family() || on_rilgar()) return hero_enter_idle_l1();
     const uint32_t m = lbu(P + 0x20a4);
     if (m == 0) {
@@ -157,9 +155,7 @@ void hero_mode_enter(uint32_t mode, uint32_t state, uint32_t moby) {
 // position (+0xa94 = 1) and the hero re-enters state 0 (not on levels 2 / 6 in state 0x64).
 // orig: 0x00210b30
 void hero_mode_exit() {
-    if (on_quartu()) { qua_call(qua_hero_mode_exit_u); return; }  // (level 15's own: L15:0x00208ca8)
     if (on_kalebo()) { kal_call(kal_hero_mode_exit_u); return; }  // (level 16's own: L16:0x0020e560)
-    if (on_veldin_finale()) { vf_call(vf_hero_mode_exit_u); return; }  // (level 18's own: L18:0x00218928)
     if (on_l1_family() || on_rilgar()) return hero_mode_exit_l1();
     if (hero_has_clank() && lbu(P + 0x20a4) == 1) {
         sw(P + 0x22ac, lwu(P + 0x22a8));
@@ -1696,9 +1692,7 @@ int32_t enter_state(uint32_t state, int32_t mode, uint32_t hm_old, uint32_t old_
 // state timers. Returns 1 when entered.
 // orig: 0x002223f8
 int32_t hero_set_state(uint32_t state, int32_t mode) {
-    if (on_quartu()) return static_cast<int32_t>(qua_call(qua_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (level 15's own: L15:0x00216c38)
     if (on_kalebo()) return static_cast<int32_t>(kal_call(kal_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (level 16's own: L16:0x0021e398)
-    if (on_veldin_finale()) return static_cast<int32_t>(vf_call(vf_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (level 18's own: L18:0x00227dd0)
     if (on_rilgar()) return static_cast<int32_t>(ril_call(ril_hero_set_state_u, state, static_cast<uint32_t>(mode)).v0);  // (Rilgar's own: L5:0x0024cee8)
     if (on_l1_family()) return hero_set_state_l1(state, mode);
     if (lw(P + 0x208c) == 0x14) {

@@ -52,9 +52,7 @@ void sub_00232628() {
 
 // orig: 0x00233210 — set bit 0 of the u16 flags (+0x34) of both hero mobys.
 void hero_mobys_set_flag1() {
-    if (on_quartu()) { qua_call(qua_hero_mobys_set_flag1_u); return; }  // (level 15's own: L15:0x00223e48)
     if (on_kalebo()) { kal_call(kal_hero_mobys_set_flag1_u); return; }  // (level 16's own: L16:0x0022ecd8)
-    if (on_veldin_finale()) { vf_call(vf_hero_mobys_set_flag1_u); return; }  // (level 18's own: L18:0x00236830)
     if (on_l1_family() || on_rilgar()) return hero_mobys_set_flag1_l1();
     const uint32_t m = lwu(g::PLAYER + 0x2080);
     sh(m + 0x34, lhu(m + 0x34) | 1u);
@@ -66,9 +64,7 @@ void hero_mobys_set_flag1() {
 
 // orig: 0x00233248
 void hero_mobys_clear_flag1() {
-    if (on_quartu()) { qua_call(qua_hero_mobys_clear_flag1_u); return; }  // (level 15's own: L15:0x00223e60)
     if (on_kalebo()) { kal_call(kal_hero_mobys_clear_flag1_u); return; }  // (level 16's own: L16:0x0022ecf0)
-    if (on_veldin_finale()) { vf_call(vf_hero_mobys_clear_flag1_u); return; }  // (level 18's own: L18:0x00236848)
     if (on_l1_family() || on_rilgar()) return hero_mobys_clear_flag1_l1();
     const uint32_t m = lwu(g::PLAYER + 0x2080);
     sh(m + 0x34, lhu(m + 0x34) & 0xfffeu);

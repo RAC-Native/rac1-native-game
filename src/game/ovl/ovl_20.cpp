@@ -174,9 +174,7 @@ void hero_footsteps_update() {
 // -0.4, 0.7.
 // orig: 0x0020c758
 int32_t hero_ledge_check_v(const Vec4& pos, const float* ref_yaw) {
-    if (on_quartu()) return qua_ledge_check_call(pos, ref_yaw);  // (level 15's own: L15:0x00205070)
     if (on_kalebo()) return kal_ledge_check_call(pos, ref_yaw);  // (level 16's own: L16:0x0020a2d8)
-    if (on_veldin_finale()) return vf_ledge_check_call(pos, ref_yaw);  // (level 18's own: L18:0x00214700)
     if (on_l1_family() || on_rilgar()) return hero_ledge_check_v_l1(pos, ref_yaw);
     const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
     if (lh(P + 0x308) == 2) return 0;
@@ -259,9 +257,7 @@ int32_t hero_ledge_check(uint32_t pos, const float* ref_yaw) { return hero_ledge
 // the edge height +0x4e0, the wall yaw +0x4e4 and +0x4e8 = 1.
 // orig: 0x0020bed0
 void hero_ledge_grab_check() {
-    if (on_quartu()) { qua_call(qua_hero_ledge_grab_check_u); return; }  // (level 15's own: L15:0x002048c8)
     if (on_kalebo()) { kal_call(kal_hero_ledge_grab_check_u); return; }  // (level 16's own: L16:0x00209b30)
-    if (on_veldin_finale()) { vf_call(vf_hero_ledge_grab_check_u); return; }  // (level 18's own: L18:0x00213f58)
     if (on_l1_family() || on_rilgar()) return hero_ledge_grab_check_l1();
     const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
     if (lh(P + 0x308) == 2) return;
@@ -834,9 +830,7 @@ float mat3_abs_diff(uint32_t a, uint32_t b) {
 
 // orig: 0x00205000 — kind of the current interaction (0 = none).
 uint32_t sub_00205000(int32_t flag) {
-    if (on_quartu()) return qua_call(qua_sub_00205000_u, static_cast<uint32_t>(flag)).v0;  // (level 15's own: L15:0x001fe778)
     if (on_kalebo()) return kal_call(kal_sub_00205000_u, static_cast<uint32_t>(flag)).v0;  // (level 16's own: L16:0x00203868)
-    if (on_veldin_finale()) return vf_call(vf_sub_205000_u, static_cast<uint32_t>(flag)).v0;  // (level 18's own: L18:0x0020dde8)
     if (on_l1_family() || on_rilgar()) return sub_00205000_l1(flag);
     const uint32_t mode = lbu(g::PLAYER + 0x20a4);
     if (hero_has_giant_clank() && mode == 2) return 0;
@@ -857,9 +851,7 @@ uint32_t sub_00205000(int32_t flag) {
 // floor (floor_probe from 0.5 above, +0.04) under the foot joint 0x16 + foot, 0.15 ahead.
 // orig: 0x00205f60
 void hero_footstep(int32_t a, uint32_t foot, int32_t sound) {
-    if (on_quartu()) { qua_call(qua_hero_footstep_u, static_cast<uint32_t>(a), foot, static_cast<uint32_t>(sound)); return; }  // (level 15's own: L15:0x001ff6c0)
     if (on_kalebo()) { kal_call(kal_hero_footstep_u, static_cast<uint32_t>(a), foot, static_cast<uint32_t>(sound)); return; }  // (level 16's own: L16:0x002047a0)
-    if (on_veldin_finale()) { vf_call(vf_hero_footstep_u, static_cast<uint32_t>(a), foot, static_cast<uint32_t>(sound)); return; }  // (level 18's own: L18:0x0020ed30)
     if (!hero_has_skate()) return hero_footstep_l1(a, foot, sound);
     const uint32_t P = g::PLAYER;
     if (sound != 0) {
@@ -986,7 +978,7 @@ void sub_00206c08() {
 
 // orig: 0x002079e8 — in state 0x7f, swing the hero moby (sub_00262b80 on PLAYER+0x6b0/+0x6b4).
 void sub_002079e8() {
-    if (on_quartu()) { qua_call(qua_sub_002079e8_u); return; }  // (level 15's own: L15:0x002008d0)
+    if (!hero_has_sink_7f()) return;
     if (lw(g::HERO_STATE) != 0x7f) return;
     const float k = lwc1(0x0015ed6c);
     sub_00262b80(lwu(g::PLAYER + 0x2080), g::PLAYER + 0x6b0, g::PLAYER + 0x6b4, u2f(0x3e32b8c2u),
@@ -1127,10 +1119,11 @@ void sub_002090d0(uint32_t pivot, float x, float y, float z) { sub_002090d0_v(V(
 // the attached moby *(PLAYER+0x86c) at the hero's hand offset (0, 0, 0.21) rotated by the hero
 // matrix and the angles 0x17a6c0.
 void sub_002078a8() {
-    if (on_quartu()) { qua_call(qua_sub_002078a8_u); return; }  // (level 15's own: L15:0x002007d8)
-    const float k = lwc1(0x0015ed6c);
-    if (lw(g::HERO_STATE) == 0x7f)
-        sub_00262b00(lwu(g::PLAYER + 0x2080), g::PLAYER + 0x6a8, g::PLAYER + 0x6ac, u2f(0x3e99999au), k * u2f(0x40df66f3u));
+    if (hero_has_sink_7f()) {
+        const float k = lwc1(0x0015ed6c);
+        if (lw(g::HERO_STATE) == 0x7f)
+            sub_00262b00(lwu(g::PLAYER + 0x2080), g::PLAYER + 0x6a8, g::PLAYER + 0x6ac, u2f(0x3e99999au), k * u2f(0x40df66f3u));
+    }
     if (lw(g::HERO_STATE) != 0x6b) return;
     if (lh(g::PLAYER + 0x8bc) != 0) return;
     sub_00262b00(lwu(g::PLAYER + 0x2080), g::PLAYER + 0x6a8, g::PLAYER + 0x6ac, u2f(0x3f8ccccdu),
@@ -1237,9 +1230,7 @@ void sub_00209848(int32_t n, int32_t limit) {
 // blink blue in the damage states (0x80/0x82 for 30 frames, 0x76 for 20 frames on levels 15/17),
 // and refresh the held item's colour.
 void sub_002076a8() {
-    if (on_quartu()) { qua_call(qua_sub_002076a8_u); return; }  // (level 15's own: L15:0x00200788)
     if (on_kalebo()) { kal_call(kal_sub_002076a8_u); return; }  // (level 16's own: L16:0x00205798)
-    if (on_veldin_finale()) { vf_call(vf_sub_2076a8_u); return; }  // (level 18's own: L18:0x0020fe00)
     if (on_l1_family()) return sub_002076a8_l1();
     if (hero_has_state_7c() && lw(g::PLAYER + 0x22f4) != 0) {
         const uint32_t v = lwu(g::PLAYER + 0x22f8);
@@ -1253,26 +1244,28 @@ void sub_002076a8() {
         moby_set_color_hi(lwu(g::PLAYER + 0x2080), r, gg, b);
         sw(g::PLAYER + 0x22f8, (a << 24) | (static_cast<uint32_t>(b) << 16) | (static_cast<uint32_t>(gg) << 8) | static_cast<uint32_t>(r));
     }
-    int32_t blink = 0;
-    const int32_t st = lw(g::HERO_STATE);
-    if (st == 0x80 || st == 0x82) blink = lw(g::PLAYER + 0x198) < frame_scale_i(0x1e) ? 1 : 0;
-    const int32_t level = lw(0x0015ed84);
-    if ((level == 0xf || level == 0x11) && lw(g::HERO_STATE) == 0x76) {
-        if (lw(g::PLAYER + 0x198) < frame_scale_i(0x14)) blink = 1;
-    }
-    if (blink != 0) {
-        uint32_t c[3];
-        moby_get_color_hi_v(lwu(g::PLAYER + 0x2080), &c[0], &c[1], &c[2]);
-        const int32_t t = lw(g::PLAYER + 0x198);
-        if (t - ((t < 0 ? t + 3 : t) >> 2 << 2) < 3) {
-            c[0] = c[1] = c[2] = 0;
-        } else {
-            c[1] = 0x90;
-            c[2] = 0xf0;
-            c[0] = 0x90;
+    if (hero_has_sink_7f()) {
+        int32_t blink = 0;
+        const int32_t st = lw(g::HERO_STATE);
+        if (st == 0x80 || st == 0x82) blink = lw(g::PLAYER + 0x198) < frame_scale_i(0x1e) ? 1 : 0;
+        const int32_t level = lw(0x0015ed84);
+        if ((level == 0xf || level == 0x11) && lw(g::HERO_STATE) == 0x76) {
+            if (lw(g::PLAYER + 0x198) < frame_scale_i(0x14)) blink = 1;
         }
-        moby_set_color_hi(lwu(g::PLAYER + 0x2080), c[0], c[1], c[2]);
-        sub_002072c8();
+        if (blink != 0) {
+            uint32_t c[3];
+            moby_get_color_hi_v(lwu(g::PLAYER + 0x2080), &c[0], &c[1], &c[2]);
+            const int32_t t = lw(g::PLAYER + 0x198);
+            if (t - ((t < 0 ? t + 3 : t) >> 2 << 2) < 3) {
+                c[0] = c[1] = c[2] = 0;
+            } else {
+                c[1] = 0x90;
+                c[2] = 0xf0;
+                c[0] = 0x90;
+            }
+            moby_set_color_hi(lwu(g::PLAYER + 0x2080), c[0], c[1], c[2]);
+            sub_002072c8();
+        }
     }
     const int32_t s = lw(g::PLAYER + 0x10b8);
     if (s < 0) return;

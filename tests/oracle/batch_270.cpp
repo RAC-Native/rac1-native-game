@@ -9,7 +9,7 @@
 #include "ovl_oracle.h"
 
 #include <game/ovl/enemy_749.h>
-#include <game/ovl/veldin_finale_hero.h>
+#include <game/ovl/hero_move_mode.h>
 #include <game/ovl/veldin_finale_mobys.h>
 #include <game/ovl/empty_class_updates.h>
 #include <game/ovl/ovl_common.h>
@@ -461,7 +461,7 @@ void batch_270() {
             w32(OV(0x0015f5cc), R() & 0xffff);
             seed_rand();
             return Args{};
-        }, [](A) { vf_hero_move_mode_u(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); return uint64_t{0}; });
+        }, [](A) { hero_move_mode(); return uint64_t{0}; });
         g_ignored_words.pop_back();
         g_ignored_words.pop_back();
         g_extra_noop_hooks.clear();

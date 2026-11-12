@@ -2518,9 +2518,7 @@ bool transitions(uint32_t state, uint32_t hm0) {
 // hero moby's animation resets the timers +0x1a0 / +0x1a4.
 // orig: 0x00229b70
 void hero_input_update() {
-    if (on_quartu()) { qua_call(qua_hero_input_update_u); return; }  // (level 15's own: L15:0x0021d040)
     if (on_kalebo()) { kal_call(kal_hero_input_update_u); return; }  // (level 16's own: L16:0x002270c8)
-    if (on_veldin_finale()) { vf_call(vf_hero_input_update_u); return; }  // (level 18's own: L18:0x0022e8f8)
     if (on_rilgar()) { ril_call(ril_hero_input_update_u); return; }  // (Rilgar's own: L5:0x00255960)
     if (on_l1_family()) return hero_input_update_l1();
     const uint32_t hm = lwu(P + 0x2080);

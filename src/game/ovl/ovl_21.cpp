@@ -330,9 +330,7 @@ void sub_00211f38() {
 // target (yaw PLAYER+0x180, speed +0x190) by at most dt x (1..3, faster when reversing);
 // modes 1/2: approach the speed along the local frame instead.
 void sub_00213e68(float dt) {
-    if (on_quartu()) { qua_callf(qua_sub_00213e68_u, dt); return; }  // (level 15's own: L15:0x0020bd50)
     if (on_kalebo()) { kal_callf(kal_sub_00213e68_u, dt); return; }  // (level 16's own: L16:0x002117a0)
-    if (on_veldin_finale()) { vf_callf(vf_sub_213e68_u, dt); return; }  // (level 18's own: L18:0x0021bac8)
     if (on_l1_family() || on_rilgar()) return sub_00213e68_l1(dt);
     constexpr uint32_t VEL = 0x0013f430;
     const uint32_t mode = lbu(g::PLAYER + 0x20b3);
@@ -599,9 +597,7 @@ void hero_tilt_update() {
 // PLAYER+0x220/0x224 towards them and spring the height PLAYER+0x234 (unless the hero is
 // standing on a moving platform far from its anchor).
 void hero_gait_update() {
-    if (on_quartu()) { qua_call(qua_hero_gait_update_u); return; }  // (level 15's own: L15:0x00209450)
     if (on_kalebo()) { kal_call(kal_hero_gait_update_u); return; }  // (level 16's own: L16:0x0020ec10)
-    if (on_veldin_finale()) { vf_call(vf_hero_gait_update_u); return; }  // (level 18's own: L18:0x002190f0)
     if (on_l1_family() || on_rilgar()) return hero_gait_update_l1();
     const uint32_t P = g::PLAYER;
     switch (lbu(P + 0x20a4)) {
@@ -846,7 +842,6 @@ void hero_stick_speed_orig();
 // orig: 0x00211be8 — the original's body below, then (enhancement) the speed reduced
 // while the modern controls aim
 void hero_stick_speed() {
-    if (on_quartu()) { qua_call(qua_hero_stick_speed_u); return; }  // (level 15's own: L15:0x00209c40)
     hero_stick_speed_orig();
     advanced_move_speed();
 }
@@ -1005,9 +1000,7 @@ void hero_horizontal_velocity() {
     // (1.02 Fixes, fix 5: the 1.02 build, 0x214d60, starts the long / wall jumps' branch, states 0xb / 0xc, with the
     // Thruster-Pack's jump sound; here before the levels' own copies, nothing before that branch having made a sound)
     if (static_cast<uint32_t>(lw(g::HERO_STATE) - 0xb) < 2u) fixes102_thruster_jump_sound();
-    if (on_quartu()) { qua_call(qua_hero_horizontal_velocity_u); return; }  // (level 15's own: L15:0x0020c538)
     if (on_kalebo()) { kal_call(kal_hero_horizontal_velocity_u); return; }  // (level 16's own: L16:0x00211f88)
-    if (on_veldin_finale()) { vf_call(vf_hero_horizontal_velocity_u); return; }  // (level 18's own: L18:0x0021c2b0)
     if (on_rilgar()) { ril_call(ril_hero_horizontal_velocity_u); return; }  // (Rilgar's own: L5:0x00242258)
     if (on_l1_family()) return hero_horizontal_velocity_l1();
     const uint32_t P = g::PLAYER;
@@ -1424,9 +1417,7 @@ void hero_edge_brake(float k, float min_len) {
 // part into the wall's horizontal normal is removed.
 // orig: 0x00212318
 void hero_wall_slide(int32_t facing) {
-    if (on_quartu()) { qua_call(qua_hero_wall_slide_u, static_cast<uint32_t>(facing)); return; }  // (level 15's own: L15:0x0020a328)
     if (on_kalebo()) { kal_call(kal_hero_wall_slide_u, static_cast<uint32_t>(facing)); return; }  // (level 16's own: L16:0x0020fb68)
-    if (on_veldin_finale()) { vf_call(vf_hero_wall_slide_u, static_cast<uint32_t>(facing)); return; }  // (level 18's own: L18:0x0021a010)
     if (on_l1_family() || on_rilgar()) return hero_wall_slide_l1(facing);
     const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
     if (lh(P + 0x308) != 0) return;
@@ -1493,7 +1484,6 @@ void hero_wall_slide(int32_t facing) {
 // orig: 0x002133a8
 int32_t hero_collide_push(int32_t mode) {
     if (on_rilgar()) return static_cast<int32_t>(ril_call(ril_hero_collide_push_u, static_cast<uint32_t>(mode)).v0);  // (Rilgar's own: L5:0x00240ed0)
-    if (on_quartu()) return static_cast<int32_t>(qua_call(qua_hero_collide_push_u, static_cast<uint32_t>(mode)).v0);  // (level 15's own: L15:0x0020b320)
     if (on_kalebo()) return static_cast<int32_t>(kal_call(kal_hero_collide_push_u, static_cast<uint32_t>(mode)).v0);  // (level 16's own: L16:0x00210b60)
     if (on_l1_family()) return hero_collide_push_l1(mode);
     const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
@@ -1681,9 +1671,7 @@ void hero_slide_move() {
 // the side heights +0x2c0 (within 0.4) and slope angles +0x2c8 / +0x2d0.
 // orig: 0x002127b8
 void hero_ground_update() {
-    if (on_quartu()) { qua_call(qua_hero_ground_update_u); return; }  // (level 15's own: L15:0x0020a7a0)
     if (on_kalebo()) { kal_call(kal_hero_ground_update_u); return; }  // (level 16's own: L16:0x0020ffb0)
-    if (on_veldin_finale()) { vf_call(vf_hero_ground_update_u); return; }  // (level 18's own: L18:0x0021a488)
     if (on_rilgar()) { ril_call(ril_hero_ground_update_u); return; }  // (Rilgar's own: L5:0x002402a8)
     if (on_l1_family()) return hero_ground_update_l1();
     const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
@@ -1827,7 +1815,6 @@ void hero_ground_update() {
 // orig: 0x00213880
 void hero_move_integrate() {
     if (on_rilgar()) { ril_call(ril_hero_move_integrate_u); return; }  // (Rilgar's own: L5:0x002413e0)
-    if (on_quartu()) { qua_call(qua_hero_move_integrate_u); return; }  // (level 15's own: L15:0x0020b7c0)
     if (on_kalebo()) { kal_call(kal_hero_move_integrate_u); return; }  // (level 16's own: L16:0x00211098)
     if (on_l1_family()) return hero_move_integrate_l1();
     const uint32_t P = g::PLAYER;

@@ -2627,9 +2627,7 @@ void hero_grind_update_v() { grind_update(); }
 // the sub-state +0x2088 resets the timer +0x1a0, a change of the hero moby's animation +0x53
 // resets +0x1a4.
 void hero_state_update() {
-    if (on_quartu()) { qua_call(qua_hero_state_update_u); return; }  // (level 15's own: L15:0x0020ed50)
     if (on_kalebo()) { kal_call(kal_hero_state_update_u); return; }  // (level 16's own: L16:0x00214598)
-    if (on_veldin_finale()) { vf_call(vf_hero_state_update_u); return; }  // (level 18's own: L18:0x0021eac8)
     if (on_rilgar()) { ril_call(ril_hero_state_update_u); return; }  // (Rilgar's own: L5:0x00244a70)
     if (on_l1_family()) return hero_state_update_l1();
     const uint32_t hm = lwu(P + 0x2080);
