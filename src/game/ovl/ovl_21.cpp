@@ -1,6 +1,7 @@
 // Ported overlay code 0x00210000..0x0021ffff.
 #include <game/enhance/advanced.h>
 #include <game/enhance/fixes102.h>
+#include <game/enhance/level_mod_hero.h>
 #include <game/lib/libvu0.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/hero_l1.h>
@@ -330,7 +331,6 @@ void sub_00211f38() {
 // target (yaw PLAYER+0x180, speed +0x190) by at most dt x (1..3, faster when reversing);
 // modes 1/2: approach the speed along the local frame instead.
 void sub_00213e68(float dt) {
-    if (on_kalebo()) { kal_callf(kal_sub_00213e68_u, dt); return; }  // (level 16's own: L16:0x002117a0)
     if (on_l1_family() || on_rilgar()) return sub_00213e68_l1(dt);
     constexpr uint32_t VEL = 0x0013f430;
     const uint32_t mode = lbu(g::PLAYER + 0x20b3);
@@ -597,7 +597,6 @@ void hero_tilt_update() {
 // PLAYER+0x220/0x224 towards them and spring the height PLAYER+0x234 (unless the hero is
 // standing on a moving platform far from its anchor).
 void hero_gait_update() {
-    if (on_kalebo()) { kal_call(kal_hero_gait_update_u); return; }  // (level 16's own: L16:0x0020ec10)
     if (on_l1_family() || on_rilgar()) return hero_gait_update_l1();
     const uint32_t P = g::PLAYER;
     switch (lbu(P + 0x20a4)) {
@@ -1000,8 +999,6 @@ void hero_horizontal_velocity() {
     // (1.02 Fixes, fix 5: the 1.02 build, 0x214d60, starts the long / wall jumps' branch, states 0xb / 0xc, with the
     // Thruster-Pack's jump sound; here before the levels' own copies, nothing before that branch having made a sound)
     if (static_cast<uint32_t>(lw(g::HERO_STATE) - 0xb) < 2u) fixes102_thruster_jump_sound();
-    if (on_kalebo()) { kal_call(kal_hero_horizontal_velocity_u); return; }  // (level 16's own: L16:0x00211f88)
-    if (on_rilgar()) { ril_call(ril_hero_horizontal_velocity_u); return; }  // (Rilgar's own: L5:0x00242258)
     if (on_l1_family()) return hero_horizontal_velocity_l1();
     const uint32_t P = g::PLAYER;
     const uint32_t VEL = P + 0xe0;
@@ -1417,7 +1414,6 @@ void hero_edge_brake(float k, float min_len) {
 // part into the wall's horizontal normal is removed.
 // orig: 0x00212318
 void hero_wall_slide(int32_t facing) {
-    if (on_kalebo()) { kal_call(kal_hero_wall_slide_u, static_cast<uint32_t>(facing)); return; }  // (level 16's own: L16:0x0020fb68)
     if (on_l1_family() || on_rilgar()) return hero_wall_slide_l1(facing);
     const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
     if (lh(P + 0x308) != 0) return;
@@ -1483,8 +1479,6 @@ void hero_wall_slide(int32_t facing) {
 // (components clamped to +-512 first).
 // orig: 0x002133a8
 int32_t hero_collide_push(int32_t mode) {
-    if (on_rilgar()) return static_cast<int32_t>(ril_call(ril_hero_collide_push_u, static_cast<uint32_t>(mode)).v0);  // (Rilgar's own: L5:0x00240ed0)
-    if (on_kalebo()) return static_cast<int32_t>(kal_call(kal_hero_collide_push_u, static_cast<uint32_t>(mode)).v0);  // (level 16's own: L16:0x00210b60)
     if (on_l1_family()) return hero_collide_push_l1(mode);
     const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
     if (lw(P + 0x1cc) != 0) return 1;
@@ -1496,13 +1490,19 @@ int32_t hero_collide_push(int32_t mode) {
         sh(P + 0x22da, 0);
     }
     if (lw(P + 0x208c) != 0x11) {
-        const uint32_t mm = lbu(P + 0x20b3);
-        if (mm == 0 && lh(P + 0x1f8) == 0) {
-            off.z = lwc1(P + 0x224);
-        } else if (mm == 1 || lh(P + 0x1f8) != 0) {
-            sub_00233810_v(off, off, u2f(0x3f19999au));
+        if (hero_has_hoverboard() && lw(P + 0x208c) == 0x16) {
+            sub_00233660_v(off, 0.0f, 0.0f, u2f(0x3f333333u));
+            vec3_sub(off, off, V(P + 0x80));
         } else {
-            sub_002334d0_v(off, off, -lwc1(P + 0x224));
+            const uint32_t mm = lbu(P + 0x20b3);
+            if (mm == 0 && lh(P + 0x1f8) == 0) {
+                off.z = lwc1(P + 0x224);
+            } else if (mm == 1 || lh(P + 0x1f8) != 0 ||
+                       (hero_has_hoverboard() && static_cast<uint32_t>(lw(P + 0x208c) - 0x15) < 2u)) {
+                sub_00233810_v(off, off, u2f(0x3f19999au));
+            } else {
+                sub_002334d0_v(off, off, -lwc1(P + 0x224));
+            }
         }
     }
     vec3_add(V(P + 0x80), V(P + 0x80), off);
@@ -1515,6 +1515,8 @@ int32_t hero_collide_push(int32_t mode) {
             hit = sphere_collide(P + 0x80, u2f(0x3f19999au), flags, lwu(P + 0x2080));
         } else if (hero_has_grind() && lw(P + 0x208c) == 0xf) {
             hit = sphere_collide(P + 0x80, lwc1(0x0015ed60) * u2f(0x3ee66666u), flags, lwu(P + 0x2080));
+        } else if (hero_has_hoverboard() && lw(P + 0x208c) == 0x16) {
+            hit = sphere_collide(P + 0x80, lwc1(0x0015ed60) * 0.5f, flags, lwu(P + 0x2080));
         } else {
             float h = lwc1(P + 0x220) - lwc1(P + 0x224);
             if (h < u2f(0x3d4ccccdu)) h = u2f(0x3d4ccccdu);
@@ -1671,8 +1673,6 @@ void hero_slide_move() {
 // the side heights +0x2c0 (within 0.4) and slope angles +0x2c8 / +0x2d0.
 // orig: 0x002127b8
 void hero_ground_update() {
-    if (on_kalebo()) { kal_call(kal_hero_ground_update_u); return; }  // (level 16's own: L16:0x0020ffb0)
-    if (on_rilgar()) { ril_call(ril_hero_ground_update_u); return; }  // (Rilgar's own: L5:0x002402a8)
     if (on_l1_family()) return hero_ground_update_l1();
     const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
     swc1(P + 0x278, 1.0f);
@@ -1713,7 +1713,7 @@ void hero_ground_update() {
             a.z = cz - u2f(0x3c23d70au);
             if (segment_collide_v(a, b, 4, lwu(P + 0x2080), nullptr) == 0) return false;
         }
-        if (hero_has_lava() && lh(P + 0x12e0) == 3) {
+        if ((hero_has_lava() && lh(P + 0x12e0) == 3) || (on_kalebo() && level_mod_kalebo_lava_ground())) {
             const float cz = lwc1(OUTB + 0x28);
             swc1(P + 0x2f4, cz);
             a.z = cz - u2f(0x3c23d70au);
@@ -1726,7 +1726,12 @@ void hero_ground_update() {
         if (hero_has_state_7c() && lh(P + 0x12e0) == 1 && static_cast<uint32_t>(lw(P + 0x2084) - 0x7c) < 2u) return false;
         const uint32_t hit = lwu(OUTB + 0x18);
         if (hit != 0) {
-            if (moby_in_range_class_500(hit) != 0) sh(P + 0x30a, 1);
+            if (moby_in_range_class_500(hit) != 0) {
+                sh(P + 0x30a, 1);
+                if (hero_has_hoverboard() && static_cast<uint32_t>(lw(P + 0x208c) - 0x15) < 2u) {
+                    sub_002334d0_v(V(OUTB + 0x20), V(OUTB + 0x20), 1.0f);
+                }
+            }
             const uint32_t pw = moby_pvar_word0(lwu(OUTB + 0x18));
             if (pw != 0 && (lhu(pw + 0x1e) & 8) != 0) sh(P + 0x30a, 1);
         }
@@ -1814,8 +1819,6 @@ void hero_ground_update() {
 // ratio (+-0.5), and the move is capped at 52 x frame scale.
 // orig: 0x00213880
 void hero_move_integrate() {
-    if (on_rilgar()) { ril_call(ril_hero_move_integrate_u); return; }  // (Rilgar's own: L5:0x002413e0)
-    if (on_kalebo()) { kal_call(kal_hero_move_integrate_u); return; }  // (level 16's own: L16:0x00211098)
     if (on_l1_family()) return hero_move_integrate_l1();
     const uint32_t P = g::PLAYER;
     const Vec4 old = V(P + 0x80);
@@ -1833,6 +1836,22 @@ void hero_move_integrate() {
         const int32_t sub = lw(P + 0x208c);
         if (hero_has_grind() && sub == 0xf) {
             if (lw(P + 0x1cc) == 0 && r < vec2_length(V(P + 0xe0))) vec2_set_length(V(P + 0xe0), V(P + 0xe0), r);
+        } else if (hero_has_state_3e() && sub == 0x15) {
+            if (lw(P + 0x1cc) == 0 && u2f(0x3f19999au) < vec3_length(V(P + 0xe0))) {
+                vec3_set_length(V(P + 0xe0), V(P + 0xe0), u2f(0x3f19999au));
+            }
+        } else if (hero_has_hoverboard() && sub == 0x16) {
+            Vec4 top = V(P + 0x80), end;
+            top.z = top.z + 0.5f;
+            vec3_add(end, top, V(P + 0xe0));
+            if (segment_collide_v(V(P + 0x80), end, 2, 0, nullptr) != 0) {
+                const uint32_t hm = lwu(OV(0x00173e40) + 0x18);
+                if (hm == 0 || lh(hm + 0xa6) == 0x1f6 || lh(hm + 0xa6) == 0x59f) {
+                    if (lw(P + 0x1cc) == 0 && r < vec2_length(V(P + 0xe0))) {
+                        vec2_set_length(V(P + 0xe0), V(P + 0xe0), r);
+                    }
+                }
+            }
         } else if (sub != 0xd && sub != 0xe) {
             if (lw(P + 0x1cc) == 0 && r < vec3_length(V(P + 0xe0))) vec3_set_length(V(P + 0xe0), V(P + 0xe0), r);
         }

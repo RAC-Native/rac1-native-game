@@ -1,5 +1,6 @@
 // Ported overlay code: the hero's per-frame update root (0x2070d0) and its direct helpers.
 #include <game/enhance/fixes102.h>
+#include <game/enhance/level_mod_hero.h>
 #include <game/ovl/hero_l1.h>
 #include <game/ovl/hero_l2.h>
 #include <game/ovl/hero_move_mode.h>
@@ -38,7 +39,6 @@ int32_t ring32(int32_t i) { return i - ((i < 0 ? i + 31 : i) >> 5) * 32; }
 // ground, else +0xd0); lost below z 1.
 // orig: 0x002215c8
 void hero_timers_update() {
-    if (on_kalebo()) { kal_call(kal_hero_timers_update_u); return; }  // (level 16's own: L16:0x0021d5f8)
     if (on_l1_family() || on_rilgar()) return hero_timers_update_l1();
     if (lbu(P + 0x20ad) == 0) hero_tilt_update();
     sw(P + 0x198, lwu(P + 0x198) + 1);
@@ -195,8 +195,6 @@ bool sinking_into(float h) {
 // 0x68 / 0x7b and the quicksand's 0x7b once sunk in and coming down.
 // orig: 0x0020b960
 void hero_surface_update() {
-    if (on_kalebo()) { kal_call(kal_hero_surface_update_u); return; }  // (level 16's own: L16:0x002097a0)
-    if (on_rilgar()) { ril_call(ril_hero_surface_update_u); return; }  // (Rilgar's own: L5:0x00239fc0)
     if (on_novalis() || on_kerwan()) return hero_surface_update_l1();
     if (on_aridia()) return hero_surface_update_l2();
     const uint32_t keep = lbu(P + 0x12ed);
@@ -234,6 +232,8 @@ void hero_surface_update() {
         }
     }
     if (hero_has_quicksand() && kind == 0xb) sb(P + 0x12eb, 1);
+    if (hero_has_hoverboard() && kind == 5) sb(P + 0x12e8, 1);
+    if (hero_has_hoverboard() && kind == 6) sb(P + 0x12e9, 1);
     if (hero_has_beam() && kind == 2) sb(P + 0x12e7, 1);
     if (hero_has_ice_slide() && kind == 4) sb(P + 0x12e3, 1);
     if (hero_has_skate() && kind == 7) sb(P + 0x12e2, 1);
@@ -242,6 +242,7 @@ void hero_surface_update() {
     if (kind == 8) sb(P + 0x12ea, 1);
     if (kind == 9) sb(P + 0x12ee, 1);
     if (kind == 0xc) sb(P + 0x12ea, 1);
+    if (on_kalebo() && level_mod_kalebo_surface(kind)) return;
     if (hero_has_ice_slide() && lbu(P + 0x12e3) != 0 && lw(P + 0x300) != 0) {  // sliding
         const uint32_t sub = lwu(P + 0x208c);
         if (sub != 0x10 && sub != 0x14 && sub != 7) {
@@ -462,7 +463,6 @@ void hero_items_update() {
 // hero moby's lighting, the clank glow and the shadow.
 // orig: 0x002070d0
 void hero_frame_update() {
-    if (on_kalebo()) { kal_call(kal_hero_frame_update_u); return; }  // (level 16's own: L16:0x002051c8)
     if (on_l1_family() || on_rilgar()) return hero_frame_update_l1();
     const float x = lwc1(P + 0x80);
     const float y = lwc1(P + 0x84);

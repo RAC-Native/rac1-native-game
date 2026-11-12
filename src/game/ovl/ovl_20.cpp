@@ -174,7 +174,6 @@ void hero_footsteps_update() {
 // -0.4, 0.7.
 // orig: 0x0020c758
 int32_t hero_ledge_check_v(const Vec4& pos, const float* ref_yaw) {
-    if (on_kalebo()) return kal_ledge_check_call(pos, ref_yaw);  // (level 16's own: L16:0x0020a2d8)
     if (on_l1_family() || on_rilgar()) return hero_ledge_check_v_l1(pos, ref_yaw);
     const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
     if (lh(P + 0x308) == 2) return 0;
@@ -257,7 +256,6 @@ int32_t hero_ledge_check(uint32_t pos, const float* ref_yaw) { return hero_ledge
 // the edge height +0x4e0, the wall yaw +0x4e4 and +0x4e8 = 1.
 // orig: 0x0020bed0
 void hero_ledge_grab_check() {
-    if (on_kalebo()) { kal_call(kal_hero_ledge_grab_check_u); return; }  // (level 16's own: L16:0x00209b30)
     if (on_l1_family() || on_rilgar()) return hero_ledge_grab_check_l1();
     const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
     if (lh(P + 0x308) == 2) return;
@@ -718,21 +716,11 @@ int32_t sub_0020d540(int32_t slot) { return (static_cast<uint32_t>(sub_0020d498(
 // 0x37 → -0.9599 (1), 0x1c/0x1d/0x1f → -1.3090 when *(0x13fdf8) > 25 (1),
 // 0x31/0x32/0x4a/0x4b/0x50/0x60/0x6d/0x6e → 1, anything else → 0.
 int32_t sub_0020d5d0(int32_t kind, float* out) {
-    if (on_rilgar()) {  // (Rilgar's own: L5:0x0023b378, writes the float through the EE address in $a1)
-        const uint32_t b = ee_stack_alloc(16);
-        const int32_t r = static_cast<int32_t>(ril_call(ril_sub_20d5d0_u, static_cast<uint32_t>(kind), b).v0);
-        *out = ee_read<float>(b);
-        ee_stack_free(16);
-        return r;
-    }
-    if (on_kalebo()) {  // (level 16's own: L16:0x0020afa0, Rilgar's build: the float through the EE address in $a1)
-        const uint32_t b = ee_stack_alloc(16);
-        const int32_t r = static_cast<int32_t>(kal_call(kal_sub_0020d5d0_u, static_cast<uint32_t>(kind), b).v0);
-        *out = ee_read<float>(b);
-        ee_stack_free(16);
-        return r;
-    }
     *out = 0.0f;
+    if (hero_has_hoverboard() && lw(g::PLAYER + 0x208c) == 0x16 && lbu(g::PLAYER + 0x8ce) != 0 &&
+        static_cast<uint32_t>(lbu(lwu(g::PLAYER + 0x2080) + 0x53)) - 0x69u < 4u) {
+        return 1;
+    }
     switch (kind) {
         case 0x37:
             *out = u2f(0xbf75be0bu);
@@ -830,7 +818,6 @@ float mat3_abs_diff(uint32_t a, uint32_t b) {
 
 // orig: 0x00205000 — kind of the current interaction (0 = none).
 uint32_t sub_00205000(int32_t flag) {
-    if (on_kalebo()) return kal_call(kal_sub_00205000_u, static_cast<uint32_t>(flag)).v0;  // (level 16's own: L16:0x00203868)
     if (on_l1_family() || on_rilgar()) return sub_00205000_l1(flag);
     const uint32_t mode = lbu(g::PLAYER + 0x20a4);
     if (hero_has_giant_clank() && mode == 2) return 0;
@@ -851,7 +838,6 @@ uint32_t sub_00205000(int32_t flag) {
 // floor (floor_probe from 0.5 above, +0.04) under the foot joint 0x16 + foot, 0.15 ahead.
 // orig: 0x00205f60
 void hero_footstep(int32_t a, uint32_t foot, int32_t sound) {
-    if (on_kalebo()) { kal_call(kal_hero_footstep_u, static_cast<uint32_t>(a), foot, static_cast<uint32_t>(sound)); return; }  // (level 16's own: L16:0x002047a0)
     if (!hero_has_skate()) return hero_footstep_l1(a, foot, sound);
     const uint32_t P = g::PLAYER;
     if (sound != 0) {
@@ -1230,7 +1216,6 @@ void sub_00209848(int32_t n, int32_t limit) {
 // blink blue in the damage states (0x80/0x82 for 30 frames, 0x76 for 20 frames on levels 15/17),
 // and refresh the held item's colour.
 void sub_002076a8() {
-    if (on_kalebo()) { kal_call(kal_sub_002076a8_u); return; }  // (level 16's own: L16:0x00205798)
     if (on_l1_family()) return sub_002076a8_l1();
     if (hero_has_state_7c() && lw(g::PLAYER + 0x22f4) != 0) {
         const uint32_t v = lwu(g::PLAYER + 0x22f8);
@@ -2773,8 +2758,6 @@ void hero_gadget_glow() {
 // the slot's countdown (+0x10a8) has run out, close the slot (state 3), reset the anims of its
 // mobys and fire the switch effects. `prev` is the caller's $s1, handed on to use_agents.
 void hero_slot_update(int32_t k, uint32_t prev) {
-    if (on_rilgar()) { ril_call(ril_hero_slot_update_u, static_cast<uint32_t>(k), prev); return; }  // (Rilgar's own: L5:0x0023dc88)
-    if (on_kalebo()) { kal_call(kal_hero_slot_update_u, static_cast<uint32_t>(k), prev); return; }  // (level 16's own: L16:0x0020d8b0)
     const uint32_t P = g::PLAYER;
     constexpr uint32_t KIND = 0x00141660, FLAGS = 0x0013c940 + 0x1a4;
     const uint32_t ku = static_cast<uint32_t>(k);
@@ -2783,12 +2766,16 @@ void hero_slot_update(int32_t k, uint32_t prev) {
     if (k == 0) {
         const int32_t st = lw(P + 0x10b8);
         if (st != 8 && st != 0x17 && st != 9 && lbu(P + 0x10ac) == 2) sb(P + 0x10ac, 0);
-        if (lbu(P + 0x20a7) != 0 && lw(P + 0x10b8) != 8) sb(P + 0x20a6, 1);
-        if (lbu(P + 0x20a7) != 0 && lw(P + 0x10b8) == 8) {
-            if (lw(P + 0x20b8) == 0x1f) sw(P + 0x20b8, 0);
-            const int32_t v = lw(P + 0x20b8);
-            if (v != 0x18 && v != 0x24) return;
+        if (lbu(P + 0x20a7) != 0 && lw(P + 0x10b8) != 8 &&
+            !(hero_has_hoverboard() && lw(P + 0x208c) == 0x16 && lbu(P + 0x8ce) != 0)) {
+            sb(P + 0x20a6, 1);
         }
+    }
+    if (hero_has_hoverboard() && lw(P + 0x10b8) == 0x24 && lw(P + 0x208c) != 0x16) sb(P + 0x20a6, 1);
+    if (k == 0 && lbu(P + 0x20a7) != 0 && lw(P + 0x10b8) == 8) {
+        if (lw(P + 0x20b8) == 0x1f) sw(P + 0x20b8, 0);
+        const int32_t v = lw(P + 0x20b8);
+        if (v != 0x18 && v != 0x24) return;
     }
     if (lbu(P + 0x20ac) != 0 && k == 0 && (lbu(P + 0x20a6) == 0 || lw(P + 0x10b8) == 8)) {
         sb(P + 0x20a6, 0);

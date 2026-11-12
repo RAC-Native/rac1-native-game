@@ -18,7 +18,6 @@
 #include <game/ovl/nanotech_draw.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/pause_menu.h>
-#include <game/ovl/rilgar_hero.h>
 #include <game/ovl/rilgar_mobys.h>
 #include <game/ovl/variants_l5.h>
 #include <game/ovl/veldin_mobys.h>

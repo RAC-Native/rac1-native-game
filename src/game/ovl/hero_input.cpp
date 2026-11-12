@@ -94,8 +94,11 @@ int32_t hero_water_air() {
 // with a splash sound; every 16 frames a deep-enough spot below a non-water mode starts the dive
 // 0x34. Returns whether the state changed.
 int32_t hero_water_entry() {
-    if (on_rilgar()) return static_cast<int32_t>(ril_call(ril_hero_water_entry_u).v0);  // (Rilgar's own: L5:0x002515d0)
-    if (on_kalebo()) return static_cast<int32_t>(kal_call(kal_hero_water_entry_u).v0);  // (level 16's own: L16:0x00222d38)
+    if (hero_has_hoverboard()) {
+        if (static_cast<uint32_t>(lw(P + 0x208c) - 0x15) < 2u) return 0;
+        const int32_t hs = lw(P + 0x2084);
+        if (hs == 0x6f || hs == 0x6d || hs == 0x6e) return 0;
+    }
     if (lw(P + 0x2084) == 0x6a) return 0;
     int32_t hit = 0;
     if (lbu(P + 0x12e4) != 0) {
@@ -147,7 +150,6 @@ int32_t hero_water_entry() {
 // or after a long fall the hard landing 3; else standing 0 (after a long jump, with the item's
 // landing animation).
 void hero_land() {
-    if (on_kalebo()) { kal_call(kal_hero_land_u); return; }  // (level 16's own: L16:0x00224a80)
     if (on_l1_family() || on_rilgar()) return hero_land_l1();
     sw(P + 0x2284, 0);
     if (hero_has_skate() && lbu(P + 0x12e2) != 0 && fs6c() * 0.5f < lwc1(P + 0x164)) {
@@ -239,7 +241,6 @@ int32_t hero_jump_input() {
 // push from the record's direction, the attacker or the facing is added to the velocities.
 // orig: 0x00210ce8
 int32_t hero_hurt(int32_t knock) {
-    if (on_kalebo()) return static_cast<int32_t>(kal_call(kal_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 16's own: L16:0x0020e690)
     if (on_l1_family() || on_rilgar()) return hero_hurt_l1(knock);
     if (lw(P + 0x208c) == 0x14 || lw(P + 0x208c) == 7) return 0;
     if (lw(P + 0x2084) == 0x32) return 0;
@@ -526,10 +527,11 @@ void hero_item_swingshot(uint32_t mask) { item_swingshot(mask); }
 // the state changed.
 // orig: 0x00227fa0
 int32_t hero_item_use() {
-    if (on_kalebo()) return static_cast<int32_t>(kal_call(kal_hero_item_use_u).v0);  // (level 16's own: L16:0x00223350)
-    if (on_rilgar()) return static_cast<int32_t>(ril_call(ril_hero_item_use_u).v0);  // (Rilgar's own: L5:0x00251be8)
     if (on_novalis() || on_aridia()) return hero_item_use_l1();
-    if (lbu(P + 0x20ac) != 0 && (lw(P + 0x10b8) != 8 || lh(P + 0x308) != 1)) return 0;
+    if (lbu(P + 0x20ac) != 0 && !(hero_has_hoverboard() && lw(P + 0x10b8) == 0x24) &&
+        (lw(P + 0x10b8) != 8 || lh(P + 0x308) != 1)) {
+        return 0;
+    }
     if (lbu(P + 0x20a4) != 0) return 0;
     if (lw(P + 0x1090) == 0) return 0;
     if (advanced_rac3_wrench_out()) return 0;  // enhancement: R&C 3 takes no item input while the thrown wrench is out
@@ -591,6 +593,9 @@ int32_t hero_item_use() {
         }
         break;
     }
+    case 0x24:
+        if (hero_has_hoverboard()) hero_item_use_zoomerator(mask);
+        break;
     default:
         break;
     }

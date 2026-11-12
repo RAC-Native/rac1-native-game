@@ -7,21 +7,20 @@
 #include <cstdint>
 
 #include <game/math/vecmath.h>
+#include <game/ovl/hero_hoverboard.h>
 #include <game/ovl/variants_l1.h>
 #include <game/ovl/variants_l2.h>
 #include <game/ovl/variants_l3.h>
-#include <game/ovl/rilgar_hero.h>
 #include <game/ovl/variants_l5.h>
-#include <game/ovl/blarg_call.h>
-#include <game/ovl/batalia_call.h>
-#include <game/ovl/pokitaru_call.h>
-#include <game/ovl/hoven_call.h>
-#include <game/ovl/oltanis_call.h>
-#include <game/ovl/quartu_call.h>
-#include <game/ovl/kalebo_call.h>
-#include <game/ovl/veldin_orbit_call.h>
-#include <game/ovl/veldin_finale_call.h>
 #include <game/ovl/variants_l6.h>
+#include <game/ovl/variants_l8.h>
+#include <game/ovl/variants_l11.h>
+#include <game/ovl/variants_l12.h>
+#include <game/ovl/variants_l14.h>
+#include <game/ovl/variants_l15.h>
+#include <game/ovl/variants_l16.h>
+#include <game/ovl/variants_l17.h>
+#include <game/ovl/variants_l18.h>
 
 namespace rac1 {
 

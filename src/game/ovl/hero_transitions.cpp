@@ -2500,8 +2500,10 @@ bool transitions(uint32_t state, uint32_t hm0) {
         }
         if (21.0f <= lwc1(P + 0xaa8)) hero_set_state(0, 0);
         return false;
+    case 0x6b: case 0x6c: case 0x6d: case 0x6e: case 0x6f:
+        return hero_has_hoverboard() && hero_hoverboard_input_update(state);
     case 0x05: case 0x1d: case 0x1f: case 0x27: case 0x32: case 0x3b: case 0x3e: case 0x48: case 0x63:
-    case 0x64: case 0x6b: case 0x6c: case 0x6d: case 0x6e: case 0x6f: case 0x72: case 0x78:
+    case 0x64: case 0x72: case 0x78:
         return false;  // no transitions of their own
     default:
         return false;  // past the jump table (0x83 states): no transitions
@@ -2518,8 +2520,6 @@ bool transitions(uint32_t state, uint32_t hm0) {
 // hero moby's animation resets the timers +0x1a0 / +0x1a4.
 // orig: 0x00229b70
 void hero_input_update() {
-    if (on_kalebo()) { kal_call(kal_hero_input_update_u); return; }  // (level 16's own: L16:0x002270c8)
-    if (on_rilgar()) { ril_call(ril_hero_input_update_u); return; }  // (Rilgar's own: L5:0x00255960)
     if (on_l1_family()) return hero_input_update_l1();
     const uint32_t hm = lwu(P + 0x2080);
     const uint32_t mode0 = lwu(P + 0x208c);

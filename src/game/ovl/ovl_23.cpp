@@ -8,10 +8,9 @@ namespace rac1 {
 
 // orig: 0x002321a8
 void sub_002321a8() {
-    if (on_rilgar()) { ril_call(ril_sub_2321a8_u); return; }  // (Rilgar's own: L5:0x0025b538)
-    if (on_kalebo()) { kal_call(kal_sub_002321a8_u); return; }  // (level 16's own: L16:0x0022dc48)
     sw(g::PLAYER + 0x227c, 0);
     sw(g::PLAYER + 0x2278, 0);
+    if (hero_has_hoverboard()) hero_hoverboard_pair_table();
 }
 
 // orig: 0x002321c0 — look `key` up in the (s16 key, s16 value) list at
@@ -52,7 +51,6 @@ void sub_00232628() {
 
 // orig: 0x00233210 — set bit 0 of the u16 flags (+0x34) of both hero mobys.
 void hero_mobys_set_flag1() {
-    if (on_kalebo()) { kal_call(kal_hero_mobys_set_flag1_u); return; }  // (level 16's own: L16:0x0022ecd8)
     if (on_l1_family() || on_rilgar()) return hero_mobys_set_flag1_l1();
     const uint32_t m = lwu(g::PLAYER + 0x2080);
     sh(m + 0x34, lhu(m + 0x34) | 1u);
@@ -64,7 +62,6 @@ void hero_mobys_set_flag1() {
 
 // orig: 0x00233248
 void hero_mobys_clear_flag1() {
-    if (on_kalebo()) { kal_call(kal_hero_mobys_clear_flag1_u); return; }  // (level 16's own: L16:0x0022ecf0)
     if (on_l1_family() || on_rilgar()) return hero_mobys_clear_flag1_l1();
     const uint32_t m = lwu(g::PLAYER + 0x2080);
     sh(m + 0x34, lhu(m + 0x34) & 0xfffeu);

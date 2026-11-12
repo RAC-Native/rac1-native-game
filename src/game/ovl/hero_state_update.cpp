@@ -2614,7 +2614,13 @@ void update_state(uint32_t state, uint32_t hm) {
     case 0x28: case 0x29: case 0x2a: case 0x2b: case 0x42:
         if (hero_has_grind()) grind_rail_update();
         return;
-    default:  // 5, 0x27, 0x32, 0x3b, 0x3e, 0x41, 0x48, 0x6b..0x6f, 0x78, 0x7e: nothing per frame
+    case 0x3e:
+        if (hero_has_state_3e()) hero_state_3e_update();
+        return;
+    case 0x6b: case 0x6c: case 0x6d: case 0x6e: case 0x6f:
+        if (hero_has_hoverboard()) hero_hoverboard_state_update(state);
+        return;
+    default:  // 5, 0x27, 0x32, 0x3b, 0x41, 0x48, 0x78, 0x7e: nothing per frame
         return;
     }
 }
@@ -2627,8 +2633,6 @@ void hero_grind_update_v() { grind_update(); }
 // the sub-state +0x2088 resets the timer +0x1a0, a change of the hero moby's animation +0x53
 // resets +0x1a4.
 void hero_state_update() {
-    if (on_kalebo()) { kal_call(kal_hero_state_update_u); return; }  // (level 16's own: L16:0x00214598)
-    if (on_rilgar()) { ril_call(ril_hero_state_update_u); return; }  // (Rilgar's own: L5:0x00244a70)
     if (on_l1_family()) return hero_state_update_l1();
     const uint32_t hm = lwu(P + 0x2080);
     const uint32_t sub = lwu(P + 0x2088);
