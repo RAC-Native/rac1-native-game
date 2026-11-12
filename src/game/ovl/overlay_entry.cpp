@@ -22,6 +22,7 @@
 #include <game/ovl/movie_mode.h>
 #include <game/render/mrp_fx.h>
 #include <game/render/mrp_lod.h>
+#include <game/render/mrp_scene.h>
 #include <game/render/mrp_world_scene.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
@@ -502,15 +503,17 @@ void render_frame() {
         if (g_moby_vu1_pass) {
             // (host: the MRP's LOD slider / widened view runs the pass again as a shadow, the memory put back: after the real
             // pass, whose poses the shadow then finds in the pose memo - RAC1_PERF_POSE_ORDER=0: before it, every pose of its own)
+            // (RAC1_PERF_MOBY_EXTRAS: after it too, leaving out the mobys the real pass drew the same: those it added to the scene)
             const bool after = mrp_lod_moby_shadow_after();
             if (!after) mrp_lod_moby_shadow(moby_pass);
+            const size_t real_first = mrp_scene_moby_count();
             {
                 RAC1_PROF_ZONE(kGameMobyPass);
-                g_moby_pose_memo.fill = after && mrp_lod_moby_shadow_due();
+                g_moby_pose_memo.fill = mrp_lod_moby_pose_fill();
                 moby_pass();
                 g_moby_pose_memo.fill = false;
             }
-            if (after) mrp_lod_moby_shadow(moby_pass);
+            if (after) mrp_lod_moby_shadow(moby_pass, real_first, mrp_scene_moby_count() - real_first);
         }
         else TODO_PORT(0x00250038, "mobys (VU1): the host's model drawer instead")();
     }

@@ -132,6 +132,7 @@ void on_draw(uint32_t moby, uint32_t chain_begin, uint32_t chain_end, uint32_t r
     m.state = lbu(moby + 0x20);
     m.far_lod = far_lod != 0;
     m.deferred = deferred != 0;
+    m.mscal = static_cast<uint16_t>(g_moby_draw_mscal);
     for (int i = 0; i < 3; ++i) m.pos[i] = lwc1(moby + 0x10 + 4 * static_cast<uint32_t>(i));
     m.scale = lwc1(moby + 0x2c);
     for (uint32_t i = 0; i < 3; ++i) m.rot[i] = vec4_at(moby + 0xc0 + 0x10 * i);
@@ -572,34 +573,88 @@ bool mrp_scene_pose_slot(uint32_t rec, uint32_t& moby, bool& far) {
     return true;
 }
 
+namespace {
+// orig: (host) a part's GS state packet read now (A+D, PACKED: the frame's TEST_1 0x47 / ALPHA_1 0x42), while its chain is in memory
+void resolve_gs(MrpPart& p) {
+    p.gs_resolved = true;
+    if (!p.has_gs_state) return;
+    const uint32_t a = p.direct_data;  // (as mrp_moby_renderer.cpp's gif_ad reads it at the draw)
+    uint32_t off = 0;
+    while (off < p.direct_qwc) {
+        const uint64_t lo = static_cast<uint64_t>(lwu(a + off * 16)) | (static_cast<uint64_t>(lwu(a + off * 16 + 4)) << 32);
+        const uint64_t hi = static_cast<uint64_t>(lwu(a + off * 16 + 8)) | (static_cast<uint64_t>(lwu(a + off * 16 + 12)) << 32);
+        const uint32_t nloop = lo & 0x7fff, flg = (lo >> 58) & 3, nreg0 = (lo >> 60) & 0xf;
+        const uint32_t nreg = nreg0 == 0 ? 16 : nreg0;
+        if (flg != 0) break;
+        for (uint32_t i = 0; i < nloop; ++i)
+            for (uint32_t r = 0; r < nreg; ++r) {
+                const uint32_t q = a + (off + 1 + i * nreg + r) * 16;
+                if (((hi >> (4 * r)) & 0xf) != 0xe) continue;
+                const uint64_t v = static_cast<uint64_t>(lwu(q)) | (static_cast<uint64_t>(lwu(q + 4)) << 32);
+                const uint32_t reg = lbu(q + 8);
+                if (reg == 0x47) p.test = v, p.has_test = true;
+                if (reg == 0x42) p.alpha = v, p.has_alpha = true;
+            }
+        off += 1 + nloop * nreg;
+        if ((lo >> 15) & 1) break;
+    }
+}
+
+// orig: (host) the extras' shadow run (RAC1_PERF_MOBY_EXTRAS, mrp_lod.h): this update's shadow scene has only what the real
+// pass did not draw the same (`left_out`: the real pass's mobys the run left out, sorted); `whole`: the whole run's scene,
+// kept to compare the merged one with (=2)
+struct Extras {
+    bool on = false, cmp = false;
+    std::vector<uint32_t> left_out;
+} g_extras;
+MrpFrame g_whole_frame, g_merge_frame;
+struct ExtrasStats {
+    uint64_t frames = 0, kept = 0, extras = 0, other = 0, twice = 0;
+    perf::DualCheck check;
+} g_xs;
+}  // namespace
+
 // orig: (host) see mrp_scene.h
-void mrp_scene_shadow_end() {
+size_t mrp_scene_moby_count() { return g_frame.mobys.size(); }
+
+// orig: (host) see mrp_scene.h
+void mrp_scene_real_same(size_t first, size_t count, std::vector<MrpSame>& out) {
+    out.clear();
+    const MrpFrame& f = g_frame;
+    for (size_t i = first; i < first + count && i < f.mobys.size(); ++i) {
+        const MrpMoby& m = f.mobys[i];
+        if (m.mscal == 0 || m.rt || m.other_view || m.record_qwords == 0 || m.joint_count == 0) continue;
+        out.push_back(MrpSame{m.moby, m.mscal, m.deferred, m.chain_end - m.chain_begin, m.record_qwords * 16});
+    }
+    std::sort(out.begin(), out.end(), [](const MrpSame& a, const MrpSame& b) { return a.moby < b.moby; });
+    for (size_t i = 1; i < out.size(); ++i)
+        if (out[i].moby == out[i - 1].moby) {  // (a moby drawn twice by the pass: never seen; none left out)
+            out.clear();
+            break;
+        }
+}
+
+// orig: (host) see mrp_scene.h
+void mrp_scene_shadow_keep_whole() {
+    std::swap(g_whole_frame, g_shadow_frame);
+    g_extras.cmp = true;
+}
+
+// orig: (host) see mrp_scene.h
+void mrp_scene_shadow_end(const std::vector<uint32_t>* left_out) {
     MrpFrame& f = g_frame;
     g_ram_end = ee_ram_size();
     decode_all(f);
     g_ram_end = ee_game_ram_end();
-    for (MrpPart& p : f.parts) {  // the GS state packet (A+D, PACKED: the frame's TEST_1 0x47 / ALPHA_1 0x42)
-        p.gs_resolved = true;
-        if (!p.has_gs_state) continue;
-        const uint32_t a = p.direct_data;  // (as mrp_moby_renderer.cpp's gif_ad reads it at the draw)
-        uint32_t off = 0;
-        while (off < p.direct_qwc) {
-            const uint64_t lo = static_cast<uint64_t>(lwu(a + off * 16)) | (static_cast<uint64_t>(lwu(a + off * 16 + 4)) << 32);
-            const uint64_t hi = static_cast<uint64_t>(lwu(a + off * 16 + 8)) | (static_cast<uint64_t>(lwu(a + off * 16 + 12)) << 32);
-            const uint32_t nloop = lo & 0x7fff, flg = (lo >> 58) & 3, nreg0 = (lo >> 60) & 0xf;
-            const uint32_t nreg = nreg0 == 0 ? 16 : nreg0;
-            if (flg != 0) break;
-            for (uint32_t i = 0; i < nloop; ++i)
-                for (uint32_t r = 0; r < nreg; ++r) {
-                    const uint32_t q = a + (off + 1 + i * nreg + r) * 16;
-                    if (((hi >> (4 * r)) & 0xf) != 0xe) continue;
-                    const uint64_t v = static_cast<uint64_t>(lwu(q)) | (static_cast<uint64_t>(lwu(q + 4)) << 32);
-                    const uint32_t reg = lbu(q + 8);
-                    if (reg == 0x47) p.test = v, p.has_test = true;
-                    if (reg == 0x42) p.alpha = v, p.has_alpha = true;
-                }
-            off += 1 + nloop * nreg;
-            if ((lo >> 15) & 1) break;
+    for (MrpPart& p : f.parts) resolve_gs(p);
+    g_extras.on = left_out != nullptr;
+    if (left_out != nullptr) {
+        g_extras.left_out = *left_out;
+        if (!g_have_camera) {  // (the run drew no moby: the frame's view as its first moby's observer would have read it, on_draw)
+            for (uint32_t i = 0; i < 6; ++i) f.proj[i] = vec4_at(OV(0x0016ca40) + 16 * i);
+            f.cam_pos = vec4_at(OV(0x00166dc0));
+            for (uint32_t i = 0; i < 3; ++i) f.view_rows[i] = vec4_at(OV(0x00166cc0) + 16 * i);
+            f.view_trans = vec4_at(OV(0x00166cf0));
         }
     }
     if (g_scene_keep) {  // (the shadow's scene kept, the frame observed before it back; the last shadow's scene emptied, aside)
@@ -721,7 +776,134 @@ void lod_keep_real(const MrpFrame& real, MrpFrame& draw) {
         ++g_drops.kept;
     }
 }
+// orig: (host) `m` of the frame `from` appended to `to`: its pose, record and parts (their unpacks) with it. `resolve`: its
+// parts' GS state read now (the real pass's chain is in memory at the frame's end), as a shadow scene's are at its capture
+void moby_append(const MrpFrame& from, const MrpMoby& src, MrpFrame& to, bool resolve) {
+    MrpMoby m = src;
+    const uint32_t mi = static_cast<uint32_t>(to.mobys.size());
+    m.joint_first = static_cast<uint32_t>(to.joints.size());
+    to.joints.insert(to.joints.end(), from.joints.begin() + src.joint_first, from.joints.begin() + src.joint_first + src.joint_count);
+    m.record_first = static_cast<uint32_t>(to.records.size());
+    to.records.insert(to.records.end(), from.records.begin() + src.record_first, from.records.begin() + src.record_first + static_cast<size_t>(src.record_qwords) * 16);
+    m.part_first = static_cast<uint32_t>(to.parts.size());
+    for (uint32_t k = 0; k < src.part_count; ++k) {
+        MrpPart p = from.parts[src.part_first + k];
+        const uint32_t u0 = p.unpack_first;
+        p.unpack_first = static_cast<uint32_t>(to.unpacks.size());
+        to.unpacks.insert(to.unpacks.end(), from.unpacks.begin() + u0, from.unpacks.begin() + u0 + p.unpack_count);
+        p.moby_index = mi;
+        if (resolve && !p.gs_resolved) resolve_gs(p);
+        to.parts.push_back(p);
+    }
+    to.mobys.push_back(m);
+}
+
+// orig: (host) the scenes `a` and `b` as the renderer reads them: the view, the mobys in order, each one's fields, pose, the
+// record's lights and tint, the parts' program, matrix and GS state. Empty when the same; else what differs first
+std::string scene_differs(const MrpFrame& a, const MrpFrame& b) {
+    char t[160];
+    if (std::memcmp(a.proj, b.proj, sizeof a.proj) != 0 || std::memcmp(&a.cam_pos, &b.cam_pos, sizeof a.cam_pos) != 0 ||
+        std::memcmp(a.view_rows, b.view_rows, sizeof a.view_rows) != 0 || std::memcmp(&a.view_trans, &b.view_trans, sizeof a.view_trans) != 0)
+        return "the frame's view";
+    if (a.mobys.size() != b.mobys.size()) {
+        std::snprintf(t, sizeof t, "%zu mobys / %zu", a.mobys.size(), b.mobys.size());
+        return t;
+    }
+    for (size_t i = 0; i < a.mobys.size(); ++i) {
+        const MrpMoby &x = a.mobys[i], &y = b.mobys[i];
+        const char* what = nullptr;
+        if (x.moby != y.moby) what = "another moby (the order)";
+        else if (x.class_ptr != y.class_ptr || x.class_id != y.class_id || x.flags != y.flags || x.state != y.state) what = "class / flags / state";
+        else if (x.far_lod != y.far_lod || x.first_packet != y.first_packet || x.packet_count != y.packet_count) what = "model / packets";
+        else if (x.deferred != y.deferred || x.shadow_mesh != y.shadow_mesh || x.animated != y.animated || x.other_view != y.other_view || x.rt != y.rt) what = "deferred / shadow mesh / animated / view";
+        else if (x.mscal != y.mscal) what = "the program chosen";
+        else if (std::memcmp(x.pos, y.pos, sizeof x.pos) != 0 || x.scale != y.scale || std::memcmp(x.rot, y.rot, sizeof x.rot) != 0) what = "position / scale / rotation";
+        else if (std::memcmp(&x.model_to_view, &y.model_to_view, sizeof x.model_to_view) != 0) what = "model-to-view matrix";
+        else if (std::memcmp(x.light_dir, y.light_dir, sizeof x.light_dir) != 0 || std::memcmp(x.light_col, y.light_col, sizeof x.light_col) != 0 ||
+                 std::memcmp(x.light_w, y.light_w, sizeof x.light_w) != 0)
+            what = "lights";
+        else if (std::memcmp(x.tint, y.tint, 4) != 0 || x.alpha_base != y.alpha_base) what = "tint / alpha";
+        else if (x.light_set_a != y.light_set_a || x.light_set_b != y.light_set_b || x.light_blend != y.light_blend) what = "light sets";
+        else if (x.joint_count != y.joint_count || (x.joint_count != 0 && std::memcmp(&a.joints[x.joint_first], &b.joints[y.joint_first], sizeof(MrpMat4) * x.joint_count) != 0)) what = "pose";
+        else if (x.record_qwords != y.record_qwords || (x.record_qwords >= 0xc && std::memcmp(&a.records[x.record_first + 0x40], &b.records[y.record_first + 0x40], 0x80) != 0))
+            what = "the record's lights / tint";
+        else if (x.part_count != y.part_count) what = "part count";
+        else
+            for (uint32_t k = 0; k < x.part_count && what == nullptr; ++k) {
+                const MrpPart &p = a.parts[x.part_first + k], &q = b.parts[y.part_first + k];
+                if (p.mscal != q.mscal) what = "a part's program";
+                // (not its place in VU1, matrix_dest: the two buffers take turns part by part along the pass's chain)
+                else if (std::memcmp(&p.model_to_view, &q.model_to_view, sizeof p.model_to_view) != 0) what = "a part's matrix";
+                else if (p.gs_resolved != q.gs_resolved || p.has_test != q.has_test || p.has_alpha != q.has_alpha || p.test != q.test || p.alpha != q.alpha) what = "a part's GS state";
+                else if (p.unpack_count != q.unpack_count) what = "a part's unpacks";
+            }
+        if (what != nullptr) {
+            std::snprintf(t, sizeof t, "moby %zu of %zu (%08x class %d, deferred %d): %s", i, a.mobys.size(), x.moby, x.class_id, x.deferred ? 1 : 0, what);
+            return t;
+        }
+    }
+    return {};
+}
+
+// orig: (host) the extras' shadow run's scene `sh` (RAC1_PERF_MOBY_EXTRAS) made the draw scene: the real pass's mobys the run left
+// out put in their places - the loop draws the list's mobys in the address order, those of the deferred pass after the others in
+// the same order -, each as the real pass drew it (the run would have drawn it the same: mrp_scene_real_same), its parts' GS state
+// read now; then, as lod_keep_real, the real frame's other mobys the scene has not. (=2) compared with the whole run's scene
+void extras_merge(const MrpFrame& real, MrpFrame& sh) {
+    ++g_xs.frames;
+    MrpFrame& out = g_merge_frame;
+    frame_reset(out);
+    std::memcpy(out.proj, sh.proj, sizeof out.proj);
+    out.cam_pos = sh.cam_pos;
+    std::memcpy(out.view_rows, sh.view_rows, sizeof out.view_rows);
+    out.view_trans = sh.view_trans;
+    static std::vector<uint32_t> have;
+    have.clear();
+    for (const MrpMoby& m : sh.mobys) have.push_back(m.moby);
+    std::sort(have.begin(), have.end());
+    static std::vector<const MrpMoby*> kept, other;
+    kept.clear();
+    other.clear();
+    for (const MrpMoby& r : real.mobys) {
+        if (std::binary_search(have.begin(), have.end(), r.moby)) {
+            if (std::binary_search(g_extras.left_out.begin(), g_extras.left_out.end(), r.moby)) ++g_xs.twice;  // (left out, drawn all the same: never seen)
+            continue;
+        }
+        if (std::binary_search(g_extras.left_out.begin(), g_extras.left_out.end(), r.moby) && !r.rt && !r.other_view) {
+            kept.push_back(&r);
+        } else {
+            other.push_back(&r);
+        }
+    }
+    auto before = [](const MrpMoby& a, const MrpMoby& b) { return a.deferred != b.deferred ? !a.deferred : a.moby < b.moby; };
+    size_t i = 0, k = 0;
+    while (i < sh.mobys.size() || k < kept.size()) {
+        if (k == kept.size() || (i < sh.mobys.size() && before(sh.mobys[i], *kept[k]))) moby_append(sh, sh.mobys[i++], out, false);
+        else moby_append(real, *kept[k++], out, true);
+    }
+    for (const MrpMoby* r : other) moby_append(real, *r, out, false);
+    g_xs.kept += kept.size();
+    g_xs.extras += sh.mobys.size();
+    g_xs.other += other.size();
+    std::swap(sh, out);
+    if (g_extras.cmp) {
+        lod_keep_real(real, g_whole_frame);  // (the whole run's scene as the frame would have drawn it)
+        const std::string d = scene_differs(g_whole_frame, sh);
+        g_xs.check.check(d.empty(), "frame " + std::to_string(g_frame_no) + ": " + d);
+    }
+}
 }  // namespace
+
+// orig: (host) see mrp_scene.h
+void mrp_scene_extras_report() {
+    if (g_xs.frames == 0) return;
+    const double n = static_cast<double>(g_xs.frames);
+    std::printf("[lod] moby extras (RAC1_PERF_MOBY_EXTRAS): %llu shadow runs for the extras alone: %.1f mobys a frame kept from the real pass, %.1f drawn by the run, "
+                "%.1f others of the real frame; left out and drawn all the same %llu\n",
+                static_cast<unsigned long long>(g_xs.frames), static_cast<double>(g_xs.kept) / n, static_cast<double>(g_xs.extras) / n, static_cast<double>(g_xs.other) / n,
+                static_cast<unsigned long long>(g_xs.twice));
+    if (g_xs.check.compared != 0) g_xs.check.report("moby extras", "frames");
+}
 
 // orig: (host) the drop check's totals (mobys of the real pass the LOD scene missed)
 void mrp_scene_lod_drop_report() {
@@ -741,6 +923,7 @@ void mrp_scene_lod_drop_report() {
 
 void mrp_scene_begin_frame() {
     g_shadow_valid = false;
+    g_extras.on = g_extras.cmp = false;
     MrpFrame& f = g_frame;
     f.mobys.clear();
     f.parts.clear();
@@ -832,15 +1015,19 @@ void mrp_scene_end_frame() {
             }
         }
     }
-    if (g_shadow_valid) {
+    if (g_shadow_valid && g_extras.on) {
+        extras_merge(f, g_shadow_frame);
+    } else if (g_shadow_valid) {
         lod_drop_check(f, g_shadow_frame);
         lod_keep_real(f, g_shadow_frame);
     }
     if (std::getenv("RAC1_MRP_SCENE_HASH") != nullptr) {  // (testing: a hash of every drawn scene, to compare two runs draw for draw)
         // (the whole scene in h; its kinds of data apart in hk - the mobys and their matrices, the joints, the records, the parts,
-        // the unpacks' shape, the unpacks' data addresses - to tell what differs between two runs)
+        // the unpacks' shape, the unpacks' data addresses, and of the records the lights and tint the renderer reads, +0x40..+0xbf
+        // (not in h) - to tell what differs between two runs)
         static uint64_t h = 0xcbf29ce484222325ull, n = 0;
-        static uint64_t hk[6] = {0xcbf29ce484222325ull, 0xcbf29ce484222325ull, 0xcbf29ce484222325ull, 0xcbf29ce484222325ull, 0xcbf29ce484222325ull, 0xcbf29ce484222325ull};
+        static uint64_t hk[7] = {0xcbf29ce484222325ull, 0xcbf29ce484222325ull, 0xcbf29ce484222325ull, 0xcbf29ce484222325ull, 0xcbf29ce484222325ull, 0xcbf29ce484222325ull,
+                                 0xcbf29ce484222325ull};
         auto add = [](int kind, const void* p, size_t k) {
             const uint8_t* b = static_cast<const uint8_t*>(p);
             for (size_t i = 0; i < k; ++i) {
@@ -856,6 +1043,11 @@ void mrp_scene_end_frame() {
             add(0, &m.tint, 4);
             if (m.joint_count != 0) add(1, &d.joints[m.joint_first], sizeof(MrpMat4) * m.joint_count);
             if (m.record_qwords != 0) add(2, &d.records[m.record_first], 16u * m.record_qwords);
+            if (m.record_qwords >= 0xc) {
+                const uint64_t keep = h;
+                add(6, &d.records[m.record_first + 0x40], 0x80);
+                h = keep;
+            }
             for (uint32_t k = 0; k < m.part_count; ++k) {
                 const MrpPart& p = d.parts[m.part_first + k];
                 add(3, &p.mscal, 2);
@@ -872,9 +1064,9 @@ void mrp_scene_end_frame() {
             }
         }
         if (++n % 100 == 0)
-            std::fprintf(stderr, "[scene-hash] %llu frames: %016llx (mobys %08x joints %08x records %08x parts %08x unpacks %08x data %08x)\n", static_cast<unsigned long long>(n),
-                         static_cast<unsigned long long>(h), static_cast<uint32_t>(hk[0]), static_cast<uint32_t>(hk[1]), static_cast<uint32_t>(hk[2]), static_cast<uint32_t>(hk[3]),
-                         static_cast<uint32_t>(hk[4]), static_cast<uint32_t>(hk[5]));
+            std::fprintf(stderr, "[scene-hash] %llu frames: %016llx (mobys %08x joints %08x records %08x parts %08x unpacks %08x data %08x lights %08x)\n",
+                         static_cast<unsigned long long>(n), static_cast<unsigned long long>(h), static_cast<uint32_t>(hk[0]), static_cast<uint32_t>(hk[1]), static_cast<uint32_t>(hk[2]),
+                         static_cast<uint32_t>(hk[3]), static_cast<uint32_t>(hk[4]), static_cast<uint32_t>(hk[5]), static_cast<uint32_t>(hk[6]));
     }
     if (g_prof) {
         g_prof_decode_ms += now_ms() - t0;

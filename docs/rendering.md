@@ -519,7 +519,10 @@ The game's own decisions are never changed, because they are game state. Instead
   afar), whose camera-facing quads the shrub pass writes as a GIF stream: the host writes the same
   stream (`variant_stream`). These copies were checked draw for draw against the game's own
   (`RAC1_MRPW_STATIC_CHECK=1`; the billboards' stream word for word).
-- **Original** runs no shadow run at all.
+- **Original** runs no shadow run at all at 4:3. In a widened view the moby pass's shadow run comes after
+  the real pass and draws only the mobys the wider frustum adds (or draws with the other VU1 program);
+  the others are taken from the real pass, in their places (`RAC1_PERF_MOBY_EXTRAS`,
+  docs/performance.md).
 - **Maximum's reach.** "Unlimited" is bounded for the mobys by the renderer's far plane (4000 units, or the game's own draw
   distance when that is larger): nothing farther can show in the picture, and the game hides some mobys by keeping their
   culling sphere far away on purpose. Pokitaru's class 1161 (a model of a 38000-unit radius, its sphere about 11000 units
