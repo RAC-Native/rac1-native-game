@@ -92,6 +92,12 @@ void mod_code_session_save(std::vector<std::pair<std::string, std::vector<uint8_
 // orig: (none) — enhancement: a loaded save's session bytes of the plugin of `folder` (session_load, ABI 9): given after the
 // level's level_start
 void mod_code_session_load(const std::string& folder, const uint8_t* data, uint32_t size);
+// orig: (none) — enhancement: a plugin's music_track (ABI 19) plays: the level's music is not changed by a death's restart (the
+// game's stop and start skipped while it is true) nor by a section switch (mod_code_music_defer)
+bool mod_code_music_track_on();
+// orig: (none) — enhancement: a section switch's music (its music table) while a music_track plays: kept for music_track(NULL),
+// true (the music not changed); false when no track plays (the switch's own)
+bool mod_code_music_defer(const uint32_t w[15]);
 
 }  // namespace rac1
 

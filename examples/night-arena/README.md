@@ -1,8 +1,7 @@
 # Daino's Arena
 
 (Its folder and level id: `night-arena`.) A level mod made in Blender: an arena in a lava lake ringed by mountains, on Kalebo III's code (base level 16), with a
-plugin that runs challenges against Kalebo III's enemies. It is the larger example next to
-[the example level](../custom-level/README.md): the scripts here write the whole mod (geometry, collision, textures,
+plugin that runs challenges against Kalebo III's enemies. It is the SDK's example: the scripts here write the whole mod (geometry, collision, textures,
 sounds, lights, objects and the plugin's source) into a mod folder, and the setup composes it with your disc. See
 [docs/mods.md](../../docs/mods.md) ("Level mods") and [docs/sdk.md](../../docs/sdk.md); everything here is our own,
 nothing of the game's (the enemies, the crates and the hero are the base level's, by their class numbers).
@@ -16,7 +15,9 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   jetpack troopers and dropships; some with bombs from the sky, the vents burning faster and the three drop zones'
   circles electrified in turn (they hurt Ratchet and the enemies standing in them), a time limit, no hit allowed,
   the wrench only, a random weapon each wave, a new one every 20 seconds; two championships (15 and 50 rounds) mixing
-  those modes. The won ones, and their best times, are kept with the save; a win saves the game (into the player's slot,
+  those modes and more: other planets' enemies (Ospiti), Umbris's turrets (Torrette), Orxon's spore plants (Giardino), a
+  horde (Orda), a round of Zona calda's (the moving ring's bar to fill) and one of Autoscontro's (so many to ram on the
+  hoverboard). The won ones, and their best times, are kept with the save; a win saves the game (into the player's slot,
   as leaving a planet does) once Ratchet is back in the arena.
 - **"Assalto Finale"** (Final Assault), one of the hardest: ten rounds of Kalebo III's enemies with other planets' (Gemlik's
   flying robots, Gaspar's walking robots, Pokitaru's amoeboids, Drek's fleet's Blarg troopers; Umbris's turrets on the
@@ -25,14 +26,16 @@ nothing of the game's (the enemies, the crates and the hero are the base level's
   grande fuga's worlds take most); they come in near Ratchet (they wake for him only near them). After the fifth round the
   lava floods the arena, the escape rail leads through a portal onto a world's rail (Batalia's for now: Kalebo III's own
   long rail once the engine takes the base level's world as a section), whose ring leads back to the arena, without the
-  lava, where the rounds go on; the tenth is an invasion, 220 enemies, 110 at once. It needs the Grind Boots.
+  lava, where the rounds go on; the tenth is an invasion, 220 enemies, 110 at once (about as many as the game draws in a frame). It needs the Grind Boots.
 - **"Autoscontro"** (Bumper Boards): Ratchet on Kalebo III's hoverboard round the arena (free: SDK ABI 16), the enemies
   knocked down by ramming them (`board_touching`, the plugin's hits), 60 within 2 minutes; four rings to ride through, five
   seconds more each.
 - **"Zona calda"** (Hot Zone): an electrified ring wanders round the arena, faster as time goes; inside it the bar fills
   (outside it drains), the enemies standing in it are shocked; the bar full within 3 minutes wins.
-- (Written, not in the menu yet: **"Clank Gigante"**, Ratchet as Quartu's Giant Clank crushing a swarm; the plugin's Giant
-  Clank dies by itself after about ten seconds.)
+- **"Clank Gigante"** (Giant Clank): Ratchet becomes Quartu's Giant Clank in the arena (`hero_mode`, his energy full with
+  ABI 18's `hero_energy`; his missiles and energy bomb the game's) and crushes a swarm under his feet and his fists (the
+  plugin's hits), 100 within 2 minutes; the enemies' hits drain his energy. He steps over the arena's wall into the lava lake
+  as a giant does: himself again in the arena at the end.
 - **Grind rails**, for players who have the Grind Boots (Grindscarponi), from a station outside the north-west wall:
   - "Grindscarponi: Discesa": a course of three lanes along the north wall (a side jump changes lane), our mines to
     jump, Kalebo III's own rail mines (class 933, started on the lanes by the plugin, on their own code: broken by the
@@ -151,5 +154,7 @@ A `RAC1_SIM_INPUT=seq:` script's frames are the run's, about 1472 more than the 
 
 ## Music
 
-The level plays "Overworld" by Daino Selvatico (the example level's, `../custom-level/music/overworld.ogg`), licensed
-under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+The level plays "Overworld" by Daino Selvatico (`music/overworld.ogg`), licensed
+under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The challenges are to play "Arena Fight" by Daino Selvatico
+(`music/arena_fight.ogg`), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) too (unlike the rest of
+this repository, MIT), once the game can play a level mod's second track across its sections.

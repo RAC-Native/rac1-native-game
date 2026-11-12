@@ -190,9 +190,8 @@ static const challenge_def CHALLENGES[] = {
     {"Assalto Finale", "10 round, lava, Kalebo III, invasione", WAVES, 0, 10,
      {{14, 10, 30, "RRBWA"}, {18, 12, 26, "RBWAY"}, {22, 14, 24, "RBFWAYP"}, {26, 16, 22, "RBFLWAYP"}, {30, 18, 20, "RBFLCJWAYP"},
       {32, 20, 20, "RBKTFJ"}, {36, 22, 18, "RBKTFLJS"}, {40, 24, 16, "RBKTFLCJS"}, {44, 26, 14, "GRBKTFLCJS"},
-      {200, 70, 4, "GRBFLCJSKYWA"}},  /* (110 at once crashed the game once in headless: richiesta_invasione.md) */
-     0, 20, 1, 0, W_ANY, 30000, 0, NULL, NULL, 0, "escape", "batalia", 5},  /* ("kalebo" once the composer takes the base's
-                                                                                own world as a section: CHAIN has it) */
+      {220, 110, 3, "GRBFLCJSKYWA"}},  /* (110 at once: about as many as the game draws in a frame; more live but unseen) */
+     0, 20, 1, 0, W_ANY, 30000, 0, NULL, NULL, 0, "escape", "kalebo", 5},
     /* Autoscontro: on Kalebo III's hoverboard (free, ABI 16) round the arena, the enemies knocked down by ramming them (its
        wave without end: walkers and bomb bots), 60 within 2 minutes; rings to ride through, 5 seconds more each */
     {"Autoscontro", "in tavola: investi 60 nemici in 2 minuti", BUMP, 120, 1, {{9999, 16, 30, "RRRWAB"}}, 0, 0, 0, 0, W_ANY, 15000, 0,
@@ -203,9 +202,14 @@ static const challenge_def CHALLENGES[] = {
        in it are shocked; the bar full within 3 minutes wins */
     {"Zona calda", "resta nel cerchio che si sposta: riempi la barra", ZONE, 180, 1, {{9999, 14, 30, "RRBFLJWA"}}, 0, 25, 0, 0, W_ANY,
      12000, 0, NULL, NULL, 0, NULL, NULL, 0, 100},
-    /* (not yet in the menu: the plugin's Giant Clank dies by itself after about ten seconds, 0x62: asked of the engine)
-    {"Clank Gigante", "sei Clank gigante: schiaccia 150 nemici in 2 minuti", KAIJU, 120, 1, {{9999, 40, 8, "RRRBBFCLJSWAK"}}, 0, 0, 0,
-     0, W_ANY, 20000, 0, NULL, NULL, 0, NULL, NULL, 0, 150}, */
+    /* Clank Gigante: Ratchet is Quartu's Giant Clank (ABI 12's hero_mode; his energy, ABI 18's hero_energy, full at the start)
+       in the arena, the enemies' swarm crushed under his feet and his fists (the plugin's hits: Giant Clank's own reach giants
+       only), 100 within 2 minutes; the enemies' hits drain his energy (none left: he falls, the challenge lost) */
+    /* Clank Gigante: Ratchet is Quartu's Giant Clank (ABI 12's hero_mode; his energy, ABI 18's hero_energy, full at the start)
+       in the arena, the enemies' swarm crushed under his feet and his fists (the plugin's hits), 100 within 2 minutes; the
+       enemies' hits drain his energy (none left: he falls, the challenge lost) */
+    {"Clank Gigante", "sei Clank gigante: schiaccia 100 nemici in 2 minuti", KAIJU, 120, 1, {{9999, 40, 8, "RRRBBFCLJSWAK"}}, 0, 0, 0,
+     0, W_ANY, 20000, 0, NULL, NULL, 0, NULL, NULL, 0, 100},
     {"Impossibile", "il campionato, 50 round", CUP, 0, 50, {{0}}, 0, 20, 0, 0, W_ANY, 100000, 1},
 };
 #define N_CHALLENGES ((int)(sizeof CHALLENGES / sizeof CHALLENGES[0]))
@@ -213,7 +217,8 @@ static const challenge_def CHALLENGES[] = {
 #define CHAOS_FRAMES 1200  /* Caos: a new weapon every 20 seconds */
 
 /* ---- the championships (CUP): their rounds, made at the start; the modes take turns, a few rounds each ---- */
-enum { M_FREE, M_WRENCH, M_ROULETTE, M_CHAOS, M_BOMBS, M_VENTS, M_TIMED, N_MODES };
+enum { M_FREE, M_WRENCH, M_ROULETTE, M_CHAOS, M_BOMBS, M_VENTS, M_TIMED, M_GUESTS, M_TURRETS, M_GARDEN, M_HORDE, M_ZONE, M_BUMP,
+       N_MODES };
 
 static const struct {
     const char* name;
@@ -221,7 +226,11 @@ static const struct {
 } MODES[N_MODES] = {
     {"Libero", 1, 3}, {"Solo chiave", 1, 2}, {"Roulette", 2, 4}, {"Caos", 4, 5}, {"Pioggia di fuoco", 1, 3},
     {"Grate impazzite", 1, 3}, {"Contro il tempo", 1, 2},
+    /* other planets' enemies; Umbris's turrets; Orxon's spore plants; a horde; the hot zone (the bar to fill: Zona calda's);
+       on the hoverboard, ramming (Autoscontro's) */
+    {"Ospiti", 1, 3}, {"Torrette", 1, 2}, {"Giardino", 1, 2}, {"Orda", 1, 1}, {"Zona calda", 1, 1}, {"Autoscontro", 1, 1},
 };
+enum { OBJ_KILL, OBJ_ZONE, OBJ_BUMP };  /* a round's goal: every enemy felled; the zone's bar full; so many rammed */
 
 #define MAX_ROUNDS 50
 #define CUP_BOMBS 150  /* a bombs round's frames between two bombs */
@@ -230,11 +239,13 @@ static struct {
     wave_def w;
     char mix[16];
     int mode;
+    int target;  /* (an Autoscontro round) the enemies to ram */
 } cup[MAX_ROUNDS];
 
 /* the rules of a wave (a round): the weapons, the bombs, the vents, a round's time (seconds, 0 none) */
 typedef struct rules {
     int weapons, bombs, vents, time;
+    int obj;  /* OBJ_*: the round's goal */
 } rules;
 
 /* the weapons (weapons_owned's items), their names; the Taunter and the Decoy Glove kill nothing: never drawn */
@@ -582,15 +593,19 @@ static const char* const TEXTS[][N_LANGS] = {
     {"+5 secondi", "+5 seconds", "+5 secondes", "+5 Sekunden", "+5 segundos"},
     {"Clank Gigante", "Giant Clank", "Clank geant", "Riesen-Clank", "Clank gigante"},
     {"Zona calda", "Hot Zone", "Zone chaude", "Heisse Zone", "Zona caliente"},
+    {"Ospiti", "Guests", "Invites", "Gaeste", "Invitados"},
+    {"Torrette", "Turrets", "Tourelles", "Geschuetze", "Torretas"},
+    {"Giardino", "Garden", "Jardin", "Garten", "Jardin"},
+    {"Orda", "Horde", "Horde", "Horde", "Horda"},
     {"resta nel cerchio che si sposta: riempi la barra", "stay in the moving ring: fill the bar", "reste dans le cercle mobile: remplis la barre",
      "bleib im wandernden Ring: fuell den Balken", "quedate en el circulo que se mueve: llena la barra"},
     {"Zona %d/100   %d:%02d", "Zone %d/100   %d:%02d", "Zone %d/100   %d:%02d", "Zone %d/100   %d:%02d", "Zona %d/100   %d:%02d"},
     {"Resta nel cerchio: la barra si riempie", "Stay in the ring: the bar fills", "Reste dans le cercle: la barre se remplit",
      "Bleib im Ring: der Balken fuellt sich", "Quedate en el circulo: la barra se llena"},
     {"Il cerchio si sposta!", "The ring moves!", "Le cercle bouge!", "Der Ring wandert!", "El circulo se mueve!"},
-    {"sei Clank gigante: schiaccia 150 nemici in 2 minuti", "you are Giant Clank: crush 150 enemies in 2 minutes",
-     "tu es Clank geant: ecrase 150 ennemis en 2 minutes", "du bist Riesen-Clank: zerquetsche 150 Gegner in 2 Minuten",
-     "eres Clank gigante: aplasta a 150 enemigos en 2 minutos"},
+    {"sei Clank gigante: schiaccia 100 nemici in 2 minuti", "you are Giant Clank: crush 100 enemies in 2 minutes",
+     "tu es Clank geant: ecrase 100 ennemis en 2 minutes", "du bist Riesen-Clank: zerquetsche 100 Gegner in 2 Minuten",
+     "eres Clank gigante: aplasta a 100 enemigos en 2 minutos"},
     {"Schiacciati %d/%d   %d:%02d", "Crushed %d/%d   %d:%02d", "Ecrases %d/%d   %d:%02d", "Zerquetscht %d/%d   %d:%02d",
      "Aplastados %d/%d   %d:%02d"},
     {"Schiacciali coi piedi e coi pugni!", "Crush them under your feet and fists!", "Ecrase-les du pied et du poing!",
@@ -1107,11 +1122,35 @@ static void cup_make(int rounds) {
         if (d >= 0.5f && !wrench) x[n++] = 'L';
         if (d >= 0.6f && !wrench) x[n++] = 'S';
         if (d >= 1.0f) x[n++] = 'B', x[n++] = wrench ? 'R' : 'J';
+        const int md = cup[r].mode;
+        if (md == M_GUESTS) {  /* (other planets': Gaspar's, Pokitaru's, Gemlik's, and Drek's troopers once harder) */
+            n = 0;
+            x[n++] = 'R', x[n++] = 'W', x[n++] = 'A', x[n++] = 'W';
+            if (d >= 0.3f) x[n++] = 'Y', x[n++] = 'A';
+            if (d >= 0.6f) x[n++] = 'K', x[n++] = 'K';
+        }
+        if (md == M_TURRETS && n < 14) x[n++] = 'T';  /* (hazards: Umbris's turrets on the towers) */
+        if (md == M_GARDEN && n < 13) x[n++] = 'P', x[n++] = 'W';  /* (Orxon's plants, Gaspar's walkers) */
+        if (md == M_BUMP) {  /* (walkers to ram, bomb bots to dodge) */
+            n = 0;
+            x[n++] = 'R', x[n++] = 'R', x[n++] = 'W', x[n++] = 'A', x[n++] = 'B';
+        }
         x[n] = 0;
         wave_def* w = &cup[r].w;
         w->count = (int)((8.0f + 14.0f * d) * (wrench ? 0.7f : 1.0f));
         w->at_once = (int)(5.0f + 9.0f * d);
         w->every = (int)fmaxf(8.0f, 40.0f - 24.0f * d);
+        if (md == M_HORDE) {  /* (more, more at once, faster) */
+            w->count = (int)((float)w->count * 2.5f);
+            w->at_once = (int)fminf(60.0f, (float)w->at_once * 2.5f);
+            w->every = (int)fmaxf(5.0f, (float)w->every * 0.5f);
+        }
+        cup[r].target = 0;
+        if (md == M_ZONE || md == M_BUMP) {  /* (without end: the goal is the zone's bar, the rammed) */
+            cup[r].target = (int)(15.0f + 20.0f * d);
+            w->count = 9999;
+            w->at_once = (int)(8.0f + 8.0f * d);
+        }
         w->mix = x;
     }
     char msg[160];
@@ -1123,11 +1162,14 @@ static void cup_make(int rounds) {
 /* a wave's rules: the challenge's, or its round's mode in a championship */
 static rules rules_of(int ch, int wave) {
     const challenge_def* c = &CHALLENGES[ch];
-    rules r = {c->weapons, c->bombs, c->vents, 0};
+    rules r = {c->weapons, c->bombs, c->vents, 0, c->kind == ZONE ? OBJ_ZONE : c->kind == BUMP ? OBJ_BUMP : OBJ_KILL};
     if (c->kind != CUP) return r;
     r.weapons = W_ANY;
     r.bombs = r.vents = 0;
+    r.obj = OBJ_KILL;
     switch (cup[wave].mode) {
+    case M_ZONE: r.obj = OBJ_ZONE; r.time = 120; break;  /* (the bar full within 2 minutes) */
+    case M_BUMP: r.obj = OBJ_BUMP; r.time = 90; break;   /* (so many rammed within 90 s) */
     case M_WRENCH: r.weapons = W_WRENCH; break;
     case M_ROULETTE: r.weapons = W_ROULETTE; break;
     case M_CHAOS: r.weapons = W_CHAOS; break;
@@ -1168,13 +1210,13 @@ static void escape_prepare(int ch);
 static void hazards_place(const char* mix);
 
 static void bump_start(void);
-static void bump_update(const float h[3]);
+static int bump_update(const float h[3], int target);
 static void bump_end(void);
 static void kaiju_start(void);
 static void kaiju_update(void);
 static void kaiju_end(void);
 static void zone_start(void);
-static void zone_update(const float h[3]);
+static int zone_update(const float h[3], float target);
 static void zone_end(void);
 
 static void wave_start(void) {
@@ -1190,10 +1232,10 @@ static void wave_start(void) {
         else if (s.rule.weapons == W_ROULETTE) weapon_pick();
     }
     play(s.snd_wave);
-    if (cur_wave()->count >= 100 && CHALLENGES[s.ch].kind != BUMP) toast(tr("INVASIONE TOTALE!"));  /* (Assalto Finale's last) */
-    if (CHALLENGES[s.ch].kind == BUMP) bump_start();
+    if (cur_wave()->count >= 100 && cur_wave()->count < 9999) toast(tr("INVASIONE TOTALE!"));  /* (Assalto Finale's last) */
+    if (s.rule.obj == OBJ_BUMP) bump_start();  /* (Autoscontro; a championship's round of its) */
     if (CHALLENGES[s.ch].kind == KAIJU) kaiju_start();
-    if (CHALLENGES[s.ch].kind == ZONE) zone_start();
+    if (s.rule.obj == OBJ_ZONE) zone_start();
     if (CHALLENGES[s.ch].kind == RAIL) rail_go();  /* (the countdown's end: the rails on; not the last wave's start) */
 }
 
@@ -1202,7 +1244,22 @@ static int session(void) {
     return RAC1_API_HAS(api, session_on) && api->session_on();
 }
 
+/* the challenges' music ("Arena Fight": level.txt's music_track fight, ABI 19): on through the worlds' sections and the soft
+   resets; the level's own again once the challenge is over and Ratchet back in the arena */
+static int music_back;
+
+static void fight_music(int on) {
+    if (api->abi < 19) return;
+    if (on) {
+        api->music_track("fight", 60);
+        music_back = 0;
+    } else {
+        music_back = 1;  /* (frame: once in main) */
+    }
+}
+
 static void challenge_start(int ch) {
+    fight_music(1);
     s.ch = ch;
     s.wave = 0;
     s.clock = 0;
@@ -1253,14 +1310,15 @@ static void save_update(void) {
 }
 
 static void challenge_end(int won, const char* why) {
+    fight_music(0);
     enemies_clear();
     guests_sync(NULL);  /* (other planets' classes released) */
     bombs_clear();
     if (CHALLENGES[s.ch].kind == RAIL || CHALLENGES[s.ch].escape != NULL) rail_stop();
     board_off();     /* (a board world's: Ratchet himself again) */
-    if (CHALLENGES[s.ch].kind == BUMP) bump_end();
+    if (s.rule.obj == OBJ_BUMP) bump_end();
     if (CHALLENGES[s.ch].kind == KAIJU) kaiju_end();
-    if (CHALLENGES[s.ch].kind == ZONE) zone_end();
+    if (s.rule.obj == OBJ_ZONE) zone_end();
     portal_reset();  /* (a section's challenge: its spawn points no longer the next's; the result takes him back) */
     const rules none = {W_ANY, 0, 0, 0};
     rules_set(none);
@@ -2144,6 +2202,7 @@ static struct {
     uint32_t wbase[N_WMOBYS];  /* Kalebo III's rail mines the plugin started in a world (base_spawn handles) */
     int nwbase;
     int going_home;      /* the last world's portal: back to the arena, the waves going on (escape_after) */
+    int hp_in;           /* his health as he came into the world (Kalebo III's rail: given back a point every RAIL_HEAL) */
 } rails;
 
 /* the game has the rail services (ABI 11) */
@@ -2622,13 +2681,61 @@ static void portal_go(void) {
 /* the flash's white held: the switch (no fade of its own) */
 static void board_off(void);
 
+/* ---- the way back: from any world to the arena, through a portal's ring onto the rail ritorno (from high outside the
+   north-west corner down to over the hub's top), grinding; Ratchet flies off its end into the arena's middle ---- */
+#define HOME_ENTRY "rientro"   /* main's entry at the rail's start */
+static int home_ride;          /* 1: the switch asked, 2: on the rail, 0 none */
+static int home_t;             /* frames on it */
+
+/* the switch to main at the way back's start (fade frames; 0: in a white flash already) */
+static int go_home(int32_t fade) {
+    home_ride = api->section_enter("main", HOME_ENTRY, fade) ? 1 : 0;
+    if (!home_ride) return api->section_enter("main", MAIN_ENTRY, fade);  /* (an older build of the level: no such entry) */
+    return 1;
+}
+
+/* the way back's rail and its ring shown and in the game's search (on) or not */
+static void home_rail(int on) {
+    const int32_t r = api->rail_find("ritorno");
+    if (r != 0) api->rail_enable(r, on);
+    rail_show("ritorno", on);
+    rail_strips("ritorno", on);
+    const uint32_t ring = api->object_named("portal_ritorno");
+    if (ring != 0) api->object_show(ring, on);
+}
+
+/* back in main from a world: on the rail (the Grind Boots needed: else on the arena's floor, south of the hub) */
+static void home_arrive(void) {
+    home_rail(1);
+    const int32_t r = api->rail_find("ritorno");
+    if (r != 0 && api->hero_rail_attach(r, 0.0f, 1)) {
+        home_ride = 2;
+        home_t = 0;
+        return;
+    }
+    home_ride = 0;
+    home_rail(0);
+    const float at[3] = {s.centre[0], s.centre[1] - 20.0f, nav.floor_z + 0.5f};
+    hero_move(at, 1.5708f);
+}
+
+/* riding it: off it (its end flown off, landed), the rail and its ring away */
+static void home_update(void) {
+    if (home_ride == 2 && home_t < 3) rail_strips("ritorno", 1);  /* (again once main's objects are in play: the switch's
+                                                                     callback came before) */
+    if (home_ride == 2 && ++home_t > 30 && !on_rail() && s.placed == 0) {
+        home_ride = 0;
+        home_rail(0);
+    }
+}
+
 static void portal_switch(void) {
     if (rails.sec_asked || api->fade_active() != 2) return;
     rails.sec_asked = 1;
     board_off();  /* (the world left: its board and its foes with it) */
     enemies_clear();
     if (rails.going_home) {  /* (the last world's portal: the arena again, where the waves go on) */
-        if (!api->section_enter("main", MAIN_ENTRY, 0)) challenge_end(0, "nessun portale");
+        if (!go_home(0)) challenge_end(0, "nessun portale");
         api->log("the portal: back into the arena");
         return;
     }
@@ -2689,6 +2796,7 @@ static void section_entered(void* user, const char* name, const char* entry) {
     s.have_last = 0;
     if (strcmp(name, "main") == 0) {
         rails_all_off();
+        if (home_ride == 1) home_arrive();  /* (the way back: on its rail) */
         if (rails.going_home && s.mode == FIGHT) {  /* (back from the worlds: no lava, the next wave after a break) */
             rails.going_home = 0;
             rails.phase = 0;
@@ -2715,6 +2823,7 @@ static void section_entered(void* user, const char* name, const char* entry) {
         return;
     const struct chain_def* d = chain_of(name);
     rails.stage_step = rails.stage_t = rails.rail_done = rails.rammed = 0;
+    rails.hp_in = (int)api->health();
     char rn[40];
     snprintf(rn, sizeof rn, "%s_in", name);  /* (its rail of ours: Ratchet goes on grinding on it) */
     rails.stage_rail = api->rail_find(rn);
@@ -2852,8 +2961,8 @@ static void bump_start(void) {
 }
 
 /* riding: the enemies the board touches knocked down; a ring ridden through: time; the target felled wins, the time out loses */
-static void bump_update(const float h[3]) {
-    const challenge_def* c = &CHALLENGES[s.ch];
+/* returns 1 once `target` are felled in the round */
+static int bump_update(const float h[3], int target) {
     uint32_t m[8];
     const int n = rails.board != 0 ? api->board_touching(m, 8) : 0;
     for (int k = 0; k < n; ++k)
@@ -2868,23 +2977,19 @@ static void bump_update(const float h[3]) {
         const float dz = h[2] - nav.floor_z;
         if (dx * dx + dy * dy < 2.6f * 2.6f && dz > -1.0f && dz < 3.5f) {
             bump.bonus += BUMP_BONUS;
+            s.round_clock -= BUMP_BONUS;  /* (a championship's round: its time too) */
             play(s.snd_wave);
             toast(tr("+5 secondi"));
             bump_ring_move(i);
         }
     }
-    if (s.felled >= c->target) {
-        challenge_end(1, NULL);
-        return;
-    }
-    if (s.clock >= c->time * 60 + bump.bonus) challenge_end(0, "tempo scaduto");
+    return s.killed >= target;
 }
 
 /* ---- Clank Gigante (KAIJU): Ratchet as Quartu's Giant Clank in the arena; the plugin's hits: under his feet, before his fists ---- */
 #define GIANT_CLASS "15:419"
 #define GIANT_FEET 3.5f    /* the enemies this near his middle (across) are crushed */
 #define GIANT_FIST 9.0f    /* punching: the enemies this near before him (within 60 degrees) knocked down */
-#define GIANT_LET 4        /* one hit in this many of the enemies' reaches him (the others taken away) */
 static uint32_t giant_m;   /* his object (import_spawn's) */
 
 static void kaiju_start(void) {
@@ -2893,6 +2998,7 @@ static void kaiju_start(void) {
     const int32_t c = RAC1_API_HAS(api, import_load) ? api->import_load(GIANT_CLASS) : -1;
     giant_m = c >= 0 ? api->import_spawn(c, h, rac1_lwf(api, api->hero() + 0x48)) : 0;
     const int on = giant_m != 0 && api->hero_build(15) && api->hero_mode(RAC1_HERO_GIANT_CLANK, giant_m);
+    if (on && RAC1_API_HAS(api, hero_energy)) api->hero_energy(RAC1_GIANT_ENERGY_MAX);  /* (full) */
     toast(tr("Schiacciali coi piedi e coi pugni!"));
     char b[64];
     snprintf(b, sizeof b, "clank gigante: %s", on ? "on" : "NOT on");
@@ -2906,13 +3012,6 @@ static void kaiju_update(void) {
     float g[3];
     pos_of(giant_m, g);
     const float yaw = rac1_lwf(api, giant_m + 0x48), fx = cosf(yaw), fy = sinf(yaw);
-    {  /* (the enemies' hits on him, most of them taken away: forty at once drained him in fourteen seconds) */
-        rac1_hit hit = {sizeof hit};
-        static int k;
-        while (api->hit_take(giant_m, 0xffffffffu, &hit))
-            if (++k % GIANT_LET != 0) continue;  /* (one in GIANT_LET left to him: sent back) */
-            else api->hit_send(giant_m, hit.kinds, hit.strength, hit.from);
-    }
     const uint32_t st = rac1_lw(api, HERO_STATE);
     const int punching = st >= 0x5d && st <= 0x61;
     for (int i = 0; i < s.nen; ++i) {
@@ -2933,7 +3032,15 @@ static void kaiju_update(void) {
 }
 
 static void kaiju_end(void) {
-    if (RAC1_API_HAS(api, hero_mode) && api->hero_mode_now() == RAC1_HERO_GIANT_CLANK) api->hero_mode(RAC1_HERO_NONE, 0);
+    const int was = RAC1_API_HAS(api, hero_mode) && api->hero_mode_now() == RAC1_HERO_GIANT_CLANK;
+    if (was) api->hero_mode(RAC1_HERO_NONE, 0);
+    float h[3];
+    pos_of(api->hero(), h);
+    if (was && (fabsf(h[0] - s.centre[0]) > 46.0f || fabsf(h[1] - s.centre[1]) > 46.0f || h[2] < nav.floor_z - 0.5f)) {
+        const float at[3] = {s.centre[0], s.centre[1] - 16.0f, nav.floor_z + 0.5f};  /* (himself again where the giant stood: out
+                                                                                       in the lava lake, say - back in the arena) */
+        hero_move(at, 1.5708f);
+    }
     if (giant_m != 0 && (int8_t)rac1_lb(api, giant_m + 0x20) >= 0) api->moby_remove(giant_m);
     giant_m = 0;
     api->hero_build(RAC1_HERO_BUILD_GENERIC);
@@ -2953,7 +3060,7 @@ static struct {
     float p[3];
     int way;
     float fill;
-    int buzz;
+    int buzz, t;
 } zone;
 
 static void zone_start(void) {
@@ -2966,11 +3073,12 @@ static void zone_start(void) {
     toast(tr("Resta nel cerchio: la barra si riempie"));
 }
 
-static void zone_update(const float h[3]) {
-    const challenge_def* c = &CHALLENGES[s.ch];
+/* returns 1 once its bar is at `target` */
+static int zone_update(const float h[3], float target) {
     const float tx = s.centre[0] + ZONE_WAYS[zone.way][0], ty = s.centre[1] + ZONE_WAYS[zone.way][1];
     const float dx = tx - zone.p[0], dy = ty - zone.p[1], d = sqrtf(dx * dx + dy * dy);
-    const float step = ZONE_STEP * (1.0f + (float)s.clock / (float)(c->time * 60));  /* (faster as time goes) */
+    ++zone.t;
+    const float step = ZONE_STEP * (1.0f + (float)zone.t / 10800.0f);  /* (faster as time goes: twice in three minutes) */
     if (d < step) {
         zone.way = (zone.way + 1 + (int)(rnd() * 3.0f)) % N_ZONE_WAYS;  /* (the next way, now and then one skipped) */
         if (rnd() < 0.25f) toast(tr("Il cerchio si sposta!"));
@@ -2998,11 +3106,7 @@ static void zone_update(const float h[3]) {
             const float ex = r[0] - zone.p[0], ey = r[1] - zone.p[1];
             if (ex * ex + ey * ey < ZONE_R * ZONE_R && r[2] < zone.p[2] + 3.0f) api->hit_send(m, RAC1_HIT_ENEMY, 3.0f, api->hero());
         }
-    if (zone.fill >= (float)c->target) {
-        challenge_end(1, NULL);
-        return;
-    }
-    if (s.clock >= c->time * 60) challenge_end(0, "tempo scaduto");
+    return zone.fill >= target;
 }
 
 static void zone_end(void) {
@@ -3068,9 +3172,15 @@ static void stage_last_done(void) {
     api->log("the portal home: the flash");
 }
 
+#define RAIL_HEAL 600  /* frames: on Kalebo III's long rail (it hurts every fifty units or so, unless its fences are jumped)
+                          a health point given back, up to his health as he came in */
+
 static void stage_update(const float h[3]) {
     const struct chain_def* d = chain_of(rails.stage_name[rails.stage]);
     ++rails.stage_t;
+    if (strcmp(rails.stage_name[rails.stage], "kalebo") == 0 && rails.stage_t % RAIL_HEAL == 0 && api->health() > 0 &&
+        (int)api->health() < rails.hp_in)
+        api->sw(0x001415f8u, api->health() + 1);
     if (d != NULL && d->board) {
         if (rails.stage_step == 0) {  /* (down its rail: at its end, or off it, the board) */
             if (rails.rail_done || (!on_rail() && rails.stage_t > 90) || rails.stage_rail == 0) board_start(d, h);
@@ -3123,16 +3233,43 @@ static void fight_update(const float h[3]) {
     enemies_follow(h);
     guests_nudge();
     if (c->kind == BUMP) {
-        bump_update(h);
-        if (s.mode != FIGHT) return;
+        if (bump_update(h, c->target)) {
+            challenge_end(1, NULL);
+            return;
+        }
+        if (s.clock >= c->time * 60 + bump.bonus) {
+            challenge_end(0, "tempo scaduto");
+            return;
+        }
     }
     if (c->kind == KAIJU) {
         kaiju_update();
         if (s.mode != FIGHT) return;
     }
     if (c->kind == ZONE) {
-        zone_update(h);
-        if (s.mode != FIGHT) return;
+        if (zone_update(h, (float)c->target)) {
+            challenge_end(1, NULL);
+            return;
+        }
+        if (s.clock >= c->time * 60) {
+            challenge_end(0, "tempo scaduto");
+            return;
+        }
+    }
+    if (c->kind == CUP && s.rule.obj != OBJ_KILL) {  /* (a championship's round of Zona calda's, of Autoscontro's) */
+        const int done = s.rule.obj == OBJ_ZONE ? zone_update(h, 100.0f) : bump_update(h, cup[s.wave].target);
+        if (done) {
+            if (s.rule.obj == OBJ_ZONE) zone_end();
+            else bump_end();
+            enemies_clear();
+            if (++s.wave >= c->waves) {
+                challenge_end(1, NULL);
+                return;
+            }
+            s.mode = BREAK;
+            s.t = 0;
+            return;
+        }
     }
     if (s.rule.bombs > 0 && --s.bomb_wait <= 0) {
         bomb_drop(h);
@@ -3276,6 +3413,11 @@ static void frame(void* user) {
     supplies_update();
     zap_update(h);
     save_update();
+    home_update();
+    if (music_back && in_main() && home_ride != 1 && api->abi >= 19) {  /* (the arena's own music: back in it, not before) */
+        api->music_track(NULL, 60);
+        music_back = 0;
+    }
     ++s.t;
     switch (s.mode) {
     case FREE:
@@ -3374,6 +3516,7 @@ static void frame(void* user) {
                 hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", ch_title(s.ch));
                 hud_text_at(22, y + 28, left < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0, tr("Schiacciati %d/%d   %d:%02d"), s.felled, c->target,
                             (left > 0 ? left : 0) / 3600, (left > 0 ? left : 0) / 60 % 60);
+
             } else if (c->kind == BUMP) {
                 const int left = c->time * 60 + bump.bonus - s.clock;
                 hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s", ch_title(s.ch));
@@ -3398,10 +3541,18 @@ static void frame(void* user) {
             } else {
                 hud_text_at(22, y + 6, YELLOW, 1.2f, RAC1_HUD_LEFT, 0, "%s  %d/%d", ch_title(s.ch), s.wave + 1, c->waves);
                 const int timed = c->kind == TIMED || s.rule.time > 0;
-                const int t = c->kind == TIMED ? c->time * 60 - s.clock : s.rule.time > 0 ? s.rule.time * 60 - s.round_clock : s.clock;
-                hud_text_at(22, y + 28, timed && t < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0,
-                            timed ? tr("Nemici %d   restano %d:%02d") : tr("Nemici %d   %d:%02d"),
-                            s.mode == FIGHT ? cur_wave()->count - s.killed : 0, t / 3600, t / 60 % 60);
+                const int t0 = c->kind == TIMED ? c->time * 60 - s.clock : s.rule.time > 0 ? s.rule.time * 60 - s.round_clock : s.clock;
+                const int t = t0 > 0 ? t0 : 0;
+                if (s.mode == FIGHT && s.rule.obj == OBJ_ZONE)  /* (a championship's round of Zona calda's) */
+                    hud_text_at(22, y + 28, t < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0, tr("Zona %d/100   %d:%02d"), (int)zone.fill, t / 3600,
+                                t / 60 % 60);
+                else if (s.mode == FIGHT && s.rule.obj == OBJ_BUMP)  /* (of Autoscontro's) */
+                    hud_text_at(22, y + 28, t < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0, tr("Investiti %d/%d   %d:%02d"), s.killed,
+                                cup[s.wave].target, t / 3600, t / 60 % 60);
+                else
+                    hud_text_at(22, y + 28, timed && t < 600 ? RED : WHITE, 1.1f, RAC1_HUD_LEFT, 0,
+                                timed ? tr("Nemici %d   restano %d:%02d") : tr("Nemici %d   %d:%02d"),
+                                s.mode == FIGHT ? cur_wave()->count - s.killed : 0, t / 3600, t / 60 % 60);
             }
             hud_grow(box, first, 300);  /* (wider round long texts; smaller texts past 300) */
         }
@@ -3411,7 +3562,8 @@ static void frame(void* user) {
                                                                                                  wipe-out, a fall, the race's) */
         if (s.mode != RESULT && (api->health() <= 0 || (!boarding && s.have_last && jx * jx + jy * jy + jz * jz > 64.0f)))
             challenge_end(0, "Ratchet e' caduto");  /* (dead: his health gone, or back at his start - the lava, a fall) */
-        else if (s.mode != RESULT && s.t_pad >= 0 && api->trigger_inside(s.t_pad)) challenge_end(0, "abbandonata");
+        else if (s.mode != RESULT && CHALLENGES[s.ch].kind != KAIJU && s.t_pad >= 0 && api->trigger_inside(s.t_pad))
+            challenge_end(0, "abbandonata");
         break;
     case RESULT:
         if (s.won) {
@@ -3424,7 +3576,7 @@ static void frame(void* user) {
         } else {
             banner(RED, tr("SFIDA FALLITA"), s.why[0] ? s.why : NULL);
         }
-        if (s.t == RESULT_BACK && !in_main()) api->section_enter("main", MAIN_ENTRY, 20);  /* (beyond the portal: back) */
+        if (s.t == RESULT_BACK && !in_main()) go_home(20);  /* (beyond the portal: back, on the way back's rail) */
         if (s.t >= RESULT_FRAMES) {
             s.mode = FREE;
             s.t = 0;
@@ -3576,6 +3728,11 @@ static void level_start(void* user, const rac1_level_info* level) {
     rails.on = 0;  /* (the level's rails are all in the game's search again) */
     rails.phase = 0;
     rails.ring = 0;  /* (a world's ring: gone with the level's objects) */
+    home_ride = 0;
+    {
+        const uint32_t ring = api->object_named("portal_ritorno");  /* (the way back's ring: shown while it is ridden) */
+        if (ring != 0) api->object_show(ring, 0);
+    }
     rails.board = 0;
 
     rails_all_off();
@@ -3609,28 +3766,13 @@ static void level_start(void* user, const rac1_level_info* level) {
 static void respawn(void* user, const rac1_respawn* r) {
     (void)user, (void)r;
     if (!s.mine) return;
-    if (!getenv("ARENA_DOOM_KEEP")) {  /* (the Glove of Doom's agents (230) and theirs (186) the soft reset leaves in play, frozen
-                                           where he died: taken out, as a level's load would; with them in play his glove fired no
-                                           more and Daino's game crashed. ARENA_DOOM_KEEP: a test's, left) */
-        float h[3];
-        static uint32_t m[128];
-        pos_of(api->hero(), h);
-        static const int32_t AG[2] = {230, 186};
-        int n = 0;
-        for (int c = 0; c < 2; ++c) {
-            const int32_t k = api->mobys_near(h, 100000.0f, AG[c], m, 128);
-            for (int32_t i = 0; i < k; ++i, ++n) api->moby_remove(m[i]);
-        }
-        char b[64];
-        snprintf(b, sizeof b, "respawn: %d of the Glove of Doom's taken out", n);
-        api->log(b);
-    }
+    /* (the hero's spawns - the Glove of Doom's agents, mines, drones... - the session's soft reset takes out itself: ABI 18) */
     s.placed = 3;
     s.have_last = 0;
     if (s.mode == INTRO || s.mode == FIGHT || s.mode == BREAK) challenge_end(0, "Ratchet e' caduto");
     if (s.mode == RESULT && !in_main()) {  /* (dead in a world: back to the arena at once, not left in it to fall again; the world
                                                put back at its next entry: fresh) */
-        api->section_enter("main", MAIN_ENTRY, 15);
+        go_home(15);
         api->log("dead in a world: back to the arena");
     }
 }
@@ -4319,7 +4461,7 @@ static void test(void* user, const char* text, uint64_t frame) {
         if (frame % 30 == 0 && api->health() > 0 && api->health() < 4) api->sw(0x001415f8u, 4);
         if (frame == 100 && ch >= 0 && ch < N_CHALLENGES && CHALLENGES[ch].escape != NULL) api->sb(GRIND_BOOTS, 1);
         if (frame == 420 && ch >= 0 && ch < N_CHALLENGES) challenge_start(ch);
-        if (strchr(text + 8, 'z') != NULL && s.mode == FIGHT && CHALLENGES[s.ch].kind == ZONE && frame % 30 == 0) {
+        if (strchr(text + 8, 'z') != NULL && s.mode == FIGHT && s.rule.obj == OBJ_ZONE && frame % 30 == 0) {
             const float at[3] = {zone.p[0], zone.p[1], nav.floor_z + 0.5f};  /* (arena_ch<N>z: Ratchet kept in the zone) */
             hero_move(at, 1.5708f);
         }
@@ -4332,6 +4474,14 @@ static void test(void* user, const char* text, uint64_t frame) {
             char b[64];
             snprintf(b, sizeof b, "test: Ratchet put on the escape: %d", api->hero_rail_attach(rails.escape, 3.0f, 1));
             api->log(b);
+        }
+        static uint64_t kal_at;  /* (on Kalebo III's rail: put near its end after a minute - it neither jumps nor swings) */
+        if (rails.phase == 5 && rails.sec_in && strcmp(rails.stage_name[rails.stage], "kalebo") == 0 && kal_at == 0) kal_at = frame + 1800;
+        if (rails.phase != 5) kal_at = 0;
+        if (kal_at != 0 && frame == kal_at) {
+            const float at[3] = {332.7f, 205.6f, 132.4f};
+            hero_move(at, 3.1416f);
+            api->log("test: Ratchet put near the end of Kalebo III's rail");
         }
         static uint64_t bat2_at;  /* (on Batalia's rail: put past its tower, as arena_fuga does) */
         if (rails.phase == 5 && rails.sec_in && strcmp(rails.stage_name[rails.stage], "batalia") == 0 && bat2_at == 0) bat2_at = frame + 60;

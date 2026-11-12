@@ -465,6 +465,8 @@ void level_slots_header_read(int32_t level) {
             const std::string b = level_slot_build_dir(slot);
             std::vector<std::string> files = {b + "/data.wad", b + "/gameplay.bin"};
             if (m != nullptr) files.insert(files.end(), m->level_music_files.begin(), m->level_music_files.end());
+            if (m != nullptr)  // (its music_track lines' files after them: level_music_track_words)
+                for (const ModInfo::LevelTrack& t : m->level_tracks) files.insert(files.end(), t.files.begin(), t.files.end());
             if (m == nullptr || !disc_level_window_set(slot, files) || !disc_level_window_ranges(slot, dl, dn, gl, gn)) {
                 std::fprintf(stderr, "[levels] level slot %d's build cannot be read: level %d is the game's\n", slot, level);
                 g_s.pending = -1;
@@ -1027,6 +1029,28 @@ void level_music_words_get(uint32_t w[15]) {
 // orig: (none) — enhancement: see level_slots.h
 void level_music_words_put(const uint32_t w[15]) {
     for (uint32_t i = 0; i < 15; ++i) sw(HEADER + 0x148 + i * 4, w[i]);
+}
+// orig: (none) — enhancement: see level_slots.h
+bool level_music_track_words(const char* name, uint32_t w[15]) {
+    const int slot = level_slot_current();
+    const ModInfo* m = slot_mod(slot);
+    if (m == nullptr || name == nullptr) return false;
+    size_t file = 2 + m->level_music_files.size();  // (the window's files: data.wad, gameplay.bin, the music's, the tracks')
+    for (const ModInfo::LevelTrack& t : m->level_tracks) {
+        if (t.name != name) {
+            file += t.files.size();
+            continue;
+        }
+        uint32_t lba = 0, n = 0;
+        std::memset(w, 0, 15 * 4);
+        for (size_t i = 0; i < t.files.size() && i < 2; ++i) {
+            if (!disc_level_window_file(slot, file + i, lba, n)) return false;
+            w[i] = lba;
+        }
+        if (t.files.size() == 1) w[1] = w[0];  // (no intro: the loop twice, as music_set)
+        return true;
+    }
+    return false;
 }
 // orig: (none) — enhancement: see level_slots.h
 bool level_music_words_of(int level, uint32_t w[15]) {

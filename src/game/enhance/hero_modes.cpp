@@ -188,6 +188,78 @@ uint32_t seq_place(const std::vector<uint8_t>& b) {
     return at;
 }
 
+// --- the sequences Ratchet plays as a mode's rider ---
+// Clank's and Giant Clank's riders: Ratchet's own moby sits on the mode's object (its chain point 5) and plays his sequence 0x81
+// (hero_rider_attach, every frame). Every level's Ratchet class has it but Kalebo III's (a hero class made for a base that never
+// rides): on a Kalebo III base the slot is empty, the animation set every frame is none, and Ratchet on Giant Clank's shoulder
+// is a glitching, flickering heap (anim 129, frame 255). Filled from the donors' cores (the hero context's level's, else
+// Veldin's) as the hero's other empty slots are, here at the mode's start and waiting for the worker's read (the first frame
+// of the mode needs it)
+constexpr uint32_t RIDER_SEQ = 0x81;
+
+// the Ratchet class's slot `set` filled from the donors when it is empty; `wait`: the worker's read waited for. True when the slot
+// has a sequence after it
+bool hero_seq_fill(uint32_t cls, uint32_t set, bool wait) {
+    if (cls == 0 || set > 255 || set >= lbu(cls + 0xc)) return true;
+    const uint32_t slot = cls + 0x48 + 4 * set;
+    if (lwu(slot) != 0) return true;
+    const int donors[2] = {g_hero_level >= 0 ? g_hero_level : -1, 0};
+    for (const int d : donors) {
+        if (d < 0) continue;
+        donor_ask(d);
+        const Seqs* s = donor_seqs(d);
+        if (s == nullptr && wait) {
+            g_donors[d].fut.wait();
+            s = donor_seqs(d);
+        }
+        if (s == nullptr) continue;
+        const auto it = s->find(static_cast<int>(set));
+        if (it == s->end()) continue;
+        const uint32_t at = seq_place(it->second);
+        if (at == 0) {
+            if (g_missing_logged.insert(set | 0x1000u).second) std::printf("[hero] sequence %u: no room left for it\n", set);
+            return false;
+        }
+        sw(slot, at);
+        g_filled[slot] = set;
+        std::printf("[hero] the hero's sequence %u (empty in his class) from level %d's core: %zu bytes at %08x\n", set, d, it->second.size(), at);
+        return true;
+    }
+    return false;
+}
+
+// --- the classes a mode's hero code spawns ---
+// The game's hero code spawns objects of its own planet's classes while he is in a mode, for the mode, not the mode's object: Giant
+// Clank's missiles (state 0x5f, `spawn_projectile_100`: Quartu's class 256), his energy bomb (state 0x61, `place_moby_5f3`: class
+// 1523, a class of code alone) and the light shaft of his jump (state 0x5e, `spawn_moby_593`: class 1427). On Quartu they are among
+// the level's classes; a session's base has none of them (a class the engine spawns for the mode's object is in the pool's closure
+// of it, these are not: nothing in class 419's code or its engine spawns names them), and `moby_spawn` refused each: the rockets
+// and the bomb were never seen and hurt nothing. Imported (with their own closure) when the mode is entered, taken out when it
+// is left, unless the session had them already (a level.txt's `import`, the plugin's own)
+struct ModeClass {
+    int level;
+    uint32_t cls;
+};
+constexpr ModeClass GIANT_CLASSES[] = {{15, 256}, {15, 1523}, {15, 1427}};
+std::vector<ModeClass> g_mode_loaded;  // (the ones the mode brought: its exit takes them out)
+
+void mode_classes_load(int32_t mode) {
+    if (mode != HERO_MODE_GIANT_CLANK) return;
+    for (const ModeClass& c : GIANT_CLASSES) {
+        if (session_import_id(c.level, c.cls) >= 0) continue;  // (there already: not ours to take out)
+        const int32_t id = session_import_load(c.level, c.cls, "hero mode");
+        if (id >= 0) g_mode_loaded.push_back(c);
+        std::printf("[hero] Giant Clank's class %d:%u (%s) %s\n", c.level, c.cls, c.cls == 256 ? "his missiles" : c.cls == 1523 ? "his energy bomb" : "the jump's light shaft",
+                    id >= 0 ? ("imported as class " + std::to_string(id)).c_str() : "could not be imported");
+    }
+}
+
+void mode_classes_release() {
+    for (const ModeClass& c : g_mode_loaded) session_import_unload(c.level, c.cls);
+    if (!g_mode_loaded.empty()) std::printf("[hero] the mode's %zu classes taken out\n", g_mode_loaded.size());
+    g_mode_loaded.clear();
+}
+
 // --- the camera types: the session's type table (0x1ea880: rows of an id and its accept / init / update / exit functions, up
 // to the id -1) copied into the session heap with the rows of the hero context's level whose functions are its own code (its
 // camera types 3 and 8 on Kalebo III, 0x13 and 0x16 on Quartu...) taken from that level's table (its context image: the
@@ -429,6 +501,7 @@ bool hero_mode_set(int32_t mode, uint32_t moby, const char* why) {
         } else {
             hero_mode_exit();  // (the game's: his own moby back at the mode's object's place, state 0; form 1's health given back)
         }
+        mode_classes_release();
         std::printf("[hero] mode %d left (%s): Ratchet at %.2f %.2f %.2f, state %#x, health %d\n", static_cast<int>(now), why, lwc1(lwu(HERO) + 0x10),
                     lwc1(lwu(HERO) + 0x14), lwc1(lwu(HERO) + 0x18), lwu(STATE), lw(HEALTH));
         return true;
@@ -438,13 +511,31 @@ bool hero_mode_set(int32_t mode, uint32_t moby, const char* why) {
     if (moby == 0 || static_cast<int8_t>(lbu(moby + 0x20)) < 0) return refuse("no such object");
     const double t0 = now_ms();
     if (mode == HERO_MODE_CLANK || mode == HERO_MODE_GIANT_CLANK) {
+        // (Ratchet rides it: his own class's sequence for that, empty on a Kalebo III base's)
+        if (g_hero_seq_on && !g_seq_off()) hero_seq_fill(hero_class(), RIDER_SEQ, true);
+        mode_classes_load(mode);
         // (the game's own: the object becomes the hero's moby, the form byte set, the form's idle state; level_setup's
         // start in a vehicle: 1 Clank, 2 Giant Clank)
         hero_mode_enter(static_cast<uint32_t>(mode), mode == HERO_MODE_CLANK ? 0x43u : 0x5au, moby);
         // Veldin's hero_mode_enter starts Giant Clank's energy at 200 (form 2), and Quartu's has no enter of its own: but on a Kalebo III
         // base the dispatch takes Kalebo III's (`on_kalebo()`, true whatever the hero context), which has no Giant Clank: the energy
         // stayed 0 and, with the frame's check `energy > 0` failing, Giant Clank fell (state 0x62: a death) ten seconds after the start
-        if (mode == HERO_MODE_GIANT_CLANK) sw(ENERGY, static_cast<uint32_t>(GIANT_ENERGY_MAX));
+        if (mode == HERO_MODE_GIANT_CLANK) {
+            sw(ENERGY, static_cast<uint32_t>(GIANT_ENERGY_MAX));
+            // Giant Clank's body (the capsule the hero's collision is: top +0x220, the lower sphere's centre +0x224, its radius +0x234) is Ratchet's
+            // at the mode's start and grows to the form's (5.25, 4.44, 3.75: the targets +0x228, +0x22c, +0x230 the gait update has set) in about
+            // two seconds, as it does on Quartu. The game's easing stops while a contact is near his feet, and the capsule's lower sphere, growing
+            // faster than the sphere's centre rises, dips under his feet: entered in the air or just after a landing, the contact was there from
+            // the first frame and the body stayed Ratchet's size plus a part, 1.6 units off the ground in the fall state for ever (the
+            // ground test wants his feet on it): the body given at once when the hero is not standing still on the ground
+            if (lh(P + 0x30e) != 0 || lbu(P + 0x257) != 0) {
+                hero_gait_update();  // (the targets of the form in his new state: the enter's own were the falling Ratchet's, a bottom of 0.5)
+                sw(P + 0x220, lwu(P + 0x228));
+                sw(P + 0x224, lwu(P + 0x22c));
+                sw(P + 0x234, lwu(P + 0x230));
+                sw(P + 0x238, 0);
+            }
+        }
     } else if (mode == HERO_MODE_BOARD) {
         if (!board_build()) return refuse("the hero code has no board state: a hero context of level 16 or 5 first");
         // the board's mount (what its own update does in its state 0 once Ratchet is near: dev_menu.cpp's)
@@ -608,6 +699,7 @@ void hero_modes_level(bool level_mod, bool session, int base) {
     g_board_rule = HERO_BOARD_AUTO;
     g_board_fall_set = g_board_ret_set = g_board_on_set = g_board_was = false;
     g_snd_done = false;
+    g_mode_loaded.clear();  // (the session's imports went with the level)
 }
 
 // orig: (host) see hero_modes.h
@@ -636,6 +728,8 @@ void hero_modes_frame(uint64_t frame) {
     }
     if (g_hero_seq_on && !g_snd_done && lw(OV(0x0015f5c4)) == 0) hero_sounds_fill();  // (a level mod's level in play: the hero's sounds)
     if (g_hero_seq_on && !g_seq_off()) {
+        // (a mode's rider: Ratchet's sequence 0x81 filled, as at the mode's start, if a level change or a reset emptied it)
+        if (const int32_t md = hero_mode_now(); md == HERO_MODE_CLANK || md == HERO_MODE_GIANT_CLANK) hero_seq_fill(hero_class(), RIDER_SEQ, true);
         // a level mod of format 1 / 2 on a base whose core lacks hero sequences (every level's but Veldin's): Veldin's core read on
         // the worker the first time Ratchet is on a Magneboots surface (his magnetic walk's sequence may be empty; read at the
         // level's start, the read slowed the level's load: the arena's regression runs changed)
@@ -708,6 +802,19 @@ void hero_modes_frame(uint64_t frame) {
                 static_cast<unsigned long long>(frame), lwu(STATE), lwu(SUB), lbu(FORM), lwc1(hm + 0x10), lwc1(hm + 0x14), lwc1(hm + 0x18), lwc1(P + 0x160),
                 lbu(hm + 0x53), lbu(hm + 0x51), lwu(BOARD_RIDDEN), g_hero_level, lwc1(OV(0x00166dc0)), lwc1(OV(0x00166dc4)), lwc1(OV(0x00166dc8)),
                 cam != 0 ? lh(cam + 0x86) : -1);
+    // (testing: RAC1_HERO_DETAIL=1: and his body and Ratchet's own moby: the capsule (+0x220 top and +0x224 bottom of its lower sphere over his feet,
+    // radius +0x234, with the targets the gait update eases them to), the contact that blocked its growth, the air counter +0x30e and the height over the
+    // ground +0x2dc, the velocity; Ratchet's own moby: his flags +0x34, state, animation and its sequence slot 0x81 (the rider's), place)
+    static const bool detail = std::getenv("RAC1_HERO_DETAIL") != nullptr;
+    if (!detail) return;
+    const uint32_t own = lwu(OWN);
+    std::printf("[hero]   capsule top %.2f bottom %.2f radius %.2f (targets %.2f %.2f %.2f), contact %.2f %.2f %.2f flag %u, ground %.2f, air %d over %.2f, vel %.2f %.2f %.2f, energy %d\n",
+                lwc1(P + 0x220), lwc1(P + 0x224), lwc1(P + 0x234), lwc1(P + 0x228), lwc1(P + 0x22c), lwc1(P + 0x230), lwc1(P + 0x210), lwc1(P + 0x214), lwc1(P + 0x218),
+                lbu(P + 0x257), lwc1(P + 0x2d8), lh(P + 0x30e), lwc1(P + 0x2dc), lwc1(P + 0xe0), lwc1(P + 0xe4), lwc1(P + 0xe8), lw(ENERGY));
+    std::printf("[hero]   Ratchet's own moby %08x%s flags %04x state %d anim %u frame %u (slot 0x81: %08x) at %.2f %.2f %.2f\n", own, own == hm ? " (the hero's)" : "",
+                own != 0 ? lhu(own + 0x34) : 0u, own != 0 ? static_cast<int8_t>(lbu(own + 0x20)) : 0, own != 0 ? lbu(own + 0x53) : 0u, own != 0 ? lbu(own + 0x51) : 0u,
+                own != 0 && lwu(own + 0x24) != 0 ? lwu(lwu(own + 0x24) + 0x48 + 4 * RIDER_SEQ) : 0u, own != 0 ? lwc1(own + 0x10) : 0.0f, own != 0 ? lwc1(own + 0x14) : 0.0f,
+                own != 0 ? lwc1(own + 0x18) : 0.0f);
 }
 
 // orig: (host) see hero_modes.h

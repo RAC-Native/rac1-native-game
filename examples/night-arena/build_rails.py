@@ -59,6 +59,11 @@ ESCAPE = [(5.0, 0.0, 3.6), (-4.0, 0.0, 3.8), (-14.0, -1.0, 5.5), (-26.0, -4.0, 8
 ESCAPE_OBSTACLES = [(30, "mine"), (44, "kmine"), (58, "kmine"), (72, "mine"), (86, "kmine"), (100, "kmine"),
                     (114, "mine"), (128, "kmine"), (142, "kmine")]  # (along it; mine_e<n>, spawn_kmine_e<n>)
 PORTAL_BACK = 6.0  # the portal's ring on the escape, this far before its end (the plugin's switch as he goes through)
+# the way back (rail_ritorno): from a portal's ring high outside the north wall (clear of the corners' floodlight masts and
+# of the course's lanes), over the wall and down into the arena's middle, its end over the hub's top (Ratchet flies off it
+# there); a portal from any world brings him onto it, grinding (the plugin's hero_rail_attach at main's entry rientro, its start)
+RITORNO = [(-16.0, 66.0, 20.0), (-12.0, 56.0, 17.5), (-8.5, 46.0, 14.5), (-6.0, 34.0, 11.0), (-4.0, 22.0, 8.5), (-2.0, 12.0, 6.5),
+           (-1.0, 4.0, 5.2)]
 
 
 def remove(name):
@@ -179,7 +184,8 @@ def main():
     ccol = bpy.data.collections["arena_collision"]
     cmark = bpy.data.collections["arena_markers"]
     clig = bpy.data.collections["arena_lights"]
-    for n in ("rail_station", "col_rail_station", "spawn_rail_start", "spawn_rail_course", "light_rail_station", "rail_test"):
+    for n in ("rail_station", "col_rail_station", "spawn_rail_start", "spawn_rail_course", "light_rail_station", "rail_test",
+              "rail_ritorno"):
         remove(n)
     for ob in list(cmark.objects):
         if ob.name.startswith(("mine_", "barrier_", "drone_", "spawn_kmine_", "portal_")):
@@ -205,6 +211,11 @@ def main():
     print("rails: the course, %.0f units; its lanes' starts %.1f..%.1f from the spot; %d obstacles" % (
         total, min(math.dist(p, SPOT) for p in starts), max(math.dist(p, SPOT) for p in starts), len(OBSTACLES)))
     print("rails: the escape, %.0f units, %d obstacles, the portal %s before its end" % (escape(crail, cmark), len(ESCAPE_OBSTACLES), PORTAL_BACK))
+    rail_curve(crail, "rail_ritorno", RITORNO)
+    d0 = Vector(RITORNO[1]) - Vector(RITORNO[0])
+    B["empty"](cmark, "portal_ritorno", (RITORNO[0][0], RITORNO[0][1], RITORNO[0][2] + 0.9), "CIRCLE", 3.0,
+               yaw=math.degrees(math.atan2(d0.y, d0.x)))
+    print("rails: the way back, %d points" % len(RITORNO))
 
 
 main()

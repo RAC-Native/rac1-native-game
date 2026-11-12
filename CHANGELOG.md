@@ -5,6 +5,32 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **One mod example: Daino's Arena.** The small example level (`examples/custom-level`: its script, its plugin, its README) is
+  removed; Daino's Arena (`examples/night-arena`) is the SDK's example, and the docs (Mods, Custom levels: code, the SDK, the
+  environment variables) are written around it. Its music "Overworld" by Daino Selvatico (CC BY 4.0) moved with it to
+  `examples/night-arena/music/overworld.ogg`. No game code changed; mods already composed need no recompose.
+
+- **Level mods: more music, kept through sections and deaths (SDK ABI 19).** level.txt's `music_track <name> <loop> [<intro>]`
+  lines (as many as wanted, the `music` line's formats: WAV, Ogg Vorbis or VAG, stereo, an intro then its loop) and the
+  plugin's `music_track(name, fade_frames)`: the track instead of the level's music, a fade out first; while it plays a
+  section switch does not put the section's music on and a death (a soft reset) does not restart it. `music_track(NULL, ...)`
+  brings back the level's music (the current section's), and leaving the level ends it; `music_track_now()` says which plays.
+  The composed output of existing mods is unchanged (no recompose needed); the original runs as before.
+
+- **Level mods: a plugin's Giant Clank works on a mod's own geometry** (rockets, energy bomb, walls, landings, Ratchet on his
+  shoulder). On the arena (a Kalebo III base) the plugin's Giant Clank walked over the 6-unit wall, hung in the fall state (0x5c) for
+  as long as the player watched, showed Ratchet on his shoulder as a flickering heap and had rockets and an energy bomb that
+  were never seen and hurt nothing. Four causes, none in Quartu's own code. A hero context (`hero_build(15)`) joined the
+  overlay's own hero build instead of replacing it, so the dispatch lines Quartu's build has no row for ran Kalebo III's
+  hoverboard motion, ground and slot code: the hero code of the context's level now runs alone; Kalebo III's Ratchet class has not
+  the sequence (0x81) Ratchet plays riding on a mode's object: filled from the donor core as the other missing sequences; the
+  missiles (`15:256`), the bomb's shock (`15:1523`) and the jump's light shaft (`15:1427`) are spawned by the hero's code, not
+  by class 419, and the base had none: imported with the mode (three class slots), taken out with it; and the body of Giant Clank
+  (his collision capsule, which grows from Ratchet's size in two seconds) stayed small and hovering when the mode was entered in
+  the air or just after a landing: given at once then. Switching the hero code in one section per challenge (the board, then
+  Giant Clank, then the board) works. A new test aid: `RAC1_HERO_DETAIL=1` with `RAC1_HERO_STATE=<n>` prints his capsule, contacts
+  and Ratchet's own moby. The original, the arena's Rilgar race and Kalebo world run frame for frame as before; mods need no
+  recompose (the composer's version stays 9), no new ABI.
 - **Level mods: a death no longer leaves the player's weapons behind, and a plugin's Giant Clank no longer dies by itself** (the mod
   SDK's ABI 18: `hero_energy`). The soft reset of a session left in play what Ratchet's weapons and equipment had spawned
   (the Glove of Doom's hand and agents, the Mine Glove's mines, the Drone Device's drones, the Decoy, the Taunter, the Visibomb,
@@ -27,6 +53,13 @@ What changed in each release. Releases are source only: you build the game with 
   spawn past the moby array and a frame whose mobys do not all fit are logged (`[mobys] the moby array is full`, `[render] the
   frame's packet buffer is full`). The limits (about 300 mobys alive in a session, about 100 drawn per frame) are in the SDK's Limits.
   Nothing changes for the original's levels; no recompose.
+- **Level mods: the base level's own planet as a section** (`world kalebo` on a mod whose base is Kalebo III). The composer
+  refused it ("level 16's world is the base level's"); the section now brings the planet back for a visit, its geometry,
+  collision, rails (its long rail), sky, music, zones and level data from your disc, with the mod's own put back at the return (the
+  arena can send Ratchet down Kalebo III's rail 1 and back). The planet's level data (its cameras, paths, volumes, rails) is a registry of
+  its own, which the base level's own objects, being the session's view, could not be. Put `hero kalebo` in the section when
+  main runs `hero generic`: the generic hero code does not ride the long rail to its end. Nothing changes for the original or for
+  a mod that does not use it; the composer's version stays 9 (no mod needs a recompose).
 - **Mods and 1.0, said up front (README, SDK docs).** The port supports mods, with Daino's Arena as the complete
   example; 1.0 (fully native, #145) replaces `api->ram` and the moby offsets with a typed API, and mods made before it
   will very likely break and need updating. See [the SDK](docs/sdk.md#the-games-memory).
