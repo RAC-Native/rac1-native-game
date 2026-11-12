@@ -565,7 +565,7 @@ def main():
         items.append((a, w, mn, ops, st, br))
     if o.veldin and not os.environ.get('MIPS2CPP_NO_HI_FLOW'):  # (the switch: to list what the pass changes in a file generated before it)
         # the overlay addresses whose `lui` half reaches the use on EVERY path (tools/codegen/hi_flow.py, a data-flow over the
-        # control flow, as asm2fn.py does): the text passes below only follow straight-line code and miss a page copied by
+        # control flow): the text passes below only follow straight-line code and miss a page copied by
         # a `move` into a register rewritten on other paths (the vendor's draw 0x2a02b0: `move s2,v0` after `lui v0,0x1d`,
         # its 0x1ca4c0 block read at Veldin's address on every other level)
         import hi_flow

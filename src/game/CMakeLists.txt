@@ -232,6 +232,8 @@ add_library(rac1_game STATIC
     ovl/taunter.cpp
     ovl/doom_glove.cpp
     ovl/doom_agent.cpp
+    ovl/doomlet.cpp
+    ovl/suck_cannon.cpp
     ovl/carry_hooks.cpp
     ovl/carry_hooks_levels.cpp
     ovl/novalis_hooks.cpp

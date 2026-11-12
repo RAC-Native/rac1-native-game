@@ -42,8 +42,8 @@
 // the 1.02 build's fixes that change how the game plays (the exploits stay possible with the row off), numbered as the
 // analysis's for RAC1_GAMEPLAY102:
 // - 4: the RYNO's targets from the target list 0x1aba00 (fixes102_ryno_targets, in place of ryno_2cc360 0x2cc360)
-// - 8: the Visibomb's steering ends in the hero state 0x32 too (visibomb_update 0x2b3058, visibomb_ball_update 0x2b6140;
-//   tools/codegen/asm2fn_specs/visibomb*.json "host_ntsc")
+// - 8: the Visibomb's steering ends in the hero state 0x32 too (visibomb_update 0x2b3058, visibomb_ball_update 0x2b6140:
+//   visibomb.cpp, visibomb_ball.cpp)
 // - 9: deadly ground (+0x12ea) for the Hologuise's states, the hoverboard's ride-off, quicksand in a vehicle mode
 //   (hero_input_update 0x229b70, hero_set_state 0x2223f8, hero_surface_update 0x20b960 and their levels' copies:
 //   the hand ports and tools/codegen/hooks.glue)
@@ -52,7 +52,7 @@
 // - 13: the Hologuise's use test (sub_0020fe30 0x20fe30), its countdown stopped by hero_place 0x216f90, the state a forced
 //   hero_set_state leaves it with
 // - 14: the Decoy Glove's decoy pushed off by Ratchet swimming into it (state 0x31 within 1.5: decoy_object_update
-//   0x2c4380; tools/codegen/asm2fn_specs/decoy_obj.json "host_ntsc")
+//   0x2c4380: decoy_obj.cpp)
 // - 21: Rilgar's moving water (class 831, L5:0x30ca80): its surface carries Ratchet swimming in it as it rises (his
 //   water height +0x2f0), and it holds still in the cutscenes (hooks.glue)
 // In the generated code each hook is a test that fails with the row off; on another region's disc the transliterated

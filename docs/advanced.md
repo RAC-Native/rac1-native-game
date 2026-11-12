@@ -451,7 +451,7 @@ Every hook is a call from a ported function into `advanced.cpp`, at the point wh
 | `run_jump`, `run_input`, `swing_input` (in 0x229b70) | `hero_transitions.cpp` | `advanced_rac3_running_jump`, `advanced_rac3_stop`, `advanced_strafe_flip`, `advanced_rac3_swing_exit` | the running jump's rule, the immediate stop, the strafe flip, running out of a swing |
 | `moby_skin_all` (0x2558e0) | `moby_skin.cpp` | `advanced_pose_hook` | the strafe's lower-body twist (below) |
 | `gameplay_frame` (0x297f78) | `game_frame.cpp` | `advanced_frame`, `advanced_aim_before_hero` / `_after_hero`, `advanced_aim_before_camera` / `_after_camera` | the combo table, the legs, the aim and the camera around the hero's and the camera's updates |
-| the weapons' hand updates (0x2b77f0, 0x2b2100, 0x2cc608, 0x2b87e0, 0x2bc7e8, 0x2da790 / 0x2ddf60 / 0x2ddcb8, 0x2b3058, 0x2d2158) | `pyrocitor.cpp`; the `host` entries of `tools/codegen/asm2fn_specs/*.json` | `advanced_aim_shot`, `_shot_hand`, `_frame_hand`, `advanced_aim_angles`, `advanced_aiming` | with modern aiming, the shot's direction (or frame, or yaw / pitch) on the reticle instead of the hero's facing |
+| the weapons' hand updates (0x2b77f0, 0x2b2100, 0x2cc608, 0x2b87e0, 0x2bc7e8, 0x2da790 / 0x2ddf60 / 0x2ddcb8, 0x2b3058, 0x2d2158) | `pyrocitor.cpp`, `devastator.cpp`, `ryno.cpp`, `tesla.cpp`, `morph.cpp`, `suck_cannon.cpp`, `visibomb.cpp`, `decoy.cpp` | `advanced_aim_shot`, `_shot_hand`, `_frame_hand`, `advanced_aim_angles`, `advanced_aiming` | with modern aiming, the shot's direction (or frame, or yaw / pitch) on the reticle instead of the hero's facing |
 
 Novalis, Aridia and Kerwan run their own build of the hero's state code (the `*_l1.cpp` files); the
 same hooks are in those copies.
@@ -511,17 +511,17 @@ on the strafe:
   facing: the Pyrocitor's flame (`pyrocitor.cpp`), the Devastator's rockets, the R.Y.N.O.'s
   missiles (both still home on their lock), the Tesla Claw's arc, the Morph-o-Ray's beam and the
   Suck Cannon's shot (`advanced_aim_shot` / `_shot_hand`), the Suck Cannon's suction cone
-  (`advanced_aim_frame_hand`) and the Visibomb's launch (`advanced_aim_angles`), through host hooks in
-  the generated ports (the `host` entries of `tools/codegen/asm2fn_specs/devastator.json`, `ryno.json`,
-  `tesla.json`, `morph.json`, `suck_cannon.json`, `visibomb.json`). The gloves (Bomb, Mine, Doom,
-  Decoy) reuse the original's own "aim along the camera" path, which R&C1 already takes when L1 or L2
-  is held (`advanced_camera_aim` in `bomb_glove.cpp`, `mine_glove.cpp`, `doom_glove.cpp`; host hooks
-  in `decoy.json`), with the aim held through their standing throw (state 0x23) so the camera, and
-  with it the throw, is still on the reticle when the glove lets go. As in the original, leaning on a
-  wall keeps the hand's own direction and the first-person view the camera's. Left as they are: the
-  Taunter (its reach is flat: horizontal distances and a horizontal cone), the Walloper (a punch),
-  the Swingshot (it locks onto swing points), the Drone Device (no hand code: the drones pick their
-  targets), the Hydrodisplacer and the Metal Detector (no direction).
+  (`advanced_aim_frame_hand`) and the Visibomb's launch (`advanced_aim_angles`), through calls in
+  their hand-written ports (`devastator.cpp`, `ryno.cpp`, `tesla.cpp`, `morph.cpp`, `suck_cannon.cpp`,
+  `visibomb.cpp`). The gloves (Bomb, Mine, Doom, Decoy) reuse the original's own "aim along the
+  camera" path, which R&C1 already takes when L1 or L2 is held (`advanced_camera_aim` in
+  `bomb_glove.cpp`, `mine_glove.cpp`, `doom_glove.cpp`, `decoy.cpp`), with the aim held through
+  their standing throw (state 0x23) so the camera, and with it the throw, is still on the reticle
+  when the glove lets go. As in the original, leaning on a wall keeps the hand's own direction and
+  the first-person view the camera's. Left as they are: the Taunter (its reach is flat: horizontal
+  distances and a horizontal cone), the Walloper (a punch), the Swingshot (it locks onto swing
+  points), the Drone Device (no hand code: the drones pick their targets), the Hydrodisplacer and
+  the Metal Detector (no direction).
 
 ### Modern, No Zoom (#70)
 
@@ -728,10 +728,10 @@ possible with the row off. It is built as [1.02 Fixes](#102-fixes): each fix is 
 its code (the PAL disc 2.00's, its addresses taken back through `data/regions/SCES-50916-2.00.txt`; the Japanese disc has
 the same code), written into the North American port at the same place behind its own test (`gameplay102_on(n)`,
 `src/game/enhance/fixes102.{h,cpp}`; a `(1.02 Gameplay, fix n: ...)` note at each site). The numbers are the analysis's
-(F4, F8...), the ones `RAC1_GAMEPLAY102` takes. Where the change is in code the port transliterates from the disc (the
-weapons' `*_asm.cpp`, the levels' own copies of the hero's functions and moby classes), the generators put a call there:
-`host_ntsc` / `entry_host_ntsc` in `tools/codegen/asm2fn_specs/` (the North American build's code only: another region's
-changed function, a stand-in, gets none) and `tools/codegen/hooks.glue` (each level's instruction, found by aligning the
+(F4, F8...), the ones `RAC1_GAMEPLAY102` takes. Where the change is in a hand-written port (the
+weapons' updates: `ryno.cpp`, `visibomb.cpp`, `visibomb_ball.cpp`, `decoy_obj.cpp`), the test is in its code; where it is
+in code the port transliterates from the disc (the levels' own copies of the hero's functions and moby classes), the
+generators put a call there: `tools/codegen/hooks.glue` (each level's instruction, found by aligning the
 level's copy with Veldin's and checked against the 1.02 build's copy of that level). With the row off each of those is a
 test that fails, and the game's memory is the same frame by frame (RAC1_RAMHASH).
 

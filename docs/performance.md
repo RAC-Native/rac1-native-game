@@ -633,8 +633,8 @@ thread, `RAC1_PIPELINE=1`, the last 1500 of 2400 frames of a forward walk) on Ke
 - **`vu0::running()` inline in every build** (`runtime/vu/vu0.h`; it was inline only with `RAC1_INLINE_HELPERS`): `vmacro()`,
   which the transliterated code calls before a VU0 macro op (a running micro program ends first), asked it through a call
   into another library: 1,000 times a frame on Veldin, 3,500 on Kerwan, 8,200 on Rilgar, 16,400 on Blarg Station. It is a
-  load and a test. No switch: the same expression. Not done: `vmacro()` once per run of macro ops in `mips2cpp.py` and
-  `asm2fn.py`, as `asm2cpp.py` emits it - the calls are in 34 of the generated files (1,953 sites), not in all of them, and
+  load and a test. No switch: the same expression. Not done: `vmacro()` once per run of macro ops in `mips2cpp.py`, as
+  `asm2cpp.py` emits it - the calls are in 34 of the generated files (1,953 sites), not in all of them, and
   with the test inline a call left out saves about a nanosecond: at most some microseconds a frame, for a change of the
   generated code to prove on every level.
 - **The tfrags' opacity table** (`RAC1_PERF_OPAQUE_KEEP_TFRAG`, `mrp_world_renderer.cpp` `tfrag_entry_opaque`): the table of

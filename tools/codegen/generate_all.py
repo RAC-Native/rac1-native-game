@@ -5,7 +5,6 @@
 # player's ISO (and the boot ELF / overlay maps setup.sh extracts from it) plus the committed, hand-written generator
 # inputs (no generated file is read). The units:
 #   mkall:<group>   tools/codegen/gen_mkall.py   mips2cpp / mkall transliterations (tools/codegen/gen/mkall/<group>.json, .glue, gen/skel/)
-#   asm:<spec>      tools/codegen/gen_asm.py     asm2fn transliterations (tools/codegen/asm2fn_specs/<spec>.json)
 #   asm2cpp:<name>  tools/codegen/gen_asm2cpp.py hand-written routines transliterated by asm2cpp and reviewed (tools/codegen/gen/asm2cpp/<name>.json)
 #   vu:moby         tools/codegen/gen_moby_vu_fast.py   the moby pass's VU0 / VU1 programs (exact and fast)
 #   vu:world        tools/codegen/gen_world_vu.py       the world passes' six VU1 programs (exact and fast)
@@ -49,8 +48,6 @@ def units():
     out = {}
     for p in sorted(glob.glob(os.path.join(HERE, 'gen', 'mkall', '*.json'))):
         out['mkall:' + os.path.splitext(os.path.basename(p))[0]] = json.load(open(p))['files']
-    for p in sorted(glob.glob(os.path.join(HERE, 'asm2fn_specs', '*.json'))):
-        out['asm:' + os.path.splitext(os.path.basename(p))[0]] = [json.load(open(p))['out']]
     for p in sorted(glob.glob(os.path.join(HERE, 'gen', 'asm2cpp', '*.json'))):
         out['asm2cpp:' + os.path.splitext(os.path.basename(p))[0]] = [json.load(open(p))['file']]
     for k, fs in VU.items():
@@ -63,8 +60,6 @@ def command(unit, root, strip, tmp):
     py = sys.executable
     if kind == 'mkall':
         return [py, os.path.join(HERE, 'gen_mkall.py'), 'gen', name, '--out', root, '--tmp', tmp] + (['--no-insn-comments'] if strip else [])
-    if kind == 'asm':
-        return [py, os.path.join(HERE, 'gen_asm.py'), 'gen', name, '--out', root, '--tmp', tmp] + (['--no-insn-comments'] if strip else [])
     if kind == 'asm2cpp':
         return [py, os.path.join(HERE, 'gen_asm2cpp.py'), 'gen', name, '--out', root] + (['--no-insn-comments'] if strip else [])
     out = os.path.join(root, OVL)

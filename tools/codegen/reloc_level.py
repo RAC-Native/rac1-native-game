@@ -34,7 +34,7 @@ USE = re.compile(r"(?<![\w.])(\w+)\.w\(\) \+ (-?)(0x[0-9a-fA-F]+)\b")
 LABEL = re.compile(r"^\s*(L_\w+|case [^:]+|default):")
 FUNC = re.compile(r"^[A-Za-z_][\w:<>,\s\*&]*\s+\**(\w+)\((.*)\)\s*\{\s*$")
 JR = re.compile(r"switch \((\w+)\.w\(\)\) \{(\s*// jr (?!\$?ra\b))")
-# a raw page (the generator wrapped only data pages: a level's code page, an asm2fn file's every page), in a function
+# a raw page (the generator wrapped only data pages: a level's code page), in a function
 # of a level's own (`// orig: L<n>:`): its uses folded the same way, the page itself left raw (it may be a value: 0x330000)
 RAW = re.compile(r"set32\((\w+), (0x[0-9a-f]{2}0000)u?\);(\s*// (?:\(delay\) )?lui )")
 ORIG = re.compile(r"//\s*orig: L(\d+):0x")
