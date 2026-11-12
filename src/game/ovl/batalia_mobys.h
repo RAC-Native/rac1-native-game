@@ -1,4 +1,4 @@
-// Batalia (level 8) transliterated moby classes, camera types 3 / 0x12, sound emitters, class hooks and level-only engine
+// Batalia (level 8) transliterated moby classes, camera types 3 / 0x12, class hooks and level-only engine
 // functions: the declarations of batalia_classes_tr_N.cpp
 // (generated: `void` = a class update / entry in the entry ABI, `TrRet` = a helper or a `_u` entry in the uniform ABI).
 #ifndef RAC1_GAME_OVL_BATALIA_MOBYS_H
@@ -26,7 +26,6 @@ TrRet bat_2d3d78_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t
 void bat_class252_update_l8(uint32_t a0);  // L8:0x002d2af0
 TrRet bat_269c70_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x00269c70
 TrRet bat_2d4ca0_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x002d4ca0
-TrRet bat_296230_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x00296230
 TrRet bat_2d55c8_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x002d55c8
 TrRet bat_2d5950_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x002d5950
 TrRet bat_2db990_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x002db990
@@ -135,7 +134,6 @@ TrRet bat_303b40_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t
 TrRet bat_303eb0_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x00303eb0
 void bat_class1134_update_l8(uint32_t a0);  // L8:0x00303370
 TrRet bat_263730_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x00263730
-TrRet bat_26f5d8_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x0026f5d8
 TrRet bat_3041f8_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x003041f8
 TrRet bat_3049a0_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x003049a0
 TrRet bat_304b00_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x00304b00
@@ -198,11 +196,6 @@ TrRet bat_cam_type18_accept_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3
 void bat_cam_type18_init_l8(uint32_t a0);  // L8:0x00316300
 void bat_cam_type18_update_l8(uint32_t a0);  // L8:0x00316308
 void bat_cam_type18_exit_l8(uint32_t a0);  // L8:0x00316310
-void bat_emitter1_l8(uint32_t a0);  // L8:0x00316aa8
-TrRet bat_296358_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x00296358
-void bat_emitter3_l8(uint32_t a0);  // L8:0x00316e48
-void bat_emitter4_l8(uint32_t a0);  // L8:0x00316fa8
-void bat_emitter6_l8(uint32_t a0);  // L8:0x00317230
 TrRet bat_hook_2d3f60_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x002d3f60
 TrRet bat_hook_2d3fb0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x002d3fb0
 TrRet bat_hook_2d4000_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x002d4000

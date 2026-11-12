@@ -1,5 +1,6 @@
 // See rilgar_hooks.h.
 #include <game/ovl/rilgar_hooks.h>
+#include <game/ovl/sound_emitter.h>
 
 #include <game/ovl/rilgar_mobys.h>
 
@@ -24,10 +25,10 @@ bool rilgar_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t*
 // orig: (host) see rilgar_hooks.h
 bool rilgar_sound_emitter_call(uint32_t fn, uint32_t em) {
     switch (lvl_key(fn)) {
-    case L5_CASE(0x0032b478): ril_emitter1_l5(em); return true;
-    case L5_CASE(0x0032ba68): ril_emitter3_l5(em); return true;
-    case L5_CASE(0x0032bbc8): ril_emitter5_l5(em); return true;
-    case L5_CASE(0x0032bc78): ril_emitter6_l5(em); return true;
+    case L5_CASE(0x0032b478): emitter_fade_box_update(em); return true;
+    case L5_CASE(0x0032ba68): emitter_reverb_box_update(em); return true;
+    case L5_CASE(0x0032bbc8): emitter_camera_bed_update(em); return true;
+    case L5_CASE(0x0032bc78): emitter_music_box_update(em); return true;
     default: return false;
     }
 }

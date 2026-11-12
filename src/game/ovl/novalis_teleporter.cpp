@@ -4,7 +4,7 @@
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/novalis_mobys2.h>
-#include <game/ovl/novalis_sound_tr.h>
+#include <game/ovl/sound_emitter.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/port_stubs.h>
@@ -285,7 +285,7 @@ void teleporter_update_l1(uint32_t m) {
         sb(0x001413f5, 1);
         uint32_t v0 = 4;
         if (lw(pv + 0x40) != -1 && lw(pv + 0x44) != -1) {
-            nov_27a248_l1(lwu(pv + 0x40), lwu(pv + 0x44), 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);  // (the music track pair)
+            music_track_request(lw(pv + 0x40), lwu(pv + 0x44));  // (the music track pair: L1:0x0027a248)
             v0 = 4;
         }
         sb(s0 + 0x20, v0);

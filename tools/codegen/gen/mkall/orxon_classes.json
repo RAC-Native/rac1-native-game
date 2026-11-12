@@ -3,7 +3,7 @@
  "tool": "mkall_l10.py",
  "env": {
   "MKALL_HELPER_PREFIX": "orx_",
-  "MKALL_FORCE": "1de788,1f3080,21aca0,24b5c8,24c7f0,254880,254a78,254ae8,255268,2554e0,255a40,255ab0,256338,2568f0,256e20,257470,258898,259700,25c738,262b08,2634e8,264ed8,2650a8,27ead0,295bc8,298860,298940,2bab98,2badc8,2bccc0,2bd058,2bd6e0,2c7c00,2c9958,2cc1b8,2cd730,2cdbd8,2cdce8,2cdda0,2cdf68,2ce1d0,2ce4d0,2d6180,2d6288,2d6948,2d6c60,2d7328,2d7420,2d7510,2d7678,2d7900,2d7b18,2d8058,2d8170,2d9000,2d9810,2d98f0,2d9da8,2dbb58,2dc118,2dc2e0,2dc990,2dd0e0,2dd270,2dd848,2ddfc0,2de0b0,2de190,2de420,2de630,2dfc38,2e0138,2e17c0,2e1cb0,2e3a90,2e3de8,2e3ef0,2e47d8,2e4840,2e5968,2e68b8,2e7bf0,2ea4e8,2ea7b0,2eaa08,2eafc8,2eb8c0,2eba40,2ec110,2ec348,2f4ae0,2f4bd0,2f5a50,2f5a78",
+  "MKALL_FORCE": "1de788,1f3080,21aca0,24b5c8,24c7f0,254880,254a78,254ae8,255268,2554e0,255a40,255ab0,256338,2568f0,256e20,257470,259700,25c738,262b08,2634e8,264ed8,2650a8,295bc8,298860,298940,2bab98,2badc8,2bccc0,2bd058,2bd6e0,2c7c00,2c9958,2cc1b8,2cd730,2cdbd8,2cdce8,2cdda0,2cdf68,2ce1d0,2ce4d0,2d6180,2d6288,2d6948,2d6c60,2d7328,2d7420,2d7510,2d7678,2d7900,2d7b18,2d8058,2d8170,2d9000,2d9810,2d98f0,2d9da8,2dbb58,2dc118,2dc2e0,2dc990,2dd0e0,2dd270,2dd848,2ddfc0,2de0b0,2de190,2de420,2de630,2dfc38,2e0138,2e17c0,2e1cb0,2e3a90,2e3de8,2e3ef0,2e47d8,2e4840,2e5968,2e68b8,2e7bf0,2ea4e8,2ea7b0,2eaa08,2eafc8,2eb8c0,2eba40,2ec110,2ec348,2f4ae0,2f4bd0,2f5a50,2f5a78",
   "MKALL_UNIFORM": "orx_cam_type19_accept_u,orx_hook_2ce618_u,orx_hook_2ce6e0_u,orx_hook_2ce770_u,orx_hook_2ce800_u,orx_hook_2ce838_u"
  },
  "entries": [
@@ -69,7 +69,6 @@
   "2eb8b8:orx_class1857_update_l10:void:a0",
   "2eb950:orx_class1921_update_l10:void:a0",
   "2ebb08:orx_class1973_update_l10:void:a0",
-  "2f6e58:orx_emitter3_l10:void:a0",
   "2f65f8:orx_cam_type19_accept_u",
   "2f5b58:orx_cam_type19_init_l10:void:a0",
   "2f5f18:orx_cam_type19_update_l10:void:a0",

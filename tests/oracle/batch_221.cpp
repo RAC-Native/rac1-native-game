@@ -17,6 +17,7 @@
 #include <game/ovl/carry_hooks.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/sound_emitter.h>
 #include <runtime/kernel/disc.h>
 
 #include <csetjmp>
@@ -370,7 +371,7 @@ void batch_221() {
     // ---- level 14's sound emitter types 1 / 3 / 4 / 6 (section 5 of the overlay) on the level's own emitters
     if (g_oracle_level == 14) {
         struct Em { const char* name; uint32_t addr; void (*fn)(uint32_t); };
-        static const Em ems_t[] = {{"emitter1", 0x00316990, olt_emitter1_l14}, {"emitter3", 0x00316d30, olt_emitter3_l14}, {"emitter4", 0x00316e90, olt_emitter4_l14}, {"emitter6", 0x00317118, olt_emitter6_l14}};
+        static const Em ems_t[] = {{"emitter1", 0x00316990, emitter_fade_box_update}, {"emitter3", 0x00316d30, emitter_reverb_box_update}, {"emitter4", 0x00316e90, emitter_open_bed_update}, {"emitter6", 0x00317118, emitter_music_box_update}};
         for (const Em& e : ems_t) {
             level();
             std::vector<uint32_t> ems;

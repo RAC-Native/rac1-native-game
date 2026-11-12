@@ -22,6 +22,7 @@
 #include <game/ovl/variants_l12.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/sound_emitter.h>
 #include <runtime/kernel/disc.h>
 
 #include <csetjmp>
@@ -356,7 +357,7 @@ void batch_200() {
     // ---- level 12's sound emitter types 1 / 3 / 5 / 6 (section 5 of the overlay) on the level's own emitters
     if (g_oracle_level == 12) {
         struct Em { const char* name; uint32_t addr; void (*fn)(uint32_t); };
-        static const Em ems_t[] = {{"emitter1", 0x00316680, hov_emitter1_l12}, {"emitter3", 0x00316a20, hov_emitter3_l12}, {"emitter5", 0x00316b80, hov_emitter5_l12}, {"emitter6", 0x00316c30, hov_emitter6_l12}};
+        static const Em ems_t[] = {{"emitter1", 0x00316680, emitter_fade_box_update}, {"emitter3", 0x00316a20, emitter_reverb_box_update}, {"emitter5", 0x00316b80, emitter_camera_bed_update}, {"emitter6", 0x00316c30, emitter_music_box_update}};
         for (const Em& e : ems_t) {
             level();
             std::vector<uint32_t> ems;

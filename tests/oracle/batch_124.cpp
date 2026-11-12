@@ -11,6 +11,7 @@
 #include <game/ovl/pokitaru_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/sound_emitter.h>
 #include <runtime/kernel/disc.h>
 
 #include <csetjmp>
@@ -346,7 +347,7 @@ void batch_124() {
     // ---- level 11's sound emitter type 3 (section 5 of the overlay) on the level's own emitters
     if (g_oracle_level == 11) {
         struct Em { const char* name; uint32_t addr; void (*fn)(uint32_t); };
-        static const Em ems_t[] = {{"emitter1", 0x00328b50, pok_emitter1_l11}, {"emitter5", 0x00328ef0, pok_emitter5_l11}};
+        static const Em ems_t[] = {{"emitter1", 0x00328b50, emitter_fade_box_update}, {"emitter5", 0x00328ef0, emitter_camera_bed_update}};
         for (const Em& e : ems_t) {
             level();
             std::vector<uint32_t> ems;

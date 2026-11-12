@@ -13,6 +13,7 @@
 #include <game/ovl/gemlik_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/sound_emitter.h>
 #include <runtime/kernel/disc.h>
 
 #include <csetjmp>
@@ -356,7 +357,7 @@ void batch_220() {
     // ---- level 13's sound emitter type 1 (section 5 of the overlay) on the level's own emitters
     if (g_oracle_level == 13) {
         struct Em { const char* name; uint32_t addr; void (*fn)(uint32_t); };
-        static const Em ems_t[] = {{"emitter1", 0x00318360, gml_emitter1_l13}};
+        static const Em ems_t[] = {{"emitter1", 0x00318360, emitter_fade_box_update}};
         for (const Em& e : ems_t) {
             level();
             std::vector<uint32_t> ems;

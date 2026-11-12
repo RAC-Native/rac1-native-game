@@ -3,3 +3,4 @@
 0x002356a0: set32(v0, static_cast<uint32_t>(hero_set_state(a0.w(), static_cast<int32_t>(a1.w()))));
 0x00267d60: { const TrRet r = blg_doomlet_259028_u(a0.w(), a1.w(), a2.w(), a3.w(), t0.w(), t1.w(), t2.w(), t3.w(), fr[12], fr[13], fr[14], fr[15], fr[16], fr[17], fr[18], fr[19]); set32(v0, r.v0); fr[0] = r.f0; }
 0x0029aec0: { const TrRet r = blg_level_sound_play_u(a0.w(), a1.w(), a2.w(), a3.w(), t0.w(), t1.w(), t2.w(), t3.w(), fr[12], fr[13], fr[14], fr[15], fr[16], fr[17], fr[18], fr[19]); set32(v0, r.v0); fr[0] = r.f0; }
+0x00274450: music_track_request(static_cast<int32_t>(a0.w()), a1.w());

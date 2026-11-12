@@ -1,5 +1,6 @@
 // See quartu_hooks.h.
 #include <game/ovl/quartu_hooks.h>
+#include <game/ovl/sound_emitter.h>
 
 namespace rac1 {
 
@@ -22,8 +23,8 @@ bool quartu_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t*
 // orig: (host) see quartu_hooks.h
 bool quartu_sound_emitter_call(uint32_t fn, uint32_t em) {
     switch (lvl_key(fn)) {
-    case L15_CASE(0x002f9230): qua_emitter3_l15(em); return true;
-    case L15_CASE(0x002f9390): qua_emitter5_l15(em); return true;
+    case L15_CASE(0x002f9230): emitter_reverb_box_update(em); return true;
+    case L15_CASE(0x002f9390): emitter_camera_bed_update(em); return true;
     default: return false;
     }
 }

@@ -1,4 +1,4 @@
-// Gaspar (level 9) transliterated moby classes, sound emitters, class hooks and level-only engine functions: the
+// Gaspar (level 9) transliterated moby classes, class hooks and level-only engine functions: the
 // declarations of gaspar_classes_tr_N.cpp
 // (generated: `void` = a class update / entry in the entry ABI, `TrRet` = a helper or a `_u` entry in the uniform ABI).
 #ifndef RAC1_GAME_OVL_GASPAR_MOBYS_H
@@ -30,7 +30,6 @@ TrRet gas_294ae0_l9(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t
 TrRet gas_2ea778_l9(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L9:0x002ea778
 TrRet gas_2eaa50_l9(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L9:0x002eaa50
 TrRet gas_2ead30_l9(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L9:0x002ead30
-TrRet gas_2aa7f8_l9(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L9:0x002aa7f8
 TrRet gas_2ea528_l9(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L9:0x002ea528
 TrRet gas_2efe48_l9(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L9:0x002efe48
 TrRet gas_2eaea8_l9(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L9:0x002eaea8
@@ -130,9 +129,6 @@ void gas_class832_draw_l9(uint32_t a0);  // L9:0x002fb078
 TrRet gas_2828b0_l9(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L9:0x002828b0
 void gas_class1212_draw_l9(uint32_t a0);  // L9:0x00305c10
 void gas_class1213_draw_l9(uint32_t a0);  // L9:0x00306570
-void gas_emitter1_l9(uint32_t a0);  // L9:0x003158e8
-TrRet gas_2aa920_l9(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L9:0x002aa920
-void gas_emitter3_l9(uint32_t a0);  // L9:0x00315c88
 TrRet gas_hook_2e2680_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L9:0x002e2680
 TrRet gas_hook_2e26d0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L9:0x002e26d0
 TrRet gas_hook_2e2720_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L9:0x002e2720

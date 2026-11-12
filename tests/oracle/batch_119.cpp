@@ -11,6 +11,7 @@
 #include <game/ovl/umbris_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/sound_emitter.h>
 #include <runtime/kernel/disc.h>
 
 #include <cmath>
@@ -296,7 +297,7 @@ void batch_119() {
     // ---- level 7's sound emitter types (3, 6: section 5 of the overlay) on the level's own emitters
     if (g_oracle_level == 7) {
         struct Em { const char* name; uint32_t addr; void (*fn)(uint32_t); };
-        static const Em ems_t[] = {{"emitter3", 0x00329740, umb_emitter3_l7}, {"emitter6", 0x003298a0, umb_emitter6_l7}};
+        static const Em ems_t[] = {{"emitter3", 0x00329740, emitter_reverb_box_update}, {"emitter6", 0x003298a0, emitter_music_box_update}};
         for (const Em& e : ems_t) {
             level();
             std::vector<uint32_t> ems;

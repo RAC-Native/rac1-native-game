@@ -1,4 +1,4 @@
-// Veldin, the finale (level 18) transliterated moby classes, sound emitters, camera type, class hooks, draw callbacks, the camera mode hook and level-only engine functions: the declarations of
+// Veldin, the finale (level 18) transliterated moby classes, camera type, class hooks, draw callbacks, the camera mode hook and level-only engine functions: the declarations of
 // veldin_finale_classes_tr_N.cpp (generated: `void` = a class update / entry in the entry ABI, `TrRet` = a helper or a `_u` entry in the uniform ABI).
 #ifndef RAC1_GAME_OVL_VELDIN_FINALE_MOBYS_H
 #define RAC1_GAME_OVL_VELDIN_FINALE_MOBYS_H
@@ -78,7 +78,6 @@ TrRet vf_2ed320_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t
 TrRet vf_2ed410_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002ed410
 TrRet vf_2ed780_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002ed780
 void vf_class1134_update_l18(uint32_t a0);  // L18:0x002ecc40
-TrRet vf_267ae8_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x00267ae8
 TrRet vf_2edac8_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002edac8
 TrRet vf_2ee270_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002ee270
 TrRet vf_2ee3d0_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002ee3d0
@@ -172,10 +171,6 @@ void vf_class1899_update_l18(uint32_t a0);  // L18:0x002fb868
 TrRet vf_2fc100_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002fc100
 TrRet vf_2fc4e0_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002fc4e0
 void vf_class1906_update_l18(uint32_t a0);  // L18:0x002fbb98
-TrRet vf_28db78_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x0028db78
-void vf_emitter3_l18(uint32_t a0);  // L18:0x00306dd0
-void vf_emitter5_l18(uint32_t a0);  // L18:0x00306f30
-void vf_emitter6_l18(uint32_t a0);  // L18:0x00306fe0
 TrRet vf_301258_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x00301258
 TrRet vf_301280_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x00301280
 TrRet vf_3056f0_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x003056f0

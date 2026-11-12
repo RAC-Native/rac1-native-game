@@ -25,6 +25,7 @@
 #include <game/ovl/weapons.h>
 #include <game/port_stubs.h>
 #include <game/ovl/particle_16_spawn.h>
+#include <game/ovl/sound_emitter.h>
 
 namespace rac1 {
 
@@ -43,8 +44,6 @@ TrRet eud_255f08_l4(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_
 void eud_sandmouse_glow_l4(uint32_t a0_in);
 
 //@gen eud_24b888_l4
-
-//@gen eud_27ee10_l4
 
 //@gen eud_27ee30_l4
 

@@ -69,10 +69,10 @@ L5 0x0030cab8: if (gameplay102_water_held()) goto L_30d584;  // enhancement: 1.0
 L5 0x0030d584 label
 L5 0x0030d048: gameplay102_water_carry(s2.w(), u2f(lw_(s3.w())));  // enhancement: 1.02 Gameplay, fix 21 (the swimmer carried)
 # Fix 22, Rilgar's race organiser (class 918, 0x316ab8): its end of the race in its state 3 restarts the level's music as its
-# states 1 and 2 do (ril_28f5c8_l5(0, 8): the 1.02 build's L5:0x318210), and after the prize's message (5013, "You won a
+# states 1 and 2 do (music_track_request(0, 8), L5:0x28f5c8: the 1.02 build's L5:0x318210), and after the prize's message (5013, "You won a
 # Platinum Zoomerator!") a skill point earned (its flag 0x13d411) is told: the sound 1 and the message 21462 ("You just earned
 # a Skill Point!") over it (L5:0x318364).
-L5 0x00316d30: if (fixes102_on(22)) ril_28f5c8_l5(0, 8, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);  // enhancement: 1.02 Fixes, fix 22 (the music)
+L5 0x00316d30: if (fixes102_on(22)) music_track_request(0, 8);  // enhancement: 1.02 Fixes, fix 22 (the music)
 L5 0x00316e78: if (fixes102_on(22) && lbu(0x0013d411u) != 0) { sound_play_indexed(1, 0, 0); sub_00263d40(TXT(21462), -1); }  // enhancement: 1.02 Fixes, fix 22 (the skill point)
 # ---- The space fights' HUD (issue #82): with Options > Display > HUD wider than 4:3 in a widened view, the radar (the frame's right:
 # its two background sprites at x 368, its blips about x 432) and the missiles (the frame's left: x 24..) of the player's ship's

@@ -28,6 +28,7 @@
 #include <game/port_stubs.h>
 #include <game/ovl/screen_fade.h>
 #include <game/ovl/hydro.h>
+#include <game/ovl/sound_emitter.h>
 
 namespace rac1 {
 
@@ -65,8 +66,6 @@ using namespace vu0m;
 //@gen ril_2843a8_l5
 
 //@gen ril_28d960_l5
-
-//@gen ril_28f5c8_l5
 
 //@gen ril_316810_l5
 

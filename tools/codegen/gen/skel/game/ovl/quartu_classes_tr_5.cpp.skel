@@ -41,6 +41,7 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/sound_emitter.h>
 
 namespace rac1 {
 
@@ -132,8 +133,6 @@ using namespace vu0m;
 //@gen qua_class1430_update_l15
 
 //@gen qua_2499d8_l15
-
-//@gen qua_254c50_l15
 
 //@gen qua_2ec678_l15
 

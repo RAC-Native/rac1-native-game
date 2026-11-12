@@ -1,5 +1,5 @@
 // Oracle batch 138 (task 0385): Kerwan (level 3) part 2: the Spawner (455), the Gold Bolt (1134), class 994's draw callback and
-// the level's own sound emitter types (kerwan_part2_tr.cpp), on the level's real data. Run with
+// the level's own sound emitter types (sound_emitter_types.cpp), on the level's real data. Run with
 // ORACLE_LEVEL=3 build/tests/ovl_oracle --batch 138 (needs the ISO). The subjects are the level's own mobys / emitters after the
 // first gameplay frame, perturbed; the original is Kerwan's own function at its own address.
 
@@ -11,6 +11,7 @@
 #include <game/ovl/kerwan_classes_tr.h>
 #include <game/ovl/kerwan_mobys.h>
 #include <game/ovl/kerwan_part2_tr.h>
+#include <game/ovl/sound_emitter.h>
 #include <game/ovl/swingshot_rope_tr.h>
 #include <runtime/vu/vu0.h>
 #include <game/ovl/ovl_reloc.h>
@@ -419,8 +420,8 @@ void batch_138() {
     // their timers / channel words perturbed
     struct Em { uint32_t fn; const char* name; void (*port)(uint32_t); };
     static const Em ems[] = {
-        {0x002ed800u, "emitter_2ed800", kerwan_emitter_2ed800_l3},
-        {0x002ed960u, "emitter_2ed960", kerwan_emitter_2ed960_l3},
+        {0x002ed800u, "emitter_2ed800", emitter_reverb_box_update},
+        {0x002ed960u, "emitter_2ed960", emitter_music_box_update},
     };
     for (const Em& e : ems) {
         if (g_oracle_level != 3) { k2check(e.name, e.fn, 0, Ret::None, nullptr, nullptr); continue; }

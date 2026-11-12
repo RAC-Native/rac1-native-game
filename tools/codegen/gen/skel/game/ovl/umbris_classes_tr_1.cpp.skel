@@ -36,6 +36,7 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/particle_16_spawn.h>
+#include <game/ovl/sound_emitter.h>
 
 namespace rac1 {
 
@@ -63,8 +64,6 @@ using namespace vu0m;
 //@gen umb_class341_update_l7
 
 //@gen umb_270248_l7
-
-//@gen umb_28ddb0_l7
 
 //@gen umb_class436_update_l7
 

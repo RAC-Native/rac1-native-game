@@ -28,6 +28,7 @@
 #include <game/ovl/rilgar_hooks.h>
 #include <game/ovl/music_streams.h>
 #include <game/ovl/novalis_level_fns.h>
+#include <game/ovl/sound_emitter.h>
 #include <game/ovl/ovl.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl_common.h>
@@ -376,7 +377,6 @@ int32_t level_sound_play(int32_t idx, uint32_t flags, uint32_t emitter, int32_t 
     return ch;
 }
 
-namespace {
 // the emitter's next start: `lo` + rand(hi - lo) seconds (params +4 / +8) into its timer +0xc
 // orig: (helper) repeated in 0x002ed950 / 0x002edad8
 void emitter_rearm(uint32_t prm) {
@@ -391,7 +391,6 @@ bool emitter_playing(uint32_t em, uint32_t prm) {
     const uint32_t e = 0x0013e5c0 + lwu(prm + 0x10) * 0x70;
     return lwu(e + 0x1c) == em && lbu(e + 4) != 0;
 }
-}  // namespace
 
 // A sphere sound emitter (params +8: sound +0, interval +4..+8, timer +0xc, slot +0x10): within
 // its radius +0xc of the camera its sound starts when the timer allows; leaving it (1 unit
@@ -463,9 +462,9 @@ void sound_emitters_update() {
         if (fn == 0) continue;
         if (fn == OVF(0x002ed950)) emitter_sphere_update(em);
         else if (fn == OVF(0x002edad8)) emitter_box_update(em);
-        else if (on_eudora() && fn == L4_ADDR(0x002f1988)) eud_music_box_emitter_l4(em);  // Eudora's own emitter type (a box that starts the music)
-        else if (on_aridia() && fn == L2_ADDR(0x002fc6f0)) sound_emitter_2fc6f0_l2(em);  // (Aridia's own emitter types)
-        else if (on_aridia() && fn == L2_ADDR(0x002fc850)) sound_emitter_2fc850_l2(em);
+        else if (on_eudora() && fn == L4_ADDR(0x002f1988)) emitter_music_box_update(em);  // Eudora's own emitter type 6 (a box that starts the music)
+        else if (on_aridia() && fn == L2_ADDR(0x002fc6f0)) emitter_reverb_box_update(em);  // (Aridia's own emitter types 3 / 6)
+        else if (on_aridia() && fn == L2_ADDR(0x002fc850)) emitter_music_box_update(em);
         else if (on_batalia() && batalia_sound_emitter_call(fn, em)) {}  // (level 8's own emitter types 1 / 3 / 4 / 6)
         else if (on_umbris() && umbris_sound_emitter_call(fn, em)) {}  // (level 7's own emitter types 3 / 6)
         else if (on_level(ORXON) && orxon_sound_emitter_call(fn, em)) {}  // (level 10's own emitter type 3)

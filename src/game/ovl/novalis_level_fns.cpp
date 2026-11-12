@@ -1,5 +1,5 @@
 // Novalis on its own overlay by default: see novalis_level_fns.h. Hand ports of the short functions
-// (camera type, class 775) and the dispatch of Novalis's sound emitters (transliterated: novalis_sound_tr.cpp) and of
+// (camera type, class 775) and the dispatch of Novalis's sound emitters (sound_emitter_types.cpp) and of
 // the shared effects (shared_fx_tr.cpp).
 #include <game/ovl/novalis_level_fns.h>
 
@@ -7,7 +7,7 @@
 #include <game/ovl/kerwan_camera.h>
 #include <game/ovl/novalis_camera.h>
 #include <game/ovl/novalis_mobys.h>
-#include <game/ovl/novalis_sound_tr.h>
+#include <game/ovl/sound_emitter.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -69,10 +69,10 @@ bool level_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t& 
 bool level_sound_emitter_call(uint32_t fn, uint32_t em) {
     if (!on_novalis()) return false;
     switch (lvl_key(fn)) {
-    case L1_CASE(0x00319928): nov_emitter_319928_l1(em); return true;
-    case L1_CASE(0x00319f18): nov_emitter_319f18_l1(em); return true;
-    case L1_CASE(0x0031a078): nov_emitter_31a078_l1(em); return true;
-    case L1_CASE(0x0031a128): nov_emitter_31a128_l1(em); return true;
+    case L1_CASE(0x00319928): emitter_fade_box_update(em); return true;
+    case L1_CASE(0x00319f18): emitter_reverb_box_update(em); return true;
+    case L1_CASE(0x0031a078): emitter_camera_bed_update(em); return true;
+    case L1_CASE(0x0031a128): emitter_music_box_update(em); return true;
     default: return false;
     }
 }

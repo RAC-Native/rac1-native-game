@@ -14,6 +14,7 @@
 #include <game/ovl/empty_class_updates.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/sound_emitter.h>
 #include <game/lib/libcdvd.h>
 #include <runtime/kernel/disc.h>
 
@@ -373,7 +374,7 @@ void batch_270() {
     // ---- level 18's sound emitter type 3 (section 5 of the overlay) on the level's own emitters
     if (g_oracle_level == 18) {
         struct Em { const char* name; uint32_t addr; void (*fn)(uint32_t); };
-        static const Em ems_t[] = {{"emitter3", 0x00306dd0, vf_emitter3_l18}, {"emitter5", 0x00306f30, vf_emitter5_l18}, {"emitter6", 0x00306fe0, vf_emitter6_l18}};
+        static const Em ems_t[] = {{"emitter3", 0x00306dd0, emitter_reverb_box_update}, {"emitter5", 0x00306f30, emitter_camera_bed_update}, {"emitter6", 0x00306fe0, emitter_music_box_update}};
         for (const Em& e : ems_t) {
             level();
             std::vector<uint32_t> ems;

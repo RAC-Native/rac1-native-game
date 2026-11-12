@@ -119,6 +119,9 @@ add_library(rac1_game STATIC
     ovl/novalis_jets.cpp
     ovl/shared_classes_reg.cpp
     ovl/novalis_level_fns.cpp
+    ovl/sound_emitter_types.cpp
+    ovl/novalis_birdbot.cpp
+    ovl/novalis_amoeboid.cpp
     ovl/vendor_frame.cpp
     ovl/galactic_map.cpp
     ovl/sky.cpp

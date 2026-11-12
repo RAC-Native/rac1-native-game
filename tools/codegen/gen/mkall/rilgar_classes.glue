@@ -10,3 +10,4 @@
 0x00284e00: vec_yaw_marked(a0.w(), a1.w(), a2.w(), a3.w());
 0x00286910: set32(v0, static_cast<uint32_t>(enemy_physics(a0.w(), a1.w())));
 0x00311368: set32(v0, static_cast<uint32_t>(class_hook_10(a0.w())));
+0x0028f5c8: music_track_request(static_cast<int32_t>(a0.w()), a1.w());

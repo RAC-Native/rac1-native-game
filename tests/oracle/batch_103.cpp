@@ -552,7 +552,7 @@ void batch_103() {
     }, 30);
     g_extra_noop_hooks.clear();
 
-    // ---- the Birdbot (class 459; transliterated)
+    // ---- the Birdbot (class 459; novalis_birdbot.cpp)
     g_extra_noop_hooks = {0x00122298};  // (0x273310: explosion_effect since task 0341)
     auto bird_prep = [give_hit, hero_near](uint32_t m, int st, int pass) {
         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -597,7 +597,7 @@ void batch_103() {
     classcheck("birdbot_update", 0x002e6bf0, birdbot_update_l1, [st, pass, bird_prep](uint32_t m) { bird_prep(m, st, pass); }, 40);
     g_extra_noop_hooks.clear();
 
-    // ---- the Amoeboids (classes 572 / 865 / 866; transliterated)
+    // ---- the Amoeboids (classes 572 / 865 / 866; novalis_amoeboid.cpp)
     // (the class's carry / suck hooks, 0x2efa88.. 0x3040d8 0x2f1c78 0x2f1cc8, belong to the weapons (task 0321): no-ops on both sides)
     g_extra_noop_hooks = {0x00273310, 0x00122298, 0x003040d8};  // (the Peckbot and Amoeboid hooks are ported: task 0330)
     auto amoeba_prep = [give_hit, hero_near](uint32_t m, int st, int pass) {
@@ -641,7 +641,7 @@ void batch_103() {
                 break;
             }
     }
-    // the carry state's callee (Veldin's carry_update 0x2dc9f0 against Novalis's 0x305260) on the Amoeboids
+    // the carry state's callee: Veldin's port carry_update (0x2dc9f0) against Novalis's own copy 0x305260, on the Amoeboids
     if (g_oracle_level == 1) {
         l1check("carry_update_l1", 0x00305260, 40, Ret::Int32, [level, amoeba_prep] {
             level();
@@ -651,7 +651,7 @@ void batch_103() {
             const uint32_t m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
             amoeba_prep(m, 14, 0);
             return Args{{m, ee_read<uint32_t>(m + 0x78) + 0x60}, {}};
-        }, [](A a) { return ri32(static_cast<int32_t>(carry_update_l1(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0)); });
+        }, [](A a) { return ri32(carry_update(a.i[0], a.i[1])); });
     }
     if (g_oracle_level == 1) {  // the shared ports the Amoeboid calls, against Novalis's own copies
         auto amoeba_m = [level, amoeba_prep] {

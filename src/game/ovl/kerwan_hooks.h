@@ -1,5 +1,5 @@
 // Kerwan (level 3) own sound emitter types: the dispatch from sound_emitters_update's indirect call (`jalr`) to the
-// transliterations in kerwan_part2_tr.cpp, while the translation target is level 3's overlay. Returns false when the address is
+// shared ports (sound_emitter_types.cpp), while the translation target is level 3's overlay. Returns false when the address is
 // not one of level 3's own emitter functions (the caller goes on to its other cases).
 #ifndef RAC1_GAME_OVL_KERWAN_HOOKS_H
 #define RAC1_GAME_OVL_KERWAN_HOOKS_H

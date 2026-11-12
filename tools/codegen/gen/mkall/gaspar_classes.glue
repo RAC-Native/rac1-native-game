@@ -1,0 +1,1 @@
+0x002aa7f8: set32(v0, sound_slot_volume_set(static_cast<int32_t>(a0.w()), a1.w()));

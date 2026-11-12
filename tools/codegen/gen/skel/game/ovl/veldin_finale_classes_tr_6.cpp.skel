@@ -49,6 +49,7 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/sound_emitter.h>
 
 namespace rac1 {
 
@@ -80,14 +81,6 @@ using namespace vu0m;
 //@gen vf_2fc4e0_l18
 
 //@gen vf_class1906_update_l18
-
-//@gen vf_28db78_l18
-
-//@gen vf_emitter3_l18
-
-//@gen vf_emitter5_l18
-
-//@gen vf_emitter6_l18
 
 //@gen vf_301258_l18
 

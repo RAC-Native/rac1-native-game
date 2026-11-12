@@ -1,5 +1,6 @@
 // See orxon_hooks.h.
 #include <game/ovl/orxon_hooks.h>
+#include <game/ovl/sound_emitter.h>
 
 namespace rac1 {
 
@@ -18,7 +19,7 @@ bool orxon_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t* 
 // orig: (host) see orxon_hooks.h
 bool orxon_sound_emitter_call(uint32_t fn, uint32_t em) {
     if (fn != L10_ADDR(0x002f6e58)) return false;
-    orx_emitter3_l10(em);
+    emitter_reverb_box_update(em);
     return true;
 }
 

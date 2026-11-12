@@ -2,8 +2,7 @@
  "level": 1,
  "tool": "mkall.py",
  "env": {
-  "MKALL_FORCE": "225a88,231450,261c10,261d78,262038,263a28,26de80,26eec8,2747a0,276820,276a48,276c40,276fe8,27a248,27e538,27e900,280970,287158,287328,287b00,287c80,28a7a8,2a1968,2a1a90,2a2450,2a2480,2b4638,2b7a48,2b7c68,2b7ef0,2b7f30,2b7fe0,2b8288,2c72c0,2c72c8,2cb458,2cb788,2e0bd8,2e30b8,2e3110,2e3208,2e32a8,2e35a8,2e3830,2eec68,2ef350,2ef478,2ef560,2ef770,2f8530,2f9000,2fa1b0,2fac80,2ffa90,2ffcd0,308380,308470,308550,3087e0,3089f0,30c898,30d208,30d260,30d308,30d5f0,30d880,30dda0,30ded0,316e28,316e88,317e70",
-  "MKALL_UNIFORM": "carry_update_l1"
+  "MKALL_FORCE": "225a88,231450,261c10,261d78,262038,263a28,26de80,26eec8,27e538,27e900,280970,287328,287b00,287c80,28a7a8,2a2450,2a2480,2b4638,2b7a48,2b7c68,2b7ef0,2b7f30,2b7fe0,2b8288,2c72c0,2c72c8,2cb458,2cb788,2e0bd8,2e30b8,2e3110,2e3208,2e32a8,2e35a8,2e3830,2f8530,2f9000,2fa1b0,2fac80,2ffa90,2ffcd0,308380,308470,308550,3087e0,3089f0,30c898,30d208,30d260,30d308,30d5f0,30d880,30dda0,30ded0,316e28,316e88,317e70"
  },
  "entries": [
   "2f8c58:nov_class700_update_l1:void:a0",
@@ -35,25 +34,10 @@
   "30df40:nov_class1818_update_l1:void:a0",
   "2e3f20:nov_class437_update_l1:void:a0",
   "2e0c68:nov_class280_update_l1:void:a0",
-  "307ca0:nov_class1134_update_l1:void:a0",
-  "305260:carry_update_l1",
-  "2edca0:amoeboid_update_l1:void:a0",
-  "263920:moby_anim_scalar_l1:f0:a0",
-  "26eff8:moby_extent_set_l1:void:a0,f12",
-  "2fa068:bird_shot_spawn_l1:v0:a0,a1,a2,a3",
-  "2e6518:bird_sparks_l1:void:a0,a1",
-  "2e6790:bird_path_pick_l1:v0:a0,a1",
-  "2e6bf0:birdbot_update_l1:void:a0",
-  "319928:nov_emitter_319928_l1:void:a0",
-  "319f18:nov_emitter_319f18_l1:void:a0",
-  "31a078:nov_emitter_31a078_l1:void:a0",
-  "31a128:nov_emitter_31a128_l1:void:a0"
+  "307ca0:nov_class1134_update_l1:void:a0"
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/novalis_classes_tr.cpp",
-  "src/game/ovl/novalis_amoeboid.cpp",
-  "src/game/ovl/novalis_birdbot.cpp",
-  "src/game/ovl/novalis_sound_tr.cpp"
+  "src/game/ovl/novalis_classes_tr.cpp"
  ]
 }

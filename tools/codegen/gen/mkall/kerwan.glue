@@ -1,1 +1,2 @@
 0x00293c78: kerwan_class845_update_l3(a0.w());
+0x00253820: music_track_request(static_cast<int32_t>(a0.w()), a1.w());

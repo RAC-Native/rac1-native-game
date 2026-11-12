@@ -1,6 +1,6 @@
-// Aridia's own moby classes, part 2: the update functions (and the camera type / sound emitter functions)
-// transliterated from Aridia's own overlay, `// orig: L2:0x00xxxxxx`. Registered
-// in aridia_mobys.cpp (the camera type and the emitters through camera_type_call / sound_emitters_update).
+// Aridia's own moby classes, part 2: the update functions (and the camera type functions) transliterated from Aridia's
+// own overlay, `// orig: L2:0x00xxxxxx`. Registered in aridia_mobys.cpp (the camera type through camera_type_call; the
+// sound emitter types 3 / 6 are sound_emitter_types.cpp's, dispatched by sound_emitters_update).
 #ifndef RAC1_GAME_OVL_ARIDIA_CLASSES_TR_H
 #define RAC1_GAME_OVL_ARIDIA_CLASSES_TR_H
 
@@ -35,8 +35,6 @@ void sandmouse_update_l2(uint32_t a0);  // L2:0x002f0f88
 void class604_update_l2(uint32_t a0);  // L2:0x002d7190
 void class832_update_l2(uint32_t a0);  // L2:0x002e4a48
 uint32_t cam_type_12_accept_l2(uint32_t a0, uint32_t a1);  // L2:0x002fc298
-void sound_emitter_2fc6f0_l2(uint32_t a0);  // L2:0x002fc6f0
-void sound_emitter_2fc850_l2(uint32_t a0);  // L2:0x002fc850
 uint32_t shark_hook_0_l2(uint32_t a0);  // L2:0x002d61c0
 uint32_t shark_hook_4_l2(uint32_t a0);  // L2:0x002d6210
 uint32_t shark_hook_8_l2(uint32_t a0);  // L2:0x002d6290

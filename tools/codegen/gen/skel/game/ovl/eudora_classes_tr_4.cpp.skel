@@ -114,10 +114,6 @@ void eud_sandmouse_glow_l4(uint32_t a0_in);
 
 //@gen eud_class1818_update_l4
 
-//@gen eud_257ed8_l4
-
-//@gen eud_music_box_emitter_l4
-
 //@gen eud_cam_type1_accept_u
 
 //@gen eud_2ed608_l4

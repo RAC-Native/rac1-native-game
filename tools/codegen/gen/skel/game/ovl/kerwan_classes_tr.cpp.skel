@@ -26,6 +26,7 @@
 #include <game/ovl/hydro.h>
 #include <game/ovl/particle_16_spawn.h>
 #include <game/ovl/quad_draw.h>
+#include <game/ovl/sound_emitter.h>
 
 namespace rac1 {
 
@@ -38,8 +39,6 @@ TrRet lv3_2517b0_l3(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_
 void kerwan_sandmouse_glow_l3(uint32_t a0_in);
 
 //@gen lv3_251598_l3
-
-//@gen lv3_253820_l3
 
 //@gen lv3_254a10_l3
 
