@@ -416,11 +416,17 @@ The code: `src/setup/level_compose.cpp` (the composer), `src/host/level_slots.h`
 ### Try Daino's Arena
 
 [Daino's Arena](../examples/night-arena/README.md) (`examples/night-arena/`) is the example: a level mod made in
-Blender, on Kalebo III's code, with challenges, grind rails and a plugin. Its scripts write the whole mod folder (the
-geometry, the collision, the textures, the sounds, the lights, the objects, the plugin's source) and copy
-"Overworld" by Daino Selvatico (`examples/night-arena/music/overworld.ogg`, a stereo `.ogg`, CC BY 4.0) in as its music.
-You need Python 3 with Pillow and Blender; the README's "Making it" gives the commands, in short (from the arena's
-folder, then the game's):
+Blender, on Kalebo III's code, with challenges, grind rails and a plugin. **It comes with the game, ready made**: the
+setup (`./setup.sh`, `setup.cmd`, the launcher's setup and update) installs it into `mods/night-arena`, composes it with
+your disc and builds its plugin, with no Blender and no Python tools of your own to run (see
+[Mods that come with the game](#mods-that-come-with-the-game)). What is left is yours to decide: the mod contains code, so it
+is off until you turn it on. Options > Mods, turn **Daino's Arena** on and confirm it (cross twice), restart. Then enter
+your ship: the planet list ends with **Custom Levels / Daino's Arena**. Its log lines start with `[levels]`, `[compose]`,
+`[plugin]` and `[mod night-arena]`. (A test run with `RAC1_MODS=1` but not `RAC1_MOD_CODE=1` has the level without its
+code: no menu, no challenges.)
+
+Rebuilding it from Blender is only for people who change it. You need Python 3 with Pillow and Blender; the README's
+"Making it" gives the commands, in short (from the arena's folder, then the game's):
 
 ```
 python3 make_textures.py
@@ -430,12 +436,30 @@ blender -b --factory-startup --python build_arena.py --python build_rails.py --p
 ./build/rac1-native
 ```
 
-The Blender line writes the mod and copies it to `mods/night-arena`; the setup lines compose it with your disc and
-build its plugin (CMake and the compiler the game was built with; a plain `--setup` does both too, as its last step).
-In the game, the mod contains code: Options > Mods, turn **Daino's Arena** on and confirm it (cross twice), restart.
-Then enter your ship: the planet list ends with **Custom Levels / Daino's Arena**. Its log lines start with `[levels]`,
-`[compose]`, `[plugin]` and `[mod night-arena]`. (A test run with `RAC1_MODS=1` but not `RAC1_MOD_CODE=1` has the level
-without its code: no menu, no challenges.)
+The Blender line writes the mod and copies it to `mods/night-arena` (your own copy now: the setup keeps it, see below); the
+setup lines compose it with your disc and build its plugin (CMake and the compiler the game was built with; a plain setup
+does both too, as its last step).
+
+### Mods that come with the game
+
+`bundled-mods/<folder>/` holds the mods the game ships: each one is a mod folder exactly as its exporter writes it
+(`mod.json`, `level/`, `plugin/`). Files that already live elsewhere in the repository are not kept twice: the folder's
+`bundle.json` lists them (Daino's Arena's plugin source and its two songs, which stay in `examples/night-arena/`) and the
+install puts them in. The setup (`tools/bundled_mods.py`, run by `tools/setup.py` before it composes the level mods) copies
+each one into `mods/` and then composes it and builds its plugin like any mod in `mods/`:
+
+- `mods/<folder>` missing: the mod is installed. `mods/<folder>/.bundled-mod` records the hash of what was installed.
+- `mods/<folder>` untouched since (its files still hash to that record) and the game now ships another version: it is
+  replaced by the new one.
+- `mods/<folder>` changed by you, or made by hand (the Blender scripts' `--install` writes no record): **kept as it is**,
+  and the setup says so (`[bundled mods] night-arena: ... kept as it is`). To get the shipped copy again, delete the
+  folder and run the setup; to go on with your own, leave it.
+- The mod stays **off**: one with code asks for your confirmation in Options > Mods, as any mod does. A failure to install,
+  compose or build one never stops the game's setup; the game lists the mod as needing the setup.
+
+For a mod's author: `export_arena.py --bundle` (with or without `--install`) writes `bundled-mods/night-arena` from the export, and
+`python3 tools/bundled_mods.py --check` (the `bundled_mods` ctest) fails when the scripts that write the mod changed
+since: commit the re-exported folder with them. The check uses only Python.
 
 ### The level folder
 

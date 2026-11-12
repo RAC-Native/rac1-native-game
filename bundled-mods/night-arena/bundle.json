@@ -1,0 +1,17 @@
+{
+  "how": "python3 examples/night-arena/make_textures.py, then blender -b --factory-startup --python examples/night-arena/build_arena.py --python examples/night-arena/build_rails.py --python examples/night-arena/build_prova.py --python examples/night-arena/export_arena.py -- --bundle (docs/mods.md, Mods that come with the game)",
+  "shared": {
+    "plugin/arena_plugin.c": "examples/night-arena/plugin/arena_plugin.c",
+    "plugin/CMakeLists.txt": "examples/night-arena/plugin/CMakeLists.txt",
+    "level/overworld.ogg": "examples/night-arena/music/overworld.ogg",
+    "level/arena_fight.ogg": "examples/night-arena/music/arena_fight.ogg"
+  },
+  "export_sources": [
+    "examples/night-arena/make_textures.py",
+    "examples/night-arena/build_arena.py",
+    "examples/night-arena/build_rails.py",
+    "examples/night-arena/build_prova.py",
+    "examples/night-arena/export_arena.py"
+  ],
+  "export_stamp": "10845071f02829e53f4fea7a867d0966f8b66cd7263e227a480a2643cb9104d1"
+}

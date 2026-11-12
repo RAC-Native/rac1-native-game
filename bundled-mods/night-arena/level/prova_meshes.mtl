@@ -1,0 +1,20 @@
+# the arena: materials (export_arena.py)
+newmtl floor_dark
+Kd 1.000 1.000 1.000
+map_Kd floor_dark.png
+newmtl grating
+Kd 1.000 1.000 1.000
+map_Kd grating.png
+newmtl lamp
+Kd 1.000 0.950 0.800
+newmtl steel
+Kd 1.000 1.000 1.000
+map_Kd steel.png
+newmtl tech
+Kd 1.000 1.000 1.000
+map_Kd tech.png
+newmtl trim
+Kd 0.200 0.850 1.000
+newmtl wall
+Kd 1.000 1.000 1.000
+map_Kd wall.png

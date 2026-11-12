@@ -31,7 +31,7 @@ changing how the game behaves.
 > **Mods.** The port supports mods: texture and sound swaps, new levels, and native plugins with their own code
 > through the [mod SDK](docs/sdk.md). [Daino's Arena](examples/night-arena/README.md) is a complete example: an arena in
 > a lava lake with challenge waves, grind rails and trips into other planets' worlds; its Blender scripts, its plugin and its README
-> show how a mod is made. **Heads-up:** version 1.0 will make the game fully native
+> show how a mod is made. It comes with the game: the setup installs it, and you turn it on in Options > Mods. **Heads-up:** version 1.0 will make the game fully native
 > ([#145](https://github.com/RAC-Native/rac1-native-game/issues/145)) and the SDK will change with it: mods made before
 > 1.0 will very likely break and need updating. See [Mods](docs/mods.md).
 

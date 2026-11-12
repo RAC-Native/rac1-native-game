@@ -344,6 +344,14 @@ if(RAC1_FP_TEST)
     add_test(NAME fp_raw_equiv COMMAND fp_raw_equiv 0.1)
 endif()
 
+# ---- bundled-mods/ : the mods the game ships (tools/bundled_mods.py) ----
+# ctest: every bundled mod complete, its shared files there, and not older than the scripts that export it. Needs Python only.
+find_program(RAC1_TEST_PYTHON NAMES python3 python)
+if(RAC1_TEST_PYTHON)
+    enable_testing()
+    add_test(NAME bundled_mods COMMAND ${RAC1_TEST_PYTHON} ${CMAKE_SOURCE_DIR}/tools/bundled_mods.py --check)
+endif()
+
 # ---- src/setup/ : setup & asset extraction ----
 add_library(rac1_setup STATIC
     src/setup/kick_trace.cpp

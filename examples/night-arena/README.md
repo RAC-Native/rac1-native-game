@@ -98,9 +98,17 @@ It needs a game with the mod SDK's ABI 17 or later (the worlds put back at every
 race, Rilgar's race in its world; ABI 15 a win's save, `game_save`; ABI 13 the mod's rail in a planet's world, the
 boss; `hero generic` ABI 12; the rails, the sessions and sections ABI 11; the rest of the plugin ABI 5).
 
+## Playing it
+
+**It comes with the game.** The setup (`./setup.sh`, `setup.cmd`, the launcher's setup and update) installs the exported
+mod from `bundled-mods/night-arena/` into `mods/night-arena`, composes it with your disc and builds its plugin: no Blender,
+no Python tools. Then, in the game: Options > Mods, turn **Daino's Arena** on and confirm its code (cross twice), restart; the
+ship's planet list then ends with **Custom Levels / Daino's Arena**. A `mods/night-arena` of your own (made with the
+steps below, or edited) is never replaced by the setup. See [Mods that come with the game](../../docs/mods.md#mods-that-come-with-the-game).
+
 ## Making it
 
-You need Python 3 with Pillow and Blender (made with 5.2).
+Only if you change it. You need Python 3 with Pillow and Blender (made with 5.2).
 
 1. The textures (`textures/`):
 
@@ -108,7 +116,9 @@ You need Python 3 with Pillow and Blender (made with 5.2).
    python3 make_textures.py
    ```
 
-2. The scene and the mod folder (`out/night-arena`; `--install` also copies it to the game's `mods/night-arena`):
+2. The scene and the mod folder (`out/night-arena`; `--install` also copies it to the game's `mods/night-arena`, `--bundle`
+   writes the copy the game ships, `bundled-mods/night-arena`: commit it with your changes, `python3 tools/bundled_mods.py
+   --check` tells when it is older than these scripts):
 
    ```
    blender -b --factory-startup --python build_arena.py --python build_rails.py --python build_prova.py --python export_arena.py -- --install

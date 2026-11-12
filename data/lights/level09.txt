@@ -3,7 +3,7 @@
 # Gaspar. Tie class 1558 (the hazard-striped tanks, 10 of them): its gold band is paint, not a lamp (5 % of the
 # class, hue 48: under the warm-material share, so the heuristic took it for a light and washed the tanks' corner in gold).
 # Gaspar: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
-sun -101.5 90.0
+sun 165.1 72.8
 noauto 1558
 # Gaspar: our ambient particles (Options > Graphics > Ambient Particles, off by default): embers and ash rising
 # from the volcano's lava itself (its collision's lava faces near the camera; none indoors or away from the lava), drifting
@@ -104,3 +104,34 @@ material tfrag 0 tex 3 metal 1 0.36
 material tfrag 0 tex 7 metal 1 0.36
 material tfrag 0 tex 6 metal 1 0.36
 material tie 1524 tex 1 metal 0.44 1
+material tfrag 0 tex 5 metal 1 0.38
+emissive tie 1560 tex 2  2.77 0.00
+emissive tie 137 tex 6  2.43 0.50
+material tie 1762 tex 1 metal 1 1
+material tie 1762 tex 3 metal 1 1
+material tie 1558 tex 4 metal 0.35 1
+material tie 1558 tex 2 metal 0.35 1
+material tie 1558 tex 1 metal 0.35 1
+material tie 1558 tex 6 metal 0.46 1
+material tie 1558 tex 7 metal 0.49 1
+light 355.328 387.039 9.119  1.000 0.413 0.000  1.404 16.982 0.000 1
+light 362.181 372.339 9.128  1.000 0.413 0.000  1.404 16.982 0.000 1
+light 374.971 366.661 9.005  1.000 0.413 0.000  1.404 16.982 0.000 1
+light 404.334 360.255 15.059  1.000 0.413 0.000  1.404 16.982 0.000 1
+light 395.744 358.612 10.037  1.000 0.413 0.000  1.404 16.982 0.000 1
+light 385.213 357.712 9.847  1.000 0.413 0.000  1.404 16.982 0.000 1
+material tfrag 0 tex 28 metal 0.35 1
+material tfrag 0 tex 13 metal 0.41 1
+material tfrag 0 tex 33 metal 0.44 1
+material tie 10 tex 0 metal 0.35 1
+material tie 70 tex 1 metal 0.48 1
+material tie 166 tex 9 metal 0.35 1
+material tie 1525 tex 5 metal 0.35 1
+material tie 1587 tex 7 metal 0.46 1
+material moby 320 tex 3 metal 0.35 1
+material moby 275 tex 9 metal 0.35 1
+material moby 1285 tex 4 metal 0.35 1
+material moby 1285 tex 0 metal 0.46 1
+material moby 1285 tex 1 metal 0.35 1
+material moby 1285 tex 2 metal 0.35 1
+material moby 1285 tex 3 metal 0.35 1
