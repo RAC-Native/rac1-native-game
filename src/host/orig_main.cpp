@@ -3452,7 +3452,11 @@ int main(int argc, char** argv) {
         // its menu's frames gone, for that one frame (a flicker, on Windows above all)
         if (steps == 0 && !host_paused && (!headless || realtime_test)) {  // (RAC1_REALTIME: as a window does)
             const double wait_s = std::max(0.0, 0.5 - game_time) / 60.0;  // (the next game frame is due when game_time reaches 0.5)
-            std::this_thread::sleep_for(std::chrono::duration<double>(std::max(wait_s, 0.001)));
+            {  // (the debug menu's profiler: not a frame - the wait is the frame's that is being recorded, at its cap)
+                RAC1_PROF_ZONE(kPacing);
+                std::this_thread::sleep_for(std::chrono::duration<double>(std::max(wait_s, 0.001)));
+            }
+            rac1::prof::frame_hold();
             fprof.end_frame();
             continue;
         }

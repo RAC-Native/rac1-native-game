@@ -123,6 +123,7 @@ struct State {
     uint64_t env_trace_from = 0;
     int env_trace_frames = 0;
     bool requested = false, pinned = false, frozen = false;
+    bool hold = false;  // (frame_hold: the next frame_mark is not a frame's end)
     bool want_prev = false;
     uint64_t frame_index = 0;
     bool rec = false;
@@ -553,6 +554,7 @@ bool pinned() { return S().pinned; }
 void set_frozen(bool on) { S().frozen = on; }
 bool frozen() { return S().frozen; }
 void frame_steps(int steps) { S().steps = steps; }
+void frame_hold() { S().hold = true; }
 void frame_picture() { ++S().pictures; }
 
 void frame_mark() {
@@ -561,6 +563,10 @@ void frame_mark() {
     if (!t_main) {
         t_main = true;
         thread_name("main (game, GL)");
+    }
+    if (s.hold) {  // (the turn before was not a frame: the one being recorded goes on)
+        s.hold = false;
+        return;
     }
     const double now = now_ms();
     // the frame that ends here
