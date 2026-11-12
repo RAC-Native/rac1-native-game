@@ -5,6 +5,8 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+- **Mods that come with the game: Daino's Arena is ready to play.** `bundled-mods/night-arena/` holds the exported mod (its plugin source and music stay in `examples/night-arena/`, kept once); the setup installs it into `mods/` when it is missing or older, never over a folder you changed, then composes it and builds its plugin, with no Blender or Python tools; turn it on in Options > Mods. `export_arena.py --bundle` refreshes the shipped copy and the `bundled_mods` ctest fails when it is older than the scripts. No game code changed.
+
 - **One mod example: Daino's Arena.** The small example level (`examples/custom-level`: its script, its plugin, its README) is
   removed; Daino's Arena (`examples/night-arena`) is the SDK's example, and the docs (Mods, Custom levels: code, the SDK, the
   environment variables) are written around it. Its music "Overworld" by Daino Selvatico (CC BY 4.0) moved with it to
