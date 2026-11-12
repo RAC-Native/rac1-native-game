@@ -4,7 +4,7 @@ The SDK is what a mod's code is written against: one C header, [`sdk/rac1_mod.h`
 file, [`sdk/rac1_mod.cmake`](../sdk/rac1_mod.cmake). This page is its reference: every struct, service and callback,
 when each may be used, the order things happen in, the limits and how versions work. For a first plugin (the folder,
 building, testing) read [Custom levels: code](custom-levels.md) first; for the level folder itself (level.txt, the
-meshes, the music) see [Mods, "Level mods"](mods.md#level-mods). The example level, `examples/custom-level/`, uses
+meshes, the music) see [Mods, "Level mods"](mods.md#level-mods). Daino's Arena, `examples/night-arena/`, uses
 nearly everything here.
 
 Contents:
@@ -97,7 +97,7 @@ game start ──> plugins loaded (load order), rac1_mod_main(api, mod) each: re
 - A level's objects are removed when the level is left: each class's `remove` runs (before `level_end`), their
   states are freed. Nothing of a level survives it: keep what must last in your own variables (and in `save`).
 - Objects spawn at the level's first frame, **before** `level_start`: a class's `spawn` cannot count on what
-  `level_start` sets up (the example looks its sounds up in both).
+  `level_start` sets up (the arena looks its sounds up in both).
 - The frame's order: the objects' pass runs inside the game's moby pass (where a moby's class code runs); the
   `trigger`, `frame` and `test` callbacks after it; `camera` after the game's camera; `hud` while the HUD is drawn.
 
@@ -900,7 +900,7 @@ the same records, so your objects and the game's understand each other:
   and cannot be hurt again at once).
 - **Your objects hurting the game's objects**: `hit_send(moby, kinds, strength, from)` with the kinds the target's
   class reads (a crate breaks with `RAC1_HIT_PROP`). `hit_send` on your own object's moby reaches its `hit` callback
-  (the example's test does that to stand in for Ratchet's wrench).
+  (the arena's tests do that to stand in for Ratchet's wrench).
 - **Any moby**: `hit_take(moby, kinds, out)` reads (and consumes) a record yourself.
 
 ## Sounds
@@ -914,7 +914,7 @@ world sounds. So:
   camera), or all 26 slots busy. A sound on a moby follows it while it plays.
 - A **looping** sound plays until `sfx_stop`, or until the game lets it go when it is too far to be heard (as it
   does its own). To keep one on an object, check `sfx_active(slot, sound)` now and then and play it again (the
-  example's sentry hum does).
+  arena's electrified zones' buzz does).
 - Stop the looping sounds your objects started in their class's `remove`.
 
 ## Structs

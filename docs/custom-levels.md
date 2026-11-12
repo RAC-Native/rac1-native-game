@@ -3,8 +3,8 @@
 A mod can carry **code**: a native plugin, written in C (or C++) against the game's small C interface,
 [`sdk/rac1_mod.h`](../sdk/rac1_mod.h). It is how a [level mod](mods.md#level-mods) gets behaviour of its own (a moving
 platform, a counter, a HUD line, its own rules for its objects), and how any mod can watch and change the game while it
-runs. This page is for modders: what a plugin can do, how it is built and loaded, and how to test it. The example level
-(`examples/custom-level/`) has one: [`plugin/example_plugin.c`](../examples/custom-level/plugin/example_plugin.c).
+runs. This page is for modders: what a plugin can do, how it is built and loaded, and how to test it. Daino's Arena
+(`examples/night-arena/`) has one: [`plugin/arena_plugin.c`](../examples/night-arena/plugin/arena_plugin.c).
 **The SDK's full reference** (every struct, service and callback, the lifecycle, the versions, the limits) is
 [The mod SDK: reference](sdk.md).
 
@@ -164,8 +164,8 @@ api->class_define(&d);
 
 Each object is a moby of the game (Ratchet stands on it, his weapons hit it, the game's rays see it) drawn with your
 model by the modern renderer; the sounds play through the game's own sound slots (distance, pan, walls, reverb). The
-example's plugin has two classes (a sentry that watches Ratchet with a ray, zaps him, breaks into a gem; gems to
-collect), seven sounds and a trigger. Everything about them: [The mod SDK: reference](sdk.md), "Objects", "Hits and
+arena's plugin has classes of its own (`flame`, the vents' fire; `spawn`, the enemies it places), its own sounds
+(synthesized by its export script) and triggers (the hub's `center`, the drop zones' `pad`). Everything about them: [The mod SDK: reference](sdk.md), "Objects", "Hits and
 damage", "Sounds".
 
 ## The rules
@@ -175,7 +175,7 @@ damage", "Sounds".
   puts the memory back after: writes through the API are in that journal, writes through a pointer would not be.
 - **Replays**: while the renderer replays (`api->replaying()` is 1) write none of your own variables: the game's memory
   is put back, yours would not be. Only `hud` may run then; `frame`, `camera`, `object_update` and the level callbacks
-  never do. Make your HUD text in `frame` and only draw it in `hud` (the example does).
+  never do. Make your HUD text in `frame` and only draw it in `hud` (the arena does).
 - **Floats**: your code runs on the game's thread with the FPU rounding toward zero, as the PS2's. The SDK's float
   rules keep your arithmetic the same on every machine; `sinf` and the like may still differ in the last bit between
   C libraries: do not feed them into the game's own state if a replay must be exact.
@@ -189,10 +189,10 @@ RAC1_HEADLESS=1 RAC1_MODS=1 RAC1_MOD_CODE=1 RAC1_GOTO=<level.id>@60 RAC1_MOD_TES
 ```
 
 `RAC1_MOD_TEST` is given to your `test` callback each frame: let it log what you want to check, or do scripted steps.
-The example plugin understands `log` (the platform's and Ratchet's places every second), `ride` (Ratchet put on the
-platform at its 200th frame: he rides it) and `sdk` (the level's own objects step by step: Ratchet put by a sentry,
-which sees and zaps him; three hits sent to it, so it breaks into a gem; Ratchet put on the gem, which he takes; then on
-the ramp, the trigger; two rays; the objects, his health and bolts logged every second). `RAC1_LEVEL_SAVE_IMAGE=<frame>:<prefix>` writes the `.pc` items a save
+The arena's plugin lists its own test hooks before its `test()` (`examples/night-arena/plugin/arena_plugin.c`):
+`arena` (Ratchet put on the hub, the first challenge started), `arena_win` (the waves' logic through to the win),
+`arena_course` (the grind rail challenge's course, Ratchet riding its centre lane), `arena_dump` (a level's rails,
+paths and objects in the log) and more; its README says how to run them. `RAC1_LEVEL_SAVE_IMAGE=<frame>:<prefix>` writes the `.pc` items a save
 would get, yours included.
 
 ## Untested yet

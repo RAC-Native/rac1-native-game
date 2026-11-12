@@ -3,7 +3,7 @@
 In Blender (the GUI):   p = "<this folder>/export_arena.py"; g = {"__file__": p}; exec(open(p).read(), g)
                         g["export"](None, True)   (True: also copied into the game's mods/)
 Headless:               blender -b arena.blend --python export_arena.py -- [<out folder>] [--install]
-The game's checkout (its mods/, the example level's music): local.json's "game" beside this script when there is one
+The game's checkout (its mods/): local.json's "game" beside this script when there is one
 ({"game": "/path/to/rac1-native-game"}), else the repository this script is in (examples/night-arena/../..).
 
 It reads four collections (build_arena.py makes them; edit them freely in Blender):
@@ -74,7 +74,8 @@ LEVEL = {
     # main's entries (where a switch from a section puts Ratchet back): "ritorno" south of the hub
     "entries": [("ritorno", (0.0, -20.0, 0.5), 1.5708), ("rientro", (-16.0, 66.0, 20.6), -1.1903)],  # (rientro: rail_ritorno's start)
     "sky": 0,               # Veldin's sky (Quartu's, 15, crashed on Veldin's code: sky_hand::spheres)
-    "music": ("overworld.ogg", os.path.join(GAME, "examples/custom-level/music/overworld.ogg")),
+    "music": ("overworld.ogg", os.path.join(os.path.dirname(os.path.realpath(globals().get("__file__") or bpy.data.filepath)),
+                                            "music", "overworld.ogg")),
     # the mod's other tracks (level.txt's music_track lines: the plugin's music_track, ABI 19): the challenges' music
     "music_tracks": [("fight", "arena_fight.ogg", os.path.join(os.path.dirname(os.path.realpath(globals().get("__file__") or bpy.data.filepath)),
                                                                 "music", "arena_fight.ogg"))],
