@@ -307,6 +307,59 @@ handed) over the 19 levels widened at LOD High and at 4:3: 17,076 calls each, 0 
 it on and off on the 19 levels widened at LOD High and Original (the second pass, which runs it unchecked inside its journal),
 `RAC1_MRP_LOD_VERIFY=1` on those runs (0 differing); RAMHASH and the reference images unchanged.
 
+### The widened view at the game's own distances: the shadow run for the extras alone
+
+At 16:9 with LOD Original - what a widescreen player has without touching the slider - the moby pass's shadow run drew the
+real pass's mobys again and a few more: of the 10 to 147 mobys a frame it drew on the 19 levels' walks (Kerwan 58), 2 to 30
+were the wider view's (Kerwan 7; a fifth at the median, half at 32:9). The run is the same pass with a wider frustum and
+nothing else changed, and of a moby's draw only two things depend on the frustum: whether the moby is seen, and which VU1
+program the loop chooses for it (the clipping one when it crosses the guard band). Everything else - the model, the fade, the
+lights, the matrix, the record, the chain parts, the pose - is the real pass's.
+
+`RAC1_PERF_MOBY_EXTRAS` (`mrp_lod.cpp`, `mrp_scene.cpp`, the loop's `g_moby_draw_skip`): with the view widened and the LOD
+scale 1 the shadow run comes after the real pass and, where the loop is about to draw a moby (0x255e48: the moby seen in the
+widened view, its program chosen, its place in the deferred list taken), asks the host; a moby the real pass drew, with the
+program the real pass chose for it, is left out and the loop goes on as after a moby drawn. A moby the widened view sees with
+the other program (its guard band is not the 4:3 view's: at most 0.12 mobys a frame at 16:9, 0.41 at 32:9) is drawn by the
+run. At the frame's end the draw scene is made of the run's mobys and the real pass's own of those left out, each in the place
+the whole run would have drawn it (the list's order, the deferred pass's mobys after the others), the real ones' GS state read
+from the real chain. The loop's other fixed capacities - 64 sub-mesh records, the packet buffer, the skinning ring - are not
+used by a moby left out: a run that would have filled one with them is made again whole (never in the runs below). At LOD Low
+to Maximum the distances differ and the whole pass runs again as before.
+
+Proved: `=2` makes both runs each frame and compares the merged scene with the whole run's as the renderer reads them (the
+view, the mobys in order, every field of each, its pose, its record's lights and tint, its parts' program, matrix and GS
+state) and the drawn flags (+0x31) the effects' shadow takes: 0 differing frames of 37,926 over the 19 levels at 16:9 and of
+18,960 at 32:9, and in the other modes (the draw loop's two forms compared or the transliteration alone, the pose memo
+verified, the game thread off, no pipeline, the modern shadows, two game frames a host frame, the pose order, a wider field of
+view, the five-level route). `RAC1_MRP_LOD_VERIFY=1` on all of them: the memory after every run as before it. Against the
+build without it (the switch at 0, the run before the real pass): `RAC1_MRP_SCENE_HASH`'s mobys, joints and parts, and the
+records' bytes the renderer reads (+0x40..+0xbf: the lights and the tint), identical on the 19 levels; RAMHASH identical on
+them; the pictures at frames 300, 600 and 1500 identical, OpenGL and Vulkan, on the 19 levels at 16:9 and on six at 32:9 (150
+of 150); the reference images and the route's RAMHASH unchanged. What differs in the scene is what the renderer does not read:
+the records' head and chain addresses, and which of VU1's two matrix buffers a part's upload names (they take turns along the
+pass's chain). The moby scene and the LOD module ran four levels and the route under the address sanitizer without a report;
+the generated sources regenerate the same.
+
+Measured at 16:9, LOD Original (headless, the game thread on, the profiler's medians; fourteen runs of each taken in turn
+on a shared machine that was busy for part of them: the percentages are the medians of the runs' ratios, the times those
+of the shadow run, which the load moves least):
+
+| | Veldin | Kerwan | Rilgar | Gaspar | Hoven | Kalebo III |
+|---|---|---|---|---|---|---|
+| The moby pass's shadow run, ms a frame | 0.10 -> 0.04 | 0.23 -> 0.07 | 0.14 -> 0.07 | 0.18 -> 0.07 | 0.18 -> 0.07 | 0.27 -> 0.14 |
+| | -60 % | -63 % | -56 % | -62 % | -61 % | -48 % |
+| Game thread busy | -5 % | -8 % | -9 % | -7 % | -11 % | -6 % |
+| Main thread's wait for the game thread | -10 % | -14 % | -15 % | -40 % | -38 % | -8 % |
+| Frame period | -3 % | -6 % | -6 % | -4 % | -6 % | -5 % |
+
+The game thread's time is below the whole run's in 14 of the 14 runs on five levels and 13 on Veldin; the period in 14 of
+14 on Kerwan, Rilgar, Hoven and Kalebo III, 13 on Gaspar, 12 on Veldin. At 16:9 the frame waits for the game thread, so what
+its second pass no longer does shortens it. What is left of the run: the journal and the VU0's save, the projection set up
+again, the pass's own start and end, the cull test of every moby, and the extras' draws and poses. The other shadow runs of a
+widened view (the effects' block, the draw lists, the sky: 0.13 to 0.47 ms a frame on these levels) are as before, and so is
+the moby run at another LOD (0.5 to 1.0 ms at LOD High), where the real pass's mobys are not the run's.
+
 ## The frame's chain
 
 The MRP chain worker reads each frame's chain beside the main thread (`mrp_chain.cpp`: the 2D, the effects' VU1 programs, the
@@ -885,6 +938,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_TFRAG_TIME_ONCE=0` | Vulkan: the tfrag compute's first dispatches timed, in waited chunks, at every level's arrival |
 | `RAC1_GT_JOIN_SLEEP=1` | the main thread sleeps for most of its wait for the game thread, then polls (off by default: a longer frame unpaced) |
 | `RAC1_PERF_POSE_ORDER=1` | the moby pass's shadow run after the real pass, which fills the pose memo for it (off by default: the scene's records differ) |
+| `RAC1_PERF_MOBY_EXTRAS=0` | at 16:9 with LOD Original the moby pass's shadow run draws the real pass's mobys again, before the real pass (`=2`: both runs, the scenes compared) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's

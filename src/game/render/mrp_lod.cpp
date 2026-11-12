@@ -13,6 +13,8 @@
 #include <game/render/mrp_moby_renderer.h>
 #include <game/render/mrp_pose_memo.h>
 #include <game/render/mrp_scene.h>
+#include <game/enhance/packet_rings.h>
+#include <game/ovl/moby_draw.h>
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/mrp_world_scene.h>
 #include <game/render/mrp_world_static.h>
@@ -966,12 +968,49 @@ struct MobyStats {
     uint64_t runs = 0, widened = 0, mobys_real = 0, mobys_shadow = 0, faded = 0;
     double ms = 0;
 } g_mst;
+
+// orig: (host) RAC1_PERF_MOBY_EXTRAS (docs/performance.md): with the view widened at the game's own distances (LOD Original)
+// the shadow run comes after the real pass and leaves out the mobys the real pass drew the same: where the loop is about to
+// draw a moby the real pass drew (0x255e48: the moby seen in the widened view, its program chosen, its place in the deferred
+// list taken) with the program the real pass chose for it, it goes on to the next (g_moby_draw_skip) - of a moby's draw
+// only whether it is seen and that choice depend on the frustum. The draw scene is the run's with the real pass's own of
+// those mobys in their places (mrp_scene_end_frame). A run that would have filled one of the loop's other fixed capacities
+// with them (64 sub-mesh records, the packet buffer, the skinning ring: the mobys after are not drawn) is made whole instead.
+// 0: the whole pass run again, before the real one, as before; 2: both runs, the merged scene compared with the whole run's
+const int g_moby_extras = perf::switch_value("RAC1_PERF_MOBY_EXTRAS", 1);
+bool moby_extras_now() { return g_moby_extras != 0 && mrp_lod_scale(g_mrp_lod) == 1.0f && fill_widen() > 1.0f; }
+struct ExtrasRun {
+    uint64_t runs = 0, whole = 0, left_out = 0, other_program = 0, capacity[3] = {}, drawn_bad = 0;
+} g_xr;
+// (the run's: the real pass's mobys it may leave out, sorted by the moby; those it left out, and what the whole run would
+// have used for them of its packet buffer and skinning ring)
+std::vector<MrpSame> g_extras_same;
+std::vector<uint32_t> g_extras_out;
+uint32_t g_extras_chain = 0, g_extras_ring = 0;
+bool extras_skip(uint32_t moby, uint32_t mscal, uint32_t deferred) {
+    const auto it = std::lower_bound(g_extras_same.begin(), g_extras_same.end(), moby, [](const MrpSame& a, uint32_t k) { return a.moby < k; });
+    if (it == g_extras_same.end() || it->moby != moby) return false;
+    if (it->mscal != mscal || it->deferred != (deferred != 0)) {  // (the widened view's guard band crossed, or not: drawn by the run)
+        ++g_xr.other_program;
+        return false;
+    }
+    g_extras_out.push_back(moby);
+    g_extras_chain += it->chain;
+    g_extras_ring += it->ring;
+    return true;
+}
 }  // namespace
 
 // orig: (host) see mrp_lod.h
 bool mrp_lod_moby_shadow_after() {
     static const bool after = perf::switch_value("RAC1_PERF_POSE_ORDER", 0) != 0;
-    return after;
+    return after || moby_extras_now();
+}
+
+// orig: (host) see mrp_lod.h
+bool mrp_lod_moby_pose_fill() {
+    static const bool after = perf::switch_value("RAC1_PERF_POSE_ORDER", 0) != 0;
+    return after && mrp_lod_moby_shadow_due();
 }
 
 // orig: (host) see mrp_lod.h (mrp_lod_moby_shadow's own conditions, but the VU0 program's, known only when it starts)
@@ -982,7 +1021,7 @@ bool mrp_lod_moby_shadow_due() {
 }
 
 // orig: (host) see mrp_lod.h
-void mrp_lod_moby_shadow(void (*pass)()) {
+void mrp_lod_moby_shadow(void (*pass)(), size_t real_first, size_t real_count) {
     RAC1_PROF_ZONE(kGameLodMobys);
     static const bool verify = std::getenv("RAC1_MRP_LOD_VERIFY") != nullptr;
     if (!mrp_moby_ready() || vu0::running()) return;
@@ -995,53 +1034,94 @@ void mrp_lod_moby_shadow(void (*pass)()) {
         g_verify_ram.assign(ee_get_ram_base(), ee_get_ram_base() + (g_room_unsaved ? kShadowPackets : 0x04000000u));  // (the room: the runs' own)
         g_verify_spr.assign(ee_get_scratchpad_base(), ee_get_scratchpad_base() + 0x4000u);
     }
-    // the host state the pass changes besides EE memory: the whole VU0 (the pass uploads its micro programs, the drop shadows run
-    // them), the DMA registers, the pass's host notes and timers; the drop shadows' observer off (the MRP's are the real pass's)
-    const Vu0Save vu0_saved(true);
-    const auto hw_saved = eer::hwregs();
-    const uint32_t up_first = g_moby_upload_chain_first, up_last = g_moby_upload_chain_last;
-    const double t_skin = g_prof_moby_skin_ms, t_fill = g_prof_moby_fill_ms, t_tex = g_prof_moby_tex_ms, t_slots = g_prof_moby_slots_ms;
-    const uint64_t n_bad = g_moby_mrp_skip_next_bad, n_ok = g_moby_mrp_skip_next_ok;
-    const DropShadowObserver shadows_obs = g_drop_shadow_observer;
-    g_drop_shadow_observer = DropShadowObserver{};
-    ee_journal_begin();
-    shadow_packet_room();
-    patch_moby(s);
-    if (widen > 1.0f) {
-        patch_widen(widen, 0, fill_widen_y());
-        ++g_mst.widened;
+    // (RAC1_PERF_MOBY_EXTRAS) the real pass's mobys the run may leave out
+    const bool extras = moby_extras_now() && real_count != 0;
+    if (extras) mrp_scene_real_same(real_first, real_count, g_extras_same);
+    const uint32_t real_records = lwu(OV(0x0015fff8u));  // (the real pass's sub-mesh records, bytes)
+    // one run of the pass inside the journal; `leave_out`: without the mobys the real pass drew the same. false: such a run
+    // that would have filled a capacity with the mobys left out (nothing kept of it)
+    auto run = [&](bool leave_out) {
+        // the host state the pass changes besides EE memory: the whole VU0 (the pass uploads its micro programs, the drop shadows run
+        // them), the DMA registers, the pass's host notes and timers; the drop shadows' observer off (the MRP's are the real pass's)
+        const Vu0Save vu0_saved(true);
+        const auto hw_saved = eer::hwregs();
+        const uint32_t up_first = g_moby_upload_chain_first, up_last = g_moby_upload_chain_last;
+        const double t_skin = g_prof_moby_skin_ms, t_fill = g_prof_moby_fill_ms, t_tex = g_prof_moby_tex_ms, t_slots = g_prof_moby_slots_ms;
+        const uint64_t n_bad = g_moby_mrp_skip_next_bad, n_ok = g_moby_mrp_skip_next_ok;
+        const DropShadowObserver shadows_obs = g_drop_shadow_observer;
+        g_drop_shadow_observer = DropShadowObserver{};
+        ee_journal_begin();
+        shadow_packet_room();
+        patch_moby(s);
+        if (widen > 1.0f) {
+            patch_widen(widen, 0, fill_widen_y());
+            ++g_mst.widened;
+        }
+        mrp_scene_shadow_begin();
+        g_moby_pass_shadow_run = true;  // (its drop shadows not made)
+        g_extras_out.clear();
+        g_extras_chain = g_extras_ring = 0;
+        if (leave_out) g_moby_draw_skip = &extras_skip;
+        pass();
+        g_moby_draw_skip = nullptr;
+        patch_clear();
+        g_moby_pass_shadow_run = false;
+        bool ok = true;
+        if (leave_out) {  // the whole run's use of the loop's capacities: this run's and the left-out mobys'
+            const bool full[3] = {real_records + lwu(OV(0x0015fff8u)) > 0x400u, lwu(OV(0x001611c0u)) + g_extras_chain > lwu(OV(0x001611c8u)),
+                                  lwu(OV(0x0015ffd4u)) + g_extras_ring + 0x400u > packet_joint_end()};
+            for (int k = 0; k < 3; ++k) {
+                g_xr.capacity[k] += full[k] ? 1u : 0u;
+                ok = ok && !full[k];
+            }
+            std::sort(g_extras_out.begin(), g_extras_out.end());
+        }
+        mrp_scene_shadow_end(leave_out && ok ? &g_extras_out : nullptr);  // (the chains decoded while the shadow's memory is there)
+        if (ok) {  // the mobys' +0x31 (drawn this frame) the shadow left: the effects' shadow gives them to the glows
+            g_ps.drawn.clear();
+            uint32_t m = lwu(OV(0x0015ffd8u));
+            if (g_lod_patch != 0) {  // (the bytes straight from RAM: reads)
+                const uint8_t* const ram = ee_get_ram_base();
+                for (int guard = 0; guard < 4096 && m != 0 && m < ee_game_ram_end() - 0x100u && ram[m + 0x20] != 0xff; ++guard, m += 0x100)
+                    g_ps.drawn.emplace_back(m, ram[m + 0x31]);
+            } else
+                for (int guard = 0; guard < 4096 && m != 0 && m < ee_game_ram_end() && lbu(m + 0x20) != 0xff; ++guard, m += 0x100)
+                    g_ps.drawn.emplace_back(m, static_cast<uint8_t>(lbu(m + 0x31)));
+            g_ps.drawn_valid = true;
+        }
+        g_st.pages += ee_journal_restore();
+        patch_moby_undo();
+        vu0_saved.restore();
+        eer::hwregs() = hw_saved;
+        g_moby_upload_chain_first = up_first;
+        g_moby_upload_chain_last = up_last;
+        g_prof_moby_skin_ms = t_skin;
+        g_prof_moby_fill_ms = t_fill;
+        g_prof_moby_tex_ms = t_tex;
+        g_prof_moby_slots_ms = t_slots;
+        g_moby_mrp_skip_next_bad = n_bad;
+        g_moby_mrp_skip_next_ok = n_ok;
+        g_drop_shadow_observer = shadows_obs;
+        return ok;
+    };
+    if (!extras) {
+        run(false);
+    } else {
+        ++g_xr.runs;
+        static std::vector<std::pair<uint32_t, uint8_t>> drawn_whole;
+        if (g_moby_extras == 2) {  // (the whole run first: its scene and its drawn flags kept to compare)
+            run(false);
+            mrp_scene_shadow_keep_whole();
+            drawn_whole = g_ps.drawn;
+        }
+        if (!run(true)) {
+            ++g_xr.whole;
+            run(false);
+        } else {
+            g_xr.left_out += g_extras_out.size();
+            if (g_moby_extras == 2 && drawn_whole != g_ps.drawn) ++g_xr.drawn_bad;
+        }
     }
-    mrp_scene_shadow_begin();
-    g_moby_pass_shadow_run = true;  // (its drop shadows not made)
-    pass();
-    patch_clear();
-    g_moby_pass_shadow_run = false;
-    mrp_scene_shadow_end();  // (the chains decoded while the shadow's memory is there)
-    {  // the mobys' +0x31 (drawn this frame) the shadow left: the effects' shadow gives them to the glows
-        g_ps.drawn.clear();
-        uint32_t m = lwu(OV(0x0015ffd8u));
-        if (g_lod_patch != 0) {  // (the bytes straight from RAM: reads)
-            const uint8_t* const ram = ee_get_ram_base();
-            for (int guard = 0; guard < 4096 && m != 0 && m < ee_game_ram_end() - 0x100u && ram[m + 0x20] != 0xff; ++guard, m += 0x100)
-                g_ps.drawn.emplace_back(m, ram[m + 0x31]);
-        } else
-            for (int guard = 0; guard < 4096 && m != 0 && m < ee_game_ram_end() && lbu(m + 0x20) != 0xff; ++guard, m += 0x100)
-                g_ps.drawn.emplace_back(m, static_cast<uint8_t>(lbu(m + 0x31)));
-        g_ps.drawn_valid = true;
-    }
-    g_st.pages += ee_journal_restore();
-    patch_moby_undo();
-    vu0_saved.restore();
-    eer::hwregs() = hw_saved;
-    g_moby_upload_chain_first = up_first;
-    g_moby_upload_chain_last = up_last;
-    g_prof_moby_skin_ms = t_skin;
-    g_prof_moby_fill_ms = t_fill;
-    g_prof_moby_tex_ms = t_tex;
-    g_prof_moby_slots_ms = t_slots;
-    g_moby_mrp_skip_next_bad = n_bad;
-    g_moby_mrp_skip_next_ok = n_ok;
-    g_drop_shadow_observer = shadows_obs;
     if (verify) {
         ++g_st.verify_runs;
         const bool same = std::memcmp(g_verify_ram.data(), ee_get_ram_base(), g_verify_ram.size()) == 0 &&
@@ -1060,6 +1140,13 @@ void mrp_lod_moby_shadow(void (*pass)()) {
 // orig: (host)
 void mrp_lod_report() {
     mrp_scene_lod_drop_report();
+    mrp_scene_extras_report();
+    if (g_xr.runs != 0)
+        std::printf("[lod] moby extras (RAC1_PERF_MOBY_EXTRAS=%d): %llu runs, %.1f mobys left out a run, %llu drawn by the run with another program than the real "
+                    "pass's; made whole %llu (a capacity filled: sub-mesh records %llu, packets %llu, ring %llu); drawn flags differing from the whole run's %llu\n",
+                    g_moby_extras, static_cast<unsigned long long>(g_xr.runs), static_cast<double>(g_xr.left_out) / static_cast<double>(g_xr.runs),
+                    static_cast<unsigned long long>(g_xr.other_program), static_cast<unsigned long long>(g_xr.whole), static_cast<unsigned long long>(g_xr.capacity[0]),
+                    static_cast<unsigned long long>(g_xr.capacity[1]), static_cast<unsigned long long>(g_xr.capacity[2]), static_cast<unsigned long long>(g_xr.drawn_bad));
     mrp_pose_memo_report();
     if (g_patch_runs != 0)
         std::printf("[lod] moby distances (RAC1_PERF_LOD_PATCH=%d): %.1f fields written a run outside the journal; at a scale of 1, fields that would change %llu\n",

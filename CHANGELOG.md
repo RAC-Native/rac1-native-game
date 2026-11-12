@@ -53,6 +53,11 @@ What changed in each release. Releases are source only: you build the game with 
   3.8 to 2.2, headless). It then stopped copying and reading those commands a second time: its thread is a quarter less busy,
   and the frame up to 9 % shorter again where it still waited for it (Gaspar 2.5 to 2.3 ms). 16:9 and the LOD slider were not
   affected: the renderer decides the world itself there. See docs/performance.md.
+- **A shorter frame in widescreen at LOD Original** (no change to the picture or the game): with the view wider than 4:3
+  the renderer ran the game's whole moby pass a second time each frame, to draw what the 4:3 view leaves out at the sides.
+  That second run now draws only those extra mobys - about a fifth of the mobys at 16:9 - and takes the others from the pass the game
+  ran: the game's thread 5 to 11 % less busy and the frame 3 to 6 % shorter on the six levels measured at 16:9. The LOD
+  slider's other settings were not affected. See docs/performance.md.
 - **Gaspar: the lava torn across the sky down in the cave** (#144). The lava sea's surfaces are drawn from the game's own
   screen matrix; when that differs from the frame's by a hair (the camera easing in the cave, a zoom: some dozens of frames
   at a time) the renderer took them for a surface with a matrix of its own and sent their points through the inverse of the

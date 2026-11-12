@@ -62,7 +62,11 @@ void mrp_lod_world_after(int kind, uint32_t cur, uint32_t real_end);
 // distances (+0x72) scaled and its frustum widened; the MRP scene observed during that run (mrp_scene_shadow_begin / end) is
 // what the MRP draws this frame (mrp_scene_draw()): its mobys at their near model, with the poses the pass computed for them.
 // The drop shadows stay the real pass's.
-void mrp_lod_moby_shadow(void (*pass)());
+// `real_first`, `real_count` (a run after the real pass): the mobys the real pass added to the frame's scene
+void mrp_lod_moby_shadow(void (*pass)(), size_t real_first = 0, size_t real_count = 0);
+// orig: (host) the run after the real pass fills the pose memo from it (RAC1_PERF_POSE_ORDER; not the extras' run, which
+// leaves out what the real pass drew)
+bool mrp_lod_moby_pose_fill();
 // orig: (host) RAC1_PERF_POSE_ORDER (docs/performance.md; 0: the shadow run before the real pass, as before): the moby pass's
 // shadow run made after the real pass, whose poses fill the pose memo (mrp_pose_memo.h) - an animated moby the two passes both
 // draw is then posed once a frame, not twice. True when the run comes after; mrp_lod_moby_shadow_due(): it will be made this
