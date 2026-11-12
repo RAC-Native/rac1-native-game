@@ -710,7 +710,7 @@ void morph_update(uint32_t m) {
             if (lw(0x0015ed84u) == 5 && lh(morphed_tgt + 0xa6u) == 0x271 && lbu(0x0013d410u) == 0u) {
                 sb(0x0013d410u, 1u);
                 (void)sound_play_indexed(1, 0u, 0u);
-                sub_00263d40(0x53d6, -1);
+                sub_00263d40(TXT(0x53d6), -1);
             }
             morph_2c9348(lwu(pv + 0x10u));
             sw(pv + 0x10u, 0u);

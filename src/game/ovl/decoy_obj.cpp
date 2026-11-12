@@ -299,8 +299,10 @@ void decoy_object_update(uint32_t m) {
         return;
     }
 
-    switch (ovl_code_to_veldin(lwu(OV(0x001e9c60u) + (st << 2)))) {
-    case 0x002c45f4u: {
+    // (the state's case by its index: the original's switch over the state, compiled to the jump table 0x1e9c60; the
+    // disc's table is not read, so the state works on a build whose own code moved the case labels: PAL 2.00)
+    switch (st) {
+    case 0: {  // (0x002c45f4)
         sb(m + 0x20, 1);
         sh(dpv + 0x44, 0);
         sw(m + 0x98, 0xffffffffu);
@@ -308,7 +310,7 @@ void decoy_object_update(uint32_t m) {
         sh(dpv + 0x6c, 0);
         return;
     }
-    case 0x002c4614u: {
+    case 1: {  // (0x002c4614)
         const uint32_t owner = lwu(dpv + 0x40);
         sh(dpv + 0x44, 0);
         if (owner != 0 && (lbu(owner + 0x20) & 0xf0u) != 0xf0u) {
@@ -319,7 +321,7 @@ void decoy_object_update(uint32_t m) {
         moby_retire(m);
         return;
     }
-    case 0x002c466cu: {
+    case 2: {  // (0x002c466c)
         const float max_s = lwc1(lwu(m + 0x24) + 0x24);
         const float cur_s = lwc1(m + 0x2c);
         if (cur_s < max_s) {
@@ -456,7 +458,7 @@ void decoy_object_update(uint32_t m) {
         }
         return;
     }
-    case 0x002c4c08u: {
+    case 3: case 4: {  // (0x002c4c08)
         // enhancement: 1.02 Gameplay, fix 14 (the 1.02 build, 0x2c5f10): the decoy pushed by Ratchet swimming into it (fixes102.h)
         gameplay102_decoy_push(m);
         const uint32_t hit = sub_0025a420(m, 0x30001u, 0);
@@ -581,7 +583,7 @@ void decoy_object_update(uint32_t m) {
         sb(m + 0x20, 5);
         return;
     }
-    case 0x002c5124u: {
+    case 5: {  // (0x002c5124)
         if (floor_probe_v(0.5f, V(m + 0x10), 0u) != 0.0f) {
             const uint32_t floor_m = lwu(OV(0x00173e58u));
             if (floor_m != 0) {
@@ -596,7 +598,7 @@ void decoy_object_update(uint32_t m) {
         }
         return;
     }
-    case 0x002c51b0u: {
+    case 6: {  // (0x002c51b0)
         if (floor_probe_v(0.5f, V(m + 0x10), 0u) != 0.0f) {
             const uint32_t floor_m = lwu(OV(0x00173e58u));
             if (floor_m != 0) {
@@ -611,7 +613,7 @@ void decoy_object_update(uint32_t m) {
         }
         return;
     }
-    case 0x002c5264u: {
+    case 7: {  // (0x002c5264)
         sb(m + 0x20, 0);
         return;
     }

@@ -331,7 +331,7 @@ void board_race_progress() {
         if (!(par < lw(P + 0x894)) && lbu(0x0013d411u) == 0) {
             sb(0x0013d411u, 1);
             sound_play_indexed(1, 0, 0);
-            sub_00263d40(0x53d6, -1);
+            sub_00263d40(TXT(0x53d6), -1);
         }
         const int32_t prize = lw(pv + 0x28);
         if (prize == -1) return;
@@ -714,7 +714,7 @@ int32_t board_crash_and_land_check() {
         if (lw(0x0015ed84u) == 5 && lw(P + 0x6f0) == 4 && !(lw(P + 0x70c) < 4) && lbu(0x0013d40fu) == 0) {
             sb(0x0013d40fu, 1);
             sound_play_indexed(1, 0, 0);
-            sub_00263d40(0x53d6, -1);
+            sub_00263d40(TXT(0x53d6), -1);
         }
         sw(P + 0x714, 0);
     }

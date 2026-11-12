@@ -109,12 +109,12 @@ void help_panel_draw_tr(uint32_t e) {
     const int32_t csecs = ee_div(rem * 100, fps);
 
     const uint32_t str_buf = ee_stack_alloc(0xa0);
-    const int32_t time_label = sub_00203ad8(0x531b);
+    const int32_t time_label = sub_00203ad8(TXT(0x531b));
     libc_sprintf(str_buf, OV(0x001e84c0u), {sx64(time_label), sx64(mins), sx64(secs), sx64(csecs)});
     hud_message_box(0x100, y_base + 0x28, text_col, str_buf);
 
     if (high_score != 0) {
-        const int32_t pts_label = sub_00203ad8(0x531c);
+        const int32_t pts_label = sub_00203ad8(TXT(0x531c));
         libc_sprintf(str_buf, OV(0x0015f778u), {sx64(pts_label), sx64(high_score)});
         hud_message_box(0x100, y_base + 0x48, text_col, str_buf);
     }

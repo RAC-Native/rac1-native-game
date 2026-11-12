@@ -168,7 +168,7 @@ TrRet cr_1fc558_tr(uint32_t src, uint32_t, uint32_t, uint32_t, uint32_t, uint32_
         const uint64_t qwc = static_cast<uint64_t>(chunk_h) << 7;
         sd(q + 0x00, 0x4000000000000001ull);
         sd(q + 0x08, 0x0eeeeeeeull);
-        sd(q + 0x10, (static_cast<uint64_t>(tbp) << 32) | 0x0800000000000000ull);
+        sd(q + 0x10, (static_cast<uint64_t>(tbp) << 32) | 0x0008000000000000ull);
         sd(q + 0x18, 0x50ull);
         sd(q + 0x20, 0ull);
         sd(q + 0x28, 0x51ull);

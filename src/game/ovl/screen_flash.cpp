@@ -14,7 +14,7 @@ namespace {
 constexpr uint32_t ADDR_SCREEN_W = 0x001518d0u;
 constexpr uint32_t ADDR_SCREEN_H = 0x001518d2u;
 constexpr OvConst<0x0015f310u> FLASH_CFG_PTR{};
-constexpr uint64_t GS_ALPHA_MASK = 0x0000ff00000000ffull;
+constexpr uint64_t GS_ALPHA_MASK = 0x000000ff000000ffull;  // ALPHA: A, B, C, D (bits 0-7) and FIX (bits 32-39)
 }  // namespace
 
 // orig: 0x001f9df8

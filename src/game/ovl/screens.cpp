@@ -576,8 +576,8 @@ void screen_draw() {
             const int32_t right = lw(OV(0x0015f4b8)) + dx1;
             screen_frame(top, bot, left, right, frame_col);
             text_centered_small(0x100, lw(OV(0x0015f4c8)), col_prompt, static_cast<uint32_t>(sub_00203ad8(0x4f6e)), -1);
-            text_centered_small(0x100, lw(OV(0x0015f4c8)) + 0x18, col_prompt, static_cast<uint32_t>(sub_00203ad8(0x5249)), -1);
-            text_centered_small(0x100, lw(OV(0x0015f4c8)) + 0x30, col_prompt, static_cast<uint32_t>(sub_00203ad8(0x5248)), -1);
+            text_centered_small(0x100, lw(OV(0x0015f4c8)) + 0x18, col_prompt, static_cast<uint32_t>(sub_00203ad8(TXT(0x5249))), -1);
+            text_centered_small(0x100, lw(OV(0x0015f4c8)) + 0x30, col_prompt, static_cast<uint32_t>(sub_00203ad8(TXT(0x5248))), -1);
         } else {
             const int32_t dy0 = float_to_int(fpu_mul(static_cast<float>(lw(OV(0x0015f4d8))), box_s));
             const int32_t top = lw(OV(0x0015f4d0)) - dy0;
@@ -590,7 +590,7 @@ void screen_draw() {
             screen_frame(top, bot, left, right, frame_col);
 
             const uint32_t buf = ee_stack_alloc(0x50);
-            libc_sprintf(buf, OV(0x0015f520), {sxt64(static_cast<uint32_t>(sub_00203ad8(0x5240)))});
+            libc_sprintf(buf, OV(0x0015f520), {sxt64(static_cast<uint32_t>(sub_00203ad8(TXT(0x5240))))});
             const int32_t place = lw(0x0013f350 + 0x8c0);
             if (place == 1) {
                 libc_sprintf(buf, OV(0x0015f528), {1ull});
@@ -614,29 +614,29 @@ void screen_draw() {
                 const int32_t rem_f = best_time - mins * fpm;
                 const int32_t secs = ee_div(rem_f, fps);
                 const int32_t csecs = ee_div((rem_f - secs * fps) * 0x64, fps);
-                libc_sprintf(buf, OV(0x0015f548), {sxt64(static_cast<uint32_t>(sub_00203ad8(0x50a3)))});
+                libc_sprintf(buf, OV(0x0015f548), {sxt64(static_cast<uint32_t>(sub_00203ad8(TXT(0x50a3))))});
                 text_centered_small(0x100, lw(OV(0x0015f4dc)) + 0x26, col_hi, buf, -1);
                 libc_sprintf(buf, OV(0x0015f550), {sxt64(static_cast<uint32_t>(mins)), sxt64(static_cast<uint32_t>(secs)), sxt64(static_cast<uint32_t>(csecs))});
                 text_centered_small(0x100, lw(OV(0x0015f4dc)) + 0x3a, col_hi, buf, -1);
             } else {
-                libc_sprintf(buf, OV(0x0015f548), {sxt64(static_cast<uint32_t>(sub_00203ad8(0x50a2)))});
+                libc_sprintf(buf, OV(0x0015f548), {sxt64(static_cast<uint32_t>(sub_00203ad8(TXT(0x50a2))))});
                 text_centered_small(0x100, lw(OV(0x0015f4dc)) + 0x30, col_lo, buf, -1);
             }
 
             const uint32_t score_off = (lw(0x0015ed84) == 0x10) ? 4u : 0u;
             const int32_t best_score = lw(0x0015ee68 + score_off);
             if (best_score != 0 && best_score == lw(0x0013fbf8)) {
-                libc_sprintf(buf, OV(0x0015f548), {sxt64(static_cast<uint32_t>(sub_00203ad8(0x50a5)))});
+                libc_sprintf(buf, OV(0x0015f548), {sxt64(static_cast<uint32_t>(sub_00203ad8(TXT(0x50a5))))});
                 text_centered_small(0x100, lw(OV(0x0015f4dc)) + 0x56, col_hi, buf, -1);
                 libc_sprintf(buf, OV(0x0015f560), {sxt64(lwu(0x0013fbf8))});
                 text_centered_small(0x100, lw(OV(0x0015f4dc)) + 0x6a, col_hi, buf, -1);
             } else {
-                libc_sprintf(buf, OV(0x0015f548), {sxt64(static_cast<uint32_t>(sub_00203ad8(0x50a4)))});
+                libc_sprintf(buf, OV(0x0015f548), {sxt64(static_cast<uint32_t>(sub_00203ad8(TXT(0x50a4))))});
                 text_centered_small(0x100, lw(OV(0x0015f4dc)) + 0x60, col_lo, buf, -1);
             }
 
-            text_centered_small(0x100, lw(OV(0x0015f4dc)) + 0x90, col_prompt, static_cast<uint32_t>(sub_00203ad8(0x5249)), -1);
-            text_centered_small(0x100, lw(OV(0x0015f4dc)) + 0xa8, col_prompt, static_cast<uint32_t>(sub_00203ad8(0x5248)), -1);
+            text_centered_small(0x100, lw(OV(0x0015f4dc)) + 0x90, col_prompt, static_cast<uint32_t>(sub_00203ad8(TXT(0x5249))), -1);
+            text_centered_small(0x100, lw(OV(0x0015f4dc)) + 0xa8, col_prompt, static_cast<uint32_t>(sub_00203ad8(TXT(0x5248))), -1);
             ee_stack_free(0x50);
         }
     } else if (kind == 2) {
@@ -709,7 +709,7 @@ void screen_draw() {
 
         const float t2 = fpu_sub(1.0f, fpu_div(static_cast<float>(lw(SB + 0x24)), static_cast<float>(frame_scale_i(0x1e))));
         const uint64_t prompt_col = static_cast<uint64_t>(rgba_lerp(NOT_ADDR(0x0020ffff), 0x8020ffff, t2));
-        text_centered_small(0x100, 0x140, prompt_col, static_cast<uint32_t>(sub_00203ad8(0x524a)), -1);
+        text_centered_small(0x100, 0x140, prompt_col, static_cast<uint32_t>(sub_00203ad8(TXT(0x524a))), -1);
 
         mid_y = (mid_y + lh(box + 0xa)) >> 1;
         sub_002a0ba8(0x47, 0x3004bull);
@@ -732,18 +732,18 @@ void screen_draw() {
         const int32_t step = lw(SB + 0x1c);
         int32_t msg_id = 0;
         if (step == 2) {
-            text_centered_small(0xca, 0x118, btn_col, static_cast<uint32_t>(sub_00203ad8(0x524e)), -1);
-            text_centered_small(0x135, 0x118, btn_col, static_cast<uint32_t>(sub_00203ad8(0x524b)), -1);
-            msg_id = 0x522b;
+            text_centered_small(0xca, 0x118, btn_col, static_cast<uint32_t>(sub_00203ad8(TXT(0x524e))), -1);
+            text_centered_small(0x135, 0x118, btn_col, static_cast<uint32_t>(sub_00203ad8(TXT(0x524b))), -1);
+            msg_id = TXT(0x522b);
         } else if (step < 3) {
             if (step >= 0) {
-                text_centered_small(0xca, 0x118, btn_col, static_cast<uint32_t>(sub_00203ad8(0x524e)), -1);
-                text_centered_small(0x135, 0x118, btn_col, static_cast<uint32_t>(sub_00203ad8(0x524b)), -1);
-                msg_id = 0x522a;
+                text_centered_small(0xca, 0x118, btn_col, static_cast<uint32_t>(sub_00203ad8(TXT(0x524e))), -1);
+                text_centered_small(0x135, 0x118, btn_col, static_cast<uint32_t>(sub_00203ad8(TXT(0x524b))), -1);
+                msg_id = TXT(0x522a);
             }
         } else if (step == 3) {
-            text_centered_small(0x100, 0x118, btn_col, static_cast<uint32_t>(sub_00203ad8(0x524a)), -1);
-            msg_id = 0x522c;
+            text_centered_small(0x100, 0x118, btn_col, static_cast<uint32_t>(sub_00203ad8(TXT(0x524a))), -1);
+            msg_id = TXT(0x522c);
         }
         if (msg_id != 0) {
             const uint32_t msg = static_cast<uint32_t>(sub_00203ad8(msg_id));

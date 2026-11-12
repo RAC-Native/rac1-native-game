@@ -221,9 +221,9 @@ uint32_t end_menu_choice_draw_tr(uint32_t w, uint32_t) {
     };
 
     int32_t max_w = 0;
-    if (const int32_t w1 = measure_stat(0x522f, bytes_14bec0_count(), 0x28ull); 0 < w1) max_w = w1;
-    if (const int32_t w2 = measure_stat(0x5230, gold_bolts_count(), 0xaull); max_w < w2) max_w = w2;
-    if (const int32_t w3 = measure_stat(0x5231, skill_points_count(), 0x1eull); max_w < w3) max_w = w3;
+    if (const int32_t w1 = measure_stat(TXT(0x522f), bytes_14bec0_count(), 0x28ull); 0 < w1) max_w = w1;
+    if (const int32_t w2 = measure_stat(TXT(0x5230), gold_bolts_count(), 0xaull); max_w < w2) max_w = w2;
+    if (const int32_t w3 = measure_stat(TXT(0x5231), skill_points_count(), 0x1eull); max_w < w3) max_w = w3;
 
     int32_t fx_id = 1;
     uint32_t font = OV(0x001c3150u);
@@ -235,7 +235,7 @@ uint32_t end_menu_choice_draw_tr(uint32_t w, uint32_t) {
     int32_t y = row_h - 8;
     text_colour_codes_off();
     const int32_t cx = lw(w + 0x20u) >> 1;
-    const uint32_t hdr = static_cast<uint32_t>(sub_00203ad8(0x522e));
+    const uint32_t hdr = static_cast<uint32_t>(sub_00203ad8(TXT(0x522e)));
     text_centered_small(cx, y, 0x80ffa888ull, hdr, -1);
     y += row_h;
 
@@ -249,11 +249,11 @@ uint32_t end_menu_choice_draw_tr(uint32_t w, uint32_t) {
         text_draw(0x14, row_y, 0x80ffa888ull, buf, -1, tex, font);
     };
 
-    draw_stat_row(y, 0x522f, bytes_14bec0_count(), &bytes_14bec0_count, 0x28ull);
+    draw_stat_row(y, TXT(0x522f), bytes_14bec0_count(), &bytes_14bec0_count, 0x28ull);
     y += row_h;
-    draw_stat_row(y, 0x5230, gold_bolts_count(), &gold_bolts_count, 0xaull);
+    draw_stat_row(y, TXT(0x5230), gold_bolts_count(), &gold_bolts_count, 0xaull);
     y += row_h;
-    draw_stat_row(y, 0x5231, skill_points_count(), &skill_points_count, 0x1eull);
+    draw_stat_row(y, TXT(0x5231), skill_points_count(), &skill_points_count, 0x1eull);
 
     sub_001fb028();
     texture_block_end();
@@ -291,20 +291,22 @@ uint32_t end_menu_page23_update_tr(uint32_t w, uint32_t) {
     const uint32_t step = lwu(w + 0x50u);
     if (!(step < 20u)) return 0u;
 
-    switch (ovl_code_to_veldin(lwu(OV(0x001e92b0u) + (step << 2)))) {
-        case 0x280140u:
+    // (the step's case by its index: the original's switch over the step, compiled to the jump table 0x1e92b0; the
+    // disc's table is not read, so the step works on a build whose own code moved the case labels: PAL 2.00)
+    switch (step) {
+        case 0:  // (0x280140)
             sw(w + 0x50u, step + 1u);
             sw(w + 0x40u, static_cast<uint32_t>(frame_scale_i(0xb4)));
             sw(w + 0x3cu, 0u);
-            sw(OV(0x001b6bf4u), 0x50a9u);
+            sw(OV(0x001b6bf4u), static_cast<uint32_t>(TXT(0x50a9)));
             sw(w + 0x34u, OV(0x001b9198u));
             return 0u;
-        case 0x280174u:
+        case 1: case 5: case 8: case 12: case 16:  // (0x280174)
             if (lw(w + 0x40u) != 0) return 0u;
             sw(w + 0x54u, 0u);
             sw(w + 0x50u, lwu(w + 0x50u) + 1u);
             return 0u;
-        case 0x280194u: {
+        case 2: case 6: case 9: case 13: case 17: {  // (0x280194)
             const uint32_t scr = lwu(w + 0x3cu);
             sw(w + 0x3cu, shoulders ? (scr + 0x14u) : (scr + 0xau));
             if (lw(w + 0x54u) == 0) return 0u;
@@ -312,70 +314,70 @@ uint32_t end_menu_page23_update_tr(uint32_t w, uint32_t) {
             sw(w + 0x50u, lwu(w + 0x50u) + 1u);
             return 0u;
         }
-        case 0x2801d4u:
+        case 4:  // (0x2801d4)
             if (lw(w + 0x40u) != 0) return 0u;
             sw(w + 0x50u, 5u);
             sw(w + 0x40u, static_cast<uint32_t>(frame_scale_i(0xb4)));
             sw(w + 0x3cu, 0u);
-            sw(OV(0x001b6bf4u), 0x50d6u);
+            sw(OV(0x001b6bf4u), static_cast<uint32_t>(TXT(0x50d6)));
             sw(w + 0x34u, OV(0x001b9248u));
             return 0u;
-        case 0x280214u:
+        case 3:  // (0x280214)
             if (lw(w + 0x40u) != 0) return 0u;
-            sw(OV(0x001b6bf4u), 0x50d4u);
-            sw(w + 0x34u, 0x50d5u);
+            sw(OV(0x001b6bf4u), static_cast<uint32_t>(TXT(0x50d4)));
+            sw(w + 0x34u, static_cast<uint32_t>(TXT(0x50d5)));
             sw(w + 0x40u, static_cast<uint32_t>(frame_scale_i(0xf0)));
             sw(w + 0x3cu, 0u);
             sw(w + 0x50u, lwu(w + 0x50u) + 1u);
             return 0u;
-        case 0x28023cu:
+        case 7:  // (0x28023c)
             if (lw(w + 0x40u) != 0) return 0u;
-            sw(OV(0x001b6bf4u), 0x5106u);
+            sw(OV(0x001b6bf4u), static_cast<uint32_t>(TXT(0x5106)));
             sw(w + 0x34u, OV(0x001b9308u));
             sw(w + 0x40u, static_cast<uint32_t>(frame_scale_i(0xf0)));
             sw(w + 0x3cu, 0u);
             sw(w + 0x50u, lwu(w + 0x50u) + 1u);
             return 0u;
-        case 0x280268u:
+        case 10:  // (0x280268)
             if (lw(w + 0x40u) != 0) return 0u;
-            sw(OV(0x001b6bf4u), 0x5136u);
-            sw(w + 0x34u, 0x5137u);
+            sw(OV(0x001b6bf4u), static_cast<uint32_t>(TXT(0x5136)));
+            sw(w + 0x34u, static_cast<uint32_t>(TXT(0x5137)));
             sw(w + 0x40u, static_cast<uint32_t>(frame_scale_i(0xf0)));
             sw(w + 0x3cu, 0u);
             sw(w + 0x50u, lwu(w + 0x50u) + 1u);
             return 0u;
-        case 0x280290u:
+        case 11:  // (0x280290)
             if (lw(w + 0x40u) != 0) return 0u;
             sw(w + 0x40u, static_cast<uint32_t>(frame_scale_i(0xb4)));
             sw(w + 0x3cu, 0u);
-            sw(OV(0x001b6bf4u), 0x5138u);
+            sw(OV(0x001b6bf4u), static_cast<uint32_t>(TXT(0x5138)));
             sw(w + 0x50u, 0xcu);
             sw(w + 0x34u, OV(0x001b9398u));
             return 0u;
-        case 0x2802c8u:
+        case 14:  // (0x2802c8)
             if (lw(w + 0x40u) != 0) return 0u;
             sw(OV(0x001b6bf4u), 0u);
-            sw(w + 0x34u, 0x5143u);
+            sw(w + 0x34u, static_cast<uint32_t>(TXT(0x5143)));
             sw(w + 0x40u, static_cast<uint32_t>(frame_scale_i(0xf0)));
             sw(w + 0x3cu, 0u);
             sw(w + 0x50u, lwu(w + 0x50u) + 1u);
             return 0u;
-        case 0x280308u:
+        case 15:  // (0x280308)
             if (lw(w + 0x40u) != 0) return 0u;
             sw(w + 0x40u, static_cast<uint32_t>(frame_scale_i(0xb4)));
             sw(w + 0x3cu, 0u);
-            sw(OV(0x001b6bf4u), 0x5144u);
+            sw(OV(0x001b6bf4u), static_cast<uint32_t>(TXT(0x5144)));
             sw(w + 0x50u, 0x10u);
             sw(w + 0x34u, OV(0x001b93b0u));
             return 0u;
-        case 0x280348u:
+        case 18:  // (0x280348)
             if (lw(w + 0x40u) != 0) return 0u;
             sw(OV(0x001b6bf4u), 0u);
-            sw(w + 0x34u, 0x5175u);
+            sw(w + 0x34u, static_cast<uint32_t>(TXT(0x5175)));
             sw(w + 0x50u, lwu(w + 0x50u) + 1u);
             sw(w + 0x40u, static_cast<uint32_t>(frame_scale_i(0x12c)));
             return 0u;
-        case 0x280380u:
+        case 19:  // (0x280380)
             if (lw(w + 0x40u) != 0) return 0u;
             if (lw(OV(0x001b9cf0u) + 0xdcu) != 0) return 1u;
             return 0u;
