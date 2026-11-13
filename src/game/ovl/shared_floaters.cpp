@@ -109,4 +109,113 @@ uint32_t floater_find(uint32_t m, int32_t value, uint32_t key) {
     }
 }
 
+
+// orig: L14:0x002f12f0
+uint32_t floater_find_checked(uint32_t m, int32_t value, uint32_t key) {
+    const int32_t group = static_cast<int32_t>(lbu(m + 0x21));
+    if (!(group < lw(OV(0x0015fff4)))) return 0;
+    uint32_t e = lwu(OV(0x001ab840) + (static_cast<uint32_t>(group) << 2));
+    if (e == 0) return 0;
+    const uint32_t mobys = lwu(OV(0x0015ffd8));
+    for (;; e += 2) {
+        const uint32_t half = lhu(e);
+        const uint32_t o = mobys + ((half & 0x7fffu) << 8);
+        if (lh(lwu(o + 0x78) + key) == value) return o;
+        if ((half & 0x8000u) != 0) return 0;
+    }
+}
+
+namespace {
+// the camera point `idx` of the level's list (0x80 bytes each: +0x30 a place, +0x70 a turn)
+uint32_t camera_point(uint32_t idx) { return lwu(OV(0x001600ec)) + (idx << 7); }
+
+// the raft's ride's point and turn (pvars +0x60 / +0x70) its stage's (pvars `stage`) camera point's
+void ride_to_stage(uint32_t pv, uint32_t stage) {
+    const uint32_t c = camera_point(lwu(pv + 0x80 + static_cast<uint32_t>(lh(pv + stage) << 2)));
+    lq_sq(pv + 0x60, c + 0x30);
+    lq_sq(pv + 0x70, c + 0x70);
+}
+
+// the raft carried (state 1) or waiting (state 6)
+void raft_carried(uint32_t m) {
+    const uint32_t word = lwu(lwu(m + 0x24) + 0x10);
+    sb(m + 0x20, 1);
+    sw(m + 0x94, word);
+    sh(m + 0x34, lhu(m + 0x34) & 0xfffe);
+    sb(m + 0x31, 1);
+}
+void raft_waiting(uint32_t m) {
+    sb(m + 0x20, 6);
+    sw(m + 0x94, 0);
+    sh(m + 0x34, lhu(m + 0x34) | 1);
+    sb(m + 0x31, 0);
+}
+}  // namespace
+
+// orig: L16:0x002e4900
+void floater_arrive_l16(uint32_t m) {
+    const uint32_t pv = lwu(m + 0x78);
+    sh(pv + 0xac, 0xffff);
+    for (uint32_t k = 0; k < 3; ++k)
+        if (vec3_distance(V(m + 0x10), V(camera_point(lwu(pv + 0x80 + k * 4)) + 0x30)) < 1.0f) sh(pv + 0xac, k);
+    if (lbu(0x0013d4e1) != 0 || lh(pv + 0xac) == 2) raft_carried(m);
+    else raft_waiting(m);
+    ride_to_stage(pv, 0xac);
+}
+
+// orig: L5:0x00319208
+void floater_arrive_l5(uint32_t m) {
+    const uint32_t pv = lwu(m + 0x78);
+    sh(pv + 0xb4, 0xffff);
+    for (uint32_t k = 0; k < 5; ++k)
+        if (vec3_distance(V(m + 0x10), V(camera_point(lwu(pv + 0x80 + k * 4)) + 0x30)) < 1.0f) sh(pv + 0xb4, k);
+    // (the table 0x218aa0: the stages 0, 1, 3, 4 -> 0x0031931c, 2 -> 0x003192b8)
+    switch (lh(pv + 0xb4)) {
+    case 0: case 1: case 3: case 4:  // (0x0031931c)
+        raft_carried(m);
+        break;
+    case 2: {  // (0x003192b8)
+        const uint32_t flags = 0x0014c050u + (lwu(0x0015ed84) << 4);
+        if (lbu(lwu(pv + 0xb8) + flags) == 0xff || lbu(lwu(pv + 0xbc) + flags) == 0xff) raft_carried(m);
+        else raft_waiting(m);
+        break;
+    }
+    default:
+        break;
+    }
+    ride_to_stage(pv, 0xb4);
+}
+
+// orig: L14:0x002f1040
+void floater_arrive_l14(uint32_t m) {
+    const uint32_t pv = lwu(m + 0x78);
+    sh(pv + 0xb4, 0xffff);
+    for (uint32_t k = 0; k < 5; ++k) {
+        if (vec3_distance(V(m + 0x10), V(camera_point(lwu(pv + 0x80 + k * 4)) + 0x30)) < 1.0f) {
+            sh(pv + 0xb4, k);
+            break;
+        }
+    }
+    sb(m + 0x20, 1);
+    ride_to_stage(pv, 0xb4);
+}
+
+// orig: L5:0x00319510 L14:0x002f1268 L16:0x002e4b58
+void floater_next_stage(uint32_t m, uint32_t stage) {
+    const uint32_t pv = lwu(m + 0x78);
+    const int32_t next = lh(pv + stage + 2);
+    const uint32_t o = on_level(OLTANIS) ? floater_find_checked(m, next, stage) : floater_find(m, next, stage);
+    if (o != 0) {
+        const uint32_t c = camera_point(lwu(pv + 0x80 + static_cast<uint32_t>(lh(pv + stage) << 2)));
+        lq_sq(o + 0x10, c + 0x30);
+        lq_sq(o + 0x40, c + 0x70);
+        switch (ovl_reloc_level()) {
+        case RILGAR: floater_arrive_l5(o); break;
+        case OLTANIS: floater_arrive_l14(o); break;
+        default: floater_arrive_l16(o); break;
+        }
+    }
+    sh(pv + stage, lhu(pv + stage + 2));
+}
+
 }  // namespace rac1

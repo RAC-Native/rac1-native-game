@@ -20,6 +20,9 @@ uint32_t class49_spawn(uint32_t owner, uint32_t vel, uint32_t pos);  // L16:0x00
 uint32_t class50_spawn(uint32_t owner, uint32_t vel, uint32_t pos, uint32_t target, int32_t life);  // L16:0x002a0dc0 L18:0x002a7eb8
 // class 49's tuning record on the level being run
 uint32_t class49_tuning();
+// (task F11) Class 50, a homing shot (Kalebo III, Veldin's finale): its trail (class 49's with class 50's record), its
+// heading eased from its launch toward its target over its life, a burst on what it meets or at its target.
+void class50_update(uint32_t m);  // L16:0x002a0a98 L18:0x002a7b90
 
 }  // namespace rac1
 

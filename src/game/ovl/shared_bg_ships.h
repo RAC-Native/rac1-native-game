@@ -19,6 +19,10 @@ void bg_ship_exhaust(uint32_t m, uint32_t from, int32_t count, uint32_t scales, 
 // the ship of class 1213 / 1973 (L2:0x002ece18, L9:0x00306720, L10:0x002ebb08)
 void bg_ship2_update(uint32_t m);
 
+// (task F11; added after the earlier ports) The ship of class 1212 (Aridia's and Gaspar's background ship 1): as ship 2, its
+// own tuning record, three exhaust points, its glow on the points 3 .. 5, and a third piece of its own.
+void bg_ship1_update(uint32_t m);  // L2:0x002ec4b8 L9:0x00305dc0
+
 }  // namespace rac1
 
 #endif

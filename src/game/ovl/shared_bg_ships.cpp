@@ -202,4 +202,109 @@ void bg_ship2_update(uint32_t m) {
     ee_stack_free(0xb0);
 }
 
+
+// ---- (task F11) ship 1, class 1212
+namespace {
+// ship 1's tuning record: +0 its speed, +0xc the glow's turn (degrees a second), +0x10 / +0x14 the glow's two colours, +0x18
+// / +0x1c the pieces' push along its x axis and up, +0x20 the exhaust's speeds, +0x2c its timings, +0x4c its colours
+uint32_t ship1_tuning() { return on_level(GASPAR) ? L9_ADDR(0x00161cd0) : L2_ADDR(0x00161f64); }
+// ship 1's glow draw callback
+uint32_t ship1_glow_draw() { return on_level(GASPAR) ? L9_ADDR(0x00305c10) : L2_ADDR(0x002ec308); }
+}  // namespace
+
+// The ship (its pvars as ship 2's): state 0 puts it at its path's start, 1 flies it (the exhaust while drawn; a hit with
+// damage ends it), 2 blows it up (the sounds of Aridia's third and Gaspar's fifth, as ship 2), its pieces, gone; but in
+// state 0's retirement its glow while drawn, after the retirement of state 2 too.
+// orig: L2:0x002ec4b8 L9:0x00305dc0
+void bg_ship1_update(uint32_t m) {
+    const uint32_t pv = lwu(m + 0x78);
+    const uint32_t paths = OV(0x001b04b0);
+    const uint32_t path = lwu(paths + (lwu(pv + 0x60) << 2));  // (read before the index is checked, as the original does)
+    const uint32_t tune = ship1_tuning();
+    const uint32_t sp = ee_stack_alloc(0xb0);
+    const uint32_t old_pos = sp + 0x10;  // (also the pieces' velocity)
+    const uint32_t hit = sub_0025a420(m, 0x10000, 0);
+    switch (lbu(m + 0x20)) {
+    case 0: {
+        sb(m + 0x30, 0xff);
+        sh(m + 0x32, 0xff);
+        const int32_t index = lw(pv + 0x60);
+        const uint32_t own = index == -1 ? 0u : lwu(paths + (static_cast<uint32_t>(index) << 2));
+        if (index == -1 || lwu(own) == 0) {
+            debug_printf_stub();  // (the ship's moby has no path, or an empty one)
+            moby_retire(m);
+            ee_stack_free(0xb0);
+            return;
+        }
+        const float leg = vec3_distance(V(own + 0x10), V(own + 0x20));
+        sb(pv + 0x2c, 0x28);
+        swc1(pv + 0x70, leg);
+        sb(pv + 0x2b, 1);
+        V(m + 0x10) = V(lwu(paths + (lwu(pv + 0x60) << 2)) + 0x10);  // (the 16 bytes as they are)
+        swc1(pv + 0x68, rand_angle());
+        sw(pv + 0x6c, 0xffffffffu);
+        sb(m + 0x20, 1);
+        sh(m + 0x34, lhu(m + 0x34) | 0x10u);
+        swc1(pv + 0x64, fpu_mul(lwc1(pv + 0x74), int_to_float(lw(path))));
+        break;
+    }
+    case 1: {
+        V(old_pos) = V(m + 0x10);
+        if (sub_0028d8c0(m, lw(pv + 0x6c)) == 0) sw(pv + 0x6c, static_cast<uint32_t>(moby_sound_start(1, 4, m)));
+        const float t = fpu_add(lwc1(pv + 0x64), fpu_div(fpu_mul(lwc1(tune), lwc1(0x0015ed6c)), lwc1(pv + 0x70)));
+        swc1(pv + 0x64, t);
+        const float points = int_to_float(lw(path));
+        if (points < t) swc1(pv + 0x64, fpu_sub(t, points));
+        path_point(lwc1(pv + 0x64), path, game_level() == 9 ? 1 : 0, m + 0x10, m + 0x40, 0);  // (Gaspar's loops)
+        if (lwc1(m + 0x10) < 8.0f || lwc1(m + 0x14) < 8.0f) sw(m + 0x94, 0);
+        else sw(m + 0x94, lwu(lwu(m + 0x24) + 0x10));
+        if (lbu(m + 0x31) != 0) bg_ship_exhaust(m, old_pos, 3, tune + 0x20, tune + 0x2c, tune + 0x4c, false);
+        if (hit != 0 && 0.0f < lwc1(hit + 0x2c)) sb(m + 0x20, 2);
+        break;
+    }
+    case 2: {
+        if (game_level() == 2) {  // (Aridia: the third ship blown up plays the sound once)
+            const int32_t n = lw(0x0015edf4) + 1;
+            sw(0x0015edf4, static_cast<uint32_t>(n));
+            if (!(n < 3) && lbu(0x0013d40a) == 0) {
+                sb(0x0013d40a, 1);
+                sound_play_indexed(1, 0, 0);
+                sub_00263d40(0x53d6, -1);
+            }
+        }
+        if (game_level() == 9 && lw(0x001413d4) == 0x32) {  // (Gaspar, the hero in state 0x32: the fifth)
+            const int32_t n = lw(0x0015edfc) + 1;
+            sw(0x0015edfc, static_cast<uint32_t>(n));
+            if (!(n < 5) && lbu(0x0013d417) == 0) {
+                sb(0x0013d417, 1);
+                sound_play_indexed(1, 0, 0);
+                sub_00263d40(0x53d6, -1);
+            }
+        }
+        moby_sound_start(0, 0, m);
+        const uint32_t zero = OV(0x0015f580);
+        vec3_scale(V(old_pos), V(m + 0xc0), fpu_mul(lwc1(tune + 0x18), lwc1(0x0015ed60)));
+        swc1(old_pos + 8, fpu_add(lwc1(old_pos + 8), fpu_mul(lwc1(tune + 0x1c), lwc1(0x0015ed60))));
+        for (uint32_t cls : {0x5f2u, 0x5f5u, 0x790u}) {
+            const int32_t life = frame_scale_i(0x5a);
+            debris_spawn(m, cls, m + 0x10, m + 0x40, life, 0, old_pos, zero, zero, fpu_mul(lwc1(0x0015ed70), 12.0f));
+        }
+        moby_retire(m);
+        break;
+    }
+    default:
+        break;
+    }
+    if (lbu(m + 0x31) != 0) {  // (drawn: the glow)
+        float glow = fpu_sub(fpu_mul(sin_vu(lwc1(pv + 0x68)), 4.0f), 3.0f);
+        if (1.0f < glow) glow = 1.0f;
+        else if (glow < 0.0f) glow = 0.0f;
+        sw(m + 0x90, rgba_lerp(lwu(tune + 0x10), lwu(tune + 0x14), glow));
+        const float turn = fpu_mul(fpu_mul(lwc1(tune + 0xc), u2f(0x3c8efa35u)), lwc1(0x0015ed6c));  // (degrees to radians)
+        swc1(pv + 0x68, angle_add(lwc1(pv + 0x68), turn));
+        bg_ship_glow_prep(m, 3, 3, ship1_glow_draw());
+    }
+    ee_stack_free(0xb0);
+}
+
 }  // namespace rac1

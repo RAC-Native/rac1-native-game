@@ -16,6 +16,7 @@
 #include <game/ovl/variants_l16.h>
 #include <game/ovl/variants_l17.h>
 #include <game/ovl/variants_l18.h>
+#include <game/ovl/weapons.h>
 
 namespace rac1 {
 
@@ -165,6 +166,54 @@ void class49_update(uint32_t m) {
         class49_trail(m, class49_tuning());
     }
     ee_stack_free(0xd0);
+}
+
+
+// It starts its sound once the camera comes within 15; while flying (state 0) it trails, aims at its target (pvars +0x10)
+// turned by its random turn (+0x28 / +0x2c; the pitch within 70 degrees) at its speed (+0x24), its velocity (+0) eased
+// toward that over its life (+0x20 of +0x30) and its heading along it; a line to its next place that meets something, or its
+// target within a step, bursts it (a contact blast when the hero's +0x13f4 is 2), else it moves on.
+// orig: L16:0x002a0a98 L18:0x002a7b90
+void class50_update(uint32_t m) {
+    const uint32_t pv = lwu(m + 0x78);
+    const uint32_t pos = m + 0x10;
+    if (lw(pv + 0x34) == 0 && vec3_distance(V(pos), V(OV(0x00166dc0))) < 15.0f) {
+        sw(pv + 0x34, 1);
+        moby_sound_play(5, 0, m, 0x54c);
+    }
+    if (lbu(m + 0x20) != 0) return;
+    class49_trail(m, on_level(VELDIN_FINALE) ? L18_ADDR(0x001613e8) : L16_ADDR(0x001613e8));
+    const uint32_t sp = ee_stack_alloc(0xe0);
+    const uint32_t aim = sp + 0x20, next = sp + 0x30, to = sp + 0x40, eased = sp + 0x50;
+    vec3_sub(V(to), V(pv + 0x10), V(pos));
+    float yaw = atan2_f(lwc1(to), lwc1(to + 4));
+    float pitch = atan2_f(vec2_length(V(to)), lwc1(to + 8));
+    yaw = angle_add(yaw, lwc1(pv + 0x28));
+    pitch = angle_add(pitch, lwc1(pv + 0x2c));
+    const float most = u2f(0x3f9c61aau);  // (70 degrees)
+    if (most < pitch) pitch = most;
+    else if (pitch < u2f(0xbf9c61aau)) pitch = u2f(0xbf9c61aau);
+    vec_from_spherical_v(V(aim), lwc1(pv + 0x24), yaw, pitch);
+    if (timer_tick_i32(*static_cast<int32_t*>(ee_ram_ptr(pv + 0x20))) == 0) {
+        const float t = fpu_div(int_to_float(lw(pv + 0x20)), int_to_float(lw(pv + 0x30)));
+        vec3_lerp(V(eased), V(aim), V(pv), t);
+        vec3_add(V(next), V(pos), V(eased));
+        swc1(m + 0x48, atan2_f(lwc1(eased), lwc1(eased + 4)));
+        swc1(m + 0x44, -atan2_f(vec2_length(V(eased)), lwc1(eased + 8)));
+    } else {
+        vec3_add(V(next), V(pos), V(aim));
+        swc1(m + 0x48, yaw);
+        swc1(m + 0x44, pitch);
+    }
+    if (segment_collide_v(V(pos), V(next), 0, m, nullptr) != 0 || vec3_length(V(to)) < lwc1(pv + 0x24)) {
+        if (lbu(0x001413f4) == 2) moby_sphere_contact(m, pos, 3, 0, 1, 0, 2.0f, 2.0f, 1.0f);
+        moby_sound_play(4, 0, m, 0x54c);
+        explosion_effect(m, pv, pos, 0xa, 3, 0x10, -1, 1, 1, -1, 0, 4.0f, 4.0f, 4.0f, 2.0f, 9.0f, 1.0f, 15.0f);
+        moby_retire(m);
+    } else {
+        lq_sq(pos, next);
+    }
+    ee_stack_free(0xe0);
 }
 
 }  // namespace rac1

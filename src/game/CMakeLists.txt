@@ -132,6 +132,12 @@ add_library(rac1_game STATIC
     ovl/shared_helpers.cpp
     ovl/shared_class1135.cpp
     ovl/shared_class252.cpp
+    ovl/shared_class252_update.cpp
+    ovl/shared_class52.cpp
+    ovl/shared_class1400.cpp
+    ovl/shared_class1885.cpp
+    ovl/shared_seas.cpp
+    ovl/shared_class886.cpp
     ovl/shared_boss_bar.cpp
     ovl/shared_cam19.cpp
     ovl/novalis_birdbot.cpp
