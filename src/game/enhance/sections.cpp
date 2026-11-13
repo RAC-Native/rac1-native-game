@@ -369,7 +369,11 @@ SpawnResult section_spawn_placements(uint32_t H, const SpawnOpts& o) {
         uint32_t cls = lwu(s1);
         if (o.cls_level >= 0 && cls != 0) {  // (a world's: the session's id of its level's class)
             int32_t id = session_import_id(o.cls_level, cls);
-            if (id < 0) id = session_import_id(lw(0x0015ed84), cls);
+            // (the base's own class of that id: only with the world's level's context there, which its objects' pvars and
+            // level data are read through. Without one - another region's disc, whose levels have no contexts yet - the
+            // base's code ran the world's records as its own level's, their pointers into the other level's data: a moby
+            // callback at a wild address, then the game stopped at the portal of "La grande fuga" on the PAL disc)
+            if (id < 0 && (o.cls_level == lw(0x0015ed84) || ctx_exists(o.cls_level))) id = session_import_id(lw(0x0015ed84), cls);
             if (id < 0) {
                 ++r.absent;
                 s1 = rec_end;

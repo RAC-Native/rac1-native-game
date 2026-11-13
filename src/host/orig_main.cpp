@@ -84,6 +84,8 @@
 #include <game/enhance/advanced.h>
 #include <host/level_slots.h>
 #include <host/mod_code.h>
+#include <host/host_window.h>
+#include <host/host_gpu_watch.h>
 #include <game/enhance/controls.h>
 #include <game/enhance/graphics.h>
 #include <game/enhance/vibration.h>
@@ -779,9 +781,31 @@ struct HostPresents {
                             static_cast<double>(waits.size()) / (since - 1.0), g[g.size() / 2], g[g.size() * 5 / 100], g[g.size() * 95 / 100], wsum / static_cast<double>(waits.size()), wmax);
             }
         }
+        // every 10 s of a window's run: the pictures shown a second and the gaps between them over 1.5 frames of 60 (a picture
+        // late: shown a refresh or more after its slot) and over 100 ms (a stall: a load, a hitch), for the players' logs
+        if (on && have_last) {
+            const double gap = std::chrono::duration<double, std::milli>(b - last).count();
+            ++win_n;
+            if (gap > 25.0) ++win_late;
+            if (gap > 100.0) ++win_stall, win_stall_max = std::max(win_stall_max, gap);
+            const double span = std::chrono::duration<double>(b - win_t0).count();
+            if (span >= 10.0) {
+                std::printf("[display] last %.0f s: %.1f pictures a second, %d late (over 25 ms after the one before), %d stalls over 100 ms%s\n", span,
+                            static_cast<double>(win_n) / span, win_late, win_stall,
+                            win_stall != 0 ? (" (the longest " + std::to_string(static_cast<int>(win_stall_max)) + " ms)").c_str() : "");
+                win_t0 = b;
+                win_n = win_late = win_stall = 0;
+                win_stall_max = 0.0;
+            }
+        } else {
+            win_t0 = b;
+        }
         last = b;
         have_last = true;
     }
+    clk::time_point win_t0 = clk::now();
+    int win_n = 0, win_late = 0, win_stall = 0;
+    double win_stall_max = 0.0;
 };
 
 // RAC1_FRAME_PROF=2: no glFinish (the stages' CPU time as they run), each stage's GPU time from a time-elapsed
@@ -1539,6 +1563,10 @@ bool level_host_load(int level) {
 void level_prefetch(int level) {
     if (!disc_has_level(level)) return;
     LevelLoader::prefetch(level);
+    // (the modern renderer's world asset and textures read and decoded on a worker too, while the loading screen or the story's
+    // movies play: else read on the main thread at the level's first frame, 80 ms with the file in the system's cache and 300 to
+    // 500 ms from the disk - the picture frozen at the level's start, the sound going on alone)
+    mrp_world_prefetch(level);
     const uint32_t header_lba = lwu(0x0013a448 + static_cast<uint32_t>(level) * 8);  // (the table of contents, read at the start: toc_read)
     if (header_lba == 0) return;
     std::thread([header_lba] {
@@ -2458,6 +2486,8 @@ int main(int argc, char** argv) {
     // put back at the exit: platform.h)
     rac1::platform::process_begin();
     std::atexit(rac1::platform::process_end);
+    // (a fatal error ends the process at once, its window out of the way: no frozen fullscreen window, host_window.h)
+    rac1::host_fatal_handlers_install();
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--setup" || std::string(argv[i]) == "-s") {
             return rac1::setup::run_setup(argc, argv);
@@ -2643,6 +2673,8 @@ int main(int argc, char** argv) {
         glfwMakeContextCurrent(window);
         if (!headless && fs_monitor == nullptr) host_window_on_monitor(window, rac1::graphics_display().monitor);
     }
+    if (!headless) rac1::host_window_created(window);  // (not always on top: host_window.h)
+    if (!headless) rac1::host_gpu_watch_start();  // (the GPU held by the system, in the log: host_gpu_watch.h)
     if (!headless) host_input_init(window);  // the controls: the controller database, the bindings
     // the Controls page's host side; its changes saved in a window, headless only to an explicit RAC1_CONTROLS_FILE
     g_controls_save = !headless || std::getenv("RAC1_CONTROLS_FILE") != nullptr;
@@ -3135,6 +3167,7 @@ int main(int argc, char** argv) {
             cursor_free = g_debug_tools && dt::dev_settings().open;
 #endif
             host_input_poll(window, cursor_free);
+            rac1::host_window_frame(window);  // (GLFW's fullscreen made it topmost again: an ordinary window, host_window.h)
         }
         const auto now0 = std::chrono::steady_clock::now();
         const double dt_s = std::chrono::duration<double>(now0 - last).count();
@@ -4786,6 +4819,7 @@ int main(int argc, char** argv) {
         }
     }
     pace_report();
+    rac1::host_gpu_watch_stop();
     g_extrap.report(true);
     sample_prof_stop();
     rac1::vk_safety::start_over();  // (closed normally: not a crash of the start)

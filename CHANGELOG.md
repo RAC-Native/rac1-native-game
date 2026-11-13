@@ -3,6 +3,36 @@
 What changed in each release. Releases are source only: you build the game with `./setup.sh`
 (`setup.cmd` on Windows) from your own disc. Issue numbers refer to this repository's issues.
 
+## Unreleased
+
+### Fixes (Windows)
+- **The game window is no longer "always on top".** GLFW makes a fullscreen window topmost on Windows; the game now takes
+  the flag off at its start and whenever GLFW sets it again (a restore from the taskbar), so the Task Manager or any other
+  window can come in front of it, also while the game is busy or not answering. Its start still asks for the focus
+  (else its taskbar button flashes).
+- **A fatal error no longer leaves a frozen fullscreen window.** An error nobody handled (a C++ exception, `abort()`, a
+  crash) went to Windows' error reporting, which kept the process alive and frozen, its window over the screen, until it
+  was killed. It is now written to the log (`[fatal] ...: the game stopped`, with a backtrace), the monitor's desktop mode
+  is given back and the game ends at once (exit status 3).
+- **Daino's Arena on the PAL disc: "La grande fuga" no longer stops at the portal into Rilgar (or Umbris).** On a disc
+  other than the North American one the open engine cannot run other planets' code yet (no contexts), and a world
+  section's objects of another planet were then run on the arena's own classes of the same number: a moby callback at a
+  wild address, an error, the game stuck. Those objects are now left out (logged as not placed); on PAL the escape's
+  Rilgar and Umbris sections come without their planets' objects, the Snagglebeast among them, until contexts exist for it.
+- **A shorter freeze at a level's start.** The modern renderer's world asset and textures are now read and decoded on a
+  worker while the loading screen or the story's movies play (Veldin to Novalis: 80 ms warm, 300 to 500 ms from the disk,
+  no longer on the main thread at the level's first frame, when the picture froze and the sound went on alone).
+- The log has a `[display] last 10 s` line every 10 seconds of play: the pictures shown a second, the late ones and the
+  stalls over 100 ms, to read a frame rate report from a player's `game.log`. The world load's time is broken down for every
+  level (`[mrpw] level N (...)`), not only a mod's sections.
+- The log says when the PC holds an NVIDIA GPU below its speed: a `[gpu]` line at the start (its clocks and power limit)
+  and one for every 10 s of play that the system held it while the game kept it busy (a low performance state, the video
+  memory at a fraction of its clock, a power limit under the driver's default; the driver's reasons). A laptop held at
+  20 W in P5 (the memory at 810 of 5501 MHz) ran the arena at 42 to 55 fps; the same laptop and settings at its full
+  35 W ran it at 60. `RAC1_GPU_WATCH=0` turns it off.
+- The debug menu's profiler no longer makes the game stutter on Windows: its thread list came from a snapshot of every
+  thread of the system (30 to 40 ms on the main thread, twice a second); it is now taken on a thread of its own, every 5 s.
+
 ## 0.8.1
 
 A small update: new music for Daino's Arena and a shorter frame in the widened view.
