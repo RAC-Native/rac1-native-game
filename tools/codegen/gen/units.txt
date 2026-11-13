@@ -1,0 +1,42 @@
+# The generated units this version of the game has (tools/codegen/generate_all.py): one `mkall:<group>` per
+# gen/mkall/<group>.json, one `asm2cpp:<name>` per gen/asm2cpp/<name>.json. A unit is generated only when it is listed
+# here: the inputs of a unit an earlier version retired (its json, glue and skeletons) stay on disk when a newer source
+# zip is unpacked over an older folder, and their code names functions that are hand-written now (#170). Retiring a
+# unit removes its line with its files; a new unit adds one.
+mkall:aridia
+mkall:batalia_classes
+mkall:batalia_part2
+mkall:blarg_classes
+mkall:blarg_part2
+mkall:eudora
+mkall:gaspar_classes
+mkall:gemlik_classes
+mkall:hoven_classes
+mkall:kalebo_classes
+mkall:kerwan
+mkall:kerwan_part2
+mkall:novalis_classes
+mkall:novalis_draw
+mkall:novalis_gold
+mkall:oltanis_classes
+mkall:orxon_classes
+mkall:particle_types2
+mkall:pokitaru_classes
+mkall:quartu_classes
+mkall:rilgar_classes
+mkall:rilgar_part2
+mkall:umbris_classes
+mkall:umbris_part2
+mkall:veldin_finale_classes
+mkall:veldin_fx
+mkall:veldin_orbit_classes
+mkall:veldin_particle28
+mkall:veldin_particle44
+mkall:veldin_particles
+mkall:veldin_particles4
+mkall:veldin_shared
+mkall:veldin_ship
+asm2cpp:moby_shadows_asm
+asm2cpp:moby_skin
+asm2cpp:world_cull
+asm2cpp:world_lighting

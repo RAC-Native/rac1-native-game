@@ -43,13 +43,37 @@ VU = {
 }
 
 
+UNITS_LIST = os.path.join(HERE, 'gen', 'units.txt')
+
+
+def listed_units():
+    """The mkall / asm2cpp units this version has (gen/units.txt)."""
+    with open(UNITS_LIST) as f:
+        return {ln.strip() for ln in f if ln.strip() and not ln.startswith('#')}
+
+
 def units():
-    """{unit: [generated files, relative to the repository]}"""
-    out = {}
-    for p in sorted(glob.glob(os.path.join(HERE, 'gen', 'mkall', '*.json'))):
-        out['mkall:' + os.path.splitext(os.path.basename(p))[0]] = json.load(open(p))['files']
-    for p in sorted(glob.glob(os.path.join(HERE, 'gen', 'asm2cpp', '*.json'))):
-        out['asm2cpp:' + os.path.splitext(os.path.basename(p))[0]] = [json.load(open(p))['file']]
+    """{unit: [generated files, relative to the repository]}: the units gen/units.txt lists. A unit's inputs on disk that
+    the list does not name (left by an earlier version whose source zip this one was unpacked over: a unit since retired,
+    whose code calls functions that are hand-written now, #170) are skipped, with a warning on stderr; a listed unit whose
+    json is missing stops."""
+    listed = listed_units()
+    out, stray = {}, []
+    for kind, key in (('mkall', 'files'), ('asm2cpp', 'file')):
+        for p in sorted(glob.glob(os.path.join(HERE, 'gen', kind, '*.json'))):
+            u = kind + ':' + os.path.splitext(os.path.basename(p))[0]
+            if u not in listed:
+                stray.append(u)
+                continue
+            fs = json.load(open(p))[key]
+            out[u] = fs if kind == 'mkall' else [fs]
+    if stray:
+        sys.stderr.write('[generate_all] skipped %d unit(s) this version does not have (files left by an older version, e.g. a source '
+                         'zip unpacked over an older folder; unpack into an empty folder to be rid of them): %s\n'
+                         % (len(stray), ' '.join(stray)))
+    gone = sorted(listed - set(out))
+    if gone:
+        sys.exit('[generate_all] gen/units.txt lists unit(s) whose inputs are missing: %s' % ' '.join(gone))
     for k, fs in VU.items():
         out[k] = [OVL + f for f in fs]
     return out
