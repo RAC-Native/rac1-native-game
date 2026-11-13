@@ -175,6 +175,13 @@ add_library(rac1_game STATIC
     ovl/shared_class848.cpp
     ovl/shared_level_helpers.cpp
     ovl/shared_class686.cpp
+    ovl/shared_class49.cpp
+    ovl/shared_class256.cpp
+    ovl/shared_class638.cpp
+    ovl/shared_class1356.cpp
+    ovl/shared_class1523.cpp
+    ovl/shared_class123.cpp
+    ovl/shared_class1443.cpp
     ovl/novalis_amoeboid.cpp
     ovl/vendor_draw.cpp
     ovl/vendor_frame.cpp
