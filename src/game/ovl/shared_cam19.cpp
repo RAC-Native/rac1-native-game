@@ -121,7 +121,10 @@ void cam_type19_init(uint32_t cam) {
             const uint32_t pt = path + (static_cast<uint32_t>(k) << 4);
             const float deg = lwc1(pt + 0x1c);
             if (0.0f < deg) {
-                swc1(angles + slot * 4, 180.0f < deg ? fpu_mul(lwc1(points + 0x30), u2f(0x42652ee0u)) : deg);
+                // (the angle stored first, then, above 180, the starting view's in its place, read after that store: a ninth
+                // view point's angle lands on the starting view +0x30, which it then reads)
+                swc1(angles + slot * 4, deg);
+                if (180.0f < deg) swc1(angles + slot * 4, fpu_mul(lwc1(points + 0x30), u2f(0x42652ee0u)));
                 sh(points + slot * 2, static_cast<uint32_t>(k));
                 ++slot;
             }

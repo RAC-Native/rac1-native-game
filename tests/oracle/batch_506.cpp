@@ -15,16 +15,19 @@
 //  - shared_class252.cpp: class 252's two draws, a beam and a glow (levels 8, 14);
 //  - shared_boss_bar.cpp: the bosses' health bar on the HUD (levels 6, 7, 13, 18);
 //  - shared_cam19.cpp: camera type 19, a scripted fly-through (levels 10, 13, 14, 15), on a camera of the test area whose
-//    record (the level's first) names data of the test area: the level's own paths, zones and mobys;
+//    record (the level's first) names data of the test area: the level's own paths, zones and mobys, started from a camera
+//    record of the test area with the view's rows and place (the matrix source 0x166e04, 0 after the first frame alone);
 //  - shared_helpers.cpp: small helpers (each on its own levels: their checks name them), on random records in the test
 //    area or the level's own data.
-// Subjects: the level's own mobys of the class after the first gameplay frame (the port's, the view set up), perturbed; the pods (never
+// Subjects: the level's own mobys of the class after the first gameplay frame (the port's; the screen, the projection and the
+// view set up), perturbed; the pods (never
 // placed) thrown by the shared port's own spawn from a Spawner of the level before the check; the shots (never placed)
 // spawned (moby_spawn) at the hero or at a Sandmouse with their pvars dealt; the bombs (class 567) likewise, over the
 // hero or a moby of the level; the rocks thrown by the shared spawn (checked first) about the camera; the draw callbacks'
 // subjects at the hero (whom the view looks at), their packets into a buffer of the test area. No RAM dumps.
 // Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 506, N = each level a family names (0 .. 18); a family the level
-// does not carry says so and is not run.
+// does not carry says so and is not run. B506_INFO=1 prints, per check, how many cases wrote packets beyond a state header
+// and, for the cameras, how many turned, moved or changed the view's angle.
 
 #include "ovl_oracle.h"
 
@@ -52,6 +55,7 @@
 #include <functional>
 #include <initializer_list>
 #include <vector>
+
 
 namespace rac1::oracle {
 
@@ -92,12 +96,63 @@ bool selected(const char* name) {
     return only == nullptr || std::strcmp(only, name) == 0;
 }
 
+// B506_INFO=1: per check, how many of its cases compared real output (the port's run, which the original's matched):
+// packets beyond a state header (a quad clipped away writes only its GS state, quad_gs_state's 5 quadwords, and
+// sub_002a0ba8's register writes are state too), and for a camera of the test area whether its view turned / moved
+bool info() { return std::getenv("B506_INFO") != nullptr; }
+// the bytes of the packets between `c0` and `c1` that are not a state header (cnt DMA tags; what does not parse counts)
+uint32_t packet_content(uint32_t c0, uint32_t c1) {
+    uint32_t content = 0;
+    for (uint32_t p = c0; p < c1;) {
+        const uint32_t w0 = ee_read<uint32_t>(p), size = ((w0 & 0xffffu) + 1) * 0x10;
+        if (((w0 >> 28) & 7) != 1 || p + size > c1) return content + (c1 - p);
+        const bool gs_state = (w0 & 0xffffu) == 5 && ee_read<uint64_t>(p + 0x10) == 0x2400000000000001ull;
+        const bool reg_write = (w0 & 0xffffu) == 2 && ee_read<uint32_t>(p + 0x10) == 0x8001u && ee_read<uint32_t>(p + 0x14) == 0x10000000u;
+        if (!gs_state && !reg_write) content += size;
+        p += size;
+    }
+    return content;
+}
+struct Tally {
+    int cases = 0, grew = 0, drew = 0, turned = 0, moved = 0, fov = 0;
+    uint32_t content = 0;
+};
+const uint32_t INFO_CAM = TEST_AREA + 0x2000;  // (the cam19 checks' camera)
+
 // A check whose original is the level's own copy at `laddr`.
 void fcheck(const char* name, uint32_t laddr, int n, Ret ret, const std::function<Args()>& gen,
             const std::function<uint64_t(const Args&)>& port) {
     if (!selected(name)) return;
     std::printf("%-26s L%d:0x%08x\n", name, g_oracle_level, laddr);
-    if (!check_fn(name, laddr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
+    Tally t;
+    const std::function<uint64_t(const Args&)> measured = [&port, &t](const Args& a) {
+        if (!info()) return port(a);
+        const uint32_t c0 = ee_read<uint32_t>(OV(0x001611c0));
+        const bool cam = !a.i.empty() && a.i[0] == INFO_CAM;
+        uint8_t rows[0x40];
+        if (cam) std::memcpy(rows, ee_get_ram_base() + INFO_CAM, 0x40);
+        const uint32_t fov0 = ee_read<uint32_t>(OV(0x0016caf0));
+        const uint64_t r = port(a);
+        const uint32_t c1 = ee_read<uint32_t>(OV(0x001611c0));
+        ++t.cases;
+        if (c1 != c0) {
+            ++t.grew;
+            const uint32_t c = c0 >= 0x00100000u && c1 > c0 && c1 - c0 < 0x100000 ? packet_content(c0, c1) : 0;  // (a null cursor's: the null page)
+            if (c != 0) ++t.drew;
+            t.content += c;
+        }
+        if (cam) {
+            if (std::memcmp(rows, ee_get_ram_base() + INFO_CAM, 0x30) != 0) ++t.turned;
+            if (std::memcmp(rows + 0x30, ee_get_ram_base() + INFO_CAM + 0x30, 0x10) != 0) ++t.moved;
+            if (ee_read<uint32_t>(OV(0x0016caf0)) != fov0) ++t.fov;
+        }
+        return r;
+    };
+    if (!check_fn(name, laddr, n, ret, gen, measured, Scope::FullRam, 0, 0)) ++g_fail;
+    if (info() && (t.grew != 0 || t.turned != 0 || t.moved != 0 || std::strstr(name, "draw") != nullptr || std::strstr(name, "glow") != nullptr ||
+                   std::strstr(name, "cam_") != nullptr))
+        std::printf("INFO %s L%d: %d cases, packets in %d, beyond a state header in %d (0x%x bytes); camera turned in %d, moved in %d, its view's angle changed in %d\n",
+                    name, g_oracle_level, t.cases, t.grew, t.drew, t.content, t.turned, t.moved, t.fov);
 }
 
 void not_here(const char* name) {
@@ -116,7 +171,23 @@ void level() {
         w32(0x0013f2e8, 0xffffffffu);
         if (g_oracle_level == 14) w8(0x0013d3f0, 1);  // (Oltanis: the arrival scene seen, as batch 221's)
         gameplay_frame();
-        render_view_setup();  // (the view's matrices: the draw callbacks project through them, as batch 401's)
+        // the screen and projection constants, which the oracle's display (no size) leaves broken (FLT_MAX: nothing projects
+        // onto the screen): a 640 x 448 screen, as the game's (batch 501's); and the view's matrices (the draw callbacks
+        // project through them, as batch 401's)
+        if (ee_read<uint16_t>(0x001518d0) == 0) { w16(0x001518d0, 640); w16(0x001518d2, 448); }
+        screen_setup();
+        projection_setup();
+        render_view_setup();
+        if (info()) {  // (the view the draws and the cameras start from)
+            const Vec4 c = ee_ref<Vec4>(OV(0x00166dc0)), r0 = ee_ref<Vec4>(OV(0x00166fd0)), h = ee_ref<Vec4>(0x0013f3d0);
+            const uint32_t src = ee_read<uint32_t>(OV(0x00166e04));
+            std::printf("INFO view L%d: camera %.2f %.2f %.2f forward %.3f %.3f %.3f hero %.2f %.2f %.2f; matrix source %08x row0 %.3f %.3f %.3f pos %.2f %.2f %.2f\n",
+                        g_oracle_level, c.x, c.y, c.z, r0.x, r0.y, r0.z, h.x, h.y, h.z, src, ee_read<float>(src), ee_read<float>(src + 4),
+                        ee_read<float>(src + 8), ee_read<float>(src + 0x30), ee_read<float>(src + 0x34), ee_read<float>(src + 0x38));
+            std::printf("INFO words L%d: collision results %08x, segment record %08x, moby table %08x..%08x, particle pool %08x\n", g_oracle_level,
+                        OV(0x00173e40), OV(0x00173e90), ee_read<uint32_t>(OV(0x0015ffd8)), ee_read<uint32_t>(OV(0x0015ffe0)),
+                        ee_read<uint32_t>(OV(0x0016016c)));
+        }
         g_snap.assign(ram, ram + 0x02000000);
         g_snap_level = g_oracle_level;
     } else {
@@ -145,6 +216,27 @@ void give_hit(uint32_t m, uint32_t kinds) {
     { static const float dm[] = {-1.0f, 0.0f, 0.5f, 5.0f, 12.0f}; wf(e + 0x2c, dm[ri(0, 4)]); }
     wfrand(e, 4, -1, 1);
     w32(e + 0x28, u(ri(0, 20)));
+}
+
+// The words where the native collision (segment_collide 0x1efc70 / sphere_collide, ovl_1e_1f.cpp, existing code) differs from
+// the original: its result rows 0x173e60 .. 0x173eb0 store the w lane 0 where the original stores its VU0 registers' w lanes,
+// and the segment record's x / y / z (0x173e90..) are the original's VU0 leftovers of another computation, which the native
+// code does not keep (the levels' generated copies of class 1633, the rocks, the puffs and the pods fail the same words with
+// these left in: tried on levels 1 .. 4, 12; batches 124 / 140 / 223 leave them out too). Left out in the checks of the
+// functions that collide, only.
+void collision_lanes() {
+    for (uint32_t row = 0x20; row < 0x80; row += 0x10) g_ignored_words.push_back(OV(0x00173e40) + row + 0xc);
+    for (uint32_t k = 0; k < 0xc; k += 4) g_ignored_words.push_back(OV(0x00173e90) + k);
+}
+// The pvars of the debris pieces the native debris_spawn (existing code) makes: +0xc / +0x1c of each 0x80 from the moby
+// table's end, where the original leaves the w lanes of a VU0 sin / cos and the native code 0 (the levels' generated copies
+// of class 455 fail the same words: tried on levels 3, 8; batches 120 / 121 / 510 leave them out). For the Spawner, which
+// breaks into pieces, only.
+void debris_lanes() {
+    for (uint32_t a = ee_read<uint32_t>(OV(0x0015ffe0)); a < ee_read<uint32_t>(OV(0x0015ffe0)) + 0x20000; a += 0x80) {
+        g_ignored_words.push_back(a + 0xc);
+        g_ignored_words.push_back(a + 0x1c);
+    }
 }
 
 // the hero at `r0`..`r1` from the point
@@ -246,7 +338,13 @@ void spawner_checks() {
     }, [](A a) { return r32(class455_pod_spawn(a.i[0], a.i[1], a.i[2], static_cast<int16_t>(a.i[3]), a.i[4])); });
 
     // the Spawner's states 0..10 (its jump table), its next state +0x84 (0..7), the pattern +0x85 (0..6), its health, the
-    // count / most, the timer and interval, the trigger mode and box, its list, the hero within / beyond its radii
+    // count / most, the timer and interval, the trigger mode and box, its list, the hero within / beyond its radii (broken,
+    // it throws its pieces: the debris' w lanes left out)
+    const size_t n_ign455 = g_ignored_words.size();
+    if (selected("class455_update")) {
+        level();
+        debris_lanes();
+    }
     for (int pass = 0; pass < 12; ++pass)
         classcheck("class455_update", upd455, spawners, class455_update, [pass, vary_list](uint32_t m) {
             const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -294,6 +392,7 @@ void spawner_checks() {
             hero_around(ee_ref<Vec4>(m + 0x10), 0.0f, ee_read<float>(pv + 0x9c) * 0.9f);
             seed_rand();
         }, 25);
+    g_ignored_words.resize(n_ign455);
 
     // the pods: thrown from a Spawner by the shared spawn (class455_pod_spawn, checked above) at the check's start
     auto pods = [spawners] {
@@ -312,12 +411,15 @@ void spawner_checks() {
         ee_stack_free(0x20);
         return v;
     };
-    // (the collision results' w lanes, 0x173e40 + 0xc .. + 0x3c: the original leaves a VU0 register's leftover there, the
-    // port of sphere_collide / segment_collide a 0, and the pod's position takes the hit point's w (its +0x1c): left out, as
-    // batches 140 / 223 leave out the contact vectors' w lanes)
+    // (the native collision's words, collision_lanes; and the pods' own position w lanes (+0x1c), which take the hit point's
+    // w: the original's VU0 leftover, the native collision's 0; the level's generated copy fails the same words: tried on
+    // level 3)
     const size_t n_ign = g_ignored_words.size();
-    for (uint32_t k = 0xc; k < 0x40; k += 0x10) g_ignored_words.push_back(OV(0x00173e40) + k);
-    for (uint32_t o = ee_read<uint32_t>(OV(0x0015ffd8)); o < ee_read<uint32_t>(OV(0x0015ffe0)); o += 0x100) g_ignored_words.push_back(o + 0x1c);
+    collision_lanes();
+    if (selected("class545_update") && upd545 != 0) {
+        level();
+        for (const uint32_t p : pods()) g_ignored_words.push_back(p + 0x1c);
+    }
     for (int pass = 0; pass < 8; ++pass)
         classcheck("class545_update", upd545, pods, class545_update, [pass, vary_list](uint32_t m) {
             const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -415,6 +517,8 @@ void sandmouse_checks() {
         return Args{{m}, {}};
     }, [](A a) { sandmouse_glow(a.i[0]); return uint64_t{0}; });
 
+    const size_t n_ign = g_ignored_words.size();
+    collision_lanes();  // (the native collision's words)
     for (int pass = 0; pass < 6; ++pass)
         classcheck("class1633_update", upd1633, shots, class1633_update, [pass](uint32_t m) {
             const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -445,6 +549,7 @@ void sandmouse_checks() {
             if (ri(0, 4) == 0) wf(0x0015ed60, rf(0.5f, 3.0f));
             seed_rand();
         }, 30);
+    g_ignored_words.resize(n_ign);
 }
 
 // ---- class 567 (shared_class567.cpp)
@@ -569,6 +674,8 @@ void rock_checks() {
         ee_stack_free(0x20);
         return v;
     };
+    const size_t n_ign = g_ignored_words.size();
+    collision_lanes();  // (the native collision's words)
     for (int pass = 0; pass < 8; ++pass)
         classcheck("rock_update", upd, rocks, rock_update, [pass](uint32_t m) {
             const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -588,6 +695,7 @@ void rock_checks() {
             if (ri(0, 4) == 0) wf(0x0015ed6c, rf(0.01f, 0.05f));
             seed_rand();
         }, 30);
+    g_ignored_words.resize(n_ign);
 }
 
 // ---- the height map and the ground's puffs (shared_height_map.cpp)
@@ -614,15 +722,22 @@ void height_map_checks() {
         if (ri(0, 4) == 0) wf(0x0015ed60, rf(0.5f, 3.0f));
         return Args{{TEST_AREA, R() & 0xff}, {}};
     }, [](A a) { ground_puff_spawn(a.i[0], a.i[1]); return uint64_t{0}; });
+    const size_t n_ign = g_ignored_words.size();
+    collision_lanes();  // (the native collision's words)
     fcheck("ground_puff_at", at, 80, Ret::None, [point] {
         level();
         point(TEST_AREA);
+        if (coin()) {  // (or at the hero's feet, on the world's ground: the segment down from the map's height meets it)
+            const Vec4 h = ee_ref<Vec4>(0x0013f3d0);
+            ee_ref<Vec4>(TEST_AREA) = Vec4{h.x + rf(-3.0f, 3.0f), h.y + rf(-3.0f, 3.0f), h.z, 1.0f};
+        }
         if (coin()) {  // (the camera above the point: the ground below its height + 5)
             Vec4& c = ee_ref<Vec4>(OV(0x00166dc0));
             c.z = ground_height_at(VV(TEST_AREA)) + rf(-6.0f, 20.0f);
         }
         return Args{{TEST_AREA}, {}};
     }, [](A a) { vu0_sync(); ground_puff_at(a.i[0]); return uint64_t{0}; });
+    g_ignored_words.resize(n_ign);
 }
 
 // ---- class 258 (shared_class258.cpp)
@@ -1052,16 +1167,35 @@ void cam19_checks() {
     }
     std::printf("  (cam_type19: %zu paths)\n", paths.size());
     if (paths.empty()) return;
-    const uint32_t CAM = TEST_AREA + 0x2000, ST = TEST_AREA + 0x2100, D = TEST_AREA + 0x2200, OTHER = TEST_AREA + 0x2300;
+    const uint32_t CAM = TEST_AREA + 0x2000, ST = TEST_AREA + 0x2100, D = TEST_AREA + 0x2200, OTHER = TEST_AREA + 0x2300, SRC = TEST_AREA + 0x2400;
     // the camera (record 0 of the level, its data D), its state block ST, its data dealt
-    auto setup = [paths, CAM, ST, D, OTHER] {
+    auto setup = [paths, CAM, ST, D, OTHER, SRC] {
         level();
         for (uint32_t o = 0; o < 0x400; o += 4) w32(CAM + o, 0);
         w32(ee_read<uint32_t>(OV(0x0015ef50)) + 0x1c, D);
         w16(CAM + 0x84, 0);
         w32(CAM + 0x70, ST);
         w8(CAM + 0x7c, u(ri(0, 3)));
-        for (uint32_t r = 0; r < 4; ++r) ee_ref<Vec4>(CAM + r * 0x10) = ee_ref<Vec4>(ee_read<uint32_t>(OV(0x00166e04)) + r * 0x10);
+        // the camera's matrix source (the camera a type 19 starts from, which its init copies): after the first frame alone
+        // it is 0, the null page's zero rows; a camera record of the test area with the view's rows (0x166fd0, turned about z
+        // at random) and its place (0x166dc0, moved a little), which the test camera starts from or not (its rows zero or
+        // random: the init's copy seen)
+        {
+            const uint32_t src = SRC;
+            const float a = rf(-3.1f, 3.1f), ca = std::cos(a), sa = std::sin(a);
+            for (uint32_t r = 0; r < 3; ++r) {
+                const Vec4 v = ee_ref<Vec4>(OV(0x00166fd0) + r * 0x10);
+                ee_ref<Vec4>(src + r * 0x10) = coin() ? v : Vec4{ca * v.x - sa * v.y, sa * v.x + ca * v.y, v.z, v.w};
+            }
+            const Vec4 c = ee_ref<Vec4>(OV(0x00166dc0));
+            ee_ref<Vec4>(src + 0x30) = Vec4{c.x + rf(-2, 2), c.y + rf(-2, 2), c.z + rf(-1, 1), c.w};
+            w32(OV(0x00166e04), src);
+        }
+        const int start = ri(0, 2);
+        for (uint32_t r = 0; r < 4; ++r) {
+            if (start == 0) ee_ref<Vec4>(CAM + r * 0x10) = ee_ref<Vec4>(SRC + r * 0x10);
+            else if (start == 1) wfrand(CAM + r * 0x10, 3, -1.0f, 1.0f);
+        }
         const int kind = ri(0, 4);
         w32(D + 0xc, kind == 0 ? u(ri(0, 10)) : 0xffffffffu);
         w32(D + 0x10, kind == 1 ? u(ri(0, 4)) : 0xffffffffu);
@@ -1069,6 +1203,11 @@ void cam19_checks() {
         w32(D + 0x14, kind == 3 ? pick(paths) : 0xffffffffu);
         w32(D + 0x20, pick(paths));
         w32(D + 0x24, pick(paths));
+        if (coin()) {  // (the camera path's view angles, its points' w: none, an angle in degrees, or above 180 the starting view)
+            const uint32_t path = ee_read<uint32_t>(OV(0x001b04b0) + ee_read<uint32_t>(D + 0x20) * 4);
+            for (int32_t k = 0; k < ee_read<int32_t>(path); ++k)
+                wf(path + 0x1c + u(k) * 0x10, ri(0, 2) == 0 ? 0.0f : coin() ? rf(20.0f, 170.0f) : rf(181.0f, 400.0f));
+        }
         w32(D + 0x28, coin() ? 0xffffffffu : u(ri(0, 40)));
         wfrand(D + 0x2c, 3, -2.0f, 2.0f);
         w8(D + 0x38, u(ri(0, 1)));
@@ -1084,6 +1223,17 @@ void cam19_checks() {
         const Vec4 q = ee_ref<Vec4>(path + 0x10 + u(ri(0, ee_read<int32_t>(path) - 1)) * 0x10);
         const float r = coin() ? rf(0.0f, 3.0f) : rf(10.0f, 60.0f);
         ee_ref<Vec4>(0x0013f3d0) = Vec4{q.x + rf(-r, r), q.y + rf(-r, r), q.z + rf(-1, 2), 1.0f};
+        // (or, half the time, at the centre of the camera's zone, a box, cylinder or sphere of the level's tables, or near
+        // it: inside, on its edge, out)
+        if (kind < 3 && coin()) {
+            const uint32_t table = ee_read<uint32_t>(kind == 0 ? OV(0x001600ec) : kind == 1 ? OV(0x001600fc) : OV(0x001600f4));
+            const uint32_t idx = ee_read<uint32_t>(kind == 0 ? D + 0xc : kind == 1 ? D + 0x10 : D + 8);
+            if (table >= 0x00100000u && table < 0x02000000u) {
+                const Vec4 c = ee_ref<Vec4>(table + (idx << 7) + 0x30);
+                const float e = coin() ? 0.2f : rf(0.5f, 6.0f);
+                ee_ref<Vec4>(0x0013f3d0) = Vec4{c.x + rf(-e, e), c.y + rf(-e, e), c.z + rf(-e, e), 1.0f};
+            }
+        }
         for (uint32_t o = 0; o < 0xa0; o += 4) w32(OTHER + o, 0);
         w16(OTHER + 0x86, coin() ? 0x13u : u(ri(0, 0x20)));
         w16(OTHER + 0x7e, u(ri(0, 1)));
@@ -1100,7 +1250,8 @@ void cam19_checks() {
     fcheck("cam_type19_init", init, 60, Ret::None, [setup, CAM] { setup(); return Args{{CAM}, {}}; },
            [](A a) { cam_type19_init(a.i[0]); return uint64_t{0}; });
     // the update: the camera started by the shared init (checked above), then its phase, fade, timer, leg varied (the w lanes
-    // of the camera's side and up rows: VCROSS's stale lane in the original, as vcross_lanes says)
+    // of the camera's side and up rows: VCROSS's stale lane in the original, which the native vec3_cross_ba (existing code)
+    // does not keep, as vcross_lanes says; the levels' generated copies fail the same two words: tried on levels 10, 13)
     const size_t n_ign = g_ignored_words.size();
     g_ignored_words.push_back(CAM + 0x1c);
     g_ignored_words.push_back(CAM + 0x2c);
@@ -1134,7 +1285,6 @@ void batch_506() {
     g_batch = 506;
     const std::vector<uint32_t> saved_ignored = g_ignored_words;
     g_ignored_words = vcross_lanes();
-    for (uint32_t a = 0; a < 0x100; a += 4) g_ignored_words.push_back(a);  // (the null page: a stale pointer of a random state)
     // (the scratchpad words the pose function 0x245f18 spills the caller's $t8 / $t9 into: batch 120's)
     for (uint32_t a = 0x70003700; a < 0x70003720; a += 4) g_ignored_words.push_back(a);
     const bool null_ram = g_ee_null_is_ram;
@@ -1169,23 +1319,8 @@ void batch_506() {
         });
     }
     level();
-    // the debris / spawns leave w lanes of a VU0 sin / cos in the original (the port has none); the particle pool's velocity
-    // w lanes (a stale lane of vec_from_spherical in the original): batch 120's
-    for (uint32_t a = ee_read<uint32_t>(OV(0x0015ffe0)); a < ee_read<uint32_t>(OV(0x0015ffe0)) + 0x20000; a += 0x80) {
-        g_ignored_words.push_back(a + 0xc);
-        g_ignored_words.push_back(a + 0x1c);
-    }
-    // the segment record 0x173e90..0x173e9c: segment_collide 0x1efc70 stores a VU0 register there whose lanes are another
-    // computation's leftovers, which the port of segment_collide does not reproduce (Hoven's transliterated class 1633
-    // fails the same words in its check here: tried; batches 124 / 200 / 260 leave +0xc out)
-    for (uint32_t k = 0; k < 0x10; k += 4) g_ignored_words.push_back(OV(0x00173e90) + k);
-    // and the collision results' w lanes (0x173e40 .. 0x173fc0, + 0xc of each row: the contact vectors' VU0 leftovers in the
-    // original, 0 in the port of the collision; batches 140 / 223 leave them out)
-    for (uint32_t a = OV(0x00173e40); a < OV(0x00173fc0); a += 0x10) g_ignored_words.push_back(a + 0xc);
-    {
-        const uint32_t pool = ee_read<uint32_t>(OV(0x0016016c));
-        for (uint32_t k = 0; k < 0x800; ++k) g_ignored_words.push_back(pool + k * 0x40 + 0x2c);
-    }
+    // (no global list of words left out beyond the cameras' VCROSS lanes and the pose function's spills: the few words of
+    // existing code's known differences are left out inside the checks that reach them, collision_lanes / debris_lanes)
     // (the kernel's calls the original would make for real: the CD / movie path of a level change request; batch 120's)
     g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80};
     // the port's VU0 micro memory as the game leaves it, and the interpreter's VU0 kept for the port (as batch 137)

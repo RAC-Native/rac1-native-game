@@ -2,8 +2,11 @@
 // (src/game/ovl/shared_*.cpp), each against every level's own copy at that level's own address. Run it on each level that
 // has a copy: ORACLE_LEVEL=<n> build/tests/ovl_oracle --batch 510 for n in 0, 1, 2, 4 .. 13, 15, 16 and 18 (needs the ISO;
 // no dumps), and the 1.02 fork's check with RAC1_GAMEPLAY102=23 on 15 and 18. A check prints "skipped" on a level without
-// its copy. The level snapshot has the view set up (render_view_setup) and the draws' packet cursor is put on a test-area
-// buffer, so that a draw's packets are compared; the port gets the VU0 registers the original started from (vu0_sync). The class updates run on the level's own mobys of the
+// its copy. The level snapshot has the screen, the projection and the view set up (screen_setup, projection_setup,
+// render_view_setup) and the draws' packet cursor is put on a test-area buffer, so that a draw's packets are compared (the
+// beam and the finale's meshes placed before the view where their quads reach the packets; B510_INFO=1 prints, per check,
+// how many cases wrote packets beyond a state header); the port gets the VU0 registers the original started from
+// (vu0_sync). The class updates run on the level's own mobys of the
 // class after the first gameplay frame (as the levels' class batches 109, 121, 122 ... do), through every state, perturbed;
 // the helpers through their callers and on their own with arguments built from the level's state.
 //
@@ -102,6 +105,7 @@
 #include <unordered_set>
 #include <vector>
 
+
 namespace rac1::oracle {
 
 namespace {
@@ -140,6 +144,65 @@ uint32_t copy_here(std::initializer_list<Copy> copies, int nth = 0) {
     return 0;
 }
 
+// B510_INFO=1: per check, how many of its cases compared real output (the port's run, which the original's matched):
+// packets beyond a state header (a quad clipped away writes only its GS state, quad_gs_state's 5 quadwords, and
+// sub_002a0ba8's register writes are state too)
+bool info() { return std::getenv("B510_INFO") != nullptr; }
+// the bytes of the packets between `c0` and `c1` that are not a state header (cnt DMA tags; what does not parse counts)
+uint32_t packet_content(uint32_t c0, uint32_t c1) {
+    uint32_t content = 0;
+    for (uint32_t p = c0; p < c1;) {
+        const uint32_t w0 = ee_read<uint32_t>(p), size = ((w0 & 0xffffu) + 1) * 0x10;
+        if (((w0 >> 28) & 7) != 1 || p + size > c1) return content + (c1 - p);
+        const bool gs_state = (w0 & 0xffffu) == 5 && ee_read<uint64_t>(p + 0x10) == 0x2400000000000001ull;
+        const bool reg_write = (w0 & 0xffffu) == 2 && ee_read<uint32_t>(p + 0x10) == 0x8001u && ee_read<uint32_t>(p + 0x14) == 0x10000000u;
+        if (!gs_state && !reg_write) content += size;
+        p += size;
+    }
+    return content;
+}
+
+// The words where the native collision (segment_collide 0x1efc70 / sphere_collide, ovl_1e_1f.cpp, existing code) differs from
+// the original: its result rows 0x173e60 .. 0x173eb0 store the w lane 0 where the original stores its VU0 registers' w lanes,
+// and the segment record's x / y / z (0x173e90..) are the original's VU0 leftovers of another computation, which the native
+// code does not keep. Left out in the checks of the functions that collide, only.
+void collision_lanes() {
+    for (uint32_t row = 0x20; row < 0x80; row += 0x10) g_ignored_words.push_back(OV(0x00173e40) + row + 0xc);
+    for (uint32_t k = 0; k < 0xc; k += 4) g_ignored_words.push_back(OV(0x00173e90) + k);
+}
+
+// A draw's subject placed where the port's packets carry more than a state header (a quad on the screen, or through the
+// clipper with something left), three times in four (else where the generator put it): `place(q)` puts the subject at q;
+// the candidates lie about the view's line from its camera (0x166dc0) along its forward row (0x166fd0), near and far, each
+// tried by running the port on a copy of RAM (as batch 507's place_drawn); the first that draws is kept. `candidate(k)`, when
+// given, makes the k-th candidate instead
+void place_drawn(const std::function<void()>& run, const std::function<void(const Vec4&)>& place,
+                 const std::function<Vec4(int)>& candidate = nullptr) {
+    if (ri(0, 3) == 0) return;
+    static std::vector<uint8_t> saved;
+    uint8_t* ram = ee_get_ram_base();
+    saved.assign(ram, ram + 0x02000000);
+    auto drawn = [&](const Vec4& q) {
+        place(q);
+        const uint32_t c0 = ee_read<uint32_t>(OV(0x001611c0)), sp0 = ee_stack_ptr();
+        uint32_t c = 0;
+        try { run(); c = packet_content(c0, ee_read<uint32_t>(OV(0x001611c0))); } catch (const std::exception&) {}
+        ee_stack_ptr() = sp0;
+        std::memcpy(ram, saved.data(), saved.size());
+        return c != 0;
+    };
+    const Vec4 cam = ee_ref<Vec4>(OV(0x00166dc0)), fwd = ee_ref<Vec4>(OV(0x00166fd0));
+    for (int k = 0; k < 60; ++k) {
+        const float r = rf(2.0f, k < 30 ? 15.0f : 40.0f), j = k < 30 ? 0.25f : 0.6f;
+        const Vec4 q = candidate ? candidate(k) : Vec4{cam.x + r * (fwd.x + rf(-j, j)), cam.y + r * (fwd.y + rf(-j, j)), cam.z + r * (fwd.z + rf(-j, j)), 1.0f};
+        if (drawn(q)) {
+            place(q);
+            return;
+        }
+    }
+    if (info()) std::printf("INFO not placed\n");
+}
+
 // A check of a shared port against this level's copy at `addr` (0: the level has none, skipped).
 void fcheck(const char* name, uint32_t addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
     if (g_only_batch != 0 && g_only_batch != g_batch) return;
@@ -150,8 +213,26 @@ void fcheck(const char* name, uint32_t addr, int n, Ret ret, const std::function
         return;
     }
     std::printf("%-26s L%d:0x%08x\n", name, g_oracle_level, addr);
-    const std::function<uint64_t(const Args&)> synced = [&port](const Args& a) { vu0_sync(); return port(a); };
+    int cases = 0, grew = 0, drew = 0;
+    uint32_t content = 0;
+    const std::function<uint64_t(const Args&)> synced = [&port, &cases, &grew, &drew, &content](const Args& a) {
+        vu0_sync();
+        if (!info()) return port(a);
+        const uint32_t c0 = ee_read<uint32_t>(OV(0x001611c0));
+        const uint64_t r = port(a);
+        const uint32_t c1 = ee_read<uint32_t>(OV(0x001611c0));
+        ++cases;
+        if (c1 != c0) {
+            ++grew;
+            const uint32_t c = c0 >= 0x00100000u && c1 > c0 && c1 - c0 < 0x100000 ? packet_content(c0, c1) : 0;  // (a null cursor's: the null page)
+            if (c != 0) ++drew;
+            content += c;
+        }
+        return r;
+    };
     if (!check_fn(name, addr, n, ret, gen, synced, Scope::FullRam, 0, 0)) ++g_fail;
+    if (info() && (grew != 0 || std::strstr(name, "draw") != nullptr || std::strstr(name, "scroll_meshes") != nullptr))
+        std::printf("INFO %s L%d: %d cases, packets in %d, beyond a state header in %d (0x%x bytes)\n", name, g_oracle_level, cases, grew, drew, content);
 }
 }  // namespace
 
@@ -159,13 +240,10 @@ void batch_510() {
     if (g_only_batch != 510) return;
     g_batch = 510;
     g_ignored_words = vcross_lanes();
-    g_ignored_words.push_back(OV(0x00160188));  // the particle update's saved return address
-    g_ignored_words.push_back(OV(0x0016018c));
-    for (uint32_t k = 0; k < 12; k += 4) g_ignored_words.push_back(0x00174610u + k);  // (segment_collide's hit point: see batch 121)
     const bool null_ram = g_ee_null_is_ram;
     g_ee_null_is_ram = true;  // as in the runtime
-    // not compared: the null page and the scratchpad words the pose function spills the caller's $t8 / $t9 into (batch 121)
-    for (uint32_t a = 0; a < 0x100; a += 4) g_ignored_words.push_back(a);
+    // not compared: the scratchpad words the pose function spills the caller's $t8 / $t9 into (batch 121); the few words of
+    // existing code's known differences are left out inside the checks that reach them (collision_lanes, the ship's debris)
     for (uint32_t a = 0x70003700; a < 0x70003720; a += 4) g_ignored_words.push_back(a);
 
     // 989snd's IOP server (as batch 121's): replies a function of the command; the stream system's disc reads done into EE RAM
@@ -213,7 +291,13 @@ void batch_510() {
                 w32(0x00137b00, 0);
                 sub_00264bf8();
             }
-            render_view_setup();  // (the view's matrices: the draws project through them, as batches 401 / 506)
+            // the screen and projection constants, which the oracle's display (no size) leaves broken (FLT_MAX: nothing
+            // projects onto the screen): a 640 x 448 screen, as the game's (batch 501's); and the view's matrices (the draws
+            // project through them, as batches 401 / 509)
+            if (ee_read<uint16_t>(0x001518d0) == 0) { w16(0x001518d0, 640); w16(0x001518d2, 448); }
+            screen_setup();
+            projection_setup();
+            render_view_setup();
             snap.assign(ram, ram + 0x02000000);
         } else {
             std::memcpy(ram, snap.data(), snap.size());
@@ -354,7 +438,8 @@ void batch_510() {
     {
         const uint32_t upd = copy_here({{2, 0x002ece18}, {9, 0x00306720}, {10, 0x002ebb08}});
         // (the ship's debris: debris_spawn's pieces keep two w lanes of a VU0 sin / cos in the original's pvars (+0xc / +0x1c of
-        // each 0x80 from *0x15ffe0) that the native debris_spawn does not make, as batches 109 / 121 leave out; for this check only)
+        // each 0x80 from *0x15ffe0) that the native debris_spawn does not make, as batches 109 / 121 leave out (the levels'
+        // generated copies fail the same words: tried on levels 2, 9); for this check only)
         const size_t ign_ship = g_ignored_words.size();
         if (upd != 0) {
             level();
@@ -484,10 +569,10 @@ void batch_510() {
         }
         fcheck("homing_missile_launch", copy_here({{8, 0x002e7eb0}, {12, 0x002ef2e8}}), 60, Ret::Int32, launch_args,
                [](A a) { return uint64_t{homing_missile_launch(a.i[0], a.i[1], a.i[2], a.i[3])}; });
-        // (not compared: the segment record's VU0 words 0x173e90.. (Veldin's address), as batches 242 / 330: the generated copy
-        // differs from the original there the same way, the native segment_collide's)
+        // (not compared: the native collision's words, collision_lanes, as batches 242 / 330: the generated copies differ from
+        // the original there the same way: tried on level 8)
         const std::vector<uint32_t> before = g_ignored_words;
-        for (uint32_t k = 0; k < 0x30; k += 4) g_ignored_words.push_back(OV(0x00173e90) + k);
+        collision_lanes();
         fcheck("homing_missile", copy_here({{8, 0x002e8210}, {12, 0x002ef648}}), 120, Ret::None, [launch_args, target_for] {
             uint32_t m = 0;
             for (int k = 0; k < 20 && m == 0; ++k) {
@@ -569,7 +654,7 @@ void batch_510() {
 
         // ---- the tracer rounds (Batalia, Gaspar): a round of class 1292 spawned near the hero in state 1 or 2, its velocity,
         // shooter, owner (live, dying, none), life and the screen's fade levels varied
-        for (uint32_t k = 0; k < 0x30; k += 4) g_ignored_words.push_back(OV(0x00173e90) + k);  // (the segment record's VU0 words, as above)
+        collision_lanes();  // (the native collision's words; the generated copy differs there the same way: tried on level 9)
         fcheck("tracer", copy_here({{8, 0x00307298}, {9, 0x00308f08}}), 120, Ret::None, [level, any_moby] {
             level();
             const uint32_t m = moby_spawn(1292);
@@ -600,7 +685,7 @@ void batch_510() {
         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
         if (ri(0, 3) != 0) {
             Vec4 c = ee_ref<Vec4>(m + 0x10);
-            const float r = ee_read<float>(pv + 0x5c) * rf(0.0f, 1.2f), a = rf(-3.1f, 3.1f);
+            const float r = ee_read<float>(pv + 0x5c) * (ri(0, 2) == 0 ? rf(0.72f, 0.78f) : rf(0.0f, 1.2f)), a = rf(-3.1f, 3.1f);  // (often about the fade's start, 3/4 of its range)
             c.x += r * std::cos(a); c.y += r * std::sin(a);
             ee_ref<Vec4>(OV(0x00166dc0)) = c;
         }
@@ -614,6 +699,20 @@ void batch_510() {
         if (ri(0, 2) == 0) w32(pv + 0x6c, u(ri(0, 1)));
         if (ri(0, 2) == 0) w32(pv + 0x7c, u(ri(0, 1)));
         if (ri(0, 4) == 0) w32(pv + 0x68, coin() ? 0xffffffffu : u(ri(0, 3)));
+        // (its moby dead while it holds a light slot, now and then: the slot cleared; its draw distance +0x30 dealt: the
+        // state 0 widens it to the range)
+        if (ri(0, 5) == 0) {
+            const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8)), n = (ee_read<uint32_t>(OV(0x0015ffe0)) - first) >> 8;
+            const uint32_t idx = u(ri(0, static_cast<int>(n) - 1));
+            w32(pv + 0x84, idx);
+            w8(first + (idx << 8) + 0x20, 0xfe);
+            w32(pv + 0x68, u(ri(0, 3)));
+        }
+        if (ri(0, 2) == 0) w8(m + 0x30, R() & 0xff);
+        if (coin()) {  // (the first light slots in use: their clearing seen)
+            wrand(OV(0x001802c0), 4 * 8);
+            wrand(OV(0x001804c0), 4 * 12);
+        }
     });
 
     // ---- Giant Clank's pad (Quartu, Veldin's finale): Ratchet on it or not, his mode (0, Giant Clank 2, other), state, the
@@ -759,8 +858,6 @@ void batch_510() {
         struct Cb { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t cls; };
         static const Cb cbs[] = {{"envmap_1943_draw", 0x002e8d40, envmap_1943_draw, 0x002e8e80}, {"envmap_1948_draw", 0x002e97a0, envmap_1948_draw, 0x002e98e0},
                                  {"envmap_1953_draw", 0x002e9fe8, envmap_1953_draw, 0x002ea128}};
-        const size_t ign = g_ignored_words.size();
-        for (uint32_t a = 0x100; a < 0x1500; a += 4) g_ignored_words.push_back(a);  // (batch 250: the packet writes of a null cursor)
         for (const Cb& cb : cbs) {
             const Cb c = cb;
             classcheck(c.name, l16 ? c.addr : 0u, c.fn, [cam_vary, c](uint32_t m) {
@@ -776,6 +873,11 @@ void batch_510() {
                     if (ri(0, 4) != 0) {
                         const float r = std::fmax(ee_read<float>(sph + 0xc), 4.0f) * rf(1.2f, 3.0f), a = rf(-3.1f, 3.1f);
                         cam.x = ee_read<float>(sph) + r * std::cos(a); cam.y = ee_read<float>(sph + 4) + r * std::sin(a); cam.z = ee_read<float>(sph + 8) + rf(-2, 6);
+                        if (ri(0, 2) == 0) {  // (or far back along the view, the mesh ahead at hundreds of units: about the on-screen test's depth 512)
+                            const Vec4 f = ee_ref<Vec4>(OV(0x00166fd0));
+                            const float d = rf(300.0f, 700.0f);
+                            cam = Vec4{ee_read<float>(sph) - d * f.x, ee_read<float>(sph + 4) - d * f.y, ee_read<float>(sph + 8) - d * f.z, cam.w};
+                        }
                         ee_ref<Vec4>(OV(0x00166dc0)) = cam;
                     }
                 }
@@ -791,9 +893,8 @@ void batch_510() {
                     std::printf("INFO %s: the list grew by 0x%x\n", c.name, ee_read<uint32_t>(OV(0x001611c0)) - before);
                     std::memcpy(ram, keep.data(), keep.size());
                 }
-            }, 12, c.cls);
+            }, 24, c.cls);
         }
-        g_ignored_words.resize(ign);
         // the mapping: each class's meshes (the level's tables), the camera moved
         struct Uv { uint32_t addr, counts, normals, points; };
         static const Uv uvs[] = {{0x002e8b98, 0x00161ef0, 0x00161f20, 0x00161f00}, {0x002e90c8, 0x00161ef0, 0x00161f20, 0x00161f00},
@@ -839,13 +940,27 @@ void batch_510() {
             seed_rand();
             return m;
         };
-        const size_t ign = g_ignored_words.size();
-        for (uint32_t a = 0x100; a < 0x1500; a += 4) g_ignored_words.push_back(a);
         fcheck("beam_sparks", copy_here({{6, 0x002ff978}, {10, 0x002dc990}, {13, 0x00309bc8}}), 60, Ret::None, [beam_moby] { return Args{{beam_moby()}, {}}; },
                [](A a) { beam_sparks(a.i[0]); return uint64_t{0}; });
-        fcheck("beam_draw", copy_here({{6, 0x002ff680}, {10, 0x002dc698}, {13, 0x003098d0}}), 40, Ret::None, [beam_moby] { return Args{{beam_moby()}, {}}; },
+        // (the draw: the beam, its origin and points moved together, placed before the view where its quads reach the packets)
+        fcheck("beam_draw", copy_here({{6, 0x002ff680}, {10, 0x002dc698}, {13, 0x003098d0}}), 40, Ret::None, [beam_moby, gem] {
+            const uint32_t m = beam_moby();
+            const uint32_t pts = ee_read<uint32_t>(m + 0x78) + (gem ? 0x210u : 0x230u);
+            static std::vector<uint8_t> at0;  // (the beam as dealt: each candidate moves it from there)
+            at0.assign(ee_get_ram_base() + (pts - 0x20), ee_get_ram_base() + (pts + 0x100));
+            const Vec4 m0 = ee_ref<Vec4>(pts);  // (its first point put at the candidate)
+            place_drawn([m] { beam_draw(m); }, [m, pts, m0](const Vec4& q) {
+                std::memcpy(ee_get_ram_base() + (pts - 0x20), at0.data(), at0.size());
+                const float dx = q.x - m0.x, dy = q.y - m0.y, dz = q.z - m0.z;
+                for (uint32_t p = pts - 0x20; p < pts + 0x100; p += 0x10) {
+                    if (p == pts - 0x10) continue;
+                    wf(p, ee_read<float>(p) + dx); wf(p + 4, ee_read<float>(p + 4) + dy); wf(p + 8, ee_read<float>(p + 8) + dz);
+                }
+                ee_ref<Vec4>(m + 0x10) = Vec4{q.x, q.y, q.z, ee_read<float>(m + 0x1c)};
+            });
+            return Args{{m}, {}};
+        },
                [](A a) { beam_draw(a.i[0]); return uint64_t{0}; });
-        g_ignored_words.resize(ign);
         fcheck("beam_shard", copy_here({{6, 0x00300b90}, {10, 0x002dd010}, {13, 0x00303878}}), 60, Ret::None, [level] {
             level();
             const uint32_t m = moby_spawn(static_cast<uint32_t>(ri(1085, 1089)));
@@ -955,8 +1070,6 @@ void batch_510() {
                                    {11, 0x0031e208, 5}, {11, 0x0031ef80, 6}, {11, 0x0031f068, 7}, {8, 0x002f12a0, 8}, {8, 0x00309508, 9},
                                    {11, 0x0031e048, 10}, {11, 0x0031eea8, 11}};
         static const uint32_t offs[] = {0x00161e10, 0x00161e20, 0x001623f8, 0x00162598, 0x001625a8, 0x00162618, 0x00162628, 0x001620f8};
-        const size_t ign = g_ignored_words.size();
-        for (uint32_t a = 0x100; a < 0x1500; a += 4) g_ignored_words.push_back(a);
         bool any = false;
         for (const Sc& x : meshes) {
             if (x.level != g_oracle_level) continue;
@@ -980,7 +1093,6 @@ void batch_510() {
                 return Args{{u(ri(0, 1))}, {}};
             }, [c](A a) { uv_scroll_step(c.set, a.i[0]); return uint64_t{0}; });
         }
-        g_ignored_words.resize(ign);
         if (!any) { fcheck("uv_scroll_meshes", 0, 0, Ret::None, nullptr, nullptr); fcheck("uv_scroll_step", 0, 0, Ret::None, nullptr, nullptr); }
         fcheck("uv_offset_pairs", copy_here({{8, 0x00258090}, {11, 0x002739c0}, {12, 0x002668d4}}), 40, Ret::None, [level] {
             level();
@@ -1083,6 +1195,18 @@ void batch_510() {
                 render_view_setup();
                 packet_cursor();
                 wf(L18_ADDR(0x00162308), rf(-1, 1));
+                // (most of the time the camera put back from one of the mesh's points along the view's forward row, the
+                // mesh before it: its quads reach the packets)
+                const Vec4 fwd = ee_ref<Vec4>(OV(0x00166fd0));
+                place_drawn([c, m] { finale_quads_draw(c.set, m); }, [](const Vec4& q) {
+                    ee_ref<Vec4>(OV(0x00166dc0)) = q;
+                    render_view_setup();
+                }, [c, fwd, m](int k) {
+                    Vec4 p = ee_ref<Vec4>(c.points + u(ri(0, 20)) * 0x10);
+                    p.z += ee_read<float>(m + 0x18) - ee_read<float>(ee_read<uint32_t>(m + 0x78));  // (the mesh's lift)
+                    const float r = rf(3.0f, k < 30 ? 15.0f : 40.0f);
+                    return Vec4{p.x - r * fwd.x + rf(-2, 2), p.y - r * fwd.y + rf(-2, 2), p.z - r * fwd.z + rf(-1, 3), 1.0f};
+                });
                 if (std::getenv("B510_INFO") != nullptr) {
                     static std::vector<uint8_t> keep;
                     uint8_t* ram = ee_get_ram_base();
