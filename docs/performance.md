@@ -307,6 +307,179 @@ handed) over the 19 levels widened at LOD High and at 4:3: 17,076 calls each, 0 
 it on and off on the 19 levels widened at LOD High and Original (the second pass, which runs it unchecked inside its journal),
 `RAC1_MRP_LOD_VERIFY=1` on those runs (0 differing); RAMHASH and the reference images unchanged.
 
+### The widened view at the game's own distances: the shadow run for the extras alone
+
+At 16:9 with LOD Original - what a widescreen player has without touching the slider - the moby pass's shadow run drew the
+real pass's mobys again and a few more: of the 10 to 147 mobys a frame it drew on the 19 levels' walks (Kerwan 58), 2 to 30
+were the wider view's (Kerwan 7; a fifth at the median, half at 32:9). The run is the same pass with a wider frustum and
+nothing else changed, and of a moby's draw only two things depend on the frustum: whether the moby is seen, and which VU1
+program the loop chooses for it (the clipping one when it crosses the guard band). Everything else - the model, the fade, the
+lights, the matrix, the record, the chain parts, the pose - is the real pass's.
+
+`RAC1_PERF_MOBY_EXTRAS` (`mrp_lod.cpp`, `mrp_scene.cpp`, the loop's `g_moby_draw_skip`): with the view widened and the LOD
+scale 1 the shadow run comes after the real pass and, where the loop is about to draw a moby (0x255e48: the moby seen in the
+widened view, its program chosen, its place in the deferred list taken), asks the host; a moby the real pass drew, with the
+program the real pass chose for it, is left out and the loop goes on as after a moby drawn. A moby the widened view sees with
+the other program (its guard band is not the 4:3 view's: at most 0.12 mobys a frame at 16:9, 0.41 at 32:9) is drawn by the
+run. At the frame's end the draw scene is made of the run's mobys and the real pass's own of those left out, each in the place
+the whole run would have drawn it (the list's order, the deferred pass's mobys after the others), the real ones' GS state read
+from the real chain. The loop's other fixed capacities - 64 sub-mesh records, the packet buffer, the skinning ring - are not
+used by a moby left out: a run that would have filled one with them is made again whole (never in the runs below). At LOD Low
+to Maximum the distances differ too: see "The extras' run at the other draw distances" below.
+
+Proved: `=2` makes both runs each frame and compares the merged scene with the whole run's as the renderer reads them (the
+view, the mobys in order, every field of each, its pose, its record's lights and tint, its parts' program, matrix and GS
+state) and the drawn flags (+0x31) the effects' shadow takes: 0 differing frames of 37,926 over the 19 levels at 16:9 and of
+18,960 at 32:9, and in the other modes (the draw loop's two forms compared or the transliteration alone, the pose memo
+verified, the game thread off, no pipeline, the modern shadows, two game frames a host frame, the pose order, a wider field of
+view, the five-level route). `RAC1_MRP_LOD_VERIFY=1` on all of them: the memory after every run as before it. Against the
+build without it (the switch at 0, the run before the real pass): `RAC1_MRP_SCENE_HASH`'s mobys, joints and parts, and the
+records' bytes the renderer reads (+0x40..+0xbf: the lights and the tint), identical on the 19 levels; RAMHASH identical on
+them; the pictures at frames 300, 600 and 1500 identical, OpenGL and Vulkan, on the 19 levels at 16:9 and on six at 32:9 (150
+of 150); the reference images and the route's RAMHASH unchanged. What differs in the scene is what the renderer does not read:
+the records' head and chain addresses, and which of VU1's two matrix buffers a part's upload names (they take turns along the
+pass's chain). The moby scene and the LOD module ran four levels and the route under the address sanitizer without a report;
+the generated sources regenerate the same.
+
+Measured at 16:9, LOD Original (headless, the game thread on, the profiler's medians; fourteen runs of each taken in turn
+on a shared machine that was busy for part of them: the percentages are the medians of the runs' ratios, the times those
+of the shadow run, which the load moves least):
+
+| | Veldin | Kerwan | Rilgar | Gaspar | Hoven | Kalebo III |
+|---|---|---|---|---|---|---|
+| The moby pass's shadow run, ms a frame | 0.10 -> 0.04 | 0.23 -> 0.07 | 0.14 -> 0.07 | 0.18 -> 0.07 | 0.18 -> 0.07 | 0.27 -> 0.14 |
+| | -60 % | -63 % | -56 % | -62 % | -61 % | -48 % |
+| Game thread busy | -5 % | -8 % | -9 % | -7 % | -11 % | -6 % |
+| Main thread's wait for the game thread | -10 % | -14 % | -15 % | -40 % | -38 % | -8 % |
+| Frame period | -3 % | -6 % | -6 % | -4 % | -6 % | -5 % |
+
+The game thread's time is below the whole run's in 14 of the 14 runs on five levels and 13 on Veldin; the period in 14 of
+14 on Kerwan, Rilgar, Hoven and Kalebo III, 13 on Gaspar, 12 on Veldin. At 16:9 the frame waits for the game thread, so what
+its second pass no longer does shortens it. What is left of the run: the journal and the VU0's save, the projection set up
+again, the pass's own start and end, the cull test of every moby, and the extras' draws and poses. The other shadow runs of a
+widened view (the effects' block, the draw lists, the sky: 0.13 to 0.47 ms a frame on these levels) are as before, and so is
+the moby run at another LOD (0.5 to 1.0 ms at LOD High), where the real pass's mobys are not the run's.
+
+### The moby's parts from the draw loop
+
+For each moby drawn the MRP needs its parts - one per packet of its mesh, each a VU1 program start: which program, the
+model-to-view matrix, and the GS state packet of a faded or alpha-tested moby's first part. It read them back from the chain
+the draw loop had just written: every moby's tags and VIF codes decoded again (`decode_chain_to`), on the job pool at the
+frame's end for the real pass and inside the journal for the shadow run - 3.4 to 6.9 % of the game's code in a widened view,
+1.5 to 1.8 % of the main thread everywhere, most of it for a list of unpacks only the checks read.
+
+`RAC1_PERF_MOBY_PARTS` (`moby_draw.h`'s `MobyDrawParts`, `mrp_scene.cpp`): the loop notes what it writes as it writes it - for
+the mesh, and for the shadow mesh after it, how many parts, where the group's matrix upload is, which of VU1's two matrix
+buffers the first part names, the program's start, and the tag of the GS state packet before the group's first start (the
+shadow mesh's first part gets the packet that put the mesh's state back, as the chain has it) - and the scene makes the
+parts from the notes: no tag read but the matrix and the GS packet's own. With `RAC1_MRP_CHECK` or `RAC1_MRP_SCENE_CHECK`,
+which read the unpacks, the chains are decoded as before.
+
+Proved: `=2` decodes the chains too and compares every moby's parts with the notes' (the count, the moby's matrix, each
+part's program, matrix and matrix buffer, the GS state packet's place and size): 0 differing of 1,275,426 mobys over the 19
+levels at 4:3, of 628,429 at 16:9 and of 1,934,147 at 16:9 with LOD High, and in thirteen other modes (the draw loop's two
+forms compared - their notes are part of that comparison now -, the transliteration alone, the game thread off, no
+pipeline, the modern shadows, the extras' run compared or off, two routes, the title at 4:3 and 16:9, a walk with the
+pause menu). With the switch at 0 and at 1 `RAC1_MRP_SCENE_HASH`'s mobys, joints, records, parts and lights and RAMHASH are
+identical on the 19 levels at 4:3 and at 16:9 and on four at LOD High; the pictures at frames 300, 600 and 1500 identical,
+OpenGL and Vulkan, on the 19 levels at 4:3 and on six at 16:9 (150 of 150); the reference images and the route's RAMHASH
+unchanged; `RAC1_MRP_SCENE_CHECK=1` finds no mismatch class either way. The moby scene ran four levels
+and the route under the address sanitizer without a report; the generated sources regenerate the same.
+
+Measured on a machine busy with other work (six runs of each in turn, the game thread on; the medians of the runs' ratios):
+at 16:9 with LOD High, where the shadow run decoded some 230 mobys' chains inside its journal, the moby pass's shadow run
+-18 to -29 % (Kerwan 1.32 -> 1.06 ms a frame, Kalebo III 1.43 -> 1.16; below in 6 of the 6 runs on three of the four levels),
+the game thread -6 to -12 %, the frame period -3 to -10 % (below in 3 to 5 runs of 6: the load's noise). At 4:3 Original
+nothing beyond the noise: the real pass's decode ran on the job pool at the frame's end and was a few hundredths of a
+millisecond there (the `Moby draw lists` stage 0.15 to 0.20 ms either way); at 16:9 with LOD Original the extras' run
+had already left the shadow few chains to decode.
+
+### The extras' run at the other draw distances
+
+Off Original the slider scales the mobys' draw and detail distances for the shadow run (Low 2x, Medium 4x, High 8x, Maximum
+none), widened or not, and the run drew everything again, before the real pass. Of a moby's draw the distances decide three
+things and nothing else: whether it is drawn at all (its draw distance and the loop's maximum), the fade of its alpha in the
+last stretch before that distance, and the low detail model past its detail distance. A moby well inside the game's own
+distances is drawn the same by both passes.
+
+`RAC1_PERF_MOBY_EXTRAS_LOD` (`moby_draw.h`'s `g_moby_draw_lod`, `mrp_lod.cpp`): where the loop is about to draw a moby it
+also notes those two decisions - the fade (0..0x80) and the model, made there from the registers the loop itself reads next
+- ; the real pass's go into its scene entry, and the extras' run, now made at every setting that has a shadow run, leaves a
+moby out only when the program, the fade and the model are the real pass's. The observer checks the note against what the
+loop then did (the model it drew, the alpha of the record's tint): never different in the runs below. Two things changed
+with it. The 64 sub-mesh records are a run's own, so what a whole run would have used is this run's and one for each moby
+left out that has them (before: all of the real pass's, a bound too wide once both passes draw a moby). And from Medium up
+the whole run itself fills them on some levels in a widened view (Rilgar in 3 runs of 10 at Medium and 5 at High, Blarg in
+4 at High and Maximum, Kalebo III in 2 at Maximum), where a run made twice cost more than it saved: while the whole run
+fills them or nearly, and for thirty runs after the packet buffer or the ring filled, the whole run is made from the start
+(the scene is the same either way; 1 to 3 runs of 900 made twice on those levels).
+
+How much the run leaves out is how much of it the real pass drew the same - on Novalis, Kerwan, Blarg, Orxon and Kalebo
+III at 16:9, of the mobys a frame:
+
+| | Novalis | Kerwan | Blarg | Orxon | Kalebo III |
+|---|---|---|---|---|---|
+| Low | 9 of 23 | 14 of 69 | 7 of 27 | 19 of 61 | 80 of 157 |
+| Medium | 9 of 25 | 9 of 116 | 7 of 73 | 19 of 66 | 67 of 261 |
+| High | 8 of 25 | 9 of 139 | 4 of 105 | 19 of 66 | 18 of 262 |
+| Maximum | 8 of 25 | 9 of 139 | 3 of 115 | 19 of 66 | 14 of 262 |
+
+Most of what High and Maximum draw is beyond the game's own distances, or drawn by the game with the low detail model.
+
+Proved: `RAC1_PERF_MOBY_EXTRAS=2` makes both runs and compares the merged scene with the whole run's, as above: 0 differing
+frames of 63,401 - Low and High on the 19 levels at 16:9 (18,960 and 18,106), Medium and Maximum on six, High and Low at 4:3
+on eight and four, Maximum at 32:9 on four, Original at 16:9 on six - and of 12,979 in sixteen other modes at those settings
+(the draw loop's two forms compared - the note is part of that comparison -, the transliteration alone, the pose memo
+verified, the game thread off, no pipeline, the modern shadows, two game frames a host frame, the pose order, the parts
+decoded, a wider field of view, two routes, a walk with the pause menu). `RAC1_MRP_LOD_VERIFY=1` on three levels of each set
+and a route: the memory after every run as before it. With the switch at 0 (the whole run before the real pass) and at 1,
+`RAC1_MRP_SCENE_HASH`'s mobys, joints, parts and lights and RAMHASH are identical on the 19 levels at High, 16:9, on four at
+Low, 4:3, and on four at Maximum, 16:9 - Rilgar and Blarg among them, where the whole run is held; the pictures at frames
+300, 600 and 1500 identical on the 19 levels at High, 16:9, OpenGL, and on four with Vulkan, on four at Low and at Maximum,
+4:3 (93 of 93); the reference images and the route's RAMHASH unchanged. The moby scene and the LOD module ran four levels (a
+held whole run among them) and a route under the address sanitizer without a report; the generated sources regenerate the
+same.
+
+Measured on a machine busy with other work (a load of 25 to 40; four runs of each in turn at 16:9, the game thread on; the
+medians of the runs' ratios): at Low the moby pass's shadow run -17 to -44 % (Novalis 0.24 -> 0.20 ms a frame, Kerwan 0.65
+-> 0.52, Orxon 0.36 -> 0.23, Kalebo III 0.95 -> 0.52; below in 15 of the 16 runs), the game thread -7 % at the median (below
+in 10 of 16: the load's noise, but Kalebo III's -15 % in 4 of 4). At High -9 % of the shadow run at the median, below in 11
+of 16: within that noise.
+
+### The effects' and the draw lists' shadow runs: measured, left as they are
+
+In a widened view the block of the 3D effects after the moby pass (the draw lists' callbacks, the particles, the lens flare,
+the decals, the HUD) runs twice a frame, and so do the two draw lists after the ties and the shrubs on the levels that queue
+them, and the sky. Sampled at 16:9 with LOD Original on seven levels, the effects' shadow run is 10 to 21 % of the game's
+code - more than the moby pass's shadow run after the two changes above (4 to 5 %): 0.09 to 0.37 ms a frame on the 19
+levels' walks, the list blocks' 0.01 to 0.20 on eight of them, the sky's 0.04 to 0.10. Nine tenths of it are the draw lists'
+callbacks (the levels' water, lava and ocean grids, the classes' surfaces, smoke, the nanotech orbs), the rest the particles;
+the journal's restore, its first touches and the chain's copy are 1.5 to 2.3 % of the game's code.
+
+The run is skipped already when nothing in it could differ (`RAC1_MRP_EFFECTS_SKIP`), but a draw list is never empty and
+nothing tells what its callbacks will draw: on these walks it ran every frame. Its chain is the real block's byte for byte in
+1 to 73 % of the frames (a third at the median, under a tenth on the levels where it costs most). Callback by callback it is
+another picture: weighted by their time, the callbacks whose shadow chain is the real one's are 73 to 99 % on 16 of the 19
+levels (Aridia's ocean and Gaspar's lava, which always draw more cells in the wider view, make theirs a fifth). Most of the
+run makes again what the real block is about to make. Three ways to know which callback before running it were looked at,
+and none is both exact and cheaper than the run:
+
+- What the shadow changes is EE memory the callbacks read: the tangent and the radius factors, `point_on_screen`'s terms,
+  the quad drawer's reject scale, the clip matrix. A callback that reads none of those words makes the same chain. A read
+  barrier on them (every read through the slow path, the address checked) made the real callbacks 1.9 to 3.9 times slower -
+  more than the shadow run it would save - and was not sound: hundreds of callbacks a level read none of the words and made
+  another chain all the same (a term held in a VU0 register from before, a read through a pointer taken lower).
+- Most callbacks do read them, test, and pass: the same chain again, and only the test's own site knows. Those sites are
+  some seventy places in the hand-written code and more in the generated update functions; each would need its own
+  observer, proved apart.
+- A callback's shadow run apart from the block's (run where the real one is about to, its chain in place of that range
+  alone) no longer has the block's textures: the effect textures get their GS memory on demand along the block and are
+  uploaded at its end, so a shadow callback that asks for one texture more than the real one does not fit the real block's
+  uploads.
+
+Left as they are. What removes them is not a prediction but one pass that culls for both views, each test site giving
+both answers (the `CullParams` of #153).
+
 ## The frame's chain
 
 The MRP chain worker reads each frame's chain beside the main thread (`mrp_chain.cpp`: the 2D, the effects' VU1 programs, the
@@ -370,51 +543,107 @@ sources, each behind a `RAC1_PERF_*` switch whose `=2` runs both ways and compar
   levels (headless, the game thread on, one run each) the main thread waits for the scene on 18 of them, 1.14 ms of a 2.00 ms
   period at the median (Kerwan 2.66 of 4.35, Blarg Station 2.70 of 4.11); the walk itself is 1.02 ms at the median, and a 16:9
   frame, where the host decides and nothing is walked, is shorter than a 4:3 one.
-  The tie and shrub passes are written by hand (`world_cull_tie.cpp`, `world_cull_shrub.cpp`) and build that chain themselves.
-  They now note each draw they chain for their first program (tie A, shrub A): its class and LOD packet, where its instance's
-  matrix is in the frame packet, where its colours are. The capture copies the notes with each instance's bytes of the frame
-  packet, and the walk makes those draws' scene packets from them at each draw start of the chain, in the chain's order: the
-  packet's template and texture qwords from the level's own tables, the instance's rows, morph, alpha-test state and fog as the
-  pass wrote them, its colours' resident slot. That part's unpacks and set-up starts are no longer run; its tags and codes are
-  still read, so the VIF state, the double buffer, the register writes and the order of the packets stay the walk's. The same
-  draws, as the pass decided them: nothing is decided again by the host (its own decisions at 4:3 Original, compared with the
-  walk's on the 19 levels, name the game's instances, LODs and tfrags every time, but a shrub's fade differs by one in 677
-  draws of 4.5 million and one far-variant stream of 141,489 on Gaspar: close, not the same).
-  What is still walked: the tfrag pass; the passes' clipping programs (4.2 % of the tie draws, 7.5 % of the shrubs') and the
-  shrubs' far variants; a pass that did not run by hand (`RAC1_WORLD_CULL_FAST=0`, or `=2`: the check runs it inside a journal)
-  or names a class the level's tables do not have; and the whole scene again when the chain's draw starts are not the notes'
-  (never in the runs below; tried by dropping a note every seventh frame: the scenes made again, 0 differing).
+  The three world passes are written by hand (`world_cull_tfrag.cpp`, `world_cull_tie.cpp`, `world_cull_shrub.cpp`) and build
+  that chain themselves. They now note what they chain as they write it: the tfrag pass each entry and its LOD code; the tie
+  and shrub passes each draw of their first program (tie A, shrub A) - its class and LOD packet, where its instance's matrix is
+  in the frame packet, where its colours are. The capture copies the notes, with each tie / shrub instance's bytes of the frame
+  packet, and the walk makes those draws' scene packets from them at each draw start of the chain, in the chain's order:
+  a tie's or shrub's from the packet's template and texture qwords in the level's own tables and the instance's rows, morph,
+  alpha-test state, fog and colour slot as the pass wrote them; a tfrag's from the note's entry (the walk found it by a hash of
+  the image its unpacks left, and inverted its view's matrix at every draw), with the LOD and the program of the chain's own
+  start. Those parts' unpacks and set-up starts are no longer run; their tags and codes are still read, so the VIF state, the
+  double buffer, the register writes and the order of the packets stay the walk's. The same draws, as the passes decided
+  them: nothing is decided again by the host (its own decisions at 4:3 Original, compared with the walk's on the 19 levels, name
+  the game's instances, LODs and tfrags every time, but a shrub's fade differs by one in 677 draws of 4.5 million and one
+  far-variant stream of 141,489 on Gaspar: close, not the same).
+  What is still walked: the tie and shrub passes' clipping programs (4.2 % of the tie draws, 7.5 % of the shrubs': their
+  triangles are clipped on the CPU from VU1 memory) and the shrubs' far variants; a pass that did not run by hand
+  (`RAC1_WORLD_CULL_FAST=0`, or `=2`: the check runs it inside a journal), or that names a class, packet or entry the level's
+  tables do not have, or - the tfrags - when the GPU path does not draw them; and the whole scene again when the chain's draw
+  starts are not the notes' (never in the runs below; tried by dropping a note every seventh frame: the scenes made again, 0
+  differing).
   Seven shrub packets of the game have vertices whose colour is whatever VU1 memory holds past their instance's block
-  (`kTwiceBase`): earlier shrub draws' blocks, the tie pass's colour tables, a tie packet's first quadwords. Six of the 19 levels
-  have one (Novalis, Eudora, Rilgar, Blarg Station, Oltanis, Veldin's second visit). There the shrub pass is walked whole, the tie
-  packets' unpacks and set-up starts are walked too, and only the tie instances' unpacks are left out, their two colour tables
-  written back after the tie A part as its last two draws left them.
+  (`kTwiceBase`): earlier shrub draws' blocks, the tie pass's colour tables, a tie packet's first quadwords, what the tfrags'
+  unpacks left. Six of the 19 levels have one (Novalis, Eudora, Rilgar, Blarg Station, Oltanis, Veldin's second visit). There
+  the shrub pass is walked whole, the tfrags' and the tie packets' unpacks and set-up starts are walked too - only the decoding
+  of their draws and the tie instances' unpacks are left out - and the tie pass's two colour tables are written back after its
+  first part as its last two draws left them.
   Proved with `=2`, which makes both scenes, draws the walker's and compares the other with it field by field (the packets in
-  order, the register writes before each, the instances' rows, morph, fog, alpha and colour slot, the texture qwords, the kicks
-  of the clipping programs, the GIF writes): 0 differing frames of 37,954 over the 19 levels (2000 frames each; 35.7 million
-  packets, 9.2 million register writes; 23.6 million tie draws and 3.9 million shrub instances made from the notes), and on a
-  route across five levels. Two things are compared by content: a packet the asset holds twice (the walk names the first copy
-  it finds, the notes the class and LOD the pass chained: the same VU1 image), and the texture qwords without the textures'
-  place in VRAM (as for the tfrags above: the level load's in the tables, the frame's in the chain; the world's textures are
-  not found by it). On the six levels with a `kTwiceBase` packet the two walkers' VU1 memory is compared too, wherever such a
-  vertex can read (quadwords 0x1e6 to 0x3ff, 0 and 1): 0 differing frames of 11,986. The pictures at frames 300, 600 and 1500
-  of the 19 levels, OpenGL and Vulkan, are the walk's (114 of 114); the reference images and the route's RAMHASH are unchanged;
-  RAMHASH on the 19 levels is the same with the switch at 0 and at 1 (the notes change nothing of the game's).
-  Measured (headless, 4:3 Original, the game thread on, the profiler's medians, seven runs of each taken in turn; ms a frame, the
-  walk -> the chained world; the percentage is the median of the seven runs' ratios):
+  order, the register writes before each, the instances' rows, morph, fog, alpha and colour slot, the texture qwords, the
+  tfrags' entry, LOD, view and constants, the kicks of the clipping programs, the GIF writes): 0 differing frames of 37,954
+  over the 19 levels (2000 frames each; 35.7 million packets, 9.2 million register writes; 3.2 million tfrag draws, 23.6
+  million tie draws and 3.9 million shrub instances made from the notes), and on a route across five levels. Two things are
+  compared by content: a packet the asset holds twice (the walk names the first copy it finds, the notes the class and LOD
+  the pass chained: the same VU1 image), and the texture qwords without the textures' place in VRAM (as for the tfrags above:
+  the level load's in the tables, the frame's in the chain; the world's textures are not found by it). On the six levels with
+  a `kTwiceBase` packet the two walkers' VU1 memory is compared too, wherever such a vertex can read (quadwords 0x1e6 to 0x3ff,
+  0 and 1): 0 differing frames of 11,986. The pictures at frames 300, 600 and 1500 of the 19 levels, OpenGL and Vulkan, are
+  the walk's (114 of 114); the reference images and the route's RAMHASH are unchanged; RAMHASH on the 19 levels is the same
+  with the switch at 0 and at 1 (the notes change nothing of the game's). The scene builder ran four levels and the route
+  under the address sanitizer without a report.
+  Measured (headless, 4:3 Original, the game thread on, the profiler's medians, seven runs of each taken in turn on a shared
+  machine; ms a frame, the walk -> the chained world; the percentage is the median of the seven runs' ratios):
 
   | | Veldin | Novalis | Kerwan | Rilgar | Blarg Station | Gaspar | Hoven | Kalebo III |
   |---|---|---|---|---|---|---|---|---|
-  | Frame period | 1.78 -> 1.50 | 2.79 -> 2.37 | 3.56 -> 2.77 | 1.74 -> 1.46 | 3.46 -> 2.85 | 3.35 -> 2.63 | 2.41 -> 1.80 | 3.58 -> 2.44 |
-  | | -15 % | -13 % | -23 % | -15 % | -19 % | -20 % | -25 % | -32 % |
-  | Main thread's wait for the scene | 1.11 -> 0.63 | 1.83 -> 1.40 | 2.28 -> 1.47 | 1.11 -> 0.79 | 2.34 -> 1.72 | 1.91 -> 1.16 | 1.50 -> 0.76 | 2.39 -> 1.23 |
-  | Scene worker busy | 1.38 -> 0.94 | 2.22 -> 1.80 | 2.84 -> 2.02 | 1.39 -> 1.07 | 2.80 -> 2.19 | 2.36 -> 1.62 | 1.90 -> 1.17 | 2.88 -> 1.71 |
-  | its walk | 0.95 -> 0.49 | 1.54 -> 1.18 | 1.93 -> 1.15 | 1.02 -> 0.70 | 1.96 -> 1.42 | 1.59 -> 0.90 | 1.31 -> 0.60 | 2.04 -> 1.02 |
+  | Frame period | 1.87 -> 1.45 | 3.09 -> 2.39 | 3.77 -> 2.36 | 1.79 -> 1.48 | 3.76 -> 2.58 | 3.80 -> 2.88 | 3.12 -> 2.13 | 3.77 -> 2.23 |
+  | | -23 % | -24 % | -37 % | -17 % | -32 % | -24 % | -26 % | -41 % |
+  | Main thread's wait for the scene | 1.11 -> 0.53 | 1.91 -> 1.27 | 2.35 -> 0.97 | 1.12 -> 0.77 | 2.50 -> 1.33 | 2.07 -> 1.16 | 1.76 -> 0.77 | 2.46 -> 0.67 |
+  | Scene worker busy | 1.40 -> 0.82 | 2.36 -> 1.67 | 2.95 -> 1.52 | 1.42 -> 1.05 | 3.02 -> 1.85 | 2.65 -> 1.74 | 2.40 -> 1.32 | 2.93 -> 1.19 |
+  | its walk | 0.97 -> 0.42 | 1.63 -> 1.07 | 2.00 -> 0.64 | 1.03 -> 0.70 | 2.10 -> 0.99 | 1.74 -> 0.89 | 1.60 -> 0.61 | 2.10 -> 0.51 |
 
-  The period is below the walk's in 5 to 7 of the 7 runs on every level. The levels with a `kTwiceBase` packet (Novalis, Rilgar,
-  Blarg Station) gain less. The game thread's and the main thread's own times rise by a few per cent in these unpaced runs (the
-  threads overlap more in a shorter frame); the notes themselves are a record a draw. What the walk still costs is mostly the
-  tfrag pass (0.6 ms of Kerwan's) and reading the ranges' tags; the capture still copies the ranges.
+  The period is below the walk's in 7 of the 7 runs on every level. The tie and shrub draws alone (the first step, the tfrags
+  still walked) gave 13 to 32 % (Kerwan 3.56 -> 2.77, Kalebo III 3.58 -> 2.44). The levels with a `kTwiceBase` packet (Novalis,
+  Rilgar, Blarg Station) gain less. The game thread's and the main thread's own times rise by a few per cent in these unpaced
+  runs (the threads overlap more in a shorter frame); the notes themselves are a record a draw. What the scene worker still
+  does there: the capture's copy of the ranges (0.14 to 0.36 ms: most of what it copies is no longer read), the reading of
+  their tags and codes, the clipping programs' draws, and the frame's triangles.
+
+  **The capture's scan** (`RAC1_PERF_WORLD_SCAN`; November 2026). The capture copied the world's ranges for the walk - the
+  tags and the data they name, 1.4 MB a frame on Kerwan in 12,000 pieces - and the walk read them a second time, though the
+  draws now come from the notes. The capture reads those ranges in place instead, once, as the direct world's scan does when
+  the host makes the world (`scan_world`): the VIF's state and the double buffer followed code by code, the passes' constants
+  unpacked and their constants' starts run on a private VU1 kept for the scan, the register writes and the DIRECT vertices
+  (the far variants) noted in order. Each draw start of a pass's first program is counted against the pass's notes - a tfrag's
+  kind, entry and GPU plan checked too - and noted as an event, with the VU1 state its packet reads when that changed (the
+  tfrags' view and constants, tie A's alpha-test state packet, the shrubs' fog); what a draw leaves for the next is put on the
+  scan's VU1 as the walk put it on its own (tie A's alpha-test state and block queue, shrub A's block toggle). The build then
+  makes the scene from the events, each draw from its note exactly as the chained walk made it, and never reads that part of
+  the chain. The rest of a tie or shrub range - from the MPG after its first program to its end: the clipping program's part
+  - is still copied and walked, on a copy of the scan's VU1 as it was there. Kerwan's capture copies 0.19 MB a frame in 500
+  pieces.
+  Not on the six levels with a `kTwiceBase` packet (their shrubs read what the walk's unpacks leave in VU1 memory: walked as
+  before), nor in a frame where a world pass ran a shadow chain or a check takes the walk's own kicks; and a scan that stops -
+  a draw start that is not the notes', a part to walk that does not begin at a tag's first code - leaves the frame to the
+  copy and the walk (never in the runs below).
+  Proved with `RAC1_PERF_WORLD_CHAINED=2`, whose second scene is then the scan's, against the walk's: 0 differing frames of
+  37,954 over the 19 levels (25,968 scenes made from a scan on the 13 levels that have one, none stopped), and 0 of 18,976
+  with `RAC1_PERF_WORLD_SCAN=3`, which leaves every third frame to the walk (the change-over between the scan's VU1 and the
+  walker's, both ways); 0 differing on the five-level route, with the modern shadows on (the tfrag shadow draws, made where
+  the tfrag range ends) on Kerwan and Orxon, and without the pipeline or the game thread; and where the scan stands aside -
+  the hand-written culls checked or off, the CPU tfrags, the tfrag verification, 16:9 (the direct world's scan) - the scenes
+  are made as before, 0 differing. The pictures at frames 300, 600 and 1500 of the
+  19 levels, OpenGL and Vulkan, are the walk's (114 of 114); the reference images and the route's RAMHASH are unchanged;
+  RAMHASH on the 19 levels is the same with the switch at 0 and at 1. The scene builder ran four levels, with the scan and
+  with `=3`, and the route under the address sanitizer without a report.
+  Measured as above (seven runs of each in turn, a quiet machine; the scan off -> on, the median of the runs' ratios):
+
+  | | Veldin | Kerwan | Gaspar | Hoven | Kalebo III |
+  |---|---|---|---|---|---|
+  | Frame period | 1.51 -> 1.51 | 2.30 -> 2.17 | 2.52 -> 2.29 | 1.77 -> 1.75 | 2.11 -> 2.06 |
+  | | -0.1 % | -5.4 % | -8.8 % | -0.6 % | -3.3 % |
+  | Main thread's wait for the scene | 0.60 -> 0.39 | 0.95 -> 0.61 | 0.95 -> 0.65 | 0.65 -> 0.40 | 0.74 -> 0.35 |
+  | Scene worker busy | 0.92 -> 0.72 | 1.49 -> 1.15 | 1.44 -> 1.11 | 1.06 -> 0.82 | 1.22 -> 0.82 |
+  | | -23 % | -27 % | -23 % | -24 % | -33 % |
+  | its walk | 0.47 -> 0.23 | 0.65 -> 0.30 | 0.69 -> 0.36 | 0.50 -> 0.25 | 0.51 -> 0.14 |
+  | its capture | 0.18 -> 0.20 | 0.34 -> 0.35 | 0.30 -> 0.29 | 0.22 -> 0.23 | 0.28 -> 0.27 |
+
+  The worker's time is below the walk's in 7 of the 7 runs on every level; the period in 7 of 7 on Kerwan and Gaspar, 6 of 7
+  on Kalebo III, and within the runs' noise on Veldin and Hoven (Novalis, where nothing is scanned, measured the same way:
+  2.21 -> 2.26, +2.3 %): there the frame no longer waits for the scene but for the game thread (1.1 ms of Veldin's 1.5), so
+  a shorter scene does not shorten it. The capture's own time does not fall: reading the ranges' 8,000 tags and 40,000 VIF
+  codes a frame on Kerwan costs what copying them did (0.3 ms); what is gained is the walk's second reading. Left in the scene
+  worker at 4:3 Original: that reading, the clipping programs' draws, the packets made from the notes, the frame's triangles.
 
 Measured as the analysis was (headless, OpenGL, `RAC1_PIPELINE=1 RAC1_GAME_THREAD=0`, forward input, 1500 frames, the medians
 of frames 600-1450; Graphics Original, LOD Original but where said, HUD 4:3; 1920 x 1080 at 16:9, 5120 x 1440 Fill Screen widened).
@@ -812,7 +1041,8 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_DROP_SHADOWS_FAST=0`, `RAC1_SKY_FAST=0` | the drop shadows' and the sky's routines as transliterated (`=2`: both, compared; `RAC1_HAND_CHECK_EVERY` to check one call in n) |
 | `RAC1_PERF_UPLOAD_MEMO=0` | every texture upload's piece written into the GS memory model, as before (`=2`: both, checked) |
 | `RAC1_PERF_DIRECT_WORLD=0` | the world passes' chain ranges copied and walked when the host makes the world (`=2`: both, compared; `=3`: the direct world at 4:3 Original too) |
-| `RAC1_PERF_WORLD_CHAINED=0` | at 4:3 Original the tie and shrub passes' whole ranges unpacked and run on the scene worker's private VU1, the passes taking no notes (`=2`: both scenes, compared) |
+| `RAC1_PERF_WORLD_CHAINED=0` | at 4:3 Original the world passes' whole ranges unpacked and run on the scene worker's private VU1, the passes taking no notes (`=2`: both scenes, compared) |
+| `RAC1_PERF_WORLD_SCAN=0` | the chained world's ranges copied at the capture and read again by the walk (`=3`: every third frame so; compared with `RAC1_PERF_WORLD_CHAINED=2`) |
 | `RAC1_PERF_SKY_LATE=1` | the sky after the leading opaque tfrag batches (off by default: not exact) |
 | `RAC1_PERF_FPU_RAW=0` | the EE FPU helpers by the PS2 rules at every operation, through doubles (`=2`: those, compared with the raw forms) |
 | `RAC1_PERF_VU0_RAW=0` | the VU0 macro ops clamping every operand and result at every op, the pose's loops too (`=2`: those, the ops compared with the raw forms) |
@@ -828,6 +1058,9 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_TFRAG_TIME_ONCE=0` | Vulkan: the tfrag compute's first dispatches timed, in waited chunks, at every level's arrival |
 | `RAC1_GT_JOIN_SLEEP=1` | the main thread sleeps for most of its wait for the game thread, then polls (off by default: a longer frame unpaced) |
 | `RAC1_PERF_POSE_ORDER=1` | the moby pass's shadow run after the real pass, which fills the pose memo for it (off by default: the scene's records differ) |
+| `RAC1_PERF_MOBY_EXTRAS=0` | at 16:9 with LOD Original the moby pass's shadow run draws the real pass's mobys again, before the real pass (`=2`: both runs, the scenes compared) |
+| `RAC1_PERF_MOBY_EXTRAS_LOD=0` | at LOD Low to Maximum the moby pass's shadow run draws everything again, before the real pass (compared by `RAC1_PERF_MOBY_EXTRAS=2`) |
+| `RAC1_PERF_MOBY_PARTS=0` | each drawn moby's parts decoded from its chain (`=2`: decoded, and compared with the draw loop's notes) |
 | `RAC1_MRPW_THREAD=0`, `RAC1_GS_THREAD=0`, `RAC1_JOBS=1` | the scene, the frame's chain's reading (the MRP's chain reader, or the GS replica), the job pool on the main thread |
 
 Each gives the same picture and the same game state: only the time changes (`RAC1_SHADOW_FAR_EVERY` also when a far cascade's

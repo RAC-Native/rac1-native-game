@@ -109,7 +109,22 @@ macOS on Apple Silicon with a Metal renderer (#116, #119). The Vulkan renderer i
 an optional renderer beside OpenGL, which stays the default. The frame got cheaper again on the CPU and
 the GPU, and the reports were fixed (#111, #113, #114, #115, #126).
 
-What comes next, in no fixed order:
+**0.8.0** (see the [Changelog](../CHANGELOG.md#080)): the release of mods. A `mods/` folder in front of the disc's
+files (texture and sound swaps, a Mods menu); level mods, new levels the ship flies to, with a native plugin SDK
+(ABI 19, [The mod SDK](sdk.md)); and the open engine behind them: sessions with checkpoints, sections joined by portals,
+other planets' own worlds as sections, their enemies and bosses, grind rails and a set-piece kit, Clank, Giant Clank and
+the hoverboard, more music, saves from a plugin ([The open engine](open-engine.md)). Daino's Arena is the one complete
+example ([Mods](mods.md)). The Vulkan renderer became the default (OpenGL where it cannot start). Anya-Thoughtmane's
+lighting batch 4 rebalanced and marked every level (#144), and the Windows specifications joined [Platforms](platforms.md).
+The frame got shorter again, 17 to 41 % at the default 4:3 and less in widescreen; Quick Select Rings, a Bug Fixes page,
+movie subtitles, a high precision sound mix and Graphics: Enhanced with the original's lighting (#138) came in, and the
+reports were fixed (#82, #129, #131, #132, #136, #137, #140, #141, #142, #144).
+
+What comes next. The next big goal is **1.0, fully native code** ([#145](https://github.com/RAC-Native/rac1-native-game/issues/145)):
+no translated code generated from the player's disc and no emulated PS2 memory, a game engine written for today's hardware,
+with a typed mod SDK instead of `api->ram` and the moby offsets (mods made before 1.0 will very likely break and need updating).
+It is a long job done in stages beside the 0.x releases, which go on meanwhile with fixes, graphics, audio and
+enhancements. Besides it, in no fixed order:
 
 - **Playtesting and polishing** the planets after Orxon, and the fixes that come from it.
 - **ARM64 and Android:** the port is in progress on the `port/android` branch, not on `main` yet
@@ -121,14 +136,12 @@ What comes next, in no fixed order:
   1.02 Gameplay (see [Advanced options](advanced.md#102-fixes)).
 - **The renderer:** the level's baked shadow meshes across a widened view, the mobys' flattened
   shadow meshes.
-- **Mods:** the first step is in: a mods folder in front of the disc's files, texture replacement by hash, and a Mods
-  menu in the game ([Mods](mods.md)); next, the modern renderer's models (their rig kept), audio by file. Level mods and mods' code (a native plugin
-  API): [Mods](mods.md#level-mods), [Custom levels: code](custom-levels.md).
-- **The Vulkan renderer** is the default from the next release (OpenGL when it cannot start, or chosen
-  in Options > Display); it needs trying on more GPUs.
+- **Mods:** in since 0.8.0: a mods folder in front of the disc's files, texture replacement by hash, a Mods menu, level mods
+  and mods' code (a native plugin API): [Mods](mods.md), [Custom levels: code](custom-levels.md), [The mod SDK](sdk.md). Next,
+  the modern renderer's models (their rig kept) and audio by file, and the SDK's move to 1.0's typed API.
 - **Testing on more machines:** the European PAL discs (the Platinum's most), Windows (now also
   through the launcher), the Steam Deck and the other immutable Linux systems, macOS, and the Vulkan
-  renderer and its ray-traced reflections (measured on one machine so far).
+  renderer, now the default, and its ray-traced reflections (measured on one machine so far).
 
 Ideas for later, from the project's list of [enhancements](enhancements.md) (each one optional and
 off by default when it changes the game):

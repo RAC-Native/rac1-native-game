@@ -457,7 +457,7 @@ Details:
   `main` from time to time, so `dev` has the newest changes; GitHub issue #141) at any time. An update on
   Development checks out `dev` (a clone on `main` or on a release's tag switches to it; a zip download gets
   `dev`'s source zip). A developer clone on a branch other than `main` and `dev` stays on its branch.
-- **The installed version** is printed at start (`[orig] rac1-native 0.7.0 (v0.7.0-12-g1a2b3c4, main)`):
+- **The installed version** is printed at start (`[orig] rac1-native 0.8.0 (v0.8.0-12-g1a2b3c4, main)`):
   the release's version and, for a git clone, `git describe` and the branch, recorded by the build
   (`cmake/version.cmake`).
 - **Skip Version** is kept in `advanced_options.txt` (`update_skip <tag or commit>`); remove the

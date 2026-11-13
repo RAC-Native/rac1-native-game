@@ -10,7 +10,7 @@ This page has five parts:
 1. [Making a mod](#making-a-mod): a texture mod step by step, a sound swap, sharing a mod.
 2. [Limits and gotchas](#limits-and-gotchas): what a mod can and cannot do today.
 3. [Troubleshooting](#troubleshooting): every `[mods]` line of the log, and a checklist.
-4. [Level mods](#level-mods): a new level the ship flies to (format 1), the example level, how it is built and saved.
+4. [Level mods](#level-mods): a new level the ship flies to (format 1), Daino's Arena as the example, how it is built and saved.
 5. [Reference](#reference): the folder, the manifest, the load order, the disc files, the textures, the dump.
 
 The code: `runtime/kernel/mods.cpp` (the folder, the manifests, the disc files), `src/game/render/texture_mods.cpp`
@@ -413,31 +413,58 @@ The code: `src/setup/level_compose.cpp` (the composer), `src/host/level_slots.h`
 (the level's slot, its row, its saves), `src/formats/host_meshes.h` (the meshes the host draws),
 `runtime/kernel/disc.cpp` (the level's files read as a disc's).
 
-### Try the example level
+### Try Daino's Arena
+
+[Daino's Arena](../examples/night-arena/README.md) (`examples/night-arena/`) is the example: a level mod made in
+Blender, on Kalebo III's code, with challenges, grind rails and a plugin. **It comes with the game, ready made**: the
+setup (`./setup.sh`, `setup.cmd`, the launcher's setup and update) installs it into `mods/night-arena`, composes it with
+your disc and builds its plugin, with no Blender and no Python tools of your own to run (see
+[Mods that come with the game](#mods-that-come-with-the-game)). What is left is yours to decide: the mod contains code, so it
+is off until you turn it on. Options > Mods, turn **Daino's Arena** on and confirm it (cross twice), restart. Then enter
+your ship: the planet list ends with **Custom Levels / Daino's Arena**. Its log lines start with `[levels]`, `[compose]`,
+`[plugin]` and `[mod night-arena]`. (A test run with `RAC1_MODS=1` but not `RAC1_MOD_CODE=1` has the level without its
+code: no menu, no challenges.)
+
+Rebuilding it from Blender is only for people who change it. You need Python 3 with Pillow and Blender; the README's
+"Making it" gives the commands, in short (from the arena's folder, then the game's):
 
 ```
-python3 examples/custom-level/make_example.py mods/example-plateau
-./build/rac1-native --setup --level-mods
+python3 make_textures.py
+blender -b --factory-startup --python build_arena.py --python build_rails.py --python build_prova.py --python export_arena.py -- --install
+./build/rac1-native --setup --level-mod night-arena
+./build/rac1-native --setup --mod-plugin night-arena
 ./build/rac1-native
 ```
 
-The first line writes the example mod (a floor, a ramp up to a platform, a few blocks coloured per vertex, a ship pad,
-five crates, Kerwan's sky and "Overworld" by Daino Selvatico as its music (a stereo `.ogg`, CC BY 4.0:
-`examples/custom-level/README.md`), made round (0, 0, 0) and moved by its offset; two classes of its own, sentries and
-gems, with their models, seven sounds and a trigger; everything else in it is made by the script, the sounds too), and
-copies its plugin (`examples/custom-level/plugin/`: a sixth crate that glides back and
-forth as a platform, a HUD line, a sound where it turns, a visits counter in the save; the sentries' and gems'
-behaviour, the trigger's chime). The second
-composes it with your disc and builds the plugin (the setup does it too, as its last step: CMake and the compiler the
-game was built with). In the game, the mod contains code: Options > Mods, turn **Example Plateau** on and confirm it
-(cross twice), restart. Then enter your ship: the planet list ends with **Custom Levels / Example Plateau**. Its log
-lines start with `[levels]`, `[compose]`, `[plugin]` and `[mod example-plateau]`. (A test run with `RAC1_MODS=1` but
-not `RAC1_MOD_CODE=1` has the level without its code: the sixth crate sits still.)
+The Blender line writes the mod and copies it to `mods/night-arena` (your own copy now: the setup keeps it, see below); the
+setup lines compose it with your disc and build its plugin (CMake and the compiler the game was built with; a plain setup
+does both too, as its last step).
+
+### Mods that come with the game
+
+`bundled-mods/<folder>/` holds the mods the game ships: each one is a mod folder exactly as its exporter writes it
+(`mod.json`, `level/`, `plugin/`). Files that already live elsewhere in the repository are not kept twice: the folder's
+`bundle.json` lists them (Daino's Arena's plugin source and its two songs, which stay in `examples/night-arena/`) and the
+install puts them in. The setup (`tools/bundled_mods.py`, run by `tools/setup.py` before it composes the level mods) copies
+each one into `mods/` and then composes it and builds its plugin like any mod in `mods/`:
+
+- `mods/<folder>` missing: the mod is installed. `mods/<folder>/.bundled-mod` records the hash of what was installed.
+- `mods/<folder>` untouched since (its files still hash to that record) and the game now ships another version: it is
+  replaced by the new one.
+- `mods/<folder>` changed by you, or made by hand (the Blender scripts' `--install` writes no record): **kept as it is**,
+  and the setup says so (`[bundled mods] night-arena: ... kept as it is`). To get the shipped copy again, delete the
+  folder and run the setup; to go on with your own, leave it.
+- The mod stays **off**: one with code asks for your confirmation in Options > Mods, as any mod does. A failure to install,
+  compose or build one never stops the game's setup; the game lists the mod as needing the setup.
+
+For a mod's author: `export_arena.py --bundle` (with or without `--install`) writes `bundled-mods/night-arena` from the export, and
+`python3 tools/bundled_mods.py --check` (the `bundled_mods` ctest) fails when the scripts that write the mod changed
+since: commit the re-exported folder with them. The check uses only Python.
 
 ### The level folder
 
 ```
-mods/example-plateau/
+mods/night-arena/
   mod.json
   level/
     level.txt          the level's settings (below)
@@ -452,9 +479,9 @@ mods/example-plateau/
 
 ```json
 {
-  "name": "Example Plateau",
+  "name": "Daino's Arena",
   "kind": "level",
-  "level": { "id": "example-plateau", "format": 1, "base": 0 }
+  "level": { "id": "night-arena", "format": 3, "base": 16 }
 }
 ```
 
@@ -492,6 +519,7 @@ mods/example-plateau/
 | `scale <s>` | the OBJ files' units to the game's (default 1; Ratchet is about 1.5 units tall) |
 | `moby <class> <x> <y> <z> [<yaw>]` | an object (below); format 3 also `[<slot>=<value> ...]`: its class's profile's slots ([Sessions](#sessions-format-3)) |
 | `music <level>`, `music <loop> [<intro>]`, `music none` | the music: the game level's (0..18), your own (a WAV, an Ogg Vorbis file or a VAG, mono or stereo: below), or none; default the base level's |
+| `music_track <name> <loop> [<intro>]` | more music of your own (as many lines as you like; the files as `music`'s), played by the plugin's `music_track(<name>)` instead of the level's music, through section switches and deaths ([The mod SDK](sdk.md#music-tracks-abi-19)) |
 | `sky <level>` | the sky of the game's level (0..18); default the base level's |
 | `class <name> <model.obj> [size <s>] [solid\|ghost] [scale <k>]` | a class of the level's own objects (its model, its hit box; its behaviour in the mod's plugin): [The mod SDK](sdk.md#the-levels-own-content-leveltxt) |
 | `object <class> <x> <y> <z> [<yaw>] [<key>=<value> ...]` | an object of one of the level's classes |
@@ -544,7 +572,7 @@ level's first one and its loop). Your own: `music <loop> [<intro>]`, `<loop>` lo
   [stb_vorbis](https://github.com/nothings/stb)), then encoded as a WAV is. The decoded length is the stream's own (its
   last granule position), so a loop that is seamless as a WAV stays seamless as an `.ogg` made from it: encode it as
   usual, for example `ffmpeg -i loop.wav -c:a libvorbis -q:a 6 loop.ogg` (about a tenth of the WAV's size). The
-  example level's music is one.
+  arena's music is one (`examples/night-arena/music/awaiting_challenge.ogg`).
 - a **VAG** as the disc's music files (`levels/levelNN/hdr_014c.vag`): a 0x30-byte `VAGp` header (big endian: the
   data's size at +0xc, the rate at +0x10, 8000 to 48000 Hz), then mono PS-ADPCM, copied as it is. A **stereo VAG**
   (ours): byte +0x1e of the header 2, the size at +0xc one channel's, the left and the right channel's ADPCM
@@ -562,10 +590,17 @@ game's.
 The composer copies (or encodes) them into the build (they are read through the level's window); its log says what it
 made of each (`music: ...`).
 
+**More music**: `music_track <name> <loop> [<intro>]` lines (any number, each name once: letters, digits, `-`, `_`, `.`)
+are tracks of your own the level's code never plays: the mod's plugin plays one with `music_track(<name>, <fade>)` (a
+battle's music, say) and keeps it on through section switches and deaths until it calls `music_track(NULL, ...)` or the
+level is left ([The mod SDK, "Music tracks"](sdk.md#music-tracks-abi-19)). Their files are made as `music`'s (the same
+formats, stereo, an intro once then its loop), with or without a `music` line; the log says `music_track "<name>":` then
+its files' `music: ...` lines.
+
 Coordinates are the game's: z up, in game units. **Every coordinate of the collision must be above 0** (the game's
 collision grid starts at 0 and ignores what is below; the composer refuses a collision that reaches below). A level made
-round (0, 0, 0), as a modelling program has it, is moved with `offset`: the example is made round (0, 0, 0) and has
-`offset 200 200 20`; `offset auto` moves the level as far as its collision's lowest corner needs to be 16 units above 0
+round (0, 0, 0), as a modelling program has it, is moved with `offset`: Daino's Arena is made round (0, 0, 0) in Blender and its export writes the
+offset; `offset auto` moves the level as far as its collision's lowest corner needs to be 16 units above 0
 on each axis (in whole steps of 4; the composer's log says by how much). `lights.txt`'s coordinates are the game's
 (the debug menu's Lights tab writes them so): they are not moved.
 
@@ -606,7 +641,8 @@ last step. The build goes to `assets/generated/mods/<folder>/` (made from your d
 - `gameplay.bin`: the base level's settings, lights, generic cameras and help texts; Ratchet at your start; the ship (and
   its take-off path) or none; your objects (`moby` lines).
 - `music_loop.vag`, `music_intro.vag`: your music, when level.txt names it (as the game plays it: a WAV or an `.ogg`
-  encoded).
+  encoded); `track<N>_loop.vag`, `track<N>_intro.vag`: the `music_track` lines' (the Nth line's; build.json's
+  `music_tracks` names them).
 - `host_meshes.mrpc`: your meshes, drawn by the modern renderer (not by the game's code: the faithful renderer, a debug
   choice, does not draw them), and your classes' models.
 - `level.sdk`, `sounds.bnk`: your classes, placed objects, sounds and triggers ([The mod SDK](sdk.md)); your sounds as
@@ -686,7 +722,8 @@ built and flown to as any level mod, and then:
 - **It is loaded once**, at the arrival: until you leave it (the ship, a save of another level loaded) nothing loads it
   again.
 - **A death is a soft reset**: Ratchet is back at the current checkpoint with his health full and the camera behind him; his
-  weapons, ammo, bolts and items stay, and so do the plugin's state and the objects it started (its `respawn` callback
+  weapons, ammo, bolts and items stay (what they had spawned does not: the Glove of Doom's agents, mines, drones, decoys and
+  projectiles are taken out, as a level's start would), and so do the plugin's state and the objects it started (its `respawn` callback
   decides what comes back: [The mod SDK](sdk.md#sessions-abi-9)). The level's placed objects (`moby` lines) killed since
   the arrival come back as placed (`respawn reset`, the default), except what the level's records keep (a crate broken
   stays broken); `respawn keep` leaves them as they are. On formats 1 and 2 a death loads the level again, as before.
@@ -787,6 +824,9 @@ section kalebo remove respawn reset
 end
 ```
 
+- **One section per planet.** A planet's world has one copy of its level state in the game (its moby groups, its cameras' links, its
+  rails, its records), so two sections of the same planet (two `world umbris`) are refused by the composer, with the line of the first.
+  Put the places of one planet in one section: several `entry` lines, a `box` that holds them all, and `portal`s inside it.
 - **Coordinates** in a world's section are its planet's (the level's `offset` does not move them, and the section has no
   `offset`): put entries where Ratchet stands on that planet (where its level starts him: Kerwan 263.98 102.09 54.5 facing
   1.5708, Kalebo III 146.43 133.23 128.3 facing 1.46). The section's camera is the planet's own (its first camera, as at its
@@ -845,6 +885,14 @@ end
 - **The hero code** there is main's (`hero generic` in main holds in every section without a `hero` line of its own).
 - **The base level's enemies** (a level on Kalebo III's code: its robots spawned with `base_spawn`, hunting with `base_hunt`)
   follow Ratchet into a world's section and fight there as anywhere in the session.
+- **The base level's own planet** (`world kalebo` in a mod on Kalebo III's base, 16: the planet the mod replaces) is a section like
+  any other: its geometry, collision, rails (Kalebo III's long rail 1, from 114 264 133 to its leap at 317 206 130), sky, music,
+  zones and level data come back from your disc while it is current, and the mod's own are put back at the return. The same
+  one-section rule applies. Put **`hero kalebo`** in the section when Ratchet grinds there and main runs `hero generic`: the generic
+  hero code does not ride that rail to its end, the planet's own does. The planet's rail hurts him where it does on the planet
+  (a health point about every fifty units, with no object in play), and the rail mines placed from its gameplay file (`objects 933`)
+  go out at once unless he is already grinding; mines the plugin starts (`base_spawn`) are not placed ones
+  ([docs/open-engine.md](open-engine.md#the-base-levels-own-world-as-a-section-world-kalebo-on-a-kalebo-iii-level-mod)).
 - **Not in a world's section**: `meshes` and `moby` lines of the base level's classes (its own scenery is the planet's;
   `moby <name>|<level>:<class>` lines are fine).
 - **The level's own objects in a world's section**: `object` lines inside a section block (any section: a world's in its

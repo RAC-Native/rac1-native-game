@@ -1,0 +1,155 @@
+# the arena: the modern lighting's file (export_arena.py)
+# game coordinates: offset (176 188 104) added
+# light_corridor
+light 171 132 109  0.750 0.850 1.000  1.200 14.000 0.000 1
+# light_exit
+light 176 140.8 111.2  0.400 1.000 0.550  1.400 18.000 0.000 1
+# light_gate_e
+light 223.2 188 111.2  1.000 0.400 0.250  1.400 18.000 0.000 1
+# light_gate_n
+light 176 235.2 111.2  1.000 0.400 0.250  1.400 18.000 0.000 1
+# light_gate_w
+light 128.8 188 111.2  1.000 0.400 0.250  1.400 18.000 0.000 1
+# light_hub_ne
+light 183 195 110.2  1.000 0.750 0.400  1.400 14.000 0.000 1
+# light_hub_nw
+light 169 195 110.2  1.000 0.750 0.400  1.400 14.000 0.000 1
+# light_hub_se
+light 183 181 110.2  1.000 0.750 0.400  1.400 14.000 0.000 1
+# light_hub_sw
+light 169 181 110.2  1.000 0.750 0.400  1.400 14.000 0.000 1
+# light_lava_ne
+light 236 214 105  1.000 0.420 0.120  1.600 18.000 0.000 1
+# light_lava_nw
+light 116 214 105  1.000 0.420 0.120  1.600 18.000 0.000 1
+# light_lava_pe
+light 196 112 105  1.000 0.420 0.120  1.600 18.000 0.000 1
+# light_lava_pw
+light 156 112 105  1.000 0.420 0.120  1.600 18.000 0.000 1
+# light_lava_se
+light 236 162 105  1.000 0.420 0.120  1.600 18.000 0.000 1
+# light_lava_sw
+light 116 162 105  1.000 0.420 0.120  1.600 18.000 0.000 1
+# light_mast_ne
+light 231.01 243.01 138.25  0.820 0.900 1.000  2.500 55.000 0.000 1
+# light_mast_nw
+light 120.99 243.01 138.25  0.820 0.900 1.000  2.500 55.000 0.000 1
+# light_mast_se
+light 231.01 132.99 138.25  0.820 0.900 1.000  2.500 55.000 0.000 1
+# light_mast_sw
+light 120.99 132.99 138.25  0.820 0.900 1.000  2.500 55.000 0.000 1
+# light_pad_e
+light 187.6 110 108.2  0.750 0.850 1.000  1.600 20.000 0.000 1
+# light_pad_w
+light 164.4 110 108.2  0.750 0.850 1.000  1.600 20.000 0.000 1
+# light_prova_0
+light 792.445 194.812 107.8  0.550 0.750 1.000  1.600 16.000 0.000 1
+# light_prova_1
+light 769.188 204.445 107.8  0.550 0.750 1.000  1.600 16.000 0.000 1
+# light_prova_2
+light 759.555 181.188 107.8  0.550 0.750 1.000  1.600 16.000 0.000 1
+# light_prova_3
+light 782.812 171.555 107.8  0.550 0.750 1.000  1.600 16.000 0.000 1
+# light_rail_station
+light 116 266.5 131  0.300 0.850 1.000  1.500 14.000 0.000 1
+# the sun from light_sun: Veldin's key light's direction, the sun its sky shows
+sun -64.8 19.9
+# light_vent_ne
+light 190 202 104.5  1.000 0.450 0.120  2.500 9.000 0.600 1
+# light_vent_nw
+light 162 202 104.5  1.000 0.450 0.120  2.500 9.000 0.600 1
+# light_vent_se
+light 190 174 104.5  1.000 0.450 0.120  2.500 9.000 0.600 1
+# light_vent_sw
+light 162 174 104.5  1.000 0.450 0.120  2.500 9.000 0.600 1
+# light_wall_e_a
+light 223.2 212 111.2  0.750 0.850 1.000  1.600 24.000 0.000 1
+# light_wall_e_b
+light 223.2 164 111.2  0.750 0.850 1.000  1.600 24.000 0.000 1
+# light_wall_n_a
+light 152 235.2 111.2  0.750 0.850 1.000  1.600 24.000 0.000 1
+# light_wall_n_b
+light 200 235.2 111.2  0.750 0.850 1.000  1.600 24.000 0.000 1
+# light_wall_s_a
+light 200 140.8 111.2  0.750 0.850 1.000  1.600 24.000 0.000 1
+# light_wall_s_b
+light 152 140.8 111.2  0.750 0.850 1.000  1.600 24.000 0.000 1
+# light_wall_w_a
+light 128.8 164 111.2  0.750 0.850 1.000  1.600 24.000 0.000 1
+# light_wall_w_b
+light 128.8 212 111.2  0.750 0.850 1.000  1.600 24.000 0.000 1
+# the materials of the meshes' textures (host mesh classes 0.. in meshes.obj's order, then the sections', then the classes' models)
+# lava (lava's texture 0)
+material tie 0 tex 0 lava 1.5 0.2
+# hazard (vents's texture 0)
+material tie 1 tex 0 metal 0.6 0.4
+# steel (vents's texture 1)
+material tie 1 tex 1 metal 0.3 1
+# vent_glow (vents's texture 2)
+material tie 1 tex 2 lava 2.2 0.35
+# wall (vents's texture 3)
+material tie 1 tex 3 metal 0.5 0.7
+# dropzone (arena_floor's texture 0)
+material tie 2 tex 0 metal 0.45 0.7
+# floor (arena_floor's texture 1)
+material tie 2 tex 1 metal 0.5 0.7
+# floor_dark (arena_floor's texture 2)
+material tie 2 tex 2 metal 0.4 0.9
+# tech (arena_floor's texture 3)
+material tie 2 tex 3 metal 0.4 0.8 glow 2 0.45
+# grating (hub's texture 2)
+material tie 4 tex 2 metal 0.4 0.9
+# lamp (lamps's texture 0)
+material tie 5 tex 0 emissive 2
+# lamp_green (lamps's texture 1)
+material tie 5 tex 1 emissive 2
+# lamp_red (lamps's texture 2)
+material tie 5 tex 2 emissive 2
+# trim (rail_station's texture 3)
+material tie 8 tex 3 emissive 2
+# pad (south_area's texture 3)
+material tie 9 tex 3 metal 0.25 1
+# floor_dark (prova_platform's texture 0)
+material tie 13 tex 0 metal 0.4 0.9
+# grating (prova_platform's texture 1)
+material tie 13 tex 1 metal 0.4 0.9
+# lamp (prova_platform's texture 2)
+material tie 13 tex 2 emissive 2
+# steel (prova_platform's texture 3)
+material tie 13 tex 3 metal 0.3 1
+# tech (prova_platform's texture 4)
+material tie 13 tex 4 metal 0.4 0.8 glow 2 0.45
+# trim (prova_platform's texture 5)
+material tie 13 tex 5 emissive 2
+# wall (prova_platform's texture 6)
+material tie 13 tex 6 metal 0.5 0.7
+# the flame class's model, its texture 0
+material tie 15 tex 0 emissive 3
+# the flame class's model, its texture 1
+material tie 15 tex 1 emissive 3.5
+# the bomb class's model, its texture 0
+material tie 16 tex 0 metal 0.35 0.8 glow 2 0.6
+# the mark class's model, its texture 0
+material tie 17 tex 0 emissive 2.5
+# the mine class's model, its texture 0
+material tie 18 tex 0 metal 0.35 0.8 glow 2 0.6
+# the zap class's model, its texture 0
+material tie 19 tex 0 emissive 3
+# the portal class's model, its texture 0
+material tie 20 tex 0 emissive 3
+# the flood class's model, its texture 0
+material tie 21 tex 0 emissive 2.2
+# the rail_escape class's model (a rail)
+material tie 22 tex 0 metal 0.3 1
+# the rail_lane_c class's model (a rail)
+material tie 23 tex 0 metal 0.3 1
+# the rail_lane_l class's model (a rail)
+material tie 24 tex 0 metal 0.3 1
+# the rail_lane_r class's model (a rail)
+material tie 25 tex 0 metal 0.3 1
+# the rail_ritorno class's model (a rail)
+material tie 26 tex 0 metal 0.3 1
+# ambient particles: embers rising from the lava, a little ash
+particles embers 3  source lava  rise 1.3
+particles embers 1.5  1 0.714 0.247  source lava
+particles ash 0.8  0.25 0.25 0.25

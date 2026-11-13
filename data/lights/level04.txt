@@ -3,7 +3,7 @@
 # Eudora. The sun raised from the key light's 22 degrees to 50, its azimuth kept: in the forest at the start 27 % of what faces
 # the sun saw it, 47 % at 50 degrees. Our choice (docs/lighting.md, "The level's own sun").
 # Eudora: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
-sun 24.0 76.2
+sun -140.8 62.6
 # Anya-Thoughtmane's second lighting pass (#102): the vendor and the level's lamps glow.
 emissive moby 1134 tex 1  2.77 0.49
 emissive shrub 71 tex 0  3.00 0.00
@@ -35,6 +35,56 @@ material moby 432 tex 5 metal 0.51 1
 material moby 432 tex 7 metal 0.47 1
 material tfrag 0 tex 38 metal 0.51 1
 material tfrag 0 tex 26 metal 0.51 1
-material tie 1457 tex 1 metal 0.61 1
+emissive tie 1457 tex 1  2.69 0.53
 material tfrag 0 tex 17 metal 0.55 1
 material tfrag 0 tex 25 metal 0.53 1
+light 199.078 162.103 61.672  1.000 0.224 0.224  1.355 4.647 0.000 1
+light 199.081 162.091 60.629  1.000 0.224 0.224  1.355 4.647 0.000 1
+light 199.082 162.086 59.533  1.000 0.224 0.224  1.355 4.647 0.000 1
+light 199.077 162.100 58.475  1.000 0.224 0.224  1.355 4.647 0.000 1
+light 201.491 155.514 61.719  1.000 0.224 0.224  1.355 4.647 0.000 1
+light 201.478 155.504 60.652  1.000 0.224 0.224  1.355 4.647 0.000 1
+light 201.472 155.518 59.581  1.000 0.224 0.224  1.355 4.647 0.000 1
+light 199.334 158.261 64.176  1.000 0.224 0.224  1.355 4.647 0.000 1
+emit tie 387  -0.004 -6.723 18.089  0.355 1.000 0.880  1.000 8.000 0.000  0.00
+emissive tie 356 tex 1  1.33 0.00
+emissive tie 264 tex 1  1.72 0.00
+emissive tie 264 tex 0  1.86 0.00
+light 266.265 231.490 71.715  0.224 1.000 0.756  1.355 4.647 0.000 1
+light 266.255 231.495 70.630  0.224 1.000 0.756  1.355 4.647 0.000 1
+light 266.234 231.509 69.560  0.224 1.000 0.756  1.355 4.647 0.000 1
+light 266.250 231.503 68.493  0.224 1.000 0.756  1.355 4.647 0.000 1
+light 271.489 228.471 71.766  0.224 1.000 0.756  1.355 4.647 0.000 1
+light 271.459 228.494 70.611  0.224 1.000 0.756  1.355 4.647 0.000 1
+light 271.457 228.493 69.553  0.224 1.000 0.756  1.355 4.647 0.000 1
+light 269.218 230.976 74.073  0.224 1.000 0.756  1.355 4.647 0.000 1
+emit tie 1462  16.601 -0.048 23.994  0.393 1.000 0.919  2.012 2.839 0.000  0.00
+emissive tie 1462 tex 12  1.75 0.00
+emissive tie 1462 tex 13  1.75 0.00
+emissive tie 281 tex 11  4.00 0.00
+emissive tie 277 tex 12  2.04 0.00
+emissive tie 277 tex 13  2.03 0.00
+light 271.448 228.502 68.514  0.224 1.000 0.756  1.355 4.647 0.000 1
+material tie 290 tex 3 metal 0.48 1
+material tie 290 tex 2 metal 0.59 1
+emissive tie 273 tex 1  2.79 0.51
+material tie 241 tex 0 metal 1 1
+material tie 241 tex 5 metal 1 1
+material tie 241 tex 4 metal 1 1
+material tie 241 tex 2 metal 1 1
+material tfrag 0 tex 3 metal 1 1
+material tie 238 tex 2 metal 1 1
+material tie 238 tex 4 metal 1 1
+material moby 481 tex 6 metal 0.03 1
+material moby 481 tex 10 metal 0.61 1
+light 252.290 120.554 60.450  1.000 0.224 0.224  1.355 4.647 0.000 1
+light 252.314 120.555 59.345  1.000 0.224 0.224  1.355 4.647 0.000 1
+light 252.323 120.554 58.297  1.000 0.224 0.224  1.355 4.647 0.000 1
+light 252.318 120.553 57.197  1.000 0.224 0.224  1.355 4.647 0.000 1
+light 259.267 120.554 57.219  1.000 0.224 0.224  1.355 4.647 0.000 1
+light 259.312 120.553 58.302  1.000 0.224 0.224  1.355 4.647 0.000 1
+light 259.309 120.554 59.415  1.000 0.224 0.224  1.355 4.647 0.000 1
+light 259.257 120.554 60.491  1.000 0.224 0.224  1.355 4.647 0.000 1
+light 255.520 121.635 62.970  1.000 0.224 0.224  1.355 4.647 0.000 1
+emissive tie 285 tex 4  2.25 0.00
+emissive tie 285 tex 5  2.26 0.00

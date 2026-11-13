@@ -177,17 +177,22 @@ uint32_t lay_out(const std::vector<uint8_t>& g, uint32_t r, int32_t* own_paths) 
 bool ld_registry_has(int level) { return level >= 0 && level < 32 && g_reg[level] != nullptr; }
 
 // orig: (host) see leveldata.h
+int ld_world_key(int level) { return level == lw(0x0015ed84) ? LD_BASE_WORLD : level; }
+
+// orig: (host) see leveldata.h
 bool ld_registry_make(int level) {
-    if (level < 0 || level >= 19) return false;
-    if (g_reg[level] != nullptr || level == lw(0x0015ed84)) return true;
-    if (!ctx_exists(level)) return false;
+    const bool base_world = level == LD_BASE_WORLD;
+    if (level < 0 || (level >= 19 && !base_world)) return false;
+    if (g_reg[level] != nullptr || (!base_world && level == lw(0x0015ed84))) return true;
+    if (!base_world && !ctx_exists(level)) return false;
+    const int real = base_world ? lw(0x0015ed84) : level;  // (the level whose level data it is)
     std::vector<uint8_t> g;
-    if (!pool_leveldata(level, g)) {
-        std::fprintf(stderr, "[ld] level %d: no level data in the pool: its classes read an empty registry\n", level);
+    if (!pool_leveldata(real, g)) {
+        std::fprintf(stderr, "[ld] level %d: no level data in the pool: its classes read an empty registry\n", real);
         g.clear();
     }
     auto R = std::make_unique<Registry>();
-    R->level = level;
+    R->level = real;
     int32_t n = 0;
     R->size = g.empty() ? R_DATA : lay_out(g, 0, &n);
     R->block = session_heap_alloc(R->size, owner(level));
@@ -199,10 +204,11 @@ bool ld_registry_make(int level) {
         if (size != 0 && p + 0x10 + size <= g.size() && (R->shared = session_heap_alloc(size, owner(level))) != 0)
             std::memcpy(ee_get_ram_base() + R->shared, g.data() + p + 0x10, size);
     }
-    for (const Obj& o : OBJS) ctx_view(level, o.veldin, o.size, R->block + o.off);
-    std::printf("[ld] level %d's registry at %08x (%#x bytes): %d paths, %u cameras, %u volumes, %u rails of its own; groups none (its level's "
+    if (!base_world)
+        for (const Obj& o : OBJS) ctx_view(level, o.veldin, o.size, R->block + o.off);
+    std::printf("[ld] level %d's %sregistry at %08x (%#x bytes): %d paths, %u cameras, %u volumes, %u rails of its own; groups none (its level's "
                 "name its own mobys); shared pvar data %s\n",
-                level, R->block, R->size, R->own_paths, lwu(R->block + R_CAMERAS + 4), lwu(R->block + R_VOLUMES + 4), lwu(R->block + R_RAILS + 4),
+                real, base_world ? "world " : "", R->block, R->size, R->own_paths, lwu(R->block + R_CAMERAS + 4), lwu(R->block + R_VOLUMES + 4), lwu(R->block + R_RAILS + 4),
                 R->shared != 0 ? "copied" : "none");
     g_reg[level] = std::move(R);
     return true;

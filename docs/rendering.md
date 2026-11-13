@@ -198,10 +198,13 @@ VU1 memory against the level's assets and evaluates the program's math (`src/for
 holds the CPU reference). So the culling, the level of detail and the lit vertex colours are exactly
 the original's. The walk, and then the frame's triangles, draw commands and batches
 (`build_triangles`), run on the scene worker thread (`mrp_world_renderer.cpp`).
-The tie and shrub passes are written by hand, and note what they chain for their first program as
-they write it (`src/game/ovl/world_chained.h`): the walk makes those draws from the notes and the
-level's tables, without unpacking or running that part of the chain (`RAC1_PERF_WORLD_CHAINED`,
-docs/performance.md); the tfrags, the clipping programs' draws and the shrubs' far variants are walked.
+The world passes are written by hand, and note what they chain as they write it - the tfrag pass its
+entries, the tie and shrub passes their first program's draws (`src/game/ovl/world_chained.h`): the
+walk makes those draws from the notes and the level's tables, without unpacking or running that part
+of the chain (`RAC1_PERF_WORLD_CHAINED`, docs/performance.md); the clipping programs' draws and the
+shrubs' far variants are walked. Where no shrub packet reads VU1 memory past its block, the capture
+reads the passes' ranges in place once and the scene is made from what it noted, the clipping
+programs' parts alone copied and walked (`RAC1_PERF_WORLD_SCAN`).
 
 **Effects, VU1 program 7 and the 2D: the MRP's chain reader.** `mrp_chain.cpp` reads the frame's chain
 (on the MRP chain worker): its GIF packets, its texture uploads, and in the effects' ranges the ported VU1
@@ -516,7 +519,11 @@ The game's own decisions are never changed, because they are game state. Instead
   afar), whose camera-facing quads the shrub pass writes as a GIF stream: the host writes the same
   stream (`variant_stream`). These copies were checked draw for draw against the game's own
   (`RAC1_MRPW_STATIC_CHECK=1`; the billboards' stream word for word).
-- **Original** runs no shadow run at all.
+- **Original** runs no shadow run at all at 4:3. In a widened view the moby pass's shadow run comes after
+  the real pass and draws only the mobys the wider frustum adds (or draws with the other VU1 program);
+  the others are taken from the real pass, in their places (`RAC1_PERF_MOBY_EXTRAS`,
+  docs/performance.md). At the other settings the run does the same for the mobys the scaled distances
+  leave as the game drew them (the same fade, the same model: `RAC1_PERF_MOBY_EXTRAS_LOD`).
 - **Maximum's reach.** "Unlimited" is bounded for the mobys by the renderer's far plane (4000 units, or the game's own draw
   distance when that is larger): nothing farther can show in the picture, and the game hides some mobys by keeping their
   culling sphere far away on purpose. Pokitaru's class 1161 (a model of a 38000-unit radius, its sphere about 11000 units

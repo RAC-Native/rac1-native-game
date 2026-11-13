@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 # the release's version (semantic): bumped at each release, with its tag vX.Y.Z (the in-game update check compares
 # it with the latest release's: docs/settings.md)
-project(rac1-native VERSION 0.7.0 LANGUAGES C CXX)
+project(rac1-native VERSION 0.8.1 LANGUAGES C CXX)
 if(APPLE)
     enable_language(OBJC OBJCXX)  # (the Metal renderer: docs/metal.md; OBJC too, else GLFW's .m files build as C++)
 endif()
@@ -342,6 +342,14 @@ if(RAC1_FP_TEST)
     add_executable(fp_raw_equiv tests/fp/fp_raw_equiv.cpp)
     target_include_directories(fp_raw_equiv PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src)
     add_test(NAME fp_raw_equiv COMMAND fp_raw_equiv 0.1)
+endif()
+
+# ---- bundled-mods/ : the mods the game ships (tools/bundled_mods.py) ----
+# ctest: every bundled mod complete, its shared files there, and not older than the scripts that export it. Needs Python only.
+find_program(RAC1_TEST_PYTHON NAMES python3 python)
+if(RAC1_TEST_PYTHON)
+    enable_testing()
+    add_test(NAME bundled_mods COMMAND ${RAC1_TEST_PYTHON} ${CMAKE_SOURCE_DIR}/tools/bundled_mods.py --check)
 endif()
 
 # ---- src/setup/ : setup & asset extraction ----

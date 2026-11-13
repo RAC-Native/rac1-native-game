@@ -1,4 +1,5 @@
 // Ported overlay code: the moby pass around its draw loop (see moby_pass.h, moby_draw.h).
+#include <cstdio>
 #include <game/ovl/moby_pass.h>
 
 #include <game/ovl/ovl_reloc.h>
@@ -77,6 +78,10 @@ void moby_pass() {
         const bool full = lw(OV(0x001611c8)) < lw(OV(0x001611c0));
         sw(OV(0x0015ffd4), r);
         if (full) debug_printf_stub();  // (0x1e8eb0: the packet buffer overflowed)
+        if (full) {  // (host: logged, the first and then every 300th frame it happens in: the mobys after the limit are not drawn)
+            static uint32_t frames = 0;
+            if ((frames++ % 300u) == 0) std::fprintf(stderr, "[render] the frame's packet buffer is full: the mobys after the limit are not drawn (%u frames so far)\n", frames);
+        }
     }
     moby_pass_end();
 }

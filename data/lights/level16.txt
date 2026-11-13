@@ -1,7 +1,7 @@
 # rac1-native: lights placed by hand for level 16 (the debug menu's Lights tab)
 # light x y z  r g b  intensity radius flicker on
 # Kalebo III: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
-sun -14.0 85.0
+sun -72.1 64.9
 emit tie 2008  1.671 3.711 3.956  0.238 1.000 0.701  1.000 1.000 0.000  0.00
 emissive tfrag 0 tex 69  2.90 0.73
 material shrub 546 tex 0 metal 0.35 1
@@ -55,3 +55,51 @@ material tie 2002 tex 0 metal 0.35 1
 material shrub 461 tex 0 metal 0.35 1
 emissive moby 552 tex 7  2.71 0.00
 emissive surface 1943 tex 13303  0.44 0.00
+material tfrag 0 tex 3 metal 1 1
+material tie 2272 tex 2 metal 1 1
+material tie 2133 tex 0 metal 1 1
+material tie 2054 tex 3 metal 0.61 1
+material tie 2196 tex 0 metal 0.55 1
+material tie 2196 tex 1 metal 0.6 1
+material moby 1540 tex 0 metal 0.35 1.12
+emissive tie 2198 tex 5  2.86 0.00
+material tie 2198 tex 0 metal 0.35 1
+material tfrag 0 tex 24 metal 1 1
+material tfrag 0 tex 15 metal 1 1
+material tie 2385 tex 2 metal 1 1
+material tie 2385 tex 3 metal 1 1
+material tie 2385 tex 1 metal 1 1
+material tie 2288 tex 0 metal 1 1
+emissive tie 2306 tex 0  2.59 0.00
+material tfrag 0 tex 45 metal 1 1
+material tfrag 0 tex 46 metal 1 1
+material shrub 185 tex 0 metal 1 1
+material tie 2178 tex 6 metal 0.35 1
+material tie 2178 tex 5 metal 0.35 1
+material tie 2178 tex 7 metal 0.74 1
+emissive tie 2016 tex 3  1.00 0.00
+material tie 2016 tex 0 metal 1 1
+material tie 2016 tex 1 metal 1 1
+material tie 2206 tex 1 metal 1 1
+material tie 2206 tex 0 metal 1 1
+material surface 1111 tex 22 water 1 2.49
+material surface 1111 tex 40 water 0.55 1.11
+emit shrub 489  -7.143 -3.225 -7.857  0.974 1.000 0.548  0.507 10.887 0.000  0.00
+emissive shrub 489 tex 1  2.62 0.00
+material tie 2238 tex 0 metal 0.45 1
+material tie 2233 tex 0 metal 0.35 1
+emissive tie 2019 tex 6  2.93 0.82
+material tie 2313 tex 0 metal 0.67 1
+emissive moby 552 tex 0  2.71 0.55
+material moby 552 tex 1 metal 0.35 1
+material moby 552 tex 2 metal 0.35 1
+material moby 552 tex 3 metal 0.35 1
+material moby 552 tex 4 metal 0.35 1
+material moby 552 tex 5 metal 0.35 1
+material tie 2290 tex 0 metal 0.55 1
+material tie 2290 tex 2 metal 0.45 1
+material moby 650 tex 0 metal 0.35 1
+material moby 650 tex 5 metal 0.35 1
+material moby 650 tex 4 metal 0.35 1
+emissive moby 650 tex 3  4.00 0.00
+light 124.121 287.084 129.935  0.845 0.845 0.845  1.000 16.178 0.000 1

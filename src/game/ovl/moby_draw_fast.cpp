@@ -33,17 +33,23 @@ int draw_mode() {
 
 world_hand::HandCheck g_check{"[moby-draw]", "RAC1_PERF_MOBY_DRAW", "moby draw loop"};
 
-// the observer's calls of one run (check mode): its arguments and the record it is handed
+// the observer's calls of one run (check mode): its arguments, the record it is handed and the loop's notes for it (the
+// program chosen, the parts written)
 struct ObsCall {
     uint32_t a[8];
     std::vector<uint8_t> rec;
-    bool operator==(const ObsCall& o) const { return std::memcmp(a, o.a, sizeof a) == 0 && rec == o.rec; }
+    uint32_t mscal;
+    MobyDrawParts parts;
+    uint32_t lod;
+    bool operator==(const ObsCall& o) const {
+        return std::memcmp(a, o.a, sizeof a) == 0 && rec == o.rec && mscal == o.mscal && std::memcmp(&parts, &o.parts, sizeof parts) == 0 && lod == o.lod;
+    }
 };
 std::vector<ObsCall> g_calls[2];
 MobyDrawObserver g_real = nullptr;
 template <int K>
 void record(uint32_t moby, uint32_t cb, uint32_t ce, uint32_t ring, uint32_t spr_rec, uint32_t qwords, uint32_t far_lod, uint32_t deferred) {
-    ObsCall c{{moby, cb, ce, ring, spr_rec, qwords, far_lod, deferred}, {}};
+    ObsCall c{{moby, cb, ce, ring, spr_rec, qwords, far_lod, deferred}, {}, g_moby_draw_mscal, g_moby_draw_parts, g_moby_draw_lod};
     const uint32_t n = qwords * 16;
     if (n != 0 && spr_rec >= SPR_BASE && spr_rec - SPR_BASE <= SPR_SIZE - n) {
         const uint8_t* p = ee_get_scratchpad_base() + (spr_rec - SPR_BASE);

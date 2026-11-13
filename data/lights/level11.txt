@@ -1,7 +1,7 @@
 # rac1-native: lights placed by hand for level 11 (the debug menu's Lights tab)
 # light x y z  r g b  intensity radius flicker on
 # Pokitaru: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
-sun -145.5 80.5
+sun -48.3 61.3
 # Pokitaru: our ambient particles (Options > Graphics > Ambient Particles, off by default): fireflies, brighter in the shade
 # and at night.
 emit shrub 283  1.210 -2.527 6.048  0.850 0.920 1.000  1.000 1.000 0.000  0.00
@@ -46,3 +46,48 @@ material tie 1488 tex 0 metal 0.35 1
 emissive tfrag 0 tex 15  2.17 0.60
 material surface 1111 tex 13135 water 1 1
 material tie 949 tex 0 metal 0.48 0.89
+material surface 1111 tex 22 water 1.6 0.41
+material shrub 349 tex 1 metal 0.42 1
+material moby 1179 tex 0 metal 0.71 0.5
+emit shrub 357  0.120 -1.743 22.138  0.918 0.899 0.650  1.000 8.000 0.000  0.00
+material moby 1246 tex 0 metal 1 0.46
+material shrub 371 tex 0 metal 1 1
+material tfrag 0 tex 21 metal 1 1
+material tfrag 0 tex 22 metal 1 1
+material tfrag 0 tex 23 metal 1 1
+material tfrag 0 tex 25 metal 1 1
+material tfrag 0 tex 28 metal 1 1
+material tie 1514 tex 0 metal 1 1
+material tie 1514 tex 1 metal 1 1
+material tie 1514 tex 2 metal 1 1
+material tie 1519 tex 0 metal 1 1
+material tie 1519 tex 3 metal 1 1
+material tfrag 0 tex 16 metal 1 1
+material tfrag 0 tex 7 metal 1 1
+material tfrag 0 tex 6 metal 1 1
+material tfrag 0 tex 4 metal 1 1
+material tfrag 0 tex 11 metal 1 1
+material tfrag 0 tex 36 metal 0.91 1
+material tfrag 0 tex 31 metal 0.46 1
+material tie 1513 tex 6 metal 1 1
+material tie 1513 tex 4 metal 1 1
+material tfrag 0 tex 17 metal 1 1
+material tie 1509 tex 2 metal 1 1
+material tie 1509 tex 1 metal 1 1
+material tie 1493 tex 1 metal 0.35 0.59
+material tie 1486 tex 1 metal 0.75 1
+material tie 1486 tex 3 metal 0.35 1
+material surface 1158 tex 57 water 0.4 3
+material tie 1507 tex 2 metal 0.41 0.68
+material tie 1507 tex 1 metal 0.42 0.68
+material tie 1507 tex 0 metal 0.73 1
+material tfrag 0 tex 43 metal 0.56 0.67
+material moby 1180 tex 0 metal 0.35 1
+material moby 1180 tex 1 metal 0.35 1
+material tie 1492 tex 0 metal 0.65 0.69
+material tie 1492 tex 8 metal 0.53 0.45
+material tfrag 0 tex 0 metal 1 0.56
+material tfrag 0 tex 40 metal 1 0.56
+material tfrag 0 tex 38 metal 1 0.56
+material tfrag 0 tex 26 metal 1 1
+material tfrag 0 tex 24 metal 1 1

@@ -2,6 +2,7 @@
 // loop), the per-frame helpers it calls and the render view setup 0x1f6e48.
 // Callees not ported (or not yet proven with the oracle) are TODO_PORT. The hardware the loop
 // waits on (the RCNT1 counter, vsync, DMA kicks) is the host's: see host_rcnt1().
+#include <host/mod_code.h>
 #include <game/enhance/session_runtime.h>
 #include <game/ovl/credits_tr.h>
 #include <game/ovl/screen_flash.h>
@@ -21,6 +22,7 @@
 #include <game/ovl/movie_mode.h>
 #include <game/render/mrp_fx.h>
 #include <game/render/mrp_lod.h>
+#include <game/render/mrp_scene.h>
 #include <game/render/mrp_world_scene.h>
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
@@ -323,7 +325,7 @@ void world_pass(void (*pass)(), int kind) {
     const bool keep = keep_env || g_world_faithful || g_world_mrp || g_world_chain_forced;  // (RAC1_WORLD_FAITHFUL / the debug menu: the chain is the world's drawing)
     const uint32_t cur = lwu(OV(0x001611c0));
     if (g_world_mrp) mrp_lod_world_shadow(kind >= 0 ? kind : 3, pass, cur);  // (the LOD slider's shadow run first, the memory put back)
-    // (the tie / shrub pass's notes of what it chains, for the MRP's chained world: world_chained.h, RAC1_PERF_WORLD_CHAINED)
+    // (the pass's notes of what it chains, for the MRP's chained world: world_chained.h, RAC1_PERF_WORLD_CHAINED)
     if (g_world_mrp && mrpw::chained_world_mode() != 0) world_chained_begin(kind, cur);
     pass();
     world_chained_end();
@@ -501,15 +503,17 @@ void render_frame() {
         if (g_moby_vu1_pass) {
             // (host: the MRP's LOD slider / widened view runs the pass again as a shadow, the memory put back: after the real
             // pass, whose poses the shadow then finds in the pose memo - RAC1_PERF_POSE_ORDER=0: before it, every pose of its own)
+            // (RAC1_PERF_MOBY_EXTRAS: after it too, leaving out the mobys the real pass drew the same: those it added to the scene)
             const bool after = mrp_lod_moby_shadow_after();
             if (!after) mrp_lod_moby_shadow(moby_pass);
+            const size_t real_first = mrp_scene_moby_count();
             {
                 RAC1_PROF_ZONE(kGameMobyPass);
-                g_moby_pose_memo.fill = after && mrp_lod_moby_shadow_due();
+                g_moby_pose_memo.fill = mrp_lod_moby_pose_fill();
                 moby_pass();
                 g_moby_pose_memo.fill = false;
             }
-            if (after) mrp_lod_moby_shadow(moby_pass);
+            if (after) mrp_lod_moby_shadow(moby_pass, real_first, mrp_scene_moby_count() - real_first);
         }
         else TODO_PORT(0x00250038, "mobys (VU1): the host's model drawer instead")();
     }
@@ -793,14 +797,15 @@ static bool overlay_frame_end(int32_t mode) {
         snd_release();
         snd_flush();
         sound_stop_all();
-        music_stop_all();
+        const bool keep_music = mod_code_music_track_on();  // (enhancement: a plugin's music_track goes on, ABI 19)
+        if (!keep_music) music_stop_all();
         if (g_session_rt) {
             session_respawn();  // (enhancement: a session's soft reset, no level setup: src/game/enhance/session_runtime.h)
         } else {
             level_setup(0, 1);
         }
         sw(OV(0x0015f5c4), 0);
-        music_start(lh(0x00151708), 1, 0x400);
+        if (!keep_music) music_start(lh(0x00151708), 1, 0x400);
         hud_init();
     }
     if (!level_slots_keep_base_progress()) level_time_stat();  // (enhancement: not the base level's on a level mod's level)

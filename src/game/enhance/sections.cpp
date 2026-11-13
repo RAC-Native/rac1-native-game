@@ -587,7 +587,7 @@ void request(int idx) {
 
 // (stage 8) a world section's groups emptied in its level's registry (its objects' blocks about to go)
 void groups_clear(Section& s) {
-    for (const int32_t g : s.groups) ld_group_put(s.world, g, nullptr, 0, owner_objects(s));
+    for (const int32_t g : s.groups) ld_group_put(ld_world_key(s.world), g, nullptr, 0, owner_objects(s));
     s.groups.clear();
 }
 
@@ -613,9 +613,10 @@ void free_section(Section& s) {
 // - "uids" in the game's naming, through its map 0x1ac780, which is by placement) in its level's registry (its classes read them there), naming its objects in play now; the lists the
 // section's objects' blocks
 void world_groups(Section& s) {
-    for (const int32_t g : s.groups) ld_group_put(s.world, g, nullptr, 0, owner_objects(s));
+    const int key = ld_world_key(s.world);  // (the base level's own world: its registry's key, leveldata.h)
+    for (const int32_t g : s.groups) ld_group_put(key, g, nullptr, 0, owner_objects(s));
     s.groups.clear();
-    if (s.gp == 0 || lw(s.gp + 0x48) == 0 || !ld_registry_has(s.world)) return;
+    if (s.gp == 0 || lw(s.gp + 0x48) == 0 || !ld_registry_has(key)) return;
     std::map<int32_t, uint32_t> by_src;
     for (const Obj& o : s.objs)
         if (o.src >= 0 && alive(o)) by_src[o.src] = o.moby;
@@ -634,7 +635,7 @@ void world_groups(Section& s) {
             if ((lh(rd) & 0x8000) != 0) break;
         }
         if (mobys.empty()) continue;
-        if (ld_group_put(s.world, g, mobys.data(), static_cast<int>(mobys.size()), owner_objects(s))) s.groups.push_back(g);
+        if (ld_group_put(key, g, mobys.data(), static_cast<int>(mobys.size()), owner_objects(s))) s.groups.push_back(g);
     }
 }
 
@@ -643,7 +644,7 @@ void world_groups(Section& s) {
 // placed). The level's own load leaves them as they are, a placement's index being its slot there; in a section the objects
 // are elsewhere in the moby array, and the camera turned toward an empty slot's (0, 0, 0)
 void world_camera_links(const Section& s) {
-    if (s.gp == 0 || lw(s.gp + 0x50) == 0 || lw(s.gp + 8) == 0 || lw(s.gp + 0x54) == 0 || !ld_registry_has(s.world)) return;
+    if (s.gp == 0 || lw(s.gp + 0x50) == 0 || lw(s.gp + 8) == 0 || lw(s.gp + 0x54) == 0 || !ld_registry_has(ld_world_key(s.world))) return;
     std::map<int32_t, uint32_t> by_src;
     for (const Obj& o : s.objs)
         if (o.src >= 0 && alive(o)) by_src[o.src] = o.moby;
@@ -651,7 +652,7 @@ void world_camera_links(const Section& s) {
     const uint32_t c0 = s.gp + lwu(s.gp + 8);
     for (int32_t k = 0; k < lw(c0); ++k) {
         const int32_t pv = lw(c0 + 0x10 + static_cast<uint32_t>(k) * 0x20 + 0x1c);
-        const uint32_t blk = ld_camera_pvars(s.world, static_cast<uint32_t>(k));
+        const uint32_t blk = ld_camera_pvars(ld_world_key(s.world), static_cast<uint32_t>(k));
         if (pv >= 0 && blk != 0) cams[pv] = blk;
     }
     if (cams.empty()) return;
@@ -803,12 +804,12 @@ void unfreeze(Section& s) {
     for (const Obj& o : s.objs) {
         if (!alive(o)) continue;
         sh(o.moby + 0x34, (lhu(o.moby + 0x34) & ~2u) | (o.f34 & 2u));
-        moby_update_transform(o.moby);  // (in the grid again where it stands)
+        moby_update_transform_placed(o.moby);  // (in the grid again where it stands)
     }
     for (const auto& [m, k] : s.kids) {
         if (!kid_alive(m, k)) continue;
         sh(m + 0x34, (lhu(m + 0x34) & ~2u) | (k.f34 & 2u));
-        moby_update_transform(m);
+        moby_update_transform_placed(m);
     }
     s.frozen = false;
 }
@@ -987,6 +988,7 @@ void hero_mode_frame() {
 void apply_music(const uint32_t w[15]) {
     if (std::memcmp(w, g_cur_music, sizeof g_cur_music) == 0) return;
     std::memcpy(g_cur_music, w, sizeof g_cur_music);
+    if (mod_code_music_defer(w)) return;  // (a plugin's music_track plays: this music after it, ABI 19)
     level_music_words_put(w);
     music_stop_all();
     music_start(lh(0x00151708), 1, 0x400);
@@ -1003,7 +1005,7 @@ void apply_state(int idx) {
         if (world && s.zones_all) sw(OV(0x0016c074), 0);  // (the zone mode: 0 every zone visible, zones_update's; the world's own 2 the grid's)
         world_lights_put(world ? s.wb->lights : g_main.lights);
         for (uint32_t k = 0; k < 4; ++k) sw(OV(0x0015f448) + 4 * k, world && s.has_fogw ? s.fogw[k] : g_main.fogw[k]);
-        if (world && s.world != lw(LEVEL)) ld_engine_take(s.world);
+        if (world) ld_engine_take(ld_world_key(s.world));  // (the base level's own world: its registry's key, leveldata.h)
         else ld_engine_restore();
         world_renderer_level(world ? s.world : -1);
         world_hud_put(world ? &s.hud : nullptr);  // (stage 10: its level's HUD pictures)
@@ -1026,7 +1028,7 @@ void apply_state(int idx) {
     sw(OV(0x0015f710), idx != 0 ? static_cast<uint32_t>(s.rail_count) : g_main.rail_count);
     // (a world's) the same table its level's own code sees (its sites read its registry's rails: a rail camera's test of the rail
     // Ratchet grinds, Batalia's type 3, compared another copy's points and let go of him every other frame)
-    if (g_worlds && world && s.world != lw(LEVEL)) ld_rails_put(s.world, s.rails, static_cast<uint32_t>(s.rail_count));
+    if (g_worlds && world) ld_rails_put(ld_world_key(s.world), s.rails, static_cast<uint32_t>(s.rail_count));
     setpieces_section(idx);
     uint32_t w[15] = {};
     if (idx == 0 || s.music == -2 || !s.music_known) std::memcpy(w, g_main.music, sizeof w);
@@ -1588,7 +1590,12 @@ void sections_arrival() {
     // now, during the arrival (their files read, the context's image relocated: 10 to 20 ms a level), not within a frame's budget
     for (size_t i = 1; i < g_secs.size(); ++i) {
         const int L = g_secs[i].world;
-        if (L < 0 || L == lw(LEVEL)) continue;
+        if (L < 0) continue;
+        if (L == lw(LEVEL)) {  // (the base level's own world: a registry of its level data, no context: the running code is the base's)
+            if (!ld_registry_make(LD_BASE_WORLD))
+                std::fprintf(stderr, "[section] %s: level %d's world registry cannot be made: its level data is not the engine's there\n", g_secs[i].name.c_str(), L);
+            continue;
+        }
         if (!ctx_create(L) || !ld_registry_make(L))
             std::fprintf(stderr, "[section] %s: level %d's context or registry cannot be made: its level data is not the engine's there\n", g_secs[i].name.c_str(), L);
     }

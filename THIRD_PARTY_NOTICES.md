@@ -35,9 +35,12 @@ These are stored in the repository, each with its licence next to it.
 
 ## Media under other licences
 
-- `examples/custom-level/music/overworld.ogg`: "Overworld", music © Daino Selvatico, licensed under
-  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), **not** under the MIT licence of the code. The example
-  level (`examples/custom-level/make_example.py`) plays it; see `examples/custom-level/README.md`.
+- `examples/night-arena/music/awaiting_challenge.ogg`: "Awaiting Challenge", music © Anya-Thoughtmane, licensed under
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), **not** under the MIT licence of the code. Daino's Arena
+  (`examples/night-arena/export_arena.py`) plays it as its music while no challenge is on; see `examples/night-arena/README.md`.
+- `examples/night-arena/music/arena_fight.ogg`: "Arena Fight", music © Daino Selvatico, licensed under
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), **not** under the MIT licence of the code. Daino's Arena plays it
+  during its challenges; see `examples/night-arena/README.md`.
 
 ## Code derived from other projects
 

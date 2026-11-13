@@ -1,6 +1,7 @@
 // Ported overlay code: the hero's per-frame update root (0x2070d0) and its direct helpers.
 #include <game/enhance/fixes102.h>
 #include <game/enhance/level_mod_hero.h>
+#include <game/enhance/session_runtime.h>
 #include <game/ovl/hero_l1.h>
 #include <game/ovl/hero_l2.h>
 #include <game/ovl/hero_move_mode.h>
@@ -463,6 +464,7 @@ void hero_items_update() {
 // hero moby's lighting, the clank glow and the shadow.
 // orig: 0x002070d0
 void hero_frame_update() {
+    const SessionHeroFrame hero_frame;  // (enhancement: a session: the mobys spawned meanwhile are the hero's, session_runtime.h)
     if (on_l1_family() || on_rilgar()) return hero_frame_update_l1();
     const float x = lwc1(P + 0x80);
     const float y = lwc1(P + 0x84);

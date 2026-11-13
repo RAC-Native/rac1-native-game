@@ -13,6 +13,8 @@
 #ifndef RAC1_GAME_RENDER_MRP_SCENE_H
 #define RAC1_GAME_RENDER_MRP_SCENE_H
 
+#include <game/ovl/moby_draw.h>
+
 #include <cstdint>
 #include <vector>
 
@@ -67,6 +69,8 @@ struct MrpMoby {
     bool far_lod = false;
     uint32_t first_packet = 0, packet_count = 0;  // the class's packets (class +0: 0x10 bytes each) drawn: record +0 (count)
     bool deferred = false;    // drawn in the deferred pass (drop shadow seen, 0x256810)
+    uint16_t mscal = 0;       // the VU1 program's start the loop chose where the draw began (g_moby_draw_mscal: 0xa the clipping program, 0xe the other)
+    uint16_t lod_key = 0;     // what the loop decided there from the moby's distances (g_moby_draw_lod: the fade, the low detail model)
     bool shadow_mesh = false; // the record's +0x14 != 0 (moby +0x73): the flattened shadow mesh (0x256b50)
     bool animated = false;    // record +0x10 low byte != 0 (class +8 / +9)
     // drawn from another view than the frame's (MrpFrame::cam_pos / view_rows: the first moby's): the boot's title main menu
@@ -97,6 +101,7 @@ struct MrpMoby {
     uint32_t record_first = 0;                // into MrpFrame::records (bytes, 0x10 * record_qwords)
     uint32_t record_qwords = 0;
     uint32_t part_first = 0, part_count = 0;  // into MrpFrame::parts
+    MobyDrawParts noted{};                    // what the draw loop wrote of the moby's parts (moby_draw.h): the parts are made from it
     // drawn into a render target: the game's view was a texture's when the draw loop ran (render_target_view 0x1f7fa0 set
     // the screen globals 0x13e500 / 0x13e504 to the texture's size, not the display's 0x1518d0 / 0x1518d2): the menus' item models
     // (0x24ff08 called by the widgets' draws between 0x1fc928 and 0x1fca18). Then the projection block the loop sent at this call
@@ -134,8 +139,32 @@ const MrpFrame& mrp_scene_draw();
 // orig: (host) around the moby pass's shadow run (inside its memory journal): begin keeps the frame observed so
 // far aside and starts an empty one; end decodes the shadow's chains while their memory is there (the parts' DIRECT state
 // read at once), keeps it as the draw scene and puts the kept frame back
+// `left_out` (RAC1_PERF_MOBY_EXTRAS, mrp_lod.h): the shadow run did not draw those mobys - the real pass drew them the same -, in
+// the address order; at the frame's end the draw scene is the shadow's with the real pass's own of them in their places
+// (mrp_scene_end_frame)
 void mrp_scene_shadow_begin();
-void mrp_scene_shadow_end();
+void mrp_scene_shadow_end(const std::vector<uint32_t>* left_out = nullptr);
+// orig: (host) the mobys the frame's scene has so far (the real pass's are those it adds)
+size_t mrp_scene_moby_count();
+// orig: (host) of the frame's mobys [first, first + count) - the real pass's -, those a shadow run (a widened view's, other
+// draw distances') draws just the same when its loop chooses the same program for them (`mscal`; nothing else of a moby's
+// draw depends on the frustum) and decides the same from their distances (`lod`: the fade, the low detail model; nothing
+// else depends on them): drawn once, in the frame's view, on the screen, posed. Sorted by the moby; `chain` / `ring`: the
+// bytes of the packet buffer and of the skinning ring the pass used for it; `records`: of the loop's sub-mesh records, at
+// most (one for a moby with +0x34 & 0x10)
+struct MrpSame {
+    uint32_t moby = 0;
+    uint16_t mscal = 0;
+    uint16_t lod = 0;
+    bool deferred = false;
+    uint32_t chain = 0, ring = 0, records = 0;
+};
+void mrp_scene_real_same(size_t first, size_t count, std::vector<MrpSame>& out);
+// orig: (host) (=2) the shadow scene just ended is the whole run's: kept aside, the merged scene of the run that follows compared
+// with it at the frame's end
+void mrp_scene_shadow_keep_whole();
+// orig: (host) the account of the extras' shadow runs (the report)
+void mrp_scene_extras_report();
 // orig: (host) the moby whose pose the skinning record `rec` is about to get (the draw loop reported it, its pose not seen yet:
 // the one the pose observer will take, whose skinning the MRP skip then skips): its moby and model (far). false: none
 bool mrp_scene_pose_slot(uint32_t rec, uint32_t& moby, bool& far);

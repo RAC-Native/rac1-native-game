@@ -2,8 +2,9 @@
 
 In Blender (the GUI):   p = "<this folder>/export_arena.py"; g = {"__file__": p}; exec(open(p).read(), g)
                         g["export"](None, True)   (True: also copied into the game's mods/)
-Headless:               blender -b arena.blend --python export_arena.py -- [<out folder>] [--install]
-The game's checkout (its mods/, the example level's music): local.json's "game" beside this script when there is one
+Headless:               blender -b arena.blend --python export_arena.py -- [<out folder>] [--install] [--bundle]
+                        (--bundle: also writes bundled-mods/night-arena, the copy the game ships: docs/mods.md)
+The game's checkout (its mods/): local.json's "game" beside this script when there is one
 ({"game": "/path/to/rac1-native-game"}), else the repository this script is in (examples/night-arena/../..).
 
 It reads four collections (build_arena.py makes them; edit them freely in Blender):
@@ -72,18 +73,21 @@ LEVEL = {
     # brings Ratchet back (the plugin's choice; outside a challenge the session's start, the landing)
     "checkpoints": [("arena", (0.0, -20.0, 0.5), 1.5708)],
     # main's entries (where a switch from a section puts Ratchet back): "ritorno" south of the hub
-    "entries": [("ritorno", (0.0, -20.0, 0.5), 1.5708)],
+    "entries": [("ritorno", (0.0, -20.0, 0.5), 1.5708), ("rientro", (-16.0, 66.0, 20.6), -1.1903)],  # (rientro: rail_ritorno's start)
     "sky": 0,               # Veldin's sky (Quartu's, 15, crashed on Veldin's code: sky_hand::spheres)
-    "music": ("overworld.ogg", os.path.join(GAME, "examples/custom-level/music/overworld.ogg")),
+    "music": ("awaiting_challenge.ogg", os.path.join(os.path.dirname(os.path.realpath(globals().get("__file__") or bpy.data.filepath)),
+                                            "music", "awaiting_challenge.ogg")),
+    # the mod's other tracks (level.txt's music_track lines: the plugin's music_track, ABI 19): the challenges' music
+    "music_tracks": [("fight", "arena_fight.ogg", os.path.join(os.path.dirname(os.path.realpath(globals().get("__file__") or bpy.data.filepath)),
+                                                                "music", "arena_fight.ogg"))],
     "background": (120, 80, 58),  # a warm haze: the lava, Veldin's low sun
     "fog": (120, 80, 58),
     # room for the base level's objects the plugin starts (base_spawn): 24 robots, 8 bomb bots, 6 Gadgetron robots,
     # 8 jetpack troopers (the dropships' too), 2 dropships (SDK ABI 5), the hub's 4 crates of each kind, the grind
     # course's 13 rail mines and the escape's 6 (933: Kalebo III's, on its rails)
     "spawn": {1445: 24, 52: 8, 541: 6, 638: 8, 1356: 2, 501: 4, 511: 4, 933: 22, 439: 1},  # (439: Kalebo III's hoverboard)
-    # other planets' classes the plugin starts (import_spawn): Batalia's spiked rail mines, put on its rail at each try (its
-    # placed ones, once broken, would stay so for the session's visit and in its saves)
-    "imports": ["8:621"],
+    # other planets' classes in main from the load (level.txt's import lines; the challenges' enemies are loaded per wave)
+    "imports": [],
     # (text, box in the scene's coordinates or None): embers rising from the lava (on a level mod `source lava` reads
     # the collision's type 3 faces too), as on Gaspar, and a little ash
     "particles": [
@@ -126,25 +130,32 @@ SECTIONS = [("prova", {"sky": 15, "background": (34, 44, 92), "fog": (34, 44, 92
             # - Quartu: our rail quartu_in (its model drawn: composer 7) from high south of its Giant Clank's pad down by it,
             #   then Kalebo III's hoverboard (the plugin's, ABI 16) east across the Giant Clank's round arena (every zone
             #   drawn: zones all) to the ring in its middle; none of Quartu's objects (its 1451, the pad, shows a broken help text)
-            ("quartu", {"world": "quartu", "zones_all": True, "entries": [("arrivo", (130.5, 186.0, 61.0), 1.5708)],
+            ("quartu", {"world": "quartu", "fresh": True, "zones_all": True, "entries": [("arrivo", (130.5, 186.0, 61.0), 1.5708)],
                         "rails": [("quartu_in", [(130.5, 186.0, 60.0), (130.5, 200.0, 48.0), (130.5, 210.0, 36.0),
                                                  (130.5, 216.0, 28.0)])],
                         "rail_mesh": True, "death_height": 8.0}),
             # - Batalia: its long rail (its own, drawn), from its start to its end, where it leaps: Ratchet comes in just over
             #   its start and lands on it (no rail of ours on top: the section keeps the planet's own collision; with one, the
             #   composer's copy of it with the rail's strip, the camera shook on the way down)
-            #   With its spiked rail mines (8:621: jumped, or broken with the wrench, as on Batalia), the plugin's at each try.
-            ("batalia", {"world": "batalia", "entries": [("arrivo", (286.0, 86.9, 33.0), 2.91)],
+            #   With its spiked rail mines (621: jumped, or broken with the wrench, as on Batalia).
+            # (every world `fresh`: put back as at its first entry at every entry, its mines, its boss: a challenge played again)
+            ("batalia", {"world": "batalia", "fresh": True, "objects": "621", "entries": [("arrivo", (286.0, 86.9, 33.0), 2.91)],
                          "death_height": 15.0}),
             # - Rilgar: its hoverboard race (its own hero code and board: hero rilgar board; its HUD) from its finish line, to
             #   the small platform past the big ramp (the plugin's ring there), with its turbo pads (1140). Not its crates (500:
             #   346 of them, along the whole track): every section's objects take the game's moby array from the session's
             #   start, and with them it was full (Umbris's objects not all placed, the vendor crashed)
-            ("rilgar", {"world": "rilgar", "hero": "rilgar board", "objects": "1140",
+            ("rilgar", {"world": "rilgar", "fresh": True, "hero": "rilgar board", "objects": "1140",
                         "entries": [("arrivo", (275.49, 334.35, 73.61), -2.04)], "death_height": 30.0}),
+            # - Kalebo III (Assalto Finale's): its own long rail, from its station by the arena's (Ratchet comes in just over it)
+            #   to its leap, its rail mines the plugin's; Kalebo III is the session's base: none of its objects (main's spawn
+            #   pools serve the mines)
+            #   (hero kalebo: its own hero code, which rides its rail to the end; the generic code stopped at its point 2099)
+            ("kalebo", {"world": "kalebo", "fresh": True, "hero": "kalebo", "entries": [("arrivo", (111.6, 264.04, 134.6), 3.1416)],
+                        "death_height": 90.0}),
             # - Umbris: the Snagglebeast's cave, its boss (the challenge won when it is beaten). Its objects by class (all of
             #   them would place code-alone triggers too), 460 its lava's sea (code alone, no model); not 529, the parked ship
-            ("umbris", {"world": "umbris", "objects": "187 341 447 460 500 501 505 511 605 805 886 902 968 1059 1063 1069 1106 "
+            ("umbris", {"world": "umbris", "fresh": True, "objects": "187 341 447 460 500 501 505 511 605 805 886 902 968 1059 1063 1069 1106 "
                                                       "1113 1114 1115 1116 1128 1129 1131 1133 1135",
                         "box": (195, 355, 25, 320, 500, 90), "boss": "umbris.snagglebeast",
                         "entries": [("arrivo", (263.35, 483.16, 36.5), -1.13)],
@@ -637,10 +648,15 @@ STRIP_POINTS = 120   # a strip's points per object at most (a class's collision 
 # what Kalebo III's rail mines float over: their floor probe sees the level's collision, not objects'): those units
 STRIP_TOGGLE = {"rail_escape": 24.0}  # (over the hub's top and its west ramp)
 STRIP_TOGGLE_DEFAULT = 8.0            # (by the station's platform)
+STRIP_TOGGLE_END = {"rail_ritorno": 40.0}  # (from its end: over the arena's floor and the hub's top)
 
 
 def strip_split(name, pts):
-    """A rail's points: its strip's object part (from its start, STRIP_TOGGLE) and the level's part (sharing a point)."""
+    """A rail's points: its strip's object part (from its start, STRIP_TOGGLE; or from its end, STRIP_TOGGLE_END) and the
+    level's part (sharing a point)."""
+    if name in STRIP_TOGGLE_END:
+        k = min(len(pts) - 1, max(1, int(math.ceil(STRIP_TOGGLE_END[name] / RAIL_STEP))))
+        return pts[len(pts) - 1 - k:], pts[:len(pts) - k]
     k = min(len(pts) - 1, max(1, int(math.ceil(STRIP_TOGGLE.get(name, STRIP_TOGGLE_DEFAULT) / RAIL_STEP))))
     return pts[:k + 1], pts[k:]
 
@@ -828,7 +844,7 @@ def export_section(level, name, opts, depsgraph, first):
     lines, their count)."""
     if opts.get("world"):
         L = ["# the section %s: %s's world (its scenery, collision, sky, music; the planet's coordinates)" % (name, opts["world"]),
-             "section %s remove respawn reset" % name, "  world %s" % opts["world"]]
+             "section %s remove respawn reset%s" % (name, " fresh" if opts.get("fresh") else ""), "  world %s" % opts["world"]]
         if opts.get("zones_all"):  # (every zone of the world drawn wherever the camera is: Quartu's Giant Clank arena)
             L.append("  zones all")
         if opts.get("hero"):  # (the planet's hero code, a mode: board, clank, giantclank)
@@ -1030,7 +1046,7 @@ def sounds(level):
 
 # ---------------------------------------------------------------- level.txt, lights.txt
 
-def export(out=None, install=False):
+def export(out=None, install=False, bundle=False):
     del errors[:], warnings[:]
     out = out or os.path.join(HERE, "out", FOLDER)
     level = os.path.join(out, "level")
@@ -1075,6 +1091,11 @@ def export(out=None, install=False):
         err("no music file %s" % music_src)
     else:
         shutil.copy(music_src, os.path.join(level, music))
+    for _name, track, src in LEVEL.get("music_tracks", []):
+        if not os.path.exists(src):
+            err("no music file %s" % src)
+        else:
+            shutil.copy(src, os.path.join(level, track))
     if os.path.isdir(os.path.join(HERE, "plugin")):
         shutil.copytree(os.path.join(HERE, "plugin"), os.path.join(out, "plugin"))
 
@@ -1109,6 +1130,8 @@ def export(out=None, install=False):
     if LEVEL["sky"] is not None:
         L.append("sky %d" % LEVEL["sky"])
     L.append("music %s" % music)
+    for name, track, _src in LEVEL.get("music_tracks", []):
+        L.append("music_track %s %s" % (name, track))
     for key, f in pictures.items():
         L.append("%s %s" % (key, f))
     for key in ("background", "fog"):
@@ -1250,7 +1273,7 @@ def export(out=None, install=False):
         f.write("\n".join(LL) + "\n")
 
     with open(os.path.join(out, "mod.json"), "w") as f:
-        json.dump({"name": LEVEL["name"][""], "author": "Daino Selvatico", "version": "0.5",
+        json.dump({"name": LEVEL["name"][""], "author": "Daino Selvatico", "version": "0.6",
                    "description": "An arena in a lava lake ringed by mountains, with challenges against Kalebo III's enemies "
                                   "(waves, bombs, flame vents, weapon limits, championships) and grind rails (a test rail, a "
                                   "course of three lanes with mines to jump and Kalebo III's rail mines to break, and an escape from the lava "
@@ -1274,11 +1297,15 @@ def export(out=None, install=False):
             shutil.rmtree(dst)
         shutil.copytree(out, dst)
         print("installed", dst)
+    if bundle:  # the copy the game ships (bundled-mods/, tools/bundled_mods.py): commit it with the scripts' changes
+        sys.path.insert(0, os.path.join(GAME, "tools"))
+        import bundled_mods
+        bundled_mods.refresh(FOLDER, out)
     return True
 
 
 if __name__ == "__main__":
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    ok = export(next((a for a in argv if not a.startswith("--")), None), "--install" in argv)
+    ok = export(next((a for a in argv if not a.startswith("--")), None), "--install" in argv, "--bundle" in argv)
     if bpy.app.background and not ok:
         sys.exit(1)

@@ -181,6 +181,10 @@ void game_thread_attach();
 void frame_mark();
 // The game frames this host frame runs (its first zone's context).
 void frame_steps(int steps);
+// This turn of the main loop is not a frame: it ran no game frame and drew nothing (it came before the next game frame was
+// due, and waits for it). Its time goes on in the frame being recorded - the next frame_mark does not end it -, so the
+// frames counted are the frames shown, whether or not the view asked for the profiler in between.
+void frame_hold();
 // A picture presented by this host frame beyond the frame's own (the frame extrapolation's: k pictures a step).
 void frame_picture();
 

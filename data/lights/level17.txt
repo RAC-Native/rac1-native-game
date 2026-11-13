@@ -2,6 +2,7 @@
 # light x y z  r g b  intensity radius flicker on
 # Drek's Fleet: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
 sun -91.0 5.0
+sun_rays_strength 0.42
 emit shrub 231  2.328 17.594 0.142  1.000 0.416 0.213  3.072 6.487 0.000  0.00
 emit shrub 234  0.175 18.246 0.589  0.651 1.000 0.791  1.000 5.279 0.000  0.00
 material tie 2073 tex 0 metal 0.35 1
@@ -84,3 +85,7 @@ material moby 1021 tex 1 metal 0.35 1
 material moby 1021 tex 2 metal 0.35 1
 material tfrag 0 tex 10 metal 0.35 1
 material tfrag 0 tex 2 metal 0.35 1.12
+material tie 2057 tex 7 metal 1 1
+material tie 2057 tex 6 metal 1 1
+emissive tie 2337 tex 1  4.00 0.00
+emissive surface 1907 tex 48  1.00 0.00

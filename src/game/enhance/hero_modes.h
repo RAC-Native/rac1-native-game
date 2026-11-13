@@ -17,6 +17,12 @@
 // core lacks some (Kalebo III's: no magnetic walk) gets them from another level's core when the hero is about to play one
 // (Veldin's has every one), read from the disc on a worker, put above the game's 32 MB (host_layout::HERO_SEQS).
 //
+// A hero context is the hero build that runs Ratchet: it replaces the overlay's own (variants.h on_hero_level: a Kalebo III base with
+// Quartu's context runs Quartu's code alone). Giant Clank's own hero code spawns classes of its planet the mode needs (his missiles
+// 15:256, his energy bomb 15:1523, the jump's light shaft 15:1427): imported with the mode, taken out with it. Ratchet riding on a
+// mode's object plays his sequence 0x81, which Kalebo III's class lacks: filled with the other sequences. Giant Clank's body (his
+// collision capsule) is given at once when the mode is entered in the air or in contact (the easing the game does stops in contact).
+//
 // Nothing here runs on the original's levels: the hero context only in a session, the sequences only on a level mod's level.
 #ifndef RAC1_GAME_ENHANCE_HERO_MODES_H
 #define RAC1_GAME_ENHANCE_HERO_MODES_H
@@ -52,6 +58,12 @@ bool hero_camera_level_set(int level, const char* why);
 bool hero_mode_set(int32_t mode, uint32_t moby, const char* why);
 // orig: (host) Ratchet's mode now (HERO_MODE_*): the game's form, or the board while he rides one
 int32_t hero_mode_now();
+// Giant Clank's energy (the bar, PLAYER+0x1630): its most, with which the mode starts him (Quartu's own code at its start, the game's
+// `hero_mode_enter`'s form 2)
+constexpr int32_t GIANT_ENERGY_MAX = 200;
+// orig: (host) (ABI 19) Giant Clank's energy: first set to `set` (0..GIANT_ENERGY_MAX) when >= 0; its value now, -1 when Ratchet is
+// not Giant Clank (nothing set)
+int32_t hero_giant_energy(int32_t set);
 // orig: (host) the class a mode's object is (87, 419, 439, 69), 0 none
 uint32_t hero_mode_class(int32_t mode);
 

@@ -42,7 +42,14 @@ while IFS= read -r -d '' path; do
             [[ "$base" =~ ^[A-Z]{4}_[0-9]{3}\.[0-9]{2}$ ]] && { refuse "$path" "a PS2 executable"; continue; } ;;
     esac
 
-    case "$lower" in
+    # The mods the game ships (bundled-mods/, docs/mods.md): our own exported meshes and textures, never the disc's.
+    # Only their level folder's .obj / .png, each under the size limit below; every other rule still applies.
+    case "$path" in
+        bundled-mods/*/level/*.obj | bundled-mods/*/level/*.png) bundled=1 ;;
+        *) bundled=0 ;;
+    esac
+
+    [ "$bundled" -eq 1 ] || case "$lower" in
         *.iso | *.chd | *.cso | *.zso | *.bin | *.cue | *.img | *.elf | *.irx | *.wad | *.vag | *.pss \
         | *.snd | *.vb | *.glb | *.gltf | *.dae | *.obj | *.fbx | *.ppm | *.pgm | *.p2s | *.ps2 \
         | *.mcd | *.sav | *.7z | *.zip | *.rar | *.gz | *.xz | *.zst | *.tar)
@@ -57,7 +64,7 @@ while IFS= read -r -d '' path; do
     size=$(git cat-file -s ":$path" 2>/dev/null || echo 0)
     limit=$max_bytes
     case "$path" in
-        examples/*/music/*.ogg) limit=$((4 * 1024 * 1024)) ;;  # (an example level's own music, ours: up to 4 MiB)
+        examples/*/music/*.ogg) limit=$((4 * 1024 * 1024)) ;;  # (an example mod's own music, ours: up to 4 MiB)
     esac
     if [ "$size" -gt "$limit" ]; then
         refuse "$path" "$size bytes, over the $((limit / 1024 / 1024)) MiB limit"

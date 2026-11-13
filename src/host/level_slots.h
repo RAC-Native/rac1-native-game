@@ -186,6 +186,9 @@ void level_slots_test_frame(uint64_t frame);
 void level_music_words_get(uint32_t w[15]);
 void level_music_words_put(const uint32_t w[15]);
 bool level_music_words_of(int level, uint32_t w[15]);
+// (the plugins' music_track, src/game/enhance/music_track.h) the current level mod's music_track `name` as a music table (its
+// intro at 0, its loop at 1, as the mod's own music): false when the level is no level mod's or it has no such track
+bool level_music_track_words(const char* name, uint32_t w[15]);
 
 }  // namespace rac1
 

@@ -17,6 +17,7 @@
 #include <game/ovl/arrival.h>
 #include <game/ovl/level_change.h>
 #include <game/ovl/music_streams.h>
+#include <game/lib/snd989.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -345,8 +346,92 @@ int32_t api_sound(int32_t idx, uint32_t m) {
     return sound_play_indexed(idx, 0, m != 0 && is_moby(m) ? m : moby_base());
 }
 
+// (ABI 19) a level mod's music_track: its music table in the level header's while it plays (the level's, or the current
+// section's, kept in g_mt.saved for music_track(NULL)); a fade lowers the playing music's volume first
+struct MusicTrackState {
+    std::string name;        // the track playing (or faded to), "" none
+    bool on = false;         // a track plays, or the fade back to the level's music has not ended
+    uint32_t saved[15] = {}; // the level's / the current section's music table
+    int32_t saved_track = 0; // the music slot's track (0x151708) then
+    uint32_t to[15] = {};    // the fade's next table (to_saved: g_mt.saved)
+    bool to_saved = false;
+    int32_t fade_total = 0, fade_left = 0, fade_vol = 0x400;
+};
+MusicTrackState g_mt;
+constexpr uint32_t MUSIC_SLOT = 0x001516d0 + 0x34;  // (music_streams.h: the music's stream slot; +4 its track, +6 its volume)
+
+void music_track_switch() {
+    g_mt.fade_left = 0;
+    if (g_mt.to_saved) {
+        level_music_words_put(g_mt.saved);
+        music_stop_all();
+        music_start(g_mt.saved_track, 1, 0x400);
+        g_mt.on = false;
+        std::printf("[music_track] the level's music again\n");
+    } else {
+        level_music_words_put(g_mt.to);
+        music_stop_all();
+        music_start(0, 1, 0x400);
+        std::printf("[music_track] \"%s\" plays (sectors %#x, %#x)\n", g_mt.name.c_str(), g_mt.to[0], g_mt.to[1]);
+    }
+}
+
+// once a frame of play: the fade's step (the music slot's volume, as the game's own fade sets it)
+void music_track_frame() {
+    if (g_mt.fade_left <= 0) return;
+    if (--g_mt.fade_left <= 0) {
+        music_track_switch();
+        return;
+    }
+    const uint32_t h = lwu(MUSIC_SLOT);
+    const int32_t st = static_cast<int16_t>(lh(MUSIC_SLOT + 0xa));
+    if (h == 0 || h == 0xffffffffu || st < 4 || st > 8) return;
+    sw(MUSIC_SLOT, 0xffffffffu);  // (the handle back with the reply)
+    snd_set_sound(h, 5, g_mt.fade_vol * g_mt.fade_left / g_mt.fade_total, 0, 0, 0, OVF(0x00266380), MUSIC_SLOT);
+}
+
+int32_t api_music_track(const char* name, int32_t fade_frames) {
+    const char* who = g_cur != nullptr ? g_cur->mod->folder.c_str() : "?";
+    if (name == nullptr) {
+        if (!g_mt.on || g_mt.to_saved) return 1;
+        g_mt.name.clear();
+        g_mt.to_saved = true;
+    } else {
+        if (g_mt.on && !g_mt.to_saved && g_mt.name == name) return 1;  // (playing already: it goes on)
+        uint32_t w[15];
+        if (!level_music_track_words(name, w)) {
+            std::fprintf(stderr, "[mod %s] music_track(\"%s\"): the level has no such music_track (level.txt's music_track lines)\n", who, name);
+            return 0;
+        }
+        if (!g_mt.on) {
+            level_music_words_get(g_mt.saved);
+            g_mt.saved_track = lh(MUSIC_SLOT + 4);
+        }
+        g_mt.on = true;
+        g_mt.name = name;
+        g_mt.to_saved = false;
+        std::memcpy(g_mt.to, w, sizeof w);
+    }
+    if (fade_frames <= 0) {
+        music_track_switch();
+    } else {
+        if (g_mt.fade_left <= 0) {
+            const int32_t v = lh(MUSIC_SLOT + 6);
+            g_mt.fade_vol = v > 0 ? v : 0x400;
+        }
+        g_mt.fade_total = g_mt.fade_left = std::min<int32_t>(fade_frames, 600);
+    }
+    return 1;
+}
+
+const char* api_music_track_now() { return g_mt.on && !g_mt.to_saved ? g_mt.name.c_str() : nullptr; }
+
 void api_music(int32_t track) {
     if (track < 0 || track >= 15) return;
+    if (g_mt.on) {  // (a music_track playing: the level's music table again first)
+        level_music_words_put(g_mt.saved);
+        g_mt = MusicTrackState{};
+    }
     music_stop_all();
     music_start(track, 1, 0x400);
 }
@@ -1060,6 +1145,7 @@ int32_t api_board_touching(uint32_t* out, int32_t max) { return out == nullptr |
 int api_section_reset(const char* name) { return name != nullptr ? section_reset(name) : 0; }  // (ABI 17)
 int api_hero_mode(int32_t mode, uint32_t obj) { return g_session_rt && hero_mode_set(mode, obj, "the plugin's hero_mode") ? 1 : 0; }
 int32_t api_hero_mode_now() { return hero_mode_now(); }
+int32_t api_hero_energy(int32_t set) { return g_session_rt ? hero_giant_energy(set) : -1; }  // (ABI 18)
 
 // ---- (ABI 13) bosses (sections.h) ----
 int api_boss_set(uint32_t obj) { return sections_boss_set(obj) ? 1 : 0; }
@@ -1701,6 +1787,9 @@ void load_all() {
     g_api.board_fall = api_board_fall;
     g_api.board_touching = api_board_touching;
     g_api.section_reset = api_section_reset;  // (ABI 17)
+    g_api.hero_energy = api_hero_energy;      // (ABI 18)
+    g_api.music_track = api_music_track;      // (ABI 19)
+    g_api.music_track_now = api_music_track_now;
     {
         SetpiecesHost h;
         h.hero_damage = api_hero_damage;
@@ -2031,8 +2120,19 @@ void mod_code_start() {
 }
 
 // orig: (none) — enhancement (mod_code.h)
+bool mod_code_music_track_on() { return g_mt.on; }
+
+// orig: (none) — enhancement (mod_code.h)
+bool mod_code_music_defer(const uint32_t w[15]) {
+    if (!g_mt.on) return false;
+    std::memcpy(g_mt.saved, w, sizeof g_mt.saved);
+    return true;
+}
+
+// orig: (none) — enhancement (mod_code.h)
 void mod_code_level_load() {
     if (!g_tried) load_all();
+    g_mt = MusicTrackState{};  // (a music_track: stops when the level is left)
     {  // (stage 7) the items of the last level's visit taken back; this level's rails and items (setpieces.h)
         const int slot = level_slot();
         const std::string dir = slot >= kFirstLevelSlot ? level_slot_build_dir(slot) : std::string();
@@ -2080,6 +2180,7 @@ void mod_code_frame() {
     if (profiles_any() && !held) profiles_frame(g_pool);  // (base_hunt's hunters, Kalebo III's enemies: class_profiles.h)
     if (!held) profiles_session_frame();                   // (a session's imported spawns with a profile)
     if (g_mod_weapons_limited) weapons_frame();
+    music_track_frame();  // (ABI 19: a music_track's fade)
     if (!held) setpieces_frame();  // (stage 7) the rails' events, the hazards, the fade (setpieces.h)
     if (!held && lwu(MOD_LIGHTS) != 0) sw(MOD_LIGHTS, 0);  // (light_add: the frame's own, from its frame callbacks)
     for (Plugin& p : g_plugins)

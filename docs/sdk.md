@@ -4,7 +4,7 @@ The SDK is what a mod's code is written against: one C header, [`sdk/rac1_mod.h`
 file, [`sdk/rac1_mod.cmake`](../sdk/rac1_mod.cmake). This page is its reference: every struct, service and callback,
 when each may be used, the order things happen in, the limits and how versions work. For a first plugin (the folder,
 building, testing) read [Custom levels: code](custom-levels.md) first; for the level folder itself (level.txt, the
-meshes, the music) see [Mods, "Level mods"](mods.md#level-mods). The example level, `examples/custom-level/`, uses
+meshes, the music) see [Mods, "Level mods"](mods.md#level-mods). Daino's Arena, `examples/night-arena/`, uses
 nearly everything here.
 
 Contents:
@@ -44,7 +44,9 @@ Contents:
 | 14 | the first with the HUD's width | the HUD's width: `hud_width`; `RAC1_HUD_HEIGHT` ([The HUD's area](#the-huds-area)) |
 | 15 | the first with saving | saving from a plugin: `game_save`, `game_saving` ([Saving](#saving-abi-15)) |
 | 16 | the first with the free hoverboard | the hoverboard outside a race: `board_rule`, `board_return`, `board_fall`, `board_touching`, `RAC1_BOARD_*` ([The hoverboard outside a race](#the-hoverboard-outside-a-race-abi-16)) |
-| 17 | this one | a section put back as at its first entry: `section_reset`; level.txt's `fresh` ([Putting a section back](#putting-a-section-back-abi-17)) |
+| 17 | the first with fresh sections | a section put back as at its first entry: `section_reset`; level.txt's `fresh` ([Putting a section back](#putting-a-section-back-abi-17)) |
+| 18 | the first with Giant Clank's energy | Giant Clank's energy: `hero_energy`, `RAC1_GIANT_ENERGY_MAX` ([Hero modes](#hero-modes-abi-12)) |
+| 19 | this one | the mod's other music: `music_track`, `music_track_now`; level.txt's `music_track` lines ([Music tracks](#music-tracks-abi-19)) |
 
 How compatibility works:
 
@@ -95,7 +97,7 @@ game start ──> plugins loaded (load order), rac1_mod_main(api, mod) each: re
 - A level's objects are removed when the level is left: each class's `remove` runs (before `level_end`), their
   states are freed. Nothing of a level survives it: keep what must last in your own variables (and in `save`).
 - Objects spawn at the level's first frame, **before** `level_start`: a class's `spawn` cannot count on what
-  `level_start` sets up (the example looks its sounds up in both).
+  `level_start` sets up (the arena looks its sounds up in both).
 - The frame's order: the objects' pass runs inside the game's moby pass (where a moby's class code runs); the
   `trigger`, `frame` and `test` callbacks after it; `camera` after the game's camera; `hud` while the HUD is drawn.
 
@@ -109,7 +111,8 @@ game start ──> plugins loaded (load order), rac1_mod_main(api, mod) each: re
   The objects' classes' callbacks never run in a replay; an object simply stays where it was for that pass.
 - **The game's memory.** Read it inline through `api->ram` (`rac1_lw`, `rac1_lh`, `rac1_lb`, `rac1_lwf`). Write it
   only through `sw`, `sh`, `sb`, `swf` (and the services): the writes go through the journal. Never write through
-  `api->ram`.
+  `api->ram`. Raw memory access goes in 1.0, and mods relying on it will very likely break: see
+  [The game's memory](#the-games-memory).
 - **Your memory.** An object's state (`object_state`) is the host's memory, yours to read and write in your callbacks.
   It is not the game's memory: it is not journaled and not saved.
 - **Floats.** Your code runs with the PS2's rounding (toward zero); `rac1_mod.cmake` compiles with the game's float
@@ -161,7 +164,7 @@ Fill them in `rac1_mod_main`; all are optional (NULL: none). Each gets your `mod
 | `test(user, text, frame)` | 1 | `RAC1_MOD_TEST=<text>` given, once a frame of play | for scripted tests |
 | `shutdown(user)` | 1 | the game ends | |
 | `trigger(user, index, name, inside)` | 2 | Ratchet entered (`inside` 1) or left (0) one of level.txt's triggers | before `frame`; once per change |
-| `respawn(user, r)` | 9 | a session's soft reset: Ratchet died and is back at the checkpoint (no level load) | `rac1_respawn`: `count` (the session's respawns, this one included), `checkpoint` (its name), `pos`, `yaw`. Every plugin gets it (test your `level_start`'s `mine`). Bring back what the battle needs (its enemies); the level's placed objects are the respawn policy's |
+| `respawn(user, r)` | 9 | a session's soft reset: Ratchet died and is back at the checkpoint (no level load) | `rac1_respawn`: `count` (the session's respawns, this one included), `checkpoint` (its name), `pos`, `yaw`. Every plugin gets it (test your `level_start`'s `mine`). Bring back what the battle needs (its enemies); the level's placed objects are the respawn policy's. What Ratchet's own code spawned (his weapons' hand, agents, mines, drones, decoys, projectiles, his equipment) is already taken out by the reset, as a level's start would: do not remove them |
 | `session_save(user, buf, cap)` | 9 | a save is written in a session | your bytes of the session's state (at most `cap`, 16 KB), their count; kept in the session's item of `save<N>.pc`, apart from `save`'s |
 | `session_load(user, data, size)` | 9 | a save made in a session was loaded, back in it | after `level_start`; the game does not save the objects' places: a battle running at the save is not resumed |
 | `section_leave(user, name)`, `section_enter(user, name, entry)` | 10 | a section switch | [Sections](#sections-abi-10) |
@@ -234,7 +237,9 @@ See [Base level objects](#base-level-objects) below.
 | Service | ABI | Does |
 |---|---|---|
 | `int32_t sound(int32_t index, uint32_t moby)` | 1 | the base level's sound `index` at `moby` (0: Ratchet): its slot, -1 |
-| `void music(int32_t track)` | 1 | the level's music table's track |
+| `void music(int32_t track)` | 1 | the level's music table's track (a `music_track` playing ends first) |
+| `int32_t music_track(const char* name, int32_t fade_frames)` | 19 | level.txt's `music_track <name>` instead of the level's music, kept through section switches and deaths; NULL: the level's music again ([Music tracks](#music-tracks-abi-19)) |
+| `const char* music_track_now(void)` | 19 | the `music_track` playing (its name), NULL none |
 | `int32_t sfx_find(const char* name)` | 2 | the current level's own sound of that name (level.txt's `sound` lines): its index, -1 |
 | `int32_t sfx_play(int32_t sound, uint32_t moby, const float pos[3])` | 2 | play it: on `moby` (it follows it), else at `pos`, else (0, NULL) everywhere (no distance, no pan). Its slot, -1 when none ([Sounds](#sounds)) |
 | `void sfx_stop(int32_t slot)` | 2 | stop it (a slot `sfx_play` gave that still plays one of the level's sounds) |
@@ -511,8 +516,15 @@ with the game's own code for each. A section's level.txt `hero` line does the sa
 | `int32_t hero_build_now(void)` | the level whose hero code runs Ratchet, -1 the session's own |
 | `int hero_mode(int32_t mode, uint32_t obj)` | Ratchet becomes `mode` riding the object `obj` (an object of that mode's class: `import_spawn`'s): `RAC1_HERO_CLANK` (Orxon's Clank, `"10:87"`), `RAC1_HERO_GIANT_CLANK` (Quartu's Giant Clank, `"15:419"`: with `hero_build(15)` for his camera), `RAC1_HERO_BOARD` (a hoverboard, `"16:439"`, with `hero_build(16)`); `RAC1_HERO_NONE` (`obj` 0): back to Ratchet where the object is (Clank's health given back as the game does). 1 done, 0 not (dying, already in a mode: leave it first, no such object, no board code) |
 | `int32_t hero_mode_now(void)` | `RAC1_HERO_NONE`, `_CLANK`, `_GIANT_CLANK` or `_BOARD` |
+| `int32_t hero_energy(int32_t set)` (ABI 18) | Giant Clank's energy bar, 0 to `RAC1_GIANT_ENERGY_MAX` (200), the one on Quartu's HUD: `set` >= 0 sets it first (`hero_energy(RAC1_GIANT_ENERGY_MAX)` refills it), -1 reads it. Returns the energy now, -1 when Ratchet is not Giant Clank. `hero_mode` starts him with the most; the enemies' hits take from it, and at 0 he falls (state 0x62): Ratchet is dead and the session's soft reset follows |
 
-The classes must be in the level: an `import` line (`import 10:87`), or a section's `hero ... clank` line imports them. As
+The classes must be in the level: an `import` line (`import 10:87`), or a section's `hero ... clank` line imports them. Giant
+Clank spawns three classes of his own planet while he fights (the missiles of his hands, the energy bomb of his ground pound, the
+light shaft of his jump landing: `15:256`, `15:1523`, `15:1427`): `hero_mode` imports them itself when it enters the mode and
+takes them out when it leaves it (log: `[hero] Giant Clank's class 15:256 ... imported`), so a plugin needs only `15:419`. They
+need three free slots of the class table (224 classes at once, which the other planets' enemies and worlds of a big mod can
+fill: the log says `could not be imported`, and the rockets and the bomb are then not there): `import_release` what the
+challenge does not need first, or enter the mode before loading the enemies. As
 Clank or Giant Clank the hero's moby (`PLAYER + 0x2080`) is the mode's object; `hero()` stays Ratchet's. A death in a mode
 brings Ratchet back as himself at the checkpoint (a section's `hero` mode is entered again there). Your plugin's object
 for the mode stays when he leaves it: remove it (`moby_remove`) if it should go.
@@ -526,6 +538,17 @@ api->hero_build(15);                                /* Quartu's hero code and Gi
 api->hero_mode(RAC1_HERO_GIANT_CLANK, gc);
 /* ... later: */ api->hero_mode(RAC1_HERO_NONE, 0); api->hero_build(-1); api->moby_remove(gc);
 ```
+
+A hero build **replaces** the base's own hero code, it does not add to it: on a Kalebo III base (the arena) `hero_build(15)`
+runs Quartu's code alone, as on Quartu. The hero code of a section can change as often as the plugin likes: in one section
+(the arena's `quartu`) a challenge can ride the hoverboard (`hero_build(16)`, the board, `hero_mode(RAC1_HERO_BOARD, b)`), leave
+it (`hero_mode(RAC1_HERO_NONE, 0)`, `hero_build(RAC1_HERO_BUILD_GENERIC)` or `-1`) and the next one be Giant Clank
+(`hero_build(15)`, `hero_mode(RAC1_HERO_GIANT_CLANK, gc)`), then the board again: tested in `world quartu`, each mode's own states,
+camera and effects each time. Giant Clank's body (the collision capsule: 5.25 tall, 3.75 across) is Ratchet's at the start of
+the mode and grows to his in about two seconds, as on Quartu; Giant Clank walks on the mod's geometry with that body: steps and
+walls the size of Ratchet's are not steps for him (a 5-unit block can be walked onto, a 6-unit wall is stopped at), and what is
+thinner than his body (a rail's collision strip, a railing) can perch him: keep what he should not walk onto out of reach, or
+off the level while his mode lasts.
 
 ### Bosses (ABI 13)
 
@@ -614,6 +637,33 @@ static const char* const WORLDS[] = {"quartu", "batalia", "rilgar", "umbris"};
 for (int i = 0; i < 4; ++i) api->section_reset(WORLDS[i]);      /* Ratchet is in the arena: none is the current section */
 api->section_enter("quartu", "in", 0);
 ```
+
+### Music tracks (ABI 19)
+
+Test `api->abi >= 19` (or `RAC1_API_HAS(api, music_track)`) first. A level mod can have more music than its level's:
+level.txt's `music_track <name> <loop> [<intro>]` lines (as many as you like; the files as the `music` line's: a WAV, an
+Ogg Vorbis file or a VAG, mono or stereo, an intro played once before its loop: [Mods, "Level mods"](mods.md#level-mods)).
+`<name>`: letters, digits, `-`, `_`, `.` (at most 31).
+
+- `music_track(name, fade_frames)` plays that track instead of the music: the playing music faded out over `fade_frames`
+  frames (at most 600; 0: stopped at once), then the track from its start (its intro, then its loop). **While it plays, the
+  music stays**: a section switch (a portal, `section_enter`, a death's checkpoint in another section) does not put the
+  section's music on, and a death (a session's soft reset, or a level mod's restart) does not restart it: it plays on.
+  The same track asked again while it plays goes on (no restart); another one replaces it. 1 done; 0 the level has no
+  such track (the log says so: `music_track("..."): the level has no such music_track`).
+- `music_track(NULL, fade_frames)` ends it: the level's music again (the current section's, in a session with sections:
+  the music the last switch would have put on), faded the same way. 1 (also when no track plays).
+- `music_track_now()`: the track playing (its level.txt name; also while fading to it), NULL none (also while fading back).
+- Leaving the level ends it (the next arrival plays the level's music); so does `music(track)`. A save does not keep it:
+  a save loaded (a level load) starts with the level's music (call `music_track` again from `session_load` if a battle
+  goes on). Its volume is the music's (Options), and it pauses with the game, as the level's music does.
+
+```c
+static void challenge_start(void) { if (api->abi >= 19) api->music_track("fight", 60); }
+static void challenge_end(void)   { if (api->abi >= 19) api->music_track(NULL, 60); }
+```
+
+The log says what plays: `[music_track] "fight" plays (sectors ...)`, `[music_track] the level's music again`.
 
 ### Saving (ABI 15)
 
@@ -850,7 +900,7 @@ the same records, so your objects and the game's understand each other:
   and cannot be hurt again at once).
 - **Your objects hurting the game's objects**: `hit_send(moby, kinds, strength, from)` with the kinds the target's
   class reads (a crate breaks with `RAC1_HIT_PROP`). `hit_send` on your own object's moby reaches its `hit` callback
-  (the example's test does that to stand in for Ratchet's wrench).
+  (the arena's tests do that to stand in for Ratchet's wrench).
 - **Any moby**: `hit_take(moby, kinds, out)` reads (and consumes) a record yourself.
 
 ## Sounds
@@ -864,7 +914,7 @@ world sounds. So:
   camera), or all 26 slots busy. A sound on a moby follows it while it plays.
 - A **looping** sound plays until `sfx_stop`, or until the game lets it go when it is too far to be heard (as it
   does its own). To keep one on an object, check `sfx_active(slot, sound)` now and then and play it again (the
-  example's sentry hum does).
+  arena's electrified zones' buzz does).
 - Stop the looping sounds your objects started in their class's `remove`.
 
 ## Structs
@@ -916,6 +966,10 @@ typedef struct rac1_ray_hit {       /* (ABI 2) collide_ray */
 |---|---|
 | Base level objects (`spawn` lines) | as the base level places objects: the placed ones and the pools' together at most as many as it places |
 | Level objects at once | 256, and the game's moby pool (the base level's: the objects share it with the game's own mobys) |
+| Mobys alive at once (any level) | the moby array: in a session the composer's `room for N spawned objects` (478 on Kalebo III's base) plus the level's placed objects; the game's shots, bolts, sparks and the plugin's enemies all share it. A spawn past it returns 0 and the log says `[mobys] the moby array is full (N slots): spawn of class C refused` (the first and every 256th). Measured on the arena's mix (Kalebo III's robots with Gemlik's, Gaspar's, Pokitaru's and Drek's fleet's classes imported): about 300 enemies alive at once with the game's other mobys, 70 refused spawns a second above that, no corruption |
+| Mobys drawn in a frame | the frame's packet buffer (two of 1.4 to 1.7 MB, the base level's size: 0x170000 on Kalebo III's): about 100 enemy-sized mobys (about 12 KB of packets each). The moby draw loop stops at its limit, so the last mobys in the list are not drawn (they stay alive and fight); the log says `[render] the frame's packet buffer is full`. The drop shadows (a shadow less) and the particles (a particle less) stop before the buffer's end: the original wrote past it (a crash with 110 enemies at once) |
+| Imported classes | 224 in the class table (the base level's and the session's); `the class table is full (224)` when an import finds none |
+| Paths of imported enemies' profiles | the path registry of their level (a Blarg trooper's 4 each): `no room for its paths in level N's registry: its defaults not written` when it is full; the object still spawns |
 | Classes a level | as many as the host meshes allow; 64 behaviours (`class_define`) a plugin |
 | A class's model | as `meshes.obj`'s meshes: 16 materials, 64 vertex colours, textures to 256 x 256 |
 | Sounds a level | 64; 26 playing at once in all (the game's slots, its own sounds included) |
@@ -935,6 +989,15 @@ typedef struct rac1_ray_hit {       /* (ABI 2) collide_ray */
 | A save's bytes | about 64 KB a plugin |
 
 ## The game's memory
+
+> **Planned for 1.0: offsets give way to a typed API.** Version 1.0 makes the game fully native ([#145](https://github.com/RAC-Native/rac1-native-game/issues/145)):
+> no emulated PS2 memory, so no `api->ram`, no game addresses and no moby offsets. A typed API on moby handles (class,
+> state, position, rotation, pvars, ...) replaces them, as a new ABI. Mods that read or write the game's memory by
+> address or offset (`rac1_lw` / `rac1_lh` / `rac1_lb` / `rac1_lwf`, `sw` / `sh` / `sb` / `swf`, `ov`, `ee_alloc`, the
+> tables below) will very likely break with 1.0 and need updating: a compatibility layer for the most common offsets may
+> soften the move, but don't count on it. The 0.x releases are unchanged. To keep a mod easy to
+> move: use the services (`mobys_near`, `object_*`, `hero_*`, `hit_send`, ...) wherever one exists, and keep your
+> offset reads in a few helpers of your own instead of spread through the code.
 
 A moby is 0x100 bytes of the game's memory: +0x10 its position (x y z), +0x20 its state (negative: gone), +0x24 its
 class data, +0x2c its scale, +0x34 its flags, +0x40 its rotation (Euler angles x y z), +0x74 its update function,
