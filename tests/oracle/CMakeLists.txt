@@ -3,7 +3,21 @@
 # generated sources (made from the NTSC-U disc) and, for most batches, RAM dumps that are never in the repository.
 
 # the interpreter's calls of the original, the comparison of the RAM (shared by the two programs)
+add_library(oracle_trial_guard STATIC trial_guard.cpp)
+if(WIN32 AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    set_source_files_properties(trial_guard.cpp PROPERTIES COMPILE_OPTIONS -fms-extensions)
+endif()
+add_executable(oracle_trial_guard_test trial_guard_test.cpp)
+target_link_libraries(oracle_trial_guard_test PRIVATE oracle_trial_guard)
+set_target_properties(oracle_trial_guard_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests)
+find_program(ORACLE_TRIAL_TEST_PYTHON NAMES python3 python)
+if(ORACLE_TRIAL_TEST_PYTHON)
+    enable_testing()
+    add_test(NAME oracle_trial_guard
+        COMMAND ${ORACLE_TRIAL_TEST_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/test_trial_guard.py $<TARGET_FILE:oracle_trial_guard_test>)
+endif()
 add_library(oracle_env STATIC oracle_env.cpp)
+target_link_libraries(oracle_env PUBLIC oracle_trial_guard)
 target_link_libraries(oracle_env PUBLIC rac1_runtime)
 target_include_directories(oracle_env PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR})
 

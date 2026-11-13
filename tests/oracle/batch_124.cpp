@@ -5,6 +5,7 @@
 // transliterations pokitaru_classes_tr_N.cpp).
 
 #include "ovl_oracle.h"
+#include "trial_guard.h"
 
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/pokitaru_hero.h>
@@ -13,8 +14,6 @@
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/kernel/disc.h>
 
-#include <csetjmp>
-#include <csignal>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -25,22 +24,7 @@ namespace rac1::oracle {
 namespace {
 // A random state can hold a pointer outside RAM that the port's vector helpers dereference without a check (a SIGSEGV where the interpreter would wrap it): the trial run of a state
 // turns it into "not a game state" (the state is dealt again), as the port's "Pointer resolution out of bounds" exception does.
-sigjmp_buf g_trial_jmp;
-void trial_segv(int) { siglongjmp(g_trial_jmp, 1); }
-bool trial_run(void (*port)(uint32_t), uint32_t m) {
-    struct sigaction sa {}, old {};
-    sa.sa_handler = trial_segv;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_NODEFER;
-    sigaction(SIGSEGV, &sa, &old);
-    bool ok = true;
-    if (sigsetjmp(g_trial_jmp, 1) != 0) ok = false;
-    else {
-        try { port(m); } catch (const std::exception&) { ok = false; }
-    }
-    sigaction(SIGSEGV, &old, nullptr);
-    return ok;
-}
+
 constexpr uint32_t MOBY_SPAWN_L11 = 0x00274668;
 
 // A check whose original is level 11's own function at `l9addr` (not a Veldin address to translate).
@@ -146,7 +130,7 @@ void batch_124() {
                 saved.assign(ram, ram + 0x02000000);
                 bool ok = true;
                 const uint32_t stack_top = ee_stack_ptr();
-                ok = trial_run(port, m);
+                ok = run_trial(port, m);
                 ee_stack_ptr() = stack_top;  // (an exception leaves the port's frames allocated)
                 std::memcpy(ram, saved.data(), saved.size());
                 if (ok) break;
