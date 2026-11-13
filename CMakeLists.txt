@@ -388,6 +388,7 @@ set(RAC1_HOST_SOURCES
     src/host/progress.cpp
     src/host/vk_safety.cpp
     src/host/host_window.cpp
+    src/host/host_gpu_watch.cpp
 )
 if(WIN32)
     list(APPEND RAC1_HOST_SOURCES src/host/host_priority_win32.cpp src/host/gpu_preference_win32.cpp

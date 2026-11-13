@@ -25,6 +25,13 @@ What changed in each release. Releases are source only: you build the game with 
 - The log has a `[display] last 10 s` line every 10 seconds of play: the pictures shown a second, the late ones and the
   stalls over 100 ms, to read a frame rate report from a player's `game.log`. The world load's time is broken down for every
   level (`[mrpw] level N (...)`), not only a mod's sections.
+- The log says when the PC holds an NVIDIA GPU below its speed: a `[gpu]` line at the start (its clocks and power limit)
+  and one for every 10 s of play that the system held it while the game kept it busy (a low performance state, the video
+  memory at a fraction of its clock, a power limit under the driver's default; the driver's reasons). A laptop held at
+  20 W in P5 (the memory at 810 of 5501 MHz) ran the arena at 42 to 55 fps; the same laptop and settings at its full
+  35 W ran it at 60. `RAC1_GPU_WATCH=0` turns it off.
+- The debug menu's profiler no longer makes the game stutter on Windows: its thread list came from a snapshot of every
+  thread of the system (30 to 40 ms on the main thread, twice a second); it is now taken on a thread of its own, every 5 s.
 
 ## 0.8.0
 

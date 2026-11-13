@@ -85,6 +85,7 @@
 #include <host/level_slots.h>
 #include <host/mod_code.h>
 #include <host/host_window.h>
+#include <host/host_gpu_watch.h>
 #include <game/enhance/controls.h>
 #include <game/enhance/graphics.h>
 #include <game/enhance/vibration.h>
@@ -2673,6 +2674,7 @@ int main(int argc, char** argv) {
         if (!headless && fs_monitor == nullptr) host_window_on_monitor(window, rac1::graphics_display().monitor);
     }
     if (!headless) rac1::host_window_created(window);  // (not always on top: host_window.h)
+    if (!headless) rac1::host_gpu_watch_start();  // (the GPU held by the system, in the log: host_gpu_watch.h)
     if (!headless) host_input_init(window);  // the controls: the controller database, the bindings
     // the Controls page's host side; its changes saved in a window, headless only to an explicit RAC1_CONTROLS_FILE
     g_controls_save = !headless || std::getenv("RAC1_CONTROLS_FILE") != nullptr;
@@ -4817,6 +4819,7 @@ int main(int argc, char** argv) {
         }
     }
     pace_report();
+    rac1::host_gpu_watch_stop();
     g_extrap.report(true);
     sample_prof_stop();
     rac1::vk_safety::start_over();  // (closed normally: not a crash of the start)
