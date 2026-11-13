@@ -587,6 +587,9 @@ void devastator_rocket_update(uint32_t m) {
             moby_retire(m);
             return;
         }
+        // the target let go before the ricochet's search (0x2b1990: the delay slot of the bounce count's branch-likely, run only
+        // when it bounces); the search below sets a new one or leaves none
+        sw(pv + 0x18, 0);
 
         // Gold Devastator ricochet
         const uint32_t out_norm = OV(0x00173e80u);

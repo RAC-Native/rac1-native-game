@@ -22,6 +22,9 @@
 
 // Audit 2 (2026-11-13): also the Hydrodisplacer's hand update 0x2df9a0 (hydro.cpp) on these dumps, the only state with its
 // faucet: batch 106 (levels 0 .. 3) reaches 138 of its 516 instructions, this check 370.
+// Cover 3 (2026-11-13): the faucet's turn as the game runs it (state 2 with the fire button in the pad's history, state 3 at the
+// hero's animation's end, state 4's sub-states on the faucet's own camera nodes) and the hero off the faucet's states (the spray
+// 0x2e01b0): 583 of the 592 instructions of the update and its spray on these dumps.
 
 #include "ovl_oracle.h"
 
@@ -159,6 +162,49 @@ void batch_330() {
                 if (coin()) w32(OV(0x0015f5c4), 0);
                 if (coin()) wfrand(P + 0x100, 3, -0.3f, 0.3f);  // (the hero's velocity the spray takes on)
                 if (pv != 0 && coin()) w32(pv + 4, u(ri(0, 2)));  // (the spray's timer about to run out)
+                // the turn of the faucet as the game runs it: the hand in state 3 with the hero's animation at its end
+                // (+0xa98 bit 2: the turn starts, state 4, or the plain swap, state 5, by the faucet's camera nodes +4 / +8), in
+                // state 4 its sub-states 0 .. 2 (+0xbc) on the faucet's own nodes (pvars +8 / +0xc, the camera path of the
+                // level's table 0x1600ec), the fade 0x15f3fc and the path's progress +0x10 at both ends; before, the states 4's
+                // path ran on whatever the pvars held. The faucet's nodes -1 in a quarter of the cases (the swap without a turn)
+                const uint32_t fpv = ee_read<uint32_t>(FAUCET + 0x78);
+                // (the hero's state: the faucet's 0x38 / 0x39 / 0x3a or off it, where the spray 0x2e01b0 runs: the dumps
+                // off_1275 / edge_1254 hold him in 0x38)
+                if (ri(0, 2) == 0) w32(P + 0x2084, ri(0, 1) == 0 ? 0u : 0x38u + u(ri(0, 2)));
+                if (ri(0, 1) == 0 && pv != 0 && fpv != 0) {
+                    w32(P + 0x2fc, FAUCET);
+                    const int s = ri(0, 3);
+                    w8(hand + 0x20, s == 0 ? 3u : (s == 3 ? 2u : 4u));
+                    if (s == 3) {  // state 2: the fire button pressed within the pad's history's last 8 frames (pad_button_history
+                                   // 0x2a.., the ring PAD + 0x1e0 at +0x18e, its count +0x190) and down now, the hero on the faucet
+                                   // and standing (+0x30e 0, +0x208c < 2), the pool's water flags (its moby +0xbc) either way
+                        constexpr uint32_t PADB = 0x0013c940;
+                        w32(PADB + 0x190, u(ri(8, 30)));
+                        const int cur = ee_read<int16_t>(PADB + 0x18e);
+                        const uint32_t idx = u(((cur - ri(1, 8)) % 0x1e + 0x1e) % 0x1e);
+                        w32(PADB + 0x1e0 + 4 * idx, ee_read<uint32_t>(PADB + 0x1e0 + 4 * idx) | ee_read<uint32_t>(P + 0x10a0));
+                        w32(0x0013cae0, ri(0, 4) != 0 ? ee_read<uint32_t>(P + 0x10a0) : 0u);
+                        w16(P + 0x30e, ri(0, 5) == 0 ? 1u : 0u);
+                        w32(P + 0x208c, u(ri(0, 4) == 0 ? 2 : ri(0, 1)));
+                        const uint32_t pool = ee_read<uint32_t>(OV(0x0015ffd8)) + (ee_read<uint32_t>(fpv) << 8);
+                        w8(pool + 0xbc, u(ri(0, 3)));
+                    } else if (s == 0) {
+                        w32(P + 0xa98, ee_read<uint32_t>(P + 0xa98) | 2u);
+                        if (ri(0, 3) == 0) w32(fpv + 4 * u(ri(1, 2)), 0xffffffffu);
+                    } else {
+                        const uint32_t n0 = ee_read<uint32_t>(fpv + 4), n1 = ee_read<uint32_t>(fpv + 8);
+                        if (n0 != 0xffffffffu && n1 != 0xffffffffu) {
+                            const bool water = ee_read<uint8_t>(P + 0x20b0) != 0;
+                            w32(pv + 8, water ? n0 : n1);
+                            w32(pv + 0xc, water ? n1 : n0);
+                        }
+                        w8(hand + 0xbc, u(ri(0, 2)));
+                        wf(OV(0x0015f3fc), ri(0, 2) == 0 ? rf(0.0f, 1.0f) : (coin() ? 0.0f : 1.0f));
+                        wf(pv + 0x10, ri(0, 2) == 0 ? 0.0f : (coin() ? rf(0.0f, 1.0f) : rf(1.0f, 1.2f)));
+                    }
+                }
+                if (std::getenv("B330_INFO") != nullptr && fpv != 0)
+                    std::printf("  [faucet] nodes %d %d, hand state %u\n", ee_read<int32_t>(fpv + 4), ee_read<int32_t>(fpv + 8), ee_read<uint8_t>(hand + 0x20));
                 seed_rand();
                 return Args{{hand}, {}};
             }, [](A a) { hydro_update(a.i[0]); return uint64_t{0}; });

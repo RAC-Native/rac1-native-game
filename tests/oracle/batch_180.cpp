@@ -33,7 +33,8 @@
 // flag 0x34 bit 1 at the spawn and never clears it, 0x2a57a8): it is checked called directly on the orbs of the dumps.
 // Levels: the dumps' checks on 0 (Veldin) and 3 (Kerwan, the Vendor Orb); the level-built checks at the end (the drones and
 // their trails, the chicken and its debris, classes 804 and 166 on the level's own overlay, no dumps) on any level: run on 0 .. 18.
-// The chicken's cases vary the gold Morph-o-Ray flag (0x13e535: its joint scale, its debris twice the size).
+// The chicken's cases vary the gold Morph-o-Ray flag (0x13e535: its joint scale, its debris twice the size) and the
+// big-heads flag 0x15edb7, without which the joint scale is not written.
 #include "ovl_oracle.h"
 
 #include <game/ovl/ovl_common.h>
@@ -131,6 +132,9 @@ void vary_chicken(uint32_t m) {
     // below 1 (the burst: feathers, or with puffs +0x74 an explosion, then the debris, fewer under load), the timers +0x64 /
     // +0x66 / +0x70 / +0x7c about to run out, the frame's load factors 0x15f5d0 / 0x15f5d4 (the clucks and the debris cut)
     w8(0x0013e535, coin() ? 1u : 0u);
+    // the joint scale is written only with the big-heads flag 0x15edb7 on (joint_node_scale 0x263ac8; the flag the
+    // enemies' draw scale moby_set_70 also tests): on in half of the cases, so that the gold flag's scale 5 / 7.7 is compared
+    w8(0x0015edb7, coin() ? 1u : 0u);
     if (ri(0, 3) == 0) wf(pv + 0x78, rf(-0.5f, 1.5f));
     if (ri(0, 3) == 0) w32(pv + 0x74, u(ri(0, 3)));
     if (coin()) w32(pv + 0x70, ri(0, 2) == 0 ? 0xffffffffu : u(ri(0, 3)));

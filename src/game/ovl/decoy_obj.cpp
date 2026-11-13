@@ -483,7 +483,9 @@ void decoy_object_update(uint32_t m) {
             if (take_hit) {
                 sw(dpv + 0x5c, static_cast<uint32_t>(frame_scale_i(0x1e)));
                 if (lh(dpv + 0x6c) == 0) {
-                    if (lhu(hit + 0x28) == 0x101u && (ld(dpv + 0x68) & 0xffffff0000000000ull) == 0) {
+                    // (the original's mask 0x00ffffff00000000 (0x2c4ce8): the bytes +0x6c .. +0x6e, the stun's timer and flag,
+                    // not the countdown +0x6f)
+                    if (lhu(hit + 0x28) == 0x101u && (ld(dpv + 0x68) & 0x00ffffff00000000ull) == 0) {
                         sh(dpv + 0x6c, static_cast<uint32_t>(frame_scale_i(0x64)));
                         sb(dpv + 0x6e, 1);
                     } else {
