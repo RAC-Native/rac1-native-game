@@ -58,6 +58,9 @@
 // - 23: Giant Clank's pad (Quartu's class 1451 L15:0x2ed068, Veldin's finale's 1899 L18:0x2fb868; the shared port
 //   clank_pad_update, shared_clank_pad.cpp): boarding retires a moby still linked at its pvar +0x70, and on Quartu saves the
 //   pad's place as the checkpoint (checkpoint_save 0x284e50) before Ratchet is put on it
+// - 42: the open sea of Pokitaru and Kalebo III (class 1111, L11:0x30b358 / L16:0x2dee10; the shared port class1111_update,
+//   shared_class1111.cpp) is the level's water disc (0x1612dc: on, centre (512, 512), radius 1024, at the swell's height,
+//   set each frame the sea is drawn), so that surface_height gives the hero's movement, the bombs and the mines its surface
 // In the generated code each hook is a test that fails with the row off; on another region's disc the transliterated
 // functions that region changed (stand-ins: on the PAL disc 2.00 the 1.02 build's own) get none.
 //

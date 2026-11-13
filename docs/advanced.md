@@ -746,6 +746,7 @@ test that fails, and the game's memory is the same frame by frame (RAC1_RAMHASH)
 | 14 | The Decoy Glove's decoy: while Ratchet swims at the surface (state 0x31) within 1.5 of it, the decoy gets a push from his place (the event 0x10000, strength 1000, that the game's bumps use), so it moves off instead of staying in his way | Probably: a decoy that blocks Ratchet in the water | `decoy_object_update` 0x2c4380 (`decoy_obj.json` `host_ntsc`) |
 | 21 | Rilgar's water that rises and falls (class 831): it carries Ratchet swimming in it up as it rises (his water height +0x2f0 set to its surface while it is more than 0.1 from its target and he swims, +0x208c 0x11 / 0x12), and it holds still during a cutscene (game mode 2) | Probably: Ratchet left under the surface of rising water | Rilgar's L5:0x30ca80 (`hooks.glue`) |
 | 23 | Giant Clank's pad (Quartu's class 1451, Veldin's finale's 1899): the press that turns Ratchet into Giant Clank first retires a moby still linked to the pad (its pvar +0x70, when alive) and, on Quartu, saves the pad's place as the checkpoint (`checkpoint_save` 0x284e50, the point 0.1 over the ground under the pad) before Ratchet is put there | Probably: Giant Clank's fight on Quartu restarted from the checkpoint before the pad, and a leftover moby of an earlier boarding | `clank_pad_update` (`shared_clank_pad.cpp`, the shared port of L15:0x2ed068 / L18:0x2fb868; the levels still run their generated copies until their re-glue) |
+| 42 | The open sea of Pokitaru and Kalebo III (class 1111): each frame it is drawn (the camera above its height) it makes itself the level's flat water disc (0x1612dc: on, centre (512, 512), radius 1024, at the height of its swell), which `surface_height` (0x259e58) gives the hero's movement (his water height +0x2f0 and his entering the water +0x2f8), the bombs and the mines where no water region covers the place; the original leaves the disc off, so the sea's surface counts there as the ground's height. The same 1.02 change also sets the underwater colours (0x161200) while the camera is above 180: left out (below) | Not understood in full: probably Ratchet, the bombs and the mines over the open sea taking the sea floor's height for the water's | `class1111_update` (`shared_class1111.cpp`, the shared port of L11:0x30b358 / L16:0x2dee10; the levels still run their generated copies until their re-glue) |
 
 The 1.02 build changed more in the same places that is not ported here: in Novalis's and Veldin's crouch under a low
 ceiling (0x81) Ratchet stands up after 20 frames without the Thruster-Pack on his back; Rilgar's class 918 has calls of
@@ -757,7 +758,7 @@ changed functions already are the 1.02 build's (its stand-ins), so the row adds 
 
 ### The later build's other changes to the level objects
 
-The 1.02 build changed some forty functions of the levels' own code. Fixes 18 to 22, 10 and 23 above are the ones ported.
+The 1.02 build changed some forty functions of the levels' own code. Fixes 18 to 22, 10, 23 and 42 above are the ones ported.
 The others, read in the North American and the 1.02 build's code (PAL disc 2.00, the Japanese disc the same):
 
 - No change to the game: Hoven's class 1404, Aridia's two skid classes, Eudora's 1190, Oltanis's 924 and Veldin's

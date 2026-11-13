@@ -213,6 +213,17 @@ add_library(rac1_game STATIC
     ovl/shared_panel_lights.cpp
     ovl/shared_waves.cpp
     ovl/shared_blarg_meshes.cpp
+    ovl/shared_class1886.cpp
+    ovl/shared_path_ahead.cpp
+    ovl/shared_class1111.cpp
+    ovl/shared_race_hud.cpp
+    ovl/shared_class224.cpp
+    ovl/shared_class295.cpp
+    ovl/shared_ship_shots.cpp
+    ovl/shared_class1319.cpp
+    ovl/shared_hud_shapes.cpp
+    ovl/shared_moby_helpers.cpp
+    ovl/shared_class1952.cpp
     ovl/novalis_amoeboid.cpp
     ovl/vendor_draw.cpp
     ovl/vendor_frame.cpp

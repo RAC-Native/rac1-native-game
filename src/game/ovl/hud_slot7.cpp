@@ -11,13 +11,13 @@ namespace rac1 {
 
 namespace {
 uint64_t sx64(int32_t v) { return static_cast<uint64_t>(static_cast<int64_t>(v)); }
+}  // namespace
 
 // orig: 0x001fb470
 void draw_detector_text(int32_t x, int32_t y, uint64_t color, uint32_t str, int32_t max_len) {
     const uint64_t tex0 = static_cast<uint64_t>(effect_tex0(3));
     text_draw(x, y, color, str, max_len, tex0, OV(0x001c3890u));
 }
-}  // namespace
 
 // orig: 0x00235dc0
 void hud_slot7_start_tr(uint32_t e) {

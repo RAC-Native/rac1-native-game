@@ -10,6 +10,9 @@ namespace rac1 {
 void hud_slot7_start_tr(uint32_t a0);  // 0x00235dc0
 void hud_slot7_update_tr(uint32_t a0);  // 0x0023a218
 void hud_slot7_draw_tr(uint32_t a0);  // 0x0023a2d0
+// The Metal Detector's text (Veldin's 0x001fb470, hud_slot7.cpp): `str` at (x, y) in `color`, the effect texture 3's font
+// (also the hoverboard races' bar, shared_race_hud.cpp)
+void draw_detector_text(int32_t x, int32_t y, uint64_t color, uint32_t str, int32_t max_len);
 
 }  // namespace rac1
 
