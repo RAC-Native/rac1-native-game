@@ -23,6 +23,7 @@
 //   tools/oracle/drek_veldin_tour.sh dumps   (writes the nine dumps; see the script's header for the scenario of each)
 
 #include "ovl_oracle.h"
+#include "trial_guard.h"
 
 #include <game/lib/libcdvd.h>
 #include <game/lib/libmc.h>
@@ -38,8 +39,6 @@
 #include <game/ovl/veldin_finale_mobys.h>
 #include <game/ovl/veldin_orbit_mobys.h>
 
-#include <csetjmp>
-#include <csignal>
 #include <cmath>
 #include <cstring>
 #include <map>
@@ -79,24 +78,13 @@ void load_dump(const std::vector<uint8_t>& d) {
 }
 // A forced state that sends the port's code through a pointer outside RAM (a pointer the boss's earlier states of another phase set: the
 // interpreter wraps it, the port refuses) is not a state of the fight the dump holds: another is dealt (as batch 124's trial runs)
-sigjmp_buf g_trial_jmp;
-void trial_segv(int) { siglongjmp(g_trial_jmp, 1); }
 bool trial_run(void (*port)(uint32_t), uint32_t m) {
-    struct sigaction sa {}, old {};
-    sa.sa_handler = trial_segv;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_NODEFER;
-    sigaction(SIGSEGV, &sa, &old);
-    bool ok = true;
     const uint32_t stack_top = ee_stack_ptr();
-    if (sigsetjmp(g_trial_jmp, 1) != 0) ok = false;
-    else {
-        try { port(m); } catch (const std::exception&) { ok = false; }
-    }
+    const bool ok = run_trial(port, m);
     ee_stack_ptr() = stack_top;
-    sigaction(SIGSEGV, &old, nullptr);
     return ok;
 }
+
 }  // namespace
 
 void batch_271() {
