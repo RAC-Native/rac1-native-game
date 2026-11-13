@@ -89,7 +89,7 @@ void mark_taken(uint32_t pv) { sb(0x0014bec0 + lwu(pv) + (lwu(0x0015ed84) << 2),
 // the gold bolt's jingle and the level change's delay
 void taken_jingle() {
     sw(OV(0x0015f640), static_cast<uint32_t>(frame_scale_i(0xb4)));
-    sub_00263d40(0x53b3, -1);
+    sub_00263d40(TXT(0x53b3), -1);
 }
 // one spin rate (degrees a second) a frame
 float rate(uint32_t t, uint32_t at) { return fpu_mul(fpu_mul(lwc1(t + at), DEGREE), lwc1(0x0015ed6c)); }

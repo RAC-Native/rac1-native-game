@@ -1034,7 +1034,6 @@ fix 0020b380 -8
 fix 0020b388 -8
 fix 0020b38c -8
 fix 0020b394 -8
-fix 0020bc9c -5
 fix 0020cdf8 -100
 fix 0020ce34 -100
 fix 0020ce40 -100
@@ -1051,24 +1050,6 @@ fix 0020d4bc -100
 fix 0021151c -100
 fix 002156fc +200
 fix 0021a0c4 +e
-fix 0021ce7c -5
-fix 0021cfb8 -5
-fix 0021d0c8 -5
-fix 0021d0fc -5
-fix 0021d100 -5
-fix 0021e988 -5
-fix 0021e9a0 -5
-fix 0021e9bc -5
-fix 0021e9f0 -5
-fix 002229f0 -5
-fix 00222a58 -5
-fix 00222af0 -5
-fix 00222b20 -5
-fix 00222b5c -5
-fix 00222bd4 -5
-fix 00222c24 -5
-fix 00222c98 -5
-fix 00222d0c -5
 fix 0022f408 -8
 fix 0022f418 -8
 fix 00231184 -100
@@ -1164,12 +1145,12 @@ code 002cadc0 002cc360 +1450
 code 002cc608 002edd28 +14b0
 code 002ee0e0 002f0cd0 +15c8
 data 0015ef40 0015f460 +100
-data 0015f570 0015f5a8 +e0
+data 0015f548 0015f5a8 +e0
 data 0015f5ac 0015f5e0 +e4
 data 0015f5f0 0015f828 +e0
-data 0015f8f8 0015f914 +d4
+data 0015f8e8 0015f914 +d4
 data 0015f918 0015f970 +d8
-data 0015fa70 0015fb08 +b8
+data 0015fa04 0015fb08 +b8
 data 0015fb40 00160004 +c0
 data 00160005 00160005 +0
 data 00160008 00160008 +c0
@@ -1207,6 +1188,7 @@ data 001d02e0 001dd0e0 +300
 data 001dd100 001df9a0 +350
 data 001e0002 001e0027 +0
 data 001e04a0 001e7a18 +350
+data 001e7a50 001e7a50 +358
 data 001e7b80 001ea994 +380
 data 001f0001 001f0001 +0
 data 001fd9d4 001fdb18 -50
@@ -1558,8 +1540,6 @@ ptr 001df170
 ptr 001df1c8
 ptr 001df238
 ptr 001e3e48
-fix 00237630 -5
-fix 002376a4 -5
 fix 0023feb4 -1
 fix 0023ff78 -1
 fix 002452dc +2
@@ -1603,30 +1583,9 @@ fix 0024d638 -8
 fix 0024d640 -8
 fix 0024d644 -8
 fix 0024d64c -8
-fix 0024df54 -5
 fix 00264ed4 +200
 fix 002760a4 -10
 fix 00277d0c +e
-fix 0027aac4 -5
-fix 0027ac00 -5
-fix 0027ad10 -5
-fix 0027ad44 -5
-fix 0027ad48 -5
-fix 0027c5d0 -5
-fix 0027c5e8 -5
-fix 0027c604 -5
-fix 0027c638 -5
-fix 00280638 -5
-fix 002806a0 -5
-fix 00280738 -5
-fix 00280768 -5
-fix 002807a4 -5
-fix 0028081c -5
-fix 0028086c -5
-fix 002808e0 -5
-fix 00280954 -5
-fix 002833a4 -5
-fix 0028e3a4 -5
 fix 00290220 -8
 fix 00290230 -8
 fix 00292a8c -8
@@ -1642,15 +1601,8 @@ fix 0029357c -8
 fix 00299150 +2
 fix 002999f0 -8
 fix 00299a00 -8
-fix 0029ebe0 -5
-fix 0029ec58 -5
-fix 0029ec84 -5
-fix 0029eea4 -5
 fix 0029eecc +15
-fix 0029eef4 -5
-fix 0029ef24 -5
 fix 002a861c -10000
-fix 002bcccc -5
 fix 002c8928 -10000
 fix 002c893c -10000
 start 001fbe88
@@ -2290,8 +2242,6 @@ ptr 001df5e8
 ptr 001df658
 ptr 001e3738
 ptr 001fe718
-fix 0024ccc8 -5
-fix 0024cd3c -5
 fix 00253ecc -1
 fix 00253f90 -1
 fix 002592f4 +2
@@ -2335,32 +2285,11 @@ fix 00261650 -8
 fix 00261658 -8
 fix 0026165c -8
 fix 00261664 -8
-fix 00262aac -5
 fix 00264d7c -80
 fix 00264de0 -80
 fix 00279a64 +200
 fix 0028be64 -10
 fix 0028dacc +e
-fix 00290884 -5
-fix 002909c0 -5
-fix 00290ad0 -5
-fix 00290b04 -5
-fix 00290b08 -5
-fix 00292390 -5
-fix 002923a8 -5
-fix 002923c4 -5
-fix 002923f8 -5
-fix 002963f8 -5
-fix 00296460 -5
-fix 002964f8 -5
-fix 00296528 -5
-fix 00296564 -5
-fix 002965dc -5
-fix 0029662c -5
-fix 002966a0 -5
-fix 00296714 -5
-fix 00299164 -5
-fix 002a1e64 -5
 fix 002a3d10 -8
 fix 002a3d20 -8
 fix 002a657c -8
@@ -2376,18 +2305,7 @@ fix 002a706c -8
 fix 002acc40 +2
 fix 002ad4e0 -8
 fix 002ad4f0 -8
-fix 002b2950 -5
-fix 002b29c8 -5
-fix 002b29f4 -5
-fix 002b2c14 -5
 fix 002b2c3c +15
-fix 002b2c64 -5
-fix 002b2c94 -5
-fix 002d2934 -5
-fix 002f453c -5
-fix 002f77f8 -5
-fix 00307f54 -5
-fix 003082dc -5
 start 0021da88
 nostart 0025eca0
 nostart 0025edc8
@@ -3469,8 +3387,6 @@ ptr 001ef4a4
 ptr 001ef4b4
 ptr 001ef4e8
 ptr 001ef4f8
-fix 0023a2f0 -5
-fix 0023a364 -5
 fix 00241a04 -1
 fix 00241ac8 -1
 fix 00246e2c +2
@@ -3514,32 +3430,11 @@ fix 0024f188 -8
 fix 0024f190 -8
 fix 0024f194 -8
 fix 0024f19c -8
-fix 0025033c -5
 fix 0025260c -80
 fix 00252670 -80
 fix 0026653c +200
 fix 002775bc -10
 fix 00279224 +e
-fix 0027bfdc -5
-fix 0027c118 -5
-fix 0027c228 -5
-fix 0027c25c -5
-fix 0027c260 -5
-fix 0027dae8 -5
-fix 0027db00 -5
-fix 0027db1c -5
-fix 0027db50 -5
-fix 00281b50 -5
-fix 00281bb8 -5
-fix 00281c50 -5
-fix 00281c80 -5
-fix 00281cbc -5
-fix 00281d34 -5
-fix 00281d84 -5
-fix 00281df8 -5
-fix 00281e6c -5
-fix 002848bc -5
-fix 0028db14 -5
 fix 0028f990 -8
 fix 0028f9a0 -8
 fix 002921fc -8
@@ -3555,24 +3450,10 @@ fix 00292cec -8
 fix 002988c0 +2
 fix 002991f8 -8
 fix 00299208 -8
-fix 0029e3e8 -5
-fix 0029e460 -5
-fix 0029e48c -5
-fix 0029e6ac -5
 fix 0029e6d4 +15
-fix 0029e6fc -5
-fix 0029e72c -5
 fix 002a8554 -10000
-fix 002bc6dc -5
 fix 002c8338 -10000
 fix 002c834c -10000
-fix 002eafec -5
-fix 002eb374 -5
-fix 002ec7bc -5
-fix 002ec834 -5
-fix 002ed1a4 -5
-fix 002ed21c -5
-fix 002eea2c -5
 start 0020cec0
 start 0020ff20
 nostart 0024c7d8
@@ -4181,8 +4062,6 @@ ptr 001cd840
 ptr 001cd8ac
 ptr 001cd970
 ptr 001d5698
-fix 00226e00 -5
-fix 00226e74 -5
 fix 0022cb90 -80
 fix 0022e18c -1
 fix 0022e250 -1
@@ -4228,7 +4107,6 @@ fix 0023b910 -8
 fix 0023b918 -8
 fix 0023b91c -8
 fix 0023b924 -8
-fix 0023cac4 -5
 fix 0023eb0c -80
 fix 0023eb70 -80
 fix 0023eec8 -80
@@ -4237,27 +4115,7 @@ fix 00244588 -80
 fix 0025303c +200
 fix 00264d14 -10
 fix 0026697c +e
-fix 00269734 -5
-fix 00269870 -5
-fix 00269980 -5
-fix 002699b4 -5
-fix 002699b8 -5
-fix 0026b240 -5
-fix 0026b258 -5
-fix 0026b274 -5
-fix 0026b2a8 -5
-fix 0026f2a8 -5
-fix 0026f310 -5
-fix 0026f3a8 -5
-fix 0026f3d8 -5
-fix 0026f414 -5
-fix 0026f48c -5
-fix 0026f4dc -5
-fix 0026f550 -5
-fix 0026f5c4 -5
-fix 00272014 -5
 fix 002776e0 -80
-fix 0027acec -5
 fix 0027cb68 -8
 fix 0027cb78 -8
 fix 0027e9d0 -80
@@ -4276,23 +4134,11 @@ fix 002840b8 -80
 fix 00285a98 +2
 fix 00286338 -8
 fix 00286348 -8
-fix 0028b528 -5
-fix 0028b5a0 -5
-fix 0028b5cc -5
-fix 0028b7ec -5
 fix 0028b814 +15
-fix 0028b83c -5
-fix 0028b86c -5
 fix 00298adc -10000
-fix 0029daa4 -5
-fix 002ae734 -5
 fix 002b8238 -10000
 fix 002b8684 -10000
 fix 002b8810 -10000
-fix 002dbf4c -5
-fix 002dd43c -5
-fix 002dd7c4 -5
-fix 002e0194 -5
 start 001f57f0
 nostart 00238f60
 nostart 00239088
@@ -5006,8 +4852,6 @@ ptr 001cd8c0
 ptr 001cd92c
 ptr 001cd9f0
 ptr 001d64d8
-fix 0022ac10 -5
-fix 0022ac84 -5
 fix 002328a4 -1
 fix 00232968 -1
 fix 00237ccc +2
@@ -5054,32 +4898,11 @@ fix 00240028 -8
 fix 00240030 -8
 fix 00240034 -8
 fix 0024003c -8
-fix 00240944 -5
 fix 00242cd4 -80
 fix 00242d38 -80
 fix 002576f4 +200
 fix 002693d4 -10
 fix 0026b03c +e
-fix 0026ddf4 -5
-fix 0026df30 -5
-fix 0026e040 -5
-fix 0026e074 -5
-fix 0026e078 -5
-fix 0026f900 -5
-fix 0026f918 -5
-fix 0026f934 -5
-fix 0026f968 -5
-fix 00273968 -5
-fix 002739d0 -5
-fix 00273a68 -5
-fix 00273a98 -5
-fix 00273ad4 -5
-fix 00273b4c -5
-fix 00273b9c -5
-fix 00273c10 -5
-fix 00273c84 -5
-fix 002766d4 -5
-fix 0027f29c -5
 fix 00281118 -8
 fix 00281128 -8
 fix 00283984 -8
@@ -5095,18 +4918,7 @@ fix 00284474 -8
 fix 0028a048 +2
 fix 0028a8e8 -8
 fix 0028a8f8 -8
-fix 0028fad8 -5
-fix 0028fb50 -5
-fix 0028fb7c -5
-fix 0028fd9c -5
 fix 0028fdc4 +15
-fix 0028fdec -5
-fix 0028fe1c -5
-fix 002afd8c -5
-fix 002cabf4 -5
-fix 002e1b6c -5
-fix 002e21ec -5
-fix 002e2574 -5
 start 001ee8f0
 nostart 0023d678
 nostart 0023d7a0
@@ -5890,11 +5702,6 @@ ptr 0020fdfc
 ptr 0020fe00
 ptr 0021052c
 ptr 00210570
-fix 00255798 -5
-fix 002609a8 -5
-fix 00260a1c -5
-fix 00266948 -5
-fix 00266980 -5
 fix 00268e7c -1
 fix 00268f40 -1
 fix 0026e2a4 +2
@@ -5938,30 +5745,9 @@ fix 00276600 -8
 fix 00276608 -8
 fix 0027660c -8
 fix 00276614 -8
-fix 002781bc -5
 fix 0028ede4 +200
 fix 002a03ac -10
 fix 002a2014 +e
-fix 002a4dcc -5
-fix 002a4f08 -5
-fix 002a5018 -5
-fix 002a504c -5
-fix 002a5050 -5
-fix 002a68d8 -5
-fix 002a68f0 -5
-fix 002a690c -5
-fix 002a6940 -5
-fix 002aa940 -5
-fix 002aa9a8 -5
-fix 002aaa40 -5
-fix 002aaa70 -5
-fix 002aaaac -5
-fix 002aab24 -5
-fix 002aab74 -5
-fix 002aabe8 -5
-fix 002aac5c -5
-fix 002ad6ac -5
-fix 002b6af4 -5
 fix 002b8970 -8
 fix 002b8980 -8
 fix 002bb1dc -8
@@ -5977,18 +5763,9 @@ fix 002bbccc -8
 fix 002c18a0 +2
 fix 002c2140 -8
 fix 002c2150 -8
-fix 002c7330 -5
-fix 002c73a8 -5
-fix 002c73d4 -5
-fix 002c75f4 -5
 fix 002c761c +15
-fix 002c7644 -5
-fix 002c7674 -5
 fix 002d8ddc -10000
 fix 002d8df0 -10000
-fix 002e8954 -5
-fix 00319f14 -5
-fix 0031a29c -5
 start 0022ab40
 start 002f0000
 nostart 00273c50
@@ -6675,8 +6452,6 @@ ptr 001f15e0
 ptr 001f2d28
 ptr 001f2d48
 ptr 001f2e34
-fix 00246b58 -5
-fix 00246bcc -5
 fix 0024eb74 -1
 fix 0024ec38 -1
 fix 00253f9c +2
@@ -6720,32 +6495,11 @@ fix 0025c2f8 -8
 fix 0025c300 -8
 fix 0025c304 -8
 fix 0025c30c -8
-fix 0025cc14 -5
 fix 0025ec5c -80
 fix 0025ecc0 -80
 fix 00273c6c +200
 fix 00284e84 -10
 fix 00286aec +e
-fix 002898a4 -5
-fix 002899e0 -5
-fix 00289af0 -5
-fix 00289b24 -5
-fix 00289b28 -5
-fix 0028b3b0 -5
-fix 0028b3c8 -5
-fix 0028b3e4 -5
-fix 0028b418 -5
-fix 0028f418 -5
-fix 0028f480 -5
-fix 0028f518 -5
-fix 0028f548 -5
-fix 0028f584 -5
-fix 0028f5fc -5
-fix 0028f64c -5
-fix 0028f6c0 -5
-fix 0028f734 -5
-fix 00292184 -5
-fix 0029b49c -5
 fix 0029d318 -8
 fix 0029d328 -8
 fix 0029fb84 -8
@@ -6761,17 +6515,7 @@ fix 002a0674 -8
 fix 002a6248 +2
 fix 002a6ae8 -8
 fix 002a6af8 -8
-fix 002abcd8 -5
-fix 002abd50 -5
-fix 002abd7c -5
-fix 002abf9c -5
 fix 002abfc4 +15
-fix 002abfec -5
-fix 002ac01c -5
-fix 002c9ed4 -5
-fix 002feca4 -5
-fix 0030565c -5
-fix 003059e4 -5
 fix 0031701c -10000
 start 00213b70
 nostart 00259948
@@ -7644,8 +7388,6 @@ ptr 002086e8
 ptr 00208708
 ptr 002087ac
 ptr 002087f0
-fix 0025f498 -5
-fix 0025f50c -5
 fix 0026750c -1
 fix 002675d0 -1
 fix 0026c934 +2
@@ -7689,32 +7431,11 @@ fix 00274dc0 -8
 fix 00274dc8 -8
 fix 00274dcc -8
 fix 00274dd4 -8
-fix 0027697c -5
 fix 002789c4 -80
 fix 00278a28 -80
 fix 0028d5cc +200
 fix 0029eac4 -10
 fix 002a072c +e
-fix 002a34e4 -5
-fix 002a3620 -5
-fix 002a3730 -5
-fix 002a3764 -5
-fix 002a3768 -5
-fix 002a4ff0 -5
-fix 002a5008 -5
-fix 002a5024 -5
-fix 002a5058 -5
-fix 002a9058 -5
-fix 002a90c0 -5
-fix 002a9158 -5
-fix 002a9188 -5
-fix 002a91c4 -5
-fix 002a923c -5
-fix 002a928c -5
-fix 002a9300 -5
-fix 002a9374 -5
-fix 002abdc4 -5
-fix 002b504c -5
 fix 002b6ec8 -8
 fix 002b6ed8 -8
 fix 002b9734 -8
@@ -7730,16 +7451,7 @@ fix 002ba224 -8
 fix 002bfdf8 +2
 fix 002c0698 -8
 fix 002c06a8 -8
-fix 002c5888 -5
-fix 002c5900 -5
-fix 002c592c -5
-fix 002c5b4c -5
 fix 002c5b74 +15
-fix 002c5b9c -5
-fix 002c5bcc -5
-fix 002e5ddc -5
-fix 0031b8a4 -5
-fix 0031bc2c -5
 start 00223cc0
 start 002c0100
 start 00320030
@@ -8441,8 +8153,6 @@ ptr 001cdf40
 ptr 001cdfac
 ptr 001ce070
 ptr 001ec858
-fix 002428a0 -5
-fix 00242914 -5
 fix 00249aa4 -1
 fix 00249b68 -1
 fix 0024eecc +2
@@ -8486,32 +8196,11 @@ fix 00257228 -8
 fix 00257230 -8
 fix 00257234 -8
 fix 0025723c -8
-fix 00258454 -5
 fix 0025a49c -80
 fix 0025a500 -80
 fix 0026edf4 +200
 fix 002807f4 -10
 fix 0028245c +e
-fix 00285214 -5
-fix 00285350 -5
-fix 00285460 -5
-fix 00285494 -5
-fix 00285498 -5
-fix 00286d20 -5
-fix 00286d38 -5
-fix 00286d54 -5
-fix 00286d88 -5
-fix 0028ad88 -5
-fix 0028adf0 -5
-fix 0028ae88 -5
-fix 0028aeb8 -5
-fix 0028aef4 -5
-fix 0028af6c -5
-fix 0028afbc -5
-fix 0028b030 -5
-fix 0028b0a4 -5
-fix 0028daf4 -5
-fix 0029672c -5
 fix 002985a8 -8
 fix 002985b8 -8
 fix 0029ae14 -8
@@ -8527,19 +8216,7 @@ fix 0029b904 -8
 fix 002a14d8 +2
 fix 002a1e10 -8
 fix 002a1e20 -8
-fix 002a7000 -5
-fix 002a7078 -5
-fix 002a70a4 -5
-fix 002a72c4 -5
 fix 002a72ec +15
-fix 002a7314 -5
-fix 002a7344 -5
-fix 002c5cd4 -5
-fix 002d511c -5
-fix 002deb90 -5
-fix 00303624 -5
-fix 003039ac -5
-fix 00307618 -5
 start 0020e998
 nostart 00254878
 nostart 002549a0
@@ -9271,8 +8948,6 @@ ptr 001cd8c0
 ptr 001cd92c
 ptr 001cd9f0
 ptr 00203238
-fix 00257310 -5
-fix 00257384 -5
 fix 0025efa4 -1
 fix 0025f068 -1
 fix 002643cc +2
@@ -9319,32 +8994,11 @@ fix 0026c728 -8
 fix 0026c730 -8
 fix 0026c734 -8
 fix 0026c73c -8
-fix 0026d8dc -5
 fix 0026f924 -80
 fix 0026f988 -80
 fix 00283da4 +200
 fix 00294ec4 -10
 fix 00296b2c +e
-fix 002998e4 -5
-fix 00299a20 -5
-fix 00299b30 -5
-fix 00299b64 -5
-fix 00299b68 -5
-fix 0029b3f0 -5
-fix 0029b408 -5
-fix 0029b424 -5
-fix 0029b458 -5
-fix 0029f458 -5
-fix 0029f4c0 -5
-fix 0029f558 -5
-fix 0029f588 -5
-fix 0029f5c4 -5
-fix 0029f63c -5
-fix 0029f68c -5
-fix 0029f700 -5
-fix 0029f774 -5
-fix 002a21c4 -5
-fix 002aacf4 -5
 fix 002acb70 -8
 fix 002acb80 -8
 fix 002af3dc -8
@@ -9360,21 +9014,7 @@ fix 002afecc -8
 fix 002b5aa0 +2
 fix 002b6340 -8
 fix 002b6350 -8
-fix 002bb530 -5
-fix 002bb5a8 -5
-fix 002bb5d4 -5
-fix 002bb7f4 -5
 fix 002bb81c +15
-fix 002bb844 -5
-fix 002bb874 -5
-fix 002dc18c -5
-fix 003008e8 -5
-fix 003025a4 -5
-fix 0030292c -5
-fix 003060c4 -5
-fix 0030613c -5
-fix 00306aac -5
-fix 00306b24 -5
 fix 00316414 -10000
 start 0021b240
 start 00270018
@@ -10050,8 +9690,6 @@ ptr 001d3678
 ptr 001d3724
 ptr 001d3730
 ptr 001d7048
-fix 0022ac98 -5
-fix 0022ad0c -5
 fix 0023292c -1
 fix 002329f0 -1
 fix 00237d54 +2
@@ -10095,32 +9733,11 @@ fix 002400b0 -8
 fix 002400b8 -8
 fix 002400bc -8
 fix 002400c4 -8
-fix 002409cc -5
 fix 00242a14 -80
 fix 00242a78 -80
 fix 002580b4 +200
 fix 00268fc4 -10
 fix 0026ac2c +e
-fix 0026d9e4 -5
-fix 0026db20 -5
-fix 0026dc30 -5
-fix 0026dc64 -5
-fix 0026dc68 -5
-fix 0026f4f0 -5
-fix 0026f508 -5
-fix 0026f524 -5
-fix 0026f558 -5
-fix 00273558 -5
-fix 002735c0 -5
-fix 00273658 -5
-fix 00273688 -5
-fix 002736c4 -5
-fix 0027373c -5
-fix 0027378c -5
-fix 00273800 -5
-fix 00273874 -5
-fix 002762c4 -5
-fix 0027eea4 -5
 fix 00280d20 -8
 fix 00280d30 -8
 fix 0028358c -8
@@ -10136,26 +9753,11 @@ fix 0028407c -8
 fix 00289c50 +2
 fix 0028a4f0 -8
 fix 0028a500 -8
-fix 0028f6e0 -5
-fix 0028f758 -5
-fix 0028f784 -5
-fix 0028f9a4 -5
 fix 0028f9cc +15
-fix 0028f9f4 -5
-fix 0028fa24 -5
 fix 0029875c -600000
-fix 00298dc0 -5
-fix 002ae58c -5
 fix 002b8090 -10000
 fix 002b84dc -10000
 fix 002b8668 -10000
-fix 002dbcbc -5
-fix 002ddb94 -5
-fix 002ddf1c -5
-fix 002dfd3c -5
-fix 002e4090 -5
-fix 002ebe94 -5
-fix 002ebf0c -5
 fix 002f75e4 -10000
 start 001ef4f0
 nostart 0023d700
@@ -10868,8 +10470,6 @@ ptr 001ce140
 ptr 001ce1ac
 ptr 001ce270
 ptr 001d6c18
-fix 0025e060 -5
-fix 0025e0d4 -5
 fix 00265264 -1
 fix 00265328 -1
 fix 0026a68c +2
@@ -10913,32 +10513,11 @@ fix 002729e8 -8
 fix 002729f0 -8
 fix 002729f4 -8
 fix 002729fc -8
-fix 00273d84 -5
 fix 00275dcc -80
 fix 00275e30 -80
 fix 0028a254 +200
 fix 0029b42c -10
 fix 0029d094 +e
-fix 0029fe4c -5
-fix 0029ff88 -5
-fix 002a0098 -5
-fix 002a00cc -5
-fix 002a00d0 -5
-fix 002a1958 -5
-fix 002a1970 -5
-fix 002a198c -5
-fix 002a19c0 -5
-fix 002a59c0 -5
-fix 002a5a28 -5
-fix 002a5ac0 -5
-fix 002a5af0 -5
-fix 002a5b2c -5
-fix 002a5ba4 -5
-fix 002a5bf4 -5
-fix 002a5c68 -5
-fix 002a5cdc -5
-fix 002a872c -5
-fix 002b129c -5
 fix 002b3118 -8
 fix 002b3128 -8
 fix 002b5984 -8
@@ -10954,19 +10533,7 @@ fix 002b6474 -8
 fix 002bc048 +2
 fix 002bc8e8 -8
 fix 002bc8f8 -8
-fix 002c1ad8 -5
-fix 002c1b50 -5
-fix 002c1b7c -5
-fix 002c1d9c -5
 fix 002c1dc4 +15
-fix 002c1dec -5
-fix 002c1e1c -5
-fix 002e2ab4 -5
-fix 0030b9e4 -5
-fix 0030bd6c -5
-fix 00312410 -5
-fix 0031a330 -5
-fix 0031aaf0 -5
 start 0022d7f0
 start 00310024
 nostart 00270038
@@ -11626,8 +11193,6 @@ ptr 001e07e0
 ptr 001e084c
 ptr 001e0910
 ptr 001f85d8
-fix 00250ea0 -5
-fix 00250f14 -5
 fix 002580a4 -1
 fix 00258168 -1
 fix 0025d4cc +2
@@ -11671,32 +11236,11 @@ fix 00265828 -8
 fix 00265830 -8
 fix 00265834 -8
 fix 0026583c -8
-fix 00266c94 -5
 fix 00268cdc -80
 fix 00268d40 -80
 fix 0027d55c +200
 fix 0028ed4c -10
 fix 002909b4 +e
-fix 0029376c -5
-fix 002938a8 -5
-fix 002939b8 -5
-fix 002939ec -5
-fix 002939f0 -5
-fix 00295278 -5
-fix 00295290 -5
-fix 002952ac -5
-fix 002952e0 -5
-fix 002992e0 -5
-fix 00299348 -5
-fix 002993e0 -5
-fix 00299410 -5
-fix 0029944c -5
-fix 002994c4 -5
-fix 00299514 -5
-fix 00299588 -5
-fix 002995fc -5
-fix 0029c04c -5
-fix 002a4c2c -5
 fix 002a6aa8 -8
 fix 002a6ab8 -8
 fix 002a9314 -8
@@ -11712,19 +11256,8 @@ fix 002a9e04 -8
 fix 002af9d8 +2
 fix 002b0278 -8
 fix 002b0288 -8
-fix 002b5468 -5
-fix 002b54e0 -5
-fix 002b550c -5
-fix 002b572c -5
 fix 002b5754 +15
-fix 002b577c -5
-fix 002b57ac -5
-fix 002d50ac -5
 fix 002e7258 -10000
-fix 002ebd30 -5
-fix 002ed2e0 -5
-fix 00300064 -5
-fix 003003ec -5
 fix 00317394 -10000
 start 0021ea48
 nostart 0024f704
@@ -12509,8 +12042,6 @@ ptr 001ce050
 ptr 001ce0bc
 ptr 001ce180
 ptr 001d6c48
-fix 00243118 -5
-fix 0024318c -5
 fix 0024b134 -1
 fix 0024b1f8 -1
 fix 0025055c +2
@@ -12554,32 +12085,11 @@ fix 002588b8 -8
 fix 002588c0 -8
 fix 002588c4 -8
 fix 002588cc -8
-fix 00259bdc -5
 fix 0025bc24 -80
 fix 0025bc88 -80
 fix 0027088c +200
 fix 00282224 -10
 fix 00283e8c +e
-fix 00286c44 -5
-fix 00286d80 -5
-fix 00286e90 -5
-fix 00286ec4 -5
-fix 00286ec8 -5
-fix 00288750 -5
-fix 00288768 -5
-fix 00288784 -5
-fix 002887b8 -5
-fix 0028c7b8 -5
-fix 0028c820 -5
-fix 0028c8b8 -5
-fix 0028c8e8 -5
-fix 0028c924 -5
-fix 0028c99c -5
-fix 0028c9ec -5
-fix 0028ca60 -5
-fix 0028cad4 -5
-fix 0028f524 -5
-fix 002987b4 -5
 fix 0029a630 -8
 fix 0029a640 -8
 fix 0029ce9c -8
@@ -12595,18 +12105,7 @@ fix 0029d98c -8
 fix 002a3560 +2
 fix 002a3e00 -8
 fix 002a3e10 -8
-fix 002a9270 -5
-fix 002a92e8 -5
-fix 002a9314 -5
-fix 002a9534 -5
 fix 002a955c +15
-fix 002a9584 -5
-fix 002a95b4 -5
-fix 002b9be8 -5
-fix 002d6aec -5
-fix 00303c04 -5
-fix 00303f8c -5
-fix 0030cf64 -5
 start 00207970
 nostart 00255f08
 nostart 00256030
@@ -13271,8 +12770,6 @@ ptr 001da780
 ptr 001da7ec
 ptr 001da8b0
 ptr 001e3178
-fix 00240098 -5
-fix 0024010c -5
 fix 00247a44 -1
 fix 00247b08 -1
 fix 0024ce6c +2
@@ -13316,30 +12813,9 @@ fix 002551c8 -8
 fix 002551d0 -8
 fix 002551d4 -8
 fix 002551dc -8
-fix 00256454 -5
 fix 0026c7ec +200
 fix 0027e834 -10
 fix 0028049c +e
-fix 00283254 -5
-fix 00283390 -5
-fix 002834a0 -5
-fix 002834d4 -5
-fix 002834d8 -5
-fix 00284d60 -5
-fix 00284d78 -5
-fix 00284d94 -5
-fix 00284dc8 -5
-fix 00288dc8 -5
-fix 00288e30 -5
-fix 00288ec8 -5
-fix 00288ef8 -5
-fix 00288f34 -5
-fix 00288fac -5
-fix 00288ffc -5
-fix 00289070 -5
-fix 002890e4 -5
-fix 0028bb34 -5
-fix 0029471c -5
 fix 002965c8 -8
 fix 002965d8 -8
 fix 00298e34 -8
@@ -13355,28 +12831,12 @@ fix 00299924 -8
 fix 0029f4f8 +2
 fix 0029fd98 -8
 fix 0029fda8 -8
-fix 002a4f88 -5
-fix 002a5000 -5
-fix 002a502c -5
-fix 002a524c -5
 fix 002a5274 +15
-fix 002a529c -5
-fix 002a52cc -5
 fix 002b8920 -10000
 fix 002b8934 -10000
-fix 002cb8ec -5
 fix 002ea1a4 -350
 fix 002ea1cc -350
 fix 002eb9a0 -350
-fix 002f1444 -5
-fix 002f1458 -5
-fix 002fbc7c -5
-fix 002fc188 -5
-fix 002fccf4 -5
-fix 002ffecc -5
-fix 00300254 -5
-fix 0030598c -5
-fix 00308820 -5
 start 0020f118
 nostart 00252818
 nostart 00252940
@@ -14038,8 +13498,6 @@ ptr 001cdf60
 ptr 001cdfcc
 ptr 001ce090
 ptr 001d6618
-fix 00228228 -5
-fix 0022829c -5
 fix 0022f4b4 -1
 fix 0022f578 -1
 fix 002348dc +2
@@ -14083,32 +13541,11 @@ fix 0023cc38 -8
 fix 0023cc40 -8
 fix 0023cc44 -8
 fix 0023cc4c -8
-fix 0023d554 -5
 fix 0023f604 -80
 fix 0023f668 -80
 fix 0025446c +200
 fix 00265d4c -10
 fix 002679b4 +e
-fix 0026a76c -5
-fix 0026a8a8 -5
-fix 0026a9b8 -5
-fix 0026a9ec -5
-fix 0026a9f0 -5
-fix 0026c278 -5
-fix 0026c290 -5
-fix 0026c2ac -5
-fix 0026c2e0 -5
-fix 002702e0 -5
-fix 00270348 -5
-fix 002703e0 -5
-fix 00270410 -5
-fix 0027044c -5
-fix 002704c4 -5
-fix 00270514 -5
-fix 00270588 -5
-fix 002705fc -5
-fix 0027304c -5
-fix 0027c2ec -5
 fix 0027e168 -8
 fix 0027e178 -8
 fix 002809d4 -8
@@ -14124,20 +13561,7 @@ fix 002814c4 -8
 fix 00287098 +2
 fix 00287938 -8
 fix 00287948 -8
-fix 0028cb28 -5
-fix 0028cba0 -5
-fix 0028cbcc -5
-fix 0028cdec -5
 fix 0028ce14 +15
-fix 0028ce3c -5
-fix 0028ce6c -5
-fix 002b5fbc -5
-fix 002e4a24 -5
-fix 002e4dac -5
-fix 002eb724 -5
-fix 002eb78c -5
-fix 002eb7f4 -5
-fix 002eb858 -5
 fix 002ee200 -2d0
 start 001f55c0
 nostart 0023a288
@@ -14780,11 +14204,6 @@ ptr 001cdcf0
 ptr 001d5b38
 fix 001f8af0 -80
 fix 001f95b8 -80
-fix 00226f00 -5
-fix 002330b8 -5
-fix 0023312c -5
-fix 00239058 -5
-fix 00239090 -5
 fix 0023b58c -1
 fix 0023b650 -1
 fix 002409b4 +2
@@ -14828,30 +14247,9 @@ fix 00248d10 -8
 fix 00248d18 -8
 fix 00248d1c -8
 fix 00248d24 -8
-fix 0024962c -5
 fix 002602c4 +200
 fix 0027139c -10
 fix 00273004 +e
-fix 00275dbc -5
-fix 00275ef8 -5
-fix 00276008 -5
-fix 0027603c -5
-fix 00276040 -5
-fix 002778c8 -5
-fix 002778e0 -5
-fix 002778fc -5
-fix 00277930 -5
-fix 0027b930 -5
-fix 0027b998 -5
-fix 0027ba30 -5
-fix 0027ba60 -5
-fix 0027ba9c -5
-fix 0027bb14 -5
-fix 0027bb64 -5
-fix 0027bbd8 -5
-fix 0027bc4c -5
-fix 0027e69c -5
-fix 0028727c -5
 fix 002890f8 -8
 fix 00289108 -8
 fix 0028b964 -8
@@ -14867,21 +14265,10 @@ fix 0028c454 -8
 fix 00292028 +2
 fix 00292960 -8
 fix 00292970 -8
-fix 00297b50 -5
-fix 00297bc8 -5
-fix 00297bf4 -5
-fix 00297e14 -5
 fix 00297e3c +15
-fix 00297e64 -5
-fix 00297e94 -5
 fix 002a831c -10000
 fix 002a8330 -10000
 fix 002ac044 -10000
-fix 002b75dc -5
-fix 002d3b38 -5
-fix 002df49c -5
-fix 002df824 -5
-fix 002e72c0 -5
 fix 002f647c -80
 fix 002f6504 -10000
 start 001fa6f0
@@ -15599,8 +14986,6 @@ ptr 001ce1e0
 ptr 001ce24c
 ptr 001ce310
 ptr 001d6938
-fix 00232918 -5
-fix 0023298c -5
 fix 0023a5ac -1
 fix 0023a670 -1
 fix 0023f9d4 +2
@@ -15644,32 +15029,11 @@ fix 00247d30 -8
 fix 00247d38 -8
 fix 00247d3c -8
 fix 00247d44 -8
-fix 0024864c -5
 fix 0024a754 -80
 fix 0024a7b8 -80
 fix 0025ec64 +200
 fix 00270154 -10
 fix 00271dbc +e
-fix 00274b74 -5
-fix 00274cb0 -5
-fix 00274dc0 -5
-fix 00274df4 -5
-fix 00274df8 -5
-fix 00276680 -5
-fix 00276698 -5
-fix 002766b4 -5
-fix 002766e8 -5
-fix 0027a6e8 -5
-fix 0027a750 -5
-fix 0027a7e8 -5
-fix 0027a818 -5
-fix 0027a854 -5
-fix 0027a8cc -5
-fix 0027a91c -5
-fix 0027a990 -5
-fix 0027aa04 -5
-fix 0027d454 -5
-fix 00286604 -5
 fix 00288480 -8
 fix 00288490 -8
 fix 0028acec -8
@@ -15685,21 +15049,7 @@ fix 0028b7dc -8
 fix 002913b0 +2
 fix 00291c50 -8
 fix 00291c60 -8
-fix 00296e40 -5
-fix 00296eb8 -5
-fix 00296ee4 -5
-fix 00297104 -5
 fix 0029712c +15
-fix 00297154 -5
-fix 00297184 -5
-fix 002baa0c -5
-fix 002e42ac -5
-fix 002e4634 -5
-fix 002ebe38 -5
-fix 002ebe70 -5
-fix 002f27d4 -5
-fix 002f28b0 -5
-fix 002f4b88 -5
 start 001f8ef0
 start 00230024
 nostart 00245380
@@ -16431,8 +15781,6 @@ ptr 001db544
 ptr 001db634
 ptr 001db644
 ptr 001db654
-fix 0023ac10 -5
-fix 0023ac84 -5
 fix 0024219c -1
 fix 00242260 -1
 fix 002475c4 +2
@@ -16476,32 +15824,11 @@ fix 0024f920 -8
 fix 0024f928 -8
 fix 0024f92c -8
 fix 0024f934 -8
-fix 0025023c -5
 fix 00252284 -80
 fix 002522e8 -80
 fix 00267304 +200
 fix 0027802c -10
 fix 00279c94 +e
-fix 0027ca4c -5
-fix 0027cb88 -5
-fix 0027cc98 -5
-fix 0027cccc -5
-fix 0027ccd0 -5
-fix 0027e558 -5
-fix 0027e570 -5
-fix 0027e58c -5
-fix 0027e5c0 -5
-fix 002825f0 -5
-fix 00282658 -5
-fix 002826f0 -5
-fix 00282720 -5
-fix 0028275c -5
-fix 002827d4 -5
-fix 00282824 -5
-fix 00282898 -5
-fix 0028290c -5
-fix 0028535c -5
-fix 0028df4c -5
 fix 0028fdc8 -8
 fix 0028fdd8 -8
 fix 00292634 -8
@@ -16517,19 +15844,9 @@ fix 00293124 -8
 fix 00298cf8 +2
 fix 00299598 -8
 fix 002995a8 -8
-fix 0029e788 -5
-fix 0029e800 -5
-fix 0029e82c -5
-fix 0029ea4c -5
 fix 0029ea74 +15
-fix 0029ea9c -5
-fix 0029eacc -5
-fix 002bf534 -5
 fix 002d7778 -10000
 fix 002d79e4 -10000
-fix 002dd760 -5
-fix 002ecef4 -5
-fix 002ed27c -5
 start 00204c70
 start 002f002c
 nostart 0020fa84

@@ -125,6 +125,17 @@ def field_value(w):
     return _sx(w)
 
 
+def renumbered_text_id(n, v):
+    """Whether the North American word n loads a text id (addiu / ori rt, $zero, id) and the disc's word v the same text
+    under the 1.02 build's number (that build added five credits lines: ids from 20695 one higher, from 20742 five
+    higher; src/game/ovl/region_core.cpp, region_text_id). Not a relocated field: the disc's own number is kept, because
+    the text tables the game loads are the disc's (taken back, the code showed the text 5 places earlier, #137)."""
+    if n >> 16 != v >> 16 or n >> 26 not in (0x09, 0x0D) or (n >> 21) & 31 != 0:
+        return False
+    i, j = n & 0xFFFF, v & 0xFFFF
+    return i >= 20695 and j == (i + 1 if i < 20742 else i + 5)
+
+
 def apply_fix(w, d):
     """The word with its relocatable field moved by d (field_value's units)."""
     op = w >> 26
@@ -635,9 +646,12 @@ def cmd_check(a):
                 print(f"  {u}: layout differs")
             known = sum(V.known)
             diff = [i for i in range(len(N.code)) if V.known[i] and N.code[i] != V.code[i]]
+            texts = [i for i in diff if renumbered_text_id(N.code[i], V.code[i])]  # (the disc's own text ids: kept)
+            kept = set(texts)
+            diff = [i for i in diff if i not in kept]
             total_bad += len(diff)
             print(f"  {u}: {known} of {len(N.code)} words rebuilt, {len(diff)} differ from the NTSC-U disc's, "
-                  f"{V.unresolved} fields unresolved")
+                  f"{V.unresolved} fields unresolved, {len(texts)} text ids the disc's own")
             for i in diff[: a.show]:
                 ad = N.code_base + 4 * i
                 print(f"      {ad:08x}: ntsc {N.code[i]:08x} rebuilt {V.code[i]:08x} (pal {V.P.code[(V.R.code_fwd(ad) - V.P.code_base) // 4]:08x})")
@@ -699,7 +713,7 @@ def write_fixes(table, pal, ntsc):
             N, V = _pair(ni, pi, u, str(tmp))
             fx = []
             for i in range(len(N.code)):
-                if V.known[i] and N.code[i] != V.code[i]:
+                if V.known[i] and N.code[i] != V.code[i] and not renumbered_text_id(N.code[i], V.code[i]):
                     if om.mask(N.code[i]) != om.mask(V.code[i]):
                         raise SystemExit(f"[region_view] {u} {N.code_base + 4 * i:08x}: not a relocated field")
                     fx.append((N.code_base + 4 * i, field_value(N.code[i]) - field_value(V.code[i])))

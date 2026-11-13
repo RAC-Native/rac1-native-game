@@ -445,10 +445,30 @@ def literal_points(V, L, pts, lits, window=0x40):
             if R.data_fwd(x) != L.secs[k][0]:
                 out[x] = L.secs[k][0]
             continue
-        if R.data_fwd(x) is not None:
-            continue
         i = bisect.bisect_right(R.data, (x, 0xFFFFFFFF, 0))
         cands = {R.data[k][2] for k in (i - 1, i) if 0 <= k < len(R.data)}
+        cur = R.data_fwd(x)
+        if cur is not None:
+            # (translated by the runs, but into a gap between two of them: kept where its bytes are there; else, of the
+            # displacements from the run below's to the run above's, the one under which its bytes are the disc's. The
+            # 1.02 build put 8 bytes before the screens' box templates 0x1e7a50 / 0x1e7a68, which only screen_draw names
+            # (a changed function): the run below's displacement read them 8 bytes early, #165)
+            if len(cands) < 2 or not (0 < i < len(R.data)) or x <= R.data[i - 1][1]:
+                continue
+            for w in (window, window // 2, window // 4):
+                nw = [V.data_word(x + k) for k in range(0, w, 4)]
+                if None in nw or sum(1 for v in nw if v) < 4:
+                    break
+                if [L.data_word(cur + k) for k in range(0, w, 4)] == nw:
+                    break
+                lo, hi = min(cands), max(cands)
+                hits = [d for d in range(lo, hi + 1, 4) if [L.data_word(x + d + k) for k in range(0, w, 4)] == nw]
+                if len(hits) == 1:
+                    out[x] = x + hits[0]
+                    break
+                if hits:
+                    break
+            continue
         nw = [V.data_word(x + k) for k in range(0, window, 4)]
         if None in nw or not any(nw):
             continue

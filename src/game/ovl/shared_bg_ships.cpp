@@ -162,7 +162,7 @@ void bg_ship2_update(uint32_t m) {
             if (!(n < 3) && lbu(0x0013d40a) == 0) {
                 sb(0x0013d40a, 1);
                 sound_play_indexed(1, 0, 0);
-                sub_00263d40(0x53d6, -1);
+                sub_00263d40(TXT(0x53d6), -1);
             }
         }
         if (game_level() == 9 && lw(0x001413d4) == 0x32) {  // (Gaspar, the hero in state 0x32: the fifth)
@@ -171,7 +171,7 @@ void bg_ship2_update(uint32_t m) {
             if (!(n < 5) && lbu(0x0013d417) == 0) {
                 sb(0x0013d417, 1);
                 sound_play_indexed(1, 0, 0);
-                sub_00263d40(0x53d6, -1);
+                sub_00263d40(TXT(0x53d6), -1);
             }
         }
         moby_sound_start(0, 0, m);
@@ -269,7 +269,7 @@ void bg_ship1_update(uint32_t m) {
             if (!(n < 3) && lbu(0x0013d40a) == 0) {
                 sb(0x0013d40a, 1);
                 sound_play_indexed(1, 0, 0);
-                sub_00263d40(0x53d6, -1);
+                sub_00263d40(TXT(0x53d6), -1);
             }
         }
         if (game_level() == 9 && lw(0x001413d4) == 0x32) {  // (Gaspar, the hero in state 0x32: the fifth)
@@ -278,7 +278,7 @@ void bg_ship1_update(uint32_t m) {
             if (!(n < 5) && lbu(0x0013d417) == 0) {
                 sb(0x0013d417, 1);
                 sound_play_indexed(1, 0, 0);
-                sub_00263d40(0x53d6, -1);
+                sub_00263d40(TXT(0x53d6), -1);
             }
         }
         moby_sound_start(0, 0, m);
