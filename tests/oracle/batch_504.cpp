@@ -4,8 +4,8 @@
 // original and the one shared port the port:
 //  - shared_class1886.cpp: class 1886, a blob class 1885 throws: its update, the mark it leaves, its retirement (levels 9, 13);
 //  - shared_path_ahead.cpp: the point a distance ahead along a path (levels 9, 13);
-//  - shared_class1111.cpp: class 1111, the open sea, and its draw callback (levels 11, 16); "class1111_fix42" checks its 1.02
-//    fork (1.02 Gameplay fix 42) when run with RAC1_GAMEPLAY102=42;
+//  - shared_class1111.cpp: class 1111, the open sea, and its draw callback (levels 11, 16); "class1111_fix24" checks its 1.02
+//    fork (1.02 Gameplay fix 24) when run with RAC1_GAMEPLAY102=24;
 //  - shared_race_hud.cpp: the hoverboard races' trick meter (update and draw) and their bottom bar (levels 5, 16);
 //  - shared_class224.cpp, shared_class295.cpp: the space levels' pickups (classes 224 / 228) and rocket (class 295)
 //    (levels 13, 17);
@@ -490,7 +490,7 @@ void class1111_checks() {
     const uint32_t upd = copy_here({{11, 0x0030b358}, {16, 0x002dee10}});
     const uint32_t draw = copy_here({{11, 0x0030a908}, {16, 0x002de3c0}});
     if (upd == 0) {
-        for (const char* n : {"class1111_update", "class1111_draw", "class1111_fix42"}) not_here(n);
+        for (const char* n : {"class1111_update", "class1111_draw", "class1111_fix24"}) not_here(n);
         return;
     }
     const uint32_t sea = copy_here({{11, 0x00161df8}, {16, 0x00161c50}});
@@ -567,10 +567,10 @@ void class1111_checks() {
         seed_rand();
     }, 100);
 
-    // fix 42 (1.02 Gameplay): the port with the fix against the port without it plus the 1.02 build's stores by hand
-    if (const char* only = std::getenv("ORACLE_ONLY"); only == nullptr || std::strcmp(only, "class1111_fix42") == 0) {
+    // fix 24 (1.02 Gameplay): the port with the fix against the port without it plus the 1.02 build's stores by hand
+    if (const char* only = std::getenv("ORACLE_ONLY"); only == nullptr || std::strcmp(only, "class1111_fix24") == 0) {
         if (std::getenv("RAC1_GAMEPLAY102") == nullptr) {
-            std::printf("%-26s skipped (run with RAC1_GAMEPLAY102=42)\n", "class1111_fix42");
+            std::printf("%-26s skipped (run with RAC1_GAMEPLAY102=24)\n", "class1111_fix24");
             ++g_skipped;
         } else {
             int bad = 0, n = 0, set = 0;
@@ -608,10 +608,10 @@ void class1111_checks() {
                     if (a >= ee_stack_ptr() - 0x10000 && a < ee_stack_ptr() + 0x10000) continue;  // (the port's stack frames)
                     uint32_t x, y;
                     std::memcpy(&x, &with_fix[a], 4); std::memcpy(&y, &ram[a], 4);
-                    if (x != y) { if (bad < 8) std::printf("  class1111_fix42 case %d: %08x fix=%08x expected=%08x\n", c, a, x, y); ++bad; break; }
+                    if (x != y) { if (bad < 8) std::printf("  class1111_fix24 case %d: %08x fix=%08x expected=%08x\n", c, a, x, y); ++bad; break; }
                 }
             }
-            std::printf("%-26s %s (%d cases, %d set the water disc)\n", "class1111_fix42", bad == 0 && n > 0 && set > 0 ? "ok" : "FAIL", n, set);
+            std::printf("%-26s %s (%d cases, %d set the water disc)\n", "class1111_fix24", bad == 0 && n > 0 && set > 0 ? "ok" : "FAIL", n, set);
             if (bad != 0 || n == 0 || set == 0) ++g_fail;
         }
     }

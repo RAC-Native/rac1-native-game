@@ -11,7 +11,7 @@
 // blobs (20 words), +0x100 the target's point, +0x140 the target, +0x144 2 when it has none.
 //
 // The 1.02 build (the PAL disc 2.00) changed two things here: a killed one's bolts on Gemlik Base, with Ratchet at the height
-// 250 (within 4), get moby_drop_bolts' flag 0x200 (their flag 2, as when Ratchet stands next to it): 1.02 Gameplay fix 66
+// 250 (within 4), get moby_drop_bolts' flag 0x200 (their flag 2, as when Ratchet stands next to it): 1.02 Gameplay fix 25
 // (fixes102.h), off by default; and
 // no blob is thrown, while some are out, when either of the frame's load factors (0x15f5d0 / 0x15f5d4) is 0.85 or more: a
 // throttle for the frame's load, not ported.
@@ -65,8 +65,8 @@ void class1885_hit(uint32_t m, uint32_t pv) {
         if (0.0f < health) {
             sb(pv + 0x67, 0x5a);
         } else {
-            // enhancement: 1.02 Gameplay, fix 66 (fixes102.h): on Gemlik Base with Ratchet at the height 250, the bolts' flag 0x200
-            const bool to_hero = gameplay102_on(66) && lw(0x0015ed84) == 0xd && abs_f(fpu_sub(lwc1(0x0013f3d8), 250.0f)) < 4.0f;
+            // enhancement: 1.02 Gameplay, fix 25 (fixes102.h): on Gemlik Base with Ratchet at the height 250, the bolts' flag 0x200
+            const bool to_hero = gameplay102_on(25) && lw(0x0015ed84) == 0xd && abs_f(fpu_sub(lwc1(0x0013f3d8), 250.0f)) < 4.0f;
             moby_drop_bolts(m, to_hero ? 0x200u : 0u, -1);
             sb(m + 0x20, 2);
             sb(pv + 0x67, 0x78);

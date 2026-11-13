@@ -9,7 +9,7 @@
 namespace rac1 {
 
 void class1885_update(uint32_t m);  // L9:0x0030ab80 L13:0x0030d550
-// Its hits (pvars `pv`): the health; killed, its bolts and state 2. (The 1.02 build's fix 66 here.)
+// Its hits (pvars `pv`): the health; killed, its bolts and state 2. (The 1.02 build's fix 25 here.)
 void class1885_hit(uint32_t m, uint32_t pv);  // L9:0x0030a9e8 L13:0x0030d3b8
 // Its blobs counted (pvars +0x91: its group's live members and its live blobs); the last free slot of its list (+0xb0,
 // 20 words), or -1.

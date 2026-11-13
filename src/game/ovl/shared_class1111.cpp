@@ -101,7 +101,7 @@ void tile_point(uint32_t buf, int32_t k, uint32_t pv, uint32_t layer_scale, uint
 // SCES-50916-2.00.txt; its L11:0x30c728 / L16:0x2e01d8): with the camera above 180 the underwater colours (0x161200,
 // seven bytes) are set each frame (a look, not forked; docs/advanced.md), and after the swell the level's water disc
 // (0x1612dc: on, centre (512, 512), height the swell's, radius 1024) so that the open sea is water to the hero's movement,
-// the bombs and the mines (surface_height): 1.02 Gameplay fix 42 (fixes102.h), off by default.
+// the bombs and the mines (surface_height): 1.02 Gameplay fix 24 (fixes102.h), off by default.
 // orig: L11:0x0030b358 L16:0x002dee10
 void class1111_update(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
@@ -141,7 +141,7 @@ void class1111_update(uint32_t m) {
         const float angle = fpu_sub(fpu_mul(int_to_float(frame), u2f(0x3c8ee7a7u)), u2f(0x4048f5c3u));  // (degrees to radians, - 3.14)
         const float swell = fpu_add(lwc1(s + 0x24), fpu_mul(sin_vu(angle), 0.25f));
         swc1(s + 0x20, swell);
-        if (gameplay102_on(42)) {  // enhancement: 1.02 Gameplay, fix 42 (fixes102.h): the open sea is water
+        if (gameplay102_on(24)) {  // enhancement: 1.02 Gameplay, fix 24 (fixes102.h): the open sea is water
             sw(OV(0x001612dc), 1);
             swc1(OV(0x001612e4), 512.0f);
             swc1(OV(0x001612ec), 1024.0f);

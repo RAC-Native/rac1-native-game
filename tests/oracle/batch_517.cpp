@@ -7,7 +7,7 @@
 //  - shared_class1400.cpp: class 1400, the weather about the camera: its update, its wind and its two particles (levels 8, 12,
 //    14);
 //  - shared_class1885.cpp: class 1885, the blob thrower: its update, hits, free slot, throw and two random helpers (levels 9,
-//    13); "class1885_fix66" checks its 1.02 fork (1.02 Gameplay fix 66) when run with RAC1_GAMEPLAY102=66;
+//    13); "class1885_fix25" checks its 1.02 fork (1.02 Gameplay fix 25) when run with RAC1_GAMEPLAY102=25;
 //  - shared_class1511.cpp: class 1511's update and its remains (levels 5, 14);
 //  - shared_floaters.cpp: the rafts' next stage (levels 5, 14, 16), each level's own build of the arrival it calls, and
 //    Oltanis's build of floater_find;
@@ -694,7 +694,7 @@ void class1885_checks() {
     const uint32_t radius = copy_here({{9, 0x00277688}, {13, 0x00263988}});
     if (upd == 0) {
         for (const char* n : {"class1885_update", "class1885_hit", "class1885_free_slot", "class1885_throw", "rand_disc_offset",
-                              "rand_radius", "class1885_fix66"})
+                              "rand_radius", "class1885_fix25"})
             not_here(n);
         return;
     }
@@ -827,12 +827,12 @@ void class1885_checks() {
         return Args{{}, {rf(-5.0f, 20.0f)}};
     }, [](A a) { return rf32(rand_radius(a.f[0])); });
 
-    // fix 66 (1.02 Gameplay): the port with the fix against the 1.02 build's death, by hand (L13:0x30e880 on the PAL disc 2.00:
+    // fix 25 (1.02 Gameplay): the port with the fix against the 1.02 build's death, by hand (L13:0x30e880 on the PAL disc 2.00:
     // on Gemlik Base (0x15ed84 13) with Ratchet's height within 4 of 250, moby_drop_bolts' flag 0x200), and against the port
     // without it elsewhere
-    if (const char* only = std::getenv("ORACLE_ONLY"); only == nullptr || std::strcmp(only, "class1885_fix66") == 0) {
+    if (const char* only = std::getenv("ORACLE_ONLY"); only == nullptr || std::strcmp(only, "class1885_fix25") == 0) {
         if (std::getenv("RAC1_GAMEPLAY102") == nullptr) {
-            std::printf("%-26s skipped (run with RAC1_GAMEPLAY102=66)\n", "class1885_fix66");
+            std::printf("%-26s skipped (run with RAC1_GAMEPLAY102=25)\n", "class1885_fix25");
             ++g_skipped;
         } else {
             int bad = 0, n = 0, flagged = 0;
@@ -888,10 +888,10 @@ void class1885_checks() {
                     if (a >= ee_stack_ptr() - 0x10000 && a < ee_stack_ptr() + 0x10000) continue;  // (the port's stack frames)
                     uint32_t x, y;
                     std::memcpy(&x, &with_fix[a], 4); std::memcpy(&y, &ram[a], 4);
-                    if (x != y) { if (bad < 8) std::printf("  class1885_fix66 case %d: %08x fix=%08x expected=%08x\n", c, a, x, y); ++bad; break; }
+                    if (x != y) { if (bad < 8) std::printf("  class1885_fix25 case %d: %08x fix=%08x expected=%08x\n", c, a, x, y); ++bad; break; }
                 }
             }
-            std::printf("%-26s %s (%d cases, %d with the bolts' flag)\n", "class1885_fix66", bad == 0 && n > 0 && flagged > 0 ? "ok" : "FAIL", n, flagged);
+            std::printf("%-26s %s (%d cases, %d with the bolts' flag)\n", "class1885_fix25", bad == 0 && n > 0 && flagged > 0 ? "ok" : "FAIL", n, flagged);
             if (bad != 0 || n == 0 || flagged == 0) ++g_fail;
         }
     }
