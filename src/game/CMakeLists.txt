@@ -121,6 +121,12 @@ add_library(rac1_game STATIC
     ovl/novalis_level_fns.cpp
     ovl/sound_emitter_types.cpp
     ovl/novalis_birdbot.cpp
+    ovl/shared_bg_ships.cpp
+    ovl/shared_movers.cpp
+    ovl/shared_puffer.cpp
+    ovl/shared_homing_missile.cpp
+    ovl/shared_shell.cpp
+    ovl/shared_tracer.cpp
     ovl/novalis_amoeboid.cpp
     ovl/vendor_frame.cpp
     ovl/galactic_map.cpp

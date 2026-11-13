@@ -162,6 +162,7 @@ shared code every level runs:
 | 0, 3, 5, 6, 11, 12 and 18 | 481 (the tfrag lighting written by hand, 0x295350, on the same dumps; batch 101 checks it on Veldin and the title) |
 | 0, 3, 5, 6, 11, 12 and 18 | 482 (the drop shadows' VU0 routines written by hand, through shadow_points 0x285a68 and drop_shadows_draw 0x285870 on the frame's deferred mobys, on the same dumps; batch 79 checks them on Veldin's mobys) |
 | 0, 3, 5, 6, 11, 12 and 18 | 483 (the sky's routines written by hand, 0x28c14c, 0x28c3c0, 0x28c298, 0x28c680 and 0x28bd58, on the same dumps) |
+| 2, 4, 7, 8, 9, 10, 12 and 13 | 510 (stage 4's shared class ports, `src/game/ovl/shared_*.cpp`, each against every level's own copy at its own address: the background ships and their exhaust / glow helpers (2, 9, 10), the linked platform and door (7, 13), the puffer (8, 10), the homing missile and its launch (8, 12), the shell (9, 10) and the shot (4, 12) with their launches, the tracer round (8, 9); no dumps: states built from the level; a check prints "skipped" on a level without its copy) |
 
 For a quick check after a small change, level 0's 63, 79, 118 and 141 are the usual minimum.
 
