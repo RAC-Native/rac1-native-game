@@ -762,7 +762,13 @@ static void play(int32_t snd) {
  * node the step toward him (its next node) - a flow field: one search serves every robot. Cells by a wall cost more,
  * so the paths keep off the walls; a diagonal step needs both straight ones beside it (no corner cut).
  * A robot (nav_steer) walks straight at Ratchet when a knee-high ray from it to him hits nothing of the level and
- * they stand at about one height; else at the node NAV_AHEAD steps along its path from where it is.
+ * they stand at about one height; else at the farthest node of the next NAV_AHEAD along its path it sees (a knee-high
+ * ray clear: no corner cut).
+ * Whoever moves a walker (its own code, a hit, the plugin), a step through the level's collision or under a surface too
+ * low for it is taken back or turned along the wall (walk_guard): the Gadgetron robots' own code walks through the
+ * covers, and a step cutting a corner went into the hub or a ramp's wedge, hollow inside, where it was lost from sight.
+ * One shut in all the same (enemy_covered: under a surface too low to stand, or over a node the open floor's flood does
+ * not reach) is put on the nearest open node (walk_rescue).
  * The jetpack troopers fly on their own: the game keeps them out of the walls (they slide along them or over them).
  */
 #define NAV_W 132
@@ -775,7 +781,7 @@ static void play(int32_t snd) {
 #define NAV_HEADROOM 1.8f    /* under a surface: room for a robot */
 #define NAV_KNEE 0.7f        /* the links' rays, over the ground */
 #define NAV_BUDGET 1500      /* rays a frame while the grid is built */
-#define NAV_AHEAD 4          /* steps along the path a robot walks at */
+#define NAV_AHEAD 10         /* steps along the path a robot looks ahead: it walks at the farthest it sees */
 #define NAV_NONE 0xffffu
 
 static const int NAV_DX[8] = {1, 1, 0, -1, -1, -1, 0, 1}, NAV_DY[8] = {0, 1, 1, 1, 0, -1, -1, -1};
@@ -788,6 +794,7 @@ static struct {
     uint8_t link[NAV_NODES];   /* bit d: linked to the neighbour cell d */
     uint8_t lvl[NAV_NODES];    /* bit d: that link's node is the neighbour's level 1 */
     uint8_t edge_cost[NAV_NODES];  /* more by a wall */
+    uint8_t open[NAV_NODES];   /* reached from the arena's open floor (not shut in: under the hub's top, in a ramp's wedge) */
     uint16_t dist[NAV_NODES];
     int32_t next[NAV_NODES];   /* the step toward the target; -1 none */
     int32_t heap[8 * NAV_NODES];
@@ -823,7 +830,34 @@ static void nav_reset(void) {
     for (int i = 0; i < NAV_NODES; ++i) {
         nav.h[i] = NAN;
         nav.link[i] = nav.lvl[i] = 0;
-        nav.edge_cost[i] = 0;
+        nav.edge_cost[i] = nav.open[i] = 0;
+    }
+}
+
+static int nav_node_at(const float p[3]);
+static int nav_neighbour(int n, int d);
+
+/* the nodes linked to the arena's open floor south of the hub (where Ratchet comes back to): the others are shut in */
+static void nav_open_flood(void) {
+    const float at[3] = {s.centre[0], s.centre[1] - 20.0f, nav.floor_z};
+    int start = -1;
+    for (int r = 0; r < 4 && start < 0; ++r) {
+        const float p[3] = {at[0] + (float)r, at[1], at[2]};
+        start = nav_node_at(p);
+    }
+    if (start < 0) return;
+    int head = 0, tail = 0;
+    nav.open[start] = 1;
+    nav.heap[tail++] = start;
+    while (head < tail) {
+        const int32_t u = nav.heap[head++];
+        for (int d = 0; d < 8; ++d) {
+            if (!((nav.link[u] >> d) & 1)) continue;
+            const int32_t v = nav_neighbour(u, d);
+            if (nav.open[v]) continue;
+            nav.open[v] = 1;
+            nav.heap[tail++] = v;
+        }
     }
 }
 
@@ -886,8 +920,11 @@ static void nav_build(void) {
     if (nav.state == 3) {
         for (int n = 0; n < NAV_NODES; ++n)  /* by a wall (a link missing): dearer, the paths keep off */
             if (!isnan(nav.h[n]) && nav.link[n] != 0xff) nav.edge_cost[n] = 8;
+        nav_open_flood();
+        int shut = 0;
+        for (int n = 0; n < NAV_NODES; ++n) shut += !isnan(nav.h[n]) && !nav.open[n];
         char msg[160];
-        snprintf(msg, sizeof msg, "navigation: %d nodes, %d links, %d rays in %d frames", nav.nodes, nav.links, nav.rays, nav.frames);
+        snprintf(msg, sizeof msg, "navigation: %d nodes (%d shut in), %d links, %d rays in %d frames", nav.nodes, shut, nav.links, nav.rays, nav.frames);
         api->log(msg);
     }
 }
@@ -976,18 +1013,26 @@ static void nav_field(int target) {
     }
 }
 
-/* the point NAV_AHEAD steps along the flow field's path from `r` toward Ratchet: 1 and `to`, 0 none (off the grid, no
-   path) */
-static int nav_toward(const float r[3], float to[2]) {
+static int walk_blocked(uint32_t self, const float a[3], const float b[3], float up);
+
+/* the point along the flow field's path from `r` toward Ratchet the walker at `r` walks at: the farthest of the next
+   NAV_AHEAD steps it sees (a ray at knee height clear of the level: no corner of a wall, a cover, the hub or a ramp cut),
+   the first step at least: 1 and `to`, 0 none (off the grid, no path) */
+static int nav_toward(uint32_t self, const float r[3], float to[2]) {
     if (nav.state != 3 || nav.target < 0) return 0;
     int n = nav_node_at(r);
-    if (n < 0 || nav.dist[n] == NAV_NONE) return 0;
+    if (n < 0 || nav.dist[n] == NAV_NONE || nav.next[n] < 0) return 0;
     const float h0 = nav.h[n];
-    for (int k = 0; k < NAV_AHEAD && nav.next[n] >= 0; ++k) {  /* (on a slope only a step or two: no cutting off a ramp's side) */
-        if (k > 0 && fabsf(nav.h[nav.next[n]] - h0) > 0.4f) break;
+    int best = nav.next[n];
+    n = best;
+    for (int k = 1; k < NAV_AHEAD && nav.next[n] >= 0; ++k) {  /* (on a slope only a step or two: no cutting off a ramp's side) */
+        if (fabsf(nav.h[nav.next[n]] - h0) > 0.4f) break;
         n = nav.next[n];
+        const int cell = n % NAV_CELLS;
+        const float p[3] = {nav.ox + (float)(cell % NAV_W) + 0.5f, nav.oy + (float)(cell / NAV_W) + 0.5f, nav.h[n]};
+        if (!walk_blocked(self, r, p, NAV_KNEE)) best = n;
     }
-    const int cell = n % NAV_CELLS;
+    const int cell = best % NAV_CELLS;
     to[0] = nav.ox + (float)(cell % NAV_W) + 0.5f;
     to[1] = nav.oy + (float)(cell / NAV_W) + 0.5f;
     return 1;
@@ -1002,7 +1047,7 @@ static void nav_steer(uint32_t robot, const float r[3], const float h[3], float 
         rac1_ray_hit hit = {sizeof hit};
         if (!api->collide_ray(a, b, robot, 0, &hit) || hit.moby != 0) return;
     }
-    if (nav_toward(r, to)) *direct = 0;
+    if (nav_toward(robot, r, to)) *direct = 0;
 }
 
 /* the field again every half second while robots are out, when Ratchet stands on another node */
@@ -1753,6 +1798,127 @@ static float floor_under(uint32_t self, const float p[3]) {
     return NAN;
 }
 
+/* an enemy shut in where no one sees it (under the hub's top, inside a ramp's wedge or a cover), standing on the floor
+   there (not in the air: a jump in from a gate, a hit's throw): the level's surface right over it (a ray down to it at its
+   own place: the tops face up) lower than a walker's room (NAV_HEADROOM: a wedge's slope, a cover's top), or higher
+   but over a node the open floor's flood did not reach (the hub's inside; a gate's lintel over the open floor is no
+   shutting in) */
+static int enemy_covered(uint32_t self, const float p[3]) {
+    if (nav.state != 3) return 0;
+    const float g = floor_under(self, p);
+    if (isnan(g) || p[2] - g > 1.0f) return 0;
+    float a[3] = {p[0], p[1], p[2] + 8.0f};
+    const float b[3] = {p[0], p[1], p[2] + 0.3f};
+    uint32_t skip = self;
+    float over = NAN;
+    for (int k = 0; k < 3 && isnan(over); ++k) {
+        rac1_ray_hit hit = {sizeof hit};
+        if (!api->collide_ray(a, b, skip, 0, &hit)) return 0;
+        if (hit.moby == 0) over = hit.point[2] - g;
+        skip = hit.moby;
+        a[2] = hit.point[2] - 0.05f;
+    }
+    if (isnan(over)) return 0;
+    if (over < NAV_HEADROOM) return 1;
+    const int n = nav_node_at(p);
+    return n >= 0 && fabsf(nav.h[n] - g) <= 1.0f && !nav.open[n];
+}
+
+/* the level's collision across a step a -> b at `up` over its ends (the walker itself and the mobys passed through:
+   a crate is no wall), b pushed WALK_RADIUS further on (its body) */
+#define WALK_RADIUS 0.35f
+#define WALK_PROBE 0.35f  /* the step's ray over the feet: under the low walls' tops (1.2), over the ramps' tips */
+static int walk_blocked(uint32_t self, const float a[3], const float b[3], float up) {
+    const float dx = b[0] - a[0], dy = b[1] - a[1], d = sqrtf(dx * dx + dy * dy);
+    if (d < 0.0001f) return 0;
+    float p[3] = {a[0], a[1], a[2] + up};
+    const float q[3] = {b[0] + dx / d * WALK_RADIUS, b[1] + dy / d * WALK_RADIUS, b[2] + up};
+    uint32_t skip = self;
+    for (int k = 0; k < 3; ++k) {
+        rac1_ray_hit hit = {sizeof hit};
+        if (!api->collide_ray(p, q, skip, 0, &hit)) return 0;
+        if (hit.moby == 0) return 1;
+        skip = hit.moby;  /* (on from the moby: the rest of the step) */
+        p[0] = hit.point[0], p[1] = hit.point[1], p[2] = hit.point[2];
+    }
+    return 0;
+}
+
+/* the level's surface over the walker's place b lower than its room (NAV_HEADROOM over its feet): it would be under a
+   ramp's slope (walking in by its low tip, where the side is under WALK_PROBE) or a cover's top */
+static int walk_roofed(uint32_t self, const float b[3]) {
+    float a[3] = {b[0], b[1], b[2] + NAV_HEADROOM};
+    const float c[3] = {b[0], b[1], b[2] + 0.3f};
+    uint32_t skip = self;
+    for (int k = 0; k < 3; ++k) {
+        rac1_ray_hit hit = {sizeof hit};
+        if (!api->collide_ray(a, c, skip, 0, &hit)) return 0;
+        if (hit.moby == 0) return 1;
+        skip = hit.moby;
+        a[2] = hit.point[2] - 0.05f;
+    }
+    return 0;
+}
+
+/* a step a -> b a walker cannot take: through the level's collision, or under a surface too low for it */
+static int walk_step_bad(uint32_t self, const float a[3], const float b[3]) {
+    return walk_blocked(self, a, b, WALK_PROBE) || walk_roofed(self, b);
+}
+
+static int walk_guarded;  /* (the tests' count: steps taken back or turned along a wall) */
+
+/* whoever moved the walker this frame (its own code, a hit throwing it, the plugin's steering), a step through the
+   level's collision (a wall, a cover, the hub's or a ramp's side) is taken back: along the wall when one axis is clear
+   (it slides), else none; so is a step under a surface too low for it (walk_roofed). Jumps over 3 units are no step
+   (a placing) */
+static void walk_guard(enemy* e, uint32_t m, float r[3]) {
+    const float* a = e->prev;
+    const float dx = r[0] - a[0], dy = r[1] - a[1], d2 = dx * dx + dy * dy;
+    if (d2 < 0.000001f || d2 > 9.0f || !walk_step_bad(m, a, r)) return;
+    const float sx[3] = {r[0], a[1], r[2]}, sy[3] = {a[0], r[1], r[2]};
+    const float* to = fabsf(dx) > 0.001f && !walk_step_bad(m, a, sx) ? sx : fabsf(dy) > 0.001f && !walk_step_bad(m, a, sy) ? sy : a;
+    r[0] = to[0], r[1] = to[1];
+    api->swf(m + 0x10, r[0]);
+    api->swf(m + 0x14, r[1]);
+    api->moby_moved(m);
+    ++walk_guarded;
+}
+
+static int walk_rescued;  /* (the tests' count) */
+
+/* one shut in anyway (put there by a hit's throw, spawned there): onto the nearest node the open floor reaches, within
+   6 cells */
+static void walk_rescue(uint32_t m, float r[3]) {
+    if ((int8_t)rac1_lb(api, m + 0x20) < 0 || !enemy_covered(m, r)) return;  /* (dying: left alone) */
+    if (s.test_log) {
+        const int n = nav_node_at(r);
+        char b[160];
+        snprintf(b, sizeof b, "rescue: class %d at %.2f %.2f %.2f (node %d, level %d, height %.2f), state %d", (int)(int16_t)rac1_lh(api, m + 0xa6),
+                 r[0] - s.centre[0], r[1] - s.centre[1], r[2] - nav.floor_z, n, n >= NAV_CELLS, n >= 0 ? nav.h[n] - nav.floor_z : -99.0f,
+                 (int)(int8_t)rac1_lb(api, m + 0x20));
+        api->log(b);
+    }
+    const int c0 = (int)floorf(r[0] - nav.ox), r0 = (int)floorf(r[1] - nav.oy);
+    for (int rad = 1; rad <= 6; ++rad)
+        for (int dr = -rad; dr <= rad; ++dr)
+            for (int dc = -rad; dc <= rad; ++dc) {
+                if (abs(dr) != rad && abs(dc) != rad) continue;
+                const int c = c0 + dc, rr = r0 + dr;
+                if (c < 0 || c >= NAV_W || rr < 0 || rr >= NAV_H) continue;
+                for (int l = 0; l < 2; ++l) {
+                    const int n = l * NAV_CELLS + rr * NAV_W + c;
+                    if (isnan(nav.h[n]) || !nav.open[n] || nav.link[n] == 0) continue;
+                    r[0] = nav.ox + (float)c + 0.5f, r[1] = nav.oy + (float)rr + 0.5f, r[2] = nav.h[n];
+                    api->swf(m + 0x10, r[0]);
+                    api->swf(m + 0x14, r[1]);
+                    api->swf(m + 0x18, r[2]);
+                    api->moby_moved(m);
+                    ++walk_rescued;
+                    return;
+                }
+            }
+}
+
 /* falling: faster each frame, down to the floor `g`; into the lava they burn (gone: counted as felled) */
 static void fall_to(enemy* e, uint32_t m, float r[3], float g) {
     e->vz = fminf(e->vz + GRAVITY, 1.0f);
@@ -1797,14 +1963,22 @@ static void gadget_ground(enemy* e, uint32_t m, float r[3]) {
 }
 
 static void enemies_follow(const float h[3]) {
+    const int arena = in_main();
     for (int i = 0; i < s.nen; ++i) {
         enemy* e = &s.en[i];
         const struct kind_def* k = &KIND[e->kind];
         const uint32_t m = en_moby(e);
-        if (m == 0 || k->moves != 0 || k->import != NULL || rac1_lw(api, m + 0x78) == 0) continue;  /* (the flyers: their own flight;
-                                                                                     other planets': straight at him) */
+        if (m == 0 || k->moves != 0) continue;  /* (the flyers: their own flight) */
         float r[3];
         pos_of(m, r);
+        if (k->import != NULL || rac1_lw(api, m + 0x78) == 0) {  /* (other planets': straight at him, their own code; the
+                                                                     level's walls kept all the same) */
+            if (e->has_prev) walk_guard(e, m, r);
+            if (arena) walk_rescue(m, r);
+            memcpy(e->prev, r, sizeof r);
+            e->has_prev = 1;
+            continue;
+        }
         const uint32_t st = rac1_lb(api, m + 0x20);
         if ((s.clock + i) % 6 == 0) nav_steer(m, r, h, e->to, &e->direct);
         const int robot = e->kind == K_ROBOT, gadget = k->cls == 541;
@@ -1822,8 +1996,10 @@ static void enemies_follow(const float h[3]) {
                 api->moby_moved(m);
             }
         }
+        if (e->has_prev) walk_guard(e, m, r);
         if (robot) robot_fall(e, m, st, r);
         else if (gadget && st != GADGET_HIT) gadget_ground(e, m, r);
+        if (arena) walk_rescue(m, r);  /* (the grid is the arena's) */
         memcpy(e->prev, r, sizeof r);
         e->has_prev = 1;
     }
@@ -4050,6 +4226,73 @@ static void test(void* user, const char* text, uint64_t frame) {
                          m ? (int)(int16_t)rac1_lh(api, m + 0xa6) : 0, m ? (unsigned)rac1_lw(api, m + 0x74) : 0,
                          m ? (unsigned)rac1_lw(api, m + 0x34) : 0, m ? (unsigned)rac1_lw(api, m + 0x38) : 0, r[0], r[1], r[2],
                          m ? dist3(r, h) : 0.0f);
+                api->log(b);
+            }
+        }
+        return;
+    }
+    if (s.mine && strncmp(text, "arena_hub", 9) == 0 && text[9] >= '0' && text[9] <= '9') {
+        /* (arena_hub<N>[n|t][v]: Ratchet on the hub's top (n: on the floor north-east of it, t: on the north-east tower's
+           top), his health kept full, challenge N from 420; the walkers under the level's own surfaces (inside the hub or a
+           ramp's wedge: gone from sight) told once each, a count every 300 frames with those that reached him (within 2.5,
+           at his height: up the ramps)) */
+        static int covered_seen[MAX_EN], covered_total, reached;
+        static uint32_t reached_m[64];
+        const int ch = atoi(text + 9), floor_t = strchr(text + 9, 'n') != NULL, tower_t = strchr(text + 9, 't') != NULL;
+        s.test_log = 1;
+        if (frame == 100) {
+            const float at[3] = {s.centre[0] + (floor_t ? 14.0f : tower_t ? 45.0f : 0.0f), s.centre[1] + (floor_t ? 14.0f : tower_t ? 45.0f : 0.0f),
+                                 nav.floor_z + (floor_t ? 0.5f : tower_t ? 6.5f : 3.5f)};
+            hero_move(at, 1.5708f);
+            memset(covered_seen, 0, sizeof covered_seen);
+            covered_total = reached = 0;
+        }
+        if (frame % 30 == 0 && api->health() > 0 && api->health() < 4) api->sw(0x001415f8u, 4);
+        if (frame == 420 && ch >= 0 && ch < N_CHALLENGES) challenge_start(ch);
+        if (frame > 420 && frame % 10 == 0) {
+            int walkers = 0, covered = 0;
+            for (int i = 0; i < s.nen && i < MAX_EN; ++i) {
+                const uint32_t m = en_moby(&s.en[i]);
+                if (m == 0 || KIND[s.en[i].kind].moves != 0) continue;
+                ++walkers;
+                float r[3], h[3];
+                pos_of(m, r);
+                pos_of(api->hero(), h);
+                if (fabsf(r[2] - h[2]) < 1.5f && (r[0] - h[0]) * (r[0] - h[0]) + (r[1] - h[1]) * (r[1] - h[1]) < 6.25f) {
+                    int seen = 0;
+                    for (int j = 0; j < reached && j < 64; ++j) seen |= reached_m[j] == m;
+                    if (!seen && reached < 64) reached_m[reached++] = m;
+                }
+                if (!enemy_covered(m, r)) continue;
+                ++covered;
+                if (!covered_seen[i]) {
+                    covered_seen[i] = 1;
+                    ++covered_total;
+                    char b[200];
+                    snprintf(b, sizeof b, "hub test %llu: %c %d covered at %.2f %.2f %.2f (direct %d, to %.1f %.1f, state %d)",
+                             (unsigned long long)frame, KIND[s.en[i].kind].letter, i, r[0] - s.centre[0], r[1] - s.centre[1],
+                             r[2] - nav.floor_z, s.en[i].direct, s.en[i].to[0] - s.centre[0], s.en[i].to[1] - s.centre[1],
+                             (int)(int8_t)rac1_lb(api, m + 0x20));
+                    api->log(b);
+                }
+            }
+            if (strchr(text + 9, 'v') != NULL && frame % 20 == 0)  /* (v: the bomb bots' places, states, steering) */
+                for (int i = 0; i < s.nen && i < MAX_EN; ++i) {
+                    const uint32_t m = en_moby(&s.en[i]);
+                    if (m == 0 || s.en[i].kind != K_BOMBER) continue;
+                    float r[3];
+                    pos_of(m, r);
+                    char b[200];
+                    snprintf(b, sizeof b, "hub test %llu: B %d at %.2f %.2f %.2f state %d, direct %d to %.1f %.1f, node %d", (unsigned long long)frame, i,
+                             r[0] - s.centre[0], r[1] - s.centre[1], r[2] - nav.floor_z, (int)(int8_t)rac1_lb(api, m + 0x20), s.en[i].direct,
+                             s.en[i].to[0] - s.centre[0], s.en[i].to[1] - s.centre[1], nav_node_at(r));
+                    api->log(b);
+                }
+            if (frame % 300 == 0) {
+                char b[240];
+                snprintf(b, sizeof b, "hub test %llu: mode %d, %d walkers, %d covered now, %d covered so far, killed %d, reached him %d, "
+                         "health %d, steps kept off the walls %d, rescued %d", (unsigned long long)frame, s.mode, walkers, covered, covered_total,
+                         s.killed, reached, (int)api->health(), walk_guarded, walk_rescued);
                 api->log(b);
             }
         }
