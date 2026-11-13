@@ -122,6 +122,7 @@ add_library(rac1_game STATIC
     ovl/sound_emitter_types.cpp
     ovl/shared_spawner.cpp
     ovl/shared_sandmouse.cpp
+    ovl/shared_race_camera.cpp
     ovl/shared_class567.cpp
     ovl/shared_class679.cpp
     ovl/shared_rock.cpp

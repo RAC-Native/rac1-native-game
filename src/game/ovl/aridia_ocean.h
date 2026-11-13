@@ -20,8 +20,9 @@ void ari_ocean_record_l2(uint32_t rec);                    // orig: L2:0x002a48a
 void ari_ocean_cells_clip_l2(uint32_t rec);                // orig: L2:0x0024f748
 void ari_ocean_cells_draw_l2(uint32_t rec);                // orig: L2:0x0024fa80
 void ari_glow_quad_l2(uint32_t pos, uint32_t rgba, float size, float fade);  // orig: L2:0x00264b50
-void ari_bg_ship1_glow_draw_l2(uint32_t m);                // orig: L2:0x002ec308
-void ari_bg_ship2_glow_draw_l2(uint32_t m);                // orig: L2:0x002ecc68
+// (the two ship glows are shared: the other levels' copies are the same code, listed after the declarations)
+void ari_bg_ship1_glow_draw_l2(uint32_t m);                // orig: L2:0x002ec308 (L9:0x00305c10)
+void ari_bg_ship2_glow_draw_l2(uint32_t m);                // orig: L2:0x002ecc68 (L9:0x00306570 L10:0x002eb958)
 void ari_class1208_update_l2(uint32_t m);                  // orig: L2:0x002ebf20 (the Rocket Launcher's rocket)
 
 // orig: (host) the ocean's draw callback as the engine calls it: L2:0x2ea048 inside the MRP's prim-list scope (mrp_fx.h)
@@ -29,7 +30,6 @@ void ari_ocean_draw_l2(uint32_t m);
 
 // orig: (none) -- registers the ocean's / glows' functions for the indirect calls (ovl_call_moby_fn)
 void aridia_ocean_fns_register();
-void ari_vif_code_l2(uint32_t code);  // orig: L2:0x002a0368
 void ari_ocean_tex_upload_l2(uint32_t p0, uint32_t p1, uint32_t p2, uint32_t p3, uint32_t p4, uint32_t p5, float pf12);  // orig: L2:0x0024fca0
 
 }  // namespace rac1

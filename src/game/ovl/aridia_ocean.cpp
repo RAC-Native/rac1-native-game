@@ -7,6 +7,7 @@
 #include <game/ovl/devastator.h>
 #include <game/ovl/ee_regs.h>
 #include <game/ovl/enemy_749.h>
+#include <game/ovl/glows.h>
 #include <game/ovl/novalis_hooks.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -69,6 +70,9 @@ uint32_t pack_rgba_vf(const vu0l::Vu& u, int r) {
            ((u.word(r, 3) & 0xffu) << 24);
 }
 
+// The glows of the ships of the moby's group (+0x21) and class: on each one drawn this frame (+0x31) whose colour (the pvar
+// `col_off`) is at least 0x81, `glow_count` glows at its pvars +0x80.. (glow_draw 0x263618: Aridia's build 0x264b50 is the
+// same code, Gaspar's and Orxon's call Veldin's).
 void draw_bg_ship_glows(uint32_t m, int32_t glow_count, uint32_t col_off, float size, float fade) {
     const uint32_t sp = ee_stack_alloc(0x10);
     group_first(sp, static_cast<int32_t>(lbu(m + 0x21)), 0, 0);
@@ -79,7 +83,7 @@ void draw_bg_ship_glows(uint32_t m, int32_t glow_count, uint32_t col_off, float 
             if (lh(cur + 0xa6) == lh(m + 0xa6) && lbu(pv + col_off) >= 129u) {
                 uint32_t pos = pv + 0x80u;
                 for (int32_t i = 0; i < glow_count; ++i, pos += 0x10u) {
-                    ari_glow_quad_l2(pos, lwu(pv + col_off), size, fade);
+                    glow_draw(pos, lwu(pv + col_off), size, fade);
                 }
             }
         }
@@ -291,7 +295,7 @@ void ari_ocean_end_l2() { ari_ocean_end_body_l2(0); }
 
 // orig: L2:0x002a46e0
 void ari_ocean_end_body_l2(uint32_t) {
-    ari_vif_code_l2(0x13000000u);
+    dma_cnt_vif(0x13000000u);  // (Aridia's copy 0x2a0368 of Veldin's 0x2a0b60)
 
     const uint32_t view = L2_ADDR(0x0016d040u);
     sw(view + 0x218, lwu(L2_ADDR(0x001612f8u)));
@@ -317,16 +321,6 @@ void ari_ocean_end_body_l2(uint32_t) {
     sw(CUR, p + 0x30u);
 
     packet_ref_1c24f0();
-}
-
-// orig: L2:0x002a0368
-void ari_vif_code_l2(uint32_t code) {
-    const uint32_t p = lwu(CUR);
-    sw(p + 0x0, 0x10000000u);
-    sw(p + 0x4, 0);
-    sw(p + 0x8, 0);
-    sw(p + 0xc, code);
-    sw(CUR, p + 0x10u);
 }
 
 // orig: L2:0x002a48a0
@@ -566,12 +560,16 @@ void ari_glow_quad_l2(uint32_t pos, uint32_t rgba, float size, float fade) {
     ee_stack_free(0x90);
 }
 
-// orig: L2:0x002ec308
+// Class 1212's draw callback (the first background ship: three glows, colour pvar +0xb0).
+// (Shared: the same code on Gaspar.)
+// orig: L2:0x002ec308 L9:0x00305c10
 void ari_bg_ship1_glow_draw_l2(uint32_t m) {
     draw_bg_ship_glows(m, 3, 0xb0u, u2f(0x3f666666u), u2f(0x3ee66666u));
 }
 
-// orig: L2:0x002ecc68
+// Class 1213's draw callback (the second background ship: six glows, colour pvar +0xe0).
+// (Shared: the same code on Gaspar and Orxon.)
+// orig: L2:0x002ecc68 L9:0x00306570 L10:0x002eb958
 void ari_bg_ship2_glow_draw_l2(uint32_t m) {
     draw_bg_ship_glows(m, 6, 0xe0u, u2f(0x3f99999au), u2f(0x3f11eb85u));
 }

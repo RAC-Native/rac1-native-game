@@ -245,6 +245,7 @@ void batch_482();
 void batch_483();
 void batch_501();
 void batch_502();
+void batch_503();
 void batch_506();
 void batch_507();
 void batch_510();
