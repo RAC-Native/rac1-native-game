@@ -351,8 +351,15 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         case L17_CASE(0x002f0070): ret = u_call(vo_hook_2f0070_u, m, a1, a2, f12); return true;
         default: return false;
         }
-    case 18:  // Veldin, the finale: classes 0x238 (table 0x1f3498) and 0x772 (table 0x1f34c8)
+    case 18:  // Veldin, the finale: classes 0x238 (table 0x1f3498) and 0x772 (table 0x1f34c8); class 749's five hooks, Veldin's
+              // 0x2d56e0 .. 0x2d5800, the same code (its 90 mobys: carried and sucked as on Veldin; class_hook_4 / _10 keep
+              // Veldin's class-749 hooks to level 0, as the other levels' copies have their own constants)
         switch (lvl_key(fn)) {
+        case L18_CASE(0x002e13b8): ret = e749_hook0(m, a1, a2, f12); return true;  // (Veldin's 0x2d56e0)
+        case L18_CASE(0x002e1408): ret = e749_hook4(m, a1, a2, f12); return true;  // (Veldin's 0x2d5730)
+        case L18_CASE(0x002e1458): ret = e749_hook8(m, a1, a2, f12); return true;  // (Veldin's 0x2d5780)
+        case L18_CASE(0x002e14a8): ret = e749_hookc(m, a1, a2, f12); return true;  // (Veldin's 0x2d57d0)
+        case L18_CASE(0x002e14d8): ret = static_cast<int32_t>(e749_hook_10(m)); return true;  // (Veldin's 0x2d5800)
         case L18_CASE(0x002d6108): ret = u_call(vf_hook_2d6108_u, m, a1, a2, f12); return true;
         case L18_CASE(0x002d6190): ret = u_call(vf_hook_2d6190_u, m, a1, a2, f12); return true;
         case L18_CASE(0x002d61e0): ret = u_call(vf_hook_2d61e0_u, m, a1, a2, f12); return true;

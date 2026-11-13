@@ -1,7 +1,8 @@
 // Oracle batch 129 (task 0368): the debris pieces' class update 0x2e3d88 (debris_piece.cpp; Novalis's copy L1:0x30cd18 with
 // ORACLE_LEVEL=1) (needs the ISO). On the level's data after its first gameplay frame: a piece of one of the level's classes that
 // run the update, spawned by debris_spawn (0x263fd8) near the hero (some at the floor, falling, so that they bounce), its state
-// (0..5), frames left, flags (bits 0 / 1: fade or blow up, the enemy burst or the generic blast), spin, size and gravity varied.
+// (0..5), frames left, flags (bits 0 / 1: fade or blow up, the enemy burst or the generic blast), spin, size and gravity varied,
+// the velocity's and spin's w lanes (+0xc / +0x1c, which debris_spawn leaves stale in the original) any value half the time.
 
 #include "ovl_oracle.h"
 
@@ -59,6 +60,9 @@ void batch_129() {
         const uint32_t m = debris_spawn_v(hero, cls, p, ang, ri(0, 2) == 0 ? 0 : ri(1, 30), u(ri(0, 3)), vel, spin, size, rf(0.005f, 0.05f));
         if (m == 0) return 0u;
         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+        // (the velocity's and the spin's w lanes, +0xc / +0x1c: the original's debris_spawn leaves a stack word / a VU0 lane
+        // there, the native one 0; any value half the time, so that a reader of them would show here)
+        if (coin()) { w32(pv + 0xc, R()); w32(pv + 0x1c, R()); }
         w8(m + 0x20, u(ri(0, 5)));
         if (ri(0, 2) == 0) w32(pv + 0x30, u(ri(-1, 3)));
         seed_rand();

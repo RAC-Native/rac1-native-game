@@ -763,11 +763,20 @@ void sandmouse_checks() {
             return Args{{m, pvar(m)}, {}};
         }, [](A a) { sandmouse_move(a.i[0], a.i[1]); return uint64_t{0}; });
         // the search: from a point at the Sandmouse, its angles, reaches about the level's (radians), a range, near reaches
-        // (the search from a point by the Sandmouse, its angles dealt, a range of 1 .. 60; no moby moved. Searches from points
-        // elsewhere (before a listed moby, across the world) meet a known difference of the hand port of segment_collide: on
-        // Aridia, Hoven and Oltanis its hit (a moby where the original's reports the world at a fixed point), hit point and
-        // counts differ, so the target found does; the generated copies of this function differ alike, case for case)
-        helpercheck("sandmouse_find_target", find, 120, Ret::Int32, [mice, listed] {
+        // (all six floats given to both sides: the near reach and its yaw / pitch reaches, 2 and pi as its caller passes them,
+        // are $f15 .. $f17; the original once got the interpreter's leftovers there, which made its search skip targets the
+        // port's took and looked like a difference of segment_collide). Two thirds of the cases from a point by the Sandmouse,
+        // its angles dealt, a range of 1 .. 60, no moby moved; a third from a Sandmouse first run and put before a listed
+        // target (a moby moved in RAM is not moved in the collision grid: the lines cross the world), a range of 5 .. 60 or
+        // none, so that far lines are tested against the world and the mobys
+        helpercheck("sandmouse_find_target", find, 180, Ret::Int32, [mice, listed, any_mouse, target_near] {
+            const float pi = 3.14159274f;
+            if (ri(0, 2) == 0) {
+                const uint32_t m = any_mouse();
+                for (int k = ri(0, 3); k > 0; --k) target_near(m);
+                ee_ref<Vec4>(TEST_AREA) = around(ee_ref<Vec4>(m + 0x10), 0.0f, 0.5f, 0.0f, 1.0f);
+                return Args{{m, TEST_AREA, m + 0x40}, {rf(0.1f, 1.5f), rf(0.1f, 1.5f), coin() ? rf(5.0f, 60.0f) : 1000.0f, 2.0f, pi, pi}};
+            }
             const uint32_t m = pick(mice());
             ee_ref<Vec4>(TEST_AREA) = around(ee_ref<Vec4>(m + 0x10), 0.0f, 0.5f, 0.0f, 1.0f);
             const Vec4 q = ee_ref<Vec4>(TEST_AREA);
@@ -793,10 +802,9 @@ void sandmouse_checks() {
                 wf(m + 0x48, rf(-3.1f, 3.1f));
                 wf(m + 0x44, rf(-0.8f, 0.8f));
             }
-            return Args{{m, TEST_AREA, m + 0x40}, {rf(0.1f, 1.5f), rf(0.1f, 1.5f), range}};
+            return Args{{m, TEST_AREA, m + 0x40}, {rf(0.1f, 1.5f), rf(0.1f, 1.5f), range, 2.0f, pi, pi}};
         }, [](A a) {
-            const float pi = 3.14159274f;
-            return uint64_t{sandmouse_find_target(a.i[0], a.i[1], a.i[2], a.f[0], a.f[1], a.f[2], 2.0f, pi, pi)};
+            return uint64_t{sandmouse_find_target(a.i[0], a.i[1], a.i[2], a.f[0], a.f[1], a.f[2], a.f[3], a.f[4], a.f[5])};
         });
         helpercheck("sandmouse_shoot", shoot, 120, Ret::None, [any_mouse, target_near, tun] {
             const uint32_t m = any_mouse();

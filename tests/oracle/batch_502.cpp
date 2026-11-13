@@ -614,9 +614,14 @@ void teleporter_checks() {
             const std::vector<uint32_t> live = live_mobys();
             if (ee_read<int16_t>(m + 0xa6) != 1135 || ri(0, 3) == 0) w32(m + 0x78, PV);
             const uint32_t pv = ee_read<uint32_t>(m + 0x78);
-            for (uint32_t k = 0; k < 3; ++k) {  // (three other live mobys as the pieces)
+            // (three other live mobys as the pieces; not one whose 0x100 bytes hold the pvars PV .. PV + 0x28: on Kalebo III
+            // the moby table reaches over the test area, and the pvars dealt here would overwrite such a moby's grid rect
+            // +0xa0, a state the game never has: the original's grid move then meets its `teq` trap, which the interpreter
+            // runs through into the next function)
+            auto overlaps_pv = [](uint32_t o) { return o < PV + 0x28 && PV < o + 0x100; };
+            for (uint32_t k = 0; k < 3; ++k) {
                 uint32_t o = pick(live);
-                for (int t = 0; t < 8 && o == m; ++t) o = pick(live);
+                for (int t = 0; t < 16 && (o == m || overlaps_pv(o)); ++t) o = pick(live);
                 w32(pv + 0x14 + k * 4, o);
             }
             for (uint32_t o : {0x20u, 0x24u}) wf(pv + o, ri(0, 3) == 0 ? (coin() ? 0.0f : 1.0f) : rf(-0.3f, 1.3f));

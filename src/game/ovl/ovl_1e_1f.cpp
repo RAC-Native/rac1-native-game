@@ -648,7 +648,10 @@ int32_t sphere_collide_v(const Vec4& pos, float radius, uint32_t flags, uint32_t
     const float k999 = qmul(1.0f, u2f(0x3f7fdf3bu));
     r2 = qmul(r2, k999);
     const L3 zero{0.0f, 0.0f, 0.0f};
-    // the nearest contact so far
+    // the nearest contact so far (w2: vf2.w, the pushed-out position's w +0x3c; where this call loads no vf2 the original's is
+    // a leftover of earlier VU0 code, here 0. Callers copy that quad into a moby's position (enemy_physics: its w +0x1c), and
+    // from there it reaches what is spawned at that place (class 28's shards); class 28's update with the turrets' w lanes
+    // dealt at random reads them nowhere else (#145): a harmless difference)
     uint32_t s5 = 0, s6 = 0, w2 = 0;
     L3 v25 = g_vu.v25, v26 = g_vu.v26, v27 = g_vu.v27, v28 = g_vu.v28, v29 = g_vu.v29;
     uint32_t s0 = SPR, a3 = 0;
@@ -1930,6 +1933,11 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
         g_vu = VuContact{v25, v26, v27, v28, v29};  // (no contact: vf25..vf29 as the scan left them)
         return 0;
     }
+    // Known leftovers (#145, batch 530's notes): the original stores vf25 .. vf29 whole (sqc2), so the w lanes of +0x20,
+    // +0x40 and +0x50 (and +0xc of the contact record below) are whatever VU0 code last left there, and on a moby's
+    // primitive hit (no triangle hit in this call) +0x50 .. +0x58 is vf27 as earlier VU0 code left it; the port has 0 / its
+    // own last contact. Only the rockets (Veldin's 0x2b03a0 and its level copies, class 256) read +0x50 / +0x60, and only
+    // after a world hit, a triangle's vertices on both sides; these words are left out of the family checks for that.
     const float k = u2f(0x3a800000u);
     v25 = muls(v25, k);
     v27 = muls(v27, k);
