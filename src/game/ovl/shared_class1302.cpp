@@ -1,11 +1,18 @@
-// Class 1302's draw callback of Blarg (L6) and Orxon (L10): one port of the two levels' copies, which are the same code
-// relinked (the normalised texts compared). The level's own data is one block of the mesh's tables (per level below); the
-// camera's yaw 0x166dd8 is the engine's (OV). Header shared_class1302.h.
+// Class 1302 of Blarg (L6) and Orxon (L10), the Gadgebots' entrance (a sign counting the Gadgebots still to come, which opens
+// the entrance's mobys when none is left): its update and its draw callback, one port of the two levels' copies, which are
+// the same code relinked (the normalised texts compared). The level's own data is one block of the mesh's tables and one
+// of the sign's tunings (per level below); the camera 0x166dc0, its yaw 0x166dd8 and the moby table 0x15ffd8 are the
+// engine's (OV); the frame time 0x15ed6c, the planet 0x15ed84, the collected checkpoints 0x14c050, the hero's mode 0x1413f4
+// and the mirrored-display flag 0x15edb4 are the base ELF's. Header shared_class1302.h.
 //
-// The pvars: the texture's scroll +0x1c, the ring's growth +0x20 (0 .. 1), the size +0x24.
+// The pvars: the four mobys it opens +0 .. +0xc (indices in the moby table, -1 none; the first -1: the update does
+// nothing), the count to show +0x10 and the one left +0x14, the bob's phase +0x18, the texture's scroll +0x1c, the ring's
+// growth +0x20 (0 .. 1), the size +0x24 (0: hidden), the colour pulse's phase +0x28.
 #include <game/ovl/shared_class1302.h>
 
 #include <game/math/vecmath.h>
+#include <game/ovl/checkpoint.h>
+#include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -22,6 +29,90 @@ namespace {
 uint32_t mesh(uint32_t o) {
     if (on_level(ORXON)) return L10_ADDR(0x001da110) + o;
     return L6_ADDR(0x001fe8d0) + o;
+}
+
+// The sign's tunings (the level's own data, one block): the bob's height +0 and period +4 (seconds a turn), the colour
+// pulse's period +8, the digits' colour swing +0xc, the full size +0x10.
+uint32_t tunings(uint32_t o) {
+    if (on_level(ORXON)) return L10_ADDR(0x00161f24) + o;
+    return L6_ADDR(0x001622dc) + o;
+}
+// the draw callback (the level's copy of class1302_draw)
+uint32_t draw_callback() { return on_level(ORXON) ? L10_ADDR(0x002e7520) : L6_ADDR(0x00307578); }
+
+float frame_time() { return lwc1(0x0015ed6c); }
+
+// the angle at `a` advanced by a turn every `period` seconds (the frame's share), stored and returned
+float spin(uint32_t a, float period) {
+    // (360 / period degrees, in radians)
+    const float step = fpu_mul(fpu_mul(fpu_div(u2f(0x43b40000u), period), u2f(0x3c8efa35u)), frame_time());
+    const float v = angle_add(lwc1(a), step);
+    swc1(a, v);
+    return v;
+}
+
+// the size +0x24 shrunk by two frames' time, down to 0
+void shrink(uint32_t pv) {
+    const float v = fpu_sub(lwc1(pv + 0x24), fpu_add(frame_time(), frame_time()));
+    swc1(pv + 0x24, v);
+    if (v < 0.0f) swc1(pv + 0x24, 0.0f);
+}
+
+// State 1: the sign grows in while the camera is within 32 units and shrinks away past 36; shown, it is drawn, bobs and
+// (the hero not Clank-sized: mode 1) shows the count left in digits whose colour pulses with the moby's. With nothing left
+// to count, or the entrance's checkpoint already collected, it opens its mobys and goes to state 2.
+void wait_for_bots(uint32_t m, uint32_t pv) {
+    const uint32_t sp = ee_stack_alloc(0x30);
+    const uint32_t at = sp, digit = sp + 0x10;
+    lq_sq(at, m + 0x10);
+    swc1(at + 8, fpu_add(lwc1(at + 8), u2f(0x40300000u)));  // (2.75 above the moby)
+    const uint32_t cam = OV(0x00166dc0);
+    if (vec3_distance(V(cam), V(m + 0x10)) < u2f(0x42000000u)) {  // (32)
+        const float full = lwc1(tunings(0x10));
+        const float v = fpu_add(lwc1(pv + 0x24), fpu_add(frame_time(), frame_time()));
+        swc1(pv + 0x24, v);
+        if (full < v) swc1(pv + 0x24, full);
+    } else if (u2f(0x42100000u) < vec3_distance(V(cam), V(m + 0x10))) {  // (36)
+        shrink(pv);
+    }
+    if (0.0f < lwc1(pv + 0x24)) {
+        draw_callback_add(draw_callback(), m);
+        const float bob = spin(pv + 0x18, lwc1(tunings(4)));
+        swc1(at + 8, fpu_add(lwc1(at + 8), fpu_mul(lwc1(tunings(0)), cos_vu(bob))));
+        const int32_t swing = float_to_int(fpu_mul(lwc1(tunings(0xc)), cos_vu(lwc1(pv + 0x28))));
+        const uint32_t colour = 0x20000000u | (static_cast<uint32_t>(ee_div(swing, 3) + 0xd) << 16) |
+                                (static_cast<uint32_t>(swing / 2 + 0x78) << 8) | static_cast<uint32_t>(swing + 0x96);
+        if (lbu(0x001413f4) == 1) {
+            const int32_t left = lw(pv + 0x14);
+            if (left < 10) {
+                debug_particle_l1(at, m, static_cast<uint32_t>(left + 2), colour, 0x7f, 4, 0xff, 0.5f);
+            } else {
+                // two digits side by side across the moby's facing (+0x48), the tens first; mirrored while 0x15edb4 is set
+                const bool mirrored = lbu(0x0015edb4) != 0;
+                const float tens_at = mirrored ? u2f(0x3e19999au) : u2f(0xbecccccdu);  // (0.15 / -0.4)
+                const float ones_at = mirrored ? u2f(0xbecccccdu) : u2f(0x3e19999au);
+                const float side = u2f(0x3fc90fdbu);  // (pi / 2)
+                auto place = [m, at, digit, side](float offset) {
+                    swc1(digit, fpu_mul(cos_vu(angle_add(lwc1(m + 0x48), side)), offset));
+                    swc1(digit + 4, fpu_mul(sin_vu(angle_add(lwc1(m + 0x48), side)), offset));
+                    swc1(digit + 8, 0.0f);
+                    vec3_add_inplace(V(digit), V(at));
+                };
+                place(tens_at);
+                debug_particle_l1(digit, m, static_cast<uint32_t>(ee_div(lw(pv + 0x14), 10) + 2), colour, 0x7f, 4, 0xff, 0.5f);
+                place(ones_at);
+                debug_particle_l1(digit, m, static_cast<uint32_t>(ee_rem(lw(pv + 0x14), 10) + 2), colour, 0x7f, 4, 0xff, 0.5f);
+            }
+        }
+    }
+    ee_stack_free(0x30);
+    if (lw(pv + 0x14) > 0 && lbu(0x0014c050 + (lwu(0x0015ed84) << 4) + lbu(m + 0xb0)) != 0xff) return;
+    const uint32_t first = lwu(OV(0x0015ffd8));
+    for (uint32_t k = 0; k < 4; ++k) {
+        const int32_t idx = lw(pv + k * 4);
+        if (idx != -1) class1302_open(m, first + (static_cast<uint32_t>(idx) << 8));
+    }
+    sb(m + 0x20, 2);
 }
 
 // the rotation about z by the camera's yaw (into `matrix`, its angles at `angles`)
@@ -119,6 +210,62 @@ void class1302_draw(uint32_t m) {
     for (uint32_t k = 0; k < 8; ++k) swc1(uvs + k * 4, kUv[k]);
     quad_draw(quad, 0);
     ee_stack_free(0x270);
+}
+
+// One of the entrance's mobys opened: a class-1028 moby in state 1 goes to 2; a class-1015 / 1282 moby in state 2 goes to 3
+// with its sound; a class-1346 moby goes to state 2 with sound 0x434, its +0x30 set to 0xff, and the entrance's checkpoint
+// (+0xb0) is marked collected.
+// orig: L6:0x00307c48 L10:0x002e7bf0
+void class1302_open(uint32_t m, uint32_t o) {
+    switch (lh(o + 0xa6)) {
+    case 1028:
+        if (lbu(o + 0x20) == 1) sb(o + 0x20, 2);
+        break;
+    case 1015:
+    case 1282:
+        if (lbu(o + 0x20) == 2) {
+            sb(o + 0x20, 3);
+            moby_sound_start(0, 0, o);
+        }
+        break;
+    case 1346:
+        sb(o + 0x20, 2);
+        moby_sound_play(0, 0, o, 0x434);
+        sb(o + 0x30, 0xff);
+        checkpoint_mark_collected(lbu(m + 0xb0));
+        break;
+    default:
+        break;
+    }
+}
+
+// Every frame, the moby's colour (+0x90) pulses between two greys (the pulse's period the level's). State 0 takes the count
+// to show (+0x14 from +0x10), random phases, the full size, and goes to state 1 (wait_for_bots); in state 2 the sign
+// shrinks away, drawn while it lasts.
+// orig: L6:0x00307d30 L10:0x002e7cd8
+void class1302_update(uint32_t m) {
+    const uint32_t pv = lwu(m + 0x78);
+    if (lw(pv) == -1) return;
+    const float pulse = spin(pv + 0x28, lwc1(tunings(8)));
+    sw(m + 0x90, rgba_lerp(0x80464646u, 0x80828282u, fpu_mul(fpu_add(cos_vu(pulse), 1.0f), 0.5f)));
+    switch (lbu(m + 0x20)) {
+    case 0:
+        sw(pv + 0x14, lwu(pv + 0x10));
+        swc1(pv + 0x18, rand_angle());
+        swc1(pv + 0x28, rand_angle());
+        sb(m + 0x20, 1);
+        swc1(pv + 0x24, lwc1(tunings(0x10)));
+        break;
+    case 1:
+        wait_for_bots(m, pv);
+        break;
+    case 2:
+        shrink(pv);
+        if (0.0f < lwc1(pv + 0x24)) draw_callback_add(draw_callback(), m);
+        break;
+    default:
+        break;
+    }
 }
 
 }  // namespace rac1

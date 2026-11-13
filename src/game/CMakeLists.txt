@@ -190,6 +190,7 @@ add_library(rac1_game STATIC
     ovl/shared_class302.cpp
     ovl/shared_class1302.cpp
     ovl/shared_class857.cpp
+    ovl/shared_class1068.cpp
     ovl/shared_swingshot_target.cpp
     ovl/shared_class819.cpp
     ovl/shared_class1021.cpp

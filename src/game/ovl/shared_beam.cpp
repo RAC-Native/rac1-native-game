@@ -165,4 +165,34 @@ void beam_shard_update(uint32_t m) {
     if (life == 0) moby_retire(m);
 }
 
+// A shard (a class from 1085 to 1089 at random) spawned at `pos` (EE address) with the speed `vel` (into its pvars): its size
+// the class's x the level's factor, shown (+0x30 0xff, +0x32 0x7e, +0x31 1), its turn random up to a turn a second on each
+// axis, its life 60 .. 120 frames (scaled). Returns the shard, or 0 when none could be spawned. (Blarg's and Orxon's copy:
+// classes 302 and 1068 break into these.)
+// orig: L6:0x00300c60 L10:0x002dd0e0
+uint32_t beam_shard_spawn(uint32_t pos, uint32_t vel) {
+    const uint32_t sp = ee_stack_alloc(0x20);
+    const uint32_t at = sp, speed = sp + 0x10;
+    lq_sq(at, pos);
+    lq_sq(speed, vel);
+    const float cls = rand_range_f(u2f(0x4487a000u), u2f(0x44882000u));  // (1085 .. 1089)
+    const uint32_t o = moby_spawn(static_cast<uint32_t>(float_to_int(cls)));
+    if (o != 0) {
+        const uint32_t pv = lwu(o + 0x78);
+        sb(o + 0x30, 0xff);
+        sh(o + 0x32, 0x7e);
+        sb(o + 0x31, 1);
+        swc1(o + 0x2c, fpu_mul(lwc1(lwu(o + 0x24) + 0x24), lwc1(shard_tuning())));
+        lq_sq(o + 0x10, at);
+        lq_sq(pv, speed);
+        const float turn = u2f(0x43b40000u), degree = u2f(0x3c8efa35u);  // (360, a degree in radians)
+        for (uint32_t k = 0; k < 3; ++k)
+            swc1(pv + 0x10 + k * 4, fpu_mul(fpu_mul(rand_range_f(-turn, turn), degree), lwc1(0x0015ed6c)));
+        sb(o + 0xbc, static_cast<uint32_t>(float_to_int(frame_scale_f(rand_range_f(60.0f, 120.0f)))));
+        moby_update_transform(o);
+    }
+    ee_stack_free(0x20);
+    return o;
+}
+
 }  // namespace rac1
