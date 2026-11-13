@@ -147,6 +147,7 @@ add_library(rac1_game STATIC
     ovl/shared_envmap.cpp
     ovl/shared_beam.cpp
     ovl/shared_arcs.cpp
+    ovl/shared_gold_bolt.cpp
     ovl/shared_gold_scene.cpp
     ovl/shared_tiles.cpp
     ovl/shared_scroll.cpp
@@ -163,12 +164,14 @@ add_library(rac1_game STATIC
     ovl/shared_class325.cpp
     ovl/shared_class250.cpp
     ovl/shared_class1331.cpp
+    ovl/shared_class28.cpp
     ovl/shared_class28_draw.cpp
     ovl/shared_class77.cpp
     ovl/shared_class78_draw.cpp
     ovl/shared_class123_draw.cpp
     ovl/shared_three_glows.cpp
     ovl/shared_ripples.cpp
+    ovl/shared_class193.cpp
     ovl/shared_class196.cpp
     ovl/shared_class655_glows.cpp
     ovl/shared_class408_tint.cpp
@@ -179,6 +182,7 @@ add_library(rac1_game STATIC
     ovl/shared_class256.cpp
     ovl/shared_class638.cpp
     ovl/shared_class1356.cpp
+    ovl/shared_class156.cpp
     ovl/shared_class1523.cpp
     ovl/shared_class123.cpp
     ovl/shared_class1443.cpp
