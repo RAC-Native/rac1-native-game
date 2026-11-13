@@ -60,6 +60,10 @@ void envmap_uvs4(int32_t n, uint32_t normals, uint32_t points, uint32_t unused, 
 void path_mover_start(uint32_t m);  // L14:0x002fc890 L14:0x002fd808
 uint32_t class819_launch(uint32_t vel, uint32_t pos, uint32_t a, uint32_t b, int32_t frames, float scale);  // L10:0x002cc1b8 L15:0x002dd600
 
+// (task F11) The sixth build of envmap_uvs4 on Drek's fleet: the same, but the view taken from the point to the camera
+// (the original's difference: its first subtraction's operands swapped).
+void envmap_uvs4_to_camera(int32_t n, uint32_t normals, uint32_t points, uint32_t unused, uint32_t out);  // L17:0x002f6138
+
 }  // namespace rac1
 
 #endif

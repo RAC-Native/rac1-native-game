@@ -10,6 +10,8 @@
 namespace rac1 {
 
 void class655_glows(uint32_t m);  // L15:0x002d8e48 L17:0x002d74c0
+// Veldin's finale's build (task F11): the glows at the moby's place.
+void class655_glows_l18(uint32_t m);  // L18:0x002ec130
 
 }  // namespace rac1
 

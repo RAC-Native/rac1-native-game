@@ -16,6 +16,12 @@
 //  - shared_class49.cpp: class 50's update, a homing shot (levels 16, 18);
 //  - shared_class886.cpp: class 886, a checkpoint pad (levels 7, 12);
 //  - shared_bg_ships.cpp: ship 1, class 1212 (levels 2, 9);
+//  - shared_envmap_meshes.cpp: the meshes' draw callbacks of classes 1952 (level 16) and 1907 .. 1918 (level 17), and
+//    shared_little.cpp's second build of envmap_uvs4 (class 1913's);
+//  - shared_class655_draw.cpp: class 655's draw callback and its strips of quads (levels 15, 17, 18), and the finale's build of
+//    its glows (shared_class655_glows.cpp);
+//  - shared_env_objects.cpp: Hoven's and Oltanis's sky-reflecting objects: the callback, the draw and the VU0 mapping (levels
+//    12, 14);
 // Subjects: the level's own mobys of the class after the first gameplay frame (the port's; the screen, the projection and the
 // view set up), perturbed through every state; the helpers on the class's mobys with arguments built from the level's state;
 // the frame scale (0x15ed68) at its 50 Hz value in a quarter of the cases. No RAM dumps; no broad list of left-out words.
@@ -38,6 +44,10 @@
 #include <game/ovl/shared_class49.h>
 #include <game/ovl/shared_class886.h>
 #include <game/ovl/shared_bg_ships.h>
+#include <game/ovl/shared_envmap_meshes.h>
+#include <game/ovl/shared_class655_draw.h>
+#include <game/ovl/shared_class655_glows.h>
+#include <game/ovl/shared_env_objects.h>
 #include <runtime/kernel/disc.h>
 #include <runtime/vu/vu0.h>
 
@@ -317,6 +327,77 @@ void anim_frame(uint32_t m, uint32_t frame16) {
 }
 
 bool info() { return std::getenv("B517_INFO") != nullptr; }
+
+// Arguments the original takes as whole 64-bit registers (a TEX0): the case's values, put in the interpreter's registers by
+// the batch's pre-call (check_fn passes 32-bit words, sign-extended); the port reads them from here (batch 504's)
+std::vector<std::pair<int, uint64_t>> g_wide_regs;
+uint64_t wide_arg(int reg) {
+    for (const auto& [r, v] : g_wide_regs)
+        if (r == reg) return v;
+    return 0;
+}
+
+// ---- draw checks (as batches 506 / 510): the packet cursor on a test-area buffer; B517_INFO=1 prints per draw check how many
+// cases wrote packets beyond a state header
+void packet_cursor() { w32(OV(0x001611c0), TEST_AREA + 0x8000 + u(ri(0, 0x40)) * 0x10); }
+uint32_t packet_content(uint32_t c0, uint32_t c1) {
+    uint32_t content = 0;
+    for (uint32_t p = c0; p < c1;) {
+        const uint32_t w0 = ee_read<uint32_t>(p), size = ((w0 & 0xffffu) + 1) * 0x10;
+        if (((w0 >> 28) & 7) != 1 || p + size > c1) return content + (c1 - p);
+        const bool gs_state = (w0 & 0xffffu) == 5 && ee_read<uint64_t>(p + 0x10) == 0x2400000000000001ull;
+        const bool reg_write = (w0 & 0xffffu) == 2 && ee_read<uint32_t>(p + 0x10) == 0x8001u && ee_read<uint32_t>(p + 0x14) == 0x10000000u;
+        if (!gs_state && !reg_write) content += size;
+        p += size;
+    }
+    return content;
+}
+// a draw check: as fcheck, counting the cases whose packets carry more than a state header
+void dcheck(const char* name, uint32_t laddr, int n, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port,
+            uint32_t skip = 0) {  // (`skip`: the bytes of a fixed header every run writes first, not counted)
+    if (!selected(name)) return;
+    std::printf("%-26s L%d:0x%08x\n", name, g_oracle_level, laddr);
+    int cases = 0, drew = 0;
+    uint32_t content = 0;
+    const std::function<uint64_t(const Args&)> synced = [&](const Args& a) {
+        vu0_sync();
+        const uint32_t c0 = ee_read<uint32_t>(OV(0x001611c0));
+        const uint64_t r = port(a);
+        const uint32_t c1 = ee_read<uint32_t>(OV(0x001611c0));
+        ++cases;
+        const uint32_t c = c0 >= 0x00100000u && c1 > c0 + skip && c1 - c0 < 0x100000 ? packet_content(c0 + skip, c1) : 0;
+        if (c != 0) ++drew;
+        content += c;
+        return r;
+    };
+    if (!check_fn(name, laddr, n, Ret::None, gen, synced, Scope::FullRam, 0, 0)) ++g_fail;
+    std::printf("INFO %s L%d: %d port runs, beyond a state header in %d (0x%x bytes)\n", name, g_oracle_level, cases, drew, content);
+}
+
+// ---- the meshes' draw callbacks (shared_envmap_meshes.cpp)
+void envmap_meshes_checks() {
+    struct Cb { const char* name; int level; uint32_t addr; void (*fn)(uint32_t); };
+    static const Cb cbs[] = {{"class1952_draw", 16, 0x002e9ce0, class1952_draw}, {"class1907_draw", 17, 0x002f5690, class1907_draw},
+                             {"class1908_draw", 17, 0x002f59a8, class1908_draw}, {"class1910_draw", 17, 0x002f5cc0, class1910_draw},
+                             {"class1911_draw", 17, 0x002f5fd8, class1911_draw}, {"class1913_draw", 17, 0x002f62f0, class1913_draw},
+                             {"class1918_draw", 17, 0x002f6608, class1918_draw}};
+    for (const Cb& c : cbs) {
+        if (c.level != g_oracle_level) {
+            not_here(c.name);
+            continue;
+        }
+        // (the camera about the hero, looking about; the meshes are the level's, wherever they are)
+        dcheck(c.name, c.addr, 30, [] {
+            level();
+            const uint32_t cam = OV(0x00166dc0);
+            if (coin()) ee_ref<Vec4>(cam) = around(ee_ref<Vec4>(0x0013f3d0), 0.0f, coin() ? 5.0f : 60.0f, -2.0f, 20.0f);
+            render_view_setup();
+            packet_cursor();
+            seed_rand();
+            return Args{{pick(live_mobys())}, {}};
+        }, [c](A a) { c.fn(a.i[0]); return uint64_t{0}; });
+    }
+}
 
 // ---- class 252's update, move and hits (shared_class252_update.cpp)
 void class252_checks() {
@@ -1221,6 +1302,189 @@ void bg_ship1_checks() {
     });
 }
 
+// ---- class 655's draw and its strips (shared_class655_draw.cpp), the finale's glows (shared_class655_glows.cpp)
+void class655_draw_checks() {
+    const uint32_t cb = copy_here({{15, 0x002d8710}, {17, 0x002d6d88}, {18, 0x002eb9f8}});
+    const uint32_t strip = copy_here({{15, 0x002d8878}, {17, 0x002d6ef0}, {18, 0x002ebb60}});
+    const uint32_t glows18 = copy_here({{18, 0x002ec130}});
+    const uint32_t buf = copy_here({{15, 0x001d3750}, {17, 0x001d39d0}, {18, 0x001d9d00}});
+    const uint32_t rec = copy_here({{15, 0x00161c54}, {17, 0x00161ae4}, {18, 0x00162048}});
+    if (cb == 0) {
+        for (const char* n : {"class655_draw", "class655_strip", "class655_glows_l18"}) not_here(n);
+        return;
+    }
+    auto subjects = [] {
+        std::vector<uint32_t> v;
+        for (uint32_t m = first_moby(); m < end_moby(); m += 0x100)
+            if (live(m) && ee_read<uint16_t>(m + 0xa6) == 655) v.push_back(m);
+        if (v.empty() && g_oracle_level != 18) {
+            const uint32_t s = moby_spawn(655);
+            if (s != 0) v.push_back(s);
+        }
+        if (v.empty()) v = live_mobys();  // (Veldin's finale has none and no class 655 to spawn: its glows read only the place)
+        return v;
+    };
+    if (info()) {
+        level();
+        std::printf("INFO class 655: %zu, first strip point %f %f %f\n", subjects().size(), ee_read<float>(buf), ee_read<float>(buf + 4),
+                    ee_read<float>(buf + 8));
+    }
+    // the view: the camera before the strips' points (looking at one), near or far; the scroll about its wrap
+    auto view = [buf, rec](uint32_t at) {
+        const Vec4 p = ee_ref<Vec4>(at);
+        const int k = ri(0, 3);
+        if (k != 0) {
+            Vec4& cam = ee_ref<Vec4>(OV(0x00166dc0));
+            cam = around(p, k == 1 ? 1.0f : 5.0f, k == 1 ? 5.0f : 40.0f, -3.0f, 6.0f);
+            const float yaw = std::atan2(p.y - cam.y, p.x - cam.x);
+            wf(OV(0x00166dc0) + 0x18, yaw);
+            wf(OV(0x00166dc0) + 0x14, rf(-0.3f, 0.3f));
+        }
+        if (coin()) wf(rec, coin() ? rf(-8.5f, -7.5f) : rf(-8.0f, 8.0f));
+        if (coin()) wf(rec + 4, rf(-0.5f, 0.5f));
+        render_view_setup();
+        packet_cursor();
+        vary_frame_scale();
+        seed_rand();
+        (void)buf;
+    };
+    // (the strips' points: the level's buffer is empty until its class runs, so half the time it gets lines of points in
+    // front of the camera, each run its own line)
+    auto fill_lines = [](uint32_t at, uint32_t n) {
+        const Vec4 c = ee_ref<Vec4>(OV(0x00166dc0)), f = ee_ref<Vec4>(OV(0x00166fd0));
+        Vec4 p{c.x + f.x * rf(3.0f, 15.0f), c.y + f.y * rf(3.0f, 15.0f), c.z + f.z * rf(3.0f, 15.0f) + rf(-1.0f, 1.0f), 1.0f};
+        const Vec4 d{rf(-0.6f, 0.6f), rf(-0.6f, 0.6f), rf(-0.3f, 0.3f), 0.0f};
+        for (uint32_t k = 0; k < n; ++k, at += 0x10) {
+            ee_ref<Vec4>(at) = p;
+            p = Vec4{p.x + d.x + rf(-0.1f, 0.1f), p.y + d.y + rf(-0.1f, 0.1f), p.z + d.z + rf(-0.1f, 0.1f), 1.0f};
+        }
+    };
+    dcheck("class655_draw", cb, 40, [subjects, view, buf, fill_lines] {
+        level();
+        const uint32_t m = pick(subjects());
+        view(buf + u(ri(0, 0x5f)) * 0x10);
+        if (coin()) {
+            fill_lines(buf, 20);
+            fill_lines(buf + 0x140, 20);
+            for (uint32_t r : {0x460u, 0x4b0u, 0x500u, 0x550u}) fill_lines(buf + r, 5);
+            render_view_setup();
+        }
+        if (coin()) ee_ref<Vec4>(pvar(m) + 0xf0) = around(ee_ref<Vec4>(OV(0x00166dc0)), 2.0f, 10.0f);
+        return Args{{m}, {}};
+    }, [](A a) { class655_draw(a.i[0]); return uint64_t{0}; });
+    // a strip: the level's points (one of the six runs) or points made about the camera; counts from 0 to 20
+    dcheck("class655_strip", strip, 80, [view, buf] {
+        level();
+        static const uint32_t runs[] = {0, 0x140, 0x460, 0x4b0, 0x500, 0x550};
+        uint32_t pts = buf + runs[ri(0, 5)];
+        if (ri(0, 2) != 0) {
+            pts = T;
+            const Vec4 c = ee_ref<Vec4>(OV(0x00166dc0));
+            for (uint32_t k = 0; k < 20; ++k) ee_ref<Vec4>(T + k * 0x10) = around(c, 2.0f, 12.0f, -3.0f, 3.0f);
+            if (coin()) ee_ref<Vec4>(T + 0x10) = ee_ref<Vec4>(T);  // (a leg of length 0)
+        }
+        view(pts + u(ri(0, 3)) * 0x10);
+        const int k = ri(0, 3);
+        const int32_t count = k == 0 ? ri(0, 3) : (k == 1 ? 5 : 20);
+        return Args{{pts, R() & 0xff, R() & 0xff, u(count)}, {rf(0.0f, 1.0f), rf(0.01f, 1.5f), rf(0.0f, 0.5f)}};
+    }, [](A a) { class655_strip(a.i[0], a.i[1], a.i[2], static_cast<int32_t>(a.i[3]), a.f[1], a.f[2]); return uint64_t{0}; });
+    if (glows18 != 0)
+        dcheck("class655_glows_l18", glows18, 40, [subjects] {
+            level();
+            const uint32_t m = pick(subjects());
+            const Vec4 c = ee_ref<Vec4>(OV(0x00166dc0)), f = ee_ref<Vec4>(OV(0x00166fd0));
+            if (ri(0, 3) != 0) {
+                const float r = rf(2.0f, 20.0f);
+                ee_ref<Vec4>(m + 0x10) = Vec4{c.x + r * f.x, c.y + r * f.y, c.z + r * f.z, 1.0f};
+            }
+            render_view_setup();
+            packet_cursor();
+            seed_rand();
+            return Args{{m}, {}};
+        }, [](A a) { class655_glows_l18(a.i[0]); return uint64_t{0}; });
+    else
+        not_here("class655_glows_l18");
+}
+
+// ---- Hoven's and Oltanis's sky-reflecting objects (shared_env_objects.cpp)
+void env_objects_checks() {
+    const uint32_t cb = copy_here({{12, 0x002e71b0}, {14, 0x00307a28}});
+    const uint32_t draw = copy_here({{12, 0x002bc210}, {14, 0x002ab3e8}});
+    const uint32_t uvs = copy_here({{12, 0x002667fc}, {14, 0x0025602c}});
+    const uint32_t recs = copy_here({{12, 0x001f5480}, {14, 0x001f5f80}});
+    const int32_t count = g_oracle_level == 14 ? 0x13 : 0x2f;
+    if (cb == 0) {
+        for (const char* n : {"env_objects_callback", "env_objects_draw", "env_objects_uvs"}) not_here(n);
+        return;
+    }
+    // the view: the camera before one of the records' spheres (near or far), or where it is
+    auto view = [recs, count] {
+        if (ri(0, 3) != 0) {
+            const Vec4 c = ee_ref<Vec4>(recs + u(ri(0, count - 1)) * 0x20);
+            Vec4& cam = ee_ref<Vec4>(OV(0x00166dc0));
+            cam = around(c, coin() ? 2.0f : 10.0f, coin() ? 10.0f : 60.0f, -3.0f, 10.0f);
+            wf(OV(0x00166dc0) + 0x18, std::atan2(c.y - cam.y, c.x - cam.x));
+            wf(OV(0x00166dc0) + 0x14, rf(-0.4f, 0.4f));
+        }
+        render_view_setup();
+        packet_cursor();
+        seed_rand();
+    };
+    if (info()) {
+        level();
+        const Vec4 c = ee_ref<Vec4>(recs);
+        std::printf("INFO env objects: %d records, the first at %f %f %f (r %f), %d points\n", count, c.x, c.y, c.z, c.w,
+                    ee_read<int32_t>(recs + 0x1c));
+    }
+    // (B517_INFO: the cases with a record on screen, so that its meshes reach the packets past the matrices' set-up)
+    static int seen_cases = 0, all_cases = 0;
+    auto count_seen = [](uint32_t first, int32_t n) {
+        bool any = false;
+        for (int32_t k = 0; k < n; ++k) any = any || point_on_screen(first + u(k) * 0x20, 256.0f) != -1;
+        ++all_cases;
+        if (any) ++seen_cases;
+    };
+    seen_cases = all_cases = 0;
+    dcheck("env_objects_callback", cb, 40, [view, count_seen, recs, count] {
+        level();
+        view();
+        count_seen(recs, count);
+        return Args{{pick(live_mobys())}, {}};
+    }, [](A a) { env_objects_callback(a.i[0]); return uint64_t{0}; }, 0x10);  // (its first tag pair, always written)
+    dcheck("env_objects_draw", draw, 40, [view, recs, count, count_seen] {
+        level();
+        view();
+        const uint32_t first = u(ri(0, count - 1));
+        const int32_t n = ri(0, count - static_cast<int32_t>(first));
+        count_seen(recs + first * 0x20, n);
+        const uint64_t ta = coin() ? effect_tex0(ri(0, 0x40)) : (static_cast<uint64_t>(R()) << 32 | R()), tb = effect_tex0(ri(0, 0x40));
+        g_wide_regs = {{6, ta}, {7, tb}};
+        return Args{{recs + first * 0x20, u(n), static_cast<uint32_t>(ta), static_cast<uint32_t>(tb)}, {}};
+    }, [](A a) { env_objects_draw(a.i[0], static_cast<int32_t>(a.i[1]), wide_arg(6), wide_arg(7)); return uint64_t{0}; }, 0x10);
+    g_wide_regs.clear();
+    if (info()) std::printf("INFO env objects L%d: %d of %d generated cases with a record on screen\n", g_oracle_level, seen_cases, all_cases);
+    // the mapping on points and normals of the level's records (their own), or made up about the camera
+    helpercheck("env_objects_uvs", uvs, 60, Ret::None, [recs, count] {
+        level();
+        const uint32_t rec = recs + u(ri(0, count - 1)) * 0x20;
+        uint32_t pts = ee_read<uint32_t>(rec + 0x10), nrm = ee_read<uint32_t>(rec + 0x18);
+        int32_t n = std::min(ee_read<int32_t>(rec + 0x1c), 0x80);
+        if (coin() || n <= 0) {
+            pts = T;
+            nrm = T + 0x600;
+            n = ri(1, 0x40);
+            const Vec4 c = ee_ref<Vec4>(OV(0x00166dc0));
+            for (int32_t k = 0; k < n; ++k) {
+                const Vec4 p = around(c, 0.0f, 20.0f, -5.0f, 5.0f);
+                wf(T + u(k) * 0xc, p.x); wf(T + u(k) * 0xc + 4, p.y); wf(T + u(k) * 0xc + 8, ri(0, 9) == 0 ? c.z : p.z);
+                wfrand(T + 0x600 + u(k) * 0xc, 3, -1.0f, 1.0f);
+            }
+            if (coin()) { wf(T, c.x); wf(T + 4, c.y); wf(T + 8, c.z); }  // (a point at the camera: a 0 length)
+        }
+        return Args{{u(n), pts, nrm, T2}, {}};
+    }, [](A a) { vu0_sync(); env_objects_uvs(static_cast<int32_t>(a.i[0]), a.i[1], a.i[2], a.i[3]); return uint64_t{0}; });
+}
+
 }  // namespace
 
 void batch_517() {
@@ -1269,6 +1533,7 @@ void batch_517() {
     vu0::vif0_send_chain(0x00100080, true);
     vu0::vif0_send_chain(0x0010e4c0, true);
     g_pre_call = [](EeInterpreter& ee) {
+        for (const auto& [r, v] : g_wide_regs) ee.cpu().gpr[r].lo = v;
         const VUState& o = ee.vu0();
         g_vu0_in.vf = o.vf;
         g_vu0_in.vi = o.vi;
@@ -1293,6 +1558,9 @@ void batch_517() {
     class50_checks();
     class886_checks();
     bg_ship1_checks();
+    envmap_meshes_checks();
+    class655_draw_checks();
+    env_objects_checks();
     g_pre_call = nullptr;
     g_extra_noop_hooks.clear();
     g_ignored_words = saved_ignored;

@@ -297,4 +297,37 @@ void path_mover_start(uint32_t m) {
     for (const uint32_t o : {0x80u, 0x78u, 0x74u, 0x70u, 0x88u, 0x84u}) swc1(pv + o, 0.0f);
 }
 
+// ---- (task F11)
+// orig: L17:0x002f6138
+void envmap_uvs4_to_camera(int32_t n, uint32_t normals, uint32_t points, uint32_t /*unused*/, uint32_t out) {
+    const uint32_t sp = ee_stack_alloc(0x50);
+    const uint32_t eye = sp, at = sp + 0x10, r = sp + 0x20, normal = sp + 0x30;
+    for (int32_t i = 0; i < n; ++i, out += 8) {
+        const uint32_t k = static_cast<uint32_t>(i) * 0xc;
+        swc1(at + 0xc, 1.0f);
+        swc1(at, lwc1(points + k));
+        swc1(at + 4, lwc1(points + k + 4));
+        swc1(at + 8, lwc1(points + k + 8));
+        vec3_sub(V(eye), V(OV(0x00166dc0)), V(at));
+        vec3_set_length(V(eye), V(eye), 1.0f);
+        swc1(normal + 0xc, 1.0f);
+        swc1(normal, lwc1(normals + k));
+        swc1(normal + 8, lwc1(normals + k + 8));
+        swc1(normal + 4, lwc1(normals + k + 4));
+        vec3_set_length(V(normal), V(normal), 1.0f);
+        const float dot = vec3_dot(V(normal), V(eye));
+        vec3_scale(V(r), V(normal), fpu_add(dot, dot));
+        vec3_sub(V(r), V(eye), V(r));
+        vec3_set_length(V(r), V(r), 1.0f);
+        swc1(r + 8, fpu_add(lwc1(r + 8), 1.0f));
+        const float len = vec3_length(V(r));
+        const float twice = fpu_add(len, len);
+        const float v = fpu_add(fpu_div(lwc1(r + 4), twice), 0.5f);
+        const float u = fpu_add(fpu_div(lwc1(r), twice), 0.5f);
+        swc1(out + 4, fpu_mul(v, 4.0f));
+        swc1(out, fpu_mul(u, 4.0f));
+    }
+    ee_stack_free(0x50);
+}
+
 }  // namespace rac1

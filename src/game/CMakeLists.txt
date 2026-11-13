@@ -138,6 +138,9 @@ add_library(rac1_game STATIC
     ovl/shared_class1885.cpp
     ovl/shared_seas.cpp
     ovl/shared_class886.cpp
+    ovl/shared_envmap_meshes.cpp
+    ovl/shared_class655_draw.cpp
+    ovl/shared_env_objects.cpp
     ovl/shared_boss_bar.cpp
     ovl/shared_cam19.cpp
     ovl/novalis_birdbot.cpp
