@@ -37,6 +37,8 @@ void draw_hook_add_de80_l14(uint32_t fn, uint32_t arg);  // the fourth list's: L
 // the ocean's wave table (`alpha` to rec +0x3f; the level's table scaled by k): L2:0x002a4058 (L3:0x00291198 L5:0x002ce098
 // L7:0x002cc608 L8:0x002acc70 L9:0x002c11a0 L14:0x002aabf8)
 void ocean_wave_table_set(uint32_t rec, uint32_t alpha, float k);
+// the same with the alpha 0x80: L5:0x002ce110 L7:0x002cc680 L8:0x002acce8
+void ocean_wave_table_set_80(uint32_t rec, float k);
 void ocean_wave_scale_l2(float k);            // L2:0x002a47f8 (through 0x002a40d0: ocean_wave_table_set, alpha 0x80)
 void ocean_update_l2(uint32_t m);             // L2:0x002ea198  class 854
 

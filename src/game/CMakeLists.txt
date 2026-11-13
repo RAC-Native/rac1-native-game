@@ -229,6 +229,12 @@ add_library(rac1_game STATIC
     ovl/shared_hud_shapes.cpp
     ovl/shared_moby_helpers.cpp
     ovl/shared_class1952.cpp
+    ovl/shared_class615.cpp
+    ovl/shared_class1844.cpp
+    ovl/shared_class447.cpp
+    ovl/shared_class1023.cpp
+    ovl/shared_class280.cpp
+    ovl/shared_class631.cpp
     ovl/novalis_amoeboid.cpp
     ovl/vendor_draw.cpp
     ovl/vendor_frame.cpp

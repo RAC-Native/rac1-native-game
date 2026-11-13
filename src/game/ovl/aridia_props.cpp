@@ -436,6 +436,10 @@ void ocean_wave_table_set(uint32_t rec, uint32_t alpha, float k) {
     for (uint32_t i = 0; i < 0xf8; ++i) swc1(t.dst + 0x10 + i * 4, fpu_mul(lwc1(t.src + 0x10 + i * 4), k));
 }
 
+// The wave table with the alpha 0x80 (the record and `k` the caller's).
+// orig: L5:0x002ce110 L7:0x002cc680 L8:0x002acce8
+void ocean_wave_table_set_80(uint32_t rec, float k) { ocean_wave_table_set(rec, 0x80, k); }
+
 // The ocean's wave table scaled by `k` (alpha 0x80, through 0x002a40d0), the record the caller's own frame.
 // orig: L2:0x002a47f8
 void ocean_wave_scale_l2(float k) {
