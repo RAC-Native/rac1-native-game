@@ -19,6 +19,13 @@ What changed in each release. Releases are source only: you build the game with 
   section's objects of another planet were then run on the arena's own classes of the same number: a moby callback at a
   wild address, an error, the game stuck. Those objects are now left out (logged as not placed); on PAL the escape's
   Rilgar and Umbris sections come without their planets' objects, the Snagglebeast among them, until contexts exist for it.
+- **Water Reflections: Medium (RT) no longer freezes the picture (Vulkan, NVIDIA).** At a level's or a world section's change
+  (Daino's Arena's "La grande fuga": every portal) the ray tracing's old structures were destroyed, and its tables freed and
+  its descriptor sets written again, in the middle of the frame being recorded, which had already bound them: the GPU then
+  read freed memory (the driver's "MMU fault"), the device was lost and the picture stayed still while the game went on (the
+  next start falling back to OpenGL). The change is now made at the next frame's start, before anything binds them, the trace
+  off until then. Found with the Vulkan validation layer (the command buffer invalid: "VkAccelerationStructureKHR was
+  destroyed"); the whole escape, every portal, now runs clean under GPU-assisted validation.
 - **A shorter freeze at a level's start.** The modern renderer's world asset and textures are now read and decoded on a
   worker while the loading screen or the story's movies play (Veldin to Novalis: 80 ms warm, 300 to 500 ms from the disk,
   no longer on the main thread at the level's first frame, when the picture froze and the sound went on alone).
