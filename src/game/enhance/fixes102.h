@@ -42,8 +42,8 @@
 // the 1.02 build's fixes that change how the game plays (the exploits stay possible with the row off), numbered as the
 // analysis's for RAC1_GAMEPLAY102:
 // - 4: the RYNO's targets from the target list 0x1aba00 (fixes102_ryno_targets, in place of ryno_2cc360 0x2cc360)
-// - 8: the Visibomb's steering ends in the hero state 0x32 too (visibomb_update 0x2b3058, visibomb_ball_update 0x2b6140;
-//   tools/codegen/asm2fn_specs/visibomb*.json "host_ntsc")
+// - 8: the Visibomb's steering ends in the hero state 0x32 too (visibomb_update 0x2b3058, visibomb_ball_update 0x2b6140:
+//   visibomb.cpp, visibomb_ball.cpp)
 // - 9: deadly ground (+0x12ea) for the Hologuise's states, the hoverboard's ride-off, quicksand in a vehicle mode
 //   (hero_input_update 0x229b70, hero_set_state 0x2223f8, hero_surface_update 0x20b960 and their levels' copies:
 //   the hand ports and tools/codegen/hooks.glue)
@@ -52,9 +52,18 @@
 // - 13: the Hologuise's use test (sub_0020fe30 0x20fe30), its countdown stopped by hero_place 0x216f90, the state a forced
 //   hero_set_state leaves it with
 // - 14: the Decoy Glove's decoy pushed off by Ratchet swimming into it (state 0x31 within 1.5: decoy_object_update
-//   0x2c4380; tools/codegen/asm2fn_specs/decoy_obj.json "host_ntsc")
+//   0x2c4380: decoy_obj.cpp)
 // - 21: Rilgar's moving water (class 831, L5:0x30ca80): its surface carries Ratchet swimming in it as it rises (his
 //   water height +0x2f0), and it holds still in the cutscenes (hooks.glue)
+// - 23: Giant Clank's pad (Quartu's class 1451 L15:0x2ed068, Veldin's finale's 1899 L18:0x2fb868; the shared port
+//   clank_pad_update, shared_clank_pad.cpp): boarding retires a moby still linked at its pvar +0x70, and on Quartu saves the
+//   pad's place as the checkpoint (checkpoint_save 0x284e50) before Ratchet is put on it
+// - 24: the open sea of Pokitaru and Kalebo III (class 1111, L11:0x30b358 / L16:0x2dee10; the shared port class1111_update,
+//   shared_class1111.cpp) is the level's water disc (0x1612dc: on, centre (512, 512), radius 1024, at the swell's height,
+//   set each frame the sea is drawn), so that surface_height gives the hero's movement, the bombs and the mines its surface
+// - 25: Gemlik Base's class 1885 (and Gaspar's copy; L9:0x30a9e8 / L13:0x30d3b8, the shared port class1885_hit,
+//   shared_class1885.cpp) killed with Ratchet at the height 250 (within 4) on Gemlik Base: its bolts with
+//   moby_drop_bolts' flag 0x200 (their flag 2, as when Ratchet stands next to it)
 // In the generated code each hook is a test that fails with the row off; on another region's disc the transliterated
 // functions that region changed (stand-ins: on the PAL disc 2.00 the 1.02 build's own) get none.
 //

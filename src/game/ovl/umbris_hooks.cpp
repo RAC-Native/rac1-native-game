@@ -1,5 +1,6 @@
 // See umbris_hooks.h.
 #include <game/ovl/umbris_hooks.h>
+#include <game/ovl/sound_emitter.h>
 
 #include <game/ovl/umbris_mobys.h>
 
@@ -20,8 +21,8 @@ bool umbris_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t*
 // orig: (host) see umbris_hooks.h
 bool umbris_sound_emitter_call(uint32_t fn, uint32_t em) {
     switch (lvl_key(fn)) {
-    case L7_CASE(0x00329740): umb_emitter3_l7(em); return true;
-    case L7_CASE(0x003298a0): umb_emitter6_l7(em); return true;
+    case L7_CASE(0x00329740): emitter_reverb_box_update(em); return true;
+    case L7_CASE(0x003298a0): emitter_music_box_update(em); return true;
     default: return false;
     }
 }

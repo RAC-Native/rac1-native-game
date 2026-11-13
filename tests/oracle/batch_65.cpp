@@ -824,7 +824,8 @@ void batch_65() {
         level1(); collide_vu_reset(); oracle_vu_contact_reset(); const uint32_t m = e749(); blastcam(m); wrand(T, 0x30); wfrand(m + 0x40, 3, -3, 3);
         return Args{{m, T, R() & 1}, {}};
     }, [](A a) { explode_and_reset(a.i[0], a.i[1], a.i[2]); return uint64_t{0}; }, 0x70003718, 0x7000371c);
-    g_extra_noop_hooks = {OVF(0x002d5730), OVF(0x002d57d0)};  // (the class-749 hooks +4 / +0xc, not ported yet)
+    // (the class-749 hooks +4 / +0xc run on both sides: ported (carry_hooks.cpp), and since #145 carry_update calls the hook
+    // +0xc through carry_hook_c; these checks had them as no-ops in the original, which hid that the port's call went nowhere)
     for (int pass = 0; pass < 2; ++pass)
     check("carry_update", 0x002dc9f0, 400, Ret::Int32, [level1, e749, anymoby, blastcam, pass] {
         level1(); collide_vu_reset(); oracle_vu_contact_reset();
@@ -854,7 +855,6 @@ void batch_65() {
         return Args{{m, pv + 0x70}, {}};
     }, [](A a) { return r32(static_cast<uint32_t>(carry_update(a.i[0], a.i[1]))); }, 0x70003718, 0x7000371c);
     g_extra_noop_hooks.clear();
-    g_extra_noop_hooks = {OVF(0x002d5730), OVF(0x002d57d0)};
     for (int pass = 0; pass < 3; ++pass)
     check("e749_update", 0x002d4610, 300, Ret::None, [level1, e749, anymoby, anypath, blastcam, pass] {
         level1(); collide_vu_reset(); oracle_vu_contact_reset();

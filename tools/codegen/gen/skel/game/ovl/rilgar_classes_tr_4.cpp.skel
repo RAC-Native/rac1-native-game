@@ -20,7 +20,6 @@
 #include <game/ovl/nanotech_draw.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/pause_menu.h>
-#include <game/ovl/rilgar_hero.h>
 #include <game/ovl/rilgar_mobys.h>
 #include <game/ovl/variants_l5.h>
 #include <game/ovl/veldin_mobys.h>
@@ -83,18 +82,6 @@ using namespace vu0m;
 //@gen ril_cam_type8_update_l5
 
 //@gen ril_cam_type8_exit_l5
-
-//@gen ril_2b65f8_l5
-
-//@gen ril_emitter1_l5
-
-//@gen ril_2b6720_l5
-
-//@gen ril_emitter3_l5
-
-//@gen ril_emitter5_l5
-
-//@gen ril_emitter6_l5
 
 //@gen ril_219d88_l5
 

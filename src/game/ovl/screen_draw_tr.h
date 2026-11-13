@@ -1,4 +1,4 @@
-// The screens' drawing 0x2018c8 transliterated whole (screen_draw_tr.cpp, regen group veldin_screen_draw).
+// Message screen drawing entry wrapper 0x2018c8 (implemented in screens.cpp).
 #ifndef RAC1_GAME_OVL_SCREEN_DRAW_TR_H
 #define RAC1_GAME_OVL_SCREEN_DRAW_TR_H
 

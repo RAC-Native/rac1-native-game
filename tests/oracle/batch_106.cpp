@@ -1,6 +1,13 @@
 // Oracle batch 106 (task 0330): the weapons and gadgets of R&C1, second part, on Veldin's real level
 // state (needs the ISO; also --level 1..3): the Glove of Doom's agent (class 0xe6) and its callees,
-// then the ports that follow in the same file as they are added.
+// then the ports that follow in the same file as they are added. A full run takes longer than 15 minutes on a busy machine:
+// ORACLE_ONLY=<check> runs one check at a time (the "/states", "/stream", "/rings", "/tail" checks reach the paths of the
+// doomlet and the Suck Cannon the first checks of those functions seldom take).
+
+// Audit 2 (2026-11-13): the screen (640 x 448), projection and view set up and the packet cursor on a test-area buffer in every
+// snapshot (view_setup: before, the weapons' and effects' draw callbacks projected nothing, e.g. the Decoy Glove's ring drew no
+// quad); each item's gold flag 0x13e520 + item set in half of the cases (no case had a gold weapon before); the Metal Detector
+// given a buried find and the Hydrodisplacer its water flags; screen_flash on a real screen with its packets in the test area.
 
 #include "ovl_oracle.h"
 
@@ -51,6 +58,20 @@ void l1check(const char* name, uint32_t l1addr, int n, Ret ret, const std::funct
     }
     std::printf("%-26s L1:0x%08x\n", name, l1addr);
     if (!check_fn(name, l1addr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
+}
+// The screen (640 x 448, as the game's), the projection and the view set up, and the packet cursor on a buffer of the test
+// area: after the level's first frame the oracle's display leaves the projection's constants broken (nothing projects onto
+// the screen) and the cursor 0, so the weapons' and effects' draw callbacks (the beams, rings, glows, trails) wrote nothing
+// past their GS state and the checks compared no quad of theirs (as batches 506 / 510 before their audit). Since audit 2.
+void view_setup() {
+    if (ee_read<uint16_t>(0x001518d0) == 0) {
+        w16(0x001518d0, 640);
+        w16(0x001518d2, 448);
+    }
+    screen_setup();
+    projection_setup();
+    render_view_setup();
+    w32(OV(0x001611c0), TEST_AREA + 0x8000 + u(ri(0, 0x40)) * 0x10);
 }
 // (task 0410) the carried classes' hook tables (`class +0x2c`) of the levels' own overlays (section 3: class, update, table), the
 // default class's left out: `own` a class of the level's own (the others are class 0x10e's, the Morph-o-Ray chicken's)
@@ -114,7 +135,7 @@ void batch_106() {
         } else {
             std::memcpy(ram, snap.data(), snap.size());
         }
-        render_view_setup();  // the camera's matrices in VU0 (point_on_screen)
+        view_setup();  // the screen, the projection and the camera's matrices in VU0 (point_on_screen), the packet cursor
         collide_vu_reset();  // the contact registers vf25..vf29 the collision leaves, the same on both sides
         oracle_vu_contact_reset();
     };
@@ -207,9 +228,12 @@ void batch_106() {
         return [=]() -> Args {
             const std::vector<uint8_t>& sn = item_snap(item, kind);
             std::memcpy(ee_get_ram_base(), sn.data(), sn.size());
-            render_view_setup();
+            view_setup();
             collide_vu_reset();
             oracle_vu_contact_reset();
+            // (the item's gold flag 0x13e520 + item: the snapshots are of the plain weapon; half of the cases the gold one, whose
+            // branches (cones, colours, sizes, classes) no case reached before)
+            w8(0x0013e520 + item, coin() ? 1u : 0u);
             const uint32_t m = moby_of_class(cls != 0 ? cls : hand_class(item));
             if (m == 0) return Args{{0u}, {}};
             const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -576,6 +600,117 @@ void batch_106() {
         seed_rand();
         return Args{{m}, {}};
     }, [](A a) { if (a.i[0] != 0) suck_cannon_update(a.i[0]); return uint64_t{0}; });
+    // (stage 3d) the paths the checks above seldom reach: the capture of a carried moby by 0x2da058 (its record in state 2,
+    // the gold cannon's ten slots), the release hook 0x2da1e0, the beam's particle stream (0x2ddf60 spawning and moving
+    // particles, 0x2df048 letting them go, 0x2dd8e8 drawing the rings), the pickups the beam pulls in (0x2df1e0), and the
+    // update's tail in game mode 3 and the rumble counters
+    auto suck_carried = [pick, pickf, near_hero, rec_of, fill_rec, spawn_carried](uint32_t hand, uint32_t& rec) -> uint32_t {
+        rec = 0;
+        const uint32_t c = pick({kA, kA, kB, 0x10eu});
+        const uint32_t o = c == 0 ? 0u : spawn_carried(c);
+        if (o == 0 || ee_read<uint32_t>(o + 0x78) == 0) return 0;
+        rec = rec_of(o, c);
+        if (rec == 0) return 0;
+        fill_rec(rec, o, hand);
+        near_hero(o + 0x10, 4.0f, -0.5f, 2.0f);
+        w16(o + 0x34, ee_read<uint16_t>(o + 0x34) | 0x1000u);
+        w8(o + 0x20, pick({0u, 1u, 2u, 0xfeu}));
+        w16(rec + 0x68, pick({2u, 2u, 2u, 2u, 3u, 5u, 1u, 4u, 8u}));
+        wf(rec + 0x6c, pickf({0.5f, 1.0f, 2.0f, 1.0f}));
+        return o;
+    };
+    if (kA == 0) {
+        skip_check("suck_2da058", 0x002da058, "the level has no carried class");
+        skip_check("suck_2da1e0", 0x002da1e0, "the level has no carried class");
+    } else {
+        check("suck_2da058", 0x002da058, 600, Ret::None, [suck_world, suck_hand, suck_carried, near_hero, pick] {
+            suck_world();
+            const uint32_t m = suck_hand(3);
+            uint32_t rec = 0;
+            const uint32_t o = m == 0 ? 0u : suck_carried(m, rec);
+            if (o == 0) return Args{{0u, 0u, 0u, 0u, 0u}, {}};
+            w8(0x0013e529, u(ri(0, 1)));  // the gold Suck Cannon: ten slots
+            w32(P + 0x2078, u(ri(0, 6)));
+            w32(P + 0x207c, u(ri(0, 6)));
+            for (uint32_t i = 0; i < 10; ++i) w32(P + 0x2050 + 4 * i, ri(0, 2) == 0 ? o : 0u);  // some slots taken
+            near_hero(OUT, 1.0f, 0.0f, 1.5f);
+            seed_rand();
+            return Args{{m, ee_read<uint32_t>(m + 0x78), o, rec, OUT}, {}};
+        }, [](A a) { if (a.i[0] != 0) suck_2da058(a.i[0], a.i[1], a.i[2], a.i[3], a.i[4]); return uint64_t{0}; });
+        check("suck_2da1e0", 0x002da1e0, 300, Ret::Int32, [suck_world, suck_hand, suck_carried] {
+            suck_world();
+            const uint32_t m = suck_hand(3);
+            uint32_t rec = 0;
+            const uint32_t o = m == 0 ? 0u : suck_carried(m, rec);
+            seed_rand();
+            return Args{{o}, {}};
+        }, [](A a) { return r32(a.i[0] != 0 ? u(suck_2da1e0(a.i[0])) : 0u); });
+    }
+    // the beam after a few frames of sucking: the rings built, particles in flight (the state made by the port's own 0x2ddf60,
+    // as the item snapshots are made by the port's frames)
+    auto suck_beam = [suck_world, suck_hand, near_hero](bool reset) -> uint32_t {
+        suck_world();
+        const uint32_t m = suck_hand(3);
+        if (m == 0) return 0;
+        near_hero(OUT, 1.0f, 0.0f, 1.5f);
+        w32(OV(0x00161b40), 1u);  // a fresh beam (0x2ddcb8 lays it out), then frames of it
+        w32(OV(0x00161b44), 1u);
+        for (int f = ri(1, 12); f > 0; --f) {
+            for (uint32_t k = 0; k < 10; ++k) if (ri(0, 2) != 0) w16(OV(0x001e6008) + 2 * k, u(ri(0x30, 0x90)));
+            if (ri(0, 3) == 0) near_hero(OUT, 1.0f, 0.0f, 1.5f);
+            suck_2ddf60(m, OUT);
+        }
+        if (reset && ri(0, 3) == 0) { w32(OV(0x00161b40), 1u); w32(OV(0x00161b44), ri(0, 1) == 0 ? 1u : 0u); }
+        if (ri(0, 3) == 0) w32(OV(0x00161b54), u(ri(0x38, 0x40)));  // the sway's turn near its end (0x3c frames)
+        if (ri(0, 3) == 0) w16(P + 0x22c8, 1u);  // leaning on a wall: the hand's own frame
+        if (ri(0, 2) == 0) near_hero(OV(0x00166dc0), 4.0f, -1.0f, 3.0f);  // the camera, for the rings' faces
+        if (ri(0, 2) == 0) { near_hero(OUT, 1.0f, 0.0f, 1.5f); }
+        return m;
+    };
+    check("suck_2ddf60/stream", 0x002ddf60, 600, Ret::None, [suck_beam] {
+        const uint32_t m = suck_beam(true);
+        seed_rand();
+        return Args{{m, OUT}, {}};
+    }, [](A a) { if (a.i[0] != 0) suck_2ddf60(a.i[0], a.i[1]); return uint64_t{0}; });
+    check("suck_2df048", 0x002df048, 300, Ret::None, [suck_beam] {
+        const uint32_t m = suck_beam(false);
+        seed_rand();
+        return Args{{m}, {}};
+    }, [](A a) { if (a.i[0] != 0) suck_2df048(a.i[0]); return uint64_t{0}; });
+    check("suck_beam_draw/rings", 0x002dd8e8, 300, Ret::None, [suck_beam] {
+        const uint32_t m = suck_beam(false);
+        for (uint32_t k = 0; k < 10; ++k) if (ri(0, 3) == 0) w16(OV(0x001e6008) + 2 * k, static_cast<uint32_t>(ri(-8, 0x50)) & 0xffffu);
+        seed_rand();
+        return Args{{m}, {}};
+    }, [](A a) { if (a.i[0] != 0) suck_beam_draw(a.i[0]); return uint64_t{0}; });
+    check("suck_2df1e0", 0x002df1e0, 600, Ret::None, [suck_beam, pick] {
+        const uint32_t m = suck_beam(false);
+        if (m == 0) return Args{{0u}, {}};
+        // a moby near one of the beam's points: a bolt (type 0x13) or whatever the level has there
+        const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8));
+        const uint32_t o = first + 0x100 * u(ri(1, 200));
+        if (ee_read<uint8_t>(o + 0x20) >= 0xf0) w8(o + 0x20, pick({0u, 1u, 0xfeu}));
+        const uint32_t ci = ee_read<uint32_t>(o + 0x24);
+        if (ci != 0 && ri(0, 1) == 0) w16(ci + 0x46, 0x13u);
+        Vec4 p = ee_ref<Vec4>(OV(0x001e5f40) + 0x10 * u(ri(0, 9)));
+        p.x += rf(-2.5f, 2.5f); p.y += rf(-2.5f, 2.5f); p.z += rf(-1.0f, 1.0f);
+        ee_ref<Vec4>(o + 0x10) = p;
+        for (uint32_t k = 0; k < 10; ++k) if (ri(0, 3) == 0) w16(OV(0x001e6008) + 2 * k, u(ri(0, 0x60)));
+        seed_rand();
+        return Args{{o}, {}};
+    }, [](A a) { if (a.i[0] != 0) suck_2df1e0(a.i[0]); return uint64_t{0}; });
+    check("suck_cannon_update/tail", 0x002da790, 1000, Ret::None, [suck_world, suck_hand, pick] {
+        suck_world();
+        const uint32_t m = suck_hand(pick({1u, 2u, 3u, 4u, 4u, 5u, 6u}));
+        if (m == 0) return Args{{0u}, {}};
+        w32(0x00140404, pick({3u, 3u, 0u, 1u}));  // the game mode: 3 stops the suction's sound, the button latched
+        w32(0x0013cae0, R() & 0xffu);
+        w16(0x00141680 + 0x48, pick({0u, 5u, 0xfffeu, 0xffffu}));  // the rumble's counters
+        w16(0x00141680 + 0x4a, pick({0u, 1u, u(ri(0, 40)), 0x7fffu}));
+        w32(0x0015ed84, u(ri(0, 40)));
+        seed_rand();
+        return Args{{m}, {}};
+    }, [](A a) { if (a.i[0] != 0) suck_cannon_update(a.i[0]); return uint64_t{0}; });
     // the hooks of the classes that use the carry machinery (a moby of the class, the hand as owner)
     auto hook_moby = [suck_world, suck_hand, pick, near_hero, rec_of, fill_rec, spawn_carried](uint32_t cls) -> uint32_t {
         suck_world();
@@ -763,10 +898,41 @@ void batch_106() {
         for (uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)); m < ee_read<uint32_t>(OV(0x0015ffe0)) + 0x1000; m += 0x100)
             for (uint32_t o : {0xccu, 0xdcu, 0xecu}) g_ignored_words.push_back(m + o);
     }
+    // the Metal Detector's buried thing (class 0x25d, its bolts at pvar +0x18) as the hero's find 0x13f350 + 0x2040 at a distance
+    // +0x2044 within 1 (dug up), 10 (the beep, its pitch) or beyond: before, no find, the update's aim and dig never ran (since audit 2)
+    auto metal_extra = [safe_spawn](uint32_t m, uint32_t pv) {
+        if (ri(0, 3) == 0 || pv == 0) return;
+        uint32_t t = 0;
+        for (uint32_t c = ee_read<uint32_t>(OV(0x0015ffd8)); c < ee_read<uint32_t>(OV(0x0015ffe0)); c += 0x100)
+            if (ee_read<uint16_t>(c + 0xa6) == 0x25d && ee_read<uint8_t>(c + 0x20) < 0xfd) { t = c; break; }
+        if (t == 0) t = safe_spawn(0x25d);
+        if (t == 0) return;
+        Vec4 q = ee_ref<Vec4>(m + 0x10);
+        q.x += rf(-6.0f, 6.0f); q.y += rf(-6.0f, 6.0f); q.z += rf(-2.0f, 1.0f);
+        ee_ref<Vec4>(t + 0x10) = q;
+        const uint32_t tpv = ee_read<uint32_t>(t + 0x78);
+        if (tpv != 0) w32(tpv + 0x18, coin() ? 0u : u(ri(1, 30)));
+        if (ri(0, 4) == 0) w8(t + 0x20, coin() ? 0xfeu : 0xfdu);
+        w32(P + 0x2040, t);
+        wf(P + 0x2044, ri(0, 2) == 0 ? rf(0.0f, 1.0f) : coin() ? rf(1.0f, 10.0f) : rf(10.0f, 40.0f));
+        if (coin()) w8(m + 0x20, coin() ? 1u : 2u);
+    };
+    // the Hydrodisplacer's water: the hero's flag 0x13f350 + 0x20b0 (the pump running, its spray 0x2e01b0 and the hero's push),
+    // +0x10b4 = 3 (its other mode, 0x2e0340), the hero's state +0x2084 (0x38 / 0x39 leave the push out): before, none of them set,
+    // the update ran 88 of its 516 instructions (since audit 2)
+    auto hydro_extra = [pick](uint32_t, uint32_t) {
+        w8(P + 0x20b0, ri(0, 2) == 0 ? 0u : 1u);
+        if (ri(0, 3) == 0) w32(P + 0x10b4, 3u);
+        if (coin()) w32(P + 0x2084, pick({0u, 0x38u, 0x39u, 0x1eu}));
+        if (coin()) w32(OV(0x0015f5c4), 0u);
+        if (coin()) wfrand(P + 0x100, 3, -0.3f, 0.3f);  // (the hero's velocity the spray takes on)
+    };
     for (const HandT& h : hands) {
         const uint32_t item = h.item, ns = h.nstates;
         auto fn = h.fn;
-        check(h.name, h.addr, 1500, Ret::None, [weapon_gen, item, ns] { return weapon_gen(item, 0, u(ri(0, 2)), ns)(); },
+        auto extra = item == 0x1b ? std::function<void(uint32_t, uint32_t)>(metal_extra)
+                     : item == 0x16 ? std::function<void(uint32_t, uint32_t)>(hydro_extra) : nullptr;
+        check(h.name, h.addr, 1500, Ret::None, [weapon_gen, item, ns, extra] { return weapon_gen(item, 0, u(ri(0, 2)), ns, extra)(); },
               [fn](A a) { if (std::getenv("ASM_TRACE") != nullptr) std::printf("  [port call] seed %08x\n", ee_read<uint32_t>(ee_read<uint32_t>(0x0012f76c) + 0x58)); if (a.i[0] != 0) fn(a.i[0]); if (std::getenv("ASM_TRACE") != nullptr) std::printf("  [port end]\n"); return uint64_t{0}; });
     }
 
@@ -788,7 +954,8 @@ void batch_106() {
             // (a class the level has not loaded -- the weapon's own projectile classes are loaded with the level that carries them: a moby of
             // the item's hand class stands in, the update called on it directly)
             if (no_class) cls = hand_class(item);
-            render_view_setup();
+            w8(0x0013e520 + item, coin() ? 1u : 0u);  // (the item's gold flag, as weapon_gen's)
+            view_setup();
             collide_vu_reset();
             oracle_vu_contact_reset();
             uint32_t m = moby_of_class(cls);
@@ -821,6 +988,17 @@ void batch_106() {
                 }
             }
             if (ee_read<int32_t>(P + 0x2084) == 1) w32(P + 0x2084, 0x1eu);
+            // (the Decoy Glove's landing ring 0x2c31c0: its centre pvar +0x20 and its ground's normal +0x30 are the decoy's, which the
+            // hand class standing in for it does not hold: the ring was never on the screen, the check compared no quad. Its centre
+            // at the hero (whom the view looks at), its normal about up; from a counter, not the random sequence, so that the other
+            // checks keep their cases. Since audit 2)
+            if (fn == 0x002c31c0u && pv != 0) {
+                static uint32_t ring = 0;
+                const float k = static_cast<float>(ring++ % 16u);
+                const Vec4 h = ee_ref<Vec4>(0x0013f3d0);
+                ee_ref<Vec4>(pv + 0x20) = Vec4{h.x + (k - 8.0f) * 0.25f, h.y + (static_cast<float>(ring % 5u) - 2.0f) * 0.5f, h.z + 0.1f, 1.0f};
+                ee_ref<Vec4>(pv + 0x30) = Vec4{(k - 8.0f) * 0.05f, (static_cast<float>(ring % 3u) - 1.0f) * 0.2f, 1.0f, 0.0f};
+            }
             seed_rand();
             return Args{{m}, {}};
         };
@@ -852,6 +1030,15 @@ void batch_106() {
         w32(OV(0x0015f30c), 1u);
         w32(OV(0x0015f310), OUT);
         ee_write<int16_t>(0x001518d2, static_cast<int16_t>(pick({0u, 1u, 2u, 3u, 5u, 8u})));
+        // (half of the cases a screen up to 448 high (view_setup makes it 640 wide: it was 0 wide before, quads of no width), the
+        // bands up to 40 lines high: the last band's clamp to the screen's last line reached; the packets on a buffer of the test
+        // area, not the null page)
+        if (coin()) {
+            ee_write<int16_t>(0x001518d0, 640);
+            ee_write<int16_t>(0x001518d2, static_cast<int16_t>(coin() ? 448 : ri(9, 448)));
+            w32(OUT + 0x10, u(ri(4, 40))); w32(OUT + 0x20, u(ri(0, 40)));
+        }
+        w32(OV(0x001611c0), TEST_AREA + 0x8000 + u(ri(0, 0x40)) * 0x10);
         seed_rand();
         return Args{{}, {}};
     }, [](A) { screen_flash(); return uint64_t{0}; });
@@ -871,6 +1058,48 @@ void batch_106() {
         auto fn = p.fn;
         check(p.name, p.addr, 1200, Ret::None, [proj_gen, item, addr, ns, oo] { return proj_gen(item, addr, ns, oo)(); },
               [fn](A a) { if (std::getenv("ASM_TRACE") != nullptr) std::printf("  [port call]\n"); if (a.i[0] != 0) fn(a.i[0]); if (std::getenv("ASM_TRACE") != nullptr) std::printf("  [port end]\n"); return uint64_t{0}; });
+    }
+    // (stage 3d) the doomlet's states the projectile check above seldom reaches: every state byte (0xb the explosion, 0xd the
+    // owner's wait, 8 / 9 the falls, 0xc the jump's landing), the gold levels 0..3 (0x13e534: the size, the explosion's
+    // sound), a target in pvar +0x38 (the hero, or a moby of type 5 with the target flag 0x1000), its timers near their limits
+    if (g_oracle_level == 2) {
+        skip_check("doomlet_update/states", 0x002bffa8, "level 2: the sphere_collide record of doomlet_update above, not resolved");
+    } else {
+        check("doomlet_update/states", 0x002bffa8, 1500, Ret::None, [proj_gen, pick] {
+            const Args base = proj_gen(0x14, 0x002bffa8, 0, 0)();
+            const uint32_t m = base.i[0];
+            if (m == 0) return base;
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            if (pv == 0) return base;
+            w8(m + 0x20, ri(0, 2) == 0 ? pick({0xbu, 0xbu, 0xdu, 0xcu, 8u, 9u}) : u(ri(0, 15)));
+            w8(0x0013e534, u(ri(0, 3)));
+            // a target: the hero, a moby of type 5 with the target flag, a retired one, or none
+            uint32_t enemy = 0;
+            for (uint32_t o = ee_read<uint32_t>(OV(0x0015ffd8)); o < ee_read<uint32_t>(OV(0x0015ffe0)); o += 0x100) {
+                const uint32_t ci = ee_read<uint32_t>(o + 0x24);
+                if (o != m && ee_read<uint8_t>(o + 0x20) < 0xf0 && ci != 0 && ee_read<int16_t>(ci + 0x46) == 5 && ri(0, 2) == 0) { enemy = o; break; }
+            }
+            const uint32_t hero = ee_read<uint32_t>(0x001413d0);
+            const uint32_t tgt = pick({0u, hero, hero, enemy, enemy, enemy});
+            if (tgt != 0 && tgt != hero) {
+                if (ri(0, 4) != 0) ee_write<uint16_t>(tgt + 0x34, static_cast<uint16_t>(ee_read<uint16_t>(tgt + 0x34) | 0x1000u));
+                if (ri(0, 6) == 0) w8(tgt + 0x20, pick({0xfeu, 0xfdu}));
+                Vec4 p = ee_ref<Vec4>(m + 0x10);  // near the doomlet: the chase's jump, the contact
+                p.x += rf(-3.0f, 3.0f); p.y += rf(-3.0f, 3.0f); p.z += rf(-0.5f, 0.5f);
+                if (ri(0, 1) == 0) ee_ref<Vec4>(tgt + 0x10) = p;
+            }
+            w32(pv + 0x38, tgt);
+            w32(pv + 0x3c, ri(0, 2) == 0 ? tgt : 0u);
+            w32(pv + 0x30, pick({0u, 1u, u(ri(2, 600)), 3999u, 4000u, 4001u, 4500u}));
+            w32(pv + 0x34, pick({0u, u(ri(1, 100)), 0xe0fu, 0xe10u, 0xe11u}));
+            // the owner (pvar +0x60) state 0xd waits on: alive, retired, or none
+            const uint32_t owner = pick({0u, hero, enemy});
+            w32(pv + 0x60, owner);
+            if (owner != 0 && owner != hero && ri(0, 2) == 0) w8(owner + 0x20, pick({0xfeu, 0xfdu}));
+            if (ri(0, 4) == 0) wf(pv + 0x64, rf(-3.1f, 3.1f));
+            seed_rand();
+            return Args{{m}, {}};
+        }, [](A a) { if (a.i[0] != 0) doomlet_update(a.i[0]); return uint64_t{0}; });
     }
 
     g_ignored_words = ign_saved;

@@ -94,8 +94,11 @@ int32_t hero_water_air() {
 // with a splash sound; every 16 frames a deep-enough spot below a non-water mode starts the dive
 // 0x34. Returns whether the state changed.
 int32_t hero_water_entry() {
-    if (on_rilgar()) return static_cast<int32_t>(ril_call(ril_hero_water_entry_u).v0);  // (Rilgar's own: L5:0x002515d0)
-    if (on_kalebo()) return static_cast<int32_t>(kal_call(kal_hero_water_entry_u).v0);  // (level 16's own: L16:0x00222d38)
+    if (hero_has_hoverboard()) {
+        if (static_cast<uint32_t>(lw(P + 0x208c) - 0x15) < 2u) return 0;
+        const int32_t hs = lw(P + 0x2084);
+        if (hs == 0x6f || hs == 0x6d || hs == 0x6e) return 0;
+    }
     if (lw(P + 0x2084) == 0x6a) return 0;
     int32_t hit = 0;
     if (lbu(P + 0x12e4) != 0) {
@@ -147,15 +150,9 @@ int32_t hero_water_entry() {
 // or after a long fall the hard landing 3; else standing 0 (after a long jump, with the item's
 // landing animation).
 void hero_land() {
-    if (on_blarg()) { blg_call(blg_hero_land_u); return; }  // (level 6's own: L6:0x0023aca8)
-    if (on_batalia()) { bat_call(bat_hero_land_u); return; }  // (level 8's own: L8:0x00236940)
-    if (on_pokitaru()) { pok_call(pok_hero_land_u); return; }  // (level 11's own: L11:0x00253280)
-    if (on_quartu()) { qua_call(qua_hero_land_u); return; }  // (level 15's own: L15:0x0021c8a8)
-    if (on_kalebo()) { kal_call(kal_hero_land_u); return; }  // (level 16's own: L16:0x00224a80)
-    if (on_veldin_finale()) { vf_call(vf_hero_land_u); return; }  // (level 18's own: L18:0x0022e160)
     if (on_l1_family() || on_rilgar()) return hero_land_l1();
     sw(P + 0x2284, 0);
-    if (lbu(P + 0x12e2) != 0 && fs6c() * 0.5f < lwc1(P + 0x164)) {
+    if (hero_has_skate() && lbu(P + 0x12e2) != 0 && fs6c() * 0.5f < lwc1(P + 0x164)) {
         hero_set_state(0x2f, 1);
         return;
     }
@@ -244,15 +241,6 @@ int32_t hero_jump_input() {
 // push from the record's direction, the attacker or the facing is added to the velocities.
 // orig: 0x00210ce8
 int32_t hero_hurt(int32_t knock) {
-    if (on_blarg()) return static_cast<int32_t>(blg_call(blg_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 6's own: L6:0x00227e78)
-    if (on_batalia()) return static_cast<int32_t>(bat_call(bat_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 8's own: L8:0x00222800)
-    if (on_pokitaru()) return static_cast<int32_t>(pok_call(pok_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 11's own: L11:0x00240f88)
-    if (on_hoven()) return static_cast<int32_t>(hov_call(hov_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 12's own: L12:0x002325b8)
-    if (on_oltanis()) return static_cast<int32_t>(olt_call(olt_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 14's own: L14:0x00222aa8)
-    if (on_quartu()) return static_cast<int32_t>(qua_call(qua_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 15's own: L15:0x00208e10)
-    if (on_kalebo()) return static_cast<int32_t>(kal_call(kal_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 16's own: L16:0x0020e690)
-    if (on_veldin_finale()) return static_cast<int32_t>(vf_call(vf_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 18's own: L18:0x00218a90)
-    if (on_veldin_orbit()) return static_cast<int32_t>(vo_call(vo_hero_hurt_u, static_cast<uint32_t>(knock)).v0);  // (level 17's own: L17:0x0020dbe8)
     if (on_l1_family() || on_rilgar()) return hero_hurt_l1(knock);
     if (lw(P + 0x208c) == 0x14 || lw(P + 0x208c) == 7) return 0;
     if (lw(P + 0x2084) == 0x32) return 0;
@@ -264,7 +252,7 @@ int32_t hero_hurt(int32_t knock) {
     if (idx == 0xff) return 0;
     const uint32_t rec = OV(0x00178100) + idx * 64;
     if (lwu(rec + 0x34) != hm) return 0;
-    if (lbu(P + 0x20a4) == 2) {
+    if (hero_has_giant_clank() && lbu(P + 0x20a4) == 2) {
         if ((lw(rec + 0x24) & 2) == 0) return 0;
     } else if ((lw(rec + 0x24) & 1) == 0) {
         return 0;
@@ -273,11 +261,11 @@ int32_t hero_hurt(int32_t knock) {
     sw(0x0013df88 + lvl * 4, lwu(0x0013df88 + lvl * 4) + 1);
     sw(0x0015eea8, lwu(0x0015eea8) + 1);
     sw(P + 0x2280, lwu(rec + 0x20));
-    if (lw(P + 0x208c) == 0xf) {
+    if (hero_has_grind() && lw(P + 0x208c) == 0xf) {
         sh(P + 0x5be, 1);
         return 0;
     }
-    if (lbu(P + 0x20a4) == 2) {  // the ship's shield takes it
+    if (hero_has_giant_clank() && lbu(P + 0x20a4) == 2) {  // the ship's shield takes it
         sw(P + 0x1630, static_cast<uint32_t>(lw(P + 0x1630) - float_to_int(lwc1(rec + 0x2c))));
         if (lw(P + 0x1630) < 0) sw(P + 0x1630, 0);
     }
@@ -297,7 +285,7 @@ int32_t hero_hurt(int32_t knock) {
         push.z = 0.0f;
     }
     const uint32_t mode = lbu(P + 0x20a4);
-    if (mode == 1) {
+    if (hero_has_clank() && mode == 1) {
         hero_set_state(0x46, 1);
         sub_00210c80_v(push, scaled, fs6c() * 5.0f, fs6c() * 3.0f);
     } else if (mode == 0) {
@@ -314,7 +302,7 @@ int32_t hero_hurt(int32_t knock) {
             swc1(P + 0x128, fs6c() * 7.0f);
             return 1;
         }
-        if (sub == 0x12 || sub == 0x11 || sub == 3) {
+        if (hero_has_water() && (sub == 0x12 || sub == 0x11 || sub == 3)) {
             if (att != 0 && cls == 0x28f) {
                 hero_set_state(0x82, 1);
                 return 1;
@@ -334,7 +322,7 @@ int32_t hero_hurt(int32_t knock) {
         }
         sub_00210c80_v(push, scaled, s, z);
         if (scaled != 0 && lbu(rec + 0x28) == 4) push.z = push.z + push.z;
-    } else if (mode == 2) {
+    } else if (hero_has_giant_clank() && mode == 2) {
         if ((lw(rec + 0x24) & 4) != 0 || !(0 < lw(P + 0x1630))) {
             hero_set_state(0x5d, 1);
             remove_moby_5f3();
@@ -424,7 +412,7 @@ void item_wrench(uint32_t mask) {
         const float high = lh(P + 0x41e) != 0 ? u2f(0x3f11eb85u) : u2f(0x3dcccccdu);
         const bool slam = high < lwc1(P + 0x2dc) || (lw(P + 0x2084) == 8 && u2f(0x3f11eb85u) < lwc1(P + 0x2dc));
         if (slam) {
-            if (lw(P + 0x5fc) == 0) hero_set_state(0x14, 1);
+            if (!hero_has_state_74() || lw(P + 0x5fc) == 0) hero_set_state(0x14, 1);
         } else if (lbu(P + 0x12ea) == 0) {
             hero_set_state(0x13, 1);
         }
@@ -539,17 +527,11 @@ void hero_item_swingshot(uint32_t mask) { item_swingshot(mask); }
 // the state changed.
 // orig: 0x00227fa0
 int32_t hero_item_use() {
-    if (on_blarg()) return static_cast<int32_t>(blg_call(blg_hero_item_use_u).v0);  // (level 6's own: L6:0x002398b8)
-    if (on_batalia()) return static_cast<int32_t>(bat_call(bat_hero_item_use_u).v0);  // (level 8's own: L8:0x00235550)
-    if (on_pokitaru()) return static_cast<int32_t>(pok_call(pok_hero_item_use_u).v0);  // (level 11's own: L11:0x00251e90)
-    if (on_hoven()) return static_cast<int32_t>(hov_call(hov_hero_item_use_u).v0);  // (level 12's own: L12:0x00244638)
-    if (on_oltanis()) return static_cast<int32_t>(olt_call(olt_hero_item_use_u).v0);  // (level 14's own: L14:0x00233a48)
-    if (on_quartu()) return static_cast<int32_t>(qua_call(qua_hero_item_use_u).v0);  // (level 15's own: L15:0x0021b4b8)
-    if (on_kalebo()) return static_cast<int32_t>(kal_call(kal_hero_item_use_u).v0);  // (level 16's own: L16:0x00223350)
-    if (on_veldin_finale()) return static_cast<int32_t>(vf_call(vf_hero_item_use_u).v0);  // (level 18's own: L18:0x0022cd70)
-    if (on_rilgar()) return static_cast<int32_t>(ril_call(ril_hero_item_use_u).v0);  // (Rilgar's own: L5:0x00251be8)
     if (on_novalis() || on_aridia()) return hero_item_use_l1();
-    if (lbu(P + 0x20ac) != 0 && (lw(P + 0x10b8) != 8 || lh(P + 0x308) != 1)) return 0;
+    if (lbu(P + 0x20ac) != 0 && !(hero_has_hoverboard() && lw(P + 0x10b8) == 0x24) &&
+        (lw(P + 0x10b8) != 8 || lh(P + 0x308) != 1)) {
+        return 0;
+    }
     if (lbu(P + 0x20a4) != 0) return 0;
     if (lw(P + 0x1090) == 0) return 0;
     if (advanced_rac3_wrench_out()) return 0;  // enhancement: R&C 3 takes no item input while the thrown wrench is out
@@ -561,7 +543,7 @@ int32_t hero_item_use() {
         item_wrench(mask);
         break;
     case 0xc:
-        item_swingshot(mask);
+        if (hero_has_swingshot()) item_swingshot(mask);
         break;
     case 0xa: case 0x11: case 0x14: case 0x18: case 0x19:
         item_throw(mask);
@@ -611,6 +593,9 @@ int32_t hero_item_use() {
         }
         break;
     }
+    case 0x24:
+        if (hero_has_hoverboard()) hero_item_use_zoomerator(mask);
+        break;
     default:
         break;
     }

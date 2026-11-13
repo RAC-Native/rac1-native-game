@@ -1,5 +1,4 @@
-// The credits (game mode 7, Veldin's 0x299a68 start / 0x299c48 update / 0x1f8f78 draw), transliterated (met at the end of the game, level 18):
-// the declarations of credits_tr.cpp (regen group veldin_credits).
+// Game mode 7 credits sequence (0x299a68 start, 0x299c48 update, 0x1f8f78 draw; implemented in credits.cpp).
 #ifndef RAC1_GAME_OVL_CREDITS_TR_H
 #define RAC1_GAME_OVL_CREDITS_TR_H
 

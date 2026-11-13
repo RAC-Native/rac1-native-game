@@ -35,6 +35,7 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/lib/libgcc_fp.h>
+#include <game/ovl/sound_emitter.h>
 
 namespace rac1 {
 
@@ -80,8 +81,6 @@ using namespace vu0m;
 //@gen gas_2eaa50_l9
 
 //@gen gas_2ead30_l9
-
-//@gen gas_2aa7f8_l9
 
 //@gen gas_2ea528_l9
 

@@ -1,4 +1,4 @@
-// Oltanis (level 14) transliterated moby classes, sound emitters, camera types, class hooks, draw callbacks, the camera mode hook, the cutscene extras and level-only engine functions: the declarations of
+// Oltanis (level 14) transliterated moby classes, camera types, class hooks, draw callbacks, the camera mode hook, the cutscene extras and level-only engine functions: the declarations of
 // oltanis_classes_tr_N.cpp (generated: `void` = a class update / entry in the entry ABI, `TrRet` = a helper or a `_u` entry in the uniform ABI).
 #ifndef RAC1_GAME_OVL_OLTANIS_MOBYS_H
 #define RAC1_GAME_OVL_OLTANIS_MOBYS_H
@@ -108,7 +108,6 @@ TrRet olt_279cf0_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_
 TrRet olt_2ee6b0_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002ee6b0
 TrRet olt_2ed530_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002ed530
 void olt_class684_update_l14(uint32_t a0);  // L14:0x002ed280
-TrRet olt_294220_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x00294220
 TrRet olt_2eef60_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002eef60
 TrRet olt_2ef150_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002ef150
 TrRet olt_2ef3e0_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002ef3e0
@@ -246,7 +245,6 @@ TrRet olt_255788_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_
 TrRet olt_255ac0_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x00255ac0
 TrRet olt_255ce0_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x00255ce0
 TrRet olt_2aac78_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002aac78
-TrRet olt_2a6f08_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002a6f08
 TrRet olt_2ab268_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002ab268
 TrRet olt_2ab378_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002ab378
 void olt_cb_303350_l14(uint32_t a0);  // L14:0x00303350
@@ -272,12 +270,6 @@ TrRet olt_278390_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_
 TrRet olt_27e560_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x0027e560
 TrRet olt_2e8078_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002e8078
 TrRet olt_fn_2e81a0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002e81a0
-void olt_emitter1_l14(uint32_t a0);  // L14:0x00316990
-TrRet olt_294348_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x00294348
-void olt_emitter3_l14(uint32_t a0);  // L14:0x00316d30
-void olt_emitter4_l14(uint32_t a0);  // L14:0x00316e90
-TrRet olt_26cfd0_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x0026cfd0
-void olt_emitter6_l14(uint32_t a0);  // L14:0x00317118
 TrRet olt_3141c8_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x003141c8
 TrRet olt_cam_type19_accept_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x00314d48
 void olt_cam_type19_init_l14(uint32_t a0);  // L14:0x003142a8

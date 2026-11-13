@@ -27,6 +27,7 @@
 #include <game/ovl/hydro.h>
 #include <game/ovl/particle_16_spawn.h>
 #include <game/ovl/quad_draw.h>
+#include <game/ovl/sound_emitter.h>
 
 namespace rac1 {
 
@@ -114,8 +115,6 @@ void sandmouse_glow_l2(uint32_t a0_in);
 //@gen lv2_2f8aa0_l2
 
 //@gen transport_pod_update_l2
-
-//@gen lv2_28d618_l2
 
 //@gen lv2_2df730_l2
 
@@ -242,14 +241,6 @@ void sandmouse_glow_l2(uint32_t a0_in);
 //@gen lv2_2fb9c8_l2
 
 //@gen cam_type_12_accept_l2
-
-//@gen lv2_28d740_l2
-
-//@gen sound_emitter_2fc6f0_l2
-
-//@gen lv2_266d20_l2
-
-//@gen sound_emitter_2fc850_l2
 
 //@gen lv2_2e6568_l2
 

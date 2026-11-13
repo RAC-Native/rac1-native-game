@@ -11,6 +11,7 @@
 #include <game/ovl/orxon_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/sound_emitter.h>
 #include <runtime/kernel/disc.h>
 
 #include <cmath>
@@ -326,7 +327,7 @@ void batch_122() {
     // ---- level 10's sound emitter type 3 (section 5 of the overlay) on the level's own emitters
     if (g_oracle_level == 10) {
         struct Em { const char* name; uint32_t addr; void (*fn)(uint32_t); };
-        static const Em ems_t[] = {{"emitter3", 0x002f6e58, orx_emitter3_l10}};
+        static const Em ems_t[] = {{"emitter3", 0x002f6e58, emitter_reverb_box_update}};
         for (const Em& e : ems_t) {
             level();
             std::vector<uint32_t> ems;

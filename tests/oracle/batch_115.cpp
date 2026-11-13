@@ -1,4 +1,4 @@
-// Oracle batch 115 (task 0343): the Vendor on its own overlay. (1) The vendor's screens (game mode 5, vendor_tr.cpp,
+// Oracle batch 115 (task 0343): the Vendor on its own overlay. (1) The vendor's screens (game mode 5, vendor_*.cpp,
 // transliterated at Veldin's addresses) in the states that read the state block 0x1ca4c0 through a register holding its
 // `lui` page on every path (relocated by tools/codegen/hi_flow.py since task 0343; before, Veldin's 0x1ca4c0 on every level):
 // the item panel 0x29b4d8 (its mode 2 / 3 path) and the item strip 0x29dea0 with 8 items or more (the draw 0x2a02b0's
@@ -8,10 +8,14 @@
 // --batch 115 (Novalis's own original against the relocated port, the case that matters); level 0 runs Veldin's
 // original on Novalis's data (as batch 113).
 
+// Audit 2 (2026-11-13): the help panel's message on two lines (a byte 1 put into it) and the race kiosk's records (the level
+// 0x15ed84 at 5 / 16, the hero at the kiosk, the records set): both branches of the draw were never taken before.
+
 #include "ovl_oracle.h"
 
 #include <game/ovl/help_panel_tr.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/vendor_screens.h>
 #include <game/ovl/vendor_tr.h>
 
 #include <runtime/kernel/disc.h>
@@ -112,7 +116,7 @@ void batch_115() {
             if (m >= 0x00100000u && m < 0x02000000u) w8(m + 0x20, u(ri(0, 12)));
             seed_rand();
             return Args{{u(ri(0, 4))}, {}};
-        }, [](A a) { (void)ovl_29b4d8_tr(a.i[0], 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f); return uint64_t{0}; });
+        }, [](A a) { vendor::vendor_remark(static_cast<int32_t>(a.i[0])); return uint64_t{0}; });
         // the item strip 0x29dea0: 8 items or more take the path through s0 = the page
         check("vendor_29dea0", 0x0029dea0, 120, Ret::None, [start, S] {
             start();
@@ -126,7 +130,7 @@ void batch_115() {
             w32(S + 4, u(ri(0, 200)));
             seed_rand();
             return Args{{0u}, {}};
-        }, [](A) { (void)ovl_29dea0_tr(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f); return uint64_t{0}; });
+        }, [](A) { vendor::panel_list(); return uint64_t{0}; });
         g_extra_noop_hooks.clear();
     }
 
@@ -149,6 +153,24 @@ void batch_115() {
             w16(E + 0x4a, u(ri(-20, 20)));
             w32(0x0015ed80, coin() ? 0u : 1u);
             w32(OV(0x0015f770), u(ri(0, 300)));
+            // (the message on two lines half of the time: a byte 1 put into it, the draw's split; the requested texts are on one)
+            const uint32_t msg = OV(0x0017e530);
+            uint32_t len = 0;
+            while (len < 120 && ee_read<uint8_t>(msg + len) >= 2) ++len;
+            if (len > 4 && coin()) w8(msg + u(ri(1, static_cast<int>(len) - 2)), 1);
+            // (the race records' kiosk: the draw tests the level 0x15ed84 (Aridia 5, Kalebo III 16) and the hero's distance to
+            // the kiosk (the place the draw names), then prints the best time 0x15ee58 and score 0x15ee68 (+4 on 16); a third
+            // of the cases on such a level, the hero within / beyond 5 of it, records set or 0)
+            if (ri(0, 2) == 0) {
+                const bool aridia = coin();
+                w32(0x0015ed84, aridia ? 5u : 0x10u);
+                const Vec4 kiosk = aridia ? Vec4{294.5f, 225.4f, 100.0f, 1.0f} : Vec4{115.7f, 287.0f, 119.5f, 1.0f};
+                const float r = coin() ? rf(0.0f, 3.4f) : rf(0.0f, 8.0f);
+                ee_ref<Vec4>(0x0013f3d0) = Vec4{kiosk.x + rf(-r, r), kiosk.y + rf(-r, r), kiosk.z + rf(-1.0f, 1.0f), 1.0f};
+                const uint32_t off = aridia ? 0u : 4u;
+                w32(0x0015ee58 + off, ri(0, 3) == 0 ? 0u : u(ri(1, 60000)));
+                w32(0x0015ee68 + off, coin() ? 0u : u(ri(1, 99999)));
+            }
             seed_rand();
         };
         check("help_panel_init", 0x00237190, 60, Ret::None, [slot, E] { slot(); return Args{{E}, {}}; },

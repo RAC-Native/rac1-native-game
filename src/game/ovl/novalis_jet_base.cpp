@@ -1,6 +1,8 @@
 // Novalis's own moby classes, part 2e: the aircraft base (the jets, the ship, their wingmen). Header
-// novalis_mobys2.h. Addresses are Novalis's (`orig: L1:`); Novalis-only data is
-// L1_ADDR, the globals the engine shares with Veldin are the level's own (OV), the base ELF's are bare.
+// novalis_mobys2.h. Addresses are Novalis's (`orig: L1:`); the base, its bank and its smoke particle are also the code of
+// Kerwan's class 845 and of Eudora's and Oltanis's copies (`orig: L3: L4: L14:`), one port for every level: the globals
+// the engine shares with Veldin are the level's own (OV), the levels' own words come from per-level tables, the base
+// ELF's are bare.
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
@@ -8,21 +10,45 @@
 #include <game/ovl/weapons.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/variants_l14.h>
+#include <game/ovl/variants_l3.h>
+#include <game/ovl/variants_l4.h>
 #include <game/port_stubs.h>
 
 namespace rac1 {
 
-// The bank of an aircraft: its +0x130 / +0x134 (the sideways and up sway scale, both 0: none) times the up / side
-// axes of its rotation (from its angles), added to `out`.
-// orig: L1:0x002f5040
-void jet_banking_l1(uint32_t m, uint32_t out) {
+namespace {
+
+// The level's own word that holds every aircraft (set: the base returns at once; a word of the level's small data)
+uint32_t jets_held_word() {
+    if (on_level(KERWAN)) return L3_ADDR(0x0016136cu);
+    if (on_level(EUDORA)) return L4_ADDR(0x00161958u);
+    if (on_level(OLTANIS)) return L14_ADDR(0x00161b94u);
+    return L1_ADDR(0x00161b00u);
+}
+
+// The level's own copy of the base (the address it leaves in 0x160770 on the levels with the hits)
+uint32_t jet_update_base_addr() {
+    if (on_level(KERWAN)) return L3_ADDR(0x00293c78u);
+    if (on_level(EUDORA)) return L4_ADDR(0x002cb8b8u);
+    if (on_level(OLTANIS)) return L14_ADDR(0x002e81a0u);
+    return L1_ADDR(0x002f5168u);
+}
+
+}  // namespace
+
+// The bank of an aircraft: its pvar pair at `sway` (the sideways and up sway scale, both 0: none) times the up / side
+// axes of its rotation (from its angles), added to `out`. The aircraft's pair is +0x130 / +0x134 (jet_banking_l1);
+// Kerwan's class 75 has a second build of the function with its pair at +0x140 / +0x144.
+// orig: L3:0x0029c8a8 (`sway` 0x140; the copies of jet_banking_l1 below: 0x130)
+void jet_banking(uint32_t m, uint32_t out, uint32_t sway) {
     const uint32_t buf = ee_stack_alloc(0x100);
     const uint32_t pv = lwu(m + 0x78);
     const float f20 = u2f(0x3f800000u);
     sd(buf, 0);
     sd(buf + 8, 0);
     swc1(buf, f20);
-    if (lwc1(pv + 0x130) == 0.0f && lwc1(pv + 0x134) == 0.0f) {
+    if (lwc1(pv + sway) == 0.0f && lwc1(pv + sway + 4u) == 0.0f) {
         ee_stack_free(0x100);
         return;
     }
@@ -33,16 +59,22 @@ void jet_banking_l1(uint32_t m, uint32_t out) {
     swc1(buf + 0x48, lwc1(buf + 0x48) - f20);
     vec3_cross_ba(V(s1), V(s2), V(buf + 0x40));
     vec3_cross_ba(V(s3), V(s2), V(s1));
-    vec3_scale(V(s1), V(s1), lwc1(pv + 0x130));
-    vec3_scale(V(s3), V(s3), lwc1(pv + 0x134));
+    vec3_scale(V(s1), V(s1), lwc1(pv + sway));
+    vec3_scale(V(s3), V(s3), lwc1(pv + sway + 4u));
     vec3_add(V(out), V(out), V(s1));
     vec3_add(V(out), V(out), V(s3));
     ee_stack_free(0x100);
 }
 
+// The aircraft's bank (its pair +0x130 / +0x134).
+// (Shared: the same code on Kerwan, Eudora and Oltanis.)
+// orig: L1:0x002f5040 L3:0x00293b50 L4:0x002cb790 L14:0x002e8078
+void jet_banking_l1(uint32_t m, uint32_t out) { jet_banking(m, out, 0x130u); }
+
 // A smoke particle (kind 0xa, alloc_particle) at `pos` with the velocity `vel` (the vector at +0x20): the colour
 // (0.425, 0.425, 0.225, 1), a random size 60900..90000 (+0xc), its life frame_scale(0x57) frames.
-// orig: L1:0x0027f660
+// (Shared: the same code on Kerwan, Eudora and Oltanis.)
+// orig: L1:0x0027f660 L3:0x00258a30 L4:0x0025d0e8 L14:0x002723e0
 void smoke_particle_l1(uint32_t pos, uint32_t vel) {
     const uint32_t s1 = alloc_particle(0xa);
     if (s1 == 0) return;
@@ -104,7 +136,9 @@ uint32_t jet_debris_spawn_l1(uint32_t m, uint32_t dir, float scale) {
 //    state 1: the flight along the Hermite spline of the path (speed pvar +0xfc, +0x124 / +0x128 the wobble, the
 //    heading / bank / pitch turned damped toward the motion unless off the screen), the wingmen, the smoke, and in
 //    levels 3 / 9 the hits (the explosion 0x273310); state 2: back to 0, sound stopped; state 3: waits its timer.
-// orig: L1:0x002f5168
+// (Shared: the same code is Kerwan's class 845 and Eudora's and Oltanis's aircraft; each level's own word that holds them
+// and its own address, the level's other own callees are the shared ports of novalis_path.cpp / novalis_mobys.cpp.)
+// orig: L1:0x002f5168 L3:0x00293c78 L4:0x002cb8b8 L14:0x002e81a0
 void jet_update_base_l1(uint32_t m) {
     const uint32_t buf = ee_stack_alloc(0xc0);
     const uint32_t pv = lwu(m + 0x78);
@@ -123,7 +157,7 @@ void jet_update_base_l1(uint32_t m) {
         done();
         return;
     }
-    if (lw(L1_ADDR(0x00161b00)) != 0) {
+    if (lw(jets_held_word()) != 0) {
         done();
         return;
     }
@@ -185,8 +219,10 @@ void jet_update_base_l1(uint32_t m) {
     {
         const int32_t k = static_cast<int16_t>(static_cast<uint32_t>(lhu(m + 0xa6) - 0x33u) & 0xffffu);
         if (static_cast<uint32_t>(k) < 0x18u) {
-            const bool tick = (k == 0 || k == 8 || k == 22);
-            const bool tick2 = (k == 12 || k == 16);
+            // (the class's row of the jump table L1:0x20b410 / L3:0x1e2550 / L4:0x1dc2c0 / L14:0x1fc8b0: rows 0, 9 and 23
+            // the engine's tick (0x...23c into the function), rows 13 and 17 the call (+0x29c), the others none)
+            const bool tick = (k == 0 || k == 9 || k == 23);
+            const bool tick2 = (k == 13 || k == 17);
             if (tick) {
                 bool roll = true;
                 if (lh(pv + 0x138) != -1) {
@@ -522,7 +558,7 @@ void jet_update_base_l1(uint32_t m) {
         done();
         return;
     }
-    sw(OV(0x00160770), L1_ADDR(0x002f5168));
+    sw(OV(0x00160770), jet_update_base_addr());
     sb(m + 0xa4, 0xff);
     if (lh(pv + 0x13a) == 0) {
         done();

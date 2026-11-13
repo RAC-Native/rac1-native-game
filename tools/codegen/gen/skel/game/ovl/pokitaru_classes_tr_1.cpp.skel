@@ -40,6 +40,7 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/sound_emitter.h>
 
 namespace rac1 {
 
@@ -103,8 +104,6 @@ using namespace vu0m;
 //@gen pok_2f0d58_l11
 
 //@gen pok_class298_update_l11
-
-//@gen pok_28aa38_l11
 
 //@gen pok_2f2b70_l11
 

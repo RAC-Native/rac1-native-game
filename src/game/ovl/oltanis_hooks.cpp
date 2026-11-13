@@ -1,5 +1,6 @@
 // See oltanis_hooks.h.
 #include <game/ovl/oltanis_hooks.h>
+#include <game/ovl/sound_emitter.h>
 
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/carry_hooks.h>
@@ -36,10 +37,10 @@ bool oltanis_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t
 // orig: (host) see oltanis_hooks.h
 bool oltanis_sound_emitter_call(uint32_t fn, uint32_t em) {
     switch (lvl_key(fn)) {
-    case L14_CASE(0x00316990): olt_emitter1_l14(em); return true;
-    case L14_CASE(0x00316d30): olt_emitter3_l14(em); return true;
-    case L14_CASE(0x00316e90): olt_emitter4_l14(em); return true;
-    case L14_CASE(0x00317118): olt_emitter6_l14(em); return true;
+    case L14_CASE(0x00316990): emitter_fade_box_update(em); return true;
+    case L14_CASE(0x00316d30): emitter_reverb_box_update(em); return true;
+    case L14_CASE(0x00316e90): emitter_open_bed_update(em); return true;
+    case L14_CASE(0x00317118): emitter_music_box_update(em); return true;
     default: return false;
     }
 }

@@ -36,6 +36,7 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/lib/libgcc_fp.h>
+#include <game/ovl/sound_emitter.h>
 
 namespace rac1 {
 
@@ -97,12 +98,6 @@ using namespace vu0m;
 //@gen umb_cam_type18_update_l7
 
 //@gen umb_cam_type18_exit_l7
-
-//@gen umb_2b4c78_l7
-
-//@gen umb_emitter3_l7
-
-//@gen umb_emitter6_l7
 
 //@gen umb_212f08_l7
 

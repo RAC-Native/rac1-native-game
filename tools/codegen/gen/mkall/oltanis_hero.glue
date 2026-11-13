@@ -1,1 +1,0 @@
-0x002a0a58: vendor_screen_start_tr(a0.w());  // (Veldin 0x29a6b0, the vendor's screens with no Vendor moby: hero item 0x20; its port's declaration has no `orig:` line)

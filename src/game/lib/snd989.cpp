@@ -33,6 +33,7 @@ struct CbEntry {
     uint32_t addr;
     SndCallback fn;
 };
+SndTraceHooks g_trace_hooks{};
 std::vector<CbEntry>& callbacks() {
     static std::vector<CbEntry> t;
     return t;
@@ -60,6 +61,8 @@ void snd_register_callback(uint32_t addr, SndCallback fn) {
     }
     callbacks().push_back(CbEntry{addr, fn});
 }
+
+void snd_set_trace_hooks(const SndTraceHooks& hooks) { g_trace_hooks = hooks; }
 
 // The command buffers set up, both servers bound (waiting until the IOP has them), the stream
 // status word 0x137b00 handed to the IOP (command 0).
@@ -251,6 +254,7 @@ void snd_cmd_4e(uint32_t a, uint32_t b, uint32_t c) { send(0x4e, {a, b, c}); }
 // the 5.1 / 7.1 place snd989_host_place_next gave it.)
 // orig: 0x0012e308
 void snd_play_sound(uint32_t bank, uint32_t snd, int32_t vol, int32_t pan, int32_t pm, int32_t pb, uint32_t cb, uint64_t data) {
+    if (g_trace_hooks.sfx != nullptr) g_trace_hooks.sfx(snd, vol, pan, pm, pb);
     snd989_host_play_sent(bank, snd);
     send(0x11, {bank, snd, static_cast<uint32_t>(vol), static_cast<uint32_t>(pan), static_cast<uint32_t>(pm), static_cast<uint32_t>(pb)}, cb, data);
 }
@@ -444,7 +448,10 @@ int32_t snd_pitch_from_cents(int32_t c) {
 
 // snd_StopAllStreams (command 0x34, no data: sent at once when nothing is batched).
 // orig: 0x0012ebd0
-void snd_stream_stop_all() { snd_command_bytes(0x34, 0, nullptr, 0, 0); }
+void snd_stream_stop_all() {
+    if (g_trace_hooks.stop_streams != nullptr) g_trace_hooks.stop_streams();
+    snd_command_bytes(0x34, 0, nullptr, 0, 0);
+}
 
 // Plays the VAG at sector `loc1` (+ byte offset `off1`; a second channel `loc2` / `off2`),
 // volume / pan, volume group, queued after the stream `queue` (0: a new one), flags (1 paused,
@@ -452,6 +459,7 @@ void snd_stream_stop_all() { snd_command_bytes(0x34, 0, nullptr, 0, 0); }
 // orig: 0x0012ec08
 void snd_stream_play(uint32_t loc1, uint32_t loc2, uint32_t off1, uint32_t off2, int32_t vol, int32_t pan, uint32_t group,
                      uint32_t queue, uint32_t flags, uint32_t cb, uint64_t data) {
+    if (g_trace_hooks.stream != nullptr) g_trace_hooks.stream(group, vol, pan, queue, flags);
     const uint32_t w2 = (static_cast<uint32_t>(vol) << 16) | (off1 & 0xffffu);
     const uint32_t w3 = (static_cast<uint32_t>(pan) << 16) | (off2 & 0xffffu);
     send(0x2c, {loc1, loc2, w2, w3, group, queue, flags}, cb, data);

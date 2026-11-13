@@ -10,6 +10,7 @@
 #include <game/ovl/rilgar_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/sound_emitter.h>
 #include <runtime/kernel/disc.h>
 
 #include <cmath>
@@ -309,8 +310,8 @@ void batch_114() {
     if (g_oracle_level == 5) {
         struct Em { const char* name; uint32_t addr; void (*fn)(uint32_t); };
         static const Em ems_t[] = {
-            {"emitter1", 0x0032b478, ril_emitter1_l5}, {"emitter3", 0x0032ba68, ril_emitter3_l5},
-            {"emitter5", 0x0032bbc8, ril_emitter5_l5}, {"emitter6", 0x0032bc78, ril_emitter6_l5},
+            {"emitter1", 0x0032b478, emitter_fade_box_update}, {"emitter3", 0x0032ba68, emitter_reverb_box_update},
+            {"emitter5", 0x0032bbc8, emitter_camera_bed_update}, {"emitter6", 0x0032bc78, emitter_music_box_update},
         };
         for (const Em& e : ems_t) {
             level();

@@ -327,7 +327,7 @@ round, else the first), marked by its third word, which the game leaves 0 and te
 purchase: Cross on the entry starts none, `vendor_buy_all_input` (before the Vendor's update in
 `overlay_entry.cpp`) buys instead. Everything else (the cursor, the strip, the wheel, the highlight,
 the sounds) is the game's code walking its list. The port steps in only at a few calls of the Vendor's
-transliteration (`tools/codegen/gen/mkall/veldin_vendor.glue`, each told its call site): the tile's
+screens (`src/game/ovl/vendor_*.cpp`, each telling its call site): the tile's
 sprites (four weapon tiles at a quarter size, with the game's `hud_frame` / `hud_sprite`), the monitor's
 two title lines and its price, the sign's text when the cursor arrives on the entry, and the cursor put
 on the entry when the screens open. The hologram on the stand, the monitor's picture and the ammo counter
@@ -451,7 +451,7 @@ Every hook is a call from a ported function into `advanced.cpp`, at the point wh
 | `run_jump`, `run_input`, `swing_input` (in 0x229b70) | `hero_transitions.cpp` | `advanced_rac3_running_jump`, `advanced_rac3_stop`, `advanced_strafe_flip`, `advanced_rac3_swing_exit` | the running jump's rule, the immediate stop, the strafe flip, running out of a swing |
 | `moby_skin_all` (0x2558e0) | `moby_skin.cpp` | `advanced_pose_hook` | the strafe's lower-body twist (below) |
 | `gameplay_frame` (0x297f78) | `game_frame.cpp` | `advanced_frame`, `advanced_aim_before_hero` / `_after_hero`, `advanced_aim_before_camera` / `_after_camera` | the combo table, the legs, the aim and the camera around the hero's and the camera's updates |
-| the weapons' hand updates (0x2b77f0, 0x2b2100, 0x2cc608, 0x2b87e0, 0x2bc7e8, 0x2da790 / 0x2ddf60 / 0x2ddcb8, 0x2b3058, 0x2d2158) | `pyrocitor.cpp`; the `host` entries of `tools/codegen/asm2fn_specs/*.json` | `advanced_aim_shot`, `_shot_hand`, `_frame_hand`, `advanced_aim_angles`, `advanced_aiming` | with modern aiming, the shot's direction (or frame, or yaw / pitch) on the reticle instead of the hero's facing |
+| the weapons' hand updates (0x2b77f0, 0x2b2100, 0x2cc608, 0x2b87e0, 0x2bc7e8, 0x2da790 / 0x2ddf60 / 0x2ddcb8, 0x2b3058, 0x2d2158) | `pyrocitor.cpp`, `devastator.cpp`, `ryno.cpp`, `tesla.cpp`, `morph.cpp`, `suck_cannon.cpp`, `visibomb.cpp`, `decoy.cpp` | `advanced_aim_shot`, `_shot_hand`, `_frame_hand`, `advanced_aim_angles`, `advanced_aiming` | with modern aiming, the shot's direction (or frame, or yaw / pitch) on the reticle instead of the hero's facing |
 
 Novalis, Aridia and Kerwan run their own build of the hero's state code (the `*_l1.cpp` files); the
 same hooks are in those copies.
@@ -511,17 +511,17 @@ on the strafe:
   facing: the Pyrocitor's flame (`pyrocitor.cpp`), the Devastator's rockets, the R.Y.N.O.'s
   missiles (both still home on their lock), the Tesla Claw's arc, the Morph-o-Ray's beam and the
   Suck Cannon's shot (`advanced_aim_shot` / `_shot_hand`), the Suck Cannon's suction cone
-  (`advanced_aim_frame_hand`) and the Visibomb's launch (`advanced_aim_angles`), through host hooks in
-  the generated ports (the `host` entries of `tools/codegen/asm2fn_specs/devastator.json`, `ryno.json`,
-  `tesla.json`, `morph.json`, `suck_cannon.json`, `visibomb.json`). The gloves (Bomb, Mine, Doom,
-  Decoy) reuse the original's own "aim along the camera" path, which R&C1 already takes when L1 or L2
-  is held (`advanced_camera_aim` in `bomb_glove.cpp`, `mine_glove.cpp`, `doom_glove.cpp`; host hooks
-  in `decoy.json`), with the aim held through their standing throw (state 0x23) so the camera, and
-  with it the throw, is still on the reticle when the glove lets go. As in the original, leaning on a
-  wall keeps the hand's own direction and the first-person view the camera's. Left as they are: the
-  Taunter (its reach is flat: horizontal distances and a horizontal cone), the Walloper (a punch),
-  the Swingshot (it locks onto swing points), the Drone Device (no hand code: the drones pick their
-  targets), the Hydrodisplacer and the Metal Detector (no direction).
+  (`advanced_aim_frame_hand`) and the Visibomb's launch (`advanced_aim_angles`), through calls in
+  their hand-written ports (`devastator.cpp`, `ryno.cpp`, `tesla.cpp`, `morph.cpp`, `suck_cannon.cpp`,
+  `visibomb.cpp`). The gloves (Bomb, Mine, Doom, Decoy) reuse the original's own "aim along the
+  camera" path, which R&C1 already takes when L1 or L2 is held (`advanced_camera_aim` in
+  `bomb_glove.cpp`, `mine_glove.cpp`, `doom_glove.cpp`, `decoy.cpp`), with the aim held through
+  their standing throw (state 0x23) so the camera, and with it the throw, is still on the reticle
+  when the glove lets go. As in the original, leaning on a wall keeps the hand's own direction and
+  the first-person view the camera's. Left as they are: the Taunter (its reach is flat: horizontal
+  distances and a horizontal cone), the Walloper (a punch), the Swingshot (it locks onto swing
+  points), the Drone Device (no hand code: the drones pick their targets), the Hydrodisplacer and
+  the Metal Detector (no direction).
 
 ### Modern, No Zoom (#70)
 
@@ -711,7 +711,7 @@ the interaction guards...) are a row of their own: [1.02 Gameplay](#102-gameplay
 | 18 | Aridia: a sand shark that is killed bursts (`enemy_death_burst`: three sparks of 0.333 and two shards, no blast, 0.333 over its place) before it dives off to its next spot; the original only drops its bolts and vanishes | Aridia's class at L2:0x2d3e50 (`hooks.glue`) |
 | 19 | The hoverbike races (Rilgar, Kalebo III): the place ("1st".."5th"), the poses ("x3 Poses") and the flips ("+ 360 Flips") were English built into the code, in every language and always plural; the 1.02 build takes them from the level's text table (in the game's language: "1a", "Posizioni"...), with "Pose" for one and "flip" for a 360 (the texts 21028..21032, 20855 / 20856, 20647 / 20648, all on the North American disc). The PAL disc 1.00 has them too | Rilgar's L5:0x262f50 / 0x266320, Kalebo III's L16:0x235660 / 0x238a30 (`hooks.glue`, `fixes102_race_text`) |
 | 20 | Blarg: the class 1083 object that breaks by itself 32 units or more from Ratchet leaves its broken copy but none of its 50 debris pieces (moby slots; the 1.02 build gives the break routine an argument, 0 there). Broken near him, or by him, it is unchanged | Blarg's L6:0x2ffcb0, L6:0x300278 (`hooks.glue`) |
-| 22 | Rilgar's race organiser (class 918): a race that ends in its state 3 restarts the level's music, as its states 1 and 2 already do (the call `ril_28f5c8_l5(0, 8)` they make); and when the race earned the skill point (its flag 0x13d411), after the prize's message ("You won a Platinum Zoomerator!") the skill point's sound and "You just earned a Skill Point!" are given (the message takes the prize's place on the screen) | Rilgar's L5:0x316ab8 (`hooks.glue`) |
+| 22 | Rilgar's race organiser (class 918): a race that ends in its state 3 restarts the level's music, as its states 1 and 2 already do (the call `music_track_request(0, 8)`, L5:0x28f5c8, they make); and when the race earned the skill point (its flag 0x13d411), after the prize's message ("You won a Platinum Zoomerator!") the skill point's sound and "You just earned a Skill Point!" are given (the message takes the prize's place on the screen) | Rilgar's L5:0x316ab8 (`hooks.glue`) |
 
 What the 1.02 build changed but is not ported: the memory card's code and screens (the 1.02 build rewrote them for its
 own card library), the Japanese text layouts, the pad's reads (the host's input replaces them), the PAL disc 2.00's
@@ -728,10 +728,10 @@ possible with the row off. It is built as [1.02 Fixes](#102-fixes): each fix is 
 its code (the PAL disc 2.00's, its addresses taken back through `data/regions/SCES-50916-2.00.txt`; the Japanese disc has
 the same code), written into the North American port at the same place behind its own test (`gameplay102_on(n)`,
 `src/game/enhance/fixes102.{h,cpp}`; a `(1.02 Gameplay, fix n: ...)` note at each site). The numbers are the analysis's
-(F4, F8...), the ones `RAC1_GAMEPLAY102` takes. Where the change is in code the port transliterates from the disc (the
-weapons' `*_asm.cpp`, the levels' own copies of the hero's functions and moby classes), the generators put a call there:
-`host_ntsc` / `entry_host_ntsc` in `tools/codegen/asm2fn_specs/` (the North American build's code only: another region's
-changed function, a stand-in, gets none) and `tools/codegen/hooks.glue` (each level's instruction, found by aligning the
+(F4, F8...), the ones `RAC1_GAMEPLAY102` takes. Where the change is in a hand-written port (the
+weapons' updates: `ryno.cpp`, `visibomb.cpp`, `visibomb_ball.cpp`, `decoy_obj.cpp`), the test is in its code; where it is
+in code the port transliterates from the disc (the levels' own copies of the hero's functions and moby classes), the
+generators put a call there: `tools/codegen/hooks.glue` (each level's instruction, found by aligning the
 level's copy with Veldin's and checked against the 1.02 build's copy of that level). With the row off each of those is a
 test that fails, and the game's memory is the same frame by frame (RAC1_RAMHASH).
 
@@ -745,6 +745,9 @@ test that fails, and the game's memory is the same frame by frame (RAC1_RAMHASH)
 | 13 | The Hologuise (item kind 0x1f): put on beyond the sub-states 0..2 in the hero states 4, 9 and 0xe (+0x2084) instead of the sub-state 4 (+0x208c); hero_place stops its countdown (+0x22de: putting it on or off 18 frames after the press); and a state forced on Ratchet in the Hologuise (hero_set_state, which takes him out of it first, `hero_mode3_exit`) stays his state | Not understood in full: the disguise put on or off across a teleport or a forced state | `sub_0020fe30` 0x20fe30, `hero_place` 0x216f90, `hero_set_state` 0x2223f8 (and its copies) |
 | 14 | The Decoy Glove's decoy: while Ratchet swims at the surface (state 0x31) within 1.5 of it, the decoy gets a push from his place (the event 0x10000, strength 1000, that the game's bumps use), so it moves off instead of staying in his way | Probably: a decoy that blocks Ratchet in the water | `decoy_object_update` 0x2c4380 (`decoy_obj.json` `host_ntsc`) |
 | 21 | Rilgar's water that rises and falls (class 831): it carries Ratchet swimming in it up as it rises (his water height +0x2f0 set to its surface while it is more than 0.1 from its target and he swims, +0x208c 0x11 / 0x12), and it holds still during a cutscene (game mode 2) | Probably: Ratchet left under the surface of rising water | Rilgar's L5:0x30ca80 (`hooks.glue`) |
+| 23 | Giant Clank's pad (Quartu's class 1451, Veldin's finale's 1899): the press that turns Ratchet into Giant Clank first retires a moby still linked to the pad (its pvar +0x70, when alive) and, on Quartu, saves the pad's place as the checkpoint (`checkpoint_save` 0x284e50, the point 0.1 over the ground under the pad) before Ratchet is put there | Probably: Giant Clank's fight on Quartu restarted from the checkpoint before the pad, and a leftover moby of an earlier boarding | `clank_pad_update` (`shared_clank_pad.cpp`, the shared port of L15:0x2ed068 / L18:0x2fb868; the levels still run their generated copies until their re-glue) |
+| 24 | The open sea of Pokitaru and Kalebo III (class 1111): each frame it is drawn (the camera above its height) it makes itself the level's flat water disc (0x1612dc: on, centre (512, 512), radius 1024, at the height of its swell), which `surface_height` (0x259e58) gives the hero's movement (his water height +0x2f0 and his entering the water +0x2f8), the bombs and the mines where no water region covers the place; the original leaves the disc off, so the sea's surface counts there as the ground's height. The same 1.02 change also sets the underwater colours (0x161200) while the camera is above 180: left out (below) | Not understood in full: probably Ratchet, the bombs and the mines over the open sea taking the sea floor's height for the water's | `class1111_update` (`shared_class1111.cpp`, the shared port of L11:0x30b358 / L16:0x2dee10; the levels still run their generated copies until their re-glue) |
+| 25 | Gemlik Base's blob thrower (class 1885; Gaspar carries the same code): killed while Ratchet is at the height 250 (within 4) on Gemlik Base (the level number 13), its bolts get the flag 2 (`moby_drop_bolts`' flag 0x200), the one the game also gives them when Ratchet is next to the moby (they probably come to him at once) instead of being dropped where it stands | Probably: bolts lost where the throwers stand on Gemlik Base's platforms at that height, out of Ratchet's reach | `class1885_hit` (`shared_class1885.cpp`, the shared port of L9:0x30a9e8 / L13:0x30d3b8; the levels still run their generated copies until their re-glue) |
 
 The 1.02 build changed more in the same places that is not ported here: in Novalis's and Veldin's crouch under a low
 ceiling (0x81) Ratchet stands up after 20 frames without the Thruster-Pack on his back; Rilgar's class 918 has calls of
@@ -756,7 +759,7 @@ changed functions already are the 1.02 build's (its stand-ins), so the row adds 
 
 ### The later build's other changes to the level objects
 
-The 1.02 build changed some forty functions of the levels' own code. Fixes 18 to 22 and 10 above are the ones ported.
+The 1.02 build changed some forty functions of the levels' own code. Fixes 18 to 22, 10, 23, 24 and 25 above are the ones ported.
 The others, read in the North American and the 1.02 build's code (PAL disc 2.00, the Japanese disc the same):
 
 - No change to the game: Hoven's class 1404, Aridia's two skid classes, Eudora's 1190, Oltanis's 924 and Veldin's
@@ -772,8 +775,7 @@ The others, read in the North American and the 1.02 build's code (PAL disc 2.00,
   value; Blarg's class 1051 keeps its 10-frame start once begun; Batalia's 467 removes its group (classes 0x24c..0x256,
   0x1d8) when its level flag 0x13d3b6 is set and its link is gone; Gemlik's class 170 (2.7 to 2.8), 1262 (a range of
   15), 0x2b4958 (a hit's +0x30 0.9 to 0.7) and 0x30bfb0 (+0x34 flag 0x20); Oltanis's 685 (only when Ratchet stands the
-  same way up as it, a dot product over 0); Quartu's 1451 and Veldin's finale's 1899 (the ship's pad: a leftover moby
-  removed, Quartu's own placement 0x274af8); Drek's fleet's 1448 and
+  same way up as it, a dot product over 0); Drek's fleet's 1448 and
   Veldin's finale's 1381 (a counter against a random wait); Pokitaru's 0x2d14b0 / 0x312838 and Gemlik's class 63 (large
   rewrites).
 
@@ -796,7 +798,7 @@ belongs with the gameplay rows.
 
 | Fix | Row | What it changes | Where |
 |---|---|---|---|
-| 1 | Race Music After Quitting | Rilgar's hoverboard race: quitting from its results screen (game mode 4, kind 0, Cross) brings the planet's music back. The original never switches back there: the race organiser (class 918) restarts the level's music only for the race's other endings (its states 1 and 2, the call `ril_28f5c8_l5(0, 8)`; the 1.02 build added it to its state 3 too, [1.02 Fixes](#102-fixes) fix 22), so after a quit the race's track (track 2) kept playing on the planet (issue #132). The fix makes the same call at the quit: the level's music routine L5:0x28f5c8 with the track 0 (the level's music) as the next track, faded over through the track 8, as those endings do. Kalebo III's hoverbike race keeps the planet's music throughout and needs none | `screen_update` 0x202aa0 (kind 0, the quit's step 2), `bug_fixes_race_quit` |
+| 1 | Race Music After Quitting | Rilgar's hoverboard race: quitting from its results screen (game mode 4, kind 0, Cross) brings the planet's music back. The original never switches back there: the race organiser (class 918) restarts the level's music only for the race's other endings (its states 1 and 2, the call `music_track_request(0, 8)`; the 1.02 build added it to its state 3 too, [1.02 Fixes](#102-fixes) fix 22), so after a quit the race's track (track 2) kept playing on the planet (issue #132). The fix makes the same call at the quit: the level's music routine L5:0x28f5c8 with the track 0 (the level's music) as the next track, faded over through the track 8, as those endings do. Kalebo III's hoverbike race keeps the planet's music throughout and needs none | `screen_update` 0x202aa0 (kind 0, the quit's step 2), `bug_fixes_race_quit` |
 | 2 | Hydrodisplacer Faucets | The Hydrodisplacer's faucets (class 0x155) keep Ratchet (issue #131). In the faucet's states 0x38..0x3a the hero is pulled onto the faucet's origin (the ride: 0x217970 block 0x21969c, and Rilgar's and Hoven's own builds of it); coming from the side away from zero, the position, rounded toward zero, lands exactly on that origin (from the other side it stops one float step short). Where an edge of the faucet's collision passes through its origin (Rilgar's first faucet, Hoven's first) the hero's ground probe then misses both triangles: he drops 0.06 onto the floor and leaves the ride, and the Hydrodisplacer's hand (0x2df9a0) waits for him on a faucet, so the water stays and circle does nothing until he steps off and on again or draws the item again (oracle batch 330: the original code does the same on the same memory). The fix, before the hero's update, puts him one float step short of the origin on the side toward zero, on each axis where he is on it or within 0.01 of it on the other side, while he rides a faucet: the pull stops there, as it does coming from that side | `gameplay_frame` 0x297f78, before `hero_frame_update`: `bug_fixes_faucet_ride` |
 
 The page is built as the Mods page: a copy of the Camera page with its settings widget in the tall box and a copy of the

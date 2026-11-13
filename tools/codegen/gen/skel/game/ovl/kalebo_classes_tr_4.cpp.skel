@@ -7,6 +7,7 @@
 #include <game/lib/libc.h>
 #include <game/ovl/kalebo_mobys.h>
 #include <game/ovl/quad_draw.h>
+#include <game/ovl/weapon_classes.h>
 #include <game/ovl/weapons.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/carry_hooks.h>
@@ -48,8 +49,6 @@ using namespace vu0m;
 
 //@gen kal_class1891_update_l16
 
-//@gen kal_2c7388_l16
-
 //@gen kal_2c44f0_l16
 
 //@gen kal_2e0de0_l16
@@ -71,16 +70,6 @@ using namespace vu0m;
 //@gen kal_class1952_update_l16
 
 //@gen kal_class1953_update_l16
-
-//@gen kal_286d80_l16
-
-//@gen kal_emitter1_l16
-
-//@gen kal_286ea8_l16
-
-//@gen kal_emitter3_l16
-
-//@gen kal_emitter6_l16
 
 //@gen kal_cam_type3_accept_u
 

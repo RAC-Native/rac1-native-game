@@ -1,4 +1,4 @@
-// Drek's fleet (level 17) transliterated moby classes, sound emitter, camera type, class hooks, draw callbacks, the camera mode hook and level-only engine functions: the declarations of
+// Drek's fleet (level 17) transliterated moby classes, camera type, class hooks, draw callbacks, the camera mode hook and level-only engine functions: the declarations of
 // veldin_orbit_classes_tr_N.cpp (generated: `void` = a class update / entry in the entry ABI, `TrRet` = a helper or a `_u` entry in the uniform ABI).
 #ifndef RAC1_GAME_OVL_VELDIN_ORBIT_MOBYS_H
 #define RAC1_GAME_OVL_VELDIN_ORBIT_MOBYS_H
@@ -91,7 +91,6 @@ TrRet vo_2e47c8_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t
 TrRet vo_2e4b38_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x002e4b38
 void vo_class1134_update_l17(uint32_t a0);  // L17:0x002e3ff8
 TrRet vo_253970_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x00253970
-TrRet vo_25f448_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x0025f448
 TrRet vo_2e4e80_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x002e4e80
 TrRet vo_2e5628_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x002e5628
 TrRet vo_2e5788_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x002e5788
@@ -161,7 +160,6 @@ void vo_class1910_update_l17(uint32_t a0);  // L17:0x002f5dd0
 void vo_class1911_update_l17(uint32_t a0);  // L17:0x002f60e8
 void vo_class1913_update_l17(uint32_t a0);  // L17:0x002f6400
 void vo_class1918_update_l17(uint32_t a0);  // L17:0x002f6718
-void vo_emitter5_l17(uint32_t a0);  // L17:0x00300e70
 TrRet vo_cam_type3_accept_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x002fd208
 TrRet vo_2fc2c8_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x002fc2c8
 void vo_cam_type3_init_l17(uint32_t a0);  // L17:0x002fd210

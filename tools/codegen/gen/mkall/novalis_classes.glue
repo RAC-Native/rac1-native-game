@@ -1,12 +1,7 @@
 0x0023cf98: set32(v0, static_cast<uint32_t>(hero_set_state_l1(a0.w(), static_cast<int32_t>(a1.w()))));
 0x00263920: fr[0] = moby_anim_scalar_l1(a0.w());
 0x0026d930: walker_record_init_l1(a0.w());
-0x0026eff8: moby_extent_set_l1(a0.w(), fr[12]);
 0x00272028: mat_to_quat_at_v(V(a0.w()), a1.w());
 0x00273310: explosion_effect(a0.w(), a1.w(), a2.w(), static_cast<int32_t>(a3.w()), static_cast<int32_t>(t0.w()), static_cast<int32_t>(t1.w()), static_cast<int32_t>(t2.w()), static_cast<int32_t>(t3.w()), static_cast<int32_t>(lw_(sp.w() + 0x0)), static_cast<int32_t>(lw_(sp.w() + 0x8)), lbu_(sp.w() + 0x10), fr[12], fr[13], fr[14], fr[15], fr[16], fr[17], fr[18]);
 0x0029b0a0: moby_data_note_l1(a0.w(), static_cast<int32_t>(a1.w()), a2.w(), static_cast<int32_t>(a3.w()), t0.w());
-0x002e6518: bird_sparks_l1(a0.w(), a1.w());
-0x002e6790: set32(v0, bird_path_pick_l1(a0.w(), a1.w()));
-0x002fa068: set32(v0, bird_shot_spawn_l1(a0.w(), a1.w(), a2.w(), a3.w()));
 0x00302a88: set32(v0, static_cast<uint32_t>(class_hook_4(a0.w(), a1.w())));
-0x00305260: { const TrRet r = carry_update_l1(a0.w(), a1.w(), a2.w(), a3.w(), t0.w(), t1.w(), t2.w(), t3.w(), fr[12], fr[13], fr[14], fr[15]); set32(v0, r.v0); fr[0] = r.f0; }

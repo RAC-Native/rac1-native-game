@@ -1,4 +1,4 @@
-// Pokitaru (level 11) transliterated moby classes, sound emitters, class hooks, draw callbacks, the camera mode hook and level-only engine functions: the declarations of
+// Pokitaru (level 11) transliterated moby classes, class hooks, draw callbacks, the camera mode hook and level-only engine functions: the declarations of
 // pokitaru_classes_tr_N.cpp (generated: `void` = a class update / entry in the entry ABI, `TrRet` = a helper or a `_u` entry in the uniform ABI).
 #ifndef RAC1_GAME_OVL_POKITARU_MOBYS_H
 #define RAC1_GAME_OVL_POKITARU_MOBYS_H
@@ -38,7 +38,6 @@ TrRet pok_2d27b0_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_
 void pok_class114_update_l11(uint32_t a0);  // L11:0x002d0fa8
 TrRet pok_2f0d58_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002f0d58
 void pok_class298_update_l11(uint32_t a0);  // L11:0x002f0e40
-TrRet pok_28aa38_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x0028aa38
 TrRet pok_2f2b70_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002f2b70
 TrRet pok_2f2cd0_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002f2cd0
 TrRet pok_2f3040_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002f3040
@@ -182,9 +181,6 @@ TrRet pok_31eea8_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_
 TrRet pok_31ef80_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x0031ef80
 TrRet pok_31f068_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x0031f068
 void pok_class1919_update_l11(uint32_t a0);  // L11:0x0031f150
-TrRet pok_2b0e10_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002b0e10
-void pok_emitter1_l11(uint32_t a0);  // L11:0x00328b50
-void pok_emitter5_l11(uint32_t a0);  // L11:0x00328ef0
 TrRet pok_hook_2fb780_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002fb780
 TrRet pok_hook_2fb7f0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002fb7f0
 TrRet pok_hook_2fb840_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002fb840

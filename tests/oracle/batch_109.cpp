@@ -10,6 +10,7 @@
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/aridia_mobys.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/sound_emitter.h>
 #include <runtime/kernel/disc.h>
 
 #include <cmath>
@@ -373,7 +374,7 @@ void batch_109() {
                 if (ri(0, 2) == 0) wfrand(em + 0x10, 12, -2, 2);
                 seed_rand();
                 return Args{{em}, {}};
-            }, [fn](A a) { if (fn == 0x002fc6f0u) sound_emitter_2fc6f0_l2(a.i[0]); else sound_emitter_2fc850_l2(a.i[0]); return uint64_t{0}; });
+            }, [fn](A a) { if (fn == 0x002fc6f0u) emitter_reverb_box_update(a.i[0]); else emitter_music_box_update(a.i[0]); return uint64_t{0}; });
         }
     }
     // the camera hook Aridia's follow camera calls each frame (*(0x167010) = 0x2fa710)

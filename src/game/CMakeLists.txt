@@ -92,7 +92,10 @@ add_library(rac1_game STATIC
     ovl/veldin_orbit_mobys.cpp
     ovl/veldin_finale_hooks.cpp
     ovl/veldin_finale_mobys.cpp
+    ovl/credits.cpp
     ovl/end_menu.cpp
+    ovl/hero_move_mode.cpp
+    ovl/hero_hoverboard.cpp
     ovl/particle_types4.cpp
     ovl/variants.cpp
     ovl/novalis_mobys.cpp
@@ -116,8 +119,152 @@ add_library(rac1_game STATIC
     ovl/novalis_jets.cpp
     ovl/shared_classes_reg.cpp
     ovl/novalis_level_fns.cpp
+    ovl/sound_emitter_types.cpp
+    ovl/shared_spawner.cpp
+    ovl/shared_sandmouse.cpp
+    ovl/shared_class437.cpp
+    ovl/shared_gadget_pickups.cpp
+    ovl/shared_class1629.cpp
+    ovl/shared_sea_draw.cpp
+    ovl/shared_race_camera.cpp
+    ovl/shared_class567.cpp
+    ovl/shared_class679.cpp
+    ovl/shared_rock.cpp
+    ovl/shared_height_map.cpp
+    ovl/shared_class258.cpp
+    ovl/shared_class341.cpp
+    ovl/shared_helpers.cpp
+    ovl/shared_class1135.cpp
+    ovl/shared_class252.cpp
+    ovl/shared_class252_update.cpp
+    ovl/shared_class52.cpp
+    ovl/shared_class1400.cpp
+    ovl/shared_class1885.cpp
+    ovl/shared_seas.cpp
+    ovl/shared_class886.cpp
+    ovl/shared_envmap_meshes.cpp
+    ovl/shared_class655_draw.cpp
+    ovl/shared_env_objects.cpp
+    ovl/shared_boss_bar.cpp
+    ovl/shared_cam19.cpp
+    ovl/novalis_birdbot.cpp
+    ovl/shared_bg_ships.cpp
+    ovl/shared_movers.cpp
+    ovl/shared_puffer.cpp
+    ovl/shared_homing_missile.cpp
+    ovl/shared_shell.cpp
+    ovl/shared_tracer.cpp
+    ovl/shared_lights.cpp
+    ovl/shared_clank_pad.cpp
+    ovl/shared_flame_spray.cpp
+    ovl/shared_envmap.cpp
+    ovl/shared_beam.cpp
+    ovl/shared_arcs.cpp
+    ovl/shared_gold_bolt.cpp
+    ovl/shared_gold_scene.cpp
+    ovl/shared_tiles.cpp
+    ovl/shared_scroll.cpp
+    ovl/shared_zones.cpp
+    ovl/shared_attach.cpp
+    ovl/shared_shockwave.cpp
+    ovl/shared_finale.cpp
+    ovl/shared_flash.cpp
+    ovl/shared_small.cpp
+    ovl/shared_spawns.cpp
+    ovl/shared_particles.cpp
+    ovl/shared_class1224.cpp
+    ovl/shared_class403.cpp
+    ovl/shared_class325.cpp
+    ovl/shared_class250.cpp
+    ovl/shared_class1331.cpp
+    ovl/shared_class28.cpp
+    ovl/shared_class28_draw.cpp
+    ovl/shared_class77.cpp
+    ovl/shared_class78_draw.cpp
+    ovl/shared_class123_draw.cpp
+    ovl/shared_three_glows.cpp
+    ovl/shared_ripples.cpp
+    ovl/shared_class193.cpp
+    ovl/shared_class196.cpp
+    ovl/shared_class655_glows.cpp
+    ovl/shared_class408_tint.cpp
+    ovl/shared_class848.cpp
+    ovl/shared_level_helpers.cpp
+    ovl/shared_class686.cpp
+    ovl/shared_class49.cpp
+    ovl/shared_class256.cpp
+    ovl/shared_class638.cpp
+    ovl/shared_class1356.cpp
+    ovl/shared_class156.cpp
+    ovl/shared_class1523.cpp
+    ovl/shared_class123.cpp
+    ovl/shared_class1443.cpp
+    ovl/shared_class827.cpp
+    ovl/shared_class302.cpp
+    ovl/shared_class1302.cpp
+    ovl/shared_class857.cpp
+    ovl/shared_class1068.cpp
+    ovl/shared_floor_switch.cpp
+    ovl/shared_class934.cpp
+    ovl/shared_breakables.cpp
+    ovl/shared_ship_exhaust.cpp
+    ovl/shared_pump_camera.cpp
+    ovl/shared_class994.cpp
+    ovl/shared_class408.cpp
+    ovl/shared_class78.cpp
+    ovl/shared_class655.cpp
+    ovl/shared_class44.cpp
+    ovl/shared_swingshot_target.cpp
+    ovl/shared_class819.cpp
+    ovl/shared_class1021.cpp
+    ovl/shared_class832.cpp
+    ovl/shared_class604.cpp
+    ovl/shared_particle_4a.cpp
+    ovl/shared_path_links.cpp
+    ovl/shared_class830.cpp
+    ovl/shared_class1038.cpp
+    ovl/shared_class1378.cpp
+    ovl/shared_class1108.cpp
+    ovl/shared_class1179.cpp
+    ovl/shared_class933.cpp
+    ovl/shared_class235.cpp
+    ovl/shared_hoverboard.cpp
+    ovl/shared_floaters.cpp
+    ovl/shared_class344.cpp
+    ovl/shared_little.cpp
+    ovl/shared_cutscene_fx.cpp
+    ovl/shared_particle_kinds.cpp
+    ovl/shared_class1221.cpp
+    ovl/shared_class1371.cpp
+    ovl/shared_class823.cpp
+    ovl/shared_class1511.cpp
+    ovl/shared_panel_lights.cpp
+    ovl/shared_waves.cpp
+    ovl/shared_blarg_meshes.cpp
+    ovl/shared_class1886.cpp
+    ovl/shared_path_ahead.cpp
+    ovl/shared_class1111.cpp
+    ovl/shared_race_hud.cpp
+    ovl/shared_class224.cpp
+    ovl/shared_class295.cpp
+    ovl/shared_ship_shots.cpp
+    ovl/shared_class1319.cpp
+    ovl/shared_hud_shapes.cpp
+    ovl/shared_moby_helpers.cpp
+    ovl/shared_class1952.cpp
+    ovl/shared_class615.cpp
+    ovl/shared_class1844.cpp
+    ovl/shared_class447.cpp
+    ovl/shared_class1023.cpp
+    ovl/shared_class280.cpp
+    ovl/shared_class631.cpp
+    ovl/novalis_amoeboid.cpp
+    ovl/vendor_draw.cpp
     ovl/vendor_frame.cpp
+    ovl/vendor_screens.cpp
+    ovl/vendor_update.cpp
     ovl/galactic_map.cpp
+    ovl/sky.cpp
     ovl/sky_levels.cpp
     ovl/variants_sky.cpp
     ovl/checkpoint.cpp
@@ -136,6 +283,7 @@ add_library(rac1_game STATIC
     boot/title_load.cpp
     boot/title.cpp
     boot/title_menu.cpp
+    boot/title_sky.cpp
     ovl/level_load.cpp
     ovl/camera.cpp
     ovl/camera_follow.cpp
@@ -154,6 +302,11 @@ add_library(rac1_game STATIC
     ovl/stash.cpp
     ovl/hud_elements.cpp
     ovl/hud_o2.cpp
+    ovl/hud_slot7.cpp
+    ovl/help_panel.cpp
+    ovl/aridia_hud.cpp
+    ovl/helmet.cpp
+    ovl/screen_flash.cpp
     ovl/quick_select.cpp
     ovl/gadgebot_commands.cpp
     enhance/advanced.cpp
@@ -193,11 +346,41 @@ add_library(rac1_game STATIC
     ovl/weapons_register.cpp
     ovl/mine_glove.cpp
     ovl/gadgets.cpp
+    ovl/grapple.cpp
+    ovl/hydro.cpp
+    ovl/metal.cpp
+    ovl/metal_obj.cpp
+    ovl/swingshot.cpp
+    ovl/aridia_fx.cpp
+    ovl/aridia_ship.cpp
+    ovl/fx_26a5b8.cpp
+    ovl/fx_26ee48.cpp
+    ovl/dev_271450.cpp
+    ovl/devastator.cpp
+    ovl/rocket.cpp
+    ovl/ryno.cpp
+    ovl/ryno_fx.cpp
+    ovl/visibomb.cpp
+    ovl/visibomb_ball.cpp
+    ovl/decoy.cpp
+    ovl/decoy_fx.cpp
+    ovl/decoy_obj.cpp
+    ovl/morph.cpp
+    ovl/morph_chicken.cpp
+    ovl/morph_draw.cpp
+    ovl/morph_fx.cpp
+    ovl/morph_hud.cpp
+    ovl/drone.cpp
+    ovl/tesla.cpp
+    ovl/tesla_ball.cpp
+    ovl/fx1471.cpp
     ovl/weapon_fx.cpp
     ovl/mine.cpp
     ovl/taunter.cpp
     ovl/doom_glove.cpp
     ovl/doom_agent.cpp
+    ovl/doomlet.cpp
+    ovl/suck_cannon.cpp
     ovl/carry_hooks.cpp
     ovl/carry_hooks_levels.cpp
     ovl/novalis_hooks.cpp
@@ -262,6 +445,8 @@ add_library(rac1_game STATIC
     ovl/camera_mods.cpp
     ovl/camera_look.cpp
     ovl/camera_types.cpp
+    ovl/novalis_camera.cpp
+    ovl/kerwan_camera.cpp
     ovl/wind.cpp
     ovl/smoke_vent.cpp
     ovl/arrival.cpp

@@ -644,6 +644,30 @@ void explode_and_reset(uint32_t m, uint32_t r, uint32_t burst) {
     else moby_retire(m);
 }
 
+// The class's hook +0xc (class +0x2c table) on moby m, its result dropped: carry_update's call (`jalr` with a0 = m) when the
+// record's countdown runs out. Through the same ports as the Suck Cannon's calls of it: a registered moby function (the
+// chicken's 0x2caf10, Novalis's), the played level's own hooks (carry_hooks_levels.cpp: the chickens' copies, Eudora's class
+// 340, Veldin finale's class 749 ...), Veldin's class-749 hook on Veldin (the other levels' copies set their own states).
+// Until #145 only the registered ones ran: on Veldin, Eudora and Veldin's finale the enemies of classes 749 / 340, and on
+// most levels the chickens, stayed in their carried state when the countdown ran out (batch 530).
+// orig: (helper) the call inlined in carry_update
+void carry_hook_c(uint32_t m) {
+    const uint32_t fn = lwu(lwu(lwu(m + 0x24) + 0x2c) + 0xc);
+    if (fn == 0) return;
+    if (ovl_moby_fn_ported(fn)) {
+        ovl_call_moby_fn(fn, m);
+        return;
+    }
+    if (int32_t r = 0; class_hook_call_level(fn, m, 0, 0, 0.0f, r)) return;
+    uint32_t vf = ovl_code_to_veldin(fn);
+    if (vf == NOT_ADDR(0x002d57d0) && ovl_reloc_level() != 0) vf = 0;  // (as in class_hook_4)
+    switch (vf) {
+        case 0x002d57d0: e749_hookc(m, 0, 0, 0.0f); return;
+        case 0x002db860: hook_default_c(m); return;
+        default: ovl_call_moby_fn(fn, m); return;  // (TODO_PORT)
+    }
+}
+
 // A carried / thrown moby m (its record r from the class hook +0x10, `p` its other state), by
 // r +0x68: 1 turning to face r +0 (then 2), 2 rising while r +0x6c counts to 1, 3 held by the
 // moby r +0x60 (pulled to its chain point 0, scaled by distance; close enough it is handed over
@@ -940,10 +964,7 @@ int32_t carry_update(uint32_t m, uint32_t p) {
     }
     if ((lhu(m + 0x34) & 4u) != 0) moby_update_transform_kept(m);
     if (lh(r + 0x68) < 4) {
-        if (lwc1(r + 0xc) <= 0.0f) {
-            const uint32_t fn = lwu(lwu(lwu(m + 0x24) + 0x2c) + 0xc);
-            if (fn != 0) ovl_call_moby_fn(fn, m);
-        }
+        if (lwc1(r + 0xc) <= 0.0f) carry_hook_c(m);
         swc1(r + 0xc, lwc1(r + 0xc) - 1.0f);
     }
     return 0;

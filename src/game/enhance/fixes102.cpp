@@ -10,6 +10,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 
+#include <bitset>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -19,15 +20,22 @@ namespace rac1 {
 
 namespace {
 constexpr int FIXES[] = {1, 2, 3, 5, 6, 7, 11, 15, 16, 17, 18, 19, 20, 22};  // the fixes of the 1.02 Fixes row (fixes102.h)
-constexpr int GAMEPLAY[] = {4, 8, 9, 10, 12, 13, 14, 21};  // the fixes of the 1.02 Gameplay row (fixes102.h)
+constexpr int GAMEPLAY[] = {4, 8, 9, 10, 12, 13, 14, 21, 23, 24, 25};  // the fixes of the 1.02 Gameplay row (fixes102.h)
 
-// orig: (none) — enhancement: a list variable's fixes (RAC1_FIXES102 / RAC1_GAMEPLAY102) as bits (bit n: fix n); -1
-// unset; `fixes` the row's
+// orig: (none) — enhancement: a list variable's fixes (RAC1_FIXES102 / RAC1_GAMEPLAY102) as bits (bit n: fix n), `set`
+// false when the variable is unset; `fixes` the row's
+struct FixBits {
+    bool set = false;
+    std::bitset<128> bits;
+    bool on(int fix) const { return fix >= 0 && fix < 128 && bits.test(static_cast<size_t>(fix)); }
+};
 template <size_t N>
-int64_t env_list(const char* name, const int (&fixes)[N]) {
+FixBits env_list(const char* name, const int (&fixes)[N]) {
+    FixBits out;
     const char* e = std::getenv(name);
-    if (e == nullptr) return int64_t{-1};
-    int64_t bits = 0;
+    if (e == nullptr) return out;
+    out.set = true;
+    std::bitset<128>& bits = out.bits;
     const std::string list = e;
     size_t at = 0;
     while (at <= list.size()) {
@@ -37,7 +45,7 @@ int64_t env_list(const char* name, const int (&fixes)[N]) {
         at = end + 1;
         if (item.empty() || item == "none") continue;
         if (item == "all") {
-            for (const int f : fixes) bits |= int64_t{1} << f;
+            for (const int f : fixes) bits.set(static_cast<size_t>(f));
             continue;
         }
         char* stop = nullptr;
@@ -50,20 +58,20 @@ int64_t env_list(const char* name, const int (&fixes)[N]) {
             std::fprintf(stderr, "%s: %s is not one of the fixes (%sall, none)\n", name, item.c_str(), list_text.c_str());
             continue;
         }
-        bits |= int64_t{1} << n;
+        bits.set(static_cast<size_t>(n));
     }
-    return bits;
+    return out;
 }
 
-// orig: (none) — enhancement: RAC1_FIXES102's fixes as bits; -1 unset
-int64_t env_fixes() {
-    static const int64_t v = env_list("RAC1_FIXES102", FIXES);
+// orig: (none) — enhancement: RAC1_FIXES102's fixes as bits
+const FixBits& env_fixes() {
+    static const FixBits v = env_list("RAC1_FIXES102", FIXES);
     return v;
 }
 
-// orig: (none) — enhancement: RAC1_GAMEPLAY102's fixes as bits; -1 unset
-int64_t env_gameplay() {
-    static const int64_t v = env_list("RAC1_GAMEPLAY102", GAMEPLAY);
+// orig: (none) — enhancement: RAC1_GAMEPLAY102's fixes as bits
+const FixBits& env_gameplay() {
+    static const FixBits v = env_list("RAC1_GAMEPLAY102", GAMEPLAY);
     return v;
 }
 }  // namespace
@@ -71,8 +79,8 @@ int64_t env_gameplay() {
 // orig: (none) — enhancement (fixes102.h)
 bool fixes102_on(int fix) {
     if (g_advanced_disabled) return false;
-    const int64_t env = env_fixes();
-    if (env >= 0) return ((env >> fix) & 1) != 0;
+    const FixBits& env = env_fixes();
+    if (env.set) return env.on(fix);
     if (!advanced_fixes102()) return false;
     for (const int f : FIXES)
         if (f == fix) return true;
@@ -82,8 +90,8 @@ bool fixes102_on(int fix) {
 // orig: (none) — enhancement (fixes102.h)
 bool gameplay102_on(int fix) {
     if (g_advanced_disabled) return false;
-    const int64_t env = env_gameplay();
-    if (env >= 0) return ((env >> fix) & 1) != 0;
+    const FixBits& env = env_gameplay();
+    if (env.set) return env.on(fix);
     if (!advanced_gameplay102()) return false;
     for (const int f : GAMEPLAY)
         if (f == fix) return true;

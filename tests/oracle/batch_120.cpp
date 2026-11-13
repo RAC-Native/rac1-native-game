@@ -10,6 +10,7 @@
 #include <game/ovl/batalia_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/sound_emitter.h>
 #include <runtime/kernel/disc.h>
 
 #include <cmath>
@@ -294,7 +295,7 @@ void batch_120() {
     // ---- level 8's sound emitter types (3, 6: section 5 of the overlay) on the level's own emitters
     if (g_oracle_level == 8) {
         struct Em { const char* name; uint32_t addr; void (*fn)(uint32_t); };
-        static const Em ems_t[] = {{"emitter1", 0x00316aa8, bat_emitter1_l8}, {"emitter3", 0x00316e48, bat_emitter3_l8}, {"emitter4", 0x00316fa8, bat_emitter4_l8}, {"emitter6", 0x00317230, bat_emitter6_l8}};
+        static const Em ems_t[] = {{"emitter1", 0x00316aa8, emitter_fade_box_update}, {"emitter3", 0x00316e48, emitter_reverb_box_update}, {"emitter4", 0x00316fa8, emitter_open_bed_update}, {"emitter6", 0x00317230, emitter_music_box_update}};
         for (const Em& e : ems_t) {
             level();
             std::vector<uint32_t> ems;

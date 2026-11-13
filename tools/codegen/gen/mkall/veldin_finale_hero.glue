@@ -1,1 +1,0 @@
-0x0029a258: vendor_screen_start_tr(a0.w());  // the item mode start (Veldin 0x29a6b0, the Vendor screen's start: vendor_tr.cpp)

@@ -10,7 +10,7 @@
 #include <game/enhance/advanced.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
-#include <game/ovl/rilgar_mobys.h>
+#include <game/ovl/sound_emitter.h>
 
 #include <cmath>
 #include <cstdio>
@@ -243,7 +243,7 @@ bool bug_fixes_settings_dpad(uint32_t w, uint32_t e, uint32_t pressed) {
 // orig: (none) — enhancement (bug_fixes.h)
 void bug_fixes_race_quit() {
     if (lw(0x0015ed84) != 5 || !bug_fix_on(BUG_FIX_RACE_MUSIC)) return;  // (Rilgar's race alone changes the music)
-    ril_28f5c8_l5(0, 8, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+    music_track_request(0, 8);  // (Rilgar's L5:0x0028f5c8)
     std::printf("[bug-fixes] race quit: the level's music back (track 0 over 8)\n");
 }
 

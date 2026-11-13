@@ -19,7 +19,6 @@
 #include <game/ovl/nanotech_draw.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/pause_menu.h>
-#include <game/ovl/rilgar_hero.h>
 #include <game/ovl/rilgar_mobys.h>
 #include <game/ovl/variants_l5.h>
 #include <game/ovl/veldin_mobys.h>
@@ -29,6 +28,7 @@
 #include <game/port_stubs.h>
 #include <game/ovl/screen_fade.h>
 #include <game/ovl/hydro.h>
+#include <game/ovl/sound_emitter.h>
 
 namespace rac1 {
 
@@ -66,8 +66,6 @@ using namespace vu0m;
 //@gen ril_2843a8_l5
 
 //@gen ril_28d960_l5
-
-//@gen ril_28f5c8_l5
 
 //@gen ril_316810_l5
 

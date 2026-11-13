@@ -19,7 +19,7 @@ namespace rac1 {
 void kerwan_moby_fns_register();
 
 // ---- the props, citizens and mechanisms (kerwan_props.cpp)
-void fred_update_l3(uint32_t m);              // L3:0x002dc310  classes 915, 916, 917 (cut content: retire at once)
+void fred_update_l3(uint32_t m);              // L3:0x002dc310 L10:0x002d7fe8  classes 915, 916, 917 (cut content: retire at once)
 void lightpost_update_l3(uint32_t m);         // L3:0x002e2948  class 1827
 void statue_update_l3(uint32_t m);            // L3:0x002d3cd8  class 817
 void robo_shack_sign_update_l3(uint32_t m);   // L3:0x002d3e58  class 825

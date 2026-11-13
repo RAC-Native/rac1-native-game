@@ -22,6 +22,7 @@
 #include <game/port_stubs.h>
 #include <game/ovl/screen_fade.h>
 #include <game/ovl/hydro.h>
+#include <game/ovl/metal.h>
 #include <game/ovl/particle_16_spawn.h>
 
 namespace rac1 {

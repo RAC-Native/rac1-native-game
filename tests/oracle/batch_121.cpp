@@ -10,6 +10,7 @@
 #include <game/ovl/gaspar_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/sound_emitter.h>
 #include <runtime/kernel/disc.h>
 
 #include <cmath>
@@ -269,7 +270,7 @@ void batch_121() {
     // ---- level 9's sound emitter types (3, 6: section 5 of the overlay) on the level's own emitters
     if (g_oracle_level == 9) {
         struct Em { const char* name; uint32_t addr; void (*fn)(uint32_t); };
-        static const Em ems_t[] = {{"emitter1", 0x003158e8, gas_emitter1_l9}, {"emitter3", 0x00315c88, gas_emitter3_l9}};
+        static const Em ems_t[] = {{"emitter1", 0x003158e8, emitter_fade_box_update}, {"emitter3", 0x00315c88, emitter_reverb_box_update}};
         for (const Em& e : ems_t) {
             level();
             std::vector<uint32_t> ems;

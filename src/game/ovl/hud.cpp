@@ -494,6 +494,14 @@ void hud_init() {
     sb(lwu(OV(0x0015fa70)) + 0x20, 0xff);
 }
 
+// The hold on the current weapon's ammo element (0x15f968: camera_reset sets it, hud_weapon_element shows nothing while
+// it is not 0) one lower, when there is one.
+// orig: 0x0023af30
+void hud_weapon_element_release() {
+    const int32_t hold = lw(OV(0x0015f968));
+    if (hold != 0) sw(OV(0x0015f968), static_cast<uint32_t>(hold - 1));
+}
+
 // The current weapon's ammo element (slot 0, key 60000 + the item, for items with ammo; none
 // while 0x1413f4 (P+0x20a4)), or with P+0x20a4 = 2 the element 0xffff on P+0x1630.
 // orig: 0x0023adb8

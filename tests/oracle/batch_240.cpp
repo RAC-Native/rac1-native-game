@@ -7,10 +7,11 @@
 #include "ovl_oracle.h"
 
 #include <game/ovl/enemy_749.h>
-#include <game/ovl/quartu_hero.h>
+#include <game/ovl/hero_move_mode.h>
 #include <game/ovl/quartu_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/sound_emitter.h>
 #include <runtime/kernel/disc.h>
 
 #include <csetjmp>
@@ -382,7 +383,7 @@ void batch_240() {
     // ---- level 15's sound emitter types (section 5 of the overlay) on the level's own emitters
     if (g_oracle_level == 15) {
         struct Em { const char* name; uint32_t addr; void (*fn)(uint32_t); };
-        static const Em ems_t[] = {{"emitter3", 0x002f9230, qua_emitter3_l15}, {"emitter5", 0x002f9390, qua_emitter5_l15}};
+        static const Em ems_t[] = {{"emitter3", 0x002f9230, emitter_reverb_box_update}, {"emitter5", 0x002f9390, emitter_camera_bed_update}};
         for (const Em& e : ems_t) {
             level();
             std::vector<uint32_t> ems;
@@ -465,7 +466,7 @@ void batch_240() {
             w32(OV(0x0015f5cc), R() & 0xffff);
             seed_rand();
             return Args{};
-        }, [](A) { qua_hero_move_mode_u(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); return uint64_t{0}; });
+        }, [](A) { hero_move_mode(); return uint64_t{0}; });
         g_ignored_words.pop_back();
         g_ignored_words.pop_back();
         g_extra_noop_hooks.clear();

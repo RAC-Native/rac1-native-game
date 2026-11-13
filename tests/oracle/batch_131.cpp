@@ -1,15 +1,22 @@
-// Oracle batch 131 (task 0366): the Vendor's screens' draw 0x2a02b0 (vendor_tr.cpp, transliterated at Veldin's addresses) in
+// Oracle batch 131 (task 0366): the Vendor's screens' draw 0x2a02b0 (vendor_draw.cpp, at Veldin's addresses) in
 // its second mode, the one every frame of the screens runs: the block 0x1ca4c0's +8 = 1, the stored frame picture put back
 // (0x2a0fc8), the view, the moby pass with the item models (the selected item's +0x200 / +0x300, the screens' moby +0x1c),
 // the screens' panels (0x29ff58, 0x29f3c0, 0x29fcd0, 0x29f990), the HUD. Batches 113 / 115 never compared the draw's body
 // (113 runs it with the start's skip flag 0x15f5d8 set; 115 left it out: its first mode renders a whole frame, 0x1f85b8,
 // whose passes need the main loop's set-up). Here the port runs the first mode once in the set-up (the frame rendered, its
 // picture stored, the item mobys made: 0x2a048c), then the original and the port run the second mode on the same memory.
-// Run with ORACLE_LEVEL=1 too (Novalis's own original against the relocated port).
+// Run with ORACLE_LEVEL=1 too (Novalis's own original against the relocated port). Since slice 3e (the vendor hand-ported,
+// vendor_screens.cpp / vendor_update.cpp / vendor_draw.cpp) also the screens' own functions directly from the same set-up:
+// the purchase 0x29ba78 at each step, the update 0x29c648 in the item list, the head 0x29b0b0, the hologram 0x29b680, the
+// panels 0x29dcd8 / 0x29e198 / 0x29e6c0 / 0x29e918 / 0x29ead8 / 0x29dea0, the price 0x29de40 and the static 0x29ef68.
+
+// Audit 2 (2026-11-13): the panels' checks no longer leave out every lone word at +0xc of a quadword (they match without);
+// only vendor_draw_picture keeps g_ignore_lone_w_lanes, for the moby draw's billboard rows.
 
 #include "ovl_oracle.h"
 
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/vendor_screens.h>
 #include <game/ovl/vendor_tr.h>
 #include <game/lib/libgraph.h>
 #include <game/ovl/pause_menu.h>
@@ -162,6 +169,144 @@ void batch_131() {
             vendor_mode_draw_tr(0);
             return uint64_t{0};
         });
+        g_pre_call = nullptr;
+        g_ignore_lone_w_lanes = false;
+
+        // ---- (slice 3e: the vendor hand-ported) the screens' own functions directly, from the same set-up, on the branches
+        // a visit rarely reaches: a purchase at each step (Yes / No, the quantity box held, not enough bolts, ammo full, a
+        // weapon at its second price with 0x13d4e3, the Drone Device), opened by the PDA or by a Vendor, the panels in each
+        // case, the screens' static and band timers, the head's states.
+        auto items = [S] {  // the list's entries and the hero's ammo varied, a cursor on one of them
+            const int n = static_cast<int>(ee_read<uint32_t>(S + 0x210));
+            if (n > 0) w32(S + 0x58, u(ri(0, n - 1)));
+            for (int i = 0; i < n; ++i) {
+                const uint32_t e = S + 0xd0 + u(i) * 0x14;
+                if (n > 1 && ri(0, 5) == 0) w32(e, ee_read<uint32_t>(S + 0xd0 + u(ri(0, n - 1)) * 0x14));  // (another entry's item: its class is loaded)
+                if (ri(0, 5) == 0) w32(e + 4, u(ri(0, 1)));
+                if (ri(0, 7) == 0) w32(e + 8, u(ri(0, 1)));
+                const uint32_t it = ee_read<uint32_t>(e) & 0x3f;
+                const uint32_t most = ee_read<uint16_t>(OV(0x001c40b0) + it * 0x18 + 0xe);
+                w32(0x0013d428 + it * 4, u(coin() ? static_cast<int>(most) : ri(0, static_cast<int>(most) + 2)));
+            }
+            w8(0x0013d4e3, coin() ? 0u : 1u);
+            w32(S + 0x40, coin() ? 0u : 1u);
+            w32(0x0015ed98, u(coin() ? ri(0, 300) : ri(0, 2000000)));
+        };
+        auto purchase_state = [second_mode, items, S](int step) {
+            second_mode();
+            items();
+            w32(S + 0x5c, 1);  // (the box moby +0x400 made: the purchase's first step, the port's)
+            vendor::vendor_purchase_update();
+            items();
+            w32(S + 0x5c, u(step));
+            w32(OV(0x00161e10), coin() ? 1u : 0u);
+            w32(OV(0x00161e34), u(ri(0, 120)));
+            w32(OV(0x00161e0c), u(ri(0, 1)));
+            w32(OV(0x00161e28), u(ri(0, 60)));
+            w32(OV(0x00161e2c), u(ri(0, 60)));
+            const uint32_t keys[4] = {0x10, 0x40, 0x2000, 0x8000};
+            uint32_t now = 0, held = 0, before = 0;
+            for (const uint32_t k : keys) {
+                if (ri(0, 2) == 0) now |= k;
+                if (ri(0, 2) == 0) held |= k;
+                if (ri(0, 2) == 0) before |= k;
+            }
+            w32(0x0013cb04, now);
+            w32(0x0013cb00, held);
+            w32(OV(0x00161e30), before);
+            const uint32_t box = ee_read<uint32_t>(S + 0x20) + 0x400;
+            if (box >= 0x00100000u && box < 0x02000000u) {
+                w8(box + 0x53, u(ri(0, 1)));
+                w8(box + 0x70, coin() ? 2u : 0u);
+            }
+            seed_rand();
+        };
+        check("vendor_purchase", 0x0029ba78, 200, Ret::None, [purchase_state] {
+            purchase_state(ri(0, 4));
+            return Args{{0u}, {}};
+        }, [](A) { vendor::vendor_purchase_update(); return uint64_t{0}; });
+        check("vendor_update_list", 0x0029c648, 120, Ret::None, [purchase_state, S] {
+            purchase_state(coin() ? 0 : ri(1, 4));
+            w32(S, 1);
+            w32(OV(0x00161188), 0);
+            w32(OV(0x0016118c), 0);
+            w32(OV(0x00161e18), coin() ? 1u : 0u);
+            w32(OV(0x00161e14), u(ri(1, 3)));
+            w32(OV(0x00161e20), coin() ? 1u : 0u);
+            w32(OV(0x00161e1c), u(ri(0, 2)));
+            w32(OV(0x00161e38), coin() ? 1u : 0u);
+            w32(S + 0x4c, u(ri(-80, 80)));
+            seed_rand();
+            return Args{{0u}, {}};
+        }, [](A) { vendor_mode_update_tr(0); return uint64_t{0}; });
+        check("vendor_head_anim", 0x0029b0b0, 160, Ret::None, [second_mode, S] {
+            second_mode();
+            const uint32_t m = ee_read<uint32_t>(S + 0x1c);
+            w8(m + 0x20, u(ri(0, 13)));
+            w8(m + 0x53, u(ri(0, 8)));
+            w8(m + 0x70, coin() ? 2u : 0u);
+            w32(S + 0x34, u(ri(0, 1200)));
+            w32(S + 0x3c, u(ri(0, 1)));
+            w32(OV(0x00161190), u(ri(0, 1)));
+            w32(OV(0x00161194), u(ri(0, 1)));
+            w16(0x0015172a, u(coin() ? 3 : ri(0, 7)));
+            w8(0x0015edb0, coin() ? 0u : 1u);
+            w8(OV(0x001ca6e1), coin() ? 0u : 1u);
+            seed_rand();
+            return Args{{m}, {}};
+        }, [](A a) { vendor::vendor_head_anim(a.i[0]); return uint64_t{0}; });
+        check("vendor_hologram_make", 0x0029b680, 80, Ret::None, [second_mode, items] {
+            second_mode();
+            items();
+            seed_rand();
+            return Args{{0u}, {}};
+        }, [](A) { vendor::vendor_hologram_make(); return uint64_t{0}; });
+        // (the panels draw mobys (the monitor's item, the head, the quantity box's ring) on the VU0 registers the original started
+        // from; no lone w lane is left out: they match without, ORACLE_NO_LONE_W=1 showed it (audit 2), and leaving them out hid
+        // every lone word at +0xc of a quadword anywhere in RAM)
+        g_pre_call = vu0_capture;
+        g_ignore_lone_w_lanes = false;
+        const auto vu0_in = [] {
+            vu0m::regs().vf = g_vu0_in.vf;
+            vu0m::regs().acc = g_vu0_in.acc;
+            vu0m::regs().q = g_vu0_in.q;
+        };
+        auto panel_state = [purchase_state, S] {
+            purchase_state(coin() ? 0 : ri(1, 4));
+            w32(S + 4, u(ri(0, 300)));
+            w32(S + 0x4c, coin() ? 0u : u(ri(-60, 60)));
+            w32(S + 0x44, u(ri(0, 900)));
+            seed_rand();
+        };
+        check("vendor_panel_sign", 0x0029dcd8, 60, Ret::None, [panel_state] { panel_state(); return Args{{0u}, {}}; },
+              [vu0_in](A) { vu0_in(); vendor::panel_sign(); return uint64_t{0}; });
+        check("vendor_panel_monitor", 0x0029e198, 120, Ret::None, [panel_state] { panel_state(); return Args{{0u}, {}}; },
+              [vu0_in](A) { vu0_in(); vendor::panel_monitor(); return uint64_t{0}; });
+        check("vendor_panel_message", 0x0029e6c0, 100, Ret::None, [panel_state] {
+            panel_state();
+            return Args{{0u, u(ri(60, 300)), u(ri(20, 120))}, {}};
+        }, [vu0_in](A a) { vu0_in(); vendor::panel_message(static_cast<int32_t>(a.i[1]), static_cast<int32_t>(a.i[2])); return uint64_t{0}; });
+        check("vendor_panel_prompt", 0x0029e918, 100, Ret::None, [panel_state] { panel_state(); return Args{{0u}, {}}; },
+              [vu0_in](A) { vu0_in(); vendor::panel_prompt(); return uint64_t{0}; });
+        check("vendor_panel_quantity", 0x0029ead8, 120, Ret::None, [panel_state] {
+            panel_state();
+            return Args{{0u, u(ri(60, 300)), u(ri(20, 120))}, {}};
+        }, [vu0_in](A a) { vu0_in(); vendor::panel_quantity(static_cast<int32_t>(a.i[1]), static_cast<int32_t>(a.i[2])); return uint64_t{0}; });
+        check("vendor_panel_list", 0x0029dea0, 80, Ret::None, [panel_state] { panel_state(); return Args{{0u}, {}}; },
+              [vu0_in](A) { vu0_in(); vendor::panel_list(); return uint64_t{0}; });
+        check("vendor_price_format", 0x0029de40, 60, Ret::None, [second_mode] {
+            second_mode();
+            const int32_t v = coin() ? ri(0, 999) : ri(1000, 2000000);
+            return Args{{0x01400000u + (R() & 0xfff0u), u(v)}, {}};
+        }, [](A a) { vendor::price_format(a.i[0], static_cast<int32_t>(a.i[1])); return uint64_t{0}; });
+        check("vendor_screen_static", 0x0029ef68, 120, Ret::None, [panel_state] {
+            panel_state();
+            for (uint32_t k = 0; k < 7; ++k) {
+                w32(OV(0x001ca720) + k * 4, u(coin() ? 0 : ri(1, 260)));
+                w32(OV(0x001ca740) + k * 4, u(coin() ? 0 : ri(1, 520)));
+            }
+            return Args{{u(ri(0, 6))}, {rf(40.0f, 300.0f), rf(10.0f, 120.0f)}};
+        }, [](A a) { vendor::screen_static(static_cast<int32_t>(a.i[0]), a.f[0], a.f[1]); return uint64_t{0}; });
         g_pre_call = nullptr;
         g_ignore_lone_w_lanes = false;
         g_extra_noop_hooks.clear();

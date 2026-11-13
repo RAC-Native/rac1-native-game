@@ -8,12 +8,15 @@
 #include <game/ovl/batalia_mobys.h>
 #include <game/ovl/blarg_mobys.h>
 #include <game/ovl/carry_hooks.h>
+#include <game/ovl/enemy_749.h>
 #include <game/ovl/eudora_mobys.h>
 #include <game/ovl/gaspar_mobys.h>
 #include <game/ovl/gemlik_hooks.h>
 #include <game/ovl/oltanis_hooks.h>
 #include <game/ovl/novalis_hooks.h>
 #include <game/ovl/orxon_mobys.h>
+#include <game/ovl/ovl.h>
+#include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/pokitaru_mobys.h>
 #include <game/ovl/hoven_mobys.h>
@@ -38,6 +41,165 @@
 #include <game/ovl/variants_l18.h>
 
 namespace rac1 {
+
+// Aridia's Sand Shark (class 0x244): hook +0.
+// orig: L2:0x002d61c0
+int32_t ari_carry_hook0_l2(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
+    const int32_t res = carry_hook0(m, pa1, pa2, pf12);
+    if (res != 0) {
+        sb(m + 0x20, 9);
+    } else if (lbu(m + 0x20) == 9) {
+        sb(m + 0x20, 1);
+    }
+    return res;
+}
+
+// Aridia's Sand Shark (class 0x244): hook +4.
+// orig: L2:0x002d6210
+int32_t ari_carry_hook4_l2(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
+    const int32_t res = carry_hook4(m, pa1, pa2, pf12);
+    if (res != 0) {
+        const uint32_t pv = lwu(m + 0x78);
+        sb(m + 0x20, 9);
+        const int32_t spawner_idx = lw(pv + 0x288);
+        if (spawner_idx >= 0) {
+            const uint32_t spawner = lwu(L2_ADDR(0x0015ffd8u)) + (static_cast<uint32_t>(spawner_idx) << 8);
+            const uint32_t spv = lwu(spawner + 0x78);
+            sw(spv + 0x14c, lwu(spv + 0x14c) - 1u);
+        }
+    } else if (lbu(m + 0x20) == 9) {
+        sb(m + 0x20, 1);
+    }
+    return res;
+}
+
+// Aridia's Sand Shark (class 0x244): hook +8.
+// orig: L2:0x002d6290
+int32_t ari_carry_hook8_l2(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
+    const int32_t res = carry_hook8(m, pa1, pa2, pf12);
+    if (res != 0) {
+        sb(m + 0x20, 9);
+    } else if (lbu(m + 0x20) == 9) {
+        sb(m + 0x20, 1);
+    }
+    return res;
+}
+
+// Kerwan's class 0x10e: hook +0xc.
+// orig: L3:0x002bcbd0
+int32_t ker_carry_hookc_l3(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
+    const int32_t res = carry_hookc(m, pa1, pa2, pf12);
+    sb(m + 0x20, 5);
+    return res;
+}
+
+// Eudora's Circular Saw Enemy (class 340, 0x154): hook +0.
+// orig: L4:0x002c4030
+int32_t eud_carry_hook0_l4(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
+    const int32_t res = carry_hook0(m, pa1, pa2, pf12);
+    if (res != 0) {
+        sb(m + 0x20, 9);
+    } else if (lbu(m + 0x20) == 9) {
+        sb(m + 0x20, 1);
+    }
+    return res;
+}
+
+// Eudora's Circular Saw Enemy (class 340, 0x154): hook +4.
+// orig: L4:0x002c4080
+int32_t eud_carry_hook4_l4(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
+    const int32_t res = carry_hook4(m, pa1, pa2, pf12);
+    if (res != 0) {
+        sb(m + 0x20, 9);
+    } else if (lbu(m + 0x20) == 9) {
+        sb(m + 0x20, 1);
+    }
+    return res;
+}
+
+// Eudora's Circular Saw Enemy (class 340, 0x154): hook +8.
+// orig: L4:0x002c40d0
+int32_t eud_carry_hook8_l4(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
+    const uint32_t r = class_hook_10(m);
+    const int32_t res = carry_hook8(m, pa1, pa2, pf12);
+    if (res != 0) {
+        sb(m + 0x20, 9);
+    } else if (lbu(m + 0x20) == 9) {
+        sb(m + 0x20, 1);
+    }
+    if (lh(r + 0x68) == 6) {
+        moby_sound_start(1, 0, m);
+    }
+    return res;
+}
+
+// Rilgar's classes 0x23c / 0x362: hook +0.
+// orig: L5:0x00300ad8
+int32_t ril_carry_hook0_l5(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
+    const int32_t res = carry_hook0(m, pa1, pa2, pf12);
+    if (res != 0) {
+        if (lh(m + 0xa6) != 0x362) return 0;
+        if (lbu(m + 0x20) == 8) return 0;
+        sb(m + 0x20, 0xe);
+        return res;
+    }
+    if (lbu(m + 0x20) == 0xe) {
+        sb(m + 0x20, 1);
+    }
+    return res;
+}
+
+// Rilgar's classes 0x23c / 0x362: hook +8.
+// orig: L5:0x00300b98
+int32_t ril_carry_hook8_l5(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
+    const int32_t res = carry_hook8(m, pa1, pa2, pf12);
+    if (res != 0) {
+        sb(m + 0x20, 0xe);
+    } else if (lbu(m + 0x20) == 0xe) {
+        sb(m + 0x20, 1);
+    }
+    return res;
+}
+
+// Rilgar's classes 0x23c / 0x362: hook +0xc.
+// orig: L5:0x00300be8
+int32_t ril_carry_hookc_l5(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
+    const int32_t res = carry_hookc(m, pa1, pa2, pf12);
+    sb(m + 0x20, 0xe);
+    return res;
+}
+
+// Blarg's class 0x10e: hook +0xc.
+// orig: L6:0x002d8118
+int32_t blg_carry_hookc_l6(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
+    const int32_t res = carry_hookc(m, pa1, pa2, pf12);
+    sb(m + 0x20, 5);
+    return res;
+}
+
+// Umbris's class 0x10e: hook +0xc.
+// orig: L7:0x002f44b0
+int32_t umb_carry_hookc_l7(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
+    const int32_t res = carry_hookc(m, pa1, pa2, pf12);
+    sb(m + 0x20, 5);
+    return res;
+}
+
+// Batalia's class 0x10e: hook +0xc.
+// orig: L8:0x002d8180
+int32_t bat_carry_hookc_l8(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
+    const int32_t res = carry_hookc(m, pa1, pa2, pf12);
+    sb(m + 0x20, 5);
+    return res;
+}
+
+// Orxon's class 0x10e: hook +0xc.
+// orig: L10:0x002bcc60
+int32_t orx_carry_hookc_l10(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
+    const int32_t res = carry_hookc(m, pa1, pa2, pf12);
+    sb(m + 0x20, 5);
+    return res;
+}
 
 namespace {
 // a transliterated helper in the uniform ABI (TrRet: every argument register) called as a hook: a0 = the moby, a1 / a2 and
@@ -189,8 +351,15 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         case L17_CASE(0x002f0070): ret = u_call(vo_hook_2f0070_u, m, a1, a2, f12); return true;
         default: return false;
         }
-    case 18:  // Veldin, the finale: classes 0x238 (table 0x1f3498) and 0x772 (table 0x1f34c8)
+    case 18:  // Veldin, the finale: classes 0x238 (table 0x1f3498) and 0x772 (table 0x1f34c8); class 749's five hooks, Veldin's
+              // 0x2d56e0 .. 0x2d5800, the same code (its 90 mobys: carried and sucked as on Veldin; class_hook_4 / _10 keep
+              // Veldin's class-749 hooks to level 0, as the other levels' copies have their own constants)
         switch (lvl_key(fn)) {
+        case L18_CASE(0x002e13b8): ret = e749_hook0(m, a1, a2, f12); return true;  // (Veldin's 0x2d56e0)
+        case L18_CASE(0x002e1408): ret = e749_hook4(m, a1, a2, f12); return true;  // (Veldin's 0x2d5730)
+        case L18_CASE(0x002e1458): ret = e749_hook8(m, a1, a2, f12); return true;  // (Veldin's 0x2d5780)
+        case L18_CASE(0x002e14a8): ret = e749_hookc(m, a1, a2, f12); return true;  // (Veldin's 0x2d57d0)
+        case L18_CASE(0x002e14d8): ret = static_cast<int32_t>(e749_hook_10(m)); return true;  // (Veldin's 0x2d5800)
         case L18_CASE(0x002d6108): ret = u_call(vf_hook_2d6108_u, m, a1, a2, f12); return true;
         case L18_CASE(0x002d6190): ret = u_call(vf_hook_2d6190_u, m, a1, a2, f12); return true;
         case L18_CASE(0x002d61e0): ret = u_call(vf_hook_2d61e0_u, m, a1, a2, f12); return true;

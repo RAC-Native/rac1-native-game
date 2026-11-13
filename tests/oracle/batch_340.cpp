@@ -18,6 +18,8 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/shared_particles.h>
+
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/particle_types_tr.h>
@@ -123,10 +125,10 @@ void batch_340() {
         {0x09, 0x0026a6f0, particle_09_update, "particle_09_update"}, {0x11, 0x0026c3c8, particle_11_update, "particle_11_update"},
         {0x14, 0x0026c860, particle_14_update, "particle_14_update"}, {0x18, 0x0026d470, particle_18_update, "particle_18_update"},
         {0x1d, 0x0026e3a8, particle_1d_update, "particle_1d_update"}, {0x1e, 0x0026e670, particle_1e_update, "particle_1e_update"},
-        {0x21, 0x0026f048, particle_21_update, "particle_21_update"}, {0x24, 0x0026f898, particle_24_update, "particle_24_update"},
+        {0x21, 0x0026f048, timed_particle_update, "particle_21_update"}, {0x24, 0x0026f898, particle_24_update, "particle_24_update"},
         {0x25, 0x0026fa00, particle_25_update, "particle_25_update"}, {0x26, 0x0026fb00, particle_26_update, "particle_26_update"},
         {0x2a, 0x00270948, particle_2a_update, "particle_2a_update"}, {0x36, 0x00272438, particle_36_update, "particle_36_update"},
-        {0x3f, 0x002738b0, particle_3f_update, "particle_3f_update"}, {0x4b, 0x002756f0, particle_4b_update, "particle_4b_update"},
+        {0x3f, 0x002738b0, timed_particle_update, "particle_3f_update"}, {0x4b, 0x002756f0, particle_4b_update, "particle_4b_update"},
         {0x4c, 0x00275810, particle_4c_update, "particle_4c_update"},
     };
     const uint32_t P = TEST_AREA + 0x6000;  // (0x2a's spawner's position and velocity arguments)

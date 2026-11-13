@@ -9,7 +9,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
 #include <filesystem>
+#include <unordered_set>
 
 namespace rac1::oracle {
 
@@ -210,7 +212,9 @@ size_t diff_words(const char* what, uint32_t base, const std::vector<uint8_t>& a
         uint32_t x, y;
         std::memcpy(&x, &a[i], 4);
         std::memcpy(&y, &b[i], 4);
-        if (x != y && g_ignore_lone_w_lanes && ((base + i) & 0xf) == 0xc && std::memcmp(&a[i - 12], &b[i - 12], 12) == 0) continue;  // (a lone w lane)
+        // (a lone w lane; ORACLE_NO_LONE_W=1 compares them anyway: what a check's g_ignore_lone_w_lanes hides)
+        static const bool lone_w_off = std::getenv("ORACLE_NO_LONE_W") != nullptr;
+        if (x != y && g_ignore_lone_w_lanes && !lone_w_off && ((base + i) & 0xf) == 0xc && std::memcmp(&a[i - 12], &b[i - 12], 12) == 0) continue;
         if (x != y) {
             if (static_cast<int>(n) < max_print) {
                 float fx, fy;
@@ -250,9 +254,26 @@ void restore_baseline() {
     std::memcpy(ee_get_scratchpad_base(), g_baseline_spr.data(), SPR_SIZE);
 }
 
+// ORACLE_WRITES=1: per check, what the original actually changed in each case (the words of RAM below the interpreter's
+// stack and of the scratchpad that differ from the case's starting state, the ignored words left out), how many cases
+// changed nothing, how many wrote into the null page (0 .. 0x1000: a packet cursor or a pointer at 0) and how many moved
+// the packet cursor 0x1611c0 (the bytes of packets it advanced over): a check whose original changes nothing compares nothing
+namespace {
+struct WriteCensus {
+    int cases = 0, none = 0, null_page = 0, cursor = 0, only_seed = 0;
+    uint64_t words = 0, cursor_bytes = 0;
+    uint32_t min_words = 0xffffffffu, max_words = 0;
+};
+bool writes_on() {
+    static const bool on = std::getenv("ORACLE_WRITES") != nullptr;
+    return on;
+}
+}  // namespace
+
 bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::function<Args()>& gen,
               const std::function<uint64_t(const Args&)>& port, Scope scope, uint32_t ignore_word, uint32_t ignore_word2) {
     int bad = 0;
+    WriteCensus census;
     // ORACLE_FOCUS=<name>[:<case>] (task 0392): every other check of the batch only runs its generators (the host's random
     // sequence as in the whole batch), so the focused check sees the very cases of a full run, quickly; with :<case>, that
     // case alone is run (the generator still runs for the others)
@@ -296,6 +317,33 @@ bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::fu
             nd = diff_words(name, TEST_AREA, a_t, b_t, bad < bad_max ? 4 : 0);
         } else {
             save_full(a_f);
+            if (writes_on()) {
+                std::unordered_set<uint32_t> ign(g_ignored_words.begin(), g_ignored_words.end());
+                ign.insert(ignore_word);
+                ign.insert(ignore_word2);
+                uint32_t n = 0, nnull = 0, nseed = 0;
+                const uint32_t seed_word = ee_read<uint32_t>(0x0012f76c) + 0x58;
+                for (uint32_t w = 0; w < STACK_LO; w += 4) {
+                    if (std::memcmp(&a_f.ram[w], &before_f.ram[w], 4) == 0) continue;
+                    if ((w >= 0x000f0000u && w < 0x000f8000u) || ign.count(w) != 0) continue;
+                    ++n;
+                    if (w < 0x1000) ++nnull;
+                    if (w == seed_word) ++nseed;
+                }
+                for (uint32_t w = 0; w < SPR_SIZE; w += 4)
+                    if (std::memcmp(&a_f.spr[w], &before_f.spr[w], 4) != 0 && ign.count(SPR_BASE + w) == 0 && !(w >= 0x800 && w < 0x840) && w < 0x3fa8) ++n;
+                uint32_t c0, c1;
+                std::memcpy(&c0, &before_f.ram[OV(0x001611c0u) & 0x01ffffffu], 4);
+                std::memcpy(&c1, &a_f.ram[OV(0x001611c0u) & 0x01ffffffu], 4);
+                ++census.cases;
+                census.words += n;
+                census.min_words = std::min(census.min_words, n);
+                census.max_words = std::max(census.max_words, n);
+                if (n == 0) ++census.none;
+                if (n != 0 && n == nseed) ++census.only_seed;
+                if (nnull != 0) ++census.null_page;
+                if (c1 != c0) { ++census.cursor; census.cursor_bytes += c1 - c0; }
+            }
             restore_full(before_f);
             try {
                 pr = port(args);
@@ -373,6 +421,12 @@ bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::fu
         if (!ok) ++bad;
     }
     std::printf("%-26s 0x%08x  %s (%d/%d)\n", name, orig, bad ? "FAIL" : "ok", iters - bad, iters);
+    if (writes_on() && census.cases != 0)
+        std::printf("WRITES %s: %d cases; the original changed nothing in %d, only the random seed in %d; words changed min %u avg %llu max %u; "
+                    "the null page written in %d; the packet cursor moved in %d (avg 0x%llx bytes)\n",
+                    name, census.cases, census.none, census.only_seed, census.min_words,
+                    static_cast<unsigned long long>(census.words / static_cast<uint64_t>(census.cases)), census.max_words, census.null_page,
+                    census.cursor, static_cast<unsigned long long>(census.cursor != 0 ? census.cursor_bytes / static_cast<uint64_t>(census.cursor) : 0));
     if (const char* ce = std::getenv("ORACLE_COVER_EE")) {  // the instructions of [orig, <end>) no case ran
         const uint32_t end = static_cast<uint32_t>(std::strtoul(ce, nullptr, 16));
         uint32_t total = 0, hit = 0, run_lo = 0;

@@ -1,4 +1,4 @@
-// Umbris (level 7) transliterated moby classes, camera type 0x12, sound emitters, class hooks and level-only engine
+// Umbris (level 7) transliterated moby classes, camera type 0x12, class hooks and level-only engine
 // functions: the declarations of umbris_classes_tr_N.cpp
 // (generated: `void` = a class update / entry in the entry ABI, `TrRet` = a helper or a `_u` entry in the uniform ABI).
 #ifndef RAC1_GAME_OVL_UMBRIS_MOBYS_H
@@ -21,7 +21,6 @@ void umb_class258_update_l7(uint32_t a0);  // L7:0x002f2688
 TrRet umb_2f5640_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x002f5640
 void umb_class341_update_l7(uint32_t a0);  // L7:0x002f5508
 TrRet umb_270248_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x00270248
-TrRet umb_28ddb0_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0028ddb0
 void umb_class436_update_l7(uint32_t a0);  // L7:0x002f5ba0
 TrRet umb_28ec18_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0028ec18
 TrRet umb_2f60c8_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x002f60c8
@@ -167,9 +166,6 @@ TrRet umb_cam_type18_accept_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3
 void umb_cam_type18_init_l7(uint32_t a0);  // L7:0x00329120
 void umb_cam_type18_update_l7(uint32_t a0);  // L7:0x00329128
 void umb_cam_type18_exit_l7(uint32_t a0);  // L7:0x00329130
-TrRet umb_2b4c78_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x002b4c78
-void umb_emitter3_l7(uint32_t a0);  // L7:0x00329740
-void umb_emitter6_l7(uint32_t a0);  // L7:0x003298a0
 TrRet umb_212f08_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x00212f08
 void umb_cam0_hook_l7(uint32_t a0);  // L7:0x00328090
 void umb_cam_callback_l7(uint32_t a0);  // L7:0x003280f0

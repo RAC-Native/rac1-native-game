@@ -4,6 +4,9 @@
 // with their cells' visibility bytes and the camera moved over / about them (cells seen, clipped, culled), the animated texture's frame
 // counter and record varied, the gameplay flag 0x15f608 (the ocean's boxes tested or not), the glows' ships and their colours.
 
+// Audit 2 (2026-11-13): Skid's HUD draw with its packets in a test-area buffer, the bar's width +8 and the screen's height
+// 0x13e504 varied.
+
 #include "ovl_oracle.h"
 
 #include <game/ovl/particle_16_spawn.h>
@@ -295,6 +298,9 @@ void batch_137() {
             w32(e + 0x54, u(ri(0, 0x1c0)));
             if (coin()) w32(e + 0x6c, u(ri(-6, 0x1e)));
             if (coin()) w32(OV(0x0015ed80u), u(ri(0, 1)));  // (the widescreen flag its place reads)
+            if (coin()) w32(e + 8, u(ri(0, 20)));  // (the bar's width: below 10 the short one)
+            if (coin()) w32(0x0013e504, coin() ? 448u : u(ri(0x60, 0x200)));  // (the screen's height the bar stands on)
+            w32(OV(0x001611c0), TEST_AREA + 0x8000 + u(ri(0, 0x40)) * 0x10);  // (the packets on a buffer of the test area)
             return e;
         };
         l2check("ari_skid_hud_start", 0x0023c990, 60, Ret::None, [slot] { return Args{{slot()}, {}}; },

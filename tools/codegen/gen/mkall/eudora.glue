@@ -9,3 +9,4 @@
 0x0024db78: vec_yaw_marked(a0.w(), a1.w(), a2.w(), a3.w());
 0x0024f6c8: set32(v0, static_cast<uint32_t>(enemy_physics(a0.w(), a1.w())));
 0x00260430: set32(v0, static_cast<uint32_t>(spawn_particle_1a(a0.w(), a1.w(), a2.w(), a3.w(), fr[12])));
+0x0027ee10: set32(v0, sound_slot_volume_set(static_cast<int32_t>(a0.w()), a1.w()));

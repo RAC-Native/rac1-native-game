@@ -5,7 +5,6 @@
 
 #include <cstdint>
 
-#include <game/ovl/blarg_hero.h>
 #include <game/ovl/blarg_mobys.h>
 #include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/variants_l6.h>

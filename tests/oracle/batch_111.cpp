@@ -10,6 +10,7 @@
 #include <game/ovl/eudora_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/sound_emitter.h>
 #include <runtime/kernel/disc.h>
 
 #include <cmath>
@@ -271,7 +272,7 @@ void batch_111() {
                 else if (ri(0, 2) == 0) w32(prm + 0xc, R());
                 w32(prm + 8, u(ri(0, 1)));
                 return Args{{em}, {}};
-            }, [](A a) { eud_music_box_emitter_l4(a.i[0]); return uint64_t{0}; });
+            }, [](A a) { emitter_music_box_update(a.i[0]); return uint64_t{0}; });
     }
 
     // ---- Eudora's camera type 1 (an in-box camera modifier: accept / init / update / exit at 0x2ed850 / 0x2ed920 / 0x2ed940 / 0x2ed960)

@@ -11,11 +11,12 @@ namespace rac1 {
 
 // Classes 915 / 916 / 917 (Fred 1 / 2 / 3, Kerwan's citizens that the game never shows): the distance to the hero,
 // the angle towards him and its difference to the moby's own facing are computed and thrown away, then the moby
-// retires on its first update (cut content).
-// orig: L3:0x002dc310
+// retires on its first update (cut content). Orxon's class 915 is the same code (the base ELF's data and Veldin's functions
+// only): this port serves it.
+// orig: L3:0x002dc310 L10:0x002d7fe8
 void fred_update_l3(uint32_t m) {
     (void)vec3_distance(V(m + 0x10), V(0x0013f3d0));
-    const float to = atan2_f(lwc1(0x0013ff80 + 0x80) - lwc1(m + 0x10), lwc1(0x0013ff80 + 0x84) - lwc1(m + 0x14));
+    const float to = atan2_f(fpu_sub(lwc1(0x0013f3d0), lwc1(m + 0x10)), fpu_sub(lwc1(0x0013f3d4), lwc1(m + 0x14)));  // (the hero's x, y)
     (void)angle_dist(to, lwc1(m + 0x48));
     moby_retire(m);
 }

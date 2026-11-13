@@ -1,5 +1,6 @@
 // See veldin_orbit_hooks.h.
 #include <game/ovl/veldin_orbit_hooks.h>
+#include <game/ovl/sound_emitter.h>
 
 namespace rac1 {
 
@@ -18,7 +19,7 @@ bool veldin_orbit_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, in
 // orig: (host) see veldin_orbit_hooks.h
 bool veldin_orbit_sound_emitter_call(uint32_t fn, uint32_t em) {
     switch (lvl_key(fn)) {
-    case L17_CASE(0x00300e70): vo_emitter5_l17(em); return true;
+    case L17_CASE(0x00300e70): emitter_camera_bed_update(em); return true;
     default: return false;
     }
 }

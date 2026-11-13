@@ -17,9 +17,9 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/pause_menu.h>
 #include <game/ovl/pause_menu_pages.h>
+#include <game/ovl/planet_map.h>
 #include <game/ovl/screen_draw_tr.h>
 #include <game/ovl/screen_fade.h>
-#include <game/ovl/vendor_tr.h>
 #include <game/port_stubs.h>
 
 #include <vector>
@@ -349,7 +349,7 @@ void screen_update() {
                                 sub_002359f8(static_cast<uint32_t>(bank), 0);
                                 sw(P + 0x880, 0xffffffffu);
                             }
-                            ovl_23af30_tr(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);  // (vendor_tr.cpp; it reads no argument)
+                            hud_weapon_element_release();
                             if (frame_scale_i(0x1068) < lw(P + 0x19c)) {
                                 const int32_t lv = lw(0x0015ed84);
                                 if (lv == 5) sw(0x0015ee38, lwu(0x0015ee38) + 1);
@@ -512,17 +512,136 @@ void card_message(uint32_t buf, uint32_t& text, int32_t& a1, int32_t& a2, int32_
 }
 }  // namespace
 
-// The screens' drawing: kind 3 the card's message in a rounded box centred on the screen (its
-// height measured first, the box faded in over the countdown, the text's colour 0x15f4b0 ->
-// 0x15f4b4), its answers' prompts (colour 0x20ffff -> 0x8020ffff over +0x24) under it; kinds 1 / 4
-// a frame (colour pulsing 0x15f4e4 / 0x15f4e8 over 0x15f4e0 frames) and the three lines. Kinds 0,
-// 2, 5, 6: the whole function transliterated (screen_draw_tr.cpp).
+namespace {
+inline uint64_t sxt64(uint32_t v) {
+    return static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(v)));
+}
+
+inline int32_t cvt_w_i32(float f) {
+    const uint32_t u = f2u(f);
+    if ((u & 0x7f800000u) >= 0x4f000000u) {
+        return static_cast<int32_t>((u & 0x80000000u) != 0 ? 0x80000000u : 0x7fffffffu);
+    }
+    return static_cast<int32_t>(f);
+}
+
+uint64_t pulsing_frame_colour() {
+    const float n = int_to_float(lw(OV(0x0015f4e0)));
+    const int32_t phase = ee_rem(lw(OV(0x0015f3f8)), lw(OV(0x0015f4e0)));
+    const float a = fpu_sub(fpu_mul(fpu_div(static_cast<float>(phase), n), u2f(0x40c90fd0)), u2f(0x40490fd0));
+    const float s = fpu_add(fpu_mul(sin_vu(a), 0.5f), 0.5f);
+    return static_cast<uint64_t>(rgba_lerp(lwu(OV(0x0015f4e4)), lwu(OV(0x0015f4e8)), s));
+}
+}  // namespace
+
+// The screens' drawing (all kinds 0..6 and >= 7).
 // orig: 0x002018c8
 void screen_draw() {
-    if (const uint32_t k = lwu(SB); k == 0 || k == 2 || k == 5 || k == 6) return screen_draw_tr(0);  // (the kinds not ported here, screen_draw_tr.cpp)
     texture_block_begin(0);
     const uint32_t kind = lwu(SB);
-    if (kind == 3) {
+    if (kind == 0) {
+        const uint64_t frame_col = pulsing_frame_colour();
+        float box_s = fpu_mul(static_cast<float>(lw(SB + 0x20)), 0.125f);
+        if (1.0f < box_s) {
+            box_s = 1.0f;
+        } else if (box_s < u2f(0x3dcccccd)) {
+            box_s = u2f(0x3dcccccd);
+        }
+
+        uint32_t prompt_col32 = lwu(OV(0x0015f4ec));
+        uint64_t col_hi = sxt64(lwu(OV(0x0015f4f4)));
+        uint64_t col_lo = sxt64(lwu(OV(0x0015f4fc)));
+        if (lw(SB + 0x24) != 0) {
+            float ts = fpu_mul(static_cast<float>(lw(SB + 0x24)), 0.125f);
+            if (1.0f < ts) {
+                ts = 1.0f;
+            } else if (ts < 0.0f) {
+                ts = 0.0f;
+            }
+            prompt_col32 = rgba_lerp(lwu(OV(0x0015f4ec)), lwu(OV(0x0015f4f0)), ts);
+            col_hi = static_cast<uint64_t>(rgba_lerp(lwu(OV(0x0015f4f4)), lwu(OV(0x0015f4f8)), ts));
+            col_lo = static_cast<uint64_t>(rgba_lerp(lwu(OV(0x0015f4fc)), lwu(OV(0x0015f500)), ts));
+        }
+        const uint64_t col_prompt = sxt64(prompt_col32);
+
+        if (lh(0x0013fbea) < 3) {
+            const int32_t dy0 = float_to_int(fpu_mul(static_cast<float>(lw(OV(0x0015f4c4))), box_s));
+            const int32_t top = lw(OV(0x0015f4bc)) - dy0;
+            const int32_t dy1 = float_to_int(fpu_mul(static_cast<float>(lw(OV(0x0015f4c4))), box_s));
+            const int32_t bot = lw(OV(0x0015f4bc)) + dy1;
+            const int32_t dx0 = float_to_int(fpu_mul(static_cast<float>(lw(OV(0x0015f4c0))), box_s));
+            const int32_t left = lw(OV(0x0015f4b8)) - dx0;
+            const int32_t dx1 = float_to_int(fpu_mul(static_cast<float>(lw(OV(0x0015f4c0))), box_s));
+            const int32_t right = lw(OV(0x0015f4b8)) + dx1;
+            screen_frame(top, bot, left, right, frame_col);
+            text_centered_small(0x100, lw(OV(0x0015f4c8)), col_prompt, static_cast<uint32_t>(sub_00203ad8(0x4f6e)), -1);
+            text_centered_small(0x100, lw(OV(0x0015f4c8)) + 0x18, col_prompt, static_cast<uint32_t>(sub_00203ad8(TXT(0x5249))), -1);
+            text_centered_small(0x100, lw(OV(0x0015f4c8)) + 0x30, col_prompt, static_cast<uint32_t>(sub_00203ad8(TXT(0x5248))), -1);
+        } else {
+            const int32_t dy0 = float_to_int(fpu_mul(static_cast<float>(lw(OV(0x0015f4d8))), box_s));
+            const int32_t top = lw(OV(0x0015f4d0)) - dy0;
+            const int32_t dy1 = float_to_int(fpu_mul(static_cast<float>(lw(OV(0x0015f4d8))), box_s));
+            const int32_t bot = lw(OV(0x0015f4d0)) + dy1;
+            const int32_t dx0 = float_to_int(fpu_mul(static_cast<float>(lw(OV(0x0015f4d4))), box_s));
+            const int32_t left = lw(OV(0x0015f4cc)) - dx0;
+            const int32_t dx1 = float_to_int(fpu_mul(static_cast<float>(lw(OV(0x0015f4d4))), box_s));
+            const int32_t right = lw(OV(0x0015f4cc)) + dx1;
+            screen_frame(top, bot, left, right, frame_col);
+
+            const uint32_t buf = ee_stack_alloc(0x50);
+            libc_sprintf(buf, OV(0x0015f520), {sxt64(static_cast<uint32_t>(sub_00203ad8(TXT(0x5240))))});
+            const int32_t place = lw(0x0013f350 + 0x8c0);
+            if (place == 1) {
+                libc_sprintf(buf, OV(0x0015f528), {1ull});
+            } else if (place == 2) {
+                libc_sprintf(buf, OV(0x0015f530), {2ull});
+            } else if (place == 3) {
+                libc_sprintf(buf, OV(0x0015f538), {3ull});
+            } else {
+                libc_sprintf(buf, OV(0x0015f540), {sxt64(static_cast<uint32_t>(place))});
+            }
+            sb(buf + 3, 0x20);
+            const bool first_place = (lw(0x0013f350 + 0x8c0) == 1);
+            text_centered_small(0x100, lw(OV(0x0015f4dc)), first_place ? col_hi : col_lo, buf, -1);
+
+            const uint32_t rec_off = (lw(0x0015ed84) == 0x10) ? 4u : 0u;
+            const int32_t best_time = lw(0x0015ee58 + rec_off);
+            if (best_time == lw(0x0013fbe4)) {
+                const int32_t fpm = (lw(0x0015ed80) != 0) ? 0xbb8 : 0xe10;
+                const int32_t mins = ee_div(best_time, fpm);
+                const int32_t fps = ee_div(fpm, 0x3c);
+                const int32_t rem_f = best_time - mins * fpm;
+                const int32_t secs = ee_div(rem_f, fps);
+                const int32_t csecs = ee_div((rem_f - secs * fps) * 0x64, fps);
+                libc_sprintf(buf, OV(0x0015f548), {sxt64(static_cast<uint32_t>(sub_00203ad8(TXT(0x50a3))))});
+                text_centered_small(0x100, lw(OV(0x0015f4dc)) + 0x26, col_hi, buf, -1);
+                libc_sprintf(buf, OV(0x0015f550), {sxt64(static_cast<uint32_t>(mins)), sxt64(static_cast<uint32_t>(secs)), sxt64(static_cast<uint32_t>(csecs))});
+                text_centered_small(0x100, lw(OV(0x0015f4dc)) + 0x3a, col_hi, buf, -1);
+            } else {
+                libc_sprintf(buf, OV(0x0015f548), {sxt64(static_cast<uint32_t>(sub_00203ad8(TXT(0x50a2))))});
+                text_centered_small(0x100, lw(OV(0x0015f4dc)) + 0x30, col_lo, buf, -1);
+            }
+
+            const uint32_t score_off = (lw(0x0015ed84) == 0x10) ? 4u : 0u;
+            const int32_t best_score = lw(0x0015ee68 + score_off);
+            if (best_score != 0 && best_score == lw(0x0013fbf8)) {
+                libc_sprintf(buf, OV(0x0015f548), {sxt64(static_cast<uint32_t>(sub_00203ad8(TXT(0x50a5))))});
+                text_centered_small(0x100, lw(OV(0x0015f4dc)) + 0x56, col_hi, buf, -1);
+                libc_sprintf(buf, OV(0x0015f560), {sxt64(lwu(0x0013fbf8))});
+                text_centered_small(0x100, lw(OV(0x0015f4dc)) + 0x6a, col_hi, buf, -1);
+            } else {
+                libc_sprintf(buf, OV(0x0015f548), {sxt64(static_cast<uint32_t>(sub_00203ad8(TXT(0x50a4))))});
+                text_centered_small(0x100, lw(OV(0x0015f4dc)) + 0x60, col_lo, buf, -1);
+            }
+
+            text_centered_small(0x100, lw(OV(0x0015f4dc)) + 0x90, col_prompt, static_cast<uint32_t>(sub_00203ad8(TXT(0x5249))), -1);
+            text_centered_small(0x100, lw(OV(0x0015f4dc)) + 0xa8, col_prompt, static_cast<uint32_t>(sub_00203ad8(TXT(0x5248))), -1);
+            ee_stack_free(0x50);
+        }
+    } else if (kind == 2) {
+        screen_frame(0x64, 0xa0, 0xb0, 0x150, pulsing_frame_colour());
+        text_centered_small(0x100, 0x7a, 0x8000c0c0ull, lwu(SB + 8), -1);
+    } else if (kind == 3) {
         const uint32_t buf = ee_stack_alloc(0x240);
         uint32_t text;
         int32_t a1, a2, a3;
@@ -553,17 +672,96 @@ void screen_draw() {
         if (a2 != 0) text_centered_small(0x135, lh(box + 2) - 0x14, colour, static_cast<uint32_t>(sub_00203ad8(a2)), -1);
         if (a3 != 0) text_centered_small(0x100, lh(box + 2) - 0x14, colour, static_cast<uint32_t>(sub_00203ad8(a3)), -1);
         ee_stack_free(0x240);
+    } else if (kind == 5) {
+        const float t = fpu_sub(1.0f, fpu_div(static_cast<float>(lw(SB + 4)), static_cast<float>(frame_scale_i(0x1e))));
+        box_rounded(0x50, 0x154, 0x60, 0x1a0, static_cast<uint32_t>(cvt_w_i32(fpu_mul(t, 80.0f))));
+
+        const uint32_t box = ee_stack_alloc(0x20);
+        for (uint32_t i = 0; i < 0x18; i += 4) sw(box + i, lwu(OV(0x001e7a50) + i));
+        const uint64_t txt_col = static_cast<uint64_t>(rgba_lerp(lwu(OV(0x0015f4b0)), lwu(OV(0x0015f4b4)), t));
+        libc_strncpy(0x70000000u, static_cast<uint32_t>(sub_00203ad8(0x4e2b)), 0x400u);
+
+        uint32_t split = 0x70000000u;
+        if (!(lbu(0x70000000u) < 2u)) {
+            split = 0x70000001u;
+            while (!(lbu(split) < 2u)) ++split;
+        }
+        if (lbu(split) == 1u) {
+            sb(split, 0u);
+            for (;;) {
+                ++split;
+                if (lbu(split) != 1u) break;
+                sb(split, 0u);
+            }
+        }
+
+        const uint32_t font = OV(0x001c3150);
+        text_box(box, txt_col, 0x70000000u, -1, static_cast<uint64_t>(effect_tex0(1)), font);
+
+        int32_t mid_y = lh(box + 0xa) + lh(box + 0xe);
+        sh(box + 0x12, lhu(box + 0x12) | 4u);
+        text_box(box, txt_col, split, -1, static_cast<uint64_t>(effect_tex0(1)), font);
+
+        sh(box + 0x12, lhu(box + 0x12) ^ 4u);
+        sh(box + 0xa, 0x136u - lhu(box + 0xe));
+        text_box(box, txt_col, split, -1, static_cast<uint64_t>(effect_tex0(1)), font);
+
+        const float t2 = fpu_sub(1.0f, fpu_div(static_cast<float>(lw(SB + 0x24)), static_cast<float>(frame_scale_i(0x1e))));
+        const uint64_t prompt_col = static_cast<uint64_t>(rgba_lerp(NOT_ADDR(0x0020ffff), 0x8020ffff, t2));
+        text_centered_small(0x100, 0x140, prompt_col, static_cast<uint32_t>(sub_00203ad8(TXT(0x524a))), -1);
+
+        mid_y = (mid_y + lh(box + 0xa)) >> 1;
+        sub_002a0ba8(0x47, 0x3004bull);
+        hud_sprite(hud_frame(0x755d, 0), 0xe0, mid_y - 0x20, 0x40, 0x40, 0x80ull);
+
+        const int32_t rem = ee_rem(lw(OV(0x0015f3f8)), 0x37);
+        const float rot_y = static_cast<float>(mid_y << 4);
+        const float angle = fpu_div(fpu_mul(static_cast<float>(rem), u2f(0xc0c90fdb)), 55.0f);
+        const uint64_t rot_tex = static_cast<uint64_t>(hud_tex0(hud_frame(0x755d, 1)));
+        sprite_rotated(0x40, 0x40, rot_tex, 4096.0f, rot_y, 272.0f, 272.0f, angle);
+        ee_stack_free(0x20);
+    } else if (kind == 6) {
+        const uint32_t box = ee_stack_alloc(0x20);
+        for (uint32_t i = 0; i < 0x18; i += 4) sw(box + i, lwu(OV(0x001e7a68) + i));
+        const float t = fpu_sub(1.0f, fpu_div(static_cast<float>(lw(SB + 4)), static_cast<float>(frame_scale_i(0x1e))));
+        box_rounded(0x64, 0x12c, 0x60, 0x1a0, static_cast<uint32_t>(cvt_w_i32(fpu_mul(t, 80.0f))));
+        const uint64_t body_col = static_cast<uint64_t>(rgba_lerp(lwu(OV(0x0015f4b0)), lwu(OV(0x0015f4b4)), t));
+        const uint64_t btn_col = static_cast<uint64_t>(rgba_lerp(NOT_ADDR(0x0020ffff), 0x8020ffff, t));
+
+        const int32_t step = lw(SB + 0x1c);
+        int32_t msg_id = 0;
+        if (step == 2) {
+            text_centered_small(0xca, 0x118, btn_col, static_cast<uint32_t>(sub_00203ad8(TXT(0x524e))), -1);
+            text_centered_small(0x135, 0x118, btn_col, static_cast<uint32_t>(sub_00203ad8(TXT(0x524b))), -1);
+            msg_id = TXT(0x522b);
+        } else if (step < 3) {
+            if (step >= 0) {
+                text_centered_small(0xca, 0x118, btn_col, static_cast<uint32_t>(sub_00203ad8(TXT(0x524e))), -1);
+                text_centered_small(0x135, 0x118, btn_col, static_cast<uint32_t>(sub_00203ad8(TXT(0x524b))), -1);
+                msg_id = TXT(0x522a);
+            }
+        } else if (step == 3) {
+            text_centered_small(0x100, 0x118, btn_col, static_cast<uint32_t>(sub_00203ad8(TXT(0x524a))), -1);
+            msg_id = TXT(0x522c);
+        }
+        if (msg_id != 0) {
+            const uint32_t msg = static_cast<uint32_t>(sub_00203ad8(msg_id));
+            const uint64_t tex = static_cast<uint64_t>(effect_tex0(1));
+            text_box(box, body_col, msg, -1, tex, OV(0x001c3150));
+        }
+        ee_stack_free(0x20);
     } else if (kind == 1 || kind == 4 || !(kind < 7)) {
-        const float n = int_to_float(lw(OV(0x0015f4e0)));
-        const int32_t phase = ee_rem(lw(OV(0x0015f3f8)), lw(OV(0x0015f4e0)));
-        const float a = fpu_sub(fpu_mul(fpu_div(int_to_float(phase), n), u2f(0x40c90fd0)), u2f(0x40490fd0));
-        const float s = fpu_add(fpu_mul(sin_vu(a), 0.5f), 0.5f);
-        screen_frame(0x50, lw(OV(0x0015f4ac)) + 0x1a, 0xb0, 0x150, rgba_lerp(lwu(OV(0x0015f4e4)), lwu(OV(0x0015f4e8)), s));
+        screen_frame(0x50, lw(OV(0x0015f4ac)) + 0x1a, 0xb0, 0x150, pulsing_frame_colour());
         if (lw(SB + 8) != 0) text_centered_small(0x100, 0x5a, 0x8000c0c0ull, lwu(SB + 8), -1);
         if (lw(SB + 0xc) != 0) text_centered_small(0x100, lw(OV(0x0015f4a8)), 0x80ffa888ull, lwu(SB + 0xc), -1);
         if (lw(SB + 0x10) != 0) text_centered_small(0x100, lw(OV(0x0015f4ac)), 0x80ffa888ull, lwu(SB + 0x10), -1);
     }
     texture_block_end();
+}
+
+// orig: 0x002018c8
+void screen_draw_tr(uint32_t) {
+    screen_draw();
 }
 
 // Game mode 4's drawing (when the frame is drawn): over gameplay the frame's 3D (0x200fd8,

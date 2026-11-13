@@ -68,6 +68,12 @@ double budget_ms() {
     return b;
 }
 
+// deterministic section streaming for headless behaviour trace verification (RAC1_SECTION_SYNC=1)
+bool section_sync() {
+    static const bool s = std::getenv("RAC1_SECTION_SYNC") != nullptr && std::atoi(std::getenv("RAC1_SECTION_SYNC")) != 0;
+    return s;
+}
+
 struct Entry {
     std::string name;
     float pos[3] = {0, 0, 0};
@@ -1254,7 +1260,8 @@ void commit_frame() {
         if (g_secs[i].st == St::Committing) which = static_cast<int>(i);
     for (size_t i = 1; i < g_secs.size() && which < 0; ++i) {
         Section& s = g_secs[i];
-        if (s.st != St::Loading || s.fut.wait_for(std::chrono::seconds(0)) != std::future_status::ready) continue;
+        if (s.st != St::Loading) continue;
+        if (!section_sync() && s.fut.wait_for(std::chrono::seconds(0)) != std::future_status::ready) continue;
         s.b = s.fut.get();
         if (s.req_frame == 0) s.req_frame = g_frame;  // (asked at the arrival, before the session's first frame)
         if (!s.b.err.empty()) {
@@ -1272,7 +1279,7 @@ void commit_frame() {
     if (which < 0) return;
     Section& s = g_secs[static_cast<size_t>(which)];
     const double t0 = now_ms();
-    while (now_ms() - t0 < budget_ms())
+    while (section_sync() || now_ms() - t0 < budget_ms())
         if (!commit_step(s, which)) break;
     const double dt = now_ms() - t0;
     ++s.commit_frames;

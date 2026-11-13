@@ -12,8 +12,8 @@
 #include "ovl_oracle.h"
 
 #include <game/ovl/hydro.h>
-#include <game/ovl/kerwan_camera_tr.h>
-#include <game/ovl/novalis_camera_tr.h>
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_camera.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants_l1.h>
 #include <game/ovl/variants_l3.h>
@@ -148,8 +148,8 @@ void batch_126() {
                 w32(P + 0x570, coin() ? 0u : 1u);
             }
             for (int s = 0; s < steps; ++s) {
-                if (s == 0) nov_cam_type3_init_l1(cam);
-                else nov_cam_type3_update_l1(cam);
+                if (s == 0) cam_type3_init(cam);
+                else cam_type3_update(cam);
                 Vec4 q = ee_ref<Vec4>(P + 0x80);  // the hero moving on
                 q.x += rf(-0.6f, 0.6f); q.y += rf(-0.6f, 0.6f); q.z += rf(-0.3f, 0.1f);
                 ee_ref<Vec4>(P + 0x80) = q;
@@ -161,11 +161,11 @@ void batch_126() {
             if (live_cam([](uint32_t c) { return ee_read<int16_t>(c + 0x86) == 3; }) == 0) std::printf("cam_type3                  no live camera of type 3 on this level\n");
         }
         l1check("cam_type3_init", 0x00315de0, 150, Ret::None, [cam3] { return Args{{cam3(0)}, {}}; },
-                [](A a) { if (a.i[0] != 0) nov_cam_type3_init_l1(a.i[0]); return uint64_t{0}; });
+                [](A a) { if (a.i[0] != 0) cam_type3_init(a.i[0]); return uint64_t{0}; });
         l1check("cam_type3_update", 0x00315358, 300, Ret::None, [cam3] { return Args{{cam3(ri(1, 20))}, {}}; },  // (an update always follows the init)
-                [](A a) { if (a.i[0] != 0) nov_cam_type3_update_l1(a.i[0]); return uint64_t{0}; });
+                [](A a) { if (a.i[0] != 0) cam_type3_update(a.i[0]); return uint64_t{0}; });
         l1check("cam_type3_exit", 0x00316030, 200, Ret::None, [cam3] { return Args{{cam3(ri(1, 6))}, {}}; },
-                [](A a) { if (a.i[0] != 0) nov_cam_type3_exit_l1(a.i[0]); return uint64_t{0}; });
+                [](A a) { if (a.i[0] != 0) cam_type3_exit(a.i[0]); return uint64_t{0}; });
     }
 
     // ---- Kerwan's camera types 1 and 14 (accept / init / update / exit) and type 18's accept (kerwan_camera_tr.cpp)
@@ -206,12 +206,12 @@ void batch_126() {
             }
             return cam;
         };
-        using Acc = TrRet (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float);
+        using Acc = int32_t (*)(uint32_t, uint32_t);
         struct CamT { int type; uint32_t accept, init, update, exit; Acc acc; void (*fi)(uint32_t); void (*fu)(uint32_t); void (*fe)(uint32_t); };
         static const CamT cams[] = {
-            {1, 0x002e8870, 0x002e8940, 0x002e8960, 0x002e8980, ker_cam_type1_accept_u, ker_cam_type1_init_l3, ker_cam_type1_update_l3, ker_cam_type1_exit_l3},
-            {14, 0x002ebd70, 0x002eb978, 0x002ebdb0, 0x002ebde8, ker_cam_type14_accept_u, ker_cam_type14_init_l3, ker_cam_type14_update_l3, ker_cam_type14_exit_l3},
-            {18, 0x002ed5f8, 0, 0, 0, ker_cam_type18_accept_u, nullptr, nullptr, nullptr},
+            {1, 0x002e8870, 0x002e8940, 0x002e8960, 0x002e8980, cam_type1_accept, cam_type1_init, cam_type1_update, cam_type1_exit},
+            {14, 0x002ebd70, 0x002eb978, 0x002ebdb0, 0x002ebde8, ker_cam_type14_accept_l3, ker_cam_type14_init_l3, ker_cam_type14_update_l3, ker_cam_type14_exit_l3},
+            {18, 0x002ed5f8, 0, 0, 0, cam_type18_accept, nullptr, nullptr, nullptr},
         };
         static char nm[16][48];
         int k = 0;
@@ -219,7 +219,7 @@ void batch_126() {
             auto name = [&](const char* what) { char* p = nm[k++ & 15]; std::snprintf(p, 48, "ker_cam_type%d_%s", ct.type, what); return static_cast<const char*>(p); };
             const CamT* c = &ct;
             lcheck(3, name("accept"), ct.accept, 300, Ret::Int32, [cam_setup, c] { uint32_t other = 0; const uint32_t cam = cam_setup(c->type, &other, 0, nullptr, nullptr); return Args{{cam, other}, {}}; },
-                   [c](A a) { return r32(a.i[0] != 0 ? c->acc(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0 : 0u); });
+                   [c](A a) { return r32(a.i[0] != 0 ? static_cast<uint32_t>(c->acc(a.i[0], a.i[1])) : 0u); });
             if (ct.init == 0) continue;
             lcheck(3, name("init"), ct.init, 100, Ret::None, [cam_setup, c] { return Args{{cam_setup(c->type, nullptr, 0, c->fi, c->fu)}, {}}; },
                    [c](A a) { if (a.i[0] != 0) c->fi(a.i[0]); return uint64_t{0}; });
@@ -242,9 +242,9 @@ void batch_126() {
             if (ri(0, 2) == 0) w32(OV(0x0015ef4c), u(ri(0, 3)));  // (the callback queue's count)
         };
         lcheck(3, "ker_cam0_hook", 0x002eb408, 200, Ret::None, [prep] { prep(); return Args{{0u}, {}}; },
-               [](A) { ker_cam0_hook_l3(0); return uint64_t{0}; });
+               [](A) { cam0_level_hook(0); return uint64_t{0}; });
         lcheck(3, "ker_cam_callback", 0x002eb468, 200, Ret::None, [prep] { prep(); return Args{{0u}, {}}; },
-               [](A) { ker_cam_callback_l3(0); return uint64_t{0}; });
+               [](A) { cam0_level_callback(0); return uint64_t{0}; });
     }
 
     // ---- the scripted camera's end (Veldin's 0x2eac18; the level's own copy on another level)

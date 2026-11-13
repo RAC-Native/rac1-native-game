@@ -1,4 +1,4 @@
-// Hoven (level 12) transliterated moby classes, sound emitters, class hooks, camera type 0x12's accept, draw callbacks, the camera mode hook and level-only engine functions: the declarations of
+// Hoven (level 12) transliterated moby classes, class hooks, camera type 0x12's accept, draw callbacks, the camera mode hook and level-only engine functions: the declarations of
 // hoven_classes_tr_N.cpp (generated: `void` = a class update / entry in the entry ABI, `TrRet` = a helper or a `_u` entry in the uniform ABI).
 #ifndef RAC1_GAME_OVL_HOVEN_MOBYS_H
 #define RAC1_GAME_OVL_HOVEN_MOBYS_H
@@ -105,7 +105,6 @@ TrRet hov_300490_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_
 TrRet hov_300580_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x00300580
 TrRet hov_3008f0_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x003008f0
 void hov_class1134_update_l12(uint32_t a0);  // L12:0x002ffdb0
-TrRet hov_27dd40_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x0027dd40
 TrRet hov_300c38_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x00300c38
 TrRet hov_3013e0_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x003013e0
 TrRet hov_301540_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x00301540
@@ -165,12 +164,6 @@ void hov_class1862_update_l12(uint32_t a0);  // L12:0x0030b6c8
 void hov_class1863_update_l12(uint32_t a0);  // L12:0x0030b7c0
 TrRet hov_30bba0_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x0030bba0
 void hov_class1901_update_l12(uint32_t a0);  // L12:0x0030bff0
-TrRet hov_2a4730_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x002a4730
-void hov_emitter1_l12(uint32_t a0);  // L12:0x00316680
-TrRet hov_2a4858_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x002a4858
-void hov_emitter3_l12(uint32_t a0);  // L12:0x00316a20
-void hov_emitter5_l12(uint32_t a0);  // L12:0x00316b80
-void hov_emitter6_l12(uint32_t a0);  // L12:0x00316c30
 TrRet hov_hook_2e16b8_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x002e16b8
 TrRet hov_hook_2e1758_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x002e1758
 TrRet hov_hook_2e17a8_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x002e17a8

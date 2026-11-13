@@ -6,10 +6,6 @@
 #include "ovl_oracle.h"
 
 #include <game/ovl/hero_move_mode.h>
-#include <game/ovl/hero_move_mode_l1.h>
-#include <game/ovl/hero_move_mode_l2.h>
-#include <game/ovl/hero_move_mode_l3.h>
-#include <game/ovl/hero_move_mode_l5.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/kernel/disc.h>
@@ -75,10 +71,10 @@ void batch_123() {
     // Novalis family's build (0x3a8 bytes) is the same words on Novalis, Aridia, Kerwan, Rilgar, Batalia and Pokitaru, transliterated at each level's own address.
     struct Own { int level; uint32_t addr; void (*fn)(); };
     static const Own owns[] = {
-        {1, 0x00228000, [] { hero_move_mode_l1_u(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f); }},
-        {2, 0x00217158, [] { hero_move_mode_l2_u(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }},
-        {3, 0x001ffa88, [] { hero_move_mode_l3_u(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }},
-        {5, 0x00234dd8, [] { hero_move_mode_l5_u(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }},
+        {1, 0x00228000, hero_move_mode_l1},
+        {2, 0x00217158, hero_move_mode_l1},
+        {3, 0x001ffa88, hero_move_mode_l1},
+        {5, 0x00234dd8, hero_move_mode_l1},
     };
     const Own* own = nullptr;
     for (const Own& o : owns) if (o.level == g_oracle_level) own = &o;
@@ -105,7 +101,7 @@ void batch_123() {
             return Args{};
         };
         if (veldin_code) {
-            check("hero_move_mode", 0x002062b0, 300, Ret::None, gen, [](A) { hero_move_mode_u(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f); return uint64_t{0}; });
+            check("hero_move_mode", 0x002062b0, 300, Ret::None, gen, [](A) { hero_move_mode(); return uint64_t{0}; });
         } else {
             auto fn = own->fn;
             std::printf("%-26s L%d:0x%08x\n", "hero_move_mode", own->level, own->addr);

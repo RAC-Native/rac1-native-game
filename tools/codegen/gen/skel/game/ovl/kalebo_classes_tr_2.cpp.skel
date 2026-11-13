@@ -36,6 +36,7 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/sound_emitter.h>
 
 namespace rac1 {
 
@@ -111,8 +112,6 @@ using namespace vu0m;
 //@gen kal_class1134_update_l16
 
 //@gen kal_2549d8_l16
-
-//@gen kal_260aa8_l16
 
 //@gen kal_2e0070_l16
 

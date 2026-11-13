@@ -1,5 +1,5 @@
 // Oracle batch 113 (task 0341): Novalis on its own overlay by default: its camera type 0x315dd8, class 775
-// (0x2ff810), its four sound emitter updates (0x319928 / 0x319f18 / 0x31a078 / 0x31a128, transliterated), and
+// (0x2ff810), its four sound emitter updates (0x319928 / 0x319f18 / 0x31a078 / 0x31a128, sound_emitter_types.cpp), and
 // the shared code it reaches (Veldin's addresses: the particle types 0x06 / 0x08's updates 0x269d20 /
 // 0x26a5b8, the Vendor's draw 0x2a5040). Run with ORACLE_LEVEL=1 build/tests/ovl_oracle --batch 113 (needs the
 // ISO); level 0 runs the shared checks at Veldin's addresses on Novalis's data (as batch 69). The subjects are the level's own (its
@@ -9,7 +9,7 @@
 
 #include <game/ovl/novalis_level_fns.h>
 #include <game/ovl/novalis_mobys2.h>
-#include <game/ovl/novalis_sound_tr.h>
+#include <game/ovl/sound_emitter.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/shared_fx_tr.h>
 #include <game/ovl/vendor_tr.h>
@@ -140,8 +140,8 @@ void batch_113() {
         uint32_t fn;
         void (*port)(uint32_t);
     };
-    const Em ems[] = {{"emitter_319928", 0x00319928, nov_emitter_319928_l1}, {"emitter_319f18", 0x00319f18, nov_emitter_319f18_l1},
-                      {"emitter_31a078", 0x0031a078, nov_emitter_31a078_l1}, {"emitter_31a128", 0x0031a128, nov_emitter_31a128_l1}};
+    const Em ems[] = {{"emitter_319928", 0x00319928, emitter_fade_box_update}, {"emitter_319f18", 0x00319f18, emitter_reverb_box_update},
+                      {"emitter_31a078", 0x0031a078, emitter_camera_bed_update}, {"emitter_31a128", 0x0031a128, emitter_music_box_update}};
     for (const Em& e : ems) {
         if (g_oracle_level != 1) {
             l1check(e.name, e.fn, 0, Ret::None, nullptr, nullptr);

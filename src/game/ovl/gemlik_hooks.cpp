@@ -1,5 +1,6 @@
 // See gemlik_hooks.h.
 #include <game/ovl/gemlik_hooks.h>
+#include <game/ovl/sound_emitter.h>
 
 #include <game/ovl/ovl_reloc.h>
 namespace rac1 {
@@ -27,7 +28,7 @@ bool gemlik_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t*
 // orig: (host) see gemlik_hooks.h
 bool gemlik_sound_emitter_call(uint32_t fn, uint32_t em) {
     if (fn != L13_ADDR(0x00318360)) return false;
-    gml_emitter1_l13(em);
+    emitter_fade_box_update(em);
     return true;
 }
 

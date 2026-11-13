@@ -313,6 +313,17 @@ void sub_00262b80(uint32_t dst, uint32_t a, uint32_t b, float r, float da, float
     swc1(b, angle_add(lwc1(b), db));
 }
 
+// A CNT tag of no data with the VIF code `vif` in its second word, at the packet cursor (0x1611c0).
+// orig: 0x002a0b60
+void dma_cnt_vif(uint32_t vif) {
+    constexpr OvConst<0x001611c0u> CUR{};
+    sw(lwu(CUR) + 0x0, 0x10000000u);
+    sw(lwu(CUR) + 0x4, 0);
+    sw(lwu(CUR) + 0x8, 0);
+    sw(lwu(CUR) + 0xc, vif);
+    sw(CUR, lwu(CUR) + 0x10);
+}
+
 // orig: 0x002a0ba8 — append a 0x30-byte GIF packet (A+D, one register write: data `d`
 // to register `reg`) at the packet cursor 0x1611c0.
 void sub_002a0ba8(uint32_t reg, uint64_t d) {

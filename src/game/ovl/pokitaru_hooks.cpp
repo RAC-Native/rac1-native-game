@@ -1,13 +1,14 @@
 // See pokitaru_hooks.h.
 #include <game/ovl/pokitaru_hooks.h>
+#include <game/ovl/sound_emitter.h>
 
 namespace rac1 {
 
 // orig: (host) see pokitaru_hooks.h
 bool pokitaru_sound_emitter_call(uint32_t fn, uint32_t em) {
     switch (lvl_key(fn)) {
-    case L11_CASE(0x00328b50): pok_emitter1_l11(em); return true;
-    case L11_CASE(0x00328ef0): pok_emitter5_l11(em); return true;
+    case L11_CASE(0x00328b50): emitter_fade_box_update(em); return true;
+    case L11_CASE(0x00328ef0): emitter_camera_bed_update(em); return true;
     default: return false;
     }
 }

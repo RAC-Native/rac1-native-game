@@ -165,7 +165,6 @@ as other static-recompilation projects do.
 | Kind | Files | Generator | From |
 |---|---|---|---|
 | `*_tr.cpp`, `*_tr_N.cpp` and a few others (`sky_ee.cpp`, `novalis_birdbot.cpp`, `title_sky.cpp`...) | 171 | `gen_mkall.py`: `mkall.py` (`mkall_l8.py` .. `mkall_l18.py` for levels 8 to 18) and `mips2cpp.py`, whole functions and their callees | each level's overlay; the boot module |
-| `*_asm.cpp` | 34 | `gen_asm.py`: `asm2fn_batch.py` and `asm2fn.py` | the levels' overlays |
 | `moby_skin.cpp`, `moby_shadows_asm.cpp`, `world_cull.cpp`, `world_lighting.cpp` | 4 | `gen_asm2cpp.py`: `asm2cpp.py`, plus the reviewed changes kept as patches | Veldin's overlay |
 | `moby_vu0*.cpp`, `moby_vu1*.cpp`, `world_vu1_*.cpp`, `world_light_vu0*.cpp` | 18 | `gen_moby_vu_fast.py`, `gen_world_vu.py`, `gen_light_vu0.py`: `vu2cpp.py` and `vu2cpp_fast.py` | the VU microcode in the boot executable |
 
@@ -179,7 +178,7 @@ write). The generators read only:
   region table: see [The region layer](#the-region-layer));
 - their committed inputs in `tools/codegen/`, which hold no game data: `gen/mkall/` (each run: the
   level, the entry functions with their names and signatures, the generator's options, and call-site
-  glue), `gen/asm2cpp/` (the routines and the review's patches), `asm2fn_specs/`, the `*.glue` files
+  glue), `gen/asm2cpp/` (the routines and the review's patches), the `*.glue` files
   (C++ statements for the calls into hand-written ports, keyed by address), and `gen/skel/`, the
   skeleton of each output file (its head, includes, the hand-written C++ around the generated
   functions, and where each generated function goes);

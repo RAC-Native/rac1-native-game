@@ -3,15 +3,13 @@
  "tool": "mkall.py",
  "env": {
   "MKALL_HELPER_PREFIX": "kw2_",
-  "MKALL_FORCE": "1f8ae8,1f93b0,23bed0,23c208,23c428,253820,27a918,28d4a8,291218,291808,291918,2beba0,2c45d8,2dd868,2dd958,2dda38,2ddcc8,2dded8"
+  "MKALL_FORCE": "1f8ae8,1f93b0,23bed0,23c208,23c428,28d4a8,291218,291808,291918,2beba0,2c45d8,2dd868,2dd958,2dda38,2ddcc8,2dded8"
  },
  "entries": [
   "2bef68:kerwan_class455_update_l3:void:a0",
   "2dd188:kerwan_class1134_update_l3:void:a0",
   "2dc990:kerwan_class994_draw_l3:void:a0",
-  "2e01d0:kerwan_class1548_update_l3:void:a0",
-  "2ed800:kerwan_emitter_2ed800_l3:void:a0",
-  "2ed960:kerwan_emitter_2ed960_l3:void:a0"
+  "2e01d0:kerwan_class1548_update_l3:void:a0"
  ],
  "glue_files": [],
  "files": [

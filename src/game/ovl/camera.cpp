@@ -6,9 +6,8 @@
 // type table 0x1ea880 +0x8c (0x14 each: id, then the accept / init / update / exit functions),
 // the active flag +0x8e. The active camera *(0x166e00), the previous one *(0x166e04); the view
 // the renderer reads: position 0x166dc0, Euler angles 0x166dd0, rows 0x166fd0..0x167000.
-#include <game/ovl/aridia_classes_tr.h>
 #include <game/ovl/camera_types.h>
-#include <game/ovl/kerwan_camera_tr.h>
+#include <game/ovl/kerwan_camera.h>
 #include <game/ovl/variants_l3.h>
 #include <game/ovl/eudora_mobys.h>
 #include <game/ovl/rilgar_hooks.h>
@@ -203,8 +202,8 @@ int32_t camera_type_call(uint32_t fn, uint32_t cam, uint32_t other) {
     case 0x002eb210: case 0x002ebaf8: case 0x002ec6b8: return 0;  // types 2 / 3 / 4's accept: v0 = 0
     case 0x002eb270: case 0x002ebbd0: return 0;                   // types 2 / 3's exit: empty
     default:
-        // Aridia's own type 0x12 (its accept function: the modifier 6's, forked)
-        if (on_camera_level(ARIDIA) && fn == L2_ADDR(0x002fc298)) return static_cast<int32_t>(cam_type_12_accept_l2(cam, other));
+        // Aridia's own type 0x12 (its accept function: the modifier 6's, forked): the port of every level's copy (kerwan_camera.cpp)
+        if (on_camera_level(ARIDIA) && fn == L2_ADDR(0x002fc298)) return cam_type18_accept(cam, other);
         if (int32_t r = 0; level_camera_type_call(fn, cam, other, r)) return r;  // (a level's own camera type)
         TODO_PORT(fn, "camera type function")(cam, other);
         return 0;
@@ -213,12 +212,14 @@ int32_t camera_type_call(uint32_t fn, uint32_t cam, uint32_t other) {
 
 // orig: (helper) jalr to one of the end-of-update callbacks queued at 0x168ff0
 void camera_callback_call(uint32_t fn) {
-    if (on_camera_level(ARIDIA) && fn == L2_ADDR(0x002fa770)) {  // Aridia's own callback (queued by the camera hook 0x2fa710)
-        cam_callback_2fa770_l2(0);
+    // Aridia's and Eudora's own copies of the look-height callback (queued by their camera hooks 0x2fa710 / 0x2f0448): the
+    // port of every level's copy (kerwan_camera.cpp)
+    if (on_camera_level(ARIDIA) && fn == L2_ADDR(0x002fa770)) {
+        cam0_level_callback(0);
         return;
     }
-    if (on_camera_level(EUDORA) && fn == L4_ADDR(0x002f04a8)) {  // Eudora's own callback (queued by the camera hook 0x2f0448)
-        eud_cam_callback_l4(0);
+    if (on_camera_level(EUDORA) && fn == L4_ADDR(0x002f04a8)) {
+        cam0_level_callback(0);
         return;
     }
     if (on_camera_level(ORXON) && orxon_camera_callback_call(fn)) return;  // (level 10's own: 0x2f4b78, queued by the camera hook 0x2f4b18)
@@ -234,8 +235,8 @@ void camera_callback_call(uint32_t fn) {
     if (on_camera_level(UMBRIS) && umbris_camera_callback_call(fn)) return;  // (level 7's own: 0x3280f0, queued by the camera hook 0x328090)
     if (on_camera_level(BLARG) && blarg_camera_callback_call(fn)) return;  // (level 6's own: 0x314810, queued by the camera hook 0x3147b0)
     if (on_camera_level(RILGAR) && rilgar_camera_callback_call(fn)) return;  // (Rilgar's own: 0x328fe0, queued by the camera hook 0x328f80)
-    if (on_camera_level(KERWAN) && fn == L3_ADDR(0x002eb468)) {  // (Kerwan's own, queued by the camera hook 0x2eb408: kerwan_camera_tr.cpp)
-        ker_cam_callback_l3(0);
+    if (on_camera_level(KERWAN) && fn == L3_ADDR(0x002eb468)) {  // (Kerwan's own, queued by the camera hook 0x2eb408: kerwan_camera.cpp)
+        cam0_level_callback(0);
         return;
     }
     switch (ovl_code_to_veldin(fn)) {  // (the level's code address as Veldin's: the ports' cases)

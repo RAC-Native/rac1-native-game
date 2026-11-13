@@ -481,7 +481,8 @@ uint32_t debris_spawn_v(uint32_t src, uint32_t cls, const Vec4& pos, const Vec4&
     } else {
         swc1(pv + 0x38, grav);
     }
-    Vec4 tmp = Vec4{};  // a stack quad in the original (its w a leftover, 0 here)
+    Vec4 tmp = Vec4{};  // a stack quad in the original (its w a leftover, 0 here: pvars +0xc / +0x1c; the pieces' update does
+                        // not read them, batch 129 deals them at random, #145)
     if (vec3_length(vel) == 0.0f) {
         const float a = rand_angle();
         const float sp = rand_range_f(2.0f, 4.0f) * lwc1(0x0015ed6c);
