@@ -58,12 +58,12 @@ uint32_t nov_276a48_l1(uint32_t walls, int32_t n, int32_t path, uint32_t pos, fl
 uint32_t nov_276fe8_l1(uint32_t walls, int32_t n, int32_t path, uint32_t from, uint32_t to, uint32_t out, float radius);  // L1:0x00276fe8 L5:0x0028c5f8 L6:0x002712e8 L7:0x0028a910 L10:0x00255268 L11:0x00287b30
 uint32_t nov_276820_l1(int32_t path, uint32_t from, uint32_t to, uint32_t out);                   // L1:0x00276820
 uint32_t nov_287158_l1(uint32_t pos, uint32_t a, uint32_t b, int32_t life, float size, float f);  // L1:0x00287158 L5:0x0029c180 L10:0x00264ed8 L11:0x002972c8 L12:0x0028a7d0 L13:0x0027da80
-uint32_t nov_2ef350_l1(uint32_t m);                                                                // L1:0x002ef350
-uint32_t nov_2ef478_l1(uint32_t m, uint32_t group);                                                // L1:0x002ef478
-void nov_2ef770_l1(uint32_t m, uint32_t vel);                                                      // L1:0x002ef770
-void nov_2ef560_l1(uint32_t m);                                                                    // L1:0x002ef560
-void nov_2eec68_l1(uint32_t m);                                                                    // L1:0x002eec68
-void amoeboid_update_l1(uint32_t m);                                                               // L1:0x002edca0  classes 572 / 865 / 866
+uint32_t nov_2ef350_l1(uint32_t m);                                                                // L1:0x002ef350 L5:0x003003a0 L11:0x002fb048
+uint32_t nov_2ef478_l1(uint32_t m, uint32_t group);                                                // L1:0x002ef478 L5:0x003004c8 L11:0x002fb170
+void nov_2ef770_l1(uint32_t m, uint32_t vel);                                                      // L1:0x002ef770 L5:0x003007c0 L11:0x002fb468
+void nov_2ef560_l1(uint32_t m);                                                                    // L1:0x002ef560 L5:0x003005b0 L11:0x002fb258
+void nov_2eec68_l1(uint32_t m);                                                                    // L1:0x002eec68 L5:0x002ffcb8 L11:0x002fa960
+void amoeboid_update_l1(uint32_t m);                                                               // L1:0x002edca0 L5:0x002fecf0 L11:0x002f9998  classes 572 / 865 / 866
 // (L1:0x002747a0 is Veldin's metal_25f8e0 and L1:0x00305260 Veldin's carry_update 0x2dc9f0: the same code, called directly)
 
 // ---- the Birdbot (novalis_birdbot.cpp)

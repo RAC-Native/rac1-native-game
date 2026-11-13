@@ -1,9 +1,10 @@
 // Novalis's own moby classes, part 2h: the Amoeboids (classes 572 / 865 / 866) and their helpers: the level's wall
 // paths (the table 0x1b0930 of paths: count +0, points 0x10 apart from +0x10, a point's w a bit mask of the points it
-// sees) and the way around them. Header novalis_mobys2.h. Addresses are Novalis's (`orig: L1:`); Novalis-only data
-// is L1_ADDR, the base ELF's are bare. The wall-path helpers (0x276c40 / 0x276a48 / 0x276fe8) and particle 0x34's spawn
-// (0x287158) serve every level that carries a copy (their `orig:` lines; batch 501): what they name is the engine's (OV).
-// Registered in novalis_mobys2.cpp.
+// sees) and the way around them. Header novalis_mobys2.h. Addresses are Novalis's (`orig: L1:`), the base ELF's are
+// bare. The wall-path helpers (0x276c40 / 0x276a48 / 0x276fe8) and particle 0x34's spawn (0x287158) serve every level
+// that carries a copy (their `orig:` lines; batch 501): what they name is the engine's (OV). The Amoeboids and their
+// helpers are the same code on Rilgar and Pokitaru (batch 511): the engine's words through OV, the class's tuning block
+// (the level's own data) by level. Registered in novalis_mobys2.cpp.
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
@@ -14,6 +15,8 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants_l1.h>
+#include <game/ovl/variants_l11.h>
+#include <game/ovl/variants_l5.h>
 #include <game/ovl/walker.h>
 #include <game/ovl/weapons.h>
 #include <game/port_stubs.h>
@@ -186,18 +189,80 @@ uint32_t nov_287158_l1(uint32_t pos, uint32_t a, uint32_t b, int32_t life, float
 }
 
 namespace {
-// the moby of an entry of a group list (Novalis's 0x1abcc0: halves, the moby index in the low 15 bits, the last with
-// bit 15 set)
-uint32_t group_moby(uint32_t e) { return lwu(L1_ADDR(0x0015ffd8)) + ((lhu(e) & 0x7fffu) << 8); }
+// the moby of an entry of a group list (Veldin's 0x1ab840, Novalis's 0x1abcc0: halves, the moby index in the low 15 bits,
+// the last with bit 15 set)
+uint32_t group_moby(uint32_t e) { return lwu(OV(0x0015ffd8)) + ((lhu(e) & 0x7fffu) << 8); }
+
+// The Amoeboids' tuning block, the level's own data (Novalis's and Pokitaru's 0x161998 .. 0x161a5f, Rilgar's 0x50 lower;
+// the overlay maps pair none of it with Veldin's): its words by their offset.
+uint32_t tuning() {
+    if (on_level(RILGAR)) return L5_ADDR(0x00161948);
+    if (on_level(POKITARU)) return L11_ADDR(0x00161998);
+    return L1_ADDR(0x00161998);
+}
+uint32_t tune(uint32_t offset) { return tuning() + offset; }
+constexpr uint32_t kColourA = 0x00;            // (Novalis 0x161998) the colour's pulse between A and B
+constexpr uint32_t kColourB = 0x04;            // (0x16199c)
+constexpr uint32_t kThrowSpeed = 0x08;         // (0x1619a0) the split halves' throw: across, up
+constexpr uint32_t kThrowRise = 0x0c;          // (0x1619a4)
+constexpr uint32_t kReach = 0x14;              // (0x1619ac) the attack's reach
+constexpr uint32_t kDripA_A = 0x18;            // (0x1619b0) the first kind of drip: particle 0x34's words a / b,
+constexpr uint32_t kDripA_B = 0x1c;            // (0x1619b4)
+constexpr uint32_t kDripA_SizeLo = 0x20;       // (0x1619b8) its size range,
+constexpr uint32_t kDripA_SizeHi = 0x24;       // (0x1619bc)
+constexpr uint32_t kDripA_LifeLo = 0x28;       // (0x1619c0) its life range (frames)
+constexpr uint32_t kDripA_LifeHi = 0x2c;       // (0x1619c4)
+constexpr uint32_t kDripB_A = 0x30;            // (0x1619c8) the second kind, the same
+constexpr uint32_t kDripB_B = 0x34;            // (0x1619cc)
+constexpr uint32_t kDripB_SizeLo = 0x38;       // (0x1619d0)
+constexpr uint32_t kDripB_SizeHi = 0x3c;       // (0x1619d4)
+constexpr uint32_t kDripB_LifeLo = 0x40;       // (0x1619d8)
+constexpr uint32_t kDripB_LifeHi = 0x44;       // (0x1619dc)
+constexpr uint32_t kDripA_Odds = 0x48;         // (0x1619e0) one in n frames
+constexpr uint32_t kDripB_Odds = 0x4c;         // (0x1619e4)
+constexpr uint32_t kDripRadius = 0x50;         // (0x1619e8)
+constexpr uint32_t kSplashBursts = 0x54;       // (0x1619ec) the splash: bursts, particles a burst,
+constexpr uint32_t kSplashParticles = 0x58;    // (0x1619f0)
+constexpr uint32_t kSplashJitter = 0x5c;       // (0x1619f4) the burst's place jittered (x the size),
+constexpr uint32_t kSplashPointJitter = 0x60;  // (0x1619f8) a particle's start and end jittered,
+constexpr uint32_t kSplashEndJitter = 0x64;    // (0x1619fc)
+constexpr uint32_t kSplashSpeedLo = 0x68;      // (0x161a00) its speed, rise and fall,
+constexpr uint32_t kSplashSpeedHi = 0x6c;      // (0x161a04)
+constexpr uint32_t kSplashRiseLo = 0x70;       // (0x161a08)
+constexpr uint32_t kSplashRiseHi = 0x74;       // (0x161a0c)
+constexpr uint32_t kSplashGravity = 0x78;      // (0x161a10)
+constexpr uint32_t kSplashSizeA = 0x7c;        // (0x161a14) its two sizes,
+constexpr uint32_t kSplashSizeB = 0x80;        // (0x161a18)
+constexpr uint32_t kSplashColA0 = 0x84;        // (0x161a1c) its colours' ranges,
+constexpr uint32_t kSplashColB0 = 0x88;        // (0x161a20)
+constexpr uint32_t kSplashColA1 = 0x8c;        // (0x161a24)
+constexpr uint32_t kSplashColB1 = 0x90;        // (0x161a28)
+constexpr uint32_t kSplashN = 0x94;            // (0x161a2c) its frame counts,
+constexpr uint32_t kSplashH = 0x98;            // (0x161a30)
+constexpr uint32_t kSplashLife = 0x9c;         // (0x161a34) its life,
+constexpr uint32_t kSplashCarry = 0xa0;        // (0x161a38) how much of the hit's speed it takes
+constexpr uint32_t kWalkerRecord = 0xa8;       // (0x161a40) the walker's records: the two larger sizes',
+constexpr uint32_t kWalkerRecordSmall = 0xb8;  // (0x161a50) the smallest's
+
+// The moby's animation position: Novalis's own build of Veldin's moby_anim_time (0x263920); the other levels call Veldin's
+float anim_time(uint32_t m) { return on_level(NOVALIS) ? moby_anim_scalar_l1(m) : moby_anim_time(m); }
+
+// Where a line crosses the level's path: Novalis's own build of Veldin's path_crossing (0x276820); Rilgar's and Pokitaru's
+// copies are the generator's path_crossing
+uint32_t wall_crossing(int32_t path, uint32_t from, uint32_t to, uint32_t out) {
+    if (on_level(NOVALIS)) return nov_276820_l1(path, from, to, out);
+    return static_cast<uint32_t>(path_crossing(path, from, to, out));
+}
 }  // namespace
 
 // An Amoeboid splits: the next size of its class (0x23c -> 0x361 -> 0x362) waiting in its group (+0x21) in state 0xc
 // takes its place (its look, flags, position, angles, health +0x20 and size +0x224). That moby, or 0 when there is none.
-// orig: L1:0x002ef350
+// (Shared: the same code on Rilgar and Pokitaru.)
+// orig: L1:0x002ef350 L5:0x003003a0 L11:0x002fb048
 uint32_t nov_2ef350_l1(uint32_t m) {
     const int32_t cls = lh(m + 0xa6);
     const int32_t want = cls == 0x23c ? 0x361 : cls == 0x361 ? 0x362 : -1;
-    uint32_t e = lwu(L1_ADDR(0x001abcc0) + (static_cast<uint32_t>(lbu(m + 0x21)) << 2));
+    uint32_t e = lwu(OV(0x001ab840) + (static_cast<uint32_t>(lbu(m + 0x21)) << 2));
     if (e == 0) return 0;
     for (;; e += 2) {
         const uint32_t o = group_moby(e);
@@ -221,9 +286,10 @@ uint32_t nov_2ef350_l1(uint32_t m) {
 }
 
 // The nearest (within 120) visible moby of class 0x26f in group `group` that is alive (state below 0x7f); 0 when none.
-// orig: L1:0x002ef478
+// (Shared: the same code on Rilgar and Pokitaru.)
+// orig: L1:0x002ef478 L5:0x003004c8 L11:0x002fb170
 uint32_t nov_2ef478_l1(uint32_t m, uint32_t group) {
-    uint32_t e = lwu(L1_ADDR(0x001abcc0) + (group << 2));
+    uint32_t e = lwu(OV(0x001ab840) + (group << 2));
     if (e == 0) return 0;
     uint32_t found = 0;
     float best = 120.0f;
@@ -240,21 +306,22 @@ uint32_t nov_2ef478_l1(uint32_t m, uint32_t group) {
     }
 }
 
-// The Amoeboid's splashes (Novalis's tuning block 0x1619ec..0x161a38): bursts from its position (jittered by its size
-// +0x250) moving with `vel`, each of particles 0x02 between two jittered points with mixed colours.
-// orig: L1:0x002ef770
+// The Amoeboid's splashes (the tuning block's +0x54 .. +0xa0): bursts from its position (jittered by its size +0x250)
+// moving with `vel`, each of particles 0x02 between two jittered points with mixed colours.
+// (Shared: the same code on Rilgar and Pokitaru.)
+// orig: L1:0x002ef770 L5:0x003007c0 L11:0x002fb468
 void nov_2ef770_l1(uint32_t m, uint32_t vel) {
     const uint32_t mpv = lwu(m + 0x78);
     const uint32_t sp = ee_stack_alloc(0x110);
     const uint32_t at = sp + 0x10, va = sp + 0x20, vb = sp + 0x30;
-    for (int32_t k = 0; k < lw(L1_ADDR(0x001619ec)); ++k) {
+    for (int32_t k = 0; k < lw(tune(kSplashBursts)); ++k) {
         lq_sq(at, m + 0x10);
-        metal_25f8e0(at, fpu_mul(lwc1(L1_ADDR(0x001619f4)), lwc1(mpv + 0x250)));
+        metal_25f8e0(at, fpu_mul(lwc1(tune(kSplashJitter)), lwc1(mpv + 0x250)));
         swc1(at + 8, fpu_add(lwc1(at + 8), 1.0f));
         const float ang = rand_angle();
-        const float speed = rand_range_f(lwc1(L1_ADDR(0x00161a00)), lwc1(L1_ADDR(0x00161a04)));
-        const float rise = rand_range_f(lwc1(L1_ADDR(0x00161a08)), lwc1(L1_ADDR(0x00161a0c)));
-        const float carry = rand_range_f(0.0f, lwc1(L1_ADDR(0x00161a38)));
+        const float speed = rand_range_f(lwc1(tune(kSplashSpeedLo)), lwc1(tune(kSplashSpeedHi)));
+        const float rise = rand_range_f(lwc1(tune(kSplashRiseLo)), lwc1(tune(kSplashRiseHi)));
+        const float carry = rand_range_f(0.0f, lwc1(tune(kSplashCarry)));
         vec3_scale(V(va), V(vel), fpu_mul(carry, dt_l1()));
         swc1(va, fpu_add(lwc1(va), fpu_mul(cos_vu(ang), fpu_mul(speed, dt_l1()))));
         const float s = sin_vu(ang);
@@ -262,19 +329,19 @@ void nov_2ef770_l1(uint32_t m, uint32_t vel) {
         swc1(va + 8, fpu_add(lwc1(va + 8), fpu_mul(rise, t)));
         swc1(va + 4, fpu_add(lwc1(va + 4), fpu_mul(s, fpu_mul(speed, t))));
         lq_sq(vb, va);
-        const float frames = static_cast<float>(frame_scale_i(lw(L1_ADDR(0x00161a30))));
-        swc1(vb + 8, fpu_sub(lwc1(vb + 8), fpu_mul(fpu_mul(lwc1(L1_ADDR(0x00161a10)), lwc1(0x0015ed70)), frames)));
-        for (int32_t j = 0; j < lw(L1_ADDR(0x001619f0)); ++j) {
+        const float frames = static_cast<float>(frame_scale_i(lw(tune(kSplashH))));
+        swc1(vb + 8, fpu_sub(lwc1(vb + 8), fpu_mul(fpu_mul(lwc1(tune(kSplashGravity)), lwc1(0x0015ed70)), frames)));
+        for (int32_t j = 0; j < lw(tune(kSplashParticles)); ++j) {
             const float r = rand_range_f(0.5f, 1.5f);
-            swc1(va + 0xc, fpu_mul(r, lwc1(L1_ADDR(0x00161a14))));
-            swc1(vb + 0xc, fpu_mul(r, lwc1(L1_ADDR(0x00161a18))));
-            metal_25f8e0(at, lwc1(L1_ADDR(0x001619f8)));
-            metal_25f8e0(vb, fpu_mul(lwc1(L1_ADDR(0x001619fc)), dt_l1()));
-            const uint32_t c0 = rgba_lerp(lwu(L1_ADDR(0x00161a1c)), lwu(L1_ADDR(0x00161a24)), rand_range_f(0.0f, 1.0f));
-            const uint32_t c1 = rgba_lerp(lwu(L1_ADDR(0x00161a20)), lwu(L1_ADDR(0x00161a28)), rand_range_f(0.0f, 1.0f));
-            const uint32_t n = static_cast<uint32_t>(frame_scale_i(lw(L1_ADDR(0x00161a2c))));
-            const uint32_t h32 = static_cast<uint32_t>(frame_scale_i(lw(L1_ADDR(0x00161a30))));
-            const float base = static_cast<float>(lw(L1_ADDR(0x00161a34)));
+            swc1(va + 0xc, fpu_mul(r, lwc1(tune(kSplashSizeA))));
+            swc1(vb + 0xc, fpu_mul(r, lwc1(tune(kSplashSizeB))));
+            metal_25f8e0(at, lwc1(tune(kSplashPointJitter)));
+            metal_25f8e0(vb, fpu_mul(lwc1(tune(kSplashEndJitter)), dt_l1()));
+            const uint32_t c0 = rgba_lerp(lwu(tune(kSplashColA0)), lwu(tune(kSplashColA1)), rand_range_f(0.0f, 1.0f));
+            const uint32_t c1 = rgba_lerp(lwu(tune(kSplashColB0)), lwu(tune(kSplashColB1)), rand_range_f(0.0f, 1.0f));
+            const uint32_t n = static_cast<uint32_t>(frame_scale_i(lw(tune(kSplashN))));
+            const uint32_t h32 = static_cast<uint32_t>(frame_scale_i(lw(tune(kSplashH))));
+            const float base = static_cast<float>(lw(tune(kSplashLife)));
             const float life = rand_range_f(fpu_mul(base, 0.5f), fpu_mul(base, 2.5f));
             spawn_particle_02(at, va, vb, c0, c1, n, h32, static_cast<uint32_t>(float_to_int(frame_scale_f(life))), -1);
         }
@@ -282,9 +349,10 @@ void nov_2ef770_l1(uint32_t m, uint32_t vel) {
     ee_stack_free(0x110);
 }
 
-// The Amoeboid's drips (Novalis's tuning block 0x1619b0..0x1619e8, scaled by its size +0x250), while it is visible:
-// now and then one of each of two kinds of particle 0x34 around it.
-// orig: L1:0x002ef560
+// The Amoeboid's drips (the tuning block's +0x18 .. +0x50, scaled by its size +0x250), while it is visible: now and then
+// one of each of two kinds of particle 0x34 around it.
+// (Shared: the same code on Rilgar and Pokitaru.)
+// orig: L1:0x002ef560 L5:0x003005b0 L11:0x002fb258
 void nov_2ef560_l1(uint32_t m) {
     const uint32_t mpv = lwu(m + 0x78);
     if (lbu(m + 0x31) == 0) return;
@@ -292,7 +360,7 @@ void nov_2ef560_l1(uint32_t m) {
     // particle's words `a` / `b`
     auto drip = [&](uint32_t lo, uint32_t hi, uint32_t life_lo, uint32_t life_hi, uint32_t a, uint32_t b) {
         const float ang = rand_angle();
-        const float r = rand_range_f(0.0f, lwc1(L1_ADDR(0x001619e8)));
+        const float r = rand_range_f(0.0f, lwc1(tune(kDripRadius)));
         const float size = fpu_mul(rand_range_f(0.0f, lwc1(lo)), lwc1(mpv + 0x250));
         const float f = fpu_mul(rand_range_f(lwc1(lo), lwc1(hi)), lwc1(mpv + 0x250));
         const int32_t life = float_to_int(rand_range_f(static_cast<float>(lw(life_lo)), static_cast<float>(lw(life_hi))));
@@ -305,10 +373,10 @@ void nov_2ef560_l1(uint32_t m) {
         nov_287158_l1(sp, lwu(a), lwu(b), frame_scale_i(life), size, f);
         ee_stack_free(0x10);
     };
-    if (rand_mod(lw(L1_ADDR(0x001619e0)) - 1) == 0)
-        drip(L1_ADDR(0x001619b8), L1_ADDR(0x001619bc), L1_ADDR(0x001619c0), L1_ADDR(0x001619c4), L1_ADDR(0x001619b0), L1_ADDR(0x001619b4));
-    if (rand_mod(lw(L1_ADDR(0x001619e4)) - 1) == 0)
-        drip(L1_ADDR(0x001619d0), L1_ADDR(0x001619d4), L1_ADDR(0x001619d8), L1_ADDR(0x001619dc), L1_ADDR(0x001619c8), L1_ADDR(0x001619cc));
+    if (rand_mod(lw(tune(kDripA_Odds)) - 1) == 0)
+        drip(tune(kDripA_SizeLo), tune(kDripA_SizeHi), tune(kDripA_LifeLo), tune(kDripA_LifeHi), tune(kDripA_A), tune(kDripA_B));
+    if (rand_mod(lw(tune(kDripB_Odds)) - 1) == 0)
+        drip(tune(kDripB_SizeLo), tune(kDripB_SizeHi), tune(kDripB_LifeLo), tune(kDripB_LifeHi), tune(kDripB_A), tune(kDripB_B));
 }
 
 // The Amoeboid's frame before its state: the hit (mask 0x330000; ignored when a wall is between it and the source
@@ -317,7 +385,8 @@ void nov_2ef560_l1(uint32_t m) {
 // it splashes and goes. Then its range +0x228 (20 more for 4 seconds after an alert), its target: what target_select
 // finds on its path +0x24c (2 in +0x204 when it is out of range or 3 units off in height), a nearer class-0x26f moby of
 // its group +0x248, else the hero; its colour pulsing.
-// orig: L1:0x002eec68
+// (Shared: the same code on Rilgar and Pokitaru.)
+// orig: L1:0x002eec68 L5:0x002ffcb8 L11:0x002fa960
 void nov_2eec68_l1(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
     const uint32_t sp = ee_stack_alloc(0xd0);
@@ -375,10 +444,10 @@ void nov_2eec68_l1(uint32_t m) {
             sw(opv + 0x80, static_cast<uint32_t>(float_to_int(fpu_mul(fpu_mul(lwc1(pv + 0x250), k), 1024.0f))));
             const float t = dt_l1();
             swc1(opv + 0x88, fpu_mul(lwc1(pv + 0x250), k));
-            swc1(opv + 0x78, fpu_mul(lwc1(L1_ADDR(0x001619a0)), t));
+            swc1(opv + 0x78, fpu_mul(lwc1(tune(kThrowSpeed)), t));
             swc1(opv + 0xb0, 7.0f);
             swc1(opv + 0xb4, 13.0f);
-            swc1(opv + 0x7c, fpu_mul(lwc1(L1_ADDR(0x001619a4)), t));
+            swc1(opv + 0x7c, fpu_mul(lwc1(tune(kThrowRise)), t));
             sw(opv + 0x84, lwu(opv + 0x84) | 4u);
             lq_sq(eye, hit + 0x10);
             vec_yaw_marked_v(V(eye), *static_cast<float*>(ee_ram_ptr(yaw)), *static_cast<float*>(ee_ram_ptr(opv + 0x78)),
@@ -399,7 +468,7 @@ void nov_2eec68_l1(uint32_t m) {
     sb(m + 0xa4, 0xff);
     const int32_t water = lw(pv + 0x258);
     if (water != 0 && lbu(m + 0x20) != 0 &&
-        lwc1(m + 0x18) < lwc1(lwu(L1_ADDR(0x001612d0)) + static_cast<uint32_t>(water) * 0x1190 + 8)) {
+        lwc1(m + 0x18) < lwc1(lwu(OV(0x001612d0)) + static_cast<uint32_t>(water) * 0x1190 + 8)) {
         vec_clear(V(sp));
         nov_2ef770_l1(m, sp);
         moby_retire(m);
@@ -413,7 +482,7 @@ void nov_2eec68_l1(uint32_t m) {
     if (timer_tick_i32(*static_cast<int32_t*>(ee_ram_ptr(pv + 0x22c))) == 0) swc1(pv + 0x228, fpu_add(lwc1(pv + 0x224), 20.0f));
     else swc1(pv + 0x228, lwc1(pv + 0x224));
     const int32_t leader = lw(pv + 0x260);
-    if (leader <= 0 || lbu(lwu(L1_ADDR(0x0015ffd8)) + (static_cast<uint32_t>(leader) << 8) + 0xbc) != 0) {
+    if (leader <= 0 || lbu(lwu(OV(0x0015ffd8)) + (static_cast<uint32_t>(leader) << 8) + 0xbc) != 0) {
         const uint32_t path = level_path(lw(pv + 0x24c));
         if (target_select(m, pv + 0x1c0, 0, 0, path + 0x10, lw(path), lwc1(pv + 0x228)) != 2) {
             if (lwc1(pv + 0x228) < vec2_distance(V(pv + 0x210), V(pv + 0x1c0))) sw(pv + 0x204, 2);
@@ -434,7 +503,7 @@ void nov_2eec68_l1(uint32_t m) {
     if (lwu(pv + 0x200) == 0) sw(pv + 0x200, lwu(0x001413d0));
     swc1(pv + 0x254, angle_add(lwc1(pv + 0x254), fpu_mul(dt_l1(), u2f(0x4116cbe4u))));
     const float pulse = fpu_mul(fpu_add(sin_vu(lwc1(pv + 0x254)), 1.0f), 0.5f);
-    sw(m + 0x90, rgba_lerp(lwu(L1_ADDR(0x00161998)), lwu(L1_ADDR(0x0016199c)), pulse));
+    sw(m + 0x90, rgba_lerp(lwu(tune(kColourA)), lwu(tune(kColourB)), pulse));
     ee_stack_free(0xd0);
 }
 
@@ -445,8 +514,9 @@ void nov_2eec68_l1(uint32_t m) {
 // the heading offset +0x234, the size +0x250, the target lost +0x204 (2), the alert timer +0x22c, the box +0x25c it
 // wakes from, the water +0x258. States: 0 set up, 1 idle, 2 wanders home, 3 / 7 / 9 / 0x10 animation ends, 4 chases,
 // 5 goes home, 6 attacks, 8 thrown, 0xc waits (split halves), 0xd hidden until the hero is in its box, 0xe carried,
-// 0xf faces the target, 0x10 steps back from a wall.
-// orig: L1:0x002edca0
+// 0xf faces the target, 0x10 steps back from a wall. (Shared: the same code on Rilgar and Pokitaru, class 572 / 865 / 866
+// there too.)
+// orig: L1:0x002edca0 L5:0x002fecf0 L11:0x002f9998
 void amoeboid_update_l1(uint32_t m) {
     if (lbu(m + 0x20) == 0xc) {  // (a half waiting for its split: hidden)
         sh(m + 0x34, lhu(m + 0x34) | 1u);
@@ -457,7 +527,7 @@ void amoeboid_update_l1(uint32_t m) {
     const uint32_t sp = ee_stack_alloc(0xb0);
     const uint32_t step = sp, way = sp + 0x10;
     joint_node_scale(m, 0, pv + 0x270, u2f(0x4039999au));
-    if (lbu(m + 0x31) != 0 && vec3_distance(V(pos), V(L1_ADDR(0x00167240))) < 28.0f) {
+    if (lbu(m + 0x31) != 0 && vec3_distance(V(pos), V(OV(0x00166dc0))) < 28.0f) {
         moby_floor_band(m);
         sb(m + 0x7f, 0x16);
     }
@@ -501,7 +571,7 @@ void amoeboid_update_l1(uint32_t m) {
         swc1(pv + 0x234, rand_range_f(-twenty_deg, twenty_deg));
     };
     bool drips = false;  // (the states that end with 0x2ef560)
-    switch (state) {  // (the state's jump table L1:0x0020b130, 17 entries, by its index; 0xa..0xc: 0x002eec3c)
+    switch (state) {  // (the state's jump table L1:0x0020b130 (L5:0x00218610, L11:0x0021b1c0), 17 entries, by its index; 0xa..0xc: 0x002eec3c)
     case 0: {  // (0x002edd80) set up: its size by class, its health, its walker record; hidden (0xc / 0xd) unless in the water
         lq_sq(home, pos);
         const int32_t cls = lh(m + 0xa6);
@@ -517,7 +587,7 @@ void amoeboid_update_l1(uint32_t m) {
         else if (cls == 0x362) sized(4.0f, u2f(0x3efae148u));
         swc1(pv + 0x30, size);
         swc1(pv + 0x254, rand_angle());
-        sw(pv + 0x130, lh(m + 0xa6) == 0x362 ? L1_ADDR(0x00161a50) : L1_ADDR(0x00161a40));
+        sw(pv + 0x130, lh(m + 0xa6) == 0x362 ? tune(kWalkerRecordSmall) : tune(kWalkerRecord));
         sb(pv + 0x29, 1);
         if (lw(pv + 0x258) != 0) {
             sw(pv + 0x230, 1);
@@ -584,8 +654,8 @@ void amoeboid_update_l1(uint32_t m) {
         sb(m + 0x20, 4);
         anim_to(1, frame_scale_i(0xa));
         break;
-    case 4: {  // (0x002ee474) chases: attacks within reach (0x1619ac), else heads for the way point; lost: goes home (5)
-        if (vec2_distance(V(pos), V(tgt)) < lwc1(L1_ADDR(0x001619ac))) {
+    case 4: {  // (0x002ee474) chases: attacks within reach (the tuning block's +0x14), else heads for the way point; lost: goes home (5)
+        if (vec2_distance(V(pos), V(tgt)) < lwc1(tune(kReach))) {
             sb(m + 0x20, 6);
             swc1(pv + 0x194, fpu_mul(fpu_add(lwc1(pv + 0x23c), lwc1(pv + 0x23c)), dt_l1()));
             anim_to(2, frame_scale_i(0xa));
@@ -616,7 +686,7 @@ void amoeboid_update_l1(uint32_t m) {
         break;
     case 6: {  // (0x002ee61c) attacks: steps in during frames 10..16, strikes at 15.5 within 2 units (and in height its size x 2)
         turn_to(lwc1(tgt), lwc1(tgt + 4), true);
-        const float frame = moby_anim_scalar_l1(m);
+        const float frame = anim_time(m);
         if (lbu(m + 0x52) == lbu(m + 0x53) && 10.0f <= frame && frame <= 16.0f) walk(true);
         if (anim_crossed(m, 15.5f) != 0 && vec2_distance(V(pos), V(tgt)) < 2.0f &&
             abs_f(fpu_sub(lwc1(tgt + 8), lwc1(pos + 8))) < fpu_add(lwc1(pv + 0x250), lwc1(pv + 0x250))) {
@@ -645,7 +715,7 @@ void amoeboid_update_l1(uint32_t m) {
                 anim_to(5, frame_scale_i(0xa), 4);
                 lq_sq(home, pos);
             } else {
-                nov_2ef770_l1(m, L1_ADDR(0x0015f580));
+                nov_2ef770_l1(m, OV(0x0015f580));
                 moby_drop_bolts(m, 0, -1);
                 moby_retire(m);
             }
@@ -685,7 +755,7 @@ void amoeboid_update_l1(uint32_t m) {
         turn_to(lwc1(tgt), lwc1(tgt + 4), false);
         walk(false);
         bool near_wall = false;
-        if (nov_276820_l1(lw(pv + 0x240), pos, tgt, way) != 0 && vec3_distance(V(pos), V(way)) < 1.5f) near_wall = true;
+        if (wall_crossing(lw(pv + 0x240), pos, tgt, way) != 0 && vec3_distance(V(pos), V(way)) < 1.5f) near_wall = true;
         if (lw(pv + 0x22c) == 0) {
             sb(m + 0x20, 5);
             break;

@@ -1,5 +1,8 @@
 // Hand-written overlay code: Novalis's scrolling surfaces (waterfalls / energy strips: classes 676, 678, 761, 1225) and
-// its water grid (class 751), drawn through VU1 program 7 and rendered by the Modern Rendering Pipeline (mrp_fx.h).
+// its water grid (class 751), drawn through VU1 program 7 and rendered by the Modern Rendering Pipeline (mrp_fx.h). The
+// water's code (its grid, set-up, cells, draw and the class's draw callback) is the same engine code on Rilgar, Umbris,
+// Pokitaru, Hoven and Gemlik: those ports serve every level (their `orig:` lines; batches 501 / 511), every address the
+// engine's (OV) but each level's tile records.
 #include <game/ovl/novalis_water.h>
 #include <game/ovl/novalis_draw_cbs.h>
 
@@ -13,6 +16,11 @@
 #include <game/ovl/quad_draw.h>
 #include <game/ovl/shadows.h>
 #include <game/ovl/variants_l1.h>
+#include <game/ovl/variants_l11.h>
+#include <game/ovl/variants_l12.h>
+#include <game/ovl/variants_l13.h>
+#include <game/ovl/variants_l5.h>
+#include <game/ovl/variants_l7.h>
 #include <game/ovl/vu0_local.h>
 #include <game/render/mrp_fx.h>
 
@@ -20,7 +28,7 @@ namespace rac1 {
 
 namespace {
 
-constexpr LvlConst<1, 0x001611c0u> CUR{};  // DMA chain packet cursor on Novalis
+constexpr OvConst<0x001611c0u> CUR{};  // the frame's DMA chain packet cursor (every level's, where the overlay map pairs it with Veldin's)
 
 void load_vf(vu0l::Vu& u, int r, uint32_t addr) {
     const uint32_t a = addr & ~15u;
@@ -70,7 +78,7 @@ void wrap_01(uint32_t addr) {
 }
 
 void clip_corners_4(const Vec4 corners[4], uint32_t& inner_codes, uint32_t& outer_codes) {
-    const uint32_t cam = L1_ADDR(0x00167240u);
+    const uint32_t cam = OV(0x00166dc0);
     inner_codes = 0;
     outer_codes = 0;
     for (int i = 0; i < 4; ++i) {
@@ -100,17 +108,18 @@ bool all_corners_outside(uint32_t codes) {
 // orig: L1:0x002b96c0
 void nov_strips_vu7_setup_l1() { shadows_vu1_setup(); }
 
-// orig: L1:0x002b8f98
+// (Shared: the same code on Rilgar, Umbris, Pokitaru, Hoven and Gemlik; every address the engine's.)
+// orig: L1:0x002b8f98 L5:0x002cd960 L7:0x002cbed0 L11:0x002c8108 L12:0x002bba98 L13:0x002af8b8
 void nov_water_vu7_setup_l1() {
-    const uint32_t s1 = L1_ADDR(0x00167240u);  // camera position
+    const uint32_t s1 = OV(0x00166dc0);  // camera position
     Mat4 scale_m{};
     mat4_scale_diag(scale_m, 1024.0f);
     vec3_scale(scale_m.r[3], V(s1), -1024.0f);
     scale_m.r[3].w = 1.0f;
 
-    if (lw(L1_ADDR(0x0015f5e0u)) != 7) {
+    if (lw(OV(0x0015f5e0)) != 7) {
         packet_ref(0x0010e810, lhu(0x0010e800));
-        sw(L1_ADDR(0x0015f5e0u), 7);
+        sw(OV(0x0015f5e0), 7);
     }
     sw(lwu(CUR), 0x10000000u);
     sw(lwu(CUR) + 4, 0);
@@ -123,7 +132,7 @@ void nov_water_vu7_setup_l1() {
     sw(s0 + 0x1c, 0x6c0c43a4u);  // UNPACK V4-32, 12 quadwords to 0x3a4
     mat4_mul(M(s0 + 0x20), M(s1 - 0x100), scale_m);
     mat4_mul(M(s0 + 0x60), M(s1 - 0x80), scale_m);
-    const uint32_t v1 = L1_ADDR(0x0016cec0u);
+    const uint32_t v1 = OV(0x0016ca40);
     sw(s0 + 0xa8, 0x412);
     sw(s0 + 0xa0, 0x8000);
     sw(s0 + 0xa4, 0x303ec000u);
@@ -145,14 +154,14 @@ void nov_water_vu7_setup_l1() {
     mrp_fx_note_vu7(s0 + 0x20);
     packet_ref_13cf10();
     sw(lwu(CUR), 0x30000007u);
-    sw(lwu(CUR) + 4, L1_ADDR(0x001cac80u));
+    sw(lwu(CUR) + 4, OV(0x001ca800));
     sw(lwu(CUR) + 8, 0);
     sw(lwu(CUR) + 0xc, 0x50000007u);
-    sw(L1_ADDR(0x00161234u), 0xffffffffu);
-    sw(L1_ADDR(0x00161228u), 0xffffffffu);
-    sw(L1_ADDR(0x0016122cu), 0xffffffffu);
+    sw(OV(0x00161234), 0xffffffffu);
+    sw(OV(0x00161228), 0xffffffffu);
+    sw(OV(0x0016122c), 0xffffffffu);
     sw(CUR, lwu(CUR) + 0x10);
-    sw(L1_ADDR(0x00161230u), 0xffffffffu);
+    sw(OV(0x00161230), 0xffffffffu);
 }
 
 // The strips' packet (VU1 program 7): `n` vertices' ST (`st`), colours (`rgba`) and positions (`xyz`, 12 bytes each) behind
@@ -543,7 +552,8 @@ void nov_water_grid_update_l1(uint32_t tiles, int32_t n) {
     swc1(phase, fpu_add(lwc1(phase), lwc1(water + 0x20u)));
 }
 
-// orig: L1:0x00261df8
+// (Shared: the same code on Rilgar, Umbris, Pokitaru, Hoven and Gemlik.)
+// orig: L1:0x00261df8 L5:0x00276da8 L7:0x00275568 L11:0x00273190 L12:0x00265fd0 L13:0x00259060
 void nov_water_grid_light_l1(uint32_t tile) {
     if (vu0::running()) vu0::drain();
     vu0l::Vu u;
@@ -555,13 +565,13 @@ void nov_water_grid_light_l1(uint32_t tile) {
     qmtc2_s32(u, 1, 0x3f12b021u);
     u.addbc(14, 0, u.lane(1, 0), vu0l::Z);
     qmtc2_s32(u, 1, 0x40500000u);
-    const uint32_t c_base = L1_ADDR(0x001cad00u);
+    const uint32_t c_base = OV(0x001ca880);
     load_vf(u, 15, c_base + 0x10u);
     u.addbc(14, 0, u.lane(1, 0), vu0l::W);
     load_vf(u, 16, c_base + 0x00u);
     u.addbc(19, 0, u.lane(0, 3), vu0l::X);
     load_vf(u, 21, c_base + 0x30u);
-    load_vf(u, 20, L1_ADDR(0x00167100u) + 0x140u);
+    load_vf(u, 20, OV(0x00166c80) + 0x140u);
 
     for (int r = 10; r <= 13; ++r) u.addbc(r, 0, u.lane(0, 0), vu0l::XYZW);
     u.subbc(10, 10, u.lane(15, 1), vu0l::Y);
@@ -659,9 +669,10 @@ void nov_water_grid_light_l1(uint32_t tile) {
     u.store();
 }
 
-// orig: L1:0x002b8c08
+// (Shared: the same code on Rilgar, Umbris, Pokitaru, Hoven and Gemlik.)
+// orig: L1:0x002b8c08 L5:0x002cd5d0 L7:0x002cbb40 L11:0x002c7d78 L12:0x002bb708 L13:0x002af528
 void nov_water_grid_xyz_l1(uint32_t tile) {
-    const uint32_t c_base = L1_ADDR(0x001cad00u);
+    const uint32_t c_base = OV(0x001ca880);
     uint32_t out = 0x70002000u;
     float y = fpu_add(lwc1(tile + 0x4u), lwc1(c_base + 0xcu));
     for (int32_t row = 0; row < 17; ++row) {
@@ -677,7 +688,8 @@ void nov_water_grid_xyz_l1(uint32_t tile) {
     }
 }
 
-// orig: L1:0x002b80d0
+// (Shared: the same code on Rilgar, Umbris, Pokitaru, Hoven and Gemlik.)
+// orig: L1:0x002b80d0 L5:0x002ccab0 L7:0x002cb008 L11:0x002c7258 L12:0x002babe8 L13:0x002ae9f0
 void nov_water_uv_scroll_l1(uint32_t tile) {
     swc1(tile + 0x20u, fpu_add(lwc1(tile + 0x20u), lwc1(tile + 0x28u)));
     wrap_01(tile + 0x20u);
@@ -692,9 +704,9 @@ void nov_water_uv_scroll_l1(uint32_t tile) {
     const float du1 = fpu_add(lwc1(tile + 0x20u), fpu_mul(cos_vu(lwc1(tile + 0x34u)), lwc1(tile + 0x40u)));
     const float dv1 = fpu_add(lwc1(tile + 0x24u), fpu_mul(sin_vu(lwc1(tile + 0x34u)), lwc1(tile + 0x40u)));
 
-    const uint32_t flags = L1_ADDR(0x001cb1b0u);
-    const uint32_t src = L1_ADDR(0x001cafe0u);
-    const uint32_t dst = L1_ADDR(0x001cae60u);
+    const uint32_t flags = OV(0x001cad30);
+    const uint32_t src = OV(0x001cab60);
+    const uint32_t dst = OV(0x001ca9e0);
     for (uint32_t i = 0; i < 46; ++i) {
         const float u0 = lwc1(src + i * 8u + 0u);
         const float v0 = lwc1(src + i * 8u + 4u);
@@ -708,41 +720,42 @@ void nov_water_uv_scroll_l1(uint32_t tile) {
     }
 }
 
-// orig: L1:0x00262388
+// (Shared: the same code on Rilgar, Umbris, Pokitaru, Hoven and Gemlik.)
+// orig: L1:0x00262388 L5:0x00277338 L7:0x00275af8 L11:0x00273720 L12:0x00266560 L13:0x002595f0
 void nov_water_cell_packet_l1(uint32_t mscal, int32_t cell) {
     const uint32_t ucell = static_cast<uint32_t>(cell);
     uint32_t pkt1 = lwu(CUR);
     uint32_t at = pkt1;
     for (uint32_t i = 0; i < 5; ++i, at += 0x10u) {
-        lq_sq(at, L1_ADDR(0x001cb160u) + i * 0x10u);
+        lq_sq(at, OV(0x001cace0) + i * 0x10u);
     }
-    lq_sq(at, L1_ADDR(0x00161240u));
+    lq_sq(at, OV(0x00161240));
     at += 0x10u;
 
     for (uint32_t i = 0; i < 0x17u; ++i, at += 0x10u) {
-        const uint32_t s = L1_ADDR(0x001cae60u) + i * 0x10u;
+        const uint32_t s = OV(0x001ca9e0) + i * 0x10u;
         sd(at + 0u, ld(s + 0u));
         sd(at + 8u, ld(s + 8u));
     }
 
     const uint32_t rgba_xyz_start = at;
-    lq_sq(at, L1_ADDR(0x00161260u));
+    lq_sq(at, OV(0x00161260));
     at += 0x10u;
 
     const uint32_t col_base = 0x70001088u + (ucell << 2);
     for (uint32_t i = 0; i < 0x2eu; ++i, at += 4u) {
-        const uint32_t off = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(lhu(L1_ADDR(0x001cad40u) + i * 2u))));
+        const uint32_t off = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(lhu(OV(0x001ca8c0) + i * 2u))));
         sw(at, lwu(col_base + off));
     }
     sd(at, 0ull);
     at += 8u;
 
-    lq_sq(at, L1_ADDR(0x00161280u));
+    lq_sq(at, OV(0x00161280));
     at += 0x10u;
 
     const uint32_t xyz_base = 0x70002000u + ucell * 12u;
     for (uint32_t i = 0; i < 0x17u; ++i, at += 0x18u) {
-        const uint32_t idx_pair = L1_ADDR(0x001cae00u) + i * 4u;
+        const uint32_t idx_pair = OV(0x001ca980) + i * 4u;
         const uint32_t o0 = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(lhu(idx_pair + 0u))));
         const uint32_t o1 = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(lhu(idx_pair + 2u))));
         const uint32_t p0 = xyz_base + o0;
@@ -765,17 +778,17 @@ void nov_water_cell_packet_l1(uint32_t mscal, int32_t cell) {
 
     const uint32_t pkt2 = at;
     for (uint32_t i = 0; i < 5; ++i, at += 0x10u) {
-        lq_sq(at, L1_ADDR(0x001cb160u) + i * 0x10u);
+        lq_sq(at, OV(0x001cace0) + i * 0x10u);
     }
     sw(at - 0x3cu, lwu(at - 0x3cu) | 0x01000000u);
     sw(at - 0x28u, lwu(at - 0x28u) | 0x01000000u);
 
-    lq_sq(at, L1_ADDR(0x00161240u));
+    lq_sq(at, OV(0x00161240));
     at += 0x10u;
 
     const uint32_t uv_base = 0x70000780u + (ucell << 3);
     for (uint32_t i = 0; i < 0x2eu; ++i, at += 8u) {
-        const uint32_t off = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(lhu(L1_ADDR(0x001cada0u) + i * 2u))));
+        const uint32_t off = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(lhu(OV(0x001ca920) + i * 2u))));
         sd(at, ld(uv_base + off));
     }
     sw(pkt2, lwu(pkt2) | (((at - pkt2) >> 4) - 1u));
@@ -786,11 +799,12 @@ void nov_water_cell_packet_l1(uint32_t mscal, int32_t cell) {
     sw(CUR, at + 0x10u);
 }
 
-// orig: L1:0x002b8cb0
+// (Shared: the same code on Rilgar, Umbris, Pokitaru, Hoven and Gemlik.)
+// orig: L1:0x002b8cb0 L5:0x002cd678 L7:0x002cbbe8 L11:0x002c7e20 L12:0x002bb7b0 L13:0x002af5d0
 void nov_water_cell_l1(uint32_t tile, int32_t cell, int32_t clip) {
     int32_t cur_clip = clip;
     if (cur_clip != 0) {
-        const uint32_t c_base = L1_ADDR(0x001cad00u);
+        const uint32_t c_base = OV(0x001ca880);
         const float off_y = lwc1(c_base + 0xcu);
         const float off_x = lwc1(c_base + 0x8u);
         const float step_y = fpu_mul(-off_y, 0.5f);
@@ -828,10 +842,11 @@ void nov_water_cell_l1(uint32_t tile, int32_t cell, int32_t clip) {
     nov_water_cell_packet_l1(cur_clip != 0 ? 0xeu : 0xcu, grid_cell);
 }
 
-// orig: L1:0x002b91c8
+// (Shared: the same code on Rilgar, Umbris, Pokitaru, Hoven and Gemlik.)
+// orig: L1:0x002b91c8 L5:0x002cdb90 L7:0x002cc100 L11:0x002c8338 L12:0x002bbcc8 L13:0x002afae8
 void nov_water_draw_l1(uint32_t tiles, int32_t n) {
     nov_water_vu7_setup_l1();
-    const uint32_t c_base = L1_ADDR(0x001cad00u);
+    const uint32_t c_base = OV(0x001ca880);
     for (int32_t i = 0; i < n; ++i, tiles += 0x1190u) {
         uint32_t cell_mask = lhu(tiles + 0x1eu);
         if (cell_mask == 0) continue;
@@ -857,7 +872,7 @@ void nov_water_draw_l1(uint32_t tiles, int32_t n) {
         clip_corners_4(corners, inner_codes, outer_codes);
         if (all_corners_outside(outer_codes)) continue;
 
-        const uint32_t frame_idx = lwu(L1_ADDR(0x00161220u));
+        const uint32_t frame_idx = lwu(OV(0x00161220));
         nov_water_grid_in_l1(0x70000000u, tiles + 0x50u + frame_idx * 0x5c0u);
         nov_water_grid_light_l1(tiles);
         nov_water_grid_xyz_l1(tiles);
@@ -888,8 +903,8 @@ void nov_water_draw_l1(uint32_t tiles, int32_t n) {
         const uint32_t alpha_b = lbu(tiles + 0x1du);
         cell_mask = lhu(tiles + 0x1eu);
 
-        if (tex_a != lwu(L1_ADDR(0x00161228u)) || tex_b != lwu(L1_ADDR(0x0016122cu)) ||
-            alpha_a != lwu(L1_ADDR(0x00161230u)) || alpha_b != lwu(L1_ADDR(0x00161234u))) {
+        if (tex_a != lwu(OV(0x00161228)) || tex_b != lwu(OV(0x0016122c)) ||
+            alpha_a != lwu(OV(0x00161230)) || alpha_b != lwu(OV(0x00161234))) {
             const uint32_t gs = lwu(CUR);
             sw(gs + 0x00u, 0x10000005u);
             sw(gs + 0x04u, 0);
@@ -907,10 +922,10 @@ void nov_water_draw_l1(uint32_t tiles, int32_t n) {
             sd(gs + 0x58u, 0x7ull);
             sw(CUR, gs + 0x60u);
 
-            sw(L1_ADDR(0x00161228u), lwu(tiles + 0x14u));
-            sw(L1_ADDR(0x0016122cu), lwu(tiles + 0x18u));
-            sw(L1_ADDR(0x00161230u), lbu(tiles + 0x1cu));
-            sw(L1_ADDR(0x00161234u), lbu(tiles + 0x1du));
+            sw(OV(0x00161228), lwu(tiles + 0x14u));
+            sw(OV(0x0016122c), lwu(tiles + 0x18u));
+            sw(OV(0x00161230), lbu(tiles + 0x1cu));
+            sw(OV(0x00161234), lbu(tiles + 0x1du));
         }
 
         for (int32_t cell = 0; cell < 16; ++cell, cell_mask >>= 1) {
@@ -966,11 +981,17 @@ void nov_strips_1225_draw_l1(uint32_t) {
     for (int32_t i = 2; i >= 0; --i, p -= 0x60) swc1(p, h);
 }
 
-// Class 751's: the 21 water tiles at 0x1e34c0.
-// orig: L1:0x002fd0c0
+// The water class's draw callback (Novalis's class 751; the same code on Rilgar, Umbris (class 902), Pokitaru, Hoven and
+// Gemlik, each with its own tile records and their count): the level's water tiles drawn.
+// orig: L1:0x002fd0c0 L5:0x0030d678 L7:0x0030cd20 L11:0x0030e708 L12:0x002bf748 L13:0x0030a460
 void nov_water_751_draw_l1(uint32_t) {
     const MrpFxScope fx(kMrpFxPrimList);
-    nov_water_draw_l1(L1_ADDR(0x001e34c0u), 0x15);
+    if (on_level(RILGAR)) nov_water_draw_l1(L5_ADDR(0x001d6880u), 0x30);
+    else if (on_level(UMBRIS)) nov_water_draw_l1(L7_ADDR(0x001dce40u), 0x24);
+    else if (on_level(POKITARU)) nov_water_draw_l1(L11_ADDR(0x001da880u), 0x14);
+    else if (on_level(HOVEN)) nov_water_draw_l1(L12_ADDR(0x001cbf40u), 0x11);
+    else if (on_level(GEMLIK)) nov_water_draw_l1(L13_ADDR(0x001d9bc0u), 0x16);
+    else nov_water_draw_l1(L1_ADDR(0x001e34c0u), 0x15);
 }
 
 // orig: (none) — registers the draw callbacks for the indirect calls (ovl_call_moby_fn)
