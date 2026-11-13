@@ -157,6 +157,23 @@ add_library(rac1_game STATIC
     ovl/shared_small.cpp
     ovl/shared_spawns.cpp
     ovl/shared_particles.cpp
+    ovl/shared_class1224.cpp
+    ovl/shared_class403.cpp
+    ovl/shared_class325.cpp
+    ovl/shared_class250.cpp
+    ovl/shared_class1331.cpp
+    ovl/shared_class28_draw.cpp
+    ovl/shared_class77.cpp
+    ovl/shared_class78_draw.cpp
+    ovl/shared_class123_draw.cpp
+    ovl/shared_three_glows.cpp
+    ovl/shared_ripples.cpp
+    ovl/shared_class196.cpp
+    ovl/shared_class655_glows.cpp
+    ovl/shared_class408_tint.cpp
+    ovl/shared_class848.cpp
+    ovl/shared_level_helpers.cpp
+    ovl/shared_class686.cpp
     ovl/novalis_amoeboid.cpp
     ovl/vendor_draw.cpp
     ovl/vendor_frame.cpp
