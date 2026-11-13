@@ -38,8 +38,9 @@ int32_t moby_hero_on_l1(uint32_t m) {
 // index +0xb4, the hero-near boxes +0xcc / +0xc0, the wait +0xba, the speed +0xb0 in
 // 60ths of a path per second, the phase +0xa4 in 0..1, its rate +0xa8 / +0xac, the sound slot +0xc4,
 // the attach frame +0x60). m+0xbc: 0 at the first point, 1 at the last, 2 on its way. It sets off
-// when the hero rides it or comes nearer to its far end than to its near one.
-// orig: L1:0x002b9eb0
+// when the hero rides it or comes nearer to its far end than to its near one. The same code (the engine's data and the base
+// ELF's only) on Kerwan, Orxon (class 1141) and Gemlik Base: this port serves them all.
+// orig: L1:0x002b9eb0 L3:0x00291dd0 L10:0x002de860 L13:0x002b0478
 void lift_update_l1(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
     bool ready = false;

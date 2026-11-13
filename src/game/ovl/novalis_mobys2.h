@@ -18,16 +18,16 @@ struct TrRet {
 };
 
 // ---- the gold weapon cases (novalis_cases.cpp)
-void gold_case_update_l1(uint32_t m);                        // L1:0x002e1ac0  classes 304, 1456..1465
+void gold_case_update_l1(uint32_t m);                        // L1:0x002e1ac0  classes 304, 1456..1465 (L13:0x002e7238)
 
 // ---- the teleporter pads (novalis_teleporter.cpp)
 void moby_group_set_state(int32_t group, uint32_t state);     // L1:0x0026e0e0 (and its copies on levels 5-8, 11-13, 15-18)
-void teleporter_trigger_l1(uint32_t m);                        // L1:0x00308b28
+void teleporter_trigger_l1(uint32_t m);                        // L1:0x00308b28 (and its copies on levels 7, 8, 12, 13, 16-18)
 void teleporter_pieces_update(uint32_t m);                     // L1:0x003092d0 (and its copies on levels 7, 8, 11-13, 16-18)
-void teleporter_hint_l1(uint32_t m);                           // L1:0x00309430
-void teleporter_hide_l1(uint32_t m);                           // L1:0x003097e8
-void teleporter_show_l1(uint32_t m);                           // L1:0x00309838
-void teleporter_update_l1(uint32_t m);                         // L1:0x00308bd8  class 1135
+void teleporter_hint_l1(uint32_t m);                           // L1:0x00309430 (and its copies on levels 7, 8, 12, 13, 16-18)
+void teleporter_hide_l1(uint32_t m);                           // L1:0x003097e8 (and its copies on levels 7, 8, 12, 13, 16-18)
+void teleporter_show_l1(uint32_t m);                           // L1:0x00309838 (and its copies on levels 7, 8, 12, 13, 16-18)
+void teleporter_update_l1(uint32_t m);                         // L1:0x00308bd8  class 1135 (and its copies on levels 7, 8, 12, 13, 16-18)
 
 // ---- the path follower library (novalis_path.cpp)
 void path_follower_init_l1(uint32_t f);                                          // L1:0x0028b410 L3:0x00264458 L4:0x00268b18 L12:0x0028eb00 L14:0x0027df78

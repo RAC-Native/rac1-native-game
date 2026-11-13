@@ -34,7 +34,7 @@ void green_mushroom_update_l1(uint32_t m);            // L1:0x002fd9a0  class 75
 // ---- the platforms, doors and lifts (novalis_platforms.cpp)
 void moby_sound_release_l1(uint32_t m, int32_t slot);  // (helper) the inlined channel stop
 int32_t moby_hero_on_l1(uint32_t m);                   // L1:0x00277fb8 (and its copies on levels 3, 7, 9, 10, 12, 13, 14)
-void lift_update_l1(uint32_t m);                       // L1:0x002b9eb0  class 726
+void lift_update_l1(uint32_t m);                       // L1:0x002b9eb0  class 726 (L3:0x00291dd0 L10:0x002de860 class 1141, L13:0x002b0478)
 
 void door_half_update_l1(uint32_t m);                  // L1:0x002f4710  class 665
 void door_update_l1(uint32_t m);                       // L1:0x002fed68  classes 768 / 769

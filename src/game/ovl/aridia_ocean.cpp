@@ -1,5 +1,6 @@
 // Hand-written overlay code: Aridia's ocean (class 854), background ship glows (classes 1212 and 1213), and class 1208
-// (the Rocket Launcher's rocket).
+// (the Rocket Launcher's rocket). The ocean's helpers (set-up, cells, texture, end, one record) serve every level's copy
+// of them (their `orig:` lines list the levels): the engine's data through OV().
 #include <game/ovl/aridia_ocean.h>
 
 #include <game/math/vecmath.h>
@@ -21,8 +22,6 @@
 namespace rac1 {
 
 namespace {
-
-constexpr LvlConst<2, 0x001611c0u> CUR{};  // DMA chain packet cursor on Aridia
 
 void load_vf(vu0l::Vu& u, int r, uint32_t addr) {
     const uint32_t a = addr & ~15u;
@@ -138,14 +137,17 @@ void ari_ocean_setup_l2(uint32_t c0, uint32_t c1, uint32_t c2, uint32_t c3, uint
     ee_stack_free(0x50);
 }
 
-// orig: L2:0x002a40f0
+// The ocean's set-up for one draw (VU1 program 7): the view's fog / far words saved (0x1612f8..) and taken from the record
+// (+0x20..) unless the fog mode (0x15f458) is 1, the matrices and the GIF / VIF packet, the animated texture's two frames
+// blended into the record's texture buffer (+0x1c). The same code on every level with an ocean (the engine's data only).
+// orig: L2:0x002a40f0 L3:0x00291218 L5:0x002ce130 L7:0x002cc6a0 L8:0x002acd08 L9:0x002c1220 L14:0x002aac78
 void ari_ocean_vu7_setup_l2(uint32_t rec) {
-    const uint32_t view = L2_ADDR(0x0016d040u);
-    sw(L2_ADDR(0x001612f8u), lwu(view + 0x218));
-    sw(L2_ADDR(0x001612fcu), lwu(view + 0x21c));
-    sw(L2_ADDR(0x00161300u), lwu(view + 0x228));
-    sw(L2_ADDR(0x00161304u), lwu(view + 0x22c));
-    if (lw(L2_ADDR(0x0015f458u)) != 1) {
+    const uint32_t view = OV(0x0016ca40);
+    sw(OV(0x001612f8), lwu(view + 0x218));
+    sw(OV(0x001612fc), lwu(view + 0x21c));
+    sw(OV(0x00161300), lwu(view + 0x228));
+    sw(OV(0x00161304), lwu(view + 0x22c));
+    if (lw(OV(0x0015f458)) != 1) {
         sw(view + 0x218, lwu(rec + 0x20));
         sw(view + 0x21c, lwu(rec + 0x24));
         sw(view + 0x228, lwu(rec + 0x28));
@@ -155,7 +157,7 @@ void ari_ocean_vu7_setup_l2(uint32_t rec) {
     projection_setup();
     render_view_setup();
 
-    const uint32_t cam = L2_ADDR(0x001673c0u);
+    const uint32_t cam = OV(0x00166dc0);
     Mat4 scale_m{};
     mat4_scale_diag(scale_m, 1024.0f);
     vec3_scale(scale_m.r[3], V(cam), -1024.0f);
@@ -163,7 +165,7 @@ void ari_ocean_vu7_setup_l2(uint32_t rec) {
 
     packet_ref(0x0010e810u, lhu(0x0010e800u));
 
-    const uint32_t s0 = lwu(CUR);
+    const uint32_t s0 = lwu(OV(0x001611c0));
     sw(s0 + 0x00, 0x10000000u);
     sw(s0 + 0x04, 0);
     sw(s0 + 0x08, 0x11000000u);
@@ -193,16 +195,16 @@ void ari_ocean_vu7_setup_l2(uint32_t rec) {
     const uint32_t after_vu = s0 + 0xf0u;
     sw(s0, lwu(s0) | static_cast<uint32_t>((static_cast<int32_t>(after_vu - s0) >> 4) - 1));
     sw(after_vu + 0x00, 0x30000003u);
-    sw(after_vu + 0x04, L2_ADDR(0x001cb8f0u));
+    sw(after_vu + 0x04, OV(0x001cb2f0));
     sw(after_vu + 0x08, 0);
     sw(after_vu + 0x0c, 0x50000003u);
     sw(after_vu + 0x10, 0x10000009u);
     sw(after_vu + 0x14, 0);
     sw(after_vu + 0x18, 0);
     sw(after_vu + 0x1c, 0x50000009u);
-    sw(CUR, after_vu + 0x20u);
+    sw(OV(0x001611c0), after_vu + 0x20u);
 
-    const int32_t frame = lw(L2_ADDR(0x0015f5ccu));
+    const int32_t frame = lw(OV(0x0015f5cc));
     const int32_t period = static_cast<int32_t>(lbu(rec + 0x33));
     if (period == 0) eer::ee_break(7);
     const int32_t nframes = static_cast<int32_t>(lbu(rec + 0x3e));
@@ -214,8 +216,8 @@ void ari_ocean_vu7_setup_l2(uint32_t rec) {
     const float frac = fpu_sub(f_div, int_to_float(step));
 
     const uint32_t tex_buf = lwu(rec + 0x1c);
-    const uint32_t tex_data = lwu(L2_ADDR(0x0015f420u));
-    const uint32_t tbl = L2_ADDR(0x0016d780u);
+    const uint32_t tex_data = lwu(OV(0x0015f420));
+    const uint32_t tbl = OV(0x0016d180);
     const uint32_t e0 = tbl + ((base_frame + static_cast<uint32_t>(f0)) << 4);
     const uint32_t e1 = tbl + ((base_frame + static_cast<uint32_t>(f1)) << 4);
     const uint32_t idx0 = tex_data + (static_cast<uint32_t>(lhu(e0 + 0x8)) << 4);
@@ -230,24 +232,24 @@ void ari_ocean_vu7_setup_l2(uint32_t rec) {
     const int32_t vram_ptr = lw(0x0015ee74u);
     const uint64_t tex0_val =
         static_cast<uint64_t>(static_cast<int64_t>(vram_ptr >> 8)) | 0x18100000ull | (0xb000ull << 19);
-    sd(L2_ADDR(0x001612f0u), tex0_val);
+    sd(OV(0x001612f0), tex0_val);
 
     uint64_t fogcol = static_cast<uint64_t>(lbu(rec + 0x30)) | (static_cast<uint64_t>(lbu(rec + 0x31)) << 8) |
                       (static_cast<uint64_t>(lbu(rec + 0x32)) << 16);
-    if (lw(L2_ADDR(0x0015f458u)) == 1) {
+    if (lw(OV(0x0015f458)) == 1) {
         const uint64_t r = static_cast<uint64_t>(static_cast<int64_t>(lw(view + 0x230)));
         const uint64_t g = static_cast<uint64_t>(static_cast<int64_t>(lw(view + 0x234) << 8));
         const uint64_t b = static_cast<uint64_t>(static_cast<int64_t>(lw(view + 0x238) << 16));
         fogcol = r | g | b;
     }
 
-    const uint32_t gs = lwu(CUR);
+    const uint32_t gs = lwu(OV(0x001611c0));
     const uint32_t alpha_fix = lbu(rec + 0x3f);
     sd(gs + 0x00, 0x8000000000008001ull);
     sd(gs + 0x08, 0xeeeeeeeeull);
     sd(gs + 0x10, (static_cast<uint64_t>(alpha_fix) << 32) | 0x64ull);
     sd(gs + 0x18, 0x42ull);
-    sd(gs + 0x20, ld(L2_ADDR(0x001612f0u)));
+    sd(gs + 0x20, ld(OV(0x001612f0)));
     sd(gs + 0x28, 0x6ull);
     sd(gs + 0x30, fogcol);
     sd(gs + 0x38, 0x3dull);
@@ -277,12 +279,13 @@ void ari_ocean_vu7_setup_l2(uint32_t rec) {
     sd(fl + 0x18, 0xeull);
     sd(fl + 0x20, 0ull);
     sd(fl + 0x28, 0x3full);
-    sw(CUR, fl + 0x30u);
+    sw(OV(0x001611c0), fl + 0x30u);
 
     sw(0x0015ee74u, lwu(0x0015ee74u) + 0x4000u);
 }
 
-// orig: L2:0x002101b8
+// A transfer from main memory to the scratchpad (the DMA's channel 9). The same code on every level with an ocean.
+// orig: L2:0x002101b8 L3:0x001f8ae8 L5:0x0022de38 L7:0x00226fb8 L8:0x00211cd0 L9:0x0021ee30 L14:0x00212760
 void ari_spr_dma_to_l2(uint32_t madr, uint32_t sadr, uint32_t qwc) {
     eer::hw_sw(0x1000d480u, sadr);
     eer::hw_sw(0x1000d410u, madr);
@@ -293,20 +296,22 @@ void ari_spr_dma_to_l2(uint32_t madr, uint32_t sadr, uint32_t qwc) {
 // orig: L2:0x002a4880
 void ari_ocean_end_l2() { ari_ocean_end_body_l2(0); }
 
-// orig: L2:0x002a46e0
+// The ocean's draw closed: the view's saved words put back, the fog colour's packet. The same code on every level with an
+// ocean.
+// orig: L2:0x002a46e0 L3:0x00291808 L5:0x002ce720 L7:0x002ccc90 L8:0x002ad2f8 L9:0x002c1810 L14:0x002ab268
 void ari_ocean_end_body_l2(uint32_t) {
     dma_cnt_vif(0x13000000u);  // (Aridia's copy 0x2a0368 of Veldin's 0x2a0b60)
 
-    const uint32_t view = L2_ADDR(0x0016d040u);
-    sw(view + 0x218, lwu(L2_ADDR(0x001612f8u)));
-    sw(view + 0x21c, lwu(L2_ADDR(0x001612fcu)));
-    sw(view + 0x228, lwu(L2_ADDR(0x00161300u)));
-    sw(view + 0x22c, lwu(L2_ADDR(0x00161304u)));
+    const uint32_t view = OV(0x0016ca40);
+    sw(view + 0x218, lwu(OV(0x001612f8)));
+    sw(view + 0x21c, lwu(OV(0x001612fc)));
+    sw(view + 0x228, lwu(OV(0x00161300)));
+    sw(view + 0x22c, lwu(OV(0x00161304)));
 
     projection_setup();
     render_view_setup();
 
-    const uint32_t p = lwu(CUR);
+    const uint32_t p = lwu(OV(0x001611c0));
     sw(p + 0x00, 0x10000002u);
     sw(p + 0x04, 0);
     sw(p + 0x08, 0x11000000u);
@@ -318,9 +323,21 @@ void ari_ocean_end_body_l2(uint32_t) {
     const uint64_t b = static_cast<uint64_t>(static_cast<int64_t>(lw(view + 0x238))) << 16;
     sd(p + 0x20, r | g | b);
     sd(p + 0x28, 0x3dull);
-    sw(CUR, p + 0x30u);
+    sw(OV(0x001611c0), p + 0x30u);
 
     packet_ref_1c24f0();
+}
+
+// One ocean record drawn (the levels other than Aridia, whose draw callback sets up from a record of its own and draws
+// several): the set-up from the record itself, the cells' uv table to the scratchpad, the cells tested and drawn, the draw
+// closed.
+// orig: L3:0x00291918 L5:0x002ce830 L7:0x002ccda0 L8:0x002ad408 L9:0x002c1920 L14:0x002ab378
+void ocean_draw_one(uint32_t rec) {
+    ari_ocean_vu7_setup_l2(rec);
+    ari_spr_dma_to_l2(OV(0x001cae00), 0x70002800u, 0xf8u);
+    ari_ocean_cells_clip_l2(rec);
+    ari_ocean_cells_draw_l2(rec);
+    ari_ocean_end_body_l2(rec);
 }
 
 // orig: L2:0x002a48a0
@@ -329,13 +346,15 @@ void ari_ocean_record_l2(uint32_t rec) {
     ari_ocean_cells_draw_l2(rec);
 }
 
-// orig: L2:0x0024f748
+// The record's cells (7 x 7 units) tested against the view: a byte per cell at the scratchpad's 0x2000 (0 culled, 1 inside,
+// 2 clipped). The same code on every level with an ocean.
+// orig: L2:0x0024f748 L3:0x0023bed0 L5:0x002775c8 L7:0x00275d88 L8:0x002577e8 L9:0x0026cce8 L14:0x00255788
 void ari_ocean_cells_clip_l2(uint32_t rec) {
     if (vu0::running()) vu0::drain();
     vu0l::Vu u;
     u.load();
 
-    const uint32_t vbase = L2_ADDR(0x00167280u);
+    const uint32_t vbase = OV(0x00166c80);
     for (int i = 0; i < 8; ++i) {
         load_vf(u, 16 + i, vbase + 0xc0u + static_cast<uint32_t>(i) * 0x10u);
     }
@@ -427,7 +446,9 @@ void ari_ocean_cells_clip_l2(uint32_t rec) {
     u.store();
 }
 
-// orig: L2:0x0024fa80
+// The record's visible cells drawn: each one's 8 x 8 points, its packet from the template (0x1c4020) and its uv table. The
+// same code on every level with an ocean.
+// orig: L2:0x0024fa80 L3:0x0023c208 L5:0x00277900 L7:0x002760c0 L8:0x00257b20 L9:0x0026d020 L14:0x00255ac0
 void ari_ocean_cells_draw_l2(uint32_t rec) {
     if (vu0::running()) vu0::drain();
     vu0l::Vu u;
@@ -463,14 +484,14 @@ void ari_ocean_cells_draw_l2(uint32_t rec) {
                     u.addbc(25, 25, u.lane(13, 3), vu0l::Y);
                 }
 
-                uint32_t pkt = lwu(CUR);
+                uint32_t pkt = lwu(OV(0x001611c0));
                 uint32_t at = pkt;
-                uint32_t tmpl = L2_ADDR(0x001c4620u);
+                uint32_t tmpl = OV(0x001c4020);
                 for (int i = 0; i < 5; ++i, tmpl += 0x10u, at += 0x10u) {
                     lq_sq(at, tmpl);
                 }
                 sw(at - 0x40u, lwu(at - 0x40u) | 0x7cu);
-                lq_sq(at, L2_ADDR(0x00160f00u));
+                lq_sq(at, OV(0x00160f00));
                 at += 0x10u;
                 u.addbc(1, 0, u.lane(29, 2), vu0l::X);
                 sw(at - 0x4u, lwu(at - 0x4u) | (0x7cu << 16));
@@ -497,7 +518,7 @@ void ari_ocean_cells_draw_l2(uint32_t rec) {
                 pkt += 0x10u;
 
                 sw(pkt + 0x00u, 0x3000003fu);
-                sw(pkt + 0x04u, L2_ADDR(0x001cb9c0u));
+                sw(pkt + 0x04u, OV(0x001cb3c0));
                 sd(pkt + 0x08u, 0ull);
                 pkt += 0x10u;
 
@@ -505,7 +526,7 @@ void ari_ocean_cells_draw_l2(uint32_t rec) {
                 sw(pkt + 0x04u, 0);
                 sw(pkt + 0x08u, 0x15000000u | static_cast<uint32_t>(((vis - 1) << 1) + 0xc));
                 sw(pkt + 0x0cu, 0);
-                sw(CUR, pkt + 0x10u);
+                sw(OV(0x001611c0), pkt + 0x10u);
             }
             uv_ptr += 0x200u;
             rem_x -= 7;
@@ -632,7 +653,9 @@ void ari_class1208_update_l2(uint32_t m) {
     }
 }
 
-// orig: L2:0x0024fca0
+// The animated texture's two frames (indices and palettes through the scratchpad) blended into `dst`. The same code on every
+// level with an ocean.
+// orig: L2:0x0024fca0 L3:0x0023c428 L5:0x00277b20 L7:0x002762e0 L8:0x00257d40 L9:0x0026d240 L14:0x00255ce0
 void ari_ocean_tex_upload_l2(uint32_t dst, uint32_t idx0, uint32_t clut0, uint32_t idx1, uint32_t, uint32_t count,
                              float blend) {
     if (vu0::running()) vu0::drain();

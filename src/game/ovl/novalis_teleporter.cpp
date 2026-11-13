@@ -1,7 +1,6 @@
-// Novalis's own moby classes, part 2c: the teleporter pads (class 1135). Header novalis_mobys2.h. Addresses are Novalis's
-// (`orig: L1:`); Novalis-only data is L1_ADDR, the globals the
-// engine shares with Veldin are the level's own (OV), the base ELF's are bare. The group state and the pieces' update
-// serve every level's copy of them (their levels' own words from per-level tables).
+// Novalis's own moby classes, part 2c: the teleporter pads (class 1135). Header novalis_mobys2.h. Every function here serves
+// every level's copy of it (the `orig:` lines list them): the globals the engine shares with Veldin are the level's own (OV),
+// the levels' own words come from per-level tables (L<n>_ADDR), the base ELF's are bare.
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/novalis_mobys2.h>
@@ -36,8 +35,8 @@ void moby_group_set_state(int32_t group, uint32_t state) {
 
 // The pad stepped on: its bit (the moby's index +0xb2) is set in the level's collected table (0x14c190 + level * 0x100)
 // and in the saved one (0x1ba950 / Veldin 0x1ba4d0); the group in +0x21 (none: 0xff) goes to state 1, else the pad
-// itself.
-// orig: L1:0x00308b28
+// itself. The same code on every level with teleporter pads.
+// orig: L1:0x00308b28 L7:0x0031c478 L8:0x003041f8 L12:0x00300c38 L13:0x003047d8 L16:0x002e0070 L17:0x002e4e80 L18:0x002edac8
 void teleporter_trigger_l1(uint32_t m) {
     const uint32_t level = static_cast<uint32_t>(lw(0x0015ed84));
     uint32_t idx = lhu(m + 0xb2);
@@ -55,8 +54,10 @@ void teleporter_trigger_l1(uint32_t m) {
 }
 
 namespace {
-// the pieces' height above the pad and their turn (degrees): two words of each level's own small data
-uint32_t pieces_height_word() {
+// The teleporter's words in each level's own small data (Novalis 0x161f78 .. 0x161fb0, the same layout on every level): the
+// pieces' height above the pad +0 and their turn in degrees +8, the springs' rates +0x10 / +0x14 / +0x18, the hint tables of
+// the pads of levels 8, 12, 16 and 18 (two text ids each) +0x20 / +0x28 / +0x30 / +0x38.
+uint32_t tele_sdata() {
     if (on_level(NOVALIS)) return L1_ADDR(0x00161f78);
     if (on_level(UMBRIS)) return L7_ADDR(0x00161c28);
     if (on_level(BATALIA)) return L8_ADDR(0x00162258);
@@ -67,16 +68,33 @@ uint32_t pieces_height_word() {
     if (on_level(VELDIN_ORBIT)) return L17_ADDR(0x00161ea8);
     return L18_ADDR(0x00162178);
 }
-uint32_t pieces_turn_word() {
-    if (on_level(NOVALIS)) return L1_ADDR(0x00161f80);
-    if (on_level(UMBRIS)) return L7_ADDR(0x00161c30);
-    if (on_level(BATALIA)) return L8_ADDR(0x00162260);
-    if (on_level(POKITARU)) return L11_ADDR(0x00161908);
-    if (on_level(HOVEN)) return L12_ADDR(0x00161d50);
-    if (on_level(GEMLIK)) return L13_ADDR(0x00161da8);
-    if (on_level(KALEBO)) return L16_ADDR(0x00161ce8);
-    if (on_level(VELDIN_ORBIT)) return L17_ADDR(0x00161eb0);
-    return L18_ADDR(0x00162180);
+uint32_t pieces_height_word() { return tele_sdata(); }
+uint32_t pieces_turn_word() { return tele_sdata() + 8; }
+
+// The hint tables of the pads of levels 1, 7 and 13 (+0) and of level 17 (+0x18) in each level's own data (Novalis
+// 0x201600; six text ids each). Here and below: the levels whose copies carry the pad's update and hint (not Pokitaru's,
+// which has the pieces only).
+uint32_t tele_hint_tables() {
+    if (on_level(NOVALIS)) return L1_ADDR(0x00201600);
+    if (on_level(UMBRIS)) return L7_ADDR(0x0020e860);
+    if (on_level(BATALIA)) return L8_ADDR(0x001ef740);
+    if (on_level(HOVEN)) return L12_ADDR(0x001fb4c0);
+    if (on_level(GEMLIK)) return L13_ADDR(0x001d9b20);
+    if (on_level(KALEBO)) return L16_ADDR(0x001d9630);
+    if (on_level(VELDIN_ORBIT)) return L17_ADDR(0x001d9810);
+    return L18_ADDR(0x001da2a0);
+}
+
+// The pad's draw callback (class1135_draw, shared_class1135.cpp) as the level's own code address: the update queues it.
+uint32_t tele_draw_fn() {
+    if (on_level(NOVALIS)) return L1_ADDR(0x003094f0);
+    if (on_level(UMBRIS)) return L7_ADDR(0x0031ce40);
+    if (on_level(BATALIA)) return L8_ADDR(0x00304bc0);
+    if (on_level(HOVEN)) return L12_ADDR(0x00301600);
+    if (on_level(GEMLIK)) return L13_ADDR(0x003051a0);
+    if (on_level(KALEBO)) return L16_ADDR(0x002e0a38);
+    if (on_level(VELDIN_ORBIT)) return L17_ADDR(0x002e5848);
+    return L18_ADDR(0x002ee490);
 }
 }  // namespace
 
@@ -119,27 +137,28 @@ void teleporter_pieces_update(uint32_t m) {
 }
 
 // The hint a pad shows when the hero stands on it (hud_message_request(4, id)): the level's table (selected by the
-// level number 1..18; the levels without one show nothing) indexed by the pad's pvar +0x10.
-// orig: L1:0x00309430
+// level number 1..18; the levels without one show nothing) indexed by the pad's pvar +0x10. Every level's copy carries
+// all the tables (in its own data) and the same jump table.
+// orig: L1:0x00309430 L7:0x0031cd80 L8:0x00304b00 L12:0x00301540 L13:0x003050e0 L16:0x002e0978 L17:0x002e5788 L18:0x002ee3d0
 void teleporter_hint_l1(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
     const uint32_t k = static_cast<uint32_t>(lw(0x0015ed84)) - 1u;
     if (!(k < 0x12)) return;
     uint32_t tab = 0;
-    switch (k) {
-    case 0: case 6: case 12: tab = L1_ADDR(0x00201600u); break;
-    case 7: tab = L1_ADDR(0x00166c00u - 0x4c68u); break;
-    case 11: tab = L1_ADDR(0x00166c00u - 0x4c60u); break;
-    case 15: tab = L1_ADDR(0x00166c00u - 0x4c58u); break;
-    case 16: tab = L1_ADDR(0x00201618u); break;
-    case 17: tab = L1_ADDR(0x00166c00u - 0x4c50u); break;
-    default: return;
+    switch (k) {  // (the jump table L1:0x20b8e0)
+    case 0: case 6: case 12: tab = tele_hint_tables(); break;         // (L1:0x00309488)
+    case 7: tab = tele_sdata() + 0x20; break;                         // (L1:0x00309498)
+    case 11: tab = tele_sdata() + 0x28; break;                        // (L1:0x0030946c)
+    case 15: tab = tele_sdata() + 0x30; break;                        // (L1:0x003094a4)
+    case 16: tab = tele_hint_tables() + 0x18; break;                  // (L1:0x00309478)
+    case 17: tab = tele_sdata() + 0x38; break;                        // (L1:0x003094c8)
+    default: return;                                                  // (L1:0x003094e4)
     }
     hud_message_request(4, lw(tab + (lwu(pv + 0x10) << 2)));
 }
 
 // A pad hidden: it and its three pieces flagged +0x34 |= 1, +0x31 = 0 (the pad's +0x94 cleared).
-// orig: L1:0x003097e8
+// orig: L1:0x003097e8 L7:0x0031d138 L8:0x00304eb8 L12:0x003018f8 L13:0x00305498 L16:0x002e0d30 L17:0x002e5b40 L18:0x002ee788
 void teleporter_hide_l1(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
     sb(m + 0x31, 0);
@@ -156,7 +175,7 @@ void teleporter_hide_l1(uint32_t m) {
 }
 
 // A pad shown: its +0x94 from its class's +0x10, +0x31 = 1, the flag +0x34 bit 0 cleared on it and its pieces.
-// orig: L1:0x00309838
+// orig: L1:0x00309838 L7:0x0031d188 L8:0x00304f08 L12:0x00301948 L13:0x003054e8 L16:0x002e0d80 L17:0x002e5b90 L18:0x002ee7d8
 void teleporter_show_l1(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
     sw(m + 0x94, lwu(lwu(m + 0x24) + 0x10));
@@ -175,8 +194,9 @@ void teleporter_show_l1(uint32_t m) {
 // Class 1135, a teleporter pad: it is shown (3 pieces of class 0x13b spawned at its first update) until it has been
 // used (its bit in the level's tables, or the flag pvar +0x3c), its states 0 = start, 1 = waiting (the hero on it,
 // Circle: moves the hero's camera, the pieces spring open: 2), 2 / 7 = opening, 3 = the count to the jump (the hero
-// placed at the destination pad pvar +0, its state 4), 4 / 8 = closing, 5 = nothing, 6 = group start.
-// orig: L1:0x00308bd8
+// placed at the destination pad pvar +0, its state 4), 4 / 8 = closing, 5 = nothing, 6 = group start. The same code on
+// every level with teleporter pads (the springs' rates and the draw callback the level's own).
+// orig: L1:0x00308bd8 L7:0x0031c528 L8:0x003042a8 L12:0x00300ce8 L13:0x00304888 L16:0x002e0120 L17:0x002e4f30 L18:0x002edb78
 void teleporter_update_l1(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
     uint32_t s4 = 0;
@@ -215,9 +235,10 @@ void teleporter_update_l1(uint32_t m) {
     const uint32_t P = 0x0013f350;
     // one step of a pair of the pad's springs: the position at `pos`, its velocity at `vel`, towards `target`
     auto seek = [&](uint32_t pos, uint32_t vel, float target, float ft) {
-        const float f13 = lwc1(L1_ADDR(0x00161f88)) * ft;
-        const float f14 = lwc1(L1_ADDR(0x00161f8c)) * ft;
-        const float f15 = lwc1(L1_ADDR(0x00161f90)) * lwc1(0x0015ed6c);
+        const uint32_t rates = tele_sdata();
+        const float f13 = lwc1(rates + 0x10) * ft;
+        const float f14 = lwc1(rates + 0x14) * ft;
+        const float f15 = lwc1(rates + 0x18) * lwc1(0x0015ed6c);
         seek_1d_v(*static_cast<float*>(ee_ram_ptr(pos)), *static_cast<float*>(ee_ram_ptr(vel)), target, f13, f14, f15);
     };
     // the state 1 body (also the end of state 6)
@@ -307,7 +328,7 @@ void teleporter_update_l1(uint32_t m) {
     }
     case 3: {
         if (lwc1(pv + 0x34) != 0.0f) {
-            sub_001f93e0(L1_ADDR(0x003094f0), m);
+            sub_001f93e0(tele_draw_fn(), m);
             approach_f_v(*static_cast<float*>(ee_ram_ptr(pv + 0x34)), 0.0f, lwc1(0x0015ed6c) * u2f(0x40800000u));
             return;
         }
@@ -344,7 +365,7 @@ void teleporter_update_l1(uint32_t m) {
     case 4: case 8: {
         const float f20 = u2f(0x3ff9999au);
         if (lwc1(pv + 0x34) < f20) {
-            sub_001f93e0(L1_ADDR(0x003094f0), m);
+            sub_001f93e0(tele_draw_fn(), m);
             approach_f_v(*static_cast<float*>(ee_ram_ptr(pv + 0x34)), f20, lwc1(0x0015ed6c) * u2f(0x40800000u));
             teleporter_pieces_update(m);
         } else if (0.0f < lwc1(pv + 0x24)) {
