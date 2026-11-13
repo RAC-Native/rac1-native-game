@@ -8,6 +8,7 @@
 #include <game/ovl/particle_types_tr.h>
 #include <game/ovl/particle_types2_tr.h>
 #include <game/ovl/shared_classes_tr.h>
+#include <game/ovl/shared_particle_kinds.h>
 #include <game/ovl/shared_particles.h>
 
 namespace rac1 {
@@ -42,7 +43,7 @@ void veldin_extras_register() {
     ovl_register_moby_fn(0x0026fc38, particle_27_update);  // (particle type 0x27: Batalia L8:0x279f00, from bat_2b8228_l8)
     ovl_register_moby_fn(0x00275320, particle_49_update);  // (particle type 0x49: Batalia's class 1400, L8:0x27f5f0)
     ovl_register_moby_fn(0x0026eb88, particle_1f_update);  // (particle type 0x1f: Giant Clank's streaks, L15:0x25e2c0; L18:0x270af0)
-    ovl_register_moby_fn(0x00275eb0, particle_50_update);  // (particle type 0x50: Drek's fleet's laser beams, L17:0x26fdd0 from class 1368)
+    ovl_register_moby_fn(0x00275eb0, beam_particle_update);  // (particle type 0x50: Drek's fleet's laser beams, L17:0x26fdd0 from class 1368; shared_particle_kinds.cpp)
     // the particle types no level's code spawns (0x2a: only its own update 0x270948, through 0x270758), registered so that none can
     // hang (an unregistered update logs TODO_PORT and the particle neither moves nor expires): oracle batch 340
     ovl_register_moby_fn(0x002694f8, particle_03_update);  // (particle type 0x03)

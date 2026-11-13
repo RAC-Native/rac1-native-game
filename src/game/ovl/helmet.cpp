@@ -13,8 +13,7 @@
 
 namespace rac1 {
 
-namespace {
-
+// (Also the levels' copies of Veldin's 0x2d6bf0, the same code: shared_little.cpp calls it.)
 // orig: 0x002e06a8
 void helmet_init_fx(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
@@ -33,6 +32,8 @@ void helmet_init_fx(uint32_t m) {
     swc1(pv + 0x40, 2.5f);
     swc1(pv + 0x44, 3.0f);
 }
+
+namespace {
 
 // orig: 0x002e0788
 void helmet_spawn_fx(uint32_t m) {

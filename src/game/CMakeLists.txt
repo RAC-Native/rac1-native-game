@@ -197,6 +197,22 @@ add_library(rac1_game STATIC
     ovl/shared_class1038.cpp
     ovl/shared_class1378.cpp
     ovl/shared_class1108.cpp
+    ovl/shared_class1179.cpp
+    ovl/shared_class933.cpp
+    ovl/shared_class235.cpp
+    ovl/shared_hoverboard.cpp
+    ovl/shared_floaters.cpp
+    ovl/shared_class344.cpp
+    ovl/shared_little.cpp
+    ovl/shared_cutscene_fx.cpp
+    ovl/shared_particle_kinds.cpp
+    ovl/shared_class1221.cpp
+    ovl/shared_class1371.cpp
+    ovl/shared_class823.cpp
+    ovl/shared_class1511.cpp
+    ovl/shared_panel_lights.cpp
+    ovl/shared_waves.cpp
+    ovl/shared_blarg_meshes.cpp
     ovl/novalis_amoeboid.cpp
     ovl/vendor_draw.cpp
     ovl/vendor_frame.cpp
