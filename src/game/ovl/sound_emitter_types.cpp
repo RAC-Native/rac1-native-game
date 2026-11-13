@@ -3,9 +3,9 @@
 // requests they make (a slot's volume, the reverb, the music track). Every level that has one of these functions has the
 // same code, relinked: one port serves them all. What they touch is the base ELF's (the hero 0x13f3d0, the sound slots
 // 0x13e5c0, the reverb request 0x13e5b0, the music streams 0x1516d0: bare) and the engine's data that every overlay moves
-// the same way (the camera 0x166dc0, the level's sound list 0x15f5f4, the height map 0x15fc98..: OV); the one level-only
-// word is type 4's (L8 / L14). The dispatch is each level's own (`*_sound_emitter_call`, sound.cpp). Header
-// sound_emitter.h. An emitter's record: its update +4, its parameters +8, a size +0xc, its matrix +0x10, its position
+// the same way (the camera 0x166dc0, the level's sound list 0x15f5f4: OV; the height map through ground_height_at,
+// shared_height_map.cpp); the one level-only word is type 4's (L8 / L14). The dispatch is each level's own
+// (`*_sound_emitter_call`, sound.cpp). Header sound_emitter.h. An emitter's record: its update +4, its parameters +8, a size +0xc, its matrix +0x10, its position
 // +0x40, the matrix's inverse +0x50. The sound slots are 0x70 bytes: +4 playing, +0x10 volume, +0x1c emitter, +0x20 position.
 #include <game/ovl/sound_emitter.h>
 
@@ -13,6 +13,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/shared_height_map.h>
 #include <game/ovl/variants.h>
 #include <game/ovl/variants_l14.h>
 #include <game/ovl/variants_l8.h>
@@ -48,19 +49,6 @@ bool inside_unit_box(const Vec4& v) {
 void clamp_unit(float& v) {
     if (1.0f < v) v = 1.0f;
     else if (v < -1.0f) v = -1.0f;
-}
-
-// The ground's height under (x, y) from the level's height map (0x15fc98 its width, 0x15fca8 its bytes, 0x15fca0 /
-// 0x15fca4 the heights of byte 255 and byte 0): the byte at the point truncated to the grid, scaled between the two.
-// (Only the type-4 emitter calls it here; its other callers are still transliterated, particle_types2_tr.cpp.)
-// orig: 0x00263468 (its copies L8 0x26d3e0 / L14 0x26b008 stay transliterated for their other callers)
-float ground_height_at(const Vec4& p) {
-    const int32_t row = float_to_int(p.y);
-    const int32_t col = float_to_int(p.x);
-    const uint32_t at = lwu(OV(0x0015fca8)) + lwu(OV(0x0015fc98)) * static_cast<uint32_t>(row) + static_cast<uint32_t>(col);
-    const float low = lwc1(OV(0x0015fca0));
-    const float shade = fpu_div(int_to_float(static_cast<int32_t>(lbu(at))), 255.0f);
-    return fpu_add(fpu_mul(fpu_sub(lwc1(OV(0x0015fca4)), low), fpu_sub(1.0f, shade)), low);
 }
 
 // type 4's level-only word: how open the ground around the camera is, smoothed (0..1)

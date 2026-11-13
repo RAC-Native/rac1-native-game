@@ -120,6 +120,19 @@ add_library(rac1_game STATIC
     ovl/shared_classes_reg.cpp
     ovl/novalis_level_fns.cpp
     ovl/sound_emitter_types.cpp
+    ovl/shared_spawner.cpp
+    ovl/shared_sandmouse.cpp
+    ovl/shared_class567.cpp
+    ovl/shared_class679.cpp
+    ovl/shared_rock.cpp
+    ovl/shared_height_map.cpp
+    ovl/shared_class258.cpp
+    ovl/shared_class341.cpp
+    ovl/shared_helpers.cpp
+    ovl/shared_class1135.cpp
+    ovl/shared_class252.cpp
+    ovl/shared_boss_bar.cpp
+    ovl/shared_cam19.cpp
     ovl/novalis_birdbot.cpp
     ovl/shared_bg_ships.cpp
     ovl/shared_movers.cpp
