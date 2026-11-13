@@ -118,6 +118,26 @@ Useful variables:
 | `ORACLE_STACK=1` | When the original stops in the interpreter, prints where. |
 | `RAC1_ORACLE_DUMPS=<dir>` | Where the RAM dumps are (default `assets/dumps/oracle`). |
 
+### Vendor purchase demos (batch 131)
+
+Batch 131 includes 232 purchase-demo cases: all 14 NTSC-U demo scenes started through
+`vendor_demo_start`, actor interpolation on odd/even frames and camera cuts, the next scene
+block, both exit paths, and randomized camera/fade cases. It builds the fixtures from the
+disc; no recorded RAM dump is needed.
+The mock sound server lets an old voice finish and a new stream start, so the demo's
+readiness wait terminates on every tested level.
+
+```sh
+build/tests/ovl_oracle --batch 131 --level 1
+```
+
+The interpreted demo code uses the same host world-moby and particle passes as the port:
+some world callbacks are registered only in the native dispatcher. The demo's own camera,
+animation, block loading and exit code remain interpreted. One stale collision-record VU0
+`w` lane is excluded, as in batches 124/200. Level 0 borrows Novalis data on Veldin's image,
+so its incompatible vendor-class callback is disabled in the demo fixture. Run other levels
+to compare their own overlays and physical vendors. These cases do not verify PAL behavior.
+
 ### The reference batches
 
 Before a change to game code is merged, its own batch passes, and so do these. They cover the
