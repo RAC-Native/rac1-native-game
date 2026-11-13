@@ -8,6 +8,7 @@
 #include <game/ovl/particle_types_tr.h>
 #include <game/ovl/particle_types2_tr.h>
 #include <game/ovl/shared_classes_tr.h>
+#include <game/ovl/shared_particles.h>
 
 namespace rac1 {
 
@@ -35,7 +36,7 @@ void veldin_extras_register() {
     ovl_register_moby_fn(0x00273448, particle_3d_update);  // (particle type 0x3d)
     ovl_register_moby_fn(0x00273ee0, particle_41_update);  // (particle type 0x41)
     ovl_register_moby_fn(0x00272bc0, particle_3a_update);  // (particle type 0x3a)
-    ovl_register_moby_fn(0x00271d20, particle_31_update);  // (particle type 0x31: the bullets of Kerwan's helicopter, L3:0x260210)
+    ovl_register_moby_fn(0x00271d20, bullet_particle_update);  // (particle type 0x31: the bullets of Kerwan's helicopter, L3:0x260210; shared_particles.cpp)
     ovl_register_moby_fn(0x0026a880, particle_0a_update);  // (particle type 0x0a, smoke: Novalis' jets L1:0x27f660, Kerwan's class 845 L3:0x258a30, Eudora L4:0x25d0e8)
     ovl_register_moby_fn(0x0026ba68, particle_0e_update);  // (particle type 0x0e: class 156, L1:0x280970, L6:0x27a850, L8:0x275bd8, L9:0x28a428)
     ovl_register_moby_fn(0x0026fc38, particle_27_update);  // (particle type 0x27: Batalia L8:0x279f00, from bat_2b8228_l8)
@@ -52,13 +53,13 @@ void veldin_extras_register() {
     ovl_register_moby_fn(0x0026d470, particle_18_update);  // (particle type 0x18)
     ovl_register_moby_fn(0x0026e3a8, particle_1d_update);  // (particle type 0x1d)
     ovl_register_moby_fn(0x0026e670, particle_1e_update);  // (particle type 0x1e)
-    ovl_register_moby_fn(0x0026f048, particle_21_update);  // (particle type 0x21)
+    ovl_register_moby_fn(0x0026f048, timed_particle_update);  // (particle type 0x21; shared_particles.cpp)
     ovl_register_moby_fn(0x0026f898, particle_24_update);  // (particle type 0x24)
     ovl_register_moby_fn(0x0026fa00, particle_25_update);  // (particle type 0x25)
     ovl_register_moby_fn(0x0026fb00, particle_26_update);  // (particle type 0x26)
     ovl_register_moby_fn(0x00270948, particle_2a_update);  // (particle type 0x2a)
     ovl_register_moby_fn(0x00272438, particle_36_update);  // (particle type 0x36)
-    ovl_register_moby_fn(0x002738b0, particle_3f_update);  // (particle type 0x3f)
+    ovl_register_moby_fn(0x002738b0, timed_particle_update);  // (particle type 0x3f; shared_particles.cpp)
     ovl_register_moby_fn(0x002756f0, particle_4b_update);  // (particle type 0x4b)
     ovl_register_moby_fn(0x00275810, particle_4c_update);  // (particle type 0x4c)
     ovl_register_moby_fn(0x002b4198, class167_update_tr);  // (class 167, the Thruster-Pack's jets)

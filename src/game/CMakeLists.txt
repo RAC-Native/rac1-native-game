@@ -140,6 +140,23 @@ add_library(rac1_game STATIC
     ovl/shared_homing_missile.cpp
     ovl/shared_shell.cpp
     ovl/shared_tracer.cpp
+    ovl/shared_lights.cpp
+    ovl/shared_clank_pad.cpp
+    ovl/shared_flame_spray.cpp
+    ovl/shared_envmap.cpp
+    ovl/shared_beam.cpp
+    ovl/shared_arcs.cpp
+    ovl/shared_gold_scene.cpp
+    ovl/shared_tiles.cpp
+    ovl/shared_scroll.cpp
+    ovl/shared_zones.cpp
+    ovl/shared_attach.cpp
+    ovl/shared_shockwave.cpp
+    ovl/shared_finale.cpp
+    ovl/shared_flash.cpp
+    ovl/shared_small.cpp
+    ovl/shared_spawns.cpp
+    ovl/shared_particles.cpp
     ovl/novalis_amoeboid.cpp
     ovl/vendor_frame.cpp
     ovl/galactic_map.cpp

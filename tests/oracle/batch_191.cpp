@@ -2,7 +2,7 @@
 // (issue #9) and Clank hit while attacking (issue #32).
 //  - Issue #26: Kerwan's helicopter (class 631, L3:0x2cca00) and its missile (class 848, L3:0x2d47c0, spawned by L3:0x2d5208); and the
 //    helicopter's bullets: particle type 0x31 (Veldin's update 0x271d20, Kerwan's L3:0x260210, spawned by L3:0x260130 from the 848's
-//    update; ported as particle_31_update), on the dumps' live bullets and on new records of the type (frames, position, velocity
+//    update; ported as bullet_particle_update, shared_particles.cpp), on the dumps' live bullets and on new records of the type (frames, position, velocity
 //    varied). The subjects of the classes are the dumps' live mobys, their state and the hero's position varied; the original is
 //    Kerwan's own function at its own address. ORACLE_LEVEL=3.
 //  - Issue #9: Kerwan's hero input (Veldin 0x229b70, Kerwan's variant) during a jump with the Heli-Pack, the pad's pressed history
@@ -29,6 +29,8 @@
 //   clank_0415/ring_3015.bin, ring_3815.bin          batch 151's (tools/oracle/blarg_tour.sh clankdumps)
 
 #include "ovl_oracle.h"
+
+#include <game/ovl/shared_particles.h>
 
 #include <game/ovl/kerwan_classes_tr.h>
 #include <game/ovl/particle_types_tr.h>
@@ -184,7 +186,7 @@ void batch_191() {
                 if (ri(0, 3) == 0) w16(q + 0xa, u(ri(-1, 3)));
                 seed_rand();
                 return Args{{q}, {}};
-            }, [](A a) { particle_31_update(a.i[0]); return uint64_t{0}; });
+            }, [](A a) { bullet_particle_update(a.i[0]); return uint64_t{0}; });
         }
         // new records: about the hero (into the ground or the air), their frames and velocity varied
         const std::string nm = "particle31_new_" + base;
@@ -201,7 +203,7 @@ void batch_191() {
             w16(q + 0xa, u(ri(0, 4) == 0 ? ri(-1, 2) : ri(2, 45)));
             seed_rand();
             return Args{{q}, {}};
-        }, [](A a) { particle_31_update(a.i[0]); return uint64_t{0}; });
+        }, [](A a) { bullet_particle_update(a.i[0]); return uint64_t{0}; });
     }
     // ---- issue #9: the glide's start from the jump (hero_input_update on Kerwan, its variant)
     {

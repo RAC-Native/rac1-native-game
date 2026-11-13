@@ -55,6 +55,9 @@
 //   0x2c4380: decoy_obj.cpp)
 // - 21: Rilgar's moving water (class 831, L5:0x30ca80): its surface carries Ratchet swimming in it as it rises (his
 //   water height +0x2f0), and it holds still in the cutscenes (hooks.glue)
+// - 23: Giant Clank's pad (Quartu's class 1451 L15:0x2ed068, Veldin's finale's 1899 L18:0x2fb868; the shared port
+//   clank_pad_update, shared_clank_pad.cpp): boarding retires a moby still linked at its pvar +0x70, and on Quartu saves the
+//   pad's place as the checkpoint (checkpoint_save 0x284e50) before Ratchet is put on it
 // In the generated code each hook is a test that fails with the row off; on another region's disc the transliterated
 // functions that region changed (stand-ins: on the PAL disc 2.00 the 1.02 build's own) get none.
 //

@@ -745,6 +745,7 @@ test that fails, and the game's memory is the same frame by frame (RAC1_RAMHASH)
 | 13 | The Hologuise (item kind 0x1f): put on beyond the sub-states 0..2 in the hero states 4, 9 and 0xe (+0x2084) instead of the sub-state 4 (+0x208c); hero_place stops its countdown (+0x22de: putting it on or off 18 frames after the press); and a state forced on Ratchet in the Hologuise (hero_set_state, which takes him out of it first, `hero_mode3_exit`) stays his state | Not understood in full: the disguise put on or off across a teleport or a forced state | `sub_0020fe30` 0x20fe30, `hero_place` 0x216f90, `hero_set_state` 0x2223f8 (and its copies) |
 | 14 | The Decoy Glove's decoy: while Ratchet swims at the surface (state 0x31) within 1.5 of it, the decoy gets a push from his place (the event 0x10000, strength 1000, that the game's bumps use), so it moves off instead of staying in his way | Probably: a decoy that blocks Ratchet in the water | `decoy_object_update` 0x2c4380 (`decoy_obj.json` `host_ntsc`) |
 | 21 | Rilgar's water that rises and falls (class 831): it carries Ratchet swimming in it up as it rises (his water height +0x2f0 set to its surface while it is more than 0.1 from its target and he swims, +0x208c 0x11 / 0x12), and it holds still during a cutscene (game mode 2) | Probably: Ratchet left under the surface of rising water | Rilgar's L5:0x30ca80 (`hooks.glue`) |
+| 23 | Giant Clank's pad (Quartu's class 1451, Veldin's finale's 1899): the press that turns Ratchet into Giant Clank first retires a moby still linked to the pad (its pvar +0x70, when alive) and, on Quartu, saves the pad's place as the checkpoint (`checkpoint_save` 0x284e50, the point 0.1 over the ground under the pad) before Ratchet is put there | Probably: Giant Clank's fight on Quartu restarted from the checkpoint before the pad, and a leftover moby of an earlier boarding | `clank_pad_update` (`shared_clank_pad.cpp`, the shared port of L15:0x2ed068 / L18:0x2fb868; the levels still run their generated copies until their re-glue) |
 
 The 1.02 build changed more in the same places that is not ported here: in Novalis's and Veldin's crouch under a low
 ceiling (0x81) Ratchet stands up after 20 frames without the Thruster-Pack on his back; Rilgar's class 918 has calls of
@@ -756,7 +757,7 @@ changed functions already are the 1.02 build's (its stand-ins), so the row adds 
 
 ### The later build's other changes to the level objects
 
-The 1.02 build changed some forty functions of the levels' own code. Fixes 18 to 22 and 10 above are the ones ported.
+The 1.02 build changed some forty functions of the levels' own code. Fixes 18 to 22, 10 and 23 above are the ones ported.
 The others, read in the North American and the 1.02 build's code (PAL disc 2.00, the Japanese disc the same):
 
 - No change to the game: Hoven's class 1404, Aridia's two skid classes, Eudora's 1190, Oltanis's 924 and Veldin's
@@ -772,8 +773,7 @@ The others, read in the North American and the 1.02 build's code (PAL disc 2.00,
   value; Blarg's class 1051 keeps its 10-frame start once begun; Batalia's 467 removes its group (classes 0x24c..0x256,
   0x1d8) when its level flag 0x13d3b6 is set and its link is gone; Gemlik's class 170 (2.7 to 2.8), 1262 (a range of
   15), 0x2b4958 (a hit's +0x30 0.9 to 0.7) and 0x30bfb0 (+0x34 flag 0x20); Oltanis's 685 (only when Ratchet stands the
-  same way up as it, a dot product over 0); Quartu's 1451 and Veldin's finale's 1899 (the ship's pad: a leftover moby
-  removed, Quartu's own placement 0x274af8); Drek's fleet's 1448 and
+  same way up as it, a dot product over 0); Drek's fleet's 1448 and
   Veldin's finale's 1381 (a counter against a random wait); Pokitaru's 0x2d14b0 / 0x312838 and Gemlik's class 63 (large
   rewrites).
 

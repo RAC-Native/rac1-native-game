@@ -19,7 +19,7 @@ namespace rac1 {
 
 namespace {
 constexpr int FIXES[] = {1, 2, 3, 5, 6, 7, 11, 15, 16, 17, 18, 19, 20, 22};  // the fixes of the 1.02 Fixes row (fixes102.h)
-constexpr int GAMEPLAY[] = {4, 8, 9, 10, 12, 13, 14, 21};  // the fixes of the 1.02 Gameplay row (fixes102.h)
+constexpr int GAMEPLAY[] = {4, 8, 9, 10, 12, 13, 14, 21, 23};  // the fixes of the 1.02 Gameplay row (fixes102.h)
 
 // orig: (none) — enhancement: a list variable's fixes (RAC1_FIXES102 / RAC1_GAMEPLAY102) as bits (bit n: fix n); -1
 // unset; `fixes` the row's
