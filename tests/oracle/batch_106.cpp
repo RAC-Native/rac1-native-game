@@ -4,6 +4,11 @@
 // ORACLE_ONLY=<check> runs one check at a time (the "/states", "/stream", "/rings", "/tail" checks reach the paths of the
 // doomlet and the Suck Cannon the first checks of those functions seldom take).
 
+// Audit 2 (2026-11-13): the screen (640 x 448), projection and view set up and the packet cursor on a test-area buffer in every
+// snapshot (view_setup: before, the weapons' and effects' draw callbacks projected nothing, e.g. the Decoy Glove's ring drew no
+// quad); each item's gold flag 0x13e520 + item set in half of the cases (no case had a gold weapon before); the Metal Detector
+// given a buried find and the Hydrodisplacer its water flags; screen_flash on a real screen with its packets in the test area.
+
 #include "ovl_oracle.h"
 
 #include <game/ovl/ovl_reloc.h>
@@ -53,6 +58,20 @@ void l1check(const char* name, uint32_t l1addr, int n, Ret ret, const std::funct
     }
     std::printf("%-26s L1:0x%08x\n", name, l1addr);
     if (!check_fn(name, l1addr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
+}
+// The screen (640 x 448, as the game's), the projection and the view set up, and the packet cursor on a buffer of the test
+// area: after the level's first frame the oracle's display leaves the projection's constants broken (nothing projects onto
+// the screen) and the cursor 0, so the weapons' and effects' draw callbacks (the beams, rings, glows, trails) wrote nothing
+// past their GS state and the checks compared no quad of theirs (as batches 506 / 510 before their audit). Since audit 2.
+void view_setup() {
+    if (ee_read<uint16_t>(0x001518d0) == 0) {
+        w16(0x001518d0, 640);
+        w16(0x001518d2, 448);
+    }
+    screen_setup();
+    projection_setup();
+    render_view_setup();
+    w32(OV(0x001611c0), TEST_AREA + 0x8000 + u(ri(0, 0x40)) * 0x10);
 }
 // (task 0410) the carried classes' hook tables (`class +0x2c`) of the levels' own overlays (section 3: class, update, table), the
 // default class's left out: `own` a class of the level's own (the others are class 0x10e's, the Morph-o-Ray chicken's)
@@ -116,7 +135,7 @@ void batch_106() {
         } else {
             std::memcpy(ram, snap.data(), snap.size());
         }
-        render_view_setup();  // the camera's matrices in VU0 (point_on_screen)
+        view_setup();  // the screen, the projection and the camera's matrices in VU0 (point_on_screen), the packet cursor
         collide_vu_reset();  // the contact registers vf25..vf29 the collision leaves, the same on both sides
         oracle_vu_contact_reset();
     };
@@ -209,9 +228,12 @@ void batch_106() {
         return [=]() -> Args {
             const std::vector<uint8_t>& sn = item_snap(item, kind);
             std::memcpy(ee_get_ram_base(), sn.data(), sn.size());
-            render_view_setup();
+            view_setup();
             collide_vu_reset();
             oracle_vu_contact_reset();
+            // (the item's gold flag 0x13e520 + item: the snapshots are of the plain weapon; half of the cases the gold one, whose
+            // branches (cones, colours, sizes, classes) no case reached before)
+            w8(0x0013e520 + item, coin() ? 1u : 0u);
             const uint32_t m = moby_of_class(cls != 0 ? cls : hand_class(item));
             if (m == 0) return Args{{0u}, {}};
             const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -876,10 +898,41 @@ void batch_106() {
         for (uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)); m < ee_read<uint32_t>(OV(0x0015ffe0)) + 0x1000; m += 0x100)
             for (uint32_t o : {0xccu, 0xdcu, 0xecu}) g_ignored_words.push_back(m + o);
     }
+    // the Metal Detector's buried thing (class 0x25d, its bolts at pvar +0x18) as the hero's find 0x13f350 + 0x2040 at a distance
+    // +0x2044 within 1 (dug up), 10 (the beep, its pitch) or beyond: before, no find, the update's aim and dig never ran (since audit 2)
+    auto metal_extra = [safe_spawn](uint32_t m, uint32_t pv) {
+        if (ri(0, 3) == 0 || pv == 0) return;
+        uint32_t t = 0;
+        for (uint32_t c = ee_read<uint32_t>(OV(0x0015ffd8)); c < ee_read<uint32_t>(OV(0x0015ffe0)); c += 0x100)
+            if (ee_read<uint16_t>(c + 0xa6) == 0x25d && ee_read<uint8_t>(c + 0x20) < 0xfd) { t = c; break; }
+        if (t == 0) t = safe_spawn(0x25d);
+        if (t == 0) return;
+        Vec4 q = ee_ref<Vec4>(m + 0x10);
+        q.x += rf(-6.0f, 6.0f); q.y += rf(-6.0f, 6.0f); q.z += rf(-2.0f, 1.0f);
+        ee_ref<Vec4>(t + 0x10) = q;
+        const uint32_t tpv = ee_read<uint32_t>(t + 0x78);
+        if (tpv != 0) w32(tpv + 0x18, coin() ? 0u : u(ri(1, 30)));
+        if (ri(0, 4) == 0) w8(t + 0x20, coin() ? 0xfeu : 0xfdu);
+        w32(P + 0x2040, t);
+        wf(P + 0x2044, ri(0, 2) == 0 ? rf(0.0f, 1.0f) : coin() ? rf(1.0f, 10.0f) : rf(10.0f, 40.0f));
+        if (coin()) w8(m + 0x20, coin() ? 1u : 2u);
+    };
+    // the Hydrodisplacer's water: the hero's flag 0x13f350 + 0x20b0 (the pump running, its spray 0x2e01b0 and the hero's push),
+    // +0x10b4 = 3 (its other mode, 0x2e0340), the hero's state +0x2084 (0x38 / 0x39 leave the push out): before, none of them set,
+    // the update ran 88 of its 516 instructions (since audit 2)
+    auto hydro_extra = [pick](uint32_t, uint32_t) {
+        w8(P + 0x20b0, ri(0, 2) == 0 ? 0u : 1u);
+        if (ri(0, 3) == 0) w32(P + 0x10b4, 3u);
+        if (coin()) w32(P + 0x2084, pick({0u, 0x38u, 0x39u, 0x1eu}));
+        if (coin()) w32(OV(0x0015f5c4), 0u);
+        if (coin()) wfrand(P + 0x100, 3, -0.3f, 0.3f);  // (the hero's velocity the spray takes on)
+    };
     for (const HandT& h : hands) {
         const uint32_t item = h.item, ns = h.nstates;
         auto fn = h.fn;
-        check(h.name, h.addr, 1500, Ret::None, [weapon_gen, item, ns] { return weapon_gen(item, 0, u(ri(0, 2)), ns)(); },
+        auto extra = item == 0x1b ? std::function<void(uint32_t, uint32_t)>(metal_extra)
+                     : item == 0x16 ? std::function<void(uint32_t, uint32_t)>(hydro_extra) : nullptr;
+        check(h.name, h.addr, 1500, Ret::None, [weapon_gen, item, ns, extra] { return weapon_gen(item, 0, u(ri(0, 2)), ns, extra)(); },
               [fn](A a) { if (std::getenv("ASM_TRACE") != nullptr) std::printf("  [port call] seed %08x\n", ee_read<uint32_t>(ee_read<uint32_t>(0x0012f76c) + 0x58)); if (a.i[0] != 0) fn(a.i[0]); if (std::getenv("ASM_TRACE") != nullptr) std::printf("  [port end]\n"); return uint64_t{0}; });
     }
 
@@ -901,7 +954,8 @@ void batch_106() {
             // (a class the level has not loaded -- the weapon's own projectile classes are loaded with the level that carries them: a moby of
             // the item's hand class stands in, the update called on it directly)
             if (no_class) cls = hand_class(item);
-            render_view_setup();
+            w8(0x0013e520 + item, coin() ? 1u : 0u);  // (the item's gold flag, as weapon_gen's)
+            view_setup();
             collide_vu_reset();
             oracle_vu_contact_reset();
             uint32_t m = moby_of_class(cls);
@@ -934,6 +988,17 @@ void batch_106() {
                 }
             }
             if (ee_read<int32_t>(P + 0x2084) == 1) w32(P + 0x2084, 0x1eu);
+            // (the Decoy Glove's landing ring 0x2c31c0: its centre pvar +0x20 and its ground's normal +0x30 are the decoy's, which the
+            // hand class standing in for it does not hold: the ring was never on the screen, the check compared no quad. Its centre
+            // at the hero (whom the view looks at), its normal about up; from a counter, not the random sequence, so that the other
+            // checks keep their cases. Since audit 2)
+            if (fn == 0x002c31c0u && pv != 0) {
+                static uint32_t ring = 0;
+                const float k = static_cast<float>(ring++ % 16u);
+                const Vec4 h = ee_ref<Vec4>(0x0013f3d0);
+                ee_ref<Vec4>(pv + 0x20) = Vec4{h.x + (k - 8.0f) * 0.25f, h.y + (static_cast<float>(ring % 5u) - 2.0f) * 0.5f, h.z + 0.1f, 1.0f};
+                ee_ref<Vec4>(pv + 0x30) = Vec4{(k - 8.0f) * 0.05f, (static_cast<float>(ring % 3u) - 1.0f) * 0.2f, 1.0f, 0.0f};
+            }
             seed_rand();
             return Args{{m}, {}};
         };
@@ -965,6 +1030,15 @@ void batch_106() {
         w32(OV(0x0015f30c), 1u);
         w32(OV(0x0015f310), OUT);
         ee_write<int16_t>(0x001518d2, static_cast<int16_t>(pick({0u, 1u, 2u, 3u, 5u, 8u})));
+        // (half of the cases a screen up to 448 high (view_setup makes it 640 wide: it was 0 wide before, quads of no width), the
+        // bands up to 40 lines high: the last band's clamp to the screen's last line reached; the packets on a buffer of the test
+        // area, not the null page)
+        if (coin()) {
+            ee_write<int16_t>(0x001518d0, 640);
+            ee_write<int16_t>(0x001518d2, static_cast<int16_t>(coin() ? 448 : ri(9, 448)));
+            w32(OUT + 0x10, u(ri(4, 40))); w32(OUT + 0x20, u(ri(0, 40)));
+        }
+        w32(OV(0x001611c0), TEST_AREA + 0x8000 + u(ri(0, 0x40)) * 0x10);
         seed_rand();
         return Args{{}, {}};
     }, [](A) { screen_flash(); return uint64_t{0}; });

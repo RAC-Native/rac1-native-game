@@ -8,6 +8,9 @@
 // --batch 115 (Novalis's own original against the relocated port, the case that matters); level 0 runs Veldin's
 // original on Novalis's data (as batch 113).
 
+// Audit 2 (2026-11-13): the help panel's message on two lines (a byte 1 put into it) and the race kiosk's records (the level
+// 0x15ed84 at 5 / 16, the hero at the kiosk, the records set): both branches of the draw were never taken before.
+
 #include "ovl_oracle.h"
 
 #include <game/ovl/help_panel_tr.h>
@@ -150,6 +153,24 @@ void batch_115() {
             w16(E + 0x4a, u(ri(-20, 20)));
             w32(0x0015ed80, coin() ? 0u : 1u);
             w32(OV(0x0015f770), u(ri(0, 300)));
+            // (the message on two lines half of the time: a byte 1 put into it, the draw's split; the requested texts are on one)
+            const uint32_t msg = OV(0x0017e530);
+            uint32_t len = 0;
+            while (len < 120 && ee_read<uint8_t>(msg + len) >= 2) ++len;
+            if (len > 4 && coin()) w8(msg + u(ri(1, static_cast<int>(len) - 2)), 1);
+            // (the race records' kiosk: the draw tests the level 0x15ed84 (Aridia 5, Kalebo III 16) and the hero's distance to
+            // the kiosk (the place the draw names), then prints the best time 0x15ee58 and score 0x15ee68 (+4 on 16); a third
+            // of the cases on such a level, the hero within / beyond 5 of it, records set or 0)
+            if (ri(0, 2) == 0) {
+                const bool aridia = coin();
+                w32(0x0015ed84, aridia ? 5u : 0x10u);
+                const Vec4 kiosk = aridia ? Vec4{294.5f, 225.4f, 100.0f, 1.0f} : Vec4{115.7f, 287.0f, 119.5f, 1.0f};
+                const float r = coin() ? rf(0.0f, 3.4f) : rf(0.0f, 8.0f);
+                ee_ref<Vec4>(0x0013f3d0) = Vec4{kiosk.x + rf(-r, r), kiosk.y + rf(-r, r), kiosk.z + rf(-1.0f, 1.0f), 1.0f};
+                const uint32_t off = aridia ? 0u : 4u;
+                w32(0x0015ee58 + off, ri(0, 3) == 0 ? 0u : u(ri(1, 60000)));
+                w32(0x0015ee68 + off, coin() ? 0u : u(ri(1, 99999)));
+            }
             seed_rand();
         };
         check("help_panel_init", 0x00237190, 60, Ret::None, [slot, E] { slot(); return Args{{E}, {}}; },

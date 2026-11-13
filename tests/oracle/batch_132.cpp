@@ -6,6 +6,9 @@
 // line 0x27f5b0 and its model 0x27cbc0, the title's focus-in 0x27f440. Run with ORACLE_LEVEL=1 too (Novalis's own original
 // against the relocated port).
 
+// Audit 2 (2026-11-13): the galaxy view's planet marks (0x13dd40 / 0x13dd58) and the 50 Hz flag varied (before, every planet
+// unmarked: the view drew its two pictures alone), the help planet's gold bolts 0x14bec0 varied for the planet page's model.
+
 #include "ovl_oracle.h"
 
 #include <game/ovl/galactic_map.h>
@@ -118,6 +121,19 @@ void batch_132() {
         w32(OV(0x00184414), u(ri(0, 4) == 0 ? ri(0, 18) : static_cast<int>(ee_read<uint32_t>(UNLOCKED + u(ri(0, n)) * 4))));
     };
 
+    // the planets' marks on the galaxy view (0x13dd40 + planet: seen, a blinking dot; 0x13dd58 + planet: visited, a dot) and
+    // the 50 Hz flag (the rows' heights scaled): before, every planet unmarked, the view drew its two pictures alone
+    auto marks = [] {
+        for (uint32_t p = 0; p < 20; ++p) {
+            w8(0x0013dd40 + p, ri(0, 2) == 0 ? 0u : 1u);
+            w8(0x0013dd58 + p, ri(0, 2) == 0 ? 1u : 0u);
+        }
+        w32(0x0015ed80, ri(0, 3) == 0 ? 1u : 0u);
+    };
+    // the gold bolts found on the help planet's level (0x14bec0 + 4 planet + k), which the planet page's model counts
+    auto bolts = [] {
+        for (uint32_t k = 0; k < 20 * 4; ++k) w8(0x0014bec0 + k, coin() ? 1u : 0u);
+    };
     check("galmap_nop_focus", 0x0027f440, 5, Ret::Int32, [menu] { menu(0xf); return Args{{OV(0x001b6178)}, {}}; },
           [](A a) { return ri32(galmap_nop_focus(a.i[0])); });
     check("galmap_list_focus_in", 0x0027f448, 160, Ret::Int32, [menu, planets] {
@@ -141,9 +157,10 @@ void batch_132() {
         w32(OV(0x001b6480) + 0x14, coin() ? ee_read<uint32_t>(OV(0x001b9e90) + u(ri(0, 13)) * 4) : 0u);
         return Args{{OV(0x001b6480)}, {}};
     }, [](A a) { return ri32(galmap_planet_update(a.i[0])); });
-    check("galmap_view_draw", 0x0027f578, 80, Ret::Int32, [menu, planets] {
+    check("galmap_view_draw", 0x0027f578, 80, Ret::Int32, [menu, planets, marks] {
         menu(0xf);
         if (coin()) planets();
+        if (ri(0, 3) != 0) marks();
         w32(OV(0x00184414), u(ri(0, 18)));
         w32(OV(0x0015f3f8), R());
         if (ri(0, 2) != 0) {  // (its box: x, y, width, height)
@@ -154,15 +171,17 @@ void batch_132() {
         }
         return Args{{OV(0x001b6360)}, {}};
     }, [](A a) { return ri32(galmap_view_draw(a.i[0])); });
-    check("galaxy_view_draw", 0x002033c0, 60, Ret::None, [menu] {
+    check("galaxy_view_draw", 0x002033c0, 60, Ret::None, [menu, marks] {
         menu(0xf);
+        if (ri(0, 3) != 0) marks();
         w32(OV(0x00184414), u(ri(0, 18)));
         w32(OV(0x0015f3f8), R());
         const int x = ri(0, 300), y = ri(0, 300);
         return Args{{u(x), u(x + ri(1, 300)), u(y), u(y + ri(1, 200))}, {}};
     }, [](A a) { (void)galaxy_view_draw_u(a.i[0], a.i[1], a.i[2], a.i[3], 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f); return uint64_t{0}; });
-    check("galmap_planet_draw", 0x0027cbc0, 80, Ret::Int32, [menu] {
+    check("galmap_planet_draw", 0x0027cbc0, 80, Ret::Int32, [menu, bolts] {
         menu(0x10);
+        if (ri(0, 3) != 0) bolts();
         w32(OV(0x00184414), u(ri(0, 18)));
         w32(OV(0x0015f3f8), R());
         return Args{{OV(0x001b65b8)}, {}};

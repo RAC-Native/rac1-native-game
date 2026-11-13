@@ -20,8 +20,12 @@
 //       the faucet from its +x / +y side and presses circle while still moving; 1254: one ulp from the origin, 1255: the faucet lost)
 //   off_1275_L12.bin: RAC1_HERO_AT=341@1150,0,0,1 RAC1_SIM_INPUT='seq:1250+3:o' (placed on the faucet's -y side: it works)
 
+// Audit 2 (2026-11-13): also the Hydrodisplacer's hand update 0x2df9a0 (hydro.cpp) on these dumps, the only state with its
+// faucet: batch 106 (levels 0 .. 3) reaches 138 of its 516 instructions, this check 370.
+
 #include "ovl_oracle.h"
 
+#include <game/ovl/hydro.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -110,6 +114,56 @@ void batch_330() {
             std::printf("  %s: probe at the faucet's origin %+d ulp: hit %d, moby %08x, z %.5f\n", dm.name, n, r, ee_read<uint32_t>(OV(0x00173e40) + 0x18),
                         ee_read<float>(OV(0x00173e40) + 0x28));
         }
+    }
+    // (audit 2) the Hydrodisplacer's hand update 0x2df9a0 (hydro.cpp, a stage-3 hand port) on Hoven's own copy, on these dumps: the
+    // only level state with its faucet (class 341), which batch 106 (levels 0 .. 3) cannot reach: there the update ran its first 138 of
+    // 516 instructions. The hand's state +0x20 (0 .. 5), the hero on the faucet or not (+0x2fc), the water flag +0x20b0, the other
+    // mode +0x10b4 = 3, the fire button, the faucet's turn +0xbc / the fade 0x15f3fc / the turn's progress pvar +0x10 varied; the
+    // segment records' VU0 words (batch 242's) left out, not the null page.
+    {
+        std::vector<uint32_t> ign = vcross_lanes();
+        ign.push_back(OV(0x00160188));
+        ign.push_back(OV(0x0016018c));
+        for (uint32_t k = 0; k < 0x30; k += 4) ign.push_back(OV(0x00173e90) + k);
+        const std::vector<uint32_t> kept = g_ignored_words;
+        g_ignored_words = ign;
+        constexpr uint32_t P = 0x0013f350;
+        for (const Dump& dm : dumps) {
+            const std::string nm = std::string("hydro_update_") + dm.name;
+            if (g_oracle_level != 12) { skip_check(nm.c_str(), 0x002df9a0, "Hoven's dumps: ORACLE_LEVEL=12"); continue; }
+            const std::string file = dump_path(dm.file);
+            const std::vector<uint8_t>& d = dump330(file);
+            if (d.empty()) { skip_check(nm.c_str(), 0x002df9a0, "no RAM dump (see the header)"); continue; }
+            load330(d);
+            const uint32_t hand_cls = ee_read<uint32_t>(OV(0x00179ac0) + 0x16 * 0x4c + 0x10);
+            uint32_t hand = 0;
+            for (uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)); m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100)
+                if (ee_read<uint16_t>(m + 0xa6) == hand_cls && ee_read<uint8_t>(m + 0x20) < 0xfd) { hand = m; break; }
+            if (hand == 0) { skip_check(nm.c_str(), 0x002df9a0, "no Hydrodisplacer hand moby in the dump"); continue; }
+            check(nm.c_str(), 0x002df9a0, 300, Ret::None, [&d, hand] {
+                load330(d);
+                const uint32_t pv = ee_read<uint32_t>(hand + 0x78);
+                if (coin()) w8(hand + 0x20, u(ri(0, 6)));
+                const int on = ri(0, 3);
+                if (on == 0) w32(P + 0x2fc, 0);
+                else if (on == 1) w32(P + 0x2fc, FAUCET);
+                w8(P + 0x20b0, u(ri(0, 1)));
+                if (ri(0, 4) == 0) w32(P + 0x10b4, 3);
+                if (coin()) w32(0x0013cae0, coin() ? ee_read<uint32_t>(P + 0x10a0) : 0u);
+                if (coin()) w32(P + 0x208c, u(ri(0, 3)));
+                if (ri(0, 3) == 0) w16(P + 0x30e, 1);
+                if (coin()) w32(P + 0xa98, ee_read<uint32_t>(P + 0xa98) ^ 2u);
+                w8(hand + 0xbc, u(ri(0, 2)));
+                if (coin()) wf(OV(0x0015f3fc), coin() ? rf(0.0f, 1.0f) : (coin() ? 0.0f : 1.0f));
+                if (pv != 0 && coin()) { wf(pv + 0x10, coin() ? 0.0f : rf(0.0f, 1.2f)); wf(pv + 0x14, rf(-0.1f, 0.1f)); }
+                if (coin()) w32(OV(0x0015f5c4), 0);
+                if (coin()) wfrand(P + 0x100, 3, -0.3f, 0.3f);  // (the hero's velocity the spray takes on)
+                if (pv != 0 && coin()) w32(pv + 4, u(ri(0, 2)));  // (the spray's timer about to run out)
+                seed_rand();
+                return Args{{hand}, {}};
+            }, [](A a) { hydro_update(a.i[0]); return uint64_t{0}; });
+        }
+        g_ignored_words = kept;
     }
     g_extra_noop_hooks.clear();
     g_ee_null_is_ram = null_ram;

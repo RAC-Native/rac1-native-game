@@ -9,6 +9,9 @@
 // mode 0x15f5c4, the hero's position against the moby's (the 2D distance < 3 and the height < 2 tests), the hero's health 0x1415f8
 // (the pickup only when non-zero; the scene's start falls to hero_lost without it), the item-7 byte 0x13d4c7, 0x141b08, the pvars'
 // two moby indices (+0 / +4, -1 or a moby), the moby's +0xb0 byte / +0xb2 index.
+// Audit 2 (2026-11-13): the placed pickup chosen three times in four, mostly in its state 1, at the edges of its reach, its
+// sparkles' angles near their wrap and their timers about to run out (state 1 was 5 cases of 160 before).
+
 #include "ovl_oracle.h"
 
 #include <game/lib/libcdvd.h>
@@ -18,6 +21,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/ee/ee_interpreter.h>
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -84,16 +88,32 @@ void batch_170() {
             // the subjects: the placed pickup (its pvars in the level's pvars block) in any state; a class-1290 moby whose pvars pointer is
             // not one (the helmet the hero wears, spawned by hero_update from the item table: its "pvars" are another struct's words) in
             // its own state only
-            const uint32_t m = ms.empty() ? 0u : ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+            uint32_t m = ms.empty() ? 0u : ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+            // (the placed pickup three times in four: before, half of the cases were the worn helmet, in its state 0 alone)
+            if (ri(0, 3) != 0)
+                for (const uint32_t c : ms)
+                    if (ee_read<uint32_t>(c + 0x78) >= 0x01000000u && ee_read<uint32_t>(c + 0x78) < 0x02000000u) m = c;
             if (m == 0) return Args{{0}, {}};
             const uint32_t pv = ee_read<uint32_t>(m + 0x78);
             const bool placed = pv >= 0x01000000u && pv < 0x02000000u;
-            if (placed && coin()) w8(m + 0x20, u(ri(0, 4)));
+            if (placed && coin()) w8(m + 0x20, ri(0, 2) == 0 ? u(ri(0, 4)) : 1u);  // (state 1, the sparkles and the reach, most)
             const int gm = ri(0, 3);
             if (gm == 1) w32(OV(0x0015f5c4), 0); else if (gm == 2) w32(OV(0x0015f5c4), 2); else if (gm == 3) w32(OV(0x0015f5c4), u(ri(-1, 7)));
             if (coin()) {  // (the moby moved around the hero: inside / outside the pickup's reach)
                 for (uint32_t k = 0; k < 2; ++k) wf(m + 0x10 + k * 4, ee_read<float>(0x0013f3d0 + k * 4) + rf(-4.0f, 4.0f));
                 wf(m + 0x18, ee_read<float>(0x0013f3d8) + rf(-3.0f, 3.0f));
+                if (coin()) {  // (or at the reach's edges: 3 across, 2 up / down)
+                    const float r = rf(2.6f, 3.4f), a = rf(-3.1f, 3.1f);
+                    wf(m + 0x10, ee_read<float>(0x0013f3d0) + r * std::cos(a));
+                    wf(m + 0x14, ee_read<float>(0x0013f3d4) + r * std::sin(a));
+                    wf(m + 0x18, ee_read<float>(0x0013f3d8) + (coin() ? rf(-1.9f, 1.9f) : rf(-2.4f, 2.4f)));
+                }
+            }
+            if (placed && coin()) {  // (the sparkles' four angles near the wrap at 0 / 255 and their timers about to run out)
+                for (uint32_t k = 0; k < 4; ++k) {
+                    if (coin()) wf(pv + 0x10 + 4 * k, coin() ? rf(252.0f, 255.0f) : rf(0.0f, 3.0f));
+                    if (coin()) w32(pv + 0x30 + 4 * k, u(ri(0, 2)));
+                }
             }
             if (ri(0, 3) == 0) w32(0x001415f8, 0);
             if (coin()) w8(0x0013d4c7, u(ri(0, 1)));

@@ -10,6 +10,9 @@
 // the purchase 0x29ba78 at each step, the update 0x29c648 in the item list, the head 0x29b0b0, the hologram 0x29b680, the
 // panels 0x29dcd8 / 0x29e198 / 0x29e6c0 / 0x29e918 / 0x29ead8 / 0x29dea0, the price 0x29de40 and the static 0x29ef68.
 
+// Audit 2 (2026-11-13): the panels' checks no longer leave out every lone word at +0xc of a quadword (they match without);
+// only vendor_draw_picture keeps g_ignore_lone_w_lanes, for the moby draw's billboard rows.
+
 #include "ovl_oracle.h"
 
 #include <game/ovl/ovl_reloc.h>
@@ -258,10 +261,11 @@ void batch_131() {
             seed_rand();
             return Args{{0u}, {}};
         }, [](A) { vendor::vendor_hologram_make(); return uint64_t{0}; });
-        // (the panels draw mobys (the monitor's item, the head, the quantity box's ring): the moby draw's stale VU0 lanes, as the
-        // picture's check above)
+        // (the panels draw mobys (the monitor's item, the head, the quantity box's ring) on the VU0 registers the original started
+        // from; no lone w lane is left out: they match without, ORACLE_NO_LONE_W=1 showed it (audit 2), and leaving them out hid
+        // every lone word at +0xc of a quadword anywhere in RAM)
         g_pre_call = vu0_capture;
-        g_ignore_lone_w_lanes = true;
+        g_ignore_lone_w_lanes = false;
         const auto vu0_in = [] {
             vu0m::regs().vf = g_vu0_in.vf;
             vu0m::regs().acc = g_vu0_in.acc;

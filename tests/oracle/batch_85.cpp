@@ -8,6 +8,10 @@
 // state (0x24b628: the disc's default save read into the game), game mode 4's screens (0x201730,
 // 0x202aa0, 0x2018c8, 0x1faea0).
 
+// Audit 2 (2026-11-13): screen_draw draws every kind (0, 2, 5 and 6 were never drawn: the race's result, the message, the
+// disc's spinner, the choice's steps), the race's state, place and records varied; game mode 4's drawing 0x1f8ec8 checked (its
+// skip flag, the dim, the screen; not its gameplay / menu arms, see its check).
+
 #include "ovl_oracle.h"
 
 #include <game/ovl/ovl_reloc.h>
@@ -357,10 +361,26 @@ void batch_85() {
                      static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(a.i[4]))));
         return uint64_t{0};
     });
-    check("screen_draw", 0x002018c8, 80, Ret::None, [pick, screen_state] {
+    check("screen_draw", 0x002018c8, 200, Ret::None, [pick, screen_state] {
         level();
         screen_state();
-        w32(OV(0x00173040), pick({3u, 3u, 3u, 1u, 4u, 9u}));
+        // (every kind: 0 the race's result (Aridia / Kalebo III), 2 a message, 3 the card's, 5 the disc's spinner, 6 the steps of
+        // a choice, 1 / 4 / >= 7 the framed lines; before only 3, 1, 4 and 9 were drawn)
+        w32(OV(0x00173040), pick({3u, 3u, 0u, 0u, 0u, 1u, 2u, 4u, 5u, 5u, 6u, 6u, 9u}));
+        // the race's result: the HUD's race state 0x13fbea (below 3 the prompts, else the place and records), the place, the
+        // best time / score (+4 on Kalebo III) equal to the race's or not
+        w16(0x0013fbea, u(ri(0, 5)));
+        w32(0x0013f350 + 0x8c0, u(ri(0, 6)));
+        {
+            const uint32_t off = ee_read<uint32_t>(0x0015ed84) == 0x10 ? 4u : 0u;
+            const uint32_t t = u(ri(1, 40000)), sc = coin() ? 0u : u(ri(1, 9999));
+            w32(0x0015ee58 + off, t);
+            w32(0x0013fbe4, coin() ? t : u(ri(1, 40000)));
+            w32(0x0015ee68 + off, sc);
+            w32(0x0013fbf8, coin() ? sc : u(ri(0, 9999)));
+            w32(0x0015ed80, coin() ? 1u : 0u);  // (the 50 Hz flag: the frames per minute)
+        }
+        w32(OV(0x00173040) + 0x1c, u(ri(-2, 5)));  // (kind 6's step)
         w32(OV(0x00173040) + 8, coin() ? 0u : static_cast<uint32_t>(sub_00203ad8(0x5229)));
         w32(OV(0x00173040) + 0xc, coin() ? 0u : static_cast<uint32_t>(sub_00203ad8(0x4ee0)));
         w32(OV(0x00173040) + 0x10, coin() ? 0u : static_cast<uint32_t>(sub_00203ad8(0x524a)));
@@ -368,6 +388,22 @@ void batch_85() {
         return Args{};
     }, [](A) {
         screen_draw();
+        return uint64_t{0};
+    });
+
+    // game mode 4's drawing 0x1f8ec8 (no check before): its skip flag, the dim and the screen over a mode that is not gameplay
+    // (0: the whole frame's render 0x1f85b8, whose passes need the main loop's set-up, as batch 115 says) nor the full-screen
+    // menu (3: menu_draw, its pages not open here): those two arms are not compared
+    check("screen_draw_mode4", 0x001f8ec8, 60, Ret::None, [pick, screen_state] {
+        level();
+        screen_state();
+        w32(OV(0x00173040), pick({3u, 0u, 1u, 2u, 4u, 5u, 6u}));
+        w32(OV(0x00173040) + 0x14, pick({1u, 2u, 4u, 5u, 7u}));
+        w32(OV(0x0015f5d8), ri(0, 4) == 0 ? 1u : 0u);
+        w32(OV(0x0015f3f8), u(ri(0, 1000)));
+        return Args{};
+    }, [](A) {
+        screen_draw_mode4();
         return uint64_t{0};
     });
 

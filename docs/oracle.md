@@ -117,6 +117,7 @@ Useful variables:
 | `ORACLE_BAD_MAX=n`, `ORACLE_DIFFS=n` | How many failing cases are described, and how many differing words each. |
 | `ORACLE_STACK=1` | When the original stops in the interpreter, prints where. |
 | `RAC1_ORACLE_DUMPS=<dir>` | Where the RAM dumps are (default `assets/dumps/oracle`). |
+| `ORACLE_WRITES=1` | After each check, a `WRITES` line: in how many cases the original changed nothing (a check that compares nothing), how many words it changed, whether it wrote into the null page and how far it moved the packet cursor `0x1611c0`. Run it on a new check before trusting it. |
 
 ### The reference batches
 
