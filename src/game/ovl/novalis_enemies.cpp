@@ -14,7 +14,8 @@ namespace rac1 {
 
 // Sets byte +0xbc of every moby of group `idx` (the level's table 0x1ab840 / Novalis 0x1abcc0 of lists of moby
 // indices, the last one with bit 15 set) to `value`.
-// orig: L1:0x0026e090
+// (Shared: the same code on Kerwan, Umbris, Gaspar, Hoven, Gemlik, Quartu and Kalebo III.)
+// orig: L1:0x0026e090 L3:0x00247da0 L7:0x00281be0 L9:0x00278d00 L12:0x00272080 L13:0x00265000 L15:0x00248a78 L16:0x00254988
 void moby_group_set_bc_l1(uint32_t idx, uint32_t value) {
     uint32_t p = lwu(OV(0x001ab840) + idx * 4);
     if (p == 0) return;
@@ -25,7 +26,8 @@ void moby_group_set_bc_l1(uint32_t idx, uint32_t value) {
 }
 
 // The walker record's defaults (speed 0, acceleration 0.3, drag 0.3, top speed 2.7, the stop distance 0.1, ...).
-// orig: L1:0x0026d930
+// (Shared: the same code on levels 2 to 16 but Umbris.)
+// orig: L1:0x0026d930 L2:0x0025b1c0 L3:0x002476c0 L4:0x0024b888 L5:0x00282db8 L6:0x00267810 L8:0x00263050 L9:0x002785a0 L10:0x0024b5c8 L11:0x0027e980 L12:0x00271890 L13:0x002648a0 L14:0x00261050 L15:0x00248318 L16:0x00254228
 void walker_record_init_l1(uint32_t rec) {
     sw(rec, 0x280);
     swc1(rec + 0x2c, u2f(0x3dcccccdu));
@@ -44,7 +46,8 @@ void walker_record_init_l1(uint32_t rec) {
 // Claims a free slot of a table of `n` frame stamps (a slot whose stamp is before this frame's counter
 // 0x15f5cc, from the last one down): the stamp becomes the frame counter + `delay`; the slot's index (-1:
 // none).
-// orig: L1:0x002efbf8
+// (Shared: the same code on Gemlik.)
+// orig: L1:0x002efbf8 L13:0x002b4ec0
 int32_t cooldown_slot_claim_l1(uint32_t arr, int32_t n, int32_t delay) {
     int32_t i = n - 1;
     if (i < 0) return i;
@@ -67,7 +70,8 @@ int32_t cooldown_slot_claim_l1(uint32_t arr, int32_t n, int32_t delay) {
 // than the moby is; the moby's own point when they are the same, the next one toward the target's, or
 // the target itself (-1) when no point is nearer the target. The point goes to `out`; the index is
 // returned (the neighbour's, or -1).
-// orig: L1:0x0028b5e0
+// (Shared: the same code on Gaspar, Gemlik and Quartu.)
+// orig: L1:0x0028b5e0 L9:0x00294cb0 L13:0x00282010 L15:0x00265b38
 int32_t path_next_point_l1(uint32_t m, uint32_t path, uint32_t target, uint32_t out) {
     int32_t near_moby = -1, near_target = -1;
     const float d_moby = vec3_distance(V(m + 0x10), V(target));

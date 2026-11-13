@@ -1,7 +1,9 @@
 // Novalis's own moby classes, part 2h: the Amoeboids (classes 572 / 865 / 866) and their helpers: the level's wall
 // paths (the table 0x1b0930 of paths: count +0, points 0x10 apart from +0x10, a point's w a bit mask of the points it
 // sees) and the way around them. Header novalis_mobys2.h. Addresses are Novalis's (`orig: L1:`); Novalis-only data
-// is L1_ADDR, the base ELF's are bare. Registered in novalis_mobys2.cpp.
+// is L1_ADDR, the base ELF's are bare. The wall-path helpers (0x276c40 / 0x276a48 / 0x276fe8) and particle 0x34's spawn
+// (0x287158) serve every level that carries a copy (their `orig:` lines; batch 501): what they name is the engine's (OV).
+// Registered in novalis_mobys2.cpp.
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
@@ -19,15 +21,17 @@
 namespace rac1 {
 
 namespace {
-// the level's path `i` (Novalis's table 0x1b0930)
-uint32_t level_path(int32_t i) { return lwu(L1_ADDR(0x001b0930) + static_cast<uint32_t>(i) * 4); }
+// the level's path `i` (the table Veldin's 0x1b04b0 / Novalis's 0x1b0930: every level that carries the wall-path helpers
+// has it where its overlay map pairs it with Veldin's)
+uint32_t level_path(int32_t i) { return lwu(OV(0x001b04b0) + static_cast<uint32_t>(i) * 4); }
 uint32_t path_point(uint32_t path, int32_t i) { return path + 0x10 + static_cast<uint32_t>(i) * 16; }
 float dt_l1() { return lwc1(0x0015ed6c); }  // the frame's time scale
 }  // namespace
 
 // The points of path `path` both point sets reach: `want` & `have`, `have` grown up to 32 times by what its points see
 // (each point's w as a mask); 0 when they never meet.
-// orig: L1:0x00276c40
+// (Shared: the same code on Rilgar, Blarg, Umbris, Orxon and Pokitaru.)
+// orig: L1:0x00276c40 L5:0x0028be08 L6:0x00270af8 L7:0x0028a3d0 L10:0x00254a78 L11:0x00287340
 uint32_t nov_276c40_l1(int32_t path, uint32_t want, uint32_t have) {
     const uint32_t p = level_path(path);
     for (int32_t round = 0; round < 32; ++round) {
@@ -42,8 +46,9 @@ uint32_t nov_276c40_l1(int32_t path, uint32_t want, uint32_t have) {
 
 // The points of path `path` seen from `pos` (bit i: point i): no wall path of the list `walls` (`n` indices) crosses the
 // line to it - with a `radius`, neither line from the two sides of a body that wide (the side offset is the line
-// crossed with a zero vector, as the original computes it).
-// orig: L1:0x00276a48
+// crossed with the up vector (0, 0, 1), set to the radius's length).
+// (Shared: the same code on Rilgar, Blarg, Umbris, Orxon and Pokitaru.)
+// orig: L1:0x00276a48 L5:0x0028bc10 L6:0x00270900 L7:0x0028a1d8 L10:0x00254880 L11:0x00287148
 uint32_t nov_276a48_l1(uint32_t walls, int32_t n, int32_t path, uint32_t pos, float radius) {
     const uint32_t p = level_path(path);
     uint32_t seen = 0;
@@ -57,10 +62,10 @@ uint32_t nov_276a48_l1(uint32_t walls, int32_t n, int32_t path, uint32_t pos, fl
                 blocked = path_crossed_v(wall, V(pos), pt) != 0;
                 continue;
             }
-            const Vec4 zero{};
+            const Vec4 up{0.0f, 0.0f, 1.0f, 0.0f};  // (built on the stack each time: the original's quad of zeros, z 1)
             Vec4 side{};
             vec3_sub(side, V(pos), pt);
-            vec3_cross_ba(side, side, zero);
+            vec3_cross_ba(side, side, up);
             vec3_set_length(side, side, radius);
             Vec4 left{}, right{};
             vec3_sub(left, V(pos), side);
@@ -76,7 +81,8 @@ uint32_t nov_276a48_l1(uint32_t walls, int32_t n, int32_t path, uint32_t pos, fl
 // Where to head from `from` to get to `to` past the wall paths of the list `walls` (`n` indices): `to` itself when no
 // wall is in the way (the lines from both sides of a body `radius` wide); else the point of path `path` nearest `to`
 // (in the plane) of those both ends reach through the path's points. 1 with the point in `out`, 0 when there is none.
-// orig: L1:0x00276fe8
+// (Shared: the same code on Rilgar, Blarg, Umbris, Orxon and Pokitaru, each calling its own copies of the two above.)
+// orig: L1:0x00276fe8 L5:0x0028c5f8 L6:0x002712e8 L7:0x0028a910 L10:0x00255268 L11:0x00287b30
 uint32_t nov_276fe8_l1(uint32_t walls, int32_t n, int32_t path, uint32_t from, uint32_t to, uint32_t out, float radius) {
     bool blocked = false;
     for (int32_t k = 0; k < n && !blocked; ++k) {
@@ -155,8 +161,9 @@ uint32_t nov_276820_l1(int32_t path, uint32_t from, uint32_t to, uint32_t out) {
 }
 
 // A particle of type 0x34 at `pos` (0.05 higher) for `life` frames, size `size` (x 210000), its two words `a` / `b`
-// and its two floats `size` / `f`; its rate 1 / life.
-// orig: L1:0x00287158
+// and its two floats `size` / `f`; its rate 1 / life; its +2 the first byte of the engine's table Veldin's 0x1b2150.
+// (Shared: the same code on Rilgar, Orxon, Pokitaru, Hoven and Gemlik.)
+// orig: L1:0x00287158 L5:0x0029c180 L10:0x00264ed8 L11:0x002972c8 L12:0x0028a7d0 L13:0x0027da80
 uint32_t nov_287158_l1(uint32_t pos, uint32_t a, uint32_t b, int32_t life, float size, float f) {
     const uint32_t pp = alloc_particle(0x34);
     if (pp == 0) return 0;
@@ -166,7 +173,7 @@ uint32_t nov_287158_l1(uint32_t pos, uint32_t a, uint32_t b, int32_t life, float
     swc1(pp + 0x18, fpu_add(lwc1(pp + 0x18), u2f(0x3d4ccccdu)));
     sb(pp + 9, static_cast<uint32_t>(float_to_int(4.0f) + 0x20));
     sb(pp + 1, 1);
-    sb(pp + 2, lbu(lwu(L1_ADDR(0x001b25d0))));
+    sb(pp + 2, lbu(lwu(OV(0x001b2150))));
     sh(pp + 0xa, static_cast<uint32_t>(life));
     swc1(pp + 0xc, fpu_mul(size, u2f(0x484d1400u)));
     sb(pp + 8, static_cast<uint32_t>(rand_mod(0xff)));

@@ -27,6 +27,11 @@ void load_vf(vu0l::Vu& u, int r, uint32_t addr) {
     u.set_words(r, lwu(a), lwu(a + 4), lwu(a + 8), lwu(a + 12));
 }
 
+void store_vf(const vu0l::Vu& u, int r, uint32_t addr) {
+    const uint32_t a = addr & ~15u;
+    for (int i = 0; i < 4; ++i) sw(a + static_cast<uint32_t>(i) * 4u, u.word(r, i));
+}
+
 void qmtc2_s32(vu0l::Vu& u, int r, uint32_t v) {
     u.set_words(r, v, (v & 0x80000000u) != 0 ? 0xffffffffu : 0u, 0u, 0u);
 }
@@ -150,20 +155,26 @@ void nov_water_vu7_setup_l1() {
     sw(L1_ADDR(0x00161230u), 0xffffffffu);
 }
 
-// orig: L1:0x0021fa98
+// The strips' packet (VU1 program 7): `n` vertices' ST (`st`), colours (`rgba`) and positions (`xyz`, 12 bytes each) behind
+// the engine's GIF / VIF templates (Veldin's 0x1c4020 x 5, 0x160ec0 / 0x160ee0 / 0x160f00), MSCAL 0xc (+2 with `clip`
+// bit 0), then a second packet of the ST pairs `st2` that calls the first's colours and positions again; at the
+// packet cursor (0x1611c0), which is advanced.
+// (Shared: the same code on Gaspar, Hoven and Oltanis; every address the engine's, relocated by the level's map.)
+// orig: L1:0x0021fa98 L9:0x0021d250 L12:0x00220a58 L14:0x00211128
 void nov_prim_list2_l1(int32_t n, uint32_t xyz, uint32_t rgba, uint32_t st, uint32_t st2, uint32_t clip) {
     const uint32_t un = static_cast<uint32_t>(n);
     const uint32_t mscal = ((clip & 1u) << 1) + 0xcu;
     const uint32_t n_hi = un << 16;
 
-    uint32_t pkt1 = lwu(CUR);
+    const uint32_t cur = OV(0x001611c0);
+    uint32_t pkt1 = lwu(cur);
     uint32_t at = pkt1;
     for (uint32_t i = 0; i < 5; ++i, at += 0x10u) {
-        lq_sq(at, L1_ADDR(0x001c44a0u) + i * 0x10u);
+        lq_sq(at, OV(0x001c4020) + i * 0x10u);
     }
     sw(at - 0x40u, lwu(at - 0x40u) | un);
 
-    lq_sq(at, L1_ADDR(0x00160ec0u));
+    lq_sq(at, OV(0x00160ec0));
     at += 0x10u;
     sw(at - 4u, lwu(at - 4u) | n_hi);
     for (uint32_t i = 0; i < un; ++i, at += 8u) {
@@ -172,7 +183,7 @@ void nov_prim_list2_l1(int32_t n, uint32_t xyz, uint32_t rgba, uint32_t st, uint
     at = pad_qword(at);
 
     const uint32_t rgba_xyz_start = at;
-    lq_sq(at, L1_ADDR(0x00160ee0u));
+    lq_sq(at, OV(0x00160ee0));
     at += 0x10u;
     sw(at - 4u, lwu(at - 4u) | n_hi);
     for (uint32_t i = 0; i < un; ++i, at += 4u) {
@@ -180,7 +191,7 @@ void nov_prim_list2_l1(int32_t n, uint32_t xyz, uint32_t rgba, uint32_t st, uint
     }
     at = pad_qword(at);
 
-    lq_sq(at, L1_ADDR(0x00160f00u));
+    lq_sq(at, OV(0x00160f00));
     at += 0x10u;
     sw(at - 4u, lwu(at - 4u) | n_hi);
     for (uint32_t i = 0; i < un; ++i, at += 0xcu) {
@@ -200,13 +211,13 @@ void nov_prim_list2_l1(int32_t n, uint32_t xyz, uint32_t rgba, uint32_t st, uint
 
     const uint32_t pkt2 = at;
     for (uint32_t i = 0; i < 5; ++i, at += 0x10u) {
-        lq_sq(at, L1_ADDR(0x001c44a0u) + i * 0x10u);
+        lq_sq(at, OV(0x001c4020) + i * 0x10u);
     }
     sw(at - 0x40u, lwu(at - 0x40u) | un);
     sw(at - 0x3cu, lwu(at - 0x3cu) | 0x01000000u);
     sw(at - 0x28u, lwu(at - 0x28u) | 0x01000000u);
 
-    lq_sq(at, L1_ADDR(0x00160ec0u));
+    lq_sq(at, OV(0x00160ec0));
     at += 0x10u;
     sw(at - 4u, lwu(at - 4u) | n_hi);
     for (uint32_t i = 0; i < un; ++i, at += 8u) {
@@ -218,7 +229,7 @@ void nov_prim_list2_l1(int32_t n, uint32_t xyz, uint32_t rgba, uint32_t st, uint
     sw(at + 0u, 0x30000000u | ((rgba_xyz_end - rgba_xyz_start) >> 4));
     sw(at + 4u, rgba_xyz_start);
     sd(at + 8u, 0ull);
-    sw(CUR, at + 0x10u);
+    sw(cur, at + 0x10u);
 }
 
 // orig: L1:0x00262618
@@ -362,7 +373,17 @@ void nov_strips_draw_l1(int32_t n, uint32_t recs) {
     }
 }
 
-// orig: L1:0x00261c10
+// The water grids (Novalis's class 751, the same engine code on Rilgar, Umbris, Pokitaru, Hoven and Gemlik): each tile record
+// (0x1190 bytes) holds three height blocks of 0x5c0 from +0x50 (16 x 16 floats, then the edges its neighbours give it:
+// rows +0x400 / +0x480 / +0x500, columns +0x440 / +0x4c0 / +0x540, corners +0x580..+0x594), its 8 neighbours' indices at
+// +0xc..+0x13 (0xff: none) and its "live" half +0x1e. The engine's words 0x161218 / 0x16121c (the current and the previous
+// block), 0x161220 (the block drawn) and 0x161224 (the phase between two steps, by the step 0x1ca8a0 of the water's data
+// 0x1ca880) drive them. Every address is the engine's, relocated by each level's overlay map.
+
+// A height block (`tile`, 0x5c0 bytes) spread into the 24-wide grid `grid` (rows 0x60 apart from +0x70, the edges round
+// it from the block's edge rows / columns / corners).
+// (Shared: the same code on Rilgar, Umbris (twice), Pokitaru, Hoven and Gemlik.)
+// orig: L1:0x00261c10 L5:0x00276bc0 L7:0x00275380 L11:0x00272fa8 L12:0x00265de8 L13:0x00258e78
 void nov_water_grid_in_l1(uint32_t grid, uint32_t tile) {
     uint32_t src = tile;
     uint32_t dst_row = grid + 0x70u;
@@ -387,6 +408,139 @@ void nov_water_grid_in_l1(uint32_t grid, uint32_t tile) {
     sw(grid + 0x6b0u, lwu(tile + 0x58cu));
     sw(grid + 0x6b4u, lwu(tile + 0x590u));
     sw(grid + 0x710u, lwu(tile + 0x594u));
+}
+
+// One wave step of tile `tile` of the records `tiles` into its block `buf`, from the grid `grid` (nov_water_grid_in_l1's,
+// the tile's current block): each of the 16 x 16 cells becomes its 8 neighbours' sum / 4 less the block's old value there,
+// damped by 1/16 unless the result is smaller than the water's threshold (its bits, Veldin's 0x1ca89c, against the
+// value's without the sign). Then the block's edges go to the neighbours' blocks `buf` (+0xc..+0x13: 0xff none).
+// (Shared: the same code on Rilgar, Umbris, Pokitaru, Hoven and Gemlik.)
+// orig: L1:0x00262038 L5:0x00276fe8 L7:0x002757a8 L11:0x002733d0 L12:0x00266210 L13:0x002592a0
+void nov_water_grid_wave_l1(uint32_t grid, int32_t tile, int32_t buf, uint32_t tiles) {
+    const float quarter = 0.25f, damp = 0.0625f, one = 1.0f;
+    const uint32_t still = lwu(OV(0x001ca89c));
+    const uint32_t rec = tiles + static_cast<uint32_t>(tile) * 0x1190u;
+    const uint32_t block = static_cast<uint32_t>(buf) * 0x5c0u;
+    const uint32_t mine = rec + block + 0x50u;
+    uint32_t out = mine;
+    uint32_t at = grid + 0x70u;
+    for (int r = 0; r < 16; ++r, at += 0x20u) {
+        for (int c = 0; c < 16; ++c, at += 4u, out += 4u) {
+            // (the original's MADD.S / MSUB.S chain: the neighbours from the row above, the sides, the row below)
+            float acc = fpu_mul(lwc1(at - 0x64u), quarter);
+            acc = fpu_add(acc, fpu_mul(lwc1(at - 0x60u), quarter));
+            acc = fpu_add(acc, fpu_mul(lwc1(at - 0x5cu), quarter));
+            acc = fpu_add(acc, fpu_mul(lwc1(at - 0x4u), quarter));
+            acc = fpu_add(acc, fpu_mul(lwc1(at + 0x4u), quarter));
+            acc = fpu_add(acc, fpu_mul(lwc1(at + 0x5cu), quarter));
+            acc = fpu_add(acc, fpu_mul(lwc1(at + 0x60u), quarter));
+            acc = fpu_add(acc, fpu_mul(lwc1(at + 0x64u), quarter));
+            const float v = fpu_sub(acc, fpu_mul(lwc1(out), one));
+            const uint32_t bits = f2u(v);
+            if (static_cast<int32_t>((bits & 0x7fffffffu) - still) < 0) sw(out, bits);
+            else swc1(out, fpu_sub(v, fpu_mul(v, damp)));
+        }
+    }
+    // the edges to the neighbours' blocks `buf`
+    const uint32_t blocks = tiles + block + 0x50u;  // (tile 0's block `buf`)
+    auto neighbour = [&](uint32_t k) -> uint32_t {
+        const uint32_t i = lbu(rec + 0xcu + k);
+        return i == 0xffu ? 0u : blocks + i * 0x1190u;
+    };
+    if (const uint32_t nb = neighbour(0); nb != 0) {
+        for (uint32_t q = 0; q < 4; ++q) {
+            lq_sq(nb + 0x480u + q * 0x10u, mine + q * 0x10u);
+            lq_sq(nb + 0x500u + q * 0x10u, mine + 0x40u + q * 0x10u);
+        }
+    }
+    if (const uint32_t nb = neighbour(1); nb != 0) {
+        for (uint32_t k = 0; k < 16; ++k) {
+            sw(nb + 0x4c0u + k * 4u, lwu(mine + k * 0x40u));
+            sw(nb + 0x540u + k * 4u, lwu(mine + 4u + k * 0x40u));
+        }
+    }
+    if (const uint32_t nb = neighbour(2); nb != 0) {
+        for (uint32_t q = 0; q < 4; ++q) lq_sq(nb + 0x400u + q * 0x10u, mine + 0x3c0u + q * 0x10u);
+    }
+    if (const uint32_t nb = neighbour(3); nb != 0) {
+        for (uint32_t k = 0; k < 16; ++k) sw(nb + 0x440u + k * 4u, lwu(mine + 0x3cu + k * 0x40u));
+    }
+    if (const uint32_t nb = neighbour(4); nb != 0) {
+        const uint32_t w0 = lwu(mine), w1 = lwu(mine + 4u), w2 = lwu(mine + 0x40u);
+        sw(nb + 0x58cu, w0);
+        sw(nb + 0x590u, w1);
+        sw(nb + 0x594u, w2);
+    }
+    if (const uint32_t nb = neighbour(5); nb != 0) sw(nb + 0x588u, lwu(mine + 0x3cu));
+    if (const uint32_t nb = neighbour(6); nb != 0) sw(nb + 0x584u, lwu(mine + 0x3c0u));
+    if (const uint32_t nb = neighbour(7); nb != 0) sw(nb + 0x580u, lwu(mine + 0x3fcu));
+}
+
+// The step of the `n` tiles at `tiles`: each live one (+0x1e) spread from its current block (0x161218) into the scratchpad's
+// grid and stepped into its previous block (0x16121c), which then becomes the current one (the two words swapped).
+// (Shared: the same code on Rilgar, Umbris, Pokitaru, Hoven and Gemlik.)
+// orig: L1:0x002b7f30 L5:0x002cc910 L7:0x002cae68 L11:0x002c70b8 L12:0x002baa48 L13:0x002ae850
+void nov_water_grid_step_l1(uint32_t tiles, int32_t n) {
+    const uint32_t cur = OV(0x00161218), prev = OV(0x0016121c);
+    constexpr uint32_t spr = 0x70000000u;
+    for (int32_t i = 0; i < n; ++i) {
+        const uint32_t rec = tiles + static_cast<uint32_t>(i) * 0x1190u;
+        if (lhu(rec + 0x1eu) == 0) continue;
+        nov_water_grid_in_l1(spr, rec + lwu(cur) * 0x5c0u + 0x50u);
+        nov_water_grid_wave_l1(spr, i, lw(prev), tiles);
+    }
+    const uint32_t c = lwu(cur), p = lwu(prev);
+    sw(prev, c);
+    sw(cur, p);
+}
+
+// Block `out` = `a` (1 - t) + `b` t, 92 quadwords (a height block), on VU0 as the original (VMULAw / VMADDx).
+// (Shared: the same code on Rilgar, Umbris, Pokitaru, Hoven and Gemlik.)
+// orig: L1:0x00261d78 L5:0x00276d28 L7:0x002754e8 L11:0x00273110 L12:0x00265f50 L13:0x00258fe0
+void nov_water_grid_blend_l1(uint32_t out, uint32_t a, uint32_t b, float t) {
+    if (vu0::running()) vu0::drain();
+    vu0l::Vu u;
+    u.load();
+    qmtc2_s32(u, 1, f2u(t));
+    u.subbc(1, 0, u.lane(1, 0), vu0l::W);  // (vf1.w = 1 - t, vf1.x = t)
+    for (uint32_t q = 0; q < 92; q += 4) {
+        for (int k = 0; k < 4; ++k) {
+            load_vf(u, 2 + k, a + (q + static_cast<uint32_t>(k)) * 0x10u);
+            load_vf(u, 6 + k, b + (q + static_cast<uint32_t>(k)) * 0x10u);
+        }
+        for (int k = 0; k < 4; ++k) {
+            u.mulabc(2 + k, u.lane(1, 3), vu0l::XYZW);
+            u.maddbc(2 + k, 6 + k, u.lane(1, 0), vu0l::XYZW);
+        }
+        for (int k = 0; k < 4; ++k) store_vf(u, 2 + k, out + (q + static_cast<uint32_t>(k)) * 0x10u);
+    }
+    u.store();
+}
+
+// The water's frame for the `n` tiles at `tiles`: when the phase (0x161224) has come within a step (the water's +0x20) of 1,
+// a new step (nov_water_grid_step_l1, the phase back to the step) and the block drawn (0x161220) the previous one;
+// else the block drawn is the third, each live tile's blended between the previous and the current block by the phase.
+// The phase then grows by the step.
+// (Shared: the same code on Rilgar, Umbris, Pokitaru, Hoven and Gemlik.)
+// orig: L1:0x002b7fe0 L5:0x002cc9c0 L7:0x002caf18 L11:0x002c7168 L12:0x002baaf8 L13:0x002ae900
+void nov_water_grid_update_l1(uint32_t tiles, int32_t n) {
+    const uint32_t water = OV(0x001ca880);
+    const uint32_t cur = OV(0x00161218), prev = OV(0x0016121c), shown = OV(0x00161220), phase = OV(0x00161224);
+    const float step = lwc1(water + 0x20u);
+    if (fpu_sub(1.0f, step) <= lwc1(phase)) {
+        swc1(phase, step);
+        nov_water_grid_step_l1(tiles, n);
+        sw(shown, lwu(prev));
+    } else {
+        sw(shown, 2);
+        for (int32_t i = 0; i < n; ++i) {
+            const uint32_t rec = tiles + static_cast<uint32_t>(i) * 0x1190u;
+            if (lhu(rec + 0x1eu) == 0) continue;
+            nov_water_grid_blend_l1(rec + lwu(shown) * 0x5c0u + 0x50u, rec + lwu(prev) * 0x5c0u + 0x50u, rec + lwu(cur) * 0x5c0u + 0x50u,
+                                    lwc1(phase));
+        }
+    }
+    swc1(phase, fpu_add(lwc1(phase), lwc1(water + 0x20u)));
 }
 
 // orig: L1:0x00261df8

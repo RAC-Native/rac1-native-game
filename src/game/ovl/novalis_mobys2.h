@@ -30,15 +30,15 @@ void teleporter_show_l1(uint32_t m);                           // L1:0x00309838
 void teleporter_update_l1(uint32_t m);                         // L1:0x00308bd8  class 1135
 
 // ---- the path follower library (novalis_path.cpp)
-void path_follower_init_l1(uint32_t f);                                          // L1:0x0028b410
-int32_t path_nearest_l1(uint32_t at, uint32_t path, float bias);                 // L1:0x0028b510
+void path_follower_init_l1(uint32_t f);                                          // L1:0x0028b410 L3:0x00264458 L4:0x00268b18 L12:0x0028eb00 L14:0x0027df78
+int32_t path_nearest_l1(uint32_t at, uint32_t path, float bias);                 // L1:0x0028b510 L3:0x00264558 L4:0x00268c18 L5:0x002a0260 L7:0x0029e610 L8:0x002806a8 L9:0x00294a10 L12:0x0028ec00 L13:0x00281d70 L14:0x0027e078 L16:0x00271250
 uint32_t path_point_l1(uint32_t f, int32_t i);                                   // L1:0x0028b7b0
 int32_t path_index_wrap_l1(uint32_t f, int32_t i);                               // L1:0x0028b828
 int32_t path_index_advance_l1(uint32_t f);                                       // L1:0x0028b878
 void path_spline_tangent_l1(uint32_t out, uint32_t f, int32_t idx, float a, float b);  // L1:0x0028b8c8
 void hermite_l1(uint32_t out, uint32_t p0, uint32_t p1, uint32_t m0, uint32_t m1, float t);  // L1:0x0028ba80
 float path_measure_l1(uint32_t f, uint32_t debug, uint32_t color, float fa, float fb);  // L1:0x0028bb90
-uint32_t debug_particle_l1(uint32_t pos, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, int32_t t1, uint32_t t2, float f12);  // L1:0x00285768
+uint32_t debug_particle_l1(uint32_t pos, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, int32_t t1, uint32_t t2, float f12);  // L1:0x00285768 L2:0x00271d80 L3:0x0025e9e0 L4:0x00263098 L6:0x0027f648 L10:0x002634e8 L14:0x00278390
 
 // ---- the aircraft base (novalis_jet_base.cpp)
 void jet_banking_l1(uint32_t m, uint32_t out);                // L1:0x002f5040
@@ -51,11 +51,11 @@ void jet_bomber_update_l1(uint32_t m);                        // L1:0x002f7728  
 void jet_ship_update_l1(uint32_t m);                          // L1:0x002f4960  class 666
 
 // ---- the Amoeboids (novalis_amoeboid.cpp)
-uint32_t nov_276c40_l1(int32_t path, uint32_t want, uint32_t have);                                // L1:0x00276c40
-uint32_t nov_276a48_l1(uint32_t walls, int32_t n, int32_t path, uint32_t pos, float radius);       // L1:0x00276a48
-uint32_t nov_276fe8_l1(uint32_t walls, int32_t n, int32_t path, uint32_t from, uint32_t to, uint32_t out, float radius);  // L1:0x00276fe8
+uint32_t nov_276c40_l1(int32_t path, uint32_t want, uint32_t have);                                // L1:0x00276c40 L5:0x0028be08 L6:0x00270af8 L7:0x0028a3d0 L10:0x00254a78 L11:0x00287340
+uint32_t nov_276a48_l1(uint32_t walls, int32_t n, int32_t path, uint32_t pos, float radius);       // L1:0x00276a48 L5:0x0028bc10 L6:0x00270900 L7:0x0028a1d8 L10:0x00254880 L11:0x00287148
+uint32_t nov_276fe8_l1(uint32_t walls, int32_t n, int32_t path, uint32_t from, uint32_t to, uint32_t out, float radius);  // L1:0x00276fe8 L5:0x0028c5f8 L6:0x002712e8 L7:0x0028a910 L10:0x00255268 L11:0x00287b30
 uint32_t nov_276820_l1(int32_t path, uint32_t from, uint32_t to, uint32_t out);                   // L1:0x00276820
-uint32_t nov_287158_l1(uint32_t pos, uint32_t a, uint32_t b, int32_t life, float size, float f);  // L1:0x00287158
+uint32_t nov_287158_l1(uint32_t pos, uint32_t a, uint32_t b, int32_t life, float size, float f);  // L1:0x00287158 L5:0x0029c180 L10:0x00264ed8 L11:0x002972c8 L12:0x0028a7d0 L13:0x0027da80
 uint32_t nov_2ef350_l1(uint32_t m);                                                                // L1:0x002ef350
 uint32_t nov_2ef478_l1(uint32_t m, uint32_t group);                                                // L1:0x002ef478
 void nov_2ef770_l1(uint32_t m, uint32_t vel);                                                      // L1:0x002ef770
@@ -73,7 +73,7 @@ uint32_t bird_path_pick_l1(uint32_t m, uint32_t idx);          // L1:0x002e6790
 void birdbot_update_l1(uint32_t m);                            // L1:0x002e6bf0  class 459
 
 // ---- the beehive (novalis_hive.cpp)
-int32_t moby_group_count_l1(int32_t group, int32_t state);  // L1:0x0026e008
+int32_t moby_group_count_l1(int32_t group, int32_t state);  // L1:0x0026e008 L6:0x00267ee8 L9:0x00278c78 L11:0x0027f058 L12:0x00271ff8 L13:0x00264f78 L14:0x00261728 L15:0x002489f0 L16:0x00254900
 uint32_t bee_spawn_l1(uint32_t m);                          // L1:0x00302328
 void beehive_update_l1(uint32_t m);                         // L1:0x003021b8  class 815
 

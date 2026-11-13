@@ -139,7 +139,7 @@ void hero_ledge_grab_check_l1();  // L1:0x0022d090 (Veldin 0x20bed0)
 
 void hero_mode_enter_l1(uint32_t mode, uint32_t state, uint32_t moby);  // L1:0x00231348 (Veldin 0x210a08)
 
-void hero_mode_exit_l1();  // L1:0x00231450 (Veldin 0x210b30)
+void hero_mode_exit_l1();  // L1:0x00231450 L2:0x0021fe40 (Veldin 0x210b30; Novalis's 0x316e28 is another build of it, not this)
 
 int32_t hero_hurt_l1(int32_t knock);  // L1:0x00231580 (Veldin 0x210ce8)
 
@@ -161,7 +161,7 @@ void hero_horizontal_velocity_l1();  // L1:0x00234b40 (Veldin 0x214658)
 
 void hero_timers_update_l1();  // L1:0x0023c710 (Veldin 0x2215c8)
 
-void hero_enter_idle_l1();  // L1:0x002405a0 (Veldin 0x227638)
+void hero_enter_idle_l1();  // L1:0x002405a0 L2:0x0022ea90 (Veldin 0x227638)
 
 void hero_land_l1();  // L1:0x00242198 (Veldin 0x2293a8)
 

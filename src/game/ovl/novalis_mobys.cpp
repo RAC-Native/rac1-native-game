@@ -41,7 +41,8 @@ void cave_door_update_l1(uint32_t m) {
 }
 
 // Class 805, the spawn point (the checkpoint): ... see below.
-// orig: L1:0x00300220
+// (Shared: the same code on every level but Veldin.)
+// orig: L1:0x00300220 L2:0x002e28a0 L3:0x002d1140 L4:0x002d9fc0 L5:0x00309e40 L6:0x002e66e0 L7:0x003027a0 L8:0x002f99b0 L9:0x002f90e0 L10:0x002ca220 L11:0x00300578 L12:0x002f8090 L13:0x002fac70 L14:0x002f4190 L15:0x002db668 L16:0x002d69e0 L17:0x002d9b10 L18:0x002e1f40
 void spawn_point_update_l1(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
     const uint32_t flags = lwu(pv + 8);
@@ -107,7 +108,8 @@ void spawn_point_update_l1(uint32_t m) {
 
 // A plant's bolts: 4..7 of them (bolts_drop), a pair of extra flags (2) when the hero is within 7
 // units of it (xy).
-// orig: L1:0x002787a0
+// (Shared: the same code on levels 4 to 17.)
+// orig: L1:0x002787a0 L4:0x00256460 L5:0x0028dd80 L6:0x00272a68 L7:0x0028c398 L8:0x0026db60 L9:0x00282b10 L10:0x00256e20 L11:0x00288fc0 L12:0x0027c2c8 L13:0x0026f828 L14:0x0026b788 L15:0x00253268 L16:0x0025eef0 L17:0x0025d9d0
 void plant_bolts_drop_l1(uint32_t m) {
     const uint32_t flags = vec2_distance(V(m + 0x10), V(0x0013f3d0)) < 7.0f ? 2u : 0u;
     bolts_drop(m, 4, 7, flags, -1);
@@ -116,7 +118,8 @@ void plant_bolts_drop_l1(uint32_t m) {
 // A copy of `m` of class `cls`, always drawn (+0x31 = 1, +0x32 = 0xff), scaled by the ratio of
 // the two classes' sizes (the new class's +0x2c over m's own over its class's +0x24), at m's
 // position and angles, its +0x38 pair, the moby's flags (+0x34) cleared.
-// orig: L1:0x00278e20
+// (Shared: the same code on Eudora, Batalia, Gaspar, Orxon, Pokitaru, Hoven and Drek's fleet.)
+// orig: L1:0x00278e20 L4:0x00256ab0 L8:0x0026e1b0 L9:0x00283160 L10:0x00257470 L11:0x00289610 L12:0x0027c918 L17:0x0025e020
 void moby_clone_l1(uint32_t m, uint32_t cls) {
     const uint32_t c = moby_spawn(cls);
     if (c == 0) return;
@@ -203,16 +206,17 @@ void green_mushroom_update_l1(uint32_t m) {
 }
 
 // While the level's scripted camera plays (0x15f5c4 == 2, 0x15edb0 set), the list of the mobys the
-// hero's block holds (count 0x16cd24, pointers from 0x16ce58): each class 0x398 / 0x1bf one is
-// handed to sub_0024f590 with the fixed node 0x17c8c0 (idx 0) unless the node's byte +1 is set,
-// and the node's +0x20 / +0x24 / +0x28 are set to 2.1.
-// orig: L1:0x002fb4b8
+// hero's block holds (the engine's 0x16c860, Novalis's 0x16cce0: count +0x44, pointers from +0x178): each class
+// 0x398 / 0x1bf one is handed to sub_0024f590 with the fixed node (the engine's 0x17c440, Novalis's 0x17c8c0; idx 0)
+// unless the node's byte +1 is set, and the node's +0x20 / +0x24 / +0x28 are set to 2.1.
+// (Shared: the same code on Aridia, Kerwan, Rilgar, Umbris, Orxon and Gemlik, twice on Kerwan, Umbris and Gemlik.)
+// orig: L1:0x002fb4b8 L2:0x002dfbd8 L3:0x002cf248 L3:0x002dc380 L5:0x003179a8 L7:0x002f60c8 L7:0x00300878 L10:0x002c7c00 L13:0x002edaf0 L13:0x002f8d78
 void scripted_camera_nodes_l1() {
     if (lw(OV(0x0015f5c4)) != 2) return;
     if (lbu(0x0015edb0) == 0) return;
-    const uint32_t list = L1_ADDR(0x0016cce0);
+    const uint32_t list = OV(0x0016c860);
     if (lh(list + 0x44) <= 0) return;
-    const uint32_t node = L1_ADDR(0x0017c8c0);
+    const uint32_t node = OV(0x0017c440);
     for (int32_t i = 0; i < lh(list + 0x44); ++i) {
         const uint32_t mm = lwu(list + 0x178 + static_cast<uint32_t>(i) * 4);
         const int16_t cls = lh(mm + 0xa6);
@@ -339,7 +343,8 @@ void novalis_moby_fns_register() {
 int32_t moby_state_is_1(uint32_t m) { return lbu(m + 0x20) == 1 ? 1 : 0; }
 
 // Whether the moby's bounding position (its first quad, scaled by 1/1024) is on the screen within `r`.
-// orig: L1:0x00275690
+// (Shared: the same code on Kerwan, Eudora, Rilgar, Umbris, Pokitaru, Hoven, Gemlik and Oltanis.)
+// orig: L1:0x00275690 L3:0x0024eec0 L4:0x002534a8 L5:0x0028a858 L7:0x00288e20 L11:0x00285d90 L12:0x00279238 L13:0x0026c818 L14:0x00268b50
 int64_t moby_on_screen_l1(uint32_t m, float r) {
     const uint32_t buf = ee_stack_alloc(0x10);
     vec4_scale(V(buf), V(m), u2f(0x3a800000u));

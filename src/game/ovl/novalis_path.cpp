@@ -14,7 +14,8 @@ namespace rac1 {
 
 // A follower started: its +5 and index +8 cleared, its path (the table 0x1b04b0 / Novalis 0x1b0930 at its +0x14)
 // found, and each point's segment length (the distance to the next point, wrapping) stored at its +0x1c.
-// orig: L1:0x0028b410
+// (Shared: the same code on Kerwan, Eudora, Hoven and Oltanis.)
+// orig: L1:0x0028b410 L3:0x00264458 L4:0x00268b18 L12:0x0028eb00 L14:0x0027df78
 void path_follower_init_l1(uint32_t f) {
     sb(f + 5, 0);
     const uint32_t path0 = lwu(OV(0x001b04b0) + (lwu(f + 0x14) << 2));
@@ -39,7 +40,9 @@ void path_follower_init_l1(uint32_t f) {
 
 // The index of the point of path `path` whose distance to `at` is nearest to `bias` (the comparison against the best
 // kept as the distance itself).
-// orig: L1:0x0028b510
+// (Shared: the same code on Kerwan, Eudora, Rilgar, Umbris, Batalia, Gaspar, Hoven, Gemlik, Oltanis and Kalebo III; the
+// hoverboard race's (hero_hoverboard.cpp) on Rilgar and Kalebo III.)
+// orig: L1:0x0028b510 L3:0x00264558 L4:0x00268c18 L5:0x002a0260 L7:0x0029e610 L8:0x002806a8 L9:0x00294a10 L12:0x0028ec00 L13:0x00281d70 L14:0x0027e078 L16:0x00271250
 int32_t path_nearest_l1(uint32_t at, uint32_t path, float bias) {
     int32_t best = 0;
     float f21 = u2f(0x51ba43b7u);
@@ -160,7 +163,8 @@ void hermite_l1(uint32_t out, uint32_t p0, uint32_t p1, uint32_t m0, uint32_t m1
 // A debug particle (kind 0x29, alloc_particle) at the point `pos`: its +4 = `a3`, its colour byte +9 / +3 from t0 / t2
 // (t2 == 0xff: a random one from t0), +0xc = f12 * 210000, +2 from the table 0x1b2124 / Novalis 0x1b25a4 at `a2`, +0xa =
 // t1, +8 = 0xa0 and its +0x20 = `a1`. Returns the particle (0: none free).
-// orig: L1:0x00285768
+// (Shared: the same code on Aridia, Kerwan, Eudora, Blarg, Orxon and Oltanis.)
+// orig: L1:0x00285768 L2:0x00271d80 L3:0x0025e9e0 L4:0x00263098 L6:0x0027f648 L10:0x002634e8 L14:0x00278390
 uint32_t debug_particle_l1(uint32_t pos, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, int32_t t1, uint32_t t2, float f12) {
     const uint32_t s1 = t0 & 0xffu, s2 = t2 & 0xffu;
     const int32_t s7 = static_cast<int16_t>(static_cast<uint32_t>(t1) & 0xffffu);

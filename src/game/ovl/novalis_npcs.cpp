@@ -8,6 +8,8 @@
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/variants_l1.h>
+#include <game/ovl/variants_l8.h>
 #include <game/port_stubs.h>
 
 namespace rac1 {
@@ -16,7 +18,8 @@ namespace rac1 {
 // `at` (relative to the moby, kind 1, or to its pvar block, else), in the list `list` (count +0, 16-byte
 // entries from +4: offset, the bytes, size +8, kind +0xa, the moby's +0xb2 / class +0xc / +0xe): the entry's
 // bytes replaced when the same one is there (and its kind is not 0), else a new entry.
-// orig: L1:0x0029b0a0
+// (Shared: the same code on Kerwan, Eudora, Rilgar and Batalia.)
+// orig: L1:0x0029b0a0 L3:0x00273f50 L4:0x00278610 L5:0x002af5e8 L8:0x0028fa30
 void moby_data_note_l1(uint32_t at, int32_t size, uint32_t m, int32_t kind, uint32_t list) {
     const int32_t uid = lh(m + 0xb2), cls = lh(m + 0xa6);
     int32_t s1 = kind;
@@ -41,35 +44,39 @@ void moby_data_note_l1(uint32_t at, int32_t size, uint32_t m, int32_t kind, uint
     sh(s0 + 0xc, static_cast<uint32_t>(uid));
 }
 
-// While the scripted camera runs (0x15f5c4 == 2, 0x15edb0 set) the mobys of the hero's block list (0x16cce0:
-// count +0x44, pointers from +0x178) of the moby's own class or 0x32b are given the camera node 0x17c8c0 (as
-// 0x2fb4b8) unless its byte +1 is set, and its +0x20 / +0x24 / +0x28 set from 0x161d30.
-// orig: L1:0x002ff028
+// While the scripted camera runs (0x15f5c4 == 2, 0x15edb0 set) the mobys of the hero's block list (the engine's
+// 0x16c860, Novalis's 0x16cce0: count +0x44, pointers from +0x178) of the moby's own class or 0x32b are given the
+// camera node (the engine's 0x17c440, Novalis's 0x17c8c0; as 0x2fb4b8) unless its byte +1 is set, and its +0x20 /
+// +0x24 / +0x28 set from the level's own float (Novalis's 0x161d30, Batalia's 0x161fb0).
+// (Shared: the same code on Batalia.)
+// orig: L1:0x002ff028 L8:0x002f8fd8
 void plumber_camera_nodes_l1(uint32_t m) {
     if (lw(OV(0x0015f5c4)) != 2) return;
     if (lbu(0x0015edb0) == 0) return;
-    const uint32_t list = L1_ADDR(0x0016cce0);
+    const uint32_t list = OV(0x0016c860);
     if (lh(list + 0x44) <= 0) return;
-    const uint32_t node = L1_ADDR(0x0017c8c0);
+    const uint32_t node = OV(0x0017c440);
     for (int32_t i = 0; i < lh(list + 0x44); ++i) {
         const uint32_t mm = lwu(list + 0x178 + static_cast<uint32_t>(i) * 4);
         const int16_t cls = lh(mm + 0xa6);
         if (cls != lh(m + 0xa6) && cls != 0x32b) continue;
         if (lbu(node + 1) != 0) continue;
         sub_0024f590(mm, 0, node);
-        const float v = lwc1(L1_ADDR(0x00161d30));
+        const float v = lwc1(on_level(BATALIA) ? L8_ADDR(0x00161fb0) : L1_ADDR(0x00161d30));
         swc1(node + 0x28, v);
         swc1(node + 0x20, v);
         swc1(node + 0x24, v);
     }
 }
 
-// The hero's block 0x16cce0 told to walk to a spot `r` in front of moby `m` (along its facing, +0x48): the flag
-// half +0x46 = 1, the target position (m's quad, moved by cos / sin * r) at +0x10, the target angles +0x20
-// cleared with the facing back toward the moby (+pi) at +0x28.
-// orig: L1:0x002783a8
+// The scene (the engine's 0x16c860, Novalis's 0x16cce0) told to put the hero at a spot `r` in front of moby `m` (along
+// its facing, +0x48) when it ends (cutscene.cpp): the flag half +0x46 = 1, the target position (m's quad, moved by cos /
+// sin * r) at +0x10, the target angles +0x20 cleared with the facing back toward the moby (+pi) at +0x28. (The PAL 2.00
+// build keeps the flag as a byte at +0x4a, its scene code reading it there; the port's scene code reads +0x46.)
+// (Shared: the same code on Aridia, Kerwan, Rilgar, Blarg, Batalia, Pokitaru, Hoven, Oltanis and Kalebo III.)
+// orig: L1:0x002783a8 L2:0x00264d28 L3:0x00251988 L5:0x0028d960 L6:0x00272670 L8:0x0026d768 L11:0x00288e98 L12:0x0027bea8 L14:0x0026b390 L16:0x0025e948
 void hero_walk_to_l1(float r, uint32_t m) {
-    const uint32_t B = L1_ADDR(0x0016cce0);
+    const uint32_t B = OV(0x0016c860);
     sh(B + 0x46, 1);
     lq_sq(B + 0x10, m + 0x10);
     swc1(B + 0x10, lwc1(B + 0x10) + cos_vu(lwc1(m + 0x48)) * r);

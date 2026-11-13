@@ -7,6 +7,7 @@
 #include <game/ovl/arrival.h>
 #include <game/ovl/hero_l1.h>
 #include <game/ovl/memory_card.h>
+#include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants_l5.h>
@@ -51,27 +52,6 @@ void board_stick_smooth(float out[2], uint32_t state, float rate) {
     if (1.0f < lwc1(state + 0x4)) swc1(state + 0x4, 1.0f);
     if (lwc1(state + 0x4) < -1.0f) swc1(state + 0x4, -1.0f);
     out[1] = lwc1(state + 0x4);
-}
-
-// Closest waypoint index in `path` whose distance to `pos` is closest to `target_dist`.
-// orig: L5:0x002a0260 / L16:0x00270068
-int32_t board_path_nearest(const Vec4& pos, uint32_t path, float target_dist) {
-    int32_t best_idx = 0;
-    float best_dist = u2f(0x51ba43b7u);
-    int32_t n = lw(path);
-    if (n > 0) {
-        uint32_t pt = path + 0x10;
-        for (int32_t i = 0; i < n; ++i, pt += 0x10) {
-            const float d = vec3_distance(V(pt), pos);
-            const float diff = abs_f(d - target_dist);
-            n = lw(path);
-            if (diff < best_dist) {
-                best_dist = d;
-                best_idx = i;
-            }
-        }
-    }
-    return best_idx;
 }
 
 // Compute respawn position and yaw on the hoverboard race track.
@@ -247,7 +227,7 @@ void board_race_progress() {
                 ee_stack_free(0x20);
                 const uint32_t alt = lwu(P + 0x8b4);
                 if (alt != 0) {
-                    const int32_t idx = board_path_nearest(V(P + 0x80), alt, 0.0f);
+                    const int32_t idx = path_nearest_l1(P + 0x80, alt, 0.0f);  // (Rilgar's 0x2a0260, Kalebo III's 0x271250)
                     if (idx < lh(P + 0x898)) sh(P + 0x898, static_cast<uint32_t>(idx));
                 }
             }
@@ -659,7 +639,7 @@ int32_t board_crash_and_land_check() {
     if (lh(P + 0x30c) == 0) {
         const uint32_t alt = lwu(P + 0x8b4);
         if (alt != 0) {
-            const int32_t idx = board_path_nearest(V(P + 0x80), alt, 0.0f);
+            const int32_t idx = path_nearest_l1(P + 0x80, alt, 0.0f);  // (Rilgar's 0x2a0260, Kalebo III's 0x271250)
             const int32_t prev = step_index(lwu(P + 0x8b4), idx, -1, 1);
             const uint32_t raw_pl = lwu(0x0015ed84u);
             sh(P + 0x8c8, static_cast<uint32_t>(idx));
@@ -1036,7 +1016,7 @@ void hero_hoverboard_set_state(uint32_t state, int32_t mode) {
             if (prev_st == 0x6d || prev_st == 0x6f || prev_st == 0x6e) {
                 const uint32_t alt = lwu(P + 0x8b4);
                 if (alt != 0) {
-                    const int32_t idx = board_path_nearest(V(P + 0x80), alt, 0.0f);
+                    const int32_t idx = path_nearest_l1(P + 0x80, alt, 0.0f);  // (Rilgar's 0x2a0260, Kalebo III's 0x271250)
                     if (idx < lh(P + 0x898)) sh(P + 0x898, static_cast<uint32_t>(idx));
                 }
                 sb(P + 0x8af, 0);
