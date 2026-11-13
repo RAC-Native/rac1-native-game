@@ -327,7 +327,7 @@ round, else the first), marked by its third word, which the game leaves 0 and te
 purchase: Cross on the entry starts none, `vendor_buy_all_input` (before the Vendor's update in
 `overlay_entry.cpp`) buys instead. Everything else (the cursor, the strip, the wheel, the highlight,
 the sounds) is the game's code walking its list. The port steps in only at a few calls of the Vendor's
-transliteration (`tools/codegen/gen/mkall/veldin_vendor.glue`, each told its call site): the tile's
+screens (`src/game/ovl/vendor_*.cpp`, each telling its call site): the tile's
 sprites (four weapon tiles at a quarter size, with the game's `hud_frame` / `hud_sprite`), the monitor's
 two title lines and its price, the sign's text when the cursor arrives on the entry, and the cursor put
 on the entry when the screens open. The hologram on the stand, the monitor's picture and the ammo counter

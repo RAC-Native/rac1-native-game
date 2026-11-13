@@ -19,11 +19,6 @@
 
 namespace rac1 {
 
-// The vendor screens' draw callback 0x29f990, queued each frame by their update (`draw_callback_add(0x29f990, *(0x1ca4dc))`
-// at 0x29c9ec) and called by the draw list's `jalr` with a0 = that argument (it was a TODO_PORT moby callback).
-// orig: (host) the `jalr` adapter of ovl_29f990_tr (vendor_tr.cpp, uniform ABI)
-static void vendor_draw_cb_29f990(uint32_t a0) { (void)ovl_29f990_tr(a0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f); }
-
 // The accept function of Novalis's camera type 3 (row 1: accept 0x315dd8, init 0x315de0, update 0x315358, exit 0x316030;
 // the other three are in novalis_camera.cpp): `jr ra; move v0,zero`. The camera is taken
 // by its trigger kind 7 (camera_accept: the hero's camera request 0x1415d4 = 3) and handed back by its exit.
@@ -86,7 +81,9 @@ void shared_fx_tr_register() {
     ovl_register_moby_fn(0x0026a5b8, particle_08_update);
     ovl_register_moby_fn(0x002a5040, vendor_draw_tr);
     ovl_register_moby_fn(0x002c5dc8, swingshot_rope_draw_tr);  // (the swingshot's rope)
-    ovl_register_moby_fn(0x0029f990, vendor_draw_cb_29f990);
+    // the vendor screens' draw callback, queued by their update in the opening / closing (`draw_callback_add(0x29f990,
+    // *(0x1ca4dc))` at 0x29c9ec) and called by the draw list's `jalr` with a0 = that argument
+    ovl_register_moby_fn(0x0029f990, vendor_screens_glass_cb);
     ovl_register_moby_fn(0x00237190, help_panel_init_tr);  // (the help message panel: help_hint_update's request id 0xc)
     ovl_register_moby_fn(0x002371e0, help_panel_update_tr);
     ovl_register_moby_fn(0x00237200, help_panel_draw_tr);

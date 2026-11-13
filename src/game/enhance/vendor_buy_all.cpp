@@ -20,7 +20,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
-#include <game/ovl/vendor_tr.h>
+#include <game/ovl/vendor_screens.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -122,8 +122,8 @@ uint32_t ee_string(uint32_t a, const char* s, uint32_t n) {
     return a;
 }
 
-// orig: (none) — enhancement: the sign's text (the screens' marquee, 0x29b070), a game text id (0x203ad8)
-void sign_text_id(int32_t id) { ovl_29b070_tr(sub_00203ad8(id), 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f); }
+// orig: (none) — enhancement: the sign's text (the screens' marquee, vendor_sign_text 0x29b070), a game text id (0x203ad8)
+void sign_text_id(int32_t id) { vendor::vendor_sign_text(sub_00203ad8(id)); }
 
 // orig: (none) — enhancement: a Vendor sound (the moby's sound `k`: 0 error, 2 full, 7 purchased)
 void vendor_sound(int32_t k) { moby_sound_start(k, 0, lwu(LIST + 0x1c)); }
@@ -152,14 +152,14 @@ void buy_all() {
     }
     if (bought > 0) {
         const uint32_t before = lwu(entry(0));
-        ovl_29b4d8_tr(3, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);  // (the Vendor's thanks, as after an ammo purchase)
+        vendor::vendor_remark(3);  // (the Vendor's thanks, as after an ammo purchase)
         item_list_build(lw(LIST + 0x40) > 0 ? 1 : 0);
         sw(LIST + 0x58, 0);
         if (is_all(0) && lwu(entry(0)) != before) sw(CURSOR_MOVED, 1);  // (the entry's weapon changed: the game makes the hologram again)
-        sign_text_id(0x4f5f);
+        sign_text_id(TXT(0x4f5f));
         vendor_sound(7);
     } else if (short_of_bolts) {
-        sign_text_id(0x4f60);
+        sign_text_id(TXT(0x4f60));
         vendor_sound(0);
     } else {
         vendor_sound(2);

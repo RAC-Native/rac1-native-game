@@ -6,14 +6,14 @@
 // strip or the wheel and draws its tile as for any other entry. It is an ammo entry of one of the list's weapons (the
 // weapon not full with the cheapest round, else the first), marked by its +8 word (0 in the game's entries: the game
 // starts a purchase only when it is 0, so Cross on the entry starts none). The host steps in only where the game acts on
-// the selected entry, at the calls of the vendor's transliteration (tools/codegen/gen/mkall/veldin_vendor.glue):
+// the selected entry, at the screens' calls of the game's functions (vendor_screens.cpp, vendor_update.cpp, vendor_draw.cpp):
 // - its tile (0x29dea0): a 2 x 2 of the list's own weapon tiles, through the game's hud_frame / hud_sprite;
 // - the item monitor (0x29e198): "All Ammo" and the total price; the sign's text when the cursor arrives on it;
 // - the screens' opening (0x29a6b0): the cursor on the entry instead of the middle of the list;
 // - Cross (vendor_buy_all_input): every weapon of the list filled, with the game's own steps of an ammo purchase.
 // The rest is the game's own for the entry's weapon: the hologram on the stand, the monitor's picture and the ammo
 // counter at the top left show that weapon.
-// With the setting off nothing here runs: every hook calls the game's function as the transliteration did.
+// With the setting off nothing here runs: every hook calls the game's function as the screens' code would.
 #ifndef RAC1_GAME_ENHANCE_VENDOR_BUY_ALL_H
 #define RAC1_GAME_ENHANCE_VENDOR_BUY_ALL_H
 
@@ -33,7 +33,8 @@ void vendor_buy_all_input();
 // how many weapons are not full; `pda`: the PDA's prices (-1: by who opened the screens)
 int32_t vendor_buy_all_price(int32_t* weapons = nullptr, int pda = -1);
 
-// The vendor transliteration's calls (tools/codegen/gen/mkall/veldin_vendor.glue), `ra` the call site's return address.
+// The Vendor's screens' calls (vendor_screens.cpp, vendor_update.cpp, vendor_draw.cpp), `ra` the original call site's return
+// address (each site passes its own).
 // orig: (none) — enhancement: the text lookup 0x203ad8
 uint32_t vendor_buy_all_text(uint32_t ra, int32_t id);
 // orig: (none) — enhancement: sprintf 0x116248

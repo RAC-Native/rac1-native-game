@@ -1,4 +1,4 @@
-// Oracle batch 115 (task 0343): the Vendor on its own overlay. (1) The vendor's screens (game mode 5, vendor_tr.cpp,
+// Oracle batch 115 (task 0343): the Vendor on its own overlay. (1) The vendor's screens (game mode 5, vendor_*.cpp,
 // transliterated at Veldin's addresses) in the states that read the state block 0x1ca4c0 through a register holding its
 // `lui` page on every path (relocated by tools/codegen/hi_flow.py since task 0343; before, Veldin's 0x1ca4c0 on every level):
 // the item panel 0x29b4d8 (its mode 2 / 3 path) and the item strip 0x29dea0 with 8 items or more (the draw 0x2a02b0's
@@ -12,6 +12,7 @@
 
 #include <game/ovl/help_panel_tr.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/vendor_screens.h>
 #include <game/ovl/vendor_tr.h>
 
 #include <runtime/kernel/disc.h>
@@ -112,7 +113,7 @@ void batch_115() {
             if (m >= 0x00100000u && m < 0x02000000u) w8(m + 0x20, u(ri(0, 12)));
             seed_rand();
             return Args{{u(ri(0, 4))}, {}};
-        }, [](A a) { (void)ovl_29b4d8_tr(a.i[0], 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f); return uint64_t{0}; });
+        }, [](A a) { vendor::vendor_remark(static_cast<int32_t>(a.i[0])); return uint64_t{0}; });
         // the item strip 0x29dea0: 8 items or more take the path through s0 = the page
         check("vendor_29dea0", 0x0029dea0, 120, Ret::None, [start, S] {
             start();
@@ -126,7 +127,7 @@ void batch_115() {
             w32(S + 4, u(ri(0, 200)));
             seed_rand();
             return Args{{0u}, {}};
-        }, [](A) { (void)ovl_29dea0_tr(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f); return uint64_t{0}; });
+        }, [](A) { vendor::panel_list(); return uint64_t{0}; });
         g_extra_noop_hooks.clear();
     }
 

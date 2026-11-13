@@ -158,7 +158,10 @@ add_library(rac1_game STATIC
     ovl/shared_spawns.cpp
     ovl/shared_particles.cpp
     ovl/novalis_amoeboid.cpp
+    ovl/vendor_draw.cpp
     ovl/vendor_frame.cpp
+    ovl/vendor_screens.cpp
+    ovl/vendor_update.cpp
     ovl/galactic_map.cpp
     ovl/sky.cpp
     ovl/sky_levels.cpp

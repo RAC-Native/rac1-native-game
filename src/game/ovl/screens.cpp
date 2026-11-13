@@ -20,7 +20,6 @@
 #include <game/ovl/planet_map.h>
 #include <game/ovl/screen_draw_tr.h>
 #include <game/ovl/screen_fade.h>
-#include <game/ovl/vendor_tr.h>
 #include <game/port_stubs.h>
 
 #include <vector>
@@ -350,7 +349,7 @@ void screen_update() {
                                 sub_002359f8(static_cast<uint32_t>(bank), 0);
                                 sw(P + 0x880, 0xffffffffu);
                             }
-                            ovl_23af30_tr(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);  // (vendor_tr.cpp; it reads no argument)
+                            hud_weapon_element_release();
                             if (frame_scale_i(0x1068) < lw(P + 0x19c)) {
                                 const int32_t lv = lw(0x0015ed84);
                                 if (lv == 5) sw(0x0015ee38, lwu(0x0015ee38) + 1);

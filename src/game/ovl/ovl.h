@@ -652,6 +652,7 @@ void sub_00262cf0(uint32_t dst, uint32_t base, float r, float a, float b);  // o
 void sub_00263d40(int32_t v, int32_t frames);            // orig: 0x00263d40
 int32_t pad_buttons_together(uint32_t mask_a, uint32_t mask_b, int32_t back, int32_t max_gap);  // orig: 0x00266e00
 void sub_00262b80(uint32_t dst, uint32_t a, uint32_t b, float r, float da, float db);  // orig: 0x00262b80
+void dma_cnt_vif(uint32_t vif);                          // orig: 0x002a0b60
 void sub_002a0ba8(uint32_t reg, uint64_t d);             // orig: 0x002a0ba8
 uint32_t alloc_particle(uint32_t kind);                  // orig: 0x002678b8
 void free_particle(uint32_t p);                                   // orig: 0x00267a08
@@ -939,6 +940,7 @@ uint32_t hud_alloc(int32_t n);                                               // 
 void hud_request_flags(int32_t serial, uint32_t f);                          // orig: 0x002359f8
 void hud_init();                                                             // orig: 0x00234e98
 void hud_weapon_element();                                                   // orig: 0x0023adb8
+void hud_weapon_element_release();                                           // orig: 0x0023af30
 int32_t hud_update(int32_t run);                                             // orig: 0x0023ac78
 void hud_tex_upload(uint32_t src, int32_t dbp, int32_t psm, int32_t wl, int32_t hl, int32_t immediate);// orig: 0x0023c7b0
 void hud_tex_relocate(int32_t set, uint32_t base);                           // orig: 0x002351b0

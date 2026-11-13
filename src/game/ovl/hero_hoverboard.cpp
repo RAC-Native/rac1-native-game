@@ -11,7 +11,6 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants_l5.h>
 #include <game/ovl/variants_l16.h>
-#include <game/ovl/vendor_tr.h>
 
 namespace rac1 {
 
@@ -359,7 +358,7 @@ void board_race_progress() {
             sub_002359f8(ch, 0);
             sw(P + 0x880, 0xffffffffu);
         }
-        ovl_23af30_tr(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
+        hud_weapon_element_release();
     } else if (planet2 == 0x10u) {
         const int32_t prize = lw(pv + 0x28);
         if (prize == -1) return;
@@ -387,7 +386,7 @@ void board_race_progress() {
             sub_002359f8(ch, 0);
             sw(P + 0x880, 0xffffffffu);
         }
-        ovl_23af30_tr(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
+        hud_weapon_element_release();
     }
 }
 
