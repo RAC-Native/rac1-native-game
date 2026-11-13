@@ -265,6 +265,7 @@ int main(int argc, char** argv) {
     batch_518();
     batch_516();
     batch_519();
+    batch_520();
     batch_530();
 
     // (also on level 0: a batch whose dumps are missing skips its checks, and a bare PASS would hide it)

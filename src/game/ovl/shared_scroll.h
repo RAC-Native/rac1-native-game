@@ -12,8 +12,12 @@ namespace rac1 {
 void uv_offset_pairs(uint32_t dst, uint32_t src, int32_t n, uint32_t offset);
 // One set of meshes drawn with their texture moved by the set's offset `index` (sets: 0 L8:0x002f0c18, 1 L8:0x002f0cf0,
 // 2 L8:0x00308e90, 3 L11:0x0031d9a0, 4 L11:0x0031da78, 5 L11:0x0031e780, 6 L11:0x0031e858, 7 L12:0x0030bd90, 8 L8:0x002f0b40,
-// 9 L8:0x00308db8, 10 L11:0x0031e6a8).
+// 9 L8:0x00308db8, 10 L11:0x0031e6a8, 11 L8:0x00308f68).
 void uv_scroll_meshes(int32_t set, uint32_t index);
+// Batalia's draws of three layers of scrolling meshes (classes 600 and 1649: sets 8, 0, 1 and 9, 2, 11, each layer with its
+// texture and the level's alphas).
+void class600_draw(uint32_t m);   // L8:0x002f0dc8
+void class1649_draw(uint32_t m);  // L8:0x00309030
 // The offset `index` moved by its speed this frame, kept in -1 .. 1 (sets: 0 L8:0x002f1378, 1 L8:0x002f1460, 2 L8:0x003095e0,
 // 3 L8:0x003096c8, 4 L11:0x0031e120, 5 L11:0x0031e208, 6 L11:0x0031ef80, 7 L11:0x0031f068, 8 L8:0x002f12a0, 9 L8:0x00309508,
 // 10 L11:0x0031e048, 11 L11:0x0031eea8).

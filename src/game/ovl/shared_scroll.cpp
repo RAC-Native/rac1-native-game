@@ -11,6 +11,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/shadows.h>
 #include <game/ovl/variants_l11.h>
 #include <game/ovl/variants_l12.h>
 #include <game/ovl/variants_l8.h>
@@ -39,6 +40,7 @@ MeshSet mesh_set(int32_t set) {
     case 8: return {L8_ADDR(0x001e8360), L8_ADDR(0x001e8310), L8_ADDR(0x001e8268), L8_ADDR(0x001e82a0), L8_ADDR(0x001e2858), L8_ADDR(0x001e8348), 13};
     case 9: return {L8_ADDR(0x001f8560), L8_ADDR(0x001f8528), L8_ADDR(0x001f84c8), L8_ADDR(0x001f84e8), L8_ADDR(0x001f4c60), L8_ADDR(0x001f8548), 8};
     case 10: return {L11_ADDR(0x00217770), L11_ADDR(0x00215220), L11_ADDR(0x00215148), L11_ADDR(0x00215190), L11_ADDR(0x00207900), L11_ADDR(0x00217758), 17};
+    case 11: return {L8_ADDR(0x001f8560), L8_ADDR(0x001623e8), L8_ADDR(0x001623d0), L8_ADDR(0x001623d8), L8_ADDR(0x001623c8), L8_ADDR(0x00162408), 2};
     default: return {L12_ADDR(0x00208b00), L12_ADDR(0x00208ae0), L12_ADDR(0x00208a98), L12_ADDR(0x00208ab0), L12_ADDR(0x00205a80), L12_ADDR(0x001620f8), 5};
     }
 }
@@ -119,7 +121,7 @@ void uv_offset_pairs(uint32_t dst, uint32_t src, int32_t n, uint32_t offset) {
 }
 
 // orig: L8:0x002f0c18 L8:0x002f0cf0 L8:0x00308e90 L11:0x0031d9a0 L11:0x0031da78 L11:0x0031e780 L11:0x0031e858 L12:0x0030bd90
-//       L8:0x002f0b40 L8:0x00308db8 L11:0x0031e6a8
+//       L8:0x002f0b40 L8:0x00308db8 L11:0x0031e6a8 L8:0x00308f68
 void uv_scroll_meshes(int32_t set, uint32_t index) {
     const MeshSet s = mesh_set(set);
     for (int32_t i = 0; i < s.meshes; ++i) {
@@ -127,6 +129,55 @@ void uv_scroll_meshes(int32_t set, uint32_t index) {
         uv_offset_pairs(s.buffer, lwu(s.coords + at), lw(s.counts + at), s.offsets + (index << 3));
         prim_list_packet(lw(s.counts + at), lwu(s.points + at), lwu(s.colours + at), s.buffer, 1);
     }
+}
+
+namespace {
+// Batalia's two draws of three layers of scrolling meshes: the GS state (the alpha blend, the test, the clamp and the
+// fog's colour), the shadows' VU1 set-up, then per layer its texture, each set's alpha (the level's words; the second
+// layer's scaled by the level's fade byte) and its meshes: the first layer's three sets of offsets, the second's two, the
+// third's one.
+struct LayerDraw {
+    uint64_t blend;                // the first layer's alpha blend mode (0x44 or 0x64)
+    uint32_t alpha0, alpha1, alpha2, fade, alpha3, alpha4, alpha5;  // the level's words (fade: a byte)
+    int32_t set0, set1, set2;      // the layers' mesh sets
+};
+void layers_draw(const LayerDraw& d) {
+    sub_002a0ba8(0x42, (0x8000ull << 24) | 0x44);  // (ALPHA_1)
+    sub_002a0ba8(8, 0);                             // (TEST_1)
+    sub_002a0ba8(0x14, (0xff90ull << 32) | 0x260);  // (CLAMP_1)
+    sub_002a0ba8(0x47, 0x513f1);                    // (TEST_2)
+    shadows_vu1_setup();
+    auto alpha = [](uint32_t a, uint64_t mode) { sub_002a0ba8(0x42, (static_cast<uint64_t>(a) << 32) | mode); };
+    auto faded = [&d](uint32_t a) { return static_cast<uint32_t>(static_cast<int32_t>(lwu(a) * lbu(d.fade)) >> 8); };
+    sub_002a0ba8(6, effect_tex0(0x3a));  // (TEX0_1)
+    alpha(lwu(d.alpha0), d.blend);
+    uv_scroll_meshes(d.set0, 0);
+    sub_002a0ba8(6, effect_tex0(0x3b));
+    alpha(faded(d.alpha1), 0x62);
+    uv_scroll_meshes(d.set0, 1);
+    alpha(faded(d.alpha2), 0x68);
+    uv_scroll_meshes(d.set0, 2);
+    sub_002a0ba8(6, effect_tex0(0x3c));
+    alpha(lwu(d.alpha3), 0x48);
+    uv_scroll_meshes(d.set1, 0);
+    alpha(lwu(d.alpha4), 0x48);
+    uv_scroll_meshes(d.set1, 1);
+    sub_002a0ba8(6, effect_tex0(0x3d));
+    alpha(lwu(d.alpha5), 0x48);
+    uv_scroll_meshes(d.set2, 0);
+}
+}  // namespace
+
+// orig: L8:0x002f0dc8
+void class600_draw(uint32_t) {
+    layers_draw({0x44, L8_ADDR(0x00161dd0), L8_ADDR(0x00161dd4), L8_ADDR(0x00161dd8), L8_ADDR(0x00161e08), L8_ADDR(0x00161df0),
+                 L8_ADDR(0x00161df4), L8_ADDR(0x00161e00), 8, 0, 1});
+}
+
+// orig: L8:0x00309030
+void class1649_draw(uint32_t) {
+    layers_draw({0x64, L8_ADDR(0x00162390), L8_ADDR(0x00162394), L8_ADDR(0x00162398), L8_ADDR(0x001623f0), L8_ADDR(0x001623b0),
+                 L8_ADDR(0x001623b4), L8_ADDR(0x001623c0), 9, 2, 11});
 }
 
 // orig: L8:0x002f1378 L8:0x002f1460 L8:0x003095e0 L8:0x003096c8 L11:0x0031e120 L11:0x0031e208 L11:0x0031ef80 L11:0x0031f068

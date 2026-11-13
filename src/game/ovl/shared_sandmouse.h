@@ -36,6 +36,16 @@ void sandmouse_glow_points(uint32_t m);  // L1:0x0030ded0 L2:0x002f0f18 L3:0x002
 // The point 1 ahead of the hero (into `out`; the first argument unused). Other classes' copies too.
 void point_ahead_of_hero(uint32_t m, uint32_t out);  // L1:0x002e30b8 L1:0x0030d208 L2:0x002cbda0 L2:0x002f0250 L3:0x002e0c38 L4:0x002c6fc0 L4:0x002e5c98 L5:0x0031dad0 L6:0x0030a150 L8:0x00309ef0 L11:0x0031bac8 L12:0x003099b8 L14:0x00308f50
 
+// The Sandmouse's levels' own pieces, dispatched per level (host helpers; class 437 shares them): the walker record, the
+// walker's step toward `goal` (bits 2 / 4 a wall, a drop), the burrow's dent, the dust (particle 0x35), the light on the
+// floor, the hero's state set.
+uint32_t sandmouse_walker_rec();
+uint32_t sandmouse_walker_step(uint32_t m, uint32_t rec, uint32_t goal, uint32_t step);
+void sandmouse_dent(uint32_t pos, float size);
+void sandmouse_dust(uint32_t pos, int32_t n, uint32_t colour, int32_t spin, uint32_t vel, float size, float grow, float spread);
+void sandmouse_floor_light(uint32_t m, float scale);
+void sandmouse_hero_state(uint32_t state, int32_t mode);
+
 }  // namespace rac1
 
 #endif

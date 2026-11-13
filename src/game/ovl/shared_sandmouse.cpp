@@ -812,4 +812,20 @@ void sandmouse_update(uint32_t m) {
     if (has_house()) sw(house() + 0x94, lwu(lwu(house() + 0x24) + 0x10));
 }
 
+// The level pieces class 437 (shared_class437.cpp), an older build of the Sandmouse, shares with it: the same dispatch.
+// orig: (host) the level's walker record
+uint32_t sandmouse_walker_rec() { return walker_rec(); }
+// orig: (host) the level's build of the walker's step (doomlet_259028)
+uint32_t sandmouse_walker_step(uint32_t m, uint32_t rec, uint32_t goal, uint32_t step) { return walker_step_here(m, rec, goal, step); }
+// orig: (host) the level's build of the burrow's dent (metal_25f8e0)
+void sandmouse_dent(uint32_t pos, float size) { dent_here(pos, size); }
+// orig: (host) the level's build of particle 0x35's spawn
+void sandmouse_dust(uint32_t pos, int32_t n, uint32_t colour, int32_t spin, uint32_t vel, float size, float grow, float spread) {
+    dust_here(pos, n, colour, spin, vel, size, grow, spread);
+}
+// orig: (host) the level's build of floor_light_add
+void sandmouse_floor_light(uint32_t m, float scale) { floor_light_here(m, scale); }
+// orig: (host) the level's build of hero_set_state
+void sandmouse_hero_state(uint32_t state, int32_t mode) { hero_state_here(state, mode); }
+
 }  // namespace rac1
