@@ -9,6 +9,8 @@
 namespace rac1 {
 
 void flash_update(uint32_t m);  // class 1898 (L6:0x0030be60, L18:0x002fb548)
+// its draw (the callback flash_update queues): a screen quad at its point, growing, its colour fading (L6:0x0030bfa8 L18:0x002fb690)
+void flash_draw_quad(uint32_t m);
 // a flash at `pos` (EE vector) over `frames` frames, its two words `a` / `b`; 1, or 0 when none could be spawned (L6:0x0030bef8, L18:0x002fb5e0)
 uint32_t flash_spawn(uint32_t pos, int32_t frames, uint32_t a, uint32_t b);
 // a camera of type 0x12: its record's flag +0x50 set (L6:0x00316330, L18:0x00306338)

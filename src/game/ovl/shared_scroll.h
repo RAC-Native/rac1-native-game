@@ -11,7 +11,8 @@ namespace rac1 {
 // `n` texture coordinates (s, t pairs) from `src` to `dst` moved by the offset at `offset` (L8:0x00258090 L11:0x002739c0 L12:0x002668d4)
 void uv_offset_pairs(uint32_t dst, uint32_t src, int32_t n, uint32_t offset);
 // One set of meshes drawn with their texture moved by the set's offset `index` (sets: 0 L8:0x002f0c18, 1 L8:0x002f0cf0,
-// 2 L8:0x00308e90, 3 L11:0x0031d9a0, 4 L11:0x0031da78, 5 L11:0x0031e780, 6 L11:0x0031e858, 7 L12:0x0030bd90).
+// 2 L8:0x00308e90, 3 L11:0x0031d9a0, 4 L11:0x0031da78, 5 L11:0x0031e780, 6 L11:0x0031e858, 7 L12:0x0030bd90, 8 L8:0x002f0b40,
+// 9 L8:0x00308db8, 10 L11:0x0031e6a8).
 void uv_scroll_meshes(int32_t set, uint32_t index);
 // The offset `index` moved by its speed this frame, kept in -1 .. 1 (sets: 0 L8:0x002f1378, 1 L8:0x002f1460, 2 L8:0x003095e0,
 // 3 L8:0x003096c8, 4 L11:0x0031e120, 5 L11:0x0031e208, 6 L11:0x0031ef80, 7 L11:0x0031f068, 8 L8:0x002f12a0, 9 L8:0x00309508,

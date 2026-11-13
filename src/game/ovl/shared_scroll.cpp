@@ -36,6 +36,9 @@ MeshSet mesh_set(int32_t set) {
     case 4: return {L11_ADDR(0x001ff770), L11_ADDR(0x001f9a48), L11_ADDR(0x001f99b8), L11_ADDR(0x001f99e8), L11_ADDR(0x001f4978), L11_ADDR(0x001625a8), 11};
     case 5: return {L11_ADDR(0x00217770), L11_ADDR(0x002078d8), L11_ADDR(0x00207860), L11_ADDR(0x00207888), L11_ADDR(0x00200728), L11_ADDR(0x00162618), 9};
     case 6: return {L11_ADDR(0x00217770), L11_ADDR(0x00217740), L11_ADDR(0x002176f8), L11_ADDR(0x00217710), L11_ADDR(0x00215268), L11_ADDR(0x00162628), 5};
+    case 8: return {L8_ADDR(0x001e8360), L8_ADDR(0x001e8310), L8_ADDR(0x001e8268), L8_ADDR(0x001e82a0), L8_ADDR(0x001e2858), L8_ADDR(0x001e8348), 13};
+    case 9: return {L8_ADDR(0x001f8560), L8_ADDR(0x001f8528), L8_ADDR(0x001f84c8), L8_ADDR(0x001f84e8), L8_ADDR(0x001f4c60), L8_ADDR(0x001f8548), 8};
+    case 10: return {L11_ADDR(0x00217770), L11_ADDR(0x00215220), L11_ADDR(0x00215148), L11_ADDR(0x00215190), L11_ADDR(0x00207900), L11_ADDR(0x00217758), 17};
     default: return {L12_ADDR(0x00208b00), L12_ADDR(0x00208ae0), L12_ADDR(0x00208a98), L12_ADDR(0x00208ab0), L12_ADDR(0x00205a80), L12_ADDR(0x001620f8), 5};
     }
 }
@@ -116,6 +119,7 @@ void uv_offset_pairs(uint32_t dst, uint32_t src, int32_t n, uint32_t offset) {
 }
 
 // orig: L8:0x002f0c18 L8:0x002f0cf0 L8:0x00308e90 L11:0x0031d9a0 L11:0x0031da78 L11:0x0031e780 L11:0x0031e858 L12:0x0030bd90
+//       L8:0x002f0b40 L8:0x00308db8 L11:0x0031e6a8
 void uv_scroll_meshes(int32_t set, uint32_t index) {
     const MeshSet s = mesh_set(set);
     for (int32_t i = 0; i < s.meshes; ++i) {

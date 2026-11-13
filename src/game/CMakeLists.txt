@@ -197,6 +197,16 @@ add_library(rac1_game STATIC
     ovl/shared_class1302.cpp
     ovl/shared_class857.cpp
     ovl/shared_class1068.cpp
+    ovl/shared_floor_switch.cpp
+    ovl/shared_class934.cpp
+    ovl/shared_breakables.cpp
+    ovl/shared_ship_exhaust.cpp
+    ovl/shared_pump_camera.cpp
+    ovl/shared_class994.cpp
+    ovl/shared_class408.cpp
+    ovl/shared_class78.cpp
+    ovl/shared_class655.cpp
+    ovl/shared_class44.cpp
     ovl/shared_swingshot_target.cpp
     ovl/shared_class819.cpp
     ovl/shared_class1021.cpp
