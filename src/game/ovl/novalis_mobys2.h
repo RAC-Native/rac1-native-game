@@ -21,9 +21,9 @@ struct TrRet {
 void gold_case_update_l1(uint32_t m);                        // L1:0x002e1ac0  classes 304, 1456..1465
 
 // ---- the teleporter pads (novalis_teleporter.cpp)
-void moby_group_set_state_l1(int32_t group, uint32_t state);  // L1:0x0026e0e0
+void moby_group_set_state(int32_t group, uint32_t state);     // L1:0x0026e0e0 (and its copies on levels 5-8, 11-13, 15-18)
 void teleporter_trigger_l1(uint32_t m);                        // L1:0x00308b28
-void teleporter_pieces_update_l1(uint32_t m);                  // L1:0x003092d0
+void teleporter_pieces_update(uint32_t m);                     // L1:0x003092d0 (and its copies on levels 7, 8, 11-13, 16-18)
 void teleporter_hint_l1(uint32_t m);                           // L1:0x00309430
 void teleporter_hide_l1(uint32_t m);                           // L1:0x003097e8
 void teleporter_show_l1(uint32_t m);                           // L1:0x00309838

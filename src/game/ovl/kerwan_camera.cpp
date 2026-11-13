@@ -1,11 +1,31 @@
-// Hand-ported Kerwan (level 3) camera types 1, 14, and 18, plus the follow-camera hook and callback.
+// Kerwan's (level 3) camera types 1, 14 and 18, and the camera code several levels carry a copy of: camera type 1 (Kerwan's
+// and Eudora's), the follow camera's look-height hook and its end-of-update callback (every level but Veldin, Novalis and
+// Batalia), the callback queue they use, the follow camera's distance rates (0x2e6f80's copies) and the turn toward a
+// direction (0x24e6f8's). Those read the engine's data (OV) and the base ELF's; the levels' own words (the callback's
+// address, the step the callback counts down by) come from per-level tables. Types 14 and 18 are Kerwan's alone (L3_ADDR).
 #include <game/ovl/kerwan_camera.h>
 
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/variants.h>
+#include <game/ovl/variants_l10.h>
+#include <game/ovl/variants_l11.h>
+#include <game/ovl/variants_l12.h>
+#include <game/ovl/variants_l13.h>
+#include <game/ovl/variants_l14.h>
+#include <game/ovl/variants_l15.h>
+#include <game/ovl/variants_l16.h>
+#include <game/ovl/variants_l17.h>
+#include <game/ovl/variants_l18.h>
+#include <game/ovl/variants_l2.h>
 #include <game/ovl/variants_l3.h>
+#include <game/ovl/variants_l4.h>
+#include <game/ovl/variants_l5.h>
+#include <game/ovl/variants_l6.h>
+#include <game/ovl/variants_l7.h>
+#include <game/ovl/variants_l9.h>
 #include <game/port_stubs.h>
 
 namespace rac1 {
@@ -21,11 +41,56 @@ constexpr uint32_t HERO_CAM_REQ = 0x001415d4u;
 constexpr uint32_t PAD_RX = 0x0013ca40u;
 constexpr uint32_t PAD_RY = 0x0013ca44u;
 
-uint32_t entry_l3(uint32_t cam) {
-    return lwu(L3_ADDR(0x0015ef50u)) + static_cast<uint32_t>(lh(cam + 0x84u) * 0x20);
+uint32_t entry_of(uint32_t cam) {
+    return lwu(OV(0x0015ef50u)) + static_cast<uint32_t>(lh(cam + 0x84u) * 0x20);
 }
 
-// orig: L3:0x0024e6f8
+// The level's own end-of-update callback of the look-height hook (cam0_level_callback's copy: the address the hook
+// queues and camera_callback_call compares)
+uint32_t level_callback_addr() {
+    if (on_camera_level(KERWAN)) return L3_ADDR(0x002eb468u);
+    if (on_camera_level(ARIDIA)) return L2_ADDR(0x002fa770u);
+    if (on_camera_level(EUDORA)) return L4_ADDR(0x002f04a8u);
+    if (on_camera_level(RILGAR)) return L5_ADDR(0x00328fe0u);
+    if (on_camera_level(BLARG)) return L6_ADDR(0x00314810u);
+    if (on_camera_level(UMBRIS)) return L7_ADDR(0x003280f0u);
+    if (on_camera_level(GASPAR)) return L9_ADDR(0x00314280u);
+    if (on_camera_level(ORXON)) return L10_ADDR(0x002f4b78u);
+    if (on_camera_level(POKITARU)) return L11_ADDR(0x00327af0u);
+    if (on_camera_level(HOVEN)) return L12_ADDR(0x00314950u);
+    if (on_camera_level(GEMLIK)) return L13_ADDR(0x00316ba8u);
+    if (on_camera_level(OLTANIS)) return L14_ADDR(0x00313240u);
+    if (on_camera_level(QUARTU)) return L15_ADDR(0x002f69e0u);
+    if (on_camera_level(KALEBO)) return L16_ADDR(0x002f3ae8u);
+    if (on_camera_level(VELDIN_ORBIT)) return L17_ADDR(0x002fff98u);
+    return L18_ADDR(0x00305378u);
+}
+
+// The level's own float the callback counts the look height down by each frame (a word of the level's small data)
+uint32_t level_look_step() {
+    if (on_camera_level(KERWAN)) return L3_ADDR(0x00161e54u);
+    if (on_camera_level(ARIDIA)) return L2_ADDR(0x0016238cu);
+    if (on_camera_level(EUDORA)) return L4_ADDR(0x00161f4cu);
+    if (on_camera_level(RILGAR)) return L5_ADDR(0x001621a4u);
+    if (on_camera_level(BLARG)) return L6_ADDR(0x0016256cu);
+    if (on_camera_level(UMBRIS)) return L7_ADDR(0x00161e24u);
+    if (on_camera_level(GASPAR)) return L9_ADDR(0x00161f3cu);
+    if (on_camera_level(ORXON)) return L10_ADDR(0x0016220cu);
+    if (on_camera_level(POKITARU)) return L11_ADDR(0x00162774u);
+    if (on_camera_level(HOVEN)) return L12_ADDR(0x0016224cu);
+    if (on_camera_level(GEMLIK)) return L13_ADDR(0x001620c4u);
+    if (on_camera_level(OLTANIS)) return L14_ADDR(0x0016247cu);
+    if (on_camera_level(QUARTU)) return L15_ADDR(0x001623ccu);
+    if (on_camera_level(KALEBO)) return L16_ADDR(0x00162194u);
+    if (on_camera_level(VELDIN_ORBIT)) return L17_ADDR(0x0016267cu);
+    return L18_ADDR(0x00162794u);
+}
+
+}  // namespace
+
+// `out`: `from` turned toward `to` by `frac` of the angle between them (`unit_flag` 0: the angle from their unit
+// directions; `from` itself when either is zero), a rotation by a quaternion about their cross product.
+// orig: L3:0x0024e6f8 L4:0x00252ce0
 void slerp_vec_toward(Vec4& out, const Vec4& from, const Vec4& to, int32_t unit_flag, float frac) {
     Vec4 q{};
     vec3_cross_ba(q, to, from);
@@ -44,6 +109,8 @@ void slerp_vec_toward(Vec4& out, const Vec4& from, const Vec4& to, int32_t unit_
     q.w = cos_vu(half_ang);
     quat_rotate(out, from, q);
 }
+
+namespace {
 
 // orig: L3:0x002eb7e0
 void type14_place_l3(uint32_t cam) {
@@ -73,9 +140,13 @@ void cam0_set_218_l3(uint32_t v) {
     }
 }
 
-// orig: L3:0x002e6f80
-void cam0_set_20c_l3(float a, float b, float g) {
-    const uint32_t c = lwu(L3_ADDR(0x00166f00u));
+}  // namespace
+
+// The follow camera's (the active camera 0x166e00 when it is type 0) three rates of its distance block (+0x1d0 of its work
+// block: +0x3c / +0x40 / +0x44), each set only when it is not 0.
+// orig: L3:0x002e6f80 L2:0x002f6598 L6:0x003106b8 L7:0x00323ff8 L8:0x00310218 L12:0x00310818 L15:0x002f28b8 L18:0x00301280
+void cam0_set_20c(float a, float b, float g) {
+    const uint32_t c = lwu(OV(0x00166e00u));
     if (lh(c + 0x86u) != 0) return;
     const uint32_t p = lwu(c + 0x70u) + 0x1d0u;
     if (lwc1(p + 0x3cu) != 0.0f) swc1(p + 0x3cu, a);
@@ -83,10 +154,12 @@ void cam0_set_20c_l3(float a, float b, float g) {
     if (lwc1(p + 0x44u) != 0.0f) swc1(p + 0x44u, g);
 }
 
+namespace {
+
 // orig: L3:0x002ec9a8
 int32_t type18_inside_l3(uint32_t cam) {
     const uint32_t override_moby = lwu(L3_ADDR(0x00166fdcu));
-    const uint32_t data = lwu(entry_l3(cam) + 0x1cu);
+    const uint32_t data = lwu(entry_of(cam) + 0x1cu);
     const uint32_t moby = lwu(data + 0x48u);
     if (override_moby != 0 && override_moby == moby) return 1;
     if (lh(data + 0x3cu) == 6) return lwu(HERO_PLAT) == moby ? 1 : 0;
@@ -104,7 +177,7 @@ int32_t type18_inside_l3(uint32_t cam) {
 
 // orig: L3:0x002ecae8
 int32_t type18_cone_check_l3(uint32_t cam, float max_yaw_deg, float max_pitch_deg) {
-    const uint32_t data = lwu(entry_l3(cam) + 0x1cu);
+    const uint32_t data = lwu(entry_of(cam) + 0x1cu);
     const uint32_t moby = lwu(data + 0x48u);
     if (max_yaw_deg == 0.0f && max_pitch_deg == 0.0f) return 1;
 
@@ -138,7 +211,7 @@ int32_t type18_cone_check_l3(uint32_t cam, float max_yaw_deg, float max_pitch_de
 
 // orig: L3:0x002ecd28
 void type18_update_l3(uint32_t cam) {
-    const uint32_t data = lwu(entry_l3(cam) + 0x1cu);
+    const uint32_t data = lwu(entry_of(cam) + 0x1cu);
     if (lw(data + 0x50u) != 0) {
         sh(data + 0x20u, 0);
         cam_mod_release(cam);
@@ -197,7 +270,7 @@ void type18_update_l3(uint32_t cam) {
         const uint32_t act = lwu(L3_ADDR(0x00166f00u));
         const float cur_yaw = atan2_f(lwc1(act + 0x0u), lwc1(act + 0x4u));
         if (lh(data + 0x20u) < 2) {
-            swc1(data + 0x40u, lwc1(entry_l3(cam) + 0x18u));
+            swc1(data + 0x40u, lwc1(entry_of(cam) + 0x18u));
         } else if (u2f(0x3e99999au) <= abs_f(lwc1(PAD_RX)) || u2f(0x3e99999au) <= abs_f(lwc1(PAD_RY))) {
             swc1(data + 0x40u, cur_yaw);
         }
@@ -209,7 +282,7 @@ void type18_update_l3(uint32_t cam) {
 
     if (lh(data + 0x3cu) == 4) {
         const uint32_t act = lwu(L3_ADDR(0x00166f00u));
-        const uint32_t e = entry_l3(cam);
+        const uint32_t e = entry_of(cam);
         float yaw = lwc1(e + 0x18u);
         const float cur_yaw = atan2_f(lwc1(act + 0x0u), lwc1(act + 0x4u));
         if (u2f(0x3fc90fdbu) < angle_dist(yaw, cur_yaw)) {
@@ -252,7 +325,7 @@ void type18_update_l3(uint32_t cam) {
         }
     } else if (static_cast<uint16_t>(lhu(data + 0x3cu) - 1u) < 2u) {
         cam0_set_218_l3(0xb0u);
-        cam0_set_20c_l3(1.0f, 12.0f, u2f(0x3de147aeu));
+        cam0_set_20c(1.0f, 12.0f, u2f(0x3de147aeu));
         if (lwc1(PAD_RX) != 0.0f || lwc1(PAD_RY) != 0.0f) sh(data + 0x20u, static_cast<uint32_t>(t300));
         int32_t n = lh(data + 0x20u);
         if (!(n < t300)) {
@@ -352,41 +425,46 @@ void type18_update_l3(uint32_t cam) {
     }
 }
 
-// orig: L3:0x001e4a88
-void queue_cam_callback_l3(uint32_t fn) {
-    const int32_t n = lw(L3_ADDR(0x0015ef4cu));
+}  // namespace
+
+// The camera's end-of-update callback `fn` queued (0x168ff0, 16 at most; the count 0x15ef4c), unless it is there already.
+// orig: L3:0x001e4a88 L2:0x001fc008 L4:0x001dda88 L5:0x00219d88 L6:0x00202d08 L7:0x00212f08 L9:0x0020a488 L10:0x001de788 L11:0x0021c988 L12:0x0020db88 L13:0x001f6b08 L14:0x001fe308 L15:0x001e4808 L16:0x001e9988 L17:0x001e8188 L18:0x001f3e08
+void cam_callback_queue(uint32_t fn) {
+    const int32_t n = lw(OV(0x0015ef4cu));
     if (n >= 16) return;
-    const uint32_t q = L3_ADDR(0x001690f0u);
+    const uint32_t q = OV(0x00168ff0u);
     for (int32_t i = 0; i < n; ++i) {
         if (lwu(q + static_cast<uint32_t>(i) * 4u) == fn) return;
     }
     sw(q + static_cast<uint32_t>(n) * 4u, fn);
-    sw(L3_ADDR(0x0015ef4cu), static_cast<uint32_t>(n + 1));
+    sw(OV(0x0015ef4cu), static_cast<uint32_t>(n + 1));
 }
 
-}  // namespace
-
-// orig: L3:0x002e8870
-int32_t ker_cam_type1_accept_l3(uint32_t cam, uint32_t other) {
-    const uint32_t data = lwu(entry_l3(cam) + 0x1cu);
+// Camera type 1 (a fixed camera that turns to the hero while he is in its box, data +0xc): Kerwan's and Eudora's.
+// The accept: an active camera (+0x74 4), not below another's priority, the hero in the box; the camera already in it,
+// or else a quick cut (the follow camera's +0xf3 cleared, the cut kind 2, the rates 0x166f08 / 0x166f14).
+// orig: L3:0x002e8870 L4:0x002ed850
+int32_t cam_type1_accept(uint32_t cam, uint32_t other) {
+    const uint32_t data = lwu(entry_of(cam) + 0x1cu);
     if (lwu(cam + 0x74u) != 4u) return 0;
     if (other != 0 && lh(other + 0x7eu) == 0 && !(lbu(other + 0x7cu) < lbu(cam + 0x7cu))) {
         return 0;
     }
     if (point_in_box(HERO_POS, lw(data + 0xcu)) == 0) return 0;
-    if (point_in_box(L3_ADDR(0x00166ec0u), lw(data + 0xcu)) != 0) return 1;
+    if (point_in_box(OV(0x00166dc0u), lw(data + 0xcu)) != 0) return 1;
 
     const float spd = u2f(0x3c9374bcu);
-    const uint32_t act = lwu(L3_ADDR(0x00166f00u));
-    sb(L3_ADDR(0x00166ff3u), 0);
+    const uint32_t act = lwu(OV(0x00166e00u));
+    sb(OV(0x00166ef3u), 0);
     sh(act + 0x7eu, 2u);
-    swc1(L3_ADDR(0x00167008u), spd);
-    swc1(L3_ADDR(0x00167014u), spd);
+    swc1(OV(0x00166f08u), spd);
+    swc1(OV(0x00166f14u), spd);
     return 1;
 }
 
-// orig: L3:0x002e8940 (via L3:0x002e8628)
-void ker_cam_type1_init_l3(uint32_t cam) {
+// The init: the turn's spring, the look height from the data (+0x18), the place and the matrix from the camera's record.
+// orig: L3:0x002e8940 (via L3:0x002e8628) L4:0x002ed920 (via L4:0x002ed608)
+void cam_type1_init(uint32_t cam) {
     const uint32_t w = lwu(cam + 0x70u);
     swc1(w + 0x10u + 0x4cu, 1.5f);
     sw(w + 0x10u + 0x40u, 0);
@@ -398,7 +476,7 @@ void ker_cam_type1_init_l3(uint32_t cam) {
     sw(w0 + 0xcu, 0);
 
     const int32_t idx = lh(cam + 0x84u);
-    const uint32_t e = lwu(L3_ADDR(0x0015ef50u)) + static_cast<uint32_t>(idx * 0x20);
+    const uint32_t e = lwu(OV(0x0015ef50u)) + static_cast<uint32_t>(idx * 0x20);
     const uint32_t data = lwu(e + 0x1cu);
     if (idx < 0) {
         debug_trap();
@@ -417,8 +495,9 @@ void ker_cam_type1_init_l3(uint32_t cam) {
     sh(cam + 0x7eu, 0);
 }
 
-// orig: L3:0x002e8960 (via L3:0x002e8730)
-void ker_cam_type1_update_l3(uint32_t cam) {
+// The update: turned toward the hero's head (his position + the look height) by the spring, the up axis 0x166e30.
+// orig: L3:0x002e8960 (via L3:0x002e8730) L4:0x002ed940 (via L4:0x002ed710)
+void cam_type1_update(uint32_t cam) {
     const uint32_t w = lwu(cam + 0x70u);
     Vec4 at = V(HERO_POS);
     at.z = fpu_add(at.z, lwc1(w + 0x10u + 0x4cu));
@@ -432,14 +511,15 @@ void ker_cam_type1_update_l3(uint32_t cam) {
     slerp_vec_toward(V(cam), V(cam + 0x40u), dir, 1, turn);
     vec3_set_length(V(cam + 0x40u), V(cam), 1.0f);
     lq_sq(cam, cam + 0x40u);
-    vec3_cross_ba(V(cam + 0x10u), V(cam), V(L3_ADDR(0x00166f30u)));
+    vec3_cross_ba(V(cam + 0x10u), V(cam), V(OV(0x00166e30u)));
     vec3_set_length(V(cam + 0x10u), V(cam + 0x10u), 1.0f);
     vec3_cross_ba(V(cam + 0x20u), V(cam + 0x10u), V(cam));
 }
 
-// orig: L3:0x002e8980
-void ker_cam_type1_exit_l3(uint32_t cam) {
-    const uint32_t data = lwu(entry_l3(cam) + 0x1cu);
+// The exit: handed back (+0x7e 3) when the active camera leaves the hero outside its box.
+// orig: L3:0x002e8980 L4:0x002ed960
+void cam_type1_exit(uint32_t cam) {
+    const uint32_t data = lwu(entry_of(cam) + 0x1cu);
     if (lwu(cam + 0x74u) == 4u && point_in_box(HERO_POS, lw(data + 0xcu)) == 0) {
         sh(cam + 0x7eu, 3u);
     }
@@ -455,7 +535,7 @@ int32_t ker_cam_type14_accept_l3(uint32_t, uint32_t) {
 
 // orig: L3:0x002eb978
 void ker_cam_type14_init_l3(uint32_t cam) {
-    const uint32_t data = lwu(entry_l3(cam) + 0x1cu);
+    const uint32_t data = lwu(entry_of(cam) + 0x1cu);
     const uint32_t b = lwu(cam + 0x70u) + 0xb0u;
     swc1(b + 0x14u, 1.5f);
     sw(b + 0x10u, lwu(HERO_MOBY));
@@ -485,7 +565,7 @@ void ker_cam_type14_init_l3(uint32_t cam) {
     swc1(f + 0x34u, lwc1(HERO_POS + 0x8u));
     sw(f + 0x24u, 0);
 
-    const uint32_t e2 = entry_l3(cam);
+    const uint32_t e2 = entry_of(cam);
     const Vec4 ang = {lwc1(e2 + 0x10u), lwc1(e2 + 0x14u), lwc1(e2 + 0x18u), 0.0f};
     Mat4 m{};
     euler_to_mat3_vu(m, ang);
@@ -543,7 +623,7 @@ void ker_cam_type14_update_l3(uint32_t cam) {
 
 // orig: L3:0x002ebde8
 void ker_cam_type14_exit_l3(uint32_t cam) {
-    const uint32_t data = lwu(entry_l3(cam) + 0x1cu);
+    const uint32_t data = lwu(entry_of(cam) + 0x1cu);
     const int32_t box = lw(data + 0xcu);
     if (box >= 0 && point_in_box(HERO_POS, box) == 0) {
         sh(cam + 0x7eu, 3u);
@@ -553,7 +633,7 @@ void ker_cam_type14_exit_l3(uint32_t cam) {
 // orig: L3:0x002ed5f8
 int32_t ker_cam_type18_accept_l3(uint32_t cam, uint32_t) {
     const uint32_t act = lwu(L3_ADDR(0x00166f00u));
-    const uint32_t data = lwu(entry_l3(cam) + 0x1cu);
+    const uint32_t data = lwu(entry_of(cam) + 0x1cu);
     if (lh(act + 0x86u) == 0 && lh(data + 0x20u) >= 0) {
         type18_update_l3(cam);
     }
@@ -561,24 +641,29 @@ int32_t ker_cam_type18_accept_l3(uint32_t cam, uint32_t) {
     return 0;
 }
 
-// orig: L3:0x002eb408
-void ker_cam0_hook_l3(uint32_t) {
-    const float f = lwc1(L3_ADDR(0x0016710cu));
+// The follow camera's per-frame hook *(0x167010) of the levels that have one (all but Veldin, Novalis and Batalia): a look
+// height asked for in the block 0x167000 (+0xc) raises the follow camera's look (0.35 of it), and the level's callback is
+// queued to count it down.
+// orig: L3:0x002eb408 L2:0x002fa710 L4:0x002f0448 L5:0x00328f80 L6:0x003147b0 L7:0x00328090 L9:0x00314220 L10:0x002f4b18 L11:0x00327a90 L12:0x003148f0 L13:0x00316b48 L14:0x003131e0 L15:0x002f6980 L16:0x002f3a88 L17:0x002fff38 L18:0x00305318
+void cam0_level_hook(uint32_t) {
+    const float f = lwc1(OV(0x0016700cu));
     if (f == 0.0f) return;
     cam0_set_look_height(1, fpu_add(fpu_mul(f, u2f(0x3eb33333u)), 0.0f), u2f(0x3ba3d70au));
-    queue_cam_callback_l3(L3_ADDR(0x002eb468u));
+    cam_callback_queue(level_callback_addr());
 }
 
-// orig: L3:0x002eb468
-void ker_cam_callback_l3(uint32_t) {
-    const uint32_t b = L3_ADDR(0x00167100u);
-    const uint32_t flag = lwu(L3_ADDR(0x00167104u));
-    swc1(L3_ADDR(0x00167108u), 10000.0f);
+// The hook's end-of-update callback: the block 0x167000's +8 set to 10000; its flag +4 cleared when set, else the look height
+// +0xc counted down by the level's step (not below 0); +0 cleared.
+// orig: L3:0x002eb468 L2:0x002fa770 L4:0x002f04a8 L5:0x00328fe0 L6:0x00314810 L7:0x003280f0 L9:0x00314280 L10:0x002f4b78 L11:0x00327af0 L12:0x00314950 L13:0x00316ba8 L14:0x00313240 L15:0x002f69e0 L16:0x002f3ae8 L17:0x002fff98 L18:0x00305378
+void cam0_level_callback(uint32_t) {
+    const uint32_t b = OV(0x00167000u);
+    const uint32_t flag = lwu(OV(0x00167004u));
+    swc1(OV(0x00167008u), 10000.0f);
     if (flag != 0) {
         sw(b + 0x4u, 0);
     } else {
-        const float next = fpu_sub(lwc1(L3_ADDR(0x0016710cu)), lwc1(L3_ADDR(0x00161e54u)));
-        swc1(L3_ADDR(0x0016710cu), next < 0.0f ? 0.0f : next);
+        const float next = fpu_sub(lwc1(OV(0x0016700cu)), lwc1(level_look_step()));
+        swc1(OV(0x0016700cu), next < 0.0f ? 0.0f : next);
     }
     sw(b, 0);
 }

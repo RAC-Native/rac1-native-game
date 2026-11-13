@@ -35,8 +35,8 @@ int32_t peckbot_hook4_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
     return res;
 }
 
-// Peckbot (class 0x241): hook +8.
-// orig: L1:0x002f1d18
+// Peckbot (class 0x241): hook +8. Gemlik's hook 0x2b7a20 is the same code (Veldin's functions only): this port serves it.
+// orig: L1:0x002f1d18 L13:0x002b7a20
 int32_t peckbot_hook8_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
     const uint32_t r = class_hook_10(m);
     const int32_t res = carry_hook8(m, pa1, pa2, pf12);
@@ -67,8 +67,10 @@ uint32_t peckbot_hook10_l1(uint32_t m) {
     return pv != 0 ? pv + 0x60u : 0u;
 }
 
-// Large Amoeboid (class 0x23c / Small Amoeboid 0x362): hook +0.
-// orig: L1:0x002efa88
+// Large Amoeboid (class 0x23c / Small Amoeboid 0x362): hook +0. Pokitaru's hook 0x2fb780 is the same code (Veldin's
+// functions only): this port serves it (Rilgar's own port of it, L5:0x00300ad8, is ril_carry_hook0_l5 in
+// carry_hooks_levels.cpp).
+// orig: L1:0x002efa88 L11:0x002fb780
 int32_t amoeboid_hook0_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
     const int32_t res = carry_hook0(m, pa1, pa2, pf12);
     if (res != 0) {

@@ -1,20 +1,30 @@
 // Novalis's own moby classes, part 2c: the teleporter pads (class 1135). Header novalis_mobys2.h. Addresses are Novalis's
 // (`orig: L1:`); Novalis-only data is L1_ADDR, the globals the
-// engine shares with Veldin are the level's own (OV), the base ELF's are bare.
+// engine shares with Veldin are the level's own (OV), the base ELF's are bare. The group state and the pieces' update
+// serve every level's copy of them (their levels' own words from per-level tables).
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/sound_emitter.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/variants_l1.h>
+#include <game/ovl/variants_l11.h>
+#include <game/ovl/variants_l12.h>
+#include <game/ovl/variants_l13.h>
+#include <game/ovl/variants_l16.h>
+#include <game/ovl/variants_l17.h>
+#include <game/ovl/variants_l18.h>
+#include <game/ovl/variants_l7.h>
+#include <game/ovl/variants_l8.h>
 #include <game/port_stubs.h>
 
 namespace rac1 {
 
 // Sets the state byte (+0x20) of every moby of group `group` (the list 0x1ab840 / Novalis 0x1abcc0) that is alive
-// (the byte not negative) to `state`.
-// orig: L1:0x0026e0e0
-void moby_group_set_state_l1(int32_t group, uint32_t state) {
+// (the byte not negative) to `state`. Its copies on other levels are the same code (the engine's data only).
+// orig: L1:0x0026e0e0 L5:0x00283498 L6:0x00267f70 L7:0x00281c30 L8:0x00263730 L11:0x0027f0e0 L12:0x002720d0 L13:0x00265050 L15:0x00248ac8 L16:0x002549d8 L17:0x00253970 L18:0x0025b4a0
+void moby_group_set_state(int32_t group, uint32_t state) {
     uint32_t p = lwu(OV(0x001ab840) + (static_cast<uint32_t>(group) << 2));
     if (p == 0) return;
     for (;; p += 2) {
@@ -41,14 +51,41 @@ void teleporter_trigger_l1(uint32_t m) {
         sb(m + 0x20, 1);
         return;
     }
-    moby_group_set_state_l1(static_cast<int32_t>(g), 1);
+    moby_group_set_state(static_cast<int32_t>(g), 1);
 }
 
-// The pad's three pieces (pvar +0x14.. the mobys of class 0x13b): each at the pad's position, up by L1:0x161f78, turned
-// about z by L1:0x161f80 degrees, pushed out along its own forward axis by 2.4 * (pvar +0x20) - 1.2, then tilted by
-// -1.05 * (pvar +0x24) - 0.349 (rotation matrices from the angles), their transforms updated.
-// orig: L1:0x003092d0
-void teleporter_pieces_update_l1(uint32_t m) {
+namespace {
+// the pieces' height above the pad and their turn (degrees): two words of each level's own small data
+uint32_t pieces_height_word() {
+    if (on_level(NOVALIS)) return L1_ADDR(0x00161f78);
+    if (on_level(UMBRIS)) return L7_ADDR(0x00161c28);
+    if (on_level(BATALIA)) return L8_ADDR(0x00162258);
+    if (on_level(POKITARU)) return L11_ADDR(0x00161900);
+    if (on_level(HOVEN)) return L12_ADDR(0x00161d48);
+    if (on_level(GEMLIK)) return L13_ADDR(0x00161da0);
+    if (on_level(KALEBO)) return L16_ADDR(0x00161ce0);
+    if (on_level(VELDIN_ORBIT)) return L17_ADDR(0x00161ea8);
+    return L18_ADDR(0x00162178);
+}
+uint32_t pieces_turn_word() {
+    if (on_level(NOVALIS)) return L1_ADDR(0x00161f80);
+    if (on_level(UMBRIS)) return L7_ADDR(0x00161c30);
+    if (on_level(BATALIA)) return L8_ADDR(0x00162260);
+    if (on_level(POKITARU)) return L11_ADDR(0x00161908);
+    if (on_level(HOVEN)) return L12_ADDR(0x00161d50);
+    if (on_level(GEMLIK)) return L13_ADDR(0x00161da8);
+    if (on_level(KALEBO)) return L16_ADDR(0x00161ce8);
+    if (on_level(VELDIN_ORBIT)) return L17_ADDR(0x00161eb0);
+    return L18_ADDR(0x00162180);
+}
+}  // namespace
+
+// The pad's three pieces (pvar +0x14.. the mobys of class 0x13b): each at the pad's position, up by the level's height word
+// (Novalis 0x161f78), turned about z by its turn word (0x161f80) degrees, pushed out along its own forward axis by
+// 2.4 * (pvar +0x20) - 1.2, then tilted by -1.05 * (pvar +0x24) - 0.349 (rotation matrices from the angles), their
+// transforms updated. The same code on every level with teleporter pads.
+// orig: L1:0x003092d0 L7:0x0031cc20 L8:0x003049a0 L11:0x002f2b70 L12:0x003013e0 L13:0x00304f80 L16:0x002e0818 L17:0x002e5628 L18:0x002ee270
+void teleporter_pieces_update(uint32_t m) {
     const uint32_t buf = ee_stack_alloc(0x10);
     const uint32_t pv = lwu(m + 0x78);
     const uint32_t from = m + 0x10;
@@ -57,9 +94,9 @@ void teleporter_pieces_update_l1(uint32_t m) {
     for (int32_t s2 = 2; s2 >= 0; --s2, s0 += 4) {
         uint32_t part = lwu(s0);
         lq_sq(part + 0x10, from);
-        const float f2 = lwc1(L1_ADDR(0x00161f78));
+        const float f2 = lwc1(pieces_height_word());
         swc1(part + 0x18, lwc1(part + 0x18) + f2);
-        const float f0 = lwc1(L1_ADDR(0x00161f80)) * f25;
+        const float f0 = lwc1(pieces_turn_word()) * f25;
         part = lwu(s0);
         swc1(part + 0x44, f0);
         float f20 = lwc1(pv + 0x20) * f24;
@@ -232,11 +269,11 @@ void teleporter_update_l1(uint32_t m) {
             teleporter_hide_l1(m);
             sb(m + 0x20, 5);
         }
-        teleporter_pieces_update_l1(m);
+        teleporter_pieces_update(m);
         return;
     }
     case 6:
-        if (lbu(m + 0x21) != 0xff) moby_group_set_state_l1(static_cast<int32_t>(lbu(m + 0x21)), 1);
+        if (lbu(m + 0x21) != 0xff) moby_group_set_state(static_cast<int32_t>(lbu(m + 0x21)), 1);
         sb(m + 0x20, 1);
         [[fallthrough]];
     case 1:
@@ -265,7 +302,7 @@ void teleporter_update_l1(uint32_t m) {
                 sb(m + 0x20, 4);
             }
         }
-        teleporter_pieces_update_l1(m);
+        teleporter_pieces_update(m);
         return;
     }
     case 3: {
@@ -301,7 +338,7 @@ void teleporter_update_l1(uint32_t m) {
         sw(pv + 0x28, 0);
         sw(pv + 0x2c, 0);
         swc1(pv + 0x34, u2f(0x3ff9999au));
-        teleporter_pieces_update_l1(m);
+        teleporter_pieces_update(m);
         return;
     }
     case 4: case 8: {
@@ -309,16 +346,16 @@ void teleporter_update_l1(uint32_t m) {
         if (lwc1(pv + 0x34) < f20) {
             sub_001f93e0(L1_ADDR(0x003094f0), m);
             approach_f_v(*static_cast<float*>(ee_ram_ptr(pv + 0x34)), f20, lwc1(0x0015ed6c) * u2f(0x40800000u));
-            teleporter_pieces_update_l1(m);
+            teleporter_pieces_update(m);
         } else if (0.0f < lwc1(pv + 0x24)) {
             seek(pv + 0x24, pv + 0x28, 0.0f, lwc1(0x0015ed70));
-            teleporter_pieces_update_l1(m);
+            teleporter_pieces_update(m);
         } else if (0.0f < lwc1(pv + 0x20)) {
             seek(pv + 0x20, pv + 0x2c, 0.0f, lwc1(0x0015ed70));
-            teleporter_pieces_update_l1(m);
+            teleporter_pieces_update(m);
         } else {
             sb(m + 0x20, 1);
-            teleporter_pieces_update_l1(m);
+            teleporter_pieces_update(m);
         }
         return;
     }

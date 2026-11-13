@@ -33,7 +33,7 @@ void green_mushroom_update_l1(uint32_t m);            // L1:0x002fd9a0  class 75
 
 // ---- the platforms, doors and lifts (novalis_platforms.cpp)
 void moby_sound_release_l1(uint32_t m, int32_t slot);  // (helper) the inlined channel stop
-int32_t moby_hero_on_l1(uint32_t m);                   // L1:0x00277fb8
+int32_t moby_hero_on_l1(uint32_t m);                   // L1:0x00277fb8 (and its copies on levels 3, 7, 9, 10, 12, 13, 14)
 void lift_update_l1(uint32_t m);                       // L1:0x002b9eb0  class 726
 
 void door_half_update_l1(uint32_t m);                  // L1:0x002f4710  class 665
@@ -65,6 +65,8 @@ void water_lily_update_l1(uint32_t m);                              // L1:0x002f
 
 void zone_marker_update_l1(uint32_t m);                             // L1:0x002f2eb8  class 605
 void zone_marker_update_l2(uint32_t m);                             // L2:0x002d74e0  class 605 (Aridia: counter 0x161a60)
+// class 605 on any level (L1:0x002f2eb8 ... L18:0x002d8ba8: every level's copy, novalis_props.cpp), its counter the level's own
+void zone_marker_update(uint32_t m);
 
 void empty_update_2ece90_l1(uint32_t m);                            // L1:0x002ece90  class 531
 void empty_update_30d200_l1(uint32_t m);                            // L1:0x0030d200  class 1816

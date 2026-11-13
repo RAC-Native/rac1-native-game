@@ -38,10 +38,10 @@ void class775_update_l1(uint32_t m) {
 bool level_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t& ret) {
     if (on_kerwan()) {  // Kerwan's own camera types 1 and 14 and type 18's accept (kerwan_camera.cpp)
         switch (lvl_key(fn)) {
-        case L3_CASE(0x002e8870): ret = ker_cam_type1_accept_l3(cam, other); return true;
-        case L3_CASE(0x002e8940): ker_cam_type1_init_l3(cam); ret = 0; return true;
-        case L3_CASE(0x002e8960): ker_cam_type1_update_l3(cam); ret = 0; return true;
-        case L3_CASE(0x002e8980): ker_cam_type1_exit_l3(cam); ret = 0; return true;
+        case L3_CASE(0x002e8870): ret = cam_type1_accept(cam, other); return true;
+        case L3_CASE(0x002e8940): cam_type1_init(cam); ret = 0; return true;
+        case L3_CASE(0x002e8960): cam_type1_update(cam); ret = 0; return true;
+        case L3_CASE(0x002e8980): cam_type1_exit(cam); ret = 0; return true;
         case L3_CASE(0x002ebd70): ret = ker_cam_type14_accept_l3(cam, other); return true;
         case L3_CASE(0x002eb978): ker_cam_type14_init_l3(cam); ret = 0; return true;
         case L3_CASE(0x002ebdb0): ker_cam_type14_update_l3(cam); ret = 0; return true;
@@ -53,9 +53,9 @@ bool level_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t& 
     if (!on_novalis()) return false;
     switch (lvl_key(fn)) {
     case L1_CASE(0x00315dd8): ret = camera_type_315dd8_l1(); return true;
-    case L1_CASE(0x00315de0): nov_cam_type3_init_l1(cam); ret = 0; return true;
-    case L1_CASE(0x00315358): nov_cam_type3_update_l1(cam); ret = 0; return true;
-    case L1_CASE(0x00316030): nov_cam_type3_exit_l1(cam); ret = 0; return true;
+    case L1_CASE(0x00315de0): cam_type3_init(cam); ret = 0; return true;
+    case L1_CASE(0x00315358): cam_type3_update(cam); ret = 0; return true;
+    case L1_CASE(0x00316030): cam_type3_exit(cam); ret = 0; return true;
     default: return false;
     }
 }

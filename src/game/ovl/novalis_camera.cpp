@@ -1,11 +1,13 @@
-// Hand-ported Novalis (level 1) camera type 3: path camera for slides and rails.
+// Camera type 3, the path camera for slides and rails: Novalis's (level 1) and the same code on Rilgar, Batalia, Kalebo III
+// and Drek's fleet (levels 5, 8, 16, 17; their camera types table's row 3, its accept a bare `return 0`). What it reads is
+// the engine's (the camera records 0x15ef50, the paths 0x1b04b0, the rails 0x15f70c, the previous camera 0x166e04, the up
+// axis 0x166e30: OV) and the base ELF's (the hero, his rail record 0x13f8b0..): one port serves every level's copy.
 #include <game/ovl/novalis_camera.h>
 
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
-#include <game/ovl/variants_l1.h>
 
 namespace rac1 {
 
@@ -18,12 +20,12 @@ constexpr uint32_t RAIL_OFF = 0x0013f8b8u;
 constexpr uint32_t RAIL_REV = 0x0013f8c0u;
 constexpr uint32_t HERO_CAM_REQ = 0x001415d4u;
 
-uint32_t entry_l1(uint32_t cam) {
-    return lwu(L1_ADDR(0x0015ef50u)) + static_cast<uint32_t>(lh(cam + 0x84) * 0x20);
+uint32_t entry_of(uint32_t cam) {
+    return lwu(OV(0x0015ef50u)) + static_cast<uint32_t>(lh(cam + 0x84) * 0x20);
 }
 
-uint32_t path_at_l1(int32_t idx) {
-    return lwu(L1_ADDR(0x001b0930u) + static_cast<uint32_t>(idx) * 4u);
+uint32_t path_at(int32_t idx) {
+    return lwu(OV(0x001b04b0u) + static_cast<uint32_t>(idx) * 4u);
 }
 
 void approach_step(uint32_t addr, float target, float step) {
@@ -74,9 +76,14 @@ void map_waypoints_to_path(uint32_t wp, uint32_t target, int32_t& seg_idx, float
     }
 }
 
-// orig: L1:0x00314e98
-void cam_type3_reset_l1(uint32_t cam) {
-    const uint32_t data = lwu(entry_l1(cam) + 0x1cu);
+}  // namespace
+
+// The camera's work block (+0x70) reset to its start values; for a hand-back kind 2 (data +0x30) seen the first time
+// (data +0x34) the two waypoint lists (paths data +0x28 / +0x2c) are mapped onto the camera path (data +0x20) and the rail
+// (the rail table's entry data +0x24): each waypoint's segment and the lengths between them.
+// orig: L1:0x00314e98 L5:0x00325340 L8:0x00311890 L16:0x002efe48 L17:0x002fc2c8
+void cam_type3_reset(uint32_t cam) {
+    const uint32_t data = lwu(entry_of(cam) + 0x1cu);
     const uint32_t w1 = lwu(cam + 0x70u) + 0x80u;
     swc1(w1 + 0x4cu, lw(data + 0x30u) == 3 ? 0.5f : 1.5f);
     sw(w1 + 0x40u, 0);
@@ -123,11 +130,11 @@ void cam_type3_reset_l1(uint32_t cam) {
     sw(w6 + 0xcu, 0);
 
     if (lw(data + 0x30u) == 2 && lh(data + 0x34u) == 0) {
-        const uint32_t wp0 = path_at_l1(lw(data + 0x28u));
-        const uint32_t cam_path = path_at_l1(lw(data + 0x20u));
-        const uint32_t rail_entry = lwu(L1_ADDR(0x0015f70cu)) + static_cast<uint32_t>(lw(data + 0x24u)) * 0x20u;
+        const uint32_t wp0 = path_at(lw(data + 0x28u));
+        const uint32_t cam_path = path_at(lw(data + 0x20u));
+        const uint32_t rail_entry = lwu(OV(0x0015f70cu)) + static_cast<uint32_t>(lw(data + 0x24u)) * 0x20u;
         const uint32_t rail_path = lwu(rail_entry + 0x10u);
-        const uint32_t wp1 = path_at_l1(lw(data + 0x2cu));
+        const uint32_t wp1 = path_at(lw(data + 0x2cu));
         sh(data + 0x34u, 1u);
         int32_t seg = 0;
         float dist = 0.0f;
@@ -138,12 +145,12 @@ void cam_type3_reset_l1(uint32_t cam) {
     sh(cam + 0x7eu, 0);
 }
 
-}  // namespace
-
-// orig: L1:0x00315de0
-void nov_cam_type3_init_l1(uint32_t cam) {
-    const uint32_t prev = lwu(L1_ADDR(0x00167284u));
-    const uint32_t data = lwu(entry_l1(cam) + 0x1cu);
+// The camera started: the previous camera's matrix and position taken over, the camera path's segment lengths measured,
+// the direction along the path chosen (data +0x36: the camera ahead of the hero) for kind 3, then the reset.
+// orig: L1:0x00315de0 L5:0x00326288 L8:0x003127d8 L16:0x002f0d90 L17:0x002fd210
+void cam_type3_init(uint32_t cam) {
+    const uint32_t prev = lwu(OV(0x00166e04u));
+    const uint32_t data = lwu(entry_of(cam) + 0x1cu);
     lq_sq(cam + 0x30u, prev + 0x30u);
     lq_sq(cam + 0x00u, prev + 0x00u);
     lq_sq(cam + 0x10u, prev + 0x10u);
@@ -152,7 +159,7 @@ void nov_cam_type3_init_l1(uint32_t cam) {
 
     const int32_t path_idx = lw(data + 0x20u);
     if (path_idx >= 0) {
-        const uint32_t path = path_at_l1(path_idx);
+        const uint32_t path = path_at(path_idx);
         int32_t n = lw(path);
         for (int32_t i = 0; i < n; ++i) {
             const int32_t next = ee_rem(i + 1, n);
@@ -166,7 +173,7 @@ void nov_cam_type3_init_l1(uint32_t cam) {
     const int32_t mode = lw(data + 0x30u);
     sh(data + 0x36u, 0);
     if (mode == 3) {
-        const uint32_t path = path_at_l1(lw(data + 0x20u));
+        const uint32_t path = path_at(lw(data + 0x20u));
         int32_t seg = 0;
         float dist = 0.0f;
         Vec4 closest{};
@@ -188,13 +195,16 @@ void nov_cam_type3_init_l1(uint32_t cam) {
         }
     }
 
-    cam_type3_reset_l1(cam);
+    cam_type3_reset(cam);
 }
 
-// orig: L1:0x00315358
-void nov_cam_type3_update_l1(uint32_t cam) {
+// The camera's frame: its position along the camera path (by kind data +0x30: 0 the rail's segment, 2 the waypoints'
+// share of the rail, else the point nearest the hero or the rail point ahead), sprung toward; then turned toward a point
+// ahead of the hero on the path or the rail.
+// orig: L1:0x00315358 L5:0x00325800 L8:0x00311d50 L16:0x002f0308 L17:0x002fc788
+void cam_type3_update(uint32_t cam) {
     const uint32_t w = lwu(cam + 0x70u);
-    const uint32_t data = lwu(entry_l1(cam) + 0x1cu);
+    const uint32_t data = lwu(entry_of(cam) + 0x1cu);
     const int32_t mode = lw(data + 0x30u);
     const int32_t path_idx = lw(data + 0x20u);
     float k_aim = u2f(0x3c23d70au);
@@ -203,9 +213,14 @@ void nov_cam_type3_update_l1(uint32_t cam) {
 
     int32_t sp78 = 0;
     float sp7c = 0.0f;
+    // The point the camera looks past the hero from: one vector of the original's frame (sp+0x40), which holds the segment
+    // offset (kind 0) or the target (kind 2) before the look writes it. The look's nearest point on the camera path leaves it
+    // as it is when the hero is beyond the search's reach (more than 21 from the path): the camera then looks from there
+    // (from 0, a slot the frame never wrote, for the other kinds).
+    Vec4 look_base{};
 
     if (mode == 0) {
-        const uint32_t cam_path_slot = L1_ADDR(0x001b0930u) + static_cast<uint32_t>(path_idx) * 4u;
+        const uint32_t cam_path_slot = OV(0x001b04b0u) + static_cast<uint32_t>(path_idx) * 4u;
         const int32_t rail_seg = lw(RAIL_SEG);
         const float rail_off = lwc1(RAIL_OFF);
         sp78 = rail_seg;
@@ -232,15 +247,16 @@ void nov_cam_type3_update_l1(uint32_t cam) {
                  V(cam_path + 0x10u + static_cast<uint32_t>(sp78) * 0x10u));
         vec3_set_length(seg_off, seg_dir, cam_len);
         vec3_add(target, V(cam_path + 0x10u + static_cast<uint32_t>(sp78) * 0x10u), seg_off);
+        look_base = seg_off;
 
         swc1(cam + 0x30u, camera_spring(lwc1(cam + 0x30u), target.x, k_aim, damp, 0.0f, w + 0x0u));
         swc1(cam + 0x34u, camera_spring(lwc1(cam + 0x34u), target.y, k_aim, damp, 0.0f, w + 0x4u));
         swc1(cam + 0x38u, camera_spring(lwc1(cam + 0x38u), target.z, k_aim, damp, 0.0f, w + 0x8u));
     } else if (mode == 2) {
-        const uint32_t cam_path = path_at_l1(path_idx);
-        const uint32_t wp1 = path_at_l1(lw(data + 0x2cu));
-        const uint32_t wp0 = path_at_l1(lw(data + 0x28u));
-        const uint32_t rail_path = lwu(lwu(L1_ADDR(0x0015f70cu)) + static_cast<uint32_t>(lw(data + 0x24u)) * 0x20u + 0x10u);
+        const uint32_t cam_path = path_at(path_idx);
+        const uint32_t wp1 = path_at(lw(data + 0x2cu));
+        const uint32_t wp0 = path_at(lw(data + 0x28u));
+        const uint32_t rail_path = lwu(lwu(OV(0x0015f70cu)) + static_cast<uint32_t>(lw(data + 0x24u)) * 0x20u + 0x10u);
 
         int32_t span = 0;
         int32_t prev = lw(wp1) - 1;
@@ -280,6 +296,7 @@ void nov_cam_type3_update_l1(uint32_t cam) {
         float cam_off = 0.0f;
         Vec4 target{};
         path_advance_v(cam_path, target, &cam_seg, &cam_off, 1, cam_step);
+        look_base = target;
 
         const float k_mult = lwc1(wp0 + static_cast<uint32_t>(prev_wp) * 0x10u + 0x10u);
         float k_pos = u2f(0x3c23d70au);
@@ -293,7 +310,7 @@ void nov_cam_type3_update_l1(uint32_t cam) {
         swc1(cam + 0x34u, camera_spring(lwc1(cam + 0x34u), target.y, lwc1(w + 0x10u), damp, 0.0f, w + 0x4u));
         swc1(cam + 0x38u, camera_spring(lwc1(cam + 0x38u), target.z, lwc1(w + 0x10u), damp, 0.0f, w + 0x8u));
     } else {
-        const uint32_t cam_path = path_at_l1(path_idx);
+        const uint32_t cam_path = path_at(path_idx);
         Vec4 target{};
         if (lw(data + 0x24u) < 0) {
             path_closest_point_v(cam_path, V(HERO_POS), target, &sp78, &sp7c, 0, 20.0f, 1.0f, 0.0f);
@@ -313,9 +330,8 @@ void nov_cam_type3_update_l1(uint32_t cam) {
         swc1(cam + 0x38u, camera_spring(lwc1(cam + 0x38u), target.z, k_base, damp, 0.0f, w + 0x8u));
     }
 
-    Vec4 look_base{};
     if (lw(data + 0x24u) < 0) {
-        const uint32_t cam_path = path_at_l1(lw(data + 0x20u));
+        const uint32_t cam_path = path_at(lw(data + 0x20u));
         path_closest_point_v(cam_path, V(HERO_POS), look_base, &sp78, &sp7c, 0, 20.0f, 1.0f, 0.0f);
         const int32_t loop = (lw(0x0015ed84u) == 0xe && lw(data + 0x30u) == 0) ? 0 : 1;
         Vec4 ahead{};
@@ -329,7 +345,7 @@ void nov_cam_type3_update_l1(uint32_t cam) {
     }
 
     Vec4 up_off{}, aim_pt{}, dir{};
-    vec3_set_length(up_off, V(L1_ADDR(0x001672b0u)), lwc1(w + 0x80u + 0x4cu));
+    vec3_set_length(up_off, V(OV(0x00166e30u)), lwc1(w + 0x80u + 0x4cu));
     vec3_add(aim_pt, up_off, look_base);
     vec3_sub(dir, aim_pt, V(cam + 0x30u));
 
@@ -348,18 +364,19 @@ void nov_cam_type3_update_l1(uint32_t cam) {
     vec_rotate_axis(V(cam), V(cam + 0x40u), axis, turn);
     vec3_set_length(V(cam + 0x40u), V(cam), 1.0f);
     vec3_set_length(V(cam), V(cam), 1.0f);
-    vec3_cross_ba(V(cam + 0x10u), V(cam), V(L1_ADDR(0x001672b0u)));
+    vec3_cross_ba(V(cam + 0x10u), V(cam), V(OV(0x00166e30u)));
     vec3_set_length(V(cam + 0x10u), V(cam + 0x10u), 1.0f);
     vec3_cross_ba(V(cam + 0x20u), V(cam + 0x10u), V(cam));
 }
 
-// orig: L1:0x00316030
-void nov_cam_type3_exit_l1(uint32_t cam) {
-    const uint32_t data = lwu(entry_l1(cam) + 0x1cu);
+// The camera handed back (+0x7e: 5 for kind 3, else 3) unless the hero still asks for it and rides its rail forward.
+// orig: L1:0x00316030 L5:0x003264d8 L8:0x00312a28 L16:0x002f0fe0 L17:0x002fd460
+void cam_type3_exit(uint32_t cam) {
+    const uint32_t data = lwu(entry_of(cam) + 0x1cu);
     if (lw(HERO_CAM_REQ) == lh(cam + 0x86u)) {
         const int32_t k = lw(data + 0x24u);
         if (k < 0) return;
-        const uint32_t rail = lwu(lwu(L1_ADDR(0x0015f70cu)) + static_cast<uint32_t>(k) * 0x20u + 0x10u);
+        const uint32_t rail = lwu(lwu(OV(0x0015f70cu)) + static_cast<uint32_t>(k) * 0x20u + 0x10u);
         if (lwu(RAIL_PATH) == rail && lw(RAIL_REV) == 0) return;
     }
     sh(cam + 0x7eu, lw(data + 0x30u) == 3 ? 5u : 3u);

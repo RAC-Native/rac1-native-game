@@ -247,6 +247,7 @@ int main(int argc, char** argv) {
     batch_482();
     batch_483();
     batch_501();
+    batch_502();
     batch_506();
     batch_510();
 

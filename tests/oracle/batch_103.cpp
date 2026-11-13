@@ -196,7 +196,7 @@ void batch_103() {
             const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8));
             for (int i = 0; i < 6; ++i) w8(first + 0x100 * u(ri(0, 300)) + 0x20, R());
             return Args{{u(ri(0, 14)), R() & 0xffu}, {}};
-        }, [](A a) { moby_group_set_state_l1(static_cast<int32_t>(a.i[0]), a.i[1]); return uint64_t{0}; });
+        }, [](A a) { moby_group_set_state(static_cast<int32_t>(a.i[0]), a.i[1]); return uint64_t{0}; });
     }
     // the hive: a group of bees (its pvar +0) to launch one of
     auto hive_vary = [](uint32_t m, int pass) {
@@ -258,7 +258,7 @@ void batch_103() {
     clscheck("teleporter_trigger", 0x00308b28, teleporter_trigger_l1, 1135, [tele_setup](uint32_t m) {
         tele_setup(m); w8(m + 0x21, ri(0, 2) == 0 ? 0xffu : u(ri(0, 12))); w16(m + 0xb2, u(ri(0, 600)));
     });
-    clscheck("teleporter_pieces_update", 0x003092d0, teleporter_pieces_update_l1, 1135, [tele_setup](uint32_t m) { tele_setup(m); });
+    clscheck("teleporter_pieces_update", 0x003092d0, teleporter_pieces_update, 1135, [tele_setup](uint32_t m) { tele_setup(m); });
     clscheck("teleporter_hint", 0x00309430, teleporter_hint_l1, 1135, [tele_setup](uint32_t m) { tele_setup(m); }, 40);
     clscheck("teleporter_hide", 0x003097e8, teleporter_hide_l1, 1135, [tele_setup](uint32_t m) { tele_setup(m); if (ri(0, 3) == 0) w32(ee_read<uint32_t>(m + 0x78) + 0x18, 0); }, 20);
     clscheck("teleporter_show", 0x00309838, teleporter_show_l1, 1135, [tele_setup](uint32_t m) { tele_setup(m); if (ri(0, 3) == 0) w32(ee_read<uint32_t>(m + 0x78) + 0x18, 0); }, 20);
