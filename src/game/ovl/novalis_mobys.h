@@ -24,7 +24,7 @@ void cave_door_update_l1(uint32_t m);    // L1:0x002f4348  class 641
 void spawn_point_update_l1(uint32_t m);  // L1:0x00300220 L2:0x002e28a0 L3:0x002d1140 L4:0x002d9fc0 L5:0x00309e40 L6:0x002e66e0 L7:0x003027a0 L8:0x002f99b0 L9:0x002f90e0 L10:0x002ca220 L11:0x00300578 L12:0x002f8090 L13:0x002fac70 L14:0x002f4190 L15:0x002db668 L16:0x002d69e0 L17:0x002d9b10 L18:0x002e1f40  class 805
 
 void scripted_camera_nodes_l1();                       // L1:0x002fb4b8 L2:0x002dfbd8 L3:0x002cf248 L3:0x002dc380 L5:0x003179a8 L7:0x002f60c8 L7:0x00300878 L10:0x002c7c00 L13:0x002edaf0 L13:0x002f8d78
-void scripted_camera_trigger_update_l1(uint32_t m);   // L1:0x002fb5b0  class 737
+void scripted_camera_trigger_update_l1(uint32_t m);   // L1:0x002fb5b0 L2:0x002dfcd0 L3:0x002cf340 L7:0x00300970 L10:0x002c7cf8 L13:0x002f8e70  class 737
 void plant_bolts_drop_l1(uint32_t m);                 // L1:0x002787a0 L4:0x00256460 L5:0x0028dd80 L6:0x00272a68 L7:0x0028c398 L8:0x0026db60 L9:0x00282b10 L10:0x00256e20 L11:0x00288fc0 L12:0x0027c2c8 L13:0x0026f828 L14:0x0026b788 L15:0x00253268 L16:0x0025eef0 L17:0x0025d9d0
 void moby_clone_l1(uint32_t m, uint32_t cls);         // L1:0x00278e20 L4:0x00256ab0 L8:0x0026e1b0 L9:0x00283160 L10:0x00257470 L11:0x00289610 L12:0x0027c918 L17:0x0025e020
 void tall_shroom_update_l1(uint32_t m);               // L1:0x0030d0f0  class 1813

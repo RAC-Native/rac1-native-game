@@ -46,7 +46,7 @@ bool level_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t& 
         case L3_CASE(0x002eb978): ker_cam_type14_init_l3(cam); ret = 0; return true;
         case L3_CASE(0x002ebdb0): ker_cam_type14_update_l3(cam); ret = 0; return true;
         case L3_CASE(0x002ebde8): ker_cam_type14_exit_l3(cam); ret = 0; return true;
-        case L3_CASE(0x002ed5f8): ret = ker_cam_type18_accept_l3(cam, other); return true;
+        case L3_CASE(0x002ed5f8): ret = cam_type18_accept(cam, other); return true;
         default: return false;
         }
     }

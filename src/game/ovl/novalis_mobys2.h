@@ -32,19 +32,21 @@ void teleporter_update_l1(uint32_t m);                         // L1:0x00308bd8 
 // ---- the path follower library (novalis_path.cpp)
 void path_follower_init_l1(uint32_t f);                                          // L1:0x0028b410 L3:0x00264458 L4:0x00268b18 L12:0x0028eb00 L14:0x0027df78
 int32_t path_nearest_l1(uint32_t at, uint32_t path, float bias);                 // L1:0x0028b510 L3:0x00264558 L4:0x00268c18 L5:0x002a0260 L7:0x0029e610 L8:0x002806a8 L9:0x00294a10 L12:0x0028ec00 L13:0x00281d70 L14:0x0027e078 L16:0x00271250
-uint32_t path_point_l1(uint32_t f, int32_t i);                                   // L1:0x0028b7b0
-int32_t path_index_wrap_l1(uint32_t f, int32_t i);                               // L1:0x0028b828
-int32_t path_index_advance_l1(uint32_t f);                                       // L1:0x0028b878
-void path_spline_tangent_l1(uint32_t out, uint32_t f, int32_t idx, float a, float b);  // L1:0x0028b8c8
-void hermite_l1(uint32_t out, uint32_t p0, uint32_t p1, uint32_t m0, uint32_t m1, float t);  // L1:0x0028ba80
-float path_measure_l1(uint32_t f, uint32_t debug, uint32_t color, float fa, float fb);  // L1:0x0028bb90
+uint32_t path_point_l1(uint32_t f, int32_t i);                                   // L1:0x0028b7b0 L3:0x00264660 L4:0x00268d20 L14:0x0027e180
+int32_t path_index_wrap_l1(uint32_t f, int32_t i);                               // L1:0x0028b828 L3:0x002646d8 L4:0x00268d98 L14:0x0027e1f8
+int32_t path_index_advance_l1(uint32_t f);                                       // L1:0x0028b878 L3:0x00264728 L4:0x00268de8 L14:0x0027e248
+void path_spline_tangent_l1(uint32_t out, uint32_t f, int32_t idx, float a, float b);  // L1:0x0028b8c8 L3:0x00264778 L4:0x00268e38 L14:0x0027e298
+void hermite_l1(uint32_t out, uint32_t p0, uint32_t p1, uint32_t m0, uint32_t m1, float t);  // L1:0x0028ba80 L3:0x00264930 L4:0x00268ff0 L14:0x0027e450
+float path_measure_l1(uint32_t f, uint32_t debug, uint32_t color, float fa, float fb);  // L1:0x0028bb90 L3:0x00264a40 L4:0x00269100 L14:0x0027e560
 uint32_t debug_particle_l1(uint32_t pos, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, int32_t t1, uint32_t t2, float f12);  // L1:0x00285768 L2:0x00271d80 L3:0x0025e9e0 L4:0x00263098 L6:0x0027f648 L10:0x002634e8 L14:0x00278390
 
 // ---- the aircraft base (novalis_jet_base.cpp)
-void jet_banking_l1(uint32_t m, uint32_t out);                // L1:0x002f5040
-void smoke_particle_l1(uint32_t pos, uint32_t vel);           // L1:0x0027f660
+void jet_banking_l1(uint32_t m, uint32_t out);                // L1:0x002f5040 L3:0x00293b50 L4:0x002cb790 L14:0x002e8078
+// the same with the sway pair at pvar `sway` (0x130; Kerwan's second build L3:0x0029c8a8: 0x140)
+void jet_banking(uint32_t m, uint32_t out, uint32_t sway);
+void smoke_particle_l1(uint32_t pos, uint32_t vel);           // L1:0x0027f660 L3:0x00258a30 L4:0x0025d0e8 L14:0x002723e0
 uint32_t jet_debris_spawn_l1(uint32_t m, uint32_t dir, float scale);  // L1:0x0030be70
-void jet_update_base_l1(uint32_t m);                          // L1:0x002f5168
+void jet_update_base_l1(uint32_t m);                          // L1:0x002f5168 L3:0x00293c78 L4:0x002cb8b8 L14:0x002e81a0 (Kerwan's class 845)
 void jet_fighter_update_l1(uint32_t m);                       // L1:0x002f4428  class 660
 uint32_t bomber_shot_spawn_l1(uint32_t m, uint32_t pos, uint32_t dir, uint32_t target, uint32_t flag);  // L1:0x002f68a0
 void jet_bomber_update_l1(uint32_t m);                        // L1:0x002f7728  class 688

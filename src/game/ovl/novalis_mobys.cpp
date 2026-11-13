@@ -236,7 +236,9 @@ void scripted_camera_nodes_l1() {
 // when +0x30 is set, with the pair +0x34), remembers the box's position / angles at pvar +0 / +0x10;
 // state 2 counts the timer down and ends the scene (hero back to idle), or each frame while +0xbc
 // is set keeps the scripted position (uid 5's pvars +0x80 / +0x90); state 3 waits for +0xbc.
-// orig: L1:0x002fb5b0
+// (Shared: the same code on Aridia, Kerwan, Umbris, Orxon and Gemlik: the engine's words through OV, the level's own
+// callees (the node list, the hero's idle, the uid-5 moby's pvars) the shared or Veldin ports.)
+// orig: L1:0x002fb5b0 L2:0x002dfcd0 L3:0x002cf340 L7:0x00300970 L10:0x002c7cf8 L13:0x002f8e70
 void scripted_camera_trigger_update_l1(uint32_t m) {
     scripted_camera_nodes_l1();
     const uint32_t pv = lwu(m + 0x78);

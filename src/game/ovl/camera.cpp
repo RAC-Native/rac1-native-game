@@ -6,7 +6,6 @@
 // type table 0x1ea880 +0x8c (0x14 each: id, then the accept / init / update / exit functions),
 // the active flag +0x8e. The active camera *(0x166e00), the previous one *(0x166e04); the view
 // the renderer reads: position 0x166dc0, Euler angles 0x166dd0, rows 0x166fd0..0x167000.
-#include <game/ovl/aridia_classes_tr.h>
 #include <game/ovl/camera_types.h>
 #include <game/ovl/kerwan_camera.h>
 #include <game/ovl/variants_l3.h>
@@ -203,8 +202,8 @@ int32_t camera_type_call(uint32_t fn, uint32_t cam, uint32_t other) {
     case 0x002eb210: case 0x002ebaf8: case 0x002ec6b8: return 0;  // types 2 / 3 / 4's accept: v0 = 0
     case 0x002eb270: case 0x002ebbd0: return 0;                   // types 2 / 3's exit: empty
     default:
-        // Aridia's own type 0x12 (its accept function: the modifier 6's, forked)
-        if (on_camera_level(ARIDIA) && fn == L2_ADDR(0x002fc298)) return static_cast<int32_t>(cam_type_12_accept_l2(cam, other));
+        // Aridia's own type 0x12 (its accept function: the modifier 6's, forked): the port of every level's copy (kerwan_camera.cpp)
+        if (on_camera_level(ARIDIA) && fn == L2_ADDR(0x002fc298)) return cam_type18_accept(cam, other);
         if (int32_t r = 0; level_camera_type_call(fn, cam, other, r)) return r;  // (a level's own camera type)
         TODO_PORT(fn, "camera type function")(cam, other);
         return 0;

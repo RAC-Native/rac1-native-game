@@ -211,7 +211,7 @@ void batch_126() {
         static const CamT cams[] = {
             {1, 0x002e8870, 0x002e8940, 0x002e8960, 0x002e8980, cam_type1_accept, cam_type1_init, cam_type1_update, cam_type1_exit},
             {14, 0x002ebd70, 0x002eb978, 0x002ebdb0, 0x002ebde8, ker_cam_type14_accept_l3, ker_cam_type14_init_l3, ker_cam_type14_update_l3, ker_cam_type14_exit_l3},
-            {18, 0x002ed5f8, 0, 0, 0, ker_cam_type18_accept_l3, nullptr, nullptr, nullptr},
+            {18, 0x002ed5f8, 0, 0, 0, cam_type18_accept, nullptr, nullptr, nullptr},
         };
         static char nm[16][48];
         int k = 0;
