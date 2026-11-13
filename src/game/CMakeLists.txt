@@ -182,6 +182,21 @@ add_library(rac1_game STATIC
     ovl/shared_class1523.cpp
     ovl/shared_class123.cpp
     ovl/shared_class1443.cpp
+    ovl/shared_class827.cpp
+    ovl/shared_class302.cpp
+    ovl/shared_class1302.cpp
+    ovl/shared_class857.cpp
+    ovl/shared_swingshot_target.cpp
+    ovl/shared_class819.cpp
+    ovl/shared_class1021.cpp
+    ovl/shared_class832.cpp
+    ovl/shared_class604.cpp
+    ovl/shared_particle_4a.cpp
+    ovl/shared_path_links.cpp
+    ovl/shared_class830.cpp
+    ovl/shared_class1038.cpp
+    ovl/shared_class1378.cpp
+    ovl/shared_class1108.cpp
     ovl/novalis_amoeboid.cpp
     ovl/vendor_draw.cpp
     ovl/vendor_frame.cpp

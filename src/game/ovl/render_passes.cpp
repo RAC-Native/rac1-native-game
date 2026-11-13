@@ -8,22 +8,9 @@
 #include <game/render/mrp_fx.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/render_view.h>
-#include <game/ovl/aridia_classes_tr.h>
-#include <game/ovl/batalia_part2.h>
-#include <game/ovl/blarg_part2.h>
-#include <game/ovl/eudora_mobys.h>
-#include <game/ovl/gaspar_mobys.h>
 #include <game/ovl/gemlik_mobys.h>
-#include <game/ovl/hoven_mobys.h>
-#include <game/ovl/kerwan_classes_tr.h>
-#include <game/ovl/novalis_draw_cbs.h>
-#include <game/ovl/oltanis_mobys.h>
-#include <game/ovl/orxon_mobys.h>
 #include <game/ovl/pokitaru_mobys.h>
-#include <game/ovl/quartu_mobys.h>
-#include <game/ovl/rilgar_mobys.h>
-#include <game/ovl/umbris_part2.h>
-#include <game/ovl/veldin_finale_mobys.h>
+#include <game/ovl/shared_class832.h>
 #include <game/ovl/veldin_orbit_mobys.h>
 
 #include <cstdlib>
@@ -177,16 +164,14 @@ void texture_block_end() {
 namespace {
 // orig: (host) whether the draw-list callback `fn` draws a full-screen 2D layer over the whole 4:3 frame (render_view_layer_note):
 // class 832's, the Visibomb's out-of-range static (a grid of 32 x 32 sprites with random texels from effect texture 0x1e, from
-// x -16 past the frame's right edge, thicker as its counter grows), on every level that carries it (the same code in each overlay)
+// x -16 past the frame's right edge, thicker as its counter grows), on every level that carries it (the same code in each
+// overlay, one port: shared_class832.cpp): the level's own address of it, or (a session's tag, once its level is re-glued)
+// the shared port
 bool screen_layer_fn(uint32_t fn) {
-    static constexpr MobyFn kLayers[] = {
-        nov_class832_draw_l1, class832_draw_l2,     kerwan_class832_draw_l3, eud_class832_draw_l4, ril_cb_30d8b8_l5, blg_class832_draw_l6,
-        umb_class832_draw_l7, bat_class832_draw_l8, gas_class832_draw_l9,    orx_cb_2ce868_l10,    pok_cb_302e60_l11, hov_cb_2fa028_l12,
-        gml_cb_2fcc08_l13,    olt_cb_2f6128_l14,    qua_cb_2de080_l15,       vf_cb_2e3f58_l18};
+    const uint32_t own = class832_draw_addr();
+    if (own != 0 && fn == own) return true;
     const MobyFn f = ovl_moby_fn_resolve(fn);
-    for (MobyFn l : kLayers)
-        if (f == l) return true;
-    return false;
+    return f != nullptr && f == class832_draw;
 }
 
 // orig: (host) whether the draw-list callback `fn` is a space fight's HUD (render_view_proj_note): the player's ship's callback on
