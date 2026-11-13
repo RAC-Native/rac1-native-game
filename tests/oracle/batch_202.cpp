@@ -10,6 +10,7 @@
 // hero's position about where it is, the random seed, the frame counter; one case in four the moby's state byte as one of the states
 // the class's mobys hold in the dumps), then runs level <lv>'s own update (the original at its address) against the port.
 #include "ovl_oracle.h"
+#include "trial_guard.h"
 
 #include <game/ovl/hoven_mobys.h>
 #include <game/ovl/ovl_common.h>
@@ -19,8 +20,6 @@
 #include <runtime/vu/vu0.h>
 
 #include <algorithm>
-#include <csetjmp>
-#include <csignal>
 #include <cstring>
 #include <filesystem>
 #include <map>
@@ -32,24 +31,13 @@ namespace rac1::oracle {
 namespace {
 // a random state can send the port's vector helpers through a pointer outside RAM (a SIGSEGV where the interpreter would wrap it):
 // the trial run of a state turns it into "not a game state" (the state is dealt again), as batch 124's
-sigjmp_buf g_trial_jmp;
-void trial_segv(int) { siglongjmp(g_trial_jmp, 1); }
 bool trial_run(void (*port)(uint32_t), uint32_t m) {
-    const VUState vu_saved = vu0::global().st;  // (the port's VU0 registers: a trial must not leave its lanes to the case it vets)
-    struct sigaction sa {}, old {};
-    sa.sa_handler = trial_segv;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_NODEFER;
-    sigaction(SIGSEGV, &sa, &old);
-    bool ok = true;
-    if (sigsetjmp(g_trial_jmp, 1) != 0) ok = false;
-    else {
-        try { port(m); } catch (const std::exception&) { ok = false; }
-    }
-    sigaction(SIGSEGV, &old, nullptr);
+    const VUState vu_saved = vu0::global().st;
+    const bool ok = run_trial(port, m);
     vu0::global().st = vu_saved;
     return ok;
 }
+
 struct Cls { int level; int cls; uint32_t addr; void (*fn)(uint32_t); };
 const Cls kCls[] = {
     {11, 23, 0x002cb668, pok_class23_update_l11},

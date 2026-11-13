@@ -14,6 +14,7 @@
 // Class 712's states 3 / 4 / 5 / 7, which batch 221 cannot reach on the level's first frame, are among the random states here.
 
 #include "ovl_oracle.h"
+#include "trial_guard.h"
 
 #include <game/lib/libcdvd.h>
 #include <game/ovl/oltanis_mobys.h>
@@ -21,10 +22,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants_l14.h>
 
-#include <csetjmp>
-#include <csignal>
 #include <cstring>
-#include <sys/time.h>
 #include <map>
 #include <string>
 
@@ -71,30 +69,9 @@ std::vector<uint32_t> particles223(uint8_t type) {
     return out;
 }
 // A trial run of the port on a random state, as batch 124's, with a time limit too: a state whose pvars send a path walk (path_advance)
-// round a path that has no length loops forever on both sides (the interpreter stops at its instruction budget): not a game state, dealt again.
-sigjmp_buf g_trial_jmp_223;
-void trial_sig_223(int) { siglongjmp(g_trial_jmp_223, 1); }
-bool trial_run_223(void (*port)(uint32_t), uint32_t m) {
-    struct sigaction sa {}, old_segv {}, old_alrm {};
-    sa.sa_handler = trial_sig_223;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_NODEFER;
-    sigaction(SIGSEGV, &sa, &old_segv);
-    sigaction(SIGALRM, &sa, &old_alrm);
-    itimerval it {};
-    it.it_value.tv_sec = 2;
-    bool ok = true;
-    if (sigsetjmp(g_trial_jmp_223, 1) != 0) ok = false;
-    else {
-        setitimer(ITIMER_REAL, &it, nullptr);
-        try { port(m); } catch (const std::exception&) { ok = false; }
-    }
-    itimerval off {};
-    setitimer(ITIMER_REAL, &off, nullptr);
-    sigaction(SIGSEGV, &old_segv, nullptr);
-    sigaction(SIGALRM, &old_alrm, nullptr);
-    return ok;
-}
+// round a path that has no length loops forever on both sides (the interpreter stops at its instruction budget): not a game state.
+// POSIX rejects and retries a timed-out state; Windows reports a fatal timeout (trial_guard.h).
+
 uint32_t pick223(const std::vector<uint32_t>& v) { return v[static_cast<size_t>(ri(0, static_cast<int>(v.size()) - 1))]; }
 }  // namespace
 
@@ -235,7 +212,7 @@ void batch_223() {
                     saved.assign(ee_get_ram_base(), ee_get_ram_base() + 0x02000000);
                     bool ok = true;
                     const uint32_t stack_top = ee_stack_ptr();
-                    ok = trial_run_223(port, m);
+                    ok = run_trial(port, m, 2);
                     ee_stack_ptr() = stack_top;
                     std::memcpy(ee_get_ram_base(), saved.data(), saved.size());
                     if (ok) break;
