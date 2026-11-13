@@ -5,6 +5,12 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+### Diagnostics (Linux, macOS)
+- **A crash leaves its reason and frames in the log.** A SIGSEGV, SIGBUS, SIGFPE, SIGILL or abort now writes a `[fatal]` line
+  (the signal and the faulting address) and the stack's frames to `build/game.log`, then ends the game as before (a core dump
+  where the system keeps them). Until now only an uncaught C++ exception left a line. For the crashes reported when flying
+  from one planet to the next (#135, #164), which no log came with.
+
 ### Fixes (Windows)
 - **The game window is no longer "always on top".** GLFW makes a fullscreen window topmost on Windows; the game now takes
   the flag off at its start and whenever GLFW sets it again (a restore from the taskbar), so the Task Manager or any other

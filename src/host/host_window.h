@@ -11,7 +11,8 @@
 //   in a dialog behind the game's window): the fullscreen window stayed on the screen, "not responding", until the
 //   process was killed. host_fatal_handlers_install's handlers write what happened to the log (stderr: game.log
 //   when the launcher started the game), give the monitor its desktop mode back and end the process with exit
-//   status 3. The same on Linux for std::terminate (the message, then abort as before).
+//   status 3. The same on Linux and macOS for std::terminate (the message, then abort as before) and for a crash signal
+//   (SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT: the reason and the stack's frames, then the default action, a core dump).
 #ifndef RAC1_HOST_HOST_WINDOW_H
 #define RAC1_HOST_HOST_WINDOW_H
 
