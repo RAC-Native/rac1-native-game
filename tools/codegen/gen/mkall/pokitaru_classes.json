@@ -16,6 +16,7 @@
   "2f2518:pok_class318_update_l11:void:a0",
   "2f3350:pok_class361_update_l11:void:a0",
   "309ac0:pok_class1075_update_l11:void:a0",
+  "30b358:pok_class1111_update_l11:void:a0",
   "30c788:pok_class1156_update_l11:void:a0",
   "30d800:pok_class1157_update_l11:void:a0",
   "30e088:pok_class1158_update_l11:void:a0",
@@ -44,6 +45,7 @@
   "3162d0:pok_hook_3162d0_u",
   "3162f0:pok_hook_3162f0_u",
   "2f2d58:pok_cb_2f2d58_l11:void:a0",
+  "30a908:pok_cb_30a908_l11:void:a0",
   "311d50:pok_cb_311d50_l11:void:a0",
   "31db50:pok_cb_31db50_l11:void:a0",
   "31e930:pok_cb_31e930_l11:void:a0"
