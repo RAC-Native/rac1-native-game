@@ -39,25 +39,13 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/aridia_mobys.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
-
-//@gen olt_3017f8_l14
-
-//@gen olt_301de8_l14
-
-//@gen olt_302538_l14
-
-//@gen olt_class1224_update_l14
-
-//@gen olt_2aabf8_l14
-
-//@gen olt_class1260_update_l14
-
-//@gen olt_class1331_update_l14
 
 //@gen olt_305600_l14
 
@@ -77,22 +65,6 @@ using namespace vu0m;
 
 //@gen olt_class1397_update_l14
 
-//@gen olt_212598_l14
-
-//@gen olt_26b008_l14
-
-//@gen olt_270a78_l14
-
-//@gen olt_26b098_l14
-
-//@gen olt_2706b0_l14
-
-//@gen olt_27cfb0_l14
-
-//@gen olt_306230_l14
-
-//@gen olt_class1400_update_l14
-
 //@gen olt_class1416_update_l14
 
 //@gen olt_307510_l14
@@ -103,42 +75,8 @@ using namespace vu0m;
 
 //@gen olt_class1417_update_l14
 
-//@gen olt_20c698_l14
-
 //@gen olt_class1418_update_l14
 
-//@gen olt_26b788_l14
-
-//@gen olt_308358_l14
-
-//@gen olt_class1511_update_l14
-
-//@gen olt_261728_l14
-
 //@gen olt_class1559_update_l14
-
-//@gen olt_class1629_update_l14
-
-//@gen olt_class1633_update_l14
-
-//@gen olt_261050_l14
-
-//@gen olt_308f50_l14
-
-//@gen olt_308fa8_l14
-
-//@gen olt_308ad0_l14
-
-//@gen olt_309050_l14
-
-//@gen olt_309338_l14
-
-//@gen olt_3095c8_l14
-
-//@gen olt_27d310_l14
-
-//@gen olt_309ae8_l14
-
-//@gen olt_309c18_l14
 
 }  // namespace rac1

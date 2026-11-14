@@ -39,13 +39,12 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/aridia_mobys.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
-
-//@gen olt_26afa0_l14
 
 //@gen olt_2ac2b8_l14
 
@@ -65,8 +64,6 @@ using namespace vu0m;
 
 //@gen olt_2aead8_l14
 
-//@gen olt_20c760_l14
-
 //@gen olt_2aeba0_l14
 
 //@gen olt_2aed50_l14
@@ -80,42 +77,6 @@ using namespace vu0m;
 //@gen olt_2b4670_l14
 
 //@gen olt_class8_update_l14
-
-//@gen olt_2b2600_l14
-
-//@gen olt_2b2ed8_l14
-
-//@gen olt_2b2f60_l14
-
-//@gen olt_2b3268_l14
-
-//@gen olt_2b3318_l14
-
-//@gen olt_2b3330_l14
-
-//@gen olt_2b3358_l14
-
-//@gen olt_2b3418_l14
-
-//@gen olt_2b3578_l14
-
-//@gen olt_2b35d8_l14
-
-//@gen olt_2b37b0_l14
-
-//@gen olt_2b3890_l14
-
-//@gen olt_2b3920_l14
-
-//@gen olt_2b39a0_l14
-
-//@gen olt_2d9870_l14
-
-//@gen olt_2dea98_l14
-
-//@gen olt_2e0170_l14
-
-//@gen olt_class28_update_l14
 
 //@gen olt_2b4340_l14
 

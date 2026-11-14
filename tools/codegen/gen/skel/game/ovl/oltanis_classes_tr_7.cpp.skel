@@ -39,49 +39,13 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shared_cam19.h>
+#include <game/ovl/shared_cutscene_fx.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
-
-//@gen olt_cb_2b3a20_l14
-
-//@gen olt_268b50_l14
-
-//@gen olt_2723e0_l14
-
-//@gen olt_27df78_l14
-
-//@gen olt_27e078_l14
-
-//@gen olt_27e1f8_l14
-
-//@gen olt_27e248_l14
-
-//@gen olt_27e180_l14
-
-//@gen olt_27e298_l14
-
-//@gen olt_27e450_l14
-
-//@gen olt_278390_l14
-
-//@gen olt_27e560_l14
-
-//@gen olt_2e8078_l14
-
-//@gen olt_fn_2e81a0_u
-
-//@gen olt_3141c8_l14
-
-//@gen olt_cam_type19_accept_u
-
-//@gen olt_cam_type19_init_l14
-
-//@gen olt_cam_type19_update_l14
-
-//@gen olt_314e20_l14
 
 //@gen olt_cam_type20_accept_u
 
@@ -99,19 +63,7 @@ using namespace vu0m;
 
 //@gen olt_cam_type21_exit_l14
 
-//@gen olt_hook_2dae00_u
-
-//@gen olt_hook_2dae50_u
-
 //@gen olt_hook_2daed8_u
-
-//@gen olt_1fe308_l14
-
-//@gen olt_cam0_hook_l14
-
-//@gen olt_cam_callback_l14
-
-//@gen olt_245e98_l14
 
 //@gen olt_cutscene_level_extras_l14
 

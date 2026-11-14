@@ -40,21 +40,17 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/shared_floaters.h>
+#include <game/ovl/shared_level_helpers.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/shared_helpers.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
 
-//@gen olt_2e1818_l14
-
-//@gen olt_class545_update_l14
-
 //@gen olt_class557_update_l14
-
-//@gen olt_class604_update_l14
-
-//@gen olt_class605_update_l14
 
 //@gen olt_2eb388_l14
 
@@ -64,11 +60,7 @@ using namespace vu0m;
 
 //@gen olt_class643_update_l14
 
-//@gen olt_279aa0_l14
-
 //@gen olt_class681_update_l14
-
-//@gen olt_294d38_l14
 
 //@gen olt_294028_l14
 
@@ -90,28 +82,10 @@ using namespace vu0m;
 
 //@gen olt_class685_update_l14
 
-//@gen olt_class686_update_l14
-
-//@gen olt_26e1c0_l14
-
-//@gen olt_2f1040_l14
-
 //@gen olt_2f1140_l14
-
-//@gen olt_2f12f0_l14
-
-//@gen olt_2f1268_l14
-
-//@gen olt_2f1360_l14
 
 //@gen olt_2f13f8_l14
 
-//@gen olt_2f1490_l14
-
-//@gen olt_2f1638_l14
-
 //@gen olt_class712_update_l14
-
-//@gen olt_3131a8_l14
 
 }  // namespace rac1

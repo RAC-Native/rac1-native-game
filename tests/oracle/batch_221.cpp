@@ -11,14 +11,42 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/carry_hooks.h>
+#include <game/ovl/empty_class_updates.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/hero_move_mode.h>
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/oltanis_mobys.h>
-#include <game/ovl/carry_hooks.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/shared_cam19.h>
+#include <game/ovl/shared_class1224.h>
+#include <game/ovl/shared_class1331.h>
+#include <game/ovl/shared_class1400.h>
+#include <game/ovl/shared_class1511.h>
+#include <game/ovl/shared_class1629.h>
+#include <game/ovl/shared_class250.h>
+#include <game/ovl/shared_class252.h>
+#include <game/ovl/shared_class258.h>
+#include <game/ovl/shared_class28.h>
+#include <game/ovl/shared_class28_draw.h>
+#include <game/ovl/shared_class325.h>
+#include <game/ovl/shared_class403.h>
+#include <game/ovl/shared_class604.h>
+#include <game/ovl/shared_class686.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_class933.h>
+#include <game/ovl/shared_class994.h>
+#include <game/ovl/shared_cutscene_fx.h>
+#include <game/ovl/shared_env_objects.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_spawner.h>
+#include <game/ovl/shared_swingshot_target.h>
 #include <game/ovl/sound_emitter.h>
-#include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 
 #include <csetjmp>
@@ -38,6 +66,8 @@ TrRet hook_uniform(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t, uint32_t, ui
                    float, float, float, float) {
     return TrRet{static_cast<uint32_t>(H(a0, a1, a2, f12)), 0.0f};
 }
+// level 14's hook +8 of class 252's table (L14:0x2dae00): the shared carry_state_hook with Oltanis's states (hook +8, carried 5, released 1)
+int32_t olt_hook_2dae00(uint32_t m, uint32_t a1, uint32_t a2, float f12) { return carry_state_hook(m, a1, a2, f12, 8, 5, 1); }
 
 // A random state can hold a pointer outside RAM that the port's vector helpers dereference without a check (a SIGSEGV where the interpreter would wrap it): the trial run of a state
 // turns it into "not a game state" (the state is dealt again), as the port's "Pointer resolution out of bounds" exception does.
@@ -210,35 +240,35 @@ void batch_221() {
     static const TrCls trcls[] = {
         {"class903", 0x002aba80, olt_class903_update_l14, 0x0, false},
         {"class8", 0x002ac618, olt_class8_update_l14, 0x0, false, 0, 0xffff},  // (pass 1: the pvars' small counters moved send its path walk (path_advance) round a path that has no length: both sides loop forever)
-        {"class28", 0x002b17d8, olt_class28_update_l14, 0x0, false},
+        {"class28", 0x002b17d8, class28_update, 0x0, false},
         {"class30", 0x002b3bf0, olt_class30_update_l14, 0x0, false},
         {"class31", 0x002b46e8, olt_class31_update_l14, 0x0, false},
         {"class81", 0x002bac78, olt_class81_update_l14, 0x0, false},
         {"class211", 0x002d5f40, olt_class211_update_l14, 0x0, false},
-        {"class250", 0x002d96e0, olt_class250_update_l14, 0x0, false},
-        {"class252", 0x002d98f0, olt_class252_update_l14, 0x0, false},
-        {"class258", 0x002db378, olt_class258_update_l14, 0x0, false},
+        {"class250", 0x002d96e0, class250_update, 0x0, false},
+        {"class252", 0x002d98f0, class252_update, 0x0, false},
+        {"class258", 0x002db378, class258_update, 0x0, false},
         {"class309", 0x002de1f8, olt_class309_update_l14, 0x0, false},
-        {"class325", 0x002de670, olt_class325_update_l14, 0x0, false},
+        {"class325", 0x002de670, class325_update, 0x0, false},
         {"class386", 0x002dee28, olt_class386_update_l14, 0x0, false},
-        {"class403", 0x002dfd10, olt_class403_update_l14, 0x0, false},
-        {"class455", 0x002e1b20, olt_class455_update_l14, 0x0, false},
+        {"class403", 0x002dfd10, class403_update, 0x0, false},
+        {"class455", 0x002e1b20, class455_update, 0x0, false},
         {"class531", 0x002e7190, empty_update, 0x0, false},
-        {"class545", 0x002e72d8, olt_class545_update_l14, 0x0, false},
+        {"class545", 0x002e72d8, class545_update, 0x0, false},
         {"class557", 0x002e7bd8, olt_class557_update_l14, 0x0, false},
-        {"class604", 0x002ea9d0, olt_class604_update_l14, 0x0, false},
-        {"class605", 0x002ead20, olt_class605_update_l14, 0x0, false},
+        {"class604", 0x002ea9d0, class604_update, 0x0, false},
+        {"class605", 0x002ead20, zone_marker_update, 0x0, false},
         {"class610", 0x002eaf88, olt_class610_update_l14, 0x0, false},
         {"class643", 0x002ec810, olt_class643_update_l14, 0x0, false},
         {"class681", 0x002ece00, olt_class681_update_l14, 0x0, false},
         {"class684", 0x002ed280, olt_class684_update_l14, 0x0, false},
         {"class685", 0x002ee8d8, olt_class685_update_l14, 0x0, false},
-        {"class686", 0x002ef840, olt_class686_update_l14, 0x0, false},
+        {"class686", 0x002ef840, class686_update, 0x0, false},
         {"class712", 0x002f0538, olt_class712_update_l14, 0xb8, false},  // (states 3 / 4 / 5 / 7 follow a pointer the first frame has not set: every random state sends the port outside RAM)
-        {"class758", 0x002f2cb8, olt_class758_update_l14, 0x0, false},
+        {"class758", 0x002f2cb8, swingshot_target_update, 0x0, false},
         {"class765", 0x002f3ef0, empty_update, 0x0, false},
-        {"class805", 0x002f4190, olt_class805_update_l14, 0x0, false},
-        {"class832", 0x002f6338, olt_class832_update_l14, 0x0, false},
+        {"class805", 0x002f4190, spawn_point_update_l1, 0x0, false},
+        {"class832", 0x002f6338, class832_update, 0x0, false},
         {"class851", 0x002fba20, olt_class851_update_l14, 0x0, false},
         {"class908", 0x002fc0f0, olt_class908_update_l14, 0x0, false},
         {"class913", 0x002fcba8, empty_update, 0x0, false},
@@ -246,27 +276,27 @@ void batch_221() {
         {"class922", 0x002fdbb8, olt_class922_update_l14, 0x0, false},
         {"class923", 0x002fe2a0, olt_class923_update_l14, 0x0, false},
         {"class924", 0x002fefe0, olt_class924_update_l14, 0x0, false},
-        {"class933", 0x002ff640, olt_class933_update_l14, 0x0, false},
-        {"class1134", 0x002ffc18, olt_class1134_update_l14, 0x4, false},  // (state 2 requests the level change)
+        {"class933", 0x002ff640, class933_update, 0x0, false},
+        {"class1134", 0x002ffc18, gold_bolt_update, 0x4, false},  // (state 2 requests the level change)
         {"class1193", 0x00300e00, olt_class1193_update_l14, 0x0, false},
-        {"class1224", 0x003015d0, olt_class1224_update_l14, 0x0, false},
-        {"class1260", 0x00303370, olt_class1260_update_l14, 0x0, false},
-        {"class1331", 0x003039e0, olt_class1331_update_l14, 0x0, false},
+        {"class1224", 0x003015d0, class1224_update, 0x0, false},
+        {"class1260", 0x00303370, class994_update, 0x0, false},
+        {"class1331", 0x003039e0, class1331_update, 0x0, false},
         {"class1352", 0x00305408, olt_class1352_update_l14, 0x0, false},
         {"class1354", 0x00305758, olt_class1354_update_l14, 0x4, false},  // (state 2 requests the level change)
         {"class1395", 0x00305d28, olt_class1395_update_l14, 0x0, false},
         {"class1396", 0x00306150, empty_update, 0x0, false},
         {"class1397", 0x003061d8, olt_class1397_update_l14, 0x0, false},
-        {"class1400", 0x00306390, olt_class1400_update_l14, 0x0, false},
+        {"class1400", 0x00306390, class1400_update, 0x0, false},
         {"class1416", 0x00306b78, olt_class1416_update_l14, 0x0, false},
         {"class1417", 0x00306ee0, olt_class1417_update_l14, 0x0, false},
         {"class1418", 0x00307a80, olt_class1418_update_l14, 0x0, false},
-        {"class1511", 0x00307ad8, olt_class1511_update_l14, 0x0, false},
+        {"class1511", 0x00307ad8, class1511_update, 0x0, false},
         {"class1514", 0x00308350, empty_update, 0x0, false},
         {"class1559", 0x003087c0, olt_class1559_update_l14, 0x0, false},
-        {"class1629", 0x003088b0, olt_class1629_update_l14, 0x0, false},
-        {"class1633", 0x00308be0, olt_class1633_update_l14, 0x0, false},
-        {"class1818", 0x00309c88, olt_class1818_update_l14, 0x0, false},
+        {"class1629", 0x003088b0, class1629_update, 0x0, false},
+        {"class1633", 0x00308be0, class1633_update, 0x0, false},
+        {"class1818", 0x00309c88, sandmouse_update, 0x0, false},
     };
     auto generic_prep = [give_hit, hero_near](uint32_t m, int st, int pass, void (*fn)(uint32_t), bool walk = false) {
         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -335,22 +365,22 @@ void batch_221() {
         for (uint32_t a = 0x100; a < 0x1500; a += 4) g_ignored_words.push_back(a);
         static const Cb cbs[] = {
         {"cb2aee28", 0x002aee28, olt_cb_2aee28_l14, 0x002ac618, 8},
-        {"cb2b2928", 0x002b2928, olt_cb_2b2928_l14, 0x002b17d8, 28},
+        {"cb2b2928", 0x002b2928, class28_draw_glows, 0x002b17d8, 28},
         {"cb2d71f0", 0x002d71f0, olt_cb_2d71f0_l14, 0x002d5f40, 211},
-        {"cb2da678", 0x002da678, olt_cb_2da678_l14, 0x002d98f0, 252},
-        {"cb2daf08", 0x002daf08, olt_cb_2daf08_l14, 0x002d98f0, 252},
-        {"cb2dec40", 0x002dec40, olt_cb_2dec40_l14, 0x002de670, 325},
+        {"cb2da678", 0x002da678, class252_draw_beam, 0x002d98f0, 252},
+        {"cb2daf08", 0x002daf08, class252_draw_glow, 0x002d98f0, 252},
+        {"cb2dec40", 0x002dec40, class325_draw, 0x002de670, 325},
         {"cb2df458", 0x002df458, olt_cb_2df458_l14, 0x002dee28, 386},
         {"cb2eb810", 0x002eb810, olt_cb_2eb810_l14, 0x002eaf88, 610},
         {"cb2edc18", 0x002edc18, olt_cb_2edc18_l14, 0x002ed280, 684},
-        {"cb2f6128", 0x002f6128, olt_cb_2f6128_l14, 0x002f6338, 832},
-        {"cb301fa8", 0x00301fa8, olt_cb_301fa8_l14, 0x003015d0, 1224},
+        {"cb2f6128", 0x002f6128, class832_draw, 0x002f6338, 832},
+        {"cb301fa8", 0x00301fa8, class1224_draw, 0x003015d0, 1224},
         {"cb303350", 0x00303350, olt_cb_303350_l14, 0x00303370, 1260},
-        {"cb307a28", 0x00307a28, olt_cb_307a28_l14, 0x00307a80, 1418},
-        {"cb308150", 0x00308150, olt_cb_308150_l14, 0x00307ad8, 1511},
-        {"cb309bb0", 0x00309bb0, olt_cb_309bb0_l14, 0x00309c88, 1818},
+        {"cb307a28", 0x00307a28, env_objects_callback, 0x00307a80, 1418},
+        {"cb308150", 0x00308150, class1511_draw, 0x00307ad8, 1511},
+        {"cb309bb0", 0x00309bb0, sandmouse_glow, 0x00309c88, 1818},
         {"cb2ae260", 0x002ae260, olt_cb_2ae260_l14, 0x002ac618, 8},
-        {"cb2b3a20", 0x002b3a20, olt_cb_2b3a20_l14, 0x002b17d8, 28},
+        {"cb2b3a20", 0x002b3a20, class28_draw_spot, 0x002b17d8, 28},
         };
         for (const Cb& cb : cbs) {
             if (std::getenv("B221_CLS") != nullptr && std::strcmp(std::getenv("B221_CLS"), cb.name) != 0) continue;
@@ -418,8 +448,8 @@ void batch_221() {
         static const Hk hks[] = {
             {"hook_2dad60", 0x2dad60, 0x0, hook_uniform<enemy10e_hook0>},
             {"hook_2dadb0", 0x2dadb0, 0x4, hook_uniform<enemy10e_hook4>},
-            {"hook_2dae00", 0x2dae00, 0x8, olt_hook_2dae00_u},
-            {"hook_2dae50", 0x2dae50, 0xc, olt_hook_2dae50_u},
+            {"hook_2dae00", 0x2dae00, 0x8, hook_uniform<olt_hook_2dae00>},
+            {"hook_2dae50", 0x2dae50, 0xc, hook_uniform<class252_hook_c>},
             {"hook_2daed8", 0x2daed8, 0x10, olt_hook_2daed8_u},
         };
         for (const Hk& hk : hks) {
@@ -467,8 +497,8 @@ void batch_221() {
             wf(0x00161f3c, rf(0, 0.5f));  // $gp - 0x4cc4: the frame step the callback counts down by
             w32(OV(0x0015ef4c), u(ri(0, 14)));  // the queue's count (it holds up to 16)
         };
-        l14check("cam0_hook", 0x003131e0, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { olt_cam0_hook_l14(0); return uint64_t{0}; });
-        l14check("cam_callback", 0x00313240, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { olt_cam_callback_l14(0); return uint64_t{0}; });
+        l14check("cam0_hook", 0x003131e0, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_hook(0); return uint64_t{0}; });
+        l14check("cam_callback", 0x00313240, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_callback(0); return uint64_t{0}; });
     }
 
     // ---- mobys_in_sphere (Veldin 0x1f2868, level 14's copy L14:0x00205a58) on the level's own mobys: class 794 (the Gadgebot's helper) calls it on level 11; the level's own classes call it
@@ -533,11 +563,11 @@ void batch_221() {
             static int k = 0;
             auto name = [&](const char* what) { char* p = nm[k++ & 3]; std::snprintf(p, 48, "cam_type%d_%s", type, what); return static_cast<const char*>(p); };
             l14check(name("accept"), ct.accept, 300, Ret::Int32, [cam_setup, type] { uint32_t other = 0; const uint32_t cam = cam_setup(type, true, &other); return Args{{cam, other}, {}}; },
-                    [type](A a) { return r32(a.i[0] != 0 ? (type == 19 ? olt_cam_type19_accept_u : type == 20 ? olt_cam_type20_accept_u : olt_cam_type21_accept_u)(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0 : 0u); });
+                    [type](A a) { return r32(a.i[0] != 0 ? (type == 19 ? static_cast<uint32_t>(cam_type19_accept(a.i[0], a.i[1])) : (type == 20 ? olt_cam_type20_accept_u : olt_cam_type21_accept_u)(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0) : 0u); });
             l14check(name("init"), ct.init, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) (type == 19 ? olt_cam_type19_init_l14 : type == 20 ? olt_cam_type20_init_l14 : olt_cam_type21_init_l14)(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) (type == 19 ? cam_type19_init : type == 20 ? olt_cam_type20_init_l14 : olt_cam_type21_init_l14)(a.i[0]); return uint64_t{0}; });
             l14check(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) (type == 19 ? olt_cam_type19_update_l14 : type == 20 ? olt_cam_type20_update_l14 : olt_cam_type21_update_l14)(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) (type == 19 ? cam_type19_update : type == 20 ? olt_cam_type20_update_l14 : olt_cam_type21_update_l14)(a.i[0]); return uint64_t{0}; });
             l14check(name("exit"), ct.exit, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
                     [type](A a) { if (a.i[0] != 0) (type == 19 ? empty_update : type == 20 ? empty_update : olt_cam_type21_exit_l14)(a.i[0]); return uint64_t{0}; });
         }
@@ -582,7 +612,7 @@ void batch_221() {
         l14check("cutscene_level_extras", 0x002460f8, 120, Ret::None, [scene_prep] { scene_prep(); return Args{}; },
                  [](A) { olt_cutscene_level_extras_l14(0); return uint64_t{0}; });
         l14check("cb2459c0", 0x002459c0, 60, Ret::None, [scene_prep, live] { uint32_t m = scene_prep(); if (m == 0) m = live[0]; return Args{{m}, {}}; },
-                 [](A a) { olt_cb_2459c0_l14(a.i[0]); return uint64_t{0}; });
+                 [](A a) { cutscene_l14_effect_draw(a.i[0]); return uint64_t{0}; });
         g_ignored_words.resize(ign_before);
         g_extra_noop_hooks.clear();
     }

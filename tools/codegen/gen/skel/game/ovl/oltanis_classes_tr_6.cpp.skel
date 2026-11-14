@@ -42,15 +42,12 @@
 #include <game/port_stubs.h>
 #include <game/ovl/glows.h>
 #include <game/ovl/shadows.h>
+#include <game/ovl/aridia_ocean.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
-
-//@gen olt_class1818_update_l14
-
-//@gen olt_cb_2459c0_l14
 
 //@gen olt_213028_l14
 
@@ -66,15 +63,7 @@ using namespace vu0m;
 
 //@gen olt_cb_2aee28_l14
 
-//@gen olt_cb_2b2928_l14
-
 //@gen olt_cb_2d71f0_l14
-
-//@gen olt_cb_2da678_l14
-
-//@gen olt_cb_2daf08_l14
-
-//@gen olt_cb_2dec40_l14
 
 //@gen olt_2df510_l14
 
@@ -84,37 +73,13 @@ using namespace vu0m;
 
 //@gen olt_cb_2edc18_l14
 
-//@gen olt_cb_2f6128_l14
-
-//@gen olt_cb_301fa8_l14
-
-//@gen olt_212760_l14
-
-//@gen olt_255788_l14
-
-//@gen olt_255ac0_l14
-
 //@gen olt_255ce0_l14
 
 //@gen olt_2aac78_l14
 
-//@gen olt_2ab268_l14
-
 //@gen olt_2ab378_l14
 
 //@gen olt_cb_303350_l14
-
-//@gen olt_211128_l14
-
-//@gen olt_25602c_l14
-
-//@gen olt_2ab3e8_l14
-
-//@gen olt_cb_307a28_l14
-
-//@gen olt_cb_308150_l14
-
-//@gen olt_cb_309bb0_l14
 
 //@gen olt_cb_2ae260_l14
 

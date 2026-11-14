@@ -39,6 +39,7 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shared_class28.h>
 
 namespace rac1 {
 
@@ -71,27 +72,9 @@ using namespace vu0m;
 
 //@gen olt_class211_update_l14
 
-//@gen olt_class250_update_l14
-
-//@gen olt_2da4e0_l14
-
-//@gen olt_202db8_l14
-
-//@gen olt_2dab78_l14
-
-//@gen olt_class252_update_l14
-
-//@gen olt_2db0d8_l14
-
-//@gen olt_2db308_l14
-
-//@gen olt_class258_update_l14
-
 //@gen olt_2de2b8_l14
 
 //@gen olt_class309_update_l14
-
-//@gen olt_class325_update_l14
 
 //@gen olt_2df080_l14
 
@@ -100,15 +83,5 @@ using namespace vu0m;
 //@gen olt_2dfc58_l14
 
 //@gen olt_class386_update_l14
-
-//@gen olt_2e03b8_l14
-
-//@gen olt_class403_update_l14
-
-//@gen olt_2e1758_l14
-
-//@gen olt_2e7198_l14
-
-//@gen olt_class455_update_l14
 
 }  // namespace rac1
