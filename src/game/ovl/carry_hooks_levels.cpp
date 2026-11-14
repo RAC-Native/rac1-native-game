@@ -291,10 +291,10 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
     case 10:  // Orxon: class 0x10e's hook +0xc (table 0x1dde40), class 0x33b (table 0x1dde58)
         switch (lvl_key(fn)) {
         case L10_CASE(0x002bcc60): ret = orx_carry_hookc_l10(m, a1, a2, f12); return true;
-        case L10_CASE(0x002ce618): ret = u_call(orx_hook_2ce618_u, m, a1, a2, f12); return true;
-        case L10_CASE(0x002ce6e0): ret = u_call(orx_hook_2ce6e0_u, m, a1, a2, f12); return true;
-        case L10_CASE(0x002ce770): ret = u_call(orx_hook_2ce770_u, m, a1, a2, f12); return true;
-        case L10_CASE(0x002ce800): ret = u_call(orx_hook_2ce800_u, m, a1, a2, f12); return true;
+        case L10_CASE(0x002ce618): ret = class827_hook_carry0(m, a1, a2, f12); return true;  // (the shared port, shared_class827.cpp)
+        case L10_CASE(0x002ce6e0): ret = class827_hook_carry(m, a1, a2, f12, 4); return true;
+        case L10_CASE(0x002ce770): ret = class827_hook_carry(m, a1, a2, f12, 8); return true;
+        case L10_CASE(0x002ce800): ret = class827_hook_carryc(m, a1, a2, f12); return true;
         case L10_CASE(0x002ce838): ret = u_call(orx_hook_2ce838_u, m, a1, a2, f12); return true;
         default: return false;
         }

@@ -39,6 +39,9 @@
 #include <game/port_stubs.h>
 #include <game/ovl/sound_emitter.h>
 #include <game/ovl/helmet_tr.h>
+#include <game/ovl/shared_panel_lights.h>
+#include <game/ovl/shared_particle_kinds.h>
+#include <game/ovl/shared_small.h>
 
 namespace rac1 {
 
@@ -47,78 +50,20 @@ using namespace vu0m;
 
 //@gen orx_class1033_update_l10
 
-//@gen orx_295bc8_l10
-
 //@gen orx_class1117_update_l10
-
-//@gen orx_298940_l10
 
 //@gen orx_class18_update_l10
 
 //@gen orx_class22_update_l10
 
-//@gen orx_2bab98_l10
-
-//@gen orx_2badc8_l10
-
-//@gen orx_class258_update_l10
-
-//@gen orx_2dd0e0_l10
-
-//@gen orx_2bccc0_l10
-
-//@gen orx_class302_update_l10
-
-//@gen orx_class303_update_l10
-
 //@gen orx_class351_update_l10
 
 //@gen orx_class353_update_l10
 
-//@gen orx_class605_update_l10
-
-//@gen orx_class648_update_l10
-
-//@gen orx_262b08_l10
-
 //@gen orx_class702_update_l10
-
-//@gen orx_2c7c00_l10
-
-//@gen orx_class737_update_l10
-
-//@gen orx_2f4ae0_l10
-
-//@gen orx_2f4bd0_l10
-
-//@gen orx_class758_update_l10
-
-//@gen orx_24c7f0_l10
 
 //@gen orx_2c9958_l10
 
 //@gen orx_class794_update_l10
-
-//@gen orx_class805_update_l10
-
-//@gen orx_class819_update_l10
-
-//@gen orx_2cdf68_l10
-
-//@gen orx_2ce1d0_l10
-
-//@gen orx_2ce4d0_l10
-
-//@gen orx_2d7420_l10
-
-//@gen orx_2d7510_l10
-
-//@gen orx_2cd730_l10
-
-//@gen orx_2cdbd8_l10
-
-//@gen orx_2cdce8_l10
-
-//@gen orx_2cdda0_l10
 
 }  // namespace rac1

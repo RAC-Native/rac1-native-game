@@ -37,6 +37,9 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shared_rock.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/shared_spawns.h>
 
 namespace rac1 {
 
@@ -51,64 +54,16 @@ using namespace vu0m;
 
 //@gen orx_class1031_update_l10
 
-//@gen orx_2d9810_l10
-
-//@gen orx_2d98f0_l10
-
-//@gen orx_class1038_update_l10
-
-//@gen orx_2d9da8_l10
-
-//@gen orx_class1040_update_l10
-
-//@gen orx_2dd848_l10
-
-//@gen orx_2eafc8_l10
-
-//@gen orx_2eb8c0_l10
-
 //@gen orx_class1047_update_l10
 
 //@gen orx_class1067_update_l10
 
-//@gen orx_24b5c8_l10
-
-//@gen orx_2dc990_l10
-
-//@gen orx_2dc2e0_l10
-
-//@gen orx_2dbb58_l10
-
-//@gen orx_2dc118_l10
-
-//@gen orx_class1068_update_l10
-
 //@gen orx_class1073_update_l10
-
-//@gen orx_class1085_update_l10
 
 //@gen orx_class1090_update_l10
 
 //@gen orx_class1100_update_l10
 
-//@gen orx_2de190_l10
-
-//@gen orx_2de630_l10
-
-//@gen orx_2ddfc0_l10
-
-//@gen orx_2de0b0_l10
-
-//@gen orx_2de420_l10
-
-//@gen orx_class1134_update_l10
-
-//@gen orx_256338_l10
-
-//@gen orx_class1141_update_l10
-
 //@gen orx_2dfc38_l10
-
-//@gen orx_2e0138_l10
 
 }  // namespace rac1

@@ -37,6 +37,11 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/shared_class827.h>
+#include <game/ovl/shared_spawns.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_seas.h>
 
 namespace rac1 {
 
@@ -53,21 +58,11 @@ using namespace vu0m;
 
 //@gen orx_2e3a90_l10
 
-//@gen orx_264ed8_l10
-
-//@gen orx_2e3de8_l10
-
-//@gen orx_2e47d8_l10
-
 //@gen orx_2e3ef0_l10
 
 //@gen orx_2e4840_l10
 
 //@gen orx_class1202_update_l10
-
-//@gen orx_255ab0_l10
-
-//@gen orx_2cc1b8_l10
 
 //@gen orx_2e5968_l10
 

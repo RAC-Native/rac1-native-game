@@ -2,7 +2,8 @@
 // ORACLE_LEVEL=10 build/tests/ovl_oracle --batch 122 (needs the ISO). The subjects are the level's own
 // mobys of each class (placed by its gameplay data) after the first gameplay frame, perturbed; the
 // original is level 10's own function at its own address, the port the one registered for it (the
-// transliterations orxon_classes_tr_N.cpp).
+// transliterations orxon_classes_tr_N.cpp, and the shared ports of the classes, hooks and camera functions other levels
+// carry too: shared_*.cpp, novalis_*.cpp, kerwan_*.cpp, aridia_ocean.cpp).
 
 #include "ovl_oracle.h"
 
@@ -10,6 +11,28 @@
 #include <game/lib/libc.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/orxon_mobys.h>
+#include <game/ovl/aridia_ocean.h>
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/kerwan_mobys.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/shared_beam.h>
+#include <game/ovl/shared_bg_ships.h>
+#include <game/ovl/shared_cam19.h>
+#include <game/ovl/shared_class1038.h>
+#include <game/ovl/shared_class1068.h>
+#include <game/ovl/shared_class1302.h>
+#include <game/ovl/shared_class1378.h>
+#include <game/ovl/shared_class258.h>
+#include <game/ovl/shared_class302.h>
+#include <game/ovl/shared_class819.h>
+#include <game/ovl/shared_class827.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_class857.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_puffer.h>
+#include <game/ovl/shared_rock.h>
+#include <game/ovl/shared_shell.h>
+#include <game/ovl/shared_swingshot_target.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
@@ -179,63 +202,63 @@ void batch_122() {
         {"class18", 0x00298668, orx_class18_update_l10, 0x4, false},
         {"class22", 0x00298b68, orx_class22_update_l10, 0x0, false},
         {"class87", 0x0029e1c8, empty_update, 0x0, false},
-        {"class258", 0x002bae38, orx_class258_update_l10, 0x0, false},
-        {"class302", 0x002bd0e8, orx_class302_update_l10, 0x0, false},
-        {"class303", 0x002bd768, orx_class303_update_l10, 0x0, false},
+        {"class258", 0x002bae38, class258_update, 0x0, false},
+        {"class302", 0x002bd0e8, class302_update, 0x0, false},
+        {"class303", 0x002bd768, class303_update, 0x0, false},
         {"class351", 0x002be858, orx_class351_update_l10, 0x0, false},
         {"class353", 0x002befe8, orx_class353_update_l10, 0x0, false},
         {"class532", 0x002c4bc8, empty_update, 0x0, false},
-        {"class605", 0x002c6470, orx_class605_update_l10, 0x0, false},
-        {"class648", 0x002c74b8, orx_class648_update_l10, 0x0, false},
+        {"class605", 0x002c6470, zone_marker_update, 0x0, false},
+        {"class648", 0x002c74b8, puffer_update, 0x0, false},
         {"class702", 0x002c7a20, orx_class702_update_l10, 0x0, false},
-        {"class737", 0x002c7cf8, orx_class737_update_l10, 0x0, false},
-        {"class758", 0x002c9590, orx_class758_update_l10, 0x0, false},
+        {"class737", 0x002c7cf8, scripted_camera_trigger_update_l1, 0x0, false},
+        {"class758", 0x002c9590, swingshot_target_update, 0x0, false},
         {"class794", 0x002c9c70, orx_class794_update_l10, 0x0, false},
-        {"class805", 0x002ca220, orx_class805_update_l10, 0x0, false},
-        {"class819", 0x002cc2e8, orx_class819_update_l10, 0x0, false},
-        {"class827", 0x002cc8b8, orx_class827_update_l10, 0x0, true, 0x10, 0x0},
-        {"class832", 0x002cea78, orx_class832_update_l10, 0x0, false},
-        {"class857", 0x002d4078, orx_class857_update_l10, 0x0, false},
+        {"class805", 0x002ca220, spawn_point_update_l1, 0x0, false},
+        {"class819", 0x002cc2e8, class819_update, 0x0, false},
+        {"class827", 0x002cc8b8, class827_update, 0x0, true, 0x10, 0x0},
+        {"class832", 0x002cea78, class832_update, 0x0, false},
+        {"class857", 0x002d4078, class857_update, 0x0, false},
         {"class859", 0x002d7b80, orx_class859_update_l10, 0x0, false},
-        {"class915", 0x002d7fe8, orx_class915_update_l10, 0x0, false},
+        {"class915", 0x002d7fe8, fred_update_l3, 0x0, false},
         {"class938", 0x002d85c8, orx_class938_update_l10, 0x0, false},
         {"class939", 0x002d8c00, orx_class939_update_l10, 0x0, false},
         {"class947", 0x002d8d30, orx_class947_update_l10, 0x0, false},
         {"class1015", 0x002d90a8, orx_class1015_update_l10, 0x0, false},
         {"class1031", 0x002d92b8, orx_class1031_update_l10, 0x0, false},
-        {"class1038", 0x002d9550, orx_class1038_update_l10, 0x0, false},
-        {"class1040", 0x002d9bf8, orx_class1040_update_l10, 0x0, false},
+        {"class1038", 0x002d9550, class1038_update, 0x0, false},
+        {"class1040", 0x002d9bf8, class1040_update, 0x0, false},
         {"class1047", 0x002d9eb8, orx_class1047_update_l10, 0x0, false},
         {"class1067", 0x002da2c8, orx_class1067_update_l10, 0x0, false},
-        {"class1068", 0x002dabe8, orx_class1068_update_l10, 0x0, false},
+        {"class1068", 0x002dabe8, class1068_update, 0x0, false},
         {"class1073", 0x002dcc58, orx_class1073_update_l10, 0x0, false},
-        {"class1085", 0x002dd010, orx_class1085_update_l10, 0x0, false},
+        {"class1085", 0x002dd010, beam_shard_update, 0x0, false},
         {"class1090", 0x002dd3d8, orx_class1090_update_l10, 0x0, false},
         {"class1100", 0x002dd650, orx_class1100_update_l10, 0x0, false},
         {"class1122", 0x002dd8d8, empty_update, 0x0, false},
-        {"class1134", 0x002dd8e0, orx_class1134_update_l10, 0x4, false},
-        {"class1141", 0x002de860, orx_class1141_update_l10, 0x0, false},
+        {"class1134", 0x002dd8e0, gold_bolt_update, 0x4, false},
+        {"class1141", 0x002de860, lift_update_l1, 0x0, false},
         {"class1196", 0x002df270, orx_class1196_update_l10, 0x0, false},
         {"class1199", 0x002e01a8, orx_class1199_update_l10, 0x0, false},
         {"class1202", 0x002e1d38, orx_class1202_update_l10, 0x0, false},
         {"class1229", 0x002e4a88, orx_class1229_update_l10, 0x0, false},
         {"class1240", 0x002e5be0, orx_class1240_update_l10, 0x0, false},
-        {"class1258", 0x002e6a78, orx_class1258_update_l10, 0x0, false},
-        {"class1302", 0x002e7cd8, orx_class1302_update_l10, 0x0, false},
+        {"class1258", 0x002e6a78, shell_update, 0x0, false},
+        {"class1302", 0x002e7cd8, class1302_update, 0x0, false},
         {"class1326", 0x002e8358, orx_class1326_update_l10, 0x2, false},
         {"class1344", 0x002e85b8, orx_class1344_update_l10, 0x0, false},
         {"class1346", 0x002e8ab0, orx_class1346_update_l10, 0x0, false},
-        {"class1378", 0x002e9028, orx_class1378_update_l10, 0x0, false},
+        {"class1378", 0x002e9028, class1378_update, 0x0, false},
         {"class1421", 0x002e9648, orx_class1421_update_l10, 0x0, false},
         {"class1424", 0x002e9990, orx_class1424_update_l10, 0x0, false},
         {"class1544", 0x002ea1f0, orx_class1544_update_l10, 0x0, false},
         {"class1555", 0x002eacd8, orx_class1555_update_l10, 0x0, false},
-        {"class1806", 0x002eb1b0, orx_class1806_update_l10, 0x0, false},
+        {"class1806", 0x002eb1b0, rock_update, 0x0, false},
         {"class1855", 0x002eb6f0, orx_class1855_update_l10, 0x0, false},
         {"class1856", 0x002eb7e0, orx_class1856_update_l10, 0x0, false},
         {"class1857", 0x002eb8b8, empty_update, 0x0, false},
         {"class1921", 0x002eb950, empty_update, 0x0, false},
-        {"class1973", 0x002ebb08, orx_class1973_update_l10, 0x0, false},
+        {"class1973", 0x002ebb08, bg_ship2_update, 0x0, false},
     };
     auto generic_prep = [give_hit, hero_near](uint32_t m, int st, int pass, void (*fn)(uint32_t), bool walk = false) {
         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -299,14 +322,14 @@ void batch_122() {
         g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, 0x0023fea8};
         struct Cb { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t cls_addr; int cls; };
         static const Cb cbs[] = {
-        {"cb2bd280", 0x002bd280, orx_cb_2bd280_l10, 0x002bd0e8, 302},
-        {"cb2ce868", 0x002ce868, orx_cb_2ce868_l10, 0x002cea78, 832},
-        {"cb2d7808", 0x002d7808, orx_cb_2d7808_l10, 0x002d4078, 857},
+        {"cb2bd280", 0x002bd280, class302_draw, 0x002bd0e8, 302},
+        {"cb2ce868", 0x002ce868, class832_draw, 0x002cea78, 832},
+        {"cb2d7808", 0x002d7808, class857_draw, 0x002d4078, 857},
         {"cb2da690", 0x002da690, orx_cb_2da690_l10, 0x002da2c8, 1067},
-        {"cb2dc698", 0x002dc698, orx_cb_2dc698_l10, 0x002dabe8, 1068},
-        {"cb2e7520", 0x002e7520, orx_cb_2e7520_l10, 0x002e7cd8, 1302},
-        {"cb2e91b8", 0x002e91b8, orx_cb_2e91b8_l10, 0x002e9028, 1378},
-        {"cb2eb958", 0x002eb958, orx_cb_2eb958_l10, 0x002ebb08, 1973},
+        {"cb2dc698", 0x002dc698, beam_draw, 0x002dabe8, 1068},
+        {"cb2e7520", 0x002e7520, class1302_draw, 0x002e7cd8, 1302},
+        {"cb2e91b8", 0x002e91b8, class1378_draw, 0x002e9028, 1378},
+        {"cb2eb958", 0x002eb958, ari_bg_ship2_glow_draw_l2, 0x002ebb08, 1973},
         };
         for (const Cb& cb : cbs) {
             if (std::getenv("B122_CLS") != nullptr && std::strcmp(std::getenv("B122_CLS"), cb.name) != 0) continue;
@@ -363,13 +386,15 @@ void batch_122() {
     // (the carry hooks' shape: their callees read all four), on the mobys whose class owns the hook
     if (g_oracle_level == 10) {
         g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, 0x0023fea8};
-        struct Hk { const char* name; uint32_t addr; uint32_t slot; TrRet (*fn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float); };
+        // (hooks +0 .. +0xc: the shared ports of class 827's carry hooks, shared_class827.cpp; +0x10 is level 10's own, generated)
+        struct Hk { const char* name; uint32_t addr; uint32_t slot; int32_t (*fn)(uint32_t, uint32_t, uint32_t, float); };
         static const Hk hks[] = {
-            {"hook_2ce618", 0x2ce618, 0x0, orx_hook_2ce618_u},
-            {"hook_2ce6e0", 0x2ce6e0, 0x4, orx_hook_2ce6e0_u},
-            {"hook_2ce770", 0x2ce770, 0x8, orx_hook_2ce770_u},
-            {"hook_2ce800", 0x2ce800, 0xc, orx_hook_2ce800_u},
-            {"hook_2ce838", 0x2ce838, 0x10, orx_hook_2ce838_u},
+            {"hook_2ce618", 0x2ce618, 0x0, class827_hook_carry0},
+            {"hook_2ce6e0", 0x2ce6e0, 0x4, [](uint32_t m, uint32_t a1, uint32_t a2, float f12) { return class827_hook_carry(m, a1, a2, f12, 4); }},
+            {"hook_2ce770", 0x2ce770, 0x8, [](uint32_t m, uint32_t a1, uint32_t a2, float f12) { return class827_hook_carry(m, a1, a2, f12, 8); }},
+            {"hook_2ce800", 0x2ce800, 0xc, class827_hook_carryc},
+            {"hook_2ce838", 0x2ce838, 0x10, [](uint32_t m, uint32_t a1, uint32_t a2, float f12) {
+                 return static_cast<int32_t>(orx_hook_2ce838_u(m, a1, a2, 0, 0, 0, 0, 0, f12, 0, 0, 0, 0, 0, 0, 0).v0); }},
         };
         for (const Hk& hk : hks) {
             level();
@@ -388,7 +413,7 @@ void batch_122() {
                 if (ri(0, 4) == 0) w8(m + 0x20, coin() ? 0xfe : 0xfd);
                 const uint32_t tgt = ri(0, 3) == 0 ? 0u : first + 0x100 * u(ri(0, 100));
                 return Args{{m, ri(0, 2) == 0 ? 0x0013f3d0u : m + 0x10, tgt}, {rf(-1, 3)}};
-            }, [fn](A a) { return r32(fn(a.i[0], a.i[1], a.i[2], 0, 0, 0, 0, 0, a.f[0], 0, 0, 0, 0, 0, 0, 0).v0); });
+            }, [fn](A a) { return r32(static_cast<uint32_t>(fn(a.i[0], a.i[1], a.i[2], a.f[0]))); });
         }
         g_extra_noop_hooks.clear();
     }
@@ -416,8 +441,8 @@ void batch_122() {
             wf(0x00161f3c, rf(0, 0.5f));  // $gp - 0x4cc4: the frame step the callback counts down by
             w32(OV(0x0015ef4c), u(ri(0, 14)));  // the queue's count (it holds up to 16)
         };
-        l10check("cam0_hook", 0x002f4b18, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { orx_cam0_hook_l10(0); return uint64_t{0}; });
-        l10check("cam_callback", 0x002f4b78, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { orx_cam_callback_l10(0); return uint64_t{0}; });
+        l10check("cam0_hook", 0x002f4b18, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_hook(0); return uint64_t{0}; });
+        l10check("cam_callback", 0x002f4b78, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_callback(0); return uint64_t{0}; });
     }
 
     // ---- level 10's camera type 0x13 (accept / init / update / exit: section 4 of the overlay)
@@ -463,11 +488,11 @@ void batch_122() {
             static int k = 0;
             auto name = [&](const char* what) { char* p = nm[k++ & 3]; std::snprintf(p, 48, "cam_type%d_%s", type, what); return static_cast<const char*>(p); };
             l10check(name("accept"), ct.accept, 300, Ret::Int32, [cam_setup, type] { uint32_t other = 0; const uint32_t cam = cam_setup(type, true, &other); return Args{{cam, other}, {}}; },
-                    [type](A a) { return r32(a.i[0] != 0 ? orx_cam_type19_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0 : 0u); });
+                    [type](A a) { return r32(a.i[0] != 0 ? static_cast<uint32_t>(cam_type19_accept(a.i[0], a.i[1])) : 0u); });
             l10check(name("init"), ct.init, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) orx_cam_type19_init_l10(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) cam_type19_init(a.i[0]); return uint64_t{0}; });
             l10check(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) orx_cam_type19_update_l10(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) cam_type19_update(a.i[0]); return uint64_t{0}; });
             l10check(name("exit"), ct.exit, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
                     [type](A a) { if (a.i[0] != 0) empty_update(a.i[0]); return uint64_t{0}; });
         }
