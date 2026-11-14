@@ -122,7 +122,7 @@ sudo pacman -S --needed cmake base-devel pkgconf mesa libx11 libxrandr libxinera
    ```
 
    The game must be started from the repository's root: it finds `assets/` and its other files
-   relative to the current directory.
+   relative to the current directory (unless its data is elsewhere: [Where the data goes](#where-the-data-goes)).
 
 ## What the setup generates
 
@@ -143,6 +143,46 @@ All of it goes into `assets/`, which git ignores:
 
 How these are made is described in [Rendering](rendering.md) and
 [Architecture](architecture.md#per-level-overlays-and-the-ov-macros).
+
+## Where the data goes
+
+By default all of the above is in `assets/` in the repository, and the game reads it from `assets/` in the current
+directory. The run-time part of it (everything but `assets/generated/src/`) can live elsewhere, for example on another
+drive or on an SD card for a low-memory console:
+
+```bash
+./setup.sh --output-dir /mnt/sd/rac1 --remember      # the whole setup, its data in /mnt/sd/rac1
+./build/rac1-native --setup --output-dir /mnt/sd/rac1 --step world   # one data step, there
+```
+
+`--output-dir <dir>` puts every run-time file into `<dir>` with the same layout as `assets/` (`disc/`, `iso/`, `dumps/`,
+`generated/overlay_map/`, `generated/mrp/`, `generated/pool/`, `generated/mods/`, `data-discs.txt` and the data discs'
+folders, `setup-state.json`), and every other option of that run reads and writes there too (the disc's files,
+`--compare-disc`, `--pool`, `--level-mods`, `--status`). It does not move:
+
+- `assets/generated/src/`, the generated sources: a build input, not run-time data; it stays in the repository's
+  `assets/` (the build compiles it from there).
+- `assets/update-version.txt` (the installed version) and the movie subtitles' speech to text: with `--output-dir`,
+  `./setup.sh` does not make movie subtitles (`tools/movie_subtitles.py` knows `assets/` only).
+- Python: the overlay maps step still runs `tools/overlay_match/` until the native 1.0 removes the maps.
+
+The game (and its setup mode, and `tools/setup.py`) chooses the folder once, at start, in this order:
+
+1. **`RAC1_ASSETS`**, when set: the folder (a relative path is taken against the current directory and printed once:
+   `[assets] the game's data: ...`).
+2. **`assets.txt` next to the executable** (`build/assets.txt`): its first line that is not empty or a `#` comment
+   names the folder (a relative path is taken against the executable's folder, so `../assets` makes a build start from
+   anywhere). `--remember` writes it (an absolute path); `./build/rac1-native --setup --forget`, or deleting the file,
+   goes back to the default.
+3. **`assets`**, relative to the current directory: what the game always did; nothing changes for anyone who sets
+   neither.
+
+Without `--remember`, run the game with `RAC1_ASSETS=<dir> ./build/rac1-native` (`./setup.sh` prints the line).
+`./build/rac1-native --setup --status` shows the folder the game reads and where that choice came from.
+
+A partial folder (one step made with `--output-dir`, the rest elsewhere) works when the rest is there too: the game
+needs at least `disc/` (with `layout.txt`), `dumps/<boot executable>`, `generated/overlay_map/` and, for the modern
+renderer, `generated/mrp/`. Links to another folder's parts are fine (the game only reads them).
 
 ## The disc's files
 
@@ -351,7 +391,7 @@ gameplay files directly. Without a data disc, nothing changes.
 - **`./setup.sh --native-arch on`** builds the game for your own CPU (AVX2, AVX-512 where it has them):
   the game's own update takes about 8 % less CPU time, and plays exactly the same. The build then runs on
   this CPU only (do not copy it to an older machine); `--native-arch off` goes back.
-- **`./build/rac1-native --setup --status`** shows which parts of the data are present.
+- **`./build/rac1-native --setup --status`** shows where the data is and which parts of it are present.
 
 ### All the options
 
@@ -376,19 +416,25 @@ gameplay files directly. Without a data disc, nothing changes.
 | `--movie-subtitles [languages]` | also make subtitles for the movies with speech to text on this machine: all the languages of the disc's movie sound tracks (`all`, the default), or those given (`en,it`; `en`, `fr`, `de`, `es`, `it`). It installs the speech to text in `assets/stt/` the first time (about 470 MB, and a 1.6 GB model) and takes about half an hour on a fast CPU; kept for the next setups, which make only what is missing; see [Movie subtitles](movie-subtitles.md). Without it, an interactive setup asks once |
 | `--no-movie-subtitles` | stop making movie subtitles at each setup (the files made are kept) |
 | `--stt-url <url>`, `--stt-model <name>` | with `--movie-subtitles`: an OpenAI-compatible speech to text server instead of the local one, the Whisper model (default `large-v3-turbo`) |
+| `--output-dir <dir>` | put the game's run-time data into `<dir>` instead of `assets/` (the generated sources stay in `assets/generated/src/`): see [Where the data goes](#where-the-data-goes). `--check --output-dir <dir>` checks that folder |
+| `--remember` | with `--output-dir`: write the folder into `build/assets.txt`, where the game looks for it |
 | `--native-arch on\|off` | compile the game for this machine's CPU (`on`: AVX2 / AVX-512 where it has them, the game's own update about 8 % faster, its state the same bit for bit; the build then runs on this CPU only) or for any x86-64 CPU (`off`, the default); kept for the next builds, a change rebuilds everything |
 
 `./build/rac1-native --setup` (the data generation on its own, run from the repository's root):
 
 | Option | Meaning |
 |---|---|
-| `--iso <path>` | the disc image (default: `$RAC1_ISO`, then `assets/iso/rac1-ntsc-u.iso` or `rac1-pal.iso`) |
-| `--assets <dir>` | where to write the data (default `assets`; the game itself only reads `assets/`) |
+| `--iso <path>` | the disc image (default: `$RAC1_ISO`, then `iso/rac1-ntsc-u.iso` or `rac1-pal.iso` in the data's folder) |
+| `--output-dir <dir>` | the data's folder for this run: every step, `--pool`, `--level-mods`, `--compare-disc` and `--status` write and read there (default: the game's own choice, `$RAC1_ASSETS`, then `assets.txt` next to the executable, then `assets`): see [Where the data goes](#where-the-data-goes) |
+| `--assets <dir>` | the same as `--output-dir` (its older name) |
+| `--remember` | with `--output-dir`: write the folder into `assets.txt` next to the executable, so that the game finds it from any directory |
+| `--forget` | remove that `assets.txt` (the game reads `assets/` again), then stop |
 | `--force` | regenerate even if present |
 | `--step elf\|moby\|world\|flight\|overlay\|all` | run one step only |
+| `--level <n>` | with `--step moby` or `--step world`: that level only (`0` to `18`, or `title`) |
 | `--check-iso` | only check the disc image, and make the setup find it |
-| `--compare-disc` | read every sector through the disc image and through the disc's files (`assets/disc/`), and compare |
-| `--status` | show what is present |
+| `--compare-disc` | read every sector through the disc image and through the disc's files (`disc/` in the data's folder), and compare |
+| `--status` | show the data's folder (and where that choice came from) and what is present |
 | `--movie-tracks <pss>` | print a movie file's sound tracks (for `tools/movie_subtitles.py`) |
 | `--movie-audio <pss> --track <n> --wav <out>` | one sound track of a movie file as a 16 kHz mono WAV (for speech to text) |
 | `--pool` | make the asset pool from the game's disc (`assets/generated/pool/`: every level's moby classes, for custom-level sessions; made only when something needs it: [The open engine](open-engine.md)) |

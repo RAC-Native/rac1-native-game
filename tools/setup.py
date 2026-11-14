@@ -22,6 +22,12 @@ that make its output (or the disc) changed since it last ran, when its output is
 look at its files, step_missing), or when it is forced (--force).
 The record of what was generated with what is assets/setup-state.json. docs/setup.md is the guide.
 
+With --output-dir <dir>, every run-time file above (the disc's files, the boot executable, the overlay maps, the data, the
+links to the image, the record) goes into <dir> instead of assets/, and the game's setup mode is told the same; --remember
+also writes <dir> into build/assets.txt, where the game looks for it (src/io/asset_paths.h). Without it, the folder is
+RAC1_ASSETS, else build/assets.txt's, else assets/: the game's own choice. The generated sources stay in the repository's
+assets/generated/src/ (a build input, not run-time data).
+
 `tools/setup.py --code-inputs` (for CMake) prints the fingerprint of the generated code's sources, then
 those sources, one per line. `tools/setup.py --check` (for play.cmd) changes nothing: it prints what a setup would
 redo now, and exits with 10 when that is something (0 when the game is up to date). `tools/setup.py --check-system`
@@ -53,7 +59,40 @@ MACOS = sys.platform == "darwin"  # (Apple silicon: the Metal renderer, docs/met
 SETUP_CMD = "setup.cmd" if WINDOWS else "./setup.sh"  # (what the messages tell the player to run)
 BUILD_DIR = ROOT / "build"
 EXE = BUILD_DIR / ("rac1-native.exe" if WINDOWS else "rac1-native")
-ASSETS_DIR = ROOT / "assets"
+REPO_ASSETS = ROOT / "assets"  # (the generated sources, a build input, always here: CODE_ROOT)
+
+
+def take_output_dir(argv):
+    """--output-dir <dir> (or --output-dir=<dir>) taken out of argv, before anything else reads it (the folders below are
+    made from it, and the one-word modes, --check..., compare argv whole); None when not given."""
+    for i, a in enumerate(argv):
+        if a == "--output-dir" and i + 1 < len(argv):
+            value = argv[i + 1]
+            del argv[i:i + 2]
+            return Path(value).expanduser().resolve()
+        if a.startswith("--output-dir="):
+            del argv[i]
+            return Path(a.split("=", 1)[1]).expanduser().resolve()
+    return None
+
+
+def remembered_root():
+    """The folder build/assets.txt names (`--remember`; the game reads it there: src/io/asset_paths.cpp), or None."""
+    try:
+        lines = (BUILD_DIR / "assets.txt").read_text(encoding="utf-8-sig").splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        line = line.strip()
+        if line and not line.startswith("#"):
+            return (BUILD_DIR / Path(line).expanduser()).resolve()
+    return None
+
+
+# The game's run-time data: --output-dir, else the game's own choice (RAC1_ASSETS, build/assets.txt, assets/)
+OUTPUT_DIR = take_output_dir(sys.argv) if __name__ == "__main__" else None
+ASSETS_DIR = (OUTPUT_DIR or (Path(os.environ["RAC1_ASSETS"]).expanduser().resolve() if os.environ.get("RAC1_ASSETS") else None)
+              or remembered_root() or REPO_ASSETS)
 # where the setup finds the disc again (runtime/kernel/disc.cpp: the game too, with RAC1_READ_ISO=1): a link, one name
 # per region
 GAME_ISOS = {"NTSC-U": ASSETS_DIR / "iso/rac1-ntsc-u.iso", "PAL": ASSETS_DIR / "iso/rac1-pal.iso"}
@@ -66,7 +105,7 @@ SECTOR = 2048
 
 # The generated code: tools/codegen/generate_all.py writes CODE_ROOT/src/... (the same tree as src/), and
 # this tool adds GEN_LIST, the list of the generated files for CMake (src/game/CMakeLists.txt).
-CODE_ROOT = ASSETS_DIR / "generated"
+CODE_ROOT = REPO_ASSETS / "generated"
 GEN_SRC = CODE_ROOT / "src"
 GEN_LIST = GEN_SRC / "generated_sources.cmake"
 GENERATE_ALL = ROOT / "tools/codegen/generate_all.py"
@@ -714,7 +753,7 @@ def find_iso(arg):
         return iso
     if not sys.stdin.isatty():
         fail(f"No disc image found. Put your Ratchet & Clank disc image (NTSC-U SCUS-97199, or PAL SCES-50916) in "
-             f"{ISO_DIR.relative_to(ROOT)}{os.sep}, or run {SETUP_CMD} --iso <path-to-your-iso>")
+             f"{shown_path(ISO_DIR)}{os.sep}, or run {SETUP_CMD} --iso <path-to-your-iso>")
     print("  Where is your Ratchet & Clank disc image (NTSC-U SCUS-97199, or PAL SCES-50916)?")
     while True:
         try:
@@ -979,7 +1018,7 @@ def print_pick(pick):
     """The images found and what each one is for: one line each."""
     if not pick.found:
         return
-    print(f"  Disc images found ({ISO_DIR.relative_to(ROOT)}{os.sep} and the ones the setup knows):")
+    print(f"  Disc images found ({shown_path(ISO_DIR)}{os.sep} and the ones the setup knows):")
     label = {"game": "game disc", "data": "data disc", "unused": "not used"}
     for d in pick.found:
         print(f"    {label[d.role]:<10} {shown_path(d.path)}: {d.what}" + (f" ({d.why})" if d.why else ""))
@@ -1003,7 +1042,7 @@ def no_game_disc(pick):
     lines = "".join(f"\n           {shown_path(d.path)}: {d.what} ({d.why})" for d in pick.found)
     fail("None of the disc images found can be the game's disc:" + lines +
          "\n         The game's disc is the North American one (SCUS-97199) or the European PAL one (SCES-50916 version "
-         f"1.00): put it in {ISO_DIR.relative_to(ROOT)}{os.sep}, or give it with --iso <path>.")
+         f"1.00): put it in {shown_path(ISO_DIR)}{os.sep}, or give it with --iso <path>.")
 
 
 def disc_fingerprint(iso):
@@ -1062,7 +1101,7 @@ def extract_disc(iso, forced):
     for key in ("disc", "disc_image", "disc_check"):
         state.pop(key, None)
     save_state(state)
-    print(f"  Extracting your disc into {DISC_DIR.relative_to(ROOT)}{os.sep} (about 4 GB; the old files there first removed)...",
+    print(f"  Extracting your disc into {shown_path(DISC_DIR)}{os.sep} (about 4 GB; the old files there first removed)...",
           flush=True)
     t = time.time()
     shown = [-1]
@@ -1082,7 +1121,7 @@ def extract_disc(iso, forced):
         fail(f"Extracting the disc failed: {e}")
     if sys.stdout.isatty() and not LAUNCHER:
         print("\r" + " " * 48 + "\r", end="")
-    ok(f"Extracted {len(plan.files)} files ({plan.total / 2**30:.2f} GB) into {DISC_DIR.relative_to(ROOT)}{os.sep} "
+    ok(f"Extracted {len(plan.files)} files ({plan.total / 2**30:.2f} GB) into {shown_path(DISC_DIR)}{os.sep} "
        f"in {time.time() - t:.0f} s, each checked against the image")
     state["disc"] = fingerprint
     state["disc_image"] = disc
@@ -1297,7 +1336,7 @@ def step_missing(name, iso):
         if first_missing(files) is None:
             for d in MRP_LEVELS[:-1]:
                 if not any(MRP.joinpath("moby", d).glob("*.mrpm")):
-                    return f"{(MRP / 'moby' / d).relative_to(ROOT)} has no models"
+                    return f"{shown_path(MRP / 'moby' / d)} has no models"
     elif name == "world":
         files = [MRP / f"world/{d}/{f}" for d in MRP_LEVELS
                  for f in ("world.mrpw", "textures_tfrag.mrpt", "textures_tie.mrpt", "textures_shrub.mrpt")]
@@ -1312,7 +1351,7 @@ def step_missing(name, iso):
     top = gone
     while not top.parent.exists() and top.parent != ASSETS_DIR:
         top = top.parent
-    return f"{top.relative_to(ROOT)} is missing"
+    return f"{shown_path(top)} is missing"
 
 
 def prepare_code(iso, forced, jobs):
@@ -1331,10 +1370,10 @@ def prepare_code(iso, forced, jobs):
         state.pop(name, None)
         if name == "elf":
             extract_elf(iso)
-            ok(f"Copied {boot_elf(iso).relative_to(ROOT)}")
+            ok(f"Copied {shown_path(boot_elf(iso))}")
         elif name == "overlay":
             overlay_maps(iso)
-            ok(f"Wrote {OVERLAY_MAPS.relative_to(ROOT)}/")
+            ok(f"Wrote {shown_path(OVERLAY_MAPS)}/")
         else:
             generate_code(iso, jobs)
         state[name] = fingerprint
@@ -1349,7 +1388,7 @@ def check_disc_files(iso):
         return
     print("  Checking the disc's files against your disc image (every sector, read the way the game reads them)...",
           flush=True)
-    if subprocess.run([str(EXE), "--setup", "--iso", str(iso), "--compare-disc"], cwd=ROOT, env=game_env()).returncode:
+    if subprocess.run([str(EXE), "--setup", "--iso", str(iso), "--compare-disc", *setup_args()], cwd=ROOT, env=game_env()).returncode:
         fail(f"The disc's files do not read the same as your disc image. Run {SETUP_CMD} --force disc to extract them again.")
     state["disc_check"] = state.get("disc")
     save_state(state)
@@ -1652,7 +1691,7 @@ def generate(iso, forced):
         if current and missing is None:
             ok(f"{what[0].upper() + what[1:]}: up to date")
             continue
-        cmd = [str(EXE), "--setup", "--iso", str(iso), "--step", name]
+        cmd = [str(EXE), "--setup", "--iso", str(iso), "--step", name, *setup_args()]
         if current:
             # up to date but part of it deleted: the step makes again only what is not there (its exporters skip a level
             # that is), and from scratch if that was not enough
@@ -1695,7 +1734,7 @@ def level_mods():
             pass
     if not found:
         return
-    if subprocess.run([str(EXE), "--setup", "--level-mods"], cwd=ROOT, env=game_env()).returncode:
+    if subprocess.run([str(EXE), "--setup", "--level-mods", *setup_args()], cwd=ROOT, env=game_env()).returncode:
         warn("A level mod could not be composed or a mod's code built (see the [compose] / [plugin] lines above); the game lists it "
              "as needing the setup.")
     else:
@@ -1774,10 +1813,17 @@ def game_env():
     """The environment the game's setup mode runs in: on Windows, the Python it runs the overlay matcher with
     (src/platform/platform_win32.cpp) is this one. (RAC1_LAUNCHER is the setup's, not the game's: the game would
     report it as an unknown testing switch.)"""
-    env = {k: v for k, v in os.environ.items() if k != "RAC1_LAUNCHER"}
+    env = {k: v for k, v in os.environ.items() if k not in ("RAC1_LAUNCHER", "RAC1_ASSETS")}
     if WINDOWS:
         env["RAC1_PYTHON"] = sys.executable
+    if ASSETS_DIR != REPO_ASSETS:  # (the data elsewhere: --output-dir, RAC1_ASSETS or build/assets.txt; the game reads the same)
+        env["RAC1_ASSETS"] = str(ASSETS_DIR)
     return env
+
+
+def setup_args():
+    """The game's setup mode's --output-dir when the data is not in assets/ (src/setup/setup_manager.cpp)."""
+    return ["--output-dir", str(ASSETS_DIR)] if ASSETS_DIR != REPO_ASSETS else []
 
 
 # --- 6. Updating (--update, GitHub issue #13) ---------------------------------------------------
@@ -1788,7 +1834,7 @@ GITHUB_ZIP = f"https://github.com/{REPO}/archive/refs"
 # The development channel's branch: the work lands on dev first and is merged into main from time to time (GitHub
 # issue #141: following main alone missed what was new on dev). tools/update_check.py compares against it too.
 DEV_BRANCH = "dev"
-UPDATE_VERSION_FILE = ASSETS_DIR / "update-version.txt"
+UPDATE_VERSION_FILE = REPO_ASSETS / "update-version.txt"
 
 
 def config_dir():
@@ -2305,6 +2351,17 @@ def data_disc_dir(rel):
     return ASSETS_DIR / f"disc-{rel.serial}-{rel.version}"
 
 
+def data_disc_stored(path):
+    """A data disc's folder as data-discs.txt and the record keep it: "assets/<folder>", the data's folder standing for
+    assets/ (runtime/kernel/disc.cpp reads it so; with the data in assets/, the path from the repository as before)."""
+    return "assets/" + path.relative_to(ASSETS_DIR).as_posix()
+
+
+def data_disc_path(stored):
+    """The folder a stored data disc's "dir" names (data_disc_stored)."""
+    return ASSETS_DIR / stored[len("assets/"):] if stored.startswith("assets/") else ROOT / stored
+
+
 def check_data_disc(path, base_boot):
     """A data disc given with --data-iso: its release, or the setup stops with what is wrong."""
     iso = Path(path).expanduser().resolve()
@@ -2339,7 +2396,7 @@ def data_discs_step(base_iso, new_paths, forced, drop):
         state["data_discs_removed"] = sorted(removed)
         for d in known:
             if d.get("dir"):
-                shutil.rmtree(disc_extract.long_path(ROOT / d["dir"]), ignore_errors=True)
+                shutil.rmtree(disc_extract.long_path(data_disc_path(d["dir"])), ignore_errors=True)
         if DATA_DISCS_FILE.exists():
             DATA_DISCS_FILE.unlink()
         state.pop("data_discs", None)
@@ -2374,19 +2431,19 @@ def data_discs_step(base_iso, new_paths, forced, drop):
         if rel.boot == base_boot and rel.supported:  # (the game's disc changed to this release since)
             warn(f"Data disc {rel.name}: now the game's disc, no longer a data disc")
             if d.get("dir"):
-                shutil.rmtree(disc_extract.long_path(ROOT / d["dir"]), ignore_errors=True)
+                shutil.rmtree(disc_extract.long_path(data_disc_path(d["dir"])), ignore_errors=True)
             continue
         gives = gives_beside(rel, base_rel)
         d["gives"] = list(gives)
         if not gives:
             ok(f"Data disc {rel.name}: it gives nothing the game's disc lacks (the same voices and texts), not extracted")
             if d.get("dir"):
-                shutil.rmtree(disc_extract.long_path(ROOT / d["dir"]), ignore_errors=True)
+                shutil.rmtree(disc_extract.long_path(data_disc_path(d["dir"])), ignore_errors=True)
             d["dir"] = ""
             listed.append(d)
             continue
         out = data_disc_dir(rel)
-        d["dir"] = out.relative_to(ROOT).as_posix()
+        d["dir"] = data_disc_stored(out)
         iso = Path(d["iso"])
         have = iso.is_file()
         part = ":texts" if texts_only(gives) else ""  # (only the texts' files: another extraction than the whole disc's)
@@ -2457,7 +2514,7 @@ def remove_data_discs(which):
                  + (", ".join(f"{d['serial']} {d['version']}" for d in known) or "none"))
         for d in hits:
             if d.get("dir"):
-                shutil.rmtree(disc_extract.long_path(ROOT / d["dir"]), ignore_errors=True)
+                shutil.rmtree(disc_extract.long_path(data_disc_path(d["dir"])), ignore_errors=True)
             known.remove(d)
             removed.add(f"{d['serial']} {d['version']}")
             ok(f"Data disc {d['region']} {d['serial']} version {d['version']} removed"
@@ -2483,7 +2540,7 @@ def write_data_discs_file(listed):
 def data_discs_due():
     """The data discs whose files are missing or not complete (their names)."""
     return [d["serial"] + " " + d["version"] for d in load_state().get("data_discs", [])
-            if d.get("dir") and disc_extract.layout_missing(ROOT / d["dir"]) is not None]
+            if d.get("dir") and disc_extract.layout_missing(data_disc_path(d["dir"])) is not None]
 
 
 MOVIE_SUB_LANGS = ("en", "fr", "de", "es", "it")  # (the movies' sound tracks; tools/movie_subtitles.py TRACKS)
@@ -2642,11 +2699,21 @@ def main():
                          "instead of installing one")
     ap.add_argument("--stt-model", default=None, metavar="MODEL",
                     help="with --movie-subtitles: the Whisper model (default large-v3-turbo; small is twice as fast and worse in Italian)")
+    ap.add_argument("--output-dir", default=None, metavar="DIR",
+                    help="put the game's data there instead of assets/ (another drive, an SD card): the disc's files, the "
+                         "boot executable, the overlay maps, the converted models and worlds, the mods' builds; the game "
+                         "reads it with RAC1_ASSETS=DIR, or with --remember. The generated sources (a build input) stay in "
+                         "assets/generated/src/; Python is still needed for the overlay maps (docs/setup.md)")
+    ap.add_argument("--remember", action="store_true",
+                    help="with --output-dir: write DIR into build/assets.txt, so that the game finds its data there wherever "
+                         "it is started from (delete that file, or `rac1-native --setup --forget`, to go back to assets/)")
     ap.add_argument("--native-arch", choices=("on", "off"), default=None,
                     help="compile the game for this machine's CPU (on: -march=native, AVX2 / AVX-512 where the CPU has them, "
                          "the game's own update about 8 %% faster, its state bit for bit the same; the build then runs on this "
                          "machine's CPU only) or for any x86-64 CPU (off, the default); kept for the next builds")
     args = ap.parse_args()
+    if args.remember and OUTPUT_DIR is None:
+        fail("--remember needs --output-dir <dir>.")
     if args.iso:
         args.iso = str(Path(args.iso).expanduser().resolve())  # (relative to where the user ran the setup)
     os.chdir(ROOT)
@@ -2701,7 +2768,7 @@ def main():
         next_step("Generating the game's code from your disc")
         prepare_code(iso, args.force, jobs)
     elif no_image:
-        ok(f"Your disc image is not needed: everything made from it is up to date ({DISC_DIR.relative_to(ROOT)}{os.sep} "
+        ok(f"Your disc image is not needed: everything made from it is up to date ({shown_path(DISC_DIR)}{os.sep} "
            "and the rest).")
         pick = pick_discs(None, args.data_iso, no_data=args.no_data_discs)
         print_pick(pick)
@@ -2719,21 +2786,34 @@ def main():
 
     if not no_image:
         next_step("Generating the game's data from your disc")
-        r = subprocess.run([str(EXE), "--setup", "--iso", str(iso), "--check-iso"], cwd=ROOT, env=game_env())
+        r = subprocess.run([str(EXE), "--setup", "--iso", str(iso), "--check-iso", *setup_args()], cwd=ROOT, env=game_env())
         if r.returncode:
             sys.exit(1)
         generate(iso, args.force)
         check_disc_files(iso)
     if not args.build_only:
-        movie_subtitles_step(args)
+        if ASSETS_DIR != REPO_ASSETS:  # (tools/movie_subtitles.py reads the movies in assets/disc/ and writes assets/)
+            warn(f"Movie subtitles: not made while the data is in {ASSETS_DIR} (tools/movie_subtitles.py knows assets/ only).")
+        else:
+            movie_subtitles_step(args)
+    if args.remember:
+        (BUILD_DIR / "assets.txt").write_text("# the game's data (tools/setup.py --output-dir --remember; RAC1_ASSETS overrides "
+                                              f"it)\n{ASSETS_DIR}\n", encoding="utf-8")
+        ok(f"The game reads its data from {ASSETS_DIR} from now on ({shown_path(BUILD_DIR / 'assets.txt')})")
 
     print(color("1;32", "\nAll done: Ratchet & Clank is ready."))
-    print(f"The game reads your disc's files in {DISC_DIR.relative_to(ROOT)}{os.sep}, not your disc image: it no longer "
+    print(f"The game reads your disc's files in {shown_path(DISC_DIR)}{os.sep}, not your disc image: it no longer "
           "needs the image.\nKeep the image anyway: an update that changes what is made from the disc asks for it again.")
     play = "build\\rac1-native.exe" if WINDOWS else "./build/rac1-native"
+    # (the folder the game would read by itself: RAC1_ASSETS, build/assets.txt, assets/; told when it is not the data's)
+    game_reads = (Path(os.environ["RAC1_ASSETS"]).expanduser().resolve() if os.environ.get("RAC1_ASSETS") else None) \
+        or remembered_root() or REPO_ASSETS
+    elsewhere = game_reads != ASSETS_DIR
+    if elsewhere:
+        play = (f"set RAC1_ASSETS={ASSETS_DIR}\n    " if WINDOWS else f"RAC1_ASSETS='{ASSETS_DIR}' ") + play
     print(f"To play, run this from {ROOT}:\n    {play}\n")
     if args.play or (not args.no_play and ask("Start the game now?", True)):
-        sys.exit(subprocess.run([str(EXE)], cwd=ROOT).returncode)
+        sys.exit(subprocess.run([str(EXE)], cwd=ROOT, env=dict(os.environ, RAC1_ASSETS=str(ASSETS_DIR)) if elsewhere else None).returncode)
 
 
 if __name__ == "__main__":

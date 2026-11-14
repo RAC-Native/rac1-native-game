@@ -4,6 +4,7 @@
 #include <formats/host_meshes.h>
 #include <formats/scene_wad.h>
 #include <game/enhance/context.h>
+#include <io/asset_paths.h>
 #include <game/enhance/hero_modes.h>
 #include <game/enhance/leveldata.h>
 #include <game/enhance/section_world.h>
@@ -1954,12 +1955,13 @@ void section_equiv_native([[maybe_unused]] uint32_t H) {
     const uint32_t n = (hi - lo) >> 8;
     // the level's gameplay file from the disc, decompressed into the heap (the native load's own copy at H has its pvar table
     // rewritten by pvar_move)
-    char path[96];
-    std::snprintf(path, sizeof path, "assets/disc/levels/level%02d/%s", level, lw(0x0015ed80) != 0 ? "gameplay_pal.bin" : "gameplay_ntsc.bin");
+    char rel[64];
+    std::snprintf(rel, sizeof rel, "disc/levels/level%02d/%s", level, lw(0x0015ed80) != 0 ? "gameplay_pal.bin" : "gameplay_ntsc.bin");
+    const std::string path = io::asset_path(rel);
     std::vector<uint8_t> packed, gp;
     if (!session_memory_on() || !read_all(path, packed) ||
         !decompress_wad(std::span<const std::byte>(reinterpret_cast<const std::byte*>(packed.data()), packed.size()), gp)) {
-        std::printf("[section] equivalence level %d: cannot run (%s; a session's memory: RAC1_SESSION_MEM=1)\n", level, path);
+        std::printf("[section] equivalence level %d: cannot run (%s; a session's memory: RAC1_SESSION_MEM=1)\n", level, path.c_str());
         return;
     }
     const uint32_t H2 = session_heap_alloc(static_cast<uint32_t>(gp.size()) + 0x10, "section equivalence");

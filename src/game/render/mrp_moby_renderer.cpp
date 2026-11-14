@@ -1,6 +1,7 @@
 // orig: (host) The MRP moby renderer (see mrp_moby_renderer.h).
 #include <game/render/mrp_moby_renderer.h>
 #include <game/enhance/session.h>
+#include <io/asset_paths.h>
 #include <game/render/gl_draws.h>
 #include <profiler/host_profiler.h>
 #include <jobs/job_pool.h>
@@ -265,7 +266,7 @@ Stats g_st;
 
 std::string asset_root() {
     const char* r = std::getenv("RAC1_MRP_DIR");
-    return r != nullptr ? r : "assets/generated/mrp/moby";
+    return r != nullptr ? r : io::asset_path("generated/mrp/moby");
 }
 
 // the assets' level: the level 0x15ed84 names, or the boot module's title level while the boot runs

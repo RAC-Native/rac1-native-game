@@ -4,6 +4,7 @@
 #include <game/render/render_toggles.h>
 #include <profiler/host_profiler.h>
 #include <game/render/moby_render.h>
+#include <io/asset_paths.h>
 #include <game/render/render_view.h>
 #include <game/render/shader_manager.h>
 #include <game/render/static_skinned_render.h>
@@ -236,8 +237,8 @@ static bool g_ratchet_glb_loaded = false;
 static StaticSkinnedModel& get_ratchet_glb() {
     if (!g_ratchet_glb_loaded) {
         g_ratchet_glb_loaded = true;
-        if (!load_static_skinned_model("assets/generated/ratchet_class0.glb", g_ratchet_glb)) {
-            std::cerr << "Failed to load assets/generated/ratchet_class0.glb (run setup.sh)" << std::endl;
+        if (!load_static_skinned_model(io::asset_path("generated/ratchet_class0.glb"), g_ratchet_glb)) {
+            std::cerr << "Failed to load " << io::asset_path("generated/ratchet_class0.glb") << " (run setup.sh)" << std::endl;
         } else {
             std::cout << "Loaded ratchet_class0.glb!" << std::endl;
         }

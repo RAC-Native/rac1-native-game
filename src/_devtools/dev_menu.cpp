@@ -6,6 +6,7 @@
 #include "dev_hoverboard.h"
 #include "dev_unlocks.h"
 #include "item_give_quiet.h"
+#include <io/asset_paths.h>
 #include "dev_profiler.h"
 
 #include <game/ovl/ovl_reloc.h>
@@ -911,7 +912,7 @@ std::vector<std::string> overlay_map_summary(int level) {
     auto it = cache.find(level);
     if (it != cache.end()) return it->second;
     std::vector<std::string> out;
-    const std::string path = "assets/generated/overlay_map/level" + std::to_string(level) + ".txt";
+    const std::string path = rac1::io::asset_path("generated/overlay_map/level" + std::to_string(level) + ".txt");
     if (FILE* f = std::fopen(path.c_str(), "r")) {
         char line[512];
         while (std::fgets(line, sizeof line, f) != nullptr && line[0] == '#') {

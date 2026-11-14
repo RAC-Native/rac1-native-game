@@ -3,6 +3,7 @@
 #include "ee_memory.h"
 #include "mods.h"
 
+#include <io/asset_paths.h>
 #include <platform/platform.h>
 
 #include <algorithm>
@@ -208,6 +209,7 @@ std::vector<DataDiscFiles>& data_discs() {
             }
             e.disc.base = kDataDiscWindow * static_cast<uint32_t>(discs.size() + 1);
             e.files = std::make_unique<DiscFiles>();
+            if (e.disc.dir.rfind("assets/", 0) == 0) e.disc.dir = io::asset_path(e.disc.dir.c_str() + 7);  // (the data's root: the setup writes "assets/<folder>")
             e.files->dir = e.disc.dir;
             files_load(*e.files);
             e.disc.ok = e.files->ok && e.files->image_bytes <= uint64_t{kDataDiscWindow} * kSector;
@@ -365,7 +367,7 @@ std::string disc_path() {
     // the setup's link to the player's image, one name per region (the PAL disc's when it is the one
     // there); where links cannot be made (Windows without the privilege), the image's path written in a
     // text file beside it instead
-    const std::string link = "assets/iso/rac1-ntsc-u.iso", pal_link = "assets/iso/rac1-pal.iso";
+    const std::string link = io::asset_path("iso/rac1-ntsc-u.iso"), pal_link = io::asset_path("iso/rac1-pal.iso");
     std::error_code ec;
     if (std::filesystem::exists(link, ec) && std::filesystem::exists(pal_link, ec)) {
         // (both discs kept in assets/iso/: the one the disc's files were extracted from, by the image's size that
@@ -391,7 +393,10 @@ std::string disc_path() {
     return link;
 }
 
-const char* disc_path_file() { return "assets/iso/disc-path.txt"; }
+const char* disc_path_file() {
+    static const std::string path = io::asset_path("iso/disc-path.txt");
+    return path.c_str();
+}
 
 namespace {
 // SYSTEM.CNF's BOOT2 file name, read through the ISO9660 root directory ("" when it cannot be read)
@@ -447,11 +452,14 @@ const std::string& disc_boot_elf() {
     return name;
 }
 
-std::string disc_boot_elf_path() { return "assets/dumps/" + disc_boot_elf(); }
+std::string disc_boot_elf_path() { return io::asset_path("dumps/" + disc_boot_elf()); }
 
 bool disc_other_region() { return disc_boot_elf() != "SCUS_971.99"; }
 
-const char* disc_files_dir() { return "assets/disc"; }
+const char* disc_files_dir() {
+    static const std::string dir = io::asset_path("disc");
+    return dir.c_str();
+}
 
 DiscSource disc_source() {
     int s = g_source.load();
@@ -541,7 +549,10 @@ bool disc_read_ee(uint32_t ee_dst, uint32_t lba, uint32_t sectors) {
     return true;
 }
 
-const char* disc_data_discs_file() { return "assets/data-discs.txt"; }
+const char* disc_data_discs_file() {
+    static const std::string path = io::asset_path("data-discs.txt");
+    return path.c_str();
+}
 
 std::vector<DataDisc> disc_data_discs() {
     std::vector<DataDisc> out;

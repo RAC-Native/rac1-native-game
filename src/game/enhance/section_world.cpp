@@ -3,6 +3,7 @@
 
 #include <formats/scene_wad.h>
 #include <game/enhance/session.h>
+#include <io/asset_paths.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -120,8 +121,9 @@ constexpr int32_t kTfragBatch = 96;    // (tfrag entries lit a step)
 
 // orig: (host) see section_world.h
 bool world_read(int level, bool pal, bool coll, bool sky, WorldBytes& out, std::string& err) {
-    char dir[64];
-    std::snprintf(dir, sizeof dir, "assets/disc/levels/level%02d/", level);
+    char rel[64];
+    std::snprintf(rel, sizeof rel, "disc/levels/level%02d/", level);
+    const std::string dir = io::asset_path(rel);
     std::vector<uint8_t> wad, packed;
     if (!read_all(std::string(dir) + "data.wad", wad) || wad.size() < 0x58) {
         err = std::string(dir) + "data.wad cannot be read";

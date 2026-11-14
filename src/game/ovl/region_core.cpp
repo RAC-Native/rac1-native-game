@@ -2,6 +2,7 @@
 #include <game/ovl/region_core.h>
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/kernel/disc.h>
+#include <io/asset_paths.h>
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/level/level_loader.h>
 
@@ -61,7 +62,7 @@ const CoreRuns& core_runs() {
     static const CoreRuns runs = [] {
         CoreRuns c;
         if (!disc_other_region()) return c;
-        c.ptr = read_ptrs("assets/generated/overlay_map/region_core.txt", [&c](const std::string& kind, uint32_t lo, uint32_t hi, const std::string& d) {
+        c.ptr = read_ptrs(io::asset_path("generated/overlay_map/region_core.txt"), [&c](const std::string& kind, uint32_t lo, uint32_t hi, const std::string& d) {
             const uint32_t disp = d.empty() ? 0 : static_cast<uint32_t>(std::stoll(d, nullptr, 16));
             if (kind == "code") c.code.push_back({lo, hi, disp});
             else if (kind == "data") c.data.push_back({lo, hi, disp});
@@ -80,8 +81,8 @@ const std::vector<uint32_t>& unit_ptrs(int unit) {
     static std::map<int, std::vector<uint32_t>> all;
     const auto it = all.find(unit);
     if (it != all.end()) return it->second;
-    const std::string path = unit == OVL_FRONT ? std::string("assets/generated/overlay_map/region_boot.txt")
-                                               : "assets/generated/overlay_map/region_level" + std::to_string(unit) + ".txt";
+    const std::string path = io::asset_path(unit == OVL_FRONT ? std::string("generated/overlay_map/region_boot.txt")
+                                                              : "generated/overlay_map/region_level" + std::to_string(unit) + ".txt");
     return all[unit] = read_ptrs(path, [](const std::string&, uint32_t, uint32_t, const std::string&) {});
 }
 

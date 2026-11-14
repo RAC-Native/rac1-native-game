@@ -44,6 +44,7 @@
 //   RAC1_MRP=1 (the Modern Rendering Pipeline for the mobys, the world and the sky: RAC1_MOBY_MRP=1 + RAC1_WORLD_MRP=1; either set
 // explicitly decides for its part)
 #include <runtime/ee/ps2_fpu.h>
+#include <io/asset_paths.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -220,6 +221,7 @@ constexpr const char* PLAYER_ENV[] = {
     "RAC1_PROGRESS",  // (where progress.json goes for the launcher, or 0: docs/launcher.md)
     "RAC1_MODS", "RAC1_MODS_FILE",  // (0: every mod off; the Mods menu's choices file: docs/mods.md)
     "RAC1_PYTHON",  // (set by tools/setup.py for the setup mode: the Python it runs the overlay matcher with)
+    "RAC1_ASSETS",  // (the game's data elsewhere: src/io/asset_paths.h, docs/setup.md)
 };
 
 // orig: (host) the gate, from the ELF's .init_array before the static initialisers (glibc passes argc / argv; on Windows
@@ -1529,7 +1531,7 @@ bool level_host_load(int level) {
     LevelLoader::load_level_wad(level);
     prof.emplace("  engine_image_load");
     engine_image_load(level);
-    g_moby_glb_dir = "assets/generated/moby_glb/level" + std::to_string(level);
+    g_moby_glb_dir = rac1::io::asset_path("generated/moby_glb/level" + std::to_string(level));
     return true;
 }
 
@@ -2424,13 +2426,13 @@ void check_mrp_assets(bool moby, bool world) {
     std::vector<std::filesystem::path> want;
     if (moby) {
         const char* r = std::getenv("RAC1_MRP_DIR");  // (mrp_moby_renderer.cpp's asset_root)
-        const std::filesystem::path root = r != nullptr ? r : "assets/generated/mrp/moby";
+        const std::filesystem::path root = r != nullptr ? r : rac1::io::asset_path("generated/mrp/moby");
         for (const std::string& d : dirs) want.push_back(root / d / "textures.mrpt");
         for (int k = 0; k < 4; ++k) want.push_back(root / "armor" / (std::to_string(k) + ".mrpt"));
     }
     if (world) {
         const char* r = std::getenv("RAC1_MRPW_DIR");  // (mrp_world_renderer.cpp's asset_root)
-        const std::filesystem::path root = r != nullptr ? r : "assets/generated/mrp/world";
+        const std::filesystem::path root = r != nullptr ? r : rac1::io::asset_path("generated/mrp/world");
         for (const std::string& d : dirs) want.push_back(root / d / "world.mrpw");
     }
     size_t missing = 0;
@@ -2494,7 +2496,7 @@ int main(int argc, char** argv) {
                              "Run the setup again from the repository's root, with your disc image:\n"
                              "  ./setup.sh --iso <path-to-your-iso>   (setup.cmd on Windows)\n"
                              "and start the game from the repository's root.\n\n",
-                     have_disc ? "the game's data is missing (assets/)." : disc_why.c_str());
+                     have_disc ? ("the game's data is missing (" + rac1::io::asset_root() + "/).").c_str() : disc_why.c_str());
         return 1;
     }
     const bool headless = std::getenv("RAC1_HEADLESS") != nullptr;

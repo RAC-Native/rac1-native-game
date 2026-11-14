@@ -1,4 +1,4 @@
-// `rac1-native --setup`: generates the game's data into assets/ from the player's own disc image.
+// `rac1-native --setup`: generates the game's data into assets/ (or --output-dir <dir>) from the player's own disc image.
 // ./setup.sh (tools/setup.py) drives it one step at a time and decides which steps to redo; it can
 // also be run on its own.
 #include "setup_manager.h"
@@ -8,6 +8,7 @@
 #include "mrp_export.h"
 #include "scene_export.h"
 
+#include <io/asset_paths.h>
 #include <io/mapped_file.h>
 #include <platform/platform.h>
 #include <runtime/ipu/movie_hw.h>
@@ -45,14 +46,24 @@ void print_usage(const char* prog) {
               << "or PAL SCES-50916).\n"
               << "Run it from the repository's root. ./setup.sh runs it for you.\n\n"
               << "Options:\n"
-              << "  --iso <path>       your disc image (default: $RAC1_ISO, then assets/iso/rac1-ntsc-u.iso or rac1-pal.iso)\n"
-              << "  --assets <dir>     where to write the data (default: assets; the game reads assets/)\n"
+              << "  --iso <path>       your disc image (default: $RAC1_ISO, then <data>/iso/rac1-ntsc-u.iso or rac1-pal.iso)\n"
+              << "  --output-dir <dir> where the game's data goes, and what every other option reads and writes there (the\n"
+              << "                     disc's files, the pool, the mods' builds). Default: $RAC1_ASSETS, else the folder in\n"
+              << "                     assets.txt next to this program, else assets/ in the current folder. The game reads\n"
+              << "                     the same: run it with RAC1_ASSETS=<dir>, or use --remember. (The generated sources,\n"
+              << "                     assets/generated/src/, are a build input: they stay in the repository's assets/.\n"
+              << "                     The overlay maps step still runs Python: tools/overlay_match/. docs/setup.md)\n"
+              << "  --assets <dir>     the same as --output-dir (the older name)\n"
+              << "  --remember         with --output-dir: write that folder into assets.txt next to this program, so that\n"
+              << "                     the game finds its data there wherever it is started from\n"
+              << "  --forget           remove assets.txt next to this program (the game reads assets/ again), then stop\n"
               << "  --force            regenerate files that already exist\n"
               << "  --step <step>      run one step only: elf, moby, world, flight, overlay (default: all)\n"
+              << "  --level <n>        with --step moby or world: that level only (0 to 18, or title)\n"
               << "  --check-iso        only check the disc image, and make the game find it\n"
-              << "  --compare-disc     read every sector through the image and through the disc's files (assets/disc/),\n"
+              << "  --compare-disc     read every sector through the image and through the disc's files (<data>/disc/),\n"
               << "                     and compare\n"
-              << "  --status           show which parts of the data are present\n"
+              << "  --status           show where the data is and which parts of it are present\n"
               << "  --movie-tracks <pss>        print the sound tracks of a movie file (tools/movie_subtitles.py)\n"
               << "  --movie-audio <pss> --track <n> --wav <out.wav>\n"
               << "                     one sound track of a movie file as a 16 kHz mono WAV (for speech to text)\n"
@@ -60,9 +71,9 @@ void print_usage(const char* prog) {
               << "                     the mods' plugins (their code) likewise\n"
               << "  --mod-plugins      build the mods' plugins whose build is missing or old (with --force: all)\n"
               << "  --mod-plugin <folder>   build that mod's plugin\n"
-              << "                     into assets/generated/mods/<folder>/ (docs/mods.md, \"Level mods\")\n"
+              << "                     into <data>/generated/mods/<folder>/ (docs/mods.md, \"Level mods\")\n"
               << "  --level-mod <folder>  compose that level mod, whatever its build\n"
-              << "  --pool             make the asset pool (assets/generated/pool/: every level's moby classes, for custom-level\n"
+              << "  --pool             make the asset pool (<data>/generated/pool/: every level's moby classes, for custom-level\n"
               << "                     sessions; docs/open-engine.md) from the game's disc\n"
               << "  --pool-report      the asset pool's contents, per level and in all (made first when missing)\n"
               << "  --help, -h         show this help\n";
@@ -70,6 +81,13 @@ void print_usage(const char* prog) {
 
 void print_status(const fs::path& root) {
     std::cout << "\nGame data in " << root.string() << ":\n\n";
+    {
+        const std::string pf = io::asset_root_pointer_file();
+        std::error_code ec;
+        std::cout << "  The game reads " << io::asset_root() << " (" << (io::asset_root_source() == "default" ? "the default, relative to the current folder" : io::asset_root_source())
+                  << ")\n  Pointer file (--remember): " << (pf.empty() ? std::string("none (this program's folder is unknown)") : pf + (fs::exists(pf, ec) ? "" : " (none)"))
+                  << "\n  The generated sources (a build input) stay in the repository's assets/generated/src/\n\n";
+    }
 
     auto check_file = [&](const std::string& desc, const fs::path& p) {
         const bool ok = fs::exists(p);
@@ -327,8 +345,9 @@ int movie_audio(const std::string& pss, int track, const std::string& wav) {
 
 int run_setup(int argc, char** argv) {
     std::string iso_path;
-    std::string assets_dir = "assets";
-    std::string step = "all";
+    std::string assets_dir;  // (--output-dir; empty: io::asset_root(), the game's own choice)
+    std::string step = "all", level_arg = "all";
+    bool remember = false, forget = false;
     bool force = false;
     bool status_only = false;
     bool check_only = false;
@@ -347,8 +366,14 @@ int run_setup(int argc, char** argv) {
             continue;
         } else if ((a == "--iso" || a == "-i") && i + 1 < argc) {
             iso_path = argv[++i];
-        } else if ((a == "--assets" || a == "-a") && i + 1 < argc) {
+        } else if ((a == "--output-dir" || a == "--assets" || a == "-a") && i + 1 < argc) {
             assets_dir = argv[++i];
+        } else if (a == "--remember") {
+            remember = true;
+        } else if (a == "--forget") {
+            forget = true;
+        } else if (a == "--level" && i + 1 < argc) {
+            level_arg = argv[++i];
         } else if (a == "--force" || a == "-f") {
             force = true;
         } else if (a == "--step" && i + 1 < argc) {
@@ -393,6 +418,36 @@ int run_setup(int argc, char** argv) {
         std::cerr << "Unknown step: " << step << " (elf, moby, world, flight, overlay or all)\n";
         return 1;
     }
+    if (level_arg != "all" && ((step != "moby" && step != "world") || (level_arg != "title" && (level_arg.empty() || level_arg.find_first_not_of("0123456789") != std::string::npos ||
+                                                                                                std::atoi(level_arg.c_str()) > 18)))) {
+        std::cerr << "--level needs --step moby or world, and a level from 0 to 18 (or title)\n";
+        return 1;
+    }
+    // the data's folder, before anything reads a path (src/io/asset_paths.h): every step, the pool, the mods' builds and the
+    // disc's files then go there
+    if (!assets_dir.empty() && !io::asset_root_set(assets_dir)) return 1;
+    if (forget) {
+        std::string why;
+        if (!io::asset_root_forget(why)) {
+            std::cerr << "[setup] Error: " << why << "\n";
+            return 1;
+        }
+        std::cout << "[setup] The game reads its data from assets/ in the current folder again (or RAC1_ASSETS)\n";
+        return 0;
+    }
+    if (remember) {
+        std::string why;
+        if (assets_dir.empty()) {
+            std::cerr << "[setup] Error: --remember needs --output-dir <dir>\n";
+            return 1;
+        }
+        if (!io::asset_root_remember(io::asset_root(), why)) {
+            std::cerr << "[setup] Error: " << why << "\n";
+            return 1;
+        }
+        std::cout << "[setup] The game reads its data from " << io::asset_root() << " from now on (" << io::asset_root_pointer_file()
+                  << "; --forget undoes it)\n";
+    }
 
     if (!level_mod.empty()) return compose_level_mod(level_mod, true) ? 0 : 1;  // (from the player's extracted disc files: no image)
     if (pool || pool_report_only) {  // (the asset pool, from the game's disc: docs/open-engine.md)
@@ -424,7 +479,7 @@ int run_setup(int argc, char** argv) {
         }
         return movie_audio(movie_audio_of, track, wav);
     }
-    const fs::path assets_path = fs::absolute(assets_dir);
+    const fs::path assets_path = fs::absolute(io::asset_root());
     if (status_only) {
         print_status(assets_path);
         return 0;
@@ -499,7 +554,7 @@ int run_setup(int argc, char** argv) {
     // (the exporters skip, level by level, what already exists unless forced)
     if (want("moby")) {
         begin(2, "Converting the moby models and textures, level");
-        if (!export_mrp_mobys(iso_span, (assets_path / "generated/mrp/moby").string(), "all", force)) {
+        if (!export_mrp_mobys(iso_span, (assets_path / "generated/mrp/moby").string(), level_arg, force)) {
             std::cerr << "\n[setup] Error: the moby export failed\n";
             return 1;
         }
@@ -508,7 +563,7 @@ int run_setup(int argc, char** argv) {
 
     if (want("world")) {
         begin(3, "Converting the world geometry and textures, level");
-        if (!export_mrp_world(iso_span, (assets_path / "generated/mrp/world").string(), "all", force)) {
+        if (!export_mrp_world(iso_span, (assets_path / "generated/mrp/world").string(), level_arg, force)) {
             std::cerr << "\n[setup] Error: the world export failed\n";
             return 1;
         }

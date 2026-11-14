@@ -2,6 +2,7 @@
 #include <game/render/mrp_world_renderer.h>
 #include <game/render/frame_extrap.inc>
 #include <game/render/texture_mods.h>
+#include <io/asset_paths.h>
 #include <game/render/gl_draws.h>
 #include <game/render/mrp_chain.h>
 
@@ -87,7 +88,7 @@ double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::
 
 std::string asset_root() {
     const char* r = std::getenv("RAC1_MRPW_DIR");
-    return r != nullptr ? r : "assets/generated/mrp/world";
+    return r != nullptr ? r : io::asset_path("generated/mrp/world");
 }
 
 // the assets' level: the level 0x15ed84 names, or the boot module's title level while the boot runs (the title loop

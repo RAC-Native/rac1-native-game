@@ -2,6 +2,7 @@
 #include <game/enhance/pool.h>
 
 #include <formats/scene_wad.h>
+#include <io/asset_paths.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <platform/platform.h>
@@ -310,7 +311,10 @@ bool read_index() {
 }  // namespace
 
 // orig: (host) see pool.h
-const char* pool_dir() { return "assets/generated/pool"; }
+const char* pool_dir() {
+    static const std::string dir = io::asset_path("generated/pool");
+    return dir.c_str();
+}
 
 // orig: (host) see pool.h
 bool pool_build(std::string* why) {
