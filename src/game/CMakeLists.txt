@@ -83,6 +83,10 @@ add_library(rac1_game STATIC
     ovl/umbris_mobys.cpp
     ovl/umbris_hooks.cpp
     ovl/gaspar_mobys.cpp
+    ovl/gaspar_structure.cpp
+    ovl/gaspar_meteors.cpp
+    ovl/gaspar_breakables.cpp
+    ovl/gaspar_platform.cpp
     ovl/gaspar_hooks.cpp
     ovl/batalia_mobys.cpp
     ovl/batalia_hooks.cpp

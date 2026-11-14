@@ -25,7 +25,9 @@
 #include <game/ovl/shared_swingshot_target.h>
 #include <game/ovl/shared_tracer.h>
 #include <game/ovl/enemy_749.h>
+#include <game/level/level_data.h>
 #include <game/ovl/gaspar_mobys.h>
+#include <game/ovl/variants_l9.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
@@ -174,6 +176,7 @@ void batch_121() {
     };
 
     // the debris / spawns leave w lanes of a VU0 sin / cos in the original (the port has none)
+    // (the transliterated classes' checks below take both lists; the hand-ported ones of P9.1 neither)
     const std::vector<uint32_t> saved_ignored = g_ignored_words;
     if (g_oracle_level == 9) {
         level();
@@ -183,6 +186,7 @@ void batch_121() {
             for (uint32_t k = 0; k < 0x800; ++k) g_ignored_words.push_back(pool + k * 0x40 + 0x2c);
         }
     }
+    const std::vector<uint32_t> batch_ignored = g_ignored_words;
 
     // ---- the level's own classes (transliterated by tools/codegen/mkall_l9.py): the level's own mobys of each class, the first
     // update (state 0) done by the port, then a state, a hit, the hero near, the pvars' floats / counters moved as typed
@@ -278,12 +282,18 @@ void batch_121() {
     }
     for (const TrCls& c : trcls) {
         if (std::getenv("B121_CLS") != nullptr && std::strcmp(std::getenv("B121_CLS"), c.name) != 0) continue;
+        // the hand ports (P9.1): none of the two lists
+        const bool hand = c.fn == gas_class1182_update_l9 || c.fn == gas_class263_update_l9 || c.fn == gas_class276_update_l9 || c.fn == gas_class279_update_l9 ||
+                          c.fn == gas_class313_update_l9 || c.fn == gas_class320_update_l9 || c.fn == gas_class417_update_l9 || c.fn == gas_class664_update_l9;
+        g_ignored_words = batch_ignored;
+        if (hand) g_ignored_words = saved_ignored;
         for (int st = 0; st < 16; ++st)
         for (int pass = 0; pass < 3; ++pass) {
         if (g_oracle_level == 9 && std::getenv("B121_TAGS") != nullptr) std::printf("@@ %s st %d pass %d\n", c.name, st, pass);
         if ((std::getenv("B121_ST") == nullptr || std::atoi(std::getenv("B121_ST")) == st) && (std::getenv("B121_PASS") == nullptr || std::atoi(std::getenv("B121_PASS")) == pass) && (c.skip_states & (1u << st)) == 0) classcheck(c.name, c.addr, c.fn, [st, pass, c, generic_prep](uint32_t m) { generic_prep(m, st, pass, c.fn, c.walk); }, 12);
         }
     }
+    g_ignored_words = batch_ignored;
     g_extra_noop_hooks.clear();
 
     // ---- level 9's sound emitter types (3, 6: section 5 of the overlay) on the level's own emitters
@@ -403,6 +413,414 @@ void batch_121() {
                 return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
             }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
         }
+    }
+
+    // ---- P9.1: the hand ports of Gaspar's own code (gaspar_structure / _meteors / _breakables / _platform.cpp), part 1: each
+    // update on states made for its branches (its subjects spawned where the level has none), each helper called directly.
+    // They need none of the class loop's ignores (the spawns' and the particle records' w lanes): only the batch's base list.
+    if (g_oracle_level == 9) {
+        const std::vector<uint32_t> loop_ignored = g_ignored_words;
+        g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, 0x002763f8};
+        auto p91 = [&](const char* name, uint32_t addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
+            g_ignored_words = saved_ignored;
+            l9check(name, addr, n, ret, gen, port);
+            g_ignored_words = loop_ignored;
+        };
+        const uint32_t P = 0x0013f350, CAM = L9_ADDR(0x00166f40), X = 0x00180000;  // the hero, the camera, a scratch block
+        // the frame rate: 60 Hz (the snapshot's), or 50 Hz one case in four
+        auto rates = [] {
+            if (ri(0, 3) != 0) return;
+            wf(0x0015ed68, 1.2f);
+            wf(0x0015ed6c, 0.02f);
+            wf(0x0015ed70, 0.0004f);
+        };
+        auto finish = [rates] {
+            rates();
+            w32(OV(0x0015f5cc), R() & 0xffff);
+            seed_rand();
+        };
+        auto pick = [](const std::vector<uint32_t>& v) { return v[static_cast<size_t>(ri(0, static_cast<int>(v.size()) - 1))]; };
+        auto near = [](uint32_t dst, uint32_t at, float r, float dz) {
+            Vec4 q = ee_ref<Vec4>(at);
+            q.x += rf(-r, r); q.y += rf(-r, r); q.z += rf(-dz, dz);
+            ee_ref<Vec4>(dst) = q;
+        };
+        // a subject of class `cls` spawned at the hero's place (on the ground), its state 0
+        auto spawn_at_hero = [near, P](uint32_t cls) {
+            const uint32_t m = moby_spawn(cls);
+            if (m == 0) return 0u;
+            near(m + 0x10, P + 0x80, 3.0f, 0.0f);
+            wf(m + 0x18, ee_read<float>(m + 0x18) + rf(-0.5f, 2.0f));
+            moby_update_transform(m);
+            return m;
+        };
+        // the camera near `at` (for the clamps at 64 / 100 and the shake within 15), else where it is
+        auto camera_near = [near, CAM](uint32_t at) {
+            const int k = ri(0, 3);
+            if (k == 0) near(CAM, at, 5.0f, 3.0f);
+            else if (k == 1) near(CAM, at, 40.0f, 10.0f);
+            else if (k == 2) near(CAM, at, 120.0f, 30.0f);
+        };
+        auto hit_on = [give_hit](uint32_t m, uint32_t mask) {
+            give_hit(m, mask);
+            if (ee_read<uint8_t>(m + 0xa4) == 0xff) return;
+            const uint32_t e = OV(0x00178100) + (ee_read<uint8_t>(m + 0xa4) << 6);
+            wfrand(e + 0x10, 4, -1, 1);
+            if (coin()) w32(e + 0x34, m);
+        };
+        auto upd = [](void (*fn)(uint32_t)) { return [fn](const Args& a) { fn(a.i[0]); return uint64_t{0}; }; };
+
+        // class 1182 .. 1189 (the structure): set up (the story byte, the base's pieces, a piece far from its base), riding /
+        // fused (struck, the fuse out), the burst (heavy pieces too), flying (into the lava at 25, out of the level), sinking
+        {
+            const std::vector<uint32_t> all = mobys_with(0x002c26c8);
+            std::vector<uint32_t> bases;
+            for (uint32_t m : all) if (ee_read<int16_t>(m + 0xa6) == 0x4a0) bases.push_back(m);
+            if (std::getenv("B121_INFO") != nullptr) std::printf("INFO p91 1182: %zu, bases %zu\n", all.size(), bases.size());
+            for (int st = 0; st < 6; ++st) {
+                char nm[32];
+                std::snprintf(nm, sizeof nm, "p91_class1182_s%d", st);
+                p91(nm, 0x002c26c8, st == 4 ? 160 : 80, Ret::None, [&, st] {
+                    level();
+                    const uint32_t m = (st == 0 && coin() && !bases.empty()) ? pick(bases) : pick(all);
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    w8(m + 0x20, u(st));
+                    if (st == 0) {
+                        const int k = ri(0, 3);
+                        w32(pv + 0x68, k == 0 ? 0xffffffffu : u(ri(0, 15)));
+                        if (k != 0) w8(0x0013d388 + ee_read<uint32_t>(pv + 0x68) + 0x39, coin() ? 1u : 0u);
+                        w16(pv + 0x28, coin() ? 1u : 0u);
+                        if (ri(0, 3) == 0) wf(m + 0x10, ee_read<float>(m + 0x10) + rf(-40, 40));
+                    } else if (st <= 2) {
+                        w8(m + 0xbc, ri(0, 2) == 0 ? 0u : 1u);
+                        if (coin()) w16(pv + 0x2a, u(ri(0, 3)));
+                        const uint32_t base = ee_read<uint32_t>(pv + 0x2c);
+                        if (base != 0 && ri(0, 3) == 0) w8(base + 0x20, u(ri(1, 4)));
+                        if (ri(0, 5) == 0) w32(pv + 0x2c, 0);
+                        for (int i = 0; i < 3; ++i) if (coin()) wf(pv + 0x40 + 4 * u(ri(0, 8)), rf(-3, 3));
+                    } else if (st == 3) {
+                        near(P + 0x80, m + 0x10, 20.0f, 5.0f);
+                        if (coin()) w32(pv + 0x68, 0xffffffffu);
+                        else w32(pv + 0x68, u(ri(0, 15)));
+                        wf(pv + 0x20, coin() ? 0.0f : rf(-0.2f, 0.2f));
+                    } else {
+                        wfrand(pv, 3, -1.5f, 1.5f);
+                        wfrand(pv + 0x20, 2, -0.2f, 0.2f);
+                        wf(pv + 0x64, rf(0, 0.05f));
+                        const int k = ri(0, 5);
+                        if (k <= 2) wf(m + 0x18, rf(23.5f, 27.0f));
+                        else if (k == 3) wf(m + 0x10 + 4 * u(ri(0, 2)), coin() ? rf(5, 12.5f) : rf(1010.5f, 1020));
+                    }
+                    finish();
+                    return Args{{m}, {}};
+                }, upd(gas_class1182_update_l9));
+            }
+        }
+        // the structure's helpers: a piece of a base, the nearest moby of a class
+        {
+            const std::vector<uint32_t> all = mobys_with(0x002c26c8);
+            std::vector<uint32_t> bases;
+            for (uint32_t m : all) if (ee_read<int16_t>(m + 0xa6) == 0x4a0) bases.push_back(m);
+            p91("p91_2c2500", 0x002c2500, 60, Ret::Int32, [&] {
+                level();
+                const uint32_t m = bases.empty() ? pick(all) : pick(bases);
+                near(X, m + 0x10, 2.0f, 1.0f);
+                finish();
+                return Args{{m, X, u(ri(0x49e, 0x4a5))}, {}};
+            }, [](const Args& a) { return r32(gas_2c2500_l9(a.i[0], a.i[1], a.i[2])); });
+            p91("p91_2c2610", 0x002c2610, 80, Ret::Int32, [&] {
+                level();
+                near(X, pick(all) + 0x10, coin() ? 5.0f : 200.0f, 5.0f);
+                wf(X + 0x20, rf(-9, 9));
+                static const uint32_t cls[] = {0x4a0, 0x49e, 0x4a3, 0x107, 0x298};
+                finish();
+                return Args{{X, cls[ri(0, 4)], coin() ? X + 0x20 : 0u}, {}};
+            }, [](const Args& a) { return r32(gas_2c2610_l9(a.i[0], a.i[1], a.i[2])); });
+        }
+
+        // classes 263 .. 266: a meteor (low over the level, aimed at the lava, past its target, dying), a puff of smoke (fading,
+        // gone), a cloud on its path (its ends), the controller (its set-up, a new cloud, its path's end)
+        {
+            std::vector<uint32_t> meteors, clouds, ctls;
+            for (uint32_t m : mobys_with(0x002eb970)) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                const uint32_t kind = ee_read<uint32_t>(pv + 0x4c);
+                if (kind == 1) meteors.push_back(m);
+                else if (kind == 0) (ee_read<uint8_t>(m + 0xbc) == 0 ? ctls : clouds).push_back(m);
+            }
+            if (std::getenv("B121_INFO") != nullptr) std::printf("INFO p91 263: meteors %zu clouds %zu controllers %zu\n", meteors.size(), clouds.size(), ctls.size());
+            if (!meteors.empty()) {
+                for (int sc = 0; sc < 4; ++sc) {
+                    char nm[32];
+                    std::snprintf(nm, sizeof nm, "p91_meteor_%d", sc);
+                    p91(nm, 0x002eb970, 120, Ret::None, [&, sc] {
+                        level();
+                        const uint32_t m = pick(meteors);
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        w8(m + 0x20, 0);
+                        wf(pv + 0x54, rf(0.5f, 3.0f));
+                        w32(pv + 0x58, u(ri(-1, 4)));
+                        if (sc == 0) {  // low over the level near the hero: its way through the ground (or still high)
+                            near(pv + 0x20, P + 0x80, 4.0f, 0.0f);
+                            near(pv, pv + 0x20, 6.0f, 0.0f);
+                            wf(pv + 8, ee_read<float>(pv + 0x28) + rf(-2, 30));
+                            if (ri(0, 4) == 0) wf(pv + 0x28, 25.0f);
+                            if (ri(0, 5) == 0) wf(pv + 8, rf(100, 400));
+                        } else if (sc == 1) {  // over the lava
+                            wf(pv + 0x28, 25.0f);
+                            wf(pv + 8, rf(24, 28.5f));
+                            if (coin()) wf(pv, rf(0, 700));
+                            if (coin()) wf(pv + 4, rf(0, 700));
+                        } else if (sc == 2) {  // just past its target's height
+                            near(pv + 0x20, P + 0x80, 2.0f, 0.0f);
+                            if (ri(0, 3) == 0) wf(pv + 0x28, coin() ? 25.0f : rf(25.5f, 27.5f));
+                            near(pv, pv + 0x20, 1.0f, 0.0f);
+                            wf(pv + 8, ee_read<float>(pv + 0x28) + rf(-1, 2.5f));
+                        } else {  // dying
+                            w8(m + 0x20, u(ri(1, 12)));
+                            if (coin()) wf(pv + 0x28, 25.0f);
+                        }
+                        camera_near(pv);
+                        w32(0x001413d4, ri(0, 3) == 0 ? 0x32u : 0u);
+                        finish();
+                        return Args{{m}, {}};
+                    }, upd(gas_class263_update_l9));
+                }
+                p91("p91_puff", 0x002eb970, 80, Ret::None, [&] {
+                    level();
+                    const uint32_t src = pick(meteors);
+                    wfrand(X, 4, -2, 2);
+                    camera_near(ee_read<uint32_t>(src + 0x78));
+                    const uint32_t p = gas_2ea528_l9(src, X);
+                    if (p == 0) return Args{{src}, {}};
+                    static const uint32_t fades[] = {0, 1, 2, 3, 4, 5, 0x7f};
+                    w8(p + 0x23, ri(0, 3) == 0 ? u(ri(0, 0xff)) : fades[ri(0, 6)]);
+                    camera_near(ee_read<uint32_t>(p + 0x78) + 0x20);
+                    finish();
+                    return Args{{p}, {}};
+                }, upd(gas_class263_update_l9));
+                p91("p91_2ea528", 0x002ea528, 60, Ret::Int32, [&] {
+                    level();
+                    const uint32_t src = pick(meteors);
+                    wfrand(X, 4, -2, 2);
+                    camera_near(ee_read<uint32_t>(src + 0x78));
+                    finish();
+                    return Args{{src, X}, {}};
+                }, [](const Args& a) { return r32(gas_2ea528_l9(a.i[0], a.i[1])); });
+                p91("p91_2efe48", 0x002efe48, 60, Ret::Int32, [&] {
+                    level();
+                    near(X, ee_read<uint32_t>(pick(meteors) + 0x78), 3.0f, 3.0f);
+                    wfrand(X + 0x10, 4, -3, 3);
+                    const float lo = rf(0, 4);
+                    finish();
+                    return Args{{R(), X, X + 0x10}, {lo, lo + rf(0, 12)}};  // (a0 unused: the original sets the class there)
+                }, [](const Args& a) { return r32(gas_2efe48_l9(a.i[1], a.i[2], a.f[0], a.f[1])); });
+            }
+            p91("p91_2ea778", 0x002ea778, 120, Ret::Int32, [&] {
+                level();
+                const int k = ri(0, 3);
+                if (k == 0) near(CAM, P + 0x80, 300.0f, 100.0f);
+                else if (k >= 2) ee_ref<Vec4>(CAM) = Vec4{rf(1206, 1306), rf(706, 806), rf(300, 350), 1.0f};  // (amid where the meteors start)
+                finish();
+                return Args{{}, {}};
+            }, [](const Args&) { return r32(gas_2ea778_l9()); });
+            if (!clouds.empty()) {
+                p91("p91_cloud", 0x002eb970, 100, Ret::None, [&] {
+                    level();
+                    const uint32_t m = pick(clouds);
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    const int32_t pi = ee_read<int32_t>(pv + 0x10);
+                    if (pi >= 0) {
+                        const uint32_t path = lvd::path(pi);
+                        const int32_t n = ee_read<int32_t>(path);
+                        const int k = ri(0, 3);
+                        const int32_t at = k == 0 ? 0 : k == 1 ? n - 2 : k == 2 ? n - 3 : ri(0, n - 2);
+                        w32(pv + 0x14, u(at));
+                        near(pv + 0x20, path + 0x10 + u(at) * 0x10, 6.0f, 2.0f);
+                        wf(pv + 0xc, coin() ? rf(0, 0.5f) : rf(5, 60));
+                        if (k == 1 && coin()) {  // about to reach the path's end (gone, its controller told)
+                            near(pv + 0x20, path + u(n) * 0x10, 3.0f, 1.0f);
+                            wf(pv + 0xc, rf(2, 20));
+                        }
+                    }
+                    finish();
+                    return Args{{m}, {}};
+                }, upd(gas_class263_update_l9));
+            }
+            if (!ctls.empty()) {
+                p91("p91_cloudctl", 0x002eb970, 160, Ret::None, [&] {
+                    level();
+                    const uint32_t m = pick(ctls);
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    if (ri(0, 4) == 0) w32(pv + 0x48, 0);
+                    w32(pv + 0x1c, u(ri(0, 2)));
+                    w32(pv + 0x18, u(ri(46, 52)));
+                    const int32_t pi = ee_read<int32_t>(pv + 0x10);
+                    if (pi >= 0) {
+                        const uint32_t path = lvd::path(pi);
+                        const int32_t n = ee_read<int32_t>(path);
+                        const int k = ri(0, 2);
+                        w32(pv + 0x14, u(k == 0 ? 0 : k == 1 ? n - 2 : ri(0, n - 2)));
+                        wf(pv + 0xc, coin() ? rf(0, 0.5f) : rf(5, 60));
+                        if (k == 1) {  // about to reach the path's end (back to its start)
+                            near(pv + 0x20, path + u(n) * 0x10, 3.0f, 1.0f);
+                            wf(pv + 0xc, rf(2, 20));
+                        }
+                    }
+                    if (ri(0, 6) == 0) w32(pv + 0x10, 0xffffffffu);
+                    finish();
+                    return Args{{m}, {}};
+                }, upd(gas_class263_update_l9));
+                p91("p91_2eaa50", 0x002eaa50, 60, Ret::Int32, [&] {
+                    level();
+                    const uint32_t m = pick(ctls);
+                    if (ri(0, 4) == 0) w32(ee_read<uint32_t>(m + 0x78) + 0x10, 0xffffffffu);
+                    finish();
+                    return Args{{m}, {}};
+                }, [](const Args& a) { return r32(gas_2eaa50_l9(a.i[0])); });
+            }
+        }
+        // class 417 (a splash): moving, its animation over
+        p91("p91_class417", 0x002f0040, 60, Ret::None, [&] {
+            level();
+            const uint32_t m = spawn_at_hero(0x1a1);
+            if (m != 0) {
+                wfrand(ee_read<uint32_t>(m + 0x78), 4, -1, 1);
+                w8(m + 0x70, R() & 0xff);
+            }
+            finish();
+            return Args{{m}, {}};
+        }, upd(gas_class417_update_l9));
+
+        // the breakables: class 276 (its builds 1298 .. 1300 by its class number, the level's flag byte, safe / hit), its next build,
+        // a chunk; class 279 (hit points, hit), its remains; the stone 313 and the chunks 320 / 321 (bouncing, on the lava, out of
+        // reach, their time out)
+        {
+            const std::vector<uint32_t> b276 = mobys_with(0x002edc30);
+            if (!b276.empty()) {
+                p91("p91_class276", 0x002edc30, 120, Ret::None, [&] {
+                    level();
+                    const uint32_t m = pick(b276);
+                    static const uint32_t cls[] = {0x114, 0x512, 0x513, 0x514};
+                    w16(m + 0xa6, cls[ri(0, 3)]);
+                    w8(m + 0x20, coin() ? 0u : 1u);
+                    w8(m + 0xbc, u(ri(0, 2)));
+                    hit_on(m, 0x40000);
+                    if (ri(0, 3) == 0) {  // its flag byte of the level (+0xb0 its index): set (gone) or not
+                        const uint32_t idx = u(ri(0, 15));
+                        w8(m + 0xb0, idx);
+                        w8(0x0014c050 + idx + (ee_read<uint32_t>(0x0015ed84) << 4), coin() ? 0xffu : 0u);
+                    }
+                    camera_near(m + 0x10);
+                    finish();
+                    return Args{{m}, {}};
+                }, upd(gas_class276_update_l9));
+                p91("p91_2edb60", 0x002edb60, 40, Ret::Int32, [&] {
+                    level();
+                    const uint32_t m = pick(b276);
+                    static const uint32_t cls[] = {0x512, 0x513, 0x514};
+                    finish();
+                    return Args{{m, cls[ri(0, 2)]}, {}};
+                }, [](const Args& a) { return r32(gas_2edb60_l9(a.i[0], a.i[1])); });
+                p91("p91_2ef868", 0x002ef868, 60, Ret::Int32, [&] {
+                    level();
+                    const uint32_t m = pick(b276);
+                    near(X, m + 0x10, 2.0f, 2.0f);
+                    wfrand(X + 0x10, 4, -1, 1);
+                    finish();
+                    return Args{{m, X, X + 0x10, u(ri(0, 1))}, {rf(0.5f, 2.5f)}};
+                }, [](const Args& a) { return r32(gas_2ef868_l9(a.i[0], a.i[1], a.i[2], a.i[3], 0, 0, 0, 0, a.f[0], 0, 0, 0, 0, 0, 0, 0).v0); });
+            }
+            p91("p91_class279", 0x002ee110, 80, Ret::None, [&] {
+                level();
+                const uint32_t m = spawn_at_hero(0x117);
+                if (m != 0) {
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    wf(pv, coin() ? rf(-1, 3) : rf(3, 12));
+                    wf(m + 0x48, rf(-3.1f, 3.1f));
+                    hit_on(m, 0x10000);
+                }
+                finish();
+                return Args{{m}, {}};
+            }, upd(gas_class279_update_l9));
+            p91("p91_2ee380", 0x002ee380, 40, Ret::Int32, [&] {
+                level();
+                const uint32_t m = pick(mobys_with(0x002c26c8));
+                near(X, m + 0x10, 2.0f, 2.0f);
+                finish();
+                return Args{{m, X}, {rf(-3.1f, 3.1f)}};
+            }, [](const Args& a) { return r32(gas_2ee380_l9(a.i[0], a.i[1], a.f[0])); });
+            struct Fl { const char* name; uint32_t addr; uint32_t cls; void (*fn)(uint32_t); };
+            static const Fl fls[] = {{"p91_class313", 0x002ef430, 0x139, gas_class313_update_l9}, {"p91_class320", 0x002ef9b0, 0x140, gas_class320_update_l9},
+                                     {"p91_class321", 0x002ef9b0, 0x141, gas_class320_update_l9}};
+            for (const Fl& fl : fls) {
+                p91(fl.name, fl.addr, 120, Ret::None, [&, fl] {
+                    level();
+                    const uint32_t m = spawn_at_hero(fl.cls);
+                    if (m != 0) {
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        wfrand(pv, 3, -0.5f, 0.5f);
+                        wf(pv + 8, rf(-1.0f, 0.3f));
+                        wfrand(pv + 0x10, 2, -0.3f, 0.3f);
+                        w32(pv + 0x1c, ri(0, 3) == 0 ? u(ri(0, 2)) : 100u);
+                        const int k = ri(0, 5);
+                        if (k == 0) { wf(m + 0x10, rf(400, 600)); wf(m + 0x14, rf(0, 600)); wf(m + 0x18, rf(25.0f, 26.0f)); wf(pv + 8, -1.0f); }  // over the lava
+                        else if (k == 1) wf(m + 0x10 + 4 * u(ri(0, 2)), coin() ? rf(-0.5f, 2.5f) : rf(1020.5f, 1022));
+                        else if (k == 2) {  // slow, just over the ground: a bounce that stops it
+                            const bool tiny = coin();
+                            wfrand(pv, 2, tiny ? -0.001f : -0.01f, tiny ? 0.001f : 0.01f);
+                            wf(pv + 8, tiny ? rf(-0.003f, -0.0005f) : rf(-0.05f, -0.01f));
+                            float ground = ee_read<float>(P + 0x88);
+                            if (tiny) { const float g = floor_probe_v(1.0f, ee_ref<Vec4>(m + 0x10), 0); if (g != 0.0f) ground = g; }  // (the world's own floor there)
+                            wf(m + 0x18, ground + (tiny ? rf(0.0f, 0.002f) : rf(0.0f, 0.03f)));
+                        }
+                        if (k == 3) {  // the camera about 64 away (x, y): the reach's edge
+                            const float a = rf(-3.1f, 3.1f), r = rf(62.5f, 65.5f);
+                            Vec4 q = ee_ref<Vec4>(m + 0x10);
+                            q.x += r * std::cos(a); q.y += r * std::sin(a);
+                            ee_ref<Vec4>(CAM) = q;
+                        } else {
+                            camera_near(m + 0x10);
+                        }
+                    }
+                    finish();
+                    return Args{{m}, {}};
+                }, upd(fl.fn));
+            }
+        }
+
+        // class 664 (the sinking platform): set up, the hero on it (in the air or not), its timer, about its quarter's height
+        {
+            const std::vector<uint32_t> plats = mobys_with(0x002f86a0);
+            if (!plats.empty()) {
+                p91("p91_class664", 0x002f86a0, 120, Ret::None, [&] {
+                    level();
+                    const uint32_t m = pick(plats);
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    if (ri(0, 5) == 0) w32(pv + 0x80, 0);
+                    const int k = ri(0, 3);
+                    if (k == 1 || k == 2) {
+                        w32(P + 0x2fc, m);
+                        w16(P + 0x30e, k == 1 ? 0u : 1u);
+                        near(P + 0x80, m + 0x10, 2.0f, 1.0f);
+                    }
+                    w32(pv + 0x88, coin() ? 0u : u(ri(1, 40)));
+                    if (coin()) wf(m + 0x18, ee_read<float>(pv + 0x84) - 0.25f + rf(-0.1f, 0.1f));
+                    if (k == 3) {  // rising back, just below a quarter under its rest
+                        w32(pv + 0x80, 1);
+                        w32(pv + 0x88, 0);
+                        if (ee_read<uint32_t>(P + 0x2fc) == m) w32(P + 0x2fc, 0);
+                        wf(m + 0x18, ee_read<float>(pv + 0x84) - 0.25f - rf(0.0f, 0.002f));
+                    }
+                    wfrand(pv + 0x60, 2, -0.2f, 0.2f);
+                    wfrand(pv + 0x70, 2, -0.05f, 0.05f);
+                    finish();
+                    return Args{{m}, {}};
+                }, upd(gas_class664_update_l9));
+            }
+        }
+        g_extra_noop_hooks.clear();
+        g_ignored_words = loop_ignored;
     }
 
     //@@NEXT

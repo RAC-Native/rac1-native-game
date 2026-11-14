@@ -59,6 +59,8 @@ inline CollisionHit coll_hit() {
 }
 // orig: (host) the hit moby set (+0x18), as a few class updates do after a query
 inline void coll_hit_set_moby(uint32_t moby) { sw(OV(0x00173e58), moby); }
+// orig: (host) the last contact's normal set (+0x40), as a few class updates do (they shorten it in place)
+inline void coll_hit_set_normal(const Vec4& n) { V(OV(0x00173e80)) = n; }
 
 // The hit list 0x177f00: the mobys the last mobys_in_sphere touched, 0-terminated (room for 0x80 words, up to the ring).
 // orig: (host) its EE address (what moby_list_hit and its kin take)

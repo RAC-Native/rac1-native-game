@@ -3,18 +3,10 @@
  "tool": "mkall_l9.py",
  "env": {
   "MKALL_HELPER_PREFIX": "gas_",
-  "MKALL_FORCE": "2c2500,2c2610,2ea528,2ea778,2eaa50,2ead30,2eaea8,2edb60,2ee380,2ef868,2efe48,303b30,3041d0,308220,30a238,30a298",
+  "MKALL_FORCE": "303b30,3041d0,308220,30a238,30a298",
   "MKALL_UNIFORM": "gas_hook_2e2680_u,gas_hook_2e26d0_u,gas_hook_2e2720_u,gas_hook_2e2770_u,gas_hook_2e27a0_u"
  },
  "entries": [
-  "2c26c8:gas_class1182_update_l9:void:a0",
-  "2eb970:gas_class263_update_l9:void:a0",
-  "2edc30:gas_class276_update_l9:void:a0",
-  "2ee110:gas_class279_update_l9:void:a0",
-  "2ef430:gas_class313_update_l9:void:a0",
-  "2ef9b0:gas_class320_update_l9:void:a0",
-  "2f0040:gas_class417_update_l9:void:a0",
-  "2f86a0:gas_class664_update_l9:void:a0",
   "300888:gas_class1000_update_l9:void:a0",
   "3033a0:gas_class1150_update_l9:void:a0",
   "303d10:gas_class1172_update_l9:void:a0",
@@ -33,7 +25,6 @@
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/gaspar_classes_tr_1.cpp",
   "src/game/ovl/gaspar_classes_tr_2.cpp",
   "src/game/ovl/gaspar_classes_tr_3.cpp",
   "src/game/ovl/gaspar_classes_tr_4.cpp"
