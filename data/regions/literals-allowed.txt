@@ -26,3 +26,22 @@ SCES-50916-2.00.txt  *  00161e30  the 1.02 build's Vendor has no such word: vend
 # displacement (+0x7c) takes it on, and no other address lands there
 SCES-50916-2.00.txt  11  00162840  class 1111's last camera place: bss after the Vendor's block (+0x7c, its last run's)
 SCES-50916-2.00.txt  16  00162240  class 1111's last camera place: bss after the Vendor's block (+0x7c, its last run's)
+# The hoverbike races' HUD (shared_race_hud.cpp, RACE_ADDR): NTSC-U's own format strings, which the PAL builds replaced by
+# their own formats and the level's texts; read on NTSC-U only: on a PAL disc (0x15ee90 not 0) the port's region fork
+# (pal_texts, fixes102_race_text) draws the disc's lines without them
+*  5   0015f8d0  "x%d Poses": NTSC-U only; the PAL fork writes "x%d %s" with the level's text (fixes102_race_text)
+*  5   0015f8e0  the combo's "%s": NTSC-U only; the PAL fork copies the combo's name
+*  5   0015f8e8  "%s + %d Flips": NTSC-U only; the PAL fork writes "%s + %d %s" with the level's text
+*  5   0015f9e8  "% dst": NTSC-U only; the PAL fork writes the level's place text
+*  5   0015f9f0  "% dnd": NTSC-U only; the PAL fork writes the level's place text
+*  5   0015f9f8  "% drd": NTSC-U only; the PAL fork writes the level's place text
+*  5   0015fa00  "% dth": NTSC-U only; the PAL fork writes the level's place text
+*  5   0015fa08  " %s:": NTSC-U only; the PAL fork writes " %s:  " as the PAL builds do
+*  16  0015f8d0  "x%d Poses": NTSC-U only; the PAL fork writes "x%d %s" with the level's text (fixes102_race_text)
+*  16  0015f8e0  the combo's "%s": NTSC-U only; the PAL fork copies the combo's name
+*  16  0015f8e8  "%s + %d Flips": NTSC-U only; the PAL fork writes "%s + %d %s" with the level's text
+*  16  0015f9e8  "% dst": NTSC-U only; the PAL fork writes the level's place text
+*  16  0015f9f0  "% dnd": NTSC-U only; the PAL fork writes the level's place text
+*  16  0015f9f8  "% drd": NTSC-U only; the PAL fork writes the level's place text
+*  16  0015fa00  "% dth": NTSC-U only; the PAL fork writes the level's place text
+*  16  0015fa08  " %s:": NTSC-U only; the PAL fork writes " %s:  " as the PAL builds do

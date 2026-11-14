@@ -12,9 +12,12 @@
 // 3 landed a combo); +0x74 the meter's fill, +0x8 its full value, +0xc the boost it follows (the hero's +0x864).
 //
 // The PAL builds changed the meter's draw and the bar (data/regions/SCES-50916*.txt: L5:0x262f50 / 0x266320, L16:0x235660 /
-// 0x238a30): the texts (the place, the poses, the flips) come from the level's text table in the player's language. The
-// 1.02 build's (the PAL disc 2.00's) is 1.02 Fixes fix 19 (fixes102_race_text, at the three sprintf the generated copies
-// hook as well); the PAL disc 1.00's own is the same kind of change (text only), not forked.
+// 0x238a30; PAL 1.00 L5:0x262b38 / 0x265f50, 2.00 L5:0x2638f8 / 0x266d10): the texts (the place, the poses, the flips) come
+// from the level's text table in the player's language, and their formats are their own ("x%d %s", "%s + %d %s", "%s";
+// the combo "%s" and the label " %s:  "), at other places than NTSC-U's, where the NTSC-U formats are not (region: on a
+// PAL disc, 0x15ee90 not 0, the port draws the disc's lines). 1.02 Fixes fix 19 brings the same three texts to NTSC-U
+// (fixes102_race_text, at the three sprintf the generated copies hook as well; on a PAL disc it writes them whatever the
+// fix's row).
 #include <game/ovl/shared_race_hud.h>
 
 #include <game/enhance/fixes102.h>
@@ -42,6 +45,9 @@ constexpr uint32_t P = g::PLAYER;
 
 // a colour word as the original passes it: a word loaded (sign-extended) or built by `lui` (sign-extended)
 uint64_t sx(uint32_t v) { return static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(v))); }
+
+// (region) a PAL build's disc (1.00 or 2.00): the race's lines in the disc's own formats and texts
+bool pal_texts() { return lw(0x0015ee90) != 0; }
 // the text drawn with its shadow (0x80000000: built by ori + dsll, not sign-extended) one pixel off
 constexpr uint64_t SHADOW = 0x80000000ull;
 
@@ -170,8 +176,8 @@ void race_meter_draw(uint32_t e) {
             text_centered(x0 + 1, y0 + 1, sx(a), text, -1);
             text_centered(x0, y0, sx(colour), text, -1);
             const int32_t poses = lw(RACE_ADDR(0x0015fad8));
-            libc_sprintf(text, RACE_ADDR(0x0015f8d0), {sx(static_cast<uint32_t>(poses))});
-            fixes102_race_text(text, 0, 0, poses);  // enhancement: 1.02 Fixes, fix 19 (the poses)
+            if (!pal_texts()) libc_sprintf(text, RACE_ADDR(0x0015f8d0), {sx(static_cast<uint32_t>(poses))});
+            fixes102_race_text(text, 0, 0, poses);  // enhancement: 1.02 Fixes, fix 19 (the poses; a PAL disc's own, region)
             const int32_t x1 = lw(RACE_ADDR(0x0015f8bc)), y1 = lw(RACE_ADDR(0x0015f8c0));
             text_centered(x1 + 1, y1 + 1, sx(a), text, -1);
             text_centered(x1, y1, sx(colour), text, -1);
@@ -199,7 +205,9 @@ void race_meter_draw(uint32_t e) {
                 sw(RACE_ADDR(0x0015fb00), static_cast<uint32_t>(points));
                 libc_sprintf(text, RACE_ADDR(0x0015f860), {sx(static_cast<uint32_t>(points))});
                 hud_message_box(x, y - 0x18, sx(colour), text);
-                libc_sprintf(text, RACE_ADDR(0x0015f8e0), {sx(sub_00203ad8(TXT(0x5092 + combo)))});
+                const uint32_t combo_name = sub_00203ad8(TXT(0x5092 + combo));
+                if (pal_texts()) libc_strcpy(text, combo_name);  // (region: the PAL builds' "%s", at their own place)
+                else libc_sprintf(text, RACE_ADDR(0x0015f8e0), {sx(combo_name)});
                 hud_message_box(lw(RACE_ADDR(0x0015f8c4)), lw(RACE_ADDR(0x0015f8c8)), sx(colour), text);
             } else if (tricks > 0) {
                 // the tricks whose flag is set (their indices 0..3), at most the count
@@ -217,8 +225,8 @@ void race_meter_draw(uint32_t e) {
                 if (tricks == 1) {
                     const uint32_t name = sub_00203ad8(TXT(0x517e + lw(names)));
                     const int32_t flips = lw(RACE_ADDR(0x0015fad4));
-                    libc_sprintf(text, RACE_ADDR(0x0015f8e8), {sx(name), sx(static_cast<uint32_t>(flips))});
-                    fixes102_race_text(text, 1, name, flips);  // enhancement: 1.02 Fixes, fix 19 (the flips)
+                    if (!pal_texts()) libc_sprintf(text, RACE_ADDR(0x0015f8e8), {sx(name), sx(static_cast<uint32_t>(flips))});
+                    fixes102_race_text(text, 1, name, flips);  // enhancement: 1.02 Fixes, fix 19 (the flips; a PAL disc's own, region)
                 } else {
                     const uint32_t first = sub_00203ad8(TXT(0x517e + lw(names)));
                     const uint32_t second = sub_00203ad8(TXT(0x517e + lw(names + 4)));
@@ -280,17 +288,27 @@ void race_bar_draw(uint32_t e) {
     // the place, right-aligned before the title
     const int32_t place = lw(P + 0x8c0);
     x = lw(RACE_ADDR(0x0015f9b0));
-    switch (place) {
-    case 1: libc_sprintf(text, RACE_ADDR(0x0015f9e8), {1}); break;
-    case 2: libc_sprintf(text, RACE_ADDR(0x0015f9f0), {2}); break;
-    case 3: libc_sprintf(text, RACE_ADDR(0x0015f9f8), {3}); break;
-    default: libc_sprintf(text, RACE_ADDR(0x0015fa00), {sx(static_cast<uint32_t>(place))}); break;
+    if (!pal_texts()) {
+        switch (place) {
+        case 1: libc_sprintf(text, RACE_ADDR(0x0015f9e8), {1}); break;
+        case 2: libc_sprintf(text, RACE_ADDR(0x0015f9f0), {2}); break;
+        case 3: libc_sprintf(text, RACE_ADDR(0x0015f9f8), {3}); break;
+        default: libc_sprintf(text, RACE_ADDR(0x0015fa00), {sx(static_cast<uint32_t>(place))}); break;
+        }
     }
-    fixes102_race_text(text, 2, 0, lw(P + 0x8c0));  // enhancement: 1.02 Fixes, fix 19 (the place)
+    fixes102_race_text(text, 2, 0, lw(P + 0x8c0));  // enhancement: 1.02 Fixes, fix 19 (the place; a PAL disc's own, region)
     x -= text_width_small(text, -1);
     draw_detector_text(x + 1, shadow_y, SHADOW, text, -1);
     draw_detector_text(x, y, sx(lwu(RACE_ADDR(0x0015f99c))), text, -1);
-    libc_sprintf(text, RACE_ADDR(0x0015fa08), {sx(sub_00203ad8(TXT(0x5240)))});
+    if (pal_texts()) {
+        // (region: the PAL builds' " %s:  ", the title from the level's text table)
+        sb(text, ' ');
+        libc_strcpy(text + 1, sub_00203ad8(TXT(0x5240)));
+        const uint32_t end = text + 1 + static_cast<uint32_t>(libc_strlen(text + 1));
+        sb(end, ':'); sb(end + 1, ' '); sb(end + 2, ' '); sb(end + 3, 0);
+    } else {
+        libc_sprintf(text, RACE_ADDR(0x0015fa08), {sx(sub_00203ad8(TXT(0x5240)))});
+    }
     x -= text_width_small(text, -1);
     draw_detector_text(x + 1, shadow_y, SHADOW, text, -1);
     draw_detector_text(x, y, sx(lwu(RACE_ADDR(0x0015f998))), text, -1);

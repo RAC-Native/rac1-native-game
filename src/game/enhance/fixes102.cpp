@@ -167,7 +167,9 @@ bool g_blarg_far = false;
 // place - 1, at most 21032) (PAL disc 2.00, its text ids 5 higher past 20695); the original's own texts (English: "x%d
 // Poses", "%s + %d Flips", "% dst".."% dth") are written first, then this one over them
 bool fixes102_race_text(uint32_t buf, int kind, uint32_t name, int32_t n) {
-    if (!fixes102_on(19)) return false;
+    // (region: a PAL build's disc, 0x15ee90 not 0, draws these texts itself, 1.00 as 2.00 (PAL 1.00 L5:0x262cb4, 0x262f38,
+    // 0x2660ec, with the ids NTSC-U's): there they are written whatever the fix's row, the disc's own lines)
+    if (!fixes102_on(19) && lw(0x0015ee90) == 0) return false;
     std::string t;
     if (kind == 0) {
         t = "x" + std::to_string(n) + " " + ee_string(sub_00203ad8(TXT(n != 1 ? 20856 : 20855)));

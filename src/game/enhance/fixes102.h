@@ -122,7 +122,8 @@ void fixes102_sand_shark_burst(uint32_t m);
 // 2 the place "%s") written into `buf` as the 1.02 build writes it (Rilgar's L5:0x2638f8 / 0x266d10 in the PAL disc 2.00):
 // `name` the first %s (the flips' trick name), `n` the count (the place 1..), the word from the level's text table (the
 // poses 20855 / 20856, the flips 20647 / 20648 at 360 / not, the places 21028 + n - 1, 5th the last); false with the fix
-// off (the original's sprintf then runs)
+// off (the original's sprintf then runs), but on a PAL build's disc, whose own texts these are (region: written there
+// whatever the fix's row)
 bool fixes102_race_text(uint32_t buf, int kind, uint32_t name, int32_t n);
 
 // orig: (none) — enhancement: fix 20: Blarg's class 1083 breaks far from Ratchet (L6:0x2ffd94, its call of 0x300278 with
