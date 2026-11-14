@@ -239,6 +239,30 @@ void batch_131() {
             seed_rand();
             return Args{{0u}, {}};
         }, [](A) { vendor_mode_update_tr(0); return uint64_t{0}; });
+        // #172: exercise the old build's history guard and end-of-frame store while an ammo box is open.
+        // The PAL 2.00 deletion of this word is checked separately by vendor_input_test on that disc's maps.
+        int ammo_input_case = 0;
+        check("vendor_ammo_input_history", 0x0029c648, 24, Ret::None, [purchase_state, S, &ammo_input_case] {
+            purchase_state(2);
+            const int c = ammo_input_case++;
+            const uint32_t buttons[] = {0x2000, 0x8000, 0x40, 0x10};
+            const uint32_t quantities[] = {1, 3, 64};
+            const uint32_t button = buttons[c % 4];
+            w32(S, 1);
+            w32(OV(0x00161188), 0);
+            w32(OV(0x0016118c), 0);
+            w32(OV(0x00161e18), 0);
+            w32(OV(0x00161e20), 0);
+            w32(OV(0x00161e10), 1);
+            w32(OV(0x00161e28), 0);
+            w32(OV(0x00161e2c), 0);
+            w32(OV(0x00161e34), quantities[(c / 4) % 3]);
+            w32(OV(0x00161e30), c < 12 ? 0u : button);
+            w32(0x0013cb04, button);
+            w32(0x0013cb00, 0);
+            seed_rand();
+            return Args{{0u}, {}};
+        }, [](A) { vendor_mode_update_tr(0); return uint64_t{0}; });
         check("vendor_head_anim", 0x0029b0b0, 160, Ret::None, [second_mode, S] {
             second_mode();
             const uint32_t m = ee_read<uint32_t>(S + 0x1c);
