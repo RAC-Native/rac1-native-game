@@ -1,0 +1,28 @@
+# Veldin literals of the ports (OV() / OvConst) that a disc of another region's maps leave to the runtime's nearest-line
+# rule without proof by the bytes, each with the reason the rule's place is right or never read there.
+# tools/overlay_match/region_maps.py check-literals reads it: <table file or *> <level or *> <Veldin address> <reason>
+#
+# The race place's word (screens.cpp, 0x15ee90's region branch): the PAL builds' string there is their own "%s %s", which
+# that branch reads; their list of formats is 0x20 bytes shorter (no "%dst" .. "%dth")
+*  *  0015f520  the PAL builds' "%s %s", read by screens.cpp's PAL branch at the rule's place (the disc's own string)
+*  *  0015f528  "%dst": NTSC-U's branch only (0x15ee90 == 0); the PAL builds have no such string
+*  *  0015f530  "%dnd": NTSC-U's branch only (0x15ee90 == 0); the PAL builds have no such string
+*  *  0015f538  "%drd": NTSC-U's branch only (0x15ee90 == 0); the PAL builds have no such string
+*  *  0015f540  "%dth": NTSC-U's branch only (0x15ee90 == 0); the PAL builds have no such string
+# The glow's height (shared_cutscene_fx.cpp): read only on Veldin and Oltanis (level 14), where the maps have its line
+*  *  0015fb08  shared_cutscene_fx runs on levels 0 and 14 only (their maps place it by a line)
+# Class 530's mirrored mesh (effect_quads.cpp mirror_mesh_draw 0x2d19b0, queued by moby_530_update 0x2d1e80): neither is
+# in Quartu's code
+SCES-50916-2.00.txt  15  001618dc  mirror_mesh_draw (0x2d19b0) and class 530 (0x2d1e80) are not in level 15's code
+SCES-50916-2.00.txt  15  001618e0  mirror_mesh_draw (0x2d19b0) and class 530 (0x2d1e80) are not in level 15's code
+SCES-50916-2.00.txt  15  001618e4  mirror_mesh_draw (0x2d19b0) and class 530 (0x2d1e80) are not in level 15's code
+# The Morph-o-Ray's slots (morph.cpp 0x2c9348): not in Kalebo's code
+*  16  001ddf10  morph.cpp's 0x2c9348 is not in level 16's code
+# The Vendor's buttons of the frame before: the 1.02 build has no such word (its maps put it on the quantity's place);
+# on its discs vendor::pad_before() keeps it outside the game's memory, no OV() of it is read there
+SCES-50916-2.00.txt  *  00161e30  the 1.02 build's Vendor has no such word: vendor::pad_before() keeps it on that build's discs
+# The level literals (L<n>_ADDR) the runtime takes past the end of a run: class 1111's camera place (shared_class1111.cpp),
+# a bss word right after the Vendor's block, which the 1.02 build shortened by one word: the block's last run's
+# displacement (+0x7c) takes it on, and no other address lands there
+SCES-50916-2.00.txt  11  00162840  class 1111's last camera place: bss after the Vendor's block (+0x7c, its last run's)
+SCES-50916-2.00.txt  16  00162240  class 1111's last camera place: bss after the Vendor's block (+0x7c, its last run's)
