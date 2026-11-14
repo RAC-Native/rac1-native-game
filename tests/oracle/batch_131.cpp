@@ -9,6 +9,8 @@
 // vendor_screens.cpp / vendor_update.cpp / vendor_draw.cpp) also the screens' own functions directly from the same set-up:
 // the purchase 0x29ba78 at each step, the update 0x29c648 in the item list, the head 0x29b0b0, the hologram 0x29b680, the
 // panels 0x29dcd8 / 0x29e198 / 0x29e6c0 / 0x29e918 / 0x29ead8 / 0x29dea0, the price 0x29de40 and the static 0x29ef68.
+// Purchase demos: 0x29ad08 starts each of the 14 NTSC-U scenes; 0x29c648 in state 3 checks the camera/fade,
+// actor interpolation and cuts, the next scene block, and both exits. Fixtures come from the disc, with no RAM dump.
 
 // Audit 2 (2026-11-13): the panels' checks no longer leave out every lone word at +0xc of a quadword (they match without);
 // only vendor_draw_picture keeps g_ignore_lone_w_lanes, for the moby draw's billboard rows.
@@ -33,6 +35,7 @@ namespace {
 // the VU0 registers the original started from (vf / ACC / Q), given to the port (as batch 110): the moby draw 0x2559c0's billboard
 // rows (0x256c30..) carry vf5..vf7's stale w lanes into the record's matrix (sqc2 0x256ca0), which the VU1 pass reads whole
 vu0m::Regs g_vu0_in;
+bool g_demo_sound = false;
 void vu0_capture(EeInterpreter& ee) {
     for (int i = 0; i < 32; ++i)
         for (int k = 0; k < 4; ++k) g_vu0_in.vf[i].v[k] = ee.vu0().vf[static_cast<size_t>(i)].f[k];
@@ -53,6 +56,12 @@ void batch_131() {
     // 989snd's IOP server (as batch 115's): replies a function of the command, does the stream reads
     sif_rpc_register(0x123456, [](uint32_t fno, uint32_t send, uint32_t, uint32_t recv, uint32_t) {
         auto result = [](uint32_t id, uint32_t a0) -> uint32_t {
+            // Demo startup waits for the old voice to stop and the new one to
+            // start. A hash-only "still playing" reply can keep it waiting forever.
+            if (g_demo_sound) {
+                if (id == 0x19) return 0;
+                if (id == 0x2c || id == 0x4f) return 1;
+            }
             const uint32_t h = (id * 0x9e3779b1u) ^ (a0 * 0x85ebca6bu);
             return ((h >> 7) % 4 == 0) ? 0u : ((h >> 3) | 1u);
         };
@@ -110,7 +119,7 @@ void batch_131() {
             w32(0x0013c940 + 0x1a4, b);
             w32(0x0013c940 + 0x1a0, b | (coin() ? 0u : (R() & 0xf0f0u)));
         };
-        auto second_mode = [level, mobys_of, pad, S] {
+        auto second_mode = [level, mobys_of, pad, S](bool real_vendor = false) {
             level();
             for (const int cls : {730, 731, 790})  // (the Agnogg ship starts a scene: its stream read needs the IOP, as batch 113)
                 for (const uint32_t m : mobys_of(cls)) w32(m + 0x74, 0);
@@ -118,7 +127,7 @@ void batch_131() {
             if (coin()) item_give(0xf, 0);
             w32(0x0015ed98, u(ri(0, 20000)));  // (the bolts)
             const std::vector<uint32_t> vs = mobys_of(11);
-            vendor_screen_start_tr(vs.empty() || coin() ? 0u : vs[static_cast<size_t>(ri(0, static_cast<int>(vs.size()) - 1))]);
+            vendor_screen_start_tr(vs.empty() || (!real_vendor && coin()) ? 0u : vs[static_cast<size_t>(ri(0, static_cast<int>(vs.size()) - 1))]);
             // the first mode's frame with the picture asked for (+0xc), the start's skip flag down: the frame rendered and
             // stored, the item mobys made, +8 = 1
             w32(OV(0x0015f5d8), 0);
@@ -239,6 +248,122 @@ void batch_131() {
             seed_rand();
             return Args{{0u}, {}};
         }, [](A) { vendor_mode_update_tr(0); return uint64_t{0}; });
+        const auto saved_demo_hooks = g_extra_hooks;
+        const auto saved_demo_ignored = g_ignored_words;
+        // segment_collide stores a stale VU0 w lane here (as in batches 124/200).
+        // Earlier interpreted checks leave it different from the host's VU0 state.
+        g_ignored_words.push_back(OV(0x00173e9c));
+        // The hand-ported level registers some world callbacks only with the host's
+        // dispatcher. Run these world passes through the same host on both sides;
+        // the vendor's scene playback, camera and actor updates remain interpreted.
+        g_extra_hooks.push_back({OVF(0x00264848), [](EeCpu&) { moby_update_visible(); }});
+        g_extra_hooks.push_back({OVF(0x00267c08), [](EeCpu&) { particles_update(); }});
+        // State 3 was not exercised by vendor_update_list. Start from a real vendor visit,
+        // then supply camera records for an actor-free demo: compare the whole update,
+        // including the world passes, fade clamps, camera transform and sound frame.
+        check("vendor_update_demo_camera", 0x0029c648, 120, Ret::None, [second_mode, S] {
+            second_mode();
+            constexpr OvConst<0x0016c860u> scene{};
+            w32(S, 3);
+            w32(scene + 0x34, u(ri(0, 198)));
+            w32(scene + 0x38, u(ri(0, 93)));
+            w16(scene + 0x40, 200);
+            w16(scene + 0x44, 0);
+            w32(scene + 0x54, 0x01500000u);
+            for (uint32_t i = 0; i < 96; ++i) {
+                const uint32_t rec = 0x01500000u + i * 32;
+                for (uint32_t k = 0; k < 3; ++k) {
+                    wf(rec + k * 4, rf(-20.0f, 20.0f));
+                    wf(rec + 0x10 + k * 4, rf(-3.0f, 3.0f));
+                }
+                w32(rec + 0xc, coin() ? 0u : 1u);
+                wf(rec + 0x1c, rf(0.4f, 1.0f));
+            }
+            const Vec4 angles{0.0f, 0.0f, rf(-3.0f, 3.0f), 0.0f};
+            Mat4 matrix;
+            euler_to_mat3_vu(matrix, angles);
+            std::memcpy(ee_get_ram_base() + S + 0x80, &matrix, 0x30);
+            for (uint32_t i = 0; i < 3; ++i) {
+                wf(S + 0xb0 + i * 4, i == 2 ? angles.z : 0.0f);
+                wf(S + 0xc0 + i * 4, rf(-100.0f, 100.0f));
+            }
+            wf(OV(0x0015f3fc), rf(0.0f, 1.0f));
+            seed_rand();
+            return Args{{0u}, {}};
+        }, [](A) { vendor_mode_update_tr(0); return uint64_t{0}; });
+        // Every weapon with a demo in the NTSC-U item table, covering all 14 scenes.
+        constexpr uint32_t demo_weapons[] = {0x9, 0xa, 0xb, 0xd, 0xe, 0xf, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x18, 0x19};
+        constexpr uint32_t demo_count = std::size(demo_weapons);
+        g_demo_sound = true;
+        auto before_demo = [second_mode, mobys_of, S](uint32_t weapon) {
+            second_mode(true);  // a purchase demo requires a physical vendor, not the PDA's synthetic moby
+            // Level 0 borrows Novalis's data on Veldin's image. Its vendor class
+            // callback cannot use those Pvars; keep it idle, like the ship callbacks
+            // disabled above. The screens' own update and scene actors still run.
+            if (g_oracle_level == 0)
+                for (const uint32_t m : mobys_of(11)) w32(m + 0x74, 0);
+            w32(S + 0x48, weapon);
+            w32(0x0015ec8c, 1);  // stream reads through the registered IOP server (as batch 112)
+            w32(0x0015ec90, OVF(0x00266168));
+            w16(0x001516d8, 0);
+            w32(0x00137b00, 0);
+            w32(0x00137b10, 0);
+        };
+        uint32_t demo_case = 0;
+        check("vendor_demo_start", 0x0029ad08, demo_count, Ret::None, [before_demo, &demo_case, &demo_weapons] {
+            before_demo(demo_weapons[demo_case++]);
+            seed_rand();
+            return Args{{0u}, {}};
+        }, [](A) { vendor::vendor_demo_start(); return uint64_t{0}; });
+        auto demo_scene = [before_demo, S](uint32_t weapon) {
+            before_demo(weapon);
+            vendor::vendor_demo_start();
+            const Vec4 angles{0.0f, 0.0f, rf(-3.0f, 3.0f), 0.0f};
+            Mat4 matrix;
+            euler_to_mat3_vu(matrix, angles);
+            std::memcpy(ee_get_ram_base() + S + 0x80, &matrix, 0x30);
+            for (uint32_t i = 0; i < 3; ++i) {
+                wf(S + 0xb0 + i * 4, i == 2 ? angles.z : 0.0f);
+                wf(S + 0xc0 + i * 4, ee_read<float>(ee_read<uint32_t>(S + 0x1c) + 0x10 + i * 4));
+            }
+        };
+        demo_case = 0;
+        check("vendor_update_demo_actors", 0x0029c648, demo_count * 4, Ret::None, [demo_scene, &demo_case, &demo_weapons] {
+            const uint32_t which = demo_case++;
+            demo_scene(demo_weapons[which % demo_count]);
+            constexpr OvConst<0x0016c860u> scene{};
+            const uint32_t frames[] = {0, 1, 10, 10};
+            const uint32_t frame = frames[which / demo_count];
+            w32(scene + 0x34, frame);
+            w32(scene + 0x38, frame);
+            // Odd-frame interpolation uses the next key outright at a camera cut.
+            const uint32_t rec = ee_read<uint32_t>(scene + 0x54) + (frame + 1) * 32;
+            w32(rec + 0xc, which / demo_count == 3 ? 1u : 0u);
+            seed_rand();
+            return Args{{0u}, {}};
+        }, [](A) { vendor_mode_update_tr(0); return uint64_t{0}; });
+        demo_case = 0;
+        check("vendor_update_demo_next_block", 0x0029c648, demo_count, Ret::None, [demo_scene, &demo_case, &demo_weapons] {
+            demo_scene(demo_weapons[demo_case++]);
+            constexpr OvConst<0x0016c860u> scene{};
+            w32(scene + 0x34, 95);
+            w32(scene + 0x38, 95);
+            seed_rand();
+            return Args{{0u}, {}};
+        }, [](A) { vendor_mode_update_tr(0); return uint64_t{0}; });
+        demo_case = 0;
+        check("vendor_update_demo_end", 0x0029c648, demo_count * 2, Ret::None, [demo_scene, S, &demo_case, &demo_weapons] {
+            const uint32_t which = demo_case++;
+            demo_scene(demo_weapons[which % demo_count]);
+            constexpr OvConst<0x0016c860u> scene{};
+            w32(scene + 0x34, u(ee_read<int16_t>(scene + 0x40) - 1));
+            w32(S + 0x28, which < demo_count ? 0u : ee_read<uint32_t>(S + 0x1c));
+            seed_rand();
+            return Args{{0u}, {}};
+        }, [](A) { vendor_mode_update_tr(0); return uint64_t{0}; });
+        g_extra_hooks = saved_demo_hooks;
+        g_ignored_words = saved_demo_ignored;
+        g_demo_sound = false;
         check("vendor_head_anim", 0x0029b0b0, 160, Ret::None, [second_mode, S] {
             second_mode();
             const uint32_t m = ee_read<uint32_t>(S + 0x1c);
