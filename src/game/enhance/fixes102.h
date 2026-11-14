@@ -37,6 +37,11 @@
 // - 22: Rilgar's race organiser (class 918, L5:0x316ab8): the level's music back after a race ended in its state 3, and a
 //   skill point earned at the race told (its flag 0x13d411: "You just earned a Skill Point!" over the prize's message)
 //   (hooks.glue)
+// - 26: the Vendor's purchase screens: the message box shows the case's own text ("Back" for an ammo full or the bolts
+//   short, "Buy" for ammo, none for a weapon the bolts pay) in place of "Buy" each time, and no "No" prompt for a weapon,
+//   whose quantity box already asks Yes / No (vendor_draw.cpp: panel_message 0x29e6c0, panel_prompt 0x29e918)
+// - 27: the end menu's Timewarp (cross) keeps the cheats unlocked (0x15edc0, 12 bytes) and switched on (0x15edb0, 12) over
+//   the save's read, as it already keeps 0x13d425 and 0x14bf08 (end_menu_choice_update_tr 0x27fed8)
 //
 // 1.02 Gameplay (main menu > Options > Advanced > 1.02 Gameplay, off by default, global; docs/advanced.md "1.02 Gameplay"):
 // the 1.02 build's fixes that change how the game plays (the exploits stay possible with the row off), numbered as the

@@ -7,6 +7,7 @@
 // them: the oracle compares all of the EE memory.
 #include <game/ovl/vendor_screens.h>
 
+#include <game/enhance/fixes102.h>
 #include <game/enhance/vendor_buy_all.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
@@ -421,12 +422,19 @@ void panel_message(int32_t w, int32_t h) {
             msg = lw(BOLTS) < weapon_price(cursor_item()) ? TXT(0x5233) : TXT(0x524e);
         }
     }
+    // (1.02 Fixes, fix 26: the 1.02 build's 0x0029f9b0 shows the case's own text, and none for a weapon the bolts pay,
+    // whose quantity box asks Yes / No)
+    int32_t shown = TXT(0x5234);
+    if (fixes102_on(26)) {
+        if (msg == TXT(0x524e)) msg = 0;
+        shown = msg;
+    }
     if (msg != 0) {
         sh(b + 0x12, lhu(b + 0x12) | 4u);
-        text_box_draw(b, WHITE, text(SITE_BOX_TEXT, TXT(0x5234)), -1);
+        text_box_draw(b, WHITE, text(SITE_BOX_TEXT, shown), -1);
         sh(b + 0x12, lhu(b + 0x12) ^ 4u);
         sh(b + 0xa, static_cast<uint32_t>((h - lh(b + 0xe)) >> 1));
-        text_box_draw(b, WHITE, text(SITE_BOX_TEXT2, TXT(0x5234)), -1);
+        text_box_draw(b, WHITE, text(SITE_BOX_TEXT2, shown), -1);
     }
     ee_stack_free(0x20);
 }
@@ -446,6 +454,8 @@ void panel_prompt() {
             if (lw(BOLTS) < round_price(cursor_item())) return;
             id = TXT(0x4ee0);
         } else {
+            // (1.02 Fixes, fix 26: the 1.02 build's 0x0029fc08 prompts nothing for a weapon: its quantity box has the "No")
+            if (fixes102_on(26)) return;
             if (lw(BOLTS) < weapon_price(cursor_item())) return;
             id = TXT(0x524b);
         }
