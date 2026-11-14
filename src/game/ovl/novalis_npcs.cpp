@@ -8,6 +8,7 @@
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/region_core.h>
 #include <game/ovl/variants_l1.h>
 #include <game/ovl/variants_l8.h>
 #include <game/port_stubs.h>
@@ -72,12 +73,13 @@ void plumber_camera_nodes_l1(uint32_t m) {
 // The scene (the engine's 0x16c860, Novalis's 0x16cce0) told to put the hero at a spot `r` in front of moby `m` (along
 // its facing, +0x48) when it ends (cutscene.cpp): the flag half +0x46 = 1, the target position (m's quad, moved by cos /
 // sin * r) at +0x10, the target angles +0x20 cleared with the facing back toward the moby (+pi) at +0x28. (The PAL 2.00
-// build keeps the flag as a byte at +0x4a, its scene code reading it there; the port's scene code reads +0x46.)
+// build keeps the flag as a byte at +0x4a, its scene code reading it there: on that disc the port writes it there too.)
 // (Shared: the same code on Aridia, Kerwan, Rilgar, Blarg, Batalia, Pokitaru, Hoven, Oltanis and Kalebo III.)
 // orig: L1:0x002783a8 L2:0x00264d28 L3:0x00251988 L5:0x0028d960 L6:0x00272670 L8:0x0026d768 L11:0x00288e98 L12:0x0027bea8 L14:0x0026b390 L16:0x0025e948
 void hero_walk_to_l1(float r, uint32_t m) {
     const uint32_t B = OV(0x0016c860);
-    sh(B + 0x46, 1);
+    if (region_core_moved()) sb(B + 0x4a, 1);  // (region: the 1.02 build's flag, a byte at +0x4a: see cutscene_end)
+    else sh(B + 0x46, 1);
     lq_sq(B + 0x10, m + 0x10);
     swc1(B + 0x10, lwc1(B + 0x10) + cos_vu(lwc1(m + 0x48)) * r);
     swc1(B + 0x14, lwc1(B + 0x14) + sin_vu(lwc1(m + 0x48)) * r);
