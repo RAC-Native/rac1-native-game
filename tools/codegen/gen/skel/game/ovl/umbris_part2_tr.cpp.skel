@@ -24,6 +24,8 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/shadows.h>
+#include <game/ovl/aridia_ocean.h>
+#include <game/ovl/shared_particle_kinds.h>
 
 namespace rac1 {
 
@@ -31,14 +33,7 @@ using namespace eer;
 using namespace vu0m;
 
 // (the functions appended at the end of umbris_part2_tr.cpp)
-void umb_hud_262078_l7(uint32_t a0_in);
 void umb_class1046_draw_l7(uint32_t a0_in);
-
-//@gen um2_226fb8_l7
-
-//@gen um2_275d88_l7
-
-//@gen um2_2760c0_l7
 
 //@gen um2_227880_l7
 
@@ -46,37 +41,11 @@ void umb_class1046_draw_l7(uint32_t a0_in);
 
 //@gen um2_2cc6a0_l7
 
-//@gen um2_2ccc90_l7
-
 //@gen um2_2ccda0_l7
 
 //@gen umb_class460_draw_l7
 
-//@gen umb_class823_draw_l7
-
-//@gen umb_class832_draw_l7
-
-//@gen um2_275380_l7
-
-//@gen um2_275568_l7
-
-//@gen um2_2cb008_l7
-
-//@gen um2_2cbb40_l7
-
-//@gen um2_275af8_l7
-
-//@gen um2_2cbbe8_l7
-
-//@gen um2_2cbed0_l7
-
-//@gen um2_2cc100_l7
-
-//@gen umb_class902_draw_l7
-
 //@gen umb_class1018_draw_l7
-
-//@gen um2_29ae58_l7
 
 //@gen umb_class1106_draw_a_l7
 
@@ -89,12 +58,6 @@ void umb_class1046_draw_l7(uint32_t a0_in);
 //@gen umb_class1106_draw_c_l7
 
 //@gen umb_draw_317910_l7
-
-//@gen umb_class1135_draw_l7
-
-//@gen umb_particle_50_update_l7
-
-//@gen umb_hud_262078_l7
 
 //@gen umb_class1046_draw_l7
 

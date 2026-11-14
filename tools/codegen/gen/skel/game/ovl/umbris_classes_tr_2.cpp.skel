@@ -35,57 +35,33 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shared_level_helpers.h>
+#include <game/ovl/aridia_mobys.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/novalis_water.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/shared_tiles.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
 
-//@gen umb_29e610_l7
-
 //@gen umb_30af40_l7
 
 //@gen umb_class871_update_l7
-
-//@gen umb_29a2a0_l7
 
 //@gen umb_class880_update_l7
 
 //@gen umb_class882_update_l7
 
-//@gen umb_281be0_l7
-
-//@gen umb_class886_update_l7
-
 //@gen umb_281ef8_l7
 
-//@gen umb_288e20_l7
-
-//@gen umb_2ca980_l7
-
-//@gen umb_2caba0_l7
-
-//@gen umb_2cae28_l7
-
-//@gen umb_2754e8_l7
-
-//@gen umb_275380_l7
-
-//@gen umb_2757a8_l7
-
-//@gen umb_2cae68_l7
-
-//@gen umb_2caf18_l7
-
 //@gen umb_2cb1c0_l7
-
-//@gen umb_30cd48_l7
 
 //@gen umb_class902_update_l7
 
 //@gen umb_class1013_update_l7
-
-//@gen umb_2cc680_l7
 
 //@gen umb_class1018_update_l7
 
@@ -96,8 +72,6 @@ using namespace vu0m;
 //@gen umb_30e0e0_l7
 
 //@gen umb_class1046_update_l7
-
-//@gen umb_29b8d8_l7
 
 //@gen umb_class1049_update_l7
 

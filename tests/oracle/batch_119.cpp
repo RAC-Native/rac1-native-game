@@ -10,6 +10,28 @@
 #include <game/lib/libcdvd.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/umbris_mobys.h>
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/novalis_water.h>
+#include <game/ovl/shared_boss_bar.h>
+#include <game/ovl/shared_breakables.h>
+#include <game/ovl/shared_class1135.h>
+#include <game/ovl/shared_class1221.h>
+#include <game/ovl/shared_class258.h>
+#include <game/ovl/shared_class341.h>
+#include <game/ovl/shared_class447.h>
+#include <game/ovl/shared_class631.h>
+#include <game/ovl/shared_class823.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_class848.h>
+#include <game/ovl/shared_class886.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_movers.h>
+#include <game/ovl/shared_particle_kinds.h>
+#include <game/ovl/shared_rock.h>
+#include <game/ovl/shared_seas.h>
+#include <game/ovl/shared_swingshot_target.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
@@ -197,26 +219,26 @@ void batch_119() {
     static const TrCls trcls[] = {
         {"class38", 0x002cd2b0, umb_class38_update_l7, 0x0, false},
         {"class1474", 0x002cdb28, umb_class1474_update_l7, 0x0, false},
-        {"class258", 0x002f2688, umb_class258_update_l7, 0x0, false},
-        {"class341", 0x002f5508, umb_class341_update_l7, 0x0, false},
+        {"class258", 0x002f2688, class258_update, 0x0, false},
+        {"class341", 0x002f5508, class341_update, 0x0, false},
         {"class436", 0x002f5ba0, umb_class436_update_l7, 0xc22, false},
-        {"class447", 0x002f61c0, umb_class447_update_l7, 0x0, false},
-        {"class460", 0x002f8058, umb_class460_update_l7, 0x0, false},
+        {"class447", 0x002f61c0, class447_update, 0x0, false},
+        {"class460", 0x002f8058, sea_update, 0x0, false},
         {"class529", 0x002fbdb8, umb_class529_update_l7, 0x0, false},
         {"class532", 0x002fbdf0, empty_update, 0x0, false},
-        {"class605", 0x002fd698, umb_class605_update_l7, 0x0, false},
-        {"class631", 0x002fd908, umb_class631_update_l7, 0x0, false},
-        {"class696", 0x00300338, umb_class696_update_l7, 0x0, false},
-        {"class737", 0x00300970, umb_class737_update_l7, 0x0, false},
-        {"class758", 0x00302238, umb_class758_update_l7, 0x0, false},
-        {"class805", 0x003027a0, umb_class805_update_l7, 0x0, false},
-        {"class823", 0x00304738, umb_class823_update_l7, 0x0, false},
-        {"class832", 0x00304e50, umb_class832_update_l7, 0x0, false},
-        {"class848", 0x00304ff0, umb_class848_update_l7, 0x0, false},
+        {"class605", 0x002fd698, zone_marker_update, 0x0, false},
+        {"class631", 0x002fd908, class631_update, 0x0, false},
+        {"class696", 0x00300338, rock_update, 0x0, false},
+        {"class737", 0x00300970, scripted_camera_trigger_update_l1, 0x0, false},
+        {"class758", 0x00302238, swingshot_target_update, 0x0, false},
+        {"class805", 0x003027a0, spawn_point_update_l1, 0x0, false},
+        {"class823", 0x00304738, class823_update, 0x0, false},
+        {"class832", 0x00304e50, class832_update, 0x0, false},
+        {"class848", 0x00304ff0, class848_update, 0x0, false},
         {"class871", 0x0030b000, umb_class871_update_l7, 0x0, false},
         {"class880", 0x0030b6a8, umb_class880_update_l7, 0x0, false},
         {"class882", 0x0030bbc8, umb_class882_update_l7, 0x0, false},
-        {"class886", 0x0030bf90, umb_class886_update_l7, 0x0, false},
+        {"class886", 0x0030bf90, class886_update, 0x0, false},
         {"class902", 0x0030c508, umb_class902_update_l7, 0x0, false},
         {"class1013", 0x0030cf90, umb_class1013_update_l7, 0x0, false},
         {"class1018", 0x0030d440, umb_class1018_update_l7, 0x0, false},
@@ -224,7 +246,7 @@ void batch_119() {
         {"class1046", 0x0030e1f8, umb_class1046_update_l7, 0x0, false},
         {"class1049", 0x0030e458, umb_class1049_update_l7, 0x0, false},
         {"class1059", 0x0030f5f0, umb_class1059_update_l7, 0x0, false},
-        {"class1063", 0x00310df0, umb_class1063_update_l7, 0x0, false},
+        {"class1063", 0x00310df0, mover_door_update, 0x0, false},
         {"class1069", 0x003112c8, umb_class1069_update_l7, 0x0, false},
         {"class1080", 0x00311bc8, umb_class1080_update_l7, 0x0, false},
         {"class1104", 0x00311eb0, empty_update, 0x0, false},
@@ -234,17 +256,17 @@ void batch_119() {
         {"class1113", 0x00319f48, umb_class1113_update_l7, 0x0, false},
         {"class1126", 0x0031a250, umb_class1126_update_l7, 0x0, false},
         {"class1128", 0x0031a9e8, umb_class1128_update_l7, 0x0, false},
-        {"class1129", 0x0031aee0, umb_class1129_update_l7, 0x0, false},
+        {"class1129", 0x0031aee0, mover_platform_update, 0x0, false},
         {"class1133", 0x0031b3f0, umb_class1133_update_l7, 0x0, false},
-        {"class1134", 0x0031b5f0, umb_class1134_update_l7, 0x0, false},
-        {"class1135", 0x0031c528, umb_class1135_update_l7, 0x0, false},
+        {"class1134", 0x0031b5f0, gold_bolt_update, 0x0, false},
+        {"class1135", 0x0031c528, teleporter_update_l1, 0x0, false},
         {"class1142", 0x0031d2e0, umb_class1142_update_l7, 0x0, false},
-        {"class1221", 0x0031d9f8, umb_class1221_update_l7, 0x0, false},
-        {"class1222", 0x0031dae0, umb_class1222_update_l7, 0x0, false},
+        {"class1221", 0x0031d9f8, class1221_update, 0x0, false},
+        {"class1222", 0x0031dae0, class1221_update, 0x0, false},
         {"class1552", 0x0031eba8, umb_class1552_update_l7, 0x0, false},
-        {"class1650", 0x0031f3d8, umb_class1650_update_l7, 0x0, false},
+        {"class1650", 0x0031f3d8, class1650_update, 0x0, false},
         {"class1651", 0x0031f5a8, empty_update, 0x0, false},
-        {"class1663", 0x0031f5b0, umb_class1663_update_l7, 0x0, false},
+        {"class1663", 0x0031f5b0, class1663_update, 0x0, false},
         {"class1686", 0x0031f780, umb_class1686_update_l7, 0x0, false},
         {"class1789", 0x0031f900, umb_class1789_update_l7, 0x0, false},
     };
@@ -380,7 +402,7 @@ void batch_119() {
             static int k = 0;
             auto name = [&](const char* what) { char* p = nm[k++ & 3]; std::snprintf(p, 48, "cam_type%d_%s", type, what); return static_cast<const char*>(p); };
             l7check(name("accept"), ct.accept, 300, Ret::Int32, [cam_setup, type] { uint32_t other = 0; const uint32_t cam = cam_setup(type, true, &other); return Args{{cam, other}, {}}; },
-                    [type](A a) { return r32(a.i[0] != 0 ? umb_cam_type18_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0 : 0u); });
+                    [type](A a) { return r32(a.i[0] != 0 ? static_cast<uint32_t>(cam_type18_accept(a.i[0], a.i[1])) : 0u); });
             l7check(name("init"), ct.init, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
                     [type](A a) { if (a.i[0] != 0) empty_update(a.i[0]); return uint64_t{0}; });
             l7check(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
@@ -404,8 +426,8 @@ void batch_119() {
             wf(0x00161e24, rf(0, 0.5f));  // $gp - 0x4ddc: the frame step the callback counts down by
             w32(OV(0x0015ef4c), u(ri(0, 14)));
         };
-        l7check("cam0_hook", 0x00328090, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { umb_cam0_hook_l7(0); return uint64_t{0}; });
-        l7check("cam_callback", 0x003280f0, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { umb_cam_callback_l7(0); return uint64_t{0}; });
+        l7check("cam0_hook", 0x00328090, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_hook(0); return uint64_t{0}; });
+        l7check("cam_callback", 0x003280f0, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_callback(0); return uint64_t{0}; });
     }
 
     // ---- level 7's class hook +0xc 0x2f44b0 (Veldin's 0x2d57d0 with one constant; the class' hook table at +0x2c): a0 = the moby, a1 = a position, a2 = a target moby, f12 a float

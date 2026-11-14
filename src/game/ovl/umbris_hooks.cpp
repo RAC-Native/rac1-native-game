@@ -2,6 +2,7 @@
 #include <game/ovl/umbris_hooks.h>
 #include <game/ovl/sound_emitter.h>
 
+#include <game/ovl/kerwan_camera.h>
 #include <game/ovl/umbris_mobys.h>
 #include <game/ovl/empty_class_updates.h>
 
@@ -11,7 +12,7 @@ namespace rac1 {
 bool umbris_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t* ret) {
     *ret = 0;
     switch (lvl_key(fn)) {
-    case L7_CASE(0x003290b8): *ret = static_cast<int32_t>(umb_cam_type18_accept_u(cam, other, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f).v0); return true;
+    case L7_CASE(0x003290b8): *ret = cam_type18_accept(cam, other); return true;  // (every level's copy: kerwan_camera.cpp)
     case L7_CASE(0x00329120): empty_update(cam); return true;
     case L7_CASE(0x00329128): empty_update(cam); return true;
     case L7_CASE(0x00329130): empty_update(cam); return true;
@@ -31,14 +32,14 @@ bool umbris_sound_emitter_call(uint32_t fn, uint32_t em) {
 // orig: (host) see umbris_hooks.h
 bool umbris_camera_hook_call(uint32_t fn) {
     if (fn != L7_ADDR(0x00328090)) return false;
-    umb_cam0_hook_l7(0);
+    cam0_level_hook(0);  // (every level's copy: kerwan_camera.cpp)
     return true;
 }
 
 // orig: (host) see umbris_hooks.h
 bool umbris_camera_callback_call(uint32_t fn) {
     if (fn != L7_ADDR(0x003280f0)) return false;
-    umb_cam_callback_l7(0);
+    cam0_level_callback(0);
     return true;
 }
 

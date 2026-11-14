@@ -18,6 +18,28 @@
 #include <game/ovl/particle_types_tr.h>
 #include <game/ovl/umbris_mobys.h>
 #include <game/ovl/umbris_part2.h>
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/novalis_water.h>
+#include <game/ovl/shared_boss_bar.h>
+#include <game/ovl/shared_breakables.h>
+#include <game/ovl/shared_class1135.h>
+#include <game/ovl/shared_class1221.h>
+#include <game/ovl/shared_class258.h>
+#include <game/ovl/shared_class341.h>
+#include <game/ovl/shared_class447.h>
+#include <game/ovl/shared_class631.h>
+#include <game/ovl/shared_class823.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_class848.h>
+#include <game/ovl/shared_class886.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_movers.h>
+#include <game/ovl/shared_particle_kinds.h>
+#include <game/ovl/shared_rock.h>
+#include <game/ovl/shared_seas.h>
+#include <game/ovl/shared_swingshot_target.h>
 #include <game/ovl/variants_l7.h>
 
 #include <cstring>
@@ -129,12 +151,12 @@ void batch_142() {
         void (*fn)(uint32_t);
         int cls;
     };
-    const Cb cbs[] = {{"umb_class460_draw", 0x002f8038, umb_class460_draw_l7, 460},       {"umb_class823_draw", 0x003048b0, umb_class823_draw_l7, 823},
-                      {"umb_class832_draw", 0x00304c40, umb_class832_draw_l7, 832},       {"umb_class902_draw", 0x0030cd20, umb_class902_draw_l7, 902},
+    const Cb cbs[] = {{"umb_class460_draw", 0x002f8038, umb_class460_draw_l7, 460},       {"umb_class823_draw", 0x003048b0, class823_draw, 823},
+                      {"umb_class832_draw", 0x00304c40, class832_draw, 832},       {"umb_class902_draw", 0x0030cd20, nov_water_751_draw_l1, 902},
                       {"umb_class1018_draw", 0x0030d420, umb_class1018_draw_l7, 1018},    {"umb_class1046_draw", 0x0030dcf0, umb_class1046_draw_l7, 1046},
                       {"umb_class1106_draw_a", 0x00312420, umb_class1106_draw_a_l7, 1106}, {"umb_class1106_draw_b", 0x00312dc8, umb_class1106_draw_b_l7, 1106},
                       {"umb_class1106_draw_c", 0x003131b0, umb_class1106_draw_c_l7, 1106}, {"umb_draw_317910", 0x00317910, umb_draw_317910_l7, 1106},
-                      {"umb_class1135_draw", 0x0031ce40, umb_class1135_draw_l7, 1135}};
+                      {"umb_class1135_draw", 0x0031ce40, class1135_draw, 1135}};
     for (const Cb& cb : cbs) {
         if (g_oracle_level != 7) {
             u2check(cb.name, cb.addr, 0, Ret::None, nullptr, nullptr);
@@ -173,7 +195,7 @@ void batch_142() {
                       {"particle_3d_update", 0x00273448, 0x3d, particle_3d_update, false},
                       {"particle_41_update", 0x00273ee0, 0x41, particle_41_update, false},
                       {"particle_3a_update", 0x00272bc0, 0x3a, particle_3a_update, false},
-                      {"umb_particle_50_update", 0x0029e4a0, 0x50, umb_particle_50_update_l7, true}};
+                      {"umb_particle_50_update", 0x0029e4a0, 0x50, beam_particle_update, true}};
     for (const Pt& p : pts) {
         if (p.own && g_oracle_level != 7) {
             u2check(p.name, p.addr, 0, Ret::None, nullptr, nullptr);
@@ -255,13 +277,13 @@ void batch_142() {
         static const struct { int cls; uint32_t fn; void (*port)(uint32_t); } classes[] = {
             {1106, 0x00314150, umb_class1106_update_l7}, {1046, 0x0030e1f8, umb_class1046_update_l7}, {1049, 0x0030e458, umb_class1049_update_l7},
             {880, 0x0030b6a8, umb_class880_update_l7},   {882, 0x0030bbc8, umb_class882_update_l7},   {1113, 0x00319f48, umb_class1113_update_l7},
-            {1128, 0x0031a9e8, umb_class1128_update_l7}, {1129, 0x0031aee0, umb_class1129_update_l7}, {447, 0x002f61c0, umb_class447_update_l7},
-            {1133, 0x0031b3f0, umb_class1133_update_l7}, {460, 0x002f8058, umb_class460_update_l7},   {737, 0x00300970, umb_class737_update_l7},
-            {1069, 0x003112c8, umb_class1069_update_l7}, {1135, 0x0031c528, umb_class1135_update_l7}, {1474, 0x002cdb28, umb_class1474_update_l7},
+            {1128, 0x0031a9e8, umb_class1128_update_l7}, {1129, 0x0031aee0, mover_platform_update}, {447, 0x002f61c0, class447_update},
+            {1133, 0x0031b3f0, umb_class1133_update_l7}, {460, 0x002f8058, sea_update},   {737, 0x00300970, scripted_camera_trigger_update_l1},
+            {1069, 0x003112c8, umb_class1069_update_l7}, {1135, 0x0031c528, teleporter_update_l1}, {1474, 0x002cdb28, umb_class1474_update_l7},
             // (spawned: 696 when the Snagglebeast charges a pillar (frame ~8950 of the pillar line); 1049 near the Snagglebeast at its phase's
             // end. Not 631: the arrival's scene holds one (frames 740..2690, over the landing) whose pvars +0x238 is a float, not the uid its
             // state 0 retires: no run of the game reached that path, the port refuses the address the original would write through)
-            {696, 0x00300338, umb_class696_update_l7}};
+            {696, 0x00300338, rock_update}};
         for (const auto& c : classes) {
             load_dump(d);
             std::vector<uint32_t> ms;
@@ -354,7 +376,7 @@ void batch_142() {
                     if (v != 0 && coin()) w32(v, u(ri(0, 0x780)) | u(ri(0, 15)));
                     w32(OV(0x0015f5cc), R());
                     return Args{{e}, {}};
-                }, [](A a) { umb_hud_262078_l7(a.i[0]); return uint64_t{0}; });
+                }, [](A a) { boss_health_bar_draw(a.i[0]); return uint64_t{0}; });
         }
     }
 

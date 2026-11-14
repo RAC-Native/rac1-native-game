@@ -36,6 +36,8 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/helmet_tr.h>
+#include <game/ovl/shared_small.h>
+#include <game/ovl/shared_helpers.h>
 
 namespace rac1 {
 
@@ -44,21 +46,11 @@ using namespace vu0m;
 
 //@gen umb_class1059_update_l7
 
-//@gen umb_class1063_update_l7
-
-//@gen umb_288968_l7
-
 //@gen umb_class1069_update_l7
-
-//@gen umb_311b70_l7
 
 //@gen umb_class1080_update_l7
 
-//@gen umb_28a440_l7
-
 //@gen umb_29c4e8_l7
-
-//@gen umb_302208_l7
 
 //@gen umb_30dbb0_l7
 
@@ -77,12 +69,6 @@ using namespace vu0m;
 //@gen umb_313420_l7
 
 //@gen umb_313920_l7
-
-//@gen umb_28a1d8_l7
-
-//@gen umb_28a3d0_l7
-
-//@gen umb_28a910_l7
 
 //@gen umb_313988_l7
 

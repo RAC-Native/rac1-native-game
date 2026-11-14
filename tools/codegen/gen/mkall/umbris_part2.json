@@ -3,21 +3,15 @@
  "tool": "mkall.py",
  "env": {
   "MKALL_HELPER_PREFIX": "um2_",
-  "MKALL_FORCE": "226fb8,227880,275380,275568,275af8,275d88,2760c0,2762e0,29ae58,2cb008,2cbb40,2cbbe8,2cbed0,2cc100,2cc6a0,2ccc90,2ccda0,312948,312e70"
+  "MKALL_FORCE": "227880,2762e0,2cc6a0,2ccda0,312948,312e70"
  },
  "entries": [
   "2f8038:umb_class460_draw_l7:void:a0",
-  "3048b0:umb_class823_draw_l7:void:a0",
-  "304c40:umb_class832_draw_l7:void:a0",
-  "30cd20:umb_class902_draw_l7:void:a0",
   "30d420:umb_class1018_draw_l7:void:a0",
   "312420:umb_class1106_draw_a_l7:void:a0",
   "312dc8:umb_class1106_draw_b_l7:void:a0",
   "3131b0:umb_class1106_draw_c_l7:void:a0",
   "317910:umb_draw_317910_l7:void:a0",
-  "31ce40:umb_class1135_draw_l7:void:a0",
-  "29e4a0:umb_particle_50_update_l7:void:a0",
-  "262078:umb_hud_262078_l7:void:a0",
   "30dcf0:umb_class1046_draw_l7:void:a0"
  ],
  "glue_files": [],
