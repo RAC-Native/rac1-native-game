@@ -8,6 +8,19 @@
 #include <game/ovl/checkpoint.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/shared_class156.h>
+#include <game/ovl/shared_class280.h>
+#include <game/ovl/shared_class437.h>
+#include <game/ovl/shared_class567.h>
+#include <game/ovl/shared_class604.h>
+#include <game/ovl/shared_class679.h>
+#include <game/ovl/shared_class686.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_lights.h>
+#include <game/ovl/shared_rock.h>
+#include <game/ovl/shared_sandmouse.h>
 #include <game/ovl/shared_classes_tr.h>
 #include <game/ovl/walker.h>
 #include <game/ovl/ovl_reloc.h>
@@ -691,22 +704,23 @@ void batch_103() {
     if (!std::getenv("B103_ST") || std::atoi(std::getenv("B103_ST")) == st) classcheck("amoeboid_update", 0x002edca0, amoeboid_update_l1, [st, pass, amoeba_prep](uint32_t m) { amoeba_prep(m, st, pass); }, 40);
     g_extra_noop_hooks.clear();
 
-    // ---- the remaining classes (transliterated by tools/codegen/mkall.py): the level's own mobys of each class, the first
+    // ---- the remaining classes (transliterated by tools/codegen/mkall.py, or the shared ports shared_*.cpp registered for them since
+    // the level's re-glue): the level's own mobys of each class, the first
     // update (state 0) done by the port, then a state, a hit, the hero near, the pvars' floats / counters moved as typed
     g_extra_noop_hooks = {0x00122298, 0x00118a80, 0x00122fe0, 0x001232c8, OVF(0x00299460), OVF(0x0023e008), OVF(0x0024d430),
                           0x002efa88, 0x002efaf8, 0x002efb48, 0x002efb98, 0x002efbc8, 0x003040d8, 0x002f1c78, 0x002f1cc8};
     struct TrCls { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t skip_states = 0; };  // (the states that start a scene / a level change: the original runs the kernel / movie path for real)
     static const TrCls trcls[] = {
-        {"class700", 0x002f8c58, nov_class700_update_l1}, {"class679", 0x002f6328, nov_class679_update_l1}, {"class27", 0x002bd100, nov_class27_update_l1},
+        {"class700", 0x002f8c58, nov_class700_update_l1}, {"class679", 0x002f6328, class679_update}, {"class27", 0x002bd100, nov_class27_update_l1},
         {"class701", 0x002f9080, nov_class701_update_l1}, {"class704", 0x002f9810, nov_class704_update_l1}, {"class761", 0x002feb58, nov_class761_update_l1},
-        {"class729", 0x002fa800, nov_class729_update_l1}, {"class730", 0x002fad68, nov_class730_update_l1, 0xe2}, {"class1504", 0x0030b618, nov_class1504_update_l1},
+        {"class729", 0x002fa800, nov_class729_update_l1}, {"class730", 0x002fad68, nov_class730_update_l1, 0xe2}, {"class1504", 0x0030b618, flicker_light_update},
         {"class613", 0x002f3120, nov_class613_update_l1}, {"class709", 0x002f9d80, nov_class709_update_l1}, {"class1848", 0x0030f208, nov_class1848_update_l1},
-        {"class604", 0x002f2b68, nov_class604_update_l1}, {"class778", 0x002ff860, nov_class778_update_l1}, {"class832", 0x00302648, nov_class832_update_l1},
-        {"class567", 0x002eda00, nov_class567_update_l1}, {"class722", 0x002fa4c0, nov_class722_update_l1}, {"class779", 0x002ffb28, nov_class779_update_l1},
-        {"class787", 0x002ffdc0, nov_class787_update_l1}, {"class156", 0x002c7530, nov_class156_update_l1}, {"class1546", 0x0030c190, nov_class1546_update_l1},
-        {"class686", 0x002f6a30, nov_class686_update_l1}, {"class696", 0x002f8718, nov_class696_update_l1}, {"class1510", 0x0030ba18, nov_class1510_update_l1},
-        {"class1633", 0x0030c9a8, nov_class1633_update_l1}, {"class751", 0x002fd0e8, nov_class751_update_l1}, {"class1818", 0x0030df40, nov_class1818_update_l1},
-        {"class437", 0x002e3f20, nov_class437_update_l1}, {"class280", 0x002e0c68, nov_class280_update_l1}, {"class1134", 0x00307ca0, nov_class1134_update_l1, 0x6},
+        {"class604", 0x002f2b68, class604_update}, {"class778", 0x002ff860, nov_class778_update_l1}, {"class832", 0x00302648, class832_update},
+        {"class567", 0x002eda00, class567_update}, {"class722", 0x002fa4c0, nov_class722_update_l1}, {"class779", 0x002ffb28, nov_class779_update_l1},
+        {"class787", 0x002ffdc0, nov_class787_update_l1}, {"class156", 0x002c7530, class156_update}, {"class1546", 0x0030c190, nov_class1546_update_l1},
+        {"class686", 0x002f6a30, class686_update}, {"class696", 0x002f8718, rock_update}, {"class1510", 0x0030ba18, nov_class1510_update_l1},
+        {"class1633", 0x0030c9a8, class1633_update}, {"class751", 0x002fd0e8, nov_class751_update_l1}, {"class1818", 0x0030df40, sandmouse_update},
+        {"class437", 0x002e3f20, class437_update}, {"class280", 0x002e0c68, class280_update}, {"class1134", 0x00307ca0, gold_bolt_update, 0x6},
     };
     auto generic_prep = [give_hit, hero_near](uint32_t m, int st, int pass, void (*fn)(uint32_t)) {
         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -742,8 +756,8 @@ void batch_103() {
         seed_rand();
     };
     if (g_oracle_level == 1 && std::getenv("B103_DBG") != nullptr) {
-        l1check("tr_2b7a48", 0x002b7a48, 10, Ret::Int32, [level] { level(); return Args{{0x001e34c0u, 0x15u}, {}}; },
-                [](A a) { return ri32(static_cast<int32_t>(nov_2b7a48_l1(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0)); });
+        l1check("tr_2b7a48", 0x002b7a48, 10, Ret::None, [level] { level(); return Args{{0x001e34c0u, 0x15u}, {}}; },
+                [](A a) { grid_records_reset(a.i[0], static_cast<int32_t>(a.i[1])); return uint64_t{0}; });
     }
     for (const TrCls& c : trcls) {
         if (std::getenv("B103_CLS") != nullptr && std::strcmp(std::getenv("B103_CLS"), c.name) != 0) continue;

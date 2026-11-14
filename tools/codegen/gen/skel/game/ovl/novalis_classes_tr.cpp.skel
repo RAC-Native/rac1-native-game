@@ -27,17 +27,16 @@
 #include <game/ovl/doomlet.h>
 #include <game/ovl/novalis_water.h>
 #include <game/ovl/visibomb_ball.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_level_helpers.h>
+#include <game/ovl/shared_rock.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
 
-//@gen nov_2f8530_l1
-
 //@gen nov_class700_update_l1
-
-//@gen nov_class679_update_l1
 
 //@gen nov_27e900_l1
 
@@ -53,13 +52,9 @@ using namespace vu0m;
 
 //@gen nov_class729_update_l1
 
-//@gen nov_2a2480_l1
-
 //@gen nov_2fac80_l1
 
 //@gen nov_class730_update_l1
-
-//@gen nov_class1504_update_l1
 
 //@gen nov_class613_update_l1
 
@@ -67,15 +62,9 @@ using namespace vu0m;
 
 //@gen nov_class1848_update_l1
 
-//@gen nov_class604_update_l1
-
 //@gen nov_2ffa90_l1
 
 //@gen nov_class778_update_l1
-
-//@gen nov_class832_update_l1
-
-//@gen nov_class567_update_l1
 
 //@gen nov_2fa1b0_l1
 
@@ -85,41 +74,13 @@ using namespace vu0m;
 
 //@gen nov_class787_update_l1
 
-//@gen nov_280970_l1
-
-//@gen nov_2c72c0_l1
-
-//@gen nov_2c72c8_l1
-
-//@gen nov_class156_update_l1
-
 //@gen nov_class1546_update_l1
 
-//@gen nov_class686_update_l1
-
-//@gen nov_class696_update_l1
-
 //@gen nov_class1510_update_l1
-
-//@gen nov_class1633_update_l1
 
 //@gen nov_287b00_l1
 
 //@gen nov_287c80_l1
-
-//@gen nov_2b7a48_l1
-
-//@gen nov_2b7c68_l1
-
-//@gen nov_2b7ef0_l1
-
-//@gen nov_261d78_l1
-
-//@gen nov_262038_l1
-
-//@gen nov_2b7f30_l1
-
-//@gen nov_2b7fe0_l1
 
 //@gen nov_2b8288_l1
 
@@ -127,60 +88,6 @@ using namespace vu0m;
 
 //@gen nov_class751_update_l1
 
-//@gen nov_30d208_l1
-
-//@gen nov_30d260_l1
-
-//@gen nov_30c898_l1
-
-//@gen nov_30d308_l1
-
-//@gen nov_30d5f0_l1
-
-//@gen nov_30d880_l1
-
-//@gen nov_28a7a8_l1
-
-//@gen nov_30dda0_l1
-
-//@gen nov_30ded0_l1
-
-//@gen nov_class1818_update_l1
-
-//@gen nov_263a28_l1
-
-//@gen nov_2e30b8_l1
-
-//@gen nov_2e3110_l1
-
-//@gen nov_2e3208_l1
-
-//@gen nov_2e32a8_l1
-
-//@gen nov_2e35a8_l1
-
-//@gen nov_2e3830_l1
-
-//@gen nov_class437_update_l1
-
-//@gen nov_2e0bd8_l1
-
 //@gen nov_316e28_l1
-
-//@gen nov_316e88_l1
-
-//@gen nov_class280_update_l1
-
-//@gen nov_308550_l1
-
-//@gen nov_3089f0_l1
-
-//@gen nov_308380_l1
-
-//@gen nov_308470_l1
-
-//@gen nov_3087e0_l1
-
-//@gen nov_class1134_update_l1
 
 }  // namespace rac1

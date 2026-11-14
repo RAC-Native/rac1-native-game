@@ -21,6 +21,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/particle_types_tr.h>
+#include <game/ovl/shared_class156.h>
 
 #include <algorithm>
 #include <cstring>
@@ -148,7 +149,7 @@ void batch_192() {
         if (L == 1 || s156 != nullptr) sp = [s156, moby, L, spawned] {
             const uint32_t flag = coin() ? 1u : 0u, m = moby();
             return spawned(0x0e, [&] {
-                if (L == 1) nov_280970_l1(flag, m, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+                if (L == 1) class156_trail(flag, m);
                 else s156(flag, m, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
             });
         };

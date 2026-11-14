@@ -2,39 +2,28 @@
  "level": 1,
  "tool": "mkall.py",
  "env": {
-  "MKALL_FORCE": "261d78,262038,263a28,27e900,280970,287b00,287c80,28a7a8,2a2480,2b4638,2b7a48,2b7c68,2b7ef0,2b7f30,2b7fe0,2b8288,2c72c0,2c72c8,2e0bd8,2e30b8,2e3110,2e3208,2e32a8,2e35a8,2e3830,2f8530,2f9000,2fa1b0,2fac80,2ffa90,2ffcd0,308380,308470,308550,3087e0,3089f0,30c898,30d208,30d260,30d308,30d5f0,30d880,30dda0,30ded0,316e28,316e88"
+  "MKALL_UNIFORM": "nov_316e28_l1",
+  "MKALL_FORCE": "27e900,287b00,287c80,2b4638,2b8288,2f9000,2fa1b0,2fac80,2ffa90,2ffcd0,316e28"
  },
  "entries": [
   "2f8c58:nov_class700_update_l1:void:a0",
-  "2f6328:nov_class679_update_l1:void:a0",
   "2bd100:nov_class27_update_l1:void:a0",
   "2f9080:nov_class701_update_l1:void:a0",
   "2f9810:nov_class704_update_l1:void:a0",
   "2feb58:nov_class761_update_l1:void:a0",
   "2fa800:nov_class729_update_l1:void:a0",
   "2fad68:nov_class730_update_l1:void:a0",
-  "30b618:nov_class1504_update_l1:void:a0",
   "2f3120:nov_class613_update_l1:void:a0",
   "2f9d80:nov_class709_update_l1:void:a0",
   "30f208:nov_class1848_update_l1:void:a0",
-  "2f2b68:nov_class604_update_l1:void:a0",
   "2ff860:nov_class778_update_l1:void:a0",
-  "302648:nov_class832_update_l1:void:a0",
-  "2eda00:nov_class567_update_l1:void:a0",
   "2fa4c0:nov_class722_update_l1:void:a0",
   "2ffb28:nov_class779_update_l1:void:a0",
   "2ffdc0:nov_class787_update_l1:void:a0",
-  "2c7530:nov_class156_update_l1:void:a0",
   "30c190:nov_class1546_update_l1:void:a0",
-  "2f6a30:nov_class686_update_l1:void:a0",
-  "2f8718:nov_class696_update_l1:void:a0",
   "30ba18:nov_class1510_update_l1:void:a0",
-  "30c9a8:nov_class1633_update_l1:void:a0",
   "2fd0e8:nov_class751_update_l1:void:a0",
-  "30df40:nov_class1818_update_l1:void:a0",
-  "2e3f20:nov_class437_update_l1:void:a0",
-  "2e0c68:nov_class280_update_l1:void:a0",
-  "307ca0:nov_class1134_update_l1:void:a0"
+  "316e28:nov_316e28_l1"
  ],
  "glue_files": [],
  "files": [

@@ -14,6 +14,10 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/particle_16_spawn.h>
+#include <game/ovl/shared_class1135.h>
+#include <game/ovl/shared_class325.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_sandmouse.h>
 #include <game/ovl/ship_draw_cbs.h>
 #include <game/ovl/variants_l1.h>
 
@@ -162,8 +166,9 @@ void batch_136() {
         void (*fn)(uint32_t);
         int cls;
     };
-    const Cb cbs[] = {{"nov_class832_draw", 0x00302438, nov_class832_draw_l1, 832}, {"nov_teleporter_draw", 0x003094f0, nov_teleporter_draw_l1, 1135},
-                      {"nov_class1510_draw", 0x0030bfa8, nov_class1510_draw_l1, 1510}, {"nov_class1818_glow", 0x0030de68, nov_class1818_glow_l1, 1818},
+    // (classes 832, 1135, 1510 and 1818: the shared ports, shared_*.cpp, registered for them since the level's re-glue)
+    const Cb cbs[] = {{"nov_class832_draw", 0x00302438, class832_draw, 832}, {"nov_teleporter_draw", 0x003094f0, class1135_draw, 1135},
+                      {"nov_class1510_draw", 0x0030bfa8, class325_draw, 1510}, {"nov_class1818_glow", 0x0030de68, sandmouse_glow, 1818},
                       {"nov_class1848_draw", 0x0030f0e0, nov_class1848_draw_l1, 1848}};
     for (const Cb& cb : cbs) {
         if (g_oracle_level != 1) {
