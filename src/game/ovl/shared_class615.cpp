@@ -17,6 +17,7 @@
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/blarg_mobys.h>
+#include <game/ovl/blarg_own.h>
 #include <game/ovl/eudora_mobys.h>
 #include <game/ovl/hydro.h>
 #include <game/ovl/ovl.h>
@@ -77,10 +78,10 @@ uint32_t puzzle_draw_fn() {
     if (on_level(VELDIN_FINALE)) return L18_ADDR(0x002d98e8);
     return L2_ADDR(0x002d93e8);
 }
-// The hero back to his idle state: Blarg's build of it is its own (still generated); Aridia's goes through the Veldin port's
-// dispatch, Eudora's is the Veldin port's code
+// The hero back to his idle state: Blarg's build of it is its own (hero_enter_idle_l6, blarg_bridge.cpp); Aridia's goes
+// through the Veldin port's dispatch, Eudora's is the Veldin port's code
 void hero_idle() {
-    if (on_level(BLARG)) { blg_239528_l6(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); return; }
+    if (on_level(BLARG)) { hero_enter_idle_l6(); return; }
     hero_enter_idle();
 }
 

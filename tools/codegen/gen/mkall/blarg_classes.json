@@ -3,16 +3,10 @@
  "tool": "mkall.py",
  "env": {
   "MKALL_HELPER_PREFIX": "blg_",
-  "MKALL_FORCE": "217300,217ab8,239528,272670,2d9e08,2d9e78,2e9d10,2e9e30,2e9ea0,2f3d70,2f4130,2f4390,2f45a0,2f45f0,2f5360,2f53e8,2f54a0,2f5d78,2f7000,2f91e8,2f9698,2f96f8,2f9948,2f99b0,2fa9c0,2fb090,2fb2a8,2fbc88,2ffc38,300278,300f70,302400,302fd8,303160,303748,303b68,304028,3047b8,304818,305000,309240",
+  "MKALL_FORCE": "217300,217ab8,272670,2d9e08,2d9e78,2e9d10,2e9e30,2e9ea0,2f45a0,2f45f0,2f5360,2f53e8,2f54a0,2f9948,2f99b0,2fa9c0,2fb090,2fb2a8,2fbc88,2ffc38,300278,300f70,302400,302fd8,303160,303748,303b68,304028,3047b8,304818,305000,309240",
   "MKALL_UNIFORM": "blg_level_sound_play_u,blg_hook_2ea800_u"
  },
  "entries": [
-  "2b4770:blg_class55_update_l6:void:a0",
-  "2d9d10:blg_class367_update_l6:void:a0",
-  "2f3ad8:blg_class911_update_l6:void:a0",
-  "2f55a0:blg_class1028_update_l6:void:a0",
-  "2f6470:blg_class1035_update_l6:void:a0",
-  "2f7d78:blg_class1048_update_l6:void:a0",
   "2f9a28:blg_class1051_update_l6:void:a0",
   "2fbfb0:blg_class1054_update_l6:void:a0",
   "2fc640:blg_class1061_update_l6:void:a0",
@@ -33,7 +27,6 @@
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/blarg_classes_tr_1.cpp",
   "src/game/ovl/blarg_classes_tr_2.cpp",
   "src/game/ovl/blarg_classes_tr_3.cpp",
   "src/game/ovl/blarg_classes_tr_4.cpp",

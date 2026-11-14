@@ -31,6 +31,8 @@
 #include <game/ovl/carry_hooks_levels.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/blarg_mobys.h>
+#include <game/ovl/blarg_own.h>
+#include <game/ovl/variants_l6.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/empty_class_updates.h>
@@ -482,6 +484,255 @@ void batch_117() {
                 return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
             }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
         }
+    }
+
+    // ---- stage 4 P6.1: the hand ports of classes 55, 367, 911, 1028, 1035 and 1048 (blarg_doors.cpp, blarg_flame_jet.cpp,
+    // blarg_bridge.cpp, blarg_barrier.cpp, blarg_creature.cpp): their states driven through the branches the class loop above
+    // seldom reaches (the landing scene's steps, a jet's sound slot, the bridge's scene and fades, the barrier near the camera
+    // with the hero crossing it and its switches, the creature's states past 15 and its pack), each against level 6's own update
+    if (g_oracle_level == 6 && std::getenv("B117_CLS") == nullptr) {
+        g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, 0x002763f8};  // (as the class loop's: the level change)
+        const uint32_t P = 0x0013f350;
+        // the frame scale, the frame time and its square at their 50 Hz values in a quarter of the cases
+        auto frame50 = [] { if (ri(0, 3) == 0) { wf(0x0015ed68, 1.2f); wf(0x0015ed6c, 1.2f); wf(0x0015ed70, 1.44f); } };
+        // a sound slot word: none, a free slot, or a slot playing the moby's sound (its owner +0x88, playing +0x74)
+        auto sound_slot = [](uint32_t m) -> uint32_t {
+            const int r = ri(0, 3);
+            if (r == 0) return 0xffffffffu;
+            const uint32_t s = u(ri(0, 15)), e = 0x0013e550u + s * 0x70;
+            if (r >= 2) { w32(e + 0x88, r == 2 ? m : m + 0x100); w8(e + 0x74, coin() ? 1u : 0u); }
+            return s;
+        };
+        // the camera somewhere about the moby (within `r`)
+        auto camera_near = [](uint32_t m, float r) {
+            Vec4 c = ee_ref<Vec4>(m + 0x10);
+            c.x += rf(-r, r); c.y += rf(-r, r); c.z += rf(-2, r * 0.5f);
+            ee_ref<Vec4>(OV(0x00166dc0)) = c;
+        };
+        // the hero at the moby's place, `d` away in a random direction
+        auto hero_at = [](uint32_t m, float d, float dz) {
+            Vec4 q = ee_ref<Vec4>(m + 0x10);
+            const float a = rf(-3.1f, 3.1f);
+            q.x += d * std::cos(a); q.y += d * std::sin(a); q.z += dz;
+            ee_ref<Vec4>(0x0013f3d0) = q;
+        };
+
+        // class 55: the landing scene (mode 6 at 0x15f5c4) at its steps 3 / 8 (0x13e050), its doors shut, open or between
+        for (int pass = 0; pass < 6; ++pass)
+            classcheck("class55_scene", 0x002b4770, blg_class55_update_l6, [pass, generic_prep, frame50](uint32_t m) {
+                generic_prep(m, ri(0, 2), pass % 3, blg_class55_update_l6);
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                w32(L6_ADDR(0x0015f5c4), ri(0, 3) != 0 ? 6u : u(ri(0, 7)));
+                { static const uint32_t steps[] = {3, 8, 0, 4, 9}; w32(0x0013e050, steps[ri(0, 4)]); }
+                w32(pv + 0x10, ri(0, 2) == 0 ? 1u : 0u);
+                const float open = 0.34906584f;
+                const int r = ri(0, 3);
+                if (r == 0) { wf(pv + 0x14, 0.0f); wf(pv + 0x18, 0.0f); }
+                else if (r == 1) { wf(pv + 0x14, open); wf(pv + 0x18, rf(0.0f, open)); }
+                else if (r == 2) { wf(pv + 0x14, 0.0f); wf(pv + 0x18, rf(0.0f, open)); }
+                wf(pv + 0x8, rf(-0.05f, 0.05f));
+                if (coin()) wf(m + 0x44, coin() ? 0.0f : 3.1415927f);
+                frame50();
+            }, 20);
+
+        // class 367: sliding from its place to 11 along its axis and back, the fraction at or near its goal
+        for (int pass = 0; pass < 4; ++pass)
+            classcheck("class367_slide", 0x002d9d10, blg_class367_update_l6, [pass, generic_prep, frame50](uint32_t m) {
+                generic_prep(m, ri(0, 3) == 0 ? 0 : 2, pass % 3, blg_class367_update_l6);
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                const float goal = coin() ? 1.0f : 0.0f;
+                wf(pv + 0x28, goal);
+                const int r = ri(0, 2);
+                wf(pv + 0x20, r == 0 ? goal : (r == 1 ? rf(0, 1) : goal + rf(-0.01f, 0.01f)));
+                wf(pv + 0x24, rf(-0.1f, 0.1f));
+                frame50();
+            }, 20);
+
+        // class 911: a sweeping jet or a bursting one in each state, the hero near (in its box or not), its sound slot, its
+        // timer at its edge, the camera near (the nozzle on screen)
+        for (int st = 0; st < 4; ++st)
+            for (int pass = 0; pass < 3; ++pass)
+                classcheck("class911_jet", 0x002f3ad8, blg_class911_update_l6, [st, pass, generic_prep, frame50, sound_slot, camera_near, hero_at](uint32_t m) {
+                    generic_prep(m, st, pass, blg_class911_update_l6);
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    w8(m + 0x20, u(st));
+                    if (st == 0) w32(pv + 0x60, coin() ? 1u : 0u);
+                    w32(pv + 0x94, sound_slot(m));
+                    { const int r = ri(0, 3); w32(pv + 0x88, r == 0 ? 0u : (r == 1 ? 1u : u(ri(2, 200)))); }
+                    hero_at(m, coin() ? rf(0, 10) : rf(10, 30), rf(-1, 2));
+                    if (ri(0, 2) == 0) w32(pv + 0x90, 0xffffffffu);
+                    if (coin()) camera_near(m, 15);
+                    if (coin()) wf(pv + 0x70, rf(0.5f, 3.0f));
+                    if (ri(0, 2) == 0) {  // the jet placed so that its flame reaches the hero moby (where the collision has it)
+                        const Vec4 h = ee_ref<Vec4>(ee_read<uint32_t>(P + 0x2080) + 0x10);
+                        const float yaw = ee_read<float>(m + 0x48), d = rf(0.3f, 2.5f);
+                        Vec4 q = ee_ref<Vec4>(m + 0x10);
+                        q.x = h.x - d * std::cos(yaw); q.y = h.y - d * std::sin(yaw); q.z = h.z + rf(0.2f, 1.0f);
+                        ee_ref<Vec4>(m + 0x10) = q;
+                        ee_ref<Vec4>(P + 0x80) = h;
+                        if (st == 2) w32(pv + 0x88, u(ri(1, 3)));
+                    }
+                    frame50();
+                }, 12);
+
+        // class 1028: the bridge's scene: the trigger (the hero's mode 1, the Hydrodisplacer, no scene), the fades at their
+        // crossing and their end, the bridge's values about their thresholds, its checkpoint taken or not, its sound slot
+        for (int st = 0; st < 7; ++st)
+            for (int pass = 0; pass < 2; ++pass)
+                classcheck("class1028_scene", 0x002f55a0, blg_class1028_update_l6, [st, pass, generic_prep, frame50](uint32_t m) {
+                    generic_prep(m, st, pass, blg_class1028_update_l6);
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    w8(m + 0x20, u(st));
+                    w8(P + 0x20a4, coin() ? 1u : u(ri(0, 3)));
+                    w8(0x0013d4d6, coin() ? 1u : 0u);
+                    w32(L6_ADDR(0x0015f5c4), ri(0, 2) != 0 ? 0u : 6u);
+                    {
+                        const int r = ri(0, 4);
+                        wf(pv + 0x6c, r == 0 ? rf(-0.03f, 0.0f) : r == 1 ? rf(-0.01f, 0.03f) : r == 2 ? rf(0.97f, 1.0f) : r == 3 ? -1.0f : rf(-1, 1));
+                        // (state 5's end requests the level change, whose disc wait the interpreter cannot answer: kept short of it)
+                        if (st == 5 && ee_read<float>(pv + 0x6c) > 0.9f) wf(pv + 0x6c, rf(-0.03f, 0.03f));
+                        // a fade that lands on 0 exactly (the crossing's `0 <=`): one step of 1 / frame_scale_i(20) short of it
+                        if (ri(0, 4) == 0) wf(pv + 0x6c, -1.0f / static_cast<float>(ri(0, 2) == 0 ? 17 : 20));
+                    }
+                    {
+                        const int r = ri(0, 3);
+                        wf(L6_ADDR(0x00161d78), r == 0 ? rf(0, 20) : r == 1 ? rf(19.5f, 20.5f) : r == 2 ? 20.0f : rf(0, 3));
+                        wf(L6_ADDR(0x00161d7c), coin() ? rf(0, 1000) : rf(990, 1010));
+                        wf(L6_ADDR(0x00161d80), coin() ? rf(0, 1000) : rf(990, 1010));
+                        if (coin()) { wf(L6_ADDR(0x00161dac), rf(0, 20)); wf(L6_ADDR(0x00161db0), rf(0, 1000)); }
+                        wf(L6_ADDR(0x00161d9c), rf(0, 2)); wf(L6_ADDR(0x00161da0), rf(0, 60)); wf(L6_ADDR(0x00161da4), rf(0, 60));
+                    }
+                    {
+                        const uint32_t cp = 0x0014c050 + (ee_read<uint32_t>(0x0015ed84) << 4) + ee_read<uint8_t>(m + 0xb0);
+                        w8(cp, coin() ? 0xffu : 0u);
+                    }
+                    if (coin()) w8(m + 0xbc, u(ri(0, 15)));
+                    if (ri(0, 3) != 0) {  // the scripted camera (the camera entry of uid 5) whose pvars +0x80 / +0x90 state 4 moves: in the test area
+                        const uint32_t cam = OV(0x00167150) + u(ri(0, 3)) * 0xa0;
+                        w16(cam + 0x86, 5);
+                        w32(cam + 0x70, T);
+                        wfrand(T + 0x80, 8, -50, 50);
+                    }
+                    if (ri(0, 2) == 0) {  // its last plate's sound playing in that slot
+                        const uint32_t e = 0x0013e550u + u(ee_read<uint8_t>(m + 0xbc) & 0xf) * 0x70;
+                        w32(e + 0x88, ee_read<uint32_t>(pv + 0x134)); w8(e + 0x74, coin() ? 1u : 0u);
+                    }
+                    frame50();
+                }, 12);
+
+        // class 1035: the barrier near the camera, the hero crossing one of its lines (the barrier moved onto him), against
+        // it (+0x23c), its shocks' count and grace time, the help record, its four switches (class 1302 opened or not, other
+        // classes done or not, none)
+        {
+            level();
+            std::vector<uint32_t> switches, others;
+            for (uint32_t o = ee_read<uint32_t>(OV(0x0015ffd8)); o < ee_read<uint32_t>(OV(0x0015ffe0)); o += 0x100) {
+                if (ee_read<uint8_t>(o + 0x20) >= 0xfe) continue;
+                (ee_read<int16_t>(o + 0xa6) == 0x516 ? switches : others).push_back(o);
+            }
+            for (int st = 1; st < 4; ++st)
+                for (int pass = 0; pass < 4; ++pass)
+                    classcheck("class1035_near", 0x002f6470, blg_class1035_update_l6, [st, pass, generic_prep, frame50, sound_slot, camera_near, switches, others](uint32_t m) {
+                        generic_prep(m, st, pass % 3, blg_class1035_update_l6);
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8));
+                        w8(m + 0x20, u(st));
+                        w32(pv + 0x10, sound_slot(m));
+                        if (ri(0, 3) != 0) camera_near(m, 40);
+                        if (coin()) {  // the hero on one of its lines: the barrier placed so that the line passes through him
+                            const Vec4 h = ee_ref<Vec4>(ee_read<uint32_t>(P + 0x2080) + 0x10);  // (the hero moby where the collision has it)
+                            ee_ref<Vec4>(P + 0x80) = h;
+                            const float yaw = ee_read<float>(m + 0x48) + (coin() ? 0.0f : 3.1415927f);
+                            const float t = rf(-2.8f, 2.8f), side = yaw + 1.5707964f;
+                            Vec4 q = ee_ref<Vec4>(m + 0x10);
+                            q.x = h.x - 0.5f * std::cos(yaw) - t * std::cos(side);
+                            q.y = h.y - 0.5f * std::sin(yaw) - t * std::sin(side);
+                            q.z = h.z + ee_read<float>(L6_ADDR(0x00161e18)) + rf(0.2f, 1.2f);
+                            ee_ref<Vec4>(m + 0x10) = q;
+                            if (coin()) ee_ref<Vec4>(OV(0x00166dc0)) = q;
+                        }
+                        w32(P + 0x23c, ri(0, 2) == 0 ? m : ee_read<uint32_t>(P + 0x23c));
+                        if (coin()) w32(OV(0x00173e58), ee_read<uint32_t>(P + 0x2080));  // (the last hit record's moby: the hero, kept by a line that meets nothing)
+                        w16(pv + 0x16, ri(0, 2) == 0 ? u(ri(1, 30)) : 0u);
+                        w16(pv + 0x14, u(ri(0, 4)));
+                        wf(pv + 0x18, coin() ? 0.0f : rf(0, 1));
+                        w16(0x00141ac0, ri(0, 2) == 0 ? (coin() ? 0xffffu : u(ri(1, 5))) : 0u);
+                        w16(0x00141ac2, u(ri(0, 3000)));
+                        w32(0x0015eea4, u(ri(0, 3000000)));
+                        const int mode = ri(0, 3);  // the switches: all done, some not, none listed
+                        for (uint32_t k = 0; k < 4; ++k) {
+                            if (mode == 2 || (ri(0, 3) == 0)) { w32(pv + k * 4, coin() ? 0xffffffffu : ee_read<uint32_t>(pv + k * 4)); continue; }
+                            const bool sw = !switches.empty() && coin();
+                            const std::vector<uint32_t>& from = sw ? switches : others;
+                            if (from.empty()) continue;
+                            const uint32_t o = from[static_cast<size_t>(ri(0, static_cast<int>(from.size()) - 1))];
+                            w32(pv + k * 4, (o - first) >> 8);
+                            if (sw) w8(o + 0x20, mode == 0 || coin() ? 2u : u(ri(0, 3)));
+                            else w8(o + 0xbc, mode == 0 || coin() ? 1u : 0u);
+                        }
+                        frame50();
+                    }, 12);
+        }
+
+        // class 1048: its states 14 .. 17 (the class loop above runs 0 .. 15) and every state with its target, its pack, its
+        // animation's end, its alert timer and the hero about it
+        for (int st = 0; st < 18; ++st)
+            for (int pass = 0; pass < 2; ++pass)
+                classcheck("class1048_hunt", 0x002f7d78, blg_class1048_update_l6, [st, pass, generic_prep, frame50, hero_at, camera_near](uint32_t m) {
+                    generic_prep(m, st, pass, blg_class1048_update_l6);
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    w8(m + 0x20, u(st));
+                    hero_at(m, ri(0, 2) == 0 ? rf(0, 4) : rf(4, 25), coin() ? rf(-0.5f, 0.5f) : (coin() ? rf(-2.2f, 2.2f) : rf(-4, 4)));
+                    if (coin()) w32(pv + 0x160, coin() ? ee_read<uint32_t>(P + 0x2080) : 0u);
+                    w32(pv + 0x164, coin() ? 2u : 0u);
+                    w32(pv + 0x1ac, ri(0, 2) == 0 ? 0u : u(ri(1, 200)));
+                    w32(pv + 0x1a8, ri(0, 2) == 0 ? 1u : u(ri(0, 60)));
+                    if (coin()) w8(m + 0x70, ee_read<uint8_t>(m + 0x70) | 2u);
+                    w8(m + 0x53, u(ri(0, 7)));
+                    if (ri(0, 3) == 0) w8(m + 0x21, 0xff);
+                    if (ri(0, 3) == 0) w32(pv + 0x1cc, coin() ? 1u : 0u);
+                    if (ri(0, 3) == 0) w32(pv + 0x1c0, coin() ? 0xffffffffu : u(ri(0, 20)));
+                    if (ri(0, 3) == 0) w32(pv + 0x1b4, coin() ? 1u : 0u);
+                    if (ri(0, 3) == 0) w32(P + 0x1c0, u(ri(0, 20)));
+                    if (ri(0, 3) == 0) w32(L6_ADDR(0x00161edc), coin() ? 1u : 0u);
+                    if (ri(0, 4) == 0) wf(m + 0x18, ee_read<float>(m + 0x18) - rf(0, 400));
+                    {  // the hero moby where the hero is (its target), far from the creature now and then, above or below it
+                        Vec4 h = ee_ref<Vec4>(P + 0x80);
+                        if (ri(0, 4) == 0) { const float a = rf(-3.1f, 3.1f), r = rf(25, 60); h.x = ee_read<float>(m + 0x10) + r * std::cos(a); h.y = ee_read<float>(m + 0x14) + r * std::sin(a); }
+                        if (ri(0, 5) == 0) h.z += coin() ? 5.0f : -5.0f;
+                        const int32_t wake = ee_read<int32_t>(pv + 0x1c0);
+                        if (wake >= 0 && wake < 0x400 && ri(0, 2) == 0) h = ee_ref<Vec4>(ee_read<uint32_t>(OV(0x001600ec)) + u(wake << 7) + 0x30);
+                        ee_ref<Vec4>(P + 0x80) = h;
+                        ee_ref<Vec4>(ee_read<uint32_t>(P + 0x2080) + 0x10) = h;
+                    }
+                    if (coin()) { w8(m + 0x31, 1); if (coin()) camera_near(m, 20); }
+                    if (st == 4 && coin()) w8(m + 0x53, coin() ? 3u : 6u);
+                    if (ri(0, 3) != 0) w8(m + 0x70, ee_read<uint8_t>(m + 0x70) | 2u);
+                    if (ri(0, 3) == 0) w32(pv + 0x38, 1);
+                    if (coin()) { wf(m + 0x54, rf(-2.0f, 10.0f)); if (coin()) w8(m + 0x52, ee_read<uint8_t>(m + 0x53) ^ 1u); }
+                    if (ri(0, 3) == 0) w32(P + 0x23c, m);
+                    if (ee_read<uint8_t>(m + 0x21) != 0xff && coin()) {  // pack mates dozing (state 1), to be woken by an alert
+                        const uint32_t list = ee_read<uint32_t>(OV(0x001ab840) + u(ee_read<uint8_t>(m + 0x21)) * 4);
+                        for (uint32_t e = list; list != 0 && e < list + 0x40; e += 2) {
+                            const uint32_t mate = ee_read<uint32_t>(OV(0x0015ffd8)) + ((ee_read<uint16_t>(e) & 0x7fffu) << 8);
+                            if (mate != m && coin()) w8(mate + 0x20, 1);
+                            if (ee_read<int16_t>(e) < 0) break;
+                        }
+                    }
+                    if (ri(0, 5) == 0) {  // a group without a list
+                        for (int32_t i = 0x6f; i >= 0; --i) if (ee_read<uint32_t>(OV(0x001ab840) + u(i) * 4) == 0) { w8(m + 0x21, u(i)); break; }
+                    }
+                    frame50();
+                }, 12);
+        // Blarg's build of hero_enter_idle (class 1028's and class 1109's call, class 615's port on this level), directly: the
+        // hero's movement mode 0 .. 4 (the Veldin build also tests for Clank; this one does not)
+        l6check("hero_enter_idle_l6", 0x00239528, 60, Ret::None, [level] {
+            level();
+            w8(P + 0x20a4, u(ri(0, 4)));
+            seed_rand();
+            return Args{};
+        }, [](A) { hero_enter_idle_l6(); return uint64_t{0}; });
+        g_extra_noop_hooks.clear();
     }
 
     //@@NEXT

@@ -75,6 +75,11 @@ add_library(rac1_game STATIC
     ovl/blarg_mobys.cpp
     ovl/blarg_hooks.cpp
     ovl/blarg_part2.cpp
+    ovl/blarg_doors.cpp
+    ovl/blarg_flame_jet.cpp
+    ovl/blarg_bridge.cpp
+    ovl/blarg_barrier.cpp
+    ovl/blarg_creature.cpp
     ovl/umbris_mobys.cpp
     ovl/umbris_hooks.cpp
     ovl/gaspar_mobys.cpp

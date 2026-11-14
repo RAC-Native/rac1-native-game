@@ -42,24 +42,8 @@ namespace rac1 {
 using namespace eer;
 using namespace vu0m;
 
-//@gen blg_2f3d70_l6
-
-//@gen blg_2f4130_l6
-
-//@gen blg_2f4390_l6
-
-//@gen blg_class911_update_l6
-
-//@gen blg_2f5d78_l6
-
-//@gen blg_class1028_update_l6
-
 //@gen blg_217ab8_l6
 
 //@gen blg_217300_l6
-
-//@gen blg_2f7000_l6
-
-//@gen blg_class1035_update_l6
 
 }  // namespace rac1

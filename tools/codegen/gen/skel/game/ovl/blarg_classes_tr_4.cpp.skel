@@ -5,6 +5,7 @@
 #include <game/enhance/fixes102.h>
 #include <game/lib/libc.h>
 #include <game/ovl/blarg_mobys.h>
+#include <game/ovl/blarg_own.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/carry_hooks.h>
 #include <game/ovl/checkpoint.h>
