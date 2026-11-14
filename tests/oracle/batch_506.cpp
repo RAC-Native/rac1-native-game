@@ -47,6 +47,7 @@
 #include <game/ovl/shared_rock.h>
 #include <game/ovl/shared_sandmouse.h>
 #include <game/ovl/shared_spawner.h>
+#include <game/ovl/veldin_mobys.h>
 #include <runtime/kernel/disc.h>
 #include <runtime/vu/vu0.h>
 
@@ -590,6 +591,33 @@ void class567_checks() {
             if (ri(0, 4) == 0) wf(0x0015ed60, rf(0.5f, 3.0f));
             seed_rand();
         }, 30);
+}
+
+// ---- the scenes' smoke from a moby (Veldin's scene_moby_smoke, veldin_mobys.cpp: the scenes' effect classes of the levels
+// call it; every level's copy): the level's class-0x2ee mobys, or (none placed) the level's mobys with joint chains made
+// class 0x2ee, moved, turned and scaled a little, the particles partly used up now and then
+void smoke_checks() {
+    const uint32_t fn = copy_here({{0, 0x002637f8}, {1, 0x00278450}, {3, 0x00251a30}, {4, 0x002560e8}, {5, 0x0028da08},
+                                   {6, 0x00272718}, {7, 0x0028c020}, {8, 0x0026d810}, {10, 0x00256ad0}, {12, 0x0027bf50},
+                                   {13, 0x0026f4d8}, {14, 0x0026b438}, {15, 0x00252ef0}, {17, 0x0025d658}});
+    if (fn == 0) { not_here("scene_moby_smoke"); return; }
+    // (the level's live mobys of class 0x2ee; B506_SMOKE_ANY=1 takes the mobys with a class model instead, made 0x2ee)
+    auto smokers = [] {
+        std::vector<uint32_t> own, any;
+        for (uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)); m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100) {
+            if (ee_read<uint8_t>(m + 0x20) >= 0xfe || ee_read<uint32_t>(m + 0x24) == 0) continue;
+            if (ee_read<int16_t>(m + 0xa6) == 0x2ee) own.push_back(m);
+            else any.push_back(m);
+        }
+        return own.empty() || std::getenv("B506_SMOKE_ANY") != nullptr ? any : own;
+    };
+    classcheck("scene_moby_smoke", fn, smokers, scene_moby_smoke, [](uint32_t m) {
+        w16(m + 0xa6, 0x2ee);
+        for (uint32_t k = 0; k < 3; ++k) wf(m + 0x10 + k * 4, ee_read<float>(m + 0x10 + k * 4) + rf(-3, 3));
+        if (coin()) wf(m + 0x2c, rf(0.5f, 2.0f) * ee_read<float>(m + 0x2c));
+        if (ri(0, 6) == 0) w32(OV(0x00161390), u(ri(0x100, 0x400)));
+        seed_rand();
+    }, 60);
 }
 
 // ---- class 679 (shared_class679.cpp)
@@ -1355,6 +1383,7 @@ void batch_506() {
     class252_checks();
     boss_bar_checks();
     cam19_checks();
+    smoke_checks();
 
     //@@NEXT
     g_pre_call = nullptr;

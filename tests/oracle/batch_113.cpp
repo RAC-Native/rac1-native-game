@@ -188,9 +188,9 @@ void batch_113() {
                     for (int k = 0; k < 4; ++k) {
                         for (int c = 0; c < 3; ++c) wf(OUT + 4 * u(c), ee_read<float>(m + 0x10 + 4 * u(c)) + rf(-2.0f, 2.0f));
                         seed_rand();
-                        nov_27e900_l1(pv, OUT, ee_read<uint32_t>(pv + 0xc0), ee_read<uint8_t>(pv + 0xc6), ee_read<uint8_t>(pv + 0xc7), 0xff, 0, 0,
+                        nov_27e900_l1(pv, OUT, ee_read<int32_t>(pv + 0xc0), ee_read<uint8_t>(pv + 0xc6), ee_read<uint8_t>(pv + 0xc7), 0xff,
                                       ee_read<float>(OUT), ee_read<float>(OUT + 4), ee_read<float>(OUT + 8), rf(0.0f, 1.0f), rf(0.0f, 1.0f),
-                                      ee_read<float>(pv + 0xb0), ee_read<float>(pv + 0xb4), ee_read<float>(pv + 0xb8));
+                                      ee_read<float>(pv + 0xb0), ee_read<float>(pv + 0xb4), ee_read<float>(pv + 0xb8), ee_read<float>(pv + 0xbc));
                     }
                 }
         };
@@ -240,10 +240,11 @@ void batch_113() {
     struct PT {
         const char* name;
         uint32_t vaddr, type;
-        TrRet (*spawn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float);
+        uint32_t (*spawn)(uint32_t, uint32_t, float, float);
         void (*port)(uint32_t);
     };
-    const PT pts[] = {{"particle_38_update", 0x00272838, 0x38, nov_287b00_l1, particle_38_update},
+    const PT pts[] = {{"particle_38_update", 0x00272838, 0x38, [](uint32_t p, uint32_t v, float s, float) { return nov_287b00_l1(p, v, s); },
+                       particle_38_update},
                       {"particle_39_update", 0x002728e8, 0x39, nov_287c80_l1, particle_39_update}};
     for (const PT& t : pts) {
         if (g_oracle_level != 1) {
@@ -255,7 +256,8 @@ void batch_113() {
             wfrand(OUT, 4, 100, 140);
             wfrand(OUT + 0x10, 4, -1, 1);
             seed_rand();
-            t.spawn(OUT, OUT + 0x10, u(ri(1, 8)), 0, 0, 0, 0, 0, rf(0.2f, 2.0f), rf(0.0f, 1.0f), 0.0f, 0.0f);
+            (void)ri(1, 8);  // (the count the spawners never read, still drawn: the same cases as before)
+            t.spawn(OUT, OUT + 0x10, rf(0.2f, 2.0f), rf(0.0f, 1.0f));
             const std::vector<uint32_t> ps = particles_of(t.type);
             if (ps.empty()) return Args{{0u}, {}};
             const uint32_t p = ps[static_cast<size_t>(ri(0, static_cast<int>(ps.size()) - 1))];

@@ -1,4 +1,4 @@
-// Novalis's own draw callbacks registered for the indirect calls (the functions: novalis_draw_cbs_tr.cpp, and the shared
+// Novalis's own draw callbacks registered for the indirect calls (the functions: novalis_reflections.cpp, and the shared
 // ports shared_*.cpp for the classes several levels carry).
 #include <game/ovl/novalis_draw_cbs.h>
 

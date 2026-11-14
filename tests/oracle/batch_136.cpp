@@ -199,6 +199,33 @@ void batch_136() {
         }, [cb](A a) { cb.fn(a.i[0]); return uint64_t{0}; });
     }
 
+    // ---- class 1848's draw (stage 4 task P1.1, novalis_reflections.cpp) with its packets compared: the frame's packet cursor
+    // (0x1611c0, 0 after an update alone: the null page, which checks leave out) on a buffer of the test area, the skinning
+    // ring's start (0x15f5f8) past it as the game lays them out; the camera about the meshes, the scroll varied
+    if (g_oracle_level == 1) {
+        const std::vector<uint32_t> ms = mobys_of(-1);
+        l1check136("nov_class1848_draw_pk", 0x0030f0e0, 60, Ret::None, [level, ms, pick] {
+            level();
+            const uint32_t m = pick(ms);
+            w32(OV(0x001611c0), TEST_AREA + 0x10000 + u(ri(0, 0x40)) * 0x10);
+            w32(OV(0x0015f5f8), 0x01f80000u);
+            if (coin()) wfrand(L1_ADDR(0x00162110u), 2, -1.0f, 1.0f);
+            if (coin()) {  // (the camera at one of the meshes' vertices, off it)
+                const uint32_t k = u(ri(0, 4));
+                const int32_t n = ee_read<int32_t>(L1_ADDR(0x00202ea0u) + 4 * k);
+                const uint32_t pos = ee_read<uint32_t>(L1_ADDR(0x00208108u) + 4 * k);
+                if (n > 0) {
+                    const uint32_t v = pos + u(ri(0, n - 1)) * 0xc;
+                    wf(L1_ADDR(0x00167240u), ee_read<float>(v) + rf(-20, 20));
+                    wf(L1_ADDR(0x00167244u), ee_read<float>(v + 4) + rf(-20, 20));
+                    wf(L1_ADDR(0x00167248u), ee_read<float>(v + 8) + rf(-5, 10));
+                }
+            }
+            seed_rand();
+            return Args{{m}, {}};
+        }, [](A a) { nov_class1848_draw_l1(a.i[0]); return uint64_t{0}; });
+    }
+
     // ---- the two empty class updates (jr ra): 531 (the ship *(0x13e030)) and 1816 (none placed), on any of the level's mobys
     for (const Cb& cb : {Cb{"nov_empty_update_531", 0x002ece90, empty_update_2ece90_l1, 531}, Cb{"nov_empty_update_1816", 0x0030d200, empty_update_30d200_l1, 1816}}) {
         if (g_oracle_level != 1) {

@@ -8,6 +8,7 @@
 #include <game/ovl/checkpoint.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/ovl_common.h>
 #include <game/ovl/shared_class156.h>
 #include <game/ovl/shared_class280.h>
 #include <game/ovl/shared_class437.h>
@@ -25,6 +26,8 @@
 #include <game/ovl/walker.h>
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/kernel/disc.h>
+#include <game/lib/libcdvd.h>
+#include <ctime>
 
 #include <cmath>
 #include <cstring>
@@ -804,6 +807,445 @@ void batch_103() {
         };
         sharedcheck("vendor_update", 0x002a57a8, vendor_update_tr, 20);
         sharedcheck("infobot_update", 0x002d5de8, infobot_update_tr, 20);
+        g_extra_noop_hooks.clear();
+    }
+
+    // ---- stage 4 task P1.1: Novalis's own classes written by hand (novalis_rocks / _emitter / _infobot / _current / _pipes /
+    // _shells / _water_mobys / _scenes / _reflections.cpp), on states built to reach their branches (the generic checks
+    // above leave most of them out): the timers at their edges, the story flags both ways, hits of the masks each class
+    // takes, the hero where each class looks for him, the scene record's scenes and frames, the frame scale at its 50 Hz
+    // value in a quarter of the cases; the classes the level spawns at run time (the steam leak, the drip, the Birdbot's
+    // shot, the burning shell) spawned here by the game's moby_spawn. Each case's subject: one of the level's mobys of the
+    // class (or the one spawned). B103_P11=<name> runs one of them.
+    if (g_oracle_level == 1) {
+        level();
+        g_extra_noop_hooks = {0x00122298, 0x00118a80, 0x00122fe0, 0x001232c8, OVF(0x00299460), OVF(0x0023e008), OVF(0x0024d430),
+                              0x002efa88, 0x002efaf8, 0x002efb48, 0x002efb98, 0x002efbc8, 0x003040d8, 0x002f1c78, 0x002f1cc8};
+        auto pick = [](std::initializer_list<int32_t> v) { return *(v.begin() + ri(0, static_cast<int32_t>(v.size()) - 1)); };
+        auto timer16 = [pick](uint32_t a) { w16(a, u(pick({0, 1, 2, 3, 30, ri(0, 200)}))); };
+        auto rates = [] {  // (the frame scale at 50 Hz in a quarter of the cases; the frame counter, the random seed)
+            if (ri(0, 3) == 0) {
+                wf(0x0015ed68, 1.2f);
+                wf(0x0015ed6c, 0.02f);
+                wf(0x0015ed70, 0.0004f);
+            }
+            w32(L1_ADDR(0x0015f5cc), R() & 0xffff);
+            seed_rand();
+        };
+        // the moby's story flag (its index +0xb2): the level's byte (0x1bb6b0 + index + 0x454) and the bit of the level's words
+        // 0x14c190, each set in a third of the cases
+        auto story_flag = [](uint32_t m) {
+            const int32_t idx = ee_read<int16_t>(m + 0xb2);
+            w8(L1_ADDR(0x001bb6b0) + u(idx) + 0x454, ri(0, 2) == 0 ? 1u : 0u);
+            const uint32_t w = 0x0014c190 + 0x100 + (u(idx >> 5) << 2), bit = 1u << (ee_read<uint16_t>(m + 0xb2) & 0x1f);
+            w32(w, ri(0, 2) == 0 ? (ee_read<uint32_t>(w) | bit) : (ee_read<uint32_t>(w) & ~bit));
+        };
+        // a hit on the moby (its slot in the hit table 0x178100): the mask `kinds` (with random bits, or without it), a damage,
+        // the hitter `from` (+0x20)
+        auto hit_with = [](uint32_t m, uint32_t kinds, uint32_t from) {
+            if (ri(0, 4) == 0) { w8(m + 0xa4, 0xff); return; }
+            const uint32_t idx = u(ri(0, 15)), e = OV(0x00178100) + (idx << 6);
+            w8(m + 0xa4, idx);
+            w32(e + 0x34, m);
+            w32(e + 0x24, ri(0, 3) == 0 ? (R() & ~kinds) : (kinds | (R() & 0xff)));
+            { static const float dm[] = {-1.0f, 0.0f, 0.5f, 5.0f}; wf(e + 0x2c, dm[ri(0, 3)]); }
+            wfrand(e, 4, -1, 1);
+            w32(e + 0x28, u(ri(0, 20)));
+            w32(e + 0x20, from);
+        };
+        auto box_at = [](int32_t i) { return ee_read<uint32_t>(OV(0x001600ec)) + u(i) * 0x80; };
+        auto box_count = [] { return ee_read<int32_t>(OV(0x001600f0)); };
+        // segment_collide's records 0x173e90 .. 0x173ebc (VU0 leftovers of its port, a known difference nothing reads: COMMON's list,
+        // batch 514's) left out of the two checks that test a move against the world (classes 722 and 787)
+        const std::vector<uint32_t> base_ignored = g_ignored_words;
+        auto segment_words = [base_ignored](bool on) {
+            g_ignored_words = base_ignored;
+            if (on)
+                for (uint32_t a = OV(0x00173e90); a <= OV(0x00173ebc); a += 4) g_ignored_words.push_back(a);
+        };
+        auto mobys_of_cls = [](int cls) {
+            std::vector<uint32_t> v;
+            for (uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)); m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100)
+                if (ee_read<uint8_t>(m + 0x20) < 0xfe && (cls < 0 || ee_read<int16_t>(m + 0xa6) == cls)) v.push_back(m);
+            return v;
+        };
+        // (the level's class-686 shells, Birdbots (459) and live mobys, taken from the snapshot)
+        const std::vector<uint32_t> shells = mobys_of_cls(0x2ae), birds = mobys_of_cls(459), any = mobys_of_cls(-1);
+        // the mobys with an animation (+0x68) and the joint chains 1 .. 6 (their class's table +0x1c: a count, then the joints'
+        // bytes, each below 0x7f), as a scene's actors are: class 1546 asks for those chains' points
+        std::vector<uint32_t> animated;
+        for (const uint32_t o : any) {
+            if (ee_read<uint32_t>(o + 0x68) == 0 || ee_read<uint32_t>(o + 0x24) == 0) continue;
+            const uint32_t tab = ee_read<uint32_t>(ee_read<uint32_t>(o + 0x24) + 0x1c);
+            bool ok = tab >= 0x00100000u && tab < 0x01e00000u;
+            for (uint32_t id = 1; ok && id < 7; ++id) {
+                const uint32_t ch = ee_read<uint32_t>(tab + id * 4 + 4);
+                ok = ch >= 0x00100000u && ch < 0x01e00000u && ee_read<uint16_t>(ch) > 0 && ee_read<uint16_t>(ch) <= 0x40;
+                for (uint32_t j = 0; ok && j < ee_read<uint16_t>(ch); ++j) ok = ee_read<uint8_t>(ch + 4 + j) < 0x7f;
+            }
+            if (ok) animated.push_back(o);
+        }
+        if (animated.empty()) animated = any;
+        const std::vector<uint32_t> ships = mobys_of_cls(0x2ee);  // (the level's ship: the moby the scenes' smoke comes from)
+        // a check of the update `fn` on the level's mobys of it (or, `spawn` set, one moby of that class spawned near the hero
+        // each case), `prep` building the case
+        auto pcheck = [level, mobys_with](const char* name, uint32_t fn, void (*port)(uint32_t), int n, uint32_t spawn,
+                                          std::function<void(uint32_t)> prep) {
+            if (const char* one = std::getenv("B103_P11"); one != nullptr && std::strcmp(one, name) != 0) return;
+            level();
+            if (spawn == 0 && mobys_with(fn).empty()) { std::printf("%-26s L1:0x%08x  no moby on this level\n", name, fn); return; }
+            l1check(name, fn, n, Ret::None, [level, mobys_with, fn, spawn, prep] {
+                level();
+                uint32_t m = 0;
+                if (spawn != 0) {
+                    m = moby_spawn(spawn);
+                    Vec4 q = ee_ref<Vec4>(0x0013f3d0);
+                    q.x += rf(-6, 6); q.y += rf(-6, 6); q.z += rf(0, 3);
+                    ee_ref<Vec4>(m + 0x10) = q;
+                    moby_update_transform(m);
+                } else {
+                    const std::vector<uint32_t> ms = mobys_with(fn);
+                    m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+                }
+                prep(m);
+                return Args{{m}, {}};
+            }, [port](A a) { port(a.i[0]); return uint64_t{0}; });
+        };
+        // the rocks
+        pcheck("p11_class700", 0x002f8c58, nov_class700_update_l1, 120, 0, [pick, timer16, rates](uint32_t m) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w32(pv, u(pick({0, 1, 2, 3, 40})));
+            timer16(pv + 4);
+            timer16(pv + 6);
+            if (coin()) wf(pv + 0xc, rf(-2, 4));
+            rates();
+        });
+        for (int st = 0; st < 6; ++st)
+            pcheck("p11_class701", 0x002f9080, nov_class701_update_l1, 40, 0, [st, pick, timer16, rates, story_flag, box_at, box_count](uint32_t m) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                if (st != 0) { w8(m + 0x20, 0); nov_class701_update_l1(m); }
+                w8(m + 0x20, u(st));
+                story_flag(m);
+                if (ri(0, 4) == 0) w32(pv + 0x80, 0xffffffffu);
+                else if (ee_read<int32_t>(pv + 0x80) < 0 || ee_read<int32_t>(pv + 0x80) >= box_count()) w32(pv + 0x80, u(ri(0, box_count() - 1)));
+                if (ee_read<int32_t>(pv + 0x80) >= 0 && coin()) {  // the hero at the box: within 10 or not, above its centre or not
+                    const uint32_t b = box_at(ee_read<int32_t>(pv + 0x80));
+                    Vec4 q = ee_ref<Vec4>(b + 0x30);
+                    const float r = pick({0, 1, 2}) == 0 ? rf(0, 9.0f) : (coin() ? rf(9.0f, 9.99f) : rf(10.01f, 14)), a = rf(-3.1f, 3.1f);  // (about the 10)
+                    q.x += r * std::cos(a); q.y += r * std::sin(a); q.z += coin() ? rf(0, 3) : rf(-3, -0.1f);
+                    ee_ref<Vec4>(0x0013f3d0) = q;
+                }
+                w32(0x001413dc, u(pick({0, 1, 9, 2, 5})));
+                timer16(pv + 0x84);
+                timer16(pv + 0x86);
+                timer16(pv + 0x8a);
+                w16(pv + 0x88, u(ri(0, 90)));
+                w32(pv + 0x8c, u(pick({-1, 0, 3})));
+                if (coin()) wf(pv + 0x78, ee_read<float>(m + 0x18) + rf(-1, 30));
+                if (coin()) wfrand(pv + 0x60, 3, -0.3f, 0.3f);
+                rates();
+            });
+        pcheck("p11_class704", 0x002f9810, nov_class704_update_l1, 30, 0, [hit_with, rates](uint32_t m) {
+            hit_with(m, 0x10000u, 0);
+            if (coin()) wf(m + 0x48, rf(-3.1f, 3.1f));
+            rates();
+        });
+        {
+            pcheck("p11_class709", 0x002f9d80, nov_class709_update_l1, 40, 0, [hit_with, rates, story_flag, shells](uint32_t m) {
+                story_flag(m);
+                uint32_t from = shells.empty() || coin() ? M : shells[static_cast<size_t>(ri(0, static_cast<int>(shells.size()) - 1))];
+                if (from == M) w16(M + 0xa6, coin() ? 0x2aeu : 0x2adu);
+                hit_with(m, coin() ? 0x830000u : (coin() ? 0x800000u : 0x10000u), from);
+                rates();
+            });
+        }
+        pcheck("p11_class729", 0x002fa800, nov_class729_update_l1, 30, 0, [hit_with, rates, story_flag](uint32_t m) {
+            story_flag(m);
+            hit_with(m, 0x800000u, 0);
+            rates();
+        });
+        // the emitter (class 27): its flags, counts and countdown, on screen or not
+        pcheck("p11_class27", 0x002bd100, nov_class27_update_l1, 120, 0, [pick, rates](uint32_t m) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w32(pv + 0x70, (ee_read<uint32_t>(pv + 0x70) & ~0x7000u) | (u(ri(0, 7)) << 12));
+            w8(pv + 0xc4, u(pick({0, 1, 2, 4})));
+            w8(pv + 0xc5, u(ri(0, 5)));
+            w32(pv + 0xc8, u(pick({-1, 0, 1, 3})));
+            if (coin()) wfrand(pv + 0x80, 0x1c / 4, -3, 3);
+            if (coin()) wfrand(pv + 0xcc, 3, 0, 2);
+            if (coin()) wf(pv + 0xd0, -ee_read<float>(pv + 0xd0));
+            // (the on-screen test is Novalis's only (the level number 0x15ed84 1): the oracle's view puts nothing on screen, so
+            // in half the cases the level number is another and the test is not made)
+            if (coin()) w32(0x0015ed84, 0);
+            if (coin()) wfrand(m + 0x40, 3, -3.1f, 3.1f);
+            rates();
+        });
+        // the Infobot (classes 730 / 731): its states, the scene mode, the hero in its box, its three mobys gone or not, the
+        // scene list's class-811 mobys (states 5 .. 7 only where they do not start a scene or a movie: the original runs the
+        // kernel's path for real)
+        {
+            const std::vector<uint32_t> hooks = g_extra_noop_hooks;
+            const auto saved_hooks = g_extra_hooks;
+            const std::time_t saved_clock = g_host_clock_fixed;
+            for (int st = 0; st < 11; ++st) {
+                // (state 8 ends in a level change: the original's level_change_request run for real as the port's is, not
+                // left out, else the words it writes differ)
+                // (its console clock and disc reads the host's on both sides, a fixed clock: batch 514's)
+                g_extra_noop_hooks = hooks;
+                g_extra_hooks = saved_hooks;
+                g_host_clock_fixed = saved_clock;
+                if (st == 8) {
+                    g_extra_noop_hooks.erase(std::remove(g_extra_noop_hooks.begin(), g_extra_noop_hooks.end(), OVF(0x0024d430)), g_extra_noop_hooks.end());
+                    g_host_clock_fixed = 1759658400;
+                    g_extra_hooks = {{0x00121780, [](EeCpu& c) { c.set32(2, cd_read_clock(c.r32(4))); }},
+                                     {0x0012d6d8, [](EeCpu& c) { clock_to_local(c.r32(4)); }},
+                                     {0x00121450, [](EeCpu& c) { c.set32(2, cd_read(c.r32(4), c.r32(5), c.r32(6), c.r32(7))); }}};
+                }
+                pcheck("p11_class730", 0x002fad68, nov_class730_update_l1, 30, 0, [st, pick, timer16, rates, box_at, box_count, any](uint32_t m) {
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    if (st != 0) { w8(m + 0x20, 0); nov_class730_update_l1(m); }
+                    w8(m + 0x20, u(st));
+                    const uint32_t lv = 0x0014c050 + ee_read<uint8_t>(m + 0xb0) + 0x10;
+                    w8(lv, ri(0, 3) == 0 ? 0xffu : 0u);
+                    int32_t mode = pick({0, 2, 2, 6});
+                    if (st == 6 || st == 7) mode = 2;  // (else a movie / a scene starts)
+                    w32(L1_ADDR(0x0015f5c4), u(mode));
+                    w8(0x0013d397, mode == 0 || coin() ? 1u : 0u);
+                    if (st == 1 && mode == 0) w8(0x0013d397, 1);
+                    if (ee_read<int32_t>(pv + 0x10) >= 0 && ee_read<int32_t>(pv + 0x10) < box_count() && coin())
+                        ee_ref<Vec4>(0x0013f3d0) = ee_ref<Vec4>(box_at(ee_read<int32_t>(pv + 0x10)) + 0x30);
+                    if (ri(0, 3) == 0) w32(pv + 4, 0xffffffffu);
+                    for (uint32_t k = 0; k < 3; ++k) {
+                        const int32_t idx = ee_read<int32_t>(pv + 0x14 + 4 * k);
+                        if (idx >= 0) w8(ee_read<uint32_t>(L1_ADDR(0x0015ffd8)) + (u(idx) << 8) + 0x20, u(pick({0xfd, 0xfe, 1, 0xfd})));
+                    }
+                    w32(0x001413dc, u(pick({0, 7, 0x14, 3})));
+                    w16(pv + 8, u(st == 5 ? pick({2, 3, 30}) : pick({0, 1, 2, 30})));  // (state 5 with its timer not running out: else a scene starts)
+                    if (coin()) wf(pv + 0xc, ee_read<float>(m + 0x18) + rf(-3, 3));
+                    w8(m + 0x53, u(pick({0, 1, 2})));
+                    w8(m + 0x52, u(pick({0, 1, 2})));
+                    w8(m + 0x70, R() & 0xff);
+                    if (coin()) w16(m + 0xa6, coin() ? 0x2dau : 0x2dbu);
+                    // the scene list (0x16cce0: +0x44 its count, +0x178 its mobys) with class-811 mobys, the flag 0x15edb0
+                    w8(0x0015edb0, coin() ? 1u : 0u);
+                    const int32_t n = ri(0, 3);
+                    w16(L1_ADDR(0x0016cd24), u(n));
+                    for (int32_t k = 0; k < n; ++k) {
+                        const uint32_t o = any[static_cast<size_t>(ri(0, static_cast<int>(any.size()) - 1))];
+                        if (coin()) w16(o + 0xa6, 0x32b);
+                        w32(L1_ADDR(0x0016ce58) + u(k) * 4, o);
+                    }
+                    w8(L1_ADDR(0x0017c8c1), coin() ? 0u : 1u);
+                    rates();
+                });
+            }
+            g_extra_noop_hooks = hooks;
+            g_extra_hooks = saved_hooks;
+            g_host_clock_fixed = saved_clock;
+        }
+        // the current (class 613): the hero swimming / diving / on the surface near its path or not
+        pcheck("p11_class613", 0x002f3120, nov_class613_update_l1, 160, 0, [pick, rates](uint32_t m) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78), H = 0x0013f350;
+            if (ri(0, 7) == 0) w32(pv + 0x20, 0xffffffffu);
+            const int32_t pi = ee_read<int32_t>(pv + 0x20);
+            if (pi >= 0) {
+                const uint32_t path = ee_read<uint32_t>(OV(0x001b04b0) + u(pi) * 4);
+                const int32_t np = ee_read<int32_t>(path);
+                if (np > 0) {
+                    Vec4 q = ee_ref<Vec4>(path + 0x10 + u(ri(0, np - 1)) * 0x10);
+                    const float r = coin() ? rf(0, ee_read<float>(pv + 0x28)) : rf(0, 2 * ee_read<float>(pv + 0x28) + 2), a = rf(-3.1f, 3.1f);
+                    q.x += r * std::cos(a); q.y += r * std::sin(a); q.z += rf(-2, 1);
+                    ee_ref<Vec4>(H + 0x80) = q;
+                }
+            }
+            w16(pv + 0x2e, coin() ? 0u : 1u);
+            w16(pv + 0x2c, coin() ? 0u : 1u);
+            if (coin()) wfrand(pv, 3, -0.6f, 0.6f);
+            w32(H + 0x208c, u(pick({0x11, 0x12, 0x12, 4, 5, 0})));
+            w32(H + 0x2094, u(pick({0x11, 0x12, 0, 3})));
+            w32(H + 0x2084, u(pick({0x12, 0, 0})));
+            w32(H + 0x2090, u(pick({0x12, 0x12, 0})));
+            w32(H + 0x20a0, u(pick({0x12, 0})));
+            wf(H + 0x22b8, coin() ? 1000.0f : rf(0, 6));
+            w32(H + 0x198, u(pick({0, 1, 2, 5})));
+            wf(H + 0x194, rf(0, 3));
+            w16(H + 0x1d8, u(ri(0, 60)));
+            rates();
+        });
+        // the steam pipe (class 778) hit; the leak (779) spawned, its hiss playing or not
+        pcheck("p11_class778", 0x002ff860, nov_class778_update_l1, 30, 0, [hit_with, rates](uint32_t m) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            if (coin()) { w32(pv, u(ri(0, 3))); w32(pv + 4, ee_read<uint32_t>(pv) + u(ri(0, 4))); }
+            hit_with(m, 0x10000u, 0);
+            rates();
+        });
+        pcheck("p11_class779", 0x002ffb28, nov_class779_update_l1, 60, 0x30b, [rates](uint32_t m) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w32(pv, coin() ? 0xffffffffu : u(ri(0, 20)));
+            wfrand(m + 0x40, 3, -3.1f, 3.1f);
+            moby_update_transform(m);
+            rates();
+        });
+        // the shells: the Birdbot's shot (class 722) and the burning shell (class 1510), spawned in flight
+        {
+            segment_words(true);
+            pcheck("p11_class722", 0x002fa4c0, nov_class722_update_l1, 120, 0x2d2, [pick, rates, birds](uint32_t m) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                wfrand(pv, 3, -1.5f, 1.5f);
+                w32(pv + 0x10, birds.empty() || coin() ? 0u : birds[static_cast<size_t>(ri(0, static_cast<int>(birds.size()) - 1))]);
+                w32(pv + 0x14, u(pick({0, 1, 2, 60})));
+                if (ri(0, 5) == 0) wf(m + 0x10 + 4 * u(ri(0, 2)), rf(-2, 0.4f));  // (out of the level's octant)
+                if (ri(0, 5) == 0) {  // (the camera far from it)
+                    Vec4 c = ee_ref<Vec4>(m + 0x10);
+                    c.x += rf(60, 70);
+                    ee_ref<Vec4>(L1_ADDR(0x00167240)) = c;
+                }
+                if (coin()) {  // (at a moby)
+                    const uint32_t o = ee_read<uint32_t>(L1_ADDR(0x0015ffd8)) + u(ri(0, 40)) * 0x100;
+                    if (ee_read<uint8_t>(o + 0x20) < 0xfe) ee_ref<Vec4>(m + 0x10) = ee_ref<Vec4>(o + 0x10);
+                }
+                rates();
+            });
+            pcheck("p11_class1510", 0x0030ba18, nov_class1510_update_l1, 120, 0x5e6, [pick, rates, birds](uint32_t m) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                wfrand(pv, 3, -1.5f, 1.5f);
+                wfrand(pv + 0x10, 3, -0.3f, 0.3f);
+                w32(pv + 0x20, u(pick({0, 1, 2, 60})));
+                w32(pv + 0x24, birds.empty() || coin() ? 0u : birds[0]);
+                if (ri(0, 5) == 0) wf(m + 0x10 + 4 * u(ri(0, 2)), coin() ? rf(-2, 2.5f) : rf(1020, 1030));
+                if (coin()) {  // (by the hero: within the radius of the world's collision there)
+                    Vec4 q = ee_ref<Vec4>(0x0013f3d0);
+                    q.x += rf(-1, 1); q.y += rf(-1, 1); q.z += rf(-1, 0.5f);
+                    ee_ref<Vec4>(m + 0x10) = q;
+                }
+                rates();
+            });
+        }
+        // the water (class 751): set up, or a frame with the camera in one of its zones (or none); a drip due or not
+        pcheck("p11_class751", 0x002fd0e8, nov_class751_update_l1, 80, 0, [pick, rates, box_at, box_count](uint32_t m) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w8(m + 0x20, u(pick({0, 1, 1, 1, 1, 2})));
+            const int32_t z = ri(0, 7);
+            if (z < 7) {
+                const int32_t b = ee_read<int32_t>(pv + u(z) * 4);
+                if (b >= 0 && b < box_count()) ee_ref<Vec4>(L1_ADDR(0x00167240)) = ee_ref<Vec4>(box_at(b) + 0x30);
+            }
+            w32(L1_ADDR(0x00161c84), u(pick({0, 1, 2, 300})));
+            if (z < 7 && coin()) w32(L1_ADDR(0x001fa628) + u(z) * 4, u(pick({1, 2})));  // (the zone's ripples' chance: one in 1 or 2)
+            rates();
+        });
+        // the strips (class 761): set up the first time or not
+        pcheck("p11_class761", 0x002feb58, nov_class761_update_l1, 30, 0, [rates](uint32_t) {
+            w32(L1_ADDR(0x00161ce0), coin() ? 0u : 1u);
+            rates();
+        });
+        // the drip (class 787) spawned under the water's drip points (0x1fa650), falling fast or slowly
+        segment_words(true);
+        pcheck("p11_class787", 0x002ffdc0, nov_class787_update_l1, 120, 0x313, [pick, rates](uint32_t m) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            if (coin()) ee_ref<Vec4>(m + 0x10) = ee_ref<Vec4>(L1_ADDR(0x001fa650) + u(ri(0, 4)) * 0x10);
+            ee_ref<Vec4>(pv) = Vec4{rf(-0.1f, 0.1f), rf(-0.1f, 0.1f), coin() ? -rf(0, 1) : -rf(1, 40), 0};
+            wf(pv + 0x10, rf(0, 0.5f));
+            w32(pv + 0x14, u(pick({1, 2, 60})));
+            w32(pv + 0x18, coin() ? 0u : 1u);
+            wf(pv + 0x1c, rf(0, 0.06f));
+            rates();
+        });
+        segment_words(false);
+        // the scenes' effects (class 1546): each scene at the frames its effects start and stop. Scene 1's sparks (particle 0x2e)
+        // keep the caller's stack address it hands spawn_particle_2e (its third argument, the particle's +0x38): the
+        // interpreter's stack and the port's EE frame are at different places, so that word of the particles is left out here
+        // (the 0x800 records of the table *0x16016c). Scene 5's explosions (explosion_effect, weapon_fx.cpp) spawn sparks whose
+        // velocity's w lane (the particle's +0x2c) the original takes from a stale word of its own stack and the port's host
+        // vector leaves 0: an existing port's known kind of difference, not this class's; that word is left out here too.
+        g_ignored_words = base_ignored;
+        for (uint32_t i = 0; i < 0x800; ++i) {
+            g_ignored_words.push_back(ee_read<uint32_t>(OV(0x0016016c)) + i * 0x40 + 0x38);
+            g_ignored_words.push_back(ee_read<uint32_t>(OV(0x0016016c)) + i * 0x40 + 0x2c);
+        }
+        // the scenes' effects (class 1546): each scene at the frames its effects start and stop
+        {
+            pcheck("p11_class1546", 0x0030c190, nov_class1546_update_l1, 240, 0, [pick, rates, actors = animated, any, ships](uint32_t m) {
+                w8(m + 0x20, u(ri(0, 7) == 0 ? pick({0, 2}) : 1));
+                w32(L1_ADDR(0x0015f5c4), ri(0, 7) == 0 ? 0u : 2u);
+                const uint32_t S = L1_ADDR(0x0016cce0);
+                const int32_t sc = pick({0, 1, 1, 2, 3, 4, 4, 5, 5});
+                w32(S + 0x30, u(sc));
+                int32_t f = ri(0, 1300);  // (the frames where the scene's effects start and stop, each side)
+                if (ri(0, 4) != 0) {
+                    if (sc == 1) f = pick({471, 472, 472, 473, 500, 537, 538});
+                    else if (sc == 2) f = pick({147, 148, 149});
+                    else if (sc == 4) f = pick({849, 850, 1000, 1099, 1100, 1160, 1161});
+                    else if (sc == 5) f = pick({0, 1, 2, 117, 118, 118, 119, 120});
+                }
+                w32(S + 0x34, u(f));
+                wfrand(L1_ADDR(0x00162070), 3, -50, 500);
+                rates();
+                // the scene's mobys: the level's, picked again while the port's run on them meets a moby without the joints
+                // the scene's own mobys have (a pointer out of RAM: a state the game is never in)
+                static std::vector<uint8_t> pre, cand;
+                uint8_t* ram = ee_get_ram_base();
+                pre.assign(ram, ram + 0x02000000);
+                for (int t = 0; t < 30; ++t) {
+                    std::memcpy(ram, pre.data(), pre.size());
+                    // (the fourth only smokes: any moby; the others' chains are asked for)
+                    for (uint32_t k = 0; k < 5; ++k) {
+                        const std::vector<uint32_t>& from = k == 3 ? any : actors;
+                        w32(S + 0x178 + 4 * k, ri(0, 6) == 0 ? 0u : from[static_cast<size_t>(ri(0, static_cast<int>(from.size()) - 1))]);
+                    }
+                    // the ship (class 0x2ee, the only class scene_moby_smoke smokes) as the third or the fourth moby in half the
+                    // cases, so that which of the two smokes is seen (not the third in scene 5, whose chains 1, 2 and 5 are asked for)
+                    if (!ships.empty() && coin()) {
+                        const int32_t sc_now = ee_read<int32_t>(S + 0x30);
+                        w32(S + 0x178 + 4 * u(sc_now == 5 || coin() ? 3 : 2), ships[0]);
+                    }
+                    if (ee_read<uint32_t>(S + 0x188) == 0 && coin()) w32(S + 0x188, actors[0]);
+                    if (ee_read<uint32_t>(S + 0x188) != 0 && coin()) w16(ee_read<uint32_t>(S + 0x188) + 0xa6, 0x213);
+                    cand.assign(ram, ram + 0x02000000);
+                    bool ok = true;
+                    const uint32_t sp0 = ee_stack_ptr();
+                    try { nov_class1546_update_l1(m); } catch (const std::exception&) { ok = false; }
+                    ee_stack_ptr() = sp0;
+                    std::memcpy(ram, cand.data(), cand.size());
+                    if (ok) break;
+                }
+            });
+        }
+        // the burst of class 722 (novalis_shells.cpp) direct: its only caller passes no flash, here the flash (0x1e3440) sized
+        // or at its 13, a moby or none, its sound or none
+        if (const char* one = std::getenv("B103_P11"); one == nullptr || std::strcmp(one, "p11_2fa1b0") == 0)
+            l1check("p11_2fa1b0", 0x002fa1b0, 40, Ret::None, [level, any, pick] {
+                level();
+                const uint32_t m = coin() ? 0u : any[static_cast<size_t>(ri(0, static_cast<int>(any.size()) - 1))];
+                if (m != 0 && coin()) w8(m + 0x20, u(pick({0xfd, 0xfe, 1})));
+                ee_ref<Vec4>(OUT) = ee_ref<Vec4>(0x0013f3d0);
+                wfrand(OUT, 3, 0, 200);
+                seed_rand();
+                static const float fl[] = {0.0f, -1.0f, 3.0f, 0.5f};
+                return Args{{m, OUT, u(pick({-1, 0, 2}))}, {rf(0.2f, 2.0f), fl[ri(0, 3)]}};
+            }, [](A a) { nov_2fa1b0_l1(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]), a.f[0], a.f[1]); return uint64_t{0}; });
+        // Novalis's build of uid5_set_pvar_90 (novalis_scenes.cpp; shared_class280.cpp and shared_gold_bolt.cpp call it on
+        // Novalis): the current camera (0x167280) the uid-5 moby or not
+        if (const char* one = std::getenv("B103_P11"); one == nullptr || std::strcmp(one, "p11_316e28") == 0)
+            l1check("p11_316e28", 0x00316e28, 40, Ret::None, [level] {
+                level();
+                wfrand(OUT, 4, -100, 100);
+                const uint32_t cam = ee_read<uint32_t>(L1_ADDR(0x00167280));
+                if (cam != 0 && coin()) w16(cam + 0x86, coin() ? 5u : 4u);
+                return Args{{OUT}, {}};
+            }, [](A a) { nov_316e28_l1(a.i[0]); return uint64_t{0}; });
+        g_ignored_words = base_ignored;
+        // class 1848: the scroll near its wrap
+        pcheck("p11_class1848", 0x0030f208, nov_class1848_update_l1, 40, 0, [pick, rates](uint32_t m) {
+            w8(m + 0x20, u(pick({0, 1, 1, 2})));
+            for (uint32_t k = 0; k < 2; ++k) {  // (each at a wrap's edge, or anywhere)
+                static const float edge[] = {0.99f, 1.05f, -1.05f, -0.99f, 0.0f};
+                const int e = ri(0, 5);
+                wf(L1_ADDR(0x00162110) + 4 * k, e < 5 ? edge[e] : rf(-1.1f, 1.1f));
+            }
+            wf(0x0015ed7c, rf(0, 3));
+            rates();
+        });
         g_extra_noop_hooks.clear();
     }
 

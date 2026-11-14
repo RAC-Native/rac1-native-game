@@ -264,6 +264,15 @@ add_library(rac1_game STATIC
     ovl/shared_class280.cpp
     ovl/shared_class631.cpp
     ovl/novalis_amoeboid.cpp
+    ovl/novalis_rocks.cpp
+    ovl/novalis_emitter.cpp
+    ovl/novalis_infobot.cpp
+    ovl/novalis_current.cpp
+    ovl/novalis_pipes.cpp
+    ovl/novalis_shells.cpp
+    ovl/novalis_water_mobys.cpp
+    ovl/novalis_scenes.cpp
+    ovl/novalis_reflections.cpp
     ovl/vendor_draw.cpp
     ovl/vendor_frame.cpp
     ovl/vendor_screens.cpp

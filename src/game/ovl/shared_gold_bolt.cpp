@@ -81,7 +81,7 @@ void hero_mode_exit_here() {
 }
 // the camera's angles set (Novalis's own build)
 void uid5_set_pvar_90_here(uint32_t src) {
-    if (ovl_reloc_level() == NOVALIS) nov_316e28_l1(src, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
+    if (ovl_reloc_level() == NOVALIS) nov_316e28_l1(src);
     else uid5_set_pvar_90(src);
 }
 // the bolt marked taken (the level's four bytes at 0x14bec0)

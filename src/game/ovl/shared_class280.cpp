@@ -5,7 +5,7 @@
 // time step 0x15ed64, the cutscene flag 0x15edb5), the engine's (OV: the camera 0x166dc0.. and its current one 0x166e00,
 // the camera records 0x1600ec, the moby list 0x15ffe4, the moby flags 0x1bb230 / 0x1ba4d0, the checkpoint list 0x1ba620)
 // or the level's own: one float, the spring of the hero's distance to the pump. Novalis's build of uid5_set_pvar_90
-// (0x316e28) is its own (still generated). Header shared_class280.h.
+// (0x316e28) is its own (novalis_scenes.cpp). Header shared_class280.h.
 //
 // The pvars: the work done +0 (0..1), the frames since it was last worked +0x14, the turn accumulated +0x18, the hero's
 // speed round it +0x1c, the camera record +0x20, the hero's fall +0x24, the camera's angles +0x28 / +0x2c, the turns for
@@ -43,7 +43,7 @@ uint32_t spring_word() {
 // the scripted camera's pvar +0x90 (its rotation) from `src` (Novalis's own build)
 void camera_rot_set(uint32_t src) {
     if (on_level(NOVALIS)) {
-        nov_316e28_l1(src, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
+        nov_316e28_l1(src);
         return;
     }
     uid5_set_pvar_90(src);

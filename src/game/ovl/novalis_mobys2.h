@@ -79,35 +79,53 @@ int32_t moby_group_count_l1(int32_t group, int32_t state);  // L1:0x0026e008 L6:
 uint32_t bee_spawn_l1(uint32_t m);                          // L1:0x00302328
 void beehive_update_l1(uint32_t m);                         // L1:0x003021b8  class 815
 
-// ---- novalis_classes_tr (transliterated: the translator)
-void nov_class700_update_l1(uint32_t a0);  // L1:0x002f8c58
-TrRet nov_27e900_l1(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L1:0x0027e900
-void nov_class27_update_l1(uint32_t a0);  // L1:0x002bd100
-TrRet nov_2f9000_l1(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);  // L1:0x002f9000
-void nov_class701_update_l1(uint32_t a0);  // L1:0x002f9080
-void nov_class704_update_l1(uint32_t a0);  // L1:0x002f9810
-void nov_class761_update_l1(uint32_t a0);  // L1:0x002feb58
-void nov_class729_update_l1(uint32_t a0);  // L1:0x002fa800
-TrRet nov_2fac80_l1(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);  // L1:0x002fac80
-void nov_class730_update_l1(uint32_t a0);  // L1:0x002fad68
-void nov_class613_update_l1(uint32_t a0);  // L1:0x002f3120
-void nov_class709_update_l1(uint32_t a0);  // L1:0x002f9d80
-void nov_class1848_update_l1(uint32_t a0);  // L1:0x0030f208
-TrRet nov_2ffa90_l1(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);  // L1:0x002ffa90
-void nov_class778_update_l1(uint32_t a0);  // L1:0x002ff860
-TrRet nov_2fa1b0_l1(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);  // L1:0x002fa1b0
-void nov_class722_update_l1(uint32_t a0);  // L1:0x002fa4c0
-void nov_class779_update_l1(uint32_t a0);  // L1:0x002ffb28
-void nov_class787_update_l1(uint32_t a0);  // L1:0x002ffdc0
-void nov_class1546_update_l1(uint32_t a0);  // L1:0x0030c190
-TrRet nov_27f2b0_l1(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);  // L1:0x0027f2b0
-void nov_class1510_update_l1(uint32_t a0);  // L1:0x0030ba18
-TrRet nov_287b00_l1(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);  // L1:0x00287b00
-TrRet nov_287c80_l1(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);  // L1:0x00287c80
-TrRet nov_2b8288_l1(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);  // L1:0x002b8288
-TrRet nov_2ffcd0_l1(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);  // L1:0x002ffcd0
-void nov_class751_update_l1(uint32_t a0);  // L1:0x002fd0e8
-TrRet nov_316e28_l1(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);  // L1:0x00316e28
+// ---- the rocks (novalis_rocks.cpp)
+void nov_class700_update_l1(uint32_t m);   // L1:0x002f8c58  class 700, falling rocks and dust
+void nov_2f9000_l1(uint32_t m);            // L1:0x002f9000  class 701's camera
+void nov_class701_update_l1(uint32_t m);   // L1:0x002f9080  class 701, a rock that drops
+void nov_class704_update_l1(uint32_t m);   // L1:0x002f9810  class 704, a rock that bursts when hit
+void nov_class709_update_l1(uint32_t m);   // L1:0x002f9d80  classes 709 / 710, a rock a shell of class 686 bursts
+void nov_class729_update_l1(uint32_t m);   // L1:0x002fa800  class 729, a big rock that bursts when hit
+
+// ---- the particle emitter (novalis_emitter.cpp)
+void nov_27e900_l1(uint32_t owner, uint32_t pos, int32_t life, uint32_t tex, uint32_t set, uint32_t blend, float vx, float vy, float vz,
+                   float size, float fade, float r, float g, float b, float a);  // L1:0x0027e900  a particle of type 6
+void nov_class27_update_l1(uint32_t m);    // L1:0x002bd100  class 27
+
+// ---- the Infobot (novalis_infobot.cpp)
+void nov_2fac80_l1();                      // L1:0x002fac80  class 811's joints marked during scenes
+void nov_class730_update_l1(uint32_t m);   // L1:0x002fad68  classes 730 / 731
+
+// ---- the water's current (novalis_current.cpp)
+void nov_class613_update_l1(uint32_t m);   // L1:0x002f3120  class 613
+
+// ---- the steam pipe (novalis_pipes.cpp)
+uint32_t nov_2ffa90_l1(uint32_t m);        // L1:0x002ffa90  the leak put in the pipe's place
+void nov_class778_update_l1(uint32_t m);   // L1:0x002ff860  class 778, the pipe
+void nov_class779_update_l1(uint32_t m);   // L1:0x002ffb28  class 779, the leak
+
+// ---- the shells (novalis_shells.cpp)
+void nov_2fa1b0_l1(uint32_t m, uint32_t pos, int32_t sound, float scale, float flash);  // L1:0x002fa1b0  a burst
+void nov_class722_update_l1(uint32_t m);   // L1:0x002fa4c0  class 722, a bomb
+void nov_class1510_update_l1(uint32_t m);  // L1:0x0030ba18  class 1510, a burning shell
+
+// ---- the water's classes (novalis_water_mobys.cpp)
+void nov_2b8288_l1(uint32_t regs, int32_t n, float x, float y, float radius, float amount);  // L1:0x002b8288  a splash (flag 0)
+uint32_t nov_287b00_l1(uint32_t pos, uint32_t vel, float size);               // L1:0x00287b00  a bubble (particle 0x38)
+uint32_t nov_287c80_l1(uint32_t pos, uint32_t vel, float size, float grow);   // L1:0x00287c80  a ring of bubbles (particle 0x39)
+uint32_t nov_2ffcd0_l1(uint32_t pos, float scale);                            // L1:0x002ffcd0  a drip (class 787)
+void nov_class751_update_l1(uint32_t m);   // L1:0x002fd0e8  class 751, the water
+void nov_class761_update_l1(uint32_t m);   // L1:0x002feb58  class 761, the strips 0x1fbc80
+void nov_class787_update_l1(uint32_t m);   // L1:0x002ffdc0  class 787, a drip
+
+// ---- the scenes (novalis_scenes.cpp)
+void nov_class1546_update_l1(uint32_t m);  // L1:0x0030c190  class 1546, the scenes' effects
+// The scripted camera's pvars +0x90 set from `src` (Novalis's build of uid5_set_pvar_90; called by shared_class280.cpp and
+// shared_gold_bolt.cpp on Novalis).
+void nov_316e28_l1(uint32_t src);          // L1:0x00316e28
+
+// ---- class 1848 (novalis_reflections.cpp; its draw in novalis_draw_cbs.h)
+void nov_class1848_update_l1(uint32_t m);  // L1:0x0030f208
 
 // orig: (none) -- the registrations of this part (called by novalis_moby_fns_register)
 void novalis_moby_fns_register2();

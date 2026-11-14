@@ -15,8 +15,6 @@ mkall:hoven_classes
 mkall:kalebo_classes
 mkall:kerwan
 mkall:kerwan_part2
-mkall:novalis_classes
-mkall:novalis_draw
 mkall:novalis_gold
 mkall:oltanis_classes
 mkall:orxon_classes
