@@ -347,9 +347,9 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         }
     case 17:  // Drek's fleet: class 0x566 (table 0x1e7854; +0xc and +0x10 are Veldin's class-749 hooks with other constants: 12 for 9, pvars + 0x60)
         switch (lvl_key(fn)) {
-        case L17_CASE(0x002efea8): ret = u_call(vo_hook_2efea8_u, m, a1, a2, f12); return true;
-        case L17_CASE(0x002eff30): ret = u_call(vo_hook_2eff30_u, m, a1, a2, f12); return true;
-        case L17_CASE(0x002effb8): ret = u_call(vo_hook_2effb8_u, m, a1, a2, f12); return true;
+        case L17_CASE(0x002efea8): ret = carry_drop_hook(m, a1, a2, f12, 0); return true;  // (shared_little.cpp: the carry hook +0)
+        case L17_CASE(0x002eff30): ret = carry_drop_hook(m, a1, a2, f12, 4); return true;  // (shared_little.cpp: the carry hook +4)
+        case L17_CASE(0x002effb8): ret = carry_drop_hook(m, a1, a2, f12, 8); return true;  // (shared_little.cpp: the carry hook +8)
         case L17_CASE(0x002f0040): ret = u_call(vo_hook_2f0040_u, m, a1, a2, f12); return true;
         case L17_CASE(0x002f0070): ret = u_call(vo_hook_2f0070_u, m, a1, a2, f12); return true;
         default: return false;

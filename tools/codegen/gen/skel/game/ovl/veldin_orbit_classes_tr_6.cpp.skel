@@ -50,6 +50,10 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/glows.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/shared_ship_shots.h>
+#include <game/ovl/shared_class1319.h>
+#include <game/ovl/shared_moby_helpers.h>
 
 namespace rac1 {
 
@@ -57,8 +61,6 @@ using namespace eer;
 using namespace vu0m;
 
 //@gen vo_2f2180_l17
-
-//@gen vo_2fe2c8_l17
 
 //@gen vo_class1448_update_l17
 
@@ -68,66 +70,14 @@ using namespace vu0m;
 
 //@gen vo_class1772_update_l17
 
-//@gen vo_2c5360_l17
-
-//@gen vo_2e2828_l17
-
-//@gen vo_2f3f10_l17
-
-//@gen vo_2f4a18_l17
-
-//@gen vo_2f4c90_l17
-
 //@gen vo_class1843_update_l17
-
-//@gen vo_25d9d0_l17
-
-//@gen vo_25e020_l17
 
 //@gen vo_class1873_update_l17
 
 //@gen vo_class1876_update_l17
 
-//@gen vo_class1907_update_l17
-
-//@gen vo_class1908_update_l17
-
-//@gen vo_class1910_update_l17
-
-//@gen vo_class1911_update_l17
-
-//@gen vo_class1913_update_l17
-
-//@gen vo_class1918_update_l17
-
-//@gen vo_cam_type3_accept_u
-
-//@gen vo_2fc2c8_l17
-
-//@gen vo_cam_type3_init_l17
-
-//@gen vo_cam_type3_update_l17
-
-//@gen vo_cam_type3_exit_l17
-
-//@gen vo_hook_2efea8_u
-
-//@gen vo_hook_2eff30_u
-
-//@gen vo_hook_2effb8_u
-
 //@gen vo_hook_2f0040_u
 
 //@gen vo_hook_2f0070_u
-
-//@gen vo_1e8188_l17
-
-//@gen vo_cam0_hook_l17
-
-//@gen vo_cam_callback_l17
-
-//@gen vo_cb_2a2aa8_l17
-
-//@gen vo_cb_2a8088_l17
 
 }  // namespace rac1

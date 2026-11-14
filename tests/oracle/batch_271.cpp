@@ -37,6 +37,8 @@
 #include <game/ovl/particle_types4_tr.h>
 #include <game/ovl/veldin_finale_mobys.h>
 #include <game/ovl/veldin_orbit_mobys.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_gadget_pickups.h>
 
 #include <csetjmp>
 #include <csignal>
@@ -250,7 +252,7 @@ void batch_271() {
         // (the Codebot's state 1 starts its scene: cutscene_start (Veldin's port, batches 76 / 80 / 112) waits on the 989snd replies its stream reads
         // ask for, which the interpreter's stand-in of the IOP leaves pending at the level's start: its states 0 and 2 here, its state 1 in batch 260)
         struct Gb { int lvl; const char* name; uint32_t addr; void (*fn)(uint32_t); int states; uint32_t skip; };
-        static const Gb gbs[] = {{17, "gold_bolt1134_l17", 0x002e3ff8, vo_class1134_update_l17, 3, 0}, {17, "codebot1428_l17", 0x002f1790, vo_class1428_update_l17, 3, 0x2},
+        static const Gb gbs[] = {{17, "gold_bolt1134_l17", 0x002e3ff8, gold_bolt_update, 3, 0}, {17, "codebot1428_l17", 0x002f1790, class1428_update, 3, 0x2},
                                  {18, "gold_bolt1134_l18", 0x002ecc40, vf_class1134_update_l18, 3, 0}};
         for (const Gb& g : gbs) {
             if (g_oracle_level != g.lvl) { lcheck(g.lvl, g.name, g.addr, 0, Ret::None, nullptr, nullptr); continue; }

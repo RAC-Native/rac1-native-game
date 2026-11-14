@@ -57,36 +57,6 @@ namespace rac1 {
 using namespace eer;
 using namespace vu0m;
 
-//@gen vo_cb_2f0d08_l17
-
-//@gen vo_cb_2f10c8_l17
-
 //@gen vo_cb_2f32f0_l17
-
-//@gen vo_cb_2f3b68_l17
-
-//@gen vo_2f54d8_l17
-
-//@gen vo_cb_2f5690_l17
-
-//@gen vo_2f57f0_l17
-
-//@gen vo_cb_2f59a8_l17
-
-//@gen vo_2f5b08_l17
-
-//@gen vo_cb_2f5cc0_l17
-
-//@gen vo_2f5e20_l17
-
-//@gen vo_cb_2f5fd8_l17
-
-//@gen vo_2f6138_l17
-
-//@gen vo_cb_2f62f0_l17
-
-//@gen vo_2f6450_l17
-
-//@gen vo_cb_2f6608_l17
 
 }  // namespace rac1
