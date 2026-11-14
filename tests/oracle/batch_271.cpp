@@ -620,10 +620,54 @@ void batch_271() {
             const std::string nm = std::string("end_menu_") + wf_.name + "_" + f;
             if (own[wf_.veldin].empty()) { std::printf("%-26s 0x%08x  no widget of the function on the dump's pages\n", nm.c_str(), wf_.veldin); continue; }
             const std::vector<uint32_t> ws = own[wf_.veldin];
-            const uint32_t fn = wf_.veldin;
-            check(nm.c_str(), wf_.veldin, 120, Ret::Int32, [&d, ws, pick, fn] {
+            const uint32_t veldin = wf_.veldin;
+            check(nm.c_str(), wf_.veldin, veldin == 0x002803b0 ? 200 : 120, Ret::Int32, [&d, ws, pick, veldin] {  // (the epilogue's 20 steps)
                 load_dump(d);
                 const uint32_t w = pick(ws);
+                // (region rule 3: the two switches over the game's jump tables 0x1e9350 / 0x1e9300 reached at more than the dump's one
+                // index) the panel's model in each of its states 0 .. 6 (and one past them), its counter +0xbc about its limits; the
+                // epilogue page (menu state 0x23, page 0x1b6b38: the credits as a menu page) at a step 0 .. 19 (or past the table),
+                // reached through the page's own update (end_menu_page23_update_tr, its check below) from step 0, its timer +0x40 run out
+                // and its scroll +0x54 done each frame, so that +0x34 holds the step's text or list as the game left it.
+                // The page is not the one shown on these dumps (the end menu's 0x1b71f0 is), so its widgets' boxes +0x18 .. +0x24 are
+                // 0 x 0 there; the game never draws a widget so: the menu's draw (0x2772c0, pause_menu_draw.cpp) sets each shown widget's
+                // box from its slot's moby (that moby's projected box, kept at its pvars +0x50 .. +0x5c) before it draws it. The page's
+                // widget is given its slot's box the same way. (With the 0 x 0 box the text box 0x1fbf48 had a width of 0, every
+                // character a line: past 32 lines its line arrays overran the original's frame, 0x190 bytes, and the port's, 0xe0
+                // bytes below the caller's box, differently: the lists of the steps 5 .. 10 and 12 .. 18 differed, and no step drew.)
+                if (veldin == 0x00283530 && ee_read<uint32_t>(w + 0x34) == 2 && ee_read<uint32_t>(w + 0x44) != 0 && ri(0, 3) != 0) {
+                    const uint32_t m = ee_read<uint32_t>(w + 0x44);
+                    w8(m + 0x20, u(ri(0, 7)));
+                    w8(m + 0xbc, coin() ? 0u : u(ri(0, 0xf8)));
+                    if (coin()) w16(0x0015172a, u(ri(0, 4)));
+                }
+                if (veldin == 0x002803b0) {
+                    const uint32_t page = OV(0x001b6b38);
+                    for (uint32_t i = 0; i < 0xe; ++i) {
+                        if (ee_read<uint32_t>(page + 0x44 + 4 * i) != w) continue;
+                        const uint32_t sm = ee_read<uint32_t>(OV(0x001b9e90) + 4 * i);
+                        const uint32_t sd = sm != 0 ? ee_read<uint32_t>(sm + 0x78) : 0u;
+                        if (sd == 0) break;
+                        w32(w + 0x18, ee_read<uint32_t>(sd + 0x50));
+                        w32(w + 0x1c, ee_read<uint32_t>(sd + 0x54));
+                        w32(w + 0x20, ee_read<uint32_t>(sd + 0x58));
+                        w32(w + 0x24, ee_read<uint32_t>(sd + 0x5c));
+                        break;
+                    }
+                    if (ri(0, 3) != 0) {
+                        const uint32_t want = u(ri(0, 19));
+                        w32(w + 0x50, 0u);
+                        for (int k = 0; k < 40 && ee_read<uint32_t>(w + 0x50) != want; ++k) {
+                            w32(w + 0x40, 0u);
+                            w32(w + 0x54, 1u);
+                            (void)end_menu_page23_update_tr(w, 0);
+                        }
+                        if (ri(0, 7) == 0) w32(w + 0x50, u(ri(20, 40)));
+                        // (the scroll +0x3c the scrolling steps add 10 or 20 to each frame until the list's end is in the box: anywhere
+                        // up to past that end, so that the draw sees the end come in, +0x54)
+                        if (coin()) w32(w + 0x3c, u(ri(0, 0x2000)));
+                    }
+                }
                 // the pad: a packet of held buttons (cross / circle / the d-pad mostly), as batch 91 builds them
                 if (coin()) {
                     static const uint16_t bs[] = {0x0040, 0x0020, 0x1000, 0x4000, 0x0800, 0x0010, 0};
@@ -631,7 +675,7 @@ void batch_271() {
                     const uint8_t pk[6] = {static_cast<uint8_t>(low >> 8), static_cast<uint8_t>(low & 0xff), 0x7f, 0x7f, 0x7f, 0x7f};
                     pad_read_packet(0x0013c940, pk, 6);
                 }
-                end_menu_vary(fn, w);
+                end_menu_vary(veldin, w);
                 w32(OV(0x0015f5cc), R());
                 seed_rand();
                 return Args{{w, u(ri(0, 1))}, {}};

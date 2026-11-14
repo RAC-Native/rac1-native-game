@@ -69,8 +69,10 @@ uint32_t end_menu_panel_update_tr(uint32_t w, uint32_t) {
     const uint32_t mst = lbu(m + 0x20u);
     if (!(mst < 7u)) return 0u;
 
-    switch (ovl_code_to_veldin(lwu(OV(0x001e9350u) + (mst << 2)))) {
-        case 0x2836e0u: {
+    // (the state's case by its index: the original's switch over the moby's state, compiled to the jump table 0x1e9350;
+    // the disc's table is not read, so the states work on a build whose own code moved the case labels)
+    switch (mst) {
+        case 0: case 2: case 4: {  // (0x2836e0)
             int32_t lang = lw(0x0015ed88u) - 1;
             const uint32_t half_st = static_cast<uint32_t>(lbu(m + 0x20u)) >> 1;
             if (!(-1 < lang)) lang = 0;
@@ -91,7 +93,7 @@ uint32_t end_menu_panel_update_tr(uint32_t w, uint32_t) {
             moby_anim_set(m, half_st + 1u, 0, frame_scale_i(0x18));
             return 0u;
         }
-        case 0x2837acu: {
+        case 1: case 3: case 5: {  // (0x2837ac)
             if (lbu(m + 0xbcu) == 0 && lbu(m + 0x52u) == lbu(m + 0x53u)) {
                 dialog_stream_stop();
                 sb(m + 0xbcu, 1u);
@@ -103,7 +105,7 @@ uint32_t end_menu_panel_update_tr(uint32_t w, uint32_t) {
             moby_anim_set(m, 0u, 0, frame_scale_i(0x18));
             return 0u;
         }
-        case 0x283824u: {
+        case 6: {  // (0x283824)
             uint32_t cnt = (lbu(m + 0xbcu) + 1u) & 0xffu;
             sb(m + 0xbcu, cnt);
             if (frame_scale_i(0xf0) < static_cast<int32_t>(cnt)) {
@@ -115,9 +117,8 @@ uint32_t end_menu_panel_update_tr(uint32_t w, uint32_t) {
             sb(m + 0xbcu, 0u);
             return 0u;
         }
-        default:
-            return 0u;
     }
+    return 0u;  // (not reached: every state below 7 has its case)
 }
 
 // orig: 0x002838b0
@@ -411,8 +412,11 @@ uint32_t end_menu_page23_draw_tr(uint32_t w, uint32_t) {
     sh(box + 0x16u, 0u);
 
     if (step < 20u) {
-        switch (ovl_code_to_veldin(lwu(OV(0x001e9300u) + (step << 2)))) {
-            case 0x280478u: {
+        // (the step's case by its index: the original's switch over the step, compiled to the jump table 0x1e9300; the
+        // disc's table is not read, so the steps work on a build whose own code moved the case labels)
+        switch (step) {
+            case 1: case 2: case 3: case 5: case 6: case 7: case 8: case 9: case 10:
+            case 12: case 13: case 14: case 16: case 17: case 18: {  // (0x280478)
                 int32_t y = lw(w + 0x1cu) - ((lw(w + 0x3cu) >> 4) - 4);
                 uint32_t idx = 0;
                 if (lw(lwu(w + 0x34u)) != -1) {
@@ -433,15 +437,12 @@ uint32_t end_menu_page23_draw_tr(uint32_t w, uint32_t) {
                 }
                 break;
             }
-            case 0x280538u:
+            case 4: case 11: case 15: case 19:  // (0x280538)
                 sh(box + 0x0au, lhu(w + 0x1cu) + 0x20u);
                 text_box_small(box, 0x80ffa888ull, static_cast<uint32_t>(sub_00203ad8(lw(w + 0x34u))), -1);
                 break;
-            case 0x280568u:
+            case 0:  // (0x280568)
                 break;
-            default:
-                ee_stack_free(0x20);
-                return 0u;
         }
     }
 

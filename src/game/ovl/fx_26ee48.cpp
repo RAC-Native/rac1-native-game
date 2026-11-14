@@ -1,4 +1,4 @@
-// Ported overlay code: particle type 0x14's update (0x0026ee48).
+// Ported overlay code: particle type 0x20's update (0x0026ee48; the type table 0x1b1e80's entry 0x20, at 0x1b1f00).
 #include <game/ovl/fx_26ee48.h>
 
 #include <game/math/vecmath.h>

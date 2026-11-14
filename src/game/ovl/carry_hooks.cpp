@@ -59,8 +59,10 @@ int32_t carry_hook0(uint32_t m, uint32_t pa1, uint32_t pa2, float /*pf12*/) {
 
     const int16_t idx = static_cast<int16_t>(raw_st - 1u);
     if (static_cast<uint16_t>(idx) < 7u) {
-        switch (ovl_code_to_veldin(lwu(OV(0x001ea060u) + static_cast<uint32_t>(idx) * 4u))) {
-        case 0x002db99cu: {
+        // (the record's state's case by its index: the original's switch over it, compiled to the jump table 0x1ea060;
+        // the disc's table is not read, so it works on a build whose own code moved the case labels)
+        switch (idx) {
+        case 0: {  // (0x002db99c)
             const float prog = lwc1(r + 0x6c);
             const uint32_t anims = lwu(r + 0x70);
             if (1.0f <= prog) {
@@ -78,13 +80,13 @@ int32_t carry_hook0(uint32_t m, uint32_t pa1, uint32_t pa2, float /*pf12*/) {
             }
             return 1;
         }
-        case 0x002dba24u:
+        case 1:  // (0x002dba24)
             return (1.0f <= lwc1(r + 0x6c)) ? 2 : 1;
-        case 0x002dba44u:
+        case 2:  // (0x002dba44)
             return 2;
-        case 0x002dba4cu:
+        case 3:  // (0x002dba4c)
             return 3;
-        case 0x002dba54u: {
+        case 4: case 5: case 6: {  // (0x002dba54)
             const uint32_t anims = lwu(r + 0x70);
             const uint32_t anim = lbu(anims + 3);
             if (lbu(m + 0x53) != anim) {
@@ -96,9 +98,6 @@ int32_t carry_hook0(uint32_t m, uint32_t pa1, uint32_t pa2, float /*pf12*/) {
             swc1(r + 0x64, vec2_distance(V(m + 0x10), V(pa2 + 0x10)));
             return 2;
         }
-        default:
-            TODO_PORT(0, "jr to an unknown address")();
-            return 0;
         }
     }
 
@@ -206,8 +205,10 @@ int32_t carry_hookc(uint32_t m, uint32_t /*pa1*/, uint32_t /*pa2*/, float /*pf12
     const int16_t st = lh(r + 0x68);
     if (st == 8 || static_cast<uint16_t>(st) >= 10u) return 0;
 
-    switch (ovl_code_to_veldin(lwu(OV(0x001ea080u) + static_cast<uint32_t>(st) * 4u))) {
-    case 0x002dbe90u: {
+    // (the record's state's case by its index: the original's switch over it, compiled to the jump table 0x1ea080; the
+    // disc's table is not read, so it works on a build whose own code moved the case labels; state 8 returned above)
+    switch (st) {
+    case 3: {  // (0x002dbe90)
         const int32_t slot = lh(r + 0x6a);
         if (slot != -1) {
             constexpr uint32_t P = 0x0013f350u;
@@ -219,7 +220,7 @@ int32_t carry_hookc(uint32_t m, uint32_t /*pa1*/, uint32_t /*pa2*/, float /*pf12
         }
         [[fallthrough]];
     }
-    case 0x002dbec0u: {
+    case 1: case 2: {  // (0x002dbec0)
         const uint32_t anims = lwu(r + 0x70);
         const uint32_t anim = lbu(anims + 7);
         if (lbu(m + 0x53) != anim) {
@@ -228,14 +229,12 @@ int32_t carry_hookc(uint32_t m, uint32_t /*pa1*/, uint32_t /*pa2*/, float /*pf12
         sh(r + 0x68, 7);
         return 0;
     }
-    case 0x002dbf00u:
+    case 4:  // (0x002dbf00)
         return 1;
-    case 0x002dbf08u:
-        return 0;
-    default:
-        TODO_PORT(0, "jr to an unknown address")();
+    case 0: case 5: case 6: case 7: case 9:  // (0x002dbf08)
         return 0;
     }
+    return 0;  // (not reached: every state below 10 but 8 has its case)
 }
 
 // orig: 0x002d56e0

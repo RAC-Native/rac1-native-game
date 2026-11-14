@@ -49,10 +49,14 @@ void decoy_obj_2c3440(uint32_t p0) {
 // orig: 0x002c4328
 void decoy_obj_2c4328(uint32_t p0) {
     const uint32_t surf = static_cast<uint32_t>(sub_001f35d8());
-    if (surf < 14u) {
-        if (ovl_code_to_veldin(lwu(OV(0x001e9c20u) + (surf << 2))) == 0x002c4364u) {
-            decoy_obj_2c3440(p0);
-        }
+    // (the surface's case by its index: the original's switch over it, compiled to the jump table 0x1e9c20; the disc's
+    // table is not read, so it works on a build whose own code moved the case labels)
+    switch (surf) {
+    case 0: case 1: case 3: case 8: case 11: case 12: case 13:  // (0x002c4364)
+        decoy_obj_2c3440(p0);
+        break;
+    case 2: case 4: case 5: case 6: case 7: case 9: case 10:  // (0x002c436c)
+        break;
     }
 }
 

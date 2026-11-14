@@ -352,19 +352,21 @@ void decoy_update(uint32_t m) {
 
     const uint32_t st = lbu(m + 0x20);
     if (st < 7u) {
-        switch (ovl_code_to_veldin(lwu(OV(0x001e9ee0u) + (st << 2)))) {
-        case 0x002d28c0u:
+        // (the state's case by its index: the original's switch over the moby's state, compiled to the jump table
+        // 0x1e9ee0; the disc's table is not read, so the states work on a build whose own code moved the case labels)
+        switch (st) {
+        case 0:  // (0x002d28c0)
             sw(pv + 0x50, 0);
             sb(m + 0x20, (lbu(m + 0x70) & 2u) != 0 ? 2 : 1);
             [[fallthrough]];
-        case 0x002d28dcu:
+        case 1:  // (0x002d28dc)
             if ((lbu(m + 0x70) & 2u) != 0) {
                 sb(m + 0x20, 2);
             }
             break;
-        case 0x002d2a08u:
+        case 2:  // (0x002d2a08)
             break;
-        case 0x002d28f4u:
+        case 3:  // (0x002d28f4)
             if (lwu(pv + 0x50) != 0) {
                 constexpr uint32_t STATS = 0x00141680u;
                 const uint32_t cnt = lhu(STATS + 0xc8);
@@ -387,19 +389,17 @@ void decoy_update(uint32_t m) {
             sb(m + 0x20, 4);
             sw(pv + 0x54, static_cast<uint32_t>(frame_scale_i(0x14)));
             break;
-        case 0x002d29d8u:
+        case 4:  // (0x002d29d8)
             if (lw(P + 0x2084) != 0x23 && lbu(P + 0x20a8) == 0) {
                 sb(m + 0x20, 2);
             }
             break;
-        case 0x002d2a00u:
+        case 5:  // (0x002d2a00)
             sb(m + 0x20, 6);
             break;
-        case 0x002d2a64u:
+        case 6:  // (0x002d2a64)
             ee_stack_free(0x10);
             return;
-        default:
-            break;
         }
     }
 

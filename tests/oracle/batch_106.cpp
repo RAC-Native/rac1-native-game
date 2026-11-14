@@ -15,8 +15,9 @@
 // the lead ("devastator_update/aim", 601 -> 936+ of 982), its rocket's homing, blast and gold ricochet with its target search
 // ("devastator_rocket_update/homing"), the Visibomb's shot and its bomb in flight, the Tesla Claw's beams on targets and their
 // draw, the Decoy Glove's throws and the decoy landed, the Morph-o-Ray's ray on a target, the R.Y.N.O.'s target search and
-// burst, the Metal Detector's dig, sounds and pulse draw, the Hydrodisplacer's spray, the particle types 0x08 / 0x14 / 0x4e /
-// 0x2c on particle records (the projectile list above ran their updates on a moby standing in), and carry hook +8's lobbed mark.
+// burst, the Metal Detector's dig, sounds and pulse draw, the Hydrodisplacer's spray, the particle types 0x08 / 0x20 / 0x4e /
+// 0x2c on particle records (the projectile list ran their updates on a moby standing in: those four entries are gone), and carry
+// hook +8's lobbed mark.
 // The targets are the level's own mobys of kind 5 put in the targets' list 0x1aba00 and moved in RAM about the weapon's aim; the
 // scope's lock puts the camera back along its ray from a target left where its collision is. They found two faults of the ports: the
 // gold Devastator's rocket kept its target through a ricochet (rocket.cpp; the original clears pvar +0x18 at 0x2b1990), and the
@@ -1432,14 +1433,10 @@ void batch_106() {
     static const ProjT projs[] = {
         {"swingshot_grapple_update", 0x0c, 0x002c7070, 6, 0x14, swingshot_grapple_update},
         {"devastator_rocket_update", 0x0b, 0x002b03a0, 6, 0, devastator_rocket_update},
-        {"devastator_271450_update", 0x0b, 0x00271450, 6, 0, devastator_271450_update},
         {"visibomb_ball_update", 0x0d, 0x002b6140, 8, 0, visibomb_ball_update},
         {"tesla_2ba970_update", 0x13, 0x002ba970, 6, 0, tesla_2ba970_update},
         {"decoy_object_update", 0x19, 0x002c4380, 8, 0, decoy_object_update},
         {"metal_2d2a90_update", 0x1b, 0x002d2a90, 6, 0, metal_2d2a90_update},
-        {"fx_26a5b8_update", 0x0b, 0x0026a5b8, 6, 0, fx_26a5b8_update},
-        {"fx_26ee48_update", 0x14, 0x0026ee48, 6, 0, fx_26ee48_update},
-        {"morph_275aa0_update", 0x15, 0x00275aa0, 6, 0, morph_275aa0_update},
         {"morph_2bdc50_update", 0x15, 0x002bdc50, 6, 0, morph_2bdc50_update},
         {"ryno_2cd1f0_update", 0x17, 0x002cd1f0, 6, 0, ryno_2cd1f0_update},
         {"decoy_2c31c0_update", 0x19, 0x002c31c0, 6, 0, decoy_2c31c0_update},
@@ -1653,6 +1650,33 @@ void batch_106() {
         seed_rand();
         return Args{{m}, {}};
     }, [](A a) { if (a.i[0] != 0) decoy_object_update(a.i[0]); return uint64_t{0}; });
+    // (region rule 3) the two small switches over the game's jump tables that the checks above reach at one index only: the decoy's
+    // surface test 0x2c4328 (the table 0x1e9c20: on the surfaces 0, 1, 3, 8, 11, 12, 13 the decoy breaks up, 0x2c3440) on the decoy
+    // as the glove threw it, the surface the last collision left (0x173e5c's low 5 bits; none: negative or 0x1f) any of the 32 or
+    // none; and the Visibomb's view overlay 0x203880 (the table 0x1e7b80, the overlay's state 0x179410 below 8) in its states 0 ..
+    // 8 and past them, its timer +4 and word +0x24 varied
+    check("decoy_obj_2c4328/surface", 0x002c4328, 400, Ret::None, [item_snap, moby_of_class, class_of_fn] {
+        const std::vector<uint8_t>& sn = item_snap(0x19, ri(0, 1) == 0 ? 1u : 2u);
+        std::memcpy(ee_get_ram_base(), sn.data(), sn.size());
+        view_setup();
+        const uint32_t cls = class_of_fn(0x002c4380);
+        const uint32_t m = cls != 0 ? moby_of_class(cls) : 0u;
+        if (m == 0) return Args{{0u}, {}};
+        w8(0x0013e539, coin() ? 1u : 0u);
+        const uint32_t surf = ri(0, 7) == 0 ? (coin() ? 0xffffffffu : 0x1fu) : u(ri(0, 31));
+        w32(OV(0x00173e5c), surf | (coin() ? (R() & 0x7fffffe0u) : 0u));
+        seed_rand();
+        return Args{{m}, {}};
+    }, [](A a) { if (a.i[0] != 0) decoy_obj_2c4328(a.i[0]); return uint64_t{0}; });
+    check("visibomb_203880/states", 0x00203880, 300, Ret::None, [level1] {
+        level1();
+        const uint32_t hud = OV(0x00179410);
+        w32(hud, u(ri(0, 10)));
+        w32(hud + 4, ri(0, 3) == 0 ? R() : u(ri(0, 8)));
+        w32(hud + 0x24, coin() ? 0u : R());
+        seed_rand();
+        return Args{};
+    }, [](A) { visibomb_203880(); return uint64_t{0}; });
     check("metal_2d2a90_update/pulse", 0x002d2a90, 800, Ret::None, [item_snap, moby_of_class, hand_class, near_hero] {
         const std::vector<uint8_t>& sn = item_snap(0x1b, u(ri(0, 2)));
         std::memcpy(ee_get_ram_base(), sn.data(), sn.size());
@@ -1671,8 +1695,8 @@ void batch_106() {
         seed_rand();
         return Args{{m}, {}};
     }, [](A a) { if (a.i[0] != 0) metal_2d2a90_update(a.i[0]); return uint64_t{0}; });
-    // four of the "projectile" updates above are particle types' updates, run there on a moby standing in (2 .. 4 words
-    // changed): 0x26a5b8 type 0x08 (the Devastator's blast), 0x26ee48 type 0x20 (the glow on a moby), 0x275aa0 type 0x4e (the
+    // four particle types' updates, which the "projectile" list above ran on a moby standing in (2 .. 4 words changed; taken out
+    // of that list in favour of these, whose original's coverage takes in all of theirs, ORACLE_COVER_EE): 0x26a5b8 type 0x08 (the Devastator's blast), 0x26ee48 type 0x20 (the glow on a moby), 0x275aa0 type 0x4e (the
     // Morph-o-Ray's sparks), 0x271450 type 0x2c (the Devastator's smoke). Here on particle records of their types, made by their
     // ported spawners (0x26a4c8, 0x26ed28, 0x275910, 0x2712b8) with the weapons' arguments, then advanced by 0 .. 40 frames of the
     // port's update (the later parts of their lives), their last frames in some cases, their owners / targets live, retired or gone
@@ -1730,6 +1754,9 @@ void batch_106() {
                 if (ri(0, 4) == 0) ee_write<int16_t>(q + 0xa, static_cast<int16_t>(ri(-1, 8)));  // (its last frames: the fades of the last 6)
                 if (type == 0x20 && ri(0, 5) == 0) w8(ee_read<uint32_t>(q + 0x20) != 0 ? ee_read<uint32_t>(q + 0x20) + 0x20 : tgt + 0x20, pick({0xfeu, 0xfdu}));
                 if (type == 0x20 && ri(0, 8) == 0) w32(q + 0x20, 0u);
+                if (type == 0x20)  // (a colour channel about to fade out: its clamp at 0)
+                    for (uint32_t c = 0; c < 3; ++c)
+                        if (ri(0, 3) == 0) wf(q + 0x30 + 4 * c, rf(0.0f, 0.02f));
                 if (type == 0x4e && ee_read<uint32_t>(q + 0x38) != 0 && coin()) {  // (its target within reach: the swirl)
                     Vec4 p = ee_ref<Vec4>(ee_read<uint32_t>(q + 0x38) + 0x10);
                     p.x += rf(-2.5f, 2.5f); p.y += rf(-2.5f, 2.5f); p.z += rf(-1.0f, 1.0f);

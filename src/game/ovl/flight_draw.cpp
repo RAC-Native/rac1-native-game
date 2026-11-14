@@ -39,38 +39,40 @@ void flight_sky() {
     if (0 < lh(lwu(OV(0x0016051c)) + 6)) {
         do {
             float scale = 1.0f;  // f20
-            if (static_cast<uint32_t>(i) < 6) {  // the jump table 0x1e93b0 (case 0 runs on into case 1)
-                switch (ovl_code_to_veldin(lwu(OV(0x001e93b0) + static_cast<uint32_t>(i) * 4))) {
-                    case 0x0028b4c4:
+            if (static_cast<uint32_t>(i) < 6) {
+                // (the layer's case by its index: the original's switch over it, compiled to the jump table 0x1e93b0;
+                // the disc's table is not read, so it works on a build whose own code moved the case labels; case 0
+                // runs on into case 1)
+                switch (i) {
+                    case 0:  // (0x0028b4c4)
                         sw(sp + 4, 0);
                         swc1(sp + 8, lwc1(OV(0x00166c00u - 0x673c)));
                         [[fallthrough]];
-                    case 0x0028b4d0:
+                    case 1:  // (0x0028b4d0)
                         sw(sp + 4, 0);
                         scale = 1.0f;
                         swc1(sp + 8, angle_add(lwc1(OV(0x00166c00u - 0x673c)), lwc1(sp + 4)));
                         break;
-                    case 0x0028b4f0:
+                    case 2:  // (0x0028b4f0)
                         swc1(sp + 4, -0.075f);  // 0xbd99999a
                         swc1(sp + 8, angle_add(lwc1(OV(0x00166c00u - 0x673c)), -0.15f));  // 0xbe19999a
                         scale = 1.25f;
                         break;
-                    case 0x0028b524:
+                    case 3:  // (0x0028b524)
                         swc1(sp + 4, 0.05f);  // 0x3d4ccccd
                         swc1(sp + 8, angle_add(lwc1(OV(0x00166c00u - 0x673c)), 0.125f));  // 0x3e000000
                         scale = 1.5f;
                         break;
-                    case 0x0028b554:
+                    case 4:  // (0x0028b554)
                         swc1(sp + 4, 0.1f);  // 0x3dcccccd
                         swc1(sp + 8, angle_add(lwc1(OV(0x00166c00u - 0x673c)), -0.05f));  // 0xbd4ccccd
                         scale = 1.75f;
                         break;
-                    case 0x0028b588:
+                    case 5:  // (0x0028b588)
                         swc1(sp + 4, -0.15f);  // 0xbe19999a
                         swc1(sp + 8, angle_add(lwc1(OV(0x00166c00u - 0x673c)), 0.1f));  // 0x3dcccccd
                         scale = 2.0f;
                         break;
-                    default: break;
                 }
             }
             const uint32_t m = OV(0x001bd7e0);

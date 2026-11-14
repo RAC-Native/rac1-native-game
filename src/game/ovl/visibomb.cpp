@@ -183,29 +183,28 @@ void visibomb_203880() {
     const uint32_t state = lwu(hud);
     if (state >= 8u) return;
 
-    switch (ovl_code_to_veldin(lwu(OV(0x001e7b80u) + (state << 2)))) {
-    case 0x002038b0:
+    // (the state's case by its index: the original's switch over the state, compiled to the jump table 0x1e7b80; the
+    // disc's table is not read, so the states work on a build whose own code moved the case labels)
+    switch (state) {
+    case 0:  // (0x002038b0)
         sw(hud + 0x24, 0xffffffffu);
         break;
-    case 0x002038c0:
-    case 0x002038c8:
+    case 1: case 2:  // (0x002038c0)
+    case 3:          // (0x002038c8)
         sw(hud, 7u);
         sw(hud + 0x4, 0u);
         break;
-    case 0x002038d0: {
+    case 4: {  // (0x002038d0)
         const uint32_t t = lwu(hud + 0x4);
         sw(hud, 6u);
         sw(hud + 0x4, 4u - t);
         break;
     }
-    case 0x002038f0:
+    case 5:  // (0x002038f0)
         sw(hud, 6u);
         sw(hud + 0x4, 0u);
         break;
-    case 0x00203900:
-        break;
-    default:
-        TODO_PORT(0, "jr to an unknown address")();
+    case 6: case 7:  // (0x00203900)
         break;
     }
 }

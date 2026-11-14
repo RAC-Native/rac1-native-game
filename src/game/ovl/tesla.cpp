@@ -710,8 +710,10 @@ void tesla_update(uint32_t m) {
 
     const uint8_t state = lbu(m + 0x20);
     if (state < 6u) {
-        switch (ovl_code_to_veldin(lwu(OV(0x001e9a90u) + static_cast<uint32_t>(state) * 4u))) {
-        case 0x002b8ed4u: {
+        // (the state's case by its index: the original's switch over the moby's state, compiled to the jump table
+        // 0x1e9a90; the disc's table is not read, so the states work on a build whose own code moved the case labels)
+        switch (state) {
+        case 0: {  // (0x002b8ed4)
             sw(pv + 0x2c, static_cast<uint32_t>(frame_scale_i(0x10)));
             sw(pv + 0x30, static_cast<uint32_t>(sub_0023e5e0(pv, 0, 0.0f, 0.0f)));
             sw(OV(0x00161590u), 1);
@@ -726,7 +728,7 @@ void tesla_update(uint32_t m) {
             sh(pv + 0x44, 0);
             break;
         }
-        case 0x002b8f30u: {
+        case 1: {  // (0x002b8f30)
             timer_tick_i32(*static_cast<int32_t*>(ee_ram_ptr(pv + 0x2c)));
             if (firing) {
                 hero_hold_start();
@@ -764,7 +766,7 @@ void tesla_update(uint32_t m) {
             }
             break;
         }
-        case 0x002b9058u: {
+        case 3: {  // (0x002b9058)
             if ((lwu(PAD + 0x1a8) & lwu(P + 0x10a0)) == 0 && firing && lbu(P + 0x20ac) == 0) {
                 break;
             }
@@ -804,10 +806,7 @@ void tesla_update(uint32_t m) {
             sb(m + 0x20, 1);
             break;
         }
-        case 0x002b9180u:
-            break;
-        default:
-            TODO_PORT(0, "jr to an unknown address")();
+        case 2: case 4: case 5:  // (0x002b9180)
             break;
         }
     }

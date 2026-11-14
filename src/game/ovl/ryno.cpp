@@ -257,22 +257,23 @@ void ryno_update(uint32_t m) {
     const uint32_t st = lbu(m + 0x20);
     if (!(st < 9u)) return;
 
-    const uint32_t target_fn = lwu(OV(0x001e9de0u) + (st << 2));
-    switch (ovl_code_to_veldin(target_fn)) {
-    case 0x002cc89c:  // state 0: init
+    // (the state's case by its index: the original's switch over the moby's state, compiled to the jump table 0x1e9de0;
+    // the disc's table is not read, so the states work on a build whose own code moved the case labels)
+    switch (st) {
+    case 0:  // (0x002cc89c) init
         sw(pv, 0);
         sb(0x001403fcu, 0);
         sb(m + 0x20, 1);
         sh(pv + 0x10, 0);
         return;
 
-    case 0x002cc8b8:  // state 1: equip wait
+    case 1:  // (0x002cc8b8) equip wait
         if ((lbu(m + 0x70) & 2u) != 0) {
             sb(m + 0x20, 2);
         }
         return;
 
-    case 0x002cc8d0:  // state 2: third-person ready
+    case 2:  // (0x002cc8d0) third-person ready
         if (lwu(HERO + 0x2084) == 1u) {
             (void)hero_set_state(0x1eu, 1);
         }
@@ -281,7 +282,7 @@ void ryno_update(uint32_t m) {
         ryno_begin_burst(m, pv);
         return;
 
-    case 0x002cca0c:  // state 3: first-person scope ready
+    case 3:  // (0x002cca0c) first-person scope ready
         cam_effect_add(m, 0xff0f0fffu, nullptr, 0x23u, -1, 1.0f, 0.0f, 90.0f);
         if ((lwu(PAD + 0x1a0) & 5u) == 0) {
             sb(m + 0x20, 2);
@@ -292,7 +293,7 @@ void ryno_update(uint32_t m) {
         ryno_begin_burst(m, pv);
         return;
 
-    case 0x002ccb7c: {  // state 4: firing 7-rocket burst
+    case 4: {  // (0x002ccb7c) firing 7-rocket burst
         if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(pv + 6))) == 0) return;
 
         sh(pv + 6, static_cast<uint32_t>(frame_scale_i(9)));
@@ -379,7 +380,7 @@ void ryno_update(uint32_t m) {
         return;
     }
 
-    case 0x002cce94:  // state 5: post-burst cooldown
+    case 5:  // (0x002cce94) post-burst cooldown
         if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(pv + 6))) != 0) {
             sw(pv, 0);
             sb(pv + 4, 0);
@@ -387,11 +388,7 @@ void ryno_update(uint32_t m) {
         }
         return;
 
-    case 0x002cceb0:
-        return;
-
-    default:
-        TODO_PORT(0, "jr to an unknown address")();
+    case 6: case 7: case 8:  // (0x002cceb0)
         return;
     }
 }
