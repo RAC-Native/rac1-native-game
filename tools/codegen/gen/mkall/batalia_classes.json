@@ -4,8 +4,8 @@
  "env": {
   "MKALL_HELPER_PREFIX": "bat_",
   "MKALL_WIDE_GPR": "20d760:a3;2f3938:a0",
-  "MKALL_FORCE": "2025d0,2025d8,20d760,211b08,263050,263730,269c70,26d3e0,26d470,26d768,26db60,26e1b0,272cb8,273080,273ac8,275bd8,279f00,27c540,27f5f0,27f950,27fe00,2806a8,28fa30,2a1880,2acc70,2acce8,2b8228,2ba660,2ba668,2d22e0,2d36e0,2d3d78,2d4ca0,2d55c8,2d5950,2d5d08,2d6450,2d81e0,2da3f0,2da7c0,2da8d8,2daa10,2db990,2dc0c8,2dc180,2dc4a0,2dc648,2dc7f0,2dc8a0,2de3e0,2de528,2dec90,2e0228,2e1698,2e1c98,2e1d70,2e2078,2e2250,2e2da0,2e6168,2e6228,2e7eb0,2e8788,2e88d8,2e8ba0,2e9558,2e9758,2e9a18,2ee5b0,2f0f68,2f1158,2f12a0,2f1378,2f1460,2f1e70,2f2850,2f3938,2f3c20,2f3e98,2f43e8,2f8fd8,3024d8,302c00,303a50,303b40,303c20,303eb0,3040c0,3041f8,3049a0,304b00,304eb8,304f08,305138,3063f0,306b30,307190,307b90,308810,3091d0,3093c0,309508,3095e0,3096c8,309ef0,309f48,309ff0,30a2d8,30a568,30aa88,30abb8,3101f0,310218,311890,313880,313ba8,315648,315788,3159c8",
-  "MKALL_UNIFORM": "bat_cam_type3_accept_u,bat_cam_type18_accept_u,bat_hook_2d3f60_u,bat_hook_2d3fb0_u,bat_hook_2d4000_u,bat_hook_2d4050_u,bat_hook_2d40d8_u,bat_hook_2d8180_u"
+  "MKALL_FORCE": "2025d0,2025d8,20d760,211b08,263050,263730,269c70,26d3e0,26d470,26d768,26db60,26e1b0,272cb8,273080,275bd8,279f00,27f5f0,27f950,27fe00,2806a8,28fa30,2a1880,2acc70,2acce8,2b8228,2ba660,2ba668,2d22e0,2d36e0,2d3d78,2d4ca0,2d55c8,2d5950,2d5d08,2d6450,2d81e0,2da3f0,2da7c0,2da8d8,2daa10,2db990,2dc0c8,2dc180,2dc4a0,2dc648,2dc7f0,2dc8a0,2de3e0,2de528,2dec90,2e0228,2e1698,2e1c98,2e1d70,2e2078,2e2250,2e2da0,2e6168,2e6228,2e7eb0,2e8788,2e88d8,2e8ba0,2e9558,2e9758,2e9a18,2ee5b0,2f0f68,2f1158,2f12a0,2f1378,2f1460,2f1e70,2f2850,2f3938,2f3c20,2f3e98,2f43e8,2f8fd8,3024d8,302c00,303a50,303b40,303c20,303eb0,3040c0,3041f8,3049a0,304b00,304eb8,304f08,305138,3063f0,306b30,307190,307b90,308810,3091d0,3093c0,309508,3095e0,3096c8,309ef0,309f48,309ff0,30a2d8,30a568,30aa88,30abb8,3101f0,310218,311890,313880,313ba8,315648,315788,3159c8",
+  "MKALL_UNIFORM": "bat_cam_type3_accept_u,bat_cam_type18_accept_u,bat_hook_2d4000_u,bat_hook_2d4050_u,bat_hook_2d40d8_u"
  },
  "entries": [
   "2b82a0:bat_class152_update_l8:void:a0",
@@ -14,7 +14,6 @@
   "2d2af0:bat_class252_update_l8:void:a0",
   "2d42d8:bat_class253_update_l8:void:a0",
   "2d8270:bat_class280_update_l8:void:a0",
-  "2da0c8:bat_class324_update_l8:void:a0",
   "2da0f0:bat_class327_update_l8:void:a0",
   "2da3c0:bat_class331_update_l8:void:a0",
   "2dabf0:bat_class333_update_l8:void:a0",
@@ -34,14 +33,12 @@
   "2ea398:bat_class467_update_l8:void:a0",
   "2ea4c0:bat_class468_update_l8:void:a0",
   "2ee6f0:bat_class545_update_l8:void:a0",
-  "2efb50:bat_class566_update_l8:void:a0",
   "2efb60:bat_class567_update_l8:void:a0",
   "2f1548:bat_class600_update_l8:void:a0",
   "2f18b8:bat_class604_update_l8:void:a0",
   "2f1c08:bat_class605_update_l8:void:a0",
   "2f2030:bat_class615_update_l8:void:a0",
   "2f2948:bat_trespasser_puzzle_draw_l8:void:a0",
-  "2f44b8:bat_class618_update_l8:void:a0",
   "2f44c0:bat_class621_update_l8:void:a0",
   "2f5830:bat_class648_update_l8:void:a0",
   "2f70a0:bat_class671_update_l8:void:a0",
@@ -66,21 +63,14 @@
   "3097b0:bat_class1649_update_l8:void:a0",
   "30ac28:bat_class1818_update_l8:void:a0",
   "30bc00:bat_class1844_update_l8:void:a0",
-  "30bcf8:bat_class1845_update_l8:void:a0",
   "3127d0:bat_cam_type3_accept_u",
   "3127d8:bat_cam_type3_init_l8:void:a0",
   "311d50:bat_cam_type3_update_l8:void:a0",
   "312a28:bat_cam_type3_exit_l8:void:a0",
   "316298:bat_cam_type18_accept_u",
-  "316300:bat_cam_type18_init_l8:void:a0",
-  "316308:bat_cam_type18_update_l8:void:a0",
-  "316310:bat_cam_type18_exit_l8:void:a0",
-  "2d3f60:bat_hook_2d3f60_u",
-  "2d3fb0:bat_hook_2d3fb0_u",
   "2d4000:bat_hook_2d4000_u",
   "2d4050:bat_hook_2d4050_u",
-  "2d40d8:bat_hook_2d40d8_u",
-  "2d8180:bat_hook_2d8180_u"
+  "2d40d8:bat_hook_2d40d8_u"
  ],
  "glue_files": [],
  "files": [

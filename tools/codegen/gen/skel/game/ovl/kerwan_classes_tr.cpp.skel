@@ -27,6 +27,12 @@
 #include <game/ovl/particle_16_spawn.h>
 #include <game/ovl/quad_draw.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/devastator.h>
+#include <game/ovl/doomlet.h>
+#include <game/ovl/glows.h>
+#include <game/ovl/metal.h>
+#include <game/ovl/rocket.h>
+#include <game/ovl/visibomb_ball.h>
 
 namespace rac1 {
 
@@ -35,7 +41,6 @@ using namespace vu0m;
 
 // (the functions appended at the end of kerwan_classes_tr.cpp)
 void kerwan_class832_draw_l3(uint32_t a0_in);
-TrRet lv3_2517b0_l3(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in, float f16_in, float f17_in, float f18_in, float f19_in);
 void kerwan_sandmouse_glow_l3(uint32_t a0_in);
 
 //@gen lv3_251598_l3
@@ -53,8 +58,6 @@ void kerwan_sandmouse_glow_l3(uint32_t a0_in);
 //@gen lv3_2c6c90_l3
 
 //@gen kerwan_class822_update_l3
-
-//@gen lv3_295190_l3
 
 //@gen kerwan_class868_update_l3
 
@@ -104,8 +107,6 @@ void kerwan_sandmouse_glow_l3(uint32_t a0_in);
 
 //@gen lv3_2476c0_l3
 
-//@gen lv3_247c10_l3
-
 //@gen lv3_247da0_l3
 
 //@gen lv3_250a78_l3
@@ -122,13 +123,7 @@ void kerwan_sandmouse_glow_l3(uint32_t a0_in);
 
 //@gen kerwan_class573_update_l3
 
-//@gen lv3_1f96e0_l3
-
-//@gen lv3_1f97b8_l3
-
 //@gen lv3_24fba8_l3
-
-//@gen lv3_25f6c8_l3
 
 //@gen lv3_250ae8_l3
 
@@ -182,17 +177,7 @@ void kerwan_sandmouse_glow_l3(uint32_t a0_in);
 
 //@gen kerwan_class816_update_l3
 
-//@gen lv3_1fd510_l3
-
-//@gen lv3_2a7258_l3
-
-//@gen lv3_2ea740_l3
-
-//@gen lv3_2a7588_l3
-
 //@gen kerwan_class832_update_l3
-
-//@gen lv3_257b10_l3
 
 //@gen kerwan_class833_update_l3
 
@@ -254,10 +239,6 @@ void kerwan_sandmouse_glow_l3(uint32_t a0_in);
 
 //@gen kerwan_class1633_update_l3
 
-//@gen lv3_24e328_l3
-
-//@gen lv3_260550_l3
-
 //@gen lv3_2e0c38_l3
 
 //@gen lv3_2e0c90_l3
@@ -278,11 +259,7 @@ void kerwan_sandmouse_glow_l3(uint32_t a0_in);
 
 //@gen kerwan_class1818_update_l3
 
-//@gen kerwan_class1828_update_l3
-
 //@gen kerwan_class832_draw_l3
-
-//@gen lv3_2517b0_l3
 
 //@gen kerwan_sandmouse_glow_l3
 

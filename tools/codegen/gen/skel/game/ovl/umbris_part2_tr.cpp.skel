@@ -23,6 +23,7 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shadows.h>
 
 namespace rac1 {
 
@@ -45,8 +46,6 @@ void umb_class1046_draw_l7(uint32_t a0_in);
 
 //@gen um2_2cc6a0_l7
 
-//@gen um2_2c7808_l7
-
 //@gen um2_2ccc90_l7
 
 //@gen um2_2ccda0_l7
@@ -68,8 +67,6 @@ void umb_class1046_draw_l7(uint32_t a0_in);
 //@gen um2_275af8_l7
 
 //@gen um2_2cbbe8_l7
-
-//@gen um2_2c7b60_l7
 
 //@gen um2_2cbed0_l7
 

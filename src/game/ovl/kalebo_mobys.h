@@ -22,7 +22,6 @@ void kal_class1475_update_l16(uint32_t a0);  // L16:0x002a3f38
 void kal_class235_update_l16(uint32_t a0);  // L16:0x002c3be8
 void kal_class257_update_l16(uint32_t a0);  // L16:0x002c3d38
 void kal_class281_update_l16(uint32_t a0);  // L16:0x002c5eb0
-TrRet kal_264d98_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x00264d98
 void kal_class439_update_l16(uint32_t a0);  // L16:0x002c7788
 TrRet kal_2c9568_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002c9568
 TrRet kal_2c9650_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002c9650
@@ -79,7 +78,6 @@ void kal_class758_update_l16(uint32_t a0);  // L16:0x002d6378
 TrRet kal_25eef0_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x0025eef0
 void kal_class800_update_l16(uint32_t a0);  // L16:0x002d6740
 void kal_class805_update_l16(uint32_t a0);  // L16:0x002d69e0
-void kal_class876_update_l16(uint32_t a0);  // L16:0x002dddd8
 void kal_class933_update_l16(uint32_t a0);  // L16:0x002ddde0
 void kal_class1111_update_l16(uint32_t a0);  // L16:0x002dee10
 TrRet kal_2dfa98_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002dfa98
@@ -97,7 +95,6 @@ TrRet kal_2e0d80_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_
 void kal_class1135_update_l16(uint32_t a0);  // L16:0x002e0120
 TrRet kal_26f7e8_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x0026f7e8
 void kal_class1139_update_l16(uint32_t a0);  // L16:0x002e0f78
-void kal_class1140_update_l16(uint32_t a0);  // L16:0x002e1080
 TrRet kal_2a0dc0_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002a0dc0
 TrRet kal_2d3dc0_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002d3dc0
 TrRet kal_2d3de0_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002d3de0
@@ -190,7 +187,6 @@ void kal_cb_235268_l16(uint32_t a0);  // L16:0x00235268
 void kal_cb_235660_l16(uint32_t a0);  // L16:0x00235660
 void kal_cb_2388b0_l16(uint32_t a0);  // L16:0x002388b0
 void kal_cb_2388f8_l16(uint32_t a0);  // L16:0x002388f8
-TrRet kal_1f9cd8_l16(uint32_t a0, uint32_t a1, uint64_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x001f9cd8
 void kal_cb_238a30_l16(uint32_t a0);  // L16:0x00238a30
 void kal_cb_238e20_l16(uint32_t a0);  // L16:0x00238e20
 void kal_cb_2c9cd0_l16(uint32_t a0);  // L16:0x002c9cd0
@@ -198,7 +194,6 @@ void kal_cb_2cef60_l16(uint32_t a0);  // L16:0x002cef60
 TrRet kal_2cf850_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002cf850
 void kal_cb_2cf7a8_l16(uint32_t a0);  // L16:0x002cf7a8
 TrRet kal_1fe280_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x001fe280
-TrRet kal_299e28_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x00299e28
 TrRet kal_1fafa8_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x001fafa8
 void kal_cb_2de3c0_l16(uint32_t a0);  // L16:0x002de3c0
 void kal_cb_2e0a38_l16(uint32_t a0);  // L16:0x002e0a38

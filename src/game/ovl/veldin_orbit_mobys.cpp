@@ -5,6 +5,8 @@
 #include <game/ovl/veldin_orbit_mobys.h>
 
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/empty_class_updates.h>
+#include <game/ovl/hud_slot7_tr.h>
 
 namespace rac1 {
 
@@ -71,9 +73,9 @@ void veldin_orbit_moby_fns_register() {
     ovl_register_level_moby_fn(VELDIN_ORBIT, L17_ADDR(0x002f3848), vo_class1772_update_l17);
     ovl_register_level_moby_fn(VELDIN_ORBIT, L17_ADDR(0x002f40d8), vo_class1843_update_l17);
     ovl_register_level_moby_fn(VELDIN_ORBIT, L17_ADDR(0x002f5260), vo_class1873_update_l17);
-    ovl_register_level_moby_fn(VELDIN_ORBIT, L17_ADDR(0x002f5388), vo_class1874_update_l17);
+    ovl_register_level_moby_fn(VELDIN_ORBIT, L17_ADDR(0x002f5388), empty_update);
     ovl_register_level_moby_fn(VELDIN_ORBIT, L17_ADDR(0x002f5390), vo_class1876_update_l17);
-    ovl_register_level_moby_fn(VELDIN_ORBIT, L17_ADDR(0x002f54d0), vo_class1877_update_l17);
+    ovl_register_level_moby_fn(VELDIN_ORBIT, L17_ADDR(0x002f54d0), empty_update);
     ovl_register_level_moby_fn(VELDIN_ORBIT, L17_ADDR(0x002f57a0), vo_class1907_update_l17);
     ovl_register_level_moby_fn(VELDIN_ORBIT, L17_ADDR(0x002f5ab8), vo_class1908_update_l17);
     ovl_register_level_moby_fn(VELDIN_ORBIT, L17_ADDR(0x002f5dd0), vo_class1910_update_l17);
@@ -109,7 +111,7 @@ void veldin_orbit_moby_fns_register() {
     ovl_register_level_moby_fn(VELDIN_ORBIT, L17_ADDR(0x002f5fd8), vo_cb_2f5fd8_l17);
     ovl_register_level_moby_fn(VELDIN_ORBIT, L17_ADDR(0x002f62f0), vo_cb_2f62f0_l17);
     ovl_register_level_moby_fn(VELDIN_ORBIT, L17_ADDR(0x002f6608), vo_cb_2f6608_l17);
-    ovl_register_level_moby_fn(VELDIN_ORBIT, L17_ADDR(0x002355b8), vo_hud_slot7_draw_l17);  // (HUD slot 7's draw, the level's own; its start / update are Veldin's)
+    ovl_register_level_moby_fn(VELDIN_ORBIT, L17_ADDR(0x002355b8), hud_slot7_draw_tr);  // (HUD slot 7's draw: Veldin's port, the level's copy is the same code; its start / update are Veldin's too)
 }
 
 }  // namespace rac1

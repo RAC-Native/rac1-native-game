@@ -99,6 +99,73 @@ bool trial_run(void (*port)(uint32_t), uint32_t m) {
 }
 }  // namespace
 
+namespace {
+// The end menu's widgets in the states the dumps do not hold (each dump has one: the panel's model loaded, the epilogue at one
+// step), so that every branch of the functions is compared: before, the panel's update changed one word (end18000) or none
+// (end18300) in every case, the page's update / draw one step each, its focus-in nothing (its words already 0).
+void end_menu_vary(uint32_t fn, uint32_t w) {
+    switch (fn) {
+        case 0x00283530: {  // the panel's update: its state +0x34, the moby's state +0x20 (0 .. 7, the table 0x1e9350's cases),
+                            // its counter +0xbc, the dialogue's frames +0x52 / +0x53, its animation's end flag +0x70, the menu state
+            const uint32_t m = ee_read<uint32_t>(w + 0x44);
+            // (states 0 / 1 read the model from the disc and unpack it: the IOP's read, not run here; 2 the script, 3 failed)
+            w32(w + 0x34, ri(0, 5) == 0 ? 3u : 2u);
+            if (m >= 0x00100000u && m < 0x02000000u) {
+                w8(m + 0x20, ri(0, 5) == 0 ? u(ri(7, 8)) : u(ri(0, 6)));
+                static const uint32_t counts[] = {0, 0, 0, 1, 0x76, 0x77, 0x78, 0x79, 0xee, 0xef, 0xf0, 0xff};
+                w8(m + 0xbc, ri(0, 5) == 0 ? u(ri(0, 0xff)) : counts[ri(0, 11)]);  // (the counter about its limits 0x78 / 0xf0)
+                w8(m + 0x52, u(ri(0, 2)));
+                w8(m + 0x53, u(ri(0, 2)));
+                w8(m + 0x70, u(ri(0, 3)));
+            }
+            w16(0x0015172a, u(ri(0, 7)));
+            w32(0x0015ee20, u(ri(0, 1)));
+            w32(0x0015ed88, u(ri(0, 6)));
+            break;
+        }
+        case 0x0027fed8:  // the choice's update: the memory card's state 0x15eeb0 (1 / 0x10: a save to make first) under cross
+            w32(0x0015eeb0, coin() ? (coin() ? 1u : 0x10u) : u(ri(0, 0x18)));
+            if (coin()) w32(0x0013cae4, coin() ? 0x20u : 0x40u);
+            break;
+        case 0x00280020:  // the page's focus-in: what it clears
+            wrand(w + 0x3c, 2);
+            w32(w + 0x50, u(ri(0, 20)));
+            break;
+        case 0x00280038:    // the page's update: its step +0x50 (0 .. 19, beyond), timer +0x40, the end of its scroll +0x54, the
+        case 0x002803b0: {  // cheats' flag 0x1b9dcc and the root page's word +0x124; the draw: the step's text (a list or one id)
+            // (the widget's box laid out as a shown page's (+0x18 x, +0x1c y, +0x20 width, +0x24 height): the dumps' page is not
+            // shown, its box 0 x 0, where every character is a line and a text of more than 32 lines runs past the original
+            // text box's line arrays (0x1fbf48, batch 67's note) into its caller's frame: a state the game never reaches)
+            w32(w + 0x18, u(ri(0x20, 0x60)));
+            w32(w + 0x1c, u(ri(0x30, 0x80)));
+            w32(w + 0x20, u(ri(0x160, 0x1c0)));
+            w32(w + 0x24, u(ri(0xc0, 0x150)));
+            const uint32_t step = ri(0, 7) == 0 ? u(ri(20, 22)) : ri(0, 5) == 0 ? 19u : u(ri(0, 19));  // (19: the epilogue's end)
+            w32(w + 0x50, step);
+            w32(w + 0x40, coin() ? 0u : u(ri(1, 300)));
+            w32(w + 0x54, u(ri(0, 1)));
+            w32(w + 0x3c, u(ri(0, 0x800)));
+            w32(OV(0x001b9dcc), u(ri(0, 1)));
+            w32(OV(0x001b9cf0) + 0x124, u(ri(0, 1)));
+            w32(OV(0x001b9cf0) + 0xdc, u(ri(0, 1)));
+            if (ri(0, 2) == 0) w32(0x0013cae0, coin() ? 0xfu | (R() & 0x10u) : R() & 0xffu);  // (the shoulders held: the fast scroll)
+            if (ri(0, 2) == 0) w32(0x0013c940 + 0x1c4, coin() ? 0x10u : 0xd00u);  // (triangle: back; start / select: skip)
+            static const uint32_t lists[] = {0x001b9198, 0x001b9248, 0x001b9308, 0x001b9398, 0x001b93b0};
+            static const uint32_t ids[] = {0x50d5, 0x5137, 0x5143, 0x5175, 0x50a9};
+            if (step < 20) {  // (the draw's case of the step, read from the game's table 0x1e9300: a list, one text, nothing)
+                const uint32_t c = ovl_code_to_veldin(ee_read<uint32_t>(OV(0x001e9300) + step * 4));
+                if (c == 0x00280478u) w32(w + 0x34, ovl_xlate_data(lists[ri(0, 4)]));
+                else if (c == 0x00280538u) w32(w + 0x34, ids[ri(0, 4)]);
+            }
+            if (ri(0, 3) == 0) w32(w + 0x34, ovl_xlate_data(lists[ri(0, 4)]));
+            break;
+        }
+        default:
+            break;
+    }
+}
+}  // namespace
+
 void batch_271() {
     if (g_only_batch != 271) return;
     g_batch = 271;
@@ -221,7 +288,7 @@ void batch_271() {
     // played with the Metal Detector owned and something buried near (the port's), then the element's fields varied (as batch 160 checks Batalia's)
     {
         struct H7 { int lvl; const char* name; uint32_t addr; void (*fn)(uint32_t); };
-        static const H7 h7s[] = {{17, "hud_slot7_draw_l17", 0x002355b8, vo_hud_slot7_draw_l17}, {18, "hud_slot7_draw_l18", 0x0023d1a8, vf_hud_slot7_draw_l18}};
+        static const H7 h7s[] = {{17, "hud_slot7_draw_l17", 0x002355b8, hud_slot7_draw_tr}, {18, "hud_slot7_draw_l18", 0x0023d1a8, hud_slot7_draw_tr}};
         for (const H7& h : h7s) {
             if (g_oracle_level != h.lvl) { lcheck(h.lvl, h.name, h.addr, 0, Ret::None, nullptr, nullptr); continue; }
             static std::vector<uint8_t> s7;
@@ -376,7 +443,7 @@ void batch_271() {
             {"class1523", 0x002abaa0, vf_class1523_update_l18},
             {"class331", 0x002ce7d0, vf_class331_update_l18},
             {"class341", 0x002ce800, vf_class341_update_l18},
-            {"class419", 0x002ceaa0, vf_class419_update_l18},
+            {"class419", 0x002ceaa0, empty_update},
             {"class564", 0x002d5050, vf_class564_update_l18},
             {"class568", 0x002d5918, vf_class568_update_l18},
             {"class582", 0x002d62e8, vf_class582_update_l18},
@@ -470,12 +537,52 @@ void batch_271() {
             if (ri(0, 2) == 0) w16(OV(0x0015f624), u(ri(-1, 0x26)));
             if (ri(0, 2) == 0) w16(OV(0x0015f626), u(ri(0, 0x200)));
             if (ri(0, 3) == 0) wf(OV(0x0015f3fc), rf(0, 1));
+            // (the frame against one text entry's window (0x173080, 0xb7 entries of 0x10: +8 its first frame, +0xa its length): its
+            // box's and text's fades in and out, its edges; before, the frame 0 .. 0x200 met the first entries' middles alone)
+            if (coin()) {
+                const uint32_t e = OV(0x00173080) + u(ri(0, 5) == 0 ? 0xb6 : ri(0, 0xb6)) * 0x10;  // (the last entry too)
+                const int32_t start = ee_read<int16_t>(e + 8), len = ee_read<int16_t>(e + 0xa);
+                const int k = ri(0, 5);
+                const int32_t at = k == 0 ? ri(0, 0x10) : k == 1 ? ri(0x10, 0x20) : k == 2 ? len - ri(0, 0x10) : k == 3 ? len - ri(0x10, 0x20) : k == 4 ? ri(0, len) : len + ri(-1, 2);
+                w16(OV(0x0015f626), u(start + at));
+            }
+            // (the update: the 0x41 build's page jumps (0x13d1d2), the button that ends the credits (0x13cae4 & 0x800), the slide's
+            // last frame (the page's end 0x173bf0 - 0x24, the frame about it); the screen's height the upload's chunks are cut by)
+            w8(0x0013d1d2, coin() ? 0x41u : 0u);
+            if (ri(0, 5) == 0) w32(0x0013cae4, coin() ? 0x800u : 0x400u);
+            // (and the update's ways one by one: a slide's last frame (state 0; the last pages 0x27 / 0x2b end the credits), the
+            // dissolve's columns (state 1, steps below 32), its end (steps from 36: the next slide, the 0x41 build's jumps from the
+            // pages 8, 0x11, 0x25))
+            switch (ri(0, 4)) {
+                case 0: {
+                    const int32_t page = coin() ? (coin() ? 0x27 : 0x2b) : ee_read<int16_t>(OV(0x0015f622));
+                    w16(OV(0x0015f622), u(page));
+                    if (page >= 0 && page < 0x2b) w16(OV(0x0015f626), u(ee_read<int32_t>(OV(0x00173bf0) + u(page) * 4) - 0x24 + ri(-2, 2)));
+                    w16(OV(0x0015f620), 0);
+                    break;
+                }
+                case 1:
+                    w16(OV(0x0015f620), 1);
+                    w16(OV(0x0015f624), u(ri(-1, 31)));
+                    break;
+                case 2: {
+                    static const uint32_t pages[] = {8, 0x11, 0x25, 0x11};
+                    w16(OV(0x0015f620), 1);
+                    w16(OV(0x0015f624), u(ri(32, 40)));
+                    w16(OV(0x0015f622), coin() ? pages[ri(0, 3)] : u(ri(0, 0x2a)));
+                    break;
+                }
+                default:
+                    break;
+            }
+            if (ri(0, 3) == 0) w32(0x0013e504, coin() ? 512u : u(ri(0x60, 0x220)));
+            if (coin()) w32(0x0015ed80, u(ri(0, 1)));  // (the 50 Hz build's slides: the other table of the disc's files)
             w32(OV(0x0015f5cc), R());
             return Args{{0}, {}};
         };
         g_extra_noop_hooks = {OVF(0x002a08c8), 0x00122298, 0x00118a80};
-        check(nu.c_str(), 0x00299c48, 60, Ret::None, gen, [](A) { credits_update_tr(0); return uint64_t{0}; });
-        check(nd.c_str(), 0x001f8f78, 60, Ret::None, gen, [](A) { credits_draw_tr(0); return uint64_t{0}; });
+        check(nu.c_str(), 0x00299c48, 150, Ret::None, gen, [](A) { credits_update_tr(0); return uint64_t{0}; });
+        check(nd.c_str(), 0x001f8f78, 150, Ret::None, gen, [](A) { credits_draw_tr(0); return uint64_t{0}; });
         g_extra_noop_hooks.clear();
     }
     // the menu at the end of the game (menu state 0x21) and the page of its state 0x23: every widget function of the two pages (+0 update, +4 draw,
@@ -506,12 +613,15 @@ void batch_271() {
         g_extra_noop_hooks = {OVF(0x002a08c8), 0x00122298, 0x00118a80};
         // (the panel's model drawn by the moby pass 0x24ff08: the w lanes of its rows (sqc2 of VU0 registers) hold what the checks before left in
         // the VU0 registers, the interpreter's and the port's: a lone w lane is not compared, as batch 63 does; alone the check matches them too)
-        g_ignore_lone_w_lanes = true;
         for (const Wf& wf_ : wfs) {
+            // (only the panel's draw: before, every widget check left out every lone word at +0xc of a quadword, anywhere in
+            // RAM, which hid the panel update's dialogue request 0x1516ec; since audit 2)
+            g_ignore_lone_w_lanes = wf_.veldin == 0x002838b0;
             const std::string nm = std::string("end_menu_") + wf_.name + "_" + f;
             if (own[wf_.veldin].empty()) { std::printf("%-26s 0x%08x  no widget of the function on the dump's pages\n", nm.c_str(), wf_.veldin); continue; }
             const std::vector<uint32_t> ws = own[wf_.veldin];
-            check(nm.c_str(), wf_.veldin, 60, Ret::Int32, [&d, ws, pick] {
+            const uint32_t fn = wf_.veldin;
+            check(nm.c_str(), wf_.veldin, 120, Ret::Int32, [&d, ws, pick, fn] {
                 load_dump(d);
                 const uint32_t w = pick(ws);
                 // the pad: a packet of held buttons (cross / circle / the d-pad mostly), as batch 91 builds them
@@ -521,6 +631,7 @@ void batch_271() {
                     const uint8_t pk[6] = {static_cast<uint8_t>(low >> 8), static_cast<uint8_t>(low & 0xff), 0x7f, 0x7f, 0x7f, 0x7f};
                     pad_read_packet(0x0013c940, pk, 6);
                 }
+                end_menu_vary(fn, w);
                 w32(OV(0x0015f5cc), R());
                 seed_rand();
                 return Args{{w, u(ri(0, 1))}, {}};

@@ -4,7 +4,7 @@
  "env": {
   "MKALL_HELPER_PREFIX": "vf_",
   "MKALL_WIDE_GPR": "203a38:a3;2da8d8:a0",
-  "MKALL_UNIFORM": "vf_cam_type18_accept_u,vf_hook_2d6108_u,vf_hook_2d6190_u,vf_hook_2d61e0_u,vf_hook_2d6230_u,vf_hook_2d6250_u,vf_hook_2fcbb0_u,vf_hook_2fcc00_u,vf_hook_2fcc50_u,vf_hook_2fcca0_u,vf_hook_2fccd0_u"
+  "MKALL_UNIFORM": "vf_cam_type18_accept_u,vf_hook_2d6108_u,vf_hook_2d6190_u,vf_hook_2d61e0_u,vf_hook_2d6230_u,vf_hook_2d6250_u,vf_hook_2fcbb0_u,vf_hook_2fcc00_u,vf_hook_2fcc50_u,vf_hook_2fcca0_u"
  },
  "entries": [
   "2a7220:vf_class41_update_l18:void:a0",
@@ -15,7 +15,6 @@
   "2abaa0:vf_class1523_update_l18:void:a0",
   "2ce7d0:vf_class331_update_l18:void:a0",
   "2ce800:vf_class341_update_l18:void:a0",
-  "2ceaa0:vf_class419_update_l18:void:a0",
   "2d5050:vf_class564_update_l18:void:a0",
   "2d5918:vf_class568_update_l18:void:a0",
   "2d62e8:vf_class582_update_l18:void:a0",
@@ -67,7 +66,6 @@
   "2fcc00:vf_hook_2fcc00_u",
   "2fcc50:vf_hook_2fcc50_u",
   "2fcca0:vf_hook_2fcca0_u",
-  "2fccd0:vf_hook_2fccd0_u",
   "2d6280:vf_hook_2d6280_l18:void:a0",
   "2fcd00:vf_hook_2fcd00_l18:void:a0",
   "305318:vf_cam0_hook_l18:void:a0",
@@ -95,7 +93,6 @@
   "2fb690:vf_cb_2fb690_l18:void:a0",
   "2fc860:vf_cb_2fc860_l18:void:a0",
   "2fca98:vf_cb_2fca98_l18:void:a0",
-  "23d1a8:vf_hud_slot7_draw_l18:void:a0",
   "23cd60:vf_hud_boss_draw_l18:void:a0"
  ],
  "glue_files": [],

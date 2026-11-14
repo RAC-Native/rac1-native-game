@@ -28,6 +28,12 @@
 namespace rac1::oracle {
 
 namespace {
+// Veldin's class 749 hook +0x10 (the moby only) in the hook table's uniform form (T00: a level's copy of it)
+TrRet e749_hook_10_uniform(uint32_t a0, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float,
+                           float, float, float, float) {
+    return TrRet{e749_hook_10(a0), 0.0f};
+}
+
 // A random state can hold a pointer outside RAM that the port's vector helpers dereference without a check (a SIGSEGV where the interpreter would wrap it): the trial run of a state
 // turns it into "not a game state" (the state is dealt again), as the port's "Pointer resolution out of bounds" exception does.
 sigjmp_buf g_trial_jmp;
@@ -214,7 +220,7 @@ void batch_270() {
         {"class1523", 0x002abaa0, vf_class1523_update_l18, 0x0, false},
         {"class331", 0x002ce7d0, vf_class331_update_l18, 0x0, false},
         {"class341", 0x002ce800, vf_class341_update_l18, 0x0, false},
-        {"class419", 0x002ceaa0, vf_class419_update_l18, 0x0, false},
+        {"class419", 0x002ceaa0, empty_update, 0x0, false},
         {"class564", 0x002d5050, vf_class564_update_l18, 0x0, false},
         {"class568", 0x002d5918, vf_class568_update_l18, 0x0, false},
         {"class582", 0x002d62e8, vf_class582_update_l18, 0x0, false},
@@ -419,7 +425,7 @@ void batch_270() {
             {"hook_2fcc00", 0x2fcc00, 0x4, vf_hook_2fcc00_u},
             {"hook_2fcc50", 0x2fcc50, 0x8, vf_hook_2fcc50_u},
             {"hook_2fcca0", 0x2fcca0, 0xc, vf_hook_2fcca0_u},
-            {"hook_2fccd0", 0x2fccd0, 0x10, vf_hook_2fccd0_u},
+            {"hook_2fccd0", 0x2fccd0, 0x10, e749_hook_10_uniform},
         };
         for (const Hk& hk : hks) {
             level();
@@ -542,6 +548,21 @@ void batch_270() {
             const std::vector<uint32_t> ms = mobys_with(ORACLE_LADDR(18, 0x002eeb98));
             return Args{{ms.empty() ? 0x00180000u : ms[0]}, {}};
         }, [](A a) { drek_npc_update(a.i[0]); return uint64_t{0}; });
+    }
+
+    // T00: the level's bare `jr ra` functions its classes and cameras reach through a pointer (class updates, camera
+    // callbacks; the scan pairs them with Veldin's 0x1f6bf8): empty_update runs in their places, each against the original
+    // called directly (the level may have no moby of the class)
+    if (g_oracle_level == 18) {
+        static const uint32_t empties[] = {0x002ceaa0};
+        for (const uint32_t a : empties) {
+            char nm[24];
+            std::snprintf(nm, sizeof nm, "empty_%x", a);
+            l18check(nm, a, 20, Ret::None, [level] {
+                level();
+                return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
+            }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
+        }
     }
 
     //@@NEXT

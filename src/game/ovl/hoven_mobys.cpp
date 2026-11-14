@@ -5,6 +5,7 @@
 #include <game/ovl/hoven_mobys.h>
 
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/empty_class_updates.h>
 
 namespace rac1 {
 
@@ -27,8 +28,8 @@ void hov_hook_2e6b00_m(uint32_t m) { hov_hook_2e6b00_u(m, 0, 0, 0, 0, 0, 0, 0, 0
 void hoven_moby_fns_register() {
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002bf140), hov_class19_update_l12);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002bf9b8), hov_class37_update_l12);
-    ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002cb1e8), hov_class164_update_l12);
-    ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002d30f8), hov_class178_update_l12);
+    ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002cb1e8), empty_update);
+    ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002d30f8), empty_update);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002d4378), hov_class184_update_l12);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002e1be0), hov_class238_update_l12);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002e3ed8), hov_class240_update_l12);
@@ -42,12 +43,12 @@ void hoven_moby_fns_register() {
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002ebea8), hov_class336_update_l12);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002ec1d0), hov_class339_update_l12);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002ec478), hov_class341_update_l12);
-    ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002ec718), hov_class346_update_l12);
+    ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002ec718), empty_update);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002ec720), hov_class384_update_l12);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002ece00), hov_class409_update_l12);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002ed280), hov_class422_update_l12);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002ef648), hov_class458_update_l12);
-    ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002f11b0), hov_class499_update_l12);
+    ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002f11b0), empty_update);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002f51f0), hov_class604_update_l12);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002f5540), hov_class605_update_l12);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002f7b28), hov_class758_update_l12);
@@ -62,10 +63,10 @@ void hoven_moby_fns_register() {
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x00303540), hov_class1267_update_l12);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x00304e00), hov_class1269_update_l12);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x003069d0), hov_class1274_update_l12);
-    ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x003076d0), hov_class1278_update_l12);
-    ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x003076d8), hov_class1280_update_l12);
+    ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x003076d0), empty_update);
+    ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x003076d8), empty_update);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x00307840), hov_class1281_update_l12);
-    ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x003081a8), hov_class1322_update_l12);
+    ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x003081a8), empty_update);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x003081b0), hov_class1345_update_l12);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x00308918), hov_class1371_update_l12);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x00308be0), hov_class1400_update_l12);
@@ -74,7 +75,7 @@ void hoven_moby_fns_register() {
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x00309648), hov_class1633_update_l12);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x0030a6f0), hov_class1818_update_l12);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x0030b6c8), hov_class1862_update_l12);
-    ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x0030b7c0), hov_class1863_update_l12);
+    ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x0030b7c0), empty_update);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x0030bff0), hov_class1901_update_l12);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002e16b8), hov_hook_2e16b8_m);
     ovl_register_level_moby_fn(HOVEN, L12_ADDR(0x002e17a8), hov_hook_2e17a8_m);

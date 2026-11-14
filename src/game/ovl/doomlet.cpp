@@ -620,7 +620,6 @@ float doomlet_2bf050(uint32_t p0, uint32_t p1, uint32_t p2, uint32_t p3, float p
 
 // orig: 0x00259028
 int32_t doomlet_259028(uint32_t p0, uint32_t p1, uint32_t p2, uint32_t p3) {
-    if (on_blarg()) return static_cast<int32_t>(blg_call(blg_doomlet_259028_u, p0, p1, p2, p3).v0);
     uint32_t flags = 0;
     vec_clear(V(p3));
     if (vec3_distance(V(p0 + 0x10), V(p2)) < lwc1(p1 + 0x2c)) {

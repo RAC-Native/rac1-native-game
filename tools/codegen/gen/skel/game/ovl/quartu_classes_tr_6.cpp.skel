@@ -41,6 +41,9 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/hud_slot7_tr.h>
+#include <game/ovl/glows.h>
+#include <game/ovl/shadows.h>
 
 namespace rac1 {
 
@@ -65,8 +68,6 @@ using namespace vu0m;
 
 //@gen qua_cam_type19_update_l15
 
-//@gen qua_cam_type19_exit_l15
-
 //@gen qua_2f28b8_l15
 
 //@gen qua_2f85a8_l15
@@ -76,12 +77,6 @@ using namespace vu0m;
 //@gen qua_2f88e8_l15
 
 //@gen qua_cam_type22_accept_u
-
-//@gen qua_cam_type22_init_l15
-
-//@gen qua_cam_type22_update_l15
-
-//@gen qua_cam_type22_exit_l15
 
 //@gen qua_hook_2bc4b0_u
 
@@ -102,8 +97,6 @@ using namespace vu0m;
 //@gen qua_cb_296710_l15
 
 //@gen qua_cb_297808_l15
-
-//@gen qua_252d10_l15
 
 //@gen qua_cb_29aba8_l15
 
@@ -131,15 +124,11 @@ using namespace vu0m;
 
 //@gen qua_1f9190_l15
 
-//@gen qua_28ee00_l15
-
 //@gen qua_1f5e78_l15
 
 //@gen qua_cb_2eac90_l15
 
 //@gen qua_cb_2eb108_l15
-
-//@gen qua_1f4ba8_l15
 
 //@gen qua_cb_2eb6b8_l15
 

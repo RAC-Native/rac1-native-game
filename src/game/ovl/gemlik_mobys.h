@@ -37,7 +37,6 @@ TrRet gml_265170_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_
 TrRet gml_2651c8_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002651c8
 TrRet gml_281100_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x00281100
 TrRet gml_2b8590_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b8590
-TrRet gml_202620_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x00202620
 TrRet gml_2b84e8_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b84e8
 TrRet gml_3025f8_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x003025f8
 TrRet gml_2b9df8_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b9df8
@@ -48,7 +47,6 @@ TrRet gml_2ba178_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_
 void gml_class69_update_l13(uint32_t a0);  // L13:0x002bb068
 void gml_class82_update_l13(uint32_t a0);  // L13:0x002c1528
 void gml_class83_update_l13(uint32_t a0);  // L13:0x002c2048
-TrRet gml_275360_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x00275360
 TrRet gml_2c2d30_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002c2d30
 TrRet gml_3058a8_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x003058a8
 TrRet gml_305988_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x00305988
@@ -129,7 +127,6 @@ TrRet gml_316c00_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_
 void gml_class758_update_l13(uint32_t a0);  // L13:0x002fa708
 void gml_class805_update_l13(uint32_t a0);  // L13:0x002fac70
 void gml_class832_update_l13(uint32_t a0);  // L13:0x002fce18
-void gml_class913_update_l13(uint32_t a0);  // L13:0x00302418
 TrRet gml_302420_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x00302420
 void gml_class1009_update_l13(uint32_t a0);  // L13:0x00302780
 void gml_class1017_update_l13(uint32_t a0);  // L13:0x00302e48
@@ -199,7 +196,6 @@ void gml_class1885_update_l13(uint32_t a0);  // L13:0x0030d550
 TrRet gml_30d148_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x0030d148
 TrRet gml_30dd20_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x0030dd20
 void gml_class1886_update_l13(uint32_t a0);  // L13:0x0030dd80
-TrRet gml_2062d8_l13(uint32_t a0, uint32_t a1, uint64_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002062d8
 TrRet gml_2b7b30_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint64_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b7b30
 TrRet gml_2b7fd0_l13(uint32_t a0, uint32_t a1, uint64_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b7fd0
 TrRet gml_2b8320_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b8320
@@ -224,7 +220,6 @@ TrRet gml_2af528_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_
 TrRet gml_2595f0_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002595f0
 TrRet gml_2af5d0_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002af5d0
 TrRet gml_20b500_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x0020b500
-TrRet gml_2ab548_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002ab548
 TrRet gml_2af8b8_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002af8b8
 TrRet gml_2afae8_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002afae8
 void gml_cb_30a460_l13(uint32_t a0);  // L13:0x0030a460

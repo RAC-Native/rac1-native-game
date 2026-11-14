@@ -3,6 +3,7 @@
 #include <game/ovl/sound_emitter.h>
 
 #include <game/ovl/rilgar_mobys.h>
+#include <game/ovl/empty_class_updates.h>
 
 namespace rac1 {
 
@@ -17,7 +18,7 @@ bool rilgar_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t*
     case L5_CASE(0x0032a6d8): *ret = static_cast<int32_t>(ril_cam_type8_accept_u(cam, other, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f).v0); return true;
     case L5_CASE(0x0032a6e0): ril_cam_type8_init_l5(cam); return true;
     case L5_CASE(0x0032a758): ril_cam_type8_update_l5(cam); return true;
-    case L5_CASE(0x0032a788): ril_cam_type8_exit_l5(cam); return true;
+    case L5_CASE(0x0032a788): empty_update(cam); return true;
     default: return false;
     }
 }

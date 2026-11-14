@@ -3,7 +3,7 @@
  "tool": "mkall_l17.py",
  "env": {
   "MKALL_HELPER_PREFIX": "vo_",
-  "MKALL_WIDE_GPR": "1f7958:a2",
+  "MKALL_WIDE_GPR": "",
   "MKALL_UNIFORM": "vo_cam_type3_accept_u,vo_hook_2efea8_u,vo_hook_2eff30_u,vo_hook_2effb8_u,vo_hook_2f0040_u,vo_hook_2f0070_u"
  },
  "entries": [
@@ -57,9 +57,7 @@
   "2f3848:vo_class1772_update_l17:void:a0",
   "2f40d8:vo_class1843_update_l17:void:a0",
   "2f5260:vo_class1873_update_l17:void:a0",
-  "2f5388:vo_class1874_update_l17:void:a0",
   "2f5390:vo_class1876_update_l17:void:a0",
-  "2f54d0:vo_class1877_update_l17:void:a0",
   "2f57a0:vo_class1907_update_l17:void:a0",
   "2f5ab8:vo_class1908_update_l17:void:a0",
   "2f5dd0:vo_class1910_update_l17:void:a0",
@@ -102,8 +100,7 @@
   "2f5cc0:vo_cb_2f5cc0_l17:void:a0",
   "2f5fd8:vo_cb_2f5fd8_l17:void:a0",
   "2f62f0:vo_cb_2f62f0_l17:void:a0",
-  "2f6608:vo_cb_2f6608_l17:void:a0",
-  "2355b8:vo_hud_slot7_draw_l17:void:a0"
+  "2f6608:vo_cb_2f6608_l17:void:a0"
  ],
  "glue_files": [],
  "files": [

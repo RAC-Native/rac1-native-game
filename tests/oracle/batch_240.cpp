@@ -6,12 +6,14 @@
 // tools/codegen/mkall_l15.py). Made after batch 124 (Pokitaru).
 #include "ovl_oracle.h"
 
+#include <game/ovl/helmet_tr.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/hero_move_mode.h>
 #include <game/ovl/quartu_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 
 #include <csetjmp>
@@ -231,13 +233,13 @@ void batch_240() {
         {"class233", 0x002c5630, qua_class233_update_l15, 0x0, false},
         {"class250", 0x002c6f08, qua_class250_update_l15, 0x0, false},
         {"class258", 0x002c73b8, qua_class258_update_l15, 0x0, false},
-        {"class283", 0x002c9240, qua_class283_update_l15, 0x0, false},
+        {"class283", 0x002c9240, empty_update, 0x0, false},
         {"class325", 0x002ca240, qua_class325_update_l15, 0x0, false},
         {"class403", 0x002ca9f8, qua_class403_update_l15, 0x0, false},
         {"class408", 0x002cb4c8, qua_class408_update_l15, 0x0, false},
-        {"class419", 0x002cbe58, qua_class419_update_l15, 0x0, false},
+        {"class419", 0x002cbe58, empty_update, 0x0, false},
         {"class491", 0x002cf3a8, qua_class491_update_l15, 0x0, false},
-        {"class531", 0x002d3bd8, qua_class531_update_l15, 0x0, false},
+        {"class531", 0x002d3bd8, empty_update, 0x0, false},
         {"class567", 0x002d4748, qua_class567_update_l15, 0x0, false},
         {"class605", 0x002d5728, qua_class605_update_l15, 0x0, false},
         {"class655", 0x002d6810, qua_class655_update_l15, 0x0, false},
@@ -568,17 +570,17 @@ void batch_240() {
             lvcheck(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
                     [](A a) { if (a.i[0] != 0) qua_cam_type19_update_l15(a.i[0]); return uint64_t{0}; });
             lvcheck(name("exit"), ct.exit, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [](A a) { if (a.i[0] != 0) qua_cam_type19_exit_l15(a.i[0]); return uint64_t{0}; });
+                    [](A a) { if (a.i[0] != 0) empty_update(a.i[0]); return uint64_t{0}; });
             }
             if (type == 22) {
             lvcheck(name("accept"), ct.accept, 300, Ret::Int32, [cam_setup, type] { uint32_t other = 0; const uint32_t cam = cam_setup(type, true, &other); return Args{{cam, other}, {}}; },
                     [](A a) { return r32(a.i[0] != 0 ? qua_cam_type22_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0 : 0u); });
             lvcheck(name("init"), ct.init, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [](A a) { if (a.i[0] != 0) qua_cam_type22_init_l15(a.i[0]); return uint64_t{0}; });
+                    [](A a) { if (a.i[0] != 0) empty_update(a.i[0]); return uint64_t{0}; });
             lvcheck(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [](A a) { if (a.i[0] != 0) qua_cam_type22_update_l15(a.i[0]); return uint64_t{0}; });
+                    [](A a) { if (a.i[0] != 0) empty_update(a.i[0]); return uint64_t{0}; });
             lvcheck(name("exit"), ct.exit, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [](A a) { if (a.i[0] != 0) qua_cam_type22_exit_l15(a.i[0]); return uint64_t{0}; });
+                    [](A a) { if (a.i[0] != 0) empty_update(a.i[0]); return uint64_t{0}; });
             }
         }
     }
@@ -590,6 +592,37 @@ void batch_240() {
             if (ri(0, 2) == 0) w32(OV(0x0015ed84), ri(0, 1) ? 15u : u(ri(0, 18)));
             return Args{};
         }, [](A) { qua_cutscene_level_extras_u(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0); return uint64_t{0}; });
+    }
+
+    // T00: the level's copy of Veldin's helmet_init_fx (0x2e06a8; the scan's body hash pairs them, the overlay map does not) at
+    // L15:0x002ea8d0: the hand port runs in its place; a live moby's pvars +0x10 .. +0x4c set up (the random bytes, the timers by
+    // the frame scale)
+    if (g_oracle_level == 15) {
+        lvcheck("helmet_init_fx_2ea8d0", 0x002ea8d0, 120, Ret::None, [level] {
+            level();
+            std::vector<uint32_t> ms;
+            for (uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)); m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100)
+                if (ee_read<uint8_t>(m + 0x20) < 0xfe && ee_read<uint32_t>(m + 0x78) != 0) ms.push_back(m);
+            const uint32_t m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+            if (ri(0, 3) == 0) wf(0x0015ed68, 1.2f);  // (the frame scale at its 50 Hz value: frame_scale_i's counts)
+            seed_rand();
+            return Args{{m}, {}};
+        }, [](A a) { helmet_init_fx(a.i[0]); return uint64_t{0}; });
+    }
+
+    // T00: the level's bare `jr ra` functions its classes and cameras reach through a pointer (class updates, camera
+    // callbacks; the scan pairs them with Veldin's 0x1f6bf8): empty_update runs in their places, each against the original
+    // called directly (the level may have no moby of the class)
+    if (g_oracle_level == 15) {
+        static const uint32_t empties[] = {0x002c9240, 0x002cbe58, 0x002d3bd8, 0x002f85a0, 0x002f8c10, 0x002f8c18, 0x002f8c20};
+        for (const uint32_t a : empties) {
+            char nm[24];
+            std::snprintf(nm, sizeof nm, "empty_%x", a);
+            lvcheck(nm, a, 20, Ret::None, [level] {
+                level();
+                return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
+            }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
+        }
     }
 
     //@@NEXT

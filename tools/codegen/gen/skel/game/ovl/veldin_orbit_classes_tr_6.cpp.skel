@@ -49,6 +49,7 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/glows.h>
 
 namespace rac1 {
 
@@ -85,11 +86,7 @@ using namespace vu0m;
 
 //@gen vo_class1873_update_l17
 
-//@gen vo_class1874_update_l17
-
 //@gen vo_class1876_update_l17
-
-//@gen vo_class1877_update_l17
 
 //@gen vo_class1907_update_l17
 
@@ -128,8 +125,6 @@ using namespace vu0m;
 //@gen vo_cam0_hook_l17
 
 //@gen vo_cam_callback_l17
-
-//@gen vo_25d478_l17
 
 //@gen vo_cb_2a2aa8_l17
 

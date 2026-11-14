@@ -6,12 +6,14 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/carry_hooks_levels.h>
 #include <game/lib/libcdvd.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/umbris_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 
 #include <cmath>
@@ -22,6 +24,14 @@
 namespace rac1::oracle {
 
 namespace {
+// a hand-written class hook (moby, position, target, float) in the hook table's uniform form: the levels' copies of
+// Veldin's hooks and the levels' hooks written by hand run these (T00)
+template <int32_t (*H)(uint32_t, uint32_t, uint32_t, float)>
+TrRet hook_uniform(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float f12, float, float, float,
+                   float, float, float, float) {
+    return TrRet{static_cast<uint32_t>(H(a0, a1, a2, f12)), 0.0f};
+}
+
 
 // A check whose original is level 7's own function at `l6addr` (not a Veldin address to translate).
 void l7check(const char* name, uint32_t l6addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port,
@@ -193,7 +203,7 @@ void batch_119() {
         {"class447", 0x002f61c0, umb_class447_update_l7, 0x0, false},
         {"class460", 0x002f8058, umb_class460_update_l7, 0x0, false},
         {"class529", 0x002fbdb8, umb_class529_update_l7, 0x0, false},
-        {"class532", 0x002fbdf0, umb_class532_update_l7, 0x0, false},
+        {"class532", 0x002fbdf0, empty_update, 0x0, false},
         {"class605", 0x002fd698, umb_class605_update_l7, 0x0, false},
         {"class631", 0x002fd908, umb_class631_update_l7, 0x0, false},
         {"class696", 0x00300338, umb_class696_update_l7, 0x0, false},
@@ -217,7 +227,7 @@ void batch_119() {
         {"class1063", 0x00310df0, umb_class1063_update_l7, 0x0, false},
         {"class1069", 0x003112c8, umb_class1069_update_l7, 0x0, false},
         {"class1080", 0x00311bc8, umb_class1080_update_l7, 0x0, false},
-        {"class1104", 0x00311eb0, umb_class1104_update_l7, 0x0, false},
+        {"class1104", 0x00311eb0, empty_update, 0x0, false},
         {"class1106", 0x00314150, umb_class1106_update_l7, 0x0, false},
         {"class1110", 0x00319040, umb_class1110_update_l7, 0x0, false},
         {"class1112", 0x003196e0, umb_class1112_update_l7, 0x0, false},
@@ -233,7 +243,7 @@ void batch_119() {
         {"class1222", 0x0031dae0, umb_class1222_update_l7, 0x0, false},
         {"class1552", 0x0031eba8, umb_class1552_update_l7, 0x0, false},
         {"class1650", 0x0031f3d8, umb_class1650_update_l7, 0x0, false},
-        {"class1651", 0x0031f5a8, umb_class1651_update_l7, 0x0, false},
+        {"class1651", 0x0031f5a8, empty_update, 0x0, false},
         {"class1663", 0x0031f5b0, umb_class1663_update_l7, 0x0, false},
         {"class1686", 0x0031f780, umb_class1686_update_l7, 0x0, false},
         {"class1789", 0x0031f900, umb_class1789_update_l7, 0x0, false},
@@ -372,11 +382,11 @@ void batch_119() {
             l7check(name("accept"), ct.accept, 300, Ret::Int32, [cam_setup, type] { uint32_t other = 0; const uint32_t cam = cam_setup(type, true, &other); return Args{{cam, other}, {}}; },
                     [type](A a) { return r32(a.i[0] != 0 ? umb_cam_type18_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0 : 0u); });
             l7check(name("init"), ct.init, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) umb_cam_type18_init_l7(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) empty_update(a.i[0]); return uint64_t{0}; });
             l7check(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) umb_cam_type18_update_l7(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) empty_update(a.i[0]); return uint64_t{0}; });
             l7check(name("exit"), ct.exit, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) umb_cam_type18_exit_l7(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) empty_update(a.i[0]); return uint64_t{0}; });
         }
     }
 
@@ -404,7 +414,7 @@ void batch_119() {
         g_extra_noop_hooks = {0x00122298, 0x001232c8, 0x00122fe0, 0x00118a80, 0x002763f8};
         struct Hk { const char* name; uint32_t addr; uint32_t slot; TrRet (*fn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float); };
         static const Hk hks[] = {
-            {"hook_c_2f44b0", 0x002f44b0, 0xc, umb_hook_2f44b0_u},
+            {"hook_c_2f44b0", 0x002f44b0, 0xc, hook_uniform<umb_carry_hookc_l7>},
         };
         for (const Hk& hk : hks) {
             level();
@@ -433,12 +443,27 @@ void batch_119() {
         l7check("level_sound_play", 0x002b4a00, 200, Ret::Int32, [level] {
             level();
             return Args{{u(ri(-2, 12)), R() & 0xffff, ri(0, 3) == 0 ? 0u : OV(0x00173e40u), u(ri(0, 0x400))}, {}};
-        }, [](A a) { return r32(umb_level_sound_play_u(a.i[0], a.i[1], a.i[2], a.i[3], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0); });
+        }, [](A a) { return r32(static_cast<uint32_t>(sound_play_indexed(static_cast<int32_t>(a.i[0]), a.i[1], a.i[2]))); });  // (L7:0x2b4a00 is Veldin's sound_play_indexed: the same code)
         l7check("cutscene_level_extras", 0x00265bd8, 100, Ret::None, [level] {
             level();
             if (ri(0, 2) == 0) w32(OV(0x0015ed84), ri(0, 1) ? 7u : u(ri(0, 18)));
             return Args{};
         }, [](A) { umb_cutscene_level_extras_u(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0); return uint64_t{0}; });
+    }
+
+    // T00: the level's bare `jr ra` functions its classes and cameras reach through a pointer (class updates, camera
+    // callbacks; the scan pairs them with Veldin's 0x1f6bf8): empty_update runs in their places, each against the original
+    // called directly (the level may have no moby of the class)
+    if (g_oracle_level == 7) {
+        static const uint32_t empties[] = {0x002fbdf0, 0x00311eb0, 0x0031f5a8, 0x00329120, 0x00329128, 0x00329130};
+        for (const uint32_t a : empties) {
+            char nm[24];
+            std::snprintf(nm, sizeof nm, "empty_%x", a);
+            l7check(nm, a, 20, Ret::None, [level] {
+                level();
+                return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
+            }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
+        }
     }
 
     //@@NEXT

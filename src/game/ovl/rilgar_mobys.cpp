@@ -6,6 +6,7 @@
 
 #include <initializer_list>
 
+#include <game/ovl/carry_hooks_levels.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/rilgar_part2.h>
 
@@ -14,6 +15,12 @@ namespace rac1 {
 namespace {
 // orig: L5:0x0031ace8 (also 0x0031d158: classes 1140, 1514) -- a bare `jr ra`
 void ril_empty_update_l5(uint32_t) {}
+
+// orig: (none) -- adapter of L5:0x00300b98 (class hook +8: the indirect-call form, the moby only)
+void ril_hook_300b98_m(uint32_t m) { ril_carry_hook8_l5(m, 0, 0, 0.0f); }
+
+// orig: (none) -- adapter of L5:0x00300be8 (class hook +0xc: the indirect-call form, the moby only)
+void ril_hook_300be8_m(uint32_t m) { ril_carry_hookc_l5(m, 0, 0, 0.0f); }
 }  // namespace
 
 // orig: (none) -- Rilgar's registrations
@@ -67,8 +74,8 @@ void rilgar_moby_fns_register() {
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x0031d5c8), ril_class1550_update_l5);
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x0031d760), ril_class1633_update_l5);
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x0031e808), ril_class1818_update_l5);
-    ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x00300b98), ril_cb_300b98_l5);
-    ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x00300be8), ril_cb_300be8_l5);
+    ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x00300b98), ril_hook_300b98_m);
+    ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x00300be8), ril_hook_300be8_m);
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x0030d678), ril_cb_30d678_l5);
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x0030d8b8), ril_cb_30d8b8_l5);
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x00262ae8), ril_cb_262ae8_l5);

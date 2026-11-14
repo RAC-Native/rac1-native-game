@@ -1,6 +1,7 @@
 // Veldin's engine functions first reached unported on Rilgar (see veldin_extras.h).
 #include <game/ovl/veldin_extras.h>
 
+#include <game/ovl/empty_class_updates.h>
 #include <game/ovl/helmet_tr.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -49,7 +50,7 @@ void veldin_extras_register() {
     ovl_register_moby_fn(0x002694f8, particle_03_update);  // (particle type 0x03)
     ovl_register_moby_fn(0x0026a418, particle_07_update);  // (particle type 0x07)
     ovl_register_moby_fn(0x0026a6f0, particle_09_update);  // (particle type 0x09)
-    ovl_register_moby_fn(0x0026c3c8, particle_11_update);  // (particle type 0x11)
+    ovl_register_moby_fn(0x0026c3c8, empty_update);  // (particle type 0x11: a bare `jr ra`)
     ovl_register_moby_fn(0x0026c860, particle_14_update);  // (particle type 0x14)
     ovl_register_moby_fn(0x0026d470, particle_18_update);  // (particle type 0x18)
     ovl_register_moby_fn(0x0026e3a8, particle_1d_update);  // (particle type 0x1d)

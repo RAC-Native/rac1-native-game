@@ -2,7 +2,7 @@
  "level": 0,
  "tool": "mkall.py",
  "env": {
-  "MKALL_FORCE": "1fc740,1ffa18,266858,2a0eb8,2b3c50,2d5988,2d6bf0,2d6cd0"
+  "MKALL_FORCE": "1fc740,1ffa18,266858,2b3c50,2d5988,2d6cd0"
  },
  "entries": [
   "2a57a8:vendor_update_tr:void:a0",

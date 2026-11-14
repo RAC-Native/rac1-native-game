@@ -179,10 +179,7 @@ void class857_draw(uint32_t m) {
             const uint32_t pv = lwu(o + 0x78);
             for (uint32_t k = 0; k < 3; ++k) {
                 const uint32_t point = pv + 0x140 + k * 0x10;
-                if (on_level(BLARG))
-                    bl2_272498_l6(point, lwu(pv + 0x290), 0, 0, 0, 0, 0, 0, size, toward, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
-                else
-                    glow_draw(point, lwu(pv + 0x290), size, toward);
+                glow_draw(point, lwu(pv + 0x290), size, toward);  // (Blarg's copy, 0x272498, is the same code)
             }
         }
         group_next(sp, lwu(sp), 0, 0);

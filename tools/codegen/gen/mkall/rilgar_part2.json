@@ -3,7 +3,7 @@
  "tool": "mkall.py",
  "env": {
   "MKALL_HELPER_PREFIX": "rl2_",
-  "MKALL_FORCE": "22de38,22e700,2775c8,277900,277b20,28d788,2c92b0,2ce130,2ce720,2ce830"
+  "MKALL_FORCE": "22de38,22e700,2775c8,277900,277b20,2ce130,2ce720,2ce830"
  },
  "entries": [
   "2d6f48:ril_class79_draw_a_l5:void:a0",

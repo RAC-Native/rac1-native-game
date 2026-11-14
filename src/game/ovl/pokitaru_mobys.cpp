@@ -5,6 +5,7 @@
 #include <game/ovl/pokitaru_mobys.h>
 
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/empty_class_updates.h>
 
 namespace rac1 {
 
@@ -77,7 +78,7 @@ void pokitaru_moby_fns_register() {
     ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x0031b758), pok_class1633_update_l11);
     ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x0031c800), pok_class1818_update_l11);
     ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x0031d7d8), pok_class1859_update_l11);
-    ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x0031d8d0), pok_class1860_update_l11);
+    ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x0031d8d0), empty_update);
     ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x0031e2f0), pok_class1903_update_l11);
     ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x0031f150), pok_class1919_update_l11);
     ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x002fb780), pok_hook_2fb780_m);

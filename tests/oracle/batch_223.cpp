@@ -20,6 +20,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants_l14.h>
+#include <game/ovl/empty_class_updates.h>
 
 #include <csetjmp>
 #include <csignal>
@@ -154,20 +155,20 @@ void batch_223() {
             {211, 0x002d5f40, olt_class211_update_l14}, {250, 0x002d96e0, olt_class250_update_l14}, {252, 0x002d98f0, olt_class252_update_l14},
             {258, 0x002db378, olt_class258_update_l14}, {309, 0x002de1f8, olt_class309_update_l14}, {325, 0x002de670, olt_class325_update_l14},
             {386, 0x002dee28, olt_class386_update_l14}, {403, 0x002dfd10, olt_class403_update_l14}, {455, 0x002e1b20, olt_class455_update_l14},
-            {531, 0x002e7190, olt_class531_update_l14}, {545, 0x002e72d8, olt_class545_update_l14}, {557, 0x002e7bd8, olt_class557_update_l14},
+            {531, 0x002e7190, empty_update}, {545, 0x002e72d8, olt_class545_update_l14}, {557, 0x002e7bd8, olt_class557_update_l14},
             {604, 0x002ea9d0, olt_class604_update_l14}, {605, 0x002ead20, olt_class605_update_l14}, {610, 0x002eaf88, olt_class610_update_l14},
             {643, 0x002ec810, olt_class643_update_l14}, {681, 0x002ece00, olt_class681_update_l14}, {684, 0x002ed280, olt_class684_update_l14},
             {685, 0x002ee8d8, olt_class685_update_l14}, {686, 0x002ef840, olt_class686_update_l14}, {712, 0x002f0538, olt_class712_update_l14},
-            {758, 0x002f2cb8, olt_class758_update_l14}, {765, 0x002f3ef0, olt_class765_update_l14}, {805, 0x002f4190, olt_class805_update_l14},
+            {758, 0x002f2cb8, olt_class758_update_l14}, {765, 0x002f3ef0, empty_update}, {805, 0x002f4190, olt_class805_update_l14},
             {832, 0x002f6338, olt_class832_update_l14}, {851, 0x002fba20, olt_class851_update_l14}, {908, 0x002fc0f0, olt_class908_update_l14},
-            {913, 0x002fcba8, olt_class913_update_l14}, {921, 0x002fcbb0, olt_class921_update_l14}, {922, 0x002fdbb8, olt_class922_update_l14},
+            {913, 0x002fcba8, empty_update}, {921, 0x002fcbb0, olt_class921_update_l14}, {922, 0x002fdbb8, olt_class922_update_l14},
             {923, 0x002fe2a0, olt_class923_update_l14}, {924, 0x002fefe0, olt_class924_update_l14}, {933, 0x002ff640, olt_class933_update_l14},
             {1134, 0x002ffc18, olt_class1134_update_l14}, {1193, 0x00300e00, olt_class1193_update_l14}, {1224, 0x003015d0, olt_class1224_update_l14},
             {1260, 0x00303370, olt_class1260_update_l14}, {1331, 0x003039e0, olt_class1331_update_l14}, {1352, 0x00305408, olt_class1352_update_l14},
-            {1354, 0x00305758, olt_class1354_update_l14}, {1395, 0x00305d28, olt_class1395_update_l14}, {1396, 0x00306150, olt_class1396_update_l14},
+            {1354, 0x00305758, olt_class1354_update_l14}, {1395, 0x00305d28, olt_class1395_update_l14}, {1396, 0x00306150, empty_update},
             {1397, 0x003061d8, olt_class1397_update_l14}, {1400, 0x00306390, olt_class1400_update_l14}, {1416, 0x00306b78, olt_class1416_update_l14},
             {1417, 0x00306ee0, olt_class1417_update_l14}, {1418, 0x00307a80, olt_class1418_update_l14}, {1511, 0x00307ad8, olt_class1511_update_l14},
-            {1514, 0x00308350, olt_class1514_update_l14}, {1559, 0x003087c0, olt_class1559_update_l14}, {1629, 0x003088b0, olt_class1629_update_l14},
+            {1514, 0x00308350, empty_update}, {1559, 0x003087c0, olt_class1559_update_l14}, {1629, 0x003088b0, olt_class1629_update_l14},
             {1633, 0x00308be0, olt_class1633_update_l14}, {1818, 0x00309c88, olt_class1818_update_l14}};
     struct Cb { const char* name; uint32_t addr; void (*fn)(uint32_t); int cls; };
     static const Cb cbs[] = {{"cb2aee28", 0x002aee28, olt_cb_2aee28_l14, 8},

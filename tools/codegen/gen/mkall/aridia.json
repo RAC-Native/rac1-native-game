@@ -4,7 +4,7 @@
  "env": {
   "MIPS2CPP_OVL_HI": "0x300000",
   "MKALL_WIDE_GPR": "20bc88:a3;2da3d8:a0",
-  "MKALL_FORCE": "1fc008,20bc88,214be0,21fe40,22ea90,237478,2512b8,25b1c0,25b710,25c758,2618a8,264b50,264d28,264e40,264e70,2651d0,26afd0,271d80,273628,2768c8,298c68,2a00d0,2b5200,2b5530,2cbda0,2cbdf8,2cbef0,2cbf90,2cc290,2cc518,2d3a50,2d3c98,2d3dd0,2d5658,2d5728,2d57f8,2d5a68,2d5c88,2d6118,2d63c0,2d85b8,2d8910,2d92f0,2da3d8,2da6c0,2da938,2dae88,2dcfe0,2dd2a8,2dd4d8,2def80,2df0b0,2df730,2dfbd8,2e0cd8,2e1868,2e1fb8,2e4c40,2e6568,2e6790,2e68a0,2e6a90,2e7660,2ea7d0,2ea8b0,2eb418,2eb508,2eb5e8,2eb878,2eba88,2ec228,2ec3f0,2eca30,2ecd50,2ed420,2ed658,2efdd0,2f0250,2f02a8,2f0350,2f0638,2f08c8,2f0de8,2f0f18,2f6570,2f6598,2f8a18,2f8aa0,2f9a48,2fa6d8,2fa7c8,2fb648,2fb788,2fb9c8"
+  "MKALL_FORCE": "1fc008,20bc88,21fe40,22ea90,237478,2512b8,25b1c0,25c758,264d28,264e40,264e70,2651d0,271d80,2768c8,298c68,2a00d0,2cbda0,2cbdf8,2cbef0,2cbf90,2cc290,2cc518,2d3a50,2d3c98,2d3dd0,2d5658,2d5728,2d57f8,2d5a68,2d5c88,2d6118,2d63c0,2d85b8,2d8910,2d92f0,2da3d8,2da6c0,2da938,2dae88,2dcfe0,2dd2a8,2dd4d8,2def80,2df0b0,2df730,2dfbd8,2e0cd8,2e1868,2e1fb8,2ea7d0,2ea8b0,2eb418,2eb508,2eb5e8,2eb878,2eba88,2ec228,2ec3f0,2eca30,2ecd50,2ed420,2ed658,2efdd0,2f0250,2f02a8,2f0350,2f0638,2f08c8,2f0de8,2f0f18,2f6570,2f6598,2f8a18,2f8aa0,2fa6d8,2fa7c8,2fb648,2fb788,2fb9c8"
  },
  "entries": [
   "2d3e50:sand_shark_update_l2:void:a0",
@@ -28,10 +28,6 @@
   "2d7190:class604_update_l2:void:a0",
   "2e4a48:class832_update_l2:void:a0",
   "2fc298:cam_type_12_accept_l2:v0:a0,a1",
-  "2d61c0:shark_hook_0_l2:v0:a0",
-  "2d6210:shark_hook_4_l2:v0:a0",
-  "2d6290:shark_hook_8_l2:v0:a0",
-  "2d62e0:shark_hook_c_l2:v0:a0",
   "2d6340:shark_hook_14_l2:v0:a0",
   "2d6310:shark_hook_10_l2:v0:a0",
   "2dfcd0:class737_update_l2:void:a0",

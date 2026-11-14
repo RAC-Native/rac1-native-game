@@ -26,6 +26,7 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/particle_16_spawn.h>
+#include <game/ovl/shadows.h>
 
 namespace rac1 {
 
@@ -61,8 +62,6 @@ using namespace vu0m;
 //@gen kw2_23c428_l3
 
 //@gen kw2_291218_l3
-
-//@gen kw2_28d4a8_l3
 
 //@gen kw2_291808_l3
 

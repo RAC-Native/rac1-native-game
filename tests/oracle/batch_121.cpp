@@ -11,6 +11,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 
 #include <cmath>
@@ -178,11 +179,11 @@ void batch_121() {
         {"class263", 0x002eb970, gas_class263_update_l9, 0x0, false},
         {"class276", 0x002edc30, gas_class276_update_l9, 0x0, false},
         {"class279", 0x002ee110, gas_class279_update_l9, 0x0, false},
-        {"class284", 0x002ee428, gas_class284_update_l9, 0x0, false},
+        {"class284", 0x002ee428, empty_update, 0x0, false},
         {"class313", 0x002ef430, gas_class313_update_l9, 0x0, false},
         {"class317", 0x002ef7f8, gas_class317_update_l9, 0x0, false},
         {"class320", 0x002ef9b0, gas_class320_update_l9, 0x0, false},
-        {"class324", 0x002efe40, gas_class324_update_l9, 0x0, false},
+        {"class324", 0x002efe40, empty_update, 0x0, false},
         {"class417", 0x002f0040, gas_class417_update_l9, 0x0, false},
         {"class567", 0x002f6678, gas_class567_update_l9, 0x0, false},
         {"class605", 0x002f7658, gas_class605_update_l9, 0x0, false},
@@ -204,10 +205,10 @@ void batch_121() {
         {"class1285", 0x003082d8, gas_class1285_update_l9, 0x0, false},
         {"class1292", 0x00308f08, gas_class1292_update_l9, 0x0, false},
         {"class1293", 0x003091b0, gas_class1293_update_l9, 0x0, false},
-        {"class1300", 0x00309828, gas_class1300_update_l9, 0x0, false},
+        {"class1300", 0x00309828, empty_update, 0x0, false},
         {"class1766", 0x00309c08, gas_class1766_update_l9, 0x0, false},
         {"class1849", 0x0030a678, gas_class1849_update_l9, 0x0, false},
-        {"class1850", 0x0030a770, gas_class1850_update_l9, 0x0, false},
+        {"class1850", 0x0030a770, empty_update, 0x0, false},
         {"class1885", 0x0030ab80, gas_class1885_update_l9, 0x0, false},
         {"class1886", 0x0030b3b0, gas_class1886_update_l9, 0x0, false},
     };
@@ -369,6 +370,21 @@ void batch_121() {
             for (uint32_t k = 0; k < 8; ++k) if (coin()) w32(0x00180000u + 4 * k, (R() & 0x807fffffu) | (u(ri(0, 255)) << 23));
             return Args{{0x00180020u, 0x00180000u, 0x00180010u}, {}};
         }, [](A a) { vec3_add(ee_ref<Vec4>(a.i[0]), ee_ref<Vec4>(a.i[1]), ee_ref<Vec4>(a.i[2])); return uint64_t{0}; });
+    }
+
+    // T00: the level's bare `jr ra` functions its classes and cameras reach through a pointer (class updates, camera
+    // callbacks; the scan pairs them with Veldin's 0x1f6bf8): empty_update runs in their places, each against the original
+    // called directly (the level may have no moby of the class)
+    if (g_oracle_level == 9) {
+        static const uint32_t empties[] = {0x002ee428, 0x002efe40, 0x00309828, 0x0030a770};
+        for (const uint32_t a : empties) {
+            char nm[24];
+            std::snprintf(nm, sizeof nm, "empty_%x", a);
+            l9check(nm, a, 20, Ret::None, [level] {
+                level();
+                return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
+            }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
+        }
     }
 
     //@@NEXT

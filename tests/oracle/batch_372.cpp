@@ -25,6 +25,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/hydro.h>
 #include <game/ovl/veldin_finale_mobys.h>
+#include <game/ovl/empty_class_updates.h>
 
 #include <cstring>
 #include <map>
@@ -105,7 +106,7 @@ void batch_372() {
             {"class1523", 0x002abaa0, vf_class1523_update_l18},
             {"class331", 0x002ce7d0, vf_class331_update_l18},
             {"class341", 0x002ce800, vf_class341_update_l18},
-            {"class419", 0x002ceaa0, vf_class419_update_l18},
+            {"class419", 0x002ceaa0, empty_update},
             {"class564", 0x002d5050, vf_class564_update_l18},
             {"class568", 0x002d5918, vf_class568_update_l18},
             {"class582", 0x002d62e8, vf_class582_update_l18},

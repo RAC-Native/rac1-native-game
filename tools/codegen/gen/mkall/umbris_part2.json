@@ -3,7 +3,7 @@
  "tool": "mkall.py",
  "env": {
   "MKALL_HELPER_PREFIX": "um2_",
-  "MKALL_FORCE": "226fb8,227880,275380,275568,275af8,275d88,2760c0,2762e0,29ae58,2c7808,2c7b60,2cb008,2cbb40,2cbbe8,2cbed0,2cc100,2cc6a0,2ccc90,2ccda0,312948,312e70"
+  "MKALL_FORCE": "226fb8,227880,275380,275568,275af8,275d88,2760c0,2762e0,29ae58,2cb008,2cbb40,2cbbe8,2cbed0,2cc100,2cc6a0,2ccc90,2ccda0,312948,312e70"
  },
  "entries": [
   "2f8038:umb_class460_draw_l7:void:a0",

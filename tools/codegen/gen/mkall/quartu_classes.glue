@@ -1,1 +1,2 @@
 0x00254c50: music_track_request(static_cast<int32_t>(a0.w()), a1.w());
+0x002ea8d0: helmet_init_fx(a0.w());

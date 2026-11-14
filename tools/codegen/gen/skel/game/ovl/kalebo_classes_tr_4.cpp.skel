@@ -39,6 +39,8 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/hud_slot7_tr.h>
+#include <game/ovl/shadows.h>
 
 namespace rac1 {
 
@@ -127,8 +129,6 @@ using namespace vu0m;
 
 //@gen kal_cb_2388f8_l16
 
-//@gen kal_1f9cd8_l16
-
 //@gen kal_cb_238a30_l16
 
 //@gen kal_cb_238e20_l16
@@ -142,8 +142,6 @@ using namespace vu0m;
 //@gen kal_cb_2cf7a8_l16
 
 //@gen kal_1fe280_l16
-
-//@gen kal_299e28_l16
 
 //@gen kal_1fafa8_l16
 

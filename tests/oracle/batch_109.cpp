@@ -301,7 +301,8 @@ void batch_109() {
         if (coin()) sound_ready();  // (a scene's / dialog's sound ready: the start's wait loop not entered)
         seed_rand();
     };
-    // the carry update (Veldin's 0x2dc9f0 is not the same code: transliterated at L2:0x2e7660) as the Sand Shark calls it: (moby, pvar + 0x120)
+    // the carry update (Aridia's 0x2e7660: Veldin's carry_update 0x2dc9f0 runs there, the same code word for word with the
+    // relocations through the maps) as the Sand Shark calls it: (moby, pvar + 0x120)
     if (g_oracle_level == 2 && std::getenv("B109_CARRY") != nullptr) {
         level(0);
         const std::vector<uint32_t> ms = mobys_with(0x002d3e50);
@@ -310,7 +311,7 @@ void batch_109() {
             const uint32_t m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
             generic_prep(m, 0, ri(0, 3), sand_shark_update_l2);
             return Args{{m, ee_read<uint32_t>(m + 0x78) + 0x120}, {}};
-        }, [](A a) { return ri32(static_cast<int32_t>(lv2_2e7660_l2(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0)); });
+        }, [](A a) { return ri32(carry_update(a.i[0], a.i[1])); });
     }
     // the particle spawn 0x0c (Veldin 0x26b230, the same code at L2:0x26c8a8) as the Constructorbot calls it
     if (g_oracle_level == 2 && std::getenv("B109_PART") != nullptr) {

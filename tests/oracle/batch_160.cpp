@@ -347,7 +347,7 @@ void batch_160() {
             };
             const H hs[] = {{"hud_slot7_start_tr", 0x00235dc0, hud_slot7_start_tr, false},
                             {"hud_slot7_update_tr", 0x0023a218, hud_slot7_update_tr, false},
-                            {"bat_hud_slot7_draw", 0x00244ab0, bat_hud_slot7_draw_l8, true}};
+                            {"bat_hud_slot7_draw", 0x00244ab0, hud_slot7_draw_tr, true}};
             if (!es.empty())
                 for (const H& h : hs) {
                     const std::string nm = std::string(h.name) + tag;

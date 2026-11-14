@@ -24,6 +24,8 @@
 #include <game/ovl/pause_menu.h>
 #include <game/ovl/nanotech_draw.h>
 #include <game/ovl/quad_draw.h>
+#include <game/ovl/shadows.h>
+#include <game/ovl/helmet_tr.h>
 
 namespace rac1 {
 
@@ -34,7 +36,6 @@ using namespace vu0m;
 TrRet ovl_2b3c50_tr(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in);
 void class167_update_tr(uint32_t a0_in);
 TrRet ovl_1ffa18_tr(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in);
-TrRet ovl_2a0eb8_tr(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in);
 TrRet ovl_1fc740_tr(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in);
 void class167_draw_tr(uint32_t a0_in);
 
@@ -43,8 +44,6 @@ void class167_draw_tr(uint32_t a0_in);
 //@gen ovl_266858_tr
 
 //@gen ovl_2d5988_tr
-
-//@gen ovl_2d6bf0_tr
 
 //@gen ovl_2d6cd0_tr
 
@@ -56,8 +55,6 @@ void class167_draw_tr(uint32_t a0_in);
 //@gen class167_update_tr
 
 //@gen ovl_1ffa18_tr
-
-//@gen ovl_2a0eb8_tr
 
 //@gen ovl_1fc740_tr
 

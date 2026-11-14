@@ -365,7 +365,7 @@ int32_t sound_play_indexed(int32_t idx, uint32_t flags, uint32_t moby) {
 // position (+0x40); the slot remembers the sound and the emitter. -1 when none.
 // orig: 0x0028ddd8
 int32_t level_sound_play(int32_t idx, uint32_t flags, uint32_t emitter, int32_t volume) {
-    if (on_umbris()) return static_cast<int32_t>(umb_call(umb_level_sound_play_u, static_cast<uint32_t>(idx), flags, emitter, static_cast<uint32_t>(volume)).v0);  // (level 7's own: L7:0x002b4a00)
+    if (on_umbris()) return sound_play_indexed(idx, flags, emitter);  // (level 7's own build, L7:0x002b4a00, is Veldin's sound_play_indexed 0x28dd40: the same code)
     if (on_blarg()) return static_cast<int32_t>(blg_call(blg_level_sound_play_u, static_cast<uint32_t>(idx), flags, emitter, static_cast<uint32_t>(volume)).v0);  // (level 6's own: L6:0x0029aec0)
     if (!(idx < lw(OV(0x0015f5f0)))) return -1;
     const int32_t ch = sound_start(lwu(OV(0x0015f5f4)) + static_cast<uint32_t>(idx) * 0x20, flags, 0, emitter + 0x40, volume);

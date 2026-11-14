@@ -35,6 +35,7 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/helmet_tr.h>
 
 namespace rac1 {
 
@@ -53,13 +54,9 @@ using namespace vu0m;
 
 //@gen umb_class1080_update_l7
 
-//@gen umb_class1104_update_l7
-
 //@gen umb_28a440_l7
 
 //@gen umb_29c4e8_l7
-
-//@gen umb_301ed0_l7
 
 //@gen umb_302208_l7
 

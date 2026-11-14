@@ -87,27 +87,22 @@ void qua_class250_update_l15(uint32_t a0);  // L15:0x002c6f08
 TrRet qua_2c7118_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002c7118
 TrRet qua_2c7348_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002c7348
 void qua_class258_update_l15(uint32_t a0);  // L15:0x002c73b8
-void qua_class283_update_l15(uint32_t a0);  // L15:0x002c9240
 void qua_class325_update_l15(uint32_t a0);  // L15:0x002ca240
 TrRet qua_2cb0a0_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002cb0a0
 void qua_class403_update_l15(uint32_t a0);  // L15:0x002ca9f8
 TrRet qua_2a2868_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002a2868
 TrRet qua_2cbc30_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002cbc30
 void qua_class408_update_l15(uint32_t a0);  // L15:0x002cb4c8
-void qua_class419_update_l15(uint32_t a0);  // L15:0x002cbe58
 TrRet qua_251d00_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x00251d00
 TrRet qua_2cf110_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002cf110
 TrRet qua_251c90_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x00251c90
 TrRet qua_2d0fa8_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002d0fa8
 TrRet qua_2dd600_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002dd600
 void qua_class491_update_l15(uint32_t a0);  // L15:0x002cf3a8
-void qua_class531_update_l15(uint32_t a0);  // L15:0x002d3bd8
-TrRet qua_258f40_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x00258f40
 void qua_class567_update_l15(uint32_t a0);  // L15:0x002d4748
 void qua_class605_update_l15(uint32_t a0);  // L15:0x002d5728
 TrRet qua_2d6770_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002d6770
 TrRet qua_2d79e8_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002d79e8
-TrRet qua_261980_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x00261980
 TrRet qua_2d7bb0_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002d7bb0
 TrRet qua_2d9570_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002d9570
 TrRet qua_2d95a0_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002d95a0
@@ -144,7 +139,6 @@ void qua_class1250_update_l15(uint32_t a0);  // L15:0x002e73c0
 void qua_class1257_update_l15(uint32_t a0);  // L15:0x002e7f68
 void qua_class1331_update_l15(uint32_t a0);  // L15:0x002e8910
 void qua_class1371_update_l15(uint32_t a0);  // L15:0x002ea5e0
-TrRet qua_2ea8d0_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002ea8d0
 TrRet qua_2ea9b0_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002ea9b0
 void qua_class1388_update_l15(uint32_t a0);  // L15:0x002ea748
 TrRet qua_2e7ed8_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002e7ed8
@@ -175,15 +169,11 @@ TrRet qua_2f7958_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_
 TrRet qua_cam_type19_accept_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002f84d8
 void qua_cam_type19_init_l15(uint32_t a0);  // L15:0x002f7a38
 void qua_cam_type19_update_l15(uint32_t a0);  // L15:0x002f7df8
-void qua_cam_type19_exit_l15(uint32_t a0);  // L15:0x002f85a0
 TrRet qua_2f28b8_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002f28b8
 TrRet qua_2f85a8_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002f85a8
 TrRet qua_2f8698_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002f8698
 TrRet qua_2f88e8_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002f88e8
 TrRet qua_cam_type22_accept_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002f8ba8
-void qua_cam_type22_init_l15(uint32_t a0);  // L15:0x002f8c10
-void qua_cam_type22_update_l15(uint32_t a0);  // L15:0x002f8c18
-void qua_cam_type22_exit_l15(uint32_t a0);  // L15:0x002f8c20
 TrRet qua_hook_2bc4b0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002bc4b0
 TrRet qua_hook_2bc500_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002bc500
 TrRet qua_hook_2bc550_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002bc550
@@ -194,7 +184,6 @@ void qua_cam0_hook_l15(uint32_t a0);  // L15:0x002f6980
 void qua_cam_callback_l15(uint32_t a0);  // L15:0x002f69e0
 void qua_cb_296710_l15(uint32_t a0);  // L15:0x00296710
 void qua_cb_297808_l15(uint32_t a0);  // L15:0x00297808
-TrRet qua_252d10_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x00252d10
 void qua_cb_29aba8_l15(uint32_t a0);  // L15:0x0029aba8
 void qua_cb_2a29b8_l15(uint32_t a0);  // L15:0x002a29b8
 void qua_cb_2a3138_l15(uint32_t a0);  // L15:0x002a3138
@@ -208,11 +197,9 @@ void qua_cb_2d8710_l15(uint32_t a0);  // L15:0x002d8710
 void qua_cb_2de080_l15(uint32_t a0);  // L15:0x002de080
 void qua_cb_2e6a10_l15(uint32_t a0);  // L15:0x002e6a10
 TrRet qua_1f9190_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x001f9190
-TrRet qua_28ee00_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x0028ee00
 TrRet qua_1f5e78_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x001f5e78
 void qua_cb_2eac90_l15(uint32_t a0);  // L15:0x002eac90
 void qua_cb_2eb108_l15(uint32_t a0);  // L15:0x002eb108
-TrRet qua_1f4ba8_l15(uint32_t a0, uint32_t a1, uint64_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x001f4ba8
 void qua_cb_2eb6b8_l15(uint32_t a0);  // L15:0x002eb6b8
 void qua_cb_2edbe0_l15(uint32_t a0);  // L15:0x002edbe0
 void qua_cb_2edfc0_l15(uint32_t a0);  // L15:0x002edfc0

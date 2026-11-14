@@ -12,6 +12,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 
 #include <csetjmp>
@@ -238,7 +239,7 @@ void batch_124() {
         {"class1633", 0x0031b758, pok_class1633_update_l11, 0x0, false},
         {"class1818", 0x0031c800, pok_class1818_update_l11, 0x0, false},
         {"class1859", 0x0031d7d8, pok_class1859_update_l11, 0x0, false},
-        {"class1860", 0x0031d8d0, pok_class1860_update_l11, 0x0, false},
+        {"class1860", 0x0031d8d0, empty_update, 0x0, false},
         {"class1903", 0x0031e2f0, pok_class1903_update_l11, 0x0, false},
         {"class1919", 0x0031f150, pok_class1919_update_l11, 0x0, false},
     };
@@ -483,6 +484,21 @@ void batch_124() {
             const uint32_t fl = (ri(0, 1) ? 4u : 0u) | (ri(0, 2) ? 0u : 0x10u) | (ri(0, 2) ? 0u : 0x20u) | (ri(0, 2) ? 0u : 0x80u) | (u(ri(0, 0x1f)) << 8);
             return Args{{OUT, fl, ri(0, 3) ? 0u : m, 0u}, {r}};
         }, [](A a) { return r32(mobys_in_sphere(a.i[0], a.f[0], a.i[1], a.i[2], a.i[3])); });
+    }
+
+    // T00: the level's bare `jr ra` functions its classes and cameras reach through a pointer (class updates, camera
+    // callbacks; the scan pairs them with Veldin's 0x1f6bf8): empty_update runs in their places, each against the original
+    // called directly (the level may have no moby of the class)
+    if (g_oracle_level == 11) {
+        static const uint32_t empties[] = {0x0031d8d0};
+        for (const uint32_t a : empties) {
+            char nm[24];
+            std::snprintf(nm, sizeof nm, "empty_%x", a);
+            l11check(nm, a, 20, Ret::None, [level] {
+                level();
+                return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
+            }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
+        }
     }
 
     //@@NEXT

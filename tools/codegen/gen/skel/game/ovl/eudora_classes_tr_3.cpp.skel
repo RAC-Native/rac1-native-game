@@ -25,6 +25,7 @@
 #include <game/ovl/weapons.h>
 #include <game/port_stubs.h>
 #include <game/ovl/hydro.h>
+#include <game/ovl/helmet_tr.h>
 
 namespace rac1 {
 
@@ -39,7 +40,6 @@ TrRet eud_2d6948_l4(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_
 TrRet eud_2d6e98_l4(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in, float f16_in, float f17_in, float f18_in, float f19_in);
 void eud_trespasser_puzzle_draw_l4(uint32_t a0_in);
 void eud_class832_draw_l4(uint32_t a0_in);
-TrRet eud_255f08_l4(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in, float f16_in, float f17_in, float f18_in, float f19_in);
 void eud_sandmouse_glow_l4(uint32_t a0_in);
 
 //@gen eud_class481_update_l4
@@ -62,8 +62,6 @@ void eud_sandmouse_glow_l4(uint32_t a0_in);
 
 //@gen eud_class584_update_l4
 
-//@gen eud_21ac18_l4
-
 //@gen eud_2d4920_l4
 
 //@gen eud_2d5300_l4
@@ -83,8 +81,6 @@ void eud_sandmouse_glow_l4(uint32_t a0_in);
 //@gen eud_2e1768_l4
 
 //@gen eud_class1101_update_l4
-
-//@gen eud_2e1c20_l4
 
 //@gen eud_2e1d00_l4
 

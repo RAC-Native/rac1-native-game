@@ -50,6 +50,7 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/screen_effects.h>
 
 namespace rac1 {
 
@@ -115,8 +116,6 @@ using namespace vu0m;
 //@gen vo_2ea688_l17
 
 //@gen vo_2e2128_l17
-
-//@gen vo_1f3ca0_l17
 
 //@gen vo_2ea5e0_l17
 

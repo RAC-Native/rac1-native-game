@@ -1,17 +1,19 @@
 // Umbris (level 7) own moby classes: the registration table. The ports are the transliterations in
 // umbris_classes_tr_N.cpp (declarations: umbris_mobys.h). Keyed by level 7's own address and by level, so the indirect call (`jalr` through
 // moby +0x74) reaches them only while the played level's overlay is level 7's.
+#include <game/ovl/carry_hooks_levels.h>
 #include <game/ovl/umbris_hooks.h>
 #include <game/ovl/umbris_mobys.h>
 #include <game/ovl/umbris_part2.h>
 
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/empty_class_updates.h>
 
 namespace rac1 {
 
 namespace {
 // orig: (none) -- adapter of L7:0x002f44b0 (a class hook +0xc: the indirect-call form, the moby only)
-void umb_hook_2f44b0_m(uint32_t m) { umb_hook_2f44b0_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+void umb_hook_2f44b0_m(uint32_t m) { umb_carry_hookc_l7(m, 0, 0, 0.0f); }
 }  // namespace
 
 // orig: (none) -- level 7's registrations
@@ -24,7 +26,7 @@ void umbris_moby_fns_register() {
     ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x002f61c0), umb_class447_update_l7);
     ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x002f8058), umb_class460_update_l7);
     ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x002fbdb8), umb_class529_update_l7);
-    ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x002fbdf0), umb_class532_update_l7);
+    ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x002fbdf0), empty_update);
     ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x002fd698), umb_class605_update_l7);
     ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x002fd908), umb_class631_update_l7);
     ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x00300338), umb_class696_update_l7);
@@ -48,7 +50,7 @@ void umbris_moby_fns_register() {
     ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x00310df0), umb_class1063_update_l7);
     ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x003112c8), umb_class1069_update_l7);
     ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x00311bc8), umb_class1080_update_l7);
-    ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x00311eb0), umb_class1104_update_l7);
+    ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x00311eb0), empty_update);
     ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x00314150), umb_class1106_update_l7);
     ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x00319040), umb_class1110_update_l7);
     ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x003196e0), umb_class1112_update_l7);
@@ -64,7 +66,7 @@ void umbris_moby_fns_register() {
     ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x0031dae0), umb_class1222_update_l7);
     ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x0031eba8), umb_class1552_update_l7);
     ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x0031f3d8), umb_class1650_update_l7);
-    ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x0031f5a8), umb_class1651_update_l7);
+    ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x0031f5a8), empty_update);
     ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x0031f5b0), umb_class1663_update_l7);
     ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x0031f780), umb_class1686_update_l7);
     ovl_register_level_moby_fn(UMBRIS, L7_ADDR(0x0031f900), umb_class1789_update_l7);

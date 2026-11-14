@@ -14,6 +14,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
 #include <game/lib/libcdvd.h>
+#include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 
 #include <csetjmp>
@@ -251,9 +252,9 @@ void batch_260() {
         {"class1772", 0x002f3848, vo_class1772_update_l17, 0x0, false},
         {"class1843", 0x002f40d8, vo_class1843_update_l17, 0x0, false},
         {"class1873", 0x002f5260, vo_class1873_update_l17, 0x0, false},
-        {"class1874", 0x002f5388, vo_class1874_update_l17, 0x0, false},
+        {"class1874", 0x002f5388, empty_update, 0x0, false},
         {"class1876", 0x002f5390, vo_class1876_update_l17, 0x0, false},
-        {"class1877", 0x002f54d0, vo_class1877_update_l17, 0x0, false},
+        {"class1877", 0x002f54d0, empty_update, 0x0, false},
         {"class1907", 0x002f57a0, vo_class1907_update_l17, 0x0, false},
         {"class1908", 0x002f5ab8, vo_class1908_update_l17, 0x0, false},
         {"class1910", 0x002f5dd0, vo_class1910_update_l17, 0x0, false},
@@ -549,6 +550,21 @@ void batch_260() {
                      [](A a) { if (a.i[0] != 0) vo_cam_type3_update_l17(a.i[0]); return uint64_t{0}; });
             l17check("cam_type3_exit", 0x002fd460, 100, Ret::None, [cam_setup] { return Args{{cam_setup(3, false, nullptr)}, {}}; },
                      [](A a) { if (a.i[0] != 0) vo_cam_type3_exit_l17(a.i[0]); return uint64_t{0}; });
+        }
+    }
+
+    // T00: the level's bare `jr ra` functions its classes and cameras reach through a pointer (class updates, camera
+    // callbacks; the scan pairs them with Veldin's 0x1f6bf8): empty_update runs in their places, each against the original
+    // called directly (the level may have no moby of the class)
+    if (g_oracle_level == 17) {
+        static const uint32_t empties[] = {0x002f5388, 0x002f54d0};
+        for (const uint32_t a : empties) {
+            char nm[24];
+            std::snprintf(nm, sizeof nm, "empty_%x", a);
+            l17check(nm, a, 20, Ret::None, [level] {
+                level();
+                return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
+            }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
         }
     }
 

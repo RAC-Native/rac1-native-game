@@ -1,17 +1,19 @@
 // Blarg's Nebula G34 (level 6) own moby classes: the registration table. The ports are the transliterations in
 // blarg_classes_tr_N.cpp (declarations: blarg_mobys.h). Keyed by level 6's own address and by level, so the indirect call (`jalr` through
 // moby +0x74) reaches them only while the played level's overlay is level 6's.
+#include <game/ovl/carry_hooks_levels.h>
 #include <game/ovl/blarg_hooks.h>
 #include <game/ovl/blarg_mobys.h>
 #include <game/ovl/blarg_part2.h>
 
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/empty_class_updates.h>
 
 namespace rac1 {
 
 namespace {
 // orig: (none) -- adapter of L6:0x002d8118 (a class hook +0xc: the indirect-call form, the moby only)
-void blg_hook_2d8118_m(uint32_t m) { blg_hook_2d8118_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+void blg_hook_2d8118_m(uint32_t m) { blg_carry_hookc_l6(m, 0, 0, 0.0f); }
 
 // orig: (none) -- adapter of L6:0x002ea5e0 (class hook +0)
 void blg_hook_2ea5e0_m(uint32_t m) { blg_hook_2ea5e0_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
@@ -26,7 +28,7 @@ void blg_hook_2ea7c8_m(uint32_t m) { blg_hook_2ea7c8_u(m, 0, 0, 0, 0, 0, 0, 0, 0
 // orig: (none) -- level 6's registrations
 void blarg_moby_fns_register() {
     ovl_register_level_moby_fn(BLARG, L6_ADDR(0x002b4770), blg_class55_update_l6);
-    ovl_register_level_moby_fn(BLARG, L6_ADDR(0x002b9678), blg_class87_update_l6);
+    ovl_register_level_moby_fn(BLARG, L6_ADDR(0x002b9678), empty_update);
     ovl_register_level_moby_fn(BLARG, L6_ADDR(0x002bead0), blg_class156_update_l6);
     ovl_register_level_moby_fn(BLARG, L6_ADDR(0x002d85a0), blg_class302_update_l6);
     ovl_register_level_moby_fn(BLARG, L6_ADDR(0x002d8c20), blg_class303_update_l6);
@@ -72,7 +74,7 @@ void blarg_moby_fns_register() {
     ovl_register_level_moby_fn(BLARG, L6_ADDR(0x00309860), blg_class1655_update_l6);
     ovl_register_level_moby_fn(BLARG, L6_ADDR(0x00309e08), blg_class1660_update_l6);
     ovl_register_level_moby_fn(BLARG, L6_ADDR(0x00309fa8), blg_class1664_update_l6);
-    ovl_register_level_moby_fn(BLARG, L6_ADDR(0x0030a148), blg_class1672_update_l6);
+    ovl_register_level_moby_fn(BLARG, L6_ADDR(0x0030a148), empty_update);
     ovl_register_level_moby_fn(BLARG, L6_ADDR(0x0030ae88), blg_class1818_update_l6);
     ovl_register_level_moby_fn(BLARG, L6_ADDR(0x0030be60), blg_class1898_update_l6);
     ovl_register_level_moby_fn(BLARG, L6_ADDR(0x002d8118), blg_hook_2d8118_m);

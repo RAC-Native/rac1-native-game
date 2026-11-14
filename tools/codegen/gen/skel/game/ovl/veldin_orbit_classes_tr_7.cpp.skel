@@ -50,6 +50,9 @@
 #include <game/ovl/walker.h>
 #include <game/render/render_view.h>  // (the space fights' HUD: tools/codegen/hooks.glue)
 #include <game/port_stubs.h>
+#include <game/ovl/glows.h>
+#include <game/ovl/screen_effects.h>
+#include <game/ovl/shadows.h>
 
 namespace rac1 {
 
@@ -80,8 +83,6 @@ using namespace vu0m;
 
 //@gen vo_cb_2e9798_l17
 
-//@gen vo_1f7958_l17
-
 //@gen vo_2e9c28_l17
 
 //@gen vo_2ea0c8_l17
@@ -101,8 +102,6 @@ using namespace vu0m;
 //@gen vo_cb_2f0448_l17
 
 //@gen vo_1fcac0_l17
-
-//@gen vo_299118_l17
 
 //@gen vo_1f97a8_l17
 

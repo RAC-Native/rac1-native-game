@@ -49,6 +49,7 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/credits_tr.h>
 
 namespace rac1 {
 

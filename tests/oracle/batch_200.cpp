@@ -23,6 +23,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 
 #include <csetjmp>
@@ -205,8 +206,8 @@ void batch_200() {
     static const TrCls trcls[] = {
         {"class19", 0x002bf140, hov_class19_update_l12, 0x0, false},
         {"class37", 0x002bf9b8, hov_class37_update_l12, 0x0, false},
-        {"class164", 0x002cb1e8, hov_class164_update_l12, 0x0, false},
-        {"class178", 0x002d30f8, hov_class178_update_l12, 0x0, false},
+        {"class164", 0x002cb1e8, empty_update, 0x0, false},
+        {"class178", 0x002d30f8, empty_update, 0x0, false},
         {"class184", 0x002d4378, hov_class184_update_l12, 0x0, false},
         {"class238", 0x002e1be0, hov_class238_update_l12, 0x0, false},
         {"class240", 0x002e3ed8, hov_class240_update_l12, 0x0, false},
@@ -220,12 +221,12 @@ void batch_200() {
         {"class336", 0x002ebea8, hov_class336_update_l12, 0x0, false},
         {"class339", 0x002ec1d0, hov_class339_update_l12, 0x0, false},
         {"class341", 0x002ec478, hov_class341_update_l12, 0x0, false},
-        {"class346", 0x002ec718, hov_class346_update_l12, 0x0, false},
+        {"class346", 0x002ec718, empty_update, 0x0, false},
         {"class384", 0x002ec720, hov_class384_update_l12, 0x0, false},
         {"class409", 0x002ece00, hov_class409_update_l12, 0x0, false},
         {"class422", 0x002ed280, hov_class422_update_l12, 0x0, false},
         {"class458", 0x002ef648, hov_class458_update_l12, 0x0, false},
-        {"class499", 0x002f11b0, hov_class499_update_l12, 0x0, false},
+        {"class499", 0x002f11b0, empty_update, 0x0, false},
         {"class604", 0x002f51f0, hov_class604_update_l12, 0x0, false},
         {"class605", 0x002f5540, hov_class605_update_l12, 0x0, false},
         {"class758", 0x002f7b28, hov_class758_update_l12, 0x0, false},
@@ -240,10 +241,10 @@ void batch_200() {
         {"class1267", 0x00303540, hov_class1267_update_l12, 0x120, false},
         {"class1269", 0x00304e00, hov_class1269_update_l12, 0x0, false},
         {"class1274", 0x003069d0, hov_class1274_update_l12, 0x0, false},
-        {"class1278", 0x003076d0, hov_class1278_update_l12, 0x0, false},
-        {"class1280", 0x003076d8, hov_class1280_update_l12, 0x0, false},
+        {"class1278", 0x003076d0, empty_update, 0x0, false},
+        {"class1280", 0x003076d8, empty_update, 0x0, false},
         {"class1281", 0x00307840, hov_class1281_update_l12, 0x0, false},
-        {"class1322", 0x003081a8, hov_class1322_update_l12, 0x0, false},
+        {"class1322", 0x003081a8, empty_update, 0x0, false},
         {"class1345", 0x003081b0, hov_class1345_update_l12, 0x0, false},
         {"class1371", 0x00308918, hov_class1371_update_l12, 0x0, false},
         {"class1400", 0x00308be0, hov_class1400_update_l12, 0x0, false},
@@ -252,7 +253,7 @@ void batch_200() {
         {"class1633", 0x00309648, hov_class1633_update_l12, 0x0, false},
         {"class1818", 0x0030a6f0, hov_class1818_update_l12, 0x0, false},
         {"class1862", 0x0030b6c8, hov_class1862_update_l12, 0x0, false},
-        {"class1863", 0x0030b7c0, hov_class1863_update_l12, 0x0, false},
+        {"class1863", 0x0030b7c0, empty_update, 0x0, false},
         {"class1901", 0x0030bff0, hov_class1901_update_l12, 0x0, false},
     };
     auto generic_prep = [give_hit, hero_near](uint32_t m, int st, int pass, void (*fn)(uint32_t), bool walk = false) {
@@ -533,6 +534,21 @@ void batch_200() {
             const uint32_t fl = (ri(0, 1) ? 4u : 0u) | (ri(0, 2) ? 0u : 0x10u) | (ri(0, 2) ? 0u : 0x20u) | (ri(0, 2) ? 0u : 0x80u) | (u(ri(0, 0x1f)) << 8);
             return Args{{OUT, fl, ri(0, 3) ? 0u : m, 0u}, {r}};
         }, [](A a) { return r32(mobys_in_sphere(a.i[0], a.f[0], a.i[1], a.i[2], a.i[3])); });
+    }
+
+    // T00: the level's bare `jr ra` functions its classes and cameras reach through a pointer (class updates, camera
+    // callbacks; the scan pairs them with Veldin's 0x1f6bf8): empty_update runs in their places, each against the original
+    // called directly (the level may have no moby of the class)
+    if (g_oracle_level == 12) {
+        static const uint32_t empties[] = {0x002cb1e8, 0x002d30f8, 0x002ec718, 0x002f11b0, 0x003076d0, 0x003076d8, 0x003081a8, 0x0030b7c0};
+        for (const uint32_t a : empties) {
+            char nm[24];
+            std::snprintf(nm, sizeof nm, "empty_%x", a);
+            l12check(nm, a, 20, Ret::None, [level] {
+                level();
+                return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
+            }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
+        }
     }
 
     //@@NEXT

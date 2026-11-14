@@ -23,7 +23,6 @@ void bat_class327_draw_l8(uint32_t a0);  // L8:0x002da0d0
 TrRet bt2_20d760_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint64_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x0020d760
 void bat_class440_draw_l8(uint32_t a0);  // L8:0x002deee0
 void bat_class452_draw_l8(uint32_t a0);  // L8:0x002e5188
-TrRet bt2_2a92d8_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x002a92d8
 TrRet bt2_20f250_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x0020f250
 TrRet bt2_258090_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x00258090
 TrRet bt2_2f0b40_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x002f0b40
@@ -39,10 +38,7 @@ TrRet bt2_308db8_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t
 TrRet bt2_308e90_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x00308e90
 TrRet bt2_308f68_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x00308f68
 void bat_class1649_draw_l8(uint32_t a0);  // L8:0x00309030
-TrRet bt2_26d590_l8(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x0026d590
 void bat_sandmouse_glow_l8(uint32_t a0);  // L8:0x0030ab50
-TrRet bt2_20df80_l8(uint32_t a0, uint32_t a1, uint64_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L8:0x0020df80
-void bat_hud_slot7_draw_l8(uint32_t a0);  // L8:0x00244ab0
 
 // orig: (none) -- registers the draw callbacks for the indirect calls (ovl_call_moby_fn); called by batalia_moby_fns_register
 void batalia_part2_register();

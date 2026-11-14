@@ -32,7 +32,7 @@ bool movie_mode_stop();
 void movie_mode_end();
 // orig: 0x00299560 — story movie `n` (table of contents +0x1938 + n * 8, PAL +0x1998) in the
 // game's language (the pause menu's screens, kind 4).
-void movie_story_play(int32_t n);
+void movie_story_play(int32_t n);  // orig: 0x00299560
 // orig: 0x002994f8 — movie `n` of the table at +0x1a28 (PAL +0x1a50), language 0 (the pause menu's
 // screens, kind 6).
 void movie_table2_play(int32_t n);

@@ -12,6 +12,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 
 #include <csetjmp>
@@ -232,13 +233,13 @@ void batch_250() {
         {"class758", 0x002d6378, kal_class758_update_l16, 0x0, false},
         {"class800", 0x002d6740, kal_class800_update_l16, 0x0, false},
         {"class805", 0x002d69e0, kal_class805_update_l16, 0x0, false},
-        {"class876", 0x002dddd8, kal_class876_update_l16, 0x0, false},
+        {"class876", 0x002dddd8, empty_update, 0x0, false},
         {"class933", 0x002ddde0, kal_class933_update_l16, 0x0, false},
         {"class1111", 0x002dee10, kal_class1111_update_l16, 0x0, false},
         {"class1134", 0x002df1e8, kal_class1134_update_l16, 0x6, false},
         {"class1135", 0x002e0120, kal_class1135_update_l16, 0x0, false},
         {"class1139", 0x002e0f78, kal_class1139_update_l16, 0x0, false},
-        {"class1140", 0x002e1080, kal_class1140_update_l16, 0x0, false},
+        {"class1140", 0x002e1080, empty_update, 0x0, false},
         {"class1356", 0x002e22d8, kal_class1356_update_l16, 0x0, false},
         {"class1377", 0x002e3190, kal_class1377_update_l16, 0x4, false},
         {"class1387", 0x002e36e8, kal_class1387_update_l16, 0x0, false},
@@ -561,6 +562,21 @@ void batch_250() {
             lvcheck(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
                     [](A a) { if (a.i[0] != 0) kal_cam_type8_update_l16(a.i[0]); return uint64_t{0}; });
             }
+        }
+    }
+
+    // T00: the level's bare `jr ra` functions its classes and cameras reach through a pointer (class updates, camera
+    // callbacks; the scan pairs them with Veldin's 0x1f6bf8): empty_update runs in their places, each against the original
+    // called directly (the level may have no moby of the class)
+    if (g_oracle_level == 16) {
+        static const uint32_t empties[] = {0x002dddd8, 0x002e1080};
+        for (const uint32_t a : empties) {
+            char nm[24];
+            std::snprintf(nm, sizeof nm, "empty_%x", a);
+            lvcheck(nm, a, 20, Ret::None, [level] {
+                level();
+                return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
+            }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
         }
     }
 

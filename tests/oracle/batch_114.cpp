@@ -9,8 +9,10 @@
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/rilgar_mobys.h>
 #include <game/ovl/ovl_common.h>
+#include <game/ovl/carry_hooks_levels.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 
 #include <cmath>
@@ -285,7 +287,7 @@ void batch_114() {
             {"cb_30d678", 0x0030d678, ril_cb_30d678_l5, 0x0030ca80, 0},  // class 831's callback
             {"cb_30d8b8", 0x0030d8b8, ril_cb_30d8b8_l5, 0x0030dac8, 0},  // class 832's callback
             // (the class hook +8, 0x300b98, takes (moby, a position pointer, a target moby, a float): not checked here, unproved)
-            {"hook_c", 0x00300be8, ril_cb_300be8_l5, 0, 0xc},             // the class hook +0xc
+            {"hook_c", 0x00300be8, [](uint32_t m) { ril_carry_hookc_l5(m, 0, 0, 0.0f); }, 0, 0xc},  // the class hook +0xc (hand-written; as its transliteration was called)
         };
         for (const Cb& cb : cbs) {
             level();
@@ -390,7 +392,7 @@ void batch_114() {
             l5check(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
                     [type](A a) { if (a.i[0] != 0) (type == 3 ? ril_cam_type3_update_l5 : ril_cam_type8_update_l5)(a.i[0]); return uint64_t{0}; });
             l5check(name("exit"), ct.exit, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) (type == 3 ? ril_cam_type3_exit_l5 : ril_cam_type8_exit_l5)(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) (type == 3 ? ril_cam_type3_exit_l5 : empty_update)(a.i[0]); return uint64_t{0}; });
         }
     }
 
@@ -438,6 +440,21 @@ void batch_114() {
                 if (ri(0, 6) == 0) w32(m + 0x78, 0);
                 return Args{{m}, {}};
             }, [](A a) { return r32(class_hook_10(a.i[0])); });
+    }
+
+    // T00: the level's bare `jr ra` functions its classes and cameras reach through a pointer (class updates, camera
+    // callbacks; the scan pairs them with Veldin's 0x1f6bf8): empty_update runs in their places, each against the original
+    // called directly (the level may have no moby of the class)
+    if (g_oracle_level == 5) {
+        static const uint32_t empties[] = {0x0032a788};
+        for (const uint32_t a : empties) {
+            char nm[24];
+            std::snprintf(nm, sizeof nm, "empty_%x", a);
+            l5check(nm, a, 20, Ret::None, [level] {
+                level();
+                return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
+            }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
+        }
     }
 
     //@@NEXT

@@ -32,7 +32,7 @@ void shadows_vu1_setup();
 void shadows_packets();
 // A REF of the fixed GS packet 0x13cf10 (11 quadwords, DIRECT).
 // orig: 0x002a0eb8
-void packet_ref_13cf10();
+void packet_ref_13cf10();  // orig: 0x002a0eb8
 // A matrix of diagonal (s, s, s) and row 3 vf0 (VU0).
 // orig: 0x001ffa18
 void mat4_scale_diag(Mat4& d, float s);

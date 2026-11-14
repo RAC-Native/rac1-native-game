@@ -24,6 +24,7 @@
 #include <game/ovl/shared_particle_4a.h>
 #include <game/ovl/variants_l1.h>
 #include <game/ovl/weapons.h>
+#include <game/ovl/aridia_ocean.h>
 #include <game/ovl/blarg_part2.h>
 #include <game/ovl/glows.h>
 #include <game/ovl/hoven_mobys.h>
@@ -46,32 +47,13 @@
 
 namespace rac1 {
 
-// The levels' own builds of glow_draw 0x263618 (variants: their transliterations; Aridia's, Kerwan's and Eudora's are
-// declared by no header of theirs)
-TrRet lv2_264b50_l2(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L2:0x00264b50
-TrRet lv3_2517b0_l3(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L3:0x002517b0
-TrRet eud_255f08_l4(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L4:0x00255f08
-
 namespace {
 constexpr uint32_t HERO_POS = 0x0013f3d0;  // the hero's position
 
-// a glow through the level's own build of glow_draw (Novalis's is Veldin's code: the port)
+// a glow (Veldin's glow_draw 0x263618: the levels' copies are the same code, but Aridia's, its own build, hand-written)
 void level_glow(uint32_t point, uint32_t rgba, float size, float toward) {
-    using Glow = TrRet (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float);
-    Glow g = nullptr;
-    switch (ovl_reloc_level()) {
-    case ARIDIA: g = lv2_264b50_l2; break;
-    case KERWAN: g = lv3_2517b0_l3; break;
-    case EUDORA: g = eud_255f08_l4; break;
-    case RILGAR: g = rl2_28d788_l5; break;
-    case BLARG: g = bl2_272498_l6; break;
-    case BATALIA: g = bt2_26d590_l8; break;
-    case POKITARU: g = pok_288cc0_l11; break;
-    case HOVEN: g = hov_27bcd0_l12; break;
-    case OLTANIS: g = olt_26b1b8_l14; break;
-    default: glow_draw(point, rgba, size, toward); return;
-    }
-    g(point, rgba, 0, 0, 0, 0, 0, 0, size, toward, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+    if (ovl_reloc_level() == ARIDIA) ari_glow_quad_l2(point, rgba, size, toward);
+    else glow_draw(point, rgba, size, toward);
 }
 }  // namespace
 
@@ -159,10 +141,6 @@ void class1633_update(uint32_t m) {
 // +0x3c its alpha, +0x40 its spread, +0x44 .. +0x4c the turn toward a target, +0x50 .. +0x5c the lean, +0x60 / +0x70 /
 // +0x80 the sparks' three records.
 
-// The levels' own builds (transliterated: Aridia's are declared by no header of theirs)
-TrRet lv2_25b710_l2(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L2:0x0025b710
-TrRet lv2_2618a8_l2(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L2:0x002618a8
-TrRet lv2_273628_l2(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L2:0x00273628
 
 namespace {
 constexpr uint32_t HERO = 0x0013f350;        // the hero
@@ -216,61 +194,19 @@ uint32_t glow_callback() {
     }
 }
 
-using LevelFn = TrRet (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float,
-                          float, float, float, float);
-using LevelFn12 = TrRet (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float);
-
-// the walker's step toward the goal (Veldin's doomlet_259028 0x259028, or the level's own build): the result's bits
-// 2 / 4 a wall, a drop
+// the walker's step toward the goal (Veldin's doomlet_259028 0x259028: every level's copy is the same code): the result's
+// bits 2 / 4 a wall, a drop
 uint32_t walker_step_here(uint32_t m, uint32_t rec, uint32_t goal, uint32_t step) {
-    LevelFn f = nullptr;
-    switch (ovl_reloc_level()) {
-    case NOVALIS: return nov_26de80_l1(m, rec, goal, step, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f).v0;
-    case ARIDIA: f = lv2_25b710_l2; break;
-    case KERWAN: f = lv3_247c10_l3; break;
-    case EUDORA: f = eud_24bdd8_l4; break;
-    case RILGAR: f = ril_283308_l5; break;
-    case BLARG: f = blg_doomlet_259028_u; break;
-    default: return static_cast<uint32_t>(doomlet_259028(m, rec, goal, step));
-    }
-    return f(m, rec, goal, step, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f).v0;
+    return static_cast<uint32_t>(doomlet_259028(m, rec, goal, step));
 }
-// the burrow's dent at `pos` (Veldin's metal_25f8e0, or the level's own build)
-void dent_here(uint32_t pos, float size) {
-    LevelFn f = nullptr;
-    switch (ovl_reloc_level()) {
-    case ARIDIA: f = lv2_2618a8_l2; break;
-    case KERWAN: f = lv3_24e328_l3; break;
-    case EUDORA: f = eud_252910_l4; break;
-    case RILGAR: f = ril_289be8_l5; break;
-    default: metal_25f8e0(pos, size); return;
-    }
-    f(pos, 0, 0, 0, 0, 0, 0, 0, size, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
-}
-// the dust (particle 0x35 0x272060, each level's own build: Veldin's spawn_particle_35)
+// the burrow's dent at `pos` (Veldin's metal_25f8e0: every level's copy is the same code)
+void dent_here(uint32_t pos, float size) { metal_25f8e0(pos, size); }
+// the dust (particle 0x35, Veldin's spawn_particle_35 0x272060: every level's copy is the same code)
 void dust_here(uint32_t pos, int32_t n, uint32_t colour, int32_t spin, uint32_t vel, float size, float grow, float spread) {
-    LevelFn f = nullptr;
-    switch (ovl_reloc_level()) {
-    case NOVALIS:
-        nov_287328_l1(pos, static_cast<uint32_t>(n), colour, 2, static_cast<uint32_t>(spin), vel, 0, 0, size, grow, spread, 0.0f);
-        return;
-    case ARIDIA: f = lv2_273628_l2; break;
-    case KERWAN: f = lv3_260550_l3; break;
-    case EUDORA: f = eud_264b28_l4; break;
-    case RILGAR: f = ril_29c350_l5; break;
-    case BLARG: f = blg_280ef0_l6; break;
-    case BATALIA: f = bat_27c540_l8; break;
-    case POKITARU: f = pok_297498_l11; break;
-    case HOVEN: f = hov_28a9a0_l12; break;
-    default: f = olt_279cf0_l14; break;
-    }
-    f(pos, static_cast<uint32_t>(n), colour, 2, static_cast<uint32_t>(spin), vel, 0, 0, size, grow, spread, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+    spawn_particle_35(pos, static_cast<uint32_t>(n), colour, 2, static_cast<uint32_t>(spin), vel, size, grow, spread);
 }
-// the light on the floor under the moby (Novalis's own build, else Veldin's floor_light_add)
-void floor_light_here(uint32_t m, float scale) {
-    if (ovl_reloc_level() == NOVALIS) nov_26eec8_l1(m, 0, 0, 0, 0, 0, 0, 0, scale, 0.0f, 0.0f, 0.0f);
-    else floor_light_add(m, scale);
-}
+// the light on the floor under the moby (Veldin's floor_light_add: Novalis's copy, 0x26eec8, is the same code)
+void floor_light_here(uint32_t m, float scale) { floor_light_add(m, scale); }
 // the hero's state set (Novalis's and Aridia's build of hero_set_state, else Veldin's)
 void hero_state_here(uint32_t state, int32_t mode) {
     if (ovl_reloc_level() == NOVALIS || ovl_reloc_level() == ARIDIA) hero_set_state_l1(state, mode);

@@ -59,8 +59,6 @@ using namespace vu0m;
 
 //@gen bat_class1844_update_l8
 
-//@gen bat_class1845_update_l8
-
 //@gen bat_cam_type3_accept_u
 
 //@gen bat_311890_l8
@@ -83,22 +81,10 @@ using namespace vu0m;
 
 //@gen bat_cam_type18_accept_u
 
-//@gen bat_cam_type18_init_l8
-
-//@gen bat_cam_type18_update_l8
-
-//@gen bat_cam_type18_exit_l8
-
-//@gen bat_hook_2d3f60_u
-
-//@gen bat_hook_2d3fb0_u
-
 //@gen bat_hook_2d4000_u
 
 //@gen bat_hook_2d4050_u
 
 //@gen bat_hook_2d40d8_u
-
-//@gen bat_hook_2d8180_u
 
 }  // namespace rac1

@@ -3,8 +3,8 @@
  "tool": "mkall.py",
  "env": {
   "MKALL_HELPER_PREFIX": "umb_",
-  "MKALL_FORCE": "212f08,221290,24f4a0,270248,275380,2754e8,2757a8,281be0,281c30,281ef8,288968,288e20,28a1d8,28a3d0,28a440,28a910,28c398,28ec18,29a018,29a2a0,29b8d8,29c4e8,29e610,29e6d8,2ca980,2caba0,2cae28,2cae68,2caf18,2cb1c0,2cc608,2cc680,2cd258,2cdad0,2f23e8,2f2618,2f5640,2f60c8,2ff140,300150,300878,301ed0,302208,305a38,30af40,30b538,30ba90,30cd48,30dbb0,30e0e0,30e370,30e720,30e858,30e998,30eb38,30ebc8,30ec58,30ed30,30eee8,30f0f8,30f1e0,30f308,30f4d0,30f540,311b70,311eb8,3120d8,312150,3122b0,313350,313420,313920,313988,313af0,313d30,313de8,313f60,314058,317c98,317cb0,317e60,318e30,318e98,319698,31bcd0,31bdc0,31bea0,31c130,31c340,31c478,31cc20,31cd80,31d138,31d188,323fd0,323ff8,328058,328148,328468,3285a8,3287e8",
-  "MKALL_UNIFORM": "umb_cam_type18_accept_u,umb_hook_2f44b0_u,umb_level_sound_play_u,umb_cutscene_level_extras_u"
+  "MKALL_FORCE": "212f08,221290,270248,275380,2754e8,2757a8,281be0,281c30,281ef8,288968,288e20,28a1d8,28a3d0,28a440,28a910,28c398,28ec18,29a018,29a2a0,29b8d8,29c4e8,29e610,29e6d8,2ca980,2caba0,2cae28,2cae68,2caf18,2cb1c0,2cc608,2cc680,2cd258,2cdad0,2f23e8,2f2618,2f5640,2f60c8,2ff140,300150,300878,302208,305a38,30af40,30b538,30ba90,30cd48,30dbb0,30e0e0,30e370,30e720,30e858,30e998,30eb38,30ebc8,30ec58,30ed30,30eee8,30f0f8,30f1e0,30f308,30f4d0,30f540,311b70,311eb8,3120d8,312150,3122b0,313350,313420,313920,313988,313af0,313d30,313de8,313f60,314058,317c98,317cb0,317e60,318e30,318e98,319698,31bcd0,31bdc0,31bea0,31c130,31c340,31c478,31cc20,31cd80,31d138,31d188,323fd0,323ff8,328058,328148,328468,3285a8,3287e8",
+  "MKALL_UNIFORM": "umb_cam_type18_accept_u,umb_cutscene_level_extras_u"
  },
  "entries": [
   "2cd2b0:umb_class38_update_l7:void:a0",
@@ -15,7 +15,6 @@
   "2f61c0:umb_class447_update_l7:void:a0",
   "2f8058:umb_class460_update_l7:void:a0",
   "2fbdb8:umb_class529_update_l7:void:a0",
-  "2fbdf0:umb_class532_update_l7:void:a0",
   "2fd698:umb_class605_update_l7:void:a0",
   "2fd908:umb_class631_update_l7:void:a0",
   "300338:umb_class696_update_l7:void:a0",
@@ -39,7 +38,6 @@
   "310df0:umb_class1063_update_l7:void:a0",
   "3112c8:umb_class1069_update_l7:void:a0",
   "311bc8:umb_class1080_update_l7:void:a0",
-  "311eb0:umb_class1104_update_l7:void:a0",
   "314150:umb_class1106_update_l7:void:a0",
   "319040:umb_class1110_update_l7:void:a0",
   "3196e0:umb_class1112_update_l7:void:a0",
@@ -55,18 +53,12 @@
   "31dae0:umb_class1222_update_l7:void:a0",
   "31eba8:umb_class1552_update_l7:void:a0",
   "31f3d8:umb_class1650_update_l7:void:a0",
-  "31f5a8:umb_class1651_update_l7:void:a0",
   "31f5b0:umb_class1663_update_l7:void:a0",
   "31f780:umb_class1686_update_l7:void:a0",
   "31f900:umb_class1789_update_l7:void:a0",
   "3290b8:umb_cam_type18_accept_u",
-  "329120:umb_cam_type18_init_l7:void:a0",
-  "329128:umb_cam_type18_update_l7:void:a0",
-  "329130:umb_cam_type18_exit_l7:void:a0",
   "328090:umb_cam0_hook_l7:void:a0",
   "3280f0:umb_cam_callback_l7:void:a0",
-  "2f44b0:umb_hook_2f44b0_u",
-  "2b4a00:umb_level_sound_play_u",
   "265bd8:umb_cutscene_level_extras_u"
  ],
  "glue_files": [],

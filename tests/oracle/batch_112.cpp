@@ -6,6 +6,7 @@
 #include "ovl_oracle.h"
 
 #include <game/lib/libcdvd.h>
+#include <game/ovl/empty_class_updates.h>
 #include <game/ovl/kerwan_classes_tr.h>
 #include <game/ovl/kerwan_mobys.h>
 #include <game/ovl/novalis_mobys.h>
@@ -276,7 +277,7 @@ void batch_112() {
         {0x002df520u, "class1342", kerwan_class1342_update_l3},
         {0x002e08c8u, "class1633", kerwan_class1633_update_l3},
         {0x002e1970u, "class1818", kerwan_class1818_update_l3},
-        {0x002e2a40u, "class1828", kerwan_class1828_update_l3},
+        {0x002e2a40u, "class1828", empty_update},
     };
     for (const TrClass& c : tr_classes)
     for (int pass = 0; pass < 6; ++pass)
@@ -287,6 +288,29 @@ void batch_112() {
         hero_near(m);
         seed_rand();
     }, 20);
+
+    // T00: the level's bare `jr ra` functions its classes and cameras reach through a pointer (class updates, camera
+    // callbacks; the scan pairs them with Veldin's 0x1f6bf8): empty_update runs in their places, each against the original
+    // called directly (the level may have no moby of the class)
+    if (g_oracle_level == 3) {
+        static const uint32_t empties[] = {0x002e2a40};
+        for (const uint32_t a : empties) {
+            char nm[24];
+            std::snprintf(nm, sizeof nm, "empty_%x", a);
+            l3check(nm, a, 20, Ret::None, [level] {
+                level();
+                return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
+            }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
+        }
+    }
+
+    // T00: L3:0x295190, a bare `jr ra` the level's classes call (the scan pairs it with Veldin's 0x1f6bf8, debug_view_2): the
+    // empty port runs in its place; the original against it on random argument registers
+    if (g_oracle_level == 3)
+        l3check("empty_295190", 0x00295190, 40, Ret::None, [level] {
+            level();
+            return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
+        }, [](A) { debug_view_2(); return uint64_t{0}; });
 
     g_extra_hooks.clear();
     g_host_clock_fixed = saved_clock;

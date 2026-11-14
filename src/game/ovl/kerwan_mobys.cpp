@@ -1,5 +1,6 @@
 // Kerwan's own moby classes: the registration table. The ports are in kerwan_*.cpp.
 #include <game/enhance/cut_content.h>
+#include <game/ovl/empty_class_updates.h>
 #include <game/ovl/kerwan_classes_tr.h>
 #include <game/ovl/kerwan_mobys.h>
 #include <game/ovl/kerwan_part2_tr.h>
@@ -23,7 +24,7 @@ void kerwan_moby_fns_register() {
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002d3e58), robo_shack_sign_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002dca30), garage_door_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002953f8), train_carriage_update_l3);
-    ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002e2a40), empty_update_l3);
+    ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002e2a40), empty_update);  // (class 1828: a bare `jr ra`, static scenery)
     // the transliterated classes (kerwan_classes_tr.cpp, the translator)
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x00292e98), kerwan_class822_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x00294c08), kerwan_class868_update_l3);
@@ -58,7 +59,6 @@ void kerwan_moby_fns_register() {
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002df520), kerwan_class1342_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002e08c8), kerwan_class1633_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002e1970), kerwan_class1818_update_l3);
-    ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002e2a40), kerwan_class1828_update_l3);
     // part 2 (kerwan_part2_tr.cpp): the Spawner, the Gold Bolt, class 994's draw callback (queued by its update through
     // 0x1f93e0)
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002bef68), kerwan_class455_update_l3);

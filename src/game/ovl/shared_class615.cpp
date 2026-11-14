@@ -77,10 +77,9 @@ uint32_t puzzle_draw_fn() {
     if (on_level(VELDIN_FINALE)) return L18_ADDR(0x002d98e8);
     return L2_ADDR(0x002d93e8);
 }
-// The hero back to his idle state: Eudora's and Blarg's builds of it are their own (still generated); Aridia's goes through
-// the Veldin port's dispatch
+// The hero back to his idle state: Blarg's build of it is its own (still generated); Aridia's goes through the Veldin port's
+// dispatch, Eudora's is the Veldin port's code
 void hero_idle() {
-    if (on_level(EUDORA)) { eud_21ac18_l4(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); return; }
     if (on_level(BLARG)) { blg_239528_l6(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); return; }
     hero_enter_idle();
 }

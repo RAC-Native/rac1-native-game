@@ -5,6 +5,7 @@
 #include <game/ovl/gaspar_mobys.h>
 
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/empty_class_updates.h>
 
 namespace rac1 {
 
@@ -30,11 +31,11 @@ void gaspar_moby_fns_register() {
     ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x002eb970), gas_class263_update_l9);
     ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x002edc30), gas_class276_update_l9);
     ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x002ee110), gas_class279_update_l9);
-    ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x002ee428), gas_class284_update_l9);
+    ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x002ee428), empty_update);
     ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x002ef430), gas_class313_update_l9);
     ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x002ef7f8), gas_class317_update_l9);
     ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x002ef9b0), gas_class320_update_l9);
-    ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x002efe40), gas_class324_update_l9);
+    ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x002efe40), empty_update);
     ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x002f0040), gas_class417_update_l9);
     ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x002f6678), gas_class567_update_l9);
     ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x002f7658), gas_class605_update_l9);
@@ -56,10 +57,10 @@ void gaspar_moby_fns_register() {
     ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x003082d8), gas_class1285_update_l9);
     ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x00308f08), gas_class1292_update_l9);
     ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x003091b0), gas_class1293_update_l9);
-    ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x00309828), gas_class1300_update_l9);
+    ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x00309828), empty_update);
     ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x00309c08), gas_class1766_update_l9);
     ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x0030a678), gas_class1849_update_l9);
-    ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x0030a770), gas_class1850_update_l9);
+    ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x0030a770), empty_update);
     ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x0030ab80), gas_class1885_update_l9);
     ovl_register_level_moby_fn(GASPAR, L9_ADDR(0x0030b3b0), gas_class1886_update_l9);
     // (task 0418) the classes' draw-list callbacks (queued with draw_list_add / L9:0x218748, 0x218810, 0x218950; run by the frame's draw lists)

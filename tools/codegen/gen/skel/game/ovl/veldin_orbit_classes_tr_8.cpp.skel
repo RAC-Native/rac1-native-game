@@ -49,6 +49,8 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/hud_slot7_tr.h>
+#include <game/ovl/shadows.h>
 
 namespace rac1 {
 
@@ -86,9 +88,5 @@ using namespace vu0m;
 //@gen vo_2f6450_l17
 
 //@gen vo_cb_2f6608_l17
-
-//@gen vo_1f84d8_l17
-
-//@gen vo_hud_slot7_draw_l17
 
 }  // namespace rac1

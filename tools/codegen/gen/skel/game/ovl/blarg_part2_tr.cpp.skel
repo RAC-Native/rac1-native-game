@@ -27,6 +27,7 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/screen_effects.h>
 
 namespace rac1 {
 
@@ -52,13 +53,9 @@ void blg_class1051_hud_draw_l6(uint32_t a0_in);
 
 //@gen blg_class832_draw_l6
 
-//@gen bl2_272498_l6
-
 //@gen blg_class857_draw_l6
 
 //@gen bl2_217ab8_l6
-
-//@gen bl2_2adfb0_l6
 
 //@gen bl2_214428_l6
 
@@ -89,8 +86,6 @@ void blg_class1051_hud_draw_l6(uint32_t a0_in);
 //@gen blg_class1302_draw_l6
 
 //@gen blg_class1818_draw_l6
-
-//@gen bl2_20e820_l6
 
 //@gen blg_class1898_draw_l6
 

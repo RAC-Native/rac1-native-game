@@ -25,7 +25,6 @@ void statue_update_l3(uint32_t m);            // L3:0x002d3cd8  class 817
 void robo_shack_sign_update_l3(uint32_t m);   // L3:0x002d3e58  class 825
 void garage_door_update_l3(uint32_t m);       // L3:0x002dca30  class 997
 void train_carriage_update_l3(uint32_t m);    // L3:0x002953f8  class 1210
-void empty_update_l3(uint32_t m);            // L3:0x002e2a40  class 1828
 void zone_marker_update_l3(uint32_t m);       // (novalis_props.cpp)  L3:0x002cbc38  class 605
 
 }  // namespace rac1

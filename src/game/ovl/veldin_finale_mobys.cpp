@@ -5,6 +5,8 @@
 #include <game/ovl/veldin_finale_mobys.h>
 
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/empty_class_updates.h>
+#include <game/ovl/hud_slot7_tr.h>
 
 namespace rac1 {
 
@@ -38,7 +40,7 @@ void veldin_finale_moby_fns_register() {
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002abaa0), vf_class1523_update_l18);
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002ce7d0), vf_class331_update_l18);
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002ce800), vf_class341_update_l18);
-    ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002ceaa0), vf_class419_update_l18);
+    ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002ceaa0), empty_update);
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002d5050), vf_class564_update_l18);
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002d5918), vf_class568_update_l18);
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002d62e8), vf_class582_update_l18);
@@ -112,7 +114,7 @@ void veldin_finale_moby_fns_register() {
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002fb690), vf_cb_2fb690_l18);
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002fc860), vf_cb_2fc860_l18);
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002fca98), vf_cb_2fca98_l18);
-    ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x0023d1a8), vf_hud_slot7_draw_l18);  // (HUD slot 7's draw, the level's own; its start / update are Veldin's)
+    ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x0023d1a8), hud_slot7_draw_tr);  // (HUD slot 7's draw: Veldin's port, the level's copy is the same code; its start / update are Veldin's too)
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x0023cd60), vf_hud_boss_draw_l18);  // (the draw function of the HUD element the boss 1422 adds: its health bar)
 }
 

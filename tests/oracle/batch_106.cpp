@@ -25,6 +25,7 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/helmet_tr.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/weapons.h>
 #include <exception>
@@ -1782,6 +1783,19 @@ void batch_106() {
             return Args{{m}, {}};
         }, [](A a) { if (a.i[0] != 0) doomlet_update(a.i[0]); return uint64_t{0}; });
     }
+
+    // T00: Veldin's 0x2d6bf0 (the sparkles' set-up the infobot's and class 167's updates call, transliterated in
+    // shared_classes_tr.cpp until now) is the same code as 0x2e06a8: helmet_init_fx runs in its place (a moby's pvars +0x10 .. +0x4c)
+    check("helmet_init_fx/2d6bf0", 0x002d6bf0, 120, Ret::None, [level1] {
+        level1();
+        std::vector<uint32_t> ms;
+        for (uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)); m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100)
+            if (ee_read<uint8_t>(m + 0x20) < 0xfe && ee_read<uint32_t>(m + 0x78) != 0) ms.push_back(m);
+        const uint32_t m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+        if (ri(0, 3) == 0) wf(0x0015ed68, 1.2f);  // (the frame scale at its 50 Hz value: frame_scale_i's counts)
+        seed_rand();
+        return Args{{m}, {}};
+    }, [](A a) { helmet_init_fx(a.i[0]); return uint64_t{0}; });
 
     g_ignored_words = ign_saved;
     g_ee_null_is_ram = null_ram;

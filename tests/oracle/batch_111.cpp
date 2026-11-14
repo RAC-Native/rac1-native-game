@@ -6,6 +6,7 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/helmet_tr.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/eudora_mobys.h>
 #include <game/ovl/ovl_common.h>
@@ -367,6 +368,22 @@ void batch_111() {
                 if (ri(0, 6) == 0) w32(m + 0x78, 0);
                 return Args{{m}, {}};
             }, [](A a) { return r32(class_hook_10(a.i[0])); });
+    }
+
+    // T00: the level's copy of Veldin's helmet_init_fx (0x2e06a8; the scan's body hash pairs them, the overlay map does not) at
+    // L4:0x002e1c20: the hand port runs in its place; a live moby's pvars +0x10 .. +0x4c set up (the random bytes, the timers by
+    // the frame scale)
+    if (g_oracle_level == 4) {
+        l4check("helmet_init_fx_2e1c20", 0x002e1c20, 120, Ret::None, [level] {
+            level();
+            std::vector<uint32_t> ms;
+            for (uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)); m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100)
+                if (ee_read<uint8_t>(m + 0x20) < 0xfe && ee_read<uint32_t>(m + 0x78) != 0) ms.push_back(m);
+            const uint32_t m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+            if (ri(0, 3) == 0) wf(0x0015ed68, 1.2f);  // (the frame scale at its 50 Hz value: frame_scale_i's counts)
+            seed_rand();
+            return Args{{m}, {}};
+        }, [](A a) { helmet_init_fx(a.i[0]); return uint64_t{0}; });
     }
 
     //@@NEXT

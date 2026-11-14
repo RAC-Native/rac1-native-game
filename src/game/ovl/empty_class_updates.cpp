@@ -20,6 +20,11 @@ void drek_npc_update(uint32_t) {}
 // orig: 0x00283900
 void end_menu_moby_update(uint32_t) {}
 
+// The other bare `jr ra` functions the game reaches through a pointer (a particle type's update, the levels' class updates
+// and camera callbacks): one function for all of them, registered in their places (veldin_extras.cpp, the levels' files).
+// orig: 0x0026c3c8 L3:0x002e2a40
+void empty_update(uint32_t) {}
+
 // orig: (none) — registers the empty updates for the indirect calls (ovl_call_moby_fn)
 void empty_class_updates_register() {
     ovl_register_moby_fn(0x002cc358, sonic_summoner_update);

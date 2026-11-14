@@ -6,10 +6,12 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/carry_hooks_levels.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/blarg_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 
 #include <cmath>
@@ -20,6 +22,14 @@
 namespace rac1::oracle {
 
 namespace {
+// a hand-written class hook (moby, position, target, float) in the hook table's uniform form: the levels' copies of
+// Veldin's hooks and the levels' hooks written by hand run these (T00)
+template <int32_t (*H)(uint32_t, uint32_t, uint32_t, float)>
+TrRet hook_uniform(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float f12, float, float, float,
+                   float, float, float, float) {
+    return TrRet{static_cast<uint32_t>(H(a0, a1, a2, f12)), 0.0f};
+}
+
 
 // A check whose original is level 6's own function at `l6addr` (not a Veldin address to translate).
 void l6check(const char* name, uint32_t l6addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port,
@@ -170,7 +180,7 @@ void batch_117() {
     struct TrCls { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t skip_states = 0; bool walk = false; };  // (the states that start a scene / a level change: the original runs the kernel / movie path for real)
     static const TrCls trcls[] = {
         {"class55", 0x002b4770, blg_class55_update_l6, 0x0, false},
-        {"class87", 0x002b9678, blg_class87_update_l6, 0x0, false},
+        {"class87", 0x002b9678, empty_update, 0x0, false},
         {"class156", 0x002bead0, blg_class156_update_l6, 0x0, false},
         {"class302", 0x002d85a0, blg_class302_update_l6, 0x0, false},
         {"class303", 0x002d8c20, blg_class303_update_l6, 0x0, false},
@@ -216,7 +226,7 @@ void batch_117() {
         {"class1655", 0x00309860, blg_class1655_update_l6, 0x0, false},
         {"class1660", 0x00309e08, blg_class1660_update_l6, 0x0, false},
         {"class1664", 0x00309fa8, blg_class1664_update_l6, 0x0, false},
-        {"class1672", 0x0030a148, blg_class1672_update_l6, 0x0, false},
+        {"class1672", 0x0030a148, empty_update, 0x0, false},
         {"class1818", 0x0030ae88, blg_class1818_update_l6, 0x0, false},
         {"class1898", 0x0030be60, blg_class1898_update_l6, 0x0, false},
     };
@@ -323,11 +333,11 @@ void batch_117() {
             l6check(name("accept"), ct.accept, 300, Ret::Int32, [cam_setup, type] { uint32_t other = 0; const uint32_t cam = cam_setup(type, true, &other); return Args{{cam, other}, {}}; },
                     [type](A a) { return r32(a.i[0] != 0 ? blg_cam_type18_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0 : 0u); });
             l6check(name("init"), ct.init, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) blg_cam_type18_init_l6(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) empty_update(a.i[0]); return uint64_t{0}; });
             l6check(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) blg_cam_type18_update_l6(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) empty_update(a.i[0]); return uint64_t{0}; });
             l6check(name("exit"), ct.exit, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) blg_cam_type18_exit_l6(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) empty_update(a.i[0]); return uint64_t{0}; });
         }
     }
 
@@ -411,7 +421,7 @@ void batch_117() {
             {"hook_0_2ea5e0", 0x002ea5e0, 0x0, blg_hook_2ea5e0_u},
             {"hook_8_2ea738", 0x002ea738, 0x8, blg_hook_2ea738_u},
             {"hook_c_2ea7c8", 0x002ea7c8, 0xc, blg_hook_2ea7c8_u},
-            {"hook_c_2d8118", 0x002d8118, 0xc, blg_hook_2d8118_u},
+            {"hook_c_2d8118", 0x002d8118, 0xc, hook_uniform<blg_carry_hookc_l6>},
         };
         for (const Hk& hk : hks) {
             level();
@@ -433,6 +443,21 @@ void batch_117() {
             }, [fn](A a) { return r32(fn(a.i[0], a.i[1], a.i[2], 0, 0, 0, 0, 0, a.f[0], 0, 0, 0, 0, 0, 0, 0).v0); });
         }
         g_extra_noop_hooks.clear();
+    }
+
+    // T00: the level's bare `jr ra` functions its classes and cameras reach through a pointer (class updates, camera
+    // callbacks; the scan pairs them with Veldin's 0x1f6bf8): empty_update runs in their places, each against the original
+    // called directly (the level may have no moby of the class)
+    if (g_oracle_level == 6) {
+        static const uint32_t empties[] = {0x002b9678, 0x0030a148, 0x003163d0, 0x003163d8, 0x003163e0};
+        for (const uint32_t a : empties) {
+            char nm[24];
+            std::snprintf(nm, sizeof nm, "empty_%x", a);
+            l6check(nm, a, 20, Ret::None, [level] {
+                level();
+                return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
+            }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
+        }
     }
 
     //@@NEXT

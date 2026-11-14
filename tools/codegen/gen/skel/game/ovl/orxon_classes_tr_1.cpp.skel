@@ -38,6 +38,7 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/helmet_tr.h>
 
 namespace rac1 {
 
@@ -50,15 +51,11 @@ using namespace vu0m;
 
 //@gen orx_class1117_update_l10
 
-//@gen orx_298860_l10
-
 //@gen orx_298940_l10
 
 //@gen orx_class18_update_l10
 
 //@gen orx_class22_update_l10
-
-//@gen orx_class87_update_l10
 
 //@gen orx_2bab98_l10
 
@@ -74,13 +71,9 @@ using namespace vu0m;
 
 //@gen orx_class303_update_l10
 
-//@gen orx_2650a8_l10
-
 //@gen orx_class351_update_l10
 
 //@gen orx_class353_update_l10
-
-//@gen orx_class532_update_l10
 
 //@gen orx_class605_update_l10
 
@@ -89,8 +82,6 @@ using namespace vu0m;
 //@gen orx_262b08_l10
 
 //@gen orx_class702_update_l10
-
-//@gen orx_21aca0_l10
 
 //@gen orx_2c7c00_l10
 
@@ -109,8 +100,6 @@ using namespace vu0m;
 //@gen orx_class794_update_l10
 
 //@gen orx_class805_update_l10
-
-//@gen orx_25c738_l10
 
 //@gen orx_class819_update_l10
 

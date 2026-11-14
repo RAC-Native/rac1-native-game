@@ -49,6 +49,9 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/hud_slot7_tr.h>
+#include <game/ovl/glows.h>
+#include <game/ovl/screen_effects.h>
 
 namespace rac1 {
 
@@ -70,8 +73,6 @@ using namespace vu0m;
 //@gen vf_cb_2ee490_l18
 
 //@gen vf_cb_2f0390_l18
-
-//@gen vf_265e28_l18
 
 //@gen vf_cb_2f06c0_l18
 
@@ -95,17 +96,11 @@ using namespace vu0m;
 
 //@gen vf_cb_2fb018_l18
 
-//@gen vf_1ff920_l18
-
 //@gen vf_cb_2fb690_l18
 
 //@gen vf_cb_2fc860_l18
 
 //@gen vf_cb_2fca98_l18
-
-//@gen vf_204258_l18
-
-//@gen vf_hud_slot7_draw_l18
 
 //@gen vf_hud_boss_draw_l18
 

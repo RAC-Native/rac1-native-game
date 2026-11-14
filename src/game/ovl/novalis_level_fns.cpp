@@ -78,7 +78,6 @@ void novalis_level_fns_register() { ovl_register_level_moby_fn(NOVALIS, L1_ADDR(
 // orig: (none) -- see novalis_level_fns.h
 void shared_fx_tr_register() {
     ovl_register_moby_fn(0x00269d20, particle_06_update);
-    ovl_register_moby_fn(0x0026a5b8, particle_08_update);
     ovl_register_moby_fn(0x002a5040, vendor_draw_tr);
     ovl_register_moby_fn(0x002c5dc8, swingshot_rope_draw_tr);  // (the swingshot's rope)
     // the vendor screens' draw callback, queued by their update in the opening / closing (`draw_callback_add(0x29f990,

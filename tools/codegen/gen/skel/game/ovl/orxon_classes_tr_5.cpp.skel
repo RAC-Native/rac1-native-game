@@ -38,6 +38,7 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/particle_16_spawn.h>
+#include <game/ovl/glows.h>
 
 namespace rac1 {
 
@@ -90,10 +91,6 @@ using namespace vu0m;
 
 //@gen orx_class1856_update_l10
 
-//@gen orx_class1857_update_l10
-
-//@gen orx_class1921_update_l10
-
 //@gen orx_2eba40_l10
 
 //@gen orx_2ec110_l10
@@ -109,8 +106,6 @@ using namespace vu0m;
 //@gen orx_cam_type19_init_l10
 
 //@gen orx_cam_type19_update_l10
-
-//@gen orx_cam_type19_exit_l10
 
 //@gen orx_hook_2ce618_u
 
@@ -131,8 +126,6 @@ using namespace vu0m;
 //@gen orx_cb_2bd280_l10
 
 //@gen orx_cb_2ce868_l10
-
-//@gen orx_2568f0_l10
 
 //@gen orx_cb_2d7808_l10
 

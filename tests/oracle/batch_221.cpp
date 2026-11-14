@@ -18,6 +18,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 
 #include <csetjmp>
@@ -30,6 +31,14 @@
 namespace rac1::oracle {
 
 namespace {
+// a hand-written class hook (moby, position, target, float) in the hook table's uniform form: the levels' copies of
+// Veldin's hooks and the levels' hooks written by hand run these (T00)
+template <int32_t (*H)(uint32_t, uint32_t, uint32_t, float)>
+TrRet hook_uniform(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float f12, float, float, float,
+                   float, float, float, float) {
+    return TrRet{static_cast<uint32_t>(H(a0, a1, a2, f12)), 0.0f};
+}
+
 // A random state can hold a pointer outside RAM that the port's vector helpers dereference without a check (a SIGSEGV where the interpreter would wrap it): the trial run of a state
 // turns it into "not a game state" (the state is dealt again), as the port's "Pointer resolution out of bounds" exception does.
 sigjmp_buf g_trial_jmp;
@@ -214,7 +223,7 @@ void batch_221() {
         {"class386", 0x002dee28, olt_class386_update_l14, 0x0, false},
         {"class403", 0x002dfd10, olt_class403_update_l14, 0x0, false},
         {"class455", 0x002e1b20, olt_class455_update_l14, 0x0, false},
-        {"class531", 0x002e7190, olt_class531_update_l14, 0x0, false},
+        {"class531", 0x002e7190, empty_update, 0x0, false},
         {"class545", 0x002e72d8, olt_class545_update_l14, 0x0, false},
         {"class557", 0x002e7bd8, olt_class557_update_l14, 0x0, false},
         {"class604", 0x002ea9d0, olt_class604_update_l14, 0x0, false},
@@ -227,12 +236,12 @@ void batch_221() {
         {"class686", 0x002ef840, olt_class686_update_l14, 0x0, false},
         {"class712", 0x002f0538, olt_class712_update_l14, 0xb8, false},  // (states 3 / 4 / 5 / 7 follow a pointer the first frame has not set: every random state sends the port outside RAM)
         {"class758", 0x002f2cb8, olt_class758_update_l14, 0x0, false},
-        {"class765", 0x002f3ef0, olt_class765_update_l14, 0x0, false},
+        {"class765", 0x002f3ef0, empty_update, 0x0, false},
         {"class805", 0x002f4190, olt_class805_update_l14, 0x0, false},
         {"class832", 0x002f6338, olt_class832_update_l14, 0x0, false},
         {"class851", 0x002fba20, olt_class851_update_l14, 0x0, false},
         {"class908", 0x002fc0f0, olt_class908_update_l14, 0x0, false},
-        {"class913", 0x002fcba8, olt_class913_update_l14, 0x0, false},
+        {"class913", 0x002fcba8, empty_update, 0x0, false},
         {"class921", 0x002fcbb0, olt_class921_update_l14, 0x0, false},
         {"class922", 0x002fdbb8, olt_class922_update_l14, 0x0, false},
         {"class923", 0x002fe2a0, olt_class923_update_l14, 0x0, false},
@@ -246,14 +255,14 @@ void batch_221() {
         {"class1352", 0x00305408, olt_class1352_update_l14, 0x0, false},
         {"class1354", 0x00305758, olt_class1354_update_l14, 0x4, false},  // (state 2 requests the level change)
         {"class1395", 0x00305d28, olt_class1395_update_l14, 0x0, false},
-        {"class1396", 0x00306150, olt_class1396_update_l14, 0x0, false},
+        {"class1396", 0x00306150, empty_update, 0x0, false},
         {"class1397", 0x003061d8, olt_class1397_update_l14, 0x0, false},
         {"class1400", 0x00306390, olt_class1400_update_l14, 0x0, false},
         {"class1416", 0x00306b78, olt_class1416_update_l14, 0x0, false},
         {"class1417", 0x00306ee0, olt_class1417_update_l14, 0x0, false},
         {"class1418", 0x00307a80, olt_class1418_update_l14, 0x0, false},
         {"class1511", 0x00307ad8, olt_class1511_update_l14, 0x0, false},
-        {"class1514", 0x00308350, olt_class1514_update_l14, 0x0, false},
+        {"class1514", 0x00308350, empty_update, 0x0, false},
         {"class1559", 0x003087c0, olt_class1559_update_l14, 0x0, false},
         {"class1629", 0x003088b0, olt_class1629_update_l14, 0x0, false},
         {"class1633", 0x00308be0, olt_class1633_update_l14, 0x0, false},
@@ -407,8 +416,8 @@ void batch_221() {
         g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};
         struct Hk { const char* name; uint32_t addr; uint32_t slot; TrRet (*fn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float); };
         static const Hk hks[] = {
-            {"hook_2dad60", 0x2dad60, 0x0, olt_hook_2dad60_u},
-            {"hook_2dadb0", 0x2dadb0, 0x4, olt_hook_2dadb0_u},
+            {"hook_2dad60", 0x2dad60, 0x0, hook_uniform<enemy10e_hook0>},
+            {"hook_2dadb0", 0x2dadb0, 0x4, hook_uniform<enemy10e_hook4>},
             {"hook_2dae00", 0x2dae00, 0x8, olt_hook_2dae00_u},
             {"hook_2dae50", 0x2dae50, 0xc, olt_hook_2dae50_u},
             {"hook_2daed8", 0x2daed8, 0x10, olt_hook_2daed8_u},
@@ -530,7 +539,7 @@ void batch_221() {
             l14check(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
                     [type](A a) { if (a.i[0] != 0) (type == 19 ? olt_cam_type19_update_l14 : type == 20 ? olt_cam_type20_update_l14 : olt_cam_type21_update_l14)(a.i[0]); return uint64_t{0}; });
             l14check(name("exit"), ct.exit, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) (type == 19 ? olt_cam_type19_exit_l14 : type == 20 ? olt_cam_type20_exit_l14 : olt_cam_type21_exit_l14)(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) (type == 19 ? empty_update : type == 20 ? empty_update : olt_cam_type21_exit_l14)(a.i[0]); return uint64_t{0}; });
         }
     }
 
@@ -601,6 +610,21 @@ void batch_221() {
         g_ignored_words.pop_back();
         g_ignored_words.pop_back();
         g_extra_noop_hooks.clear();
+    }
+
+    // T00: the level's bare `jr ra` functions its classes and cameras reach through a pointer (class updates, camera
+    // callbacks; the scan pairs them with Veldin's 0x1f6bf8): empty_update runs in their places, each against the original
+    // called directly (the level may have no moby of the class)
+    if (g_oracle_level == 14) {
+        static const uint32_t empties[] = {0x002e7190, 0x002f3ef0, 0x002fcba8, 0x00306150, 0x00308350, 0x00314e10, 0x003159d0};
+        for (const uint32_t a : empties) {
+            char nm[24];
+            std::snprintf(nm, sizeof nm, "empty_%x", a);
+            l14check(nm, a, 20, Ret::None, [level] {
+                level();
+                return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
+            }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
+        }
     }
 
     //@@NEXT

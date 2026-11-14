@@ -7,6 +7,7 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/fx_26a5b8.h>
 #include <game/ovl/novalis_level_fns.h>
 #include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/sound_emitter.h>
@@ -222,7 +223,7 @@ void batch_113() {
                     if (ee_read<uint8_t>(base + u(i) * 64) == 8 && ee_read<int8_t>(base + u(i) * 64 + 1) >= 0) p = base + u(i) * 64;
                 if (p != 0 && coin()) w16(p + 0xa, u(ri(0, 3)));
                 return Args{{p}, {}};
-            }, [](A a) { if (a.i[0] != 0) particle_08_update(a.i[0]); return uint64_t{0}; });
+            }, [](A a) { if (a.i[0] != 0) fx_26a5b8_update(a.i[0]); return uint64_t{0}; });
         } else {
             check("particle_08_update", 0x0026a5b8, 300, Ret::None, [with_particles, p8] {
                 with_particles();
@@ -230,7 +231,7 @@ void batch_113() {
                 if (coin()) w16(p + 0xa, u(ri(0, 3)));
                 seed_rand();
                 return Args{{p}, {}};
-            }, [](A a) { particle_08_update(a.i[0]); return uint64_t{0}; });
+            }, [](A a) { fx_26a5b8_update(a.i[0]); return uint64_t{0}; });
         }
     }
 

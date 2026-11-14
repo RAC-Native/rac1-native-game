@@ -40,6 +40,8 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/glows.h>
+#include <game/ovl/shadows.h>
 
 namespace rac1 {
 
@@ -51,8 +53,6 @@ using namespace vu0m;
 //@gen olt_cb_2459c0_l14
 
 //@gen olt_213028_l14
-
-//@gen olt_2a7260_l14
 
 //@gen olt_20f9d0_l14
 
@@ -113,8 +113,6 @@ using namespace vu0m;
 //@gen olt_cb_307a28_l14
 
 //@gen olt_cb_308150_l14
-
-//@gen olt_26b1b8_l14
 
 //@gen olt_cb_309bb0_l14
 

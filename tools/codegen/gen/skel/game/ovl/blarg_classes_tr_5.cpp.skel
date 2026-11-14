@@ -35,6 +35,8 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/doomlet.h>
+#include <game/ovl/shadows.h>
 
 namespace rac1 {
 
@@ -79,8 +81,6 @@ using namespace vu0m;
 
 //@gen blg_class1664_update_l6
 
-//@gen blg_class1672_update_l6
-
 //@gen blg_30a150_l6
 
 //@gen blg_30a1a8_l6
@@ -114,11 +114,5 @@ using namespace vu0m;
 //@gen blg_315a68_l6
 
 //@gen blg_cam_type18_accept_u
-
-//@gen blg_cam_type18_init_l6
-
-//@gen blg_cam_type18_update_l6
-
-//@gen blg_cam_type18_exit_l6
 
 }  // namespace rac1

@@ -14,6 +14,9 @@ void armor_magnetizer_update(uint32_t m);  // orig: 0x002d3830  class 618
 void o2_mask_update(uint32_t m);  // orig: 0x002e0398  class 1289
 void drek_npc_update(uint32_t m);  // orig: 0x002df998  class 1249 Drek
 void end_menu_moby_update(uint32_t m);  // orig: 0x00283900  the end-of-game menu's mobys
+// Any other bare `jr ra` reached through a pointer: particle type 0x11's update (0x26c3c8), the levels' empty class updates
+// and camera callbacks (their registrations name the addresses).
+void empty_update(uint32_t m);
 // orig: (none) — registers them for the indirect calls (ovl_call_moby_fn)
 void empty_class_updates_register();
 

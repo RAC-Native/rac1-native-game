@@ -41,10 +41,6 @@ namespace rac1 {
 using namespace eer;
 using namespace vu0m;
 
-//@gen blg_sparkles_draw_u
-
-//@gen blg_doomlet_259028_u
-
 //@gen blg_level_sound_play_u
 
 //@gen blg_202d08_l6
@@ -52,8 +48,6 @@ using namespace vu0m;
 //@gen blg_cam0_hook_l6
 
 //@gen blg_cam_callback_l6
-
-//@gen blg_hook_2d8118_u
 
 //@gen blg_hook_2ea5e0_u
 

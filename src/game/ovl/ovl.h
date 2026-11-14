@@ -679,10 +679,9 @@ uint32_t spawn_moby_5f3(uint32_t unused, uint32_t pos);  // orig: 0x002a9aa0
 uint32_t spawn_moby_a7(uint32_t v);                      // orig: 0x002b4138
 void place_moby_5f3(uint32_t unused, uint32_t pos);      // orig: 0x002a9b80
 void place_moby_5f3_v(uint32_t unused, const Vec4& pos);  // orig: 0x002a9b80
-void spawn_particle_4_v(const Vec4& pos, const Vec4& vel, uint32_t colour, uint32_t a, uint32_t b, uint32_t c, uint32_t d,
-                        int32_t additive);  // orig: 0x00269958
-void spawn_particle_4(uint32_t pos, uint32_t vel, uint32_t colour, uint32_t a, uint32_t b, uint32_t c, uint32_t d,
-                      int32_t additive);                 // orig: 0x00269958
+// (one line each: tools/codegen/mkall.py glues the levels' calls of 0x269958 to the port from its declaration)
+void spawn_particle_4_v(const Vec4& pos, const Vec4& vel, uint32_t colour, uint32_t a, uint32_t b, uint32_t c, uint32_t d, int32_t additive);  // orig: 0x00269958
+void spawn_particle_4(uint32_t pos, uint32_t vel, uint32_t colour, uint32_t a, uint32_t b, uint32_t c, uint32_t d, int32_t additive);  // orig: 0x00269958
 void spawn_particle_23_v(const Vec4& pos, const Vec4& vel, int32_t kind, uint32_t a);  // orig: 0x0026f548
 void spawn_particle_23(uint32_t pos, uint32_t vel, int32_t kind, uint32_t a);  // orig: 0x0026f548
 uint32_t spawn_particle_22_v(const Vec4& pos, const Vec4& vel, float scale, float h);  // orig: 0x0026f080
@@ -701,10 +700,9 @@ void attach_frame_set_v(uint32_t out, const Vec4& pos, const Vec4& base_ang, con
 void attach_frame_set(uint32_t out, uint32_t pos, uint32_t base_ang, uint32_t ang);  // orig: 0x00260738
 int32_t sub_002604f0_v(uint32_t obj, uint32_t moby, Vec4& pos, Vec4& ang, Vec4& out_pos, Vec4& out_ang);  // orig: 0x002604f0
 int32_t sub_002604f0(uint32_t obj, uint32_t moby, uint32_t pos, uint32_t ang, uint32_t out_pos, uint32_t out_ang);  // orig: 0x002604f0
-uint32_t spawn_particle_35_v(const Vec4& pos, uint32_t a, uint32_t colour, int32_t mode, uint32_t b, const Vec4& vec, float s0,
-                             float s1, float c);  // orig: 0x00272060
-uint32_t spawn_particle_35(uint32_t pos, uint32_t a, uint32_t colour, int32_t mode, uint32_t b, uint32_t vec, float s0,
-                           float s1, float c);  // orig: 0x00272060
+// (one line each: tools/codegen/mkall.py glues the levels' calls of 0x272060 to the port from its declaration)
+uint32_t spawn_particle_35_v(const Vec4& pos, uint32_t a, uint32_t colour, int32_t mode, uint32_t b, const Vec4& vec, float s0, float s1, float c);  // orig: 0x00272060
+uint32_t spawn_particle_35(uint32_t pos, uint32_t a, uint32_t colour, int32_t mode, uint32_t b, uint32_t vec, float s0, float s1, float c);  // orig: 0x00272060
 int32_t sphere_mesh_collide(uint32_t pos, float radius);  // orig: 0x001f3170
 int32_t mobys_in_sphere_v(const Vec4& pos, float radius, uint32_t flags, uint32_t ignore, const uint32_t* rec);  // orig: 0x001f2868
 int32_t mobys_in_sphere(uint32_t pos, float radius, uint32_t flags, uint32_t ignore, uint32_t rec);  // orig: 0x001f2868

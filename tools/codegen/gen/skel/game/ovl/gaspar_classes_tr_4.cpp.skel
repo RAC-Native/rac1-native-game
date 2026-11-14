@@ -38,14 +38,14 @@
 #include <game/lib/libgcc_fp.h>
 #include <game/ovl/nanotech_draw.h>
 #include <game/ovl/quad_draw.h>
+#include <game/ovl/glows.h>
+#include <game/ovl/shadows.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
 //@gen gas_21f6f8_l9
-
-//@gen gas_2bd808_l9
 
 //@gen gas_21baf8_l9
 
@@ -74,8 +74,6 @@ using namespace vu0m;
 //@gen gas_class317_draw_l9
 
 //@gen gas_class832_draw_l9
-
-//@gen gas_2828b0_l9
 
 //@gen gas_class1212_draw_l9
 

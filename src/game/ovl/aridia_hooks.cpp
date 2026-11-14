@@ -5,6 +5,8 @@
 // 580: its table 0x2d61c0 .. 0x2d6340, transliterated in aridia_classes_tr.cpp).
 #include <game/ovl/aridia_classes_tr.h>
 #include <game/ovl/aridia_hooks.h>
+#include <game/ovl/carry_hooks.h>
+#include <game/ovl/carry_hooks_levels.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/variants_l2.h>
 #include <game/port_stubs.h>
@@ -12,13 +14,14 @@
 namespace rac1 {
 
 // The class's hook +4 (class +0x2c table) on moby m: 1 when it has none; Aridia's default hook (0x2e64c0) is
-// `move v0,zero`, the Sand Shark's (0x2d6210) is transliterated.
+// `move v0,zero`, the Sand Shark's (0x2d6210) is ari_carry_hook4_l2 (carry_hooks_levels.cpp; the other argument registers
+// zero, as the transliterated hook had them).
 // orig: L2:0x002e4e88
 int32_t class_hook_4_l2(uint32_t m) {
     const uint32_t fn = lwu(lwu(lwu(m + 0x24) + 0x2c) + 4);
     if (fn == 0) return 1;
     if (fn == L2_ADDR(0x002e64c0)) return 0;
-    if (fn == L2_ADDR(0x002d6210)) return static_cast<int32_t>(shark_hook_4_l2(m));
+    if (fn == L2_ADDR(0x002d6210)) return ari_carry_hook4_l2(m, 0, 0, 0.0f);
     return static_cast<int32_t>(TODO_PORT(fn, "class hook +4")(m));
 }
 
@@ -41,18 +44,19 @@ uint32_t class_hook_10_l2(uint32_t m) {
 }
 
 // The Sand Shark's hooks as the `jalr` of the transliterated code reaches them (the moby dispatcher: a0 = moby, the
-// result unused there): one adapter each.
+// result unused there): one adapter each (the hooks +0 .. +0xc are hand-written: carry_hooks_levels.cpp, and +0xc is
+// Veldin's e749_hookc, the same code; the other argument registers zero, as the transliterated hooks had them).
 // orig: (none) -- adapter of L2:0x002d61c0
-void shark_hook_moby_0(uint32_t m) { shark_hook_0_l2(m); }
+void shark_hook_moby_0(uint32_t m) { ari_carry_hook0_l2(m, 0, 0, 0.0f); }
 
 // orig: (none) -- adapter of L2:0x002d6210
-void shark_hook_moby_4(uint32_t m) { shark_hook_4_l2(m); }
+void shark_hook_moby_4(uint32_t m) { ari_carry_hook4_l2(m, 0, 0, 0.0f); }
 
 // orig: (none) -- adapter of L2:0x002d6290
-void shark_hook_moby_8(uint32_t m) { shark_hook_8_l2(m); }
+void shark_hook_moby_8(uint32_t m) { ari_carry_hook8_l2(m, 0, 0, 0.0f); }
 
 // orig: (none) -- adapter of L2:0x002d62e0
-void shark_hook_moby_c(uint32_t m) { shark_hook_c_l2(m); }
+void shark_hook_moby_c(uint32_t m) { e749_hookc(m, 0, 0, 0.0f); }
 
 // orig: (none) -- adapter of L2:0x002d6310
 void shark_hook_moby_10(uint32_t m) { shark_hook_10_l2(m); }

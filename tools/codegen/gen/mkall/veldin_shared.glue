@@ -1,1 +1,2 @@
 0x0029a6b0: vendor_screen_start_tr(a0.w());
+0x002d6bf0: helmet_init_fx(a0.w());

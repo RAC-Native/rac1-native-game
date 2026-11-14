@@ -5,7 +5,7 @@
   "MKALL_HELPER_PREFIX": "kal_",
   "MKALL_FORCE": "2e65d0,2e6620,2e6670,2e66c0,2e66f0,2ee790",
   "MKALL_UNIFORM": "kal_cam_type3_accept_u,kal_cam_type8_accept_u,kal_cam0_set_124_u,kal_hook_2e65d0_u,kal_hook_2e6620_u,kal_hook_2e6670_u,kal_hook_2e66c0_u,kal_hook_2e66f0_u",
-  "MKALL_WIDE_GPR": "1f9cd8:a2"
+  "MKALL_WIDE_GPR": ""
  },
  "entries": [
   "2a05e8:kal_class49_update_l16:void:a0",
@@ -31,13 +31,11 @@
   "2d6378:kal_class758_update_l16:void:a0",
   "2d6740:kal_class800_update_l16:void:a0",
   "2d69e0:kal_class805_update_l16:void:a0",
-  "2dddd8:kal_class876_update_l16:void:a0",
   "2ddde0:kal_class933_update_l16:void:a0",
   "2dee10:kal_class1111_update_l16:void:a0",
   "2df1e8:kal_class1134_update_l16:void:a0",
   "2e0120:kal_class1135_update_l16:void:a0",
   "2e0f78:kal_class1139_update_l16:void:a0",
-  "2e1080:kal_class1140_update_l16:void:a0",
   "2e22d8:kal_class1356_update_l16:void:a0",
   "2e3190:kal_class1377_update_l16:void:a0",
   "2e36e8:kal_class1387_update_l16:void:a0",

@@ -5,6 +5,7 @@
 #include <game/ovl/quartu_mobys.h>
 
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/empty_class_updates.h>
 
 namespace rac1 {
 
@@ -44,13 +45,13 @@ void quartu_moby_fns_register() {
     ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002c5630), qua_class233_update_l15);
     ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002c6f08), qua_class250_update_l15);
     ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002c73b8), qua_class258_update_l15);
-    ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002c9240), qua_class283_update_l15);
+    ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002c9240), empty_update);
     ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002ca240), qua_class325_update_l15);
     ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002ca9f8), qua_class403_update_l15);
     ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002cb4c8), qua_class408_update_l15);
-    ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002cbe58), qua_class419_update_l15);
+    ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002cbe58), empty_update);
     ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002cf3a8), qua_class491_update_l15);
-    ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002d3bd8), qua_class531_update_l15);
+    ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002d3bd8), empty_update);
     ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002d4748), qua_class567_update_l15);
     ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002d5728), qua_class605_update_l15);
     ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002d6810), qua_class655_update_l15);

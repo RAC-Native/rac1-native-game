@@ -4,6 +4,7 @@
 #include <game/ovl/batalia_mobys.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants_l8.h>
+#include <game/ovl/hud_slot7_tr.h>
 
 namespace rac1 {
 
@@ -21,7 +22,7 @@ void batalia_part2_register() {
     ovl_register_level_moby_fn(BATALIA, L8_ADDR(0x00304bc0), bat_class1135_draw_l8);
     ovl_register_level_moby_fn(BATALIA, L8_ADDR(0x00309030), bat_class1649_draw_l8);
     ovl_register_level_moby_fn(BATALIA, L8_ADDR(0x0030ab50), bat_sandmouse_glow_l8);
-    ovl_register_level_moby_fn(BATALIA, L8_ADDR(0x00244ab0), bat_hud_slot7_draw_l8);  // (HUD slot 7's draw, the level's own; its start / update are Veldin's)
+    ovl_register_level_moby_fn(BATALIA, L8_ADDR(0x00244ab0), hud_slot7_draw_tr);  // (HUD slot 7's draw: Veldin's port, the level's copy is the same code; its start / update are Veldin's too)
 }
 
 }  // namespace rac1

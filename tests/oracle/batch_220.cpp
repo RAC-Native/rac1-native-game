@@ -14,6 +14,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 
 #include <csetjmp>
@@ -230,7 +231,7 @@ void batch_220() {
         {"class758", 0x002fa708, gml_class758_update_l13, 0x0, false},
         {"class805", 0x002fac70, gml_class805_update_l13, 0x0, false},
         {"class832", 0x002fce18, gml_class832_update_l13, 0x0, false},
-        {"class913", 0x00302418, gml_class913_update_l13, 0x0, false},
+        {"class913", 0x00302418, empty_update, 0x0, false},
         {"class1009", 0x00302780, gml_class1009_update_l13, 0x0, false},
         {"class1017", 0x00302e48, gml_class1017_update_l13, 0x0, false},
         {"class1034", 0x00303128, gml_class1034_update_l13, 0x0, false},
@@ -537,6 +538,21 @@ void batch_220() {
                 w32(OV(0x0015f5cc), R());
                 return Args{{e}, {}};
             }, [](A a) { gml_hud_245cf8_l13(a.i[0]); return uint64_t{0}; });
+    }
+
+    // T00: the level's bare `jr ra` functions its classes and cameras reach through a pointer (class updates, camera
+    // callbacks; the scan pairs them with Veldin's 0x1f6bf8): empty_update runs in their places, each against the original
+    // called directly (the level may have no moby of the class)
+    if (g_oracle_level == 13) {
+        static const uint32_t empties[] = {0x00302418};
+        for (const uint32_t a : empties) {
+            char nm[24];
+            std::snprintf(nm, sizeof nm, "empty_%x", a);
+            l13check(nm, a, 20, Ret::None, [level] {
+                level();
+                return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
+            }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
+        }
     }
 
     //@@NEXT

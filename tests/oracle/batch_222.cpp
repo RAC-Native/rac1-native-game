@@ -20,6 +20,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/particle_44_tr.h>
 #include <game/ovl/variants_l13.h>
+#include <game/ovl/empty_class_updates.h>
 
 #include <csetjmp>
 #include <csignal>
@@ -161,7 +162,7 @@ void batch_222() {
             {558, 0x002f3778, gml_class558_update_l13}, {605, 0x002f51f0, gml_class605_update_l13}, {615, 0x002f5618, gml_class615_update_l13},
             {667, 0x002f8880, gml_class667_update_l13}, {674, 0x002f8a78, gml_class674_update_l13}, {737, 0x002f8e70, gml_class737_update_l13},
             {758, 0x002fa708, gml_class758_update_l13}, {805, 0x002fac70, gml_class805_update_l13}, {832, 0x002fce18, gml_class832_update_l13},
-            {913, 0x00302418, gml_class913_update_l13}, {1009, 0x00302780, gml_class1009_update_l13}, {1017, 0x00302e48, gml_class1017_update_l13},
+            {913, 0x00302418, empty_update}, {1009, 0x00302780, gml_class1009_update_l13}, {1017, 0x00302e48, gml_class1017_update_l13},
             {1034, 0x00303128, gml_class1034_update_l13}, {1039, 0x003036f0, gml_class1039_update_l13}, {1085, 0x00303878, gml_class1085_update_l13},
             {1134, 0x00303950, gml_class1134_update_l13}, {1135, 0x00304888, gml_class1135_update_l13}, {1233, 0x00305a58, gml_class1233_update_l13},
             {1238, 0x00306300, gml_class1238_update_l13}, {1261, 0x00307b10, gml_class1261_update_l13}, {1262, 0x00307e98, gml_class1262_update_l13},

@@ -24,6 +24,9 @@
 #include <game/ovl/hydro.h>
 #include <game/ovl/metal.h>
 #include <game/ovl/particle_16_spawn.h>
+#include <game/ovl/doomlet.h>
+#include <game/ovl/novalis_water.h>
+#include <game/ovl/visibomb_ball.h>
 
 namespace rac1 {
 
@@ -50,8 +53,6 @@ using namespace vu0m;
 
 //@gen nov_class729_update_l1
 
-//@gen nov_2a2450_l1
-
 //@gen nov_2a2480_l1
 
 //@gen nov_2fac80_l1
@@ -72,17 +73,7 @@ using namespace vu0m;
 
 //@gen nov_class778_update_l1
 
-//@gen nov_225a88_l1
-
-//@gen nov_2cb458_l1
-
-//@gen nov_317e70_l1
-
-//@gen nov_2cb788_l1
-
 //@gen nov_class832_update_l1
-
-//@gen nov_27e538_l1
 
 //@gen nov_class567_update_l1
 
@@ -124,8 +115,6 @@ using namespace vu0m;
 
 //@gen nov_261d78_l1
 
-//@gen nov_261c10_l1
-
 //@gen nov_262038_l1
 
 //@gen nov_2b7f30_l1
@@ -137,12 +126,6 @@ using namespace vu0m;
 //@gen nov_2ffcd0_l1
 
 //@gen nov_class751_update_l1
-
-//@gen nov_26de80_l1
-
-//@gen nov_26eec8_l1
-
-//@gen nov_287328_l1
 
 //@gen nov_30d208_l1
 
@@ -187,8 +170,6 @@ using namespace vu0m;
 //@gen nov_316e88_l1
 
 //@gen nov_class280_update_l1
-
-//@gen nov_231450_l1
 
 //@gen nov_308550_l1
 

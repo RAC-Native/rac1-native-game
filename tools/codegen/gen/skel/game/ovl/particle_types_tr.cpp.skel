@@ -90,8 +90,6 @@ void particle_31_update(uint32_t a0_in);
 
 //@gen particle_09_update
 
-//@gen particle_11_update
-
 //@gen particle_14_update
 
 //@gen particle_18_update

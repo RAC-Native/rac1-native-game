@@ -142,8 +142,4 @@ void train_carriage_update_l3(uint32_t m) {
     lq_sq(pv + 0xb0, m + 0x40);
 }
 
-// Class 1828: the update function is a bare `jr ra` (static scenery).
-// orig: L3:0x002e2a40
-void empty_update_l3(uint32_t) {}
-
 }  // namespace rac1

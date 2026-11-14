@@ -81,8 +81,6 @@ using namespace vu0m;
 
 //@gen olt_cam_type19_update_l14
 
-//@gen olt_cam_type19_exit_l14
-
 //@gen olt_314e20_l14
 
 //@gen olt_cam_type20_accept_u
@@ -93,8 +91,6 @@ using namespace vu0m;
 
 //@gen olt_cam_type20_update_l14
 
-//@gen olt_cam_type20_exit_l14
-
 //@gen olt_cam_type21_accept_u
 
 //@gen olt_cam_type21_init_l14
@@ -102,10 +98,6 @@ using namespace vu0m;
 //@gen olt_cam_type21_update_l14
 
 //@gen olt_cam_type21_exit_l14
-
-//@gen olt_hook_2dad60_u
-
-//@gen olt_hook_2dadb0_u
 
 //@gen olt_hook_2dae00_u
 

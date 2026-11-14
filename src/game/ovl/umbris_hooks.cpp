@@ -3,6 +3,7 @@
 #include <game/ovl/sound_emitter.h>
 
 #include <game/ovl/umbris_mobys.h>
+#include <game/ovl/empty_class_updates.h>
 
 namespace rac1 {
 
@@ -11,9 +12,9 @@ bool umbris_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t*
     *ret = 0;
     switch (lvl_key(fn)) {
     case L7_CASE(0x003290b8): *ret = static_cast<int32_t>(umb_cam_type18_accept_u(cam, other, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f).v0); return true;
-    case L7_CASE(0x00329120): umb_cam_type18_init_l7(cam); return true;
-    case L7_CASE(0x00329128): umb_cam_type18_update_l7(cam); return true;
-    case L7_CASE(0x00329130): umb_cam_type18_exit_l7(cam); return true;
+    case L7_CASE(0x00329120): empty_update(cam); return true;
+    case L7_CASE(0x00329128): empty_update(cam); return true;
+    case L7_CASE(0x00329130): empty_update(cam); return true;
     default: return false;
     }
 }

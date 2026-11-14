@@ -17,6 +17,7 @@
 #include <game/ovl/kalebo_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/empty_class_updates.h>
 
 #include <cmath>
 #include <cstring>
@@ -89,13 +90,13 @@ void batch_371() {
             {"class758", 0x002d6378, kal_class758_update_l16},
             {"class800", 0x002d6740, kal_class800_update_l16},
             {"class805", 0x002d69e0, kal_class805_update_l16},
-            {"class876", 0x002dddd8, kal_class876_update_l16},
+            {"class876", 0x002dddd8, empty_update},
             {"class933", 0x002ddde0, kal_class933_update_l16},
             {"class1111", 0x002dee10, kal_class1111_update_l16},
             {"class1134", 0x002df1e8, kal_class1134_update_l16},
             {"class1135", 0x002e0120, kal_class1135_update_l16},
             {"class1139", 0x002e0f78, kal_class1139_update_l16},
-            {"class1140", 0x002e1080, kal_class1140_update_l16},
+            {"class1140", 0x002e1080, empty_update},
             {"class1356", 0x002e22d8, kal_class1356_update_l16},
             {"class1377", 0x002e3190, kal_class1377_update_l16},
             {"class1387", 0x002e36e8, kal_class1387_update_l16},

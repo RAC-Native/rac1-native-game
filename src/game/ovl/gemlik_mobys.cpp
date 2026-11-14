@@ -6,6 +6,7 @@
 
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/empty_class_updates.h>
 
 namespace rac1 {
 
@@ -58,7 +59,7 @@ void gemlik_moby_fns_register() {
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002fa708), gml_class758_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002fac70), gml_class805_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002fce18), gml_class832_update_l13);
-    ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x00302418), gml_class913_update_l13);
+    ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x00302418), empty_update);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x00302780), gml_class1009_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x00302e48), gml_class1017_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x00303128), gml_class1034_update_l13);

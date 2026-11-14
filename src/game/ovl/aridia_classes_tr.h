@@ -10,7 +10,6 @@
 
 namespace rac1 {
 
-TrRet lv2_2e7660_l2(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L2:0x002e7660
 void sand_shark_update_l2(uint32_t a0);  // L2:0x002d3e50
 void constructorbot_update_l2(uint32_t a0);  // L2:0x002d7748
 void nest_update_l2(uint32_t a0);  // L2:0x002dcb38
@@ -35,10 +34,6 @@ void sandmouse_update_l2(uint32_t a0);  // L2:0x002f0f88
 void class604_update_l2(uint32_t a0);  // L2:0x002d7190
 void class832_update_l2(uint32_t a0);  // L2:0x002e4a48
 uint32_t cam_type_12_accept_l2(uint32_t a0, uint32_t a1);  // L2:0x002fc298
-uint32_t shark_hook_0_l2(uint32_t a0);  // L2:0x002d61c0
-uint32_t shark_hook_4_l2(uint32_t a0);  // L2:0x002d6210
-uint32_t shark_hook_8_l2(uint32_t a0);  // L2:0x002d6290
-uint32_t shark_hook_c_l2(uint32_t a0);  // L2:0x002d62e0
 uint32_t shark_hook_14_l2(uint32_t a0);  // L2:0x002d6340
 uint32_t shark_hook_10_l2(uint32_t a0);  // L2:0x002d6310
 void class737_update_l2(uint32_t a0);  // L2:0x002dfcd0

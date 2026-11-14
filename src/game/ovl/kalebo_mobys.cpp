@@ -5,6 +5,7 @@
 #include <game/ovl/kalebo_mobys.h>
 
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/empty_class_updates.h>
 
 namespace rac1 {
 
@@ -45,13 +46,13 @@ void kalebo_moby_fns_register() {
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002d6378), kal_class758_update_l16);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002d6740), kal_class800_update_l16);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002d69e0), kal_class805_update_l16);
-    ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002dddd8), kal_class876_update_l16);
+    ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002dddd8), empty_update);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002ddde0), kal_class933_update_l16);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002dee10), kal_class1111_update_l16);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002df1e8), kal_class1134_update_l16);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002e0120), kal_class1135_update_l16);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002e0f78), kal_class1139_update_l16);
-    ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002e1080), kal_class1140_update_l16);
+    ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002e1080), empty_update);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002e22d8), kal_class1356_update_l16);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002e3190), kal_class1377_update_l16);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002e36e8), kal_class1387_update_l16);

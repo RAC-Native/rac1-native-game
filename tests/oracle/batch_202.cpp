@@ -15,6 +15,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/pokitaru_mobys.h>
+#include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 #include <runtime/vu/vu0.h>
 
@@ -98,13 +99,13 @@ const Cls kCls[] = {
     {11, 1633, 0x0031b758, pok_class1633_update_l11},
     {11, 1818, 0x0031c800, pok_class1818_update_l11},
     {11, 1859, 0x0031d7d8, pok_class1859_update_l11},
-    {11, 1860, 0x0031d8d0, pok_class1860_update_l11},
+    {11, 1860, 0x0031d8d0, empty_update},
     {11, 1903, 0x0031e2f0, pok_class1903_update_l11},
     {11, 1919, 0x0031f150, pok_class1919_update_l11},
     {12, 19, 0x002bf140, hov_class19_update_l12},
     {12, 37, 0x002bf9b8, hov_class37_update_l12},
-    {12, 164, 0x002cb1e8, hov_class164_update_l12},
-    {12, 178, 0x002d30f8, hov_class178_update_l12},
+    {12, 164, 0x002cb1e8, empty_update},
+    {12, 178, 0x002d30f8, empty_update},
     {12, 184, 0x002d4378, hov_class184_update_l12},
     {12, 238, 0x002e1be0, hov_class238_update_l12},
     {12, 240, 0x002e3ed8, hov_class240_update_l12},
@@ -118,12 +119,12 @@ const Cls kCls[] = {
     {12, 336, 0x002ebea8, hov_class336_update_l12},
     {12, 339, 0x002ec1d0, hov_class339_update_l12},
     {12, 341, 0x002ec478, hov_class341_update_l12},
-    {12, 346, 0x002ec718, hov_class346_update_l12},
+    {12, 346, 0x002ec718, empty_update},
     {12, 384, 0x002ec720, hov_class384_update_l12},
     {12, 409, 0x002ece00, hov_class409_update_l12},
     {12, 422, 0x002ed280, hov_class422_update_l12},
     {12, 458, 0x002ef648, hov_class458_update_l12},
-    {12, 499, 0x002f11b0, hov_class499_update_l12},
+    {12, 499, 0x002f11b0, empty_update},
     {12, 604, 0x002f51f0, hov_class604_update_l12},
     {12, 605, 0x002f5540, hov_class605_update_l12},
     {12, 758, 0x002f7b28, hov_class758_update_l12},
@@ -138,10 +139,10 @@ const Cls kCls[] = {
     {12, 1267, 0x00303540, hov_class1267_update_l12},
     {12, 1269, 0x00304e00, hov_class1269_update_l12},
     {12, 1274, 0x003069d0, hov_class1274_update_l12},
-    {12, 1278, 0x003076d0, hov_class1278_update_l12},
-    {12, 1280, 0x003076d8, hov_class1280_update_l12},
+    {12, 1278, 0x003076d0, empty_update},
+    {12, 1280, 0x003076d8, empty_update},
     {12, 1281, 0x00307840, hov_class1281_update_l12},
-    {12, 1322, 0x003081a8, hov_class1322_update_l12},
+    {12, 1322, 0x003081a8, empty_update},
     {12, 1345, 0x003081b0, hov_class1345_update_l12},
     {12, 1371, 0x00308918, hov_class1371_update_l12},
     {12, 1400, 0x00308be0, hov_class1400_update_l12},
@@ -150,7 +151,7 @@ const Cls kCls[] = {
     {12, 1633, 0x00309648, hov_class1633_update_l12},
     {12, 1818, 0x0030a6f0, hov_class1818_update_l12},
     {12, 1862, 0x0030b6c8, hov_class1862_update_l12},
-    {12, 1863, 0x0030b7c0, hov_class1863_update_l12},
+    {12, 1863, 0x0030b7c0, empty_update},
     {12, 1901, 0x0030bff0, hov_class1901_update_l12},
 };
 // the states batch 124 / 200 skip (the original leaves the harness there: the level change request, a kernel wait, a pointer read from a

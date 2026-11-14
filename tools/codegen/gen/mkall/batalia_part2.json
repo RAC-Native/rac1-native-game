@@ -3,7 +3,7 @@
  "tool": "mkall_l8.py",
  "env": {
   "MKALL_HELPER_PREFIX": "bt2_",
-  "MKALL_WIDE_GPR": "20d760:a3;20df80:a2"
+  "MKALL_WIDE_GPR": "20d760:a3"
  },
  "entries": [
   "2d3878:bat_class252_draw_a_l8:void:a0",
@@ -16,8 +16,7 @@
   "2fb948:bat_class832_draw_l8:void:a0",
   "304bc0:bat_class1135_draw_l8:void:a0",
   "309030:bat_class1649_draw_l8:void:a0",
-  "30ab50:bat_sandmouse_glow_l8:void:a0",
-  "244ab0:bat_hud_slot7_draw_l8:void:a0"
+  "30ab50:bat_sandmouse_glow_l8:void:a0"
  ],
  "glue_files": [],
  "files": [

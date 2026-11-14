@@ -40,6 +40,7 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shadows.h>
 
 namespace rac1 {
 
@@ -67,8 +68,6 @@ using namespace vu0m;
 //@gen pok_289610_l11
 
 //@gen pok_class1859_update_l11
-
-//@gen pok_class1860_update_l11
 
 //@gen pok_31dd10_l11
 
@@ -137,8 +136,6 @@ using namespace vu0m;
 //@gen pok_cb_302e60_l11
 
 //@gen pok_231380_l11
-
-//@gen pok_2c3db0_l11
 
 //@gen pok_22e0a8_l11
 

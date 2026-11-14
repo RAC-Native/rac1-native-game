@@ -4,13 +4,15 @@
 #include <game/ovl/oltanis_hooks.h>
 #include <game/ovl/oltanis_mobys.h>
 
+#include <game/ovl/carry_hooks.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/empty_class_updates.h>
 
 namespace rac1 {
 
 namespace {
 // orig: (none) -- adapter of L14:0x002dad60 (class 252's hook +0: the indirect-call form, the moby only)
-void olt_hook_2dad60_m(uint32_t m) { olt_hook_2dad60_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+void olt_hook_2dad60_m(uint32_t m) { enemy10e_hook0(m, 0, 0, 0.0f); }  // (Veldin's 0x2cadc0, the same code)
 
 // orig: (none) -- adapter of L14:0x002dae00 (class 252's hook +8: the indirect-call form, the moby only)
 void olt_hook_2dae00_m(uint32_t m) { olt_hook_2dae00_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
@@ -38,7 +40,7 @@ void oltanis_moby_fns_register() {
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002dee28), olt_class386_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002dfd10), olt_class403_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002e1b20), olt_class455_update_l14);
-    ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002e7190), olt_class531_update_l14);
+    ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002e7190), empty_update);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002e72d8), olt_class545_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002e7bd8), olt_class557_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002ea9d0), olt_class604_update_l14);
@@ -51,12 +53,12 @@ void oltanis_moby_fns_register() {
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002ef840), olt_class686_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002f0538), olt_class712_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002f2cb8), olt_class758_update_l14);
-    ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002f3ef0), olt_class765_update_l14);
+    ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002f3ef0), empty_update);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002f4190), olt_class805_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002f6338), olt_class832_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002fba20), olt_class851_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002fc0f0), olt_class908_update_l14);
-    ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002fcba8), olt_class913_update_l14);
+    ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002fcba8), empty_update);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002fcbb0), olt_class921_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002fdbb8), olt_class922_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002fe2a0), olt_class923_update_l14);
@@ -70,14 +72,14 @@ void oltanis_moby_fns_register() {
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x00305408), olt_class1352_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x00305758), olt_class1354_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x00305d28), olt_class1395_update_l14);
-    ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x00306150), olt_class1396_update_l14);
+    ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x00306150), empty_update);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x003061d8), olt_class1397_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x00306390), olt_class1400_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x00306b78), olt_class1416_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x00306ee0), olt_class1417_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x00307a80), olt_class1418_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x00307ad8), olt_class1511_update_l14);
-    ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x00308350), olt_class1514_update_l14);
+    ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x00308350), empty_update);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x003087c0), olt_class1559_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x003088b0), olt_class1629_update_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x00308be0), olt_class1633_update_l14);

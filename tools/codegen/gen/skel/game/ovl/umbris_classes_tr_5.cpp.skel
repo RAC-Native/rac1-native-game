@@ -73,8 +73,6 @@ using namespace vu0m;
 
 //@gen umb_class1650_update_l7
 
-//@gen umb_class1651_update_l7
-
 //@gen umb_class1663_update_l7
 
 //@gen umb_class1686_update_l7
@@ -93,21 +91,11 @@ using namespace vu0m;
 
 //@gen umb_cam_type18_accept_u
 
-//@gen umb_cam_type18_init_l7
-
-//@gen umb_cam_type18_update_l7
-
-//@gen umb_cam_type18_exit_l7
-
 //@gen umb_212f08_l7
 
 //@gen umb_cam0_hook_l7
 
 //@gen umb_cam_callback_l7
-
-//@gen umb_hook_2f44b0_u
-
-//@gen umb_level_sound_play_u
 
 //@gen umb_cutscene_level_extras_u
 

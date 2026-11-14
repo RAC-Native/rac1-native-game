@@ -4,7 +4,7 @@
  "env": {
   "MKALL_HELPER_PREFIX": "bl2_",
   "MKALL_WIDE_GPR": "212938:a3;2e3248:a0;2e37a8:a0;2e3530:a0",
-  "MKALL_FORCE": "20e820,212938,214428,216b88,217ab8,272498,2adfb0,2e3248,2e3530,2e37a8,2e3cf8"
+  "MKALL_FORCE": "212938,214428,216b88,217ab8,2e3248,2e3530,2e37a8,2e3cf8"
  },
  "entries": [
   "2d8738:blg_class302_draw_l6:void:a0",

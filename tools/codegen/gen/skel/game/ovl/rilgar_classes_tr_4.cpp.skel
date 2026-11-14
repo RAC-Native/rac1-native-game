@@ -27,6 +27,11 @@
 #include <game/ovl/walker.h>
 #include <game/ovl/weapons.h>
 #include <game/port_stubs.h>
+#include <game/ovl/carry_hooks.h>
+#include <game/ovl/doomlet.h>
+#include <game/ovl/hud_slot7_tr.h>
+#include <game/ovl/shadows.h>
+#include <game/ovl/metal.h>
 
 namespace rac1 {
 
@@ -81,27 +86,13 @@ using namespace vu0m;
 
 //@gen ril_cam_type8_update_l5
 
-//@gen ril_cam_type8_exit_l5
-
 //@gen ril_219d88_l5
 
 //@gen ril_cam0_hook_l5
 
 //@gen ril_cam_callback_l5
 
-//@gen ril_30faa8_l5
-
-//@gen ril_3115f8_l5
-
 //@gen ril_hook_300b48_u
-
-//@gen ril_311708_l5
-
-//@gen ril_cb_300b98_l5
-
-//@gen ril_3118f8_l5
-
-//@gen ril_cb_300be8_l5
 
 //@gen ril_hook_10_u
 
@@ -116,8 +107,6 @@ using namespace vu0m;
 //@gen ril_2cd678_l5
 
 //@gen ril_22e700_l5
-
-//@gen ril_2c9608_l5
 
 //@gen ril_2cd960_l5
 
@@ -136,8 +125,6 @@ using namespace vu0m;
 //@gen ril_cb_2661a0_l5
 
 //@gen ril_cb_2661e8_l5
-
-//@gen ril_22a128_l5
 
 //@gen ril_cb_266320_l5
 

@@ -6,7 +6,6 @@
  },
  "entries": [
   "269d20:particle_06_update:void:a0",
-  "26a5b8:particle_08_update:void:a0",
   "2a5040:vendor_draw_tr:void:a0",
   "272838:particle_38_update:void:a0",
   "2728e8:particle_39_update:void:a0",

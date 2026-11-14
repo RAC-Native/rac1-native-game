@@ -8,7 +8,7 @@
 
 namespace rac1 {
 
-void credits_start_tr(uint32_t a0);  // 0x00299a68
+void credits_start_tr(uint32_t a0);  // orig: 0x00299a68
 TrRet cr_299c00_tr(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);  // 0x00299c00
 void credits_update_tr(uint32_t a0);  // 0x00299c48
 TrRet cr_1fc558_tr(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);  // 0x001fc558

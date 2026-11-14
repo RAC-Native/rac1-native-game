@@ -6,11 +6,14 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/carry_hooks_levels.h>
+#include <game/ovl/carry_hooks.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/batalia_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 
 #include <cmath>
@@ -21,6 +24,13 @@
 namespace rac1::oracle {
 
 namespace {
+// a hand-written class hook (moby, position, target, float) in the hook table's uniform form: the levels' copies of
+// Veldin's hooks and the levels' hooks written by hand run these (T00)
+template <int32_t (*H)(uint32_t, uint32_t, uint32_t, float)>
+TrRet hook_uniform(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float f12, float, float, float,
+                   float, float, float, float) {
+    return TrRet{static_cast<uint32_t>(H(a0, a1, a2, f12)), 0.0f};
+}
 
 // A check whose original is level 8's own function at `l8addr` (not a Veldin address to translate).
 void l8check(const char* name, uint32_t l8addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port,
@@ -176,7 +186,7 @@ void batch_120() {
         {"class252", 0x002d2af0, bat_class252_update_l8, 0x0, false},
         {"class253", 0x002d42d8, bat_class253_update_l8, 0x0, false},
         {"class280", 0x002d8270, bat_class280_update_l8, 0x0, false},
-        {"class324", 0x002da0c8, bat_class324_update_l8, 0x0, false},
+        {"class324", 0x002da0c8, empty_update, 0x0, false},
         {"class327", 0x002da0f0, bat_class327_update_l8, 0x0, false},
         {"class331", 0x002da3c0, bat_class331_update_l8, 0x0, false},
         {"class333", 0x002dabf0, bat_class333_update_l8, 0x0, false},
@@ -196,13 +206,13 @@ void batch_120() {
         {"class467", 0x002ea398, bat_class467_update_l8, 0x0, false},
         {"class468", 0x002ea4c0, bat_class468_update_l8, 0x0, false},
         {"class545", 0x002ee6f0, bat_class545_update_l8, 0x0, false},
-        {"class566", 0x002efb50, bat_class566_update_l8, 0x0, false},
+        {"class566", 0x002efb50, empty_update, 0x0, false},
         {"class567", 0x002efb60, bat_class567_update_l8, 0x0, false},
         {"class600", 0x002f1548, bat_class600_update_l8, 0x0, false},
         {"class604", 0x002f18b8, bat_class604_update_l8, 0x0, false},
         {"class605", 0x002f1c08, bat_class605_update_l8, 0x0, false},
         {"class615", 0x002f2030, bat_class615_update_l8, 0x0, false},
-        {"class618", 0x002f44b8, bat_class618_update_l8, 0x0, false},
+        {"class618", 0x002f44b8, empty_update, 0x0, false},
         {"class621", 0x002f44c0, bat_class621_update_l8, 0x0, false},
         {"class648", 0x002f5830, bat_class648_update_l8, 0x0, false},
         {"class671", 0x002f70a0, bat_class671_update_l8, 0x0, false},
@@ -227,7 +237,7 @@ void batch_120() {
         {"class1649", 0x003097b0, bat_class1649_update_l8, 0x0, false},
         {"class1818", 0x0030ac28, bat_class1818_update_l8, 0x0, false},
         {"class1844", 0x0030bc00, bat_class1844_update_l8, 0x0, false},
-        {"class1845", 0x0030bcf8, bat_class1845_update_l8, 0x0, false},
+        {"class1845", 0x0030bcf8, empty_update, 0x0, false},
     };
     auto generic_prep = [give_hit, hero_near](uint32_t m, int st, int pass, void (*fn)(uint32_t), bool walk = false) {
         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -370,11 +380,11 @@ void batch_120() {
             l8check(name("accept"), ct.accept, 300, Ret::Int32, [cam_setup, type] { uint32_t other = 0; const uint32_t cam = cam_setup(type, true, &other); return Args{{cam, other}, {}}; },
                     [type](A a) { return r32(a.i[0] != 0 ? (type == 3 ? bat_cam_type3_accept_u : bat_cam_type18_accept_u)(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0 : 0u); });
             l8check(name("init"), ct.init, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) (type == 3 ? bat_cam_type3_init_l8 : bat_cam_type18_init_l8)(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) (type == 3 ? bat_cam_type3_init_l8 : empty_update)(a.i[0]); return uint64_t{0}; });
             l8check(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) (type == 3 ? bat_cam_type3_update_l8 : bat_cam_type18_update_l8)(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) (type == 3 ? bat_cam_type3_update_l8 : empty_update)(a.i[0]); return uint64_t{0}; });
             l8check(name("exit"), ct.exit, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) (type == 3 ? bat_cam_type3_exit_l8 : bat_cam_type18_exit_l8)(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) (type == 3 ? bat_cam_type3_exit_l8 : empty_update)(a.i[0]); return uint64_t{0}; });
         }
     }
 
@@ -384,12 +394,12 @@ void batch_120() {
         g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, 0x002763f8};
         struct Hk { const char* name; uint32_t addr; uint32_t slot; TrRet (*fn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float); };
         static const Hk hks[] = {
-            {"hook_2d3f60", 0x2d3f60, 0x0, bat_hook_2d3f60_u},
-            {"hook_2d3fb0", 0x2d3fb0, 0x4, bat_hook_2d3fb0_u},
+            {"hook_2d3f60", 0x2d3f60, 0x0, hook_uniform<enemy10e_hook0>},
+            {"hook_2d3fb0", 0x2d3fb0, 0x4, hook_uniform<enemy10e_hook4>},
             {"hook_2d4000", 0x2d4000, 0x8, bat_hook_2d4000_u},
             {"hook_2d4050", 0x2d4050, 0xc, bat_hook_2d4050_u},
             {"hook_2d40d8", 0x2d40d8, 0x10, bat_hook_2d40d8_u},
-            {"hook_2d8180", 0x2d8180, 0xc, bat_hook_2d8180_u},
+            {"hook_2d8180", 0x2d8180, 0xc, hook_uniform<bat_carry_hookc_l8>},
         };
         for (const Hk& hk : hks) {
             level();
@@ -421,6 +431,21 @@ void batch_120() {
             if (ri(0, 2) == 0) w32(OV(0x0015ffe0) , ee_read<uint32_t>(OV(0x0015ffe0)));
             return Args{{cls[ri(0, 6)]}, {}};
         }, [](A a) { return r32(moby_spawn(a.i[0])); });
+    }
+
+    // T00: the level's bare `jr ra` functions its classes and cameras reach through a pointer (class updates, camera
+    // callbacks; the scan pairs them with Veldin's 0x1f6bf8): empty_update runs in their places, each against the original
+    // called directly (the level may have no moby of the class)
+    if (g_oracle_level == 8) {
+        static const uint32_t empties[] = {0x002da0c8, 0x002efb50, 0x002f44b8, 0x0030bcf8, 0x00316300, 0x00316308, 0x00316310};
+        for (const uint32_t a : empties) {
+            char nm[24];
+            std::snprintf(nm, sizeof nm, "empty_%x", a);
+            l8check(nm, a, 20, Ret::None, [level] {
+                level();
+                return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
+            }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
+        }
     }
 
     //@@NEXT

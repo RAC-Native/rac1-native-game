@@ -2,6 +2,7 @@
 #include <game/ovl/blarg_hooks.h>
 
 #include <game/ovl/blarg_mobys.h>
+#include <game/ovl/empty_class_updates.h>
 
 namespace rac1 {
 
@@ -10,9 +11,9 @@ bool blarg_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t* 
     *ret = 0;
     switch (lvl_key(fn)) {
     case L6_CASE(0x00316368): *ret = static_cast<int32_t>(blg_cam_type18_accept_u(cam, other, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f).v0); return true;
-    case L6_CASE(0x003163d0): blg_cam_type18_init_l6(cam); return true;
-    case L6_CASE(0x003163d8): blg_cam_type18_update_l6(cam); return true;
-    case L6_CASE(0x003163e0): blg_cam_type18_exit_l6(cam); return true;
+    case L6_CASE(0x003163d0): empty_update(cam); return true;
+    case L6_CASE(0x003163d8): empty_update(cam); return true;
+    case L6_CASE(0x003163e0): empty_update(cam); return true;
     default: return false;
     }
 }

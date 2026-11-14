@@ -20,6 +20,7 @@
 
 #include <game/ovl/shared_particles.h>
 
+#include <game/ovl/empty_class_updates.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/particle_types_tr.h>
@@ -122,7 +123,7 @@ void batch_340() {
     };
     const Type types[] = {
         {0x03, 0x002694f8, particle_03_update, "particle_03_update"}, {0x07, 0x0026a418, particle_07_update, "particle_07_update"},
-        {0x09, 0x0026a6f0, particle_09_update, "particle_09_update"}, {0x11, 0x0026c3c8, particle_11_update, "particle_11_update"},
+        {0x09, 0x0026a6f0, particle_09_update, "particle_09_update"}, {0x11, 0x0026c3c8, empty_update, "particle_11_update"},
         {0x14, 0x0026c860, particle_14_update, "particle_14_update"}, {0x18, 0x0026d470, particle_18_update, "particle_18_update"},
         {0x1d, 0x0026e3a8, particle_1d_update, "particle_1d_update"}, {0x1e, 0x0026e670, particle_1e_update, "particle_1e_update"},
         {0x21, 0x0026f048, timed_particle_update, "particle_21_update"}, {0x24, 0x0026f898, particle_24_update, "particle_24_update"},

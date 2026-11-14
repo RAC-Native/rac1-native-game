@@ -33,7 +33,6 @@ void particle_50_update(uint32_t a0);  // 0x00275eb0
 void particle_03_update(uint32_t a0);  // 0x002694f8
 void particle_07_update(uint32_t a0);  // 0x0026a418
 void particle_09_update(uint32_t a0);  // 0x0026a6f0
-void particle_11_update(uint32_t a0);  // 0x0026c3c8
 void particle_14_update(uint32_t a0);  // 0x0026c860
 void particle_18_update(uint32_t a0);  // 0x0026d470
 void particle_1d_update(uint32_t a0);  // 0x0026e3a8

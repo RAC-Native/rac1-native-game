@@ -269,8 +269,8 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         return true;
     case 8:  // Batalia: class 0xfc (table 0x1fd200), class 0x10e's hook +0xc (table 0x1fd218)
         switch (lvl_key(fn)) {
-        case L8_CASE(0x002d3f60): ret = u_call(bat_hook_2d3f60_u, m, a1, a2, f12); return true;
-        case L8_CASE(0x002d3fb0): ret = u_call(bat_hook_2d3fb0_u, m, a1, a2, f12); return true;
+        case L8_CASE(0x002d3f60): ret = enemy10e_hook0(m, a1, a2, f12); return true;  // (Veldin's 0x2cadc0, the same code)
+        case L8_CASE(0x002d3fb0): ret = enemy10e_hook4(m, a1, a2, f12); return true;  // (Veldin's 0x2cae10, the same code)
         case L8_CASE(0x002d4000): ret = u_call(bat_hook_2d4000_u, m, a1, a2, f12); return true;
         case L8_CASE(0x002d4050): ret = u_call(bat_hook_2d4050_u, m, a1, a2, f12); return true;
         case L8_CASE(0x002d40d8): ret = u_call(bat_hook_2d40d8_u, m, a1, a2, f12); return true;
@@ -369,7 +369,7 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         case L18_CASE(0x002fcc00): ret = u_call(vf_hook_2fcc00_u, m, a1, a2, f12); return true;
         case L18_CASE(0x002fcc50): ret = u_call(vf_hook_2fcc50_u, m, a1, a2, f12); return true;
         case L18_CASE(0x002fcca0): ret = u_call(vf_hook_2fcca0_u, m, a1, a2, f12); return true;
-        case L18_CASE(0x002fccd0): ret = u_call(vf_hook_2fccd0_u, m, a1, a2, f12); return true;
+        case L18_CASE(0x002fccd0): ret = static_cast<int32_t>(e749_hook_10(m)); return true;  // (Veldin's 0x2d5800, the same code)
         default: return false;
         }
     default:

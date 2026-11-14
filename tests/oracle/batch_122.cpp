@@ -6,12 +6,14 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/helmet_tr.h>
 #include <game/lib/libc.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/orxon_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 
 #include <cmath>
@@ -176,13 +178,13 @@ void batch_122() {
         {"class1117", 0x00295c20, orx_class1117_update_l10, 0x0, false},
         {"class18", 0x00298668, orx_class18_update_l10, 0x4, false},
         {"class22", 0x00298b68, orx_class22_update_l10, 0x0, false},
-        {"class87", 0x0029e1c8, orx_class87_update_l10, 0x0, false},
+        {"class87", 0x0029e1c8, empty_update, 0x0, false},
         {"class258", 0x002bae38, orx_class258_update_l10, 0x0, false},
         {"class302", 0x002bd0e8, orx_class302_update_l10, 0x0, false},
         {"class303", 0x002bd768, orx_class303_update_l10, 0x0, false},
         {"class351", 0x002be858, orx_class351_update_l10, 0x0, false},
         {"class353", 0x002befe8, orx_class353_update_l10, 0x0, false},
-        {"class532", 0x002c4bc8, orx_class532_update_l10, 0x0, false},
+        {"class532", 0x002c4bc8, empty_update, 0x0, false},
         {"class605", 0x002c6470, orx_class605_update_l10, 0x0, false},
         {"class648", 0x002c74b8, orx_class648_update_l10, 0x0, false},
         {"class702", 0x002c7a20, orx_class702_update_l10, 0x0, false},
@@ -210,7 +212,7 @@ void batch_122() {
         {"class1085", 0x002dd010, orx_class1085_update_l10, 0x0, false},
         {"class1090", 0x002dd3d8, orx_class1090_update_l10, 0x0, false},
         {"class1100", 0x002dd650, orx_class1100_update_l10, 0x0, false},
-        {"class1122", 0x002dd8d8, orx_class1122_update_l10, 0x0, false},
+        {"class1122", 0x002dd8d8, empty_update, 0x0, false},
         {"class1134", 0x002dd8e0, orx_class1134_update_l10, 0x4, false},
         {"class1141", 0x002de860, orx_class1141_update_l10, 0x0, false},
         {"class1196", 0x002df270, orx_class1196_update_l10, 0x0, false},
@@ -231,8 +233,8 @@ void batch_122() {
         {"class1806", 0x002eb1b0, orx_class1806_update_l10, 0x0, false},
         {"class1855", 0x002eb6f0, orx_class1855_update_l10, 0x0, false},
         {"class1856", 0x002eb7e0, orx_class1856_update_l10, 0x0, false},
-        {"class1857", 0x002eb8b8, orx_class1857_update_l10, 0x0, false},
-        {"class1921", 0x002eb950, orx_class1921_update_l10, 0x0, false},
+        {"class1857", 0x002eb8b8, empty_update, 0x0, false},
+        {"class1921", 0x002eb950, empty_update, 0x0, false},
         {"class1973", 0x002ebb08, orx_class1973_update_l10, 0x0, false},
     };
     auto generic_prep = [give_hit, hero_near](uint32_t m, int st, int pass, void (*fn)(uint32_t), bool walk = false) {
@@ -467,7 +469,7 @@ void batch_122() {
             l10check(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
                     [type](A a) { if (a.i[0] != 0) orx_cam_type19_update_l10(a.i[0]); return uint64_t{0}; });
             l10check(name("exit"), ct.exit, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) orx_cam_type19_exit_l10(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) empty_update(a.i[0]); return uint64_t{0}; });
         }
     }
 
@@ -497,6 +499,37 @@ void batch_122() {
             auto pick = [&] { return base + 0x40 + (ri(0, 1) != 0 ? 0x10 * u(ri(0, 8)) : u(ri(0, 0x80))); };
             return Args{{pick(), pick(), n}, {}};
         }, [](A a) { return r32(libc_memcpy(a.i[0], a.i[1], a.i[2])); });
+    }
+
+    // T00: the level's copy of Veldin's helmet_init_fx (0x2e06a8; the scan's body hash pairs them, the overlay map does not) at
+    // L10:0x00298860: the hand port runs in its place; a live moby's pvars +0x10 .. +0x4c set up (the random bytes, the timers by
+    // the frame scale)
+    if (g_oracle_level == 10) {
+        l10check("helmet_init_fx_298860", 0x00298860, 120, Ret::None, [level] {
+            level();
+            std::vector<uint32_t> ms;
+            for (uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)); m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100)
+                if (ee_read<uint8_t>(m + 0x20) < 0xfe && ee_read<uint32_t>(m + 0x78) != 0) ms.push_back(m);
+            const uint32_t m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+            if (ri(0, 3) == 0) wf(0x0015ed68, 1.2f);  // (the frame scale at its 50 Hz value: frame_scale_i's counts)
+            seed_rand();
+            return Args{{m}, {}};
+        }, [](A a) { helmet_init_fx(a.i[0]); return uint64_t{0}; });
+    }
+
+    // T00: the level's bare `jr ra` functions its classes and cameras reach through a pointer (class updates, camera
+    // callbacks; the scan pairs them with Veldin's 0x1f6bf8): empty_update runs in their places, each against the original
+    // called directly (the level may have no moby of the class)
+    if (g_oracle_level == 10) {
+        static const uint32_t empties[] = {0x0029e1c8, 0x002c4bc8, 0x002dd8d8, 0x002eb8b8, 0x002eb950, 0x002f66c0};
+        for (const uint32_t a : empties) {
+            char nm[24];
+            std::snprintf(nm, sizeof nm, "empty_%x", a);
+            l10check(nm, a, 20, Ret::None, [level] {
+                level();
+                return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
+            }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
+        }
     }
 
     //@@NEXT
