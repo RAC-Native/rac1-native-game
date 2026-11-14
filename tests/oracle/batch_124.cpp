@@ -9,6 +9,28 @@
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/hero_move_mode.h>
 #include <game/ovl/pokitaru_mobys.h>
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_hooks.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/novalis_water.h>
+#include <game/ovl/shared_class1111.h>
+#include <game/ovl/shared_class1179.h>
+#include <game/ovl/shared_class1319.h>
+#include <game/ovl/shared_class1844.h>
+#include <game/ovl/shared_class295.h>
+#include <game/ovl/shared_class341.h>
+#include <game/ovl/shared_class604.h>
+#include <game/ovl/shared_class615.h>
+#include <game/ovl/shared_class819.h>
+#include <game/ovl/shared_class830.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_ship_shots.h>
+#include <game/ovl/shared_swingshot_target.h>
+#include <game/ovl/shared_tiles.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
@@ -25,6 +47,16 @@
 namespace rac1::oracle {
 
 namespace {
+// a hand-written class hook (moby, position, target, float) in the hook table's uniform form (as batch 119's): Pokitaru's
+// copies of the Amoeboid's hook +0 and of the hooks that keep the carry state (carry hooks +4 / +8) run these
+template <int32_t (*H)(uint32_t, uint32_t, uint32_t, float)>
+TrRet hook_uniform(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float f12, float, float, float,
+                   float, float, float, float) {
+    return TrRet{static_cast<uint32_t>(H(a0, a1, a2, f12)), 0.0f};
+}
+int32_t keep_state_hook4(uint32_t m, uint32_t a1, uint32_t a2, float f12) { return carry_keep_state_hook(m, a1, a2, f12, 4); }  // L11:0x316210
+int32_t keep_state_hook8(uint32_t m, uint32_t a1, uint32_t a2, float f12) { return carry_keep_state_hook(m, a1, a2, f12, 8); }  // L11:0x316270
+
 // A random state can hold a pointer outside RAM that the port's vector helpers dereference without a check (a SIGSEGV where the interpreter would wrap it): the trial run of a state
 // turns it into "not a game state" (the state is dealt again), as the port's "Pointer resolution out of bounds" exception does.
 sigjmp_buf g_trial_jmp;
@@ -194,35 +226,35 @@ void batch_124() {
     struct TrCls { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t skip_states = 0; bool walk = false; uint32_t skip_p0 = 0; uint32_t skip_p1 = 0; };  // (skip_p0 / skip_p1: states skipped in pass 0 / 1 only, see docs/reversing/pokitaru_classes.md)  // (the states that start a scene / a level change: the original runs the kernel / movie path for real)
     static const TrCls trcls[] = {
         {"class23", 0x002cb668, pok_class23_update_l11, 0x4, false},
-        {"class37", 0x002cb790, pok_class37_update_l11, 0x0, false},
+        {"class37", 0x002cb790, raritanium_pickup_update, 0x0, false},
         {"class65", 0x002cb810, pok_class65_update_l11, 0x0, false},
         {"class90", 0x002d0710, pok_class90_update_l11, 0x0, false},
         {"class114", 0x002d0fa8, pok_class114_update_l11, 0x9000, false},
         {"class298", 0x002f0e40, pok_class298_update_l11, 0x0, false},
         {"class318", 0x002f2518, pok_class318_update_l11, 0x0, false},
-        {"class341", 0x002f30b0, pok_class341_update_l11, 0x0, false},
+        {"class341", 0x002f30b0, class341_update, 0x0, false},
         {"class361", 0x002f3350, pok_class361_update_l11, 0x0, false},
-        {"class572", 0x002f9998, pok_class572_update_l11, 0x0, false},
-        {"class604", 0x002fc630, pok_class604_update_l11, 0x0, false},
-        {"class605", 0x002fc980, pok_class605_update_l11, 0x0, false},
-        {"class615", 0x002fcda8, pok_class615_update_l11, 0x0, false},
-        {"class758", 0x00300010, pok_class758_update_l11, 0x0, false},
-        {"class805", 0x00300578, pok_class805_update_l11, 0x0, false},
-        {"class819", 0x00302510, pok_class819_update_l11, 0x0, false},
-        {"class830", 0x00302ae0, pok_class830_update_l11, 0x0, false},
-        {"class832", 0x00303070, pok_class832_update_l11, 0x0, false},
-        {"class1009", 0x003089d0, pok_class1009_update_l11, 0x0, false},
-        {"class1017", 0x00309098, pok_class1017_update_l11, 0x0, false},
-        {"class1034", 0x003094f8, pok_class1034_update_l11, 0x0, false},
+        {"class572", 0x002f9998, amoeboid_update_l1, 0x0, false},
+        {"class604", 0x002fc630, class604_update, 0x0, false},
+        {"class605", 0x002fc980, zone_marker_update, 0x0, false},
+        {"class615", 0x002fcda8, class615_update, 0x0, false},
+        {"class758", 0x00300010, swingshot_target_update, 0x0, false},
+        {"class805", 0x00300578, spawn_point_update_l1, 0x0, false},
+        {"class819", 0x00302510, class819_update, 0x0, false},
+        {"class830", 0x00302ae0, class830_update, 0x0, false},
+        {"class832", 0x00303070, class832_update, 0x0, false},
+        {"class1009", 0x003089d0, class1009_update, 0x0, false},
+        {"class1017", 0x00309098, class1017_update, 0x0, false},
+        {"class1034", 0x003094f8, class1034_update, 0x0, false},
         {"class1075", 0x00309ac0, pok_class1075_update_l11, 0x0, false},
-        {"class1111", 0x0030b358, pok_class1111_update_l11, 0x0, false},
-        {"class1134", 0x0030b730, pok_class1134_update_l11, 0x4, false},
+        {"class1111", 0x0030b358, class1111_update, 0x0, false},
+        {"class1134", 0x0030b730, gold_bolt_update, 0x4, false},
         {"class1156", 0x0030c788, pok_class1156_update_l11, 0x0, false},
         {"class1157", 0x0030d800, pok_class1157_update_l11, 0x0, false},
         {"class1158", 0x0030e088, pok_class1158_update_l11, 0x0, false},
         {"class1159", 0x0030e978, pok_class1159_update_l11, 0x0, false},
         {"class1178", 0x0030eb90, pok_class1178_update_l11, 0x0, false},
-        {"class1179", 0x0030ee00, pok_class1179_update_l11, 0x0, false},
+        {"class1179", 0x0030ee00, class1179_update, 0x0, false},
         {"class1180", 0x0030f2a8, pok_class1180_update_l11, 0x0, false},
         {"class1218", 0x0030f728, pok_class1218_update_l11, 0x0, false},
         {"class1219", 0x00310028, pok_class1219_update_l11, 0x0, false},
@@ -236,9 +268,9 @@ void batch_124() {
         {"class1319", 0x00319838, pok_class1319_update_l11, 0x6, false},
         {"class1350", 0x0031aa80, pok_class1350_update_l11, 0x0, false},
         {"class1524", 0x0031ab08, pok_class1524_update_l11, 0x0, false},
-        {"class1633", 0x0031b758, pok_class1633_update_l11, 0x0, false},
-        {"class1818", 0x0031c800, pok_class1818_update_l11, 0x0, false},
-        {"class1859", 0x0031d7d8, pok_class1859_update_l11, 0x0, false},
+        {"class1633", 0x0031b758, class1633_update, 0x0, false},
+        {"class1818", 0x0031c800, sandmouse_update, 0x0, false},
+        {"class1859", 0x0031d7d8, class1844_update, 0x0, false},
         {"class1860", 0x0031d8d0, empty_update, 0x0, false},
         {"class1903", 0x0031e2f0, pok_class1903_update_l11, 0x0, false},
         {"class1919", 0x0031f150, pok_class1919_update_l11, 0x0, false},
@@ -310,13 +342,13 @@ void batch_124() {
         for (uint32_t a = 0x100; a < 0x1500; a += 4) g_ignored_words.push_back(a);
         static const Cb cbs[] = {
         {"cb2f2d58", 0x002f2d58, pok_cb_2f2d58_l11, 0x002f2518, 318},
-        {"cb2fd6c0", 0x002fd6c0, pok_cb_2fd6c0_l11, 0x002fcda8, 615},
-        {"cb302e60", 0x00302e60, pok_cb_302e60_l11, 0x00303070, 832},
-        {"cb30a908", 0x0030a908, pok_cb_30a908_l11, 0x0030b358, 1111},
-        {"cb30e708", 0x0030e708, pok_cb_30e708_l11, 0x0030e088, 1158},
+        {"cb2fd6c0", 0x002fd6c0, class615_puzzle_draw, 0x002fcda8, 615},
+        {"cb302e60", 0x00302e60, class832_draw, 0x00303070, 832},
+        {"cb30a908", 0x0030a908, class1111_draw, 0x0030b358, 1111},
+        {"cb30e708", 0x0030e708, nov_water_751_draw_l1, 0x0030e088, 1158},
         {"cb311d50", 0x00311d50, pok_cb_311d50_l11, 0x00000000, 0},
-        {"cb3192c8", 0x003192c8, pok_cb_3192c8_l11, 0x00000000, 0},
-        {"cb31c728", 0x0031c728, pok_cb_31c728_l11, 0x00000000, 0},
+        {"cb3192c8", 0x003192c8, class1319_trails_draw, 0x00000000, 0},
+        {"cb31c728", 0x0031c728, sandmouse_glow, 0x00000000, 0},
         {"cb31db50", 0x0031db50, pok_cb_31db50_l11, 0x0031e2f0, 1903},
         {"cb31e930", 0x0031e930, pok_cb_31e930_l11, 0x0031f150, 1919},
         };
@@ -384,14 +416,14 @@ void batch_124() {
         g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};
         struct Hk { const char* name; uint32_t addr; uint32_t slot; TrRet (*fn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float); };
         static const Hk hks[] = {
-            {"hook_2fb780", 0x2fb780, 0x0, pok_hook_2fb780_u},
+            {"hook_2fb780", 0x2fb780, 0x0, hook_uniform<amoeboid_hook0_l1>},
             {"hook_2fb7f0", 0x2fb7f0, 0x4, pok_hook_2fb7f0_u},
             {"hook_2fb840", 0x2fb840, 0x8, pok_hook_2fb840_u},
             {"hook_2fb890", 0x2fb890, 0xc, pok_hook_2fb890_u},
             {"hook_2fb8c0", 0x2fb8c0, 0x10, pok_hook_2fb8c0_u},
             {"hook_316160", 0x316160, 0x0, pok_hook_316160_u},
-            {"hook_316210", 0x316210, 0x4, pok_hook_316210_u},
-            {"hook_316270", 0x316270, 0x8, pok_hook_316270_u},
+            {"hook_316210", 0x316210, 0x4, hook_uniform<keep_state_hook4>},
+            {"hook_316270", 0x316270, 0x8, hook_uniform<keep_state_hook8>},
             {"hook_3162d0", 0x3162d0, 0xc, pok_hook_3162d0_u},
             {"hook_3162f0", 0x3162f0, 0x10, pok_hook_3162f0_u},
         };
@@ -465,8 +497,8 @@ void batch_124() {
             wf(0x00161f3c, rf(0, 0.5f));  // $gp - 0x4cc4: the frame step the callback counts down by
             w32(OV(0x0015ef4c), u(ri(0, 14)));  // the queue's count (it holds up to 16)
         };
-        l11check("cam0_hook", 0x00327a90, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { pok_cam0_hook_l11(0); return uint64_t{0}; });
-        l11check("cam_callback", 0x00327af0, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { pok_cam_callback_l11(0); return uint64_t{0}; });
+        l11check("cam0_hook", 0x00327a90, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_hook(0); return uint64_t{0}; });
+        l11check("cam_callback", 0x00327af0, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_callback(0); return uint64_t{0}; });
     }
 
     // ---- mobys_in_sphere (Veldin 0x1f2868, level 11's copy L11:0x002240d0) on the level's own mobys: class 794 (the Gadgebot's helper) calls it and one of its random states differed

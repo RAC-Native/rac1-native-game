@@ -1,5 +1,6 @@
 // See pokitaru_hooks.h.
 #include <game/ovl/pokitaru_hooks.h>
+#include <game/ovl/kerwan_camera.h>
 #include <game/ovl/sound_emitter.h>
 
 namespace rac1 {
@@ -16,14 +17,14 @@ bool pokitaru_sound_emitter_call(uint32_t fn, uint32_t em) {
 // orig: (host) see pokitaru_hooks.h
 bool pokitaru_camera_hook_call(uint32_t fn) {
     if (fn != L11_ADDR(0x00327a90)) return false;
-    pok_cam0_hook_l11(0);
+    cam0_level_hook(0);  // (every level's copy: kerwan_camera.cpp)
     return true;
 }
 
 // orig: (host) see pokitaru_hooks.h
 bool pokitaru_camera_callback_call(uint32_t fn) {
     if (fn != L11_ADDR(0x00327af0)) return false;
-    pok_cam_callback_l11(0);
+    cam0_level_callback(0);
     return true;
 }
 

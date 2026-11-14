@@ -12,6 +12,28 @@
 #include "ovl_oracle.h"
 
 #include <game/ovl/hoven_mobys.h>
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_hooks.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/novalis_water.h>
+#include <game/ovl/shared_class1111.h>
+#include <game/ovl/shared_class1179.h>
+#include <game/ovl/shared_class1319.h>
+#include <game/ovl/shared_class1844.h>
+#include <game/ovl/shared_class295.h>
+#include <game/ovl/shared_class341.h>
+#include <game/ovl/shared_class604.h>
+#include <game/ovl/shared_class615.h>
+#include <game/ovl/shared_class819.h>
+#include <game/ovl/shared_class830.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_ship_shots.h>
+#include <game/ovl/shared_swingshot_target.h>
+#include <game/ovl/shared_tiles.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/pokitaru_mobys.h>
@@ -54,35 +76,35 @@ bool trial_run(void (*port)(uint32_t), uint32_t m) {
 struct Cls { int level; int cls; uint32_t addr; void (*fn)(uint32_t); };
 const Cls kCls[] = {
     {11, 23, 0x002cb668, pok_class23_update_l11},
-    {11, 37, 0x002cb790, pok_class37_update_l11},
+    {11, 37, 0x002cb790, raritanium_pickup_update},
     {11, 65, 0x002cb810, pok_class65_update_l11},
     {11, 90, 0x002d0710, pok_class90_update_l11},
     {11, 114, 0x002d0fa8, pok_class114_update_l11},
     {11, 298, 0x002f0e40, pok_class298_update_l11},
     {11, 318, 0x002f2518, pok_class318_update_l11},
-    {11, 341, 0x002f30b0, pok_class341_update_l11},
+    {11, 341, 0x002f30b0, class341_update},
     {11, 361, 0x002f3350, pok_class361_update_l11},
-    {11, 572, 0x002f9998, pok_class572_update_l11},
-    {11, 604, 0x002fc630, pok_class604_update_l11},
-    {11, 605, 0x002fc980, pok_class605_update_l11},
-    {11, 615, 0x002fcda8, pok_class615_update_l11},
-    {11, 758, 0x00300010, pok_class758_update_l11},
-    {11, 805, 0x00300578, pok_class805_update_l11},
-    {11, 819, 0x00302510, pok_class819_update_l11},
-    {11, 830, 0x00302ae0, pok_class830_update_l11},
-    {11, 832, 0x00303070, pok_class832_update_l11},
-    {11, 1009, 0x003089d0, pok_class1009_update_l11},
-    {11, 1017, 0x00309098, pok_class1017_update_l11},
-    {11, 1034, 0x003094f8, pok_class1034_update_l11},
+    {11, 572, 0x002f9998, amoeboid_update_l1},
+    {11, 604, 0x002fc630, class604_update},
+    {11, 605, 0x002fc980, zone_marker_update},
+    {11, 615, 0x002fcda8, class615_update},
+    {11, 758, 0x00300010, swingshot_target_update},
+    {11, 805, 0x00300578, spawn_point_update_l1},
+    {11, 819, 0x00302510, class819_update},
+    {11, 830, 0x00302ae0, class830_update},
+    {11, 832, 0x00303070, class832_update},
+    {11, 1009, 0x003089d0, class1009_update},
+    {11, 1017, 0x00309098, class1017_update},
+    {11, 1034, 0x003094f8, class1034_update},
     {11, 1075, 0x00309ac0, pok_class1075_update_l11},
-    {11, 1111, 0x0030b358, pok_class1111_update_l11},
-    {11, 1134, 0x0030b730, pok_class1134_update_l11},
+    {11, 1111, 0x0030b358, class1111_update},
+    {11, 1134, 0x0030b730, gold_bolt_update},
     {11, 1156, 0x0030c788, pok_class1156_update_l11},
     {11, 1157, 0x0030d800, pok_class1157_update_l11},
     {11, 1158, 0x0030e088, pok_class1158_update_l11},
     {11, 1159, 0x0030e978, pok_class1159_update_l11},
     {11, 1178, 0x0030eb90, pok_class1178_update_l11},
-    {11, 1179, 0x0030ee00, pok_class1179_update_l11},
+    {11, 1179, 0x0030ee00, class1179_update},
     {11, 1180, 0x0030f2a8, pok_class1180_update_l11},
     {11, 1218, 0x0030f728, pok_class1218_update_l11},
     {11, 1219, 0x00310028, pok_class1219_update_l11},
@@ -96,9 +118,9 @@ const Cls kCls[] = {
     {11, 1319, 0x00319838, pok_class1319_update_l11},
     {11, 1350, 0x0031aa80, pok_class1350_update_l11},
     {11, 1524, 0x0031ab08, pok_class1524_update_l11},
-    {11, 1633, 0x0031b758, pok_class1633_update_l11},
-    {11, 1818, 0x0031c800, pok_class1818_update_l11},
-    {11, 1859, 0x0031d7d8, pok_class1859_update_l11},
+    {11, 1633, 0x0031b758, class1633_update},
+    {11, 1818, 0x0031c800, sandmouse_update},
+    {11, 1859, 0x0031d7d8, class1844_update},
     {11, 1860, 0x0031d8d0, empty_update},
     {11, 1903, 0x0031e2f0, pok_class1903_update_l11},
     {11, 1919, 0x0031f150, pok_class1919_update_l11},

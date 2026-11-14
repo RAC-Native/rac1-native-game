@@ -112,7 +112,7 @@ void batch_146() {
         else if (lv == 4) class615_update(a.i[0]);  // (Eudora: the shared port it is re-glued onto)
         else if (lv == 6) class615_update(a.i[0]);
         else if (lv == 8) class615_update(a.i[0]);
-        else pok_class615_update_l11(a.i[0]);
+        else class615_update(a.i[0]);
         return uint64_t{0};
     });
     // the puzzle's draw (the pad's draw-list entry), the frame packet's cursor moved on a little (a draw later in the frame)
@@ -125,7 +125,7 @@ void batch_146() {
         else if (lv == 4) class615_puzzle_draw(a.i[0]);  // (Eudora: the shared port it is re-glued onto)
         else if (lv == 6) class615_puzzle_draw(a.i[0]);
         else if (lv == 8) class615_puzzle_draw(a.i[0]);
-        else pok_cb_2fd6c0_l11(a.i[0]);
+        else class615_puzzle_draw(a.i[0]);
         return uint64_t{0};
     });
     g_ignored_words = saved_ignored;

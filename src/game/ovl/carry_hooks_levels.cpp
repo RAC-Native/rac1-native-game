@@ -25,6 +25,7 @@
 #include <game/ovl/rilgar_mobys.h>
 #include <game/ovl/shared_class827.h>
 #include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_little.h>  // (carry_keep_state_hook: Pokitaru)
 #include <game/ovl/veldin_orbit_mobys.h>
 #include <game/ovl/veldin_finale_mobys.h>
 #include <game/ovl/variants_l2.h>
@@ -300,14 +301,14 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         }
     case 11:  // Pokitaru: classes 0x23c / 0x362 (tables 0x21c008 / 0x21c020), class 0x4de (table 0x21c038)
         switch (lvl_key(fn)) {
-        case L11_CASE(0x002fb780): ret = u_call(pok_hook_2fb780_u, m, a1, a2, f12); return true;
+        case L11_CASE(0x002fb780): ret = amoeboid_hook0_l1(m, a1, a2, f12); return true;  // (every copy's port: novalis_hooks.cpp)
         case L11_CASE(0x002fb7f0): ret = u_call(pok_hook_2fb7f0_u, m, a1, a2, f12); return true;
         case L11_CASE(0x002fb840): ret = u_call(pok_hook_2fb840_u, m, a1, a2, f12); return true;
         case L11_CASE(0x002fb890): ret = u_call(pok_hook_2fb890_u, m, a1, a2, f12); return true;
         case L11_CASE(0x002fb8c0): ret = u_call(pok_hook_2fb8c0_u, m, a1, a2, f12); return true;
         case L11_CASE(0x00316160): ret = u_call(pok_hook_316160_u, m, a1, a2, f12); return true;
-        case L11_CASE(0x00316210): ret = u_call(pok_hook_316210_u, m, a1, a2, f12); return true;
-        case L11_CASE(0x00316270): ret = u_call(pok_hook_316270_u, m, a1, a2, f12); return true;
+        case L11_CASE(0x00316210): ret = carry_keep_state_hook(m, a1, a2, f12, 4); return true;  // (shared_little.cpp: the carry hook +4)
+        case L11_CASE(0x00316270): ret = carry_keep_state_hook(m, a1, a2, f12, 8); return true;  // (the carry hook +8)
         case L11_CASE(0x003162d0): ret = u_call(pok_hook_3162d0_u, m, a1, a2, f12); return true;
         case L11_CASE(0x003162f0): ret = u_call(pok_hook_3162f0_u, m, a1, a2, f12); return true;
         default: return false;

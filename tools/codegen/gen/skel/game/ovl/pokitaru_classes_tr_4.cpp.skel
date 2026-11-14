@@ -42,6 +42,10 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/shared_ship_shots.h>
+#include <game/ovl/shared_class1319.h>
+#include <game/ovl/shared_moby_helpers.h>
+#include <game/ovl/shared_ship_exhaust.h>
 
 namespace rac1 {
 
@@ -82,19 +86,9 @@ using namespace vu0m;
 
 //@gen pok_class1297_update_l11
 
-//@gen pok_308f48_l11
-
 //@gen pok_30f5a8_l11
 
-//@gen pok_319670_l11
-
-//@gen pok_31a1c0_l11
-
-//@gen pok_31a438_l11
-
 //@gen pok_class1319_update_l11
-
-//@gen pok_27f058_l11
 
 //@gen pok_class1350_update_l11
 
@@ -103,9 +97,5 @@ using namespace vu0m;
 //@gen pok_31b098_l11
 
 //@gen pok_class1524_update_l11
-
-//@gen pok_class1633_update_l11
-
-//@gen pok_31bac8_l11
 
 }  // namespace rac1

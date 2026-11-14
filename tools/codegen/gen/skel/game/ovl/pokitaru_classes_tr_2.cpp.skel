@@ -40,43 +40,12 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shared_little.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
-
-//@gen pok_class604_update_l11
-
-//@gen pok_class605_update_l11
-
-//@gen pok_2fcbe8_l11
-
-//@gen pok_2fd5c8_l11
-
-//@gen pok_class615_update_l11
-
-//@gen pok_327a58_l11
-
-//@gen pok_327b48_l11
-
-//@gen pok_class758_update_l11
-
-//@gen pok_class805_update_l11
-
-//@gen pok_class819_update_l11
-
-//@gen pok_class830_update_l11
-
-//@gen pok_class832_update_l11
-
-//@gen pok_308670_l11
-
-//@gen pok_class1009_update_l11
-
-//@gen pok_class1017_update_l11
-
-//@gen pok_class1034_update_l11
 
 //@gen pok_30a500_l11
 
@@ -84,23 +53,7 @@ using namespace vu0m;
 
 //@gen pok_class1075_update_l11
 
-//@gen pok_class1111_update_l11
-
-//@gen pok_30bfe0_l11
-
-//@gen pok_30c480_l11
-
-//@gen pok_30be10_l11
-
-//@gen pok_30bf00_l11
-
-//@gen pok_30c270_l11
-
-//@gen pok_class1134_update_l11
-
 //@gen pok_30d1b0_l11
-
-//@gen pok_30f270_l11
 
 //@gen pok_class1156_update_l11
 

@@ -41,6 +41,9 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_moby_helpers.h>
+#include <game/ovl/shared_path_links.h>
 
 namespace rac1 {
 
@@ -49,17 +52,11 @@ using namespace vu0m;
 
 //@gen pok_class23_update_l11
 
-//@gen pok_class37_update_l11
-
 //@gen pok_class65_update_l11
 
 //@gen pok_288e98_l11
 
-//@gen pok_2d0638_l11
-
 //@gen pok_class90_update_l11
-
-//@gen pok_2d0ec0_l11
 
 //@gen pok_2cb990_l11
 
@@ -69,17 +66,7 @@ using namespace vu0m;
 
 //@gen pok_2d1340_l11
 
-//@gen pok_2873b0_l11
-
-//@gen pok_28bc28_l11
-
 //@gen pok_2d2088_l11
-
-//@gen pok_287148_l11
-
-//@gen pok_287340_l11
-
-//@gen pok_287b30_l11
 
 //@gen pok_2d2340_l11
 
@@ -89,11 +76,7 @@ using namespace vu0m;
 
 //@gen pok_2d25e8_l11
 
-//@gen pok_30a830_l11
-
 //@gen pok_30a840_l11
-
-//@gen pok_30e078_l11
 
 //@gen pok_2d14b0_l11
 
@@ -101,11 +84,7 @@ using namespace vu0m;
 
 //@gen pok_class114_update_l11
 
-//@gen pok_2f0d58_l11
-
 //@gen pok_class298_update_l11
-
-//@gen pok_2f2b70_l11
 
 //@gen pok_2f2cd0_l11
 
@@ -113,26 +92,6 @@ using namespace vu0m;
 
 //@gen pok_class318_update_l11
 
-//@gen pok_2f31e8_l11
-
-//@gen pok_class341_update_l11
-
 //@gen pok_class361_update_l11
-
-//@gen pok_27e980_l11
-
-//@gen pok_2fb048_l11
-
-//@gen pok_2fb170_l11
-
-//@gen pok_2fb468_l11
-
-//@gen pok_2fa960_l11
-
-//@gen pok_2972c8_l11
-
-//@gen pok_2fb258_l11
-
-//@gen pok_class572_update_l11
 
 }  // namespace rac1

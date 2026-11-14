@@ -41,6 +41,12 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/screen_effects.h>
+#include <game/ovl/shared_ship_shots.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_hud_shapes.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/novalis_water.h>
+#include <game/ovl/shared_tiles.h>
 
 namespace rac1 {
 
@@ -51,37 +57,11 @@ using namespace vu0m;
 
 //@gen pok_class1157_update_l11
 
-//@gen pok_27f0e0_l11
-
-//@gen pok_285d90_l11
-
-//@gen pok_2c6bd0_l11
-
-//@gen pok_2c6df0_l11
-
-//@gen pok_2c7078_l11
-
-//@gen pok_273110_l11
-
-//@gen pok_272fa8_l11
-
-//@gen pok_2733d0_l11
-
-//@gen pok_2c70b8_l11
-
-//@gen pok_2c7168_l11
-
-//@gen pok_30e690_l11
-
-//@gen pok_30e730_l11
-
 //@gen pok_class1158_update_l11
 
 //@gen pok_class1159_update_l11
 
 //@gen pok_class1178_update_l11
-
-//@gen pok_class1179_update_l11
 
 //@gen pok_class1180_update_l11
 
@@ -108,14 +88,6 @@ using namespace vu0m;
 //@gen pok_318e98_l11
 
 //@gen pok_class1231_update_l11
-
-//@gen pok_29a738_l11
-
-//@gen pok_3112b8_l11
-
-//@gen pok_308848_l11
-
-//@gen pok_311210_l11
 
 //@gen pok_3125a8_l11
 
