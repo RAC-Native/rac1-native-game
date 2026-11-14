@@ -34,7 +34,6 @@ constexpr OvConst<0x00179ac0u> HUD_ITEMS{};
 constexpr OvConst<0x0015f5c4u> MODE{};
 constexpr OvConst<0x00161e18u> BUSY_OPEN{};
 constexpr OvConst<0x00161e10u> BUSY_QUANTITY{};
-constexpr OvConst<0x00161e30u> PAD_BEFORE{};
 constexpr OvConst<0x00161e38u> CURSOR_MOVED{};
 constexpr uint32_t AMMO = 0x0013d428, AMMO_BOUGHT = 0x0013dd70, BOLTS = 0x0015ed98;
 constexpr uint32_t PAD = 0x0013c940;
@@ -230,9 +229,8 @@ void vendor_buy_all_input() {
         std::printf("\n");
     }
     if (!on_all() || !list_idle()) return;
-    // (Cross as the game reads it, 0x29c648: pressed this frame and not the frame before; the game itself starts no
-    // purchase on the entry, its +8 word not 0)
-    if ((lwu(PAD + 0x1c4) & CROSS) != 0 && (lwu(PAD_BEFORE) & CROSS) == 0) buy_all();
+    // The screens' region-aware press test; the game itself starts no purchase on the entry, its +8 word not 0.
+    if (vendor::button_pressed(CROSS)) buy_all();
 }
 
 // orig: (none) — enhancement (vendor_buy_all.h): on the entry, the item monitor's two title lines (0x29e198, an ammo
