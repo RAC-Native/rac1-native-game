@@ -27,43 +27,18 @@
 #include <game/port_stubs.h>
 #include <game/ovl/particle_16_spawn.h>
 #include <game/ovl/shadows.h>
+#include <game/ovl/aridia_ocean.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
 
-//@gen kw2_2beba0_l3
-
-//@gen kw2_2c45d8_l3
-
-//@gen kerwan_class455_update_l3
-
-//@gen kw2_2dda38_l3
-
-//@gen kw2_2dded8_l3
-
-//@gen kw2_2dd868_l3
-
-//@gen kw2_2dd958_l3
-
-//@gen kw2_2ddcc8_l3
-
-//@gen kerwan_class1134_update_l3
-
-//@gen kw2_1f8ae8_l3
-
-//@gen kw2_23bed0_l3
-
-//@gen kw2_23c208_l3
-
 //@gen kw2_1f93b0_l3
 
 //@gen kw2_23c428_l3
 
 //@gen kw2_291218_l3
-
-//@gen kw2_291808_l3
 
 //@gen kw2_291918_l3
 

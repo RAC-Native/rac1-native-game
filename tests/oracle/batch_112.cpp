@@ -10,6 +10,18 @@
 #include <game/ovl/kerwan_classes_tr.h>
 #include <game/ovl/kerwan_mobys.h>
 #include <game/ovl/novalis_mobys.h>
+#include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/shared_class1221.h>
+#include <game/ovl/shared_class235.h>
+#include <game/ovl/shared_class447.h>
+#include <game/ovl/shared_class604.h>
+#include <game/ovl/shared_class631.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_class848.h>
+#include <game/ovl/shared_class994.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_spawner.h>
+#include <game/ovl/shared_swingshot_target.h>
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/kernel/disc.h>
 #include <runtime/sif/sif_rpc.h>
@@ -242,41 +254,42 @@ void batch_112() {
         w32(m + 0x20, u(R() & 3));
     }, 30);
 
-    // ---- the transliterated classes (kerwan_classes_tr.cpp): the level's own mobys of each, perturbed generically
+    // ---- the classes kerwan_mobys.cpp registers (the transliterated ones of kerwan_classes_tr.cpp and, since the re-glue R3,
+    // the shared ports that took the place of Kerwan's copies): the level's own mobys of each, perturbed generically
     // (the state byte, the timer byte, a hit record, the hero near or far, the random generator)
     struct TrClass { uint32_t fn; const char* name; void (*port)(uint32_t); };
     static const TrClass tr_classes[] = {
         {0x00292e98u, "class822", kerwan_class822_update_l3},
         {0x00294c08u, "class868", kerwan_class868_update_l3},
         {0x0029dba8u, "class75", kerwan_class75_update_l3},
-        {0x002bae48u, "class235", kerwan_class235_update_l3},
-        {0x002c4718u, "class545", kerwan_class545_update_l3},
+        {0x002bae48u, "class235", class235_update},
+        {0x002c4718u, "class545", class545_update},
         {0x002c5bb8u, "class573", kerwan_class573_update_l3},
         {0x002c6fd0u, "class574", kerwan_class574_update_l3},
         {0x002c9eb8u, "class578", kerwan_class578_update_l3},
-        {0x002cb8e8u, "class604", kerwan_class604_update_l3},
+        {0x002cb8e8u, "class604", class604_update},
         {0x002cbea8u, "class627", kerwan_class627_update_l3},
-        {0x002cca00u, "class631", kerwan_class631_update_l3},
-        {0x002cf340u, "class737", kerwan_class737_update_l3},
-        {0x002d0bd8u, "class758", kerwan_class758_update_l3},
+        {0x002cca00u, "class631", class631_update},
+        {0x002cf340u, "class737", scripted_camera_trigger_update_l1},
+        {0x002d0bd8u, "class758", swingshot_target_update},
         {0x002d3198u, "class816", kerwan_class816_update_l3},
-        {0x002d40e8u, "class832", kerwan_class832_update_l3},
+        {0x002d40e8u, "class832", class832_update},
         {0x002d43c8u, "class833", kerwan_class833_update_l3},
-        {0x00293c78u, "class845", kerwan_class845_update_l3},
-        {0x002d47c0u, "class848", kerwan_class848_update_l3},
+        {0x00293c78u, "class845", jet_update_base_l1},
+        {0x002d47c0u, "class848", class848_update},
         {0x002da870u, "class890", kerwan_class890_update_l3},
         {0x002db020u, "class898", kerwan_class898_update_l3},
         {0x002db280u, "class899", kerwan_class899_update_l3},
         {0x002db558u, "class909", kerwan_class909_update_l3},
         {0x002dbd90u, "class914", kerwan_class914_update_l3},
-        {0x002dc478u, "class920", kerwan_class920_update_l3},
-        {0x002dc9b0u, "class994", kerwan_class994_update_l3},
+        {0x002dc478u, "class920", class447_update},
+        {0x002dc9b0u, "class994", class994_update},
         {0x002dccc0u, "class1012", kerwan_class1012_update_l3},
-        {0x002de370u, "class1221", kerwan_class1221_update_l3},
-        {0x002de458u, "class1222", kerwan_class1222_update_l3},
+        {0x002de370u, "class1221", class1221_update},
+        {0x002de458u, "class1222", class1221_update},
         {0x002df520u, "class1342", kerwan_class1342_update_l3},
-        {0x002e08c8u, "class1633", kerwan_class1633_update_l3},
-        {0x002e1970u, "class1818", kerwan_class1818_update_l3},
+        {0x002e08c8u, "class1633", class1633_update},
+        {0x002e1970u, "class1818", sandmouse_update},
         {0x002e2a40u, "class1828", empty_update},
     };
     for (const TrClass& c : tr_classes)

@@ -33,6 +33,8 @@
 #include <game/ovl/shared_particles.h>
 
 #include <game/ovl/kerwan_classes_tr.h>
+#include <game/ovl/shared_class631.h>
+#include <game/ovl/shared_class848.h>
 #include <game/ovl/particle_types_tr.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -148,7 +150,7 @@ void batch_191() {
                 w32(OV(0x0015f5cc), R());
                 seed_rand();
                 return Args{{m}, {}};
-            }, [](A a) { kerwan_class848_update_l3(a.i[0]); return uint64_t{0}; });
+            }, [](A a) { class848_update(a.i[0]); return uint64_t{0}; });
         }
         if (!helis.empty()) {
             const std::string nm = "heli631_" + base;
@@ -160,7 +162,7 @@ void batch_191() {
                 w32(OV(0x0015f5cc), R());
                 seed_rand();
                 return Args{{m}, {}};
-            }, [](A a) { kerwan_class631_update_l3(a.i[0]); return uint64_t{0}; });
+            }, [](A a) { class631_update(a.i[0]); return uint64_t{0}; });
         }
     }
     // ---- issue #26: the bullets, particle type 0x31

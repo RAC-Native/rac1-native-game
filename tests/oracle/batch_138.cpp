@@ -11,6 +11,13 @@
 #include <game/ovl/kerwan_classes_tr.h>
 #include <game/ovl/kerwan_mobys.h>
 #include <game/ovl/kerwan_part2_tr.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/shared_class235.h>
+#include <game/ovl/shared_class631.h>
+#include <game/ovl/shared_class848.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_spawner.h>
 #include <game/ovl/sound_emitter.h>
 #include <game/ovl/swingshot_rope_tr.h>
 #include <runtime/vu/vu0.h>
@@ -136,8 +143,8 @@ void batch_138() {
     // ---- the Spawner (455), the Gold Bolt (1134): their state byte (0 / 1 / as placed / random small), a hit, the hero near or far
     struct Cls { uint32_t fn; const char* name; void (*port)(uint32_t); };
     static const Cls classes[] = {
-        {0x002bef68u, "spawner455_update", kerwan_class455_update_l3},
-        {0x002dd188u, "gold_bolt1134_update", kerwan_class1134_update_l3},
+        {0x002bef68u, "spawner455_update", class455_update},
+        {0x002dd188u, "gold_bolt1134_update", gold_bolt_update},
     };
     for (const Cls& c : classes)
     for (int pass = 0; pass < 8; ++pass)
@@ -152,7 +159,7 @@ void batch_138() {
     // the Spawner's own states: the moby's state 0..9 (its jump table), the sub-state pvars +0x84 (0..6), its health +0x20, the
     // spawned count +0x86 / the most +0x87, its box +0xd0, the hero within / beyond its radii (+0x90 / +0x9c)
     for (int pass = 0; pass < 10; ++pass)
-    classcheck("spawner455_states", 0x002bef68u, kerwan_class455_update_l3, [pass, give_hit, hero_near](uint32_t m) {
+    classcheck("spawner455_states", 0x002bef68u, class455_update, [pass, give_hit, hero_near](uint32_t m) {
         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
         w8(m + 0x20, u(pass));
         w8(pv + 0x84, u(ri(0, 6)));
@@ -176,7 +183,7 @@ void batch_138() {
     // the Gold Bolt's states 0 / 1 / 2, the hero right at it (the pickup: within 3 in xy, 2 in z), alive (+0x22a8) and in a state
     // that may collect (+0x20a4 0 / 3 / other), the bolt already collected or not (its byte of 0x14bec0), the bolt's kind (+0xc)
     for (int pass = 0; pass < 8; ++pass)
-    classcheck("gold_bolt1134_states", 0x002dd188u, kerwan_class1134_update_l3, [pass](uint32_t m) {
+    classcheck("gold_bolt1134_states", 0x002dd188u, gold_bolt_update, [pass](uint32_t m) {
         const uint32_t pv = ee_read<uint32_t>(m + 0x78), P = 0x0013f350;
         w8(m + 0x20, u(pass % 3));
         Vec4 q = ee_ref<Vec4>(m + 0x10);
@@ -260,13 +267,13 @@ void batch_138() {
     // near / far)
     struct Spawned { int cls, parent; uint32_t fn; const char* name; void (*port)(uint32_t); int frames; void (*parent_port)(uint32_t); };
     static const Spawned spawned[] = {
-        {235, 75, 0x002bae48u, "spawned235", kerwan_class235_update_l3, 0, nullptr},                         // (the ships': the landing's dump)
-        {545, 455, 0x002c4718u, "spawned545", kerwan_class545_update_l3, 900, nullptr},                      // (the Spawner's)
+        {235, 75, 0x002bae48u, "spawned235", class235_update, 0, nullptr},                         // (the ships': the landing's dump)
+        {545, 455, 0x002c4718u, "spawned545", class545_update, 900, nullptr},                      // (the Spawner's)
         {627, 578, 0x002cbea8u, "spawned627", kerwan_class627_update_l3, 900, nullptr},                      // (the mine layer's mines)
         {833, 574, 0x002d43c8u, "spawned833", kerwan_class833_update_l3, 900, kerwan_class574_update_l3},
-        {848, 631, 0x002d47c0u, "spawned848", kerwan_class848_update_l3, 900, kerwan_class631_update_l3},    // (the Blarg helicopter's)
+        {848, 631, 0x002d47c0u, "spawned848", class848_update, 900, class631_update},    // (the Blarg helicopter's)
         {898, 899, 0x002db020u, "spawned898", kerwan_class898_update_l3, 900, nullptr},
-        {1633, 1818, 0x002e08c8u, "spawned1633", kerwan_class1633_update_l3, 900, kerwan_class1818_update_l3},  // (the Sandmouse's)
+        {1633, 1818, 0x002e08c8u, "spawned1633", class1633_update, 900, sandmouse_update},  // (the Sandmouse's)
     };
     // The ships' 235s are spawned during the landing (game mode 6, its own frame loop: the oracle's gameplay frames leave the ships
     // still): their subjects come from a RAM dump of a headless run at its frame 20 (`tools/oracle/kerwan_tour.sh dumps` writes it to
@@ -364,7 +371,7 @@ void batch_138() {
         static const RideCls ride_cls[] = {
             {822, 0x00292e98u, "train_ride822", kerwan_class822_update_l3},
             {1210, 0x002953f8u, "train_ride1210", train_carriage_update_l3},
-            {737, 0x002cf340u, "train_ride737", kerwan_class737_update_l3},
+            {737, 0x002cf340u, "train_ride737", scripted_camera_trigger_update_l1},
         };
         for (const RideCls& rc : ride_cls) {
             if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, rc.name) != 0) continue;

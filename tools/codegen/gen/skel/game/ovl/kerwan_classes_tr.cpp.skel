@@ -33,6 +33,8 @@
 #include <game/ovl/metal.h>
 #include <game/ovl/rocket.h>
 #include <game/ovl/visibomb_ball.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_little.h>
 
 namespace rac1 {
 
@@ -40,12 +42,6 @@ using namespace eer;
 using namespace vu0m;
 
 // (the functions appended at the end of kerwan_classes_tr.cpp)
-void kerwan_class832_draw_l3(uint32_t a0_in);
-void kerwan_sandmouse_glow_l3(uint32_t a0_in);
-
-//@gen lv3_251598_l3
-
-//@gen lv3_254a10_l3
 
 //@gen lv3_292578_l3
 
@@ -53,35 +49,9 @@ void kerwan_sandmouse_glow_l3(uint32_t a0_in);
 
 //@gen lv3_292d10_l3
 
-//@gen lv3_2c6c60_l3
-
-//@gen lv3_2c6c90_l3
-
 //@gen kerwan_class822_update_l3
 
 //@gen kerwan_class868_update_l3
-
-//@gen lv3_24eec0_l3
-
-//@gen lv3_264458_l3
-
-//@gen lv3_264558_l3
-
-//@gen lv3_2646d8_l3
-
-//@gen lv3_264728_l3
-
-//@gen lv3_264660_l3
-
-//@gen lv3_264778_l3
-
-//@gen lv3_264930_l3
-
-//@gen lv3_25e9e0_l3
-
-//@gen lv3_264a40_l3
-
-//@gen lv3_29c8a8_l3
 
 //@gen lv3_29c9d0_l3
 
@@ -99,33 +69,15 @@ void kerwan_sandmouse_glow_l3(uint32_t a0_in);
 
 //@gen kerwan_class75_update_l3
 
-//@gen kerwan_class235_update_l3
-
-//@gen lv3_2bec60_l3
-
-//@gen kerwan_class545_update_l3
-
-//@gen lv3_2476c0_l3
-
-//@gen lv3_247da0_l3
-
-//@gen lv3_250a78_l3
-
 //@gen lv3_2c6ca0_l3
 
 //@gen lv3_2c6a20_l3
-
-//@gen lv3_2c5b78_l3
-
-//@gen lv3_2c6d58_l3
 
 //@gen lv3_2c6d98_l3
 
 //@gen kerwan_class573_update_l3
 
 //@gen lv3_24fba8_l3
-
-//@gen lv3_250ae8_l3
 
 //@gen lv3_2c6e18_l3
 
@@ -143,59 +95,21 @@ void kerwan_sandmouse_glow_l3(uint32_t a0_in);
 
 //@gen kerwan_class578_update_l3
 
-//@gen kerwan_class604_update_l3
-
 //@gen lv3_2cc828_l3
 
 //@gen kerwan_class627_update_l3
-
-//@gen lv3_2ce238_l3
-
-//@gen lv3_2d5208_l3
-
-//@gen kerwan_class631_update_l3
-
-//@gen lv3_2cf248_l3
-
-//@gen kerwan_class737_update_l3
-
-//@gen lv3_2eb3d0_l3
-
-//@gen lv3_2eb4c0_l3
-
-//@gen kerwan_class758_update_l3
 
 //@gen lv3_2d30d8_l3
 
 //@gen lv3_2d3100_l3
 
-//@gen lv3_2d3140_l3
-
 //@gen lv3_2d3918_l3
-
-//@gen lv3_2d3c40_l3
 
 //@gen kerwan_class816_update_l3
 
-//@gen kerwan_class832_update_l3
-
 //@gen kerwan_class833_update_l3
 
-//@gen lv3_258a30_l3
-
-//@gen lv3_293b50_l3
-
-//@gen kerwan_class845_update_l3
-
-//@gen lv3_260130_l3
-
-//@gen kerwan_class848_update_l3
-
-//@gen lv3_248b78_l3
-
 //@gen lv3_251988_l3
-
-//@gen lv3_273f50_l3
 
 //@gen lv3_2da710_l3
 
@@ -207,60 +121,16 @@ void kerwan_sandmouse_glow_l3(uint32_t a0_in);
 
 //@gen kerwan_class899_update_l3
 
-//@gen lv3_2db480_l3
-
 //@gen kerwan_class909_update_l3
 
 //@gen kerwan_class914_update_l3
 
-//@gen lv3_2dc380_l3
-
-//@gen kerwan_class920_update_l3
-
-//@gen lv3_291198_l3
-
-//@gen kerwan_class994_update_l3
-
 //@gen lv3_2dcb30_l3
-
-//@gen lv3_2dcb70_l3
 
 //@gen lv3_2dcbc8_l3
 
-//@gen lv3_2dd0f0_l3
-
 //@gen kerwan_class1012_update_l3
 
-//@gen kerwan_class1221_update_l3
-
-//@gen kerwan_class1222_update_l3
-
 //@gen kerwan_class1342_update_l3
-
-//@gen kerwan_class1633_update_l3
-
-//@gen lv3_2e0c38_l3
-
-//@gen lv3_2e0c90_l3
-
-//@gen lv3_2e07b8_l3
-
-//@gen lv3_2e0d38_l3
-
-//@gen lv3_2e1020_l3
-
-//@gen lv3_2e12b0_l3
-
-//@gen lv3_2637f0_l3
-
-//@gen lv3_2e17d0_l3
-
-//@gen lv3_2e1900_l3
-
-//@gen kerwan_class1818_update_l3
-
-//@gen kerwan_class832_draw_l3
-
-//@gen kerwan_sandmouse_glow_l3
 
 }  // namespace rac1
