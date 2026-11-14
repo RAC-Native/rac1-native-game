@@ -21,6 +21,26 @@
 #include <game/ovl/particle_44_tr.h>
 #include <game/ovl/variants_l13.h>
 #include <game/ovl/empty_class_updates.h>
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/novalis_water.h>
+#include <game/ovl/shared_beam.h>
+#include <game/ovl/shared_boss_bar.h>
+#include <game/ovl/shared_cam19.h>
+#include <game/ovl/shared_class1135.h>
+#include <game/ovl/shared_class1886.h>
+#include <game/ovl/shared_class224.h>
+#include <game/ovl/shared_class258.h>
+#include <game/ovl/shared_class295.h>
+#include <game/ovl/shared_class447.h>
+#include <game/ovl/shared_class615.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_movers.h>
+#include <game/ovl/shared_ship_shots.h>
+#include <game/ovl/shared_swingshot_target.h>
+#include <game/ovl/shared_zones.h>
 
 #include <csetjmp>
 #include <csignal>
@@ -150,31 +170,31 @@ void batch_222() {
         w32(e + 0x28, u(ri(0, 20)));
     };
     static const struct { int cls; uint32_t fn; void (*port)(uint32_t); } classes[] = {
-            {726, 0x002b0478, gml_class726_update_l13}, {6, 0x002b0e80, gml_class6_update_l13}, {21, 0x002b39e0, gml_class21_update_l13},
+            {726, 0x002b0478, lift_update_l1}, {6, 0x002b0e80, gml_class6_update_l13}, {21, 0x002b39e0, gml_class21_update_l13},
             {29, 0x002b41b8, gml_class29_update_l13}, {36, 0x002b4c80, gml_class36_update_l13}, {63, 0x002b50d8, gml_class63_update_l13},
             {69, 0x002bb068, gml_class69_update_l13}, {82, 0x002c1528, gml_class82_update_l13}, {83, 0x002c2048, gml_class83_update_l13},
-            {101, 0x002c25b8, gml_class101_update_l13}, {104, 0x002c32d0, gml_class104_update_l13}, {111, 0x002c4428, gml_class111_update_l13},
-            {127, 0x002c7f38, gml_class127_update_l13}, {129, 0x002c8390, gml_class129_update_l13}, {170, 0x002cefc0, gml_class170_update_l13},
-            {212, 0x002e1638, gml_class212_update_l13}, {224, 0x002e1cc8, gml_class224_update_l13}, {231, 0x002e4448, gml_class231_update_l13},
-            {258, 0x002e4bd0, gml_class258_update_l13}, {295, 0x002e6c08, gml_class295_update_l13}, {304, 0x002e7238, gml_class304_update_l13},
+            {101, 0x002c25b8, gml_class101_update_l13}, {104, 0x002c32d0, mover_platform_update}, {111, 0x002c4428, gml_class111_update_l13},
+            {127, 0x002c7f38, gml_class127_update_l13}, {129, 0x002c8390, mover_door_update}, {170, 0x002cefc0, gml_class170_update_l13},
+            {212, 0x002e1638, gml_class212_update_l13}, {224, 0x002e1cc8, class224_update}, {231, 0x002e4448, gml_class231_update_l13},
+            {258, 0x002e4bd0, class258_update}, {295, 0x002e6c08, class295_update}, {304, 0x002e7238, gml_class304_update_l13},
             {352, 0x002e84d8, gml_class352_update_l13}, {388, 0x002eb098, gml_class388_update_l13}, {389, 0x002ece00, gml_class389_update_l13},
-            {404, 0x002ed4a8, gml_class404_update_l13}, {447, 0x002edbe8, gml_class447_update_l13}, {533, 0x002f3750, gml_class533_update_l13},
-            {558, 0x002f3778, gml_class558_update_l13}, {605, 0x002f51f0, gml_class605_update_l13}, {615, 0x002f5618, gml_class615_update_l13},
-            {667, 0x002f8880, gml_class667_update_l13}, {674, 0x002f8a78, gml_class674_update_l13}, {737, 0x002f8e70, gml_class737_update_l13},
-            {758, 0x002fa708, gml_class758_update_l13}, {805, 0x002fac70, gml_class805_update_l13}, {832, 0x002fce18, gml_class832_update_l13},
-            {913, 0x00302418, empty_update}, {1009, 0x00302780, gml_class1009_update_l13}, {1017, 0x00302e48, gml_class1017_update_l13},
-            {1034, 0x00303128, gml_class1034_update_l13}, {1039, 0x003036f0, gml_class1039_update_l13}, {1085, 0x00303878, gml_class1085_update_l13},
-            {1134, 0x00303950, gml_class1134_update_l13}, {1135, 0x00304888, gml_class1135_update_l13}, {1233, 0x00305a58, gml_class1233_update_l13},
+            {404, 0x002ed4a8, gml_class404_update_l13}, {447, 0x002edbe8, class447_update}, {533, 0x002f3750, gml_class533_update_l13},
+            {558, 0x002f3778, gml_class558_update_l13}, {605, 0x002f51f0, zone_marker_update}, {615, 0x002f5618, class615_update},
+            {667, 0x002f8880, gml_class667_update_l13}, {674, 0x002f8a78, gml_class674_update_l13}, {737, 0x002f8e70, scripted_camera_trigger_update_l1},
+            {758, 0x002fa708, swingshot_target_update}, {805, 0x002fac70, spawn_point_update_l1}, {832, 0x002fce18, class832_update},
+            {913, 0x00302418, empty_update}, {1009, 0x00302780, class1009_update}, {1017, 0x00302e48, class1017_update},
+            {1034, 0x00303128, class1034_update}, {1039, 0x003036f0, deadly_zones_update}, {1085, 0x00303878, beam_shard_update},
+            {1134, 0x00303950, gold_bolt_update}, {1135, 0x00304888, teleporter_update_l1}, {1233, 0x00305a58, gml_class1233_update_l13},
             {1238, 0x00306300, gml_class1238_update_l13}, {1261, 0x00307b10, gml_class1261_update_l13}, {1262, 0x00307e98, gml_class1262_update_l13},
             {1263, 0x00309e88, gml_class1263_update_l13}, {1270, 0x0030a6d8, gml_class1270_update_l13}, {1271, 0x0030af50, gml_class1271_update_l13},
             {1353, 0x0030b628, gml_class1353_update_l13}, {1403, 0x0030bb70, gml_class1403_update_l13}, {1558, 0x0030bdf0, gml_class1558_update_l13},
             {1577, 0x0030be60, gml_class1577_update_l13}, {1632, 0x0030c060, gml_class1632_update_l13}, {1634, 0x0030c3b8, gml_class1634_update_l13},
-            {1805, 0x0030cdb8, gml_class1805_update_l13}, {1885, 0x0030d550, gml_class1885_update_l13}, {1886, 0x0030dd80, gml_class1886_update_l13}};
+            {1805, 0x0030cdb8, gml_class1805_update_l13}, {1885, 0x0030d550, gml_class1885_update_l13}, {1886, 0x0030dd80, class1886_update}};
     struct Cb { const char* name; uint32_t addr; void (*fn)(uint32_t); int cls; };
     static const Cb cbs[] = {{"cb2b97f8", 0x002b97f8, gml_cb_2b97f8_l13, 69},   {"cb2ea8c8", 0x002ea8c8, gml_cb_2ea8c8_l13, 388},
-                             {"cb2f5f30", 0x002f5f30, gml_cb_2f5f30_l13, 615},  {"cb2fcc08", 0x002fcc08, gml_cb_2fcc08_l13, 832},
-                             {"cb3051a0", 0x003051a0, gml_cb_3051a0_l13, 1135}, {"cb3098d0", 0x003098d0, gml_cb_3098d0_l13, 1262},
-                             {"cb30a460", 0x0030a460, gml_cb_30a460_l13, 1263}};
+                             {"cb2f5f30", 0x002f5f30, class615_puzzle_draw, 615},  {"cb2fcc08", 0x002fcc08, class832_draw, 832},
+                             {"cb3051a0", 0x003051a0, class1135_draw, 1135}, {"cb3098d0", 0x003098d0, beam_draw, 1262},
+                             {"cb30a460", 0x0030a460, nov_water_751_draw_l1, 1263}};
     static const char* const dumps[] = {"land60", "land200", "land400", "boss2000", "boss2800", "boss3500", "boss4000", "boss5000", "boss6500"};
     for (const char* dn : dumps) {
         const std::string path = dump_path("gemlik_oltanis/") + dn + "_L13.bin";
@@ -263,7 +283,7 @@ void batch_222() {
                     if (v != 0 && coin()) wf(v, ee_read<float>(v) * rf(0, 1));
                     w32(OV(0x0015f5cc), R());
                     return Args{{e}, {}};
-                }, [](A a) { gml_hud_245cf8_l13(a.i[0]); return uint64_t{0}; });
+                }, [](A a) { boss_health_bar_draw(a.i[0]); return uint64_t{0}; });
         }
         // ---- particle type 0x44 (Veldin 0x274818, the level's L13:0x280530) on the dump's own particles: its frames, size and velocity varied
         {

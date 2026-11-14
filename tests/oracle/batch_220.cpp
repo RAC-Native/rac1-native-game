@@ -15,6 +15,26 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
 #include <game/ovl/empty_class_updates.h>
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/novalis_water.h>
+#include <game/ovl/shared_beam.h>
+#include <game/ovl/shared_boss_bar.h>
+#include <game/ovl/shared_cam19.h>
+#include <game/ovl/shared_class1135.h>
+#include <game/ovl/shared_class1886.h>
+#include <game/ovl/shared_class224.h>
+#include <game/ovl/shared_class258.h>
+#include <game/ovl/shared_class295.h>
+#include <game/ovl/shared_class447.h>
+#include <game/ovl/shared_class615.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_movers.h>
+#include <game/ovl/shared_ship_shots.h>
+#include <game/ovl/shared_swingshot_target.h>
+#include <game/ovl/shared_zones.h>
 #include <runtime/kernel/disc.h>
 
 #include <csetjmp>
@@ -195,7 +215,7 @@ void batch_220() {
     g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};  // (+ the level change request: the original would run the CD / movie path)
     struct TrCls { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t skip_states = 0; bool walk = false; uint32_t skip_p0 = 0; uint32_t skip_p1 = 0; };  // (skip_p0 / skip_p1: states skipped in pass 0 / 1 only, per class, below)  // (the states that start a scene / a level change: the original runs the kernel / movie path for real)
     static const TrCls trcls[] = {
-        {"class726", 0x002b0478, gml_class726_update_l13, 0x0, false},
+        {"class726", 0x002b0478, lift_update_l1, 0x0, false},
         {"class6", 0x002b0e80, gml_class6_update_l13, 0x0, false},
         {"class21", 0x002b39e0, gml_class21_update_l13, 0x0, false},
         {"class29", 0x002b41b8, gml_class29_update_l13, 0x0, false},
@@ -205,40 +225,40 @@ void batch_220() {
         {"class82", 0x002c1528, gml_class82_update_l13, 0x0, false},
         {"class83", 0x002c2048, gml_class83_update_l13, 0x0, false},
         {"class101", 0x002c25b8, gml_class101_update_l13, 0x0, false},
-        {"class104", 0x002c32d0, gml_class104_update_l13, 0x0, false},
+        {"class104", 0x002c32d0, mover_platform_update, 0x0, false},
         {"class111", 0x002c4428, gml_class111_update_l13, 0x0, false},
         {"class127", 0x002c7f38, gml_class127_update_l13, 0x0, false},
-        {"class129", 0x002c8390, gml_class129_update_l13, 0x0, false},
+        {"class129", 0x002c8390, mover_door_update, 0x0, false},
         {"class170", 0x002cefc0, gml_class170_update_l13, 0x0, false},
         {"class212", 0x002e1638, gml_class212_update_l13, 0x0, false},
-        {"class224", 0x002e1cc8, gml_class224_update_l13, 0x0, false},
+        {"class224", 0x002e1cc8, class224_update, 0x0, false},
         {"class231", 0x002e4448, gml_class231_update_l13, 0x0, false},
-        {"class258", 0x002e4bd0, gml_class258_update_l13, 0x0, false},
-        {"class295", 0x002e6c08, gml_class295_update_l13, 0x0, false},
+        {"class258", 0x002e4bd0, class258_update, 0x0, false},
+        {"class295", 0x002e6c08, class295_update, 0x0, false},
         {"class304", 0x002e7238, gml_class304_update_l13, 0x10, false},  // (state 4 requests the level change)
         {"class352", 0x002e84d8, gml_class352_update_l13, 0x0, false},
         {"class388", 0x002eb098, gml_class388_update_l13, 0x20, false},  // (state 5 on the level's first frame aims a collision segment from unset pvars across more cells than the scratchpad holds: the fight's RAM dumps, batch 222, cover it)
         {"class389", 0x002ece00, gml_class389_update_l13, 0x0, false},
         {"class404", 0x002ed4a8, gml_class404_update_l13, 0x0, false},
-        {"class447", 0x002edbe8, gml_class447_update_l13, 0x0, false},
+        {"class447", 0x002edbe8, class447_update, 0x0, false},
         {"class533", 0x002f3750, gml_class533_update_l13, 0x0, false},
         {"class558", 0x002f3778, gml_class558_update_l13, 0x0, false},
-        {"class605", 0x002f51f0, gml_class605_update_l13, 0x0, false},
-        {"class615", 0x002f5618, gml_class615_update_l13, 0x0, false},
+        {"class605", 0x002f51f0, zone_marker_update, 0x0, false},
+        {"class615", 0x002f5618, class615_update, 0x0, false},
         {"class667", 0x002f8880, gml_class667_update_l13, 0x0, false},
         {"class674", 0x002f8a78, gml_class674_update_l13, 0x0, false},
-        {"class737", 0x002f8e70, gml_class737_update_l13, 0x0, false},
-        {"class758", 0x002fa708, gml_class758_update_l13, 0x0, false},
-        {"class805", 0x002fac70, gml_class805_update_l13, 0x0, false},
-        {"class832", 0x002fce18, gml_class832_update_l13, 0x0, false},
+        {"class737", 0x002f8e70, scripted_camera_trigger_update_l1, 0x0, false},
+        {"class758", 0x002fa708, swingshot_target_update, 0x0, false},
+        {"class805", 0x002fac70, spawn_point_update_l1, 0x0, false},
+        {"class832", 0x002fce18, class832_update, 0x0, false},
         {"class913", 0x00302418, empty_update, 0x0, false},
-        {"class1009", 0x00302780, gml_class1009_update_l13, 0x0, false},
-        {"class1017", 0x00302e48, gml_class1017_update_l13, 0x0, false},
-        {"class1034", 0x00303128, gml_class1034_update_l13, 0x0, false},
-        {"class1039", 0x003036f0, gml_class1039_update_l13, 0x0, false},
-        {"class1085", 0x00303878, gml_class1085_update_l13, 0x0, false},
-        {"class1134", 0x00303950, gml_class1134_update_l13, 0x4, false},  // (state 2 requests the level change, as on Gaspar)
-        {"class1135", 0x00304888, gml_class1135_update_l13, 0x0, false},
+        {"class1009", 0x00302780, class1009_update, 0x0, false},
+        {"class1017", 0x00302e48, class1017_update, 0x0, false},
+        {"class1034", 0x00303128, class1034_update, 0x0, false},
+        {"class1039", 0x003036f0, deadly_zones_update, 0x0, false},
+        {"class1085", 0x00303878, beam_shard_update, 0x0, false},
+        {"class1134", 0x00303950, gold_bolt_update, 0x4, false},  // (state 2 requests the level change, as on Gaspar)
+        {"class1135", 0x00304888, teleporter_update_l1, 0x0, false},
         {"class1233", 0x00305a58, gml_class1233_update_l13, 0x0, false},
         {"class1238", 0x00306300, gml_class1238_update_l13, 0x0, false},
         {"class1261", 0x00307b10, gml_class1261_update_l13, 0x0, false},
@@ -254,7 +274,7 @@ void batch_220() {
         {"class1634", 0x0030c3b8, gml_class1634_update_l13, 0x0, false},
         {"class1805", 0x0030cdb8, gml_class1805_update_l13, 0x0, false},
         {"class1885", 0x0030d550, gml_class1885_update_l13, 0x0, false},
-        {"class1886", 0x0030dd80, gml_class1886_update_l13, 0x0, false},
+        {"class1886", 0x0030dd80, class1886_update, 0x0, false},
     };
     auto generic_prep = [give_hit, hero_near](uint32_t m, int st, int pass, void (*fn)(uint32_t), bool walk = false) {
         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -324,11 +344,11 @@ void batch_220() {
         static const Cb cbs[] = {
         {"cb2b97f8", 0x002b97f8, gml_cb_2b97f8_l13, 0x002bb068, 69},
         {"cb2ea8c8", 0x002ea8c8, gml_cb_2ea8c8_l13, 0x002eb098, 388},
-        {"cb2f5f30", 0x002f5f30, gml_cb_2f5f30_l13, 0x002f5618, 615},
-        {"cb2fcc08", 0x002fcc08, gml_cb_2fcc08_l13, 0x002fce18, 832},
-        {"cb3051a0", 0x003051a0, gml_cb_3051a0_l13, 0x00304888, 1135},
-        {"cb3098d0", 0x003098d0, gml_cb_3098d0_l13, 0x00307e98, 1262},
-        {"cb30a460", 0x0030a460, gml_cb_30a460_l13, 0x00309e88, 1263},
+        {"cb2f5f30", 0x002f5f30, class615_puzzle_draw, 0x002f5618, 615},
+        {"cb2fcc08", 0x002fcc08, class832_draw, 0x002fce18, 832},
+        {"cb3051a0", 0x003051a0, class1135_draw, 0x00304888, 1135},
+        {"cb3098d0", 0x003098d0, beam_draw, 0x00307e98, 1262},
+        {"cb30a460", 0x0030a460, nov_water_751_draw_l1, 0x00309e88, 1263},
         };
         for (const Cb& cb : cbs) {
             if (std::getenv("B220_CLS") != nullptr && std::strcmp(std::getenv("B220_CLS"), cb.name) != 0) continue;
@@ -445,8 +465,8 @@ void batch_220() {
             wf(0x00161f3c, rf(0, 0.5f));  // $gp - 0x4cc4: the frame step the callback counts down by
             w32(OV(0x0015ef4c), u(ri(0, 14)));  // the queue's count (it holds up to 16)
         };
-        l13check("cam0_hook", 0x00316b48, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { gml_cam0_hook_l13(0); return uint64_t{0}; });
-        l13check("cam_callback", 0x00316ba8, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { gml_cam_callback_l13(0); return uint64_t{0}; });
+        l13check("cam0_hook", 0x00316b48, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_hook(0); return uint64_t{0}; });
+        l13check("cam_callback", 0x00316ba8, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_callback(0); return uint64_t{0}; });
     }
 
     // ---- mobys_in_sphere (Veldin 0x1f2868, level 13's copy L13:0x001fe250) on the level's own mobys: class 794 (the Gadgebot's helper) calls it on level 11; the level's own classes call it
@@ -509,11 +529,11 @@ void batch_220() {
             static int k = 0;
             auto name = [&](const char* what) { char* p = nm[k++ & 3]; std::snprintf(p, 48, "cam_type%d_%s", type, what); return static_cast<const char*>(p); };
             l13check(name("accept"), ct.accept, 300, Ret::Int32, [cam_setup, type] { uint32_t other = 0; const uint32_t cam = cam_setup(type, true, &other); return Args{{cam, other}, {}}; },
-                    [type](A a) { return r32(a.i[0] != 0 ? gml_cam_type19_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0 : 0u); });
+                    [type](A a) { return r32(a.i[0] != 0 ? static_cast<uint32_t>(cam_type19_accept(a.i[0], a.i[1])) : 0u); });
             l13check(name("init"), ct.init, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) gml_cam_type19_init_l13(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) cam_type19_init(a.i[0]); return uint64_t{0}; });
             l13check(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) gml_cam_type19_update_l13(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) cam_type19_update(a.i[0]); return uint64_t{0}; });
         }
     }
 
@@ -537,7 +557,7 @@ void batch_220() {
                 w32(OV(0x001611c0), 0x00800000u);
                 w32(OV(0x0015f5cc), R());
                 return Args{{e}, {}};
-            }, [](A a) { gml_hud_245cf8_l13(a.i[0]); return uint64_t{0}; });
+            }, [](A a) { boss_health_bar_draw(a.i[0]); return uint64_t{0}; });
     }
 
     // T00: the level's bare `jr ra` functions its classes and cameras reach through a pointer (class updates, camera

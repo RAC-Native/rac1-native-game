@@ -44,6 +44,8 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/shared_small.h>
 
 namespace rac1 {
 
@@ -56,58 +58,20 @@ using namespace vu0m;
 
 //@gen gml_2eac00_l13
 
-//@gen gml_316f48_l13
-
 //@gen gml_class388_update_l13
 
 //@gen gml_class389_update_l13
-
-//@gen gml_265d68_l13
 
 //@gen gml_2ed158_l13
 
 //@gen gml_class404_update_l13
 
-//@gen gml_272260_l13
-
-//@gen gml_2edaf0_l13
-
-//@gen gml_class447_update_l13
-
 //@gen gml_class533_update_l13
 
 //@gen gml_class558_update_l13
 
-//@gen gml_class605_update_l13
-
-//@gen gml_2f5458_l13
-
-//@gen gml_2f5e38_l13
-
-//@gen gml_class615_update_l13
-
 //@gen gml_class667_update_l13
 
 //@gen gml_class674_update_l13
-
-//@gen gml_2f8d78_l13
-
-//@gen gml_class737_update_l13
-
-//@gen gml_316b10_l13
-
-//@gen gml_316c00_l13
-
-//@gen gml_class758_update_l13
-
-//@gen gml_class805_update_l13
-
-//@gen gml_class832_update_l13
-
-//@gen gml_302420_l13
-
-//@gen gml_class1009_update_l13
-
-//@gen gml_class1017_update_l13
 
 }  // namespace rac1

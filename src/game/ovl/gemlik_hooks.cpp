@@ -2,7 +2,9 @@
 #include <game/ovl/gemlik_hooks.h>
 #include <game/ovl/sound_emitter.h>
 
+#include <game/ovl/kerwan_camera.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/shared_cam19.h>
 namespace rac1 {
 
 namespace {
@@ -18,9 +20,10 @@ TrRet u_call3(TrRet (*f)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint3
 bool gemlik_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t* ret) {
     *ret = 0;
     switch (lvl_key(fn)) {
-    case L13_CASE(0x00317b00): *ret = static_cast<int32_t>(u_call3(gml_cam_type19_accept_u, cam, other, 0, 0.0f).v0); return true;
-    case L13_CASE(0x00317060): gml_cam_type19_init_l13(cam); return true;
-    case L13_CASE(0x00317420): gml_cam_type19_update_l13(cam); return true;
+    // camera type 19: the shared port (shared_cam19.cpp)
+    case L13_CASE(0x00317b00): *ret = cam_type19_accept(cam, other); return true;
+    case L13_CASE(0x00317060): cam_type19_init(cam); return true;
+    case L13_CASE(0x00317420): cam_type19_update(cam); return true;
     default: return false;
     }
 }
@@ -35,14 +38,14 @@ bool gemlik_sound_emitter_call(uint32_t fn, uint32_t em) {
 // orig: (host) see gemlik_hooks.h
 bool gemlik_camera_hook_call(uint32_t fn) {
     if (fn != L13_ADDR(0x00316b48)) return false;
-    gml_cam0_hook_l13(0);
+    cam0_level_hook(0);
     return true;
 }
 
 // orig: (host) see gemlik_hooks.h
 bool gemlik_camera_callback_call(uint32_t fn) {
     if (fn != L13_ADDR(0x00316ba8)) return false;
-    gml_cam_callback_l13(0);
+    cam0_level_callback(0);
     return true;
 }
 

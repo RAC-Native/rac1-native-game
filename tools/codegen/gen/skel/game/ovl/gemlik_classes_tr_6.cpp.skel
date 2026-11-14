@@ -47,6 +47,13 @@
 #include <game/port_stubs.h>
 #include <game/ovl/sound_emitter.h>
 #include <game/ovl/screen_effects.h>
+#include <game/ovl/shared_class1885.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_hud_shapes.h>
+#include <game/ovl/novalis_water.h>
+#include <game/ovl/shared_seas.h>
+#include <game/ovl/shared_path_ahead.h>
+#include <game/ovl/shared_tiles.h>
 
 namespace rac1 {
 
@@ -65,8 +72,6 @@ using namespace vu0m;
 
 //@gen gml_class1353_update_l13
 
-//@gen gml_281e40_l13
-
 //@gen gml_class1403_update_l13
 
 //@gen gml_class1558_update_l13
@@ -75,41 +80,13 @@ using namespace vu0m;
 
 //@gen gml_class1632_update_l13
 
-//@gen gml_30c2b0_l13
-
 //@gen gml_class1634_update_l13
-
-//@gen gml_264f78_l13
-
-//@gen gml_26f828_l13
 
 //@gen gml_class1805_update_l13
 
-//@gen gml_263988_l13
-
-//@gen gml_263a58_l13
-
 //@gen gml_30d3b8_l13
 
-//@gen gml_30d4b0_l13
-
-//@gen gml_30dbe8_l13
-
 //@gen gml_class1885_update_l13
-
-//@gen gml_30d148_l13
-
-//@gen gml_30dd20_l13
-
-//@gen gml_class1886_update_l13
-
-//@gen gml_2b7b30_l13
-
-//@gen gml_2b7fd0_l13
-
-//@gen gml_2b8320_l13
-
-//@gen gml_2b7d50_l13
 
 //@gen gml_2b89f8_l13
 
@@ -120,9 +97,5 @@ using namespace vu0m;
 //@gen gml_cb_2b97f8_l13
 
 //@gen gml_cb_2ea8c8_l13
-
-//@gen gml_206738_l13
-
-//@gen gml_2f6f20_l13
 
 }  // namespace rac1

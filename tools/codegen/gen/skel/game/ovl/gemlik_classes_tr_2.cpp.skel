@@ -46,6 +46,8 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/shared_ship_shots.h>
+#include <game/ovl/shared_moby_helpers.h>
 
 namespace rac1 {
 
@@ -68,8 +70,6 @@ using namespace vu0m;
 
 //@gen gml_class101_update_l13
 
-//@gen gml_class104_update_l13
-
 //@gen gml_2c37e0_l13
 
 //@gen gml_2c3ac8_l13
@@ -81,10 +81,6 @@ using namespace vu0m;
 //@gen gml_2c3f08_l13
 
 //@gen gml_2c3fc0_l13
-
-//@gen gml_2e1c50_l13
-
-//@gen gml_302cf8_l13
 
 //@gen gml_class111_update_l13
 
