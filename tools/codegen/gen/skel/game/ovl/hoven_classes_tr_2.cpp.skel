@@ -39,6 +39,10 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_class1371.h>
+#include <game/ovl/shared_shell.h>
+#include <game/ovl/shared_spawns.h>
 
 namespace rac1 {
 
@@ -46,8 +50,6 @@ using namespace eer;
 using namespace vu0m;
 
 //@gen hov_2e8608_l12
-
-//@gen hov_2f1118_l12
 
 //@gen hov_2e8720_l12
 
@@ -59,8 +61,6 @@ using namespace vu0m;
 
 //@gen hov_class294_update_l12
 
-//@gen hov_class296_update_l12
-
 //@gen hov_27ba70_l12
 
 //@gen hov_2eae00_l12
@@ -71,17 +71,9 @@ using namespace vu0m;
 
 //@gen hov_2ecce8_l12
 
-//@gen hov_308670_l12
-
-//@gen hov_308708_l12
-
 //@gen hov_class326_update_l12
 
-//@gen hov_2eb498_l12
-
 //@gen hov_class328_update_l12
-
-//@gen hov_28eb00_l12
 
 //@gen hov_2ebca8_l12
 
@@ -89,24 +81,10 @@ using namespace vu0m;
 
 //@gen hov_class339_update_l12
 
-//@gen hov_2ec5b0_l12
-
-//@gen hov_class341_update_l12
-
 //@gen hov_class384_update_l12
 
 //@gen hov_class409_update_l12
 
 //@gen hov_class422_update_l12
-
-//@gen hov_class458_update_l12
-
-//@gen hov_class604_update_l12
-
-//@gen hov_class605_update_l12
-
-//@gen hov_3148b8_l12
-
-//@gen hov_3149a8_l12
 
 }  // namespace rac1

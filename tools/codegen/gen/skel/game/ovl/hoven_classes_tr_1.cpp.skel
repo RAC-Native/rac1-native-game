@@ -39,43 +39,18 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/aridia_mobys.h>
+#include <game/ovl/novalis_water.h>
+#include <game/ovl/shared_seas.h>
+#include <game/ovl/shared_tiles.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
 
-//@gen hov_279238_l12
-
-//@gen hov_2ba560_l12
-
-//@gen hov_2ba780_l12
-
-//@gen hov_2baa08_l12
-
-//@gen hov_265f50_l12
-
-//@gen hov_265de8_l12
-
-//@gen hov_266210_l12
-
-//@gen hov_2baa48_l12
-
-//@gen hov_2baaf8_l12
-
-//@gen hov_2bf6d0_l12
-
-//@gen hov_2bf770_l12
-
 //@gen hov_class19_update_l12
-
-//@gen hov_class37_update_l12
-
-//@gen hov_class184_update_l12
-
-//@gen hov_271890_l12
-
-//@gen hov_272080_l12
 
 //@gen hov_2e18e8_l12
 
@@ -87,19 +62,9 @@ using namespace vu0m;
 
 //@gen hov_2e3098_l12
 
-//@gen hov_28a7d0_l12
-
-//@gen hov_2e3420_l12
-
-//@gen hov_271ff8_l12
-
 //@gen hov_2e3528_l12
 
 //@gen hov_class238_update_l12
-
-//@gen hov_212638_l12
-
-//@gen hov_2e38f0_l12
 
 //@gen hov_2e3948_l12
 
@@ -109,31 +74,15 @@ using namespace vu0m;
 
 //@gen hov_class240_update_l12
 
-//@gen hov_2e4a38_l12
-
-//@gen hov_2e4c68_l12
-
-//@gen hov_class258_update_l12
-
-//@gen hov_272fe0_l12
-
 //@gen hov_27b9c0_l12
 
 //@gen hov_27bea8_l12
 
-//@gen hov_2e6b60_l12
-
 //@gen hov_class282_update_l12
-
-//@gen hov_21bf18_l12
 
 //@gen hov_class293_update_l12
 
 //@gen hov_27b8e0_l12
-
-//@gen hov_28ec00_l12
-
-//@gen hov_2d4150_l12
 
 //@gen hov_2e7290_l12
 

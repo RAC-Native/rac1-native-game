@@ -40,57 +40,19 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/shared_attach.h>
+#include <game/ovl/shared_small.h>
+#include <game/ovl/shared_homing_missile.h>
+#include <game/ovl/shared_shell.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
 
-//@gen hov_class758_update_l12
-
-//@gen hov_class805_update_l12
-
-//@gen hov_class832_update_l12
-
-//@gen hov_2720d0_l12
-
-//@gen hov_class886_update_l12
-
-//@gen hov_300660_l12
-
-//@gen hov_300b00_l12
-
-//@gen hov_300490_l12
-
-//@gen hov_300580_l12
-
-//@gen hov_3008f0_l12
-
-//@gen hov_class1134_update_l12
-
-//@gen hov_300c38_l12
-
-//@gen hov_3013e0_l12
-
-//@gen hov_301540_l12
-
-//@gen hov_3018f8_l12
-
-//@gen hov_301948_l12
-
-//@gen hov_class1135_update_l12
-
-//@gen hov_class1221_update_l12
-
-//@gen hov_class1222_update_l12
-
 //@gen hov_302c58_l12
 
 //@gen hov_class1259_update_l12
-
-//@gen hov_2ef2e8_l12
-
-//@gen hov_312f58_l12
 
 //@gen hov_3032e8_l12
 
@@ -99,10 +61,6 @@ using namespace vu0m;
 //@gen hov_class1267_update_l12
 
 //@gen hov_class1269_update_l12
-
-//@gen hov_27b268_l12
-
-//@gen hov_27b370_l12
 
 //@gen hov_306350_l12
 

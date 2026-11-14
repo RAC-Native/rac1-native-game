@@ -16,6 +16,29 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/aridia_mobys.h>
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/novalis_water.h>
+#include <game/ovl/shared_class1135.h>
+#include <game/ovl/shared_class1221.h>
+#include <game/ovl/shared_class1371.h>
+#include <game/ovl/shared_class1400.h>
+#include <game/ovl/shared_class1844.h>
+#include <game/ovl/shared_class258.h>
+#include <game/ovl/shared_class341.h>
+#include <game/ovl/shared_class604.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_class886.h>
+#include <game/ovl/shared_env_objects.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_homing_missile.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_shell.h>
+#include <game/ovl/shared_swingshot_target.h>
+#include <game/ovl/shared_tiles.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/hero_move_mode.h>
 #include <game/ovl/hoven_mobys.h>
@@ -34,6 +57,16 @@
 #include <map>
 
 namespace rac1::oracle {
+
+namespace {
+// level 12's carry hooks +4 / +8 (class 238: L12:0x2e1758 / 0x2e17a8) in the hook table's uniform form: the shared
+// carry_state_hook with the copies' own constants (hook 4 or 8, carried state 8, released 1)
+template <uint32_t W>
+TrRet carry_state_uniform(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float f12, float,
+                          float, float, float, float, float, float) {
+    return TrRet{static_cast<uint32_t>(carry_state_hook(a0, a1, a2, f12, W, 8, 1)), 0.0f};
+}
+}  // namespace
 
 namespace {
 // A random state can hold a pointer outside RAM that the port's vector helpers dereference without a check (a SIGSEGV where the interpreter would wrap it): the trial run of a state
@@ -205,38 +238,38 @@ void batch_200() {
     struct TrCls { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t skip_states = 0; bool walk = false; uint32_t skip_p0 = 0; uint32_t skip_p1 = 0; };  // (skip_p0 / skip_p1: states skipped in pass 0 / 1 only)  // (the states that start a scene / a level change: the original runs the kernel / movie path for real)
     static const TrCls trcls[] = {
         {"class19", 0x002bf140, hov_class19_update_l12, 0x0, false},
-        {"class37", 0x002bf9b8, hov_class37_update_l12, 0x0, false},
+        {"class37", 0x002bf9b8, raritanium_pickup_update, 0x0, false},
         {"class164", 0x002cb1e8, empty_update, 0x0, false},
         {"class178", 0x002d30f8, empty_update, 0x0, false},
-        {"class184", 0x002d4378, hov_class184_update_l12, 0x0, false},
+        {"class184", 0x002d4378, shot_update, 0x0, false},
         {"class238", 0x002e1be0, hov_class238_update_l12, 0x0, false},
         {"class240", 0x002e3ed8, hov_class240_update_l12, 0x0, false},
-        {"class258", 0x002e4cd8, hov_class258_update_l12, 0x0, false},
+        {"class258", 0x002e4cd8, class258_update, 0x0, false},
         {"class282", 0x002e6c48, hov_class282_update_l12, 0x4, false},
         {"class293", 0x002e7208, hov_class293_update_l12, 0x0, false},
         {"class294", 0x002e72c0, hov_class294_update_l12, 0x0, false},
-        {"class296", 0x002e8c10, hov_class296_update_l12, 0x0, false},
+        {"class296", 0x002e8c10, escalator_update_l2, 0x0, false},
         {"class326", 0x002e9f68, hov_class326_update_l12, 0x0, false},
         {"class328", 0x002eb570, hov_class328_update_l12, 0x0, false},
         {"class336", 0x002ebea8, hov_class336_update_l12, 0x0, false},
         {"class339", 0x002ec1d0, hov_class339_update_l12, 0x0, false},
-        {"class341", 0x002ec478, hov_class341_update_l12, 0x0, false},
+        {"class341", 0x002ec478, class341_update, 0x0, false},
         {"class346", 0x002ec718, empty_update, 0x0, false},
         {"class384", 0x002ec720, hov_class384_update_l12, 0x0, false},
         {"class409", 0x002ece00, hov_class409_update_l12, 0x0, false},
         {"class422", 0x002ed280, hov_class422_update_l12, 0x0, false},
-        {"class458", 0x002ef648, hov_class458_update_l12, 0x0, false},
+        {"class458", 0x002ef648, homing_missile_update, 0x0, false},
         {"class499", 0x002f11b0, empty_update, 0x0, false},
-        {"class604", 0x002f51f0, hov_class604_update_l12, 0x0, false},
-        {"class605", 0x002f5540, hov_class605_update_l12, 0x0, false},
-        {"class758", 0x002f7b28, hov_class758_update_l12, 0x0, false},
-        {"class805", 0x002f8090, hov_class805_update_l12, 0x0, false},
-        {"class832", 0x002fa238, hov_class832_update_l12, 0x0, false},
-        {"class886", 0x002ff838, hov_class886_update_l12, 0x0, false},
-        {"class1134", 0x002ffdb0, hov_class1134_update_l12, 0x4, false},
-        {"class1135", 0x00300ce8, hov_class1135_update_l12, 0x0, false},
-        {"class1221", 0x00301d08, hov_class1221_update_l12, 0x0, false},
-        {"class1222", 0x00301df0, hov_class1222_update_l12, 0x0, false},
+        {"class604", 0x002f51f0, class604_update, 0x0, false},
+        {"class605", 0x002f5540, zone_marker_update, 0x0, false},
+        {"class758", 0x002f7b28, swingshot_target_update, 0x0, false},
+        {"class805", 0x002f8090, spawn_point_update_l1, 0x0, false},
+        {"class832", 0x002fa238, class832_update, 0x0, false},
+        {"class886", 0x002ff838, class886_update, 0x0, false},
+        {"class1134", 0x002ffdb0, gold_bolt_update, 0x4, false},
+        {"class1135", 0x00300ce8, teleporter_update_l1, 0x0, false},
+        {"class1221", 0x00301d08, class1221_update, 0x0, false},
+        {"class1222", 0x00301df0, class1221_update, 0x0, false},
         {"class1259", 0x00302f30, hov_class1259_update_l12, 0x0, false},
         {"class1267", 0x00303540, hov_class1267_update_l12, 0x120, false},
         {"class1269", 0x00304e00, hov_class1269_update_l12, 0x0, false},
@@ -246,13 +279,13 @@ void batch_200() {
         {"class1281", 0x00307840, hov_class1281_update_l12, 0x0, false},
         {"class1322", 0x003081a8, empty_update, 0x0, false},
         {"class1345", 0x003081b0, hov_class1345_update_l12, 0x0, false},
-        {"class1371", 0x00308918, hov_class1371_update_l12, 0x0, false},
-        {"class1400", 0x00308be0, hov_class1400_update_l12, 0x0, false},
+        {"class1371", 0x00308918, class1371_update, 0x0, false},
+        {"class1400", 0x00308be0, class1400_update, 0x0, false},
         {"class1404", 0x003093c8, hov_class1404_update_l12, 0x0, false},
         {"class1557", 0x003094a0, hov_class1557_update_l12, 0x0, false},
-        {"class1633", 0x00309648, hov_class1633_update_l12, 0x0, false},
-        {"class1818", 0x0030a6f0, hov_class1818_update_l12, 0x0, false},
-        {"class1862", 0x0030b6c8, hov_class1862_update_l12, 0x0, false},
+        {"class1633", 0x00309648, class1633_update, 0x0, false},
+        {"class1818", 0x0030a6f0, sandmouse_update, 0x0, false},
+        {"class1862", 0x0030b6c8, class1844_update, 0x0, false},
         {"class1863", 0x0030b7c0, empty_update, 0x0, false},
         {"class1901", 0x0030bff0, hov_class1901_update_l12, 0x0, false},
     };
@@ -322,16 +355,16 @@ void batch_200() {
         const size_t ign_before = g_ignored_words.size();
         for (uint32_t a = 0x100; a < 0x1500; a += 4) g_ignored_words.push_back(a);
         static const Cb cbs[] = {
-        {"cb2bf748", 0x002bf748, hov_cb_2bf748_l12, 0x002bf140, 19},
-        {"cb2e71b0", 0x002e71b0, hov_cb_2e71b0_l12, 0x002e7208, 293},
+        {"cb2bf748", 0x002bf748, nov_water_751_draw_l1, 0x002bf140, 19},
+        {"cb2e71b0", 0x002e71b0, env_objects_callback, 0x002e7208, 293},
         {"cb2ecac0", 0x002ecac0, hov_cb_2ecac0_l12, 0x002ec720, 384},
-        {"cb2fa028", 0x002fa028, hov_cb_2fa028_l12, 0x002fa238, 832},
-        {"cb301600", 0x00301600, hov_cb_301600_l12, 0x00300ce8, 1135},
+        {"cb2fa028", 0x002fa028, class832_draw, 0x002fa238, 832},
+        {"cb301600", 0x00301600, class1135_draw, 0x00300ce8, 1135},
         {"cb3028c8", 0x003028c8, hov_cb_3028c8_l12, 0x00000000, 0},
         {"cb304218", 0x00304218, hov_cb_304218_l12, 0x00303540, 1267},
         {"cb304d98", 0x00304d98, hov_cb_304d98_l12, 0x00303540, 1267},
         {"cb308350", 0x00308350, hov_cb_308350_l12, 0x003081b0, 1345},
-        {"cb30a618", 0x0030a618, hov_cb_30a618_l12, 0x0030a6f0, 1818},
+        {"cb30a618", 0x0030a618, sandmouse_glow, 0x0030a6f0, 1818},
         {"cb30be68", 0x0030be68, hov_cb_30be68_l12, 0x0030bff0, 1901},
         };
         for (const Cb& cb : cbs) {
@@ -395,8 +428,8 @@ void batch_200() {
         struct Hk { const char* name; uint32_t addr; uint32_t slot; TrRet (*fn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float); };
         static const Hk hks[] = {
             {"hook_2e16b8", 0x2e16b8, 0x0, hov_hook_2e16b8_u},
-            {"hook_2e1758", 0x2e1758, 0x4, hov_hook_2e1758_u},
-            {"hook_2e17a8", 0x2e17a8, 0x8, hov_hook_2e17a8_u},
+            {"hook_2e1758", 0x2e1758, 0x4, carry_state_uniform<4>},
+            {"hook_2e17a8", 0x2e17a8, 0x8, carry_state_uniform<8>},
             {"hook_2e17f8", 0x2e17f8, 0xc, hov_hook_2e17f8_u},
             {"hook_2e1848", 0x2e1848, 0x10, hov_hook_2e1848_u},
             {"hook_2e6b00", 0x2e6b00, 0xc, hov_hook_2e6b00_u},
@@ -463,7 +496,7 @@ void batch_200() {
         else {
             if (!own) std::printf("cam_type18_accept          no live camera of the type on this level: checked on another live camera's words\n");
             l12check("cam_type18_accept", 0x00316478, 300, Ret::Int32, [cam_setup] { uint32_t other = 0; const uint32_t cam = cam_setup(&other); return Args{{cam, other}, {}}; },
-                     [](A a) { return r32(a.i[0] != 0 ? hov_cam_type18_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0 : 0u); });
+                     [](A a) { return r32(a.i[0] != 0 ? static_cast<uint32_t>(cam_type18_accept(a.i[0], a.i[1])) : 0u); });
         }
     }
 
@@ -515,8 +548,8 @@ void batch_200() {
             wf(0x00161f3c, rf(0, 0.5f));  // $gp - 0x4cc4: the frame step the callback counts down by
             w32(OV(0x0015ef4c), u(ri(0, 14)));  // the queue's count (it holds up to 16)
         };
-        l12check("cam0_hook", 0x003148f0, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { hov_cam0_hook_l12(0); return uint64_t{0}; });
-        l12check("cam_callback", 0x00314950, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { hov_cam_callback_l12(0); return uint64_t{0}; });
+        l12check("cam0_hook", 0x003148f0, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_hook(0); return uint64_t{0}; });
+        l12check("cam_callback", 0x00314950, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_callback(0); return uint64_t{0}; });
     }
 
     // ---- mobys_in_sphere (Veldin 0x1f2868, level 12's copy L12:0x002152d8) on the level's own mobys: class 794 (the Gadgebot's helper) calls it and one of its random states differed

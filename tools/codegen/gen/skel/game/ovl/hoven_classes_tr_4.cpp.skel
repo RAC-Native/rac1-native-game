@@ -39,6 +39,8 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/aridia_mobys.h>
+#include <game/ovl/shared_scroll.h>
 
 namespace rac1 {
 
@@ -53,86 +55,18 @@ using namespace vu0m;
 
 //@gen hov_class1345_update_l12
 
-//@gen hov_class1371_update_l12
-
-//@gen hov_221ec8_l12
-
-//@gen hov_27bb20_l12
-
-//@gen hov_2817e8_l12
-
-//@gen hov_27bbb0_l12
-
-//@gen hov_281420_l12
-
-//@gen hov_28db38_l12
-
-//@gen hov_308a80_l12
-
-//@gen hov_class1400_update_l12
-
 //@gen hov_class1404_update_l12
 
 //@gen hov_class1557_update_l12
 
-//@gen hov_class1633_update_l12
-
-//@gen hov_3099b8_l12
-
-//@gen hov_309a10_l12
-
-//@gen hov_309538_l12
-
-//@gen hov_309ab8_l12
-
-//@gen hov_309da0_l12
-
-//@gen hov_30a030_l12
-
-//@gen hov_28de98_l12
-
-//@gen hov_30a550_l12
-
-//@gen hov_30a680_l12
-
-//@gen hov_class1818_update_l12
-
-//@gen hov_27c2c8_l12
-
-//@gen hov_27c918_l12
-
-//@gen hov_class1862_update_l12
-
-//@gen hov_30bba0_l12
-
 //@gen hov_class1901_update_l12
 
 //@gen hov_hook_2e16b8_u
-
-//@gen hov_hook_2e1758_u
-
-//@gen hov_hook_2e17a8_u
 
 //@gen hov_hook_2e17f8_u
 
 //@gen hov_hook_2e1848_u
 
 //@gen hov_hook_2e6b00_u
-
-//@gen hov_3107f0_l12
-
-//@gen hov_310818_l12
-
-//@gen hov_315828_l12
-
-//@gen hov_315968_l12
-
-//@gen hov_315ba8_l12
-
-//@gen hov_cam_type18_accept_u
-
-//@gen hov_20db88_l12
-
-//@gen hov_cam0_hook_l12
 
 }  // namespace rac1

@@ -11,6 +11,24 @@
 // the class's mobys hold in the dumps), then runs level <lv>'s own update (the original at its address) against the port.
 #include "ovl_oracle.h"
 
+#include <game/ovl/aridia_mobys.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/shared_class1221.h>
+#include <game/ovl/shared_class1371.h>
+#include <game/ovl/shared_class1400.h>
+#include <game/ovl/shared_class1844.h>
+#include <game/ovl/shared_class258.h>
+#include <game/ovl/shared_class341.h>
+#include <game/ovl/shared_class604.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_class886.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_homing_missile.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_shell.h>
+#include <game/ovl/shared_swingshot_target.h>
+#include <game/ovl/shared_tiles.h>
 #include <game/ovl/hoven_mobys.h>
 #include <game/ovl/kerwan_camera.h>
 #include <game/ovl/novalis_hooks.h>
@@ -125,38 +143,38 @@ const Cls kCls[] = {
     {11, 1903, 0x0031e2f0, pok_class1903_update_l11},
     {11, 1919, 0x0031f150, pok_class1919_update_l11},
     {12, 19, 0x002bf140, hov_class19_update_l12},
-    {12, 37, 0x002bf9b8, hov_class37_update_l12},
+    {12, 37, 0x002bf9b8, raritanium_pickup_update},
     {12, 164, 0x002cb1e8, empty_update},
     {12, 178, 0x002d30f8, empty_update},
-    {12, 184, 0x002d4378, hov_class184_update_l12},
+    {12, 184, 0x002d4378, shot_update},
     {12, 238, 0x002e1be0, hov_class238_update_l12},
     {12, 240, 0x002e3ed8, hov_class240_update_l12},
-    {12, 258, 0x002e4cd8, hov_class258_update_l12},
+    {12, 258, 0x002e4cd8, class258_update},
     {12, 282, 0x002e6c48, hov_class282_update_l12},
     {12, 293, 0x002e7208, hov_class293_update_l12},
     {12, 294, 0x002e72c0, hov_class294_update_l12},
-    {12, 296, 0x002e8c10, hov_class296_update_l12},
+    {12, 296, 0x002e8c10, escalator_update_l2},
     {12, 326, 0x002e9f68, hov_class326_update_l12},
     {12, 328, 0x002eb570, hov_class328_update_l12},
     {12, 336, 0x002ebea8, hov_class336_update_l12},
     {12, 339, 0x002ec1d0, hov_class339_update_l12},
-    {12, 341, 0x002ec478, hov_class341_update_l12},
+    {12, 341, 0x002ec478, class341_update},
     {12, 346, 0x002ec718, empty_update},
     {12, 384, 0x002ec720, hov_class384_update_l12},
     {12, 409, 0x002ece00, hov_class409_update_l12},
     {12, 422, 0x002ed280, hov_class422_update_l12},
-    {12, 458, 0x002ef648, hov_class458_update_l12},
+    {12, 458, 0x002ef648, homing_missile_update},
     {12, 499, 0x002f11b0, empty_update},
-    {12, 604, 0x002f51f0, hov_class604_update_l12},
-    {12, 605, 0x002f5540, hov_class605_update_l12},
-    {12, 758, 0x002f7b28, hov_class758_update_l12},
-    {12, 805, 0x002f8090, hov_class805_update_l12},
-    {12, 832, 0x002fa238, hov_class832_update_l12},
-    {12, 886, 0x002ff838, hov_class886_update_l12},
-    {12, 1134, 0x002ffdb0, hov_class1134_update_l12},
-    {12, 1135, 0x00300ce8, hov_class1135_update_l12},
-    {12, 1221, 0x00301d08, hov_class1221_update_l12},
-    {12, 1222, 0x00301df0, hov_class1222_update_l12},
+    {12, 604, 0x002f51f0, class604_update},
+    {12, 605, 0x002f5540, zone_marker_update},
+    {12, 758, 0x002f7b28, swingshot_target_update},
+    {12, 805, 0x002f8090, spawn_point_update_l1},
+    {12, 832, 0x002fa238, class832_update},
+    {12, 886, 0x002ff838, class886_update},
+    {12, 1134, 0x002ffdb0, gold_bolt_update},
+    {12, 1135, 0x00300ce8, teleporter_update_l1},
+    {12, 1221, 0x00301d08, class1221_update},
+    {12, 1222, 0x00301df0, class1221_update},
     {12, 1259, 0x00302f30, hov_class1259_update_l12},
     {12, 1267, 0x00303540, hov_class1267_update_l12},
     {12, 1269, 0x00304e00, hov_class1269_update_l12},
@@ -166,13 +184,13 @@ const Cls kCls[] = {
     {12, 1281, 0x00307840, hov_class1281_update_l12},
     {12, 1322, 0x003081a8, empty_update},
     {12, 1345, 0x003081b0, hov_class1345_update_l12},
-    {12, 1371, 0x00308918, hov_class1371_update_l12},
-    {12, 1400, 0x00308be0, hov_class1400_update_l12},
+    {12, 1371, 0x00308918, class1371_update},
+    {12, 1400, 0x00308be0, class1400_update},
     {12, 1404, 0x003093c8, hov_class1404_update_l12},
     {12, 1557, 0x003094a0, hov_class1557_update_l12},
-    {12, 1633, 0x00309648, hov_class1633_update_l12},
-    {12, 1818, 0x0030a6f0, hov_class1818_update_l12},
-    {12, 1862, 0x0030b6c8, hov_class1862_update_l12},
+    {12, 1633, 0x00309648, class1633_update},
+    {12, 1818, 0x0030a6f0, sandmouse_update},
+    {12, 1862, 0x0030b6c8, class1844_update},
     {12, 1863, 0x0030b7c0, empty_update},
     {12, 1901, 0x0030bff0, hov_class1901_update_l12},
 };
