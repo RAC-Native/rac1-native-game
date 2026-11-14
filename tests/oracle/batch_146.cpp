@@ -11,11 +11,9 @@
 
 #include <game/ovl/shared_class615.h>
 #include <game/ovl/aridia_classes_tr.h>
-#include <game/ovl/shared_class615.h>
 #include <game/ovl/blarg_mobys.h>
 #include <game/ovl/blarg_part2.h>
 #include <game/ovl/eudora_mobys.h>
-#include <game/ovl/shared_class615.h>
 #include <game/ovl/pokitaru_mobys.h>
 #include <game/ovl/variants_l11.h>
 #include <game/ovl/variants_l6.h>
@@ -23,7 +21,6 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/batalia_mobys.h>
 #include <game/ovl/variants_l8.h>
-#include <game/ovl/shared_class615.h>
 #include <runtime/ee/ee_interpreter.h>
 
 #include <cstdio>

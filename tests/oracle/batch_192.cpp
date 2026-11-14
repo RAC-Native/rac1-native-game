@@ -23,7 +23,6 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/particle_types_tr.h>
 #include <game/ovl/shared_class1400.h>
-#include <game/ovl/shared_class156.h>
 
 #include <algorithm>
 #include <cstring>
