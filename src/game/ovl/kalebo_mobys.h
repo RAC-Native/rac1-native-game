@@ -46,6 +46,7 @@ TrRet kal_2d5bc8_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_
 TrRet kal_2d6260_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002d6260
 void kal_class654_update_l16(uint32_t a0);  // L16:0x002d5ef8
 void kal_class800_update_l16(uint32_t a0);  // L16:0x002d6740
+void kal_class1111_update_l16(uint32_t a0);  // L16:0x002dee10 (class 1111, the open sea: kept generated, the PAL 2.00 build changed it beyond fix 24)
 void kal_class1377_update_l16(uint32_t a0);  // L16:0x002e3190
 void kal_class1387_update_l16(uint32_t a0);  // L16:0x002e36e8
 TrRet kal_2e3fa0_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e3fa0
@@ -92,6 +93,7 @@ TrRet kal_2cf850_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_
 void kal_cb_2cf7a8_l16(uint32_t a0);  // L16:0x002cf7a8
 TrRet kal_1fe280_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x001fe280
 TrRet kal_1fafa8_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x001fafa8
+void kal_cb_2de3c0_l16(uint32_t a0);  // L16:0x002de3c0 (class 1111's draw-list callback: kept generated with its update)
 void kal_cb_2e84e8_l16(uint32_t a0);  // L16:0x002e84e8
 void kal_cb_2e9270_l16(uint32_t a0);  // L16:0x002e9270
 

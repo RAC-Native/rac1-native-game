@@ -108,7 +108,7 @@ void batch_371() {
             {"class805", 0x002d69e0, spawn_point_update_l1},
             {"class876", 0x002dddd8, empty_update},
             {"class933", 0x002ddde0, class933_update},
-            {"class1111", 0x002dee10, class1111_update},
+            {"class1111", 0x002dee10, kal_class1111_update_l16},
             {"class1134", 0x002df1e8, gold_bolt_update},
             {"class1135", 0x002e0120, teleporter_update_l1},
             {"class1139", 0x002e0f78, class1139_update},

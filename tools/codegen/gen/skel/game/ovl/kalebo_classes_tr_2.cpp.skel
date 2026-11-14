@@ -62,4 +62,6 @@ using namespace vu0m;
 
 //@gen kal_class800_update_l16
 
+//@gen kal_class1111_update_l16
+
 }  // namespace rac1
