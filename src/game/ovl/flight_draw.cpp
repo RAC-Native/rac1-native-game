@@ -2,6 +2,7 @@
 #include <game/ovl/flight_draw.h>
 
 #include <game/math/vecmath.h>
+#include <game/ovl/aridia_ship.h>
 #include <game/ovl/moby_pass.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -161,7 +162,7 @@ void flight_draw() {
     texture_block_begin(1);
     mrp_fx_window(true);  // (host: the trails' / the canopy's effects noted for the MRP, as render_frame's draw lists)
     int32_t level = lw(0x0015ed84);
-    if ((level != 0 || level_slots_planet_arrival()) && (level != 1 || lbu(0x0013dd43) != 0)) ship_trails_draw(lwu(OV(0x0016c9d8)));  // (enhancement: a level mod's level as a planet)
+    if ((level != 0 || level_slots_planet_arrival()) && (level != 1 || lbu(0x0013dd43) != 0)) ari_ship_takeoff_draw_l2(lwu(OV(0x0016c9d8)));  // (enhancement: a level mod's level as a planet)
     if (lw(0x0013e088) == 4) {
         int32_t a = lw(OV(0x0016c894));
         if (!(a < 0x3d)) {

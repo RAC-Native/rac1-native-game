@@ -35,7 +35,6 @@ mkall:veldin_particle44
 mkall:veldin_particles
 mkall:veldin_particles4
 mkall:veldin_shared
-mkall:veldin_ship
 asm2cpp:moby_shadows_asm
 asm2cpp:moby_skin
 asm2cpp:world_cull

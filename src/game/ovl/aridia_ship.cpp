@@ -1,7 +1,7 @@
 // Ported overlay code: the ship's shadow / glow, engine glow, and exhaust trail draw callbacks (Veldin's 0x28e670 /
 // 0x28efc8 / 0x28f238, Aridia's copies L2:0x28dde0 / 0x28e738 / 0x28e9a8). Every level carries its copy of the three at its
-// own address (the overlay map pairs them with Veldin's): one port of them, every address the engine's (OV). Veldin's own
-// are still the transliterated ship_draw_cbs_tr.cpp (unit veldin_ship).
+// own address (the overlay map pairs them with Veldin's): one port of them, every address the engine's (OV). Veldin's
+// addresses are registered to these ports too (ship_draw_cbs.cpp; until the re-glue R0 the transliterated ship_draw_cbs_tr.cpp).
 #include <game/ovl/aridia_ship.h>
 
 #include <game/math/vecmath.h>

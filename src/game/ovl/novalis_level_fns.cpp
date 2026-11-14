@@ -11,6 +11,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/shared_cutscene_fx.h>
 #include <game/ovl/shared_fx_tr.h>
 #include <game/ovl/swingshot_rope_tr.h>
 #include <game/ovl/variants_l1.h>
@@ -88,7 +89,7 @@ void shared_fx_tr_register() {
     ovl_register_moby_fn(0x00237200, help_panel_draw_tr);
     ovl_register_moby_fn(0x00272838, particle_38_update);
     ovl_register_moby_fn(0x002728e8, particle_39_update);
-    ovl_register_moby_fn(0x0023db30, cutscene_l14_effect_draw_tr);  // (queued by cutscene_level_extras's level 14 branch)
+    ovl_register_moby_fn(0x0023db30, cutscene_l14_effect_draw);  // (queued by cutscene_level_extras's level 14 branch; shared_cutscene_fx.cpp)
 }
 
 }  // namespace rac1

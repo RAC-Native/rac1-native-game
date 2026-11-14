@@ -39,8 +39,4 @@ using namespace vu0m;
 
 //@gen particle_39_update
 
-//@gen cutscene_l14_effect_tr
-
-//@gen cutscene_l14_effect_draw_tr
-
 }  // namespace rac1

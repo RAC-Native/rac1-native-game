@@ -9,7 +9,8 @@
 //    kerwan_camera.cpp's cam0_level_callback, wired in camera_callback_call. Its block 0x167600 varied;
 //  - levels 0 and 14 (ORACLE_LEVEL=0 / 14): the scenes' level 14 effect 0x23e008 and its draw 0x23db30 (cutscene_level_extras's level 14
 //    branch; Oltanis runs its own build of the function, so the port's Veldin build reaches them only on a level 14 without it):
-//    transliterated at Veldin's addresses in shared_fx_tr.cpp (regen group veldin_fx), the draw registered for the moby dispatch. Subject: the
+//    the shared ports (shared_cutscene_fx.cpp; until the re-glue R0 Veldin's transliterations in shared_fx_tr.cpp), the draw registered for
+//    the moby dispatch. Subject: the
 //    hero (a model with chain points: both read the moby's chain 0), its position, the frame scale and the random seed varied. On level 14 the
 //    original is Oltanis's own copy (the map's 0x245e98 / 0x2459c0), the same code.
 // No RAM dumps: the states are built from the level.
@@ -21,6 +22,7 @@
 #include <game/ovl/kerwan_camera.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/shared_cutscene_fx.h>
 #include <game/ovl/shared_fx_tr.h>
 #include <game/ovl/veldin_finale_mobys.h>
 #include <game/ovl/shared_finale.h>
@@ -128,8 +130,8 @@ void batch_401() {
     // ---- levels 0 and 14: the scenes' level 14 effect and its draw (Veldin's build), on the hero
     {
         struct Fx { const char* name; uint32_t addr; void (*fn)(uint32_t); int n; };
-        static const Fx fxs[] = {{"cutscene_l14_effect_tr", 0x0023e008, cutscene_l14_effect_tr, 60},
-                                 {"cutscene_l14_effect_draw_tr", 0x0023db30, cutscene_l14_effect_draw_tr, 60}};
+        static const Fx fxs[] = {{"cutscene_l14_effect", 0x0023e008, cutscene_l14_effect, 60},
+                                 {"cutscene_l14_effect_draw", 0x0023db30, cutscene_l14_effect_draw, 60}};
         for (const Fx& f : fxs) {
             if (g_oracle_level != 0 && g_oracle_level != 14) {
                 skip_check(f.name, f.addr, "levels 0 and 14 only (ORACLE_LEVEL=0 / 14)");

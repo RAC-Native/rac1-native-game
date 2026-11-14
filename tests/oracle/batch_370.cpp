@@ -26,6 +26,7 @@
 #include <game/ovl/particle_types_tr.h>
 #include <game/ovl/quartu_mobys.h>
 #include <game/ovl/shared_class1523.h>
+#include <game/ovl/shared_particle_kinds.h>
 #include <game/ovl/veldin_finale_mobys.h>
 #include <game/ovl/veldin_orbit_mobys.h>
 
@@ -187,12 +188,12 @@ void batch_370() {
         };
         check("particle_50_update", 0x00275eb0, 200, Ret::None, [&] {
             level();
-            const uint32_t q = make(0x50, particle_50_update, sp, [](uint32_t q) {
+            const uint32_t q = make(0x50, beam_particle_update, sp, [](uint32_t q) {
                 w32(q + 0x20, coin() ? 1u : 0u);
                 w32(q + 4, R());
             });
             return Args{{q}, {}};
-        }, [](A a) { if (a.i[0] != 0) particle_50_update(a.i[0]); return uint64_t{0}; });
+        }, [](A a) { if (a.i[0] != 0) beam_particle_update(a.i[0]); return uint64_t{0}; });
     } else {
         skip_check("particle_50_update", 0x00275eb0, "spawned on level 17: ORACLE_LEVEL=17");
     }
@@ -250,7 +251,7 @@ void batch_370() {
                     { const int k = ri(0, 3); if (k == 0) w16(p + 0xa, 0); else if (k == 1) w16(p + 0xa, u(ri(1, 2))); }
                     if (ri(0, 4) == 0) wf(0x0015ed60, rf(0.5f, 3.0f));
                     return Args{{p}, {}};
-                }, [](A a) { particle_50_update(a.i[0]); return uint64_t{0}; });
+                }, [](A a) { beam_particle_update(a.i[0]); return uint64_t{0}; });
             }
         }
     }

@@ -8,6 +8,7 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/aridia_ship.h>
 #include <game/ovl/empty_class_updates.h>
 #include <game/ovl/novalis_draw_cbs.h>
 #include <game/ovl/novalis_mobys.h>
@@ -154,9 +155,9 @@ void batch_136() {
         seed_rand();
         return Args{{m}, {}};
     };
-    check("ship_shadow_draw", 0x0028e670, 100, Ret::None, ship_gen, [](A a) { ship_shadow_draw(a.i[0]); return uint64_t{0}; });
-    check("ship_flame_draw", 0x0028efc8, 100, Ret::None, ship_gen, [](A a) { ship_flame_draw(a.i[0]); return uint64_t{0}; });
-    check("ship_trails_draw", 0x0028f238, 100, Ret::None, ship_gen, [](A a) { ship_trails_draw(a.i[0]); return uint64_t{0}; });
+    check("ship_shadow_draw", 0x0028e670, 100, Ret::None, ship_gen, [](A a) { ari_ship_glow_draw_l2(a.i[0]); return uint64_t{0}; });
+    check("ship_flame_draw", 0x0028efc8, 100, Ret::None, ship_gen, [](A a) { ari_ship_engine_glow_draw_l2(a.i[0]); return uint64_t{0}; });
+    check("ship_trails_draw", 0x0028f238, 100, Ret::None, ship_gen, [](A a) { ari_ship_takeoff_draw_l2(a.i[0]); return uint64_t{0}; });
 
     // ---- Novalis's own draw callbacks: a moby of the class (any when the level places none) moved about the camera, its
     // pvars' floats / counters and the level's scroll state varied

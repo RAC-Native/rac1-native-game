@@ -26,6 +26,7 @@
 #include <game/ovl/quad_draw.h>
 #include <game/ovl/shadows.h>
 #include <game/ovl/helmet_tr.h>
+#include <game/ovl/shared_helpers.h>
 
 namespace rac1 {
 
@@ -40,8 +41,6 @@ TrRet ovl_1fc740_tr(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_
 void class167_draw_tr(uint32_t a0_in);
 
 //@gen vendor_update_tr
-
-//@gen ovl_266858_tr
 
 //@gen ovl_2d5988_tr
 

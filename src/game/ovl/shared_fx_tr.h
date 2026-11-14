@@ -15,8 +15,6 @@ void particle_06_update(uint32_t a0);  // 0x00269d20
 void vendor_draw_tr(uint32_t a0);  // 0x002a5040
 void particle_38_update(uint32_t a0);  // 0x00272838
 void particle_39_update(uint32_t a0);  // 0x002728e8
-void cutscene_l14_effect_tr(uint32_t a0);  // 0x0023e008
-void cutscene_l14_effect_draw_tr(uint32_t a0);  // 0x0023db30
 
 }  // namespace rac1
 

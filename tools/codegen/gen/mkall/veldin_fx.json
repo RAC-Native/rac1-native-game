@@ -8,9 +8,7 @@
   "269d20:particle_06_update:void:a0",
   "2a5040:vendor_draw_tr:void:a0",
   "272838:particle_38_update:void:a0",
-  "2728e8:particle_39_update:void:a0",
-  "23e008:cutscene_l14_effect_tr:void:a0",
-  "23db30:cutscene_l14_effect_draw_tr:void:a0"
+  "2728e8:particle_39_update:void:a0"
  ],
  "glue_files": [],
  "files": [

@@ -1,0 +1,1 @@
+0x0026fd28: set32(v0, static_cast<uint32_t>(particle_28_spawn(a0.w(), a1.w(), a2.w(), a3.w())));

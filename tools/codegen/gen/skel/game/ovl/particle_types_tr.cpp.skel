@@ -24,6 +24,9 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shared_height_map.h>
+#include <game/ovl/shared_particle_kinds.h>
+#include <game/ovl/shared_little.h>
 
 namespace rac1 {
 
@@ -34,13 +37,9 @@ using namespace vu0m;
 void particle_33_update(uint32_t a0_in);
 void particle_3d_update(uint32_t a0_in);
 void particle_41_update(uint32_t a0_in);
-TrRet ovl_2729c8_tr(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in);
 void particle_3a_update(uint32_t a0_in);
-void particle_31_update(uint32_t a0_in);
 
 //@gen ovl_259430_tr
-
-//@gen ovl_2743a8_tr
 
 //@gen particle_43_update
 
@@ -54,17 +53,7 @@ void particle_31_update(uint32_t a0_in);
 
 //@gen particle_41_update
 
-//@gen ovl_2729c8_tr
-
 //@gen particle_3a_update
-
-//@gen particle_31_update
-
-//@gen ovl_263468_tr
-
-//@gen ovl_268f10_tr
-
-//@gen ovl_2634f8_tr
 
 //@gen particle_0a_update
 
@@ -76,13 +65,9 @@ void particle_31_update(uint32_t a0_in);
 
 //@gen particle_1f_update
 
-//@gen particle_50_update
-
 //@gen ovl_25c230_tr
 
 //@gen ovl_270758_tr
-
-//@gen ovl_262360_tr
 
 //@gen particle_03_update
 
@@ -98,8 +83,6 @@ void particle_31_update(uint32_t a0_in);
 
 //@gen particle_1e_update
 
-//@gen particle_21_update
-
 //@gen particle_24_update
 
 //@gen particle_25_update
@@ -109,8 +92,6 @@ void particle_31_update(uint32_t a0_in);
 //@gen particle_2a_update
 
 //@gen particle_36_update
-
-//@gen particle_3f_update
 
 //@gen particle_4b_update
 
