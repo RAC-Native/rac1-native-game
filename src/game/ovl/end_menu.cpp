@@ -4,6 +4,7 @@
 // scrolling epilogue text).
 
 #include <game/ovl/end_menu_tr.h>
+#include <game/enhance/fixes102.h>
 #include <game/lib/libc.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/cutscene.h>
@@ -195,10 +196,22 @@ uint32_t end_menu_choice_update_tr(uint32_t, uint32_t) {
     for (uint32_t i = 0; i < 4; ++i) {
         saved_4[i] = lbu(0x0014bf08u + i);
     }
+    // (1.02 Fixes, fix 27: the 1.02 build's 0x00280ee8 also keeps the cheats switched on and unlocked over the read)
+    const bool cheats = fixes102_on(27);
+    const uint32_t kept = cheats ? ee_stack_alloc(0x20) : 0;
+    if (cheats) {
+        mem_copy(kept, 0x0015edb0u, 0xc);
+        mem_copy(kept + 0x10, 0x0015edc0u, 0xc);
+    }
     save_blocks_read(lwu(OV(0x001b9cf0u) + 0xe0u));
     sb(0x0013d425u, saved_byte);
     for (uint32_t i = 0; i < 4; ++i) {
         sb(0x0014bf08u + i, saved_4[i]);
+    }
+    if (cheats) {
+        mem_copy(0x0015edb0u, kept, 0xc);
+        mem_copy(0x0015edc0u, kept + 0x10, 0xc);
+        ee_stack_free(0x20);
     }
     sw(0x0015eea0u, 1u);
     level_change_request(0, -1);
