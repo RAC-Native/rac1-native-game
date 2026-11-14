@@ -60,13 +60,16 @@ void kerwan_moby_fns_register() {
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002e08c8), class1633_update);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002e1970), sandmouse_update);  // (class 1818)
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002e1898), sandmouse_glow);  // (the Sandmouse's draw-list callback)
-    // the transliterated classes (kerwan_classes_tr.cpp, the translator)
+    // the train (kerwan_train.cpp), the shuttles 868 / 905 / 928 (kerwan_shuttles.cpp), the air traffic 75, 115 .. 120, 132
+    // (kerwan_traffic.cpp), class 573 (kerwan_walkers.cpp)
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x00292e98), kerwan_class822_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x00294c08), kerwan_class868_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x0029dba8), kerwan_class75_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002c5bb8), kerwan_class573_update_l3);
+    // the Blarg trooper 574 (kerwan_troopers.cpp), the mine layer 578 (kerwan_mine_layer.cpp)
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002c6fd0), kerwan_class574_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002c9eb8), kerwan_class578_update_l3);
+    // the transliterated classes (kerwan_classes_tr.cpp, the translator)
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002cbea8), kerwan_class627_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002d3198), kerwan_class816_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002d43c8), kerwan_class833_update_l3);
