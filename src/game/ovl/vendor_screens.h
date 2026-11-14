@@ -101,6 +101,12 @@ void vendor_remark(int32_t kind);          // orig: 0x0029b4d8
 void vendor_hologram_make();               // orig: 0x0029b680
 uint32_t scene_stream_load(int32_t scene); // orig: 0x002454c8
 uint32_t scene_block_select(int32_t i);    // orig: 0x002455c0
+// (helper) The buttons of the frame before (PAD_BEFORE, 0x161e30). The 1.02 build (the PAL disc 2.00) has no such word:
+// its Vendor keeps three words where NTSC-U's keeps four (0x161e24..0x161e30: the spin, the two held counts), so its maps
+// put 0x161e30 on the quantity's place (0x161e34's) and the frame's buttons would overwrite the quantity. On a disc of
+// that build (region_core_moved()) the port keeps the word outside the game's memory; only the ports read it.
+uint32_t pad_before();
+void pad_before_set(uint32_t buttons);
 
 // --- vendor_update.cpp -------------------------------------------------------------------------
 void vendor_purchase_update();             // orig: 0x0029ba78

@@ -12,6 +12,7 @@
 #include <game/ovl/music_streams.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
+#include <game/ovl/region_core.h>
 #include <game/ovl/screen_fade.h>
 #include <game/ovl/vendor_frame.h>
 #include <game/ovl/vendor_tr.h>
@@ -392,6 +393,15 @@ uint32_t scene_block_select(int32_t i) {
     return p;
 }
 
+static uint32_t g_pad_before_102 = 0;  // (pad_before on the 1.02 build's discs)
+
+uint32_t pad_before() { return region_core_moved() ? g_pad_before_102 : lwu(PAD_BEFORE); }
+
+void pad_before_set(uint32_t buttons) {
+    if (region_core_moved()) g_pad_before_102 = buttons;
+    else sw(PAD_BEFORE, buttons);
+}
+
 }  // namespace vendor
 
 // The screens opened, by a Vendor `vendor` (its moby) or by the PDA (0: a Vendor moby made in front of the hero): the
@@ -425,7 +435,7 @@ void vendor_screen_start_tr(uint32_t a0) {
     sw(VS + CURSOR, 0);
     sw(CLOSING, 0);
     sw(OPENING, 0);
-    sw(PAD_BEFORE, 0);
+    pad_before_set(0);
     sw(VS + STEP, 0);
     sw(QUANTITY, 0);
     sw(SPIN, 0);

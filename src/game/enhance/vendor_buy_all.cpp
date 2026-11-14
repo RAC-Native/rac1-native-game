@@ -10,7 +10,7 @@
 //   the items' HUD table 0x179ac0 (0x4c bytes an item): +0x38 the tile's HUD animation (frame 2: the ammo tile);
 //   the ammo 0x13d428[item], the ammo bought 0x13dd70[item], the bolts 0x15ed98;
 //   0x161e18 / 0x161e10: the screens busy (an opening, the quantity box): the list does not move; 0x161e30 the pad's
-//     buttons of the frame before (a press counts once); 0x161e38 the cursor moved (the hologram made again).
+//     buttons of the frame before (a press counts once: vendor::pad_before()); 0x161e38 the cursor moved (the hologram made again).
 #include <game/enhance/vendor_buy_all.h>
 
 #include <game/enhance/advanced.h>
@@ -34,7 +34,6 @@ constexpr OvConst<0x00179ac0u> HUD_ITEMS{};
 constexpr OvConst<0x0015f5c4u> MODE{};
 constexpr OvConst<0x00161e18u> BUSY_OPEN{};
 constexpr OvConst<0x00161e10u> BUSY_QUANTITY{};
-constexpr OvConst<0x00161e30u> PAD_BEFORE{};
 constexpr OvConst<0x00161e38u> CURSOR_MOVED{};
 constexpr uint32_t AMMO = 0x0013d428, AMMO_BOUGHT = 0x0013dd70, BOLTS = 0x0015ed98;
 constexpr uint32_t PAD = 0x0013c940;
@@ -232,7 +231,7 @@ void vendor_buy_all_input() {
     if (!on_all() || !list_idle()) return;
     // (Cross as the game reads it, 0x29c648: pressed this frame and not the frame before; the game itself starts no
     // purchase on the entry, its +8 word not 0)
-    if ((lwu(PAD + 0x1c4) & CROSS) != 0 && (lwu(PAD_BEFORE) & CROSS) == 0) buy_all();
+    if ((lwu(PAD + 0x1c4) & CROSS) != 0 && (vendor::pad_before() & CROSS) == 0) buy_all();
 }
 
 // orig: (none) — enhancement (vendor_buy_all.h): on the entry, the item monitor's two title lines (0x29e198, an ammo
