@@ -133,6 +133,7 @@ add_library(rac1_formats STATIC
     src/formats/tie_packet.cpp
     src/formats/wad_encode.cpp
     src/formats/host_meshes.cpp
+    src/formats/level_cache.cpp
 )
 target_link_libraries(rac1_formats PUBLIC rac1_io)
 target_include_directories(rac1_formats PUBLIC src)
@@ -312,6 +313,18 @@ if(RAC1_ORACLE)
         message(FATAL_ERROR "RAC1_ORACLE needs the generated sources (RAC1_NO_GENERATED is ON)")
     endif()
     add_subdirectory(tests/oracle)
+endif()
+
+# ---- tests/unit/ : host unit tests of the project's own file formats (no disc, no generated code, well under a second) ----
+# Built with the developer's tests (on when the oracle is, RAC1_ORACLE); ./setup.sh never builds them. Run: ctest, or
+# ./build/tests/level_cache_test [a folder for its temporary files].
+option(RAC1_UNIT_TESTS "Build the host unit tests (tests/unit: build/tests/level_cache_test)" ${RAC1_ORACLE})
+if(RAC1_UNIT_TESTS)
+    enable_testing()
+    add_executable(level_cache_test tests/unit/level_cache_test.cpp)
+    target_link_libraries(level_cache_test PRIVATE rac1_formats)
+    set_target_properties(level_cache_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests)
+    add_test(NAME level_cache_test COMMAND level_cache_test)
 endif()
 
 # ---- tests/rumble/ : the DualSense output report's layout and CRC (host code only, no pad: not built by default) ----
