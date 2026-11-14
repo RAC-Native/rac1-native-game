@@ -38,6 +38,9 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_small.h>
+#include <game/ovl/shared_scroll.h>
 
 namespace rac1 {
 
@@ -46,37 +49,9 @@ using namespace vu0m;
 
 //@gen bat_class1130_update_l8
 
-//@gen bat_303c20_l8
-
-//@gen bat_3040c0_l8
-
-//@gen bat_303a50_l8
-
-//@gen bat_303b40_l8
-
-//@gen bat_303eb0_l8
-
-//@gen bat_class1134_update_l8
-
-//@gen bat_263730_l8
-
-//@gen bat_3041f8_l8
-
-//@gen bat_3049a0_l8
-
-//@gen bat_304b00_l8
-
-//@gen bat_304eb8_l8
-
-//@gen bat_304f08_l8
-
-//@gen bat_class1135_update_l8
-
 //@gen bat_305138_l8
 
 //@gen bat_class1144_update_l8
-
-//@gen bat_2a1880_l8
 
 //@gen bat_2e1698_l8
 
@@ -84,56 +59,14 @@ using namespace vu0m;
 
 //@gen bat_class1283_update_l8
 
-//@gen bat_class1292_update_l8
-
 //@gen bat_class1349_update_l8
 
-//@gen bat_211b08_l8
-
-//@gen bat_26d3e0_l8
-
-//@gen bat_273080_l8
-
-//@gen bat_26d470_l8
-
-//@gen bat_272cb8_l8
-
-//@gen bat_27f5f0_l8
-
-//@gen bat_307b90_l8
-
-//@gen bat_class1400_update_l8
-
 //@gen bat_class1553_update_l8
-
-//@gen bat_class1629_update_l8
-
-//@gen bat_class1633_update_l8
 
 //@gen bat_27fe00_l8
 
 //@gen bat_class1641_update_l8
 
-//@gen bat_3091d0_l8
-
-//@gen bat_3093c0_l8
-
-//@gen bat_309508_l8
-
-//@gen bat_3095e0_l8
-
-//@gen bat_3096c8_l8
-
 //@gen bat_class1649_update_l8
-
-//@gen bat_309ef0_l8
-
-//@gen bat_309f48_l8
-
-//@gen bat_308810_l8
-
-//@gen bat_309ff0_l8
-
-//@gen bat_30a2d8_l8
 
 }  // namespace rac1

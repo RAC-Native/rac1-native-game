@@ -37,6 +37,12 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shared_arcs.h>
+#include <game/ovl/shared_small.h>
+#include <game/ovl/shared_class344.h>
+#include <game/ovl/shared_floaters.h>
+#include <game/ovl/shared_homing_missile.h>
+#include <game/ovl/shared_helpers.h>
 
 namespace rac1 {
 
@@ -45,13 +51,9 @@ using namespace vu0m;
 
 //@gen bat_class333_update_l8
 
-//@gen bat_class344_update_l8
-
 //@gen bat_2dc0c8_l8
 
 //@gen bat_2dc180_l8
-
-//@gen bat_2dc4a0_l8
 
 //@gen bat_2dc648_l8
 
@@ -71,11 +73,7 @@ using namespace vu0m;
 
 //@gen bat_2e0228_l8
 
-//@gen bat_2e7eb0_l8
-
 //@gen bat_306b30_l8
-
-//@gen bat_313ba8_l8
 
 //@gen bat_class440_update_l8
 

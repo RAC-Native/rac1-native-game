@@ -38,6 +38,7 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/shared_scroll.h>
 
 namespace rac1 {
 
@@ -49,14 +50,6 @@ using namespace vu0m;
 //@gen bat_2e2da0_l8
 
 //@gen bat_class452_update_l8
-
-//@gen bat_2e6168_l8
-
-//@gen bat_2ee5b0_l8
-
-//@gen bat_class455_update_l8
-
-//@gen bat_class458_update_l8
 
 //@gen bat_2e8788_l8
 
@@ -78,30 +71,6 @@ using namespace vu0m;
 
 //@gen bat_class468_update_l8
 
-//@gen bat_2e6228_l8
-
-//@gen bat_class545_update_l8
-
-//@gen bat_class567_update_l8
-
-//@gen bat_2f0f68_l8
-
-//@gen bat_2f1158_l8
-
-//@gen bat_2f12a0_l8
-
-//@gen bat_2f1378_l8
-
-//@gen bat_2f1460_l8
-
 //@gen bat_class600_update_l8
-
-//@gen bat_class604_update_l8
-
-//@gen bat_class605_update_l8
-
-//@gen bat_2f1e70_l8
-
-//@gen bat_2f2850_l8
 
 }  // namespace rac1

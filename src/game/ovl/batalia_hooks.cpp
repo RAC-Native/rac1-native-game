@@ -2,6 +2,9 @@
 #include <game/ovl/batalia_hooks.h>
 #include <game/ovl/sound_emitter.h>
 #include <game/ovl/empty_class_updates.h>
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_camera.h>
+#include <game/ovl/shared_helpers.h>
 
 namespace rac1 {
 
@@ -9,11 +12,11 @@ namespace rac1 {
 bool batalia_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t* ret) {
     *ret = 0;
     switch (lvl_key(fn)) {
-    case L8_CASE(0x003127d0): *ret = static_cast<int32_t>(bat_cam_type3_accept_u(cam, other, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f).v0); return true;
-    case L8_CASE(0x003127d8): bat_cam_type3_init_l8(cam); return true;
-    case L8_CASE(0x00311d50): bat_cam_type3_update_l8(cam); return true;
-    case L8_CASE(0x00312a28): bat_cam_type3_exit_l8(cam); return true;
-    case L8_CASE(0x00316298): *ret = static_cast<int32_t>(bat_cam_type18_accept_u(cam, other, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f).v0); return true;
+    case L8_CASE(0x003127d0): *ret = zero_stub(); return true;
+    case L8_CASE(0x003127d8): cam_type3_init(cam); return true;
+    case L8_CASE(0x00311d50): cam_type3_update(cam); return true;
+    case L8_CASE(0x00312a28): cam_type3_exit(cam); return true;
+    case L8_CASE(0x00316298): *ret = cam_type18_accept(cam, other); return true;
     case L8_CASE(0x00316300): empty_update(cam); return true;
     case L8_CASE(0x00316308): empty_update(cam); return true;
     case L8_CASE(0x00316310): empty_update(cam); return true;

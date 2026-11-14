@@ -24,6 +24,7 @@
 #include <game/ovl/kalebo_mobys.h>
 #include <game/ovl/rilgar_mobys.h>
 #include <game/ovl/shared_class827.h>
+#include <game/ovl/shared_helpers.h>
 #include <game/ovl/veldin_orbit_mobys.h>
 #include <game/ovl/veldin_finale_mobys.h>
 #include <game/ovl/variants_l2.h>
@@ -272,8 +273,8 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         switch (lvl_key(fn)) {
         case L8_CASE(0x002d3f60): ret = enemy10e_hook0(m, a1, a2, f12); return true;  // (Veldin's 0x2cadc0, the same code)
         case L8_CASE(0x002d3fb0): ret = enemy10e_hook4(m, a1, a2, f12); return true;  // (Veldin's 0x2cae10, the same code)
-        case L8_CASE(0x002d4000): ret = u_call(bat_hook_2d4000_u, m, a1, a2, f12); return true;
-        case L8_CASE(0x002d4050): ret = u_call(bat_hook_2d4050_u, m, a1, a2, f12); return true;
+        case L8_CASE(0x002d4000): ret = carry_state_hook(m, a1, a2, f12, 8, 5, 1); return true;  // (shared_helpers.cpp)
+        case L8_CASE(0x002d4050): ret = class252_hook_c(m, a1, a2, f12); return true;  // (shared_helpers.cpp)
         case L8_CASE(0x002d40d8): ret = u_call(bat_hook_2d40d8_u, m, a1, a2, f12); return true;
         case L8_CASE(0x002d8180): ret = bat_carry_hookc_l8(m, a1, a2, f12); return true;
         default: return false;

@@ -3,20 +3,15 @@
  "tool": "mkall_l8.py",
  "env": {
   "MKALL_HELPER_PREFIX": "bt2_",
-  "MKALL_WIDE_GPR": "20d760:a3"
+  "MKALL_WIDE_GPR": ""
  },
  "entries": [
-  "2d3878:bat_class252_draw_a_l8:void:a0",
-  "2d4108:bat_class252_draw_b_l8:void:a0",
   "2da0d0:bat_class327_draw_l8:void:a0",
   "2deee0:bat_class440_draw_l8:void:a0",
   "2e5188:bat_class452_draw_l8:void:a0",
   "2f0dc8:bat_class600_draw_l8:void:a0",
   "2f5e58:bat_class671_draw_l8:void:a0",
-  "2fb948:bat_class832_draw_l8:void:a0",
-  "304bc0:bat_class1135_draw_l8:void:a0",
-  "309030:bat_class1649_draw_l8:void:a0",
-  "30ab50:bat_sandmouse_glow_l8:void:a0"
+  "309030:bat_class1649_draw_l8:void:a0"
  ],
  "glue_files": [],
  "files": [

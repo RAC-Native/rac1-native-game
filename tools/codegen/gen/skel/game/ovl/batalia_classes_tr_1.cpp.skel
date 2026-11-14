@@ -38,13 +38,15 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/shared_class344.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/aridia_mobys.h>
+#include <game/ovl/shared_helpers.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
-
-//@gen bat_2025d0_l8
 
 //@gen bat_279f00_l8
 
@@ -52,33 +54,13 @@ using namespace vu0m;
 
 //@gen bat_class152_update_l8
 
-//@gen bat_275bd8_l8
-
-//@gen bat_2ba660_l8
-
-//@gen bat_2ba668_l8
-
-//@gen bat_class156_update_l8
-
 //@gen bat_class248_update_l8
-
-//@gen bat_2d36e0_l8
-
-//@gen bat_2025d8_l8
-
-//@gen bat_2d3d78_l8
-
-//@gen bat_class252_update_l8
-
-//@gen bat_269c70_l8
 
 //@gen bat_2d4ca0_l8
 
 //@gen bat_2d55c8_l8
 
 //@gen bat_2d5950_l8
-
-//@gen bat_2db990_l8
 
 //@gen bat_2d5d08_l8
 
@@ -88,31 +70,9 @@ using namespace vu0m;
 
 //@gen bat_class253_update_l8
 
-//@gen bat_28fa30_l8
-
-//@gen bat_2d81e0_l8
-
-//@gen bat_313880_l8
-
-//@gen bat_class280_update_l8
-
-//@gen bat_2acc70_l8
-
-//@gen bat_2acce8_l8
-
 //@gen bat_class327_update_l8
 
-//@gen bat_class331_update_l8
-
-//@gen bat_263050_l8
-
 //@gen bat_2d22e0_l8
-
-//@gen bat_2da3f0_l8
-
-//@gen bat_2da7c0_l8
-
-//@gen bat_2da8d8_l8
 
 //@gen bat_2daa10_l8
 

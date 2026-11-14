@@ -22,6 +22,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/particle_types_tr.h>
+#include <game/ovl/shared_class1400.h>
 #include <game/ovl/shared_class156.h>
 
 #include <algorithm>
@@ -142,12 +143,11 @@ void batch_192() {
     {
         std::function<uint32_t()> sp;
         TrRet (*s156)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float) = nullptr;
-        if (L == 8) s156 = bat_275bd8_l8;
         if (L == 9) s156 = gas_28a428_l9;
-        if (L == 1 || L == 6 || s156 != nullptr) sp = [s156, moby, L, spawned] {
+        if (L == 1 || L == 6 || L == 8 || s156 != nullptr) sp = [s156, moby, L, spawned] {
             const uint32_t flag = coin() ? 1u : 0u, m = moby();
             return spawned(0x0e, [&] {
-                if (L == 1 || L == 6) class156_trail(flag, m);
+                if (L == 1 || L == 6 || L == 8) class156_trail(flag, m);
                 else s156(flag, m, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
             });
         };
@@ -194,7 +194,7 @@ void batch_192() {
             VV(V) = Vec4{rf(-0.3f, 0.3f), rf(-0.3f, 0.3f), rf(-0.2f, 0.4f), 0.0f};
             const float z = VV(P).z + rf(-2.0f, 2.0f);
             const uint32_t kind = u(ri(0, 2));
-            return spawned(0x49, [&] { bat_27f5f0_l8(P, kind, V, 0, 0, 0, 0, 0, z, 0, 0, 0, 0, 0, 0, 0); });
+            return spawned(0x49, [&] { class1400_mote(P, static_cast<int32_t>(kind), V, z); });
         };
         check("particle_49_update", 0x00275320, 200, Ret::None, [&] {
             level();

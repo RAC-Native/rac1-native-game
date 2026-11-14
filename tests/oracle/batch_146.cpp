@@ -23,6 +23,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/batalia_mobys.h>
 #include <game/ovl/variants_l8.h>
+#include <game/ovl/shared_class615.h>
 #include <runtime/ee/ee_interpreter.h>
 
 #include <cstdio>
@@ -110,7 +111,7 @@ void batch_146() {
         if (lv == 2) class615_update(a.i[0]);
         else if (lv == 4) class615_update(a.i[0]);  // (Eudora: the shared port it is re-glued onto)
         else if (lv == 6) class615_update(a.i[0]);
-        else if (lv == 8) bat_class615_update_l8(a.i[0]);
+        else if (lv == 8) class615_update(a.i[0]);
         else pok_class615_update_l11(a.i[0]);
         return uint64_t{0};
     });
@@ -123,7 +124,7 @@ void batch_146() {
         if (lv == 2) class615_puzzle_draw(a.i[0]);
         else if (lv == 4) class615_puzzle_draw(a.i[0]);  // (Eudora: the shared port it is re-glued onto)
         else if (lv == 6) class615_puzzle_draw(a.i[0]);
-        else if (lv == 8) bat_trespasser_puzzle_draw_l8(a.i[0]);
+        else if (lv == 8) class615_puzzle_draw(a.i[0]);
         else pok_cb_2fd6c0_l11(a.i[0]);
         return uint64_t{0};
     });

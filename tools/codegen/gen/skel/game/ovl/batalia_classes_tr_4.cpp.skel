@@ -43,48 +43,12 @@ namespace rac1 {
 using namespace eer;
 using namespace vu0m;
 
-//@gen bat_class615_update_l8
-
-//@gen bat_20d760_l8
-
-//@gen bat_2f3938_l8
-
-//@gen bat_2f3c20_l8
-
-//@gen bat_2f3e98_l8
-
-//@gen bat_2f43e8_l8
-
-//@gen bat_trespasser_puzzle_draw_l8
-
 //@gen bat_class621_update_l8
-
-//@gen bat_class648_update_l8
 
 //@gen bat_class671_update_l8
 
-//@gen bat_class679_update_l8
-
 //@gen bat_26d768_l8
 
-//@gen bat_2f8fd8_l8
-
 //@gen bat_class774_update_l8
-
-//@gen bat_class805_update_l8
-
-//@gen bat_class832_update_l8
-
-//@gen bat_2806a8_l8
-
-//@gen bat_3024d8_l8
-
-//@gen bat_307190_l8
-
-//@gen bat_class1023_update_l8
-
-//@gen bat_class1039_update_l8
-
-//@gen bat_302c00_l8
 
 }  // namespace rac1

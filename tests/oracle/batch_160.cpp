@@ -24,6 +24,13 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/particle_types2_tr.h>
+#include <game/ovl/shared_class1023.h>
+#include <game/ovl/shared_class1135.h>
+#include <game/ovl/shared_class1629.h>
+#include <game/ovl/shared_class252.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_spawner.h>
 #include <game/ovl/variants_l8.h>
 
 #include <cstring>
@@ -159,12 +166,12 @@ void batch_160() {
         void (*fn)(uint32_t);
         int cls;
     };
-    const Cb cbs[] = {{"bat_class252_draw_a", 0x002d3878, bat_class252_draw_a_l8, 252}, {"bat_class252_draw_b", 0x002d4108, bat_class252_draw_b_l8, 252},
+    const Cb cbs[] = {{"bat_class252_draw_a", 0x002d3878, class252_draw_beam, 252}, {"bat_class252_draw_b", 0x002d4108, class252_draw_glow, 252},
                       {"bat_class327_draw", 0x002da0d0, bat_class327_draw_l8, 327},     {"bat_class440_draw", 0x002deee0, bat_class440_draw_l8, 440},
                       {"bat_class452_draw", 0x002e5188, bat_class452_draw_l8, 452},     {"bat_class600_draw", 0x002f0dc8, bat_class600_draw_l8, 600},
-                      {"bat_class671_draw", 0x002f5e58, bat_class671_draw_l8, 671},     {"bat_class832_draw", 0x002fb948, bat_class832_draw_l8, 832},
-                      {"bat_class1135_draw", 0x00304bc0, bat_class1135_draw_l8, 1135},  {"bat_class1649_draw", 0x00309030, bat_class1649_draw_l8, 1649},
-                      {"bat_sandmouse_glow", 0x0030ab50, bat_sandmouse_glow_l8, 1818}};
+                      {"bat_class671_draw", 0x002f5e58, bat_class671_draw_l8, 671},     {"bat_class832_draw", 0x002fb948, class832_draw, 832},
+                      {"bat_class1135_draw", 0x00304bc0, class1135_draw, 1135},  {"bat_class1649_draw", 0x00309030, bat_class1649_draw_l8, 1649},
+                      {"bat_sandmouse_glow", 0x0030ab50, sandmouse_glow, 1818}};
     for (const Cb& cb : cbs) {
         if (g_oracle_level != 8) {
             b8check(cb.name, cb.addr, 0, Ret::None, nullptr, nullptr);
@@ -294,9 +301,9 @@ void batch_160() {
         // on their live mobys of the dump, state / pvars varied
         {
             static const struct { int cls; uint32_t fn; void (*port)(uint32_t); } classes[] = {
-                {1023, 0x00301158, bat_class1023_update_l8}, {1629, 0x003085f0, bat_class1629_update_l8}, {440, 0x002e0328, bat_class440_update_l8},
+                {1023, 0x00301158, class1023_update}, {1629, 0x003085f0, class1629_update}, {440, 0x002e0328, bat_class440_update_l8},
                 {1283, 0x003065d8, bat_class1283_update_l8}, {1130, 0x00302ce8, bat_class1130_update_l8}, {1144, 0x00305270, bat_class1144_update_l8},
-                {253, 0x002d42d8, bat_class253_update_l8},   {455, 0x002e6530, bat_class455_update_l8},   {1818, 0x0030ac28, bat_class1818_update_l8}};
+                {253, 0x002d42d8, bat_class253_update_l8},   {455, 0x002e6530, class455_update},   {1818, 0x0030ac28, sandmouse_update}};
             for (const auto& c : classes) {
                 load_dump(d);
                 std::vector<uint32_t> ms;
