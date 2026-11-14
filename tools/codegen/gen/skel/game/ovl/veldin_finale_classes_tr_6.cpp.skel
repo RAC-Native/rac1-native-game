@@ -66,14 +66,6 @@ using namespace vu0m;
 
 //@gen vf_class1799_update_l18
 
-//@gen vf_2fb410_l18
-
-//@gen vf_2fb470_l18
-
-//@gen vf_class1890_update_l18
-
-//@gen vf_class1898_update_l18
-
 //@gen vf_class1899_update_l18
 
 //@gen vf_2fc100_l18
@@ -82,60 +74,14 @@ using namespace vu0m;
 
 //@gen vf_class1906_update_l18
 
-//@gen vf_301258_l18
-
-//@gen vf_301280_l18
-
-//@gen vf_3056f0_l18
-
-//@gen vf_305830_l18
-
-//@gen vf_305a70_l18
-
-//@gen vf_cam_type18_accept_u
-
 //@gen vf_hook_2d6108_u
-
-//@gen vf_hook_2d6190_u
-
-//@gen vf_hook_2d61e0_u
 
 //@gen vf_hook_2d6230_u
 
 //@gen vf_hook_2d6250_u
 
-//@gen vf_hook_2fcbb0_u
-
-//@gen vf_hook_2fcc00_u
-
-//@gen vf_hook_2fcc50_u
-
 //@gen vf_hook_2fcca0_u
 
-//@gen vf_hook_2d6280_l18
-
-//@gen vf_hook_2fcd00_l18
-
-//@gen vf_1f3e08_l18
-
-//@gen vf_cam0_hook_l18
-
-//@gen vf_cam_callback_l18
-
 //@gen vf_cb_2d5768_l18
-
-//@gen vf_cb_2d8098_l18
-
-//@gen vf_203a38_l18
-
-//@gen vf_2da8d8_l18
-
-//@gen vf_2dabc0_l18
-
-//@gen vf_2dae38_l18
-
-//@gen vf_2db388_l18
-
-//@gen vf_cb_2d98e8_l18
 
 }  // namespace rac1

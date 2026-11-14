@@ -49,19 +49,14 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shared_rock.h>
+#include <game/ovl/shared_attach.h>
+#include <game/ovl/shared_flash.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
-
-//@gen vf_class1356_update_l18
-
-//@gen vf_265250_l18
-
-//@gen vf_265358_l18
-
-//@gen vf_2dfbc0_l18
 
 //@gen vf_2fa8e0_l18
 
@@ -100,8 +95,6 @@ using namespace vu0m;
 //@gen vf_2dfaa0_l18
 
 //@gen vf_2dfb90_l18
-
-//@gen vf_2dfba0_l18
 
 //@gen vf_2ea0f0_l18
 
@@ -146,8 +139,6 @@ using namespace vu0m;
 //@gen vf_2f70b8_l18
 
 //@gen vf_2f7220_l18
-
-//@gen vf_306338_l18
 
 //@gen vf_2f7288_l18
 

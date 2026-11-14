@@ -364,13 +364,13 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         case L18_CASE(0x002e14a8): ret = e749_hookc(m, a1, a2, f12); return true;  // (Veldin's 0x2d57d0)
         case L18_CASE(0x002e14d8): ret = static_cast<int32_t>(e749_hook_10(m)); return true;  // (Veldin's 0x2d5800)
         case L18_CASE(0x002d6108): ret = u_call(vf_hook_2d6108_u, m, a1, a2, f12); return true;
-        case L18_CASE(0x002d6190): ret = u_call(vf_hook_2d6190_u, m, a1, a2, f12); return true;
-        case L18_CASE(0x002d61e0): ret = u_call(vf_hook_2d61e0_u, m, a1, a2, f12); return true;
+        case L18_CASE(0x002d6190): ret = carry_state_hook(m, a1, a2, f12, 4, 4, -1); return true;  // (the shared port, shared_helpers.cpp)
+        case L18_CASE(0x002d61e0): ret = carry_state_hook(m, a1, a2, f12, 8, 4, -1); return true;
         case L18_CASE(0x002d6230): ret = u_call(vf_hook_2d6230_u, m, a1, a2, f12); return true;
         case L18_CASE(0x002d6250): ret = u_call(vf_hook_2d6250_u, m, a1, a2, f12); return true;
-        case L18_CASE(0x002fcbb0): ret = u_call(vf_hook_2fcbb0_u, m, a1, a2, f12); return true;
-        case L18_CASE(0x002fcc00): ret = u_call(vf_hook_2fcc00_u, m, a1, a2, f12); return true;
-        case L18_CASE(0x002fcc50): ret = u_call(vf_hook_2fcc50_u, m, a1, a2, f12); return true;
+        case L18_CASE(0x002fcbb0): ret = carry_state_hook(m, a1, a2, f12, 0, 7, 2); return true;
+        case L18_CASE(0x002fcc00): ret = carry_state_hook(m, a1, a2, f12, 4, 7, 2); return true;
+        case L18_CASE(0x002fcc50): ret = carry_state_hook(m, a1, a2, f12, 8, 7, 2); return true;
         case L18_CASE(0x002fcca0): ret = u_call(vf_hook_2fcca0_u, m, a1, a2, f12); return true;
         case L18_CASE(0x002fccd0): ret = static_cast<int32_t>(e749_hook_10(m)); return true;  // (Veldin's 0x2d5800, the same code)
         default: return false;

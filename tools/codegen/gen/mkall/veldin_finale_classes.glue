@@ -1,1 +1,9 @@
 0x00267ae8: music_track_request(static_cast<int32_t>(a0.w()), a1.w());
+0x0025b4a0: moby_group_set_state(static_cast<int32_t>(a0.w()), a1.w());
+0x00264c10: spark_burst(a0.w(), a1.w(), a2.w());
+0x00265250: attach_bind(a0.w(), a1.w(), static_cast<int32_t>(a2.w()));
+0x00265358: attach_carry(a0.w(), a1.w(), static_cast<int32_t>(a2.w()));
+0x002dfba0: set32(v0, static_cast<uint32_t>(state_query_finale(a0.w())));
+0x002fb5e0: set32(v0, static_cast<uint32_t>(flash_spawn(a0.w(), static_cast<int32_t>(a1.w()), a2.w(), a3.w())));
+0x00306338: camera_type12_flag(a0.w());
+0x002dfbc0: set32(v0, static_cast<uint32_t>(rock_spawn(a0.w(), a1.w(), a2.w(), static_cast<int32_t>(a3.w()), t0.w(), fr[12], fr[13], fr[14], fr[15])));

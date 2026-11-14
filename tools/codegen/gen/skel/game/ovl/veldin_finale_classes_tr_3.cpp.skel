@@ -50,6 +50,7 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/shared_flash.h>
 
 namespace rac1 {
 
@@ -60,8 +61,6 @@ using namespace vu0m;
 
 //@gen vf_2ea598_l18
 
-//@gen vf_2fb5e0_l18
-
 //@gen vf_2ea800_l18
 
 //@gen vf_2eacd8_l18
@@ -70,34 +69,6 @@ using namespace vu0m;
 
 //@gen vf_class983_update_l18
 
-//@gen vf_class1021_update_l18
-
-//@gen vf_class1039_update_l18
-
-//@gen vf_2ed4f0_l18
-
-//@gen vf_2ed990_l18
-
-//@gen vf_2ed320_l18
-
-//@gen vf_2ed410_l18
-
-//@gen vf_2ed780_l18
-
-//@gen vf_class1134_update_l18
-
-//@gen vf_2edac8_l18
-
-//@gen vf_2ee270_l18
-
-//@gen vf_2ee3d0_l18
-
-//@gen vf_2ee788_l18
-
-//@gen vf_2ee7d8_l18
-
-//@gen vf_class1135_update_l18
-
 //@gen vf_2f0120_l18
 
 //@gen vf_2f02e8_l18
@@ -105,19 +76,5 @@ using namespace vu0m;
 //@gen vf_2f0848_l18
 
 //@gen vf_class1355_update_l18
-
-//@gen vf_2a7eb8_l18
-
-//@gen vf_2dd9e8_l18
-
-//@gen vf_2dda08_l18
-
-//@gen vf_2f11a8_l18
-
-//@gen vf_2f14d0_l18
-
-//@gen vf_2f15e8_l18
-
-//@gen vf_2f1698_l18
 
 }  // namespace rac1

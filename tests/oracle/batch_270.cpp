@@ -11,6 +11,32 @@
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/hero_move_mode.h>
 #include <game/ovl/veldin_finale_mobys.h>
+#include <game/ovl/aridia_mobys.h>
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/shared_class1021.h>
+#include <game/ovl/shared_class1108.h>
+#include <game/ovl/shared_class1135.h>
+#include <game/ovl/shared_class1356.h>
+#include <game/ovl/shared_class1443.h>
+#include <game/ovl/shared_class1523.h>
+#include <game/ovl/shared_class256.h>
+#include <game/ovl/shared_class341.h>
+#include <game/ovl/shared_class49.h>
+#include <game/ovl/shared_class615.h>
+#include <game/ovl/shared_class638.h>
+#include <game/ovl/shared_class655_draw.h>
+#include <game/ovl/shared_class830.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_finale.h>
+#include <game/ovl/shared_flash.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_rock.h>
+#include <game/ovl/shared_shockwave.h>
+#include <game/ovl/shared_swingshot_target.h>
+#include <game/ovl/shared_zones.h>
 #include <game/ovl/empty_class_updates.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -32,6 +58,14 @@ namespace {
 TrRet e749_hook_10_uniform(uint32_t a0, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float,
                            float, float, float, float) {
     return TrRet{e749_hook_10(a0), 0.0f};
+}
+
+// The shared carry hook (shared_helpers.cpp) with a level-18 copy's constants (which hook, the carried state, the released
+// one: as batch 506 checks these addresses), in the hook table's uniform form
+template <uint32_t Which, uint32_t Carried, int32_t Released>
+TrRet carry_state_uniform(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float f12, float, float,
+                          float, float, float, float, float) {
+    return TrRet{static_cast<uint32_t>(carry_state_hook(a0, a1, a2, f12, Which, Carried, Released)), 0.0f};
 }
 
 // A random state can hold a pointer outside RAM that the port's vector helpers dereference without a check (a SIGSEGV where the interpreter would wrap it): the trial run of a state
@@ -213,13 +247,13 @@ void batch_270() {
     struct TrCls { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t skip_states = 0; bool walk = false; uint32_t skip_p0 = 0; uint32_t skip_p1 = 0; };  // (skip_p0 / skip_p1: states skipped in pass 0 / 1 only, see the batch's notes)  // (the states that start a scene / a level change: the original runs the kernel / movie path for real)
     static const TrCls trcls[] = {
         {"class41", 0x002a7220, vf_class41_update_l18, 0x0, false},
-        {"class49", 0x002a76e0, vf_class49_update_l18, 0x0, false},
-        {"class50", 0x002a7b90, vf_class50_update_l18, 0x0, false},
-        {"class256", 0x002aa3b0, vf_class256_update_l18, 0x0, false},
-        {"class1427", 0x002ab7c0, vf_class1427_update_l18, 0x0, false},
-        {"class1523", 0x002abaa0, vf_class1523_update_l18, 0x0, false},
-        {"class331", 0x002ce7d0, vf_class331_update_l18, 0x0, false},
-        {"class341", 0x002ce800, vf_class341_update_l18, 0x0, false},
+        {"class49", 0x002a76e0, class49_update, 0x0, false},
+        {"class50", 0x002a7b90, class50_update, 0x0, false},
+        {"class256", 0x002aa3b0, class256_update, 0x0, false},
+        {"class1427", 0x002ab7c0, shockwave_update, 0x0, false},
+        {"class1523", 0x002abaa0, class1523_update, 0x0, false},
+        {"class331", 0x002ce7d0, trackdrive_left_update_l2, 0x0, false},
+        {"class341", 0x002ce800, class341_update, 0x0, false},
         {"class419", 0x002ceaa0, empty_update, 0x0, false},
         {"class564", 0x002d5050, vf_class564_update_l18, 0x0, false},
         {"class568", 0x002d5918, vf_class568_update_l18, 0x0, false},
@@ -227,25 +261,25 @@ void batch_270() {
         {"class583", 0x002d6600, vf_class583_update_l18, 0x0, false},
         {"class586", 0x002d7b20, vf_class586_update_l18, 0x0, false},
         {"class587", 0x002d82c0, vf_class587_update_l18, 0x0, false},
-        {"class605", 0x002d8ba8, vf_class605_update_l18, 0x0, false},
-        {"class615", 0x002d8fd0, vf_class615_update_l18, 0x0, false},
+        {"class605", 0x002d8ba8, zone_marker_update, 0x0, false},
+        {"class615", 0x002d8fd0, class615_update, 0x0, false},
         {"class624", 0x002db460, vf_class624_update_l18, 0x0, false},
         {"class628", 0x002dc260, vf_class628_update_l18, 0x0, false},
-        {"class638", 0x002dc918, vf_class638_update_l18, 0x0, false},
+        {"class638", 0x002dc918, class638_update, 0x0, false},
         {"class644", 0x002df608, vf_class644_update_l18, 0x0, false},
-        {"class696", 0x002dfda8, vf_class696_update_l18, 0x0, false},
-        {"class830", 0x002e1508, vf_class830_update_l18, 0x0, false},
-        {"class758", 0x002e19d8, vf_class758_update_l18, 0x0, false},
-        {"class805", 0x002e1f40, vf_class805_update_l18, 0x0, false},
-        {"class832", 0x002e4168, vf_class832_update_l18, 0x0, false},
+        {"class696", 0x002dfda8, rock_update, 0x0, false},
+        {"class830", 0x002e1508, class830_update, 0x0, false},
+        {"class758", 0x002e19d8, swingshot_target_update, 0x0, false},
+        {"class805", 0x002e1f40, spawn_point_update_l1, 0x0, false},
+        {"class832", 0x002e4168, class832_update, 0x0, false},
         {"class885", 0x002e9768, vf_class885_update_l18, 0x0, false},
         {"class983", 0x002e9e70, vf_class983_update_l18, 0x0, false},
-        {"class1021", 0x002ec3e8, vf_class1021_update_l18, 0x0, false},
-        {"class1039", 0x002ec858, vf_class1039_update_l18, 0x0, false},
-        {"class1134", 0x002ecc40, vf_class1134_update_l18, 0x4, false},
-        {"class1135", 0x002edb78, vf_class1135_update_l18, 0x0, false},
+        {"class1021", 0x002ec3e8, class1021_update, 0x0, false},
+        {"class1039", 0x002ec858, deadly_zones_update, 0x0, false},
+        {"class1134", 0x002ecc40, gold_bolt_update, 0x4, false},
+        {"class1135", 0x002edb78, teleporter_update_l1, 0x0, false},
         {"class1355", 0x002efb88, vf_class1355_update_l18, 0x0, false},
-        {"class1356", 0x002f0920, vf_class1356_update_l18, 0x0, false},
+        {"class1356", 0x002f0920, class1356_update, 0x0, false},
         {"class1381", 0x002f16f0, vf_class1381_update_l18, 0x0, false},
         {"class1392", 0x002f1e68, vf_class1392_update_l18, 0x0, false},
         {"class1402", 0x002f2310, vf_class1402_update_l18, 0x0, false},
@@ -258,8 +292,8 @@ void batch_270() {
         {"class1584", 0x002fa728, vf_class1584_update_l18, 0x0, false},
         {"class1750", 0x002fad08, vf_class1750_update_l18, 0x0, false},
         {"class1799", 0x002fad28, vf_class1799_update_l18, 0x0, false},
-        {"class1890", 0x002fae48, vf_class1890_update_l18, 0x0, false},
-        {"class1898", 0x002fb548, vf_class1898_update_l18, 0x0, false},
+        {"class1890", 0x002fae48, class1443_update, 0x0, false},
+        {"class1898", 0x002fb548, flash_update, 0x0, false},
         {"class1899", 0x002fb868, vf_class1899_update_l18, 0x0, false},
         {"class1906", 0x002fbb98, vf_class1906_update_l18, 0x0, false},
     };
@@ -331,26 +365,26 @@ void batch_270() {
         for (uint32_t a = 0x100; a < 0x1500; a += 4) g_ignored_words.push_back(a);
         static const Cb cbs[] = {
         {"cb2d5768", 0x002d5768, vf_cb_2d5768_l18, 0x002d5050, 564},
-        {"cb2d8098", 0x002d8098, vf_cb_2d8098_l18, 0x002d7b20, 586},
-        {"cb2d98e8", 0x002d98e8, vf_cb_2d98e8_l18, 0x002d8fd0, 615},
+        {"cb2d8098", 0x002d8098, class1108_draw, 0x002d7b20, 586},
+        {"cb2d98e8", 0x002d98e8, class615_puzzle_draw, 0x002d8fd0, 615},
         {"cb2dba20", 0x002dba20, vf_cb_2dba20_l18, 0x002db460, 624},
         {"cb2dc4b8", 0x002dc4b8, vf_cb_2dc4b8_l18, 0x002dc260, 628},
-        {"cb2e3f58", 0x002e3f58, vf_cb_2e3f58_l18, 0x002e4168, 832},
-        {"cb2eb9f8", 0x002eb9f8, vf_cb_2eb9f8_l18, 0x002e9e70, 983},
-        {"cb2ee490", 0x002ee490, vf_cb_2ee490_l18, 0x002edb78, 1135},
+        {"cb2e3f58", 0x002e3f58, class832_draw, 0x002e4168, 832},
+        {"cb2eb9f8", 0x002eb9f8, class655_draw, 0x002e9e70, 983},
+        {"cb2ee490", 0x002ee490, class1135_draw, 0x002edb78, 1135},
         {"cb2f0390", 0x002f0390, vf_cb_2f0390_l18, 0x002efb88, 1355},
         {"cb2f06c0", 0x002f06c0, vf_cb_2f06c0_l18, 0x002efb88, 1355},
         {"cb2f1fd8", 0x002f1fd8, vf_cb_2f1fd8_l18, 0x002f1e68, 1392},
-        {"cb2f2620", 0x002f2620, vf_cb_2f2620_l18, 0x002f2310, 1402},
-        {"cb2f27c8", 0x002f27c8, vf_cb_2f27c8_l18, 0x002f2310, 1402},
-        {"cb2f2970", 0x002f2970, vf_cb_2f2970_l18, 0x002f2310, 1402},
+        {"cb2f2620", 0x002f2620, [](uint32_t m) { finale_quads_draw(0, m); }, 0x002f2310, 1402},
+        {"cb2f27c8", 0x002f27c8, [](uint32_t m) { finale_quads_draw(1, m); }, 0x002f2310, 1402},
+        {"cb2f2970", 0x002f2970, [](uint32_t m) { finale_quads_draw(2, m); }, 0x002f2310, 1402},
         {"cb2f7880", 0x002f7880, vf_cb_2f7880_l18, 0x002f2bf0, 1422},
         {"cb2f9780", 0x002f9780, vf_cb_2f9780_l18, 0x002f88e8, 1563},
         {"cb2f9a98", 0x002f9a98, vf_cb_2f9a98_l18, 0x002f88e8, 1563},
         {"cb2f9c20", 0x002f9c20, vf_cb_2f9c20_l18, 0x002f88e8, 1563},
         {"cb2f9eb8", 0x002f9eb8, vf_cb_2f9eb8_l18, 0x002f88e8, 1563},
-        {"cb2fb018", 0x002fb018, vf_cb_2fb018_l18, 0x002fae48, 1890},
-        {"cb2fb690", 0x002fb690, vf_cb_2fb690_l18, 0x002fb548, 1898},
+        {"cb2fb018", 0x002fb018, class1443_draw, 0x002fae48, 1890},
+        {"cb2fb690", 0x002fb690, flash_draw_quad, 0x002fb548, 1898},
         {"cb2fc860", 0x002fc860, vf_cb_2fc860_l18, 0x002fbb98, 1906},
         {"cb2fca98", 0x002fca98, vf_cb_2fca98_l18, 0x002fbb98, 1906},
         };
@@ -417,13 +451,13 @@ void batch_270() {
         struct Hk { const char* name; uint32_t addr; uint32_t slot; TrRet (*fn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float); };
         static const Hk hks[] = {
             {"hook_2d6108", 0x2d6108, 0x0, vf_hook_2d6108_u},
-            {"hook_2d6190", 0x2d6190, 0x4, vf_hook_2d6190_u},
-            {"hook_2d61e0", 0x2d61e0, 0x8, vf_hook_2d61e0_u},
+            {"hook_2d6190", 0x2d6190, 0x4, carry_state_uniform<4, 4, -1>},
+            {"hook_2d61e0", 0x2d61e0, 0x8, carry_state_uniform<8, 4, -1>},
             {"hook_2d6230", 0x2d6230, 0xc, vf_hook_2d6230_u},
             {"hook_2d6250", 0x2d6250, 0x10, vf_hook_2d6250_u},
-            {"hook_2fcbb0", 0x2fcbb0, 0x0, vf_hook_2fcbb0_u},
-            {"hook_2fcc00", 0x2fcc00, 0x4, vf_hook_2fcc00_u},
-            {"hook_2fcc50", 0x2fcc50, 0x8, vf_hook_2fcc50_u},
+            {"hook_2fcbb0", 0x2fcbb0, 0x0, carry_state_uniform<0, 7, 2>},
+            {"hook_2fcc00", 0x2fcc00, 0x4, carry_state_uniform<4, 7, 2>},
+            {"hook_2fcc50", 0x2fcc50, 0x8, carry_state_uniform<8, 7, 2>},
             {"hook_2fcca0", 0x2fcca0, 0xc, vf_hook_2fcca0_u},
             {"hook_2fccd0", 0x2fccd0, 0x10, e749_hook_10_uniform},
         };
@@ -496,8 +530,8 @@ void batch_270() {
             wf(0x00162794, rf(0, 0.5f));  // $gp - 0x446c: the frame step the callback counts down by
             w32(OV(0x0015ef4c), u(ri(0, 14)));  // the queue's count (it holds up to 16)
         };
-        l18check("cam0_hook", 0x00305318, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { vf_cam0_hook_l18(0); return uint64_t{0}; });
-        l18check("cam_callback", 0x00305378, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { vf_cam_callback_l18(0); return uint64_t{0}; });
+        l18check("cam0_hook", 0x00305318, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_hook(0); return uint64_t{0}; });
+        l18check("cam_callback", 0x00305378, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_callback(0); return uint64_t{0}; });
     }
 
     // ---- level 18's camera type 0x12's accept function (section 4; its init / update / exit are Veldin's), as batch 120 checks level 8's types: a live
@@ -537,7 +571,7 @@ void batch_270() {
         else {
             if (!own) std::printf("cam_type18                no live camera of the type on this level: checked on another live camera's words\n");
             l18check("cam_type18_accept", 0x00306370, 300, Ret::Int32, [cam_setup] { uint32_t other = 0; const uint32_t cam = cam_setup(0x12, true, &other); return Args{{cam, other}, {}}; },
-                     [](A a) { return r32(a.i[0] != 0 ? vf_cam_type18_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0 : 0u); });
+                     [](A a) { return r32(a.i[0] != 0 ? static_cast<uint32_t>(cam_type18_accept(a.i[0], a.i[1])) : 0u); });
         }
     }
 

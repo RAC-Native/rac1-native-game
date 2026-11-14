@@ -163,7 +163,7 @@ void batch_370() {
             const uint32_t color = R();
             return spawned(0x1f, [&] {
                 if (L == 15) class1523_streak(color, P, m);  // (Quartu: the shared port it is re-glued onto)
-                else vf_270af0_l18(color, P, m, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+                else class1523_streak(color, P, m);  // (Veldin's finale: the shared port it is re-glued onto)
             });
         };
         check("particle_1f_update", 0x0026eb88, 200, Ret::None, [&] {

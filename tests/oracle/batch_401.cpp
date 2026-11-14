@@ -23,6 +23,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/shared_fx_tr.h>
 #include <game/ovl/veldin_finale_mobys.h>
+#include <game/ovl/shared_finale.h>
 
 #include <cstring>
 #include <functional>
@@ -80,7 +81,9 @@ void batch_401() {
     // ---- level 18: the hook +0x14 of classes 568 / 1906
     {
         struct Hk { const char* name; uint32_t addr; uint16_t cls; void (*fn)(uint32_t); };
-        static const Hk hks[] = {{"vf_hook_2d6280_l18", 0x002d6280, 568, vf_hook_2d6280_l18}, {"vf_hook_2fcd00_l18", 0x002fcd00, 1906, vf_hook_2fcd00_l18}};
+        // (the shared port finale_stop_hook, shared_finale.cpp, with each copy's state: 5 / 8, as batch 510 checks them)
+        static const Hk hks[] = {{"vf_hook_2d6280_l18", 0x002d6280, 568, [](uint32_t m) { finale_stop_hook(m, 5); }},
+                                 {"vf_hook_2fcd00_l18", 0x002fcd00, 1906, [](uint32_t m) { finale_stop_hook(m, 8); }}};
         for (const Hk& h : hks) {
             if (g_oracle_level != 18) { l401check(18, h.name, h.addr, 0, Ret::None, nullptr, nullptr); continue; }
             level();
