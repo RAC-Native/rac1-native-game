@@ -6,6 +6,9 @@
 //    (no primitives) or 0x10 (both faces), the start's moby ignored or none. (The family tasks' "far lines report a moby
 //    where the original reports the world" was batch 514's harness: the Sandmouse's search got three of its six float
 //    arguments in the original; with all six this function and the search agree.)
+//    After each case the typed hit facade (game/collision/collision.h, #150 task C1) is compared with the raw words the line
+//    left (the block 0x173e40 +0x18 .. +0x7f, the hit list, a contact record's address, the +0x18 writer): a mismatch changes
+//    the check's return value.
 //  - carry_update 0x2dc9f0 (enemy_749.cpp) on the level's own carriable mobys (a class hook +0x10 that is not the default
 //    one) and a Morph-o-Ray chicken spawned where its class is loaded: the record in states 1 .. 8 (turning, rising, held by
 //    the hero or a moby and handed over, resting, flying with or without a target, falling), fast or slow, by the hero or by
@@ -22,6 +25,7 @@
 
 #include "ovl_oracle.h"
 
+#include <game/collision/collision.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -99,6 +103,40 @@ bool trial(const std::function<void()>& port) {
     return ok;
 }
 
+// ---- the typed hit facade (game/collision/collision.h) against the raw words a query left: 0 when every accessor reads them,
+// else a mask of the ones that do not (folded into segment_collide_level's return, so a facade that misreads fails that check;
+// the RAM itself is compared with the original's as always, so the facade reads what the original wrote)
+uint32_t facade_mismatch() {
+    const uint32_t B = OV(0x00173e40), H = OV(0x00177f00);
+    auto same = [](const Vec4& v, uint32_t at) { return std::memcmp(&v, &ee_ref<Vec4>(at), sizeof(Vec4)) == 0; };
+    const CollisionHit h = coll_hit();
+    uint32_t bad = 0;
+    if (h.moby != ee_read<uint32_t>(B + 0x18) || coll_hit_moby() != ee_read<uint32_t>(B + 0x18)) bad |= 0x00010000u;
+    if (h.flags != ee_read<uint32_t>(B + 0x1c) || coll_hit_flags() != ee_read<uint32_t>(B + 0x1c)) bad |= 0x00020000u;
+    if (!same(h.point, B + 0x20) || !same(coll_hit_point(), B + 0x20)) bad |= 0x00040000u;
+    if (!same(h.pushed, B + 0x30) || !same(coll_hit_pushed(), B + 0x30)) bad |= 0x00080000u;
+    if (!same(h.normal, B + 0x40) || !same(coll_hit_normal(), B + 0x40)) bad |= 0x00100000u;
+    for (int k = 0; k < 3; ++k)
+        if (!same(h.tri[k], B + 0x50 + 0x10 * static_cast<uint32_t>(k)) || !same(coll_hit_tri(k), B + 0x50 + 0x10 * static_cast<uint32_t>(k))) bad |= 0x00200000u << k;
+    int n = 0;
+    while (n < 0x80 && ee_read<uint32_t>(H + 4 * static_cast<uint32_t>(n)) != 0) ++n;
+    if (coll_hit_list() != H || coll_hit_list_count() != n) bad |= 0x01000000u;
+    for (int i = 0; i <= n && i < 0x80; ++i)
+        if (coll_hit_list_at(i) != ee_read<uint32_t>(H + 4 * static_cast<uint32_t>(i))) bad |= 0x02000000u;
+    const int ring = static_cast<int>(ee_read<uint32_t>(B + 0x14) & 0x3f);  // (the ring's next record; no draw from the cases' random sequence)
+    if (coll_contact(ring) != OV(0x00178100) + 0x40 * static_cast<uint32_t>(ring)) bad |= 0x04000000u;
+    // the writer: a value set and read back raw, then the word put back as it was (the RAM stays the port's)
+    const uint32_t keep = ee_read<uint32_t>(B + 0x18);
+    coll_hit_set_moby(keep ^ 0x5a5a0000u);
+    if (ee_read<uint32_t>(B + 0x18) != (keep ^ 0x5a5a0000u)) bad |= 0x08000000u;
+    w32(B + 0x18, keep);
+    if (bad != 0) {
+        static int shown = 0;
+        if (shown++ < 4) std::printf("  [coll_hit facade] mismatch mask %08x\n", bad);
+    }
+    return bad;
+}
+
 // ---- segment_collide on the level's own collision and mobys
 void segment_checks() {
     if (!selected("segment_collide_level")) return;
@@ -142,7 +180,12 @@ void segment_checks() {
         oracle_vu_contact_reset();
         const uint32_t fl = ri(0, 3) != 0 ? 0u : (coin() ? 2u : 0x10u);
         return Args{{S, S + 0x10, fl, coin() ? from_m : 0u, 0u}, {}};
-    }, [](A a) { return static_cast<uint64_t>(static_cast<uint32_t>(segment_collide(a.i[0], a.i[1], a.i[2], a.i[3], a.i[4]))); });
+    }, [](A a) {
+        const int32_t r = segment_collide(a.i[0], a.i[1], a.i[2], a.i[3], a.i[4]);
+        // the typed hit facade read after each case: a word it does not read as the line left it makes the return differ
+        const uint32_t bad = facade_mismatch();
+        return static_cast<uint64_t>(static_cast<uint32_t>(r) ^ bad);
+    });
 }
 
 // ---- carry_update and the class hook +0x10 on the level's own carriable mobys (a class hook +0x10: the carry record)

@@ -19,6 +19,11 @@ add_library(rac1_game STATIC
     ovl/screen_fade.cpp
     ovl/vsync_callback.cpp
     ovl/ovl_1e_1f.cpp
+    collision/collide_mesh.cpp
+    collision/collide_mobys.cpp
+    collision/collide_sphere.cpp
+    collision/collide_capsule.cpp
+    collision/collide_segment.cpp
     ovl/veldin_mobys.cpp
     ovl/ovl_20.cpp
     ovl/ovl_21.cpp
