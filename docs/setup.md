@@ -240,9 +240,9 @@ into it back too ([Architecture](architecture.md#the-region-layer)). Then, as fo
   and [1.02 Gameplay](advanced.md#102-gameplay), as on the other discs; the rest are to come one by one.
 - The generated ones are translated from the Platinum's own code, as stand-ins (`STAND-IN` in the generated
   sources): on Veldin the credits, the end menu's page, the vendor's screens and the Morph-o-Ray's chicken,
-  and per level the same engine functions (the hero's horizontal velocity, the HUD counters...). The stand-ins of the
-  hero's velocity have no enhancement hook points from this disc (the `PAL:` lines of `hooks.glue` are version
-  1.00's), so R&C 3 movement's air braking and the strafe flip's speed do not act on the levels where it is a stand-in.
+  and per level the same engine functions (the hero's horizontal velocity, the HUD counters...). The hero's
+  velocity functions are hand-written ports and run on every disc, the Platinum included, so R&C 3 movement's air
+  braking and the strafe flip's speed act on its levels as on the other discs.
 - The save folder is the same as version 1.00's (`BESCES-50916RATCHET`), as on a console. The saves are the
   port's, as from the other discs.
 - The disc's Italian vendor lines (the voice language Italian) are the Japanese ones: the Platinum was mastered
