@@ -10,6 +10,53 @@
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/hero_move_mode.h>
 #include <game/ovl/quartu_mobys.h>
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/shared_cam19.h>
+#include <game/ovl/shared_class1108.h>
+#include <game/ovl/shared_class1179.h>
+#include <game/ovl/shared_class1221.h>
+#include <game/ovl/shared_class1224.h>
+#include <game/ovl/shared_class123.h>
+#include <game/ovl/shared_class123_draw.h>
+#include <game/ovl/shared_class1331.h>
+#include <game/ovl/shared_class1371.h>
+#include <game/ovl/shared_class1523.h>
+#include <game/ovl/shared_class156.h>
+#include <game/ovl/shared_class193.h>
+#include <game/ovl/shared_class196.h>
+#include <game/ovl/shared_class250.h>
+#include <game/ovl/shared_class256.h>
+#include <game/ovl/shared_class258.h>
+#include <game/ovl/shared_class28.h>
+#include <game/ovl/shared_class28_draw.h>
+#include <game/ovl/shared_class325.h>
+#include <game/ovl/shared_class403.h>
+#include <game/ovl/shared_class408.h>
+#include <game/ovl/shared_class408_tint.h>
+#include <game/ovl/shared_class44.h>
+#include <game/ovl/shared_class49.h>
+#include <game/ovl/shared_class567.h>
+#include <game/ovl/shared_class655.h>
+#include <game/ovl/shared_class655_draw.h>
+#include <game/ovl/shared_class679.h>
+#include <game/ovl/shared_class77.h>
+#include <game/ovl/shared_class78.h>
+#include <game/ovl/shared_class78_draw.h>
+#include <game/ovl/shared_class819.h>
+#include <game/ovl/shared_class830.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_class848.h>
+#include <game/ovl/shared_class934.h>
+#include <game/ovl/shared_floor_switch.h>
+#include <game/ovl/shared_gadget_pickups.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_ripples.h>
+#include <game/ovl/shared_rock.h>
+#include <game/ovl/shared_shockwave.h>
+#include <game/ovl/shared_swingshot_target.h>
+#include <game/ovl/shared_three_glows.h>
+#include <game/ovl/shared_waves.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
@@ -211,71 +258,71 @@ void batch_240() {
     // the states that request a level change (0x24d430's copy: the original would run the CD / movie path for real) or start a
     // music stream (its disc read: sceCdRead 0x121450 without the IOP's stream system, a TODO_PORT on the port's side; class 1419 state 1, 1446 states 5 / 7)
     static const TrCls trcls[] = {
-        {"class28", 0x002955c0, qua_class28_update_l15, 0x0, false},
-        {"class44", 0x002979d8, qua_class44_update_l15, 0x0, false},
-        {"class49", 0x0029ac30, qua_class49_update_l15, 0x0, false},
+        {"class28", 0x002955c0, class28_update, 0x0, false},
+        {"class44", 0x002979d8, class44_update, 0x0, false},
+        {"class49", 0x0029ac30, class49_update, 0x0, false},
         {"class67", 0x0029aff0, qua_class67_update_l15, 0x0, false},
-        {"class256", 0x0029d6c0, qua_class256_update_l15, 0x0, false},
-        {"class1427", 0x0029ead0, qua_class1427_update_l15, 0x0, false},
-        {"class1523", 0x0029edb0, qua_class1523_update_l15, 0x2, false},
-        {"class77", 0x002a2488, qua_class77_update_l15, 0x0, false},
-        {"class78", 0x002a2bf0, qua_class78_update_l15, 0x0, false},
+        {"class256", 0x0029d6c0, class256_update, 0x0, false},
+        {"class1427", 0x0029ead0, shockwave_update, 0x0, false},
+        {"class1523", 0x0029edb0, class1523_update, 0x2, false},
+        {"class77", 0x002a2488, class77_update, 0x0, false},
+        {"class78", 0x002a2bf0, class78_update, 0x0, false},
         {"class92", 0x002a36d0, qua_class92_update_l15, 0x0, false},
         {"class93", 0x002a3ba8, qua_class93_update_l15, 0x0, false},
-        {"class123", 0x002a6e68, qua_class123_update_l15, 0x0, false},
+        {"class123", 0x002a6e68, class123_update, 0x0, false},
         {"class148", 0x002a7880, qua_class148_update_l15, 0x0, false},
         {"class154", 0x002aa280, qua_class154_update_l15, 0x0, false},
-        {"class156", 0x002aabb8, qua_class156_update_l15, 0x0, false},
-        {"class193", 0x002bc608, qua_class193_update_l15, 0x0, false},
-        {"class196", 0x002bddb0, qua_class196_update_l15, 0x0, false},
-        {"class200", 0x002be298, qua_class200_update_l15, 0x0, false},
+        {"class156", 0x002aabb8, class156_update, 0x0, false},
+        {"class193", 0x002bc608, class193_update, 0x0, false},
+        {"class196", 0x002bddb0, class196_update, 0x0, false},
+        {"class200", 0x002be298, rock_update, 0x0, false},
         {"class221", 0x002c2938, qua_class221_update_l15, 0x0, false},
         {"class233", 0x002c5630, qua_class233_update_l15, 0x0, false},
-        {"class250", 0x002c6f08, qua_class250_update_l15, 0x0, false},
-        {"class258", 0x002c73b8, qua_class258_update_l15, 0x0, false},
+        {"class250", 0x002c6f08, class250_update, 0x0, false},
+        {"class258", 0x002c73b8, class258_update, 0x0, false},
         {"class283", 0x002c9240, empty_update, 0x0, false},
-        {"class325", 0x002ca240, qua_class325_update_l15, 0x0, false},
-        {"class403", 0x002ca9f8, qua_class403_update_l15, 0x0, false},
-        {"class408", 0x002cb4c8, qua_class408_update_l15, 0x0, false},
+        {"class325", 0x002ca240, class325_update, 0x0, false},
+        {"class403", 0x002ca9f8, class403_update, 0x0, false},
+        {"class408", 0x002cb4c8, class408_update, 0x0, false},
         {"class419", 0x002cbe58, empty_update, 0x0, false},
         {"class491", 0x002cf3a8, qua_class491_update_l15, 0x0, false},
         {"class531", 0x002d3bd8, empty_update, 0x0, false},
-        {"class567", 0x002d4748, qua_class567_update_l15, 0x0, false},
-        {"class605", 0x002d5728, qua_class605_update_l15, 0x0, false},
-        {"class655", 0x002d6810, qua_class655_update_l15, 0x0, false},
-        {"class1179", 0x002d9100, qua_class1179_update_l15, 0x0, false},
-        {"class679", 0x002d95e8, qua_class679_update_l15, 0x0, false},
-        {"class758", 0x002db100, qua_class758_update_l15, 0x0, false},
-        {"class805", 0x002db668, qua_class805_update_l15, 0x0, false},
-        {"class819", 0x002dd730, qua_class819_update_l15, 0x0, false},
-        {"class830", 0x002ddd00, qua_class830_update_l15, 0x0, false},
-        {"class832", 0x002de290, qua_class832_update_l15, 0x0, false},
-        {"class848", 0x002de430, qua_class848_update_l15, 0x2, false},
-        {"class934", 0x002e4380, qua_class934_update_l15, 0x0, false},
+        {"class567", 0x002d4748, class567_update, 0x0, false},
+        {"class605", 0x002d5728, zone_marker_update, 0x0, false},
+        {"class655", 0x002d6810, class655_update, 0x0, false},
+        {"class1179", 0x002d9100, class1179_update, 0x0, false},
+        {"class679", 0x002d95e8, class679_update, 0x0, false},
+        {"class758", 0x002db100, swingshot_target_update, 0x0, false},
+        {"class805", 0x002db668, spawn_point_update_l1, 0x0, false},
+        {"class819", 0x002dd730, class819_update, 0x0, false},
+        {"class830", 0x002ddd00, class830_update, 0x0, false},
+        {"class832", 0x002de290, class832_update, 0x0, false},
+        {"class848", 0x002de430, class848_update, 0x2, false},
+        {"class934", 0x002e4380, class934_update, 0x0, false},
         {"class937", 0x002e46b0, qua_class937_update_l15, 0x0, false},
-        {"class1134", 0x002e4770, qua_class1134_update_l15, 0x4, false},
-        {"class1209", 0x002e5958, qua_class1209_update_l15, 0x0, false},
-        {"class1221", 0x002e5e70, qua_class1221_update_l15, 0x0, false},
-        {"class1222", 0x002e5f58, qua_class1222_update_l15, 0x0, false},
-        {"class1224", 0x002e6038, qua_class1224_update_l15, 0x0, false},
+        {"class1134", 0x002e4770, gold_bolt_update, 0x4, false},
+        {"class1209", 0x002e5958, floor_switch_update, 0x0, false},
+        {"class1221", 0x002e5e70, class1221_update, 0x0, false},
+        {"class1222", 0x002e5f58, class1221_update, 0x0, false},
+        {"class1224", 0x002e6038, class1224_update, 0x0, false},
         {"class1250", 0x002e73c0, qua_class1250_update_l15, 0x0, false},
         {"class1257", 0x002e7f68, qua_class1257_update_l15, 0x0, false},
-        {"class1331", 0x002e8910, qua_class1331_update_l15, 0x0, false},
-        {"class1371", 0x002ea5e0, qua_class1371_update_l15, 0x0, false},
+        {"class1331", 0x002e8910, class1331_update, 0x0, false},
+        {"class1371", 0x002ea5e0, class1371_update, 0x0, false},
         {"class1388", 0x002ea748, qua_class1388_update_l15, 0x4, false},
         {"class1394", 0x002eabd8, qua_class1394_update_l15, 0x0, false},
-        {"class1408", 0x002eb0a0, qua_class1408_update_l15, 0x0, false},
-        {"class1409", 0x002eb458, qua_class1409_update_l15, 0x0, false},
+        {"class1408", 0x002eb0a0, class1408_update, 0x0, false},
+        {"class1409", 0x002eb458, class1409_update, 0x0, false},
         {"class1419", 0x002eb4c0, qua_class1419_update_l15, 0xa, false},
         {"class1425", 0x002eb928, qua_class1425_update_l15, 0x0, false},
-        {"class1428", 0x002ebd78, qua_class1428_update_l15, 0x0, false},
+        {"class1428", 0x002ebd78, class1428_update, 0x0, false},
         {"class1430", 0x002ec030, qua_class1430_update_l15, 0x0, false},
         {"class1446", 0x002ec760, qua_class1446_update_l15, 0x1a0, false},
         {"class1451", 0x002ed068, qua_class1451_update_l15, 0x0, false},
         {"class1469", 0x002ed398, qua_class1469_update_l15, 0x0, false},
         {"class1560", 0x002edb20, qua_class1560_update_l15, 0x0, false},
-        {"class1565", 0x002edf58, qua_class1565_update_l15, 0x0, false},
-        {"class1567", 0x002ee338, qua_class1567_update_l15, 0x0, false},
+        {"class1565", 0x002edf58, class1565_update, 0x0, false},
+        {"class1567", 0x002ee338, class1567_update, 0x0, false},
     };
     auto generic_prep = [give_hit, hero_near](uint32_t m, int st, int pass, void (*fn)(uint32_t), bool walk = false) {
         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -343,23 +390,23 @@ void batch_240() {
         const size_t ign_before = g_ignored_words.size();
         for (uint32_t a = 0x100; a < 0x1500; a += 4) g_ignored_words.push_back(a);
         static const Cb cbs[] = {
-        {"cb296710", 0x00296710, qua_cb_296710_l15, 0x00000000, 0},
-        {"cb297808", 0x00297808, qua_cb_297808_l15, 0x00000000, 0},
-        {"cb29aba8", 0x0029aba8, qua_cb_29aba8_l15, 0x002979d8, 44},
-        {"cb2a29b8", 0x002a29b8, qua_cb_2a29b8_l15, 0x002a2488, 77},
-        {"cb2a3138", 0x002a3138, qua_cb_2a3138_l15, 0x002a2bf0, 78},
-        {"cb2a7628", 0x002a7628, qua_cb_2a7628_l15, 0x002a6e68, 123},
-        {"cb2ca810", 0x002ca810, qua_cb_2ca810_l15, 0x002ca240, 325},
-        {"cb2cbd88", 0x002cbd88, qua_cb_2cbd88_l15, 0x00000000, 0},
-        {"cb2d77c0", 0x002d77c0, qua_cb_2d77c0_l15, 0x002d6810, 655},
-        {"cb2d8710", 0x002d8710, qua_cb_2d8710_l15, 0x002d6810, 655},
-        {"cb2de080", 0x002de080, qua_cb_2de080_l15, 0x002de290, 832},
-        {"cb2e6a10", 0x002e6a10, qua_cb_2e6a10_l15, 0x002e6038, 1224},
-        {"cb2eac90", 0x002eac90, qua_cb_2eac90_l15, 0x002eb0a0, 1408},
-        {"cb2eb108", 0x002eb108, qua_cb_2eb108_l15, 0x002eb458, 1409},
+        {"cb296710", 0x00296710, class28_draw_glows, 0x00000000, 0},
+        {"cb297808", 0x00297808, class28_draw_spot, 0x00000000, 0},
+        {"cb29aba8", 0x0029aba8, class44_glows_draw, 0x002979d8, 44},
+        {"cb2a29b8", 0x002a29b8, class77_draw, 0x002a2488, 77},
+        {"cb2a3138", 0x002a3138, class78_draw, 0x002a2bf0, 78},
+        {"cb2a7628", 0x002a7628, class123_draw, 0x002a6e68, 123},
+        {"cb2ca810", 0x002ca810, class325_draw, 0x002ca240, 325},
+        {"cb2cbd88", 0x002cbd88, class408_tint, 0x00000000, 0},
+        {"cb2d77c0", 0x002d77c0, class1108_draw, 0x002d6810, 655},
+        {"cb2d8710", 0x002d8710, class655_draw, 0x002d6810, 655},
+        {"cb2de080", 0x002de080, class832_draw, 0x002de290, 832},
+        {"cb2e6a10", 0x002e6a10, class1224_draw, 0x002e6038, 1224},
+        {"cb2eac90", 0x002eac90, ripple_rings_draw, 0x002eb0a0, 1408},
+        {"cb2eb108", 0x002eb108, ripple_pool_draw, 0x002eb458, 1409},
         {"cb2eb6b8", 0x002eb6b8, qua_cb_2eb6b8_l15, 0x002eb4c0, 1419},
-        {"cb2edbe0", 0x002edbe0, qua_cb_2edbe0_l15, 0x002edf58, 1565},
-        {"cb2edfc0", 0x002edfc0, qua_cb_2edfc0_l15, 0x002ee338, 1567},
+        {"cb2edbe0", 0x002edbe0, quartu_waves_draw_a, 0x002edf58, 1565},
+        {"cb2edfc0", 0x002edfc0, quartu_waves_draw_b, 0x002ee338, 1567},
         };
         for (const Cb& cb : cbs) {
             if (std::getenv("B240_CLS") != nullptr && std::strcmp(std::getenv("B240_CLS"), cb.name) != 0) continue;
@@ -374,7 +421,7 @@ void batch_240() {
             for (int st = 0; st < 4; ++st)
             for (int pass = 0; pass < 3; ++pass) {
                 if (clsfn == nullptr && (st != 0 || pass != 0)) continue;
-                classcheck(cb.name, cb.addr, cb.fn, [st, pass, clsfn, generic_prep](uint32_t m) { generic_prep(m, st, pass, clsfn != nullptr ? clsfn : qua_class28_update_l15, false); w32(OV(0x001611c0), 0x00800000u); }, 12, subj);  // (the display packet cursor: a real buffer for the draw callbacks)
+                classcheck(cb.name, cb.addr, cb.fn, [st, pass, clsfn, generic_prep](uint32_t m) { generic_prep(m, st, pass, clsfn != nullptr ? clsfn : class28_update, false); w32(OV(0x001611c0), 0x00800000u); }, 12, subj);  // (the display packet cursor: a real buffer for the draw callbacks)
             }
             g_ignored_words.resize(ign_pk);
         }
@@ -497,8 +544,8 @@ void batch_240() {
             wf(0x00161f3c, rf(0, 0.5f));  // $gp - 0x4cc4: the frame step the callback counts down by
             w32(OV(0x0015ef4c), u(ri(0, 14)));  // the queue's count (it holds up to 16)
         };
-        lvcheck("cam0_hook", 0x002f6980, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { qua_cam0_hook_l15(0); return uint64_t{0}; });
-        lvcheck("cam_callback", 0x002f69e0, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { qua_cam_callback_l15(0); return uint64_t{0}; });
+        lvcheck("cam0_hook", 0x002f6980, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_hook(0); return uint64_t{0}; });
+        lvcheck("cam_callback", 0x002f69e0, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_callback(0); return uint64_t{0}; });
     }
 
     // ---- mobys_in_sphere (Veldin 0x1f2868, level 15's copy L15:0x001ebf50) on the level's own mobys
@@ -564,11 +611,11 @@ void batch_240() {
             auto name = [&](const char* what) { char* p = nm[k++ & 3]; std::snprintf(p, 48, "cam_type%d_%s", type, what); return static_cast<const char*>(p); };
             if (type == 19) {
             lvcheck(name("accept"), ct.accept, 300, Ret::Int32, [cam_setup, type] { uint32_t other = 0; const uint32_t cam = cam_setup(type, true, &other); return Args{{cam, other}, {}}; },
-                    [](A a) { return r32(a.i[0] != 0 ? qua_cam_type19_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0 : 0u); });
+                    [](A a) { return r32(a.i[0] != 0 ? static_cast<uint32_t>(cam_type19_accept(a.i[0], a.i[1])) : 0u); });
             lvcheck(name("init"), ct.init, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [](A a) { if (a.i[0] != 0) qua_cam_type19_init_l15(a.i[0]); return uint64_t{0}; });
+                    [](A a) { if (a.i[0] != 0) cam_type19_init(a.i[0]); return uint64_t{0}; });
             lvcheck(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [](A a) { if (a.i[0] != 0) qua_cam_type19_update_l15(a.i[0]); return uint64_t{0}; });
+                    [](A a) { if (a.i[0] != 0) cam_type19_update(a.i[0]); return uint64_t{0}; });
             lvcheck(name("exit"), ct.exit, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
                     [](A a) { if (a.i[0] != 0) empty_update(a.i[0]); return uint64_t{0}; });
             }

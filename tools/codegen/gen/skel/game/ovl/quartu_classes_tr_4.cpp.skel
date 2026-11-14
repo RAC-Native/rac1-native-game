@@ -41,6 +41,8 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/shared_helpers.h>
 
 namespace rac1 {
 
@@ -49,44 +51,8 @@ using namespace vu0m;
 
 //@gen qua_2cf110_l15
 
-//@gen qua_251c90_l15
-
 //@gen qua_2d0fa8_l15
 
-//@gen qua_2dd600_l15
-
 //@gen qua_class491_update_l15
-
-//@gen qua_class567_update_l15
-
-//@gen qua_class605_update_l15
-
-//@gen qua_2d6770_l15
-
-//@gen qua_2d79e8_l15
-
-//@gen qua_2d7bb0_l15
-
-//@gen qua_2d9570_l15
-
-//@gen qua_2d95a0_l15
-
-//@gen qua_class655_update_l15
-
-//@gen qua_class1179_update_l15
-
-//@gen qua_class679_update_l15
-
-//@gen qua_2f6948_l15
-
-//@gen qua_2f6a38_l15
-
-//@gen qua_class758_update_l15
-
-//@gen qua_class805_update_l15
-
-//@gen qua_class819_update_l15
-
-//@gen qua_class830_update_l15
 
 }  // namespace rac1

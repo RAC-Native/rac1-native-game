@@ -25,6 +25,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/particle_types_tr.h>
 #include <game/ovl/quartu_mobys.h>
+#include <game/ovl/shared_class1523.h>
 #include <game/ovl/veldin_finale_mobys.h>
 #include <game/ovl/veldin_orbit_mobys.h>
 
@@ -161,7 +162,7 @@ void batch_370() {
             near(P, 20.0f);
             const uint32_t color = R();
             return spawned(0x1f, [&] {
-                if (L == 15) qua_25e2c0_l15(color, P, m, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+                if (L == 15) class1523_streak(color, P, m);  // (Quartu: the shared port it is re-glued onto)
                 else vf_270af0_l18(color, P, m, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
             });
         };
