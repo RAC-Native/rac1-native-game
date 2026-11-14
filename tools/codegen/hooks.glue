@@ -146,4 +146,4 @@ L17 0x002ebcb0: render_view_hud_end();
 # 2.1; 18 in a fall, not 8). The compare sees the current section's world (level_mod_camera_planet; none in main and the mod's own
 # sections: no floor); the original's levels as transliterated.
 # L5 0x003293c8: the fork is in the hand-written port race_cam_anchor (shared_race_camera.cpp), which Rilgar runs since the re-glue R5
-L16 0x002f3ed0: set32(v1, level_mod_camera_planet(v1.w()));  // enhancement: the race camera in a world's section
+# L16 0x002f3ed0: the fork is in the hand-written port race_cam_anchor (shared_race_camera.cpp), which Kalebo III runs since the re-glue R16

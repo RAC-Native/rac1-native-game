@@ -6,6 +6,28 @@
 // tools/codegen/mkall_l16.py). Made after batch 124 (Pokitaru).
 #include "ovl_oracle.h"
 
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_camera.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/shared_class1111.h>
+#include <game/ovl/shared_class1135.h>
+#include <game/ovl/shared_class1356.h>
+#include <game/ovl/shared_class1443.h>
+#include <game/ovl/shared_class1952.h>
+#include <game/ovl/shared_class235.h>
+#include <game/ovl/shared_class49.h>
+#include <game/ovl/shared_class52.h>
+#include <game/ovl/shared_class638.h>
+#include <game/ovl/shared_class933.h>
+#include <game/ovl/shared_envmap.h>
+#include <game/ovl/shared_envmap_meshes.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_hoverboard.h>
+#include <game/ovl/shared_race_camera.h>
+#include <game/ovl/shared_seas.h>
+#include <game/ovl/shared_swingshot_target.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/hero_move_mode.h>
 #include <game/ovl/kalebo_mobys.h>
@@ -210,14 +232,14 @@ void batch_250() {
     // the states that request a level change (0x24d430's copy: the original would run the CD / movie path for real) or start a
     // music stream (its disc read: sceCdRead 0x121450 without the IOP's stream system, a TODO_PORT on the port's side; class 1419 state 1, 1446 states 5 / 7)
     static const TrCls trcls[] = {
-        {"class49", 0x002a05e8, kal_class49_update_l16, 0x0, false},
-        {"class50", 0x002a0a98, kal_class50_update_l16, 0x0, false},
-        {"class52", 0x002a1088, kal_class52_update_l16, 0x0, false},
+        {"class49", 0x002a05e8, class49_update, 0x0, false},
+        {"class50", 0x002a0a98, class50_update, 0x0, false},
+        {"class52", 0x002a1088, class52_update, 0x0, false},
         {"class1475", 0x002a3f38, kal_class1475_update_l16, 0x0, false},
-        {"class235", 0x002c3be8, kal_class235_update_l16, 0x0, false},
+        {"class235", 0x002c3be8, class235_update, 0x0, false},
         {"class257", 0x002c3d38, kal_class257_update_l16, 0x0, false},
         {"class281", 0x002c5eb0, kal_class281_update_l16, 0x0, false},
-        {"class439", 0x002c7788, kal_class439_update_l16, 0x0, false},
+        {"class439", 0x002c7788, class439_update, 0x0, false},
         {"class470", 0x002c9480, kal_class470_update_l16, 0x0, false},
         {"class471", 0x002c9878, kal_class471_update_l16, 0x0, false},
         {"class482", 0x002cb600, kal_class482_update_l16, 0x0, false},
@@ -225,22 +247,22 @@ void batch_250() {
         {"class546", 0x002cf198, kal_class546_update_l16, 0x0, false},
         {"class552", 0x002cf4a8, kal_class552_update_l16, 0x0, false},
         {"class556", 0x002d04a0, kal_class556_update_l16, 0x0, false},
-        {"class605", 0x002d2a80, kal_class605_update_l16, 0x0, false},
-        {"class638", 0x002d2cf0, kal_class638_update_l16, 0x0, false},
+        {"class605", 0x002d2a80, zone_marker_update, 0x0, false},
+        {"class638", 0x002d2cf0, class638_update, 0x0, false},
         {"class647", 0x002d59e0, kal_class647_update_l16, 0x0, false},
         {"class650", 0x002d5cb8, kal_class650_update_l16, 0x0, false},
         {"class654", 0x002d5ef8, kal_class654_update_l16, 0x0, false},
-        {"class758", 0x002d6378, kal_class758_update_l16, 0x0, false},
+        {"class758", 0x002d6378, swingshot_target_update, 0x0, false},
         {"class800", 0x002d6740, kal_class800_update_l16, 0x0, false},
-        {"class805", 0x002d69e0, kal_class805_update_l16, 0x0, false},
+        {"class805", 0x002d69e0, spawn_point_update_l1, 0x0, false},
         {"class876", 0x002dddd8, empty_update, 0x0, false},
-        {"class933", 0x002ddde0, kal_class933_update_l16, 0x0, false},
-        {"class1111", 0x002dee10, kal_class1111_update_l16, 0x0, false},
-        {"class1134", 0x002df1e8, kal_class1134_update_l16, 0x6, false},
-        {"class1135", 0x002e0120, kal_class1135_update_l16, 0x0, false},
-        {"class1139", 0x002e0f78, kal_class1139_update_l16, 0x0, false},
+        {"class933", 0x002ddde0, class933_update, 0x0, false},
+        {"class1111", 0x002dee10, class1111_update, 0x0, false},
+        {"class1134", 0x002df1e8, gold_bolt_update, 0x6, false},
+        {"class1135", 0x002e0120, teleporter_update_l1, 0x0, false},
+        {"class1139", 0x002e0f78, class1139_update, 0x0, false},
         {"class1140", 0x002e1080, empty_update, 0x0, false},
-        {"class1356", 0x002e22d8, kal_class1356_update_l16, 0x0, false},
+        {"class1356", 0x002e22d8, class1356_update, 0x0, false},
         {"class1377", 0x002e3190, kal_class1377_update_l16, 0x4, false},
         {"class1387", 0x002e36e8, kal_class1387_update_l16, 0x0, false},
         {"class1401", 0x002e37a0, kal_class1401_update_l16, 0x0, false},
@@ -248,7 +270,7 @@ void batch_250() {
         {"class1439", 0x002e5010, kal_class1439_update_l16, 0x0, false},
         {"class1441", 0x002e5258, kal_class1441_update_l16, 0x0, false},
         {"class1442", 0x002e54a0, kal_class1442_update_l16, 0x0, false},
-        {"class1443", 0x002e5708, kal_class1443_update_l16, 0x0, false},
+        {"class1443", 0x002e5708, class1443_update, 0x0, false},
         {"class1445", 0x002e5e08, kal_class1445_update_l16, 0x0, false},
         {"class1455", 0x002e6808, kal_class1455_update_l16, 0x10, false},
         {"class1561", 0x002e7208, kal_class1561_update_l16, 0x0, false},
@@ -259,9 +281,9 @@ void batch_250() {
         {"class1923", 0x002e8970, kal_class1923_update_l16, 0x0, false},
         {"class1943", 0x002e8e80, kal_class1943_update_l16, 0x0, false},
         {"class1947", 0x002e93b0, kal_class1947_update_l16, 0x0, false},
-        {"class1948", 0x002e98e0, kal_class1948_update_l16, 0x0, false},
-        {"class1952", 0x002e9df0, kal_class1952_update_l16, 0x0, false},
-        {"class1953", 0x002ea128, kal_class1953_update_l16, 0x0, false},
+        {"class1948", 0x002e98e0, envmap_1948_update, 0x0, false},
+        {"class1952", 0x002e9df0, class1952_update, 0x0, false},
+        {"class1953", 0x002ea128, envmap_1953_update, 0x0, false},
     };
     auto generic_prep = [give_hit, hero_near](uint32_t m, int st, int pass, void (*fn)(uint32_t), bool walk = false) {
         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -333,15 +355,15 @@ void batch_250() {
         {"cb2c9cd0", 0x002c9cd0, kal_cb_2c9cd0_l16, 0x002c9878, 471},
         {"cb2cef60", 0x002cef60, kal_cb_2cef60_l16, 0x00000000, 0},
         {"cb2cf7a8", 0x002cf7a8, kal_cb_2cf7a8_l16, 0x002cf4a8, 552},
-        {"cb2de3c0", 0x002de3c0, kal_cb_2de3c0_l16, 0x002dee10, 1111},
-        {"cb2e0a38", 0x002e0a38, kal_cb_2e0a38_l16, 0x002e0120, 1135},
-        {"cb2e58d8", 0x002e58d8, kal_cb_2e58d8_l16, 0x002e5708, 1443},
+        {"cb2de3c0", 0x002de3c0, class1111_draw, 0x002dee10, 1111},
+        {"cb2e0a38", 0x002e0a38, class1135_draw, 0x002e0120, 1135},
+        {"cb2e58d8", 0x002e58d8, class1443_draw, 0x002e5708, 1443},
         {"cb2e84e8", 0x002e84e8, kal_cb_2e84e8_l16, 0x002e7f80, 1826},
-        {"cb2e8d40", 0x002e8d40, kal_cb_2e8d40_l16, 0x002e8e80, 1943},
+        {"cb2e8d40", 0x002e8d40, envmap_1943_draw, 0x002e8e80, 1943},
         {"cb2e9270", 0x002e9270, kal_cb_2e9270_l16, 0x002e93b0, 1947},
-        {"cb2e97a0", 0x002e97a0, kal_cb_2e97a0_l16, 0x002e98e0, 1948},
-        {"cb2e9ce0", 0x002e9ce0, kal_cb_2e9ce0_l16, 0x002e9df0, 1952},
-        {"cb2e9fe8", 0x002e9fe8, kal_cb_2e9fe8_l16, 0x002ea128, 1953},
+        {"cb2e97a0", 0x002e97a0, envmap_1948_draw, 0x002e98e0, 1948},
+        {"cb2e9ce0", 0x002e9ce0, class1952_draw, 0x002e9df0, 1952},
+        {"cb2e9fe8", 0x002e9fe8, envmap_1953_draw, 0x002ea128, 1953},
         };
         for (const Cb& cb : cbs) {
             if (std::getenv("B250_CLS") != nullptr && std::strcmp(std::getenv("B250_CLS"), cb.name) != 0) continue;
@@ -356,7 +378,7 @@ void batch_250() {
             for (int st = 0; st < 4; ++st)
             for (int pass = 0; pass < 3; ++pass) {
                 if (clsfn == nullptr && (st != 0 || pass != 0)) continue;
-                classcheck(cb.name, cb.addr, cb.fn, [st, pass, clsfn, generic_prep](uint32_t m) { generic_prep(m, st, pass, clsfn != nullptr ? clsfn : kal_class49_update_l16, false); w32(OV(0x001611c0), 0x00800000u); }, 12, subj);  // (the display packet cursor: a real buffer for the draw callbacks)
+                classcheck(cb.name, cb.addr, cb.fn, [st, pass, clsfn, generic_prep](uint32_t m) { generic_prep(m, st, pass, clsfn != nullptr ? clsfn : class49_update, false); w32(OV(0x001611c0), 0x00800000u); }, 12, subj);  // (the display packet cursor: a real buffer for the draw callbacks)
             }
             g_ignored_words.resize(ign_pk);
         }
@@ -479,8 +501,8 @@ void batch_250() {
             wf(0x00161f3c, rf(0, 0.5f));  // $gp - 0x4cc4: the frame step the callback counts down by
             w32(OV(0x0015ef4c), u(ri(0, 14)));  // the queue's count (it holds up to 16)
         };
-        lvcheck("cam0_hook", 0x002f3a88, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { kal_cam0_hook_l16(0); return uint64_t{0}; });
-        lvcheck("cam_callback", 0x002f3ae8, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { kal_cam_callback_l16(0); return uint64_t{0}; });
+        lvcheck("cam0_hook", 0x002f3a88, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_hook(0); return uint64_t{0}; });
+        lvcheck("cam_callback", 0x002f3ae8, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_callback(0); return uint64_t{0}; });
     }
 
     // ---- mobys_in_sphere (Veldin 0x1f2868, level 16's copy L16:0x001f10d0) on the level's own mobys
@@ -546,21 +568,21 @@ void batch_250() {
             auto name = [&](const char* what) { char* p = nm[k++ & 3]; std::snprintf(p, 48, "cam_type%d_%s", type, what); return static_cast<const char*>(p); };
             if (type == 3) {
             lvcheck(name("accept"), ct.accept, 300, Ret::Int32, [cam_setup, type] { uint32_t other = 0; const uint32_t cam = cam_setup(type, true, &other); return Args{{cam, other}, {}}; },
-                    [](A a) { return r32(a.i[0] != 0 ? kal_cam_type3_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0 : 0u); });
+                    [](A a) { return r32(a.i[0] != 0 ? static_cast<uint32_t>(zero_stub()) : 0u); });
             lvcheck(name("init"), ct.init, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [](A a) { if (a.i[0] != 0) kal_cam_type3_init_l16(a.i[0]); return uint64_t{0}; });
+                    [](A a) { if (a.i[0] != 0) cam_type3_init(a.i[0]); return uint64_t{0}; });
             lvcheck(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [](A a) { if (a.i[0] != 0) kal_cam_type3_update_l16(a.i[0]); return uint64_t{0}; });
+                    [](A a) { if (a.i[0] != 0) cam_type3_update(a.i[0]); return uint64_t{0}; });
             lvcheck(name("exit"), ct.exit, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [](A a) { if (a.i[0] != 0) kal_cam_type3_exit_l16(a.i[0]); return uint64_t{0}; });
+                    [](A a) { if (a.i[0] != 0) cam_type3_exit(a.i[0]); return uint64_t{0}; });
             }
             if (type == 8) {
             lvcheck(name("accept"), ct.accept, 300, Ret::Int32, [cam_setup, type] { uint32_t other = 0; const uint32_t cam = cam_setup(type, true, &other); return Args{{cam, other}, {}}; },
-                    [](A a) { return r32(a.i[0] != 0 ? kal_cam_type8_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0 : 0u); });
+                    [](A a) { return r32(a.i[0] != 0 ? static_cast<uint32_t>(zero_stub()) : 0u); });
             lvcheck(name("init"), ct.init, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [](A a) { if (a.i[0] != 0) kal_cam_type8_init_l16(a.i[0]); return uint64_t{0}; });
+                    [](A a) { if (a.i[0] != 0) race_cam_init(a.i[0]); return uint64_t{0}; });
             lvcheck(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [](A a) { if (a.i[0] != 0) kal_cam_type8_update_l16(a.i[0]); return uint64_t{0}; });
+                    [](A a) { if (a.i[0] != 0) race_cam_update(a.i[0]); return uint64_t{0}; });
             }
         }
     }

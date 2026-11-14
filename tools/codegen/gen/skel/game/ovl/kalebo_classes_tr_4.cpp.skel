@@ -41,6 +41,7 @@
 #include <game/port_stubs.h>
 #include <game/ovl/hud_slot7_tr.h>
 #include <game/ovl/shadows.h>
+#include <game/ovl/shared_moby_helpers.h>
 
 namespace rac1 {
 
@@ -57,8 +58,6 @@ using namespace vu0m;
 
 //@gen kal_2e0e28_l16
 
-//@gen kal_2c4710_l16
-
 //@gen kal_2e8b08_l16
 
 //@gen kal_class1923_update_l16
@@ -66,40 +65,6 @@ using namespace vu0m;
 //@gen kal_class1943_update_l16
 
 //@gen kal_class1947_update_l16
-
-//@gen kal_class1948_update_l16
-
-//@gen kal_class1952_update_l16
-
-//@gen kal_class1953_update_l16
-
-//@gen kal_cam_type3_accept_u
-
-//@gen kal_2efe48_l16
-
-//@gen kal_cam_type3_init_l16
-
-//@gen kal_cam_type3_update_l16
-
-//@gen kal_cam_type3_exit_l16
-
-//@gen kal_cam_type8_accept_u
-
-//@gen kal_2f3fc8_l16
-
-//@gen kal_2f3e60_l16
-
-//@gen kal_2f4048_l16
-
-//@gen kal_2f41e8_l16
-
-//@gen kal_cam_type8_init_l16
-
-//@gen kal_2f43e0_l16
-
-//@gen kal_2f47f0_l16
-
-//@gen kal_cam_type8_update_l16
 
 //@gen kal_cam0_set_124_u
 
@@ -113,25 +78,9 @@ using namespace vu0m;
 
 //@gen kal_hook_2e66f0_u
 
-//@gen kal_1e9988_l16
-
-//@gen kal_cam0_hook_l16
-
-//@gen kal_cam_callback_l16
-
-//@gen kal_cb_2351f8_l16
-
-//@gen kal_cb_235268_l16
-
 //@gen kal_cb_235660_l16
 
-//@gen kal_cb_2388b0_l16
-
-//@gen kal_cb_2388f8_l16
-
 //@gen kal_cb_238a30_l16
-
-//@gen kal_cb_238e20_l16
 
 //@gen kal_cb_2c9cd0_l16
 

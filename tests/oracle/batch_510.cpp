@@ -863,8 +863,8 @@ void batch_510() {
             classcheck(c.name, l16 ? c.addr : 0u, c.fn, [cam_vary, c](uint32_t m) {
                 w8(m + 0x20, 0);  // (the class's own update first, from its start: its meshes' bounding spheres)
                 if (c.cls == 0x002e8e80) kal_class1943_update_l16(m);
-                else if (c.cls == 0x002e98e0) kal_class1948_update_l16(m);
-                else kal_class1953_update_l16(m);
+                else if (c.cls == 0x002e98e0) envmap_1948_update(m);
+                else envmap_1953_update(m);
                 cam_vary(m);
                 {  // (the camera before one of the class's meshes, its bounding sphere ahead: the mesh drawn)
                     const uint32_t spheres = c.cls == 0x002e8e80 ? 0x001dc600u : c.cls == 0x002e98e0 ? 0x001df2b0u : 0x001e5390u;

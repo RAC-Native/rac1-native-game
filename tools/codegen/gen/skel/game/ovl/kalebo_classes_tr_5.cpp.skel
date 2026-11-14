@@ -37,38 +37,15 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/shadows.h>
+#include <game/ovl/shared_envmap.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
 
-//@gen kal_cb_2de3c0_l16
-
-//@gen kal_cb_2e0a38_l16
-
-//@gen kal_cb_2e58d8_l16
-
 //@gen kal_cb_2e84e8_l16
 
-//@gen kal_2e8b98_l16
-
-//@gen kal_cb_2e8d40_l16
-
-//@gen kal_2e90c8_l16
-
 //@gen kal_cb_2e9270_l16
-
-//@gen kal_2e95f8_l16
-
-//@gen kal_cb_2e97a0_l16
-
-//@gen kal_2e9b38_l16
-
-//@gen kal_cb_2e9ce0_l16
-
-//@gen kal_2e9e40_l16
-
-//@gen kal_cb_2e9fe8_l16
 
 }  // namespace rac1

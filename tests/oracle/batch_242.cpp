@@ -19,6 +19,10 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_hoverboard.h>
+#include <game/ovl/shared_race_camera.h>
+#include <game/ovl/shared_race_hud.h>
 #include <game/ovl/kalebo_mobys.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -141,9 +145,9 @@ void batch_242() {
         // Rilgar's): a0 = the hero's moby, the display packet cursor given a real buffer
         struct Cb { const char* name; uint32_t addr; void (*fn)(uint32_t); };
         static const Cb cbs[] = {
-            {"cb2351f8", 0x002351f8, kal_cb_2351f8_l16}, {"cb235268", 0x00235268, kal_cb_235268_l16}, {"cb235660", 0x00235660, kal_cb_235660_l16},
-            {"cb2388b0", 0x002388b0, kal_cb_2388b0_l16}, {"cb2388f8", 0x002388f8, kal_cb_2388f8_l16}, {"cb238a30", 0x00238a30, kal_cb_238a30_l16},
-            {"cb238e20", 0x00238e20, kal_cb_238e20_l16},
+            {"cb2351f8", 0x002351f8, race_hud_start}, {"cb235268", 0x00235268, race_meter_update}, {"cb235660", 0x00235660, kal_cb_235660_l16},
+            {"cb2388b0", 0x002388b0, race_hud_reset}, {"cb2388f8", 0x002388f8, race_hud_update}, {"cb238a30", 0x00238a30, kal_cb_238a30_l16},
+            {"cb238e20", 0x00238e20, race_hud_draw},
         };
         for (const Cb& cb : cbs) {
             nm = std::string(cb.name) + "_" + base;
@@ -168,13 +172,13 @@ void batch_242() {
         };
         nm = "cam8_accept_" + base;
         l16check(nm.c_str(), ORACLE_LADDR(16, 0x002f51e0u), 60, Ret::Int32, [&d, vary, camvary, cam8] { b242_load(d); vary(); camvary(); return Args{{cam8, ri(0, 2) == 0 ? 0u : cam8}, {}}; },
-              [](A a) { return r32(kal_cam_type8_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0); });
+              [](A) { return r32(static_cast<uint32_t>(zero_stub())); });
         nm = "cam8_init_" + base;
         l16check(nm.c_str(), ORACLE_LADDR(16, 0x002f51e8u), 60, Ret::None, [&d, vary, camvary, cam8] { b242_load(d); vary(); camvary(); return Args{{cam8}, {}}; },
-              [](A a) { kal_cam_type8_init_l16(a.i[0]); return uint64_t{0}; });
+              [](A a) { race_cam_init(a.i[0]); return uint64_t{0}; });
         nm = "cam8_update_" + base;
         l16check(nm.c_str(), ORACLE_LADDR(16, 0x002f5260u), 60, Ret::None, [&d, vary, camvary, cam8] { b242_load(d); vary(); camvary(); return Args{{cam8}, {}}; },
-              [](A a) { kal_cam_type8_update_l16(a.i[0]); return uint64_t{0}; });
+              [](A a) { race_cam_update(a.i[0]); return uint64_t{0}; });
     }
     g_extra_noop_hooks.clear();
     g_ee_null_is_ram = null_ram;

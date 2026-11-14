@@ -36,39 +36,18 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shared_flame_spray.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
 
-//@gen kal_2a07d0_l16
-
-//@gen kal_2a0940_l16
-
-//@gen kal_class49_update_l16
-
-//@gen kal_2a0f18_l16
-
-//@gen kal_class50_update_l16
-
-//@gen kal_254228_l16
-
-//@gen kal_254988_l16
-
-//@gen kal_2a1928_l16
-
-//@gen kal_class52_update_l16
-
 //@gen kal_class1475_update_l16
-
-//@gen kal_class235_update_l16
 
 //@gen kal_class257_update_l16
 
 //@gen kal_class281_update_l16
-
-//@gen kal_class439_update_l16
 
 //@gen kal_2c9568_l16
 
@@ -83,12 +62,6 @@ using namespace vu0m;
 //@gen kal_class471_update_l16
 
 //@gen kal_class482_update_l16
-
-//@gen kal_25ea88_l16
-
-//@gen kal_25eab8_l16
-
-//@gen kal_25ee18_l16
 
 //@gen kal_2c6268_l16
 
@@ -118,11 +91,7 @@ using namespace vu0m;
 
 //@gen kal_2cf9d0_l16
 
-//@gen kal_271250_l16
-
 //@gen kal_2cf9f8_l16
-
-//@gen kal_2cfc00_l16
 
 //@gen kal_2cff48_l16
 

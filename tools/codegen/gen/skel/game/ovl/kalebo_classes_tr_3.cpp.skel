@@ -38,69 +38,26 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/shared_class933.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_floaters.h>
+#include <game/ovl/shared_moby_helpers.h>
+#include <game/ovl/shared_small.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
 
-//@gen kal_26f7e8_l16
-
-//@gen kal_class1139_update_l16
-
-//@gen kal_2a0dc0_l16
-
-//@gen kal_2d3dc0_l16
-
-//@gen kal_2d3de0_l16
-
-//@gen kal_2e2b60_l16
-
-//@gen kal_2e2e88_l16
-
-//@gen kal_2e2fa0_l16
-
-//@gen kal_2e3050_l16
-
-//@gen kal_class1356_update_l16
-
-//@gen kal_2e30a8_l16
-
 //@gen kal_class1377_update_l16
 
 //@gen kal_class1387_update_l16
 
-//@gen kal_2de298_l16
-
-//@gen kal_2de3a8_l16
-
-//@gen kal_2e3e20_l16
-
 //@gen kal_2e3fa0_l16
-
-//@gen kal_2e4110_l16
-
-//@gen kal_2e4190_l16
 
 //@gen kal_class1401_update_l16
 
-//@gen kal_261c98_l16
-
-//@gen kal_2e4900_l16
-
 //@gen kal_2e4a58_l16
-
-//@gen kal_2e4be0_l16
-
-//@gen kal_2e4b58_l16
-
-//@gen kal_2e4c40_l16
-
-//@gen kal_2e4cd8_l16
-
-//@gen kal_2e4d88_l16
-
-//@gen kal_2e4f30_l16
 
 //@gen kal_class1410_update_l16
 
@@ -112,12 +69,6 @@ using namespace vu0m;
 
 //@gen kal_class1442_update_l16
 
-//@gen kal_2e5cd0_l16
-
-//@gen kal_2e5d30_l16
-
-//@gen kal_class1443_update_l16
-
 //@gen kal_2e6208_l16
 
 //@gen kal_2e6428_l16
@@ -125,12 +76,6 @@ using namespace vu0m;
 //@gen kal_class1445_update_l16
 
 //@gen kal_25e948_l16
-
-//@gen kal_2923d0_l16
-
-//@gen kal_2e6720_l16
-
-//@gen kal_254a30_l16
 
 //@gen kal_2de3b8_l16
 
