@@ -17,6 +17,7 @@
 #include <functional>
 #include <initializer_list>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace rac1::oracle {
@@ -71,6 +72,22 @@ extern std::vector<uint32_t> g_ignored_words;
 // (task 0366) While set, a full-RAM / scratchpad comparison skips the w word (+0xc) of a quadword whose x, y, z words are equal on
 // both sides: a VU0 register's stale w lane stored whole (sqc2) where the other lanes agree.
 extern bool g_ignore_lone_w_lanes;
+// (stage 5 task A2) Scratchpad ranges [lo, hi) (0x70000000..0x70004000) a full-RAM comparison leaves out while set: EMPTY by
+// default, set only by a check that calls a routine whose scratch work moved off the scratchpad (stage 5's C2 tasks), from
+// oracle_ignore_collision_scratch() and never batch-wide; cleared by the check after it ran (CollisionScratchIgnored does
+// both). ORACLE_NO_SPR_IGNORE=1 compares them anyway. The known exception of the saved registers' upper halves
+// (0x70003700 .. 0x7000371c, g_ignored_words in the batches that need it) is not part of it.
+extern std::vector<std::pair<uint32_t, uint32_t>> g_ignored_spr_ranges;
+// The collision routines' scratch words the guard's data-flow census (RAC1_BRIDGE_GUARD=spr) found dead after the call:
+// added to g_ignored_spr_ranges.
+void oracle_ignore_collision_scratch();
+// One check's scope for it: set on construction, cleared on destruction.
+struct CollisionScratchIgnored {
+    CollisionScratchIgnored() { oracle_ignore_collision_scratch(); }
+    ~CollisionScratchIgnored() { g_ignored_spr_ranges.clear(); }
+    CollisionScratchIgnored(const CollisionScratchIgnored&) = delete;
+    CollisionScratchIgnored& operator=(const CollisionScratchIgnored&) = delete;
+};
 // Functions the interpreter skips (returning 0) while set: the TODO_PORT callees of a batch's checks.
 extern std::vector<uint32_t> g_extra_noop_hooks;
 // Functions the interpreter runs as host code while set: the host stand-ins the port calls in

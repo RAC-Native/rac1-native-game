@@ -42,6 +42,38 @@ bool bridge_guard_on();
 // ee_ram_ptr_slow only, and only while the guard is on.
 void bridge_guard_access(uint32_t addr, uint32_t size, BridgeAccess kind, const void* caller, const void* cfa);
 
+// ---- the scratchpad's data flow (RAC1_BRIDGE_GUARD=spr: guard.cpp, tools/bridge/spr_census.py) ----
+// The functions whose scratchpad use stage 5 moves to host memory, each marked by one SprScope at its entry: a scratchpad word
+// they write is tagged with the call (the innermost scope instance), and a read of it outside that call is a flow out of it.
+enum class SprScopeId : uint8_t {
+    SegmentCollide = 1,
+    SphereCollide = 2,
+    CapsuleCollide = 3,
+    MobysInSphere = 4,
+    SphereMeshCollide = 5,
+    WadDecompress = 6,
+    ArmorLoad = 7,
+    GameplayLoad = 8,
+};
+// orig: (host) the spr mode is on (set once, by init_memory, before the host's other threads start)
+extern bool g_spr_scopes_on;
+// orig: (host) a scope's call begins / ends on this thread (only while g_spr_scopes_on; cold: out of the callers' hot code)
+[[gnu::cold]] void spr_scope_enter(SprScopeId id);
+[[gnu::cold]] void spr_scope_leave();
+// orig: (host) one call of a marked function: off, a test of one flag at the entry and at the exit, nothing else (the flag
+// never changes once the host's threads run, so the exit tests it again rather than keeping a copy)
+class SprScope {
+public:
+    explicit SprScope(SprScopeId id) {
+        if (__builtin_expect(g_spr_scopes_on, false)) spr_scope_enter(id);
+    }
+    ~SprScope() {
+        if (__builtin_expect(g_spr_scopes_on, false)) spr_scope_leave();
+    }
+    SprScope(const SprScope&) = delete;
+    SprScope& operator=(const SprScope&) = delete;
+};
+
 // orig: (host) while one is alive on a thread, that thread's accesses to guarded ranges are not trapped and are counted
 // apart (the census's lower-case kinds): the bridge's mirror writers, which keep the EE bytes of a migrated object for the
 // readers left, run inside one. Nests.

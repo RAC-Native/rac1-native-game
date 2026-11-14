@@ -123,7 +123,7 @@ std::string builtin_set(const std::string& name) {
     return {};
 }
 
-enum class Mode { Off, Census, Trap };
+enum class Mode { Off, Census, Trap, Spr };
 enum class SpecType { Veldin, Absolute, Derived };
 enum class Derive { None, Paths, Volumes, Rails, Cameras, Zones };
 
@@ -148,7 +148,10 @@ struct Table {
 
 constexpr int kMaxRanges = (65536 - 0x400) / 48;
 constexpr uint32_t kHeaderBytes = 65536;
-constexpr uint32_t kSlots = 1u << 18;
+constexpr uint32_t kCensusSlots = 1u << 18;
+constexpr uint32_t kSprSlots = 1u << 19;  // (the spr mode's flows: (writer, reader, word, flags) slots of 4 words)
+uint32_t kSlots = kCensusSlots;
+uint32_t g_slot_words = 2;
 constexpr uint32_t kRefreshEvery = 1u << 20;
 
 Mode g_mode = Mode::Off;
@@ -690,14 +693,14 @@ void put_str(uint32_t at, uint32_t room, const std::string& s) { std::memcpy(g_c
 #if defined(_WIN32)
 void census_write_at_exit() {  // (no shared file mapping here: the table is written at a normal exit only)
     if (std::FILE* f = std::fopen(g_census_path.c_str(), "wb")) {
-        std::fwrite(g_census, 1, kHeaderBytes + static_cast<size_t>(kSlots) * 16, f);
+        std::fwrite(g_census, 1, kHeaderBytes + static_cast<size_t>(kSlots) * 8 * g_slot_words, f);
         std::fclose(f);
     }
 }
 #endif
 
 bool census_open() {
-    const size_t bytes = kHeaderBytes + static_cast<size_t>(kSlots) * 16;
+    const size_t bytes = kHeaderBytes + static_cast<size_t>(kSlots) * 8 * g_slot_words;
 #if !defined(_WIN32)
     const int fd = ::open(g_census_path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0644);
     if (fd < 0 || ::ftruncate(fd, static_cast<off_t>(bytes)) != 0) {
@@ -714,9 +717,9 @@ bool census_open() {
     std::atexit(census_write_at_exit);
 #endif
     g_slots = reinterpret_cast<uint64_t*>(g_census + kHeaderBytes);
-    std::memcpy(g_census, "R1BGUARD", 8);
+    std::memcpy(g_census, g_mode == Mode::Spr ? "R1BGSPR1" : "R1BGUARD", 8);
     put_u32(0x08, 0x01020304u);
-    put_u32(0x0c, 1);
+    put_u32(0x0c, g_mode == Mode::Spr ? 2 : 1);
     put_u32(0x10, kHeaderBytes);
     put_u32(0x14, kSlots);
     put_u32(0x18, static_cast<uint32_t>(g_names.size()));
@@ -735,6 +738,167 @@ bool census_open() {
     return true;
 }
 
+// ---- the scratchpad's data flow (RAC1_BRIDGE_GUARD=spr) ----
+// Every scratchpad word carries the last write's tag: the innermost SprScope instance it was made in (0: none), that scope's
+// kind, the writing function and the game frame (the base ELF's frame counter 0x15eea4). A read of a word whose writer
+// instance is not on the reader's scope stack (or that no scope wrote) is a flow out of the writer's call: counted as
+// (writer function, reader function, writer scope kind, reader's innermost scope kind, word, flags). A read whose value
+// changed since the word's last seen value with no write seen in between was written by code the guard cannot see (the
+// scratchpad's direct users): counted as such, and the word's writer becomes "unseen".
+constexpr int kMaxScopeDepth = 8;
+constexpr uint32_t kSprWords = 0x4000 / 4;
+constexpr uint64_t kWriterUnseen = 1;    // (a writer function value no real function has: the anchor's offset is never 1)
+constexpr uint64_t kWriterRestored = 2;  // (RAC1_BRIDGE_SPR_RESTORE put the word back after its writer's call)
+constexpr uint8_t kFlowPointer = 1, kFlowNextFrame = 2, kFlowLaterFrame = 4, kFlowUnseenWrite = 8, kFlowWrite = 16;  // (16: a write record)
+
+struct SprTag {
+    uint32_t serial = 0;  // the innermost scope instance of the last write (0: none)
+    uint8_t scope = 0;    // its kind
+    bool written = false;
+    bool seen_valid = false;
+    uint32_t frame = 0;
+    uint32_t seen = 0;   // the word's value at its last seen read (an unseen write changes it)
+    uint64_t fn = 0;     // the writing function (the anchor's offset)
+};
+SprTag g_spr_tags[kSprWords];
+std::atomic<uint32_t> g_spr_serial{0};
+uint32_t g_spr_restore_mask = 0;  // RAC1_BRIDGE_SPR_RESTORE: the scope kinds whose writes are put back when their call returns
+
+struct SprFrame {
+    uint32_t serial;
+    uint8_t scope;
+    std::vector<std::pair<uint16_t, uint32_t>>* undo;  // (restore mode) the words this instance wrote first, their values before
+};
+struct SprStack {
+    SprFrame f[kMaxScopeDepth];
+    std::vector<uint16_t> written[kMaxScopeDepth];  // per open scope: the words its call wrote (their values are taken when it
+                                                    // returns: a later read of a different value was written by unseen code)
+    int depth = 0;
+    int lost = 0;  // (deeper than kMaxScopeDepth: not tracked)
+};
+thread_local SprStack t_spr;
+
+uint32_t spr_word(uint32_t w) {
+    uint32_t v;
+    std::memcpy(&v, ee_get_scratchpad_base() + w * 4, 4);
+    return v;
+}
+uint32_t game_frame() {
+    const uint8_t* ram = ee_get_ram_base();
+    uint32_t v = 0;
+    if (ram != nullptr) std::memcpy(&v, ram + 0x0015eea4u, 4);
+    return v;
+}
+bool on_stack_kind(int scope) {
+    for (int i = 0; i < t_spr.depth; ++i)
+        if (t_spr.f[i].scope == scope) return true;
+    return false;
+}
+bool on_stack(uint32_t serial) {
+    for (int i = 0; i < t_spr.depth; ++i)
+        if (t_spr.f[i].serial == serial) return true;
+    return false;
+}
+
+void flow_add(uint64_t writer_fn, uint64_t reader_fn, uint8_t writer_scope, uint8_t reader_scope, uint32_t word, uint8_t flags) {
+    const uint64_t meta = static_cast<uint64_t>(word) | (static_cast<uint64_t>(flags) << 16) | (static_cast<uint64_t>(writer_scope) << 24) |
+                          (static_cast<uint64_t>(reader_scope) << 32) | (1ull << 63);  // (bit 63: never an empty slot)
+    const uint64_t h = mix(writer_fn * 0x9e3779b97f4a7c15ull ^ reader_fn ^ (meta * 0xc2b2ae3d27d4eb4full));
+    for (uint32_t i = static_cast<uint32_t>(h) & (kSlots - 1), n = 0; n < 64; ++n, i = (i + 1) & (kSlots - 1)) {
+        uint64_t* slot = g_slots + 4 * i;
+        uint64_t m = __atomic_load_n(slot + 2, __ATOMIC_ACQUIRE);
+        if (m == 0) {
+            // (claimed by its meta word, then filled: a reader of the file sees whole slots once the run is over)
+            uint64_t zero = 0;
+            if (__atomic_compare_exchange_n(slot + 2, &zero, ~0ull, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+                slot[0] = writer_fn;
+                slot[1] = reader_fn;
+                __atomic_store_n(slot + 2, meta, __ATOMIC_RELEASE);
+                __atomic_fetch_add(slot + 3, 1, __ATOMIC_RELAXED);
+                return;
+            }
+            m = zero;
+        }
+        while (m == ~0ull) m = __atomic_load_n(slot + 2, __ATOMIC_ACQUIRE);  // (another thread filling it)
+        if (m == meta && slot[0] == writer_fn && slot[1] == reader_fn) {
+            __atomic_fetch_add(slot + 3, 1, __ATOMIC_RELAXED);
+            return;
+        }
+    }
+    __atomic_fetch_add(reinterpret_cast<uint64_t*>(g_census + 0x28), 1, __ATOMIC_RELAXED);
+}
+
+// (RAC1_BRIDGE_SPR_WATCH=<offset hex>[,<count>]: the first accesses of that word printed with a backtrace: who writes / reads it)
+void spr_watch(uint32_t w, const char* what, uint64_t fn, uint8_t scope) {
+    static const char* e = std::getenv("RAC1_BRIDGE_SPR_WATCH");
+    static const uint32_t word = e != nullptr ? static_cast<uint32_t>(std::strtoul(e, nullptr, 16)) / 4 : ~0u;
+    static std::atomic<int> left{e != nullptr && std::strchr(e, ',') != nullptr ? std::atoi(std::strchr(e, ',') + 1) : 6};
+    static const char* which = e != nullptr && std::strchr(e, ':') != nullptr ? std::strchr(e, ':') + 1 : "";  // (",n:w" writes, ",n:f" flows)
+    if (w != word || (*which == 'w' && what[0] != 'w') || (*which == 'f' && what[0] == 'w') || (*which == 'c' && (scope < 1 || scope > 5)) ||
+        left.fetch_sub(1) <= 0)
+        return;  // (",n:c": the accesses inside a collision routine's call)
+    std::fprintf(stderr, "[bridge-guard] watch +0x%04x: %s by anchor%+lld in scope %s (frame %u; the word's call %u, this thread's innermost %u; value %08x)\n",
+                 w * 4, what, static_cast<long long>(fn & (1ull << 47) ? static_cast<int64_t>(fn) - (1ll << 48) : static_cast<int64_t>(fn)),
+                 g_names.size() > scope ? g_names[scope].c_str() : "?", game_frame(), g_spr_tags[w].serial,
+                 t_spr.depth > 0 ? t_spr.f[t_spr.depth - 1].serial : 0u, spr_word(w));
+    std::fflush(stderr);
+    platform::print_backtrace(12);
+}
+
+void spr_access(uint32_t addr, uint32_t size, BridgeAccess kind, const void* caller, const void* cfa) {
+    const uint32_t off = addr - 0x70000000u;
+    if (off >= 0x4000u) return;
+    // (the words reached: a write's own size; a host pointer's vector, 16 bytes; a read's - ee_read gives the slow path no
+    // size - the word it starts in: a quadword read counts for its first word only)
+    const uint32_t bytes = kind == BridgeAccess::Write ? std::max<uint32_t>(size, 1) : kind == BridgeAccess::Pointer ? 16u : 1u;
+    const uint32_t first = off / 4, last = std::min<uint32_t>((off + bytes - 1) / 4, kSprWords - 1);
+    const uint64_t fn = static_cast<uint64_t>(rel_of(caller_function(caller, cfa))) & 0x0000ffffffffffffull;
+    const uint32_t frame = game_frame();
+    const SprFrame* inner = t_spr.depth > 0 ? &t_spr.f[t_spr.depth - 1] : nullptr;
+    for (uint32_t w = first; w <= last; ++w) {
+        SprTag& tg = g_spr_tags[w];
+        if (kind == BridgeAccess::Write) {
+            if (inner != nullptr && tg.serial != inner->serial) {
+                if (inner->undo != nullptr) inner->undo->push_back({static_cast<uint16_t>(w), spr_word(w)});
+                t_spr.written[t_spr.depth - 1].push_back(static_cast<uint16_t>(w));
+            }
+            tg.serial = inner != nullptr ? inner->serial : 0;
+            tg.scope = inner != nullptr ? inner->scope : 0;
+            tg.fn = fn;
+            tg.frame = frame;
+            tg.written = true;
+            tg.seen_valid = false;
+            spr_watch(w, "write", fn, tg.scope);
+            // (the writes too, by scope and function: which words a marked call's own code writes - the oracle's ignore list)
+            if (inner != nullptr) flow_add(fn, 0, tg.scope, 0, w, kFlowWrite);
+            continue;
+        }
+        // a read (or a pointer taken: counted as a read, flagged)
+        const uint32_t value = spr_word(w);
+        uint8_t flags = kind == BridgeAccess::Pointer ? kFlowPointer : 0;
+        if (tg.seen_valid && tg.seen != value) {  // (written since by code the guard does not see)
+            flags |= kFlowUnseenWrite;
+            tg.serial = 0;
+            tg.scope = 0;
+            tg.fn = kWriterUnseen;
+            tg.frame = frame;
+            tg.written = true;
+        }
+        tg.seen = value;
+        tg.seen_valid = true;
+        if (!tg.written) continue;
+        if (tg.serial != 0 && on_stack(tg.serial)) {  // (inside the writer's own call: not a flow)
+            spr_watch(w, "read inside the writer's call", fn, inner != nullptr ? inner->scope : 0);
+            continue;
+        }
+        const uint32_t df = frame - tg.frame;
+        if (df == 1) flags |= kFlowNextFrame;
+        if (df > 1) flags |= kFlowLaterFrame;
+        flow_add(tg.fn, fn, tg.scope, inner != nullptr ? inner->scope : 0, w, flags);
+        spr_watch(w, "a flow's read", fn, inner != nullptr ? inner->scope : 0);
+    }
+}
+
 // ---- trap ----
 [[noreturn]] void trap(uint32_t addr, uint32_t size, BridgeAccess kind, int id, const void* ra, const void* cfa) {
     static const char* const kinds[] = {"?", "read", "write", "pointer"};
@@ -749,7 +913,94 @@ bool census_open() {
     std::abort();
 }
 
+const char* const kSprScopeNames[] = {"(none)", "segment_collide_v", "sphere_collide_v", "capsule_collide_v", "mobys_in_sphere_v",
+                                       "sphere_mesh_collide", "wad_decompress", "armor_load", "gameplay_load"};
+constexpr int kSprScopeKinds = static_cast<int>(sizeof kSprScopeNames / sizeof kSprScopeNames[0]);
+
+// RAC1_BRIDGE_GUARD=spr[:<file>]: the scratchpad's flows (no ranges: the whole scratchpad), with RAC1_BRIDGE_SPR_RESTORE
+bool spr_init(const std::string& path) {
+    g_mode = Mode::Spr;
+    g_census_path = path;
+    g_ranges_arg = "spr";
+    kSlots = kSprSlots;
+    g_slot_words = 4;
+    for (int i = 0; i < kSprScopeKinds; ++i) g_names.push_back(kSprScopeNames[i]);
+    if (const char* r = std::getenv("RAC1_BRIDGE_SPR_RESTORE"); r != nullptr && *r != 0) {
+        std::stringstream s(r);
+        std::string name;
+        while (std::getline(s, name, ',')) {
+            if (name == "coll") g_spr_restore_mask |= 0x3eu;  // (the five collision routines)
+            else if (name == "load") g_spr_restore_mask |= 0x1c0u;  // (wad_decompress, armor_load, gameplay_load)
+            else if (name == "all") g_spr_restore_mask |= 0x1feu;
+            else
+                for (int i = 1; i < kSprScopeKinds; ++i)
+                    if (name == kSprScopeNames[i]) g_spr_restore_mask |= 1u << i;
+        }
+    }
+    g_anchor = reinterpret_cast<uintptr_t>(&rac1_bridge_guard_anchor);
+    collect_accessors();
+    if (!census_open()) {
+        std::fprintf(stderr, "[bridge-guard] the flow file %s cannot be made: the guard is off\n", path.c_str());
+        g_mode = Mode::Off;
+        return false;
+    }
+    put_u32(0x1c, g_spr_restore_mask);
+    g_spr_scopes_on = true;
+    std::fprintf(stderr, "[bridge-guard] spr: the scratchpad's flows in %s%s: the inline memory accessors are off (slow)\n", path.c_str(),
+                 g_spr_restore_mask != 0 ? " (RESTORE: the scopes' scratchpad writes are put back when they return - the game's state changes)" : "");
+    return true;
+}
+
 }  // namespace
+
+bool g_spr_scopes_on = false;
+
+// orig: (host) see guard.h
+void spr_scope_enter(SprScopeId id) {
+    const int k = static_cast<int>(id);
+    if (t_spr.depth >= kMaxScopeDepth) {
+        ++t_spr.lost;
+        return;
+    }
+    SprFrame& f = t_spr.f[t_spr.depth];
+    f.serial = g_spr_serial.fetch_add(1, std::memory_order_relaxed) + 1;
+    f.scope = static_cast<uint8_t>(k);
+    f.undo = (g_spr_restore_mask >> k & 1u) != 0 && !on_stack_kind(k) ? new std::vector<std::pair<uint16_t, uint32_t>> : nullptr;
+    t_spr.written[t_spr.depth].clear();
+    ++t_spr.depth;
+    if (g_census != nullptr && k < 16) __atomic_fetch_add(reinterpret_cast<uint64_t*>(g_census + 0x380 + 8 * k), 1, __ATOMIC_RELAXED);
+}
+
+// orig: (host) see guard.h
+void spr_scope_leave() {
+    if (t_spr.lost > 0) {
+        --t_spr.lost;
+        return;
+    }
+    if (t_spr.depth == 0) return;
+    SprFrame& f = t_spr.f[--t_spr.depth];
+    if (f.undo != nullptr) {  // (restore mode: the words this call wrote, and still holds, put back as they were before it)
+        for (const auto& [w, old] : *f.undo) {
+            SprTag& tg = g_spr_tags[w];
+            if (tg.serial != f.serial) continue;
+            std::memcpy(ee_get_scratchpad_base() + w * 4u, &old, 4);
+            tg.serial = 0;
+            tg.scope = 0;
+            tg.fn = kWriterRestored;
+            tg.seen = old;
+            tg.seen_valid = true;
+        }
+        delete f.undo;
+        f.undo = nullptr;
+    }
+    // the values this call left (a read that finds another value later: unseen code wrote it in between)
+    for (const uint16_t w : t_spr.written[t_spr.depth]) {
+        SprTag& tg = g_spr_tags[w];
+        if (tg.serial != f.serial) continue;
+        tg.seen = spr_word(w);
+        tg.seen_valid = true;
+    }
+}
 
 // orig: (host) see guard.h
 bool bridge_guard_init() {
@@ -758,11 +1009,13 @@ bool bridge_guard_init() {
     const std::string arg = e;
     if (arg == "trap") {
         g_mode = Mode::Trap;
+    } else if (arg.rfind("spr", 0) == 0 && (arg.size() == 3 || arg[3] == ':')) {
+        return spr_init(arg.size() > 4 ? arg.substr(4) : "bridge_spr.bin");
     } else if (arg.rfind("census", 0) == 0 && (arg.size() == 6 || arg[6] == ':')) {
         g_mode = Mode::Census;
         g_census_path = arg.size() > 7 ? arg.substr(7) : "bridge_census.bin";
     } else {
-        std::fprintf(stderr, "[bridge-guard] RAC1_BRIDGE_GUARD=%s: census[:<file>] or trap expected; the guard is off\n", e);
+        std::fprintf(stderr, "[bridge-guard] RAC1_BRIDGE_GUARD=%s: census[:<file>], spr[:<file>] or trap expected; the guard is off\n", e);
         return false;
     }
     const char* r = std::getenv("RAC1_BRIDGE_RANGES");
@@ -808,6 +1061,14 @@ bool bridge_guard_on() { return g_mode != Mode::Off; }
 // orig: (host) see guard.h
 void bridge_guard_access(uint32_t addr, uint32_t size, BridgeAccess kind, const void* caller, const void* cfa) {
     if (t_in_guard || g_mode == Mode::Off) return;
+    if (g_mode == Mode::Spr) {
+        if (addr - 0x70000000u < 0x4000u) {
+            t_in_guard = true;
+            spr_access(addr, size, kind, caller, cfa);
+            t_in_guard = false;
+        }
+        return;
+    }
     t_in_guard = true;  // (the guard's own reads of EE memory, and the translation's, are not seen)
     if (g_has_derived && ++t_count % kRefreshEvery == 0) g_dirty.store(true, std::memory_order_relaxed);
     const Table* t = current_table();

@@ -1,6 +1,7 @@
 // The collision module (moved from ovl_1e_1f.cpp unchanged): sphere_collide 0x1f0d60, the nearest contact of a sphere
 // with the level's collision and the mobys.
 #include <game/collision/collide_common.h>
+#include <game/bridge/guard.h>
 
 namespace rac1 {
 using namespace collide_detail;
@@ -17,6 +18,7 @@ using namespace collide_detail;
 // is the last vf2.w this call loaded (0 if none: the register's older content is not modelled).
 // orig: 0x001f0d60
 int32_t sphere_collide_v(const Vec4& pos, float radius, uint32_t flags, uint32_t ignore) {
+    const SprScope spr_scope(SprScopeId::SphereCollide);  // (RAC1_BRIDGE_GUARD=spr: the scratchpad's data flow, src/game/bridge/guard.h)
     const uint32_t SPR = 0x70000000u, OUTB = OV(0x00173e40), GRID = OV(0x0019b7e0);
     const int32_t q0 = lw(OUTB + 0x10);
     if (q0 < 0) return 0;

@@ -1,6 +1,7 @@
 // The collision module (moved from ovl_1e_1f.cpp unchanged): capsule_collide 0x1f19a0, the nearest contact of an upright
 // capsule with the level's collision and the mobys.
 #include <game/collision/collide_common.h>
+#include <game/bridge/guard.h>
 
 namespace rac1 {
 using namespace collide_detail;
@@ -13,6 +14,7 @@ using namespace collide_detail;
 // contact's height along the axis.
 // orig: 0x001f19a0
 int32_t capsule_collide_v(const Vec4& pos, float radius, float height, uint32_t flags, uint32_t ignore) {
+    const SprScope spr_scope(SprScopeId::CapsuleCollide);  // (RAC1_BRIDGE_GUARD=spr: the scratchpad's data flow, src/game/bridge/guard.h)
     const uint32_t SPR = 0x70000000u, OUTB = OV(0x00173e40), GRID = OV(0x0019b7e0);
     const int32_t q0 = lw(OUTB + 0x10);
     if (q0 < 0) return 0;
