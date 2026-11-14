@@ -119,6 +119,27 @@ Useful variables:
 | `RAC1_ORACLE_DUMPS=<dir>` | Where the RAM dumps are (default `assets/dumps/oracle`). |
 | `ORACLE_WRITES=1` | After each check, a `WRITES` line: in how many cases the original changed nothing (a check that compares nothing), how many words it changed, whether it wrote into the null page and how far it moved the packet cursor `0x1611c0`. Run it on a new check before trusting it. |
 
+### Vendor ammo input (#172)
+
+Batch 131 includes 24 `vendor_ammo_input_history` comparisons against the NTSC-U vendor update
+at `0x29c648`: Left, Right, Cross and Triangle with fresh/previous press bits and quantities 1, 3 and 64.
+The original-code oracle uses the NTSC-U disc; it does not prove the PAL branch.
+
+The separate disc-backed regression calls the production input helpers on every level's maps. PAL 2.00
+removed the vendor's previous-button word; extrapolating its old address aliases the ammo quantity.
+The checks preserve quantity across history/reset operations and accept Cross even when quantity 64
+shares its bit. They also check that the earlier build retains its history guard.
+
+```sh
+cmake -B build -DRAC1_VENDOR_INPUT_TEST=ON
+cmake --build build --target vendor_input_test
+build/vendor_input_test --pre-1.02
+```
+
+Run the same executable from a separately prepared PAL 2.00 installation (its `assets/` and maps),
+using `--1.02`. A mismatched build argument fails the test. PAL 1.00 uses `--pre-1.02`.
+No disc, dumps or generated code are committed, and this test is off by default.
+
 ### The reference batches
 
 Before a change to game code is merged, its own batch passes, and so do these. They cover the

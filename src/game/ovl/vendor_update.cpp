@@ -40,7 +40,7 @@ int32_t cursor_item() { return lw(cursor_entry() + E_ITEM); }
 // orig: (helper) a sound of the Vendor moby
 void vendor_sound(int32_t k) { moby_sound_start(k, 0, lwu(VS + VENDOR)); }
 // orig: (helper) a button pressed this frame, not the frame before
-bool pressed(uint32_t b) { return (lwu(PAD_NOW) & b) != 0 && (pad_before() & b) == 0; }
+bool pressed(uint32_t b) { return button_pressed(b); }
 
 // orig: (helper) the HUD's ammo counter of the item (slot 0x30, key 60000 + the item: its ammo, its most)
 int32_t ammo_counter_request(int32_t item) {
@@ -402,7 +402,7 @@ void list_update() {
     sw(VS + FRAMES, static_cast<uint32_t>(lw(VS + FRAMES) + 1));
     if (lw(VS + STEP) == 0 && lw(CLOSING) == 0) list_input();
     vendor_purchase_update();
-    pad_before_set(lwu(PAD_NOW));
+    pad_history_set(lwu(PAD_NOW));
     if (lw(OPENING) == 1) {
         const int32_t t = lw(OPEN_TIMER);
         if (t == 0) sw(OPENING, 0);

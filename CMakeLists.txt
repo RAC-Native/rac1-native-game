@@ -316,6 +316,17 @@ if(RAC1_ORACLE)
     add_subdirectory(tests/oracle)
 endif()
 
+# Disc-backed vendor input regression (#172). Run by hand from a prepared US/PAL asset root; never a public CI test.
+option(RAC1_VENDOR_INPUT_TEST "Build the disc-backed vendor input regression" OFF)
+if(RAC1_VENDOR_INPUT_TEST)
+    if(RAC1_NO_GENERATED)
+        message(FATAL_ERROR "RAC1_VENDOR_INPUT_TEST needs the generated sources and disc maps")
+    endif()
+    add_executable(vendor_input_test tests/oracle/vendor_input_test.cpp)
+    target_include_directories(vendor_input_test PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src)
+    target_link_libraries(vendor_input_test PRIVATE rac1_game rac1_runtime)
+endif()
+
 # ---- tests/unit/ : host unit tests of the project's own file formats (no disc, no generated code, well under a second) ----
 # Built with the developer's tests (on when the oracle is, RAC1_ORACLE); ./setup.sh never builds them. Run: ctest, or
 # ./build/tests/level_cache_test [a folder for its temporary files].

@@ -53,7 +53,7 @@ constexpr OvConst<0x00161e20u> OPENING{};
 constexpr OvConst<0x00161e24u> SPIN{};            // the hologram's spin angle
 constexpr OvConst<0x00161e28u> HELD_LEFT{};       // the frames Left / Right have been held (the quantity's repeat)
 constexpr OvConst<0x00161e2cu> HELD_RIGHT{};
-constexpr OvConst<0x00161e30u> PAD_BEFORE{};      // the buttons of the frame before
+constexpr OvConst<0x00161e30u> PAD_BEFORE{};      // pre-1.02 only: 1.02 removed this word
 constexpr OvConst<0x00161e34u> QUANTITY{};
 constexpr OvConst<0x00161e38u> CURSOR_MOVED{};    // the hologram is made again
 constexpr OvConst<0x001ca6e0u> BIG_HEAD_NODE{};   // the head's scale node (0x24f590's, 0x40 bytes) of the cheat 0x15edb0
@@ -91,6 +91,8 @@ constexpr int32_t ITEM_DRONE_DEVICE = 0x18;      // (its hologram is the class 0
 inline uint32_t entry(int32_t i) { return VS + LIST + static_cast<uint32_t>(i) * ENTRY_SIZE; }
 
 // --- vendor_screens.cpp ------------------------------------------------------------------------
+bool button_pressed(uint32_t button);
+void pad_history_set(uint32_t buttons);
 void vendor_seqs_unpack();                 // orig: 0x0029a330
 void vendor_screens_exit(int32_t demo);    // orig: 0x0029ab70
 void vendor_demo_start();                  // orig: 0x0029ad08
@@ -101,13 +103,6 @@ void vendor_remark(int32_t kind);          // orig: 0x0029b4d8
 void vendor_hologram_make();               // orig: 0x0029b680
 uint32_t scene_stream_load(int32_t scene); // orig: 0x002454c8
 uint32_t scene_block_select(int32_t i);    // orig: 0x002455c0
-// (helper) The buttons of the frame before (PAD_BEFORE, 0x161e30). The 1.02 build (the PAL disc 2.00) has no such word:
-// its Vendor keeps three words where NTSC-U's keeps four (0x161e24..0x161e30: the spin, the two held counts), so its maps
-// put 0x161e30 on the quantity's place (0x161e34's) and the frame's buttons would overwrite the quantity. On a disc of
-// that build (region_core_moved()) the port keeps the word outside the game's memory; only the ports read it.
-uint32_t pad_before();
-void pad_before_set(uint32_t buttons);
-
 // --- vendor_update.cpp -------------------------------------------------------------------------
 void vendor_purchase_update();             // orig: 0x0029ba78
 
