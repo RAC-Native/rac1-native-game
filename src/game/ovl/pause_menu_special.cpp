@@ -8,6 +8,7 @@
 #include <game/ovl/pause_menu.h>
 #include <game/ovl/pause_menu_pages.h>
 #include <game/ovl/planet_map.h>
+#include <game/ovl/region_core.h>
 
 namespace rac1 {
 
@@ -50,8 +51,13 @@ int32_t cheats_list_focus_in(uint32_t) {
     const uint32_t list = OV(0x001b7c10);
     uint32_t e = list;
     int32_t n = 0;
+    // region: the 1.02 build (the PAL disc 2.00) ends the walk at the cheat table's -1 (its row 7), within the 12 rows
+    // (2.00 0x00278dcc..0x00278e54): its rows 8..11 would read the raw bytes 0x15edc0 + 0x501a.., which on that disc's
+    // layout hold another object of the level's data than on the North American one
+    const bool b102 = region_core_moved();
     for (uint32_t k = 0; k < 12; ++k) {
         const int32_t id = lw(f + 4 * k);
+        if (id == -1 && b102) break;
         if (id == -1) continue;
         if (lbu(0x0015edc0 + static_cast<uint32_t>(id)) == 0) continue;
         sw(e + 4, 0x0015edb0 + static_cast<uint32_t>(id));
