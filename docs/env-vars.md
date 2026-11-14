@@ -1,11 +1,11 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 492 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 493 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
-| [Player](#player-variables) | 25 | Settings a player may want to change: files, window, audio, the ISO |
+| [Player](#player-variables) | 26 | Settings a player may want to change: files, window, audio, the ISO |
 | [Debugging](#debugging-variables) | 358 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 109 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
