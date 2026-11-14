@@ -125,8 +125,7 @@ void batch_192() {
     {
         auto pv = [P, V, near] { near(P, 20.0f); VV(V) = Vec4{rf(-0.3f, 0.3f), rf(-0.3f, 0.3f), rf(-0.1f, 0.4f), 0.0f}; };
         std::function<uint32_t()> sp;
-        if (L == 1 || L == 3) sp = [pv, P, V, spawned] { return spawned(0x0a, [&] { pv(); smoke_particle_l1(P, V); }); };
-        if (L == 4) sp = [pv, P, V, spawned] { return spawned(0x0a, [&] { pv(); eud_25d0e8_l4(P, V, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0); }); };
+        if (L == 1 || L == 3 || L == 4) sp = [pv, P, V, spawned] { return spawned(0x0a, [&] { pv(); smoke_particle_l1(P, V); }); };
         check("particle_0a_update", 0x0026a880, 200, Ret::None, [&] {
             level();
             const uint32_t q = make(0x0a, particle_0a_update, sp, [](uint32_t q) {

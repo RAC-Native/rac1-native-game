@@ -26,6 +26,8 @@
 #include <game/port_stubs.h>
 #include <game/ovl/hydro.h>
 #include <game/ovl/helmet_tr.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/shared_helpers.h>
 
 namespace rac1 {
 
@@ -33,22 +35,10 @@ using namespace eer;
 using namespace vu0m;
 
 // (the functions appended at the end of eudora_classes_tr_4.cpp)
-TrRet eud_1ed6b8_l4(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint64_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in, float f16_in, float f17_in, float f18_in, float f19_in);
-TrRet eud_2d63e8_l4(uint64_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in, float f16_in, float f17_in, float f18_in, float f19_in);
-TrRet eud_2d66d0_l4(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in, float f16_in, float f17_in, float f18_in, float f19_in);
-TrRet eud_2d6948_l4(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in, float f16_in, float f17_in, float f18_in, float f19_in);
-TrRet eud_2d6e98_l4(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in, float f16_in, float f17_in, float f18_in, float f19_in);
-void eud_trespasser_puzzle_draw_l4(uint32_t a0_in);
-void eud_class832_draw_l4(uint32_t a0_in);
-void eud_sandmouse_glow_l4(uint32_t a0_in);
 
 //@gen eud_class481_update_l4
 
-//@gen eud_class484_update_l4
-
 //@gen eud_292370_l4
-
-//@gen eud_241910_l4
 
 //@gen eud_2923b8_l4
 
@@ -62,21 +52,9 @@ void eud_sandmouse_glow_l4(uint32_t a0_in);
 
 //@gen eud_class584_update_l4
 
-//@gen eud_2d4920_l4
-
-//@gen eud_2d5300_l4
-
-//@gen eud_class615_update_l4
-
 //@gen eud_class617_update_l4
 
 //@gen eud_class642_update_l4
-
-//@gen eud_2f0410_l4
-
-//@gen eud_2f0500_l4
-
-//@gen eud_class758_update_l4
 
 //@gen eud_2e1768_l4
 
@@ -86,8 +64,6 @@ void eud_sandmouse_glow_l4(uint32_t a0_in);
 
 //@gen eud_class1120_update_l4
 
-//@gen eud_2e2f90_l4
-
 //@gen eud_class1190_update_l4
 
 //@gen eud_class1343_update_l4
@@ -95,20 +71,6 @@ void eud_sandmouse_glow_l4(uint32_t a0_in);
 //@gen eud_class1516_update_l4
 
 //@gen eud_class1549_update_l4
-
-//@gen eud_256460_l4
-
-//@gen eud_256ab0_l4
-
-//@gen eud_class1834_update_l4
-
-//@gen eud_278610_l4
-
-//@gen eud_2bfca0_l4
-
-//@gen eud_2ee798_l4
-
-//@gen eud_class280_update_l4
 
 
 }  // namespace rac1

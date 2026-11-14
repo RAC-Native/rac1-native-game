@@ -14,6 +14,9 @@
 #include <game/lib/libcdvd.h>
 #include <game/lib/libgcc_fp.h>
 #include <game/ovl/eudora_mobys.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_shell.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/kernel/disc.h>
@@ -197,7 +200,7 @@ void batch_139() {
     struct Cls { const char* name; uint32_t addr; void (*fn)(uint32_t); int st_lo, st_hi; };
     static const Cls cls[] = {
         {"class1120_scene", 0x002e1a10, eud_class1120_update_l4, 1, 3},
-        {"class1134_scene", 0x002e1f38, eud_class1134_update_l4, 1, 2},
+        {"class1134_scene", 0x002e1f38, gold_bolt_update, 1, 2},
     };
     for (const Cls& c : cls) {
         const std::vector<uint32_t> ms = mobys_with(c.addr);
@@ -249,8 +252,8 @@ void batch_139() {
     struct Spawned { const char* name; uint32_t addr; void (*fn)(uint32_t); float hx, hy, hz; };
     static const Spawned sp[] = {
         {"class1516", 0x002e5178, eud_class1516_update_l4, 222.0f, 166.0f, 56.0f},
-        {"class184", 0x002af058, eud_class184_update_l4, 157.0f, 226.0f, 60.0f},
-        {"class1633", 0x002e5928, eud_class1633_update_l4, 146.0f, 203.0f, 60.0f},
+        {"class184", 0x002af058, shot_update, 157.0f, 226.0f, 60.0f},
+        {"class1633", 0x002e5928, class1633_update, 146.0f, 203.0f, 60.0f},
     };
     for (const Spawned& c : sp) {
         if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, c.name) != 0) continue;
@@ -264,7 +267,10 @@ void batch_139() {
             if (c.addr == 0x002e5928 && frames == 60)  // (1633: its spawner L4:0x2e5818, which the Sandmouse's helper 0x2e6080 calls with the
                 // sandmouse as the parent and two distances, an angle, a scale in f12..f15: called here so on the level's Sandmouse)
                 for (uint32_t s : mobys_with(0x002e69d0))
-                    for (int k = 0; k < 3; ++k) eud_2e5818_l4(s, 0, 0, 0, 0, 0, 0, 0, rf(1, 5), rf(1, 5), rf(-3, 3), rf(0.5f, 1.5f), 0, 0, 0, 0);
+                    for (int k = 0; k < 3; ++k) {
+                        const float d0 = rf(1, 5), d1 = rf(1, 5), ang = rf(-3, 3), sc = rf(0.5f, 1.5f);
+                        class1633_spawn(s, 0, d0, d1, ang, sc);  // (the shared port of the spawner, shared_sandmouse.cpp)
+                    }
             ms = mobys_with(c.addr);
         }
         if (ms.empty()) { std::printf("%-26s L4:0x%08x  none spawned in %d frames (not compared)\n", c.name, c.addr, frames); continue; }

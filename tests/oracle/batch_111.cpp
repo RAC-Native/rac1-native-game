@@ -2,13 +2,28 @@
 // ORACLE_LEVEL=4 build/tests/ovl_oracle --batch 111 (needs the ISO). The subjects are the level's own
 // mobys of each class (placed by its gameplay data) after the first gameplay frame, perturbed; the
 // original is Eudora's own function at its own address, the port the one registered for it (the
-// transliterations eudora_classes_tr_N.cpp, the hand ports eudora_*.cpp).
+// transliterations eudora_classes_tr_N.cpp, the hand ports eudora_*.cpp, the shared ports of the classes and camera
+// functions other levels carry too: shared_*.cpp, novalis_*.cpp, kerwan_camera.cpp; class 484's retail update is a bare
+// tail call of moby_retire).
 
 #include "ovl_oracle.h"
 
 #include <game/ovl/helmet_tr.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/eudora_mobys.h>
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/ovl.h>
+#include <game/ovl/shared_class1844.h>
+#include <game/ovl/shared_class280.h>
+#include <game/ovl/shared_class437.h>
+#include <game/ovl/shared_class604.h>
+#include <game/ovl/shared_class615.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_shell.h>
+#include <game/ovl/shared_swingshot_target.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
@@ -165,7 +180,7 @@ void batch_111() {
     static const TrCls trcls[] = {
         {"class86", 0x0029ecf8, eud_class86_update_l4},
         {"class161", 0x002a5a08, eud_class161_update_l4},
-        {"class184", 0x002af058, eud_class184_update_l4},
+        {"class184", 0x002af058, shot_update},
         {"class217", 0x002ba520, eud_class217_update_l4},
         {"class340", 0x002c2270, eud_class340_update_l4},
         {"class427", 0x002c4850, eud_class427_update_l4},
@@ -173,29 +188,29 @@ void batch_111() {
         {"class434", 0x002c6bb8, eud_class434_update_l4},
         {"class466", 0x002ca420, eud_class466_update_l4},
         {"class481", 0x002cdda0, eud_class481_update_l4},
-        {"class484", 0x002ce060, eud_class484_update_l4},
+        {"class484", 0x002ce060, moby_retire},
         {"class563", 0x002d16b8, eud_class563_update_l4},
         {"class584", 0x002d3580, eud_class584_update_l4},
-        {"class615", 0x002d4ae0, eud_class615_update_l4},
+        {"class615", 0x002d4ae0, class615_update},
         {"class617", 0x002d6f68, eud_class617_update_l4},
         {"class642", 0x002d7e90, eud_class642_update_l4},
-        {"class758", 0x002d9a58, eud_class758_update_l4},
+        {"class758", 0x002d9a58, swingshot_target_update},
         {"class1101", 0x002e17d8, eud_class1101_update_l4},
         {"class1120", 0x002e1a10, eud_class1120_update_l4, 0x4},
         {"class1190", 0x002e3078, eud_class1190_update_l4},
         {"class1343", 0x002e4418, eud_class1343_update_l4},
         {"class1516", 0x002e5178, eud_class1516_update_l4},
         {"class1549", 0x002e53a0, eud_class1549_update_l4},
-        {"class1834", 0x002e79a8, eud_class1834_update_l4},
-        {"class280", 0x002bfd30, eud_class280_update_l4},
-        {"class437", 0x002c7e28, eud_class437_update_l4},
-        {"class604", 0x002d4368, eud_class604_update_l4},
-        {"class605", 0x002d46b8, eud_class605_update_l4},
-        {"class805", 0x002d9fc0, eud_class805_update_l4},
-        {"class832", 0x002dc168, eud_class832_update_l4},
-        {"class1134", 0x002e1f38, eud_class1134_update_l4, 0x6},
-        {"class1633", 0x002e5928, eud_class1633_update_l4},
-        {"class1818", 0x002e69d0, eud_class1818_update_l4},
+        {"class1834", 0x002e79a8, class1844_update},
+        {"class280", 0x002bfd30, class280_update},
+        {"class437", 0x002c7e28, class437_update},
+        {"class604", 0x002d4368, class604_update},
+        {"class605", 0x002d46b8, zone_marker_update},
+        {"class805", 0x002d9fc0, spawn_point_update_l1},
+        {"class832", 0x002dc168, class832_update},
+        {"class1134", 0x002e1f38, gold_bolt_update, 0x6},
+        {"class1633", 0x002e5928, class1633_update},
+        {"class1818", 0x002e69d0, sandmouse_update},
     };
     auto generic_prep = [give_hit, hero_near](uint32_t m, int st, int pass, void (*fn)(uint32_t)) {
         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -311,13 +326,13 @@ void batch_111() {
             if (!any) std::printf("cam_type1                  L4:0x002ed850  no live camera of type 1 on this level\n");
             else {
                 l4check("cam_type1_accept", 0x002ed850, 300, Ret::Int32, [cam1_setup] { uint32_t other = 0; const uint32_t cam = cam1_setup(true, &other); return Args{{cam, other}, {}}; },
-                        [](A a) { return r32(a.i[0] != 0 ? eud_cam_type1_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0 : 0u); });
+                        [](A a) { return r32(a.i[0] != 0 ? static_cast<uint32_t>(cam_type1_accept(a.i[0], a.i[1])) : 0u); });
                 l4check("cam_type1_init", 0x002ed920, 100, Ret::None, [cam1_setup] { return Args{{cam1_setup(false, nullptr)}, {}}; },
-                        [](A a) { if (a.i[0] != 0) eud_cam_type1_init_l4(a.i[0]); return uint64_t{0}; });
+                        [](A a) { if (a.i[0] != 0) cam_type1_init(a.i[0]); return uint64_t{0}; });
                 l4check("cam_type1_update", 0x002ed940, 100, Ret::None, [cam1_setup] { return Args{{cam1_setup(false, nullptr)}, {}}; },
-                        [](A a) { if (a.i[0] != 0) eud_cam_type1_update_l4(a.i[0]); return uint64_t{0}; });
+                        [](A a) { if (a.i[0] != 0) cam_type1_update(a.i[0]); return uint64_t{0}; });
                 l4check("cam_type1_exit", 0x002ed960, 100, Ret::None, [cam1_setup] { return Args{{cam1_setup(false, nullptr)}, {}}; },
-                        [](A a) { if (a.i[0] != 0) eud_cam_type1_exit_l4(a.i[0]); return uint64_t{0}; });
+                        [](A a) { if (a.i[0] != 0) cam_type1_exit(a.i[0]); return uint64_t{0}; });
             }
         }
     }
@@ -336,8 +351,8 @@ void batch_111() {
             wf(L4_ADDR(0x00161f4c), rf(0, 0.5f));  // $gp - 0x4cb4
             w32(OV(0x0015ef4c), u(ri(0, 14)));
         };
-        l4check("cam0_hook", 0x002f0448, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { eud_cam0_hook_l4(0); return uint64_t{0}; });
-        l4check("cam_callback", 0x002f04a8, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { eud_cam_callback_l4(0); return uint64_t{0}; });
+        l4check("cam0_hook", 0x002f0448, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_hook(0); return uint64_t{0}; });
+        l4check("cam_callback", 0x002f04a8, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_callback(0); return uint64_t{0}; });
     }
 
     // ---- Eudora's class hook +0x10 (0x2c41b0: pvars + 0x180; the matcher pairs it with class 749's 0x2d5800: pvars + 0xd0), and the dispatcher on it

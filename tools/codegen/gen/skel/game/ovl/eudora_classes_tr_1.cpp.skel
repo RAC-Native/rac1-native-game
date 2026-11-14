@@ -25,6 +25,10 @@
 #include <game/ovl/weapons.h>
 #include <game/port_stubs.h>
 #include <game/lib/libgcc_fp.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_spawns.h>
+#include <game/ovl/shared_class437.h>
 
 namespace rac1 {
 
@@ -32,14 +36,6 @@ using namespace eer;
 using namespace vu0m;
 
 // (the functions appended at the end of eudora_classes_tr_4.cpp)
-TrRet eud_1ed6b8_l4(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint64_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in, float f16_in, float f17_in, float f18_in, float f19_in);
-TrRet eud_2d63e8_l4(uint64_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in, float f16_in, float f17_in, float f18_in, float f19_in);
-TrRet eud_2d66d0_l4(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in, float f16_in, float f17_in, float f18_in, float f19_in);
-TrRet eud_2d6948_l4(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in, float f16_in, float f17_in, float f18_in, float f19_in);
-TrRet eud_2d6e98_l4(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in, float f16_in, float f17_in, float f18_in, float f19_in);
-void eud_trespasser_puzzle_draw_l4(uint32_t a0_in);
-void eud_class832_draw_l4(uint32_t a0_in);
-void eud_sandmouse_glow_l4(uint32_t a0_in);
 
 //@gen eud_1f3038_l4
 
@@ -58,14 +54,6 @@ void eud_sandmouse_glow_l4(uint32_t a0_in);
 //@gen eud_class86_update_l4
 
 //@gen eud_class161_update_l4
-
-//@gen eud_class184_update_l4
-
-//@gen eud_255150_l4
-
-//@gen eud_2418b0_l4
-
-//@gen eud_241980_l4
 
 //@gen eud_292688_l4
 
@@ -94,8 +82,6 @@ void eud_sandmouse_glow_l4(uint32_t a0_in);
 //@gen eud_2ba448_l4
 
 //@gen eud_2ba470_l4
-
-//@gen eud_2d34d8_l4
 
 //@gen eud_class217_update_l4
 

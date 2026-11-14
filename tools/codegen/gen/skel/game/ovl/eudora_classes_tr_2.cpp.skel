@@ -27,6 +27,9 @@
 #include <game/ovl/particle_16_spawn.h>
 #include <game/ovl/sound_emitter.h>
 #include <game/ovl/metal.h>
+#include <game/ovl/shared_arcs.h>
+#include <game/ovl/shared_shell.h>
+#include <game/ovl/shared_spawns.h>
 
 namespace rac1 {
 
@@ -34,16 +37,6 @@ using namespace eer;
 using namespace vu0m;
 
 // (the functions appended at the end of eudora_classes_tr_4.cpp)
-TrRet eud_1ed6b8_l4(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint64_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in, float f16_in, float f17_in, float f18_in, float f19_in);
-TrRet eud_2d63e8_l4(uint64_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in, float f16_in, float f17_in, float f18_in, float f19_in);
-TrRet eud_2d66d0_l4(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in, float f16_in, float f17_in, float f18_in, float f19_in);
-TrRet eud_2d6948_l4(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in, float f16_in, float f17_in, float f18_in, float f19_in);
-TrRet eud_2d6e98_l4(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t a3_in, uint32_t t0_in, uint32_t t1_in, uint32_t t2_in, uint32_t t3_in, float f12_in, float f13_in, float f14_in, float f15_in, float f16_in, float f17_in, float f18_in, float f19_in);
-void eud_trespasser_puzzle_draw_l4(uint32_t a0_in);
-void eud_class832_draw_l4(uint32_t a0_in);
-void eud_sandmouse_glow_l4(uint32_t a0_in);
-
-//@gen eud_24b888_l4
 
 //@gen eud_2c1b80_l4
 
@@ -55,49 +48,13 @@ void eud_sandmouse_glow_l4(uint32_t a0_in);
 
 //@gen eud_class340_update_l4
 
-//@gen eud_2aee30_l4
-
-//@gen eud_2c41e0_l4
-
-//@gen eud_2c45b8_l4
-
-//@gen eud_2c46d0_l4
-
 //@gen eud_2c4808_l4
-
-//@gen eud_2ce080_l4
 
 //@gen eud_class427_update_l4
 
 //@gen eud_class432_update_l4
 
 //@gen eud_class434_update_l4
-
-//@gen eud_2534a8_l4
-
-//@gen eud_25d0e8_l4
-
-//@gen eud_268b18_l4
-
-//@gen eud_268c18_l4
-
-//@gen eud_268d98_l4
-
-//@gen eud_268de8_l4
-
-//@gen eud_268d20_l4
-
-//@gen eud_268e38_l4
-
-//@gen eud_268ff0_l4
-
-//@gen eud_263098_l4
-
-//@gen eud_269100_l4
-
-//@gen eud_2cb790_l4
-
-//@gen eud_2cb8b8_l4
 
 //@gen eud_class466_update_l4
 

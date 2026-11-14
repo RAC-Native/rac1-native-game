@@ -14,6 +14,7 @@
 #include <game/ovl/blarg_mobys.h>
 #include <game/ovl/blarg_part2.h>
 #include <game/ovl/eudora_mobys.h>
+#include <game/ovl/shared_class615.h>
 #include <game/ovl/pokitaru_mobys.h>
 #include <game/ovl/variants_l11.h>
 #include <game/ovl/variants_l6.h>
@@ -106,7 +107,7 @@ void batch_146() {
         return Args{{pad()}, {}};
     }, [lv](A a) {
         if (lv == 2) class615_update(a.i[0]);
-        else if (lv == 4) eud_class615_update_l4(a.i[0]);
+        else if (lv == 4) class615_update(a.i[0]);  // (Eudora: the shared port it is re-glued onto)
         else if (lv == 6) blg_class615_update_l6(a.i[0]);
         else if (lv == 8) bat_class615_update_l8(a.i[0]);
         else pok_class615_update_l11(a.i[0]);
@@ -119,7 +120,7 @@ void batch_146() {
         return Args{{pad()}, {}};
     }, [lv](A a) {
         if (lv == 2) class615_puzzle_draw(a.i[0]);
-        else if (lv == 4) eud_trespasser_puzzle_draw_l4(a.i[0]);
+        else if (lv == 4) class615_puzzle_draw(a.i[0]);  // (Eudora: the shared port it is re-glued onto)
         else if (lv == 6) blg_class615_draw_l6(a.i[0]);
         else if (lv == 8) bat_trespasser_puzzle_draw_l8(a.i[0]);
         else pok_cb_2fd6c0_l11(a.i[0]);

@@ -16,6 +16,8 @@
 #include <game/ovl/shared_class832.h>
 #include <game/ovl/shared_sandmouse.h>
 #include <game/ovl/eudora_mobys.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_sandmouse.h>
 #include <game/ovl/kerwan_classes_tr.h>
 #include <game/ovl/shared_class832.h>
 #include <game/ovl/shared_sandmouse.h>
@@ -104,13 +106,13 @@ void batch_147() {
         lvcheck("class832_update", upd, 30, Ret::None, gen, [lv](A a) {
             if (lv == 2) class832_update(a.i[0]);
             else if (lv == 3) class832_update(a.i[0]);
-            else eud_class832_update_l4(a.i[0]);
+            else class832_update(a.i[0]);  // (Eudora: the shared port it is re-glued onto)
             return uint64_t{0};
         });
         lvcheck("class832_draw", drw, 40, Ret::None, gen, [lv](A a) {
             if (lv == 2) class832_draw(a.i[0]);
             else if (lv == 3) class832_draw(a.i[0]);
-            else eud_class832_draw_l4(a.i[0]);
+            else class832_draw(a.i[0]);  // (Eudora: the shared port it is re-glued onto)
             return uint64_t{0};
         });
     }
@@ -134,7 +136,7 @@ void batch_147() {
         }, [lv](A a) {
             if (lv == 2) sandmouse_glow(a.i[0]);
             else if (lv == 3) sandmouse_glow(a.i[0]);
-            else eud_sandmouse_glow_l4(a.i[0]);
+            else sandmouse_glow(a.i[0]);  // (Eudora: the shared port it is re-glued onto)
             return uint64_t{0};
         });
     }
