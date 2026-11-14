@@ -4,13 +4,10 @@
  "env": {
   "MKALL_HELPER_PREFIX": "eud_",
   "MKALL_WIDE_GPR": "",
-  "MKALL_FORCE": "1dddb0,1f3038,1f30e0,1f3a80,241708,24c4f0,24c660,24c7d8,2917c0,2922d0,292370,2923b8,292688,2927d0,292828,292cb8,292d48,293080,293128,295778,295de8,29eb20,2ba3e0,2ba448,2ba470,2c1b80,2c1d70,2c1e98,2c1fb8,2c4808,2d1418,2d1608,2e1768,2e1d00,2e4fe0",
+  "MKALL_FORCE": "1dddb0,2917c0,292370,2923b8,2c1b80,2c1d70,2c1e98,2c1fb8,2c4808,2d1418,2d1608,2e1768,2e1d00,2e4fe0",
   "MKALL_UNIFORM": "eud_hook_10_u"
  },
  "entries": [
-  "29ecf8:eud_class86_update_l4:void:a0",
-  "2a5a08:eud_class161_update_l4:void:a0",
-  "2ba520:eud_class217_update_l4:void:a0",
   "2c2270:eud_class340_update_l4:void:a0",
   "2c4850:eud_class427_update_l4:void:a0",
   "2c6858:eud_class432_update_l4:void:a0",
@@ -31,7 +28,6 @@
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/eudora_classes_tr_1.cpp",
   "src/game/ovl/eudora_classes_tr_2.cpp",
   "src/game/ovl/eudora_classes_tr_3.cpp",
   "src/game/ovl/eudora_classes_tr_4.cpp"

@@ -401,6 +401,565 @@ void batch_111() {
         }, [](A a) { helmet_init_fx(a.i[0]); return uint64_t{0}; });
     }
 
+    // ---- P4.1: the hand ports of classes 86 (the flock), 161 (the fidgeting prop), 217 (the two-legged robot) and the
+    // legged walker (eudora_flock.cpp, eudora_fidget.cpp, eudora_biped.cpp, eudora_walker.cpp), each against Eudora's own
+    // function on states built from the level's own mobys (the flocks and their spawned members, the robots, the Woodcut
+    // Bots' walkers), its paths and floors; the frame scales at their 50 Hz values (frame_rate_set(1)) in a quarter of the
+    // cases. `B111_P41=1` prints the subjects found.
+    if (g_oracle_level == 4) {
+        g_extra_noop_hooks = {0x00122298, 0x001232c8, 0x00122fe0, 0x00118a80, 0x0023fe20};
+        const bool info = std::getenv("B111_P41") != nullptr;
+        auto pick = [](const std::vector<uint32_t>& v) { return v[static_cast<size_t>(ri(0, static_cast<int>(v.size()) - 1))]; };
+        auto rate50 = [] { if (ri(0, 3) == 0) frame_rate_set(1); };
+        auto paths = [] { return ee_read<int32_t>(OV(0x00160104)); };
+        auto path_at = [](int32_t i) { return ee_read<uint32_t>(OV(0x001b04b0) + static_cast<uint32_t>(i) * 4); };
+        // a path of the level with at least `least` points (0: none)
+        auto some_path = [paths, path_at](int32_t least) -> int32_t {
+            for (int k = 0; k < 40; ++k) {
+                const int32_t i = ri(0, std::max(0, paths() - 1));
+                const uint32_t p = path_at(i);
+                if (p != 0 && ee_read<int32_t>(p) >= least && ee_read<int32_t>(p) < 200) return i;
+            }
+            return -1;
+        };
+        // a point near the path's point `k` (in the plane within `r`, `dz` up or down)
+        auto near_point = [path_at](int32_t path, int32_t k, float r, float dz) {
+            Vec4 q = ee_ref<Vec4>(path_at(path) + 0x10 + static_cast<uint32_t>(k) * 16);
+            const float a = rf(-3.1f, 3.1f), d = rf(0, r);
+            q.x += d * std::cos(a); q.y += d * std::sin(a); q.z += rf(-dz, dz);
+            return q;
+        };
+        // the hero near the moby (or far)
+        auto hero_at = [](uint32_t m, float lo, float hi) {
+            Vec4 q = ee_ref<Vec4>(m + 0x10);
+            const float r = rf(lo, hi), a = rf(-3.1f, 3.1f);
+            q.x += r * std::cos(a); q.y += r * std::sin(a); q.z += rf(-1, 2);
+            ee_ref<Vec4>(0x0013f3d0) = q; ee_ref<Vec4>(ee_read<uint32_t>(0x001413d0) + 0x10) = q;
+        };
+        level();
+        const std::vector<uint32_t> flocks = mobys_with(0x0029ecf8), members = mobys_with(0x0029eb18);
+        const std::vector<uint32_t> bipeds = mobys_with(0x002ba520), bots = mobys_with(0x002d16b8);
+        if (info) {
+            std::printf("P41 flocks %zu members %zu bipeds %zu woodcut bots %zu paths %d\n", flocks.size(), members.size(), bipeds.size(), bots.size(), paths());
+            for (uint32_t m : flocks) { const uint32_t pv = ee_read<uint32_t>(m + 0x78); std::printf("P41 flock %08x count %d path %d radius %.2f members %d\n", m, ee_read<int32_t>(pv + 0x90), ee_read<int32_t>(pv + 0xa0), ee_read<float>(pv + 0x9c), ee_read<int32_t>(pv + 0xa8)); }
+            for (uint32_t m : bipeds) { const uint32_t pv = ee_read<uint32_t>(m + 0x78); std::printf("P41 biped %08x st %d gait0 %08x path %d area %d box %d sight %.1f rider %08x\n", m, ee_read<uint8_t>(m + 0x20), ee_read<uint32_t>(pv + 0x1a0 + 0x70), ee_read<int32_t>(pv + 0x434), ee_read<int32_t>(pv + 0x41c), ee_read<int32_t>(pv + 0x430), ee_read<float>(pv + 0x43c), ee_read<uint32_t>(pv + 0x424)); }
+            for (uint32_t m : bots) { const uint32_t pv = ee_read<uint32_t>(m + 0x78); std::printf("P41 bot %08x st %d gait0 %08x gait7 %08x\n", m, ee_read<uint8_t>(m + 0x20), ee_read<uint32_t>(pv + 0x160 + 0x70), ee_read<uint32_t>(pv + 0x160 + 0x8c)); }
+            for (uint32_t m : bots) { const uint32_t pv = ee_read<uint32_t>(m + 0x78); w8(m + 0x20, 0); eud_class563_update_l4(m); std::printf("P41 bot %08x after its state 0: st %d gait0 %08x\n", m, ee_read<uint8_t>(m + 0x20), ee_read<uint32_t>(pv + 0x160 + 0x70)); }
+            for (uint32_t m : bipeds) { const uint32_t pv = ee_read<uint32_t>(m + 0x78); w8(m + 0x20, 0); eud_class217_update_l4(m); std::printf("P41 biped %08x after its state 0: st %d gait0 %08x rider %08x\n", m, ee_read<uint8_t>(m + 0x20), ee_read<uint32_t>(pv + 0x1a0 + 0x70), ee_read<uint32_t>(pv + 0x424)); }
+            level();
+        }
+
+        // ---- the flock (class 86) and its helpers
+        // its members' pvars varied: the area (a path's polygon or none), the leader, the home, on the ground or flying,
+        // the wander's timer, the neighbours' range, the velocity, the place (near each other: the hit ending the search)
+        auto vary_member = [some_path](uint32_t b, uint32_t flock) {
+            const uint32_t bp = ee_read<uint32_t>(b + 0x78);
+            if (ri(0, 2) == 0) { const int32_t p = some_path(3); if (p >= 0) w16(bp + 0x5c, u(p)); }
+            switch (ri(0, 3)) {
+            case 0: w32(bp + 0x50, 0); break;
+            case 1: w32(bp + 0x50, b); break;
+            case 2: w32(bp + 0x50, flock); break;
+            default: break;
+            }
+            if (ri(0, 4) == 0) w32(bp + 0x54, 0);
+            if (ri(0, 2) == 0) wf(bp + 0x48, 0.0f);
+            if (ri(0, 2) == 0) w16(bp + 0x44, u(ri(0, 1)));
+            if (coin()) wf(bp + 0x4c, rf(0.5f, 15));
+            if (coin()) wfrand(bp + 0x10, 3, -0.3f, 0.3f);
+            if (coin()) wfrand(bp + 0x20, 3, -1, 1);
+            if (ri(0, 3) == 0) { Vec4 q = ee_ref<Vec4>(flock + 0x10); q.x += rf(-1.5f, 1.5f); q.y += rf(-1.5f, 1.5f); q.z += rf(-1, 1); ee_ref<Vec4>(b + 0x10) = q; }
+            if (ri(0, 9) == 0) w8(b + 0x20, 0x80);
+        };
+        auto flock_prep = [vary_member, some_path, hero_at, rate50](uint32_t m) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            if (ri(0, 5) == 0) w32(pv + 0x94, 0);
+            if (ri(0, 5) == 0) w32(pv + 0xa8, 0);
+            if (ri(0, 7) == 0) { w32(L4_ADDR(0x001613c0), 0); w32(pv + 0xa8, u(ri(0, 12))); }
+            switch (ri(0, 2)) {
+            case 0: w32(pv + 0xa0, 0xffffffffu); break;
+            case 1: { const int32_t p = some_path(3); if (p >= 0) { w32(pv + 0xa0, u(p)); w32(pv + 0xa4, u(ri(0, ee_read<int32_t>(ee_read<uint32_t>(OV(0x001b04b0) + u(p) * 4)) - 1))); } break; }
+            default: break;
+            }
+            if (coin()) wf(pv + 0x9c, rf(0.5f, 8));
+            if (coin()) wf(pv + 0x98, rf(-3.1f, 3.1f));
+            if (ee_read<uint32_t>(pv + 0x94) != 0)
+                for (int32_t i = 0; i < ee_read<int32_t>(pv + 0x90) && i < 32; ++i)
+                    if (const uint32_t b = ee_read<uint32_t>(pv + 0x10 + u(i) * 4); b != 0 && coin()) vary_member(b, m);
+            hero_at(m, 0, ri(0, 2) == 0 ? 2.0f : 30.0f);
+            rate50();
+            seed_rand();
+        };
+        if (flocks.empty()) std::printf("eud_flock                  L4:0x0029ecf8  no class 86 moby on this level\n");
+        else {
+            l4check("eud_flock", 0x0029ecf8, 240, Ret::None, [level, flocks, pick, flock_prep] {
+                level();
+                const uint32_t m = pick(flocks);
+                flock_prep(m);
+                return Args{{m}, {}};
+            }, [](A a) { eud_class86_update_l4(a.i[0]); return uint64_t{0}; });
+            // a member's steering and move, on a flock's own members, the parameters as the flock sets them
+            auto member_args = [level, flocks, pick, vary_member, rate50, hero_at](bool steer) -> Args {
+                level();
+                for (int k = 0; k < 20; ++k) {
+                    const uint32_t f = pick(flocks), pv = ee_read<uint32_t>(f + 0x78);
+                    const int32_t n = ee_read<int32_t>(pv + 0x90);
+                    if (n <= 0 || n > 32) continue;
+                    const uint32_t b = ee_read<uint32_t>(pv + 0x10 + u(ri(0, n - 1)) * 4);
+                    if (b == 0) continue;
+                    for (int32_t i = 0; i < n; ++i) if (const uint32_t o = ee_read<uint32_t>(pv + 0x10 + u(i) * 4); o != 0 && ri(0, 2) == 0) vary_member(o, f);
+                    vary_member(b, f);
+                    const uint32_t prm = L4_ADDR(0x00166130);
+                    wf(prm + 0x18, rf(0.001f, 0.05f)); wf(prm + 0x1c, rf(0.001f, 0.2f));
+                    if (ri(0, 3) == 0) wf(prm, rf(0, 0.1f));
+                    if (ri(0, 4) != 0) wf(prm + 4, rf(0, 25));  // (the pulls toward the leader and home: 0 while no member was counted)
+                    if (ri(0, 4) != 0) wf(prm + 8, rf(0, 3));   // (into the area)
+                    if (coin()) wf(prm + 0xc, rf(0, 0.05f));
+                    if (ri(0, 3) == 0) wf(prm + 0x10, rf(0.2f, 3));
+                    hero_at(b, 0, ri(0, 2) == 0 ? 1.5f : 20.0f);
+                    rate50();
+                    seed_rand();
+                    if (steer) {
+                        // (the stack below the caller as a previous call left it: the original reads a quadword of its
+                        // frame it never writes, the member's distance to it gating the pulls toward the leader and home)
+                        Vec4 stale{};
+                        if (coin()) { stale = ee_ref<Vec4>(b + 0x10); stale.x += rf(-20, 20); stale.y += rf(-20, 20); }
+                        // (below both stacks' tops: the port's frames' and the interpreter's, 32 MB less 64)
+                        for (uint32_t a = ee_stack_ptr() - 0x400; a < ee_stack_ptr(); a += 16) ee_ref<Vec4>(a) = stale;
+                        for (uint32_t a = 0x02000000u - 64 - 0x400; a < 0x02000000u - 64; a += 16) ee_ref<Vec4>(a) = stale;
+                        return Args{{pv + 0x10, u(n), b, ee_read<uint32_t>(b + 0x78), prm}, {}};
+                    }
+                    return Args{{b, ee_read<uint32_t>(b + 0x78), prm}, {coin() ? 0.0f : rf(-0.5f, 0.5f)}};
+                }
+                return Args{{0}, {}};
+            };
+            l4check("eud_flock_steer", 0x001f30e0, 300, Ret::None, [member_args] { return member_args(true); },
+                    [](A a) { if (a.i[0] != 0) flock_steer_l4(a.i[0], static_cast<int32_t>(a.i[1]), a.i[2], a.i[3], a.i[4]); return uint64_t{0}; });
+            l4check("eud_flock_move", 0x001f3a80, 200, Ret::None, [member_args] { return member_args(false); },
+                    [](A a) { if (a.i[0] != 0) flock_member_move_l4(a.i[0], a.i[1], a.i[2], a.f[0]); return uint64_t{0}; });
+        }
+        // the polygon helpers on the level's paths (a point near one of their points, sometimes far)
+        auto poly_args = [level, some_path, near_point, path_at](int kind) -> Args {
+            level();
+            const int32_t p = some_path(kind == 0 ? 1 : 2);
+            if (p < 0) return Args{{0}, {}};
+            const uint32_t path = path_at(p);
+            const int32_t n = ee_read<int32_t>(path);
+            ee_ref<Vec4>(T) = near_point(p, ri(0, n - 1), ri(0, 3) == 0 ? 60.0f : 6.0f, 3.0f);
+            wfrand(OUT, 8, -5, 5);
+            switch (kind) {
+            case 0: return Args{{M, path + 0x10, u(n)}, {}};  // (the moby-like struct's place, M + 0x10)
+            case 1: return Args{{T, path + 0x10, u(ri(0, 3) == 0 ? ri(0, n) : n)}, {}};
+            case 2: { const int32_t k = ri(0, n - 1); return Args{{OUT, path + 0x10 + u(k) * 16, path + 0x10 + u(coin() ? (k + 1) % n : ri(0, n - 1)) * 16, T}, {}}; }
+            default: return Args{{OUT, T, path + 0x10, u(n)}, {}};
+            }
+        };
+        l4check("eud_flock_nearest", 0x001f3038, 200, Ret::Int32, [poly_args] {
+            Args a = poly_args(0);
+            if (a.i[0] != 0) ee_ref<Vec4>(M + 0x10) = ee_ref<Vec4>(T);
+            return a;
+        }, [](A a) { return a.i[0] != 0 ? r32(static_cast<uint32_t>(flock_nearest_point_l4(a.i[0], a.i[1], static_cast<int32_t>(a.i[2])))) : 0u; });
+        l4check("eud_poly_outside", 0x0024c4f0, 300, Ret::Int32, [poly_args] { return poly_args(1); },
+                [](A a) { return a.i[0] != 0 ? r32(static_cast<uint32_t>(polygon_outside_edge_l4(a.i[0], a.i[1], static_cast<int32_t>(a.i[2])))) : 0u; });
+        l4check("eud_seg_closest", 0x0024c660, 300, Ret::Float, [poly_args] { return poly_args(2); },
+                [](A a) { return a.i[0] != 0 ? rf32(segment_closest_l4(a.i[0], a.i[1], a.i[2], a.i[3])) : 0u; });
+        l4check("eud_poly_closest", 0x0024c7d8, 300, Ret::Int32, [poly_args] { return poly_args(3); },
+                [](A a) { return a.i[0] != 0 ? r32(static_cast<uint32_t>(polygon_closest_l4(a.i[0], a.i[1], a.i[2], static_cast<int32_t>(a.i[3])))) : 0u; });
+        // a moby along a path: the leg it is on, the direction, ahead or not, near the ends
+        if (!flocks.empty())
+            l4check("eud_path_advance", 0x0029eb20, 300, Ret::Int32, [level, flocks, pick, some_path, near_point, path_at] {
+                level();
+                const int32_t p = some_path(3);
+                if (p < 0) return Args{{0}, {}};
+                const int32_t n = ee_read<int32_t>(path_at(p));
+                const int32_t k = ri(0, 3) == 0 ? (coin() ? 0 : n - 1) : ri(0, n - 1);
+                const uint32_t m = pick(flocks);
+                ee_ref<Vec4>(m + 0x10) = near_point(p, coin() ? k : (k + 1) % n, 4.0f, 2.0f);
+                return Args{{m, path_at(p), u(k), u(coin() ? 1 : (coin() ? -1 : ri(-2, 2)))}, {coin() ? 0.0f : rf(0, 6)}};
+            }, [](A a) { return a.i[0] != 0 ? r32(static_cast<uint32_t>(path_advance_l4(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]), static_cast<int32_t>(a.i[3]), a.f[0]))) : 0u; });
+
+        // ---- class 161 (none on the level): its update on the robots and the Woodcut Bots (moby with animation sets)
+        {
+            std::vector<uint32_t> subj = bipeds;
+            subj.insert(subj.end(), bots.begin(), bots.end());
+            if (subj.empty()) std::printf("eud_fidget                 L4:0x002a5a08  no subject on this level\n");
+            else
+                l4check("eud_fidget", 0x002a5a08, 200, Ret::None, [level, subj, pick, rate50] {
+                    level();
+                    const uint32_t m = pick(subj), pv = ee_read<uint32_t>(m + 0x78);
+                    w32(pv, ri(0, 2) == 0 ? 0u : u(ri(1, 4)));
+                    w8(m + 0x53, u(ri(0, 2)));
+                    w8(m + 0x52, ee_read<uint8_t>(m + 0x53));
+                    w8(m + 0x70, coin() ? 2u : (R() & 0xfdu));
+                    rate50();
+                    seed_rand();
+                    return Args{{ri(0, 20) == 0 ? 0u : m}, {}};
+                }, [](A a) { eud_class161_update_l4(a.i[0]); return uint64_t{0}; });
+        }
+
+        // ---- the legged walker, on the robots (record pvars + 0x1a0) and the Woodcut Bots (+0x160)
+        struct Walker { uint32_t m, rec; };
+        std::vector<Walker> walkers;
+        for (uint32_t m : bipeds) walkers.push_back({m, ee_read<uint32_t>(m + 0x78) + 0x1a0});
+        for (uint32_t m : bots) walkers.push_back({m, ee_read<uint32_t>(m + 0x78) + 0x160});
+        // a walker set up on its animation (the port's init) in most cases, then its state, flags, feet and speeds varied;
+        // the animation set one of its gaits' (or the idle / landing ones)
+        auto walker_prep = [hero_at, rate50](const Walker& w) {
+            const uint32_t m = w.m, rec = w.rec;
+            // (a Woodcut Bot's gaits are set by its own first update; the robots' stay null: retail's class 217 never sets them)
+            if (ee_read<uint32_t>(rec + 0x70) == 0 && rec == ee_read<uint32_t>(m + 0x78) + 0x160) { w8(m + 0x20, 0); eud_class563_update_l4(m); }
+            if (ri(0, 4) != 0) {
+                uint32_t set = ee_read<uint32_t>(ee_read<uint32_t>(rec + 0x70 + u(ri(0, 12)) * 4));
+                if (ri(0, 5) == 0) set = ee_read<uint8_t>(rec + (coin() ? 0xb0 : 0xb3));
+                if (set < 0x20) { w8(m + 0x53, set); w8(m + 0x52, coin() ? set : 0xffu); }
+                if (coin()) wf(m + 0x58, rf(0.2f, 2));
+                walker_init_l4(m, rec);
+            }
+            w8(rec + 0xb7, u(ri(0, 22)));
+            if (coin()) w8(rec + 0xb6, R() & 0x3f);
+            if (coin()) w16(rec + 0xee, R() & 0xf);
+            if (coin()) wf(rec + 0xc0, ri(0, 3) == 0 ? 0.0f : rf(0, 0.4f));
+            if (coin()) wf(rec + 0xd8, rf(-0.5f, 0.5f));
+            if (coin()) wf(rec + 0xe4, coin() ? 0.0f : ee_read<float>(m + 0x18) + rf(-1, 1));
+            if (ri(0, 3) == 0) wf(rec + 0x68, ee_read<float>(m + 0x18) + rf(-3, 1));
+            if (ri(0, 3) == 0) { Vec4 g = ee_ref<Vec4>(m + 0x10); g.x += rf(-8, 8); g.y += rf(-8, 8); ee_ref<Vec4>(rec + 0x60) = g; }
+            if (ri(0, 3) == 0) w16(rec + 0xec, u(ri(0, 4)));
+            if (coin()) wf(rec + 0xe8, rf(0, 1.5f));
+            if (ri(0, 3) == 0 && ee_read<uint8_t>(m + 0x52) < 0x20) {  // a second gait of the set playing (a copy, its ranges varied): the last one counts
+                const uint32_t g = ee_read<uint32_t>(rec + 0x70 + u(ri(0, 12)) * 4), cp = T3 + 0x100;
+                for (uint32_t o = 0; o < 0x50; o += 4) w32(cp + o, ee_read<uint32_t>(g + o));
+                w32(cp, ee_read<uint8_t>(m + 0x52));
+                for (uint32_t o = 0x18; o < 0x50; o += 4) if (coin()) wf(cp + o, rf(0, 40));
+                w32(rec + 0x70 + u(ri(0, 12)) * 4, cp);
+            }
+            if (ri(0, 3) == 0) w8(m + 0x51, u(ri(0, 40)));
+            if (ri(0, 3) == 0) w8(m + 0x50, u(ri(0, 40)));
+            if (ri(0, 3) == 0) wf(m + 0x54, rf(0, 1));
+            if (ri(0, 4) == 0) wf(m + 0x18, ee_read<float>(m + 0x18) + rf(-1, 2));
+            hero_at(m, 0, 20);
+            rate50();
+            seed_rand();
+        };
+        auto walker_args = [level, walkers](const std::function<void(const Walker&)>& vary) -> Walker {
+            level();
+            const Walker& w = walkers[static_cast<size_t>(ri(0, static_cast<int>(walkers.size()) - 1))];
+            vary(w);
+            return w;
+        };
+        if (walkers.empty()) std::printf("eud_walker                 no walker on this level\n");
+        else {
+            l4check("eud_walker_update", 0x00295778, 400, Ret::None, [walker_args, walker_prep] {
+                const Walker w = walker_args(walker_prep);
+                const float speed = ri(0, 3) == 0 ? 0.0f : rf(0, 0.5f);
+                return Args{{w.m, w.rec}, {speed, rf(-3.1f, 3.1f), coin() ? rf(0, 0.0005f) : rf(0, 0.05f)}};
+            }, [](A a) { walker_update_l4(a.i[0], a.i[1], a.f[0], a.f[1], a.f[2]); return uint64_t{0}; });
+            l4check("eud_walker_gait", 0x00293128, 400, Ret::None, [walker_args, walker_prep] {
+                const Walker w = walker_args(walker_prep);
+                const uint32_t landed = ri(0, 3) == 0 ? (R() & 0x3f) : ((R() & 0xf) | (coin() ? 0x10u << ri(0, 1) : 0u));
+                return Args{{w.m, w.rec, landed}, {coin() ? rf(0, 0.05f) : rf(0, 0.6f), rf(-3.1f, 3.1f), coin() ? rf(0, 0.0015f) : rf(0, 0.05f)}};
+            }, [](A a) { walker_gait_update_l4(a.i[0], a.i[1], a.i[2], a.f[0], a.f[1], a.f[2]); return uint64_t{0}; });
+            // the gaits' states with the animation of the state's own gait playing (the table L4:0x1ca8e0), a foot just
+            // down, the step's height, a jump asked, in the air falling toward the goal: the walking, stepping, running,
+            // jumping and landing transitions
+            l4check("eud_walker_steps", 0x00293128, 600, Ret::None, [walker_args, walker_prep] {
+                // (a state that sends the port through a pointer outside RAM, an animation set past the class's table, is not
+                // a game state: dealt again, the RAM put back after the trial)
+                for (int attempt = 0;; ++attempt) {
+                Walker w = walker_args(walker_prep);
+                for (int k = 0; k < 40 && w.rec != ee_read<uint32_t>(w.m + 0x78) + 0x160; ++k) w = walker_args(walker_prep);  // (the Woodcut Bots: the robots' gaits are null)
+                const uint32_t m = w.m, rec = w.rec;
+                const int st = ri(0, 3) == 0 ? ri(13, 20) : ri(1, 11);
+                w8(rec + 0xb7, u(st));
+                const int32_t slot = ee_read<int32_t>(L4_ADDR(0x001ca8e0) + u(st) * 4);
+                const uint32_t g = ee_read<uint32_t>(rec + 0x70 + u(slot >= 0 && slot < 13 ? slot : (st >= 17 ? (st == 17 || st == 19 ? 10 : 12) : 7)) * 4);
+                if (ri(0, 4) != 0) w8(m + 0x52, ee_read<uint32_t>(g) & 0xff);
+                if (st == 16 && coin()) w8(m + 0x52, ee_read<uint8_t>(rec + 0xb3));
+                wf(m + 0x58, coin() ? rf(0.3f, 1.5f) : rf(0, 0.3f));
+                wf(rec + 0xe0, rf(0, 1.5f));
+                wf(rec + 0xb8, coin() ? 0.0f : rf(-0.6f, 0.6f));
+                w16(rec + 0xee, R() & (st >= 14 ? 0xfu : 0xbu));
+                if (st >= 14 && coin()) { w16(rec + 0xee, ee_read<uint16_t>(rec + 0xee) | 4u); wf(rec + 0xd8, -rf(0, 0.5f)); }
+                if (coin()) w8(rec + 0xb6, R() & (coin() ? 0x3au : 0x3fu));
+                if (coin()) wf(rec + 0xc0, rf(0, 0.6f));
+                const uint32_t landed = ri(0, 4) == 0 ? (R() & 0x3f) : (coin() ? 1u : 4u) | (coin() ? 0x30u : 0u);
+                const Args args{{m, rec, landed}, {coin() ? rf(0, 0.05f) : rf(0, 0.6f), coin() ? ee_read<float>(m + 0x48) + rf(-0.05f, 0.05f) : rf(-3.1f, 3.1f), rf(0, 0.05f)}};
+                static std::vector<uint8_t> saved;
+                uint8_t* ram = ee_get_ram_base();
+                saved.assign(ram, ram + 0x02000000);
+                bool ok = true;
+                const uint32_t stack_top = ee_stack_ptr();
+                try { walker_gait_update_l4(m, rec, landed, args.f[0], args.f[1], args.f[2]); } catch (const std::exception&) { ok = false; }
+                ee_stack_ptr() = stack_top;
+                std::memcpy(ram, saved.data(), saved.size());
+                if (ok || attempt >= 20) return args;
+                }
+            }, [](A a) { walker_gait_update_l4(a.i[0], a.i[1], a.i[2], a.f[0], a.f[1], a.f[2]); return uint64_t{0}; });
+            l4check("eud_walker_init", 0x00295de8, 200, Ret::Int32, [walker_args, walker_prep] {
+                const Walker w = walker_args(walker_prep);
+                return Args{{w.m, w.rec}, {}};
+            }, [](A a) { return r32(walker_init_l4(a.i[0], a.i[1])); });
+            l4check("eud_walker_ground", 0x00292828, 300, Ret::Int32, [walker_args, walker_prep] {
+                const Walker w = walker_args(walker_prep);
+                if (ri(0, 3) == 0) w16(w.rec + 0xee, ee_read<uint16_t>(w.rec + 0xee) | 4u);
+                if (ri(0, 3) == 0) { w8(w.rec + 0xb7, 0xd); wf(w.rec + 0xe4, ee_read<float>(w.m + 0x18) + rf(-1.5f, 1.5f)); w8(w.rec + 0xb6, R() & 0x30); }
+                return Args{{w.m, w.rec}, {}};
+            }, [](A a) { return r32(walker_ground_follow_l4(a.i[0], a.i[1])); });
+            l4check("eud_walker_legs", 0x00292d48, 300, Ret::None, [walker_args, walker_prep] {
+                const Walker w = walker_args(walker_prep);
+                for (uint32_t leg = w.rec; leg < w.rec + 0x160; leg += 0xb0)
+                    if (coin()) { wf(leg + 0xfc, rf(-1, 1)); wf(leg + 0x104, rf(-1, 1)); wf(leg + 0xf8, rf(-3.1f, 3.1f)); }
+                return Args{{w.m, w.rec, R() & 0xf}, {}};
+            }, [](A a) { walker_legs_aim_l4(a.i[0], a.i[1], a.i[2]); return uint64_t{0}; });
+            l4check("eud_walker_floor", 0x002922d0, 300, Ret::Float, [walker_args, walker_prep] {
+                const Walker w = walker_args(walker_prep);
+                const uint32_t p = w.rec + u(ri(0, 5)) * 0x10;
+                if (coin()) wf(p + 8, ee_read<float>(p + 8) + rf(-3, 3));
+                return Args{{p}, {}};
+            }, [](A a) { return rf32(walker_floor_below_l4(a.i[0])); });
+            l4check("eud_walker_phase", 0x002927d0, 300, Ret::Int32, [walker_args, walker_prep] {
+                const Walker w = walker_args(walker_prep);
+                if (ri(0, 4) == 0) w8(w.m + 0x52, 0x1f);
+                return Args{{w.m, w.rec}, {rf(-2, 60)}};
+            }, [](A a) { return r32(walker_phase_flags_l4(a.i[0], a.i[1], a.f[0])); });
+            l4check("eud_walker_fall", 0x00293080, 300, Ret::Float, [walker_args, walker_prep] {
+                const Walker w = walker_args(walker_prep);
+                wf(w.rec + 0xd8, rf(-1, 1));
+                if (coin()) wf(w.rec + 0xdc, -rf(0.001f, 0.05f));
+                return Args{{w.m, w.rec}, {}};
+            }, [](A a) { return rf32(walker_fall_time(a.i[0], a.i[1])); });
+            l4check("eud_legs_reset", 0x00292cb8, 100, Ret::None, [walker_args, walker_prep] {
+                const Walker w = walker_args(walker_prep);
+                for (uint32_t leg = w.rec; leg < w.rec + 0x160; leg += 0xb0) { w8(leg + 0x121, u(ri(0, 1))); w8(leg + 0x161, u(ri(0, 1))); wfrand(leg + 0x130, 4, -1, 1); wfrand(leg + 0x170, 4, -1, 1); wf(leg + 0xfc, rf(-1, 1)); wf(leg + 0x104, rf(-1, 1)); }
+                return Args{{w.rec}, {}};
+            }, [](A a) { walker_legs_reset(a.i[0]); return uint64_t{0}; });
+            // a gait's foot ranges and the animation keys, on the walkers' own gaits and sequences
+            l4check("eud_gait_flags", 0x00292688, 400, Ret::Int32, [walker_args] {
+                const Walker w = walker_args([](const Walker&) {});
+                const uint32_t g = ee_read<uint32_t>(w.rec + 0x70 + u(ri(0, 12)) * 4);
+                const float t = coin() ? rf(-2, 60) : ee_read<float>(g + 0x18 + u(ri(0, 13)) * 4) + rf(-1.2f, 1.2f);
+                return Args{{g}, {t}};
+            }, [](A a) { return r32(gait_phase_flags(a.i[0], a.f[0])); });
+            l4check("eud_anim_key", 0x00241708, 400, Ret::Int32, [walker_args] {
+                const Walker w = walker_args([](const Walker&) {});
+                const uint32_t g = ee_read<uint32_t>(w.rec + 0x70 + u(ri(0, 12)) * 4);
+                const uint32_t seq = ee_read<uint32_t>(ee_read<uint32_t>(w.m + 0x24) + 0x48 + ee_read<uint32_t>(g) * 4);
+                return Args{{seq}, {coin() ? rf(-2, 80) : static_cast<float>(ri(-1, 80))}};
+            }, [](A a) { return r32(static_cast<uint32_t>(anim_seq_key_at(a.i[0], a.f[0]))); });
+        }
+
+        // ---- class 217, the two-legged robot: every state with its timers, sight, alert, animations, paths, hits, the
+        // walker set up (and its own states), the target near or far, the rider or none; and its three helpers
+        if (bipeds.empty()) std::printf("eud_biped                  L4:0x002ba520  no class 217 moby on this level\n");
+        else {
+            auto biped_prep = [walker_prep, give_hit, some_path, rate50](uint32_t m, int st) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78), P = 0x0013f350;
+                rate50();
+                if (st != 0 && coin()) { w8(m + 0x20, 0); eud_class217_update_l4(m); }
+                if (ri(0, 2) != 0) walker_prep(Walker{m, pv + 0x1a0});
+                w8(m + 0x20, u(st));
+                if (ri(0, 3) == 0) w32(pv + 0x38, 1);
+                if (ri(0, 3) == 0) w8(pv + 0x406, u(ri(0, 3)));
+                w16(pv + 0x402, ri(0, 2) == 0 ? 0u : u(ri(0, 3) == 0 ? frame_scale_i(0x25) : ri(1, 3)));
+                w16(pv + 0x404, ri(0, 2) == 0 ? u(ri(1, 3)) : 0u);
+                if (coin()) w8(pv + 0x407, u(ri(0, 2)));
+                static const uint8_t sets[] = {0, 2, 3, 4, 5, 6, 8, 9, 0xa, 0xb, 0xd};
+                const uint8_t set = sets[ri(0, 10)];
+                w8(m + 0x53, set);
+                w8(m + 0x52, ri(0, 3) == 0 ? sets[ri(0, 10)] : set);
+                if (coin()) w8(m + 0x70, coin() ? 2u : 0u);
+                if (coin()) { w8(m + 0x51, u(ri(0, 32))); w8(m + 0x50, u(ri(0, 32))); wf(m + 0x54, rf(0, 1)); }
+                if (coin()) w8(m + 0xbc, R() & 0x1f);
+                if (ri(0, 3) == 0) w32(pv + 0x41c, 0xffffffffu);
+                else if (ri(0, 3) == 0) { const int32_t p = some_path(3); if (p >= 0) w32(pv + 0x41c, u(p)); }
+                if (ri(0, 3) == 0) w32(pv + 0x434, 0xffffffffu);
+                else if (ri(0, 3) == 0) { const int32_t p = some_path(2); if (p >= 0) { w32(pv + 0x434, u(p)); } }
+                if (const int32_t p = ee_read<int32_t>(pv + 0x434); p >= 0 && p < 1000) {
+                    const uint32_t path = ee_read<uint32_t>(OV(0x001b04b0) + u(p) * 4);
+                    const int32_t n = path != 0 ? ee_read<int32_t>(path) : 1;
+                    w16(pv + 0x438, u(ri(0, std::max(0, n - 1))));
+                    if (path != 0 && ri(0, 2) == 0) {  // (near its point, or at the path's last)
+                        if (coin()) w16(pv + 0x438, u(n - 1));
+                        Vec4 q = ee_ref<Vec4>(path + 0x10 + u(ee_read<int16_t>(pv + 0x438)) * 16);
+                        q.x += rf(-1.2f, 1.2f); q.y += rf(-1.2f, 1.2f);
+                        ee_ref<Vec4>(m + 0x10) = q;
+                    }
+                }
+                if (ri(0, 3) == 0) w32(pv + 0x430, 0xffffffffu);
+                if (coin()) w16(pv + 0x43a, u(ri(0, 1)));
+                if (coin()) wf(pv + 0x43c, rf(2, 30));
+                if (coin()) wf(pv + 0x418, rf(-0.1f, 0.5f));
+                if (coin()) wf(pv + 0x42c, coin() ? 0.0f : rf(0, 0.3f));
+                if (coin()) wf(pv + 0x420, coin() ? 0.0f : rf(0, 1));
+                if (coin()) w32(pv + 0x448, u(ri(-1, 3)));
+                if (coin()) wf(pv + 0x408, rf(-0.6f, 0.6f));
+                if (ri(0, 9) == 0) w8(pv + 0x2e, 0);
+                if (ri(0, 5) == 0) w32(pv + 0x424, 0);
+                if (ri(0, 7) == 0) wf(m + 0x18, ee_read<float>(pv + 0x3f8) - rf(7, 10));
+                if (coin()) wf(pv + 0x20, coin() ? rf(0.1f, 1) : 3.0f);
+                if (ri(0, 7) == 0) w32(L4_ADDR(0x0015f5c4), coin() ? 2u : 0u);
+                if (coin()) w16(m + 0x34, ee_read<uint16_t>(m + 0x34) | 1u);
+                if (coin()) {  // its floor band near the camera point (L4:0x166f40)
+                    w8(m + 0x31, 1);
+                    Vec4 c = ee_ref<Vec4>(m + 0x10);
+                    const float r = coin() ? rf(0, 27) : rf(25, 40), a = rf(-3.1f, 3.1f);
+                    c.x += r * std::cos(a); c.y += r * std::sin(a);
+                    ee_ref<Vec4>(L4_ADDR(0x00166f40)) = c;
+                }
+                // the target: the hero within reach, in sight or far, at its height or not
+                Vec4 q = ee_ref<Vec4>(m + 0x10);
+                const float r = ri(0, 3) == 0 ? rf(3.8f, 4.7f) : (coin() ? rf(0, 4.5f) : (coin() ? rf(4.5f, 20) : rf(20, 60))), a = rf(-3.1f, 3.1f);
+                q.x += r * std::cos(a); q.y += r * std::sin(a); q.z += coin() ? rf(-0.5f, 0.5f) : rf(-4, 4);
+                ee_ref<Vec4>(P + 0x80) = q; ee_ref<Vec4>(ee_read<uint32_t>(P + 0x2080) + 0x10) = q;  // (the hero's moby: what target_select picks)
+                // a hit of the weapons (the mask 0x210000) in half the cases, its damage and its source varied
+                if (coin()) {
+                    give_hit(m, 0x210000u);
+                    if (ee_read<uint8_t>(m + 0xa4) != 0xff) {
+                        const uint32_t e = OV(0x00178100) + (ee_read<uint8_t>(m + 0xa4) << 6);
+                        w8(e + 0x28, u(ri(0, 11))); w8(e + 0x29, u(ri(0, 4))); w16(e + 0x2a, coin() ? 0x47u : u(ri(0, 0x60)));
+                        wf(e + 0x1c, coin() ? 5627.95f : 0.0f);
+                        w32(e + 0x20, ri(0, 3) == 0 ? 0u : (coin() ? ee_read<uint32_t>(P + 0x2080) : m));
+                        wf(e + 0x2c, coin() ? rf(0.1f, 6) : 0.0f);
+                    }
+                } else {
+                    w8(m + 0xa4, 0xff);
+                }
+                w32(OV(0x0015f5cc), R() & 0xffff);
+                seed_rand();
+            };
+            // (a state that sends the port through a pointer outside RAM is not a game state: dealt again, as batch 111's
+            // classcheck does; the RAM put back after the trial)
+            auto dealt = [](const std::function<uint32_t()>& deal) {
+                static std::vector<uint8_t> saved;
+                uint32_t m = 0;
+                for (int attempt = 0; attempt < 20; ++attempt) {
+                    m = deal();
+                    uint8_t* ram = ee_get_ram_base();
+                    saved.assign(ram, ram + 0x02000000);
+                    bool ok = true;
+                    const uint32_t stack_top = ee_stack_ptr();
+                    try { eud_class217_update_l4(m); } catch (const std::exception&) { ok = false; }
+                    ee_stack_ptr() = stack_top;
+                    std::memcpy(ram, saved.data(), saved.size());
+                    if (ok) break;
+                }
+                return m;
+            };
+            for (int st = 0; st <= 11; ++st) {
+                char name[32];
+                std::snprintf(name, sizeof name, "eud_biped_st%d", st);
+                const std::string nm = name;
+                l4check(nm.c_str(), 0x002ba520, 60, Ret::None, [level, bipeds, pick, biped_prep, st] {
+                    // (a state that sends the port through a pointer outside RAM is dealt again, as batch 111's classcheck)
+                    uint32_t m = 0;
+                    for (int attempt = 0; attempt < 20; ++attempt) {
+                        level();
+                        m = pick(bipeds);
+                        biped_prep(m, st);
+                        static std::vector<uint8_t> saved;
+                        uint8_t* ram = ee_get_ram_base();
+                        saved.assign(ram, ram + 0x02000000);
+                        bool ok = true;
+                        const uint32_t stack_top = ee_stack_ptr();
+                        try { eud_class217_update_l4(m); } catch (const std::exception&) { ok = false; }
+                        ee_stack_ptr() = stack_top;
+                        std::memcpy(ram, saved.data(), saved.size());
+                        if (ok) break;
+                    }
+                    return Args{{m}, {}};
+                }, [](A a) { eud_class217_update_l4(a.i[0]); return uint64_t{0}; });
+            }
+            l4check("eud_biped_hit", 0x002ba520, 240, Ret::None, [level, bipeds, pick, biped_prep, dealt] {
+                return Args{{dealt([&] {
+                level();
+                const uint32_t m = pick(bipeds), pv = ee_read<uint32_t>(m + 0x78);
+                static const int sts[] = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+                biped_prep(m, sts[ri(0, 8)]);
+                if (coin()) w16(pv + 0x404, 0);
+                for (uint32_t o = 0x24; o < 0x30; ++o) if (o != 0x2e && coin()) w8(pv + o, R() & 0xff);
+                const uint32_t idx = u(ri(0, 15)), e = OV(0x00178100) + (idx << 6);
+                w8(m + 0xa4, idx);
+                w32(e + 0x34, m);
+                w32(e + 0x24, 0x210000u | (R() & 0xffff));
+                wfrand(e, 4, -1, 1);
+                w8(e + 0x28, u(ri(0, 11))); w8(e + 0x29, u(ri(0, 4))); w16(e + 0x2a, coin() ? 0x47u : u(ri(0, 0x60)));
+                w32(e + 0x20, ri(0, 3) == 0 ? 0u : (coin() ? ee_read<uint32_t>(0x0013f350 + 0x2080) : m));
+                wf(e + 0x2c, rf(0.1f, 6));
+                seed_rand();
+                return m;
+                })}, {}};
+            }, [](A a) { eud_class217_update_l4(a.i[0]); return uint64_t{0}; });
+            // the reach's edge: standing or starting, no action timer, the walk along the path done, the hero 3.8 .. 4.7 away
+            l4check("eud_biped_reach", 0x002ba520, 120, Ret::None, [level, bipeds, pick, biped_prep, dealt] {
+                return Args{{dealt([&] {
+                level();
+                const uint32_t m = pick(bipeds), pv = ee_read<uint32_t>(m + 0x78);
+                biped_prep(m, coin() ? 1 : 3);
+                w16(pv + 0x402, 0);
+                w16(pv + 0x43a, 1);
+                w8(m + 0xa4, 0xff);
+                Vec4 q = ee_ref<Vec4>(m + 0x10);
+                const float r = rf(3.8f, 4.7f), a = rf(-3.1f, 3.1f);
+                q.x += r * std::cos(a); q.y += r * std::sin(a);
+                ee_ref<Vec4>(0x0013f3d0) = q; ee_ref<Vec4>(ee_read<uint32_t>(0x001413d0) + 0x10) = q;
+                seed_rand();
+                return m;
+                })}, {}};
+            }, [](A a) { eud_class217_update_l4(a.i[0]); return uint64_t{0}; });
+            l4check("eud_biped_anim", 0x002ba3e0, 100, Ret::None, [level, bipeds, pick] {
+                level();
+                const uint32_t m = pick(bipeds);
+                if (coin()) { w8(m + 0x20, 0); eud_class217_update_l4(m); }
+                if (coin()) w32(ee_read<uint32_t>(m + 0x78) + 0x424, 0);
+                return Args{{m, u(ri(0, 0xd)), u(ri(0, 4)), u(ri(0, 20))}, {}};
+            }, [](A a) { biped_anim_set_l4(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]), static_cast<int32_t>(a.i[3])); return uint64_t{0}; });
+            l4check("eud_biped_rate", 0x002ba448, 100, Ret::None, [level, bipeds, pick] {
+                level();
+                const uint32_t m = pick(bipeds);
+                if (coin()) { w8(m + 0x20, 0); eud_class217_update_l4(m); }
+                if (coin()) w32(ee_read<uint32_t>(m + 0x78) + 0x424, 0);
+                return Args{{m}, {rf(0, 3)}};
+            }, [](A a) { biped_anim_rate_l4(a.i[0], a.f[0]); return uint64_t{0}; });
+            l4check("eud_biped_explode", 0x002ba470, 100, Ret::None, [level, bipeds, pick] {
+                level();
+                seed_rand();
+                return Args{{pick(bipeds)}, {}};
+            }, [](A a) { biped_explode_l4(a.i[0]); return uint64_t{0}; });
+        }
+        g_extra_noop_hooks.clear();
+    }
+
+    // ---- P4.1: the four Veldin functions only Eudora's code calls (eudora_walker.cpp), each against the played level's
+    // own copy (the overlay map's), on records built in the test area: the animation key at a frame, a gait's foot
+    // ranges, the legs' reset, the fall time
+    check("anim_seq_key_at", 0x0024ed18, 400, Ret::Int32, [] {
+        const uint32_t seq = T, keys = T2;
+        const int n = ri(0, 3) == 0 ? ri(0, 2) : ri(3, 12);
+        w8(seq + 0x10, u(n));
+        int16_t t = static_cast<int16_t>(ri(-40, 40));
+        for (int i = 0; i < n; ++i) {
+            w32(seq + 0x1c + u(i) * 4, keys + u(i) * 0x10);
+            w16(keys + u(i) * 0x10 + 4, static_cast<uint16_t>(t));
+            t = static_cast<int16_t>(t + (ri(0, 3) == 0 ? 0 : ri(1, 60)));
+        }
+        return Args{{seq}, {coin() ? rf(-5, 50) : static_cast<float>(ri(-3, 50)) + 0.0625f * static_cast<float>(ri(0, 15))}};
+    }, [](A a) { return r32(static_cast<uint32_t>(anim_seq_key_at(a.i[0], a.f[0]))); });
+    check("gait_phase_flags", 0x002a13f0, 400, Ret::Int32, [] {
+        for (uint32_t o = 0x18; o < 0x50; o += 4) wf(T + o, rf(0, 40));
+        const float t = coin() ? rf(-2, 42) : ee_read<float>(T + 0x18 + u(ri(0, 13)) * 4) + (coin() ? 0.0f : rf(-1.2f, 1.2f));
+        return Args{{T}, {t}};
+    }, [](A a) { return r32(gait_phase_flags(a.i[0], a.f[0])); });
+    check("walker_legs_reset", 0x002a1538, 100, Ret::None, [] {
+        wrand(T, 0x200);
+        for (uint32_t leg = T; leg < T + 0x160; leg += 0xb0) { w8(leg + 0x121, u(ri(0, 1))); w8(leg + 0x161, u(ri(0, 1))); }
+        return Args{{T}, {}};
+    }, [](A a) { walker_legs_reset(a.i[0]); return uint64_t{0}; });
+    check("walker_fall_time", 0x002a15c8, 400, Ret::Float, [] {
+        wf(M + 0x18, rf(-5, 50));
+        wf(T + 0x68, ri(0, 3) == 0 ? ee_read<float>(M + 0x18) : rf(-5, 50));
+        wf(T + 0xd8, rf(-2, 2));
+        wf(T + 0xdc, coin() ? -rf(0.001f, 0.1f) : rf(-0.1f, 0.1f));
+        return Args{{M, T}, {}};
+    }, [](A a) { return rf32(walker_fall_time(a.i[0], a.i[1])); });
+
     //@@NEXT
     g_ignored_words = saved_ignored;
     g_ee_null_is_ram = null_ram;

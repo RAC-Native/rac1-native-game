@@ -62,6 +62,10 @@ add_library(rac1_game STATIC
     ovl/variants_l17.cpp
     ovl/variants_l18.cpp
     ovl/eudora_mobys.cpp
+    ovl/eudora_biped.cpp
+    ovl/eudora_fidget.cpp
+    ovl/eudora_flock.cpp
+    ovl/eudora_walker.cpp
     ovl/rilgar_mobys.cpp
     ovl/rilgar_hooks.cpp
     ovl/rilgar_part2.cpp

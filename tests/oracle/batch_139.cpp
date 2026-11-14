@@ -2,7 +2,7 @@
 // ORACLE_LEVEL=4 (Eudora's own original against the relocated port; needs the ISO); the base ELF functions also on level 0.
 //  - libgcc's soft-float single -> double (base ELF): __unpack_f 0x1203b0, __pack_d 0x11f738, __make_dp 0x120370,
 //    __extendsfdf2 0x120478 (Eudora's enemy helper L4:0x293128 converts a distance for a debug print with it);
-//  - that helper, L4:0x293128, with the flags (a2 & 0x30) that take it to the conversion, on the woodcut bots (class 563);
+//  - that helper, L4:0x293128 (now the hand port walker_gait_update_l4, eudora_walker.cpp), with the flags (a2 & 0x30) that take it to the conversion, on the woodcut bots (class 563);
 //  - the states of the Suck Cannon (class 1120: 1 its scene, 2 the weapon given, the checkpoint, the save request, 3) and of the
 //    gold bolt (class 1134: 1 / 2, the help message and the save request) that batch 111 skips: here the level change request
 //    (L4:0x23fe20, Veldin 0x24d430) runs on both sides, the console's clock the host's on both (as batch 75); 1120's scene start itself
@@ -184,7 +184,7 @@ void batch_139() {
                 seed_rand();
                 const uint32_t flags = ri(0, 3) == 0 ? (R() & 0xff) : ((R() & 0xcf) | 0x10u << ri(0, 1));
                 return Args{{m, rec, flags}, {rf(0, 3), rf(-3.1f, 3.1f), rf(0, 20)}};
-            }, [](A a) { eud_293128_l4(a.i[0], a.i[1], a.i[2], 0, 0, 0, 0, 0, a.f[0], a.f[1], a.f[2], 0, 0, 0, 0, 0); return uint64_t{0}; });
+            }, [](A a) { walker_gait_update_l4(a.i[0], a.i[1], a.i[2], a.f[0], a.f[1], a.f[2]); return uint64_t{0}; });
     }
 
     // ---- the scene / level-change states of the Suck Cannon (1120) and the gold bolt (1134): the level change request runs on both

@@ -12,11 +12,10 @@
 0x002418b0: fr[0] = class_anim_first_time(a0.w(), a1.w());
 0x00241910: fr[0] = class_anim_last_time(a0.w(), a1.w());
 0x0024b888: walker_record_init_l1(a0.w());
-0x00255150: jump_arc_set(a0.w(), fr[12], fr[13]);
 0x002aee30: set32(v0, static_cast<uint32_t>(shot_launch(a0.w(), a1.w(), a2.w(), static_cast<int32_t>(a3.w()))));
 0x002c46d0: arcs_update(a0.w());
 0x002cb8b8: jet_update_base_l1(a0.w());
 0x002e2f90: class_mates_mark_fixed(a0.w(), 0);
-0x00241980: set32(v0, static_cast<uint32_t>(moby_collision_point(a0.w(), a1.w(), a2.w(), a3.w(), t0.w(), t1.w())));
 0x002ce080: set32(v0, static_cast<uint32_t>(spawn_like(a0.w(), a1.w(), 0x1f3u)));
-0x002d34d8: set32(v0, static_cast<uint32_t>(spawn_like(a0.w(), a1.w(), 0x23au)));
+0x00295778: set32(v0, static_cast<uint32_t>(walker_update_l4(a0.w(), a1.w(), fr[12], fr[13], fr[14])));
+0x00295de8: set32(v0, static_cast<uint32_t>(walker_init_l4(a0.w(), a1.w())));
