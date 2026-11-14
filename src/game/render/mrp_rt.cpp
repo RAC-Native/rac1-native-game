@@ -1125,8 +1125,58 @@ bool mrp_rt_tracing() { return g_rt.ready && g_rt.accel != nullptr && mrp_rt_act
 // orig: (host) see mrp_rt.h
 int mrp_rt_level_id() { return g_rt.tried_level; }
 
+namespace {
+// A level's (or a world section's) structures changed at the frame's start, not where the world renderer asks (its load, in the
+// middle of the frame's recording): the frame being recorded may have bound this slot's set already (the seas drawn before the load,
+// a pipelined frame), and the old top level destroyed, the tables' buffers freed and the sets written again under it made that
+// command buffer invalid - submitted anyway, the GPU read the freed top level: an MMU fault, VK_ERROR_DEVICE_LOST, the picture frozen
+// while the game went on (Daino's Arena, "La grande fuga", NVIDIA with Medium (RT)). Asked: the trace stops at once (no set
+// given out, mrp_rt_vk_set), the change itself waits for mrp_rt_frame_begin.
+struct RtPending {
+    bool any = false, drop = false;
+    RtLevelGeometry geo;
+};
+RtPending g_rt_pending;
+void rt_level_drop_now();
+void rt_level_now(RtLevelGeometry&& g);
+}  // namespace
+
 // orig: (host) see mrp_rt.h
 void mrp_rt_level_drop() {
+    if (g_rt.tried_level < 0 || vk::device() == VK_NULL_HANDLE) return;
+    g_rt.ready = false;
+    g_rt.tried_level = -1;
+    g_rt_pending.any = true;
+    g_rt_pending.drop = true;
+    g_rt_pending.geo = RtLevelGeometry{};
+}
+
+// orig: (host) see mrp_rt.h
+void mrp_rt_level(RtLevelGeometry&& g) {
+    if (!mrp_rt_active()) return;
+    g_rt.ready = false;
+    g_rt.tried_level = g.level;  // (mrp_rt_level_id: asked, not asked again)
+    g_rt_pending.any = true;
+    g_rt_pending.drop = false;
+    g_rt_pending.geo = std::move(g);
+}
+
+// orig: (host) see mrp_rt.h
+void mrp_rt_frame_begin() {
+    if (!g_rt_pending.any) return;
+    RtPending p = std::move(g_rt_pending);
+    g_rt_pending = RtPending{};
+    if (p.drop) {
+        g_rt.tried_level = 0;  // (rt_level_drop_now's guard: something to drop)
+        rt_level_drop_now();
+    } else {
+        rt_level_now(std::move(p.geo));
+    }
+}
+
+namespace {
+// orig: (host) mrp_rt_level_drop, done (the frame's start)
+void rt_level_drop_now() {
     if (g_rt.tried_level < 0 || vk::device() == VK_NULL_HANDLE) return;
     report_run();
     g_rt.frames = 0;
@@ -1142,6 +1192,7 @@ void mrp_rt_level_drop() {
     vk::destroy_buffer_now(g_rt.tri_buf);
     g_rt.tried_level = -1;
 }
+}  // namespace
 
 // orig: (host) see mrp_rt.h
 int mrp_rt_cluster_mode() {
@@ -1175,8 +1226,9 @@ uint64_t mrp_rt_vk_set_layout() {
     return reinterpret_cast<uint64_t>(g_rt.set_layout);
 }
 
-// orig: (host) see mrp_rt.h
-void mrp_rt_level(RtLevelGeometry&& g) {
+namespace {
+// orig: (host) mrp_rt_level, done (the frame's start)
+void rt_level_now(RtLevelGeometry&& g) {
     if (!mrp_rt_active()) return;
     g_rt.tried_level = g.level;
     report_run();
@@ -1312,6 +1364,7 @@ void mrp_rt_level(RtLevelGeometry&& g) {
     std::fflush(stdout);
     g_rt.ready = true;
 }
+}  // namespace
 
 // orig: (host) see mrp_rt.h
 void mrp_rt_note_zones(const uint8_t* zone) {

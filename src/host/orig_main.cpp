@@ -180,6 +180,11 @@
 #endif
 
 using namespace rac1;
+namespace rac1 {
+// orig: (host) Vulkan, right after the frame's begin (nothing recorded yet binds the ray tracing's set): the change mrp_rt_level /
+// mrp_rt_level_drop asked during a frame made (mrp_rt.cpp; declared here, mrp_rt.h being one of the generated code's inputs)
+void mrp_rt_frame_begin();
+}  // namespace rac1
 
 bool audio_out_start(int channels, bool hp);  // audio_out.cpp
 void audio_out_push(const int16_t* pcm, const int16_t* multi, int frames, int channels, const float* fpcm, const float* fmulti);
@@ -4081,6 +4086,7 @@ int main(int argc, char** argv) {
             if (rac1::vk::is_active()) {
                 RAC1_PROF_ZONE(kFrameBegin);
                 rac1::vk::begin_frame(w, h, 0.02f, 0.02f, 0.04f, 1.0f);  // (colour, depth and stencil cleared)
+                mrp_rt_frame_begin();  // (a level's ray tracing structures changed here, nothing bound yet: mrp_rt.h)
                 rac1::vk::set_viewport(vx, vy, vw, vh);
             } else {
                 glViewport(0, 0, w, h);
