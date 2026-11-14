@@ -1,37 +1,17 @@
 // Orxon (level 10) transliterated moby classes, class hooks and level-only engine functions: the
 // declarations of orxon_classes_tr_N.cpp
-// (generated: `void` = a class update / entry in the entry ABI, `TrRet` = a helper or a `_u` entry in the uniform ABI).
+// (generated: `void` = a class update / entry in the entry ABI, `TrRet` = a helper or a `_u` entry in the uniform ABI);
+// the classes written by hand: orxon_classes.h.
 #ifndef RAC1_GAME_OVL_ORXON_MOBYS_H
 #define RAC1_GAME_OVL_ORXON_MOBYS_H
 
 #include <cstdint>
 
 #include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/orxon_classes.h>
 
 namespace rac1 {
 
-void orx_class1033_update_l10(uint32_t a0);  // L10:0x00295a38
-void orx_class1117_update_l10(uint32_t a0);  // L10:0x00295c20
-void orx_class18_update_l10(uint32_t a0);  // L10:0x00298668
-void orx_class22_update_l10(uint32_t a0);  // L10:0x00298b68
-void orx_class351_update_l10(uint32_t a0);  // L10:0x002be858
-void orx_class353_update_l10(uint32_t a0);  // L10:0x002befe8
-void orx_class702_update_l10(uint32_t a0);  // L10:0x002c7a20
-TrRet orx_2c9958_l10(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L10:0x002c9958
-void orx_class794_update_l10(uint32_t a0);  // L10:0x002c9c70
-TrRet orx_2d7b18_l10(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L10:0x002d7b18
-void orx_class859_update_l10(uint32_t a0);  // L10:0x002d7b80
-TrRet orx_2d8170_l10(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L10:0x002d8170
-void orx_class938_update_l10(uint32_t a0);  // L10:0x002d85c8
-TrRet orx_2d8058_l10(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L10:0x002d8058
-void orx_class939_update_l10(uint32_t a0);  // L10:0x002d8c00
-TrRet orx_2dd270_l10(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L10:0x002dd270
-void orx_class947_update_l10(uint32_t a0);  // L10:0x002d8d30
-TrRet orx_2d9000_l10(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L10:0x002d9000
-void orx_class1015_update_l10(uint32_t a0);  // L10:0x002d90a8
-void orx_class1031_update_l10(uint32_t a0);  // L10:0x002d92b8
-void orx_class1047_update_l10(uint32_t a0);  // L10:0x002d9eb8
-void orx_class1067_update_l10(uint32_t a0);  // L10:0x002da2c8
 void orx_class1073_update_l10(uint32_t a0);  // L10:0x002dcc58
 void orx_class1090_update_l10(uint32_t a0);  // L10:0x002dd3d8
 void orx_class1100_update_l10(uint32_t a0);  // L10:0x002dd650

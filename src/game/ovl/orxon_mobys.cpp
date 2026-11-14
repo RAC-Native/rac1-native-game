@@ -1,5 +1,6 @@
-// Orxon (level 10) own moby classes: the registration table. The ports are the transliterations in
-// orxon_classes_tr_N.cpp (declarations: orxon_mobys.h) and, for the classes other levels share, the shared hand-written
+// Orxon (level 10) own moby classes: the registration table. The ports are the hand-written classes of orxon_classes.h,
+// the transliterations in orxon_classes_tr_N.cpp (declarations: orxon_mobys.h) and, for the classes other levels share,
+// the shared hand-written
 // ports (shared_*.cpp, novalis_*.cpp, kerwan_props.cpp, aridia_ocean.cpp: each proved against level 10's own copy by its
 // family batch). Keyed by level 10's own address and by level, so the indirect call (`jalr`) through
 // moby +0x74) reaches them only while the played level's overlay is level 10's.

@@ -84,6 +84,11 @@ add_library(rac1_game STATIC
     ovl/batalia_part2.cpp
     ovl/orxon_mobys.cpp
     ovl/orxon_hooks.cpp
+    ovl/orxon_platforms.cpp
+    ovl/orxon_doors.cpp
+    ovl/orxon_clank.cpp
+    ovl/orxon_hazards.cpp
+    ovl/orxon_props.cpp
     ovl/pokitaru_hooks.cpp
     ovl/pokitaru_mobys.cpp
     ovl/hoven_hooks.cpp
