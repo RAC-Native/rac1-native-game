@@ -27,6 +27,7 @@
 #include <game/ovl/variants_l2.h>
 #include <game/ovl/novalis_level_fns.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/level/level_data.h>
 #include <game/ovl/ovl_common.h>
 #include <game/port_stubs.h>
 #include <cstdio>
@@ -48,7 +49,7 @@ uint32_t types_base() { return g_camera_types_table != 0 ? g_camera_types_table 
 // orig: (helper) the type-table function `col` (4 accept, 8 init, 0xc update, 0x10 exit) of a camera
 uint32_t type_fn(uint32_t cam, uint32_t col) { return lwu(types_base() + static_cast<uint32_t>(lh(cam + 0x8c) * 0x14) + col); }
 // orig: (helper) the level camera entry (0x20 each at *(0x15ef50)) of a camera
-uint32_t level_entry(uint32_t cam) { return lwu(OV(0x0015ef50)) + static_cast<uint32_t>(lh(cam + 0x84) * 0x20); }
+uint32_t level_entry(uint32_t cam) { return lvd::camera(lh(cam + 0x84)); }
 // orig: (helper) the three unit rows of the hero's matrix *(0x1413d0) + 0xc0
 void hero_rows(Vec4& r0, Vec4& r1, Vec4& r2) {
     vec3_set_length(r0, V(lwu(0x001413d0) + 0xc0), 1.0f);
@@ -86,7 +87,7 @@ void cam_trace_list() {
     static const bool on = std::getenv("RAC1_CAM_TRACE") != nullptr;
     if (!on) return;
     std::fprintf(stderr, "[cam] slots: follow-camera hook %08x, callback queue %08x\n", OV(0x00167010), OV(0x00168ff0));
-    for (int32_t i = 0; i < lw(OV(0x0015ef54)); ++i) {
+    for (int32_t i = 0; i < lvd::camera_count(); ++i) {
         const uint32_t cam = CAMS + static_cast<uint32_t>(i) * 0xa0;
         const uint32_t e = level_entry(cam), data = lwu(e + 0x1c);
         std::fprintf(stderr, "[cam] level cam %d: type %d row %d (fns %08x %08x %08x %08x) trig %u prio %u kind %u pos %.1f %.1f %.1f data %08x box %08x\n", i,
@@ -94,7 +95,7 @@ void cam_trace_list() {
                      lbu(cam + 0x7c), lbu(data + 0x1d), static_cast<double>(lwc1(e)), static_cast<double>(lwc1(e + 4)), static_cast<double>(lwc1(e + 8)), data,
                      lwu(data + 0xc));
         if (lw(data + 0xc) >= 0) {  // (its box, 0x80 each at *(0x1600ec): the centre +0x30)
-            const uint32_t box = lwu(OV(0x001600ec)) + static_cast<uint32_t>(lw(data + 0xc)) * 0x80;
+            const uint32_t box = lvd::box(lvd::BOXES, lw(data + 0xc));
             std::fprintf(stderr, "[cam]   box %d at %.1f %.1f %.1f\n", lw(data + 0xc), static_cast<double>(lwc1(box + 0x30)), static_cast<double>(lwc1(box + 0x34)),
                          static_cast<double>(lwc1(box + 0x38)));
         }
@@ -102,7 +103,7 @@ void cam_trace_list() {
         for (uint32_t k = 0; k < 0x40; k += 4) std::fprintf(stderr, " %08x", lwu(data + k));
         std::fprintf(stderr, "\n");
         if (lh(cam + 0x86) == 3 && lw(data + 0x24) >= 0) {
-            const uint32_t t = lwu(OV(0x0015f70c)) + static_cast<uint32_t>(lw(data + 0x24)) * 0x20;
+            const uint32_t t = lvd::rail(lw(data + 0x24));
             std::fprintf(stderr, "[cam]   0x15f70c[%d]:", lw(data + 0x24));
             for (uint32_t k = 0; k < 0x20; k += 4) std::fprintf(stderr, " %08x", lwu(t + k));
             std::fprintf(stderr, "\n");
@@ -394,7 +395,7 @@ int32_t camera_accept(uint32_t cam, uint32_t cur) {
         if (id != 3) return 1;
         const int32_t k = lw(lwu(level_entry(cam) + 0x1c) + 0x24);
         if (k < 0) return 1;
-        if (lw(0x0013f8b0) != lw(lwu(OV(0x0015f70c)) + static_cast<uint32_t>(k) * 0x20 + 0x10)) return 0;
+        if (lw(0x0013f8b0) != lw(lvd::rail(k) + 0x10)) return 0;
         return lw(0x0013f8c0) == 0 ? 1 : 0;
     }
     default:
@@ -930,9 +931,9 @@ void camera_init() {
     swc1(S + 0xb0, g);
     sw(S + 0xd4, 0);
     sw(S + 0xdc, 0);
-    for (int32_t i = 0; i < lw(OV(0x0015ef54)); ++i) {
+    for (int32_t i = 0; i < lvd::camera_count(); ++i) {
         const uint32_t cam = CAMS + static_cast<uint32_t>(i) * 0xa0;
-        const uint32_t e = lwu(OV(0x0015ef50)) + static_cast<uint32_t>(i) * 0x20;
+        const uint32_t e = lvd::camera(i);
         const uint32_t data = lwu(e + 0x1c);
         sh(cam + 0x84, static_cast<uint32_t>(i));
         sw(data + 4, cam);

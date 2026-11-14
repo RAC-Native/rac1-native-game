@@ -3,6 +3,7 @@
 #include <game/enhance/vendor_buy_all.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/lib/libc.h>
+#include <game/level/level_data.h>
 #include <game/ovl/ovl_common.h>
 
 namespace rac1 {
@@ -1431,7 +1432,7 @@ void remove_moby_5f3() {
 // If any segment was touched, out = the pushed point with its original height along the axis
 // restored, and 1 is returned; otherwise out is left alone.
 int32_t path_push_out(uint32_t idx, uint32_t pos, uint32_t out, float r) {
-    const uint32_t path = lw(OV(0x001b04b0) + idx * 4);
+    const uint32_t path = lvd::path(static_cast<int32_t>(idx));
     const Vec4& axis = V(0x0013f5e0);
     Vec4 p = V(pos);
     const float h0 = vec3_dot(p, axis);

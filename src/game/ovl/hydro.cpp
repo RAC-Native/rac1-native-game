@@ -4,6 +4,7 @@
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/ovl.h>
+#include <game/level/level_data.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 
@@ -232,8 +233,8 @@ void hydro_update(uint32_t m) {
             const uint32_t pool_idx = lwu(lwu(gm2 + 0x78));
             sb(m + 0xbc, 1);
             const uint32_t pool_moby = moby_base + (pool_idx << 8);
-            uid5_set_pvar_80(lwu(OV(0x001600ecu)) + (lwu(pv + 8) << 7) + 0x30u);
-            uid5_set_pvar_90(lwu(OV(0x001600ecu)) + (lwu(pv + 8) << 7) + 0x70u);
+            uid5_set_pvar_80(lvd::box(lvd::BOXES, lw(pv + 8)) + 0x30u);
+            uid5_set_pvar_90(lvd::box(lvd::BOXES, lw(pv + 8)) + 0x70u);
             const uint32_t has_water = lbu(P + 0x20b0);
             sw(OV(0x0015f404u), 1);
             if (has_water == 0) {
@@ -256,28 +257,25 @@ void hydro_update(uint32_t m) {
                 (void)seek_1d_v(*static_cast<float*>(ee_ram_ptr(pv + 0x10)),
                                 *static_cast<float*>(ee_ram_ptr(pv + 0x14)), 1.0f, accel, accel, vmax);
 
-                const uint32_t spline_base = lwu(OV(0x001600ecu));
-                const uint32_t n_from = spline_base + (lwu(pv + 8) << 7);
-                const uint32_t n_to = spline_base + (lwu(pv + 0xc) << 7);
+                const uint32_t n_from = lvd::box(lvd::BOXES, lw(pv + 8));
+                const uint32_t n_to = lvd::box(lvd::BOXES, lw(pv + 0xc));
                 Vec4 pos{};
                 vec3_lerp(pos, V(n_from + 0x30), V(n_to + 0x30), lwc1(pv + 0x10));
 
                 Vec4 rot{};
                 vec_clear(rot);
                 {
-                    const uint32_t b = lwu(OV(0x001600ecu));
-                    const uint32_t f = b + (lwu(pv + 8) << 7);
-                    const uint32_t t = b + (lwu(pv + 0xc) << 7);
+                    const uint32_t f = lvd::box(lvd::BOXES, lw(pv + 8));
+                    const uint32_t t = lvd::box(lvd::BOXES, lw(pv + 0xc));
                     const float dy = fpu_mul(angle_sub(lwc1(t + 0x74), lwc1(f + 0x74)), lwc1(pv + 0x10));
-                    const uint32_t fb = lwu(OV(0x001600ecu)) + (lwu(pv + 8) << 7);
+                    const uint32_t fb = lvd::box(lvd::BOXES, lw(pv + 8));
                     rot.y = angle_add(lwc1(fb + 0x74), dy);
                 }
                 {
-                    const uint32_t b = lwu(OV(0x001600ecu));
-                    const uint32_t f = b + (lwu(pv + 8) << 7);
-                    const uint32_t t = b + (lwu(pv + 0xc) << 7);
+                    const uint32_t f = lvd::box(lvd::BOXES, lw(pv + 8));
+                    const uint32_t t = lvd::box(lvd::BOXES, lw(pv + 0xc));
                     const float dz = fpu_mul(angle_sub(lwc1(t + 0x78), lwc1(f + 0x78)), lwc1(pv + 0x10));
-                    const uint32_t fb = lwu(OV(0x001600ecu)) + (lwu(pv + 8) << 7);
+                    const uint32_t fb = lvd::box(lvd::BOXES, lw(pv + 8));
                     rot.z = angle_add(lwc1(fb + 0x78), dz);
                 }
 

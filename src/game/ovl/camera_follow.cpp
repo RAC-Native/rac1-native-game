@@ -24,6 +24,7 @@
 #include <game/ovl/veldin_finale_hooks.h>
 #include <game/ovl/aridia_classes_tr.h>
 #include <game/ovl/variants_l2.h>
+#include <game/level/level_data.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/port_stubs.h>
@@ -1083,12 +1084,12 @@ int32_t cam_volume_contains(const Vec4& pos, uint32_t rec, float r) {
     const int32_t type = lw(rec + 0x10);
     alignas(16) Vec4 d, l;
     if (type == 5) {
-        const uint32_t s = lwu(OV(0x001600f4)) + lwu(rec + 0x14) * 0x80;
+        const uint32_t s = lvd::box(lvd::SPHERES, lw(rec + 0x14));
         const float rad = vec3_length(V(s)) + r;
         return vec3_distance(p, V(s + 0x30)) < rad ? 1 : 0;
     }
     if (type == 3) {
-        const uint32_t s = lwu(OV(0x001600ec)) + lwu(rec + 0x14) * 0x80;
+        const uint32_t s = lvd::box(lvd::BOXES, lw(rec + 0x14));
         vec3_sub(d, p, V(s + 0x30));
         d.w = 0.0f;
         mat3_transform(l, d, M(s + 0x40));
@@ -1098,7 +1099,7 @@ int32_t cam_volume_contains(const Vec4& pos, uint32_t rec, float r) {
         return l.z <= 1.0f ? 1 : 0;
     }
     if (type == 6) {
-        const uint32_t s = lwu(OV(0x001600fc)) + lwu(rec + 0x14) * 0x80;
+        const uint32_t s = lvd::box(lvd::CYLINDERS, lw(rec + 0x14));
         vec3_sub(d, p, V(s + 0x30));
         d.w = 0.0f;
         mat3_transform(l, d, M(s + 0x40));
@@ -1107,7 +1108,7 @@ int32_t cam_volume_contains(const Vec4& pos, uint32_t rec, float r) {
         return l.z <= 1.0f ? 1 : 0;
     }
     if (type == 7) {
-        const uint32_t s = lwu(OV(0x001600e4)) + lwu(rec + 0x14) * 0x90;
+        const uint32_t s = lvd::volume(lw(rec + 0x14));
         vec3_sub(d, p, V(s + 0x30));
         d.w = 0.0f;
         mat3_transform(l, d, M(s + 0x40));
@@ -1137,7 +1138,7 @@ uint32_t cam_volume_find(const Vec4& pos, float r) {
         debug_printf_stub();
         return 0;
     }
-    const uint32_t tab = lwu(OV(0x0015ef80));
+    const uint32_t tab = lvd::cam_volume_grid();
     const uint32_t off = lwu(tab + static_cast<uint32_t>(y * 64 + x) * 4);
     if (off == 0) return 0;
     const uint32_t list = off + tab;
@@ -1161,7 +1162,7 @@ int32_t cam0_volume_push(const Vec4& pos, float r) {
     const Vec4 p = pos;
     const uint32_t e = cam_volume_find(p, r);
     if (e == 0) return 0;
-    const uint32_t s = lwu(OV(0x001600f4)) + lwu(e + 0x14) * 0x80;
+    const uint32_t s = lvd::box(lvd::SPHERES, lw(e + 0x14));
     alignas(16) Vec4 d;
     vec3_sub(d, pos, V(s + 0x30));
     const float rad = vec3_length(V(s));
@@ -1500,14 +1501,14 @@ void cam0_ease_offset(uint32_t cam) {
 void cam0_volume_pass() {
     for (int32_t y = 0; y < 0x40; ++y) {
         for (int32_t x = 0; x < 0x40; ++x) {
-            const uint32_t tab = lwu(OV(0x0015ef80));
+            const uint32_t tab = lvd::cam_volume_grid();
             const uint32_t off = lwu(tab + static_cast<uint32_t>(y * 64 + x) * 4);
             if (off == 0) continue;
             const uint32_t list = off + tab;
             for (int32_t i = 0; i < lw(list); ++i) {
                 const uint32_t e = list + 0x10 + static_cast<uint32_t>(i) * 0x30;
                 if (lw(e + 0x10) != 5) continue;
-                const uint32_t s = lwu(OV(0x001600f4)) + lwu(e + 0x14) * 0x80;
+                const uint32_t s = lvd::box(lvd::SPHERES, lw(e + 0x14));
                 sub_001f6c30(s + 0x30, vec3_length(V(s)));
             }
         }

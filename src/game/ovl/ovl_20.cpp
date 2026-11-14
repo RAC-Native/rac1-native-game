@@ -3,6 +3,7 @@
 #include <game/enhance/fixes102.h>
 #include <game/enhance/setpieces.h>
 #include <game/ovl/hero_l1.h>
+#include <game/level/level_data.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants_l3.h>
@@ -1570,15 +1571,15 @@ void bone_nodes_update() {
 int32_t find_rail_v(const Vec4& pos, uint32_t* path_out, Vec4& point, int32_t* idx, float* dist, int32_t* loop_out, uint32_t skip, uint32_t only) {
     if (on_kerwan()) return find_rail_l3_v(pos, path_out, point, idx, dist, loop_out, skip, only);  // (Kerwan's own build, L3:0x00205830)
     const Vec4 p = pos;
-    for (int32_t i = 0; i < lw(OV(0x0015f710)); ++i) {
-        const uint32_t e = static_cast<uint32_t>(lw(OV(0x0015f70c))) + static_cast<uint32_t>(i) * 0x20;
+    for (int32_t i = 0; i < lvd::rail_count(); ++i) {
+        const uint32_t e = lvd::rail(i);
         if (skip != 0 && static_cast<uint32_t>(lw(e + 0x10)) == skip) continue;
         if (only != 0 && static_cast<uint32_t>(lw(e + 0x10)) != only) continue;
         if (lw(lw(e + 0x10)) == 0) continue;
         if (lwc1(e + 0xc) < vec3_distance(V(e), p)) continue;
         int32_t k = 0;
         float d = 0.0f;
-        const uint32_t e2 = static_cast<uint32_t>(lw(OV(0x0015f70c))) + static_cast<uint32_t>(i) * 0x20;
+        const uint32_t e2 = lvd::rail(i);
         if (path_closest_point_v(lw(e2 + 0x10), p, point, &k, &d, lw(e2 + 0x14), 12.0f, 10.0f, 0.0f) == 0) continue;
         float rxy = u2f(0x3f666666u);
         float rz = 1.5f;
@@ -1591,11 +1592,11 @@ int32_t find_rail_v(const Vec4& pos, uint32_t* path_out, Vec4& point, int32_t* i
         const float dz = abs_f(p.z - point.z);
         if (!(dxy < rxy)) continue;
         if (!(dz < rz)) continue;
-        const uint32_t e3 = static_cast<uint32_t>(lw(OV(0x00166c00u - 0x74f4))) + static_cast<uint32_t>(i) * 0x20;
+        const uint32_t e3 = lvd::rail(i);
         *path_out = static_cast<uint32_t>(lw(e3 + 0x10));
         *idx = k;
         *dist = d;
-        *loop_out = lw(static_cast<uint32_t>(lw(OV(0x0015f70c))) + static_cast<uint32_t>(i) * 0x20 + 0x14);
+        *loop_out = lw(lvd::rail(i) + 0x14);
         return 1;
     }
     return 0;
@@ -1607,23 +1608,23 @@ int32_t find_rail_v(const Vec4& pos, uint32_t* path_out, Vec4& point, int32_t* i
 // orig: L3:0x00205830
 int32_t find_rail_l3_v(const Vec4& pos, uint32_t* path_out, Vec4& point, int32_t* idx, float* dist, int32_t* loop_out, uint32_t skip, uint32_t only) {
     const Vec4 p = pos;
-    for (int32_t i = 0; i < lw(OV(0x0015f710)); ++i) {
-        const uint32_t e = static_cast<uint32_t>(lw(OV(0x0015f70c))) + static_cast<uint32_t>(i) * 0x20;
+    for (int32_t i = 0; i < lvd::rail_count(); ++i) {
+        const uint32_t e = lvd::rail(i);
         if (skip != 0 && static_cast<uint32_t>(lw(e + 0x10)) == skip) continue;
         if (only != 0 && static_cast<uint32_t>(lw(e + 0x10)) != only) continue;
         if (lw(lw(e + 0x10)) == 0) continue;
         if (lwc1(e + 0xc) < vec3_distance(V(e), p)) continue;
         int32_t k = 0;
         float d = 0.0f;
-        const uint32_t e2 = static_cast<uint32_t>(lw(OV(0x0015f70c))) + static_cast<uint32_t>(i) * 0x20;
+        const uint32_t e2 = lvd::rail(i);
         if (path_closest_point_v(lw(e2 + 0x10), p, point, &k, &d, lw(e2 + 0x14), 12.0f, 10.0f, 0.0f) == 0) continue;
         if (!(vec2_distance(p, point) < u2f(0x3fd9999au))) continue;
         if (!(abs_f(p.z - point.z) < 1.5f)) continue;
-        const uint32_t e3 = static_cast<uint32_t>(lw(OV(0x00166c00u - 0x74f4))) + static_cast<uint32_t>(i) * 0x20;
+        const uint32_t e3 = lvd::rail(i);
         *path_out = static_cast<uint32_t>(lw(e3 + 0x10));
         *idx = k;
         *dist = d;
-        *loop_out = lw(static_cast<uint32_t>(lw(OV(0x0015f70c))) + static_cast<uint32_t>(i) * 0x20 + 0x14);
+        *loop_out = lw(lvd::rail(i) + 0x14);
         return 1;
     }
     return 0;

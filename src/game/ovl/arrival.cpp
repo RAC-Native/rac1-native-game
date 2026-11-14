@@ -9,6 +9,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/level_change.h>
 #include <game/lib/libvu0.h>
+#include <game/level/level_data.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/pause_menu.h>
 #include <game/ovl/screen_fade.h>
@@ -422,7 +423,7 @@ void ship_sequence_update() {
             sw(G + 0x48, 0);
             sw(G + 0x4c, 0);
             if (pi >= 0) {
-                const uint32_t path = lwu(OV(0x001b04b0) + static_cast<uint32_t>(pi) * 4);
+                const uint32_t path = lvd::path(pi);
                 float f21 = lwc1(G + 0x48);
                 swc1(path + 0x1c, f21);
                 for (int32_t k = 1; k < lw(path) - 1;) {  // the turn at each point
@@ -468,10 +469,9 @@ void ship_sequence_update() {
             const float f13 = lwc1(0x0015ed70) * u2f(0x3f2a7efau);
             seek_1d(G + 0x48, G + 0x4c, 1.0f, f13, f13, lwc1(0x0015ed6c) * 0.5f);
             const uint32_t sp = ee_stack_alloc(0x20);
-            const uint32_t cams = lwu(OV(0x001600ec));
-            vec3_lerp(V(sp), V(cams + static_cast<uint32_t>(lw(G + 0x34)) * 0x80 + 0x30), V(cams + static_cast<uint32_t>(lw(G + 0x38)) * 0x80 + 0x30), lwc1(G + 0x48));
+            vec3_lerp(V(sp), V(lvd::box(lvd::BOXES, lw(G + 0x34)) + 0x30), V(lvd::box(lvd::BOXES, lw(G + 0x38)) + 0x30), lwc1(G + 0x48));
             vec_clear(V(sp + 0x10));
-            auto cam = [](uint32_t k) { return lwu(OV(0x001600ec)) + static_cast<uint32_t>(lw(G + k)) * 0x80; };
+            auto cam = [](uint32_t k) { return lvd::box(lvd::BOXES, lw(G + k)); };
             float d = angle_sub(lwc1(cam(0x38) + 0x74), lwc1(cam(0x34) + 0x74));
             float f = d * lwc1(G + 0x48);
             swc1(sp + 0x14, f);
@@ -508,7 +508,7 @@ void ship_sequence_update() {
                 }
                 if (f20 < 1.0f) ship_thrusters(lwu(G), lwc1(0x0015ed6c) * -3.75f);
             } else {  // along the path
-                const uint32_t path = lwu(OV(0x001b04b0) + static_cast<uint32_t>(lw(G + 0x30)) * 4);
+                const uint32_t path = lvd::path(lw(G + 0x30));
                 const float sp0 = lwc1(G + 0x40) + u2f(0x3f4ccccdu);
                 swc1(G + 0x40, sp0);
                 if (100.0f < sp0) swc1(G + 0x40, 100.0f);

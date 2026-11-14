@@ -5,6 +5,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
+#include <game/level/level_data.h>
 #include <game/ovl/ovl_common.h>
 #include <game/port_stubs.h>
 
@@ -117,12 +118,11 @@ void smoke_vent_update(uint32_t m) {
             moby_retire(m);
             return;
         }
-        const uint32_t box = lwu(pv + 4) << 7;
-        swc1(pv + 0x48, vec3_length(V(lwu(OV(0x00166c00u - 0x6b14)) + box + 0x10)));
-        const float b = vec3_length(V(lwu(OV(0x001600ec)) + box));
+        swc1(pv + 0x48, vec3_length(V(lvd::box(lvd::BOXES, lw(pv + 4)) + 0x10)));
+        const float b = vec3_length(V(lvd::box(lvd::BOXES, lw(pv + 4))));
         if (lwc1(pv + 0x48) < b) swc1(pv + 0x48, b);
         swc1(pv + 0x44, lh(pv + 0x40) != 0 ? lwc1(pv + 0x48) : 3.0f);
-        swc1(pv + 0x50, vec3_length(V(lwu(OV(0x001600ec)) + (lwu(pv + 4) << 7) + 0x20)) * 0.5f);
+        swc1(pv + 0x50, vec3_length(V(lvd::box(lvd::BOXES, lw(pv + 4)) + 0x20)) * 0.5f);
         const int32_t base = static_cast<int16_t>(wisp_slots_alloc(lh(pv + 2) + lh(pv + 0x40)));
         sh(pv, static_cast<uint32_t>(base));
         const int32_t end = base + lh(pv + 2);
@@ -140,12 +140,12 @@ void smoke_vent_update(uint32_t m) {
             sb(OV(0x001d2860) + static_cast<uint32_t>(i), static_cast<uint32_t>(r));
             wisp_init_hover(m, i);
         }
-        swc1(lwu(OV(0x001600ec)) + (lwu(pv + 4) << 7) + 0x3c, 1.0f);
+        swc1(lvd::box(lvd::BOXES, lw(pv + 4)) + 0x3c, 1.0f);
         sw(pv + 0x38, (lbu(pv + 0x3e) << 16) | (lbu(pv + 0x3d) << 8) | lbu(pv + 0x3c));
         return;
     }
     if (st != 1) return;
-    const uint32_t box = lwu(OV(0x001600ec)) + (lwu(pv + 4) << 7);
+    const uint32_t box = lvd::box(lvd::BOXES, lw(pv + 4));
     Vec4 top = V(box + 0x30);
     top.z = top.z + 9.0f;
     top.w = 10.0f;

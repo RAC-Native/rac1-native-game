@@ -4,6 +4,7 @@
 #include <game/enhance/session_runtime.h>
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/level/level_data.h>
 #include <game/ovl/ovl_common.h>
 #include <runtime/kernel/bootstrap.h>
 #include <cstdio>
@@ -645,7 +646,7 @@ float turn_towards(uint32_t ang, int32_t dir, float target, float step) {
 // (128-byte entries: centre +0x30, inverse axes +0x40)?
 int32_t point_in_box(uint32_t pos, int32_t idx) {
     if (idx == -1) return 0;
-    const uint32_t box = lwu(OV(0x001600ec)) + static_cast<uint32_t>(idx << 7);
+    const uint32_t box = lvd::box(lvd::BOXES, idx);
     Vec4 d;
     vec3_sub(d, V(pos), V(box + 0x30));
     d.w = 0.0f;
