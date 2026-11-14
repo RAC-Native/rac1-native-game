@@ -8,6 +8,15 @@
 
 #include <game/ovl/aridia_classes_tr.h>
 #include <game/ovl/enemy_749.h>
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/shared_bg_ships.h>
+#include <game/ovl/shared_class604.h>
+#include <game/ovl/shared_class615.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_swingshot_target.h>
 #include <game/ovl/aridia_mobys.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
@@ -190,11 +199,11 @@ void batch_109() {
         {"sand_shark", 0x002d3e50, sand_shark_update_l2}, {"constructorbot", 0x002d7748, constructorbot_update_l2}, {"nest", 0x002dcb38, nest_update_l2},
         {"transport_pod", 0x002ddc88, transport_pod_update_l2}, {"rocket_launcher", 0x002df3d8, rocket_launcher_update_l2}, {"skid", 0x002e1950, skid_update_l2, 0x2, 1},
         {"skid_agent", 0x002e0dc0, skid_agent_update_l2, 0x22, 1}, {"liftcar_platform", 0x002e2228, liftcar_platform_update_l2}, {"elevator", 0x002dbd38, elevator_update_l2},
-        {"class1324", 0x002ee890, class1324_update_l2}, {"class1479", 0x002ef020, class1479_update_l2}, {"swingshot_target", 0x002e0450, swingshot_target_update_l2},
-        {"trespasser_pad", 0x002d8ad0, trespasser_pad_update_l2}, {"rocks", 0x002e0720, rocks_update_l2}, {"bg_ship1", 0x002ec4b8, bg_ship1_update_l2},
-        {"bg_ship2", 0x002ece18, bg_ship2_update_l2},
-        {"gold_bolt", 0x002ead38, gold_bolt_update_l2, 0x6, 1}, {"sandmouse", 0x002f0f88, sandmouse_update_l2}, {"class604", 0x002d7190, class604_update_l2},
-        {"class832", 0x002e4a48, class832_update_l2}, {"class737", 0x002dfcd0, class737_update_l2},
+        {"class1324", 0x002ee890, class1324_update_l2}, {"class1479", 0x002ef020, class1479_update_l2}, {"swingshot_target", 0x002e0450, swingshot_target_update},
+        {"trespasser_pad", 0x002d8ad0, class615_update}, {"rocks", 0x002e0720, rocks_update_l2}, {"bg_ship1", 0x002ec4b8, bg_ship1_update},
+        {"bg_ship2", 0x002ece18, bg_ship2_update},
+        {"gold_bolt", 0x002ead38, gold_bolt_update, 0x6, 1}, {"sandmouse", 0x002f0f88, sandmouse_update}, {"class604", 0x002d7190, class604_update},
+        {"class832", 0x002e4a48, class832_update}, {"class737", 0x002dfcd0, scripted_camera_trigger_update_l1},
     };
     // the hero inside the level box `b` (the boxes at *(0x1600ec), 0x80 each: a position in it at +0x30)
     auto hero_in_box = [](int32_t b) {
@@ -217,7 +226,7 @@ void batch_109() {
         for (uint32_t i = 0; i < 37; ++i) { w32(0x0017a0c0 + 8 + 0x4c * i, ri(0, 3) == 0 ? 1u : 0u); w8(0x0013d4c0 + i, ri(0, 2) == 0 ? 0u : u(ri(1, 3))); }
         w32(0x001413dc, u(ri(0, 3))); if (ri(0, 3) != 0) { w16(0x00141be0, 0); w16(0x001418e8, 0); }
     };
-    extras[class832_update_l2] = [hero_in_box](uint32_t m) {  // the hero in state 0x1d, a class-0xac moby in the list at 0x15ffe4, zone records
+    extras[class832_update] = [hero_in_box](uint32_t m) {  // the hero in state 0x1d, a class-0xac moby in the list at 0x15ffe4, zone records
         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
         if (ri(0, 3) != 0) w32(0x001413d4, 0x1d);
         const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8)), n = (ee_read<uint32_t>(OV(0x0015ffe0)) - first) >> 8;
@@ -233,7 +242,7 @@ void batch_109() {
         const float zz = rf(-30, 90); wf(x + 0x18, zz);
         hero_in_box(ri(0, 6));
     };
-    extras[swingshot_target_update_l2] = [](uint32_t m) {  // the moby indexes it follows (pvar +0x30 / +0x3c: -1 = none) and their states
+    extras[swingshot_target_update] = [](uint32_t m) {  // the moby indexes it follows (pvar +0x30 / +0x3c: -1 = none) and their states
         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
         const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8)), n = (ee_read<uint32_t>(OV(0x0015ffe0)) - first) >> 8;
         for (uint32_t o : {0x30u, 0x3cu}) {
@@ -357,7 +366,7 @@ void batch_109() {
             w32(0x00167400, cur);  // (the current camera pointer the function reads: lw 0x7400(0x160000))
             if (ri(0, 2) == 0) w16(cur + 0x86, u(ri(0, 1) ? 0 : ri(0, 30)));
             return Args{{cam, cur}, {}};
-        }, [](A a) { return ri32(static_cast<int32_t>(cam_type_12_accept_l2(a.i[0], a.i[1]))); });
+        }, [](A a) { return ri32(static_cast<int32_t>(cam_type18_accept(a.i[0], a.i[1]))); });
         // the sound emitters of Aridia's own types (the update function at emitter +4)
         for (uint32_t fn : {0x002fc6f0u, 0x002fc850u}) {
             level();
@@ -388,7 +397,7 @@ void batch_109() {
             const uint32_t cam = cams + u(ri(0, 3)) * 0xa0;
             w32(OV(0x00166e00), cam);  // (the active camera)
             return Args{{0}, {}};
-        }, [](A a) { cam_mode_hook_2fa710_l2(a.i[0]); return uint64_t{0}; });
+        }, [](A a) { cam0_level_hook(a.i[0]); return uint64_t{0}; });
     }
     for (const TrCls& c : trcls) {
         if (std::getenv("B109_CLS") != nullptr && std::strcmp(std::getenv("B109_CLS"), c.name) != 0) continue;

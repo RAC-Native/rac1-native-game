@@ -10,6 +10,7 @@
 #include "ovl_oracle.h"
 
 #include <game/ovl/aridia_classes_tr.h>
+#include <game/ovl/shared_class615.h>
 #include <game/ovl/blarg_mobys.h>
 #include <game/ovl/blarg_part2.h>
 #include <game/ovl/eudora_mobys.h>
@@ -104,7 +105,7 @@ void batch_146() {
         if (coin()) w32(0x0013cae4, u(ri(0, 0xffff)) & (ri(0, 1) ? 0xffffu : 0x00f0u));
         return Args{{pad()}, {}};
     }, [lv](A a) {
-        if (lv == 2) trespasser_pad_update_l2(a.i[0]);
+        if (lv == 2) class615_update(a.i[0]);
         else if (lv == 4) eud_class615_update_l4(a.i[0]);
         else if (lv == 6) blg_class615_update_l6(a.i[0]);
         else if (lv == 8) bat_class615_update_l8(a.i[0]);
@@ -117,7 +118,7 @@ void batch_146() {
         w32(OV(0x001611c0), ee_read<uint32_t>(OV(0x001611c0)) + u(ri(0, 0x40)) * 0x10);
         return Args{{pad()}, {}};
     }, [lv](A a) {
-        if (lv == 2) trespasser_puzzle_draw_l2(a.i[0]);
+        if (lv == 2) class615_puzzle_draw(a.i[0]);
         else if (lv == 4) eud_trespasser_puzzle_draw_l4(a.i[0]);
         else if (lv == 6) blg_class615_draw_l6(a.i[0]);
         else if (lv == 8) bat_trespasser_puzzle_draw_l8(a.i[0]);

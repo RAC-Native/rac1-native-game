@@ -1,3 +1,13 @@
 0x0022b728: set32(v0, static_cast<uint32_t>(hero_set_state_l1(a0.w(), static_cast<int32_t>(a1.w()))));
 0x0028d618: set32(v0, sound_slot_volume_set(static_cast<int32_t>(a0.w()), a1.w()));
-0x00264b50: ari_glow_quad_l2(a0.w(), a1.w(), fr[12], fr[13]);
+0x0025b1c0: walker_record_init_l1(a0.w());
+0x00264e40: flame_spray_clear(a0.w());
+0x00264e70: flame_spray(a0.w(), a1.w(), a2.w(), fr[12]);
+0x002651d0: flame_spray_burn(a0.w(), a1.w(), a2.w());
+0x00271d80: set32(v0, static_cast<uint32_t>(debug_particle_l1(a0.w(), a1.w(), a2.w(), a3.w(), t0.w(), static_cast<int32_t>(t1.w()), t2.w(), fr[12])));
+0x002f8aa0: camera_angles_set(fr[12], fr[13], fr[14], fr[15], fr[16], fr[17]);
+0x0025c758: band_set(a0.w());
+0x002e1868: class_mates_mark_fixed(a0.w(), 0);
+0x002e0cd8: class_mates_mark_fixed(a0.w(), 0);
+0x00298c68: level_movie_play(static_cast<int32_t>(a0.w()));
+0x002dd4d8: set32(v0, rock_spawn(a0.w(), a1.w(), a2.w(), static_cast<int32_t>(a3.w()), t0.w(), fr[12], fr[13], fr[14], fr[15]));

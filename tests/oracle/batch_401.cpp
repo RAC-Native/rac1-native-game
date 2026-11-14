@@ -5,8 +5,8 @@
 //    (regen group veldin_finale_classes), registered in veldin_finale_mobys.cpp. Subjects: the level's live mobys (the class's own when
 //    placed), their +0x53 (the animation branch), +0x34, +0x31, +0x94 varied;
 //  - level 2 (ORACLE_LEVEL=2): Aridia's camera end-of-update callback L2:0x2fa770, queued by its camera hook 0x2fa710 when the look height
-//    0x16760c is not 0 (the same code as Eudora's / Orxon's ported callbacks, at Aridia's data): transliterated in aridia_classes_tr.cpp
-//    (regen group aridia), wired in camera_callback_call. Its block 0x167600 varied;
+//    0x16760c is not 0 (the same code as Eudora's / Orxon's ported callbacks, at Aridia's data): every level's copy is
+//    kerwan_camera.cpp's cam0_level_callback, wired in camera_callback_call. Its block 0x167600 varied;
 //  - levels 0 and 14 (ORACLE_LEVEL=0 / 14): the scenes' level 14 effect 0x23e008 and its draw 0x23db30 (cutscene_level_extras's level 14
 //    branch; Oltanis runs its own build of the function, so the port's Veldin build reaches them only on a level 14 without it):
 //    transliterated at Veldin's addresses in shared_fx_tr.cpp (regen group veldin_fx), the draw registered for the moby dispatch. Subject: the
@@ -18,6 +18,7 @@
 #include "ovl_oracle.h"
 
 #include <game/ovl/aridia_classes_tr.h>
+#include <game/ovl/kerwan_camera.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/shared_fx_tr.h>
@@ -118,7 +119,7 @@ void batch_401() {
             wf(B + 0xc, ri(0, 3) == 0 ? rf(0.0f, 0.05f) : rf(-1.0f, 4.0f));
             seed_rand();
             return Args{{}, {}};
-        }, [](A) { cam_callback_2fa770_l2(0); return uint64_t{0}; });
+        }, [](A) { cam0_level_callback(0); return uint64_t{0}; });
     }
 
     // ---- levels 0 and 14: the scenes' level 14 effect and its draw (Veldin's build), on the hero

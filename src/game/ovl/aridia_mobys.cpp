@@ -1,4 +1,5 @@
-// Aridia's own moby classes: the registration table. The ports are in aridia_*.cpp.
+// Aridia's own moby classes: the registration table. The ports are in aridia_*.cpp, and the classes several levels
+// carry a copy of in shared_*.cpp (and novalis_mobys.cpp).
 #include <game/ovl/aridia_mobys.h>
 #include <game/ovl/aridia_classes_tr.h>
 #include <game/ovl/aridia_fx.h>
@@ -6,6 +7,17 @@
 #include <game/ovl/aridia_hud.h>
 #include <game/ovl/aridia_ocean.h>
 #include <game/ovl/aridia_ship.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/shared_bg_ships.h>
+#include <game/ovl/shared_class437.h>
+#include <game/ovl/shared_class604.h>
+#include <game/ovl/shared_class615.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_gadget_pickups.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_rock.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_swingshot_target.h>
 
 #include <game/ovl/ovl_reloc.h>
 
@@ -48,18 +60,7 @@ void aridia_moby_fns_register() {
     ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002dbd38), elevator_update_l2);
     ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002ee890), class1324_update_l2);
     ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002ef020), class1479_update_l2);
-    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002e0450), swingshot_target_update_l2);
-    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002d8ad0), trespasser_pad_update_l2);
-    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002d93e8), trespasser_puzzle_draw_l2);  // (the pad's draw-list callback)
     ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002e0720), rocks_update_l2);
-    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002ec4b8), bg_ship1_update_l2);
-    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002ece18), bg_ship2_update_l2);
-    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002ead38), gold_bolt_update_l2);
-    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002f0f88), sandmouse_update_l2);
-    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002d7190), class604_update_l2);
-    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002e4a48), class832_update_l2);
-    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002e4838), class832_draw_l2);  // (its draw-list callback)
-    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002f0eb0), sandmouse_glow_l2);  // (the Sandmouse's draw-list callback)
     // the Sand Shark class hooks (jalr through the class +0x2c table)
     ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002d61c0), shark_hook_moby_0);
     ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002d6210), shark_hook_moby_4);
@@ -67,12 +68,24 @@ void aridia_moby_fns_register() {
     ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002d62e0), shark_hook_moby_c);
     ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002d6310), shark_hook_moby_10);
     ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002d6340), shark_hook_moby_14);
-    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002dfcd0), class737_update_l2);
-    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002ea210), trespasser_gadget_update_l2);  // class 1005
-    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002efee0), class1633_update_l2);          // class 1633
-    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002ccc08), sand_mouse_update_l2);         // class 437
-    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002dd6c0), rock_update_l2);               // classes 696..698
     ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002e0280), shark_egg_update_l2);          // class 755
+    // the classes several levels carry a copy of: one hand-written port each (shared_*.cpp, novalis_mobys.cpp)
+    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002e0450), swingshot_target_update);
+    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002d8ad0), class615_update);            // the Trespasser's pad
+    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002d93e8), class615_puzzle_draw);       // (the pad's draw-list callback)
+    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002ec4b8), bg_ship1_update);
+    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002ece18), bg_ship2_update);
+    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002ead38), gold_bolt_update);
+    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002f0f88), sandmouse_update);
+    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002f0eb0), sandmouse_glow);             // (the Sandmouse's draw-list callback)
+    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002d7190), class604_update);
+    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002e4a48), class832_update);
+    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002e4838), class832_draw);              // (its draw-list callback)
+    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002dfcd0), scripted_camera_trigger_update_l1);  // class 737
+    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002ea210), gadget_pickup_update);       // class 1005
+    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002efee0), class1633_update);           // class 1633
+    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002ccc08), class437_update);            // class 437
+    ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002dd6c0), rock_update);                // classes 696..698
     // Skid's HUD element (the HUD slot callbacks of his request, aridia_hud_asm.cpp)
     ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x0023c990), ari_skid_hud_start_l2);
     ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x0023ccc8), ari_skid_hud_update_l2);

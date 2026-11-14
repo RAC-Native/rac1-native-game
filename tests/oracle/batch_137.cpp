@@ -15,6 +15,10 @@
 #include <game/ovl/aridia_hud.h>
 #include <game/ovl/aridia_ocean.h>
 #include <game/ovl/aridia_ship.h>
+#include <game/ovl/shared_class437.h>
+#include <game/ovl/shared_gadget_pickups.h>
+#include <game/ovl/shared_rock.h>
+#include <game/ovl/shared_sandmouse.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants_l2.h>
 
@@ -271,7 +275,7 @@ void batch_137() {
                 h.y = p.y + rf(-4.0f, 4.0f);
                 h.z = p.z + rf(-1.0f, 2.0f);
             }
-            const uint32_t m = lv2_2efdd0_l2(par, T, 0, 0, 0, 0, 0, 0, rf(-2.0f, 2.0f), rf(-2.0f, 2.0f), rf(-3.1f, 3.1f), rf(-3.1f, 3.1f), 0, 0, 0, 0).v0;
+            const uint32_t m = class1633_spawn(par, T, rf(-2.0f, 2.0f), rf(-2.0f, 2.0f), rf(-3.1f, 3.1f), rf(-3.1f, 3.1f));
             if (m != 0) {
                 const uint32_t pv = ee_read<uint32_t>(m + 0x78);
                 if (coin()) w16(pv + 0x14, static_cast<uint16_t>(ri(0, 80)));  // its life
@@ -279,7 +283,7 @@ void batch_137() {
             }
             if (coin()) w32(FRAME, R() & 0xffffu);
             return Args{{m != 0 ? m : par}, {}};
-        }, [](A a) { vu0_sync(); class1633_update_l2(a.i[0]); return uint64_t{0}; });
+        }, [](A a) { vu0_sync(); class1633_update(a.i[0]); return uint64_t{0}; });
     }
 
     // ---- Skid's HUD element (aridia_hud_asm.cpp): a HUD slot (5 or 7) as Skid's request leaves it, its fades (+0x70 / +0x71), timer
@@ -392,11 +396,11 @@ void batch_137() {
                 if (coin()) wf(ee_read<uint32_t>(m + 0x78) + 0x40, rf(0.0f, 1.0f));
                 w32(L2_ADDR(0x0015f5ccu), coin() ? u(ri(0, 100) * 10) : (R() & 0xffffu));
                 return Args{{m}, {}};
-            }, [](A a) { trespasser_gadget_update_l2(a.i[0]); return uint64_t{0}; });
+            }, [](A a) { gadget_pickup_update(a.i[0]); return uint64_t{0}; });
         }
     }
 
-    // ---- classes nothing in the snapshots holds: the Rocks' pieces 696..698 (spawned by the port's L2:0x2dd4d8 as the Rocks do: a
+    // ---- classes nothing in the snapshots holds: the Rocks' pieces 696..698 (spawned by rock_spawn (L2:0x2dd4d8) as the Rocks do: a
     // position, a velocity, a life 60..180, f12 0.15.., f13 / f14, f15 0.75), and classes 437 (Sand Mouse) / 755 (Sandshark Egg), which
     // nothing on Aridia spawns (a bare moby_spawn): one update from a varied state, the camera / hero about them
     {
@@ -406,7 +410,7 @@ void batch_137() {
             void (*fn)(uint32_t);
             int cls;
         };
-        for (const Sp& sp : {Sp{"ari_rock_update", 0x002dd6c0, rock_update_l2, 696}, Sp{"ari_sand_mouse_update", 0x002ccc08, sand_mouse_update_l2, 437},
+        for (const Sp& sp : {Sp{"ari_rock_update", 0x002dd6c0, rock_update, 696}, Sp{"ari_sand_mouse_update", 0x002ccc08, class437_update, 437},
                              Sp{"ari_shark_egg_update", 0x002e0280, shark_egg_update_l2, 755}}) {
             l2check(sp.name, kStub, 120, Ret::None, [level, sp] {
                 level();
@@ -419,8 +423,7 @@ void batch_137() {
                 uint32_t m = 0;
                 if (sp.cls == 696) {
                     wfrand(T + 0x10, 3, -0.3f, 0.3f);
-                    m = lv2_2dd4d8_l2(T, T + 0x10, u(696 + ri(0, 2)), u(ri(60, 180)), 0, 0, 0, 0, rf(0.15f, 0.3f), rf(0.5f, 1.5f), rf(0.5f, 1.5f), 0.75f,
-                                      0, 0, 0, 0).v0;
+                    m = rock_spawn(T, T + 0x10, u(696 + ri(0, 2)), ri(60, 180), 0, rf(0.15f, 0.3f), rf(0.5f, 1.5f), rf(0.5f, 1.5f), 0.75f);
                 } else {
                     m = moby_spawn(u(sp.cls));
                     if (m != 0) {

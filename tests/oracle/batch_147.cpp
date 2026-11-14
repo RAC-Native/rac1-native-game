@@ -13,6 +13,8 @@
 #include "ovl_oracle.h"
 
 #include <game/ovl/aridia_classes_tr.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_sandmouse.h>
 #include <game/ovl/eudora_mobys.h>
 #include <game/ovl/kerwan_classes_tr.h>
 #include <game/ovl/shared_classes_tr.h>
@@ -98,13 +100,13 @@ void batch_147() {
             return Args{{m}, {}};
         };
         lvcheck("class832_update", upd, 30, Ret::None, gen, [lv](A a) {
-            if (lv == 2) class832_update_l2(a.i[0]);
+            if (lv == 2) class832_update(a.i[0]);
             else if (lv == 3) kerwan_class832_update_l3(a.i[0]);
             else eud_class832_update_l4(a.i[0]);
             return uint64_t{0};
         });
         lvcheck("class832_draw", drw, 40, Ret::None, gen, [lv](A a) {
-            if (lv == 2) class832_draw_l2(a.i[0]);
+            if (lv == 2) class832_draw(a.i[0]);
             else if (lv == 3) kerwan_class832_draw_l3(a.i[0]);
             else eud_class832_draw_l4(a.i[0]);
             return uint64_t{0};
@@ -128,7 +130,7 @@ void batch_147() {
             cursor_jitter();
             return Args{{m}, {}};
         }, [lv](A a) {
-            if (lv == 2) sandmouse_glow_l2(a.i[0]);
+            if (lv == 2) sandmouse_glow(a.i[0]);
             else if (lv == 3) kerwan_sandmouse_glow_l3(a.i[0]);
             else eud_sandmouse_glow_l4(a.i[0]);
             return uint64_t{0};
