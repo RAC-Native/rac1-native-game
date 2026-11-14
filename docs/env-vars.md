@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 486 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 489 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 25 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 352 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 355 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 109 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -89,6 +89,9 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_AUTO_LIGHTS_GAIN` | float; default 1.0 | Scales the colour intensity of the automatic emitter lights, for tuning. |
 | `RAC1_AUTO_LIGHTS_KINDS` | bit mask; default 3 | Chooses which geometry feeds the automatic lights: bit 1 = TIE objects, bit 2 = terrain fragments (tfrags); 1 = ties only, 2 = tfrags only. |
 | `RAC1_BEAM_LIGHTS` | integer; 0 = off; default on | With the modern lighting and Secondary Lights on All, `0` leaves out the lights of Veldin's plasma beams (#102), to compare. |
+| `RAC1_BRIDGE_GUARD` | `census` or `census:<file>` (default file `bridge_census.bin` in the current directory), `trap`; unset or 0 = off | The bridge guard (`src/game/bridge/guard.h`, stage 5 of the native 1.0 track): watches the ranges of the emulated memory `RAC1_BRIDGE_RANGES` names. `census` counts every access to them by range, kind (read, write, a host pointer taken; apart, inside a `BridgeScope`: the bridge's mirror writers) and calling function, never stopping; the counts are kept in the file as they are made (it is mapped into memory: complete however the run ends; on Windows written at a normal exit only), and `tools/bridge/guard_report.py census <files>` names the functions and sums them. `trap`: the first access by code outside a `BridgeScope` prints the address, the range, the kind, the function (`guard_report.py trap <log>` names it) and a backtrace, and aborts. On, the memory accessors' inline fast paths are off (every access goes through `ee_ram_ptr_slow`: much slower); off, nothing changes (the inline code is the same). Not seen: accesses through a host pointer taken once (`V()`, `M()`, `ee_get_ram_base() + a`: counted once where taken, as kind P), the scratchpad's direct users (`world_cull_hand.h`, `moby_draw_hand.cpp`), the drawing thread's reads served from `ee_copy`'s copy, plugins' inline reads of `api->ram`, and the EE interpreter (the oracle's original), which has its own pointer helper. |
+| `RAC1_BRIDGE_RANGES` | a ranges file, or built-in sets by name, comma-separated: `coll`, `ld`, `zones`, `tables`, `spr`, `all`; default `all` | The ranges `RAC1_BRIDGE_GUARD` watches. A file's line: `name lo hi` (hex, Veldin's addresses: translated onto each level's copy of the object as `OV()` does, again whenever the translation changes), `name! lo hi` (an absolute range: the scratchpad, the base ELF's data), or `name@ paths|volumes|rails|cameras|zones` (the contents the level-data table points to: the level's own paths' points (those below the count), the volume records and lists, the rail and camera records, the zone grid and its masks and the octant box; found again when the table's words are written and every 2^20 accesses); `#` starts a comment; a name on several lines is one range. The built-in sets are `src/game/bridge/guard.cpp`'s (the stage-5 plan's objects). |
+| `RAC1_BRIDGE_VERBOSE` | set (any value) = on; default off | With `RAC1_BRIDGE_GUARD`: prints every range's pieces each time the guard translates or derives them again. |
 | `RAC1_CAM_TRACE` | set (any value) = on; default off | Prints every camera switch to stderr. |
 | `RAC1_CARD_LOG` | set (any value) = on; default off | Prints a line whenever the memory card screens or machines change state (UI state, flags, level, slot, owned items, bolts). |
 | `RAC1_COROUTINE` | `ucontext`; default the hand-written switch | Linux: the game frame's coroutine switches with `swapcontext` (the switch before the hand-written one, `src/platform/ctx_switch.h`) instead, to compare; the game's state is the same with both. CMake's `-DRAC1_UCONTEXT=ON` compiles only that one. |

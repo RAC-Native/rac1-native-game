@@ -1,6 +1,7 @@
 #include <runtime/kernel/ee_memory.h>
 #include <runtime/kernel/ee_journal.h>
 #include <runtime/kernel/disc.h>
+#include <game/bridge/guard.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -30,6 +31,7 @@ constexpr u32 SCRATCHPAD_END = 0x70004000;
 namespace ee_detail {
 u8* g_ram = nullptr;
 u8* g_spr = nullptr;
+u8* g_spr_fast = nullptr;
 u32 g_fast_last = 0;
 u32 g_read_last = 0;
 const u8* g_jseen = nullptr;
@@ -45,20 +47,39 @@ void ee_read_null() {
 void ee_write_null() { throw std::runtime_error("Attempted write to null pointer"); }
 #endif
 namespace {
+// Why the inline paths are off, the one owner of that switch: a journal on (the writes: each page saved at its first access) and
+// the bridge guard on (every access: each one tested against the guarded ranges, src/game/bridge/guard.h). The guard is set once,
+// by init_memory, before the host's other threads start; a journal turns its bit on and off around a shadow run.
+constexpr unsigned FAST_OFF_JOURNAL = 1u, FAST_OFF_GUARD = 2u;
+unsigned g_fast_off = 0;
+bool g_guard_on = false;  // (the slow path's one test: the bridge guard is on)
 // the inline path's view of the buffers, after each change of them. (Each word written only when it changes: a journal's begin and
 // end change g_fast_last alone, on the game's thread, while the host's other threads - the drawing beside the game thread, the
 // scene's worker - read memory through the others; ee_copy.h)
-void fast_path_update(bool journal_on) {
+void fast_path_update() {
     auto set = [](auto& word, auto value) {
         if (word != value) word = value;
     };
+    u8* const spr = g_scratchpad_buffer.empty() ? nullptr : g_scratchpad_buffer.data();
+    const bool guard = (g_fast_off & FAST_OFF_GUARD) != 0;
     set(ee_detail::g_ram, RAM_SIZE == 0 ? nullptr : g_ram_block);
-    set(ee_detail::g_spr, g_scratchpad_buffer.empty() ? nullptr : g_scratchpad_buffer.data());
-    set(ee_detail::g_fast_last, RAM_SIZE == 0 || journal_on ? 0u : RAM_SIZE - 1u);
-    set(ee_detail::g_read_last, RAM_SIZE == 0 ? 0u : RAM_SIZE - 1u);
+    set(ee_detail::g_spr, spr);
+    set(ee_detail::g_spr_fast, guard ? nullptr : spr);
+    set(ee_detail::g_fast_last, RAM_SIZE == 0 || g_fast_off != 0 ? 0u : RAM_SIZE - 1u);
+    set(ee_detail::g_read_last, RAM_SIZE == 0 || guard ? 0u : RAM_SIZE - 1u);
     const bool session = RAM_SIZE > RAM_BASE_SIZE;
     set(ee_detail::g_game_end, session ? RAM_SIZE : 0x02000000u);
     set(ee_detail::g_mirror_mask, session ? RAM_SIZE - 1u : 0x01FFFFFFu);
+}
+// `why`'s reason for the inline paths to be off set or cleared
+void fast_path_off(unsigned why, bool off) {
+    g_fast_off = off ? g_fast_off | why : g_fast_off & ~why;
+    fast_path_update();
+}
+// an access the slow path resolved, to the bridge guard (while it is on): `journal` false is a read (ee_ram_ptr_read), a size a
+// write (ee_ram_ptr_write), neither a pointer (ee_ram_ptr: V(), M(), a buffer)
+inline void guard_access(u32 addr, bool journal, u32 size, const void* caller, const void* cfa) {
+    bridge_guard_access(addr, size, !journal ? BridgeAccess::Read : size != 0 ? BridgeAccess::Write : BridgeAccess::Pointer, caller, cfa);
 }
 }  // namespace
 
@@ -114,7 +135,13 @@ void init_memory() {
     if (g_scratchpad_buffer.empty()) {
         g_scratchpad_buffer.resize(SCRATCHPAD_SIZE, 0);
     }
-    fast_path_update(false);
+    static bool guard_read = false;  // (RAC1_BRIDGE_GUARD, read once)
+    if (!guard_read) {
+        guard_read = true;
+        g_guard_on = bridge_guard_init();
+        if (g_guard_on) g_fast_off |= FAST_OFF_GUARD;
+    }
+    fast_path_update();
 }
 
 void shutdown_memory() {
@@ -124,7 +151,7 @@ void shutdown_memory() {
     RAM_SIZE = 0;
     g_scratchpad_buffer.clear();
     g_scratchpad_buffer.shrink_to_fit();
-    fast_path_update(false);
+    fast_path_update();
 }
 
 bool g_ee_null_is_ram = false;
@@ -179,7 +206,7 @@ void ee_journal_begin() {
     g_journal_data.clear();
     g_journal_spr = g_scratchpad_buffer;
     g_journal_on = true;
-    fast_path_update(true);
+    fast_path_off(FAST_OFF_JOURNAL, true);
     ee_detail::g_jseen = g_journal_seen.data();
 }
 
@@ -187,7 +214,7 @@ size_t ee_journal_restore() {
     if (!g_journal_on) return 0;
     g_journal_on = false;
     ee_detail::g_jseen = nullptr;
-    fast_path_update(false);
+    fast_path_off(FAST_OFF_JOURNAL, false);
     for (size_t i = 0; i < g_journal_pages.size(); ++i) {
         const u32 p = g_journal_pages[i];
         std::memcpy(g_ram_block + static_cast<size_t>(p) * JPAGE, g_journal_data.data() + i * JPAGE, JPAGE);
@@ -227,7 +254,7 @@ size_t ee_journal_commit(std::vector<EeByteRun>& out) {
     if (!g_journal_on) return 0;
     g_journal_on = false;
     ee_detail::g_jseen = nullptr;
-    fast_path_update(false);
+    fast_path_off(FAST_OFF_JOURNAL, false);
     const size_t n0 = out.size();
     for (size_t i = 0; i < g_journal_pages.size(); ++i) {
         const u32 p = g_journal_pages[i];
@@ -241,7 +268,8 @@ size_t ee_journal_commit(std::vector<EeByteRun>& out) {
 
 bool ee_journal_active() { return g_journal_on; }
 
-void* ee_ram_ptr_slow(u32 vaddr, bool journal, u32 size) {
+// (out of line: the bridge guard's caller is its return address, and its frame the start of the walk to the caller)
+[[gnu::noinline]] void* ee_ram_ptr_slow(u32 vaddr, bool journal, u32 size) {
     if (vaddr == 0 && !g_ee_null_is_ram) {
         return nullptr;
     }
@@ -249,6 +277,7 @@ void* ee_ram_ptr_slow(u32 vaddr, bool journal, u32 size) {
     // RAM region
     if (vaddr < RAM_SIZE) {
         if (g_journal_on && journal) journal_touch(vaddr, size);
+        if (__builtin_expect(g_guard_on, 0)) guard_access(vaddr, journal, size, __builtin_return_address(0), __builtin_dwarf_cfa());
         return g_ram_block + vaddr;
     }
     if (RAM_SIZE == 0) throw std::runtime_error("Virtual memory not initialized. Call init_memory() first.");
@@ -258,6 +287,7 @@ void* ee_ram_ptr_slow(u32 vaddr, bool journal, u32 size) {
         if (g_scratchpad_buffer.empty()) {
             throw std::runtime_error("Virtual memory not initialized. Call init_memory() first.");
         }
+        if (__builtin_expect(g_guard_on, 0)) guard_access(vaddr, journal, size, __builtin_return_address(0), __builtin_dwarf_cfa());
         return g_scratchpad_buffer.data() + (vaddr - SCRATCHPAD_START);
     }
 
@@ -268,6 +298,7 @@ void* ee_ram_ptr_slow(u32 vaddr, bool journal, u32 size) {
         const u32 phys = ee_mirror_phys(vaddr);
         if (phys != 0xffffffffu) {
             if (g_journal_on && journal) journal_touch(phys, size);
+            if (__builtin_expect(g_guard_on, 0)) guard_access(phys, journal, size, __builtin_return_address(0), __builtin_dwarf_cfa());
             return g_ram_block + phys;
         }
     }
@@ -328,7 +359,7 @@ bool ee_session_memory(u32 bytes) {
         g_journal_seen.back() = 1;
         for (u32 p = g_unsaved_lo; p < g_unsaved_hi; ++p) g_journal_seen[p] = 1;
     }
-    fast_path_update(false);
+    fast_path_update();
     return true;
 }
 
