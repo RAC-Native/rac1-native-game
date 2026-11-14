@@ -111,6 +111,17 @@ add_library(rac1_game STATIC
     ovl/kerwan_hooks.cpp
     ovl/aridia_hooks.cpp
     ovl/aridia_ocean.cpp
+    ovl/aridia_sand_shark.cpp
+    ovl/aridia_constructorbot.cpp
+    ovl/aridia_elevator.cpp
+    ovl/aridia_nest.cpp
+    ovl/aridia_rocks.cpp
+    ovl/aridia_rocket_launcher.cpp
+    ovl/aridia_skid.cpp
+    ovl/aridia_liftcar.cpp
+    ovl/aridia_class1324.cpp
+    ovl/aridia_class1479.cpp
+    ovl/aridia_transport_pod.cpp
     ovl/novalis_platforms.cpp
     ovl/novalis_enemies.cpp
     ovl/novalis_npcs.cpp

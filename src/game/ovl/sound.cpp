@@ -4,7 +4,6 @@
 // position; their per-frame update 0x28cc08 sends them to 989snd.
 #include <game/lib/snd989.h>
 #include <runtime/iop/snd989_iop.h>
-#include <game/ovl/aridia_classes_tr.h>
 #include <game/ovl/blarg_call.h>
 #include <game/ovl/umbris_call.h>
 #include <game/ovl/umbris_hooks.h>

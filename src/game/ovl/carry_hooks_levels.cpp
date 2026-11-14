@@ -4,7 +4,7 @@
 // Veldin's port where the level's function is the same code but the map pairs it with nothing or another hook.
 #include <game/ovl/carry_hooks_levels.h>
 
-#include <game/ovl/aridia_classes_tr.h>
+#include <game/ovl/aridia_enemies.h>
 #include <game/ovl/batalia_mobys.h>
 #include <game/ovl/blarg_mobys.h>
 #include <game/ovl/carry_hooks.h>

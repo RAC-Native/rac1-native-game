@@ -115,7 +115,8 @@ void fixes102_cutscene_start();
 void fixes102_cutscene_end();
 
 // orig: (none) — enhancement: fix 18: Aridia's sand shark `m` killed: its death burst (three sparks of 0.333, the shards,
-// no blast) 0.333 over its place, as the 1.02 build's L2:0x2d68d0; nothing with the fix off
+// no blast) 0.333 over its place, as the 1.02 build's L2:0x2d68d0; nothing with the fix off, except on the PAL disc 2.00
+// (the 1.02 build itself: region_core_moved()), whose own shark bursts
 void fixes102_sand_shark_burst(uint32_t m);
 
 // orig: (none) — enhancement: fix 19: a hoverbike race's text `kind` (0 the poses "x%d %s", 1 the flips "%s + %d %s",

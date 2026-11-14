@@ -3,7 +3,6 @@
 # here: the inputs of a unit an earlier version retired (its json, glue and skeletons) stay on disk when a newer source
 # zip is unpacked over an older folder, and their code names functions that are hand-written now (#170). Retiring a
 # unit removes its line with its files; a new unit adds one.
-mkall:aridia
 mkall:batalia_classes
 mkall:batalia_part2
 mkall:blarg_classes

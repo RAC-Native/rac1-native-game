@@ -9,6 +9,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/region_core.h>
 
 #include <bitset>
 #include <cstdio>
@@ -142,7 +143,9 @@ void fixes102_cutscene_end() {
 // orig: (none) — enhancement (fixes102.h); the 1.02 build's L2:0x2d68d0 (PAL disc 2.00): the shark's place, 0.333
 // higher, to enemy_death_burst(m, place, 0.333, 0)
 void fixes102_sand_shark_burst(uint32_t m) {
-    if (!fixes102_on(18)) return;
+    // (region: the PAL disc 2.00 is the 1.02 build, whose own shark has the burst (region_core_moved()): there it bursts
+    // whatever the fix's row, as the disc's own code did while the shark was generated)
+    if (!fixes102_on(18) && !region_core_moved()) return;
     const float k = u2f(0x3eaa7efau);
     const uint32_t at = ee_stack_alloc(0x10);
     lq_sq(at, m + 0x10);

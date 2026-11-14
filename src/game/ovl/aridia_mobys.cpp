@@ -1,7 +1,7 @@
 // Aridia's own moby classes: the registration table. The ports are in aridia_*.cpp, and the classes several levels
 // carry a copy of in shared_*.cpp (and novalis_mobys.cpp).
 #include <game/ovl/aridia_mobys.h>
-#include <game/ovl/aridia_classes_tr.h>
+#include <game/ovl/aridia_enemies.h>
 #include <game/ovl/aridia_fx.h>
 #include <game/ovl/aridia_hooks.h>
 #include <game/ovl/aridia_hud.h>
@@ -48,7 +48,7 @@ void aridia_moby_fns_register() {
     ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002df948), rocket_door_update_l2);
     ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002df1a8), crane_update_l2);
     ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002dc6b0), escalator_update_l2);
-    // part 2 (aridia_classes_tr.cpp, transliterated)
+    // part 2 (hand-written: aridia_enemies.h)
     ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002d3e50), sand_shark_update_l2);
     ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002d7748), constructorbot_update_l2);
     ovl_register_level_moby_fn(ARIDIA, L2_ADDR(0x002dcb38), nest_update_l2);

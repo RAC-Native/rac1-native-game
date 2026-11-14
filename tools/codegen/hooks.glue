@@ -53,7 +53,7 @@ L16 0x002e6af8: gameplay102_talk_lock();  // enhancement: 1.02 Gameplay, fix 10 
 # fixes off each statement is a test that fails, or a call that does nothing.
 # Fix 18, Aridia's sand shark (0x2d3e50), killed (the events 0x140): after its moby_drop_bolts, its death burst 0.333 over its
 # place (the 1.02 build's L2:0x2d68d0..0x2d6920).
-L2 0x002d54e0: fixes102_sand_shark_burst(s3.w());  // enhancement: 1.02 Fixes, fix 18 (the sand shark's burst)
+# L2 0x002d54e0: the fork is in the hand-written port sand_shark_update_l2 (aridia_sand_shark.cpp, state 0x18), since P2.1
 # Fix 19, the hoverbike races' texts (Rilgar 0x262f50 / 0x266320, Kalebo III 0x235660 / 0x238a30: the same code): after the
 # original's sprintf of the poses ("x%d Poses", a2 the count), the flips ("%s + %d Flips", a2 the trick's name, a3 the degrees) and
 # the place ("% dst".."% dth", +0x8c0 of the player block s1), the 1.02 build's text written over it (L5:0x263a64, 0x263d00,

@@ -10,7 +10,7 @@
 #include "ovl_oracle.h"
 
 #include <game/ovl/particle_16_spawn.h>
-#include <game/ovl/aridia_classes_tr.h>
+#include <game/ovl/aridia_enemies.h>
 #include <game/ovl/aridia_fx.h>
 #include <game/ovl/aridia_hud.h>
 #include <game/ovl/aridia_ocean.h>
@@ -555,7 +555,7 @@ void batch_137() {
                 d.y = rf(-1.0f, 1.0f);
                 d.z = rf(-0.3f, 0.6f);
                 d.w = 0.0f;
-                m = lv2_2ec228_l2(par, T, T + 0x10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0;
+                m = launcher_rocket_spawn_l2(par, T, T + 0x10);
                 if (m == 0) m = par;
             }
             const uint32_t pv = ee_read<uint32_t>(m + 0x78);

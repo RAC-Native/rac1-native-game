@@ -12,7 +12,6 @@
 // 0x2b3628, every level's copy: the Thruster-Pack's jets).
 #include "ovl_oracle.h"
 
-#include <game/ovl/aridia_classes_tr.h>
 #include <game/ovl/shared_class832.h>
 #include <game/ovl/shared_sandmouse.h>
 #include <game/ovl/eudora_mobys.h>

@@ -2,8 +2,9 @@
 // Veldin's class_hook_4 / class_hook_10 (0x2da218 / 0x2db890) stub every hook they do not know, and map Aridia's
 // 0x2d6310 (the Sand Shark's hook +0x10: pvar + 0x60) onto Veldin's 0x2d5800 (class 749's: pvar + 0xd0), which the
 // matcher takes for the same code (it masks small immediates). Aridia's own copies know the Sand Shark's hooks (class
-// 580: its table 0x2d61c0 .. 0x2d6340, transliterated in aridia_classes_tr.cpp).
-#include <game/ovl/aridia_classes_tr.h>
+// 580: its table 0x2d61c0 .. 0x2d6340; +0x10 and +0x14 hand-written in
+// aridia_sand_shark.cpp).
+#include <game/ovl/aridia_enemies.h>
 #include <game/ovl/aridia_hooks.h>
 #include <game/ovl/carry_hooks.h>
 #include <game/ovl/carry_hooks_levels.h>
@@ -26,7 +27,7 @@ int32_t class_hook_4_l2(uint32_t m) {
 }
 
 // The class's hook +0x10 (class +0x2c table) on moby m: 0 for no moby, a retired one (state 0xfe / 0xfd), one without
-// pvars or class, or no hook; the default hook (0x2e64f8) returns 0, the Sand Shark's (0x2d6310) is transliterated.
+// pvars or class, or no hook; the default hook (0x2e64f8) returns 0, the Sand Shark's (0x2d6310) is hand-written.
 // orig: L2:0x002e6500
 uint32_t class_hook_10_l2(uint32_t m) {
     if (m == 0) return 0;

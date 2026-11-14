@@ -18,7 +18,6 @@
 
 #include "ovl_oracle.h"
 
-#include <game/ovl/aridia_classes_tr.h>
 #include <game/ovl/kerwan_camera.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>

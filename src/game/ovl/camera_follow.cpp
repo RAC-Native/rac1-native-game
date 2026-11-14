@@ -22,7 +22,6 @@
 #include <game/ovl/kalebo_hooks.h>
 #include <game/ovl/veldin_orbit_hooks.h>
 #include <game/ovl/veldin_finale_hooks.h>
-#include <game/ovl/aridia_classes_tr.h>
 #include <game/ovl/variants_l2.h>
 #include <game/level/level_data.h>
 #include <game/ovl/ovl_common.h>

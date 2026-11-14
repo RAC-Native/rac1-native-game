@@ -10,7 +10,6 @@
 #include "ovl_oracle.h"
 
 #include <game/ovl/shared_class615.h>
-#include <game/ovl/aridia_classes_tr.h>
 #include <game/ovl/blarg_mobys.h>
 #include <game/ovl/blarg_part2.h>
 #include <game/ovl/eudora_mobys.h>
