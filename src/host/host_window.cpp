@@ -12,6 +12,13 @@
 #include <exception>
 #include <typeinfo>
 
+#ifndef _WIN32
+#include <unistd.h>
+#if defined(__GLIBC__) || defined(__APPLE__)
+#include <execinfo.h>
+#endif
+#endif
+
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -77,6 +84,26 @@ std::atomic<HWND> g_hwnd{nullptr};
 #endif
 }
 
+#ifndef _WIN32
+#if !defined(__SANITIZE_ADDRESS__) && !defined(__SANITIZE_THREAD__)
+// orig: (host) a crash on Linux and macOS (SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT): the signal, the faulting address and the
+// stack's frames to the log (stderr: game.log when the launcher started the game), then the signal's default action again, so
+// a core dump is made as before. (On the signal's own stack: a stack overflow can be reported too. Not async-signal-safe
+// strictly - fprintf - but the process is dying.)
+void on_signal(int sig, siginfo_t* si, void*) {
+    static std::atomic<bool> dying{false};
+    if (dying.exchange(true)) _exit(128 + sig);
+    const char* name = sig == SIGSEGV ? "SIGSEGV" : sig == SIGBUS ? "SIGBUS" : sig == SIGFPE ? "SIGFPE" : sig == SIGILL ? "SIGILL" : "SIGABRT";
+    std::fprintf(stderr, "[fatal] a crash (%s at address %p): the game stopped\n", name, si != nullptr ? si->si_addr : nullptr);
+    platform::print_backtrace(32);
+    std::fflush(stdout);
+    std::fflush(stderr);
+    std::signal(sig, SIG_DFL);
+    raise(sig);
+}
+#endif
+#endif
+
 #ifdef _WIN32
 // orig: (host) abort() (SIGABRT): the C runtime's would ask Windows' error reporting first
 void on_abort(int) { die("abort() called"); }
@@ -105,6 +132,22 @@ void host_fatal_handlers_install() {
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
     std::signal(SIGABRT, on_abort);
     SetUnhandledExceptionFilter(on_crash);
+#elif !defined(__SANITIZE_ADDRESS__) && !defined(__SANITIZE_THREAD__)
+    // (Linux, macOS: the crash's reason and frames in the log, on a stack of its own; not under a sanitizer, whose reports are better)
+    static char alt_stack[64 * 1024];
+    stack_t ss{};
+    ss.ss_sp = alt_stack;
+    ss.ss_size = sizeof alt_stack;
+    sigaltstack(&ss, nullptr);
+#if defined(__GLIBC__) || defined(__APPLE__)
+    void* warm[2];
+    backtrace(warm, 2);  // (the unwinder's library loaded now, not inside the handler)
+#endif
+    struct sigaction sa {};
+    sa.sa_sigaction = on_signal;
+    sa.sa_flags = SA_SIGINFO | SA_ONSTACK | SA_RESETHAND;
+    sigemptyset(&sa.sa_mask);
+    for (const int sig : {SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT}) sigaction(sig, &sa, nullptr);
 #endif
 }
 
