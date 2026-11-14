@@ -1,6 +1,15 @@
 # Hook points in the levels' generated code (read by tools/codegen/mips2cpp.py via load_hooks).
 #   L<n> 0xADDR: <statement>   emitted before the instruction at ADDR of level n's code, after its label
 #   L<n> 0xADDR label          ADDR made a label, for a statement's `goto L_<addr>`
+# A line whose function is hand-written is never placed, silently: tools/codegen/check_hooks.py fails on such a line (and
+# lists where each line lands, --list). Porting a hooked function: carry the fork into the port, then drop its lines here.
+#
+# 0.x's hooks that left with their units in stages 1-3; the forks are in the hand-written ports (audit of 2026-11-14):
+#   the levels' hero copies (L5 6 8 11 12 14 15 16 17 18: the points A-N and the PAL lines I / J of Advanced, 1.02 Gameplay
+#   fixes 9 and 13), run by the Veldin ports through the variants tables: hero_state_update.cpp (A B C), hero_state.cpp
+#   (D, P9f P9g, P13), hero_transitions.cpp (E F G H M N, P9a P9c P9d P9e), hero_input.cpp (L), ovl_21.cpp (I J; K inside
+#   hero_stick_speed), hero_update.cpp (P9i); a level mod's board, lava and surface on Rilgar / Kalebo III: hero_hoverboard.cpp,
+#   hero_update.cpp, ovl_21.cpp
 
 # ---- The palette blend (one routine in six overlays: Kerwan 0x23c428, Rilgar 0x277b20, Umbris 0x2762e0, Batalia 0x257d40, Gaspar 0x26d240,
 # Oltanis 0x255ce0): its texel loop on the host (src/game/ovl/palette_blend.h; RAC1_PERF_PALETTE_BLEND=0 the loop as transliterated), at the
@@ -131,7 +140,7 @@ L17 0x002ebc68: render_view_hud_begin(1);  // (a missile)
 L17 0x002ebc70: render_view_hud_end();
 L17 0x002ebca8: render_view_hud_begin(1);
 L17 0x002ebcb0: render_view_hud_end();
-# The board's race camera (camera type 8: its update 0x329358 on Rilgar, 0x2f3e60 on Kalebo III, the same code) keeps its target over a
+# ---- The board's race camera (camera type 8: its update 0x329358 on Rilgar, 0x2f3e60 on Kalebo III, the same code) keeps its target over a
 # floor by the level number: Rilgar 62.4 near its big ramp (286.16 447.82), else 67.2; Kalebo III 77.5. A level mod's number is its
 # base's: in `world rilgar` on Kalebo III's base the camera stayed over Kalebo III's 77.5 (2.9 units over Ratchet on the track, not
 # 2.1; 18 in a fall, not 8). The compare sees the current section's world (level_mod_camera_planet; none in main and the mod's own
