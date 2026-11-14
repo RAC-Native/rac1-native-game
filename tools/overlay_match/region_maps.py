@@ -27,6 +27,9 @@ NTSC-U code to match against. This tool closes the gap with a *region table*: fo
   check-levels (both discs) the level-only and boot module literals (L<n>_ADDR / L<n>_CASE /
           LvlConst, FR / FrConst) translated as the runtime does (region_levelN / region_boot runs)
           against the direct maps (NTSC-U level N / boot module matched in the PAL one).
+  check-literals (both discs + apply's maps) Veldin's literals the maps leave to the runtime's nearest-line rule in
+          levels 1..18, and the levels' own literals through their runs: each place proved (bytes, lines, runs) or
+          listed in data/regions/literals-allowed.txt; exit 1 else.
 
 A build whose core moved (the 1.02 core of NTSC-J and PAL 2.00: its data 0x100 bytes up, its code by up to 0x300)
 gets a unit `core` too: the core's own code and data runs (the base ELF below the overlays, NTSC-U 0x100080..0x15ef00),
@@ -48,6 +51,7 @@ Usage (repo root):
   tools/overlay_match/region_maps.py check --pal ISO --ntsc ISO --maps OUTDIR
   tools/overlay_match/region_maps.py check-levels --table data/regions/SCES-50916.txt
   tools/overlay_match/region_maps.py check-core --pal ISO --ntsc ISO --table data/regions/SCES-50916-2.00.txt
+  tools/overlay_match/region_maps.py check-literals --pal ISO --ntsc ISO --table TABLE --maps OUTDIR
 """
 import argparse
 import bisect
@@ -498,6 +502,92 @@ def literal_points(V, L, pts, lits, window=0x40):
     return out
 
 
+def island_points(pts):
+    """{a: b}: a point for the field right after an island: a single mapped address `a` whose displacement differs by a
+    few bytes from the same displacement both runs around it have, 4 bytes from each. The 1.02 build moved a halfword
+    of the scene block 0x16c860 two bytes down (its frame count, NTSC-U +0x48, at +0x46) and put a byte of its own at
+    +0x4a (the walk-to flag, NTSC-U +0x46): the island's displacement then took +0x4a 2 bytes short of where the disc's
+    own code has it (the runs' "offset into the object below"), and the levels' copies of the walk-to code that the
+    generators translate from the disc wrote the flag where nothing reads it. The address 2 bytes past the island gets
+    the runs' displacement."""
+    runs = data_runs(pts)
+    out = {}
+    for i in range(1, len(runs) - 1):
+        lo, hi, d = runs[i]
+        _plo, phi, pd = runs[i - 1]
+        nlo, _nhi, nd = runs[i + 1]
+        if lo == hi and lo - phi == 4 and nlo - hi == 4 and pd == nd and d != pd and abs(d - pd) <= 4:
+            out[lo + 2] = lo + 2 + nd
+    return out
+
+
+def run_inside(R, n):
+    """The place of NTSC-U data address `n` through the runs `R` where the runs prove it: inside a run (both ends mapped),
+    or between two runs of the same displacement; None otherwise (data_fwd's guess past a run's end)."""
+    i = bisect.bisect_right(R.data, (n, 0xFFFFFFFF, 0)) - 1
+    if i < 0:
+        return None
+    lo, hi, d = R.data[i]
+    if n <= hi or i + 1 < len(R.data) and R.data[i + 1][2] == d:
+        return n + d
+    return None
+
+
+def level_literal_places(lv, lits, N, L, R, maps=None, window=0x40):
+    """{veldin: disc}: where Veldin's data literals `lits` (the ports' OV() / OvConst) are in the disc's level `lv`, from
+    their NTSC-U place there (assets/generated/overlay_map/level<lv>.txt's line, else its .ext block: ovl_reloc.cpp's
+    rule on that disc) through the level's runs `R`, kept where the bytes say so: the same 8 bytes (not all zero) on the
+    disc's level `L` as on NTSC-U's `N`, else the one place within `window` of the runs' where a window of 0x40 /
+    0x20 / 0x10 bytes matches (the literal's own first 16 bytes not zero; literal_points' rule)."""
+    maps = Path(maps or ROOT / "assets/generated/overlay_map")
+    mp, ext = maps / f"level{lv}.txt", maps / f"level{lv}.ext"
+    if not mp.is_file() or not ext.is_file():
+        return {}
+    _fn, data = read_map(mp)
+    blocks = sorted((int(t[1], 16), int(t[2], 16), int(t[3], 16))
+                    for t in (ln.split() for ln in ext.read_text().splitlines()) if t and t[0] == "ext")
+    out = {}
+    for x in sorted(lits):
+        if x < CORE_END or x >= 0x1EAA00:
+            continue
+        if x in data:
+            n = data[x]
+        else:
+            i = bisect.bisect_right(blocks, (x, 0xFFFFFFFF, 0)) - 1
+            if i < 0 or not (x < blocks[i][0] + blocks[i][2]):
+                continue
+            n = x - blocks[i][0] + blocks[i][1]
+        p = R.data_fwd(n)
+        if p is None:
+            continue
+        nb = [N.data_word(n + k) for k in (0, 4)]
+        if None in nb:
+            continue  # (no bytes to say it: a bss object; the composed map's place stands)
+        if not any(nb):
+            # (zero at first: the runs' place only, where a window of `window` bytes with 4 words not zero is the same;
+            # Aridia's water shimmy speeds 0x1c3cf0)
+            nw = [N.data_word(n + k) for k in range(0, window, 4)]
+            if None not in nw and sum(1 for v in nw if v) >= 4 and nw == [L.data_word(p + k) for k in range(0, window, 4)]:
+                out[x] = p
+            continue
+        if nb == [L.data_word(p + k) for k in (0, 4)]:
+            out[x] = p
+            continue
+        if sum(1 for k in range(0, 0x10, 4) if N.data_word(n + k)) < 2:
+            continue
+        for w in (window, window // 2, window // 4):
+            nw = [N.data_word(n + k) for k in range(0, w, 4)]
+            if None in nw or sum(1 for v in nw if v) < 4:
+                break
+            hits = [d for d in range(-window, window + 1, 4) if [L.data_word(p + d + k) for k in range(0, w, 4)] == nw]
+            if len(hits) == 1:
+                out[x] = p + hits[0]
+                break
+            if hits:
+                break
+    return out
+
+
 def map_points(V, L, fmap, sizes, pairs):
     """The data lines of a map as {a: b} (overlay_match's choice: the most common pairing)."""
     pts = {a: c.most_common(1)[0][0] for a, c in pairs.items()}
@@ -658,6 +748,11 @@ def cmd_table(a):
             if lp:
                 print(f"[region_maps] {name}: {len(lp)} literals of the ports placed by their bytes: "
                       + ", ".join("%08x %+x" % (x, y - x) for x, y in sorted(lp.items())))
+            ip = island_points(pts)
+            pts.update(ip)
+            if ip:
+                print(f"[region_maps] {name}: {len(ip)} field(s) after an island: "
+                      + ", ".join("%08x %+x" % (x, y - x) for x, y in sorted(ip.items())))
             cr, dr = code_runs(fmap, sizes), data_runs(pts)
             ent = changed_entries(V, L, fmap, sizes, pts, cr)
             inner = {}
@@ -678,6 +773,27 @@ def cmd_table(a):
                          f" entry {V.entry:08x} -> {L.entry:08x}")
             lines += ["code %08x %08x %+x" % r for r in cr]
             lines += ["data %08x %08x %+x" % r for r in dr]
+            if name == "0":
+                T0 = Region()
+                T0.data = dr
+            if name.isdigit() and name != "0":
+                # (Veldin's literals in this level: where the composed map apply makes (the disc's Veldin matched in the
+                # level, its addresses taken back through level 0's runs) has them elsewhere than their NTSC-U place through
+                # this level's runs, checked by their bytes, or has none (the runtime's guess between two mapped
+                # addresses then). Aridia's shimmy speeds 0x1c3cb0 / 0x1c3cf0 (#168), kept untranslated, read 0x880 bytes
+                # short on the PAL disc 2.00 and 0x500 on 1.00; the boss bar's 0x15f8e8 and the hoverboard's 0x15fa04
+                # took a neighbour's displacement. `vlit v p`: apply puts p in the level's map for v.)
+                RR = Region()
+                RR.data = dr
+                places = level_literal_places(int(name), veldin, V, L, RR)
+                V0 = core.overlay(om.Overlay(*om.level_overlay(pi, 0)))
+                Lc = core.overlay(om.Overlay(*om.level_overlay(pi, int(name))))
+                _cf, comp, _lost = compose(T0, V0, Lc, f"level {name}", core)
+                ck = sorted(comp)
+                vl = {x: q for x, q in places.items() if (comp[x] if x in comp else xlate_data(comp, ck, x)) != q}
+                lines += ["vlit %08x %08x" % e for e in sorted(vl.items())]
+                if vl:
+                    print(f"[region_maps] {name}: {len(vl)} of Veldin's literals placed in the level by their NTSC-U place")
             lines += [("entry %08x %08x inner" if core and e[0] in inner else "entry %08x %08x") % e for e in sorted(ent.items())]
             kmsg = ""
             if core:
@@ -710,6 +826,7 @@ class Region:
 
     def __init__(self):
         self.code, self.data, self.entry, self.ptr, self.inner = [], [], {}, [], set()
+        self.vlit = {}  # (a level's `vlit` lines: Veldin's literal -> its place in the disc's level)
         self.code_base = self.code_end = 0
 
     def code_fwd(self, n):
@@ -767,6 +884,8 @@ def read_table(path):
                 cur.inner.add(int(f[1], 16))
         elif f[0] == "ptr":
             cur.ptr.append(int(f[1], 16))
+        elif f[0] == "vlit":
+            cur.vlit[int(f[1], 16)] = int(f[2], 16)
     return disc, units
 
 
@@ -840,6 +959,9 @@ def cmd_apply(a):
         for lv in range(1, 19):
             L = core.overlay(om.Overlay(*om.level_overlay(iso, lv)))
             fn, data, lost = compose(T0, V, L, f"level {lv}", core)
+            # (Veldin's literals the composed map has elsewhere or not at all: the table's `vlit` lines: level_literal_places, checked by bytes)
+            for x, q in units[str(lv)].vlit.items():
+                data[x] = q
             write_map(out / f"level{lv}.txt", [f"level {lv}: NTSC-U Veldin -> {ser} level {lv} ({ser} Veldin matched in its level {lv}, composed with the region table's level 0)"],
                       fn, data)
             print(f"[region_maps] level {lv}: {len(fn)} functions ({lost} {ser}-only of Veldin's dropped), {len(data)} data addresses")
@@ -910,7 +1032,7 @@ def port_literals():
     for t in out:
         v = int(t[t.index("0x"):], 16)
         (code if t.startswith("OVF") else data).add(v)
-    return code, data
+    return code, data | ov_expr_literals()
 
 
 def cmd_check(a):
@@ -960,11 +1082,45 @@ def cmd_check(a):
             print(d)
 
 
+def ov_expr_literals():
+    """{address}: the addresses the ports' `OV()` take in a form the plain literal scan does not read: a literal plus or
+    minus a constant (`OV(0x00166c00u - 0x7e90)`: $gp-relative words) and a named constant (`OV(kSkyPtrAddr)`, `OV(CLOCK +
+    0x10)`), the name defined as `NAME = 0x...` in the same file, else once in src/game."""
+    files = [p for p in sorted((ROOT / "src/game").rglob("*")) if p.is_file() and p.suffix in (".cpp", ".h", ".inc")]
+    texts = {p: p.read_text(errors="replace") for p in files}
+    define = re.compile(r"\b([A-Za-z_]\w*)\s*=\s*(0x[0-9a-fA-F]+)[uU]?\b")
+    glob = collections.defaultdict(set)
+    for s in texts.values():
+        for m in define.finditer(s):
+            glob[m.group(1)].add(int(m.group(2), 16))
+    use = re.compile(r"\bOV\(\s*(0x[0-9a-fA-F]+|[A-Za-z_]\w*)[uU]?\s*(?:([-+])\s*(0x[0-9a-fA-F]+)[uU]?\s*)?\)")
+    out = set()
+    for s in texts.values():
+        local = {m.group(1): int(m.group(2), 16) for m in define.finditer(s)}
+        for m in use.finditer(s):
+            b = m.group(1)
+            if b.startswith("0x"):
+                if not m.group(2):
+                    continue  # (the plain literal: the scans' own)
+                v = int(b, 16)
+            elif b in local:
+                v = local[b]
+            elif len(glob.get(b, ())) == 1:
+                v = next(iter(glob[b]))
+            else:
+                continue
+            if m.group(2):
+                v = v + int(m.group(3), 16) if m.group(2) == "+" else v - int(m.group(3), 16)
+            out.add(v)
+    return out
+
+
 def veldin_literals():
-    """{address}: the ports' literals of Veldin's overlay (`OV(0x...)`, `OvConst<0x...>`), the region table's level 0."""
+    """{address}: the ports' literals of Veldin's overlay (`OV(0x...)`, `OvConst<0x...>`, and ov_expr_literals' forms),
+    the region table's level 0."""
     out = subprocess.run(["grep", "-rhoE", r"\b(OV\(|OvConst<)0x[0-9a-fA-F]+", str(ROOT / "src/game")],
                          capture_output=True, text=True).stdout.splitlines()
-    return {int(re.search(r"0x[0-9a-fA-F]+", t).group(0), 16) for t in out}
+    return {int(re.search(r"0x[0-9a-fA-F]+", t).group(0), 16) for t in out} | ov_expr_literals()
 
 
 def level_literals():
@@ -976,6 +1132,18 @@ def level_literals():
     for t in out:
         m = re.match(r"(?:L([0-9]+)_(?:ADDR|CASE)\(|(FR)\(|LvlConst<([0-9]+), )(0x[0-9a-fA-F]+)", t)
         lits["boot" if m.group(2) else (m.group(1) or m.group(3))].add(int(m.group(4), 16))
+    # (a file's own macro over a template that takes the literal to some levels' L<n>_ADDR: `#define RACE_ADDR(a)
+    # race_addr<(a)>()`, race_addr<A> returning L16_ADDR(A) or L5_ADDR(A): the literal is each of those levels')
+    for p in sorted((ROOT / "src/game").rglob("*")):
+        if not p.is_file() or p.suffix not in (".cpp", ".h", ".inc"):
+            continue
+        s = p.read_text(errors="replace")
+        for m in re.finditer(r"#define\s+(\w+)\(\w+\)\s+(\w+)<\(\w+\)>\(\)", s):
+            body = re.search(r"\b" + re.escape(m.group(2)) + r"\(\)\s*\{(.*?)\n\}", s, re.S)
+            levels = set(re.findall(r"\bL([0-9]+)_ADDR\(A\)", body.group(1))) if body else set()
+            for v in re.findall(r"\b" + re.escape(m.group(1)) + r"\((0x[0-9a-fA-F]+)", s):
+                for lv in levels:
+                    lits[lv].add(int(v, 16))
     return lits
 
 
@@ -1034,6 +1202,149 @@ def cmd_check_levels(a):
         for d in diffs[: a.show]:
             print(d)
     print(f"[region_maps] {bad_total} literals translated differently from the direct maps, or not at all")
+
+
+FILL = 0xCDCDCDCD  # (the build's fill between objects: a word the game writes before it reads it)
+
+
+def cmd_check_literals(a):
+    """(both discs + apply's maps) Every Veldin literal of the ports (`OV()` / `OvConst`) on the disc's levels 1..18 that
+    the maps give no line, so that the runtime's nearest-line rule (ovl_reloc.cpp; a disc of another region has no
+    extents) places it: the rule's place must be proved by the bytes against the literal's NTSC-U place in the level
+    (its line, else the .ext block): the same two words (pointers through the table's runs), or the same 0x40 bytes
+    at the rule's place and nowhere better within 0x80; a word the bytes cannot say (the level's bss, zero, the fill) is
+    proved by the lines on both sides of it with the rule's displacement, or by the table's runs (NTSC-U level -> the
+    disc's: its NTSC-U place inside a run, or between two of the same displacement, giving the rule's place). Anything else (the rule keeps the address, or
+    the bytes say elsewhere) fails unless data/regions/literals-allowed.txt lists it with its reason. #168: Aridia's
+    shimmy speeds were kept so, and the boss bar's and the hoverboard's words took a neighbour's displacement."""
+    _d, units = read_table(a.table)
+    C = units.get("core")
+    _c, lits = port_literals()
+    level_lits = level_literals()
+    allowed = {}
+    tname = Path(a.table).name
+    for line in Path(a.allow).read_text().splitlines() if Path(a.allow).exists() else []:
+        f = line.split(None, 3)
+        if len(f) == 4 and not line.startswith("#") and f[0] in (tname, "*"):
+            allowed[(f[1], int(f[2], 16))] = f[3]
+    ni, pi = open(a.ntsc, "rb"), open(a.pal, "rb")
+    failed = 0
+    for lv in [int(x) for x in a.levels.split(",")]:
+        _nf, nd = read_map(ROOT / f"assets/generated/overlay_map/level{lv}.txt")
+        ext = sorted((int(t[1], 16), int(t[2], 16), int(t[3], 16)) for t in
+                     (s.split() for s in (ROOT / f"assets/generated/overlay_map/level{lv}.ext").read_text().splitlines())
+                     if t and t[0] == "ext")
+        _pf, pd = read_map(Path(a.maps) / f"level{lv}.txt")
+        pk = sorted(pd)
+        N, L, R = om.Overlay(*om.level_overlay(ni, lv)), om.Overlay(*om.level_overlay(pi, lv)), units[str(lv)]
+
+        def ptr(u, v):
+            if u == v:
+                return True
+            if u is None or v is None or not 0x100000 <= u < 0x2000000:
+                return False
+            for f in (R.data_fwd, R.code_fwd) + ((C.data_fwd, C.code_fwd) if C else ()):
+                if f(u) == v:
+                    return True
+            return False
+        taken = collections.defaultdict(set)
+        for y, q in pd.items():
+            taken[q].add(y)
+        for y in lits:
+            if CORE_END <= y < 0x1EAA00 and y not in pd:
+                q = xlate_data(pd, pk, y)
+                if q is not None:
+                    taken[q].add(y)
+        res, bad = collections.Counter(), []
+        for x in sorted(lits):
+            if x < CORE_END or x >= 0x1EAA00:
+                continue
+            if x in pd:
+                res["line"] += 1
+                continue
+            if x in nd:
+                n = nd[x]
+            else:
+                i = bisect.bisect_right(ext, (x, 0xFFFFFFFF, 0)) - 1
+                if i < 0 or not x < ext[i][0] + ext[i][2]:
+                    res["not in NTSC-U's level"] += 1
+                    continue
+                n = x - ext[i][0] + ext[i][1]
+            p = xlate_data(pd, pk, x)
+            why = None
+            if p is None:
+                why = "kept untranslated"
+            else:
+                nb, pb = [N.data_word(n + k) for k in (0, 4)], [L.data_word(p + k) for k in (0, 4)]
+                if None not in nb and any(w not in (0, FILL) for w in nb) and all(ptr(u, v) for u, v in zip(nb, pb)):
+                    res["bytes"] += 1
+                    continue
+                nw = [N.data_word(n + k) for k in range(0, 0x40, 4)]
+                sc = {d: sum(1 for k, v in enumerate(nw) if v not in (None, 0, FILL) and ptr(v, L.data_word(p + d + 4 * k)))
+                      for d in range(-0x80, 0x81, 4)}
+                if sc[0] >= 4 and sc[0] == max(sc.values()):
+                    res["window"] += 1
+                    continue
+                if None in nb or all(w in (0, FILL) for w in nb):
+                    j = bisect.bisect_right(pk, x)
+                    if 0 < j < len(pk) and pd[pk[j - 1]] - pk[j - 1] == pd[pk[j]] - pk[j] == p - x:
+                        res["between lines"] += 1
+                        continue
+                    if run_inside(R, n) == p:
+                        res["inside a run"] += 1
+                        continue
+                    # (a word only the game's code gives a value (bss, zero, the fill) on both discs, placed by the rule:
+                    # proved when no other address the map or the ports name lands on it, the ports' NTSC-U code being
+                    # the only code that reads or writes it there)
+                    hits = sorted(y for y in taken.get(p, ()) if y != x)
+                    if hits:
+                        why = "the rule's place %08x is %s's too" % (p, ", ".join("%08x" % y for y in hits))
+                    elif None in pb or all(w in (0, FILL) for w in pb):
+                        res["alone at the rule's place"] += 1
+                        continue
+                if why is None:
+                    best = max(sc, key=lambda d: (sc[d], -abs(d)))
+                    why = (f"the bytes say {p + best:08x} ({best:+x}), the rule {p:08x}" if sc[best] >= 4
+                           else f"unproved at {p:08x} (the disc's words {pb[0]:08x} {pb[1]:08x})" if None not in pb else f"unproved at {p:08x}")
+            reason = allowed.get((str(lv), x)) or allowed.get(("*", x))
+            if reason:
+                res["allowed"] += 1
+                continue
+            res["FAILED"] += 1
+            failed += 1
+            bad.append(f"    level {lv} {x:08x} (NTSC-U {n:08x}): {why}")
+        # the level's own literals (L<n>_ADDR, LvlConst, and the files' macros over them: level_literals), through the
+        # level's runs as the runtime takes them (region_level<n>.txt): the same proof by the bytes; a string or a
+        # word the disc's build changed there (the PAL builds' own formats of the race's HUD) fails, for a region fork
+        for x in sorted(level_lits.get(str(lv), ())):
+            if x < CORE_END or x >= N.code_base:
+                continue
+            p = R.data_fwd(x)
+            nb = [N.data_word(x + k) for k in (0, 4)]
+            pb = [None, None] if p is None else [L.data_word(p + k) for k in (0, 4)]
+            if p is not None and None not in nb and any(w not in (0, FILL) for w in nb) and all(ptr(u, v) for u, v in zip(nb, pb)):
+                res["level literal bytes"] += 1
+                continue
+            if p is not None and (None in nb or all(w in (0, FILL) for w in nb)) and \
+                    (None in pb or all(w in (0, FILL) for w in pb)) and run_inside(R, x) == p:
+                res["level literal inside a run"] += 1
+                continue
+            reason = allowed.get((str(lv), x))
+            if reason:
+                res["level literal allowed"] += 1
+                continue
+            res["LEVEL LITERAL FAILED"] += 1
+            failed += 1
+            show = lambda ws: " ".join("--" if w is None else "%08x" % w for w in ws)
+            bad.append(f"    level {lv} L{lv}_ADDR {x:08x} -> {'kept' if p is None else '%08x' % p}: NTSC-U {show(nb)}, "
+                       f"the disc {show(pb)}")
+        print(f"  level {lv}: " + ", ".join(f"{k} {v}" for k, v in sorted(res.items())))
+        for b in bad[: a.show]:
+            print(b)
+    print(f"[region_maps] {failed} literals left to the nearest-line rule without proof (add a `vlit` line through the "
+          f"table, a level literal in the port, or an entry in {Path(a.allow).name} with its reason)")
+    if failed:
+        sys.exit(1)
 
 
 def load_image(elf):
@@ -1107,6 +1418,14 @@ def main():
     k.add_argument("--ntsc", default=str(ROOT / "assets/iso/rac1-ntsc-u.iso"))
     k.add_argument("--levels", default="", help="e.g. 3,5,boot (default: every level with literals)")
     k.add_argument("--show", type=int, default=8)
+    q = sub.add_parser("check-literals")
+    q.add_argument("--table", required=True)
+    q.add_argument("--maps", required=True, help="apply's output for that disc")
+    q.add_argument("--pal", default=str(ROOT / "assets/iso/Ratchet Clank.iso"))
+    q.add_argument("--ntsc", default=str(ROOT / "assets/iso/rac1-ntsc-u.iso"))
+    q.add_argument("--allow", default=str(ROOT / "data/regions/literals-allowed.txt"))
+    q.add_argument("--levels", default=",".join(str(i) for i in range(1, 19)))
+    q.add_argument("--show", type=int, default=20)
     o = sub.add_parser("check-core")
     o.add_argument("--table", required=True)
     o.add_argument("--pal", default=str(ROOT / "assets/iso/Ratchet Clank.iso"))
@@ -1114,7 +1433,7 @@ def main():
     o.add_argument("--show", type=int, default=8)
     a = ap.parse_args()
     {"table": cmd_table, "apply": cmd_apply, "check": cmd_check, "check-levels": cmd_check_levels,
-     "check-core": cmd_check_core}[a.cmd](a)
+     "check-literals": cmd_check_literals, "check-core": cmd_check_core}[a.cmd](a)
 
 
 if __name__ == "__main__":
