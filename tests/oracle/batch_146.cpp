@@ -9,6 +9,7 @@
 // packet), each the level's own function.
 #include "ovl_oracle.h"
 
+#include <game/ovl/shared_class615.h>
 #include <game/ovl/aridia_classes_tr.h>
 #include <game/ovl/shared_class615.h>
 #include <game/ovl/blarg_mobys.h>
@@ -108,7 +109,7 @@ void batch_146() {
     }, [lv](A a) {
         if (lv == 2) class615_update(a.i[0]);
         else if (lv == 4) class615_update(a.i[0]);  // (Eudora: the shared port it is re-glued onto)
-        else if (lv == 6) blg_class615_update_l6(a.i[0]);
+        else if (lv == 6) class615_update(a.i[0]);
         else if (lv == 8) bat_class615_update_l8(a.i[0]);
         else pok_class615_update_l11(a.i[0]);
         return uint64_t{0};
@@ -121,7 +122,7 @@ void batch_146() {
     }, [lv](A a) {
         if (lv == 2) class615_puzzle_draw(a.i[0]);
         else if (lv == 4) class615_puzzle_draw(a.i[0]);  // (Eudora: the shared port it is re-glued onto)
-        else if (lv == 6) blg_class615_draw_l6(a.i[0]);
+        else if (lv == 6) class615_puzzle_draw(a.i[0]);
         else if (lv == 8) bat_trespasser_puzzle_draw_l8(a.i[0]);
         else pok_cb_2fd6c0_l11(a.i[0]);
         return uint64_t{0};

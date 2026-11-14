@@ -10,6 +10,19 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/shared_beam.h>
+#include <game/ovl/shared_blarg_meshes.h>
+#include <game/ovl/shared_boss_bar.h>
+#include <game/ovl/shared_class1108.h>
+#include <game/ovl/shared_class1302.h>
+#include <game/ovl/shared_class302.h>
+#include <game/ovl/shared_class615.h>
+#include <game/ovl/shared_class827.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_class857.h>
+#include <game/ovl/shared_flash.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_sandmouse.h>
 #include <game/lib/libcdvd.h>
 #include <game/ovl/blarg_mobys.h>
 #include <game/ovl/blarg_part2.h>
@@ -163,15 +176,15 @@ void batch_141() {
         void (*fn)(uint32_t);
         int cls;
     };
-    const Cb cbs[] = {{"blg_class302_draw", 0x002d8738, blg_class302_draw_l6, 302},       {"blg_class615_draw", 0x002e2258, blg_class615_draw_l6, 615},
-                      {"blg_class832_draw", 0x002ea830, blg_class832_draw_l6, 832},       {"blg_class857_draw", 0x002f37d0, blg_class857_draw_l6, 857},
+    const Cb cbs[] = {{"blg_class302_draw", 0x002d8738, class302_draw, 302},       {"blg_class615_draw", 0x002e2258, class615_puzzle_draw, 615},
+                      {"blg_class832_draw", 0x002ea830, class832_draw, 832},       {"blg_class857_draw", 0x002f37d0, class857_draw, 857},
                       {"blg_class1035_draw", 0x002f6dd0, blg_class1035_draw_l6, 1035},    {"blg_class1062_draw_a", 0x002fd1a0, blg_class1062_draw_a_l6, 1062},
-                      {"blg_class1062_draw_b", 0x002fd460, blg_class1062_draw_b_l6, 1062}, {"blg_class1062_draw_c", 0x002fd748, blg_class1062_draw_c_l6, 1062},
-                      {"blg_class1068_draw", 0x002ff680, blg_class1068_draw_l6, 1068},    {"blg_class1083_draw_a", 0x003003f0, blg_class1083_draw_a_l6, 1083},
-                      {"blg_class1083_draw_b", 0x00300588, blg_class1083_draw_b_l6, 1083}, {"blg_class1083_draw_c", 0x00300720, blg_class1083_draw_c_l6, 1083},
-                      {"blg_class1083_draw_d", 0x00300958, blg_class1083_draw_d_l6, 1083}, {"blg_class1108_draw", 0x003021d8, blg_class1108_draw_l6, 1108},
-                      {"blg_class1123_draw", 0x00305170, blg_class1123_draw_l6, 1123},    {"blg_class1302_draw", 0x00307578, blg_class1302_draw_l6, 1302},
-                      {"blg_class1818_draw", 0x0030adb0, blg_class1818_draw_l6, 1818},    {"blg_class1898_draw", 0x0030bfa8, blg_class1898_draw_l6, 1898}};
+                      {"blg_class1062_draw_b", 0x002fd460, blarg_class1062_draw_b, 1062}, {"blg_class1062_draw_c", 0x002fd748, blarg_class1062_draw_c, 1062},
+                      {"blg_class1068_draw", 0x002ff680, beam_draw, 1068},    {"blg_class1083_draw_a", 0x003003f0, blarg_class1083_draw_a, 1083},
+                      {"blg_class1083_draw_b", 0x00300588, blarg_class1083_draw_b, 1083}, {"blg_class1083_draw_c", 0x00300720, blarg_class1083_draw_c, 1083},
+                      {"blg_class1083_draw_d", 0x00300958, blarg_class1083_draw_d, 1083}, {"blg_class1108_draw", 0x003021d8, class1108_draw, 1108},
+                      {"blg_class1123_draw", 0x00305170, blg_class1123_draw_l6, 1123},    {"blg_class1302_draw", 0x00307578, class1302_draw, 1302},
+                      {"blg_class1818_draw", 0x0030adb0, sandmouse_glow, 1818},    {"blg_class1898_draw", 0x0030bfa8, flash_draw_quad, 1898}};
     std::vector<std::pair<std::string, std::function<void()>>> states = {{"", level}};
     for (const char* f : {"idle900", "c1051_1100"}) {
         const std::string path = dump_path("blarg_0390/") + f + ".bin";
@@ -211,8 +224,8 @@ void batch_141() {
         void (*fn)(uint32_t);
         int cls;
     };
-    const Upd upds[] = {{"blg_class302_update", 0x002d85a0, blg_class302_update_l6, 302}, {"blg_class303_update", 0x002d8c20, blg_class303_update_l6, 303},
-                        {"blg_class1898_update", 0x0030be60, blg_class1898_update_l6, 1898}};
+    const Upd upds[] = {{"blg_class302_update", 0x002d85a0, class302_update, 302}, {"blg_class303_update", 0x002d8c20, class303_update, 303},
+                        {"blg_class1898_update", 0x0030be60, flash_update, 1898}};
     for (const auto& [tag, load] : states) {
         if (tag.empty()) continue;
         for (const Upd& up : upds) {
@@ -262,7 +275,7 @@ void batch_141() {
             w32(OV(0x0015f5cc), R() & 0xffff);
             seed_rand();
             return Args{{m}, {}};
-        }, [](A a) { blg_class827_update_l6(a.i[0]); return uint64_t{0}; });
+        }, [](A a) { class827_update(a.i[0]); return uint64_t{0}; });
     }
 
     // ---- the HUD element class 1051 requests (0x2454c0): its draw function L6:0x249738 (+0x18 of the element, 0x17dc50 + 0x90 i), on the
@@ -283,7 +296,7 @@ void batch_141() {
             if (coin()) w32(e + 0x7c, u(ri(0, 0x40)));
             w32(OV(0x0015f5cc), R());
             return Args{{e}, {}};
-        }, [](A a) { blg_class1051_hud_draw_l6(a.i[0]); return uint64_t{0}; });
+        }, [](A a) { boss_health_bar_draw(a.i[0]); return uint64_t{0}; });
     }
 
     // ---- the hero's item mode start 0x29a6b0 (Blarg's L6:0x2a77a8, called by blg_hero_* through vendor_screen_start_tr): from a Vendor
@@ -327,7 +340,7 @@ void batch_141() {
                 w32(0x0015eea4, R() & 0xffff);
                 seed_rand();
                 return Args{{m}, {}};
-            }, [](A a) { blg_class1134_update_l6(a.i[0]); return uint64_t{0}; });
+            }, [](A a) { gold_bolt_update(a.i[0]); return uint64_t{0}; });
     } else {
         b6check("gold_bolt1134_states", 0x003053a8, 0, Ret::None, nullptr, nullptr);
     }

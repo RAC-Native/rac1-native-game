@@ -38,33 +38,23 @@
 #include <game/port_stubs.h>
 #include <game/ovl/sound_emitter.h>
 #include <game/ovl/helmet_tr.h>
+#include <game/ovl/shared_beam.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_flash.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
 
-//@gen blg_2ff2c8_l6
-
-//@gen blg_2feb40_l6
-
-//@gen blg_2ff100_l6
-
-//@gen blg_class1068_update_l6
-
 //@gen blg_300278_l6
 
-//@gen blg_312b40_l6
-
 //@gen blg_class1083_update_l6
-
-//@gen blg_class1085_update_l6
 
 //@gen blg_class1091_update_l6
 
 //@gen blg_272670_l6
-
-//@gen blg_300f98_l6
 
 //@gen blg_class1105_update_l6
 
@@ -74,31 +64,21 @@ using namespace vu0m;
 
 //@gen blg_2f45f0_l6
 
-//@gen blg_2fc630_l6
-
 //@gen blg_2ffc38_l6
 
 //@gen blg_302400_l6
 
-//@gen blg_304088_l6
-
 //@gen blg_3047b8_l6
-
-//@gen blg_3047f8_l6
 
 //@gen blg_309240_l6
 
 //@gen blg_class1108_update_l6
-
-//@gen blg_2e6148_l6
 
 //@gen blg_302fd8_l6
 
 //@gen blg_303748_l6
 
 //@gen blg_300f70_l6
-
-//@gen blg_30bef8_l6
 
 //@gen blg_303b68_l6
 
@@ -107,8 +87,6 @@ using namespace vu0m;
 //@gen blg_304028_l6
 
 //@gen blg_class1109_update_l6
-
-//@gen blg_303150_l6
 
 //@gen blg_304818_l6
 

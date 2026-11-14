@@ -8,6 +8,7 @@
 // The random-state checks of the three ring functions are in batch 67 (level 0; also run with ORACLE_LEVEL=6 / 10).
 #include "ovl_oracle.h"
 
+#include <game/ovl/shared_class857.h>
 #include <game/ovl/blarg_mobys.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -99,7 +100,7 @@ void batch_151() {
         const uint32_t m = bots.empty() ? 0u : bots[static_cast<size_t>(ri(0, static_cast<int>(bots.size()) - 1))];
         w32(0x00141610, u(ri(0, 4)));
         return Args{{m}, {}};
-    }, [](A a) { if (a.i[0] != 0) blg_class857_update_l6(a.i[0]); return uint64_t{0}; });
+    }, [](A a) { if (a.i[0] != 0) class857_update(a.i[0]); return uint64_t{0}; });
     g_ignored_words = saved_ignored;
     g_ee_null_is_ram = null_ram;
 }

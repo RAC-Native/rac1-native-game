@@ -36,15 +36,14 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/shared_flash.h>
+#include <game/ovl/shared_pump_camera.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
-
-//@gen blg_class1040_update_l6
-
-//@gen blg_267810_l6
 
 //@gen blg_2f9698_l6
 
@@ -53,8 +52,6 @@ using namespace vu0m;
 //@gen blg_2f96f8_l6
 
 //@gen blg_class1048_update_l6
-
-//@gen blg_267ee8_l6
 
 //@gen blg_2d9e08_l6
 
@@ -70,37 +67,17 @@ using namespace vu0m;
 
 //@gen blg_2f99b0_l6
 
-//@gen blg_2fb508_l6
-
-//@gen blg_2fb8c8_l6
-
 //@gen blg_2fa9c0_l6
 
 //@gen blg_2e9d10_l6
 
 //@gen blg_2fb090_l6
 
-//@gen blg_2fb148_l6
-
 //@gen blg_2fb2a8_l6
-
-//@gen blg_2fb4b0_l6
-
-//@gen blg_2fb668_l6
-
-//@gen blg_2fb870_l6
-
-//@gen blg_2fba28_l6
-
-//@gen blg_2fbc30_l6
 
 //@gen blg_2fbc88_l6
 
-//@gen blg_316330_l6
-
 //@gen blg_class1051_update_l6
-
-//@gen blg_267f70_l6
 
 //@gen blg_class1054_update_l6
 
@@ -111,7 +88,5 @@ using namespace vu0m;
 //@gen blg_class1062_update_l6
 
 //@gen blg_class1066_update_l6
-
-//@gen blg_2ff978_l6
 
 }  // namespace rac1

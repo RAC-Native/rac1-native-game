@@ -23,6 +23,7 @@
 #include <game/ovl/quartu_mobys.h>
 #include <game/ovl/kalebo_mobys.h>
 #include <game/ovl/rilgar_mobys.h>
+#include <game/ovl/shared_class827.h>
 #include <game/ovl/veldin_orbit_mobys.h>
 #include <game/ovl/veldin_finale_mobys.h>
 #include <game/ovl/variants_l2.h>
@@ -256,10 +257,10 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
     case 6:  // Blarg: class 0x10e's hook +0xc (table 0x20239c), class 0x33b (table 0x2023b4)
         switch (lvl_key(fn)) {
         case L6_CASE(0x002d8118): ret = blg_carry_hookc_l6(m, a1, a2, f12); return true;
-        case L6_CASE(0x002ea5e0): ret = u_call(blg_hook_2ea5e0_u, m, a1, a2, f12); return true;
-        case L6_CASE(0x002ea6a8): ret = u_call(blg_hook_2ea6a8_u, m, a1, a2, f12); return true;
-        case L6_CASE(0x002ea738): ret = u_call(blg_hook_2ea738_u, m, a1, a2, f12); return true;
-        case L6_CASE(0x002ea7c8): ret = u_call(blg_hook_2ea7c8_u, m, a1, a2, f12); return true;
+        case L6_CASE(0x002ea5e0): ret = class827_hook_carry0(m, a1, a2, f12); return true;
+        case L6_CASE(0x002ea6a8): ret = class827_hook_carry(m, a1, a2, f12, 4); return true;
+        case L6_CASE(0x002ea738): ret = class827_hook_carry(m, a1, a2, f12, 8); return true;
+        case L6_CASE(0x002ea7c8): ret = class827_hook_carryc(m, a1, a2, f12); return true;
         case L6_CASE(0x002ea800): ret = u_call(blg_hook_2ea800_u, m, a1, a2, f12); return true;
         default: return false;
         }

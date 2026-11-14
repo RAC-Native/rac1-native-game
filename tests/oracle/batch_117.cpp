@@ -6,6 +6,28 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/shared_beam.h>
+#include <game/ovl/shared_breakables.h>
+#include <game/ovl/shared_class1021.h>
+#include <game/ovl/shared_class1038.h>
+#include <game/ovl/shared_class1068.h>
+#include <game/ovl/shared_class1302.h>
+#include <game/ovl/shared_class156.h>
+#include <game/ovl/shared_class302.h>
+#include <game/ovl/shared_class604.h>
+#include <game/ovl/shared_class615.h>
+#include <game/ovl/shared_class827.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_class857.h>
+#include <game/ovl/shared_flash.h>
+#include <game/ovl/shared_gadget_pickups.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_lights.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_swingshot_target.h>
+#include <game/ovl/shared_zones.h>
 #include <game/ovl/carry_hooks_levels.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/blarg_mobys.h>
@@ -29,6 +51,8 @@ TrRet hook_uniform(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t, uint32_t, ui
                    float, float, float, float) {
     return TrRet{static_cast<uint32_t>(H(a0, a1, a2, f12)), 0.0f};
 }
+// class 827's carry hook +8 (L6:0x2ea738): the shared port with its `which`
+int32_t class827_hook_carry8(uint32_t m, uint32_t a1, uint32_t a2, float f12) { return class827_hook_carry(m, a1, a2, f12, 8); }
 
 
 // A check whose original is level 6's own function at `l6addr` (not a Veldin address to translate).
@@ -181,54 +205,54 @@ void batch_117() {
     static const TrCls trcls[] = {
         {"class55", 0x002b4770, blg_class55_update_l6, 0x0, false},
         {"class87", 0x002b9678, empty_update, 0x0, false},
-        {"class156", 0x002bead0, blg_class156_update_l6, 0x0, false},
-        {"class302", 0x002d85a0, blg_class302_update_l6, 0x0, false},
-        {"class303", 0x002d8c20, blg_class303_update_l6, 0x0, false},
+        {"class156", 0x002bead0, class156_update, 0x0, false},
+        {"class302", 0x002d85a0, class302_update, 0x0, false},
+        {"class303", 0x002d8c20, class303_update, 0x0, false},
         {"class367", 0x002d9d10, blg_class367_update_l6, 0x0, false},
-        {"class604", 0x002e11c8, blg_class604_update_l6, 0x0, false},
-        {"class605", 0x002e1518, blg_class605_update_l6, 0x0, false},
-        {"class615", 0x002e1940, blg_class615_update_l6, 0x0, false},
-        {"class803", 0x002e6270, blg_class803_update_l6, 0x0, false},
-        {"class805", 0x002e66e0, blg_class805_update_l6, 0x0, false},
-        {"class827", 0x002e8678, blg_class827_update_l6, 0x2, false},
-        {"class832", 0x002eaa40, blg_class832_update_l6, 0x0, false},
-        {"class857", 0x002f0040, blg_class857_update_l6, 0x0, false},
+        {"class604", 0x002e11c8, class604_update, 0x0, false},
+        {"class605", 0x002e1518, zone_marker_update, 0x0, false},
+        {"class615", 0x002e1940, class615_update, 0x0, false},
+        {"class803", 0x002e6270, swingshot_target_update, 0x0, false},
+        {"class805", 0x002e66e0, spawn_point_update_l1, 0x0, false},
+        {"class827", 0x002e8678, class827_update, 0x2, false},
+        {"class832", 0x002eaa40, class832_update, 0x0, false},
+        {"class857", 0x002f0040, class857_update, 0x0, false},
         {"class911", 0x002f3ad8, blg_class911_update_l6, 0x0, false},
-        {"class1016", 0x002f4638, blg_class1016_update_l6, 0x28, false},
-        {"class1021", 0x002f4f00, blg_class1021_update_l6, 0x0, false},
+        {"class1016", 0x002f4638, gadget_pickup_update, 0x28, false},
+        {"class1021", 0x002f4f00, class1021_update, 0x0, false},
         {"class1028", 0x002f55a0, blg_class1028_update_l6, 0x0, false},
         {"class1035", 0x002f6470, blg_class1035_update_l6, 0x0, false},
-        {"class1038", 0x002f7288, blg_class1038_update_l6, 0x0, false},
-        {"class1039", 0x002f7930, blg_class1039_update_l6, 0x0, false},
-        {"class1040", 0x002f7ab8, blg_class1040_update_l6, 0x0, false},
+        {"class1038", 0x002f7288, class1038_update, 0x0, false},
+        {"class1039", 0x002f7930, deadly_zones_update, 0x0, false},
+        {"class1040", 0x002f7ab8, class1040_update, 0x0, false},
         {"class1048", 0x002f7d78, blg_class1048_update_l6, 0x0, false},
         {"class1051", 0x002f9a28, blg_class1051_update_l6, 0x0, false},
         {"class1054", 0x002fbfb0, blg_class1054_update_l6, 0x0, false},
         {"class1061", 0x002fc640, blg_class1061_update_l6, 0x0, false},
         {"class1062", 0x002fd088, blg_class1062_update_l6, 0x0, false},
         {"class1066", 0x002fda30, blg_class1066_update_l6, 0x0, false},
-        {"class1068", 0x002fdbd0, blg_class1068_update_l6, 0x0, false},
+        {"class1068", 0x002fdbd0, class1068_update, 0x0, false},
         {"class1083", 0x002ffcb0, blg_class1083_update_l6, 0x0, false},
-        {"class1085", 0x00300b90, blg_class1085_update_l6, 0x0, false},
+        {"class1085", 0x00300b90, beam_shard_update, 0x0, false},
         {"class1091", 0x00300df0, blg_class1091_update_l6, 0x0, false},
         {"class1105", 0x00301070, blg_class1105_update_l6, 0x0, false},
         {"class1108", 0x00301b90, blg_class1108_update_l6, 0x0, false},
         {"class1109", 0x00302578, blg_class1109_update_l6, 0x280, false},
         {"class1118", 0x00304098, blg_class1118_update_l6, 0x10, false},
         {"class1123", 0x003049f8, blg_class1123_update_l6, 0x0, false},
-        {"class1134", 0x003053a8, blg_class1134_update_l6, 0x6, false},
-        {"class1302", 0x00307d30, blg_class1302_update_l6, 0x0, false},
+        {"class1134", 0x003053a8, gold_bolt_update, 0x6, false},
+        {"class1302", 0x00307d30, class1302_update, 0x0, false},
         {"class1348", 0x003083b0, blg_class1348_update_l6, 0x0, false},
-        {"class1504", 0x00308868, blg_class1504_update_l6, 0x0, false},
+        {"class1504", 0x00308868, flicker_light_update, 0x0, false},
         {"class1512", 0x00308c68, blg_class1512_update_l6, 0x0, false},
         {"class1551", 0x00309348, blg_class1551_update_l6, 0x0, false},
-        {"class1633", 0x003094f0, blg_class1633_update_l6, 0x0, false},
-        {"class1655", 0x00309860, blg_class1655_update_l6, 0x0, false},
-        {"class1660", 0x00309e08, blg_class1660_update_l6, 0x0, false},
-        {"class1664", 0x00309fa8, blg_class1664_update_l6, 0x0, false},
+        {"class1633", 0x003094f0, class1633_update, 0x0, false},
+        {"class1655", 0x00309860, class1655_update, 0x0, false},
+        {"class1660", 0x00309e08, class1660_update, 0x0, false},
+        {"class1664", 0x00309fa8, class1664_update, 0x0, false},
         {"class1672", 0x0030a148, empty_update, 0x0, false},
-        {"class1818", 0x0030ae88, blg_class1818_update_l6, 0x0, false},
-        {"class1898", 0x0030be60, blg_class1898_update_l6, 0x0, false},
+        {"class1818", 0x0030ae88, sandmouse_update, 0x0, false},
+        {"class1898", 0x0030be60, flash_update, 0x0, false},
     };
     auto generic_prep = [give_hit, hero_near](uint32_t m, int st, int pass, void (*fn)(uint32_t), bool walk = false) {
         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -331,7 +355,7 @@ void batch_117() {
             static int k = 0;
             auto name = [&](const char* what) { char* p = nm[k++ & 3]; std::snprintf(p, 48, "cam_type%d_%s", type, what); return static_cast<const char*>(p); };
             l6check(name("accept"), ct.accept, 300, Ret::Int32, [cam_setup, type] { uint32_t other = 0; const uint32_t cam = cam_setup(type, true, &other); return Args{{cam, other}, {}}; },
-                    [type](A a) { return r32(a.i[0] != 0 ? blg_cam_type18_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0 : 0u); });
+                    [type](A a) { return r32(a.i[0] != 0 ? static_cast<uint32_t>(cam_type18_accept(a.i[0], a.i[1])) : 0u); });
             l6check(name("init"), ct.init, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
                     [type](A a) { if (a.i[0] != 0) empty_update(a.i[0]); return uint64_t{0}; });
             l6check(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
@@ -355,8 +379,8 @@ void batch_117() {
             wf(0x0016256c, rf(0, 0.5f));  // $gp - 0x4694: the frame step the callback counts down by
             w32(OV(0x0015ef4c), u(ri(0, 14)));
         };
-        l6check("cam0_hook", 0x003147b0, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { blg_cam0_hook_l6(0); return uint64_t{0}; });
-        l6check("cam_callback", 0x00314810, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { blg_cam_callback_l6(0); return uint64_t{0}; });
+        l6check("cam0_hook", 0x003147b0, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_hook(0); return uint64_t{0}; });
+        l6check("cam_callback", 0x00314810, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_callback(0); return uint64_t{0}; });
     }
 
     // ---- level 6's class hooks: +4 (0x2ea6a8), +0x10 (0x2ea800: pvars + 0x60; the matcher pairs it with class 749's 0x2d5800), and the dispatchers on them
@@ -403,7 +427,7 @@ void batch_117() {
                 const uint32_t m = h4[static_cast<size_t>(ri(0, static_cast<int>(h4.size()) - 1))];
                 if (ri(0, 4) == 0) w8(m + 0x20, coin() ? 0xfe : 0xfd);
                 return Args{{m, ri(0, 3) == 0 ? 0u : OV(0x00173e40u)}, {}};
-            }, [](A a) { return r32(blg_hook_2ea6a8_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0); });
+            }, [](A a) { return r32(static_cast<uint32_t>(class827_hook_carry(a.i[0], a.i[1], 0, 0.0f, 4))); });
             l6check("class_hook_4", ovl_code_lookup(0x002da218), 60, Ret::Int32, [level, h4] {
                 level();
                 const uint32_t m = h4[static_cast<size_t>(ri(0, static_cast<int>(h4.size()) - 1))];
@@ -418,9 +442,9 @@ void batch_117() {
         g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, 0x002763f8};
         struct Hk { const char* name; uint32_t addr; uint32_t slot; TrRet (*fn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float); };
         static const Hk hks[] = {
-            {"hook_0_2ea5e0", 0x002ea5e0, 0x0, blg_hook_2ea5e0_u},
-            {"hook_8_2ea738", 0x002ea738, 0x8, blg_hook_2ea738_u},
-            {"hook_c_2ea7c8", 0x002ea7c8, 0xc, blg_hook_2ea7c8_u},
+            {"hook_0_2ea5e0", 0x002ea5e0, 0x0, hook_uniform<class827_hook_carry0>},
+            {"hook_8_2ea738", 0x002ea738, 0x8, hook_uniform<class827_hook_carry8>},
+            {"hook_c_2ea7c8", 0x002ea7c8, 0xc, hook_uniform<class827_hook_carryc>},
             {"hook_c_2d8118", 0x002d8118, 0xc, hook_uniform<blg_carry_hookc_l6>},
         };
         for (const Hk& hk : hks) {

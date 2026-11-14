@@ -12,6 +12,7 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/shared_class156.h>
 #include <game/ovl/batalia_mobys.h>
 #include <game/ovl/blarg_mobys.h>
 #include <game/ovl/eudora_mobys.h>
@@ -141,13 +142,12 @@ void batch_192() {
     {
         std::function<uint32_t()> sp;
         TrRet (*s156)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float) = nullptr;
-        if (L == 6) s156 = blg_27a850_l6;
         if (L == 8) s156 = bat_275bd8_l8;
         if (L == 9) s156 = gas_28a428_l9;
-        if (L == 1 || s156 != nullptr) sp = [s156, moby, L, spawned] {
+        if (L == 1 || L == 6 || s156 != nullptr) sp = [s156, moby, L, spawned] {
             const uint32_t flag = coin() ? 1u : 0u, m = moby();
             return spawned(0x0e, [&] {
-                if (L == 1) class156_trail(flag, m);
+                if (L == 1 || L == 6) class156_trail(flag, m);
                 else s156(flag, m, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
             });
         };

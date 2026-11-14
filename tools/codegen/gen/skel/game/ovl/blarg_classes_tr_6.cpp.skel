@@ -43,20 +43,6 @@ using namespace vu0m;
 
 //@gen blg_level_sound_play_u
 
-//@gen blg_202d08_l6
-
-//@gen blg_cam0_hook_l6
-
-//@gen blg_cam_callback_l6
-
-//@gen blg_hook_2ea5e0_u
-
-//@gen blg_hook_2ea6a8_u
-
-//@gen blg_hook_2ea738_u
-
-//@gen blg_hook_2ea7c8_u
-
 //@gen blg_hook_2ea800_u
 
 }  // namespace rac1
