@@ -266,6 +266,7 @@ void batch_520();
 void batch_530();
 void batch_531();
 void batch_541();  // the native level registry against the EE tables (stage 5, L2)
+void batch_542();
 
 }  // namespace rac1::oracle
 

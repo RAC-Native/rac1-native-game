@@ -89,10 +89,12 @@ The level cache is the project's own container for data the port reads out of a 
 then loads from the cache: tables, and later other structures. It is made from the player's own disc,
 never shipped and never in the repository. Library: [`level_cache`](../../src/formats/level_cache.h);
 test: `tests/unit/level_cache_test.cpp` (built with the developer's tests, `RAC1_UNIT_TESTS`, which is
-on when `RAC1_ORACLE` is). Nothing reads or writes these files yet.
+on when `RAC1_ORACLE` is). One chunk is defined so far, the tables chunk (below); the game makes and checks it,
+but no reader of the game uses it yet.
 
 **Files.** One file per planet, `<cache folder>/planetNN.r1lc` (`NN` the level, 00 to 18), and
-`boot.r1lc` for the boot module. The folder is given by the caller (`level_cache::file_path`).
+`boot.r1lc` for the boot module. The folder is given by the caller (`level_cache::file_path`); the game's
+is `generated/level_cache/` in the data folder (`RAC1_ASSETS`, [Setup](../setup.md#where-the-data-goes)).
 
 **Layout.** Little-endian throughout. Every field is written and read one byte at a time, so the same
 file is read the same way on little-endian and big-endian hosts.
@@ -159,6 +161,71 @@ and the whole file is never held in memory, which suits low-memory consoles. A f
 in memory (a buffer, or a mapping through `io/mapped_file.h`) can be opened from there, and its
 chunks can be used in place. The bytes between chunks are not covered by any CRC and are not
 checked.
+
+### The tables chunk
+
+The tables chunk (`TABL`, version 1) holds the static tables of a planet's overlay: the level's own build
+of the engine, which every level carries inside its data file, linked at its own addresses. The ports
+name its objects by Veldin's addresses (level 0, North American disc) and translate them onto the
+level's with the overlay maps (`OV()`, `src/game/ovl/ovl_reloc.h`). A table belongs here when the game
+reads it and never writes it after the overlay is loaded, except for words the table lists as run-time
+state. Library: [`overlay_tables`](../../src/formats/overlay_tables.h) (the layout);
+`src/game/level/level_cache_load.cpp` (the disc reads, the translation, the files, the checks).
+
+The tables in version 1, by Veldin's address:
+
+| Id | Veldin | Extent on a level | Row | Run-time words | Read by |
+|---|---|---|---|---|---|
+| `SAVG` | 0x1845c0 | 16-byte rows up to and with the one whose first word is 0 | 16 | +0xc of each row | the save's game list: the memory card code, the level slots |
+| `SAVL` | 0x1848c0 | the same | 16 | +0xc of each row | the save's level list |
+| `TALK` | 0x1c44b8 | 0x50 bytes (one word per level, 0 to 0x13) | | | the talkers' ranges: talk, level change, level setup |
+| `GIFT` | 0x1609a0 | 0x10 bytes | | | the GIF tag of the sparkles' and screen quads' packets |
+| `CLSR` | 0x1ea300 | the whole overlay section that starts there (rows up to a -1 key) | 12 | | the classes' update functions |
+| `CAMT` | 0x1ea880 | the same | 0x14 | | the camera types |
+| `HNDL` | 0x1ea980 | the same | 8 | | the records' handlers |
+
+The item table (0x179ac0) is not here: the game writes its +0x20 words while it is played.
+
+A table's place on a level is the overlay maps' translation of its Veldin address (on another region's
+disc, that disc's maps). A table of fixed size, or of rows, is kept only when its last word translates
+to its first word's place plus its size (the maps place it as one piece) and it lies inside one section
+of the overlay; a section table only when the translation gives that section's first address. A table
+that cannot be placed is left out (the maker prints why). The bytes are the overlay's, little-endian as on
+the disc, after the overlay load's own changes: on a disc whose boot executable moved (the PAL disc
+2.00), the words that point into it are taken back to the North American addresses, as the load does
+(the region table's `ptr` lines).
+
+| Offset | Size | Field |
+|---|---|---|
+| 0x00 | u32 | the level whose overlay the tables come from (0 to 18) |
+| 0x04 | u32 | the number of tables, n |
+| 0x08 | u32 | the tables' bytes in all |
+| 0x0c | u32 | zero |
+| 0x10 | 32 × n | per table: u32 id (four characters, as chunk ids), u32 Veldin's address, u32 the level's address, u32 size, u32 offset of its bytes from the chunk's start (a multiple of 16), u32 row size (0: not rows), u32 run-time words (bit k: word k of each row), u32 zero |
+
+The bytes follow, each table at a multiple of 16, with zeros between.
+
+**Its sources.** The file's fingerprint is made from two sources, in this order:
+
+1. `files/<boot executable>` (`files/SCUS_971.99`, `files/SCES_509.16`): the boot executable, which tells
+   one build of a region from another (PAL 1.00 from 2.00);
+2. `levels/levelNN/data.wad`: the level's data file, which holds its overlay.
+
+Each source's name is its path in the disc folder's `layout.txt`, and its bytes are its layout lines:
+for each piece of the file, its offset in the file (u64), its size (u64) and its SHA-1 (20 bytes), as
+`layout.txt` gives them. No file is read again to make the fingerprint. When a mod gives that file in
+place of the disc's, the source is `mod:` and the path, and its bytes are the file's size (u64) and the
+mod file's last write time (u64). Without `layout.txt` (the disc read from its image), no cache is made.
+
+**When it is made and checked.** The setup's `--step cache` makes every planet's file (`--force`: also
+those that load fine); and at each level's start (after its setup), the game loads the planet's file and
+makes it again from the disc when it is missing or does not match: its stamp (the serial, the region,
+the fingerprint, from the cheap inputs above), its chunk version, its CRCs, or the place of a table
+(the overlay maps made again). Making one planet's file reads its overlay once (about 1.5 MB) and takes 1 to 4
+milliseconds (about 12 for the first, which reads `layout.txt`); the file is 2.9 to 4 KB. `RAC1_LEVEL_CACHE=0` turns all of it off;
+`RAC1_CACHE_VERIFY=1` compares every table with the game's memory at each level's start
+([Environment variables](../env-vars.md)). Oracle batch 542 checks the chunk against the game's memory
+on every level.
 
 ## Decoders kept but not used
 

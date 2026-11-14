@@ -4,6 +4,7 @@
 // waits on (the RCNT1 counter, vsync, DMA kicks) is the host's: see host_rcnt1().
 #include <host/mod_code.h>
 #include <game/enhance/session_runtime.h>
+#include <game/level/level_cache_load.h>
 #include <game/ovl/credits_tr.h>
 #include <game/ovl/screen_flash.h>
 #include <game/ovl/memory_card.h>
@@ -645,6 +646,7 @@ void overlay_entry_start() {
     }
     if (!level_slots_keep_base_progress()) level_visit_stats();  // (enhancement: not the base level's on a level mod's level)
     snd_hold();
+    level_cache_level_started();  // enhancement: the level cache's tables made when missing, checked (src/game/level/level_cache_load.h)
 }
 
 // The level's visit stats: visited flag 0x13dd58[level], visit count 0x141680[level * 4] (up to

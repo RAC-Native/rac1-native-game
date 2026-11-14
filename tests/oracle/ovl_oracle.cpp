@@ -269,6 +269,7 @@ int main(int argc, char** argv) {
     batch_530();
     batch_531();
     batch_541();
+    batch_542();
 
     // (also on level 0: a batch whose dumps are missing skips its checks, and a bare PASS would hide it)
     if (g_oracle_level != 0 || g_skipped != 0)

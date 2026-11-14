@@ -14,6 +14,7 @@
 #include <runtime/ipu/movie_hw.h>
 #include <runtime/kernel/disc.h>
 #include <game/enhance/pool.h>
+#include <game/level/level_cache_load.h>
 
 #include <algorithm>
 #include <cmath>
@@ -58,7 +59,7 @@ void print_usage(const char* prog) {
               << "                     the game finds its data there wherever it is started from\n"
               << "  --forget           remove assets.txt next to this program (the game reads assets/ again), then stop\n"
               << "  --force            regenerate files that already exist\n"
-              << "  --step <step>      run one step only: elf, moby, world, flight, overlay (default: all)\n"
+              << "  --step <step>      run one step only: elf, moby, world, flight, overlay, cache (default: all)\n"
               << "  --level <n>        with --step moby or world: that level only (0 to 18, or title)\n"
               << "  --check-iso        only check the disc image, and make the game find it\n"
               << "  --compare-disc     read every sector through the image and through the disc's files (<data>/disc/),\n"
@@ -111,6 +112,7 @@ void print_status(const fs::path& root) {
     count_dir("World geometry and textures", root / "generated/mrp/world", 20);
     check_file("The flight between planets", root / "generated/mrp/moby/flight/textures.mrpt");
     count_dir("Overlay address maps", root / "generated/overlay_map", 20);
+    count_dir("The level cache (each planet's overlay tables; also made at a level's first load)", root / "generated/level_cache", 19);
     std::cout << "\n";
 }
 
@@ -414,8 +416,8 @@ int run_setup(int argc, char** argv) {
         }
     }
     if (step != "all" && step != "elf" && step != "moby" && step != "world" && step != "flight" &&
-        step != "overlay") {
-        std::cerr << "Unknown step: " << step << " (elf, moby, world, flight, overlay or all)\n";
+        step != "overlay" && step != "cache") {
+        std::cerr << "Unknown step: " << step << " (elf, moby, world, flight, overlay, cache or all)\n";
         return 1;
     }
     if (level_arg != "all" && ((step != "moby" && step != "world") || (level_arg != "title" && (level_arg.empty() || level_arg.find_first_not_of("0123456789") != std::string::npos ||
@@ -534,8 +536,8 @@ int run_setup(int argc, char** argv) {
     fs::create_directories(assets_path);
 
     auto want = [&](const char* s) { return step == "all" || step == s; };
-    auto begin = [](int n, const char* what) { std::cout << "[setup] [" << n << "/5] " << what << "..." << std::flush; };
-    auto skip = [](int n, const char* what) { std::cout << "[setup] [" << n << "/5] " << what << ": already there\n"; };
+    auto begin = [](int n, const char* what) { std::cout << "[setup] [" << n << "/6] " << what << "..." << std::flush; };
+    auto skip = [](int n, const char* what) { std::cout << "[setup] [" << n << "/6] " << what << ": already there\n"; };
 
     if (want("elf")) {
         const fs::path elf_dest = assets_path / "dumps" / val.disc->boot_file;
@@ -599,6 +601,14 @@ int run_setup(int argc, char** argv) {
             if (!overlay_maps(assets_path, iso_path, val.disc)) return 1;
             std::cout << " done\n";
         }
+    }
+
+    // (the overlays' tables, from the disc's files and the overlay maps: docs/formats/README.md, "The tables chunk"; a level
+    // whose file is missing or stale is made again at its first load, so a step that cannot run is not an error)
+    if (want("cache")) {
+        begin(6, "The level cache (the overlays' tables), level");
+        if (level_cache_setup_step(force)) std::cout << " done\n";
+        else std::cout << "\n[setup] Warning: the level cache is not complete: the game makes each planet's at its first load\n";
     }
 
     if (verbose) std::cout << "[setup] The game's data is ready in " << assets_path.string() << "\n";

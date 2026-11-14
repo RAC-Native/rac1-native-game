@@ -134,6 +134,7 @@ add_library(rac1_formats STATIC
     src/formats/wad_encode.cpp
     src/formats/host_meshes.cpp
     src/formats/level_cache.cpp
+    src/formats/overlay_tables.cpp
 )
 target_link_libraries(rac1_formats PUBLIC rac1_io)
 target_include_directories(rac1_formats PUBLIC src)
