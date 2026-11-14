@@ -428,7 +428,9 @@ void card_message(uint32_t buf, uint32_t& text, int32_t& a1, int32_t& a2, int32_
                 plain(0x4fab);
             } else {
                 a3 = 0x4fa8;
-                plain(0x4fac);
+                // region: the PAL builds (1.00 and 2.00) ask a Load Game (flag 4) for a card that holds the game's data
+                // (0x4fa7) instead of the free space a save needs (0x4fac) (PAL 1.00's 0x00201990)
+                plain(lw(0x0015ee90) != 0 && (f & 4) != 0 ? 0x4fa7 : 0x4fac);
             }
             break;
         case 5:
@@ -589,18 +591,30 @@ void screen_draw() {
             screen_frame(top, bot, left, right, frame_col);
 
             const uint32_t buf = ee_stack_alloc(0x50);
-            libc_sprintf(buf, OV(0x0015f520), {sxt64(static_cast<uint32_t>(sub_00203ad8(TXT(0x5240))))});
             const int32_t place = lw(0x0013f350 + 0x8c0);
-            if (place == 1) {
-                libc_sprintf(buf, OV(0x0015f528), {1ull});
-            } else if (place == 2) {
-                libc_sprintf(buf, OV(0x0015f530), {2ull});
-            } else if (place == 3) {
-                libc_sprintf(buf, OV(0x0015f538), {3ull});
+            if (lw(0x0015ee90) != 0) {
+                // region: the PAL builds (1.00 and 2.00) take the place's word from the level's text table, in the
+                // game's language: "%s %s" (their string at 0x15f520) with the place's text 0x5224 + place - 1 (the
+                // 5th the last) and 0x5240 ("Place"); they have none of the English formats below
+                // (the PAL builds' 0x002020e4 (1.00) and 0x00202944 (2.00): the same code, 2.00's text ids 5 higher)
+                int32_t i = place - 1;
+                if (!(i < 5)) i = 4;
+                const uint32_t word = static_cast<uint32_t>(sub_00203ad8(TXT(0x5224 + i)));
+                const uint32_t title = static_cast<uint32_t>(sub_00203ad8(TXT(0x5240)));
+                libc_sprintf(buf, OV(0x0015f520), {sxt64(word), sxt64(title)});
             } else {
-                libc_sprintf(buf, OV(0x0015f540), {sxt64(static_cast<uint32_t>(place))});
+                libc_sprintf(buf, OV(0x0015f520), {sxt64(static_cast<uint32_t>(sub_00203ad8(TXT(0x5240))))});
+                if (place == 1) {
+                    libc_sprintf(buf, OV(0x0015f528), {1ull});
+                } else if (place == 2) {
+                    libc_sprintf(buf, OV(0x0015f530), {2ull});
+                } else if (place == 3) {
+                    libc_sprintf(buf, OV(0x0015f538), {3ull});
+                } else {
+                    libc_sprintf(buf, OV(0x0015f540), {sxt64(static_cast<uint32_t>(place))});
+                }
+                sb(buf + 3, 0x20);
             }
-            sb(buf + 3, 0x20);
             const bool first_place = (lw(0x0013f350 + 0x8c0) == 1);
             text_centered_small(0x100, lw(OV(0x0015f4dc)), first_place ? col_hi : col_lo, buf, -1);
 

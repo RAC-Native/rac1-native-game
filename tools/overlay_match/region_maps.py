@@ -53,6 +53,7 @@ import argparse
 import bisect
 import collections
 import hashlib
+import itertools
 import re
 import struct
 import subprocess
@@ -425,9 +426,10 @@ def gap_window_entries(V, L, cr, ent, named, k=8):
 
 
 def literal_points(V, L, pts, lits, window=0x40):
-    """{a: b}: the ports' data literals `lits` (FR / L<n>_ADDR) that the runs of `pts` leave untranslated, placed by
-    their bytes: of the displacements of the runs below and above, the one under which the NTSC-U words a..a+window
-    equal the disc's (all of them there, not all zero, one displacement only). The objects only the ports name (the
+    """{a: b}: the ports' data literals `lits` (FR / L<n>_ADDR) that the runs of `pts` leave untranslated, or translate
+    to other bytes, placed by their bytes: of the displacements of the runs below and above (within `window` of the
+    run's own for one inside a run), the one under which the NTSC-U words a..a+window equal the disc's (all of them
+    there, not all zero, one displacement only); one with no bytes to compare just below a run, that run's. The objects only the ports name (the
     title's sound lists 0x186100 / 0x1861e0 / 0x1862b0 in the boot module of the 1.02 build, whose own title code
     changed: no matched code names them) get a point, and the run they sit in then covers them."""
     R = Region()
@@ -454,14 +456,24 @@ def literal_points(V, L, pts, lits, window=0x40):
             # 1.02 build put 8 bytes before the screens' box templates 0x1e7a50 / 0x1e7a68, which only screen_draw names
             # (a changed function): the run below's displacement read them 8 bytes early, #165)
             if len(cands) < 2 or not (0 < i < len(R.data)) or x <= R.data[i - 1][1]:
-                continue
+                # (inside a run, or past the last: the same, among the displacements within `window` of the run's. Only a
+                # port names some objects of a run, and the build moved them inside it: the 1.02 build put a 16-byte
+                # terminator before the credits' page times 0x173bf0, which only the credits' update names (a changed
+                # function), and two strings before the memory card's "%s/%s" 0x15ff30, which only the port names)
+                lo, hi = cur - x - window, cur - x + window
+                # (the object's own first 16 bytes must say it: two words not zero at least. Movies' two pointers 0x161348
+                # / 0x16134c, zero, then a word 0x1b7 that the 1.02 build moved 8 bytes further: the window alone put them
+                # 8 bytes off, where the disc's own movie code does not read them)
+                if sum(1 for k in range(0, 0x10, 4) if V.data_word(x + k)) < 2:
+                    continue
+            else:
+                lo, hi = min(cands), max(cands)
             for w in (window, window // 2, window // 4):
                 nw = [V.data_word(x + k) for k in range(0, w, 4)]
                 if None in nw or sum(1 for v in nw if v) < 4:
                     break
                 if [L.data_word(cur + k) for k in range(0, w, 4)] == nw:
                     break
-                lo, hi = min(cands), max(cands)
                 hits = [d for d in range(lo, hi + 1, 4) if [L.data_word(x + d + k) for k in range(0, w, 4)] == nw]
                 if len(hits) == 1:
                     out[x] = x + hits[0]
@@ -470,6 +482,14 @@ def literal_points(V, L, pts, lits, window=0x40):
                     break
             continue
         nw = [V.data_word(x + k) for k in range(0, window, 4)]
+        own = list(itertools.takewhile(lambda v: v != 0xCDCDCDCD, nw))  # (its bytes up to the build's fill)
+        if not any(own) and 0 <= i < len(R.data) and R.data[i][0] - x < window:
+            # (no bytes to compare, zero up to the fill or bss, just below a run (less than `window`): the run's
+            # displacement, as an object whose later field the matched code names. The screens' state 0x173040, which
+            # only the screens' code names (changed functions in the 1.02 build): its field +0x14 0x173054 starts the run
+            # above, +0x100; kept, the port's state lay 0x100 bytes short of the disc's)
+            out[x] = x + R.data[i][2]
+            continue
         if None in nw or not any(nw):
             continue
         hits = [d for d in sorted(cands) if [L.data_word(x + d + k) for k in range(0, window, 4)] == nw]

@@ -13,6 +13,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/pause_menu.h>
 #include <game/ovl/pause_menu_pages.h>
+#include <game/ovl/region_core.h>
 #include <game/ovl/screen_fade.h>
 #include <game/port_stubs.h>
 
@@ -93,7 +94,10 @@ void credits_update_tr(uint32_t) {
                 stream_reads_wait(1);
             }
             const int32_t cur_page = lh(OV(0x0015f622u));
-            if ((!mode_41 && cur_page == 0x27) || !(cur_page < 43)) {
+            // region: the 1.02 build (the PAL disc 2.00) has two pages more (its five more lines of credits): its update
+            // ends at the page 0x29 / before 0x2d (the PAL 2.00 build's 0x0029b078 / 0x0029b09c)
+            const bool b102 = region_core_moved();
+            if ((!mode_41 && cur_page == (b102 ? 0x29 : 0x27)) || !(cur_page < (b102 ? 0x2d : 43))) {
                 cr_299c00_tr(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
                 return;
             }
@@ -126,8 +130,10 @@ void credits_update_tr(uint32_t) {
                     sh(OV(0x0015f622u), 0x1bu);
                     sh(OV(0x0015f626u), 0x2238u);
                 }
-                if (lh(OV(0x0015f622u)) == 0x25) {
-                    sh(OV(0x0015f622u), 0x27u);
+                // region: the 1.02 build skips from the page 0x27 to 0x29 (two pages more before it)
+                const bool b102 = region_core_moved();
+                if (lh(OV(0x0015f622u)) == (b102 ? 0x27 : 0x25)) {
+                    sh(OV(0x0015f622u), b102 ? 0x29u : 0x27u);
                     sh(OV(0x0015f626u), 0x32b4u);
                 }
             }

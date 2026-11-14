@@ -323,10 +323,13 @@ void hero_anim_extra_load(int32_t first, int32_t count) {
 
 // At the level start (overlay entry): the hero panel's 20 extra sequences (the disc table
 // 0x137b80 + 0xf8: sector, count) read into the level buffer *(0x173e08) and put in the IOP stash
-// (0x293c58, dest 0x1602d0), their stash entries kept at M+0x148 (0x1b9e38, read by 0x284690).
+// (0x293c58, dest 0x1602d0), their stash entries kept at M+0x148 (0x1b9e38, read by 0x284690). (The table's own address,
+// not M + 0x148: the 1.02 build, the PAL disc 2.00, put 16 bytes into the menu's state before it, so there the entries
+// sit at M+0x158, where hero_anim_extra_load reads them; with M + 0x148 the extras of the hero panel's animations came
+// from the entries four places further on, #163)
 // orig: 0x00276078
 void menu_sequences_stash() {
-    uint32_t id = MS + 0x148;
+    uint32_t id = OV(0x001b9e38);
     uint32_t e = 0x00137b80 + 0xf8;
     const uint32_t buf = lwu(OV(0x00173e08));
     for (int32_t k = 0x13; k >= 0; --k) {
