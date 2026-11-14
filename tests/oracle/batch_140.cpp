@@ -1,7 +1,8 @@
 // Oracle batch 140 (task 0387, Rilgar part 2): what a play-through of Rilgar still reached unported, and the race's code on the race's
 // own state. Run with ORACLE_LEVEL=5 build/tests/ovl_oracle --batch 140 (Rilgar's own original against the relocated port; needs the
 // ISO); the shared functions also on level 0.
-//  - Rilgar's seven class draw callbacks (rilgar_part2_tr.cpp): 79 (two), 823, 838, 879, 1511, 1818;
+//  - Rilgar's seven class draw callbacks (rilgar_part2_tr.cpp; 823, 1511 and 1818's the shared ports since the re-glue R5): 79 (two),
+//    823, 838, 879, 1511, 1818;
 //  - class 775's update 0x2d7f38, particle type 0x43's update 0x274518 (veldin_extras.cpp, particle_types_tr.cpp);
 //  - the screens' drawing 0x2018c8 transliterated whole (screen_draw_tr.cpp) and screen_draw (screens.cpp: the hand-ported kinds and the
 //    hand-over to the transliteration), every kind;
@@ -19,6 +20,15 @@
 #include <game/ovl/rilgar_mobys.h>
 #include <game/ovl/rilgar_part2.h>
 #include <game/ovl/screen_draw_tr.h>
+#include <game/ovl/shared_class1511.h>
+#include <game/ovl/shared_class344.h>
+#include <game/ovl/shared_class823.h>
+#include <game/ovl/shared_hoverboard.h>
+#include <game/ovl/shared_particle_kinds.h>
+#include <game/ovl/shared_particles.h>
+#include <game/ovl/shared_race_hud.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_seas.h>
 #include <game/ovl/veldin_extras.h>
 
 #include <cstring>
@@ -133,9 +143,9 @@ void batch_140() {
         int cls;
     };
     const Cb cbs[] = {{"ril_class79_draw_a", 0x002d6f48, ril_class79_draw_a_l5, 79},   {"ril_class79_draw_b", 0x002d7920, ril_class79_draw_b_l5, 79},
-                      {"ril_class823_draw", 0x0030c220, ril_class823_draw_l5, 823},    {"ril_class838_draw", 0x0030de90, ril_class838_draw_l5, 838},
-                      {"ril_class879_draw", 0x00316070, ril_class879_draw_l5, 879},    {"ril_class1511_draw", 0x0031cf58, ril_class1511_draw_l5, 1511},
-                      {"ril_class1818_draw", 0x0031e730, ril_class1818_draw_l5, 1818}};
+                      {"ril_class823_draw", 0x0030c220, class823_draw, 823},    {"ril_class838_draw", 0x0030de90, ril_class838_draw_l5, 838},
+                      {"ril_class879_draw", 0x00316070, ril_class879_draw_l5, 879},    {"ril_class1511_draw", 0x0031cf58, class1511_draw, 1511},
+                      {"ril_class1818_draw", 0x0031e730, sandmouse_glow, 1818}};
     for (const Cb& cb : cbs) {
         if (g_oracle_level != 5) {
             r2check(cb.name, cb.addr, 0, Ret::None, nullptr, nullptr);
@@ -303,13 +313,13 @@ void batch_140() {
                     saved.assign(ee_get_ram_base(), ee_get_ram_base() + 0x02000000);
                     bool ok = true;
                     const uint32_t stack_top = ee_stack_ptr();
-                    try { ril_class980_update_l5(m); } catch (const std::exception&) { ok = false; }
+                    try { class344_update(m); } catch (const std::exception&) { ok = false; }
                     ee_stack_ptr() = stack_top;
                     std::memcpy(ee_get_ram_base(), saved.data(), saved.size());
                     if (ok) break;
                 }
                 return Args{{m}, {}};
-            }, [](A a) { ril_class980_update_l5(a.i[0]); return uint64_t{0}; });
+            }, [](A a) { class344_update(a.i[0]); return uint64_t{0}; });
         }
     }
 
@@ -319,13 +329,13 @@ void batch_140() {
         uint32_t fn;  // (the class update, L5)
         void (*port)(uint32_t);
     };
-    const Dumped racers[] = {{"race_racer717", 0x00307910, ril_class717_update_l5}, {"race_board439", 0x002f87a8, ril_class439_update_l5},
-                             {"race_ring1139", 0x0031abe0, ril_class1139_update_l5}, {"race_girl918", 0x00316ab8, ril_class918_update_l5}};
-    const Dumped huds[] = {{"race_hud_262ae8", 0x00262ae8, ril_cb_262ae8_l5}, {"race_hud_262b58", 0x00262b58, ril_cb_262b58_l5},
-                           {"race_hud_262f50", 0x00262f50, ril_cb_262f50_l5}, {"race_hud_2661a0", 0x002661a0, ril_cb_2661a0_l5},
-                           {"race_hud_2661e8", 0x002661e8, ril_cb_2661e8_l5}, {"race_hud_266320", 0x00266320, ril_cb_266320_l5},
-                           {"race_hud_266710", 0x00266710, ril_cb_266710_l5}, {"race_hud_29bda0", 0x0029bda0, ril_cb_29bda0_l5},
-                           {"race_hud_2a00f0", 0x002a00f0, ril_cb_2a00f0_l5}};
+    const Dumped racers[] = {{"race_racer717", 0x00307910, ril_class717_update_l5}, {"race_board439", 0x002f87a8, class439_update},
+                             {"race_ring1139", 0x0031abe0, class1139_update}, {"race_girl918", 0x00316ab8, ril_class918_update_l5}};
+    const Dumped huds[] = {{"race_hud_262ae8", 0x00262ae8, race_hud_start}, {"race_hud_262b58", 0x00262b58, race_meter_update},
+                           {"race_hud_262f50", 0x00262f50, ril_cb_262f50_l5}, {"race_hud_2661a0", 0x002661a0, race_hud_reset},
+                           {"race_hud_2661e8", 0x002661e8, race_hud_update}, {"race_hud_266320", 0x00266320, ril_cb_266320_l5},
+                           {"race_hud_266710", 0x00266710, race_hud_draw}, {"race_hud_29bda0", 0x0029bda0, bullet_particle_update},
+                           {"race_hud_2a00f0", 0x002a00f0, beam_particle_update}};
     // the collision's contact vectors' w lanes (vf25..vf29's, caller leftovers the port stores as 0, -0.0 in the original after the racers'
     // floor probe 0x2839d0 -> segment_collide 0x21e8d8: segment_collide 0x1efc70's note) and their copies in the floor lights' normals (as
     // batch 138's)

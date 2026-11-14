@@ -1,9 +1,7 @@
 0x0021e8d8: set32(v0, static_cast<uint32_t>(segment_collide(a0.w(), a1.w(), a2.w(), a3.w(), t0.w())));
 0x0022dc20: { int32_t t0 = a0.w() != 0 ? static_cast<int32_t>(lw_(a0.w())) : 0; set32(v0, static_cast<uint32_t>(timer_tick_i32(t0))); if (a0.w() != 0) sw_(a0.w(), static_cast<uint32_t>(t0)); }
-0x0024cee8: set32(v0, static_cast<uint32_t>(hero_set_state(a0.w(), static_cast<int32_t>(a1.w()))));
 0x00278aa0: set32(v0, static_cast<uint32_t>(moby_spawn(a0.w())));
 0x00279a30: moby_chain_point(a0.w(), a1.w(), a2.w());
-0x0027a558: moby_set_color_hi(a0.w(), static_cast<int64_t>(a1.lo), static_cast<int64_t>(a2.lo), static_cast<int64_t>(a3.lo));
 0x002839d0: fr[0] = floor_probe(fr[12], a0.w(), a1.w());
 0x002846d8: set32(v0, static_cast<uint32_t>(sub_0025a420(a0.w(), a1.w(), static_cast<int32_t>(a2.w()))));
 0x00284730: set32(v0, static_cast<uint32_t>(moby_hit_react(a0.w(), a1.w(), a2.w(), a3.w(), t0.w(), t1.w(), t2.w(), static_cast<int32_t>(t3.w()))));
@@ -11,3 +9,31 @@
 0x00286910: set32(v0, static_cast<uint32_t>(enemy_physics(a0.w(), a1.w())));
 0x0028f5c8: music_track_request(static_cast<int32_t>(a0.w()), a1.w());
 0x00283308: set32(v0, static_cast<uint32_t>(doomlet_259028(a0.w(), a1.w(), a2.w(), a3.w())));
+0x00228110: draw_hook_add_dc80_l2(a0.w(), a1.w());
+0x00282db8: walker_record_init_l1(a0.w());
+0x00283498: moby_group_set_state(static_cast<int32_t>(a0.w()), a1.w());
+0x002843a8: band_set(a0.w());
+0x002899f8: set32(v0, static_cast<uint32_t>(moby_largest(a0.w(), a1.w(), a2.w(), a3.w())));
+0x0028a858: v0.lo = static_cast<uint64_t>(moby_on_screen_l1(a0.w(), fr[12]));
+0x0028be78: path_links_build(a0.w(), static_cast<int32_t>(a1.w()), a2.w());
+0x0028c5f8: set32(v0, static_cast<uint32_t>(nov_276fe8_l1(a0.w(), static_cast<int32_t>(a1.w()), static_cast<int32_t>(a2.w()), a3.w(), t0.w(), t1.w(), fr[12])));
+0x002907b8: talker_word_set(a0.w(), a1.w());
+0x0029c180: set32(v0, static_cast<uint32_t>(nov_287158_l1(a0.w(), a1.w(), a2.w(), static_cast<int32_t>(a3.w()), fr[12], fr[13])));
+0x002a0260: set32(v0, static_cast<uint32_t>(path_nearest_l1(a0.w(), a1.w(), fr[12])));
+0x002af5e8: moby_data_note_l1(a0.w(), static_cast<int32_t>(a1.w()), a2.w(), static_cast<int32_t>(a3.w()), t0.w());
+0x002cc428: grid_records_reset(a0.w(), static_cast<int32_t>(a1.w()));
+0x002cc648: grid_point_fixed(a0.w(), a1.w());
+0x002cc8d0: grid_weights_scale(fr[12]);
+0x002cc9c0: nov_water_grid_update_l1(a0.w(), static_cast<int32_t>(a1.w()));
+0x002ce110: ocean_wave_table_set_80(a0.w(), fr[12]);
+0x00307010: hoverboard_boost_pads(a0.w(), 0x200u, 0x25au, 0x264u);  // (Rilgar's copy reads its pvars' offsets as constants)
+0x00317398: class_mates_mark_level(a0.w(), 0u);  // (Rilgar's copy: joint 0, a constant)
+0x00317fb8: class_mates_mark_fixed(a0.w(), 0u);  // (Rilgar's copy: joint 0, a constant)
+0x00318648: class344_throw(a0.w(), a1.w(), a2.w(), a3.w(), static_cast<int32_t>(t0.w()));
+0x00319208: floater_arrive_l5(a0.w());
+0x00319510: floater_next_stage(a0.w(), 0xb4u);  // (Rilgar's raft: its stage at pvars +0xb4)
+0x00319598: set32(v0, static_cast<uint32_t>(floater_find(a0.w(), static_cast<int32_t>(a1.w()), 0xb4u)));  // (Rilgar's key +0xb4)
+0x003195f8: set32(v0, static_cast<uint32_t>(floater_ride(a0.w(), 0xc0u, 0xacu)));  // (Rilgar's raft: along +0xc0, path +0xac)
+0x00319690: floater_message(a0.w(), 0xb6u, TXT(0x13a5), TXT(0x1398));  // (Rilgar's stage +0xb6, its first two messages)
+0x00319740: floater_bob(a0.w(), 0xc8u);  // (Rilgar's raft: its phases at pvars +0xc8)
+0x003198e8: floater_lay_path(a0.w(), 0xdcu);  // (Rilgar's raft: its path at pvars +0xdc)

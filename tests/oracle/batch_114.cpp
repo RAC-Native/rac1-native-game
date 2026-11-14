@@ -2,7 +2,7 @@
 // ORACLE_LEVEL=5 build/tests/ovl_oracle --batch 114 (needs the ISO). The subjects are the level's own
 // mobys of each class (placed by its gameplay data) after the first gameplay frame, perturbed; the
 // original is Rilgar's own function at its own address, the port the one registered for it (the
-// transliterations eudora_classes_tr_N.cpp, the hand ports eudora_*.cpp).
+// transliterations rilgar_classes_tr_N.cpp, the shared hand ports shared_*.cpp / novalis_*.cpp).
 
 #include "ovl_oracle.h"
 
@@ -13,6 +13,28 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
 #include <game/ovl/empty_class_updates.h>
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_camera.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/novalis_water.h>
+#include <game/ovl/shared_class1511.h>
+#include <game/ovl/shared_class258.h>
+#include <game/ovl/shared_class341.h>
+#include <game/ovl/shared_class344.h>
+#include <game/ovl/shared_class447.h>
+#include <game/ovl/shared_class604.h>
+#include <game/ovl/shared_class679.h>
+#include <game/ovl/shared_class823.h>
+#include <game/ovl/shared_class830.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_hoverboard.h>
+#include <game/ovl/shared_race_camera.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_seas.h>
+#include <game/ovl/shared_swingshot_target.h>
 #include <runtime/kernel/disc.h>
 
 #include <cmath>
@@ -163,7 +185,8 @@ void batch_114() {
         }
     }
 
-    // ---- the level's own classes (transliterated by tools/codegen/generate_all.py): the level's own mobys of each class, the first
+    // ---- the classes rilgar_mobys.cpp registers (the level's own transliterated by tools/codegen/generate_all.py and, since the
+    // re-glue R5, the shared ports that took the place of Rilgar's copies): the level's own mobys of each class, the first
     // update (state 0) done by the port, then a state, a hit, the hero near, the pvars' floats / counters moved as typed
     g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, 0x002763f8};  // (+ the level change request: the original would run the CD / movie path)
     struct TrCls { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t skip_states = 0; bool walk = false; };  // (the states that start a scene / a level change: the original runs the kernel / movie path for real)
@@ -171,24 +194,24 @@ void batch_114() {
         {"class35", 0x002d1688, ril_class35_update_l5, 0x0, false},
         {"class79", 0x002d7140, ril_class79_update_l5, 0x0, false},
         {"class133", 0x002dac80, ril_class133_update_l5, 0x0, false},
-        {"class258", 0x002f5200, ril_class258_update_l5, 0x0, false},
-        {"class341", 0x002f8080, ril_class341_update_l5, 0x0, false},
-        {"class439", 0x002f87a8, ril_class439_update_l5, 0x0, false},
-        {"class572", 0x002fecf0, ril_class572_update_l5, 0x0, false},
-        {"class604", 0x00301988, ril_class604_update_l5, 0x0, false},
-        {"class605", 0x00301cd8, ril_class605_update_l5, 0x0, false},
+        {"class258", 0x002f5200, class258_update, 0x0, false},
+        {"class341", 0x002f8080, class341_update, 0x0, false},
+        {"class439", 0x002f87a8, class439_update, 0x0, false},
+        {"class572", 0x002fecf0, amoeboid_update_l1, 0x0, false},
+        {"class604", 0x00301988, class604_update, 0x0, false},
+        {"class605", 0x00301cd8, zone_marker_update, 0x0, false},
         {"class623", 0x00301f48, ril_class623_update_l5, 0x0, false},
         {"class625", 0x00304320, ril_class625_update_l5, 0x0, false},
-        {"class679", 0x003067b8, ril_class679_update_l5, 0x0, false},
+        {"class679", 0x003067b8, class679_update, 0x0, false},
         {"class717", 0x00307910, ril_class717_update_l5, 0x0, false},
-        {"class758", 0x003098d8, ril_class758_update_l5, 0x0, false},
-        {"class805", 0x00309e40, ril_class805_update_l5, 0x0, false},
+        {"class758", 0x003098d8, swingshot_target_update, 0x0, false},
+        {"class805", 0x00309e40, spawn_point_update_l1, 0x0, false},
         {"class810", 0x0030bdd8, ril_class810_update_l5, 0x0, false},
         {"class812", 0x0030bf98, ril_class812_update_l5, 0x0, false},
-        {"class823", 0x0030c0a8, ril_class823_update_l5, 0x0, false},
-        {"class830", 0x0030c5b0, ril_class830_update_l5, 0x0, false},
+        {"class823", 0x0030c0a8, class823_update, 0x0, false},
+        {"class830", 0x0030c5b0, class830_update, 0x0, false},
         {"class831", 0x0030ca80, ril_class831_update_l5, 0x0, false},
-        {"class832", 0x0030dac8, ril_class832_update_l5, 0x0, false},
+        {"class832", 0x0030dac8, class832_update, 0x0, false},
         {"class838", 0x0030dc68, ril_class838_update_l5, 0x0, false},
         {"class841", 0x0030e1f8, ril_class841_update_l5, 0x0, false},
         {"class843", 0x0030e508, ril_class843_update_l5, 0x0, false},
@@ -202,20 +225,20 @@ void batch_114() {
         {"class895", 0x003166a0, ril_class895_update_l5, 0x0, false},
         {"class918", 0x00316ab8, ril_class918_update_l5, 0x0, false},
         {"class919", 0x00317470, ril_class919_update_l5, 0x0, false},
-        {"class920", 0x00317aa0, ril_class920_update_l5, 0x0, false},
+        {"class920", 0x00317aa0, class447_update, 0x0, false},
         {"class925", 0x003180a0, ril_class925_update_l5, 0x0, false},
-        {"class980", 0x003186f8, ril_class980_update_l5, 0x0, false},
+        {"class980", 0x003186f8, class344_update, 0x0, false},
         {"class982", 0x00318a68, ril_class982_update_l5, 0x0, false},
         {"class984", 0x00318b98, ril_class984_update_l5, 0x0, false},
         {"class998", 0x00318c78, ril_class998_update_l5, 0x78, false},
         {"class1099", 0x00319c28, ril_class1099_update_l5, 0x0, false},
-        {"class1134", 0x00319c60, ril_class1134_update_l5, 0x6, false},
-        {"class1139", 0x0031abe0, ril_class1139_update_l5, 0x0, false},
+        {"class1134", 0x00319c60, gold_bolt_update, 0x6, false},
+        {"class1139", 0x0031abe0, class1139_update, 0x0, false},
         {"class1347", 0x0031bf40, ril_class1347_update_l5, 0x0, false},
-        {"class1511", 0x0031c8e0, ril_class1511_update_l5, 0x0, false},
+        {"class1511", 0x0031c8e0, class1511_update, 0x0, false},
         {"class1550", 0x0031d5c8, ril_class1550_update_l5, 0x0, false},
-        {"class1633", 0x0031d760, ril_class1633_update_l5, 0x0, false},
-        {"class1818", 0x0031e808, ril_class1818_update_l5, 0x0, false},
+        {"class1633", 0x0031d760, class1633_update, 0x0, false},
+        {"class1818", 0x0031e808, sandmouse_update, 0x0, false},
     };
     auto generic_prep = [give_hit, hero_near](uint32_t m, int st, int pass, void (*fn)(uint32_t), bool walk = false) {
         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -284,8 +307,8 @@ void batch_114() {
         g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, 0x002763f8};
         struct Cb { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t owner_update; uint32_t hook_slot; };
         static const Cb cbs[] = {
-            {"cb_30d678", 0x0030d678, ril_cb_30d678_l5, 0x0030ca80, 0},  // class 831's callback
-            {"cb_30d8b8", 0x0030d8b8, ril_cb_30d8b8_l5, 0x0030dac8, 0},  // class 832's callback
+            {"cb_30d678", 0x0030d678, nov_water_751_draw_l1, 0x0030ca80, 0},  // class 831's callback
+            {"cb_30d8b8", 0x0030d8b8, class832_draw, 0x0030dac8, 0},  // class 832's callback
             // (the class hook +8, 0x300b98, takes (moby, a position pointer, a target moby, a float): not checked here, unproved)
             {"hook_c", 0x00300be8, [](uint32_t m) { ril_carry_hookc_l5(m, 0, 0, 0.0f); }, 0, 0xc},  // the class hook +0xc (hand-written; as its transliteration was called)
         };
@@ -386,13 +409,13 @@ void batch_114() {
             static int k = 0;
             auto name = [&](const char* what) { char* p = nm[k++ & 3]; std::snprintf(p, 48, "cam_type%d_%s", type, what); return static_cast<const char*>(p); };
             l5check(name("accept"), ct.accept, 300, Ret::Int32, [cam_setup, type] { uint32_t other = 0; const uint32_t cam = cam_setup(type, true, &other); return Args{{cam, other}, {}}; },
-                    [type](A a) { return r32(a.i[0] != 0 ? (type == 3 ? ril_cam_type3_accept_u : ril_cam_type8_accept_u)(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0 : 0u); });
+                    [](A a) { return r32(a.i[0] != 0 ? static_cast<uint32_t>(zero_stub()) : 0u); });
             l5check(name("init"), ct.init, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) (type == 3 ? ril_cam_type3_init_l5 : ril_cam_type8_init_l5)(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) (type == 3 ? cam_type3_init : race_cam_init)(a.i[0]); return uint64_t{0}; });
             l5check(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) (type == 3 ? ril_cam_type3_update_l5 : ril_cam_type8_update_l5)(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) (type == 3 ? cam_type3_update : race_cam_update)(a.i[0]); return uint64_t{0}; });
             l5check(name("exit"), ct.exit, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
-                    [type](A a) { if (a.i[0] != 0) (type == 3 ? ril_cam_type3_exit_l5 : empty_update)(a.i[0]); return uint64_t{0}; });
+                    [type](A a) { if (a.i[0] != 0) (type == 3 ? cam_type3_exit : empty_update)(a.i[0]); return uint64_t{0}; });
         }
     }
 
@@ -410,8 +433,8 @@ void batch_114() {
             wf(0x001621a4, rf(0, 0.5f));  // $gp - 0x4a5c: the frame step the callback counts down by
             w32(OV(0x0015ef4c), u(ri(0, 14)));
         };
-        l5check("cam0_hook", 0x00328f80, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { ril_cam0_hook_l5(0); return uint64_t{0}; });
-        l5check("cam_callback", 0x00328fe0, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { ril_cam_callback_l5(0); return uint64_t{0}; });
+        l5check("cam0_hook", 0x00328f80, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_hook(0); return uint64_t{0}; });
+        l5check("cam_callback", 0x00328fe0, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_callback(0); return uint64_t{0}; });
     }
 
     // ---- Rilgar's class hooks: +4 (0x300b48), +0x10 (0x300c18: pvars + 0xc0; the matcher pairs it with class 749's 0x2d5800), and the dispatcher on it

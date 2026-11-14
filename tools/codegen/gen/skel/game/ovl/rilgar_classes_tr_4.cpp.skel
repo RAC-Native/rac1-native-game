@@ -38,101 +38,13 @@ namespace rac1 {
 using namespace eer;
 using namespace vu0m;
 
-//@gen ril_31dad0_l5
-
-//@gen ril_31db28_l5
-
-//@gen ril_31d650_l5
-
-//@gen ril_31dbd0_l5
-
-//@gen ril_31deb8_l5
-
-//@gen ril_31e148_l5
-
-//@gen ril_29f5f0_l5
-
-//@gen ril_31e668_l5
-
-//@gen ril_31e798_l5
-
-//@gen ril_class1818_update_l5
-
-//@gen ril_cam_type3_accept_u
-
-//@gen ril_325340_l5
-
-//@gen ril_cam_type3_init_l5
-
-//@gen ril_cam_type3_update_l5
-
-//@gen ril_cam_type3_exit_l5
-
-//@gen ril_cam_type8_accept_u
-
-//@gen ril_3294c0_l5
-
-//@gen ril_329358_l5
-
-//@gen ril_329540_l5
-
-//@gen ril_3296e0_l5
-
-//@gen ril_cam_type8_init_l5
-
-//@gen ril_3298d8_l5
-
-//@gen ril_329ce8_l5
-
-//@gen ril_cam_type8_update_l5
-
-//@gen ril_219d88_l5
-
-//@gen ril_cam0_hook_l5
-
-//@gen ril_cam_callback_l5
-
 //@gen ril_hook_300b48_u
 
 //@gen ril_hook_10_u
 
-//@gen ril_276da8_l5
-
-//@gen ril_2ccab0_l5
-
-//@gen ril_2cd5d0_l5
-
-//@gen ril_277338_l5
-
-//@gen ril_2cd678_l5
-
-//@gen ril_22e700_l5
-
-//@gen ril_2cd960_l5
-
-//@gen ril_2cdb90_l5
-
-//@gen ril_cb_30d678_l5
-
-//@gen ril_cb_30d8b8_l5
-
-//@gen ril_cb_262ae8_l5
-
-//@gen ril_cb_262b58_l5
-
 //@gen ril_cb_262f50_l5
 
-//@gen ril_cb_2661a0_l5
-
-//@gen ril_cb_2661e8_l5
-
 //@gen ril_cb_266320_l5
-
-//@gen ril_cb_266710_l5
-
-//@gen ril_cb_29bda0_l5
-
-//@gen ril_cb_2a00f0_l5
 
 
 }  // namespace rac1
