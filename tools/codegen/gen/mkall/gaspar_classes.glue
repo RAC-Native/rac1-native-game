@@ -1,1 +1,12 @@
 0x002aa7f8: set32(v0, sound_slot_volume_set(static_cast<int32_t>(a0.w()), a1.w()));
+0x0021d250: nov_prim_list2_l1(static_cast<int32_t>(a0.w()), a1.w(), a2.w(), a3.w(), t0.w(), t1.w());
+0x0021ee30: ari_spr_dma_to_l2(a0.w(), a1.w(), a2.w());
+0x0026cce8: ari_ocean_cells_clip_l2(a0.w());
+0x0026d020: ari_ocean_cells_draw_l2(a0.w());
+0x0027fe88: point_turned(a0.w(), a1.w(), a2.w(), a3.w(), t0.w());
+0x00294ae0: set32(v0, static_cast<uint32_t>(path_point_ahead(a0.w(), a1.w(), a2.w(), static_cast<int32_t>(a3.w()), static_cast<int32_t>(t0.w()), fr[12])));
+0x002c1810: ari_ocean_end_body_l2(a0.w());
+0x002efda8: set32(v0, static_cast<uint32_t>(spawn_like_gaspar(a0.w(), a1.w())));
+0x00303348: set32(v0, static_cast<uint32_t>(moby_hero_on_l1(a0.w())));
+0x00307ba8: set32(v0, static_cast<uint32_t>(shell_launch(a0.w(), a1.w(), a2.w(), static_cast<int32_t>(a3.w()))));
+0x00312888: camera_flag_88();

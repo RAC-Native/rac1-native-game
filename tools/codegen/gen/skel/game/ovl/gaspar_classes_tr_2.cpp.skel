@@ -35,6 +35,7 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/lib/libgcc_fp.h>
+#include <game/ovl/shared_small.h>
 
 namespace rac1 {
 
@@ -43,57 +44,13 @@ using namespace vu0m;
 
 //@gen gas_class313_update_l9
 
-//@gen gas_218810_l9
-
-//@gen gas_2c11a0_l9
-
-//@gen gas_class317_update_l9
-
 //@gen gas_class320_update_l9
 
 //@gen gas_class417_update_l9
 
-//@gen gas_class567_update_l9
-
-//@gen gas_class605_update_l9
-
-//@gen gas_27fe88_l9
-
 //@gen gas_class664_update_l9
 
-//@gen gas_3141e8_l9
-
-//@gen gas_3142d8_l9
-
-//@gen gas_class803_update_l9
-
-//@gen gas_class805_update_l9
-
-//@gen gas_class832_update_l9
-
 //@gen gas_class1000_update_l9
-
-//@gen gas_294a10_l9
-
-//@gen gas_301d50_l9
-
-//@gen gas_308e00_l9
-
-//@gen gas_class1023_update_l9
-
-//@gen gas_302ba0_l9
-
-//@gen gas_303040_l9
-
-//@gen gas_3029d0_l9
-
-//@gen gas_302ac0_l9
-
-//@gen gas_302e30_l9
-
-//@gen gas_class1134_update_l9
-
-//@gen gas_303348_l9
 
 //@gen gas_class1150_update_l9
 
@@ -104,11 +61,5 @@ using namespace vu0m;
 //@gen gas_3041d0_l9
 
 //@gen gas_class1181_update_l9
-
-//@gen gas_2efda8_l9
-
-//@gen gas_307ba8_l9
-
-//@gen gas_312888_l9
 
 }  // namespace rac1

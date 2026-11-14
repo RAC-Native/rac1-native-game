@@ -6,6 +6,24 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/shared_bg_ships.h>
+#include <game/ovl/shared_class1023.h>
+#include <game/ovl/shared_class156.h>
+#include <game/ovl/shared_class1844.h>
+#include <game/ovl/shared_class1885.h>
+#include <game/ovl/shared_class1886.h>
+#include <game/ovl/shared_class193.h>
+#include <game/ovl/shared_class258.h>
+#include <game/ovl/shared_class52.h>
+#include <game/ovl/shared_class567.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_seas.h>
+#include <game/ovl/shared_shell.h>
+#include <game/ovl/shared_swingshot_target.h>
+#include <game/ovl/shared_tracer.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/gaspar_mobys.h>
 #include <game/ovl/ovl_common.h>
@@ -172,45 +190,45 @@ void batch_121() {
     struct TrCls { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t skip_states = 0; bool walk = false; };  // (the states that start a scene / a level change: the original runs the kernel / movie path for real)
     static const TrCls trcls[] = {
         {"class1182", 0x002c26c8, gas_class1182_update_l9, 0x0, false},
-        {"class52", 0x002c5990, gas_class52_update_l9, 0x0, false},
-        {"class156", 0x002d0d88, gas_class156_update_l9, 0x0, false},
-        {"class193", 0x002e27d8, gas_class193_update_l9, 0x0, false},
-        {"class258", 0x002ea338, gas_class258_update_l9, 0x0, false},
+        {"class52", 0x002c5990, class52_update, 0x0, false},
+        {"class156", 0x002d0d88, class156_update, 0x0, false},
+        {"class193", 0x002e27d8, class193_update, 0x0, false},
+        {"class258", 0x002ea338, class258_update, 0x0, false},
         {"class263", 0x002eb970, gas_class263_update_l9, 0x0, false},
         {"class276", 0x002edc30, gas_class276_update_l9, 0x0, false},
         {"class279", 0x002ee110, gas_class279_update_l9, 0x0, false},
         {"class284", 0x002ee428, empty_update, 0x0, false},
         {"class313", 0x002ef430, gas_class313_update_l9, 0x0, false},
-        {"class317", 0x002ef7f8, gas_class317_update_l9, 0x0, false},
+        {"class317", 0x002ef7f8, sea_update, 0x0, false},
         {"class320", 0x002ef9b0, gas_class320_update_l9, 0x0, false},
         {"class324", 0x002efe40, empty_update, 0x0, false},
         {"class417", 0x002f0040, gas_class417_update_l9, 0x0, false},
-        {"class567", 0x002f6678, gas_class567_update_l9, 0x0, false},
-        {"class605", 0x002f7658, gas_class605_update_l9, 0x0, false},
+        {"class567", 0x002f6678, class567_update, 0x0, false},
+        {"class605", 0x002f7658, zone_marker_update, 0x0, false},
         {"class664", 0x002f86a0, gas_class664_update_l9, 0x0, false},
-        {"class803", 0x002f8c70, gas_class803_update_l9, 0x0, false},
-        {"class805", 0x002f90e0, gas_class805_update_l9, 0x0, false},
-        {"class832", 0x002fb288, gas_class832_update_l9, 0x0, false},
+        {"class803", 0x002f8c70, swingshot_target_update, 0x0, false},
+        {"class805", 0x002f90e0, spawn_point_update_l1, 0x0, false},
+        {"class832", 0x002fb288, class832_update, 0x0, false},
         {"class1000", 0x00300888, gas_class1000_update_l9, 0x0, false},
-        {"class1023", 0x003009d0, gas_class1023_update_l9, 0x0, false},
-        {"class1134", 0x003022f0, gas_class1134_update_l9, 0x4, false},
+        {"class1023", 0x003009d0, class1023_update, 0x0, false},
+        {"class1134", 0x003022f0, gold_bolt_update, 0x4, false},
         {"class1150", 0x003033a0, gas_class1150_update_l9, 0x0, false},
         {"class1172", 0x00303d10, gas_class1172_update_l9, 0x0, false},
         {"class1181", 0x00304360, gas_class1181_update_l9, 0x0, false},
         {"class1201", 0x00304c80, gas_class1201_update_l9, 0x0, false},
         {"class1206", 0x00305a28, gas_class1206_update_l9, 0x0, false},
-        {"class1212", 0x00305dc0, gas_class1212_update_l9, 0x0, false},
-        {"class1213", 0x00306720, gas_class1213_update_l9, 0x0, false},
-        {"class1258", 0x00307d68, gas_class1258_update_l9, 0x0, false},
+        {"class1212", 0x00305dc0, bg_ship1_update, 0x0, false},
+        {"class1213", 0x00306720, bg_ship2_update, 0x0, false},
+        {"class1258", 0x00307d68, shell_update, 0x0, false},
         {"class1285", 0x003082d8, gas_class1285_update_l9, 0x0, false},
-        {"class1292", 0x00308f08, gas_class1292_update_l9, 0x0, false},
+        {"class1292", 0x00308f08, tracer_update, 0x0, false},
         {"class1293", 0x003091b0, gas_class1293_update_l9, 0x0, false},
         {"class1300", 0x00309828, empty_update, 0x0, false},
         {"class1766", 0x00309c08, gas_class1766_update_l9, 0x0, false},
-        {"class1849", 0x0030a678, gas_class1849_update_l9, 0x0, false},
+        {"class1849", 0x0030a678, class1844_update, 0x0, false},
         {"class1850", 0x0030a770, empty_update, 0x0, false},
-        {"class1885", 0x0030ab80, gas_class1885_update_l9, 0x0, false},
-        {"class1886", 0x0030b3b0, gas_class1886_update_l9, 0x0, false},
+        {"class1885", 0x0030ab80, class1885_update, 0x0, false},
+        {"class1886", 0x0030b3b0, class1886_update, 0x0, false},
     };
     auto generic_prep = [give_hit, hero_near](uint32_t m, int st, int pass, void (*fn)(uint32_t), bool walk = false) {
         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -358,8 +376,8 @@ void batch_121() {
             wf(0x00161f3c, rf(0, 0.5f));  // $gp - 0x4cc4: the frame step the callback counts down by
             w32(OV(0x0015ef4c), u(ri(0, 14)));  // the queue's count (it holds up to 16)
         };
-        l9check("cam0_hook", 0x00314220, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { gas_cam0_hook_l9(0); return uint64_t{0}; });
-        l9check("cam_callback", 0x00314280, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { gas_cam_callback_l9(0); return uint64_t{0}; });
+        l9check("cam0_hook", 0x00314220, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_hook(0); return uint64_t{0}; });
+        l9check("cam_callback", 0x00314280, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_callback(0); return uint64_t{0}; });
     }
 
     // ---- class 263's random states add vectors made of arbitrary words: the Veldin port vec3_add against the original on RAW random float words (any exponent, incl. 255: a VU0 operand with

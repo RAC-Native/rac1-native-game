@@ -40,6 +40,8 @@
 #include <game/ovl/quad_draw.h>
 #include <game/ovl/glows.h>
 #include <game/ovl/shadows.h>
+#include <game/ovl/aridia_ocean.h>
+#include <game/ovl/novalis_water.h>
 
 namespace rac1 {
 
@@ -49,34 +51,18 @@ using namespace vu0m;
 
 //@gen gas_21baf8_l9
 
-//@gen gas_21d250_l9
-
 //@gen gas_26d240_l9
 
 //@gen gas_21e560_l9
 
 //@gen gas_21e8c0_l9
 
-//@gen gas_21ee30_l9
-
-//@gen gas_26cce8_l9
-
-//@gen gas_26d020_l9
-
 //@gen gas_2c1220_l9
-
-//@gen gas_2c1810_l9
 
 //@gen gas_2c1920_l9
 
 //@gen gas_2c1978_l9
 
 //@gen gas_class317_draw_l9
-
-//@gen gas_class832_draw_l9
-
-//@gen gas_class1212_draw_l9
-
-//@gen gas_class1213_draw_l9
 
 }  // namespace rac1

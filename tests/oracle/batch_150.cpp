@@ -16,6 +16,8 @@
 // reaches (dead code in the shipped game), so it runs on a live class-452 moby of another dump.
 #include "ovl_oracle.h"
 
+#include <game/ovl/aridia_ocean.h>
+#include <game/ovl/shared_class832.h>
 #include <game/ovl/gaspar_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -83,9 +85,9 @@ struct Cb {
 };
 const Cb kCbs[] = {
     {"gas_class317_draw", 9, 0x002ef750, "ships_L9", 317, gas_class317_draw_l9},
-    {"gas_class832_draw", 9, 0x002fb078, "visibomb_L9", 832, gas_class832_draw_l9},
-    {"gas_class1212_draw", 9, 0x00305c10, "ships_L9", 1212, gas_class1212_draw_l9},
-    {"gas_class1213_draw", 9, 0x00306570, "ships_L9", 1213, gas_class1213_draw_l9},
+    {"gas_class832_draw", 9, 0x002fb078, "visibomb_L9", 832, class832_draw},
+    {"gas_class1212_draw", 9, 0x00305c10, "ships_L9", 1212, ari_bg_ship1_glow_draw_l2},
+    {"gas_class1213_draw", 9, 0x00306570, "ships_L9", 1213, ari_bg_ship2_glow_draw_l2},
 };
 }  // namespace
 

@@ -1,4 +1,5 @@
 // See gaspar_hooks.h.
+#include <game/ovl/kerwan_camera.h>
 #include <game/ovl/gaspar_hooks.h>
 #include <game/ovl/sound_emitter.h>
 
@@ -16,14 +17,14 @@ bool gaspar_sound_emitter_call(uint32_t fn, uint32_t em) {
 // orig: (host) see gaspar_hooks.h
 bool gaspar_camera_hook_call(uint32_t fn) {
     if (fn != L9_ADDR(0x00314220)) return false;
-    gas_cam0_hook_l9(0);
+    cam0_level_hook(0);
     return true;
 }
 
 // orig: (host) see gaspar_hooks.h
 bool gaspar_camera_callback_call(uint32_t fn) {
     if (fn != L9_ADDR(0x00314280)) return false;
-    gas_cam_callback_l9(0);
+    cam0_level_callback(0);
     return true;
 }
 

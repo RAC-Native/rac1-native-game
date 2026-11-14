@@ -35,6 +35,9 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/lib/libgcc_fp.h>
+#include <game/ovl/shared_small.h>
+#include <game/ovl/shared_shell.h>
+#include <game/ovl/shared_spawns.h>
 
 namespace rac1 {
 
@@ -45,27 +48,9 @@ using namespace vu0m;
 
 //@gen gas_class1206_update_l9
 
-//@gen gas_305cf8_l9
-
-//@gen gas_306338_l9
-
-//@gen gas_class1212_update_l9
-
-//@gen gas_306658_l9
-
-//@gen gas_306d28_l9
-
-//@gen gas_306f60_l9
-
-//@gen gas_class1213_update_l9
-
-//@gen gas_class1258_update_l9
-
 //@gen gas_308220_l9
 
 //@gen gas_class1285_update_l9
-
-//@gen gas_class1292_update_l9
 
 //@gen gas_class1293_update_l9
 
@@ -74,32 +59,6 @@ using namespace vu0m;
 //@gen gas_30a298_l9
 
 //@gen gas_class1766_update_l9
-
-//@gen gas_282b10_l9
-
-//@gen gas_283160_l9
-
-//@gen gas_class1849_update_l9
-
-//@gen gas_277688_l9
-
-//@gen gas_277758_l9
-
-//@gen gas_30a9e8_l9
-
-//@gen gas_278c78_l9
-
-//@gen gas_30aae0_l9
-
-//@gen gas_30b218_l9
-
-//@gen gas_class1885_update_l9
-
-//@gen gas_30a778_l9
-
-//@gen gas_30b350_l9
-
-//@gen gas_class1886_update_l9
 
 //@gen gas_hook_2e2680_u
 
@@ -110,11 +69,5 @@ using namespace vu0m;
 //@gen gas_hook_2e2770_u
 
 //@gen gas_hook_2e27a0_u
-
-//@gen gas_20a488_l9
-
-//@gen gas_cam0_hook_l9
-
-//@gen gas_cam_callback_l9
 
 }  // namespace rac1

@@ -36,6 +36,7 @@
 #include <game/port_stubs.h>
 #include <game/lib/libgcc_fp.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/shared_path_ahead.h>
 
 namespace rac1 {
 
@@ -47,34 +48,6 @@ using namespace vu0m;
 //@gen gas_2c2610_l9
 
 //@gen gas_class1182_update_l9
-
-//@gen gas_2785a0_l9
-
-//@gen gas_278d00_l9
-
-//@gen gas_2c6230_l9
-
-//@gen gas_class52_update_l9
-
-//@gen gas_28a428_l9
-
-//@gen gas_2d0b18_l9
-
-//@gen gas_2d0b20_l9
-
-//@gen gas_class156_update_l9
-
-//@gen gas_294cb0_l9
-
-//@gen gas_class193_update_l9
-
-//@gen gas_2ea098_l9
-
-//@gen gas_2ea2c8_l9
-
-//@gen gas_class258_update_l9
-
-//@gen gas_294ae0_l9
 
 //@gen gas_2ea778_l9
 
