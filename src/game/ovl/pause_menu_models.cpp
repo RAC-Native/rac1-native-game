@@ -1,6 +1,7 @@
 // Ported overlay code: the 3D item panels of the Weapons / Gadgets pages (see pause_menu_pages.h
 //): the focused item's model (and its ammo's) spawned as menu
 // mobys turning in front of the menu camera, the ammo count text; the hero panel's draw.
+#include <game/enhance/fixes102.h>
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl_common.h>
@@ -56,12 +57,15 @@ int32_t menu_model_focus_in(uint32_t w) {
     return 0;
 }
 
-// An item panel's focus out: its mobys freed.
+// An item panel's focus out: its mobys freed (the original frees the first one twice: the second, +0x48, stays until
+// the menu frees its mobys).
 // orig: 0x0027bba0
 int32_t menu_model_focus_out(uint32_t w) {
     const uint32_t a = static_cast<uint32_t>(menu_moby_free(lwu(w + 0x44)));
+    // (1.02 Fixes, fix 30: the 1.02 build, 2.00 0x0027cb80, frees the second moby +0x48, not the first call's result)
+    const uint32_t second = fixes102_on(30) ? lwu(w + 0x48) : a;
     sw(w + 0x44, a);
-    sw(w + 0x48, static_cast<uint32_t>(menu_moby_free(a)));
+    sw(w + 0x48, static_cast<uint32_t>(menu_moby_free(second)));
     return 0;
 }
 

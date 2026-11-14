@@ -1,6 +1,7 @@
 // Ported overlay code: the glows (see glows.h).
 #include <game/ovl/glows.h>
 
+#include <game/enhance/fixes102.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
@@ -104,6 +105,8 @@ void hero_glows_draw(uint32_t) {
     }
     if (item != 1) return;
     float target = lh(P + 0x22fc) != 0 ? u2f(0x3dcfdf3cu) : u2f(0x3d8f5c29u);
+    // (1.02 Fixes, fix 29: the 1.02 build, 2.00 0x0020857c / 0x00208590, makes the glow a seventh smaller: 0.06, 0.087)
+    if (fixes102_on(29)) target = lh(P + 0x22fc) != 0 ? u2f(0x3db22d0eu) : u2f(0x3d75c28fu);
     if (lbu(0x0015edb3) != 0) {
         swc1(P + 0x1d88, fpu_sub(lwc1(P + 0x1d88), u2f(0x3c23d70au)));
         target = fpu_mul(target, u2f(0x3fd9999au));

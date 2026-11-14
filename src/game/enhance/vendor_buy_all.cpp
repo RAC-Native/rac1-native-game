@@ -10,7 +10,7 @@
 //   the items' HUD table 0x179ac0 (0x4c bytes an item): +0x38 the tile's HUD animation (frame 2: the ammo tile);
 //   the ammo 0x13d428[item], the ammo bought 0x13dd70[item], the bolts 0x15ed98;
 //   0x161e18 / 0x161e10: the screens busy (an opening, the quantity box): the list does not move; 0x161e30 the pad's
-//     buttons of the frame before (a press counts once); 0x161e38 the cursor moved (the hologram made again).
+//     buttons of the frame before (pre-1.02 only; vendor::button_pressed handles the build); 0x161e38 the cursor moved (the hologram made again).
 #include <game/enhance/vendor_buy_all.h>
 
 #include <game/enhance/advanced.h>
@@ -36,7 +36,6 @@ constexpr OvConst<0x00161e18u> BUSY_OPEN{};
 constexpr OvConst<0x00161e10u> BUSY_QUANTITY{};
 constexpr OvConst<0x00161e38u> CURSOR_MOVED{};
 constexpr uint32_t AMMO = 0x0013d428, AMMO_BOUGHT = 0x0013dd70, BOLTS = 0x0015ed98;
-constexpr uint32_t PAD = 0x0013c940;
 constexpr uint32_t CROSS = 0x40;
 constexpr uint32_t MARK = 0x4c4c41u;  // the entry's +8 ("ALL"): any word but 0
 constexpr int32_t MAX_ENTRIES = 16;

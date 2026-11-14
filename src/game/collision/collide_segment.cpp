@@ -1,6 +1,7 @@
 // The collision module (moved from ovl_1e_1f.cpp unchanged): segment_collide 0x1efc70, the nearest hit of a segment with
 // the level's collision and the mobys, and its cache of the mobys' collision meshes (RAC1_PERF_COLL_MESH).
 #include <game/collision/collide_common.h>
+#include <game/bridge/guard.h>
 #include <cstdio>
 #include <vector>
 
@@ -44,6 +45,7 @@ MeshCache& mesh_cache() {
 // position) and returns 1; a moby hit flagged 0x4000 also gets a contact record (with `rec`).
 // orig: 0x001efc70
 int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, uint32_t ignore, const uint32_t* rec) {
+    const SprScope spr_scope(SprScopeId::SegmentCollide);  // (RAC1_BRIDGE_GUARD=spr: the scratchpad's data flow, src/game/bridge/guard.h)
     const uint32_t SPR = 0x70000000u, OUTB = OV(0x00173e40), GRID = OV(0x0019b7e0);
     const int32_t q0 = lw(OUTB + 0x10);
     const L3 s0f = L3{start.x, start.y, start.z}, e0f = L3{end.x, end.y, end.z};

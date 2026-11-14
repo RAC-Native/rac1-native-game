@@ -2,6 +2,7 @@
 // nearest contact in (and the host's reset / save / restore of them), and sphere_mesh_collide 0x1f3170, a sphere against
 // the hero's collision mesh.
 #include <game/collision/collide_common.h>
+#include <game/bridge/guard.h>
 
 namespace rac1 {
 using namespace collide_detail;
@@ -30,6 +31,7 @@ void collide_vu_restore(const float in[15]) { std::memcpy(&g_vu, in, sizeof(VuCo
 // nearest hit goes to 0x173e40 (+0x20 point, +0x30 pushed-out pos, +0x40 normal, +0x50.. triangle,
 // +0x1c 0x1000 | flags). Returns 1 on a hit. vf25..vf29 w lanes (caller leftovers) are stored as 0.
 int32_t sphere_mesh_collide(uint32_t pos, float radius) {
+    const SprScope spr_scope(SprScopeId::SphereMeshCollide);  // (RAC1_BRIDGE_GUARD=spr: the scratchpad's data flow, src/game/bridge/guard.h)
     constexpr uint32_t SPR = 0x70000000u;
     uint32_t t8 = lwu(OV(0x00166c00u - 0x75e8));
     if (t8 == 0) return 0;

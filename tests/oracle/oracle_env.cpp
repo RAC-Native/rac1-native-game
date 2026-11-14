@@ -51,6 +51,42 @@ static const int bad_max = std::getenv("ORACLE_BAD_MAX") != nullptr ? std::atoi(
 std::vector<uint32_t> g_ignored_words;
 std::vector<uint32_t> g_extra_noop_hooks;
 bool g_ignore_lone_w_lanes = false;
+std::vector<std::pair<uint32_t, uint32_t>> g_ignored_spr_ranges;
+
+// orig: (host) see oracle_env.h. The scratch areas the five collision routines' own code writes (segment_collide 0x1efc70,
+// sphere_collide 0x1f0d60, capsule_collide 0x1f19a0, mobys_in_sphere 0x1f2868, sphere_mesh_collide 0x1f3170: their stores,
+// their sq3 vertices, the chunk transfers they start; measured with RAC1_BRIDGE_GUARD=spr on the nine tours, A2's writes
+// table), each found dead after the call (A2's flows table and the restore runs: a later call reads none of them before
+// writing it, except the read-and-dropped words listed below; putting them back as they were before each call changed no
+// tour). The areas the posing functions they call use on their own (+0x3600 .. +0x3800, the saved registers 0x70003700 ..
+// 0x7000371c among them) and the drawing's (+0x3c00 .. +0x3ffc) are not in it: still compared.
+//   +0x0000 .. +0x1000  the chunk list / the first chunk buffer (sphere_mesh_collide's list, the transfers at 0)
+//   +0x1000 .. +0x2000  the second chunk buffer (the next chunk fetched while one is tested)
+//   +0x2000 .. +0x3000  the transformed vertices with their outcodes (sq3; from +0x1fe0 + 0x20)
+//   +0x3000 .. +0x3600  segment_collide's per-axis crossings (x 0x3000, y 0x3200, z 0x3400)
+//   +0x3800 .. +0x3c00  the merged (t, cell) list / the (centre, chunk) cell list; its entry past the terminator is read
+//                       and dropped by the next call (the loops read the next entry's words before they test the end)
+//   +0x3ffc .. +0x4000  segment_collide's step bytes
+void oracle_ignore_collision_scratch() {
+    static const std::pair<uint32_t, uint32_t> kRanges[] = {
+        {0x70000000u, 0x70003600u},
+        {0x70003800u, 0x70003c00u},
+        {0x70003ffcu, 0x70004000u},
+    };
+    for (const auto& r : kRanges)
+        if (r.first < r.second) g_ignored_spr_ranges.push_back(r);
+}
+
+namespace {
+// the scratchpad words g_ignored_spr_ranges leaves out (none with ORACLE_NO_SPR_IGNORE=1)
+bool spr_ignored(uint32_t addr) {
+    static const bool off = std::getenv("ORACLE_NO_SPR_IGNORE") != nullptr;
+    if (off) return false;
+    for (const auto& [lo, hi] : g_ignored_spr_ranges)
+        if (addr >= lo && addr < hi) return true;
+    return false;
+}
+}  // namespace
 std::vector<std::pair<uint32_t, std::function<void(EeCpu&)>>> g_extra_hooks;
 std::function<void(EeInterpreter&)> g_pre_call;
 bool g_oracle_front = false;
@@ -331,7 +367,9 @@ bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::fu
                     if (w == seed_word) ++nseed;
                 }
                 for (uint32_t w = 0; w < SPR_SIZE; w += 4)
-                    if (std::memcmp(&a_f.spr[w], &before_f.spr[w], 4) != 0 && ign.count(SPR_BASE + w) == 0 && !(w >= 0x800 && w < 0x840) && w < 0x3fa8) ++n;
+                    if (std::memcmp(&a_f.spr[w], &before_f.spr[w], 4) != 0 && ign.count(SPR_BASE + w) == 0 && !(w >= 0x800 && w < 0x840) && w < 0x3fa8 &&
+                        !spr_ignored(SPR_BASE + w))
+                        ++n;
                 uint32_t c0, c1;
                 std::memcpy(&c0, &before_f.ram[OV(0x001611c0u) & 0x01ffffffu], 4);
                 std::memcpy(&c1, &a_f.ram[OV(0x001611c0u) & 0x01ffffffu], 4);
@@ -376,6 +414,12 @@ bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::fu
                     std::memset(ram + (ig & 0x01ffffffu), 0, 4);
                 }
             }
+            if (!g_ignored_spr_ranges.empty())  // (a check's own opt-in: the collision's dead scratch words, A2)
+                for (uint32_t w = 0; w < SPR_SIZE; w += 4)
+                    if (spr_ignored(SPR_BASE + w)) {
+                        std::memset(&a_f.spr[w], 0, 4);
+                        std::memset(ee_get_scratchpad_base() + w, 0, 4);
+                    }
             if (std::memcmp(a_f.ram.data(), ram, STACK_LO) != 0) {
                 b_f.ram.assign(ram, ram + STACK_LO);
                 a_f.ram.resize(STACK_LO);

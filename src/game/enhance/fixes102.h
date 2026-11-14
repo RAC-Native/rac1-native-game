@@ -37,6 +37,17 @@
 // - 22: Rilgar's race organiser (class 918, L5:0x316ab8): the level's music back after a race ended in its state 3, and a
 //   skill point earned at the race told (its flag 0x13d411: "You just earned a Skill Point!" over the prize's message)
 //   (hooks.glue)
+// - 26: the Vendor's purchase screens: the message box shows the case's own text ("Back" for an ammo full or the bolts
+//   short, "Buy" for ammo, none for a weapon the bolts pay) in place of "Buy" each time, and no "No" prompt for a weapon,
+//   whose quantity box already asks Yes / No (vendor_draw.cpp: panel_message 0x29e6c0, panel_prompt 0x29e918)
+// - 27: the end menu's Timewarp (cross) keeps the cheats unlocked (0x15edc0, 12 bytes) and switched on (0x15edb0, 12) over
+//   the save's read, as it already keeps 0x13d425 and 0x14bf08 (end_menu_choice_update_tr 0x27fed8)
+// - 28: the weapons / gadgets help's icon list packed tighter: 0x252 apart (not 0x260), its first 0x52 / 0x182 down (not
+//   0x60 / 0x190) (icon_list_update 0x277a58, icon_list_draw 0x277be8)
+// - 29: the glow of the hero's item mode 1 (+0x20a4: Clank's) a seventh smaller: 0.06 / 0.087 (not 0.07 / 0.1015)
+//   (hero_glows_draw 0x207d40)
+// - 30: an item panel's focus out frees its second menu moby (+0x48) too; the original frees the first one twice
+//   (menu_model_focus_out 0x27bba0)
 //
 // 1.02 Gameplay (main menu > Options > Advanced > 1.02 Gameplay, off by default, global; docs/advanced.md "1.02 Gameplay"):
 // the 1.02 build's fixes that change how the game plays (the exploits stay possible with the row off), numbered as the
@@ -64,6 +75,8 @@
 // - 25: Gemlik Base's class 1885 (and Gaspar's copy; L9:0x30a9e8 / L13:0x30d3b8, the shared port class1885_hit,
 //   shared_class1885.cpp) killed with Ratchet at the height 250 (within 4) on Gemlik Base: its bolts with
 //   moby_drop_bolts' flag 0x200 (their flag 2, as when Ratchet stands next to it)
+// - 31: the Tesla Claw's hits give their direction the z 1.0 (the North American build 0, unless the hit is straight
+//   below the claw): the arc's hit and the two held targets' (tesla_2b94d0 0x2b94d0: tesla.cpp)
 // In the generated code each hook is a test that fails with the row off; on another region's disc the transliterated
 // functions that region changed (stand-ins: on the PAL disc 2.00 the 1.02 build's own) get none.
 //

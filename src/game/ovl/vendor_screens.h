@@ -103,7 +103,6 @@ void vendor_remark(int32_t kind);          // orig: 0x0029b4d8
 void vendor_hologram_make();               // orig: 0x0029b680
 uint32_t scene_stream_load(int32_t scene); // orig: 0x002454c8
 uint32_t scene_block_select(int32_t i);    // orig: 0x002455c0
-
 // --- vendor_update.cpp -------------------------------------------------------------------------
 void vendor_purchase_update();             // orig: 0x0029ba78
 

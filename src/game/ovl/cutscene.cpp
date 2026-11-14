@@ -7,6 +7,7 @@
 
 #include <game/ovl/cutscene.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/region_core.h>
 #include <game/lib/libvu0.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/music_streams.h>
@@ -290,7 +291,9 @@ void cutscene_end() {
     }
     sb(P + 0x20a5, 0);
     sub_002330d0();
-    if (lh(SC + 0x46) != 0) {
+    // (region: the 1.02 build, the PAL disc 2.00, keeps the flag as a byte at +0x4a, its +0x46 the scene's frame count; its
+    // own walk-to code sets it there: the levels' copies the code generators translate from that disc, 0x00299e70 reads it)
+    if (region_core_moved() ? lbu(SC + 0x4a) != 0 : lh(SC + 0x46) != 0) {
         f20 = floor_probe(0.5f, SC + 0x10, 0);
         if (2.0f < f20) {
             if (abs_f(lwc1(SC + 0x18) - f20) < 2.0f) swc1(SC + 0x18, f20);

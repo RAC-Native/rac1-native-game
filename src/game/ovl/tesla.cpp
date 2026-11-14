@@ -2,6 +2,7 @@
 #include <game/ovl/tesla.h>
 
 #include <game/enhance/advanced.h>
+#include <game/enhance/fixes102.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/ovl.h>
@@ -346,6 +347,8 @@ void tesla_2b94d0(uint32_t p0) {
             vec3_scale(hit_dir, hit_dir, fpu_div(1.0f, hd_len));
         }
         hit_dir.w = u2f(0x45afdf66u);
+        // (1.02 Gameplay, fix 31: the 1.02 build, 2.00 0x002bb344, gives the hit's direction the z 1.0 in every case)
+        if (gameplay102_on(31)) hit_dir.z = 1.0f;
         std::memcpy(rec, &hit_dir, 16);
 
         if (seg_hit != 0) {
@@ -396,6 +399,7 @@ void tesla_2b94d0(uint32_t p0) {
         seek_vec.z = 0.0f;
         vec3_set_length(seek_vec, seek_vec, 1.0f);
         seek_vec.w = u2f(0x45afdf66u);
+        if (gameplay102_on(31)) seek_vec.z = 1.0f;  // (1.02 Gameplay, fix 31: 2.00 0x002bb534)
         uint32_t rec1[9] = {};
         sub_00259888_v(fpu_add(gold_f, 2.0f), rec1, static_cast<int32_t>(p0), 0x210000, seek_vec);
         rec1[6] = 5u | (3u << 8) | (static_cast<uint32_t>(lhu(p0 + 0xa6)) << 16);
@@ -412,6 +416,7 @@ void tesla_2b94d0(uint32_t p0) {
         seek_vec.z = 0.0f;
         vec3_set_length(seek_vec, seek_vec, 1.0f);
         seek_vec.w = u2f(0x45afdf66u);
+        if (gameplay102_on(31)) seek_vec.z = 1.0f;  // (1.02 Gameplay, fix 31: 2.00 0x002bb618)
         uint32_t rec2[9] = {};
         sub_00259888_v(fpu_add(gold_f, 2.0f), rec2, static_cast<int32_t>(p0), 0x210000, seek_vec);
         rec2[6] = 5u | (3u << 8) | (static_cast<uint32_t>(lhu(p0 + 0xa6)) << 16);

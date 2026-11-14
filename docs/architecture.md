@@ -396,7 +396,21 @@ name (no matched code reaches it: the 1.02 title code changed, so nothing votes 
 under which its words equal the disc's (`literal_points`); a section's start (a bss, with no bytes: Veldin's 0x161e00, which
 every level's start clears from, and the boot module's 0x161280) goes to the disc's same section's start, whatever the
 runs would guess. The table's level 0 takes Veldin's `OV` literals too. `region_maps.py check-levels` counts a port's literal
-the table leaves untranslated as an error. Then:
+the table leaves untranslated as an error.
+
+In the other levels a Veldin literal the ports name gets the line apply composes (the disc's Veldin matched in the level,
+taken back through level 0's runs) or, with none, the runtime's nearest-line rule, as no extents exist on such a disc. Where
+that place is not the literal's North American place in the level taken through the level's runs, checked by the bytes (the
+same two words, or one window of 0x40 bytes near it), the table holds a `vlit v p` line in the level's section and apply
+writes p for v (#168: Aridia's shimmy speeds 0x1c3cb0 / 0x1c3cf0 were kept untranslated; the boss bar's 0x15f8e8.. and the
+hoverboard race's 0x15fa04.. took a neighbour's displacement). The ports' literals include `OV(0x... - 0x...)` and
+`OV(NAME)` with NAME a constant. `region_maps.py check-literals` fails on any literal left to the nearest-line rule whose
+place the bytes, the lines around it or the level's runs do not prove (a word only the code gives a value must also not
+share its place with another address), and each level's own literals (`L<n>_ADDR`, `LvlConst`, and a file's macro over a
+template of them such as `RACE_ADDR`) through the level's runs, by their bytes; the rest needs an entry with its reason in
+`data/regions/literals-allowed.txt`. A literal whose bytes the disc's build changed (a string the PAL builds replaced) fails
+until the port forks for that build.
+Then:
 
 - `region_view.py` takes the core's addresses back too (calls into the core, the addresses built into its
   data, the `$gp` offsets from the disc's own `$gp`); `fix` lines correct the constants that only look like
