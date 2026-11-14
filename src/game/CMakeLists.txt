@@ -343,6 +343,7 @@ add_library(rac1_game STATIC
     enhance/pool.cpp
     enhance/context.cpp
     enhance/leveldata.cpp
+    level/level_registry.cpp
     enhance/class_profiles.cpp
     enhance/twin.cpp
     ovl/bomb_glove.cpp

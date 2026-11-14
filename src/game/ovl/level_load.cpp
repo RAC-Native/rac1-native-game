@@ -8,6 +8,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl_common.h>
 #include <game/enhance/session.h>
+#include <game/level/level_registry.h>
 #include <game/enhance/sections.h>
 #include <array>
 #include <game/lib/libc.h>
@@ -835,6 +836,7 @@ uint32_t gameplay_load(int32_t level) {
     sw(OV(0x0015f318), alt ? OV(0x0016c7b0u) : OV(0x0016c780u));
     sw(OV(0x0015f310), lwu(OV(0x0015f318)));
     mod_code_level_loaded();  // enhancement: a level mod's spawn pools (src/host/mod_code.h; nothing on the game's levels)
+    lvd::registry_level_loaded(H);  // (stage 5) the native level registry from the file just laid out (src/game/level/level_registry.h)
     return s8;
 }
 

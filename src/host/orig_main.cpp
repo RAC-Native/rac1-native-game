@@ -82,6 +82,7 @@
 #include <game/enhance/session.h>
 #include <game/enhance/section_world.h>
 #include <game/enhance/twin.h>
+#include <game/level/level_registry.h>
 #include <game/enhance/advanced.h>
 #include <host/level_slots.h>
 #include <host/mod_code.h>
@@ -3915,6 +3916,7 @@ int main(int argc, char** argv) {
                 rac1::twin_frame(frame);
                 rac1::session_frame(frame);  // (a session's unloads and tests: nothing unless a session's memory is on)
                 rac1::world_probe_frame(frame);  // (testing: RAC1_COLL_PROBE, the collision probed on a grid)
+                rac1::lvd::registry_verify_frame(frame);  // (debugging: RAC1_LD_VERIFY, the native level registries against the EE tables)
             }
             // testing: RAC1_UNLOCK_PLANETS=<l>,<l>..: at the first gameplay frame those planets made reachable by
             // the ship (the game's own 0x2607d0, as a level's infobot does: 0x13dd40[l], the list 0x13d510 the galactic map shows)

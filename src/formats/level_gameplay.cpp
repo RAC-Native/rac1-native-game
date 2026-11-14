@@ -2,6 +2,7 @@
 #include <formats/scene_wad.h>
 
 #include <algorithm>
+#include <bit>
 #include <cstring>
 #include <stdexcept>
 
@@ -261,6 +262,172 @@ DecodedGameplay decode_level_gameplay(std::span<const std::byte> data) {
         out.blocks.push_back(std::move(sum));
     }
     return out;
+}
+
+// ---- the level-data objects (see level_gameplay.h) ----
+
+namespace {
+
+// A little-endian view of the unpacked file: a word outside it reads 0 (and is noted)
+class LeFile {
+public:
+    explicit LeFile(std::span<const std::uint8_t> f) : f_(f) {}
+    std::size_t size() const { return f_.size(); }
+    bool fits(std::size_t at, std::size_t n) const { return at <= f_.size() && n <= f_.size() - at; }
+    std::uint32_t u32(std::size_t at) {
+        if (!fits(at, 4)) {
+            short_ = true;
+            return 0;
+        }
+        const std::uint8_t* p = f_.data() + at;
+        return static_cast<std::uint32_t>(p[0]) | static_cast<std::uint32_t>(p[1]) << 8 | static_cast<std::uint32_t>(p[2]) << 16 |
+               static_cast<std::uint32_t>(p[3]) << 24;
+    }
+    std::int32_t s32(std::size_t at) { return static_cast<std::int32_t>(u32(at)); }
+    float f32(std::size_t at) { return std::bit_cast<float>(u32(at)); }
+    bool cut_short() const { return short_; }
+    void clear_short() { short_ = false; }
+    std::span<const std::uint8_t> bytes() const { return f_; }
+
+private:
+    std::span<const std::uint8_t> f_;
+    bool short_ = false;
+};
+
+void note(std::string* error, const std::string& what) {
+    if (error == nullptr) return;
+    if (!error->empty()) *error += "; ";
+    *error += what;
+}
+
+// a path at `at` (its count word), inside a data block that ends at `end`
+LdPath read_path(LeFile& f, std::uint32_t offset, std::size_t at, std::size_t end) {
+    LdPath p;
+    p.offset = offset;
+    p.count = f.s32(at);
+    for (std::uint32_t k = 0; k < 3; ++k) p.head[k] = f.u32(at + 4 + 4 * k);
+    // (the points only when they lie in the copied data: the load copies the block, nothing past it)
+    if (p.count > 0 && at + 0x10 <= end && static_cast<std::size_t>(p.count) <= (end - at - 0x10) / 0x10) {
+        p.points.resize(static_cast<std::size_t>(p.count));
+        for (std::size_t k = 0; k < p.points.size(); ++k) {
+            const std::size_t q = at + 0x10 + 0x10 * k;
+            p.points[k] = Vec4f{f.f32(q), f.f32(q + 4), f.f32(q + 8), f.f32(q + 0xc)};
+        }
+    }
+    return p;
+}
+
+LdShape read_shape(LeFile& f, std::size_t at) {
+    LdShape s;
+    for (std::size_t k = 0; k < 16; ++k) s.matrix[k] = f.f32(at + 4 * k);
+    for (std::size_t k = 0; k < 16; ++k) s.to_unit[k] = f.f32(at + 0x40 + 4 * k);
+    return s;
+}
+
+}  // namespace
+
+bool parse_gameplay_level_data(std::span<const std::uint8_t> file, GameplayLevelData& out, std::string* error) {
+    out = GameplayLevelData{};
+    LeFile f(file);
+    if (!f.fits(0, 0x90)) {
+        note(error, "the block table does not fit");
+        return false;
+    }
+    const auto block = [&f](std::uint32_t word) { return f.u32(word); };
+
+    // the cameras: count, then 0x20-byte records from +0x10
+    if (const std::uint32_t p = block(0x08); p != 0) {
+        out.has_cameras = true;
+        const std::uint32_t n = f.u32(p);
+        if (!f.fits(p + 0x10, static_cast<std::size_t>(n) * 0x20)) note(error, "the cameras run past the file");
+        for (std::uint32_t k = 0; k < n && f.fits(p + 0x10 + static_cast<std::size_t>(k) * 0x20, 0x20); ++k) {
+            const std::size_t r = p + 0x10 + static_cast<std::size_t>(k) * 0x20;
+            LdCamera c;
+            c.type = f.s32(r);
+            for (std::size_t i = 0; i < 3; ++i) c.position[i] = f.f32(r + 4 + 4 * i);
+            for (std::size_t i = 0; i < 3; ++i) c.rotation[i] = f.f32(r + 0x10 + 4 * i);
+            c.pvar_index = f.s32(r + 0x1c);
+            out.cameras.push_back(c);
+        }
+    }
+    // the paths: (count, the data's offset from the block, its size, -), the paths' offsets from +0x10
+    if (const std::uint32_t p = block(0x70); p != 0) {
+        out.has_paths = true;
+        const std::int32_t n = f.s32(p);
+        const std::size_t data = static_cast<std::size_t>(p) + f.u32(p + 4);
+        out.path_data_size = f.u32(p + 8);
+        const std::size_t end = std::min(data + out.path_data_size, f.size());
+        if (data + out.path_data_size > f.size()) note(error, "the paths' data runs past the file");
+        for (std::int32_t k = 0; k < n && f.fits(p + 0x10 + 4 * static_cast<std::size_t>(k), 4); ++k) {
+            const std::uint32_t off = f.u32(p + 0x10 + 4 * static_cast<std::size_t>(k));
+            out.paths.push_back(read_path(f, off, data + off, end));
+        }
+        if (static_cast<std::int32_t>(out.paths.size()) != std::max(n, 0)) note(error, "the path table runs past the file");
+    }
+    // the grind rails: (count, the spines' data offset, its size, -), 0x20-byte records from +0x10, then the spines' offsets
+    if (const std::uint32_t p = block(0x74); p != 0) {
+        out.has_rails = true;
+        const std::int32_t n = f.s32(p);
+        const std::size_t data = static_cast<std::size_t>(p) + f.u32(p + 4);
+        out.rail_data_size = f.u32(p + 8);
+        const std::size_t end = std::min(data + out.rail_data_size, f.size());
+        const std::size_t offs = p + 0x10 + static_cast<std::size_t>(std::max(n, 0)) * 0x20;
+        for (std::int32_t k = 0; k < n && f.fits(p + 0x10 + static_cast<std::size_t>(k) * 0x20, 0x20) && f.fits(offs + 4 * static_cast<std::size_t>(k), 4); ++k) {
+            const std::size_t r = p + 0x10 + static_cast<std::size_t>(k) * 0x20;
+            LdRail rail;
+            for (std::size_t i = 0; i < 3; ++i) rail.centre[i] = f.f32(r + 4 * i);
+            rail.radius = f.f32(r + 0xc);
+            rail.loop = f.s32(r + 0x10);
+            const std::uint32_t off = f.u32(offs + 4 * static_cast<std::size_t>(k));
+            rail.spine = read_path(f, off, data + off, end);
+            out.rails.push_back(std::move(rail));
+        }
+        if (static_cast<std::int32_t>(out.rails.size()) != std::max(n, 0)) note(error, "the rails run past the file");
+    }
+    // the volumes: count, then 0x90 bytes read from records 0x80 apart
+    if (const std::uint32_t p = block(0x6c); p != 0) {
+        out.has_volumes = true;
+        const std::uint32_t n = f.u32(p);
+        for (std::uint32_t k = 0; k < n; ++k) {
+            const std::size_t r = p + 0x10 + static_cast<std::size_t>(k) * 0x80;
+            if (!f.fits(r, 0x80)) {
+                note(error, "the volumes run past the file");
+                break;
+            }
+            LdVolume v;
+            v.shape = read_shape(f, r);
+            f.clear_short();
+            for (std::size_t i = 0; i < 4; ++i) v.tail[i] = f.f32(r + 0x80 + 4 * i);
+            if (f.cut_short()) note(error, "the last volume's 16 bytes past its record run past the file (read as 0)");
+            out.volumes.push_back(v);
+        }
+    }
+    // the three lists of shapes: count, then 0x80-byte records
+    for (std::uint32_t l = 0; l < 3; ++l) {
+        const std::uint32_t p = block(0x60 + 4 * l);
+        if (p == 0) continue;
+        out.has_shapes[l] = true;
+        const std::uint32_t n = f.u32(p);
+        for (std::uint32_t k = 0; k < n; ++k) {
+            const std::size_t r = p + 0x10 + static_cast<std::size_t>(k) * 0x80;
+            if (!f.fits(r, 0x80)) {
+                note(error, "a list of shapes runs past the file");
+                break;
+            }
+            out.shapes[l].push_back(read_shape(f, r));
+        }
+    }
+    // the camera-volume grid: its size word, then (size + 0x4000) bytes from +0x10 (64 x 64 cells' list offsets, the lists)
+    if (const std::uint32_t p = block(0x84); p != 0) {
+        out.has_cam_volumes = true;
+        const std::size_t size = static_cast<std::size_t>(f.u32(p)) + 0x4000;
+        if (f.fits(p + 0x10, size)) {
+            out.cam_volumes.assign(file.begin() + static_cast<std::ptrdiff_t>(p + 0x10), file.begin() + static_cast<std::ptrdiff_t>(p + 0x10 + size));
+        } else {
+            note(error, "the camera-volume grid runs past the file");
+        }
+    }
+    return true;
 }
 
 } // namespace rac1

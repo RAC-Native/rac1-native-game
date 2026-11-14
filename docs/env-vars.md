@@ -1,12 +1,12 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 489 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 490 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 25 | Settings a player may want to change: files, window, audio, the ISO |
-| [Debugging](#debugging-variables) | 355 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
+| [Debugging](#debugging-variables) | 356 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 109 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
@@ -151,6 +151,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_HUD` | 4:3, 16:9, 21:9, 32:9 or fit; unset = Options > Display > HUD (4:3 in a headless run) | The HUD's width in a widened view (Options > Display > HUD): its left and right elements moved toward the edges of a box of that shape, never wider than the view. Needs a widened view (RAC1_VIEW_MODE=2, or the 16:9 frame). |
 | `RAC1_JOBS` | integer N (1 .. 64); default about half the logical CPUs less two, at most 8 | The threads the host's job pool spreads the renderer's scene building over (the moby chains' decoding, the moby draw lists' transforms: `src/jobs`), the main thread included; 1 runs it all on the main thread, for comparison (the output is the same on any number of threads). |
 | `RAC1_LAZY_CAPTURE` | 0 = off; default 1 | Vulkan: the last frame of the game is copied for the pause menu, the screen fades and the stores only when one of them reads it (it stays in the 3D's colour image until the next frame clears it). 0 copies it every frame, as before (0.6 ms of GPU at 5120 x 1440). See [Performance](performance.md#gpu-round-3). |
+| `RAC1_LD_VERIFY` | integer n, 0 = off; default off | Stage 5's native level registry (src/game/level/level_registry.h) compared with the EE tables the engine reads (paths, volumes and the three lists of shapes, level cameras, grind rails, the camera-volume and zone grids): at each registry's build (a level's load, an open-engine registry's) and then every n game frames. The run-time writes the game makes into those tables (a smoke vent's box, the paths' cached lengths ...) are followed and logged once each (`[ld-verify] ... a run-time write followed`); any other difference is logged with its object, index and offset (`[ld-verify] DIFFERENCE ...`), and a level's count at its end. Also prints each registry's size and build time (`[ld] ...`, as `RAC1_LOAD_PROF` does). Changes nothing the game reads. |
 | `RAC1_LIGHTING_ORIGINAL` | 1 = on; default the option | The modern lighting with its sun off everywhere, as Options > Graphics > Lighting: Original sets it (the original's lighting and drop shadows under the occlusion, materials, reflections and point lights). Overrides the option. See [Lighting](lighting.md). |
 | `RAC1_LIGHTS_DIR` | directory; default data/lights | Directory of the per-level user light files (levelNN.txt) loaded and saved by the in-game light editor. |
 | `RAC1_LIGHTS_JUMPS` | set (any value) = on; default off | Prints a line whenever a point light's weight changes abruptly between two frames, to find lights popping on and off. |
