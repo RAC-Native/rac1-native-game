@@ -1,14 +1,8 @@
-0x0024b5c8: walker_record_init_l1(a0.w());
-0x002554e0: path_point_even(a0.w(), a1.w(), a2.w(), a3.w(), fr[12], fr[13]);
-0x00255a40: jump_arc_set(a0.w(), fr[12], fr[13]);
 0x00255ab0: spark_burst(a0.w(), a1.w(), a2.w());
 0x00256e20: plant_bolts_drop_l1(a0.w());
 0x00257470: moby_clone_l1(a0.w(), a1.w());
 0x00259700: talker_word_set(a0.w(), a1.w());
 0x002cc1b8: set32(v0, static_cast<uint32_t>(class819_launch(a0.w(), a1.w(), a2.w(), a3.w(), static_cast<int32_t>(t0.w()), fr[12])));
 0x002d7510: class827_target_pick(a0.w(), a1.w(), fr[12]);
-0x002e0138: group_wake(a0.w());
-0x002e47d8: group_wake(a0.w());
-0x002e3de8: set32(v0, static_cast<uint32_t>(particle34_puff_1(a0.w())));
 0x002e68b8: set32(v0, static_cast<uint32_t>(shell_launch(a0.w(), a1.w(), a2.w(), static_cast<int32_t>(a3.w()))));
 0x002f5a50: cam_entry_mark(static_cast<int32_t>(a0.w()));

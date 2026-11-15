@@ -384,6 +384,121 @@ void orx_class947_update_l10(uint32_t m) {
     }
 }
 
+// Class 1090, the spark class 947 sheds (orx_2dd270_l10's pvars): it runs on along its path, slowing by its fade a frame
+// (+0x18, toward 1 by the frame scale 0x15ed60), tumbling, for its life (+0x14); it grows to half the class's size over
+// the first quarter of its life and shrinks over its last half; while bigger than a quarter of the class's size it hits the
+// mobys within 0.15 of it (but its shedder).
+// orig: L10:0x002dd3d8
+void orx_class1090_update_l10(uint32_t m) {
+    const uint32_t pv = lwu(m + 0x78);
+    const float fade = fpu_add(fpu_mul(fpu_sub(lwc1(pv + 0x18), 1.0f), lwc1(0x0015ed60)), 1.0f);
+    const float dist = fpu_add(lwc1(pv + 4), lwc1(pv + 8));
+    swc1(pv + 4, dist);
+    swc1(pv + 8, fpu_mul(lwc1(pv + 8), fade));
+    const uint32_t frame = ee_stack_alloc(0x40);
+    const uint32_t index = frame + 0x20, frac = frame + 0x24, at = frame + 0x10;
+    path_point_even(lwu(pv), index, frac, m + 0x10, dist, lwc1(pv + 0xc));
+    swc1(m + 0x40, rand_angle());
+    swc1(m + 0x44, rand_angle());
+    swc1(m + 0x48, rand_angle());
+    if (tick32(pv + 0x14) != 0) {
+        moby_retire(m);
+        ee_stack_free(0x40);
+        return;
+    }
+    auto life = [] { return float_to_int(fpu_div(10.0f, fpu_mul(dt(), 5.0f))); };  // (its whole life, as orx_2dd270_l10 set it)
+    const float full = lwc1(lwu(m + 0x24) + 0x24);  // (the class's scale)
+    if (lw(pv + 0x14) < life() / 2) {  // shrinking: its last half
+        const float left = int_to_float(lw(pv + 0x14));
+        swc1(m + 0x2c, fpu_mul(fpu_div(fpu_mul(full, left), int_to_float(life() / 2)), 0.5f));
+    } else if (life() / 4 * 3 < lw(pv + 0x14)) {  // growing: its first quarter
+        const float gone = int_to_float(life() - lw(pv + 0x14));
+        swc1(m + 0x2c, fpu_mul(fpu_div(fpu_mul(full, gone), int_to_float(life() / 4)), 0.5f));
+    }
+    if (fpu_mul(lwc1(lwu(m + 0x24) + 0x24), 0.25f) < lwc1(m + 0x2c)) {
+        const int32_t n = mobys_in_sphere(m + 0x10, u2f(0x3e19999au), 0x10, lwu(pv + 0x10), 0);
+        lq_sq(at, m + 0x10);
+        moby_list_hit(lwu(pv + 0x10), at, coll_hit_list(), n, 0, NOT_ADDR(0x810001u), 2, 1, 2.0f, 1.0f, 1.0f);
+    }
+    ee_stack_free(0x40);
+}
+
+// ---- class 1073, the strands
+
+// Class 1073: four groups (+0, 0x2580 apart) of ten strands of 20 points (0x140 apart, the strands 16 bytes apart), their
+// speeds 0x9600 further, each strand's timer at +0x12c00 (the group's 30 words apart). State 0 (gone at once in Clank's
+// part on level 10) sets the level's renewal (L10:0x161d64, 45 frames) and the strands' first timers (staggered by 4.5
+// frames a strand, 11 to 12 frames a group); 1 moves the phase +0x12de0 by L10:0x161d5c a frame (wrapped to 1) and each
+// strand either drifts (its points 1 .. 18 by their speeds) or, its timer out, is laid out again along y (the level's
+// length L10:0x161d58 over 20 points, w 1) with new speeds: random offsets (radius up to L10:0x161d54 frame times)
+// smoothed over three neighbours.
+// orig: L10:0x002dcc58
+void orx_class1073_update_l10(uint32_t m) {
+    const uint32_t pv = lwu(m + 0x78);
+    const uint32_t timers = pv + 0x12c00;
+    switch (lbu(m + 0x20)) {
+    case 0: {
+        if (level_number() == 10 && lbu(HERO_FORM) == 1) {
+            moby_retire(m);
+            return;
+        }
+        sw(L10_ADDR(0x00161d64), 0x2d);
+        sw(L10_ADDR(0x00161d68), 0x16);
+        for (int32_t j = 0; j < 10; ++j) {
+            const int32_t q = ee_div(j * 0x2d, 10);
+            const uint32_t t = timers + static_cast<uint32_t>(j) * 4;
+            sw(t, static_cast<uint32_t>(q));
+            sw(t + 0x78, static_cast<uint32_t>(q + 0xb));
+            sw(t + 0xf0, static_cast<uint32_t>(q + 0x17));
+            sw(t + 0x168, static_cast<uint32_t>(q + 0x22));
+        }
+        sb(m + 0x20, 1);
+        break;
+    }
+    case 1: {
+        const uint32_t phase = pv + 0x12de0;
+        const float p = fpu_add(lwc1(phase), fpu_mul(lwc1(L10_ADDR(0x00161d5c)), dt()));
+        swc1(phase, 1.0f < p ? fpu_sub(p, 1.0f) : p);
+        const uint32_t offsets = ee_stack_alloc(0xc80);  // (the random offsets: 20 points x 10 strands, as the original's stack)
+        for (int32_t i = 0; i < 4; ++i) {
+            const uint32_t points = pv + static_cast<uint32_t>(i) * 0x2580;
+            const uint32_t speeds = points + 0x9600;
+            for (int32_t j = 0; j < 10; ++j) {
+                const uint32_t strand = static_cast<uint32_t>(j) * 16;
+                const uint32_t timer = timers + static_cast<uint32_t>(i) * 0x78 + static_cast<uint32_t>(j) * 4;
+                if (tick32(timer) == 0) {  // drifting
+                    for (uint32_t k = 1; k < 19; ++k)
+                        vec3_add(V(points + strand + k * 0x140), V(points + strand + k * 0x140), V(speeds + strand + k * 0x140));
+                    continue;
+                }
+                for (int32_t k = 0; k < 20; ++k) {
+                    const uint32_t pt = points + strand + static_cast<uint32_t>(k) * 0x140;
+                    vec_clear(V(pt));
+                    const float len = lwc1(L10_ADDR(0x00161d58));
+                    const float step = fpu_div(len, 20.0f);
+                    const float reach = fpu_mul(lwc1(L10_ADDR(0x00161d54)), dt());
+                    swc1(pt + 0xc, 1.0f);
+                    swc1(pt + 4, fpu_sub(fpu_mul(static_cast<float>(k), step), fpu_mul(len, 0.5f)));
+                    rand_sphere_point(offsets + strand + static_cast<uint32_t>(k) * 0xa0, 0.0f, reach);
+                }
+                for (uint32_t k = 1; k < 19; ++k) {
+                    const uint32_t v = speeds + strand + k * 0x140;
+                    const uint32_t r = offsets + strand + k * 0xa0;
+                    vec3_add(V(v), V(r - 0xa0), V(r));
+                    vec3_add(V(v), V(v), V(r + 0xa0));
+                    vec3_scale(V(v), V(v), u2f(0x3eaa7efau));
+                }
+                sw(timer, lwu(L10_ADDR(0x00161d64)));
+            }
+        }
+        ee_stack_free(0xc80);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
 // ---- class 859, the ground shot
 
 // The shot's height eased toward `z`: by 0.1 at most.

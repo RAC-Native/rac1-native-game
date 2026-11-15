@@ -1,6 +1,7 @@
 // Orxon (level 10): the level's own classes written by hand (orxon_platforms.cpp, orxon_doors.cpp, orxon_clank.cpp,
-// orxon_hazards.cpp, orxon_props.cpp; their helpers in orxon_common.h). Registered in orxon_mobys.cpp; level 10's own
-// addresses. The class updates keep the generated entries' names and signatures.
+// orxon_hazards.cpp, orxon_props.cpp, orxon_sentry.cpp, orxon_class1202.cpp; their helpers in orxon_common.h).
+// Registered in orxon_mobys.cpp; level 10's own addresses. The class updates keep the generated entries' names and
+// signatures.
 #ifndef RAC1_GAME_OVL_ORXON_CLASSES_H
 #define RAC1_GAME_OVL_ORXON_CLASSES_H
 
@@ -38,6 +39,22 @@ void orx_class794_update_l10(uint32_t m);   // L10:0x002c9c70  a box tied to ano
 void orx_class1047_update_l10(uint32_t m);  // L10:0x002d9eb8  a breakable wall
 void orx_class1067_update_l10(uint32_t m);  // L10:0x002da2c8  the panel of shuffled lights
 
+// orxon_hazards.cpp (P10.2)
+void orx_class1073_update_l10(uint32_t m);  // L10:0x002dcc58  four groups of drifting strands
+void orx_class1090_update_l10(uint32_t m);  // L10:0x002dd3d8  the spark class 947 sheds
+// orxon_props.cpp (P10.2)
+void orx_class1100_update_l10(uint32_t m);  // L10:0x002dd650  a prop knocked out from one side
+// orxon_sentry.cpp
+void orx_2dfc38_l10(uint32_t m);            // L10:0x002dfc38  class 1196's frame (sentry_frame, build a)
+void orx_class1196_update_l10(uint32_t m);  // L10:0x002df270  a sentry that rises and follows its path
+void orx_2e17c0_l10(uint32_t m);            // L10:0x002e17c0  class 1199's frame (sentry_frame, build b)
+void orx_2e1cb0_l10(uint32_t m);            // L10:0x002e1cb0  class 1199's group warned
+void orx_class1199_update_l10(uint32_t m);  // L10:0x002e01a8  a flying sentry that swoops and bites
+// orxon_class1202.cpp
+void orx_2e3a90_l10(uint32_t m);            // L10:0x002e3a90  class 1202's exhaust puffs
+void orx_2e3ef0_l10(uint32_t m);            // L10:0x002e3ef0  class 1202's frame (hits, target, home)
+float orx_2e4840_l10(uint32_t m);           // L10:0x002e4840  class 1202's heading into its group's ring
+void orx_class1202_update_l10(uint32_t m);  // L10:0x002e1d38  a trooper following its leader
 }  // namespace rac1
 
 #endif

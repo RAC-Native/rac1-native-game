@@ -107,6 +107,8 @@ add_library(rac1_game STATIC
     ovl/orxon_clank.cpp
     ovl/orxon_hazards.cpp
     ovl/orxon_props.cpp
+    ovl/orxon_sentry.cpp
+    ovl/orxon_class1202.cpp
     ovl/pokitaru_hooks.cpp
     ovl/pokitaru_mobys.cpp
     ovl/hoven_hooks.cpp

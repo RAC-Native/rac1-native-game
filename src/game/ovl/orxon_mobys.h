@@ -12,18 +12,6 @@
 
 namespace rac1 {
 
-void orx_class1073_update_l10(uint32_t a0);  // L10:0x002dcc58
-void orx_class1090_update_l10(uint32_t a0);  // L10:0x002dd3d8
-void orx_class1100_update_l10(uint32_t a0);  // L10:0x002dd650
-TrRet orx_2dfc38_l10(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L10:0x002dfc38
-void orx_class1196_update_l10(uint32_t a0);  // L10:0x002df270
-TrRet orx_2e17c0_l10(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L10:0x002e17c0
-TrRet orx_2e1cb0_l10(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L10:0x002e1cb0
-void orx_class1199_update_l10(uint32_t a0);  // L10:0x002e01a8
-TrRet orx_2e3a90_l10(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L10:0x002e3a90
-TrRet orx_2e3ef0_l10(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L10:0x002e3ef0
-TrRet orx_2e4840_l10(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L10:0x002e4840
-void orx_class1202_update_l10(uint32_t a0);  // L10:0x002e1d38
 TrRet orx_2e5968_l10(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L10:0x002e5968
 void orx_class1229_update_l10(uint32_t a0);  // L10:0x002e4a88
 void orx_class1240_update_l10(uint32_t a0);  // L10:0x002e5be0

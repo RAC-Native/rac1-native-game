@@ -205,6 +205,39 @@ void orx_class1047_update_l10(uint32_t m) {
     ee_stack_free(0x140);
 }
 
+// ---- class 1100
+
+// Class 1100: a prop knocked out from one side. Gone at once once its one-shot flag is set; else its +0x32 set to 0x80 and
+// each of the frame's 64 hit records naming it with kind 0x20000 is checked: one from a moby (+0x20) of class 0xac or 0x99
+// lying more than 0.25 on its negative x side (in its own frame) sets its flag and it goes; any other is cleared.
+// orig: L10:0x002dd650
+void orx_class1100_update_l10(uint32_t m) {
+    if (flag_set(m)) {
+        moby_retire(m);
+        return;
+    }
+    sh(m + 0x32, 0x80);
+    for (int32_t k = 0; k < 64; ++k) {
+        const uint32_t e = coll_contact(k);
+        if (lwu(e + 0x34) != m || (lwu(e + 0x24) & 0x20000u) == 0) continue;
+        const uint32_t src = lwu(e + 0x20);
+        const int32_t cls = lh(src + 0xa6);
+        if (cls == 0xac || cls == 0x99) {
+            Vec4 rel;
+            vec3_sub(rel, V(m + 0x10), V(src + 0x10));
+            Mat4 to_local;
+            mat3_transpose(to_local, M(m + 0xc0));
+            mat4_transform(rel, rel, to_local);
+            if (0.25f < rel.x) {
+                flag_mark(m);
+                moby_retire(m);
+                return;
+            }
+        }
+        sw(e + 0x34, 0);
+    }
+}
+
 // ---- class 1067
 
 namespace {
