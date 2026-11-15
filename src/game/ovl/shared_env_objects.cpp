@@ -35,7 +35,37 @@ eer::Q128 low_word(uint32_t w) {
     v.lo = w;
     return v;
 }
+
 }  // namespace
+
+// The VU0 registers the original set-up leaves: the level's copy of shadows_vu1_setup builds its scaling matrix with the
+// level's copy of mat4_scale_diag (Veldin's 0x1ffa18; L12:0x222928 L14:0x213028), which works in VU0: vf1..vf3 the diagonal
+// (k on x / y / z), vf4 = vf0, vf5 = (k, its sign, 0, 0) from QMTC2 of the 32-bit word. The engine's shadows_vu1_setup does the
+// same arithmetic on the host and leaves VU0 as it was; the moby pass's shadow meshes later read vf5's w lane as left here
+// (moby_draw_hand.cpp: the flattened matrices' XYZ-masked rows), so the port leaves the original's registers.
+// orig: L12:0x00222928 L14:0x00213028 (its VU0 registers; the matrix it stores is mat4_scale_diag's)
+void mat4_scale_diag_vu0(float k) {
+    using namespace vu0m;
+    Vf* r = vf();
+    const uint32_t kw = f2u(k);
+    eer::Q128 v{};
+    v.lo = static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(kw)));
+    eer::qmtc2(5, v);
+    eer::vmacro();
+    mulbc(r[1], r[0], r[0].v[0], XYZW);
+    eer::vmacro();
+    mulbc(r[2], r[0], r[0].v[0], XYZW);
+    eer::vmacro();
+    mulbc(r[3], r[0], r[0].v[0], XYZW);
+    eer::vmacro();
+    r[4] = r[0];
+    eer::vmacro();
+    addbc(r[1], r[1], r[5].v[0], X);
+    eer::vmacro();
+    addbc(r[2], r[2], r[5].v[0], Y);
+    eer::vmacro();
+    addbc(r[3], r[3], r[5].v[0], Z);
+}
 
 // Per point: the view from the camera (cam - p) scaled to 0.45 over its length (vf6), the eye ray vf1 = -vf6; facing away
 // (the ray's dot with the normal above 0) the ray itself, else reflected off the normal; then + 0.5 on x and y.
@@ -106,6 +136,7 @@ void env_objects_draw(uint32_t recs, int32_t count, uint64_t tex0a, uint64_t tex
     sw(lwu(cursor) + 0xc, 0x50000009u);
     sw(cursor, lwu(cursor) + 0x10);
     shadows_vu1_setup();
+    mat4_scale_diag_vu0(1024.0f);  // (the VU0 registers the original's set-up leaves: above)
     for (uint32_t k = 0; k < 0xb4; ++k) sw(0x70000000u + k * 4, 0x80808080u);  // (the points' colours: white)
     for (int32_t i = 0; i < count; ++i) {
         const uint32_t rec = recs + static_cast<uint32_t>(i) * 0x20;

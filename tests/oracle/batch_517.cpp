@@ -47,6 +47,7 @@
 #include <game/ovl/shared_envmap_meshes.h>
 #include <game/ovl/shared_class655_draw.h>
 #include <game/ovl/shared_class655_glows.h>
+#include <game/ovl/shadows.h>
 #include <game/ovl/shared_env_objects.h>
 #include <runtime/kernel/disc.h>
 #include <runtime/vu/vu0.h>
@@ -77,6 +78,30 @@ void vu0_sync() {
     v.statusflag = g_vu0_in.statusflag;
     v.clipflag = g_vu0_in.clipflag;
     std::memcpy(v.mem.data(), g_vu0_in.mem.data(), 0x1000);
+}
+
+// The interpreter the original ran on (kept by g_pre_call): after a port, its VU0 registers against the port's. The ports
+// whose originals leave VU0 registers a later function reads (the env objects' set-up: the moby pass's shadow meshes read
+// vf5's w lane) compare them: a differing lane writes its word into the test area (MARK), so the case fails.
+EeInterpreter* g_last_ee = nullptr;
+constexpr uint32_t VU0_MARK = TEST_AREA + 0x7f00;
+int vu0_out_check(const char* name, int first, int last, bool skip_vf5_zw) {
+    if (g_last_ee == nullptr) return 0;
+    const VUState& o = g_last_ee->vu0();
+    const VUState& p = vu0::global().st;
+    int n = 0;
+    for (int r = first; r <= last; ++r)
+        for (int k = 0; k < 4; ++k) {
+            if (skip_vf5_zw && r == 5 && k >= 2) continue;  // (QMTC2's upper half: the caller's register, zero in the copies)
+            uint32_t a, b;
+            std::memcpy(&a, &o.vf[static_cast<size_t>(r)].f[k], 4);
+            std::memcpy(&b, &p.vf[static_cast<size_t>(r)].f[k], 4);
+            if (a == b) continue;
+            if (std::getenv("B517_VU0") != nullptr) std::printf("    VU0 %s vf%d.%c original %08x port %08x\n", name, r, "xyzw"[k], a, b);
+            w32(VU0_MARK + static_cast<uint32_t>(r) * 0x10 + static_cast<uint32_t>(k) * 4, b ^ a);
+            ++n;
+        }
+    return n;
 }
 
 struct LvAddr {
@@ -1445,6 +1470,23 @@ void env_objects_checks() {
         if (any) ++seen_cases;
     };
     seen_cases = all_cases = 0;
+    // the set-up's VU0 registers (inv5, wave 5's PAL smoke test): the levels' copies of mat4_scale_diag the original set-up calls
+    // leave vf1..vf5, and the moby pass's shadow meshes read vf5's w lane; the port leaves them with mat4_scale_diag_vu0.
+    // Compared: the stored matrix (the full RAM) and vf1..vf5 (vf5's z / w left out: QMTC2's upper half, the caller's 'at').
+    if (const uint32_t sd = copy_here({{12, 0x00222928}, {14, 0x00213028}}); sd != 0)
+        fcheck("mat4_scale_diag_vu0", sd, 40, Ret::None, [] {
+            level();
+            wrand(T, 0x40);
+            const float k = ri(0, 3) == 0 ? 1024.0f : rf(-2000.0f, 2000.0f);
+            return Args{{T}, {k}};
+        }, [](A a) {
+            mat4_scale_diag(ee_ref<Mat4>(T), a.f[0]);
+            mat4_scale_diag_vu0(a.f[0]);
+            vu0_out_check("mat4_scale_diag_vu0", 1, 5, true);
+            return uint64_t{0};
+        });
+    else
+        not_here("mat4_scale_diag_vu0");
     dcheck("env_objects_callback", cb, 40, [view, count_seen, recs, count] {
         level();
         view();
@@ -1533,6 +1575,7 @@ void batch_517() {
     vu0::vif0_send_chain(0x00100080, true);
     vu0::vif0_send_chain(0x0010e4c0, true);
     g_pre_call = [](EeInterpreter& ee) {
+        g_last_ee = &ee;
         for (const auto& [r, v] : g_wide_regs) ee.cpu().gpr[r].lo = v;
         const VUState& o = ee.vu0();
         g_vu0_in.vf = o.vf;
