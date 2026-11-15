@@ -1,9 +1,0 @@
-0x00248b78: band_set(a0.w());
-0x00254a10: talker_word_set(a0.w(), a1.w());
-0x0025e9e0: set32(v0, static_cast<uint32_t>(debug_particle_l1(a0.w(), a1.w(), a2.w(), a3.w(), t0.w(), static_cast<int32_t>(t1.w()), t2.w(), fr[12])));
-0x00273f50: moby_data_note_l1(a0.w(), static_cast<int32_t>(a1.w()), a2.w(), static_cast<int32_t>(a3.w()), t0.w());
-0x002d3140: set32(v0, static_cast<uint32_t>(moby_hero_on_l1(a0.w())));
-0x002d3c40: kerwan_class816_turn(a0.w());
-0x002db480: class_mates_mark_level(a0.w(), 1u);
-0x002dcb70: set32(v0, static_cast<uint32_t>(moby_hero_on_l1(a0.w())));
-0x002dd0f0: kerwan_class1012_turn(a0.w());

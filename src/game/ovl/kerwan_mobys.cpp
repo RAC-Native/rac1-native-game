@@ -66,25 +66,27 @@ void kerwan_moby_fns_register() {
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x00294c08), kerwan_class868_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x0029dba8), kerwan_class75_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002c5bb8), kerwan_class573_update_l3);
-    // the Blarg trooper 574 (kerwan_troopers.cpp), the mine layer 578 (kerwan_mine_layer.cpp)
+    // the Blarg trooper 574 and its bolt 833 (kerwan_troopers.cpp), the mine layer 578 and its mine 627 (kerwan_mine_layer.cpp)
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002c6fd0), kerwan_class574_update_l3);
-    ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002c9eb8), kerwan_class578_update_l3);
-    // the transliterated classes (kerwan_classes_tr.cpp, the translator)
-    ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002cbea8), kerwan_class627_update_l3);
-    ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002d3198), kerwan_class816_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002d43c8), kerwan_class833_update_l3);
-    ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002da870), kerwan_class890_update_l3);
+    ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002c9eb8), kerwan_class578_update_l3);
+    ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002cbea8), kerwan_class627_update_l3);
+    // the escalators 899 / 898, the citizen 914 (kerwan_props.cpp)
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002db020), kerwan_class898_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002db280), kerwan_class899_update_l3);
-    ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002db558), kerwan_class909_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002dbd90), kerwan_class914_update_l3);
+    // the hover platforms 816 / 1012 (kerwan_rides.cpp), the citizens 890 / 909 (kerwan_citizens.cpp)
+    ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002d3198), kerwan_class816_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002dccc0), kerwan_class1012_update_l3);
+    ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002da870), kerwan_class890_update_l3);
+    ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002db558), kerwan_class909_update_l3);
+    // the transliterated classes (kerwan_classes_tr.cpp, the translator)
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002df520), kerwan_class1342_update_l3);
     // part 2 (kerwan_part2_tr.cpp): class 994's draw callback (queued by its update through 0x1f93e0). It stays transliterated
     // with the ocean's set-up and texture upload it reaches: the texture upload carries the palette-blend hook
     // (tools/codegen/hooks.glue, RAC1_PERF_PALETTE_BLEND) that the shared port (sea_draw, ari_ocean_tex_upload_l2) lacks.
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002dc990), kerwan_class994_draw_l3);
-    // class 1548: a lightning effect of the scenes (game mode 2; 0335's hand port took 0x15f5c4 for the level number)
+    // class 1548, the scenes' smoke and flashes (kerwan_props.cpp; game mode 2)
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002e01d0), kerwan_class1548_update_l3);
 }
 

@@ -55,10 +55,31 @@ uint32_t trooper_turn_to_l3(uint32_t m, uint32_t target, float heading);  // L3:
 void trooper_hits_l3(uint32_t m);             // L3:0x002c95a8
 void trooper_pick_point_l3(uint32_t m);       // L3:0x002c9ca0
 uint32_t trooper_bolt_spawn_l3(uint32_t dir, uint32_t at, uint32_t owner, int32_t life, float spin, float speed, float size);  // L3:0x002d4288
+void kerwan_class833_update_l3(uint32_t m);   // L3:0x002d43c8  class 833, the trooper's bolt
 // ---- class 578, the mine layer (kerwan_mine_layer.cpp)
 void kerwan_class578_update_l3(uint32_t m);   // L3:0x002c9eb8  class 578
 void mine_layer_hits_l3(uint32_t m);          // L3:0x002ca808
 uint32_t mine_layer_drop_l3(uint32_t layer, uint32_t at, uint32_t vel);  // L3:0x002cc888
+void kerwan_class627_update_l3(uint32_t m);   // L3:0x002cbea8  class 627, the mine
+void mine_hits_l3(uint32_t m);                // L3:0x002cc828
+// ---- the escalators 899 / 898, the scenes' class 1548, the citizen 914 (kerwan_props.cpp)
+void kerwan_class899_update_l3(uint32_t m);   // L3:0x002db280  class 899
+void kerwan_class898_update_l3(uint32_t m);   // L3:0x002db020  class 898, its step
+uint32_t escalator_step_spawn_l3(uint32_t path, float along);  // L3:0x002db198
+void kerwan_class1548_update_l3(uint32_t m);  // L3:0x002e01d0  class 1548 (the kerwan_part2 unit's)
+void kerwan_class914_update_l3(uint32_t m);   // L3:0x002dbd90  class 914, a citizen that breaks
+// ---- the hover platforms 816 and 1012 (kerwan_rides.cpp)
+void kerwan_class816_update_l3(uint32_t m);   // L3:0x002d3198  class 816, a platform with calls
+uint32_t platform_riding_l3(uint32_t m);      // L3:0x002d30d8
+void platform_help_l3(uint32_t m, int32_t kind);  // L3:0x002d3100
+uint32_t ride_path_l3(uint32_t m, int32_t path_idx, uint32_t sound);  // L3:0x002d3918
+void kerwan_class1012_update_l3(uint32_t m);  // L3:0x002dccc0  class 1012, a ferry
+uint32_t ferry_waiting_l3(uint32_t m);        // L3:0x002dcb30
+void ferry_help_l3(uint32_t m, int32_t kind); // L3:0x002dcbc8
+// ---- the citizens who give an item, 890 (Helga) and 909 (kerwan_citizens.cpp)
+void kerwan_class890_update_l3(uint32_t m);   // L3:0x002da870  class 890, Helga
+void helga_scene_l3(uint32_t m);              // L3:0x002da710
+void kerwan_class909_update_l3(uint32_t m);   // L3:0x002db558  class 909, the Heli-Pack's giver
 
 }  // namespace rac1
 

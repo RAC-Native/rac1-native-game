@@ -43,42 +43,6 @@ using namespace vu0m;
 
 // (the functions appended at the end of kerwan_classes_tr.cpp)
 
-//@gen lv3_2cc828_l3
-
-//@gen kerwan_class627_update_l3
-
-//@gen lv3_2d30d8_l3
-
-//@gen lv3_2d3100_l3
-
-//@gen lv3_2d3918_l3
-
-//@gen kerwan_class816_update_l3
-
-//@gen kerwan_class833_update_l3
-
-//@gen lv3_251988_l3
-
-//@gen lv3_2da710_l3
-
-//@gen kerwan_class890_update_l3
-
-//@gen kerwan_class898_update_l3
-
-//@gen lv3_2db198_l3
-
-//@gen kerwan_class899_update_l3
-
-//@gen kerwan_class909_update_l3
-
-//@gen kerwan_class914_update_l3
-
-//@gen lv3_2dcb30_l3
-
-//@gen lv3_2dcbc8_l3
-
-//@gen kerwan_class1012_update_l3
-
 //@gen kerwan_class1342_update_l3
 
 }  // namespace rac1

@@ -913,4 +913,80 @@ void kerwan_class574_update_l3(uint32_t m) {
     done();
 }
 
+// Class 833, the trooper's bolt (its pvars: +0 its step, +0x10 the trooper, +0x14 its life, +0x18 its size, +0x1c its heading, +0x20
+// its pitch's rate, +0x24 its speed). State 1 flies: its step plus the hero's drift (0x13f490, its z scaled by the level's word),
+// spinning, a trail of two particle 4s behind it, its pitch turned toward a target within twice its life's range; meeting the world
+// or a moby (not its trooper) it hits that moby (a hit record of kind 0x10001 along its heading) and bursts (-> 2), as at its life's
+// end. State 2: a small burst and gone.
+// orig: L3:0x002d43c8
+void kerwan_class833_update_l3(uint32_t m) {
+    const uint32_t sp = ee_stack_alloc(0x160);
+    const uint32_t st = lbu(m + 0x20);
+    const uint32_t pv = lwu(m + 0x78);
+    if (st == 2) {
+        explosion_burst(m, m + 0x10, 0, 0.25f, 13.0f);
+        moby_retire(m);
+        ee_stack_free(0x160);
+        return;
+    }
+    if (st != 1) {
+        ee_stack_free(0x160);
+        return;
+    }
+    const uint32_t T = sp + 0x40, from = sp, trail = sp + 0x10, behind = sp + 0x20, drift = sp + 0x30, sum = sp + 0x90;
+    target_select_any(m, T, fpu_mul(int_to_float(lw(pv + 0x14) << 1), lwc1(pv + 0x24)));
+    lq_sq(from, m + 0x10);
+    vec3_add(V(m + 0x10), V(m + 0x10), V(pv));
+    lq_sq(drift, 0x0013f490);
+    swc1(drift + 8, fpu_mul(lwc1(drift + 8), lwc1(L3_ADDR(0x00161b28))));
+    vec3_add_inplace(V(m + 0x10), V(drift));
+    swc1(m + 0x48, lwc1(pv + 0x1c));
+    swc1(m + 0x40, angle_add(lwc1(m + 0x40), fpu_mul(dt(), u2f(0x40c90fdbu))));
+    swc1(trail, fpu_mul(fpu_mul(cos_vu(lwc1(pv + 0x1c)), lwc1(pv + 0x24)), -0.5f));
+    swc1(trail + 4, fpu_mul(fpu_mul(sin_vu(lwc1(pv + 0x1c)), lwc1(pv + 0x24)), -0.5f));
+    sw(trail + 8, 0);
+    vec3_add(V(sum), V(trail), V(pv));
+    lq_sq(trail, sum);
+    vec3_add(V(sum), V(trail), V(drift));
+    lq_sq(trail, sum);
+    vec3_set_length(V(behind), V(pv), -0.2f);
+    vec3_add_inplace(V(behind), V(m + 0x10));
+    {
+        const int32_t life = frame_scale_i(rand_range(0xf, 0x16));
+        const int32_t size = rand_range(0x14, 0x23);
+        spawn_particle_4(behind, trail, 0x6f00afffu, 0xff, static_cast<uint32_t>(life), 0x28, static_cast<uint32_t>(size), 1);
+    }
+    {
+        const int32_t life = frame_scale_i(rand_range(0x1e, 0x3c));
+        const int32_t size = rand_range(0x32, 0x4b);
+        spawn_particle_4(behind, trail, 0x1fffffffu, 0x4f4f4fu, static_cast<uint32_t>(life), 0x28, static_cast<uint32_t>(size), 0);
+    }
+    if (lwu(T + 0x40) != 0) {  // its pitch toward the target's aim point
+        const float d = vec2_distance(V(m + 0x10), V(T + 0x20));
+        const float to = -atan2_f(d, fpu_sub(lwc1(T + 0x28), lwc1(m + 0x18)));
+        const float pitch = angle_seek_rate(pv + 0x20, lwc1(m + 0x44), to, fpu_mul(dt_sq(), kQuarterPi), fpu_mul(dt_sq(), kPi),
+                                            fpu_mul(dt(), u2f(0x3f060a92u)));
+        swc1(m + 0x44, pitch);
+        swc1(m + 0x18, fpu_add(lwc1(m + 0x18), fpu_mul(sin_vu(-pitch), lwc1(pv + 0x24))));
+    }
+    if (segment_collide_v(V(m + 0x10), V(from), 0, lwu(pv + 0x10), nullptr) != 0 || sphere_collide(m + 0x10, 0.2f, 0, lwu(pv + 0x10)) != 0) {
+        const uint32_t victim = coll_hit_moby();
+        if (victim != 0) {
+            const uint32_t rec = sp + 0xa0;
+            sub_00259888(1.0f, rec, static_cast<int32_t>(m), 0x10001, pv);
+            swc1(rec, cos_vu(lwc1(pv + 0x1c)));
+            swc1(rec + 4, sin_vu(lwc1(pv + 0x1c)));
+            swc1(rec + 8, 1.0f);
+            swc1(rec + 0xc, u2f(0x45afdf66u));
+            sb(rec + 0x19, st);
+            sh(rec + 0x1a, lhu(m + 0xa6));
+            sb(rec + 0x18, st);
+            moby_hit_record(coll_hit_moby(), rec);
+        }
+        sb(m + 0x20, 2);
+    }
+    if (timer_tick_i32(*static_cast<int32_t*>(ee_ram_ptr(pv + 0x14))) != 0) sb(m + 0x20, 2);
+    ee_stack_free(0x160);
+}
+
 }  // namespace rac1

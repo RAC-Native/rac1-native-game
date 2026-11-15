@@ -2,18 +2,9 @@
  "level": 3,
  "tool": "mkall.py",
  "env": {
-  "MKALL_FORCE": "251988,28d210,2cc828,2d30d8,2d3100,2d3918,2da710,2db198,2dcb30,2dcbc8"
+  "MKALL_FORCE": "28d210"
  },
  "entries": [
-  "2cbea8:kerwan_class627_update_l3:void:a0",
-  "2d3198:kerwan_class816_update_l3:void:a0",
-  "2d43c8:kerwan_class833_update_l3:void:a0",
-  "2da870:kerwan_class890_update_l3:void:a0",
-  "2db020:kerwan_class898_update_l3:void:a0",
-  "2db280:kerwan_class899_update_l3:void:a0",
-  "2db558:kerwan_class909_update_l3:void:a0",
-  "2dbd90:kerwan_class914_update_l3:void:a0",
-  "2dccc0:kerwan_class1012_update_l3:void:a0",
   "2df520:kerwan_class1342_update_l3:void:a0"
  ],
  "glue_files": [],

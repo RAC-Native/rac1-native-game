@@ -6,8 +6,7 @@
   "MKALL_FORCE": "1f93b0,23c428,291218,291918"
  },
  "entries": [
-  "2dc990:kerwan_class994_draw_l3:void:a0",
-  "2e01d0:kerwan_class1548_update_l3:void:a0"
+  "2dc990:kerwan_class994_draw_l3:void:a0"
  ],
  "glue_files": [],
  "files": [

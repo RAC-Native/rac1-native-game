@@ -136,7 +136,9 @@ add_library(rac1_game STATIC
     ovl/aridia_mobys.cpp
     ovl/aridia_props.cpp
     ovl/kerwan_mobys.cpp
+    ovl/kerwan_citizens.cpp
     ovl/kerwan_props.cpp
+    ovl/kerwan_rides.cpp
     ovl/kerwan_hooks.cpp
     ovl/kerwan_mine_layer.cpp
     ovl/kerwan_shuttles.cpp

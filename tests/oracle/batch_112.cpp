@@ -910,6 +910,287 @@ void batch_112() {
             }
         }
 
+        // ---- (P3.3) the escalator (899): state 0 (its path's legs measured, the steps laid; with no path (-1) a debug line and
+        // gone) or 1, its step timer at its ends, its speed word (L3:0x161bc0), its sound slot. The citizens of class 914: states 2
+        // and 3 (never 0 / 1, the talk), broken or not (the level's byte table, its bit of 0x14c190's level row), hits of kind 3
+        // or others by a moby or none, the first help message's flag (0x13d40d), the flag 0x13d4cc, the game mode (2: the scene
+        // the state 2 waits out), the talk state +4 (2: the checkpoint) and its box +0x4c (as placed or none), the camera near
+        // (its floor band within 26) or far
+        {
+            g_ignored_words = saved_ignored;
+            for (int pass = 0; pass < 6; ++pass)
+            classcheck("class899_states", 0x002db280, kerwan_class899_update_l3, [=](uint32_t m) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                vary_frame_scale();
+                w8(m + 0x20, pass < 3 ? 0u : 1u);
+                if (pass == 2) w32(pv, 0xffffffffu);
+                timer32(pv + 4);
+                sound_slot(m, pv + 8);
+                if (pass >= 3 && coin()) wf(L3_ADDR(0x00161bc0), rf(0.02f, 0.2f));
+                seed_rand();
+            }, 20);
+            for (int pass = 0; pass < 8; ++pass)
+            classcheck("class914_states", 0x002dbd90, kerwan_class914_update_l3, [=](uint32_t m) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                vary_frame_scale();
+                { static const uint8_t st[] = {2, 3, 4, 7}; w8(m + 0x20, pass < 3 ? 2u : (pass < 6 ? 3u : st[ri(0, 3)])); }
+                const uint32_t idx16 = ee_read<uint16_t>(m + 0xb2);
+                const int32_t idx = static_cast<int16_t>(idx16);
+                if (idx >= 0 && idx < 0x400) {
+                    w8(OV(0x001bb230) + u(idx) + 0x454, ri(0, 4) == 0 ? u(ri(1, 3)) : 0u);
+                    const uint32_t w = 0x0014c190 + (ee_read<uint32_t>(0x0015ed84) << 8) + (u(idx >> 5) << 2);
+                    const uint32_t bit = 1u << (idx16 & 0x1f);
+                    w32(w, ri(0, 4) == 0 ? (ee_read<uint32_t>(w) | bit) : (ee_read<uint32_t>(w) & ~bit));
+                }
+                give_hit(m, 0);
+                {
+                    const uint32_t i = ee_read<uint8_t>(m + 0xa4);
+                    if (i != 0xff) {
+                        const uint32_t e = OV(0x00178100) + (i << 6);
+                        w8(e + 0x28, ri(0, 2) != 0 ? 3u : u(ri(0, 7)));
+                        w32(e + 0x20, ri(0, 3) == 0 ? 0u : ee_read<uint32_t>(0x001413d0));
+                    }
+                }
+                w8(0x0013d40d, coin() ? 1u : 0u);
+                w8(0x0013d4cc, ri(0, 3) == 0 ? 1u : 0u);
+                w32(OV(0x0015f5c4), coin() ? 2u : 0u);
+                if (coin()) w16(pv + 4, coin() ? 2u : u(ri(0, 5)));
+                if (ri(0, 3) == 0) w32(pv + 0x4c, 0xffffffffu);
+                else if (coin() && lvd::box_count(lvd::BOXES) > 0) w32(pv + 0x4c, u(ri(0, lvd::box_count(lvd::BOXES) - 1)));
+                if (coin()) w8(m + 0x31, coin() ? 1u : 0u);
+                { Vec4 c = ee_ref<Vec4>(m + 0x10); const float r = coin() ? rf(0, 26) : rf(26, 60); c.x += r; ee_ref<Vec4>(OV(0x00166dc0)) = c; }
+                seed_rand();
+            }, 20);
+        }
+
+        // ---- (P3.3b) the hover platforms 816 / 1012 and the citizens 890 (Helga) / 909 (the Heli-Pack's giver), through their
+        // states with what their branches read set up from the level: the platforms' calls (the hero in a call's box, the call
+        // given, the help kinds), their rides (the path point they head for, at it or short of it, the path's last point, the
+        // speed, the turn rates, the sound slot playing or not), the hero on the platform or not (the moby he stands on 0x13f64c,
+        // the ride lock 0x13f65e, his state), the button 0x10 (0x13cae4) and gameplay (0x15f594 = 8), the hero 5 / 15 away; the
+        // ferry's ends (the hero and the ferry nearer either), its called / gone / wait words. The citizens never in a state that
+        // talks (0 / 1 talk_init / talk_update) or at the talk's state 2 out of a scene (the item, the level change): states 2 in
+        // a scene (the ferry released) or out of it at another talk state (the checkpoint, the ferry called), 890's state 0 with
+        // its course done (0x13d4cc: the ferry called and gone), 909's state 1 with the flag 0x13d4c2 (the prize moby marked
+        // given, no talk with the slot collected), the look (the hero within 8 in front, moving, its timers at their ends), and
+        // 890's scene work (game mode 2, scene 2 about frames 490 / 614 / 750 / 801, the scene's mobys of its class).
+        {
+            g_ignored_words = saved_ignored;
+            if (info && g_oracle_level == 3) {  // (where the platforms and the citizens stand: the play test's spots)
+                level();
+                for (uint32_t fn : {0x002d3198u, 0x002dccc0u, 0x002da870u, 0x002db558u, 0x002dbd90u})
+                    for (uint32_t m : mobys_with(fn))
+                        std::printf("  B112 P3.3b: L3:0x%08x class %d moby index %u uid %d at (%.1f, %.1f, %.1f)\n", fn, ee_read<int16_t>(m + 0xa6),
+                                    (m - table()) >> 8, ee_read<int16_t>(m + 0xb2), ee_read<float>(m + 0x10), ee_read<float>(m + 0x14), ee_read<float>(m + 0x18));
+            }
+            const uint32_t P = 0x0013f350;
+            auto hero_at = [](Vec4 q) {
+                ee_ref<Vec4>(0x0013f3d0) = q;
+                ee_ref<Vec4>(ee_read<uint32_t>(0x001413d0) + 0x10) = q;
+            };
+            auto on_it = [P](uint32_t m, bool yes) {
+                w32(P + 0x2fc, yes ? m : 0u);
+                w16(P + 0x30e, yes && ri(0, 4) != 0 ? 0u : 1u);
+                w32(P + 0x208c, 0);
+                { static const uint32_t hs[] = {0, 0x65, 0x66, 0x67, 0x1c, 3}; w32(P + 0x2084, hs[ri(0, 5)]); }
+            };
+            auto buttons = [] {
+                w32(0x0013cae4, coin() ? (ee_read<uint32_t>(0x0013cae4) | 0x10u) : (ee_read<uint32_t>(0x0013cae4) & ~0x10u));
+                w32(OV(0x0015f594), ri(0, 3) != 0 ? 8u : u(ri(0, 10)));
+            };
+            // a ride on the path `idx`: the point it heads for, the moby at it (within the reach of two steps) or short of it
+            auto ride_setup = [=](uint32_t m, uint32_t pv, int32_t idx) {
+                if (idx < 0 || idx >= lvd::path_count()) return;
+                const uint32_t path = lvd::path(idx);
+                const int32_t n = static_cast<int32_t>(ee_read<uint32_t>(path));
+                if (n <= 0 || n > 512) return;
+                const int32_t i = ri(0, 3) == 0 ? n - 1 : ri(0, n - 1);
+                w32(pv + 0x64, u(i));
+                Vec4 q = ee_ref<Vec4>(path + 0x10 + u(i) * 16);
+                const float r = coin() ? rf(0.0f, i == n - 1 ? 0.02f : 0.3f) : rf(0.3f, 6.0f), a = rf(-3.1f, 3.1f);
+                q.x += r * std::cos(a); q.y += r * std::sin(a); q.z += rf(-0.5f, 0.5f);
+                ee_ref<Vec4>(m + 0x10) = q;
+                wf(pv + 0x60, rf(0.0f, 0.4f));
+                for (uint32_t k = 0x68; k <= 0x70; k += 4) if (coin()) wf(pv + k, rf(-0.2f, 0.2f));
+                sound_slot(m, pv + 0x78);
+            };
+            auto taken_marks = [](uint32_t m) {
+                const uint32_t idx16 = ee_read<uint16_t>(m + 0xb2);
+                const int32_t idx = static_cast<int16_t>(idx16);
+                if (idx < 0 || idx >= 0x400) return;
+                w8(OV(0x001bb230) + u(idx) + 0x454, ri(0, 4) == 0 ? 1u : 0u);
+                const uint32_t w = 0x0014c190 + (ee_read<uint32_t>(0x0015ed84) << 8) + (u(idx >> 5) << 2);
+                const uint32_t bit = 1u << (idx16 & 0x1f);
+                w32(w, ri(0, 4) == 0 ? (ee_read<uint32_t>(w) | bit) : (ee_read<uint32_t>(w) & ~bit));
+            };
+            for (int pass = 0; pass < 10; ++pass)
+            classcheck("class816_states", 0x002d3198, kerwan_class816_update_l3, [=](uint32_t m) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                vary_frame_scale();
+                const uint32_t st = pass < 8 ? u(pass) : u(ri(0, 9));
+                w8(m + 0x20, st);
+                {   // the debug view (a developer's flag): only with call 0's three paths placed (it draws them unchecked)
+                    bool all = true;
+                    for (uint32_t k = 0; k < 3; ++k) { const int32_t i = static_cast<int32_t>(ee_read<uint32_t>(pv + 0x94 + k * 0x14)); if (i < 0 || i >= lvd::path_count()) all = false; }
+                    w32(L3_ADDR(0x00161b04), all && ri(0, 4) == 0 ? 1u : 0u);
+                }
+                if (st == 0) taken_marks(m);
+                std::vector<uint32_t> calls;
+                for (uint32_t c = 0; c < 5; ++c) if (static_cast<int32_t>(ee_read<uint32_t>(pv + 0x94 + c * 4)) >= 0) calls.push_back(c);
+                const uint32_t c = !calls.empty() && ri(0, 4) != 0 ? calls[static_cast<size_t>(ri(0, static_cast<int>(calls.size()) - 1))] : u(ri(0, 4));
+                w8(m + 0xbc, c);
+                w32(pv + 0x7c, ri(0, 3) != 0 ? 1u : 0u);
+                w32(pv + 0x74, coin() ? 0xffffffffu : u(ri(0, 4)));
+                if (ri(0, 4) == 0) w32(pv + 0x80 + u(ri(0, 4)) * 4, 0xffffffffu);
+                {
+                    const int32_t box = static_cast<int32_t>(ee_read<uint32_t>(pv + 0x80 + c * 4));
+                    if (box >= 0 && box < lvd::box_count(lvd::BOXES) && coin()) hero_at(ee_ref<Vec4>(lvd::box(lvd::BOXES, box) + 0x30));
+                    else hero_near(m);
+                }
+                if (st == 6) { Vec4 q = ee_ref<Vec4>(m + 0x10); const float r = coin() ? rf(4.0f, 6.0f) : rf(14.0f, 16.0f); q.x += r; hero_at(q); }
+                if (st == 6 && coin()) w32(pv + 0xbc + c * 4, 0xffffffffu);
+                on_it(m, coin());
+                buttons();
+                if (coin()) w32(pv + 0xd0 + c * 4, u(ri(0, 2)));
+                if (st == 2) ride_setup(m, pv, static_cast<int32_t>(ee_read<uint32_t>(pv + 0x94 + c * 4)));
+                {   // (states 5 / 7 ride the call's path out / home unchecked: the game enters them only with that path placed)
+                    auto placed = [pv, c](uint32_t base) { const int32_t i = static_cast<int32_t>(ee_read<uint32_t>(pv + base + c * 4)); return i >= 0 && i < lvd::path_count(); };
+                    if ((st == 5 && !placed(0xa8)) || (st == 7 && !placed(0xbc))) w8(m + 0x20, 1);
+                }
+                if (st == 5) ride_setup(m, pv, static_cast<int32_t>(ee_read<uint32_t>(pv + 0xa8 + c * 4)));
+                if (st == 7) ride_setup(m, pv, static_cast<int32_t>(ee_read<uint32_t>(pv + 0xbc + c * 4)));
+                if (coin()) for (uint32_t k = 0x6c; k <= 0x70; k += 4) wf(pv + k, rf(-0.2f, 0.2f));
+                seed_rand();
+            }, 20);
+            for (int pass = 0; pass < 8; ++pass)
+            classcheck("class1012_states", 0x002dccc0, kerwan_class1012_update_l3, [=](uint32_t m) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                vary_frame_scale();
+                const uint32_t st = pass < 4 ? u(pass) : (pass < 7 ? 1u : u(ri(0, 5)));
+                w8(m + 0x20, st);
+                w8(pv + 0x80, u(ri(0, 1)));
+                w8(m + 0xbc, u(ri(0, 1)));
+                const int32_t pa = static_cast<int32_t>(ee_read<uint32_t>(pv + 0x90)), pb = static_cast<int32_t>(ee_read<uint32_t>(pv + 0x94));
+                if (pa >= 0 && pb >= 0 && pa < lvd::path_count() && pb < lvd::path_count()) {
+                    Vec4 ea = ee_ref<Vec4>(lvd::path(pa) + 0x10), eb = ee_ref<Vec4>(lvd::path(pb) + 0x10);
+                    Vec4 h = coin() ? ea : eb, f = coin() ? ea : eb;
+                    h.x += rf(-3, 3); h.y += rf(-3, 3); f.x += rf(-1, 1); f.y += rf(-1, 1);
+                    hero_at(h);
+                    if (st == 1) ee_ref<Vec4>(m + 0x10) = f;
+                }
+                if (ri(0, 4) == 0) hero_near(m);
+                w32(pv + 0x7c, coin() ? 1u : 0u);
+                w32(pv + 0x84, coin() ? 1u : 0u);
+                w32(pv + 0x8c, ri(0, 3) == 0 ? 1u : 0u);
+                timer32(pv + 0x88);
+                { static const uint32_t kinds[] = {0, 1, 1, 2, 3, 4, 5}; w32(pv + 0x98, kinds[ri(0, 6)]); w32(pv + 0x9c, kinds[ri(0, 6)]); }
+                {   // the hero in its box (+0xa0: none as placed; a citizen's release gives it one)
+                    if (coin() && lvd::box_count(lvd::BOXES) > 0) w32(pv + 0xa0, u(ri(0, lvd::box_count(lvd::BOXES) - 1)));
+                    const int32_t box = static_cast<int32_t>(ee_read<uint32_t>(pv + 0xa0));
+                    if (box >= 0 && box < lvd::box_count(lvd::BOXES) && ri(0, 3) == 0) hero_at(ee_ref<Vec4>(lvd::box(lvd::BOXES, box) + 0x30));
+                }
+                if (coin()) w32(pv + 0xa4, 0xffffffffu);
+                on_it(m, coin());
+                buttons();
+                if (st == 3) ride_setup(m, pv, static_cast<int32_t>(ee_read<uint32_t>(pv + 0x90 + u(ee_read<uint8_t>(m + 0xbc)) * 4)));
+                seed_rand();
+            }, 20);
+            // the citizens: the ferry they name (a class 1012 moby or none), their checkpoint box, their look
+            const std::vector<uint32_t> ferries = g_oracle_level == 3 ? (level(), mobys_with(0x002dccc0u)) : std::vector<uint32_t>{};
+            auto citizen_common = [=](uint32_t m, uint32_t pv, uint32_t ferry_word, uint32_t box_word, uint32_t near_t, uint32_t wander_t) {
+                vary_frame_scale();
+                if (!ferries.empty() && ri(0, 4) != 0) w32(ferry_word, (ferries[static_cast<size_t>(ri(0, static_cast<int>(ferries.size()) - 1))] - table()) >> 8);
+                else if (coin()) w32(ferry_word, (m - table()) >> 8);  // (a moby of another class)
+                else if (coin()) w32(ferry_word, 0xffffffffu);
+                if (ri(0, 3) == 0) w32(box_word, 0xffffffffu);
+                else if (coin() && lvd::box_count(lvd::BOXES) > 0) w32(box_word, u(ri(0, lvd::box_count(lvd::BOXES) - 1)));
+                const uint32_t slot = ee_read<uint8_t>(m + 0xb0);
+                if (slot != 0xff) w8(0x0014c050 + (ee_read<uint32_t>(0x0015ed84) << 4) + slot, coin() ? 0xffu : 0u);
+                w8(m + 0x53, ri(0, 4) == 0 ? 1u : 0u);
+                {   // the hero within 8 in front of it, or not; moving or still
+                    Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    const float r = coin() ? rf(0.5f, 8.0f) : rf(8.0f, 20.0f);
+                    const float a = ee_read<float>(m + 0x48) + (coin() ? rf(-1.4f, 1.4f) : rf(1.7f, 4.5f));
+                    q.x += r * std::cos(a); q.y += r * std::sin(a);
+                    hero_at(q);
+                    if (ri(0, 3) == 0) q.z += rf(-12.0f, 12.0f);  // (its target far above / below: the tilt's limits)
+                    ee_ref<Vec4>(0x0013f420) = q;
+                    Vec4 v = ee_ref<Vec4>(0x0013f450);
+                    v.x = coin() ? 0.0f : rf(-0.3f, 0.3f); v.y = 0.0f; v.z = 0.0f;
+                    ee_ref<Vec4>(0x0013f450) = v;
+                }
+                timer32(pv + near_t);
+                timer32(pv + wander_t);
+                w8(0x0015edb0, coin() ? 1u : 0u);
+            };
+            for (int pass = 0; pass < 8; ++pass)
+            classcheck("class890_states", 0x002da870, kerwan_class890_update_l3, [=](uint32_t m) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                citizen_common(m, pv, pv + 0xd4, pv + 0xcc, 0x1f0, 0x1f4);
+                const bool scene = pass < 3 || coin();
+                w32(OV(0x0015f5c4), scene ? 2u : 0u);
+                if (pass == 0) { w8(m + 0x20, 0); w8(0x0013d4cc, 1); }
+                else w8(m + 0x20, pass < 6 ? 2u : u(ri(3, 5)));
+                if (scene) w16(pv + 0xb6, coin() ? 2u : u(ri(0, 4)));
+                else { static const uint16_t ts[] = {0, 1, 3, 4}; w16(pv + 0x84, ts[ri(0, 3)]); }  // (never 2 out of a scene: the item and the level change)
+                if (coin()) w32(pv + 0xd8, u(ri(0, 20)));
+                {   // its scene work: scene 2 about its frames, the scene's mobys (this one among them), the light record once
+                    const uint32_t SC = OV(0x0016c860);
+                    w32(SC + 0x30, coin() ? 2u : u(ri(0, 5)));
+                    static const int32_t fr[] = {489, 490, 613, 614, 749, 750, 800, 801, 300, 1000};
+                    w32(SC + 0x34, u(fr[ri(0, 9)]));
+                    w16(SC + 0x44, u(ri(0, 4)));
+                    for (uint32_t k = 0; k < 4; ++k) w32(SC + 0x178 + k * 4, coin() ? m : ee_read<uint32_t>(0x001413d0));
+                    w8(OV(0x0017c440) + 1, coin() ? 0u : 1u);
+                }
+                seed_rand();
+            }, 20);
+            // the ferry's help message and camera (L3:0x2dcbc8) on its own: each end's kind (-1 .. 5), its camera asked for (+0xa4 -1)
+            // or held
+            if (g_oracle_level == 3 && !ferries.empty())
+                l3check("ferry_help", 0x002dcbc8, 60, Ret::None, [=] {
+                    level();
+                    const uint32_t m = ferries[static_cast<size_t>(ri(0, static_cast<int>(ferries.size()) - 1))];
+                    if (coin()) w32(ee_read<uint32_t>(m + 0x78) + 0xa4, 0xffffffffu);
+                    return Args{{m, u(ri(-1, 5))}, {}};
+                }, [](A a) { ferry_help_l3(a.i[0], static_cast<int32_t>(a.i[1])); return uint64_t{0}; });
+            const std::vector<uint32_t> prizes = [&] {
+                std::vector<uint32_t> v;
+                if (g_oracle_level != 3) return v;
+                level();
+                for (uint32_t o = table(); o < ee_read<uint32_t>(OV(0x0015ffe0)); o += 0x100)
+                    if (ee_read<uint8_t>(o + 0x20) < 0xfe && ee_read<int16_t>(o + 0xa6) == 0x3e5) v.push_back(o);
+                return v;
+            }();
+            for (int pass = 0; pass < 8; ++pass)
+            classcheck("class909_states", 0x002db558, kerwan_class909_update_l3, [=](uint32_t m) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                citizen_common(m, pv, pv + 0x148, pv + 0x14c, 0x164, 0x168);
+                if (!prizes.empty() && ri(0, 4) != 0) {
+                    const uint32_t o = prizes[static_cast<size_t>(ri(0, static_cast<int>(prizes.size()) - 1))];
+                    w32(pv + 0x144, (o - table()) >> 8);
+                    w8(o + 0x20, coin() ? 0u : 1u);
+                    if (coin()) w8(o + 0xb0, coin() ? 0xffu : u(ri(0, 15)));
+                    if (coin()) w8(OV(0x0015fc88) + ee_read<uint8_t>(o + 0xb0), coin() ? 0xffu : 0u);
+                } else if (coin()) {
+                    w32(pv + 0x144, 0xffffffffu);
+                }
+                if (pass < 3) {  // state 1 with the flag 0x13d4c2 and the slot collected: no talk
+                    w8(m + 0x20, 1);
+                    w8(0x0013d4c2, 1);
+                    const uint32_t slot = ee_read<uint8_t>(m + 0xb0);
+                    if (slot != 0xff) w8(0x0014c050 + (ee_read<uint32_t>(0x0015ed84) << 4) + slot, 0xff);
+                    else w8(m + 0x20, 3);
+                } else {
+                    w8(m + 0x20, pass < 6 ? 2u : u(ri(3, 5)));
+                    const bool scene = coin();
+                    w32(OV(0x0015f5c4), scene ? 2u : 0u);
+                    if (!scene) { static const uint16_t ts[] = {0, 1, 3, 4}; w16(pv + 4, ts[ri(0, 3)]); }
+                }
+                seed_rand();
+            }, 20);
+        }
+
         g_ignored_words = saved_ignored;
         // the hand-written helpers other code reaches, each against its original: the group test class 574's generated update is
         // glued to (L3:0x2c6d98: the level's groups, their members put in the states it counts, alive or gone), the level's sound by

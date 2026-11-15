@@ -1,4 +1,4 @@
-// Kerwan's own moby classes: class 578, the mine layer of Metropolis, a walker that patrols its path and drops a spread of five
+// Kerwan's own moby classes: class 578, the mine layer of Metropolis, and class 627, its mine; a walker that patrols its path and drops a spread of five
 // mines (class 627) behind it at a time. Header kerwan_mobys.h, registered in kerwan_mobys.cpp. Addresses are Kerwan's
 // (`orig: L3:`); data only Kerwan has is L3_ADDR, the engine's words shared with Veldin are the level's own (OV), the base ELF's
 // are bare.
@@ -7,6 +7,7 @@
 // the walker record, +0xe8 its fall's speed, +0x120 its path follower (+0x120 the point, +0x124 the direction, +0x130 its path),
 // +0x134 its path's index, +0x150 the turn's speed, +0x154 the wait between spreads, +0x156 the wait before it may turn back,
 // +0x15c the alert's time, +0x160 the joint it scales.
+#include <game/collision/collision.h>
 #include <game/level/level_data.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/doomlet.h>
@@ -295,6 +296,173 @@ void kerwan_class578_update_l3(uint32_t m) {
     }
     if (lbu(m + 0x31) != 0 && vec3_distance(V(m + 0x10), V(OV(0x00166dc0))) < 32.0f) moby_floor_band(m);
     ee_stack_free(0x160);
+}
+
+// A mine's hits (kinds 0x130000): a hit by anything but another mine sets it off (state 4).
+// orig: L3:0x002cc828
+void mine_hits_l3(uint32_t m) {
+    const uint32_t hit = sub_0025a420(m, NOT_ADDR(0x130000u), 0);
+    if (hit != 0 && lwu(hit + 0x20) != 0 && lh(lwu(hit + 0x20) + 0xa6) != lh(m + 0xa6)) sb(m + 0x20, 4);
+    sb(m + 0xa4, 0xff);
+}
+
+// Class 627, the mine a mine layer drops (its pvars: the move record at +0, +0x60 its frame's flags, +0x64 the wait before it may
+// be picked up again, +0x68 its layer, +0x6c its age). The state (+0x20):
+// 1 thrown (enemy_physics): landed -> 3 (the animation 1, a wait of 60 frames); below z 5 it is gone;
+// 2 picked up: flies to its layer (14 a frame, rising 4) and is gone there;
+// 3 armed: its layer within 3 after the wait picks it up (-> 2, sound 2); after 3600 frames (its layer gone) or 5400 it fades
+//   (-> 5); the hero's moby standing on it, or a moby that can be hit (flags 0x1000) touching it (its layer only after the
+//   wait), sets it off (-> 4);
+// 4 blows up: everything within 2 hit (moby_list_hit), a spray of particles (type 0x10, four kinds, 15 per unit of the
+//   camera's distance), its sound, the camera shaken (nearer than 20: harder), the level's blast effect, gone;
+// 5 shrinks to 1 % of its class's size, then gone.
+// orig: L3:0x002cbea8 (the jump table L3:0x1e3300 on the state, in order)
+void kerwan_class627_update_l3(uint32_t m) {
+    const uint32_t sp = ee_stack_alloc(0x150);
+    // the blast's effect descriptor (the level's, L3:0x1e32b0, 0x50 bytes) copied to the stack as the original does
+    for (uint32_t k = 0; k < 0x50; k += 0x10) lq_sq(sp + k, L3_ADDR(0x001e32b0) + k);
+    const uint32_t pv = lwu(m + 0x78);
+    mine_hits_l3(m);
+    sw(pv + 0x60, 0);
+    sw(pv + 0x6c, lwu(pv + 0x6c) + 1);
+    auto gone = [&] {
+        moby_retire(m);
+        ee_stack_free(0x150);
+    };
+    switch (lbu(m + 0x20)) {
+    case 1:  // (0x002cbf68)
+        if ((enemy_physics(m, pv) & 1u) != 0) {
+            sb(m + 0x20, 3);
+            if (lbu(m + 0x53) != 1) moby_anim_set(m, 1, 0, frame_scale_i(10));
+            sw(pv + 0x64, static_cast<uint32_t>(frame_scale_i(0x3c)));
+        } else if (lwc1(m + 0x18) < 5.0f) {
+            gone();
+            return;
+        }
+        break;
+    case 2: {  // (0x002cbfe4)
+        const uint32_t to = sp + 0x50;
+        vec3_sub(V(to), V(lwu(pv + 0x68) + 0x10), V(m + 0x10));
+        if (vec3_length(V(to)) < 0.25f) {
+            gone();
+            return;
+        }
+        vec3_set_length(V(to), V(to), fpu_mul(dt(), 14.0f));
+        swc1(to + 8, fpu_add(lwc1(to + 8), fpu_mul(dt(), 4.0f)));
+        vec3_add(V(m + 0x10), V(m + 0x10), V(to));
+        break;
+    }
+    case 3: {  // (0x002cc074)
+        timer_tick_i32(*static_cast<int32_t*>(ee_ram_ptr(pv + 0x64)));
+        const uint32_t layer = lwu(pv + 0x68);
+        if (layer != 0 && lbu(layer + 0x20) != 0xfe && lbu(layer + 0x20) != 0xfd &&
+            vec2_distance(V(m + 0x10), V(layer + 0x10)) < 3.0f && lw(pv + 0x64) == 0) {
+            sb(m + 0x20, 2);
+            moby_sound_start(2, 0, m);
+        }
+        if (frame_scale_i(0xe10) < lw(pv + 0x6c)) {
+            const uint32_t l = lwu(pv + 0x68);
+            if (l == 0 || lbu(l + 0x20) == 0xfe || lbu(l + 0x20) == 0xfd || frame_scale_i(0x1518) < lw(pv + 0x6c)) sb(m + 0x20, 5);
+        }
+        const uint32_t hero = lwu(0x001413d0);  // (the hero's moby)
+        if (vec2_distance(V(hero + 0x10), V(m + 0x10)) < 0.5f && abs_f(fpu_sub(lwc1(m + 0x18), lwc1(0x0013f3d8))) < 0.25f) {
+            sb(m + 0x20, 4);
+            break;
+        }
+        const int32_t n = mobys_in_sphere(m + 0x10, 1.0f, 0x10, m, 0);
+        for (int32_t i = 0; i < n; ++i) {
+            const uint32_t o = coll_hit_list_at(i);
+            if ((lhu(o + 0x34) & 0x1000u) == 0) continue;
+            if (o != lwu(pv + 0x68) || lw(pv + 0x64) == 0) {
+                sb(m + 0x20, 4);
+                break;
+            }
+        }
+        break;
+    }
+    case 4: {  // (0x002cc224) the blast
+        const float cam_d = vec2_distance(V(m + 0x10), V(OV(0x00166dc0)));
+        const int32_t n = mobys_in_sphere(m + 0x10, 2.0f, 0x10, m, 0);
+        lq_sq(sp + 0x50, m + 0x10);
+        moby_list_hit(m, sp + 0x50, coll_hit_list(), n, 0, NOT_ADDR(0x810001u), 4, 1, 3.0f, 0.25f, 1.5f);
+        const uint32_t ups = sp + 0x50, vel = sp + 0x60, at = sp + 0x70;
+        for (int32_t left = float_to_int(fpu_mul(cam_d, 15.0f)); left > 0; --left) {
+            const int32_t kind = rand_mod(4);
+            // the rises of the four kinds (14, 22, 12 and 0 x the frame time) and a random spread
+            swc1(vel, fpu_mul(dt(), 14.0f));
+            swc1(vel + 4, fpu_mul(dt(), 22.0f));
+            swc1(vel + 8, fpu_mul(dt(), 12.0f));
+            sw(vel + 0xc, 0);
+            sd(ups, ld(vel));
+            sd(ups + 8, ld(vel + 8));
+            sd(at, 0);
+            sd(at + 8, 0);
+            swc1(at, rand_range_f(fpu_mul(dt(), -0.5f), fpu_mul(dt(), 0.5f)));
+            swc1(at + 4, rand_range_f(fpu_mul(dt(), -0.5f), fpu_mul(dt(), 0.5f)));
+            swc1(at + 8, rand_range_f(fpu_mul(dt(), 4.0f), lwc1(ups + static_cast<uint32_t>(kind) * 4)));
+            lq_sq(vel, at);
+            const float spread = rand_range_f(0.0f, kind == 1 ? 0.5f : 0.25f);
+            const float a = rand_angle();
+            swc1(at, fpu_mul(cos_vu(a), spread));
+            swc1(at + 4, fpu_mul(sin_vu(a), spread));
+            sw(at + 8, 0);
+            vec3_add(V(at), V(at), V(m + 0x10));
+            swc1(at + 8, fpu_sub(lwc1(at + 8), fpu_mul(spread, cos_vu(u2f(0x3f490fd8u)))));
+            swc1(vel + 8, fpu_sub(lwc1(vel + 8), fpu_mul(fpu_mul(spread, dt()), 8.0f)));
+            switch (kind) {
+            case 0: {  // (0x002cc490) dark smoke
+                const float size = rand_range_f(200000.0f, 300000.0f);
+                const int32_t life = rand_range(frame_scale_i(0xb4), frame_scale_i(0xf0));
+                spawn_particle_10(at, vel, 0x1f101820u, 0x101010u, static_cast<uint32_t>(life), 0, size);
+                break;
+            }
+            case 1: {  // (0x002cc504) embers
+                const float size = rand_range_f(50000.0f, 100000.0f);
+                spawn_particle_10(at, vel, 0x3f081020u, 0x0f081020u, static_cast<uint32_t>(frame_scale_i(0xb4)), 1, size);
+                break;
+            }
+            case 2: {  // (0x002cc560) sparks, mostly white
+                const uint32_t colour = 0x27 < rand_mod(100) ? 0x2f486078u : 0x5ff8f8f8u;
+                const int32_t life = rand_range(frame_scale_i(0x1e), frame_scale_i(0x2d));
+                spawn_particle_10(at, vel, colour, 0x0f000020u, static_cast<uint32_t>(life), 2, 150000.0f);
+                break;
+            }
+            default: {  // 3 (0x002cc5d8) flame puffs drifting off
+                const uint32_t c0 = rgba_lerp_ovl(0x7f000000u, 0x7f182030u, rand_range_f(0.25f, 1.0f));
+                const uint32_t c1 = rgba_lerp_ovl(0, 0x5f5f5fu, rand_range_f(0.5f, 1.0f));
+                const float speed = fpu_mul(rand_range_f(0.0f, 1.0f), dt());
+                vec_from_spherical_v(V(vel), speed, a, rand_angle());
+                const float size = rand_range_f(200000.0f, 300000.0f);
+                const int32_t life = rand_range(frame_scale_i(0xf0), frame_scale_i(0x12c));
+                spawn_particle_10(at, vel, c0, c1, static_cast<uint32_t>(life), 3, size);
+                break;
+            }
+            }
+        }
+        moby_sound_start(0, 0, m);
+        // the camera shake (Veldin's 0x166de0 / its count 0x166de8)
+        if (cam_d < 20.0f) swc1(OV(0x00166de0), fpu_sub(u2f(0x3ecccccdu), fpu_mul(cam_d, u2f(0x3c8f5c29u))));
+        else swc1(OV(0x00166de0), u2f(0x3d4cccd0u));
+        sw(OV(0x00166de8), static_cast<uint32_t>(frame_scale_i(0x19)));
+        effect_spawn(sp, m + 0x10, 0, 0);
+        moby_list_remove(m, OV(0x001b07b0));
+        gone();
+        return;
+    }
+    case 5: {  // (0x002cc774)
+        const float size = fpu_mul(lwc1(m + 0x2c), fpu_add(fpu_mul(lwc1(0x0015ed60), u2f(0xbd978d50u)), 1.0f));
+        swc1(m + 0x2c, size);
+        if (size < fpu_mul(lwc1(lwu(m + 0x24) + 0x24), u2f(0x3c23d70au))) {
+            moby_list_remove(m, OV(0x001b07b0));
+            gone();
+            return;
+        }
+        break;
+    }
+    default:  // 0 (0x002cc7e0)
+        break;
+    }
+    ee_stack_free(0x150);
 }
 
 }  // namespace rac1
