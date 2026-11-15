@@ -96,6 +96,14 @@ add_library(rac1_game STATIC
     ovl/gaspar_meteors.cpp
     ovl/gaspar_breakables.cpp
     ovl/gaspar_platform.cpp
+    ovl/gaspar_controller.cpp
+    ovl/gaspar_lift.cpp
+    ovl/gaspar_fuses.cpp
+    ovl/gaspar_turret.cpp
+    ovl/gaspar_hazard.cpp
+    ovl/gaspar_ferry.cpp
+    ovl/gaspar_lava.cpp
+    ovl/gaspar_carry.cpp
     ovl/gaspar_hooks.cpp
     ovl/batalia_mobys.cpp
     ovl/batalia_hooks.cpp

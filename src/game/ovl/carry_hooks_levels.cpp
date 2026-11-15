@@ -282,11 +282,11 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         }
     case 9:  // Gaspar: class 0xc1 (table 0x209b00)
         switch (lvl_key(fn)) {
-        case L9_CASE(0x002e2680): ret = u_call(gas_hook_2e2680_u, m, a1, a2, f12); return true;
-        case L9_CASE(0x002e26d0): ret = u_call(gas_hook_2e26d0_u, m, a1, a2, f12); return true;
-        case L9_CASE(0x002e2720): ret = u_call(gas_hook_2e2720_u, m, a1, a2, f12); return true;
-        case L9_CASE(0x002e2770): ret = u_call(gas_hook_2e2770_u, m, a1, a2, f12); return true;
-        case L9_CASE(0x002e27a0): ret = u_call(gas_hook_2e27a0_u, m, a1, a2, f12); return true;
+        case L9_CASE(0x002e2680): ret = carry_state_hook(m, a1, a2, f12, 0, 7, 1); return true;  // (shared_helpers.cpp)
+        case L9_CASE(0x002e26d0): ret = carry_state_hook(m, a1, a2, f12, 4, 7, 1); return true;
+        case L9_CASE(0x002e2720): ret = carry_state_hook(m, a1, a2, f12, 8, 7, 1); return true;
+        case L9_CASE(0x002e2770): ret = gas_hook_2e2770_l9(m, a1, a2, f12); return true;  // (gaspar_carry.cpp)
+        case L9_CASE(0x002e27a0): ret = static_cast<int32_t>(gas_hook_2e27a0_l9(m)); return true;
         default: return false;
         }
     case 10:  // Orxon: class 0x10e's hook +0xc (table 0x1dde40), class 0x33b (table 0x1dde58)

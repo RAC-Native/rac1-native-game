@@ -191,7 +191,7 @@ void class_mates_mark_level(uint32_t m, uint32_t joint) {
     }
 }
 
-// orig: L8:0x002d4000 L12:0x002e1758 L12:0x002e17a8 L14:0x002dae00 L18:0x002d6190 L18:0x002d61e0 L18:0x002fcbb0 L18:0x002fcc00 L18:0x002fcc50
+// orig: L8:0x002d4000 L9:0x002e2680 L9:0x002e26d0 L9:0x002e2720 L12:0x002e1758 L12:0x002e17a8 L14:0x002dae00 L18:0x002d6190 L18:0x002d61e0 L18:0x002fcbb0 L18:0x002fcc00 L18:0x002fcc50
 int32_t carry_state_hook(uint32_t m, uint32_t a1, uint32_t a2, float f12, uint32_t which, uint32_t carried, int32_t released) {
     const int32_t r = which == 0 ? carry_hook0(m, a1, a2, f12) : which == 4 ? carry_hook4(m, a1, a2, f12) : carry_hook8(m, a1, a2, f12);
     if (r != 0) sb(m + 0x20, carried);

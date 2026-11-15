@@ -21,6 +21,7 @@
 #include <game/ovl/shared_tracer.h>
 #include <game/ovl/gaspar_hooks.h>
 #include <game/ovl/gaspar_mobys.h>
+#include <game/ovl/shared_helpers.h>
 
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/empty_class_updates.h>
@@ -29,13 +30,13 @@ namespace rac1 {
 
 namespace {
 // orig: (none) -- adapter of L9:0x002e2680 (class 193's hook +0: the indirect-call form, the moby only)
-void gas_hook_2e2680_m(uint32_t m) { gas_hook_2e2680_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+void gas_hook_2e2680_m(uint32_t m) { carry_state_hook(m, 0, 0, 0.0f, 0, 7, 1); }
 
 // orig: (none) -- adapter of L9:0x002e2720 (class 193's hook +8: the indirect-call form, the moby only)
-void gas_hook_2e2720_m(uint32_t m) { gas_hook_2e2720_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+void gas_hook_2e2720_m(uint32_t m) { carry_state_hook(m, 0, 0, 0.0f, 8, 7, 1); }
 
 // orig: (none) -- adapter of L9:0x002e2770 (class 193's hook +0xc: the indirect-call form, the moby only)
-void gas_hook_2e2770_m(uint32_t m) { gas_hook_2e2770_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+void gas_hook_2e2770_m(uint32_t m) { gas_hook_2e2770_l9(m, 0, 0, 0.0f); }
 
 }  // namespace
 

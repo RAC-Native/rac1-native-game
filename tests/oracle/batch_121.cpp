@@ -10,6 +10,7 @@
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/shared_bg_ships.h>
 #include <game/ovl/shared_class1023.h>
+#include <game/ovl/shared_helpers.h>
 #include <game/ovl/shared_class156.h>
 #include <game/ovl/shared_class1844.h>
 #include <game/ovl/shared_class1885.h>
@@ -282,9 +283,12 @@ void batch_121() {
     }
     for (const TrCls& c : trcls) {
         if (std::getenv("B121_CLS") != nullptr && std::strcmp(std::getenv("B121_CLS"), c.name) != 0) continue;
-        // the hand ports (P9.1): none of the two lists
+        // the hand ports (P9.1, P9.2): none of the two lists
         const bool hand = c.fn == gas_class1182_update_l9 || c.fn == gas_class263_update_l9 || c.fn == gas_class276_update_l9 || c.fn == gas_class279_update_l9 ||
-                          c.fn == gas_class313_update_l9 || c.fn == gas_class320_update_l9 || c.fn == gas_class417_update_l9 || c.fn == gas_class664_update_l9;
+                          c.fn == gas_class313_update_l9 || c.fn == gas_class320_update_l9 || c.fn == gas_class417_update_l9 || c.fn == gas_class664_update_l9 ||
+                          c.fn == gas_class1000_update_l9 || c.fn == gas_class1150_update_l9 || c.fn == gas_class1172_update_l9 || c.fn == gas_class1181_update_l9 ||
+                          c.fn == gas_class1201_update_l9 || c.fn == gas_class1206_update_l9 || c.fn == gas_class1285_update_l9 || c.fn == gas_class1293_update_l9 ||
+                          c.fn == gas_class1766_update_l9;
         g_ignored_words = batch_ignored;
         if (hand) g_ignored_words = saved_ignored;
         for (int st = 0; st < 16; ++st)
@@ -333,13 +337,14 @@ void batch_121() {
     // (the carry hooks' shape: their callees read all four), on the mobys whose class owns the hook
     if (g_oracle_level == 9) {
         g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, 0x002763f8};
-        struct Hk { const char* name; uint32_t addr; uint32_t slot; TrRet (*fn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float); };
+        // (P9.2: the hand ports: +0 / +4 / +8 the shared carry_state_hook, +0xc / +0x10 gaspar_carry.cpp's)
+        struct Hk { const char* name; uint32_t addr; uint32_t slot; int32_t (*fn)(uint32_t, uint32_t, uint32_t, float); };
         static const Hk hks[] = {
-            {"hook_2e2680", 0x2e2680, 0x0, gas_hook_2e2680_u},
-            {"hook_2e26d0", 0x2e26d0, 0x4, gas_hook_2e26d0_u},
-            {"hook_2e2720", 0x2e2720, 0x8, gas_hook_2e2720_u},
-            {"hook_2e2770", 0x2e2770, 0xc, gas_hook_2e2770_u},
-            {"hook_2e27a0", 0x2e27a0, 0x10, gas_hook_2e27a0_u},
+            {"hook_2e2680", 0x2e2680, 0x0, [](uint32_t m, uint32_t a1, uint32_t a2, float f) { return carry_state_hook(m, a1, a2, f, 0, 7, 1); }},
+            {"hook_2e26d0", 0x2e26d0, 0x4, [](uint32_t m, uint32_t a1, uint32_t a2, float f) { return carry_state_hook(m, a1, a2, f, 4, 7, 1); }},
+            {"hook_2e2720", 0x2e2720, 0x8, [](uint32_t m, uint32_t a1, uint32_t a2, float f) { return carry_state_hook(m, a1, a2, f, 8, 7, 1); }},
+            {"hook_2e2770", 0x2e2770, 0xc, gas_hook_2e2770_l9},
+            {"hook_2e27a0", 0x2e27a0, 0x10, [](uint32_t m, uint32_t, uint32_t, float) { return static_cast<int32_t>(gas_hook_2e27a0_l9(m)); }},
         };
         for (const Hk& hk : hks) {
             level();
@@ -351,14 +356,17 @@ void batch_121() {
             if (own.empty()) { std::printf("%-26s L9:0x%08x  no moby owns it on this level\n", hk.name, hk.addr); continue; }
             if (std::getenv("B121_INFO") != nullptr) std::printf("INFO %s 0x%08x owners %zu\n", hk.name, hk.addr, own.size());
             auto fn = hk.fn;
-            l9check(hk.name, hk.addr, 40, Ret::Int32, [level, own] {
+            const bool p10 = hk.addr == 0x2e27a0;
+            l9check(hk.name, hk.addr, 40, Ret::Int32, [level, own, p10] {
                 level();
                 const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8));
                 const uint32_t m = own[static_cast<size_t>(ri(0, static_cast<int>(own.size()) - 1))];
                 if (ri(0, 4) == 0) w8(m + 0x20, coin() ? 0xfe : 0xfd);
+                else if (ri(0, 3) == 0) w8(m + 0x20, 7);  // (P9.2: carried, let go)
+                if (p10 && ri(0, 7) == 0) w32(m + 0x78, 0);  // (P9.2: the hook +0x10 without pvars, or without a moby)
                 const uint32_t tgt = ri(0, 3) == 0 ? 0u : first + 0x100 * u(ri(0, 100));
-                return Args{{m, ri(0, 2) == 0 ? 0x0013f3d0u : m + 0x10, tgt}, {rf(-1, 3)}};
-            }, [fn](A a) { return r32(fn(a.i[0], a.i[1], a.i[2], 0, 0, 0, 0, 0, a.f[0], 0, 0, 0, 0, 0, 0, 0).v0); });
+                return Args{{p10 && ri(0, 9) == 0 ? 0u : m, ri(0, 2) == 0 ? 0x0013f3d0u : m + 0x10, tgt}, {rf(-1, 3)}};
+            }, [fn](A a) { return r32(static_cast<uint32_t>(fn(a.i[0], a.i[1], a.i[2], a.f[0]))); });
         }
         g_extra_noop_hooks.clear();
     }
@@ -434,9 +442,11 @@ void batch_121() {
             wf(0x0015ed6c, 0.02f);
             wf(0x0015ed70, 0.0004f);
         };
-        auto finish = [rates] {
+        bool keep_frame = false;  // (P9.2: a generator that set the frame counter itself, L9 0x15f5cc: kept)
+        auto finish = [rates, &keep_frame] {
             rates();
-            w32(OV(0x0015f5cc), R() & 0xffff);
+            if (!keep_frame) w32(OV(0x0015f5cc), R() & 0xffff);
+            keep_frame = false;
             seed_rand();
         };
         auto pick = [](const std::vector<uint32_t>& v) { return v[static_cast<size_t>(ri(0, static_cast<int>(v.size()) - 1))]; };
@@ -729,7 +739,7 @@ void batch_121() {
                     wfrand(X + 0x10, 4, -1, 1);
                     finish();
                     return Args{{m, X, X + 0x10, u(ri(0, 1))}, {rf(0.5f, 2.5f)}};
-                }, [](const Args& a) { return r32(gas_2ef868_l9(a.i[0], a.i[1], a.i[2], a.i[3], 0, 0, 0, 0, a.f[0], 0, 0, 0, 0, 0, 0, 0).v0); });
+                }, [](const Args& a) { return r32(gas_chunk_l9(a.i[0], a.i[1], a.i[2], a.i[3], a.f[0])); });
             }
             p91("p91_class279", 0x002ee110, 80, Ret::None, [&] {
                 level();
@@ -817,6 +827,508 @@ void batch_121() {
                     finish();
                     return Args{{m}, {}};
                 }, upd(gas_class664_update_l9));
+            }
+        }
+
+        // ---- P9.2: the hand ports of part 2 (gaspar_controller / _lift / _fuses / _turret / _hazard / _ferry / _lava / _carry.cpp,
+        // classes 1285 .. 1288 in _breakables, 1293 in _platform): each update on states made for its branches, each helper called
+        // directly, the lava's draw with its packets on a buffer past the test area (0x1e20000)
+        {
+            const uint32_t T0 = L9_ADDR(0x0015ffd8);
+            auto index_of = [T0](uint32_t o) { return u(static_cast<int32_t>(o - ee_read<uint32_t>(T0)) >> 8); };
+            auto mobys_cls = [](int16_t cls) {
+                std::vector<uint32_t> v;
+                for (uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)); m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100)
+                    if (ee_read<uint8_t>(m + 0x20) < 0xfe && ee_read<int16_t>(m + 0xa6) == cls) v.push_back(m);
+                return v;
+            };
+            auto frame_slot = [&keep_frame](uint32_t m) {  // the frame counter on (or off) the moby's slot of eight
+                const uint32_t f = (R() & 0xfff8u) | (coin() ? (m >> 8) & 7 : R() & 7);
+                w32(L9_ADDR(0x0015f5cc), f);
+                keep_frame = true;
+            };
+            auto sound_slot = [](uint32_t m, uint32_t at) {  // a sound slot: none, a playing one of the moby's, another's, idle
+                const int k = ri(0, 3);
+                if (k == 0) { w32(at, 0xffffffffu); return; }
+                const uint32_t s = u(ri(0, 15)), e = 0x0013e550 + s * 0x70;
+                w32(at, s);
+                w32(e + 0x88, k == 3 ? R() : m);
+                w8(e + 0x74, k == 2 ? 0u : 1u);
+            };
+            auto hero_in_box = [P](int32_t box) {  // the hero at the box's centre (when it has one)
+                if (box < 0) return;
+                Vec4 c = ee_ref<Vec4>(lvd::box(lvd::BOXES, box) + 0x30);
+                c.x += rf(-0.2f, 0.2f); c.y += rf(-0.2f, 0.2f);
+                ee_ref<Vec4>(P + 0x80) = c;
+            };
+            auto view_on = [](uint32_t at) {  // the view's camera put behind `at` along its forward axis (the point on screen)
+                const Vec4 r0 = ee_ref<Vec4>(OV(0x0016ccc0)), r1 = ee_ref<Vec4>(OV(0x0016ccd0)), r2 = ee_ref<Vec4>(OV(0x0016cce0));
+                Vec4& cam = ee_ref<Vec4>(OV(0x0016ccf0));
+                const Vec4 c = ee_ref<Vec4>(at);
+                const float k = coin() ? rf(5, 60) : -rf(5, 60);  // (either way along the axis: the one in front)
+                cam.x = c.x * cam.w - r0.z * k; cam.y = c.y * cam.w - r1.z * k; cam.z = c.z * cam.w - r2.z * k;
+            };
+            level();
+            const std::vector<uint32_t> parts1172 = mobys_cls(1172), parts1181 = mobys_cls(1181), bases = mobys_cls(1184);
+            std::vector<uint32_t> parts = parts1172;
+            parts.insert(parts.end(), parts1181.begin(), parts1181.end());
+            parts.insert(parts.end(), bases.begin(), bases.end());
+            auto any_link = [&] {  // a link to a part (its index), none, or a moby being removed
+                const int k = ri(0, 4);
+                if (k == 0 || parts.empty()) return 0xffffffffu;
+                return index_of(pick(parts));
+            };
+            if (std::getenv("B121_INFO") != nullptr) std::printf("INFO p92 parts 1172 %zu 1181 %zu bases %zu\n", parts1172.size(), parts1181.size(), bases.size());
+
+            // class 1000 (the controller)
+            {
+                const std::vector<uint32_t> ms = mobys_with(0x00300888);
+                if (!ms.empty()) {
+                    p91("p92_class1000", 0x00300888, 120, Ret::None, [&] {
+                        level();
+                        const uint32_t m = pick(ms);
+                        w32(L9_ADDR(0x0015f5cc), ri(0, 3) == 0 ? 0u : (coin() ? u(ri(1, 9)) : R() & 0x7fffffffu));
+                        keep_frame = true;
+                        w32(L9_ADDR(0x001613c8), coin() ? 0u : u(ri(1, 80)));
+                        w8(0x0013d416, ri(0, 2) == 0 ? 1u : 0u);
+                        w16(0x00141c40, ri(0, 3) == 0 ? u(ri(1, 9)) : 0u);
+                        w8(0x0013d4cb, coin() ? 1u : 0u);
+                        w32(0x0015eea4, R() & 0xfffff);
+                        w16(0x00141c42, coin() ? R() & 0xffff : u(ri(0, 3)));
+                        if (coin()) {  // (the dialogue system idle: its line can start)
+                            w32(OV(0x00179410), 0);
+                            w32(OV(0x00179410) + 0x24, 0xffffffffu);
+                            w32(0x001516d0 + 0x50, 0);
+                            w32(0x001516d0 + 0x1c, 0xffffffffu);
+                        }
+                        if (coin()) near(P + 0x80, m + 0x10, coin() ? 3.0f : 60.0f, 5.0f);
+                        else if (coin()) hero_in_box(ee_read<int32_t>(ee_read<uint32_t>(m + 0x78)));
+                        finish();
+                        return Args{{m}, {}};
+                    }, upd(gas_class1000_update_l9));
+                }
+            }
+
+            // class 1150 (the lifts): off / on (its box, its bit), set up, at either end with the hero near either end, on it or off
+            // it, riding (the hero under it, arriving), the hero carried
+            {
+                const std::vector<uint32_t> ms = mobys_with(0x003033a0);
+                if (!ms.empty()) {
+                    p91("p92_class1150", 0x003033a0, 200, Ret::None, [&] {
+                        level();
+                        const uint32_t m = pick(ms);
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        w8(m + 0x20, ri(0, 4) == 0 ? 0u : 1u);
+                        w8(pv + 0xa0, coin() ? 1u : 0u);
+                        if (ri(0, 2) == 0) w32(pv + 0xc0, 0xffffffffu);
+                        if (ri(0, 4) == 0) {
+                            w8(L9_ADDR(0x001bb3b0) + u(ee_read<int16_t>(m + 0xb2)) + 0x454, coin() ? 1u : 0u);
+                            wf(P + 0x88, ee_read<float>(P + 0x88) + 500.0f);  // (the hero far from its box)
+                        }
+                        if (coin()) {  // its bit of the level
+                            const int32_t idx = ee_read<int16_t>(m + 0xb2);
+                            const uint32_t w = 0x0014c190 + (u(idx >> 5) << 2) + (ee_read<uint32_t>(0x0015ed84) << 8);
+                            w32(w, coin() ? 0xffffffffu : 0u);
+                        }
+                        const int st = ri(0, 3);
+                        w8(m + 0xbc, u(st));
+                        const int32_t pi = ee_read<int32_t>(pv + 0xb4);
+                        if (pi >= 0) {
+                            const uint32_t path = lvd::path(pi);
+                            const uint32_t n = ee_read<uint32_t>(path);
+                            const uint32_t end = coin() ? path + 0x10 : path + (n << 4);
+                            near(P + 0x80, end, 3.0f, 1.0f);
+                            if (st == 2) {
+                                wf(pv + 0xa4, coin() ? rf(-0.1f, 1.1f) : (coin() ? rf(-0.02f, 0.02f) : rf(0.98f, 1.02f)));
+                                wf(pv + 0xa8, rf(-0.05f, 0.05f));
+                                wf(pv + 0xac, coin() ? rf(-0.02f, 0.02f) : rf(-0.2f, 0.2f));
+                                wf(pv + 0xbc, rf(-0.2f, 0.1f));
+                                if (coin()) { near(P + 0x80, m + 0x10, 1.5f, 0.0f); wf(P + 0x88, ee_read<float>(m + 0x18) - rf(0.5f, 4.5f)); }
+                            }
+                        }
+                        w16(pv + 0xb8, coin() ? 1u : 0u);
+                        w16(pv + 0xba, ri(0, 2) == 0 ? u(ri(1, 3)) : 0u);
+                        w32(pv + 0xc8, coin() ? 1u : 0u);
+                        sound_slot(m, pv + 0xc4);
+                        if (coin()) { w32(P + 0x2fc, m); w16(P + 0x30e, coin() ? 0u : 1u); }
+                        if (ri(0, 4) == 0) hero_in_box(ee_read<int32_t>(pv + 0xc0));
+                        finish();
+                        return Args{{m}, {}};
+                    }, upd(gas_class1150_update_l9));
+                }
+            }
+
+            // classes 1172 / 1181 (the charges) and their helpers
+            auto charge_links = [&](uint32_t pv, std::initializer_list<uint32_t> at) {
+                for (uint32_t a : at) w32(pv + a, any_link());
+                if (ri(0, 3) == 0) {  // a linked part being removed or gone
+                    const uint32_t o = ee_read<uint32_t>(T0) + (ee_read<uint32_t>(pv + *at.begin()) << 8);
+                    if (ee_read<int32_t>(pv + *at.begin()) != -1) w8(o + 0x20, coin() ? 0xfeu : 0xfdu);
+                }
+            };
+            if (!parts1172.empty()) {
+                for (int st = 0; st < 4; ++st) {
+                    char nm[32];
+                    std::snprintf(nm, sizeof nm, "p92_class1172_s%d", st);
+                    p91(nm, 0x00303d10, 100, Ret::None, [&, st] {
+                        level();
+                        const uint32_t m = pick(parts1172);
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        w8(m + 0x20, u(st));
+                        hit_on(m, coin() ? 0x330000u : 0x10000u);
+                        if (ee_read<uint8_t>(m + 0xa4) != 0xff) wf(OV(0x00178100) + (ee_read<uint8_t>(m + 0xa4) << 6) + 0x2c, rf(0, 12));
+                        wf(pv + 0x20, coin() ? rf(0, 3) : rf(3, 20));
+                        if (st == 0) {
+                            w16(pv + 0x76, ri(0, 2) == 0 ? 0xffffu : u(ri(0, 15)));
+                            if (ee_read<int16_t>(pv + 0x76) != -1) w8(0x0013d388 + ee_read<uint16_t>(pv + 0x76) + 0x39, coin() ? 1u : 0u);
+                        }
+                        frame_slot(m);
+                        sound_slot(m, pv + 0x7c);
+                        w8(m + 0xbc, coin() ? 1u : 0u);
+                        charge_links(pv, {0x70, 0x78});
+                        if (coin()) w8(ee_read<uint32_t>(T0) + (ee_read<uint32_t>(pv + 0x78) << 8) + 0x20, 1);
+                        w16(pv + 0x74, u(ri(0, 3)));
+                        camera_near(m + 0x10);
+                        finish();
+                        return Args{{m}, {}};
+                    }, upd(gas_class1172_update_l9));
+                }
+                p91("p92_303b30", 0x00303b30, 80, Ret::None, [&] {
+                    level();
+                    const uint32_t m = pick(parts1172);
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    w8(m + 0x20, ri(0, 4) == 0 ? 3u : 1u);
+                    hit_on(m, coin() ? 0x330000u : 0x10000u);
+                    if (ee_read<uint8_t>(m + 0xa4) != 0xff) wf(OV(0x00178100) + (ee_read<uint8_t>(m + 0xa4) << 6) + 0x2c, coin() ? rf(0, 12) : rf(-5, 0));
+                    wf(pv + 0x20, rf(0, 10));
+                    charge_links(pv, {0x70});
+                    finish();
+                    return Args{{m, pv, pv + 0x20}, {}};
+                }, [](const Args& a) { gas_303b30_l9(a.i[0], a.i[1], a.i[2]); return uint64_t{0}; });
+            }
+            if (!parts1181.empty()) {
+                for (int st = 0; st < 4; ++st) {
+                    char nm[32];
+                    std::snprintf(nm, sizeof nm, "p92_class1181_s%d", st);
+                    p91(nm, 0x00304360, st == 1 ? 200 : 100, Ret::None, [&, st] {
+                        level();
+                        const uint32_t m = pick(parts1181);
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        w8(m + 0x20, u(st));
+                        if (st == 0) {
+                            w8(pv + 0x69, ri(0, 2) == 0 ? 0xffu : u(ri(0, 15)));
+                            if (ee_read<int8_t>(pv + 0x69) != -1) w8(0x0013d388 + ee_read<uint8_t>(pv + 0x69) + 0x39, coin() ? 1u : 0u);
+                            if (coin()) w32(pv + 0x60, 0xffffffffu);
+                            if (coin()) w32(pv + 0x64, 0xffffffffu);
+                        } else {
+                            if (ri(0, 3) == 0) charge_links(pv, {0x60, 0x64});
+                            if (ri(0, 3) == 0) charge_links(pv, {0x64, 0x60});
+                            w32(pv + 0x6c, any_link());
+                            if (ri(0, 5) == 0) w32(pv + 0x60, index_of(pick(mobys_cls(1201))));  // (a link to a moby of another class)
+                            if (coin() && ee_read<int32_t>(pv + 0x6c) != -1) w8(ee_read<uint32_t>(T0) + (ee_read<uint32_t>(pv + 0x6c) << 8) + 0x20, 1);
+                            w8(pv + 0x68, coin() ? 0u : 1u);
+                            const int32_t nx = ee_read<int32_t>(pv + 0x64);
+                            if (nx != -1 && coin()) w8(ee_read<uint32_t>(ee_read<uint32_t>(T0) + (u(nx) << 8) + 0x78) + 0x68, coin() ? 0u : 1u);
+                            w8(m + 0x31, coin() ? 1u : 0u);
+                            frame_slot(m);
+                            w16(m + 0xb2, R() & 0xffff);
+                            w8(m + 0xbc, ri(0, 3) == 0 ? 1u : 0u);
+                            w16(pv + 0x6a, u(ri(0, 12)));
+                        }
+                        camera_near(m + 0x10);
+                        finish();
+                        return Args{{m}, {}};
+                    }, upd(gas_class1181_update_l9));
+                }
+                p91("p92_3041d0", 0x003041d0, 80, Ret::Int32, [&] {
+                    level();
+                    const uint32_t m = pick(parts1181);
+                    const uint32_t o = pick(parts);
+                    near(X, o + 0x10, coin() ? 0.4f : (coin() ? 8.0f : 40.0f), 0.3f);
+                    if (ri(0, 3) == 0) { ee_ref<Vec4>(X) = ee_ref<Vec4>(o + 0x10); wf(X, ee_read<float>(X) + rf(0.45f, 0.65f)); }  // (about 0.5 off)
+                    if (coin()) w8(pick(parts) + 0x20, coin() ? 0xfeu : 0xfdu);
+                    finish();
+                    return Args{{coin() ? m : o, X, ri(0, 2) == 0 ? 0xffffffffu : u(ri(0, 1))}, {}};
+                }, [](const Args& a) { return r32(gas_3041d0_l9(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]))); });
+            }
+
+            // class 1201 (the turrets): set up, the mounting (the hero near the seat, busy or not, its pause), off it, idle (the hero
+            // near: sinking, turning, its light blinking), manned (the stick, the pitch's limits, firing by turns, the camera)
+            {
+                const std::vector<uint32_t> ms = mobys_with(0x00304c80);
+                if (!ms.empty()) {
+                    for (int st = 0; st < 3; ++st) {
+                        char nm[32];
+                        std::snprintf(nm, sizeof nm, "p92_class1201_%d", st);
+                        p91(nm, 0x00304c80, st == 2 ? 240 : 160, Ret::None, [&, st] {
+                            level();
+                            const uint32_t m = pick(ms);
+                            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                            static const uint32_t states[] = {0, 2, 4, 4, 5, 5};
+                            w8(m + 0x20, st == 0 ? states[ri(0, 5)] : (st == 1 ? 4u : 5u));
+                            w8(m + 0xbc, u(ri(0, 2)));
+                            w16(pv + 0x42, ri(0, 2) == 0 ? u(ri(1, 3)) : 0u);
+                            static const uint32_t hs[] = {0, 0x14, 7, 0x32, 1};
+                            w32(P + 0x208c, hs[ri(0, 4)]);
+                            w32(P + 0x2084, ri(0, 4) == 0 ? 0x3du : u(ri(0, 0x40)));
+                            if (coin()) w32(P + 0x2fc, m);
+                            const uint32_t hm = ee_read<uint32_t>(P + 0x2080);
+                            Vec4 seat{};
+                            moby_chain_point_v(m, 3, seat);
+                            if (hm != 0) {
+                                Vec4 q = seat;
+                                const float r = coin() ? rf(0, 1.1f) : rf(1.1f, 3);
+                                q.x += r; q.z += 0.4f;
+                                ee_ref<Vec4>(hm + 0x10) = q;
+                            }
+                            near(P + 0x80, m + 0x10, coin() ? 3.0f : 8.0f, 1.0f);
+                            w32(0x0013cae0, R() & 0x30u);
+                            w32(0x0013cae4, R() & ee_read<uint32_t>(0x0013cae0));
+                            static const uint32_t anims[] = {0, 3, 4, 5};  // (its animations: idle 5, the barrels 3 / 4)
+                            if (coin()) { w8(m + 0x52, anims[ri(1, 3)]); w8(m + 0x53, anims[ri(0, 3)]); }
+                            w8(m + 0x70, R() & 0xff);
+                            wf(0x00141070, coin() ? rf(-1.5f, 1.5f) : 0.0f);
+                            wf(0x00141074, coin() ? rf(-1.5f, 1.5f) : 0.0f);
+                            w32(0x0015eddc, coin() ? 1u : 0u);
+                            wf(pv + 0x44, rf(-0.6f, 0.6f));
+                            wf(pv + 0x60, rf(-0.1f, 0.1f));
+                            wf(pv + 0x64, rf(-0.1f, 0.1f));
+                            w16(pv + 0x52, u(ri(0, 2)));
+                            w16(pv + 0x54, coin() ? 1u : 0u);
+                            w32(pv + 0x68, ri(0, 2) == 0 ? 0xffffffffu : u(ri(0, 7)));
+                            w32(pv + 0x6c, u(ri(0, 45)));
+                            if (coin()) wf(m + 0x18, ee_read<float>(pv + 0x5c) - rf(0.0f, 2.0f));
+                            if (ee_read<uint8_t>(m + 0x52) != ee_read<uint8_t>(m + 0x53) && ee_read<uint8_t>(m + 0x52) != 0xff && coin()) {  // (the animation's time about 1)
+                                const uint32_t cur = ee_read<uint32_t>(m + 0x68);
+                                wf(m + 0x54, 1.0f - static_cast<float>(ee_read<int16_t>(cur + 4)) * 0.0625f + rf(-0.3f, 0.3f));
+                            }
+                            finish();
+                            return Args{{m}, {}};
+                        }, upd(gas_class1201_update_l9));
+                    }
+                }
+            }
+
+            // class 1206 (the lines of heat)
+            {
+                const std::vector<uint32_t> ms = mobys_with(0x00305a28);
+                if (!ms.empty()) {
+                    p91("p92_class1206", 0x00305a28, 80, Ret::None, [&] {
+                        level();
+                        const uint32_t m = pick(ms);
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        w8(m + 0x20, coin() ? 0u : 1u);
+                        frame_slot(m);
+                        sound_slot(m, pv + 0x14);
+                        if (coin()) near(P + 0x80, m + 0x10, 3.0f, 2.0f);
+                        const uint32_t hm = ee_read<uint32_t>(P + 0x2080);
+                        if (hm != 0 && coin()) {  // (the hero's moby on its line)
+                            Vec4 d{0.0f, 0.0f, rf(0, 1) * ee_read<float>(pv + 4), 0.0f};
+                            Vec4 w{};
+                            mat3_transform(w, d, ee_ref<Mat4>(m + 0xc0));
+                            Vec4 q = ee_ref<Vec4>(m + 0x10);
+                            q.x += w.x; q.y += w.y; q.z += w.z;
+                            ee_ref<Vec4>(hm + 0x10) = q;
+                            ee_ref<Vec4>(P + 0x80) = q;
+                        }
+                        if (ri(0, 4) == 0) w32(pv + 8, u(ri(0, 6)));
+                        finish();
+                        return Args{{m}, {}};
+                    }, upd(gas_class1206_update_l9));
+                }
+            }
+
+            // classes 1285 .. 1288 (the breakables): their builds, the flag byte, safe / hit, the frame's load; the next build
+            {
+                const std::vector<uint32_t> ms = mobys_with(0x003082d8);
+                if (!ms.empty()) {
+                    p91("p92_class1285", 0x003082d8, 120, Ret::None, [&] {
+                        level();
+                        const uint32_t m = pick(ms);
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        w16(m + 0xa6, u(ri(0x505, 0x508)));
+                        w8(m + 0x20, coin() ? 0u : 1u);
+                        w32(pv, ri(0, 2) == 0 ? 0xffffffffu : u(ri(0, 15)));
+                        w8(m + 0xbc, u(ri(0, 2)));
+                        hit_on(m, 0x40000);
+                        if (ri(0, 3) == 0) {
+                            const uint32_t idx = u(ri(0, 15));
+                            w8(m + 0xb0, idx);
+                            w8(0x0014c050 + idx + (ee_read<uint32_t>(0x0015ed84) << 4), coin() ? 0xffu : 0u);
+                        }
+                        wf(L9_ADDR(0x0015f5d0), coin() ? rf(0, 0.8f) : rf(0.8f, 1.2f));
+                        wf(L9_ADDR(0x0015f5d4), coin() ? rf(0, 0.8f) : rf(0.8f, 1.2f));
+                        camera_near(m + 0x10);
+                        finish();
+                        return Args{{m}, {}};
+                    }, upd(gas_class1285_update_l9));
+                    p91("p92_308220", 0x00308220, 40, Ret::Int32, [&] {
+                        level();
+                        finish();
+                        return Args{{pick(ms), u(ri(0x506, 0x508))}, {}};
+                    }, [](const Args& a) { return r32(gas_308220_l9(a.i[0], a.i[1])); });
+                }
+            }
+
+            // class 1293 (the platforms that rise once their moby is gone): set up (with or without a moby), waiting, floating
+            {
+                const std::vector<uint32_t> ms = mobys_with(0x003091b0);
+                if (!ms.empty()) {
+                    p91("p92_class1293", 0x003091b0, 200, Ret::None, [&] {
+                        level();
+                        const uint32_t m = pick(ms);
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        const int k = ri(0, 5);
+                        w8(m + 0x20, k == 0 ? 0u : (k == 1 ? 1u : 2u));
+                        if (k <= 1) {
+                            w32(pv + 0x8c, ri(0, 2) == 0 ? 0xffffffffu : index_of(pick(parts)));
+                            if (k == 1 && coin()) w8(ee_read<uint32_t>(T0) + (ee_read<uint32_t>(pv + 0x8c) << 8) + 0x20, coin() ? 0xfeu : 0xfdu);
+                        } else {
+                            const int h = ri(0, 3);
+                            if (h == 1 || h == 2) {
+                                w32(P + 0x2fc, m);
+                                w16(P + 0x30e, h == 1 ? 0u : 1u);
+                                near(P + 0x80, m + 0x10, 2.0f, 1.0f);
+                            }
+                            w32(pv + 0x88, coin() ? 0u : u(ri(1, 40)));
+                            const float rest = ee_read<float>(pv + 0x84);
+                            const int z = ri(0, 3);
+                            if (z == 0) wf(m + 0x18, rest - 0.3f + rf(-0.05f, 0.05f));
+                            else if (z == 1) wf(m + 0x18, rest - rf(2.0f, 5.0f));
+                            else if (z == 2) { wf(m + 0x18, rest - 0.3f - rf(0.0f, 0.005f)); w32(pv + 0x88, 0); if (ee_read<uint32_t>(P + 0x2fc) == m) w32(P + 0x2fc, 0); }
+                            wfrand(pv + 0x60, 2, -0.2f, 0.2f);
+                            wfrand(pv + 0x70, 2, -0.05f, 0.05f);
+                        }
+                        finish();
+                        return Args{{m}, {}};
+                    }, upd(gas_class1293_update_l9));
+                }
+            }
+
+            // class 1766 (the raft) and its ride
+            {
+                const std::vector<uint32_t> ms = mobys_with(0x00309c08);
+                if (!ms.empty()) {
+                    auto raft = [&](uint32_t m, int st) {
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        w8(m + 0x20, u(st));
+                        const uint32_t path = lvd::path(ee_read<int32_t>(pv + 0xac));
+                        const int32_t n = ee_read<int32_t>(path);
+                        if (st == 0) {
+                            w32(pv + 0xa0, coin() ? 1u : 0u);
+                            w8(m + 0xb0, u(ri(0, 15)));
+                            w8(0x0014c050 + ee_read<uint8_t>(m + 0xb0) + (ee_read<uint32_t>(0x0015ed84) << 4), coin() ? 0xffu : 0u);
+                            return;
+                        }
+                        const int way = ri(0, 4) == 0 ? 0 : (coin() ? 1 : -1);
+                        w16(pv + 0xb8, u(way));
+                        const int k = ri(0, 4);
+                        const int32_t at = k == 0 ? (coin() ? 0 : n - 1) : (k == 1 ? (coin() ? n - 2 : 1) : ri(0, n - 1));
+                        if (ri(0, 4) == 0) wf(path + 0x1c + u(at) * 0x10, 42.0f);  // (a point that ends its turning)
+                        w16(pv + 0xba, u(at));
+                        const uint32_t pt = path + 0x10 + u(at) * 0x10;
+                        wf(pv + 0xa8, coin() ? rf(0, 0.3f) : rf(0.3f, 2));
+                        near(m + 0x10, pt, coin() ? 0.5f : 6.0f, 0.5f);
+                        if (coin()) {  // (just short of the point it heads for, lifted by its speed times 7)
+                            near(m + 0x10, pt, 0.2f, 0.0f);
+                            wf(m + 0x18, ee_read<float>(pt + 8) + ee_read<float>(pv + 0xa8) * 7.0f + rf(-0.2f, 0.2f));
+                        }
+                        wf(pv + 0xbc, coin() ? 0.0f : 3.14159274f);
+                        wf(pv + 0xcc, rf(0, 1));
+                        w32(pv + 0xc8, coin() ? 1u : 0u);
+                        if (ri(0, 3) == 0) w32(pv + 0xb0, 0xffffffffu);
+                        if (ri(0, 3) == 0) w32(pv + 0xb4, 0xffffffffu);
+                        if (coin()) { w32(P + 0x2fc, m); w16(P + 0x30e, coin() ? 0u : 1u); }
+                        if (coin()) near(P + 0x80, coin() ? path + 0x10 : path + u(n) * 0x10, 3.0f, 1.0f);
+                        else if (coin()) hero_in_box(ee_read<int32_t>(pv + (coin() ? 0xb0 : 0xb4)));
+                        frame_slot(m);
+                        sound_slot(m, pv + 0xc4);
+                    };
+                    for (int st = 0; st < 4; ++st) {
+                        char nm[32];
+                        std::snprintf(nm, sizeof nm, "p92_class1766_s%d", st);
+                        p91(nm, 0x00309c08, st == 3 ? 240 : 100, Ret::None, [&, st] {
+                            level();
+                            const uint32_t m = pick(ms);
+                            raft(m, st);
+                            finish();
+                            return Args{{m}, {}};
+                        }, upd(gas_class1766_update_l9));
+                    }
+                    p91("p92_30a298", 0x0030a298, 120, Ret::Int32, [&] {
+                        level();
+                        const uint32_t m = pick(ms);
+                        raft(m, 3);
+                        finish();
+                        return Args{{m}, {}};
+                    }, [](const Args& a) { return r32(static_cast<uint32_t>(gas_30a298_l9(a.i[0]))); });
+                    p91("p92_30a238", 0x0030a238, 60, Ret::None, [&] {
+                        level();
+                        finish();
+                        return Args{{X}, {rf(-3.2f, 3.2f), rf(-3.2f, 3.2f), rf(0, 1)}};
+                    }, [](const Args& a) { gas_30a238_l9(a.i[0], a.f[0], a.f[1], a.f[2]); return uint64_t{0}; });
+                }
+            }
+
+            // the lava's draw (class 317's callback) and its parts, the packets on a buffer past the test area
+            {
+                constexpr uint32_t PKT = 0x01e20000u;
+                auto streams_on_screen = [&] {  // the view moved until one of the streams is on screen (point_on_screen, as the draw tests)
+                    for (int t = 0; t < 40; ++t) {
+                        const uint32_t rec = L9_ADDR(0x001f3080) + u(ri(0, 0x6b)) * 0x40;
+                        view_on(rec);
+                        if (point_on_screen(rec, 256.0f) != -1) return;
+                    }
+                };
+                auto draw_prep = [&] {
+                    w32(L9_ADDR(0x001611c0), PKT + 0x10 * u(ri(0, 0x40)));
+                    w32(L9_ADDR(0x0015f5cc), R() & 0xffff);
+                    keep_frame = true;
+                    w32(L9_ADDR(0x0015f458), coin() ? 1u : 0u);
+                    w32(L9_ADDR(0x0015f5e0), coin() ? 7u : 0u);
+                    wf(L9_ADDR(0x0015f308), coin() ? 0.0f : rf(-1, 1));  // (the streams' z offset)
+                    near(CAM, P + 0x80, coin() ? 20.0f : 200.0f, 10.0f);
+                };
+                p91("p92_class317_draw", 0x002ef750, 30, Ret::None, [&] {
+                    level();
+                    draw_prep();
+                    if (coin()) streams_on_screen();
+                    finish();
+                    return Args{{0}, {}};
+                }, [](const Args& a) { gas_class317_draw_l9(a.i[0]); return uint64_t{0}; });
+                p91("p92_21e8c0", 0x0021e8c0, 60, Ret::None, [&] {
+                    level();
+                    draw_prep();
+                    if (ri(0, 3) != 0) streams_on_screen();
+                    const int32_t a = ri(0x2c, 0x3b), b = coin() ? a : ri(0x2c, 0x3b);
+                    finish();
+                    return Args{{L9_ADDR(0x001f3080), u(ri(0, 3) == 0 ? ri(-1, 4) : 0x6c), u(a), u(b)}, {rf(0, 1)}};
+                }, [](const Args& a) { gas_21e8c0_l9(a.i[0], static_cast<int32_t>(a.i[1]), static_cast<int32_t>(a.i[2]), static_cast<int32_t>(a.i[3]), a.f[0]); return uint64_t{0}; });
+                p91("p92_21e560", 0x0021e560, 40, Ret::None, [&] {
+                    level();
+                    draw_prep();
+                    const int32_t a = ri(0x2c, 0x3b), b = coin() ? a : ri(0x2c, 0x3b);
+                    finish();
+                    return Args{{u(a), u(b)}, {rf(0, 1)}};
+                }, [](const Args& a) { gas_21e560_l9(static_cast<int32_t>(a.i[0]), static_cast<int32_t>(a.i[1]), a.f[0]); return uint64_t{0}; });
+                p91("p92_2c1978", 0x002c1978, 40, Ret::None, [&] {
+                    level();
+                    draw_prep();
+                    w8(L9_ADDR(0x001fc740) + 0x3f, R() & 0xff);
+                    finish();
+                    return Args{{L9_ADDR(0x001fc740), L9_ADDR(0x001f63c0), u(ri(0, 3) == 0 ? ri(-1, 3) : 0xa)}, {}};
+                }, [](const Args& a) { gas_2c1978_l9(a.i[0], a.i[1], static_cast<int32_t>(a.i[2])); return uint64_t{0}; });
+                p91("p92_21baf8", 0x0021baf8, 30, Ret::None, [&] {
+                    level();
+                    draw_prep();
+                    finish();
+                    return Args{{}, {}};
+                }, [](const Args&) { gas_21baf8_l9(); return uint64_t{0}; });
+                p91("p92_21f6f8", 0x0021f6f8, 30, Ret::None, [&] {
+                    level();
+                    finish();
+                    return Args{{X}, {coin() ? 1024.0f : rf(-100, 100)}};
+                }, [](const Args& a) { gas_mat_scale_l9(a.i[0], a.f[0]); return uint64_t{0}; });
             }
         }
         g_extra_noop_hooks.clear();

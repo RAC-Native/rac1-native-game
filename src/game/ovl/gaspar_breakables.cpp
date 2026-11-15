@@ -7,6 +7,8 @@
 //   class 279  a thing with hit points (+0): hit (mask 0x10000) it flashes, at 0 it bursts in sparks and leaves its remains
 //              (class 284)
 //   class 313  a stone (sparks when its time runs out) and classes 320 / 321, the chunks: they fly, bounce and spark out
+//   class 1285 and its builds 1286 / 1287 / 1288: hit (mask 0x40000) each becomes the next, in a burst (the last's chunks) and
+//              a blast; the last sets its story byte (pvars +0) and goes
 #include <game/collision/collision.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
@@ -95,6 +97,7 @@ uint32_t gas_2edb60_l9(uint32_t m, uint32_t cls) {
 
 // A chunk (class 320, or 321 with `kind` 1) of the breakable `src` at `pos` moving by `vel` (EE vectors): scaled `scale` of its
 // class's size, a random turn and spin, 90 .. 110 frames (+0x1c), its breakable +0x18. The moby or 0.
+// orig: L9:0x002ef868
 uint32_t gas_chunk_l9(uint32_t src, uint32_t pos, uint32_t vel, uint32_t kind, float scale) {
     const Frame f(0x20);
     const uint32_t sp = f.sp;
@@ -124,14 +127,6 @@ uint32_t gas_chunk_l9(uint32_t src, uint32_t pos, uint32_t vel, uint32_t kind, f
     return p;
 }
 
-// The same in the generated code's ABI: class 1285's update (gaspar_classes_tr_3.cpp, still generated) calls it through the
-// unit's glue. a0 .. a3 and f12 as above; f0 back as the generated copy left it (the spin's second word, 0 without a chunk).
-// orig: L9:0x002ef868
-TrRet gas_2ef868_l9(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t, uint32_t, uint32_t, uint32_t, float f12, float,
-                    float, float, float, float, float, float) {
-    const uint32_t p = gas_chunk_l9(a0, a1, a2, a3, f12);
-    return TrRet{p, p != 0 ? lwc1(lwu(p + 0x78) + 0x14) : 0.0f};
-}
 
 // Classes 276, 1298, 1299 and 1300. Gone when its flag byte of the level is set. Hit (mask 0x40000) while not safe (+0xbc
 // counted down): the next build in its place (1298, 1299, 1300; the bolts before the last), safe again for 10 frames,
@@ -325,6 +320,93 @@ void gas_class320_update_l9(uint32_t m) {
     swc1(pv + 0x10, rand_range_f(0.0f, -lwc1(pv + 0x10)));
     swc1(pv + 0x14, rand_range_f(0.0f, -lwc1(pv + 0x14)));
     off_the_hit(m);
+}
+
+// The next build `cls` of the class 1285 `m` in its place and turn: safe from hits for 10 frames (+0xbc), the hero's colour,
+// its size, its flags and its story byte (pvars +0). The moby or 0.
+// orig: L9:0x00308220
+uint32_t gas_308220_l9(uint32_t m, uint32_t cls) {
+    const uint32_t n = moby_spawn(cls);
+    if (n == 0) return 0;
+    sh(n + 0x32, 0xff);
+    sb(n + 0x30, 0xff);
+    sb(n + 0x31, 1);
+    sb(n + 0x20, 0);
+    lq_sq(n + 0x10, m + 0x10);
+    lq_sq(n + 0x40, m + 0x40);
+    sb(n + 0xbc, static_cast<uint32_t>(frame_scale_i(10)));
+    moby_update_transform(n);
+    moby_copy_hero_color(n);
+    swc1(n + 0x2c, lwc1(m + 0x2c));
+    sh(n + 0x34, lhu(m + 0x34));
+    sw(lwu(n + 0x78), lwu(lwu(m + 0x78)));
+    return n;
+}
+
+// Classes 1285 .. 1288 (one update). Set up: its story byte (pvars +0) cleared. Gone when its flag byte of the level is set (its
+// story byte set). Hit (mask 0x40000) while not safe (+0xbc counted down): the next build in its place (below 1288), safe again
+// for 10 frames, its sound, and a burst: 40 points round its body (30 when the frame ran long, 0x15f5d0 / 0x15f5d4 over 0.85),
+// thrown from it and away along the hit; the last build's chunks, a small blast every third, a big one. The last sets its story
+// byte and goes; the others go when their next build came out.
+// orig: L9:0x003082d8
+void gas_class1285_update_l9(uint32_t m) {
+    const uint32_t pv = lwu(m + 0x78);
+    if (lbu(m + 0x20) == 0) {
+        if (lw(pv) != -1) sb(0x0013d388 + lwu(pv) + 0x43, 0);
+        sb(m + 0x20, 1);
+    }
+    const uint32_t idx = lbu(m + 0xb0);
+    if (idx != 0xff && lbu(0x0014c050 + idx + (lwu(0x0015ed84) << 4)) == 0xff) {
+        if (lw(pv) != -1) sb(0x0013d388 + lwu(pv) + 0x43, 1);
+        moby_retire(m);
+        return;
+    }
+    const Frame f(0x80);
+    const uint32_t sp = f.sp;
+    uint32_t built = 0;
+    const uint32_t hit = sub_0025a420(m, 0x40000u, 0);
+    if (countdown_u8(m + 0xbc) == 0) return;
+    if (hit == 0) return;
+    const int32_t cls = lh(m + 0xa6);
+    if (cls < 1288) built = gas_308220_l9(m, static_cast<uint32_t>(cls + 1)) != 0 ? 1u : 0u;
+    sb(m + 0xbc, static_cast<uint32_t>(frame_scale_i(10)));
+    const uint32_t at = sp + 0x20, centre = sp + 0x30, piece = sp + 0x40, vel = sp + 0x50, push = sp + 0x60;
+    lq_sq(at, m + 0x10);
+    lq_sq(centre, m + 0x10);
+    moby_sound_start(0, 0, m);  // (the original branches on the build, below 1288 or not, to the same call)
+    sb(m + 0xa4, 0xff);
+    const float slow = u2f(0x3f59999au);
+    const int32_t count = (slow < lwc1(L9_ADDR(0x0015f5d0)) || slow < lwc1(L9_ADDR(0x0015f5d4))) ? 0x1e : 0x28;
+    float a = u2f(0xc0490fdbu);
+    for (int32_t i = 0; i < count; ++i) {
+        V(vel) = Vec4{};
+        swc1(vel, rand_range_f(u2f(0xbecccccdu), u2f(0x3ecccccdu)));
+        swc1(vel + 4, rand_range_f(u2f(0xbf19999au), u2f(0x3f19999au)));
+        swc1(vel + 8, rand_range_f(u2f(0xbecccccdu), u2f(0x3ecccccdu)));
+        lq_sq(piece, vel);
+        const float r = rand_range_f(u2f(0x3e99999au), u2f(0x40266666u));
+        swc1(piece, fpu_add(lwc1(piece), fpu_mul(r, cos_vu(a))));
+        const float z = fpu_mul(r, sin_vu(a));
+        swc1(piece + 8, fpu_add(lwc1(piece + 8), z));
+        mat3_transform(V(piece), V(piece), M(m + 0xc0));
+        vec3_add(V(piece), V(piece), V(centre));
+        vec3_sub(V(vel), V(piece), V(at));
+        const float k = fpu_div(abs_f(fpu_sub(6.0f, vec3_length(V(vel)))), 6.0f);
+        vec3_set_length(V(push), V(hit + 0x10), fpu_mul(fpu_mul(k, k), 8.0f));
+        vec3_add(V(vel), V(vel), V(push));
+        vec3_set_length(V(vel), V(vel), fpu_mul(k, fpu_mul(rand_range_f(5.0f, 8.0f), dt())));
+        if (lh(m + 0xa6) == 0x508) gas_chunk_l9(m, piece, vel, static_cast<uint32_t>(i) & 1, rand_range_f(1.0f, u2f(0x3fa66666u)));
+        if (ee_rem(i, 3) == 0) explosion_burst(m, piece, -1, rand_range_f(u2f(0x3e99999au), u2f(0x3f19999au)), 0.0f);
+        a = fpu_add(a, fpu_div(u2f(0x40c90fdbu), int_to_float(count)));
+    }
+    vec3_scale(V(piece), V(hit + 0x10), 0.5f);
+    explosion_effect(m, hit + 0x10, at, 0xa, 3, 0x10, -1, 1, 1, -1, 0, 0.0f, 0.0f, 3.0f, 2.0f, 1.0f, 1.0f, 15.0f);
+    if (lh(m + 0xa6) == 0x508) {
+        if (lw(pv) != -1) sb(0x0013d388 + lwu(pv) + 0x43, 1);
+        moby_retire(m);
+    } else if (built != 0) {
+        moby_retire(m);
+    }
 }
 
 }  // namespace rac1

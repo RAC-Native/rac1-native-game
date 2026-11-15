@@ -47,8 +47,6 @@ void fly(uint32_t m, uint32_t pv) {
     swc1(m + 0x44, angle_add(lwc1(m + 0x44), lwc1(pv + 0x24)));
 }
 
-// a float from the integer word at `a` (as the original converts it)
-float word_float(uint32_t a) { return int_to_float(lw(a)); }
 }  // namespace
 
 // One piece (class `cls`) of the base `m`: at `at` (an EE vector) moved so that its joint 0 sits where the base's is, the

@@ -47,7 +47,7 @@ void class_mates_mark_fixed(uint32_t m, uint32_t joint);  // L2:0x002e0cd8 L2:0x
 void class_mates_mark_level(uint32_t m, uint32_t joint);  // L3:0x002db480 L5:0x00317398 L6:0x00300f98 L11:0x002d0638 L12:0x002eb498
 // A carry hook (`which`: carry_hook0 / 4 / 8) that puts the moby in state `carried` while it holds, and back to
 // `released` (-1: its +0xbc) when it lets go in that state. Returns the carry hook's result.
-int32_t carry_state_hook(uint32_t m, uint32_t a1, uint32_t a2, float f12, uint32_t which, uint32_t carried, int32_t released);  // L8:0x002d4000 L12:0x002e1758 L12:0x002e17a8 L14:0x002dae00 L18:0x002d6190 L18:0x002d61e0 L18:0x002fcbb0 L18:0x002fcc00 L18:0x002fcc50
+int32_t carry_state_hook(uint32_t m, uint32_t a1, uint32_t a2, float f12, uint32_t which, uint32_t carried, int32_t released);  // L8:0x002d4000 L9:0x002e2680 L9:0x002e26d0 L9:0x002e2720 L12:0x002e1758 L12:0x002e17a8 L14:0x002dae00 L18:0x002d6190 L18:0x002d61e0 L18:0x002fcbb0 L18:0x002fcc00 L18:0x002fcc50
 
 // A burst of sparks at `pos` (an EE address) around moby `m`'s axes (its matrix rows +0xc0 / +0xe0): 24 sparks
 // (particle 0x2712b8's) spread round a turn, then 6 puffs (particle 0x15), each drifting by `offset` (an EE vector) when
