@@ -5,8 +5,6 @@
 0x002839d0: fr[0] = floor_probe(fr[12], a0.w(), a1.w());
 0x002846d8: set32(v0, static_cast<uint32_t>(sub_0025a420(a0.w(), a1.w(), static_cast<int32_t>(a2.w()))));
 0x00284730: set32(v0, static_cast<uint32_t>(moby_hit_react(a0.w(), a1.w(), a2.w(), a3.w(), t0.w(), t1.w(), t2.w(), static_cast<int32_t>(t3.w()))));
-0x00284e00: vec_yaw_marked(a0.w(), a1.w(), a2.w(), a3.w());
-0x00286910: set32(v0, static_cast<uint32_t>(enemy_physics(a0.w(), a1.w())));
 0x0028f5c8: music_track_request(static_cast<int32_t>(a0.w()), a1.w());
 0x00283308: set32(v0, static_cast<uint32_t>(doomlet_259028(a0.w(), a1.w(), a2.w(), a3.w())));
 0x00228110: draw_hook_add_dc80_l2(a0.w(), a1.w());
@@ -15,10 +13,7 @@
 0x002843a8: band_set(a0.w());
 0x002899f8: set32(v0, static_cast<uint32_t>(moby_largest(a0.w(), a1.w(), a2.w(), a3.w())));
 0x0028a858: v0.lo = static_cast<uint64_t>(moby_on_screen_l1(a0.w(), fr[12]));
-0x0028be78: path_links_build(a0.w(), static_cast<int32_t>(a1.w()), a2.w());
-0x0028c5f8: set32(v0, static_cast<uint32_t>(nov_276fe8_l1(a0.w(), static_cast<int32_t>(a1.w()), static_cast<int32_t>(a2.w()), a3.w(), t0.w(), t1.w(), fr[12])));
 0x002907b8: talker_word_set(a0.w(), a1.w());
-0x0029c180: set32(v0, static_cast<uint32_t>(nov_287158_l1(a0.w(), a1.w(), a2.w(), static_cast<int32_t>(a3.w()), fr[12], fr[13])));
 0x002a0260: set32(v0, static_cast<uint32_t>(path_nearest_l1(a0.w(), a1.w(), fr[12])));
 0x002af5e8: moby_data_note_l1(a0.w(), static_cast<int32_t>(a1.w()), a2.w(), static_cast<int32_t>(a3.w()), t0.w());
 0x002cc428: grid_records_reset(a0.w(), static_cast<int32_t>(a1.w()));

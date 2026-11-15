@@ -4,14 +4,10 @@
  "env": {
   "MKALL_HELPER_PREFIX": "ril_",
   "MKALL_WIDE_GPR": "",
-  "MKALL_FORCE": "21a0b0,28d960,29bbe0,29be70,2c9018,2d1e30,2d1fd8,2d7020,2d7890,2daf58,2db018,2db238,2f8718,303390,303b08,303e50,303f80,304058,305178,305898,306d30,306e10,307358,307470,307480,307570,30d5c0,30d6a0,30f218,30f408,315ee0,315f70,316810,316990,3193a8",
+  "MKALL_FORCE": "21a0b0,28d960,29bbe0,29be70,2c9018,2f8718,305178,305898,306d30,306e10,307358,307470,307480,307570,30d5c0,30d6a0,30f218,30f408,315ee0,315f70,316810,316990,3193a8",
   "MKALL_UNIFORM": "ril_hook_300b48_u,ril_hook_10_u"
  },
  "entries": [
-  "2d1688:ril_class35_update_l5:void:a0",
-  "2d7140:ril_class79_update_l5:void:a0",
-  "2dac80:ril_class133_update_l5:void:a0",
-  "301f48:ril_class623_update_l5:void:a0",
   "304320:ril_class625_update_l5:void:a0",
   "307910:ril_class717_update_l5:void:a0",
   "30bdd8:ril_class810_update_l5:void:a0",
@@ -44,7 +40,6 @@
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/rilgar_classes_tr_1.cpp",
   "src/game/ovl/rilgar_classes_tr_2.cpp",
   "src/game/ovl/rilgar_classes_tr_3.cpp",
   "src/game/ovl/rilgar_classes_tr_4.cpp"

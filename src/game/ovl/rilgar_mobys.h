@@ -13,11 +13,13 @@ namespace rac1 {
 // orig: (none) -- Rilgar's registrations (rilgar_mobys.cpp)
 void rilgar_moby_fns_register();
 
+// ---- the classes ported by hand (their helpers: rilgar_own.h)
+void ril_class35_update_l5(uint32_t m);   // L5:0x002d1688 the water monster (rilgar_water_monster.cpp)
+void ril_class79_update_l5(uint32_t m);   // L5:0x002d7140 the air traffic (rilgar_air_traffic.cpp)
+void ril_class133_update_l5(uint32_t m);  // L5:0x002dac80 the race bots (rilgar_race_bots.cpp)
+void ril_class623_update_l5(uint32_t m);  // L5:0x00301f48 the spitter (rilgar_spitter.cpp)
+
 // ---- the entries (class updates, camera type functions) and the uniform-ABI entries
-void ril_class35_update_l5(uint32_t a0);  // L5:0x002d1688
-void ril_class79_update_l5(uint32_t a0);  // L5:0x002d7140
-void ril_class133_update_l5(uint32_t a0);  // L5:0x002dac80
-void ril_class623_update_l5(uint32_t a0);  // L5:0x00301f48
 void ril_class625_update_l5(uint32_t a0);  // L5:0x00304320
 void ril_class717_update_l5(uint32_t a0);  // L5:0x00307910
 void ril_class810_update_l5(uint32_t a0);  // L5:0x0030bdd8
@@ -47,18 +49,6 @@ void ril_cb_262f50_l5(uint32_t a0);  // L5:0x00262f50
 void ril_cb_266320_l5(uint32_t a0);  // L5:0x00266320
 
 // ---- the uniform-ABI entries and the level-only helpers
-TrRet ril_2d1e30_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x002d1e30
-TrRet ril_2d1fd8_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x002d1fd8
-TrRet ril_2d7020_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x002d7020
-TrRet ril_2d7890_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x002d7890
-TrRet ril_2db238_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x002db238
-TrRet ril_2daf58_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x002daf58
-TrRet ril_2db018_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x002db018
-TrRet ril_303f80_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x00303f80
-TrRet ril_303390_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x00303390
-TrRet ril_303e50_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x00303e50
-TrRet ril_304058_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x00304058
-TrRet ril_303b08_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x00303b08
 TrRet ril_305178_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x00305178
 TrRet ril_305898_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x00305898
 TrRet ril_2f8718_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x002f8718

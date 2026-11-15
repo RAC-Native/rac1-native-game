@@ -73,6 +73,10 @@ add_library(rac1_game STATIC
     ovl/rilgar_mobys.cpp
     ovl/rilgar_hooks.cpp
     ovl/rilgar_part2.cpp
+    ovl/rilgar_water_monster.cpp
+    ovl/rilgar_air_traffic.cpp
+    ovl/rilgar_race_bots.cpp
+    ovl/rilgar_spitter.cpp
     ovl/umbris_part2.cpp
     ovl/veldin_extras.cpp
     ovl/weapon_classes.cpp
