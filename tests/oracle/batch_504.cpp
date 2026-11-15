@@ -122,6 +122,7 @@ void level() {
         level_setup_body(1, 0);
         w32(OV(0x0016c060), 0xf);
         w32(0x0013f2e8, 0xffffffffu);
+        if (g_oracle_level == 14) w8(0x0013d3f0, 1);  // (Oltanis: the arrival scene seen, as batch 221's; else its first frame starts the scene, whose stream the oracle cannot read)
         gameplay_frame();
         render_view_setup();  // (the view's matrices: the draw callbacks project through them)
         g_snap.assign(ram, ram + 0x02000000);

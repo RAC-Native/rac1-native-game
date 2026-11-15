@@ -108,6 +108,7 @@ void level() {
         level_setup_body(1, 0);
         w32(OV(0x0016c060), 0xf);
         w32(0x0013f2e8, 0xffffffffu);
+        if (g_oracle_level == 14) w8(0x0013d3f0, 1);  // (Oltanis: the arrival scene seen, as batch 221's; else its first frame starts the scene, whose stream the oracle cannot read)
         gameplay_frame();
         if (ee_read<uint16_t>(0x001518d0) == 0) { w16(0x001518d0, 640); w16(0x001518d2, 448); }
         screen_setup();

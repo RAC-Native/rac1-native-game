@@ -103,6 +103,7 @@ void level() {
         level_setup_body(1, 0);
         w32(OV(0x0016c060), 0xf);
         w32(0x0013f2e8, 0xffffffffu);
+        if (g_oracle_level == 14) w8(0x0013d3f0, 1);  // (Oltanis: the arrival scene seen, as batch 221's; else its first frame starts the scene, whose stream the oracle cannot read)
         gameplay_frame();
         // the screen and projection constants, which the oracle's display (no size) leaves broken: a 640 x 448 screen, as the
         // game's (batch 501)
