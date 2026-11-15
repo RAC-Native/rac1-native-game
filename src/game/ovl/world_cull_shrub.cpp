@@ -25,6 +25,7 @@
 // orig: (host)
 #include <game/ovl/world_cull.h>
 #include <game/ovl/world_cull_hand.h>
+#include <game/ovl/world_chained.h>
 
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_reloc.h>
@@ -85,6 +86,10 @@ struct Pass {
     uint32_t cls = 0, inst = 0;  // its record, the instance's matrix (RAM, 0x40 each)
     uint32_t class_index = 0;
     uint32_t n_bb = 0, n_clip = 0, n_faded = 0;
+    // (host: the draws chained for the first program - the opaque and the faded instances, not the clipped ones' - noted for the
+    // MRP, world_chained.h)
+    const bool noting = world_chained_noting();
+    bool first_program = true;
     uint32_t fade_data = 0;
 
     uint64_t vf_hi(int r) const { return u.word(r, 2) | static_cast<uint64_t>(u.word(r, 3)) << 32; }
@@ -440,8 +445,13 @@ void Pass::records(uint32_t end) {
 void Pass::chain(uint32_t list, uint32_t count, bool faded_layout) {
     uint32_t a3 = spr.u32(TOGGLE_A), t0 = spr.u32(TOGGLE_B), t1 = spr.u32(TOGGLE_C);
     const uint32_t lods = cls + 0x40, end = lods + (static_cast<uint32_t>(lhu(cls + 0x28)) << 3);
+    const bool note = noting && first_program;
     for (uint32_t p = lods; p != end;) {
         const uint32_t addr = lwu(p), size = lwu(p + 4);
+        WorldChained::Shrub group;
+        group.cls = cls;
+        group.packet = static_cast<uint16_t>((p - lods) >> 3);
+        group.faded = faded_layout;
         p += 8;
         spr.setq(sp, tpl[0]);
         spr.set32(sp + 4, addr);
@@ -465,11 +475,14 @@ void Pass::chain(uint32_t list, uint32_t count, bool faded_layout) {
             pkt += 0x10;
             spr.set32(sp + 0xc, n);
             sp += 0x10;
+            group.n = static_cast<uint8_t>(n);
             for (uint32_t k = 0; k < n; ++k) {
                 const uint32_t e = spr.u32(entry);
                 entry += 4;
                 const uint32_t matrix_pkt = (e << 12) >> 8, index = e >> 20;
                 const uint64_t colours = (static_cast<uint64_t>(index) << 37) + (static_cast<uint64_t>(index) << 38) + tpl[5].lo;
+                group.matrix[k] = matrix_pkt;
+                group.colours[k] = hi32(colours);
                 const uint32_t addr1 = a1 + 4;
                 const uint32_t ref = faded_layout ? 0x10u : 0x0u, unpack = faded_layout ? 0x0u : 0x10u;
                 spr.setq(sp + ref, tpl[3]);
@@ -484,6 +497,7 @@ void Pass::chain(uint32_t list, uint32_t count, bool faded_layout) {
             }
             spr.setq(sp, tpl[4]);
             sp += 0x10;
+            if (note) world_chained_shrub(group);
             t0 = 0x269 - t0;
             t1 = 0x26 - t1;
             pkt += 0x10;
@@ -672,6 +686,7 @@ void Pass::billboards() {
 // orig: (helper) 0x288010 .. 0x2884cc -- the instances to clip: a third program; class by class a NEXT over their matrices (by the
 // clip matrix), then their chain
 void Pass::clipped() {
+    first_program = false;
     reserve_tag(TAG_CLIP);
     if ((sp & 0x7ffu) != 0) flush();
     copy_packet(OV(0x001c2b80u), 3);
@@ -788,6 +803,7 @@ bool shrub_cull() {
     p.clipped();
     p.finish();
     p.u.store();
+    if (p.noting) world_chained_done();
     return true;
 }
 

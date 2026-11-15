@@ -24,7 +24,7 @@ emit shrub 380  -0.454 0.717 23.970  0.503 1.000 0.000  1.777 1.937 0.000  0.00
 emit moby 1855  0.451 -0.100 -0.501  0.477 1.000 0.000  1.000 8.000 0.000  0.00
 material tfrag 0 tex 10 metal 0.35 1
 material tfrag 0 tex 3 metal 0.35 1
-emissive tfrag 0 tex 41  2.71 0.79
+emissive tfrag 0 tex 41  2.71 0.66
 material tfrag 0 tex 31 metal 0.35 1
 material tfrag 0 tex 32 metal 0.35 1
 material tfrag 0 tex 11 metal 0.35 1
@@ -59,3 +59,63 @@ emissive shrub 231 tex 1  1.89 0.00
 emissive shrub 231 tex 0  1.80 0.00
 material moby 1015 tex 1 metal 0.35 1
 material moby 1015 tex 3 metal 0.35 1
+material tfrag 0 tex 12 water 2 3
+material tfrag 0 tex 4 metal 0.35 1
+material tie 1435 tex 0 metal 0.35 1
+material tie 1435 tex 1 metal 0.35 1
+material shrub 301 tex 0 lava 2.35 1 0.66
+material tie 1265 tex 0 metal 0.35 1
+material shrub 554 tex 0 metal 0.35 1
+material shrub 554 tex 2 metal 0.35 1
+material tie 1265 tex 5 metal 0.81 1
+material tfrag 0 tex 9 metal 1 1
+material tie 1272 tex 2 metal 0.35 1
+material tie 1272 tex 3 metal 0.35 1
+material tie 1272 tex 1 metal 0.35 1
+material tie 1304 tex 2 metal 1 1
+material tie 1304 tex 4 metal 0.35 1
+material tie 1378 tex 1 metal 0.68 1
+material tie 1249 tex 4 metal 1 1
+material tie 1249 tex 1 metal 1 1
+material tie 1249 tex 0 metal 1 1
+material tie 1249 tex 3 metal 1 1
+material tie 1249 tex 2 metal 1 1
+material tie 1249 tex 5 metal 1 1
+material tie 1249 tex 7 metal 1 1
+material tie 1377 tex 0 metal 0.35 1
+material tfrag 0 tex 2 metal 0.35 1
+material tie 1377 tex 1 metal 0.35 1
+light 190.166 213.074 53.891  0.630 0.973 1.000  1.000 8.000 0.000 1
+light 192.475 213.072 52.585  0.630 0.973 1.000  1.000 8.000 0.000 1
+light 193.826 213.071 50.191  0.630 0.973 1.000  1.000 8.000 0.000 1
+light 193.767 213.067 47.787  0.630 0.973 1.000  1.000 8.000 0.000 1
+light 192.537 213.068 45.546  0.630 0.973 1.000  1.000 8.000 0.000 1
+light 190.305 213.069 44.235  0.630 0.973 1.000  1.000 8.000 0.000 1
+light 187.724 213.069 44.250  0.630 0.973 1.000  1.000 8.000 0.000 1
+light 185.450 213.069 45.567  0.630 0.973 1.000  1.000 8.000 0.000 1
+light 184.308 213.071 47.716  0.630 0.973 1.000  1.000 8.000 0.000 1
+light 184.262 213.073 50.323  0.630 0.973 1.000  1.000 8.000 0.000 1
+light 185.591 213.074 52.520  0.630 0.973 1.000  1.000 8.000 0.000 1
+light 187.872 213.069 53.721  0.630 0.973 1.000  1.000 8.000 0.000 1
+emissive tfrag 0 tex 23  1.71 0.00
+material tfrag 0 tex 0 metal 0.35 1
+material tfrag 0 tex 1 metal 0.35 1
+material tie 1279 tex 0 metal 1 1
+material tie 1279 tex 1 metal 1 1
+material tfrag 0 tex 52 metal 1 1
+material tfrag 0 tex 51 metal 1 1
+material tfrag 0 tex 48 metal 1 1
+emissive tfrag 0 tex 45  2.27 0.57
+material tie 1261 tex 1 metal 1 1
+material tfrag 0 tex 47 metal 1 1
+material tie 1153 tex 0 metal 0.78 1
+material tie 1153 tex 1 metal 0.78 1
+material tie 1199 tex 0 metal 0.35 1
+material tie 1153 tex 2 metal 0.35 1
+material tie 1265 tex 2 metal 0.35 1
+material tie 1256 tex 1 metal 1 1
+material tie 1256 tex 2 metal 1 1
+material tie 1256 tex 0 metal 1 1
+material tie 1199 tex 1 metal 0.78 1
+material tie 1150 tex 1 metal 0.8 1
+material tie 1146 tex 0 metal 0.41 1

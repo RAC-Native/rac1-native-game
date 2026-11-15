@@ -2,7 +2,9 @@
 # light x y z  r g b  intensity radius flicker on
 # Aridia. The sun from Anya-Thoughtmane's lighting batch 1 (#102, azimuth 38.6, elevation 16.7), chosen by Daino over his own
 # 33 / 19.5 (the light from the big planet in the skybox, #90): a little lower and further round.
-sun 38.6 16.7
+sun -35.2 6.9
+sun_rays off
+sun_rays_strength 0.30
 # Anya-Thoughtmane's second lighting pass (#102): the red bulbs, Skid's crashed ship, the anti-vehicle cannon and the fortress's
 # swing room (in part), the vendor, the bolts. (That file also had a sun 7.7 / 9.9 with "sun_rays off": not
 # taken; the Sun Rays stay on.)
@@ -13,7 +15,6 @@ emissive tie 482 tex 1  1.61 0.41
 emissive shrub 231 tex 0  2.50 0.00
 emissive shrub 231 tex 1  2.50 0.00
 emissive moby 1134 tex 1  3.00 0.66
-emissive tfrag 0 tex 58  2.55 0.00
 emissive tfrag 0 tex 67  1.50 0.85
 emissive tfrag 0 tex 70  2.81 0.71
 emissive tfrag 0 tex 40  2.65 0.00
@@ -22,11 +23,11 @@ emissive tie 1414 tex 0  1.85 0.74
 emissive tie 1417 tex 0  4.00 0.80
 emissive shrub 149 tex 0  2.46 0.00
 emissive moby 11 tex 0  3.02 0.91
+material tie 469 tex 1 metal 0.35 1
 light 276.892 163.452 48.866  1.000 0.583 0.182  3.000 13.307 0.000 1
 light 52.576 228.400 56.484  0.182 1.000 0.447  1.131 16.042 0.000 1
 # Anya-Thoughtmane's lighting batch 1 (#102): most of the metal, the spot lamps
 emit moby 719  0.493 -0.081 -1.123  1.000 0.975 0.449  1.000 12.501 0.000  0.00  joint 3
-material tie 469 tex 1 metal 0.35 1
 material tie 467 tex 0 metal 0.35 1
 material tie 470 tex 0 metal 0.46 1
 material tie 600 tex 0 metal 0.35 1
@@ -50,3 +51,65 @@ material tfrag 0 tex 76 metal 0.71 1
 material moby 173 tex 0 metal 0.35 1
 material moby 662 tex 0 metal 0.35 1
 material moby 662 tex 1 metal 0.35 1
+emissive tie 603 tex 3  4.00 0.00
+emit tie 1417  12.087 0.001 -14.966  0.531 0.906 1.000  1.000 8.000 0.000  0.00
+emit tie 1415  -7.348 -4.631 -10.274  0.561 1.000 0.884  1.000 8.000 0.000  0.00
+material tie 624 tex 0 metal 0.35 1
+material tie 602 tex 1 metal 0.35 1
+emissive tie 1415 tex 1  4.00 0.00
+material moby 743 tex 1 metal 0.35 1
+emit tie 553  19.268 0.030 -2.268  0.423 1.000 0.982  1.000 8.000 0.000  0.00
+material moby 743 tex 2 metal 0.35 1
+material moby 744 tex 1 metal 0.35 1
+material moby 744 tex 2 metal 0.35 1
+material surface 854 tex 12852 water 0 3
+material moby 719 tex 0 metal 0.35 1  glow 3.39 0.86
+material tie 1887 tex 2 metal 0.35 1
+material tie 1887 tex 3 metal 0.35 1
+emissive tfrag 0 tex 58  0.00 0.00
+material moby 732 tex 0 metal 0.35 1
+material moby 732 tex 1 metal 0.35 1
+material moby 733 tex 0 metal 0.35 1
+material tfrag 0 tex 14 metal 1 1
+material tfrag 0 tex 15 metal 1 1
+material tfrag 0 tex 12 metal 1 1
+material tfrag 0 tex 6 metal 1 1
+material tfrag 0 tex 1 metal 1 1
+material tfrag 0 tex 10 metal 1 1
+material tfrag 0 tex 2 metal 1 1
+material tfrag 0 tex 13 metal 1 1
+material tfrag 0 tex 9 metal 1 1
+material tfrag 0 tex 7 metal 1 1
+material tfrag 0 tex 11 metal 1 1
+material tie 607 tex 4 metal 0.35 1
+material tie 607 tex 3 metal 0.35 1
+material tie 504 tex 3 metal 0.35 1
+material tie 504 tex 4 metal 0.35 1
+material tie 504 tex 2 metal 0.35 1
+material tie 504 tex 0 metal 0.35 1
+light 177.637 216.663 31.206  0.411 1.000 0.019  1.000 8.000 0.000 1
+light 177.361 216.679 36.502  0.411 1.000 0.019  1.000 8.000 0.000 1
+material tie 466 tex 10 metal 1 1
+material tie 466 tex 8 metal 1 1
+material tie 466 tex 2 metal 1 1
+material tie 466 tex 6 metal 1 1
+material tie 465 tex 4 metal 1 1
+material tie 465 tex 3 metal 1 1
+material tie 465 tex 1 metal 1 1
+material tie 484 tex 5 metal 1 1
+material tie 484 tex 2 metal 1 1
+material tie 484 tex 0 metal 1 1
+material tie 484 tex 4 metal 1 1
+material tie 484 tex 3 metal 1 1
+material tfrag 0 tex 20 metal 1 1
+material tfrag 0 tex 35 metal 1 1
+material tfrag 0 tex 37 metal 1 1
+material tfrag 0 tex 36 metal 1 1
+emit moby 1060  0.365 0.163 0.060  1.000 0.207 0.032  1.000 14.678 0.000  0.00  joint 0
+emissive moby 1060 tex 0  2.39 0.00
+emissive moby 1060 tex 1  2.37 0.00
+emit shrub 231  10.205 15.070 1.887  1.000 0.049 0.049  2.562 1.492 0.000  0.00
+material tie 604 tex 2 metal 0.45 1
+material moby 720 tex 0 metal 0.35 1
+emissive moby 720 tex 3  2.58 0.62
+emissive surface 0 tex 21  1.66 0.00

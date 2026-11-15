@@ -89,6 +89,7 @@ inline int32x4_t neon_unpacklo_epi16(int32x4_t a, int32x4_t b) {
 #define _mm_store_ps(p, x) vst1q_f32(reinterpret_cast<float*>(p), vreinterpretq_f32_s32((x)))
 #define _mm_and_si128(a, b) vandq_s32((a), (b))
 #define _mm_or_si128(a, b) vorrq_s32((a), (b))
+#define _mm_xor_si128(a, b) veorq_s32((a), (b))
 #define _mm_andnot_si128(a, b) vbicq_s32((b), (a))
 #define _mm_cmpeq_epi32(a, b) vreinterpretq_s32_u32(vceqq_s32((a), (b)))
 #define _mm_castsi128_ps(a) vreinterpretq_f32_s32((a))
@@ -151,6 +152,7 @@ inline void _mm_store_ps(float* p, __m128 x) { std::memcpy(p, &x, 16); }
 
 inline __m128i _mm_and_si128(__m128i a, __m128i b) { return a & b; }
 inline __m128i _mm_or_si128(__m128i a, __m128i b) { return a | b; }
+inline __m128i _mm_xor_si128(__m128i a, __m128i b) { return a ^ b; }
 inline __m128i _mm_andnot_si128(__m128i a, __m128i b) { return ~a & b; }
 inline __m128i _mm_cmpeq_epi32(__m128i a, __m128i b) { return a == b; }
 inline __m128i _mm_add_epi32(__m128i a, __m128i b) {  // (wrapping, as SSE2's)

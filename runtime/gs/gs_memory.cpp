@@ -4,9 +4,12 @@
 #include <runtime/gs/gs_memory.h>
 #include <runtime/kernel/ee_memory.h>
 
+#include <profiler/perf_switch.h>
+
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -82,7 +85,6 @@ void vram_w32(uint8_t* p, uint32_t v) {
     p[2] = static_cast<uint8_t>(v >> 16);
     p[3] = static_cast<uint8_t>(v >> 24);
 }
-uint32_t bits(uint64_t v, int lo, int n) { return static_cast<uint32_t>((v >> lo) & ((1ull << n) - 1)); }
 
 enum Psm : uint32_t { CT32 = 0, CT24 = 1, CT16 = 2, CT16S = 0xa, T8 = 0x13, T4 = 0x14, T8H = 0x1b, T4HL = 0x24, T4HH = 0x2c };
 
@@ -366,8 +368,8 @@ void LocalMemory::write_pixel_raw(uint32_t psm, uint32_t bp, uint32_t bw, uint32
 }
 
 uint32_t LocalMemory::texel(uint64_t tex0, uint64_t texa, int x, int y) const {
-    const uint32_t tbp = bits(tex0, 0, 14), tbw = bits(tex0, 14, 6), psm = bits(tex0, 20, 6);
-    const uint32_t ta0 = bits(texa, 0, 8), aem = bits(texa, 15, 1), ta1 = bits(texa, 32, 8);
+    const uint32_t tbp = field(tex0, 0, 14), tbw = field(tex0, 14, 6), psm = field(tex0, 20, 6);
+    const uint32_t ta0 = field(texa, 0, 8), aem = field(texa, 15, 1), ta1 = field(texa, 32, 8);
     auto c16 = [&](uint32_t v) {
         const uint32_t r = (v & 0x1f) << 3, g = ((v >> 5) & 0x1f) << 3, b = ((v >> 10) & 0x1f) << 3;
         uint32_t a = (v & 0x8000) ? ta1 : ta0;
@@ -390,9 +392,9 @@ uint32_t LocalMemory::texel(uint64_t tex0, uint64_t texa, int x, int y) const {
 
 // orig: (host) the CLUT's colour of index `raw` of an indexed texture (CSM1 from CBP; its bytes noted as the CLUT's range)
 uint32_t LocalMemory::texel_clut(uint64_t tex0, uint64_t texa, uint32_t raw) const {
-    const uint32_t psm = bits(tex0, 20, 6);
-    const uint32_t cbp = bits(tex0, 37, 14), cpsm = bits(tex0, 51, 4), csa = bits(tex0, 56, 5);
-    const uint32_t ta0 = bits(texa, 0, 8), aem = bits(texa, 15, 1), ta1 = bits(texa, 32, 8);
+    const uint32_t psm = field(tex0, 20, 6);
+    const uint32_t cbp = field(tex0, 37, 14), cpsm = field(tex0, 51, 4), csa = field(tex0, 56, 5);
+    const uint32_t ta0 = field(texa, 0, 8), aem = field(texa, 15, 1), ta1 = field(texa, 32, 8);
     auto c16 = [&](uint32_t v) {
         const uint32_t r = (v & 0x1f) << 3, g = ((v >> 5) & 0x1f) << 3, b = ((v >> 10) & 0x1f) << 3;
         uint32_t a = (v & 0x8000) ? ta1 : ta0;
@@ -421,7 +423,7 @@ uint32_t LocalMemory::texel_clut(uint64_t tex0, uint64_t texa, uint32_t raw) con
 // TEXA only for a 16 / 24-bit texture or a 16-bit CLUT. A texture drawn with another texture function is the same image.)
 // orig: (host)
 std::pair<uint64_t, uint64_t> LocalMemory::texture_key(uint64_t tex0, uint64_t texa) {
-    const uint32_t psm = bits(tex0, 20, 6), cpsm = bits(tex0, 51, 4);
+    const uint32_t psm = field(tex0, 20, 6), cpsm = field(tex0, 51, 4);
     const bool indexed = psm == T8 || psm == T8H || psm == T4 || psm == T4HL || psm == T4HH;
     uint64_t k = tex0 & 0x3ffffffffull;  // TBP0, TBW, PSM, TW, TH
     if (indexed) k |= tex0 & (0x1ffffffull << 37);  // CBP, CPSM, CSM, CSA
@@ -469,15 +471,15 @@ std::shared_ptr<const TexImage> LocalMemory::texture_at_kick(uint64_t tex0, uint
             return s.img;
         }
     }
-    const int w = 1 << std::min(10u, bits(tex0, 26, 4)), h = 1 << std::min(10u, bits(tex0, 30, 4));
+    const int w = 1 << std::min(10u, field(tex0, 26, 4)), h = 1 << std::min(10u, field(tex0, 30, 4));
     dec_.resize(static_cast<size_t>(w) * h);
     for (int k = 0; k < 2; ++k) {
         rd_lo_[k] = 0xffffffffu;
         rd_hi_[k] = 0;
     }
-    const uint32_t tbp = bits(tex0, 0, 14), tbw = bits(tex0, 14, 6), psm = bits(tex0, 20, 6);
-    const uint32_t cbp = bits(tex0, 37, 14), cpsm = bits(tex0, 51, 4);
-    const uint32_t ta0 = bits(texa, 0, 8), aem = bits(texa, 15, 1), ta1 = bits(texa, 32, 8);
+    const uint32_t tbp = field(tex0, 0, 14), tbw = field(tex0, 14, 6), psm = field(tex0, 20, 6);
+    const uint32_t cbp = field(tex0, 37, 14), cpsm = field(tex0, 51, 4);
+    const uint32_t ta0 = field(texa, 0, 8), aem = field(texa, 15, 1), ta1 = field(texa, 32, 8);
     auto c16 = [&](uint32_t v) {
         const uint32_t r = (v & 0x1f) << 3, g = ((v >> 5) & 0x1f) << 3, b = ((v >> 10) & 0x1f) << 3;
         uint32_t a = (v & 0x8000) ? ta1 : ta0;
@@ -598,15 +600,60 @@ void LocalMemory::set_transfer_state(const TransferState& t) {
     xpend_ = t.pend;
 }
 
+// (host) RAC1_PERF_UPLOAD_MEMO: 1 (the default) a piece of an upload that writes the bytes its last identical write left, in a range
+// of the memory nothing changed since, is skipped (exact: the same bytes would be written over themselves); 0 every piece written
+// pixel by pixel, as before; 2 every piece written, the skipped ones checked to change nothing (LocalMemory::upload_memo_stats().bad)
+// orig: (host)
+static int upload_memo_mode() {
+    static const int m = perf::switch_value("RAC1_PERF_UPLOAD_MEMO", 1);
+    return m;
+}
+constexpr size_t kMemoSlots = 4096;
+constexpr size_t kMemoBytes = 48u << 20;  // (the memo's copies of the pieces at most: all forgotten past it)
+
 // (the pixels written in a row, their changes noted once: the same log entry the per-pixel notes made, nothing reads the log
 // in between)
 void LocalMemory::transfer_data(uint64_t bb, uint64_t pos, uint64_t rg, const uint8_t* p, uint32_t n) {
     if (!xfer_) return;
-    const uint32_t dbp = bits(bb, 32, 14), dbw = bits(bb, 48, 6), dpsm = bits(bb, 56, 6);
-    const uint32_t sx = bits(pos, 32, 11), sy = bits(pos, 48, 11);
-    const uint32_t w = bits(rg, 0, 12), h = bits(rg, 32, 12);
+    const uint32_t dbp = field(bb, 32, 14), dbw = field(bb, 48, 6), dpsm = field(bb, 56, 6);
+    const uint32_t sx = field(pos, 32, 11), sy = field(pos, 48, 11);
+    const uint32_t w = field(rg, 0, 12), h = field(rg, 32, 12);
     if (w == 0 || h == 0) return;
-    uint32_t lo = 0xffffffffu, hi = 0;
+    // the memo: the piece's key (the registers, where the transfer is, the size), its last write's bytes and range
+    const int memo_mode = upload_memo_mode();
+    const bool memo_on = memo_mode != 0 && dpsm != CT24 && xpend_.empty() && xy_ < h && n != 0;
+    UploadMemo* m = nullptr;
+    bool hit = false;
+    if (memo_on) {
+        if (memo_.empty()) memo_.resize(kMemoSlots);
+        uint64_t k = bb * 0x9E3779B97F4A7C15ull ^ pos * 0xC2B2AE3D27D4EB4Full ^ rg * 0x165667B19E3779F9ull;
+        k ^= (static_cast<uint64_t>(xx_) << 40) ^ (static_cast<uint64_t>(xy_) << 20) ^ n;
+        k ^= k >> 29;
+        m = &memo_[static_cast<size_t>(k * 0xBF58476D1CE4E5B9ull >> 52) & (kMemoSlots - 1)];
+        hit = m->bb == bb && m->pos == pos && m->rg == rg && m->xx0 == xx_ && m->xy0 == xy_ && m->src.size() == n && m->hi > m->lo &&
+              std::memcmp(m->src.data(), p, n) == 0 && !changed_since(m->seq, m->lo, m->hi);
+        if (hit) {
+            // (the piece is as good as written now: its number moved up to the log's, so it does not fall behind the log's floor
+            // - a piece skipped every frame kept the number of its one write, and after the 4096 to 8192 later entries the log
+            // forgets, every such piece was written again at once. An entry still open may yet grow: the number before it.
+            // RAC1_PERF_UPLOAD_MEMO_KEEP=0: the number kept, as before)
+            static const bool keep = perf::switch_value("RAC1_PERF_UPLOAD_MEMO_KEEP", 1) != 0;
+            const uint64_t now = wr_open_ && wr_seq_ != 0 ? wr_seq_ - 1 : wr_seq_;
+            if (keep && now > m->seq) m->seq = now;
+        }
+        if (hit && memo_mode != 2) {
+            xx_ = m->xx1;
+            xy_ = m->xy1;
+            xfer_ = m->xfer1;
+            ++memo_st_.skipped;
+            memo_st_.skipped_bytes += n;
+            return;
+        }
+    }
+    const uint32_t xx0 = xx_, xy0 = xy_;
+    // (the bytes a pixel of this format occupies at the address store returns: the range the piece covers)
+    const uint32_t span = dpsm == CT32 ? 4 : (dpsm == CT16 || dpsm == CT16S) ? 2 : 1;
+    uint32_t lo = 0xffffffffu, hi = 0, alo = 0xffffffffu, ahi = 0;
     auto put = [&](uint32_t v) {
         if (xy_ >= h) return;
         uint32_t c = 0;
@@ -615,6 +662,8 @@ void LocalMemory::transfer_data(uint64_t bb, uint64_t pos, uint64_t rg, const ui
             lo = std::min(lo, a);
             hi = std::max(hi, a + c);
         }
+        alo = std::min(alo, a);
+        ahi = std::max(ahi, a + span);
         if (++xx_ == w) { xx_ = 0; ++xy_; }
     };
     if (dpsm == CT32) { for (uint32_t i = 0; i + 4 <= n; i += 4) put(r32(p + i)); }
@@ -629,6 +678,47 @@ void LocalMemory::transfer_data(uint64_t bb, uint64_t pos, uint64_t rg, const ui
     }
     if (hi > lo) note_change(lo, hi - lo);
     if (xy_ >= h) xfer_ = false;
+    if (m != nullptr) {
+        if (hit) {  // (=2: the piece the memo would have skipped, written: it must have changed nothing)
+            const bool same = !(hi > lo) && m->xx1 == xx_ && m->xy1 == xy_ && m->xfer1 == xfer_;
+            char why[160] = {};
+            if (!same)
+                std::snprintf(why, sizeof why, "a skipped piece changed the memory (BITBLTBUF %016llx, %u bytes, changed %08x..%08x)", static_cast<unsigned long long>(bb), n, lo, hi);
+            memo_chk_.check(same, why);
+            ++memo_st_.skipped;
+            memo_st_.skipped_bytes += n;
+        } else {
+            ++memo_st_.written;
+            memo_st_.written_bytes += n;
+        }
+        if (ahi > alo) {
+            memo_bytes_ += n;
+            memo_bytes_ -= m->src.size();
+            if (memo_bytes_ > kMemoBytes) {  // (too many pieces kept: all forgotten)
+                for (UploadMemo& e : memo_) {
+                    e.src.clear();
+                    e.src.shrink_to_fit();
+                    e.hi = e.lo = 0;
+                }
+                memo_bytes_ = n;
+            }
+            m->bb = bb;
+            m->pos = pos;
+            m->rg = rg;
+            m->xx0 = xx0;
+            m->xy0 = xy0;
+            m->xx1 = xx_;
+            m->xy1 = xy_;
+            m->xfer1 = xfer_;
+            m->lo = alo;
+            m->hi = ahi;
+            m->src.assign(p, p + n);
+            wr_open_ = false;  // (a change from here on is later than the memo's number)
+            m->seq = wr_seq_;
+        } else {
+            m->hi = m->lo = 0;
+        }
+    }
 }
 
 void LocalMemory::undo_begin() {

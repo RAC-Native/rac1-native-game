@@ -17,7 +17,8 @@ namespace rac1 {
 constexpr int ORXON = 10;
 
 // orig: (host) the current translation target is Orxon overlay
-inline bool on_orxon() { return on_level(ORXON); }
+// (its hero code and camera code also in a session whose hero context it is: variants.h on_hero_level)
+inline bool on_orxon() { return on_hero_level(ORXON); }
 
 // A level-10 address of the port's own (level-only data / code, not a Veldin equivalent): no Veldin
 // translation; on another region's disc, the region table's.

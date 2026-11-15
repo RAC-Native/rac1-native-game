@@ -22,6 +22,8 @@
 #include <game/ovl/pause_menu.h>
 #include <game/ovl/pause_menu_pages.h>
 #include <game/ovl/planet_map.h>
+#include <host/level_slots.h>
+#include <host/quick_rings.h>
 
 #include <vector>
 
@@ -327,16 +329,19 @@ int32_t save_slots_draw(uint32_t w) {
 // idle.
 // orig: 0x002809e0
 int32_t save_slot_planet_draw(uint32_t w) {
-    const int32_t level = lw(summary(lw(lwu(lwu(MS + 4) + 0x40) + 0x40)) + 0x20);
+    const int32_t slot = lw(lwu(lwu(MS + 4) + 0x40) + 0x40);
+    int32_t level = lw(summary(slot) + 0x20);
     texture_block_begin(0);
     if (card_ready() && lw(S + 8) == 2) {
         if (level == -1) {
             const int32_t y = lw(w + 0x24) / 2 - 8;
             text_centered_small(lw(w + 0x20) / 2, y, 0x80ffa888u, sub_00203ad8(TXT(0x5217)), -1);
         } else {
+            int32_t ids[2];
+            const bool ours = level_slots_save_planet(slot, level, ids);  // enhancement: a save made on a level mod's level (src/host/level_slots.h)
             const uint32_t names = OV(0x001c1e40) + static_cast<uint32_t>(level * 0xc);
-            text_centered_small(lw(w + 0x20) / 2, 4, 0x80ffa888u, sub_00203ad8(lw(names)), -1);
-            text_centered_small(lw(w + 0x20) / 2, 0x14, 0x80ffa888u, sub_00203ad8(lw(names + 4)), -1);
+            text_centered_small(lw(w + 0x20) / 2, 4, 0x80ffa888u, sub_00203ad8(ours ? ids[0] : lw(names)), -1);
+            text_centered_small(lw(w + 0x20) / 2, 0x14, 0x80ffa888u, sub_00203ad8(ours ? ids[1] : lw(names + 4)), -1);
         }
     }
     texture_block_end();
@@ -495,6 +500,7 @@ void challenge_game_image(int32_t n) {
     mem_copy(0x70000150, 0x00141ea0, 0x20);
     mem_copy(0x70000170, 0x0015edd0, 0xc);
     mem_copy(0x70000180, 0x0013d408, 0x20);
+    quick_rings_challenge_keep();  // (enhancement: rings 2 and 3 kept as ring 1, src/host/quick_rings.h)
     const uint32_t bolts = lwu(0x0015ed98);
     const int32_t count = lw(0x0015ee20);
     const bool f4 = lbu(0x0013d388 + 4) != 0, f5 = lbu(0x0013d388 + 5) != 0;
@@ -511,6 +517,7 @@ void challenge_game_image(int32_t n) {
         const uint32_t item = lwu(0x70000150 + i * 4);
         sw(0x00141ea0 + i * 4, lbu(item + 0x0013d4c0) == 0 ? 0u : item);
     }
+    quick_rings_challenge_restore();  // (enhancement)
     mem_copy(0x0015edd0, 0x70000170, 0xc);
     mem_copy(0x0013d408, 0x70000180, 0x20);
     sw(0x0015ed98, bolts);

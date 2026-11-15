@@ -74,6 +74,9 @@ enum Stage : int {
     kScreenshots,       // testing: screenshots
     kPacing,            // the frame cap's wait
     kPresent,           // the swap (the present: the v-sync's wait, the driver's queue full)
+    kFrameBegin,        // Vulkan: the frame begun (its fence waited for, its pools reset, the clears); inside the draw
+    kAcquire,           // Vulkan: the wait for the swapchain's next image (vkAcquireNextImageKHR: a full FIFO queue blocks here)
+    kMatCapture,        // Surface Detail: the frame's colour and depth copied for the materials' reflections (mrp_lighting_material_capture)
     kStageCount
 };
 
@@ -92,6 +95,19 @@ const StageInfo& stage_info(int s);
 enum Worker : int { kWorkerChain, kWorkerScene, kWorkerJobs, kWorkerGame, kWorkerCount };
 const char* worker_name(int w);
 
+// Parts of the workers' jobs (their wall time inside the job, any thread; the CSV's "part:" columns and the dump): where the chain
+// reader's and the scene worker's time goes, per kind (docs/performance.md). A part inside another counts in both.
+enum Part : int {
+    kPartChainUploads,  // the chain reader: the texture uploads written into the GS memory model (LocalMemory::transfer_data)
+    kPartChainVu1,      // the chain reader: the VU1 programs run (program 7, the set-up programs, the particle program ...)
+    kPartSceneDecide,   // the scene worker: the host's decisions (the resident colours, static_frame_build, the casters, tfrag_decide)
+    kPartSceneCapture,  // the scene worker: the world chain's capture (scene_capture) or the direct inputs' (RAC1_PERF_DIRECT_WORLD)
+    kPartSceneWalk,     // the scene worker: the walk of the captured chain (scene_build) or the direct build
+    kPartSceneTris,     // the scene worker: build_triangles
+    kPartCount
+};
+const char* part_name(int p);
+
 namespace detail {
 extern std::atomic<bool> g_on;
 extern uint32_t g_zone_gen;  // (the frame's zones' generation: a zone left open across frames, the EE coroutine suspended in it, is not closed twice)
@@ -99,6 +115,8 @@ int zone_begin(Stage s);
 void zone_end(int z);
 void job_begin(int w, double* t0, double* c0);
 void job_end(int w, double t0, double c0, int lane);
+double part_now();
+void part_add(int p, double ms);
 }  // namespace detail
 
 // Whether the profiler records this frame.
@@ -129,6 +147,20 @@ struct Job {
     Job& operator=(const Job&) = delete;
 };
 
+// A part of a worker's job (RAII, any thread): its wall time added to the frame's part `p`.
+struct PartTimer {
+    int p;
+    double t0 = 0;
+    explicit PartTimer(Part k) : p(on() ? static_cast<int>(k) : -1) {
+        if (p >= 0) t0 = detail::part_now();
+    }
+    ~PartTimer() {
+        if (p >= 0) detail::part_add(p, detail::part_now() - t0);
+    }
+    PartTimer(const PartTimer&) = delete;
+    PartTimer& operator=(const PartTimer&) = delete;
+};
+
 // A zone opened and closed by hand (-1: none), where a scope does not fit.
 inline int begin(Stage s) { return on() ? detail::zone_begin(s) : -1; }
 inline void end(int z) {
@@ -150,6 +182,12 @@ void game_thread_attach();
 void frame_mark();
 // The game frames this host frame runs (its first zone's context).
 void frame_steps(int steps);
+// This turn of the main loop is not a frame: it ran no game frame and drew nothing (it came before the next game frame was
+// due, and waits for it). Its time goes on in the frame being recorded - the next frame_mark does not end it -, so the
+// frames counted are the frames shown, whether or not the view asked for the profiler in between.
+void frame_hold();
+// A picture presented by this host frame beyond the frame's own (the frame extrapolation's: k pictures a step).
+void frame_picture();
 
 // The view asks for the profiler this frame (the Profiler tab drawn); `pinned`: the overlay kept on screen.
 void request();
@@ -174,7 +212,9 @@ struct FrameRec {
     bool gpu_ok = false;         // the GPU's results came back
     double main_cpu = 0;         // the main thread's CPU time (the system's account: its waits left out)
     double worker_busy[kWorkerCount] = {}, worker_cpu[kWorkerCount] = {};
+    double part[kPartCount] = {};// the workers' parts (Part)
     int steps = 0;               // the game frames it ran
+    int pictures = 0;            // the pictures it presented (0: one, the frame's own; the frame extrapolation's: k)
 };
 // The frames recorded, the oldest first (up to history_capacity()).
 int history_size();
@@ -194,8 +234,12 @@ struct Summary {
     double waits = 0;       // the main thread's waits (the stages marked wait)
     double game_code = 0, host_work = 0;
     double main_cpu = 0;
+    double prepare_total = 0;  // the Prepare stage with the stages inside it (the chain's capture, the scene capture's wait, the moby lists)
+    int steps_hist[4] = {};    // the host frames that ran 0, 1, 2 and 3 or more game frames
     double worker_busy[kWorkerCount] = {}, worker_cpu[kWorkerCount] = {};
+    double part[kPartCount] = {};
     double steps = 0;
+    double pictures_fps = 0;  // the pictures presented a second (above fps with the frame extrapolation)
     Bound bound = Bound::None;
     std::string bound_text;
 };

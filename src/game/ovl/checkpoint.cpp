@@ -2,6 +2,8 @@
 // level's collected things. Header checkpoint.h.
 #include <game/ovl/checkpoint.h>
 
+#include <game/enhance/session_runtime.h>
+
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 
@@ -53,6 +55,10 @@ void checkpoint_save_v(const Vec4& pos, uint32_t rot) {
     sb(C + 0x41, lbu(HUD + 0x69));
     sb(C + 0x42, lbu(HUD + 0x6a));
     sw(C + 0xc54, t5 == -1 ? static_cast<uint32_t>(static_cast<int32_t>(lh(0x001516d0 + 0x38))) : static_cast<uint32_t>(t5));
+    if (g_session_rt) {  // (enhancement: a session's checkpoint, src/game/enhance/session_runtime.h)
+        const float at[3] = {pos.x, pos.y, pos.z};
+        session_checkpoint_game(at, lwc1(rot + 8));
+    }
 }
 
 // orig: 0x00284e50

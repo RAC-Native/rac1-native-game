@@ -31,6 +31,9 @@ class SoundHandler {
   virtual void SetPBend(s32 /*mod*/){};
   virtual void SetRegister(u8 /*reg*/, u8 /*value*/) {}
   virtual u32 SoundID() const { return -1; }
+  // rac1 (host): a place in 5.1 / 7.1 the game's pan does not give (0 none, 1 positional at `pan`, 2 diffuse); nothing of
+  // the stereo mix (BlockSoundHandler::Place)
+  virtual void SetHostPlace(u8 /*mode*/, s32 /*pan*/) {}
 
   u32 m_sound_handle = 0;
 

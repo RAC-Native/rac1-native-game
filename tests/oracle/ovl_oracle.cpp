@@ -250,6 +250,7 @@ int main(int argc, char** argv) {
     // (also on level 0: a batch whose dumps are missing skips its checks, and a bare PASS would hide it)
     if (g_oracle_level != 0 || g_skipped != 0)
         std::printf("level %d: %d check(s) skipped (no equivalent function, or no dump)\n", g_oracle_level, g_skipped);
+    rac1::ps2fpu::raw_report();  // (RAC1_PERF_FPU_RAW=2 / RAC1_PERF_VU0_RAW=2: the helpers' raw forms against their rules)
     std::printf("%s: %d failing function(s)\n", g_fail ? "FAIL" : "PASS", g_fail);
     return g_fail ? 1 : 0;
 }

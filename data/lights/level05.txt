@@ -20,20 +20,19 @@ emissive moby 877 tex 8  3.00 0.00
 emissive moby 877 tex 2  2.60 0.00
 emissive moby 866 tex 0  2.70 0.83
 emissive moby 1134 tex 1  2.50 0.36
-emissive tie 907 tex 1  2.50 0.00
 emissive moby 998 tex 2  2.71 0.00
 emissive moby 1511 tex 1  2.05 0.00
-# Anya-Thoughtmane's lighting batch 1 (#102): an experimental rain (as Ratchet & Clank 2016's Rilgar), a part of the materials
 material tfrag 0 tex 27 metal 0.49 1
+# Anya-Thoughtmane's lighting batch 1 (#102): an experimental rain (as Ratchet & Clank 2016's Rilgar), a part of the materials
 material tfrag 0 tex 28 metal 0.49 1
 material tfrag 0 tex 29 metal 0.49 1
-particles rain 0.06
 material tfrag 0 tex 33 metal 0.49 1
+particles rain 0.06
 material tfrag 0 tex 31 metal 0.51 1
 material tfrag 0 tex 30 metal 0.51 1
-emit shrub 231  7.373 0.475 21.138  1.000 0.221 0.221  1.000 1.856 0.000  0.00
-emit tie 720  -9.536 -9.001 7.966  0.225 1.000 0.556  1.308 3.080 0.000  0.00
 material moby 812 tex 0 metal 0.46 1
+emit shrub 231  7.373 0.475 21.138  1.000 0.221 0.221  1.704 3.907 0.000  0.00
+emit tie 720  -9.536 -9.001 7.966  0.225 1.000 0.556  1.308 3.080 0.000  0.00
 material moby 810 tex 0 metal 0.46 1
 material moby 810 tex 1 metal 0.35 1
 material moby 895 tex 0 metal 0.35 1
@@ -51,9 +50,9 @@ material moby 846 tex 0 metal 0.37 1
 material moby 846 tex 1 metal 0.45 1
 material moby 846 tex 2 metal 0.35 1
 material tie 1004 tex 0 metal 0.41 1
+material tfrag 0 tex 45 metal 0.45 1
 emit tie 1010  -0.059 0.011 0.931  0.850 0.920 1.000  1.000 1.650 0.000  0.00
 emit tie 1374  0.022 -0.793 23.478  0.656 1.000 0.945  1.000 4.001 0.000  0.00
-material tfrag 0 tex 45 metal 0.45 1
 material moby 855 tex 0 metal 0.49 1
 material moby 855 tex 1 metal 0.41 1
 emissive tie 927 tex 0  2.28 0.00
@@ -66,8 +65,61 @@ emissive tie 977 tex 0  2.50 0.00
 emissive shrub 192 tex 0  2.56 0.00
 material tie 814 tex 1 metal 0.61 1
 material tie 810 tex 0 metal 0.61 1
+material surface 879 tex 13040 water 0.43 3
 # Surface Detail's water (docs/materials.md), put back: the lighting batches' reformat (2a468fe) left these lines out. The harbour's
 # sea (its texture a level texture: its GS block, 13040); the canals by the start (their two effect textures, 42 and 41)
-material surface 879 tex 13040 water 1 1
-material surface 831 tex 42 water 1 1
-material surface 831 tex 41 water 1 1
+material surface 831 tex 42 water 1.66 2.53
+material surface 831 tex 41 water 1.66 3
+emissive tie 907 tex 0  2.74 0.00
+rain on
+emit tie 907  0.294 0.529 19.011  1.000 0.985 0.225  1.000 8.000 0.000  0.00
+emit tie 907  -0.647 -0.298 19.235  1.000 0.984 0.224  1.000 8.000 0.000  0.00
+emit tie 755  -3.328 -7.695 21.967  1.000 0.731 0.337  1.000 8.000 0.000  0.00
+emissive tie 985 tex 4  1.59 0.00
+emissive tie 973 tex 11  2.44 0.00
+emissive tie 797 tex 1  2.14 0.00
+material tie 781 tex 11 metal 1 1
+material tie 781 tex 1 metal 1 1
+material tie 781 tex 0 metal 1 1
+material tie 781 tex 3 metal 0.62 1
+material tie 788 tex 0 metal 0.35 1
+material tie 788 tex 2 metal 0.35 1
+material tie 801 tex 1 metal 0.52 0.48
+material tie 801 tex 8 metal 0.49 0.5
+material tie 801 tex 4 metal 0.5 0.46
+material tie 811 tex 0 metal 0.35 1
+material tie 813 tex 10 metal 0.35 1
+material tie 813 tex 9 metal 0.35 1
+emissive tie 755 tex 5  2.84 0.00
+emissive moby 895 tex 8  2.62 0.34
+material tfrag 0 tex 15 metal 1 1
+material tie 762 tex 0 metal 1 1
+material tie 762 tex 1 metal 1 1
+material tie 937 tex 0 metal 0.71 1
+material tie 937 tex 1 metal 0.49 1
+material tie 825 tex 7 metal 1 1
+material tie 825 tex 9 metal 1 1
+material tie 825 tex 10 metal 1 1
+material tie 825 tex 8 metal 1 1
+material tie 825 tex 14 metal 1 1
+material tie 825 tex 5 metal 1 1
+material tie 825 tex 6 metal 1 1
+emissive tie 1028 tex 2  4.00 0.00
+emissive tie 782 tex 11  2.94 0.00
+material tie 781 tex 5 metal 0.35 1
+material tie 720 tex 1 metal 1 1
+material tie 717 tex 6 metal 1 1
+material tie 717 tex 2 metal 1 1
+material tie 717 tex 7 metal 1 1
+material tie 983 tex 3 metal 0.49 1
+material tie 1016 tex 0 metal 0.35 1
+material shrub 208 tex 0 metal 0.35 1
+material shrub 208 tex 1 metal 0.35 1
+material tie 1013 tex 2 metal 0.35 1
+material tie 1013 tex 1 metal 0.35 1
+material tie 1013 tex 0 metal 0.35 1
+material tie 1003 tex 4 metal 0.35 1
+material tie 1003 tex 0 metal 0.35 1
+material tie 1003 tex 2 metal 0.35 1
+emissive tie 1031 tex 5  2.36 0.34
+sun -157.4 7.9

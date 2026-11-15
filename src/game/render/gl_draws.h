@@ -17,7 +17,6 @@ namespace rac1 {
 // orig: (host) once the OpenGL context is current (the main thread): GL_VENDOR / GL_RENDERER / GL_VERSION in the log, and whether
 // the multi-draws go as single draws: RAC1_GL_SINGLE_DRAWS=1 / 0 when set, else on with Intel's Windows driver
 void gl_draws_init();
-bool gl_single_draws();
 
 // orig: (host) the commands first..first+count of the bound GL_DRAW_INDIRECT_BUFFER (DrawElementsIndirectCommand, 5 words each:
 // count, instances, first index, base vertex, base instance), triangles with 32-bit indices of the bound element buffer.

@@ -8,15 +8,15 @@ namespace rac1 {
 bool g_render_tfrag = true;
 bool g_render_tie = true;
 bool g_render_shrub = true;
-bool g_render_moby = true;
+bool g_render_moby = std::getenv("RAC1_RENDER_MOBY") == nullptr || std::atoi(std::getenv("RAC1_RENDER_MOBY")) != 0;  // (testing: 0 the world alone, the debug menu's toggle)
 bool g_render_sky = true;
-bool g_render_fx = true;
+bool g_render_fx = std::getenv("RAC1_RENDER_FX") == nullptr || std::atoi(std::getenv("RAC1_RENDER_FX")) != 0;  // (testing: 0 no effects, the debug menu's toggle)
 bool g_draw_from_snapshot = false;
 bool g_world_faithful = false;
 bool g_world_mrp = false;
 bool g_world_chain_forced = false;
 bool g_title_scene_host = false;
-bool g_moby_vu1_pass = true;  // (the faithful pass by default; the GLB drawer a debug fallback)
+bool g_moby_vu1_pass = true;  // (the game's moby pass runs, as the MRP and the faithful path need; false: the GLB drawer, RAC1_MOBY_VU1=0)
 MobyRenderer g_moby_renderer = MobyRenderer::kFaithful;
 bool g_render_gs2d = true;
 bool g_render_wireframe = false;

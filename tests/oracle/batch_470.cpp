@@ -12,6 +12,9 @@
 //                locals, RAC1_VU0_SIMD) against their per-op form, on random registers, flags, scratchpad records, parents,
 //                lists and keys: the registers, ACC, Q, the flags, the scratchpad and the work buffer compared after; the
 //                matrices' AVX2 form too when the CPU has AVX2
+//   joints_raw   the same loops, per-op, SIMD and AVX2, with the raw forms on (RAC1_PERF_VU0_RAW, runtime/ee/ps2_fpu.h: the
+//                host's own add / subtract / multiply, the rules only for a step whose inputs hold exponent 255) against the
+//                per-op form by the rules, the same cases and the same state compared (a case in three has such an input)
 // Run: build/tests/ovl_oracle --batch 470 (any level: it reads nothing of one).
 
 #include "ovl_oracle.h"
@@ -232,8 +235,9 @@ void batch_470() {
     }
     {  // moby_joints_pose's loops: the SIMD form against the per-op form
         static const char* const names[4] = {"lists", "rotations", "joint matrices", "bind matrices"};
-        int bad = 0, cases = 0, wide = 0;
-        int per[4] = {};
+        int bad = 0, cases = 0, wide = 0, raw_bad = 0, raw_cases = 0;
+        int per[4] = {}, raw_per[4] = {};
+        const int raw_mode = ps2fpu::g_vu0_raw;  // (0: the thread's mode not the EE's, or the raw forms switched off)
         const bool avx2 = __builtin_cpu_supports("avx2");
         for (int c = 0; c < 8000; ++c) {
             const int loop = c % 4;
@@ -268,6 +272,9 @@ void batch_470() {
             }
             const bool plain = coin();
             const PoseState start = pose_state();
+            // (the loops' steps by the rules - RAC1_PERF_VU0_RAW's 0, the form before it - for joints_simd; then every form
+            // again with the raw forms on, where the thread's mode allows them, for joints_raw)
+            ps2fpu::g_vu0_raw = 0;
             moby_joints_pose_loop(loop, 0, loop == 0 ? kWork : kKeys, kKeys + 0x200, n, plain);
             const PoseState ref = pose_state();
             pose_restore(start);
@@ -292,10 +299,37 @@ void batch_470() {
                                 ref.spr == got.spr ? "same" : "differs", ref.work == got.work ? "same" : "differs");
                 }
             }
+            if (raw_mode != 0) {
+                ps2fpu::g_vu0_raw = 1;
+                ++raw_cases;
+                for (int mode = 0; mode < (loop >= 2 && avx2 ? 3 : 2); ++mode) {
+                    pose_restore(start);
+                    moby_joints_pose_loop(loop, mode, loop == 0 ? kWork : kKeys, kKeys + 0x200, n, plain);
+                    const PoseState raw = pose_state();
+                    if (pose_same(ref, raw)) continue;
+                    ++raw_per[loop];
+                    if (raw_bad++ < 5) {
+                        int r = -1;
+                        for (int i = 0; i < 32 && r < 0; ++i)
+                            if (std::memcmp(&ref.regs.vf[static_cast<size_t>(i)], &raw.regs.vf[static_cast<size_t>(i)], 16) != 0) r = i;
+                        std::printf("  joints_raw: case %d (%s, %d joints%s, form %d): first register differing vf%d, mac %04x / %04x, status %03x / %03x, "
+                                    "scratchpad %s, work %s\n",
+                                    c, names[loop], n, plain ? ", plain" : "", mode, r, ref.regs.macflag, raw.regs.macflag, ref.regs.statusflag, raw.regs.statusflag,
+                                    ref.spr == raw.spr ? "same" : "differs", ref.work == raw.work ? "same" : "differs");
+                    }
+                    break;
+                }
+            }
+            ps2fpu::g_vu0_raw = raw_mode;
         }
         std::printf("%-26s 0x%08x  %s (%d/%d, %d with AVX2 too; differing: lists %d, rotations %d, matrices %d, bind %d)\n", "joints_simd", 0x250fe0u,
                     bad == 0 ? "ok" : "FAIL", cases - bad, cases, wide, per[0], per[1], per[2], per[3]);
         if (bad != 0) ++g_fail;
+        if (raw_mode != 0) {
+            std::printf("%-26s 0x%08x  %s (%d/%d; differing: lists %d, rotations %d, matrices %d, bind %d)\n", "joints_raw", 0x250fe0u, raw_bad == 0 ? "ok" : "FAIL",
+                        raw_cases - raw_bad, raw_cases, raw_per[0], raw_per[1], raw_per[2], raw_per[3]);
+            if (raw_bad != 0) ++g_fail;
+        }
     }
     V = saved;
 }

@@ -19,6 +19,14 @@ void moby_joints_pose(uint32_t job, uint32_t work);
 // an estimated 1 / sqrt), 2 exact (each op rounded as the VU0's); RAC1_WIIU_FAST_POSE (1 on the Wii U, 0 elsewhere); the Wii U's
 // debug menu cycles it
 extern int g_pose_fast;
+// orig: (host) the second moby pass's pose memo (render/mrp_pose_memo.h), null when off: `lookup` before the pose of `job`
+// (true: its joint matrices are on the scratchpad already, the pose is not run), `store` after the pose ran
+struct MobyPoseMemo {
+    bool (*lookup)(uint32_t job) = nullptr;
+    void (*store)(uint32_t job) = nullptr;
+    bool fill = false;  // (the real pass, a shadow run to follow it: its poses run and are kept for that run, mrp_lod.h)
+};
+extern MobyPoseMemo g_moby_pose_memo;
 
 }  // namespace rac1
 

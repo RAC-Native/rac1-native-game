@@ -110,10 +110,10 @@ bool font_read(Font& f) {
     const uint32_t e = EFFECT_TEX + 0x10;
     const int32_t wl = lh(e + 0xc), hl = lh(e + 0xe);
     const uint32_t base = lwu(EFFECT_DATA);
-    if (wl < 6 || wl > 10 || hl < 6 || hl > 10 || base == 0 || base >= 0x02000000u) return false;
+    if (wl < 6 || wl > 10 || hl < 6 || hl > 10 || base == 0 || base >= ee_game_ram_end()) return false;
     const int tw = 1 << wl, th = 1 << hl;
     const uint32_t texels = base + lhu(e + 8) * 0x10u, pal = base + lhu(e + 0xa) * 0x10u;
-    if (texels + static_cast<uint32_t>(tw * th) > 0x02000000u || pal + 0x400u > 0x02000000u) return false;
+    if (texels + static_cast<uint32_t>(tw * th) > ee_game_ram_end() || pal + 0x400u > ee_game_ram_end()) return false;
     const int a_adv = static_cast<int8_t>(lbu(t + 'A' * 4 + 3)), sp_adv = static_cast<int8_t>(lbu(t + ' ' * 4 + 3));
     if (a_adv < 3 || a_adv > 24 || sp_adv < 1 || sp_adv > 24) return false;
     for (int c = 0; c < 256; ++c)

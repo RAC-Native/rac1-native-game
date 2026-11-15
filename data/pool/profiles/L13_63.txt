@@ -1,0 +1,8 @@
+# A class profile (docs/open-engine.md, "Class profiles"): our knowledge of a game class's level data, ids and offsets only.
+class 13:63 Gemlik's flying robot (update 0x2b50d8)
+pvar_size 0x270
+slot 0x21c path  path_a     # paths it follows when given one (its placements on Gemlik: none, -1)
+slot 0x220 path  path_b
+# a spawn: as its level places it (no paths)
+default path_a none
+default path_b none

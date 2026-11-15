@@ -1,6 +1,7 @@
 // orig: (host) The MRP moby renderer (see mrp_moby_renderer.h).
 #include <game/render/mrp_moby_renderer.h>
 #include "mrp_moby_backend.inc"
+#include <game/enhance/session.h>
 #include <game/render/gl_draws.h>
 #include <game/render/vec_room.h>
 #include <profiler/host_profiler.h>
@@ -19,6 +20,7 @@
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
 #include <runtime/kernel/load_prof.h>
+#include <game/render/frame_extrap.inc>
 #include <game/render/texture_mods.h>
 #include <runtime/gs/gs_draw.h>
 #include <runtime/gs/gs_emu.h>
@@ -43,6 +45,7 @@
 #include <cstring>
 #include <filesystem>
 #include <map>
+#include <mutex>
 #include <memory>
 #include <string>
 #include <set>
@@ -69,6 +72,10 @@ int g_mrp_moby_fog = 1;
 std::atomic<int> g_mrp_guest_class{-1};
 std::atomic<bool> g_mrp_guest_on{false};
 std::atomic<float> g_mrp_guest_lift{0.0f};
+// the import list (mrp_moby_import): level * 10000 + class, and its generation (the level's assets loaded again at a change)
+std::mutex g_imports_mu;
+std::vector<int> g_imports;
+std::atomic<uint32_t> g_imports_gen{0};
 
 namespace {
 
@@ -193,6 +200,12 @@ struct Level {
     std::unique_ptr<mrp::MobyClass> guest;
     std::unique_ptr<ClassGpu> guest_gpu;
     int guest_key = -1;  // the g_mrp_guest_class loaded (or tried)
+    // the import list's classes (mrp_moby_import: another level's, in a session): level * 10000 + class -> asset, their
+    // textures renumbered into this level's (after the armors' and the guest's); the list's generation loaded
+    std::map<int, std::unique_ptr<mrp::MobyClass>> imports;
+    uint32_t imports_gen = 0;
+    std::map<int, std::vector<mrp::Texture>> foreign;  // (the import list's levels' textures, read once while the level is loaded)
+    size_t imports_orphaned = 0;  // (textures of imports removed since the load: their layers stay until the next full load)
     // the class header in EE memory and the moby's class id (+0xa6) -> GPU data (the weapons share one header, the class
     // table naming it under each weapon's id: the header alone named the last of them)
     std::unordered_map<uint64_t, std::unique_ptr<ClassGpu>> by_ptr;
@@ -445,7 +458,7 @@ std::unique_ptr<ClassGpu> build_class(std::unique_ptr<mrp::MobyClass> asset, uin
             const uint32_t vif = ptab != 0 ? lwu(ptab + static_cast<uint32_t>(pi) * 0x10) : 0;
             for (size_t k = 0; k < p.textures.size(); ++k) {
                 bool fm = false;
-                pg.prims.push_back(prim_info(p.textures[k], vif != 0 && vif < 0x02000000u ? vif + p.vif_tex_off + static_cast<uint32_t>(k) * 0x40 : 0, fm));
+                pg.prims.push_back(prim_info(p.textures[k], vif != 0 && vif < ee_game_ram_end() ? vif + p.vif_tex_off + static_cast<uint32_t>(k) * 0x40 : 0, fm));
             }
             pg.last_prim = static_cast<int>(p.textures.size()) - 1;
             continue;
@@ -454,7 +467,7 @@ std::unique_ptr<ClassGpu> build_class(std::unique_ptr<mrp::MobyClass> asset, uin
         pg.tint_part = c.tint_first[p.lod] != 0xff && p.index_in_lod >= c.tint_first[p.lod];
         const uint32_t vif = ptab != 0 ? lwu(ptab + static_cast<uint32_t>(pi) * 0x10) : 0;
         for (size_t k = 0; k < p.textures.size(); ++k) {
-            const uint32_t mem_prim = vif != 0 && vif < 0x02000000u ? vif + p.vif_tex_off + static_cast<uint32_t>(k) * 0x40 : 0;
+            const uint32_t mem_prim = vif != 0 && vif < ee_game_ram_end() ? vif + p.vif_tex_off + static_cast<uint32_t>(k) * 0x40 : 0;
             bool fm = false;
             PrimInfo info = prim_info(p.textures[k], mem_prim, fm);
             if (fm) cg->from_memory_prims = true;
@@ -577,15 +590,17 @@ std::unique_ptr<ClassGpu> build_class(std::unique_ptr<mrp::MobyClass> asset, uin
 
 // orig: (host) the free hoverboard's class (Level::guest): the textures its prims name, read from its own level's
 // textures.mrpt, appended to this level's and the prims renumbered to them
-void guest_textures(Level& L) {
-    std::vector<mrp::Texture> theirs;
-    const int lvl = L.guest->level >= 0 ? L.guest->level : L.guest_key / 10000;
-    if (!mrp::read_textures(asset_root() + "/" + mrpw::level_dir_name(lvl) + "/textures.mrpt", theirs)) {
-        L.guest.reset();
-        return;
+// (any other level's class: the import list's too) false when that level's textures cannot be read
+bool foreign_textures(Level& L, mrp::MobyClass& cls, int lvl, std::map<int, std::vector<mrp::Texture>>& cache) {
+    auto t = cache.find(lvl);
+    if (t == cache.end()) {
+        std::vector<mrp::Texture> v;
+        if (!mrp::read_textures(asset_root() + "/" + mrpw::level_dir_name(lvl) + "/textures.mrpt", v)) return false;
+        t = cache.emplace(lvl, std::move(v)).first;
     }
+    const std::vector<mrp::Texture>& theirs = t->second;
     std::map<int, int> remap;
-    for (mrp::Packet& p : L.guest->packets)
+    for (mrp::Packet& p : cls.packets)
         for (mrp::TexturePrim& t : p.textures) {
             if (t.texture < 0) continue;
             auto it = remap.find(t.texture);
@@ -601,6 +616,75 @@ void guest_textures(Level& L) {
             }
             t.texture = it->second;
         }
+    return true;
+}
+
+void guest_textures(Level& L) {
+    std::map<int, std::vector<mrp::Texture>> cache;
+    const int lvl = L.guest->level >= 0 ? L.guest->level : L.guest_key / 10000;
+    if (!foreign_textures(L, *L.guest, lvl, cache)) L.guest.reset();
+}
+
+// orig: (host) the import list's classes read from their levels' files, their textures appended (mrp_moby_import)
+void import_classes(Level& L) {
+    std::vector<int> list;
+    {
+        std::lock_guard<std::mutex> lock(g_imports_mu);
+        list = g_imports;
+    }
+    L.imports_gen = g_imports_gen.load();
+    std::map<int, std::vector<mrp::Texture>>& cache = L.foreign;
+    for (int key : list) {
+        const int lvl = key / 10000, cls = key % 10000;
+        if (lvl == L.id || L.imports.count(key) != 0) continue;
+        auto c = std::make_unique<mrp::MobyClass>();
+        const std::string path = asset_root() + "/" + mrpw::level_dir_name(lvl) + "/" + std::to_string(cls) + ".mrpm";
+        if (!mrp::read_class(path, *c) || c->packets.empty() || !foreign_textures(L, *c, lvl, cache)) {
+            std::fprintf(stderr, "[mrp] imported class %d:%d: no class file %s (or its level's textures)\n", lvl, cls, path.c_str());
+            continue;
+        }
+        L.imports[key] = std::move(c);
+    }
+    if (!L.imports.empty() || L.imports_gen != 0)
+        std::printf("[mrp] level %d: %zu imported classes (another level's), %zu moby textures\n", L.id, L.imports.size(), L.textures.size());
+}
+
+void upload_buckets(Level& L, size_t first);
+
+// orig: (host) the import list changed during play (a session's class loaded or released): the new classes read and their
+// textures uploaded into arrays of their own, the released ones dropped; the level's own classes, textures and vertex data
+// kept (no reload of the level's moby assets). False when a full load is better (too many textures left behind by releases)
+bool import_incremental(Level& L) {
+    const double t0 = now_ms();
+    std::vector<int> list;
+    {
+        std::lock_guard<std::mutex> lock(g_imports_mu);
+        list = g_imports;
+    }
+    size_t removed = 0;
+    for (auto it = L.imports.begin(); it != L.imports.end();) {
+        if (std::find(list.begin(), list.end(), it->first) == list.end()) {
+            std::set<int> own;  // (its textures: left in their arrays, unused, until the next full load)
+            for (const mrp::Packet& p : it->second->packets)
+                for (const mrp::TexturePrim& t : p.textures)
+                    if (t.texture >= 0) own.insert(t.texture);
+            L.imports_orphaned += own.size();
+            it = L.imports.erase(it);
+            ++removed;
+        } else {
+            ++it;
+        }
+    }
+    if (L.imports_orphaned > 256) return false;
+    const size_t classes = L.imports.size(), first = L.textures.size();
+    import_classes(L);
+    L.tex_bucket.resize(L.textures.size(), -1);
+    L.tex_layer.resize(L.textures.size(), 0);
+    if (L.textures.size() > first) upload_buckets(L, first);
+    std::printf("[mrp] level %d: the import list changed: %zu classes read, %zu dropped, %zu textures added in %zu arrays (%.1f ms; the level's "
+                "own assets kept)\n",
+                L.id, L.imports.size() - classes, removed, L.textures.size() - first, L.buckets.size(), now_ms() - t0);
+    return true;
 }
 
 // orig: (host) the texels of one layer's mip level of a texture array (level l: max(1, w >> l) x max(1, h >> l)): the palette (its
@@ -658,8 +742,17 @@ void load_textures(Level& L) {
         }
     }
     if (L.guest != nullptr) guest_textures(L);
+    import_classes(L);
     L.tex_bucket.assign(L.textures.size(), -1);
     L.tex_layer.assign(L.textures.size(), 0);
+    upload_buckets(L, 0);
+}
+
+// orig: (host) the textures from `first` on put in texture arrays of their own (one per size: the buckets the draws bind) and
+// uploaded: all of a level's at its load, an import's appended ones when the import list grows during play (the level's own
+// arrays kept as they are)
+void upload_buckets(Level& L, size_t first) {
+    const size_t first_bucket = L.buckets.size();
     auto csm1 = [](uint32_t i) { return ((i & 0x08) != 0) != ((i & 0x10) != 0) ? i ^ 0x18u : i; };
     std::vector<uint32_t> px;
     // the mods' replacements (texture_mods.h), by the texture's level 0 as uploaded below; a replaced texture goes in the
@@ -667,7 +760,7 @@ void load_textures(Level& L) {
     auto& rep = L.rep;  // (kept: bucket_texels reads them)
     rep.assign(L.textures.size(), nullptr);
     if (texture_mods::on())
-        for (size_t i = 0; i < L.textures.size(); ++i) {
+        for (size_t i = first; i < L.textures.size(); ++i) {
             const mrp::Texture& t = L.textures[i];
             if (t.width == 0 || t.height == 0 || t.mips.empty() || t.mips[0].size() < static_cast<size_t>(t.width) * t.height) continue;
             px.resize(static_cast<size_t>(t.width) * t.height);
@@ -675,7 +768,7 @@ void load_textures(Level& L) {
             rep[i] = texture_mods::find(t.width, t.height, px.data(), "moby");
         }
     std::map<std::pair<uint32_t, uint32_t>, int> by_size;
-    for (size_t i = 0; i < L.textures.size(); ++i) {
+    for (size_t i = first; i < L.textures.size(); ++i) {
         const mrp::Texture& t = L.textures[i];
         if (t.width == 0 || t.height == 0 || t.mips.empty() || t.mips[0].size() < static_cast<size_t>(t.width) * t.height) continue;
         const uint32_t tw = rep[i] != nullptr ? rep[i]->w : t.width, th = rep[i] != nullptr ? rep[i]->h : t.height;
@@ -692,7 +785,8 @@ void load_textures(Level& L) {
         b.textures.push_back(static_cast<int>(i));
         b.levels = std::max<uint32_t>(b.levels, static_cast<uint32_t>(std::min<size_t>(rep[i] != nullptr ? rep[i]->mips.size() : t.mips.size(), 4)));
     }
-    for (Bucket& b : L.buckets) {
+    for (size_t bi = first_bucket; bi < L.buckets.size(); ++bi) {
+        Bucket& b = L.buckets[bi];
         uint32_t maxl = 1;
         while ((b.w >> maxl) > 0 && (b.h >> maxl) > 0 && maxl < b.levels) ++maxl;
         b.levels = std::max(1u, std::min(b.levels, maxl));
@@ -859,7 +953,7 @@ void load_level(int id) {
 ClassGpu* class_of(uint32_t class_ptr, int class_id) {
     Level& L = g_level;
     const uint32_t pt = lwu(class_ptr);
-    const uint32_t vd = pt != 0 && pt < 0x02000000u ? lwu(pt + 8) : 0;  // the first packet's vertex data
+    const uint32_t vd = pt != 0 && pt < ee_game_ram_end() ? lwu(pt + 8) : 0;  // the first packet's vertex data
     const uint64_t key = static_cast<uint64_t>(class_ptr) | (static_cast<uint64_t>(static_cast<uint16_t>(class_id)) << 32);
     auto it = L.by_ptr.find(key);
     if (it != L.by_ptr.end()) {
@@ -879,10 +973,19 @@ ClassGpu* class_of(uint32_t class_ptr, int class_id) {
     std::unique_ptr<mrp::MobyClass> asset;
     if (oc >= 0) {
         auto f = L.files.find(oc);
-        if (f != L.files.end()) asset = std::make_unique<mrp::MobyClass>(*f->second);
+        int src_level = 0;
+        uint32_t src = 0;
+        if (f == L.files.end() && g_session_classes && session_class_source(static_cast<uint32_t>(oc), &src_level, &src)) {
+            // (a session class: its source class's file, the level's own or, another level's, the import list's)
+            if (src_level == L.id) f = L.files.find(static_cast<int>(src));
+            else if (auto im = L.imports.find(src_level * 10000 + static_cast<int>(src)); im != L.imports.end())
+                asset = std::make_unique<mrp::MobyClass>(*im->second);
+            else std::fprintf(stderr, "[mrp] session class %d is level %d's class %u: not in the import list, not drawn\n", oc, src_level, src);
+        }
+        if (asset == nullptr && f != L.files.end()) asset = std::make_unique<mrp::MobyClass>(*f->second);
     }
     int class_armor = -1;
-    if (vd != 0 && vd < 0x02000000u)  // the armor's classes: their file k names the armor's two textures
+    if (vd != 0 && vd < ee_game_ram_end())  // the armor's classes: their file k names the armor's two textures
         for (size_t i = 0; i < L.armor.size(); ++i) {
             const auto& v0 = L.armor[i]->packets[0].vdata;
             bool same = lbu(pt + 0xc) * 16u == v0.size();
@@ -906,6 +1009,44 @@ ClassGpu* class_of(uint32_t class_ptr, int class_id) {
     L.by_ptr[key] = std::move(cg);
     return r;
 }
+
+}  // namespace
+
+// orig: (host) see mrp_moby_renderer.h
+void mrp_moby_import(int level, uint32_t cls) {
+    std::lock_guard<std::mutex> lock(g_imports_mu);
+    const int key = level * 10000 + static_cast<int>(cls);
+    for (int k : g_imports)
+        if (k == key) return;
+    g_imports.push_back(key);
+    ++g_imports_gen;
+}
+
+// orig: (host) see mrp_moby_renderer.h
+void mrp_moby_import_remove(int level, uint32_t cls) {
+    std::lock_guard<std::mutex> lock(g_imports_mu);
+    const int key = level * 10000 + static_cast<int>(cls);
+    const auto it = std::find(g_imports.begin(), g_imports.end(), key);
+    if (it == g_imports.end()) return;
+    g_imports.erase(it);
+    ++g_imports_gen;
+}
+
+// orig: (host) see mrp_moby_renderer.h
+int mrp_moby_imports_count() {
+    std::lock_guard<std::mutex> lock(g_imports_mu);
+    return static_cast<int>(g_imports.size());
+}
+
+// orig: (host) see mrp_moby_renderer.h
+void mrp_moby_imports_clear() {
+    std::lock_guard<std::mutex> lock(g_imports_mu);
+    if (g_imports.empty()) return;
+    g_imports.clear();
+    ++g_imports_gen;
+}
+
+namespace {
 
 // ---- shaders -----------------------------------------------------------------------------------
 
@@ -1785,7 +1926,9 @@ void mrp_moby_begin_frame(bool title, bool menu_mode, bool title_menu) {
     MRP_WIIU_ONCE("begin_frame");
     const int guest = g_mrp_guest_class.load();  // (the free hoverboard's class asked for after the level's load: loaded again with it)
     const bool guest_new = guest >= 0 && guest != g_level.guest_key && guest / 10000 != id;
-    if (g_level.id != id || (!g_level.missing && ((vk::is_active() && !g_level.vk_loaded) || (!vk::is_active() && !g_level.gl_loaded))) || guest_new) load_level(id);
+    const bool imports_new = g_imports_gen.load() != g_level.imports_gen;  // (the import list changed: a session's classes)
+    const bool whole = g_level.id != id || (!g_level.missing && ((vk::is_active() && !g_level.vk_loaded) || (!vk::is_active() && !g_level.gl_loaded))) || guest_new;
+    if (whole || (imports_new && (g_level.missing || !g_level.loaded || !import_incremental(g_level)))) load_level(id);
     // the level's loaded classes (0x197300 / 0x197a00, count 0x15ffc0): a new set (the level entered
     // again, a class loaded) forgets the classes resolved by header address
     uint64_t h = 1469598103934665603ull;
@@ -2097,7 +2240,7 @@ void build_frame() {
         static const bool class_check = std::getenv("RAC1_MRP_CLASS_CHECK") != nullptr;  // (testing: the class the MRP draws vs the game's)
         if (class_check) {
             ++g_st.cc_mobys;
-            const uint32_t pt = lwu(m.class_ptr), vd = pt != 0 && pt < 0x02000000u ? lwu(pt + 8) : 0, vn = pt != 0 && pt < 0x02000000u ? lbu(pt + 0xc) * 16u : 0;
+            const uint32_t pt = lwu(m.class_ptr), vd = pt != 0 && pt < ee_game_ram_end() ? lwu(pt + 8) : 0, vn = pt != 0 && pt < ee_game_ram_end() ? lbu(pt + 0xc) * 16u : 0;
             const auto& v0 = cg->asset->packets.empty() ? std::vector<uint8_t>{} : cg->asset->packets[0].vdata;
             bool same = vd != 0 && vn == v0.size();
             for (size_t i = 0; same && i < v0.size(); ++i) same = lbu(vd + static_cast<uint32_t>(i)) == v0[i];
@@ -2300,7 +2443,7 @@ void build_frame() {
     }
     if (g_mrp_guest_on.load()) append_guest(F, f, vinv, vp, turned, turn);
     if (!caching) return;
-    // the cached mobys the frame did not draw: kept while the moby is alive, of its class and still (the moby's EE state now;
+    // the cached mobys the frame did not draw: kept while the moby is alive, shown, of its class and still (the moby's EE state now;
     // a slot reused or a moby moved drops its copy), drawn as casters within reach of the shadows
     const glm::dvec3 cam = vinv.cam;
     for (auto it = g_mcache.begin(); it != g_mcache.end();) {
@@ -2311,7 +2454,9 @@ void build_frame() {
         }
         const uint32_t mb = it->first;
         const int8_t state = static_cast<int8_t>(lbu(mb + 0x20));
-        bool keep = state >= 0 && lh(mb + 0xa6) == c.class_id;
+        // (and not hidden by the game: the draw loop 0x2559c0 skips a moby whose +0x34 has 0x81 - Ratchet and Clank while Giant
+        // Clank stands in for them on Quartu, objects of its arena hidden in place - and its copy cast a shadow with nothing there, #74)
+        bool keep = state >= 0 && lh(mb + 0xa6) == c.class_id && (lhu(mb + 0x34) & 0x81u) == 0;
         for (int i = 0; keep && i < 3; ++i) keep = std::fabs(lwc1(mb + 0x10 + 4 * static_cast<uint32_t>(i)) - c.pos[i]) < 1e-3f;
         if (!keep) {
             it = g_mcache.erase(it);
@@ -2860,7 +3005,7 @@ void draw_casters(const float* light_vp, const float* sphere, const float* withi
         for (size_t p = 0; p < nparts; ++p) {
             if (p < F.part_own.size() && F.part_own[p] != 0) continue;
             const glm::vec3 pos = F.part_pos[p];
-            if (ortho) {  // (the part's sphere - as mrp_moby_caster_rect takes it - against the cascade's square)
+            if (ortho) {  // (the part's sphere - as mrp_moby_caster_parts takes it - against the cascade's square)
                 const glm::vec4 q = vp * glm::vec4(pos, 1.0f);
                 const float r = p < F.part_rad.size() ? F.part_rad[p] : 4.0f;
                 if (std::abs(q.x) - r * osx > 1.0f || std::abs(q.y) - r * osy > 1.0f) continue;
@@ -3201,10 +3346,39 @@ void shader_check(const gs::Viewport* vp) {
     glBindBuffer(kGlShaderStorageBuffer, 0);
 }
 
+// the frame extrapolation's history (g_frame_extrap only): per step, each moby drawn in the world's view, its world matrix (its first
+// part's), by its address and class; the frame's own clips, put back after the extrapolated draws
+struct MobyHistory {
+    bool ok = false;
+    uint64_t frame = 0;
+    std::unordered_map<uint64_t, glm::mat4> w;
+};
+MobyHistory g_mh_prev, g_mh_cur;
+uint64_t g_mx_build = 0, g_mx_base_build = ~0ull;
+std::vector<std::array<float, 16>> g_mx_base;
+uint64_t mx_key(uint32_t moby, int16_t cls) { return (static_cast<uint64_t>(moby) << 16) | static_cast<uint16_t>(cls); }
+// orig: (host) a build's mobys kept as the newest step (prepare_frame)
+void extrap_note_build() {
+    ++g_mx_build;
+    if (!g_frame_extrap) {
+        g_mh_prev.ok = g_mh_cur.ok = false;
+        return;
+    }
+    const Frame& F = g_frame;
+    const uint64_t frame = render_view_extrap_step_frame();
+    if (!(g_mh_cur.ok && g_mh_cur.frame == frame)) std::swap(g_mh_prev, g_mh_cur);
+    g_mh_cur.ok = F.mode == 0 && !F.menu && !F.title;
+    g_mh_cur.frame = frame;
+    g_mh_cur.w.clear();
+    if (g_mh_cur.ok)
+        for (const Frame::MobyXf& x : F.xf) g_mh_cur.w[mx_key(x.moby, x.class_id)] = x.W;
+}
+
 void prepare_frame(const gs::Viewport* vp) {
     if (g_frame.built) return;
     const double t0 = now_ms();
     build_frame();
+    extrap_note_build();
 #if !defined(__WIIU__)  // (the Wii U: the GX2 backend reads the frame at its draw, mrpm::frame_view)
     if (!vk::is_active()) {
         upload_frame();
@@ -3223,6 +3397,55 @@ void mrp_moby_prepare(const gs::Viewport* vp) {
     MRP_WIIU_ONCE("prepare");
     prepare_frame(vp);
     MRP_WIIU_ONCE("prepared");
+}
+
+// orig: (host) see mrp_moby_renderer.h
+void mrp_moby_extrap_apply() {
+    Frame& F = g_frame;
+    if (!F.active || !F.built || F.mode != 0 || F.menu || F.title || F.part_w.size() != F.parts.size() || F.part_own.size() != F.parts.size() ||
+        F.part_moby.size() != F.parts.size())
+        return;
+    if (g_mx_base_build != g_mx_build) {  // (this build's own clips, kept before the first change)
+        g_mx_base_build = g_mx_build;
+        g_mx_base.resize(F.parts.size());
+        for (size_t i = 0; i < F.parts.size(); ++i) std::memcpy(g_mx_base[i].data(), F.parts[i].clip, sizeof F.parts[i].clip);
+    }
+    uint64_t frame = 0;
+    double ahead = 0.0;
+    const bool on = render_view_extrap_active(&frame, &ahead);
+    if (!on) {
+        for (size_t i = 0; i < F.parts.size(); ++i) std::memcpy(F.parts[i].clip, g_mx_base[i].data(), sizeof F.parts[i].clip);
+    } else {
+        // each moby's motion over the steps before: its first part's world matrix carried forward, the change applied to its parts
+        // (a moby new this step, one that jumped - more than 8 units or 90 degrees a step: a teleport, a respawn, a slot reused - stays)
+        std::unordered_map<uint32_t, glm::dmat4> delta;
+        if (g_mh_cur.ok && g_mh_prev.ok && g_mh_cur.frame == frame && g_mh_prev.frame < frame && frame - g_mh_prev.frame <= 4) {
+            const double gap = static_cast<double>(frame - g_mh_prev.frame);
+            for (const Frame::MobyXf& x : F.xf) {
+                const auto it = g_mh_prev.w.find(mx_key(x.moby, x.class_id));
+                if (it == g_mh_prev.w.end()) continue;
+                glm::dmat4 we;
+                const glm::dmat4 wc(x.W);
+                if (!render_view_extrap_affine(glm::dmat4(it->second), wc, gap, ahead, 8.0, 90.0, we)) continue;
+                if (std::fabs(glm::determinant(wc)) < 1e-18) continue;
+                delta[x.moby] = we * glm::inverse(wc);
+            }
+        }
+        const glm::dmat4 vp = glm::dmat4(world_view_proj());
+        for (size_t i = 0; i < F.parts.size(); ++i) {
+            if (F.part_own[i] != 0) {
+                std::memcpy(F.parts[i].clip, g_mx_base[i].data(), sizeof F.parts[i].clip);
+                continue;
+            }
+            glm::dmat4 W(F.part_w[i]);
+            if (!delta.empty())
+                if (const auto it = delta.find(F.part_moby[i]); it != delta.end()) W = it->second * W;
+            const glm::mat4 clip = glm::mat4(vp * W);
+            std::memcpy(F.parts[i].clip, glm::value_ptr(clip), sizeof F.parts[i].clip);
+        }
+    }
+    F.uploaded = false;
+    if (!vk::is_active()) upload_frame();
 }
 
 // orig: (host) see mrp_moby_renderer.h
@@ -3294,35 +3517,13 @@ void mrp_moby_draw_casters(const float* light_vp, const float* sphere, const flo
     draw_casters(light_vp, sphere, within);
 }
 
-// orig: (host) see mrp_lighting.h
-bool mrp_moby_caster_rect(const float* light_vp, float rect[4], const float* within) {
-    if (!g_frame.active || !g_frame.built || g_frame.mode != 0 || g_frame.part_pos.empty()) return false;
-    const glm::mat4 vp = glm::make_mat4(light_vp);
-    const float sx = glm::length(glm::vec3(vp[0][0], vp[1][0], vp[2][0])), sy = glm::length(glm::vec3(vp[0][1], vp[1][1], vp[2][1]));
-    rect[0] = rect[1] = 1e30f;
-    rect[2] = rect[3] = -1e30f;
-    bool any = false;
-    for (size_t i = 0; i < g_frame.part_pos.size(); ++i) {
-        if (i < g_frame.part_own.size() && g_frame.part_own[i] != 0) continue;
-        if (within != nullptr && glm::length(g_frame.part_pos[i] - glm::vec3(within[0], within[1], within[2])) > within[3]) continue;
-        any = true;
-        const glm::vec4 q = vp * glm::vec4(g_frame.part_pos[i], 1.0f);
-        const float r = i < g_frame.part_rad.size() ? g_frame.part_rad[i] : 4.0f;
-        rect[0] = std::min(rect[0], q.x - r * sx);
-        rect[1] = std::min(rect[1], q.y - r * sy);
-        rect[2] = std::max(rect[2], q.x + r * sx);
-        rect[3] = std::max(rect[3], q.y + r * sy);
-    }
-    return any;
-}
-
 // orig: (host) see mrp_lighting.cpp (its declaration)
 int mrp_moby_caster_parts(const float* light_vp, std::vector<float>& out, const float* within) {
     if (!g_frame.active || !g_frame.built || g_frame.mode != 0 || g_frame.part_pos.empty()) return 0;
     const glm::mat4 vp = glm::make_mat4(light_vp);
     const float sx = glm::length(glm::vec3(vp[0][0], vp[1][0], vp[2][0])), sy = glm::length(glm::vec3(vp[0][1], vp[1][1], vp[2][1]));
     int n = 0;
-    for (size_t i = 0; i < g_frame.part_pos.size(); ++i) {  // (the parts mrp_moby_caster_rect takes)
+    for (size_t i = 0; i < g_frame.part_pos.size(); ++i) {  // (the parts a caster pass draws)
         if (i < g_frame.part_own.size() && g_frame.part_own[i] != 0) continue;
         const glm::vec3 p = g_frame.part_pos[i];
         if (within != nullptr && glm::length(p - glm::vec3(within[0], within[1], within[2])) > within[3]) continue;
@@ -3509,8 +3710,8 @@ bool mrp_moby_at(const float p[3], uint32_t* moby, int* o_class, float* dist) {
 }
 
 // orig: (host) see mrp_lighting.h. Each drawn moby of a class with one of the surfaces is skinned on the CPU as surface_near does
-// (both LODs' packets, its texture prims in force along them); on each of that texture's triangles turned up or down (its normal at
-// least half up or down: not a side) floor(area / spacing + h) points, h the triangle's own fixed fraction, each at its own fixed
+// (both LODs' packets, its texture prims in force along them); on each of that texture's triangles, whichever way it faces (the
+// lava on the sides of Drek's broken plateaus too: #136; only their tops were taken before), floor(area / spacing + h) points, h the triangle's own fixed fraction, each at its own fixed
 // place (barycentric) on it: the same points frame after frame while the pose moves them
 void mrp_moby_surface_points(const std::vector<EmissiveSurface>& surfaces, const float cam[3], float range, float spacing, std::vector<MobySurfacePoint>& out) {
     out.clear();
@@ -3582,7 +3783,7 @@ void mrp_moby_surface_points(const std::vector<EmissiveSurface>& surfaces, const
                     const glm::vec3 &a = wp[i[0]], &b = wp[i[1]], &cc = wp[i[2]];
                     const glm::vec3 n = glm::cross(b - a, cc - a);
                     const float nl = glm::length(n), area = 0.5f * nl;
-                    if (!(area > 1e-4f) || std::fabs(n.z) < 0.5f * nl) continue;
+                    if (!(area > 1e-4f)) continue;  // (any face: a broken plateau's lava is its sides, #136)
                     const uint32_t tri = static_cast<uint32_t>(pi) << 20 | ((t / 3) & 0xfffffu);
                     const uint32_t h0 = hash(tri * 0x9e3779b9u ^ static_cast<uint32_t>(x.class_id));
                     const int count = std::min(static_cast<int>(area / spacing + unit(h0)), 64);

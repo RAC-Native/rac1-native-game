@@ -1,0 +1,10 @@
+# A class profile (docs/open-engine.md, "Class profiles"): our knowledge of a game class's level data, ids and offsets only.
+class 16:52 the bomb bot (round, a red eye: rolls at Ratchet and blows up; update 0x2a1088)
+pvar_size 0x2c0
+slot 0x180 area  area       # the polygon its target search (target_select) reads: a path's points
+slot 0x190 word  alert      # its alert timer (running: the target search takes Ratchet at any distance)
+# a spawn: its area a square of 24 round where it starts
+default area square 24
+# base_hunt: its alert timer kept running (kal_bomb_bot)
+hunt object
+frame host kal_bomb_bot

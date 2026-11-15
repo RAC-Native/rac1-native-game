@@ -4,6 +4,7 @@
 // helpers `ril_<addr>_l5` (uniform ABI: TrRet).
 // Declarations: rilgar_mobys.h. Regenerate, do not edit.
 #include <game/enhance/fixes102.h>
+#include <game/enhance/level_mod_hero.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>

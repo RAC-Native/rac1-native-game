@@ -6,6 +6,7 @@
 // host frame: level_exit_start / level_exit_frame / level_exit_finish.
 
 #include <game/ovl/memory_card.h>
+#include <host/level_slots.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/boot/level_read.h>
 #include <game/input/pad_build.h>
@@ -306,6 +307,7 @@ void loading_screen_setup() {
     int32_t lang = lw(0x0015ed88) - 1;
     if (!(-1 < lang)) lang = 0;
     const uint32_t regs = ee_stack_alloc(0x20);
+    level_slots_loading_pictures(pics, lang);  // enhancement: a level mod's level's own picture and name (src/host/level_slots.h)
     tex_image_upload(pics + lwu(lwu(0x0015ed84) * 4 + pics + 4), regs);
     sd(OV(0x00160640), ld(regs));
     tex_image_upload(pics + lwu((static_cast<uint32_t>(lang * 0x13) + lwu(0x0015ed84)) * 4 + pics + 0x50), regs);
@@ -341,7 +343,7 @@ void loading_screen_setup() {
     sw(G + 0x54, 0);
     lq_sq(OV(0x001605b0), OV(0x001605a0));
     const int32_t lv = lw(0x0015ed84);
-    if (lv == 0 || (lv == 1 && lbu(0x0013dd43) == 0)) {
+    if ((lv == 0 && !level_slots_planet_arrival()) || (lv == 1 && lbu(0x0013dd43) == 0)) {  // (enhancement: a level mod's level as a planet)
         sw(G + 0x5c, 2);
         sw(G + 0x58, 4);
     }
@@ -430,7 +432,7 @@ void flight_sequence_update() {
     if (fade < 0.0f) swc1(OV(0x0015f3fc), 0.0f);
     if (total == 1) {
         const int32_t lv = lw(0x0015ed84);
-        if (lv != 0 && !(lv == 1 && lbu(0x0013dd43) == 0)) {
+        if ((lv != 0 || level_slots_planet_arrival()) && !(lv == 1 && lbu(0x0013dd43) == 0)) {  // (enhancement: the same)
             snd_hold();
             snd_play_sound(lwu(0x0015ed5c), lwu(G + 0x58), 0x400, 0, 0, 0, 0, 0x0013e5c0);
             snd_release();
@@ -448,7 +450,7 @@ void flight_sequence_update() {
             moby_retire(m);
         }
         const int32_t lv = lw(0x0015ed84);
-        if (lv != 0 && !(lv == 1 && lbu(0x0013dd43) == 0) && lh(0x0015ee48) < 3) sw(G + 0x5c, 0);
+        if ((lv != 0 || level_slots_planet_arrival()) && !(lv == 1 && lbu(0x0013dd43) == 0) && lh(0x0015ee48) < 3) sw(G + 0x5c, 0);  // (enhancement: the same)
         const int32_t seg = lw(G + 0x5c);
         if (!(seg < 2)) {
             if (lh(0x0015ee4a) != 0) sh(0x0015ee4a, 0);
@@ -546,7 +548,7 @@ void flight_sequence_update() {
             *reinterpret_cast<Vec4*>(ee_ram_ptr(slot + G + 0x2c0)) = j2.r[3];
             if (lw(G + 0x58) != 4) continue;
             const int32_t lv = lw(0x0015ed84);
-            if (lv == 0 || (lv == 1 && lbu(0x0013dd43) == 0)) {
+            if ((lv == 0 && !level_slots_planet_arrival()) || (lv == 1 && lbu(0x0013dd43) == 0)) {  // (enhancement: the same)
                 sh(m + 0x34, lhu(m + 0x34) | 1u);
                 sw(G + 0x54, 0);
             }
@@ -625,7 +627,7 @@ bool steps_run() {
 // orig: (helper) a part of 0x00292e08
 void exit_to_loading_screen() {
     const int32_t cur = lw(0x0015ed84);
-    if (static_cast<uint32_t>(cur) < 0x13) {
+    if (static_cast<uint32_t>(cur) < 0x13 && level_slot_current() < 0) {  // (enhancement: not the base level's flag for a level mod's)
         bool done = true;
         if (cur == 7) done = lbu(0x0013dd48) != 0;
         if (cur == 0xe) done = lbu(0x0013dd4f) != 0;
@@ -702,7 +704,7 @@ LevelExit level_exit_start() {
     }
     const int32_t next = lw(OV(0x0015f5c0));
     const int32_t cur = lw(0x0015ed84);
-    if (next == 0 && lbu(0x0013dd58) == 0) {
+    if (next == 0 && lbu(0x0013dd58) == 0 && !level_slots_skip_story()) {  // (enhancement: not to a level mod's level)
         fade(frame_scale_i(6));
         card(lang, 0, 1, frame_scale_i(0xf0), 0);
         movie(0);
@@ -715,7 +717,7 @@ LevelExit level_exit_start() {
         movie(2);
         return LevelExit::Movie;
     }
-    if (cur == 0 && next == 1 && lbu(0x0013dd59) == 0) {
+    if (cur == 0 && next == 1 && lbu(0x0013dd59) == 0 && level_slot_current() < 0) {  // (enhancement: not from a level mod's level)
         fade(frame_scale_i(6));
         card(lang, 5, 6, frame_scale_i(0xf0), 0);
         movie(3);
@@ -729,31 +731,31 @@ LevelExit level_exit_start() {
         card(lang, 8, 8, frame_scale_i(0xf0), 1);
         return LevelExit::Movie;
     }
-    if (lw(OV(0x0015f5c0)) == 4 && lbu(0x0013dd5c) == 0) {
+    if (lw(OV(0x0015f5c0)) == 4 && lbu(0x0013dd5c) == 0 && !level_slots_story_to(4)) {  // (enhancement: not to a level mod's level)
         fade(frame_scale_i(0xc));
         card(lang, 9, 10, frame_scale_i(0xf0), 0);
         movie(6);
     }
     step([lang] {
-        if (lw(0x0015ed84) == 7 && lbu(0x0013dd5f) != 2 && lbu(0x0013dd48) != 0) {
+        if (lw(0x0015ed84) == 7 && lbu(0x0013dd5f) != 2 && lbu(0x0013dd48) != 0 && level_slot_current() < 0) {  // (enhancement: not from one)
             fade(frame_scale_i(0xc));
             card(lang, 0xb, 0xb, frame_scale_i(0xf0), 0);
             movie(7);
         }
         step([lang] {
-            if (lw(OV(0x0015f5c0)) == 0xd && lbu(0x0013dd65) == 0) {
+            if (lw(OV(0x0015f5c0)) == 0xd && lbu(0x0013dd65) == 0 && !level_slots_story_to(0xd)) {  // (enhancement: the same)
                 fade(frame_scale_i(0xc));
                 card(lang, 0xc, 0xd, frame_scale_i(0xf0), 0);
                 movie(8);
             }
             step([lang] {
-                if (lw(0x0015ed84) == 0xe && lbu(0x0013dd66) != 2 && lbu(0x0013dd4f) != 0) {
+                if (lw(0x0015ed84) == 0xe && lbu(0x0013dd66) != 2 && lbu(0x0013dd4f) != 0 && level_slot_current() < 0) {  // (enhancement: the same)
                     fade(frame_scale_i(0xc));
                     card(lang, 0xe, 0xe, frame_scale_i(0xf0), 0);
                     movie(9);
                 }
                 step([lang] {
-                    if (lw(OV(0x0015f5c0)) == 0x10 && lbu(0x0013dd68) == 0) {
+                    if (lw(OV(0x0015f5c0)) == 0x10 && lbu(0x0013dd68) == 0 && !level_slots_story_to(0x10)) {  // (enhancement: the same)
                         fade(frame_scale_i(0xc));
                         card(lang, 0xf, 0x10, frame_scale_i(0xf0), 0);
                         movie(0xa);

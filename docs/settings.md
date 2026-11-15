@@ -1,7 +1,7 @@
 # Settings
 
 The port's own settings: the Language page and four pages added to the game's Options (Display, Graphics, Controls, Advanced), the
-New Game choices (Original or Modern, then a graphics preset), the update check, where settings are kept, and the debug tools.
+main menu's Bug Fixes page, the New Game choices (Original or Modern, then a graphics preset), the update check, where settings are kept, and the debug tools.
 
 ## Removed compromises and enhancements
 
@@ -262,6 +262,7 @@ Two pages of the same name. **The pause menu's** holds a playthrough's settings,
 | Row | Values (default first) | Kept |
 |---|---|---|
 | Quick Select | Normal, Pause | with the save |
+| Quick Select Rings | 1, 3 | with the save (rings 2 and 3 too) |
 | Aiming | Original, Modern, Modern, No Zoom | with the save |
 | Movement | Original, Strafing, RAC 3 | with the save |
 | Fades | Fast, Original | with the save |
@@ -284,6 +285,18 @@ All of the pause menu's rows are changed in the pause menu (New Game's Original 
 menu's Options has an Advanced entry only while there is a global row.
 
 See [Advanced options](advanced.md) for what each one does and how it is built.
+
+### Bug Fixes (main menu)
+
+Right after Advanced, the main menu's Options has **Bug Fixes**: fixes of the original game's own bugs, one row each,
+all off by default (the original's behaviour), kept in the preferences only, like the global Advanced rows:
+
+| Row | Values (default first) | Kept |
+|---|---|---|
+| Race Music After Quitting | Off, On: quitting Rilgar's hoverboard race from its results brings the planet's music back (the original keeps the race's music playing) | the preferences |
+| Hydrodisplacer Faucets | Off, On: Ratchet no longer slips off a Hydrodisplacer faucet he steps onto from some sides (the original leaves the water as it was, #131) | the preferences |
+
+See [Advanced options](advanced.md#bug-fixes) for each fix and for what belongs on the page.
 
 ### Language
 
@@ -362,6 +375,19 @@ On the title screen's main menu (below New Game, Load Game and Options), **Updat
 
 Those settings belong to the machine: they are kept in the preferences only, not with the saves.
 
+### Exit (main menu)
+
+The main menu's last entry, below Updates, **Exit** ("Esci", "Beenden", "Salir") closes the game. It asks first, in
+the game's own style (a copy of the pause menu's Quit Game page): **Circle: Yes** closes the game, **Triangle: No**
+goes back to the main menu, Start closes the menu as on any of its pages. With the keyboard and mouse the buttons are
+the bound ones (by default the left mouse button is Circle, E is Triangle). Yes closes the game exactly as closing the
+window does (Alt+F4, the window's close button): the settings are already kept as they change, the audio and the
+renderer shut down and the log ends with `[orig] Exit chosen in the main menu: the window closes`.
+
+The pause menu's Quit Game is unchanged: as on the PS2, it leaves the game for the title screen. Exit is only on the
+PC versions (Linux, Windows, macOS): where the system closes the game (Android, consoles) the main menu has no Exit.
+It is not there with the enhancements off (the headless tests), so the original's menu stays as it is.
+
 ## New Game: Original or Modern, then the graphics
 
 New Game opens two windows before the game starts, in the game's own style (copies of its Options page).
@@ -371,6 +397,7 @@ New Game opens two windows before the game starts, in the game's own style (copi
 | | Original | Modern |
 |---|---|---|
 | Quick Select | Normal | Pause |
+| Quick Select Rings | 1 | 3 |
 | Aiming | Original | Modern |
 | Movement | Original | RAC 3 |
 | Buy All Ammo (the Vendor) | Off | On |
@@ -402,7 +429,7 @@ and leaves the graphics alone.
 When the player opens the main menu on the title screen (or presses **Check Now** in the main menu's
 **Updates** page), the game asks GitHub whether there is something newer than the installed build. When there
 is, a panel at the main menu says so: the new version (or, on the development channel, how many new
-commits there are on `main`), the release notes in short, and three choices:
+commits there are on the `dev` branch), the release notes in short, and three choices:
 
 - **Update Now** quits the game, runs `./setup.sh --update --play` (`setup.cmd --update --play` on
   Windows) to fetch the new sources and rebuild only what changed, and restarts the game when it is
@@ -414,7 +441,7 @@ Details:
 
 - **What is sent:** one anonymous HTTPS request to the GitHub API (`api.github.com`), for this
   repository only: `GET /repos/RAC-Native/rac1-native-game/releases/latest` (Stable), or the
-  comparison of the installed build with `main` (Development). Nothing else: no identifier, no
+  comparison of the installed build with the `dev` branch (Development). Nothing else: no identifier, no
   telemetry, nothing about the player or the machine (GitHub sees the request's IP address, as for any
   web request). The answer is kept for 6 hours in `update_check.txt` (in the settings' folder below):
   an automatic check within them asks nothing (**Check Now** always asks GitHub).
@@ -426,9 +453,11 @@ Details:
 - **Turning it off:** Main menu > Updates > Update Check = Off (in `advanced_options.txt`:
   `update_check_off 1`).
 - **The channel:** Main menu > Updates > Update Channel. Players can switch between **Stable** (the
-  latest release) and **Development** (`main`) at any time. A developer clone on a branch other than
-  `main` stays on its branch.
-- **The installed version** is printed at start (`[orig] rac1-native 0.7.0 (v0.7.0-12-g1a2b3c4, main)`):
+  latest release) and **Development** (the `dev` branch: the work lands there first and is merged into
+  `main` from time to time, so `dev` has the newest changes; GitHub issue #141) at any time. An update on
+  Development checks out `dev` (a clone on `main` or on a release's tag switches to it; a zip download gets
+  `dev`'s source zip). A developer clone on a branch other than `main` and `dev` stays on its branch.
+- **The installed version** is printed at start (`[orig] rac1-native 0.8.0 (v0.8.0-12-g1a2b3c4, main)`):
   the release's version and, for a git clone, `git describe` and the branch, recorded by the build
   (`cmake/version.cmake`).
 - **Skip Version** is kept in `advanced_options.txt` (`update_skip <tag or commit>`); remove the
@@ -442,7 +471,7 @@ To try the panel without a new release: `RAC1_UPDATE_FAKE=0.9.0` (or `dev:12`) w
 | What | Where |
 |---|---|
 | Display and Graphics pages | `~/.config/rac1-native/graphics_options.txt` |
-| Advanced page, the Language page's Voice and Subtitles (and the update check's Skip Version, the Sound page's 5.1 / 7.1 and Mix) | `~/.config/rac1-native/advanced_options.txt` |
+| Advanced and Bug Fixes pages, the Language page's Voice and Subtitles (and the update check's Skip Version, the Sound page's 5.1 / 7.1 and Mix) | `~/.config/rac1-native/advanced_options.txt` |
 | The Mods page (which mods are on) | `~/.config/rac1-native/mods.txt` (see [Mods](mods.md)) |
 | The update check's last answer | `~/.config/rac1-native/update_check.txt` |
 | Controls | `~/.config/rac1-native/controls.txt` (see [Input](input.md#the-bindings-file-controlstxt)) |

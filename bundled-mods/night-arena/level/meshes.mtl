@@ -1,0 +1,48 @@
+# the arena: materials (export_arena.py)
+newmtl concrete
+Kd 1.000 1.000 1.000
+map_Kd concrete.png
+newmtl dropzone
+Kd 1.000 1.000 1.000
+map_Kd dropzone.png
+newmtl floor
+Kd 1.000 1.000 1.000
+map_Kd floor.png
+newmtl floor_dark
+Kd 1.000 1.000 1.000
+map_Kd floor_dark.png
+newmtl grating
+Kd 1.000 1.000 1.000
+map_Kd grating.png
+newmtl hazard
+Kd 1.000 1.000 1.000
+map_Kd hazard.png
+newmtl lamp
+Kd 1.000 0.950 0.800
+newmtl lamp_green
+Kd 0.350 1.000 0.550
+newmtl lamp_red
+Kd 1.000 0.350 0.200
+newmtl lava
+Kd 1.000 1.000 1.000
+map_Kd lava.png
+newmtl pad
+Kd 1.000 1.000 1.000
+map_Kd pad.png
+newmtl rock
+Kd 1.000 1.000 1.000
+map_Kd rock.png
+newmtl steel
+Kd 1.000 1.000 1.000
+map_Kd steel.png
+newmtl tech
+Kd 1.000 1.000 1.000
+map_Kd tech.png
+newmtl trim
+Kd 0.200 0.850 1.000
+newmtl vent_glow
+Kd 1.000 1.000 1.000
+map_Kd vent_glow.png
+newmtl wall
+Kd 1.000 1.000 1.000
+map_Kd wall.png

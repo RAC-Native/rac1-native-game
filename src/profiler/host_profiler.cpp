@@ -75,8 +75,13 @@ const StageInfo kStages[kStageCount] = {
     {"Screenshots", false, true, rgb(110, 110, 110)},
     {"Wait: frame cap", true, false, rgb(70, 70, 70)},
     {"Present (swap, v-sync)", true, true, rgb(230, 60, 60)},
+    {"Frame begin (Vulkan)", false, false, rgb(150, 150, 110)},
+    {"Wait: swapchain image", true, false, rgb(210, 90, 90)},
+    {"Materials: frame capture", false, true, rgb(190, 150, 90)},
 };
 const char* const kWorkerNames[kWorkerCount] = {"Chain worker", "MRP scene worker", "Job workers (summed)", "Game thread"};
+const char* const kPartNames[kPartCount] = {"Chain worker: texture uploads", "Chain worker: VU1 programs", "Scene worker: host decisions",
+                                            "Scene worker: capture", "Scene worker: walk / direct build", "Scene worker: triangles"};
 constexpr int kJobTrack = 10;  // (a trace's track of the job pool's worker k: kJobTrack + k)
 
 double now_ms() { return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
@@ -122,11 +127,12 @@ struct State {
     uint64_t env_trace_from = 0;
     int env_trace_frames = 0;
     bool requested = false, pinned = false, frozen = false;
+    bool hold = false;  // (frame_hold: the next frame_mark is not a frame's end)
     bool want_prev = false;
     uint64_t frame_index = 0;
     bool rec = false;
     double t_frame0 = 0, main_cpu0 = 0;
-    int steps = 0;
+    int steps = 0, pictures = 0;
     double cpu[kStageCount] = {};
     std::vector<ZoneRec> zones;
     int stack[64] = {};
@@ -163,6 +169,7 @@ State& S() {
 
 std::mutex g_jobs_mutex;  // (the trace's events from the workers; the thread names)
 std::atomic<int64_t> g_wbusy_us[kWorkerCount], g_wcpu_us[kWorkerCount];
+std::atomic<int64_t> g_part_ns[kPartCount];
 std::atomic<bool> g_trace_on{false};
 std::vector<TraceEv> g_worker_trace;
 std::unordered_map<uint64_t, std::string> g_thread_names;
@@ -191,11 +198,12 @@ bool g_api_ok = false;
 
 // the CSV's first row (the stages' names quoted: some hold commas)
 void csv_header(std::FILE* f) {
-    std::fprintf(f, "frame,period_ms,steps,main_cpu_ms,cpu_other_ms,gpu_ok,gpu_busy_ms,gpu_span_ms,gpu_other_ms");
+    std::fprintf(f, "frame,period_ms,steps,pictures,main_cpu_ms,cpu_other_ms,gpu_ok,gpu_busy_ms,gpu_span_ms,gpu_other_ms,prepare_total_ms");
     for (int i = 0; i < kStageCount; ++i) std::fprintf(f, ",\"cpu: %s\"", kStages[i].name);
     for (int i = 0; i < kStageCount; ++i)
         if (kStages[i].gpu) std::fprintf(f, ",\"gpu: %s\"", kStages[i].name);
     for (int w = 0; w < kWorkerCount; ++w) std::fprintf(f, ",\"busy: %s\",\"cpu: %s\"", kWorkerNames[w], kWorkerNames[w]);
+    for (int p = 0; p < kPartCount; ++p) std::fprintf(f, ",\"part: %s\"", kPartNames[p]);
     std::fprintf(f, "\n");
 }
 
@@ -229,13 +237,17 @@ FrameRec* hist_find(State& s, uint64_t index) {
     return nullptr;
 }
 
+// the Prepare stage with the stages its zone holds (a stage's own time leaves out the stages inside it)
+double prepare_total(const FrameRec& r) { return r.cpu[kPrepare] + r.cpu[kChainCapture] + r.cpu[kSceneCaptureWait] + r.cpu[kMobyLists]; }
+
 void csv_row(std::FILE* f, const FrameRec& r) {
-    std::fprintf(f, "%llu,%.4f,%d,%.4f,%.4f,%d,%.4f,%.4f,%.4f", static_cast<unsigned long long>(r.index), r.period, r.steps, r.main_cpu, r.cpu_other, r.gpu_ok ? 1 : 0, r.gpu_busy, r.gpu_span,
-                 r.gpu_other);
+    std::fprintf(f, "%llu,%.4f,%d,%d,%.4f,%.4f,%d,%.4f,%.4f,%.4f,%.4f", static_cast<unsigned long long>(r.index), r.period, r.steps, std::max(1, r.pictures), r.main_cpu, r.cpu_other, r.gpu_ok ? 1 : 0, r.gpu_busy, r.gpu_span,
+                 r.gpu_other, prepare_total(r));
     for (int i = 0; i < kStageCount; ++i) std::fprintf(f, ",%.4f", r.cpu[i]);
     for (int i = 0; i < kStageCount; ++i)
         if (kStages[i].gpu) std::fprintf(f, ",%.4f", r.gpu[i]);
     for (int w = 0; w < kWorkerCount; ++w) std::fprintf(f, ",%.4f,%.4f", r.worker_busy[w], r.worker_cpu[w]);
+    for (int p = 0; p < kPartCount; ++p) std::fprintf(f, ",%.4f", r.part[p]);
     std::fprintf(f, "\n");
 }
 
@@ -538,10 +550,14 @@ void job_end(int w, double t0, double c0, int lane) {
         g_worker_trace.push_back({w == kWorkerJobs ? "job" : kWorkerNames[w], w == kWorkerJobs ? kJobTrack + lane : 2 + w, t0, t1 - t0});
     }
 }
+
+double part_now() { return now_ms(); }
+void part_add(int p, double ms) { g_part_ns[p].fetch_add(static_cast<int64_t>(ms * 1e6), std::memory_order_relaxed); }
 }  // namespace detail
 
 const StageInfo& stage_info(int s) { return kStages[std::clamp(s, 0, kStageCount - 1)]; }
 const char* worker_name(int w) { return kWorkerNames[std::clamp(w, 0, kWorkerCount - 1)]; }
+const char* part_name(int p) { return kPartNames[std::clamp(p, 0, kPartCount - 1)]; }
 
 void game_thread_attach() { t_game = true; }
 
@@ -556,6 +572,8 @@ bool pinned() { return S().pinned; }
 void set_frozen(bool on) { S().frozen = on; }
 bool frozen() { return S().frozen; }
 void frame_steps(int steps) { S().steps = steps; }
+void frame_hold() { S().hold = true; }
+void frame_picture() { ++S().pictures; }
 
 void frame_mark() {
     State& s = S();
@@ -563,6 +581,10 @@ void frame_mark() {
     if (!t_main) {
         t_main = true;
         thread_name("main (game, GL)");
+    }
+    if (s.hold) {  // (the turn before was not a frame: the one being recorded goes on)
+        s.hold = false;
+        return;
     }
     const double now = now_ms();
     // the frame that ends here
@@ -591,7 +613,9 @@ void frame_mark() {
             r.worker_busy[w] = static_cast<double>(g_wbusy_us[w].exchange(0)) * 1e-3;
             r.worker_cpu[w] = static_cast<double>(g_wcpu_us[w].exchange(0)) * 1e-3;
         }
+        for (int p = 0; p < kPartCount; ++p) r.part[p] = static_cast<double>(g_part_ns[p].exchange(0)) * 1e-6;
         r.steps = s.steps;
+        r.pictures = s.pictures;
         if (s.trace_frame) s.trace.push_back({"host frame", 9, s.t_frame0, r.period});
         const bool keep = !s.frozen || s.dump_every > 0;
         if (keep) {
@@ -611,6 +635,7 @@ void frame_mark() {
     // RAC1_PROFILER_DUMP: the summary every n frames (below, in the new frame's "Profiler" stage)
     const bool dump_due = s.dump_every > 0 && s.frame_index > 0 && s.frame_index % static_cast<uint64_t>(s.dump_every) == 0;
     ++s.frame_index;
+    s.pictures = 0;
     // a trace asked for by RAC1_PROFILER_TRACE
     if (!s.env_trace_path.empty() && s.frame_index == s.env_trace_from) {
         trace_start(s.env_trace_path.c_str(), s.env_trace_frames);
@@ -634,6 +659,7 @@ void frame_mark() {
         s.want_prev = false;
         s.cur = -1;
         for (int w = 0; w < kWorkerCount; ++w) g_wbusy_us[w].store(0), g_wcpu_us[w].store(0);
+        for (int p = 0; p < kPartCount; ++p) g_part_ns[p].store(0);
         return;
     }
     if (!s.want_prev) {
@@ -717,10 +743,14 @@ Summary summarize(int frames) {
         m.cpu_other += r.cpu_other;
         m.main_cpu += r.main_cpu;
         m.steps += r.steps;
+        ++m.steps_hist[std::clamp(r.steps, 0, 3)];
+        m.prepare_total += prepare_total(r);
+        m.pictures_fps += std::max(1, r.pictures);
         for (int w = 0; w < kWorkerCount; ++w) {
             m.worker_busy[w] += r.worker_busy[w];
             m.worker_cpu[w] += r.worker_cpu[w];
         }
+        for (int p = 0; p < kPartCount; ++p) m.part[p] += r.part[p];
         if (r.gpu_ok) {
             ++m.gpu_frames;
             for (int i = 0; i < kStageCount; ++i) {
@@ -739,11 +769,13 @@ Summary summarize(int frames) {
     m.cpu_other *= inv;
     m.main_cpu *= inv;
     m.steps *= inv;
+    m.prepare_total *= inv;
     m.waits *= inv;
     for (int w = 0; w < kWorkerCount; ++w) {
         m.worker_busy[w] *= inv;
         m.worker_cpu[w] *= inv;
     }
+    for (int p = 0; p < kPartCount; ++p) m.part[p] *= inv;
     if (m.gpu_frames > 0) {
         const double g = 1.0 / m.gpu_frames;
         for (int i = 0; i < kStageCount; ++i) m.gpu[i] *= g;
@@ -752,6 +784,7 @@ Summary summarize(int frames) {
         m.gpu_span *= g;
     }
     m.fps = m.period_avg > 0 ? 1000.0 / m.period_avg : 0.0;
+    m.pictures_fps = m.period_avg > 0 ? 1000.0 * m.pictures_fps * inv / m.period_avg : 0.0;  // (the pictures a frame over the frame's mean time)
     std::sort(periods.begin(), periods.end());
     m.period_p99 = periods[std::min(periods.size() - 1, periods.size() * 99 / 100)];
     {  // the 1 % lows: the mean of the slowest 1 % of the frames, as frames a second
@@ -968,6 +1001,9 @@ void dump(std::FILE* f, int frames, bool with_gl_scan) {
     std::fprintf(f, "[profiler] host frames %llu..%llu (%d): %.1f fps, frame %.2f ms (min %.2f, max %.2f, p99 %.2f; 1%% low %.1f fps), %.2f game frames each\n",
                  static_cast<unsigned long long>(history_at(history_size() - m.frames).index), static_cast<unsigned long long>(history_at(history_size() - 1).index), m.frames, m.fps,
                  m.period_avg, m.period_min, m.period_max, m.period_p99, m.low1_fps, m.steps);
+    std::fprintf(f, "[profiler]   game frames a host frame: none in %d host frames, one in %d, two in %d, three or more in %d; the preparation with its stages %.2f ms\n",
+                 m.steps_hist[0], m.steps_hist[1], m.steps_hist[2], m.steps_hist[3], m.prepare_total);
+    if (m.pictures_fps > m.fps + 0.5) std::fprintf(f, "[profiler]   frame extrapolation: %.1f pictures a second (%.2f a host frame)\n", m.pictures_fps, m.pictures_fps / std::max(m.fps, 1e-9));
     std::fprintf(f, "[profiler]   main thread: work %.2f ms (game code %.2f, host %.2f), waits %.2f, its CPU time %.2f; GPU busy %.2f ms (span %.2f, %d frames read back; the kernel's account %.2f)\n",
                  m.main_work, m.game_code, m.host_work, m.waits, m.main_cpu, m.gpu_busy, m.gpu_span, m.gpu_frames, m.gpu_kernel);
     std::fprintf(f, "[profiler]   %s\n", m.bound_text.c_str());
@@ -984,6 +1020,8 @@ void dump(std::FILE* f, int frames, bool with_gl_scan) {
     std::fprintf(f, "[profiler]   %-38s %8.3f %8s %8.3f\n", "(no stage)", m.cpu_other, "", m.gpu_other);
     for (int w = 0; w < kWorkerCount; ++w)
         std::fprintf(f, "[profiler]   worker %-29s busy %.3f ms/frame, CPU %.3f ms/frame\n", kWorkerNames[w], m.worker_busy[w], m.worker_cpu[w]);
+    for (int p = 0; p < kPartCount; ++p)
+        if (m.part[p] > 0.0) std::fprintf(f, "[profiler]   part %-38s %.3f ms/frame\n", kPartNames[p], m.part[p]);
     resources_sample(s, true);
     const Resources& R = s.res;
     std::fprintf(f, "[profiler]   process CPU %.0f %% of a core (%d logical CPUs);", R.process_cpu_pct, R.cpus);

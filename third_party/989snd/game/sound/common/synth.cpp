@@ -307,6 +307,24 @@ s16Output Synth::Tick(s16* multi, int channels, float* hp, float* hpMulti) {
         spk[1] += vo.right;
         fspk[0] += vf[0];
         fspk[1] += vf[1];
+      } else if (place == Voice::Place::Diffuse) {
+        // a bed around the listener (an ambience at the camera): its left on the left speakers, its right on the right
+        // ones, at equal power (as the reverb below)
+        const float k = channels == 8 ? 0.57735027f : 0.70710678f;
+        const float l = static_cast<float>(vo.left) * k, r = static_cast<float>(vo.right) * k;
+        const float fl = vf[0] * k, fr = vf[1] * k;
+        for (int c : {0, 4, 6}) {
+          if (c < 6 || channels == 8) {
+            spk[c] += l;
+            fspk[c] += fl;
+          }
+        }
+        for (int c : {1, 5, 7}) {
+          if (c < 6 || channels == 8) {
+            spk[c] += r;
+            fspk[c] += fr;
+          }
+        }
       } else {
         if (v->mSpkPan != v->GetPan() || v->mSpkLayout != channels || v->mSpkPlace != place) {
           if (place == Voice::Place::Positional) {

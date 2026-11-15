@@ -7,6 +7,7 @@
 #include <game/ovl/pause_menu.h>
 #include <game/ovl/pause_menu_pages.h>
 #include <game/ovl/planet_map.h>
+#include <host/level_slots.h>
 
 namespace rac1 {
 
@@ -473,6 +474,13 @@ int32_t planet_map_widget_draw(uint32_t) {
 // planets 6 / 13 / 17, the second and third blinking; 4.
 // orig: 0x0027e498
 int32_t planet_picture_draw(uint32_t) {
+    if (level_slots_map_row()) {  // enhancement: a level mod's row: its picture as it is, still (src/host/level_slots.h)
+        if (!level_slots_map_planet_shown()) return 0;
+        sub_002a0ba8(0x47, 0);  // (as the planets' surface: over the whole target, nothing round it)
+        sub_002a0ba8(8, 0);
+        sprite_uv(ld(MAP + 0x258), 0, 0, 7, 7, lh(0x00151780 + 0x160) << 4, lh(0x00151780 + 0x162) << 4, 0, 0, 0x80);
+        return 4;
+    }
     const int32_t pl = lw(MAP + 0x228);
     if (pl < 0) return 0;
     const int32_t w = lh(0x00151780 + 0x160) << 4, h = lh(0x00151780 + 0x162) << 4;

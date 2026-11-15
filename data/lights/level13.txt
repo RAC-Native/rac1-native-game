@@ -2,6 +2,7 @@
 # light x y z  r g b  intensity radius flicker on
 # Gemlik Base: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
 sun 114.5 12.0
+sun_rays_strength 1.61
 # #102 (Anya's notes). The Blarg ships the skill point has you destroy (moby class 1805; the same ship as Novalis's moby 666): the
 # orange lamps in two columns of three on the back's two sides and the pair of blue ones at the nose, weak lights, small radius.
 emit moby 1805  -3.300 1.800 3.000  1.000 0.550 0.200  0.800 3.500 0.000  0.00
@@ -36,7 +37,7 @@ emissive tie 1756 tex 0  2.51 0.00
 material tfrag 0 tex 7 metal 0.35 1
 material tfrag 0 tex 0 metal 0.46 0.31
 material tie 2101 tex 1 metal 0.35 1.06
-material tie 1965 tex 4 metal 0.41 1
+emissive tie 1965 tex 4  2.88 0.00
 material tie 1976 tex 0 metal 0.35 1
 material shrub 452 tex 0 metal 0.35 1
 material shrub 452 tex 1 metal 0.35 1
@@ -155,3 +156,20 @@ emit moby 69  -1.249 1.510 -0.458  0.243 1.000 0.449  1.000 4.625 0.000  0.00  j
 emit moby 69  0.072 1.518 -0.440  0.243 1.000 0.447  1.000 5.078 0.000  0.00  joint 8
 material tie 1976 tex 1 metal 0.35 1
 material tfrag 0 tex 21 metal 0.35 1
+material surface 1263 tex 46 lava 2.34 1 0
+particles embers 1.61  0.28 1 0.079  source lava
+emissive moby 143 tex 0  1.00 0.00
+emissive tie 2012 tex 2  1.00 0.00
+emit tie 2010  8.233 -6.251 -1.951  0.256 1.000 0.593  2.233 1.845 0.000  0.00
+emissive tie 2010 tex 0  2.54 0.00
+emit shrub 496  6.441 -1.092 19.158  1.000 0.966 0.251  1.000 8.000 0.000  0.00
+emissive tie 1890 tex 3  2.98 0.51
+material tie 1965 tex 5 metal 0.46 1
+light 531.846 590.478 274.461  0.302 1.000 0.187  3.000 30.000 0.000 1
+material surface 1263 tex 54 lava 4 1 0
+light 499.185 631.387 269.407  1.000 0.691 0.187  3.000 30.000 0.000 1
+light 499.543 640.610 271.297  1.000 0.691 0.187  3.000 30.000 0.000 1
+light 500.120 595.765 272.839  1.000 0.691 0.187  3.000 30.000 0.000 1
+light 557.144 635.057 277.786  0.302 1.000 0.187  3.000 30.000 0.000 1
+light 576.709 605.921 280.479  0.302 1.000 0.187  3.000 30.000 0.000 1
+light 580.010 633.913 283.400  0.302 1.000 0.187  3.000 30.000 0.000 1

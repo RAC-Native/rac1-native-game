@@ -38,6 +38,9 @@ extern int g_mrp_world_fog;
 
 // orig: (host) true when the MRP draws this frame's world: the switch on and the level's assets loaded (GL ready)
 bool mrp_world_ready();
+// orig: (host) game level `level`'s world asset and textures read on a worker now, for its next load (a session's game world
+// section streaming in: src/game/enhance/section_world.h)
+void mrp_world_prefetch(int level);
 // orig: (host) true when the MRP makes the ties / shrubs of a pass whose distances / frustum the LOD slider or the
 // widening change itself (mrp_world_static.h), so that pass's shadow run is not needed (the world projection, RAC1_MRPW_STATIC on,
 // not the testing modes)
@@ -45,10 +48,6 @@ bool mrp_world_static_lod();
 // orig: (host) true when the MRP draws the tfrags on the GPU (mrp_tfrag_gpu.h) and makes the tfrag pass's decisions itself
 // at LOD > 0 / widened, so its shadow run is not needed (the world projection, RAC1_MRPW_TFRAG_GPU on, not the testing modes)
 bool mrp_world_tfrag_lod();
-// orig: (host) per host frame, before the world is drawn: the level's assets (re)loaded when the level changed, the frame's
-// scene built from the chain [chain_start, chain_end) (`active`: a frame whose world is drawn: not the title, a level exit,
-// a movie, the full-screen menu)
-void mrp_world_begin_frame(bool active, uint32_t chain_start, uint32_t chain_end);
 #if defined(__WIIU__)
 // orig: (host) the Wii U's frame (ports/wiiu/MRP_LITE.md phases 3 and 4; the walker's VU1 programs are not in its build): per host
 // frame, after the game's frames ran and before the next update, on the game's thread: the level's assets (re)loaded when the level
@@ -78,7 +77,9 @@ extern void (*g_wiiu_tail_hook)();
 // for it (`wait_ms`: the game thread the frame's longest) and the game thread's idle time before the join (`idle_ms`: the drawing's)
 void mrp_world_wiiu_game_timing(double wait_ms, double idle_ms);
 #endif
-// orig: (host) the same in two halves: _async starts the scene's build (on a worker thread, RAC1_MRPW_THREAD=0 not),
+// orig: (host) per host frame, before the world is drawn: the level's assets (re)loaded when the level changed, the frame's
+// scene built from the chain [chain_start, chain_end) (`active`: a frame whose world is drawn: not the title, a level exit,
+// a movie, the full-screen menu), in two halves: _async starts the scene's build (on a worker thread, RAC1_MRPW_THREAD=0 not),
 // after it mrp_world_skip_ranges() is known; the host may then read the frame's chain (it only reads EE memory) and must
 // call mrp_world_finish_frame() before anything else reads or writes EE memory, the scene, or the chain reader's GS registers'
 // use by the world (the scene waited for, its triangles and draw lists built)

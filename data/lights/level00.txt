@@ -2,6 +2,7 @@
 # light x y z  r g b  intensity radius flicker on
 # Veldin: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
 sun 1.1 17.7
+sun_rays_strength 0.47
 # Veldin (#102, Anya's notes). Our choices, weak and small; a moby's lamp gets no shadow cube. They light the world around them.
 # The nanotech crates' orbs (moby class 806, spawned at the crate 501): a violet-blue glow in the crate, which follows the orbs.
 emit moby 806  0.000 0.000 1.000  0.600 0.650 1.000  2.500 5.000 0.000  0.00
@@ -23,9 +24,8 @@ emit tie 2024  0.000 21.500 5.300  0.400 0.900 0.950  0.450 3.200 0.000  0.00
 emissive shrub 569 tex 1  1.30 0.00
 # Its cyan door panels are painted in the building's one texture (tie 2024, texture 7, shared by all its prims). Ours was 1.20 0.80
 # (only its brightest texels); Anya's second pass (#102) has 1.00 0.00: the whole building keeps the original's brightness in shade.
-emissive tie 2024 tex 0  1.00 0.00
+emissive tfrag 0 tex 71  3.76 0.54
 # Anya-Thoughtmane's second lighting pass (#102): Ratchet's garage and more of the level's lamps glow (her strengths and thresholds).
-emissive tfrag 0 tex 71  3.76 0.00
 emissive tfrag 0 tex 50  2.91 0.00
 emissive tie 2216 tex 4  2.22 0.00
 emissive shrub 574 tex 0  2.06 0.00
@@ -33,8 +33,8 @@ emissive tie 2132 tex 1  3.54 0.00
 emissive tie 2033 tex 3  3.09 0.00
 emissive moby 1440 tex 3  1.91 0.00
 emissive moby 1440 tex 2  2.71 0.00
-# Anya-Thoughtmane's lighting batch 1 (#102): a few metals
 material tie 2217 tex 2 metal 0.45 1
+# Anya-Thoughtmane's lighting batch 1 (#102): a few metals
 emissive tie 2216 tex 0  2.84 0.00
 material tie 2127 tex 0 metal 0.59 1
 material tie 2125 tex 7 metal 0.56 1
@@ -42,9 +42,9 @@ material shrub 556 tex 1 metal 0.35 1
 material shrub 570 tex 2 metal 0.35 1
 material shrub 570 tex 3 metal 0.35 1
 emissive tie 2142 tex 0  0.43 0.00
+material moby 1440 tex 1 metal 0.35 1.1
 emit moby 1440  0.001 0.005 0.119  1.000 0.000 0.000  1.416 1.968 0.000  0.00  joint 14
 emit moby 1440  0.081 -0.013 -0.001  0.000 1.000 0.091  1.977 1.000 0.000  0.00  joint 11
-material moby 1440 tex 1 metal 0.35 1.1
 material moby 1440 tex 0 metal 0.46 0.67
 material tie 2144 tex 0 metal 0.46 1
 material tie 2107 tex 0 metal 1 1
@@ -62,8 +62,8 @@ material shrub 508 tex 0 metal 1 1
 material shrub 478 tex 0 metal 0.41 1
 material shrub 478 tex 1 metal 0.44 0.76
 emissive tie 2039 tex 0  2.78 0.47
-emit tie 2039  0.180 5.808 12.924  0.363 0.987 1.000  1.000 3.203 0.000  0.00
 material tfrag 0 tex 13 metal 1 1
+emit tie 2039  0.180 5.808 12.924  0.363 0.987 1.000  1.000 3.203 0.000  0.00
 material tfrag 0 tex 18 metal 1 1
 material tfrag 0 tex 21 metal 1 1
 material tfrag 0 tex 12 metal 1 1
@@ -80,3 +80,47 @@ emissive moby 0 tex 3  2.91 0.37
 material moby 0 tex 2 metal 1 1
 material moby 0 tex 1 wet 0.71 0.46
 material shrub 556 tex 6 metal 0.46 1
+material tie 2049 tex 1 metal 1 1
+material tie 2049 tex 2 metal 1 1
+material tie 2400 tex 1 metal 1 1
+material tie 2400 tex 0 metal 1 1
+material tie 2400 tex 2 metal 1 1
+material tie 2048 tex 1 metal 1 1
+material tie 2048 tex 3 metal 1 1
+material tie 2048 tex 2 metal 1 1
+emissive tie 2132 tex 0  2.63 0.00
+emissive tie 2132 tex 2  2.78 0.00
+emissive shrub 556 tex 3  2.70 0.43
+material tfrag 0 tex 70 metal 0.47 1
+material tfrag 0 tex 54 metal 0.46 1
+material tfrag 0 tex 52 metal 0.47 1
+material tie 2135 tex 4 metal 0.35 1
+material tie 2135 tex 6 metal 0.35 1
+material tie 2137 tex 3 metal 0.73 1
+material tie 2137 tex 6 metal 0.7 1
+material tie 2137 tex 1 metal 0.35 1
+material tie 2137 tex 7 metal 0.35 1
+material tfrag 0 tex 35 metal 1 1
+light 174.944 277.247 30.909  1.000 0.627 0.161  1.000 11.054 0.000 1
+light 169.313 268.066 31.355  1.000 0.627 0.161  1.000 11.054 0.000 1
+light 170.771 264.793 31.104  1.000 0.627 0.161  1.000 11.054 0.000 1
+light 162.576 267.544 31.543  1.000 0.627 0.161  1.000 11.054 0.000 1
+material tfrag 0 tex 34 metal 1 1
+material tfrag 0 tex 19 metal 1 1
+emit shrub 569  21.864 -0.734 2.798  0.423 0.914 1.000  1.000 2.467 0.000  0.00
+material tie 2047 tex 2 metal 1 1
+material tie 2047 tex 1 metal 1 1
+material tie 2107 tex 3 metal 1 1
+material tie 2107 tex 2 metal 1 1
+material tie 2107 tex 1 metal 1 1
+material tie 2047 tex 3 metal 1 1
+material tie 2024 tex 1 metal 0.81 1
+material tie 2024 tex 0 metal 0.81 1
+material tie 2024 tex 2 metal 0.81 1
+material tie 2024 tex 4 metal 0.81 1
+material tie 2024 tex 3 metal 0.81 1
+material tie 2031 tex 8 metal 0.35 0.51
+material tie 2031 tex 5 metal 0.35 0.5
+material tfrag 0 tex 10 metal 0.35 1
+material tfrag 0 tex 9 metal 0.35 1
+material tie 2125 tex 8 metal 0.57 1

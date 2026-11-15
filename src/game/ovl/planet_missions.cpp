@@ -8,6 +8,7 @@
 #include <game/ovl/pause_menu.h>
 #include <game/ovl/pause_menu_pages.h>
 #include <game/ovl/planet_map.h>
+#include <host/level_slots.h>
 
 namespace rac1 {
 
@@ -217,6 +218,7 @@ int32_t missions_update(uint32_t w) {
 // with its check box; all done, a text (0x523d) under them.
 // orig: 0x0027d2d0
 int32_t missions_draw(uint32_t w) {
+    if (level_slots_map_row()) return 2;  // enhancement: a level mod's row on the ship's map: no missions (the base level's)
     const uint32_t sp = ee_stack_alloc(0x50);  // a box +0, its template +0x20, the done bits +0x40
     sw(sp + 0x40, 0);
     texture_block_begin(0);
@@ -265,6 +267,7 @@ int32_t missions_draw(uint32_t w) {
 // orig: 0x0027d5d8
 int32_t mission_picture_update(uint32_t w) {
     const uint32_t fl = lwu(w + 0x34);
+    if ((fl & 3) == 2 && level_slots_map_picture(w)) return 0;  // enhancement: a level mod's row: its picture (src/host/level_slots.h)
     int32_t img;
     if ((fl & 1) != 0) {
         img = lw(w + 0x58);

@@ -36,7 +36,7 @@ using gs::TexImage;
 using gs::Vertex;
 using gs::Viewport;
 
-uint32_t field(uint64_t v, int lo, int n) { return static_cast<uint32_t>((v >> lo) & ((1ull << n) - 1)); }
+using gs::field;
 
 #if !defined(__WIIU__)  // (the Wii U: no GL / Vulkan - glad's functions never loaded, a call jumps to 0; its GX2 submit, ports/wiiu/game/mrp_2d_gx2.cpp, has its own shaders)
 // ---- the shaders (OpenGL; Vulkan's are the same, made by tools/gen_vk_shaders.py: kMrp2dVs / kMrp2dFs) ----

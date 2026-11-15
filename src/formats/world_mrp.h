@@ -138,11 +138,27 @@ struct TfragEntry {
     std::vector<TexturePrim> textures;     // the entry's texture prims (5 qwords each, at +tex_ofs; TEX0's word: the tfrag texture)
 };
 
+// A level mod's host mesh placed in the level (src/formats/host_meshes.h): a mesh no EE data stands for, drawn by the host
+// at this placement as one of the world's tie classes. Not in world.mrpw: filled when the level's world is loaded.
+struct HostMeshInstance {
+    uint32_t cls = 0;            // World::ties
+    float rot[3][3] = {};        // the rotation's rows (unit)
+    float pos[3] = {};           // the position (world units)
+    uint8_t rgba[4] = {0x80, 0x80, 0x80, 0x80};  // its colour (0x80 = 1.0), every vertex's without a palette entry
+    std::vector<std::array<uint8_t, 4>> palette;  // its vertices' colours (at most 64: a vertex's index is its dinky slot lane)
+    float scale = 1.0f;          // (a level object's, src/game/enhance/mod_code.cpp: its class's scale times its own) the class's scale times this
+    uint8_t section = 0;         // (a session's, format 3: the section it belongs to, drawn only while that section is current; 0 main)
+};
+
 struct World {
     int32_t level = -1;
     std::vector<ShrubClass> shrubs;
     std::vector<TieClass> ties;
     std::vector<TfragEntry> tfrags;
+    std::vector<HostMeshInstance> host_meshes;  // (not in the file: a level mod's, see HostMeshInstance)
+    // (not in the file: a session's game world section, its level's world with the session's host meshes it needs added to its
+    // ties, mrp_world_renderer.cpp) a session host mesh class -> its tie here (-1: not added); empty: the classes are the ties
+    std::vector<int32_t> host_class_map;
 };
 
 bool write_world(const std::string& path, const World& w);

@@ -18,6 +18,7 @@
 #include <game/lib/libc.h>
 #include <game/lib/snd989.h>
 #include <game/port_stubs.h>
+#include <host/level_slots.h>
 
 namespace rac1 {
 
@@ -679,6 +680,11 @@ static void map_read_done() {
 // (from the stash for the current level, else the disc 0x1383a0 / 0x138438) into a buffer.
 // orig: 0x00279aa8
 int32_t planet_map_update(uint32_t w) {
+    if (level_slots_map_row()) {  // enhancement: a level mod's row on the ship's map: its picture, not the base planet's (level_slots.h)
+        map_read_done();
+        level_slots_map_planet_upload();
+        return 0;
+    }
     map_zoom_scroll();
     int32_t prev = 0;
     if ((lwu(w + 0x34) & 0x40) == 0) {

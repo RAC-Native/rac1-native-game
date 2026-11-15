@@ -2,6 +2,7 @@
 # light x y z  r g b  intensity radius flicker on
 # Veldin (finale): the sun from Anya-Thoughtmane's lighting pass (#90, #101).
 sun -6.0 23.0
+sun_rays_strength 0.26
 emissive tie 2039 tex 0  3.01 0.00
 emissive shrub 556 tex 3  2.95 0.63
 material moby 638 tex 0 metal 0.29 1.27
@@ -58,3 +59,10 @@ material moby 1454 tex 0 metal 0.71 1
 material tfrag 0 tex 77 metal 0.46 1
 material tfrag 0 tex 128 metal 0.46 1
 emissive shrub 561 tex 3  2.48 0.00
+emissive tie 2038 tex 9  2.67 0.34
+emissive tie 2024 tex 5  2.67 0.49
+emissive tie 2132 tex 1  2.33 0.00
+material moby 1892 tex 0 lava 3.61 1 0
+material moby 1892 tex 2 lava 3.62 1 0
+particles embers 4  1 0.431 0.071  gust 0.9  source lava  rise 2.65
+particles embers 4  1 0.324 0.148  source lava

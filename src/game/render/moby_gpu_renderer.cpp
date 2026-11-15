@@ -77,8 +77,6 @@ static GLint s_loc_uMipK = -1;
 static GLint s_loc_uMipL = -1;
 static GLint s_loc_uDebugShade = -1;
 
-static uint64_t s_diff_submeshes = 0;
-static uint64_t s_diff_verts = 0;
 static uint64_t s_diff_mismatches = 0;
 
 static const char* MOBY_VS = R"(
@@ -233,14 +231,6 @@ void moby_gpu_init() {
     glEnableVertexAttribArray(2);
 
     glBindVertexArray(0);
-}
-
-// orig: (host) free GPU resources
-void moby_gpu_shutdown() {
-    if (s_vao != 0) { glDeleteVertexArrays(1, &s_vao); s_vao = 0; }
-    if (s_vbo != 0) { glDeleteBuffers(1, &s_vbo); s_vbo = 0; }
-    if (s_ebo != 0) { glDeleteBuffers(1, &s_ebo); s_ebo = 0; }
-    if (s_prog != 0) { glDeleteProgram(s_prog); s_prog = 0; }
 }
 
 // orig: (host) reset per-frame vertex and draw collections
@@ -581,27 +571,6 @@ void moby_gpu_end_submesh() {
     if (!s_in_submesh) return;
     s_in_submesh = false;
     finalize_submesh(s_cur_sub);
-}
-
-// orig: (host) legacy entry for standalone submesh extraction
-void moby_gpu_submesh(const VUState& st, uint32_t start_pc) {
-    (void)st;
-    (void)start_pc;
-}
-
-// orig: (host) differential comparison between faithful kicked vertices and GPU twin
-void moby_gpu_diff_compare(const VUState& /*st*/, uint32_t /*start_pc*/, const std::vector<MobyDiffVert>& faithful_verts) {
-    if (faithful_verts.empty()) return;
-    ++s_diff_submeshes;
-    s_diff_verts += faithful_verts.size();
-}
-
-// orig: (host) return statistics of differential checks
-bool moby_gpu_diff_stats(uint64_t& submeshes, uint64_t& vertices, uint64_t& mismatches) {
-    submeshes = s_diff_submeshes;
-    vertices = s_diff_verts;
-    mismatches = s_diff_mismatches;
-    return s_diff_submeshes > 0;
 }
 
 // orig: (host) render all collected moby submeshes with native OpenGL depth testing

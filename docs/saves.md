@@ -48,6 +48,8 @@ the one at 0x1848c0. Each block carries a 16-bit checksum (`save_checksum`, 0x24
   (`new_game_slots_update`, 0x281200).
 - On leaving a planet: `level_change_request` (0x24d430, `level_change.cpp`) saves into the slot the
   player chose, if one was chosen.
+- From a mod's code: the SDK's `game_save` (ABI 15, [The mod SDK](sdk.md#saving-abi-15)) makes the same save as
+  leaving a planet, in play.
 - At the start, the boot module checks the card (`boot_card_check`) and shows the PS2's memory card
   screens (game mode 4).
 
@@ -94,7 +96,9 @@ Ids 1 to 5 and 10 are the pause menu's Advanced rows kept with the saves (Quick 
 Ammo; Skip Cutscenes 10); id 37 is the New Game mode (1 Original, 2 Modern; an older save's 3, Experimental, is read as
 Modern). Ids 6 and 9 (Vibration, Adaptive Triggers) belong to the machine and are not written; 7 and 8 (the ship selector
 and Clank's movement, removed) and 11 (the Voice row, now on the Language page) are ignored when read; 12 (Cut Content,
-a global setting of the main menu) is never written.
+a global setting of the main menu) is never written. Id 16 is the Quick Select Rings row; id 0x400 holds quick select rings 2
+and 3 and the ring last used ([Advanced](advanced.md#quick-select-rings-1-or-3)); ids 0x200 and 0x300 are the level mods'
+and the mods' code's.
 
 Ids 32 to 56 but 37 held the Display and Graphics pages' settings (render resolution, aspect ratio, fit, level of detail,
 field of view, the lighting rows, Texture Detail, Shadow Strength, AO Intensity, HUD, Sun Rays, Ambient Particles, Surface

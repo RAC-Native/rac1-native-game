@@ -10,6 +10,9 @@
 
 namespace rac1::gs {
 
+// bits [lo, lo + n) of a GS register's value
+inline uint32_t field(uint64_t v, int lo, int n) { return static_cast<uint32_t>((v >> lo) & ((1ull << n) - 1)); }
+
 struct Vertex {
     float x = 0, y = 0;   // pixels, XYOFFSET removed
     uint32_t z = 0;

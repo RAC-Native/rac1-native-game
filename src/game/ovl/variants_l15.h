@@ -16,7 +16,8 @@ namespace rac1 {
 constexpr int QUARTU = 15;
 
 // orig: (host) the current translation target is Quartu's overlay
-inline bool on_quartu() { return on_level(QUARTU); }
+// (its hero code and camera code also in a session whose hero context it is: variants.h on_hero_level)
+inline bool on_quartu() { return on_hero_level(QUARTU); }
 
 // A level-15 address of the port's own (level-only data / code, not a Veldin equivalent): no Veldin
 // translation; on another region's disc, the region table's.

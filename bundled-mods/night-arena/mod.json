@@ -1,0 +1,12 @@
+{
+  "name": "Daino's Arena",
+  "author": "Daino Selvatico",
+  "version": "0.6",
+  "description": "An arena in a lava lake ringed by mountains, with challenges against Kalebo III's enemies (waves, bombs, flame vents, weapon limits, championships) and grind rails (a test rail, a course of three lanes with mines to jump and Kalebo III's rail mines to break, and an escape from the lava through a portal into another place).",
+  "kind": "level",
+  "level": {
+    "id": "night-arena",
+    "format": 3,
+    "base": 16
+  }
+}

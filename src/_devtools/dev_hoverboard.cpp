@@ -135,7 +135,12 @@ bool segment(const V3& a, const V3& b, V3& hit, V3& n) {
     const bool got = segment_collide_v(s, e, floor_flags(), ru(HERO_MOBY), nullptr) != 0;
     if (got) {
         hit = rv(HIT_POINT);
+        // the normal as the query leaves it is not of unit length (a triangle's edges crossed in the query's x 1024 units: a floor's
+        // z in the millions; a sphere's, its hit minus its centre): the ride's tests (a floor above 0.5, a wall within 0.6) took
+        // almost no face for a wall, and a ground hit that failed the floor's test let the board fall through the ground (#120)
         n = rv(HIT_NORMAL);
+        const float l = std::sqrt(n.x * n.x + n.y * n.y + n.z * n.z);
+        if (l > 0.0f) n = {n.x / l, n.y / l, n.z / l};
     }
     ee_journal_restore();
     collide_vu_restore(regs);

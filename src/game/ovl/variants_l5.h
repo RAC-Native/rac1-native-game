@@ -17,7 +17,8 @@ namespace rac1 {
 constexpr int RILGAR = 5;
 
 // orig: (host) the current translation target is Rilgar's overlay
-inline bool on_rilgar() { return on_level(RILGAR); }
+// (its hero code and camera code also in a session whose hero context it is: variants.h on_hero_level)
+inline bool on_rilgar() { return on_hero_level(RILGAR); }
 
 // A Rilgar address of the port's own (level-only data / code, not a Veldin equivalent): no Veldin
 // translation; on another region's disc, the region table's.

@@ -107,6 +107,24 @@ inline void sq(uint32_t a, const Q128& v) {
     const uint32_t w[4] = {static_cast<uint32_t>(v.lo), static_cast<uint32_t>(v.lo >> 32), static_cast<uint32_t>(v.hi), static_cast<uint32_t>(v.hi >> 32)};
     std::memcpy(p, w, 16);
 }
+#elif defined(RAC1_ACCESSORS_INLINE) && RAC1_ACCESSORS_INLINE
+// (RAC1_ACCESSORS_INLINE: the quadword in one access - its 16 bytes are aligned, so on one page - not two doublewords)
+RAC1_HOT_INLINE Q128 lq(uint32_t a) {
+    struct Qw {
+        uint64_t lo, hi;
+    };
+    const Qw q = ee_read<Qw>(a & ~15u);
+    Q128 r;
+    r.lo = q.lo;
+    r.hi = q.hi;
+    return r;
+}
+RAC1_HOT_INLINE void sq(uint32_t a, const Q128& v) {
+    struct Qw {
+        uint64_t lo, hi;
+    };
+    ee_write<Qw>(a & ~15u, Qw{v.lo, v.hi});
+}
 #else
 RAC1_HOT_INLINE Q128 lq(uint32_t a) {
     Q128 r;

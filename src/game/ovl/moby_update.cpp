@@ -2,6 +2,7 @@
 // queue it walks (0x250768).
 #include <game/debug_hooks.h>
 #include <game/ovl/ovl_reloc.h>
+#include <host/mod_code.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/port_stubs.h>
@@ -59,7 +60,8 @@ uint32_t moby_visible_queue() {
         const uint32_t dist = lbu(m + 0x30);
         const uint32_t flags = lhu(m + 0x34);
         if ((flags & 2u) != 0) continue;
-        if (lbu(m + 0x31) == 0 && dist != 0xff) {  // VU0: d = dist^2 - dx^2 - dy^2 - dz^2 (ACC.x)
+        // (enhancement: a level mod's update_all line, src/host/mod_code.h: as the distance 0xff, every moby)
+        if (lbu(m + 0x31) == 0 && dist != 0xff && !g_mod_update_all) {  // VU0: d = dist^2 - dx^2 - dy^2 - dz^2 (ACC.x)
             const float dx = lwc1(m + 0x10) - cx, dy = lwc1(m + 0x14) - cy, dz = lwc1(m + 0x18) - cz;
             const float fd = static_cast<float>(dist);
             float acc = fd * fd;
@@ -116,7 +118,11 @@ void moby_update_visible() {
         if (static_cast<int8_t>(lbu(m + 0x20)) < 0) continue;
         if (g_debug_moby_frozen != nullptr && g_debug_moby_frozen(m)) continue;  // host debug menu (not in the original)
         if ((lhu(m + 0x34) & 0x40u) == 0) moby_anim_advance(m);
-        if (const uint32_t fn = lwu(m + 0x74); fn != 0) ovl_call_moby_fn(fn, m);
+        // (enhancement: a level mod's placed object a plugin updates instead, src/host/mod_code.h; else as the original)
+        if (g_mod_code_objects && mod_code_object_update(m)) {
+        } else if (const uint32_t fn = lwu(m + 0x74); fn != 0) {
+            ovl_call_moby_fn(fn, m);
+        }
         if ((lhu(m + 0x34) & 4u) == 0) moby_update_transform(m);
     }
 }

@@ -4,6 +4,8 @@
 #include <game/lib/libc.h>
 #include <game/lib/snd989.h>
 #include <game/port_stubs.h>
+#include <host/level_slots.h>
+#include <host/quick_rings.h>
 
 namespace rac1 {
 
@@ -133,6 +135,7 @@ void item_give(int32_t id, int32_t equip) {
             return;
         }
     }
+    quick_rings_give(static_cast<uint32_t>(id));  // (enhancement: ring 1 full, ring 2's or 3's place, src/host/quick_rings.h)
 }
 
 // orig: 0x0023d198 — the inventory at a level start: the wrench (item 10) for a fresh game,
@@ -171,7 +174,7 @@ void inventory_level_start() {
         }
         if (k == 0x13 || item == 0) sb(Q + i, 0xff);
     }
-    quick_select_add_level_item(lw(0x0015ed84));
+    if (!level_slots_keep_base_progress()) quick_select_add_level_item(lw(0x0015ed84));  // (enhancement: not the base level's gadget)
 }
 
 // orig: 0x0023d028 — the overlay's start-up: kernel / GS / interrupt set-up, the memory layout,
@@ -200,7 +203,7 @@ void overlay_init_tables() {
     particle_table_init();
     sub_002a1128();
     inventory_level_start();
-    if (lw(0x0015ed84) != 0) level_mark_visited(lw(0x0015ed84));
+    if (lw(0x0015ed84) != 0 && !level_slots_keep_base_progress()) level_mark_visited(lw(0x0015ed84));  // (enhancement: nor visited)
     sw(0x0015ee24, lwu(0x0015ee24) + 0xb4);
 }
 

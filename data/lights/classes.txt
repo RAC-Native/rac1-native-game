@@ -108,3 +108,14 @@ emissive moby 0 tex 3  2.50 0.36
 material moby 192 tex 0 metal 0.43 1
 material moby 849 tex 0 metal 0.38 0.73
 material moby 176 tex 0 metal 0.51 1
+emit moby 531  -2.984 1.839 -0.473  1.000 0.871 0.345  1.453 3.024 0.000  0.00  joint 3
+emit moby 531  -2.997 -1.463 -0.249  1.000 0.871 0.345  1.633 3.959 0.000  0.00  joint 3
+emit moby 531  -2.997 -1.483 -0.796  1.000 0.871 0.345  1.593 3.907 0.000  0.00  joint 3
+emit moby 531  -2.986 -1.907 -0.507  1.000 0.871 0.345  1.630 3.721 0.000  0.00  joint 3
+material moby 823 tex 0 metal 0.35 1
+material moby 621 tex 0 metal 0.35 1
+emissive moby 621 tex 1  2.44 0.00
+material moby 621 tex 2 metal 0.35 1
+material moby 302 tex 0 metal 0.43 1  glow 2.52 0.68
+material moby 303 tex 0 metal 0.35 1  glow 2.74 0.74
+emit moby 123  0.027 0.009 0.329  1.000 0.114 0.114  3.055 4.742 0.000  0.00  joint 0

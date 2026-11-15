@@ -71,7 +71,7 @@ void cam0_set_1cc(float v) {
 // The follow camera's work +0x124 / +0x128, each when not 0.
 // orig: 0x002e85d8
 void cam0_set_124(float a, float b) {
-    if (on_kalebo()) { kal_cam0_set_124_u(0, 0, 0, 0, 0, 0, 0, 0, a, b, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); return; }  // (level 16's own: L16:0x002ee790, the work's +0x11c / +0x120)
+    if (on_camera_level(KALEBO)) { kal_cam0_set_124_u(0, 0, 0, 0, 0, 0, 0, 0, a, b, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); return; }  // (level 16's own: L16:0x002ee790, the work's +0x11c / +0x120)
     if (lh(lwu(ACTIVE) + 0x86) != 0) return;
     const uint32_t w = work() + 0x40;
     if (a != 0.0f) swc1(w + 0xe4, a);

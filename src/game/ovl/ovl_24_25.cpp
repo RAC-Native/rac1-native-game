@@ -1,4 +1,7 @@
 // Ported overlay code 0x00240000..0x0025ffff.
+#include <game/enhance/sections.h>
+#include <game/enhance/session.h>
+#include <game/enhance/session_runtime.h>
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl_common.h>
@@ -1177,6 +1180,7 @@ void moby_init(uint32_t m, uint32_t cls) {
 // time +0x38 has passed (*(0x15f5cc)); 0xff marks the end of the used range and moves one
 // slot up. Also hands it its 0x80-byte pvar block (*(0x15ffe8)). 0 (and a debug print) if full.
 uint32_t moby_spawn(uint32_t cls) {
+    if (__builtin_expect(g_spawn_watch, 0) && !session_spawn_check(cls)) return 0;  // (a session lacking the class: refused)
     const uint32_t end = lwu(OV(0x0015ffe0));
     uint32_t m = lwu(OV(0x0015ffdc));
     for (; m < end; m += 0x100) {
@@ -1191,9 +1195,18 @@ uint32_t moby_spawn(uint32_t cls) {
         mem_fill32(pv, 0, 0x80);
         const uint32_t c = lwu(OV(0x0015ffbc));
         if (c != 0) sw(OV(0x0015ffbc), c - 1u);
+        if (__builtin_expect(g_spawn_watch, 0)) {
+            sections_moby_spawned(m, g_spawn_updating);  // (a session's sections: whose objects spawned it)
+            session_rt_moby_spawned(m, g_spawn_updating);  // (a session's soft reset: the hero's spawns)
+        }
         return m;
     }
     debug_printf_stub();  // "out of mobys" with *(0x15f5cc)
+    {  // (host: a spawn refused is logged, the first and then every 256th: the plugins' and the game's spawns fail without a word otherwise)
+        static uint32_t refused = 0;
+        if ((refused++ & 255u) == 0)
+            std::fprintf(stderr, "[mobys] the moby array is full (%u slots): spawn of class %u refused (%u so far)\n", (end - lwu(OV(0x0015ffdc))) >> 8, cls, refused);
+    }
     return 0;
 }
 

@@ -14,8 +14,8 @@ extern bool g_render_fx;
 // game state was captured before that update: the draw-time functions that read the game's state (the view, the depth mapping,
 // the LOD widening, the drop shadows) use what was captured then (render_view_snapshot, mrp_lod_snapshot, mrp_shadows_snapshot)
 extern bool g_draw_from_snapshot;
-// The mobys drawn by the original pass (0x250038, its VU0 / VU1 programs ported) instead of the
-// host's model drawer (on by default; off = the GLB drawer, a debug fallback).
+// The original moby pass (0x250038, its VU0 / VU1 programs ported) runs, and the mobys are drawn from it: by the MRP
+// (mrp_scene.h observes it) or by the faithful path (on by default; off = the host's GLB model drawer, RAC1_MOBY_VU1=0).
 extern bool g_moby_vu1_pass;
 // The world (tfrag / tie / shrub) and the sky drawn only by the original passes' chain through the ported VU1 programs (the sky's
 // chain has none: EE-built GIF packets) and the GS replica (RAC1_WORLD_FAITHFUL=1, the debug menu): the host's

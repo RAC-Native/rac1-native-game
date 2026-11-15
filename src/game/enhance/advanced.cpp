@@ -8,8 +8,13 @@
 // byte where the game should change.
 //
 // The block ADV (EE RAM 0xf0000..0xf2000) is in the PS2 kernel's first megabyte: the port's
-// kernel is the host's, so nothing of the game or the runtime lives there.
+// kernel is the host's, so nothing of the game or the runtime lives there. Its second half (0xf1000..) is the Bug Fixes
+// page's (bug_fixes.cpp).
 #include <game/enhance/advanced.h>
+#include <host/level_slots.h>
+#include <host/mod_code.h>
+#include <host/quick_rings.h>
+#include <game/enhance/bug_fixes.h>
 #include <game/enhance/controls.h>
 #include <game/enhance/corrected_texts.h>
 #include <game/enhance/graphics.h>
@@ -33,6 +38,8 @@
 #include <vector>
 
 namespace rac1 {
+
+uint32_t exit_menu_text(int32_t id);  // (exit_menu.cpp's: the headers of src/game are the generated code's fingerprint)
 
 bool g_advanced_disabled = false;
 
@@ -73,7 +80,7 @@ constexpr uint32_t CONTROLS = SETTINGS + 1;    // 1: the modern controls (L2 aim
 constexpr uint32_t MOVEMENT = SETTINGS + 2;    // 1: the strafe with R&C 1's movement, 2: R&C 3's on-foot movement
 constexpr uint32_t FADES = SETTINGS + 3;       // 1: the original's screen fades shown (0: run in one host frame)
 constexpr uint32_t UPDATE_OFF = SETTINGS + 4;  // 1: no update check at start (update_notice.h)
-constexpr uint32_t UPDATE_DEV = SETTINGS + 5;  // 1: the update check's development channel (main), 0 the releases
+constexpr uint32_t UPDATE_DEV = SETTINGS + 5;  // 1: the update check's development channel (the dev branch), 0 the releases
 constexpr uint32_t VENDOR_ALL = SETTINGS + 6;  // 1: the Vendor's "All Ammo" entry (vendor_buy_all.h)
 constexpr uint32_t VIBRATION = SETTINGS + 7;   // the controller's vibration: 0 off, 1 low, 2 high (vibration.h, #10)
 constexpr uint32_t TRIGGERS = SETTINGS + 8;    // 1: a DualSense's adaptive triggers and light bar (vibration.h, #10)
@@ -82,6 +89,7 @@ constexpr uint32_t CUT_CONTENT = SETTINGS + 10; // 1: the cut content brought ba
 constexpr uint32_t CORRECTED_TEXTS = SETTINGS + 11;  // 1: the later discs' corrected texts (corrected_texts.h; global)
 constexpr uint32_t FIXES102 = SETTINGS + 12;  // 1: the 1.02 build's fixes, first batch (fixes102.h; global)
 constexpr uint32_t GAMEPLAY102 = SETTINGS + 13;  // 1: the 1.02 build's fixes that change how the game plays (fixes102.h; global)
+constexpr uint32_t QS_RINGS = SETTINGS + 14;  // 1: three quick select rings (src/host/quick_rings.h), 0 the game's one
 constexpr uint32_t ENTRIES = ADV + 0x680;      // the Options list's entries, ours added (0x100 before ten rows overflowed into HELP)
 constexpr uint32_t HELP = ADV + 0x180;         // the Options help label's texts, ours added
 constexpr uint32_t PICTURES = ADV + 0x600;     // the Options picture's images (sector, count), ours added (0x1c0 before two more rows did not fit)
@@ -112,16 +120,16 @@ constexpr OvConst<0x001b6678u> TALL_PAGE{};          // a page whose slot 3 box 
 
 // Our text ids, after the game's (0x4e00..0x5300 in the level text tables)
 constexpr int32_t TEXT_FIRST = 0x7f00;
-enum : int32_t { T_ADVANCED, T_HELP, T_QUICK_SELECT, T_NORMAL, T_PAUSE, T_CONTROLS, T_CLASSIC, T_MODERN, T_MOVEMENT, T_ORIGINAL, T_STRAFING, T_RAC3, T_FADES, T_FAST, T_FADES_ORIGINAL, T_SOUND_51, T_SOUND_71, T_BUY_ALL, T_OFF, T_ON, T_NO_ZOOM, T_VIBRATION, T_LOW, T_HIGH, T_TRIGGERS, T_SKIP_SCENES, T_ALWAYS, T_CUT_CONTENT, T_CORRECTED_TEXTS, T_FIXES102, T_GAMEPLAY102, T_MIX, T_MIX_HP, T_MIX_HELP, T_COUNT };
+enum : int32_t { T_ADVANCED, T_HELP, T_QUICK_SELECT, T_NORMAL, T_PAUSE, T_CONTROLS, T_CLASSIC, T_MODERN, T_MOVEMENT, T_ORIGINAL, T_STRAFING, T_RAC3, T_FADES, T_FAST, T_FADES_ORIGINAL, T_SOUND_51, T_SOUND_71, T_BUY_ALL, T_OFF, T_ON, T_NO_ZOOM, T_VIBRATION, T_LOW, T_HIGH, T_TRIGGERS, T_SKIP_SCENES, T_ALWAYS, T_CUT_CONTENT, T_CORRECTED_TEXTS, T_FIXES102, T_GAMEPLAY102, T_MIX, T_MIX_HP, T_MIX_HELP, T_QS_RINGS, T_ONE, T_THREE, T_COUNT };
 // per language (0x15ed88: 0 English, 2 French, 3 German, 4 Spanish, 5 Italian; French in English
 // for now, the font's accented letters not looked at yet)
 constexpr const char* TEXTS[6][T_COUNT] = {
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Cut Content", "Corrected Texts", "1.02 Fixes", "1.02 Gameplay", "Mix", "High Precision", "16-bit like the PS2, or float: no clipping"},
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Cut Content", "Corrected Texts", "1.02 Fixes", "1.02 Gameplay", "Mix", "High Precision", "16-bit like the PS2, or float: no clipping"},
-    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Cut Content", "Corrected Texts", "1.02 Fixes", "1.02 Gameplay", "Mix", "High Precision", "16-bit like the PS2, or float: no clipping"},
-    {"Erweitert", "Extra-Einstellungen der PC-Version", "Schnellwahl", "Normal", "Pause", "Zielen", "Original", "Modern", "Bewegung", "Original", "Strafing", "RAC 3", "Blenden", "Schnell", "Original", "5.1", "7.1", "Alle Munition", "Aus", "An", "Modern, ohne Zoom", "Vibration", "Schwach", "Stark", "Adaptive Trigger", "Szenen ueberspringen", "Immer", "Entfernte Inhalte", "Korrigierte Texte", "Korrekturen 1.02", "Spielablauf 1.02", "Mischung", "Hohe Praezision", "16 Bit wie PS2, oder Float ohne Clipping"},
-    {"Avanzado", "Ajustes extra de la version PC", "Seleccion rapida", "Normal", "Pausa", "Apuntado", "Original", "Moderno", "Movimiento", "Original", "Strafing", "RAC 3", "Fundidos", "Rapidos", "Originales", "5.1", "7.1", "Toda la municion", "No", "Si", "Moderno, sin zoom", "Vibracion", "Baja", "Alta", "Gatillos adaptativos", "Saltar escenas", "Siempre", "Contenido eliminado", "Textos corregidos", "Correcciones 1.02", "Jugabilidad 1.02", "Mezcla", "Alta precision", "16 bits como la PS2, o float: sin saturar"},
-    {"Avanzate", "Impostazioni extra della versione PC", "Scelta rapida", "Normale", "Pausa", "Mira", "Originale", "Moderna", "Movimento", "Originale", "Strafing", "RAC 3", "Dissolvenze", "Rapide", "Originali", "5.1", "7.1", "Tutte le munizioni", "No", "Si", "Moderna, senza zoom", "Vibrazione", "Bassa", "Alta", "Grilletti adattivi", "Salta filmati", "Sempre", "Contenuti tagliati", "Testi corretti", "Correzioni 1.02", "Giocabilita 1.02", "Mix", "Alta precisione", "16 bit come la PS2, o float: senza clipping"},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Cut Content", "Corrected Texts", "1.02 Fixes", "1.02 Gameplay", "Mix", "High Precision", "16-bit like the PS2, or float: no clipping", "Quick Select Rings", "1", "3"},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Cut Content", "Corrected Texts", "1.02 Fixes", "1.02 Gameplay", "Mix", "High Precision", "16-bit like the PS2, or float: no clipping", "Quick Select Rings", "1", "3"},
+    {"Advanced", "Extra settings of the PC version", "Quick Select", "Normal", "Pause", "Aiming", "Original", "Modern", "Movement", "Original", "Strafing", "RAC 3", "Fades", "Fast", "Original", "5.1", "7.1", "Buy All Ammo", "Off", "On", "Modern, No Zoom", "Vibration", "Low", "High", "Adaptive Triggers", "Skip Cutscenes", "Always", "Cut Content", "Corrected Texts", "1.02 Fixes", "1.02 Gameplay", "Mix", "High Precision", "16-bit like the PS2, or float: no clipping", "Quick Select Rings", "1", "3"},
+    {"Erweitert", "Extra-Einstellungen der PC-Version", "Schnellwahl", "Normal", "Pause", "Zielen", "Original", "Modern", "Bewegung", "Original", "Strafing", "RAC 3", "Blenden", "Schnell", "Original", "5.1", "7.1", "Alle Munition", "Aus", "An", "Modern, ohne Zoom", "Vibration", "Schwach", "Stark", "Adaptive Trigger", "Szenen ueberspringen", "Immer", "Entfernte Inhalte", "Korrigierte Texte", "Korrekturen 1.02", "Spielablauf 1.02", "Mischung", "Hohe Praezision", "16 Bit wie PS2, oder Float ohne Clipping", "Schnellwahl-Ringe", "1", "3"},
+    {"Avanzado", "Ajustes extra de la version PC", "Seleccion rapida", "Normal", "Pausa", "Apuntado", "Original", "Moderno", "Movimiento", "Original", "Strafing", "RAC 3", "Fundidos", "Rapidos", "Originales", "5.1", "7.1", "Toda la municion", "No", "Si", "Moderno, sin zoom", "Vibracion", "Baja", "Alta", "Gatillos adaptativos", "Saltar escenas", "Siempre", "Contenido eliminado", "Textos corregidos", "Correcciones 1.02", "Jugabilidad 1.02", "Mezcla", "Alta precision", "16 bits como la PS2, o float: sin saturar", "Anillos de seleccion", "1", "3"},
+    {"Avanzate", "Impostazioni extra della versione PC", "Scelta rapida", "Normale", "Pausa", "Mira", "Originale", "Moderna", "Movimento", "Originale", "Strafing", "RAC 3", "Dissolvenze", "Rapide", "Originali", "5.1", "7.1", "Tutte le munizioni", "No", "Si", "Moderna, senza zoom", "Vibrazione", "Bassa", "Alta", "Grilletti adattivi", "Salta filmati", "Sempre", "Contenuti tagliati", "Testi corretti", "Correzioni 1.02", "Giocabilita 1.02", "Mix", "Alta precisione", "16 bit come la PS2, o float: senza clipping", "Anelli scelta rapida", "1", "3"},
 };
 constexpr uint32_t STRING_SIZE = 0x30;
 static_assert(6 * T_COUNT * STRING_SIZE <= 0x3000, "the Advanced page's texts fit in 0xfb000..0xfe000");
@@ -143,6 +151,7 @@ struct Row {
 };
 constexpr Row SETTINGS_ROWS[] = {
     {"quick_select_pause", 1, QS_PAUSE, T_QUICK_SELECT, {T_NORMAL, T_PAUSE, -1, -1}},
+    {"quick_select_rings", 16, QS_RINGS, T_QS_RINGS, {T_ONE, T_THREE, -1, -1}},  // (src/host/quick_rings.h)
     {"controls", 2, CONTROLS, T_CONTROLS, {T_CLASSIC, T_MODERN, T_NO_ZOOM, -1}},
     {"movement", 3, MOVEMENT, T_MOVEMENT, {T_ORIGINAL, T_STRAFING, T_RAC3, -1}},
     {"fades", 4, FADES, T_FADES, {T_FAST, T_FADES_ORIGINAL, -1, -1}},
@@ -218,7 +227,7 @@ std::filesystem::path prefs_path() {
 
 int g_audio_channels = 0;   // Options > Sound's 5.1 / 7.1 (6 / 8), else 2; 0: not read yet (advanced_audio_channels)
 int g_audio_mix = -1;       // Options > Sound's Mix: 1 High Precision, 0 Original; -1: not read yet (audio_mix_pref)
-std::string g_update_skip;  // the update "Skip Version" chose (update_notice.h): a release's tag, or main's commit
+std::string g_update_skip;  // the update "Skip Version" chose (update_notice.h): a release's tag, or the dev branch's commit
 
 // orig: (none) — enhancement: a preferences file's "name value" lines, each given to `line`; false when none
 template <typename F>
@@ -253,6 +262,7 @@ bool prefs_read(const std::filesystem::path& path) {
         if (std::strcmp(name, "audio_channels") == 0) return;  // (advanced_audio_channels)
         if (std::strcmp(name, "audio_mix") == 0) return;       // (audio_mix_pref)
         if (language_pref_read(name, value)) return;          // (the Language page's: voice_language, subtitles)
+        if (bug_fixes_pref_read(name, value)) return;         // (the Bug Fixes page's: bugfix_*)
         char* end = nullptr;
         const unsigned long v = std::strtoul(value, &end, 10);
         if (end == value || *end != 0) return;
@@ -293,6 +303,7 @@ void settings_save() {
     std::string text;
     for (const Row& r : SETTINGS_ROWS) text += std::string(r.key) + " " + std::to_string(lbu(r.byte)) + "\n";
     text += language_prefs_text();  // (the Language page's)
+    text += bug_fixes_prefs_text();  // (the Bug Fixes page's)
     text += "update_check_off " + std::to_string(lbu(UPDATE_OFF)) + "\n";
     text += "update_channel " + std::to_string(lbu(UPDATE_DEV)) + "\n";
     if (!g_update_skip.empty()) text += "update_skip " + g_update_skip + "\n";
@@ -348,6 +359,9 @@ std::vector<uint8_t> save_file_make() {
         d.push_back(static_cast<uint8_t>(g_game_mode));
         ++count;
     }
+    count += level_slots_pc_items(d);  // the level mods' progress (src/host/level_slots.h): only when there is some
+    count += mod_code_pc_items(d);     // the mods' code's own (src/host/mod_code.h): only when there is some
+    count += quick_rings_pc_items(d);  // quick select rings 2 and 3 (src/host/quick_rings.h): only when there is some
     d[6] = static_cast<uint8_t>(count);
     d[7] = static_cast<uint8_t>(count >> 8);
     return d;
@@ -364,6 +378,11 @@ bool save_file_apply(const std::vector<uint8_t>& d) {
         const uint32_t id = u16(at), size = u16(at + 2);
         at += 4;
         if (at + size > d.size()) break;
+        if (level_slots_pc_item(id, d.data() + at, size) || mod_code_pc_item(id, d.data() + at, size) ||  // the mods' (level_slots.h, mod_code.h)
+            quick_rings_pc_item(id, d.data() + at, size)) {  // quick select rings 2 and 3 (quick_rings.h)
+            at += size;
+            continue;
+        }
         for (const Row& r : SETTINGS_ROWS)
             if (r.in_saves && r.id == id && size >= 1 && d[at] < row_values(r)) sb(r.byte, d[at]);
         // the mode: an older save's Experimental (3: Modern plus Graphics Enhanced, High) is Modern, its gameplay rows
@@ -428,6 +447,7 @@ void advanced_menu_install() {
     const uint32_t controls = controls_page_install(front ? static_cast<uint32_t>(MAIN_OPTIONS_PAGE) : static_cast<uint32_t>(OPTIONS_PAGE));
     const uint32_t language = language_page_install(front ? static_cast<uint32_t>(MAIN_OPTIONS_PAGE) : static_cast<uint32_t>(OPTIONS_PAGE), front);
     if (front) mods_page_install(MAIN_OPTIONS_PAGE);  // (the main menu's alone; none without mods: mods_menu.h)
+    if (front) bug_fixes_page_install(MAIN_OPTIONS_PAGE);  // (the main menu's alone: global settings, bug_fixes.h)
     sw(PAGE + 0x40, ROWS_WIDGET);
     for (uint32_t i = 0; i < 14; ++i) {
         const uint32_t slot = PAGE + 0x44 + i * 4;
@@ -535,6 +555,10 @@ uint32_t advanced_text(int32_t id) {
     if (const uint32_t s = update_notice_text(id)) return s;
     if (const uint32_t s = language_text(id)) return s;
     if (const uint32_t s = mods_text(id)) return s;
+    if (const uint32_t s = bug_fixes_text(id)) return s;
+    if (const uint32_t s = exit_menu_text(id)) return s;
+    if (const uint32_t s = level_slots_text(id)) return s;
+    if (const uint32_t s = quick_rings_text(id)) return s;
     if (id < TEXT_FIRST || id >= TEXT_FIRST + T_COUNT) return 0;
     uint32_t lang = lwu(0x0015ed88);
     if (lang >= 6) lang = 0;
@@ -631,13 +655,26 @@ void advanced_save_written(int32_t slot) {
 void advanced_save_loaded(int32_t slot) {
     settings_load();
     language_game_state_read();  // (the Subtitles choice over the save's)
+    level_slots_pc_reset();      // (the level mods' items of the save before: gone)
+    mod_code_pc_reset();
+    quick_rings_pc_reset();      // (rings 2 and 3 of the save before: gone; a save without them has them empty)
     std::vector<uint8_t> d;
-    if (!mc_card_file_read(save_file_path(slot), d)) return;  // an older save: the settings kept
+    if (!mc_card_file_read(save_file_path(slot), d)) {  // an older save: the settings kept
+        if (g_mod_code_any) mod_code_save_loaded();  // (the plugins: no bytes of theirs)
+        return;
+    }
     if (save_file_apply(d)) {
+        level_slots_save_loaded();  // (a save made on a level mod's level: back there, or the planet prompt)
+        if (g_mod_code_any) mod_code_save_loaded();  // (the plugins with no bytes in it: theirs reset)
         if (lbu(CONTROLS) != 0 && lbu(MOVEMENT) == 0) sb(MOVEMENT, 1);  // (Aiming = Modern needs the strafe)
         std::printf("[advanced] settings loaded with save %d (mode %s)\n", slot,
                     g_game_mode == GAME_MODE_ORIGINAL ? "Original" : g_game_mode == GAME_MODE_MODERN ? "Modern" : "unknown");
     }
+}
+
+// orig: (none) — enhancement (src/host/level_slots.h)
+bool advanced_save_file_read(int32_t slot, std::vector<uint8_t>& out) {
+    return mc_card_file_read(save_file_path(slot), out);
 }
 
 namespace {
@@ -661,6 +698,13 @@ void advanced_frame() {
             settings_save();
             break;
         }
+}
+
+// orig: (none) — enhancement (src/host/quick_rings.h): Quick Select Rings, a row of the pause menu's Advanced page
+int quick_rings_count() {
+    if (g_advanced_disabled) return 1;
+    settings_load();
+    return lbu(QS_RINGS) != 0 ? 3 : 1;
 }
 
 // orig: (none) — enhancement (advanced.h)
@@ -776,11 +820,21 @@ float rac3_tilt() {
 // (jump_update, 0x217970 block 0x21ead0: 7, 9..0x12, 0x1c, 0x3c, 0x49, 0x4c, 0x5e, 0x69)
 bool modern_aim() { return lbu(CONTROLS) != 0 && lbu(MOVEMENT) != 0; }  // orig: (none) — Aiming = Modern (needs RAC 3)
 
-// orig: (none) — enhancement: the states the strafe works in
+// orig: (none) — enhancement: the states the strafe works in (#129: also Clank's and Giant Clank's stand and walk, the 0x43
+// set's 0x43 / 0x44 / 0x50 and the 0x5a set's 0x5a / 0x5b; their jumps 0x49 / 0x4c / 0x5e are the jump family's)
 bool aim_state(int32_t st) {
     if (st == 0 || st == 2 || st == 3 || st == 0x73) return true;
+    if (st == 0x43 || st == 0x44 || st == 0x50 || st == 0x5a || st == 0x5b) return true;
     return st == 7 || (st >= 9 && st <= 0x12) || st == 0x1c || st == 0x3c || st == 0x49 || st == 0x4c || st == 0x5e || st == 0x69;
 }
+
+// orig: (none) — enhancement: the hero on a magnetic surface with the Magneboots (#136): the ground's surface type 2 with
+// the boots on (+0x308, hero_surface_update 0x20b960), or a ground mode of its own (+0x20b3: 1 the magnetic walk along the
+// surface's normal, set in the walk 0x3f and its stance / jump 0x70 / 0x71 too, sub_00233440; 2 the down axis toward a
+// point). There the hero's frame is the surface's: his heading +0x98 is in it and "horizontal" is along it, so the modern
+// controls' rules made for the world's up (the aim's heading and pitch held on the camera's, R&C 3's run speed, turn and
+// stop on the world's x / y) are not applied: the original's own rules hold there
+bool on_magnet() { return lbu(HERO + 0x20b3) != 0 || lh(HERO + 0x308) != 0; }
 }  // namespace
 
 // orig: (none) — enhancement (advanced.h)
@@ -790,10 +844,14 @@ uint32_t advanced_pad_remap(uint32_t pad, uint32_t held) {
     g_aim_button = false;
     // only with Movement = RAC 3, in gameplay (circle confirms Quit Game in the menus)
     if (lbu(MOVEMENT) == 0 || lw(OV(0x0015f5c4)) != 0) return held;
-    // and not as Clank (the hero's form +0x20a4: 1 Clank, 2 Giant Clank; #129): he has no weapon to aim, his walk and
-    // stand states (the 0x43 set) have no strafe, and his L2 is the original's (state 0x43: the crouch 1, as L1); the
-    // aim and the strafe used to work only in his jump 0x49, so he plays as the original
-    if (lbu(HERO + 0x20a4) != 0) return held;
+    // as Ratchet, Clank and Giant Clank (the hero's form +0x20a4: 1 / 2; #129: their stand and walk are aim_state's too,
+    // L1 keeps their first-person view 1, R2 is Giant Clank's missiles); not in the Hologuise (3), whose states have no strafe
+    if (2 < lbu(HERO + 0x20a4)) return held;
+    // on the hoverboard (its states 0x6b..0x6f: Rilgar's and Kalebo III's own code) L2 and R2 stay the game's: they are two
+    // of the board's four tricks (its trick code reads R1, L2, R2 and L1 of the pad: L5:0x253850), and the skill point
+    // "Tricky" (the Twisty McMarx, 0x13d40f) needs all four in one jump (#28); the board has no strafe or aim
+    const int32_t st = lw(HERO + 0x2084);
+    if (0x6b <= st && st <= 0x6f) return held;
     if (modern_aim()) {                     // Aiming = Modern: L2 aims (strafing), R2 fires
         g_aim_button = (held & 0x1u) != 0;
         if ((held & 0x2u) != 0) held |= 0x20u;  // R2: circle
@@ -808,7 +866,9 @@ bool advanced_strafing() {
     const int32_t st = lw(HERO + 0x2084);
     // (with the modern aim also the gloves' standing throw 0x23: the aim held through it, so the
     // gloves' camera aim and its pitch are those of the reticle when the throw leaves the hand)
-    return g_aim_button && lbu(MOVEMENT) != 0 && lw(OV(0x0015f5c4)) == 0 && (aim_state(st) || (st == 0x23 && modern_aim()));
+    // (not on a magnetic surface, #136: there L2 does nothing, as the original's crouch walk turn does not either)
+    return g_aim_button && lbu(MOVEMENT) != 0 && lw(OV(0x0015f5c4)) == 0 && (aim_state(st) || (st == 0x23 && modern_aim())) &&
+           !on_magnet();
 }
 
 // orig: (none) — enhancement (advanced.h)
@@ -851,6 +911,14 @@ void advanced_move_speed() {
         }
     }
     if (advanced_strafing()) swc1(HERO + 0x190, lwc1(HERO + 0x190) * AIM_SPEED);
+}
+
+// orig: (none) — enhancement (advanced.h)
+float advanced_strafe_accel(float up) {
+    if (lbu(HERO + 0x20a4) == 0 || lbu(HERO + 0x20a4) > 2 || !advanced_strafing()) return up;
+    const int32_t st = lw(HERO + 0x2084);
+    if (st != 0x44 && st != 0x50 && st != 0x5b) return up;
+    return lwc1(0x0015ed70) * 7.5f;  // (the walks' own step, fs70 x 7.5 x their turn cut: wade_update, clank_walk_update)
 }
 
 // orig: (none) — enhancement (advanced.h)
@@ -1100,7 +1168,7 @@ void advanced_aim_after_hero() {
     backpedal_show();
     // the reticle at the screen's centre while aiming (the Blaster, item 0xf, draws its own: its
     // first-person reticle, blaster.cpp), for every item in hand but the wrench (8)
-    if (advanced_aiming()) {
+    if (advanced_aiming() && lbu(HERO + 0x20a4) == 0) {  // (not as Clank: no weapon of his aims at it)
         const uint32_t item = lwu(HERO + 0x10b8), m = lwu(HERO + 0x2080);
         if (item != 0xf && item != 8 && m != 0 && lbu(HERO + 0x20ac) == 0) cam_effect_add(m, 0xff0f0fffu, nullptr, 0x26, -1, 1.0f, 0.0f, 90.0f);
     }
@@ -1234,17 +1302,18 @@ void item_cycle(int32_t dir) {
     if (!aim_state(st) || lbu(HERO + 0x10ac) == 2 || lw(OV(0x0015f594)) != 0 || (mode != 0 && mode != 3)) return;
     if (!(lbu(HERO + 0x20ac) == 0 || lbu(HERO + 0x20a4) == 1 || lh(HERO + 0x1b2) != 0)) return;
     if (!(lbu(HERO + 0x20a7) == 0 || lbu(HERO + 0x20a4) == 1 || lh(HERO + 0x1b2) != 0)) return;
-    // the ring closed: its eight items, the quick-select list 0x141ea0 (what quick_select_start puts in the slots)
-    constexpr uint32_t LIST = 0x00141ea0;
+    // the ring closed: its eight items, the quick-select list 0x141ea0 (what quick_select_start puts in the slots); with
+    // three rings, the ring it opens on (src/host/quick_rings.h)
+    const int ring = quick_rings_shown();
     constexpr int32_t n = 8;
     const uint32_t now = lwu(HERO + 0x10b8);
     int32_t base = dir > 0 ? -1 : n;
     for (int32_t i = 0; i < n; ++i)
-        if (lwu(LIST + static_cast<uint32_t>(i) * 4) == now) base = i;
+        if (quick_rings_item(ring, i) == now) base = i;
     for (int32_t k = 1; k <= n; ++k) {
         const int32_t t = ((base + dir * k) % n + n) % n;
-        const uint32_t item = lwu(LIST + static_cast<uint32_t>(t) * 4);
-        if (item == 0 || item == now) continue;
+        const uint32_t item = quick_rings_item(ring, t);
+        if (item == 0 || item == now || !mod_code_weapon_allowed(item)) continue;
         if (item == 0x18) sb(HERO + 0x1ff5, 1);
         else sw(HERO + 0x20b8, item);
         const uint32_t row = item * 0x18 + OV(0x001c40b0);
@@ -1320,7 +1389,8 @@ void advanced_mouse_camera(uint32_t cam, float& b) {
 // untouched with Movement = Original.
 
 // orig: (none) — enhancement (advanced.h)
-bool advanced_rac3_movement() { return lbu(MOVEMENT) == 2; }
+// (the original's rules on a magnetic surface, #136: R&C 3's speed, turn, stop and jump rules are for the world's up)
+bool advanced_rac3_movement() { return lbu(MOVEMENT) == 2 && !on_magnet(); }
 
 // orig: (none) — enhancement (advanced.h)
 void advanced_rac3_along_stick() {
@@ -1434,7 +1504,7 @@ void combo_table_sync() {
         for (uint32_t i = 0; ours && i < COMBO_COUNT; ++i) ours = lw(table + COMBO_RAC3[i].offset) == COMBO_RAC3[i].value;
         if (!ours) g_combo_table = 0;
     }
-    const bool want = advanced_rac3_movement();
+    const bool want = lbu(MOVEMENT) == 2;  // (the setting: the table kept patched on a magnetic surface too)
     if (want && g_combo_table == 0) {
         for (uint32_t i = 0; i < COMBO_COUNT; ++i) {
             g_combo_orig[i] = lw(table + COMBO_RAC3[i].offset);
@@ -1634,6 +1704,10 @@ void advanced_setting_changed(uint32_t byte) {
     }
     if (language_setting_changed(byte)) return;  // (a Language row: saved there)
     if (mods_setting_changed(byte)) return;      // (a Mods row: saved there, mods.txt)
+    if (bug_fixes_setting_changed(byte)) {       // (a Bug Fixes row: saved with ours)
+        if (!g_advanced_disabled && g_loaded) settings_save();
+        return;
+    }
     // Aiming = Modern needs a strafe (Strafing or RAC 3): turning it on when Movement is Original
     // turns Strafing on; turning Movement back to Original turns Aiming off
     if (byte == CONTROLS && lbu(CONTROLS) != 0 && lbu(MOVEMENT) == 0) sb(MOVEMENT, 1);
@@ -1779,6 +1853,7 @@ void advanced_apply_mode(uint32_t mode) {
     g_game_mode = mode == GAME_MODE_MODERN ? GAME_MODE_MODERN : GAME_MODE_ORIGINAL;
     const uint32_t v = mode == GAME_MODE_MODERN ? 1u : 0u;
     sb(QS_PAUSE, v);
+    sb(QS_RINGS, v);                  // (Modern: three quick select rings)
     sb(CONTROLS, v);
     sb(MOVEMENT, v != 0 ? 2u : 0u);
     sb(VENDOR_ALL, v);
@@ -1796,6 +1871,7 @@ bool advanced_settings_dpad(uint32_t w, uint32_t e) {
     if (update_menu_settings_dpad(w, e, pressed)) return true;
     if (language_settings_dpad(w, e, pressed)) return true;
     if (mods_settings_dpad(w, e, pressed)) return true;
+    if (bug_fixes_settings_dpad(w, e, pressed)) return true;
     if (w != ROWS_WIDGET || (pressed & 0xa000u) == 0) return false;
     // our Advanced rows: left / right step the value back / forward (the widget's cross steps it forward)
     const uint32_t b = lwu(e + 4);

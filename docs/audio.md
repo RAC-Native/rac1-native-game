@@ -174,8 +174,17 @@ before, sample for sample):
   of its direction: front left / right at 30 degrees, in 5.1 the surrounds at 110, in 7.1 the sides at 90 and the
   backs at 150. The centre is left to the dialogue. A sound within a unit of the camera has a pan near 0 (the game
   scales it down), so it sits between the front left and right, as in stereo.
-- **The other sounds** (the menus', any sound played with pan 0 and never moved), **the music**
-  and **the movies' sound** stay on the front left and right, exactly their stereo mix.
+- **The world's sounds the game plays without a pan** are placed too. A handful of level classes start a sound at a
+  world position, attenuated by its distance, but with the slot's "no pan" flag (bit 0 of the slot's flags, bit 0x10
+  clear, not on the hero's moby): Kalebo III's class 471, Rilgar's 855, Kerwan's 574, Quartu's and Drek's fleet's 655.
+  The stereo mix keeps their pan 0, as the original; in 5.1 / 7.1 `sound_frame` also computes `sound_pan` for them
+  (it only reads memory) and hands it to the IOP's host side outside the game's commands (`snd989_host_place`;
+  the start's with the play command, `snd989_host_place_next`), so they move around the listener as the others do.
+- **The ambience beds** (a level emitter of type 4 or 5, slot flags 0x15: a sound the level moves to the camera each
+  frame, as Batalia's, Hoven's or Novalis's ambience) have no direction: in 5.1 / 7.1 they are spread over all the
+  speakers at equal power, their left on the left ones and their right on the right ones, as the reverb below.
+- **The other sounds** (the menus' and the HUD's, the help jingle, any other sound played with pan 0 and never moved),
+  **the music** and **the movies' sound** stay on the front left and right, exactly their stereo mix.
 - **The dialogue** (the streams of volume group 2) is on the centre speaker. A dialogue line with a pan would be
   spread from the centre towards the front left / right (equal power); the game plays every line with pan 0, in the
   levels and in the cutscenes alike (`dialog_start` and the cutscene lines of `music_streams.cpp`, flags 0x21, never a

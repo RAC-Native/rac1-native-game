@@ -46,11 +46,12 @@ and Daxter:
    original and reads and writes the same state at the same addresses in a model of the EE's
    memory (see [Architecture](architecture.md)).
 3. The program is compiled with a normal host compiler and runs natively. The hardware parts the
-   game talks to (EE memory, timers, the IOP's sound driver, the GS for 2D) are provided by a small
-   hardware layer, `runtime/`.
-4. The 3D is not drawn through an emulated GS. A native renderer, the MRP, draws what the game's own
-   render code decided to draw, with OpenGL, or with Vulkan as an option (see
-   [Rendering](rendering.md) and [Vulkan](vulkan.md)).
+   game talks to (EE memory, timers, the IOP's sound driver, the GS's texture memory) are provided by a
+   small hardware layer, `runtime/`.
+4. Nothing is drawn through an emulated GS. The game's render code still produces its draw commands;
+   a native renderer, the MRP, interprets them and draws them with Vulkan or OpenGL (Metal on macOS),
+   keeping the game's own lighting and effects (see [Rendering](rendering.md#what-the-mrp-is-and-what-it-is-not)
+   and [Vulkan](vulkan.md)).
 
 It is not an emulator: no MIPS code runs while you play. Everything that runs is C++ compiled for
 your machine. (The repository does contain an R5900 interpreter, `runtime/ee/ee_interpreter.cpp`,

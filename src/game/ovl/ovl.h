@@ -20,6 +20,7 @@ using MobyFn = void (*)(uint32_t moby);
 void ovl_register_moby_fn(uint32_t addr, MobyFn fn);     // port table for `jalr` targets
 void ovl_call_moby_fn(uint32_t fn, uint32_t moby);       // `jalr fn` with a0 = moby
 bool ovl_moby_fn_ported(uint32_t addr);
+bool ovl_level_moby_fn_has(int level, uint32_t addr);  // (host) level-only function `addr` of `level` has its own port
 MobyFn ovl_moby_fn_resolve(uint32_t addr);               // (host) the port `jalr addr` calls (nullptr: none)
 
 // ---- 0x001exxxx -------------------------------------------------------------
@@ -328,6 +329,9 @@ void camera_masks();                                                         // 
 void camera_timer_tick();                                                    // orig: 0x001ed060
 void camera_update();                                                        // orig: 0x001ed0a8
 int32_t camera_type_row(int32_t type);                                       // orig: 0x001ed230
+// enhancement (the open engine's hero contexts, src/game/enhance/hero_modes.cpp): the camera type table the camera system reads
+// instead of the overlay's 0x1ea880 (a session's larger copy, the hero context's level's own types added); 0 the overlay's
+extern uint32_t g_camera_types_table;
 void camera_select_first();                                                  // orig: 0x001ed280
 void camera_init();                                                          // orig: 0x001ed358
 void camera_fog(uint32_t pos);                                               // orig: 0x001ee6b8

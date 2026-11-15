@@ -8,6 +8,8 @@
 #include <utility>
 #include <vector>
 #include <game/boot/front_end.h>
+#include <host/mod_code.h>
+#include <game/enhance/session_runtime.h>
 #include <game/ovl/credits_tr.h>
 #include <game/ovl/game_skips.h>
 #include <game/ovl/screen_flash.h>
@@ -16,6 +18,7 @@
 #include <game/input/pad_build.h>
 #include <game/math/vecmath.h>
 #include <game/lib/snd989.h>
+#include <game/ovl/moby_joints.h>
 #include <game/ovl/moby_pass.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/music_streams.h>
@@ -26,6 +29,7 @@
 #include <game/ovl/movie_mode.h>
 #include <game/render/mrp_fx.h>
 #include <game/render/mrp_lod.h>
+#include <game/render/mrp_scene.h>
 #include <game/render/mrp_world_scene.h>
 #include <game/render/mrp_world_static.h>
 #include <game/render/mrp_world_sky.inc>
@@ -40,12 +44,14 @@
 #include <game/ovl/particles_draw.h>
 #include <game/ovl/shadows.h>
 #include <game/ovl/sky_levels.h>
+#include <game/ovl/world_chained.h>
 #include <game/ovl/world_cull.h>
 #include <game/ovl/world_lighting.h>
 #include <game/ovl/sparkles_draw.h>
 #include <game/ovl/quad_draw.h>
 #include <game/ovl/screen_effects.h>
 #include <game/ovl/vendor_tr.h>
+#include <host/level_slots.h>
 #include <game/enhance/vendor_buy_all.h>
 #include <game/port_stubs.h>
 #include <runtime/kernel/bootstrap.h>
@@ -140,7 +146,7 @@ void start_mode_select() {
     const int32_t lvl = lw(0x0015ed84);
     if (lvl == 1 && lbu(0x0013dd43) == 0) {
         sw(OV(0x0015f5c4), 0);
-    } else if (lvl == 0 || (lvl == 0xe && lbu(0x0013d3f0) == 0) || 0x13 < lvl) {
+    } else if ((lvl == 0 && !level_slots_planet_arrival()) || (lvl == 0xe && lbu(0x0013d3f0) == 0) || 0x13 < lvl) {  // (enhancement: a level mod's level lands)
         sw(OV(0x0015f5c4), 0);
     } else {
         sh(0x0013e054, 0xffff);
@@ -504,6 +510,8 @@ void world_pass(void (*pass)(), int kind) {
     static double wp_ms[4] = {};
     static int wp_n = 0;
     const auto wp_t0 = wp_time ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point();
+    // (the pass's notes of what it chains, for the MRP's chained world: world_chained.h, RAC1_PERF_WORLD_CHAINED)
+    if (g_world_mrp && mrpw::chained_world_mode() != 0) world_chained_begin(kind, cur);
     if (kind == 0 && tfrag_pass_off()) {
     } else if (world_pass_skipped(kind)) {
         // the pass with its culling off (its render enable 0 while it runs: EN + 0x10 / 0x18 / 0x20), then put back
@@ -520,6 +528,7 @@ void world_pass(void (*pass)(), int kind) {
         pass();
 #endif
     }
+    world_chained_end();
     if (wp_time) {
         wp_ms[kind >= 0 ? kind : 3] += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - wp_t0).count();
         if (kind == 0 && ++wp_n == 60) {
@@ -717,15 +726,23 @@ void render_frame() {
 #if defined(__WIIU__)
             // ((2026-10-29) no shadow run on the Wii U: the real pass below is run with the LOD slider and the widened frustum itself
             // (mrp_lod_moby_widen_real) - the shadow run drew the same mobys a second time, ~6.5 ms a host frame on Veldin's game thread)
-#else
-            mrp_lod_moby_shadow(moby_pass);  // (the MRP's LOD slider / widened view, the memory put back)
-#endif
             RAC1_PROF_ZONE(kGameMobyPass);
-#if defined(__WIIU__)
             // (the Wii U's widescreen, render_view.h: the real pass's frustum widened - no shadow run -, unless the mobys are kept 4:3)
             mrp_lod_moby_widen_real(moby_pass, g_view_draw_widen_mobys ? g_view_draw_widen : 1.0f);
 #else
-            moby_pass();
+            // (host: the MRP's LOD slider / widened view runs the pass again as a shadow, the memory put back: after the real
+            // pass, whose poses the shadow then finds in the pose memo - RAC1_PERF_POSE_ORDER=0: before it, every pose of its own)
+            // (RAC1_PERF_MOBY_EXTRAS: after it too, leaving out the mobys the real pass drew the same: those it added to the scene)
+            const bool after = mrp_lod_moby_shadow_after();
+            if (!after) mrp_lod_moby_shadow(moby_pass);
+            const size_t real_first = mrp_scene_moby_count();
+            {
+                RAC1_PROF_ZONE(kGameMobyPass);
+                g_moby_pose_memo.fill = mrp_lod_moby_pose_fill();
+                moby_pass();
+                g_moby_pose_memo.fill = false;
+            }
+            if (after) mrp_lod_moby_shadow(moby_pass, real_first, mrp_scene_moby_count() - real_first);
 #endif
         }
         else TODO_PORT(0x00250038, "mobys (VU1): the host's model drawer instead")();
@@ -857,12 +874,12 @@ void overlay_entry_start() {
     TODO_PORT(0x00200f18, "kernel: display packet send")();
     music_start(lh(0x00151708), 1, 0x400);
     const int32_t lvl = lw(0x0015ed84);
-    if ((lvl == 1 && lbu(0x0013dd43) == 0) || (lvl == 0 && lbu(0x0013d390) != 0)) {
+    if ((lvl == 1 && lbu(0x0013dd43) == 0) || (lvl == 0 && lbu(0x0013d390) != 0 && !level_slots_planet_arrival())) {  // (enhancement: as a planet)
         music_volumes_default();
     } else {
         sub_00265828(0);
     }
-    level_visit_stats();
+    if (!level_slots_keep_base_progress()) level_visit_stats();  // (enhancement: not the base level's on a level mod's level)
     snd_hold();
 }
 
@@ -1016,13 +1033,18 @@ static bool overlay_frame_end(int32_t mode) {
         snd_release();
         snd_flush();
         sound_stop_all();
-        music_stop_all();
-        level_setup(0, 1);
+        const bool keep_music = mod_code_music_track_on();  // (enhancement: a plugin's music_track goes on, ABI 19)
+        if (!keep_music) music_stop_all();
+        if (g_session_rt) {
+            session_respawn();  // (enhancement: a session's soft reset, no level setup: src/game/enhance/session_runtime.h)
+        } else {
+            level_setup(0, 1);
+        }
         sw(OV(0x0015f5c4), 0);
-        music_start(lh(0x00151708), 1, 0x400);
+        if (!keep_music) music_start(lh(0x00151708), 1, 0x400);
         hud_init();
     }
-    level_time_stat();
+    if (!level_slots_keep_base_progress()) level_time_stat();  // (enhancement: not the base level's on a level mod's level)
     return lw(OV(0x0015f570)) == 0;
 }
 

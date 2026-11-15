@@ -12,6 +12,7 @@
 #include <game/ovl/particles_draw.h>
 
 #include <game/ovl/ovl_reloc.h>
+#include <game/enhance/packet_rings.h>
 #include <game/ovl/ovl_common.h>
 #include <game/render/mrp_particles.h>
 
@@ -310,6 +311,7 @@ void particles_draw() {
     for (;;) {
         const uint32_t v0 = lbu(t5n + 1);
         if (t6 == end) break;
+        if (static_cast<int32_t>(lwu(OV(0x0015f5f8)) - ring) < 0x6000) break;  // (host: a particle less when the buffer is nearly full, never a write past its end)
         const uint32_t p = t5n;
         Vf vf1 = ldv(p + 0x10);
         t6 += 2;

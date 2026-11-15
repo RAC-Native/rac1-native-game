@@ -1,0 +1,8 @@
+# A class profile (docs/open-engine.md, "Class profiles"): our knowledge of a game class's level data, ids and offsets only.
+class 11:572 Pokitaru's amoeboid (update 0x2f9998)
+pvar_size 0x2b0
+slot 0x240 area  area       # the polygon it watches (path_crossing): the same path as +0x24c on its level
+slot 0x24c area  home       # the polygon its target search reads
+# a spawn: both a square of 12 round where it starts (its areas on Pokitaru: about 22 by 21)
+default area square 12
+default home square 12

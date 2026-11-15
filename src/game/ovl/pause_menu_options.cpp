@@ -16,6 +16,10 @@
 
 namespace rac1 {
 
+// (exit_menu.cpp's, declared here: the headers of src/game are the generated code's fingerprint)
+bool exit_menu_confirm(uint32_t w);
+int32_t exit_menu_text_id(uint32_t w, bool line, int32_t id);
+
 // (enhancement, advanced.cpp) Options > Sound's output row with 5.1 / 7.1. The game's row is Mono / Stereo, its byte
 // 0x15ede8 (the game's options, in its save; 0 mono); 5.1 and 7.1 come after Stereo: the host's choice (the audio
 // device's channels, kept in the preferences), the game's byte left at Stereo, so nothing the game keeps or reads changes.
@@ -411,6 +415,7 @@ int32_t menu_quit_update(uint32_t w) {
         if (parent != 0) sw(MS + 8, parent);
         else if (lw(MS + 0x124) == 0) return -1;
     }
+    if (exit_menu_confirm(w)) return 0;  // enhancement: the main menu's Exit page (circle closes the game)
     if ((lwu(PAD + 0x1c4) & 0x20) != 0) {
         sw(0x0013d384, 0);
         sw(OV(0x0015f5c0), 0xffffffffu);
@@ -439,8 +444,8 @@ int32_t menu_quit_draw(uint32_t w) {
     sh(b + 4, 4);
     texture_block_begin(0);
     sub_002a0ba8(0x47, 0x2004b);
-    text_box_small(b, 0x80ffa888ull, sub_00203ad8(0x4f6d), -1);
-    text_centered_small(cx, bh - 0x40, 0x80ffa888ull, sub_00203ad8(0x4f3f), -1);
+    text_box_small(b, 0x80ffa888ull, sub_00203ad8(exit_menu_text_id(w, false, 0x4f6d)), -1);  // enhancement: the Exit page's texts
+    text_centered_small(cx, bh - 0x40, 0x80ffa888ull, sub_00203ad8(exit_menu_text_id(w, true, 0x4f3f)), -1);
     int32_t wd = text_width_small(sub_00203ad8(TXT(0x524b)), -1);
     const int32_t w2 = text_width_small(sub_00203ad8(TXT(0x524f)), -1);
     if (!(w2 < wd)) wd = w2;

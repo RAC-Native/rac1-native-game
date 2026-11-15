@@ -296,6 +296,14 @@ int read_settings(bool read_file = true) {
     setenv("RAC1_QUIT_ENDS", "0", 1);
     setenv("RAC1_ADVANCED", "1", 1);
     setenv("RAC1_FRAMES", "0", 1);  // (no frame limit: the headless default is 300 frames - the game ended after the intro when run.cfg was empty)
+    // the mods (docs/mods.md) as a window's run has them, not a headless one's: the Mods menu's choices kept in mods.txt (a mod with code
+    // on once its code is confirmed there, or "<folder> on-code" in it), and the code of the mods on loaded (their plugins built into
+    // the game: ports/wiiu/game/CMakeLists.txt)
+    setenv("RAC1_MODS_FILE", "mods.txt", 1);
+    setenv("RAC1_MOD_CODE", "1", 1);
+    // (a custom level's session memory - the EE memory grown, ee_memory.cpp -: allocated whole here, no pages given on first touch;
+    // 128 MB, not the PC's 256: the app has ~490 MB left on a heavy planet)
+    setenv("RAC1_SESSION_RAM_MB", "128", 1);
     if (!read_file) return 0;
     std::FILE* f = std::fopen("run.cfg", "r");
     if (f == nullptr) return 0;

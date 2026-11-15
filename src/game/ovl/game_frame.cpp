@@ -1,7 +1,10 @@
 // Ported overlay code: the gameplay frame (0x297f78) and the overlay's empty debug hooks.
 //. Callees not ported (or not yet proven with the oracle) are TODO_PORT.
 #include <game/enhance/advanced.h>
+#include <game/enhance/bug_fixes.h>
 #include <game/enhance/fixes102.h>
+#include <host/level_slots.h>
+#include <host/mod_code.h>
 #include <game/ovl/memory_card.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl_reloc.h>
@@ -61,6 +64,7 @@ bool g_draw_last_step_only = false;  // (set from RAC1_DRAW_LAST_STEP at the sta
 void gameplay_frame() {
     RAC1_PROF_ZONE(kGameLogic);  // (host: the profiler's sub-stages of the game code, nothing of the game's)
     advanced_frame();
+    level_slots_frame();  // enhancement: the planet prompt of a level mod's save (src/host/level_slots.h; nothing otherwise)
     g_world_paused = false;
     if (lw(C + 0xec) != 0) {
         const int32_t v = lw(C + 0xec) - 1;
@@ -164,10 +168,12 @@ void gameplay_frame() {
         sound_emitters_update();
         wind_update();
     }
+    if (g_mod_code_any) mod_code_frame();  // enhancement: the mods' code (src/host/mod_code.h; nothing without a plugin)
     prof_mark(OV(0x00160ff8), 3);
     advanced_aim_before_hero();  // enhancement: the modern controls' aim
     if (on(1) && !g_skip_hero) {
         RAC1_PROF_ZONE(kGameHero);
+        bug_fixes_faucet_ride();  // enhancement: Bug Fixes, fix 2 (the faucet's ride kept off its origin)
         hero_frame_update();
     }
     if (on(1)) advanced_aim_after_hero();
@@ -188,6 +194,7 @@ void gameplay_frame() {
         if (lw(C + 0x14) == 2) TODO_PORT(0x001f4490, "cutscene camera target")();
     }
     advanced_aim_after_camera();
+    if (g_mod_code_any) mod_code_camera();  // enhancement: the mods' code
     prof_mark(OV(0x00161028), 8);
     if (!g_skip_sound) sound_frame();
     prof_mark(OV(0x00161038), 6);

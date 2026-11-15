@@ -3,6 +3,7 @@
 // at the end.
 #include <game/ovl/arrival.h>
 #include <game/enhance/fixes102.h>
+#include <game/enhance/hero_modes.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl_common.h>
 #include <game/port_stubs.h>
@@ -320,6 +321,7 @@ void hero_hold_clear() {
 // count, the class's sequence `seq` (+0x24, +0x48 + seq * 4) +0x10, less 1)
 // orig: 0x002325a0
 void hero_anim_set(uint32_t seq, uint32_t frame) {
+    if (g_hero_seq_on) hero_seq_need(seq);  // enhancement: a level mod's hero class's empty slot filled first (hero_modes.h)
     const uint32_t v1 = lwu(P + 0x2080);
     sb(v1 + 0x51, frame + 1);
     if (fixes102_on(6)) {

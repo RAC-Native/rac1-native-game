@@ -7,6 +7,7 @@
 #include <game/lib/libgraph.h>
 #include <game/enhance/mods_menu.h>
 #include <game/ovl/ovl_reloc.h>
+#include <host/level_slots.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/moby_pass.h>
 #include <game/ovl/pause_menu.h>
@@ -341,8 +342,12 @@ int32_t menu_button_draw(uint32_t w) {
     sub_002a0ba8(0x42, 0x44);
     sub_002a0ba8(0x47, 0x2004b);
     texture_block_begin(0);
+    // (enhancement: a level mod's row on the ship's map: no "Play Infobot" (0x4eef), circle does nothing there)
+    const bool no_infobot = level_slots_map_row();
+    auto hidden = [no_infobot](uint32_t e) { return no_infobot && lh(e) == 0x4eef; };
     int32_t count = 0;
-    for (uint32_t p = lwu(w + 0x34); lh(p) != 0; p += 0xc) ++count;
+    for (uint32_t p = lwu(w + 0x34); lh(p) != 0; p += 0xc)
+        if (!hidden(p)) ++count;
     const uint32_t flags = lwu(w + 0x30);
     int32_t step;
     if ((flags & 0x10) != 0) step = lh0 + 3;
@@ -368,6 +373,7 @@ int32_t menu_button_draw(uint32_t w) {
         for (uint32_t off = 0; lh(lwu(w + 0x34) + off) != 0; off += 0xc, ++idx) {
             const bool sel = focused && lw(w + 0x40) == idx;
             const uint32_t e = lwu(w + 0x34) + off;
+            if (hidden(e)) continue;
             const bool active = lh(e + 2) != 0;
             uint64_t colour;
             if ((lwu(w + 0x30) & 2) != 0) colour = 0xffffffff80ffa888ull;

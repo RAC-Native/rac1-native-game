@@ -162,6 +162,7 @@ s32 Grain::snd_SFX_GRAIN_TYPE_STARTCHILDSOUND(BlockSoundHandler& handler) {
     auto child_handler = block.MakeHandler(handler.m_vm, index, vol, pan, params,
                                            handler.m_start_tick, handler.m_sound_handle);
     if (child_handler.has_value()) {
+      child_handler.value()->SetHostPlace(handler.m_host_place, handler.m_host_pan);  // rac1 (host)
       handler.m_children.emplace_front(std::move(child_handler.value()));
     }
 

@@ -1,0 +1,6 @@
+# A class profile (docs/open-engine.md, "Class profiles"): our knowledge of a game class's level data, ids and offsets only.
+class 6:1048 Blarg's serpent (update 0x2f7d78)
+pvar_size 0x220
+slot 0x1b0 area  pen        # the polygon it is kept inside (path_push_out_2d) and watches (path_crossing, point_in_polygon)
+# a spawn: its pen a square of 8 round where it starts (its pens on Blarg: about 15 by 15)
+default pen square 8

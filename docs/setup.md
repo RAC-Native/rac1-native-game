@@ -335,14 +335,14 @@ gameplay files directly. Without a data disc, nothing changes.
   It extracts the disc again only when the disc image changes (another disc, or another size), or when
   `assets/disc/` is incomplete; a new extraction first removes the old one.
   What was generated, and from which code, is recorded in `assets/setup-state.json`.
-- **`./setup.sh --update`** (`setup.cmd --update` on Windows) fetches the latest release (or `main` when
-  Main menu > Updates > Update Channel is Development), then rebuilds and regenerates only what changed;
+- **`./setup.sh --update`** (`setup.cmd --update` on Windows) fetches the latest release (or the `dev` branch,
+  where the newest changes land before `main`, when Main menu > Updates > Update Channel is Development), then rebuilds and regenerates only what changed;
   the in-game update notice's **Update Now** button runs it and restarts the game when it finishes.
   A git clone is updated with git; a zip download, or a clone where git is not installed (or cannot read
-  the clone), from the release's (or `main`'s) source zip, which replaces the source files and leaves
+  the clone), from the release's (or `dev`'s) source zip, which replaces the source files and leaves
   `assets/`, `build/`, `.git/` and files of your own alone. It asks before overwriting files you edited.
   After such an update git sees the replaced files as changes, so the next updates use the zip too, until
-  the clone is put back in step with git (`git fetch`, then `git reset --hard origin/main` or the release's tag).
+  the clone is put back in step with git (`git fetch`, then `git reset --hard origin/dev` or the release's tag).
 - **`./setup.sh --force`** regenerates the code and all the data; **`./setup.sh --force moby,world`**
   only those steps.
 - If you build with CMake yourself (`cmake -S . -B build && cmake --build build`), run `./setup.sh`
@@ -364,7 +364,7 @@ gameplay files directly. Without a data disc, nothing changes.
 | `--no-data-discs` | forget the data discs and remove their extracted files; the images found are not taken as data discs again until given with `--data-iso` |
 | `--remove-data-disc <disc>` | forget one data disc (its serial, `SCPS-15037`, or its image) and remove its files, then stop |
 | `--discs` | print the disc images found and what each one is for, then stop |
-| `--update` | fetch the latest release (or `main` on the Development channel), then rebuild what changed; on failure the previous build is kept |
+| `--update` | fetch the latest release (or the `dev` branch on the Development channel), then rebuild what changed; on failure the previous build is kept |
 | `--channel stable\|development` | with `--update`: override Main menu > Updates > Update Channel |
 | `--force [steps]` | regenerate even if up to date: everything, or the steps given (`disc,elf,overlay,code,moby,world,flight`; `disc` extracts the disc again) |
 | `-j <n>`, `--jobs <n>` | parallel jobs, for the code generation and the build |
@@ -391,6 +391,8 @@ gameplay files directly. Without a data disc, nothing changes.
 | `--status` | show what is present |
 | `--movie-tracks <pss>` | print a movie file's sound tracks (for `tools/movie_subtitles.py`) |
 | `--movie-audio <pss> --track <n> --wav <out>` | one sound track of a movie file as a 16 kHz mono WAV (for speech to text) |
+| `--pool` | make the asset pool from the game's disc (`assets/generated/pool/`: every level's moby classes, for custom-level sessions; made only when something needs it: [The open engine](open-engine.md)) |
+| `--pool-report` | the asset pool per level and in all (made first when missing) |
 
 On its own, `--setup` skips a file that exists without checking whether it is up to date; that is
 what `./setup.sh` adds. `./setup.sh` makes the boot executable and the overlay maps itself, before
@@ -597,6 +599,15 @@ name, so a copy works the same), and does the same for the other packages' linke
 `unzip.exe`, `libdeflate-gzip.exe`); it says when the folder is not on an NTFS drive. Run `setup.cmd` (or the
 launcher's Set up) again. If clang.exe is still missing after that, an antivirus may be removing it: see below. Moving
 the game's folder to an NTFS drive (the one Windows is on) avoids the copies.
+
+**Windows: "lld: error: unable to find library -lmsvcrt"** while CMake tests the C compiler (#140): a file of the
+compiler's C runtime (`libmsvcrt.a`, MSYS2's `mingw-w64-clang-x86_64-crt` package) is missing from `.toolchain`, while
+the package counts as installed (an antivirus that removed it, an update or an unpacking stopped halfway). The setup
+(`tools\windows\toolchain.ps1`) now checks the files of the runtime packages (`crt`, `headers`, `winpthreads`,
+`libc++`, `libunwind`, `compiler-rt`) with `pacman -Qk` and installs again any package that misses one: run
+`setup.cmd` (or the launcher's Set up) again. If it says the files are still missing, look in the antivirus' protection
+history, or delete the `.toolchain` folder and run the setup again. With your own MSYS2, in its CLANG64 shell:
+`pacman -S mingw-w64-clang-x86_64-crt mingw-w64-clang-x86_64-headers`.
 
 **Windows: "... rac1-native.exe is missing after the build, although the build finished"**: an
 antivirus (Windows Security too) removed the newly built program, which it does not know. Look in

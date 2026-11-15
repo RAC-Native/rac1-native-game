@@ -23,7 +23,7 @@ material tie 1057 tex 3 metal 0.5 1
 material tie 1057 tex 2 metal 0.49 1
 material tie 1141 tex 1 metal 0.41 1
 material tie 1144 tex 0 metal 0.5 1
-material tie 1058 tex 6 metal 0.35 1
+material tie 1058 tex 6 metal 0.61 1
 light 335.473 246.296 66.408  1.000 0.878 0.000  1.758 30.000 0.000 1
 emit tie 1355  -0.289 -0.041 8.867  0.850 0.920 1.000  1.000 10.604 0.000  0.00
 emissive shrub 288 tex 2  0.00 0.00
@@ -39,16 +39,15 @@ material tie 1051 tex 1 metal 0.35 1
 material tfrag 0 tex 23 metal 0.41 1
 material tfrag 0 tex 33 metal 0.35 1
 material tie 1080 tex 3 metal 0.5 1
-material moby 823 tex 0 metal 0.35 1
 material tfrag 0 tex 27 metal 0.35 1
 emissive tie 1354 tex 0  2.63 0.21
 material tfrag 0 tex 24 metal 0.35 1
 material tfrag 0 tex 25 metal 0.35 1
-emissive surface 460 tex 12782  1.86 0.00
-light 261.564 434.975 34.953  1.000 0.556 0.000  2.472 30.000 0.000 1
+material surface 460 tex 12782 lava 2.04 0.53 0
 material moby 1069 tex 0 metal 0.35 1
-light 315.517 421.415 36.211  1.000 0.556 0.000  2.472 30.000 0.000 1
+light 261.564 434.975 34.953  1.000 0.556 0.000  2.472 30.000 0.000 1
 material moby 1128 tex 0 metal 0.35 1
+light 315.517 421.415 36.211  1.000 0.556 0.000  2.472 30.000 0.000 1
 material moby 1128 tex 1 metal 0.35 1
 material moby 1128 tex 2 metal 0.35 1
 material tfrag 0 tex 26 metal 0.52 1
@@ -56,6 +55,41 @@ material moby 1129 tex 0 metal 0.35 1
 material tfrag 0 tex 54 metal 0.35 1
 emissive tfrag 0 tex 58  4.00 0.00
 material tfrag 0 tex 62 metal 0.35 1
-emit tie 1094  21.004 -18.754 5.653  1.000 0.000 0.000  1.000 3.585 0.000  0.00
 emissive shrub 231 tex 1  2.52 0.00
+emit tie 1094  21.004 -18.754 5.653  1.000 0.000 0.000  1.000 3.585 0.000  0.00
 emissive shrub 231 tex 0  2.47 0.00
+material tie 1056 tex 3 metal 0.35 1
+emit moby 823  0.535 -0.248 1.112  0.850 0.920 1.000  6.000 30.000 0.000  0.00  aim 0.000 0.000 1.000 35.0  joint 1
+emit tie 1084  -0.561 -0.962 1.597  0.260 1.000 0.748  1.490 16.164 0.000  0.00
+emissive tie 1056 tex 2  3.53 0.00
+material tie 1049 tex 0 metal 0.45 0.7
+material tie 1049 tex 3 metal 0.48 0.74
+material tie 1094 tex 1 metal 1 1
+material tie 1094 tex 0 metal 1 1
+material tie 1094 tex 2 metal 1 1
+material tie 1096 tex 1 metal 1 1
+material tie 1096 tex 2 metal 1 1
+material tie 1096 tex 0 metal 1 1
+material tfrag 0 tex 3 metal 1 1
+material tfrag 0 tex 1 metal 1 1
+material tie 1092 tex 0 metal 0.66 1
+material tie 1092 tex 1 metal 0.63 1
+material tfrag 0 tex 17 metal 0.76 1
+material tie 1133 tex 1 metal 0.35 1
+material shrub 243 tex 0 metal 0.35 1
+material tie 1133 tex 5 metal 0.81 1
+material tie 1133 tex 2 metal 0.81 1
+material tie 1133 tex 3 metal 0.81 1
+material tie 1058 tex 7 metal 0.76 1
+material tie 1058 tex 3 metal 0.35 1
+material tie 1058 tex 2 metal 0.5 0.74
+material tie 1058 tex 4 metal 0.47 0.71
+material tie 1058 tex 5 metal 0.35 1
+emissive tie 1084 tex 1  4.00 0.00
+material tie 1082 tex 0 metal 1 1
+material tie 1082 tex 1 metal 0.44 1
+material tfrag 0 tex 21 metal 1 1
+material tfrag 0 tex 2 metal 1 1
+material tie 1093 tex 0 metal 1 1
+material tie 1518 tex 0 metal 1 1
+material tie 1518 tex 1 metal 1 1

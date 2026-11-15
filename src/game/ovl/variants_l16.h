@@ -16,7 +16,8 @@ namespace rac1 {
 constexpr int KALEBO = 16;
 
 // orig: (host) the current translation target is Kalebo III's overlay
-inline bool on_kalebo() { return on_level(KALEBO); }
+// (its hero code and camera code also in a session whose hero context it is: variants.h on_hero_level)
+inline bool on_kalebo() { return on_hero_level(KALEBO); }
 
 // A level-15 address of the port's own (level-only data / code, not a Veldin equivalent): no Veldin
 // translation; on another region's disc, the region table's.

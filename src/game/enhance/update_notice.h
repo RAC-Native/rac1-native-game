@@ -14,10 +14,10 @@ namespace rac1 {
 
 // What the update check found newer than the installed build
 struct UpdateOffer {
-    bool development = false;  // the development channel: new commits on main (else a release)
-    std::string id;            // what "Skip Version" keeps: the release's tag / main's commit
+    bool development = false;  // the development channel: new commits on the dev branch (else a release)
+    std::string id;            // what "Skip Version" keeps: the release's tag / the dev branch's commit
     std::string version;       // (stable) the release's version, x.y.z
-    int commits = 0;           // (development) main's commits the installed build lacks
+    int commits = 0;           // (development) the dev branch's commits the installed build lacks
     std::string notes;         // (stable) the release notes in short, plain ASCII
     std::string installed;     // the installed version (stable) / commit, short (development)
     bool git = false;          // built from a git clone (to update: git pull), else from a download

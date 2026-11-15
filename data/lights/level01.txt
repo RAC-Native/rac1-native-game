@@ -5,7 +5,7 @@
 # first walk (the start, the landing pads, the river) a third of what faces the sun saw it; higher, most of it does and the walls'
 # shadows fall at their feet. Our choice (the sun editor, docs/lighting.md "The level's own sun"); the light set's colour is kept.
 # Novalis: the sun from Anya-Thoughtmane's lighting pass (#90, #101).
-sun 0.0 90.0
+sun 111.2 70.0
 # The neon tubes in the buildings by the river (shrub class 282, the white panel of the fixture shrub 167 - dark frame, cable -;
 # seven): not found by the automatic search (white texels, and shrubs are not searched). A cool white light just under each panel,
 # aimed down (0.85: a pool of light on the floor below, the wall under the fixture washed, the ceiling and the fixture left dark);
@@ -89,7 +89,7 @@ material shrub 141 tex 0 metal 0.35 1
 material tfrag 0 tex 60 metal 0.35 1.01
 material moby 742 tex 2 metal 0.35 1
 material shrub 126 tex 0 metal 0.35 1
-emissive shrub 126 tex 7  2.42 0.00
+emissive shrub 126 tex 7  4.00 0.00
 material shrub 126 tex 3 metal 0.35 1
 material tie 669 tex 0 metal 0.36 1
 material tie 664 tex 0 metal 0.44 1
@@ -132,8 +132,8 @@ material moby 701 tex 0 wet 1 0.36
 material moby 701 tex 1 metal 1 1.17
 material moby 701 tex 2 metal 1 1.13
 material moby 701 tex 3 metal 1 1.25
-material tfrag 0 tex 16 mud 0.75 1.75
-material moby 774 tex 0 metal 1 1
+material tfrag 0 tex 16 lava 1.01 0 0
+material moby 774 tex 0 metal 1 0.45
 material tie 438 tex 0 metal 1 1
 material tie 515 tex 0 metal 1 1
 material tie 519 tex 0 metal 1 1
@@ -143,7 +143,7 @@ material tie 581 tex 0 metal 0.35 1
 material shrub 141 tex 1 metal 0.35 1
 emit moby 531  -0.887 -1.586 -0.533  0.557 0.933 1.000  1.631 1.000 0.000  0.00  joint 3
 material moby 11 tex 1 metal 0.35 1
-material surface 761 tex 13347 water 1 1  foam -0
+material surface 761 tex 13347 water 1 1
 # Surface Detail's water (docs/materials.md), put back: the lighting batches' reformat (2a468fe) left these lines out. Novalis's
 # water, VU1 program 7's strips and tiles (novalis_water.cpp), named by their effect textures (44 the strips' water, 43 and 41 the
 # tiles' two base layers); the river (761) is the line above.
@@ -152,9 +152,71 @@ material surface 761 tex 13347 water 1 1  foam -0
 material surface 676 tex 44 water 1 1
 # The stream and the pools of water tiles south-west of the pad (class 751: x 119..164, y 45..132, z 56..66)
 material surface 751 tex 43 water 1 1
-material surface 751 tex 41 water 1 1
+material surface 751 tex 41 water 1 1.58
 # The waterworks: the basins at z 82 behind the railings (class 678, x 260..309, y 138..184), still water
 material surface 678 tex 44 water 0.8 0.7
 # The three round water columns in the blue cave south-west of the start (class 1225, x 93..120, y 60..86; their wave height the
 # game's): mostly upright, gentle ripples
 material surface 1225 tex 43 water 0.8 0.6
+emit tie 587  4.399 -1.673 -1.167  0.264 1.000 0.825  2.701 1.446 0.000  0.00
+material tie 537 tex 4 metal 0.45 1
+material tie 537 tex 5 metal 0.45 1
+material tie 537 tex 6 metal 0.45 1
+emissive tie 587 tex 1  2.77 0.36
+emit tie 665  -4.614 5.154 12.667  0.850 0.920 1.000  1.000 8.000 0.000  0.00
+emit tie 665  -5.142 4.722 12.689  0.850 0.920 1.000  1.000 8.000 0.000  0.00
+material tfrag 0 tex 4 metal 1 1
+material tfrag 0 tex 2 metal 1 1
+material tie 519 tex 2 metal 1 1
+material tie 647 tex 6 metal 0.56 1
+material tie 647 tex 4 metal 0.51 1
+material tie 540 tex 1 metal 1 1
+material tie 540 tex 3 metal 1 1
+material tie 540 tex 0 metal 1 1
+material tie 540 tex 2 metal 1 1
+material tie 537 tex 2 metal 0.45 1
+material tie 537 tex 0 metal 0.45 1
+material tie 537 tex 3 metal 0.45 1
+emissive tie 546 tex 6  2.39 0.48
+material tie 671 tex 3 metal 0.45 1
+material tie 671 tex 4 metal 0.45 1
+material tie 671 tex 5 metal 0.45 1
+material tie 671 tex 1 metal 1 1
+material tie 671 tex 0 metal 1 1
+material tie 671 tex 2 metal 1 1
+material tie 663 tex 6 metal 0.43 0.55
+material tie 666 tex 3 metal 0.35 1
+material tie 666 tex 1 metal 0.45 1
+material tie 665 tex 6 metal 0.45 0.86
+material tie 665 tex 7 metal 0.45 1
+material tie 665 tex 5 metal 0.35 1
+material tie 665 tex 4 metal 0.35 1
+material tie 665 tex 1 metal 0.71 1
+emissive tie 665 tex 10  3.01 0.38
+emissive surface 1848 tex 40  1.00 0.00
+emit tie 555  3.726 -0.320 18.410  1.000 0.103 0.000  1.000 8.000 0.000  0.00
+emissive tie 555 tex 8  2.25 0.00
+emissive tie 555 tex 9  2.26 0.00
+emissive tie 555 tex 1  2.21 0.00
+light 247.138 177.179 97.096  0.867 0.867 0.867  1.000 4.377 0.000 1
+material tfrag 0 tex 68 metal 0.67 1
+material tfrag 0 tex 39 metal 0.63 1
+material shrub 179 tex 0 metal 0.64 1
+material shrub 179 tex 1 metal 0.44 1
+material shrub 164 tex 0 metal 0.35 1
+material shrub 164 tex 2 metal 0.35 1
+material shrub 164 tex 1 metal 0.35 1
+material tfrag 0 tex 1 metal 0.42 1
+material surface 761 tex 44 water 1 2.06
+emissive tie 662 tex 14  2.60 0.00
+light 173.300 132.797 68.166  1.000 0.000 0.000  1.000 8.000 0.000 1
+material tie 662 tex 1 metal 0.35 1
+material tie 662 tex 0 metal 0.35 1
+material tie 662 tex 2 metal 0.35 1
+material moby 641 tex 5 metal 0.68 0.46
+material moby 641 tex 6 metal 0.68 0.5
+emit tie 655  0.504 14.923 2.901  0.286 0.875 1.000  2.114 2.374 0.000  0.00
+material tfrag 0 tex 0 metal 0.45 1
+material moby 729 tex 0 metal 1 1
+material moby 729 tex 1 metal 1 1
+particles embers 0  source lava

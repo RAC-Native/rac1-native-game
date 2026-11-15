@@ -16,11 +16,6 @@ uint8_t swizzle_palette_index_psmt8(uint8_t index);
 // orig: None
 uint8_t swizzle_palette_index_psmt4(uint8_t index);
 
-// Returns the virtual address of the TextureHeader for a given pixel virtual address.
-// Returns 0 if pixel_vaddr is 0.
-// orig: Inline address math
-uint32_t get_texture_header_addr(uint32_t pixel_vaddr);
-
 // Safely retrieves the TextureHeader from EE RAM.
 // Returns nullptr if pixel_vaddr is 0 or if the header address is invalid in EE RAM.
 // orig: Inline address math

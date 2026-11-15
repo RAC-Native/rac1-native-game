@@ -2,9 +2,13 @@
 #include <game/enhance/corrected_texts.h>
 #include <game/enhance/fixes102.h>
 #include <game/ovl/world_lighting.h>
+#include <host/level_slots.h>
+#include <host/mod_code.h>
 #include <game/ovl/moby_pass.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl_common.h>
+#include <game/enhance/session.h>
+#include <game/enhance/sections.h>
 #include <array>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
@@ -76,6 +80,8 @@ int32_t disc_read_wait(uint32_t dst, uint32_t lba, uint32_t n) {
 // and returns the end.
 // orig: 0x00241940
 uint32_t gameplay_load(int32_t level) {
+    level_slots_level_start(lw(0x0015ed84));  // enhancement: a level mod's level records in or out (src/host/level_slots.h)
+    mod_code_level_load();                     // enhancement: the mods' code: loaded, the level before ended (src/host/mod_code.h)
     const uint32_t H = lwu(OV(0x00173e04));
     uint32_t s8 = lwu(OV(0x00173e18));
     if (level == 0) {
@@ -461,7 +467,7 @@ uint32_t gameplay_load(int32_t level) {
                 } else {
                     sh(map, spawned);
                     const uint32_t m = lwu(OV(0x0015ffd8)) + spawned * 0x100;
-                    moby_init(m, lwu(s1));
+                    moby_init(m, g_session_classes ? session_placed_class(lwu(s1)) : lwu(s1));  // (a session class id: testing)
                     s1 += 4;
                     sh(m + 0xb2, static_cast<uint32_t>(uid));
                     sb(m + 0xb1, a2);
@@ -608,6 +614,7 @@ uint32_t gameplay_load(int32_t level) {
             sw(static_cast<uint32_t>(pv) + static_cast<uint32_t>(static_cast<int32_t>(w) >> 16), base + lwu(p + 4));
         }
     }
+    if (__builtin_expect(g_section_equiv, 0)) section_equiv_native(H);  // (testing, RAC1_SECTION_EQUIV: src/game/enhance/sections.h)
     // the paths (0x160104 count, 0x160108 data, pointers at 0x1b04b0)
     if (lw(H + 0x70) != 0) {
         uint32_t p = H + lwu(H + 0x70);
@@ -827,6 +834,7 @@ uint32_t gameplay_load(int32_t level) {
     const bool alt = (lv < 9) ? (!(lv < 5) || lv == 2) : lv == 10;
     sw(OV(0x0015f318), alt ? OV(0x0016c7b0u) : OV(0x0016c780u));
     sw(OV(0x0015f310), lwu(OV(0x0015f318)));
+    mod_code_level_loaded();  // enhancement: a level mod's spawn pools (src/host/mod_code.h; nothing on the game's levels)
     return s8;
 }
 

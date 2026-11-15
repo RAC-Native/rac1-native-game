@@ -67,6 +67,7 @@ GLFWwindow* glfwCreateWindow(int, int, const char*, GLFWmonitor*, GLFWwindow*) {
 void glfwDestroyWindow(GLFWwindow*) {}
 int glfwWindowShouldClose(GLFWwindow*) { return GLFW_TRUE; }
 void glfwPollEvents(void) {}
+void glfwSetWindowShouldClose(GLFWwindow*, int) {}
 void glfwSwapBuffers(GLFWwindow*) {}
 void glfwSwapInterval(int) {}
 void glfwMakeContextCurrent(GLFWwindow*) {}

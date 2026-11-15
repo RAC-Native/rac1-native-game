@@ -67,9 +67,8 @@ void* ee_interp_ptr(uint32_t addr) {
         if (addr - SPR_BASE < SPR_SIZE) return ee_get_scratchpad_base() + (addr - SPR_BASE);
         return nullptr;
     }
-    uint32_t phys = addr & 0x1FFFFFFFu;      // kseg0/kseg1 and uncached mirrors
-    if (phys >= 0x10000000u) return nullptr;  // hardware registers
-    phys &= 0x01FFFFFFu;                      // 32 MB RAM
+    const uint32_t phys = ee_mirror_phys(addr);  // kseg0/kseg1 and uncached mirrors: 32 MB RAM (a session's: its RAM)
+    if (phys == 0xffffffffu) return nullptr;     // hardware registers
     return ee_get_ram_base() + phys;
 }
 

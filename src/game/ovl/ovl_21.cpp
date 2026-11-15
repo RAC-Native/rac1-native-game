@@ -83,8 +83,9 @@ void sub_00213de8(float s) {
 }
 
 // orig: 0x00212088 — approach PLAYER+0x194 towards PLAYER+0x190, with `up` as the step
-// while below it and `down` otherwise.
+// while below it and `down` otherwise (enhancement: `up` through advanced_strafe_accel).
 float sub_00212088(float up, float down) {
+    up = advanced_strafe_accel(up);  // enhancement: Clank's strafe walks at the full acceleration (#129)
     const float target = lwc1(g::PLAYER + 0x190);
     if (lwc1(g::PLAYER + 0x194) < target) return approach_f(g::PLAYER + 0x194, target, up);
     return approach_f(g::PLAYER + 0x194, target, down);

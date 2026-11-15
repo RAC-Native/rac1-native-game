@@ -51,7 +51,8 @@ int32_t u_call(TrRet (*f)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint
 
 // orig: (host) see carry_hooks_levels.h
 bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, float f12, int32_t& ret) {
-    switch (ovl_reloc_level()) {
+    // (a session: a tag of level A's context is A's hook, whatever overlay is loaded; ovl_reloc.h)
+    switch (g_ctx_levels != 0 && ctx_is_tag(fn) ? ctx_tag_level(fn) : ovl_reloc_level()) {
     case 1: {  // Novalis: the Peckbot's and the Large Amoeboid's (novalis_hooks.cpp)
         if (class_hook_call_l1(fn, m, a1, a2, f12, ret)) return true;
         uint32_t r = 0;

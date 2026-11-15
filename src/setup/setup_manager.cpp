@@ -3,6 +3,8 @@
 // also be run on its own.
 #include "setup_manager.h"
 #include "iso_extract.h"
+#include "level_compose.h"
+#include "mod_plugins.h"
 #include "mrp_export.h"
 #include "scene_export.h"
 
@@ -10,6 +12,7 @@
 #include <platform/platform.h>
 #include <runtime/ipu/movie_hw.h>
 #include <runtime/kernel/disc.h>
+#include <game/enhance/pool.h>
 
 #include <algorithm>
 #include <cmath>
@@ -53,6 +56,15 @@ void print_usage(const char* prog) {
               << "  --movie-tracks <pss>        print the sound tracks of a movie file (tools/movie_subtitles.py)\n"
               << "  --movie-audio <pss> --track <n> --wav <out.wav>\n"
               << "                     one sound track of a movie file as a 16 kHz mono WAV (for speech to text)\n"
+              << "  --level-mods       compose the level mods in mods/ whose build is missing or old (with --force: all), and build\n"
+              << "                     the mods' plugins (their code) likewise\n"
+              << "  --mod-plugins      build the mods' plugins whose build is missing or old (with --force: all)\n"
+              << "  --mod-plugin <folder>   build that mod's plugin\n"
+              << "                     into assets/generated/mods/<folder>/ (docs/mods.md, \"Level mods\")\n"
+              << "  --level-mod <folder>  compose that level mod, whatever its build\n"
+              << "  --pool             make the asset pool (assets/generated/pool/: every level's moby classes, for custom-level\n"
+              << "                     sessions; docs/open-engine.md) from the game's disc\n"
+              << "  --pool-report      the asset pool's contents, per level and in all (made first when missing)\n"
               << "  --help, -h         show this help\n";
 }
 
@@ -170,6 +182,12 @@ bool overlay_maps(const fs::path& assets, const std::string& iso_path, const Kno
         std::cout << " " << lv << std::flush;
         r = run_quiet({platform::python_program(), (tools / "overlay_match.py").string(), "--iso", iso_path, "--out", out.string(),
                        "--levels", std::to_string(lv)});
+    }
+    // the extents of the engine's data objects in each level (levelN.ext: the open engine's classification of engine
+    // and own data, docs/open-engine.md); the North American disc's maps only
+    if (r == 0 && std::string(disc->region) == "NTSC-U") {
+        std::cout << " extents" << std::flush;
+        r = run_quiet({py, (tools / "extents.py").string(), "--iso", iso_path, "--maps", out.string()});
     }
     if (r != 0) {
         std::cerr << "\n[setup] Error: the overlay matcher failed (" << (r < 0 ? platform::python_program() + " not found"
@@ -317,6 +335,9 @@ int run_setup(int argc, char** argv) {
     bool compare = false;
     std::string movie_tracks_of, movie_audio_of, wav;
     int track = -1;
+    bool level_mods = false, mod_plugins = false, pool = false, pool_report_only = false;
+    std::string mod_plugin;
+    std::string level_mod;
 
     if (const char* env_iso = std::getenv("RAC1_ISO")) iso_path = env_iso;
 
@@ -346,6 +367,18 @@ int run_setup(int argc, char** argv) {
             track = std::atoi(argv[++i]);
         } else if (a == "--wav" && i + 1 < argc) {
             wav = argv[++i];
+        } else if (a == "--level-mods") {
+            level_mods = true;
+        } else if (a == "--level-mod" && i + 1 < argc) {
+            level_mod = argv[++i];
+        } else if (a == "--pool") {
+            pool = true;
+        } else if (a == "--pool-report") {
+            pool_report_only = true;
+        } else if (a == "--mod-plugins") {
+            mod_plugins = true;
+        } else if (a == "--mod-plugin" && i + 1 < argc) {
+            mod_plugin = argv[++i];
         } else if (a == "--help" || a == "-h") {
             print_usage(argv[0]);
             return 0;
@@ -361,6 +394,28 @@ int run_setup(int argc, char** argv) {
         return 1;
     }
 
+    if (!level_mod.empty()) return compose_level_mod(level_mod, true) ? 0 : 1;  // (from the player's extracted disc files: no image)
+    if (pool || pool_report_only) {  // (the asset pool, from the game's disc: docs/open-engine.md)
+        if (!disc_open()) {
+            std::cerr << "[setup] Error: the game's disc cannot be read (./setup.sh first)\n";
+            return 1;
+        }
+        if (pool) {
+            std::string why;
+            if (!pool_build(&why)) {
+                std::cerr << "[setup] Error: the asset pool: " << why << "\n";
+                return 1;
+            }
+        }
+        if (pool_report_only) pool_report();
+        return 0;
+    }
+    if (!mod_plugin.empty()) return build_mod_plugin(mod_plugin, true) ? 0 : 1;
+    if (mod_plugins) return build_mod_plugins(force) ? 0 : 1;
+    if (level_mods) {
+        const bool levels = compose_level_mods(force);
+        return build_mod_plugins(force) && levels ? 0 : 1;
+    }
     if (!movie_tracks_of.empty()) return movie_tracks(movie_tracks_of);
     if (!movie_audio_of.empty()) {
         if (track < 0 || wav.empty()) {

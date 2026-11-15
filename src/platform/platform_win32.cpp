@@ -138,6 +138,23 @@ void unmap_file(const std::byte* data, std::size_t) {
     if (data != nullptr) UnmapViewOfFile(data);
 }
 
+// ---- Reserved memory ----
+
+void* memory_reserve(std::size_t bytes) { return VirtualAlloc(nullptr, bytes, MEM_RESERVE, PAGE_NOACCESS); }
+
+bool memory_commit(void* base, std::size_t bytes) {
+    // (committed pages are demand-zero: they take physical memory when touched; already committed ones are kept as they are)
+    return base != nullptr && (bytes == 0 || VirtualAlloc(base, bytes, MEM_COMMIT, PAGE_READWRITE) != nullptr);
+}
+
+void memory_discard(void* base, std::size_t from, std::size_t to) {
+    if (base != nullptr && to > from) VirtualFree(static_cast<char*>(base) + from, to - from, MEM_DECOMMIT);
+}
+
+void memory_release(void* base, std::size_t) {
+    if (base != nullptr) VirtualFree(base, 0, MEM_RELEASE);
+}
+
 // ---- The player's folders ----
 
 std::filesystem::path config_dir() {

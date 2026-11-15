@@ -413,6 +413,19 @@ bool map_file(const std::filesystem::path& path, const std::byte** data, std::si
 
 void unmap_file(const std::byte* data, std::size_t) { std::free(const_cast<std::byte*>(data)); }
 
+// ---- Reserved memory: no virtual memory to reserve in, so the whole block allocated at once (zeros); the EE memory's sessions
+// grow inside it (ee_memory.cpp: 64 MB, a custom level's session up to RAC1_SESSION_RAM_MB - wiiu_main.cpp's 128 by default) ----
+void* memory_reserve(std::size_t bytes) {
+    void* p = std::aligned_alloc(4096, bytes);
+    if (p != nullptr) std::memset(p, 0, bytes);
+    return p;
+}
+bool memory_commit(void* base, std::size_t) { return base != nullptr; }
+void memory_discard(void* base, std::size_t from, std::size_t to) {
+    if (base != nullptr && to > from) std::memset(static_cast<char*>(base) + from, 0, to - from);
+}
+void memory_release(void* base, std::size_t) { std::free(base); }
+
 // ---- Folders: everything beside the game's data on the SD card (the working directory) ----
 std::filesystem::path config_dir() { return "config"; }
 std::filesystem::path data_dir() { return "data"; }

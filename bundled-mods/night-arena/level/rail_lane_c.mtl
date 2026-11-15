@@ -1,0 +1,3 @@
+# the arena: the rail_lane_c class's material
+newmtl rail_lane_c
+Kd 1 1 1

@@ -251,7 +251,7 @@ namespace Rac1Launcher
             txtIso.Text = ctl.Settings.Iso;
             AddRow(t, "Disc image", txtIso, Btn("Change...", async () => { if (await AskIso(true) != null) txtIso.Text = ctl.Settings.Iso; }, true));
 
-            cmbChannel.ItemsSource = new[] { "Stable: the releases (recommended)", "Development: the newest changes on main" };
+            cmbChannel.ItemsSource = new[] { "Stable: the releases (recommended)", "Development: the newest changes (the dev branch)" };
             cmbChannel.SelectedIndex = Channel.Development ? 1 : 0;
             cmbChannel.HorizontalAlignment = HorizontalAlignment.Stretch;
             cmbChannel.SelectionChanged += (s, e) => ChangeChannel(cmbChannel.SelectedIndex == 1);
@@ -446,7 +446,7 @@ namespace Rac1Launcher
                 settingChannel = false;
                 return;
             }
-            ctl.MainCommit = null;
+            ctl.DevCommit = null;
             ShowUpdate();
             CheckUpdates(false);
         }

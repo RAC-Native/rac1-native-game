@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 # the release's version (semantic): bumped at each release, with its tag vX.Y.Z (the in-game update check compares
 # it with the latest release's: docs/settings.md)
-project(rac1-native VERSION 0.7.0 LANGUAGES C CXX)
+project(rac1-native VERSION 0.8.1 LANGUAGES C CXX)
 if(APPLE)
     enable_language(OBJC OBJCXX)  # (the Metal renderer: docs/metal.md; OBJC too, else GLFW's .m files build as C++)
 endif()
@@ -57,6 +57,15 @@ if(RAC1_INLINE_HELPERS)
     add_compile_definitions(RAC1_INLINE_HELPERS=1)
 endif()
 
+# Short of that: the same accessors declared inline without forcing them (the compiler's own choice per call site), their
+# null-address error out of line and cold - their body is then the pointer and the copy - and a quadword's load / store as one
+# access. The same C++ and the same game state; the game's code 9 to 15 % faster for 4 % more code and the same build time
+# (docs/performance.md), so ON; OFF gives the accessors as they were (to compare). RAC1_INLINE_HELPERS=ON overrides it.
+option(RAC1_ACCESSORS_INLINE "The memory accessors declared inline (not forced), a quadword in one access" ON)
+if(RAC1_ACCESSORS_INLINE)
+    add_compile_definitions(RAC1_ACCESSORS_INLINE=1)
+endif()
+
 # Windows (MinGW-w64, with clang or GCC): see docs/platforms.md
 if(WIN32)
     enable_language(RC)  # (the program's manifest: src/platform/win32/)
@@ -71,8 +80,10 @@ endif()
 find_package(OpenGL REQUIRED)
 
 # ---- third-party libraries (THIRD_PARTY_NOTICES.md) ----
-# kept in third_party/: glad (a generated loader), 989snd (OpenGOAL's, adapted), gamecontrollerdb (data)
+# kept in third_party/: glad (a generated loader), 989snd (OpenGOAL's, adapted), gamecontrollerdb (data), stb_vorbis
+# (the level composer's Ogg Vorbis decoder)
 add_subdirectory(third_party/glad EXCLUDE_FROM_ALL)
+add_subdirectory(third_party/stb_vorbis EXCLUDE_FROM_ALL)
 add_subdirectory(third_party/989snd)
 # downloaded at configure time: GLFW, GLM, Dear ImGui, TinyGLTF, miniaudio
 include(cmake/dependencies.cmake)
@@ -121,6 +132,8 @@ add_library(rac1_formats STATIC
     src/formats/animation.cpp
     src/formats/vif_stream.cpp
     src/formats/tie_packet.cpp
+    src/formats/wad_encode.cpp
+    src/formats/host_meshes.cpp
 )
 target_link_libraries(rac1_formats PUBLIC rac1_io)
 target_include_directories(rac1_formats PUBLIC src)
@@ -320,6 +333,26 @@ if(RAC1_NEON_TEST)
     add_test(NAME vu_neon_equiv COMMAND vu_neon_equiv)
 endif()
 
+# ---- tests/fp/ : the float helpers' raw forms against their rule-by-rule forms (tests/fp/fp_raw_equiv.cpp) ----
+# Off by default: ./setup.sh never builds it. It needs no generated sources and no disc: the EE FPU's and the VU0 macro ops'
+# raw forms (RAC1_PERF_FPU_RAW, RAC1_PERF_VU0_RAW: runtime/ee/ps2_fpu.h) compared bit for bit with the forms they replace, on
+# random and edge operands, in the game's float mode.
+option(RAC1_FP_TEST "Build the float helpers' equivalence test (tests/fp: build/fp_raw_equiv)" OFF)
+if(RAC1_FP_TEST)
+    enable_testing()
+    add_executable(fp_raw_equiv tests/fp/fp_raw_equiv.cpp)
+    target_include_directories(fp_raw_equiv PRIVATE ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src)
+    add_test(NAME fp_raw_equiv COMMAND fp_raw_equiv 0.1)
+endif()
+
+# ---- bundled-mods/ : the mods the game ships (tools/bundled_mods.py) ----
+# ctest: every bundled mod complete, its shared files there, and not older than the scripts that export it. Needs Python only.
+find_program(RAC1_TEST_PYTHON NAMES python3 python)
+if(RAC1_TEST_PYTHON)
+    enable_testing()
+    add_test(NAME bundled_mods COMMAND ${RAC1_TEST_PYTHON} ${CMAKE_SOURCE_DIR}/tools/bundled_mods.py --check)
+endif()
+
 # ---- src/setup/ : setup & asset extraction ----
 add_library(rac1_setup STATIC
     src/setup/kick_trace.cpp
@@ -328,9 +361,18 @@ add_library(rac1_setup STATIC
     src/setup/scene_export.cpp
     src/setup/iso_extract.cpp
     src/setup/setup_manager.cpp
+    src/setup/level_compose.cpp
+    src/setup/level_music.cpp
+    src/setup/level_pictures.cpp
+    src/setup/mod_plugins.cpp
 )
 target_include_directories(rac1_setup PUBLIC ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(rac1_setup PUBLIC rac1_formats rac1_game rac1_runtime)
+target_link_libraries(rac1_setup PRIVATE stb_vorbis)  # a level mod's .ogg music and sounds (level_music.cpp)
+# the mods' plugins (src/setup/mod_plugins.cpp) are built with the tools the game was built with
+target_compile_definitions(rac1_setup PRIVATE RAC1_PLUGIN_CMAKE="${CMAKE_COMMAND}" RAC1_PLUGIN_GENERATOR="${CMAKE_GENERATOR}"
+                                              RAC1_PLUGIN_CC="${CMAKE_C_COMPILER}" RAC1_PLUGIN_CXX="${CMAKE_CXX_COMPILER}"
+                                              RAC1_PLUGIN_MAKE="${CMAKE_MAKE_PROGRAM}")
 
 # ---- the game: one executable ----
 set(RAC1_HOST_SOURCES
