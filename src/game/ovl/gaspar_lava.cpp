@@ -78,13 +78,14 @@ uint64_t vram_tex0() {
 }
 }  // namespace
 
-// A scale matrix at `out` (an EE address): `s` on the diagonal's first three, 1 last.
+// A scale matrix at `out` (an EE address): `s` on the diagonal's first three, 1 last; VU0 left as the original leaves it.
 // orig: L9:0x0021f6f8
 void gas_mat_scale_l9(uint32_t out, float s) {
     V(out) = Vec4{s, 0.0f, 0.0f, 0.0f};
     V(out + 0x10) = Vec4{0.0f, s, 0.0f, 0.0f};
     V(out + 0x20) = Vec4{0.0f, 0.0f, s, 0.0f};
     V(out + 0x30) = Vec4{0.0f, 0.0f, 0.0f, 1.0f};
+    mat4_scale_diag_vu0(s);  // (the VU0 registers the original leaves: vf1..vf5, shadows.cpp; the moby pass reads vf5's w lane)
 }
 
 // VU1 program 7's constants for the lava's streams (the packet's head sent once, the level's 0x15f5e0 noting it), the

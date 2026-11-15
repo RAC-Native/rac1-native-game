@@ -1471,7 +1471,7 @@ void env_objects_checks() {
     };
     seen_cases = all_cases = 0;
     // the set-up's VU0 registers (inv5, wave 5's PAL smoke test): the levels' copies of mat4_scale_diag the original set-up calls
-    // leave vf1..vf5, and the moby pass's shadow meshes read vf5's w lane; the port leaves them with mat4_scale_diag_vu0.
+    // leave vf1..vf5, and the moby pass's shadow meshes read vf5's w lane; the engine's mat4_scale_diag leaves them too.
     // Compared: the stored matrix (the full RAM) and vf1..vf5 (vf5's z / w left out: QMTC2's upper half, the caller's 'at').
     if (const uint32_t sd = copy_here({{12, 0x00222928}, {14, 0x00213028}}); sd != 0)
         fcheck("mat4_scale_diag_vu0", sd, 40, Ret::None, [] {
@@ -1480,8 +1480,7 @@ void env_objects_checks() {
             const float k = ri(0, 3) == 0 ? 1024.0f : rf(-2000.0f, 2000.0f);
             return Args{{T}, {k}};
         }, [](A a) {
-            mat4_scale_diag(ee_ref<Mat4>(T), a.f[0]);
-            mat4_scale_diag_vu0(a.f[0]);
+            mat4_scale_diag(ee_ref<Mat4>(T), a.f[0]);  // (the matrix and the VU0 registers: shadows.cpp)
             vu0_out_check("mat4_scale_diag_vu0", 1, 5, true);
             return uint64_t{0};
         });

@@ -16,9 +16,6 @@ void env_objects_uvs(int32_t n, uint32_t points, uint32_t normals, uint32_t out)
 // coordinates, +0x18 the normals, +0x1c the point count): each on screen drawn white with the textures `tex0a` / `tex0b`.
 void env_objects_draw(uint32_t recs, int32_t count, uint64_t tex0a, uint64_t tex0b);  // L12:0x002bc210 L14:0x002ab3e8
 // The draw callbacks: the level's records, count and two effect textures.
-// The VU0 registers the levels' copies of mat4_scale_diag (Veldin's 0x1ffa18) leave after the scaling matrix by `k`: vf1..vf3
-// the diagonal, vf4 = vf0, vf5 = (k, its sign, 0, 0); the engine's mat4_scale_diag leaves VU0 as it was.
-void mat4_scale_diag_vu0(float k);  // L12:0x222928 L14:0x213028
 void env_objects_callback(uint32_t m);  // L12:0x002e71b0 L14:0x00307a28
 
 }  // namespace rac1

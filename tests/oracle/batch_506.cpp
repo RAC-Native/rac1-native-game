@@ -31,6 +31,8 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/gaspar_mobys.h>
+#include <game/ovl/shadows.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -114,6 +116,27 @@ uint32_t packet_content(uint32_t c0, uint32_t c1) {
     }
     return content;
 }
+// ---- mat4_scale_diag (Veldin's 0x1ffa18 and every level's copy) and the VU0 registers it leaves (inv5 item 4): the original
+// builds the matrix in VU0 and leaves vf1..vf5 set, and later code reads them stale (the moby pass's shadow meshes take vf5's
+// w lane); the engine's mat4_scale_diag leaves the same registers (shadows.cpp). Compared: the stored matrix (the full RAM)
+// and vf1..vf5 (vf5's z / w left out: QMTC2's upper half, the caller's `at`, zero in the transliterated copies); a differing
+// lane writes into the test area (VU0_MARK), so the case fails.
+EeInterpreter* g_last_ee = nullptr;  // (the interpreter the original ran on: kept by g_pre_call)
+constexpr uint32_t VU0_MARK = TEST_AREA + 0x7f00;
+void vu0_out_check(int first, int last) {
+    if (g_last_ee == nullptr) return;
+    const VUState& o = g_last_ee->vu0();
+    const VUState& p = vu0::global().st;
+    for (int r = first; r <= last; ++r)
+        for (int k = 0; k < 4; ++k) {
+            if (r == 5 && k >= 2) continue;
+            uint32_t a, b;
+            std::memcpy(&a, &o.vf[static_cast<size_t>(r)].f[k], 4);
+            std::memcpy(&b, &p.vf[static_cast<size_t>(r)].f[k], 4);
+            if (a != b) w32(VU0_MARK + static_cast<uint32_t>(r) * 0x10 + static_cast<uint32_t>(k) * 4, a ^ b);
+        }
+}
+
 struct Tally {
     int cases = 0, grew = 0, drew = 0, turned = 0, moved = 0, fov = 0;
     uint32_t content = 0;
@@ -1308,6 +1331,33 @@ void cam19_checks() {
 }
 }  // namespace
 
+void scale_diag_checks() {
+    const uint32_t a = copy_here({{0, 0x001ffa18}, {1, 0x00221928}, {2, 0x00210a80}, {3, 0x001f93b0}, {4, 0x001f2480}, {5, 0x0022e700}, {6, 0x00217ab8}, {7, 0x00227880}, {8, 0x00212598}, {9, 0x0021f6f8}, {10, 0x001f3080}, {11, 0x00231380}, {12, 0x00222928}, {13, 0x0020b500}, {14, 0x00213028}, {15, 0x001f9190}, {16, 0x001fe280}, {17, 0x001fcac0}, {18, 0x00208800}});
+    if (a == 0) { not_here("mat4_scale_diag"); return; }
+    fcheck("mat4_scale_diag", a, 40, Ret::None, [] {
+        level();
+        wrand(T, 0x40);
+        const float k = ri(0, 3) == 0 ? 1024.0f : rf(-2000.0f, 2000.0f);
+        return Args{{T}, {k}};
+    }, [](A x) {
+        mat4_scale_diag(ee_ref<Mat4>(T), x.f[0]);
+        vu0_out_check(1, 5);
+        return uint64_t{0};
+    });
+    // Gaspar's own copy as written by hand (gaspar_lava.cpp: its stream draws' set-up calls it)
+    if (g_oracle_level == 9)
+        fcheck("gas_mat_scale_l9", a, 40, Ret::None, [] {
+            level();
+            wrand(T, 0x40);
+            const float k = ri(0, 3) == 0 ? 1024.0f : rf(-2000.0f, 2000.0f);
+            return Args{{T}, {k}};
+        }, [](A x) {
+            gas_mat_scale_l9(T, x.f[0]);
+            vu0_out_check(1, 5);
+            return uint64_t{0};
+        });
+}
+
 void batch_506() {
     if (g_only_batch != 506) return;
     g_batch = 506;
@@ -1355,6 +1405,7 @@ void batch_506() {
     vu0::vif0_send_chain(0x00100080, true);
     vu0::vif0_send_chain(0x0010e4c0, true);
     g_pre_call = [](EeInterpreter& ee) {
+        g_last_ee = &ee;
         const VUState& o = ee.vu0();
         g_vu0_in.vf = o.vf;
         g_vu0_in.vi = o.vi;
@@ -1383,6 +1434,7 @@ void batch_506() {
     class252_checks();
     boss_bar_checks();
     cam19_checks();
+    scale_diag_checks();
     smoke_checks();
 
     //@@NEXT
