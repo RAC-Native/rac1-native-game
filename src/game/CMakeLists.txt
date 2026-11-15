@@ -80,6 +80,11 @@ add_library(rac1_game STATIC
     ovl/blarg_bridge.cpp
     ovl/blarg_barrier.cpp
     ovl/blarg_creature.cpp
+    ovl/blarg_groups.cpp
+    ovl/blarg_snagglebeast.cpp
+    ovl/blarg_station_props.cpp
+    ovl/blarg_hydro_station.cpp
+    ovl/blarg_tank.cpp
     ovl/umbris_mobys.cpp
     ovl/umbris_hooks.cpp
     ovl/gaspar_mobys.cpp

@@ -32,12 +32,14 @@
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/blarg_mobys.h>
 #include <game/ovl/blarg_own.h>
+#include <game/enhance/advanced.h>
 #include <game/ovl/variants_l6.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -493,8 +495,29 @@ void batch_117() {
     if (g_oracle_level == 6 && std::getenv("B117_CLS") == nullptr) {
         g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, 0x002763f8};  // (as the class loop's: the level change)
         const uint32_t P = 0x0013f350;
-        // the frame scale, the frame time and its square at their 50 Hz values in a quarter of the cases
-        auto frame50 = [] { if (ri(0, 3) == 0) { wf(0x0015ed68, 1.2f); wf(0x0015ed6c, 1.2f); wf(0x0015ed70, 1.44f); } };
+        // the frame scale, the frame time and its square at their 50 Hz values in a quarter of the cases (the snapshot's are
+        // 1.0, 1/60 and its square)
+        auto frame50 = [] { if (ri(0, 3) == 0) { wf(0x0015ed68, 1.2f); wf(0x0015ed6c, 0.02f); wf(0x0015ed70, 0.0004f); } };
+        // (P6.2) the batch-wide ignores narrowed for these checks: the base list (the VU0 lanes of the camera rows, the particle
+        // update's saved return address, the null page, the scratchpad's spill words) without the segment record 0x174610 ..
+        // 0x174618 and the moby table's / particle pool's w lanes; each check adds back only what it needs: `seg` the segment
+        // record (segment_collide's hit point, built from stale stack lanes), `mobys` the w lanes debris and spawns leave in
+        // the moby table (a VU0 sin / cos the port has not), `pool` the particle pool's velocity w lane
+        std::vector<uint32_t> base_ignored;
+        for (const uint32_t w : saved_ignored) if (w < 0x00174610u || w > 0x00174618u) base_ignored.push_back(w);
+        auto ignores = [base_ignored](bool seg, bool mobys, bool pool) {
+            g_ignored_words = base_ignored;
+            if (seg) for (uint32_t k = 0; k < 12; k += 4) g_ignored_words.push_back(0x00174610u + k);
+            if (mobys)
+                for (uint32_t a = ee_read<uint32_t>(OV(0x0015ffe0)); a < ee_read<uint32_t>(OV(0x0015ffe0)) + 0x20000; a += 0x80) {
+                    g_ignored_words.push_back(a + 0xc);
+                    g_ignored_words.push_back(a + 0x1c);
+                }
+            if (pool) {
+                const uint32_t pool_at = ee_read<uint32_t>(OV(0x0016016c));
+                for (uint32_t k = 0; k < 0x800; ++k) g_ignored_words.push_back(pool_at + k * 0x40 + 0x2c);
+            }
+        };
         // a sound slot word: none, a free slot, or a slot playing the moby's sound (its owner +0x88, playing +0x74)
         auto sound_slot = [](uint32_t m) -> uint32_t {
             const int r = ri(0, 3);
@@ -517,6 +540,8 @@ void batch_117() {
             ee_ref<Vec4>(0x0013f3d0) = q;
         };
 
+        level();
+        ignores(false, false, false);
         // class 55: the landing scene (mode 6 at 0x15f5c4) at its steps 3 / 8 (0x13e050), its doors shut, open or between
         for (int pass = 0; pass < 6; ++pass)
             classcheck("class55_scene", 0x002b4770, blg_class55_update_l6, [pass, generic_prep, frame50](uint32_t m) {
@@ -548,6 +573,8 @@ void batch_117() {
                 frame50();
             }, 20);
 
+        level();
+        ignores(true, false, true);
         // class 911: a sweeping jet or a bursting one in each state, the hero near (in its box or not), its sound slot, its
         // timer at its edge, the camera near (the nozzle on screen)
         for (int st = 0; st < 4; ++st)
@@ -575,6 +602,8 @@ void batch_117() {
                     frame50();
                 }, 12);
 
+        level();
+        ignores(false, true, false);
         // class 1028: the bridge's scene: the trigger (the hero's mode 1, the Hydrodisplacer, no scene), the fades at their
         // crossing and their end, the bridge's values about their thresholds, its checkpoint taken or not, its sound slot
         for (int st = 0; st < 7; ++st)
@@ -620,6 +649,8 @@ void batch_117() {
                     frame50();
                 }, 12);
 
+        level();
+        ignores(true, false, true);
         // class 1035: the barrier near the camera, the hero crossing one of its lines (the barrier moved onto him), against
         // it (+0x23c), its shocks' count and grace time, the help record, its four switches (class 1302 opened or not, other
         // classes done or not, none)
@@ -674,6 +705,8 @@ void batch_117() {
                     }, 12);
         }
 
+        level();
+        ignores(true, true, true);
         // class 1048: its states 14 .. 17 (the class loop above runs 0 .. 15) and every state with its target, its pack, its
         // animation's end, its alert timer and the hero about it
         for (int st = 0; st < 18; ++st)
@@ -724,6 +757,7 @@ void batch_117() {
                     }
                     frame50();
                 }, 12);
+        ignores(false, false, false);
         // Blarg's build of hero_enter_idle (class 1028's and class 1109's call, class 615's port on this level), directly: the
         // hero's movement mode 0 .. 4 (the Veldin build also tests for Clank; this one does not)
         l6check("hero_enter_idle_l6", 0x00239528, 60, Ret::None, [level] {
@@ -732,6 +766,422 @@ void batch_117() {
             seed_rand();
             return Args{};
         }, [](A) { hero_enter_idle_l6(); return uint64_t{0}; });
+
+        // ---- stage 4 P6.2: the hand ports of classes 1051, 1054, 1061, 1062, 1066 and 1083 (blarg_snagglebeast.cpp,
+        // blarg_station_props.cpp, blarg_hydro_station.cpp, blarg_tank.cpp) and the shared helpers (blarg_groups.cpp), each
+        // against level 6's own update; "class1051_fix32" / "class1083_fix20" check the 1.02 forks (1.02 Fixes fixes 32 and
+        // 20) when run with RAC1_FIXES102=20,32 (skipped otherwise)
+        // the uid-5 camera (the scripted camera's pvars +0x80 / +0x90 the scenes move): an entry of the camera table, in the
+        // test area
+        auto uid5_camera = [] {
+            const uint32_t cam = OV(0x00167150) + u(ri(0, 3)) * 0xa0;
+            w16(cam + 0x86, 5);
+            w32(cam + 0x70, T);
+            wfrand(T + 0x80, 8, -50, 50);
+        };
+        // the mobys of the group `group` set to `state` now and then (a list of the level's)
+        auto group_states = [](int32_t group, std::initializer_list<uint32_t> states) {
+            if (group < 0 || group >= 0x70) return;
+            const uint32_t list = ee_read<uint32_t>(OV(0x001ab840) + u(group) * 4);
+            for (uint32_t e = list; list != 0 && e < list + 0x80; e += 2) {
+                const uint32_t o = ee_read<uint32_t>(OV(0x0015ffd8)) + ((ee_read<uint16_t>(e) & 0x7fffu) << 8);
+                if (coin()) w8(o + 0x20, *(states.begin() + ri(0, static_cast<int>(states.size()) - 1)));
+                if (ee_read<int16_t>(e) < 0) break;
+            }
+        };
+        // class 1051, the Snagglebeast: every state, its target, the pump mode, its health about 20 and 10, the phase
+        // change's countdown, its death (+0x2e's flag 2), its animation's end, its rise's camera, its packs
+        level();
+        ignores(true, true, true);
+        auto beast_prep = [generic_prep, frame50, hero_at, uid5_camera, group_states, camera_near](uint32_t m, int st, int pass) {
+            w8(0x0013d3ab, ri(0, 3) == 0 ? 1u : 0u);
+            w8(0x0013d505, coin() ? 1u : 0u);
+            generic_prep(m, st, pass, blg_class1051_update_l6);
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w8(m + 0x20, u(st));
+            if (ri(0, 5) == 0) w32(pv + 0xb0, 0);
+            else if (coin()) w32(pv + 0xb0, ee_read<uint32_t>(0x0013f350 + 0x2080));
+            w32(pv + 0xb4, ri(0, 3) == 0 ? 2u : 0u);
+            w32(pv + 0x170, coin() ? 1u : 0u);
+            { static const int32_t counts[] = {0, 1, 2, 9, 10, 11, 30}; w32(pv + 0x12c, u(ri(0, 4) == 0 ? ri(0, 60) : counts[ri(0, 6)])); }
+            { static const float hps[] = {30.0f, 20.4f, 20.0f, 19.9f, 10.3f, 10.0f, 9.9f, 0.2f}; wf(pv + 0x20, ri(0, 4) == 0 ? rf(0, 30) : hps[ri(0, 7)]); }
+            wf(pv + 0x174, coin() ? 20.0f : 10.0f);
+            w8(pv + 0x2e, ri(0, 5) == 0 ? 2u : 1u);
+            w8(m + 0x53, u(ri(0, 10)));
+            if (ri(0, 2) != 0) w8(m + 0x70, ee_read<uint8_t>(m + 0x70) | 2u);
+            wf(m + 0x54, coin() ? 0.0f : rf(0.0f, 1.0f));
+            if (coin()) { w8(m + 0x52, ee_read<uint8_t>(m + 0x53) ^ 1u); wf(m + 0x54, rf(-2.0f, 10.0f)); }
+            wf(pv + 0x118, coin() ? 1.0f : rf(0.8f, 1.0f));
+            wf(pv + 0x48, rf(-1.0f, 1.0f));
+            wf(m + 0x18, ee_read<float>(pv + 0xc8) + (coin() ? rf(-0.5f, 1.0f) : rf(0.0f, 20.0f)));
+            w32(pv + 0x178, ri(0, 3) == 0 ? 1u : 0u);
+            w8(0x0013d412, ri(0, 3) == 0 ? 1u : 0u);
+            w32(0x00140408, coin() ? 8u : 0u);
+            w32(0x0013cae0, coin() ? 0x20u : 0u);
+            w32(pv + 0x120, ri(0, 2) == 0 ? 1u : u(ri(2, 300)));
+            hero_at(m, ri(0, 2) == 0 ? rf(0, 6) : rf(6, 30), rf(-1, 2));
+            ee_ref<Vec4>(ee_read<uint32_t>(0x0013f350 + 0x2080) + 0x10) = ee_ref<Vec4>(0x0013f3d0);
+            if (coin()) {  // a live camera of type 0x12 (state 15), the cutscene mode now and then
+                const uint32_t i = u(ri(0, 47));
+                w32(OV(0x00169890) + i * 4, 1);
+                w16(OV(0x00167150) + i * 0xa0 + 0x86, 0x12);
+            }
+            w32(L6_ADDR(0x0015f5c4), ri(0, 3) == 0 ? 2u : 0u);
+            if (ri(0, 3) != 0) uid5_camera();
+            group_states(ee_read<int32_t>(pv + 0xf0), {0xf, 0x10, 0xfe, 3});
+            group_states(ee_read<int32_t>(pv + 0xf4), {0x12, 0, 0xfe});
+            if (coin()) {  // its packs all down (each member gone or down): the waves' ends
+                for (const uint32_t g : {ee_read<uint32_t>(pv + 0xf0), ee_read<uint32_t>(pv + 0xf4)}) {
+                    if (g >= 0x70) continue;
+                    const uint32_t list = ee_read<uint32_t>(OV(0x001ab840) + g * 4);
+                    for (uint32_t e = list; list != 0 && e < list + 0x80; e += 2) {
+                        const uint32_t o = ee_read<uint32_t>(OV(0x0015ffd8)) + ((ee_read<uint16_t>(e) & 0x7fffu) << 8);
+                        w8(o + 0x20, coin() ? 0x10u : 0xfeu);
+                        if (ee_read<int16_t>(e) < 0) break;
+                    }
+                }
+            }
+            if (ee_read<uint8_t>(m + 0xa4) != 0xff && coin()) {  // the hit from a moby of one of the classes its damage scales by
+                const uint32_t e = OV(0x00178100) + (ee_read<uint8_t>(m + 0xa4) << 6);
+                const uint32_t src = ee_read<uint32_t>(OV(0x0015ffd8)) + u(ri(1, 40)) * 0x100;
+                { static const uint32_t classes[] = {0xb0, 0x79, 0x131, 0x33b, 0x57}; w16(src + 0xa6, classes[ri(0, 4)]); }
+                w32(e + 0x20, src);
+            }
+            if (ri(0, 3) == 0) w32(pv + 0x10c, u(ri(0, 7)));  // (a health bar up)
+            if (coin()) { w8(m + 0x31, 1); camera_near(m, 50); }
+            if (st == 2 && coin()) {  // rising from its pit
+                w8(m + 0x53, 8);
+                wf(m + 0x18, ee_read<float>(pv + 0xc8) - rf(3.0f, 20.0f));
+                wf(pv + 0x48, rf(0.3f, 1.0f));
+            }
+            if ((st == 3 || st == 5) && coin()) { w8(m + 0x53, 6); wf(m + 0x54, 0.0f); w8(m + 0x70, ee_read<uint8_t>(m + 0x70) | 2u); }
+            if (st == 8 && coin()) {  // its target close in front of it: the bite's start
+                const uint32_t t = ee_read<uint32_t>(pv + 0xb0) != 0 ? ee_read<uint32_t>(pv + 0xb0) : ee_read<uint32_t>(0x0013f350 + 0x2080);
+                w32(pv + 0xb0, t);
+                w32(pv + 0xb4, 0);
+                w32(pv + 0x120, 30);
+                const float yaw = ee_read<float>(m + 0x48) + rf(-0.3f, 0.3f), d = rf(0.5f, ee_read<float>(L6_ADDR(0x00161f00)) + 1.0f);
+                Vec4 q = ee_ref<Vec4>(m + 0x10);
+                q.x += d * std::cos(yaw); q.y += d * std::sin(yaw);
+                ee_ref<Vec4>(t + 0x10) = q;
+            }
+            w8(0x0014162a, 0);
+            frame50();
+        };
+        for (int st = 0; st < 16; ++st)
+            for (int pass = 0; pass < 3; ++pass)
+                classcheck("class1051_fight", 0x002f9a28, blg_class1051_update_l6, [st, pass, beast_prep](uint32_t m) { beast_prep(m, st, pass); }, 12);
+        // 1.02 Fixes, fix 32 (RAC1_FIXES102=32): the original with the 1.02 build's order in its state 1 (L6:0x2fb0b8 on the
+        // PAL disc 2.00: the countdown's flag +0x170 tested first): an interpreter hook at L6:0x2f9c88 (its `lw v0,0xb4(s3)`)
+        // sends a running countdown on to 0x2f9cc8 (the countdown's test, v0 = +0x12c; s0 2, the state the start stores, which
+        // the 1.02 build writes out as `li v0,2`) and runs the instruction otherwise;
+        // against the port with the fix on
+        if (const char* only = std::getenv("ORACLE_ONLY"); only == nullptr || std::strcmp(only, "class1051_fix32") == 0) {
+            if (std::getenv("RAC1_FIXES102") == nullptr) {
+                std::printf("%-26s skipped (run with RAC1_FIXES102=20,32)\n", "class1051_fix32");
+                ++g_skipped;
+            } else {
+                static int forked = 0;
+                forked = 0;
+                g_extra_hooks = {{0x002f9c88u, [](EeCpu& c) {
+                    const uint32_t pv = c.r32(19);
+                    if (ee_read<uint32_t>(pv + 0x170) != 0) {
+                        ++forked;
+                        c.set32(2, ee_read<int32_t>(pv + 0x12c));
+                        c.set32(16, 2);  // (the state the start stores: s0 2 in the North American build's path, the 1.02 build's li v0,2)
+                        c.set32(31, 0x002f9cc8);
+                    } else {
+                        c.set32(2, ee_read<int32_t>(pv + 0xb4));
+                        c.set32(31, 0x002f9c8c);
+                    }
+                }}};
+                for (int pass = 0; pass < 3; ++pass)
+                    classcheck("class1051_fix32", 0x002f9a28, [](uint32_t m) {
+                        g_advanced_disabled = false;
+                        blg_class1051_update_l6(m);
+                        g_advanced_disabled = true;
+                    }, [pass, beast_prep](uint32_t m) {
+                        beast_prep(m, 1, pass);
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        w32(pv + 0x170, ri(0, 3) != 0 ? 1u : 0u);
+                        w32(pv + 0x12c, coin() ? 0u : 1u);
+                        w32(pv + 0xb4, coin() ? 2u : 0u);
+                        if (coin()) w32(pv + 0xb0, ee_read<uint32_t>(0x0013f350 + 0x2080));
+                    }, 20);
+                g_extra_hooks.clear();
+                std::printf("%-26s %d runs of the original took the 1.02 order's branch\n", "class1051_fix32", forked);
+                if (forked == 0) ++g_fail;
+            }
+        }
+
+        // class 1083, the glass tank: its trigger (a moby's +0xbc, the moby it breaks for), Ratchet near or far, the scene's
+        // frame count about its length 0x162044, the camera's move near 0.05 and 1, the hero's place mark
+        level();
+        ignores(false, true, false);
+        auto tank_prep = [generic_prep, frame50, hero_at, uid5_camera](uint32_t m, int st, int pass) {
+            generic_prep(m, st, pass, blg_class1083_update_l6);
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w8(m + 0x20, u(st));
+            const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8)), n = (ee_read<uint32_t>(OV(0x0015ffe0)) - first) >> 8;
+            const uint32_t trig = u(ri(0, static_cast<int>(n) - 1));
+            if (ri(0, 3) != 0) { w32(pv + 8, trig); w8(first + (trig << 8) + 0xbc, coin() ? 1u : 0u); }
+            else w32(pv + 8, 0xffffffffu);
+            if (coin()) w32(pv + 0x20, 0xffffffffu);
+            else {
+                const uint32_t o = u(ri(0, static_cast<int>(n) - 1));
+                w32(pv + 0x20, o);
+                Vec4 q = ee_ref<Vec4>(m + 0x10);
+                if (coin()) { q.x += rf(-0.08f, 0.08f); q.y += rf(-0.08f, 0.08f); } else { q.x += rf(-3, 3); q.y += rf(-3, 3); }
+                ee_ref<Vec4>(first + (o << 8) + 0x10) = q;
+            }
+            w32(pv + 0x4, ri(0, 3) != 0 ? 1u : 0u);
+            w32(pv + 0x0, coin() ? 1u : 0u);
+            const int32_t len = ee_read<int32_t>(L6_ADDR(0x00162044));
+            w32(pv + 0x24, u(coin() ? ri(0, 2) : len + ri(-2, 2)));
+            { const int r = ri(0, 3); wf(pv + 0x18, r == 0 ? rf(0.0f, 0.1f) : r == 1 ? rf(0.95f, 1.0f) : r == 2 ? 1.0f : rf(0.0f, 1.0f)); }
+            if (ri(0, 3) == 0) w32(pv + 0xc, 0xffffffffu);
+            hero_at(m, ri(0, 2) == 0 ? rf(0, 16) : (coin() ? rf(16, 32) : rf(32, 60)), rf(-1, 2));
+            if (ri(0, 3) != 0) uid5_camera();
+            frame50();
+        };
+        for (int st = 0; st < 6; ++st)
+            for (int pass = 0; pass < 3; ++pass)
+                classcheck("class1083_tank", 0x002ffcb0, blg_class1083_update_l6, [st, pass, tank_prep](uint32_t m) { tank_prep(m, st, pass); }, 12);
+        // 1.02 Fixes, fix 20 (RAC1_FIXES102=20): the original with the 1.02 build's break: an interpreter hook at the head of
+        // 0x300278's shard loop (L6:0x300328, its `lui at,0x40c0`) ends the break there (0x3003c8, the epilogue's `lq ra`) when
+        // it is the far break's (its return address 0x2ffd9c on the stack) and the tank has no moby to break for (+0x20 -1),
+        // as the 1.02 build's argument does (L6:0x3011c4 / 0x301754 on the PAL disc 2.00); against the port with the fix on
+        if (const char* only = std::getenv("ORACLE_ONLY"); only == nullptr || std::strcmp(only, "class1083_fix20") == 0) {
+            if (std::getenv("RAC1_FIXES102") == nullptr) {
+                std::printf("%-26s skipped (run with RAC1_FIXES102=20,32)\n", "class1083_fix20");
+                ++g_skipped;
+            } else {
+                static int forked = 0, kept = 0;
+                forked = 0;
+                kept = 0;
+                g_extra_hooks = {{0x00300328u, [](EeCpu& c) {
+                    const uint32_t sp = c.r32(29), m = c.r32(17);
+                    const bool far = ee_read<uint32_t>(sp + 0x50) == 0x002ffd9cu;
+                    if (far && ee_read<int32_t>(ee_read<uint32_t>(m + 0x78) + 0x20) == -1) {
+                        ++forked;
+                        c.set32(31, 0x003003c8);
+                    } else {
+                        if (far) ++kept;
+                        c.set32(1, 0x40c00000);
+                        c.set32(31, 0x0030032c);
+                    }
+                }}};
+                for (int pass = 0; pass < 3; ++pass)
+                    classcheck("class1083_fix20", 0x002ffcb0, [](uint32_t m) {
+                        g_advanced_disabled = false;
+                        blg_class1083_update_l6(m);
+                        g_advanced_disabled = true;
+                    }, [pass, tank_prep, hero_at](uint32_t m) {
+                        tank_prep(m, 1, pass);
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        w32(pv + 8, 0xffffffffu);  // (set off by the moby +0x20 alone)
+                        if (coin()) w32(pv + 0x20, 0xffffffffu);
+                        else {
+                            const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8));
+                            const uint32_t trig = u(ri(0, 40));
+                            w32(pv + 8, trig);
+                            w8(first + (trig << 8) + 0xbc, 1);
+                        }
+                        hero_at(m, ri(0, 3) == 0 ? rf(0, 30) : rf(33, 60), rf(-1, 2));
+                    }, 20);
+                g_extra_hooks.clear();
+                std::printf("%-26s %d far breaks without shards, %d with\n", "class1083_fix20", forked, kept);
+                if (forked == 0 || kept == 0) ++g_fail;
+            }
+        }
+
+        // class 1054, the double door: Ratchet in its box or not, its +4 (1 judders, 2 held), its group, its judder's steps
+        // and timer, the level's word 0x161f5c
+        level();
+        ignores(false, true, false);
+        for (int st = 0; st < 6; ++st)
+            for (int pass = 0; pass < 3; ++pass)
+                classcheck("class1054_door", 0x002fbfb0, blg_class1054_update_l6, [st, pass, generic_prep, frame50](uint32_t m) {
+                    generic_prep(m, st, pass, blg_class1054_update_l6);
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    w8(m + 0x20, u(st));
+                    if (st == 0 && ri(0, 2) == 0) w32(pv, 0xffffffffu);
+                    w32(pv + 4, u(ri(0, 3)));
+                    const int32_t box = ee_read<int32_t>(pv);
+                    if (box >= 0 && box < 0x400 && coin()) ee_ref<Vec4>(0x0013f3d0) = ee_ref<Vec4>(ee_read<uint32_t>(OV(0x001600ec)) + u(box << 7) + 0x30);
+                    if (ri(0, 3) == 0) w8(m + 0x21, 0xff);
+                    w8(m + 0xbc, u(ri(0, 3)));
+                    w32(pv + 0x4c, ri(0, 2) == 0 ? 1u : u(ri(2, 40)));
+                    wf(L6_ADDR(0x00161f5c), coin() ? 0.0f : 1.0f);
+                    if (coin()) {  // the halves at their open distances or about them
+                        const float a = ee_read<float>(L6_ADDR(0x00161f1c)) + (coin() ? 0.0f : rf(-0.02f, 0.02f));
+                        const Vec4 home = ee_ref<Vec4>(pv + 0x10), ax = ee_ref<Vec4>(pv + 0x30);
+                        Vec4 q = home; q.x += ax.x * a; q.y += ax.y * a; q.z += ax.z * a;
+                        ee_ref<Vec4>(m + 0x10) = q;
+                    }
+                    frame50();
+                }, 12);
+
+        // class 1061, the Hydrodisplacer's lift: the hero's mode and the Hydrodisplacer, the console (its box, the button,
+        // the help text's answer), Ratchet riding it, above or below it, its water's levels, its wait
+        level();
+        ignores(false, false, false);
+        for (int st = 0; st < 9; ++st)
+            for (int pass = 0; pass < 3; ++pass)
+                classcheck("class1061_lift", 0x002fc640, blg_class1061_update_l6, [st, pass, generic_prep, frame50](uint32_t m) {
+                    generic_prep(m, st, pass, blg_class1061_update_l6);
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78), P = 0x0013f350;
+                    w8(m + 0x20, u(st));
+                    w8(P + 0x20a4, u(ri(0, 3) == 0 ? ri(0, 3) : (coin() ? 1 : 0)));
+                    w8(0x0013d4d6, coin() ? 1u : 0u);
+                    w8(0x0013d4c6, coin() ? 1u : 0u);
+                    w8(0x0013d3a8, coin() ? 1u : 0u);
+                    w32(L6_ADDR(0x00161f78), u(ri(-1, 1)));
+                    w32(L6_ADDR(0x0015f5c4), ri(0, 3) == 0 ? 2u : 0u);
+                    w32(pv + 0x90, ri(0, 2) == 0 ? 1u : u(ri(0, 30)));
+                    w32(pv + 0x84, coin() ? 1u : 0u);
+                    w32(pv + 0x94, coin() ? 1u : 0u);
+                    w32(0x0013cae4, coin() ? 0x10u : 0u);
+                    if (ri(0, 4) == 0) w32(P + 0x2084, 0x64);
+                    w32(OV(0x0015f594), ri(0, 3) == 0 ? 9u : 0u);  // (the help line's owner: free or the lift's)
+                    const int32_t console = ee_read<int32_t>(pv + 0x70);
+                    const int r = (st == 3 || st == 4) && coin() ? ri(0, 1) : ri(0, 4);
+                    if (st == 3 || st == 4) { if (ri(0, 3) != 0) w32(0x0013cae4, 0x10u); if (coin()) w32(pv + 0x90, 0); }
+                    Vec4 h = ee_ref<Vec4>(m + 0x10);
+                    if (r == 0 && console >= 0 && console < 0x400) h = ee_ref<Vec4>(ee_read<uint32_t>(OV(0x001600ec)) + u(console << 7) + 0x30);
+                    else if (r == 1) { h.z += rf(0.3f, 1.0f); h.x += rf(-0.9f, 0.9f); w32(P + 0x2fc, m); w16(P + 0x30e, coin() ? 0u : 1u); }
+                    else if (r == 2) { h.z += coin() ? rf(6, 12) : -rf(6, 12); h.x += rf(-10, 10); }
+                    else if (r == 3) { h.x += rf(-30, 30); h.y += rf(-30, 30); }
+                    ee_ref<Vec4>(P + 0x80) = h;
+                    if (coin()) w8(0x0014161b, 0);
+                    if (st == 1 && coin()) w16(ee_read<uint32_t>(P + 0x2080) + 0xa6, 0x57);  // (the hero moby of class 0x57)
+                    if ((st == 5 || st == 6) && coin()) {  // at its water level or about it
+                        const uint32_t water = ee_read<uint32_t>(OV(0x001600ec)) + u(ee_read<int32_t>(pv + 0x78) << 7);
+                        const float level = ee_read<float>(water + 0x38) + (st == 6 ? ee_read<float>(water + 0x28) : 0.0f);
+                        wf(m + 0x18, level + (coin() ? 0.0f : rf(-0.02f, 0.02f)));
+                        wf(pv + 0x8c, 0.0f);
+                    }
+                    if ((st == 3 || st == 4) && coin()) {  // at its console, the button down, the help line free
+                        const int32_t console = ee_read<int32_t>(pv + 0x70);
+                        if (console >= 0 && console < 0x400) ee_ref<Vec4>(P + 0x80) = ee_ref<Vec4>(ee_read<uint32_t>(OV(0x001600ec)) + u(console << 7) + 0x30);
+                        w32(0x0013cae4, 0x10u);
+                        w32(P + 0x2084, 0);
+                        w32(pv + 0x90, 0);
+                        w32(OV(0x0015f594), 0);
+                        if (coin()) w32(L6_ADDR(0x00161f78), 0);
+                    }
+                    frame50();
+                }, 12);
+
+        // class 1062, the meshes' choice: the camera in or out of its boxes, the hero in the state 0xf
+        level();
+        ignores(false, false, false);
+        for (int pass = 0; pass < 4; ++pass)
+            classcheck("class1062_zones", 0x002fd088, blg_class1062_update_l6, [](uint32_t m) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                const int32_t box = ee_read<int32_t>(pv + u(ri(0, 1)) * 0x40 + u(ri(0, 3)) * 4);
+                Vec4 c = ee_ref<Vec4>(m + 0x10);
+                if (box >= 0 && box < 0x400 && ri(0, 3) != 0) c = ee_ref<Vec4>(ee_read<uint32_t>(OV(0x001600ec)) + u(box << 7) + 0x30);
+                else { c.x += rf(-40, 40); c.y += rf(-40, 40); }
+                ee_ref<Vec4>(OV(0x00166dc0)) = c;
+                w32(0x0013f350 + 0x208c, ri(0, 4) == 0 ? 0xfu : 0u);
+                if (ri(0, 3) == 0) w32(OV(0x0015f424), u(ri(0x3d, 0x40)));  // (the draw queue nearly full or full)
+            }, 20);
+
+        // class 1066, the vent: Ratchet in its box, its animation's end, its group's creatures waiting (state 0xf) or not,
+        // its timer
+        level();
+        ignores(false, false, false);
+        for (int st = 0; st < 4; ++st)
+            for (int pass = 0; pass < 3; ++pass)
+                classcheck("class1066_vent", 0x002fda30, blg_class1066_update_l6, [st, pass, generic_prep, frame50, group_states](uint32_t m) {
+                    generic_prep(m, st, pass, blg_class1066_update_l6);
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    w8(m + 0x20, u(st));
+                    const int32_t box = ee_read<int32_t>(pv + 4);
+                    if (box >= 0 && box < 0x400 && coin()) ee_ref<Vec4>(0x0013f3d0) = ee_ref<Vec4>(ee_read<uint32_t>(OV(0x001600ec)) + u(box << 7) + 0x30);
+                    if (ri(0, 2) != 0) w8(m + 0x70, ee_read<uint8_t>(m + 0x70) | 2u);
+                    w32(pv + 8, ri(0, 2) == 0 ? 1u : u(ri(0, 30)));
+                    if (ri(0, 4) == 0) w32(pv, 0xffffffffu);
+                    group_states(ee_read<int32_t>(pv), {0xf, 0xf, 6, 0});
+                    frame50();
+                }, 12);
+
+        // the shared helpers, directly: the panels (class 367) of a group sent out and back, a group's walkers down, a group
+        // put away and brought back, a door set (the mobys the Snagglebeast and the lifts name) opened, shut and set back, a
+        // creature let out
+        level();
+        ignores(false, false, false);
+        {
+            std::vector<int32_t> groups;
+            for (int32_t i = 0; i < 0x70; ++i) if (ee_read<uint32_t>(OV(0x001ab840) + u(i) * 4) != 0) groups.push_back(i);
+            std::vector<uint32_t> sets, creatures;
+            for (uint32_t o = ee_read<uint32_t>(OV(0x0015ffd8)); o < ee_read<uint32_t>(OV(0x0015ffe0)); o += 0x100) {
+                if (ee_read<uint8_t>(o + 0x20) >= 0xfe) continue;
+                if (ee_read<int16_t>(o + 0xa6) == 0x418) creatures.push_back(o);
+            }
+            // the door sets: the mobys the Snagglebeast (+0xfc / +0x100) and the lifts (+0x60 .. +0x68) name, with their parts
+            for (const uint32_t fn : {0x002f9a28u, 0x002fc640u})
+                for (const uint32_t o : mobys_with(fn)) {
+                    const uint32_t pv = ee_read<uint32_t>(o + 0x78);
+                    for (const uint32_t off : fn == 0x002f9a28u ? std::vector<uint32_t>{0xfc, 0x100} : std::vector<uint32_t>{0x60, 0x64, 0x68}) {
+                        const int32_t i = ee_read<int32_t>(pv + off);
+                        if (i < 0 || i > 0x2000) continue;
+                        const uint32_t d = ee_read<uint32_t>(OV(0x0015ffd8)) + (u(i) << 8);
+                        if (std::find(sets.begin(), sets.end(), d) == sets.end()) sets.push_back(d);
+                    }
+                }
+            std::printf("INFO groups %zu door sets %zu creatures %zu\n", groups.size(), sets.size(), creatures.size());
+            auto any_group = [groups, group_states]() -> int32_t {
+                if (groups.empty()) return -1;
+                const int32_t g = groups[static_cast<size_t>(ri(0, static_cast<int>(groups.size()) - 1))];
+                group_states(g, {0x12, 0, 0xf, 0x10, 0xfe, 0xfd, 6});
+                if (ri(0, 4) == 0) {  // a member made one of the classes the helpers look for
+                    const uint32_t list = ee_read<uint32_t>(OV(0x001ab840) + u(g) * 4);
+                    const uint32_t o = ee_read<uint32_t>(OV(0x0015ffd8)) + ((ee_read<uint16_t>(list) & 0x7fffu) << 8);
+                    w16(o + 0xa6, coin() ? 0x16fu : 0x33bu);
+                }
+                return g;
+            };
+            struct GroupFn { const char* name; uint32_t addr; void (*fn)(int32_t); };
+            static const GroupFn gfns[] = {{"panels_slide_out_l6", 0x002d9e08, panels_slide_out_l6},
+                                           {"panels_slide_back_l6", 0x002d9e78, panels_slide_back_l6},
+                                           {"group_put_away_l6", 0x002f9948, group_put_away_l6},
+                                           {"group_bring_back_l6", 0x002f99b0, group_bring_back_l6}};
+            for (const GroupFn& g : gfns) {
+                auto fn = g.fn;
+                l6check(g.name, g.addr, 40, Ret::None, [level, any_group] { level(); const int32_t gr = any_group(); return Args{{u(gr)}, {}}; },
+                        [fn](A a) { fn(static_cast<int32_t>(a.i[0])); return uint64_t{0}; });
+            }
+            l6check("group_walkers_down_l6", 0x002e9ea0, 60, Ret::Int32, [level, any_group] { level(); return Args{{u(any_group())}, {}}; },
+                    [](A a) { return r32(group_walkers_down_l6(static_cast<int32_t>(a.i[0]))); });
+            struct SetFn { const char* name; uint32_t addr; void (*fn)(uint32_t); };
+            static const SetFn sfns[] = {{"door_set_open_l6", 0x002f5360, door_set_open_l6},
+                                         {"door_set_shut_l6", 0x002f53e8, door_set_shut_l6},
+                                         {"door_set_reset_l6", 0x002f54a0, door_set_reset_l6}};
+            for (const SetFn& f : sfns) {
+                if (sets.empty()) { std::printf("%-26s no door set on this level\n", f.name); continue; }
+                auto fn = f.fn;
+                l6check(f.name, f.addr, 40, Ret::None, [level, sets] {
+                    level();
+                    const uint32_t m = sets[static_cast<size_t>(ri(0, static_cast<int>(sets.size()) - 1))];
+                    { static const uint32_t states[] = {2, 6, 0, 4, 8}; w8(m + 0x20, states[ri(0, 4)]); }
+                    seed_rand();
+                    return Args{{m}, {}};
+                }, [fn](A a) { fn(a.i[0]); return uint64_t{0}; });
+            }
+            if (creatures.empty()) std::printf("%-26s no creature (class 0x418) on this level\n", "creature_let_out_l6");
+            else
+                l6check("creature_let_out_l6", 0x002e9d10, 60, Ret::Int32, [level, creatures] {
+                    level();
+                    const uint32_t m = creatures[static_cast<size_t>(ri(0, static_cast<int>(creatures.size()) - 1))];
+                    w8(m + 0x20, coin() ? 0xfu : u(ri(0, 17)));
+                    Vec4 q = ee_ref<Vec4>(m + 0x10); q.z += rf(0, 20);
+                    ee_ref<Vec4>(OUT) = q;
+                    seed_rand();
+                    return Args{{m, OUT}, {}};
+                }, [](A a) { return r32(creature_let_out_l6(a.i[0], a.i[1])); });
+        }
         g_extra_noop_hooks.clear();
     }
 

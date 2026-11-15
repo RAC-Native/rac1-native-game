@@ -12,26 +12,6 @@ namespace rac1 {
 
 TrRet blg_217ab8_l6(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L6:0x00217ab8
 TrRet blg_217300_l6(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L6:0x00217300
-TrRet blg_2d9e08_l6(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L6:0x002d9e08
-TrRet blg_2d9e78_l6(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L6:0x002d9e78
-TrRet blg_2e9ea0_l6(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L6:0x002e9ea0
-TrRet blg_2f5360_l6(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L6:0x002f5360
-TrRet blg_2f53e8_l6(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L6:0x002f53e8
-TrRet blg_2f9948_l6(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L6:0x002f9948
-TrRet blg_2f99b0_l6(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L6:0x002f99b0
-TrRet blg_2fa9c0_l6(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L6:0x002fa9c0
-TrRet blg_2e9d10_l6(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L6:0x002e9d10
-TrRet blg_2fb090_l6(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L6:0x002fb090
-TrRet blg_2fb2a8_l6(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L6:0x002fb2a8
-TrRet blg_2fbc88_l6(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L6:0x002fbc88
-void blg_class1051_update_l6(uint32_t a0);  // L6:0x002f9a28
-void blg_class1054_update_l6(uint32_t a0);  // L6:0x002fbfb0
-TrRet blg_2f54a0_l6(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L6:0x002f54a0
-void blg_class1061_update_l6(uint32_t a0);  // L6:0x002fc640
-void blg_class1062_update_l6(uint32_t a0);  // L6:0x002fd088
-void blg_class1066_update_l6(uint32_t a0);  // L6:0x002fda30
-TrRet blg_300278_l6(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L6:0x00300278
-void blg_class1083_update_l6(uint32_t a0);  // L6:0x002ffcb0
 void blg_class1091_update_l6(uint32_t a0);  // L6:0x00300df0
 TrRet blg_272670_l6(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L6:0x00272670
 void blg_class1105_update_l6(uint32_t a0);  // L6:0x00301070

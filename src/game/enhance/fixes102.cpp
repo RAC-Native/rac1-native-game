@@ -20,7 +20,7 @@
 namespace rac1 {
 
 namespace {
-constexpr int FIXES[] = {1, 2, 3, 5, 6, 7, 11, 15, 16, 17, 18, 19, 20, 22, 26, 27, 28, 29, 30};  // the fixes of the 1.02 Fixes row (fixes102.h)
+constexpr int FIXES[] = {1, 2, 3, 5, 6, 7, 11, 15, 16, 17, 18, 19, 20, 22, 26, 27, 28, 29, 30, 32};  // the fixes of the 1.02 Fixes row (fixes102.h)
 constexpr int GAMEPLAY[] = {4, 8, 9, 10, 12, 13, 14, 21, 23, 24, 25, 31};  // the fixes of the 1.02 Gameplay row (fixes102.h)
 
 // orig: (none) — enhancement: a list variable's fixes (RAC1_FIXES102 / RAC1_GAMEPLAY102) as bits (bit n: fix n), `set`
@@ -161,8 +161,6 @@ std::string ee_string(uint32_t a) {
     for (uint8_t c = lbu(a); c != 0; c = lbu(++a)) out += static_cast<char>(c);
     return out;
 }
-// orig: (none) — enhancement: fix 20's flag (fixes102_blarg_far_set)
-bool g_blarg_far = false;
 }  // namespace
 
 // orig: (none) — enhancement (fixes102.h); the 1.02 build's Rilgar L5:0x263a64 (the poses: "x%d %s", 20855 / 20856 by
@@ -188,10 +186,21 @@ bool fixes102_race_text(uint32_t buf, int kind, uint32_t name, int32_t n) {
     return true;
 }
 
-// orig: (none) — enhancement (fixes102.h); the 1.02 build's L6:0x3011c4 (0x300278's new argument: 0 when the break is
-// the far one) and L6:0x301754 (no debris loop with it 0)
-void fixes102_blarg_far_set(bool far) { g_blarg_far = far && fixes102_on(20); }
-bool fixes102_blarg_far() { return g_blarg_far; }
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L6:0x3011c4 (0x300278's new argument: `link` != -1, in the
+// far break only) and L6:0x301754 (no debris loop with it 0)
+bool fixes102_blarg_far_debris(int32_t link) {
+    // (region: the PAL disc 2.00 is the 1.02 build, whose own break this is (region_core_moved()): there its rule applies
+    // whatever the fix's row, as the disc's own code did while the class was generated)
+    if (!fixes102_on(20) && !region_core_moved()) return true;
+    return link != -1;
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L6:0x2fb0b8 (PAL disc 2.00): the Snagglebeast's state 1 tests
+// its countdown's flag (+0x170) first, the pump (+0xb4) and its target's class only while it is not set
+bool fixes102_snagglebeast_start() {
+    // (region: on the PAL disc 2.00, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(32) || region_core_moved();
+}
 
 // orig: (none) — enhancement (fixes102.h); the 1.02 build's decoy_object_update 0x2c5f10 (PAL disc 2.00): hero state
 // 0x31 (swimming at the surface) and the decoy within 1.5 of Ratchet (xy): sub_00259bc8(m, m, 0x10000, Ratchet's

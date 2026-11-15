@@ -32,8 +32,8 @@
 // - 19: the hoverbike races' texts from the level's text table, in the game's language and with a singular: the place
 //   ("1st".. "5th"), the poses ("x1 Pose") and the flips ("+ 360 Flip") in place of English built into the code
 //   (Rilgar L5:0x262f50 / 0x266320, Kalebo III L16:0x235660 / 0x238a30; fixes102_race_text; hooks.glue)
-// - 20: Blarg's class 1083 breaking 32 units or more from Ratchet leaves no debris (its 50 pieces: moby slots)
-//   (L6:0x2ffcb0 / 0x300278; hooks.glue)
+// - 20: Blarg's class 1083 breaking 32 units or more from Ratchet without the moby it breaks for (its pvar +0x20 -1) leaves
+//   no debris (its 50 pieces: moby slots) (L6:0x2ffcb0 / 0x300278: blarg_tank.cpp)
 // - 22: Rilgar's race organiser (class 918, L5:0x316ab8): the level's music back after a race ended in its state 3, and a
 //   skill point earned at the race told (its flag 0x13d411: "You just earned a Skill Point!" over the prize's message)
 //   (hooks.glue)
@@ -48,6 +48,9 @@
 //   (hero_glows_draw 0x207d40)
 // - 30: an item panel's focus out frees its second menu moby (+0x48) too; the original frees the first one twice
 //   (menu_model_focus_out 0x27bba0)
+// - 32: Blarg's Snagglebeast (class 1051, L6:0x2f9a28): once the countdown of its fight's start runs, the fight starts
+//   even if Ratchet has meanwhile stepped onto a pump (+0xb4 2) or its target changed; the North American build tests them
+//   each frame of the countdown, and holds the start (blarg_snagglebeast.cpp)
 //
 // 1.02 Gameplay (main menu > Options > Advanced > 1.02 Gameplay, off by default, global; docs/advanced.md "1.02 Gameplay"):
 // the 1.02 build's fixes that change how the game plays (the exploits stay possible with the row off), numbered as the
@@ -127,10 +130,15 @@ void fixes102_sand_shark_burst(uint32_t m);
 // whatever the fix's row)
 bool fixes102_race_text(uint32_t buf, int kind, uint32_t name, int32_t n);
 
-// orig: (none) — enhancement: fix 20: Blarg's class 1083 breaks far from Ratchet (L6:0x2ffd94, its call of 0x300278 with
-// the 1.02 build's argument 0): `far` set over that call; fixes102_blarg_far() read by 0x300278 before its debris loop
-void fixes102_blarg_far_set(bool far);
-bool fixes102_blarg_far();
+// orig: (none) — enhancement: fix 20: Blarg's class 1083 breaking far from Ratchet (L6:0x2ffd94): whether its break
+// (0x300278) throws its debris: the 1.02 build's argument (L6:0x3011c4 on the PAL disc 2.00: the moby it breaks for, `link`,
+// not -1); always with the fix off, but on the PAL disc 2.00 (the 1.02 build: region_core_moved()), whose own code it is
+bool fixes102_blarg_far_debris(int32_t link);
+
+// orig: (none) — enhancement: fix 32: Blarg's Snagglebeast's start (L6:0x2f9a28, its state 1): true when the 1.02 build's
+// order applies (the pump and target tests only before the countdown starts: L6:0x2fb0b8 on the PAL disc 2.00); false with
+// the fix off, but on the PAL disc 2.00 (region_core_moved()), whose own code it is
+bool fixes102_snagglebeast_start();
 
 // orig: (none) — enhancement: fix 14 (1.02 Gameplay): the decoy `m` in its state of 0x2c4c08 pushed (an event 0x10000 of
 // strength 1000 from Ratchet's place) when Ratchet swims (state 0x31) within 1.5 of it; nothing with the fix off

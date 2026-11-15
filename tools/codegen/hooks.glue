@@ -64,13 +64,7 @@ L5 0x00266528: fixes102_race_text(sp.w(), 2, 0, static_cast<int32_t>(lw_(s1.w() 
 L16 0x002357e8: fixes102_race_text(sp.w(), 0, 0, static_cast<int32_t>(a2.w()));  // enhancement: 1.02 Fixes, fix 19 (the poses)
 L16 0x00235a60: fixes102_race_text(sp.w(), 1, a2.w(), static_cast<int32_t>(a3.w()));  // enhancement: 1.02 Fixes, fix 19 (the flips)
 L16 0x00238c38: fixes102_race_text(sp.w(), 2, 0, static_cast<int32_t>(lw_(s1.w() + 0x8c0)));  // enhancement: 1.02 Fixes, fix 19 (the place)
-# Fix 20, Blarg's class 1083 (0x2ffcb0) breaking 32 units or more from Ratchet: its call of 0x300278 (the broken copy, class 1084,
-# then 50 debris pieces) without the debris (the 1.02 build's new argument, 0 there: L6:0x3011c4, its test L6:0x301754); the flag
-# set over the call, read at the debris loop's head (to the epilogue).
-L6 0x002ffd94: fixes102_blarg_far_set(true);  // enhancement: 1.02 Fixes, fix 20 (the far break)
-L6 0x002ffd9c: fixes102_blarg_far_set(false);  // enhancement: 1.02 Fixes, fix 20
-L6 0x00300328: if (fixes102_blarg_far()) { ra = lq(sp.w() + 0x50); goto L_3003cc; }  // enhancement: 1.02 Fixes, fix 20 (no debris)
-L6 0x003003cc label
+# Fix 20 (Blarg's class 1083 / 0x300278) lives in the hand port src/game/ovl/blarg_tank.cpp (fixes102_blarg_far_debris).
 # 1.02 Gameplay, fix 21, Rilgar's class 831 (0x30ca80, the water that rises and falls): not updated in a cutscene (game mode 2: the
 # 1.02 build's L5:0x30dedc); after its seek toward its height (s3's first float), Ratchet swimming below its surface carried up
 # with it (L5:0x30e4b0).
