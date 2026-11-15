@@ -1035,18 +1035,41 @@ void emit_host_meshes(Build& b) {
 #if defined(__WIIU__)
 }  // namespace
 
+// orig: (host) see mrp_world_scene.h (the game's thread)
+void scene_host_meshes_capture(HostMeshIn& in) {
+    in.any = host_meshes_bound_any();
+    if (!in.any) return;
+    for (uint32_t k = 0; k < 4; ++k) in.fog[k] = lwc1(OV(0x0016cc60u) + 4 * k);  // (the tie pass's fog, as scene_capture reads it)
+    host_meshes_fog_set(in.fog);
+    host_meshes_dynamic(in.dyn);
+    in.sections = host_meshes_sections();
+}
+
+// orig: (host) see mrp_world_scene.h
+void scene_host_mesh_colours(const HostMeshIn& in, const void* index, std::vector<uint32_t>& words) {
+    words.clear();
+    const World* w = in.any ? host_meshes_bound(index) : nullptr;
+    if (w == nullptr) return;
+    const size_t n_static = w->host_meshes.size();
+    words.reserve((n_static + in.dyn.size()) * 64);
+    for (size_t ii = 0; ii < n_static + in.dyn.size(); ++ii) {
+        const HostMeshInstance& ci = ii < n_static ? w->host_meshes[ii] : in.dyn[ii - n_static];
+        for (uint32_t k = 0; k < 64; ++k) {
+            uint32_t v = 0;
+            for (int l = 0; l < 4; ++l) v |= static_cast<uint32_t>(k < ci.palette.size() ? ci.palette[k][static_cast<size_t>(l)] : ci.rgba[l]) << (8 * l);
+            words.push_back(v);
+        }
+    }
+}
+
 // orig: (host) see mrp_world_scene.h: emit_host_meshes' draws for the Wii U's scene made from the static frame (no walker, no Build):
 // the same instances, rows, fog, colours and packets, appended to `f` in its view
-void scene_host_meshes(const void* index, const std::array<float, 16>& a, const std::array<float, 3>& camera, SceneFrame& f) {
-    const World* w = host_meshes_bound(index);
-    if (w == nullptr) return;
-    float tie_fog[4];
-    for (uint32_t k = 0; k < 4; ++k) tie_fog[k] = lwc1(OV(0x0016cc60u) + 4 * k);  // (the tie pass's fog, as scene_capture reads it)
-    host_meshes_fog_set(tie_fog);
-    static std::vector<HostMeshInstance> dyn;
-    host_meshes_dynamic(dyn);
-    const uint32_t sections = host_meshes_sections();
-    if (w->host_meshes.empty() && dyn.empty()) return;
+void scene_host_meshes(const void* index, const std::array<float, 16>& a, const std::array<float, 3>& camera, const HostMeshIn& in, SceneFrame& f) {
+    const World* w = in.any ? host_meshes_bound(index) : nullptr;
+    if (w == nullptr || (w->host_meshes.empty() && in.dyn.empty())) return;
+    const float* tie_fog = in.fog;
+    const std::vector<HostMeshInstance>& dyn = in.dyn;
+    const uint32_t sections = in.sections;
     const float* A = a.data();
     {
         Kicked s;
@@ -1110,11 +1133,10 @@ void scene_host_meshes(const void* index, const std::array<float, 16>& a, const 
         fog = std::min(fog, tie_fog[2]);
         fog = std::max(tie_fog[3], fog);
         x.fog = tie_fog[0] == 0.0f && tie_fog[2] == 0.0f ? 0xffu : (static_cast<uint32_t>(ftoi4(fog)) >> 4) & 0xff;
-        x.colour_first = static_cast<uint32_t>(f.colours.size());
-        f.colours.resize(f.colours.size() + 64);
-        for (uint32_t k = 0; k < 64; ++k)
-            for (int l = 0; l < 4; ++l)
-                f.colours[x.colour_first + k][static_cast<size_t>(l)] = 0x4b000000u + (k < ci.palette.size() ? ci.palette[k][static_cast<size_t>(l)] : ci.rgba[l]);
+        // (the Wii U draws resident colours only: the instance's 64 in the resident table's host part, scene_host_mesh_colours)
+        x.colour_first = in.colour_base + 64u * static_cast<uint32_t>(ii);
+        x.resident = true;
+        x.alpha = 0x80;
         const uint32_t inst = static_cast<uint32_t>(f.insts.size());
         f.insts.push_back(x);
         for (const TiePacket& pk : c.packets) {

@@ -278,7 +278,7 @@ bool ctx_create(int level) {
     c->image_size = static_cast<uint32_t>(img.size());
     c->image = session_heap_alloc(c->image_size, owner(level));
     if (c->image == 0) return false;
-    std::memcpy(ee_get_ram_base() + c->image, img.data(), img.size());
+    ee_bytes_to_words(ee_get_ram_base(), c->image, img.data(), img.size());  // (the pool's image: the PS2's order, ee_memory.h)
     relocate(*c);
     own_code_tables(*c);
     g_ctx[level] = std::move(c);

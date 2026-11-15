@@ -69,7 +69,8 @@ void compare_table(ResidentColours& rc, uint32_t first, uint32_t n, uint32_t wor
 void resident_colours_update(ResidentColours& rc, const ColourSource& src) {
     ++rc.updates;
     bool all = rc.all_dirty;
-    if (!(src == rc.src) || rc.mirror.size() != static_cast<size_t>(src.tie_count) * kTieColours + static_cast<size_t>(src.shrub_count) * kShrubColours) {
+    if (!(src == rc.src) || rc.mirror.size() != static_cast<size_t>(src.tie_count) * kTieColours + static_cast<size_t>(src.shrub_count) * kShrubColours + rc.extra) {
+        rc.extra = 0;
         rc.src = src;
         rc.mirror.assign(static_cast<size_t>(src.tie_count) * kTieColours + static_cast<size_t>(src.shrub_count) * kShrubColours, 0);
         all = true;

@@ -196,7 +196,7 @@ uint32_t heap_copy(const PoolClass& c, const char* why) {
         std::fprintf(stderr, "[session] class %d:%u: no room for its block (%#x bytes)\n", c.level, c.id, c.block_size);
         return 0;
     }
-    std::memcpy(ee_get_ram_base() + a, b, c.block_size);
+    ee_bytes_to_words(ee_get_ram_base(), a, b, c.block_size);  // (the pool's bytes: the PS2's order, ee_memory.h)
     std::printf("[session] class %d:%u's pool block at %08x (%#x bytes): %s\n", c.level, c.id, a, c.block_size, why);
     return a;
 }
@@ -521,7 +521,7 @@ void session_classes_register(int level, uint32_t tex) {
     const uint32_t remap = session_heap_alloc(16, pool_owner(level, g_high_class));
     const uint32_t a = remap != 0 ? heap_copy(*c, ("registered as session class " + std::to_string(g_high_id)).c_str()) : 0;
     if (a == 0) return;
-    std::memcpy(ee_get_ram_base() + remap, c->remap, 16);
+    ee_bytes_to_words(ee_get_ram_base(), remap, c->remap, 16);
     g_session_ids[g_high_id] = SessionClass{level, g_high_class, c->update_fn, c->word2c, a};
     g_session_classes = true;
     moby_class_register(a, tex, remap, g_high_id);

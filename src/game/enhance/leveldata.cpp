@@ -82,7 +82,7 @@ uint32_t lay_out(const std::vector<uint8_t>& g, uint32_t r, int32_t* own_paths) 
     auto H = [&](uint32_t f) { return static_cast<uint32_t>(rd32(g, f)); };
     uint32_t at = R_DATA;
     auto put = [&](uint32_t off, const uint8_t* src, uint32_t n) {
-        if (r != 0) std::memcpy(ee_get_ram_base() + r + off, src, n);
+        if (r != 0) ee_bytes_to_words(ee_get_ram_base(), r + off, src, n);  // (the file's bytes: the PS2's order, ee_memory.h)
     };
     auto w32 = [&](uint32_t off, uint32_t v) {
         if (r != 0) sw(r + off, v);
@@ -202,7 +202,7 @@ bool ld_registry_make(int level) {
     if (const uint32_t p = static_cast<uint32_t>(rd32(g, 0x4c)); p != 0 && p + 0x10 <= g.size()) {
         const uint32_t size = static_cast<uint32_t>(rd32(g, p));
         if (size != 0 && p + 0x10 + size <= g.size() && (R->shared = session_heap_alloc(size, owner(level))) != 0)
-            std::memcpy(ee_get_ram_base() + R->shared, g.data() + p + 0x10, size);
+            ee_bytes_to_words(ee_get_ram_base(), R->shared, g.data() + p + 0x10, size);
     }
     if (!base_world)
         for (const Obj& o : OBJS) ctx_view(level, o.veldin, o.size, R->block + o.off);

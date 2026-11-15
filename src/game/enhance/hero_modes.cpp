@@ -180,7 +180,7 @@ void hero_sounds_fill() {
 uint32_t seq_place(const std::vector<uint8_t>& b) {
     const uint32_t at = g_room;
     if (at + b.size() > host_layout::HERO_SEQS + host_layout::HERO_SEQS_SIZE) return 0;
-    std::memcpy(ee_ram_ptr(at), b.data(), b.size());
+    ee_copy_in(at, b.data(), b.size());  // (the core's bytes: the PS2's order, ee_memory.h)
     const uint32_t frames = b[0x10];
     for (uint32_t k = 0; k < frames && 0x1c + 4 * k + 4 <= b.size(); ++k) ee_write<uint32_t>(at + 0x1c + 4 * k, ee_read<uint32_t>(at + 0x1c + 4 * k) + at);
     if (ee_read<uint32_t>(at + 0x14) != 0) ee_write<uint32_t>(at + 0x14, ee_read<uint32_t>(at + 0x14) + at);

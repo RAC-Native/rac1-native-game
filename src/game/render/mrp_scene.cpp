@@ -587,6 +587,7 @@ void decode_all(MrpFrame& f) {
     if (g_parts_noted) {  // (the parts from the loop's notes: no chain read, nothing for a job)
         for (uint32_t i = 0; i < n; ++i) {
             decode_record(f, f.mobys[i]);
+            if (f.mobys[i].direct) continue;  // (the MRP-only pass's: its parts given already, no chain written for them)
             if (!parts_noted(f.mobys[i], i, f.parts, static_cast<uint32_t>(f.unpacks.size()))) {
                 ++g_parts_decoded;
                 decode_chain(f, i);

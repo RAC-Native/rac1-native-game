@@ -408,10 +408,21 @@ struct SceneInput {
 };
 
 #if defined(__WIIU__)
-// orig: (host) the Wii U (MRP-lite, its scene from the static frame): a level mod's host meshes (src/formats/host_meshes.h) bound to
-// the world index `index` appended to `f` as the walker's scene has them (emit_host_meshes), in the view of `a` and `camera`; the
-// tie pass's fog, the level's objects' models and the current sections read now (EE memory: the prepare's first half)
-void scene_host_meshes(const void* index, const std::array<float, 16>& a, const std::array<float, 3>& camera, SceneFrame& f);
+// The Wii U (MRP-lite, its scene from the static frame): a level mod's host meshes (src/formats/host_meshes.h) as the walker's scene
+// has them (emit_host_meshes). Their inputs read from EE memory and the host on the game's thread (scene_host_meshes_capture: the tie
+// pass's fog, the level's objects' models, the current sections), the packets made from them anywhere (scene_host_meshes: those bound
+// to the world index `index`, appended to `f` in the view of `a` and `camera`)
+struct HostMeshIn {
+    float fog[4] = {};
+    std::vector<HostMeshInstance> dyn;
+    uint32_t sections = 0xffffffffu;
+    bool any = false;  // (host meshes bound when captured)
+    uint32_t colour_base = 0;  // (their colours in the resident table from here: 64 words an instance, static ones then the objects')
+};
+void scene_host_meshes_capture(HostMeshIn& in);
+// the 64 colour words of host mesh instance `i` (the static ones, then the objects') as the resident table holds them (R in the low byte)
+void scene_host_mesh_colours(const HostMeshIn& in, const void* index, std::vector<uint32_t>& words);
+void scene_host_meshes(const void* index, const std::array<float, 16>& a, const std::array<float, 3>& camera, const HostMeshIn& in, SceneFrame& f);
 #endif
 // orig: (host) the frame's world scene, in two steps: the capture of the chain [chain_start, chain_end) (after the update, while the
 // game's state does not change; the frame's shadow chains copied into the input), then the build from it (any thread): the chain

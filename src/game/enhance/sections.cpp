@@ -1101,7 +1101,7 @@ const Entry* entry_of(const Section& s, const std::string& name) {
 bool commit_step(Section& s, int idx) {
     auto copy = [&](uint32_t dst, const std::vector<uint8_t>& src) {  // (a chunk of `src` at `s.copied`: true when all copied)
         const size_t n = std::min<size_t>(0x10000, src.size() - s.copied);
-        if (n != 0) std::memcpy(ee_ram_ptr_write(dst + static_cast<uint32_t>(s.copied), static_cast<uint32_t>(n)), src.data() + s.copied, n);
+        if (n != 0) ee_copy_in(dst + static_cast<uint32_t>(s.copied), src.data() + s.copied, n);  // (the file's bytes: the PS2's order)
         s.copied += n;
         if (s.copied < src.size()) return false;
         s.copied = 0;
@@ -1177,7 +1177,7 @@ bool commit_step(Section& s, int idx) {
             uint32_t own = 0;
             if (!s.b.own_gp.empty()) {
                 own = session_heap_alloc(static_cast<uint32_t>(s.b.own_gp.size()) + 0x10, owner_files(s));
-                if (own != 0) std::memcpy(ee_ram_ptr_write(own, static_cast<uint32_t>(s.b.own_gp.size())), s.b.own_gp.data(), s.b.own_gp.size());
+                if (own != 0) ee_copy_in(own, s.b.own_gp.data(), s.b.own_gp.size());
             }
             const uint32_t files[2] = {s.gp, own};
             int32_t total = 0;
@@ -1956,7 +1956,7 @@ void section_equiv_native([[maybe_unused]] uint32_t H) {
         return;
     }
     const uint32_t H2 = session_heap_alloc(static_cast<uint32_t>(gp.size()) + 0x10, "section equivalence");
-    std::memcpy(ee_ram_ptr_write(H2, static_cast<uint32_t>(gp.size())), gp.data(), gp.size());
+    ee_copy_in(H2, gp.data(), gp.size());
     // the native load: its records, its pvar blocks (their table's sizes), its placement -> slot map
     const uint32_t tab2 = H2 + lwu(H2 + 0x54);
     std::vector<std::vector<uint8_t>> rec(n), pv(n);

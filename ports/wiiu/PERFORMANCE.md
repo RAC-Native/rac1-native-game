@@ -1756,3 +1756,32 @@ Deterministic runs (`RAC1_REALTIME=0`, 1500 steps, 47 windows), A/B pairs on the
   builds up to bk28 did not - a far moby at the top changed between runs (2,129 pixels). Since the mobys' prepare writes into zeroed
   lines it is always the same: something reads past the frame's own data there (likely the 8 KB joints' uniform block a moby, read
   from joints_all past its poses) - stale data before, zeros now. To look at.
+
+## Main 0.8.1 and Daino's Arena on the console (2026-11-14/15)
+
+Main 0.8.1 (82689d9) merged into port/wiiu: mods, the mod SDK (ABI 19), the open engine, Daino's Arena. The PC identical to main's
+own build (the three images, the 600-frame RAMHASH; `pc_check.sh` now takes them from main's binary).
+
+- **Mods' plugins without dlopen:** each mod's `plugin/*.c` (`RAC1_WIIU_MODS` at configure time) built into the rpx, its
+  `rac1_mod_abi` / `rac1_mod_main` renamed per mod, a table `mod_code.cpp`'s loader finds by the mod's folder (main's ABI check).
+  The arena's plugin adds ~0.6 MB; .text stays at 28 MB (< 32).
+- **The arena's session memory** allocated whole: 128 MB by default (`RAC1_SESSION_RAM_MB`; the PC's 256 would leave too little of
+  the ~490 MB free on a heavy planet). The arena runs the same on the PC with 128.
+- **Byte order:** the mod stamp's sizes, the host meshes' file, and the open engine's copies of disc bytes into EE memory
+  (`ee_copy_in` / `ee_bytes_to_words`, a memcpy on the PC) were the PC's little-endian.
+- **Main's moby parts from the draw loop's notes** (`RAC1_PERF_MOBY_PARTS`, default on) remade the MRP-only pass's mobys from chain
+  addresses the pass never wrote: every level's mobys came out as large flat triangles (Kalebo 63 ms). Those mobys are skipped there.
+- **Host meshes:** made by the static scene's first half on core 2 (`scene_host_meshes`, inputs caught on the game thread), their
+  colours in the resident table past the level's (`ResidentColours::extra`).
+
+Measured (console, A/B against the night's numbers):
+
+| | before the merge | after |
+|---|---|---|
+| Kalebo, deterministic 1500 steps | 44.1 ms | 42.5 |
+| Quartu, deterministic | 44.1 | 42.7 |
+| Kerwan, deterministic | 38.0 | 37.9 |
+| Veldin, real time | 26.5 | 26.5 |
+| Daino's Arena, a challenge on (real time, after the load) | - | 16.7 most windows, single spikes to 33 / 69 |
+
+Left: the dark hills ring behind the arena's walls (a host mesh the Wii U does not draw yet).

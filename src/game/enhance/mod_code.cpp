@@ -1988,7 +1988,7 @@ void sdk_level_load(int slot) {
                              b.size() < 0x10 ? "not read" : "the meshes' room of 8 KB is full");
                 continue;
             }
-            std::memcpy(ee_ram_ptr_write(at, static_cast<uint32_t>(b.size())), b.data(), b.size());
+            ee_copy_in(at, b.data(), b.size());  // (the file's bytes: the PS2's order, ee_memory.h)
             s.classes[ci].coll = at;
             at += static_cast<uint32_t>((b.size() + 15) & ~size_t{15});
             std::printf("[sdk] class \"%s\": its collision mesh %s at %08x (%zu bytes, %d triangles)\n", s.classes[ci].name.c_str(), file.c_str(), s.classes[ci].coll,

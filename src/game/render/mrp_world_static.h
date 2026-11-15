@@ -41,6 +41,7 @@ struct ResidentColours {
     std::vector<std::pair<uint32_t, uint32_t>> dirty;
     std::vector<uint32_t> dirty_words;
     bool all_dirty = true;  // (a new level: the whole table sent)
+    uint32_t extra = 0;     // (the Wii U: the host's words past the level's - a level mod's host meshes' colours -, kept by the size check)
     uint64_t updates = 0, instances_changed = 0, words_uploaded = 0;
     uint32_t shrub_first() const { return src.tie_count * kTieColours; }
     // the slot (index of the first u32) of the tie instance whose colours start at EE address `addr` (-1: not one)

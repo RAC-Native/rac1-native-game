@@ -6958,6 +6958,32 @@ bool prep_all_on() {
     static const bool on = std::getenv("RAC1_WIIU_PREP_ALL") == nullptr || std::atoi(std::getenv("RAC1_WIIU_PREP_ALL")) != 0;
     return on;
 }
+// (a level mod's host meshes: their colours in the resident table past the level's - g_rcols.extra -, the changed words queued for
+// the upload; their instances read them from in.colour_base, scene_host_meshes)
+void wiiu_host_colours(HostMeshIn& in) {
+    ResidentColours& rc = g_rcols;
+    static std::vector<uint32_t> words;
+    scene_host_mesh_colours(in, g_level.idx.get(), words);
+    const size_t base = rc.mirror.size() - rc.extra;
+    in.colour_base = static_cast<uint32_t>(base);
+    if (words.size() != rc.extra) {
+        rc.mirror.resize(base + words.size());
+        rc.extra = static_cast<uint32_t>(words.size());
+        rc.all_dirty = true;  // (the table's size changed: sent whole)
+    }
+    uint32_t run = 0, first = 0;
+    for (size_t i = 0; i <= words.size(); ++i) {
+        const bool diff = i < words.size() && rc.mirror[base + i] != words[i];
+        if (diff) {
+            if (run == 0) first = static_cast<uint32_t>(base + i);
+            ++run;
+            rc.mirror[base + i] = words[i];
+        } else if (run != 0) {
+            if (!rc.all_dirty) rc.dirty.emplace_back(first, run);
+            run = 0;
+        }
+    }
+}
 struct HeadIn {
     StaticSnapshot snap;
     TfragSnapshot tsnap;
@@ -6966,6 +6992,7 @@ struct HeadIn {
     std::array<float, 3> cam{};
     SceneStaticConsts k;
     bool sky = false;  // (the sky's range copied this host frame and drawn: run on the worker, its packets before the world's)
+    HostMeshIn host;   // (a level mod's host meshes: their inputs, scene_host_meshes_capture)
 };
 HeadIn g_head_in;
 bool g_job_head = false;  // (the job dispatched runs the first half too: wiiu_prep_head)
@@ -7179,6 +7206,8 @@ bool wiiu_prepare_reads(bool sky_fresh) {
         for (uint32_t k = 0; k < 16; ++k) in.a[k] = lwc1(ad.a + 4 * k);
         for (uint32_t k = 0; k < 3; ++k) in.cam[k] = lwc1(ad.camera + 4 * k);
         scene_static_consts(in.k);
+        scene_host_meshes_capture(in.host);
+        wiiu_host_colours(in.host);
         in.sky = sky_fresh && F.in.sky;
         {  // the sky's textures (sky_texture: the entries' texels in EE memory, decoded once a level) resolved here, as with the game thread
             g_sky_resolved.clear();
@@ -7279,7 +7308,12 @@ void mrp_world_wiiu_prepare(bool active) {
     for (uint32_t k = 0; k < 16; ++k) a[k] = lwc1(ad.a + 4 * k);
     for (uint32_t k = 0; k < 3; ++k) cam[k] = lwc1(ad.camera + 4 * k);
     if (!scene_from_static(g_sframe, g_slevel, a, cam, tfrag ? &g_tlevel : nullptr, tfrag ? &g_tdecide : nullptr, F.scene)) return;
-    scene_host_meshes(g_level.idx.get(), a, cam, F.scene);  // (a level mod's host meshes, as the walker's scene has them)
+    {
+        static HostMeshIn host;
+        scene_host_meshes_capture(host);
+        wiiu_host_colours(host);
+        scene_host_meshes(g_level.idx.get(), a, cam, host, F.scene);  // (a level mod's host meshes, as the walker's scene has them)
+    }
     // the sky (MRP_LITE.md phase 5): this frame's capture's packets before the world's, as its range is in the chain - build_triangles makes
     // its batches (Batch::sky) as the PC's, the GS registers it leaves the world's start (the PC's tfrags see its ALPHA_1)
     if (sky_fresh && F.in.sky) sky_prepend(F.scene, g_sky_cap);
@@ -7376,6 +7410,7 @@ bool wiiu_prep_head() {
     part(7);
     g_scene_static_time = part_time;
     const bool ok = scene_from_static_k(g_sframe, g_slevel, in.a, in.cam, in.tfrag ? &g_tlevel : nullptr, in.tfrag ? &g_tdecide : nullptr, in.k, F.scene, sky_ok ? &g_sky_cap : nullptr);
+    if (ok) scene_host_meshes(g_level.idx.get(), in.a, in.cam, in.host, F.scene);  // (a level mod's host meshes, as the walker's scene has them)
     part(8);
     if (part_time && ++g_part_wn == 120) {
         // ((2026-10-31) the labels put right - "the scene" was the vis marks' copy, "the sky's run" scene_from_static_k -, its parts added)

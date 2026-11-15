@@ -78,7 +78,11 @@ std::vector<std::pair<std::string, std::filesystem::path>> files_under(const std
     for (auto it = std::filesystem::recursive_directory_iterator(dir, std::filesystem::directory_options::skip_permission_denied, ec);
          !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
         if (!it->is_regular_file(ec)) continue;
-        out.emplace_back(std::filesystem::relative(it->path(), dir, ec).generic_string(), it->path());
+        // (the path under `dir` by its prefix - the iterator's paths are `dir` / ...; the Wii U's std::filesystem::relative gives "" -,
+        // relative() otherwise)
+        const std::string full = it->path().generic_string(), base = dir.generic_string() + "/";
+        out.emplace_back(full.compare(0, base.size(), base) == 0 ? full.substr(base.size()) : std::filesystem::relative(it->path(), dir, ec).generic_string(),
+                         it->path());
     }
     std::sort(out.begin(), out.end());
     return out;
@@ -419,7 +423,9 @@ static uint64_t files_stamp(std::vector<std::pair<std::string, std::filesystem::
             mix(buf.data(), got);
             n += got;
         }
-        mix(&n, sizeof n);
+        uint8_t nb[8];  // (the size little-endian whatever the host's order: a build stamped on the PC checked on the Wii U)
+        for (int i = 0; i < 8; ++i) nb[i] = static_cast<uint8_t>(n >> (8 * i));
+        mix(nb, sizeof nb);
     }
     return h;
 }
@@ -451,8 +457,10 @@ std::string mods_plugin_build_check(const ModInfo& m) {
     char want[24];
     std::snprintf(want, sizeof want, "%016llx", static_cast<unsigned long long>(mods_plugin_inputs_stamp(m.dir)));
     if (field(j, "inputs", "", 32) != want) return "needs setup (its code changed since it was built)";
+#if !defined(__WIIU__)  // (the Wii U: no library - the plugin is built into the game, mod_code.cpp lib_open finds it or says not)
     std::error_code ec;
     if (!std::filesystem::is_regular_file(dir / kPluginFile, ec)) return std::string("needs setup (no ") + kPluginFile + " built)";
+#endif
     return "";
 }
 
@@ -483,7 +491,12 @@ std::string mods_level_build_check(const ModInfo& m) {
     if (v == j.end() || !v->is_number_integer() || v->get<int64_t>() != kLevelComposerVersion) return "needs setup (built by another version)";
     char want[24];
     std::snprintf(want, sizeof want, "%016llx", static_cast<unsigned long long>(mods_level_inputs_stamp(m.dir)));
-    if (field(j, "inputs", "", 32) != want) return "needs setup (the mod's files changed since its build)";
+    if (field(j, "inputs", "", 32) != want) {
+        const auto files = files_under(m.dir / "level");
+        std::fprintf(stderr, "[mods] %s: its inputs' stamp %s, its build's %s (%zu files under level/, the first %s)\n", m.folder.c_str(), want,
+                     field(j, "inputs", "", 32).c_str(), files.size(), files.empty() ? "-" : files.front().first.c_str());
+        return "needs setup (the mod's files changed since its build)";
+    }
     for (const char* file : {"data.wad", "gameplay.bin"}) {
         std::error_code ec;
         if (!std::filesystem::is_regular_file(dir / file, ec)) return std::string("needs setup (its build has no ") + file + ")";

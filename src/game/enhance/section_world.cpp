@@ -254,7 +254,7 @@ bool world_build_begin(WorldBuild& w, int level, const WorldBytes& b, uint32_t g
     w.bytes = total + 0x100;
     uint32_t at = (w.block + 0xffu) & ~0xffu;  // (the blocks 256-byte aligned, as the level's asset data has them)
     w.index = at;
-    std::memcpy(ee_ram_ptr_write(at, static_cast<uint32_t>(b.index.size())), b.index.data(), b.index.size());
+    ee_copy_in(at, b.index.data(), b.index.size());  // (the file's bytes: the PS2's order, ee_memory.h)
     at += (static_cast<uint32_t>(b.index.size()) + 0xffu) & ~0xffu;
     for (const WorldBytes::Range& r : b.ranges) {
         w.map.push_back({r.lo, static_cast<uint32_t>(r.b.size()), at});
@@ -279,7 +279,7 @@ bool world_build_step(WorldBuild& w, const WorldBytes& b, const std::string& own
         }
         const WorldBytes::Range& r = b.ranges[w.r];
         const size_t n = std::min<size_t>(0x10000, r.b.size() - w.copied);
-        if (n != 0) std::memcpy(ee_ram_ptr_write(w.map[w.r].at + static_cast<uint32_t>(w.copied), static_cast<uint32_t>(n)), r.b.data() + w.copied, n);
+        if (n != 0) ee_copy_in(w.map[w.r].at + static_cast<uint32_t>(w.copied), r.b.data() + w.copied, n);
         w.copied += n;
         if (w.copied >= r.b.size()) {
             ++w.r;
@@ -747,7 +747,7 @@ bool world_hud_build(WorldHud& h, int level, const WorldBytes& b, const std::str
     h.pals = h.frames + al(sz_frame);
     h.texs = h.pals + al(sz_pal);
     const uint32_t set = h.texs + al(sz_tex);
-    std::memcpy(ee_ram_ptr_write(set, static_cast<uint32_t>(b.hud_set.size())), b.hud_set.data(), b.hud_set.size());
+    ee_copy_in(set, b.hud_set.data(), b.hud_set.size());
     mem_copy(h.anims, anims, static_cast<int32_t>(n_anim * 8));
     mem_copy(h.frames, frames, static_cast<int32_t>(n_frame * 4));
     mem_copy(h.pals, pals, static_cast<int32_t>(n_pal * 8));

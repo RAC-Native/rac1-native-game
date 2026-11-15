@@ -1,6 +1,8 @@
 // See host_meshes.h. (The reader: the experiment's custom ties container, generalised.)
 #include <formats/host_meshes.h>
 
+#include "io/host_endian.h"
+
 #include <algorithm>
 #include <atomic>
 
@@ -20,6 +22,19 @@ struct Reader {
     bool ok = true;
     template <typename T>
     T get() {
+        T v{};
+        if (!ok || at + sizeof(T) > b.size()) {
+            ok = false;
+            return v;
+        }
+        std::memcpy(&v, b.data() + at, sizeof(T));
+        at += sizeof(T);
+        le_fix_elements(v);  // (the file's numbers little-endian, whatever the host's order: the Wii U)
+        return v;
+    }
+    // the bytes as they are in the file (a palette's RGBA bytes, as moby_mrp.cpp's read_textures keeps them)
+    template <typename T>
+    T get_raw() {
         T v{};
         if (!ok || at + sizeof(T) > b.size()) {
             ok = false;
@@ -71,7 +86,7 @@ bool read_host_meshes(const std::string& path, HostMeshes& out, std::string& err
         t.index = i;
         t.width = r.get<uint32_t>();
         t.height = r.get<uint32_t>();
-        t.palette = r.get<std::array<uint32_t, 256>>();
+        t.palette = r.get_raw<std::array<uint32_t, 256>>();
         const uint32_t mips = r.get<uint32_t>();
         for (uint32_t m = 0; m < mips && r.ok; ++m) t.mips.push_back(r.bytes(r.get<uint32_t>()));
         out.textures.push_back(std::move(t));
