@@ -65,6 +65,10 @@ add_library(rac1_game STATIC
     ovl/eudora_biped.cpp
     ovl/eudora_fidget.cpp
     ovl/eudora_flock.cpp
+    ovl/eudora_pump_parts.cpp
+    ovl/eudora_saw.cpp
+    ovl/eudora_ship.cpp
+    ovl/eudora_trooper.cpp
     ovl/eudora_walker.cpp
     ovl/rilgar_mobys.cpp
     ovl/rilgar_hooks.cpp

@@ -924,6 +924,448 @@ void batch_111() {
                 return Args{{pick(bipeds)}, {}};
             }, [](A a) { biped_explode_l4(a.i[0]); return uint64_t{0}; });
         }
+
+        // ---- P4.2: classes 340 (the Circular Saw Enemy), 427 (the Blarg Trooper), 432 / 434 (the pump's parts) and 466
+        // (the flying ships): every state with its timers, sight, alert, animations, paths and boxes, hits of the weapons,
+        // the hero's moby near or far; the saw carried (state 9, its carry record's states), the saws crowding the target
+        // (the attack's spread); the pump's work at its ends or moving, its sound slots playing or not
+        auto trial = [](void (*fn)(uint32_t), const std::function<uint32_t()>& deal) {
+            // (a state that sends the port through a pointer outside RAM is not a game state: dealt again)
+            static std::vector<uint8_t> saved;
+            uint32_t m = 0;
+            for (int attempt = 0; attempt < 20; ++attempt) {
+                m = deal();
+                uint8_t* ram = ee_get_ram_base();
+                saved.assign(ram, ram + 0x02000000);
+                bool ok = true;
+                const uint32_t stack_top = ee_stack_ptr();
+                try { fn(m); } catch (const std::exception&) { ok = false; }
+                ee_stack_ptr() = stack_top;
+                std::memcpy(ram, saved.data(), saved.size());
+                if (ok) break;
+            }
+            return m;
+        };
+        // a hit of the weapons on `m` (its slot's record varied), or none
+        auto weapon_hit = [give_hit](uint32_t m) {
+            const uint32_t P = 0x0013f350;
+            if (coin()) { w8(m + 0xa4, 0xff); return; }
+            give_hit(m, 0x210000u);
+            if (ee_read<uint8_t>(m + 0xa4) == 0xff) return;
+            const uint32_t e = OV(0x00178100) + (ee_read<uint8_t>(m + 0xa4) << 6);
+            w8(e + 0x28, u(ri(0, 11))); w8(e + 0x29, u(ri(0, 4))); w16(e + 0x2a, coin() ? 0x47u : u(ri(0, 0x60)));
+            wf(e + 0x1c, coin() ? 5627.95f : 0.0f);
+            w32(e + 0x20, ri(0, 3) == 0 ? 0u : (coin() ? ee_read<uint32_t>(P + 0x2080) : m));
+            wf(e + 0x2c, coin() ? rf(0.1f, 6) : 0.0f);
+        };
+        // a sound slot word: none, or a slot playing for `m` (its record 0x13e550 + slot * 0x70) or for another moby
+        auto sound_slot = [](uint32_t m, uint32_t word) {
+            if (coin()) { w32(word, 0xffffffffu); return; }
+            const uint32_t slot = u(ri(0, 15)), e = 0x0013e550u + slot * 0x70u;
+            w32(word, slot);
+            w32(e + 0x88, coin() ? m : 0u);
+            w8(e + 0x74, u(ri(0, 1)));
+        };
+        auto anims = [](uint32_t m, int hi) {
+            const uint32_t set = u(ri(0, hi));
+            w8(m + 0x53, set);
+            w8(m + 0x52, ri(0, 3) == 0 ? u(ri(0, hi)) : set);
+            if (coin()) w8(m + 0x70, coin() ? 2u : 0u);
+            if (coin()) { w8(m + 0x51, u(ri(0, 48))); w8(m + 0x50, u(ri(0, 48))); wf(m + 0x54, rf(0, 1)); }
+        };
+        const int32_t boxes = ee_read<int32_t>(OV(0x001600f0));
+        auto some_box = [boxes] { return boxes > 0 ? u(ri(0, boxes - 1)) : 0xffffffffu; };
+        const std::vector<uint32_t> saws = mobys_with(0x002c2270), troopers = mobys_with(0x002c4850);
+        const std::vector<uint32_t> valves = mobys_with(0x002c6858), lifts = mobys_with(0x002c6bb8), ships = mobys_with(0x002ca420);
+        if (info) std::printf("P42 saws %zu troopers %zu 432 %zu 434 %zu ships %zu boxes %d\n", saws.size(), troopers.size(), valves.size(), lifts.size(), ships.size(), boxes);
+
+        // the saw: its pvars varied as the states read them; carried: the record (pvars +0x180) in a carry state
+        auto saws_any = [saws, pick] { return pick(saws); };
+        auto saw_prep = [some_path, some_box, hero_at, rate50, weapon_hit, sound_slot, anims, saws_any](uint32_t m, int st) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            rate50();
+            if (st != 0 && coin()) { w8(m + 0x20, 0); eud_class340_update_l4(m); }
+            w8(m + 0x20, u(st));
+            if (ri(0, 3) == 0) w32(pv + 0x38, 1);
+            if (ri(0, 3) == 0) w16(pv + 0x136, u(ri(1, 3)));
+            w16(pv + 0x146, ri(0, 2) == 0 ? 0u : u(ri(1, 3)));
+            if (coin()) w16(pv + 0x144, u(ri(0, 3)));
+            if (coin()) w8(pv + 0x14c, u(ri(0, 3)));
+            w8(pv + 0x14d, ri(0, 2) == 0 ? u(ri(1, 3)) : 0u);
+            if (coin()) w16(pv + 0x14e, R() & 3);
+            if (ri(0, 3) == 0) w32(pv + 0x138, 0xffffffffu); else if (ri(0, 2) == 0) { const int32_t p = some_path(3); if (p >= 0) w32(pv + 0x138, u(p)); }
+            if (ri(0, 2) == 0) { const int32_t p = some_path(2); if (p >= 0) w32(pv + 0x150, u(p)); }
+            if (const int32_t p = ee_read<int32_t>(pv + 0x150); p >= 0 && p < 1000) {
+                const uint32_t path = ee_read<uint32_t>(OV(0x001b04b0) + u(p) * 4);
+                const int32_t n = path != 0 ? ee_read<int32_t>(path) : 1;
+                w32(pv + 0x154, u(ri(0, std::max(0, n - 1))));
+                if (path != 0 && ri(0, 2) == 0) {  // (at its point)
+                    Vec4 q = ee_ref<Vec4>(path + 0x10 + ee_read<uint32_t>(pv + 0x154) * 16);
+                    q.x += rf(-1.2f, 1.2f); q.y += rf(-1.2f, 1.2f);
+                    ee_ref<Vec4>(m + 0x10) = q;
+                }
+            }
+            for (uint32_t k = 0; k < 4; ++k) if (coin()) w32(pv + 0x160 + k * 4, coin() ? 0xffffffffu : some_box());
+            if (coin()) { w16(pv + 0x158, some_box() & 0xffff); w16(pv + 0x15a, u(ri(0, 2))); }
+            if (ri(0, 4) == 0) {  // (inside its box)
+                const uint32_t b = ee_read<uint32_t>(OV(0x001600ec)) + u(ee_read<int16_t>(pv + 0x158)) * 0x80;
+                Vec4 q = ee_ref<Vec4>(b + 0x30); q.x += rf(-1.2f, 1.2f); q.y += rf(-1.2f, 1.2f);
+                ee_ref<Vec4>(m + 0x10) = q;
+                if (coin()) wf(m + 0x48, ee_read<float>(b + 0x78) + rf(-0.2f, 0.2f));
+            }
+            if (coin()) wf(pv + 0x13c, coin() ? 0.0f : rf(0, 0.3f));
+            if (coin()) wf(pv + 0x140, rf(2, 30));
+            if (coin()) wf(pv + 0x20, coin() ? rf(0.1f, 1) : 1.0f);
+            if (ri(0, 9) == 0) w8(pv + 0x2e, 0);
+            if (ri(0, 7) == 0) wf(m + 0x18, ee_read<float>(pv + 0x128) - rf(4, 7));
+            anims(m, 9);
+            sound_slot(m, pv + 0x238);
+            if (coin()) { wf(pv + 0x230, rf(0, 1100)); wf(pv + 0x234, rf(-3, 5)); }
+            if (st == 9) {  // carried: the record (pvars +0x180) in a state 1 .. 8 as the carry system leaves it (batch 530's)
+                const uint32_t r = pv + 0x180, hero = ee_read<uint32_t>(0x001413d0);
+                w32(pv + 0x1f0, L4_ADDR(0x00161878));  // (its parameters, as its state 0 sets them)
+                w16(r + 0x68, u(ri(1, 8)));
+                wf(r + 0xc, rf(-1, 2));
+                wf(r + 0x6c, rf(0, 1.2f));
+                w32(r + 0x60, coin() ? hero : saws_any());
+                wf(r + 0x64, rf(0.5f, 5));
+                w16(r + 0x6a, u(ri(0, 3)));
+                w32(0x0013f350 + 0x2050 + 4 * ee_read<uint16_t>(r + 0x6a), saws_any());
+                Vec4 q = ee_ref<Vec4>(m + 0x10); q.x += rf(-5, 5); q.y += rf(-5, 5); ee_ref<Vec4>(r) = q;
+                wfrand(r + 0x10, 3, -0.4f, 0.4f);
+                w32(r + 0x74, ri(0, 2) == 0 ? 0u : (coin() ? hero : saws_any()));
+                wf(r + 0x7c, rf(0, 0.1f));
+                w32(r + 0x94, u(ri(0, 400)));
+                wf(r + 0x98, rf(0, 0.3f));
+                if (coin()) wf(m + 0x18, ri(0, 3) == 0 ? rf(0.0f, 2.5f) : rf(1.8f, 2.6f));
+            }
+            if (coin()) w16(m + 0x34, ee_read<uint16_t>(m + 0x34) | 1u);
+            hero_at(m, 0, ri(0, 2) == 0 ? 3.0f : (coin() ? 20.0f : 50.0f));
+            weapon_hit(m);
+            w32(OV(0x0015f5cc), R() & 0xffff);
+            seed_rand();
+        };
+        // (left out of the saw's checks only: the collision's pushed w lane and the segment record +0x50 .. +0x7c, the VU0
+        // leftovers walker_step's / segment_collide's ports leave as they are: COMMON's known differences, harmless)
+        const std::vector<uint32_t> before_saw_ignored = g_ignored_words;
+        g_ignored_words.push_back(OV(0x00173e7c));
+        for (uint32_t a = OV(0x00173e90); a < OV(0x00173ec0); a += 4) g_ignored_words.push_back(a);
+        if (saws.empty()) std::printf("eud_saw                    L4:0x002c2270  no class 340 moby on this level\n");
+        else {
+            for (int st = 0; st <= 10; ++st) {
+                char name[32];
+                std::snprintf(name, sizeof name, "eud_saw_st%d", st);
+                l4check(name, 0x002c2270, 60, Ret::None, [level, saws, pick, saw_prep, trial, st] {
+                    return Args{{trial(eud_class340_update_l4, [&] { level(); const uint32_t m = pick(saws); saw_prep(m, st); return m; })}, {}};
+                }, [](A a) { eud_class340_update_l4(a.i[0]); return uint64_t{0}; });
+            }
+            // the saws crowding the target: some of the others moved next to the hero
+            auto crowd = [level, saws, pick, hero_at, rate50](uint32_t& m) {
+                level();
+                m = pick(saws);
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                hero_at(m, 0, 12);
+                const Vec4 h = ee_ref<Vec4>(0x0013f3d0);
+                for (uint32_t o : saws) if (o != m && coin()) { Vec4 q = h; q.x += rf(-6, 6); q.y += rf(-6, 6); ee_ref<Vec4>(o + 0x10) = q; }
+                if (ri(0, 3) == 0) w32(pv + 0x38, 1);
+                if (coin()) wf(pv + 0x140, rf(2, 30));
+                if (coin()) wf(L4_ADDR(0x00161884), rf(0, 2));
+                rate50();
+            };
+            l4check("eud_saw_may_attack", 0x002c1e98, 200, Ret::Int32, [crowd] { uint32_t m = 0; crowd(m); return Args{{m}, {}}; },
+                    [](A a) { return r32(static_cast<uint32_t>(saw_may_attack_l4(a.i[0]))); });
+            l4check("eud_saw_attack_point", 0x002c1fb8, 200, Ret::Float, [crowd] { uint32_t m = 0; crowd(m); wfrand(OUT, 4, -9, 9); return Args{{m, OUT}, {}}; },
+                    [](A a) { return rf32(saw_attack_point_l4(a.i[0], a.i[1])); });
+            l4check("eud_saw_sound", 0x002c1b80, 200, Ret::None, [level, saws, pick, anims, sound_slot, rate50] {
+                level();
+                const uint32_t m = pick(saws), pv = ee_read<uint32_t>(m + 0x78);
+                w8(m + 0x20, coin() ? 9u : u(ri(0, 8)));
+                anims(m, 10);
+                sound_slot(m, pv + 0x238);
+                if (ri(0, 3) != 0 && ee_read<int32_t>(pv + 0x238) != -1) {  // (playing for it)
+                    const uint32_t e = 0x0013e550u + ee_read<uint32_t>(pv + 0x238) * 0x70u;
+                    w32(e + 0x88, m); w8(e + 0x74, 1);
+                }
+                static const float goals[] = {614.4f, 819.2f, 1024.0f};
+                wf(pv + 0x230, coin() ? rf(0, 1100) : goals[ri(0, 2)] + rf(-60, 60));
+                wf(pv + 0x234, coin() ? rf(-3, 5) : static_cast<float>(ri(-2, 4)) + rf(-0.2f, 0.2f));
+                rate50();
+                seed_rand();
+                return Args{{m}, {}};
+            }, [](A a) { saw_sound_update_l4(a.i[0]); return uint64_t{0}; });
+            l4check("eud_saw_die", 0x002c1d70, 100, Ret::None, [level, saws, pick, sound_slot] {
+                level();
+                const uint32_t m = pick(saws);
+                sound_slot(m, ee_read<uint32_t>(m + 0x78) + 0x238);
+                seed_rand();
+                return Args{{m}, {}};
+            }, [](A a) { saw_die_l4(a.i[0]); return uint64_t{0}; });
+        }
+
+        g_ignored_words = before_saw_ignored;
+
+        // the trooper: its paths, timers, gun, the camera looking its way or not
+        auto trooper_prep = [some_path, hero_at, rate50, weapon_hit, anims](uint32_t m, int st) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            rate50();
+            if (st != 0 && coin()) { w8(m + 0x20, 0); eud_class427_update_l4(m); }
+            w8(m + 0x20, u(st));
+            if (ri(0, 3) == 0) w32(pv + 0x38, 1);
+            if (ri(0, 3) == 0) w8(pv + 0xfe, u(ri(1, 3)));
+            for (uint32_t o : {0xe0u, 0xe4u}) if (ri(0, 3) == 0) { const int32_t p = some_path(3); w32(pv + o, p >= 0 && coin() ? u(p) : 0xffffffffu); }
+            if (coin()) w32(pv + 0xe8, u(ri(0, 1)));
+            w16(pv + 0xf0, ri(0, 2) == 0 ? u(ri(1, 3)) : 0u);
+            w16(pv + 0xf2, ri(0, 2) == 0 ? u(ri(1, 3)) : 0u);
+            if (coin()) w8(pv + 0xff, u(ri(0, 2)));
+            if (coin()) w16(pv + 0x108, u(ri(0, 2)));
+            if (coin()) wf(pv + 0xf4, rf(0, 0.4f));
+            if (ri(0, 4) == 0) w32(pv + 0xf8, 0);
+            if (coin()) w8(pv + 0xfc, u(ri(0, 1)));
+            if (coin()) w8(pv + 0xfd, u(ri(0, 4)));
+            if (coin()) wf(pv + 0xdc, rf(2, 40));
+            if (coin()) wf(pv + 0xd8, rf(0, 40));
+            if (coin()) wf(pv + 0x20, coin() ? rf(0.1f, 1) : 3.0f);
+            if (ri(0, 9) == 0) w8(pv + 0x2e, 0);
+            if (ri(0, 7) == 0) wf(m + 0x18, ee_read<float>(pv + 0xd4) - rf(4, 7));
+            anims(m, 12);
+            // the camera point and heading (L4:0x166f40 / 0x166f58): looking at the trooper or away
+            Vec4 c = ee_ref<Vec4>(m + 0x10);
+            const float a = rf(-3.1f, 3.1f), d = rf(3, 30);
+            c.x += d * std::cos(a); c.y += d * std::sin(a);
+            ee_ref<Vec4>(L4_ADDR(0x00166f40)) = c;
+            wf(L4_ADDR(0x00166f58), coin() ? std::atan2(ee_read<float>(m + 0x14) - c.y, ee_read<float>(m + 0x10) - c.x) + rf(-0.8f, 0.8f) : rf(-3.1f, 3.1f));
+            if (coin()) w16(m + 0x34, ee_read<uint16_t>(m + 0x34) | 1u);
+            if (ri(0, 3) == 0) hero_at(m, 2.3f, 3.7f);
+            else hero_at(m, 0, ri(0, 2) == 0 ? 3.0f : (coin() ? 25.0f : 60.0f));
+            weapon_hit(m);
+            w32(OV(0x0015f5cc), R() & 0xffff);
+            seed_rand();
+        };
+        if (troopers.empty()) std::printf("eud_trooper                L4:0x002c4850  no class 427 moby on this level\n");
+        else {
+            for (int st = 0; st <= 12; ++st) {
+                char name[32];
+                std::snprintf(name, sizeof name, "eud_trooper_st%d", st);
+                l4check(name, 0x002c4850, 60, Ret::None, [level, troopers, pick, trooper_prep, trial, st] {
+                    return Args{{trial(eud_class427_update_l4, [&] { level(); const uint32_t m = pick(troopers); trooper_prep(m, st); return m; })}, {}};
+                }, [](A a) { eud_class427_update_l4(a.i[0]); return uint64_t{0}; });
+            }
+            l4check("eud_trooper_retire", 0x002c4808, 100, Ret::None, [level, troopers, pick] {
+                level();
+                const uint32_t m = pick(troopers);
+                if (coin()) { w8(m + 0x20, 0); eud_class427_update_l4(m); }
+                return Args{{m}, {}};
+            }, [](A a) { trooper_retire_l4(a.i[0]); return uint64_t{0}; });
+        }
+
+        // the pump's parts: the pump's work at an end, moving or still, the pump worked (state 3) or not, the sound slots,
+        // the hero standing on the held moby or not; class 432 as either of its models
+        auto pump_prep = [rate50, sound_slot](uint32_t m, int st, bool lift) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78), P = 0x0013f350;
+            rate50();
+            if (st != 0 && coin()) { w8(m + 0x20, 0); (lift ? eud_class434_update_l4 : eud_class432_update_l4)(m); }
+            w8(m + 0x20, u(st));
+            const int32_t idx = ee_read<int32_t>(pv);
+            if (idx != -1) {
+                const uint32_t pump = ee_read<uint32_t>(OV(0x0015ffd8)) + (u(idx) << 8), pp = ee_read<uint32_t>(pump + 0x78);
+                switch (ri(0, 3)) {
+                case 0: wf(pp, 1.0f); break;
+                case 1: wf(pp, 0.0f); break;
+                default: wf(pp, rf(0, 1)); break;
+                }
+                if (coin()) w8(pump + 0x20, coin() ? 3u : u(ri(0, 4)));
+                if (coin()) wf(pp + 0x30, rf(0, 8));
+                wf(m + 0x54, coin() ? ee_read<float>(pp) : (coin() ? 1.0f - ee_read<float>(pp) : rf(0, 1)));
+            } else if (coin()) {
+                wf(m + 0x54, rf(0, 1));
+            }
+            if (ri(0, 7) == 0) w32(pv, 0xffffffffu);
+            sound_slot(m, pv + (lift ? 8u : 4u));
+            if (lift) {
+                if (coin()) w32(pv + 0xc, u(ri(0, 1)));
+                w32(P + 0x208c, coin() ? u(ri(0, 1)) : (coin() ? (coin() ? 9u : 0xcu) : u(ri(2, 20))));
+                const int32_t held = ee_read<int32_t>(pv + 4);
+                w32(P + 0x2fc, held != -1 && coin() ? ee_read<uint32_t>(OV(0x0015ffd8)) + (u(held) << 8) : 0u);
+            } else if (coin()) {
+                w16(m + 0xa6, coin() ? 0x1b0u : 0x41cu);
+            }
+            seed_rand();
+        };
+        for (int lift = 0; lift <= 1; ++lift) {
+            const std::vector<uint32_t>& subj = lift ? lifts : valves;
+            const char* nm = lift ? "eud_pump_part434" : "eud_pump_part432";
+            if (subj.empty()) { std::printf("%-26s no moby on this level\n", nm); continue; }
+            l4check(nm, lift ? 0x002c6bb8 : 0x002c6858, 300, Ret::None, [level, subj, pick, pump_prep, lift] {
+                level();
+                const uint32_t m = pick(subj);
+                pump_prep(m, ri(0, 3), lift != 0);
+                return Args{{m}, {}};
+            }, [lift](A a) { (lift ? eud_class434_update_l4 : eud_class432_update_l4)(a.i[0]); return uint64_t{0}; });
+        }
+
+        // the ships: their paths, boxes and stops, the hits, hidden or shown, the camera looking or not
+        auto ship_prep = [some_box, hero_at, rate50, weapon_hit](uint32_t m, int st) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            rate50();
+            if (st != 0 && coin()) { w8(m + 0x20, 0); eud_class466_update_l4(m); }
+            w8(m + 0x20, u(st));
+            for (uint32_t k = 0; k < 4; ++k) if (coin()) w32(pv + 0x150 + k * 4, coin() ? 0xffffffffu : some_box());
+            if (coin()) { w8(pv + 0x148, some_box() & 0xff); w8(pv + 0x149, u(ri(0, 3))); w16(pv + 0x14a, u(ri(0, 3))); }
+            if (ri(0, 3) == 0) {  // (at the box's centre, or inside the box)
+                const uint32_t b = ee_read<uint32_t>(OV(0x001600ec)) + u(ee_read<uint8_t>(pv + 0x148)) * 0x80;
+                Vec4 q = ee_ref<Vec4>(b + 0x30); q.x += rf(-1.5f, 1.5f); q.y += rf(-1.5f, 1.5f); q.z += rf(-1.5f, 1.5f);
+                ee_ref<Vec4>(m + 0x10) = q;
+            }
+            if (coin()) wf(pv + 0x14c, rf(-3.1f, 3.1f));
+            if (coin()) { w32(pv + 0x174, u(ri(0, 1))); w32(pv + 0x170, u(ri(-1, 3))); }
+            if (ri(0, 3) == 0) w32(0x0015edf8, u(ri(7, 10)));
+            if (ri(0, 3) == 0) w8(0x0013d40e, u(ri(0, 1)));
+            Vec4 c = ee_ref<Vec4>(m + 0x10);
+            const float a = rf(-3.1f, 3.1f), d = rf(3, 40);
+            c.x += d * std::cos(a); c.y += d * std::sin(a);
+            ee_ref<Vec4>(L4_ADDR(0x00166f40)) = c;
+            wf(L4_ADDR(0x00166f58), rf(-3.1f, 3.1f));
+            hero_at(m, 0, 40);
+            weapon_hit(m);
+            seed_rand();
+        };
+        if (ships.empty()) std::printf("eud_ship                   L4:0x002ca420  no class 466 moby on this level\n");
+        else
+            for (int st = 0; st <= 3; ++st) {
+                char name[32];
+                std::snprintf(name, sizeof name, "eud_ship_st%d", st);
+                l4check(name, 0x002ca420, 100, Ret::None, [level, ships, pick, ship_prep, trial, st] {
+                    return Args{{trial(eud_class466_update_l4, [&] { level(); const uint32_t m = pick(ships); ship_prep(m, st); return m; })}, {}};
+                }, [](A a) { eud_class466_update_l4(a.i[0]); return uint64_t{0}; });
+            }
+
+        // the targeted cases: the saw hit (its reactions: every case a hit, its hit state's bytes varied), at its box (the
+        // arrival, the rest's end, the turn back to its path), settling from a carry's slide; the trooper firing; the
+        // ship at its box's centre and heading, and back where it left its path; the pump's lift waiting for the hero
+        g_ignored_words.push_back(OV(0x00173e7c));
+        for (uint32_t a = OV(0x00173e90); a < OV(0x00173ec0); a += 4) g_ignored_words.push_back(a);
+        if (!saws.empty()) {
+            l4check("eud_saw_hit", 0x002c2270, 200, Ret::None, [level, saws, pick, saw_prep, trial] {
+                return Args{{trial(eud_class340_update_l4, [&] {
+                    level();
+                    const uint32_t m = pick(saws), pv = ee_read<uint32_t>(m + 0x78);
+                    static const int sts[] = {1, 2, 3, 4, 5, 6, 7, 9};
+                    saw_prep(m, sts[ri(0, 7)]);
+                    w8(pv + 0x14d, 0);
+                    for (uint32_t o = 0x24; o < 0x30; ++o) if (o != 0x2e && coin()) w8(pv + o, R() & 0xff);
+                    const uint32_t idx = u(ri(0, 15)), e = OV(0x00178100) + (idx << 6);
+                    w8(m + 0xa4, idx);
+                    w32(e + 0x34, m);
+                    w32(e + 0x24, 0x210000u | (R() & 0xffff));
+                    wfrand(e, 4, -1, 1);
+                    w8(e + 0x28, u(ri(0, 11))); w8(e + 0x29, u(ri(0, 4))); w16(e + 0x2a, coin() ? 0x47u : u(ri(0, 0x60)));
+                    w32(e + 0x20, ri(0, 3) == 0 ? 0u : (coin() ? ee_read<uint32_t>(0x0013f350 + 0x2080) : saws[static_cast<size_t>(ri(0, static_cast<int>(saws.size()) - 1))]));
+                    wf(e + 0x2c, rf(0.1f, 3));
+                    seed_rand();
+                    return m;
+                })}, {}};
+            }, [](A a) { eud_class340_update_l4(a.i[0]); return uint64_t{0}; });
+            l4check("eud_saw_box", 0x002c2270, 200, Ret::None, [level, saws, pick, saw_prep, trial, some_path, boxes] {
+                return Args{{trial(eud_class340_update_l4, [&] {
+                    level();
+                    const uint32_t m = pick(saws), pv = ee_read<uint32_t>(m + 0x78);
+                    saw_prep(m, 5);
+                    w8(m + 0xa4, 0xff);
+                    w16(pv + 0x146, 0);
+                    const int32_t p = some_path(2);
+                    if (p >= 0) { w32(pv + 0x150, u(p)); w32(pv + 0x154, u(ri(0, ee_read<int32_t>(ee_read<uint32_t>(OV(0x001b04b0) + u(p) * 4)) - 1))); }
+                    const uint32_t bi = u(ri(0, std::max(0, boxes - 1)));
+                    w16(pv + 0x158, bi);
+                    const uint32_t sub = u(ri(0, 2));
+                    w16(pv + 0x15a, sub);
+                    const uint32_t b = ee_read<uint32_t>(OV(0x001600ec)) + bi * 0x80;
+                    Vec4 q = ee_ref<Vec4>(b + 0x30); q.x += rf(-1.1f, 1.1f); q.y += rf(-1.1f, 1.1f);
+                    ee_ref<Vec4>(m + 0x10) = q;
+                    if (sub == 0) wf(m + 0x48, ee_read<float>(b + 0x78) + rf(-0.25f, 0.25f));
+                    if (sub == 1) { w8(m + 0x53, coin() ? 7u : 0u); w8(m + 0x52, ee_read<uint8_t>(m + 0x53)); w8(m + 0x70, coin() ? 2u : 0u); }
+                    if (sub == 2 && p >= 0) {
+                        const Vec4 t = ee_ref<Vec4>(ee_read<uint32_t>(OV(0x001b04b0) + u(p) * 4) + 0x10 + ee_read<uint32_t>(pv + 0x154) * 16);
+                        wf(m + 0x48, std::atan2(t.y - q.y, t.x - q.x) + rf(-0.25f, 0.25f));
+                    }
+                    seed_rand();
+                    return m;
+                })}, {}};
+            }, [](A a) { eud_class340_update_l4(a.i[0]); return uint64_t{0}; });
+            l4check("eud_saw_settle", 0x002c2270, 120, Ret::None, [level, saws, pick, saw_prep, trial] {
+                return Args{{trial(eud_class340_update_l4, [&] {
+                    level();
+                    const uint32_t m = pick(saws), pv = ee_read<uint32_t>(m + 0x78);
+                    saw_prep(m, 9);
+                    w8(m + 0xa4, 0xff);
+                    const uint32_t r = pv + 0x180;
+                    w16(r + 0x68, 7);  // (falling and sliding: slow, on the floor)
+                    wfrand(r + 0x10, 3, -0.02f, 0.02f);
+                    wf(r + 0x18, coin() ? 0.0f : rf(-0.05f, 0.0f));
+                    if (coin()) wf(m + 0x18, ee_read<float>(m + 0x18) + rf(-0.2f, 0.2f));
+                    seed_rand();
+                    return m;
+                })}, {}};
+            }, [](A a) { eud_class340_update_l4(a.i[0]); return uint64_t{0}; });
+        }
+        g_ignored_words = before_saw_ignored;
+        if (!troopers.empty())
+            l4check("eud_trooper_fire", 0x002c4850, 200, Ret::None, [level, troopers, pick, trooper_prep, trial] {
+                return Args{{trial(eud_class427_update_l4, [&] {
+                    level();
+                    const uint32_t m = pick(troopers), pv = ee_read<uint32_t>(m + 0x78);
+                    w8(m + 0x20, 0); eud_class427_update_l4(m);  // (its gun spawned)
+                    trooper_prep(m, coin() ? 6 : 5);
+                    if (ee_read<uint32_t>(pv + 0xf8) == 0) { w8(m + 0x20, 0); eud_class427_update_l4(m); w8(m + 0x20, 6); }
+                    w8(m + 0x53, 5); w8(m + 0x52, 5);
+                    w8(m + 0x51, u(ri(0, 8))); w8(m + 0x50, u(ri(0, 8))); wf(m + 0x54, rf(0, 1));
+                    wf(pv + 0xd8, rf(0, 3));
+                    w8(pv + 0xfd, u(ri(0, 3)));
+                    w16(pv + 0xf2, 0);
+                    w8(m + 0xa4, 0xff);
+                    seed_rand();
+                    return m;
+                })}, {}};
+            }, [](A a) { eud_class427_update_l4(a.i[0]); return uint64_t{0}; });
+        if (!ships.empty())
+            l4check("eud_ship_box", 0x002ca420, 200, Ret::None, [level, ships, pick, ship_prep, trial, boxes] {
+                return Args{{trial(eud_class466_update_l4, [&] {
+                    level();
+                    const uint32_t m = pick(ships), pv = ee_read<uint32_t>(m + 0x78);
+                    ship_prep(m, ri(1, 3));
+                    w8(m + 0xa4, 0xff);
+                    const uint32_t mode = u(ri(1, 3));
+                    w8(pv + 0x149, mode);
+                    w16(pv + 0x14a, coin() ? 0u : u(ri(1, 3)));
+                    const uint32_t bi = u(ri(0, std::max(0, boxes - 1)));
+                    w8(pv + 0x148, bi);
+                    const uint32_t b = ee_read<uint32_t>(OV(0x001600ec)) + bi * 0x80;
+                    Vec4 q = mode == 3 ? ee_ref<Vec4>(pv + 0x160) : ee_ref<Vec4>(b + 0x30);
+                    if (mode == 3 && coin()) { q = ee_ref<Vec4>(m + 0x10); ee_ref<Vec4>(pv + 0x160) = q; }
+                    q.x += rf(-1.1f, 1.1f); q.y += rf(-1.1f, 1.1f);
+                    ee_ref<Vec4>(m + 0x10) = q;
+                    wf(m + 0x48, (mode == 3 ? ee_read<float>(pv + 0x14c) : ee_read<float>(b + 0x78)) + rf(-0.2f, 0.2f));
+                    seed_rand();
+                    return m;
+                })}, {}};
+            }, [](A a) { eud_class466_update_l4(a.i[0]); return uint64_t{0}; });
+        if (!lifts.empty())
+            l4check("eud_pump_wait434", 0x002c6bb8, 200, Ret::None, [level, lifts, pick, pump_prep] {
+                level();
+                const uint32_t m = pick(lifts), pv = ee_read<uint32_t>(m + 0x78), P = 0x0013f350;
+                pump_prep(m, 1, true);
+                if (const int32_t idx = ee_read<int32_t>(pv); idx != -1) {
+                    const uint32_t pump = ee_read<uint32_t>(OV(0x0015ffd8)) + (u(idx) << 8);
+                    wf(ee_read<uint32_t>(pump + 0x78), 1.0f);
+                    if (coin()) w8(pump + 0x20, u(ri(0, 2)));
+                }
+                w32(pv + 0xc, ri(0, 3) == 0 ? 1u : 0u);
+                static const uint32_t sts[] = {0, 1, 9, 0xc, 2, 5};
+                w32(P + 0x208c, sts[ri(0, 5)]);
+                const int32_t held = ee_read<int32_t>(pv + 4);
+                w32(P + 0x2fc, held != -1 && ri(0, 3) != 0 ? ee_read<uint32_t>(OV(0x0015ffd8)) + (u(held) << 8) : 0u);
+                seed_rand();
+                return Args{{m}, {}};
+            }, [](A a) { eud_class434_update_l4(a.i[0]); return uint64_t{0}; });
         g_extra_noop_hooks.clear();
     }
 
