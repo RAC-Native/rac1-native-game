@@ -211,14 +211,18 @@ void gameplay102_decoy_push(uint32_t m) {
     sub_00259bc8(m, m, 0x10000, g::PLAYER + 0x80, OV(0x0015f580), 1000.0f);
 }
 
+// orig: (none) — enhancement (fixes102.h); fix 21 on, or the PAL 2.00 disc (its own build of class 831 does it: the
+// port, rilgar_water.cpp, runs on every disc)
+static bool water_fix21() { return gameplay102_on(21) || region_core_moved(); }
+
 // orig: (none) — enhancement (fixes102.h); the 1.02 build's Rilgar L5:0x30dedc (PAL disc 2.00): game mode 2: return
 bool gameplay102_water_held() {
-    return gameplay102_on(21) && lw(OV(0x0015f5c4)) == 2;
+    return water_fix21() && lw(OV(0x0015f5c4)) == 2;
 }
 
 // orig: (none) — enhancement (fixes102.h); the 1.02 build's Rilgar L5:0x30e4b0, after the water's seek toward its height
 void gameplay102_water_carry(uint32_t m, float target) {
-    if (!gameplay102_on(21)) return;
+    if (!water_fix21()) return;
     if (!(u2f(0x3dcccccdu) < abs_f(fpu_sub(lwc1(m + 0x18), target)))) return;
     if (lw(g::PLAYER + 0x208c) - 0x11u >= 2u) return;
     const float z = lwc1(m + 0x18);

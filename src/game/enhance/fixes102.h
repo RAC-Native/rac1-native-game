@@ -145,10 +145,11 @@ bool fixes102_snagglebeast_start();
 void gameplay102_decoy_push(uint32_t m);
 
 // orig: (none) — enhancement: fix 21 (1.02 Gameplay): Rilgar's class 831 (the water) `m`: true when the 1.02 build skips
-// its update (a cutscene: game mode 2); false with the fix off
+// its update (a cutscene: game mode 2); false with the fix off, except on the PAL 2.00 disc (whose own code does it)
 bool gameplay102_water_held();
 // orig: (none) — enhancement: fix 21 (1.02 Gameplay): the water `m` moved toward its height `target`: while more than 0.1
-// from it, Ratchet swimming (+0x208c 0x11 / 0x12) below its surface (+0x2f0) gets its height; nothing with the fix off
+// from it, Ratchet swimming (+0x208c 0x11 / 0x12) below its surface (+0x2f0) gets its height; nothing with the fix off,
+// except on the PAL 2.00 disc (whose own code does it)
 void gameplay102_water_carry(uint32_t m, float target);
 
 // orig: (none) — enhancement: a level's load (gameplay_load): fix 3's ring cleared, as the 1.02 build's gameplay_load

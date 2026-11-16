@@ -77,6 +77,10 @@ add_library(rac1_game STATIC
     ovl/rilgar_air_traffic.cpp
     ovl/rilgar_race_bots.cpp
     ovl/rilgar_spitter.cpp
+    ovl/rilgar_flame_tank.cpp
+    ovl/rilgar_race_rivals.cpp
+    ovl/rilgar_water.cpp
+    ovl/rilgar_props.cpp
     ovl/umbris_part2.cpp
     ovl/veldin_extras.cpp
     ovl/weapon_classes.cpp

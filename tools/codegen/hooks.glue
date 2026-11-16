@@ -65,12 +65,8 @@ L16 0x002357e8: fixes102_race_text(sp.w(), 0, 0, static_cast<int32_t>(a2.w())); 
 L16 0x00235a60: fixes102_race_text(sp.w(), 1, a2.w(), static_cast<int32_t>(a3.w()));  // enhancement: 1.02 Fixes, fix 19 (the flips)
 L16 0x00238c38: fixes102_race_text(sp.w(), 2, 0, static_cast<int32_t>(lw_(s1.w() + 0x8c0)));  // enhancement: 1.02 Fixes, fix 19 (the place)
 # Fix 20 (Blarg's class 1083 / 0x300278) lives in the hand port src/game/ovl/blarg_tank.cpp (fixes102_blarg_far_debris).
-# 1.02 Gameplay, fix 21, Rilgar's class 831 (0x30ca80, the water that rises and falls): not updated in a cutscene (game mode 2: the
-# 1.02 build's L5:0x30dedc); after its seek toward its height (s3's first float), Ratchet swimming below its surface carried up
-# with it (L5:0x30e4b0).
-L5 0x0030cab8: if (gameplay102_water_held()) goto L_30d584;  // enhancement: 1.02 Gameplay, fix 21 (held in a cutscene)
-L5 0x0030d584 label
-L5 0x0030d048: gameplay102_water_carry(s2.w(), u2f(lw_(s3.w())));  // enhancement: 1.02 Gameplay, fix 21 (the swimmer carried)
+# 1.02 Gameplay, fix 21, Rilgar's class 831 (0x30ca80, the water that rises and falls): the fork is in the hand-written port
+# ril_class831_update_l5 (rilgar_water.cpp, P5.2), always taken on the PAL 2.00 disc (fixes102.cpp water_fix21).
 # Fix 22, Rilgar's race organiser (class 918, 0x316ab8): its end of the race in its state 3 restarts the level's music as its
 # states 1 and 2 do (music_track_request(0, 8), L5:0x28f5c8: the 1.02 build's L5:0x318210), and after the prize's message (5013, "You won a
 # Platinum Zoomerator!") a skill point earned (its flag 0x13d411) is told: the sound 1 and the message 21462 ("You just earned
