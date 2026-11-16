@@ -48,6 +48,9 @@
 #include <game/ovl/sound_emitter.h>
 #include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
+#include <game/level/level_data.h>
+
+#include <algorithm>
 
 #include <csetjmp>
 #include <csignal>
@@ -582,6 +585,207 @@ void batch_200() {
                 return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
             }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
         }
+    }
+
+    // ---- task P12.1 (2026-11-15): the hand ports of classes 19, 238, 240, 282 and 293 (hoven_water / snow_critter /
+    // jet_platform / raritanium_npc / sky_objects.cpp) driven where the generic generator above does not take them: the
+    // critters' dying state 99 and the timers, words and thresholds their states test (the hero holding them away +0x2e8,
+    // the group's count, the path they keep to, the frames they made no way), the platforms' kinds of set-up, the paths
+    // they follow and swing on, the moby and group they wait for, the hero on them; the Raritanium man's head and the moby
+    // he holds; the water tiles' raise and the hero over them; the sky objects' box. The frame scale at its 50 Hz value in
+    // a quarter of the cases. Their own ignore list only: the w lanes the spawned debris / particles carry (as above).
+    // B200_P12=<class> runs one of them (e.g. B200_P12=class238).
+    if (g_oracle_level == 12) {
+        g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};
+        const std::vector<uint32_t> wide_ignored = g_ignored_words;
+        g_ignored_words = saved_ignored;  // (without the class checks' debris and particle w lanes)
+        const uint32_t P = 0x0013f350;
+        auto hero_at = [P](const Vec4& q) {  // the hero and his moby at q
+            ee_ref<Vec4>(P + 0x80) = q;
+            const uint32_t hm = ee_read<uint32_t>(P + 0x2080);
+            if (hm != 0) ee_ref<Vec4>(hm + 0x10) = q;
+        };
+        auto near = [](uint32_t m, float r, float dz) {  // a point within r (plane) / dz (height) of the moby
+            Vec4 q = ee_ref<Vec4>(m + 0x10);
+            const float d = rf(0, r), a = rf(-3.1f, 3.1f);
+            q.x += d * std::cos(a); q.y += d * std::sin(a); q.z += rf(-dz, dz);
+            return q;
+        };
+        auto fifty = [] {  // the frame scale at its 50 Hz value in a quarter of the cases
+            if (ri(0, 3) == 0) { wf(0x0015ed68, 1.2f); wf(0x0015ed6c, 0.02f); wf(0x0015ed70, 0.0004f); }
+        };
+        auto hero_on = [P](uint32_t m, bool on) {  // the hero standing on the moby (moby_hero_on) or not
+            w32(P + 0x2fc, on ? m : 0u); w16(P + 0x30e, 0); w32(P + 0x208c, 0); w32(P + 0x2084, 0);
+        };
+        auto hit_with = [P](uint32_t m, uint32_t kinds) {  // a hit on the moby (mask `kinds` among others) with a damage
+            const uint32_t idx = u(ri(0, 15)), e = OV(0x00178100) + (idx << 6);
+            w8(m + 0xa4, idx);
+            w32(e + 0x34, m);
+            w32(e + 0x24, kinds | (R() & 0xff00ffu));
+            { static const float dm[] = {0.0f, 0.5f, 1.0f, 2.5f, 12.0f}; wf(e + 0x2c, dm[ri(0, 4)]); }
+            wfrand(e, 4, -1, 1);
+            w32(e + 0x20, coin() ? ee_read<uint32_t>(P + 0x2080) : ee_read<uint32_t>(OV(0x0015ffd8)) + 0x100 * u(ri(0, 60)));
+            w8(e + 0x28, coin() ? 0u : u(ri(1, 4)));
+        };
+        auto edge = [] { return u(ri(0, 3) == 0 ? ri(0, 2) : ri(3, 400)); };  // a timer at its edge or running
+        auto live_index = [](bool live) {  // a moby of the level's table: a live one, or a free / gone slot
+            const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8)), last = ee_read<uint32_t>(OV(0x0015ffe0));
+            for (int k = 0; k < 60; ++k) {
+                const int32_t i = ri(0, static_cast<int32_t>((last - first) >> 8) - 1);
+                if ((ee_read<uint8_t>(first + (u(i) << 8) + 0x20) < 0x80) == live) return i;
+            }
+            return 0;
+        };
+        auto a_path = [] { return ri(0, std::max(0, lvd::path_count() - 1)); };
+        auto a_box = [] { return ri(0, std::max(0, lvd::box_count(lvd::BOXES) - 1)); };
+        struct P12 { const char* name; uint32_t addr; void (*fn)(uint32_t); std::vector<int> states; std::function<void(uint32_t, int)> vary; };
+        const std::vector<P12> p12 = {
+            {"class19", 0x002bf140, hov_class19_update_l12, {0, 1, 2, 2, 2}, [hero_at, near](uint32_t m, int) {
+                 const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                 w8(m + 0xbc, coin() ? 4u : u(ri(0, 3)));
+                 w32(pv + 0x14, coin() ? 1u : 0u);
+                 wf(pv + 0x10, ee_read<float>(m + 0x18) + rf(-2, 6));
+                 wf(pv + 8, rf(-0.2f, 0.2f));
+                 if (ri(0, 2) == 0) w32(pv + 0x18, u(ri(0, std::max(0, lvd::box_count(lvd::BOXES) - 1))));
+                 if (ri(0, 4) == 0) w32(pv + 0xc, u(ri(0, 16)));
+                 if (ri(0, 2) == 0) w32(ORACLE_LADDR(12, 0x00161388), u(ri(0, 1) ? 0 : ri(120, 130)));
+                 hero_at(near(m, coin() ? 10.0f : 30.0f, 3));
+                 if (ri(0, 3) != 0) {  // the camera near the tile, the view set up (else the view matrices are zero: never on screen)
+                     ee_ref<Vec4>(OV(0x00166dc0)) = near(m, 25, 6);
+                     render_view_setup();
+                 }
+             }},
+            {"class238", 0x002e1be0, hov_class238_update_l12, {0, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 99, 99}, [hero_at, near, hit_with, edge, a_path](uint32_t m, int st) {
+                 const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                 hero_at(near(m, ri(0, 2) == 0 ? 2.5f : (coin() ? 12.0f : 30.0f), ri(0, 2) == 0 ? 0.4f : 6.0f));
+                 if (coin()) wf(pv + 0x2ac, coin() ? 12.0f : 20.0f);
+                 { static const uint32_t bc[] = {0, 1, 2, 7, 3, 5}; w8(m + 0xbc, bc[ri(0, 5)]); }
+                 w32(pv + 0x2c0, edge()); w16(pv + 0x2c8, edge()); w32(pv + 0x2c4, edge());
+                 if (coin()) { w16(pv + 0x2e8, u(ri(1, 3))); w16(pv + 0x2ea, u(ri(0, 3) == 0 ? ri(0, 10) : ri(890, 910))); w8(m + 0x31, coin() ? 0u : 1u); }
+                 else w16(pv + 0x2e8, 0);
+                 if (ee_read<uint32_t>(pv + 0x2e0) != 0) w32(pv + 0x2dc, coin() ? 1u : 0u);
+                 if (coin()) w32(pv + 0x2e4, coin() ? 0u : 0x7fffffffu);
+                 if (ri(0, 2) == 0) w32(pv + 0x2d0, ri(0, 2) == 0 ? 0xffffffffu : u(a_path()));
+                 w32(pv + 0x2d4, u(ri(0, 12)));
+                 w32(pv + 0x2d8, u(ri(0, 2) == 0 ? ri(0, 10) : ri(66, 74)));
+                 if (st == 0) { w32(pv + 0x2bc, u(ri(0, 1))); wf(pv + 0x28c, coin() ? 0.0f : rf(1, 5)); w32(pv + 0x2dc, u(ri(0, 1))); }
+                 if (coin()) w8(m + 0x70, coin() ? 2u : 0u);
+                 if (ri(0, 2) == 0) { static const uint32_t an[] = {0, 2, 3, 4, 7, 9, 0xc, 0xd, 0xf, 0x10, 0x11}; const uint32_t a = an[ri(0, 10)]; w8(m + 0x53, a); if (coin()) w8(m + 0x52, a); }
+                 if (ri(0, 5) == 0) wf(m + 0x18, rf(-1, 30));
+                 if (ri(0, 2) == 0) { wf(pv + 0x20, rf(0.3f, 3)); hit_with(m, 0x330000u); w8(m + 0x31, coin() ? 0u : 1u); }
+                 if (coin()) w32(pv + 0x38, 1);
+                 wfrand(pv + 0x2a4, 2, -60, 60);
+                 if (ee_read<uint32_t>(pv + 0x2e0) != 0 && coin()) w32(ee_read<uint32_t>(pv + 0x2e0), u(ri(4, 7)));  // (the group's count of awake critters)
+                 if (ri(0, 2) == 0) {  // the camera about 28 from it (the floor band's edge)
+                     const float d = rf(26.5f, 29.0f), a = rf(-3.1f, 3.1f);
+                     Vec4 c = ee_ref<Vec4>(m + 0x10);
+                     c.x += d * std::cos(a); c.y += d * std::sin(a);
+                     ee_ref<Vec4>(OV(0x00166dc0)) = c;
+                 }
+                 if (coin() && (st == 1 || st == 4 || st == 6 || st == 9 || st == 11)) {  // the target near its home (+0x280)
+                     Vec4 q = ee_ref<Vec4>(pv + 0x280);
+                     q.x += rf(-6, 6); q.y += rf(-6, 6); q.z += rf(-1, 1);
+                     hero_at(q);
+                 }
+                 if (coin() && (st == 5 || st == 10 || st == 99)) {  // the animation at the bite's frame 13 / past 29 / past 37
+                     w8(m + 0x52, ee_read<uint8_t>(m + 0x53));
+                     wf(m + 0x54, 0.0f);
+                     const uint32_t cur = ee_read<uint32_t>(m + 0x68);
+                     if (cur != 0) w16(cur + 4, st == 5 ? u(208 + ri(0, 6)) : u((st == 10 ? ri(27, 31) : ri(35, 39)) * 16));
+                     wf(m + 0x58, 1.0f); wf(m + 0x5c, rf(0.3f, 1.5f));
+                     if (st == 5) {  // the hero close in front of it
+                         const float yaw = ee_read<float>(m + 0x48), d = rf(0.5f, 2.2f);
+                         Vec4 q = ee_ref<Vec4>(m + 0x10);
+                         q.x += d * std::cos(yaw + rf(-0.3f, 0.3f)); q.y += d * std::sin(yaw + rf(-0.3f, 0.3f)); q.z += rf(-0.6f, 0.6f);
+                         hero_at(q);
+                     }
+                 }
+             }},
+            {"class240", 0x002e3ed8, hov_class240_update_l12, {0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 7, 8, 9}, [hero_at, near, hero_on, edge, live_index, a_path](uint32_t m, int st) {
+                 const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                 if (st == 0) { w32(pv + 0xe4, u(ri(0, 5))); w32(pv + 0xb4, u(a_path())); if (coin()) wf(pv + 0xd0, 0.0f); if (coin()) wf(pv + 0xd4, 0.0f); }
+                 const int32_t k = ri(0, 5);
+                 w32(pv + 0xfc, k == 0 ? u(live_index(true)) : k == 1 ? u(live_index(false)) : 0xffffffffu);
+                 w32(pv + 0xdc, ri(0, 4) == 0 ? u(ri(0, std::max(0, ee_read<int32_t>(OV(0x0015fff4)) - 1))) : 0xffffffffu);
+                 w32(pv + 0xe0, edge());
+                 w8(pv + 0xa4, coin() ? 1u : (coin() ? 2u : 0xffu));
+                 if (st != 0 && st != 1) {
+                     const uint32_t path = lvd::path(a_path());
+                     w32(pv + 0xb0, st == 8 && coin() ? 0u : path);
+                     if (path != 0) {
+                         const int32_t n = ee_read<int32_t>(path);
+                         const int32_t i = ri(0, std::max(0, n - 1));
+                         w32(pv + 0xa0, u(i));
+                         if (ri(0, 2) == 0) { const int32_t dir = static_cast<int8_t>(ee_read<uint8_t>(pv + 0xa4)); Vec4 q = ee_ref<Vec4>(path + 0x10 + (u(((i + n + dir) % std::max(1, n) + std::max(1, n)) % std::max(1, n)) << 4)); q.x += rf(-0.7f, 0.7f); ee_ref<Vec4>(m + 0x10) = q; }  // (near the next point: the point reached or not)
+                         if (st == 8 && coin()) { Vec4 q = ee_ref<Vec4>(path + 0x10); q.x += rf(-0.3f, 0.3f); ee_ref<Vec4>(m + 0x10) = q; }
+                     }
+                 }
+                 wf(pv + 0xd8, rf(-3.14f, 3.14f));
+                 wfrand(pv + 0x40, 3, -0.3f, 0.3f);
+                 wf(pv + 0xd0, rf(0.5f, 8)); wf(pv + 0xd4, rf(0.5f, 8));
+                 if (st == 9) w32(pv + 0xf0, u(live_index(true)));
+                 if (ri(0, 3) == 0) wf(m + 0x18, rf(-1, 2));
+                 w8(m + 0x31, ri(0, 3) == 0 ? 0u : 1u);
+                 hero_on(m, coin());
+                 hero_at(near(m, 3, 1));
+             }},
+            {"class282", 0x002e6c48, hov_class282_update_l12, {0, 1, 1, 2}, [P, hero_at, near, edge](uint32_t m, int st) {
+                 const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                 w8(0x0013d389, ri(0, 3) == 0 ? 1u : 0u);
+                 if (st == 2) w32(OV(0x0015f5c4), 2);  // (the scene still on: its end, the level's restart, is a play test)
+                 w8(m + 0x53, ri(0, 3) == 0 ? u(ri(1, 4)) : 0u);
+                 hero_at(near(m, coin() ? 8.5f : 14.0f, 1));
+                 ee_ref<Vec4>(P + 0xd0) = near(m, 9, 2);
+                 wfrand(P + 0x100, 3, coin() ? -0.02f : -1.0f, coin() ? 0.02f : 1.0f);
+                 wf(m + 0x48, rf(-3.1f, 3.1f));
+                 w32(pv + 0x178, edge()); w32(pv + 0x17c, edge());
+                 w8(0x0015edb0, coin() ? 1u : 0u);
+                 if (ri(0, 3) == 0) w32(pv + 0x180, 0);
+                 if (coin()) w32(pv + 0x170, coin() ? 0xffffffffu : u(ri(0, std::max(0, lvd::box_count(lvd::BOXES) - 1))));
+             }},
+            {"class293", 0x002e7208, hov_class293_update_l12, {0, 1, 1, 1}, [a_box](uint32_t m, int) {
+                 const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                 const int32_t b = a_box();
+                 w32(pv + 0xc, ri(0, 2) == 0 ? 0xffffffffu : u(b));
+                 if (coin() && lvd::box_count(lvd::BOXES) > 0) ee_ref<Vec4>(OV(0x00167240)) = ee_ref<Vec4>(lvd::box(lvd::BOXES, b) + 0x30);
+             }},
+        };
+        for (const P12& c : p12) {
+            if (std::getenv("B200_P12") != nullptr && std::strcmp(std::getenv("B200_P12"), c.name) != 0) continue;
+            char nm[32];
+            std::snprintf(nm, sizeof nm, "p12_%s", c.name);
+            for (const int st : c.states) {
+                classcheck(strdup(nm), c.addr, c.fn, [st, c, fifty](uint32_t m) {
+                    w8(m + 0x20, u(st));
+                    c.vary(m, st);
+                    fifty();
+                    w32(OV(0x0015f5cc), R() & 0xffff);
+                    seed_rand();
+                }, 30);
+            }
+        }
+        // the carry at a joint (L12:0x27b9c0, moby_carry_at_joint; the glue of class 294's generated helper calls it too): the
+        // Raritanium man (joint 2) and class 294's mobys (joint 1) with the moby they hold, else a live moby of the level
+        if (std::getenv("B200_P12") == nullptr || std::strcmp(std::getenv("B200_P12"), "carry_at_joint") == 0) {
+            level();
+            std::vector<uint32_t> carriers;
+            for (uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)); m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100)
+                if (ee_read<uint8_t>(m + 0x20) < 0xfe && (ee_read<uint32_t>(m + 0x74) == 0x002e6c48u || ee_read<uint32_t>(m + 0x74) == 0x002e72c0u)) carriers.push_back(m);
+            if (carriers.empty()) std::printf("%-26s L12:0x0027b9c0  no carrier on this level\n", "p12_carry_at_joint");
+            else l12check("p12_carry_at_joint", 0x0027b9c0, 60, Ret::None, [level, carriers, live_index] {
+                level();
+                const uint32_t m = carriers[static_cast<size_t>(ri(0, static_cast<int>(carriers.size()) - 1))];
+                const bool npc = ee_read<uint32_t>(m + 0x74) == 0x002e6c48u;
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                uint32_t child = ee_read<uint32_t>(pv + (npc ? 0x180 : 0x248));
+                if (child == 0 || ri(0, 3) == 0) child = ee_read<uint32_t>(OV(0x0015ffd8)) + (u(live_index(true)) << 8);
+                w16(m + 0x34, (ee_read<uint16_t>(m + 0x34) & ~1u) | u(ri(0, 1)));
+                w16(child + 0x34, R() & 0xffff);
+                return Args{{m, child, ri(0, 3) == 0 ? 0u : (npc ? 2u : 1u)}, {}};
+            }, [](A a) { moby_carry_at_joint(a.i[0], a.i[1], a.i[2]); return uint64_t{0}; });
+        }
+        g_ignored_words = wide_ignored;
+        g_extra_noop_hooks.clear();
     }
 
     //@@NEXT

@@ -9,22 +9,7 @@
 
 namespace rac1 {
 
-void hov_class19_update_l12(uint32_t a0);  // L12:0x002bf140
-TrRet hov_2e18e8_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x002e18e8
-TrRet hov_2e19a8_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x002e19a8
-TrRet hov_2e1878_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x002e1878
-TrRet hov_2e2eb8_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x002e2eb8
-TrRet hov_2e3098_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x002e3098
-TrRet hov_2e3528_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x002e3528
-void hov_class238_update_l12(uint32_t a0);  // L12:0x002e1be0
-TrRet hov_2e3948_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x002e3948
-TrRet hov_2e3c08_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x002e3c08
-TrRet hov_2e3e28_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x002e3e28
-void hov_class240_update_l12(uint32_t a0);  // L12:0x002e3ed8
-TrRet hov_27b9c0_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x0027b9c0
 TrRet hov_27bea8_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x0027bea8
-void hov_class282_update_l12(uint32_t a0);  // L12:0x002e6c48
-void hov_class293_update_l12(uint32_t a0);  // L12:0x002e7208
 TrRet hov_27b8e0_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x0027b8e0
 TrRet hov_2e7290_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x002e7290
 TrRet hov_2e86d0_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x002e86d0
@@ -78,6 +63,24 @@ void hov_cb_304218_l12(uint32_t a0);  // L12:0x00304218
 void hov_cb_304d98_l12(uint32_t a0);  // L12:0x00304d98
 void hov_cb_308350_l12(uint32_t a0);  // L12:0x00308350
 void hov_cb_30be68_l12(uint32_t a0);  // L12:0x0030be68
+
+// ---- hand-written (task P12.1): the helpers of classes 238 (hoven_snow_critter.cpp), 240 (hoven_jet_platform.cpp) and the
+// carry at a joint (hoven_raritanium_npc.cpp); the class updates keep their names
+void hov_class19_update_l12(uint32_t a0);   // L12:0x002bf140 (hoven_water.cpp)
+void hov_class238_update_l12(uint32_t a0);  // L12:0x002e1be0 (hoven_snow_critter.cpp)
+void hov_class240_update_l12(uint32_t a0);  // L12:0x002e3ed8 (hoven_jet_platform.cpp)
+void hov_class282_update_l12(uint32_t a0);  // L12:0x002e6c48 (hoven_raritanium_npc.cpp)
+void hov_class293_update_l12(uint32_t a0);  // L12:0x002e7208 (hoven_sky_objects.cpp)
+void critter_walk_anim(uint32_t m);                       // L12:0x002e18e8
+void critter_snow_burst(uint32_t at);                     // L12:0x002e19a8
+void critter_to_floor(uint32_t m);                        // L12:0x002e1878
+uint32_t critter_walk(uint32_t m, float yaw);             // L12:0x002e2eb8
+void critter_debris(uint32_t m);                          // L12:0x002e3098
+void critter_hits(uint32_t m);                            // L12:0x002e3528
+void jet_platform_jets(uint32_t m);                       // L12:0x002e3948
+void jet_platform_move(uint32_t m, uint32_t ang, uint32_t target, uint32_t ease);  // L12:0x002e3c08
+void jet_platform_tilt(uint32_t m, uint32_t out, uint32_t on);                     // L12:0x002e3e28
+void moby_carry_at_joint(uint32_t m, uint32_t child, uint32_t joint);              // L12:0x0027b9c0
 
 }  // namespace rac1
 

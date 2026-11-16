@@ -169,7 +169,12 @@ add_library(rac1_game STATIC
     ovl/pokitaru_hooks.cpp
     ovl/pokitaru_mobys.cpp
     ovl/hoven_hooks.cpp
+    ovl/hoven_jet_platform.cpp
     ovl/hoven_mobys.cpp
+    ovl/hoven_raritanium_npc.cpp
+    ovl/hoven_sky_objects.cpp
+    ovl/hoven_snow_critter.cpp
+    ovl/hoven_water.cpp
     ovl/gemlik_mobys.cpp
     ovl/gemlik_hooks.cpp
     ovl/oltanis_mobys.cpp
