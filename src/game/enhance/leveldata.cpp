@@ -1,5 +1,6 @@
 // See leveldata.h.
 #include <game/enhance/leveldata.h>
+#include "io/host_endian.h"
 
 #include <game/enhance/class_profiles.h>
 #include <game/enhance/context.h>
@@ -30,6 +31,7 @@ namespace {
 int32_t rd32(const std::vector<uint8_t>& g, size_t o) {
     int32_t v = 0;
     if (o + 4 <= g.size()) std::memcpy(&v, g.data() + o, 4);
+    le_fix_elements(v);  // (the file's: little-endian, whatever the host's order)
     return v;
 }
 
@@ -341,6 +343,7 @@ bool ld_level_path(int level, int32_t index, std::vector<float>& xyz) {
         for (uint32_t c = 0; c < 3; ++c) {
             float f = 0;
             std::memcpy(&f, g.data() + a + 0x10 + 0x10 * static_cast<uint32_t>(k) + 4 * c, 4);
+            le_fix_elements(f);
             xyz.push_back(f);
         }
     return !xyz.empty();
@@ -556,7 +559,7 @@ bool ld_placement(int level, int32_t uid, int32_t cls, LdPlacement& out) {
                             if (rd32(g, r) == pi) {
                                 const uint32_t o = static_cast<uint32_t>(rd32(g, r + 4));
                                 int32_t v = -1;
-                                if (o + 4 <= out.pvars.size()) std::memcpy(&v, out.pvars.data() + o, 4);
+                                if (o + 4 <= out.pvars.size()) std::memcpy(&v, out.pvars.data() + o, 4), le_fix_elements(v);
                                 out.links.push_back({o, v});
                             }
                     if (const uint32_t a = static_cast<uint32_t>(rd32(g, 0x5c)); a != 0)

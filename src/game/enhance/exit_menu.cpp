@@ -175,9 +175,8 @@ uint32_t exit_menu_text(int32_t id) {
         default: break;
     }
     const uint32_t k = static_cast<uint32_t>(id - TEXT_FIRST);
-    char* p = static_cast<char*>(ee_ram_ptr(STRINGS + k * STRING_SIZE));
-    std::strncpy(p, t[k], STRING_SIZE - 1);
-    p[STRING_SIZE - 1] = 0;
+    ee_zero(STRINGS + k * STRING_SIZE, STRING_SIZE);  // (the PS2's bytes: a big-endian host's words hold them swizzled, ee_memory.h)
+    ee_copy_in(STRINGS + k * STRING_SIZE, t[k], std::min<size_t>(std::strlen(t[k]), STRING_SIZE - 1));
     return STRINGS + k * STRING_SIZE;
 }
 

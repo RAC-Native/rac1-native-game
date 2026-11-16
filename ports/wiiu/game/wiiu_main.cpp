@@ -302,9 +302,9 @@ int read_settings(bool read_file = true) {
     setenv("RAC1_MODS", "1", 1);  // (a headless run looks for none without it)
     setenv("RAC1_MODS_FILE", "mods.txt", 1);
     setenv("RAC1_MOD_CODE", "1", 1);
-    // (a custom level's session memory - the EE memory grown, ee_memory.cpp -: allocated whole here, no pages given on first touch;
-    // 128 MB, not the PC's 256: the app has ~490 MB left on a heavy planet)
-    setenv("RAC1_SESSION_RAM_MB", "128", 1);
+    // (a custom level's session memory - the EE memory grown, ee_memory.cpp -: allocated whole here, no pages given on first touch; the
+    // PC's 256 MB - Daino's Arena's sections need it: ~320 MB of the app's memory left with all six in, streamed one after the other)
+    setenv("RAC1_SESSION_RAM_MB", "256", 1);
     if (!read_file) return 0;
     std::FILE* f = std::fopen("run.cfg", "r");
     if (f == nullptr) return 0;

@@ -3686,6 +3686,13 @@ int main(int argc, char** argv) {
                 rac1::host_language::note(lwu(0x0015ed88));  // (a language chosen in the game: kept as the console's)
 #if defined(__WIIU__)
                 hero_at_step();  // (testing: its frame path does not reach the host frame's testing hooks)
+                // (the open engine's frame - a session's sections, portals, fades, unloads -, as the host frame's hooks run it below:
+                // that path not reached on the Wii U either)
+                if (!exiting && !ee_thread_suspended()) {
+                    rac1::twin_frame(frame);
+                    rac1::session_frame(frame);
+                    rac1::world_probe_frame(frame);
+                }
 #endif
                 const int prof_code = rac1::prof::begin(rac1::prof::kGameCode);
                 ee_thread_run([&] {

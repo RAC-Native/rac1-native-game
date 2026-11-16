@@ -219,9 +219,8 @@ uint32_t bug_fixes_text(int32_t id) {
     const int32_t i = id - TEXT_FIRST;
     if (i < 0 || i >= T_COUNT || g_advanced_disabled) return 0;
     const uint32_t at = STRINGS + static_cast<uint32_t>(i) * STRING_SIZE;
-    char* p = static_cast<char*>(ee_ram_ptr(at));
-    std::strncpy(p, texts()[i], STRING_SIZE - 1);
-    p[STRING_SIZE - 1] = 0;
+    ee_zero(at, STRING_SIZE);  // (the PS2's bytes: a big-endian host's words hold them swizzled, ee_memory.h)
+    ee_copy_in(at, texts()[i], std::min<size_t>(std::strlen(texts()[i]), STRING_SIZE - 1));
     return at;
 }
 

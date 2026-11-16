@@ -311,7 +311,7 @@ uint32_t quick_rings_text(int32_t id) {
     if (lang >= 6) lang = 0;
     char s[0x20];
     std::snprintf(s, sizeof s, "%s %d", WORD[lang], id - TEXT_FIRST + 1);
-    std::memcpy(ee_ram_ptr(LABEL), s, sizeof s);
+    ee_copy_in(LABEL, s, sizeof s);  // (the PS2's bytes: a big-endian host's words hold them swizzled, ee_memory.h)
     return LABEL;
 }
 

@@ -698,18 +698,29 @@ typedef struct rac1_api {
 
 #define RAC1_API_HAS(api, field) ((api)->size >= offsetof(rac1_api, field) + sizeof((api)->field))
 
-/* Reads of the game's memory (inline): little-endian, as the PS2 */
+/* Reads of the game's memory (inline): the PS2's values, whatever the host's byte order */
 static inline uint32_t rac1_lw(const rac1_api* a, uint32_t addr) {
     uint32_t v;
     memcpy(&v, a->ram + addr, 4);
     return v;
 }
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+/* (a big-endian host - the Wii U -: the game's memory holds 32-bit words in the host's order, so a word and a float read as
+   they are, a halfword of the PS2's address a lives at a ^ 2 and a byte at a ^ 3) */
+static inline uint16_t rac1_lh(const rac1_api* a, uint32_t addr) {
+    uint16_t v;
+    memcpy(&v, a->ram + (addr ^ 2u), 2);
+    return v;
+}
+static inline uint8_t rac1_lb(const rac1_api* a, uint32_t addr) { return a->ram[addr ^ 3u]; }
+#else
 static inline uint16_t rac1_lh(const rac1_api* a, uint32_t addr) {
     uint16_t v;
     memcpy(&v, a->ram + addr, 2);
     return v;
 }
 static inline uint8_t rac1_lb(const rac1_api* a, uint32_t addr) { return a->ram[addr]; }
+#endif
 static inline float rac1_lwf(const rac1_api* a, uint32_t addr) {
     float v;
     memcpy(&v, a->ram + addr, 4);

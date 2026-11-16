@@ -36,6 +36,12 @@
 #include <span>
 #include <sstream>
 
+#if defined(__WIIU__)
+namespace rac1::platform {
+std::uint64_t wiiu_memory_left();  // (ports/wiiu/game/platform_wiiu.cpp)
+}
+#endif
+
 namespace rac1 {
 
 bool g_sections_on = false;
@@ -571,7 +577,9 @@ void request(int idx) {
     s.st = St::Loading;
     s.req_frame = g_frame;
     s.req_ms = now_ms();
+#if !defined(__WIIU__)  // (the Wii U: its world asset read when the section is first drawn - the memory, one section at a time)
     if (s.world >= 0) mrp_world_prefetch(s.world);  // (the modern renderer's: its world asset read on a worker too)
+#endif
     if (s.world >= 0)
         s.fut = std::async(std::launch::async, read_section_world, g_build + "/section_" + s.name, s.world, lw(0x0015ed80) != 0, s.f_coll, s.f_sky, s.f_gp);
     else
@@ -1247,7 +1255,28 @@ bool commit_step(Section& s, int idx) {
     }
 }
 
+#if defined(__WIIU__)
+// (the Wii U: the sections streamed in one after the other, not all at the arrival at once - each reads and unpacks its level's
+// data file, ~20-36 MB at a time, on a thread of its own: six at once ran the app's memory out and hung the console, 2026-11-16)
+std::vector<int> g_stream_queue;
+void stream_next() {
+    for (size_t i = 1; i < g_secs.size(); ++i)
+        if (g_secs[i].st == St::Loading || g_secs[i].st == St::Committing) return;
+    while (!g_stream_queue.empty()) {
+        const int idx = g_stream_queue.front();
+        g_stream_queue.erase(g_stream_queue.begin());
+        if (idx > 0 && static_cast<size_t>(idx) < g_secs.size() && g_secs[static_cast<size_t>(idx)].st == St::Absent) {
+            request(idx);
+            return;
+        }
+    }
+}
+#endif
+
 void commit_frame() {
+#if defined(__WIIU__)
+    stream_next();
+#endif
     // one section committing at a time; the others' bytes wait (the worker's reads go on)
     int which = -1;
     for (size_t i = 1; i < g_secs.size() && which < 0; ++i)
@@ -1300,6 +1329,9 @@ void commit_frame() {
                     static_cast<double>(w.bytes + s.b.coll.size() + s.b.sky.size() + s.b.gp.size()) / 1048576.0, static_cast<double>(w.bytes) / 1048576.0,
                     static_cast<double>(s.b.coll.size()) / 1048576.0, static_cast<double>(s.b.sky.size()) / 1048576.0, static_cast<double>(s.b.gp.size()) / 1048576.0,
                     session_heap_used() >> 10);
+#if defined(__WIIU__)
+        std::printf("[section] %s: the app's memory left %llu MB\n", s.name.c_str(), static_cast<unsigned long long>(platform::wiiu_memory_left() >> 20));
+#endif
         std::printf("[section] %s: the world's steps' longest calls (ms): copy %.2f, registrations %.2f, tie instances %.2f, their lighting %.2f, shrub "
                     "instances %.2f, their lighting %.2f, tfrag lighting %.2f, masks %.2f\n",
                     s.name.c_str(), w.step_max[0], w.step_max[1], w.step_max[2], w.step_max[3], w.step_max[4], w.step_max[5], w.step_max[6], w.step_max[7]);
@@ -1428,6 +1460,9 @@ void sections_level(const std::string& build_dir) {
     g_worlds = false;
     world_hud_reset();
     g_secs.clear();
+#if defined(__WIIU__)
+    g_stream_queue.clear();
+#endif
     g_cur = -1;
     g_start = 0;
     g_start_entry.clear();
@@ -1530,6 +1565,9 @@ void sections_level(const std::string& build_dir) {
     }
     if (g_secs.empty() || g_secs[0].name != "main") {
         g_secs.clear();
+#if defined(__WIIU__)
+        g_stream_queue.clear();
+#endif
         std::fprintf(stderr, "[section] %s/sections.txt: no main section: the session has none\n", build_dir.c_str());
         return;
     }
@@ -1599,7 +1637,13 @@ void sections_arrival() {
     hero_build_set(m.hero_level, "section main at the arrival");
     m.hero_obj = 0;
     g_mode_pending = !m.hero_mode.empty();
+#if defined(__WIIU__)
+    g_stream_queue.clear();
+    for (size_t i = 1; i < g_secs.size(); ++i) g_stream_queue.push_back(static_cast<int>(i));  // (one after the other: stream_next)
+    stream_next();
+#else
     for (size_t i = 1; i < g_secs.size(); ++i) request(static_cast<int>(i));  // (every section streamed in while the landing plays)
+#endif
     std::printf("[section] the arrival: main's collision %08x, sky %08x taken; %zu classes of other levels placed in main; %zu sections streaming in\n",
                 g_main.coll_tree, g_main.sky, n, g_secs.size() - 1);
 }

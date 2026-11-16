@@ -1,5 +1,6 @@
 // See section_world.h.
 #include <game/enhance/section_world.h>
+#include "io/host_endian.h"
 
 #include <formats/scene_wad.h>
 #include <game/enhance/session.h>
@@ -36,6 +37,7 @@ bool read_all(const std::string& path, std::vector<uint8_t>& out) {
 uint32_t rd32(const std::vector<uint8_t>& v, size_t o) {
     uint32_t x = 0;
     if (o + 4 <= v.size()) std::memcpy(&x, v.data() + o, 4);
+    le_fix_elements(x);  // (the file's: little-endian, whatever the host's order)
     return x;
 }
 

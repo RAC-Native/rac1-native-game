@@ -44,10 +44,18 @@ uint64_t fnv(const uint8_t* p, size_t n) {
     return h;
 }
 
+// (the disc's and the pool's numbers little-endian, whatever the host's order: the Wii U)
 int32_t rd32(const uint8_t* p) {
-    int32_t v;
-    std::memcpy(&v, p, 4);
-    return v;
+    return static_cast<int32_t>(static_cast<uint32_t>(p[0]) | static_cast<uint32_t>(p[1]) << 8 | static_cast<uint32_t>(p[2]) << 16 | static_cast<uint32_t>(p[3]) << 24);
+}
+int32_t rd32(const std::byte* p) { return rd32(reinterpret_cast<const uint8_t*>(p)); }
+uint16_t rd16(const uint8_t* p) { return static_cast<uint16_t>(p[0] | p[1] << 8); }
+void wr32(uint8_t* p, uint32_t v) {
+    for (int i = 0; i < 4; ++i) p[i] = static_cast<uint8_t>(v >> (8 * i));
+}
+template <typename T, size_t N>
+void rd32s(T (&out)[N], const uint8_t* p) {
+    for (size_t i = 0; i < N; ++i) out[i] = static_cast<T>(rd32(p + 4 * i));
 }
 
 // One level read from the disc: its data file's parts, its core (the asset index), its asset data unpacked, its overlay
@@ -70,9 +78,7 @@ bool read_level(int level, LevelFiles& f, std::string* why) {
         *why = "level " + std::to_string(level) + "'s files could not be read from the disc";
         return false;
     }
-    uint32_t off = 0, sectors = 0;
-    std::memcpy(&off, wad.data() + 0x10, 4);
-    std::memcpy(&sectors, wad.data() + 0x14, 4);
+    const uint32_t off = static_cast<uint32_t>(rd32(wad.data() + 0x10)), sectors = static_cast<uint32_t>(rd32(wad.data() + 0x14));
     const size_t at = static_cast<size_t>(off) * 2048, n = static_cast<size_t>(sectors) * 2048;
     if (at + n > wad.size() || n < sizeof f.parts) {
         *why = "level " + std::to_string(level) + "'s data file is not where its header says";
@@ -81,15 +87,14 @@ bool read_level(int level, LevelFiles& f, std::string* why) {
     const auto* d = reinterpret_cast<const uint8_t*>(wad.data()) + at;
     f.data.assign(d, d + n);
     {  // the gameplay file (the disc's region's): unpacked, for the classes' first placements
-        uint32_t go = 0, gn = 0;
-        std::memcpy(&go, wad.data() + (region_other() ? 0x20 : 0x18), 4);
-        std::memcpy(&gn, wad.data() + (region_other() ? 0x24 : 0x1c), 4);
+        const uint32_t go = static_cast<uint32_t>(rd32(wad.data() + (region_other() ? 0x20 : 0x18)));
+        const uint32_t gn = static_cast<uint32_t>(rd32(wad.data() + (region_other() ? 0x24 : 0x1c)));
         const size_t ga = static_cast<size_t>(go) * 2048, gs = static_cast<size_t>(gn) * 2048;
         if (gn != 0 && ga + gs <= wad.size() &&
             !decompress_wad(std::span<const std::byte>(wad.data() + ga, gs), f.gameplay))
             f.gameplay.clear();
     }
-    std::memcpy(f.parts, f.data.data(), sizeof f.parts);
+    rd32s(f.parts, f.data.data());
     auto part_ok = [&](int k) {
         return f.parts[2 * k] > 0 && f.parts[2 * k + 1] > 0 && static_cast<size_t>(f.parts[2 * k]) + static_cast<size_t>(f.parts[2 * k + 1]) <= f.data.size();
     };
@@ -146,7 +151,7 @@ std::vector<size_t> named_offsets(const LevelFiles& f) {
     const uint8_t* c = f.core;
     const size_t an = f.asset.size();
     int32_t H[48];
-    std::memcpy(H, c, sizeof H);
+    rd32s(H, c);
     std::vector<size_t> named;
     auto name = [&](int32_t v) {
         if (v > 0 && static_cast<size_t>(v) < an) named.push_back(static_cast<size_t>(v));
@@ -174,7 +179,7 @@ fs::path dir() { return fs::path(pool_dir()); }
 void put32(std::vector<uint8_t>& b, uint32_t v) {
     const size_t at = b.size();
     b.resize(at + 4);
-    std::memcpy(b.data() + at, &v, 4);
+    wr32(b.data() + at, v);
 }
 
 // The level's classes' first placements (placements/levelNN.bin): "PLC1", the count, then per class: class, record size,
@@ -187,7 +192,7 @@ std::vector<uint8_t> placements(const LevelFiles& f, size_t* count) {
     *count = 0;
     if (g.size() < 0xa0) return out;
     uint32_t G[36];
-    std::memcpy(G, g.data(), sizeof G);
+    rd32s(G, g.data());
     std::vector<uint32_t> offs;
     for (uint32_t v : G)
         if (v != 0 && v < g.size()) offs.push_back(v);
@@ -255,7 +260,7 @@ std::vector<uint8_t> placements(const LevelFiles& f, size_t* count) {
         p += static_cast<size_t>(sz);
     }
     const uint32_t c = static_cast<uint32_t>(*count);
-    std::memcpy(out.data() + 4, &c, 4);
+    wr32(out.data() + 4, c);
     return out;
 }
 
@@ -334,7 +339,7 @@ bool pool_build(std::string* why) {
         ++levels;
         const auto named = named_offsets(f);
         int32_t H[48];
-        std::memcpy(H, f.core, sizeof H);
+        rd32s(H, f.core);
         PoolLevel L;
         L.level = level;
         L.classes = static_cast<uint32_t>(H[6]);
@@ -389,16 +394,14 @@ bool pool_build(std::string* why) {
             {
                 const uint8_t* s6 = f.core + rd32(f.core + 0x70);
                 const uint8_t* e2 = s6 + 8 + 4 * k;
-                int16_t off = 0, cnt = 0;
-                std::memcpy(&off, e2, 2);
-                std::memcpy(&cnt, e2 + 2, 2);
+                const int16_t off = static_cast<int16_t>(rd16(e2));
+                int16_t cnt = static_cast<int16_t>(rd16(e2 + 2));
                 // (the level setup reads as many as the class block has definitions, +0xd, past the list when it is
                 // shorter: Orxon's 1229 has 12 for a list of 6; a class without data reads its list's own count)
                 const int32_t bo = rd32(e);
                 if (bo > 0 && static_cast<size_t>(bo) + 0xe <= f.asset.size()) cnt = f.asset[static_cast<size_t>(bo) + 0xd];
                 for (int16_t j = 0; j < cnt && j < 256; ++j) {
-                    uint16_t v = 0;
-                    std::memcpy(&v, s6 + off + 4 * j, 2);
+                    const uint16_t v = rd16(s6 + off + 4 * j);
                     c.sounds.push_back(v);
                 }
             }
@@ -429,7 +432,7 @@ bool pool_build(std::string* why) {
         {  // the level's context image (its data sections, for a session's context of the level: context.h)
             std::vector<uint8_t> img(16 + f.image.size());
             const uint32_t head[4] = {0x31585443u /* CTX1 */, CONTEXT_BASE, f.code_lo, f.code_hi};
-            std::memcpy(img.data(), head, 16);
+            for (int i = 0; i < 4; ++i) wr32(img.data() + 4 * i, head[i]);
             std::memcpy(img.data() + 16, f.image.data(), f.image.size());
             contexts.emplace_back(level, std::move(img));
         }
@@ -548,7 +551,7 @@ bool pool_context_image(int level, std::vector<uint8_t>& image, uint32_t* code_l
     std::vector<uint8_t> b((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     uint32_t head[4];
     if (b.size() < 16) return false;
-    std::memcpy(head, b.data(), 16);
+    rd32s(head, b.data());
     if (head[0] != 0x31585443u || head[1] != CONTEXT_BASE || head[2] < CONTEXT_BASE || b.size() - 16 != head[2] - CONTEXT_BASE) return false;
     image.assign(b.begin() + 16, b.end());
     *code_lo = head[2];
@@ -605,8 +608,8 @@ bool pool_leveldata(int level, std::vector<uint8_t>& out) {
         std::vector<std::byte> wad;
         uint32_t go = 0, gn = 0;
         if (disc_read_level_wad(level, wad) && wad.size() >= 0x30) {
-            std::memcpy(&go, wad.data() + (region_other() ? 0x20 : 0x18), 4);
-            std::memcpy(&gn, wad.data() + (region_other() ? 0x24 : 0x1c), 4);
+            go = static_cast<uint32_t>(rd32(wad.data() + (region_other() ? 0x20 : 0x18)));
+            gn = static_cast<uint32_t>(rd32(wad.data() + (region_other() ? 0x24 : 0x1c)));
             const size_t ga = static_cast<size_t>(go) * 2048, gs = static_cast<size_t>(gn) * 2048;
             if (gn == 0 || ga + gs > wad.size() || !decompress_wad(std::span<const std::byte>(wad.data() + ga, gs), out)) out.clear();
         }
@@ -637,7 +640,7 @@ bool pool_placement(int level, uint32_t cls, PoolPlacement& out) {
     size_t p = 8;
     for (int32_t k = 0, n = rd32(b.data() + 4); k < n && p + 24 <= b.size(); ++k) {
         uint32_t h[6];
-        std::memcpy(h, b.data() + p, sizeof h);
+        rd32s(h, b.data() + p);
         p += sizeof h;
         const size_t need = static_cast<size_t>(h[1]) + h[2] + 4 * (static_cast<size_t>(h[3]) + h[4] + h[5]);
         if (p + need > b.size()) return false;

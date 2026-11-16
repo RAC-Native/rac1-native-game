@@ -1,5 +1,6 @@
 // See session.h.
 #include <game/enhance/session.h>
+#include "io/host_endian.h"
 #include <game/enhance/session_runtime.h>
 
 #include <game/enhance/class_profiles.h>
@@ -313,6 +314,7 @@ std::vector<uint32_t> linked_classes(int level, uint32_t cls) {
         uint32_t c = 0;
         if (uid < 0 || profile_default_at(prof, o) || !ld_placement(level, uid, -1, lp) || lp.rec.size() < 0x78) continue;
         std::memcpy(&c, lp.rec.data() + 0x18, 4);
+        le_fix_elements(c);  // (the record's bytes: the PS2's order)
         if (c != cls && std::find(out.begin(), out.end(), c) == out.end()) out.push_back(c);
     }
     return out;
@@ -596,11 +598,13 @@ uint32_t spawn_placement(uint32_t id, int level, const LdPlacement& pl, const fl
     auto r32 = [&](size_t o) {
         uint32_t v = 0;
         std::memcpy(&v, pl.rec.data() + o, 4);
+        le_fix_elements(v);
         return v;
     };
     auto rf = [&](size_t o) {
         float v = 0;
         std::memcpy(&v, pl.rec.data() + o, 4);
+        le_fix_elements(v);
         return v;
     };
     sb(m + 0xb1, 0xff);
@@ -657,7 +661,7 @@ uint32_t spawn_placement(uint32_t id, int level, const LdPlacement& pl, const fl
             } else {
                 LdPlacement lp;
                 uint32_t pc = 0;
-                if (ld_placement(level, uid, -1, lp) && lp.rec.size() >= 0x78) std::memcpy(&pc, lp.rec.data() + 0x18, 4);
+                if (ld_placement(level, uid, -1, lp) && lp.rec.size() >= 0x78) std::memcpy(&pc, lp.rec.data() + 0x18, 4), le_fix_elements(pc);
                 const int32_t pid = pc != 0 ? session_import_id(level, pc) : -1;
                 if (pid >= 0 && have) {
                     // (its place and yaw relative to its owner's on their level, turned with the owner)
@@ -669,6 +673,7 @@ uint32_t spawn_placement(uint32_t id, int level, const LdPlacement& pl, const fl
                     const float at[3] = {pos[0] + dx * c - dy * sn, pos[1] + dx * sn + dy * c, pos[2] + lpos[2] - opos[2]};
                     float lyaw = 0;
                     std::memcpy(&lyaw, lp.rec.data() + 0x44, 4);
+                    le_fix_elements(lyaw);
                     part = spawn_placement(static_cast<uint32_t>(pid), level, lp, at, std::remainder(lyaw + turn, 6.2831853f), depth + 1, made);
                 }
             }

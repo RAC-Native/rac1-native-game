@@ -1,6 +1,7 @@
 // See level_slots.h. Not a port: the host's level slots, written on top of the game's own level change, saves and planet
 // list (the experiment that tried a level mod on Veldin's slot first is its source for the records' swap and the row).
 #include <host/level_slots.h>
+#include "io/host_endian.h"
 
 #include <game/enhance/session.h>
 #include <game/enhance/session_runtime.h>
@@ -281,6 +282,7 @@ void music_set(int slot) {
             return;
         }
         std::memcpy(words, h.data() + 0x148, sizeof words);
+        le_fix_elements(words);  // (the disc's: little-endian)
     }
     for (uint32_t i = 0; i < WORDS; ++i) sw(MUSIC + i * 4, words[i]);
     std::printf("[levels] level slot %d's music: %s (sectors %#x, %#x)\n", slot,

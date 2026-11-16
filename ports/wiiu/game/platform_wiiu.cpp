@@ -120,8 +120,29 @@ std::uint64_t memory_left() {
 }
 }  // namespace
 
+namespace {
+// (a custom level's session - the EE memory grown past 64 MB, memory_commit -: no file kept in memory while it is on; its sections read
+// other levels' worlds, ~20 MB at a time, beside the session's EE memory: the app's memory ran out with the kept files, 2026-11-16)
+bool g_session_big = false;
+// every kept file dropped (their readers holding one keep it until done)
+void drop_all_kept() {
+    std::vector<Bytes> dropped;
+    {
+        std::scoped_lock lock(g_files_m);
+        for (auto& [path, b] : g_ram) dropped.push_back(std::move(b));
+        for (auto& [fp, hs] : g_files) dropped.push_back(std::move(hs.ram));
+        g_ram.clear();
+        g_ram_group.clear();
+        g_ram_bytes = 0;
+    }
+}
+}  // namespace
+
+// (the Wii U: the app's memory left, for the logs - sections.cpp's)
+std::uint64_t wiiu_memory_left() { return memory_left(); }
+
 void keep_in_memory(int group, const std::vector<std::filesystem::path>& paths) {
-    if (preload_cap() == 0 || group < 0 || group > 3) return;
+    if (preload_cap() == 0 || group < 0 || group > 3 || g_session_big) return;
     static const bool log = std::getenv("RAC1_WIIU_PRELOAD_LOG") != nullptr;
     std::vector<Bytes> dropped;  // (freed after the lock)
     {
@@ -420,9 +441,19 @@ void* memory_reserve(std::size_t bytes) {
     if (p != nullptr) std::memset(p, 0, bytes);
     return p;
 }
-bool memory_commit(void* base, std::size_t) { return base != nullptr; }
+bool memory_commit(void* base, std::size_t bytes) {
+    if (base != nullptr && bytes > (64u << 20) && !g_session_big) {  // (a session's memory on: the kept files dropped, none kept while it is)
+        const std::uint64_t kept = g_ram_bytes;
+        g_session_big = true;
+        drop_all_kept();
+        std::printf("[preload] a session's memory on (%zu MB): %llu MB of kept files dropped, none kept until it ends; %llu MB of memory left\n", bytes >> 20,
+                    static_cast<unsigned long long>(kept >> 20), static_cast<unsigned long long>(memory_left() >> 20));
+    }
+    return base != nullptr;
+}
 void memory_discard(void* base, std::size_t from, std::size_t to) {
     if (base != nullptr && to > from) std::memset(static_cast<char*>(base) + from, 0, to - from);
+    if (from <= (64u << 20)) g_session_big = false;  // (back to the original's 64 MB: files kept again)
 }
 void memory_release(void* base, std::size_t) { std::free(base); }
 
