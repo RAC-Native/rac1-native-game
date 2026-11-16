@@ -3,28 +3,14 @@
  "tool": "mkall_l10.py",
  "env": {
   "MKALL_HELPER_PREFIX": "orx_",
-  "MKALL_FORCE": "1f3080,2e5968,2ea4e8,2ea7b0,2eaa08",
+  "MKALL_FORCE": "",
   "MKALL_UNIFORM": "orx_hook_2ce838_u"
  },
  "entries": [
-  "2e4a88:orx_class1229_update_l10:void:a0",
-  "2e5be0:orx_class1240_update_l10:void:a0",
-  "2e8358:orx_class1326_update_l10:void:a0",
-  "2e85b8:orx_class1344_update_l10:void:a0",
-  "2e8ab0:orx_class1346_update_l10:void:a0",
-  "2e9648:orx_class1421_update_l10:void:a0",
-  "2e9990:orx_class1424_update_l10:void:a0",
-  "2ea1f0:orx_class1544_update_l10:void:a0",
-  "2eacd8:orx_class1555_update_l10:void:a0",
-  "2eb6f0:orx_class1855_update_l10:void:a0",
-  "2eb7e0:orx_class1856_update_l10:void:a0",
-  "2ce838:orx_hook_2ce838_u",
-  "2da690:orx_cb_2da690_l10:void:a0"
+  "2ce838:orx_hook_2ce838_u"
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/orxon_classes_tr_4.cpp",
-  "src/game/ovl/orxon_classes_tr_5.cpp",
-  "src/game/ovl/orxon_classes_tr_6.cpp"
+  "src/game/ovl/orxon_classes_tr_5.cpp"
  ]
 }

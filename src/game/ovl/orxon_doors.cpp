@@ -1,11 +1,15 @@
 // Orxon's own moby classes (level 10): the doors and their floor switches. Class 353, a gate that sinks into the floor
 // once its one-shot flag is set; class 1015, a door that closes (sinks) when told and opens (rises) again while anything
 // stands under it, or when told; class 1031, the floor switch of Clank's part that opens its door (pvar +0) while a moby
-// or the hero presses it. Header orxon_mobys.h, registered in orxon_mobys.cpp; level 10's own addresses (`orig: L10:`).
+// or the hero presses it; classes 1421 (a flap) and 1424 (a sliding door) that open for good once the hero stands in
+// their box with the item 0x13dd4c. Headers orxon_mobys.h / orxon_classes.h, registered in orxon_mobys.cpp; level 10's
+// own addresses (`orig: L10:`).
 #include <game/collision/collision.h>
 #include <game/math/vecmath.h>
+#include <game/ovl/orxon_classes.h>
 #include <game/ovl/orxon_common.h>
 #include <game/ovl/orxon_mobys.h>
+#include <game/ovl/shared_little.h>
 #include <game/port_stubs.h>
 
 namespace rac1 {
@@ -169,6 +173,129 @@ void orx_class1031_update_l10(uint32_t m) {
         }
     }
     moby_set_color_hi(m, 8, 8, 8);
+}
+
+// Class 1421: a flap (its tilt +0x44). 0 notes its tilt (pvars +4; 1), or, its one-shot flag set or the hero not Ratchet,
+// opens it at once (80 degrees down, 3). 1: the hero in box pvars +0xc (or the item 0x13dd4c had) with pvars +0 and
+// +0x10 set: its flag set (the level's bits), the camera entry pvars +0x10 marked while he is in the box, and it opens
+// over 90 frames (2, its countdown pvars +8; then 3); the flag set or Clank: open at once. 3: closed again (0) when the
+// flag is clear and the hero is Ratchet.
+// orig: L10:0x002e9648
+void orx_class1421_update_l10(uint32_t m) {
+    const uint32_t pv = lwu(m + 0x78);
+    const float open = u2f(0xbfb2b8c2u);  // (-80 degrees)
+    auto open_now = [&] {
+        swc1(m + 0x44, angle_add(lwc1(m + 0x44), open));
+        sb(m + 0x20, 3);
+    };
+    switch (lbu(m + 0x20)) {
+    case 0:
+        sb(m + 0x30, 0xff);
+        if (lbu(HERO_FORM) != 0 || flag_set(m)) {
+            open_now();
+            break;
+        }
+        swc1(pv + 4, lwc1(m + 0x44));
+        sb(m + 0x20, 1);
+        break;
+    case 1: {
+        if (lbu(HERO_FORM) != 0 || flag_set(m)) {
+            open_now();
+            break;
+        }
+        if (point_in_box(HERO_POS, lw(pv + 0xc)) == 0 && lbu(0x0013dd4c) == 0) break;
+        if (lw(pv) <= 0 || lw(pv + 0x10) <= 0) break;
+        flag_mark(m);
+        if (point_in_box(HERO_POS, lw(pv + 0xc)) != 0) cam_entry_mark(lw(pv + 0x10));
+        sw(pv + 8, static_cast<uint32_t>(float_to_int(frame_scale_f(90.0f))));
+        sb(m + 0x20, 2);
+        break;
+    }
+    case 2: {  // opening
+        const float step = fpu_div(open, frame_scale_f(90.0f));
+        swc1(m + 0x44, angle_add(lwc1(m + 0x44), step));
+        if (tick32(pv + 8) != 0) sb(m + 0x20, 3);
+        break;
+    }
+    case 3:
+        if (lbu(HERO_FORM) != 0 || flag_set(m)) break;
+        swc1(m + 0x44, angle_add(lwc1(m + 0x44), u2f(0x3fb2b8c2u)));
+        sb(m + 0x20, 0);
+        break;
+    default:
+        break;
+    }
+}
+
+// Class 1424: a door that slides 1.5 back along its heading. 0 notes its place (pvars +0; 1, the moby pvars +0x1c made
+// solid, flag 2), or, its one-shot flag set or the hero not Ratchet, opens at once (3). 1: the item 0x13dd4c had: the moby
+// +0x1c freed, its flag set, the camera entry pvars +0x10 marked, and it slides open over 90 frames (2, its countdown pvars
+// +0x14; then 3); the flag set or Clank: open at once (the moby freed). 3: closed again (0) when the flag is clear and the
+// hero is Ratchet.
+// orig: L10:0x002e9990
+void orx_class1424_update_l10(uint32_t m) {
+    const uint32_t pv = lwu(m + 0x78);
+    const float half_turn = u2f(0x40490fdbu);
+    auto blocker = [&](bool solid) {
+        const int32_t i = lw(pv + 0x1c);
+        if (i <= 0) return;
+        const uint32_t o = moby_at(i);
+        sh(o + 0x34, solid ? (lhu(o + 0x34) | 2u) : (lhu(o + 0x34) & 0xfffdu));
+    };
+    const uint32_t frame = ee_stack_alloc(0x20);
+    switch (lbu(m + 0x20)) {
+    case 0:
+        sb(m + 0x30, 0xff);
+        lq_sq(pv, m + 0x10);
+        if (lbu(HERO_FORM) != 0 || flag_set(m)) {  // open at once: 1.5 back along its heading
+            swc1(frame, fpu_mul(cos_vu(angle_add(lwc1(m + 0x48), half_turn)), 1.5f));
+            swc1(frame + 4, fpu_mul(sin_vu(angle_add(lwc1(m + 0x48), half_turn)), 1.5f));
+            sw(frame + 8, 0);
+            vec3_add(V(frame + 0x10), V(pv), V(frame));
+            sb(m + 0x20, 3);
+            lq_sq(m + 0x10, frame + 0x10);
+            break;
+        }
+        blocker(true);
+        sb(m + 0x20, 1);
+        break;
+    case 1:
+        if (lbu(HERO_FORM) != 0 || flag_set(m)) {
+            sb(m + 0x20, 3);
+            lq_sq(m + 0x10, pv);
+            blocker(false);
+            break;
+        }
+        if (lbu(0x0013dd4c) == 0) break;
+        blocker(false);
+        flag_mark(m);
+        if (lw(pv + 0x10) > 0) cam_entry_mark(lw(pv + 0x10));
+        sw(pv + 0x14, static_cast<uint32_t>(float_to_int(frame_scale_f(90.0f))));
+        sb(m + 0x20, 2);
+        break;
+    case 2: {  // sliding open: the part of 90 frames gone by
+        const float c = cos_vu(angle_add(lwc1(m + 0x48), half_turn));
+        const float t = int_to_float(float_to_int(frame_scale_f(90.0f)) - lw(pv + 0x14));
+        swc1(frame, fpu_div(fpu_mul(fpu_mul(c, 1.5f), t), frame_scale_f(90.0f)));
+        const float s = sin_vu(angle_add(lwc1(m + 0x48), half_turn));
+        const float t2 = int_to_float(float_to_int(frame_scale_f(90.0f)) - lw(pv + 0x14));
+        const float y = fpu_div(fpu_mul(fpu_mul(s, 1.5f), t2), frame_scale_f(90.0f));
+        sw(frame + 8, 0);
+        swc1(frame + 4, y);
+        vec3_add(V(frame + 0x10), V(pv), V(frame));
+        lq_sq(m + 0x10, frame + 0x10);
+        if (tick32(pv + 0x14) != 0) sb(m + 0x20, 3);
+        break;
+    }
+    case 3:
+        if (lbu(HERO_FORM) != 0 || flag_set(m)) break;
+        lq_sq(m + 0x10, pv);
+        sb(m + 0x20, 0);
+        break;
+    default:
+        break;
+    }
+    ee_stack_free(0x20);
 }
 
 }  // namespace rac1

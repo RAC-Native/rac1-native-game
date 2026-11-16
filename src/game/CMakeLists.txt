@@ -152,6 +152,9 @@ add_library(rac1_game STATIC
     ovl/orxon_props.cpp
     ovl/orxon_sentry.cpp
     ovl/orxon_class1202.cpp
+    ovl/orxon_class1229.cpp
+    ovl/orxon_effects.cpp
+    ovl/orxon_scenes.cpp
     ovl/pokitaru_hooks.cpp
     ovl/pokitaru_mobys.cpp
     ovl/hoven_hooks.cpp

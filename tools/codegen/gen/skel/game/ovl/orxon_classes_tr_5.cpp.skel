@@ -48,32 +48,6 @@ namespace rac1 {
 using namespace eer;
 using namespace vu0m;
 
-//@gen orx_class1326_update_l10
-
-//@gen orx_class1344_update_l10
-
-//@gen orx_class1346_update_l10
-
-//@gen orx_class1421_update_l10
-
-//@gen orx_class1424_update_l10
-
-//@gen orx_2ea4e8_l10
-
-//@gen orx_2ea7b0_l10
-
-//@gen orx_2eaa08_l10
-
-//@gen orx_class1544_update_l10
-
-//@gen orx_class1555_update_l10
-
-//@gen orx_class1855_update_l10
-
-//@gen orx_class1856_update_l10
-
 //@gen orx_hook_2ce838_u
-
-//@gen orx_1f3080_l10
 
 }  // namespace rac1

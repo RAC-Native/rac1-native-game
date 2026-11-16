@@ -1,5 +1,6 @@
 // Orxon (level 10): the level's own classes written by hand (orxon_platforms.cpp, orxon_doors.cpp, orxon_clank.cpp,
-// orxon_hazards.cpp, orxon_props.cpp, orxon_sentry.cpp, orxon_class1202.cpp; their helpers in orxon_common.h).
+// orxon_hazards.cpp, orxon_props.cpp, orxon_sentry.cpp, orxon_class1202.cpp, orxon_class1229.cpp, orxon_effects.cpp,
+// orxon_scenes.cpp; their helpers in orxon_common.h).
 // Registered in orxon_mobys.cpp; level 10's own addresses. The class updates keep the generated entries' names and
 // signatures.
 #ifndef RAC1_GAME_OVL_ORXON_CLASSES_H
@@ -55,6 +56,28 @@ void orx_2e3a90_l10(uint32_t m);            // L10:0x002e3a90  class 1202's exha
 void orx_2e3ef0_l10(uint32_t m);            // L10:0x002e3ef0  class 1202's frame (hits, target, home)
 float orx_2e4840_l10(uint32_t m);           // L10:0x002e4840  class 1202's heading into its group's ring
 void orx_class1202_update_l10(uint32_t m);  // L10:0x002e1d38  a trooper following its leader
+
+// orxon_class1229.cpp (P10.3)
+void orx_2e5968_l10(uint32_t m);            // L10:0x002e5968  class 1229's frame (hits, target)
+void orx_class1229_update_l10(uint32_t m);  // L10:0x002e4a88  a gun drone on its paths
+// orxon_effects.cpp
+void orx_class1240_update_l10(uint32_t m);  // L10:0x002e5be0  a spray of particles
+void orx_2ea4e8_l10(uint32_t at, uint32_t wait, uint32_t cycle);  // L10:0x002ea4e8  a smoke vent
+void orx_2ea7b0_l10(uint32_t at, uint32_t wait);                  // L10:0x002ea7b0  a steam vent
+void orx_2eaa08_l10(uint32_t at, uint32_t wait, uint32_t cycle, float height);  // L10:0x002eaa08  a drip vent
+void orx_class1544_update_l10(uint32_t m);  // L10:0x002ea1f0  vents at its place or along a path
+void orx_cb_2da690_l10(uint32_t m);         // L10:0x002da690  class 1067's draw callback (the light strips)
+// orxon_scenes.cpp
+void orx_class1326_update_l10(uint32_t m);  // L10:0x002e8358  the vendor of the two purchases
+void orx_class1344_update_l10(uint32_t m);  // L10:0x002e85b8  the help messages and the Gadgebot run's record
+void orx_class1555_update_l10(uint32_t m);  // L10:0x002eacd8  the scenes' smoke
+// orxon_doors.cpp (P10.3)
+void orx_class1421_update_l10(uint32_t m);  // L10:0x002e9648  a flap that opens for good
+void orx_class1424_update_l10(uint32_t m);  // L10:0x002e9990  a sliding door that opens for good
+// orxon_props.cpp (P10.3)
+void orx_class1346_update_l10(uint32_t m);  // L10:0x002e8ab0  a launcher firing at three mobys
+void orx_class1855_update_l10(uint32_t m);  // L10:0x002eb6f0  a crate (debris)
+void orx_class1856_update_l10(uint32_t m);  // L10:0x002eb7e0  a crate (a moby left)
 }  // namespace rac1
 
 #endif

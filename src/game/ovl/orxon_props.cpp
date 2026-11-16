@@ -1,12 +1,16 @@
 // Orxon's own moby classes (level 10): the props. Class 794, a box that follows (or leads) another moby and pushes the
 // mobys in its way aside, until its watched mobys reach their states; class 1047, a wall that breaks under a hit (rocks,
-// two explosions) and stays broken; class 1067, the panel of shuffled lights whose draw callback (L10:0x002da690, still
-// generated) it queues while it is on screen. Header orxon_mobys.h, registered in orxon_mobys.cpp; level 10's own
-// addresses (`orig: L10:`).
+// two explosions) and stays broken; class 1067, the panel of shuffled lights whose draw callback (L10:0x002da690,
+// orxon_effects.cpp) it queues while it is on screen; class 1346, a launcher that fires shells at up to three mobys;
+// classes 1855 / 1856, crates that break when hit. Headers orxon_mobys.h / orxon_classes.h, registered in
+// orxon_mobys.cpp; level 10's own addresses (`orig: L10:`).
 #include <game/collision/collision.h>
 #include <game/math/vecmath.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/orxon_classes.h>
 #include <game/ovl/orxon_common.h>
 #include <game/ovl/orxon_mobys.h>
+#include <game/ovl/shared_shell.h>
 #include <game/ovl/shared_rock.h>
 #include <game/ovl/shared_small.h>
 #include <game/ovl/shared_spawns.h>
@@ -311,6 +315,142 @@ void orx_class1067_update_l10(uint32_t m) {
         break;
     }
     ee_stack_free(0x70);
+}
+
+namespace {
+// the moby at index `i` while it is alive (not 0xfe or 0xfd); none (-1, or a dead one): 0
+uint32_t live_at(int32_t i) {
+    if (i == -1) return 0;
+    const uint32_t o = moby_at(i);
+    if (o == 0) return 0;
+    const uint32_t st = lbu(o + 0x20);
+    return st == 0xfe || st == 0xfd ? 0u : o;
+}
+}  // namespace
+
+// Class 1346: a launcher that fires at the mobys pvars +4 / +8 / +0xc in turn. 0: its one-shot flag set: done (3); its
+// first target -1: gone; else waiting (1, its turn speed +0x10 cleared). 1 waits (another moby sets 2). 2: its flag
+// set: done; else it turns (its back, 180 degrees about its heading) towards the first target still alive and, within
+// 2.5 degrees, fires a shell from 1.5 behind it at 40 a second along the line to the target (the target crossed off);
+// none left: done (3), the moby pvars +0x14 put in state 1; in both cases the moby pvars +0 given +0xbc = 1. 3: the
+// targets still alive retired (the first one twice, as the original does) and its flag set.
+// orig: L10:0x002e8ab0
+void orx_class1346_update_l10(uint32_t m) {
+    const uint32_t pv = lwu(m + 0x78);
+    switch (lbu(m + 0x20)) {
+    case 0:
+        if (flag_set(m)) {
+            sb(m + 0x20, 3);
+            break;
+        }
+        if (lw(pv + 4) == -1) {
+            moby_retire(m);
+            break;
+        }
+        sw(pv + 0x10, 0);
+        sb(m + 0x20, 1);
+        break;
+    case 2: {
+        if (flag_set(m)) {
+            sb(m + 0x20, 3);
+            break;
+        }
+        uint32_t target = live_at(lw(pv + 4));
+        if (target == 0) target = live_at(lw(pv + 8));
+        if (target == 0) target = live_at(lw(pv + 0xc));
+        if (target != 0) {
+            const float half_turn = u2f(0x40490fdbu);
+            swc1(m + 0x48, angle_add(lwc1(m + 0x48), half_turn));
+            const float to = atan2_f(fpu_sub(lwc1(target + 0x10), lwc1(m + 0x10)), fpu_sub(lwc1(target + 0x14), lwc1(m + 0x14)));
+            const float k = fpu_mul(dt2(), u2f(0x3fc90fdbu)), damp = fpu_mul(dt2(), half_turn), vmax = fpu_mul(dt(), u2f(0x3f490fdbu));
+            swc1(m + 0x48, angle_seek_rate(pv + 0x10, lwc1(m + 0x48), to, k, damp, vmax));
+            const float now = atan2_f(fpu_sub(lwc1(target + 0x10), lwc1(m + 0x10)), fpu_sub(lwc1(target + 0x14), lwc1(m + 0x14)));
+            if (angle_dist(lwc1(m + 0x48), now) < u2f(0x3d32b8c2u)) {  // aimed: a shell
+                const uint32_t frame = ee_stack_alloc(0x30);
+                const uint32_t vel = frame, at = frame + 0x10;
+                swc1(at, fpu_mul(cos_vu(lwc1(m + 0x48)), 1.5f));
+                const float y = fpu_mul(sin_vu(lwc1(m + 0x48)), 1.5f);
+                sw(at + 8, 0);
+                swc1(at + 4, y);
+                vec3_add_inplace(V(at), V(m + 0x10));
+                const float speed = fpu_mul(dt(), 40.0f);
+                const float yaw = atan2_f(fpu_sub(lwc1(target + 0x10), lwc1(at)), fpu_sub(lwc1(target + 0x14), lwc1(at + 4)));
+                const float d = vec2_distance(V(at), V(target + 0x10));
+                const float pitch = atan2_f(d, fpu_sub(lwc1(target + 0x18), lwc1(at + 8)));
+                vec_from_spherical_v(V(vel), speed, yaw, pitch);
+                shell_launch(m, at, vel, frame_scale_i(0x1e));
+                if (target == moby_at(lw(pv + 4))) sw(pv + 4, 0xffffffffu);
+                else if (target == moby_at(lw(pv + 8))) sw(pv + 8, 0xffffffffu);
+                else sw(pv + 0xc, 0xffffffffu);
+                ee_stack_free(0x30);
+            }
+            swc1(m + 0x48, angle_add(lwc1(m + 0x48), half_turn));
+        } else {
+            sb(m + 0x20, 3);
+            if (lw(pv + 0x14) != -1) {
+                sb(moby_at(lw(pv + 0x14)) + 0x20, 1);
+                sw(pv + 0x14, 0xffffffffu);
+            }
+        }
+        if (lw(pv) != -1) {
+            sb(moby_at(lw(pv)) + 0xbc, 1);
+            sw(pv, 0xffffffffu);
+        }
+        break;
+    }
+    case 3: {
+        const uint32_t first = live_at(lw(pv + 4));
+        uint32_t second = 0;
+        if (first != 0) {
+            moby_retire(first);
+            second = first;
+        } else {
+            second = live_at(lw(pv + 8));
+        }
+        if (second != 0) moby_retire(second);
+        flag_mark(m);
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+namespace {
+// classes 1855 / 1856: started (1); hit (any hit of kind 0x10000 with a positive damage +0x2c): broken (2); 2 breaks it (its
+// sound 0, its bolts, then `pieces`) and retires it
+template <typename Pieces>
+void crate_update(uint32_t m, Pieces pieces) {
+    const uint32_t hit = sub_0025a420(m, 0x10000u, 0);
+    switch (lbu(m + 0x20)) {
+    case 0:
+        sb(m + 0x20, 1);
+        break;
+    case 1:
+        if (hit != 0 && 0.0f < lwc1(hit + 0x2c)) sb(m + 0x20, 2);
+        break;
+    case 2:
+        moby_sound_start(0, 0, m);
+        plant_bolts_drop_l1(m);
+        pieces();
+        moby_retire(m);
+        break;
+    default:
+        break;
+    }
+}
+}  // namespace
+
+// Class 1855: a crate: broken, two pieces 0x742 (one at random besides), 11 debris (debris_burst).
+// orig: L10:0x002eb6f0
+void orx_class1855_update_l10(uint32_t m) {
+    crate_update(m, [m] { debris_burst(m, 0x742, 1, 0x742, 1, 0xb, 2); });
+}
+
+// Class 1856: a crate: broken, a moby of class 0x741 left in its place.
+// orig: L10:0x002eb7e0
+void orx_class1856_update_l10(uint32_t m) {
+    crate_update(m, [m] { moby_clone_l1(m, 0x741); });
 }
 
 }  // namespace rac1
