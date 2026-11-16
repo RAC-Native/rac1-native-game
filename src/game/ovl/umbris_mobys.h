@@ -10,39 +10,41 @@
 
 namespace rac1 {
 
+// hand-ported (umbris_lifts / _director / _path_group / _shots / _water / _doors / _turret / _snagglebeast_shots.cpp)
 void umb_class38_update_l7(uint32_t a0);  // L7:0x002cd2b0
 void umb_class1474_update_l7(uint32_t a0);  // L7:0x002cdb28
-TrRet umb_270248_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x00270248
+void umb_270248_l7(int32_t col, int32_t row, int32_t cols, int32_t rows);  // L7:0x00270248
 void umb_class436_update_l7(uint32_t a0);  // L7:0x002f5ba0
 void umb_class529_update_l7(uint32_t a0);  // L7:0x002fbdb8
-TrRet umb_30af40_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0030af40
+void umb_30af40_l7(uint32_t m);  // L7:0x0030af40
 void umb_class871_update_l7(uint32_t a0);  // L7:0x0030b000
 void umb_class880_update_l7(uint32_t a0);  // L7:0x0030b6a8
 void umb_class882_update_l7(uint32_t a0);  // L7:0x0030bbc8
-TrRet umb_281ef8_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x00281ef8
-TrRet umb_2cb1c0_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x002cb1c0
+bool umb_281ef8_l7(uint32_t m, int32_t group, int32_t a, int32_t b);  // L7:0x00281ef8
+void umb_2cb1c0_l7(uint32_t tiles, int32_t n, float x, float y, float radius, float amount);  // L7:0x002cb1c0
 void umb_class902_update_l7(uint32_t a0);  // L7:0x0030c508
 void umb_class1013_update_l7(uint32_t a0);  // L7:0x0030cf90
 void umb_class1018_update_l7(uint32_t a0);  // L7:0x0030d440
-TrRet umb_30ba90_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0030ba90
+uint32_t umb_30ba90_l7(uint32_t pos, uint32_t vel, uint32_t ignore, int16_t kind);  // L7:0x0030ba90
 void umb_class1041_update_l7(uint32_t a0);  // L7:0x0030d4d8
-TrRet umb_30e0e0_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0030e0e0
+void umb_30e0e0_l7(uint32_t t, uint32_t m, uint32_t pv);  // L7:0x0030e0e0
 void umb_class1046_update_l7(uint32_t a0);  // L7:0x0030e1f8
 void umb_class1049_update_l7(uint32_t a0);  // L7:0x0030e458
-TrRet umb_30e720_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0030e720
-TrRet umb_30e858_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0030e858
-TrRet umb_30e998_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0030e998
-TrRet umb_30ebc8_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0030ebc8
-TrRet umb_30ec58_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0030ec58
-TrRet umb_30eb38_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0030eb38
-TrRet umb_30ed30_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0030ed30
-TrRet umb_30eee8_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0030eee8
-TrRet umb_30f0f8_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0030f0f8
-TrRet umb_30f1e0_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0030f1e0
-TrRet umb_30f308_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0030f308
-TrRet umb_30f4d0_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0030f4d0
-TrRet umb_30f540_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0030f540
+void umb_30e720_l7(uint32_t m, uint32_t rec, uint32_t push);  // L7:0x0030e720 (umbris_walker.cpp)
+void umb_30e858_l7(uint32_t m, uint32_t rec, uint32_t push);  // L7:0x0030e858
+void umb_30e998_l7(uint32_t m, uint32_t pv, uint32_t hs);  // L7:0x0030e998
+int32_t umb_30ebc8_l7(uint32_t m, uint32_t pv);  // L7:0x0030ebc8
+void umb_30ec58_l7(uint32_t m);  // L7:0x0030ec58
+void umb_30eb38_l7(uint32_t path);  // L7:0x0030eb38
+int32_t umb_30ed30_l7(uint32_t m, uint32_t pv);  // L7:0x0030ed30
+void umb_30eee8_l7(uint32_t m, uint32_t pv);  // L7:0x0030eee8
+void umb_30f0f8_l7(uint32_t m, uint32_t pv, float turn, float accel, float vmax);  // L7:0x0030f0f8
+int32_t umb_30f1e0_l7(uint32_t m, uint32_t pv, float yaw, float near, float accel, float far, float decel, float hi, float lo);  // L7:0x0030f1e0
+void umb_30f308_l7(uint32_t m, uint32_t pv, uint32_t state, uint32_t anim, uint32_t anim2, int32_t frame2, uint32_t next, uint32_t target, float t0, float t1, float len, float strength, float radius);  // L7:0x0030f308
+bool umb_30f4d0_l7(uint32_t m, uint32_t target, float radius);  // L7:0x0030f4d0
+bool umb_30f540_l7(uint32_t m, int32_t lo, int32_t hi);  // L7:0x0030f540
 void umb_class1059_update_l7(uint32_t a0);  // L7:0x0030f5f0
+
 void umb_class1069_update_l7(uint32_t a0);  // L7:0x003112c8
 void umb_class1080_update_l7(uint32_t a0);  // L7:0x00311bc8
 TrRet umb_29c4e8_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0029c4e8

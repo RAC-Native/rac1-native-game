@@ -111,6 +111,15 @@ add_library(rac1_game STATIC
     ovl/blarg_draws.cpp
     ovl/umbris_mobys.cpp
     ovl/umbris_hooks.cpp
+    ovl/umbris_director.cpp
+    ovl/umbris_doors.cpp
+    ovl/umbris_lifts.cpp
+    ovl/umbris_path_group.cpp
+    ovl/umbris_shots.cpp
+    ovl/umbris_snagglebeast_shots.cpp
+    ovl/umbris_turret.cpp
+    ovl/umbris_walker.cpp
+    ovl/umbris_water.cpp
     ovl/gaspar_mobys.cpp
     ovl/gaspar_structure.cpp
     ovl/gaspar_meteors.cpp
