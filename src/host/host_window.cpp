@@ -151,12 +151,20 @@ void host_fatal_handlers_install() {
 #endif
 }
 
+// (0.8.2's window handling - the fullscreen window taken out of the topmost band each frame, the focus asked at the start -
+// broke the mouse on some Windows systems, #175: off again unless RAC1_WINDOW_NOT_TOPMOST=1)
+static bool window_not_topmost() {
+    static const bool on = [] { const char* e = std::getenv("RAC1_WINDOW_NOT_TOPMOST"); return e != nullptr && e[0] == '1'; }();
+    return on;
+}
+
 // orig: (host) see host_window.h
 void host_window_created(GLFWwindow* w) {
 #ifdef _WIN32
     HWND h = w != nullptr ? glfwGetWin32Window(w) : nullptr;
     g_hwnd.store(h);
 #endif
+    if (!window_not_topmost()) return;
     host_window_frame(w);
 #ifdef _WIN32
     // (no longer topmost, a window that did not get the focus at its start would open behind the others: asked to the front
@@ -172,7 +180,7 @@ void host_window_created(GLFWwindow* w) {
 // orig: (host) see host_window.h
 void host_window_frame(GLFWwindow* w) {
 #ifdef _WIN32
-    if (w == nullptr) return;
+    if (w == nullptr || !window_not_topmost()) return;
     HWND h = glfwGetWin32Window(w);
     if (h == nullptr) return;
     if ((GetWindowLongPtrW(h, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0) return;

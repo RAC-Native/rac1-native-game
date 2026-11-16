@@ -3,6 +3,16 @@
 What changed in each release. Releases are source only: you build the game with `./setup.sh`
 (`setup.cmd` on Windows) from your own disc. Issue numbers refer to this repository's issues.
 
+## 0.8.3
+
+A hotfix for Windows.
+
+- **The mouse works again outside the game on Windows** (#175). 0.8.2 took the fullscreen window out of the "always on
+  top" band every frame and asked for the focus at the start; on some systems the game's window then could not be dragged,
+  got in the way of the debug menu and kept other windows from being clicked, until the game was ended from the Task
+  Manager. That handling is off again, as in 0.8.1; `RAC1_WINDOW_NOT_TOPMOST=1` turns it on. The other 0.8.2 changes stay
+  (a fatal error still ends the game with its reason in the log).
+
 ## 0.8.2
 
 A patch update: Windows fixes from the 0.8.x reports (the window always on top, a frozen window after a fatal error, Vulkan
