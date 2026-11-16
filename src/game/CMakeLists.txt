@@ -65,6 +65,17 @@ add_library(rac1_game STATIC
     ovl/eudora_biped.cpp
     ovl/eudora_fidget.cpp
     ovl/eudora_flock.cpp
+    ovl/eudora_gates.cpp
+    ovl/eudora_help.cpp
+    ovl/eudora_npc.cpp
+    ovl/eudora_pump_float.cpp
+    ovl/eudora_pump_path.cpp
+    ovl/eudora_ride_platform.cpp
+    ovl/eudora_scene_smoke.cpp
+    ovl/eudora_suck_cannon.cpp
+    ovl/eudora_windblown.cpp
+    ovl/eudora_wood_chips.cpp
+    ovl/eudora_woodcut_bot.cpp
     ovl/eudora_pump_parts.cpp
     ovl/eudora_saw.cpp
     ovl/eudora_ship.cpp

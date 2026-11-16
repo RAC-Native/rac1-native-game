@@ -635,4 +635,12 @@ void eud_class340_update_l4(uint32_t m) {
     ee_stack_free(0x1a0);
 }
 
+// The saw's class hook +0x10: its carry record (pvars +0x180), 0 for no moby or no pvars.
+// orig: L4:0x002c41b0
+uint32_t eud_hook_10_l4(uint32_t m) {
+    if (m == 0) return 0;
+    const uint32_t pv = lwu(m + 0x78);
+    return pv != 0 ? pv + 0x180 : 0;
+}
+
 }  // namespace rac1

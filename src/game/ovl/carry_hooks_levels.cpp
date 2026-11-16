@@ -244,7 +244,7 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         case L4_CASE(0x002c4080): ret = eud_carry_hook4_l4(m, a1, a2, f12); return true;
         case L4_CASE(0x002c40d0): ret = eud_carry_hook8_l4(m, a1, a2, f12); return true;
         case L4_CASE(0x002c4180): ret = e749_hookc(m, a1, a2, f12); return true;  // (Veldin's 0x2d57d0, the same code)
-        case L4_CASE(0x002c41b0): ret = u_call(eud_hook_10_u, m, a1, a2, f12); return true;
+        case L4_CASE(0x002c41b0): ret = static_cast<int32_t>(eud_hook_10_l4(m)); return true;  // (the saw's carry record, eudora_saw.cpp)
         default: return false;
         }
     case 5:  // Rilgar: classes 0x23c / 0x362 (tables 0x2193e8 / 0x219400)

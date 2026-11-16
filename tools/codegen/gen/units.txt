@@ -6,7 +6,6 @@
 mkall:batalia_classes
 mkall:batalia_part2
 mkall:blarg_classes
-mkall:eudora
 mkall:gaspar_classes
 mkall:gemlik_classes
 mkall:hoven_classes
