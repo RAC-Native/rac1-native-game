@@ -3,7 +3,20 @@
 What changed in each release. Releases are source only: you build the game with `./setup.sh`
 (`setup.cmd` on Windows) from your own disc. Issue numbers refer to this repository's issues.
 
-## Unreleased
+## 0.8.2
+
+A patch update: Windows fixes from the 0.8.x reports (the window always on top, a frozen window after a fatal error, Vulkan
+ray tracing freezing the picture), a shorter freeze at a level's start, Daino's Arena fixes, and a crash log on Linux and
+macOS too.
+
+### Daino's Arena (version 0.7)
+- **The enemies no longer walk through the walls.** The walkers, the small ones most, went through the low covers and
+  vanished inside the hub or a ramp's side; a step through the level's collision is now taken back (or turned along the
+  wall), the plugin's walkers follow their path only as far as they can see, and one shut in is put back on the open floor.
+- **The Gadgetron robots' weapons are no longer left lying in the arena.** A robot the arena took away (into the lava, a
+  challenge's end, Ratchet's death) left its weapon behind for good; it now goes with the robot.
+- The setup updates an arena it installed and you have not changed; a `mods/night-arena` you made or changed yourself is
+  kept as it is (move it aside and run the setup again to get the new one).
 
 ### Diagnostics (Linux, macOS)
 - **A crash leaves its reason and frames in the log.** A SIGSEGV, SIGBUS, SIGFPE, SIGILL or abort now writes a `[fatal]` line
@@ -11,7 +24,7 @@ What changed in each release. Releases are source only: you build the game with 
   where the system keeps them). Until now only an uncaught C++ exception left a line. For the crashes reported when flying
   from one planet to the next (#135, #164), which no log came with.
 
-### Fixes (Windows)
+### Fixes
 - **The game window is no longer "always on top".** GLFW makes a fullscreen window topmost on Windows; the game now takes
   the flag off at its start and whenever GLFW sets it again (a restore from the taskbar), so the Task Manager or any other
   window can come in front of it, also while the game is busy or not answering. Its start still asks for the focus
@@ -45,6 +58,9 @@ What changed in each release. Releases are source only: you build the game with 
   35 W ran it at 60. `RAC1_GPU_WATCH=0` turns it off.
 - The debug menu's profiler no longer makes the game stutter on Windows: its thread list came from a snapshot of every
   thread of the system (30 to 40 ms on the main thread, twice a second); it is now taken on a thread of its own, every 5 s.
+
+### Development
+- The oracle builds on Windows: its trial guards are one portable helper, tested in CI (#167, thanks to Igynx).
 
 ## 0.8.1
 
