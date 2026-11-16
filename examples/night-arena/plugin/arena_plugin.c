@@ -1095,6 +1095,71 @@ static int sucked(const enemy* e, uint32_t m) {
     return dx * dx + dy * dy + dz * dz < 9.0f;
 }
 
+/* the Gadgetron robots' (541) weapons: a moby of its own in the robot's hand (863 the bomb launcher, 884 the club, 876 the
+   flamethrower; the robot's pvars +0x104 point at it). Killed by the game the robot takes it away with it; removed by the
+   plugin (the lava, a challenge's end, Ratchet's death) it left it lying in the arena for good, no collision: so a robot
+   goes with its weapon (enemy_remove), and dummy_weapons_sweep takes away any left with no robot holding it */
+static int in_main(void);
+#define GADGETRON 541
+static const int32_t DUMMY_WEAPON[3] = {863, 884, 876};
+
+static int dummy_weapon_class(uint32_t m) {
+    const int32_t c = (int16_t)rac1_lh(api, m + 0xa6);
+    return c == DUMMY_WEAPON[0] || c == DUMMY_WEAPON[1] || c == DUMMY_WEAPON[2];
+}
+
+/* an enemy's moby taken away, a Gadgetron robot's weapon with it */
+static void enemy_remove(uint32_t m) {
+    if (m == 0) return;
+    if ((int16_t)rac1_lh(api, m + 0xa6) == GADGETRON) {
+        const uint32_t pv = rac1_lw(api, m + 0x78);
+        const uint32_t w = pv != 0 ? rac1_lw(api, pv + 0x104) : 0;
+        uint32_t near[64];
+        float r[3];
+        pos_of(m, r);
+        const int32_t n = w != 0 ? api->mobys_near(r, 30.0f, -1, near, 64) : 0;
+        for (int32_t i = 0; i < n; ++i)  /* (only a live weapon moby: the pointer checked against the mobys there) */
+            if (near[i] == w && dummy_weapon_class(w)) {
+                api->moby_remove(w);
+                break;
+            }
+    }
+    api->moby_remove(m);
+}
+
+/* the weapons no Gadgetron robot holds, taken away. `now`: at once (no robot left: a challenge's end); else those seen
+   lying twice in a row (a sweep a second apart), 6 units or more from any robot (a dying one's the game takes away) */
+static void dummy_weapons_sweep(int now) {
+    static uint32_t seen[32];
+    static int nseen;
+    uint32_t bots[64], w[64], keep[32];
+    int nkeep = 0;
+    const float c[3] = {s.centre[0], s.centre[1], nav.floor_z};
+    const int32_t nb = api->mobys_near(c, 400.0f, GADGETRON, bots, 64);
+    for (int k = 0; k < 3; ++k) {
+        const int32_t nw = api->mobys_near(c, 400.0f, DUMMY_WEAPON[k], w, 64);
+        for (int32_t i = 0; i < nw; ++i) {
+            int held = 0;
+            float p[3];
+            pos_of(w[i], p);
+            for (int32_t j = 0; j < nb && !held; ++j) {
+                const uint32_t pv = rac1_lw(api, bots[j] + 0x78);
+                float b[3];
+                pos_of(bots[j], b);
+                const float dx = b[0] - p[0], dy = b[1] - p[1], dz = b[2] - p[2];
+                held = (pv != 0 && rac1_lw(api, pv + 0x104) == w[i]) || dx * dx + dy * dy + dz * dz < 36.0f;
+            }
+            if (held) continue;
+            int was = now;
+            for (int q = 0; q < nseen && !was; ++q) was = seen[q] == w[i];
+            if (was) api->moby_remove(w[i]);
+            else if (nkeep < 32) keep[nkeep++] = w[i];
+        }
+    }
+    memcpy(seen, keep, sizeof keep[0] * (size_t)nkeep);
+    nseen = nkeep;
+}
+
 static int enemies_alive(void) {
     int n = 0;
     for (int i = 0; i < s.nen;) {
@@ -1118,16 +1183,14 @@ static int enemies_alive(void) {
 }
 
 static void enemies_clear(void) {
-    for (int i = 0; i < s.nen; ++i) {
-        const uint32_t m = en_moby(&s.en[i]);
-        if (m != 0) api->moby_remove(m);
-    }
+    for (int i = 0; i < s.nen; ++i) enemy_remove(en_moby(&s.en[i]));
     s.nen = 0;
     for (int k = 0; k < 2; ++k) {
         const uint32_t m = s.ships[k] ? api->base_moby(s.ships[k]) : 0;
         if (m != 0) api->moby_remove(m);
         s.ships[k] = 0;
     }
+    if (in_main()) dummy_weapons_sweep(1);
 }
 
 /* the wave (the round) being fought */
@@ -1588,8 +1651,7 @@ static void guests_sync(const char* mix) {
                     }
                 for (int i = 0; i < s.nen;) {
                     if (s.en[i].kind == k) {
-                        const uint32_t m = en_moby(&s.en[i]);
-                        if (m != 0) api->moby_remove(m);
+                        enemy_remove(en_moby(&s.en[i]));
                         s.en[i] = s.en[--s.nen];
                     } else {
                         ++i;
@@ -1926,7 +1988,7 @@ static void fall_to(enemy* e, uint32_t m, float r[3], float g) {
     if (!isnan(g) && r[2] < g) r[2] = g;
     api->swf(m + 0x18, r[2]);
     api->moby_moved(m);
-    if (s.lava_ok && r[2] < s.lava_z + 0.3f) api->moby_remove(m);  /* (enemies_alive counts it) */
+    if (s.lava_ok && r[2] < s.lava_z + 0.3f) enemy_remove(m);  /* (enemies_alive counts it) */
 }
 
 /* the robots' own code climbs the floor but never drops them: off a ramp's side, a wall or the hub they would walk on
@@ -1964,6 +2026,7 @@ static void gadget_ground(enemy* e, uint32_t m, float r[3]) {
 
 static void enemies_follow(const float h[3]) {
     const int arena = in_main();
+    if (arena && api->frame_count() % 60 == 0) dummy_weapons_sweep(0);
     for (int i = 0; i < s.nen; ++i) {
         enemy* e = &s.en[i];
         const struct kind_def* k = &KIND[e->kind];
@@ -4048,7 +4111,8 @@ static void new_game(void* user) {
    arena_look: in front of the north-east vent, the flames kept burning (a screenshot's); arena_tower: on the north-east
    tower's top, his health kept full, the challenge from frame 420 (the robots' paths up the ramps); arena_fall: the same,
    then down to the floor at 1500 (the robots come down); arena_bombs: "Pioggia di fuoco" from 420, the bombs counted;
-   arena_ch<N> (arena_ch<N>k: an enemy taken away every 1.5 s, f: every third of a second): Ratchet south of the hub,
+   arena_ch<N> (arena_ch<N>k: an enemy taken away every 1.5 s, f: every third of a second, h: one hit hard every third of
+   a second; the Gadgetron robots' weapons, held and lying, counted every 2 s): Ratchet south of the hub,
    four weapons if he owns one,
    challenge N from 420, the enemies by kind, the dropships, the weapon in his hand. And: arena_rail*, arena_course*, arena_fuga* (the
    rail challenges; arena_fuga: La grande fuga, Ratchet put on the escape when the lava rises, then Batalia's rail and
@@ -4612,7 +4676,7 @@ static void test(void* user, const char* text, uint64_t frame) {
         }
         if (rails.phase == 2 && s.mode == FIGHT && frame % 90 == 5 && s.nen > 0) {
             const uint32_t m = en_moby(&s.en[0]);
-            if (m != 0) api->moby_remove(m);
+            enemy_remove(m);
         }
         /* (arena_fuga: the lava's start; two seconds later Ratchet put on the escape) */
         if (rails.phase == 3 && esc_at == 0) esc_at = frame + 120;
@@ -4745,7 +4809,30 @@ static void test(void* user, const char* text, uint64_t frame) {
         }
         if (kill && frame % (uint64_t)kill == 5 && s.mode == FIGHT && s.nen > 0) {
             const uint32_t m = en_moby(&s.en[0]);
-            if (m != 0) api->moby_remove(m);
+            enemy_remove(m);
+        }
+        if (strchr(text + 8, 'h') != NULL && frame % 20 == 5 && s.mode == FIGHT && s.nen > 0) {  /* (h: killed by hits) */
+            const uint32_t m = en_moby(&s.en[s.nen - 1]);
+            if (m != 0) api->hit_send(m, RAC1_HIT_PLAYER, 10.0f, api->hero());
+        }
+        if (frame % 120 == 0) {  /* the Gadgetron robots' weapons (863 / 884 / 876): held, or left lying */
+            static const int32_t WCLS[3] = {863, 884, 876};
+            uint32_t bots[64], w[64];
+            const float c[3] = {s.centre[0], s.centre[1], nav.floor_z};
+            const int32_t nb = api->mobys_near(c, 400.0f, 541, bots, 64);
+            int held = 0, loose = 0;
+            for (int k = 0; k < 3; ++k) {
+                const int32_t nw = api->mobys_near(c, 400.0f, WCLS[k], w, 64);
+                for (int32_t i = 0; i < nw; ++i) {
+                    int own = 0;
+                    for (int32_t j = 0; j < nb && !own; ++j) own = rac1_lw(api, rac1_lw(api, bots[j] + 0x78) + 0x104) == w[i];
+                    own ? ++held : ++loose;
+                }
+            }
+            char b[128];
+            snprintf(b, sizeof b, "test %llu: gadgetrons %d, weapons held %d, loose %d", (unsigned long long)frame, (int)nb,
+                     held, loose);
+            api->log(b);
         }
         if (frame % 120 == 0 || (frame >= 840 && frame <= 1260 && frame % 30 == 0)) {  /* (often round a quick select test's) */
             int by[N_KINDS] = {0};
@@ -4871,7 +4958,7 @@ static void test(void* user, const char* text, uint64_t frame) {
     if (win && frame % 30 == 0 && api->health() > 0 && api->health() < 4) api->sw(0x001415f8u, 4);
     if (win && frame % 90 == 45 && s.mode == FIGHT && s.nen > 0) {  /* (the waves' logic, whatever the aim) */
         const uint32_t m = en_moby(&s.en[0]);
-        if (m != 0) api->moby_remove(m);
+        enemy_remove(m);
     }
     if (win && frame % 60 == 0) {
         char b[64];
