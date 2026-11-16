@@ -69,6 +69,10 @@ void l5check(const char* name, uint32_t l5addr, int n, Ret ret, const std::funct
 // the spawns' w lanes ignored (with_lanes below): the spawned mobys' (debris) and the particles'; for these four classes only
 // the lanes their checks need (class 79's and 623's debris; 35 and 133 compare everything)
 constexpr uint32_t LANES_DEBRIS = 1, LANES_POOL = 2;
+// (P5.3b, the two talkers' checks: the talk's end that changes the level runs the engine's level change, the host's
+// level_change_request in the port, which reads the clock into 0x15ee98 and saves the level's talkers' places
+// (talkers_save); the original's run here does neither (its clock read is a no-op): those words are not compared)
+constexpr uint32_t LANES_TALKSAVE = 4;
 constexpr uint32_t LANES35 = 0, LANES79 = LANES_DEBRIS, LANES133 = 0, LANES623 = LANES_DEBRIS;
 
 using GiveHit = std::function<void(uint32_t, uint32_t)>;
@@ -851,6 +855,233 @@ void p52_helper_checks(const std::function<void()>& level, const std::function<s
     }
 }
 
+
+// ---- P5.3 (a first part): Rilgar's own classes 879, 895, 982, 984, 1099, 1550 ported by hand (rilgar_ocean / _props.cpp)
+// and class 79's lights' draw (rilgar_air_traffic.cpp; checked by batch 140): their own state for the class checks
+constexpr uint32_t LANES879 = 0, LANES895 = 0, LANES982 = 0, LANES984 = 0, LANES1099 = 0, LANES1550 = LANES_POOL;
+
+void p53_extras(Extras& x) {
+    // the open sea: racing (the hero's state 0x16) or not, the frame counter anywhere
+    x["class879"] = [](uint32_t, int) {
+        w32(kH + 0x208c, coin() ? 0x16u : 1u);
+        w32(OV(0x0015f5cc), R() & 0xffffu);
+        p51_fifty();
+    };
+    // the turning gate: the other way (+0) or not, its switch moby set or not
+    x["class895"] = [](uint32_t m, int) {
+        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+        w32(pv, u(ri(0, 1)));
+        const int32_t s = ee_read<int32_t>(pv + 8);
+        if (s >= 0 && s < p52_mobys()) w8(p52_moby(s) + 0xbc, coin() ? 0u : 1u);
+        wf(m + 0x48, rf(-3.1f, 3.1f));
+        p51_fifty();
+    };
+    // the water disc: the hero in its box (at its centre) or not
+    x["class982"] = [](uint32_t m, int) {
+        const int32_t b = ee_read<int32_t>(ee_read<uint32_t>(m + 0x78));
+        if (coin() && b >= 0 && b < ee_read<int32_t>(OV(0x001600f0)))
+            p52_hero_at(p52_near(ee_ref<Vec4>(ee_read<uint32_t>(OV(0x001600ec)) + u(b) * 0x80 + 0x30), 1.0f, 0.5f));
+        w32(OV(0x0015f5cc), R() & 0xffffu);
+    };
+    // the floats and the hidden props: in a scene (game mode 2) or not
+    auto mode = [](uint32_t, int) { w32(0x0015f5c4, ri(0, 2) == 0 ? 2u : 0u); p51_fifty(); };
+    x["class984"] = mode;
+    x["class1099"] = mode;
+    // the scenes' smoke: in a scene, the scene 10 or 11 (or another), its moby 3 a moby of class 0x2ee (or none)
+    x["class1550"] = [](uint32_t, int) {
+        w32(0x0015f5c4, ri(0, 3) == 0 ? 0u : 2u);
+        static const int scenes[] = {9, 10, 10, 11, 11, 12};
+        w32(0x0016cc90, u(scenes[ri(0, 5)]));
+        uint32_t smoke = 0;
+        for (int32_t i = 0; i < p52_mobys() && smoke == 0; ++i)
+            if (ee_read<int16_t>(p52_moby(i) + 0xa6) == 0x2ee && ee_read<uint8_t>(p52_moby(i) + 0x20) < 0xfe) smoke = p52_moby(i);
+        // (Rilgar places no moby of class 0x2ee: the scenes spawn theirs; a flying car, whose class has the chain 0 the smoke
+        // starts from, stands in for it, its class word set to 0x2ee)
+        for (int32_t i = 0; i < p52_mobys() && smoke == 0; ++i)
+            if (ee_read<int16_t>(p52_moby(i) + 0xa6) == 79 && ee_read<uint8_t>(p52_moby(i) + 0x20) < 0xfe) smoke = p52_moby(i);
+        if (smoke != 0) w16(smoke + 0xa6, 0x2ee);
+        w32(0x0016cc60 + 0x178 + 3 * 4, ri(0, 4) == 0 ? 0u : smoke);
+        w32(0x0016cc60 + 0x178, coin() ? smoke : 0u);
+        w32(OV(0x0015f5cc), R() & 0xffffu);
+    };
+}
+
+// ---- P5.3b: the rest of Rilgar's own classes ported by hand (rilgar_props / _people.cpp ..): their own state
+constexpr uint32_t LANES846 = LANES_DEBRIS | LANES_POOL, LANES852 = 0, LANES893 = 0, LANES919 = LANES_TALKSAVE, LANES925 = LANES_TALKSAVE, LANES919X = LANES_TALKSAVE, LANES925X = LANES_TALKSAVE, LANES855 = LANES_POOL, LANES877 = 0, LANES998 = 0;
+
+// a timer word: run out, running out, or running
+uint32_t p53b_timer() { static const uint32_t t[] = {0, 1, 2, 40}; return t[ri(0, 3)]; }
+// the hero in front of moby `m` within `r` (his head point too), standing or moving
+void p53b_hero_front(uint32_t m, float r) {
+    const Vec4 c = ee_ref<Vec4>(m + 0x10);
+    const float yaw = ee_read<float>(m + 0x48) + rf(-1.2f, 1.2f), d = rf(0.5f, r);
+    Vec4 q = c; q.x += d * std::cos(yaw); q.y += d * std::sin(yaw);
+    p52_hero_at(q);
+    Vec4 h = q; h.z += 1.5f;
+    ee_ref<Vec4>(kH + 0xd0) = h;
+    Vec4 v{0, 0, 0, 0};
+    if (coin()) { v.x = rf(-0.2f, 0.2f); v.y = rf(-0.2f, 0.2f); }
+    ee_ref<Vec4>(kH + 0x100) = v;
+}
+// a talker's talk: the hero unable to talk (talk_update 0) or able (it still waits for the button). (No case runs a talk's
+// record: that streams its voice, and the original's stream wait is not run here)
+void p53b_talk(uint32_t, uint32_t) {
+    if (coin()) { w32(kH + 0x22a8, 0); return; }
+    w32(kH + 0x22a8, 1);
+    w32(kH + 0x2084, 0);
+}
+
+void p53b_extras(Extras& x, const GiveHit& give_hit) {
+    // the gate in its slot: its switch's word, its two delays, its class word 852 or 853, near its top or not
+    x["class852"] = [](uint32_t m, int) {
+        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+        const int32_t s = ee_read<int32_t>(pv);
+        if (s >= 0 && s < p52_mobys()) w8(p52_moby(s) + 0xbc, u(ri(0, 2)));
+        w32(pv + 4, p53b_timer());
+        w32(pv + 8, p53b_timer());
+        w16(m + 0xa6, coin() ? 0x354u : 0x355u);
+        const float top = ee_read<float>(pv + 0xc);
+        if (coin()) wf(m + 0x18, top + rf(-4.0f, 0.5f));
+        wf(pv + 0x10, rf(-0.5f, 0.5f));
+        wf(m + 0x44, ri(0, 2) == 0 ? 0.0f : rf(-0.5f, 0.5f));
+        wf(pv + 0x14, rf(-0.1f, 0.1f));
+        p51_fifty();
+    };
+    // the pod: hit or not, burst before or not
+    x["class846"] = [give_hit](uint32_t m, int) {
+        if (coin()) give_hit(m, coin() ? 0x210000u : 0x800000u);
+        w8(m + 0xbc, ri(0, 3) == 0 ? 1u : 0u);
+        p51_fifty();
+    };
+    // the hatch: up or down, turned or not, its lift's word, its swing near its ends, at its place or near it
+    x["class893"] = [](uint32_t m, int st) {
+        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+        w32(pv + 0x50, u(ri(0, 1)));
+        w32(pv + 0x54, u(ri(0, 1)));
+        const int32_t s = ee_read<int32_t>(pv + 0x58);
+        if (s >= 0 && s < p52_mobys()) w8(p52_moby(s) + 0xbc, u(ri(0, 2)));
+        static const float ends[] = {-0.05f, 0.0f, 0.01f, 0.3f, 0.5934119f, 0.62f, 0.7f};
+        wf(pv + 0x60, ends[ri(0, 6)]);
+        wf(pv + 0x64, rf(-0.3f, 0.3f));
+        w8(m + 0xbc, u(ri(0, 1)));
+        if ((st == 3 || st == 4) && coin()) {
+            Vec4 t = ee_ref<Vec4>(pv);
+            if (st == 3) { const Vec4 up = ee_ref<Vec4>(m + 0xd0); t.x -= 1.9f * up.x; t.y -= 1.9f * up.y; t.z -= 1.9f * up.z; }
+            const float e = coin() ? 0.0f : rf(-0.05f, 0.05f);
+            Vec4 q = ee_ref<Vec4>(m + 0x10); q.x = t.x + e; q.y = t.y; q.z = t.z + e;
+            ee_ref<Vec4>(m + 0x10) = q;
+            wf(pv + 0x5c, coin() ? std::fabs(e) : rf(0.0f, 0.3f));
+        }
+        p51_fifty();
+    };
+    // the waterfall: done before or not, its switch, its roar's sound slot (none, its own, another fall's, a stranger's),
+    // near the point 0x1671c0 or not, above its water or below, its frames fallen
+    x["class855"] = [](uint32_t m, int st) {
+        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+        if (pv == 0) return;
+        if (st == 0) w8(0x0014c050 + ee_read<uint8_t>(m + 0xb0) + (ee_read<uint32_t>(0x0015ed84) << 4), coin() ? 0xffu : 0u);
+        const int32_t s = ee_read<int32_t>(pv + 8);
+        if (s >= 0 && s < p52_mobys()) w8(p52_moby(s) + 0xbc, u(ri(0, 1)));
+        const uint32_t h = ee_read<uint32_t>(pv + 0xc);
+        if (h >= 0x100000 && h < 0x2000000) {
+            const int k = ri(0, 4);
+            const int32_t slot = ri(0, 7);
+            w32(h, k == 0 ? 0xffffffffu : u(slot));
+            uint32_t other = 0;
+            for (int32_t i = 0; i < p52_mobys() && other == 0; ++i)
+                if (p52_moby(i) != m && ee_read<int16_t>(p52_moby(i) + 0xa6) == 0x357) other = p52_moby(i);
+            const uint32_t owner = k == 1 ? m : k == 2 ? other : k == 3 ? 0u : p52_moby(ri(0, p52_mobys() - 1));
+            w32(0x0013e550 + u(slot) * 0x70 + 0x88, owner);
+            if (other != 0 && coin()) w8(other + 0x20, u(ri(1, 2)));
+        }
+        if (coin()) { Vec4 q = p52_near(ee_ref<Vec4>(OV(0x00166dc0)), 70.0f, 3.0f); ee_ref<Vec4>(m + 0x10) = q; }
+        const int32_t wb = ee_read<int32_t>(pv + 4);
+        if (wb >= 0 && wb < 8 && coin()) wf(m + 0x18, ee_read<float>(ee_read<uint32_t>(OV(0x001612d0)) + u(wb) * 0x1190 + 8) + rf(-1.0f, 20.0f));
+        w32(pv + 0x10, u(ri(0, 200)));
+        p51_fifty();
+    };
+    // a moby's sound slot word `w`: none, or a slot of the table 0x13e550 its own (playing or not) or another's
+    auto sound_slot = [](uint32_t m, uint32_t w, bool half) {
+        const int k = ri(0, 3);
+        const int32_t slot = ri(0, 7);
+        if (half) w16(w, k == 0 ? 0xffffu : u(slot)); else w32(w, k == 0 ? 0xffffffffu : u(slot));
+        w32(0x0013e550 + u(slot) * 0x70 + 0x88, k == 3 ? p52_moby(ri(0, p52_mobys() - 1)) : m);
+        w8(0x0013e550 + u(slot) * 0x70 + 0x74, u(ri(0, 1)));
+    };
+    // the lift: its sound, its camera's ease, its lift near its ends, the hero on its middle, on it elsewhere, or at the other
+    // end's height 5 to 32 away, its wait
+    x["class877"] = [sound_slot](uint32_t m, int st) {
+        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+        sound_slot(m, pv + 0x74, false);
+        w8(m + 0xbc, u(ri(0, 3)));
+        static const float eases[] = {0.0f, 0.5f, 0.95f, 1.0f};
+        wf(pv + 0x78, eases[ri(0, 3)]);
+        static const float lifts[] = {0.0f, 0.004f, 0.5f, 0.996f, 1.0f};
+        wf(pv + 0x70, lifts[ri(0, 4)]);
+        wf(pv + 0x88, coin() ? rf(-0.003f, 0.003f) : rf(-0.0005f, 0.0005f));
+        w32(pv + 0x7c, p53b_timer());
+        const int k = ri(0, 3);
+        Vec4 q = ee_ref<Vec4>(m + 0x10);
+        if (k == 0) { q.x += rf(-0.4f, 0.4f) * 0.7f; q.y += rf(-0.3f, 0.3f); }
+        else if (k == 1) { q.x += rf(0.6f, 2.0f); }
+        else if (k == 2) { const float a = rf(-3.1f, 3.1f), d = rf(3.0f, 35.0f); q.x += d * std::cos(a); q.y += d * std::sin(a); }
+        if (k != 3) p52_hero_at(q);
+        w32(0x0013f64c, k < 2 && ri(0, 4) != 0 ? m : 0u);
+        w16(0x0013f65e, ri(0, 4) == 0 ? 1u : 0u);
+        wf(0x0013f628, ee_read<float>(pv + (coin() ? 0x60 : 0x64)) + rf(-2.5f, 2.5f));
+        (void)st;
+        p51_fifty();
+    };
+    // the raft: the hero on its deck (or not), the button, its stage, its progress near 1, its sound, its slots done
+    x["class998"] = [sound_slot](uint32_t m, int st) {
+        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+        const bool on = ri(0, 3) != 0;
+        w32(0x0013f64c, on ? m : 0u);
+        w16(0x0013f65e, ri(0, 4) == 0 ? 1u : 0u);
+        if (on) {
+            Vec4 q = ee_ref<Vec4>(m + 0x10);
+            q.x += rf(-1.5f, 1.5f); q.y += rf(-1.5f, 1.5f); q.z += 0.5f;
+            p52_hero_at(q);
+        }
+        w32(0x0013cae4, coin() ? 0x10u : 0u);
+        w16(pv + 0xb4, u(ri(0, 5)));
+        w16(pv + 0xb6, u(ri(0, 4)));
+        static const float prog[] = {0.0f, 0.5f, 0.99f, 1.0f};
+        wf(pv + 0xc0, prog[ri(0, 3)]);
+        wf(pv + 0xc4, rf(0.0f, 0.02f));
+        sound_slot(m, pv + 0xb2, true);
+        for (uint32_t w : {0xb8u, 0xbcu})
+            w8(0x0014c050 + ee_read<uint32_t>(pv + w) + (ee_read<uint32_t>(0x0015ed84) << 4), ri(0, 2) == 0 ? 0xffu : 0u);
+        if (st >= 3 && st <= 5 && ee_read<uint32_t>(pv + 0xac) == 0)
+            w32(pv + 0xac, ee_read<uint32_t>(OV(0x001b04b0) + ee_read<uint32_t>(pv + 0x94) * 4));
+        p51_fifty();
+    };
+    // the two talkers: gone or not, their talk's end, their animation, their timers, the hero in front or not
+    auto talker = [](uint32_t flag, uint32_t t0, std::vector<int> ends) {
+        return [flag, t0, ends](uint32_t m, int st) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            if (pv == 0) return;
+            if (st == 0) w8(flag, ri(0, 3) == 0 ? 1u : 0u);
+            w16(pv + 4, u(ends[static_cast<size_t>(ri(0, static_cast<int>(ends.size()) - 1))]));
+            w8(m + 0x53, u(ri(0, 3) == 0 ? ri(1, 2) : 0));
+            w8(m + 0x70, u(ri(0, 3)));
+            for (uint32_t o = 0; o < 4; ++o) w32(pv + t0 + o * 4, p53b_timer());
+            if (coin()) p53b_hero_front(m, 9.0f);
+            w8(0x0015edb0, u(ri(0, 1)));
+            if (st == 1) p53b_talk(m, pv);
+            p51_fifty();
+        };
+    };
+    x["class919"] = talker(0x0013dd47, 0x144, {-1, -1, 0, 0, 5, 6});
+    x["class925"] = talker(0x0013d4ff, 0x154, {-1, -1, 2, 2, 3, 4, 5, 5});
+    // (925: its lights by the floor near the point 0x1671c0, the moby moved there)
+    x["class925"] = [f = x["class925"]](uint32_t m, int st) {
+        w8(m + 0x31, u(ri(0, 1)));
+        if (coin()) { Vec4 q = p52_near(ee_ref<Vec4>(OV(0x00166dc0)), 50.0f, 2.0f); ee_ref<Vec4>(m + 0x10) = q; }
+        f(m, st);
+    };
+}
+
 }  // namespace
 
 void batch_114() {
@@ -987,6 +1218,12 @@ void batch_114() {
         std::vector<uint32_t> v = saved_ignored;
         if ((lanes & LANES_DEBRIS) != 0) v.insert(v.end(), debris_lanes.begin(), debris_lanes.end());
         if ((lanes & LANES_POOL) != 0) v.insert(v.end(), pool_lanes.begin(), pool_lanes.end());
+        if ((lanes & LANES_TALKSAVE) != 0) {  // (P5.3b: the level's talkers' places the level change saves, 0x13d5b0 + i * 16 + 0 .. 8)
+            for (int32_t i = ee_read<int32_t>(OV(0x001c44b8) + 5 * 4); i < ee_read<int32_t>(OV(0x001c44b8) + 6 * 4); ++i)
+                for (uint32_t o = 0; o < 0xc; o += 4) v.push_back(0x0013d5b0 + u(i) * 16 + o);
+            v.push_back(0x0015ee98);
+            v.push_back(0x0015ee9c);
+        }
         return v;
     };
 
@@ -1021,27 +1258,27 @@ void batch_114() {
         {"class841", 0x0030e1f8, ril_class841_update_l5, 0x0, false, LANES841},
         {"class843", 0x0030e508, ril_class843_update_l5, 0x0, false, LANES843},
         {"class844", 0x0030e7f8, ril_class844_update_l5, 0x0, false},
-        {"class846", 0x0030f5c8, ril_class846_update_l5, 0x0, false},
-        {"class852", 0x00314eb0, ril_class852_update_l5, 0x0, false},
-        {"class855", 0x003150f0, ril_class855_update_l5, 0x0, false},
-        {"class877", 0x003156d0, ril_class877_update_l5, 0x0, false},
-        {"class879", 0x00316110, ril_class879_update_l5, 0x0, false},
-        {"class893", 0x00316258, ril_class893_update_l5, 0x0, false},
-        {"class895", 0x003166a0, ril_class895_update_l5, 0x0, false},
+        {"class846", 0x0030f5c8, ril_class846_update_l5, 0x0, false, LANES846},
+        {"class852", 0x00314eb0, ril_class852_update_l5, 0x0, false, LANES852},
+        {"class855", 0x003150f0, ril_class855_update_l5, 0x0, false, LANES855},
+        {"class877", 0x003156d0, ril_class877_update_l5, 0x0, false, LANES877},
+        {"class879", 0x00316110, ril_class879_update_l5, 0x0, false, LANES879},
+        {"class893", 0x00316258, ril_class893_update_l5, 0x0, false, LANES893},
+        {"class895", 0x003166a0, ril_class895_update_l5, 0x0, false, LANES895},
         {"class918", 0x00316ab8, ril_class918_update_l5, 0x0, false},
-        {"class919", 0x00317470, ril_class919_update_l5, 0x0, false},
+        {"class919", 0x00317470, ril_class919_update_l5, 0x0, false, LANES919},
         {"class920", 0x00317aa0, class447_update, 0x0, false},
-        {"class925", 0x003180a0, ril_class925_update_l5, 0x0, false},
+        {"class925", 0x003180a0, ril_class925_update_l5, 0x0, false, LANES925},
         {"class980", 0x003186f8, class344_update, 0x0, false},
-        {"class982", 0x00318a68, ril_class982_update_l5, 0x0, false},
-        {"class984", 0x00318b98, ril_class984_update_l5, 0x0, false},
-        {"class998", 0x00318c78, ril_class998_update_l5, 0x78, false},
-        {"class1099", 0x00319c28, ril_class1099_update_l5, 0x0, false},
+        {"class982", 0x00318a68, ril_class982_update_l5, 0x0, false, LANES982},
+        {"class984", 0x00318b98, ril_class984_update_l5, 0x0, false, LANES984},
+        {"class998", 0x00318c78, ril_class998_update_l5, 0x78, false, LANES998},
+        {"class1099", 0x00319c28, ril_class1099_update_l5, 0x0, false, LANES1099},
         {"class1134", 0x00319c60, gold_bolt_update, 0x6, false},
         {"class1139", 0x0031abe0, class1139_update, 0x0, false},
         {"class1347", 0x0031bf40, ril_class1347_update_l5, 0x0, false},
         {"class1511", 0x0031c8e0, class1511_update, 0x0, false},
-        {"class1550", 0x0031d5c8, ril_class1550_update_l5, 0x0, false},
+        {"class1550", 0x0031d5c8, ril_class1550_update_l5, 0x0, false, LANES1550},
         {"class1633", 0x0031d760, class1633_update, 0x0, false},
         {"class1818", 0x0031e808, sandmouse_update, 0x0, false},
     };
@@ -1092,7 +1329,7 @@ void batch_114() {
         }
     }
     // P5.1: the hand-ported classes' own state on top of generic_prep (their pass 2 and their `_x` checks below)
-    const std::map<std::string, std::function<void(uint32_t, int)>> extras = [&give_hit] { Extras x = p51_extras(give_hit); p52_extras(x, give_hit); return x; }();
+    const std::map<std::string, std::function<void(uint32_t, int)>> extras = [&give_hit] { Extras x = p51_extras(give_hit); p52_extras(x, give_hit); p53_extras(x); p53b_extras(x, give_hit); return x; }();
     const bool no_lanes = std::getenv("B114_NO_LANES") != nullptr;  // (to find the classes that need the lanes ignored)
     for (const TrCls& c : trcls) {
         if (std::getenv("B114_CLS") != nullptr && std::strcmp(std::getenv("B114_CLS"), c.name) != 0) continue;
@@ -1121,6 +1358,20 @@ void batch_114() {
             {"class838_x", 0x0030dc68, ril_class838_update_l5, {0, 1, 1, 1, 1, 2}, LANES838},
             {"class841_x", 0x0030e1f8, ril_class841_update_l5, {0, 1, 1, 2, 2, 3}, LANES841},
             {"class843_x", 0x0030e508, ril_class843_update_l5, {0, 1, 1, 2, 2, 3, 3, 4}, LANES843},
+            {"class879_x", 0x00316110, ril_class879_update_l5, {0, 1, 1, 1}, LANES879},
+            {"class895_x", 0x003166a0, ril_class895_update_l5, {0, 1, 1, 2, 2, 2}, LANES895},
+            {"class982_x", 0x00318a68, ril_class982_update_l5, {0, 1, 1, 1}, LANES982},
+            {"class984_x", 0x00318b98, ril_class984_update_l5, {0, 1, 1, 2}, LANES984},
+            {"class1099_x", 0x00319c28, ril_class1099_update_l5, {0, 1}, LANES1099},
+            {"class1550_x", 0x0031d5c8, ril_class1550_update_l5, {0, 1, 1, 1, 1, 2}, LANES1550},
+            {"class846_x", 0x0030f5c8, ril_class846_update_l5, {0}, LANES846},
+            {"class852_x", 0x00314eb0, ril_class852_update_l5, {0, 1, 1, 2, 2, 2, 3}, LANES852},
+            {"class855_x", 0x003150f0, ril_class855_update_l5, {0, 1, 1, 2, 2, 2, 2, 3}, LANES855},
+            {"class877_x", 0x003156d0, ril_class877_update_l5, {0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7}, LANES877},
+            {"class998_x", 0x00318c78, ril_class998_update_l5, {0, 1, 1, 1, 2, 3, 3, 4, 5, 5, 6, 6}, LANES998},
+            {"class893_x", 0x00316258, ril_class893_update_l5, {0, 0, 1, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7}, LANES893},
+            {"class919_x", 0x00317470, ril_class919_update_l5, {0, 0, 1, 1, 1, 1, 2}, LANES919X},
+            {"class925_x", 0x003180a0, ril_class925_update_l5, {0, 0, 1, 1, 1, 1, 2}, LANES925X},
             {"class623_x", 0x00301f48, ril_class623_update_l5, {0, 1, 1, 2, 2, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 9, 10, 10, 10, 11, 11, 11, 12, 13, 13, 14, 14, 15, 15, 16}, LANES623},
         };
         for (const X& x : xs) {

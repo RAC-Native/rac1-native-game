@@ -81,6 +81,8 @@ add_library(rac1_game STATIC
     ovl/rilgar_race_rivals.cpp
     ovl/rilgar_water.cpp
     ovl/rilgar_props.cpp
+    ovl/rilgar_ocean.cpp
+    ovl/rilgar_people.cpp
     ovl/umbris_part2.cpp
     ovl/veldin_extras.cpp
     ovl/weapon_classes.cpp

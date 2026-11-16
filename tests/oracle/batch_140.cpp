@@ -162,6 +162,10 @@ void batch_140() {
             if (coin()) w8(m + 0x20, u(ri(0, 4)));
             if (coin()) w8(m + 0x30, u(ri(0, 0xff)));
             if (cb.addr == 0x002d7920 && coin()) w32(0x001613f0, 0);  // (class 79's draw_b returns at once while its flag gp-0x5810 is set)
+            if (cb.addr == 0x002d6f48 && ee_read<uint32_t>(m + 0x78) != 0 && coin()) {  // (P5.3: 79's lights: drawn, its three light points in view)
+                w8(m + 0x31, 1);
+                for (uint32_t o = 0x330; o < 0x360; o += 0x10) into_view(ee_read<uint32_t>(m + 0x78) + o, 0.0f, 30.0f);
+            }
             if (cb.addr == 0x0031e730 && ee_read<uint32_t>(m + 0x78) != 0)  // (1818's glows: the points at its pvars +0x70, +0x80, +0x90...)
                 for (uint32_t o = 0x70; o < 0xb0; o += 0x10)
                     if (coin()) into_view(ee_read<uint32_t>(m + 0x78) + o, 0.0f, 30.0f);

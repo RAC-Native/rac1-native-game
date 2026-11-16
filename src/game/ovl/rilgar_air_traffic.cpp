@@ -1,13 +1,15 @@
-// Rilgar's (level 5) air traffic (class 79): the flying cars that cruise the paths high over Blackwater City with
-// red / green running lights and three light trails, updated only while the camera is above the rooftops; a hit
-// brings one down in pieces. Ported by hand from Rilgar's own code (L5:0x2d7140, 0x2d7020, 0x2d7890), the original's
-// order of calls and float operations kept.
+// Rilgar's (level 5) air traffic (class 79, and its lights' draw): the flying cars that cruise the paths high over
+// Blackwater City with red / green running lights and three light trails, updated only while the camera is above the
+// rooftops; a hit brings one down in pieces. Ported by hand from Rilgar's own code (L5:0x2d7140, 0x2d7020, 0x2d7890,
+// 0x2d6f48), the original's order of calls and float operations kept.
 #include <game/ovl/rilgar_own.h>
 
 #include <game/level/level_data.h>
+#include <game/ovl/glows.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/rilgar_mobys.h>
+#include <game/ovl/rilgar_part2.h>
 #include <game/ovl/variants_l5.h>
 
 namespace rac1 {
@@ -163,6 +165,23 @@ void ril_class79_update_l5(uint32_t m) {
     }
     if (lw(L5_ADDR(0x001613e4u)) != 0) ril_2d7020_l5(m);
     ee_stack_free(0xe0);
+}
+
+// Class 79's lights' draw (queued by 0x2d7020): for every drawn car of the class in this one's group, a glow (size 0.45,
+// 0.4 toward the camera) at each of its three light points (+0x330 ..), in its lights' colour (+0x360).
+// orig: L5:0x002d6f48
+void ril_class79_draw_a_l5(uint32_t m) {
+    const uint32_t sp = ee_stack_alloc(0x60);
+    group_first(sp, lbu(m + 0x21), 0, 0);
+    while (lwu(sp) != 0) {
+        const uint32_t o = lwu(sp);
+        if (lbu(o + 0x31) != 0 && lh(o + 0xa6) == lh(m + 0xa6)) {
+            const uint32_t opv = lwu(o + 0x78);
+            for (uint32_t i = 0; i < 3; ++i) glow_draw(opv + 0x330 + i * 16, lwu(opv + 0x360), u2f(0x3ee66666u), u2f(0x3ecccccdu));
+        }
+        group_next(sp, lwu(sp), 0, 0);
+    }
+    ee_stack_free(0x60);
 }
 
 }  // namespace rac1

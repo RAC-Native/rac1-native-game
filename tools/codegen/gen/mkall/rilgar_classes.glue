@@ -1,21 +1,5 @@
 0x0022dc20: { int32_t t0 = a0.w() != 0 ? static_cast<int32_t>(lw_(a0.w())) : 0; set32(v0, static_cast<uint32_t>(timer_tick_i32(t0))); if (a0.w() != 0) sw_(a0.w(), static_cast<uint32_t>(t0)); }
 0x00278aa0: set32(v0, static_cast<uint32_t>(moby_spawn(a0.w())));
 0x002839d0: fr[0] = floor_probe(fr[12], a0.w(), a1.w());
-0x002846d8: set32(v0, static_cast<uint32_t>(sub_0025a420(a0.w(), a1.w(), static_cast<int32_t>(a2.w()))));
 0x0028f5c8: music_track_request(static_cast<int32_t>(a0.w()), a1.w());
-0x00228110: draw_hook_add_dc80_l2(a0.w(), a1.w());
-0x00283498: moby_group_set_state(static_cast<int32_t>(a0.w()), a1.w());
 0x002843a8: band_set(a0.w());
-0x002907b8: talker_word_set(a0.w(), a1.w());
-0x002af5e8: moby_data_note_l1(a0.w(), static_cast<int32_t>(a1.w()), a2.w(), static_cast<int32_t>(a3.w()), t0.w());
-0x002ce110: ocean_wave_table_set_80(a0.w(), fr[12]);
-0x00317398: class_mates_mark_level(a0.w(), 0u);  // (Rilgar's copy: joint 0, a constant)
-0x00317fb8: class_mates_mark_fixed(a0.w(), 0u);  // (Rilgar's copy: joint 0, a constant)
-0x00318648: class344_throw(a0.w(), a1.w(), a2.w(), a3.w(), static_cast<int32_t>(t0.w()));
-0x00319208: floater_arrive_l5(a0.w());
-0x00319510: floater_next_stage(a0.w(), 0xb4u);  // (Rilgar's raft: its stage at pvars +0xb4)
-0x00319598: set32(v0, static_cast<uint32_t>(floater_find(a0.w(), static_cast<int32_t>(a1.w()), 0xb4u)));  // (Rilgar's key +0xb4)
-0x003195f8: set32(v0, static_cast<uint32_t>(floater_ride(a0.w(), 0xc0u, 0xacu)));  // (Rilgar's raft: along +0xc0, path +0xac)
-0x00319690: floater_message(a0.w(), 0xb6u, TXT(0x13a5), TXT(0x1398));  // (Rilgar's stage +0xb6, its first two messages)
-0x00319740: floater_bob(a0.w(), 0xc8u);  // (Rilgar's raft: its phases at pvars +0xc8)
-0x003198e8: floater_lay_path(a0.w(), 0xdcu);  // (Rilgar's raft: its path at pvars +0xdc)

@@ -39,26 +39,6 @@ namespace rac1 {
 using namespace eer;
 using namespace vu0m;
 
-//@gen ril_class846_update_l5
-
-//@gen ril_class852_update_l5
-
-//@gen ril_29be70_l5
-
-//@gen ril_class855_update_l5
-
-//@gen ril_315ee0_l5
-
-//@gen ril_315f70_l5
-
-//@gen ril_class877_update_l5
-
-//@gen ril_class879_update_l5
-
-//@gen ril_class893_update_l5
-
-//@gen ril_class895_update_l5
-
 //@gen ril_28d960_l5
 
 //@gen ril_316810_l5
@@ -67,23 +47,7 @@ using namespace vu0m;
 
 //@gen ril_class918_update_l5
 
-//@gen ril_class919_update_l5
-
-//@gen ril_class925_update_l5
-
-//@gen ril_class982_update_l5
-
-//@gen ril_class984_update_l5
-
-//@gen ril_3193a8_l5
-
-//@gen ril_class998_update_l5
-
-//@gen ril_class1099_update_l5
-
 //@gen ril_class1347_update_l5
-
-//@gen ril_class1550_update_l5
 
 
 }  // namespace rac1
