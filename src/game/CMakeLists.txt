@@ -93,6 +93,16 @@ add_library(rac1_game STATIC
     ovl/blarg_station_props.cpp
     ovl/blarg_hydro_station.cpp
     ovl/blarg_tank.cpp
+    ovl/blarg_scene_props.cpp
+    ovl/blarg_scientist.cpp
+    ovl/blarg_countdown.cpp
+    ovl/blarg_ship.cpp
+    ovl/blarg_valve_wheel.cpp
+    ovl/blarg_electric_arc.cpp
+    ovl/blarg_help_voices.cpp
+    ovl/blarg_smoke_sparks.cpp
+    ovl/blarg_engine_l6.cpp
+    ovl/blarg_draws.cpp
     ovl/umbris_mobys.cpp
     ovl/umbris_hooks.cpp
     ovl/gaspar_mobys.cpp

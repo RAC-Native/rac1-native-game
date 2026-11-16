@@ -1,6 +1,6 @@
-// Blarg's Nebula G34 (level 6) own moby classes: the registration table. The ports are the transliterations in
-// blarg_classes_tr_N.cpp (declarations: blarg_mobys.h) and the hand ports of blarg_own.h. Keyed by level 6's own address and by level, so the indirect call (`jalr` through
-// moby +0x74) reaches them only while the played level's overlay is level 6's.
+// Blarg's Nebula G34 (level 6) own moby classes: the registration table. The ports are the hand ports of blarg_own.h and
+// the shared ones. Keyed by level 6's own address and by level, so the indirect call (`jalr` through moby +0x74) reaches
+// them only while the played level's overlay is level 6's.
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/shared_beam.h>
 #include <game/ovl/shared_breakables.h>
@@ -24,7 +24,6 @@
 #include <game/ovl/shared_zones.h>
 #include <game/ovl/carry_hooks_levels.h>
 #include <game/ovl/blarg_hooks.h>
-#include <game/ovl/blarg_mobys.h>
 #include <game/ovl/blarg_own.h>
 #include <game/ovl/blarg_part2.h>
 

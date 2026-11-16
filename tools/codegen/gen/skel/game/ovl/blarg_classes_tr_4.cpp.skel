@@ -1,4 +1,5 @@
-// Blarg's Nebula G34 (level 6) own code, transliterated: the level's own moby classes, camera type 0x12, the camera hook and the class hooks, and their level-only callees. (part 4 of 6)
+// Blarg's Nebula G34 (level 6) own code, transliterated: what stays generated of it, the level's copy of the hero's walk-to (0x272670,
+// called by class 1105, blarg_scientist.cpp), which the PAL 2.00 build changed (four entries the region tables patch). (part 4 of 6)
 // Transliterated instruction by instruction from level 6's own overlay with tools/codegen/mips2cpp.py (tools/codegen/mkall.py:
 // the original's control flow and PS2 float rules by construction), not rewritten
 // by hand: the names are the entries', the helpers `blg_<addr>_l6` (uniform ABI: TrRet).
@@ -49,46 +50,6 @@ namespace rac1 {
 using namespace eer;
 using namespace vu0m;
 
-//@gen blg_class1091_update_l6
-
 //@gen blg_272670_l6
-
-//@gen blg_class1105_update_l6
-
-//@gen blg_2e9e30_l6
-
-//@gen blg_2f45a0_l6
-
-//@gen blg_2f45f0_l6
-
-//@gen blg_2ffc38_l6
-
-//@gen blg_302400_l6
-
-//@gen blg_3047b8_l6
-
-//@gen blg_309240_l6
-
-//@gen blg_class1108_update_l6
-
-//@gen blg_302fd8_l6
-
-//@gen blg_303748_l6
-
-//@gen blg_300f70_l6
-
-//@gen blg_303b68_l6
-
-//@gen blg_303160_l6
-
-//@gen blg_304028_l6
-
-//@gen blg_class1109_update_l6
-
-//@gen blg_304818_l6
-
-//@gen blg_class1118_update_l6
-
-//@gen blg_305000_l6
 
 }  // namespace rac1

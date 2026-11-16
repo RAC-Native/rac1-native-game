@@ -6,7 +6,7 @@
 
 #include <game/ovl/aridia_enemies.h>
 #include <game/ovl/batalia_mobys.h>
-#include <game/ovl/blarg_mobys.h>
+#include <game/ovl/blarg_own.h>
 #include <game/ovl/carry_hooks.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/eudora_mobys.h>
@@ -263,7 +263,7 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         case L6_CASE(0x002ea6a8): ret = class827_hook_carry(m, a1, a2, f12, 4); return true;
         case L6_CASE(0x002ea738): ret = class827_hook_carry(m, a1, a2, f12, 8); return true;
         case L6_CASE(0x002ea7c8): ret = class827_hook_carryc(m, a1, a2, f12); return true;
-        case L6_CASE(0x002ea800): ret = u_call(blg_hook_2ea800_u, m, a1, a2, f12); return true;
+        case L6_CASE(0x002ea800): ret = class_hook_pvars60_l6(m); return true;
         default: return false;
         }
     case 7:  // Umbris: class 0x10e's hook +0xc (table 0x2125dc)

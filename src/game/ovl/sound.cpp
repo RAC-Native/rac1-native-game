@@ -4,7 +4,8 @@
 // position; their per-frame update 0x28cc08 sends them to 989snd.
 #include <game/lib/snd989.h>
 #include <runtime/iop/snd989_iop.h>
-#include <game/ovl/blarg_call.h>
+#include <game/ovl/blarg_own.h>
+#include <game/ovl/variants_l6.h>
 #include <game/ovl/umbris_call.h>
 #include <game/ovl/umbris_hooks.h>
 #include <game/ovl/gaspar_hooks.h>
@@ -365,7 +366,7 @@ int32_t sound_play_indexed(int32_t idx, uint32_t flags, uint32_t moby) {
 // orig: 0x0028ddd8
 int32_t level_sound_play(int32_t idx, uint32_t flags, uint32_t emitter, int32_t volume) {
     if (on_umbris()) return sound_play_indexed(idx, flags, emitter);  // (level 7's own build, L7:0x002b4a00, is Veldin's sound_play_indexed 0x28dd40: the same code)
-    if (on_blarg()) return static_cast<int32_t>(blg_call(blg_level_sound_play_u, static_cast<uint32_t>(idx), flags, emitter, static_cast<uint32_t>(volume)).v0);  // (level 6's own: L6:0x0029aec0)
+    if (on_blarg()) return level_sound_play_l6(idx, flags, emitter);  // (level 6's own build, L6:0x0029aec0: no volume, the level's base)
     if (!(idx < lw(OV(0x0015f5f0)))) return -1;
     const int32_t ch = sound_start(lwu(OV(0x0015f5f4)) + static_cast<uint32_t>(idx) * 0x20, flags, 0, emitter + 0x40, volume);
     if (ch > -1) {

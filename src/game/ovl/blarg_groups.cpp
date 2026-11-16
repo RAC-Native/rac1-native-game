@@ -1,7 +1,6 @@
 // Blarg's Nebula G34 (level 6) own code, hand-ported: the small helpers the level's classes share, on a moby group (the
-// level's group lists, lvd::group) or on one of the level's door sets (a class-1105 moby with its seven parts, pvars
-// +0x24 .. +0x3c). Header blarg_own.h. Class 1105's own update (part 3) still calls the door sets' and the groups' helpers
-// from its generated code (glued to these). Addresses are level 6's (`orig: L6:`); its own data is L6_ADDR.
+// level's group lists, lvd::group) or on one of the level's door sets (an iris door, class 1021, with its seven petals,
+// pvars +0x24 .. +0x3c). Header blarg_own.h. Addresses are level 6's (`orig: L6:`); its own data is L6_ADDR.
 #include <game/level/level_data.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/blarg_own.h>
