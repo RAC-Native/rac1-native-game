@@ -16,7 +16,6 @@
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/eudora_mobys.h>
 #include <game/ovl/hero_l1.h>
-#include <game/ovl/kerwan_classes_tr.h>
 #include <game/ovl/metal.h>
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/novalis_mobys2.h>

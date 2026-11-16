@@ -11,7 +11,6 @@
 #include <game/level/level_data.h>
 #include <game/lib/libcdvd.h>
 #include <game/ovl/empty_class_updates.h>
-#include <game/ovl/kerwan_classes_tr.h>
 #include <game/ovl/kerwan_mobys.h>
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/novalis_mobys2.h>
@@ -259,7 +258,7 @@ void batch_112() {
         w32(m + 0x20, u(R() & 3));
     }, 30);
 
-    // ---- the classes kerwan_mobys.cpp registers (the transliterated ones of kerwan_classes_tr.cpp and, since the re-glue R3,
+    // ---- the classes kerwan_mobys.cpp registers (once the transliterated ones of kerwan_classes_tr.cpp, now hand ports, and, since the re-glue R3,
     // the shared ports that took the place of Kerwan's copies): the level's own mobys of each, perturbed generically
     // (the state byte, the timer byte, a hit record, the hero near or far, the random generator)
     struct TrClass { uint32_t fn; const char* name; void (*port)(uint32_t); };
@@ -1151,9 +1150,48 @@ void batch_112() {
                 l3check("ferry_help", 0x002dcbc8, 60, Ret::None, [=] {
                     level();
                     const uint32_t m = ferries[static_cast<size_t>(ri(0, static_cast<int>(ferries.size()) - 1))];
-                    if (coin()) w32(ee_read<uint32_t>(m + 0x78) + 0xa4, 0xffffffffu);
+                    const uint32_t fpv = ee_read<uint32_t>(m + 0x78);
+                    w32(fpv + 0xa4, 0xffffffffu);
+                    if (coin()) {  // (its camera asked for first: the call then holds it, its hold time (+0x7c of the 13 camera records) about 10)
+                        ferry_help_l3(m, ri(-1, 5));
+                        for (uint32_t k = 0; k < 13; ++k) w32(OV(0x0017dc50) + k * 0x90 + 0x7c, u(ri(0, 12)));
+                    }
                     return Args{{m, u(ri(-1, 5))}, {}};
                 }, [](A a) { ferry_help_l3(a.i[0], static_cast<int32_t>(a.i[1])); return uint64_t{0}; });
+            // the path ride (L3:0x2d3918) on its own, with steep legs: a platform or the ferry, one of its paths, the point it
+            // heads for, the moby 1 .. 4 above or below that point within a unit (its pitch past the 15 degree limit), at it
+            // (the next point, the path's end), its speed and rates, its sound slot
+            {
+                std::vector<uint32_t> riders = ferries;
+                if (g_oracle_level == 3) { level(); for (uint32_t r : mobys_with(0x002d3198u)) riders.push_back(r); }
+                if (!riders.empty())
+                    l3check("ride_path", 0x002d3918, 120, Ret::Int32, [=] {
+                        level();
+                        vary_frame_scale();
+                        const uint32_t m = riders[static_cast<size_t>(ri(0, static_cast<int>(riders.size()) - 1))];
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        const bool ferry = ee_read<int16_t>(m + 0xa6) == 0x3f4;
+                        static const uint32_t ferry_words[] = {0x90, 0x94}, platform_words[] = {0x94, 0xa8, 0xbc};
+                        const uint32_t word = ferry ? ferry_words[ri(0, 1)] : platform_words[ri(0, 2)] + u(ri(0, 4)) * 4;
+                        int32_t idx = static_cast<int32_t>(ee_read<uint32_t>(pv + word));
+                        if (idx < 0 || idx >= lvd::path_count()) idx = static_cast<int32_t>(ee_read<uint32_t>(pv + (ferry ? 0x90u : 0x94u)));
+                        if (idx < 0 || idx >= lvd::path_count()) idx = 0;
+                        const uint32_t path = lvd::path(idx);
+                        const int32_t n = std::max(1, std::min(512, static_cast<int32_t>(ee_read<uint32_t>(path))));
+                        const int32_t i = ri(0, 4) == 0 ? n - 1 : ri(0, n - 1);
+                        w32(pv + 0x64, u(i));
+                        Vec4 q = ee_ref<Vec4>(path + 0x10 + u(i) * 16);
+                        if (ri(0, 4) != 0) { q.x += rf(-1.0f, 1.0f); q.y += rf(-1.0f, 1.0f); q.z += (coin() ? 1.0f : -1.0f) * rf(1.0f, 4.0f); }
+                        else { q.x += rf(-0.02f, 0.02f); q.y += rf(-0.02f, 0.02f); }
+                        ee_ref<Vec4>(m + 0x10) = q;
+                        wf(pv + 0x60, rf(0.0f, 0.4f));
+                        for (uint32_t k = 0x68; k <= 0x70; k += 4) wf(pv + k, rf(-0.3f, 0.3f));
+                        for (uint32_t k = 0x40; k <= 0x48; k += 4) wf(m + k, rf(-0.5f, 0.5f));
+                        sound_slot(m, pv + 0x78);
+                        seed_rand();
+                        return Args{{m, u(idx), pv + 0x78}, {}};
+                    }, [](A a) { return static_cast<uint64_t>(ride_path_l3(a.i[0], static_cast<int32_t>(a.i[1]), a.i[2])); });
+            }
             const std::vector<uint32_t> prizes = [&] {
                 std::vector<uint32_t> v;
                 if (g_oracle_level != 3) return v;
@@ -1189,6 +1227,104 @@ void batch_112() {
                 }
                 seed_rand();
             }, 20);
+        }
+
+        // ---- (P3.3c) the help triggers (1342): states 0 / 1 / others; the hero in one of its boxes (at the box's centre) or not,
+        // standing (his state 0 / 1 / 9) or not (6: with the item 8 in hand, 3), his state words +0x2084 (1, 0x1e, 0x74 ...) and
+        // +0x988 (a hit), the help state (a message up or not, its voice line), the helps' stats (shown or not: count, seen
+        // bit) and the events' (3, 9 with its first time about an hour before the clock, 0xf, 0x10, 0x13 near its saturation,
+        // 0x14), the flags 0x13d3a2 / 0x13d4cf / 0x13d4f4 / 0x13d40b, the level's words 0x15f68c / 0x15f688, the game mode, its
+        // jump count (+0x50, about multiples of 6), hit count (+0x54) and wait (+0x58), the weapons owned and their slots held
+        {
+            g_ignored_words = saved_ignored;
+            const uint32_t P = 0x0013f350;
+            for (int pass = 0; pass < 18; ++pass)
+            classcheck("class1342_states", 0x002df520, kerwan_class1342_update_l3, [=](uint32_t m) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                vary_frame_scale();
+                w8(m + 0x20, pass == 16 ? 0u : (pass == 17 ? u(ri(2, 5)) : 1u));
+                static const uint32_t boxes[] = {0x0, 0xc, 0x18, 0x24, 0x28, 0x2c, 0x30, 0x34, 0x38, 0x3c, 0x40, 0x44, 0x70, 0x74, 0x78, 0x7c};
+                {
+                    const int32_t box = static_cast<int32_t>(ee_read<uint32_t>(pv + boxes[pass < 16 ? pass : ri(0, 15)]));  // (each pass one box)
+                    Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    if (box >= 0 && box < lvd::box_count(lvd::BOXES) && ri(0, 5) != 0) q = ee_ref<Vec4>(lvd::box(lvd::BOXES, box) + 0x30);
+                    else { q.x += rf(-30, 30); q.y += rf(-30, 30); }
+                    ee_ref<Vec4>(0x0013f3d0) = q;
+                    ee_ref<Vec4>(ee_read<uint32_t>(0x001413d0) + 0x10) = q;
+                }
+                { static const uint32_t st[] = {0, 1, 9, 6, 3, 0, 1, 9}; w32(P + 0x208c, st[ri(0, 7)]); }
+                { static const uint32_t st[] = {0, 1, 0x1e, 0x74, 5, 1}; w32(P + 0x2084, st[ri(0, 5)]); }
+                w32(P + 0x10b8, coin() ? 8u : u(ri(0, 12)));
+                w32(P + 0x988, coin() ? 1u : 0u);
+                w32(OV(0x00179410), ri(0, 4) == 0 ? 1u : 0u);
+                w32(OV(0x00179410) + 0x24, ri(0, 4) == 0 ? 3u : 0xffffffffu);
+                w32(0x0013d428 + 0xf * 4, u(ri(0, 40)));  // (the ammunition of item 0xf: 21 or more for help 0x4a)
+                for (uint32_t i : {0x14u, 0x15u, 0x16u, 0x17u, 0x18u, 0x19u, 0x1au, 0x1bu, 0x40u, 0x41u, 0x4au, 0x4fu, 0x54u, 0x79u}) {
+                    const uint32_t r = 0x00141968 + i * 8;
+                    w16(r, ri(0, 2) == 0 ? 1u : 0u);
+                    w32(r + 4, coin() ? (ee_read<uint32_t>(r + 4) | 0x80000000u) : (ee_read<uint32_t>(r + 4) & 0x7fffffffu));
+                }
+                const int32_t clock = ri(0, 400000);
+                w32(0x0015eea4, u(clock));
+                for (uint32_t k : {3u, 9u, 0xfu, 0x10u, 0x13u, 0x14u}) {
+                    const uint32_t r = 0x00141848 + k * 8;
+                    { static const uint32_t c[] = {0, 0, 1, 0xfffe, 0xffff}; w16(r, c[ri(0, 4)]); }
+                    w16(r + 2, u(ri(0, 700)));
+                    if (coin()) w32(r + 4, R());
+                }
+                if (coin()) w16(0x00141848 + 9 * 8 + 2, u(std::max(0, (clock - 216000) / 600 + ri(-3, 3))));  // (event 9 about an hour before)
+                for (uint32_t a : {0x0013d3a2u, 0x0013d4cfu, 0x0013d4f4u, 0x0013d40bu}) w8(a, ri(0, 2) == 0 ? 1u : 0u);
+                w32(OV(0x0015f68c), u(ri(0, 4)));
+                w32(OV(0x0015f688), coin() ? 0xffffffffu : 0u);
+                w32(OV(0x0015f5c4), coin() ? 0u : 2u);
+                w32(pv + 0x50, coin() ? u(ri(0, 3) * 6) : u(ri(0, 20)));
+                w32(pv + 0x54, u(ri(0, 4)));
+                timer32(pv + 0x58);
+                for (uint32_t i = 0; i < 37; ++i) {
+                    if (ri(0, 3) == 0) w8(0x0013d4c0 + i, coin() ? 1u : 0u);
+                    if (ri(0, 5) == 0) w32(OV(0x00179ac8) + i * 0x4c, coin() ? 1u : 0u);
+                }
+                if (pass < 16 && coin()) {  // (half the cases: everything else the pass's box asks for, its help not shown)
+                    w32(OV(0x00179410), 0);
+                    w32(OV(0x00179410) + 0x24, 0xffffffffu);
+                    w32(0x001516d0 + 0x50, 0);  // (the dialog stream idle: the help request starts its message only then)
+                    w32(0x001516d0 + 0x1c, 0xffffffffu);
+                    w32(P + 0x208c, coin() ? 0u : 9u);
+                    auto unshown = [](uint32_t i) { w16(0x00141968 + i * 8, 0); w32(0x00141968 + i * 8 + 4, ee_read<uint32_t>(0x00141968 + i * 8 + 4) & 0x7fffffffu); };
+                    switch (boxes[pass]) {
+                    case 0x0: w8(0x0013d3a2, 0); unshown(0x14); break;
+                    case 0xc: w8(0x0013d3a2, 0); unshown(0x15); break;
+                    case 0x18: w8(0x0013d3a2, 0); unshown(0x17); break;
+                    case 0x7c:  // (the weapons owned about the two that call help 0x4f, slots 8 and 24 left out)
+                        w32(P + 0x208c, 0);
+                        unshown(0x4f);
+                        w16(0x00141848 + 0x14 * 8, 0);
+                        for (uint32_t i = 0; i < 37; ++i) { w8(0x0013d4c0 + i, 0); w32(OV(0x00179ac8) + i * 0x4c, 0); }
+                        w8(0x0013d4c0 + u(ri(0, 36)), 1);
+                        { static const uint32_t extra[] = {8, 0x17, 0x18, 0x19, 3}; w8(0x0013d4c0 + extra[ri(0, 4)], 1); }
+                        break;
+                    case 0x24: w16(0x00141848 + 3 * 8, 0); w32(pv + 0x50, u(ri(1, 3) * 6)); unshown(0x16); break;
+                    case 0x2c: w32(P + 0x208c, 6); w32(P + 0x10b8, 8); w16(0x00141848 + 0x10 * 8, 0); unshown(0x1b); break;
+                    case 0x38:
+                        w32(OV(0x0015f68c), u(ri(0, 2)));
+                        w32(OV(0x0015f688), 0xffffffffu);
+                        w32(P + 0x2084, 1);
+                        w16(0x00141968 + 0x40 * 8, coin() ? 1u : 0u);
+                        unshown(0x41);
+                        break;
+                    case 0x3c:
+                        w32(P + 0x2084, 0);
+                        w8(0x0013d4cf, 1);
+                        w16(OV(0x001c40b0) + 0xf * 0x18 + 0xe, 1);  // (item 0xf known: its ammunition counts)
+                        w32(0x0013d428 + 0xf * 4, u(ri(15, 40)));
+                        w16(0x00141848 + 0x13 * 8, 0);
+                        unshown(0x4a);
+                        break;
+                    default: break;
+                    }
+                }
+                seed_rand();
+            }, 30);
         }
 
         g_ignored_words = saved_ignored;

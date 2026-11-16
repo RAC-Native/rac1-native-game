@@ -11,7 +11,6 @@ mkall:gaspar_classes
 mkall:gemlik_classes
 mkall:hoven_classes
 mkall:kalebo_classes
-mkall:kerwan
 mkall:kerwan_part2
 mkall:novalis_gold
 mkall:oltanis_classes

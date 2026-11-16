@@ -8,7 +8,7 @@
 #include <game/lib/libcdvd.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/ovl_common.h>
-#include <game/ovl/kerwan_classes_tr.h>
+#include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/kerwan_mobys.h>
 #include <game/ovl/kerwan_part2_tr.h>
 #include <game/ovl/novalis_mobys.h>

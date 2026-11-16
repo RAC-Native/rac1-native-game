@@ -32,7 +32,7 @@
 
 #include <game/ovl/shared_particles.h>
 
-#include <game/ovl/kerwan_classes_tr.h>
+#include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/shared_class631.h>
 #include <game/ovl/shared_class848.h>
 #include <game/ovl/particle_types_tr.h>

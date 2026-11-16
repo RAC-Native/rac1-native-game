@@ -180,6 +180,7 @@ add_library(rac1_game STATIC
     ovl/aridia_props.cpp
     ovl/kerwan_mobys.cpp
     ovl/kerwan_citizens.cpp
+    ovl/kerwan_help_triggers.cpp
     ovl/kerwan_props.cpp
     ovl/kerwan_rides.cpp
     ovl/kerwan_hooks.cpp

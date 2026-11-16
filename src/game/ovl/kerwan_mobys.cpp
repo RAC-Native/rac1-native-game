@@ -1,7 +1,6 @@
 // Kerwan's own moby classes: the registration table. The ports are in kerwan_*.cpp.
 #include <game/enhance/cut_content.h>
 #include <game/ovl/empty_class_updates.h>
-#include <game/ovl/kerwan_classes_tr.h>
 #include <game/ovl/kerwan_mobys.h>
 #include <game/ovl/kerwan_part2_tr.h>
 #include <game/ovl/novalis_mobys.h>
@@ -80,7 +79,7 @@ void kerwan_moby_fns_register() {
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002dccc0), kerwan_class1012_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002da870), kerwan_class890_update_l3);
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002db558), kerwan_class909_update_l3);
-    // the transliterated classes (kerwan_classes_tr.cpp, the translator)
+    // the help triggers 1342 (kerwan_help_triggers.cpp)
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002df520), kerwan_class1342_update_l3);
     // part 2 (kerwan_part2_tr.cpp): class 994's draw callback (queued by its update through 0x1f93e0). It stays transliterated
     // with the ocean's set-up and texture upload it reaches: the texture upload carries the palette-blend hook

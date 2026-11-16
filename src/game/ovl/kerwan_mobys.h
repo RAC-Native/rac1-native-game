@@ -80,6 +80,8 @@ void ferry_help_l3(uint32_t m, int32_t kind); // L3:0x002dcbc8
 void kerwan_class890_update_l3(uint32_t m);   // L3:0x002da870  class 890, Helga
 void helga_scene_l3(uint32_t m);              // L3:0x002da710
 void kerwan_class909_update_l3(uint32_t m);   // L3:0x002db558  class 909, the Heli-Pack's giver
+// ---- the help triggers, class 1342 (kerwan_help_triggers.cpp)
+void kerwan_class1342_update_l3(uint32_t m);  // L3:0x002df520  class 1342
 
 }  // namespace rac1
 
