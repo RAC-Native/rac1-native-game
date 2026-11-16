@@ -122,6 +122,12 @@ add_library(rac1_game STATIC
     ovl/batalia_mobys.cpp
     ovl/batalia_hooks.cpp
     ovl/batalia_part2.cpp
+    ovl/batalia_bolt_prize.cpp
+    ovl/batalia_projectiles.cpp
+    ovl/batalia_bomber_tank.cpp
+    ovl/batalia_sea.cpp
+    ovl/batalia_grenadier.cpp
+    ovl/batalia_shuttle.cpp
     ovl/orxon_mobys.cpp
     ovl/orxon_hooks.cpp
     ovl/orxon_platforms.cpp

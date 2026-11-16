@@ -1,9 +1,10 @@
 // Batalia (level 8) own moby classes: the registration table. The ports are the transliterations in
-// batalia_classes_tr_N.cpp (declarations: batalia_mobys.h) and, for the classes several levels carry, the hand-written
+// batalia_classes_tr_N.cpp (declarations: batalia_mobys.h), the hand ports of batalia_own.h and, for the classes several levels carry, the hand-written
 // shared ports (shared_*.cpp, novalis_*.cpp, aridia_props.cpp). Keyed by level 8's own address and by level, so the indirect call (`jalr` through
 // moby +0x74) reaches them only while the played level's overlay is level 8's.
 #include <game/ovl/batalia_hooks.h>
 #include <game/ovl/batalia_mobys.h>
+#include <game/ovl/batalia_own.h>
 #include <game/ovl/batalia_part2.h>
 
 #include <game/ovl/carry_hooks.h>

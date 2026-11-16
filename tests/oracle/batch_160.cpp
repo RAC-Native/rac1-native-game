@@ -18,6 +18,7 @@
 
 #include <game/lib/libcdvd.h>
 #include <game/ovl/batalia_mobys.h>
+#include <game/ovl/batalia_own.h>
 #include <game/ovl/batalia_part2.h>
 #include <game/ovl/hud_slot7_tr.h>
 #include <game/ovl/ovl.h>

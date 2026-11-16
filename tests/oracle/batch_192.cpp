@@ -14,6 +14,7 @@
 
 #include <game/ovl/shared_class156.h>
 #include <game/ovl/batalia_mobys.h>
+#include <game/ovl/batalia_own.h>
 #include <game/ovl/blarg_mobys.h>
 #include <game/ovl/eudora_mobys.h>
 #include <game/ovl/gaspar_mobys.h>
@@ -165,7 +166,7 @@ void batch_192() {
     // 0x160200..0x16020c it copies (size, colour, distance, rate)
     {
         std::function<uint32_t()> sp;
-        if (L == 8) sp = [moby] { return bat_279f00_l8(moby(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0; };
+        if (L == 8) sp = [moby] { return bolt_prize_glow_l8(moby()); };
         check("particle_27_update", 0x0026fc38, 200, Ret::None, [&] {
             level();
             if (coin()) {
