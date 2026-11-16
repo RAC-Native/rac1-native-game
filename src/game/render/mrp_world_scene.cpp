@@ -1,5 +1,6 @@
 // The MRP world's scene: see mrp_world_scene.h. Host code.
 #include <game/render/mrp_world_scene.h>
+#include "io/host_endian.h"
 #include "mrp_world_sky.inc"
 #include "mrp_world_wiiu.inc"
 
@@ -1105,6 +1106,7 @@ void scene_host_meshes(const void* index, const std::array<float, 16>& a, const 
         const TieClass& c = w->ties[cls];
         float sph[4];
         std::memcpy(sph, c.header.data() + 0x30, sizeof sph);
+        le_fix_elements(sph);  // (the class header's bytes: the PS2's, little-endian - the world asset keeps them so)
         const float sc = c.scale * ci.scale;
         float centre[3], rad = sph[3] * sc;
         for (int l = 0; l < 3; ++l) centre[l] = ci.pos[l] + sc * (ci.rot[0][l] * sph[0] + ci.rot[1][l] * sph[1] + ci.rot[2][l] * sph[2]);

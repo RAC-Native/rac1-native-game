@@ -101,8 +101,12 @@ bool read_host_meshes(const std::string& path, HostMeshes& out, std::string& err
         for (float& s : sphere) s = r.get<float>();
         // (a RAC1 class header's fields where the host reads them: the sphere +0x30, the scale +0x40)
         c.header.assign(0x70, 0);
-        std::memcpy(c.header.data() + 0x30, sphere, sizeof sphere);
-        std::memcpy(c.header.data() + 0x40, &c.scale, 4);
+        float le_sphere[4], le_scale = c.scale;  // (the header's bytes little-endian, as the world asset's classes keep them)
+        std::memcpy(le_sphere, sphere, sizeof le_sphere);
+        le_fix_elements(le_sphere);
+        le_fix_elements(le_scale);
+        std::memcpy(c.header.data() + 0x30, le_sphere, sizeof le_sphere);
+        std::memcpy(c.header.data() + 0x40, &le_scale, 4);
         const uint32_t nlt = r.get<uint32_t>();
         c.texture_remap.fill(0xff);
         if (nlt > c.texture_remap.size()) {
