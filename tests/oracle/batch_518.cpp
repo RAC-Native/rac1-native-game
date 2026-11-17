@@ -47,6 +47,7 @@
 #include <runtime/kernel/disc.h>
 #include <runtime/vu/vu0.h>
 
+#include <optional>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -57,6 +58,16 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
+// walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
+// collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
+bool c2b_spr_check(const char* name) {
+    static const char* const kNames[] = {"class1068_update", "class857_update"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // The VU0 the original started from (the interpreter's), given to the port before it runs (as batches 506 / 509 / 510)
 VUState g_vu0_in;
 void vu0_sync() {
@@ -95,6 +106,8 @@ void fcheck(const char* name, uint32_t laddr, int n, Ret ret, const std::functio
     }
     std::printf("%-26s L%d:0x%08x\n", name, g_oracle_level, laddr);
     const std::function<uint64_t(const Args&)> synced = [&port](const Args& a) { vu0_sync(); return port(a); };
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2b_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, laddr, n, ret, gen, synced, Scope::FullRam, 0, 0)) ++g_fail;
 }
 
@@ -777,9 +790,10 @@ void class857_checks() {
             const std::vector<uint32_t> sp = gadgebot_spots(m);
             if (!sp.empty()) spot_state(m, pick(sp));
         }
-        // its animation, its frame (the strike's 12 .. 15), the flags
-        w8(m + 0x53, u(ri(0, 6)));
-        w8(m + 0x52, coin() ? ee_read<uint8_t>(m + 0x53) : u(ri(0, 6)));
+        // its animation (class 857 has six animation sets 0..5; slot 6 is null and makes moby_pose_matrices_masked read stale
+        // scratchpad words at 0x70002000 + n * 16), its frame (the strike's 12 .. 15), the flags
+        w8(m + 0x53, u(ri(0, 5)));
+        w8(m + 0x52, coin() ? ee_read<uint8_t>(m + 0x53) : u(ri(0, 5)));
         if (coin()) {
             wf(m + 0x54, 0.0f);
             const uint32_t cur = ee_read<uint8_t>(m + 0x52) == 0xff ? ee_read<uint32_t>(m + 0x6c) : ee_read<uint32_t>(m + 0x68);

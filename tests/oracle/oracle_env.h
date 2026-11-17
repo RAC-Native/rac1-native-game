@@ -84,6 +84,15 @@ void oracle_ignore_collision_scratch();
 // One check's scope for it: set on construction, cleared on destruction.
 struct CollisionScratchIgnored {
     CollisionScratchIgnored() { oracle_ignore_collision_scratch(); }
+    // (stage 5, task C2b) wide_cell_list: also 0x70003c00 .. 0x70003ff0, the rest of the room of sphere_collide's and
+    // capsule_collide's (centre, chunk) list (16 bytes a cell from 0x70003800, 127 at most), which a big sphere's list reaches
+    // past A2's 0x70003c00 (the tours' queries never did). The posing's lists at 0x70003c00 / 0x70003d00 (moby_pose_capture,
+    // moby_pose_matrices' blends) and the drawing's words there are then not compared either: only the checks that need it
+    // ask for it, each saying so.
+    explicit CollisionScratchIgnored(bool wide_cell_list) {
+        oracle_ignore_collision_scratch();
+        if (wide_cell_list) g_ignored_spr_ranges.push_back({0x70003c00u, 0x70003ff0u});
+    }
     ~CollisionScratchIgnored() { g_ignored_spr_ranges.clear(); }
     CollisionScratchIgnored(const CollisionScratchIgnored&) = delete;
     CollisionScratchIgnored& operator=(const CollisionScratchIgnored&) = delete;

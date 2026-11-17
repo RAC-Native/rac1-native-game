@@ -100,6 +100,9 @@ void batch_123() {
             seed_rand();
             return Args{};
         };
+        // (stage 5, task C2b) the hero's movement modes reach sphere_collide / capsule_collide: A2's collision scratch ranges left
+        // out of this check (see batch 43's checks of them)
+        const CollisionScratchIgnored spr_ignored;
         if (veldin_code) {
             check("hero_move_mode", 0x002062b0, 300, Ret::None, gen, [](A) { hero_move_mode(); return uint64_t{0}; });
         } else {

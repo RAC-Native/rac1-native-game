@@ -82,8 +82,11 @@ constexpr uint32_t MOBY_SPAWN_L11 = 0x00274668;
 // the stack (the original: 0x70003800, 0x70002000): A2's collision scratch ranges are left out of these checks, and only of
 // them. They also hide what moby_pose_matrices (called for a posed moby) writes inside them: the joint positions at
 // 0x70000000 .., read back by the primitive tests, so a wrong one still shows in the hit list.
+// (Task C2b: the checks added to the list reach sphere_collide or capsule_collide, whose chunk buffers,
+// vertices and cell walk the port keeps on the host stack too.)
 bool c2a_spr_check(const char* name) {
-    static const char* const kNames[] = {"class1242", "class1246", "mobys_in_sphere"};
+    static const char* const kNames[] = {"class1242", "class1246", "mobys_in_sphere", "class114", "class1231", "class1319",
+                                         "class1818", "class572", "hero_move_mode"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;

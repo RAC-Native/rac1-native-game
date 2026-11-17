@@ -44,6 +44,7 @@
 #include <game/lib/libcdvd.h>
 #include <runtime/kernel/disc.h>
 
+#include <optional>
 #include <csetjmp>
 #include <csignal>
 #include <cmath>
@@ -54,6 +55,16 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
+// walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
+// collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
+bool c2b_spr_check(const char* name) {
+    static const char* const kNames[] = {"class1454", "class1906", "class638", "class885", "hero_move_mode"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // Veldin's class 749 hook +0x10 (the moby only) in the hook table's uniform form (T00: a level's copy of it)
 TrRet e749_hook_10_uniform(uint32_t a0, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float,
                            float, float, float, float) {
@@ -98,6 +109,8 @@ void l18check(const char* name, uint32_t l9addr, int n, Ret ret, const std::func
         return;
     }
     std::printf("%-26s L18:0x%08x\n", name, l9addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2b_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, l9addr, n, ret, gen, port, Scope::FullRam, ignore_word, ignore_word2)) ++g_fail;
 }
 }  // namespace

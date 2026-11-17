@@ -42,6 +42,7 @@
 #include <game/ovl/shared_swingshot_target.h>
 #include <game/ovl/variants_l7.h>
 
+#include <optional>
 #include <cstring>
 #include <map>
 #include <string>
@@ -49,6 +50,16 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
+// walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
+// collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
+bool c2b_spr_check(const char* name) {
+    static const char* const kNames[] = {"class1049_rocks", "class1106_charge", "class882_arrival", "class882_landing"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // A check whose original is Umbris's own function at `l7addr`.
 void u2check(const char* name, uint32_t l7addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
     if (g_only_batch != 0 && g_only_batch != g_batch) return;
@@ -59,6 +70,8 @@ void u2check(const char* name, uint32_t l7addr, int n, Ret ret, const std::funct
         return;
     }
     std::printf("%-26s L7:0x%08x\n", name, l7addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2b_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, l7addr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
 }
 // the point at `p` put about the camera, until the port's screen test (0x2002e0) sees it with radius r (as batch 140's); w = 1

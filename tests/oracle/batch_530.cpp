@@ -316,6 +316,11 @@ void carry_checks() {
         return Args{{m, ee_read<uint32_t>(m + 0x78)}, {}};
     };
     const std::function<uint64_t(const Args&)> port = [](A a) { return static_cast<uint64_t>(static_cast<uint32_t>(carry_update(a.i[0], a.i[1]))); };
+    // (stage 5, task C2b) carry_update reaches sphere_collide, whose chunk buffers, vertices and cell lists the port keeps on
+    // the stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's collision scratch ranges are left out of
+    // this check (only of it). They also hide what moby_pose_matrices writes inside them for a posed moby: the joint positions
+    // at 0x70000000 .., read back by the primitive tests, so a wrong one still shows in the contact.
+    const CollisionScratchIgnored spr_ignored;
     check("carry_update_level", 0x002dc9f0, ncase, Ret::Int32, [deal, port] {
         // (dealt again while the port's run throws: a carrier moby without the chain point the hold reads)
         Args a;

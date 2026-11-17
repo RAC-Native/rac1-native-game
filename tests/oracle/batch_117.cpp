@@ -42,6 +42,7 @@
 #include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 
+#include <optional>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -51,6 +52,17 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
+// walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
+// collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
+bool c2b_spr_check(const char* name) {
+    static const char* const kNames[] = {"class1048", "class1048_hunt", "class1051_fight", "class1068", "class827",
+                                         "class857"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // a hand-written class hook (moby, position, target, float) in the hook table's uniform form: the levels' copies of
 // Veldin's hooks and the levels' hooks written by hand run these (T00)
 template <int32_t (*H)(uint32_t, uint32_t, uint32_t, float)>
@@ -74,6 +86,8 @@ void l6check(const char* name, uint32_t l6addr, int n, Ret ret, const std::funct
         return;
     }
     std::printf("%-26s L6:0x%08x\n", name, l6addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2b_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, l6addr, n, ret, gen, port, Scope::FullRam, ignore_word, ignore_word2)) ++g_fail;
 }
 }  // namespace

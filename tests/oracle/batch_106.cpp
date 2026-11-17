@@ -388,6 +388,10 @@ void batch_106() {
         seed_rand();
         return Args{{ee_read<uint32_t>(a + 0x78), a, pick({0u, 1u, 2u})}, {}};
     }, [](A a) { return r32(a.i[0] != 0 ? u(doom_agent_step(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]))) : 0u); });
+    {
+    // (stage 5, task C2b) doom_agent_update reaches sphere_collide / capsule_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("doom_agent_update", 0x002c89e8, 3000, Ret::None, [doom_world, doom_agent, pick, near_hero] {
         doom_world();
         const uint32_t a = doom_agent(pick({0u, 1u, 2u, 2u, 2u, 3u, 3u, 4u, 5u, 6u}), ri(0, 4) != 0);
@@ -396,6 +400,7 @@ void batch_106() {
         seed_rand();
         return Args{{a}, {}};
     }, [](A a) { if (a.i[0] != 0) doom_agent_update(a.i[0]); return uint64_t{0}; });
+    }
 
     // --- the Suck Cannon (item 0x09, hand 0x2da790) and the carried mobys' class hooks
     static uint32_t shand = 0, kA = 0, kB = 0;
@@ -1201,11 +1206,16 @@ void batch_106() {
         ee_write<int16_t>(pv + 0x2a, static_cast<int16_t>(pick({0u, 3u, 4u, 5u, 48u, 49u, 50u})));
         for (uint32_t o : t) if (ri(0, 4) == 0) w8(o + 0x31, 0u);
     };
+    {
+    // (stage 5, task C2b) tesla_update/fire reaches sphere_collide or capsule_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("tesla_update/fire", 0x002b87e0, 1500, Ret::None, [weapon_gen, tesla_fire] {
         Args a = weapon_gen(0x13, 0, u(ri(0, 2)), 0, tesla_fire)();
         if (a.i[0] != 0 && ri(0, 3) == 0) w32(P + 0x2084, 1u);
         return a;
     }, [](A a) { if (a.i[0] != 0) tesla_update(a.i[0]); return uint64_t{0}; });
+    }
     // the Decoy Glove (item 0x19): its throw's timer +0x54 over, the three ways to throw (the button with the hero in
     // 0x1e and ammo; the hero's throw +0x20a8 at its frame +0x1bc = 0x11; state 0x23 at +0x198 = 0x10), the decoy held +0x50 (live,
     // retired, of another class with the gold flag 0x13e539: re-made), every state of the glove

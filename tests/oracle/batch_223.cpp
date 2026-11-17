@@ -48,6 +48,7 @@
 #include <game/ovl/shared_swingshot_target.h>
 #include <game/ovl/variants_l14.h>
 
+#include <optional>
 #include <csetjmp>
 #include <csignal>
 #include <cstring>
@@ -58,11 +59,29 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
+// walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
+// collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
+bool c2b_spr_check(const char* name) {
+    static const char* const kNames[] = {"class28_arr1000", "class28_arr30", "class28_arr300", "class28_arr60",
+                                         "class28_c1395", "class28_c685", "class28_c712", "class28_c851", "class28_c924",
+                                         "class28_talk851", "class28_talk924", "class28_town1700", "class8_arr300",
+                                         "class8_arr60", "class8_c924", "class8_talk924", "class8_town1700",
+                                         "class923_arr1000", "class923_arr30", "class923_arr300", "class923_arr60",
+                                         "class923_c1395", "class923_c685", "class923_c712", "class923_c851",
+                                         "class923_c924", "class923_talk851", "class923_talk924", "class923_town1700"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // A check whose original is level 14's own function at `addr`.
 void o2check(const char* name, uint32_t addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
     if (g_only_batch != 0 && g_only_batch != g_batch) return;
     if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
     std::printf("%-26s L14:0x%08x\n", name, addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2b_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, addr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
 }
 const std::vector<uint8_t>& dump223(const std::string& path) {

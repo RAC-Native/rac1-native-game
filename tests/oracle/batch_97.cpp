@@ -11,6 +11,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/kernel/disc.h>
 
+#include <optional>
 #include <cmath>
 #include <cstring>
 #include <map>
@@ -18,6 +19,16 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
+// walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
+// collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
+bool c2b_spr_check(const char* name) {
+    static const char* const kNames[] = {"fan_update", "peckbot_update", "peckbot_update_state"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // A check whose original is Novalis's own function at `l1addr` (not a Veldin address to translate).
 void l1check(const char* name, uint32_t l1addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port,
              uint32_t ignore_word = 0, uint32_t ignore_word2 = 0) {
@@ -29,6 +40,8 @@ void l1check(const char* name, uint32_t l1addr, int n, Ret ret, const std::funct
         return;
     }
     std::printf("%-26s L1:0x%08x\n", name, l1addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2b_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, l1addr, n, ret, gen, port, Scope::FullRam, ignore_word, ignore_word2)) ++g_fail;
 }
 }  // namespace
@@ -385,6 +398,10 @@ void batch_97() {
             return Args{{OUT, m, ri(0, 1) ? 0x20u : 0u}, {rf(0, 2), rf(0, 2)}};
         }, [](A a) { return r32(static_cast<uint32_t>(walker_probe(a.f[0], a.f[1], a.i[0], a.i[1], a.i[2]))); });
         // (the float args are in f12 / f13; the generator's a0.. are pos, self, flag)
+        {
+        // (stage 5, task C2b) walker_step reaches sphere_collide or capsule_collide: A2's collision scratch
+        // ranges left out of this check (see batch 43's checks of it)
+        const CollisionScratchIgnored spr_ignored;
         check("walker_step", 0x00258b50, 160, Ret::Int32, [walker_moby, set_rec] {
             const uint32_t m = walker_moby(ri(0, 1000));
             const uint32_t rec = T, target = T + 0x100, out = T + 0x140;
@@ -398,6 +415,7 @@ void batch_97() {
             wrand(out, 4);
             return Args{{m, rec, target, out}, {ri(0, 5) == 0 ? rf(0, 4) : 1.0f}};
         }, [](A a) { return r32(walker_record_step(a.f[0], a.i[0], a.i[1], a.i[2], a.i[3])); });
+        }
     }
 
     // ---- the checkpoint helpers (Veldin's addresses: the level's equivalents run)

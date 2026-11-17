@@ -42,6 +42,7 @@
 #include <game/ovl/shared_swingshot_target.h>
 #include <game/ovl/shared_zones.h>
 
+#include <optional>
 #include <csetjmp>
 #include <csignal>
 #include <cstring>
@@ -52,11 +53,39 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
+// walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
+// collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
+bool c2b_spr_check(const char* name) {
+    static const char* const kNames[] = {"class1233_boss2800", "class1233_boss3500", "class1233_boss5000",
+                                         "class1233_boss6500", "class1261_boss2800", "class1261_boss3500",
+                                         "class1261_land200", "class1262_boss2000", "class1262_boss2800",
+                                         "class1262_boss3500", "class1262_boss4000", "class1262_boss5000",
+                                         "class1262_boss6500", "class1262_land200", "class1262_land400",
+                                         "class1262_land60", "class224_boss2000", "class224_boss2800", "class224_boss3500",
+                                         "class224_boss4000", "class224_boss5000", "class224_boss6500", "class224_land200",
+                                         "class224_land400", "class224_land60", "class389_boss2000", "class389_boss2800",
+                                         "class389_boss3500", "class389_boss4000", "class389_boss6500", "class389_land200",
+                                         "class389_land400", "class389_land60", "class404_boss2000", "class404_boss2800",
+                                         "class404_boss3500", "class404_boss4000", "class404_boss5000",
+                                         "class404_boss6500", "class404_land200", "class404_land400", "class404_land60",
+                                         "class63_boss2800", "class63_boss3500", "class63_boss4000", "class63_boss5000",
+                                         "class63_boss6500", "class63_land200", "class63_land400", "class63_land60",
+                                         "class69_boss2000", "class69_boss2800", "class69_boss3500", "class69_boss4000",
+                                         "class69_boss5000", "class69_boss6500", "class69_land200", "class69_land400",
+                                         "class69_land60", "class82_boss3500", "class82_boss5000", "class82_boss6500"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // A check whose original is level 13's own function at `addr`.
 void g2check(const char* name, uint32_t addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
     if (g_only_batch != 0 && g_only_batch != g_batch) return;
     if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
     std::printf("%-26s L13:0x%08x\n", name, addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2b_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, addr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
 }
 const std::vector<uint8_t>& dump222(const std::string& path) {

@@ -47,7 +47,10 @@ void batch_63() {
     // narrower than A2's collision ranges (oracle_ignore_collision_scratch), which would also hide the drawing's and the other
     // collision routines' scratch words over a whole frame. (Measured with ORACLE_DIFFS: 0x70002200 .. 0x70002210 and
     // 0x70003820 .. 0x7000383c differ, nothing else.)
-    g_ignored_spr_ranges = {{0x70002000u, 0x70003000u}, {0x70003800u, 0x70003c00u}};
+    // (stage 5, task C2b) widened by 0x70000000 .. 0x70002000: sphere_collide and capsule_collide now copy the level's chunks into
+    // stack buffers, so the chunk data the original leaves in its two scratchpad buffers differs after a frame too (seen:
+    // 0x70000008 .. 0x70000014, the first differing words of the failing cases)
+    g_ignored_spr_ranges = {{0x70000000u, 0x70003000u}, {0x70003800u, 0x70003c00u}};
     check("gameplay_frame", 0x00297f78, 120, Ret::None, [level] {
         level();
         w32(OV(0x0015f5c4), ri(0, 3) == 0 ? u(ri(1, 6)) : 0u);
@@ -104,7 +107,7 @@ void batch_63() {
     // (L6:0x2f7000) adds stack temporaries whose w it never writes into its tables 0x1db870 / 0x1db0f0 (vec3_add 0x1ff278 keeps
     // a1's w): stale stack lanes, different on the two sides
     g_ignore_lone_w_lanes = true;
-    g_ignored_spr_ranges = {{0x70002000u, 0x70003000u}, {0x70003800u, 0x70003c00u}};  // (C2a: as for gameplay_frame above)
+    g_ignored_spr_ranges = {{0x70000000u, 0x70003000u}, {0x70003800u, 0x70003c00u}};  // (C2a / C2b: as for gameplay_frame above)
     check("gameplay_frame_throw", 0x00297f78, 12, Ret::None, [level, pad] {
         level();
         const uint32_t n = u(ri(185, 196));

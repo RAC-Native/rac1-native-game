@@ -29,6 +29,7 @@
 #include <runtime/kernel/disc.h>
 #include <runtime/vu/vu0.h>
 
+#include <optional>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -39,6 +40,17 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
+// walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
+// collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
+bool c2b_spr_check(const char* name) {
+    static const char* const kNames[] = {"class156_update", "class193_update", "class28_update", "sandmouse_move",
+                                         "sandmouse_update"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // The VU0 the original started from (the interpreter's), given to the port before it runs (as batches 506 / 509 / 510)
 VUState g_vu0_in;
 void vu0_sync() {
@@ -80,6 +92,8 @@ void fcheck(const char* name, uint32_t laddr, int n, Ret ret, const std::functio
     if (!selected(name)) return;
     std::printf("%-26s L%d:0x%08x\n", name, g_oracle_level, laddr);
     const std::function<uint64_t(const Args&)> synced = [&port](const Args& a) { vu0_sync(); return port(a); };
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2b_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, laddr, n, ret, gen, synced, Scope::FullRam, 0, 0)) ++g_fail;
 }
 
@@ -684,8 +698,10 @@ void sandmouse_checks() {
         }
         w8(m + 0xbc, ri(0, 3) == 0 ? u(ri(0, 5)) : (coin() ? 0u : 2u));
         w8(m + 0x31, u(ri(0, 1)));
-        w8(m + 0x53, u(ri(0, 3)));
-        w8(m + 0x52, coin() ? ee_read<uint8_t>(m + 0x53) : u(ri(0, 3)));
+        // (class 1818 has three animation sets 0..2; slot 3 is null and makes moby_pose_matrices_masked transfer 0 quadwords
+        // and read stale scratchpad words at 0x70002000 + n * 16)
+        w8(m + 0x53, u(ri(0, 2)));
+        w8(m + 0x52, coin() ? ee_read<uint8_t>(m + 0x53) : u(ri(0, 2)));
         w8(m + 0x70, R() & 0xff);
         w8(m + 0x23, u(ri(0, 0xff)));
         w8(0x0015edb0, u(ri(0, 1)));

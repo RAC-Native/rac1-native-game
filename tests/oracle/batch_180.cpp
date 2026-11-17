@@ -46,6 +46,7 @@
 #include <cstring>
 #include <exception>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -175,6 +176,9 @@ void run_subject(const Subject& s) {
             return Args{{m}, {}};
         };
         void (*port)(uint32_t) = s.port;
+        // (stage 5, task C2b) drone_update (479) and chicken_update (270) reach sphere_collide: A2's collision scratch ranges left out of their checks
+        std::optional<CollisionScratchIgnored> spr_ignored;
+        if (s.cls == 479 || s.cls == 270) spr_ignored.emplace();
         check(name.c_str(), s.fn, 80, Ret::None, gen, [port](A a) { if (a.i[0] != 0) port(a.i[0]); return uint64_t{0}; });
     }
 }
@@ -460,6 +464,7 @@ void run_level_built() {
     if (lb_drones() == 0) {
         skip_check(name, 0x002ce358, "the drones' class (479) is not loaded on this level");
     } else {
+        const CollisionScratchIgnored spr_ignored;
         check(name, 0x002ce358, 120, Ret::None, [] {
             lb_load();
             const uint32_t d = lb_drones();
@@ -505,19 +510,22 @@ void run_level_built() {
     if (lb_chicken() == 0) {
         skip_check(name, 0x002c97e0, "the chicken's class (270) is not loaded on this level");
     } else {
-        check(name, 0x002c97e0, 150, Ret::None, [] {
-            lb_load();
-            const uint32_t c = lb_chicken();
-            if (c == 0) return Args{{0}, {}};
-            seed_rand();
-            const int st = ri(0, 5);
-            w8(c + 0x20, u(st == 5 ? 6 : st));
-            const uint32_t pv = ee_read<uint32_t>(c + 0x78);
-            wf(pv + 0x78, rf(0.5f, 2.0f));
-            common_vary(c, 6.0f);
-            vary_chicken(c);
-            return Args{{c}, {}};
-        }, [](A a) { if (a.i[0] != 0) chicken_update(a.i[0]); return uint64_t{0}; });
+        {
+            const CollisionScratchIgnored spr_ignored;
+            check(name, 0x002c97e0, 150, Ret::None, [] {
+                lb_load();
+                const uint32_t c = lb_chicken();
+                if (c == 0) return Args{{0}, {}};
+                seed_rand();
+                const int st = ri(0, 5);
+                w8(c + 0x20, u(st == 5 ? 6 : st));
+                const uint32_t pv = ee_read<uint32_t>(c + 0x78);
+                wf(pv + 0x78, rf(0.5f, 2.0f));
+                common_vary(c, 6.0f);
+                vary_chicken(c);
+                return Args{{c}, {}};
+            }, [](A a) { if (a.i[0] != 0) chicken_update(a.i[0]); return uint64_t{0}; });
+        }
         // its debris
         std::snprintf(name, sizeof name, "class428_update L%d", g_oracle_level);
         check(name, 0x002cc210, 80, Ret::None, [] {

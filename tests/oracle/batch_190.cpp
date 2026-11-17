@@ -100,6 +100,8 @@ void drones_hit() {
             }
             return Args{{m}, {}};
         };
+        // (stage 5, task C2b) drone_update reaches sphere_collide: A2's collision scratch ranges left out of this check
+        const CollisionScratchIgnored spr_ignored;
         check(name.c_str(), 0x002ce358, 400, Ret::None, gen, [](A a) { if (a.i[0] != 0) drone_update(a.i[0]); return uint64_t{0}; });
     }
 }

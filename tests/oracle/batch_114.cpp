@@ -39,6 +39,7 @@
 #include <game/ovl/shared_swingshot_target.h>
 #include <runtime/kernel/disc.h>
 
+#include <optional>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -49,6 +50,17 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
+// walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
+// collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
+bool c2b_spr_check(const char* name) {
+    static const char* const kNames[] = {"class133", "class133_x", "class1818", "class572", "class623", "class623_x",
+                                         "class625", "class625_x", "class717", "class717_x", "class844", "ril_305898"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // A check whose original is Rilgar's own function at `l5addr` (not a Veldin address to translate).
 void l5check(const char* name, uint32_t l5addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port,
              uint32_t ignore_word = 0, uint32_t ignore_word2 = 0) {
@@ -61,6 +73,8 @@ void l5check(const char* name, uint32_t l5addr, int n, Ret ret, const std::funct
         return;
     }
     std::printf("%-26s L5:0x%08x\n", name, l5addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2b_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, l5addr, n, ret, gen, port, Scope::FullRam, ignore_word, ignore_word2)) ++g_fail;
 }
 

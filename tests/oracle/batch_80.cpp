@@ -288,6 +288,10 @@ void batch_80() {
           [](A) { return ri32(cutscene_camera()); });
     check("cutscene_update", 0x00298f90, 60, Ret::None, [running] { running(); return Args{}; },
           [](A) { cutscene_update(); return uint64_t{0}; });
+    {
+    // (stage 5, task C2b) cutscene_end reaches sphere_collide / capsule_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("cutscene_end", 0x00298b18, 40, Ret::None, [running] {
         running();
         w16(SC + 0x46, R() & 1);
@@ -304,6 +308,7 @@ void batch_80() {
         for (uint32_t o : {0x40u, 0x5cu, 0x78u}) w16(S + o, coin() ? 0x8000u : 4u);
         return Args{};
     }, [](A) { cutscene_end(); return uint64_t{0}; });
+    }
     check("cutscene_level_extras", 0x0023e268, 60, Ret::None, [running, hook_new_mobys] {
         running();
         w32(0x0013cae4, 0);  // a frame of it played first: the scene's mobys posed

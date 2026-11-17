@@ -30,6 +30,7 @@
 #include <game/ovl/sound_emitter.h>
 #include <runtime/kernel/disc.h>
 
+#include <optional>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -38,6 +39,26 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
+// walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
+// collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
+bool c2b_spr_check(const char* name) {
+    static const char* const kNames[] = {"class1818", "class340", "class466", "class563", "class86", "eud_biped_st10",
+                                         "eud_chips_bounce", "eud_chips_st0", "eud_flock", "eud_flock_move",
+                                         "eud_flock_steer", "eud_saw_box", "eud_saw_hit", "eud_saw_settle", "eud_saw_st0",
+                                         "eud_saw_st1", "eud_saw_st10", "eud_saw_st2", "eud_saw_st3", "eud_saw_st4",
+                                         "eud_saw_st5", "eud_saw_st6", "eud_saw_st7", "eud_saw_st8", "eud_saw_st9",
+                                         "eud_ship_st0", "eud_ship_st1", "eud_ship_st2", "eud_ship_st3",
+                                         "eud_trooper_st11", "eud_walker_update", "eud_woodcut_area", "eud_woodcut_hit",
+                                         "eud_woodcut_lunge", "eud_woodcut_st0", "eud_woodcut_st1", "eud_woodcut_st10",
+                                         "eud_woodcut_st11", "eud_woodcut_st12", "eud_woodcut_st2", "eud_woodcut_st3",
+                                         "eud_woodcut_st4", "eud_woodcut_st5", "eud_woodcut_st6", "eud_woodcut_st7",
+                                         "eud_woodcut_st8", "eud_woodcut_st9", "eud_woodcut_swing"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // A check whose original is Eudora's own function at `l4addr` (not a Veldin address to translate).
 void l4check(const char* name, uint32_t l4addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port,
              uint32_t ignore_word = 0, uint32_t ignore_word2 = 0) {
@@ -50,6 +71,8 @@ void l4check(const char* name, uint32_t l4addr, int n, Ret ret, const std::funct
         return;
     }
     std::printf("%-26s L4:0x%08x\n", name, l4addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2b_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, l4addr, n, ret, gen, port, Scope::FullRam, ignore_word, ignore_word2)) ++g_fail;
 }
 }  // namespace

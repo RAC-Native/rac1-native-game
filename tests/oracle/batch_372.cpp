@@ -47,6 +47,7 @@
 #include <game/ovl/shared_zones.h>
 #include <game/ovl/empty_class_updates.h>
 
+#include <optional>
 #include <cstring>
 #include <map>
 #include <string>
@@ -55,6 +56,16 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
+// walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
+// collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
+bool c2b_spr_check(const char* name) {
+    static const char* const kNames[] = {"class1454_hydro_1050", "class1454_hydro_1650", "class1454_hydro_1750"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 const std::vector<uint8_t>& dump372(const std::string& path) {
     static std::map<std::string, std::vector<uint8_t>> cache;
     std::vector<uint8_t>& d = cache[path];
@@ -71,6 +82,8 @@ const std::vector<uint8_t>& dump372(const std::string& path) {
 void l18check372(const char* name, uint32_t laddr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
     if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
     std::printf("%-26s L18:0x%08x\n", name, laddr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2b_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, laddr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
 }
 void load372(const std::vector<uint8_t>& d) {

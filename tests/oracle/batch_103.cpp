@@ -27,6 +27,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/kernel/disc.h>
 #include <game/lib/libcdvd.h>
+#include <optional>
 #include <ctime>
 
 #include <cmath>
@@ -36,6 +37,17 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
+// walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
+// collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
+bool c2b_spr_check(const char* name) {
+    static const char* const kNames[] = {"amoeboid_update", "birdbot_update", "p11_class1510", "p11_class722",
+                                         "teleporter_update", "walker_record_step"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // A check whose original is Novalis's own function at `l1addr` (not a Veldin address to translate).
 void l1check(const char* name, uint32_t l1addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port,
              uint32_t ignore_word = 0, uint32_t ignore_word2 = 0) {
@@ -47,6 +59,8 @@ void l1check(const char* name, uint32_t l1addr, int n, Ret ret, const std::funct
         return;
     }
     std::printf("%-26s L1:0x%08x\n", name, l1addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2b_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, l1addr, n, ret, gen, port, Scope::FullRam, ignore_word, ignore_word2)) ++g_fail;
 }
 }  // namespace
@@ -786,6 +800,8 @@ void batch_103() {
             for (int st = 0; st < 8; ++st)
             for (int pass = 0; pass < 2; ++pass) {
                 std::printf("%-26s 0x%08x\n", name, vaddr);
+                std::optional<CollisionScratchIgnored> spr_ignored;
+                if (c2b_spr_check(name)) spr_ignored.emplace();
                 if (!check_fn(name, fn, n, Ret::None, [level, ms, st, pass, generic_prep, port] {
                     level();
                     const uint32_t m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];

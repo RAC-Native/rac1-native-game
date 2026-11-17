@@ -28,6 +28,7 @@
 #include <runtime/kernel/disc.h>
 #include <runtime/vu/vu0.h>
 
+#include <optional>
 #include <cmath>
 #include <cstring>
 #include <functional>
@@ -37,6 +38,16 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
+// walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
+// collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
+bool c2b_spr_check(const char* name) {
+    static const char* const kNames[] = {"race_cam_follow", "race_cam_update"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // The VU0 the original started from (the interpreter's), given to the port before it runs (as batches 501 / 506)
 VUState g_vu0_in;
 void vu0_sync() {
@@ -92,6 +103,8 @@ void fcheck(const char* name, uint32_t laddr, int n, Ret ret, const std::functio
         if (info()) std::printf("INFO %s packets +0x%x\n", nm.c_str(), cursor() - c0);
         return r;
     };
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2b_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, laddr, n, ret, gen, synced, Scope::FullRam, 0, 0)) ++g_fail;
 }
 

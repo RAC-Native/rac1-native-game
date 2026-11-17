@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <cstring>
 #include <functional>
+#include <optional>
 #include <vector>
 
 namespace rac1::oracle {
@@ -274,6 +275,15 @@ void batch_340() {
             }
             return a;
         };
+        // (stage 5, task C2b) the particle updates named here reach sphere_collide (0x1e's 0x1f0d60 ...), whose chunk buffers,
+        // vertices and cell lists the port keeps on the stack: A2's collision scratch ranges are left out of their checks, and
+        // only of them (see batch 43's sphere_collide)
+        // (0x03's spheres are big enough for the list of cells to pass 0x70003c00, measured: the wide range for it, which also
+        // leaves out whatever else its cases write at 0x70003c00 .. 0x70003ff0)
+        static const char* const kC2bSpr[] = {"particle_03_update", "particle_1e_update", "particle_36_update"};
+        std::optional<CollisionScratchIgnored> spr_ignored;
+        for (const char* n : kC2bSpr)
+            if (std::strcmp(n, t.name) == 0) spr_ignored.emplace(std::strcmp(t.name, "particle_03_update") == 0);
         check(t.name, t.orig, 150, Ret::None, gen, [&t](A a) { if (a.i[0] != 0) t.upd(a.i[0]); return uint64_t{0}; });
     }
 

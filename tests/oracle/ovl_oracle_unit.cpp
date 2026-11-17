@@ -5,7 +5,32 @@
 
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/kernel/disc.h>
+
+#include <optional>
+
 namespace rac1::oracle {
+
+// (stage 5, task C2b) From batch 44 on, a moby's primitive records that name joints (all types but 1 and 3) are kept to the
+// joint sets that have joints: a record's set bit (+2: bit 0 the set counted at col +0, bit 1 the one at +2) is cleared while
+// that set's joint count is 0. Without joints the query does not pose the moby, and such a record reads its "joints" through
+// a pointer still at the scratchpad: the words a collision query left there. Within one query those are its own chunk
+// buffers' (CollChunkBufs::spr_word gives them: batch 43's single-query checks keep such records and prove it); in a check
+// that makes several queries (the hero's) they are the query before's, which the port no longer leaves in the scratchpad.
+// No class data does that: a probe of the nine tours found no such record read (2026-11-14). Called wherever the
+// generators set the counts.
+static bool g_strip_jointless = false;
+static void strip_jointless_sets(uint32_t col) {
+    if (!g_strip_jointless) return;
+    const uint32_t have = (ee_read<uint16_t>(col) != 0 ? 1u : 0u) | (ee_read<uint16_t>(col + 2) != 0 ? 2u : 0u);
+    const uint32_t n = ee_read<uint32_t>(col + 4) / 0x20;
+    for (uint32_t r = 0; r < n && r < 64; ++r) {
+        const uint32_t pr = col + 0x10 + 0x20 * r;
+        const int8_t ty = static_cast<int8_t>(ee_read<uint8_t>(pr));
+        if (ty == 1 || ty == 3) continue;
+        const uint32_t more = ee_read<uint16_t>(pr + 2);
+        w16(pr + 2, more & ~(3u & ~have));
+    }
+}
 
 void batches_unit() {
 
@@ -4080,6 +4105,7 @@ void batches_unit() {
                 else { w16(pr + 4, u(ri(0, 15))); w16(pr + 6, u(ri(0, 15))); }
                 wf(pr + 8, rf(-1, 1)); wf(pr + 0xc, ri(0, 1) ? rf(50, 1500) : rf(500, 3000)); wfrand(pr + 0x10, 3, -2000, 2000); wf(pr + 0x1c, ri(0, 1) ? rf(50, 1500) : rf(500, 3000));
             }
+            strip_jointless_sets(col);
             const uint32_t vb = col + 0x10 + u(nprim * 0x20);
             for (int v = 0; v < npair * 2; ++v) { for (int c = 0; c < 3; ++c) w16(vb + 8 * u(v) + 2 * u(c), u(ri(-1000, 1000))); w16(vb + 8 * u(v) + 6, R()); }
             const uint32_t tb = vb + u(npair * 0x10);
@@ -4110,11 +4136,11 @@ void batches_unit() {
                 for (uint32_t o = 0x50; o < 0x70; o += 4) w32(m + o, ee_read<uint32_t>(M + o));
                 w32(m + 0x60, 0); w32(m + 0x64, 0);
                 const uint32_t col = ee_read<uint32_t>(m + 0x94);
-                w16(col, ri(0, 1) ? nb : 0u); w16(col + 2, nb);
+                w16(col, ri(0, 1) ? nb : 0u); w16(col + 2, nb); strip_jointless_sets(col);
                 for (uint32_t e = 0; e < 8; ++e) if (ee_read<uint32_t>(0x01e9c000 + 8 * e) == ee_read<uint32_t>(m + 0xa8)) w32(0x01e9c000 + 8 * e, 0);
                 for (int i = 0; i < 48; ++i) {  // the ring slot it takes may evict another moby's joints: no other moby has any
                     const uint32_t c2 = ee_read<uint32_t>(T4 + 0x100 * u(i) + 0x94);
-                    if (T4 + 0x100 * u(i) != m && c2 != 0) { w16(c2, 0); w16(c2 + 2, 0); }
+                    if (T4 + 0x100 * u(i) != m && c2 != 0) { w16(c2, 0); w16(c2 + 2, 0); strip_jointless_sets(c2); }
                 }
             }
             const float r = rf(0.3f, 3);
@@ -4196,6 +4222,12 @@ void batches_unit() {
             }
         }
     };
+    {
+    // (stage 5, task C2b) sphere_collide and capsule_collide keep their chunk buffers, vertices and cell lists on the stack
+    // (the original: 0x70000000 / 0x70001000, 0x70002000, 0x70003800): A2's collision scratch ranges are left out of these two
+    // checks. They also hide what moby_pose_matrices (the posed case) writes inside them: the joint positions at 0x70000000 ..,
+    // read back by the primitive tests, so a wrong one still shows in the contact.
+    const CollisionScratchIgnored spr_ignored;
     check("sphere_collide", 0x001f0d60, N * 32, Ret::Int32, [collenv, treeenv, poseM] {
         const int k = collenv();
         uint32_t m = T4 + 0x100 * u(ri(0, k - 1));
@@ -4208,11 +4240,11 @@ void batches_unit() {
             for (uint32_t o = 0x50; o < 0x70; o += 4) w32(m + o, ee_read<uint32_t>(M + o));
             w32(m + 0x60, 0); w32(m + 0x64, 0);
             const uint32_t col = ee_read<uint32_t>(m + 0x94);
-            w16(col, ri(0, 1) ? nb : 0u); w16(col + 2, nb);
+            w16(col, ri(0, 1) ? nb : 0u); w16(col + 2, nb); strip_jointless_sets(col);
             for (uint32_t e = 0; e < 8; ++e) if (ee_read<uint32_t>(0x01e9c000 + 8 * e) == ee_read<uint32_t>(m + 0xa8)) w32(0x01e9c000 + 8 * e, 0);
             for (int i = 0; i < 48; ++i) {
                 const uint32_t c2 = ee_read<uint32_t>(T4 + 0x100 * u(i) + 0x94);
-                if (T4 + 0x100 * u(i) != m && c2 != 0) { w16(c2, 0); w16(c2 + 2, 0); }
+                if (T4 + 0x100 * u(i) != m && c2 != 0) { w16(c2, 0); w16(c2 + 2, 0); strip_jointless_sets(c2); }
             }
         }
         const float r = rf(0.3f, 3);
@@ -4240,11 +4272,11 @@ void batches_unit() {
             for (uint32_t o = 0x50; o < 0x70; o += 4) w32(m + o, ee_read<uint32_t>(M + o));
             w32(m + 0x60, 0); w32(m + 0x64, 0);
             const uint32_t col = ee_read<uint32_t>(m + 0x94);
-            w16(col, ri(0, 1) ? nb : 0u); w16(col + 2, nb);
+            w16(col, ri(0, 1) ? nb : 0u); w16(col + 2, nb); strip_jointless_sets(col);
             for (uint32_t e = 0; e < 8; ++e) if (ee_read<uint32_t>(0x01e9c000 + 8 * e) == ee_read<uint32_t>(m + 0xa8)) w32(0x01e9c000 + 8 * e, 0);
             for (int i = 0; i < 48; ++i) {
                 const uint32_t c2 = ee_read<uint32_t>(T4 + 0x100 * u(i) + 0x94);
-                if (T4 + 0x100 * u(i) != m && c2 != 0) { w16(c2, 0); w16(c2 + 2, 0); }
+                if (T4 + 0x100 * u(i) != m && c2 != 0) { w16(c2, 0); w16(c2 + 2, 0); strip_jointless_sets(c2); }
             }
         }
         const float r = rf(0.3f, 3);
@@ -4278,6 +4310,7 @@ void batches_unit() {
         return Args{{OUT, fl, ri(0, 3) ? 0u : m}, {ri(0, 20) ? r : 0.0f, ri(0, 20) ? rf(0.1f, 3) : 0.0f}};
     }, [](A a) { return ri32(capsule_collide(a.i[0], a.f[0], a.f[1], a.i[1], a.i[2])); },
        OV(0x00173e7c));  // w of the pushed-out position: vf2.w, stale from earlier VU0 code when this call loads no vf2
+    }
 
     check("segment_collide", 0x001efc70, N * 48, Ret::Int32, [collenv, treeenv, poseM] {
         const int k = collenv();
@@ -4291,11 +4324,11 @@ void batches_unit() {
             for (uint32_t o = 0x50; o < 0x70; o += 4) w32(m + o, ee_read<uint32_t>(M + o));
             w32(m + 0x60, 0); w32(m + 0x64, 0);
             const uint32_t col = ee_read<uint32_t>(m + 0x94);
-            w16(col, ri(0, 1) ? nb : 0u); w16(col + 2, nb);
+            w16(col, ri(0, 1) ? nb : 0u); w16(col + 2, nb); strip_jointless_sets(col);
             for (uint32_t e = 0; e < 8; ++e) if (ee_read<uint32_t>(0x01e9c000 + 8 * e) == ee_read<uint32_t>(m + 0xa8)) w32(0x01e9c000 + 8 * e, 0);
             for (int i = 0; i < 48; ++i) {
                 const uint32_t c2 = ee_read<uint32_t>(T4 + 0x100 * u(i) + 0x94);
-                if (T4 + 0x100 * u(i) != m && c2 != 0) { w16(c2, 0); w16(c2 + 2, 0); }
+                if (T4 + 0x100 * u(i) != m && c2 != 0) { w16(c2, 0); w16(c2 + 2, 0); strip_jointless_sets(c2); }
             }
         }
         float px = ee_read<float>(m + 0x10) + rf(-3, 3), py = ee_read<float>(m + 0x14) + rf(-3, 3), pz = ee_read<float>(m + 0x18) + rf(-3, 3);
@@ -4370,6 +4403,7 @@ void batches_unit() {
 
     // ======== batch 44
     g_batch = 44;
+    g_strip_jointless = true;  // (see strip_jointless_sets)
     check("floor_probe", 0x00259698, N * 32, Ret::Float, [collenv, treeenv] {
         const int k = collenv();
         const uint32_t m = T4 + 0x100 * u(ri(0, k - 1));
@@ -4385,6 +4419,10 @@ void batches_unit() {
         return Args{{OUT, fl}, {up}};
     }, [](A a) { return rf32(floor_probe(a.f[0], a.i[0], a.i[1])); });
 
+    {
+    // (stage 5, task C2b) moby_sphere_contact reaches sphere_collide: A2's collision scratch ranges left out of this check (see
+    // batch 43's sphere_collide: the posing's joint positions inside them are read back, so a wrong one still shows)
+    const CollisionScratchIgnored spr_ignored;
     check("moby_sphere_contact", 0x002598b0, N * 32, Ret::Int32, [collenv] {
         const int k = collenv();
         const uint32_t m = T4 + 0x100 * u(ri(0, k - 1)), m2 = T4 + 0x100 * u(ri(0, k - 1));
@@ -4395,6 +4433,7 @@ void batches_unit() {
         const uint32_t fl = (ri(0, 3) ? 0u : 1u) | (ri(0, 1) ? 4u : 0u) | (ri(0, 5) ? 0u : 8u) | (ri(0, 2) ? 0u : 0x10u) | (ri(0, 2) ? 0u : 0x20u) | (u(ri(0, 0x1f)) << 8);
         return Args{{m, OUT, R(), R(), R(), fl}, {r, ri(0, 1) ? rf(-9, 9) : std::bit_cast<float>(u(ri(0, 8))), rf(-5, 5)}};
     }, [](A a) { return ri32(moby_sphere_contact(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]), a.i[3], a.i[4], a.i[5], a.f[0], a.f[1], a.f[2])); });
+    }
 
     // hero at (x, y, z) facing yaw (PLAYER matrix: rotation about z, row 3 zero)
     auto heroAt = [](float x, float y, float z, float yaw) {
@@ -4740,11 +4779,20 @@ void batches_unit() {
             Vec4 ax{0.0f, 0.0f, 1.0f, 0.0f}; ee_ref<Vec4>(0x0013f5e0) = ax; w16(P + 0x1f6, R());
         }
     };
+    {
+    // (stage 5, task C2b) hero_collide_push reaches sphere_collide / capsule_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's two checks)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_collide_push", 0x002133a8, N * 32, Ret::Int32, [pushenv] {
         pushenv();
         return Args{{ri(0, 1) ? 0xfu : u(ri(0, 3))}, {}};
     }, [](A a) { return ri32(hero_collide_push(static_cast<int32_t>(a.i[0]))); }, OV(0x00173e7c));
+    }
 
+    {
+    // (stage 5, task C2b) hero_collide_resolve reaches sphere_collide / capsule_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's two checks)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_collide_resolve", 0x002137a8, N * 16, Ret::None, [pushenv] {
         constexpr uint32_t P = g::PLAYER;
         pushenv();
@@ -4753,6 +4801,7 @@ void batches_unit() {
         w32(P + 0x21b0, u(ri(0, 31))); w32(P + 0x21b4, u(ri(0, 20)));
         return Args{};
     }, [](A) { hero_collide_resolve(); return uint64_t{0}; }, OV(0x00173e7c));
+    }
     check("hero_footsteps_update", 0x00206080, N * 16, Ret::None, [sndenv] {
         constexpr uint32_t P = g::PLAYER;
         sndenv(); w32(0x0015ed84, u(ri(0, 3))); for (int i = 0; i < 4; ++i) w8(OV(0x001bd820) + i, u(ri(0, 2)));
@@ -4983,6 +5032,10 @@ void batches_unit() {
         return Args{};
     }, [](A) { hero_ground_update(); return uint64_t{0}; });
 
+    {
+    // (stage 5, task C2b) hero_ledge_grab_check reaches sphere_collide / capsule_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's two checks)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_ledge_grab_check", 0x0020bed0, N * 32, Ret::None, [collenv, treeenv, heroAt, boxenv] {
         constexpr uint32_t P = g::PLAYER;
         const int k = collenv();
@@ -5014,6 +5067,7 @@ void batches_unit() {
         wrand(P + 0x4d0, 4); wrand(P + 0x4e0, 8); w32(P + 0x4f4, R()); wrand(P + 0x4f8, 1);
         return Args{};
     }, [](A) { hero_ledge_grab_check(); return uint64_t{0}; });
+    }
 
     auto movenv = [collenv, treeenv, heroAt, boxenv] {
         constexpr uint32_t P = g::PLAYER;
@@ -5049,11 +5103,20 @@ void batches_unit() {
         for (int i = 0; i < 48; ++i) { const uint32_t m = T4 + 0x100 * u(i); w32(m + 0x78, 0x01ee4000 + 0x40 * u(i)); w32(0x01ee4000 + 0x40 * u(i), 0); w32(0x01ee4000 + 0x40 * u(i) + 8, 0); }
         w32(OV(0x001612d8), 0); w32(OV(0x001612dc), 0);
     };
+    {
+    // (stage 5, task C2b) hero_move_integrate reaches sphere_collide / capsule_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's two checks)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_move_integrate", 0x00213880, N * 32, Ret::None, [movenv] {
         movenv();
         return Args{};
     }, [](A) { hero_move_integrate(); return uint64_t{0}; }, OV(0x00173e7c));
+    }
 
+    {
+    // (stage 5, task C2b) hero_motion_update reaches sphere_collide / capsule_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's two checks)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_motion_update", 0x00221310, N * 32, Ret::None, [movenv] {
         constexpr uint32_t P = g::PLAYER;
         movenv();
@@ -5063,6 +5126,7 @@ void batches_unit() {
         wrand(P + 0x248, 8);
         return Args{};
     }, [](A) { hero_motion_update(); return uint64_t{0}; }, OV(0x00173e7c));
+    }
 
     // the 13 camera controller slots with a key table for sub_00235988; no slot flagged 0x20 runs
     // a real controller (start callbacks only reach the port table)
@@ -5339,6 +5403,10 @@ void batches_unit() {
     for (uint32_t st : {0x40u, 0x67u, 0x63u, 0x64u, 0x68u, 0x7bu, 0x7cu, 0x7du, 0x43u, 0x47u, 0x53u, 0x57u, 0x59u, 0x5au, 0x62u, 0x46u, 0x5du, 0x56u, 0x52u, 0x58u, 0x45u, 0x55u, 0x54u, 0x05u, 0x3eu, 0x7eu, 0x00u, 0x01u, 0x03u, 0x04u, 0x17u, 0x1du, 0x1eu, 0x1fu, 0x3du, 0x70u, 0x71u, 0x72u, 0x80u, 0x7fu, 0x02u, 0x73u, 0x07u, 0x09u, 0x0au, 0x0bu, 0x0cu, 0x0du, 0x0eu, 0x0fu, 0x10u, 0x11u, 0x12u, 0x1cu, 0x3cu, 0x49u, 0x4cu, 0x5eu, 0x69u, 0x06u, 0x2du, 0x77u, 0x81u, 0x08u, 0x14u, 0x13u, 0x15u, 0x21u, 0x7au, 0x20u, 0x23u, 0x3fu, 0x2fu, 0x31u, 0x74u, 0x18u, 0x19u, 0x4au, 0x4bu, 0x1au, 0x1bu, 0x79u, 0x16u, 0x65u, 0x66u, 0x51u, 0x4fu, 0x4du, 0x4eu, 0x44u, 0x50u, 0x60u, 0x61u, 0x5fu, 0x5cu, 0x5bu, 0x76u, 0x75u, 0x6au, 0x82u, 0x36u, 0x37u, 0x38u, 0x39u, 0x3au, 0x30u, 0x24u, 0x2eu, 0x25u, 0x26u, 0x2cu, 0x22u, 0x28u, 0x29u, 0x2au, 0x2bu, 0x42u, 0x33u, 0x34u, 0x35u}) {
         static char nm[40];
         std::snprintf(nm, sizeof nm, "hero_state_update/%02x", st);
+        // (stage 5, task C2b) the hero's state update reaches sphere_collide / capsule_collide from many states (measured on
+        // levels 14 .. 17: 0x10, 0x1a, 0x1b, 0x20, 0x22, 0x2b, 0x4d, 0x4e, 0x5b, 0x5c, 0x60, a different subset on each level's
+        // cases): A2's collision scratch ranges left out of the checks of every state (see batch 43's checks of them)
+        const CollisionScratchIgnored spr_ignored;
         check(nm, 0x00217970, N * 2, Ret::None, [updenv, st] {
             updenv(st);
             return Args{};
@@ -5810,6 +5878,10 @@ void batches_unit() {
         for (int w = 0; w < 2; ++w) {
             static char nm[40];
             std::snprintf(nm, sizeof nm, "hero_input_update/%s%02x", w ? "wide-" : "", st);
+            // (stage 5, task C2b) these states' input update reaches sphere_collide / capsule_collide (measured on level 15: 0x5c,
+            // 0x5e, wide and not), each level's cases a different subset: A2's collision scratch ranges left out of the checks of
+            // every state of this batch (see batch 43's checks of them)
+            const CollisionScratchIgnored spr_ignored;
             check(nm, 0x00229b70, N * 8, Ret::None, [t3env, st, w] { t3env(st, w != 0); return Args{}; },
                   [](A) { hero_input_update(); return uint64_t{0}; }, OV(0x00173e7c));
         }
@@ -5908,6 +5980,9 @@ void batches_unit() {
     for (uint32_t st : {0x00u, 0x02u, 0x06u, 0x07u, 0x13u, 0x28u, 0x33u, 0x43u}) {  // the control tick: the state update and the rest
         static char nm[40];
         std::snprintf(nm, sizeof nm, "hero_tick/%02x", st);
+        // (stage 5, task C2b) the control tick in every state checked here reaches sphere_collide / capsule_collide: A2's collision
+        // scratch ranges left out of these checks (see batch 43's checks of them)
+        const CollisionScratchIgnored spr_ignored;
         check(nm, 0x00211670, N * 2, Ret::None, [updenv, st] {
             updenv(st);
             constexpr uint32_t P = g::PLAYER;
@@ -5979,6 +6054,9 @@ void batches_unit() {
     for (uint32_t st : {0x00u, 0x02u, 0x07u, 0x13u, 0x33u}) {
         static char nm[40];
         std::snprintf(nm, sizeof nm, "hero_frame_update/%02x", st);
+        // (stage 5, task C2b) the hero's frame in every state checked here reaches sphere_collide / capsule_collide: A2's collision
+        // scratch ranges left out of these checks (see batch 43's checks of them)
+        const CollisionScratchIgnored spr_ignored;
         check(nm, 0x002070d0, N * 2, Ret::None, [updenv, st] {
             updenv(st);
             constexpr uint32_t P = g::PLAYER;
