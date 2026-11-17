@@ -201,6 +201,12 @@ void batch_65() {
     };
     const bool null_ram_w = g_ee_null_is_ram;
     g_ee_null_is_ram = true;  // the wrench reads through null pointers (address 0 is RAM on the EE)
+    // (stage 5, task C2a) wrench_update reaches mobys_in_sphere, whose cell list and vertices the port keeps on the stack
+    // (the original: 0x70003800, 0x70002000): A2's collision scratch ranges are left out of this check. They also hide
+    // what moby_pose_matrices (called by it for a posed moby) writes inside them: the joint positions at 0x70000000 ..,
+    // read back by the primitive tests, so a wrong one still shows in the hit list.
+    {
+    const CollisionScratchIgnored spr_ignored;
     for (int pass = 0; pass < 3; ++pass)
     check("wrench_update", 0x002a84c8, 60, Ret::None, [levelw, pass] {
         levelw();
@@ -225,6 +231,7 @@ void batch_65() {
         w8(h + 0x53, ha[ri(0, 6)]); w8(h + 0x52, coin() ? ee_read<uint8_t>(h + 0x53) : 3u);
         return Args{{m}, {}};
     }, [](A a) { wrench_update(a.i[0]); return uint64_t{0}; });
+    }
     g_ee_null_is_ram = null_ram_w;
     classcheck("moby_1007_update", 0x002a4e48, moby_1007_update, [](uint32_t m) {
         static const uint32_t C = OV(0x00166c80), P = 0x0013f350;
@@ -420,6 +427,9 @@ void batch_65() {
         return Args{{m, u(ri(0, 20)), OUT, coin() ? 0xffffffffu : R()}, {rf(0, 20)}};
     }, [](A a) { Vec4 pts[64]; const int32_t n = moby_volume_points(a.f[0], a.i[0], static_cast<int32_t>(a.i[1]), pts, a.i[3]);
                  for (int32_t i = 0; i < n; ++i) ee_ref<Vec4>(a.i[2] + 16 * u(i)) = pts[i]; return r32(static_cast<uint32_t>(n)); });
+    // (stage 5, task C2a) enemy_physics reaches mobys_in_sphere: A2's scratch ranges left out (see wrench_update)
+    {
+    const CollisionScratchIgnored spr_ignored;
     check("enemy_physics", 0x0025c698, 300, Ret::Int32, [level1, mobys_with, colmoby] {
         level1();
         const std::vector<uint32_t> es = mobys_with(OVF(0x002d4610));
@@ -432,6 +442,7 @@ void batch_65() {
         if (ri(0, 6) == 0) wf(m + 0x10, rf(0, 3));
         return Args{{m, p}, {}};
     }, [](A a) { return r32(enemy_physics(a.i[0], a.i[1])); }, 0x7000371c);  // (0x7000371c: a scratchpad temp whose stale lane depends on what earlier checks left; seen in the full batch only, task 0330)
+    }
     check("swap3_by_mask", 0x0025c088, 60, Ret::None, [] { wrand(OUT, 12); return Args{{OUT, OUT + 4, OUT + 8, R() & 7}, {}}; },
           [](A a) { uint32_t x = ee_read<uint32_t>(a.i[0]), y = ee_read<uint32_t>(a.i[1]), z = ee_read<uint32_t>(a.i[2]); swap3_by_mask(x, y, z, a.i[3]);
                     w32(a.i[0], x); w32(a.i[1], y); w32(a.i[2], z); return uint64_t{0}; });
@@ -727,11 +738,15 @@ void batch_65() {
         return Args{{ri(0, 6) == 0 ? 0u : m}, {}};
     }, [](A a) { return r32(class_hook_10(a.i[0])); });
     g_extra_noop_hooks.clear();
+    // (stage 5, task C2a) moby_chain_contact reaches mobys_in_sphere: A2's scratch ranges left out (see wrench_update)
+    {
+    const CollisionScratchIgnored spr_ignored;
     check("moby_chain_contact", 0x002599e8, 100, Ret::Int32, [level1, e749] {
         level1(); collide_vu_reset(); oracle_vu_contact_reset();
         return Args{{e749(), 0, u(ri(0, 3)), R() & 0xff, R() & 0xff, coin() ? 0xffffffffu : R()}, {rf(0.5f, 6), 0, rf(0, 2)}};
     }, [](A a) { return r32(static_cast<uint32_t>(moby_chain_contact(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]), a.i[3], a.i[4], a.i[5], a.f[0], a.f[2]))); },
       0x70003718, 0x7000371c);  // (0x1f2868's spill of $t9 to the scratchpad: its upper half is a stale register)
+    }
     check("path_crossed", 0x00261968, 200, Ret::Int32, [level1, anypath, nearpath] {
         level1(); const uint32_t p = anypath(); nearpath(p, OUT, 6); nearpath(p, OUT + 0x10, 6);
         return Args{{p, OUT, OUT + 0x10}, {}};
@@ -817,15 +832,26 @@ void batch_65() {
         const float d = coin() ? rf(0, 10) : rf(5, 40);
         for (int k = 0; k < 3; ++k) wf(OV(0x00166dc0) + 4 * u(k), ee_read<float>(m + 0x10 + 4 * u(k)) + rf(-d, d) * 0.577f);
     };
+    // (stage 5, task C2a) explosion_burst (class 749's) reaches mobys_in_sphere: A2's scratch ranges left out (see wrench_update)
+    {
+    const CollisionScratchIgnored spr_ignored;
     check("explosion_burst", 0x002dbf28, 100, Ret::None, [level1, e749, blastcam] {
         level1(); collide_vu_reset(); oracle_vu_contact_reset(); const uint32_t m = e749(); blastcam(m); return Args{{m}, {}};
     }, [](A a) { explosion_burst(a.i[0]); return uint64_t{0}; }, 0x70003718, 0x7000371c);  // (0x1f2868's stale $t9 half)
+    }
+    // (stage 5, task C2a) explode_and_reset reaches mobys_in_sphere: A2's scratch ranges left out (see wrench_update)
+    {
+    const CollisionScratchIgnored spr_ignored;
     check("explode_and_reset", 0x002dc938, 100, Ret::None, [level1, e749, blastcam] {
         level1(); collide_vu_reset(); oracle_vu_contact_reset(); const uint32_t m = e749(); blastcam(m); wrand(T, 0x30); wfrand(m + 0x40, 3, -3, 3);
         return Args{{m, T, R() & 1}, {}};
     }, [](A a) { explode_and_reset(a.i[0], a.i[1], a.i[2]); return uint64_t{0}; }, 0x70003718, 0x7000371c);
+    }
     // (the class-749 hooks +4 / +0xc run on both sides: ported (carry_hooks.cpp), and since #145 carry_update calls the hook
     // +0xc through carry_hook_c; these checks had them as no-ops in the original, which hid that the port's call went nowhere)
+    // (stage 5, task C2a) carry_update reaches mobys_in_sphere: A2's scratch ranges left out (see wrench_update)
+    {
+    const CollisionScratchIgnored spr_ignored;
     for (int pass = 0; pass < 2; ++pass)
     check("carry_update", 0x002dc9f0, 400, Ret::Int32, [level1, e749, anymoby, blastcam, pass] {
         level1(); collide_vu_reset(); oracle_vu_contact_reset();
@@ -854,6 +880,7 @@ void batch_65() {
         wf(m + 0x48, rf(-3.1f, 3.1f)); w8(m + 0x70, R() & 3);
         return Args{{m, pv + 0x70}, {}};
     }, [](A a) { return r32(static_cast<uint32_t>(carry_update(a.i[0], a.i[1]))); }, 0x70003718, 0x7000371c);
+    }
     g_extra_noop_hooks.clear();
     for (int pass = 0; pass < 3; ++pass)
     check("e749_update", 0x002d4610, 300, Ret::None, [level1, e749, anymoby, anypath, blastcam, pass] {

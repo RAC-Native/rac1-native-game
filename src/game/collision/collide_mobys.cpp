@@ -1,6 +1,7 @@
 // The collision module (moved from ovl_1e_1f.cpp unchanged): mobys_in_sphere 0x1f2868, the mobys a sphere touches, with
 // its test of a moby's primitive records.
 #include <game/collision/collide_common.h>
+#include <game/collision/collide_hit.h>
 #include <game/bridge/guard.h>
 
 namespace rac1 {
@@ -76,6 +77,9 @@ static bool moby_prims_hit(uint32_t m, uint32_t col, uint32_t flags, uint32_t s0
 // 8-entry ring at *(0x173e48)). Hits are listed at 0x177f00 (0-terminated); with `rec`, mobys
 // flagged 0x4000 also get a 64-byte contact record in the ring 0x178100. Returns the count.
 // `ignore` is skipped. Coordinates must lie in [r, 1024 - r).
+// The original's cell list (0x70003800) and vertices (0x70002000) are not kept: the cells are walked directly, the vertices
+// are on the stack (4 KB) (stage 5, task C2a); the joint positions moby_pose_matrices leaves at 0x70000000 are still read
+// from there.
 // orig: 0x001f2868
 int32_t mobys_in_sphere_v(const Vec4& pos, float radius, uint32_t flags, uint32_t ignore, const uint32_t* rec) {
     const SprScope spr_scope(SprScopeId::MobysInSphere);  // (RAC1_BRIDGE_GUARD=spr: the scratchpad's data flow, src/game/bridge/guard.h)
@@ -95,159 +99,151 @@ int32_t mobys_in_sphere_v(const Vec4& pos, float radius, uint32_t flags, uint32_
     const L3 p = muls(p0, 1024.0f);
     const float r = qmul(radius, 1024.0f);
     const float r2 = qmul(r, r);
-    // the cells: [start, end) of u16 moby ids each, in a zero-terminated list on the scratchpad
-    uint32_t cl = SPR + 0x3800;
+    // the grid's cells under the sphere, row by row (the original lists them first: see coll_grid_cell)
     const uint32_t x0 = static_cast<uint32_t>(qftoi0(lo.x)) >> 4, y0 = static_cast<uint32_t>(qftoi0(lo.y)) >> 4;
     const uint32_t x1 = static_cast<uint32_t>(qftoi0(hi.x)) >> 4, y1 = static_cast<uint32_t>(qftoi0(hi.y)) >> 4;
+    const uint32_t mobys = lwu(OV(0x00166c00u - 0x6c28));
+    uint32_t hits = HITS;
+    uint32_t s0 = SPR;             // joint positions: the scratchpad (moby_pose_matrices') or a cached buffer (kept across mobys)
+    uint32_t a3 = GRID;            // $a3, stored in the cache ring (stale from earlier work)
+    const L3 zero{0.0f, 0.0f, 0.0f};
+    CollVerts verts{};             // (kept across mobys, as the original's scratchpad words)
+    uint32_t ci = 0;               // the cell's index in the original's list
     for (uint32_t y = y0;; ++y) {
         for (uint32_t x = x0;; ++x) {
-            const uint32_t c = GRID + (x << 2) + (y << 8);
-            const uint32_t start = (static_cast<uint32_t>(lhu(c)) << 5) + GRID + 0x4000;
-            sw(cl, start);
-            sw(cl + 4, start + static_cast<uint32_t>(static_cast<int32_t>(static_cast<int8_t>(lbu(c + 2))) * 2));
-            cl += 8;
+            const CollGridCell cell = coll_grid_cell(GRID, x, y);
+            for (uint32_t id = cell.start; id != cell.end; id += 2) {
+                const uint32_t m = (static_cast<uint32_t>(lhu(id)) << 8) + mobys;
+                if (m == ignore) continue;
+                // bounding spheres
+                const L3 c = l3(m);
+                const float sr = qadd(r, lwc1(m + 0xc));
+                const uint32_t col = lwu(m + 0x94);
+                const L3 d = mul3(sub3(c, p), sub3(c, p));
+                const float ov = qmadd(qmadd(qsub(d.x, qmul(sr, sr)), 1.0f, d.y), 1.0f, d.z);
+                if (lwu(m + 0x9c) == query) continue;
+                if (col == 0) continue;
+                if (static_cast<int32_t>(fbits(ov)) > 0) continue;
+                const uint32_t nj = lhu(col + ((flags & 4) == 0 ? 2u : 0u));
+                const uint32_t key = lwu(m + 0xa8);
+                sw(m + 0x9c, query);
+                if (nj != 0) {
+                    const uint32_t ring = lwu(OUTB + 8);
+                    uint32_t buf = lwu(OUTB + 4);
+                    bool cached = false;
+                    for (uint32_t i = 0; i < 8; ++i) {
+                        if (lwu(ring + i * 8) == key) {
+                            cached = true;
+                            s0 = buf + i * 0x800;
+                            break;
+                        }
+                    }
+                    if (!cached) {
+                        const uint32_t slot = lwu(OUTB + 0xc);
+                        sw(OUTB + 0xc, (slot + 1) & 7);
+                        sw(ring + slot * 8, key);
+                        sw(ring + slot * 8 + 4, a3);
+                        a3 = moby_pose_matrices(m, static_cast<int32_t>(nj), static_cast<int32_t>(lwu(OUTB + 4) + (slot << 11)), m, coll_grid_cursor(ci));
+                        s0 = SPR;
+                    }
+                }
+                const L3 mp = muls(l3(m + 0x10), 1024.0f);
+                const L3 R0 = l3(m + 0xc0), R1 = l3(m + 0xd0), R2 = l3(m + 0xe0);
+                const float sc = lwc1(m + 0x2c);
+                bool hit = false;
+                const uint32_t vbytes = lwu(col + 0xc);
+                if (vbytes != 0) {
+                    // vertices, posed (scaled rows, relative to the moby), with outcodes
+                    const L3 S0 = muls(R0, sc), S1 = muls(R1, sc), S2 = muls(R2, sc);
+                    const L3 rel = sub3(p, mp);
+                    const L3 vlo = L3{qsub(rel.x, r), qsub(rel.y, r), qsub(rel.z, r)};
+                    const L3 vhi = L3{qadd(rel.x, r), qadd(rel.y, r), qadd(rel.z, r)};
+                    const uint32_t vbase = col + lwu(col + 4) + 0x10;
+                    for (int32_t left = static_cast<int32_t>(vbytes), k = 0; left > 0; left -= 0x10, ++k) {
+                        for (uint32_t h = 0; h < 2; ++h) {
+                            const uint32_t va = vbase + static_cast<uint32_t>(k) * 0x10 + h * 8;
+                            const L3 v = L3{static_cast<float>(lh(va)), static_cast<float>(lh(va + 2)), static_cast<float>(lh(va + 4))};
+                            const L3 w = madds(madds(muls(S0, v.x), S1, v.y), S2, v.z);
+                            const L3 below = sub3(w, vlo), above = sub3(vhi, w);
+                            uint32_t oc = 0;
+                            if (neg(below.x)) oc |= 1u;
+                            if (neg(above.x)) oc |= 2u;
+                            if (neg(below.y)) oc |= 1u << 8;
+                            if (neg(above.y)) oc |= 2u << 8;
+                            if (neg(below.z)) oc |= 1u << 16;
+                            if (neg(above.z)) oc |= 2u << 16;
+                            verts.put(static_cast<uint32_t>(k) * 2 + h, w, oc);
+                            if (h == 0) a3 = neg(above.x) ? 2u : 0u;
+                        }
+                    }
+                    // triangles: 4-byte vertex index triples + flags
+                    uint32_t tri = vbase + vbytes;
+                    const uint32_t tend = tri + lwu(col + 8);
+                    for (; tri != tend && !hit;) {
+                        const CollVerts::Vert& c0 = verts[lbu(tri)];
+                        const CollVerts::Vert& c1 = verts[lbu(tri + 1)];
+                        const CollVerts::Vert& c2 = verts[lbu(tri + 2)];
+                        const uint32_t tf = lbu(tri + 3);
+                        tri += 4;
+                        a3 = c1.oc;
+                        if ((c0.oc & a3 & c2.oc) != 0) continue;
+                        if ((flags & 0x80 & tf) != 0) continue;
+                        const L3 v1 = c0.p;
+                        const L3 e2 = sub3(c1.p, v1), e3 = sub3(c2.p, v1);
+                        L3 rp = sub3(sub3(p, mp), v1);
+                        a3 = ((flags >> 8) ^ tf) & 0x1f;
+                        if ((flags & 0x20) != 0 && a3 == 0) continue;
+                        const L3 n = opm(e3, e2);
+                        const float dn = hsum(mul3(rp, n));
+                        const float q = qdiv(dn, hsum(mul3(n, n)));
+                        a3 = 0;
+                        if ((flags & 0x10) == 0 && neg(dn)) continue;
+                        const L3 acc = add3(zero, rp);
+                        L3 t7 = muls(n, q);
+                        rp = madds(acc, sub3(zero, n), q);
+                        t7 = mul3(t7, t7);
+                        L3 t9v = sub3(e3, e2);
+                        const L3 t10 = sub3(rp, e2);
+                        float d2 = hsum(t7);
+                        t7 = opm(rp, e2);
+                        L3 t8v = opm(e3, rp);
+                        if (neg(qsub(r2, d2))) continue;
+                        t9v = opm(t10, t9v);
+                        const L3 m7 = mul3(t7, n);
+                        a3 = fbits(m7.x);
+                        const float s7 = hsum_y(m7), s8 = hsum_y(mul3(t8v, n)), s9 = hsum_y(mul3(t9v, n));
+                        if (neg(s7) || neg(s8) || neg(s9)) {
+                            L3 ea{}, eb{};
+                            if (neg(s7)) { eb = add3(e2, zero); }
+                            else if (neg(s8)) { ea = add3(e3, zero); }
+                            else { ea = add3(e2, zero); eb = add3(e3, zero); }
+                            const L3 dd = sub3(rp, ea);
+                            eb = sub3(eb, ea);
+                            const float t = clamp01(qadd(0.0f, qdiv(hsum(mul3(dd, eb)), hsum(mul3(eb, eb)))));
+                            rp = madds(add3(zero, ea), eb, t);
+                            const L3 off = sub3(rp, sub3(sub3(p, mp), v1));
+                            if (neg(qsub(r2, hsum(mul3(off, off))))) continue;
+                        }
+                        hit = true;
+                    }
+                }
+                if (!hit) hit = moby_prims_hit(m, col, flags, s0, p, r, r2, mp, R0, R1, R2, sc);
+                if (hit) {
+                    sw(hits, m);
+                    hits += 4;
+                }
+            }
+            ++ci;
             if (x == x1) break;
         }
         if (y == y1) break;
     }
-    sd(cl, 0);
-    const uint32_t mobys = lwu(OV(0x00166c00u - 0x6c28));
-    uint32_t hits = HITS;
-    uint32_t s0 = SPR;             // joint positions: scratchpad or a cached buffer (kept across mobys)
-    uint32_t a3 = GRID;            // $a3, stored in the cache ring (stale from earlier work)
-    const L3 zero{0.0f, 0.0f, 0.0f};
-    for (uint32_t cell = SPR + 0x3800;; cell += 8) {
-        uint32_t id = lwu(cell);
-        if (id == 0) break;
-        const uint32_t cend = lwu(cell + 4);
-        for (; id != cend; id += 2) {
-            const uint32_t m = (static_cast<uint32_t>(lhu(id)) << 8) + mobys;
-            if (m == ignore) continue;
-            // bounding spheres
-            const L3 c = l3(m);
-            const float sr = qadd(r, lwc1(m + 0xc));
-            const uint32_t col = lwu(m + 0x94);
-            const L3 d = mul3(sub3(c, p), sub3(c, p));
-            const float ov = qmadd(qmadd(qsub(d.x, qmul(sr, sr)), 1.0f, d.y), 1.0f, d.z);
-            if (lwu(m + 0x9c) == query) continue;
-            if (col == 0) continue;
-            if (static_cast<int32_t>(fbits(ov)) > 0) continue;
-            const uint32_t nj = lhu(col + ((flags & 4) == 0 ? 2u : 0u));
-            const uint32_t key = lwu(m + 0xa8);
-            sw(m + 0x9c, query);
-            if (nj != 0) {
-                const uint32_t ring = lwu(OUTB + 8);
-                uint32_t buf = lwu(OUTB + 4);
-                bool cached = false;
-                for (uint32_t i = 0; i < 8; ++i) {
-                    if (lwu(ring + i * 8) == key) {
-                        cached = true;
-                        s0 = buf + i * 0x800;
-                        break;
-                    }
-                }
-                if (!cached) {
-                    const uint32_t slot = lwu(OUTB + 0xc);
-                    sw(OUTB + 0xc, (slot + 1) & 7);
-                    sw(ring + slot * 8, key);
-                    sw(ring + slot * 8 + 4, a3);
-                    a3 = moby_pose_matrices(m, static_cast<int32_t>(nj), static_cast<int32_t>(lwu(OUTB + 4) + (slot << 11)), m, cell);
-                    s0 = SPR;
-                }
-            }
-            const L3 mp = muls(l3(m + 0x10), 1024.0f);
-            const L3 R0 = l3(m + 0xc0), R1 = l3(m + 0xd0), R2 = l3(m + 0xe0);
-            const float sc = lwc1(m + 0x2c);
-            bool hit = false;
-            const uint32_t vbytes = lwu(col + 0xc);
-            if (vbytes != 0) {
-                // vertices, posed (scaled rows, relative to the moby), with outcodes
-                const L3 S0 = muls(R0, sc), S1 = muls(R1, sc), S2 = muls(R2, sc);
-                const L3 rel = sub3(p, mp);
-                const L3 vlo = L3{qsub(rel.x, r), qsub(rel.y, r), qsub(rel.z, r)};
-                const L3 vhi = L3{qadd(rel.x, r), qadd(rel.y, r), qadd(rel.z, r)};
-                const uint32_t vbase = col + lwu(col + 4) + 0x10;
-                uint32_t dst = SPR + 0x1fe0;
-                for (int32_t left = static_cast<int32_t>(vbytes), k = 0; left > 0; left -= 0x10, ++k) {
-                    dst += 0x20;
-                    for (uint32_t h = 0; h < 2; ++h) {
-                        const uint32_t va = vbase + static_cast<uint32_t>(k) * 0x10 + h * 8;
-                        const L3 v = L3{static_cast<float>(lh(va)), static_cast<float>(lh(va + 2)), static_cast<float>(lh(va + 4))};
-                        const L3 w = madds(madds(muls(S0, v.x), S1, v.y), S2, v.z);
-                        const L3 below = sub3(w, vlo), above = sub3(vhi, w);
-                        uint32_t oc = 0;
-                        if (neg(below.x)) oc |= 1u;
-                        if (neg(above.x)) oc |= 2u;
-                        if (neg(below.y)) oc |= 1u << 8;
-                        if (neg(above.y)) oc |= 2u << 8;
-                        if (neg(below.z)) oc |= 1u << 16;
-                        if (neg(above.z)) oc |= 2u << 16;
-                        sq3(dst + h * 0x10, w, oc);
-                        if (h == 0) a3 = neg(above.x) ? 2u : 0u;
-                    }
-                }
-                // triangles: 4-byte vertex index triples + flags
-                uint32_t tri = vbase + vbytes;
-                const uint32_t tend = tri + lwu(col + 8);
-                for (; tri != tend && !hit;) {
-                    const uint32_t a0 = SPR + 0x2000 + static_cast<uint32_t>(lbu(tri)) * 16;
-                    const uint32_t a1 = SPR + 0x2000 + static_cast<uint32_t>(lbu(tri + 1)) * 16;
-                    const uint32_t a2 = SPR + 0x2000 + static_cast<uint32_t>(lbu(tri + 2)) * 16;
-                    const uint32_t tf = lbu(tri + 3);
-                    tri += 4;
-                    a3 = lwu(a1 + 0xc);
-                    if ((lwu(a0 + 0xc) & a3 & lwu(a2 + 0xc)) != 0) continue;
-                    if ((flags & 0x80 & tf) != 0) continue;
-                    const L3 v1 = l3(a0);
-                    const L3 e2 = sub3(l3(a1), v1), e3 = sub3(l3(a2), v1);
-                    L3 rp = sub3(sub3(p, mp), v1);
-                    a3 = ((flags >> 8) ^ tf) & 0x1f;
-                    if ((flags & 0x20) != 0 && a3 == 0) continue;
-                    const L3 n = opm(e3, e2);
-                    const float dn = hsum(mul3(rp, n));
-                    const float q = qdiv(dn, hsum(mul3(n, n)));
-                    a3 = 0;
-                    if ((flags & 0x10) == 0 && neg(dn)) continue;
-                    const L3 acc = add3(zero, rp);
-                    L3 t7 = muls(n, q);
-                    rp = madds(acc, sub3(zero, n), q);
-                    t7 = mul3(t7, t7);
-                    L3 t9v = sub3(e3, e2);
-                    const L3 t10 = sub3(rp, e2);
-                    float d2 = hsum(t7);
-                    t7 = opm(rp, e2);
-                    L3 t8v = opm(e3, rp);
-                    if (neg(qsub(r2, d2))) continue;
-                    t9v = opm(t10, t9v);
-                    const L3 m7 = mul3(t7, n);
-                    a3 = fbits(m7.x);
-                    const float s7 = hsum_y(m7), s8 = hsum_y(mul3(t8v, n)), s9 = hsum_y(mul3(t9v, n));
-                    if (neg(s7) || neg(s8) || neg(s9)) {
-                        L3 ea{}, eb{};
-                        if (neg(s7)) { eb = add3(e2, zero); }
-                        else if (neg(s8)) { ea = add3(e3, zero); }
-                        else { ea = add3(e2, zero); eb = add3(e3, zero); }
-                        const L3 dd = sub3(rp, ea);
-                        eb = sub3(eb, ea);
-                        const float t = clamp01(qadd(0.0f, qdiv(hsum(mul3(dd, eb)), hsum(mul3(eb, eb)))));
-                        rp = madds(add3(zero, ea), eb, t);
-                        const L3 off = sub3(rp, sub3(sub3(p, mp), v1));
-                        if (neg(qsub(r2, hsum(mul3(off, off))))) continue;
-                    }
-                    hit = true;
-                }
-            }
-            if (!hit) hit = moby_prims_hit(m, col, flags, s0, p, r, r2, mp, R0, R1, R2, sc);
-            if (hit) {
-                sw(hits, m);
-                hits += 4;
-            }
-        }
-    }
     sw(hits, 0);
-    sq4f(OUTB + 0x20, 0.0f, 0.0f, 0.0f, 1.0f);
-    sw(OUTB + 0x1c, 0x3f);
-    sw(OUTB + 0x18, lwu(HITS));
+    CollisionHit out{};
+    out.moby = lwu(HITS);
+    out.flags = 0x3f;
+    out.point = Vec4{0.0f, 0.0f, 0.0f, 1.0f};
+    coll_hit_mirror(out, kHitMoby | kHitFlags | kHitPoint);  // (the rest of the block as it was)
     if (rec != nullptr && hits != HITS) {
         constexpr OvConst<0x00178100u> CONTACTS{};
         uint32_t next = lwu(OUTB + 0x14);

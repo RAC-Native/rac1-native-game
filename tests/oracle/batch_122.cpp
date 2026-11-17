@@ -41,6 +41,7 @@
 #include <runtime/kernel/disc.h>
 
 #include <cmath>
+#include <optional>
 #include <cstring>
 #include <string>
 #include <map>
@@ -49,6 +50,17 @@ namespace rac1::oracle {
 
 namespace {
 constexpr uint32_t MOBY_SPAWN_L10 = 0x002412b0;
+
+// (stage 5, task C2a) The checks named here reach mobys_in_sphere (the level's copy), whose cell list and vertices the port keeps on
+// the stack (the original: 0x70003800, 0x70002000): A2's collision scratch ranges are left out of these checks, and only of
+// them. They also hide what moby_pose_matrices (called for a posed moby) writes inside them: the joint positions at
+// 0x70000000 .., read back by the primitive tests, so a wrong one still shows in the hit list.
+bool c2a_spr_check(const char* name) {
+    static const char* const kNames[] = {"class794", "class1031", "class1068", "class1199", "mobys_in_sphere"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
 
 // A check whose original is level 10's own function at `l9addr` (not a Veldin address to translate).
 void l10check(const char* name, uint32_t l9addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port,
@@ -62,6 +74,8 @@ void l10check(const char* name, uint32_t l9addr, int n, Ret ret, const std::func
         return;
     }
     std::printf("%-26s L10:0x%08x\n", name, l9addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2a_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, l9addr, n, ret, gen, port, Scope::FullRam, ignore_word, ignore_word2)) ++g_fail;
 }
 }  // namespace

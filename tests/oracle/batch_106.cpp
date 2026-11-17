@@ -56,6 +56,7 @@
 #include <game/ovl/devastator.h>
 #include <game/ovl/swingshot.h>
 #include <map>
+#include <optional>
 #include <game/ovl/suck_cannon.h>
 #include <game/ovl/carry_hooks.h>
 #include <game/ovl/novalis_hooks.h>
@@ -1357,6 +1358,14 @@ void batch_106() {
         auto fn = h.fn;
         auto extra = item == 0x1b ? std::function<void(uint32_t, uint32_t)>(metal_extra)
                      : item == 0x16 ? std::function<void(uint32_t, uint32_t)>(hydro_extra) : nullptr;
+        // (stage 5, task C2a) The Tesla Claw's update reaches mobys_in_sphere, whose cell list and vertices the port keeps on the
+        // stack: A2's collision scratch ranges are left out of its check (only of it). They also hide what the posing it calls
+        // writes inside them: moby_pose_capture (0x251ce8) reads the bind pose at 0x70002000 in groups of four quads, so for
+        // a class whose joint count is not a multiple of 4 it copies up to three quads past them (stale vertices of the
+        // mobys_in_sphere before it, in the original) into the unused records of the joints past the last
+        // (0x70001be0 .. 0x70001bef in case 17: nothing else differs, the captured key frame in RAM is the same).
+        std::optional<CollisionScratchIgnored> spr_ignored;
+        if (item == 0x13) spr_ignored.emplace();
         check(h.name, h.addr, 1500, Ret::None, [weapon_gen, item, ns, extra] { return weapon_gen(item, 0, u(ri(0, 2)), ns, extra)(); },
               [fn](A a) { if (std::getenv("ASM_TRACE") != nullptr) std::printf("  [port call] seed %08x\n", ee_read<uint32_t>(ee_read<uint32_t>(0x0012f76c) + 0x58)); if (a.i[0] != 0) fn(a.i[0]); if (std::getenv("ASM_TRACE") != nullptr) std::printf("  [port end]\n"); return uint64_t{0}; });
     }

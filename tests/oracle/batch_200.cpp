@@ -55,6 +55,7 @@
 #include <csetjmp>
 #include <csignal>
 #include <cmath>
+#include <optional>
 #include <cstring>
 #include <string>
 #include <map>
@@ -92,6 +93,17 @@ bool trial_run(void (*port)(uint32_t), uint32_t m) {
 }
 constexpr uint32_t MOBY_SPAWN_L12 = 0x00267578;
 
+// (stage 5, task C2a) The checks named here reach mobys_in_sphere (the level's copy), whose cell list and vertices the port keeps on
+// the stack (the original: 0x70003800, 0x70002000): A2's collision scratch ranges are left out of these checks, and only of
+// them. They also hide what moby_pose_matrices (called for a posed moby) writes inside them: the joint positions at
+// 0x70000000 .., read back by the primitive tests, so a wrong one still shows in the hit list.
+bool c2a_spr_check(const char* name) {
+    static const char* const kNames[] = {"mobys_in_sphere"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // A check whose original is level 12's own function at `l12addr` (not a Veldin address to translate).
 void l12check(const char* name, uint32_t l12addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port,
              uint32_t ignore_word = 0, uint32_t ignore_word2 = 0) {
@@ -104,6 +116,8 @@ void l12check(const char* name, uint32_t l12addr, int n, Ret ret, const std::fun
         return;
     }
     std::printf("%-26s L12:0x%08x\n", name, l12addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2a_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, l12addr, n, ret, gen, port, Scope::FullRam, ignore_word, ignore_word2)) ++g_fail;
 }
 }  // namespace

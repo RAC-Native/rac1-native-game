@@ -41,6 +41,13 @@ void batch_63() {
             std::memcpy(ram, snap.data(), snap.size());
         }
     };
+    // (stage 5, task C2a) A whole frame may run mobys_in_sphere and sphere_mesh_collide, whose vertices and cell list the port keeps
+    // on the stack: the words the original leaves at 0x70002000 .. and 0x70003800 .. after the frame (stale vertices, the cell
+    // list's entries past the words later code wrote over) are left out of the two frame checks below. Only those two areas:
+    // narrower than A2's collision ranges (oracle_ignore_collision_scratch), which would also hide the drawing's and the other
+    // collision routines' scratch words over a whole frame. (Measured with ORACLE_DIFFS: 0x70002200 .. 0x70002210 and
+    // 0x70003820 .. 0x7000383c differ, nothing else.)
+    g_ignored_spr_ranges = {{0x70002000u, 0x70003000u}, {0x70003800u, 0x70003c00u}};
     check("gameplay_frame", 0x00297f78, 120, Ret::None, [level] {
         level();
         w32(OV(0x0015f5c4), ri(0, 3) == 0 ? u(ri(1, 6)) : 0u);
@@ -54,6 +61,7 @@ void batch_63() {
         wf(0x0013ca40, ri(0, 2) ? 0.0f : rf(-1, 1)); wf(0x0013ca44, ri(0, 2) ? 0.0f : rf(-1, 1));
         return Args{};
     }, [](A) { gameplay_frame(); return uint64_t{0}; });
+    g_ignored_spr_ranges.clear();
     check("help_hint_update", 0x00264328, 40, Ret::None, [level] {
         level();
         w32(OV(0x0015f590), u(ri(0, 2))); w32(OV(0x0015f594), u(ri(0, 1))); w32(OV(0x00161e08), u(ri(0, 1))); w32(OV(0x00161e04), coin() ? 0xffffffffu : u(ri(0, 3)));
@@ -96,6 +104,7 @@ void batch_63() {
     // (L6:0x2f7000) adds stack temporaries whose w it never writes into its tables 0x1db870 / 0x1db0f0 (vec3_add 0x1ff278 keeps
     // a1's w): stale stack lanes, different on the two sides
     g_ignore_lone_w_lanes = true;
+    g_ignored_spr_ranges = {{0x70002000u, 0x70003000u}, {0x70003800u, 0x70003c00u}};  // (C2a: as for gameplay_frame above)
     check("gameplay_frame_throw", 0x00297f78, 12, Ret::None, [level, pad] {
         level();
         const uint32_t n = u(ri(185, 196));
@@ -107,6 +116,7 @@ void batch_63() {
         pad(n);
         return Args{};
     }, [](A) { gameplay_frame(); return uint64_t{0}; });
+    g_ignored_spr_ranges.clear();
     g_ee_null_is_ram = null_ram_t;
     g_ignore_lone_w_lanes = false;
     g_extra_noop_hooks.clear();

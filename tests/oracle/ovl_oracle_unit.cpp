@@ -2160,27 +2160,64 @@ void batches_unit() {
         return Args{{RG, u(n), u(ri(0, 1))}, {x, y, ri(0, 3) ? rf(0, 5) : rf(0, 20), rf(-5, 5)}};
     }, [](A a) { region_height_splash(a.i[0], static_cast<int32_t>(a.i[1]), static_cast<int32_t>(a.i[2]), a.f[0], a.f[1], a.f[2], a.f[3]); return uint64_t{0}; });
 
-    check("sphere_mesh_collide", 0x001f3170, N * 8, Ret::Int32, [] {
-        constexpr uint32_t CM = 0x01e80000;
-        if (ri(0, 15) == 0) { w32(OV(0x00166c00u - 0x75e8), 0); return Args{{OUT}, {1.0f}}; }
-        w32(OV(0x00166c00u - 0x75e8), CM);
-        const int ne = ri(0, 4); w32(CM, u(ne));
-        int32_t cx[5], cy[5], cz[5];
-        for (int i = 0; i < ne; ++i) {
-            const uint32_t e = CM + 0x10 + 0x10 * u(i), vd = CM + 0x1000 + 0x400 * u(i);
-            cx[i] = ri(6000, 7000); cy[i] = ri(6000, 7000); cz[i] = ri(6000, 7000); const int32_t RR = ri(64, 400);
-            w16(e, u(cx[i])); w16(e + 2, u(cy[i])); w16(e + 4, u(cz[i])); w16(e + 6, u(RR));
-            const int nv = ri(3, 14), nt = ri(0, 12);
-            w8(e + 8, u(nt)); w16(e + 0xa, u(nv)); w32(e + 0xc, vd);
-            for (int v = 0; v < nv + 1; ++v) { w16(vd + 8 * v, u(cx[i] + ri(-RR, RR))); w16(vd + 8 * v + 2, u(cy[i] + ri(-RR, RR))); w16(vd + 8 * v + 4, u(cz[i] + ri(-RR, RR))); w16(vd + 8 * v + 6, R()); }
-            const uint32_t td = vd + 8 * u(nv);
-            for (int t = 0; t < nt; ++t) { w8(td + 4 * t, u(ri(0, nv - 1))); w8(td + 4 * t + 1, u(ri(0, nv - 1))); w8(td + 4 * t + 2, u(ri(0, nv - 1))); w8(td + 4 * t + 3, R()); }
-        }
-        const int k = ne > 0 ? ri(0, ne - 1) : 0;
-        const float s = 1.0f / 64.0f;
-        wf(OUT, (ne ? cx[k] : 6500) * s + rf(-4, 4)); wf(OUT + 4, (ne ? cy[k] : 6500) * s + rf(-4, 4)); wf(OUT + 8, (ne ? cz[k] : 6500) * s + rf(-4, 4)); wf(OUT + 12, rf(-9, 9));
-        return Args{{OUT}, {rf(0.2f, 5)}};
-    }, [](A a) { return ri32(sphere_mesh_collide(a.i[0], a.f[0])); });
+    {
+        // (stage 5, task C2a) the port keeps its chunk list and vertices on the stack, the original at 0x70000000 + 4 i and
+        // 0x70002000 + 16 i: those scratch words are left out of this check (A2's ranges; the function calls nothing).
+        const CollisionScratchIgnored spr_ignored;
+        // Chunks (16 bytes from CM + 0x10: u16 centre x, y, z, radius, u8 triangles, u16 vertices, the vertices' address;
+        // vertices u16 x, y, z, w, then triangles u8 a, b, c, flags) around the query. Besides the plain cases: a chunk with
+        // 1 or 2 vertices (the pair loop's single pass), one with more than 256 (the indices past 255 are written but never
+        // read: the stack's buffer drops them), many triangles; and one case in ten of 1018 .. 1030 chunks over the query
+        // (their vertices in 8 blocks, chunk i using block i % 8): the list's end wraps at 1024 entries (& 0xfff), so 1024 + j
+        // chunks test only the first j (none for exactly 1024), and a walk of all of them would meet other blocks' triangles.
+        check("sphere_mesh_collide", 0x001f3170, N * 8, Ret::Int32, [] {
+            constexpr uint32_t CM = 0x01e80000;
+            if (ri(0, 15) == 0) { w32(OV(0x00166c00u - 0x75e8), 0); return Args{{OUT}, {1.0f}}; }
+            w32(OV(0x00166c00u - 0x75e8), CM);
+            auto tris = [](uint32_t td, int nt, int nv) {
+                const int top = std::min(nv, 256) - 1;
+                for (int t = 0; t < nt; ++t) { w8(td + 4 * t, u(ri(0, top))); w8(td + 4 * t + 1, u(ri(0, top))); w8(td + 4 * t + 2, u(ri(0, top))); w8(td + 4 * t + 3, R()); }
+            };
+            auto verts = [](uint32_t vd, int nv, int32_t x, int32_t y, int32_t z, int32_t rr) {
+                for (int v = 0; v < nv + 1; ++v) { w16(vd + 8 * v, u(x + ri(-rr, rr))); w16(vd + 8 * v + 2, u(y + ri(-rr, rr))); w16(vd + 8 * v + 4, u(z + ri(-rr, rr))); w16(vd + 8 * v + 6, R()); }
+            };
+            const float s = 1.0f / 64.0f;
+            if (ri(0, 9) == 0) {  // the list's wrap
+                const int ne = ri(0, 2) == 0 ? ri(1018, 1023) : 1024 + ri(0, 6);
+                w32(CM, u(ne));
+                const int32_t cx = ri(6000, 7000), cy = ri(6000, 7000), cz = ri(6000, 7000);
+                uint32_t blk[8]; int bnv[8], bnt[8];
+                for (int b = 0; b < 8; ++b) {
+                    blk[b] = CM + 0x8000 + 0x400 * u(b); bnv[b] = ri(3, 14); bnt[b] = ri(1, 12);
+                    verts(blk[b], bnv[b], cx, cy, cz, 300);
+                    tris(blk[b] + 8 * u(bnv[b]), bnt[b], bnv[b]);
+                }
+                for (int i = 0; i < ne; ++i) {
+                    const uint32_t e = CM + 0x10 + 0x10 * u(i);
+                    const int b = i % 8;
+                    w16(e, u(cx + ri(-50, 50))); w16(e + 2, u(cy + ri(-50, 50))); w16(e + 4, u(cz + ri(-50, 50))); w16(e + 6, 800);
+                    w8(e + 8, u(bnt[b])); w16(e + 0xa, u(bnv[b])); w32(e + 0xc, blk[b]);
+                }
+                wf(OUT, cx * s + rf(-2, 2)); wf(OUT + 4, cy * s + rf(-2, 2)); wf(OUT + 8, cz * s + rf(-2, 2)); wf(OUT + 12, rf(-9, 9));
+                return Args{{OUT}, {rf(0.2f, 5)}};
+            }
+            const int ne = ri(0, 4); w32(CM, u(ne));
+            int32_t cx[5], cy[5], cz[5];
+            for (int i = 0; i < ne; ++i) {
+                const uint32_t e = CM + 0x10 + 0x10 * u(i), vd = CM + 0x2000 + 0x1000 * u(i);
+                cx[i] = ri(6000, 7000); cy[i] = ri(6000, 7000); cz[i] = ri(6000, 7000); const int32_t RR = ri(64, 400);
+                w16(e, u(cx[i])); w16(e + 2, u(cy[i])); w16(e + 4, u(cz[i])); w16(e + 6, u(RR));
+                const int pick = ri(0, 7);
+                const int nv = pick == 0 ? ri(257, 340) : pick == 1 ? ri(1, 2) : ri(3, 14), nt = ri(0, 3) == 0 ? ri(12, 40) : ri(0, 12);
+                w8(e + 8, u(nt)); w16(e + 0xa, u(nv)); w32(e + 0xc, vd);
+                verts(vd, nv, cx[i], cy[i], cz[i], RR);
+                tris(vd + 8 * u(nv), nt, nv);
+            }
+            const int k = ne > 0 ? ri(0, ne - 1) : 0;
+            wf(OUT, (ne ? cx[k] : 6500) * s + rf(-4, 4)); wf(OUT + 4, (ne ? cy[k] : 6500) * s + rf(-4, 4)); wf(OUT + 8, (ne ? cz[k] : 6500) * s + rf(-4, 4)); wf(OUT + 12, rf(-9, 9));
+            return Args{{OUT}, {rf(0.2f, 5)}};
+        }, [](A a) { return ri32(sphere_mesh_collide(a.i[0], a.f[0])); });
+    }
 
     check("moby_pose_blend", 0x00252990, N * 6, Ret::None, [] {
         constexpr uint32_t BIND = 0x01e80000, FA = 0x01e84000, FB = 0x01e86000, DST = 0x01e90000;
@@ -4053,61 +4090,69 @@ void batches_unit() {
         }
         return k;
     };
-    check("mobys_in_sphere", 0x001f2868, N * 48, Ret::Int32, [collenv, poseM] {
-        const int k = collenv();
-        uint32_t m = T4 + 0x100 * u(ri(0, k - 1));
-        for (int tries = 0; tries < 8 && (ee_read<uint32_t>(m + 0xa0) & 0x80) != 0; ++tries) m = T4 + 0x100 * u(ri(0, k - 1));  // one in the grid
-        if (ri(0, 2) == 0 && ee_read<uint32_t>(m + 0x94) != 0) {
-            // a posed moby not in the cache: its joints come from moby_pose_matrices (poseM's moby and class)
-            poseM();
-            const uint32_t nb = ee_read<uint8_t>(M2 + 8);
-            for (uint32_t j = 0; j < nb; ++j) w32(0x01e80000 + 16 * j + 12, 0x70000000u + u(ri(0, static_cast<int>(j))) * 64);  // parents: itself or earlier (nonzero: DMA sentinel too)
-            w32(m + 0x24, M2);
-            for (uint32_t o = 0x50; o < 0x70; o += 4) w32(m + o, ee_read<uint32_t>(M + o));
-            w32(m + 0x60, 0); w32(m + 0x64, 0);
-            const uint32_t col = ee_read<uint32_t>(m + 0x94);
-            w16(col, ri(0, 1) ? nb : 0u); w16(col + 2, nb);
-            for (uint32_t e = 0; e < 8; ++e) if (ee_read<uint32_t>(0x01e9c000 + 8 * e) == ee_read<uint32_t>(m + 0xa8)) w32(0x01e9c000 + 8 * e, 0);
-            for (int i = 0; i < 48; ++i) {  // the ring slot it takes may evict another moby's joints: no other moby has any
-                const uint32_t c2 = ee_read<uint32_t>(T4 + 0x100 * u(i) + 0x94);
-                if (T4 + 0x100 * u(i) != m && c2 != 0) { w16(c2, 0); w16(c2 + 2, 0); }
-            }
-        }
-        const float r = rf(0.3f, 3);
-        wf(OUT, std::max(ee_read<float>(m + 0x10) + rf(-1.5f, 1.5f), r + 0.01f)); wf(OUT + 4, std::max(ee_read<float>(m + 0x14) + rf(-1.5f, 1.5f), r + 0.01f));
-        wf(OUT + 8, ee_read<float>(m + 0x18) + rf(-1.5f, 1.5f)); wf(OUT + 12, rf(-9, 9));
-        float rad = ri(0, 20) ? r : 0.0f;
-        uint32_t ign = ri(0, 3) ? 0u : m;
-        const uint32_t col = ee_read<uint32_t>(m + 0x94);
-        if (col != 0 && ee_read<uint32_t>(col + 8) != 0 && ri(0, 1)) {
-            // borderline: a sphere just reaching (or missing) a point near an edge of one of its triangles
-            const uint32_t vb = col + 0x10 + ee_read<uint32_t>(col + 4), tb = vb + ee_read<uint32_t>(col + 0xc);
-            const uint32_t tri = tb + 4 * u(ri(0, static_cast<int>(ee_read<uint32_t>(col + 8) / 4) - 1));
-            const float sc = ee_read<float>(m + 0x2c);
-            auto world = [&](uint32_t vi) {
-                const uint32_t va = vb + 8 * vi; float w[3];
-                for (int c = 0; c < 3; ++c) {
-                    w[c] = ee_read<float>(m + 0x10 + 4 * u(c));
-                    for (int j = 0; j < 3; ++j) w[c] += ee_read<float>(m + 0xc0 + 0x10 * u(j) + 4 * u(c)) * static_cast<float>(ee_read<int16_t>(va + 2 * u(j))) * sc / 1024.0f;
+    {
+        // (stage 5, task C2a) the port walks the grid's cells directly and keeps the vertices on the stack, the original lists
+        // the cells at 0x70003800 and the vertices at 0x70002000: those scratch words are left out of this check (A2's
+        // ranges). The ranges also hide what moby_pose_matrices (the posed case below) writes inside them: the joint
+        // positions at 0x70000000 .. (read back by the primitive tests, so a wrong one still shows in the hit list) and its
+        // chunk transfers at +0x2000 / +0x3000; its saved registers at 0x70003700 .. 0x7000372c are outside them, compared.
+        const CollisionScratchIgnored spr_ignored;
+        check("mobys_in_sphere", 0x001f2868, N * 48, Ret::Int32, [collenv, poseM] {
+            const int k = collenv();
+            uint32_t m = T4 + 0x100 * u(ri(0, k - 1));
+            for (int tries = 0; tries < 8 && (ee_read<uint32_t>(m + 0xa0) & 0x80) != 0; ++tries) m = T4 + 0x100 * u(ri(0, k - 1));  // one in the grid
+            if (ri(0, 2) == 0 && ee_read<uint32_t>(m + 0x94) != 0) {
+                // a posed moby not in the cache: its joints come from moby_pose_matrices (poseM's moby and class)
+                poseM();
+                const uint32_t nb = ee_read<uint8_t>(M2 + 8);
+                for (uint32_t j = 0; j < nb; ++j) w32(0x01e80000 + 16 * j + 12, 0x70000000u + u(ri(0, static_cast<int>(j))) * 64);  // parents: itself or earlier (nonzero: DMA sentinel too)
+                w32(m + 0x24, M2);
+                for (uint32_t o = 0x50; o < 0x70; o += 4) w32(m + o, ee_read<uint32_t>(M + o));
+                w32(m + 0x60, 0); w32(m + 0x64, 0);
+                const uint32_t col = ee_read<uint32_t>(m + 0x94);
+                w16(col, ri(0, 1) ? nb : 0u); w16(col + 2, nb);
+                for (uint32_t e = 0; e < 8; ++e) if (ee_read<uint32_t>(0x01e9c000 + 8 * e) == ee_read<uint32_t>(m + 0xa8)) w32(0x01e9c000 + 8 * e, 0);
+                for (int i = 0; i < 48; ++i) {  // the ring slot it takes may evict another moby's joints: no other moby has any
+                    const uint32_t c2 = ee_read<uint32_t>(T4 + 0x100 * u(i) + 0x94);
+                    if (T4 + 0x100 * u(i) != m && c2 != 0) { w16(c2, 0); w16(c2 + 2, 0); }
                 }
-                return std::array<float, 3>{w[0], w[1], w[2]};
-            };
-            const auto A = world(ee_read<uint8_t>(tri)), B = world(ee_read<uint8_t>(tri + 1 + u(ri(0, 1))));
-            const float t = rf(-0.2f, 1.2f), L = rf(0.05f, 1.5f);
-            float P[3], len2 = 0; float dir[3];
-            for (int c = 0; c < 3; ++c) { dir[c] = rf(-1, 1); len2 += dir[c] * dir[c]; }
-            for (int c = 0; c < 3; ++c) P[c] = A[c] + t * (B[c] - A[c]) + dir[c] / std::sqrt(len2 + 1e-6f) * L;
-            rad = L * rf(0.97f, 1.03f);
-            if (P[0] > rad && P[1] > rad && P[2] > rad && P[0] + rad < 1000 && P[1] + rad < 1000) {
-                wf(OUT, P[0]); wf(OUT + 4, P[1]); wf(OUT + 8, P[2]); ign = 0;
-                w32(m + 0x9c, 0xffffu);
             }
-        }
-        if (ri(0, 15) == 0) wf(OUT, ri(0, 1) ? rf(-1, 0.1f) : rf(1020, 1030));
-        wrand(OUT + 0x40, 9); w32(OUT + 0x40 + 0x1c, u(ri(0, 3)));
-        const uint32_t fl = (ri(0, 1) ? 4u : 0u) | (ri(0, 2) ? 0u : 0x10u) | (ri(0, 2) ? 0u : 0x20u) | (ri(0, 2) ? 0u : 0x80u) | (u(ri(0, 0x1f)) << 8);
-        return Args{{OUT, fl, ign, ri(0, 1) ? OUT + 0x40 : 0u}, {rad}};
-    }, [](A a) { return ri32(mobys_in_sphere(a.i[0], a.f[0], a.i[1], a.i[2], a.i[3])); });
+            const float r = rf(0.3f, 3);
+            wf(OUT, std::max(ee_read<float>(m + 0x10) + rf(-1.5f, 1.5f), r + 0.01f)); wf(OUT + 4, std::max(ee_read<float>(m + 0x14) + rf(-1.5f, 1.5f), r + 0.01f));
+            wf(OUT + 8, ee_read<float>(m + 0x18) + rf(-1.5f, 1.5f)); wf(OUT + 12, rf(-9, 9));
+            float rad = ri(0, 20) ? r : 0.0f;
+            uint32_t ign = ri(0, 3) ? 0u : m;
+            const uint32_t col = ee_read<uint32_t>(m + 0x94);
+            if (col != 0 && ee_read<uint32_t>(col + 8) != 0 && ri(0, 1)) {
+                // borderline: a sphere just reaching (or missing) a point near an edge of one of its triangles
+                const uint32_t vb = col + 0x10 + ee_read<uint32_t>(col + 4), tb = vb + ee_read<uint32_t>(col + 0xc);
+                const uint32_t tri = tb + 4 * u(ri(0, static_cast<int>(ee_read<uint32_t>(col + 8) / 4) - 1));
+                const float sc = ee_read<float>(m + 0x2c);
+                auto world = [&](uint32_t vi) {
+                    const uint32_t va = vb + 8 * vi; float w[3];
+                    for (int c = 0; c < 3; ++c) {
+                        w[c] = ee_read<float>(m + 0x10 + 4 * u(c));
+                        for (int j = 0; j < 3; ++j) w[c] += ee_read<float>(m + 0xc0 + 0x10 * u(j) + 4 * u(c)) * static_cast<float>(ee_read<int16_t>(va + 2 * u(j))) * sc / 1024.0f;
+                    }
+                    return std::array<float, 3>{w[0], w[1], w[2]};
+                };
+                const auto A = world(ee_read<uint8_t>(tri)), B = world(ee_read<uint8_t>(tri + 1 + u(ri(0, 1))));
+                const float t = rf(-0.2f, 1.2f), L = rf(0.05f, 1.5f);
+                float P[3], len2 = 0; float dir[3];
+                for (int c = 0; c < 3; ++c) { dir[c] = rf(-1, 1); len2 += dir[c] * dir[c]; }
+                for (int c = 0; c < 3; ++c) P[c] = A[c] + t * (B[c] - A[c]) + dir[c] / std::sqrt(len2 + 1e-6f) * L;
+                rad = L * rf(0.97f, 1.03f);
+                if (P[0] > rad && P[1] > rad && P[2] > rad && P[0] + rad < 1000 && P[1] + rad < 1000) {
+                    wf(OUT, P[0]); wf(OUT + 4, P[1]); wf(OUT + 8, P[2]); ign = 0;
+                    w32(m + 0x9c, 0xffffu);
+                }
+            }
+            if (ri(0, 15) == 0) wf(OUT, ri(0, 1) ? rf(-1, 0.1f) : rf(1020, 1030));
+            wrand(OUT + 0x40, 9); w32(OUT + 0x40 + 0x1c, u(ri(0, 3)));
+            const uint32_t fl = (ri(0, 1) ? 4u : 0u) | (ri(0, 2) ? 0u : 0x10u) | (ri(0, 2) ? 0u : 0x20u) | (ri(0, 2) ? 0u : 0x80u) | (u(ri(0, 0x1f)) << 8);
+            return Args{{OUT, fl, ign, ri(0, 1) ? OUT + 0x40 : 0u}, {rad}};
+        }, [](A a) { return ri32(mobys_in_sphere(a.i[0], a.f[0], a.i[1], a.i[2], a.i[3])); });
+    }
 
     // the level collision tree around (x, y, z) (units): a 4x4x4 block of 4-unit cells, chunks of packed
     // vertices (x, y 10 bits << 6, z 12 bits << 4, relative to the cell centre), triangles and quads
