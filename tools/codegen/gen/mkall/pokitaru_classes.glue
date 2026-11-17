@@ -5,14 +5,10 @@
 0x0027f058: set32(v0, static_cast<uint32_t>(moby_group_count_l1(static_cast<int32_t>(a0.w()), static_cast<int32_t>(a1.w()))));
 0x0027f0e0: moby_group_set_state(static_cast<int32_t>(a0.w()), a1.w());
 0x00285d90: v0.lo = static_cast<uint64_t>(moby_on_screen_l1(a0.w(), fr[12]));
-0x002873b0: path_links_build(a0.w(), static_cast<int32_t>(a1.w()), a2.w());
-0x00287b30: set32(v0, static_cast<uint32_t>(nov_276fe8_l1(a0.w(), static_cast<int32_t>(a1.w()), static_cast<int32_t>(a2.w()), a3.w(), t0.w(), t1.w(), fr[12])));
-0x0028bc28: talker_word_set(a0.w(), a1.w());
 0x002c6bd0: grid_records_reset(a0.w(), static_cast<int32_t>(a1.w()));
 0x002c6df0: grid_point_fixed(a0.w(), a1.w());
 0x002c7078: grid_weights_scale(fr[12]);
 0x002c7168: nov_water_grid_update_l1(a0.w(), static_cast<int32_t>(a1.w()));
-0x002f2b70: teleporter_pieces_update(a0.w());
 0x00308848: set32(v0, static_cast<uint32_t>(class1009_launch(a0.w(), a1.w(), a2.w(), fr[12], fr[13])));
 0x00308f48: set32(v0, static_cast<uint32_t>(class1017_launch(a0.w(), a1.w(), a2.w(), fr[12], fr[13], fr[14])));
 0x0030e690: tile_group_height(a0.w());
@@ -28,11 +24,7 @@
 0x0031eb70: mesh_colours_scale(a0.w(), static_cast<int32_t>(a1.w()), a2.w(), a3.w(), fr[12], fr[13], fr[14], fr[15]);
 0x0031df00: wave_step(a0.w(), a1.w(), fr[12], fr[13], fr[14]);
 0x0031ed60: wave_step(a0.w(), a1.w(), fr[12], fr[13], fr[14]);
-0x002d0638: class_mates_mark_level(a0.w(), 0);
-0x002d0ec0: class_mates_mark_fixed(a0.w(), 0);
-0x002f0d58: class_mates_mark_fixed(a0.w(), 0);
 0x0030a830: set32(v0, static_cast<uint32_t>(moby_in_state(a0.w(), 5)));
-0x0030e078: set32(v0, static_cast<uint32_t>(moby_in_state(a0.w(), 5)));
 0x0030f270: set32(v0, moby_is_in_state(a0.w(), 0x49b, 2));
 0x0031d9a0: uv_scroll_meshes(3, a0.w());
 0x0031da78: uv_scroll_meshes(4, a0.w());

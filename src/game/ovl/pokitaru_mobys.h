@@ -9,34 +9,19 @@
 
 namespace rac1 {
 
-void pok_class23_update_l11(uint32_t a0);  // L11:0x002cb668
-void pok_class65_update_l11(uint32_t a0);  // L11:0x002cb810
-TrRet pok_288e98_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x00288e98
-void pok_class90_update_l11(uint32_t a0);  // L11:0x002d0710
-TrRet pok_2cb990_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002cb990
-TrRet pok_30a480_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x0030a480
-TrRet pok_2d1030_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002d1030
-TrRet pok_2d1340_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002d1340
-TrRet pok_2d2088_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002d2088
-TrRet pok_2d2340_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002d2340
-TrRet pok_316128_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x00316128
-TrRet pok_2d2460_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002d2460
-TrRet pok_2d25e8_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002d25e8
-TrRet pok_30a840_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x0030a840
-TrRet pok_2d14b0_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002d14b0
-TrRet pok_2d27b0_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002d27b0
-void pok_class114_update_l11(uint32_t a0);  // L11:0x002d0fa8
-void pok_class298_update_l11(uint32_t a0);  // L11:0x002f0e40
-TrRet pok_2f2cd0_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002f2cd0
-TrRet pok_2f3040_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002f3040
-void pok_class318_update_l11(uint32_t a0);  // L11:0x002f2518
-void pok_class361_update_l11(uint32_t a0);  // L11:0x002f3350
-TrRet pok_30a500_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x0030a500
-TrRet pok_30a850_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x0030a850
-void pok_class1075_update_l11(uint32_t a0);  // L11:0x00309ac0
+// ---- hand-written (pokitaru_props.cpp, pokitaru_talkers.cpp, pokitaru_resort_owner.cpp, pokitaru_teleporter.cpp,
+// pokitaru_raft.cpp, pokitaru_gate.cpp; their helpers in pokitaru_own.h)
+void pok_class23_update_l11(uint32_t m);    // L11:0x002cb668 a pickup that ends the resort owner's errand
+void pok_class65_update_l11(uint32_t m);    // L11:0x002cb810 a gate and its twin
+void pok_class90_update_l11(uint32_t m);    // L11:0x002d0710 Bob (the Thruster-Pack)
+void pok_class114_update_l11(uint32_t m);   // L11:0x002d0fa8 the resort owner (the O2 Mask)
+void pok_class298_update_l11(uint32_t m);   // L11:0x002f0e40 a talker on the beach (a skill point's clock)
+void pok_class318_update_l11(uint32_t m);   // L11:0x002f2518 the teleporter
+void pok_class361_update_l11(uint32_t m);   // L11:0x002f3350 a height trigger
+void pok_class1075_update_l11(uint32_t m);  // L11:0x00309ac0 the raft
+void pok_class1156_update_l11(uint32_t m);  // L11:0x0030c788 the great gate
+
 void pok_class1111_update_l11(uint32_t a0);  // L11:0x0030b358 (class 1111, the open sea: kept generated, the PAL 2.00 build changed it beyond fix 24)
-TrRet pok_30d1b0_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x0030d1b0
-void pok_class1156_update_l11(uint32_t a0);  // L11:0x0030c788
 TrRet pok_30dd18_l11(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x0030dd18
 void pok_class1157_update_l11(uint32_t a0);  // L11:0x0030d800
 void pok_class1158_update_l11(uint32_t a0);  // L11:0x0030e088

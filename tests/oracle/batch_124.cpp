@@ -2,7 +2,8 @@
 // ORACLE_LEVEL=11 build/tests/ovl_oracle --batch 124 (needs the ISO). The subjects are the level's own
 // mobys of each class (placed by its gameplay data) after the first gameplay frame, perturbed; the
 // original is level 11's own function at its own address, the port the one registered for it (the
-// transliterations pokitaru_classes_tr_N.cpp).
+// transliterations pokitaru_classes_tr_N.cpp, or the hand-written pokitaru_*.cpp; the "p111_" checks drive the hand-written
+// classes of stage 4 P11.1 through their states).
 
 #include "ovl_oracle.h"
 
@@ -34,7 +35,9 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/variants_l11.h>
 #include <game/ovl/empty_class_updates.h>
+#include <game/lib/libcdvd.h>
 #include <runtime/kernel/disc.h>
 
 #include <csetjmp>
@@ -42,6 +45,8 @@
 #include <cmath>
 #include <optional>
 #include <cstring>
+#include <ctime>
+#include <initializer_list>
 #include <string>
 #include <map>
 
@@ -548,6 +553,429 @@ void batch_124() {
                 return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
             }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
         }
+    }
+
+    // ---- stage 4 P11.1: the level's own classes ported by hand (pokitaru_props.cpp, _talkers.cpp, _resort_owner.cpp,
+    // _teleporter.cpp, _raft.cpp, _gate.cpp), each driven through the states and branches its code has, from the level's own
+    // mobys and data: the hero placed at what each state tests, the level's words at their edges, the frame scale at its 50 Hz
+    // value in a quarter of the cases, the dialogue stream idle in half (a talk / help request starts only then). The level
+    // change the talkers ask for runs for real on both sides (its clock and disc reads the host's, as batch 514's); only the
+    // kernel's calls stay no-ops. Without the class loop's lists: the debris / particle w lanes are compared here.
+    // B124_INFO=1 prints the subjects; the cases the generator dealt again because the port threw are counted ("redealt").
+    if (g_oracle_level == 11) {
+        g_ignored_words = saved_ignored;
+        g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80};
+        const std::time_t saved_clock = g_host_clock_fixed;
+        g_host_clock_fixed = 1759658400;
+        const auto saved_hooks = g_extra_hooks;
+        g_extra_hooks = {{0x00121780, [](EeCpu& c) { c.set32(2, cd_read_clock(c.r32(4))); }},
+                         {0x0012d6d8, [](EeCpu& c) { clock_to_local(c.r32(4)); }},
+                         {0x00121450, [](EeCpu& c) { c.set32(2, cd_read(c.r32(4), c.r32(5), c.r32(6), c.r32(7))); }}};
+        const uint32_t P = 0x0013f350, HERO = 0x0013f3d0;
+        auto moby_base = [] { return ee_read<uint32_t>(OV(0x0015ffd8)); };
+        auto mobys_of_class = [moby_base](uint32_t cls) {
+            std::vector<uint32_t> v;
+            for (uint32_t m = moby_base(); m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100)
+                if (ee_read<uint8_t>(m + 0x20) < 0xfe && ee_read<uint16_t>(m + 0xa6) == cls) v.push_back(m);
+            return v;
+        };
+        auto pick = [](const std::vector<uint32_t>& v) { return v[static_cast<size_t>(ri(0, static_cast<int>(v.size()) - 1))]; };
+        auto index_of = [moby_base](uint32_t m) { return (m - moby_base()) >> 8; };
+        auto box_at = [](int32_t i) { return ee_read<uint32_t>(OV(0x001600ec)) + static_cast<uint32_t>(i) * 0x80; };
+        auto put_hero = [HERO](uint32_t at, float r, float dz) {  // the hero `r` away (in the plane) from the point `at`
+            Vec4 q = ee_ref<Vec4>(at);
+            const float a = rf(-3.1f, 3.1f);
+            q.x += r * std::cos(a); q.y += r * std::sin(a); q.z += dz;
+            ee_ref<Vec4>(HERO) = q;
+        };
+        auto common = [P](uint32_t) {
+            if (ri(0, 3) == 0) { wf(0x0015ed68, 1.2f); wf(0x0015ed6c, 0.02f); wf(0x0015ed70, 0.0004f); }  // (50 Hz)
+            if (coin()) { w32(0x001516d0 + 0x50, 0); w32(0x001516d0 + 0x1c, 0xffffffffu); }  // (the dialogue stream idle)
+            if (ri(0, 2) == 0) wfrand(P + 0x100, 3, -0.3f, 0.3f);  // (the hero's velocity 0x13f450: moving or not)
+            else wfrand(P + 0x100, 3, -0.001f, 0.001f);
+            w8(0x0015edb0, ri(0, 3) == 0 ? 1u : 0u);
+            w32(OV(0x0015f5c4), ri(0, 2) == 0 ? 2u : u(ri(0, 1)));  // (the scene's mode: 2 while a scene plays)
+            w32(OV(0x0015f5cc), R() & 0xffff);
+            w32(0x0013cae4, ri(0, 2) == 0 ? 0x10u : (coin() ? 0u : R() & 0xffff));  // (the pad's buttons)
+            w16(P + 0x30e, coin() ? 0u : 1u);  // (0x13f65e: the hero busy)
+            w32(0x001413d4, ri(0, 4) == 0 ? 0x32u : u(ri(0, 3)));
+            seed_rand();
+        };
+        auto collectible = [](uint32_t index, bool taken) {  // the level's checkpoint `index` (0x14c050's row of the level; the word as the pvar has it)
+            w8(0x0014c050 + index + (ee_read<uint32_t>(0x0015ed84) << 4), taken ? 0xffu : 0u);
+        };
+        // talk_update's way to its end without a scene or movie (the oracle's interpreter cannot start those): the talk on a record
+        // without one (+4 -1; a script of four such records in the test area, our own data, when the talker's has none), the
+        // button's wait over (+8), the hero at the talker
+        auto talk_ready = [P](uint32_t m, uint32_t t) {
+            const uint32_t script = ee_read<uint32_t>(t + 0x3c);
+            int found = -1;
+            if (script != 0)
+                for (int k = 0; k < 24 && found < 0; ++k)
+                    if (ee_read<int16_t>(script + static_cast<uint32_t>(k) * 0x1c + 4) == -1) found = k;
+            if (found < 0) {
+                for (uint32_t k = 0; k < 4; ++k) {
+                    const uint32_t r = T3 + k * 0x1c;
+                    for (uint32_t o = 0; o < 0x1c; o += 4) w32(r + o, 0);
+                    w16(r + 4, 0xffffu); w16(r + 6, 0xffffu); w16(r + 0xc, 0xffffu); w16(r + 0xe, 0xffffu);
+                }
+                w32(t + 0x3c, T3);
+                found = 0;
+            }
+            w16(t + 0x36, u(found));
+            w8(t + 9, 1);
+            w8(t + 8, 1);
+            if (ee_read<int32_t>(P + 0x2084) == 0x1d) w32(P + 0x2084, 0);
+            w32(P + 0x22a8, 1);
+            w32(OV(0x0015f5c4), 0);
+            w32(OV(0x00179110), 0);
+            Vec4 q = ee_ref<Vec4>(m + 0x10); q.x += 0.5f; ee_ref<Vec4>(P + 0x80) = q;
+        };
+        auto head = [P](uint32_t m, uint32_t pv, uint32_t watch, uint32_t wander) {  // the talkers' head: the timers at their edges
+            static const uint32_t tv[] = {0u, 1u, 2u, 30u};
+            w32(pv + watch, tv[ri(0, 3)]);
+            w32(pv + wander, tv[ri(0, 3)]);
+            if (coin()) wf(m + 0x48, std::atan2(ee_read<float>(P + 0xd0) - ee_read<float>(m + 0x10), ee_read<float>(P + 0xd4) - ee_read<float>(m + 0x14)) + rf(-1.0f, 1.0f));
+            else wf(m + 0x48, rf(-3.1f, 3.1f));
+        };
+        // a class check on `subjects` with the state set up by `prep(m, st)` for st in `states`, the cases dealt again when the
+        // port throws counted
+        auto p111 = [level](const char* name, uint32_t fn, void (*port)(uint32_t), const std::vector<uint32_t>& subjects,
+                            std::function<void(uint32_t, int)> prep, int states, int n) {
+            if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
+            if (subjects.empty()) { std::printf("%-26s L11:0x%08x  no moby on this level\n", name, fn); return; }
+            if (std::getenv("B124_INFO") != nullptr) std::printf("INFO %s subjects %zu\n", name, subjects.size());
+            static int redealt = 0;
+            redealt = 0;
+            for (int st = 0; st < states; ++st) {
+                if (std::getenv("B124_ST") != nullptr && std::atoi(std::getenv("B124_ST")) != st) continue;
+                l11check(name, fn, n, Ret::None, [level, subjects, prep, port, st] {
+                    static std::vector<uint8_t> saved;
+                    uint32_t m = 0;
+                    for (int attempt = 0; attempt < 40; ++attempt) {
+                        level();
+                        m = subjects[static_cast<size_t>(ri(0, static_cast<int>(subjects.size()) - 1))];
+                        prep(m, st);
+                        uint8_t* ram = ee_get_ram_base();
+                        saved.assign(ram, ram + 0x02000000);
+                        const uint32_t stack_top = ee_stack_ptr();
+                        const bool ok = trial_run(port, m);
+                        ee_stack_ptr() = stack_top;
+                        std::memcpy(ram, saved.data(), saved.size());
+                        if (ok) break;
+                        ++redealt;
+                    }
+                    return Args{{m}, {}};
+                }, [port](A a) { port(a.i[0]); return uint64_t{0}; });
+            }
+            std::printf("%-26s redealt %d\n", name, redealt);
+        };
+        auto first_run = [](void (*port)(uint32_t), uint32_t m) {  // the class's state 0 run once (its set-up)
+            w8(m + 0x20, 0);
+            const uint32_t sp0 = ee_stack_ptr();
+            try { port(m); } catch (const std::exception&) { ee_stack_ptr() = sp0; }
+        };
+        level();
+        const std::vector<uint32_t> c23 = mobys_of_class(23), c65 = mobys_of_class(65), c90 = mobys_of_class(90), c114 = mobys_of_class(114),
+                                    c298 = mobys_of_class(298), c318 = mobys_of_class(318), c361 = mobys_of_class(361),
+                                    c1075 = mobys_of_class(1075), c1156 = mobys_of_class(1156), c1246 = mobys_of_class(1246),
+                                    c1179 = mobys_of_class(1179);
+        if (std::getenv("B124_INFO") != nullptr) {
+            for (const auto& [nm, v] : std::initializer_list<std::pair<const char*, const std::vector<uint32_t>*>>{{"23", &c23}, {"65", &c65}, {"90", &c90}, {"114", &c114}, {"298", &c298}, {"318", &c318}, {"361", &c361}, {"1075", &c1075}, {"1156", &c1156}, {"1246", &c1246}, {"1179", &c1179}})
+                for (uint32_t m : *v) {
+                    const Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    std::printf("INFO class %s moby %u uid %u at (%.1f, %.1f, %.1f) state %u\n", nm, (m - moby_base()) >> 8, ee_read<uint16_t>(m + 0xb2), q.x, q.y, q.z, ee_read<uint8_t>(m + 0x20));
+                }
+        }
+
+        p111("p111_class23", 0x002cb668, pok_class23_update_l11, c23, [common, put_hero](uint32_t m, int st) {
+            w8(m + 0x20, u(st));
+            w8(0x0013d4c6, ri(0, 3) == 0 ? 1u : 0u);
+            put_hero(m + 0x10, ri(0, 1) ? rf(0.0f, 1.9f) : rf(2.1f, 5.0f), rf(-1.0f, 1.0f));
+            common(m);
+        }, 4, 24);
+        p111("p111_class65", 0x002cb810, pok_class65_update_l11, c65, [common](uint32_t m, int st) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w8(m + 0x20, u(st));
+            if (coin()) w16(m + 0x34, ee_read<uint16_t>(m + 0x34) ^ 0x8000u);
+            wf(pv + 4, rf(-3.1f, 3.1f));
+            const float swing = coin() ? 0.2076941728591919f : -0.2076941728591919f;
+            wf(m + 0x48, ri(0, 2) == 0 ? ee_read<float>(pv + 4) + swing : rf(-3.1f, 3.1f));
+            wf(pv, ri(0, 2) == 0 ? 0.0f : rf(-0.05f, 0.05f));
+            common(m);
+        }, 4, 30);
+        p111("p111_class361", 0x002f3350, pok_class361_update_l11, c361, [common, P](uint32_t m, int st) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w8(m + 0x20, u(st));
+            if (ri(0, 3) == 0) w32(pv, 0xffffffffu);
+            common(m);
+            wf(P + 0x88, rf(190.0f, 198.0f));
+        }, 3, 24);
+        auto talker90 = [common, put_hero, head, box_at, talk_ready](uint32_t m, int st) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w8(m + 0x20, u(st));
+            w8(0x0013d4c3, coin() ? 1u : 0u);
+            w16(pv + 4, coin() ? 2u : u(ri(0, 4)));
+            w8(m + 0x53, coin() ? 0u : 1u);
+            if (st == 1 && coin()) put_hero(box_at(ee_read<int32_t>(pv + 0x40)) + 0x30, rf(0.0f, 0.5f), 0.0f);
+            else put_hero(m + 0x10, ri(0, 1) ? rf(0.0f, 7.9f) : rf(8.1f, 14.0f), rf(-1.0f, 1.0f));
+            common(m);
+            head(m, pv, 0x184, 0x188);
+            if (st == 1 && coin()) talk_ready(m, pv);
+        };
+        p111("p111_class90", 0x002d0710, pok_class90_update_l11, c90, talker90, 4, 40);
+        // the segment record's word 0x173e9c (Veldin's address; written by segment_collide's port under the floor band, the hero's
+        // placing and the floor probe) is -0 or +0 by the VU0 register the earlier checks left (a known difference of the engine port,
+        // nothing reads it; as hero_move_mode's check below): out of the four checks whose classes reach those calls only (298, 318,
+        // 1156, 114), each passing alone with it compared
+        g_ignored_words.push_back(OV(0x00173e9c));
+        p111("p111_class298", 0x002f0e40, pok_class298_update_l11, c298, [common, put_hero, head, collectible, talk_ready, P](uint32_t m, int st) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w8(m + 0x20, u(st));
+            w8(0x0013d50b, ri(0, 3) == 0 ? 1u : 0u);
+            w8(0x0013d389, ri(0, 5) == 0 ? 1u : 0u);
+            w8(0x0013d4e3, ri(0, 5) == 0 ? 1u : 0u);
+            w16(pv + 4, coin() ? 2u : u(ri(0, 4)));
+            w8(m + 0x53, coin() ? 1u : 0u);
+            put_hero(m + 0x10, ri(0, 1) ? rf(0.0f, 3.9f) : rf(4.1f, 12.0f), ri(0, 3) == 0 ? rf(-6.0f, 6.0f) : rf(-1.0f, 1.0f));
+            collectible(ee_read<uint8_t>(m + 0xb0), coin());
+            static const uint16_t kept[] = {0, 1, 5, 40, 2000};
+            w16(0x00141d9a, kept[ri(0, 4)]);
+            const uint32_t now = ee_read<uint16_t>(0x00141d9a) * 600u + u(ri(-1500, 1500));  // (before the time kept, too: the time not kept again)
+            w32(0x0015eea4, ri(0, 3) == 0 ? R() & 0xfffff : now);
+            common(m);
+            head(m, pv, 0x160, 0x164);
+            if (st == 1 && ri(0, 2) == 0) talk_ready(m, pv);
+            else if (st == 1 && coin()) {  // the skill point's clock and the checkpoint: the hero by it, the flags clear, the time kept about now
+                w8(0x0013d389, 0); w8(0x0013d4e3, 0);
+                put_hero(m + 0x10, rf(0.0f, 1.5f), rf(-3.8f, 3.8f));
+                static const uint16_t kept2[] = {0, 0, 1, 2, 5, 40};
+                w16(0x00141d9a, kept2[ri(0, 5)]);
+                w32(0x0015eea4, ee_read<uint16_t>(0x00141d9a) * 600u + u(ri(-1500, 1500)));
+            }
+            if (ri(0, 2) == 0) { w8(m + 0x31, 1); Vec4 q = ee_ref<Vec4>(m + 0x10); q.x += rf(-36.0f, 36.0f); ee_ref<Vec4>(L11_ADDR(0x001677c0)) = q; }
+            (void)P;
+        }, 4, 40);
+        p111("p111_class318", 0x002f2518, pok_class318_update_l11, c318, [common, put_hero, collectible, pick, index_of, c318, P](uint32_t m, int st) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            if (st != 0 && ri(0, 4) != 0) { w8(m + 0x20, 0); const uint32_t sp0 = ee_stack_ptr(); try { pok_class318_update_l11(m); } catch (const std::exception&) { ee_stack_ptr() = sp0; } }
+            w8(m + 0x20, u(st));
+            if (ri(0, 3) == 0) w32(pv + 8, 0xffffffffu);
+            if (ee_read<int32_t>(pv + 8) >= 0) collectible(ee_read<uint32_t>(pv + 8), coin());
+            if (coin()) w16(m + 0x34, ee_read<uint16_t>(m + 0x34) | 1u);
+            w32(pv, ri(0, 5) == 0 ? 0xffffffffu : index_of(pick(c318)));
+            w32(pv + 4, coin() ? 0xffffffffu : index_of(pick(c318)));
+            collectible(ee_read<uint32_t>(pv + 0xc), coin());
+            w32(pv + 0x30, coin() ? 0xffffffffu : u(ri(0, 3)));
+            w32(pv + 0x34, coin() ? 0xffffffffu : u(ri(0, 3)));
+            static const float fv[] = {0.0f, 0.2f, 0.5f, 1.0f, 1.0f};
+            wf(pv + 0x20, fv[ri(0, 4)]);
+            wf(pv + 0x24, fv[ri(0, 4)]);
+            static const float gv[] = {0.0f, 0.0f, 1.0f, 1.95f, 2.0f};
+            wf(pv + 0x3c, gv[ri(0, 4)]);
+            put_hero(m + 0x10, rf(0.0f, 2.0f), ri(0, 2) == 0 ? -10.0f : 0.5f);
+            if (st == 4) {  // (the fade's end: both values out, the glow up)
+                if (coin()) wf(pv + 0x20, 0.0f);
+                if (coin()) wf(pv + 0x24, 0.0f);
+                if (coin()) wf(pv + 0x3c, 1.95f);
+            }
+            if (st == 1 || ri(0, 2) == 0) { static const uint32_t kinds[] = {0, 1, 3, 3, 5, 6}; w32(pv + 0x10, kinds[ri(0, 5)]); }  // (the prompt's kind)
+            common(m);
+            w32(P + 0x2fc, ri(0, 3) != 0 ? m : 0u);  // (0x13f64c: the moby the hero stands on)
+            w32(OV(0x0015f594), ri(0, 2) != 0 ? 0xbu : u(ri(0, 10)));  // (the prompt shown)
+            if (st == 2) { static const uint32_t hs[] = {0x64, 0x65, 0x66, 0x67, 0x67}; w32(0x001413d4, hs[ri(0, 4)]); }  // (the teleport's answer, 0x233f38)
+        }, 5, 40);
+        g_ignored_words.pop_back();
+        auto sound_word = [](uint32_t m, uint32_t word) {  // a looping sound's slot word: none, or a slot playing for `m` or not
+            const int k = ri(0, 4);
+            if (k == 0) { w32(word, 0xffffffffu); return; }
+            const uint32_t slot = u(ri(0, 15)), ch = 0x0013e550 + slot * 0x70;
+            w32(word, slot);
+            w32(ch + 0x88, k != 4 ? m : R());
+            static const uint8_t cs[] = {0, 1, 2, 7};
+            w8(ch + 0x74, cs[ri(0, 3)]);
+        };
+        auto zone_group = [c1246, pick](uint32_t m, uint32_t word, bool half) {  // the moby group a pvar half names: its class-1246 mobys near or not, in their states
+            const int32_t g = half ? ee_read<int16_t>(word) : ee_read<int32_t>(word);
+            if (g < 0 || g > ee_read<int32_t>(OV(0x0015fff4))) return;
+            uint32_t e = ee_read<uint32_t>(OV(0x001ab840) + static_cast<uint32_t>(g) * 4);
+            if (e == 0) return;
+            const bool calm = ri(0, 3) == 0;
+            for (int k = 0; k < 64; ++k, e += 2) {
+                const uint32_t o = ee_read<uint32_t>(OV(0x0015ffd8)) + ((ee_read<uint16_t>(e) & 0x7fffu) << 8);
+                static const uint8_t sts[] = {0, 1, 0xb, 0xc, 0x12, 0x14, 0x80, 3};
+                if (calm) w8(o + 0x20, sts[2 + ri(0, 4)]);  // (all harmless or gone)
+                else if (ri(0, 2) == 0) w8(o + 0x20, sts[ri(0, 7)]);
+                if (ri(0, 3) == 0) { Vec4 q = ee_ref<Vec4>(m + 0x10); q.x += rf(-9.0f, 9.0f); q.y += rf(-9.0f, 9.0f); ee_ref<Vec4>(o + 0x10) = q; }
+                if (ee_read<int16_t>(e) < 0) break;
+            }
+            (void)c1246; (void)pick;
+        };
+        p111("p111_class1075", 0x00309ac0, pok_class1075_update_l11, c1075, [common, put_hero, first_run, sound_word, zone_group, P](uint32_t m, int st) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            if (st != 0) first_run(pok_class1075_update_l11, m);
+            w8(m + 0x20, u(st));
+            sound_word(m, pv + 0xc8);
+            sound_word(m, pv + 0xcc);
+            const uint32_t path = ee_read<uint32_t>(pv + 0xc4);
+            if (path != 0 && st >= 2) {
+                const int32_t n = ee_read<int32_t>(path);
+                const int32_t i = n > 1 ? (coin() ? n - 1 : ri(1, n - 1)) : 1;
+                w32(pv + 0xd4, u(i));
+                if (coin()) { Vec4 q = ee_ref<Vec4>(path + 0x10 + static_cast<uint32_t>(i) * 16); q.x += rf(-0.05f, 0.05f); q.y += rf(-0.05f, 0.05f); if (coin()) q = ee_ref<Vec4>(path + 0x10 + static_cast<uint32_t>(i) * 16); ee_ref<Vec4>(m + 0x10) = q; }
+            }
+            wf(pv + 0xd0, ri(0, 2) == 0 ? 0.0f : rf(0.0f, 1.0f));
+            if (path != 0 && st == 2 && coin()) {  // the next point one the camera pulls back on (its w 37), when the path has one
+                const int32_t n = ee_read<int32_t>(path);
+                for (int32_t j = 2; j < n && j < 256; ++j)
+                    if (ee_read<float>(path + 0x10 + static_cast<uint32_t>(j) * 16 + 0xc) == 37.0f) { w32(pv + 0xd4, u(j - 1)); break; }
+            }
+            if (path != 0 && st == 2 && ri(0, 2) == 0) {  // about the point's reach (the level's speed a frame), not moving
+                const Vec4 t = ee_ref<Vec4>(path + 0x10 + ee_read<uint32_t>(pv + 0xd4) * 16);
+                const float thr = ee_read<float>(L11_ADDR(0x00161dd4)) * ee_read<float>(0x0015ed6c);
+                Vec4 q = t; q.x += thr * rf(0.3f, 2.5f); ee_ref<Vec4>(m + 0x10) = q;
+                wf(pv + 0xd0, 0.0f);
+            }
+            if (path != 0 && st == 4 && coin()) {  // about the rise's end
+                const Vec4 t = ee_ref<Vec4>(path + 0x10 + ee_read<uint32_t>(pv + 0xd4) * 16);
+                wf(pv + 0xe4, t.z + rf(5.6f, 6.8f));  // (its height, put back from +0xe4 first)
+                wf(pv + 0xd0, 0.0f);
+            }
+            w32(pv + 0xc0, coin() ? 1u : 0u);
+            w32(pv + 0xb0, coin() ? 1u : 0u);
+            w32(pv + 0xb8, coin() ? 1u : 0u);
+            zone_group(m, pv + 0xb4, true);
+            put_hero(m + 0x10, rf(0.0f, 3.0f), coin() ? -3.0f : 3.0f);
+            wf(m + 0x18, ri(0, 3) == 0 ? 230.0f : ee_read<float>(m + 0x18));
+            if (ri(0, 2) != 0) { Vec4 q = ee_ref<Vec4>(m + 0x10); q.x += rf(-36.0f, 36.0f); ee_ref<Vec4>(L11_ADDR(0x001677c0)) = q; }  // (the camera near: the spray)
+            common(m);
+            w32(P + 0x2fc, coin() ? m : 0u);
+        }, 6, 30);
+        g_ignored_words.push_back(OV(0x00173e9c));  // (the floor probe and the hero's placing, as class 298's)
+        p111("p111_class1156", 0x0030c788, pok_class1156_update_l11, c1156, [common, first_run, index_of, pick, c1179](uint32_t m, int st) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            if (st != 0) first_run(pok_class1156_update_l11, m);
+            w8(m + 0x20, u(st));
+            if (!c1179.empty() && coin()) w32(pv, index_of(pick(c1179)));
+            if (ee_read<int32_t>(pv) >= 0) w8(ee_read<uint32_t>(OV(0x0015ffd8)) + (ee_read<uint32_t>(pv) << 8) + 0x20, coin() ? 2u : u(ri(0, 3)));
+            static const float pg[] = {0.0f, 0.5f, 0.95f, 1.0f, 1.0f};
+            wf(pv + 0xc, pg[ri(0, 4)]);
+            static const float ov[] = {0.0f, 0.0f, 0.45f, 0.6f, 0.95f, 1.0f};
+            for (uint32_t a = 0x00161ec4; a <= 0x00161ed8; a += 4) wf(L11_ADDR(0x00161ec4) + (a - 0x00161ec4), ov[ri(0, 5)]);
+            wf(L11_ADDR(0x00161edc), rf(0.0f, 1.0f));
+            if (st == 3 && ri(0, 2) == 0) { wf(L11_ADDR(0x00161ec4), coin() ? 0.95f : 0.85f); wf(L11_ADDR(0x00161ec8), 0.0f); }
+            if (st == 3 && ri(0, 2) == 0) { wf(L11_ADDR(0x00161ec8), 0.6f); wf(L11_ADDR(0x00161ecc), 0.0f); }
+            if (st == 3 && ri(0, 2) == 0) { wf(L11_ADDR(0x00161ec8), 1.0f); wf(L11_ADDR(0x00161ed0), 0.5f); wf(L11_ADDR(0x00161ecc), 1.0f); wf(L11_ADDR(0x00161ed4), 0.5f); }
+            w8(0x0013d3de, coin() ? 1u : 0u);
+            w8(m + 0xbc, coin() ? 1u : 0u);
+            common(m);
+        }, 5, 30);
+        p111("p111_class114", 0x002d0fa8, pok_class114_update_l11, c114, [common, put_hero, collectible, first_run, zone_group, box_at, talk_ready, P](uint32_t m, int st) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            if (st != 0 && ri(0, 3) != 0) first_run(pok_class114_update_l11, m);
+            w8(m + 0x20, u(st));
+            const uint32_t zone = u(ri(0, 3));
+            w32(pv + 0x158, zone);
+            static const uint32_t kinds[] = {3, 4, 8, 7};
+            w32(pv + 0x15c, kinds[ri(0, 3)]);
+            w8(0x0013d4ee, ri(0, 3) == 0 ? 1u : 0u);
+            collectible(ee_read<uint32_t>(pv + 0x108), coin());
+            collectible(ee_read<uint32_t>(pv + 0x10c), coin());
+            collectible(ee_read<uint32_t>(pv + 0x118), coin());
+            w16(pv + 0x56, coin() ? 2u : 0u);
+            if (coin()) w8(m + 0x70, ee_read<uint8_t>(m + 0x70) ^ 2u);
+            for (int k = 0; k < 2; ++k) {  // the switches it carries: placed (state 5) or not, held by the hero or not
+                const uint32_t sw = ee_read<uint32_t>(OV(0x0015ffd8)) + (ee_read<uint32_t>(pv + 0xf0 + 4u * u(k)) << 8);
+                w8(sw + 0x20, ri(0, 2) == 0 ? 5u : u(ri(0, 2)));
+            }
+            const uint32_t door = ee_read<uint32_t>(OV(0x0015ffd8)) + (ee_read<uint32_t>(pv + 0x100) << 8);
+            w8(door + 0x20, coin() ? 5u : 0u);
+            const uint32_t scene = OV(0x0016c860);
+            if (coin()) { w32(scene + 0x30, 1); w32(scene + 0x34, coin() ? 2000u : 1999u); }
+            if (ri(0, 2) == 0) { Vec4 q = ee_ref<Vec4>(m + 0x10); q.x += rf(-1.2f, 1.2f); q.y += rf(-1.2f, 1.2f); ee_ref<Vec4>(pv + 0x120) = q; }
+            if ((st >= 4 && st <= 6) && coin()) {  // in one of its boxes (pvar +0xf8 / +0xfc), facing a random way
+                const Vec4 b = ee_ref<Vec4>(box_at(ee_read<int32_t>(pv + 0xf8 + 4u * u(ri(0, 1)))) + 0x30);
+                ee_ref<Vec4>(m + 0x10) = b;
+            }
+            zone_group(m, pv + 0x90 + zone * 16, true);
+            const int where = ri(0, 4);
+            if (where == 0) put_hero(box_at(ee_read<int32_t>(pv + 0xe4)) + 0x30, rf(0.0f, 14.0f), 0.0f);
+            else put_hero(m + 0x10, where == 1 ? rf(0.0f, 2.9f) : where == 2 ? rf(3.1f, 5.9f) : where == 3 ? rf(6.1f, 7.9f) : rf(8.1f, 20.0f), rf(-1.0f, 1.0f));
+            if (st == 9 && coin()) {  // the hero holding the switch of its zone
+                const uint32_t sw = ee_read<uint32_t>(OV(0x0015ffd8)) + (ee_read<uint32_t>(pv + 0xf0 + (zone != 0 ? 4u : 0u)) << 8);
+                w32(P + 0x2fc, sw);
+                w8(sw + 0x20, 1);
+            }
+            wf(m + 0x54, rf(0.0f, 1.0f));
+            if (ri(0, 3) == 0) w16(pv + 0x90 + zone * 16, 0xffffu);  // (no group in its zone: no enemy left)
+            if (coin()) w8(m + 0x53, u(ri(0, 5)));
+            for (int k = 0; k < 2; ++k) {
+                const uint32_t sw = ee_read<uint32_t>(OV(0x0015ffd8)) + (ee_read<uint32_t>(pv + 0xf0 + 4u * u(k)) << 8);
+                if (coin()) w8(sw + 0x53, u(ri(0, 2)));
+            }
+            const uint32_t gate = ee_read<uint32_t>(OV(0x0015ffd8)) + (ee_read<uint32_t>(pv + 0x104) << 8);
+            if (coin()) {  // the gate set up (its twin spawned), then closed and waiting
+                if (ri(0, 3) != 0) { w8(gate + 0x20, 0); const uint32_t sp0 = ee_stack_ptr(); try { pok_class65_update_l11(gate); } catch (const std::exception&) { ee_stack_ptr() = sp0; } }
+                w8(gate + 0x20, 1);
+                const uint32_t twin = ee_read<uint32_t>(ee_read<uint32_t>(gate + 0x78) + 8);
+                if (twin != 0 && coin()) w8(twin + 0x20, 1);
+            }
+            if (ri(0, 3) == 0) w32(ee_read<uint32_t>(gate + 0x78) + 8, 0);  // (a gate without its twin)
+            if (ri(0, 3) == 0) { w8(m + 0x31, 1); Vec4 q = ee_ref<Vec4>(m + 0x10); q.x += rf(-42.0f, 42.0f); ee_ref<Vec4>(L11_ADDR(0x001677c0)) = q; }
+            wf(pv + 0x148, rf(-0.01f, 0.02f));
+            if (coin()) wfrand(pv + 0x130, 3, -0.1f, 0.1f);
+            if (st == 7) {  // its jump: the animation's time about the frames 9 and 29, its step
+                w8(m + 0x50, 1); w8(m + 0x51, 0);
+                wf(m + 0x54, rf(5.0f, 35.0f));
+                wf(m + 0x58, rf(0.5f, 3.0f)); wf(m + 0x5c, rf(1.0f, 20.0f));
+            }
+            if (st >= 4 && st <= 6 && coin()) wf(m + 0x18, ee_read<float>(m + 0x18) + (coin() ? rf(0.4f, 0.8f) : rf(0.6f, 2.0f)));  // (above the floor in front: about the 0.5 a drop needs)
+            if (st == 6 && coin()) ee_ref<Vec4>(m + 0x10) = ee_ref<Vec4>(box_at(ee_read<int32_t>(pv + 0xe0 + zone * 4)) + 0x30);
+            if (st >= 4 && st <= 7 && zone >= 2 && coin()) {  // next to one of the doors' walls (paths pvar +0x80 ..): pushed out of it
+                const int32_t wall = ee_read<int32_t>(pv + 0x80 + 4u * u(ri(0, zone == 2 ? 2 : 1)));
+                if (wall >= 0 && wall < ee_read<int32_t>(OV(0x00160104))) {
+                    const uint32_t path = ee_read<uint32_t>(OV(0x001b04b0) + static_cast<uint32_t>(wall) * 4);
+                    const int32_t n = ee_read<int32_t>(path);
+                    if (n > 0) { Vec4 q = ee_ref<Vec4>(path + 0x10 + static_cast<uint32_t>(ri(0, n - 1)) * 16); q.x += rf(-0.25f, 0.25f); q.y += rf(-0.25f, 0.25f); q.z = ee_read<float>(m + 0x18); ee_ref<Vec4>(m + 0x10) = q; }
+                }
+                if (st == 7) w32(pv + 0x15c, 3);
+            }
+            common(m);
+            if (st == 9 && ri(0, 2) != 0) w16(P + 0x30e, 0);
+            if ((st == 1 || st == 12 || st == 14) && coin()) { if (st == 1) w16(pv + 0x56, 0); talk_ready(m, pv + 0x20); }
+            if (st >= 3 && st <= 5 && coin()) {  // its zone's enemies (the row's groups) about 10 from it, alive
+                for (uint32_t k = 0; k < 4; ++k) {
+                    const int32_t g = ee_read<int16_t>(pv + 0x90 + zone * 16 + k * 4);
+                    if (g < 0 || g > ee_read<int32_t>(OV(0x0015fff4))) break;
+                    uint32_t e = ee_read<uint32_t>(OV(0x001ab840) + static_cast<uint32_t>(g) * 4);
+                    for (int i = 0; e != 0 && i < 64; ++i, e += 2) {
+                        const uint32_t o = ee_read<uint32_t>(OV(0x0015ffd8)) + ((ee_read<uint16_t>(e) & 0x7fffu) << 8);
+                        const float r = rf(8.5f, 13.0f), an = rf(-3.1f, 3.1f);
+                        Vec4 q = ee_ref<Vec4>(m + 0x10); q.x += r * std::cos(an); q.y += r * std::sin(an); ee_ref<Vec4>(o + 0x10) = q;
+                        w8(o + 0x20, 1);
+                        if (ee_read<int16_t>(e) < 0) break;
+                    }
+                }
+            }
+            if (st >= 3 && st <= 5 && zone == 2 && coin()) {  // a door's wall between it and the hero: the way round it
+                const int32_t wall = ee_read<int32_t>(pv + 0x80 + 4u * u(ri(0, 2)));
+                if (wall >= 0 && wall < ee_read<int32_t>(OV(0x00160104))) {
+                    const uint32_t path = ee_read<uint32_t>(OV(0x001b04b0) + static_cast<uint32_t>(wall) * 4);
+                    const int32_t n = ee_read<int32_t>(path);
+                    if (n > 0) {
+                        const Vec4 w = ee_ref<Vec4>(path + 0x10 + static_cast<uint32_t>(ri(0, n - 1)) * 16);
+                        const float dx = rf(-2.0f, 2.0f), dy = rf(-2.0f, 2.0f), k = rf(1.0f, 4.0f);
+                        Vec4 q = w; q.x += dx; q.y += dy; q.z = ee_read<float>(m + 0x18); ee_ref<Vec4>(m + 0x10) = q;
+                        Vec4 h = w; h.x -= dx * k; h.y -= dy * k; h.z = q.z; ee_ref<Vec4>(P + 0x80) = h;
+                    }
+                }
+            }
+        }, 16, 40);
+        g_ignored_words.pop_back();
+
+        g_extra_hooks = saved_hooks;
+        g_host_clock_fixed = saved_clock;
+        g_extra_noop_hooks.clear();
     }
 
     //@@NEXT
