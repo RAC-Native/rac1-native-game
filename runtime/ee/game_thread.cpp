@@ -10,12 +10,16 @@
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
+#include <cstdint>
 #include <exception>
 #include <mutex>
 #include <thread>
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
 #include <xmmintrin.h>
 #define RAC1_GT_SSE 1
+#endif
+#if defined(__ANDROID__)
+#include <pthread.h>
 #endif
 
 namespace rac1::game_thread {
@@ -28,16 +32,25 @@ struct FloatEnv {
 #ifdef RAC1_GT_SSE
     unsigned csr = 0;
 #endif
+#if defined(__aarch64__)
+    std::uint64_t fpcr = 0;
+#endif
     void take() {
         std::fegetenv(&env);
 #ifdef RAC1_GT_SSE
         csr = _mm_getcsr();
+#endif
+#if defined(__aarch64__)
+        __asm__ volatile("mrs %0, fpcr" : "=r"(fpcr));
 #endif
     }
     void apply() const {
         std::fesetenv(&env);
 #ifdef RAC1_GT_SSE
         _mm_setcsr(csr);
+#endif
+#if defined(__aarch64__)
+        __asm__ volatile("msr fpcr, %0" ::"r"(fpcr));
 #endif
     }
 };
@@ -133,10 +146,32 @@ void run_async(std::function<void()> job) {
     std::unique_lock<std::mutex> lk(r.m);
     if (!r.started) {
         r.started = true;
+#if defined(__ANDROID__)
+        // Android's bionic defaults to a 1 MB pthread stack; give the game thread 16 MB.
+        pthread_attr_t attr;
+        pthread_attr_init(&attr);
+        pthread_attr_setstacksize(&attr, 16u << 20);
+        pthread_t tid{};
+        auto entry = +[](void* arg) -> void* {
+            t_game = true;
+            static_cast<Runner*>(arg)->loop();
+            return nullptr;
+        };
+        if (pthread_create(&tid, &attr, entry, &r) == 0) {
+            pthread_detach(tid);
+        } else {
+            std::thread([&r] {
+                t_game = true;
+                r.loop();
+            }).detach();
+        }
+        pthread_attr_destroy(&attr);
+#else
         std::thread([&r] {
             t_game = true;
             r.loop();
         }).detach();  // (the process ends with std::_Exit: the thread is never joined)
+#endif
     }
     {
         const Runner::Clock::time_point now = Runner::Clock::now();

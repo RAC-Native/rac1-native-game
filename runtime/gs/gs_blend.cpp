@@ -112,7 +112,7 @@ void vk_blend_state(const DrawState& st, bool to_rt, vk::GraphicsPipelineDesc& d
         desc.color_blend_op = VK_BLEND_OP_ADD;
         sf = df = VK_BLEND_FACTOR_ZERO;
     }
-    if (to_rt) {
+    if (to_rt && vk::has_dual_src_blend()) {
         auto as_gs = [](VkBlendFactor f) -> VkBlendFactor {
             if (f == VK_BLEND_FACTOR_SRC_ALPHA) return VK_BLEND_FACTOR_SRC1_ALPHA;
             if (f == VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA) return VK_BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA;

@@ -669,6 +669,7 @@ int atlas_layer(const gs::TexImage& t) {
 struct BKey {
     bool lines = false, blend = false, ztest = false, zwrite = false;
     bool dual = false;  // (the blend kinds 0..2 of the fragment shader: one GL state)
+    uint8_t bk_nodual = 0;  // (single-source fallback when Vulkan lacks dualSrcBlend: 1 add, 2 premultiplied alpha)
     // Z written and the alpha test's fail mode FB_ONLY / RGB_ONLY / ZB_ONLY: the GS writes the colour and the Z of different
     // pixels (every effect seen: TEST 0x5380b, alpha GEQUAL 0x80 failing RGB_ONLY, ZMSK 0: only the opaque texels write Z); drawn in two
     // passes, the colour without Z writes, then the Z alone (uPass)
@@ -1203,9 +1204,16 @@ void key_and_flags(const gs::DrawState& st, bool lines, BKey& k, uint32_t& flags
     else if ((st.alpha & 0xff) == 0x48) bkind = 1;
     else if ((st.alpha & 0xff) == 0x44) bkind = 2;
     if (bkind != 3) {
-        k.dual = true;
-        k.blend = false;
-        k.alpha = 0;
+        if (!vk::is_active() || vk::has_dual_src_blend()) {
+            k.dual = true;
+            k.blend = false;
+            k.alpha = 0;
+        } else {
+            k.dual = false;
+            k.blend = bkind != 0;
+            k.bk_nodual = static_cast<uint8_t>(bkind);
+            k.alpha = 0;
+        }
     }
     k.ztest = field(st.test, 16, 1) != 0 && ztst != 1;
     k.ztst = ztst;
@@ -2086,6 +2094,14 @@ void vk_draw_batches(const std::vector<Batch>& bs, size_t from, size_t to, const
             desc.blend_enable = true;
             desc.src_color_blend = VK_BLEND_FACTOR_ONE;
             desc.dst_color_blend = VK_BLEND_FACTOR_SRC1_COLOR;
+            desc.color_blend_op = VK_BLEND_OP_ADD;
+            desc.src_alpha_blend = VK_BLEND_FACTOR_ONE;
+            desc.dst_alpha_blend = VK_BLEND_FACTOR_ZERO;
+            desc.alpha_blend_op = VK_BLEND_OP_ADD;
+        } else if (k.bk_nodual != 0) {
+            desc.blend_enable = true;
+            desc.src_color_blend = VK_BLEND_FACTOR_ONE;
+            desc.dst_color_blend = k.bk_nodual == 1 ? VK_BLEND_FACTOR_ONE : VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
             desc.color_blend_op = VK_BLEND_OP_ADD;
             desc.src_alpha_blend = VK_BLEND_FACTOR_ONE;
             desc.dst_alpha_blend = VK_BLEND_FACTOR_ZERO;

@@ -1,11 +1,18 @@
 #define VOLK_IMPLEMENTATION
+#if defined(__ANDROID__) && !defined(VK_USE_PLATFORM_ANDROID_KHR)
+#define VK_USE_PLATFORM_ANDROID_KHR
+#endif
 #include <runtime/vk/vk_context.h>
 #include <runtime/vk/vk_shaders.h>
 #include <profiler/host_profiler.h>
 #include <platform/platform.h>
 
+#if defined(__ANDROID__)
+#include <android/native_window.h>
+#else
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
+#endif
 #include <imgui.h>
 #include <backends/imgui_impl_vulkan.h>
 
@@ -85,9 +92,19 @@ struct Context {
     std::vector<VkImageView> swap_views;
     int swap_w = 0;
     int swap_h = 0;
+    int win_w = 0;
+    int win_h = 0;
+    VkSurfaceTransformFlagBitsKHR swap_transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
     uint32_t swap_img_idx = 0;
     bool swapchain_dirty = false;
     bool swap_image_acquired = false;
+
+    VkDescriptorSetLayout present_dsl = VK_NULL_HANDLE;
+    VkPipelineLayout present_layout = VK_NULL_HANDLE;
+    VkShaderModule present_vs = VK_NULL_HANDLE;
+    VkShaderModule present_fs = VK_NULL_HANDLE;
+    VkPipeline present_pipe = VK_NULL_HANDLE;
+    VkFormat present_pipe_format = VK_FORMAT_UNDEFINED;
 
     GpuImage main_color{};
     GpuImage main_depth{};
@@ -174,6 +191,8 @@ struct Context {
     std::vector<uint64_t> present_pending;
     std::vector<std::chrono::steady_clock::time_point> present_shown;
     uint64_t present_seen = 0;
+    bool has_clip_distance = false;
+    bool has_dual_src_blend = false;
     bool has_float64 = false;       // (shaderFloat64: the tfrag compute's doubles; without it the tfrags are made on the CPU)
     bool has_anisotropy = false;    // (samplerAnisotropy: without it every sampler is isotropic)
     bool device_lost = false;       // (VK_ERROR_DEVICE_LOST seen: said once in the log)
@@ -308,9 +327,13 @@ bool recreate_swapchain(int w, int h) {
     std::vector<VkPresentModeKHR> pms(pm_count);
     if (pm_count > 0) vkGetPhysicalDeviceSurfacePresentModesKHR(g_ctx.phys_dev, g_ctx.surface, &pm_count, pms.data());
 
+#if defined(__ANDROID__)
+    const bool want_vsync = g_ctx.vsync || g_ctx.force_fifo;
+#else
     // On Wayland, FIFO blocks when the window is occluded; host_swap_interval in orig_main.cpp usesHostPacer on Wayland
     const bool wayland = glfwGetPlatform() == GLFW_PLATFORM_WAYLAND;
     const bool want_vsync = (g_ctx.vsync && !wayland) || g_ctx.force_fifo;
+#endif
     VkPresentModeKHR chosen_pm = VK_PRESENT_MODE_FIFO_KHR;
     if (!want_vsync) {
         for (VkPresentModeKHR pm : pms) {
@@ -326,13 +349,26 @@ bool recreate_swapchain(int w, int h) {
     if (caps.currentExtent.width != 0xFFFFFFFFu) {
         extent = caps.currentExtent;
     } else {
-        extent.width = std::clamp(static_cast<uint32_t>(w), caps.minImageExtent.width, caps.maxImageExtent.width);
-        extent.height = std::clamp(static_cast<uint32_t>(h), caps.minImageExtent.height, caps.maxImageExtent.height);
+        const bool rot_90_270 = caps.currentTransform == VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR ||
+                                caps.currentTransform == VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR;
+        const uint32_t ew = static_cast<uint32_t>(rot_90_270 ? h : w);
+        const uint32_t eh = static_cast<uint32_t>(rot_90_270 ? w : h);
+        extent.width = std::clamp(ew, caps.minImageExtent.width, caps.maxImageExtent.width);
+        extent.height = std::clamp(eh, caps.minImageExtent.height, caps.maxImageExtent.height);
     }
     if (extent.width == 0 || extent.height == 0) return false;
 
     uint32_t img_count = std::max(caps.minImageCount + 1, 3u);
     if (caps.maxImageCount > 0 && img_count > caps.maxImageCount) img_count = caps.maxImageCount;
+
+    VkCompositeAlphaFlagBitsKHR comp_alpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    for (VkCompositeAlphaFlagBitsKHR cand : {VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
+                                              VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR, VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR}) {
+        if ((caps.supportedCompositeAlpha & cand) != 0) {
+            comp_alpha = cand;
+            break;
+        }
+    }
 
     VkSwapchainKHR old_swap = g_ctx.swapchain;
     VkSwapchainCreateInfoKHR sci{};
@@ -343,10 +379,14 @@ bool recreate_swapchain(int w, int h) {
     sci.imageColorSpace = chosen_fmt.colorSpace;
     sci.imageExtent = extent;
     sci.imageArrayLayers = 1;
+#if defined(__ANDROID__)
+    sci.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+#else
     sci.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+#endif
     sci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     sci.preTransform = caps.currentTransform;
-    sci.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    sci.compositeAlpha = comp_alpha;
     sci.presentMode = chosen_pm;
     sci.clipped = VK_TRUE;
     sci.oldSwapchain = old_swap;
@@ -364,6 +404,9 @@ bool recreate_swapchain(int w, int h) {
     g_ctx.swapchain = new_swap;
     g_ctx.swap_w = static_cast<int>(extent.width);
     g_ctx.swap_h = static_cast<int>(extent.height);
+    g_ctx.win_w = w;
+    g_ctx.win_h = h;
+    g_ctx.swap_transform = caps.currentTransform;
     g_ctx.swapchain_dirty = false;
 
     uint32_t sc_count = 0;
@@ -698,8 +741,6 @@ bool check_device(VkPhysicalDevice pd, const HasExt& has_ext, bool fake_missing)
     need(f.drawIndirectFirstInstance == VK_TRUE, "drawIndirectFirstInstance");
     need(f.depthClamp == VK_TRUE, "depthClamp");
     need(f.depthBiasClamp == VK_TRUE, "depthBiasClamp");
-    need(f.shaderClipDistance == VK_TRUE, "shaderClipDistance");
-    need(f.dualSrcBlend == VK_TRUE, "dualSrcBlend");
     need(f.shaderSampledImageArrayDynamicIndexing == VK_TRUE, "shaderSampledImageArrayDynamicIndexing");
     // (the world's fragment shader picks its texture with subgroupBroadcastFirst)
     need((sg.supportedStages & VK_SHADER_STAGE_FRAGMENT_BIT) != 0 && (sg.supportedOperations & VK_SUBGROUP_FEATURE_BALLOT_BIT) != 0,
@@ -733,6 +774,10 @@ bool check_device(VkPhysicalDevice pd, const HasExt& has_ext, bool fake_missing)
     need(fmt_ok(VK_FORMAT_D32_SFLOAT_S8_UINT, depth) || fmt_ok(VK_FORMAT_D24_UNORM_S8_UINT, depth), "a depth-and-stencil format");
 
     // optional: turned off when missing
+    g_ctx.has_clip_distance = f.shaderClipDistance == VK_TRUE;
+    if (!g_ctx.has_clip_distance) off += "shaderClipDistance (fragment discard clip fallback); ";
+    g_ctx.has_dual_src_blend = f.dualSrcBlend == VK_TRUE;
+    if (!g_ctx.has_dual_src_blend) off += "dualSrcBlend (single-source blend fallback); ";
     g_ctx.has_float64 = f.shaderFloat64 == VK_TRUE;
     if (!g_ctx.has_float64) off += "shaderFloat64 (the tfrags made on the CPU); ";
     g_ctx.has_anisotropy = f.samplerAnisotropy == VK_TRUE;
@@ -798,6 +843,8 @@ void check_lost(VkResult r, const char* where) {
 
 // orig: (host)
 bool has_float64() { return g_ctx.has_float64; }
+bool has_clip_distance() { return g_ctx.has_clip_distance; }
+bool has_dual_src_blend() { return g_ctx.has_dual_src_blend; }
 // orig: (host)
 bool rt_enabled() { return g_ctx.rt_on && g_ctx.device != VK_NULL_HANDLE; }
 // orig: (host)
@@ -906,10 +953,18 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
         std::fprintf(stderr, "[vk] volkInitialize failed (no Vulkan loader found)%s\n", fake_failure("loader") ? " (RAC1_VK_FAIL: a test)" : "");
         return fail(InitFailure::kNoDriver, "no Vulkan driver (no Vulkan loader)");
     }
-    if (volkGetInstanceVersion() < VK_API_VERSION_1_3) {
+    const uint32_t loader_ver = volkGetInstanceVersion();
+#if defined(__ANDROID__)
+    if (loader_ver < VK_API_VERSION_1_1) {
+        std::fprintf(stderr, "[vk] Vulkan loader too old (%u.%u)\n", VK_API_VERSION_MAJOR(loader_ver), VK_API_VERSION_MINOR(loader_ver));
+        return fail(InitFailure::kNoVulkan13, "the Vulkan loader is older than 1.1");
+    }
+#else
+    if (loader_ver < VK_API_VERSION_1_3) {
         std::fprintf(stderr, "[vk] Vulkan 1.3 not supported by loader\n");
         return fail(InitFailure::kNoVulkan13, "the Vulkan loader is older than 1.3");
     }
+#endif
 
     VkApplicationInfo app{};
     app.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -921,6 +976,10 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
 
     std::vector<const char*> inst_exts;
     if (!headless && window != nullptr) {
+#if defined(__ANDROID__)
+        inst_exts.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+        inst_exts.push_back(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME);
+#else
         uint32_t glfw_ext_count = 0;
         const char** glfw_exts = glfwGetRequiredInstanceExtensions(&glfw_ext_count);
         if (glfw_exts == nullptr || glfw_ext_count == 0) {
@@ -928,6 +987,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
             return fail(InitFailure::kNoDriver, "no Vulkan driver for the window (glfwGetRequiredInstanceExtensions)");
         }
         for (uint32_t i = 0; i < glfw_ext_count; ++i) inst_exts.push_back(glfw_exts[i]);
+#endif
     }
 
     std::vector<const char*> layers;
@@ -959,11 +1019,22 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     volkLoadInstance(g_ctx.instance);
 
     if (!headless && window != nullptr) {
+#if defined(__ANDROID__)
+        VkAndroidSurfaceCreateInfoKHR sci{};
+        sci.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
+        sci.window = reinterpret_cast<ANativeWindow*>(window);
+        if (vkCreateAndroidSurfaceKHR(g_ctx.instance, &sci, nullptr, &g_ctx.surface) != VK_SUCCESS) {
+            std::fprintf(stderr, "[vk] vkCreateAndroidSurfaceKHR failed\n");
+            shutdown();
+            return fail(InitFailure::kOther, "no Vulkan surface for the window (vkCreateAndroidSurfaceKHR failed)");
+        }
+#else
         if (glfwCreateWindowSurface(g_ctx.instance, window, nullptr, &g_ctx.surface) != VK_SUCCESS) {
             std::fprintf(stderr, "[vk] glfwCreateWindowSurface failed\n");
             shutdown();
             return fail(InitFailure::kOther, "no Vulkan surface for the window (glfwCreateWindowSurface failed)");
         }
+#endif
     }
 
     uint32_t dev_count = 0;
@@ -1186,8 +1257,8 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     feat2.features.drawIndirectFirstInstance = VK_TRUE;
     feat2.features.depthClamp = VK_TRUE;
     feat2.features.depthBiasClamp = VK_TRUE;
-    feat2.features.shaderClipDistance = VK_TRUE;
-    feat2.features.dualSrcBlend = VK_TRUE;
+    feat2.features.shaderClipDistance = g_ctx.has_clip_distance ? VK_TRUE : VK_FALSE;
+    feat2.features.dualSrcBlend = g_ctx.has_dual_src_blend ? VK_TRUE : VK_FALSE;
     feat2.features.shaderFloat64 = g_ctx.has_float64 ? VK_TRUE : VK_FALSE;
     feat2.features.shaderSampledImageArrayDynamicIndexing = VK_TRUE;
 
@@ -1276,7 +1347,15 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     }
 
     int init_w = 960, init_h = 720;
+#if defined(__ANDROID__)
+    if (window != nullptr) {
+        ANativeWindow* nw = reinterpret_cast<ANativeWindow*>(window);
+        init_w = ANativeWindow_getWidth(nw);
+        init_h = ANativeWindow_getHeight(nw);
+    }
+#else
     if (window != nullptr) glfwGetFramebufferSize(window, &init_w, &init_h);
+#endif
     init_w = std::max(1, init_w);
     init_h = std::max(1, init_h);
 
@@ -1303,6 +1382,51 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     return true;
 }
 
+bool suspend_surface() {
+#if defined(__ANDROID__)
+    if (!g_ctx.active || g_ctx.device == VK_NULL_HANDLE) return true;
+    if (g_ctx.in_frame) end_frame();
+    batch_submit(true, nullptr);
+    vkDeviceWaitIdle(g_ctx.device);
+    destroy_swapchain();
+    if (g_ctx.surface != VK_NULL_HANDLE) {
+        vkDestroySurfaceKHR(g_ctx.instance, g_ctx.surface, nullptr);
+        g_ctx.surface = VK_NULL_HANDLE;
+    }
+    g_ctx.window = nullptr;
+    g_ctx.swap_image_acquired = false;
+#endif
+    return true;
+}
+
+bool resume_surface(GLFWwindow* window) {
+#if defined(__ANDROID__)
+    if (!g_ctx.active || g_ctx.device == VK_NULL_HANDLE || window == nullptr) return false;
+    vkDeviceWaitIdle(g_ctx.device);
+    destroy_swapchain();
+    if (g_ctx.surface != VK_NULL_HANDLE) {
+        vkDestroySurfaceKHR(g_ctx.instance, g_ctx.surface, nullptr);
+        g_ctx.surface = VK_NULL_HANDLE;
+    }
+    ANativeWindow* nw = reinterpret_cast<ANativeWindow*>(window);
+    VkAndroidSurfaceCreateInfoKHR sci{};
+    sci.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
+    sci.window = nw;
+    if (vkCreateAndroidSurfaceKHR(g_ctx.instance, &sci, nullptr, &g_ctx.surface) != VK_SUCCESS) {
+        std::fprintf(stderr, "[vk] resume_surface: vkCreateAndroidSurfaceKHR failed\n");
+        return false;
+    }
+    g_ctx.window = window;
+    const int w = std::max(1, ANativeWindow_getWidth(nw));
+    const int h = std::max(1, ANativeWindow_getHeight(nw));
+    g_ctx.swapchain_dirty = true;
+    return recreate_swapchain(w, h);
+#else
+    (void)window;
+    return true;
+#endif
+}
+
 void shutdown() {
     if (g_ctx.device != VK_NULL_HANDLE) {
         batch_submit(true, nullptr);
@@ -1317,6 +1441,17 @@ void shutdown() {
             if (s != VK_NULL_HANDLE) vkDestroySampler(g_ctx.device, s, nullptr);
         }
         g_ctx.samplers.clear();
+
+        if (g_ctx.present_pipe != VK_NULL_HANDLE) vkDestroyPipeline(g_ctx.device, g_ctx.present_pipe, nullptr);
+        if (g_ctx.present_layout != VK_NULL_HANDLE) vkDestroyPipelineLayout(g_ctx.device, g_ctx.present_layout, nullptr);
+        if (g_ctx.present_dsl != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(g_ctx.device, g_ctx.present_dsl, nullptr);
+        if (g_ctx.present_vs != VK_NULL_HANDLE) vkDestroyShaderModule(g_ctx.device, g_ctx.present_vs, nullptr);
+        if (g_ctx.present_fs != VK_NULL_HANDLE) vkDestroyShaderModule(g_ctx.device, g_ctx.present_fs, nullptr);
+        g_ctx.present_pipe = VK_NULL_HANDLE;
+        g_ctx.present_layout = VK_NULL_HANDLE;
+        g_ctx.present_dsl = VK_NULL_HANDLE;
+        g_ctx.present_vs = VK_NULL_HANDLE;
+        g_ctx.present_fs = VK_NULL_HANDLE;
 
         destroy_image_now(g_ctx.white_tex);
         destroy_image_now(g_ctx.white_tex_array);
@@ -1472,7 +1607,7 @@ void begin_frame(int win_w, int win_h, float clear_r, float clear_g, float clear
 
     g_ctx.swap_image_acquired = false;
     if (!g_ctx.headless && g_ctx.surface != VK_NULL_HANDLE) {
-        if (g_ctx.swapchain == VK_NULL_HANDLE || g_ctx.swapchain_dirty || win_w != g_ctx.swap_w || win_h != g_ctx.swap_h) {
+        if (g_ctx.swapchain == VK_NULL_HANDLE || g_ctx.swapchain_dirty || win_w != g_ctx.win_w || win_h != g_ctx.win_h) {
             recreate_swapchain(win_w, win_h);
         }
         if (g_ctx.swapchain != VK_NULL_HANDLE) {
@@ -1488,7 +1623,9 @@ void begin_frame(int win_w, int win_h, float clear_r, float clear_g, float clear
             check_lost(res, "vkAcquireNextImageKHR");
             if (res == VK_SUCCESS || res == VK_SUBOPTIMAL_KHR) {
                 g_ctx.swap_image_acquired = true;
+#if !defined(__ANDROID__)
                 if (res == VK_SUBOPTIMAL_KHR) g_ctx.swapchain_dirty = true;
+#endif
             }
         }
     }
@@ -1603,7 +1740,126 @@ void end_frame() {
     if (g_ctx.swap_image_acquired && g_ctx.swapchain != VK_NULL_HANDLE &&
         g_ctx.swap_img_idx < g_ctx.swap_images.size()) {
         VkImage swap_img = g_ctx.swap_images[g_ctx.swap_img_idx];
+#if defined(__ANDROID__)
+        if (g_ctx.present_pipe == VK_NULL_HANDLE || g_ctx.present_pipe_format != g_ctx.swap_format) {
+            if (g_ctx.present_pipe != VK_NULL_HANDLE) {
+                vkDestroyPipeline(g_ctx.device, g_ctx.present_pipe, nullptr);
+                g_ctx.present_pipe = VK_NULL_HANDLE;
+            }
+            if (g_ctx.present_dsl == VK_NULL_HANDLE) {
+                VkDescriptorSetLayoutBinding b{};
+                b.binding = 0;
+                b.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                b.descriptorCount = 1;
+                b.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+                VkDescriptorSetLayoutCreateInfo dlci{};
+                dlci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+                dlci.bindingCount = 1;
+                dlci.pBindings = &b;
+                vkCreateDescriptorSetLayout(g_ctx.device, &dlci, nullptr, &g_ctx.present_dsl);
+            }
+            if (g_ctx.present_layout == VK_NULL_HANDLE) {
+                VkPushConstantRange pcr{VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(uint32_t)};
+                VkPipelineLayoutCreateInfo plci{};
+                plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+                plci.setLayoutCount = 1;
+                plci.pSetLayouts = &g_ctx.present_dsl;
+                plci.pushConstantRangeCount = 1;
+                plci.pPushConstantRanges = &pcr;
+                vkCreatePipelineLayout(g_ctx.device, &plci, nullptr, &g_ctx.present_layout);
+            }
+            if (g_ctx.present_vs == VK_NULL_HANDLE)
+                g_ctx.present_vs = create_shader_module(shaders::kPresentSwapVs, sizeof(shaders::kPresentSwapVs));
+            if (g_ctx.present_fs == VK_NULL_HANDLE)
+                g_ctx.present_fs = create_shader_module(shaders::kPresentSwapFs, sizeof(shaders::kPresentSwapFs));
+            GraphicsPipelineDesc pd{};
+            pd.layout = g_ctx.present_layout;
+            pd.vs = g_ctx.present_vs;
+            pd.fs = g_ctx.present_fs;
+            pd.depth_test = false;
+            pd.depth_write = false;
+            pd.has_depth_attachment = false;
+            pd.has_stencil_attachment = false;
+            pd.formats_from_desc = true;
+            pd.color_format = g_ctx.swap_format;
+            g_ctx.present_pipe = create_graphics_pipeline(pd);
+            g_ctx.present_pipe_format = g_ctx.swap_format;
+        }
 
+        transition_image(g_ctx.cmd, g_ctx.main_color, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+        VkImageMemoryBarrier b_to_att{};
+        b_to_att.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        b_to_att.srcAccessMask = 0;
+        b_to_att.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        b_to_att.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        b_to_att.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        b_to_att.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        b_to_att.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        b_to_att.image = swap_img;
+        b_to_att.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        vkCmdPipelineBarrier(g_ctx.cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0,
+                             nullptr, 0, nullptr, 1, &b_to_att);
+
+        VkRenderingAttachmentInfo col_att{};
+        col_att.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        col_att.imageView = g_ctx.swap_views[g_ctx.swap_img_idx];
+        col_att.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        col_att.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        col_att.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+
+        VkRenderingInfo ri{};
+        ri.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+        ri.renderArea = {{0, 0}, {static_cast<uint32_t>(g_ctx.swap_w), static_cast<uint32_t>(g_ctx.swap_h)}};
+        ri.layerCount = 1;
+        ri.colorAttachmentCount = 1;
+        ri.pColorAttachments = &col_att;
+
+        vkCmdBeginRendering(g_ctx.cmd, &ri);
+        vkCmdBindPipeline(g_ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g_ctx.present_pipe);
+        VkViewport pvp{0.0f, 0.0f, static_cast<float>(g_ctx.swap_w), static_cast<float>(g_ctx.swap_h), 0.0f, 1.0f};
+        VkRect2D psc{{0, 0}, {static_cast<uint32_t>(g_ctx.swap_w), static_cast<uint32_t>(g_ctx.swap_h)}};
+        vkCmdSetViewport(g_ctx.cmd, 0, 1, &pvp);
+        vkCmdSetScissor(g_ctx.cmd, 0, 1, &psc);
+        const float bc[4] = {0, 0, 0, 0};
+        vkCmdSetBlendConstants(g_ctx.cmd, bc);
+
+        VkDescriptorSet pset = alloc_descriptor_set(g_ctx.present_dsl);
+        VkDescriptorImageInfo pii{
+            get_sampler(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE),
+            g_ctx.main_color.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        VkWriteDescriptorSet pwr{};
+        pwr.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        pwr.dstSet = pset;
+        pwr.dstBinding = 0;
+        pwr.descriptorCount = 1;
+        pwr.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        pwr.pImageInfo = &pii;
+        vkUpdateDescriptorSets(g_ctx.device, 1, &pwr, 0, nullptr);
+        vkCmdBindDescriptorSets(g_ctx.cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, g_ctx.present_layout, 0, 1, &pset, 0, nullptr);
+        uint32_t rot = 0;
+        if (g_ctx.swap_transform == VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR) rot = 1;
+        else if (g_ctx.swap_transform == VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR) rot = 2;
+        else if (g_ctx.swap_transform == VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR) rot = 3;
+        vkCmdPushConstants(g_ctx.cmd, g_ctx.present_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(rot), &rot);
+        vkCmdDraw(g_ctx.cmd, 3, 1, 0, 0);
+        vkCmdEndRendering(g_ctx.cmd);
+
+        transition_image(g_ctx.cmd, g_ctx.main_color, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+        VkImageMemoryBarrier b_to_pres{};
+        b_to_pres.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        b_to_pres.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        b_to_pres.dstAccessMask = 0;
+        b_to_pres.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        b_to_pres.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        b_to_pres.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        b_to_pres.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        b_to_pres.image = swap_img;
+        b_to_pres.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        vkCmdPipelineBarrier(g_ctx.cmd, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0,
+                             nullptr, 0, nullptr, 1, &b_to_pres);
+#else
         transition_image(g_ctx.cmd, g_ctx.main_color, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
         VkImageMemoryBarrier b_to_dst{};
@@ -1644,6 +1900,7 @@ void end_frame() {
         b_to_pres.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
         vkCmdPipelineBarrier(g_ctx.cmd, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0,
                              nullptr, 0, nullptr, 1, &b_to_pres);
+#endif
     }
 
     if (g_ctx.frame_ts[g_ctx.frame_idx] && g_ctx.frame_pool != VK_NULL_HANDLE)
@@ -1689,7 +1946,11 @@ void end_frame() {
         const VkResult pres = vkQueuePresentKHR(g_ctx.queue, &pi);
         if (id != 0 && (pres == VK_SUCCESS || pres == VK_SUBOPTIMAL_KHR)) g_ctx.present_pending.push_back(id);
         check_lost(pres, "vkQueuePresentKHR");
+#if defined(__ANDROID__)
+        if (pres == VK_ERROR_OUT_OF_DATE_KHR) {
+#else
         if (pres == VK_ERROR_OUT_OF_DATE_KHR || pres == VK_SUBOPTIMAL_KHR) {
+#endif
             g_ctx.swapchain_dirty = true;
         }
     }
@@ -2542,6 +2803,7 @@ VkDescriptorSet alloc_descriptor_set(VkDescriptorSetLayout layout) {
 }
 
 VkShaderModule create_shader_module(const uint32_t* code, size_t size_in_bytes) {
+    code = shaders::select_variant(code, size_in_bytes, !g_ctx.has_depth_clip_control, !g_ctx.has_clip_distance, !g_ctx.has_dual_src_blend);
     VkShaderModuleCreateInfo smci{};
     smci.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     smci.codeSize = size_in_bytes;

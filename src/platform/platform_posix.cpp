@@ -2,7 +2,11 @@
 #include "platform.h"
 
 #include <fcntl.h>
+#if defined(__ANDROID__) && __ANDROID_API__ < 28
+#define RAC1_NO_POSIX_SPAWN 1
+#else
 #include <spawn.h>
+#endif
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
@@ -288,13 +292,27 @@ int run_quiet(const std::vector<std::string>& args) {
     std::vector<char*> argv;
     for (const auto& a : args) argv.push_back(const_cast<char*>(a.c_str()));
     argv.push_back(nullptr);
+    pid_t pid = 0;
+#if defined(RAC1_NO_POSIX_SPAWN)
+    pid = fork();
+    if (pid < 0) return -1;
+    if (pid == 0) {
+        const int null = ::open("/dev/null", O_WRONLY);
+        if (null >= 0) {
+            ::dup2(null, STDOUT_FILENO);
+            ::close(null);
+        }
+        ::execvp(argv[0], argv.data());
+        ::_exit(127);
+    }
+#else
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
     posix_spawn_file_actions_addopen(&fa, STDOUT_FILENO, "/dev/null", O_WRONLY, 0);
-    pid_t pid = 0;
     const int err = posix_spawnp(&pid, argv[0], &fa, nullptr, argv.data(), environ);
     posix_spawn_file_actions_destroy(&fa);
     if (err != 0) return -1;
+#endif
     int status = 0;
     if (waitpid(pid, &status, 0) < 0) return -1;
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;

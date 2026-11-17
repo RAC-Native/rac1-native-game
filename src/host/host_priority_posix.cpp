@@ -1,8 +1,8 @@
 // The host's thread priorities through rtkit (see host_priority.h): Linux. Host code.
 #include "host_priority.h"
 
-#if defined(__APPLE__)
-// (macOS: no rtkit; the threads keep the priorities the system gives them)
+#if defined(__APPLE__) || defined(__ANDROID__)
+// (macOS/Android: no rtkit; the threads keep the priorities the system gives them)
 namespace rac1 {
 // orig: (host) host_priority.h, on macOS: nothing to raise
 bool host_priority_enabled() { return false; }

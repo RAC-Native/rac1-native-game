@@ -322,7 +322,7 @@ constexpr const char* TEXTS[4][T_COUNT] = {
 
 // Water Reflections' ray-traced values (value_text's words, not texts asked for by id - no id moved): Medium (RT), High (RT), per language
 // as TEXTS ("(RT)" kept in every one)
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) && !defined(__ANDROID__)
 // The Renderer row's help when the renderer running is not the row's choice (the value then reads "Vulkan (OpenGL)"): why,
 // by RendererWhy (kNone: the row changed since the start); the font has no accented letters
 constexpr const char* RENDERER_WHY[4][10] = {
@@ -429,6 +429,9 @@ struct State {
         value[S_FOV] = 5;
         value[S_VSYNC] = 1;
         value[S_CAP] = 1;
+#if defined(__ANDROID__)
+        value[S_DISPLAY] = 1;
+#endif
         for (size_t i = 0; i < sizeof(PRESET_ROWS) / sizeof(Setting); ++i) value[PRESET_ROWS[i]] = PRESETS[PRESET_DEFAULT][i];
     }
     std::vector<std::string> monitors;  // the host's monitors as it named them (graphics_set_monitors), GLFW's order
@@ -620,8 +623,8 @@ void apply() {
         d.vulkan_auto = std::strcmp(env, "auto") == 0;
         d.vulkan = d.vulkan_auto || std::strcmp(env, "vulkan") == 0 || std::strcmp(env, "vk") == 0;
     }
-#if defined(__APPLE__)
-    d.vulkan = true;  // (macOS: the Vulkan renderer's code on Metal, the one renderer there: docs/metal.md)
+#if defined(__APPLE__) || defined(__ANDROID__)
+    d.vulkan = true;  // (macOS: Vulkan on Metal; Android: Vulkan is the only renderer)
 #endif
     d.fullscreen = v[S_DISPLAY] != 0;
     d.window_w = gs_.win_w;
@@ -855,6 +858,8 @@ std::string value_text(Setting s) {
     switch (s) {
 #if defined(__APPLE__)
         case S_RENDERER: return "Metal";
+#elif defined(__ANDROID__)
+        case S_RENDERER: return "Vulkan";
 #else
         case S_RENDERER: {  // (the choice; the renderer running when it is another: "Vulkan (OpenGL)"; auto: the one running, its value)
             const char* chosen = v != 0 ? "Vulkan" : "OpenGL";
@@ -904,7 +909,7 @@ std::string value_text(Setting s) {
 // orig: (none) — enhancement: the Renderer row's help: the usual one, or why the renderer running is not the row's choice
 std::string renderer_help() {
     const char* const* t = texts();
-#if !defined(__APPLE__)
+#if !defined(__APPLE__) && !defined(__ANDROID__)
     const int v = gs_.value[S_RENDERER];
     // (auto fell back to OpenGL: the row says OpenGL, the help why)
     const bool auto_fell = gs_.renderer_auto && gs_.run_known && !gs_.run_vulkan && gs_.run_why != RendererWhy::kNone && gs_.run_why != RendererWhy::kEnv;

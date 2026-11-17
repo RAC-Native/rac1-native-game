@@ -101,6 +101,8 @@ InitFailure init_failure();
 const std::string& init_failure_text();
 // The host's hook called once when the device is lost (VK_ERROR_DEVICE_LOST), with where it was seen
 void set_device_lost_hook(void (*fn)(const char* where));
+bool suspend_surface();
+bool resume_surface(GLFWwindow* window);
 void shutdown();
 bool is_active();
 void wait_idle();
@@ -134,6 +136,8 @@ double timed_submit(const std::function<void(VkCommandBuffer)>& record);
 
 // What the device can do (init's check: GitHub issue #113)
 bool has_float64();             // shaderFloat64: the tfrag compute shader's doubles
+bool has_clip_distance();       // shaderClipDistance: hardware clip plane vs fragment discard fallback
+bool has_dual_src_blend();      // dualSrcBlend: SRC1 color/alpha blending vs single-source fallback
 // an Intel GPU of generation 9 (Skylake .. Comet Lake, the UHD 620) or older: its doubles are slow (the tfrags made on the CPU
 // unless RAC1_TFRAG_CPU=0; issue #113)
 bool float64_slow();

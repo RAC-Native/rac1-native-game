@@ -64,7 +64,7 @@ void remove_marker(const char* name) {
 
 // orig: (none) — host
 void start(bool headless) {
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(__ANDROID__)
     (void)headless;
     g_on = false;
 #else

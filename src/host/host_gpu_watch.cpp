@@ -141,6 +141,9 @@ void run(Nvml n, nvmlDevice_t dev, bool always) {
 
 // orig: (host) see host_gpu_watch.h
 void host_gpu_watch_start() {
+#if defined(__ANDROID__)
+    return;
+#endif
     if (g_thread.joinable()) return;
     const char* e = std::getenv("RAC1_GPU_WATCH");
     if (e != nullptr && std::atoi(e) == 0) return;

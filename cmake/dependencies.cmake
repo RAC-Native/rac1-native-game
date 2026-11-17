@@ -11,14 +11,16 @@ endif()
 #  -DFETCHCONTENT_BASE_DIR=<dir>, and FETCHCONTENT_FULLY_DISCONNECTED=ON builds offline)
 set(FETCHCONTENT_QUIET ON)
 
-# GLFW 3.4 (zlib): window, OpenGL context, keyboard / mouse / gamepad
-FetchContent_Declare(glfw
-    URL      https://github.com/glfw/glfw/archive/refs/tags/3.4.tar.gz
-    URL_HASH SHA256=c038d34200234d071fae9345bc455e4a8f2f544ab60150765d7704e08f3dac01)
-set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
-set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(GLFW_INSTALL        OFF CACHE BOOL "" FORCE)
+if(NOT ANDROID)
+    # GLFW 3.4 (zlib): window, OpenGL context, keyboard / mouse / gamepad
+    FetchContent_Declare(glfw
+        URL      https://github.com/glfw/glfw/archive/refs/tags/3.4.tar.gz
+        URL_HASH SHA256=c038d34200234d071fae9345bc455e4a8f2f544ab60150765d7704e08f3dac01)
+    set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
+    set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(GLFW_INSTALL        OFF CACHE BOOL "" FORCE)
+endif()
 
 # GLM 1.0.1 (MIT): vector / matrix math (headers only)
 FetchContent_Declare(glm
@@ -56,7 +58,13 @@ FetchContent_Declare(volk
     URL_HASH SHA256=8ffd0e81e29688f4abaa39e598937160b098228f37503903b10d481d4862ab85
     SOURCE_SUBDIR _no_cmake)
 
-FetchContent_MakeAvailable(glfw glm imgui tinygltf miniaudio vulkan_headers volk)
+if(ANDROID)
+    FetchContent_MakeAvailable(glm imgui tinygltf miniaudio vulkan_headers volk)
+    add_library(glfw INTERFACE)
+    target_include_directories(glfw SYSTEM INTERFACE "${CMAKE_SOURCE_DIR}/ports/android/compat/include")
+else()
+    FetchContent_MakeAvailable(glfw glm imgui tinygltf miniaudio vulkan_headers volk)
+endif()
 
 add_library(glm_headers INTERFACE)
 target_include_directories(glm_headers SYSTEM INTERFACE ${glm_SOURCE_DIR})
@@ -70,24 +78,39 @@ target_include_directories(miniaudio_headers SYSTEM INTERFACE ${miniaudio_SOURCE
 add_library(volk STATIC ${volk_SOURCE_DIR}/volk.c)
 target_include_directories(volk SYSTEM PUBLIC ${volk_SOURCE_DIR} ${vulkan_headers_SOURCE_DIR}/include)
 target_compile_definitions(volk PUBLIC VK_NO_PROTOTYPES)
+if(ANDROID)
+    target_compile_definitions(volk PUBLIC VK_USE_PLATFORM_ANDROID_KHR)
+endif()
 if(NOT WIN32)
     target_link_libraries(volk PUBLIC ${CMAKE_DL_LIBS})
 endif()
 
-add_library(imgui STATIC
+set(IMGUI_SOURCES
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_demo.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
     ${imgui_SOURCE_DIR}/imgui_tables.cpp
     ${imgui_SOURCE_DIR}/imgui_widgets.cpp
     ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
 )
+if(ANDROID)
+    list(APPEND IMGUI_SOURCES ${imgui_SOURCE_DIR}/backends/imgui_impl_android.cpp)
+else()
+    list(APPEND IMGUI_SOURCES
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+    )
+endif()
+add_library(imgui STATIC ${IMGUI_SOURCES})
 target_include_directories(imgui SYSTEM PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
 target_link_libraries(imgui PUBLIC glad glfw volk)
-target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_LOADER_GLAD=1 IMGUI_IMPL_VULKAN_USE_VOLK=1)
+if(ANDROID)
+    target_link_libraries(imgui PUBLIC android log)
+    target_compile_definitions(imgui PUBLIC IMGUI_IMPL_VULKAN_USE_VOLK=1)
+else()
+    target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_LOADER_GLAD=1 IMGUI_IMPL_VULKAN_USE_VOLK=1)
+endif()
 if(APPLE)  # (the Metal renderer's ImGui backend: docs/metal.md)
     target_sources(imgui PRIVATE ${imgui_SOURCE_DIR}/backends/imgui_impl_metal.mm)
     set_source_files_properties(${imgui_SOURCE_DIR}/backends/imgui_impl_metal.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")

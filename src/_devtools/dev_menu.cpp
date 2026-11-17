@@ -47,8 +47,14 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/gtc/type_ptr.hpp>
+#if defined(__ANDROID__)
+#include <android_host.h>
+#include <android/native_window.h>
+#include <backends/imgui_impl_android.h>
+#else
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
+#endif
 #include <backends/imgui_impl_vulkan.h>
 #include <imgui.h>
 
@@ -279,7 +285,11 @@ void freecam_update(GLFWwindow* win) {
     g_cam.last = now;
     float mx = 0, my = 0, mz = 0, lx = 0, ly = 0;
     const bool keys = !ImGui::GetIO().WantCaptureKeyboard;
+#if defined(__ANDROID__)
+    auto key = [&](int k) { return keys && rac1::android_host::is_key_down(k); };
+#else
     auto key = [&](int k) { return keys && glfwGetKey(win, k) == GLFW_PRESS; };
+#endif
     if (key(GLFW_KEY_W)) my += 1;
     if (key(GLFW_KEY_S)) my -= 1;
     if (key(GLFW_KEY_D)) mx += 1;
@@ -292,7 +302,11 @@ void freecam_update(GLFWwindow* win) {
     if (key(GLFW_KEY_K) || key(GLFW_KEY_DOWN)) ly -= 1;
     float boost = key(GLFW_KEY_LEFT_SHIFT) ? 4.0f : 1.0f;
     GLFWgamepadstate gp;
+#if defined(__ANDROID__)
+    if (rac1::android_host::get_primary_gamepad(gp)) {
+#else
     if (glfwJoystickIsGamepad(GLFW_JOYSTICK_1) && glfwGetGamepadState(GLFW_JOYSTICK_1, &gp)) {
+#endif
         auto dz = [](float v) { return std::fabs(v) < 0.15f ? 0.0f : v; };
         mx += dz(gp.axes[GLFW_GAMEPAD_AXIS_LEFT_X]);
         my -= dz(gp.axes[GLFW_GAMEPAD_AXIS_LEFT_Y]);
@@ -344,7 +358,11 @@ void hero_move_update(GLFWwindow* win) {
     g_move.last = now;
     float mx = 0, my = 0, mz = 0;
     const bool keys = !ImGui::GetIO().WantCaptureKeyboard;
+#if defined(__ANDROID__)
+    auto key = [&](int k) { return keys && rac1::android_host::is_key_down(k); };
+#else
     auto key = [&](int k) { return keys && glfwGetKey(win, k) == GLFW_PRESS; };
+#endif
     if (key(GLFW_KEY_W)) my += 1;
     if (key(GLFW_KEY_S)) my -= 1;
     if (key(GLFW_KEY_D)) mx += 1;
@@ -353,7 +371,11 @@ void hero_move_update(GLFWwindow* win) {
     if (key(GLFW_KEY_Q)) mz -= 1;
     float boost = key(GLFW_KEY_LEFT_SHIFT) ? 4.0f : 1.0f;
     GLFWgamepadstate gp;
+#if defined(__ANDROID__)
+    if (rac1::android_host::get_primary_gamepad(gp)) {
+#else
     if (glfwJoystickIsGamepad(GLFW_JOYSTICK_1) && glfwGetGamepadState(GLFW_JOYSTICK_1, &gp)) {
+#endif
         auto dz = [](float v) { return std::fabs(v) < 0.15f ? 0.0f : v; };
         mx += dz(gp.axes[GLFW_GAMEPAD_AXIS_LEFT_X]);
         my -= dz(gp.axes[GLFW_GAMEPAD_AXIS_LEFT_Y]);
@@ -840,8 +862,14 @@ void tab_rendering() {
 void tab_display() {
     DevSettings& s = g_settings;
     int w = 0, h = 0, fw = 0, fh = 0;
+#if defined(__ANDROID__)
+    rac1::android_host::window_size(&w, &h);
+    fw = w;
+    fh = h;
+#else
     glfwGetWindowSize(g_window, &w, &h);
     glfwGetFramebufferSize(g_window, &fw, &fh);
+#endif
     ImGui::Text("Window %dx%d  (framebuffer %dx%d)", w, h, fw, fh);
     ImGui::TextDisabled("Display mode, window size, render resolution, aspect ratio, level of detail, field of view,\n"
                         "v-sync and frame cap: the game's Options > Graphics.");
@@ -1023,7 +1051,11 @@ void lights_markers(const std::vector<UserLight>& L) {
     mrp_world_view_proj(m);
     const glm::mat4 VP = glm::make_mat4(m);
     int fw = 0, fh = 0;
+#if defined(__ANDROID__)
+    rac1::android_host::window_size(&fw, &fh);
+#else
     glfwGetFramebufferSize(g_window, &fw, &fh);
+#endif
     const ImGuiIO& io = ImGui::GetIO();
     const float rs = graphics_render_scale() > 0.0f ? graphics_render_scale() : 1.0f;
     const float sx = io.DisplayFramebufferScale.x > 0.0f ? io.DisplayFramebufferScale.x : 1.0f, sy = io.DisplayFramebufferScale.y > 0.0f ? io.DisplayFramebufferScale.y : 1.0f;
@@ -1059,7 +1091,11 @@ void interior_boxes(const std::vector<SunInterior>& B) {
     mrp_world_view_proj(m);
     const glm::mat4 VP = glm::make_mat4(m);
     int fw = 0, fh = 0;
+#if defined(__ANDROID__)
+    rac1::android_host::window_size(&fw, &fh);
+#else
     glfwGetFramebufferSize(g_window, &fw, &fh);
+#endif
     const ImGuiIO& io = ImGui::GetIO();
     const float rs = graphics_render_scale() > 0.0f ? graphics_render_scale() : 1.0f;
     const float sx = io.DisplayFramebufferScale.x > 0.0f ? io.DisplayFramebufferScale.x : 1.0f, sy = io.DisplayFramebufferScale.y > 0.0f ? io.DisplayFramebufferScale.y : 1.0f;
@@ -1531,7 +1567,11 @@ bool screen_map(ScreenMap& m) {
     mrp_world_view_proj(vpm);
     m.VP = glm::make_mat4(vpm);
     int fw = 0;
+#if defined(__ANDROID__)
+    rac1::android_host::window_size(&fw, &m.fh);
+#else
     glfwGetFramebufferSize(g_window, &fw, &m.fh);
+#endif
     const ImGuiIO& io = ImGui::GetIO();
     m.rs = graphics_render_scale() > 0.0f ? graphics_render_scale() : 1.0f;
     m.sx = io.DisplayFramebufferScale.x > 0.0f ? io.DisplayFramebufferScale.x : 1.0f;
@@ -2499,7 +2539,13 @@ void dev_menu_init(GLFWwindow* window, bool with_menu) {
     } else
 #endif
     if (g_imgui_vk) {
+#if defined(__ANDROID__)
+        ANativeWindow* nw = rac1::android_host::native_window();
+        if (nw == nullptr) nw = reinterpret_cast<ANativeWindow*>(window);
+        ImGui_ImplAndroid_Init(nw);
+#else
         ImGui_ImplGlfw_InitForVulkan(window, true);
+#endif
         ImGui_ImplVulkan_LoadFunctions([](const char* name, void* inst) {
             return vkGetInstanceProcAddr(static_cast<VkInstance>(inst), name);
         }, rac1::vk::instance());
@@ -2520,10 +2566,13 @@ void dev_menu_init(GLFWwindow* window, bool with_menu) {
         info.PipelineRenderingCreateInfo.pColorAttachmentFormats = &col_fmt;
         ImGui_ImplVulkan_Init(&info);
         ImGui_ImplVulkan_CreateFontsTexture();
-    } else {
+    }
+#if !defined(__ANDROID__)
+    else {
         ImGui_ImplGlfw_InitForOpenGL(window, true);
         ImGui_ImplOpenGL3_Init("#version 330");
     }
+#endif
 }
 
 void dev_menu_shutdown() {
@@ -2540,27 +2589,48 @@ void dev_menu_shutdown() {
 #if defined(__APPLE__)
         rac1::mtl::imgui_shutdown();
 #else
+#if defined(__ANDROID__)
+        rac1::android_host::sync_imgui_window();
+#endif
         ImGui_ImplVulkan_Shutdown();
 #endif
-    } else {
+    }
+#if !defined(__ANDROID__)
+    else {
         ImGui_ImplOpenGL3_Shutdown();
     }
     ImGui_ImplGlfw_Shutdown();
+#else
+    ImGui_ImplAndroid_Shutdown();
+#endif
     ImGui::DestroyContext();
     g_window = nullptr;
 }
 
 void dev_menu_poll(GLFWwindow* window) {
     if (!g_menu) return;  // (no menu, no moving Ratchet by hand without the debug tools)
+#if defined(__ANDROID__)
+    bool down = rac1::android_host::is_key_down(GLFW_KEY_F1);
+    GLFWgamepadstate s;
+    if (rac1::android_host::get_primary_gamepad(s))
+        down = down || s.buttons[GLFW_GAMEPAD_BUTTON_RIGHT_THUMB] == GLFW_PRESS;
+#else
     bool down = glfwGetKey(window, GLFW_KEY_F1) == GLFW_PRESS;
     GLFWgamepadstate s;
     if (glfwJoystickIsGamepad(GLFW_JOYSTICK_1) && glfwGetGamepadState(GLFW_JOYSTICK_1, &s))
         down = down || s.buttons[GLFW_GAMEPAD_BUTTON_RIGHT_THUMB] == GLFW_PRESS;
+#endif
     if (down && !g_prev_toggle) g_settings.open = !g_settings.open;
     g_prev_toggle = down;
+#if defined(__ANDROID__)
+    bool mk = rac1::android_host::is_key_down(GLFW_KEY_F2);
+    if (rac1::android_host::get_primary_gamepad(s))
+        mk = mk || s.buttons[GLFW_GAMEPAD_BUTTON_LEFT_THUMB] == GLFW_PRESS;
+#else
     bool mk = glfwGetKey(window, GLFW_KEY_F2) == GLFW_PRESS;
     if (glfwJoystickIsGamepad(GLFW_JOYSTICK_1) && glfwGetGamepadState(GLFW_JOYSTICK_1, &s))
         mk = mk || s.buttons[GLFW_GAMEPAD_BUTTON_LEFT_THUMB] == GLFW_PRESS;
+#endif
     if (mk && !g_move.prev_key && ru(HERO_MOBY) != 0) hero_move_set(!g_move.on);
     g_move.prev_key = mk;
     if (g_move.on) hero_move_update(window);
@@ -2704,13 +2774,17 @@ void dev_menu_draw(double update_ms, double frame_ms) {
         mrp_lighting_screen_point(-1.0f, -1.0f, unused);
     }
     if (!g_menu || (!g_settings.open && !g_settings.show_stats && !profiler_overlay_wanted())) return;
-#if defined(__APPLE__)
+#if defined(__ANDROID__)
+    ImGui_ImplVulkan_NewFrame();
+    rac1::android_host::flush_imgui_frame();
+#elif defined(__APPLE__)
     if (!g_imgui_vk) ImGui_ImplOpenGL3_NewFrame();  // (Metal's: in rac1::vk::render_imgui, at its pass)
+    ImGui_ImplGlfw_NewFrame();
 #else
     if (g_imgui_vk) ImGui_ImplVulkan_NewFrame();
     else ImGui_ImplOpenGL3_NewFrame();
-#endif
     ImGui_ImplGlfw_NewFrame();
+#endif
     ImGui::NewFrame();
     if (g_settings.show_stats) {
         ImGui::SetNextWindowPos(ImVec2(8, 8));
@@ -2758,7 +2832,9 @@ void dev_menu_draw(double update_ms, double frame_ms) {
     }
     ImGui::Render();
     if (g_imgui_vk) rac1::vk::render_imgui(ImGui::GetDrawData());
+#if !defined(__ANDROID__)
     else ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+#endif
 }
 
 }  // namespace rac1::devtools

@@ -193,6 +193,10 @@ std::string version_text() {
 
 // orig: (none) — host (update_check.h)
 void start(bool headless) {
+#if defined(__ANDROID__)
+    (void)headless;
+    return;
+#endif
     g_headless = headless;
     const AdvancedUpdatePrefs prefs = advanced_update_prefs();  // (headless: off, unless RAC1_ADVANCED)
     g_last_prefs = prefs;
@@ -207,6 +211,9 @@ void start(bool headless) {
 
 // orig: (none) — host (update_check.h)
 void poll() {
+#if defined(__ANDROID__)
+    return;
+#endif
     const bool auto_req = update_notice_take_auto_check();
     const bool manual_req = update_notice_take_manual_check();
     if (!g_headless) {

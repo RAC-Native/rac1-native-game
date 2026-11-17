@@ -5,7 +5,7 @@
 #include <cstdlib>
 #include <cstring>
 
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
 #include <cerrno>
 #include <dirent.h>
 #include <fcntl.h>
@@ -49,7 +49,7 @@ struct Device {
     bool v2 = true;                 // the firmware's rumble (dualsense.h)
     uint8_t neutral[3] = {0, 0, 128};  // the light bar before the game took it (hid-playstation's default: blue)
     std::FILE* fake = nullptr;      // RAC1_DUALSENSE_OUT
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
     int fd = -1;
 #elif defined(_WIN32)
     HANDLE h = INVALID_HANDLE_VALUE;
@@ -168,7 +168,7 @@ void lightbar_neutral(uint8_t& r, uint8_t& g, uint8_t& b) {
     b = g_dev.neutral[2];
 }
 
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
 namespace {
 // orig: (host) a sysfs file's first line
 std::string read_line(const std::string& path) {

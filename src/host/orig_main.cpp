@@ -49,6 +49,9 @@
 #include <cmath>
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
+#if defined(__ANDROID__)
+#include <android_host.h>
+#endif
 
 #include <chrono>
 #include <ctime>
@@ -246,6 +249,8 @@ void debug_tools_gate_args(int argc, char** argv) {
 }
 #if defined(_WIN32)
 __attribute__((constructor(101))) void debug_tools_gate() { debug_tools_gate_args(__argc, __argv); }
+#elif defined(__ANDROID__)
+__attribute__((constructor(101))) void debug_tools_gate() { debug_tools_gate_args(0, nullptr); }
 #else
 __attribute__((constructor(101))) void debug_tools_gate(int argc, char** argv, char** /*envp*/) { debug_tools_gate_args(argc, argv); }
 #endif
@@ -522,6 +527,12 @@ static void ram_hash_frame(FILE* f, uint64_t frame) {
 // its sound with it - until the window is seen again. So on Wayland the swap never waits and the frames are paced by
 // HostPacer (the game running: its 60 a second; held by the debug menu with VSync on and no cap: the display's refresh);
 // elsewhere VSync is the swap interval 1.
+#if defined(__ANDROID__)
+static double host_refresh_hz(GLFWwindow* w) {
+    (void)w;
+    return static_cast<double>(rac1::android_host::refresh_hz());
+}
+#else
 // orig: (host)
 static int host_swap_interval(bool vsync) { return vsync && glfwGetPlatform() != GLFW_PLATFORM_WAYLAND ? 1 : 0; }
 // orig: (host) the VSync setting applied: the swap interval set, and in the log what it became - the platform, the
@@ -588,6 +599,7 @@ static double host_refresh_hz(GLFWwindow* w) {
     const GLFWvidmode* v = m != nullptr ? glfwGetVideoMode(m) : nullptr;
     return v != nullptr && v->refreshRate > 0 ? static_cast<double>(v->refreshRate) : 60.0;
 }
+#endif
 
 // The frame extrapolation's measures (the host loop's extrap_pictures), "[extrap]" every 10 s and at the end: the steps and pictures,
 // the pictures a step chosen (k), the carried pictures left out (budget: they would have made the next step late; late: past their
@@ -769,7 +781,11 @@ struct HostPresents {
     void swap(GLFWwindow* w) {
         const auto a = clk::now();
         if (rac1::vk::is_active()) rac1::vk::end_frame();  // (the Vulkan renderer: its present)
+#if !defined(__ANDROID__)
         else glfwSwapBuffers(w);
+#else
+        else (void)w;
+#endif
         const auto b = clk::now();
         if (have_last) ema_ms = ema_ms * 0.9 + std::chrono::duration<double, std::milli>(b - last).count() * 0.1;
         const double since = std::chrono::duration<double>(b - t0).count();
@@ -1298,6 +1314,9 @@ struct ScenePicture {
         if (fbw == 0 || fh == 0 || bp < fbp * 32 || bp >= fbp * 32 + fbw * 64 * fh * 4 / 256) return;
         const int w = static_cast<int>(fbw * 64), h = static_cast<int>(fh);
         if (rac1::vk::is_active()) {
+#if defined(__ANDROID__)
+            std::lock_guard<std::recursive_mutex> rlk(rac1::android_host::render_mutex());
+#endif
             // (the copy of the last picture shown made once for the store's 16 KB blocks, 0x2a0f18's loop: `shown` changes only with
             // a frame shown, which ends pf_valid; each copy outside a frame is a submit and a fence wait)
             if ((from_shown && (!pf_valid || !menu_pic)) || !pf_valid) {
@@ -1660,6 +1679,33 @@ rac1::rumble::Output g_rumble;
 std::chrono::steady_clock::time_point g_rumble_time{};
 std::mutex g_pad_guid_lock;
 std::string g_pad_guid;  // (the GUID of the pad g_pad_name names)
+std::string g_pad_name;  // the name of the mapped gamepad last used ("" none), for the Controls page
+#if defined(__ANDROID__)
+void host_input_init(GLFWwindow* win) {
+    (void)win;
+    g_bindings = hi::load_or_create(hi::controls_path());
+    g_input_ready = true;
+}
+
+void host_input_poll(GLFWwindow* win, bool cursor_free) {
+    (void)win;
+    if (!g_input_ready) return;
+    g_cursor_free = cursor_free;
+}
+
+hi::HostState host_state(GLFWwindow* win, bool raw = false) {
+    (void)win;
+    (void)raw;
+    hi::HostState st;
+    std::string guid;
+    rac1::android_host::fill_host_state(st, g_pad_name, guid);
+    {
+        std::lock_guard<std::mutex> lock(g_pad_guid_lock);
+        g_pad_guid = std::move(guid);
+    }
+    return st;
+}
+#else
 GLFWscrollfun g_prev_scroll = nullptr;       // the callback before ours (chained)
 // orig: (host) the window's wheel: its notches for the game (not while the debug menu has the cursor)
 void scroll_callback(GLFWwindow* win, double x, double y) {
@@ -1808,7 +1854,6 @@ void host_input_poll(GLFWwindow* win, bool cursor_free) {
 // silent device - a virtual pad's driver, a duplicate of the same pad - can come first and hide the real one). With
 // more than one, a pad counts only once it has moved from what it read when first seen (a button, an axis by 0.3),
 // so one stuck at a deflection (a wheel's pedal, a throttle) does not hold an input forever.
-std::string g_pad_name;  // the name of the mapped gamepad last used ("" none), for the Controls page
 struct PadSeen {
     std::string guid;  // ("" none yet)
     bool active = false;
@@ -1874,6 +1919,7 @@ hi::HostState host_state(GLFWwindow* win, bool raw = false) {
     }
     return st;
 }
+#endif
 
 // whether the debug menu shows the layer a VU1 program draws on the VU emulation path: the world's tfrag / tie /
 // shrub programs (unless the MRP world draws), the mobys' (unless the MRP mobys draw), the particles' (unless the MRP effects draw)
@@ -2486,7 +2532,11 @@ void check_mrp_assets(bool moby, bool world) {
 
 }  // namespace
 
+#if defined(__ANDROID__)
+int rac1_orig_main(int argc, char** argv) {
+#else
 int main(int argc, char** argv) {
+#endif
     // (Windows: the console's QuickEdit off - a click in the console window froze the game - and the timer at 1 ms;
     // put back at the exit: platform.h)
     rac1::platform::process_begin();
@@ -2566,6 +2616,35 @@ int main(int argc, char** argv) {
     g_view_from_game = true;
     g_legacy_host_writes = false;
 
+#if defined(__ANDROID__)
+    rac1::graphics_load();
+    if (!headless) rac1::graphics_set_monitors({"Android Display"});
+    // (the surface can go away right after it is created, e.g. the device locked or the shade open:
+    // wait for a usable window, resumed, before starting Vulkan; closed meanwhile = clean exit)
+    if (!headless && !rac1::android_host::poll_events()) return 0;
+    int win_w0 = 1280, win_h0 = 720;
+    if (!headless) rac1::android_host::window_size(&win_w0, &win_h0);
+    if (const char* rs = std::getenv("RAC1_RENDER_SCALE")) rac1::graphics_set_render_scale_percent(std::atoi(rs));
+    if (const char* vm = std::getenv("RAC1_VIEW_MODE")) g_view_mode = std::atoi(vm);
+    if (const char* hv = std::getenv("RAC1_HUD")) {
+        const std::string h = hv;
+        g_hud_aspect = h == "16:9" ? 16.0f / 9.0f : h == "21:9" ? 64.0f / 27.0f : h == "32:9" ? 32.0f / 9.0f : h == "fit" ? 1.0e6f : 0.0f;
+    }
+    const int env_vsync = std::getenv("RAC1_VSYNC") != nullptr ? std::atoi(std::getenv("RAC1_VSYNC")) : -1;
+    const int env_fps_cap = std::getenv("RAC1_FPS_CAP") != nullptr ? std::atoi(std::getenv("RAC1_FPS_CAP")) : -1;
+    GLFWwindow* window = reinterpret_cast<GLFWwindow*>(rac1::android_host::native_window());
+    rac1::vk_safety::start(headless);
+    rac1::graphics_set_renderer_chosen_hook(rac1::vk_safety::cleared);
+    const bool vsync0 = !headless && (env_vsync >= 0 ? env_vsync != 0 : rac1::graphics_display().vsync);
+    if (window == nullptr || !rac1::vk::init(window, vsync0, headless)) {
+        std::fprintf(stderr, "rac1-native: Vulkan could not start on Android (%s)\n",
+                     window == nullptr ? "no window" : rac1::vk::init_failure_text().c_str());
+        return 1;
+    }
+    rac1::android_host::set_vulkan_active(true);
+    rac1::graphics_set_renderer_running(true, rac1::RendererWhy::kNone);
+    const bool gl_host = false;
+#else
     if (!glfwInit()) { std::fprintf(stderr, "rac1-native: GLFW init failed\n"); return 1; }
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
@@ -2678,6 +2757,7 @@ int main(int argc, char** argv) {
         glfwMakeContextCurrent(window);
         if (!headless && fs_monitor == nullptr) host_window_on_monitor(window, rac1::graphics_display().monitor);
     }
+#endif
     if (!headless) rac1::host_window_created(window);  // (not always on top: host_window.h)
     if (!headless) rac1::host_gpu_watch_start();  // (the GPU held by the system, in the log: host_gpu_watch.h)
     if (!headless) host_input_init(window);  // the controls: the controller database, the bindings
@@ -2685,6 +2765,7 @@ int main(int argc, char** argv) {
     g_controls_save = !headless || std::getenv("RAC1_CONTROLS_FILE") != nullptr;
     if (headless && g_controls_save) g_bindings = hi::load_or_create(hi::controls_path());
     rac1::controls_set_host(&g_host_controls);
+#if !defined(__ANDROID__)
     if (gl_host) {
         if (headless) glfwSwapInterval(0);
         else host_apply_swap_interval(env_vsync >= 0 ? env_vsync != 0 : rac1::graphics_display().vsync, env_vsync >= 0 ? "start (RAC1_VSYNC)" : "start");
@@ -2692,6 +2773,9 @@ int main(int argc, char** argv) {
         if (!ShaderManager::get().init()) { std::fprintf(stderr, "rac1-native: shaders failed\n"); return 1; }
         rac1::gl_draws_init();  // (the driver in the log; the multi-draws' single-draw path, issue #113)
     }
+#else
+    (void)gl_host;
+#endif
     sample_prof_start();  // (testing: RAC1_SAMPLE_PROF=<file>, see sample_prof.h)
     g_use_gpu_rendering = true;
     particles_vu1_register();
@@ -3015,7 +3099,9 @@ int main(int argc, char** argv) {
     if (g_debug_tools) std::printf("[orig] debug tools on: F1 / R3 the debug menu, F2 / L3 moves Ratchet by hand\n");
     if (env_vsync >= 0 && !headless) {
         if (rac1::vk::is_active()) rac1::vk::set_vsync(env_vsync != 0);
+#if !defined(__ANDROID__)
         else glfwSwapInterval(host_swap_interval(env_vsync != 0));  // (testing: over Options > Graphics)
+#endif
     }
     if (const char* pe = std::getenv("RAC1_PIPELINE")) dt::dev_settings().pipeline = std::atoi(pe) != 0;  // (testing)
     if (menu_shot) {
@@ -3122,10 +3208,38 @@ int main(int argc, char** argv) {
                     static_cast<unsigned long long>(frame), static_cast<unsigned long long>(run_host_frames), secs, static_cast<double>(frame) / secs,
                     static_cast<double>(run_host_frames) / secs);
     };
+#if defined(__ANDROID__)
+    while (running && !rac1::android_host::should_close()) {
+#else
     while (running && !glfwWindowShouldClose(window)) {
+#endif
         ++run_host_frames;
         rac1::prof::frame_mark();  // (the debug menu's profiler: the frame before ends, this one starts)
         int prof_events = rac1::prof::begin(rac1::prof::kEvents);
+#if defined(__ANDROID__)
+        if (!rac1::android_host::poll_events()) break;
+        window = reinterpret_cast<GLFWwindow*>(rac1::android_host::native_window());
+        if (rac1::exit_menu_take()) {  // the main menu's Exit confirmed: request activity finish
+            std::printf("[orig] Exit chosen in the main menu: the window closes\n");
+            rac1::android_host::request_close();
+            break;
+        }
+        if (!headless) {
+            if (rac1::graphics_display_serial() != display_serial) {
+                display_serial = rac1::graphics_display_serial();
+                display_settle = 60;
+                const rac1::GraphicsDisplay& gd = rac1::graphics_display();
+                if (rac1::vk::is_active()) rac1::vk::set_vsync(env_vsync >= 0 ? env_vsync != 0 : gd.vsync);
+                presents.restart();
+            } else if (display_settle > 0) {
+                --display_settle;
+            } else {
+                int cw = 0, ch = 0;
+                rac1::android_host::window_size(&cw, &ch);
+                rac1::graphics_host_window(cw, ch, true);
+            }
+        }
+#else
         glfwPollEvents();
         if (rac1::exit_menu_take()) {  // the main menu's Exit confirmed: the window closed, as by the system (the loop ends after this frame)
             std::printf("[orig] Exit chosen in the main menu: the window closes\n");
@@ -3164,6 +3278,7 @@ int main(int argc, char** argv) {
                 rac1::graphics_host_window(cw, ch, is_fs);
             }
         }
+#endif
         rac1::graphics_frame();
         rac1::update_check::poll();  // (the update check's answer, when it has come: to the main menu's notice)
         if (!headless) {
@@ -3296,7 +3411,11 @@ int main(int argc, char** argv) {
             menu_open = !headless && (dt::dev_settings().open || dt::dev_menu_owns_input());
 #endif
             int fb_w = 1, fb_h = 1;
+#if defined(__ANDROID__)
+            if (!headless) rac1::android_host::window_size(&fb_w, &fb_h);
+#else
             if (!headless) glfwGetFramebufferSize(window, &fb_w, &fb_h);
+#endif
             // (testing: RAC1_GAME_THREAD=2 also in a deterministic headless run with RAC1_PIPELINE=1 - its RAM hashes against =0's)
             overlap = gt && pipeline && have_pend && steps > 0 && running && (!headless || realtime_test || gt_env >= 2) && !host_paused && !menu_open && !exiting &&
                       !boot_active() && !ee_thread_suspended() && fb_w > 0 && fb_h > 0 && !(headless && test_zero_fb(frame)) && pend.level == lw(0x0015ed84);
@@ -3549,7 +3668,11 @@ int main(int argc, char** argv) {
                     s_cache_level = lv;
                 }
             }
+#if defined(__ANDROID__)
+            rac1::android_host::window_size(&fd.w, &fd.h);
+#else
             glfwGetFramebufferSize(window, &fd.w, &fd.h);
+#endif
             if (test_zero_fb(frame)) fd.w = fd.h = 0;  // (testing: RAC1_TEST_ZERO_FB with raw)
             w = fd.w;
             h = fd.h;
@@ -4400,9 +4523,15 @@ int main(int argc, char** argv) {
         // host sleeping until the next game frame is due; a pipelined frame waiting is dropped
         {
             int fb_w = 0, fb_h = 0;
+#if defined(__ANDROID__)
+            if (!headless) rac1::android_host::window_size(&fb_w, &fb_h);
+            const bool zero = (!headless && (fb_w <= 0 || fb_h <= 0 || rac1::android_host::native_window() == nullptr)) ||
+                              (test_zero_fb(frame) && !g_test_zero_fb_raw);
+#else
             if (!headless) glfwGetFramebufferSize(window, &fb_w, &fb_h);
             const bool zero = (!headless && (fb_w <= 0 || fb_h <= 0 || glfwGetWindowAttrib(window, GLFW_ICONIFIED) != 0)) ||
                               (test_zero_fb(frame) && !g_test_zero_fb_raw);
+#endif
             if (zero && !(max_frames != 0 && frame >= max_frames)) {
                 if (overlap) {  // (minimised meanwhile: the game frames on this thread, the pipelined frame dropped)
                     overlap = false;
@@ -4419,6 +4548,9 @@ int main(int argc, char** argv) {
                 continue;
             }
         }
+#if defined(__ANDROID__)
+        std::unique_lock<std::recursive_mutex> android_render_lk(rac1::android_host::render_mutex());
+#endif
         {  // the frame extrapolation asked for (RAC1_EXTRAP=1, or =k pictures a step for testing; in a window the debug menu's Display tab,
            // with the debug tools only: a prototype)
             static const int x_env = std::getenv("RAC1_EXTRAP") != nullptr ? std::atoi(std::getenv("RAC1_EXTRAP")) : -1;
@@ -4796,7 +4928,11 @@ int main(int argc, char** argv) {
             // jitter HostPacer removes: 3 or 5 refreshes of a 240 Hz display for one game frame)
             static const bool pace_game = std::getenv("RAC1_PACE_GAME") == nullptr || std::atoi(std::getenv("RAC1_PACE_GAME")) != 0;
             if (pace_game && !game_held && speed >= 1.0) pace_hz = cap > 0 ? std::min(pace_hz, 60.0 * speed) : 60.0 * speed;
+#if defined(__ANDROID__)
+            static const bool wayland = false;
+#else
             static const bool wayland = glfwGetPlatform() == GLFW_PLATFORM_WAYLAND;
+#endif
             if (pace_hz <= 0.0 && vsync && wayland) pace_hz = host_refresh_hz(window);  // (no swap interval there: the display's rate; the game held, cap Unlimited)
         }
         {
@@ -4838,6 +4974,10 @@ int main(int argc, char** argv) {
     if (!headless || menu_shot) dt::dev_menu_shutdown();
 #endif
     if (rac1::vk::is_active()) {
+#if defined(__ANDROID__)
+        std::lock_guard<std::recursive_mutex> rlk(rac1::android_host::render_mutex());
+        rac1::android_host::set_vulkan_active(false);
+#endif
         g_lazy_shown.pending = false;
         displayed.vk_reset();
         last_shown.vk_reset();
@@ -4846,7 +4986,9 @@ int main(int argc, char** argv) {
         rac1::vk::shutdown();
     }
     rac1::rumble::shutdown();
+#if !defined(__ANDROID__)
     glfwDestroyWindow(window);
+#endif
     if (g_audio_dump != nullptr) std::fclose(g_audio_dump);
     if (g_mirror_test) {  // (testing)
         snd989_mirror_report();
@@ -4854,7 +4996,9 @@ int main(int argc, char** argv) {
     }
     audio_out_stop();
     snd989_iop_stop();
+#if !defined(__ANDROID__)
     glfwTerminate();
+#endif
     std::fflush(stdout);
     if (rac1::vuprof::enabled()) rac1::vuprof::report();  // (testing: RAC1_VU_PROF)
     rac1::vu0::fallback_report();  // (testing: RAC1_VU_FALLBACK)
@@ -4867,5 +5011,9 @@ int main(int argc, char** argv) {
 #if defined(__SANITIZE_ADDRESS__)
     __lsan_do_leak_check();  // (an AddressSanitizer build: std::_Exit skips LeakSanitizer's own check at exit)
 #endif
+#if defined(__ANDROID__)
+    return 0;
+#else
     std::_Exit(0);  // the renderers' static GL objects would be freed after the context is gone
+#endif
 }

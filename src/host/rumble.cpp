@@ -7,7 +7,7 @@
 #include <cmath>
 #include <cstdio>
 
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
@@ -32,7 +32,7 @@ struct State {
     bool hid = false;           // a DualSense driven by its output report (dualsense.h), else the motors below
     bool triggers_held = false; // its triggers' effects set (given back when the setting goes off or the pad changes)
     bool light_held = false;    // its light bar set
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
     int fd = -1;
     int effect = -1;
 #endif
@@ -42,7 +42,7 @@ constexpr int kSteps = 64;
 constexpr auto kRefresh = std::chrono::milliseconds(500);
 constexpr uint16_t kLengthMs = 1000;
 
-#if defined(__linux__)
+#if defined(__linux__) && !defined(__ANDROID__)
 // orig: (host) bit `n` of a bit array
 bool test_bit(const unsigned long* bits, int n) {
     constexpr int kBits = 8 * sizeof(unsigned long);

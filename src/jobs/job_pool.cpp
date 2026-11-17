@@ -31,16 +31,25 @@ struct FloatEnv {
 #ifdef RAC1_JOBS_MXCSR
     unsigned csr = 0;
 #endif
+#if defined(__aarch64__)
+    std::uint64_t fpcr = 0;
+#endif
     void capture() {
         std::fegetenv(&env);
 #ifdef RAC1_JOBS_MXCSR
         csr = _mm_getcsr();
+#endif
+#if defined(__aarch64__)
+        __asm__ volatile("mrs %0, fpcr" : "=r"(fpcr));
 #endif
     }
     void apply() const {
         std::fesetenv(&env);
 #ifdef RAC1_JOBS_MXCSR
         _mm_setcsr(csr);
+#endif
+#if defined(__aarch64__)
+        __asm__ volatile("msr fpcr, %0" ::"r"(fpcr));
 #endif
     }
 };
