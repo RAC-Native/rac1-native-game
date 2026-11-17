@@ -54,7 +54,15 @@ namespace {
 // walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
 // collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
 bool c2b_spr_check(const char* name) {
-    static const char* const kNames[] = {"class1049_rocks", "class1106_charge", "class882_arrival", "class882_landing"};
+    static const char* const kNames[] = {"class1049_rocks", "class1106_charge", "class882_arrival", "class882_landing",
+                                         "class1106_fight", "class1106_pillar", "class1106_rocks", "class1106_wave",
+                                         "class1135_arrival", "class1135_charge", "class1135_fight", "class1135_phase",
+                                         "class1135_scene", "class447_arrival", "particle_41_update",
+                                         "umb_class1106_draw_a_pillar", "umb_class1106_draw_c_arrival",
+                                         "umb_class1106_draw_c_charge", "umb_class1106_draw_c_fight",
+                                         "umb_class1106_draw_c_landing", "umb_class1106_draw_c_phase",
+                                         "umb_class1106_draw_c_pillar", "umb_class1106_draw_c_rocks",
+                                         "umb_class1106_draw_c_scene", "umb_class1106_draw_c_wave"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -260,8 +268,13 @@ void batch_142() {
             return Args{{q}, {}};
         };
         auto port = [p](A a) { p.fn(a.i[0]); return uint64_t{0}; };
-        if (p.own) u2check(p.name, p.addr, 200, Ret::None, gen, port);
-        else check(p.name, p.addr, 200, Ret::None, gen, port);
+        if (p.own) {
+            u2check(p.name, p.addr, 200, Ret::None, gen, port);
+        } else {
+            std::optional<CollisionScratchIgnored> spr_ignored;
+            if (c2b_spr_check(p.name)) spr_ignored.emplace();
+            check(p.name, p.addr, 200, Ret::None, gen, port);
+        }
     }
 
     // ---- on RAM dumps of the headless run (tools/oracle/umbris_tour.sh dumps)

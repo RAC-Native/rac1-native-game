@@ -36,6 +36,21 @@ enum CollHitPart : uint32_t {
 // BridgeScope (the bridge guard counts it as the mirror of a native object, not as a reader or writer of the EE block).
 void coll_hit_mirror(const CollisionHit& hit, uint32_t parts = kHitAll);
 
+// The debug switch RAC1_COLL_JOINTLESS=1 (off by default; a debug tool, not yet in docs/env-vars.md). A moby's primitive
+// record that names joints (types other than 1 and 3) in a set whose joint count is 0 makes a query read its "joint
+// positions" through a pointer that is still the scratchpad: within the query the port gives the same words
+// (CollChunkBufs::spr_word), across queries it cannot (the words a previous query left there are no longer in the
+// scratchpad). No level's data has such a record (task C2c's scan of every class of the 19 levels:
+// orch/w5/c2c/jointless_scan.tsv). With the switch on, the first query after a level change scans the level's class table
+// and prints every such record ("[jointless] scan ..."), and every such read is printed as it happens ("[jointless] read
+// ..."): for the play tests and the tours of later waves.
+// orig: (host) the switch is on
+bool coll_jointless_on();
+// orig: (host) the scan of the loaded level's classes, once per level (called by the queries while the switch is on)
+void coll_jointless_scan_level();
+// orig: (host) a read through such a record, reported (called by the primitive tests while the switch is on)
+void coll_jointless_read(const char* routine, uint32_t m, uint32_t col, int32_t type, int32_t more, uint32_t flags);
+
 namespace collide_detail {
 
 // orig: (host) a hit vector from a contact register's x, y, z and the raw word its w lane stores
@@ -203,6 +218,49 @@ static void coll_tree_chunks(uint32_t tree, const L3& p, float nr2, const int32_
         if (cz == c1[2]) break;
     }
 }
+
+// (C2c) segment_collide's lists, kept as the original lays them out at 0x70003000 .. 0x70003fff: the per-axis crossings at
+// 0x70003000 / 0x70003200 / 0x70003400 (0x200 bytes each, 0x50000000-terminated), the merged (t, packed cell) list at
+// 0x70003800 (t = 1 ends it) that the moby part then compacts in place into grid cells and overwrites with their ends, and
+// the three step bytes at 0x70003ffc. The routine keeps the original's addresses and reads and writes them here, so the
+// lists' overflows behave as the original's: an axis's crossings past its room run into the next axis's list (the image then
+// starts as the scratchpad's words, load_from_spr(), since the merge reads the words it runs into); a merged list past
+// 0x70004000 (more than 253 cells crossed) ran past the scratchpad's end, which the port's memory refused: those writes are
+// dropped and those reads give 0 here. Not initialised otherwise: every word read is written first.
+// A long segment's lists (126 crossings or more: the merged list past 0x70003c00, or the z list past 0x70003600) reach
+// words the original leaves behind for later readers of the scratchpad: for such a segment (`through`, set with
+// load_from_spr) every write also goes to the scratchpad, at the original's moment, so that it is left as the original
+// leaves it. Short segments (all of the games' but a few long probes) never touch the scratchpad here.
+struct SegLists {
+    static constexpr uint32_t kBase = 0x70003000u, kBytes = 0x1000u;
+    uint32_t w[kBytes / 4];
+    bool through = false;
+    uint32_t lw(uint32_t a) const {
+        const uint32_t o = a - kBase;
+        return o < kBytes ? w[o >> 2] : 0u;
+    }
+    void sw(uint32_t a, uint32_t v) {
+        const uint32_t o = a - kBase;
+        if (o < kBytes) {
+            w[o >> 2] = v;
+            if (through) ::rac1::sw(a, v);
+        }
+    }
+    uint32_t lhu(uint32_t a) const { return (lw(a & ~3u) >> ((a & 2u) * 8)) & 0xffffu; }
+    uint32_t lbu(uint32_t a) const { return (lw(a & ~3u) >> ((a & 3u) * 8)) & 0xffu; }
+    void sb(uint32_t a, uint32_t v) {
+        const uint32_t sh = (a & 3u) * 8;
+        sw(a & ~3u, (lw(a & ~3u) & ~(0xffu << sh)) | ((v & 0xffu) << sh));
+    }
+    // orig: (host) the scratchpad's words 0x70003000 .. 0x70003fff, as the original finds them before it writes its lists;
+    // the writes from here on also made there (see above)
+    void load_from_spr() {
+        for (uint32_t i = 0; i < kBytes / 4; ++i) w[i] = lwu(kBase + i * 4);
+        through = true;
+    }
+};
+// orig: (host) a vertex as cl3() reads one from the scratchpad (RAC1_PERF_VU_CLAMP: clamped as it is read)
+[[maybe_unused]] static L3 cl3v(const L3& p) { return g_clamp_once ? L3{vuc(p.x), vuc(p.y), vuc(p.z)} : p; }
 
 }  // namespace collide_detail
 }  // namespace rac1

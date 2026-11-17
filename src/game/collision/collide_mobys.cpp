@@ -11,8 +11,8 @@ namespace {
 // the primitive records of a moby's collision data (0x20 bytes from col + 0x10, enabled unless
 // the bit in moby +0x98 is set, selected by the query's set bit, the last one with +2 < 0):
 // does the sphere (p, r; r2 = r * r) touch one? All in 1024ths, the moby at mp with rows R*, scale sc.
-static bool moby_prims_hit(uint32_t m, uint32_t col, uint32_t flags, uint32_t s0, const L3& p, float r, float r2, const L3& mp,
-                           const L3& R0, const L3& R1, const L3& R2, float sc) {
+static bool moby_prims_hit(uint32_t m, uint32_t col, uint32_t flags, uint32_t s0, bool posed, const L3& p, float r, float r2,
+                           const L3& mp, const L3& R0, const L3& R1, const L3& R2, float sc) {
     if (lwu(col + 4) == 0) return false;
     auto xf = [&](const L3& v) { return madds(madds(madds(muls(R0, v.x), R1, v.y), R2, v.z), mp, 1.0f); };
     const int32_t want = (flags & 4) == 0 ? 2 : 1;
@@ -24,6 +24,7 @@ static bool moby_prims_hit(uint32_t m, uint32_t col, uint32_t flags, uint32_t s0
         more = lh(rec + 2);
         const int32_t type = static_cast<int8_t>(lbu(rec));
         if (off != 0 || (want & more) == 0) continue;
+        if (__builtin_expect(coll_jointless_on(), false) && s0 == 0x70000000u && !posed && type != 1 && type != 3) coll_jointless_read("mobys_in_sphere", m, col, type, more, flags);
         L3 c;
         float w;
         if (type == 1) {  // sphere
@@ -83,6 +84,7 @@ static bool moby_prims_hit(uint32_t m, uint32_t col, uint32_t flags, uint32_t s0
 // orig: 0x001f2868
 int32_t mobys_in_sphere_v(const Vec4& pos, float radius, uint32_t flags, uint32_t ignore, const uint32_t* rec) {
     const SprScope spr_scope(SprScopeId::MobysInSphere);  // (RAC1_BRIDGE_GUARD=spr: the scratchpad's data flow, src/game/bridge/guard.h)
+    if (__builtin_expect(coll_jointless_on(), false)) coll_jointless_scan_level();
     const uint32_t SPR = 0x70000000u, OUTB = OV(0x00173e40), GRID = OV(0x0019b7e0), HITS = OV(0x00177f00);
     const int32_t q0 = lw(OUTB + 0x10);
     if (q0 < 0) return 0;
@@ -108,6 +110,7 @@ int32_t mobys_in_sphere_v(const Vec4& pos, float radius, uint32_t flags, uint32_
     uint32_t a3 = GRID;            // $a3, stored in the cache ring (stale from earlier work)
     const L3 zero{0.0f, 0.0f, 0.0f};
     CollVerts verts{};             // (kept across mobys, as the original's scratchpad words)
+    bool posed = false;            // a moby_pose_matrices of this query ran (the joint positions at 0x70000000 are its)
     uint32_t ci = 0;               // the cell's index in the original's list
     for (uint32_t y = y0;; ++y) {
         for (uint32_t x = x0;; ++x) {
@@ -145,6 +148,7 @@ int32_t mobys_in_sphere_v(const Vec4& pos, float radius, uint32_t flags, uint32_
                         sw(ring + slot * 8 + 4, a3);
                         a3 = moby_pose_matrices(m, static_cast<int32_t>(nj), static_cast<int32_t>(lwu(OUTB + 4) + (slot << 11)), m, coll_grid_cursor(ci));
                         s0 = SPR;
+                        posed = true;
                     }
                 }
                 const L3 mp = muls(l3(m + 0x10), 1024.0f);
@@ -227,7 +231,7 @@ int32_t mobys_in_sphere_v(const Vec4& pos, float radius, uint32_t flags, uint32_
                         hit = true;
                     }
                 }
-                if (!hit) hit = moby_prims_hit(m, col, flags, s0, p, r, r2, mp, R0, R1, R2, sc);
+                if (!hit) hit = moby_prims_hit(m, col, flags, s0, posed, p, r, r2, mp, R0, R1, R2, sc);
                 if (hit) {
                     sw(hits, m);
                     hits += 4;

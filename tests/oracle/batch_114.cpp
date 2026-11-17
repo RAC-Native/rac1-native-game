@@ -55,7 +55,9 @@ namespace {
 // collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
 bool c2b_spr_check(const char* name) {
     static const char* const kNames[] = {"class133", "class133_x", "class1818", "class572", "class623", "class623_x",
-                                         "class625", "class625_x", "class717", "class717_x", "class844", "ril_305898"};
+                                         "class625", "class625_x", "class717", "class717_x", "class844", "ril_305898",
+                                         "class35", "class35_x", "class805", "class918", "class925", "class925_x",
+                                         "ril_303390", "ril_303b08"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;

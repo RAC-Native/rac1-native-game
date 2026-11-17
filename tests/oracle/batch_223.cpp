@@ -69,7 +69,17 @@ bool c2b_spr_check(const char* name) {
                                          "class8_arr60", "class8_c924", "class8_talk924", "class8_town1700",
                                          "class923_arr1000", "class923_arr30", "class923_arr300", "class923_arr60",
                                          "class923_c1395", "class923_c685", "class923_c712", "class923_c851",
-                                         "class923_c924", "class923_talk851", "class923_talk924", "class923_town1700"};
+                                         "class923_c924", "class923_talk851", "class923_talk924", "class923_town1700",
+                                         "class1354_arr1000", "class1354_arr30", "class1354_arr300", "class1354_arr60",
+                                         "class1354_c1395", "class1354_c685", "class1354_c712", "class1354_c924",
+                                         "class1354_talk851", "class1354_talk924", "class1354_town1700",
+                                         "class1400_arr1000", "class1400_arr30", "class1400_arr300", "class1400_arr60",
+                                         "class1400_c1395", "class1400_c685", "class1400_c712", "class1400_c851",
+                                         "class1400_c924", "class1400_talk851", "class1400_talk924", "class1400_town1700",
+                                         "class1818_arr1000", "class1818_arr300", "class1818_c1395", "class1818_c685",
+                                         "class1818_c712", "class1818_c851", "class1818_talk851", "class252_arr30",
+                                         "class252_arr300", "class252_arr60", "class252_c685", "class252_c712",
+                                         "class252_talk924", "class252_town1700"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;

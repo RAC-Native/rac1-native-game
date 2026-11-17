@@ -280,7 +280,8 @@ void batch_340() {
         // only of them (see batch 43's sphere_collide)
         // (0x03's spheres are big enough for the list of cells to pass 0x70003c00, measured: the wide range for it, which also
         // leaves out whatever else its cases write at 0x70003c00 .. 0x70003ff0)
-        static const char* const kC2bSpr[] = {"particle_03_update", "particle_1e_update", "particle_36_update"};
+        static const char* const kC2bSpr[] = {"particle_03_update", "particle_1e_update", "particle_36_update",
+                                               "particle_2a_update"};  // (0x2a: its update reaches segment_collide, task C2c)
         std::optional<CollisionScratchIgnored> spr_ignored;
         for (const char* n : kC2bSpr)
             if (std::strcmp(n, t.name) == 0) spr_ignored.emplace(std::strcmp(t.name, "particle_03_update") == 0);

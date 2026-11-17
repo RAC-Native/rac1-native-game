@@ -56,7 +56,13 @@ namespace {
 // walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
 // collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
 bool c2b_spr_check(const char* name) {
-    static const char* const kNames[] = {"missile848_b1620"};
+    static const char* const kNames[] = {"missile848_b1620", "clank_frame_orxon_atk884", "clank_frame_orxon_atk892",
+                                         "clank_frame_orxon_idle900", "clank_frame_ring_3015", "clank_frame_ring_3815",
+                                         "heli631_m1205", "heli631_m1230", "heli_input_j26", "heli_input_j32",
+                                         "missile848_m1230", "missile848_m1440", "particle31_live_b1765",
+                                         "particle31_live_m1765", "particle31_new_b1606", "particle31_new_b1620",
+                                         "particle31_new_b1765", "particle31_new_m1205", "particle31_new_m1230",
+                                         "particle31_new_m1440", "particle31_new_m1600", "particle31_new_m1765"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -195,6 +201,8 @@ void batch_191() {
         std::printf("  (on %s: %zu live bullets)\n", path.c_str(), qs.size());
         if (!qs.empty()) {
             const std::string nm = "particle31_live_" + base;
+            std::optional<CollisionScratchIgnored> spr_ignored;
+            if (c2b_spr_check(nm.c_str())) spr_ignored.emplace();
             check(nm.c_str(), 0x00271d20, 60, Ret::None, [&d, qs] {
                 b191_load(d);
                 const uint32_t q = qs[static_cast<size_t>(ri(0, static_cast<int>(qs.size()) - 1))];
@@ -205,6 +213,8 @@ void batch_191() {
         }
         // new records: about the hero (into the ground or the air), their frames and velocity varied
         const std::string nm = "particle31_new_" + base;
+        std::optional<CollisionScratchIgnored> spr_ignored;
+        if (c2b_spr_check(nm.c_str())) spr_ignored.emplace();
         check(nm.c_str(), 0x00271d20, 80, Ret::None, [&d] {
             b191_load(d);
             const uint32_t q = alloc_particle(0x31);
@@ -230,6 +240,8 @@ void batch_191() {
             const std::vector<uint8_t>& d = b191_dump(path);
             if (d.empty()) continue;
             const std::string nm = "heli_input_" + b191_base(path);
+            std::optional<CollisionScratchIgnored> spr_ignored;
+            if (c2b_spr_check(nm.c_str())) spr_ignored.emplace();
             check(nm.c_str(), 0x00229b70, 60, Ret::None, [&d] {
                 b191_load(d);
                 const uint32_t P = 0x0013c940;  // (the pad)
@@ -288,11 +300,15 @@ void batch_191() {
                 seed_rand();
             };
             std::string nm = "clank_frame_" + base;
+            {
+            std::optional<CollisionScratchIgnored> spr_ignored;
+            if (c2b_spr_check(nm.c_str())) spr_ignored.emplace();
             check(nm.c_str(), 0x002070d0, 40, Ret::None, [&d, vary] {
                 b191_load(d);
                 vary();
                 return Args{};
             }, [](A) { hero_frame_update(); return uint64_t{0}; }, OV(0x00173e7c));
+            }
             nm = "clank_hurt_" + base;
             check(nm.c_str(), 0x00210ce8, 60, Ret::Int32, [&d, vary] {
                 b191_load(d);

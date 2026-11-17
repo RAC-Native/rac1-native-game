@@ -170,6 +170,10 @@ void batch_65() {
     });
     }
     g_ignored_words = saved_ignored_e;
+    {
+    // (stage 5, task C2c) crate_update reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     for (int pass = 0; pass < 3; ++pass)
     classcheck("crate_update", 0x002cf218, crate_update, [pass](uint32_t m) {
         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -194,6 +198,7 @@ void batch_65() {
         if (ri(0, 4) == 0) w32(0x0013f350 + 0x240, m);
         if (ri(0, 6) == 0) { w32(0x0013f350 + 0x2fc, m); w16(0x0013f350 + 0x30e, coin() ? 0u : 1u); }
     });
+    }
     // the level once the hero holds the wrench (P+0x1090, spawned a few frames in)
     static std::vector<uint8_t> snapw;
     auto levelw = [level1] {
@@ -317,12 +322,17 @@ void batch_65() {
     {
         level();
         const std::vector<uint32_t> crates = mobys_with(OVF(0x002cf218));
+        {
+        // (stage 5, task C2c) crate_settle reaches segment_collide: A2's collision scratch
+        // ranges left out of this check (see batch 43's checks of it)
+        const CollisionScratchIgnored spr_ignored;
         check("crate_settle", 0x002cfcb8, 60, Ret::None, [level, crates] {
             level();
             const uint32_t m = crates[static_cast<size_t>(ri(0, static_cast<int>(crates.size()) - 1))];
             if (ri(0, 3) == 0) wf(m + 0x18, ee_read<float>(m + 0x18) + rf(0, 2));
             return Args{{m}, {}};
         }, [](A a) { crate_settle(a.i[0]); return uint64_t{0}; });
+        }
     }
     check("moby_hit_react", 0x0025a478, 300, Ret::Int32, [level1] {
         level1();
@@ -679,18 +689,32 @@ void batch_65() {
           [](A a) { nanotech_orb_pos_v(a.i[0], ee_ref<Vec4>(a.i[1]), static_cast<int32_t>(a.i[2])); return uint64_t{0}; });
     check("nanotech_orbs_spin", 0x002d8908, 40, Ret::None, [level1, nanomoby] { level1(); nanomoby(); return Args{{}, {}}; },
           [](A) { nanotech_orbs_spin(); return uint64_t{0}; });
+    {
+    // (stage 5, task C2c) nanotech_sees_hero reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("nanotech_sees_hero", 0x002d8980, 60, Ret::Int32, [level1, anymoby] { level1(); return Args{{anymoby()}, {}}; },
           [](A a) { return r32(static_cast<uint32_t>(nanotech_sees_hero(a.i[0]))); });
+    }
+    {
+    // (stage 5, task C2c) nanotech_ground reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("nanotech_ground", 0x002d81b8, 150, Ret::None, [level1, nanomoby] {
         level1(); const uint32_t m = nanomoby(); wf(m + 0x18, ee_read<float>(m + 0x18) + rf(-0.5f, 1.5f));
         return Args{{m}, {}};
     }, [](A a) { nanotech_ground(a.i[0]); return uint64_t{0}; });
+    }
     check("nanotech_glints", 0x002d8418, 60, Ret::None, [level1, nanomoby] { level1(); return Args{{nanomoby()}, {}}; },
           [](A a) { nanotech_glints(a.i[0]); return uint64_t{0}; });
     check("nanotech_trail", 0x002d8510, 100, Ret::Int32, [level1, nanomoby] { level1(); return Args{{nanomoby()}, {}}; },
           [](A a) { return r32(static_cast<uint32_t>(nanotech_trail(a.i[0]))); });
     const std::vector<uint32_t> saved_ignored_n = g_ignored_words;
     for (uint32_t i = 0; i < 8; ++i) g_ignored_words.push_back(OV(0x001e3d2c) + i * 0x10);  // orbit axes' w: the cross product's VU register leftover
+    {
+    // (stage 5, task C2c) nanotech_update reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     for (int pass = 0; pass < 3; ++pass)
     check("nanotech_update", 0x002d89f0, 80, Ret::None, [level1, mobys_with, pass] {
         level1();
@@ -712,13 +736,19 @@ void batch_65() {
         }
         return Args{{m}, {}};
     }, [](A a) { nanotech_update(a.i[0]); return uint64_t{0}; });
+    }
     g_ignored_words = saved_ignored_n;
     check("moby_hit_sparks", 0x0025c398, 60, Ret::None, [level1, colmoby] {
         level1(); const uint32_t m = colmoby(); wfrand(OUT, 4, -0.2f, 0.2f); w8(0x0013e530, R() & 1);
         return Args{{m, OUT, coin() ? 0xffffffffu : R()}, {}};
     }, [](A a) { moby_hit_sparks(a.i[0], ee_ref<Vec4>(a.i[1]), a.i[2]); return uint64_t{0}; });
+    {
+    // (stage 5, task C2c) moby_floor_band reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("moby_floor_band", 0x0025a120, 100, Ret::None, [level1, anymoby] { level1(); const uint32_t m = anymoby(); if (coin()) wf(m + 0x18, rf(0, 20)); return Args{{m}, {}}; },
           [](A a) { moby_floor_band(a.i[0]); return uint64_t{0}; });
+    }
     // class 749 chain
     auto e749 = [mobys_with] { const std::vector<uint32_t> es = mobys_with(OVF(0x002d4610)); return es[static_cast<size_t>(ri(0, static_cast<int>(es.size()) - 1))]; };
     auto anypath = [] { uint32_t i = 0; while (ee_read<uint32_t>(OV(0x001b04b0) + 4 * (i = u(ri(0, 7)))) == 0) {} return i; };
@@ -964,8 +994,13 @@ void batch_65() {
     }, [](A a) { e749_update(a.i[0]); return uint64_t{0}; }, 0x70003718, 0x7000371c);
     }
     g_extra_noop_hooks.clear();
+    {
+    // (stage 5, task C2c) floor_probe_20 reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("floor_probe_20", 0x00259710, 100, Ret::Float, [level1, anymoby] { level1(); ee_ref<Vec4>(OUT) = ee_ref<Vec4>(anymoby() + 0x10); wf(OUT + 8, ee_read<float>(OUT + 8) + rf(-2, 4)); return Args{{OUT}, {}}; },
           [](A a) { return rf32(floor_probe_20(a.i[0])); });
+    }
     check("yaw_turn_damped", 0x00258278, 200, Ret::None, [level1, anymoby] { level1(); const uint32_t m = anymoby(); wf(m + 0x48, rf(-3.1f, 3.1f)); wf(OUT, rf(-0.3f, 0.3f));
         return Args{{m, OUT}, {rf(-3.1f, 3.1f), rf(0, 0.1f), rf(0, 0.5f), coin() ? 0.0f : rf(0, 0.2f)}}; },
           [](A a) { yaw_turn_damped(a.i[0], a.i[1], a.f[0], a.f[1], a.f[2], a.f[3]); return uint64_t{0}; });
@@ -1035,12 +1070,17 @@ void batch_65() {
           [](A a) { return r32(static_cast<uint32_t>(moby_not_crate_or_1f6(a.i[0]))); });
     check("moby_rotate_by", 0x00262480, 60, Ret::None, [level1, anymoby] { level1(); const uint32_t m = anymoby(); wfrand(m + 0x40, 3, -3, 3); return Args{{m}, {rf(-3, 3), rf(-3, 3), rf(-3, 3)}}; },
           [](A a) { moby_rotate_by(a.i[0], a.f[0], a.f[1], a.f[2]); return uint64_t{0}; });
+    {
+    // (stage 5, task C2c) swept_collide reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("swept_collide", 0x00259d08, 60, Ret::Int32, [level1, anymoby] {
         level1();
         const uint32_t hero = ee_read<uint32_t>(0x001413d0);
         for (int k = 0; k < 4; ++k) { Vec4 q = ee_ref<Vec4>(hero + 0x10); q.x += rf(-2, 2); q.y += rf(-2, 2); q.z += rf(-2, 3); ee_ref<Vec4>(OUT + 0x10 * u(k)) = q; }
         return Args{{OUT, OUT + 0x10, OUT + 0x20, OUT + 0x30, coin() ? hero : 0u, 0, u(ri(0, 6))}, {}};
     }, [](A a) { return r32(static_cast<uint32_t>(swept_collide(ee_ref<Vec4>(a.i[0]), ee_ref<Vec4>(a.i[1]), ee_ref<Vec4>(a.i[2]), ee_ref<Vec4>(a.i[3]), a.i[4], nullptr, static_cast<int32_t>(a.i[6])))); });  // (rec 0)
+    }
     check("throw_turn_scale", 0x002a8418, 60, Ret::None, [level1] { level1(); wfrand(OUT, 4, -3, 3); wf(0x0013f3e8, rf(-3, 3)); return Args{{OUT}, {}}; },
           [](A a) { throw_turn_scale(a.i[0]); return uint64_t{0}; });
     check("wrench_follow_anim", 0x002a7c70, 60, Ret::None, [level1, anymoby] {
@@ -1118,6 +1158,10 @@ void batch_65() {
         w32(OV(0x0015f598), R() & 1); w32(0x0015ed98, u(ri(0, 5000))); w32(0x0015ee2c, u(ri(0, 100)));
         return Args{{b}, {}};
     }, [](A a) { bolt_collect(a.i[0]); return uint64_t{0}; });
+    {
+    // (stage 5, task C2c) crate_stack_update reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("crate_stack_update", 0x002d1428, 200, Ret::None, [level1, mobys_with] {
         level1();
         const std::vector<uint32_t> crates = mobys_with(OVF(0x002cf218));
@@ -1149,6 +1193,7 @@ void batch_65() {
         if (coin()) { const uint32_t c = chain[static_cast<size_t>(ri(0, static_cast<int>(chain.size()) - 1))]; wf(0x0013f3d0, ee_read<float>(c + 0x10) + rf(-0.6f, 0.6f)); wf(0x0013f3d4, ee_read<float>(c + 0x14) + rf(-0.6f, 0.6f)); wf(0x0013f3d8, ee_read<float>(c + 0x18) + rf(0, 1.5f)); }
         return Args{{chain[static_cast<size_t>(ri(0, static_cast<int>(chain.size()) - 1))]}, {}};
     }, [](A a) { crate_stack_update(a.i[0]); return uint64_t{0}; });
+    }
     check("crate_shatter", 0x002d09b8, 150, Ret::None, [level1, mobys_with] {
         level1();
         const std::vector<uint32_t> crates = mobys_with(OVF(0x002cf218));

@@ -60,7 +60,9 @@ constexpr uint32_t MOBY_SPAWN_L10 = 0x002412b0;
 bool c2a_spr_check(const char* name) {
     static const char* const kNames[] = {"class794", "class1031", "class1068", "class1199", "mobys_in_sphere", "class1196",
                                          "class1202", "class827", "class857", "p10_class1031", "p10_class1090",
-                                         "p10_class1196", "p10_class1199", "p10_class1202", "p10_class794", "p10_class938"};
+                                         "p10_class1196", "p10_class1199", "p10_class1202", "p10_class794", "p10_class938",
+                                         "class1229", "class1544", "class351", "class737", "class805", "p10_class1229",
+                                         "p10_class1544", "p10_class22", "p10_class351", "p10_class859"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;

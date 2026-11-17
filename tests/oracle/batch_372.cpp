@@ -60,7 +60,9 @@ namespace {
 // walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
 // collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
 bool c2b_spr_check(const char* name) {
-    static const char* const kNames[] = {"class1454_hydro_1050", "class1454_hydro_1650", "class1454_hydro_1750"};
+    static const char* const kNames[] = {"class1454_hydro_1050", "class1454_hydro_1650", "class1454_hydro_1750",
+                                         "hero_frame_swim_1100", "hero_frame_swim_1160", "hero_frame_swim_1200",
+                                         "hero_frame_swim_980"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -125,6 +127,8 @@ void batch_372() {
             if (ri(0, 2) == 0) wf(0x0013f350 + 0x2f0, rf(84.0f, 93.0f));  // (the water height the hero keeps)
             seed_rand();
         };
+        std::optional<CollisionScratchIgnored> spr_ignored;
+        if (c2b_spr_check(nm.c_str())) spr_ignored.emplace();
         check(nm.c_str(), 0x002070d0, 40, Ret::None, [&d, vary] { load372(d); vary(); return Args{}; },
               [](A) { hero_frame_update(); return uint64_t{0}; });
     }

@@ -49,7 +49,18 @@ namespace {
 bool c2b_spr_check(const char* name) {
     static const char* const kNames[] = {"class1023_c1818", "class1023_para2760", "class1023_para2800",
                                          "class1023_para2900", "class1023_para2960", "class1023_para3035",
-                                         "class1023_para3050"};
+                                         "class1023_para3050", "class1023_c452", "class1023_c671", "class1130_arrival1500",
+                                         "class1144_c1135", "class1818_c1135", "class1818_c1629n", "class1818_c1818",
+                                         "class1818_c252", "class1818_c327", "class1818_c452", "class1818_para2760",
+                                         "class1818_para2900", "class1818_para3035", "class1818_rain2800",
+                                         "class1818_slot7_5003", "class1818_slot7_5040", "class1818_vb832",
+                                         "class253_arrival1500", "class253_c1135", "class253_c1629n", "class253_c1649",
+                                         "class253_c1818", "class253_c252", "class253_c327", "class253_c440",
+                                         "class253_c452", "class253_c600", "class253_c671", "class253_para2760",
+                                         "class253_para2800", "class253_para2900", "class253_para2960",
+                                         "class253_para3035", "class253_para3050", "class253_rain2800",
+                                         "class253_slot7_5003", "class253_slot7_5040", "class253_slot7_5150",
+                                         "class253_vb832"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;

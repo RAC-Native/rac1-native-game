@@ -1,6 +1,7 @@
 // The collision module (moved from ovl_1e_1f.cpp unchanged): segment_collide 0x1efc70, the nearest hit of a segment with
 // the level's collision and the mobys, and its cache of the mobys' collision meshes (RAC1_PERF_COLL_MESH).
 #include <game/collision/collide_common.h>
+#include <game/collision/collide_hit.h>
 #include <game/bridge/guard.h>
 #include <cstdio>
 #include <vector>
@@ -43,9 +44,14 @@ MeshCache& mesh_cache() {
 // near the segment, triangles as above, primitives (spheres, joint spheres, vertical cylinders,
 // joint capsules: the entry point). Writes the hit to 0x173e40 as sphere_collide (no pushed-out
 // position) and returns 1; a moby hit flagged 0x4000 also gets a contact record (with `rec`).
+// The original's lists (0x70003000 .. 0x70003fff) are kept in a stack image with the same layout (SegLists: the addresses
+// below are the original's, read and written in the image), its chunk buffers and vertices on the stack as sphere_collide's
+// (stage 5, task C2c); the joint positions moby_pose_matrices leaves at 0x70000000 are still read from the scratchpad, and a
+// long segment's lists (126 cells crossed or more) are also written there, as the original leaves them.
 // orig: 0x001efc70
 int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, uint32_t ignore, const uint32_t* rec) {
     const SprScope spr_scope(SprScopeId::SegmentCollide);  // (RAC1_BRIDGE_GUARD=spr: the scratchpad's data flow, src/game/bridge/guard.h)
+    if (__builtin_expect(coll_jointless_on(), false)) coll_jointless_scan_level();
     const uint32_t SPR = 0x70000000u, OUTB = OV(0x00173e40), GRID = OV(0x0019b7e0);
     const int32_t q0 = lw(OUTB + 0x10);
     const L3 s0f = L3{start.x, start.y, start.z}, e0f = L3{end.x, end.y, end.z};
@@ -80,18 +86,31 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
     const uint32_t c0[3] = {static_cast<uint32_t>(is[0]) >> 12, static_cast<uint32_t>(is[1]) >> 12, static_cast<uint32_t>(is[2]) >> 12};
     const uint32_t c1[3] = {static_cast<uint32_t>(ie[0]) >> 12, static_cast<uint32_t>(ie[1]) >> 12, static_cast<uint32_t>(ie[2]) >> 12};
     uint32_t cellw = (c0[0] & 0xff) | (c0[1] & 0xff) << 8 | (c0[2] & 0xff) << 16;
-    sw(SPR + 0x3800, 0);
-    sw(SPR + 0x3804, cellw);
+    SegLists img;            // 0x70003000 .. 0x70003fff
+    CollChunkBufs bufs{};    // 0x70000000 / 0x70001000
+    CollVerts verts{};       // 0x70002000 (kept across chunks and mobys, as the original's scratchpad words)
+    // an axis with more crossings than its 0x200 bytes of room (127 and the terminator: a segment over 508 units along it)
+    // ran into the next list in the original, and the merge then read the words there, the posing's at 0x70003600 ..
+    // among them: the image starts as the scratchpad's words then, so that the same words are read. With 126 crossings
+    // or more in all (which that includes) the lists reach past 0x70003600 / 0x70003c00, words the original leaves in the
+    // scratchpad: the image's writes then go there too (SegLists::through)
+    uint32_t crossings = 0;
+    for (uint32_t ax = 0; ax < 3; ++ax) crossings += static_cast<uint32_t>(std::abs(static_cast<int32_t>(c1[ax]) - static_cast<int32_t>(c0[ax])));
+    const bool long_segment = crossings >= 126;
+    if (long_segment) img.load_from_spr();
+    img.sw(SPR + 0x3800, 0);
+    img.sw(SPR + 0x3804, cellw);
     if ((flags & 1) == 0) {
         const uint32_t chunk = coll_tree_cell(tree, static_cast<int32_t>(c0[0] & 0xffff), static_cast<int32_t>(c0[1]), static_cast<int32_t>(c0[2]));
-        sd(SPR, 0);
-        if (chunk != 0) spr_dma_to(0, (chunk >> 8) + tree, chunk & 0xff);
+        bufs.clear_head(0);
+        if (chunk != 0) bufs.fetch(0, (chunk >> 8) + tree, chunk & 0xff);
     }
     uint32_t list = SPR + 0x3800;
     if (c0[0] != c1[0] || c0[1] != c1[1] || c0[2] != c1[2]) {
         // crossings per axis: the t of each cell boundary passed, clamped to [0, 1]
         int32_t total = 0;
         const float sv[3] = {seg.x, seg.y, seg.z}, st[3] = {ps.x, ps.y, ps.z};
+        if (!long_segment) img.sw(SPR + 0x3ffc, 0);  // (the step bytes' word: its fourth byte is never written nor read)
         for (uint32_t ax = 0; ax < 3; ++ax) {
             const float q = qdiv(1.0f, sv[ax]);
             int32_t a = static_cast<int32_t>(c0[ax]), b = static_cast<int32_t>(c1[ax]), d = 1;
@@ -108,63 +127,67 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
                     ++total;
                     int32_t tb = static_cast<int32_t>(fbits(t));
                     tb = std::max(std::min(tb, 0x3f800000), 0);
-                    sw(out, static_cast<uint32_t>(tb));
+                    img.sw(out, static_cast<uint32_t>(tb));
                     out += 4;
                     if (a == b) break;
                 }
             }
-            sw(out, 0x50000000u);
-            sb(SPR + 0x3ffc + ax, static_cast<uint32_t>(d));
+            img.sw(out, 0x50000000u);
+            img.sb(SPR + 0x3ffc + ax, static_cast<uint32_t>(d));
         }
         // merged, nearest first: each step moves the packed cell along its axis
-        const uint32_t dx = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int8_t>(lbu(SPR + 0x3ffc))));
-        const uint32_t dy = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int8_t>(lbu(SPR + 0x3ffd)))) << 8;
-        const uint32_t dz = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int8_t>(lbu(SPR + 0x3ffe)))) << 16;
+        const uint32_t dx = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int8_t>(img.lbu(SPR + 0x3ffc))));
+        const uint32_t dy = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int8_t>(img.lbu(SPR + 0x3ffd)))) << 8;
+        const uint32_t dz = static_cast<uint32_t>(static_cast<int32_t>(static_cast<int8_t>(img.lbu(SPR + 0x3ffe)))) << 16;
         uint32_t px = SPR + 0x3000, py = SPR + 0x3200, pz = SPR + 0x3400;
         for (; total > 0; --total) {
-            const int32_t tx = lw(px), ty = lw(py), tz = lw(pz);
+            const int32_t tx = static_cast<int32_t>(img.lw(px)), ty = static_cast<int32_t>(img.lw(py)), tz = static_cast<int32_t>(img.lw(pz));
             list += 8;
             if (ty - tx < 0) {
                 if (tz - ty < 0) {
-                    sw(list, static_cast<uint32_t>(tz));
+                    img.sw(list, static_cast<uint32_t>(tz));
                     cellw += dz;
                     pz += 4;
                 } else {
-                    sw(list, static_cast<uint32_t>(ty));
+                    img.sw(list, static_cast<uint32_t>(ty));
                     cellw += dy;
                     py += 4;
                 }
             } else if (tz - tx < 0) {
-                sw(list, static_cast<uint32_t>(tz));
+                img.sw(list, static_cast<uint32_t>(tz));
                 cellw += dz;
                 pz += 4;
             } else {
-                sw(list, static_cast<uint32_t>(tx));
+                img.sw(list, static_cast<uint32_t>(tx));
                 cellw += dx;
                 px += 4;
             }
-            sw(list + 4, cellw);
+            img.sw(list + 4, cellw);
         }
     } else {
         // one cell: nothing to do when the end points coincide
         const int32_t d0 = is[0] - ie[0], d1 = is[1] - ie[1], d2 = is[2] - ie[2];
         if ((static_cast<uint64_t>(static_cast<uint32_t>(d0 | d1)) | (static_cast<uint64_t>(static_cast<uint32_t>(d1 | d2)) << 32)) == 0) return 0;
     }
-    sd(list + 8, 0x3f800000u);
-    // triangles [tri, tend) over SPR + 0x2000 (relative to org; the segment relative: a, b)
-    auto tri_scan = [&](uint32_t tri, uint32_t tend, const L3& a, const L3& b, const L3& org, uint32_t obj) {
+    img.sw(list + 8, 0x3f800000u);  // (sd: t = 1, cell 0)
+    img.sw(list + 0xc, 0);
+    if (!long_segment) img.sw(list + 0x10, 0);  // (the level's look-ahead reads the word past the terminator and drops it: defined in the stack image; when long_segment loaded the scratchpad, w[] is already defined and the original does not write +0x10)
+    // triangles [tri, tend) (tri_word(t): the word of bytes a, b, c, flags) over `verts` (relative to org; the segment
+    // relative: a, b)
+    auto tri_scan = [&](uint32_t tri, uint32_t tend, auto&& tri_word, const L3& a, const L3& b, const L3& org, uint32_t obj) {
         for (; tri != tend;) {
-            const uint32_t a0 = SPR + 0x2000 + static_cast<uint32_t>(lbu(tri)) * 16;
-            const uint32_t a1 = SPR + 0x2000 + static_cast<uint32_t>(lbu(tri + 1)) * 16;
-            const uint32_t a2 = SPR + 0x2000 + static_cast<uint32_t>(lbu(tri + 2)) * 16;
-            const uint32_t tf = lbu(tri + 3);
+            const uint32_t tw = tri_word(tri);
+            const CollVerts::Vert& c0 = verts[tw & 0xff];
+            const CollVerts::Vert& c1 = verts[(tw >> 8) & 0xff];
+            const CollVerts::Vert& c2 = verts[(tw >> 16) & 0xff];
+            const uint32_t tf = tw >> 24;
             tri += 4;
-            if ((lwu(a0 + 0xc) & lwu(a1 + 0xc) & lwu(a2 + 0xc)) != 0) continue;
+            if ((c0.oc & c1.oc & c2.oc) != 0) continue;
             if ((flags & 0x80 & tf) != 0) continue;
             // (RAC1_PERF_VU_CLAMP: the vertices clamped once as they are read; seg, a, b, best are VU results, org a cell's integer
             // coordinates: every operand below clean)
-            const L3 v1 = cl3(a0);
-            const L3 e2 = csub3(cl3(a1), v1), e3 = csub3(cl3(a2), v1);
+            const L3 v1 = cl3v(c0.p);
+            const L3 e2 = csub3(cl3v(c1.p), v1), e3 = csub3(cl3v(c2.p), v1);
             if ((flags & 0x20) != 0 && (((flags >> 8) ^ tf) & 0x1f) == 0) continue;
             const L3 n = copm(e3, e2);
             const float sn = chsum(cmul3(seg, n));
@@ -189,20 +212,20 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
         }
     };
     if ((flags & 1) == 0) {
-        uint32_t buf = SPR + 0x1000;
+        uint32_t buf = 1;  // the entry's chunk buffer (0x70000000 + buf * 0x1000 in the original): the first entry's is 0
         for (uint32_t e = SPR + 0x3800;; e += 8) {
-            const uint32_t t = lwu(e), tnext = lwu(e + 8), cw = lwu(e + 4);
+            const uint32_t t = img.lw(e), tnext = img.lw(e + 8), cw = img.lw(e + 4);
             if (t == 0x3f800000u) break;
             if (s6 != 0 && !(static_cast<int64_t>(static_cast<uint64_t>(fbits(best)) << 32) - static_cast<int64_t>(static_cast<uint64_t>(t) << 32) > 0)) break;
-            const uint32_t ncw = lwu(e + 0xc);
-            buf ^= 0x1000;
+            const uint32_t ncw = img.lw(e + 0xc);
+            buf ^= 1;
             if (tnext != 0x3f800000u) {
                 const uint32_t chunk = coll_tree_cell(tree, static_cast<int32_t>(ncw & 0xff), static_cast<int32_t>((ncw >> 8) & 0xff), static_cast<int32_t>(ncw >> 16));
-                const uint32_t other = buf ^ 0x1000;
-                sd(other, 0);
-                if (chunk != 0) spr_dma_to(other - SPR, (chunk >> 8) + tree, chunk & 0xff);
+                const uint32_t other = buf ^ 1;
+                bufs.clear_head(other);
+                if (chunk != 0) bufs.fetch(other, (chunk >> 8) + tree, chunk & 0xff);
             }
-            const uint32_t nv = lbu(buf + 2);
+            const uint32_t nv = bufs.byte(buf, 2);
             const L3 pin = madds(muls(seg, u2f(t)), ps, 1.0f), pout = madds(muls(seg, u2f(tnext)), ps, 1.0f);
             if (nv == 0) continue;
             const int32_t ci[3] = {static_cast<int32_t>(((cw & 0xff) << 12) + 0x800), static_cast<int32_t>((((cw >> 8) & 0xff) << 12) + 0x800), static_cast<int32_t>((((cw >> 16) & 0xff) << 12) + 0x800)};
@@ -215,33 +238,15 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
                 bhi[k] = h16(std::max(ri[k], ro[k]) + 1);
             }
             const L3 a = sub3(ps, org), b = sub3(pe, org);
-            uint32_t src = buf + 4, dst = SPR + 0x1fe0;
-            for (int32_t left = static_cast<int32_t>(nv); left > 0; left -= 2) {
-                dst += 0x20;
-                for (uint32_t hh = 0; hh < 2; ++hh, src += 4) {
-                    const uint32_t pv = lwu(src);
-                    const int16_t c[3] = {h16(static_cast<int32_t>((pv & 0x3ff) << 6)), h16(static_cast<int32_t>(((pv >> 10) & 0x3ff) << 6)), h16(static_cast<int32_t>((pv >> 20) << 4))};
-                    uint32_t oc = 0;
-                    for (uint32_t k = 0; k < 3; ++k) {
-                        if ((static_cast<uint16_t>(c[k] - blo[k]) & 0x8000u) != 0) oc |= 1u << (k * 8);
-                        if ((static_cast<uint16_t>(bhi[k] - c[k]) & 0x8000u) != 0) oc |= 2u << (k * 8);
-                    }
-                    const L3 vf = L3{static_cast<float>(c[0]), static_cast<float>(c[1]), static_cast<float>(c[2])};
-                    sq3(dst + hh * 0x10, vf, oc);
-                }
-            }
-            const uint32_t t0 = buf + 4 + nv * 4;
-            const uint32_t tend = t0 + static_cast<uint32_t>(lbu(buf)) * 4;
-            tri_scan(t0, tend, a, b, org, tree);
-            const uint32_t nq = lbu(buf + 3);
+            coll_chunk_vertices(bufs, buf, blo, bhi, verts);
+            auto word = [&bufs, buf](uint32_t tt) { return bufs.word(buf, tt); };
+            const uint32_t t0 = 4 + nv * 4;
+            const uint32_t tend = t0 + bufs.byte(buf, 0) * 4;
+            tri_scan(t0, tend, word, a, b, org, tree);
+            const uint32_t nq = bufs.byte(buf, 3);
             if (nq == 0) continue;
-            for (uint32_t i = 0; i < nq; ++i) {
-                const uint32_t tt = t0 + i * 4;
-                const uint32_t c = lbu(tt + 2), x = lbu(tend + i);
-                sb(tt + 1, c);
-                sb(tt + 2, x);
-            }
-            tri_scan(t0, t0 + nq * 4, a, b, org, tree);
+            coll_chunk_quads(bufs, buf, t0, tend, nq);
+            tri_scan(t0, t0 + nq * 4, word, a, b, org, tree);
         }
     }
     // the mobys: grid cells (16 units) along the segment, from the cells list
@@ -253,28 +258,33 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
             const uint32_t x = (cw & 0xff) >> 2, y = ((cw >> 8) & 0xff) >> 2;
             return x | y << 16;
         };
-        uint32_t cur = gcell(lhu(SPR + 0x3804));
-        sw(SPR + 0x3800, cur);
+        uint32_t cur = gcell(img.lhu(SPR + 0x3804));
+        img.sw(SPR + 0x3800, cur);
         uint32_t out = SPR + 0x3804;
-        for (uint32_t e = SPR + 0x3808; lwu(e) != 0x3f800000u; e += 8) {
-            const uint32_t g = gcell(lhu(e + 4));
+        for (uint32_t e = SPR + 0x3808; img.lw(e) != 0x3f800000u; e += 8) {
+            const uint32_t g = gcell(img.lhu(e + 4));
             if (g == cur) continue;
-            sw(out, g);
+            img.sw(out, g);
             cur = g;
             out += 4;
         }
-        sw(out, 0xffffffffu);
+        img.sw(out, 0xffffffffu);
     }
     const L3 sdir = muls(seg, inv2);   // vf21
     const uint32_t mobys = lwu(OV(0x00166c00u - 0x6c28));
     uint32_t s0 = SPR;
+    // the joint positions a primitive record reads through s0: while s0 is still the scratchpad and no moby_pose_matrices of
+    // this query ran (a moby without joints in the selected set), the original reads the chunk buffers' words there
+    bool posed = false;
+    auto jword = [&](uint32_t a) { return !posed ? bufs.spr_word(a) : lwu(a); };
+    auto jl3 = [&](uint32_t a) { return L3{u2f(jword(a)), u2f(jword(a + 4)), u2f(jword(a + 8))}; };
     for (uint32_t ce = SPR + 0x3800;; ce += 4) {
-        const uint32_t gv = lwu(ce);
+        const uint32_t gv = img.lw(ce);
         if (static_cast<int32_t>(gv) < 0) break;
         const uint32_t c = GRID + (gv >> 8) + ((gv & 0xffff) << 2);
         uint32_t id = (static_cast<uint32_t>(lhu(c)) << 5) + GRID + 0x4000;
         const uint32_t cend = id + static_cast<uint32_t>(static_cast<int32_t>(static_cast<int8_t>(lbu(c + 2))) * 2);
-        sw(ce, cend);
+        img.sw(ce, cend);
         for (; id != cend; id += 2) {
             const uint32_t m = (static_cast<uint32_t>(lhu(id)) << 8) + mobys;
             if (m == ignore) continue;
@@ -315,6 +325,7 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
                     sw(ring + slot * 8 + 4, query);
                     moby_pose_matrices(m, static_cast<int32_t>(nj), static_cast<int32_t>(lwu(OUTB + 4) + (slot << 11)), m, ce);
                     s0 = SPR;
+                    posed = true;
                 }
             }
             const L3 mp = muls(l3(m + 0x10), 1024.0f);
@@ -326,7 +337,6 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
                 const L3 vlo = L3{fminv(a.x, b.x), fminv(a.y, b.y), fminv(a.z, b.z)};
                 const L3 vhi = L3{fmaxv(a.x, b.x), fmaxv(a.y, b.y), fmaxv(a.z, b.z)};
                 const uint32_t vbase = col + lwu(col + 4) + 0x10;
-                uint32_t dst = SPR + 0x1fe0;
                 int32_t k = 0;
                 const uint32_t nb = (vbytes + 0xf) & ~0xfu;   // the bytes the loop below reads (vbytes as a count > 0)
                 const MeshCacheEntry* ce = nullptr;
@@ -358,7 +368,6 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
                 }
                 if (ce != nullptr) {
                     for (uint32_t i = 0; i < nb / 8; ++i) {
-                        if ((i & 1) == 0) dst += 0x20;
                         const L3& w = ce->w[i];
                         const L3 bl = sub3(w, vlo), ab = sub3(vhi, w);
                         uint32_t oc = 0;
@@ -368,11 +377,10 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
                         if (neg(ab.y)) oc |= 2u << 8;
                         if (neg(bl.z)) oc |= 1u << 16;
                         if (neg(ab.z)) oc |= 2u << 16;
-                        sq3(dst + (i & 1) * 0x10, w, oc);
+                        verts.put(i, w, oc);
                     }
                 } else
                 for (int32_t left = static_cast<int32_t>(vbytes); left > 0; left -= 0x10, ++k) {
-                    dst += 0x20;
                     for (uint32_t hh = 0; hh < 2; ++hh) {
                         const uint32_t va = vbase + static_cast<uint32_t>(k) * 0x10 + hh * 8;
                         const L3 v = L3{static_cast<float>(lh(va)), static_cast<float>(lh(va + 2)), static_cast<float>(lh(va + 4))};
@@ -385,11 +393,11 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
                         if (neg(ab.y)) oc |= 2u << 8;
                         if (neg(bl.z)) oc |= 1u << 16;
                         if (neg(ab.z)) oc |= 2u << 16;
-                        sq3(dst + hh * 0x10, w, oc);
+                        verts.put(static_cast<uint32_t>(k) * 2 + hh, w, oc);
                     }
                 }
                 const uint32_t t0 = vbase + vbytes;
-                tri_scan(t0, t0 + lwu(col + 8), a, b, mp, m);
+                tri_scan(t0, t0 + lwu(col + 8), coll_tri_word_ee, a, b, mp, m);
             }
             if ((flags & 2) != 0 || lwu(col + 4) == 0) continue;
             auto rot = [&](const L3& v) { return madds(madds(muls(R0, v.x), R1, v.y), R2, v.z); };
@@ -402,6 +410,7 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
                 more = lh(pr + 2);
                 const int32_t type = static_cast<int8_t>(lbu(pr));
                 if (off != 0 || (want & more) == 0) continue;
+                if (__builtin_expect(coll_jointless_on(), false) && s0 == SPR && !posed && type != 1 && type != 3) coll_jointless_read("segment_collide", m, col, type, more, flags);
                 L3 pc;
                 float pw;
                 if (type == 1) {
@@ -409,7 +418,7 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
                     pw = qmul(lwc1(pr + 0x1c), sc);
                 } else if (type == 2) {
                     const uint32_t j = s0 + (lwu(pr + 4) << 4);
-                    pc = add3(rot(muls(add3(l3(j), l3(pr + 0x10)), sc)), mp);
+                    pc = add3(rot(muls(add3(jl3(j), l3(pr + 0x10)), sc)), mp);
                     pw = qmul(lwc1(pr + 0xc), sc);
                 } else if (type == 3) {
                     // vertical cylinder: the segment's entry (in xy) clamps the centre's height
@@ -440,8 +449,8 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
                     pc.z = fminv(fmaxv(pc.z, ent.z), top);
                 } else {
                     // capsule between two joints: its axis point nearest to the segment's entry
-                    const L3 a = rot(muls(l3(s0 + (static_cast<uint32_t>(lh(pr + 4)) << 4)), sc));
-                    L3 ax = sub3(rot(muls(l3(s0 + (static_cast<uint32_t>(lh(pr + 6)) << 4)), sc)), a);
+                    const L3 a = rot(muls(jl3(s0 + (static_cast<uint32_t>(lh(pr + 4)) << 4)), sc));
+                    L3 ax = sub3(rot(muls(jl3(s0 + (static_cast<uint32_t>(lh(pr + 6)) << 4)), sc)), a);
                     pw = qmul(lwc1(pr + 0xc), sc);
                     const float rr2 = qmul(qadd(0.0f, pw), qadd(0.0f, pw));
                     const L3 wa = add3(a, mp);
@@ -519,13 +528,15 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
     v27 = muls(v27, k);
     v28 = muls(v28, k);
     v29 = muls(v29, k);
-    sq3(OUTB + 0x20, v25, 0);
-    sq3(OUTB + 0x40, v26, 0);
-    sq3(OUTB + 0x50, v27, 0);
-    sq3(OUTB + 0x60, v28, 0);
-    sq3(OUTB + 0x70, v29, 0);
-    sw(OUTB + 0x18, s5);
-    sw(OUTB + 0x1c, s6);
+    CollisionHit out{};
+    out.moby = s5;
+    out.flags = s6;
+    out.point = hit_vec(v25, 0);
+    out.normal = hit_vec(v26, 0);
+    out.tri[0] = hit_vec(v27, 0);
+    out.tri[1] = hit_vec(v28, 0);
+    out.tri[2] = hit_vec(v29, 0);
+    coll_hit_mirror(out, kHitMoby | kHitFlags | kHitPoint | kHitNormal | kHitTri);  // (+0x30 as it was: segment_collide leaves it)
     g_vu = VuContact{v25, v26, v27, v28, v29};
     if (s5 == 0 || rec == nullptr || (lhu(s5 + 0x34) & 0x4000) == 0) return 1;
     const uint32_t next = lwu(OUTB + 0x14);

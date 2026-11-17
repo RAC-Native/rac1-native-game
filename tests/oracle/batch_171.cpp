@@ -96,6 +96,8 @@ void batch_171() {
             }
             return Args{{p}, {}};
         };
+        // (stage 5, task C2c) particle_28_update reaches segment_collide: A2's collision scratch ranges left out of this check
+        const CollisionScratchIgnored spr_ignored;
         check(name.c_str(), 0x0026ff10, 60, Ret::None, gen, [](A a) { if (a.i[0] != 0) particle_28_update(a.i[0]); return uint64_t{0}; });
     }
     g_ignored_words = saved_ignored;

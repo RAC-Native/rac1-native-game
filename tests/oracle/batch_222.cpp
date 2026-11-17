@@ -73,7 +73,16 @@ bool c2b_spr_check(const char* name) {
                                          "class63_boss6500", "class63_land200", "class63_land400", "class63_land60",
                                          "class69_boss2000", "class69_boss2800", "class69_boss3500", "class69_boss4000",
                                          "class69_boss5000", "class69_boss6500", "class69_land200", "class69_land400",
-                                         "class69_land60", "class82_boss3500", "class82_boss5000", "class82_boss6500"};
+                                         "class69_land60", "class82_boss3500", "class82_boss5000", "class82_boss6500",
+                                         "class1135_boss2800", "class1135_boss3500", "class1135_boss5000",
+                                         "class1135_land60", "class1233_boss2000", "class1233_boss4000",
+                                         "class1233_land200", "class1233_land400", "class1233_land60",
+                                         "class1353_boss2800", "class1353_boss4000", "class1353_boss6500",
+                                         "class1353_land200", "class1353_land400", "class1353_land60",
+                                         "class1885_boss2800", "class1885_boss3500", "class1885_boss4000",
+                                         "class1885_boss5000", "class1885_boss6500", "class388_boss3500",
+                                         "class388_boss4000", "class388_boss5000", "class388_boss6500",
+                                         "class447_boss2000"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;

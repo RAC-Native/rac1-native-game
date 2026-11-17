@@ -60,6 +60,7 @@
 #include <game/ovl/veldin_orbit_mobys.h>
 #include <game/ovl/shared_gadget_pickups.h>
 
+#include <optional>
 #include <csetjmp>
 #include <csignal>
 #include <cmath>
@@ -70,6 +71,16 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach segment_collide, whose crossing lists, chunk buffers and vertices the port keeps on
+// the host stack (the original: 0x70003000 .. 0x70003fff, 0x70000000 .., 0x70002000): A2's collision scratch ranges
+// are left out of these checks, and only of them (stage 5, task C2c).
+bool c2c_spr_check(const char* name) {
+    static const char* const kNames[] = {"gold_bolt1134_l17"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // A check whose original is level `lvl`'s own function at `laddr` (not a Veldin address to translate).
 void lcheck(int lvl, const char* name, uint32_t laddr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
     if (g_only_batch != 0 && g_only_batch != g_batch) return;
@@ -80,6 +91,8 @@ void lcheck(int lvl, const char* name, uint32_t laddr, int n, Ret ret, const std
         return;
     }
     std::printf("%-26s L%d:0x%08x\n", name, lvl, laddr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2c_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, laddr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
 }
 // a RAM dump of a headless run (32 MB + the scratchpad), empty when the file is missing

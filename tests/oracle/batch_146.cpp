@@ -90,6 +90,10 @@ void batch_146() {
         return 0u;
     };
     // the hero a little off / on the pad (its collision is ~0.9 x 1.7: the hero at its edge stands on the floor around it)
+    {
+    // (stage 5, task C2c) hero_ground_update reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_ground_update", 0x002127b8, 20, Ret::None, [load] {
         load(0);
         constexpr uint32_t P = g::PLAYER;
@@ -97,6 +101,7 @@ void batch_146() {
         wf(P + 0x88, ee_read<float>(P + 0x88) + rf(-0.05f, 0.5f));
         return Args{};
     }, [](A) { hero_ground_update(); return uint64_t{0}; });
+    }
     // the pad's update: on the pad (state 1) or in the puzzle, the buttons held / pressed (0x13cae0 / 0x13cae4) varied
     lvcheck("trespasser_pad_update", upd, 60, Ret::None, [load, pad] {
         load(ri(0, 3) == 0 ? 0 : 1);

@@ -29,6 +29,7 @@
 #include <game/ovl/helmet_tr.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/weapons.h>
+#include <cstring>
 #include <exception>
 #include <set>
 #include <game/ovl/metal_obj.h>
@@ -64,6 +65,17 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach segment_collide, whose crossing lists, chunk buffers and vertices the port keeps on
+// the host stack (the original: 0x70003000 .. 0x70003fff, 0x70000000 .., 0x70002000): A2's collision scratch ranges
+// are left out of these checks, and only of them (stage 5, task C2c).
+bool c2c_spr_check(const char* name) {
+    static const char* const kNames[] = {"decoy_update", "devastator_update", "morph_update", "ryno_update",
+                                         "visibomb_update"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // A check whose original is Novalis's own function at `l1addr` (not a Veldin address to translate).
 void l1check(const char* name, uint32_t l1addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
     if (g_only_batch != 0 && g_only_batch != g_batch) return;
@@ -74,6 +86,8 @@ void l1check(const char* name, uint32_t l1addr, int n, Ret ret, const std::funct
         return;
     }
     std::printf("%-26s L1:0x%08x\n", name, l1addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2c_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, l1addr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
 }
 // The screen (640 x 448, as the game's), the projection and the view set up, and the packet cursor on a buffer of the test
@@ -381,6 +395,10 @@ void batch_106() {
         if (ri(0, 8) == 0) w32(OV(0x0015f5c4), 2);
         return Args{{m}, {}};
     }, [](A a) { doom_agent_draw(a.i[0]); return uint64_t{0}; });
+    {
+    // (stage 5, task C2c) doom_agent_step reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("doom_agent_step", 0x002c8440, 1500, Ret::Int32, [doom_world, doom_agent, pick] {
         doom_world();
         const uint32_t a = doom_agent(pick({1u, 2u, 2u, 3u}), true);
@@ -388,6 +406,7 @@ void batch_106() {
         seed_rand();
         return Args{{ee_read<uint32_t>(a + 0x78), a, pick({0u, 1u, 2u})}, {}};
     }, [](A a) { return r32(a.i[0] != 0 ? u(doom_agent_step(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]))) : 0u); });
+    }
     {
     // (stage 5, task C2b) doom_agent_update reaches sphere_collide / capsule_collide: A2's collision scratch
     // ranges left out of this check (see batch 43's checks of it)
@@ -596,6 +615,10 @@ void batch_106() {
         wfrand(OUT, 3, -3.0f, 3.0f);
         return Args{{a, b, OUT}, {}};
     }, [](A a) { if (a.i[0] != 0) suck_2d9fd0(a.i[0], a.i[1], a.i[2]); return uint64_t{0}; });
+    {
+    // (stage 5, task C2c) suck_2ddf60 reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("suck_2ddf60", 0x002ddf60, 800, Ret::None, [suck_world, suck_hand, near_hero, pick] {
         suck_world();
         const uint32_t m = suck_hand(pick({1u, 2u, 3u, 4u}));
@@ -608,6 +631,11 @@ void batch_106() {
         seed_rand();
         return Args{{m, OUT}, {}};
     }, [](A a) { if (a.i[0] != 0) suck_2ddf60(a.i[0], a.i[1]); return uint64_t{0}; });
+    }
+    {
+    // (stage 5, task C2c) suck_2da360 reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("suck_2da360", 0x002da360, 800, Ret::None, [suck_world, suck_hand, pick] {
         suck_world();
         const uint32_t m = suck_hand(pick({1u, 2u, 3u, 4u}));
@@ -615,6 +643,11 @@ void batch_106() {
         seed_rand();
         return Args{{m, ee_read<uint32_t>(m + 0x78)}, {}};
     }, [](A a) { if (a.i[0] != 0) suck_2da360(a.i[0], a.i[1]); return uint64_t{0}; });
+    }
+    {
+    // (stage 5, task C2c) suck_cannon_update reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("suck_cannon_update", 0x002da790, 3000, Ret::None, [suck_world, suck_hand, pick] {
         suck_world();
         const uint32_t m = suck_hand(pick({0u, 1u, 2u, 2u, 3u, 3u, 4u, 4u, 5u, 6u}));
@@ -622,6 +655,7 @@ void batch_106() {
         seed_rand();
         return Args{{m}, {}};
     }, [](A a) { if (a.i[0] != 0) suck_cannon_update(a.i[0]); return uint64_t{0}; });
+    }
     // (stage 3d) the paths the checks above seldom reach: the capture of a carried moby by 0x2da058 (its record in state 2,
     // the gold cannon's ten slots), the release hook 0x2da1e0, the beam's particle stream (0x2ddf60 spawning and moving
     // particles, 0x2df048 letting them go, 0x2dd8e8 drawing the rings), the pickups the beam pulls in (0x2df1e0), and the
@@ -689,11 +723,16 @@ void batch_106() {
         if (ri(0, 2) == 0) { near_hero(OUT, 1.0f, 0.0f, 1.5f); }
         return m;
     };
+    {
+    // (stage 5, task C2c) suck_2ddf60/stream reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("suck_2ddf60/stream", 0x002ddf60, 600, Ret::None, [suck_beam] {
         const uint32_t m = suck_beam(true);
         seed_rand();
         return Args{{m, OUT}, {}};
     }, [](A a) { if (a.i[0] != 0) suck_2ddf60(a.i[0], a.i[1]); return uint64_t{0}; });
+    }
     check("suck_2df048", 0x002df048, 300, Ret::None, [suck_beam] {
         const uint32_t m = suck_beam(false);
         seed_rand();
@@ -721,6 +760,10 @@ void batch_106() {
         seed_rand();
         return Args{{o}, {}};
     }, [](A a) { if (a.i[0] != 0) suck_2df1e0(a.i[0]); return uint64_t{0}; });
+    {
+    // (stage 5, task C2c) suck_cannon_update/tail reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("suck_cannon_update/tail", 0x002da790, 1000, Ret::None, [suck_world, suck_hand, pick] {
         suck_world();
         const uint32_t m = suck_hand(pick({1u, 2u, 3u, 4u, 4u, 5u, 6u}));
@@ -733,6 +776,7 @@ void batch_106() {
         seed_rand();
         return Args{{m}, {}};
     }, [](A a) { if (a.i[0] != 0) suck_cannon_update(a.i[0]); return uint64_t{0}; });
+    }
     // the hooks of the classes that use the carry machinery (a moby of the class, the hand as owner)
     auto hook_moby = [suck_world, suck_hand, pick, near_hero, rec_of, fill_rec, spawn_carried](uint32_t cls) -> uint32_t {
         suck_world();
@@ -837,6 +881,8 @@ void batch_106() {
                 if (a.i[0] == 0) return uint64_t{0};
                 return r32(u(hook_port(fn, slot, a.i[0], a.i[1], a.i[2], a.f[0])));
             };
+            std::optional<CollisionScratchIgnored> spr_ignored;
+            if (c2c_spr_check(name)) spr_ignored.emplace();
             if (!check_fn(name, fn, 300, Ret::Int32, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
         }
     }
@@ -895,8 +941,13 @@ void batch_106() {
         if (ee_read<uint8_t>(OV(0x00197bc0) + 0xd1) == 0xff) a.i[0] = 0;
         return a;
     }, [](A a) { return r32(a.i[0] != 0 ? swingshot_spawn_grapple(a.i[0], a.f[0]) : 0u); });
+    {
+    // (stage 5, task C2c) swingshot_update reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("swingshot_update", 0x002c6158, 2500, Ret::None, [weapon_gen, swing_extra] { return weapon_gen(0x0c, 0, u(ri(0, 2)), 16, swing_extra)(); },
           [](A a) { if (a.i[0] != 0) swingshot_update(a.i[0]); return uint64_t{0}; });
+    }
     // the swing as the hero's code drives it: the check above left the glove's states 2 .. 14 to random hero states, so
     // the swing itself (state 5, the hero in 0x25 / 0x26), the hook's arrival at its target (2 -> 3), the reel-in to a versa
     // target (hero state 0x2c: 0 -> 9 -> 0xb -> 0xc -> 0xd -> 0xe) and the rope's damping to its end never ran. Here: every state
@@ -952,8 +1003,13 @@ void batch_106() {
         wf(pv + 0x1c, rf(0.5f, 2.0f));
         wf(pv + 0x20, ri(0, 2) == 0 ? rf(0.15f, 0.2f) : rf(0.0f, 0.4f));
     };
+    {
+    // (stage 5, task C2c) swingshot_update/swing reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("swingshot_update/swing", 0x002c6158, 2000, Ret::None, [weapon_gen, swing_states] { return weapon_gen(0x0c, 0, u(ri(0, 2)), 0, swing_states)(); },
           [](A a) { if (a.i[0] != 0) swingshot_update(a.i[0]); return uint64_t{0}; });
+    }
 
     // --- the other hands: each on the engine's own state with the item in hand (idle / fire pressed / fire held)
     struct HandT { const char* name; uint32_t item; uint32_t addr; uint32_t nstates; void (*fn)(uint32_t); };
@@ -1123,8 +1179,13 @@ void batch_106() {
             if (rpv != 0) w32(rpv + 0x18, t[0]);
         }
     };
+    {
+    // (stage 5, task C2c) devastator_update/aim reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("devastator_update/aim", 0x002b2100, 2000, Ret::None, [weapon_gen, dev_aim] { return weapon_gen(0x0b, 0, u(ri(0, 2)), 0, dev_aim)(); },
           [](A a) { if (a.i[0] != 0) devastator_update(a.i[0]); return uint64_t{0}; });
+    }
     // the counters of the weapons' statistics 0x141680 / 0x141848 (+0x58 .. the item's): the play time 0x15eea4 past the
     // recorded minutes in some cases (the minutes' update), a use count at its cap 0xffff in others
     auto stats_vary = [](uint32_t base, uint32_t off) {
@@ -1167,11 +1228,16 @@ void batch_106() {
         w8(m + 0x53, u(ri(0, 3)));
         stats_vary(0x00141680, 0x68);
     };
+    {
+    // (stage 5, task C2c) visibomb_update/fire reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("visibomb_update/fire", 0x002b3058, 1200, Ret::None, [weapon_gen, visi_fire] {
         Args a = weapon_gen(0x0d, 0, u(ri(0, 2)), 0, visi_fire)();
         if (a.i[0] != 0 && ri(0, 3) == 0) w32(P + 0x2084, 1u);
         return a;
     }, [](A a) { if (a.i[0] != 0) visibomb_update(a.i[0]); return uint64_t{0}; });
+    }
     // the Tesla Claw (item 0x13): the fire button held, the hand's state 1 .. 5, the beam's cooldown +0x2c over, ammo,
     // its light slot +0x30, its two targets +0x20 / +0x38 kind-5 mobys of the level about the hero's facing +0x98 (in reach, out of
     // its angle 0x40060903, past 20, gone), their hold counters +0x28 / +0x2a at their ends, the gold reach 0x13e533, the hero's
@@ -1239,8 +1305,13 @@ void batch_106() {
         if (ri(0, 6) == 0) w32(pv + 0x50, 0u);
         stats_vary(0x00141680, 0xc8);
     };
+    {
+    // (stage 5, task C2c) decoy_update/throw reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("decoy_update/throw", 0x002d2670, 1200, Ret::None, [weapon_gen, decoy_fire] { return weapon_gen(0x19, 0, u(ri(0, 2)), 0, decoy_fire)(); },
           [](A a) { if (a.i[0] != 0) decoy_update(a.i[0]); return uint64_t{0}; });
+    }
     // the Morph-o-Ray (item 0x15): the fire button held in the movements that allow it, the hand's animation ready, a
     // kind-5 moby of the level in the ray (the hero's facing, the scope's camera, the strafe), its lock +0x10 / +0x44 at its ends,
     // its morph meter +0x18 / +0x14 near empty (the morph itself, 0x2c9348), the gold drain 0x13e535, the item put away
@@ -1274,8 +1345,13 @@ void batch_106() {
             w8(0x0013e550 + slot * 0x70 + 0x74, coin() ? 1u : 0u);
         }
     };
+    {
+    // (stage 5, task C2c) morph_update/fire reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("morph_update/fire", 0x002bc7e8, 1500, Ret::None, [weapon_gen, morph_fire] { return weapon_gen(0x15, 0, u(ri(0, 2)), 0, morph_fire)(); },
           [](A a) { if (a.i[0] != 0) morph_update(a.i[0]); return uint64_t{0}; });
+    }
     // the R.Y.N.O. (item 0x17): every state, the targets of its search (kind-5 mobys of the level before the camera's look
     // 0x166dd0 and about the hand), the target +0 live or gone, its timer +8 and the lock's +0x10 at their ends, the burst's step
     // +6 over, the shots +4 at 6, the target's health +0x14 about 1 (the next target, the history +0x18 .. of 7 slots +0x12), the
@@ -1320,8 +1396,13 @@ void batch_106() {
             wf(pv + 0x14, rf(0.0f, 1.0f));
         }
     };
+    {
+    // (stage 5, task C2c) ryno_update/fire reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("ryno_update/fire", 0x002cc608, 1500, Ret::None, [weapon_gen, ryno_fire] { return weapon_gen(0x17, 0, u(ri(0, 2)), 0, ryno_fire)(); },
           [](A a) { if (a.i[0] != 0) ryno_update(a.i[0]); return uint64_t{0}; });
+    }
     // the Metal Detector's scan held (the button 0x20 down past +0x10b0 = 0xf) over its find (metal_extra's, nearer: the dig
     // and its bolts), and its three sounds +0 / +4 / +0xc playing on a channel of the sound table 0x13e550 (+0x88 the hand,
     // +0x74 on): their stops, which no case reached (the hand's slots held -1)
@@ -1375,7 +1456,7 @@ void batch_106() {
         // mobys_in_sphere before it, in the original) into the unused records of the joints past the last
         // (0x70001be0 .. 0x70001bef in case 17: nothing else differs, the captured key frame in RAM is the same).
         std::optional<CollisionScratchIgnored> spr_ignored;
-        if (item == 0x13) spr_ignored.emplace();
+        if (item == 0x13 || c2c_spr_check(h.name)) spr_ignored.emplace();
         check(h.name, h.addr, 1500, Ret::None, [weapon_gen, item, ns, extra] { return weapon_gen(item, 0, u(ri(0, 2)), ns, extra)(); },
               [fn](A a) { if (std::getenv("ASM_TRACE") != nullptr) std::printf("  [port call] seed %08x\n", ee_read<uint32_t>(ee_read<uint32_t>(0x0012f76c) + 0x58)); if (a.i[0] != 0) fn(a.i[0]); if (std::getenv("ASM_TRACE") != nullptr) std::printf("  [port end]\n"); return uint64_t{0}; });
     }

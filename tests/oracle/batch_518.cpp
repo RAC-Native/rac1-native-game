@@ -62,7 +62,8 @@ namespace {
 // walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
 // collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
 bool c2b_spr_check(const char* name) {
-    static const char* const kNames[] = {"class1068_update", "class857_update"};
+    static const char* const kNames[] = {"class1068_update", "class857_update", "class1068_beam_run",
+                                         "class1068_beam_start", "class1068_think", "class857_assign"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -790,10 +791,28 @@ void class857_checks() {
             const std::vector<uint32_t> sp = gadgebot_spots(m);
             if (!sp.empty()) spot_state(m, pick(sp));
         }
-        // its animation (class 857 has six animation sets 0..5; slot 6 is null and makes moby_pose_matrices_masked read stale
-        // scratchpad words at 0x70002000 + n * 16), its frame (the strike's 12 .. 15), the flags
+        // its animation (class 857 has six animation sets 0..5; clamping +0x50/+0x51 to the set's frame count and updating
+        // +0x68/+0x6c keeps moby_anim_step and moby_pose_matrices_masked off null keyframe slots), its frame, the flags
+        auto ensure_anim_ptrs = [](uint32_t mb) {
+            const uint32_t cls = ee_read<uint32_t>(mb + 0x24);
+            if (cls - 0x00100000u >= 0x01f00000u) return;
+            struct Slot { uint32_t slot_off, frm_off, ptr_off; };
+            for (const Slot& k : {Slot{0x52u, 0x50u, 0x68u}, Slot{0x53u, 0x51u, 0x6cu}}) {
+                const uint8_t s = ee_read<uint8_t>(mb + k.slot_off);
+                if (s >= 0x80) continue;
+                const uint32_t set = ee_read<uint32_t>(cls + 0x48 + 4u * s);
+                if (set - 0x00100000u >= 0x01f00000u) continue;
+                const uint8_t nf = ee_read<uint8_t>(set + 0x10);
+                if (nf == 0) continue;
+                uint8_t f = ee_read<uint8_t>(mb + k.frm_off);
+                if (f >= nf) { f %= nf; w8(mb + k.frm_off, f); }
+                const uint32_t kf = ee_read<uint32_t>(set + 0x1c + 4u * f);
+                if (kf - 0x00100000u < 0x01f00000u) w32(mb + k.ptr_off, kf);
+            }
+        };
         w8(m + 0x53, u(ri(0, 5)));
         w8(m + 0x52, coin() ? ee_read<uint8_t>(m + 0x53) : u(ri(0, 5)));
+        ensure_anim_ptrs(m);
         if (coin()) {
             wf(m + 0x54, 0.0f);
             const uint32_t cur = ee_read<uint8_t>(m + 0x52) == 0xff ? ee_read<uint32_t>(m + 0x6c) : ee_read<uint32_t>(m + 0x68);
@@ -802,6 +821,7 @@ void class857_checks() {
         if (st == 5 && ri(0, 2) != 0) {  // (striking: its animation 2, its frames 12 .. 15 often)
             w8(m + 0x53, 2);
             w8(m + 0x52, 2);
+            ensure_anim_ptrs(m);
             wf(m + 0x54, 0.0f);
             const uint32_t cur = ee_read<uint32_t>(m + 0x68);
             if (cur >= 0x00100000u && cur < 0x02000000u) w16(cur + 4, u(ri(184, 248)));

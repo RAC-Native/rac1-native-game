@@ -76,7 +76,8 @@ constexpr uint32_t MOBY_SPAWN_LV = 0x00249f10;
 // vertices and cell walk the port keeps on the host stack too.)
 bool c2a_spr_check(const char* name) {
     static const char* const kNames[] = {"class52", "class281", "class541", "class1401", "class1445", "mobys_in_sphere",
-                                         "class638", "hero_move_mode"};
+                                         "class638", "hero_move_mode", "class1135", "class1455", "class1475", "class470",
+                                         "class49", "class50", "class805", "class933"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;

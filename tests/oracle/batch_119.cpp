@@ -55,7 +55,10 @@ namespace {
 bool c2b_spr_check(const char* name) {
     static const char* const kNames[] = {"class1059", "class1106", "class1110", "class1112", "p71_class1049",
                                          "p71_class882", "p71b_class1059_a", "p71b_class1059_b", "p71b_class1059_c",
-                                         "p71b_f30eee8", "p71b_f30f0f8", "p71b_f30f308", "p71b_f30f4d0"};
+                                         "p71b_f30eee8", "p71b_f30f0f8", "p71b_f30f308", "p71b_f30f4d0", "class1134",
+                                         "class1135", "class436", "class737", "class805", "class871", "p71_class1041",
+                                         "p71_class436", "p71_class871", "p71_class880", "p71b_class1059_setup",
+                                         "p71b_f30ebc8", "p71b_f30ed30"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;

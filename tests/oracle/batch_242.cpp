@@ -32,6 +32,7 @@
 #include <cstring>
 #include <filesystem>
 #include <map>
+#include <optional>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -39,6 +40,17 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach segment_collide, whose crossing lists, chunk buffers and vertices the port keeps on
+// the host stack (the original: 0x70003000 .. 0x70003fff, 0x70000000 .., 0x70002000): A2's collision scratch ranges
+// are left out of these checks, and only of them (stage 5, task C2c).
+bool c2c_spr_check(const char* name) {
+    static const char* const kNames[] = {"frame_gclank_3500_L15", "frame_gclank_4500_L15", "frame_gclank_6000_L15",
+                                         "input_gclank_3500_L15", "state_gclank_4500_L15"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 const std::vector<uint8_t>& b242_dump(const std::string& path) {
     static std::map<std::string, std::vector<uint8_t>> cache;
     std::vector<uint8_t>& d = cache[path];
@@ -70,6 +82,8 @@ std::vector<std::string> b242_files(const char* prefix) {
 void l16check(const char* name, uint32_t laddr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
     if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
     std::printf("%-26s L16:0x%08x\n", name, laddr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2c_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, laddr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
 }
 }  // namespace
@@ -129,17 +143,33 @@ void batch_242() {
             seed_rand();
         };
         std::string nm = "frame_" + base;
+        {
+        std::optional<CollisionScratchIgnored> spr_ignored;
+        if (c2c_spr_check(nm.c_str())) spr_ignored.emplace();
         check(nm.c_str(), 0x002070d0, 40, Ret::None, [&d, vary] { b242_load(d); vary(); return Args{}; },
               [](A) { hero_frame_update(); return uint64_t{0}; });
+        }
         nm = "state_" + base;
+        {
+        std::optional<CollisionScratchIgnored> spr_ignored;
+        if (c2c_spr_check(nm.c_str())) spr_ignored.emplace();
         check(nm.c_str(), 0x00217970, 40, Ret::None, [&d, vary] { b242_load(d); vary(); return Args{}; },
               [](A) { hero_state_update(); return uint64_t{0}; });
+        }
         nm = "input_" + base;
+        {
+        std::optional<CollisionScratchIgnored> spr_ignored;
+        if (c2c_spr_check(nm.c_str())) spr_ignored.emplace();
         check(nm.c_str(), 0x00229b70, 40, Ret::None, [&d, vary] { b242_load(d); vary(); return Args{}; },
               [](A) { hero_input_update(); return uint64_t{0}; });
+        }
         nm = "hurt_" + base;
+        {
+        std::optional<CollisionScratchIgnored> spr_ignored;
+        if (c2c_spr_check(nm.c_str())) spr_ignored.emplace();
         check(nm.c_str(), 0x00210ce8, 40, Ret::Int32, [&d, vary] { b242_load(d); vary(); return Args{{u(ri(0, 3))}, {}}; },
               [](A a) { return ri32(hero_hurt(static_cast<int32_t>(a.i[0]))); });
+        }
         if (g_oracle_level != 16) continue;
         // Kalebo III's hero callbacks (the hoverboard's draws and updates, installed by its hero_set_state: L16:0x2351f8 .. 0x238e20, as
         // Rilgar's): a0 = the hero's moby, the display packet cursor given a real buffer

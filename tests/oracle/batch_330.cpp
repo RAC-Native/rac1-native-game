@@ -83,6 +83,9 @@ void batch_330() {
         if (g_oracle_level != 12) { skip_check(dm.name, 0x002070d0, "Hoven's dumps: ORACLE_LEVEL=12"); continue; }
         const std::vector<uint8_t>& d = dump330(dump_path(dm.file));
         if (d.empty()) { skip_check(dm.name, 0x002070d0, "no RAM dump (see the header)"); continue; }
+        // (stage 5, task C2c) hero_frame_update and segment_collide keep their collision lists, buffers and vertices on the stack:
+        // A2's collision scratch ranges left out of these two checks (not of hydro_update below)
+        const CollisionScratchIgnored spr_ignored;
         // the hero's frame as recorded (only the frame counter and the seed varied: the pad as the run had it)
         std::string nm = std::string("frame_") + dm.name;
         check(nm.c_str(), 0x002070d0, 8, Ret::None, [&d] {

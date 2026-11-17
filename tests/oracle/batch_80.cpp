@@ -286,8 +286,13 @@ void batch_80() {
     };
     check("cutscene_camera", 0x00298de8, 40, Ret::Int32, [running] { running(); return Args{}; },
           [](A) { return ri32(cutscene_camera()); });
+    {
+    // (stage 5, task C2c) cutscene_update reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("cutscene_update", 0x00298f90, 60, Ret::None, [running] { running(); return Args{}; },
           [](A) { cutscene_update(); return uint64_t{0}; });
+    }
     {
     // (stage 5, task C2b) cutscene_end reaches sphere_collide / capsule_collide: A2's collision scratch
     // ranges left out of this check (see batch 43's checks of it)

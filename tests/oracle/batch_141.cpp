@@ -30,6 +30,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/vendor_tr.h>
 
+#include <optional>
 #include <cmath>
 #include <cstring>
 #include <map>
@@ -38,6 +39,16 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach segment_collide, whose crossing lists, chunk buffers and vertices the port keeps on
+// the host stack (the original: 0x70003000 .. 0x70003fff, 0x70000000 .., 0x70002000): A2's collision scratch ranges
+// are left out of these checks, and only of them (stage 5, task C2c).
+bool c2c_spr_check(const char* name) {
+    static const char* const kNames[] = {"gold_bolt1134_states"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // A check whose original is Blarg's own function at `l6addr`.
 void b6check(const char* name, uint32_t l6addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
     if (g_only_batch != 0 && g_only_batch != g_batch) return;
@@ -48,6 +59,8 @@ void b6check(const char* name, uint32_t l6addr, int n, Ret ret, const std::funct
         return;
     }
     std::printf("%-26s L6:0x%08x\n", name, l6addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2c_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, l6addr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
 }
 // the point at `p` put about the camera, until the port's screen test (0x2002e0) sees it with radius r (as batch 140's); w = 1

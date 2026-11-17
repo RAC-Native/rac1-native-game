@@ -16,8 +16,9 @@ namespace rac1::oracle {
 // a pointer still at the scratchpad: the words a collision query left there. Within one query those are its own chunk
 // buffers' (CollChunkBufs::spr_word gives them: batch 43's single-query checks keep such records and prove it); in a check
 // that makes several queries (the hero's) they are the query before's, which the port no longer leaves in the scratchpad.
-// No class data does that: a probe of the nine tours found no such record read (2026-11-14). Called wherever the
-// generators set the counts.
+// No class data does that: task C2c's scan of every class of the 19 levels' class tables found none (333 primitive records naming
+// joints, none in a set without joints: orch/w5/c2c/jointless_scan.tsv, RAC1_COLL_JOINTLESS=1), and a probe of the nine tours
+// read none (2026-11-14). Called wherever the generators set the counts.
 static bool g_strip_jointless = false;
 static void strip_jointless_sets(uint32_t col) {
     if (!g_strip_jointless) return;
@@ -4312,6 +4313,12 @@ void batches_unit() {
        OV(0x00173e7c));  // w of the pushed-out position: vf2.w, stale from earlier VU0 code when this call loads no vf2
     }
 
+    {
+    // (stage 5, task C2c) segment_collide keeps its lists (0x70003000 .. 0x70003fff), chunk buffers and vertices on the
+    // stack: A2's collision scratch ranges are left out of this check. They also hide what moby_pose_matrices writes inside
+    // them for a posed moby: the joint positions at 0x70000000 .., read back by the primitive tests, so a wrong one still
+    // shows in the hit.
+    const CollisionScratchIgnored spr_ignored;
     check("segment_collide", 0x001efc70, N * 48, Ret::Int32, [collenv, treeenv, poseM] {
         const int k = collenv();
         uint32_t m = T4 + 0x100 * u(ri(0, k - 1));
@@ -4400,10 +4407,15 @@ void batches_unit() {
         const uint32_t fl = (ri(0, 3) ? 0u : 1u) | (ri(0, 3) ? 0u : 2u) | (ri(0, 1) ? 4u : 0u) | (ri(0, 5) ? 0u : 8u) | (ri(0, 2) ? 0u : 0x10u) | (ri(0, 2) ? 0u : 0x20u) | (ri(0, 2) ? 0u : 0x80u) | (u(ri(0, 0x1f)) << 8);
         return Args{{OUT, OUT + 0x10, fl, ri(0, 3) ? 0u : m, ri(0, 1) ? OUT + 0x40 : 0u}, {}};
     }, [](A a) { return ri32(segment_collide(a.i[0], a.i[1], a.i[2], a.i[3], a.i[4])); });
+    }
 
     // ======== batch 44
     g_batch = 44;
     g_strip_jointless = true;  // (see strip_jointless_sets)
+    {
+    // (stage 5, task C2c) floor_probe reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("floor_probe", 0x00259698, N * 32, Ret::Float, [collenv, treeenv] {
         const int k = collenv();
         const uint32_t m = T4 + 0x100 * u(ri(0, k - 1));
@@ -4418,6 +4430,7 @@ void batches_unit() {
         const uint32_t fl = (ri(0, 3) ? 0u : 1u) | (ri(0, 1) ? 4u : 0u) | (ri(0, 5) ? 0u : 8u) | (ri(0, 2) ? 0u : 0x10u) | (ri(0, 2) ? 0u : 0x20u) | (u(ri(0, 0x1f)) << 8);
         return Args{{OUT, fl}, {up}};
     }, [](A a) { return rf32(floor_probe(a.f[0], a.i[0], a.i[1])); });
+    }
 
     {
     // (stage 5, task C2b) moby_sphere_contact reaches sphere_collide: A2's collision scratch ranges left out of this check (see
@@ -4442,6 +4455,10 @@ void batches_unit() {
         wf(g::PLAYER + 0x00, c); wf(g::PLAYER + 0x04, s); wf(g::PLAYER + 0x10, -s); wf(g::PLAYER + 0x14, c); wf(g::PLAYER + 0x28, 1.0f);
         wf(g::PLAYER + 0x80, x); wf(g::PLAYER + 0x84, y); wf(g::PLAYER + 0x88, z); wf(g::PLAYER + 0x8c, 1.0f);
     };
+    {
+    // (stage 5, task C2c) hero_wall_probe reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_wall_probe", 0x0020a240, N * 32, Ret::Int32, [collenv, treeenv, heroAt] {
         const int k = collenv();
         const uint32_t m = T4 + 0x100 * u(ri(0, k - 1));
@@ -4456,6 +4473,7 @@ void batches_unit() {
         wf(OUT + 0x20, rf(-9, 9));
         return Args{{ri(0, 3) ? OUT + 0x20 : 0u}, {rf(-1, 3), rf(0, 4)}};
     }, [](A a) { return ri32(hero_wall_probe(a.i[0], a.f[0], a.f[1])); });
+    }
 
     // a point on one of moby m's triangles or (after treeenv) of a level chunk near it; false if none
     auto aimTri = [](uint32_t m, std::array<float, 3>& tgt) {
@@ -4504,6 +4522,10 @@ void batches_unit() {
         }
         return aim;
     };
+    {
+    // (stage 5, task C2c) hero_floor_ahead reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_floor_ahead", 0x00229910, N * 32, Ret::Int32, [collenv, treeenv, heroAt, aimTri] {
         const int k = collenv();
         const uint32_t m = T4 + 0x100 * u(ri(0, k - 1));
@@ -4529,7 +4551,12 @@ void batches_unit() {
         }
         return Args{{}, {}};
     }, [](A) { return ri32(hero_floor_ahead()); });
+    }
 
+    {
+    // (stage 5, task C2c) hero_edge_brake reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_edge_brake", 0x00217118, N * 32, Ret::None, [collenv, treeenv, heroAt, aimTri] {
         const int k = collenv();
         const uint32_t m = T4 + 0x100 * u(ri(0, k - 1));
@@ -4567,6 +4594,7 @@ void batches_unit() {
         }
         return Args{{}, {kk, minl}};
     }, [](A a) { hero_edge_brake(a.f[0], a.f[1]); return uint64_t{0}; });
+    }
 
     // grid mobys (collenv) chained from *(0x15ffe4) through +0x28, some of class cls, with pvars;
     // the hero stands near one of them
@@ -4603,10 +4631,20 @@ void batches_unit() {
         if (ri(0, 1)) { wf(OV(0x00166c80) + 0x140, px + rf(-5, 5)); wf(OV(0x00166c80) + 0x144, py + rf(-5, 5)); wf(OV(0x00166c80) + 0x148, pz + rf(-1, 3)); }
         treeenv(px, py, pz);
     };
+    {
+    // (stage 5, task C2c) hero_pick_target_323 reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_pick_target_323", 0x00221ee0, N * 48, Ret::None, [pickenv] { pickenv(0x323); return Args{}; },
           [](A) { hero_pick_target_323(); return uint64_t{0}; });
+    }
+    {
+    // (stage 5, task C2c) hero_pick_target_2f6 reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_pick_target_2f6", 0x00222158, N * 48, Ret::Int32, [pickenv] { pickenv(0x2f6); return Args{}; },
           [](A) { return ri32(hero_pick_target_2f6()); });
+    }
 
     check("hero_footstep/sound", 0x00205f60, N * 4, Ret::None, [sndenv] {
         sndenv(); w32(0x0015ed84, u(ri(0, 3))); for (int i = 0; i < 4; ++i) w8(OV(0x001bd820) + i, u(ri(0, 2)));
@@ -4614,6 +4652,10 @@ void batches_unit() {
         w32(g::PLAYER + 0x10e0, ri(0, 2) ? M3 : 0u); w16(M3 + 0xa6, ri(0, 1) ? 0xadu : 0xacu);
         return Args{{u(ri(0, 1)), u(ri(0, 1)), u(ri(0, 1))}, {}};
     }, [](A a) { hero_footstep(static_cast<int32_t>(a.i[0]), a.i[1], static_cast<int32_t>(a.i[2])); return uint64_t{0}; });
+    {
+    // (stage 5, task C2c) hero_footstep/print reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_footstep/print", 0x00205f60, N * 16, Ret::None, [collenv, treeenv, chainenv, particles] {
         collenv();
         chainenv(0x18);
@@ -4625,7 +4667,12 @@ void batches_unit() {
         treeenv(x, y, std::max(z - 2, 0.5f));
         return Args{{R(), u(ri(0, 1)), 0}, {}};
     }, [](A a) { hero_footstep(static_cast<int32_t>(a.i[0]), a.i[1], static_cast<int32_t>(a.i[2])); return uint64_t{0}; });
+    }
 
+    {
+    // (stage 5, task C2c) hero_wall_lean reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_wall_lean", 0x0020a318, N * 32, Ret::None, [collenv, treeenv, heroAt] {
         const int k = collenv();
         const uint32_t m = T4 + 0x100 * u(ri(0, k - 1));
@@ -4645,7 +4692,12 @@ void batches_unit() {
         wrand(g::FX_PARAMS + 0x690, 2); wrand(g::FX_PARAMS + 0x6d0, 3); w16(g::PLAYER + 0x22c8, R());
         return Args{};
     }, [](A) { hero_wall_lean(); return uint64_t{0}; });
+    }
 
+    {
+    // (stage 5, task C2c) hero_idle_event_pick reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_idle_event_pick", 0x00229010, N * 16, Ret::Int32, [collenv, treeenv] {
         const int k = collenv();
         seed_rand();
@@ -4667,6 +4719,7 @@ void batches_unit() {
         w32(OUT, R());
         return Args{{OUT}, {}};
     }, [](A a) { return ri32(hero_idle_event_pick(hp<int32_t>(a.i[0]))); });
+    }
 
     // moby list over the grid mobys, some targetable; OUT = a point near moby m, OUT+0x10 = a
     // direction towards it; returns m
@@ -4701,11 +4754,20 @@ void batches_unit() {
         wrand(OUT + 0x20, 3);
         return m;
     };
+    {
+    // (stage 5, task C2c) auto_aim_target reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("auto_aim_target", 0x002630c8, N * 32, Ret::Int32, [aimenv] {
         const uint32_t m = aimenv();
         return Args{{ri(0, 2) ? 0u : m, OUT, OUT + 0x10, OUT + 0x20, OUT + 0x24, OUT + 0x28}, {rf(0.02f, 0.8f)}};
     }, [](A a) { return ri32(static_cast<int32_t>(auto_aim_target(a.i[0], a.i[1], a.i[2], a.i[3], a.i[4], a.i[5], a.f[0]))); });
+    }
 
+    {
+    // (stage 5, task C2c) hero_wall_slide reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_wall_slide", 0x00212318, N * 32, Ret::None, [collenv, treeenv, heroAt, aimTri] {
         constexpr uint32_t P = g::PLAYER;
         const int k = collenv();
@@ -4728,7 +4790,12 @@ void batches_unit() {
         }
         return Args{{u(ri(0, 3) == 0)}, {}};
     }, [](A a) { hero_wall_slide(static_cast<int32_t>(a.i[0])); return uint64_t{0}; });
+    }
 
+    {
+    // (stage 5, task C2c) hero_shadow_update reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_shadow_update", 0x00208b60, N * 32, Ret::None, [collenv, treeenv] {
         constexpr uint32_t P = g::PLAYER;
         const int k = collenv();
@@ -4748,6 +4815,7 @@ void batches_unit() {
         treeenv(x, y, std::max(z - 2, 0.5f));
         return Args{};
     }, [](A) { hero_shadow_update(); return uint64_t{0}; });
+    }
 
     auto pushenv = [collenv, treeenv, heroAt, aimTri] {
         constexpr uint32_t P = g::PLAYER;
@@ -4815,6 +4883,10 @@ void batches_unit() {
         return Args{};
     }, [](A) { hero_footsteps_update(); return uint64_t{0}; });
 
+    {
+    // (stage 5, task C2c) spawn_projectile_100 reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("spawn_projectile_100", 0x002a96f8, N * 16, Ret::Int32, [aimenv, spawnenv] {
         const uint32_t m = aimenv();
         if (1000.0f < ee_read<float>(OUT) || 1000.0f < ee_read<float>(OUT + 4)) { wf(OUT, rf(40, 100)); wf(OUT + 4, rf(40, 100)); wf(OUT + 8, rf(20, 40)); }  // no moby in the grid
@@ -4828,7 +4900,12 @@ void batches_unit() {
         wf(OUT + 0x40, ee_read<float>(OUT) + rf(-2, 2)); wf(OUT + 0x44, ee_read<float>(OUT + 4) + rf(-2, 2)); wf(OUT + 0x48, ee_read<float>(OUT + 8) + rf(-1, 1)); wf(OUT + 0x4c, 1.0f);
         return Args{{OUT + 0x30, OUT, ri(0, 2) ? 0u : m}, {rf(-3, 3), rf(-1, 1), rf(0, 2), ry, rx}};
     }, [](A a) { return r32(spawn_projectile_100(a.i[0], a.i[1], a.i[2], a.f[0], a.f[1], a.f[2], a.f[3], a.f[4])); });
+    }
 
+    {
+    // (stage 5, task C2c) hero_fall_time reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_fall_time", 0x00232b90, N * 32, Ret::Float, [collenv, treeenv, heroAt, aimTri] {
         constexpr uint32_t P = g::PLAYER;
         const int k = collenv();
@@ -4846,7 +4923,12 @@ void batches_unit() {
         const float h = ri(0, 1) ? rf(-1, -0.01f) : z - rf(-1, 3);
         return Args{{}, {rf(1, 60), rf(0.003f, 0.05f), h}};
     }, [](A a) { return rf32(hero_fall_time(a.f[0], a.f[1], a.f[2])); });
+    }
 
+    {
+    // (stage 5, task C2c) hero_look_at_update reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_look_at_update", 0x0020ac98, N * 32, Ret::None, [collenv, treeenv, heroAt] {
         constexpr uint32_t P = g::PLAYER;
         const int k = collenv();
@@ -4880,6 +4962,7 @@ void batches_unit() {
         wrand(g::FX_PARAMS + 0x1c0, 4); wrand(g::FX_PARAMS + 0x200, 4); wrand(g::FX_PARAMS + 0x270, 4); wrand(g::FX_PARAMS + 0x2b0, 4);
         return Args{};
     }, [](A) { hero_look_at_update(); return uint64_t{0}; });
+    }
 
     // after collenv: moby slot 47 becomes an axis-aligned box (bottom centre (cx, cy, z0), half
     // sizes hx / hy, height h; outward front faces of surface type `type`) in the moby grid
@@ -4916,6 +4999,10 @@ void batches_unit() {
         }
         return m;
     };
+    {
+    // (stage 5, task C2c) hero_ledge_check reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_ledge_check", 0x0020c758, N * 32, Ret::Int32, [collenv, treeenv, heroAt, aimTri, boxenv] {
         constexpr uint32_t P = g::PLAYER;
         const int k = collenv();
@@ -4947,7 +5034,12 @@ void batches_unit() {
         wf(OUT + 0x20, ri(0, 3) ? yaw + rf(-0.6f, 0.6f) : rf(-3.2f, 3.2f));
         return Args{{OUT, OUT + 0x20}, {}};
     }, [](A a) { return ri32(hero_ledge_check(a.i[0], hp<float>(a.i[1]))); });
+    }
 
+    {
+    // (stage 5, task C2c) hero_air_wall_check reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_air_wall_check", 0x0020b5b8, N * 32, Ret::None, [collenv, treeenv, heroAt, boxenv] {
         constexpr uint32_t P = g::PLAYER;
         collenv();
@@ -4978,7 +5070,12 @@ void batches_unit() {
         wrand(P + 0x1b4, 1); wrand(P + 0x1f0, 1); wrand(P + 0x460, 4);
         return Args{};
     }, [](A) { hero_air_wall_check(); return uint64_t{0}; });
+    }
 
+    {
+    // (stage 5, task C2c) hero_slide_move reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_slide_move", 0x002167d0, N * 32, Ret::None, [collenv, treeenv, heroAt, boxenv] {
         constexpr uint32_t P = g::PLAYER;
         collenv();
@@ -5005,7 +5102,12 @@ void batches_unit() {
         w16(P + 0x308, 0); w32(P + 0x208c, u(ri(0, 4))); w8(P + 0x20a4, u(ri(0, 2)));
         return Args{};
     }, [](A) { hero_slide_move(); return uint64_t{0}; });
+    }
 
+    {
+    // (stage 5, task C2c) hero_ground_update reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_ground_update", 0x002127b8, N * 32, Ret::None, [collenv, treeenv, heroAt, boxenv] {
         constexpr uint32_t P = g::PLAYER;
         collenv();
@@ -5031,6 +5133,7 @@ void batches_unit() {
         w32(OV(0x001612d8), 0); w32(OV(0x001612dc), ri(0, 1)); wf(OV(0x001612e8), z - rf(-1, 1)); wfrand(OV(0x001612e0), 2, 0, 100); wf(OV(0x001612ec), rf(0, 100));
         return Args{};
     }, [](A) { hero_ground_update(); return uint64_t{0}; });
+    }
 
     {
     // (stage 5, task C2b) hero_ledge_grab_check reaches sphere_collide / capsule_collide: A2's collision scratch
@@ -5622,6 +5725,10 @@ void batches_unit() {
     for (uint32_t st : {0x00u, 0x20u, 0x23u, 0x05u, 0x1du, 0x3eu, 0x6bu, 0x01u, 0x17u, 0x30u, 0x2eu, 0x03u, 0x04u, 0x70u, 0x71u, 0x31u, 0x02u, 0x2fu, 0x73u, 0x7eu, 0x07u, 0x09u, 0x0au, 0x0bu, 0x0cu, 0x0du, 0x0eu, 0x0fu, 0x10u, 0x11u, 0x12u, 0x1cu, 0x3cu, 0x69u, 0x77u, 0x81u, 0x08u, 0x06u, 0x2du, 0x79u, 0x13u, 0x14u, 0x15u, 0x21u, 0x7au, 0x40u, 0x41u, 0x3du, 0x47u, 0x57u, 0x62u, 0x6au, 0x80u, 0x82u, 0x7fu, 0x33u, 0x34u, 0x35u, 0x36u, 0x37u, 0x75u, 0x76u, 0x38u, 0x39u, 0x3au, 0x24u, 0x25u, 0x26u, 0x2cu, 0x74u}) {
         static char nm[40];
         std::snprintf(nm, sizeof nm, "hero_input_update/%02x", st);
+        // (stage 5, task C2c) the hero's input update reaches segment_collide from these states (measured on level 14: 0x06,
+        // 0x14, 0x2d), each level's cases a different subset: A2's collision scratch ranges left out of the checks of every state
+        // of this batch (see batch 43's segment_collide)
+        const CollisionScratchIgnored spr_ignored;
         check(nm, 0x00229b70, N * 8, Ret::None, [transenv, st] { transenv(st); return Args{}; },
               [](A) { hero_input_update(); return uint64_t{0}; }, OV(0x00173e7c));
     }
@@ -5688,6 +5795,10 @@ void batches_unit() {
         for (uint32_t i = 0; i < 30; ++i) wf(g::PAD + 0x2d0 + 4 * i, rf(0, 1));  // the stick magnitude history
         return Args{};
     }, [](A) { hero_input_update(); return uint64_t{0}; }, OV(0x00173e7c));
+    {
+    // (stage 5, task C2c) hero_input_update/jump-air reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_input_update/jump-air", 0x00229b70, N * 16, Ret::None, [transenv] {  // in the air: the arc and the presses
         static const uint32_t sts[] = {7, 7, 9, 9, 0xa, 0xb, 0xd, 0xe, 0xe, 0xf, 0x10, 0x11, 0x12, 0x1c, 0x3c, 0x69};
         const uint32_t st = sts[ri(0, 15)];
@@ -5709,6 +5820,7 @@ void batches_unit() {
         w32(g::PAD + 0x190, 30); w32(g::PAD + 0x1a0, (ri(0, 1) ? 0x40u : 0u) | (ri(0, 1) ? 0xau : 0u));
         return Args{};
     }, [](A) { hero_input_update(); return uint64_t{0}; }, OV(0x00173e7c));
+    }
     auto wideenv = [transenv](uint32_t st) {  // the state with its timers, presses and history spread wide
         transenv(st);
         constexpr uint32_t P = g::PLAYER;
@@ -5726,9 +5838,17 @@ void batches_unit() {
     for (uint32_t st : {0x77u, 0x81u, 0x08u, 0x06u, 0x2du, 0x79u, 0x13u, 0x14u, 0x15u, 0x21u, 0x7au, 0x40u, 0x41u, 0x3du, 0x47u, 0x57u, 0x62u, 0x6au, 0x80u, 0x82u, 0x7fu, 0x33u, 0x34u, 0x35u, 0x36u, 0x37u, 0x75u, 0x76u, 0x38u, 0x39u, 0x3au, 0x24u, 0x25u, 0x26u, 0x2cu, 0x74u}) {
         static char nm[40];
         std::snprintf(nm, sizeof nm, "hero_input_update/wide-%02x", st);
+        // (stage 5, task C2c) the hero's input update reaches segment_collide from these states (measured on level 14: 0x14),
+        // each level's cases a different subset: A2's collision scratch ranges left out of the checks of every state of this
+        // loop (see batch 43's segment_collide)
+        const CollisionScratchIgnored spr_ignored;
         check(nm, 0x00229b70, N * 8, Ret::None, [wideenv, st] { wideenv(st); return Args{}; },
               [](A) { hero_input_update(); return uint64_t{0}; }, OV(0x00173e7c));
     }
+    {
+    // (stage 5, task C2c) hero_input_update/00-late reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_input_update/00-late", 0x00229b70, N * 8, Ret::None, [transenv] {  // standing, past the early exits
         transenv(0);
         constexpr uint32_t P = g::PLAYER;
@@ -5740,6 +5860,7 @@ void batches_unit() {
         wf(P + 0x180, rf(-3.2f, 3.2f)); wf(OV(0x00166dd8), rf(-3.2f, 3.2f)); w32(P + 0x1090, 0);
         return Args{};
     }, [](A) { hero_input_update(); return uint64_t{0}; }, OV(0x00173e7c));
+    }
 
     // ======== batch 51: hero_input_update, the rest of the states
     g_batch = 51;
@@ -5808,6 +5929,10 @@ void batches_unit() {
         for (int w = 0; w < 2; ++w) {
             static char nm[40];
             std::snprintf(nm, sizeof nm, "hero_input_update/%s%02x", w ? "wide-" : "", st);
+            // (stage 5, task C2c) the hero's input update reaches segment_collide from these states (measured on level 14:
+            // 0x19, 0x1a, 0x1b, 0x22, both spreads), each level's cases a different subset: A2's collision scratch ranges left
+            // out of the checks of every state of this loop (see batch 43's segment_collide)
+            const CollisionScratchIgnored spr_ignored;
             check(nm, 0x00229b70, N * 8, Ret::None, [t2env, st, w] { t2env(st, w != 0); return Args{}; },
                   [](A) { hero_input_update(); return uint64_t{0}; }, OV(0x00173e7c));
         }
@@ -5936,6 +6061,10 @@ void batches_unit() {
         for (int w = 0; w < 2; ++w) {
             static char nm[40];
             std::snprintf(nm, sizeof nm, "hero_input_update/%s%02x", w ? "wide-" : "", st);
+            // (stage 5, task C2c) the hero's input update on the rails reaches segment_collide (measured on level 14: 0x28,
+            // 0x29, 0x2a, 0x2b, both spreads): A2's collision scratch ranges left out of the checks of every state of this
+            // loop (see batch 43's segment_collide)
+            const CollisionScratchIgnored spr_ignored;
             check(nm, 0x00229b70, N * 8, Ret::None, [railenv, st, w] { railenv(st, w != 0); return Args{}; },
                   [](A) { hero_input_update(); return uint64_t{0}; }, OV(0x00173e7c));
         }

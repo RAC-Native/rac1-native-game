@@ -23,7 +23,8 @@ namespace {
 // walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
 // collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
 bool c2b_spr_check(const char* name) {
-    static const char* const kNames[] = {"fan_update", "peckbot_update", "peckbot_update_state"};
+    static const char* const kNames[] = {"fan_update", "peckbot_update", "peckbot_update_state", "scripted_camera_trigger",
+                                         "spawn_point_update", "water_lily_update"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -391,12 +392,17 @@ void batch_97() {
             wf(rec + 0x24, rf(0.5f, 4)); wf(rec + 0x28, 1.57f); wf(rec + 0x2c, rf(0, 1)); wf(rec + 0x30, rf(0, 1));
             w32(rec + 0x38, R() & 0x2f); wf(rec + 0x4c, rf(-3.1f, 3.1f));
         };
+        {
+        // (stage 5, task C2c) walker_probe reaches segment_collide: A2's collision scratch
+        // ranges left out of this check (see batch 43's checks of it)
+        const CollisionScratchIgnored spr_ignored;
         check("walker_probe", 0x002583f0, 80, Ret::Int32, [walker_moby] {
             const uint32_t m = walker_moby(ri(0, 1000));
             Vec4 p = ee_ref<Vec4>(m + 0x10); p.x += rf(-3, 3); p.y += rf(-3, 3); p.z += rf(-2, 2); if (ri(0, 3) == 0) p.z = rf(-1, 0.6f); ee_ref<Vec4>(OUT) = p;
             w32(OV(0x00173e58), ri(0, 2) == 0 ? m : 0u); w32(OV(0x00173e5c), u(ri(-2, 3)));
             return Args{{OUT, m, ri(0, 1) ? 0x20u : 0u}, {rf(0, 2), rf(0, 2)}};
         }, [](A a) { return r32(static_cast<uint32_t>(walker_probe(a.f[0], a.f[1], a.i[0], a.i[1], a.i[2]))); });
+        }
         // (the float args are in f12 / f13; the generator's a0.. are pos, self, flag)
         {
         // (stage 5, task C2b) walker_step reaches sphere_collide or capsule_collide: A2's collision scratch

@@ -49,6 +49,7 @@
 #include <runtime/kernel/disc.h>
 #include <runtime/vu/vu0.h>
 
+#include <algorithm>
 #include <optional>
 #include <cmath>
 #include <cstring>
@@ -64,7 +65,7 @@ namespace {
 // collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
 bool c2b_spr_check(const char* name) {
     static const char* const kNames[] = {"class325_update", "class403_update", "class686_update", "class77_update",
-                                         "class848_update"};
+                                         "class848_update", "class1224_strike", "class1224_update"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -870,8 +871,13 @@ void class848_helper_checks() {
                 const uint32_t pv = ee_read<uint32_t>(m + 0x78);
                 w8(m + 0x20, u(st));
                 const std::vector<uint32_t> helis = mobys_with(heli_fn);
-                uint32_t owner = !helis.empty() && ri(0, 4) != 0 ? pick(helis) : any_moby(m);
-                if (ri(0, 9) == 0) owner = 0;
+                uint32_t owner = 0;
+                if (g_oracle_level == 15 && st == 1) {
+                    owner = !helis.empty() ? pick(helis) : any_moby(m);
+                } else {
+                    owner = !helis.empty() && ri(0, 4) != 0 ? pick(helis) : any_moby(m);
+                    if (ri(0, 9) == 0) owner = 0;
+                }
                 w32(pv + 0x10, owner);
                 if (owner != 0) {
                     const int k = ri(0, 5);

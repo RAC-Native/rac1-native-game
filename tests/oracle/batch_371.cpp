@@ -35,6 +35,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/empty_class_updates.h>
 
+#include <optional>
 #include <cmath>
 #include <cstring>
 #include <map>
@@ -44,11 +45,30 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach segment_collide, whose crossing lists, chunk buffers and vertices the port keeps on
+// the host stack (the original: 0x70003000 .. 0x70003fff, 0x70000000 .., 0x70002000): A2's collision scratch ranges
+// are left out of these checks, and only of them (stage 5, task C2c).
+bool c2c_spr_check(const char* name) {
+    static const char* const kNames[] = {"class1134_race_1500_L16", "class52_race_1500_L16", "class52_race_2500_L16",
+                                         "class52_race_3500_L16", "class52_racefinish_3420_L16",
+                                         "class52_racefinish_4350_L16", "class556_race_1500_L16", "class556_race_2500_L16",
+                                         "class556_race_3500_L16", "class556_racefinish_3420_L16",
+                                         "class556_racefinish_4350_L16", "class805_race_1500_L16",
+                                         "class805_racefinish_4350_L16", "class933_race_1500_L16",
+                                         "class933_race_2500_L16", "class933_race_3500_L16",
+                                         "class933_racefinish_3420_L16", "class933_racefinish_4350_L16"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // A check whose original is level `lvl`'s own function at `laddr` (as batch 271's)
 void lcheck371(int lvl, const char* name, uint32_t laddr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
     if (g_only_batch != 0 && g_only_batch != g_batch) return;
     if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
     std::printf("%-26s L%d:0x%08x\n", name, lvl, laddr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2c_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, laddr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
 }
 const std::vector<uint8_t>& dump371(const std::string& path) {

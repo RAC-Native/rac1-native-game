@@ -53,7 +53,17 @@ bool c2b_spr_check(const char* name) {
                                          "eud_woodcut_lunge", "eud_woodcut_st0", "eud_woodcut_st1", "eud_woodcut_st10",
                                          "eud_woodcut_st11", "eud_woodcut_st12", "eud_woodcut_st2", "eud_woodcut_st3",
                                          "eud_woodcut_st4", "eud_woodcut_st5", "eud_woodcut_st6", "eud_woodcut_st7",
-                                         "eud_woodcut_st8", "eud_woodcut_st9", "eud_woodcut_swing"};
+                                         "eud_woodcut_st8", "eud_woodcut_st9", "eud_woodcut_swing", "class217", "class427",
+                                         "class642", "class805", "eud_biped_hit", "eud_biped_reach", "eud_biped_st0",
+                                         "eud_biped_st1", "eud_biped_st11", "eud_biped_st2", "eud_biped_st3",
+                                         "eud_biped_st4", "eud_biped_st5", "eud_biped_st6", "eud_biped_st7",
+                                         "eud_biped_st8", "eud_biped_st9", "eud_npc_st0", "eud_npc_st1", "eud_npc_st2",
+                                         "eud_npc_st3", "eud_npc_st4", "eud_trooper_band", "eud_trooper_fire",
+                                         "eud_trooper_st0", "eud_trooper_st1", "eud_trooper_st10", "eud_trooper_st12",
+                                         "eud_trooper_st2", "eud_trooper_st3", "eud_trooper_st4", "eud_trooper_st5",
+                                         "eud_trooper_st6", "eud_trooper_st7", "eud_trooper_st8", "eud_trooper_st9",
+                                         "eud_walker_floor", "eud_walker_gait", "eud_walker_ground", "eud_walker_steps",
+                                         "eud_windblown_st2"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;

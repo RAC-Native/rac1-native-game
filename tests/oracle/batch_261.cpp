@@ -86,10 +86,20 @@ void batch_261() {
         }
         input(s, n);
     };
+    {
+    // (stage 5, task C2c) hero_frame_update/real reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_frame_update/real", 0x002070d0, 60, Ret::None, [play] { play(); return Args{}; },
           [](A) { hero_frame_update(); return uint64_t{0}; }, OV(0x00173e7c));
+    }
+    {
+    // (stage 5, task C2c) hero_input_update/real reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_input_update/real", 0x00229b70, 40, Ret::None, [play] { play(); return Args{}; },
           [](A) { hero_input_update(); return uint64_t{0}; }, OV(0x00173e7c));
+    }
     {
     // (stage 5, task C2b) hero_state_update/real reaches sphere_collide or capsule_collide: A2's collision scratch
     // ranges left out of this check (see batch 43's checks of it)

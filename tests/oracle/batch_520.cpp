@@ -61,7 +61,8 @@ namespace {
 // walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
 // collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
 bool c2b_spr_check(const char* name) {
-    static const char* const kNames[] = {"class437_move", "class437_sink", "class437_update"};
+    static const char* const kNames[] = {"class437_move", "class437_sink", "class437_update", "class437_find_target",
+                                         "class437_goal_by_hero", "class437_shoot", "gadget_pickup_update"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;

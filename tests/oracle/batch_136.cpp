@@ -155,7 +155,12 @@ void batch_136() {
         seed_rand();
         return Args{{m}, {}};
     };
+    {
+    // (stage 5, task C2c) ship_shadow_draw reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("ship_shadow_draw", 0x0028e670, 100, Ret::None, ship_gen, [](A a) { ari_ship_glow_draw_l2(a.i[0]); return uint64_t{0}; });
+    }
     check("ship_flame_draw", 0x0028efc8, 100, Ret::None, ship_gen, [](A a) { ari_ship_engine_glow_draw_l2(a.i[0]); return uint64_t{0}; });
     check("ship_trails_draw", 0x0028f238, 100, Ret::None, ship_gen, [](A a) { ari_ship_takeoff_draw_l2(a.i[0]); return uint64_t{0}; });
 

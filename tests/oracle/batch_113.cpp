@@ -342,8 +342,13 @@ void batch_113() {
                 std::printf("  mode 5 after %d frames: state %u, +0x14 %08x, +0x20 %08x, game mode %d\n", k, ee_read<uint32_t>(OV(0x001ca4c0)),
                             ee_read<uint32_t>(OV(0x001ca4c0) + 0x14), ee_read<uint32_t>(OV(0x001ca4c0) + 0x20), ee_read<int32_t>(OV(0x0015f5c4)));
         };
+        {
+        // (stage 5, task C2c) vendor_mode_update reaches segment_collide: A2's collision scratch
+        // ranges left out of this check (see batch 43's checks of it)
+        const CollisionScratchIgnored spr_ignored;
         check("vendor_mode_update", 0x0029c648, 120, Ret::None, [in_mode5] { in_mode5(240); return Args{{0u}, {}}; },
               [](A) { vendor_mode_update_tr(0); return uint64_t{0}; });
+        }
         check("vendor_mode_draw", 0x002a02b0, 120, Ret::None, [in_mode5] { in_mode5(240); return Args{{0u}, {}}; },
               [](A) { vendor_mode_draw_tr(0); return uint64_t{0}; });
         g_extra_noop_hooks.clear();

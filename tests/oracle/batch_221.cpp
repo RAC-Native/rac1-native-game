@@ -97,7 +97,9 @@ constexpr uint32_t MOBY_SPAWN_L14 = 0x00256d38;
 // (Task C2b: the checks added to the list reach sphere_collide or capsule_collide, whose chunk buffers,
 // vertices and cell walk the port keeps on the host stack too.)
 bool c2a_spr_check(const char* name) {
-    static const char* const kNames[] = {"class8", "class28", "mobys_in_sphere", "class923", "hero_move_mode"};
+    static const char* const kNames[] = {"class8", "class28", "mobys_in_sphere", "class923", "hero_move_mode",
+                                         "cam_type20_init", "class1134", "class1224", "class1354", "class1400",
+                                         "class1818", "class252", "class805"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;

@@ -343,6 +343,10 @@ void batch_85() {
         w32(0x0013f350 + 0x19c, u(ri(0, 0x2000)));
         w16(0x0013f350 + 0x89a, u(ri(0, 5)));
     };
+    {
+    // (stage 5, task C2c) screen_update reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("screen_update", 0x00202aa0, 120, Ret::None, [screen_state] {
         level();
         mc_reset();
@@ -353,6 +357,7 @@ void batch_85() {
         screen_update();
         return uint64_t{0};
     });
+    }
     check("screen_frame", 0x001faea0, 20, Ret::None, [] {
         level();
         return Args{{u(ri(0, 0x100)), u(ri(0, 0x100)), u(ri(0, 0x200)), u(ri(0, 0x200)), R()}};

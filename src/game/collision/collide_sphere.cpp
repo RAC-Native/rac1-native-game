@@ -23,6 +23,7 @@ using namespace collide_detail;
 // orig: 0x001f0d60
 int32_t sphere_collide_v(const Vec4& pos, float radius, uint32_t flags, uint32_t ignore) {
     const SprScope spr_scope(SprScopeId::SphereCollide);  // (RAC1_BRIDGE_GUARD=spr: the scratchpad's data flow, src/game/bridge/guard.h)
+    if (__builtin_expect(coll_jointless_on(), false)) coll_jointless_scan_level();
     const uint32_t SPR = 0x70000000u, OUTB = OV(0x00173e40), GRID = OV(0x0019b7e0);
     const int32_t q0 = lw(OUTB + 0x10);
     if (q0 < 0) return 0;
@@ -233,6 +234,7 @@ int32_t sphere_collide_v(const Vec4& pos, float radius, uint32_t flags, uint32_t
                     more = lh(rec + 2);
                     const int32_t type = static_cast<int8_t>(lbu(rec));
                     if (off != 0 || (want & more) == 0) continue;
+                    if (__builtin_expect(coll_jointless_on(), false) && s0 == SPR && !posed && type != 1 && type != 3) coll_jointless_read("sphere_collide", m, col, type, more, flags);
                     L3 pc;
                     float pw;
                     if (type == 1) {

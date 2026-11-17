@@ -145,6 +145,9 @@ void segment_checks() {
     const int ncase = std::getenv("B530_N") != nullptr ? std::atoi(std::getenv("B530_N")) : 300;
     const uint32_t S = scratch();
     if (S == 0) { skip_check("segment_collide_level", 0x001efc70, "no free memory for the line's end points"); return; }
+    // (stage 5, task C2c) segment_collide keeps its lists, chunk buffers and vertices on the stack: A2's collision scratch ranges
+    // are left out of this check (only of it); see batch 43's segment_collide
+    const CollisionScratchIgnored spr_ignored;
     check("segment_collide_level", 0x001efc70, ncase, Ret::Int32, [S] {
         level();
         const std::vector<uint32_t> ms = live_mobys();

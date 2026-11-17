@@ -194,6 +194,10 @@ void batch_192() {
             const uint32_t kind = u(ri(0, 2));
             return spawned(0x49, [&] { class1400_mote(P, static_cast<int32_t>(kind), V, z); });
         };
+        {
+        // (stage 5, task C2c) particle_49_update reaches segment_collide: A2's collision scratch
+        // ranges left out of this check (see batch 43's checks of it)
+        const CollisionScratchIgnored spr_ignored;
         check("particle_49_update", 0x00275320, 200, Ret::None, [&] {
             level();
             const uint32_t q = make(0x49, particle_49_update, sp, [moby](uint32_t q) {
@@ -207,6 +211,7 @@ void batch_192() {
             });
             return Args{{q}, {}};
         }, [](A a) { particle_49_update(a.i[0]); return uint64_t{0}; });
+        }
     }
 
     g_ee_null_is_ram = null_ram;
