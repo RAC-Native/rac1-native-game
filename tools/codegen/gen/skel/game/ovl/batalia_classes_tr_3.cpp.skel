@@ -39,25 +39,12 @@
 #include <game/port_stubs.h>
 #include <game/ovl/sound_emitter.h>
 #include <game/ovl/shared_scroll.h>
+#include <game/ovl/batalia_own.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
-
-//@gen bat_class444_update_l8
-
-//@gen bat_2e2da0_l8
-
-//@gen bat_class452_update_l8
-
-//@gen bat_2e8788_l8
-
-//@gen bat_2e88d8_l8
-
-//@gen bat_2e8ba0_l8
-
-//@gen bat_class462_update_l8
 
 //@gen bat_2e9558_l8
 

@@ -2,7 +2,8 @@
 // registered in batalia_mobys.cpp under the names the generated code had, and their helpers (for the oracle's checks,
 // batch 120). Part 1 (P8.1): batalia_bolt_prize.cpp: class 152; batalia_projectiles.cpp: classes 248 and 425;
 // batalia_bomber_tank.cpp: class 253; batalia_sea.cpp: class 327; batalia_grenadier.cpp: class 333; batalia_shuttle.cpp:
-// class 424.
+// class 424. Part 2 (P8.2): batalia_missile.cpp: class 435; batalia_fighter.cpp: class 438; batalia_turret.cpp: class 440;
+// batalia_warship.cpp: classes 441 and 444; batalia_bolt_thief.cpp: class 452; batalia_gunship.cpp: class 462.
 #ifndef RAC1_GAME_OVL_BATALIA_OWN_H
 #define RAC1_GAME_OVL_BATALIA_OWN_H
 
@@ -42,6 +43,38 @@ void shuttle_corners_l8(uint32_t m);         // L8:0x002dc0c8
 void shuttle_to_nearest_l8(uint32_t m);      // L8:0x002dc180
 bool shuttle_ride_l8(uint32_t m);            // L8:0x002dc648
 int32_t shuttle_help_l8(uint32_t m);         // L8:0x002dc7f0
+
+// ---- the Blarg missile (batalia_missile.cpp)
+void bat_class435_update_l8(uint32_t m);                                                        // L8:0x002dd3c0  class 435
+uint32_t bat_class435_spawn_l8(uint32_t at, uint32_t target, uint32_t vel, float f40, float f44);  // L8:0x002de3e0
+void missile_rubble_l8(uint32_t m, int32_t box, int32_t count, bool small);                     // L8:0x002de528
+
+// ---- the Blarg fighter (batalia_fighter.cpp)
+void bat_class438_update_l8(uint32_t m);                // L8:0x002de848  class 438
+void fighter_exhaust_l8(uint32_t m, uint32_t old_pos);  // L8:0x002dec90
+
+// ---- the anti-air turret (batalia_turret.cpp)
+void bat_class440_update_l8(uint32_t m);                                 // L8:0x002e0328  class 440
+uint32_t turret_aimed_missile_l8(uint32_t m);                            // L8:0x002e0228
+void turret_commander_end_l8(uint32_t commander, int32_t outcome);       // L8:0x00306b30
+
+// ---- the gunship pieces and the three-drum Blarg warship (batalia_warship.cpp)
+void bat_class441_update_l8(uint32_t m);                                                             // L8:0x002e16c0  class 441
+uint32_t bat_piece_spawn_l8(uint32_t parent, uint32_t cls, uint32_t piece_joint, uint32_t parent_joint);  // L8:0x002e1c98
+void warship_build_l8(uint32_t m);                                                                   // L8:0x002e1d70
+void warship_pieces_follow_l8(uint32_t m);                                                           // L8:0x002e2078
+void warship_hits_l8(uint32_t m);                                                                    // L8:0x002e2250
+void bat_class444_update_l8(uint32_t m);                                                             // L8:0x002e24e8  class 444
+
+// ---- the Bolt Thief (batalia_bolt_thief.cpp)
+void bat_class452_update_l8(uint32_t m);  // L8:0x002e2df0  class 452
+void bolt_thief_gather_l8(uint32_t m);    // L8:0x002e2da0
+
+// ---- the one-drum Blarg gunship (batalia_gunship.cpp)
+void bat_class462_update_l8(uint32_t m);    // L8:0x002e8cd0  class 462
+void gunship_build_l8(uint32_t m);          // L8:0x002e8788
+void gunship_hits_l8(uint32_t m);           // L8:0x002e88d8
+void gunship_pieces_follow_l8(uint32_t m);  // L8:0x002e8ba0
 
 }  // namespace rac1
 
