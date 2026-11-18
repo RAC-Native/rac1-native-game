@@ -4,31 +4,14 @@
  "env": {
   "MKALL_HELPER_PREFIX": "bat_",
   "MKALL_WIDE_GPR": "",
-  "MKALL_FORCE": "26d768,27fe00,2e1698,2e9558,2e9758,2e9a18,305138,3063f0",
+  "MKALL_FORCE": "",
   "MKALL_UNIFORM": "bat_hook_2d40d8_u"
  },
  "entries": [
-  "2e9b70:bat_class463_update_l8:void:a0",
-  "2ea398:bat_class467_update_l8:void:a0",
-  "2ea4c0:bat_class468_update_l8:void:a0",
-  "2f1548:bat_class600_update_l8:void:a0",
-  "2f44c0:bat_class621_update_l8:void:a0",
-  "2f70a0:bat_class671_update_l8:void:a0",
-  "2f90c8:bat_class774_update_l8:void:a0",
-  "302ce8:bat_class1130_update_l8:void:a0",
-  "305270:bat_class1144_update_l8:void:a0",
-  "3065d8:bat_class1283_update_l8:void:a0",
-  "307540:bat_class1349_update_l8:void:a0",
-  "3084d8:bat_class1553_update_l8:void:a0",
-  "308c90:bat_class1641_update_l8:void:a0",
-  "3097b0:bat_class1649_update_l8:void:a0",
   "2d40d8:bat_hook_2d40d8_u"
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/batalia_classes_tr_3.cpp",
-  "src/game/ovl/batalia_classes_tr_4.cpp",
-  "src/game/ovl/batalia_classes_tr_5.cpp",
   "src/game/ovl/batalia_classes_tr_6.cpp"
  ]
 }

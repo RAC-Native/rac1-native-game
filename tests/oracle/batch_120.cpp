@@ -43,12 +43,15 @@
 #include <game/ovl/shared_spawner.h>
 #include <game/ovl/shared_tracer.h>
 #include <game/ovl/shared_zones.h>
+#include <game/enhance/advanced.h>
+#include <game/lib/libcdvd.h>
 #include <game/ovl/sound_emitter.h>
 #include <runtime/kernel/disc.h>
 
 #include <optional>
 #include <cmath>
 #include <cstring>
+#include <set>
 #include <string>
 #include <map>
 
@@ -64,7 +67,8 @@ bool c2b_spr_check(const char* name) {
                                          "bomber_tank_drive_l8", "class1134", "class1135", "class1400", "class1818",
                                          "class252", "class253", "class253_bomber_tank", "class253_fire", "class253_spot",
                                          "class455", "class805", "class438_fighter", "class440_turret",
-                                         "class452_thief"};
+                                         "class452_thief", "class621_mine", "class774_plumber", "class1130_deserter",
+                                         "class1144_commando", "class1283_commander"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -2306,6 +2310,918 @@ void batch_120() {
             }
         }
 
+        g_extra_noop_hooks.clear();
+        g_ignored_words = saved_ignored;
+    }
+
+    // ---- stage 4 P8.3: the hand ports of classes 463, 467 (with 1.02 Fixes row 34), 468, 600, 621, 671, 774, 1130,
+    // 1144, 1283, 1349, 1553, 1641 and 1649, their nine helpers, and the three draw callbacks (440, 452, 671)
+    if (g_oracle_level == 8 && std::getenv("B120_CLS") == nullptr) {
+        const std::time_t saved_clock_p83 = g_host_clock_fixed;
+        g_host_clock_fixed = 1759658400;
+        const auto saved_hooks_p83 = g_extra_hooks;
+        g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80};
+        g_extra_hooks = {{0x00121780, [](EeCpu& c) { c.set32(2, cd_read_clock(c.r32(4))); }},
+                         {0x0012d6d8, [](EeCpu& c) { clock_to_local(c.r32(4)); }},
+                         {0x00121450, [](EeCpu& c) { c.set32(2, cd_read(c.r32(4), c.r32(5), c.r32(6), c.r32(7))); }}};
+        const uint32_t P = 0x0013f350;
+        auto frame50 = [] {
+            if (ri(0, 3) == 0) {
+                wf(0x0015ed68, 1.2f);
+                wf(0x0015ed6c, 0.02f);
+                wf(0x0015ed70, 0.0004f);
+            }
+        };
+        auto sound_ready = [] {
+            const uint32_t Sd = 0x001516d0;
+            w16(Sd + 0x5a, 3);
+            w32(Sd + 0x50, (R() & 0x7ffffffeu) | 1u);
+            w16(Sd + 0x5c, 0);
+            w32(Sd + 0x1c, 0xffffffffu);
+            w32(0x0015ec8c, 1);
+            w32(0x00137b00, 0);
+        };
+        auto talk_script = [P, sound_ready](uint32_t m, uint32_t t, bool fire) {
+            sound_ready();
+            const uint32_t lvl = ee_read<uint32_t>(0x0015ed84);
+            if (lvl < 0x13u) {
+                const int32_t ti = ee_read<int32_t>(OV(0x001c44b8) + lvl * 4);
+                const int32_t hi = ee_read<int32_t>(OV(0x001c44b8) + (lvl + 1) * 4);
+                if (ti >= 0 && ti < hi) w32(OV(0x001791b8) + u(ti) * 4, m);
+            }
+            const uint32_t rec = T3 + 0x200;
+            for (uint32_t r = 0; r < 2; ++r) {
+                const uint32_t e = rec + r * 0x1c;
+                for (uint32_t o = 0; o < 0x1c; o += 4) w32(e + o, 0);
+                w16(e + 4, 0xffffu);
+                w16(e + 6, 0xffffu);
+                w16(e + 0x10, 1u);
+            }
+            w8(t + 9, 1u);
+            w32(t + 0x3c, rec);
+            wf(t + 0xc, 20.0f);
+            if (fire) {
+                w16(t + 0x36, 0u);
+                w8(t + 8, 1u);
+                w32(P + 0x2084, 0);
+                w32(P + 0x22a8, 1);
+                w32(OV(0x0015f5c4), 0);
+                w32(OV(0x0015f5cc), 1000);
+                w32(OV(0x00179110), 0);
+            } else {
+                w16(t + 0x36, 0xffffu);
+                w8(t + 8, 0xffu);
+            }
+        };
+        std::vector<uint32_t> base_ignored = saved_ignored;
+        auto ignores = [base_ignored](bool seg, bool mobys, bool pool) {
+            g_ignored_words = base_ignored;
+            if (seg)
+                for (uint32_t k = 0; k < 16; k += 4) g_ignored_words.push_back(OV(0x00173e90) + k);
+            if (mobys) {
+                const uint32_t m_lo = ee_read<uint32_t>(OV(0x0015ffe0)), m_hi = ee_read<uint32_t>(OV(0x0015ffe4));
+                for (uint32_t a = m_lo; a < m_hi; a += 0x100) {
+                    g_ignored_words.push_back(a + 0xc);
+                    g_ignored_words.push_back(a + 0x1c);
+                }
+                for (uint32_t a = m_lo; a < m_lo + 0x20000; a += 0x80) {
+                    g_ignored_words.push_back(a + 0xc);
+                    g_ignored_words.push_back(a + 0x1c);
+                }
+            }
+            if (pool) {
+                const uint32_t pool_at = ee_read<uint32_t>(OV(0x0016016c));
+                for (uint32_t k = 0; k < 0x800; ++k) g_ignored_words.push_back(pool_at + k * 0x40 + 0x2c);
+            }
+        };
+        auto sound_slot = [](uint32_t m, int vol = -1) -> uint32_t {
+            const int r = ri(0, 3);
+            if (r == 0) return 0xffffffffu;
+            const uint32_t s = u(ri(0, 15)), e = 0x0013e550u + s * 0x70;
+            if (r >= 2) {
+                w32(e + 0x88, r == 2 ? m : m + 0x100);
+                w8(e + 0x74, coin() ? 1u : 0u);
+                if (vol >= 0) w32(e + 0x80, u(vol));
+            }
+            return s;
+        };
+        auto view_ready = [] {
+            if (ee_read<uint16_t>(0x001518d0) == 0) {
+                w16(0x001518d0, 640);
+                w16(0x001518d2, 448);
+            }
+            screen_setup();
+            projection_setup();
+            render_view_setup();
+        };
+        auto voice_free = [] {
+            w32(OV(0x00179410), 0);
+            w32(OV(0x00179434), 0xffffffffu);
+            w32(0x00151720, 0);
+            w32(0x001516ec, 0xffffffffu);
+        };
+        auto valid_paths = [] {
+            std::vector<int32_t> v;
+            const int32_t cnt = std::min<int32_t>(176, ee_read<int32_t>(OV(0x00160104)));
+            for (int32_t i = 0; i < cnt; ++i) {
+                const uint32_t p = ee_read<uint32_t>(OV(0x001b04b0) + u(i) * 4);
+                if (p != 0 && ee_read<int32_t>(p) >= 2 && ee_read<int32_t>(p) < 0x200) v.push_back(i);
+            }
+            return v;
+        };
+
+        level();
+        const std::vector<int32_t> p83_paths = valid_paths();
+        const std::vector<uint32_t> p83_gunships2 = mobys_with(0x002e9b70);
+        const std::vector<uint32_t> p83_gates = mobys_with(0x002ea398);
+        const std::vector<uint32_t> p83_leaves = mobys_with(0x002ea4c0);
+        const std::vector<uint32_t> p83_c600 = mobys_with(0x002f1548);
+        const std::vector<uint32_t> p83_mines = mobys_with(0x002f44c0);
+        const std::vector<uint32_t> p83_banners = mobys_with(0x002f70a0);
+        const uint32_t p83_plumber_slot = moby_spawn(0x306);
+        level();
+        const std::vector<uint32_t> p83_deserters = mobys_with(0x00302ce8);
+        const std::vector<uint32_t> p83_commandos = mobys_with(0x00305270);
+        const std::vector<uint32_t> p83_commanders = mobys_with(0x003065d8);
+        const std::vector<uint32_t> p83_rail_trig = mobys_with(0x00307540);
+        const std::vector<uint32_t> p83_smoke = mobys_with(0x003084d8);
+        const std::vector<uint32_t> p83_vents = mobys_with(0x00308c90);
+        const std::vector<uint32_t> p83_c1649 = mobys_with(0x003097b0);
+        const std::vector<uint32_t> p83_turrets = mobys_with(0x002e0328);
+        const std::vector<uint32_t> p83_thieves = mobys_with(0x002e2df0);
+        const std::vector<uint32_t> p83_placed_435 = mobys_with(0x002dd3c0);
+        const int32_t p83_boxes = std::max<int32_t>(1, ee_read<int32_t>(OV(0x001600f0)));
+
+        // ---- 1. gunship2_build_l8 (0x2e9558), gunship2_pieces_follow_l8 (0x2e9a18), gunship2_hits_l8 (0x2e9758), bat_class463_update_l8 (0x2e9b70)
+        if (!p83_gunships2.empty()) {
+            ignores(false, true, false);
+            l8check("gunship2_build_l8", 0x002e9558, 20, Ret::None, [level, p83_gunships2] {
+                level();
+                const uint32_t m = p83_gunships2[static_cast<size_t>(ri(0, static_cast<int>(p83_gunships2.size()) - 1))];
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                for (uint32_t k = 1; k <= 16; ++k) {
+                    const uint32_t pc = ee_read<uint32_t>(pv + 0x60 + k * 0x10);
+                    if (pc != 0) moby_retire(pc);
+                    w32(pv + 0x60 + k * 0x10, 0);
+                }
+                wf(m + 0x48, rf(-3.1f, 3.1f));
+                return Args{{m}, {}};
+            }, [](A a) { gunship2_build_l8(a.i[0]); return uint64_t{0}; });
+
+            ignores(false, false, false);
+            l8check("gunship2_pieces_follow_l8", 0x002e9a18, 30, Ret::None, [level, frame50, p83_gunships2] {
+                level();
+                frame50();
+                const uint32_t m = p83_gunships2[static_cast<size_t>(ri(0, static_cast<int>(p83_gunships2.size()) - 1))];
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                wf(m + 0x48, rf(-3.1f, 3.1f));
+                if (ri(0, 3) == 0) w32(pv + 0x60 + u(ri(1, 16)) * 0x10, 0);
+                return Args{{m}, {}};
+            }, [](A a) { gunship2_pieces_follow_l8(a.i[0]); return uint64_t{0}; });
+
+            ignores(false, true, true);
+            l8check("gunship2_hits_l8", 0x002e9758, 40, Ret::None, [level, frame50, give_hit, p83_gunships2] {
+                level();
+                frame50();
+                const uint32_t m = p83_gunships2[static_cast<size_t>(ri(0, static_cast<int>(p83_gunships2.size()) - 1))];
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                const int mode = ri(0, 4);
+                w16(pv + 0x17c, mode == 0 ? u(ri(0, 5)) : u(ri(9, 12)));
+                if (mode == 4)
+                    for (uint32_t k = 9; k < 17; ++k) w32(pv + 0x60 + k * 0x10, 0);
+                const uint32_t k_hit = mode == 1 ? u(ri(0, 2)) : mode == 2 ? u(ri(3, 8)) : u(ri(9, 16));
+                const uint32_t piece = ee_read<uint32_t>(pv + 0x60 + k_hit * 0x10);
+                if (piece != 0) give_hit(piece, 0x10000u);
+                if (mode >= 3 && ee_read<uint32_t>(pv + 0x60) != 0) give_hit(m, 0x10000u);
+                seed_rand();
+                return Args{{m}, {}};
+            }, [](A a) { gunship2_hits_l8(a.i[0]); return uint64_t{0}; });
+
+            for (const int st : {0, 1, 2, 3, 0x63}) {
+                ignores(false, true, true);
+                for (int pass = 0; pass < 3; ++pass)
+                    classcheck("class463_gunship2", 0x002e9b70, bat_class463_update_l8,
+                               [st, pass, frame50, give_hit, sound_slot, p83_turrets](uint32_t m) {
+                                   frame50();
+                                   const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                                   w32(L8_ADDR(0x00161d40), ri(0, 8) == 0 ? 1u : 0u);
+                                   w16(pv + 0x17e, sound_slot(m) & 0xffffu);
+                                   if (st == 0) {
+                                       const uint32_t row = 0x0014c050u + (ee_read<uint32_t>(0x0015ed84) << 4);
+                                       w8(row + ee_read<uint8_t>(m + 0xb0), pass == 0 ? 0xffu : 0u);
+                                       for (uint32_t k = 1; k <= 16; ++k) {
+                                           const uint32_t pc = ee_read<uint32_t>(pv + 0x60 + k * 0x10);
+                                           if (pc != 0) moby_retire(pc);
+                                           w32(pv + 0x60 + k * 0x10, 0);
+                                       }
+                                   }
+                                   w8(m + 0x20, u(st));
+                                   if (st == 1) {
+                                       if (!p83_turrets.empty()) {
+                                           bat_class440_update_l8(p83_turrets[0]);
+                                           if (coin()) w32(ee_read<uint32_t>(p83_turrets[0] + 0x78) + 0x60, 1);
+                                       }
+                                       w8(m + 0xbc, pass == 0 ? 1u : 0u);
+                                       if (pass == 1) give_hit(m, 0x10000u);
+                                   } else if (st == 2) {
+                                       w32(pv + 0x178, pass == 0 ? 1u : 10u);
+                                   }
+                                   seed_rand();
+                               },
+                               10, p83_gunships2);
+            }
+        }
+
+        // ---- 2. bat_class467_update_l8 (0x2ea398) and 1.02 Fixes row 34 ("class467_fix34")
+        if (!p83_gates.empty()) {
+            ignores(false, false, false);
+            for (const int st : {0, 1, 2}) {
+                for (int pass = 0; pass < 3; ++pass)
+                    classcheck("class467_gate", 0x002ea398, bat_class467_update_l8,
+                               [st, pass, frame50](uint32_t m) {
+                                   frame50();
+                                   const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                                   const uint32_t tab = ee_read<uint32_t>(OV(0x0015ffd8));
+                                   w8(m + 0x20, u(st));
+                                   wf(pv, rf(10.0f, 40.0f));
+                                   wf(pv + 4, rf(10.0f, 40.0f));
+                                   wf(m + 0x18, rf(10.0f, 40.0f));
+                                   if (st == 1) {
+                                       if (pass == 0) {
+                                           w32(pv + 8, 0xffffffffu);
+                                       } else if (pass == 1) {
+                                           const uint32_t lk = tab + (15u << 8);
+                                           w32(pv + 8, 15u);
+                                           w16(lk + 0xa6, coin() ? 0x267u : 0x23fu);
+                                           w8(lk + 0x20, coin() ? 4u : 1u);
+                                       } else {
+                                           const uint32_t lk = tab + (15u << 8);
+                                           w32(pv + 8, 15u);
+                                           w16(lk + 0xa6, 0x100u);
+                                           w32(lk + 0x78, T3);
+                                           wf(T3, rf(0.0f, 1.0f));
+                                       }
+                                   }
+                               },
+                               10, p83_gates);
+            }
+
+            if (const char* only = std::getenv("ORACLE_ONLY"); only == nullptr || std::strcmp(only, "class467_fix34") == 0) {
+                if (std::getenv("RAC1_FIXES102") == nullptr) {
+                    std::printf("%-26s skipped (run with RAC1_FIXES102=34)\n", "class467_fix34");
+                    ++g_skipped;
+                } else {
+                    const std::set<uint32_t> ignored_set(g_ignored_words.begin(), g_ignored_words.end());
+                    std::vector<uint8_t> start_ram, with_fix;
+                    int bad = 0, forked_34 = 0, null_grp = 0;
+                    for (int c = 0; c < 120; ++c) {
+                        level();
+                        frame50();
+                        const uint32_t m = p83_gates[static_cast<size_t>(ri(0, static_cast<int>(p83_gates.size()) - 1))];
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        const uint32_t tab = ee_read<uint32_t>(L8_ADDR(0x0015ffd8));
+                        const uint32_t m_idx = (m - tab) >> 8;
+                        w8(m + 0x20, u(c % 3));
+                        wf(pv, rf(10.0f, 40.0f));
+                        wf(pv + 4, rf(10.0f, 40.0f));
+                        wf(m + 0x18, rf(10.0f, 40.0f));
+                        const bool fire = (c % 4) != 0;
+                        w8(0x0013d3b6, fire ? 1u : (coin() ? 1u : 0u));
+                        w32(pv + 8, fire ? 0xffffffffu : (ee_read<uint8_t>(0x0013d3b6) != 0 ? 15u : 0xffffffffu));
+                        if (!fire && ee_read<int32_t>(pv + 8) >= 0) {
+                            const uint32_t lk = tab + (15u << 8);
+                            w16(lk + 0xa6, coin() ? 0x267u : 0x100u);
+                            w8(lk + 0x20, coin() ? 4u : 1u);
+                            w32(lk + 0x78, T3);
+                            wf(T3, rf(0.0f, 1.0f));
+                        }
+                        const uint32_t grp = 5u;
+                        w8(m + 0x21, grp);
+                        if (c % 8 == 1) {
+                            w32(L8_ADDR(0x001ac040) + grp * 4, 0);
+                        } else {
+                            w32(L8_ADDR(0x001ac040) + grp * 4, T2);
+                            static const uint16_t clss[6] = {0x24bu, 0x24cu, 0x256u, 0x257u, 0x1d8u, 0x250u};
+                            uint32_t cur = 0;
+                            for (uint32_t k = 0; k < 6; ++k) {
+                                const uint32_t idx = 10u + k == m_idx ? 25u + k : 10u + k;
+                                const uint32_t o = tab + (idx << 8);
+                                w16(o + 0xa6, clss[k]);
+                                w8(o + 0x20, k == 5 && coin() ? 0x7fu : 1u);
+                                w16(T2 + cur * 2, static_cast<uint16_t>(idx));
+                                ++cur;
+                            }
+                            w16(T2 + cur * 2, static_cast<uint16_t>(0x8000u | m_idx));
+                        }
+                        uint8_t* ram = ee_get_ram_base();
+                        start_ram.assign(ram, ram + 0x02000000);
+                        g_advanced_disabled = false;
+                        bat_class467_update_l8(m);
+                        g_advanced_disabled = true;
+                        with_fix.assign(ram, ram + 0x02000000);
+                        std::memcpy(ram, start_ram.data(), start_ram.size());
+
+                        if (ee_read<uint8_t>(0x0013d3b6) != 0 && ee_read<int32_t>(pv + 8) < 0) {
+                            ++forked_34;
+                            const uint32_t list =
+                                ee_read<uint32_t>(L8_ADDR(0x001ac040) + u(ee_read<uint8_t>(m + 0x21)) * 4);
+                            if (list == 0) {
+                                ++null_grp;
+                            } else {
+                                for (uint32_t e = list;; e += 2) {
+                                    const uint32_t o = tab + ((ee_read<uint16_t>(e) & 0x7fffu) << 8);
+                                    if (ee_read<uint8_t>(o + 0x20) < 0x7fu && o != m) {
+                                        const uint32_t cls = ee_read<uint16_t>(o + 0xa6);
+                                        if (cls - 0x24cu < 0xbu || static_cast<int16_t>(cls) == 0x1d8) moby_retire(o);
+                                    }
+                                    if (ee_read<int16_t>(e) < -1) break;
+                                }
+                                moby_retire(m);
+                            }
+                        } else {
+                            bat_class467_update_l8(m);  // (fix off: proved against NTSC-U 0x2ea398 by class467_gate)
+                        }
+
+                        for (uint32_t a = 0x00100000; a < 0x02000000; a += 4) {
+                            if (ignored_set.count(a) != 0) continue;
+                            if (a >= ee_stack_ptr() - 0x10000 && a < ee_stack_ptr() + 0x10000) continue;
+                            uint32_t x, y;
+                            std::memcpy(&x, &with_fix[a], 4);
+                            std::memcpy(&y, &ram[a], 4);
+                            if (x != y) {
+                                if (bad < 8)
+                                    std::printf("  class467_fix34 case %d: %08x fix=%08x expected=%08x\n", c, a, x, y);
+                                ++bad;
+                                break;
+                            }
+                        }
+                    }
+                    const bool ok = bad == 0 && forked_34 > 0 && null_grp > 0;
+                    std::printf("%-26s 0x002ea398  %s (%d/120, %d forked, %d null-group)\n", "class467_fix34",
+                                ok ? "ok" : "FAIL", 120 - bad, forked_34, null_grp);
+                    if (!ok) ++g_fail;
+                }
+            }
+        }
+
+        // ---- 3. bat_class468_update_l8 (0x2ea4c0)
+        if (!p83_leaves.empty()) {
+            ignores(false, false, false);
+            for (const int st : {0, 1}) {
+                for (int pass = 0; pass < 3; ++pass)
+                    classcheck("class468_leaf", 0x002ea4c0, bat_class468_update_l8,
+                               [st, pass, frame50, sound_slot](uint32_t m) {
+                                   frame50();
+                                   if (st != 0) bat_class468_update_l8(m);
+                                   const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                                   const uint32_t link =
+                                       ee_read<uint32_t>(OV(0x0015ffd8)) + (ee_read<uint32_t>(pv) << 8);
+                                   w8(m + 0x20, u(st));
+                                   w32(L8_ADDR(0x0015f5c4), coin() ? 2u : 0u);
+                                   w16(m + 0xa6, coin() ? 0x1d4u : 0x1d5u);
+                                   if (st == 1) {
+                                       const float f = pass == 0 ? 1.0f : pass == 1 ? 0.0f : rf(0.1f, 0.9f);
+                                       wf(ee_read<uint32_t>(link + 0x78), f);
+                                       if (pass == 1) {
+                                           const float deg = u2f(0x3c8efa35u);
+                                           wf(m + 0x44, fpu_mul(ee_read<float>(pv + 8), deg));
+                                       } else {
+                                           wf(m + 0x44, rf(-1.5f, 1.5f));
+                                       }
+                                       w32(pv + 0x20, sound_slot(m, coin() ? ri(100, 250) : ri(300, 1100)));
+                                   }
+                               },
+                               12, p83_leaves);
+            }
+        }
+
+        // ---- 4. bat_class600_update_l8 (0x2f1548) and bat_class1649_update_l8 (0x3097b0)
+        if (!p83_c600.empty()) {
+            ignores(false, false, false);
+            for (const int st : {0, 1})
+                for (int pass = 0; pass < 3; ++pass)
+                    classcheck("class600_scroll", 0x002f1548, bat_class600_update_l8,
+                               [st, pass, view_ready](uint32_t m) {
+                                   view_ready();
+                                   w8(m + 0x20, u(st));
+                                   if (st == 0) {
+                                       w32(L8_ADDR(0x00161e04), pass == 0 ? 0u : 1u);
+                                   } else {
+                                       wf(0x0015ed7c, ri(0, 3) == 0 ? 0.02f : 1.0f / 60.0f);
+                                       Vec4 c = ee_ref<Vec4>(L8_ADDR(0x00161dc0));
+                                       c.x += pass == 0 ? rf(1.0f, 18.0f) : pass == 1 ? rf(22.0f, 80.0f) : rf(90.0f, 150.0f);
+                                       ee_ref<Vec4>(L8_ADDR(0x001675c0)) = c;
+                                       render_view_setup();
+                                   }
+                               },
+                               10, p83_c600);
+        }
+        if (!p83_c1649.empty()) {
+            ignores(false, false, false);
+            for (const int st : {0, 1})
+                for (int pass = 0; pass < 3; ++pass)
+                    classcheck("class1649_scroll", 0x003097b0, bat_class1649_update_l8,
+                               [st, pass, view_ready](uint32_t m) {
+                                   view_ready();
+                                   w8(m + 0x20, u(st));
+                                   if (st == 0) {
+                                       w32(L8_ADDR(0x001623c4), pass == 0 ? 0u : 1u);
+                                   } else {
+                                       wf(0x0015ed7c, ri(0, 3) == 0 ? 0.02f : 1.0f / 60.0f);
+                                       Vec4 c = ee_ref<Vec4>(L8_ADDR(0x00162380));
+                                       c.x += pass == 0 ? rf(1.0f, 18.0f) : pass == 1 ? rf(22.0f, 80.0f) : rf(90.0f, 150.0f);
+                                       ee_ref<Vec4>(L8_ADDR(0x001675c0)) = c;
+                                       render_view_setup();
+                                   }
+                               },
+                               10, p83_c1649);
+        }
+
+        // ---- 5. bat_class621_update_l8 (0x2f44c0)
+        if (!p83_mines.empty()) {
+            for (const int st : {0, 1, 2, 3}) {
+                ignores(false, true, true);
+                for (int pass = 0; pass < 4; ++pass)
+                    classcheck("class621_mine", 0x002f44c0, bat_class621_update_l8,
+                               [st, pass, frame50, give_hit, p83_paths](uint32_t m) {
+                                   frame50();
+                                   const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                                   w8(m + 0x20, u(st));
+                                   if (st == 1) {
+                                       if (pass == 0) {
+                                           Vec4 q = ee_ref<Vec4>(m + 0x10);
+                                           q.x += 0.5f;
+                                           ee_ref<Vec4>(0x0013f3d0) = q;
+                                           w32(0x001413d4, 0x42u);
+                                       } else if (pass == 1) {
+                                           w32(0x0013f58c, m);
+                                       } else if (pass == 2) {
+                                           give_hit(m, 0x330000u);
+                                       }
+                                   } else if (st == 2 && !p83_paths.empty()) {
+                                       if (pass == 0 && ri(0, 3) == 0) {
+                                           w32(pv + 0x14, 0xffffffffu);
+                                       } else {
+                                           const uint32_t path = ee_read<uint32_t>(OV(0x001b04b0) + u(p83_paths[0]) * 4);
+                                           w32(pv + 0x14, u(p83_paths[0]));
+                                           w32(pv + 0x10, path);
+                                           w8(pv + 4, 1);
+                                           if (pass == 0) {
+                                               Vec4 q = ee_ref<Vec4>(m + 0x10);
+                                               q.x += 0.5f;
+                                               ee_ref<Vec4>(0x0013f3d0) = q;
+                                               w32(0x001413d4, 0x42u);
+                                           } else if (pass == 1) {
+                                               w32(pv, u(ee_read<int32_t>(path) - 1));
+                                               Vec4 q = ee_ref<Vec4>(m + 0x10);
+                                               q.x += coin() ? 5.0f : 35.0f;
+                                               ee_ref<Vec4>(0x0013f3d0) = q;
+                                           } else {
+                                               w32(pv, 0);
+                                               Vec4 p1 = ee_ref<Vec4>(path + 0x20);
+                                               if (pass == 2) p1.x += 0.02f;
+                                               else p1.x += 5.0f;
+                                               ee_ref<Vec4>(m + 0x10) = p1;
+                                           }
+                                       }
+                                   } else if (st == 3) {
+                                       w8(m + 0x23, pass == 0 ? 2u : u(ri(10, 200)));
+                                   }
+                                   seed_rand();
+                               },
+                               10, p83_mines);
+            }
+        }
+
+        // ---- 6. bat_class1349_update_l8 (0x307540), bat_class1553_update_l8 (0x3084d8), steam_puff_spawn_l8 (0x27fe00), bat_class1641_update_l8 (0x308c90)
+        if (!p83_rail_trig.empty()) {
+            ignores(false, false, false);
+            for (int pass = 0; pass < 4; ++pass)
+                classcheck("class1349_triggers", 0x00307540, bat_class1349_update_l8,
+                           [pass, frame50, voice_free](uint32_t m) {
+                               frame50();
+                               voice_free();
+                               const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                               w32(pv + 0x10, u(pass & 1));
+                               const int32_t box_id = ee_read<int32_t>(
+                                   pv + (pass == 0 ? 8u : pass == 1 ? 0xcu : pass == 2 ? 0u : 4u));
+                               if (box_id >= 0) {
+                                   const uint32_t box = ee_read<uint32_t>(OV(0x001600ec)) + u(box_id) * 0x80;
+                                   ee_ref<Vec4>(0x0013f3d0) = ee_ref<Vec4>(box + 0x30);
+                               }
+                               w32(0x001413dc, coin() ? 0xfu : 0u);
+                               w32(0x001413d4, ri(0, 4) == 0 ? 0x42u : 0u);
+                               w8(0x0013d413, coin() ? 0u : 1u);
+                               w8(0x0013d4dd, coin() ? 0u : 1u);
+                               w8(0x0013d4dc, coin() ? 0u : 1u);
+                               w8(0x0013dd4a, coin() ? 1u : 0u);
+                               w8(0x0013d3b7, coin() ? 0u : 1u);
+                               if (pass >= 2 && coin()) {
+                                   w32(0x0015eea4, u(ri(1700, 2000)));
+                                   for (const uint32_t v : {0x30u, 0x31u, 0x32u, 0x70u}) {
+                                       w16(0x00141968u + v * 8, 1u);
+                                       w16(0x00141968u + v * 8 + 2, 1u);
+                                   }
+                               } else {
+                                   w32(0x0015eea4, u(ri(0, 5000)));
+                                   for (const uint32_t v : {0x30u, 0x31u, 0x32u, 0x70u}) {
+                                       w16(0x00141968u + v * 8, u(ri(0, 2)));
+                                       w16(0x00141968u + v * 8 + 2, u(ri(0, 5)));
+                                   }
+                               }
+                               ee_ref<Vec4>(0x0013f5e0) = Vec4{0.0f, 0.0f, coin() ? 1.0f : -1.0f, 0.0f};
+                           },
+                           16, p83_rail_trig);
+        }
+
+        if (!p83_smoke.empty()) {
+            ignores(false, false, true);
+            for (const int st : {0, 1})
+                for (int pass = 0; pass < 3; ++pass)
+                    classcheck("class1553_smoke", 0x003084d8, bat_class1553_update_l8,
+                               [st, pass, frame50, p83_gunships2](uint32_t m) {
+                                   frame50();
+                                   w8(m + 0x20, u(st));
+                                   w32(L8_ADDR(0x0015f5c4), ri(0, 4) == 0 ? 0u : 2u);
+                                   static const uint32_t scs[] = {1, 2, 3, 4, 5, 6};
+                                   const uint32_t sc = pass == 0 ? 1u : scs[ri(0, 5)];
+                                   w32(L8_ADDR(0x0016d090), sc);
+                                   w32(L8_ADDR(0x0016d094), sc == 1 && pass == 0 ? u(ri(100, 2200)) : 3000u);
+                                   const uint32_t target = !p83_gunships2.empty() ? p83_gunships2[0] : m;
+                                   w16(target + 0xa6, 0x2eeu);
+                                   w32(L8_ADDR(0x0016d060) + 0x178 + 2 * 4, target);
+                                   w32(L8_ADDR(0x0016d060) + 0x178 + 3 * 4, target);
+                                   seed_rand();
+                               },
+                               12, p83_smoke);
+        }
+
+        ignores(false, false, false);
+        l8check("steam_puff_spawn_l8", 0x0027fe00, 40, Ret::None, [level, frame50] {
+            level();
+            frame50();
+            ee_ref<Vec4>(T3) = ee_ref<Vec4>(0x0013f3d0);
+            ee_ref<Vec4>(T3 + 0x10) = Vec4{rf(-1, 1), rf(-1, 1), rf(0, 2), 0.0f};
+            return Args{{T3, T3 + 0x10, u(ri(5, 60))}, {rf(0.2f, 3.0f)}};
+        }, [](A a) { steam_puff_spawn_l8(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]), a.f[0]); return uint64_t{0}; });
+
+        if (!p83_vents.empty()) {
+            classcheck("class1641_vent", 0x00308c90, bat_class1641_update_l8,
+                       [frame50](uint32_t m) {
+                           frame50();
+                           const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                           w32(pv + 0x14, u(ri(0, 4)));
+                           wf(m + 0x48, rf(-3.1f, 3.1f));
+                           seed_rand();
+                       },
+                       30, p83_vents);
+        }
+
+        // ---- 7. Batalia's four NPCs (774, 1130, 1144, 1283) and helpers (0x305138, 0x2e1698, 0x3063f0)
+        if (p83_plumber_slot != 0) {
+            ignores(false, false, false);
+            for (int st = 0; st <= 6; ++st)
+                for (int pass = 0; pass < 3; ++pass)
+                    classcheck("class774_plumber", 0x002f90c8, bat_class774_update_l8,
+                               [st, pass, frame50, talk_script, p83_boxes, P](uint32_t m) {
+                                   frame50();
+                                   const uint32_t sp_m = moby_spawn(0x306);
+                                   (void)sp_m;
+                                   if (ee_read<uint32_t>(m + 0x78) == 0) {
+                                       for (uint32_t o = 0; o < 0x200; o += 4) w32(T2 + 0x400 + o, 0);
+                                       w32(m + 0x78, T2 + 0x400);
+                                   }
+                                   Vec4 base_p = ee_ref<Vec4>(P + 0x80);
+                                   base_p.x += 4.0f;
+                                   ee_ref<Vec4>(m + 0x10) = base_p;
+                                   const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                                   if (st != 0) {
+                                       w8(m + 0x20, 0);
+                                       bat_class774_update_l8(m);
+                                   }
+                                   w8(m + 0x20, u(st));
+                                   w8(m + 0x31, coin() ? 1u : 0u);
+                                   w8(m + 0x53, coin() ? 0u : 1u);
+                                   w8(0x0015edb0, coin() ? 1u : 0u);
+                                   w32(L8_ADDR(0x0015f5c4), (st == 1 || st == 4) ? 0u : (ri(0, 4) == 0 ? 2u : 0u));
+                                   Vec4 hp = ee_ref<Vec4>(m + 0x10);
+                                   hp.x += pass == 0 ? 2.5f : 14.0f;
+                                   ee_ref<Vec4>(0x0013f3d0) = hp;
+                                   ee_ref<Vec4>(0x0013f420) = hp;
+                                   ee_ref<Vec4>(0x0013f450) = Vec4{coin() ? 0.5f : 0.0f, 0.0f, 0.0f, 0.0f};
+                                   w32(pv + 0x164, u(ri(0, 3)));
+                                   w32(pv + 0x168, pass == 0 ? 1u : u(ri(0, 5)));
+                                   if (st == 0) {
+                                       w32(0x0015ed84, pass == 0 ? 8u : pass == 1 ? 1u : 3u);
+                                       w8(0x0013dd42, coin() ? 1u : 0u);
+                                   } else if (st == 1 || st == 4) {
+                                       talk_script(m, pv, pass == 0);
+                                   } else if (st == 2) {
+                                       w32(pv + 0x4c, coin() ? u(ri(0, p83_boxes - 1)) : 0xffffffffu);
+                                       w16(pv + 4, pass == 0 ? 4u : 1u);
+                                   } else if (st == 5) {
+                                       w16(pv + 6, pass == 0 ? 2u : 0u);
+                                   }
+                                   seed_rand();
+                               },
+                               10, {p83_plumber_slot});
+        }
+
+        if (!p83_deserters.empty()) {
+            ignores(false, false, false);
+            for (int st = 0; st <= 3; ++st)
+                for (int pass = 0; pass < 3; ++pass)
+                    classcheck("class1130_deserter", 0x00302ce8, bat_class1130_update_l8,
+                               [st, pass, frame50, talk_script, p83_boxes](uint32_t m) {
+                                   frame50();
+                                   if (st != 0) {
+                                       w8(m + 0x20, 0);
+                                       bat_class1130_update_l8(m);
+                                   }
+                                   const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                                   w8(m + 0x20, u(st));
+                                   w8(m + 0x31, coin() ? 1u : 0u);
+                                   w8(m + 0x53, coin() ? 1u : 0u);
+                                   w8(m + 0x70, coin() ? 2u : 0u);
+                                   w8(0x0015edb0, coin() ? 1u : 0u);
+                                   w32(L8_ADDR(0x0015f5c4), (st == 1 || st == 2) ? 0u : (ri(0, 4) == 0 ? 2u : 0u));
+                                   w32(pv + 0x180, u(ri(0, p83_boxes - 1)));
+                                   Vec4 hp = ee_ref<Vec4>(m + 0x10);
+                                   hp.x += pass == 0 ? 2.0f : 14.0f;
+                                   ee_ref<Vec4>(0x0013f3d0) = hp;
+                                   ee_ref<Vec4>(0x0013f420) = hp;
+                                   ee_ref<Vec4>(0x0013f450) = Vec4{coin() ? 0.5f : 0.0f, 0.0f, 0.0f, 0.0f};
+                                   w32(pv + 0x188, u(ri(0, 3)));
+                                   w32(pv + 0x18c, pass == 0 ? 1u : u(ri(0, 5)));
+                                   if (st == 0) {
+                                       w8(0x0013d3b4, pass == 0 ? 1u : 0u);
+                                       w8(0x0013dd4a, pass == 2 ? 1u : 0u);
+                                       const uint32_t row = 0x0014c050u + (ee_read<uint32_t>(0x0015ed84) << 4);
+                                       w8(row + ee_read<uint8_t>(m + 0xb0), pass == 2 ? 0xffu : 0u);
+                                   } else if (st == 1 || st == 2) {
+                                       talk_script(m, pv + 0x20, pass == 0);
+                                   } else if (st == 3) {
+                                       w16(pv + 0x24, pass == 0 ? 3u : 1u);
+                                   }
+                                   seed_rand();
+                               },
+                               10, p83_deserters);
+        }
+
+        if (!p83_commandos.empty()) {
+            ignores(false, false, false);
+            l8check("commando_scene_scale_l8", 0x00305138, 40, Ret::None, [level, p83_commandos] {
+                level();
+                const uint32_t m = p83_commandos[0];
+                w32(L8_ADDR(0x0015f5c4), ri(0, 4) == 0 ? 0u : 2u);
+                w8(0x0015edb0, ri(0, 4) == 0 ? 0u : 1u);
+                w32(L8_ADDR(0x0016d090), coin() ? 3u : 1u);
+                w32(L8_ADDR(0x0016d094), coin() ? u(ri(442, 643)) : u(ri(0, 800)));
+                w16(L8_ADDR(0x0016d060) + 0x44, 2u);
+                w32(L8_ADDR(0x0016d060) + 0x178, m);
+                w32(L8_ADDR(0x0016d060) + 0x17c, ee_read<uint32_t>(0x001413d0));
+                w8(L8_ADDR(0x0017cc40) + 1, coin() ? 0u : 1u);
+                return Args{{m}, {}};
+            }, [](A a) { commando_scene_scale_l8(a.i[0]); return uint64_t{0}; });
+
+            for (int st = 0; st <= 2; ++st)
+                for (int pass = 0; pass < 3; ++pass)
+                    classcheck("class1144_commando", 0x00305270, bat_class1144_update_l8,
+                               [st, pass, frame50, talk_script, P](uint32_t m) {
+                                   frame50();
+                                   if (st != 0) {
+                                       w8(m + 0x20, 0);
+                                       bat_class1144_update_l8(m);
+                                   }
+                                   const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                                   w8(m + 0x20, u(st));
+                                   w8(m + 0x31, coin() ? 1u : 0u);
+                                   w8(m + 0x53, coin() ? 1u : 0u);
+                                   w8(m + 0x70, coin() ? 2u : 0u);
+                                   w8(0x0015edb0, coin() ? 1u : 0u);
+                                   Vec4 hp = ee_ref<Vec4>(m + 0x10);
+                                   hp.x += (st == 1 && pass == 1) ? 6.5f : (pass <= 1 ? 2.5f : 14.0f);
+                                   ee_ref<Vec4>(0x0013f3d0) = hp;
+                                   ee_ref<Vec4>(0x0013f420) = hp;
+                                   ee_ref<Vec4>(0x0013f450) = Vec4{coin() ? 0.5f : 0.0f, 0.0f, 0.0f, 0.0f};
+                                   w32(pv + 0x194, u(ri(0, 3)));
+                                   w32(pv + 0x198, pass == 0 ? 1u : u(ri(0, 5)));
+                                   if (st == 0) {
+                                       w8(0x0013dd49, pass == 2 ? 1u : 0u);
+                                       const uint32_t row = 0x0014c050u + (ee_read<uint32_t>(0x0015ed84) << 4);
+                                       w8(row + ee_read<uint8_t>(m + 0xb0), pass == 2 ? 0xffu : 0u);
+                                   } else if (st == 2) {
+                                       talk_script(m, pv + 0x20, pass == 1);
+                                       w32(P + 0x2fc, pass == 2 ? m : 0u);
+                                       w32(P + 0x300, coin() ? 100u : 5u);
+                                       w16(pv + 0x56, pass == 1 ? 1u : (coin() ? 1u : 0u));
+                                       w16(pv + 0x24, pass == 0 ? 4u : 1u);
+                                   }
+                                   seed_rand();
+                               },
+                               10, p83_commandos);
+        }
+
+        if (!p83_turrets.empty()) {
+            ignores(false, false, false);
+            l8check("turret_mount_start_l8", 0x002e1698, 25, Ret::Int32, [level, p83_turrets] {
+                level();
+                return Args{{p83_turrets[0]}, {}};
+            }, [](A a) { return r32(u(turret_mount_start_l8(a.i[0]))); });
+        }
+
+        if (!p83_commanders.empty()) {
+            ignores(false, false, false);
+            l8check("commander_scene_scale_l8", 0x003063f0, 50, Ret::None, [level, p83_commanders] {
+                level();
+                const uint32_t m = p83_commanders[0];
+                w32(L8_ADDR(0x0015f5c4), ri(0, 4) == 0 ? 0u : 2u);
+                w8(0x0015edb0, ri(0, 4) == 0 ? 0u : 1u);
+                w32(L8_ADDR(0x0016d090), coin() ? 6u : 1u);
+                static const uint32_t fs[] = {650, 1300, 1600, 200, 1800};
+                w32(L8_ADDR(0x0016d094), fs[ri(0, 4)]);
+                w16(L8_ADDR(0x0016d060) + 0x44, 2u);
+                w32(L8_ADDR(0x0016d060) + 0x178, m);
+                w32(L8_ADDR(0x0016d060) + 0x17c, ee_read<uint32_t>(0x001413d0));
+                w8(L8_ADDR(0x0017cc40) + 1, coin() ? 0u : 1u);
+                return Args{{m}, {}};
+            }, [](A a) { commander_scene_scale_l8(a.i[0]); return uint64_t{0}; });
+
+            for (const int st : {0, 1, 2, 5})
+                for (int pass = 0; pass < 3; ++pass)
+                    classcheck("class1283_commander", 0x003065d8, bat_class1283_update_l8,
+                               [st, pass, frame50, talk_script, p83_boxes, p83_turrets, P](uint32_t m) {
+                                   frame50();
+                                   w32(L8_ADDR(0x001611c0u), 0x0035a710u);
+                                   w8(P + 0x20b1, 1);  // (prevents level_movie_play(1) from entering the movie player loop)
+                                   if (st != 0) {
+                                       w8(m + 0x20, 0);
+                                       bat_class1283_update_l8(m);
+                                   }
+                                   const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                                   w8(m + 0x20, u(st));
+                                   w8(m + 0x53, coin() ? 0u : 1u);
+                                   w8(0x0015edb0, coin() ? 1u : 0u);
+                                   Vec4 hp = ee_ref<Vec4>(m + 0x10);
+                                   hp.x += pass == 0 ? 2.0f : 14.0f;
+                                   ee_ref<Vec4>(0x0013f3d0) = hp;
+                                   ee_ref<Vec4>(0x0013f420) = hp;
+                                   ee_ref<Vec4>(0x0013f450) = Vec4{coin() ? 0.5f : 0.0f, 0.0f, 0.0f, 0.0f};
+                                   w32(pv + 0x174, u(ri(0, 3)));
+                                   w32(pv + 0x178, pass == 0 ? 1u : u(ri(0, 5)));
+                                   if (st == 0) {
+                                       const uint32_t row = 0x0014c050u + (ee_read<uint32_t>(0x0015ed84) << 4);
+                                       w8(row + ee_read<uint8_t>(m + 0xb0), pass == 2 ? 0xffu : 0u);
+                                   } else if (st == 1) {
+                                       talk_script(m, pv, pass == 0);
+                                       w32(pv + 0x48, u(ri(0, p83_boxes - 1)));
+                                       if (!p83_turrets.empty())
+                                           w32(pv + 0x50, (p83_turrets[0] - ee_read<uint32_t>(OV(0x0015ffd8))) >> 8);
+                                       w16(pv + 0x36, pass == 0 && coin() ? 2u : 0u);
+                                       w16(pv + 4, pass == 1 ? 3u : pass == 2 ? 4u : 0u);
+                                   }
+                                   seed_rand();
+                               },
+                               10, p83_commanders);
+        }
+
+        // ---- 8. Draw callbacks and banner helpers: 0x2deee0, 0x2e5188, 0x27b450, 0x2f5d98, 0x2f5e58, 0x2f70a0
+        if (!p83_turrets.empty()) {
+            ignores(false, false, false);
+            l8check("bat_class440_draw_p83", 0x002deee0, 40, Ret::None, [level, frame50, view_ready, p83_turrets, p83_placed_435] {
+                level();
+                frame50();
+                view_ready();
+                w32(L8_ADDR(0x001611c0u), 0x0035a710u);
+                const uint32_t m = p83_turrets[0];
+                bat_class440_update_l8(m);
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                w32(pv + 0x58, coin() ? u(ri(0, 100)) : u(ri(101, 200)));
+                w32(pv + 0xa0, coin() ? u(ri(0, 14)) : u(ri(16, 40)));
+                wf(m + 0x48, rf(-3.1f, 3.1f));
+                wf(m + 0x44, rf(-0.8f, 0.4f));
+                w8(0x0015edb4, coin() ? 1u : 0u);
+                w32(L8_ADDR(0x0015f5cc), R());
+                if (!p83_placed_435.empty()) {
+                    const uint32_t shot = p83_placed_435[0];
+                    w32(pv + 0x60, shot);
+                    w8(shot + 0x20, ri(0, 3) == 0 ? 0xfeu : (coin() ? 2u : 1u));
+                }
+                const uint32_t tab = ee_read<uint32_t>(OV(0x0015ffd8));
+                for (int i = 0; i < 4; ++i) {
+                    const uint32_t g = tab + (ee_read<uint32_t>(pv + 0x80 + u(i) * 4) << 8);
+                    w8(g + 0x20, coin() ? 1u : 0xfeu);
+                }
+                return Args{{m}, {}};
+            }, [](A a) { bat_class440_draw_l8(a.i[0]); return uint64_t{0}; });
+        }
+
+        if (!p83_thieves.empty()) {
+            ignores(false, false, false);
+            l8check("bat_class452_draw_p83", 0x002e5188, 40, Ret::None, [level, view_ready, p83_thieves] {
+                level();
+                view_ready();
+                w32(L8_ADDR(0x001611c0u), 0x0035a710u);
+                const uint32_t m = p83_thieves[0];
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                w16(pv + 0x6c, ri(0, 5) == 0 ? 0u : 1u);
+                wf(pv + 0x74, rf(-3.1f, 3.1f));
+                w32(pv + 0x78, 0x80000000u | (R() & 0xffffffu));
+                w8(pv + 0x7b, u(ri(-10, 40)));
+                Vec4 cam = ee_ref<Vec4>(L8_ADDR(0x001675c0));
+                const Vec4 fwd = ee_ref<Vec4>(L8_ADDR(0x001675c0) + 0x210);
+                const float d = coin() ? rf(2.0f, 3.8f) : (coin() ? rf(5.0f, 14.0f) : rf(17.0f, 25.0f));
+                cam.x += fwd.x * d;
+                cam.y += fwd.y * d;
+                cam.z += fwd.z * d;
+                ee_ref<Vec4>(m + 0x10) = cam;
+                return Args{{m}, {}};
+            }, [](A a) { bat_class452_draw_l8(a.i[0]); return uint64_t{0}; });
+        }
+
+        if (!p83_banners.empty()) {
+            ignores(false, false, false);
+            l8check("banner_spark_spawn_l8", 0x0027b450, 40, Ret::Int32, [level, frame50, p83_banners] {
+                level();
+                frame50();
+                ee_ref<Vec4>(T3) = ee_ref<Vec4>(0x0013f3d0);
+                ee_ref<Vec4>(T3 + 0x10) = Vec4{rf(-1, 1), rf(-1, 1), rf(-1, 1), 0.0f};
+                seed_rand();
+                return Args{{p83_banners[0], T3, T3 + 0x10, u(ri(4, 40)), u(ri(0, 255)), u(ri(0, 255)), u(ri(0, 255)), u(ri(0, 255))}, {rf(0.5f, 4.0f)}};
+            }, [](A a) {
+                return r32(banner_spark_spawn_l8(a.i[0], a.i[1], a.i[2], static_cast<int16_t>(a.i[3]),
+                                                 static_cast<uint8_t>(a.i[4]), static_cast<uint8_t>(a.i[5]),
+                                                 static_cast<uint8_t>(a.i[6]), static_cast<uint8_t>(a.i[7]), a.f[0]));
+            });
+
+            l8check("banner_wind_sample_l8", 0x002f5d98, 60, Ret::Float, [level, p83_banners] {
+                level();
+                const uint32_t m = p83_banners[0];
+                bat_class671_update_l8(m);
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                return Args{{pv}, {rf(-0.5f, 2.5f)}};
+            }, [](A a) { return rf32(banner_wind_sample_l8(a.i[0], a.f[0])); });
+
+            for (const int st : {0, 1})
+                for (int pass = 0; pass < 3; ++pass)
+                    classcheck("class671_banner", 0x002f70a0, bat_class671_update_l8,
+                               [st, pass, view_ready](uint32_t m) {
+                                   view_ready();
+                                   if (st != 0) bat_class671_update_l8(m);
+                                   const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                                   w8(m + 0x20, u(st));
+                                   w8(m + 0x31, coin() ? 1u : 0u);
+                                   w16(pv + 0xa, coin() ? 4u : 0u);
+                                   w8(pv + 0x13b, coin() ? 0xffu : 1u);
+                                   if (st == 0 && pass == 0) {
+                                       wf(pv + 0x70, coin() ? 0.0f : 9.0f);
+                                       wf(pv + 0x74, coin() ? 0.0f : 9.0f);
+                                   }
+                                   Vec4 c = ee_ref<Vec4>(m + 0x10);
+                                   const float max_d = static_cast<float>(ee_read<int16_t>(m + 0x32));
+                                   c.x += pass == 0 ? 5.0f : pass == 1 ? std::max(10.0f, max_d - 2.0f) : max_d + 20.0f;
+                                   ee_ref<Vec4>(L8_ADDR(0x001675c0)) = c;
+                                   render_view_setup();
+                                   seed_rand();
+                               },
+                               12, p83_banners);
+
+            ignores(false, false, true);
+            l8check("bat_class671_draw_p83", 0x002f5e58, 40, Ret::None, [level, frame50, view_ready, p83_banners] {
+                level();
+                frame50();
+                view_ready();
+                w32(L8_ADDR(0x001611c0u), 0x0035a710u);
+                const uint32_t m = p83_banners[static_cast<size_t>(ri(0, static_cast<int>(p83_banners.size()) - 1))];
+                bat_class671_update_l8(m);
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                Vec4 cam = ee_ref<Vec4>(L8_ADDR(0x001675c0));
+                const Vec4 fwd = ee_ref<Vec4>(L8_ADDR(0x001675c0) + 0x210);
+                cam.x += fwd.x * 12.0f;
+                cam.y += fwd.y * 12.0f;
+                cam.z += fwd.z * 12.0f;
+                ee_ref<Vec4>(m + 0x10) = cam;
+                wf(pv + 0x154, rf(0.3f, 1.0f));
+                w16(pv + 0xa, (coin() ? 1u : 0u) | (ri(0, 3) != 0 ? 2u : 0u) | 4u);
+                w8(pv + 0xd, coin() ? 0u : 3u);
+                w32(pv + 0xf8, coin() ? 1u : 5u);
+                w8(pv + 0xf2, u(ri(0, 2)));
+                w16(pv + 0x122, coin() ? 1u : 5u);
+                w8(pv + 0x120, u(ri(0, 2)));
+                w8(pv + 0x13b, coin() ? 0xffu : 1u);
+                if (ee_read<int8_t>(pv + 0x13b) >= 0) {
+                    Vec4 lp = ee_ref<Vec4>(pv + 0x140);
+                    lp.x += coin() ? 0.01f : 5.0f;
+                    ee_ref<Vec4>(L8_ADDR(0x00180ac0) + 0x20 + 0x10) = lp;
+                }
+                w32(L8_ADDR(0x0015f3f8), u(ri(0, 500)));
+                seed_rand();
+                return Args{{m}, {}};
+            }, [](A a) { bat_class671_draw_l8(a.i[0]); return uint64_t{0}; });
+        }
+
+        g_extra_hooks = saved_hooks_p83;
+        g_host_clock_fixed = saved_clock_p83;
         g_extra_noop_hooks.clear();
         g_ignored_words = saved_ignored;
     }

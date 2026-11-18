@@ -76,6 +76,41 @@ void gunship_build_l8(uint32_t m);          // L8:0x002e8788
 void gunship_hits_l8(uint32_t m);           // L8:0x002e88d8
 void gunship_pieces_follow_l8(uint32_t m);  // L8:0x002e8ba0
 
+// ---- the winged Blarg gunship (batalia_gunship2.cpp)
+void bat_class463_update_l8(uint32_t m);     // L8:0x002e9b70  class 463
+void gunship2_build_l8(uint32_t m);          // L8:0x002e9558
+void gunship2_hits_l8(uint32_t m);           // L8:0x002e9758
+void gunship2_pieces_follow_l8(uint32_t m);  // L8:0x002e9a18
+
+// ---- the fort's gates, drawbridge, scrolling layers, mine, rail triggers, ship smoke and steam vent (batalia_fort.cpp)
+void bat_class467_update_l8(uint32_t m);   // L8:0x002ea398  class 467
+void bat_class468_update_l8(uint32_t m);   // L8:0x002ea4c0  class 468
+void bat_class600_update_l8(uint32_t m);   // L8:0x002f1548  class 600
+void bat_class621_update_l8(uint32_t m);   // L8:0x002f44c0  class 621
+void bat_class1349_update_l8(uint32_t m);  // L8:0x00307540  class 1349
+void bat_class1553_update_l8(uint32_t m);  // L8:0x003084d8  class 1553
+void steam_puff_spawn_l8(uint32_t pos, uint32_t vel, int32_t life, float scale);  // L8:0x0027fe00
+void bat_class1641_update_l8(uint32_t m);  // L8:0x00308c90  class 1641
+void bat_class1649_update_l8(uint32_t m);  // L8:0x003097b0  class 1649
+
+// ---- the Plumber, Deserter, Commando and Commander (batalia_npcs.cpp)
+void bat_class774_update_l8(uint32_t m);        // L8:0x002f90c8  class 774
+void bat_class1130_update_l8(uint32_t m);       // L8:0x00302ce8  class 1130
+void commando_scene_scale_l8(uint32_t m);       // L8:0x00305138
+void bat_class1144_update_l8(uint32_t m);       // L8:0x00305270  class 1144
+int32_t turret_mount_start_l8(uint32_t turret); // L8:0x002e1698
+void commander_scene_scale_l8(uint32_t m);      // L8:0x003063f0
+void bat_class1283_update_l8(uint32_t m);       // L8:0x003065d8  class 1283
+
+// ---- the turret HUD, Bolt Thief glow and waving banner (batalia_draws.cpp)
+void bat_class440_draw_l8(uint32_t m);   // L8:0x002deee0  class 440 draw
+void bat_class452_draw_l8(uint32_t m);   // L8:0x002e5188  class 452 draw
+uint32_t banner_spark_spawn_l8(uint32_t owner, uint32_t pos, uint32_t vel, int16_t life, uint8_t r, uint8_t g,
+                               uint8_t b, uint8_t a, float size);  // L8:0x0027b450
+float banner_wind_sample_l8(uint32_t pv, float t);                 // L8:0x002f5d98
+void bat_class671_draw_l8(uint32_t m);                             // L8:0x002f5e58  class 671 draw
+void bat_class671_update_l8(uint32_t m);                           // L8:0x002f70a0  class 671
+
 }  // namespace rac1
 
 #endif

@@ -168,6 +168,10 @@ add_library(rac1_game STATIC
     ovl/batalia_warship.cpp
     ovl/batalia_bolt_thief.cpp
     ovl/batalia_gunship.cpp
+    ovl/batalia_gunship2.cpp
+    ovl/batalia_fort.cpp
+    ovl/batalia_npcs.cpp
+    ovl/batalia_draws.cpp
     ovl/orxon_mobys.cpp
     ovl/orxon_hooks.cpp
     ovl/orxon_platforms.cpp

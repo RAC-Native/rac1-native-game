@@ -3,6 +3,7 @@
 #include <game/ovl/batalia_part2.h>
 
 #include <game/ovl/batalia_mobys.h>
+#include <game/ovl/batalia_own.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants_l8.h>
 #include <game/ovl/hud_slot7_tr.h>
