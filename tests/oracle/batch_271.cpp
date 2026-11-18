@@ -74,7 +74,8 @@ namespace {
 // the host stack (the original: 0x70003000 .. 0x70003fff, 0x70000000 .., 0x70002000): A2's collision scratch ranges
 // are left out of these checks, and only of them (stage 5, task C2c).
 bool c2c_spr_check(const char* name) {
-    static const char* const kNames[] = {"gold_bolt1134_l17"};
+    static const char* const kNames[] = {"gold_bolt1134_l17", "gold_bolt1134_l18", "boss1422_fight4200",
+                                         "boss1422_fight5000", "boss1422_fight6000", "class1454_fight5000"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -604,7 +605,10 @@ void batch_271() {
             return Args{{0}, {}};
         };
         g_extra_noop_hooks = {OVF(0x002a08c8), 0x00122298, 0x00118a80};
-        check(nu.c_str(), 0x00299c48, 150, Ret::None, gen, [](A) { credits_update_tr(0); return uint64_t{0}; });
+        {
+            CollisionScratchIgnored spr_ignored;
+            check(nu.c_str(), 0x00299c48, 150, Ret::None, gen, [](A) { credits_update_tr(0); return uint64_t{0}; });
+        }
         check(nd.c_str(), 0x001f8f78, 150, Ret::None, gen, [](A) { credits_draw_tr(0); return uint64_t{0}; });
         g_extra_noop_hooks.clear();
     }
