@@ -1,5 +1,4 @@
-// Hoven (level 12) transliterated moby classes, class hooks, camera type 0x12's accept, draw callbacks, the camera mode hook and level-only engine functions: the declarations of
-// hoven_classes_tr_N.cpp (generated: `void` = a class update / entry in the entry ABI, `TrRet` = a helper or a `_u` entry in the uniform ABI).
+// Hoven (level 12) hand-written moby classes, class hooks and draw callbacks.
 #ifndef RAC1_GAME_OVL_HOVEN_MOBYS_H
 #define RAC1_GAME_OVL_HOVEN_MOBYS_H
 
@@ -9,29 +8,29 @@
 
 namespace rac1 {
 
-void hov_class1269_update_l12(uint32_t a0);  // L12:0x00304e00
-TrRet hov_306350_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x00306350
-TrRet hov_3064e8_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x003064e8
-TrRet hov_3054b0_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x003054b0
-TrRet hov_306828_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x00306828
-void hov_class1274_update_l12(uint32_t a0);  // L12:0x003069d0
-TrRet hov_3076e0_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x003076e0
-TrRet hov_307ab8_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x00307ab8
-void hov_class1281_update_l12(uint32_t a0);  // L12:0x00307840
-void hov_class1345_update_l12(uint32_t a0);  // L12:0x003081b0
-void hov_class1404_update_l12(uint32_t a0);  // L12:0x003093c8
-void hov_class1557_update_l12(uint32_t a0);  // L12:0x003094a0
-void hov_class1901_update_l12(uint32_t a0);  // L12:0x0030bff0
-TrRet hov_hook_2e16b8_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x002e16b8
-TrRet hov_hook_2e17f8_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x002e17f8
-TrRet hov_222928_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x00222928
-TrRet hov_21f300_l12(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L12:0x0021f300
-void hov_cb_2ecac0_l12(uint32_t a0);  // L12:0x002ecac0
-void hov_cb_3028c8_l12(uint32_t a0);  // L12:0x003028c8
-void hov_cb_304218_l12(uint32_t a0);  // L12:0x00304218
-void hov_cb_304d98_l12(uint32_t a0);  // L12:0x00304d98
-void hov_cb_308350_l12(uint32_t a0);  // L12:0x00308350
-void hov_cb_30be68_l12(uint32_t a0);  // L12:0x0030be68
+// ---- hand-written (task P12.3): classes 1269, 1274, 1281, 1345, 1404, 1557, 1901, their helpers, hooks 0x2e16b8 / 0x2e17f8,
+// and draw callbacks 0x2ecac0, 0x3028c8, 0x304218, 0x304d98, 0x308350, 0x30be68
+void hov_class1269_update_l12(uint32_t m);     // L12:0x00304e00 (hoven_drone_hatch.cpp)
+void hov_class1274_update_l12(uint32_t m);     // L12:0x003069d0 (hoven_dropship.cpp)
+void hov_class1281_update_l12(uint32_t m);     // L12:0x00307840 (hoven_drone_hatch.cpp)
+void hov_class1345_update_l12(uint32_t m);     // L12:0x003081b0 (hoven_scene_fx.cpp)
+void hov_class1404_update_l12(uint32_t m);     // L12:0x003093c8 (hoven_scene_fx.cpp)
+void hov_class1557_update_l12(uint32_t m);     // L12:0x003094a0 (hoven_scene_fx.cpp)
+void hov_class1901_update_l12(uint32_t m);     // L12:0x0030bff0 (hoven_scene_fx.cpp)
+int32_t hov_hook_2e16b8_l12(uint32_t m, uint32_t a1, uint32_t a2, float f12);  // L12:0x002e16b8 (hoven_carry.cpp)
+int32_t hov_hook_2e17f8_l12(uint32_t m, uint32_t a1, uint32_t a2, float f12);  // L12:0x002e17f8 (hoven_carry.cpp)
+void hov_cb_2ecac0_l12(uint32_t m);            // L12:0x002ecac0 (hoven_draws.cpp)
+void hov_cb_3028c8_l12(uint32_t m);            // L12:0x003028c8 (hoven_draws.cpp)
+void hov_cb_304218_l12(uint32_t m);            // L12:0x00304218 (hoven_draws.cpp)
+void hov_cb_304d98_l12(uint32_t m);            // L12:0x00304d98 (hoven_draws.cpp)
+void hov_cb_308350_l12(uint32_t m);            // L12:0x00308350 (hoven_draws.cpp)
+void hov_cb_30be68_l12(uint32_t m);            // L12:0x0030be68 (hoven_draws.cpp)
+void dropship_piece_init(uint32_t m, int32_t idx);  // L12:0x00306350 (hoven_dropship.cpp)
+void dropship_pieces_fall(uint32_t m);              // L12:0x003064e8 (hoven_dropship.cpp)
+void dropship_turrets_update(uint32_t m);           // L12:0x003054b0 (hoven_dropship.cpp)
+void dropship_pulse_tint(uint32_t m);               // L12:0x00306828 (hoven_dropship.cpp)
+void drone_hatch_spawn(uint32_t m);                 // L12:0x003076e0 (hoven_drone_hatch.cpp)
+void drone_hatch_target(uint32_t m);                // L12:0x00307ab8 (hoven_drone_hatch.cpp)
 
 // ---- hand-written (task P12.1): the helpers of classes 238 (hoven_snow_critter.cpp), 240 (hoven_jet_platform.cpp) and the
 // carry at a joint (hoven_raritanium_npc.cpp); the class updates keep their names

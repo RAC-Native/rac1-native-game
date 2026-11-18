@@ -315,10 +315,10 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         }
     case 12:  // Hoven: class 0xee (table 0x20d228), class 0x10e's hook +0xc (table 0x20d240: Veldin's 0x2caf10 code, the map pairs it with 0x2d57d0)
         switch (lvl_key(fn)) {
-        case L12_CASE(0x002e16b8): ret = u_call(hov_hook_2e16b8_u, m, a1, a2, f12); return true;
+        case L12_CASE(0x002e16b8): ret = hov_hook_2e16b8_l12(m, a1, a2, f12); return true;
         case L12_CASE(0x002e1758): ret = carry_state_hook(m, a1, a2, f12, 4, 8, 1); return true;
         case L12_CASE(0x002e17a8): ret = carry_state_hook(m, a1, a2, f12, 8, 8, 1); return true;
-        case L12_CASE(0x002e17f8): ret = u_call(hov_hook_2e17f8_u, m, a1, a2, f12); return true;
+        case L12_CASE(0x002e17f8): ret = hov_hook_2e17f8_l12(m, a1, a2, f12); return true;
         case L12_CASE(0x002e1848): ret = static_cast<int32_t>(hov_hook_2e1848_l12(m)); return true;
         case L12_CASE(0x002e6b00): ret = hov_hook_2e6b00_l12(m, a1, a2, f12); return true;
         default: return false;

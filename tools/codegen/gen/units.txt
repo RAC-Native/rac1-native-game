@@ -8,7 +8,6 @@ mkall:batalia_part2
 mkall:blarg_classes
 mkall:gaspar_classes
 mkall:gemlik_classes
-mkall:hoven_classes
 mkall:kalebo_classes
 mkall:kerwan_part2
 mkall:novalis_gold
