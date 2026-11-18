@@ -5,6 +5,7 @@
 // own address, the port the one registered for it (the transliterations kalebo_classes_tr_N.cpp / kalebo_hero_tr_N.cpp, generated from the disc by
 // tools/codegen/mkall_l16.py). Made after batch 124 (Pokitaru).
 #include "ovl_oracle.h"
+#include "trial_guard.h"
 
 #include <game/ovl/kerwan_camera.h>
 #include <game/ovl/novalis_camera.h>
@@ -37,8 +38,6 @@
 #include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 
-#include <csetjmp>
-#include <csignal>
 #include <cmath>
 #include <optional>
 #include <cstring>
@@ -50,22 +49,7 @@ namespace rac1::oracle {
 namespace {
 // A random state can hold a pointer outside RAM that the port's vector helpers dereference without a check (a SIGSEGV where the interpreter would wrap it): the trial run of a state
 // turns it into "not a game state" (the state is dealt again), as the port's "Pointer resolution out of bounds" exception does.
-sigjmp_buf g_trial_jmp;
-void trial_segv(int) { siglongjmp(g_trial_jmp, 1); }
-bool trial_run(void (*port)(uint32_t), uint32_t m) {
-    struct sigaction sa {}, old {};
-    sa.sa_handler = trial_segv;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_NODEFER;
-    sigaction(SIGSEGV, &sa, &old);
-    bool ok = true;
-    if (sigsetjmp(g_trial_jmp, 1) != 0) ok = false;
-    else {
-        try { port(m); } catch (const std::exception&) { ok = false; }
-    }
-    sigaction(SIGSEGV, &old, nullptr);
-    return ok;
-}
+
 constexpr uint32_t MOBY_SPAWN_LV = 0x00249f10;
 
 // (stage 5, task C2a) The checks named here reach mobys_in_sphere (the level's copy), whose cell list and vertices the port keeps on
@@ -201,7 +185,7 @@ void batch_250() {
                 saved.assign(ram, ram + 0x02000000);
                 bool ok = true;
                 const uint32_t stack_top = ee_stack_ptr();
-                ok = trial_run(port, m);
+                ok = run_trial(port, m);
                 ee_stack_ptr() = stack_top;  // (an exception leaves the port's frames allocated)
                 std::memcpy(ram, saved.data(), saved.size());
                 if (ok) break;

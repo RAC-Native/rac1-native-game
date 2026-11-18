@@ -17,11 +17,15 @@
 #include <process.h>
 #include <xmmintrin.h>
 
+#include <atomic>
 #include <cfenv>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <cwchar>
+#include <mutex>
+#include <thread>
 
 namespace rac1::platform {
 
@@ -331,34 +335,73 @@ int cpu_count() {
     return si.dwNumberOfProcessors > 0 ? static_cast<int>(si.dwNumberOfProcessors) : 1;
 }
 
+namespace {
+// the process's thread ids, from a snapshot of every thread of the system (CreateToolhelp32Snapshot: 30 to 40 ms on a busy
+// Windows, the profiler's half-second sample a hitch of the main thread that took it): taken on a thread of its own, at most
+// every 5 s; a sample reads the times of the ids it last found (a thread started since: in the next one)
+std::mutex g_tids_mutex;
+std::vector<DWORD> g_tids;
+std::atomic<bool> g_tids_busy{false};
+std::chrono::steady_clock::time_point g_tids_at{};
+
+void tids_snapshot() {
+    std::vector<DWORD> ids;
+    const HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (snap != INVALID_HANDLE_VALUE) {
+        const DWORD pid = GetCurrentProcessId();
+        THREADENTRY32 te{};
+        te.dwSize = sizeof te;
+        for (BOOL ok = Thread32First(snap, &te); ok; ok = Thread32Next(snap, &te))
+            if (te.th32OwnerProcessID == pid) ids.push_back(te.th32ThreadID);
+        CloseHandle(snap);
+    }
+    std::lock_guard<std::mutex> lk(g_tids_mutex);
+    if (!ids.empty()) g_tids = std::move(ids);
+}
+}  // namespace
+
 bool process_threads(std::vector<ThreadTime>* out) {
     out->clear();
-    const HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-    if (snap == INVALID_HANDLE_VALUE) return false;
+    const auto now = std::chrono::steady_clock::now();
+    bool first = false;
+    {
+        std::lock_guard<std::mutex> lk(g_tids_mutex);
+        first = g_tids.empty();
+    }
+    if (first) {
+        tids_snapshot();  // (the first sample: no list yet, taken here once)
+        g_tids_at = now;
+    } else if (now - g_tids_at > std::chrono::seconds(5) && !g_tids_busy.exchange(true)) {
+        g_tids_at = now;
+        std::thread([] {
+            tids_snapshot();
+            g_tids_busy.store(false);
+        }).detach();
+    }
+    std::vector<DWORD> ids;
+    {
+        std::lock_guard<std::mutex> lk(g_tids_mutex);
+        ids = g_tids;
+    }
+    if (ids.empty()) return false;
     // (GetThreadDescription: Windows 10 1607 and later, looked up)
     using GetDesc = HRESULT(WINAPI*)(HANDLE, PWSTR*);
     static const GetDesc get_desc = reinterpret_cast<GetDesc>(reinterpret_cast<void*>(GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "GetThreadDescription")));
-    const DWORD pid = GetCurrentProcessId();
-    THREADENTRY32 te{};
-    te.dwSize = sizeof te;
-    for (BOOL ok = Thread32First(snap, &te); ok; ok = Thread32Next(snap, &te)) {
-        if (te.th32OwnerProcessID != pid) continue;
+    for (const DWORD id : ids) {
+        const HANDLE h = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, id);
+        if (h == nullptr) continue;  // (a thread ended since the snapshot)
         ThreadTime t;
-        t.tid = te.th32ThreadID;
-        const HANDLE h = OpenThread(THREAD_QUERY_LIMITED_INFORMATION, FALSE, te.th32ThreadID);
-        if (h != nullptr) {
-            FILETIME created, exited, kernel, user;
-            if (GetThreadTimes(h, &created, &exited, &kernel, &user)) t.cpu_ms = static_cast<double>(filetime_ticks(kernel) + filetime_ticks(user)) * 1e-4;
-            PWSTR desc = nullptr;
-            if (get_desc != nullptr && SUCCEEDED(get_desc(h, &desc)) && desc != nullptr) {
-                t.name = narrow(desc);
-                LocalFree(desc);
-            }
-            CloseHandle(h);
+        t.tid = id;
+        FILETIME created, exited, kernel, user;
+        if (GetThreadTimes(h, &created, &exited, &kernel, &user)) t.cpu_ms = static_cast<double>(filetime_ticks(kernel) + filetime_ticks(user)) * 1e-4;
+        PWSTR desc = nullptr;
+        if (get_desc != nullptr && SUCCEEDED(get_desc(h, &desc)) && desc != nullptr) {
+            t.name = narrow(desc);
+            LocalFree(desc);
         }
+        CloseHandle(h);
         out->push_back(std::move(t));
     }
-    CloseHandle(snap);
     return true;
 }
 

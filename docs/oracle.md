@@ -92,8 +92,9 @@ cmake --build build --target ovl_oracle -j 3
 ```
 
 `RAC1_ORACLE` is off by default, and `./setup.sh` never turns it on. Once it is on in a build
-directory, a plain build of that directory compiles the oracle too. It builds on Linux; on Windows
-it compiles with the same code, but it has not been tried there.
+directory, a plain build of that directory compiles the oracle too. It builds on Linux and Windows
+(MSYS2 CLANG64). On Windows, run it in the CLANG64 shell, or put
+`.toolchain\msys64\clang64\bin` on `PATH` so its runtime DLLs can be found.
 
 Run it from the repository's root (it reads `assets/`), one batch at a time:
 
@@ -105,6 +106,33 @@ ORACLE_LEVEL=8 build/tests/ovl_oracle --batch 120  # a batch on level 8's own ov
 It prints one line per check (`ok (40 cases)`, or the differences), then `PASS` or `FAIL` with the
 number of failing functions. The exit code is 0 for a pass, 1 for a failure, and 77 when the disc's
 files, or the level's address map, are missing. Each batch's header says which levels it runs on and what it needs.
+
+### Native trial guards
+
+Some batches first try a random state in the native port, rejecting a `std::exception` or an invalid
+memory access before comparing it with the original. These trials share `trial_guard.cpp`; the
+individual batches still restore their RAM, stack and VU state as before. Windows uses structured
+exception handling for access violations, rather than POSIX signals. Other Windows exceptions are
+not treated as invalid game states.
+
+Batches 222 and 223 keep a two-second limit on these trials. On POSIX, `SIGALRM` rejects the state
+and generation retries. On Windows, a thread-pool timer writes a diagnostic and terminates the
+oracle with exit status **124**: it does not validate the state, disable the timeout, or attempt to
+resume arbitrary C++ code after interrupting it. A timed-out Windows run needs investigation (or
+the batch can be run on Linux); it is not a successful oracle comparison.
+
+The guard's isolated tests need no game data:
+
+```sh
+cmake --build build --target oracle_trial_guard_test
+python tests/oracle/test_trial_guard.py build/tests/oracle_trial_guard_test.exe  # Windows
+# Linux: omit .exe, or use ctest --test-dir build -R '^oracle_trial_guard$'
+```
+
+For a clean checkout without generated game sources, compile `trial_guard.cpp` and
+`trial_guard_test.cpp` directly with C++20 (plus `-fms-extensions` for Windows clang), then pass the
+resulting executable to `test_trial_guard.py`. CI exercises success, C++ exceptions, repeated actual
+memory faults, recovery, cancellation and timeout behavior without a disc.
 
 Useful variables:
 

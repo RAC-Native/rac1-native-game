@@ -7,6 +7,7 @@
 // Built after batch 260 (level 18's).
 
 #include "ovl_oracle.h"
+#include "trial_guard.h"
 
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/hero_move_mode.h>
@@ -45,8 +46,6 @@
 #include <runtime/kernel/disc.h>
 
 #include <optional>
-#include <csetjmp>
-#include <csignal>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -82,22 +81,7 @@ TrRet carry_state_uniform(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t, uint3
 
 // A random state can hold a pointer outside RAM that the port's vector helpers dereference without a check (a SIGSEGV where the interpreter would wrap it): the trial run of a state
 // turns it into "not a game state" (the state is dealt again), as the port's "Pointer resolution out of bounds" exception does.
-sigjmp_buf g_trial_jmp;
-void trial_segv(int) { siglongjmp(g_trial_jmp, 1); }
-bool trial_run(void (*port)(uint32_t), uint32_t m) {
-    struct sigaction sa {}, old {};
-    sa.sa_handler = trial_segv;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_NODEFER;
-    sigaction(SIGSEGV, &sa, &old);
-    bool ok = true;
-    if (sigsetjmp(g_trial_jmp, 1) != 0) ok = false;
-    else {
-        try { port(m); } catch (const std::exception&) { ok = false; }
-    }
-    sigaction(SIGSEGV, &old, nullptr);
-    return ok;
-}
+
 // A check whose original is level 18's own function at `l9addr` (not a Veldin address to translate).
 void l18check(const char* name, uint32_t l9addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port,
              uint32_t ignore_word = 0, uint32_t ignore_word2 = 0) {
@@ -215,7 +199,7 @@ void batch_270() {
                 saved.assign(ram, ram + 0x02000000);
                 bool ok = true;
                 const uint32_t stack_top = ee_stack_ptr();
-                ok = trial_run(port, m);
+                ok = run_trial(port, m);
                 ee_stack_ptr() = stack_top;  // (an exception leaves the port's frames allocated)
                 std::memcpy(ram, saved.data(), saved.size());
                 if (ok) break;

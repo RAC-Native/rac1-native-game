@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 # the release's version (semantic): bumped at each release, with its tag vX.Y.Z (the in-game update check compares
 # it with the latest release's: docs/settings.md)
-project(rac1-native VERSION 0.8.1 LANGUAGES C CXX)
+project(rac1-native VERSION 0.8.3 LANGUAGES C CXX)
 if(APPLE)
     enable_language(OBJC OBJCXX)  # (the Metal renderer: docs/metal.md; OBJC too, else GLFW's .m files build as C++)
 endif()
@@ -403,6 +403,8 @@ set(RAC1_HOST_SOURCES
     src/host/progress.cpp
     src/host/vk_safety.cpp
     src/host/behav_trace.cpp
+    src/host/host_window.cpp
+    src/host/host_gpu_watch.cpp
 )
 if(WIN32)
     list(APPEND RAC1_HOST_SOURCES src/host/host_priority_win32.cpp src/host/gpu_preference_win32.cpp

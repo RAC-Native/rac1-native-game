@@ -37,6 +37,10 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DRAC1_NO_GENERATED=ON
       - name: Build
         run: cmake --build build -j 4
+      - name: Oracle trial guard (no disc)
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -pthread tests/oracle/trial_guard.cpp tests/oracle/trial_guard_test.cpp -o build/oracle_trial_guard_test
+          python3 tests/oracle/test_trial_guard.py build/oracle_trial_guard_test
 
   linux-arm64:
     # (not blocking yet: the ARM64 port is in progress - #78, branch port/android - and parts of the PS2 layer still include
@@ -80,6 +84,30 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DRAC1_NO_GENERATED=ON
       - name: Build
         run: cmake --build build -j 4
+      - name: Oracle trial guard (no disc)
+        run: |
+          clang++ -std=c++20 -O2 -Wall -Wextra -fms-extensions tests/oracle/trial_guard.cpp tests/oracle/trial_guard_test.cpp -o build/oracle_trial_guard_test.exe
+          python tests/oracle/test_trial_guard.py build/oracle_trial_guard_test.exe
+
+  oracle-guard-mingw:
+    name: Oracle trial guard (Windows, MinGW GCC, no disc)
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-python
+      - name: Build and test
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra tests/oracle/trial_guard.cpp tests/oracle/trial_guard_test.cpp -o oracle_trial_guard_test.exe
+          python tests/oracle/test_trial_guard.py ./oracle_trial_guard_test.exe
 
   windows-cross:
     name: Windows from Linux (clang, MinGW-w64)

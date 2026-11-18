@@ -3,6 +3,75 @@
 What changed in each release. Releases are source only: you build the game with `./setup.sh`
 (`setup.cmd` on Windows) from your own disc. Issue numbers refer to this repository's issues.
 
+## 0.8.3
+
+A hotfix for Windows.
+
+- **The mouse works again outside the game on Windows** (#175). 0.8.2 took the fullscreen window out of the "always on
+  top" band every frame and asked for the focus at the start; on some systems the game's window then could not be dragged,
+  got in the way of the debug menu and kept other windows from being clicked, until the game was ended from the Task
+  Manager. That handling is off again, as in 0.8.1; `RAC1_WINDOW_NOT_TOPMOST=1` turns it on. The other 0.8.2 changes stay
+  (a fatal error still ends the game with its reason in the log).
+
+## 0.8.2
+
+A patch update: Windows fixes from the 0.8.x reports (the window always on top, a frozen window after a fatal error, Vulkan
+ray tracing freezing the picture), a shorter freeze at a level's start, Daino's Arena fixes, and a crash log on Linux and
+macOS too.
+
+### Daino's Arena (version 0.7)
+- **The enemies no longer walk through the walls.** The walkers, the small ones most, went through the low covers and
+  vanished inside the hub or a ramp's side; a step through the level's collision is now taken back (or turned along the
+  wall), the plugin's walkers follow their path only as far as they can see, and one shut in is put back on the open floor.
+- **The Gadgetron robots' weapons are no longer left lying in the arena.** A robot the arena took away (into the lava, a
+  challenge's end, Ratchet's death) left its weapon behind for good; it now goes with the robot.
+- The setup updates an arena it installed and you have not changed; a `mods/night-arena` you made or changed yourself is
+  kept as it is (move it aside and run the setup again to get the new one).
+
+### Diagnostics (Linux, macOS)
+- **A crash leaves its reason and frames in the log.** A SIGSEGV, SIGBUS, SIGFPE, SIGILL or abort now writes a `[fatal]` line
+  (the signal and the faulting address) and the stack's frames to `build/game.log`, then ends the game as before (a core dump
+  where the system keeps them). Until now only an uncaught C++ exception left a line. For the crashes reported when flying
+  from one planet to the next (#135, #164), which no log came with.
+
+### Fixes
+- **The game window is no longer "always on top".** GLFW makes a fullscreen window topmost on Windows; the game now takes
+  the flag off at its start and whenever GLFW sets it again (a restore from the taskbar), so the Task Manager or any other
+  window can come in front of it, also while the game is busy or not answering. Its start still asks for the focus
+  (else its taskbar button flashes).
+- **A fatal error no longer leaves a frozen fullscreen window.** An error nobody handled (a C++ exception, `abort()`, a
+  crash) went to Windows' error reporting, which kept the process alive and frozen, its window over the screen, until it
+  was killed. It is now written to the log (`[fatal] ...: the game stopped`, with a backtrace), the monitor's desktop mode
+  is given back and the game ends at once (exit status 3).
+- **Daino's Arena on the PAL disc: "La grande fuga" no longer stops at the portal into Rilgar (or Umbris).** On a disc
+  other than the North American one the open engine cannot run other planets' code yet (no contexts), and a world
+  section's objects of another planet were then run on the arena's own classes of the same number: a moby callback at a
+  wild address, an error, the game stuck. Those objects are now left out (logged as not placed); on PAL the escape's
+  Rilgar and Umbris sections come without their planets' objects, the Snagglebeast among them, until contexts exist for it.
+- **Water Reflections: Medium (RT) no longer freezes the picture (Vulkan, NVIDIA).** At a level's or a world section's change
+  (Daino's Arena's "La grande fuga": every portal) the ray tracing's old structures were destroyed, and its tables freed and
+  its descriptor sets written again, in the middle of the frame being recorded, which had already bound them: the GPU then
+  read freed memory (the driver's "MMU fault"), the device was lost and the picture stayed still while the game went on (the
+  next start falling back to OpenGL). The change is now made at the next frame's start, before anything binds them, the trace
+  off until then. Found with the Vulkan validation layer (the command buffer invalid: "VkAccelerationStructureKHR was
+  destroyed"); the whole escape, every portal, now runs clean under GPU-assisted validation.
+- **A shorter freeze at a level's start.** The modern renderer's world asset and textures are now read and decoded on a
+  worker while the loading screen or the story's movies play (Veldin to Novalis: 80 ms warm, 300 to 500 ms from the disk,
+  no longer on the main thread at the level's first frame, when the picture froze and the sound went on alone).
+- The log has a `[display] last 10 s` line every 10 seconds of play: the pictures shown a second, the late ones and the
+  stalls over 100 ms, to read a frame rate report from a player's `game.log`. The world load's time is broken down for every
+  level (`[mrpw] level N (...)`), not only a mod's sections.
+- The log says when the PC holds an NVIDIA GPU below its speed: a `[gpu]` line at the start (its clocks and power limit)
+  and one for every 10 s of play that the system held it while the game kept it busy (a low performance state, the video
+  memory at a fraction of its clock, a power limit under the driver's default; the driver's reasons). A laptop held at
+  20 W in P5 (the memory at 810 of 5501 MHz) ran the arena at 42 to 55 fps; the same laptop and settings at its full
+  35 W ran it at 60. `RAC1_GPU_WATCH=0` turns it off.
+- The debug menu's profiler no longer makes the game stutter on Windows: its thread list came from a snapshot of every
+  thread of the system (30 to 40 ms on the main thread, twice a second); it is now taken on a thread of its own, every 5 s.
+
+### Development
+- The oracle builds on Windows: its trial guards are one portable helper, tested in CI (#167, thanks to Igynx).
+
 ## 0.8.1
 
 A small update: new music for Daino's Arena and a shorter frame in the widened view.
