@@ -144,8 +144,9 @@ def glue_for(v):
         ni = nf = 0
         iregs = ['a0', 'a1', 'a2', 'a3', 't0', 't1', 't2', 't3']
         for k, prm in enumerate(params):
-            t = re.sub(r'\s*\w+$', '', prm).strip() if re.search(r'\w+$', prm) and ' ' in prm.strip() else prm
-            t = t.replace('const ', '').strip()
+            raw_t = re.sub(r'\s*\w+$', '', prm).strip() if re.search(r'\w+$', prm) and ' ' in prm.strip() else prm
+            is_const = raw_t.startswith('const ') or ' const*' in raw_t or ' const&' in raw_t
+            t = raw_t.replace('const ', '').strip()
             if t == 'float':
                 parts.append(f'fr[{12 + nf}]')
                 nf += 1
@@ -164,7 +165,7 @@ def glue_for(v):
                 parts.append(f'V({r}.w())')
             elif t == 'Mat4&':
                 parts.append(f'M({r}.w())')
-            elif t in ('int32_t*', 'uint32_t*', 'float*', 'int32_t&', 'uint32_t&', 'float&'):
+            elif not is_const and t in ('int32_t*', 'uint32_t*', 'float*', 'int32_t&', 'uint32_t&', 'float&'):
                 base = t[:-1]
                 isf = base == 'float'
                 pre.append(f'{base} t{k} = {r}.w() != 0 ? ' + (f'u2f(lw_({r}.w()))' if isf else f'static_cast<{base}>(lw_({r}.w()))') + ' : 0;')

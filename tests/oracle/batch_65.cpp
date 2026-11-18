@@ -1074,12 +1074,17 @@ void batch_65() {
     // (stage 5, task C2c) swept_collide reaches segment_collide: A2's collision scratch
     // ranges left out of this check (see batch 43's checks of it)
     const CollisionScratchIgnored spr_ignored;
-    check("swept_collide", 0x00259d08, 60, Ret::Int32, [level1, anymoby] {
+    check("swept_collide", 0x00259d08, 120, Ret::Int32, [level1, anymoby] {
         level1();
         const uint32_t hero = ee_read<uint32_t>(0x001413d0);
+        const uint32_t rec = coin() ? OUT + 0x40 : 0u;
+        if (rec != 0) {
+            wrand(rec, 9);
+            wf(rec + 0x1c, rf(0.5f, 5.0f));
+        }
         for (int k = 0; k < 4; ++k) { Vec4 q = ee_ref<Vec4>(hero + 0x10); q.x += rf(-2, 2); q.y += rf(-2, 2); q.z += rf(-2, 3); ee_ref<Vec4>(OUT + 0x10 * u(k)) = q; }
-        return Args{{OUT, OUT + 0x10, OUT + 0x20, OUT + 0x30, coin() ? hero : 0u, 0, u(ri(0, 6))}, {}};
-    }, [](A a) { return r32(static_cast<uint32_t>(swept_collide(ee_ref<Vec4>(a.i[0]), ee_ref<Vec4>(a.i[1]), ee_ref<Vec4>(a.i[2]), ee_ref<Vec4>(a.i[3]), a.i[4], nullptr, static_cast<int32_t>(a.i[6])))); });  // (rec 0)
+        return Args{{OUT, OUT + 0x10, OUT + 0x20, OUT + 0x30, coin() ? hero : 0u, rec, u(ri(0, 6))}, {}};
+    }, [](A a) { return r32(static_cast<uint32_t>(swept_collide(ee_ref<Vec4>(a.i[0]), ee_ref<Vec4>(a.i[1]), ee_ref<Vec4>(a.i[2]), ee_ref<Vec4>(a.i[3]), a.i[4], a.i[5] != 0 ? static_cast<const uint32_t*>(ee_ram_ptr(a.i[5])) : nullptr, static_cast<int32_t>(a.i[6])))); });
     }
     check("throw_turn_scale", 0x002a8418, 60, Ret::None, [level1] { level1(); wfrand(OUT, 4, -3, 3); wf(0x0013f3e8, rf(-3, 3)); return Args{{OUT}, {}}; },
           [](A a) { throw_turn_scale(a.i[0]); return uint64_t{0}; });

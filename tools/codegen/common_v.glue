@@ -39,6 +39,7 @@
 0x00258110: fr[0] = angle_seek_rate(a0.w(), fr[12], fr[13], fr[14], fr[15], fr[16]);
 0x00258278: yaw_turn_damped(a0.w(), a1.w(), fr[12], fr[13], fr[14], fr[15]);
 0x00259698: fr[0] = floor_probe_v(fr[12], V(a0.w()), a1.w());
+0x00259d08: set32(v0, static_cast<uint32_t>(swept_collide(V(a0.w()), V(a1.w()), V(a2.w()), V(a3.w()), t0.w(), t1.w() != 0 ? static_cast<const uint32_t*>(ee_ram_ptr(t1.w())) : nullptr, static_cast<int32_t>(t2.w()))));
 0x0025a420: set32(v0, sub_0025a420(a0.w(), a1.w(), static_cast<int32_t>(a2.w())));
 0x0025a478: { int32_t st = static_cast<int32_t>(lw_(t0.w())); float dmg = t1.w() != 0 ? u2f(lw_(t1.w())) : 0.0f; int32_t wp = t2.w() != 0 ? static_cast<int32_t>(lw_(t2.w())) : 0; set32(v0, static_cast<uint32_t>(moby_hit_react_r(a0.w(), a1.w(), a2.w(), a3.w(), st, t1.w() != 0 ? &dmg : nullptr, t2.w() != 0 ? &wp : nullptr, static_cast<int32_t>(t3.w())))); sw_(t0.w(), static_cast<uint32_t>(st)); if (t1.w() != 0) sw_(t1.w(), f2u(dmg)); if (t2.w() != 0) sw_(t2.w(), static_cast<uint32_t>(wp)); }  // (the damage / weapon pointers may be null)
 0x0025ab48: vec_yaw_marked_v(V(a0.w()), *static_cast<float*>(ee_ram_ptr(a1.w())), *static_cast<float*>(ee_ram_ptr(a2.w())), *static_cast<float*>(ee_ram_ptr(a3.w())));
