@@ -23,9 +23,13 @@
 #include <game/ovl/empty_class_updates.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/particle_28_tr.h>
+#include <game/ovl/particle_44_tr.h>
 #include <game/ovl/particle_types_tr.h>
+#include <game/ovl/shared_particle_kinds.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <functional>
 #include <optional>
@@ -298,6 +302,184 @@ void batch_340() {
         seed_rand();
         return Args{{P, P + 0x10, u(ri(0, 8)), coin() ? 0u : R()}, {}};
     }, [](A a) { return uint64_t{ovl_270758_tr(a.i[0], a.i[1], a.i[2], a.i[3], 0, 0, 0, 0, 0, 0, 0, 0).v0}; });
+
+    // ---- P0.1: direct L0 checks of local_offset_coord (0x25c230), types 0x1f / 0x28 / 0x44, and 0x03's outer bands
+    if (g_oracle_level == 0) {
+        check("p01_local_offset_coord", 0x0025c230, 100, Ret::Float, [&] {
+            level();
+            wfrand(P, 4, -50.0f, 50.0f);
+            wfrand(P + 0x10, 16, -2.0f, 2.0f);
+            wfrand(P + 0x50, 4, -50.0f, 50.0f);
+            return Args{{P, P + 0x10, P + 0x50, u(ri(0, 3))}, {}};
+        }, [](A a) {
+            return static_cast<uint64_t>(
+                fbits(local_offset_coord(ee_ref<Vec4>(a.i[0]), ee_ref<Mat4>(a.i[1]), ee_ref<Vec4>(a.i[2]), static_cast<int32_t>(a.i[3]))));
+        });
+
+        check("p01_particle_1f", 0x0026eb88, 150, Ret::None, [&] {
+            level();
+            const uint32_t q = alloc_particle(0x1f);
+            if (q == 0) return Args{{0u}, {}};
+            const int mk = ri(0, 7);
+            const uint32_t m = mk == 0 ? 0u : moby();
+            if (m != 0 && mk == 1) w8(m + 0x20, coin() ? 0xfeu : 0xfdu);
+            w32(q + 0x30, m);
+            w16(q + 0xa, u(ri(0, 5) == 0 ? ri(0, 2) : ri(3, 60)));
+            const Vec4 base = m != 0 ? VV(m + 0x10) : VV(OV(0x00166dc0));
+            const float spread = ri(0, 3) == 0 ? 0.3f : 8.0f;
+            VV(q + 0x10) = Vec4{base.x + rf(-spread, spread), base.y + rf(-spread, spread), base.z + rf(-spread, spread), 1.0f};
+            if (ri(0, 5) == 0) {
+                VV(q + 0x20) = Vec4{ee_read<float>(q + 0x10) + rf(-0.03f, 0.03f), ee_read<float>(q + 0x14), ee_read<float>(q + 0x18), 1.0f};
+            } else {
+                VV(q + 0x20) = Vec4{base.x + rf(-spread, spread), base.y + rf(-spread, spread), base.z + rf(-spread, spread), 1.0f};
+            }
+            wf(OV(0x001601f4), rf(0.2f, 1.4f));
+            wf(OV(0x001601f8), rf(0.2f, 1.4f));
+            if (ri(0, 3) == 0) wf(0x0015ed60, 1.2f);
+            return Args{{q}, {}};
+        }, [](A a) { if (a.i[0] != 0) particle_1f_update(a.i[0]); return uint64_t{0}; });
+
+        {
+            const CollisionScratchIgnored spr_ignored;
+            check("p01_particle_28", 0x0026ff10, 240, Ret::None, [&] {
+                level();
+                const uint32_t hero = ee_read<uint32_t>(OV(0x0015ffd8));
+                const float hx = ee_read<float>(0x0013f3d0), hy = ee_read<float>(0x0013f3d4), hz = ee_read<float>(0x0013f3d8);
+                VV(P) = Vec4{hx + rf(-1.5f, 1.5f), hy + rf(-1.5f, 1.5f), hz + rf(-0.2f, 1.2f), 1.0f};
+                if (coin()) {
+                    VV(P + 0x10) = Vec4{rf(-0.3f, 0.3f), rf(-0.3f, 0.3f), rf(-2.5f, -0.3f), 0.0f};
+                } else {
+                    VV(P + 0x10) = Vec4{rf(-0.5f, 0.5f), rf(-0.5f, 0.5f), rf(-0.5f, 0.5f), 0.0f};
+                }
+                seed_rand();
+                const uint32_t q = particle_28_spawn(P, P + 0x10, u(ri(0, 6)), hero);
+                if (q == 0) return Args{{0u}, {}};
+                const int tk = ri(0, 3);
+                w16(q + 0xa, u(tk == 0 ? 0 : tk == 1 ? 1 : ri(2, 30)));
+                const uint32_t f18 = ri(0, 2) == 0 ? (0x8u | u(coin())) : (coin() ? 0x40u : u(coin()));
+                w8(q + 0x38, f18);
+                if ((f18 & 8u) != 0 && ri(0, 5) == 0) w32(q + 4, ee_read<uint32_t>(q + 4) & 0xffffffu);
+                wf(q + 0xc, ri(0, 4) == 0 ? rf(100.0f, 3000.0f) : rf(5000.0f, 260000.0f));
+                w16(q + 0x34, u(ri(0, 5) == 0 ? ri(-600, -400) : ri(0, 40)));
+                w16(q + 0x36, u(ri(1, 12)));
+                wf(q + 0x30, ri(0, 3) == 0 ? rf(-0.08f, 0.02f) : ri(0, 2) == 0 ? rf(0.98f, 1.08f) : rf(0.1f, 0.9f));
+                if (ri(0, 3) == 0) {
+                    wf(0x0015ed60, 1.2f);
+                    wf(0x0015ed64, 1.44f);
+                    wf(0x0015ed68, 1.2f);
+                }
+                seed_rand();
+                return Args{{q}, {}};
+            }, [](A a) { if (a.i[0] != 0) particle_28_update(a.i[0]); return uint64_t{0}; });
+        }
+
+        check("p01_particle_44", 0x00274818, 150, Ret::None, [&] {
+            level();
+            const uint32_t q = alloc_particle(0x44);
+            if (q == 0) return Args{{0u}, {}};
+            const uint32_t hero = ee_read<uint32_t>(OV(0x0015ffd8));
+            const int mk = ri(0, 6);
+            w32(q + 0x30, mk == 0 ? 0u : hero);
+            w16(q + 0x36, mk == 1 ? u(ee_read<uint16_t>(hero + 0xa6) + 1u) : ee_read<uint16_t>(hero + 0xa6));
+            if (mk == 2) w8(hero + 0x20, coin() ? 0xfeu : 0xfdu);
+            w8(q + 0x34, u(ri(0, 5)));
+            w8(q + 0x35, u(ri(0, 80)));
+            wf(q + 0x38, rf(0.1f, 5.0f));
+            wf(q + 0x3c, rf(0.5f, 8.0f));
+            wf(q + 0x2c, rf(-2.0f, 2.0f));
+            seed_rand();
+            return Args{{q}, {}};
+        }, [](A a) { if (a.i[0] != 0) particle_44_update(a.i[0]); return uint64_t{0}; });
+
+        {
+            const CollisionScratchIgnored spr_ignored(true);
+            check("p01_particle_03_edges", 0x002694f8, 180, Ret::None, [&] {
+                level();
+                const uint32_t q = alloc_particle(0x03);
+                if (q == 0) return Args{{0u}, {}};
+                fields(q);
+                pointers(0x03, q);
+                const Vec4 c = VV(OV(0x00166dc0));
+                const float r = ri(0, 4) == 0 ? rf(3.0f, 15.5f) : ri(0, 2) == 0 ? rf(80.5f, 102.0f) : rf(20.0f, 70.0f);
+                const float a = rf(-3.14f, 3.14f);
+                VV(q + 0x10) = Vec4{c.x + std::cos(a) * r, c.y + std::sin(a) * r, c.z + rf(-2.0f, 2.0f), 1.0f};
+                if (coin()) {
+                    const Vec4 h = VV(0x0013f3d0);
+                    if (ri(0, 3) == 0) VV(q + 0x10) = Vec4{h.x, h.y, h.z + 0.5f, 1.0f};
+                }
+                w32(q + 0x3c, u(ri(-1, 5)));
+                w32(q + 0x38, u(ri(0, 7)));
+                w32(q + 0x34, u(coin()));
+                w16(q + 0xa, u(ri(0, 3) == 0 ? ri(0, 2) : ri(3, 180)));
+                wf(OV(0x001cb7c4), rf(-3.14f, 3.14f));
+                wf(OV(0x001cb7d4), rf(0.5f, 4.0f));
+                w32(OV(0x0015f5cc), u(ri(0, 7)));
+                if (ri(0, 3) == 0) wf(0x0015ed60, 1.2f);
+                seed_rand();
+                return Args{{q}, {}};
+            }, [](A a) { if (a.i[0] != 0) particle_03_update(a.i[0]); return uint64_t{0}; });
+        }
+
+        check("p01_particle_09_edges", 0x0026a6f0, 60, Ret::None, [&] {
+            level();
+            const uint32_t q = alloc_particle(0x09);
+            if (q == 0) return Args{{0u}, {}};
+            fields(q);
+            w8(q + 3, coin() ? 0x48u : 0x44u);
+            w32(q + 0x20, u(ri(1, 60)));
+            w32(q + 0x30, u(ri(10, 200)));
+            return Args{{q}, {}};
+        }, [](A a) { if (a.i[0] != 0) particle_09_update(a.i[0]); return uint64_t{0}; });
+
+        check("p01_particle_1d_edges", 0x0026e3a8, 100, Ret::None, [&] {
+            level();
+            const uint32_t q = alloc_particle(0x1d);
+            if (q == 0) return Args{{0u}, {}};
+            const uint32_t hero = ee_read<uint32_t>(OV(0x0015ffd8));
+            w32(q + 0x20, hero);
+            w16(q + 0xa, u(ri(3, 60)));
+            w16(q + 0x2c, u(ri(0, 15)));
+            w16(q + 0x2e, coin() ? u(ri(0, 6)) : 0xffffu);
+            wf(q + 0xc, coin() ? rf(160000.0f, 240000.0f) : rf(150000.0f, 165000.0f));
+            wf(q + 0x24, rf(-0.05f, 0.45f));
+            wf(q + 0x28, rf(0.0f, 1.0f));
+            wf(q + 0x30, rf(-0.1f, 0.1f));
+            wf(q + 0x34, rf(0.0f, 1.0f));
+            return Args{{q}, {}};
+        }, [](A a) { if (a.i[0] != 0) particle_1d_update(a.i[0]); return uint64_t{0}; });
+
+        check("p01_particle_24_edges", 0x0026f898, 80, Ret::None, [&] {
+            level();
+            const uint32_t q = alloc_particle(0x24);
+            if (q == 0) return Args{{0u}, {}};
+            fields(q);
+            w32(OUT, ri(0, 4) == 0 ? 0u : 1u);
+            w32(q + 0x20, OUT);
+            const Vec4 c = VV(OV(0x00166dc0));
+            const float d = coin() ? rf(-0.4f, 0.4f) : rf(-3.0f, 3.0f);
+            VV(q + 0x30) = Vec4{c.x + d, c.y + d, c.z + d, 1.0f};
+            if (coin()) {
+                w16(q + 0xa, 1);
+                wf(q + 0x24, -1.57f);
+                wf(q + 0x3c, 0.0f);
+                wf(q + 0x28, -0.99f);
+            }
+            return Args{{q}, {}};
+        }, [](A a) { if (a.i[0] != 0) particle_24_update(a.i[0]); return uint64_t{0}; });
+
+        check("p01_particle_25_edges", 0x0026fa00, 80, Ret::None, [&] {
+            level();
+            const uint32_t q = alloc_particle(0x25);
+            if (q == 0) return Args{{0u}, {}};
+            fields(q);
+            w16(q + 0xa, u(ri(3, 60)));
+            w32(q + 0x34, u(ri(10, 40)));
+            const Vec4 c = VV(OV(0x00166dc0));
+            const float d = coin() ? rf(-1.5f, 1.5f) : rf(-10.0f, 10.0f);
+            VV(q + 0x20) = Vec4{c.x + d, c.y + d, c.z + d, 1.0f};
+            return Args{{q}, {}};
+        }, [](A a) { if (a.i[0] != 0) particle_25_update(a.i[0]); return uint64_t{0}; });
+    }
 
     g_ee_null_is_ram = null_ram;
     g_ignored_words = saved_ignored;

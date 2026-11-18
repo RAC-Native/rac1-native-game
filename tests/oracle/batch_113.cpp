@@ -290,6 +290,136 @@ void batch_113() {
                     seed_rand();
                     return Args{{m}, {}};
                 }, [](A a) { vendor_draw_tr(a.i[0]); return uint64_t{0}; });
+        check("vendor_draw_packets", 0x002a5040, 100, Ret::None, [level, vs] {
+            level();
+            if (ee_read<uint16_t>(0x001518d0) == 0) {
+                w16(0x001518d0, 640);
+                w16(0x001518d2, 448);
+            }
+            screen_setup();
+            projection_setup();
+            render_view_setup();
+            w32(OV(0x001611c0), TEST_AREA + 0x1000);
+            w32(OV(0x0015f5f8), TEST_AREA + 0x7000);
+            uint32_t m;
+            if (!vs.empty()) {
+                m = vs[static_cast<size_t>(ri(0, static_cast<int>(vs.size()) - 1))];
+            } else {
+                // Veldin's intro has no placed class-11 Vendor: copy the hero moby's pose/matrix into TEST_AREA.
+                m = TEST_AREA + 0x200;
+                const uint32_t hero = ee_read<uint32_t>(OV(0x0015ffd8));
+                std::memcpy(ee_ram_ptr(m), ee_ram_ptr(hero), 0x100);
+                w32(m + 0x78, TEST_AREA + 0x300);
+            }
+            for (int k = 0; k < 3; ++k) wf(m + 0x10 + 4 * u(k), ee_read<float>(0x0013f3d0 + 4 * u(k)) + rf(-1.2f, 1.2f));
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            if (pv >= 0x00100000u && pv < 0x02000000u) wf(pv + 0x90, rf(0.4f, 2.0f));
+            w32(m + 0x90, (R() & 0xffff0000u) | 0x40000000u);
+            wf(OV(0x00161394), coin() ? rf(0.992f, 1.05f) : rf(0.0f, 0.99f));
+            wf(OV(0x00161398), coin() ? rf(0.992f, 1.05f) : rf(0.0f, 0.99f));
+            if (ri(0, 3) == 0) {
+                wf(0x0015ed60, 1.2f);
+                wf(0x0015ed68, 1.2f);
+                wf(0x0015ed6c, 0.02f);
+                wf(0x0015ed70, 0.0004f);
+            }
+            seed_rand();
+            return Args{{m}, {}};
+        }, [](A a) { vendor_draw_tr(a.i[0]); return uint64_t{0}; });
+    }
+
+    // ---- shared (P0.1): direct L0/L1 checks of vec_damp_along (0x25c2b0) and particle types 0x06, 0x38, 0x39
+    {
+        check("p01_vec_damp_along", 0x0025c2b0, 100, Ret::None, [level] {
+            level();
+            wfrand(OUT, 4, -5.0f, 5.0f);
+            wfrand(OUT + 0x10, 4, -10.0f, 10.0f);
+            Vec4 dir{rf(-4.0f, 4.0f), rf(-4.0f, 4.0f), rf(-4.0f, 4.0f), 0.0f};
+            if (dir.x * dir.x + dir.y * dir.y + dir.z * dir.z < 0.01f) dir.z = 1.0f;
+            ee_ref<Vec4>(OUT + 0x20) = dir;
+            return Args{{OUT, OUT + 0x10, OUT + 0x20}, {rf(-2.0f, 2.5f)}};
+        }, [](A a) { vec_damp_along(ee_ref<Vec4>(a.i[0]), ee_ref<Vec4>(a.i[1]), ee_ref<Vec4>(a.i[2]), a.f[0]); return uint64_t{0}; });
+
+        {
+            const CollisionScratchIgnored spr_ignored;
+            check("p01_particle_06", 0x00269d20, 240, Ret::None, [level] {
+                level();
+                const uint32_t p = alloc_particle(6);
+                if (p == 0) return Args{{0u}, {}};
+                const uint32_t cfg = TEST_AREA + 0x2000;
+                const uint32_t hero = ee_read<uint32_t>(OV(0x0015ffd8));
+                const float hx = ee_read<float>(0x0013f3d0), hy = ee_read<float>(0x0013f3d4), hz = ee_read<float>(0x0013f3d8);
+                ee_ref<Vec4>(cfg + 0x00) = Vec4{rf(-0.3f, 0.3f), rf(-0.3f, 0.3f), rf(-0.3f, 0.3f), 0.0f};
+                const float box = ri(0, 6) == 0 ? 0.05f : 50.0f;
+                ee_ref<Vec4>(cfg + 0x10) = Vec4{hx - box, hy - box, hz - box, 0.0f};
+                ee_ref<Vec4>(cfg + 0x20) = Vec4{hx + box, hy + box, hz + box, 0.0f};
+                wf(cfg + 0x30, rf(-600.0f, 600.0f));
+                wf(cfg + 0x34, rf(-0.15f, 0.15f));
+                wf(cfg + 0x38, rf(0.05f, 0.4f));
+                wf(cfg + 0x3c, rf(1.0f, 2.0f));
+                wf(cfg + 0x40, rf(0.05f, 2.0f));
+                wf(cfg + 0x44, rf(0.1f, 0.3f));
+                wf(cfg + 0x48, rf(0.6f, 0.85f));
+                for (uint32_t k = 0; k < 3; ++k) {
+                    wf(cfg + 0x4c + k * 4, rf(0.05f, 0.4f));
+                    wf(cfg + 0x58 + k * 4, rf(0.15f, 0.35f));
+                    wf(cfg + 0x64 + k * 4, rf(0.65f, 0.85f));
+                }
+                uint32_t fl = R() & 0x8fffu;
+                if (coin()) fl |= 1u;  // segment_collide bounce
+                w32(cfg + 0x70, fl);
+                wf(cfg + 0x74, rf(500.0f, 2000.0f));
+                wf(cfg + 0x78, rf(3000.0f, 12000.0f));
+                w32(cfg + 0x7c, hero);
+
+                ee_ref<Vec4>(p + 0x10) = Vec4{hx + rf(-1.0f, 1.0f), hy + rf(-1.0f, 1.0f), hz + rf(-0.2f, 0.8f), 1.0f};
+                if (coin()) {
+                    ee_ref<Vec4>(p + 0x20) = Vec4{rf(-0.2f, 0.2f), rf(-0.2f, 0.2f), rf(-2.5f, -0.4f), 0.0f};
+                } else {
+                    ee_ref<Vec4>(p + 0x20) = Vec4{rf(-0.5f, 0.5f), rf(-0.5f, 0.5f), rf(-0.5f, 0.5f), 0.0f};
+                }
+                w32(p + 4, R());
+                w8(p + 8, R() & 0xff);
+                w16(p + 0xa, u(ri(0, 5) == 0 ? ri(0, 2) : ri(3, 60)));
+                wf(p + 0xc, rf(100.0f, 15000.0f));
+                w32(p + 0x2c, cfg);
+                wf(p + 0x30, ri(0, 6) == 0 ? rf(-0.05f, 0.0f) : rf(0.0f, 1.05f));
+                wf(p + 0x34, rf(0.0f, 1.0f));
+                w32(p + 0x38, R());
+                if (ri(0, 3) == 0) {
+                    wf(0x0015ed60, 1.2f);
+                    wf(0x0015ed68, 1.2f);
+                    wf(0x0015ed6c, 0.02f);
+                }
+                seed_rand();
+                return Args{{p}, {}};
+            }, [](A a) { if (a.i[0] != 0) particle_06_update(a.i[0]); return uint64_t{0}; }, OV(0x00173e8c), OV(0x00173e9c));
+        }
+
+        check("p01_particle_38", 0x00272838, 150, Ret::None, [level] {
+            level();
+            const uint32_t p = alloc_particle(0x38);
+            if (p == 0) return Args{{0u}, {}};
+            wfrand(p + 0x10, 4, 100.0f, 140.0f);
+            wfrand(p + 0x20, 4, -1.0f, 1.0f);
+            wf(p + 0xc, rf(0.0f, 30000.0f));
+            w32(p + 4, (R() & 0xffffff00u) | u(ri(0, 3) == 0 ? ri(0, 4) : ri(5, 255)));
+            return Args{{p}, {}};
+        }, [](A a) { if (a.i[0] != 0) particle_38_update(a.i[0]); return uint64_t{0}; });
+
+        check("p01_particle_39", 0x002728e8, 150, Ret::None, [level] {
+            level();
+            const uint32_t p = alloc_particle(0x39);
+            if (p == 0) return Args{{0u}, {}};
+            wfrand(p + 0x10, 4, 100.0f, 140.0f);
+            wfrand(p + 0x20, 4, -1.0f, 1.0f);
+            wf(p + 0xc, rf(0.0f, 30000.0f));
+            wf(p + 0x30, rf(-50.0f, 50.0f));
+            wf(p + 0x34, rf(-5.0f, 5.0f));
+            const int k = ri(0, 2);
+            w16(p + 0xa, u(k == 0 ? ri(0, 2) : k == 1 ? ri(3, 65) : ri(66, 127)));
+            return Args{{p}, {}};
+        }, [](A a) { if (a.i[0] != 0) particle_39_update(a.i[0]); return uint64_t{0}; });
     }
 
     // ---- the vendor's screens (game mode 5, Veldin's addresses): the start 0x29a6b0 from a Vendor (or 0: the hero's
@@ -347,7 +477,7 @@ void batch_113() {
         // ranges left out of this check (see batch 43's checks of it)
         const CollisionScratchIgnored spr_ignored;
         check("vendor_mode_update", 0x0029c648, 120, Ret::None, [in_mode5] { in_mode5(240); return Args{{0u}, {}}; },
-              [](A) { vendor_mode_update_tr(0); return uint64_t{0}; });
+              [](A) { vendor_mode_update_tr(0); return uint64_t{0}; }, OV(0x00173e9c));
         }
         check("vendor_mode_draw", 0x002a02b0, 120, Ret::None, [in_mode5] { in_mode5(240); return Args{{0u}, {}}; },
               [](A) { vendor_mode_draw_tr(0); return uint64_t{0}; });

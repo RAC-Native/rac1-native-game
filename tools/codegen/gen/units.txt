@@ -13,7 +13,6 @@ mkall:kerwan_part2
 mkall:novalis_gold
 mkall:oltanis_classes
 mkall:orxon_classes
-mkall:particle_types2
 mkall:pokitaru_classes
 mkall:quartu_classes
 mkall:rilgar_classes
@@ -21,10 +20,7 @@ mkall:rilgar_part2
 mkall:umbris_classes
 mkall:umbris_part2
 mkall:veldin_finale_classes
-mkall:veldin_fx
 mkall:veldin_orbit_classes
-mkall:veldin_particle28
-mkall:veldin_particle44
 mkall:veldin_particles
 mkall:veldin_particles4
 mkall:veldin_shared

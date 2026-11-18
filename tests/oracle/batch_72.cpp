@@ -91,15 +91,18 @@ void batch_72() {
         const float t = ri(0, 5) == 0 ? (coin() ? 0.0f : 1.0f) : rf(-0.2f, 1.2f);
         return Args{{coin() ? T : T + 0x20, T, T + 0x10}, {t}};
     }, [](A a) { angles_cos_ease(a.i[0], a.i[1], a.i[2], a.f[0]); return uint64_t{0}; });
-    check("camera_collide_sweep", 0x001ed6a8, 300, Ret::None, [level1, setup, near_hero] {
-        level1();
-        const uint32_t cam = setup(ri(2, 4));
-        if (cam == 0) return Args{};
-        const uint32_t pos = coin() ? cam + 0x30 : OUT;
-        near_hero(pos, 8, 4);
-        if (ri(0, 4) == 0) { const uint32_t a = ee_read<uint32_t>(OV(0x00166e00)); for (uint32_t o = 0; o < 0xc; o += 4) wf(pos + o, ee_read<float>(a + 0x64 + o)); }
-        return Args{{pos}, {ri(0, 4) == 0 ? rf(0.05f, 0.3f) : rf(0.3f, 2.0f)}};
-    }, [](A a) { if (a.i.size() > 0) camera_collide_sweep(a.i[0], a.f[0]); return uint64_t{0}; });
+    {
+        const CollisionScratchIgnored spr_ignored;
+        check("camera_collide_sweep", 0x001ed6a8, 300, Ret::None, [level1, setup, near_hero] {
+            level1();
+            const uint32_t cam = setup(ri(2, 4));
+            if (cam == 0) return Args{};
+            const uint32_t pos = coin() ? cam + 0x30 : OUT;
+            near_hero(pos, 8, 4);
+            if (ri(0, 4) == 0) { const uint32_t a = ee_read<uint32_t>(OV(0x00166e00)); for (uint32_t o = 0; o < 0xc; o += 4) wf(pos + o, ee_read<float>(a + 0x64 + o)); }
+            return Args{{pos}, {ri(0, 4) == 0 ? rf(0.05f, 0.3f) : rf(0.3f, 2.0f)}};
+        }, [](A a) { if (a.i.size() > 0) camera_collide_sweep(a.i[0], a.f[0]); return uint64_t{0}; });
+    }
 
     // ---- type 2 (id 5) ----
     auto cam5 = [setup, rnd_work, near_hero]() -> uint32_t {
@@ -129,8 +132,11 @@ void batch_72() {
           [](A a) { if (a.i[0] != 0) cam5_init(a.i[0]); return uint64_t{0}; });
     check("cam5_step", 0x002eae20, 800, Ret::None, [level1, cam5] { level1(); return Args{{cam5()}, {}}; },
           [](A a) { if (a.i[0] != 0) cam5_step(a.i[0]); return uint64_t{0}; });
-    check("cam5_update", 0x002eb218, 400, Ret::None, [level1, cam5] { level1(); return Args{{cam5()}, {}}; },
-          [](A a) { if (a.i[0] != 0) cam5_update(a.i[0]); return uint64_t{0}; });
+    {
+        const CollisionScratchIgnored spr_ignored;
+        check("cam5_update", 0x002eb218, 400, Ret::None, [level1, cam5] { level1(); return Args{{cam5()}, {}}; },
+              [](A a) { if (a.i[0] != 0) cam5_update(a.i[0]); return uint64_t{0}; });
+    }
 
     // ---- type 3 (id 6) ----
     auto cam6 = [setup, rnd_work, near_hero]() -> uint32_t {
@@ -209,25 +215,37 @@ void batch_72() {
     };
     check("cam7_init", 0x002ebbd8, 300, Ret::None, [level1, cam7] { level1(); return Args{{cam7()}, {}}; },
           [](A a) { if (a.i[0] != 0) cam7_init(a.i[0]); return uint64_t{0}; });
-    check("cam7_track", 0x002ebe70, 800, Ret::None, [level1, cam7] { level1(); return Args{{cam7()}, {}}; },
-          [](A a) { if (a.i[0] != 0) cam7_track(a.i[0]); return uint64_t{0}; });
+    {
+        const CollisionScratchIgnored spr_ignored;
+        check("cam7_track", 0x002ebe70, 800, Ret::None, [level1, cam7] { level1(); return Args{{cam7()}, {}}; },
+              [](A a) { if (a.i[0] != 0) cam7_track(a.i[0]); return uint64_t{0}; });
+    }
     check("cam7_aim", 0x002ec4a8, 400, Ret::None, [level1, cam7] { level1(); return Args{{cam7()}, {}}; },
           [](A a) { if (a.i[0] != 0) cam7_aim(a.i[0]); return uint64_t{0}; });
-    check("cam7_step", 0x002ec678, 300, Ret::None, [level1, cam7] { level1(); return Args{{cam7()}, {}}; },
-          [](A a) { if (a.i[0] != 0) cam7_step(a.i[0]); return uint64_t{0}; });
-    check("cam7_update", 0x002ec6c0, 500, Ret::None, [level1, cam7] { level1(); return Args{{cam7()}, {}}; },
-          [](A a) { if (a.i[0] != 0) cam7_update(a.i[0]); return uint64_t{0}; });
+    {
+        const CollisionScratchIgnored spr_ignored;
+        check("cam7_step", 0x002ec678, 300, Ret::None, [level1, cam7] { level1(); return Args{{cam7()}, {}}; },
+              [](A a) { if (a.i[0] != 0) cam7_step(a.i[0]); return uint64_t{0}; });
+    }
+    {
+        const CollisionScratchIgnored spr_ignored;
+        check("cam7_update", 0x002ec6c0, 500, Ret::None, [level1, cam7] { level1(); return Args{{cam7()}, {}}; },
+              [](A a) { if (a.i[0] != 0) cam7_update(a.i[0]); return uint64_t{0}; });
+    }
     check("cam7_exit", 0x002ec7b0, 200, Ret::None, [level1, cam7] { level1(); return Args{{cam7()}, {}}; },
           [](A a) { if (a.i[0] != 0) cam7_exit(a.i[0]); return uint64_t{0}; });
 
     // the camera update of a frame with the camera of each type made active
-    check("camera_select", 0x001eba20, 300, Ret::Int32, [level1, cam5, cam6, cam7] {
-        level1();
-        const int k = ri(0, 2);
-        const uint32_t cam = k == 0 ? cam5() : (k == 1 ? cam6() : cam7());
-        if (cam != 0) w32(OV(0x00166e00), cam);
-        return Args{};
-    }, [](A) { return r32(static_cast<uint32_t>(camera_select())); });
+    {
+        const CollisionScratchIgnored spr_ignored;
+        check("camera_select", 0x001eba20, 300, Ret::Int32, [level1, cam5, cam6, cam7] {
+            level1();
+            const int k = ri(0, 2);
+            const uint32_t cam = k == 0 ? cam5() : (k == 1 ? cam6() : cam7());
+            if (cam != 0) w32(OV(0x00166e00), cam);
+            return Args{};
+        }, [](A) { return r32(static_cast<uint32_t>(camera_select())); });
+    }
     g_ee_null_is_ram = null_ram;
 }
 

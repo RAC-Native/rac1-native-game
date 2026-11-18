@@ -97,6 +97,9 @@ add_library(rac1_game STATIC
     ovl/rilgar_people.cpp
     ovl/umbris_part2.cpp
     ovl/veldin_extras.cpp
+    ovl/veldin_vendor_draw.cpp
+    ovl/veldin_particle_fx.cpp
+    ovl/veldin_particles_1.cpp
     ovl/weapon_classes.cpp
     ovl/blarg_mobys.cpp
     ovl/blarg_hooks.cpp

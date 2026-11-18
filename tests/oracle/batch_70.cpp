@@ -108,28 +108,31 @@ void batch_70() {
         level1(); wf(OV(0x0015f5d4), 0.5f); lights(); wf(OV(0x00166dd8), rf(-3.1f, 3.1f));
         return Args{};
     }, [](A) { level_lights_update(); return uint64_t{0}; });
-    check("checkpoint_restore", 0x00285008, 200, Ret::None, [level1] {
-        level1();
-        static constexpr OvConst<0x001bb230u> C{};
-        if (ri(0, 4) == 0) { w32(C, 0); return Args{}; }
-        wrand(C, 0x320);
-        w32(C, 1);
-        Vec4 p = ee_ref<Vec4>(0x0013f3d0); p.x += rf(-20, 20); p.y += rf(-20, 20); ee_ref<Vec4>(C + 0x10) = p;
-        wfrand(C + 0x20, 4, -3, 3); wfrand(C + 0x30, 3, -3, 3);
-        w32(C + 0x44, u(ri(0, 3)));  // (4 and up: the original halts in its debug trap)
-        // the saved moby data: entries for real mobys
-        const uint32_t L = OV(0x001bb280);
-        const int n = ri(0, 6);
-        w32(L, u(n));
-        const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8));
-        for (int i = 0; i < n; ++i) {
-            const uint32_t e = L + 4 + u(i) * 0x10;
-            const uint32_t m = first + 0x100 * u(ri(1, 150));
-            w32(e, u(ri(0, 0x8)) * 16); w16(e + 8, u(ri(1, 2)) * 16); w16(e + 0xa, u(ri(0, 1)));
-            w16(e + 0xc, coin() ? ee_read<uint16_t>(m + 0xb2) : u(ri(0, 0x7fff)));
-        }
-        return Args{};
-    }, [](A) { checkpoint_restore(); return uint64_t{0}; });
+    {
+        const CollisionScratchIgnored spr_ignored;
+        check("checkpoint_restore", 0x00285008, 200, Ret::None, [level1] {
+            level1();
+            static constexpr OvConst<0x001bb230u> C{};
+            if (ri(0, 4) == 0) { w32(C, 0); return Args{}; }
+            wrand(C, 0x320);
+            w32(C, 1);
+            Vec4 p = ee_ref<Vec4>(0x0013f3d0); p.x += rf(-20, 20); p.y += rf(-20, 20); ee_ref<Vec4>(C + 0x10) = p;
+            wfrand(C + 0x20, 4, -3, 3); wfrand(C + 0x30, 3, -3, 3);
+            w32(C + 0x44, u(ri(0, 3)));  // (4 and up: the original halts in its debug trap)
+            // the saved moby data: entries for real mobys
+            const uint32_t L = OV(0x001bb280);
+            const int n = ri(0, 6);
+            w32(L, u(n));
+            const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8));
+            for (int i = 0; i < n; ++i) {
+                const uint32_t e = L + 4 + u(i) * 0x10;
+                const uint32_t m = first + 0x100 * u(ri(1, 150));
+                w32(e, u(ri(0, 0x8)) * 16); w16(e + 8, u(ri(1, 2)) * 16); w16(e + 0xa, u(ri(0, 1)));
+                w16(e + 0xc, coin() ? ee_read<uint16_t>(m + 0xb2) : u(ri(0, 0x7fff)));
+            }
+            return Args{};
+        }, [](A) { checkpoint_restore(); return uint64_t{0}; });
+    }
     check("cam_mod5_accept", 0x002ed230, 400, Ret::Int32, [level1, setup] { level1(); return Args{{setup(5)}, {}}; },
           [](A a) { return r32(static_cast<uint32_t>(a.i[0] != 0 ? cam_mod5_accept(a.i[0]) : 0)); });
     check("cam_mod6_accept", 0x002ed8b0, 400, Ret::Int32, [level1, setup] { level1(); return Args{{setup(6)}, {}}; },
@@ -169,10 +172,13 @@ void batch_70() {
         if (ri(0, 3) == 0) w16(other + 0x86, u(ri(0, 3) * 4)); if (ri(0, 4) == 0) w16(ee_read<uint32_t>(OV(0x00166e00)) + 0x86, 7);
         return Args{{cam, other}, {}};
     }, [](A a) { return r32(static_cast<uint32_t>(a.i.size() > 0 && a.i[0] != 0 ? cam_look_accept(a.i[0], a.i[1]) : 0)); });
-    check("cam_look_update", 0x002e9f38, 400, Ret::None, [level1, look] {
-        level1(); const uint32_t cam = look(); if (cam == 0) return Args{};
-        return Args{{cam}, {}};
-    }, [](A a) { if (a.i.size() > 0 && a.i[0] != 0) cam_look_update(a.i[0]); return uint64_t{0}; });
+    {
+        const CollisionScratchIgnored spr_ignored;
+        check("cam_look_update", 0x002e9f38, 400, Ret::None, [level1, look] {
+            level1(); const uint32_t cam = look(); if (cam == 0) return Args{};
+            return Args{{cam}, {}};
+        }, [](A a) { if (a.i.size() > 0 && a.i[0] != 0) cam_look_update(a.i[0]); return uint64_t{0}; });
+    }
     check("cam_look_init", 0x002ea7a0, 200, Ret::None, [level1, look] {
         level1(); const uint32_t cam = look(); if (cam == 0) return Args{};
         w32(OV(0x00166c80) + 0x254, 0); w16(OV(0x00167150) + 0x86 + 0xa0 * u(ri(0, 3)), 0);

@@ -161,16 +161,19 @@ void batch_69() {
         wf(OV(0x0015f5d0), rf(0.5f, 1.2f));
         return Args{{OUT, OUT + 0x10, R(), R(), coin() ? 0u : u(ri(1, 30)), u(ri(0, 4))}, {rf(0, 3)}};
     }, [](A a) { return r32(spawn_particle_10(a.i[0], a.i[1], a.i[2], a.i[3], a.i[4], a.i[5], a.f[0])); });
-    check("particle_23_update", 0x0026f660, 300, Ret::None, [level1] {
-        level1(); Vec4 h = ee_ref<Vec4>(0x0013f3d0); h.x += rf(-10, 10); h.y += rf(-10, 10); h.z += rf(-0.5f, 3); ee_ref<Vec4>(OUT) = h;
-        wfrand(OUT + 0x10, 4, -0.5f, 0.5f); seed_rand();
-        const uint32_t p = alloc_particle(0x23);
-        if (p == 0) return Args{{0u}, {}};
-        ee_ref<Vec4>(p + 0x10) = h; ee_ref<Vec4>(p + 0x20) = ee_ref<Vec4>(OUT + 0x10);
-        w32(p + 4, R()); w32(p + 0x30, u(ri(0, 4))); w32(p + 0x34, u(ri(-1, 30))); wf(p + 0x38, h.z + rf(-2, 2)); wf(p + 0x3c, rf(0, 0.05f));
-        wf(0x0013f640, h.z + rf(-1, 1));
-        return Args{{p}, {}};
-    }, [](A a) { if (a.i[0] != 0) particle_23_update(a.i[0]); return uint64_t{0}; });
+    {
+        const CollisionScratchIgnored spr_ignored;
+        check("particle_23_update", 0x0026f660, 300, Ret::None, [level1] {
+            level1(); Vec4 h = ee_ref<Vec4>(0x0013f3d0); h.x += rf(-10, 10); h.y += rf(-10, 10); h.z += rf(-0.5f, 3); ee_ref<Vec4>(OUT) = h;
+            wfrand(OUT + 0x10, 4, -0.5f, 0.5f); seed_rand();
+            const uint32_t p = alloc_particle(0x23);
+            if (p == 0) return Args{{0u}, {}};
+            ee_ref<Vec4>(p + 0x10) = h; ee_ref<Vec4>(p + 0x20) = ee_ref<Vec4>(OUT + 0x10);
+            w32(p + 4, R()); w32(p + 0x30, u(ri(0, 4))); w32(p + 0x34, u(ri(-1, 30))); wf(p + 0x38, h.z + rf(-2, 2)); wf(p + 0x3c, rf(0, 0.05f));
+            wf(0x0013f640, h.z + rf(-1, 1));
+            return Args{{p}, {}};
+        }, [](A a) { if (a.i[0] != 0) particle_23_update(a.i[0]); return uint64_t{0}; });
+    }
     check("particle_40_update", 0x00273a68, 300, Ret::None, [level1] {
         level1(); wfrand(OUT, 4, 100, 140); wfrand(OUT + 0x10, 4, -0.3f, 0.3f); seed_rand();
         const uint32_t p = spawn_particle_40(OUT, OUT + 0x10, u(ri(0, 5)), R(), R(), u(coin()), rf(0, 0.0001f), rf(-1, 1), rf(0, 0.1f));
@@ -271,14 +274,17 @@ void batch_69() {
         w32(p + 0x24, u(ri(0, 4))); w8(p + 0x28, R() & 7); wf(p + 0x2c, rf(0.9f, 1.1f)); w32(p + 0x20, R());
         w8(p + 0x2a, R() & 0xff); w8(p + 0x2b, u(ri(1, 255))); return Args{{p}, {}};
     }, [](A a) { if (a.i[0] != 0) particle_17_update(a.i[0]); return uint64_t{0}; });
-    check("particle_19_update", 0x0026d700, 300, Ret::None, [level1, rpart] {
-        level1(); const uint32_t p = rpart(0x19); if (p == 0) return Args{{0u}, {}};
-        Vec4 c = ee_ref<Vec4>(OV(0x00166dc0)); c.x += rf(-6, 6); c.y += rf(-6, 6); c.z += rf(-1, 3); ee_ref<Vec4>(p + 0x10) = c;
-        if (ri(0, 6) == 0) wf(p + 0x10 + 4 * u(ri(0, 2)), rf(-1, 0.05f));
-        if (ri(0, 4) == 0) wfrand(p + 0x20, 3, 0, 0); else wfrand(p + 0x20, 3, -3, 3);
-        wf(p + 0x2c, coin() ? 0.0f : rf(-0.2f, 0.1f)); wfrand(p + 0x30, 3, -0.2f, 1); wf(p + 0x3c, rf(-0.05f, 1));
-        wf(p + 0xc, rf(-10, 30000)); return Args{{p}, {}};
-    }, [](A a) { particle_19_update(a.i[0]); return uint64_t{0}; });
+    {
+        const CollisionScratchIgnored spr_ignored;
+        check("particle_19_update", 0x0026d700, 300, Ret::None, [level1, rpart] {
+            level1(); const uint32_t p = rpart(0x19); if (p == 0) return Args{{0u}, {}};
+            Vec4 c = ee_ref<Vec4>(OV(0x00166dc0)); c.x += rf(-6, 6); c.y += rf(-6, 6); c.z += rf(-1, 3); ee_ref<Vec4>(p + 0x10) = c;
+            if (ri(0, 6) == 0) wf(p + 0x10 + 4 * u(ri(0, 2)), rf(-1, 0.05f));
+            if (ri(0, 4) == 0) wfrand(p + 0x20, 3, 0, 0); else wfrand(p + 0x20, 3, -3, 3);
+            wf(p + 0x2c, coin() ? 0.0f : rf(-0.2f, 0.1f)); wfrand(p + 0x30, 3, -0.2f, 1); wf(p + 0x3c, rf(-0.05f, 1));
+            wf(p + 0xc, rf(-10, 30000)); return Args{{p}, {}};
+        }, [](A a) { particle_19_update(a.i[0]); return uint64_t{0}; });
+    }
     check("particle_10_update", 0x0026c088, 300, Ret::None, [level1] {
         level1(); seed_rand();
         Vec4 c = ee_ref<Vec4>(OV(0x00166dc0)); c.x += rf(-12, 12); c.y += rf(-12, 12); ee_ref<Vec4>(OUT) = c;
