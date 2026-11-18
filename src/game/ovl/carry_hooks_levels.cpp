@@ -319,8 +319,8 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         case L12_CASE(0x002e1758): ret = carry_state_hook(m, a1, a2, f12, 4, 8, 1); return true;
         case L12_CASE(0x002e17a8): ret = carry_state_hook(m, a1, a2, f12, 8, 8, 1); return true;
         case L12_CASE(0x002e17f8): ret = u_call(hov_hook_2e17f8_u, m, a1, a2, f12); return true;
-        case L12_CASE(0x002e1848): ret = u_call(hov_hook_2e1848_u, m, a1, a2, f12); return true;
-        case L12_CASE(0x002e6b00): ret = u_call(hov_hook_2e6b00_u, m, a1, a2, f12); return true;
+        case L12_CASE(0x002e1848): ret = static_cast<int32_t>(hov_hook_2e1848_l12(m)); return true;
+        case L12_CASE(0x002e6b00): ret = hov_hook_2e6b00_l12(m, a1, a2, f12); return true;
         default: return false;
         }
     case 13:  // Gemlik Base: class 0x3f (table 0x1f6174)

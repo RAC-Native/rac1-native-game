@@ -13,6 +13,7 @@
 #include <game/ovl/cutscene.h>
 #include <game/ovl/hoven_mobys.h>
 #include <game/ovl/level_change.h>
+#include <game/ovl/novalis_mobys.h>
 #include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -69,9 +70,9 @@ void hov_class282_update_l12(uint32_t m) {
         talk_init(m, pv + 0x20);
         band_set(m);
         break;
-    case 1:  // the talk: done, the camera put on him (L12:0x27bea8, generated), its end (0x2e6cf0)
+    case 1:  // the talk: done, the camera put on him (hero_walk_to_l1, L12:0x27bea8), its end (0x2e6cf0)
         if (lbu(0x0013d389) == 0 && talk_update(m, pv + 0x20) != 0) {
-            hov_27bea8_l12(m, 0, 0, 0, 0, 0, 0, 0, 2.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+            hero_walk_to_l1(2.5f, m);
             sw(m + 0x58, 0);
             sb(m + 0x20, 2);
         }

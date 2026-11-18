@@ -188,12 +188,18 @@ add_library(rac1_game STATIC
     ovl/pokitaru_resort_owner.cpp
     ovl/pokitaru_talkers.cpp
     ovl/pokitaru_teleporter.cpp
+    ovl/hoven_carry.cpp
+    ovl/hoven_gunship.cpp
     ovl/hoven_hooks.cpp
+    ovl/hoven_hydropack_npc.cpp
     ovl/hoven_jet_platform.cpp
     ovl/hoven_mobys.cpp
     ovl/hoven_raritanium_npc.cpp
     ovl/hoven_sky_objects.cpp
     ovl/hoven_snow_critter.cpp
+    ovl/hoven_targets.cpp
+    ovl/hoven_trooper.cpp
+    ovl/hoven_turret.cpp
     ovl/hoven_water.cpp
     ovl/gemlik_mobys.cpp
     ovl/gemlik_hooks.cpp

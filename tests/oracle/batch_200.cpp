@@ -85,7 +85,8 @@ constexpr uint32_t MOBY_SPAWN_L12 = 0x00267578;
 // vertices and cell walk the port keeps on the host stack too.)
 bool c2a_spr_check(const char* name) {
     static const char* const kNames[] = {"mobys_in_sphere", "class1818", "class238", "class294", "hero_move_mode",
-                                         "p12_class238", "class1134", "class1135", "class805"};
+                                         "p12_class238", "p12_class294", "p12_class326", "p12_class409", "p12_class1259",
+                                         "class1134", "class1135", "class805"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -435,8 +436,8 @@ void batch_200() {
             {"hook_2e1758", 0x2e1758, 0x4, carry_state_uniform<4>},
             {"hook_2e17a8", 0x2e17a8, 0x8, carry_state_uniform<8>},
             {"hook_2e17f8", 0x2e17f8, 0xc, hov_hook_2e17f8_u},
-            {"hook_2e1848", 0x2e1848, 0x10, hov_hook_2e1848_u},
-            {"hook_2e6b00", 0x2e6b00, 0xc, hov_hook_2e6b00_u},
+            {"hook_2e1848", 0x2e1848, 0x10, [](uint32_t m, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float) { return TrRet{hov_hook_2e1848_l12(m), 0.0f}; }},
+            {"hook_2e6b00", 0x2e6b00, 0xc, [](uint32_t m, uint32_t a1, uint32_t a2, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float f12, float, float, float, float, float, float, float) { return TrRet{static_cast<uint32_t>(hov_hook_2e6b00_l12(m, a1, a2, f12)), 0.0f}; }},
         };
         for (const Hk& hk : hks) {
             level();
@@ -748,13 +749,425 @@ void batch_200() {
                  const uint32_t pv = ee_read<uint32_t>(m + 0x78);
                  const int32_t b = a_box();
                  w32(pv + 0xc, ri(0, 2) == 0 ? 0xffffffffu : u(b));
-                 if (coin() && lvd::box_count(lvd::BOXES) > 0) ee_ref<Vec4>(OV(0x00167240)) = ee_ref<Vec4>(lvd::box(lvd::BOXES, b) + 0x30);
+                 if (coin() && lvd::box_count(lvd::BOXES) > 0) ee_ref<Vec4>(OV(0x00166dc0)) = ee_ref<Vec4>(lvd::box(lvd::BOXES, b) + 0x30);
+             }},
+            {"class294", 0x002e72c0, hov_class294_update_l12, {0, 0, 1, 2, 2, 3, 3, 4, 5, 6, 6, 7, 8, 9, 9},
+             [P, hero_at, near, hit_with, edge, a_path, a_box](uint32_t m, int st) {
+                 if (st != 0) {
+                     w8(m + 0x20, 0);
+                     const uint32_t sp0 = ee_stack_ptr();
+                     try { hov_class294_update_l12(m); } catch (const std::exception&) { ee_stack_ptr() = sp0; }
+                     w8(m + 0x20, u(st));
+                 }
+                 const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                 w8(0x0015edb7, coin() ? 1u : 0u);
+                 hero_at(near(m, ri(0, 2) == 0 ? 4.5f : (coin() ? 14.0f : 35.0f), ri(0, 2) == 0 ? 0.5f : 5.0f));
+                 ee_ref<Vec4>(P + 0xd0) = near(m, 8.0f, 1.5f);
+                 w8(m + 0x31, ri(0, 5) == 0 ? 0u : 1u);
+                 w16(m + 0x34, (ee_read<uint16_t>(m + 0x34) & ~0x8041u) | (coin() ? 0x8000u : 0u) | (ri(0, 3) == 0 ? 1u : 0u));
+                 if (ri(0, 6) == 0) w32(ORACLE_LADDR(12, 0x0015f5c4), 2);
+                 if (ri(0, 6) == 0) { w8(pv + 0x269, 1); w32(0x001413d4, 0); w32(0x001413e0, 0x67); }
+                 if (ri(0, 4) == 0 && lvd::box_count(lvd::BOXES) > 0) {
+                     const int32_t b = a_box();
+                     w32(pv + 0x270, u(b));
+                     if (coin()) ee_ref<Vec4>(ORACLE_LADDR(12, 0x00167240)) = ee_ref<Vec4>(lvd::box(lvd::BOXES, b) + 0x30);
+                 } else w32(pv + 0x270, 0xffffffffu);
+                 if (ri(0, 8) == 0) w8(pv + 0x2e, 2);
+                 w32(pv + 0x38, ri(0, 3) == 0 ? 1u : 0u);
+                 w16(pv + 0x240, edge());
+                 if (ri(0, 2) == 0) {
+                     w32(pv + 0x274, 1);
+                     w32(pv + 0x288, u(ri(0, 1) ? 5 : 2500));
+                     for (uint32_t off = 0x278; off <= 0x284; off += 4)
+                         w32(pv + off, coin() && lvd::group_count() > 0 ? u(ri(0, lvd::group_count() - 1)) : 0xffffffffu);
+                 }
+                 if (ri(0, 6) == 0 && lvd::box_count(lvd::BOXES) > 0) {
+                     const int32_t b = a_box();
+                     w32(pv + 0x290, u(b));
+                     if (coin()) hero_at(ee_ref<Vec4>(lvd::box(lvd::BOXES, b) + 0x30));
+                 } else w32(pv + 0x290, 0xffffffffu);
+                 if (ri(0, 2) == 0) {
+                     wf(pv + 0x20, coin() ? 0.5f : 5.0f);
+                     hit_with(m, 0x330000u);
+                 }
+                 if (st == 1 || (st == 2 && coin())) {
+                     const int32_t pid = a_path();
+                     w32(pv + 0x254, u(pid));
+                     const uint32_t path = lvd::path(pid);
+                     if (path != 0) {
+                         const int32_t n = ee_read<int32_t>(path);
+                         const int32_t i = ri(0, std::max(0, n - 1));
+                         w32(pv + 0x260, u(i));
+                         if (st == 1 && coin()) {
+                             Vec4 q = ee_ref<Vec4>(path + 0x10 + (u(i) << 4));
+                             q.x += rf(-2.0f, 2.0f); q.y += rf(-2.0f, 2.0f);
+                             ee_ref<Vec4>(m + 0x10) = q;
+                         }
+                     }
+                     w32(pv + 0x258, st == 1 ? 1u : edge());
+                     wf(pv + 0x264, rf(2.0f, 15.0f));
+                 } else if (st == 2) {
+                     w32(pv + 0x254, 0xffffffffu);
+                 }
+                 if (st == 2 && coin() && lvd::box_count(lvd::BOXES) > 0) {
+                     const int32_t b = a_box();
+                     w32(pv + 0x25c, u(b));
+                     if (coin()) hero_at(ee_ref<Vec4>(lvd::box(lvd::BOXES, b) + 0x30));
+                 }
+                 w8(m + 0xbc, coin() ? 1u : 0u);
+                 w8(pv + 0x268, coin() ? 1u : 0u);
+                 w8(pv + 0x242, ri(0, 3) == 0 ? 1u : 0u);
+                 w8(pv + 0x243, u(ri(13, 18)));
+                 if (ri(0, 2) == 0 && lvd::path_count() > 0) {
+                     const int32_t pid = a_path();
+                     w32(pv + 0x26c, u(pid));
+                     const uint32_t p = lvd::path(pid);
+                     if (p != 0 && ee_read<int32_t>(p) >= 2 && coin()) {
+                         Vec4 q = ee_ref<Vec4>(p + 0x10);
+                         q.x += rf(-0.4f, 0.4f); q.y += rf(-0.4f, 0.4f);
+                         ee_ref<Vec4>(m + 0x10) = q;
+                     }
+                 } else w32(pv + 0x26c, 0xffffffffu);
+                 if (st == 3 && coin()) {
+                     w32(ORACLE_LADDR(12, 0x0015f5c4), 0);
+                     w32(pv + 0x270, 0xffffffffu);
+                     w8(pv + 0x269, 0);
+                     w8(pv + 0x2e, 0);
+                     w8(pv + 0x242, 0);
+                     wf(pv + 0x244, coin() ? rf(0.2f, 0.6f) : rf(-0.6f, -0.2f));
+                     hero_at(near(m, coin() ? rf(3.0f, 5.5f) : rf(8.0f, 14.0f), 0.5f));
+                 }
+                 if (coin()) w8(m + 0x70, 2u);
+                 if (st == 6) {
+                     if (ee_read<uint32_t>(pv + 0x248) == 0) trooper_gun_update(m);
+                     w8(m + 0x52, ee_read<uint8_t>(m + 0x53));
+                     wf(m + 0x54, 0.0f);
+                     const uint32_t cur = ee_read<uint32_t>(m + 0x68);
+                     if (cur != 0) w16(cur + 4, 0);
+                     wf(m + 0x58, 1.0f);
+                     wf(m + 0x5c, coin() ? 0.5f : 0.0f);
+                 }
+                 if ((st == 4 || st == 9) && ri(0, 3) == 0) wf(m + 0x18, rf(0.2f, 1.8f));
+             }},
+            {"class326", 0x002e9f68, hov_class326_update_l12, {0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 6, 6},
+             [hero_at, near, hit_with, edge, a_path, a_box](uint32_t m, int st) {
+                 if (st != 0) {
+                     w8(m + 0x20, 0);
+                     const uint32_t sp0 = ee_stack_ptr();
+                     try { hov_class326_update_l12(m); } catch (const std::exception&) { ee_stack_ptr() = sp0; }
+                     w8(m + 0x20, u(st));
+                 }
+                 const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                 w32(pv + 0xc0, coin() ? 1u : 0u);
+                 w32(ORACLE_LADDR(12, 0x00161f00), ri(0, 3) == 0 ? 1u : 0u);
+                 { static const uint32_t ws[] = {0, 4, 8, 13}; w32(ORACLE_LADDR(12, 0x00161f20), ws[ri(0, 3)]); }
+                 w32(ORACLE_LADDR(12, 0x001619a0), ri(0, 6) == 0 ? 1u : 0u);
+                 w8(0x001413f4, coin() ? 2u : 0u);
+                 w8(m + 0x31, ri(0, 4) == 0 ? 0u : 1u);
+                 hero_at(near(m, ri(0, 2) == 0 ? 12.0f : 32.0f, ri(0, 2) == 0 ? -3.0f : 3.0f));
+                 w32(pv + 0xa0, u(a_path()));
+                 w32(pv + 0xa4, ri(0, 4) == 0 ? 0xffffffffu : u(a_path()));
+                 if (st >= 2 && lw(pv + 0xa0) >= 0) {
+                     gunship_path_lengths(lw(pv + 0xa0));
+                     if (lw(pv + 0xa4) >= 0) gunship_path_lengths(lw(pv + 0xa4));
+                     const uint32_t p = lvd::path(lw(pv + 0xa0));
+                     if (p != 0) {
+                         const int32_t n = ee_read<int32_t>(p);
+                         const int32_t idx = coin() ? std::max(0, n - 1) : ri(0, std::max(0, n - 1));
+                         w32(pv + 0xb4, u(idx));
+                         if (st == 2 && coin()) {
+                             Vec4 q = ee_ref<Vec4>(p + 0x10 + (u(idx) << 4));
+                             q.x += rf(-1.5f, 1.5f);
+                             ee_ref<Vec4>(m + 0x10) = q;
+                             wf(pv + 0x94, coin() ? 0.0f : rf(0.01f, 0.3f));
+                         }
+                     }
+                 }
+                 if (st == 1 && coin() && lvd::box_count(lvd::BOXES) > 0) {
+                     const int32_t b = a_box();
+                     w32(pv + 0x80, u(b));
+                     if (coin()) hero_at(ee_ref<Vec4>(lvd::box(lvd::BOXES, b) + 0x30));
+                 }
+                 w32(pv + 0xc4, edge());
+                 w16(pv + 0x8c, st == 3 && coin() ? 1u : edge());
+                 w16(pv + 0x8e, edge());
+                 w16(pv + 0xbc, u(ri(0, 5)));
+                 w16(pv + 0xbe, u(ri(0, 1)));
+                 if (st == 3 && coin()) {
+                     w32(ORACLE_LADDR(12, 0x00161f00), 0); w32(ORACLE_LADDR(12, 0x001619a0), 0);
+                     w8(0x001413f4, 0); w8(m + 0x31, 1u);
+                     w32(OV(0x00179410), 0); w32(OV(0x00179410) + 0x24, 0xffffffffu);
+                     w32(0x001516d0 + 0x50, 0); w32(0x001516d0 + 0x1c, 0xffffffffu);
+                     w8(0x0013d4cb, 0); w16(0x00141c50, 0); w16(0x00141c48, 0);
+                 }
+                 if (st == 4 && lw(pv + 0xa4) < 0) w32(pv + 0xa4, u(a_path()));
+                 if (st == 4 && lw(pv + 0xa4) >= 0 && coin()) {
+                     const uint32_t p = lvd::path(lw(pv + 0xa4));
+                     if (p != 0) {
+                         Vec4 q = ee_ref<Vec4>(lh(pv + 0xbe) != 0 ? (p + 0x10) : (p + (ee_read<uint32_t>(p) << 4)));
+                         q.x += rf(-2.0f, 2.0f);
+                         ee_ref<Vec4>(m + 0x10) = q;
+                         wf(pv + 0x94, coin() ? 0.0f : 0.2f);
+                     }
+                 }
+                 if (ri(0, 3) == 0) {
+                     const int ch = ri(0, 7);
+                     w32(pv + 0xb0, u(ch));
+                     w32(0x0013e550u + u(ch * 0x70) + 0x88, m);
+                     w8(0x0013e550u + u(ch * 0x70) + 0x74, coin() ? 1u : 0u);
+                 } else w32(pv + 0xb0, 0xffffffffu);
+                 if (ri(0, 2) == 0) {
+                     wf(pv + 0x20, coin() ? 0.5f : 12.0f);
+                     hit_with(m, 0x330000u);
+                     const uint32_t e = OV(0x00178100) + (ee_read<uint8_t>(m + 0xa4) << 6);
+                     wf(e + 0x1c, coin() ? u2f(0x45afdf66u) : 0.0f);
+                     if (ri(0, 3) == 0) {
+                         const uint32_t att = ee_read<uint32_t>(OV(0x0015ffd8));
+                         w32(e + 0x20, att);
+                         static const uint16_t src_ids[] = {0x1ca, 0xb8, 0x199, 0x10};
+                         w16(att + 0xa6, src_ids[ri(0, 3)]);
+                     }
+                 }
+                 if (coin()) ee_ref<Vec4>(ORACLE_LADDR(12, 0x00167240)) = near(m, 20.0f, 3.0f);
+             }},
+            {"class328", 0x002eb570, hov_class328_update_l12, {0, 1, 1, 2, 2},
+             [P, hero_at, near, edge, a_box](uint32_t m, int st) {
+                 const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                 if (coin()) {
+                     w32(0x0013da1c, 0);
+                     w8(m + 0x20, 0);
+                     hov_class328_update_l12(m);
+                     w8(m + 0x20, u(st));
+                 }
+                 w32(0x0013da1c, ri(0, 3) == 0 ? 1u : 0u);
+                 w8(0x0013d4c4, ri(0, 3) == 0 ? 1u : 0u);
+                 w8(m + 0x53, coin() ? 0u : 1u);
+                 if (st == 2) {
+                     if (coin()) {
+                         w32(ORACLE_LADDR(12, 0x0015f5c4), 0);
+                         w16(pv + 0x24, 1);  // (checkpoint + state reset without level_change_request)
+                     } else {
+                         w32(ORACLE_LADDR(12, 0x0015f5c4), 2);
+                     }
+                 } else {
+                     w32(ORACLE_LADDR(12, 0x0015f5c4), coin() ? 2u : 0u);
+                 }
+                 w32(pv + 0x160, coin() && lvd::box_count(lvd::BOXES) > 0 ? u(a_box()) : 0xffffffffu);
+                 if (ri(0, 2) == 0) { w32(pv + 0x164, 0); w32(pv + 0x168, 0); }
+                 hero_at(near(m, coin() ? 6.0f : 14.0f, 1.0f));
+                 ee_ref<Vec4>(P + 0xd0) = near(m, 7.0f, 2.0f);
+                 wfrand(P + 0x100, 3, coin() ? -0.005f : -1.0f, coin() ? 0.005f : 1.0f);
+                 wf(m + 0x48, rf(-3.1f, 3.1f));
+                 w32(pv + 0x184, edge()); w32(pv + 0x188, edge());
+                 w8(0x0015edb0, coin() ? 1u : 0u);
+                 w16(OV(0x0016c860) + 0x44, 1);
+                 w32(OV(0x0016c860) + 0x178, m);
+                 w8(OV(0x0017c440) + 1, 0);
+             }},
+            {"class336", 0x002ebea8, hov_class336_update_l12, {0, 1, 1, 1},
+             [near, hit_with, edge, a_path](uint32_t m, int st) {
+                 if (st != 0) {
+                     w8(m + 0x20, 0);
+                     const uint32_t sp0 = ee_stack_ptr();
+                     try { hov_class336_update_l12(m); } catch (const std::exception&) { ee_stack_ptr() = sp0; }
+                     w8(m + 0x20, u(st));
+                 }
+                 const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                 if (coin()) {
+                     ee_ref<Vec4>(OV(0x00166dc0)) = near(m, 20.0f, 5.0f);
+                     render_view_setup();
+                 }
+                 w32(ORACLE_LADDR(12, 0x001619b4), ri(0, 3) == 0 ? 1u : 0u);
+                 w32(pv + 0xa4, edge());
+                 w16(m + 0x34, (ee_read<uint16_t>(m + 0x34) & ~1u) | u(ri(0, 1)));
+                 if (ri(0, 2) == 0) {
+                     w32(0x001413d4, ri(0, 3) == 0 ? 0x32u : 0u);
+                     w32(0x0015ee04, u(ri(0, 5)));
+                     w8(0x0013d41d, ri(0, 3) == 0 ? 1u : 0u);
+                     hit_with(m, 0x00a30000u);
+                 }
+                 if (st == 0) {
+                     w32(pv + 0x74, ri(0, 5) == 0 ? 0xffffffffu : u(a_path()));
+                     w32(pv + 0xa0, u(ri(0, 30)));
+                 } else if (ee_read<uint32_t>(pv + 0x70) != 0) {
+                     const uint32_t path = ee_read<uint32_t>(pv + 0x70);
+                     const int32_t n = ee_read<int32_t>(path);
+                     const int32_t cur = ri(0, std::max(0, n - 1));
+                     w32(pv + 0x60, u(cur));
+                     w8(pv + 0x64, coin() ? 1u : 0xffu);
+                     if (coin() && n > 0) {
+                         const int32_t dir = static_cast<int8_t>(ee_read<uint8_t>(pv + 0x64));
+                         const int32_t next = ((cur + n + dir) % n + n) % n;
+                         Vec4 q = ee_ref<Vec4>(path + 0x10 + (u(next) << 4));
+                         q.x += rf(-0.2f, 0.2f);
+                         ee_ref<Vec4>(m + 0x10) = q;
+                     }
+                 }
+             }},
+            {"class339", 0x002ec1d0, hov_class339_update_l12, {0, 1, 1, 2, 2},
+             [hero_at, near](uint32_t m, int) {
+                 const float r = ri(0, 2) == 0 ? rf(1.0f, 8.5f) : (coin() ? rf(9.2f, 11.8f) : rf(13.0f, 25.0f));
+                 hero_at(near(m, r, 1.0f));
+                 const uint32_t req = u(ri(0, 7));
+                 w8(m + 0x52, req);
+                 w8(m + 0x53, coin() ? req : u(ri(0, 6)));
+                 { static const uint8_t bcs[] = {0, 1, 2, 5}; w8(m + 0xbc, bcs[ri(0, 3)]); }
+                 w8(m + 0x70, coin() ? 2u : 0u);
+             }},
+            {"class384", 0x002ec720, hov_class384_update_l12, {0, 1, 1, 2},
+             [edge](uint32_t m, int) {
+                 const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                 { static const uint8_t bcs[] = {1, 2, 3, 4, 8, 9}; w8(m + 0xbc, bcs[ri(0, 5)]); }
+                 w32(pv + 0x4, ri(0, 2) == 0 ? 0u : edge());
+                 wf(pv + 0x0, rf(-3.1f, 3.1f));
+                 wf(pv + 0x8, rf(-1.5f, 5.5f));
+                 wf(ORACLE_LADDR(12, 0x0015f3fc), ri(0, 5) == 0 ? 1.0f : 0.0f);
+             }},
+            {"class422", 0x002ed280, hov_class422_update_l12, {0, 1, 1, 1},
+             [hero_at, a_box](uint32_t m, int) {
+                 const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                 w32(OV(0x00179410), 0); w32(OV(0x00179410) + 0x24, 0xffffffffu);
+                 w32(0x001516d0 + 0x50, 0); w32(0x001516d0 + 0x1c, 0xffffffffu);
+                 w16(0x00141cc8, 0);
+                 if (lvd::group_count() > 0 && coin()) w32(pv + 0xc, u(ri(0, lvd::group_count() - 1)));
+                 w8(0x0013d41c, coin() ? 0u : 1u);
+                 w16(0x00141cd0, coin() ? 0u : 1u);
+                 w16(0x00141cd2, u(ri(0, 4)));
+                 w32(0x001413d4, coin() ? 0x81u : 0u);
+                 w32(0x0015eea4, u(ri(0, 100000)));
+                 if (lvd::box_count(lvd::BOXES) > 0) {
+                     const int32_t b = a_box();
+                     w32(pv + 0x0, u(b));
+                     if (coin()) hero_at(ee_ref<Vec4>(lvd::box(lvd::BOXES, b) + 0x30));
+                 }
+                 w16(0x00141cd8, u(ri(0, 2)));
+                 w16(0x00141cda, u(ri(0, 3)));
+                 w32(0x0013cae0, coin() ? 3u : 0u);
+                 wf(0x001415ec, coin() ? 0.8f : 0.1f);
+                 w32(pv + 0x8, u(ri(0, 2) == 0 ? ri(38, 52) : ri(0, 5)));
+                 w32(pv + 0x4, u(ri(0, 2) == 0 ? ri(1800, 18000) : ri(0, 50)));
+                 w8(0x0013d4c4, coin() ? 1u : 0u);
+                 w16(0x00141b58, coin() ? 0u : 1u);
+             }},
+            {"class1259", 0x00302f30, hov_class1259_update_l12, {0, 1, 1, 1},
+             [hero_at, near, edge, live_index, a_path, a_box](uint32_t m, int st) {
+                 if (st != 0) {
+                     w8(m + 0x20, 0);
+                     const uint32_t sp0 = ee_stack_ptr();
+                     try { hov_class1259_update_l12(m); } catch (const std::exception&) { ee_stack_ptr() = sp0; }
+                     w8(m + 0x20, u(st));
+                 }
+                 const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                 if (ri(0, 6) == 0) w32(pv + 0x2314, 0xffffffffu);
+                 else if (lw(pv + 0x2314) < 0) w32(pv + 0x2314, u(live_index(true)));
+                 if (lw(pv + 0x2310) < 0 || lw(pv + 0x2310) >= lvd::path_count()) w32(pv + 0x2310, u(a_path()));
+                 wf(pv + 0x2318, rf(-3.1f, 3.1f));
+                 wf(pv + 0x2328, rf(10.0f, 90.0f));
+                 w32(pv + 0x2320, ri(0, 5) == 0 ? 0u : 1u);
+                 w32(pv + 0x232c, u(ri(4, 12)));
+                 for (uint32_t k = 0; k < 4; ++k) w32(pv + 0x2300 + k * 4, coin() ? 1u : edge());
+                 wf(ORACLE_LADDR(12, 0x00161df8), coin() ? 0.99f : rf(0.0f, 0.8f));
+                 w8(m + 0x31, coin() ? 1u : 0u);
+                 hero_at(near(m, ri(0, 5) == 0 ? 75.0f : 20.0f, 2.0f));
+                 ee_ref<Vec4>(ORACLE_LADDR(12, 0x00167240)) = near(m, coin() ? 25.0f : 55.0f, 4.0f);
+                 if (coin()) render_view_setup();
+                 if (ri(0, 3) == 0 && lvd::box_count(lvd::BOXES) > 0) {
+                     const int32_t b = a_box();
+                     w32(pv + 0x2330, u(b));
+                     if (coin()) ee_ref<Vec4>(ORACLE_LADDR(12, 0x00167240)) = ee_ref<Vec4>(lvd::box(lvd::BOXES, b) + 0x30);
+                 } else w32(pv + 0x2330, 0xffffffffu);
+             }},
+            {"class1267", 0x00303540, hov_class1267_update_l12, {0, 1, 2, 3, 3, 4, 4, 4, 6, 7, 7},
+             [hero_at, near, hit_with, edge, live_index](uint32_t m, int st) {
+                 if (st != 0) {
+                     w8(m + 0x20, 0);
+                     const uint32_t sp0 = ee_stack_ptr();
+                     try { hov_class1267_update_l12(m); } catch (const std::exception&) { ee_stack_ptr() = sp0; }
+                     w8(m + 0x20, u(st));
+                 }
+                 const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                 if (st == 0 && ri(0, 3) == 0) {
+                     const uint32_t cp = 0x0014c050u + (ee_read<uint32_t>(0x0015ed84) << 4) + ee_read<uint8_t>(m + 0xb0);
+                     w8(cp, 0xffu);
+                 }
+                 if (st == 3) {
+                     const float r = ri(0, 2) == 0 ? rf(0.2f, 1.1f) : (coin() ? rf(2.0f, 6.5f) : rf(8.0f, 20.0f));
+                     hero_at(near(m, r, 0.5f));
+                     w32(0x0013f650, u(ri(0, 1) ? 30 : 5));
+                     w32(0x0013f64c, ri(0, 3) == 0 ? m : 0u);
+                     w32(pv + 0x98, coin() ? 0xffffffffu : 1u);
+                     wf(m + 0x18, lwc1(pv + 0xa0) + rf(-1.5f, 0.5f));
+                 }
+                 if (st == 4) {
+                     w32(ORACLE_LADDR(12, 0x0015f5c4), ri(0, 4) == 0 ? 2u : 0u);
+                     w32(ORACLE_LADDR(12, 0x001619a0), ri(0, 6) == 0 ? 1u : 0u);
+                     w32(ORACLE_LADDR(12, 0x00161f24), ri(0, 4) == 0 ? 1u : 0u);
+                     for (int i = 0; i < 10; ++i) {
+                         w32(pv + 0x40 + u(i * 4), coin() ? u(live_index(true)) : 0xffffffffu);
+                     }
+                     const int32_t first_t = lw(pv + 0x40);
+                     if (first_t >= 0 && coin()) {
+                         const uint32_t tm = ee_read<uint32_t>(OV(0x0015ffd8)) + (u(first_t) << 8);
+                         w16(tm + 0xa6, coin() ? 0x146u : 0x4feu);
+                         const Vec4 tp = ee_ref<Vec4>(tm + 0x10);
+                         const Vec4 cp = ee_ref<Vec4>(ORACLE_LADDR(12, 0x00167240));
+                         wf(ORACLE_LADDR(12, 0x00167258), std::atan2(tp.y - cp.y, tp.x - cp.x));
+                         const float dz = tp.z + 1.5f - cp.z;
+                         const float d2 = std::sqrt((tp.x - cp.x) * (tp.x - cp.x) + (tp.y - cp.y) * (tp.y - cp.y));
+                         wf(ORACLE_LADDR(12, 0x00167254), -std::atan2(dz, d2));
+                     }
+                     w32(pv + 0x88, u(ri(0, 35)));
+                     w32(pv + 0x90, coin() ? 1u : edge());
+                     if (coin()) hit_with(m, 0x00010000u);
+                     w8(0x0014095f, ri(0, 5) == 0 ? 1u : 0u);
+                     wf(pv + 0x8c, ri(0, 5) == 0 ? -1.0f : rf(20.0f, 200.0f));
+                     if (ri(0, 4) == 0) {
+                         const int32_t bi = live_index(true);
+                         w32(pv + 0x94, u(bi));
+                         w8(ee_read<uint32_t>(OV(0x0015ffd8)) + (u(bi) << 8) + 0x20, 0xfe);
+                         w32(ORACLE_LADDR(12, 0x0015f5c4), 2);
+                     } else w32(pv + 0x94, 0xffffffffu);
+                     wf(0x00141070, rf(-1.0f, 1.0f));
+                     wf(0x00141074, rf(-1.0f, 1.0f));
+                     w32(0x0015eddc, coin() ? 1u : 0u);
+                     wf(pv + 0x7c, rf(-0.1f, 0.1f));
+                     wf(pv + 0x78, rf(-0.1f, 0.1f));
+                     wf(pv + 0x74, rf(-0.8f, 0.8f));
+                     w8(m + 0x70, coin() ? 2u : 0u);
+                     w32(0x0013cae0, coin() ? 0xa0u : 0u);
+                     w16(pv + 0x70, coin() ? 1u : 0u);
+                     w32(pv + 0x80, u(ri(0, 1)));
+                 }
+                 if (st == 6) w8(m + 0x53, coin() ? 0u : 5u);
+                 if (st == 7) {
+                     w16(pv + 0xae, coin() ? 1u : edge());
+                     w16(pv + 0xac, ri(0, 3) == 0 ? 1u : u(ri(5, 60)));
+                 }
              }},
         };
         for (const P12& c : p12) {
             if (std::getenv("B200_P12") != nullptr && std::strcmp(std::getenv("B200_P12"), c.name) != 0) continue;
             char nm[32];
             std::snprintf(nm, sizeof nm, "p12_%s", c.name);
+            // classes 294 and 326 spawn death debris / bolts whose w lanes carry stale VU0 registers in the original
+            // (in p12_class294, enemy_physics leaves a VU0 w lane in m + 0x1c and OV(0x173e40..0x173fc0); in p12_class326,
+            // bolt_spawn stores bolts_drop's stack direction w lane at bolt pvar + 0x2c)
+            if (std::strcmp(c.name, "class294") == 0 || std::strcmp(c.name, "class326") == 0) {
+                g_ignored_words = wide_ignored;
+                level();
+                if (std::strcmp(c.name, "class294") == 0) {
+                    for (uint32_t a = OV(0x00173e40); a < OV(0x00173fc0); a += 0x10) g_ignored_words.push_back(a + 0xc);
+                    for (uint32_t k = 0; k < 0x30; k += 4) g_ignored_words.push_back(OV(0x00173e90) + k);
+                    for (uint32_t m2 : mobys_with(0x002e72c0)) g_ignored_words.push_back(m2 + 0x1c);
+                } else {
+                    for (uint32_t a = ee_read<uint32_t>(OV(0x0015ffe0)) & ~0x7fu; a < 0x01f00000u; a += 0x80) {
+                        g_ignored_words.push_back(a + 0xc);
+                        g_ignored_words.push_back(a + 0x1c);
+                        g_ignored_words.push_back(a + 0x6c);
+                        g_ignored_words.push_back(a + 0x7c);
+                    }
+                }
+            }
             for (const int st : c.states) {
                 classcheck(strdup(nm), c.addr, c.fn, [st, c, fifty](uint32_t m) {
                     w8(m + 0x20, u(st));
@@ -764,8 +1177,71 @@ void batch_200() {
                     seed_rand();
                 }, 30);
             }
+            g_ignored_words = saved_ignored;
         }
-        // the carry at a joint (L12:0x27b9c0, moby_carry_at_joint; the glue of class 294's generated helper calls it too): the
+        // class 409 (L12:0x2ece00, the gunship's rocket; placed nowhere in level data, spawned at runtime by 0x2ecce8):
+        // checked on a rocket spawned per case (open air, near a live moby for hit-record delivery, hit by a weapon, state 2)
+        if (std::getenv("B200_P12") == nullptr || std::strcmp(std::getenv("B200_P12"), "class409") == 0) {
+            const size_t ign_409 = g_ignored_words.size();
+            g_ignored_words = wide_ignored;
+            // sphere_collide on a moby primitive writes a leftover VU0 register into coll_hit_tri(0) (OV(0x173e90)) in the original
+            for (uint32_t k = 0; k < 16; k += 4) g_ignored_words.push_back(OV(0x00173e90) + k);
+            l12check("p12_class409", 0x002ece00, 120, Ret::None, [level, hit_with, edge, live_index, fifty] {
+                level();
+                const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8));
+                const uint32_t owner = first + (u(live_index(true)) << 8);
+                const uint32_t target = first + (u(live_index(true)) << 8);
+                const uint32_t POS = 0x00180000u, VEL = 0x00180010u;
+                Vec4 p = ee_ref<Vec4>(target + 0x10);
+                if (coin()) { p.x += rf(-15.0f, 15.0f); p.y += rf(-15.0f, 15.0f); p.z += rf(2.0f, 10.0f); }
+                else { p.x += rf(-0.15f, 0.15f); p.y += rf(-0.15f, 0.15f); p.z += rf(-0.1f, 0.3f); }
+                ee_ref<Vec4>(POS) = p;
+                wf(VEL + 0, rf(-0.4f, 0.4f)); wf(VEL + 4, rf(-0.4f, 0.4f)); wf(VEL + 8, rf(-0.2f, 0.2f)); wf(VEL + 12, 0.0f);
+                const uint32_t r = gunship_rocket_spawn(VEL, POS, owner, 90, rf(-3.1f, 3.1f), 0.25f, 0.0f);
+                const uint32_t rpv = ee_read<uint32_t>(r + 0x78);
+                w8(r + 0x20, ri(0, 3) == 0 ? 2u : 1u);
+                w32(0x001413d4, coin() ? 0x32u : 0u);
+                w32(ORACLE_LADDR(12, 0x00161f20), u(ri(0, 1) ? 5 : 20));
+                if (ri(0, 5) == 0) w8(owner + 0x20, coin() ? 0xfeu : 1u);
+                if (ri(0, 4) == 0) {
+                    hit_with(r, 0x00230000u);
+                    const uint32_t e = OV(0x00178100) + (ee_read<uint8_t>(r + 0xa4) << 6);
+                    w32(e + 0x20, coin() ? owner : target);
+                }
+                w32(rpv + 0x14, edge());
+                fifty();
+                w32(OV(0x0015f5cc), R() & 0xffff);
+                seed_rand();
+                return Args{{r}, {}};
+            }, [](A a) { hov_class409_update_l12(a.i[0]); return uint64_t{0}; });
+            g_ignored_words.resize(ign_409);
+        }
+        // direct checks of standalone helpers: gunship_rocket_spawn (0x2ecce8), gunship_path_lengths (0x27ba70), and
+        // trooper_in_cone (0x27b8e0)
+        if (std::getenv("B200_P12") == nullptr || std::strcmp(std::getenv("B200_P12"), "helpers") == 0) {
+            l12check("p12_rocket_spawn", 0x002ecce8, 40, Ret::Int32, [level, live_index, fifty] {
+                level();
+                const uint32_t owner = ee_read<uint32_t>(OV(0x0015ffd8)) + (u(live_index(true)) << 8);
+                const uint32_t VEL = 0x00180000u, POS = 0x00180010u;
+                wfrand(VEL, 4, -5.0f, 5.0f);
+                ee_ref<Vec4>(POS) = ee_ref<Vec4>(owner + 0x10);
+                fifty();
+                return Args{{VEL, POS, owner, u(ri(10, 200))}, {rf(-3.1f, 3.1f), rf(0.1f, 20.0f), rf(-1.0f, 1.0f)}};
+            }, [](A a) { return r32(gunship_rocket_spawn(a.i[0], a.i[1], a.i[2], static_cast<int32_t>(a.i[3]), a.f[0], a.f[1], a.f[2])); });
+            l12check("p12_path_lengths", 0x0027ba70, 40, Ret::None, [level, a_path] {
+                level();
+                return Args{{ri(0, 5) == 0 ? 0xffffffffu : u(a_path())}, {}};
+            }, [](A a) { gunship_path_lengths(static_cast<int32_t>(a.i[0])); return uint64_t{0}; });
+            l12check("p12_trooper_in_cone", 0x0027b8e0, 60, Ret::Int32, [level, near, live_index] {
+                level();
+                const uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)) + (u(live_index(true)) << 8);
+                const uint32_t PT = 0x00180000u;
+                ee_ref<Vec4>(PT) = near(m, rf(0.5f, 25.0f), rf(0.0f, 6.0f));
+                wf(m + 0x48, rf(-3.1f, 3.1f));
+                return Args{{m, PT}, {rf(2.0f, 25.0f), rf(0.5f, 5.0f), coin() ? 0.0f : rf(0.1f, 2.5f)}};
+            }, [](A a) { return r32(trooper_in_cone(a.i[0], a.i[1], a.f[0], a.f[1], a.f[2])); });
+        }
+        // the carry at a joint (L12:0x27b9c0, moby_carry_at_joint): the
         // Raritanium man (joint 2) and class 294's mobys (joint 1) with the moby they hold, else a live moby of the level
         if (std::getenv("B200_P12") == nullptr || std::strcmp(std::getenv("B200_P12"), "carry_at_joint") == 0) {
             level();

@@ -43,7 +43,7 @@ void hov_hook_2e17a8_m(uint32_t m) { carry_state_hook(m, 0, 0, 0.0f, 8, 8, 1); }
 void hov_hook_2e17f8_m(uint32_t m) { hov_hook_2e17f8_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
 
 // orig: (none) -- adapter of L12:0x002e6b00 (a class hook +0xc of class 270, the Morph-o-Ray chicken: Veldin's 0x2caf10 code (state 5), which the overlay map pairs with 0x2d57d0 (state 9): the indirect-call form, the moby only)
-void hov_hook_2e6b00_m(uint32_t m) { hov_hook_2e6b00_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+void hov_hook_2e6b00_m(uint32_t m) { hov_hook_2e6b00_l12(m, 0, 0, 0.0f); }
 
 }  // namespace
 

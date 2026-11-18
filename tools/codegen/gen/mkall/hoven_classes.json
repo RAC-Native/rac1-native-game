@@ -7,16 +7,6 @@
   "MKALL_WIDE_GPR": ""
  },
  "entries": [
-  "2e72c0:hov_class294_update_l12",
-  "2e9f68:hov_class326_update_l12",
-  "2eb570:hov_class328_update_l12",
-  "2ebea8:hov_class336_update_l12",
-  "2ec1d0:hov_class339_update_l12",
-  "2ec720:hov_class384_update_l12",
-  "2ece00:hov_class409_update_l12",
-  "2ed280:hov_class422_update_l12",
-  "302f30:hov_class1259_update_l12",
-  "303540:hov_class1267_update_l12",
   "304e00:hov_class1269_update_l12",
   "3069d0:hov_class1274_update_l12",
   "307840:hov_class1281_update_l12",
@@ -26,8 +16,6 @@
   "30bff0:hov_class1901_update_l12",
   "2e16b8:hov_hook_2e16b8_u",
   "2e17f8:hov_hook_2e17f8_u",
-  "2e1848:hov_hook_2e1848_u",
-  "2e6b00:hov_hook_2e6b00_u",
   "2ecac0:hov_cb_2ecac0_l12",
   "3028c8:hov_cb_3028c8_l12",
   "304218:hov_cb_304218_l12",
@@ -37,8 +25,6 @@
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/hoven_classes_tr_1.cpp",
-  "src/game/ovl/hoven_classes_tr_2.cpp",
   "src/game/ovl/hoven_classes_tr_3.cpp",
   "src/game/ovl/hoven_classes_tr_4.cpp",
   "src/game/ovl/hoven_classes_tr_5.cpp"
