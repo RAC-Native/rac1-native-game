@@ -8,9 +8,12 @@
 #include "ovl_oracle.h"
 #include "trial_guard.h"
 
+#include <game/enhance/advanced.h>
+#include <game/enhance/fixes102.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/hero_move_mode.h>
 #include <game/ovl/pokitaru_mobys.h>
+#include <game/ovl/pokitaru_own.h>
 #include <game/ovl/kerwan_camera.h>
 #include <game/ovl/novalis_hooks.h>
 #include <game/ovl/novalis_mobys.h>
@@ -48,6 +51,7 @@
 #include <initializer_list>
 #include <string>
 #include <map>
+#include <unordered_set>
 
 namespace rac1::oracle {
 
@@ -76,7 +80,9 @@ constexpr uint32_t MOBY_SPAWN_L11 = 0x00274668;
 bool c2a_spr_check(const char* name) {
     static const char* const kNames[] = {"class1242", "class1246", "mobys_in_sphere", "class114", "class1231", "class1319",
                                          "class1818", "class572", "hero_move_mode", "class1134", "class318", "class805",
-                                         "p111_class114", "p111_class1156", "p111_class298", "p111_class318"};
+                                         "p111_class114", "p111_class1156", "p111_class298", "p111_class318",
+                                         "p112_class1157", "p112_class1218", "p112_class1219", "p112_class1231", "p112_class1242",
+                                         "p112_f30f660", "p112_f30fe50", "p112_f310698", "p112_f3125a8", "p112_f3126f8", "p112_f312838"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -957,6 +963,911 @@ void batch_124() {
             }
         }, 16, 40);
         g_ignored_words.pop_back();
+
+        // ---- stage 4 P11.2: Pokitaru's sewer set pieces (pokitaru_sewer.cpp: 1157, 1158, 1159, 1178, 1180 + 0x30dd18),
+        // parachute drops and energy-ball thrower (pokitaru_crates.cpp: 1218, 1219, 1231 + 0x30fd98, 0x30f660, 0x30fe50,
+        // 0x318e78, 0x318ed8, 0x318d10, 0x318e98, 0x310698), and fighter jet (pokitaru_jet.cpp: 1242 + 0x3125a8, 0x309378,
+        // 0x3126f8, 0x313f60, 0x312838, 0x31a758, 0x31a7d8), plus the 1.02 forks (Gameplay 10, Fixes 35 & 36).
+        {
+            const std::vector<uint32_t> c1157 = mobys_of_class(1157), c1158 = mobys_of_class(1158), c1159 = mobys_of_class(1159),
+                                        c1178 = mobys_of_class(1178), c1180 = mobys_of_class(1180), c1231 = mobys_of_class(1231),
+                                        c1242 = mobys_of_class(1242), c1248 = mobys_of_class(1248), c1319 = mobys_of_class(1319),
+                                        c615 = mobys_of_class(615), c830 = mobys_of_class(830);
+            auto push_spawn_w_ignores = [&] {
+                const size_t mark = g_ignored_words.size();
+                for (uint32_t a = ee_read<uint32_t>(OV(0x0015ffe0)); a < ee_read<uint32_t>(OV(0x0015ffe0)) + 0x20000; a += 0x80) {
+                    g_ignored_words.push_back(a + 0xc);
+                    g_ignored_words.push_back(a + 0x1c);
+                }
+                const uint32_t pool = ee_read<uint32_t>(OV(0x0016016c));
+                for (uint32_t k = 0; k < 0x800; ++k) g_ignored_words.push_back(pool + k * 0x40 + 0x2c);
+                return mark;
+            };
+            auto p112_spawned = [level](const char* name, uint32_t fn, void (*port)(uint32_t),
+                                        std::function<uint32_t(int)> make_and_prep, int states, int n) {
+                if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
+                static int redealt = 0;
+                redealt = 0;
+                for (int st = 0; st < states; ++st) {
+                    if (std::getenv("B124_ST") != nullptr && std::atoi(std::getenv("B124_ST")) != st) continue;
+                    l11check(name, fn, n, Ret::None, [level, make_and_prep, port, st] {
+                        static std::vector<uint8_t> saved;
+                        uint32_t m = 0;
+                        for (int attempt = 0; attempt < 40; ++attempt) {
+                            level();
+                            m = make_and_prep(st);
+                            uint8_t* ram = ee_get_ram_base();
+                            saved.assign(ram, ram + 0x02000000);
+                            const uint32_t stack_top = ee_stack_ptr();
+                            const bool ok = run_trial(port, m);
+                            ee_stack_ptr() = stack_top;
+                            std::memcpy(ram, saved.data(), saved.size());
+                            if (ok) break;
+                            ++redealt;
+                        }
+                        return Args{{m}, {}};
+                    }, [port](A a) { port(a.i[0]); return uint64_t{0}; });
+                }
+                std::printf("%-26s redealt %d\n", name, redealt);
+            };
+            auto set_anim_at = [](uint32_t m, uint32_t set, float target_frame) {
+                moby_anim_set(m, set, 0, 0);
+                const uint32_t key = ee_read<uint32_t>(m + 0x68);
+                const float kframe = key != 0 ? static_cast<float>(ee_read<int16_t>(key + 4)) * 0.0625f : 0.0f;
+                w8(m + 0x52, u(set));
+                w8(m + 0x53, u(set));
+                w8(m + 0x50, 1);
+                w8(m + 0x51, 0);
+                wf(m + 0x58, 1.0f);
+                wf(m + 0x5c, 1.0f);
+                wf(m + 0x54, target_frame - kframe);
+            };
+            auto sound_half = [moby_base](uint32_t m, uint32_t half_addr) {
+                const int k = ri(0, 3);
+                if (k == 0) { w16(half_addr, 0xffffu); return; }
+                const uint32_t slot = u(ri(0, 15)), ch = 0x0013e550u + slot * 0x70u;
+                w16(half_addr, slot);
+                w32(ch + 0x88, k != 3 ? m : moby_base());
+                w8(ch + 0x74, coin() ? 1u : 0u);
+            };
+
+            // class 1157 (sewer iris gate) & pok_30dd18_l11 (its 24 blades)
+            g_ignored_words.push_back(OV(0x00173e9c));
+            p111("p112_class1157", 0x0030d800, pok_class1157_update_l11, c1157, [common, first_run, moby_base](uint32_t m, int st) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                if (st != 0) first_run(pok_class1157_update_l11, m);
+                w8(m + 0x20, u(st));
+                const uint32_t trig = moby_base() + (ee_read<uint32_t>(pv + 0x60) << 8);
+                static const uint8_t bcs[] = {0, 1, 2};
+                w8(trig + 0xbc, bcs[ri(0, 2)]);
+                static const float fades[] = {-1.0f, -0.02f, -0.01f, 0.4f, 0.98f, 1.0f};
+                wf(pv + 0x78, fades[ri(0, 5)]);
+                static const float opens[] = {-0.2f, 0.0f, 0.25f, 0.5f, 0.75f, 0.999f, 1.0f, 1.2f};
+                wf(pv + 0x6c, opens[ri(0, 7)]);
+                wf(pv + 0x70, rf(0.0f, 0.08f));
+                wf(m + 0x48, rf(-3.1f, 3.1f));
+                common(m);
+            }, 6, 24);
+            g_ignored_words.pop_back();
+
+            if (!c1157.empty()) {
+                l11check("p112_f30dd18", 0x0030dd18, 48, Ret::None, [level, c1157, first_run] {
+                    level();
+                    const uint32_t m = c1157[0];
+                    first_run(pok_class1157_update_l11, m);
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    static const float opens[] = {-0.3f, 0.0f, 0.2f, 0.5f, 0.8f, 1.0f, 1.3f};
+                    wf(pv + 0x6c, opens[ri(0, 6)]);
+                    wf(m + 0x48, rf(-3.1f, 3.1f));
+                    return Args{{m}, {}};
+                }, [](A a) { pok_30dd18_l11(a.i[0]); return uint64_t{0}; });
+            }
+
+            // class 1158 (sewer rising water tiles)
+            p111("p112_class1158", 0x0030e088, pok_class1158_update_l11, c1158, [common, first_run, c1158, HERO](uint32_t m, int st) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                if (st != 0) {
+                    w32(L11_ADDR(0x00161f64u), 0u);
+                    first_run(pok_class1158_update_l11, c1158[0]);
+                    if (m != c1158[0]) first_run(pok_class1158_update_l11, m);
+                }
+                w8(m + 0x20, u(st));
+                if (st == 0) {
+                    w32(L11_ADDR(0x00161f64u), coin() ? 0u : u(ri(1, 13)));
+                } else if (ri(0, 2) == 0) {
+                    w32(pv + 4, 0u);
+                }
+                w8(m + 0xbc, (coin() ? 8u : 0u) | (coin() ? 4u : 0u));
+                w32(pv + 8, coin() ? 1u : 0u);
+                wf(pv, coin() ? 0.0f : rf(-0.1f, 0.1f));
+                if (st == 2) wf(m + 0x18, coin() ? 136.98f : rf(132.0f, 137.2f));
+                else wf(m + 0x18, coin() ? 132.38f : rf(132.0f, 137.2f));
+                wf(L11_ADDR(0x001677c8u), coin() ? 150.0f : 232.0f);
+                if (coin()) {  // on-screen vs off-screen relative to the current camera frustum
+                    Vec4 q = ee_ref<Vec4>(HERO);
+                    q.z += 0.5f;
+                    ee_ref<Vec4>(m + 0x10) = q;
+                    moby_update_transform(m);
+                }
+                common(m);
+                if (ri(0, 2) == 0) {  // seed libc PRNG to hit rand_mod(200) == 0 splash in water_move_and_splash
+                    for (uint32_t s = 1; s < 1024; ++s) {
+                        libc_srand(s);
+                        if (rand_mod(0xc8) == 0) { libc_srand(s); break; }
+                    }
+                }
+            }, 4, 30);
+
+            // class 1159 (sliding sewer plug & twin)
+            p111("p112_class1159", 0x0030e978, pok_class1159_update_l11, c1159, [common, first_run, moby_base, c615, c830, index_of, pick](uint32_t m, int st) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                if (st != 0) first_run(pok_class1159_update_l11, m);
+                w8(m + 0x20, u(st));
+                if (st == 1) {
+                    if (coin() && !c615.empty()) w32(pv + 8, index_of(pick(c615)));
+                    else if (!c830.empty()) w32(pv + 8, index_of(pick(c830)));
+                    const uint32_t link = moby_base() + (ee_read<uint32_t>(pv + 8) << 8);
+                    w8(link + 0x20, coin() ? 4u : 1u);
+                    w8(link + 0xbc, coin() ? 1u : 0u);
+                }
+                wf(pv, rf(0.0f, ee_read<float>(pv + 0x10)));
+                wf(pv + 4, rf(-0.05f, 0.1f));
+                common(m);
+            }, 3, 30);
+
+            // class 1178 (tilting sewer platform)
+            p111("p112_class1178", 0x0030eb90, pok_class1178_update_l11, c1178, [common, put_hero, P](uint32_t m, int) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                wf(m + 0x44, ri(0, 2) == 0 ? (coin() ? 0.6f : -0.6f) : rf(-0.25f, 0.25f));
+                wf(pv + 0x60, rf(-0.08f, 0.08f));
+                put_hero(m + 0x10, rf(0.2f, 2.5f), 0.2f);
+                common(m);
+                w32(P + 0x2fc, ri(0, 2) != 0 ? m : 0u);
+                w16(P + 0x30e, ri(0, 3) == 0 ? 1u : 0u);
+                w32(0x001413dcu, coin() ? 1u : 2u);
+            }, 1, 80);
+
+            // class 1180 (swinging sewer valve)
+            p111("p112_class1180", 0x0030f2a8, pok_class1180_update_l11, c1180, [common, first_run, moby_base, c1179, index_of, pick](uint32_t m, int st) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                if (st != 0) first_run(pok_class1180_update_l11, m);
+                w8(m + 0x20, u(st));
+                if (!c1179.empty() && ri(0, 4) != 0) w32(pv, index_of(pick(c1179)));
+                const uint32_t link = moby_base() + (ee_read<uint32_t>(pv) << 8);
+                w8(link + 0x20, coin() ? 2u : 1u);
+                if (ri(0, 5) == 0) w16(link + 0xa6, 0x17u);
+                if (st == 2) {
+                    const float tgt = ee_read<float>(pv + 8) + 1.0471975803375244f;
+                    wf(m + 0x48, coin() ? tgt : rf(-3.1f, 3.1f));
+                    wf(pv + 4, coin() ? 0.0f : rf(-0.05f, 0.05f));
+                }
+                common(m);
+                if (st == 1) {
+                    static const uint32_t fcs[] = {0u, 10u, 11u, 12u, 100u};
+                    w32(L11_ADDR(0x0015f5ccu), fcs[ri(0, 4)]);
+                }
+            }, 4, 25);
+
+            // class 1218 (spawned missile & health crates) + pok_30fd98_l11 + pok_30f660_l11
+            {
+                const size_t sp_mark = push_spawn_w_ignores();
+                const uint32_t jet = c1242.empty() ? 0u : c1242[0];
+                p112_spawned("p112_class1218", 0x0030f728, pok_class1218_update_l11, [common, first_run, jet, HERO](int st) {
+                    const uint32_t m = moby_spawn(coin() ? 0x4c2u : 0x4c4u);
+                    Vec4 air{500.0f + rf(-20.0f, 20.0f), 500.0f + rf(-20.0f, 20.0f), 320.0f + rf(-20.0f, 20.0f), 0.0f};
+                    ee_ref<Vec4>(m + 0x10) = air;
+                    w8(m + 0x31, coin() ? 1u : 0u);
+                    moby_update_transform(m);
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    if (st != 0) first_run(pok_class1218_update_l11, m);
+                    w8(m + 0x20, u(st));
+                    wfrand(pv + 0x10, 3, -0.5f, 0.5f);
+                    wf(pv + 0x30, rf(-3.1f, 3.1f));
+                    const uint32_t chute = ee_read<uint32_t>(pv + 0x34);
+                    if (chute != 0) {
+                        w8(chute + 0x52, coin() ? 1u : 0u);
+                        static const uint8_t csts[] = {1, 2, 0xfe};
+                        w8(chute + 0x20, csts[ri(0, 2)]);
+                    }
+                    if (jet != 0) {
+                        w32(0x00140940u, ri(0, 5) == 0 ? 0u : jet);
+                        w32(0x001413d4u, ri(0, 3) == 0 ? 0u : 0x32u);
+                        w8(jet + 0x20, ri(0, 6) == 0 ? 0xfeu : 4u);
+                        w8(0x00140946u, u(ri(0, 20)));
+                        w8(0x00140947u, 20u);
+                        wf(0x0014094cu, rf(10.0f, 95.0f));
+                        wf(0x00140950u, 100.0f);
+                        const int mode = ri(0, 4);
+                        if (mode == 0) {  // right on the jet:sphere_collide hits jet or dist3 < 4
+                            ee_ref<Vec4>(jet + 0x10) = air;
+                            moby_update_transform(jet);
+                        } else if (mode == 1) {  // within 4
+                            Vec4 jq = air; jq.x += rf(-2.0f, 2.0f); jq.y += rf(-2.0f, 2.0f);
+                            ee_ref<Vec4>(jet + 0x10) = jq;
+                            moby_update_transform(jet);
+                        } else if (mode == 2) {  // within 40: magnetic pull in state 2
+                            Vec4 jq = air; jq.x += rf(6.0f, 30.0f);
+                            ee_ref<Vec4>(jet + 0x10) = jq;
+                            w8(m + 0x31, 1u);
+                            moby_update_transform(jet);
+                        } else if (mode == 3) {  // world collision: place crate at ground near hero start
+                            Vec4 g = ee_ref<Vec4>(HERO); g.z -= 0.2f;
+                            ee_ref<Vec4>(m + 0x10) = g;
+                            moby_update_transform(m);
+                        }
+                    }
+                    if (st == 3 && ri(0, 2) == 0) {  // axis clamps (< 20 retires if z < 20, or clamps x/y < 20 and > 1003)
+                        if (coin()) wf(m + 0x18, 15.0f);
+                        else { wf(m + 0x10, coin() ? 10.0f : 1010.0f); wf(m + 0x14, coin() ? 12.0f : 1009.0f); wf(m + 0x18, 1010.0f); }
+                    }
+                    common(m);
+                    if (jet != 0 && ri(0, 3) != 0) w32(0x001413d4u, 0x32u);
+                    return m;
+                }, 6, 30);
+                g_ignored_words.resize(sp_mark);
+            }
+
+            l11check("p112_f30fd98", 0x0030fd98, 30, Ret::Int32, [level] {
+                level();
+                const uint32_t crate = moby_spawn(0x4c2u);
+                Vec4 air{500.0f, 500.0f, 320.0f, 0.0f};
+                ee_ref<Vec4>(crate + 0x10) = air;
+                wf(crate + 0x48, rf(-3.1f, 3.1f));
+                moby_update_transform(crate);
+                if (ri(0, 5) == 0) w32(OV(0x0015ffe8), ee_read<uint32_t>(OV(0x0015ffd4)));  // (dynamic pool exhausted -> spawn 0)
+                return Args{{crate}, {}};
+            }, [](A a) { return r32(pok_30fd98_l11(a.i[0])); });
+
+            l11check("p112_f30f660", 0x0030f660, 40, Ret::Int32, [level] {
+                level();
+                const uint32_t crate = moby_spawn(0x4c2u);
+                Vec4 air{500.0f, 500.0f, 320.0f, 0.0f};
+                ee_ref<Vec4>(crate + 0x10) = air;
+                moby_update_transform(crate);
+                const uint32_t pv = ee_read<uint32_t>(crate + 0x78);
+                const int k = ri(0, 3);
+                if (k == 0) {
+                    w32(pv + 0x34, 0);
+                    if (coin()) w32(OV(0x0015ffe8), ee_read<uint32_t>(OV(0x0015ffd4)));
+                } else {
+                    const uint32_t c = pok_30fd98_l11(crate);
+                    w32(pv + 0x34, c);
+                    if (k == 1) w8(c + 0x20, coin() ? 0xfeu : 0xfdu);
+                }
+                return Args{{crate, pv}, {}};
+            }, [](A a) { return r32(pok_30f660_l11(a.i[0], a.i[1]) ? 1u : 0u); });
+
+            // class 1219 (spawned parachute) + pok_30fe50_l11
+            p112_spawned("p112_class1219", 0x00310028, pok_class1219_update_l11, [common, give_hit, set_anim_at](int st) {
+                const uint32_t crate = moby_spawn(0x4c2u);
+                Vec4 air{500.0f, 500.0f, 320.0f, 0.0f};
+                ee_ref<Vec4>(crate + 0x10) = air;
+                w8(crate + 0x20, 2u);
+                moby_update_transform(crate);
+                const uint32_t m = pok_30fd98_l11(crate);
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                wf(pv + 0x20, rf(0.5f, 4.0f));
+                w8(m + 0x20, u(st));
+                if (st < 3 && ri(0, 4) == 0) {
+                    if (coin()) w32(pv + 0x70, 0);
+                    else w8(crate + 0x20, coin() ? 0xfeu : 0xfdu);
+                }
+                if (coin()) w8(m + 0x70, ee_read<uint8_t>(m + 0x70) | 2u);
+                w8(m + 0x53, u(ri(0, 4)));
+                if (st == 2) {
+                    give_hit(m, 0x330000u);
+                    if (ee_read<uint8_t>(m + 0xa4) != 0xff) {
+                        const uint32_t e = OV(0x00178100) + (ee_read<uint8_t>(m + 0xa4) << 6);
+                        w32(e + 0x34, m);
+                        w32(e + 0x24, 0x210000u);
+                        w8(e + 0x28, u(ri(0, 10)));
+                        wf(e + 0x2c, coin() ? 10.0f : 0.2f);
+                    }
+                }
+                if (st == 3) {
+                    w8(m + 0x23, coin() ? 0u : u(ri(1, 200)));
+                    set_anim_at(m, 2, coin() ? 14.0f : 8.0f);
+                }
+                common(m);
+                return m;
+            }, 5, 30);
+
+            l11check("p112_f30fe50", 0x0030fe50, 48, Ret::None, [level, give_hit] {
+                level();
+                const uint32_t crate = moby_spawn(0x4c2u);
+                Vec4 air{500.0f, 500.0f, 320.0f, 0.0f};
+                ee_ref<Vec4>(crate + 0x10) = air;
+                w8(crate + 0x20, ri(0, 4) == 0 ? 0xfeu : 2u);
+                moby_update_transform(crate);
+                const uint32_t m = pok_30fd98_l11(crate);
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                wf(pv + 0x20, coin() ? 1.0f : 3.0f);
+                if (coin()) { w8(pv + 0x28, 1u); w8(pv + 0x2a, 6u); }
+                w8(m + 0x20, ri(0, 5) == 0 ? 4u : 2u);
+                give_hit(m, 0x330000u);
+                if (ee_read<uint8_t>(m + 0xa4) != 0xff) {
+                    const uint32_t e = OV(0x00178100) + (ee_read<uint8_t>(m + 0xa4) << 6);
+                    w32(e + 0x34, m);
+                    w32(e + 0x24, coin() ? 0x210000u : 0x100000u);
+                    w8(e + 0x28, coin() ? 9u : u(ri(0, 10)));
+                    wf(e + 0x2c, coin() ? 5.0f : 0.3f);
+                }
+                return Args{{m, pv, pv + 0x20}, {}};
+            }, [](A a) { pok_30fe50_l11(a.i[0], a.i[1], a.i[2]); return uint64_t{0}; });
+
+            // class 1231 (energy-ball thrower) + helpers 0x318e78, 0x318ed8, 0x318d10, 0x318e98, 0x310698
+            {
+                const size_t sp_mark = push_spawn_w_ignores();
+                g_ignored_words.push_back(OV(0x00173e9c));
+                p111("p112_class1231", 0x00310180, pok_class1231_update_l11, c1231,
+                     [common, first_run, put_hero, give_hit, set_anim_at, HERO, P](uint32_t m, int st) {
+                         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                         if (st != 0) first_run(pok_class1231_update_l11, m);
+                         w8(m + 0x20, u(st));
+                         w8(0x0015edb7u, coin() ? 1u : 0u);
+                         w32(pv + 0x158, u(ri(0, 3)));
+                         if (st == 0) {
+                             const bool on_path = coin();
+                             w32(pv + 0x130, on_path ? 1u : 0u);
+                             if (on_path) w32(pv + 0x134, ee_read<uint32_t>(pv + 0x13c));
+                         }
+                         put_hero(m + 0x10, coin() ? rf(3.0f, 18.0f) : rf(25.0f, 35.0f), coin() ? rf(-1.0f, 1.0f) : 5.0f);
+                         ee_ref<Vec4>(ee_read<uint32_t>(0x001413d0u) + 0x10) = ee_ref<Vec4>(HERO);
+                         if (ri(0, 2) == 0) {
+                             w8(m + 0x31, 1u);
+                             Vec4 cam = ee_ref<Vec4>(m + 0x10);
+                             cam.x += rf(-15.0f, 15.0f);
+                             ee_ref<Vec4>(L11_ADDR(0x001677c0u)) = cam;
+                         }
+                         if (st == 4) {
+                             if (coin()) set_anim_at(m, 2, 15.1f);
+                             else { moby_anim_set(m, 2, 0, 0); if (coin()) w8(m + 0x70, ee_read<uint8_t>(m + 0x70) | 2u); }
+                         } else if (st == 5) {
+                             if (ri(0, 3) != 0) w32(pv + 0x160, pok_318d10_l11(m, m + 0x10, 5));
+                             if (coin()) set_anim_at(m, 3, 33.1f);
+                             if (coin()) w8(m + 0x70, ee_read<uint8_t>(m + 0x70) | 2u);
+                         } else if (st == 6) {
+                             if (coin()) w8(m + 0x70, ee_read<uint8_t>(m + 0x70) | 2u);
+                         } else if (st == 7 || st == 8) {
+                             move_state_start(m, pv + 0x70, st == 7 ? 5 : 6, 1, 0, 0.0f);
+                             if (coin()) w8(m + 0x70, ee_read<uint8_t>(m + 0x70) | 2u);
+                             if (st == 7 && coin()) { Vec4 out = ee_ref<Vec4>(m + 0x10); out.x += 200.0f; ee_ref<Vec4>(m + 0x10) = out; }
+                         }
+                         if (st >= 3 && st <= 6 && ri(0, 2) == 0) {
+                             if (coin() && ee_read<uint32_t>(pv + 0x160) == 0) w32(pv + 0x160, pok_318d10_l11(m, m + 0x10, 5));
+                             give_hit(m, 0x330000u);
+                             if (ee_read<uint8_t>(m + 0xa4) != 0xff) {
+                                 const uint32_t e = OV(0x00178100) + (ee_read<uint8_t>(m + 0xa4) << 6);
+                                 w32(e + 0x34, m);
+                                 w32(e + 0x24, 0x210000u);
+                                 w32(e + 0x20, ee_read<uint32_t>(0x001413d0u));
+                                 static const uint8_t hkinds[] = {0, 1, 4, 9};
+                                 w8(e + 0x28, hkinds[ri(0, 3)]);
+                                 static const float hdmg[] = {0.2f, 1.2f, 5.0f};
+                                 wf(e + 0x2c, hdmg[ri(0, 2)]);
+                             }
+                         }
+                         common(m);
+                         (void)P;
+                     }, 9, 25);
+                g_ignored_words.pop_back();
+
+                if (!c1231.empty()) {
+                    l11check("p112_f318e78", 0x00318e78, 20, Ret::None, [level, c1231] {
+                        level();
+                        const uint32_t m = c1231[0];
+                        const uint32_t shot = pok_318d10_l11(m, m + 0x10, 5);
+                        wfrand(T3, 4, 100.0f, 600.0f);
+                        return Args{{shot, T3}, {}};
+                    }, [](A a) { pok_318e78_l11(a.i[0], a.i[1]); return uint64_t{0}; });
+
+                    l11check("p112_f318ed8", 0x00318ed8, 30, Ret::Int32, [level, c1231, common] {
+                        level();
+                        const uint32_t m = c1231[0];
+                        const uint32_t shot = pok_318d10_l11(m, m + 0x10, 5);
+                        common(m);
+                        return Args{{shot}, {}};
+                    }, [](A a) { return r32(pok_318ed8_l11(a.i[0])); });
+
+                    l11check("p112_f318d10", 0x00318d10, 24, Ret::Int32, [level, c1231, common] {
+                        level();
+                        const uint32_t m = c1231[0];
+                        wfrand(T3, 3, 200.0f, 500.0f); wf(T3 + 0xc, 0.0f);
+                        common(m);
+                        if (ri(0, 5) == 0) w32(OV(0x0015ffe8), ee_read<uint32_t>(OV(0x0015ffd4)));
+                        return Args{{m, T3, u(ri(1, 15))}, {}};
+                    }, [](A a) { return r32(pok_318d10_l11(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]))); });
+
+                    l11check("p112_f318e98", 0x00318e98, 20, Ret::None, [level, c1231, common] {
+                        level();
+                        const uint32_t m = c1231[0];
+                        const uint32_t shot = pok_318d10_l11(m, m + 0x10, 5);
+                        wfrand(T3, 3, -5.0f, 5.0f); wf(T3 + 0xc, 0.0f);
+                        common(m);
+                        return Args{{shot, T3}, {}};
+                    }, [](A a) { pok_318e98_l11(a.i[0], a.i[1]); return uint64_t{0}; });
+
+                    l11check("p112_f310698", 0x00310698, 48, Ret::None, [level, c1231, first_run, put_hero, give_hit, common, HERO] {
+                        level();
+                        const uint32_t m = c1231[static_cast<size_t>(ri(0, static_cast<int>(c1231.size()) - 1))];
+                        first_run(pok_class1231_update_l11, m);
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        w8(m + 0x20, ri(0, 5) == 0 ? 8u : 3u);
+                        if (coin()) w32(pv + 0x160, pok_318d10_l11(m, m + 0x10, 5));
+                        put_hero(m + 0x10, coin() ? rf(2.0f, 18.0f) : rf(26.0f, 40.0f), coin() ? 0.0f : 6.0f);
+                        ee_ref<Vec4>(ee_read<uint32_t>(0x001413d0u) + 0x10) = ee_ref<Vec4>(HERO);
+                        give_hit(m, 0x330000u);
+                        if (ee_read<uint8_t>(m + 0xa4) != 0xff) {
+                            const uint32_t e = OV(0x00178100) + (ee_read<uint8_t>(m + 0xa4) << 6);
+                            w32(e + 0x34, m);
+                            w32(e + 0x24, 0x210000u);
+                            w32(e + 0x20, ee_read<uint32_t>(0x001413d0u));
+                            static const uint8_t hkinds[] = {0, 1, 4, 9};
+                            w8(e + 0x28, hkinds[ri(0, 3)]);
+                            static const float hdmg[] = {0.2f, 1.2f, 5.0f};
+                            wf(e + 0x2c, hdmg[ri(0, 2)]);
+                        }
+                        common(m);
+                        return Args{{m}, {}};
+                    }, [](A a) { pok_310698_l11(a.i[0]); return uint64_t{0}; });
+                }
+                g_ignored_words.resize(sp_mark);
+            }
+
+            // class 1242 (fighter jet) + helpers 0x3125a8, 0x309378, 0x3126f8, 0x313f60, 0x312838, 0x31a758, 0x31a7d8
+            if (!c1242.empty()) {
+                const size_t sp_mark = push_spawn_w_ignores();
+                g_ignored_words.push_back(OV(0x00173e9c));
+                auto jet_flight_init = [first_run](uint32_t m) {
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    w8(0x0014c050u + ee_read<uint8_t>(m + 0xb0) + (ee_read<uint32_t>(0x0015ed84u) << 4), 0u);
+                    first_run(pok_class1242_update_l11, m);
+                    w8(m + 0x20, 2u);
+                    wf(pv + 0x130, 1.0f);
+                    const uint32_t sp0 = ee_stack_ptr();
+                    try { pok_class1242_update_l11(m); } catch (const std::exception&) { ee_stack_ptr() = sp0; }
+                };
+
+                p111("p112_class1242", 0x00313290, pok_class1242_update_l11, c1242,
+                     [common, put_hero, collectible, box_at, sound_half, jet_flight_init, c1248, c1319, HERO](uint32_t m, int st) {
+                         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                         w32(OV(0x001611c0), T3 + 0x1000u);
+                         if (st == 0) {
+                             w8(m + 0x20, 0u);
+                             w32(L11_ADDR(0x00162170u), coin() ? 0u : 1u);
+                             collectible(ee_read<uint8_t>(m + 0xb0), coin());
+                             common(m);
+                             return;
+                         }
+                         jet_flight_init(m);
+                         w8(m + 0x20, u(st));
+                         sound_half(m, pv + 0x12c);
+                         sound_half(m, pv + 0x12e);
+                         wf(pv + 0x130, coin() ? 0.0f : 0.5f);
+                         if (st == 1) {
+                             ee_ref<Vec4>(m + 0x10) = ee_ref<Vec4>(pv + 0x40);
+                             ee_ref<Vec4>(m + 0x40) = ee_ref<Vec4>(pv + 0x50);
+                             moby_update_transform(m);
+                             put_hero(m + 0x10, coin() ? rf(0.5f, 2.5f) : rf(10.0f, 20.0f), 0.0f);
+                             const uint32_t hm = ee_read<uint32_t>(0x001413d0u);
+                             ee_ref<Vec4>(hm + 0x10) = ee_ref<Vec4>(HERO);
+                             moby_update_transform(hm);
+                             w8(0x0013d4c7u, coin() ? 1u : 0u);
+                             static const uint16_t kept[] = {0, 2, 10, 40};
+                             w16(0x00141b4au, kept[ri(0, 3)]);
+                             w32(0x0015eea4u, ee_read<uint16_t>(0x00141b4au) * 600u + u(ri(0, 2000)));
+                             common(m);
+                             w32(0x001413d4u, 0u);
+                             w8(0x001413f4u, 0u);
+                             w32(0x0013cae4u, coin() ? 0x10u : 0u);
+                             return;
+                         }
+                         if (st == 2) {
+                             wf(pv + 0x130, coin() ? 0.99f : 0.4f);
+                             w16(0x00141c10u, coin() ? 0u : 1u);
+                             common(m);
+                             return;
+                         }
+                         if (st == 4 || st == 8) {
+                             const uint32_t fbox = box_at(ee_read<int32_t>(pv + 0x104));
+                             Vec4 center = ee_ref<Vec4>(fbox + 0x30);
+                             center.z = 310.0f;
+                             const int pos_mode = ri(0, 5);
+                             if (pos_mode == 1) {  // near outer xy boundary
+                                 const float rad = std::hypot(ee_read<float>(fbox), ee_read<float>(fbox + 4));
+                                 center.x += rad - rf(-2.0f, 8.0f);
+                             } else if (pos_mode == 2) {  // near ceiling
+                                 center.z = ee_read<float>(fbox + 0x28) + ee_read<float>(fbox + 0x38) - rf(-2.0f, 8.0f);
+                             } else if (pos_mode == 3) {  // near floor 250
+                                 center.z = 250.0f + rf(-2.0f, 8.0f);
+                             } else if (pos_mode == 4) {  // world crash into landing pad
+                                 center = ee_ref<Vec4>(pv + 0x40);
+                                 center.z -= 1.0f;
+                             } else if (pos_mode == 5 && !c1248.empty()) {  // moby collision with a bomber
+                                 const uint32_t b = c1248[0];
+                                 w8(b + 0x20, 1u);
+                                 ee_ref<Vec4>(b + 0x10) = center;
+                                 moby_update_transform(b);
+                             }
+                             ee_ref<Vec4>(m + 0x10) = center;
+                             moby_update_transform(m);
+                             static const uint16_t t68[] = {0, 15, 40, 200};
+                             w16(pv + 0x68, t68[ri(0, 3)]);
+                             wf(pv + 0x64, pos_mode == 4 ? 0.01f : rf(0.2f, 2.5f));
+                             wf(pv + 0x34, rf(-1.5f, 1.5f));
+                             wf(pv + 0x38, rf(-3.1f, 3.1f));
+                             w8(pv + 0x60, coin() ? 1u : 0u);
+                             wf(0x00141070u, rf(-1.0f, 1.0f));
+                             wf(0x00141074u, rf(-1.0f, 1.0f));
+                             w32(pv + 0x80, coin() ? 1u : 5u);
+                             w32(pv + 0x84, coin() ? 1u : 5u);
+                             w8(0x00140946u, coin() ? 5u : 0u);
+                             w32(pv + 0x88, !c1319.empty() && coin() ? c1319[0] : 0u);
+                             w32(pv + 0x8c, coin() ? 100u : 600u);
+                             w32(pv + 0xdc, coin() ? 0u : 4u);
+                             wf(0x0014094cu, coin() ? 5.0f : 80.0f);
+                             w16(0x00141c10u, coin() ? 0u : 1u);
+                             w16(0x00141928u, coin() ? 0xffffu : 10u);
+                             w16(0x0014192au, u(ri(0, 20)));
+                             w16(pv + 0xea, coin() ? 1u : 0u);
+                             static const int16_t e8s[] = {0, 1, 3};
+                             w16(pv + 0xe8, static_cast<uint16_t>(e8s[ri(0, 2)]));
+                             w32(pv + 0x114, coin() ? 1u : 10u);
+                             for (size_t i = 0; i < c1319.size() && i < 8; ++i)
+                                 w8(c1319[i] + 0x20, (i & 1u) != 0 ? 4u : 5u);
+                             w8(0x0014095fu, ri(0, 4) == 0 ? 1u : 0u);
+                             if (st == 4 && ri(0, 2) == 0) {  // incoming shot hit (0x30001)
+                                 const uint32_t idx = 0u, e = OV(0x00178100) + (idx << 6);
+                                 w8(m + 0xa4, idx);
+                                 w32(e + 0x34, m);
+                                 w32(e + 0x24, 0x30001u);
+                                 wf(e + 0x2c, coin() ? 10.0f : 200.0f);
+                                 w32(e + 0x30, coin() ? 1u : 0u);
+                                 wf(e + 0x10, 0.6f); wf(e + 0x14, 0.8f); wf(e + 0x18, 0.0f); wf(e + 0x1c, 0.0f);
+                             }
+                             if (st == 8) {
+                                 w32(pv + 0xf8, coin() ? 1u : 5u);
+                                 wf(pv + 0x130, coin() ? 0.99f : 0.4f);
+                                 if (ri(0, 4) == 0) w32(pv + 0x100, 0xffffffffu);
+                                 if (ri(0, 4) == 0) w32(pv + 0xfc, 0xffffffffu);
+                                 if (ri(0, 4) == 0) w8(m + 0xb0, 0xffu);
+                             }
+                         }
+                         if (st == 7) w32(pv + 0xf8, coin() ? 1u : 5u);
+                         if (st == 9 && coin()) { wf(m + 0x10, 10.0f); wf(m + 0x14, 1020.0f); wf(m + 0x18, 12.0f); }
+                         common(m);
+                         w32(0x0013caf4u, coin() ? 0x8000u : 0u);
+                         w32(0x0013caf0u, (coin() ? 0x40u : 0u) | (coin() ? 0x84u : 0u) | (coin() ? 0x28u : 0u));
+                         w32(0x0013cae0u, coin() ? 0x200u : 0u);
+                     }, 10, 28);
+                g_ignored_words.pop_back();
+
+                l11check("p112_f3125a8", 0x003125a8, 36, Ret::None, [level, c1242, jet_flight_init, common] {
+                    level();
+                    const uint32_t m = c1242[0], pv = ee_read<uint32_t>(m + 0x78);
+                    jet_flight_init(m);
+                    w32(pv + 0x80, coin() ? 1u : 4u);
+                    w8(pv + 0x61, coin() ? 1u : 0u);
+                    common(m);
+                    w32(0x0013caf0u, coin() ? 0x84u : 0u);
+                    return Args{{m, pv}, {rf(-3.1f, 3.1f), rf(-1.0f, 1.0f)}};
+                }, [](A a) { pok_3125a8_l11(a.i[0], a.i[1], a.f[0], a.f[1]); return uint64_t{0}; });
+
+                l11check("p112_f309378", 0x00309378, 36, Ret::Int32, [level, c1242, c1319, jet_flight_init, common] {
+                    level();
+                    const uint32_t m = c1242[0];
+                    jet_flight_init(m);
+                    wfrand(T3, 3, 300.0f, 500.0f); wf(T3 + 0xc, 0.0f);
+                    wfrand(T3 + 0x10, 3, -3.1f, 3.1f); wf(T3 + 0x1c, 0.0f);
+                    const uint32_t tgt = !c1319.empty() && coin() ? c1319[0] : 0u;
+                    common(m);
+                    if (ri(0, 5) == 0) w32(OV(0x0015ffe8), ee_read<uint32_t>(OV(0x0015ffd4)));
+                    return Args{{m, T3, tgt, T3 + 0x10, u(ri(30, 300))}, {rf(0.5f, 3.0f)}};
+                }, [](A a) { return r32(pok_309378_l11(a.i[0], a.i[1], a.i[2], a.i[3], a.i[4], a.f[0])); });
+
+                l11check("p112_f3126f8", 0x003126f8, 36, Ret::None, [level, c1242, c1319, jet_flight_init, common] {
+                    level();
+                    const uint32_t m = c1242[0], pv = ee_read<uint32_t>(m + 0x78);
+                    jet_flight_init(m);
+                    w32(pv + 0x84, coin() ? 1u : 4u);
+                    w16(pv + 0x6a, u(ri(0, 3)));
+                    w8(0x00140946u, coin() ? 5u : 0u);
+                    w32(pv + 0x88, !c1319.empty() && coin() ? c1319[0] : 0u);
+                    w32(pv + 0x8c, coin() ? 200u : 600u);
+                    common(m);
+                    w32(0x0013caf0u, coin() ? 0x28u : 0u);
+                    return Args{{m, pv}, {}};
+                }, [](A a) { pok_3126f8_l11(a.i[0], a.i[1]); return uint64_t{0}; });
+
+                l11check("p112_f313f60", 0x00313f60, 48, Ret::None, [level, c1242, box_at, jet_flight_init, common] {
+                    level();
+                    const uint32_t m = c1242[0], pv = ee_read<uint32_t>(m + 0x78);
+                    jet_flight_init(m);
+                    const uint32_t fbox = box_at(ee_read<int32_t>(pv + 0x104));
+                    Vec4 center = ee_ref<Vec4>(fbox + 0x30);
+                    const float rad = std::hypot(ee_read<float>(fbox), ee_read<float>(fbox + 4));
+                    const int k = ri(0, 3);
+                    if (k == 1) center.x += rad - rf(-5.0f, 9.0f);
+                    if (k == 2) center.z = ee_read<float>(fbox + 0x28) + ee_read<float>(fbox + 0x38) - rf(-5.0f, 9.0f);
+                    else if (k == 3) center.z = 250.0f + rf(-5.0f, 9.0f);
+                    else center.z = 310.0f;
+                    ee_ref<Vec4>(m + 0x10) = center;
+                    wfrand(pv + 0x10, 3, -1.0f, 1.0f);
+                    wf(pv + 0x34, rf(-0.8f, 0.8f));
+                    wf(pv + 0x38, rf(-3.1f, 3.1f));
+                    wf(T3, rf(-1.0f, 1.0f));
+                    wf(T3 + 4, rf(-1.0f, 1.0f));
+                    w8(0x0014095fu, 0u);
+                    common(m);
+                    return Args{{m, T3, T3 + 4}, {}};
+                }, [](A a) { pok_313f60_l11(a.i[0], a.i[1], a.i[2]); return uint64_t{0}; });
+
+                l11check("p112_f312838", 0x00312838, 60, Ret::None, [level, c1242, c1248, c1319, box_at, jet_flight_init, common] {
+                    level();
+                    const uint32_t m = c1242[0], pv = ee_read<uint32_t>(m + 0x78);
+                    jet_flight_init(m);
+                    const uint32_t fbox = box_at(ee_read<int32_t>(pv + 0x104));
+                    Vec4 center = ee_ref<Vec4>(fbox + 0x30);
+                    center.z = 310.0f;
+                    const int mode = ri(0, 3);
+                    if (mode == 1) { center = ee_ref<Vec4>(pv + 0x40); center.z -= 1.0f; }
+                    else if (mode == 2 && !c1248.empty()) {
+                        const uint32_t b = c1248[0];
+                        w8(b + 0x20, 1u);
+                        ee_ref<Vec4>(b + 0x10) = center;
+                        moby_update_transform(b);
+                    }
+                    ee_ref<Vec4>(m + 0x10) = center;
+                    moby_update_transform(m);
+                    static const uint16_t t68[] = {0, 15, 40, 200};
+                    w16(pv + 0x68, t68[ri(0, 3)]);
+                    wf(pv + 0x64, (mode == 1 || mode == 2) ? 0.01f : rf(0.2f, 2.5f));
+                    wf(pv + 0x34, mode == 1 ? 0.2f : rf(-1.5f, 1.5f));
+                    wf(pv + 0x38, rf(-3.1f, 3.1f));
+                    w8(pv + 0x60, coin() ? 1u : 0u);
+                    wf(0x00141070u, rf(-1.0f, 1.0f));
+                    wf(0x00141074u, rf(-1.0f, 1.0f));
+                    w32(pv + 0x80, coin() ? 1u : 5u);
+                    w32(pv + 0x84, coin() ? 1u : 5u);
+                    w8(0x00140946u, coin() ? 5u : 0u);
+                    w32(pv + 0x88, !c1319.empty() && coin() ? c1319[0] : 0u);
+                    w32(pv + 0x8c, coin() ? 100u : 600u);
+                    w32(pv + 0xdc, (mode == 2 && coin()) ? 0u : (coin() ? 0u : 4u));
+                    wf(0x0014094cu, coin() ? 0.01f : 80.0f);
+                    w16(0x00141c10u, coin() ? 0u : 1u);
+                    w16(0x00141928u, coin() ? 0xffffu : 10u);
+                    w16(0x0014192au, coin() ? 0u : 50u);
+                    w32(0x0015eea4u, 3600u);
+                    common(m);
+                    w32(0x0013caf4u, coin() ? 0x8000u : 0u);
+                    w32(0x0013caf0u, (coin() ? 0x40u : 0u) | (coin() ? 0x84u : 0u) | (coin() ? 0x28u : 0u));
+                    w32(0x0013cae0u, coin() ? 0x200u : 0u);
+                    return Args{{m, pv}, {}};
+                }, [](A a) { pok_312838_l11(a.i[0], a.i[1]); return uint64_t{0}; });
+
+                l11check("p112_f31a758", 0x0031a758, 30, Ret::Int32, [level, c1242, c1319] {
+                    level();
+                    const int32_t grp = ee_read<int32_t>(ee_read<uint32_t>(c1242[0] + 0x78) + 0x10c);
+                    for (uint32_t b : c1319) w8(b + 0x20, coin() ? 5u : 4u);
+                    return Args{{u(grp)}, {}};
+                }, [](A a) { return r32(static_cast<uint32_t>(pok_31a758_l11(static_cast<int32_t>(a.i[0])))); });
+
+                l11check("p112_f31a7d8", 0x0031a7d8, 48, Ret::Int32, [level, c1242, c1319, common] {
+                    level();
+                    const int32_t grp = ee_read<int32_t>(ee_read<uint32_t>(c1242[0] + 0x78) + 0x10c);
+                    for (uint32_t b : c1319) {
+                        w8(b + 0x20, ri(0, 3) == 0 ? 5u : 4u);
+                        w8(b + 0x53, coin() ? 0u : 1u);
+                        w32(ee_read<uint32_t>(b + 0x78) + 0x88, u(ri(0, 3)));
+                    }
+                    wf(L11_ADDR(0x001677d4u), rf(-1.0f, 1.0f));
+                    common(c1242[0]);
+                    if (ri(0, 2) != 0) {  // guarantee rand_mod(10) == 0 on first candidate in most cases
+                        for (uint32_t s = 1; s < 128; ++s) {
+                            libc_srand(s);
+                            if (rand_mod(0xa) == 0) { libc_srand(s); break; }
+                        }
+                    }
+                    return Args{{u(grp)}, {}};
+                }, [](A a) { return r32(pok_31a7d8_l11(static_cast<int32_t>(a.i[0]))); });
+
+                g_ignored_words.resize(sp_mark);
+            }
+
+            // ---- 1.02 Gameplay Fix 10 (pok_class1242_update_l11): blocks prompt/boarding when hero state is 0x32 / 0x1d or
+            // vehicle flag 0x1413f4 != 0, sets hero state 0x32 at Triangle press in state 1, and skips it at fade-end in state 2
+            if (const char* only = std::getenv("ORACLE_ONLY"); only == nullptr || std::strcmp(only, "p112_class1242_fix10") == 0) {
+                if (std::getenv("RAC1_GAMEPLAY102") == nullptr || c1242.empty()) {
+                    std::printf("%-26s skipped (run with RAC1_GAMEPLAY102=10 on level 11)\n", "p112_class1242_fix10");
+                    ++g_skipped;
+                } else {
+                    int bad = 0, n = 0, blocked = 0, boarded = 0, fade_skipped = 0;
+                    static std::vector<uint8_t> start, with_fix;
+                    const std::unordered_set<uint32_t> ignored(g_ignored_words.begin(), g_ignored_words.end());
+                    for (int c = 0; c < 90; ++c) {
+                        level();
+                        const uint32_t m = c1242[0], pv = ee_read<uint32_t>(m + 0x78), hm = ee_read<uint32_t>(0x001413d0u);
+                        w8(0x0014c050u + ee_read<uint8_t>(m + 0xb0) + (ee_read<uint32_t>(0x0015ed84u) << 4), 0u);
+                        first_run(pok_class1242_update_l11, m);
+                        const int kind = c % 3;
+                        if (kind < 2) {
+                            w8(m + 0x20, 1u);
+                            put_hero(m + 0x10, 1.0f, 0.0f);
+                            ee_ref<Vec4>(hm + 0x10) = ee_ref<Vec4>(HERO);
+                            moby_update_transform(hm);
+                            moby_update_transform(m);
+                            w8(0x0013d4c7u, 1u);
+                            wf(pv + 0x130, 0.5f);
+                            common(m);
+                            w32(OV(0x0015f5c4), 0u);
+                            w32(0x0013cae4u, 0x10u);
+                            if (kind == 0) {
+                                const int blk = ri(0, 2);
+                                w32(0x001413d4u, blk == 0 ? 0x32u : (blk == 1 ? 0x1du : 0u));
+                                w8(0x001413f4u, blk == 2 ? 1u : 0u);
+                            } else {
+                                w32(0x001413d4u, 0u);
+                                w8(0x001413f4u, 0u);
+                            }
+                        } else {
+                            w8(m + 0x20, 2u);
+                            wf(pv + 0x130, 0.99f);
+                            common(m);
+                            w32(OV(0x0015f5c4), 0u);
+                            w32(0x001413d4u, 0u);
+                        }
+                        uint8_t* ram = ee_get_ram_base();
+                        start.assign(ram, ram + 0x02000000);
+                        g_advanced_disabled = false;
+                        pok_class1242_update_l11(m);
+                        g_advanced_disabled = true;
+                        with_fix.assign(ram, ram + 0x02000000);
+                        std::memcpy(ram, start.data(), start.size());
+                        if (kind == 0) {
+                            const float saved_hm0 = ee_read<float>(hm);
+                            wf(hm, saved_hm0 + 200000.0f);
+                            pok_class1242_update_l11(m);
+                            wf(hm, saved_hm0);
+                            ++blocked;
+                        } else if (kind == 1) {
+                            pok_class1242_update_l11(m);
+                            hero_set_state(0x32, 1);
+                            ++boarded;
+                        } else {
+                            // Unfixed sets 0x1413d4 = 0x32; with 0x15f5c4 == 2 hero_set_state(0x32, 1) returns 0, matching Fix 10
+                            pok_class1242_update_l11(m);
+                            const bool unfixed_entered = ee_read<uint32_t>(0x001413d4u) == 0x32u;
+                            std::memcpy(ram, start.data(), start.size());
+                            w32(OV(0x0015f5c4), 2u);
+                            pok_class1242_update_l11(m);
+                            w32(OV(0x0015f5c4), 0u);
+                            if (unfixed_entered && with_fix[m + 0x20] == 4u) ++fade_skipped;
+                            else ++bad;
+                        }
+                        ++n;
+                        for (uint32_t a = 0x00100000; a < 0x02000000; a += 4) {
+                            if (ignored.count(a) != 0) continue;
+                            if (a >= ee_stack_ptr() - 0x10000 && a < ee_stack_ptr() + 0x10000) continue;
+                            uint32_t xw, yw;
+                            std::memcpy(&xw, &with_fix[a], 4); std::memcpy(&yw, &ram[a], 4);
+                            if (xw != yw) { if (bad < 8) std::printf("  p112_class1242_fix10 case %d: %08x fix=%08x expected=%08x\n", c, a, xw, yw); ++bad; break; }
+                        }
+                    }
+                    std::printf("%-26s %s (%d cases, %d blocked, %d boarded, %d fade_skipped)\n", "p112_class1242_fix10",
+                                bad == 0 && blocked > 0 && boarded > 0 && fade_skipped > 0 ? "ok" : "FAIL", n, blocked, boarded, fade_skipped);
+                    if (bad != 0 || blocked == 0 || boarded == 0 || fade_skipped == 0) ++g_fail;
+                }
+            }
+
+            // ---- 1.02 Fixes 35 (pok_class1158_update_l11): restores sewer underwater tint/fog 0x161200..0x161206 when camera z <= 180
+            if (const char* only = std::getenv("ORACLE_ONLY"); only == nullptr || std::strcmp(only, "p112_class1158_fix35") == 0) {
+                if (std::getenv("RAC1_FIXES102") == nullptr || c1158.empty()) {
+                    std::printf("%-26s skipped (run with RAC1_FIXES102=35 on level 11)\n", "p112_class1158_fix35");
+                    ++g_skipped;
+                } else {
+                    int bad = 0, n = 0, tinted = 0, kept = 0;
+                    static std::vector<uint8_t> start, with_fix;
+                    const std::unordered_set<uint32_t> ignored(g_ignored_words.begin(), g_ignored_words.end());
+                    for (int c = 0; c < 80; ++c) {
+                        level();
+                        const uint32_t m = c1158[static_cast<size_t>(ri(0, static_cast<int>(c1158.size()) - 1))];
+                        w8(m + 0x20, u(ri(1, 3)));
+                        for (uint32_t k = 0; k < 8; ++k) w8(L11_ADDR(0x00161200u) + k, static_cast<uint8_t>(0x90u + k));
+                        const float cam_z = coin() ? (coin() ? 180.0f : rf(120.0f, 179.9f)) : rf(180.1f, 250.0f);
+                        wf(L11_ADDR(0x001677c8u), cam_z);
+                        common(m);
+                        uint8_t* ram = ee_get_ram_base();
+                        start.assign(ram, ram + 0x02000000);
+                        g_advanced_disabled = false;
+                        pok_class1158_update_l11(m);
+                        g_advanced_disabled = true;
+                        with_fix.assign(ram, ram + 0x02000000);
+                        std::memcpy(ram, start.data(), start.size());
+                        if (cam_z <= 180.0f) {
+                            w8(L11_ADDR(0x00161200u), 0);
+                            w8(L11_ADDR(0x00161201u), 0x28);
+                            w8(L11_ADDR(0x00161202u), 0x30);
+                            w8(L11_ADDR(0x00161203u), 0x40);
+                            w8(L11_ADDR(0x00161204u), 0);
+                            w8(L11_ADDR(0x00161205u), 0x28);
+                            w8(L11_ADDR(0x00161206u), 0x30);
+                            ++tinted;
+                        } else {
+                            ++kept;
+                        }
+                        pok_class1158_update_l11(m);
+                        ++n;
+                        for (uint32_t a = 0x00100000; a < 0x02000000; a += 4) {
+                            if (ignored.count(a) != 0) continue;
+                            if (a >= ee_stack_ptr() - 0x10000 && a < ee_stack_ptr() + 0x10000) continue;
+                            uint32_t xw, yw;
+                            std::memcpy(&xw, &with_fix[a], 4); std::memcpy(&yw, &ram[a], 4);
+                            if (xw != yw) { if (bad < 8) std::printf("  p112_class1158_fix35 case %d: %08x fix=%08x expected=%08x\n", c, a, xw, yw); ++bad; break; }
+                        }
+                    }
+                    std::printf("%-26s %s (%d cases, %d tinted, %d kept)\n", "p112_class1158_fix35",
+                                bad == 0 && tinted > 0 && kept > 0 ? "ok" : "FAIL", n, tinted, kept);
+                    if (bad != 0 || tinted == 0 || kept == 0) ++g_fail;
+                }
+            }
+
+            // ---- 1.02 Fixes 36 (pok_312838_l11): removes the Square-button toggle on pv + 0x60 and keeps chase camera slot 0
+            if (const char* only = std::getenv("ORACLE_ONLY"); only == nullptr || std::strcmp(only, "p112_f312838_fix36") == 0) {
+                if (std::getenv("RAC1_FIXES102") == nullptr || c1242.empty()) {
+                    std::printf("%-26s skipped (run with RAC1_FIXES102=36 on level 11)\n", "p112_f312838_fix36");
+                    ++g_skipped;
+                } else {
+                    int bad = 0, n = 0, untoggled = 0, slot0_forced = 0;
+                    static std::vector<uint8_t> start, with_fix;
+                    const std::unordered_set<uint32_t> ignored(g_ignored_words.begin(), g_ignored_words.end());
+                    for (int c = 0; c < 80; ++c) {
+                        level();
+                        const uint32_t m = c1242[0], pv = ee_read<uint32_t>(m + 0x78);
+                        w8(0x0014c050u + ee_read<uint8_t>(m + 0xb0) + (ee_read<uint32_t>(0x0015ed84u) << 4), 0u);
+                        first_run(pok_class1242_update_l11, m);
+                        w8(m + 0x20, 2u);
+                        wf(pv + 0x130, 1.0f);
+                        pok_class1242_update_l11(m);
+                        const uint32_t fbox = box_at(ee_read<int32_t>(pv + 0x104));
+                        Vec4 center = ee_ref<Vec4>(fbox + 0x30);
+                        center.z = 310.0f;
+                        ee_ref<Vec4>(m + 0x10) = center;
+                        moby_update_transform(m);
+                        w16(pv + 0x68, 60u);
+                        const uint8_t pv60_init = (c & 1) != 0 ? 1u : 0u;
+                        const uint32_t caf4 = (c & 2) != 0 ? 0x8000u : 0u;
+                        w8(pv + 0x60, pv60_init);
+                        common(m);
+                        w32(0x0013caf4u, caf4);
+                        uint8_t* ram = ee_get_ram_base();
+                        start.assign(ram, ram + 0x02000000);
+                        g_advanced_disabled = false;
+                        pok_312838_l11(m, pv);
+                        g_advanced_disabled = true;
+                        with_fix.assign(ram, ram + 0x02000000);
+                        std::memcpy(ram, start.data(), start.size());
+                        w32(0x0013caf4u, caf4 & ~0x8000u);
+                        w8(pv + 0x60, 0u);
+                        pok_312838_l11(m, pv);
+                        w32(0x0013caf4u, caf4);
+                        w8(pv + 0x60, pv60_init);
+                        if ((caf4 & 0x8000u) != 0) ++untoggled;
+                        if (pv60_init == 1u) ++slot0_forced;
+                        ++n;
+                        for (uint32_t a = 0x00100000; a < 0x02000000; a += 4) {
+                            if (ignored.count(a) != 0) continue;
+                            if (a >= ee_stack_ptr() - 0x10000 && a < ee_stack_ptr() + 0x10000) continue;
+                            uint32_t xw, yw;
+                            std::memcpy(&xw, &with_fix[a], 4); std::memcpy(&yw, &ram[a], 4);
+                            if (xw != yw) { if (bad < 8) std::printf("  p112_f312838_fix36 case %d: %08x fix=%08x expected=%08x\n", c, a, xw, yw); ++bad; break; }
+                        }
+                    }
+                    std::printf("%-26s %s (%d cases, %d untoggled, %d slot0_forced)\n", "p112_f312838_fix36",
+                                bad == 0 && untoggled > 0 && slot0_forced > 0 ? "ok" : "FAIL", n, untoggled, slot0_forced);
+                    if (bad != 0 || untoggled == 0 || slot0_forced == 0) ++g_fail;
+                }
+            }
+        }
 
         g_extra_hooks = saved_hooks;
         g_host_clock_fixed = saved_clock;

@@ -20,7 +20,7 @@
 namespace rac1 {
 
 namespace {
-constexpr int FIXES[] = {1, 2, 3, 5, 6, 7, 11, 15, 16, 17, 18, 19, 20, 22, 26, 27, 28, 29, 30, 32, 33, 34};  // the fixes of the 1.02 Fixes row (fixes102.h)
+constexpr int FIXES[] = {1, 2, 3, 5, 6, 7, 11, 15, 16, 17, 18, 19, 20, 22, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36};  // the fixes of the 1.02 Fixes row (fixes102.h)
 constexpr int GAMEPLAY[] = {4, 8, 9, 10, 12, 13, 14, 21, 23, 24, 25, 31};  // the fixes of the 1.02 Gameplay row (fixes102.h)
 
 // orig: (none) — enhancement: a list variable's fixes (RAC1_FIXES102 / RAC1_GAMEPLAY102) as bits (bit n: fix n), `set`
@@ -216,6 +216,20 @@ bool fixes102_batalia_gate_group() {
     return fixes102_on(34) || region_core_moved();
 }
 
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L11:0x30f4f8 (PAL 2.00 disc): Pokitaru's class 1158 sets
+// 0x161200..0x161206 back to the sewer's underwater colours while 0x1677c8 <= 180
+bool fixes102_pokitaru_sewer_tint() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(35) || region_core_moved();
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L11:0x313d00 (PAL 2.00 disc): Pokitaru's fighter jet flight
+// step drops the square-button toggle of pvar +0x60 and its second camera offset
+bool fixes102_pokitaru_jet_camera() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(36) || region_core_moved();
+}
+
 // orig: (none) — enhancement (fixes102.h); the 1.02 build's decoy_object_update 0x2c5f10 (PAL disc 2.00): hero state
 // 0x31 (swimming at the surface) and the decoy within 1.5 of Ratchet (xy): sub_00259bc8(m, m, 0x10000, Ratchet's
 // place, the zero vector 0x15f580, 1000) before the decoy reads its events (0x30001)
@@ -244,9 +258,9 @@ void gameplay102_water_carry(uint32_t m, float target) {
 }
 
 // orig: (none) — enhancement (fixes102.h); the 1.02 build's guard before its hud_message_request(7, ...) (Pokitaru
-// 0x314b34, Gemlik 0x2bc910, Drek's fleet 0x2eeff4)
+// 0x314b34, Gemlik 0x2bc910, Drek's fleet 0x2eeff4; on the PAL 2.00 disc Pokitaru's port runs on every disc)
 bool gameplay102_talk_blocked() {
-    if (!gameplay102_on(10)) return false;
+    if (!gameplay102_on(10) && !region_core_moved()) return false;
     const int32_t st = lw(g::HERO_STATE);
     return st == 0x32 || st == 0x1d || lbu(g::PLAYER + 0x20a4) != 0;
 }

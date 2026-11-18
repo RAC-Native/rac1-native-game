@@ -31,10 +31,7 @@ L14 0x00255ed8: { uint32_t pb_v0 = 0; if (palette_blend_loop(a0.w(), a1.w(), a3.
 # locked (+0x20ac) as the scene starts (gameplay102_talk_lock). With the fix off each statement is a test that fails.
 # The 1.02 build's points: Pokitaru 0x314b34 / 0x314c68, Gemlik 0x2bc910 / 0x2bc95c, Drek's fleet 0x2eeff4 / 0x2ef044, Rilgar
 # 0x3180a8 / 0x318150, Kalebo III 0x2e7dc0 / 0x2e7f70.
-L11 0x003136e8: if (gameplay102_talk_blocked()) goto L_313804;  // enhancement: 1.02 Gameplay, fix 10 (guard)
-L11 0x003137fc: if (gameplay102_on(10)) hero_set_state(0x32, 1);  // enhancement: 1.02 Gameplay, fix 10 (0x32 at the press)
-L11 0x00313854: if (gameplay102_on(10)) goto L_313860;  // enhancement: 1.02 Gameplay, fix 10 (the later 0x32 skipped)
-L11 0x00313860 label
+# L11 0x00313290 (Pokitaru's class 1242): the fork is in pok_class1242_update_l11 (pokitaru_jet.cpp, P11.2), always taken on the PAL 2.00 disc.
 L13 0x002bb6a8: if (gameplay102_talk_blocked()) goto L_2bb6cc;  // enhancement: 1.02 Gameplay, fix 10 (guard)
 L13 0x002bb6d4: if (gameplay102_on(10)) hero_set_state(0x32, 1);  // enhancement: 1.02 Gameplay, fix 10 (0x32 at the press)
 L13 0x002bb83c: if (gameplay102_on(10)) goto L_2bb848;  // enhancement: 1.02 Gameplay, fix 10 (the later 0x32 skipped)

@@ -56,6 +56,11 @@
 //   its path even with other flags set; the North American build tests `== 4` and `== 2` (umbris_snagglebeast.cpp)
 // - 34: Batalia's unlinked gate (class 467, L8:0x2ea398, pvar +0x8 negative): once the level flag 0x13d3b6 is set, retires
 //   the live mobys of classes 0x24c..0x256 and 0x1d8 in its moby group (+0x21) and itself (batalia_fort.cpp)
+// - 35: Pokitaru's sewer water (class 1158, L11:0x30e088): sets the underwater colour bytes (0x161200..0x161206) back to the
+//   sewer's (0, 0x28, 0x30, 0x40) and (0, 0x28, 0x30) while the camera is at or below 180 (0x1677c8 <= 180), pairing with the
+//   1.02 open sea (class 1111) above 180 (pokitaru_sewer.cpp)
+// - 36: Pokitaru's fighter jet (class 1242, flight step L11:0x312838): drops the square-button camera toggle (+0x60) and its
+//   second camera offset, keeping the chase camera (pokitaru_jet.cpp)
 //
 // 1.02 Gameplay (main menu > Options > Advanced > 1.02 Gameplay, off by default, global; docs/advanced.md "1.02 Gameplay"):
 // the 1.02 build's fixes that change how the game plays (the exploits stay possible with the row off), numbered as the
@@ -66,7 +71,7 @@
 // - 9: deadly ground (+0x12ea) for the Hologuise's states, the hoverboard's ride-off, quicksand in a vehicle mode
 //   (hero_input_update 0x229b70, hero_set_state 0x2223f8, hero_surface_update 0x20b960 and their levels' copies:
 //   the hand ports and tools/codegen/hooks.glue)
-// - 10: the characters' talk guards (gameplay_frame 0x297f78; five levels' classes in tools/codegen/hooks.glue)
+// - 10: the characters' talk guards (gameplay_frame 0x297f78; pokitaru_jet.cpp and four levels' classes in tools/codegen/hooks.glue)
 // - 12: the tilt to the ground stiffer and its speed capped (sub_002163f0 0x2163f0)
 // - 13: the Hologuise's use test (sub_0020fe30 0x20fe30), its countdown stopped by hero_place 0x216f90, the state a forced
 //   hero_set_state leaves it with
@@ -156,6 +161,16 @@ bool fixes102_umbris_snagglebeast_walk();
 // code it is
 bool fixes102_batalia_gate_group();
 
+// orig: (none) — enhancement: fix 35: Pokitaru's class 1158 (L11:0x30e088): true when the 1.02 build's sewer underwater
+// colour reset applies (L11:0x30f4f8 on the PAL 2.00 disc: while 0x1677c8 <= 180, sets 0x161200..0x161206 back to the
+// sewer's bytes); false with the fix off, except on the PAL 2.00 disc (region_core_moved()), whose own code it is
+bool fixes102_pokitaru_sewer_tint();
+
+// orig: (none) — enhancement: fix 36: Pokitaru's fighter jet flight step (L11:0x312838): true when the 1.02 build's chase
+// camera applies (L11:0x313d00 on the PAL 2.00 disc: no square-button toggle of pvar +0x60 or second camera offset); false
+// with the fix off, except on the PAL 2.00 disc (region_core_moved()), whose own code it is
+bool fixes102_pokitaru_jet_camera();
+
 // orig: (none) — enhancement: fix 14 (1.02 Gameplay): the decoy `m` in its state of 0x2c4c08 pushed (an event 0x10000 of
 // strength 1000 from Ratchet's place) when Ratchet swims (state 0x31) within 1.5 of it; nothing with the fix off
 void gameplay102_decoy_push(uint32_t m);
@@ -178,7 +193,7 @@ void fixes102_thruster_jump_sound();
 
 // orig: (none) — enhancement: fix 10 (1.02 Gameplay): a character's "talk" prompt (Pokitaru's, Gemlik's, Drek's fleet's
 // mobys that take the triangle) not offered while the hero is already in the state 0x32 or 0x1d, or in a vehicle mode
-// (+0x20a4); false with the fix off (the level's code then runs as transliterated; tools/codegen/hooks.glue)
+// (+0x20a4); false with the fix off, except on the PAL 2.00 disc (whose own build of those classes does it)
 bool gameplay102_talk_blocked();
 // orig: (none) — enhancement: fix 10 (1.02 Gameplay): Rilgar's and Kalebo III's talking characters not updated
 // (talk_update) while the hero is in the state 0x1d; false with the fix off
