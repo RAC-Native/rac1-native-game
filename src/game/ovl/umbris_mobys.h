@@ -70,19 +70,19 @@ float umb_317e60_l7(uint32_t m, uint32_t mouth);  // L7:0x00317e60
 void umb_318e30_l7(uint32_t m);  // L7:0x00318e30
 void umb_318e98_l7(uint32_t m);  // L7:0x00318e98
 void umb_class1106_update_l7(uint32_t a0);  // L7:0x00314150
-
-void umb_class1110_update_l7(uint32_t a0);  // L7:0x00319040
-TrRet umb_319698_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x00319698
+void umb_class1110_update_l7(uint32_t a0);  // L7:0x00319040 (umbris_mines.cpp)
+void umb_319698_l7(uint32_t m, uint32_t parent_pv);  // L7:0x00319698
 void umb_class1112_update_l7(uint32_t a0);  // L7:0x003196e0
-void umb_class1113_update_l7(uint32_t a0);  // L7:0x00319f48
-TrRet umb_30b538_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x0030b538
+void umb_class1113_update_l7(uint32_t a0);  // L7:0x00319f48 (umbris_props.cpp)
+uint32_t umb_30b538_l7(uint32_t pos, uint32_t vel, uint32_t ignore, uint32_t flags);  // L7:0x0030b538 (umbris_sweep_turret.cpp)
 void umb_class1126_update_l7(uint32_t a0);  // L7:0x0031a250
-void umb_class1128_update_l7(uint32_t a0);  // L7:0x0031a9e8
+void umb_class1128_update_l7(uint32_t a0);  // L7:0x0031a9e8 (umbris_props.cpp)
 void umb_class1133_update_l7(uint32_t a0);  // L7:0x0031b3f0
-void umb_class1142_update_l7(uint32_t a0);  // L7:0x0031d2e0
+void umb_class1142_update_l7(uint32_t a0);  // L7:0x0031d2e0 (umbris_scene_fx.cpp)
 void umb_class1552_update_l7(uint32_t a0);  // L7:0x0031eba8
-void umb_class1686_update_l7(uint32_t a0);  // L7:0x0031f780
-void umb_class1789_update_l7(uint32_t a0);  // L7:0x0031f900
+void umb_class1686_update_l7(uint32_t a0);  // L7:0x0031f780 (umbris_props.cpp)
+void umb_class1789_update_l7(uint32_t a0);  // L7:0x0031f900 (umbris_scene_fx.cpp)
+
 TrRet umb_cutscene_level_extras_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x00265bd8
 
 }  // namespace rac1

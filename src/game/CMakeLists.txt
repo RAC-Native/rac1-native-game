@@ -127,10 +127,15 @@ add_library(rac1_game STATIC
     ovl/umbris_doors.cpp
     ovl/umbris_lava_platforms.cpp
     ovl/umbris_lifts.cpp
+    ovl/umbris_mines.cpp
     ovl/umbris_path_group.cpp
+    ovl/umbris_props.cpp
+    ovl/umbris_scene_fx.cpp
     ovl/umbris_shots.cpp
     ovl/umbris_snagglebeast.cpp
+    ovl/umbris_snagglebeast_draws.cpp
     ovl/umbris_snagglebeast_shots.cpp
+    ovl/umbris_sweep_turret.cpp
     ovl/umbris_turret.cpp
     ovl/umbris_walker.cpp
     ovl/umbris_water.cpp

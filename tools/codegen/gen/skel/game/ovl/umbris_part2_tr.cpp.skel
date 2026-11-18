@@ -33,7 +33,6 @@ using namespace eer;
 using namespace vu0m;
 
 // (the functions appended at the end of umbris_part2_tr.cpp)
-void umb_class1046_draw_l7(uint32_t a0_in);
 
 //@gen um2_227880_l7
 
@@ -46,19 +45,5 @@ void umb_class1046_draw_l7(uint32_t a0_in);
 //@gen umb_class460_draw_l7
 
 //@gen umb_class1018_draw_l7
-
-//@gen umb_class1106_draw_a_l7
-
-//@gen um2_312948_l7
-
-//@gen umb_class1106_draw_b_l7
-
-//@gen um2_312e70_l7
-
-//@gen umb_class1106_draw_c_l7
-
-//@gen umb_draw_317910_l7
-
-//@gen umb_class1046_draw_l7
 
 }  // namespace rac1

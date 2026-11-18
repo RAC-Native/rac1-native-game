@@ -2,4 +2,3 @@
 0x00275d88: ari_ocean_cells_clip_l2(a0.w());
 0x002760c0: ari_ocean_cells_draw_l2(a0.w());
 0x002ccc90: ari_ocean_end_body_l2(a0.w());
-0x0029ae58: set32(v0, particle_3a_spawn(a0.w(), a1.w(), a2.w(), a3.w(), t0.w(), t1.w(), t2.w(), fr[12], fr[13]));

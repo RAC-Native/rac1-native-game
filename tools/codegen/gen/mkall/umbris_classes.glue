@@ -1,3 +1,0 @@
-0x00281c30: moby_group_set_state(static_cast<int32_t>(a0.w()), a1.w());
-0x0028c398: plant_bolts_drop_l1(a0.w());
-0x00300150: set32(v0, rock_spawn(a0.w(), a1.w(), a2.w(), static_cast<int32_t>(a3.w()), t0.w(), fr[12], fr[13], fr[14], fr[15]));

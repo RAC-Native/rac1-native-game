@@ -15,10 +15,12 @@ TrRet um2_2cc6a0_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t
 TrRet um2_2ccda0_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x002ccda0
 void umb_class460_draw_l7(uint32_t a0);  // L7:0x002f8038
 void umb_class1018_draw_l7(uint32_t a0);  // L7:0x0030d420
+
+// hand-ported (umbris_snagglebeast_draws.cpp)
 void umb_class1106_draw_a_l7(uint32_t a0);  // L7:0x00312420
-TrRet um2_312948_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x00312948
+void um2_312948_l7(uint32_t m, uint32_t frame_off, float rate, float radius, float span, float alpha_lo, float alpha_hi);  // L7:0x00312948
 void umb_class1106_draw_b_l7(uint32_t a0);  // L7:0x00312dc8
-TrRet um2_312e70_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x00312e70
+void um2_312e70_l7(uint32_t m, uint32_t frame_off, uint32_t color, float radius, float spin_rate);  // L7:0x00312e70
 void umb_class1106_draw_c_l7(uint32_t a0);  // L7:0x003131b0
 void umb_draw_317910_l7(uint32_t a0);  // L7:0x00317910
 void umb_class1046_draw_l7(uint32_t a0);  // L7:0x0030dcf0

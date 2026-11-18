@@ -61,7 +61,7 @@ bool c2b_spr_check(const char* name) {
                                          "class1135", "class436", "class737", "class805", "class871", "p71_class1041",
                                          "p71_class436", "p71_class871", "p71_class880", "p71b_class1059_setup",
                                          "p71b_f30ebc8", "p71b_f30ed30", "p72_class1106", "p72_f313af0",
-                                         "p72_class1106_fix33", "p72_f313af0_fix33"};
+                                         "p72_class1106_fix33", "p72_f313af0_fix33", "p73_class1110", "p73_class1112"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -2117,6 +2117,495 @@ void batch_119() {
                 return Args{{m}, {}};
             }, [](A a) { umb_318e98_l7(a.i[0]); return uint64_t{0}; });
         }
+        g_extra_noop_hooks.clear();
+    }
+
+    // ---- P7.3: the hand ports of Umbris's own code, part 3 (umbris_mines / _props / _sweep_turret / _scene_fx.cpp): each update
+    // on states made for its branches, each helper called directly. Only the batch's base list is ignored, plus the words a check
+    // names for itself.
+    if (g_oracle_level == 7) {
+        const std::vector<uint32_t> loop_ignored = g_ignored_words;
+        g_extra_noop_hooks = {0x00122298, 0x001232c8, 0x00122fe0, 0x00118a80, 0x002763f8};
+        std::vector<uint32_t> own_ignored;
+        auto p73 = [&](const char* name, uint32_t addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
+            g_ignored_words = saved_ignored;
+            g_ignored_words.insert(g_ignored_words.end(), own_ignored.begin(), own_ignored.end());
+            l7check(name, addr, n, ret, gen, port);
+            g_ignored_words = loop_ignored;
+            own_ignored.clear();
+        };
+        const uint32_t P = 0x0013f350, CAM = L7_ADDR(0x00166e40), X = 0x01e00000;
+        const uint32_t T0 = L7_ADDR(0x0015ffd8), FRAME = L7_ADDR(0x0015f5cc);
+        std::vector<uint32_t> tri;
+        for (uint32_t k = 0; k < 0x30; k += 4) tri.push_back(OV(0x00173e90) + k);
+        for (uint32_t row = 0x20; row < 0x80; row += 0x10) tri.push_back(OV(0x00173e40) + row + 0xc);
+        auto rates = [] {
+            if (ri(0, 3) != 0) return;
+            wf(0x0015ed68, 1.2f);
+            wf(0x0015ed6c, 0.02f);
+            wf(0x0015ed70, 0.0004f);
+        };
+        auto finish = [rates, FRAME] {
+            rates();
+            w32(FRAME, R() & 0xffff);
+            seed_rand();
+        };
+        auto pick = [](const std::vector<uint32_t>& v) { return v[static_cast<size_t>(ri(0, static_cast<int>(v.size()) - 1))]; };
+        auto near = [](uint32_t dst, uint32_t at, float r, float dz) {
+            Vec4 q = ee_ref<Vec4>(at);
+            q.x += rf(-r, r); q.y += rf(-r, r); q.z += rf(-dz, dz);
+            ee_ref<Vec4>(dst) = q;
+        };
+        auto index_of = [T0](uint32_t o) { return u(static_cast<int32_t>(o - ee_read<uint32_t>(T0)) >> 8); };
+        auto moby_at = [T0](uint32_t i) { return ee_read<uint32_t>(T0) + (i << 8); };
+        auto any_moby = [] {
+            for (int k = 0; k < 50; ++k) {
+                const uint32_t lo = ee_read<uint32_t>(OV(0x0015ffd8)), hi = ee_read<uint32_t>(OV(0x0015ffe0));
+                const uint32_t m = lo + (u(ri(0, static_cast<int>((hi - lo) >> 8) - 1)) << 8);
+                if (ee_read<uint8_t>(m + 0x20) < 0xfe) return m;
+            }
+            return ee_read<uint32_t>(OV(0x0015ffd8));
+        };
+        auto hero_at = [P, near](uint32_t at, float r, float dz) {
+            near(P + 0x80, at, r, dz);
+            const uint32_t hm = ee_read<uint32_t>(0x001413d0);
+            if (hm != 0) { ee_ref<Vec4>(hm + 0x10) = ee_ref<Vec4>(P + 0x80); moby_update_transform(hm); }
+        };
+        auto mine_hit = [P](uint32_t m, uint32_t pv, const uint16_t* ign_cls) {
+            if (ri(0, 3) != 0) { w8(m + 0xa4, 0xff); return; }
+            const uint32_t idx = u(ri(0, 15)), e = OV(0x00178100) + (idx << 6);
+            w8(m + 0xa4, idx);
+            w32(e + 0x34, m);
+            w32(e + 0x24, coin() ? 0x00230001u : 0x00000001u);
+            wfrand(e, 4, -1, 1);
+            w8(e + 0x28, 0); w8(e + 0x29, 0); w16(e + 0x2a, 0x47u);
+            wf(e + 0x1c, 0.0f);
+            wf(e + 0x2c, coin() ? rf(1.0f, 10.0f) : 0.0f);
+            w8(pv + 0x28, 0);
+            wf(pv + 0x20, rf(0.1f, 2.0f));
+            const int sk = ri(0, 4);
+            if (sk == 0) {
+                w32(e + 0x20, ee_read<uint32_t>(P + 0x2080));
+            } else if (sk <= 3) {
+                const uint32_t dummy = X + 0x300;
+                w16(dummy + 0xa6, ign_cls[sk - 1]);
+                w32(e + 0x20, dummy);
+            } else {
+                w32(e + 0x20, 0);
+            }
+        };
+
+        level();
+        const std::vector<uint32_t> mines1110 = mobys_with(0x00319040);
+        const std::vector<uint32_t> mines1112 = mobys_with(0x003196e0);
+        const std::vector<uint32_t> pillars1113 = mobys_with(0x00319f48);
+        const std::vector<uint32_t> turrets1126 = mobys_with(0x0031a250);
+        const std::vector<uint32_t> gates1128 = mobys_with(0x0031a9e8);
+        const std::vector<uint32_t> bridges1133 = mobys_with(0x0031b3f0);
+        const std::vector<uint32_t> ammo1142 = mobys_with(0x0031d2e0);
+        const std::vector<uint32_t> smoke1552 = mobys_with(0x0031eba8);
+        const std::vector<uint32_t> plants1686 = mobys_with(0x0031f780);
+        const std::vector<uint32_t> exhaust1789 = mobys_with(0x0031f900);
+        const std::vector<uint32_t> bosses = mobys_with(0x00314150);
+
+        // class 1110 (hovering proximity mine), helper 0x319698, and class 1112 (parent-tethered homing mine)
+        std::vector<uint32_t> bolt_dir_lanes;  // (bolts_drop 0x260a88 leaves an unset stack word in bolt pvars +0x2c: batch 65)
+        for (uint32_t a = ee_read<uint32_t>(OV(0x0015ffe0)); a < ee_read<uint32_t>(OV(0x0015ffe0)) + 0x20000; a += 0x80)
+            bolt_dir_lanes.push_back(a + 0x2c);
+
+        if (!mines1110.empty()) {
+            own_ignored = effect_lanes;
+            own_ignored.insert(own_ignored.end(), bolt_dir_lanes.begin(), bolt_dir_lanes.end());
+            own_ignored.insert(own_ignored.end(), tri.begin(), tri.end());
+            p73("p73_class1110", 0x00319040, 260, Ret::None, [&] {
+                level();
+                if (ri(0, 30) == 0) { finish(); return Args{{0u}, {}}; }
+                const uint32_t m = pick(mines1110), pv = ee_read<uint32_t>(m + 0x78);
+                const int st = ri(0, 8) == 0 ? ri(4, 6) : ri(0, 3);
+                if (st != 0) { w8(m + 0x20, 0); umb_class1110_update_l7(m); }
+                w8(m + 0x20, u(st));
+                w8(m + 0x31, coin() ? 1u : 0u);
+                near(CAM, m + 0x10, coin() ? 15.0f : 60.0f, 3.0f);
+                const int hk = ri(0, 3);
+                if (hk == 0) hero_at(m + 0x10, 0.5f, 0.3f);
+                else if (hk == 1) hero_at(m + 0x10, 5.5f, 1.0f);
+                else if (hk == 2) hero_at(m + 0x10, 14.0f, 2.0f);
+                else wf(P + 0x80, ee_read<float>(m + 0x10) + 120.0f);
+                if (st == 1 && coin()) {
+                    const uint32_t lk = pick(mines1110);
+                    w32(pv + 0x38, lk);
+                    if (coin()) near(lk + 0x10, m + 0x10, 12.0f, coin() ? 1.5f : 5.0f);
+                } else {
+                    w32(pv + 0x38, 0);
+                }
+                w32(pv + 0x74, coin() ? 0xffffffffu : 0u);
+                if (st == 2 || st == 3) {
+                    w8(m + 0x70, coin() ? 2u : 0u);
+                    w8(m + 0x52, coin() ? 1u : 2u);
+                    w8(m + 0x53, coin() ? 1u : 2u);
+                    wf(pv + 0x70, rf(0.0f, 0.15f));
+                    w8(m + 0xbc, u(ri(0, 2)));
+                    w32(pv + 0x7c, coin() ? 1u : u(ri(2, 7)));
+                    w32(pv + 0x78, ri(0, 4) == 0 ? 1u : u(ri(2, 400)));
+                    if (ri(0, 8) == 0) {
+                        Vec4 far_home = ee_ref<Vec4>(m + 0x10);
+                        far_home.x += 70.0f;
+                        ee_ref<Vec4>(pv + 0x60) = far_home;
+                    }
+                }
+                static const uint16_t ign1110[] = {0x456, 0x365, 0x367};
+                mine_hit(m, pv, ign1110);
+                finish();
+                return Args{{m}, {}};
+            }, [](A a) { umb_class1110_update_l7(a.i[0]); return uint64_t{0}; });
+        }
+
+        if (!mines1112.empty()) {
+            p73("p73_f319698", 0x00319698, 60, Ret::None, [&] {
+                level();
+                const uint32_t m = pick(mines1112);
+                const uint32_t ppv = coin() ? 0u : X + 0x500;
+                if (ppv != 0) w32(ppv + 0x84, u(ri(0, 240)));
+                finish();
+                return Args{{m, ppv}, {}};
+            }, [](A a) { umb_319698_l7(a.i[0], a.i[1]); return uint64_t{0}; });
+
+            own_ignored = effect_lanes;
+            own_ignored.insert(own_ignored.end(), bolt_dir_lanes.begin(), bolt_dir_lanes.end());
+            own_ignored.insert(own_ignored.end(), tri.begin(), tri.end());
+            p73("p73_class1112", 0x003196e0, 320, Ret::None, [&] {
+                level();
+                if (ri(0, 30) == 0) { finish(); return Args{{0u}, {}}; }
+                const uint32_t m = pick(mines1112), pv = ee_read<uint32_t>(m + 0x78);
+                if (ri(0, 25) == 0) { w32(pv + 0xa0, 0); finish(); return Args{{m}, {}}; }
+                const uint32_t parent = X + 0x400, ppv = X + 0x500;
+                for (uint32_t o = 0; o < 0x100; o += 4) { w32(parent + o, 0); w32(ppv + o, 0); }
+                near(parent + 0x10, m + 0x10, coin() ? 4.0f : 1.0f, 0.5f);
+                w32(parent + 0x78, ppv);
+                wf(ppv + 0x7c, rf(2.0f, 8.0f));
+                w32(ppv + 0x84, u(ri(10, 180)));
+                wf(ppv + 0x88, coin() ? 180.0f : rf(15.0f, 75.0f));
+                wf(ppv + 0x8c, rf(8.0f, 25.0f));
+                w32(pv + 0xa0, parent);
+
+                const int st = ri(0, 9) == 0 ? ri(3, 5) : ri(0, 2);
+                if (st != 0) {
+                    ee_ref<Vec4>(pv + 0x80) = ee_ref<Vec4>(m + 0x10);
+                    wf(pv + 0x80, ee_read<float>(pv + 0x80) + rf(-0.5f, 0.5f));
+                    w8(m + 0x20, 0);
+                    umb_class1112_update_l7(m);
+                }
+                w8(m + 0x20, u(st));
+                w8(m + 0x31, coin() ? 1u : 0u);
+                near(CAM, m + 0x10, coin() ? 15.0f : 60.0f, 3.0f);
+
+                const int hk = ri(0, 3);
+                if (hk == 0) hero_at(m + 0x10, 0.5f, 0.3f);
+                else if (hk == 1) hero_at(m + 0x10, 6.0f, 1.0f);
+                else if (hk == 2) hero_at(m + 0x10, 16.0f, 2.0f);
+                else wf(P + 0x80, ee_read<float>(m + 0x10) + 120.0f);
+
+                if (st == 1) {
+                    wf(m + 0x48, rf(-3.1f, 3.1f));
+                    wf(pv + 0xa4, rf(-0.1f, 0.1f));
+                    if (ri(0, 3) == 0) {
+                        const uint32_t lk = pick(mines1112);
+                        w32(pv + 0x38, lk);
+                        if (coin()) near(lk + 0x10, pv + 0x80, 10.0f, coin() ? 1.5f : 5.0f);
+                    } else {
+                        w32(pv + 0x38, 0);
+                    }
+                } else {
+                    w32(pv + 0x38, 0);
+                }
+                if (st == 2) {
+                    w8(m + 0x70, coin() ? 2u : 0u);
+                    w8(m + 0x52, coin() ? 1u : 2u);
+                    w8(m + 0x53, coin() ? 1u : 2u);
+                    w8(m + 0xbc, u(ri(0, 2)));
+                    w32(pv + 0xac, coin() ? 1u : u(ri(2, 7)));
+                    w32(pv + 0x98, ri(0, 4) == 0 ? 0u : u(ri(1, 300)));
+                    ee_ref<Vec4>(pv + 0x60) = Vec4{rf(-0.15f, 0.15f), rf(-0.15f, 0.15f), rf(-0.05f, 0.05f), 0.0f};
+                    if (ri(0, 8) == 0) {
+                        Vec4 far_home = ee_ref<Vec4>(m + 0x10);
+                        far_home.x += 70.0f;
+                        ee_ref<Vec4>(pv + 0x70) = far_home;
+                    }
+                } else if (st == 3) {
+                    ee_ref<Vec4>(pv + 0x60) = Vec4{rf(-0.2f, 0.2f), rf(-0.2f, 0.2f), 0.0f, 0.0f};
+                }
+                static const uint16_t ign1112[] = {0x363, 0x458, 0x367};
+                mine_hit(m, pv, ign1112);
+                finish();
+                return Args{{m}, {}};
+            }, [](A a) { umb_class1112_update_l7(a.i[0]); return uint64_t{0}; });
+        }
+
+        // class 1113 (Snagglebeast arena pillars)
+        if (!pillars1113.empty()) {
+            own_ignored = effect_lanes;
+            p73("p73_class1113", 0x00319f48, 120, Ret::None, [&] {
+                level();
+                const uint32_t m = pick(pillars1113), pv = ee_read<uint32_t>(m + 0x78);
+                if (ri(0, 4) == 0) { w8(m + 0xa4, 0xff); finish(); return Args{{m}, {}}; }
+                const uint32_t idx = u(ri(0, 15)), e = OV(0x00178100) + (idx << 6);
+                w8(m + 0xa4, idx);
+                w32(e + 0x34, m);
+                w32(e + 0x24, ri(0, 5) == 0 ? 0x10000u : 0x30000u);
+                ee_ref<Vec4>(e + 0x10) = ee_ref<Vec4>(m + 0x10);
+                const int mode = ri(0, 5);
+                const uint32_t by = mode == 0 ? 0u : (!bosses.empty() && coin() ? bosses[0] : X + 0x300);
+                if (by == X + 0x300) {
+                    for (uint32_t o = 0; o < 0x100; o += 4) w32(by + o, 0);
+                }
+                if (by != 0) {
+                    if (mode == 1) { w16(by + 0xa6, 0x415); w8(by + 0x20, coin() ? 8u : 7u); }
+                    else if (mode == 2) { w16(by + 0xa6, 0x452); w8(by + 0x20, 9u); }
+                    else if (mode == 3) { w16(by + 0xa6, 0x452); w8(by + 0x20, coin() ? 9u : 5u); }
+                    else { w16(by + 0xa6, 0x363); w8(by + 0x20, 8u); }
+                }
+                w32(e + 0x20, by);
+                wf(e + 0x2c, ri(0, 4) == 0 ? 1.0f : u2f(0x3f800408u));
+                if (ri(0, 5) == 0) w32(pv + 0x0, 0);
+                else w32(pv + 0x0, u(ri(1, 6)));
+                finish();
+                return Args{{m}, {}};
+            }, [](A a) { umb_class1113_update_l7(a.i[0]); return uint64_t{0}; });
+        }
+
+        // helper 0x30b538 (class 880 bolt spawn) and class 1126 (sweeping pop-up turret)
+        p73("p73_f30b538", 0x0030b538, 80, Ret::Int32, [&] {
+            level();
+            near(X, P + 0x80, 15.0f, 3.0f);
+            ee_ref<Vec4>(X + 0x10) = Vec4{rf(-1.0f, 1.0f), rf(-1.0f, 1.0f), rf(-0.5f, 0.5f), 0.0f};
+            finish();
+            return Args{{X, X + 0x10, coin() ? any_moby() : 0u, coin() ? 1u : 0u}, {}};
+        }, [](A a) { return r32(umb_30b538_l7(a.i[0], a.i[1], a.i[2], a.i[3])); });
+
+        if (!turrets1126.empty()) {
+            p73("p73_class1126", 0x0031a250, 320, Ret::None, [&] {
+                level();
+                if (ri(0, 30) == 0) { finish(); return Args{{0u}, {}}; }
+                const uint32_t m = pick(turrets1126), pv = ee_read<uint32_t>(m + 0x78);
+                const int st = ri(0, 10) == 0 ? ri(5, 7) : ri(0, 4);
+                if (st != 0) { w8(m + 0x20, 0); umb_class1126_update_l7(m); }
+                if (st == 0) {
+                    if (ri(0, 3) == 0) w32(pv + 0x70, 0xffffffffu);
+                    if (ri(0, 3) == 0) w32(pv + 0x74, 0xffffffffu);
+                    else if (coin()) w32(pv + 0x74, index_of(any_moby()));
+                }
+                w8(m + 0x20, u(st));
+                w8(m + 0x31, coin() ? 1u : 0u);
+                w8(m + 0x70, coin() ? 2u : 0u);
+                w8(m + 0x52, u(ri(1, 4)));
+                w8(m + 0x53, u(ri(1, 4)));
+                const float hd = ri(0, 4) == 0 ? rf(10.0f, 34.0f) : (ri(0, 3) == 0 ? rf(36.0f, 54.0f) : (coin() ? rf(56.0f, 79.0f) : rf(81.0f, 150.0f)));
+                { Vec4 hp = ee_ref<Vec4>(m + 0x10); hp.x += hd; ee_ref<Vec4>(P + 0x80) = hp; }
+                if (st == 1) {
+                    w16(pv + 0x7e, coin() ? 1u : 0u);
+                    const float span = ee_read<float>(pv + 0x8c);
+                    wf(pv + 0x88, ri(0, 3) == 0 ? (ee_read<int16_t>(pv + 0x7e) != 0 ? 0.001f : span - 0.001f) : rf(0.0f, span));
+                    w16(pv + 0x7c, ri(0, 2) == 0 ? 1u : u(ri(2, 10)));
+                    w8(m + 0xbc, coin() ? 1u : 0u);
+                    w32(pv + 0x98, coin() ? 0u : u(ri(1, 8)));
+                    w16(pv + 0x9c, ri(0, 2) == 0 ? 1u : u(ri(2, 6)));
+                } else if (st == 2) {
+                    w16(pv + 0x7c, coin() ? 1u : u(ri(2, 20)));
+                } else if (st == 3) {
+                    const float hz = ee_read<float>(pv + 0x90);
+                    wf(m + 0x18, coin() ? hz - rf(0.0f, 0.65f) : hz - rf(0.7f, 1.0f));
+                    wf(m + 0x48, coin() ? ee_read<float>(pv + 0x80) + 0.01f : rf(-3.1f, 3.1f));
+                    w16(pv + 0x7c, coin() ? 1u : u(ri(2, 20)));
+                } else if (st == 4) {
+                    const float hz = ee_read<float>(pv + 0x90);
+                    wf(m + 0x18, coin() ? hz + rf(0.0f, 0.05f) : hz - rf(0.2f, 0.7f));
+                }
+                static const uint16_t no_ign[] = {0, 0, 0};
+                mine_hit(m, pv, no_ign);
+                finish();
+                return Args{{m}, {}};
+            }, [](A a) { umb_class1126_update_l7(a.i[0]); return uint64_t{0}; });
+        }
+
+        // class 1128 (sliding gate / bridge)
+        if (!gates1128.empty()) {
+            p73("p73_class1128", 0x0031a9e8, 260, Ret::None, [&] {
+                level();
+                const uint32_t m = pick(gates1128), pv = ee_read<uint32_t>(m + 0x78);
+                const int st = ri(0, 9) == 0 ? ri(5, 7) : ri(0, 4);
+                if (st != 0) { w8(m + 0x20, 0); umb_class1128_update_l7(m); }
+                w8(m + 0x20, u(st));
+                w8(m + 0xb0, ri(0, 3) == 0 ? 0xffu : u(ri(0, 15)));
+                const uint32_t b0 = ee_read<uint8_t>(m + 0xb0);
+                if (b0 != 0xff) w8(0x0014c050 + (ee_read<uint32_t>(0x0015ed84) << 4) + b0, ri(0, 3) == 0 ? 0xffu : 0u);
+                w8(L7_ADDR(0x0015fc88) + b0, ri(0, 3) == 0 ? 0xffu : 0u);
+                w32(pv + 0x3c, coin() ? 1u : 0u);
+                if (ri(0, 3) == 0) w32(pv + 0x10, 0xffffffffu);
+                else if (coin()) w32(pv + 0x10, index_of(any_moby()));
+                w32(pv + 0x14, u(ri(0, 4)));
+                w32(pv + 0x18, u(ri(0, 4)));
+                if (ee_read<int32_t>(pv + 0x10) != -1) {
+                    const uint32_t d = moby_at(ee_read<uint32_t>(pv + 0x10));
+                    const int dk = ri(0, 4);
+                    w8(d + 0x20, dk == 0 ? (ee_read<uint32_t>(pv + 0x14) & 0xffu) : dk == 1 ? (ee_read<uint32_t>(pv + 0x18) & 0xffu)
+                                 : dk == 2 ? (coin() ? 0xfeu : 0xfdu) : u(ri(0, 6)));
+                }
+                if (ri(0, 3) == 0) w32(pv + 0x30, 0xffffffffu); else w32(pv + 0x30, 0u);
+                if (ri(0, 3) == 0) w32(pv + 0x34, 0xffffffffu); else w32(pv + 0x34, 0u);
+                if (ri(0, 3) == 0) w32(pv + 0x38, 0xffffffffu); else w32(pv + 0x38, u(ri(0, 3)));
+                if (st == 2) wf(pv + 0xc, coin() ? rf(0.001f, 0.02f) : rf(0.2f, 5.0f));
+                if (st == 4) {
+                    const Vec4 off{ee_read<float>(pv + 0x1c), ee_read<float>(pv + 0x20), ee_read<float>(pv + 0x24), 0.0f};
+                    const float tot = std::sqrt(off.x * off.x + off.y * off.y + off.z * off.z);
+                    wf(pv + 0xc, coin() ? tot - rf(0.001f, 0.02f) : rf(0.0f, tot * 0.8f));
+                }
+                finish();
+                return Args{{m}, {}};
+            }, [](A a) { umb_class1128_update_l7(a.i[0]); return uint64_t{0}; });
+        }
+
+        // class 1133 (hinged bridge)
+        if (!bridges1133.empty()) {
+            p73("p73_class1133", 0x0031b3f0, 180, Ret::None, [&] {
+                level();
+                const uint32_t m = pick(bridges1133), pv = ee_read<uint32_t>(m + 0x78);
+                static const int sts[] = {0, 1, 2, 3, 4, 5, 6, 1, 3, 3, 4, 4};
+                const int st = sts[ri(0, 11)];
+                if (st != 0) { w8(m + 0x20, 0); umb_class1133_update_l7(m); }
+                w8(m + 0x20, u(st));
+                if (st != 3 && ri(0, 3) == 0) w32(pv + 0x0, 0xffffffffu);
+                else if (ee_read<int32_t>(pv + 0x0) < 0 || coin()) w32(pv + 0x0, index_of(any_moby()));
+                w32(pv + 0x4, u(ri(0, 4)));
+                w32(pv + 0x8, u(ri(0, 4)));
+                if (ee_read<int32_t>(pv + 0x0) != -1) {
+                    const uint32_t d = moby_at(ee_read<uint32_t>(pv + 0x0));
+                    const int dk = ri(0, 4);
+                    w8(d + 0x20, dk == 0 ? (ee_read<uint32_t>(pv + 0x4) & 0xffu) : dk == 1 ? (ee_read<uint32_t>(pv + 0x8) & 0xffu)
+                                 : dk == 2 ? (coin() ? 0xfeu : 0xfdu) : u(ri(0, 6)));
+                }
+                if (st == 3 || st == 4) {
+                    wf(m + 0x44, coin() ? rf(-1.2f, -0.05f) : rf(0.2f, 1.0f));
+                    wf(pv + 0x18, rf(-0.1f, 0.1f));
+                }
+                finish();
+                return Args{{m}, {}};
+            }, [](A a) { umb_class1133_update_l7(a.i[0]); return uint64_t{0}; });
+        }
+
+        // class 1142 (arena ammo resupply spawner)
+        if (!ammo1142.empty()) {
+            p73("p73_class1142", 0x0031d2e0, 160, Ret::None, [&] {
+                level();
+                const uint32_t m = pick(ammo1142), pv = ee_read<uint32_t>(m + 0x78);
+                const int st = ri(0, 5) == 0 ? 0 : (ri(0, 6) == 0 ? 2 : 1);
+                if (st == 0) {
+                    w8(m + 0x20, 0);
+                    if (ri(0, 4) == 0) w32(pv + 0x0, 0xffffffffu);
+                    if (ri(0, 4) == 0) w32(pv + 0x4, 0xffffffffu);
+                    finish();
+                    return Args{{m}, {}};
+                }
+                w8(m + 0x20, 0);
+                umb_class1142_update_l7(m);
+                w8(m + 0x20, u(st));
+                const int32_t box = ee_read<int32_t>(pv + 0x0);
+                if (box >= 0 && ri(0, 4) != 0) {
+                    Vec4 c = ee_ref<Vec4>(lvd::box(lvd::BOXES, box) + 0x30);
+                    c.x += rf(-0.2f, 0.2f); c.y += rf(-0.2f, 0.2f);
+                    ee_ref<Vec4>(P + 0x80) = c;
+                } else {
+                    wf(P + 0x80, ee_read<float>(P + 0x80) + 400.0f);
+                }
+                w32(pv + 0x18, coin() ? 1u : 0u);
+                if (ri(0, 3) == 0) w32(pv + 0x24, 0xffffffffu);
+                else if (!bosses.empty() && ee_read<int32_t>(pv + 0x4) >= 0) {
+                    w32(pv + 0x24, index_of(bosses[0]));
+                    const uint32_t path = lvd::path(ee_read<int32_t>(pv + 0x4));
+                    if (ee_read<int32_t>(path) > 0 && coin()) near(bosses[0] + 0x10, path + 0x10, 4.0f, 0.5f);
+                }
+                for (int32_t k = 0; k < 16; ++k) {
+                    const int32_t it = ee_read<int32_t>(L7_ADDR(0x00161ca0) + u(k << 2));
+                    if (it == -1) break;
+                    const uint32_t max_a = ee_read<uint16_t>(L7_ADDR(0x001c4130) + u(it) * 0x18u + 0xe);
+                    const int ak = ri(0, 3);
+                    w32(0x0013d428 + u(it << 2), ak == 0 ? 0u : ak == 1 ? u(ri(1, std::max(1, static_cast<int>(max_a / 4)))) : max_a);
+                }
+                finish();
+                return Args{{m}, {}};
+            }, [](A a) { umb_class1142_update_l7(a.i[0]); return uint64_t{0}; });
+        }
+
+        // class 1552 (cutscene ship / prop smoke emitter)
+        if (!smoke1552.empty() && !bosses.empty()) {
+            p73("p73_class1552", 0x0031eba8, 120, Ret::None, [&] {
+                level();
+                const uint32_t m = pick(smoke1552);
+                const int st = ri(0, 6) == 0 ? 0 : (ri(0, 8) == 0 ? 2 : 1);
+                w8(m + 0x20, u(st));
+                w32(L7_ADDR(0x0015f5c4), ri(0, 5) == 0 ? 0u : 2u);
+                const uint32_t cs = L7_ADDR(0x0016c8e0);
+                static const uint32_t shots[] = {0, 1, 2, 3, 4, 5};
+                w32(L7_ADDR(0x0016c910), shots[ri(0, 5)]);
+                for (uint32_t s = 0; s < 8; ++s) {
+                    const uint32_t sm = X + 0x600 + s * 0x100;
+                    std::memcpy(ee_ram_ptr(sm), ee_ram_ptr(bosses[0]), 0x100);
+                    wf(sm + 0x10, ee_read<float>(sm + 0x10) + static_cast<float>(s) * 12.0f);
+                    w32(cs + (s << 2) + 0x178, sm);
+                }
+                w32(cs + 0x30, ri(0, 4) == 0 ? 1u : 2u);
+                rates();
+                const int fk = ri(0, 3);
+                w32(cs + 0x34, fk == 0 ? u(frame_scale_i(0xa8a)) : fk == 1 ? u(frame_scale_i(0xace)) : u(ri(0, 500)));
+                w32(FRAME, R() & 0xffff);
+                seed_rand();
+                return Args{{m}, {}};
+            }, [](A a) { umb_class1552_update_l7(a.i[0]); return uint64_t{0}; });
+        }
+
+        // class 1686 (breakable plant prop)
+        if (!plants1686.empty()) {
+            own_ignored = effect_lanes;
+            p73("p73_class1686", 0x0031f780, 120, Ret::None, [&] {
+                level();
+                const uint32_t m = pick(plants1686);
+                static const int sts[] = {0, 1, 1, 2, 2, 3};
+                w8(m + 0x20, u(sts[ri(0, 5)]));
+                if (ri(0, 3) == 0) {
+                    w8(m + 0xa4, 0xff);
+                } else {
+                    const uint32_t idx = u(ri(0, 15)), e = OV(0x00178100) + (idx << 6);
+                    w8(m + 0xa4, idx);
+                    w32(e + 0x34, m);
+                    w32(e + 0x24, coin() ? 0x10000u : 0x20000u);
+                    wf(e + 0x2c, coin() ? rf(0.5f, 5.0f) : 0.0f);
+                }
+                finish();
+                return Args{{m}, {}};
+            }, [](A a) { umb_class1686_update_l7(a.i[0]); return uint64_t{0}; });
+        }
+
+        // class 1789 (cutscene exhaust smoke controller)
+        if (!exhaust1789.empty() && !bosses.empty()) {
+            p73("p73_class1789", 0x0031f900, 120, Ret::None, [&] {
+                level();
+                const uint32_t m = pick(exhaust1789);
+                const int st = ri(0, 6) == 0 ? 0 : (ri(0, 8) == 0 ? 2 : 1);
+                w8(m + 0x20, u(st));
+                w32(L7_ADDR(0x0015f5c4), ri(0, 5) == 0 ? 0u : 2u);
+                const uint32_t cs = L7_ADDR(0x0016c8e0);
+                static const uint32_t shots[] = {0, 1, 2, 3, 1, 2};
+                w32(L7_ADDR(0x0016c910), shots[ri(0, 5)]);
+                for (uint32_t s = 3; s <= 4; ++s) {
+                    const uint32_t sm = X + 0x600 + s * 0x100;
+                    std::memcpy(ee_ram_ptr(sm), ee_ram_ptr(bosses[0]), 0x100);
+                    wf(sm + 0x10, ee_read<float>(sm + 0x10) + static_cast<float>(s) * 12.0f);
+                    w32(cs + (s << 2) + 0x178, sm);
+                }
+                finish();
+                return Args{{m}, {}};
+            }, [](A a) { umb_class1789_update_l7(a.i[0]); return uint64_t{0}; });
+        }
+
         g_extra_noop_hooks.clear();
     }
 
