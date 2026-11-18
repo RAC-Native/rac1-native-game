@@ -3,13 +3,10 @@
  "tool": "mkall.py",
  "env": {
   "MKALL_HELPER_PREFIX": "umb_",
-  "MKALL_FORCE": "29c4e8,29e6d8,30b538,30dbb0,30e370,311eb8,3120d8,312150,3122b0,313350,313420,313920,313988,313af0,313d30,313de8,313f60,314058,317c98,317cb0,317e60,318e30,318e98,319698",
+  "MKALL_FORCE": "30b538,319698",
   "MKALL_UNIFORM": "umb_cutscene_level_extras_u"
  },
  "entries": [
-  "3112c8:umb_class1069_update_l7:void:a0",
-  "311bc8:umb_class1080_update_l7:void:a0",
-  "314150:umb_class1106_update_l7:void:a0",
   "319040:umb_class1110_update_l7:void:a0",
   "3196e0:umb_class1112_update_l7:void:a0",
   "319f48:umb_class1113_update_l7:void:a0",
@@ -24,7 +21,6 @@
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/umbris_classes_tr_3.cpp",
   "src/game/ovl/umbris_classes_tr_4.cpp",
   "src/game/ovl/umbris_classes_tr_5.cpp"
  ]

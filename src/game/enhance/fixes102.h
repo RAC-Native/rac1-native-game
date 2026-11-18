@@ -51,6 +51,9 @@
 // - 32: Blarg's Snagglebeast (class 1051, L6:0x2f9a28): once the countdown of its fight's start runs, the fight starts
 //   even if Ratchet has meanwhile stepped onto a pump (+0xb4 2) or its target changed; the North American build tests them
 //   each frame of the countdown, and holds the start (blarg_snagglebeast.cpp)
+// - 33: Umbris's Blargian Snagglebeast (class 1106, L7:0x314150, and its walk step L7:0x313af0): the walk's flags tested as
+//   bits — its walk ends once bit 4 (goal reached) is set even while another walk flag is set, and bit 2 pulls it back onto
+//   its path even with other flags set; the North American build tests `== 4` and `== 2` (umbris_snagglebeast.cpp)
 //
 // 1.02 Gameplay (main menu > Options > Advanced > 1.02 Gameplay, off by default, global; docs/advanced.md "1.02 Gameplay"):
 // the 1.02 build's fixes that change how the game plays (the exploits stay possible with the row off), numbered as the
@@ -139,6 +142,11 @@ bool fixes102_blarg_far_debris(int32_t link);
 // order applies (the pump and target tests only before the countdown starts: L6:0x2fb0b8 on the PAL disc 2.00); false with
 // the fix off, but on the PAL disc 2.00 (region_core_moved()), whose own code it is
 bool fixes102_snagglebeast_start();
+
+// orig: (none) — enhancement: fix 33: Umbris's Snagglebeast's walk (L7:0x314150 at 0x315a94 and L7:0x313af0 at 0x313b70):
+// true when the 1.02 build's bit tests apply (`(flags & 4) != 0` and `(flags & 2) != 0`: L7:0x316e6c / 0x314f50 on the PAL
+// 2.00 disc); false with the fix off, except on the PAL 2.00 disc (region_core_moved()), whose own code it is
+bool fixes102_umbris_snagglebeast_walk();
 
 // orig: (none) — enhancement: fix 14 (1.02 Gameplay): the decoy `m` in its state of 0x2c4c08 pushed (an event 0x10000 of
 // strength 1000 from Ratchet's place) when Ratchet swims (state 0x31) within 1.5 of it; nothing with the fix off

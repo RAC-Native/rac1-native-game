@@ -6,6 +6,7 @@
 
 #include "ovl_oracle.h"
 
+#include <game/enhance/advanced.h>
 #include <game/ovl/carry_hooks_levels.h>
 #include <game/lib/libcdvd.h>
 #include <game/ovl/enemy_749.h>
@@ -31,6 +32,7 @@
 #include <game/ovl/shared_gold_bolt.h>
 #include <game/ovl/shared_movers.h>
 #include <game/ovl/shared_particle_kinds.h>
+#include <game/ovl/shared_path_links.h>
 #include <game/ovl/shared_rock.h>
 #include <game/ovl/shared_seas.h>
 #include <game/ovl/shared_swingshot_target.h>
@@ -58,7 +60,8 @@ bool c2b_spr_check(const char* name) {
                                          "p71b_f30eee8", "p71b_f30f0f8", "p71b_f30f308", "p71b_f30f4d0", "class1134",
                                          "class1135", "class436", "class737", "class805", "class871", "p71_class1041",
                                          "p71_class436", "p71_class871", "p71_class880", "p71b_class1059_setup",
-                                         "p71b_f30ebc8", "p71b_f30ed30"};
+                                         "p71b_f30ebc8", "p71b_f30ed30", "p72_class1106", "p72_f313af0",
+                                         "p72_class1106_fix33", "p72_f313af0_fix33"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -1327,6 +1330,792 @@ void batch_119() {
                     return Args{{m, u(ri(0, 6)), u(ri(3, 8))}, {}};
                 }, [](A a) { return r32(umb_30f540_l7(a.i[0], static_cast<int32_t>(a.i[1]), static_cast<int32_t>(a.i[2])) ? 1u : 0u); });
             }
+        }
+        g_extra_noop_hooks.clear();
+    }
+
+    // ---- P7.2: the hand ports of Umbris's own code, part 2 (umbris_lava_platforms.cpp ...): each update on states made for its
+    // branches, each helper called directly. Only the batch's base list is ignored, plus the words a check names for itself.
+    if (g_oracle_level == 7) {
+        const std::vector<uint32_t> loop_ignored = g_ignored_words;
+        g_extra_noop_hooks = {0x00122298, 0x001232c8, 0x00122fe0, 0x00118a80, 0x002763f8};
+        std::vector<uint32_t> own_ignored;  // (a check's own words: set before it, cleared after)
+        auto p72 = [&](const char* name, uint32_t addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
+            g_ignored_words = saved_ignored;
+            g_ignored_words.insert(g_ignored_words.end(), own_ignored.begin(), own_ignored.end());
+            l7check(name, addr, n, ret, gen, port);
+            g_ignored_words = loop_ignored;
+            own_ignored.clear();
+        };
+        const uint32_t P = 0x0013f350, T0 = L7_ADDR(0x0015ffd8), FRAME = L7_ADDR(0x0015f5cc);
+        auto rates = [] {  // the frame rate: 60 Hz (the snapshot's), or 50 Hz one case in four
+            if (ri(0, 3) != 0) return;
+            wf(0x0015ed68, 1.2f);
+            wf(0x0015ed6c, 0.02f);
+            wf(0x0015ed70, 0.0004f);
+        };
+        auto finish = [rates, FRAME] {
+            rates();
+            w32(FRAME, R() & 0xffff);
+            seed_rand();
+        };
+        auto pick = [](const std::vector<uint32_t>& v) { return v[static_cast<size_t>(ri(0, static_cast<int>(v.size()) - 1))]; };
+        auto near = [](uint32_t dst, uint32_t at, float r, float dz) {
+            Vec4 q = ee_ref<Vec4>(at);
+            q.x += rf(-r, r); q.y += rf(-r, r); q.z += rf(-dz, dz);
+            ee_ref<Vec4>(dst) = q;
+        };
+        auto index_of = [T0](uint32_t o) { return u(static_cast<int32_t>(o - ee_read<uint32_t>(T0)) >> 8); };
+        // the hero standing on `m` (on the ground or in the air), on another moby, or on none; his moby moved with him
+        auto hero_on = [P](uint32_t m) {
+            const int k = ri(0, 2);
+            w32(P + 0x2fc, k == 0 ? m : (k == 1 ? R() : 0u));
+            w16(P + 0x30e, ri(0, 3) == 0 ? 1u : 0u);
+            if (ri(0, 5) == 0) w32(P + 0x208c, 3);
+        };
+        auto hero_at = [P, near](uint32_t at, float r, float dz) {
+            near(P + 0x80, at, r, dz);
+            const uint32_t hm = ee_read<uint32_t>(0x001413d0);
+            if (hm != 0) { ee_ref<Vec4>(hm + 0x10) = ee_ref<Vec4>(P + 0x80); moby_update_transform(hm); }
+        };
+        level();
+        const std::vector<uint32_t> bosses = mobys_with(0x00314150);
+        if (std::getenv("B119_INFO") != nullptr) {
+            for (uint32_t fn : {0x003112c8u, 0x00311bc8u, 0x00314150u}) {
+                for (uint32_t m : mobys_with(fn)) {
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    std::printf("INFO p72 %08x moby %08x idx %u uid %d at %.1f %.1f %.1f st %u bc %u b0 %u pv a0 %d bc %u bd %u be %u bf %u b8 %.2f\n", fn, m, index_of(m),
+                                ee_read<int16_t>(m + 0xa6), ee_read<float>(m + 0x10), ee_read<float>(m + 0x14), ee_read<float>(m + 0x18), ee_read<uint8_t>(m + 0x20),
+                                ee_read<uint8_t>(m + 0xbc), ee_read<uint8_t>(m + 0xb0), ee_read<int32_t>(pv + 0xa0), ee_read<uint8_t>(pv + 0xbc), ee_read<uint8_t>(pv + 0xbd),
+                                ee_read<uint8_t>(pv + 0xbe), ee_read<uint8_t>(pv + 0xbf), ee_read<float>(pv + 0xb8));
+                }
+            }
+        }
+
+        // class 1069 (the floating platform): every state, its requests, the Snagglebeast it reports to in and out of its attacks,
+        // its saved flag, the lava's height about it, the hero on it
+        {
+            const std::vector<uint32_t> plats = mobys_with(0x003112c8);
+            if (plats.empty()) std::printf("p72_class1069              no moby on this level\n");
+            else
+                p72("p72_class1069", 0x003112c8, 400, Ret::None, [&] {
+                    level();
+                    const uint32_t m = pick(plats), pv = ee_read<uint32_t>(m + 0x78);
+                    const int st = ri(0, 7) == 0 ? ri(6, 9) : ri(0, 5);
+                    w8(m + 0x20, u(st));
+                    { const int k = ri(0, 5); w8(m + 0xbc, k < 3 ? u(k) : (k == 3 ? 2u : u(ri(3, 6)))); }
+                    // the Snagglebeast (or none), in or out of its attacks
+                    if (!bosses.empty() && ri(0, 3) != 0) w32(pv + 0xa0, index_of(pick(bosses)));
+                    else if (ri(0, 2) == 0) w32(pv + 0xa0, 0xffffffffu);
+                    if (ee_read<int32_t>(pv + 0xa0) != -1) {
+                        const uint32_t b = ee_read<uint32_t>(T0) + (ee_read<uint32_t>(pv + 0xa0) << 8);
+                        w8(b + 0x20, coin() ? u(ri(0, 11)) : u(ri(12, 16)));
+                        w8(ee_read<uint32_t>(b + 0x78) + 0xef, u(ri(0, 3)));
+                    }
+                    w8(pv + 0xbc, coin() ? 1u : 0u);
+                    w8(pv + 0xbd, u(ri(0, 40)));
+                    w8(pv + 0xbe, coin() ? u(ri(1, 3)) : 0u);
+                    w8(pv + 0xbf, R() & 0xff);
+                    { const int k = ri(0, 3); w32(pv + 0xac, k == 0 ? 0u : (k == 1 ? 1u : u(ri(2, 200)))); }
+                    // its saved flag (state 0)
+                    if (coin()) {
+                        const uint32_t idx = u(ri(0, 15));
+                        w8(m + 0xb0, idx);
+                        w8(0x0014c050 + ee_read<uint32_t>(0x0015ed84) * 16 + idx, coin() ? 0xffu : u(ri(0, 3)));
+                    } else if (coin()) w8(m + 0xb0, 0xff);
+                    // the lava's height about the platform: sinking out, at the surface, the hold's 2.6 below it
+                    const float z = ee_read<float>(m + 0x18);
+                    const int hk = ri(0, 4);
+                    wf(pv + 0xb8, hk == 0 ? z + rf(14.0f, 16.0f) : (hk == 1 ? z + rf(-0.5f, 0.5f) : (hk == 2 ? z + rf(2.3f, 2.9f) : z + rf(-20.0f, 20.0f))));
+                    wf(pv + 0xb0, coin() ? 0.0f : rf(-1.5f, 1.5f));
+                    wf(pv + 0xb4, rf(0, 30));
+                    { const int k = ri(0, 3); w32(pv + 0xc8, k == 0 ? 0u : (k == 1 ? 1u : (k == 2 ? 0xffffffffu : u(ri(2, 40))))); }
+                    { const float s = ee_read<float>(pv + 0xb8); wf(pv + 0xcc, coin() ? s + rf(-1, 1) : rf(-50, 50)); }
+                    wf(pv + 0xc0, rf(-3.1f, 3.1f));
+                    wf(pv + 0xc4, rf(-3.1f, 3.1f));
+                    if (coin()) { wf(m + 0x40, rf(-0.8f, 0.8f)); wf(m + 0x44, rf(-0.8f, 0.8f)); }
+                    hero_on(m);
+                    hero_at(m + 0x10, coin() ? 2.0f : 10.0f, 2.0f);
+                    finish();
+                    return Args{{m}, {}};
+                }, [](A a) { umb_class1069_update_l7(a.i[0]); return uint64_t{0}; });
+        }
+
+        // class 1080 (the stepping stone): every state, the hero on it or not, its countdown at its edges, its sound, the lava below
+        {
+            const std::vector<uint32_t> stones = mobys_with(0x00311bc8);
+            if (stones.empty()) std::printf("p72_class1080              no moby on this level\n");
+            else
+                p72("p72_class1080", 0x00311bc8, 300, Ret::None, [&] {
+                    level();
+                    const uint32_t m = pick(stones), pv = ee_read<uint32_t>(m + 0x78);
+                    w8(m + 0x20, ri(0, 6) == 0 ? u(ri(4, 8)) : u(ri(0, 3)));
+                    { const int k = ri(0, 3); w16(pv + 0xa0, k == 0 ? 0u : (k == 1 ? 1u : u(ri(2, 40)))); }
+                    w16(pv + 0xa2, coin() ? 0xffffu : u(ri(0, 4)));
+                    wf(pv + 0xa4, rf(0, 0.5f));
+                    if (coin()) wf(m + 0x18, rf(1.0f, 4.0f));
+                    if (coin()) wf(m + 0x40, rf(-0.5f, 1.5f));
+                    hero_on(m);
+                    hero_at(m + 0x10, 2.0f, 2.0f);
+                    finish();
+                    return Args{{m}, {}};
+                }, [](A a) { umb_class1080_update_l7(a.i[0]); return uint64_t{0}; });
+        }
+
+        // class 1106 (the Blargian Snagglebeast) and its 22 helpers (umbris_snagglebeast.cpp), plus 1.02 Fixes fix 33
+        if (!bosses.empty()) {
+            const uint32_t X = 0x01e00000;
+            std::vector<uint32_t> pillars, plats1069;
+            for (uint32_t o = ee_read<uint32_t>(T0); o < ee_read<uint32_t>(OV(0x0015ffe0)); o += 0x100) {
+                if (ee_read<uint8_t>(o + 0x20) >= 0xfe) continue;
+                const int16_t uid = ee_read<int16_t>(o + 0xa6);
+                if (uid >= 1113 && uid < 1117) pillars.push_back(o);
+                if (uid == 1069) plats1069.push_back(o);
+            }
+            std::vector<uint32_t> tri;
+            for (uint32_t k = 0; k < 0x30; k += 4) tri.push_back(OV(0x00173e90) + k);
+
+            auto set_anim_at = [](uint32_t m, uint32_t set, float now) {
+                const uint32_t sp = ee_read<uint32_t>(ee_read<uint32_t>(m + 0x24) + set * 4 + 0x48);
+                const int cnt = static_cast<int>(ee_read<uint8_t>(sp + 0x10));
+                w8(m + 0x52, set);
+                w8(m + 0x53, set);
+                w8(m + 0x7c, ee_read<uint8_t>(sp + 0x11));
+                const float target = now + 0.05f;
+                int best_f = 0;
+                float best_t0 = 0.0f, best_t1 = 1.0f;
+                for (int f = 0; f < cnt; ++f) {
+                    w8(m + 0x50, u(f));
+                    w8(m + 0x51, u(f + 1 < cnt ? f + 1 : f));
+                    sub_0024ebc0(m);
+                    const float t0 = static_cast<float>(ee_read<int16_t>(ee_read<uint32_t>(m + 0x68) + 4)) * 0.0625f;
+                    const float t1 = static_cast<float>(ee_read<int16_t>(ee_read<uint32_t>(m + 0x6c) + 4)) * 0.0625f;
+                    if (t0 <= target) { best_f = f; best_t0 = t0; best_t1 = t1; }
+                }
+                w8(m + 0x50, u(best_f));
+                w8(m + 0x51, u(best_f + 1 < cnt ? best_f + 1 : best_f));
+                sub_0024ebc0(m);
+                const float frac = best_t1 > best_t0 ? (target - best_t0) / (best_t1 - best_t0) : 0.0f;
+                wf(m + 0x54, frac < 0.0f ? 0.0f : (frac > 0.99f ? 0.99f : frac));
+                wf(m + 0x58, 1.0f);
+                wf(m + 0x5c, 1.0f);
+            };
+            auto sound_on = [](uint32_t m, uint32_t at) {
+                const int k = ri(0, 3);
+                if (k == 0) { w32(at, 0xffffffffu); return; }
+                const uint32_t s = u(ri(0, 15)), e = 0x0013e550 + s * 0x70;
+                w32(at, s);
+                w32(e + 0x88, k == 3 ? R() : m);
+                w8(e + 0x74, k == 2 ? 0u : 1u);
+            };
+            auto boss_hit = [P](uint32_t m, uint32_t pv) {
+                if (ri(0, 3) == 0) { w8(m + 0xa4, 0xff); return; }
+                const uint32_t idx = u(ri(0, 15)), e = OV(0x00178100) + (idx << 6);
+                w8(m + 0xa4, idx);
+                w32(e + 0x34, m);
+                w32(e + 0x24, ri(0, 5) == 0 ? (1u << ri(0, 7)) : (0x00330000u | (1u << ri(16, 21))));
+                wfrand(e, 4, -1, 1);
+                wfrand(e + 0x10, 3, -1, 1);
+                w8(e + 0x28, u(ri(0, 5)));
+                w8(e + 0x29, u(ri(0, 3)));
+                static const uint16_t wcls[] = {0xba, 0x79, 0x131, 0x47, 0x50};
+                w16(e + 0x2a, wcls[ri(0, 4)]);
+                wf(e + 0x1c, 0.0f);
+                const int sk = ri(0, 5);
+                uint32_t src = ee_read<uint32_t>(P + 0x2080);
+                if (sk == 0) src = 0;
+                else if (sk == 1) src = moby_spawn(0x416);
+                else if (sk == 2) src = moby_spawn(0x419);
+                w32(e + 0x20, src);
+                wf(e + 0x2c, ri(0, 6) == 0 ? 0.0f : rf(0.2f, 4.0f));
+                w8(pv + 0x28, u(ri(0, 2)));
+                w16(pv + 0x26, 0);
+            };
+            auto boss_init = [&] {
+                level();
+                const uint32_t m = pick(bosses);
+                w32(L7_ADDR(0x0015f5c4), 0);
+                hero_at(m + 0x10, 4.0f, 0.5f);
+                w8(m + 0x20, 0);
+                umb_class1106_update_l7(m);
+                return m;
+            };
+
+            // full class 1106 update across states 0 .. 18, sub-phases 0 .. 9, state 9 sub-steps 0 .. 5, cutscene / big-head, hits,
+            // shield phases, suction vortex & pickup drops, platform sink sequence, death & lava rise
+            own_ignored = effect_lanes;
+            own_ignored.insert(own_ignored.end(), tri.begin(), tri.end());
+            p72("p72_class1106", 0x00314150, 900, Ret::None, [&] {
+                const int st = ri(0, 24) == 0 ? 18 : ri(0, 17);
+                uint32_t m;
+                if (st == 0) {
+                    level();
+                    m = pick(bosses);
+                    w8(m + 0x20, 0);
+                    const uint32_t pv0 = ee_read<uint32_t>(m + 0x78);
+                    if (ri(0, 5) == 0) w32(pv0 + 0x18c, 0xffffffffu);
+                    if (ri(0, 5) == 0) w32(pv0 + 0x290, 0xffffffffu);
+                    hero_at(m + 0x10, 8.0f, 1.0f);
+                    finish();
+                    return Args{{m}, {}};
+                }
+                m = boss_init();
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                w8(m + 0x20, u(st));
+                w8(m + 0xbc, u(ri(0, 9)));
+                w8(m + 0x31, coin() ? 1u : 0u);
+                if (coin()) near(L7_ADDR(0x00166e40), m + 0x10, coin() ? 15.0f : 60.0f, 5.0f);
+                if (ri(0, 35) == 0) {
+                    w32(L7_ADDR(0x0015f5c4), 2);
+                    w8(0x0015edb0, coin() ? 1u : 0u);
+                    w16(L7_ADDR(0x0016c924), 2);
+                    w32(L7_ADDR(0x0016c8e0) + 0x178, m);
+                    w32(L7_ADDR(0x0016c8e0) + 0x17c, ee_read<uint32_t>(0x001413d0));
+                    w8(L7_ADDR(0x0020c6c0) + 1, coin() ? 0u : 1u);
+                }
+                if (ri(0, 25) == 0) {
+                    wf(P + 0x80, ee_read<float>(m + 0x10) + 400.0f);
+                } else {
+                    hero_at(m + 0x10, coin() ? rf(2.0f, 9.0f) : rf(9.0f, 26.0f), 2.0f);
+                    if (ri(0, 6) == 0) w32(pv + 0x1a4, 0xffffffffu);
+                }
+                wf(m + 0x48, rf(-3.14f, 3.14f));
+                w8(m + 0x70, coin() ? 2u : 0u);
+                w8(pv + 0x1f7, ri(0, 2) == 0 ? 0u : (coin() ? 1u : 5u));
+                w16(pv + 0x194, ri(0, 2) == 0 ? 1u : (coin() ? 0u : 20u));
+                w16(pv + 0x198, ri(0, 2) == 0 ? 1u : (coin() ? 0u : 20u));
+                w16(pv + 0x19a, ri(0, 2) == 0 ? 1u : (coin() ? 0u : 30u));
+                w8(pv + 0x1c7, coin() ? 1u : 0u);
+                w8(pv + 0x1c5, u(ri(0, 2)));
+                wf(pv + 0x1c8, ri(0, 2) == 0 ? 0.0f : (coin() ? rf(0.001f, 0.02f) : rf(0.98f, 1.0f)));
+                w8(pv + 0x1c6, u(ri(0, 3) == 0 ? 0 : ri(10, 255)));
+                wf(pv + 0x1fc, rf(-2.0f, 0.1f));
+                sound_on(m, pv + 0x1f8);
+                {
+                    const float max_hp = static_cast<float>(ee_read<int16_t>(pv + 0x24));
+                    const float sixth = max_hp / 6.0f;
+                    const int hk = ri(0, 5);
+                    wf(pv + 0x20, hk == 0 ? rf(0.1f, 1.5f) : hk == 1 ? sixth * static_cast<float>(ri(1, 5)) + rf(-0.2f, 0.4f)
+                                 : hk == 2 ? sixth * (coin() ? 1.76f : 1.26f) : hk == 3 ? max_hp - rf(0.0f, 0.8f) : rf(0.0f, max_hp));
+                }
+                w32(0x001413d4, ri(0, 5) == 0 ? 0x78u : 0u);
+                if (!pillars.empty() && coin()) {
+                    const uint32_t pl = pick(pillars);
+                    w32(0x0013f64c, pl);
+                    wf(0x0013f628, ee_read<float>(m + 0x18) + (coin() ? rf(1.5f, 6.0f) : rf(-2.0f, 0.5f)));
+                } else {
+                    w32(0x0013f64c, coin() ? 0u : ee_read<uint32_t>(T0));
+                }
+                w32(pv + 0x1a8, coin() ? 0xffffffffu : u(ri(0, 3)));
+                w8(pv + 0x19c, u(ri(0, 7)));
+                w32(pv + 0x160, ri(0, 2) == 0 ? 1u : (coin() ? 0u : u(ri(2, 80))));
+                boss_hit(m, pv);
+
+                if (st == 2) {
+                    set_anim_at(m, coin() ? 9u : 0xdu, rf(1.0f, 20.0f));
+                    w32(pv + 0x164, coin() ? 20u : u(ri(0, 5)));
+                } else if (st == 3) {
+                    static const float marks[] = {31.0f, 67.0f, 101.0f, 51.0f, 15.0f};
+                    set_anim_at(m, 4, marks[ri(0, 4)]);
+                    w32(pv + 0x164, coin() ? 3u : u(ri(0, 2)));
+                } else if (st == 4) {
+                    set_anim_at(m, 5, rf(5.0f, 20.0f));
+                    w32(pv + 0x164, u(ri(0, 2)));
+                    w32(pv + 0x160, coin() ? u(ri(0, 25)) : u(ri(58, 75)));
+                } else if (st == 5 || st == 6) {
+                    static const float marks[] = {27.5f, 73.0f, 10.0f};
+                    set_anim_at(m, coin() ? 0xau : 0xcu, marks[ri(0, 2)]);
+                    w32(pv + 0x298, u(ri(0, 7)));
+                    near(pv + 0x140, m + 0x10, 8.0f, 0.5f);
+                    if (!plats1069.empty() && ri(0, 3) == 0) {
+                        const uint32_t pl = pick(plats1069);
+                        ee_ref<Vec4>(m + 0x10) = ee_ref<Vec4>(pl + 0x10);
+                        wf(m + 0x18, ee_read<float>(pl + 0x18) + 0.5f);
+                        w8(pl + 0xbc, 0);
+                        moby_update_transform(m);
+                        w32(FRAME, 3);
+                        rates();
+                        seed_rand();
+                        return Args{{m}, {}};
+                    }
+                } else if (st == 7) {
+                    static const uint32_t sets[] = {3, 0xe, 0xd, 1};
+                    static const float marks[] = {10.0f, 13.0f, 16.0f, 25.0f, 34.0f, 37.0f, 42.0f};
+                    set_anim_at(m, sets[ri(0, 3)], marks[ri(0, 6)]);
+                    w8(pv + 0x1f5, coin() ? 1u : 0u);
+                    w8(pv + 0x1f4, 1);
+                    w8(pv + 0x1f6, 1);
+                    near(pv + 0xc0, m + 0x10, 10.0f, 0.5f);
+                } else if (st == 8) {
+                    umb_317c98_l7();
+                    set_anim_at(m, 6, 10.0f);
+                    w32(pv + 0x294, coin() ? 1u : 0u);
+                    wf(pv + 0x16c, coin() ? 0.5f : 50.0f);
+                    const bool is_caught = coin();
+                    w8(pv + 0x1c4, is_caught ? 1u : 0u);
+                    if (is_caught) hero_at(m + 0x10, 4.0f, 0.5f);
+                    int n_items = 0;
+                    while (n_items < 12 && ee_read<int32_t>(L7_ADDR(0x0020c600) + u(n_items << 4)) != -1) ++n_items;
+                    w32(pv + 0x164, coin() ? 0u : u(ri(0, n_items)));
+                    w16(pv + 0x19e, coin() ? 0u : u(ri(1, 5)));
+                    wf(pv + 0x1ac, rf(0.0f, 40.0f));
+                    near(pv + 0x110, m + 0x10, 3.0f, 0.5f);
+                    near(pv + 0x120, m + 0x10, 3.0f, 2.0f);
+                    for (int k = 0; k < n_items; ++k) {
+                        const int32_t it = ee_read<int32_t>(L7_ADDR(0x0020c600) + u(k << 4));
+                        if (it >= 0 && it < 36) w32(0x0013d428 + u(it << 2), u(ri(0, 40)));
+                    }
+                    if (ri(0, 4) == 0) w32(pv + 0x18c, 0xffffffffu);
+                } else if (st == 9) {
+                    const uint32_t sub = u(ri(0, 6));
+                    w32(pv + 0x164, sub);
+                    set_anim_at(m, 7, sub == 1 ? (coin() ? 10.0f : 5.0f) : sub == 2 ? (coin() ? 32.0f : 15.0f) : 12.0f);
+                    near(pv + 0x150, m + 0x10, 12.0f, 3.0f);
+                    near(pv + 0x110, m + 0x10, 4.0f, 1.0f);
+                    near(pv + 0x120, m + 0x10, 10.0f, 1.0f);
+                    wf(pv + 0x16c, rf(0.0f, 25.0f));
+                } else if (st == 10) {
+                    w32(pv + 0x1b0, 0xffffffffu);
+                    if (ri(0, 3) == 0) w32(pv + 0x1cc, 0xffffffffu);
+                } else if (st == 12) {
+                    w8(pv + 0x19d, u(ri(0, 2)));
+                } else if (st == 13) {
+                    set_anim_at(m, 8, coin() ? 80.0f : (coin() ? 15.0f : 5.0f));
+                    if (coin()) w8(m + 0xbc, 8);
+                    wf(m + 0x18, ee_read<float>(pv + 0x1b8) + rf(-2.0f, 5.0f));
+                } else if (st == 14) {
+                    static const float marks[] = {100.0f, 168.0f, 168.5f, 175.0f};
+                    set_anim_at(m, 8, marks[ri(0, 3)]);
+                    w32(pv + 0x164, coin() ? 0u : u(ri(1, 3)));
+                    w8(pv + 0x19d, u(ri(0, 2)));
+                    if (ri(0, 4) == 0) w32(pv + 0x1f0, 0xffffffffu);
+                } else if (st == 15) {
+                    set_anim_at(m, coin() ? 0xau : 8u, coin() ? 200.0f : 150.0f);
+                    w8(pv + 0x19d, u(ri(0, 2)));
+                } else if (st == 16) {
+                    if (coin()) umb_311eb8_l7(m, pv, 1, m + 0x10, 10, 0x800060ffu, 0, 10.0f);
+                    if (ri(0, 4) == 0) w32(pv + 0x1d0, 0xffffffffu);
+                    else if (ee_read<int32_t>(pv + 0x1d0) >= 0) {
+                        const uint32_t lava = ee_read<uint32_t>(T0) + (ee_read<uint32_t>(pv + 0x1d0) << 8);
+                        wf(lava + 0x18, coin() ? rf(30.0f, 34.4f) : rf(34.5f, 36.0f));
+                    }
+                }
+                finish();
+                return Args{{m}, {}};
+            }, [](A a) { umb_class1106_update_l7(a.i[0]); return uint64_t{0}; });
+
+            // 1.02 Fixes, fix 33 (RAC1_FIXES102=33): both bit-test sites — 0x313af0's `(flags & 2) != 0` (hook at 0x313b70) and
+            // 0x314150's `(walk_flags & 4) != 0` (hook at 0x315a94) — against the ports with the fix on
+            if (const char* only = std::getenv("ORACLE_ONLY");
+                only == nullptr || std::strcmp(only, "p72_f313af0_fix33") == 0 || std::strcmp(only, "p72_class1106_fix33") == 0) {
+                if (std::getenv("RAC1_FIXES102") == nullptr) {
+                    if (only == nullptr || std::strcmp(only, "p72_f313af0_fix33") == 0) {
+                        std::printf("%-26s skipped (run with RAC1_FIXES102=33)\n", "p72_f313af0_fix33");
+                        ++g_skipped;
+                    }
+                    if (only == nullptr || std::strcmp(only, "p72_class1106_fix33") == 0) {
+                        std::printf("%-26s skipped (run with RAC1_FIXES102=33)\n", "p72_class1106_fix33");
+                        ++g_skipped;
+                    }
+                } else {
+                    static int forked_2 = 0, forked_4 = 0;
+                    forked_2 = 0;
+                    forked_4 = 0;
+                    g_extra_hooks = {
+                        {0x00313b70u, [](EeCpu& c) {
+                            const uint32_t flags = c.r32(21);
+                            if ((flags & 2u) != 0) {
+                                if (flags != 2u) ++forked_2;
+                                c.set32(2, static_cast<int32_t>(flags & 2u));
+                                c.set32(31, 0x00313b7cu);
+                            } else {
+                                c.set32(2, ee_read<int32_t>(L7_ADDR(0x0015f5cc)));
+                                c.set32(31, 0x00313c3cu);
+                            }
+                        }},
+                        {0x00315a94u, [](EeCpu& c) {
+                            const uint32_t s0 = c.r32(16);
+                            if ((s0 & 4u) != 0) {
+                                if (s0 != 4u) ++forked_4;
+                                c.set32(2, static_cast<int32_t>(s0 & 4u));
+                                c.set32(31, 0x00315ab4u);
+                            } else {
+                                c.set32(2, 0);
+                                c.set32(31, 0x00315aacu);
+                            }
+                        }},
+                    };
+                    // 0x313af0 fix 33: step_target within `pv + 0x9c` (bit 4) while blocked over the lava edge (bit 2, facing within 0.1)
+                    own_ignored = tri;
+                    p72("p72_f313af0_fix33", 0x00313af0, 120, Ret::Int32, [&] {
+                        const uint32_t m = boss_init(), pv = ee_read<uint32_t>(m + 0x78);
+                        // place near the lava edge so walker_record_step hits the drop-off (bit 2), with +0x9c wide enough for bit 4 too
+                        if (!plats1069.empty()) {
+                            const uint32_t pl = pick(plats1069);
+                            Vec4 edge = ee_ref<Vec4>(pl + 0x10);
+                            Vec4 to_c;
+                            vec3_sub(to_c, ee_ref<Vec4>(m + 0x10), edge);
+                            to_c.z = 0.0f;
+                            vec3_set_length(to_c, to_c, rf(2.0f, 5.0f));
+                            vec3_add(edge, edge, to_c);
+                            edge.z = ee_read<float>(m + 0x18);
+                            ee_ref<Vec4>(m + 0x10) = edge;
+                            moby_update_transform(m);
+                        }
+                        Vec4 goal = ee_ref<Vec4>(m + 0x10);
+                        const float yaw = rf(-3.1f, 3.1f);
+                        wf(m + 0x48, yaw + (coin() ? 0.0f : rf(2.0f, 3.0f)));
+                        goal.x += std::cos(yaw) * rf(8.0f, 20.0f);
+                        goal.y += std::sin(yaw) * rf(8.0f, 20.0f);
+                        ee_ref<Vec4>(X) = goal;
+                        Vec4 step = ee_ref<Vec4>(m + 0x10);
+                        step.x += std::cos(yaw) * rf(1.0f, 4.0f);
+                        step.y += std::sin(yaw) * rf(1.0f, 4.0f);
+                        ee_ref<Vec4>(X + 0x10) = step;
+                        wf(pv + 0x9c, coin() ? 10.0f : 1.5f);
+                        wf(pv + 0x94, rf(0.2f, 0.8f));
+                        w32(pv + 0xb8, 4);
+                        finish();
+                        return Args{{m, pv, X, X + 0x10}, {2.0f}};
+                    }, [](A a) {
+                        g_advanced_disabled = false;
+                        const uint32_t r = umb_313af0_l7(a.i[0], a.i[1], a.i[2], a.i[3], a.f[0]);
+                        g_advanced_disabled = true;
+                        return r32(r);
+                    });
+                    if (only == nullptr || std::strcmp(only, "p72_f313af0_fix33") == 0) {
+                        std::printf("%-26s %d runs took the 1.02 `(flags & 2)` fork (flags != 2)\n", "p72_f313af0_fix33", forked_2);
+                        if (forked_2 == 0) ++g_fail;
+                    }
+
+                    // 0x314150 fix 33: state 5/6 walking where `umb_313af0_l7` returns bit 4 alongside bit 0x10 / 2
+                    own_ignored = effect_lanes;
+                    own_ignored.insert(own_ignored.end(), tri.begin(), tri.end());
+                    p72("p72_class1106_fix33", 0x00314150, 120, Ret::None, [&] {
+                        const uint32_t m = boss_init(), pv = ee_read<uint32_t>(m + 0x78);
+                        const bool on_edge = !plats1069.empty() && coin();
+                        if (on_edge) {
+                            const uint32_t pl = pick(plats1069);
+                            Vec4 edge = ee_ref<Vec4>(pl + 0x10);
+                            Vec4 to_c;
+                            vec3_sub(to_c, ee_ref<Vec4>(m + 0x10), edge);
+                            to_c.z = 0.0f;
+                            vec3_set_length(to_c, to_c, rf(2.0f, 5.0f));
+                            vec3_add(edge, edge, to_c);
+                            edge.z = ee_read<float>(m + 0x18);
+                            ee_ref<Vec4>(m + 0x10) = edge;
+                            moby_update_transform(m);
+                        }
+                        w8(m + 0x20, coin() ? 5u : 6u);
+                        w8(m + 0xbc, 3);  // `to_waypoint = true`, `reach = 2.0`
+                        // pick the furthest waypoint of path `+0x188` so `dist_goal > reach` (2.0) and `doomlet_259028` runs
+                        const uint32_t path188 = lvd::path(ee_read<int32_t>(pv + 0x188));
+                        const int32_t nwp = ee_read<int32_t>(path188);
+                        int32_t best_wi = 0;
+                        float best_d = -1.0f;
+                        for (int32_t i = 0; i < nwp; ++i) {
+                            const float d = vec2_distance(ee_ref<Vec4>(m + 0x10), ee_ref<Vec4>(path188 + u(i << 4) + 0x10));
+                            if (d > best_d) { best_d = d; best_wi = i; }
+                        }
+                        w32(pv + 0x1a8, u(best_wi));
+                        w32(pv + 0x298, 1);  // keep `pv + 0x140` as our `step_target`
+                        const float yaw = rf(-2.2f, 2.2f);
+                        Vec4 stp = ee_ref<Vec4>(m + 0x10);
+                        stp.x += std::cos(yaw) * rf(1.0f, 3.5f);
+                        stp.y += std::sin(yaw) * rf(1.0f, 3.5f);
+                        ee_ref<Vec4>(pv + 0x140) = stp;
+                        if (on_edge) {
+                            wf(m + 0x48, yaw);
+                            wf(pv + 0x98, 1.74f);
+                        } else {
+                            // on solid floor: `angle_dist == 0.795 <= 0.8` enters `umb_313af0_l7`, then `pv + 0x84` turns past 0.8
+                            // (`walk_flags = 0x14`) while `walker_record_step` still moves (`moving == true`), so `reached` decides!
+                            wf(pv + 0x98, 0.8f);
+                            wf(m + 0x48, yaw + 0.795f);
+                            wf(pv + 0x84, 0.25f);
+                            wf(pv + 0xb4, 0.5f);
+                            wf(pv + 0x80, 0.5f);
+                        }
+                        wf(pv + 0x9c, coin() ? 8.0f : 1.5f);
+                        w32(pv + 0xb8, 4);
+                        hero_at(m + 0x10, 12.0f, 1.0f);
+                        finish();
+                        return Args{{m}, {}};
+                    }, [](A a) {
+                        g_advanced_disabled = false;
+                        umb_class1106_update_l7(a.i[0]);
+                        g_advanced_disabled = true;
+                        return uint64_t{0};
+                    });
+                    if (only == nullptr || std::strcmp(only, "p72_class1106_fix33") == 0) {
+                        std::printf("%-26s %d runs took the 1.02 `(s0 & 4)` fork (s0 != 4)\n", "p72_class1106_fix33", forked_4);
+                        if (forked_4 == 0) ++g_fail;
+                    }
+                    g_extra_hooks.clear();
+                }
+            }
+
+            // ---- direct checks on all 22 helpers of umbris_snagglebeast.cpp
+            p72("p72_f29c4e8", 0x0029c4e8, 60, Ret::None, [&] {
+                level();
+                near(X, P + 0x80, 5.0f, 2.0f);
+                ee_ref<Vec4>(X + 0x10) = Vec4{rf(-1, 1), rf(-1, 1), rf(-1, 1), 0.0f};
+                finish();
+                return Args{{X, X + 0x10}, {}};
+            }, [](A a) { umb_29c4e8_l7(a.i[0], a.i[1]); return uint64_t{0}; });
+
+            p72("p72_f30dbb0", 0x0030dbb0, 60, Ret::Int32, [&] {
+                const uint32_t m = boss_init();
+                near(X, m + 0x10, 10.0f, 1.0f);
+                if (coin()) near(L7_ADDR(0x00166e40), X, 40.0f, 5.0f);
+                finish();
+                return Args{{m, X, 0x3a}, {1.0f, 25.0f, 2.0f, rf(0.05f, 0.3f), 1.0f}};
+            }, [](A a) { return r32(umb_30dbb0_l7(a.i[0], a.i[1], a.i[2], a.f[0], a.f[1], a.f[2], a.f[3], a.f[4])); });
+
+            p72("p72_f311eb8", 0x00311eb8, 120, Ret::None, [&] {
+                const uint32_t m = boss_init(), pv = ee_read<uint32_t>(m + 0x78);
+                if (coin()) {
+                    w16(pv + 0x280, 0xffffu);
+                } else {
+                    umb_311eb8_l7(m, pv, 1, m + 0x10, 30, 0x800060ffu, 0, 10.0f);
+                    if (coin()) w16(pv + 0x284, u(ri(0, 35)));
+                }
+                near(X, m + 0x10, 5.0f, 1.0f);
+                const int16_t kind = ri(0, 3) == 0 ? -1 : static_cast<int16_t>(ri(0, 2));
+                const uint32_t at = coin() ? X : 0u;
+                const int16_t dur = ri(0, 4) == 0 ? -1 : (ri(0, 4) == 0 ? 0 : static_cast<int16_t>(ri(4, 40)));
+                const uint32_t c0 = ri(0, 3) == 0 ? 0xffffffffu : (0x80000000u | (R() & 0xffffffu));
+                const uint32_t c1 = ri(0, 3) == 0 ? 0xffffffffu : (R() & 0xffffffu);
+                const float sz = ri(0, 3) == 0 ? -1.0f : rf(4.0f, 20.0f);
+                finish();
+                return Args{{m, pv, static_cast<uint32_t>(kind), at, static_cast<uint32_t>(dur), c0, c1}, {sz}};
+            }, [](A a) {
+                umb_311eb8_l7(a.i[0], a.i[1], static_cast<int16_t>(a.i[2]), a.i[3], static_cast<int16_t>(a.i[4]), a.i[5], a.i[6], a.f[0]);
+                return uint64_t{0};
+            });
+
+            p72("p72_f3120d8", 0x003120d8, 60, Ret::None, [&] {
+                const uint32_t m = boss_init();
+                near(L7_ADDR(0x00166e40), m + 0x10, coin() ? 30.0f : 120.0f, 10.0f);
+                finish();
+                return Args{{m}, {}};
+            }, [](A a) { umb_3120d8_l7(a.i[0]); return uint64_t{0}; });
+
+            p72("p72_f312150", 0x00312150, 100, Ret::None, [&] {
+                const uint32_t m = boss_init(), pv = ee_read<uint32_t>(m + 0x78);
+                if (ri(0, 4) != 0) {
+                    umb_311eb8_l7(m, pv, 1, m + 0x10, 32, 0x802060ffu, 0x80102030u, 10.0f);
+                    const int k = ri(0, 3);
+                    w16(pv + 0x284, k == 0 ? 1u : (k == 1 ? u(ri(2, 27)) : u(ri(28, 32))));
+                } else {
+                    w16(pv + 0x280, 0xffffu);
+                    w16(pv + 0x284, coin() ? 1u : 0u);
+                }
+                finish();
+                return Args{{pv}, {}};
+            }, [](A a) { umb_312150_l7(a.i[0]); return uint64_t{0}; });
+
+            own_ignored = effect_lanes;
+            p72("p72_f30e370", 0x0030e370, 60, Ret::Int32, [&] {
+                const uint32_t m = boss_init();
+                near(X, m + 0x10, 6.0f, 2.0f);
+                ee_ref<Vec4>(X + 0x10) = Vec4{rf(-0.5f, 0.5f), rf(-0.5f, 0.5f), rf(-0.5f, 0.2f), 0.0f};
+                finish();
+                return Args{{X, X + 0x10, m}, {}};
+            }, [](A a) { return r32(umb_30e370_l7(a.i[0], a.i[1], a.i[2])); });
+
+            own_ignored = effect_lanes;
+            p72("p72_f3122b0", 0x003122b0, 80, Ret::Int32, [&] {
+                const uint32_t m = boss_init(), pv = ee_read<uint32_t>(m + 0x78);
+                w8(m + 0x20, coin() ? 2u : 5u);
+                w32(pv + 0x160, ri(0, 3) == 0 ? u(ri(0, 5)) : 1u);
+                w32(pv + 0x164, coin() ? 20u : u(ri(0, 19)));
+                near(X, m + 0x10, coin() ? 6.0f : 25.0f, rf(-3.0f, 3.0f));
+                finish();
+                return Args{{m, pv, X}, {}};
+            }, [](A a) { return r32(umb_3122b0_l7(a.i[0], a.i[1], a.i[2])); });
+
+            p72("p72_f313350", 0x00313350, 80, Ret::Int32, [&] {
+                const uint32_t m = boss_init(), pv = ee_read<uint32_t>(m + 0x78);
+                w8(pv + 0x19c, u(ri(0, 7)));
+                for (uint32_t k = 0; k < 6; ++k) {
+                    if (ri(0, 3) == 0) w32(pv + 0x170 + k * 4, 0xffffffffu);
+                    else w32(pv + 0x170 + k * 4, u(ri(0, 20)));
+                }
+                for (uint32_t k = 0; k < 8; ++k) w32(X + k * 4, 0xdeadbeefu);
+                finish();
+                return Args{{m, pv, X}, {}};
+            }, [](A a) { return r32(static_cast<uint32_t>(umb_313350_l7(a.i[0], a.i[1], a.i[2]))); });
+
+            p72("p72_f313420", 0x00313420, 200, Ret::None, [&] {
+                const uint32_t m = boss_init(), pv = ee_read<uint32_t>(m + 0x78);
+                w8(m + 0x20, ri(0, 8) == 0 ? 0xau : u(ri(1, 14)));
+                w8(pv + 0x1c5, ri(0, 3) == 0 ? u(ri(1, 2)) : 0u);
+                wf(pv + 0x1c8, ri(0, 4) == 0 ? rf(0.1f, 1.0f) : 0.0f);
+                w8(pv + 0x1c6, u(ri(0, 2) == 0 ? 0 : ri(15, 255)));
+                wf(pv + 0x1fc, rf(-2.0f, 0.0f));
+                w32(0x001413d4, coin() ? 0x78u : 0u);
+                sound_on(m, pv + 0x1f8);
+                if (ri(0, 4) == 0) w32(pv + 0x1f0, 0xffffffffu);
+                const float max_hp = static_cast<float>(ee_read<int16_t>(pv + 0x24));
+                const float sixth = max_hp / 6.0f;
+                const int hk = ri(0, 4);
+                wf(pv + 0x20, hk == 0 ? rf(0.2f, 1.2f) : hk == 1 ? sixth * static_cast<float>(ri(1, 5)) + 0.15f
+                             : hk == 2 ? sixth * (coin() ? 1.76f : 1.26f) : hk == 3 ? max_hp - 0.2f : rf(1.0f, max_hp));
+                boss_hit(m, pv);
+                finish();
+                return Args{{m, pv, pv + 0x20}, {}};
+            }, [](A a) { umb_313420_l7(a.i[0], a.i[1], a.i[2]); return uint64_t{0}; });
+
+            p72("p72_f313920", 0x00313920, 50, Ret::None, [&] {
+                level();
+                ee_ref<Vec4>(X) = Vec4{rf(-50, 50), rf(-50, 50), rf(-10, 50), 1.0f};
+                finish();
+                return Args{{X}, {rf(0.05f, 5.0f)}};
+            }, [](A a) { umb_313920_l7(a.i[0], a.f[0]); return uint64_t{0}; });
+
+            p72("p72_f313988", 0x00313988, 100, Ret::None, [&] {
+                const uint32_t m = boss_init(), pv = ee_read<uint32_t>(m + 0x78);
+                w8(pv + 0x19c, u(ri(0, 7)));
+                const int32_t wn = umb_313350_l7(m, pv, X + 0x100);
+                path_links_build(X + 0x100, wn, ee_read<uint32_t>(pv + 0x188));
+                near(X, m + 0x10, coin() ? 6.0f : 35.0f, 1.0f);
+                ee_ref<Vec4>(X + 0x20) = Vec4{0, 0, 0, 0};
+                finish();
+                return Args{{m, pv, X, X + 0x20}, {}};
+            }, [](A a) { umb_313988_l7(a.i[0], a.i[1], a.i[2], a.i[3]); return uint64_t{0}; });
+
+            own_ignored = tri;
+            p72("p72_f313af0", 0x00313af0, 120, Ret::Int32, [&] {
+                const uint32_t m = boss_init(), pv = ee_read<uint32_t>(m + 0x78);
+                if (!plats1069.empty() && ri(0, 3) == 0) {
+                    const uint32_t pl = pick(plats1069);
+                    ee_ref<Vec4>(m + 0x10) = ee_ref<Vec4>(pl + 0x10);
+                    wf(m + 0x18, ee_read<float>(pl + 0x18) + 0.5f);
+                    w8(pl + 0xbc, coin() ? 0u : 1u);
+                    moby_update_transform(m);
+                }
+                near(X, m + 0x10, coin() ? 1.5f : 18.0f, 0.5f);
+                near(X + 0x10, m + 0x10, coin() ? 2.0f : 10.0f, 0.5f);
+                wf(m + 0x48, rf(-3.1f, 3.1f));
+                hero_at(m + 0x10, 12.0f, 1.0f);
+                finish();
+                if (coin()) w32(FRAME, 3);
+                return Args{{m, pv, X, X + 0x10}, {coin() ? 2.0f : 6.0f}};
+            }, [](A a) { return r32(umb_313af0_l7(a.i[0], a.i[1], a.i[2], a.i[3], a.f[0])); });
+
+            p72("p72_f313d30", 0x00313d30, 80, Ret::Float, [&] {
+                const uint32_t m = boss_init(), pv = ee_read<uint32_t>(m + 0x78);
+                const float near_d = rf(1.0f, 8.0f);
+                const float dist = coin() ? near_d - rf(0.0f, 3.0f) : near_d + (coin() ? rf(0.1f, 45.0f) : rf(55.0f, 80.0f));
+                finish();
+                return Args{{m, pv}, {dist, near_d, rf(0.5f, 2.0f)}};
+            }, [](A a) { return rf32(umb_313d30_l7(a.i[0], a.i[1], a.f[0], a.f[1], a.f[2])); });
+
+            p72("p72_f313de8", 0x00313de8, 80, Ret::Int32, [&] {
+                const uint32_t m = boss_init(), pv = ee_read<uint32_t>(m + 0x78);
+                w8(m + 0x20, u(ri(2, 9)));
+                w8(m + 0x53, u(ri(0, 14)));
+                wf(m + 0x48, rf(-3.1f, 3.1f));
+                near(X, m + 0x10, 12.0f, 1.0f);
+                finish();
+                return Args{{m, pv, X, u(ri(5, 9)), coin() ? 1u : 0u}, {}};
+            }, [](A a) { return r32(static_cast<uint32_t>(umb_313de8_l7(a.i[0], a.i[1], a.i[2], a.i[3], a.i[4]))); });
+
+            p72("p72_f313f60", 0x00313f60, 80, Ret::None, [&] {
+                const uint32_t m = boss_init(), pv = ee_read<uint32_t>(m + 0x78);
+                w8(m + 0x20, coin() ? u(ri(1, 9)) : u(ri(10, 16)));
+                wf(m + 0x48, rf(-3.1f, 3.1f));
+                wf(pv + 0x1fc, rf(-2.0f, 0.0f));
+                near(X, m + 0x10, 15.0f, 2.0f);
+                finish();
+                return Args{{m, pv, X}, {}};
+            }, [](A a) { umb_313f60_l7(a.i[0], a.i[1], a.i[2]); return uint64_t{0}; });
+
+            p72("p72_f314058", 0x00314058, 60, Ret::None, [&] {
+                const uint32_t m = boss_init();
+                w32(L7_ADDR(0x0015f5c4), ri(0, 3) != 0 ? 2u : 0u);
+                w8(0x0015edb0, ri(0, 3) != 0 ? 1u : 0u);
+                const int cnt = ri(0, 3);
+                w16(L7_ADDR(0x0016c924), u(cnt));
+                for (int i = 0; i < cnt; ++i) {
+                    w32(L7_ADDR(0x0016c8e0) + 0x178 + u(i) * 4, coin() ? m : ee_read<uint32_t>(0x001413d0));
+                }
+                w8(L7_ADDR(0x0020c6c0) + 1, coin() ? 0u : 1u);
+                finish();
+                return Args{{m}, {}};
+            }, [](A a) { umb_314058_l7(a.i[0]); return uint64_t{0}; });
+
+            p72("p72_f317c98", 0x00317c98, 20, Ret::None, [&] {
+                level();
+                w32(L7_ADDR(0x00161b70), R());
+                w16(L7_ADDR(0x0020dbc8), R() & 0xffff);
+                w32(L7_ADDR(0x00161b6c), R());
+                finish();
+                return Args{};
+            }, [](A) { umb_317c98_l7(); return uint64_t{0}; });
+
+            p72("p72_f29e6d8", 0x0029e6d8, 120, Ret::Float, [&] {
+                level();
+                const Vec4 c{rf(-20, 20), rf(-20, 20), rf(-20, 20), 1.0f};
+                ee_ref<Vec4>(X + 0x10) = Vec4{c.x + rf(-5, 5), c.y + rf(-5, 5), c.z + rf(-5, 5), 1.0f};
+                ee_ref<Vec4>(X + 0x20) = c;
+                const int mode = ri(0, 3);
+                if (mode == 0) {  // chord through sphere (including symmetric tie-break)
+                    ee_ref<Vec4>(X + 0x30) = Vec4{c.x - 4.0f, c.y + (coin() ? 0.0f : rf(-1, 1)), c.z, 1.0f};
+                    ee_ref<Vec4>(X + 0x40) = Vec4{c.x + 4.0f, c.y + (coin() ? 0.0f : rf(-1, 1)), c.z, 1.0f};
+                } else {
+                    ee_ref<Vec4>(X + 0x30) = Vec4{c.x + rf(-10, 10), c.y + rf(-10, 10), c.z + rf(-5, 5), 1.0f};
+                    ee_ref<Vec4>(X + 0x40) = Vec4{c.x + rf(-10, 10) + 0.5f, c.y + rf(-10, 10), c.z + rf(-5, 5), 1.0f};
+                }
+                ee_ref<Vec4>(X) = Vec4{0, 0, 0, 0};
+                const float rad = mode == 0 ? rf(2.0f, 5.0f) : (coin() ? 0.0f : rf(0.5f, 3.0f));
+                finish();
+                return Args{{X, X + 0x10, X + 0x20, X + 0x30, X + 0x40}, {rad}};
+            }, [](A a) { return rf32(umb_29e6d8_l7(a.i[0], a.i[1], a.i[2], a.i[3], a.i[4], a.f[0])); });
+
+            p72("p72_f317cb0", 0x00317cb0, 60, Ret::None, [&] {
+                const uint32_t m = boss_init();
+                w32(L7_ADDR(0x00161b6c), ri(0, 4) == 0 ? 0u : 1u);
+                w32(L7_ADDR(0x00161b70), coin() ? 1u : 0u);
+                moby_chain_point_v(m, 4, ee_ref<Vec4>(X));
+                finish();
+                return Args{{m, X}, {}};
+            }, [](A a) { umb_317cb0_l7(a.i[0], a.i[1]); return uint64_t{0}; });
+
+            p72("p72_f317e60", 0x00317e60, 80, Ret::Float, [&] {
+                const uint32_t m = boss_init();
+                moby_chain_point_v(m, 4, ee_ref<Vec4>(X));
+                hero_at(m + 0x10, coin() ? 6.0f : 22.0f, coin() ? 0.5f : 5.0f);
+                umb_317c98_l7();
+                // step a few frames first in most cases so spine alphas >= 64 and particles spawn, move along segments and reach segment 0/1
+                const int pre = ri(0, 3) == 0 ? 0 : ri(18, 45);
+                for (int i = 0; i < pre; ++i) umb_317e60_l7(m, X);
+                if (coin()) w32(L7_ADDR(0x00161b80), u(frame_scale_i(0x3c) - 1));
+                finish();
+                return Args{{m, X}, {}};
+            }, [](A a) { return rf32(umb_317e60_l7(a.i[0], a.i[1])); });
+
+            p72("p72_f318e30", 0x00318e30, 60, Ret::None, [&] {
+                const uint32_t m = boss_init();
+                if (ri(0, 4) == 0) {
+                    w16(L7_ADDR(0x0020dbc8), coin() ? 0u : 0xfff0u);
+                } else {
+                    for (uint32_t i = 0; i < 10; ++i) w16(L7_ADDR(0x0020dbc8) + i * 2, u(ri(4, 120)));
+                }
+                finish();
+                return Args{{m}, {}};
+            }, [](A a) { umb_318e30_l7(a.i[0]); return uint64_t{0}; });
+
+            p72("p72_f318e98", 0x00318e98, 60, Ret::None, [&] {
+                const uint32_t m = boss_init();
+                moby_chain_point_v(m, 4, ee_ref<Vec4>(X));
+                umb_317c98_l7();
+                const int pre = ri(0, 3) == 0 ? 1 : ri(20, 35);
+                for (int i = 0; i < pre; ++i) umb_317e60_l7(m, X);
+                finish();
+                return Args{{m}, {}};
+            }, [](A a) { umb_318e98_l7(a.i[0]); return uint64_t{0}; });
         }
         g_extra_noop_hooks.clear();
     }
