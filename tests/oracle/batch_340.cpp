@@ -21,11 +21,13 @@
 #include <game/ovl/shared_particles.h>
 
 #include <game/ovl/empty_class_updates.h>
+#include <game/ovl/globals.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/particle_28_tr.h>
 #include <game/ovl/particle_44_tr.h>
 #include <game/ovl/particle_types_tr.h>
+#include <game/ovl/shared_classes_tr.h>
 #include <game/ovl/shared_particle_kinds.h>
 
 #include <algorithm>
@@ -236,8 +238,8 @@ void batch_340() {
                 wfrand(P + 0x10, 3, -0.5f, 0.5f);
                 wf(P + 0x1c, 0.0f);
                 const std::vector<uint32_t> before = b340_live();
-                const TrRet r = ovl_270758_tr(P, P + 0x10, u(ri(0, 8)) & 0xff, coin() ? 0u : u(ri(0, 0x88)), 0, 0, 0, 0, 0, 0, 0, 0);
-                if (r.v0 != 0 && std::find(before.begin(), before.end(), r.v0) == before.end()) q = r.v0;
+                const uint32_t spawned = particle_2a_spawn(P, P + 0x10, static_cast<uint8_t>(u(ri(0, 8)) & 0xff), coin() ? 0u : u(ri(0, 0x88)));
+                if (spawned != 0 && std::find(before.begin(), before.end(), spawned) == before.end()) q = spawned;
             }
             if (q == 0) {
                 q = alloc_particle(t.type);
@@ -301,7 +303,7 @@ void batch_340() {
         if (ri(0, 6) == 0) wf(0x0015ed60, rf(0.5f, 3.0f));
         seed_rand();
         return Args{{P, P + 0x10, u(ri(0, 8)), coin() ? 0u : R()}, {}};
-    }, [](A a) { return uint64_t{ovl_270758_tr(a.i[0], a.i[1], a.i[2], a.i[3], 0, 0, 0, 0, 0, 0, 0, 0).v0}; });
+    }, [](A a) { return uint64_t{particle_2a_spawn(a.i[0], a.i[1], static_cast<uint8_t>(a.i[2]), a.i[3])}; });
 
     // ---- P0.1: direct L0 checks of local_offset_coord (0x25c230), types 0x1f / 0x28 / 0x44, and 0x03's outer bands
     if (g_oracle_level == 0) {
@@ -479,6 +481,220 @@ void batch_340() {
             VV(q + 0x20) = Vec4{c.x + d, c.y + d, c.z + d, 1.0f};
             return Args{{q}, {}};
         }, [](A a) { if (a.i[0] != 0) particle_25_update(a.i[0]); return uint64_t{0}; });
+
+        // ---- P0.2: direct L0 checks of particle_alpha_dec (0x259430), class 167 (0x2b3c50 / 0x2b4198 / 0x2b3628),
+        // vendor_update_tr (0x2a57a8), and infobot (0x2d5988 / 0x2d6cd0 / 0x2d5de8)
+        constexpr uint32_t PV = P + 0x200u;
+        check("p02_particle_alpha_dec", 0x00259430, 80, Ret::Int32, [&] {
+            level();
+            const uint32_t a_byte = ri(0, 3) == 0 ? u(ri(0x80, 0xff)) : ri(0, 2) == 0 ? 0u : u(ri(1, 0x7f));
+            w32(OUT, (a_byte << 24) | (R() & 0x00ffffffu));
+            const int32_t step = ri(0, 3) == 0 ? ri(-4, 0) : ri(1, 48);
+            return Args{{OUT, u(step)}, {}};
+        }, [](A a) { return uint64_t{static_cast<uint32_t>(particle_alpha_dec(a.i[0], static_cast<int32_t>(a.i[1])))}; });
+
+        check("p02_class167_emit", 0x002b3c50, 80, Ret::None, [&] {
+            level();
+            std::memset(ee_ram_ptr(M), 0, 0x100);
+            std::memset(ee_ram_ptr(PV), 0, 0x80);
+            w32(M + 0x78, PV);
+            near(M + 0x10, 10.0f);
+            mat4_identity(MM(M + 0xc0));
+            w32(PV + 0xc, u(coin()));
+            near(PV + 0x10, 10.0f);
+            static const uint32_t hs[] = {0, 8, 0x81, 0xb};
+            w32(g::HERO_STATE, hs[ri(0, 3)]);
+            w32(OV(0x0015f5cc), u(ri(0, 5)));
+            if (ri(0, 2) == 0) {
+                wf(0x0015ed60, 1.2f);
+                wf(0x0015ed6c, 0.02f);
+                wf(0x0015ed70, 0.0004f);
+            }
+            seed_rand();
+            return Args{{M}, {}};
+        }, [](A a) { class167_emit_particles(a.i[0]); return uint64_t{0}; });
+
+        check("p02_class167_update", 0x002b4198, 120, Ret::None, [&] {
+            level();
+            const uint32_t m = moby_spawn(167);
+            if (m == 0) return Args{{0u}, {}};
+            std::memset(ee_ram_ptr(PV), 0, 0x80);
+            w32(m + 0x78, PV);
+            near(m + 0x10, 10.0f);
+            mat4_identity(MM(m + 0xc0));
+            w8(m + 0x20, u(ri(0, 5)));
+            w32(PV + 0, u(ri(0, 3) == 0 ? 1 : ri(2, 6)));
+            w32(PV + 0xc, u(coin()));
+            near(PV + 0x10, 10.0f);
+            for (uint32_t o = 0x20; o < 0x40; o += 4) wf(PV + o, rf(0.01f, 0.25f));
+            w32(0x001404f8, ri(0, 4) == 0 ? 0u : 3u);
+            static const uint32_t hs[] = {0xb, 0xc, 0xd, 0xe, 0x1c, 0x10, 0x22, 8, 0x81, 0};
+            w32(g::HERO_STATE, hs[ri(0, 9)]);
+            w16(g::PLAYER + 0x41e, u(coin()));
+            wf(g::PLAYER + 0xaa8, rf(2.0f, 20.0f));
+            w32(g::PLAYER + 0x198, u(ri(0, 60)));
+            w16(g::PLAYER + 0x30e, u(coin()));
+            const uint32_t hm = ee_read<uint32_t>(g::HERO_MOBY);
+            if (hm != 0) {
+                const uint8_t a_id = static_cast<uint8_t>(ri(0, 3));
+                w8(hm + 0x52, a_id);
+                w8(hm + 0x53, coin() ? a_id : static_cast<uint8_t>(a_id + 1));
+            }
+            w32(g::PLAYER + 0x11a8, ri(0, 3) == 0 ? 2u : 3u);
+            if (ri(0, 2) == 0) {
+                wf(0x0015ed60, 1.2f);
+                wf(0x0015ed6c, 0.02f);
+                wf(0x0015ed70, 0.0004f);
+            }
+            seed_rand();
+            return Args{{m}, {}};
+        }, [](A a) { if (a.i[0] != 0) class167_update_tr(a.i[0]); return uint64_t{0}; });
+
+        check("p02_class167_draw", 0x002b3628, 60, Ret::None, [&] {
+            level();
+            const uint32_t pbuf = TEST_AREA + 0x20000u;
+            const uint32_t pend = pbuf + 0x8000u;
+            std::memset(ee_ram_ptr(pbuf), 0, 0x8000);
+            w32(OV(0x001611c0), pbuf);
+            w32(OV(0x0015f5f8), pend);
+            w32(OV(0x0015f5e0), coin() ? 7u : 0u);
+            std::memset(ee_ram_ptr(M), 0, 0x100);
+            std::memset(ee_ram_ptr(PV), 0, 0x80);
+            w32(M + 0x78, PV);
+            const uint32_t hm = ee_read<uint32_t>(g::HERO_MOBY);
+            const uint32_t pack = TEST_AREA + 0x10000u;
+            if (hm != 0) {
+                std::memcpy(ee_ram_ptr(pack), ee_ram_ptr(hm), 0x100);
+                w16(pack + 0xa6, ri(0, 7) == 0 ? 0x100u : 0x260u);
+            }
+            w32(PV + 4, u(coin()));
+            w32(PV + 8, ri(0, 7) == 0 ? 0u : pack);
+            wf(PV + 0x20, rf(0.01f, 0.2f));
+            wf(PV + 0x2c, rf(0.01f, 0.2f));
+            if (coin()) {
+                for (uint32_t i = 0; i < 8; ++i) wf(OV(0x001da0b4) + i * 8, -6.99f);
+            }
+            seed_rand();
+            return Args{{M}, {}};
+        }, [](A a) { class167_draw_tr(a.i[0]); return uint64_t{0}; });
+
+        check("p02_vendor_update", 0x002a57a8, 120, Ret::None, [&] {
+            level();
+            const uint32_t m = moby_spawn(11);
+            if (m == 0) return Args{{0u}, {}};
+            std::memset(ee_ram_ptr(PV), 0, 0xa0);
+            w32(m + 0x78, PV);
+            const uint32_t st = u(ri(0, 3));
+            w8(m + 0x20, st);
+            const Vec4 hp = VV(g::PLAYER + 0x80);
+            const float dxy = ri(0, 3) == 0 ? rf(0.5f, 3.5f) : ri(0, 2) == 0 ? rf(5.0f, 15.5f) : rf(16.5f, 22.0f);
+            const float dz = ri(0, 3) == 0 ? rf(-1.5f, 1.5f) : ri(0, 2) == 0 ? rf(-7.5f, 7.5f) : rf(8.5f, 12.0f);
+            const float ang = rf(-3.14f, 3.14f);
+            VV(m + 0x10) = Vec4{hp.x + std::cos(ang) * dxy, hp.y + std::sin(ang) * dxy, hp.z + dz, 1.0f};
+            wf(g::PLAYER + 0x98, coin() ? std::atan2(std::sin(ang), std::cos(ang)) : rf(-3.14f, 3.14f));
+            if (st != 0) {
+                const uint32_t holo = moby_spawn(0x477);
+                w32(PV + 0xc, (st == 3 && ri(0, 3) == 0) ? 0u : holo);
+            }
+            wf(PV + 0x90, static_cast<float>(ri(0, 10)) * 0.1f);
+            wf(OV(0x001613a4), coin() ? 3.12f : rf(-3.1f, 3.1f));
+            w32(OV(0x0015f5cc), coin() ? 0u : u(ri(1, 7)));
+            w8(m + 0x52, u(coin()));
+            w8(m + 0x53, u(ri(0, 2)));
+            w32(g::HERO_SUBSTATE, u(ri(0, 2)));
+            static const uint32_t hst[] = {0, 3, 0x1d, 0x32};
+            w32(g::HERO_STATE, hst[ri(0, 3)]);
+            w8(g::PLAYER + 0x20a4, ri(0, 3) == 0 ? 1u : 0u);
+            w32(0x00151720, 0);
+            w32(0x001516d0 + 0x50, 0);
+            w32(0x001516d0 + 0x1c, 0);
+            w32(0x0013cae4, coin() ? 0x10u : 0u);
+            seed_rand();
+            return Args{{m}, {}};
+        }, [](A a) { if (a.i[0] != 0) vendor_update_tr(a.i[0]); return uint64_t{0}; });
+
+        check("p02_infobot_follow_path", 0x002d5988, 60, Ret::None, [&] {
+            level();
+            std::memset(ee_ram_ptr(M), 0, 0x100);
+            std::memset(ee_ram_ptr(PV), 0, 0xe0);
+            w32(M + 0x78, PV);
+            const uint32_t path = ee_read<uint32_t>(OV(0x001b04b0));
+            if (path == 0 || ee_read<int32_t>(path) < 3) return Args{{0u, 0u, 0u}, {}};
+            const int32_t npts = ee_read<int32_t>(path);
+            const int32_t pick = coin() ? npts - 1 : ri(0, npts - 1);
+            VV(M + 0x10) = VV(path + 0x10u + u(pick) * 0x10u);
+            wf(PV + 0x60, rf(0.0f, 0.5f));
+            if (ri(0, 2) == 0) {
+                wf(0x0015ed60, 1.2f);
+                wf(0x0015ed6c, 0.02f);
+                wf(0x0015ed70, 0.0004f);
+            }
+            return Args{{M, path, 3u}, {}};
+        }, [](A a) { if (a.i[0] != 0) infobot_follow_path(a.i[0], a.i[1], static_cast<uint8_t>(a.i[2])); return uint64_t{0}; });
+
+        check("p02_infobot_glow", 0x002d6cd0, 60, Ret::None, [&] {
+            level();
+            std::memset(ee_ram_ptr(M), 0, 0x100);
+            std::memset(ee_ram_ptr(PV), 0, 0xe0);
+            w32(M + 0x78, PV);
+            near(M + 0x10, 10.0f);
+            w16(M + 0x34, ri(0, 5) == 0 ? 1u : 0u);
+            for (uint32_t i = 0; i < 4; ++i) {
+                wf(PV + 0x10 + i * 4, ri(0, 3) == 0 ? 254.0f : ri(0, 2) == 0 ? 0.5f : rf(10.0f, 240.0f));
+                wf(PV + 0x20 + i * 4, rf(-3.0f, 3.0f));
+                w32(PV + 0x30 + i * 4, u(ri(0, 2) == 0 ? 1 : ri(2, 200)));
+                wf(PV + 0x40 + i * 4, rf(1000.0f, 20000.0f));
+            }
+            w32(OV(0x0015f5c4), ri(0, 4) == 0 ? 2u : 0u);
+            seed_rand();
+            return Args{{M}, {}};
+        }, [](A a) { infobot_glow_particles(a.i[0]); return uint64_t{0}; });
+
+        check("p02_infobot_update", 0x002d5de8, 160, Ret::None, [&] {
+            level();
+            const uint32_t m = moby_spawn(750);
+            if (m == 0) return Args{{0u}, {}};
+            std::memset(ee_ram_ptr(PV), 0, 0xe0);
+            w32(m + 0x78, PV);
+            const uint32_t st = u(ri(0, 11));
+            w8(m + 0x20, st);
+            near(m + 0x10, 12.0f);
+            w32(PV + 0, u(coin()));
+            w32(PV + 4, u(ri(0, 1) == 0 ? 0xc : 1));
+            w32(PV + 8, coin() ? 0u : 0xffffffffu);
+            w8(PV + 0xc, 0xff);
+            w8(PV + 0xd, 0xff);
+            w8(PV + 0xe, 0xff);
+            w32(PV + 0x50, (st == 5 || coin()) ? 0u : 0xffffffffu);
+            w32(PV + 0x54, 0xffffffffu);
+            w32(PV + 0x58, 0u);
+            wf(PV + 0x5c, rf(-3.14f, 3.14f));
+            wf(PV + 0x60, rf(0.0f, 0.5f));
+            w32(PV + 0x70, (st == 3 || st == 4 || coin()) ? 0u : 0xffffffffu);
+            for (uint32_t i = 1; i < 8; ++i) w32(PV + 0x70 + i * 4, 0xffffffffu);
+            w32(PV + 0xa8, 0);
+            wf(PV + 0xa4, rf(0.0f, 1.0f));
+            w32(PV + 0xb0, u(coin()));
+            for (uint32_t i = 0; i < 4; ++i) {
+                wf(PV + 0x10 + i * 4, rf(10.0f, 240.0f));
+                wf(PV + 0x20 + i * 4, rf(-2.0f, 2.0f));
+                w32(PV + 0x30 + i * 4, u(ri(1, 200)));
+                wf(PV + 0x40 + i * 4, rf(1000.0f, 15000.0f));
+            }
+            if (st == 2 || st == 3 || st == 7) {
+                if (coin()) VV(m + 0x10) = VV(g::PLAYER + 0x80);
+            }
+            w32(0x001415f8, u(coin()));
+            w32(OV(0x0015f5c4), (st == 11 || (st >= 9 && coin())) ? 2u : 0u);
+            w8(0x0013dd40 + ee_read<uint32_t>(PV + 4), ri(0, 5) == 0 ? 1u : 0u);
+            if (ri(0, 2) == 0) {
+                wf(0x0015ed60, 1.2f);
+                wf(0x0015ed6c, 0.02f);
+                wf(0x0015ed70, 0.0004f);
+            }
+            seed_rand();
+            return Args{{m}, {}};
+        }, [](A a) { if (a.i[0] != 0) infobot_update_tr(a.i[0]); return uint64_t{0}; });
     }
 
     g_ee_null_is_ram = null_ram;

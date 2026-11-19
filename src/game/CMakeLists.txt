@@ -100,6 +100,8 @@ add_library(rac1_game STATIC
     ovl/veldin_vendor_draw.cpp
     ovl/veldin_particle_fx.cpp
     ovl/veldin_particles_1.cpp
+    ovl/veldin_particles_2.cpp
+    ovl/veldin_shared_classes.cpp
     ovl/weapon_classes.cpp
     ovl/blarg_mobys.cpp
     ovl/blarg_hooks.cpp

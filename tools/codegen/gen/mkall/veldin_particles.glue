@@ -1,6 +1,0 @@
-0x00262360: path_point_even(a0.w(), a1.w(), a2.w(), a3.w(), fr[12], fr[13]);
-0x00263468: fr[0] = ground_height_at(V(a0.w()));
-0x002634f8: ground_puff_at(a0.w());
-0x00268f10: ground_puff_spawn(a0.w(), a1.w());
-0x002743a8: set32(v0, static_cast<uint32_t>(particle_43_spawn(a0.w(), a1.w(), static_cast<int32_t>(a2.w()), a3.w(), t0.w(), t1.w(), fr[12], fr[13])));
-0x002729c8: set32(v0, static_cast<uint32_t>(particle_3a_spawn(a0.w(), a1.w(), a2.w(), a3.w(), t0.w(), t1.w(), t2.w(), fr[12], fr[13])));

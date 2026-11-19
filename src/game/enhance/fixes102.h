@@ -61,6 +61,9 @@
 //   1.02 open sea (class 1111) above 180 (pokitaru_sewer.cpp)
 // - 36: Pokitaru's fighter jet (class 1242, flight step L11:0x312838): drops the square-button camera toggle (+0x60) and its
 //   second camera offset, keeping the chase camera (pokitaru_jet.cpp)
+// - 37: the Vendor's hologram moby (class 11, vendor_update_tr 0x2a57a8, state 0): only sets the hologram moby's byte
+//   +0x73 to 0x20 when its class's byte +6 is non-zero; the North American build writes 0x20 unconditionally
+//   (veldin_shared_classes.cpp)
 //
 // 1.02 Gameplay (main menu > Options > Advanced > 1.02 Gameplay, off by default, global; docs/advanced.md "1.02 Gameplay"):
 // the 1.02 build's fixes that change how the game plays (the exploits stay possible with the row off), numbered as the
@@ -170,6 +173,11 @@ bool fixes102_pokitaru_sewer_tint();
 // camera applies (L11:0x313d00 on the PAL 2.00 disc: no square-button toggle of pvar +0x60 or second camera offset); false
 // with the fix off, except on the PAL 2.00 disc (region_core_moved()), whose own code it is
 bool fixes102_pokitaru_jet_camera();
+
+// orig: (none) — enhancement: fix 37: the Vendor's hologram moby (vendor_update_tr 0x2a57a8, state 0): true when the 1.02
+// build's guard applies (L0:0x2a6b80 on the PAL 2.00 disc: only sets holo +0x73 to 0x20 when its class's byte +6 is
+// non-zero); false with the fix off, except on the PAL 2.00 disc (region_core_moved()), whose own code it is
+bool fixes102_vendor_holo_alpha();
 
 // orig: (none) — enhancement: fix 14 (1.02 Gameplay): the decoy `m` in its state of 0x2c4c08 pushed (an event 0x10000 of
 // strength 1000 from Ratchet's place) when Ratchet swims (state 0x31) within 1.5 of it; nothing with the fix off

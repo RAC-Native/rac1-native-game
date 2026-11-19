@@ -21,9 +21,6 @@ mkall:umbris_classes
 mkall:umbris_part2
 mkall:veldin_finale_classes
 mkall:veldin_orbit_classes
-mkall:veldin_particles
-mkall:veldin_particles4
-mkall:veldin_shared
 asm2cpp:moby_shadows_asm
 asm2cpp:moby_skin
 asm2cpp:world_cull
