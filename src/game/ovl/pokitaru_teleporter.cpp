@@ -12,6 +12,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/pokitaru_mobys.h>
+#include <game/ovl/quad_draw.h>
 #include <game/ovl/sound_emitter.h>
 #include <game/ovl/variants_l11.h>
 
@@ -192,6 +193,58 @@ void pok_class318_update_l11(uint32_t m) {
     default:
         break;
     }
+}
+
+// Teleporter glow ring draw-list callback: builds 32 vertical quads around the pad at radius pvar +0x3c,
+// adjusting the hero-visible flag (0x1413f5) as the ring contracts past 0.65.
+// orig: L11:0x002f2d58
+void pok_cb_2f2d58_l11(uint32_t m) {
+    const uint32_t pv = lwu(m + 0x78);
+    const uint32_t sp = ee_stack_alloc(0xd0);
+    const uint32_t mat = sp + 0x90;
+    mat3_copy_affine(M(mat), M(m + 0xc0));
+    lq_sq(mat + 0x30, m + 0x10);
+    sd(sp + 0x70, 0);
+    sd(sp + 0x78, effect_tex0(lw(L11_ADDR(0x00161930u))));
+    sd(sp + 0x80, (0xff90ULL << 32) | 0x260ULL);
+    const uint64_t alpha = static_cast<uint64_t>(lwu(L11_ADDR(0x00161920u))) |
+                           (static_cast<uint64_t>(lwu(L11_ADDR(0x00161924u))) << 2) |
+                           (static_cast<uint64_t>(lwu(L11_ADDR(0x00161928u))) << 4) |
+                           (static_cast<uint64_t>(lwu(L11_ADDR(0x0016192cu))) << 6) |
+                           (0x8000ULL << 24);
+    sd(sp + 0x88, alpha);
+    const uint32_t col = lwu(L11_ADDR(0x00161934u));
+    for (uint32_t k = 0; k < 4; ++k) {
+        swc1(sp + 0x50 + (k << 3), lwc1(L11_ADDR(0x001d3530u) + (k << 3)));
+        swc1(sp + 0x54 + (k << 3), lwc1(L11_ADDR(0x001d3530u) + (k << 3) + 4));
+        sw(sp + 0x40 + (k << 2), col);
+    }
+    const float radius = lwc1(pv + 0x3c);
+    float half_h = u2f(0x3dcccccd);
+    if (radius < u2f(0x3f933333u)) {
+        const float t = fpu_sub(u2f(0x3f933333u), radius);
+        float t2 = fpu_add(t, t);
+        if (1.0f < t2) t2 = 1.0f;
+        else if (t2 < 0.0f) t2 = 0.0f;
+        half_h = fpu_add(t2, u2f(0x3dcccccd));
+        sb(0x001413f5u, (radius < u2f(0x3f266666u)) ? 1u : 0u);
+    }
+    const float two_pi = u2f(0x40c90fd0u);
+    const float pi = u2f(0x40490fd0u);
+    for (int32_t seg = 0; seg < 32; ++seg) {
+        for (int32_t v = 0; v < 4; ++v) {
+            const uint32_t dst = sp + (static_cast<uint32_t>(v) << 4);
+            const float ang = fpu_sub(fpu_mul(fpu_mul(static_cast<float>(seg + (v >> 1)), two_pi), 0.03125f), pi);
+            swc1(dst + 0x0, fpu_mul(cos_vu(ang), lwc1(pv + 0x3c)));
+            swc1(dst + 0x4, fpu_mul(sin_vu(ang), lwc1(pv + 0x3c)));
+            const float z_base = lwc1(L11_ADDR(0x00161938u));
+            const float z = ((v & 1) != 0) ? fpu_add(z_base, half_h) : fpu_sub(z_base, half_h);
+            swc1(dst + 0x8, fpu_add(z, 0.0f));
+            swc1(dst + 0xc, 1.0f);
+        }
+        quad_draw(sp, mat);
+    }
+    ee_stack_free(0xd0);
 }
 
 }  // namespace rac1

@@ -187,17 +187,22 @@ add_library(rac1_game STATIC
     ovl/orxon_class1229.cpp
     ovl/orxon_effects.cpp
     ovl/orxon_scenes.cpp
+    ovl/pokitaru_bomber.cpp
     ovl/pokitaru_crates.cpp
     ovl/pokitaru_gate.cpp
     ovl/pokitaru_hooks.cpp
     ovl/pokitaru_jet.cpp
+    ovl/pokitaru_jet_hud.cpp
     ovl/pokitaru_mobys.cpp
     ovl/pokitaru_props.cpp
+    ovl/pokitaru_puffer.cpp
     ovl/pokitaru_raft.cpp
     ovl/pokitaru_resort_owner.cpp
     ovl/pokitaru_sewer.cpp
     ovl/pokitaru_talkers.cpp
     ovl/pokitaru_teleporter.cpp
+    ovl/pokitaru_train.cpp
+    ovl/pokitaru_water.cpp
     ovl/hoven_carry.cpp
     ovl/hoven_draws.cpp
     ovl/hoven_drone_hatch.cpp

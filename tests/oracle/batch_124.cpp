@@ -82,7 +82,8 @@ bool c2a_spr_check(const char* name) {
                                          "class1818", "class572", "hero_move_mode", "class1134", "class318", "class805",
                                          "p111_class114", "p111_class1156", "p111_class298", "p111_class318",
                                          "p112_class1157", "p112_class1218", "p112_class1219", "p112_class1231", "p112_class1242",
-                                         "p112_f30f660", "p112_f30fe50", "p112_f310698", "p112_f3125a8", "p112_f3126f8", "p112_f312838"};
+                                         "p112_f30f660", "p112_f30fe50", "p112_f310698", "p112_f3125a8", "p112_f3126f8", "p112_f312838",
+                                         "p113_class1246", "p113_class1297", "p113_class1319"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -1865,6 +1866,349 @@ void batch_124() {
                     std::printf("%-26s %s (%d cases, %d untoggled, %d slot0_forced)\n", "p112_f312838_fix36",
                                 bad == 0 && untoggled > 0 && slot0_forced > 0 ? "ok" : "FAIL", n, untoggled, slot0_forced);
                     if (bad != 0 || untoggled == 0 || slot0_forced == 0) ++g_fail;
+                }
+            }
+            // ---- P11.3: thorough targeted checks for Pokitaru's remaining 15 entries and 24 helpers
+            {
+                const std::vector<uint32_t> c1246 = mobys_with(0x00314318), c1264 = mobys_with(0x003172c0),
+                                            c1350 = mobys_with(0x0031aa80), c1903 = mobys_with(0x0031e2f0),
+                                            c1919 = mobys_with(0x0031f150), c318  = mobys_with(0x002f2518);
+                auto setup_view_looking_at = [](float tx, float ty, float tz, float dist, float dz) {
+                    const uint32_t cam = L11_ADDR(0x001677c0u);
+                    wf(cam + 0x0, tx - dist);
+                    wf(cam + 0x4, ty);
+                    wf(cam + 0x8, tz + dz);
+                    wf(cam + 0xc, 1.0f);
+                    wf(cam + 0x10, 0.0f);
+                    wf(cam + 0x14, std::atan2(-dz, dist));
+                    wf(cam + 0x18, 0.0f);
+                    wf(cam + 0x1c, 0.0f);
+                    render_view_setup();
+                };
+                auto setup_pkt_buf = []() {
+                    w32(OV(0x001611c0), 0x00800000u);
+                    w32(OV(0x0015f5f8), 0x00860000u);
+                };
+
+                // class 1246 (pufferfish enemy) + pok_315968_l11 + pok_315f58_l11 + pok_316090_l11
+                {
+                    const std::vector<uint32_t> c1075 = mobys_with(0x00309ac0);
+                    const size_t sp_mark = push_spawn_w_ignores();
+                    p111("p113_class1246", 0x00314318, pok_class1246_update_l11, c1246, [common, first_run, give_hit, put_hero, c1075, index_of](uint32_t m, int st) {
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        if (st != 0) first_run(pok_class1246_update_l11, m);
+                        w8(m + 0x20, u(st));
+                        if (st == 0) {
+                            w32(pv + 0x238, u(ri(0, 2)));
+                        }
+                        if (st >= 12 && st <= 18 && !c1075.empty() && ee_read<int32_t>(pv + 0x254) < 0) {
+                            w32(pv + 0x254, index_of(c1075[0]));
+                        }
+                        if (st == 12 && !c1075.empty()) {
+                            const uint32_t raft = c1075[0];
+                            Vec4 rp = ee_ref<Vec4>(raft + 0x10);
+                            rp.y += 1.0f;
+                            ee_ref<Vec4>(m + 0x10) = rp;
+                            wf(pv + 0x258, 2.5f);
+                        }
+                        w8(m + 0x31, coin() ? 1u : 0u);
+                        w8(m + 0x70, coin() ? 2u : 0u);
+                        w8(m + 0x52, coin() ? ee_read<uint8_t>(m + 0x53) : u(ri(0, 7)));
+                        wf(m + 0x54, coin() ? 0.0f : rf(1.0f, 10.0f));
+                        w32(pv + 0x214, coin() ? 1u : 2u);
+                        w32(pv + 0x38, ri(0, 3) == 0 ? 1u : 0u);
+                        w32(pv + 0x244, coin() ? u(ri(0, 20)) : 0u);
+                        wf(pv + 0x17c, coin() ? 1.0f : 0.0f);
+                        wf(pv + 0x48, coin() ? -0.5f : 0.5f);
+                        w16(pv + 0xc8, coin() ? 1u : 0u);
+                        w8(m + 0xbc, 2u);
+                        if (st == 19) w8(m + 0x53, u(ri(4, 7)));
+                        put_hero(m + 0x10, rf(0.5f, 12.0f), rf(-1.0f, 2.0f));
+                        give_hit(m, 0x00330000u);
+                        common(m);
+                    }, 21, 14);
+                    g_ignored_words.resize(sp_mark);
+                }
+
+                // pok_hook_316160_u (class 1246 carry hook +0)
+                if (!c1246.empty()) {
+                    l11check("p113_hook_316160", 0x00316160, 48, Ret::Int32, [level, c1246, pick] {
+                        level();
+                        const uint32_t m = pick(c1246);
+                        static const uint8_t sts[] = {0, 2, 4, 5, 6, 9, 0xe, 0xf, 0x10, 0x14};
+                        w8(m + 0x20, sts[ri(0, 9)]);
+                        w8(m + 0xbc, 2u);
+                        const uint32_t T = 0x01e00000u;
+                        ee_ref<Vec4>(T) = ee_ref<Vec4>(m + 0x10);
+                        w32(T + 0x20, m);
+                        return Args{{m, T, T + 0x20, 0, 0, 0, 0, 0}, {rf(0.0f, 5.0f), 0, 0, 0, 0, 0, 0, 0}};
+                    }, [](A a) {
+                        const TrRet r = pok_hook_316160_u(a.i[0], a.i[1], a.i[2], 0, 0, 0, 0, 0, a.f[0], 0, 0, 0, 0, 0, 0, 0);
+                        return r32(r.v0);
+                    });
+                }
+
+                // class 1248 (rising double-panel bridge)
+                p111("p113_class1248", 0x00316320, pok_class1248_update_l11, c1248, [common, first_run, put_hero](uint32_t m, int st) {
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    if (st != 0) first_run(pok_class1248_update_l11, m);
+                    w8(m + 0x20, u(st));
+                    if (st == 1) {
+                        put_hero(m + 0x10, coin() ? rf(0.0f, 4.0f) : rf(14.0f, 20.0f), 0.0f);
+                    } else if (st >= 2 && st <= 4) {
+                        wf(pv + 0x8, coin() ? 0.99f : rf(0.0f, 0.8f));
+                        wf(pv + 0xc, rf(0.0f, 0.2f));
+                    }
+                    common(m);
+                }, 7, 16);
+
+                // class 1264 (sky cargo train) + pok_317678_l11 + pok_317820_l11 + pok_317c98_l11 + pok_3180a0_l11 + pok_318488_l11
+                {
+                    const size_t sp_mark = push_spawn_w_ignores();
+                    p111("p113_class1264", 0x003172c0, pok_class1264_update_l11, c1264, [common, first_run, give_hit](uint32_t m, int st) {
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        w8(0x0014c050u + ee_read<uint8_t>(m + 0xb0) + (ee_read<uint32_t>(0x0015ed84u) << 4), (st == 0 && ri(0, 4) == 0) ? 0xffu : 0u);
+                        if (st != 0) first_run(pok_class1264_update_l11, m);
+                        w8(m + 0x20, u(st));
+                        if (st == 1) w32(0x001413d4u, coin() ? 0x32u : 0u);
+                        if (st == 2) {
+                            wf(pv + 0x6c, coin() ? 0.99f : rf(0.0f, 0.8f));
+                            wf(pv + 0xc0, coin() ? 0.01f : rf(0.5f, 2.0f));
+                            const int32_t cnt = coin() ? 1 : ri(2, 8);
+                            w32(pv + 0x64, u(cnt));
+                            wf(pv + 0xe0, coin() ? 0.5f : rf(5.0f, 70.0f));
+                            const uint32_t car = ee_read<uint32_t>(pv + 0x70 + (static_cast<uint32_t>(ri(0, cnt - 1)) << 2));
+                            if (car != 0) give_hit(car, 0xffffffffu);
+                        }
+                        common(m);
+                        if (st == 1) w32(0x001413d4u, coin() ? 0x32u : 0u);
+                    }, 3, 24);
+
+                    // class 1265 (cargo train carriage) + pok_31ada0_l11
+                    p112_spawned("p113_class1265", 0x003181f0, pok_class1265_update_l11, [common](int st) {
+                        const uint32_t m = moby_spawn(0x4f1u);
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        w8(m + 0x20, u(st));
+                        w8(m + 0x31, 1u);
+                        w32(pv + 0x28, coin() ? 0u : 5u);
+                        w32(L11_ADDR(0x0015ffbcu), coin() ? 100u : 50u);
+                        ee_ref<Vec4>(m + 0x10) = Vec4{400.0f, 400.0f, 300.0f, 0.0f};
+                        ee_ref<Vec4>(pv) = Vec4{399.0f, 400.0f, 300.0f, 0.0f};
+                        moby_update_transform(m);
+                        common(m);
+                        if (st == 0 && coin()) {
+                            for (uint32_t s = 1; s < 128; ++s) {
+                                libc_srand(s);
+                                if (rand_mod(ee_read<int32_t>(L11_ADDR(0x00162340u))) == 0) { libc_srand(s); break; }
+                            }
+                        }
+                        return m;
+                    }, 2, 24);
+
+                    // class 1524 (falling sludge/bomb drop) + pok_31ae68_l11 + pok_31b098_l11
+                    p112_spawned("p113_class1524", 0x0031ab08, pok_class1524_update_l11, [common](int st) {
+                        const uint32_t T = 0x01e00000u;
+                        const float wz = ee_read<float>(L11_ADDR(0x00161e18u));
+                        ee_ref<Vec4>(T) = Vec4{400.0f, 400.0f, (st == 1 && coin()) ? (wz + 10.0f) : (wz - 1.0f), 0.0f};
+                        ee_ref<Vec4>(T + 0x10) = Vec4{rf(-0.5f, 0.5f), rf(-0.5f, 0.5f), -0.5f, 0.0f};
+                        const uint32_t m = pok_31ada0_l11(T, T + 0x10, L11_ADDR(0x00161e18u), 1.0f);
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        w8(m + 0x20, u(st));
+                        w8(m + 0x31, (ri(0, 4) == 0) ? 0u : 1u);
+                        w16(pv + 0x22, coin() ? 20u : 0u);
+                        if (st == 2) {
+                            wf(m + 0x2c, coin() ? 0.001f : 0.5f);
+                            w32(L11_ADDR(0x0015f5ccu), coin() ? 4u : 5u);
+                        }
+                        common(m);
+                        if (st == 1 && coin()) {
+                            for (uint32_t s = 1; s < 128; ++s) {
+                                libc_srand(s);
+                                if (rand_mod(ee_read<int32_t>(L11_ADDR(0x00162410u))) == 0) { libc_srand(s); break; }
+                            }
+                        }
+                        return m;
+                    }, 3, 24);
+
+                    // class 1297 (energy ball) + pok_319028_l11 + pok_3191c0_l11
+                    p112_spawned("p113_class1297", 0x00318b30, pok_class1297_update_l11, [common, HERO](int st) {
+                        const uint32_t T = 0x01e00000u;
+                        ee_ref<Vec4>(T) = ee_ref<Vec4>(HERO);
+                        const uint32_t m = pok_318d10_l11(ee_read<uint32_t>(0x001413d0u), T, 10);
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        w8(m + 0x20, u(st));
+                        w32(pv + 0x20, coin() ? 1u : 10u);
+                        w32(pv + 0x28, coin() ? 1u : 10u);
+                        ee_ref<Vec4>(pv) = Vec4{rf(-1.0f, 1.0f), rf(-1.0f, 1.0f), rf(-0.5f, 0.5f), 0.0f};
+                        common(m);
+                        return m;
+                    }, 3, 24);
+
+                    // class 1319 (Blarg bomber) + pok_30f5a8_l11
+                    p111("p113_class1319", 0x00319838, pok_class1319_update_l11, c1319, [common, first_run, put_hero, setup_view_looking_at, c1264](uint32_t m, int st) {
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        if (st != 0) first_run(pok_class1319_update_l11, m);
+                        if ((st == 1 || st == 2) && !c1264.empty()) {
+                            const uint32_t tpv = ee_read<uint32_t>(c1264[0] + 0x78);
+                            w32(pv + 0x60, ee_read<uint32_t>(tpv + 0x60));
+                            w32(pv + 0x64, 0u);
+                        }
+                        w8(m + 0x20, u(st));
+                        w32(pv + 0x88, (st == 0) ? (coin() ? 0u : 1u) : u(ri(0, 3)));
+                        w8(m + 0x31, coin() ? 1u : 0u);
+                        w8(m + 0xbc, coin() ? 1u : 0u);
+                        w8(0x0014095fu, coin() ? 2u : 0u);
+                        w32(pv + 0x84, coin() ? 100u : 0u);
+                        w32(pv + 0x98, coin() ? 200u : 0u);
+                        wf(pv + 0x68, coin() ? 0.99f : (coin() ? -0.1f : 0.5f));
+                        wf(pv + 0x6c, coin() ? 0.4f : -0.4f);
+                        if (st == 3) {
+                            const Vec4 p = ee_ref<Vec4>(m + 0x10);
+                            if (coin()) setup_view_looking_at(p.x, p.y, p.z, 10.0f, 0.0f);
+                            put_hero(m + 0x10, coin() ? 10.0f : 50.0f, 0.0f);
+                        } else if (st == 5) {
+                            static const uint32_t fcs[] = {0u, 10u, 20u, 25u};
+                            w32(L11_ADDR(0x0015f5ccu), fcs[ri(0, 3)]);
+                        }
+                        common(m);
+                    }, 7, 16);
+
+                    g_ignored_words.resize(sp_mark);
+                }
+
+                // class 1350 (air-combat skill-point monitor)
+                p111("p113_class1350", 0x0031aa80, pok_class1350_update_l11, c1350, [common, moby_base](uint32_t m, int st) {
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    w32(pv + 0x0, (st == 0) ? 0xffffffffu : 0u);
+                    if (st == 2) {
+                        const int32_t grp = ee_read<int32_t>(pv + 4);
+                        if (grp >= 0) {
+                            uint32_t e = ee_read<uint32_t>(L11_ADDR(0x001ac240u) + (static_cast<uint32_t>(grp) << 2));
+                            if (e != 0) {
+                                for (;; e += 2) {
+                                    const uint16_t raw = ee_read<uint16_t>(e);
+                                    w8(moby_base() + (static_cast<uint32_t>(raw & 0x7fffu) << 8) + 0x20, 0xfeu);
+                                    if (static_cast<int16_t>(raw) < 0) break;
+                                }
+                            }
+                        }
+                    }
+                    w8(0x0013d41bu, coin() ? 0u : 1u);
+                    common(m);
+                }, 3, 16);
+
+                // class 1903 & 1919 (water-surface scroll classes) + pok_31e048_l11 + pok_31eea8_l11
+                p111("p113_class1903", 0x0031e2f0, pok_class1903_update_l11, c1903, [common, setup_view_looking_at](uint32_t m, int st) {
+                    w8(m + 0x20, u(st));
+                    if (st == 0) w32(L11_ADDR(0x0016252cu), coin() ? 0u : 1u);
+                    else {
+                        const float dist = (ri(0, 2) == 0) ? rf(5.0f, 14.0f) : ((ri(0, 1) == 0) ? rf(16.0f, 34.0f) : rf(40.0f, 60.0f));
+                        const float tx = ee_read<float>(L11_ADDR(0x001624e8u));
+                        const float ty = ee_read<float>(L11_ADDR(0x001624ecu));
+                        const float tz = ee_read<float>(L11_ADDR(0x001624f0u));
+                        setup_view_looking_at(tx, ty, tz, dist, std::max(5.0f, 190.0f - tz));
+                    }
+                    common(m);
+                }, 2, 24);
+
+                p111("p113_class1919", 0x0031f150, pok_class1919_update_l11, c1919, [common, setup_view_looking_at](uint32_t m, int st) {
+                    w8(m + 0x20, u(st));
+                    if (st == 0) w32(L11_ADDR(0x001625fcu), coin() ? 0u : 1u);
+                    else {
+                        const float dist = (ri(0, 2) == 0) ? rf(10.0f, 75.0f) : ((ri(0, 1) == 0) ? rf(82.0f, 98.0f) : rf(105.0f, 130.0f));
+                        const float tx = ee_read<float>(L11_ADDR(0x001625b8u));
+                        const float ty = ee_read<float>(L11_ADDR(0x001625bcu));
+                        const float tz = ee_read<float>(L11_ADDR(0x001625c0u));
+                        setup_view_looking_at(tx, ty, tz, dist, std::max(5.0f, 190.0f - tz));
+                    }
+                    common(m);
+                }, 2, 24);
+
+                // Draw callback checks with live packet buffer & render_view_setup():
+                // pok_cb_2f2d58_l11 (teleporter glow ring)
+                if (!c318.empty()) {
+                    l11check("p113_cb2f2d58", 0x002f2d58, 30, Ret::None, [level, c318, pick, setup_pkt_buf, setup_view_looking_at] {
+                        level();
+                        const uint32_t m = pick(c318), pv = ee_read<uint32_t>(m + 0x78);
+                        const Vec4 p = ee_ref<Vec4>(m + 0x10);
+                        setup_view_looking_at(p.x, p.y, p.z, 8.0f, 2.0f);
+                        setup_pkt_buf();
+                        const int band = ri(0, 2);
+                        wf(pv + 0x3c, band == 0 ? rf(0.1f, 0.6f) : (band == 1 ? rf(0.7f, 1.1f) : rf(1.2f, 1.95f)));
+                        return Args{{m}, {}};
+                    }, [](A a) { pok_cb_2f2d58_l11(a.i[0]); return uint64_t{0}; });
+                }
+
+                // pok_cb_31db50_l11 (class 1903 water draw) + pok_31d8d8_l11
+                if (!c1903.empty()) {
+                    l11check("p113_cb31db50", 0x0031db50, 24, Ret::None, [level, c1903, setup_pkt_buf] {
+                        level();
+                        setup_pkt_buf();
+                        w8(L11_ADDR(0x00162590u), coin() ? 0u : u(ri(1, 255)));
+                        return Args{{c1903[0]}, {}};
+                    }, [](A a) { pok_cb_31db50_l11(a.i[0]); return uint64_t{0}; });
+                }
+
+                // pok_cb_31e930_l11 (class 1919 water draw) + pok_31e6a8_l11
+                if (!c1919.empty()) {
+                    l11check("p113_cb31e930", 0x0031e930, 24, Ret::None, [level, c1919, setup_pkt_buf] {
+                        level();
+                        wf(L11_ADDR(0x001677c8u), coin() ? 260.0f : 200.0f);
+                        setup_pkt_buf();
+                        w8(L11_ADDR(0x00162610u), coin() ? 0u : u(ri(1, 255)));
+                        return Args{{c1919[0]}, {}};
+                    }, [](A a) { pok_cb_31e930_l11(a.i[0]); return uint64_t{0}; });
+                }
+
+                // pok_cb_311d50_l11 (fighter-jet HUD) + all 6 helpers (0x311710, 0x311a88, 0x311be8, 0x318050, 0x311948, 0x311c80)
+                if (!c1242.empty()) {
+                    l11check("p113_cb311d50", 0x00311d50, 48, Ret::None, [level, c1242, c1319, first_run, setup_pkt_buf, setup_view_looking_at, common, moby_base] {
+                        level();
+                        const uint32_t m = c1242[0], pv = ee_read<uint32_t>(m + 0x78);
+                        w8(0x0014c050u + ee_read<uint8_t>(m + 0xb0) + (ee_read<uint32_t>(0x0015ed84u) << 4), 0u);
+                        first_run(pok_class1242_update_l11, m);
+                        setup_view_looking_at(500.0f, 500.0f, 300.0f, 20.0f, 0.0f);
+                        setup_pkt_buf();
+                        w8(m + 0x20, (ri(0, 3) == 0) ? 8u : 4u);
+                        w32(pv + 0xe0, 256u);
+                        w32(pv + 0xe4, 208u);
+                        w8(0x00140947u, u(ri(0, 10)));
+                        w8(0x00140946u, u(ri(0, 10)));
+                        wf(0x0014094cu, coin() ? 10.0f : 80.0f);
+                        wf(0x00140950u, 100.0f);
+                        wf(pv + 0xf0, rf(0.0f, 100.0f));
+                        w32(pv + 0xf4, u(ri(2, 253)));
+                        w32(pv + 0x11c, coin() ? 2000u : 0u);
+                        w32(pv + 0x120, coin() ? 0u : 10u);
+                        w32(pv + 0x128, coin() ? 4000u : 0u);
+                        // Clear help busy words so help prompts (0x2afd/0x2afe/0x2aff) are accepted
+                        w32(0x00151720u, 0u);
+                        w32(0x001516d0u + 0x50, 0u);
+                        w32(0x001516d0u + 0x1c, 0u);
+                        w16(0x00141968u + 0x2c0, u(ri(0, 2)));
+                        w16(0x00141968u + 0x2b8, u(ri(0, 2)));
+                        w16(0x00141968u + 0x2b0, coin() ? 0u : 1u);
+                        w8(0x0015edb4u, coin() ? 1u : 0u);
+                        if (!c1319.empty()) {
+                            w8(c1319[0] + 0x20, 5u);
+                            w8(c1319[0] + 0x31, 1u);
+                            ee_ref<Vec4>(c1319[0] + 0x10) = Vec4{500.0f, 500.0f, 300.0f, 0.0f};
+                            w32(pv + 0x88, coin() ? c1319[0] : 0u);
+                            w32(pv + 0x8c, coin() ? 100u : 5u);
+                            // Ensure the first moby in the jet's target group (pv+0x108) is active and lists c1319[0] as a turret so pok_311948_l11/pok_311a88_l11 lock on
+                            const int32_t grp = ee_read<int16_t>(pv + 0x108);
+                            const uint32_t ge = ee_read<uint32_t>(L11_ADDR(0x001ac240u) + (static_cast<uint32_t>(grp) << 2));
+                            if (ge != 0) {
+                                const uint32_t bm = moby_base() + (static_cast<uint32_t>(ee_read<uint16_t>(ge) & 0x7fffu) << 8);
+                                w8(bm + 0x20, 1u);
+                                const uint32_t bpv = ee_read<uint32_t>(bm + 0x78);
+                                w32(bpv + 0x64, 1u);
+                                w32(bpv + 0x70, c1319[0]);
+                            }
+                        }
+                        common(m);
+                        return Args{{m}, {}};
+                    }, [](A a) { pok_cb_311d50_l11(a.i[0]); return uint64_t{0}; });
                 }
             }
         }

@@ -78,17 +78,7 @@ L5 0x00316e78: if (fixes102_on(22) && lbu(0x0013d411u) != 0) { sound_play_indexe
 # nothing of the game's written; with the HUD at 4:3 (the default) begin notes nothing.
 # The PAL builds keep these callers as NTSC-U has them (their addresses inside the region tables' code runs, data/regions/;
 # checked on SCES-50916 1.00): no `PAL:` lines.
-# Pokitaru: the radar's sprites (glyph_sprite), its blips (L11:0x311710), the missiles (L11:0x310ad0)
-L11 0x00311df0: render_view_hud_begin(2);  // enhancement: the HUD's width (the radar)
-L11 0x00311df8: render_view_hud_end();
-L11 0x00311e28: render_view_hud_begin(2);
-L11 0x00311e30: render_view_hud_end();
-L11 0x00311ecc: render_view_hud_begin(2);  // (a blip)
-L11 0x00311ed4: render_view_hud_end();
-L11 0x00311f58: render_view_hud_begin(1);  // (a missile)
-L11 0x00311f60: render_view_hud_end();
-L11 0x00311f98: render_view_hud_begin(1);
-L11 0x00311fa0: render_view_hud_end();
+# Pokitaru (L11:0x311d50): hand-ported in src/game/ovl/pokitaru_jet_hud.cpp (pok_cb_311d50_l11 carries all 10 render_view_hud_begin/end hooks).
 # Gemlik Base: the missiles (L13:0x2b7b30), the radar's sprites, its blips (L13:0x2b89f8, from L13:0x2b8be0)
 L13 0x002b9a18: render_view_hud_begin(1);  // enhancement: the HUD's width (a missile)
 L13 0x002b9a20: render_view_hud_end();

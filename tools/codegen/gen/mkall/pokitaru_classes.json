@@ -4,38 +4,22 @@
  "env": {
   "MKALL_HELPER_PREFIX": "pok_",
   "MKALL_WIDE_GPR": "",
-  "MKALL_FORCE": "22e0a8,231380,30f5a8,311710,311948,311a88,311be8,311c80,315968,315f58,316090,317678,317820,317c98,318050,3180a0,318488,319028,3191c0,31ada0,31ae68,31b098,31d8d8,31e048,31e6a8,31eea8",
-  "MKALL_UNIFORM": "pok_hook_2fb7f0_u,pok_hook_2fb840_u,pok_hook_2fb890_u,pok_hook_2fb8c0_u,pok_hook_316160_u,pok_hook_3162d0_u,pok_hook_3162f0_u"
+  "MKALL_FORCE": "22e0a8,231380",
+  "MKALL_UNIFORM": "pok_hook_2fb7f0_u,pok_hook_2fb840_u,pok_hook_2fb890_u,pok_hook_2fb8c0_u,pok_hook_3162d0_u,pok_hook_3162f0_u"
  },
  "entries": [
   "30b358:pok_class1111_update_l11:void:a0",
-  "314318:pok_class1246_update_l11:void:a0",
-  "316320:pok_class1248_update_l11:void:a0",
-  "3172c0:pok_class1264_update_l11:void:a0",
-  "3181f0:pok_class1265_update_l11:void:a0",
-  "318b30:pok_class1297_update_l11:void:a0",
-  "319838:pok_class1319_update_l11:void:a0",
-  "31aa80:pok_class1350_update_l11:void:a0",
-  "31ab08:pok_class1524_update_l11:void:a0",
-  "31e2f0:pok_class1903_update_l11:void:a0",
-  "31f150:pok_class1919_update_l11:void:a0",
   "2fb7f0:pok_hook_2fb7f0_u",
   "2fb840:pok_hook_2fb840_u",
   "2fb890:pok_hook_2fb890_u",
   "2fb8c0:pok_hook_2fb8c0_u",
-  "316160:pok_hook_316160_u",
   "3162d0:pok_hook_3162d0_u",
   "3162f0:pok_hook_3162f0_u",
-  "2f2d58:pok_cb_2f2d58_l11:void:a0",
-  "30a908:pok_cb_30a908_l11:void:a0",
-  "311d50:pok_cb_311d50_l11:void:a0",
-  "31db50:pok_cb_31db50_l11:void:a0",
-  "31e930:pok_cb_31e930_l11:void:a0"
+  "30a908:pok_cb_30a908_l11:void:a0"
  ],
  "glue_files": [],
  "files": [
   "src/game/ovl/pokitaru_classes_tr_2.cpp",
-  "src/game/ovl/pokitaru_classes_tr_4.cpp",
   "src/game/ovl/pokitaru_classes_tr_5.cpp",
   "src/game/ovl/pokitaru_classes_tr_6.cpp"
  ]

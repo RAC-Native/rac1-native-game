@@ -48,14 +48,6 @@ namespace rac1 {
 using namespace eer;
 using namespace vu0m;
 
-//@gen pok_31e048_l11
-
-//@gen pok_class1903_update_l11
-
-//@gen pok_31eea8_l11
-
-//@gen pok_class1919_update_l11
-
 //@gen pok_hook_2fb7f0_u
 
 //@gen pok_hook_2fb840_u
@@ -64,13 +56,9 @@ using namespace vu0m;
 
 //@gen pok_hook_2fb8c0_u
 
-//@gen pok_hook_316160_u
-
 //@gen pok_hook_3162d0_u
 
 //@gen pok_hook_3162f0_u
-
-//@gen pok_cb_2f2d58_l11
 
 //@gen pok_231380_l11
 
