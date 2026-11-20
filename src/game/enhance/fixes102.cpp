@@ -20,7 +20,7 @@
 namespace rac1 {
 
 namespace {
-constexpr int FIXES[] = {1, 2, 3, 5, 6, 7, 11, 15, 16, 17, 18, 19, 20, 22, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36, 37};  // the fixes of the 1.02 Fixes row (fixes102.h)
+constexpr int FIXES[] = {1, 2, 3, 5, 6, 7, 11, 15, 16, 17, 18, 19, 20, 22, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36, 37, 49};  // the fixes of the 1.02 Fixes row (fixes102.h)
 constexpr int GAMEPLAY[] = {4, 8, 9, 10, 12, 13, 14, 21, 23, 24, 25, 31};  // the fixes of the 1.02 Gameplay row (fixes102.h)
 
 // orig: (none) — enhancement: a list variable's fixes (RAC1_FIXES102 / RAC1_GAMEPLAY102) as bits (bit n: fix n), `set`
@@ -235,6 +235,13 @@ bool fixes102_pokitaru_jet_camera() {
 bool fixes102_vendor_holo_alpha() {
     // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
     return fixes102_on(37) || region_core_moved();
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L14:0x2f0050 (PAL 2.00 disc): Oltanis's gondola (class 685)
+// starts its ride only while vec3_dot(its +0xe0 row, the hero's moby's +0xe0 row) > 0
+bool fixes102_oltanis_gondola_upright() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(49) || region_core_moved();
 }
 
 // orig: (none) — enhancement (fixes102.h); the 1.02 build's decoy_object_update 0x2c5f10 (PAL disc 2.00): hero state

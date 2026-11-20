@@ -1,14 +1,7 @@
-0x00294220: set32(v0, sound_slot_volume_set(static_cast<int32_t>(a0.w()), a1.w()));
 0x0020c698: draw_hook_add_dc80_l2(a0.w(), a1.w());
-0x0020c760: draw_hook_add_de80_l14(a0.w(), a1.w());
 0x00245e98: cutscene_l14_effect(a0.w());
 0x00261728: set32(v0, static_cast<uint32_t>(moby_group_count_l1(static_cast<int32_t>(a0.w()), static_cast<int32_t>(a1.w()))));
-0x0026afa0: set32(v0, static_cast<uint32_t>(moby_hero_on_l1(a0.w())));
 0x0026e1c0: talker_word_set(a0.w(), a1.w());
-0x00279aa0: set32(v0, static_cast<uint32_t>(particle_33_spawn(a0.w(), a1.w())));
-0x00294d38: held_moby_show();
-0x002dea98: set32(v0, static_cast<uint32_t>(class28_spawn_shell(a0.w(), a1.w())));
-0x002e0170: set32(v0, static_cast<uint32_t>(class28_spawn_rocket(a0.w(), a1.w(), a2.w())));
 0x002f1040: floater_arrive_l14(a0.w());
 0x002fc890: path_mover_start(a0.w());
 0x002fd808: path_mover_start(a0.w());
@@ -19,7 +12,6 @@
 0x00314168: cam_entry_mark(static_cast<int32_t>(a0.w()));
 0x00314190: cam_entry_mark_type19(static_cast<int32_t>(a0.w()));
 0x00314e20: set32(v0, static_cast<uint32_t>(cam_type19_zone(a0.w())));
-0x002e81a0: jet_update_base_l1(a0.w());
 0x00212760: ari_spr_dma_to_l2(a0.w(), a1.w(), a2.w());
 0x00255788: ari_ocean_cells_clip_l2(a0.w());
 0x00255ac0: ari_ocean_cells_draw_l2(a0.w());

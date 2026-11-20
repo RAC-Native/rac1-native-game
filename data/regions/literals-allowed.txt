@@ -45,3 +45,6 @@ SCES-50916-2.00.txt  16  00162240  class 1111's last camera place: bss after the
 *  16  0015f9f8  "% drd": NTSC-U only; the PAL fork writes the level's place text
 *  16  0015fa00  "% dth": NTSC-U only; the PAL fork writes the level's place text
 *  16  0015fa08  " %s:": NTSC-U only; the PAL fork writes " %s:  " as the PAL builds do
+# Class 211's light radius (oltanis_class211.cpp, L14_ADDR(0x161a60)): the 2.00 disc's word at the rule's place 0x161b30 is
+# NTSC-U's own (6.0); only the word after it differs, the block's padding (NTSC-U's fill, 0 on that disc), never read
+SCES-50916-2.00.txt  14  00161a60  class 211's light radius: the disc's word at 0x161b30 is NTSC-U's 6.0; the next word is padding

@@ -226,6 +226,20 @@ add_library(rac1_game STATIC
     ovl/gemlik_hooks.cpp
     ovl/oltanis_mobys.cpp
     ovl/oltanis_hooks.cpp
+    ovl/oltanis_lift.cpp
+    ovl/oltanis_searchlight.cpp
+    ovl/oltanis_popup_turret.cpp
+    ovl/oltanis_bomber.cpp
+    ovl/oltanis_wing.cpp
+    ovl/oltanis_class211.cpp
+    ovl/oltanis_tilt_platform.cpp
+    ovl/oltanis_arc_fence.cpp
+    ovl/oltanis_jet_platform.cpp
+    ovl/oltanis_wind.cpp
+    ovl/oltanis_floating_mine.cpp
+    ovl/oltanis_turret_shot.cpp
+    ovl/oltanis_lightning.cpp
+    ovl/oltanis_gondola.cpp
     ovl/levels13_14_shared.cpp
     ovl/quartu_hooks.cpp
     ovl/quartu_mobys.cpp

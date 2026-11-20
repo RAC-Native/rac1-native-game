@@ -64,6 +64,9 @@
 // - 37: the Vendor's hologram moby (class 11, vendor_update_tr 0x2a57a8, state 0): only sets the hologram moby's byte
 //   +0x73 to 0x20 when its class's byte +6 is non-zero; the North American build writes 0x20 unconditionally
 //   (veldin_shared_classes.cpp)
+// - 49: Oltanis's gondola (class 685, L14:0x2ee8d8, state 1): its ride starts only while its up row (+0xe0) and the
+//   hero's moby's point the same way (their dot product positive), as well as the hero standing on it within 1 of its
+//   centre; the North American build tests only the latter (oltanis_gondola.cpp)
 //
 // 1.02 Gameplay (main menu > Options > Advanced > 1.02 Gameplay, off by default, global; docs/advanced.md "1.02 Gameplay"):
 // the 1.02 build's fixes that change how the game plays (the exploits stay possible with the row off), numbered as the
@@ -178,6 +181,12 @@ bool fixes102_pokitaru_jet_camera();
 // build's guard applies (L0:0x2a6b80 on the PAL 2.00 disc: only sets holo +0x73 to 0x20 when its class's byte +6 is
 // non-zero); false with the fix off, except on the PAL 2.00 disc (region_core_moved()), whose own code it is
 bool fixes102_vendor_holo_alpha();
+
+// orig: (none) — enhancement: fix 49: Oltanis's gondola (class 685, olt_class685_update_l14 L14:0x2ee8d8, state 1): true
+// when the 1.02 build's test applies (L14:0x2f0050 on the PAL 2.00 disc: the ride starts only while the gondola's up row
+// +0xe0 and the hero's moby's agree, their dot product positive); false with the fix off, except on the PAL 2.00 disc
+// (region_core_moved()), whose own code it is
+bool fixes102_oltanis_gondola_upright();
 
 // orig: (none) — enhancement: fix 14 (1.02 Gameplay): the decoy `m` in its state of 0x2c4c08 pushed (an event 0x10000 of
 // strength 1000 from Ratchet's place) when Ratchet swims (state 0x31) within 1.5 of it; nothing with the fix off
