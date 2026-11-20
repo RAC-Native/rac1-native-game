@@ -9,23 +9,18 @@
 
 namespace rac1 {
 
-void vf_class41_update_l18(uint32_t a0);  // L18:0x002a7220
-TrRet vf_2d5488_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002d5488
-TrRet vf_2d5610_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002d5610
+// the level's own classes hand-written (veldin_finale_shots.cpp, _walking_bomb.cpp, _rail_switch.cpp, _gate.cpp, _platforms.cpp;
+// their helpers in veldin_finale_own.h)
+void vf_class41_update_l18(uint32_t a0);   // L18:0x002a7220
 void vf_class564_update_l18(uint32_t a0);  // L18:0x002d5050
-TrRet vf_2d5f20_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002d5f20
 void vf_class568_update_l18(uint32_t a0);  // L18:0x002d5918
-TrRet vf_2e22c0_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002e22c0
 void vf_class582_update_l18(uint32_t a0);  // L18:0x002d62e8
 void vf_class583_update_l18(uint32_t a0);  // L18:0x002d6600
 void vf_class586_update_l18(uint32_t a0);  // L18:0x002d7b20
-TrRet vf_2d8710_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002d8710
-TrRet vf_2d88b8_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002d88b8
 void vf_class587_update_l18(uint32_t a0);  // L18:0x002d82c0
-TrRet vf_2dc0c8_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002dc0c8
-TrRet vf_2dbe80_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002dbe80
 void vf_class624_update_l18(uint32_t a0);  // L18:0x002db460
 void vf_class628_update_l18(uint32_t a0);  // L18:0x002dc260
+
 void vf_class644_update_l18(uint32_t a0);  // L18:0x002df608
 TrRet vf_2e9e50_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002e9e50
 void vf_class885_update_l18(uint32_t a0);  // L18:0x002e9768
@@ -101,9 +96,6 @@ void vf_class1899_update_l18(uint32_t a0);  // L18:0x002fb868
 TrRet vf_2fc100_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002fc100
 TrRet vf_2fc4e0_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002fc4e0
 void vf_class1906_update_l18(uint32_t a0);  // L18:0x002fbb98
-TrRet vf_hook_2d6108_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002d6108
-TrRet vf_hook_2d6230_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002d6230
-TrRet vf_hook_2d6250_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002d6250
 TrRet vf_hook_2fcca0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002fcca0
 void vf_cb_2d5768_l18(uint32_t a0);  // L18:0x002d5768
 void vf_cb_2dba20_l18(uint32_t a0);  // L18:0x002dba20

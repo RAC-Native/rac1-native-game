@@ -12,6 +12,7 @@
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/hero_move_mode.h>
 #include <game/ovl/veldin_finale_mobys.h>
+#include <game/ovl/veldin_finale_own.h>
 #include <game/ovl/aridia_mobys.h>
 #include <game/ovl/kerwan_camera.h>
 #include <game/ovl/novalis_mobys.h>
@@ -59,7 +60,8 @@ namespace {
 // collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
 bool c2b_spr_check(const char* name) {
     static const char* const kNames[] = {"class1454", "class1906", "class638", "class885", "hero_move_mode", "class1134",
-                                         "class1135", "class1355", "class583", "class644", "class805"};
+                                         "class1135", "class1355", "class583", "class644", "class805",
+                                         "own41_rocket", "own564_shell", "own624_ring", "own628_burst", "own568_bomb", "own583_gate", "own587_float"};  // (P18.1's: segment / sphere / floor collisions)
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -77,6 +79,15 @@ template <uint32_t Which, uint32_t Carried, int32_t Released>
 TrRet carry_state_uniform(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float f12, float, float,
                           float, float, float, float, float) {
     return TrRet{static_cast<uint32_t>(carry_state_hook(a0, a1, a2, f12, Which, Carried, Released)), 0.0f};
+}
+
+// Class 568's carry hooks +0 / +0xc / +0x10 (veldin_finale_walking_bomb.cpp) in the hook table's uniform form
+template <uint32_t Which>
+TrRet bomb_hook_uniform(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float f12, float, float, float,
+                        float, float, float, float) {
+    if constexpr (Which == 0) return TrRet{static_cast<uint32_t>(vf_bomb_hook0_l18(a0, a1, a2, f12)), 0.0f};
+    else if constexpr (Which == 0xc) return TrRet{static_cast<uint32_t>(vf_bomb_hookc_l18(a0, a1, a2, f12)), 0.0f};
+    else return TrRet{vf_bomb_hook10_l18(a0), 0.0f};
 }
 
 // A random state can hold a pointer outside RAM that the port's vector helpers dereference without a check (a SIGSEGV where the interpreter would wrap it): the trial run of a state
@@ -448,11 +459,11 @@ void batch_270() {
         g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};
         struct Hk { const char* name; uint32_t addr; uint32_t slot; TrRet (*fn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float); };
         static const Hk hks[] = {
-            {"hook_2d6108", 0x2d6108, 0x0, vf_hook_2d6108_u},
+            {"hook_2d6108", 0x2d6108, 0x0, bomb_hook_uniform<0>},
             {"hook_2d6190", 0x2d6190, 0x4, carry_state_uniform<4, 4, -1>},
             {"hook_2d61e0", 0x2d61e0, 0x8, carry_state_uniform<8, 4, -1>},
-            {"hook_2d6230", 0x2d6230, 0xc, vf_hook_2d6230_u},
-            {"hook_2d6250", 0x2d6250, 0x10, vf_hook_2d6250_u},
+            {"hook_2d6230", 0x2d6230, 0xc, bomb_hook_uniform<0xc>},
+            {"hook_2d6250", 0x2d6250, 0x10, bomb_hook_uniform<0x10>},
             {"hook_2fcbb0", 0x2fcbb0, 0x0, carry_state_uniform<0, 7, 2>},
             {"hook_2fcc00", 0x2fcc00, 0x4, carry_state_uniform<4, 7, 2>},
             {"hook_2fcc50", 0x2fcc50, 0x8, carry_state_uniform<8, 7, 2>},
@@ -595,6 +606,377 @@ void batch_270() {
                 return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
             }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
         }
+    }
+
+    // ---- P18.1: the level's own classes hand-written (veldin_finale_shots / _walking_bomb / _rail_switch / _gate / _platforms.cpp),
+    // in the states the class loop above cannot build: classes 41, 564, 624 and 628 have no moby at the level's start (the
+    // troopers and the boss spawn them: here they are spawned by their own spawners, the generated L18:0x2a75f0 / 0x2d5348 /
+    // 0x2db938 / 0x2dc3e0, from points near the hero), and the placed classes' timers, flags, the hero on them and the level's
+    // mode words are set as the game sets them. A third of the cases at 50 Hz. Each check runs the port of one function at
+    // its level-18 address; B270_OWN_INFO=1 prints the placed subjects (the play-test spots).
+    if (g_oracle_level == 18) {
+        g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};
+        constexpr uint32_t SCR = 0x00880000;  // (three scratch vectors the spawners read)
+        constexpr uint32_t HERO = 0x0013f350;
+        auto fifty = [] {
+            if (ri(0, 2) != 0) return;
+            wf(0x0015ed68, 1.2f);
+            wf(0x0015ed6c, 0.02f);
+            wf(0x0015ed70, 0.0004f);
+        };
+        auto put = [](uint32_t a, const Vec4& v) { VV(a) = v; };
+        auto hero_at = [](const Vec4& q) {
+            VV(0x0013f3d0) = q;
+            const uint32_t hm = ee_read<uint32_t>(0x001413d0);
+            if (hm != 0) VV(hm + 0x10) = q;
+        };
+        auto near = [](const Vec4& c, float lo, float hi, float dz) {
+            Vec4 q = c;
+            const float r = rf(lo, hi), a = rf(-3.1f, 3.1f);
+            q.x += r * std::cos(a); q.y += r * std::sin(a); q.z += rf(-dz, dz);
+            return q;
+        };
+        // a check whose generator builds the subject (0: deal again), then the trial as the class loop's
+        auto owncheck = [level](const char* name, uint32_t addr, void (*port)(uint32_t), std::function<uint32_t()> make, int n = 60) {
+            if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
+            l18check(name, addr, n, Ret::None, [level, make, port] {
+                static std::vector<uint8_t> saved;
+                uint32_t m = 0;
+                for (int attempt = 0; attempt < 60; ++attempt) {
+                    level();
+                    m = make();
+                    if (m == 0) continue;
+                    w32(OV(0x0015f5cc), R() & 0xffff);
+                    seed_rand();
+                    uint8_t* ram = ee_get_ram_base();
+                    saved.assign(ram, ram + 0x02000000);
+                    const uint32_t stack_top = ee_stack_ptr();
+                    const bool ok = run_trial(port, m);
+                    ee_stack_ptr() = stack_top;
+                    std::memcpy(ram, saved.data(), saved.size());
+                    if (ok) break;
+                    if (std::getenv("B270_REDEAL") != nullptr) std::printf("  (re-dealt)\n");
+                }
+                return Args{{m}, {}};
+            }, [port](A a) { port(a.i[0]); return uint64_t{0}; });
+        };
+        auto pick = [](const std::vector<uint32_t>& v) { return v.empty() ? 0u : v[static_cast<size_t>(ri(0, static_cast<int>(v.size()) - 1))]; };
+        auto first_moby = [] { return ee_read<uint32_t>(OV(0x0015ffd8)); };
+        // the moby's set-up (its state 0, the port's: at the snapshot the placed classes have not run it yet), as the class
+        // loop's `walk`
+        auto set_up = [](uint32_t m, void (*port)(uint32_t)) {
+            w8(m + 0x20, 0);
+            const uint32_t sp0 = ee_stack_ptr();
+            try { port(m); } catch (const std::exception&) { ee_stack_ptr() = sp0; }
+        };
+        if (std::getenv("B270_OWN_INFO") != nullptr) {
+            level();
+            for (const uint32_t c : {0x002d5918u, 0x002d62e8u, 0x002d6600u, 0x002d7b20u, 0x002d82c0u})
+                for (const uint32_t m : mobys_with(c)) {
+                    const Vec4 p = VV(m + 0x10);
+                    std::printf("INFO spot class fn 0x%08x moby %u uid %d at %.1f %.1f %.1f\n", c, (m - first_moby()) >> 8,
+                                static_cast<int>(ee_read<int16_t>(m + 0xb2)), p.x, p.y, p.z);
+                }
+        }
+
+        // (the segment record's word OV(0x173e9c): -0 or +0 by the VU0 register segment_collide's original finds left by the earlier
+        // checks (a known difference of the shared port, as hero_move_mode's above; seen in own41_rocket's case 26): left out of that
+        // check only)
+        const size_t ign_seg = g_ignored_words.size();
+        g_ignored_words.push_back(OV(0x00173e9c));
+        // class 41, the troopers' rocket: from a trooper (class 1454) or another moby toward the hero, homing or not, its owner
+        // given class 46 (its push from the owner), its life at its end or not, aimed at the ground or at the hero
+        owncheck("own41_rocket", 0x002a7220, vf_class41_update_l18, [=] {
+            fifty();
+            const std::vector<uint32_t> tr = mobys_with(0x002f7c40);
+            const uint32_t shooter = !tr.empty() && coin() ? pick(tr) : first_moby() + 0x100 * u(ri(0, 60));
+            const Vec4 h = ee_ref<Vec4>(0x0013f3d0);
+            Vec4 at = near(h, 1, 12, 0); at.z = h.z + rf(0.3f, 3);
+            Vec4 vel{(h.x - at.x) * rf(0.02f, 0.2f), (h.y - at.y) * rf(0.02f, 0.2f), coin() ? rf(-0.6f, 0.1f) : 0.0f, 0.0f};
+            put(SCR, at);
+            put(SCR + 0x10, vel);
+            const uint32_t m = vf_2a75f0_l18(shooter, SCR, SCR + 0x10, u(ri(0, 1)), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0;
+            if (m == 0) return 0u;
+            moby_update_transform(m);  // (its matrix, as the engine's moby pass makes it after the spawn's frame)
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w16(pv + 0x10, ri(0, 3) == 0 ? u(ri(0, 2)) : u(ri(3, 240)));
+            if (coin()) { w16(shooter + 0xa6, 0x2e); if (ri(0, 3) == 0) w8(shooter + 0x20, coin() ? 0xfe : 0xfd); }
+            if (ri(0, 6) == 0) w32(pv + 0x14, 0);  // (no owner)
+            if (ri(0, 4) == 0) { Vec4 q = VV(m + 0x10); q.x += rf(-0.05f, 0.05f); q.y += rf(-0.05f, 0.05f); VV(0x0013f410) = q; }
+            else if (coin()) VV(0x0013f410) = near(VV(m + 0x10), 0.5f, 6, 1);
+            return m;
+        });
+        g_ignored_words.resize(ign_seg);
+        // class 564, the boss's shell: from above the boss / near the hero to a point by the hero, its frame anywhere in its
+        // arc (its last too), every flag; across a class 419 moby; the hero dead, the level's mode 2, Giant Clank
+        owncheck("own564_shell", 0x002d5050, vf_class564_update_l18, [=] {
+            fifty();
+            const Vec4 h = ee_ref<Vec4>(0x0013f3d0);
+            Vec4 from = near(h, 4, 20, 0), to = near(h, 0, 4, 0);
+            from.z = h.z + rf(1, 10);
+            to.z = h.z + rf(-1, 0.5f);
+            if (ri(0, 2) == 0) {  // (its arc through a moby: class 419's, a gate's, a lift's, a floating platform's)
+                static const uint32_t cls[] = {0x002ceaa0, 0x002d6600, 0x002d7b20, 0x002d82c0};
+                const uint32_t o = pick(mobys_with(cls[ri(0, 3)]));
+                if (o != 0) { to = VV(o + 0x10); to.z += rf(0, 1); from = near(to, 0.5f, 2, 0.5f); }
+            }
+            const Vec4 vel{rf(-0.3f, 0.3f), rf(-0.3f, 0.3f), rf(0, 0.6f), 0};
+            put(SCR, from); put(SCR + 0x10, vel); put(SCR + 0x20, to);
+            const int frames = ri(10, 90);
+            const uint32_t m = vf_2d5348_l18(SCR, SCR + 0x10, SCR + 0x20, u(frames), u(ri(0, 7)), 0, 0, 0, rf(-1.2f, 1.2f), rf(-1.2f, 1.2f), 0, 0, 0, 0, 0, 0).v0;
+            if (m == 0) return 0u;
+            moby_update_transform(m);
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w32(pv + 0x2c, ri(0, 3) == 0 ? u(frames - 1) : u(ri(0, frames - 1)));
+            if (ri(0, 4) == 0) {  // (from where its arc has it at its frame)
+                Vec4 q = from; const float t = rf(0, 1); q.x += (to.x - from.x) * t; q.y += (to.y - from.y) * t; q.z += (to.z - from.z) * t; VV(m + 0x10) = q;
+            }
+            if (ri(0, 9) == 0) w32(0x001413d4, 0x72);
+            if (ri(0, 9) == 0) w32(0x0015f5c4, 2);
+            if (ri(0, 9) == 0) w8(m + 0x20, 1);
+            w8(0x001413f4, coin() ? 2u : u(ri(0, 3)));
+            return m;
+        });
+        // class 624, the boss's ring: falling to the ground (from above it, or below z 10), waiting there, widening (its radius
+        // under 3: the sparks, in view of the camera), the hero on its edge; past its end; the hero dead, the mode 2
+        owncheck("own624_ring", 0x002db460, vf_class624_update_l18, [=] {
+            fifty();
+            const std::vector<uint32_t> boss = mobys_with(0x002f2bf0);
+            const int st = ri(0, 3);
+            const Vec4 h = ee_ref<Vec4>(0x0013f3d0);
+            Vec4 at = near(h, 0, 8, 0);
+            at.z = st == 0 ? (ri(0, 6) == 0 ? rf(0, 9) : h.z + rf(-0.3f, 3)) : h.z + rf(-0.3f, 0.5f);
+            if (st == 2 && coin()) {  // (the ring in view: the screen, the projection and the camera's view set up as batch 506's, the point moved about the camera)
+                if (ee_read<uint16_t>(0x001518d0) == 0) { w16(0x001518d0, 640); w16(0x001518d2, 448); }  // (the oracle's display has no size)
+                screen_setup();
+                projection_setup();
+                render_view_setup();
+                const Vec4 c = VV(OV(0x00166dc0));
+                for (int k = 0; k < 200; ++k) {
+                    put(SCR + 0x30, Vec4{c.x + rf(-15, 15), c.y + rf(-15, 15), c.z + rf(-5, 5), 0});
+                    if (point_on_screen(SCR + 0x30, 1.0f) != -1) { at = VV(SCR + 0x30); break; }
+                }
+            }
+            put(SCR, at);
+            put(SCR + 0x10, Vec4{rf(-0.2f, 0.2f), rf(-0.2f, 0.2f), rf(-0.3f, 0.2f), 0});
+            const float maxr = rf(3, 16);
+            vf_2db938_l18(SCR, SCR + 0x10, boss.empty() || coin() ? 0u : boss[0], 0, 0, 0, 0, 0, maxr, rf(0.05f, 0.5f), 0, 0, 0, 0, 0, 0);
+            const std::vector<uint32_t> rings = mobys_with(0x002db460);  // (the spawner returns no moby; the level has no other ring)
+            if (rings.size() != 1) return 0u;
+            const uint32_t m = rings[0];
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w8(m + 0x20, u(st == 3 && ri(0, 2) != 0 ? ri(4, 6) : st));
+            w32(pv + 0x2c, u(ri(0, 3)));
+            wf(pv + 0x30, rf(-3.1f, 3.1f));
+            const float r = coin() ? rf(0.4f, 3) : rf(3, maxr + 1);
+            wf(pv + 0x24, r);
+            if (coin()) { Vec4 q = near(at, r - 0.3f, r + 0.3f, 0); q.z = at.z; hero_at(q); }
+            if (ri(0, 9) == 0) w32(0x001413d4, 0x72);
+            if (ri(0, 9) == 0) w32(0x0015f5c4, 2);
+            return m;
+        });
+        // class 628, the boss's burst: about the hero (inside its radius or not), its life at its end or not, the level's
+        // counter's bit 4 both ways (the counter is dealt by the check)
+        owncheck("own628_burst", 0x002dc260, vf_class628_update_l18, [=] {
+            fifty();
+            const std::vector<uint32_t> boss = mobys_with(0x002f2bf0);
+            const uint32_t owner = !boss.empty() && coin() ? boss[0] : first_moby() + 0x100 * u(ri(0, 60));
+            const float r = rf(1, 6);
+            put(SCR, near(ee_ref<Vec4>(0x0013f3d0), 0, r + 2, 0.5f));
+            const uint32_t m = vf_2dc3e0_l18(owner, SCR, 0, 0, 0, 0, 0, 0, r, 0, 0, 0, 0, 0, 0, 0).v0;
+            if (m == 0) return 0u;
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w32(pv + 8, u(ri(0, 4)));
+            wf(pv + 4, rf(0, 2));
+            return m;
+        });
+        // class 568, the walking bombs: falling, sliding, walking (to the hero or another moby within 6), carried; the fuse
+        // running, ending, out; hit (the mask 0x330000), held by the hero, at a target; the hero dead
+        owncheck("own568_bomb", 0x002d5918, vf_class568_update_l18, [=] {
+            fifty();
+            const std::vector<uint32_t> ms = mobys_with(0x002d5918);
+            const uint32_t m = pick(ms);
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            if (ri(0, 3) == 0) set_up(m, vf_class568_update_l18);  // (at rest after it: hidden from the targets)
+            const int st = ri(0, 9) == 0 ? (coin() ? 0 : 5) : ri(0, 2) == 0 ? 3 : ri(1, 4);
+            w8(m + 0x20, u(st));
+            w32(pv + 0x194, ri(0, 4) == 0 ? u(ri(0, 1)) : u(ri(2, 300)));
+            w32(pv + 0x19c, ri(0, 6) == 0 ? 1u : 0u);
+            if (ri(0, 8) == 0) w32(HERO + (coin() ? 0x23c : 0x240), m);
+            if (ri(0, 2) == 0) {
+                give_hit(m, 0x330000u);
+                if (ee_read<uint8_t>(m + 0xa4) != 0xff && ri(0, 3) != 0) {  // (one kind of the mask alone, or one outside it)
+                    static const uint32_t one[] = {0x100000, 0x20000, 0x100000, 0x20000, 0x10000, 0x200000, 0x400000};
+                    const uint32_t e = OV(0x00178100) + (u(ee_read<uint8_t>(m + 0xa4)) << 6);
+                    w32(e + 0x24, one[ri(0, 6)]);
+                    w32(e + 0x34, m);
+                }
+            } else w8(m + 0xa4, 0xff);
+            if (ri(0, 5) == 0) w32(0x001413d4, 0x72);
+            const Vec4 p = VV(m + 0x10);
+            switch (st) {
+            case 1:
+                wf(pv + 0x180, rf(-0.2f, 0.2f)); wf(pv + 0x184, rf(-0.2f, 0.2f)); wf(pv + 0x188, rf(-0.5f, 0.2f));
+                wf(pv + 0x178, p.z + rf(-0.6f, 0.4f));
+                if (coin()) hero_at(near(p, 0, 3, 0.5f));
+                break;
+            case 2:
+                wf(pv + 0x188, ri(0, 3) == 0 ? 0.0f : rf(-0.2f, 0.2f));
+                w8(m + 0x53, u(ri(0, 1)));
+                break;
+            case 3: {
+                w8(m + 0x31, ri(0, 4) == 0 ? 0u : 1u);
+                w8(m + 0x53, u(ri(0, 2)));
+                w8(m + 0x70, u(R() & 3));
+                wfrand(pv + 0x40, 3, -0.1f, 0.1f);
+                wf(pv + 0x48, rf(-0.3f, 0.3f));
+                if (coin()) hero_at(near(p, 0.5f, 7, 0.5f));
+                else {
+                    hero_at(near(p, 20, 40, 0.5f));  // (the hero out of its reach)  // (the bomb moved next to another live moby: a trooper's, the boss's, a class 1906 robot's, any)
+                    static const uint32_t cls[] = {0x002f7c40, 0x002f2bf0, 0x002fbb98};
+                    uint32_t o = pick(mobys_with(cls[ri(0, 2)]));
+                    if (o == 0 || ri(0, 3) == 0) o = first_moby() + 0x100 * u(ri(0, 300));
+                    if (ee_read<uint8_t>(o + 0x20) < 0xfe && o != m) VV(m + 0x10) = near(VV(o + 0x10), 0.5f, 5, 0.2f);
+                }
+                break;
+            }
+            default:
+                break;
+            }
+            return m;
+        }, 120);
+        // class 568's hook +0 in each state (the class loop's hook check sees the bombs at rest): its arguments as the hook check's
+        l18check("own568_hook0", 0x002d6108, 60, Ret::Int32, [=] {
+            level();
+            const uint32_t m = pick(mobys_with(0x002d5918));
+            w8(m + 0x20, u(ri(0, 5)));
+            w8(m + 0xbc, u(ri(0, 5)));
+            w16(ee_read<uint32_t>(m + 0x78) + 0xc8, ri(0, 2) == 0 ? 8u : u(ri(0, 7)));  // (the carry record's state: 8 refuses)
+            hero_at(near(VV(m + 0x10), 0, 4, 1));
+            const uint32_t tgt = ri(0, 3) == 0 ? 0u : first_moby() + 0x100 * u(ri(0, 100));
+            return Args{{m, ri(0, 2) == 0 ? 0x0013f3d0u : m + 0x10, tgt}, {rf(-1, 3)}};
+        }, [](A a) { return r32(static_cast<uint32_t>(vf_bomb_hook0_l18(a.i[0], a.i[1], a.i[2], a.f[0]))); });
+        // class 568's hook +0x10 without a moby or without its pvars, and on a bomb
+        l18check("own568_hook10", 0x002d6250, 30, Ret::Int32, [=] {
+            level();
+            const int k = ri(0, 2);
+            uint32_t m = 0;
+            if (k != 0) {
+                m = pick(mobys_with(0x002d5918));
+                if (k == 1) w32(m + 0x78, 0);
+            }
+            return Args{{m}, {}};
+        }, [](A a) { return r32(vf_bomb_hook10_l18(a.i[0])); });
+        // class 582, the rail switch: the hero near each pair's ends, grinding on one of them or not
+        owncheck("own582_rails", 0x002d62e8, vf_class582_update_l18, [=] {
+            fifty();
+            const uint32_t m = pick(mobys_with(0x002d62e8));
+            if (m == 0) return 0u;
+            set_up(m, vf_class582_update_l18);
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w8(m + 0x20, 1);
+            for (uint32_t j = 0; j < 8; ++j) {  // (the pairs' rails open or shut at random: the switch's choice shows)
+                const uint32_t r = ee_read<uint32_t>(pv + j * 4);
+                if (r != 0) wf(r + 0xc, coin() ? 0.0f : rf(0.5f, 3));
+            }
+            const uint32_t k = u(ri(0, 3)), rail = ee_read<uint32_t>(pv + k * 8 + (coin() ? 4 : 0));
+            if (rail != 0) hero_at(near(VV(ee_read<uint32_t>(rail + 0x10) + 0x10), 0, 20, 1));
+            if (coin()) {
+                w32(HERO + 0x208c, 0xf);
+                if (rail != 0 && coin()) w32(HERO + 0x560, ee_read<uint32_t>(rail + 0x10));
+            }
+            return m;
+        });
+        // class 583, the gates: open or shut, the leaves at their opening or not, the gate up, down or between; its wait ending,
+        // the level's mode 2 and the boss's phase, the hero in his state 0x22; standing on a moby
+        owncheck("own583_gate", 0x002d6600, vf_class583_update_l18, [=] {
+            fifty();
+            const uint32_t m = pick(mobys_with(0x002d6600));
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            set_up(m, vf_class583_update_l18);
+            w8(m + 0x20, ri(0, 9) == 0 ? 0u : 1u);
+            const float goal = coin() ? 0.0f : rf(0.5f, 4);
+            wf(pv + 0x24, goal);
+            wf(pv + 0x20, coin() ? goal : rf(0, 4));
+            wf(pv + 0x34, ri(0, 2) == 0 ? ee_read<float>(0x0016199c) : ri(0, 1) == 0 ? ee_read<float>(0x001619a0) : rf(-2, 4));
+            wf(pv + 0x28, rf(-0.2f, 0.2f));
+            w32(pv + 0x30, ri(0, 2) == 0 ? 1u : 0u);
+            w32(pv + 0x2c, u(ri(0, 3)));
+            w32(pv + 0x38, coin() ? 1u : 0u);
+            w32(0x0015f5c4, coin() ? 2u : u(ri(0, 3)));
+            w32(0x0016d290, u(ri(1, 6)));
+            if (coin()) { w16(HERO + 0x30e, ri(0, 3) == 0 ? 1u : 0u); w32(0x001413d4, coin() ? 0x22u : u(ri(0, 0x30))); }
+            return m;
+        });
+        // class 586, the lift and the pad: each state; the hero stepping on it (his state 0x22, standing on it) or near it; its
+        // sound slot playing; the hint's dialogue record (heard or not, when) and the level's bit, the dialogue system idle in
+        // half the cases (the request then goes through)
+        owncheck("own586_lift", 0x002d7b20, vf_class586_update_l18, [=] {
+            fifty();
+            const uint32_t m = pick(mobys_with(0x002d7b20));
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            set_up(m, vf_class586_update_l18);
+            const int st = ri(0, 2) == 0 ? 4 : ri(0, 6);
+            w8(m + 0x20, u(st));
+            if (st == 0) w32(pv + 0x60, coin() ? 1u : 0u);
+            if (coin()) { w32(HERO + 0x2fc, m); w16(HERO + 0x30e, ri(0, 4) == 0 ? 1u : 0u); w32(0x001413d4, ri(0, 4) == 0 ? 0x72u : 0x22u); }
+            hero_at(near(VV(m + 0x10), 0, ri(0, 2) != 0 ? 2.4f : 6, 0.5f));
+            w32(pv + 0x6c, u(ri(0, 3)));
+            if (coin()) {  // (its sound in a slot)
+                const uint32_t slot = u(ri(0, 15)), e = 0x0013e550 + slot * 0x70;
+                w32(pv + 0x70, slot);
+                if (coin()) w32(e + 0x88, m);
+                w8(e + 0x74, u(ri(0, 1)));
+            } else w32(pv + 0x70, 0xffffffffu);
+            const uint32_t lv = ee_read<uint32_t>(0x0015ed84) & 31;
+            if (ri(0, 3) == 0) w32(0x0015717c, ee_read<uint32_t>(0x0015717c) | (1u << lv));
+            else w32(0x0015717c, ee_read<uint32_t>(0x0015717c) & ~(1u << lv));
+            w16(0x00141cf0, coin() ? 0u : u(ri(1, 3)));
+            w16(0x00141cf2, ri(0, 3) == 0 ? 0u : u(ri(1, 200)));
+            w32(0x0015eea4, coin() ? u(ri(0, 200000)) : u(ee_read<uint16_t>(0x00141cf2) * 600 + ri(0, 1500)));  // (the hint's wait over or not)
+            if (coin()) {  // (the dialogue system idle: sub_00203908 takes the request)
+                w32(OV(0x00179410), 0);
+                w32(OV(0x00179410) + 0x24, 0xffffffffu);
+                w32(0x001516d0 + 0x50, 0);
+                w32(0x001516d0 + 0x1c, 0xffffffffu);
+            }
+            return m;
+        }, 120);
+        // class 587, the floating platforms: each state; the flood anywhere about its range; each kind (+0x80 / +0x84 / +0x88);
+        // the bubbles due; the hero on it (under the water's level, in his state 0x77 or not) or near it; sunk below its start
+        // by 10 and below z 15; its rocking past its limits
+        owncheck("own587_float", 0x002d82c0, vf_class587_update_l18, [=] {
+            fifty();
+            const uint32_t m = pick(mobys_with(0x002d82c0));
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            set_up(m, vf_class587_update_l18);
+            const int st = ri(0, 5);
+            w8(m + 0x20, u(st));
+            w8(m + 0x31, ri(0, 4) == 0 ? 0u : 1u);
+            w32(pv + 0x8c, u(ri(0, 2)));
+            w32(pv + 0x7c, u(ri(0, 2)));
+            for (const uint32_t o : {0x80u, 0x84u, 0x88u}) w32(pv + o, coin() ? 1u : 0u);
+            const float lo = ee_read<float>(0x00161a60), hi = ee_read<float>(0x00161a64);
+            w32(0x001623a8, u(static_cast<int32_t>(rf(lo - (hi - lo) * 0.3f, hi + (hi - lo) * 0.3f))));
+            wf(pv + 0x6c, rf(-0.6f, 0.6f));
+            wf(m + 0x44, rf(-0.6f, 0.6f));
+            wf(pv + 0x70, rf(-0.3f, 0.1f));
+            if (st == 5 && ri(0, 3) != 0) {  // (sunk below its start by 10: some below z 15)
+                const float z = coin() ? rf(5, 15) : ee_read<float>(pv + 0x60) - rf(10, 14);
+                wf(m + 0x18, z);
+            }
+            if (coin()) {
+                w32(HERO + 0x2fc, m);
+                w16(HERO + 0x30e, ri(0, 4) == 0 ? 1u : 0u);
+                const Vec4 p = VV(m + 0x10);
+                Vec4 q = near(p, 0, 1, 0);
+                q.z = coin() ? ee_read<float>(0x0015f638) - rf(0.1f, 2) : p.z + 1;
+                hero_at(q);
+                if (ri(0, 4) == 0) w32(0x001413d4, 0x77);
+            } else hero_at(near(VV(m + 0x10), 0, 8, 1));
+            return m;
+        });
+        g_extra_noop_hooks.clear();
     }
 
     //@@NEXT

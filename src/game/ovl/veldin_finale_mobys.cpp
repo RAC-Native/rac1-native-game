@@ -1,11 +1,14 @@
 // Veldin, the finale (level 18) own moby classes: the registration table. The ports are the transliterations in
-// veldin_finale_classes_tr_N.cpp (declarations: veldin_finale_mobys.h) and, for the classes other levels share, the shared
+// veldin_finale_classes_tr_N.cpp (declarations: veldin_finale_mobys.h), the level's own hand-written classes (veldin_finale_shots.cpp,
+// _walking_bomb.cpp, _rail_switch.cpp, _gate.cpp, _platforms.cpp: classes 41, 564, 568, 582, 583, 586, 587, 624, 628 and class
+// 568's carry hooks) and, for the classes other levels share, the shared
 // hand-written ports (shared_*.cpp, novalis_*.cpp, aridia_props.cpp: each proved against level 18's own copy by its family
 // batch; the adapters below pass a copy's own constants). Giant Clank's pad (class 1899) keeps its generated copy: the PAL
 // 2.00 disc changed it (1.02 Gameplay fix 23), and the shared port's fork is a setting. Keyed by level 18's own address and by level, so the indirect call (`jalr`)
 // through moby +0x74 (and the draw lists' callbacks) reaches them only while the played level's overlay is level 18's.
 #include <game/ovl/veldin_finale_hooks.h>
 #include <game/ovl/veldin_finale_mobys.h>
+#include <game/ovl/veldin_finale_own.h>
 #include <game/ovl/aridia_mobys.h>
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/novalis_mobys2.h>
@@ -40,14 +43,14 @@
 namespace rac1 {
 
 namespace {
-// orig: (none) -- adapter of L18:0x002d6108 (class 568's hook +0: the indirect-call form, the moby only)
-void vf_hook_2d6108_m(uint32_t m) { vf_hook_2d6108_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+// orig: (none) -- adapter of L18:0x002d6108 (class 568's hook +0, veldin_finale_walking_bomb.cpp: the indirect-call form, the moby only)
+void vf_hook_2d6108_m(uint32_t m) { vf_bomb_hook0_l18(m, 0, 0, 0.0f); }
 
 // orig: (none) -- adapter of L18:0x002d61e0 (class 568's hook +8, the shared port: the indirect-call form, the moby only)
 void vf_hook_2d61e0_m(uint32_t m) { carry_state_hook(m, 0, 0, 0.0f, 8, 4, -1); }
 
-// orig: (none) -- adapter of L18:0x002d6230 (class 568's hook +0xc: the indirect-call form, the moby only)
-void vf_hook_2d6230_m(uint32_t m) { vf_hook_2d6230_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+// orig: (none) -- adapter of L18:0x002d6230 (class 568's hook +0xc, veldin_finale_walking_bomb.cpp: the indirect-call form, the moby only)
+void vf_hook_2d6230_m(uint32_t m) { vf_bomb_hookc_l18(m, 0, 0, 0.0f); }
 
 // orig: (none) -- adapter of L18:0x002fcbb0 (class 1906's hook +0, the shared port: the indirect-call form, the moby only)
 void vf_hook_2fcbb0_m(uint32_t m) { carry_state_hook(m, 0, 0, 0.0f, 0, 7, 2); }

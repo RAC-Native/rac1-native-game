@@ -266,8 +266,13 @@ add_library(rac1_game STATIC
     ovl/veldin_orbit_hazards.cpp
     ovl/veldin_orbit_hooks.cpp
     ovl/veldin_orbit_mobys.cpp
+    ovl/veldin_finale_gate.cpp
     ovl/veldin_finale_hooks.cpp
     ovl/veldin_finale_mobys.cpp
+    ovl/veldin_finale_platforms.cpp
+    ovl/veldin_finale_rail_switch.cpp
+    ovl/veldin_finale_shots.cpp
+    ovl/veldin_finale_walking_bomb.cpp
     ovl/credits.cpp
     ovl/end_menu.cpp
     ovl/hero_move_mode.cpp

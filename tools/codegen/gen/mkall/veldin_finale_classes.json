@@ -4,18 +4,9 @@
  "env": {
   "MKALL_HELPER_PREFIX": "vf_",
   "MKALL_WIDE_GPR": "",
-  "MKALL_UNIFORM": "vf_hook_2d6108_u,vf_hook_2d6230_u,vf_hook_2d6250_u,vf_hook_2fcca0_u"
+  "MKALL_UNIFORM": "vf_hook_2fcca0_u"
  },
  "entries": [
-  "2a7220:vf_class41_update_l18:void:a0",
-  "2d5050:vf_class564_update_l18:void:a0",
-  "2d5918:vf_class568_update_l18:void:a0",
-  "2d62e8:vf_class582_update_l18:void:a0",
-  "2d6600:vf_class583_update_l18:void:a0",
-  "2d7b20:vf_class586_update_l18:void:a0",
-  "2d82c0:vf_class587_update_l18:void:a0",
-  "2db460:vf_class624_update_l18:void:a0",
-  "2dc260:vf_class628_update_l18:void:a0",
   "2df608:vf_class644_update_l18:void:a0",
   "2e9768:vf_class885_update_l18:void:a0",
   "2e9e70:vf_class983_update_l18:void:a0",
@@ -34,9 +25,6 @@
   "2fad28:vf_class1799_update_l18:void:a0",
   "2fb868:vf_class1899_update_l18:void:a0",
   "2fbb98:vf_class1906_update_l18:void:a0",
-  "2d6108:vf_hook_2d6108_u",
-  "2d6230:vf_hook_2d6230_u",
-  "2d6250:vf_hook_2d6250_u",
   "2fcca0:vf_hook_2fcca0_u",
   "2d5768:vf_cb_2d5768_l18:void:a0",
   "2dba20:vf_cb_2dba20_l18:void:a0",
@@ -54,7 +42,6 @@
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/veldin_finale_classes_tr_1.cpp",
   "src/game/ovl/veldin_finale_classes_tr_2.cpp",
   "src/game/ovl/veldin_finale_classes_tr_3.cpp",
   "src/game/ovl/veldin_finale_classes_tr_4.cpp",

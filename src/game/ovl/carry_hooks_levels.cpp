@@ -28,6 +28,7 @@
 #include <game/ovl/shared_little.h>  // (carry_keep_state_hook: Pokitaru)
 #include <game/ovl/veldin_orbit_mobys.h>
 #include <game/ovl/veldin_finale_mobys.h>
+#include <game/ovl/veldin_finale_own.h>
 #include <game/ovl/variants_l2.h>
 #include <game/ovl/variants_l3.h>
 #include <game/ovl/variants_l5.h>
@@ -363,11 +364,11 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         case L18_CASE(0x002e1458): ret = e749_hook8(m, a1, a2, f12); return true;  // (Veldin's 0x2d5780)
         case L18_CASE(0x002e14a8): ret = e749_hookc(m, a1, a2, f12); return true;  // (Veldin's 0x2d57d0)
         case L18_CASE(0x002e14d8): ret = static_cast<int32_t>(e749_hook_10(m)); return true;  // (Veldin's 0x2d5800)
-        case L18_CASE(0x002d6108): ret = u_call(vf_hook_2d6108_u, m, a1, a2, f12); return true;
+        case L18_CASE(0x002d6108): ret = vf_bomb_hook0_l18(m, a1, a2, f12); return true;  // (veldin_finale_walking_bomb.cpp)
         case L18_CASE(0x002d6190): ret = carry_state_hook(m, a1, a2, f12, 4, 4, -1); return true;  // (the shared port, shared_helpers.cpp)
         case L18_CASE(0x002d61e0): ret = carry_state_hook(m, a1, a2, f12, 8, 4, -1); return true;
-        case L18_CASE(0x002d6230): ret = u_call(vf_hook_2d6230_u, m, a1, a2, f12); return true;
-        case L18_CASE(0x002d6250): ret = u_call(vf_hook_2d6250_u, m, a1, a2, f12); return true;
+        case L18_CASE(0x002d6230): ret = vf_bomb_hookc_l18(m, a1, a2, f12); return true;
+        case L18_CASE(0x002d6250): ret = static_cast<int32_t>(vf_bomb_hook10_l18(m)); return true;
         case L18_CASE(0x002fcbb0): ret = carry_state_hook(m, a1, a2, f12, 0, 7, 2); return true;
         case L18_CASE(0x002fcc00): ret = carry_state_hook(m, a1, a2, f12, 4, 7, 2); return true;
         case L18_CASE(0x002fcc50): ret = carry_state_hook(m, a1, a2, f12, 8, 7, 2); return true;
