@@ -47,6 +47,7 @@
 #include <optional>
 #include <cmath>
 #include <cstring>
+#include <random>
 #include <functional>
 #include <initializer_list>
 #include <unordered_set>
@@ -1381,8 +1382,19 @@ void moby_helper_checks() {
             const float t = ri(0, 4) == 0 ? t0 - rf(0.0f, 2.0f) : rf(t0 - 1.0f, t1 + 2.0f);
             return Args{{u(ri(0, 1)), u(ri(-1, 4))}, {t, rf(-3.1f, 3.1f), rf(-3.1f, 3.1f), t0, t1}};
         }, [](A a) { return static_cast<uint64_t>(f2u(ease_between(static_cast<int32_t>(a.i[0]), static_cast<int32_t>(a.i[1]), a.f[0], a.f[1], a.f[2], a.f[3], a.f[4]))); });
+        // the factor's power driven into the denormal range (t just past t0, powers 4 .. 8, from at 0 or tiny): the EE flushes
+        // what the host would leave denormal (P13.2's class 69 case); the batch's later checks keep the cases they had
+        const std::mt19937 rng_before = rng;
+        fcheck("ease_between_tiny", fn, 200, Ret::Float, [] {
+            const float t0 = rf(-5.0f, 5.0f), t1 = t0 + rf(50.0f, 500.0f);
+            const float t = t0 + (ri(0, 3) == 0 ? rf(0.0f, 0.001f) : rf(0.001f, 40.0f));
+            const float from = ri(0, 2) == 0 ? 0.0f : (coin() ? rf(-1e-6f, 1e-6f) : rf(-3.1f, 3.1f));
+            return Args{{u(ri(0, 1)), u(ri(4, 8))}, {t, from, rf(-3.1f, 3.1f), t0, t1}};
+        }, [](A a) { return static_cast<uint64_t>(f2u(ease_between(static_cast<int32_t>(a.i[0]), static_cast<int32_t>(a.i[1]), a.f[0], a.f[1], a.f[2], a.f[3], a.f[4]))); });
+        rng = rng_before;
     } else {
         not_here("ease_between");
+        not_here("ease_between_tiny");
     }
     {
         struct StateTest { int level; uint32_t addr; uint32_t state; };

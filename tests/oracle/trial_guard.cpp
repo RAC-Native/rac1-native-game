@@ -7,6 +7,7 @@
 #include <windows.h>
 #include <excpt.h>
 #else
+#include <cfenv>
 #include <csetjmp>
 #include <csignal>
 #include <sys/time.h>
@@ -108,6 +109,12 @@ bool run_trial(void (*port)(uint32_t), uint32_t moby, unsigned timeout_seconds) 
     sigaction(SIGSEGV, &action, &old_segv);
     if (timeout_seconds) sigaction(SIGALRM, &action, &old_alarm);
     bool ok = true;
+    // The thread's float mode (the EE's: toward zero, flush to zero, denormals are zero, set by enter_ee_rounding) is saved
+    // here and put back after the trial: a signal handler starts with the host's default mode, and siglongjmp out of it
+    // skips the kernel's restore, so a trial that faulted used to leave every later check of the batch rounding to nearest
+    // with denormals (the ports' raw float forms then differ from the EE: P13.2's class 69 case, a denormal pitch).
+    fenv_t fpu_env;
+    fegetenv(&fpu_env);
     if (sigsetjmp(trial_jump, 1) != 0) ok = false;
     else {
         if (timeout_seconds) {
@@ -123,6 +130,7 @@ bool run_trial(void (*port)(uint32_t), uint32_t moby, unsigned timeout_seconds) 
         sigaction(SIGALRM, &old_alarm, nullptr);
     }
     sigaction(SIGSEGV, &old_segv, nullptr);
+    fesetenv(&fpu_env);
     return ok;
 #endif
 }
