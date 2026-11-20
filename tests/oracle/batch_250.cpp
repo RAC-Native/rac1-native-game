@@ -633,6 +633,15 @@ void batch_250() {
         auto pick = [](const std::vector<uint32_t>& v) { return v.empty() ? 0u : v[static_cast<size_t>(ri(0, static_cast<int>(v.size()) - 1))]; };
         auto index_of = [](uint32_t m) { return (m - ee_read<uint32_t>(OV(0x0015ffd8))) >> 8; };
         auto box_centre = [](int32_t i) { return ee_ref<Vec4>(lvd::box(lvd::BOXES, i) + 0x30); };
+        {  // the play-test spots: each placed moby of the hand-written classes (and of 541 / 556), its index, uid and place
+            level();
+            static const std::pair<uint32_t, int> kSpots[] = {{0x002c3d38, 257}, {0x002c9480, 470}, {0x002c9878, 471}, {0x002cf198, 546},
+                {0x002cf4a8, 552}, {0x002d59e0, 647}, {0x002d5cb8, 650}, {0x002d5ef8, 654}, {0x002cddb8, 541}, {0x002d04a0, 556}};
+            for (const auto& [fn, cls] : kSpots)
+                for (uint32_t m : live(fn, -1))
+                    std::printf("INFO P16 class %d idx %u uid %d at %.1f %.1f %.1f\n", cls, index_of(m), ee_read<int16_t>(m + 0xb2),
+                                ee_read<float>(m + 0x10), ee_read<float>(m + 0x14), ee_read<float>(m + 0x18));
+        }
 
         // class 1475, the rocket (spawned): homing on a target after its first frames, near the floor heading down, far from the
         // hero, its time running out, below 2 on an axis
@@ -696,6 +705,14 @@ void batch_250() {
             q.x += rf(-1.5f, 1.5f); q.y += rf(-1.5f, 1.5f); q.z += rf(0.0f, 0.8f);
             ee_ref<Vec4>(m + 0x10) = q;
             wf(pv + 0x10, rf(-0.3f, 0.3f)); wf(pv + 0x14, rf(-0.3f, 0.3f)); wf(pv + 0x18, coin() ? rf(-0.4f, 0.0f) : rf(-0.01f, 0.01f));
+            if (fighter != 0 && coin()) {  // thrown through the fighter (its move crosses the fighter's collision: the segment test)
+                const Vec4 c = ee_ref<Vec4>(fighter + 0x10);
+                const float a = rf(-3.1f, 3.1f), r = rf(0.6f, 1.2f);
+                ee_ref<Vec4>(m + 0x10) = Vec4{c.x + r * std::cos(a), c.y + r * std::sin(a), c.z + rf(0.3f, 1.2f), c.w};
+                const Vec4 q2 = ee_ref<Vec4>(m + 0x10);
+                const float k = rf(1.5f, 2.5f);
+                wf(pv + 0x10, (c.x - q2.x) * k); wf(pv + 0x14, (c.y - q2.y) * k); wf(pv + 0x18, (c.z + 0.6f - q2.z) * k);
+            }
             wf(pv + 0x24, rf(0, 0.02f));
             w32(pv + 0x20, coin() ? 0u : ee_read<uint32_t>(0x001413d0));
             const int every = st == 1 ? 10 : 20;

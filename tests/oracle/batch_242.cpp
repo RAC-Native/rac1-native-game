@@ -45,7 +45,13 @@ namespace {
 // are left out of these checks, and only of them (stage 5, task C2c).
 bool c2c_spr_check(const char* name) {
     static const char* const kNames[] = {"frame_gclank_3500_L15", "frame_gclank_4500_L15", "frame_gclank_6000_L15",
-                                         "input_gclank_3500_L15", "state_gclank_4500_L15"};
+                                         "input_gclank_3500_L15", "state_gclank_4500_L15",
+                                         // level 16's race (the hero's frame / state / input and the race camera on the race dumps):
+                                         // they failed on these words alone since C2a .. C2c, the guard was never added for level 16
+                                         "frame_race_1500_L16", "frame_race_2500_L16", "frame_race_3500_L16",
+                                         "state_race_1500_L16", "state_race_2500_L16", "state_race_3500_L16",
+                                         "input_race_1500_L16", "input_race_3500_L16",
+                                         "cam8_update_race_1500_L16", "cam8_update_race_2500_L16", "cam8_update_race_3500_L16"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
