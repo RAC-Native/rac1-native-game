@@ -244,6 +244,12 @@ add_library(rac1_game STATIC
     ovl/oltanis_turret_shot.cpp
     ovl/oltanis_lightning.cpp
     ovl/oltanis_gondola.cpp
+    ovl/oltanis_raft.cpp
+    ovl/oltanis_talkers.cpp
+    ovl/oltanis_crafts.cpp
+    ovl/oltanis_carrier.cpp
+    ovl/oltanis_mortar_bomb.cpp
+    ovl/oltanis_small_classes.cpp
     ovl/levels13_14_shared.cpp
     ovl/quartu_hooks.cpp
     ovl/quartu_mobys.cpp

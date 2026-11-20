@@ -29,43 +29,33 @@ void olt_class643_update_l14(uint32_t m);  // L14:0x002ec810
 void olt_class681_update_l14(uint32_t m);  // L14:0x002ece00
 void olt_class684_update_l14(uint32_t m);  // L14:0x002ed280
 void olt_class685_update_l14(uint32_t m);  // L14:0x002ee8d8
+// ... the raft (oltanis_raft.cpp), the two talkers (oltanis_talkers.cpp), the flying craft and the rocket
+// (oltanis_crafts.cpp), the carrier (oltanis_carrier.cpp), the mortar bomb (oltanis_mortar_bomb.cpp).
+void olt_class712_update_l14(uint32_t m);   // L14:0x002f0538
+void olt_class851_update_l14(uint32_t m);   // L14:0x002fba20
+void olt_class908_update_l14(uint32_t m);   // L14:0x002fc0f0
+void olt_class921_update_l14(uint32_t m);   // L14:0x002fcbb0
+void olt_class922_update_l14(uint32_t m);   // L14:0x002fdbb8
+void olt_class923_update_l14(uint32_t m);   // L14:0x002fe2a0
+void olt_class924_update_l14(uint32_t m);   // L14:0x002fefe0
+void olt_class1193_update_l14(uint32_t m);  // L14:0x00300e00
+// ... and of part 4, classes 1352, 1397, 1418 and 1559 (oltanis_small_classes.cpp).
+void olt_class1352_update_l14(uint32_t m);  // L14:0x00305408
+void olt_class1397_update_l14(uint32_t m);  // L14:0x003061d8
+void olt_class1418_update_l14(uint32_t m);  // L14:0x00307a80
+void olt_class1559_update_l14(uint32_t m);  // L14:0x003087c0
 
-TrRet olt_2f1140_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002f1140
-TrRet olt_2f13f8_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002f13f8
-void olt_class712_update_l14(uint32_t a0);  // L14:0x002f0538
 TrRet olt_26b390_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x0026b390
-TrRet olt_2ef578_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002ef578
-TrRet olt_2ef5a8_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002ef5a8
-void olt_class851_update_l14(uint32_t a0);  // L14:0x002fba20
-TrRet olt_2fc3e8_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002fc3e8
-TrRet olt_2fc9a0_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002fc9a0
-void olt_class908_update_l14(uint32_t a0);  // L14:0x002fc0f0
-TrRet olt_2fd310_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002fd310
-TrRet olt_2fd918_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002fd918
-TrRet olt_2fe238_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002fe238
-void olt_class921_update_l14(uint32_t a0);  // L14:0x002fcbb0
-TrRet olt_2fded0_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002fded0
-void olt_class922_update_l14(uint32_t a0);  // L14:0x002fdbb8
-TrRet olt_2fea80_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002fea80
-void olt_class923_update_l14(uint32_t a0);  // L14:0x002fe2a0
-void olt_class924_update_l14(uint32_t a0);  // L14:0x002fefe0
-void olt_class1193_update_l14(uint32_t a0);  // L14:0x00300e00
-TrRet olt_305600_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x00305600
-TrRet olt_305680_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x00305680
-void olt_class1352_update_l14(uint32_t a0);  // L14:0x00305408
 TrRet olt_305a38_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x00305a38
 TrRet olt_305b18_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x00305b18
 void olt_class1354_update_l14(uint32_t a0);  // L14:0x00305758
 TrRet olt_306158_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x00306158
 void olt_class1395_update_l14(uint32_t a0);  // L14:0x00305d28
-void olt_class1397_update_l14(uint32_t a0);  // L14:0x003061d8
 void olt_class1416_update_l14(uint32_t a0);  // L14:0x00306b78
 TrRet olt_307510_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x00307510
 TrRet olt_307620_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x00307620
 TrRet olt_3135b8_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x003135b8
 void olt_class1417_update_l14(uint32_t a0);  // L14:0x00306ee0
-void olt_class1418_update_l14(uint32_t a0);  // L14:0x00307a80
-void olt_class1559_update_l14(uint32_t a0);  // L14:0x003087c0
 TrRet olt_213028_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x00213028
 TrRet olt_20f9d0_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x0020f9d0
 TrRet olt_2ae0a8_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002ae0a8

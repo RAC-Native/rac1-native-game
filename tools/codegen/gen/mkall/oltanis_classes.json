@@ -4,25 +4,13 @@
  "env": {
   "MKALL_HELPER_PREFIX": "olt_",
   "MKALL_WIDE_GPR": "",
-  "MKALL_UNIFORM": "olt_cam_type20_accept_u,olt_cam_type21_accept_u,olt_hook_2daed8_u"
+  "MKALL_UNIFORM": "olt_cam_type20_accept_u,olt_cam_type21_accept_u,olt_hook_2daed8_u,olt_26b390_l14"
  },
  "entries": [
-  "2f0538:olt_class712_update_l14:void:a0",
-  "2fba20:olt_class851_update_l14:void:a0",
-  "2fc0f0:olt_class908_update_l14:void:a0",
-  "2fcbb0:olt_class921_update_l14:void:a0",
-  "2fdbb8:olt_class922_update_l14:void:a0",
-  "2fe2a0:olt_class923_update_l14:void:a0",
-  "2fefe0:olt_class924_update_l14:void:a0",
-  "300e00:olt_class1193_update_l14:void:a0",
-  "305408:olt_class1352_update_l14:void:a0",
   "305758:olt_class1354_update_l14:void:a0",
   "305d28:olt_class1395_update_l14:void:a0",
-  "3061d8:olt_class1397_update_l14:void:a0",
   "306b78:olt_class1416_update_l14:void:a0",
   "306ee0:olt_class1417_update_l14:void:a0",
-  "307a80:olt_class1418_update_l14:void:a0",
-  "3087c0:olt_class1559_update_l14:void:a0",
   "2aee28:olt_cb_2aee28_l14:void:a0",
   "2d71f0:olt_cb_2d71f0_l14:void:a0",
   "2df458:olt_cb_2df458_l14:void:a0",
@@ -38,11 +26,11 @@
   "315d48:olt_cam_type21_update_l14:void:a0",
   "3167e0:olt_cam_type21_exit_l14:void:a0",
   "2daed8:olt_hook_2daed8_u",
-  "2460f8:olt_cutscene_level_extras_l14:void:a0"
+  "2460f8:olt_cutscene_level_extras_l14:void:a0",
+  "26b390:olt_26b390_l14"
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/oltanis_classes_tr_3.cpp",
   "src/game/ovl/oltanis_classes_tr_4.cpp",
   "src/game/ovl/oltanis_classes_tr_5.cpp",
   "src/game/ovl/oltanis_classes_tr_6.cpp",
