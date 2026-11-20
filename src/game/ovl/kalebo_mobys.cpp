@@ -21,6 +21,7 @@
 #include <game/ovl/shared_swingshot_target.h>
 #include <game/ovl/kalebo_hooks.h>
 #include <game/ovl/kalebo_mobys.h>
+#include <game/ovl/kalebo_own.h>
 
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/empty_class_updates.h>
@@ -38,6 +39,10 @@ void kal_hook_2e6670_m(uint32_t m) { kal_hook_2e6670_u(m, 0, 0, 0, 0, 0, 0, 0, 0
 void kal_hook_2e66c0_m(uint32_t m) { kal_hook_2e66c0_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
 
 }  // namespace
+
+// Class 482: retires itself on its first update (the level places none; nothing it could do is left in its code).
+// orig: L16:0x002cb600
+void kal_class482_update_l16(uint32_t m) { moby_retire(m); }
 
 // orig: (none) -- level 16's registrations
 void kalebo_moby_fns_register() {

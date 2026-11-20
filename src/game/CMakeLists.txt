@@ -229,8 +229,16 @@ add_library(rac1_game STATIC
     ovl/levels13_14_shared.cpp
     ovl/quartu_hooks.cpp
     ovl/quartu_mobys.cpp
+    ovl/kalebo_arena.cpp
+    ovl/kalebo_barrier.cpp
+    ovl/kalebo_beacon.cpp
+    ovl/kalebo_conveyor.cpp
+    ovl/kalebo_fighter_bomb.cpp
+    ovl/kalebo_floor_plate.cpp
     ovl/kalebo_hooks.cpp
     ovl/kalebo_mobys.cpp
+    ovl/kalebo_path_runner.cpp
+    ovl/kalebo_rocket.cpp
     ovl/veldin_orbit_hooks.cpp
     ovl/veldin_orbit_mobys.cpp
     ovl/veldin_finale_hooks.cpp

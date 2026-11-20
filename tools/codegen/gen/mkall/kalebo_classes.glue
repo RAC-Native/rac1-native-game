@@ -1,5 +1,4 @@
 0x00260aa8: music_track_request(static_cast<int32_t>(a0.w()), a1.w());
-0x00254900: set32(v0, static_cast<uint32_t>(moby_group_count_l1(static_cast<int32_t>(a0.w()), static_cast<int32_t>(a1.w()))));
 0x00254a30: group_set_flags(static_cast<int32_t>(a0.w()), static_cast<int32_t>(a1.w()), static_cast<int32_t>(a2.w()), static_cast<int32_t>(a3.w()));
 0x0025ea88: flame_spray_clear(a0.w());
 0x0025eab8: flame_spray(a0.w(), a1.w(), a2.w(), fr[12]);
