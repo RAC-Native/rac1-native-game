@@ -12,7 +12,7 @@ What changed in each release. Releases are source only: you build the game with 
   why. The row is greyed with the OpenGL renderer. `RAC1_GPU=<number|name part>` chooses for one run, and the log lists the
   devices (`[gpu] Vulkan devices: ...`). The row shows a short name ("RTX 4070 Ti", "Radeon 890M"; the full name is in its
   help line and the saved file).
-- **Changing the GPU or the Renderer row asks to restart**: a popup, "Restart Now / Later"; Restart Now closes the game and
+- **Leaving the Display page after changing the GPU or the Renderer row asks to restart**: a popup, "Restart Now / Later" (not while stepping the values, and not when the row is set back); Restart Now closes the game and
   starts it again with the same arguments (the pause menu's says that progress since the last save is lost). The debug
   menu's Rendering tab has the GPU choice too, with "In use: <GPU>" and a Restart now button.
 

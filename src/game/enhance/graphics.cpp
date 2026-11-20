@@ -382,12 +382,12 @@ constexpr const char* LIGHT_ORIGINAL_TEXTS[4][2] = {
 };
 // The GPU row's words (not texts asked for by id), per language as TEXTS: Automatic, the help when the row does nothing (the
 // renderer's choice is OpenGL), the help when RAC1_GPU chose, the mark of a choice whose GPU is not there now ("RTX 4070 Ti (gone)"),
-// "In use", the help when the restart could not be done
-constexpr const char* GPU_TEXTS[4][6] = {
-    {"Automatic", "Works with Vulkan only: choose Renderer Vulkan first.", "Chosen for this run by RAC1_GPU.", "gone", "(in use)", "Restart the game to use it."},
-    {"Automatisch", "Nur mit Vulkan: zuerst Renderer Vulkan wahlen.", "Fur diesen Lauf von RAC1_GPU gewahlt.", "fehlt", "(im Einsatz)", "Starte das Spiel neu, um es zu nutzen."},
-    {"Automatico", "Solo con Vulkan: elige antes Renderizador Vulkan.", "Elegida para esta ejecucion por RAC1_GPU.", "falta", "(en uso)", "Reinicia el juego para usarlo."},
-    {"Automatica", "Solo con Vulkan: scegli prima Renderer Vulkan.", "Scelta per questa esecuzione da RAC1_GPU.", "assente", "(in uso)", "Riavvia il gioco per usarla."},
+// "(in use)", the help when the restart could not be done, the note while the choice waits for a restart
+constexpr const char* GPU_TEXTS[4][7] = {
+    {"Automatic", "Works with Vulkan only: choose Renderer Vulkan first.", "Chosen for this run by RAC1_GPU.", "gone", "(in use)", "Restart the game to use it.", "Applies after a restart."},
+    {"Automatisch", "Nur mit Vulkan: zuerst Renderer Vulkan wahlen.", "Fur diesen Lauf von RAC1_GPU gewahlt.", "fehlt", "(im Einsatz)", "Starte das Spiel neu, um es zu nutzen.", "Gilt nach einem Neustart."},
+    {"Automatico", "Solo con Vulkan: elige antes Renderizador Vulkan.", "Elegida para esta ejecucion por RAC1_GPU.", "falta", "(en uso)", "Reinicia el juego para usarlo.", "Se aplica al reiniciar."},
+    {"Automatica", "Solo con Vulkan: scegli prima Renderer Vulkan.", "Scelta per questa esecuzione da RAC1_GPU.", "assente", "(in uso)", "Riavvia il gioco per usarla.", "Vale dopo il riavvio."},
 };
 // The restart popup's texts (ids RT_FIRST..), per language as TEXTS: its title, Restart now, Later, the sentence for the GPU row and
 // for the Renderer row, what is lost (in the pause menu) and what is not (the main menu), what Later does
@@ -513,7 +513,7 @@ struct State {
     // the restart popup: asked after a change of the GPU row (1) or the Renderer row (2) that the running game does not have;
     // built (the pages' install), in which menu (the pause menu: progress is lost), the player's Restart now (the host takes it)
     int ask = 0;
-    bool ask_open = false;  // (the popup to open at the menu's next idle frame)
+    bool ask_due = false;  // (a GPU / Renderer change made and not yet asked about: the popup comes when the Display page is left)
     bool rp_built = false, rp_pause = false, restart_requested = false, restart_failed = false;
 } gs_;
 
@@ -973,7 +973,7 @@ size_t gpu_index(const std::vector<GpuEntry>& e) {
 void ask_check(int kind) {
     if (kind == 0) {
         gs_.ask = 0;
-        gs_.ask_open = false;
+        gs_.ask_due = false;
         return;
     }
     bool differs = false;
@@ -982,7 +982,7 @@ void ask_check(int kind) {
     else differs = gs_.run_known && gs_.value[S_RENDERER] != gs_.run_choice;
 #endif
     gs_.ask = differs ? kind : 0;
-    gs_.ask_open = differs;
+    gs_.ask_due = differs;
     gs_.restart_failed = false;
 }
 // orig: (none) — enhancement: the GPU row's help: the usual one, or why it does nothing, or that RAC1_GPU chose; with the full name
@@ -998,6 +998,7 @@ std::string gpu_help() {
     std::string head;
     if (i > 0) head = e[i].full + ". ";
     else if (!gs_.run_gpu.empty()) head = gs_.run_gpu + " " + GPU_TEXTS[lang][4] + ". ";
+    if (gs_.gpu_name != gs_.gpu_start_name || gs_.gpu_uuid != gs_.gpu_start_uuid) return head + GPU_TEXTS[lang][6];  // (chosen, not running yet)
     return head + t[H_GPU];
 }
 
@@ -1701,8 +1702,9 @@ static_assert(POP_TITLE == POP_PAGE + 0x90 && POP_LIST == POP_PAGE + 0xe0 && POP
                   POP2_TITLE == POP2_PAGE + 0x90 && POP2_LIST == POP2_PAGE + 0xe0 && POP2_LABEL == POP2_PAGE + 0x130 && POP2_PICTURE == POP2_PAGE + 0x180,
               "New Game's windows lay out their widgets alike");
 
-// orig: (none) — enhancement: the restart popup (Restart now, Later) built, a copy of Options' page whose parent is the Display page
-// (both entries lead back to it: Restart now's action is the choice hook's, graphics_restart_choice), Later selected first
+// orig: (none) — enhancement: the restart popup (Restart now, Later) built, a copy of Options' page whose parent is the Display page's
+// parent (both entries lead there, as Back from the Display page does: Restart now's action is the choice hook's,
+// graphics_restart_choice), Later selected first
 void restart_page_build() {
     if (g_advanced_disabled) return;
     const uint32_t opt = OPTIONS_PAGE;
@@ -1710,26 +1712,37 @@ void restart_page_build() {
     static constexpr int32_t NAMES[] = {RT_FIRST + RT_NOW - TEXT_FIRST, RT_FIRST + RT_LATER - TEXT_FIRST};
     static constexpr int32_t HELPS[] = {RT_FIRST + RT_HELP_NOW - TEXT_FIRST, RT_FIRST + RT_HELP_LATER - TEXT_FIRST};
     static constexpr uint32_t PICS[] = {PIC_GFX, PIC_GFX};
-    window_build(RPAGE, opt, RT_FIRST + RT_TITLE, R_ENTRIES, R_HELP, R_PICTURES, 2, NAMES, HELPS, PICS, entry, 3, DPAGE, DPAGE);
-    sw(RPAGE + 5 * 4, lwu(DPAGE + 5 * 4));  // (slot 5: as its parent holds it)
+    window_build(RPAGE, opt, RT_FIRST + RT_TITLE, R_ENTRIES, R_HELP, R_PICTURES, 2, NAMES, HELPS, PICS, entry, 3, lwu(DPAGE + 0x38), lwu(DPAGE + 0x38));  // (Later and Back: where Back from the Display page goes)
+    sw(RPAGE + 5 * 4, lwu(DPAGE + 5 * 4));  // (slot 5: as the Display page holds it)
     sw(RLIST + 0x40, 1);
     gs_.rp_built = true;
 }
 }  // namespace
 
-// orig: (none) — enhancement: the menu's frame (title_menu_update / the pause menu's update, before the widgets; `pause`: the pause
-// menu, where progress since the last save is lost): when a change of the GPU or Renderer row waits for its question, the menu
-// `ms` (its state block) idle on the Display page and nothing else under way, the restart popup opened as an entry with a
-// page (action 3) opens it. Declared where it is called (the headers of src/game are the generated code's fingerprint)
-void graphics_menu_frame(uint32_t ms, bool pause) {
-    if (!gs_.ask_open || !gs_.rp_built || g_advanced_disabled) return;
-    const uint32_t cur = lwu(ms + 4);
-    if (cur != DPAGE || lwu(ms + 8) != 0 || lw(ms) == 1 || lw(ms + 0xc) != 0 || (lwu(0x0015eeb4) & 1) != 0) return;
-    gs_.ask_open = false;
-    gs_.rp_pause = pause;
+// orig: (none) — enhancement: the Display page's settings widget `w` focused in the menu `ms` (its state block), before its exit keys
+// (menu_settings_update, pause_menu_options.cpp; declared there: the headers of src/game are the generated code's fingerprint): Back
+// (triangle) or Start / Select / L1 (the menu closing) pressed with a GPU or Renderer change the running game does not have, asked
+// for once since the last change: the press is taken and the restart popup opened instead (its Later leaves the page as Back does)
+bool graphics_leave_ask(uint32_t w, uint32_t ms) {
+    if (!gs_.ask_due || !gs_.rp_built || g_advanced_disabled || w != DROWS_WIDGET) return false;
+    const uint32_t pressed = lwu(0x0013c940u + 0x1c4);  // (pad 1, as the exit keys read it)
+    const bool exits = ((pressed & 0xd00u) != 0 && lw(ms + 0x124) == 0) || (pressed & 0x10u) != 0;
+    if (!exits || lwu(ms + 8) != 0) return false;
+    // (still different from what the game started with: a row set back before leaving asks nothing)
+    const bool gpu = gs_.gpu_name != gs_.gpu_start_name || gs_.gpu_uuid != gs_.gpu_start_uuid;
+#if !defined(__APPLE__)
+    const bool renderer = gs_.run_known && gs_.value[S_RENDERER] != gs_.run_choice;
+#else
+    const bool renderer = false;
+#endif
+    gs_.ask_due = false;
+    if (!gpu && !renderer) return false;
+    gs_.ask = gpu ? 1 : 2;
+    gs_.rp_pause = ovl_reloc_level() != OVL_FRONT;  // (the pause menu: progress since the last save is lost)
     sw(RLIST + 0x40, 1);  // (Later selected: a stray Cross loses nothing)
     sw(ms + 8, RPAGE);
-    std::printf("[restart] popup: restart to use the %s (%s)\n", gs_.ask == 2 ? "renderer" : "GPU", pause ? "pause menu: progress since the last save is lost" : "main menu");
+    std::printf("[restart] popup: restart to use the %s (%s)\n", gs_.ask == 2 ? "renderer" : "GPU", gs_.rp_pause ? "pause menu: progress since the last save is lost" : "main menu");
+    return true;
 }
 
 // orig: (none) — enhancement: the list `w` runs its entry's action 3 (pause_menu.cpp, the list's update; declared there): the restart

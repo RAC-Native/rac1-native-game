@@ -233,6 +233,8 @@ int32_t menu_sound_draw(uint32_t w) {
 
 // enhancement (graphics.cpp; declared here: the headers of src/game are the generated code's fingerprint): our pages' greyed rows
 bool graphics_row_dimmed(uint32_t w, int32_t i);
+// (the same) the Display page left with a GPU / Renderer change not yet applied: the restart popup first
+bool graphics_leave_ask(uint32_t w, uint32_t ms);
 
 // --- Camera: a list of settings ----------------------------------------------------------------
 // +0x34 the settings (0x18 bytes: text, the byte it sets, up to 4 texts of its values; ended by
@@ -242,6 +244,7 @@ bool graphics_row_dimmed(uint32_t w, int32_t i);
 int32_t menu_settings_update(uint32_t w) {
     if (lwu(lwu(MS + 4) + 0x40) != w) return 0;
     int32_t r = 0;
+    if (graphics_leave_ask(w, MS)) return 0;  // enhancement: leaving the Display page: the restart popup
     if (exit_keys(r)) return r;
     const int32_t old = lw(w + 0x38);
     if ((lwu(PAD + 0x1c4) & 0x1000) != 0 && old != 0) sw(w + 0x38, static_cast<uint32_t>(old - 1));

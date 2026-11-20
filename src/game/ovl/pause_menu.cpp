@@ -28,7 +28,6 @@
 namespace rac1 {
 
 // (graphics.cpp's, declared here: the headers of src/game are the generated code's fingerprint) the GPU / Renderer rows' restart popup
-void graphics_menu_frame(uint32_t ms, bool pause);
 bool graphics_restart_choice(uint32_t w);
 
 namespace {
@@ -708,7 +707,6 @@ void menu_update() {
         return;
     }
     cheat_code_input();
-    graphics_menu_frame(MS, true);  // enhancement: the GPU or Renderer row changed: the restart popup opened
     if (lw(MS) == 1) {
         const int32_t t = lw(MS + 0x14);
         const int32_t v = t < 1 ? 0 : t - 1;
