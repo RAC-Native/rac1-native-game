@@ -5,6 +5,7 @@
 
 #include <cstdint>
 
+#include <game/math/vecmath.h>
 #include <game/ovl/novalis_mobys2.h>
 
 namespace rac1 {
@@ -16,12 +17,13 @@ void qua_class93_update_l15(uint32_t m);   // L15:0x002a3ba8
 void qua_class148_update_l15(uint32_t m);  // L15:0x002a7880
 void qua_class154_update_l15(uint32_t m);  // L15:0x002aa280
 void qua_class221_update_l15(uint32_t m);  // L15:0x002c2938
+// The flying craft (class 233) and its helpers (quartu_class233.cpp):
+void qua_class233_update_l15(uint32_t m);  // L15:0x002c5630
+uint32_t qua_247e90_l15(uint32_t m, uint32_t vel, uint32_t flag, float lift, float radius);  // L15:0x00247e90 the move against the walls
+void qua_2c4f88_l15(uint32_t m, const Vec4& goal, const Vec4& look);  // L15:0x002c4f88 the flight toward a goal
+void qua_2c52b8_l15(uint32_t m, uint32_t out, uint32_t target);  // L15:0x002c52b8 its place near the target
+void qua_2c6900_l15(uint32_t m);  // L15:0x002c6900 its hits
 
-TrRet qua_247e90_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x00247e90
-TrRet qua_2c4f88_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002c4f88
-TrRet qua_2c52b8_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002c52b8
-TrRet qua_2c6900_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002c6900
-void qua_class233_update_l15(uint32_t a0);  // L15:0x002c5630
 TrRet qua_2cf110_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002cf110
 TrRet qua_2d0fa8_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002d0fa8
 void qua_class491_update_l15(uint32_t a0);  // L15:0x002cf3a8

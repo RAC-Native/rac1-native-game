@@ -256,6 +256,7 @@ add_library(rac1_game STATIC
     ovl/quartu_doors.cpp
     ovl/quartu_destructibles.cpp
     ovl/quartu_class221.cpp
+    ovl/quartu_class233.cpp
     ovl/kalebo_hooks.cpp
     ovl/kalebo_mobys.cpp
     ovl/kalebo_path_runner.cpp

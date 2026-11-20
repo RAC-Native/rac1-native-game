@@ -48,3 +48,9 @@ SCES-50916-2.00.txt  16  00162240  class 1111's last camera place: bss after the
 # Class 211's light radius (oltanis_class211.cpp, L14_ADDR(0x161a60)): the 2.00 disc's word at the rule's place 0x161b30 is
 # NTSC-U's own (6.0); only the word after it differs, the block's padding (NTSC-U's fill, 0 on that disc), never read
 SCES-50916-2.00.txt  14  00161a60  class 211's light radius: the disc's word at 0x161b30 is NTSC-U's 6.0; the next word is padding
+# Quartu's class 221 (quartu_class221.cpp: its wait's top, 0x161a04) and class 233 (quartu_class233.cpp: its bob's
+# height, 0x161a0c): each word is the same on the 2.00 disc at its line's place (0x161a84 / 0x161a90: 20.0 / 0.17); the
+# word after it sits on the next data line there (0x161a08 -> 0x161a8c, the 1.02 build's extra word between), so the
+# two-word proof reads a word that is not that word's place
+SCES-50916-2.00.txt  15  00161a04  class 221's wait top: the word matches at 0x161a84; the next word is on the next line (+0x84)
+SCES-50916-2.00.txt  15  00161a0c  class 233's bob height: the word matches at 0x161a90; the next word is on the next line

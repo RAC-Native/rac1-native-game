@@ -89,7 +89,7 @@ bool c2a_spr_check(const char* name) {
     static const char* const kNames[] = {"class28", "class44", "class156", "class1257", "class1427", "mobys_in_sphere",
                                          "class193", "class325", "class403", "class934", "hero_move_mode", "class1134",
                                          "class123", "class1430", "class1446", "class200", "class256", "class408",
-                                         "class49", "class567", "class805", "class819"};
+                                         "class49", "class567", "class805", "class819", "class233_full"};  // (class233_full: sphere_collide in 0x247e90)
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -1039,6 +1039,183 @@ void batch_240() {
                     seed_rand();
                     return Args{{m}, {}};
                 }, [](A a) { qua_class221_update_l15(a.i[0]); return uint64_t{0}; });
+                g_ignored_words.resize(ign_before);
+            }
+        }
+
+        // P15.2: class 233 (L15:0x002c5630), the flying craft, with its helpers 0x247e90 (the move against the walls),
+        // 0x2c4f88 (the flight toward a goal), 0x2c52b8 (its place near the target) and 0x2c6900 (its hits): the level's
+        // own crafts, set up by their first update, then each state with the hero Giant Clank or not, its flag +0x1a4,
+        // its group / box / zone / route kept or none, the hero near or out of range (and in its box), its mates of the
+        // class moved near it in the states that count, a charge of class 848 in flight (a moby of the level made one:
+        // its class and state), its timers at their edges, hits (kinds 0x330000, the applied mark), its hit record dead,
+        // the floor band near Clank, 50 Hz in a third, the time step 0x15ed64 off 1 in a quarter
+        {
+            level();
+            const std::vector<uint32_t> ms = mobys_with(0x002c5630);
+            if (!ms.empty()) {
+                static const int states[] = {0, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4, 5, 5, 5, 5, 5, 6, 6, 7, 64, 10};
+                // state 7's bolts (moby_drop_bolts): a dropped bolt's direction (its pvars +0x20) has its w lane (+0x2c) from an
+                // unset stack slot of bolts_drop in the original (the known difference, batch 65 / 112; measured: those words
+                // alone differ), here for this check alone
+                const size_t ign_before = g_ignored_words.size();
+                for (uint32_t a = ee_read<uint32_t>(OV(0x0015ffe0)); a < ee_read<uint32_t>(OV(0x0015ffe0)) + 0x20000; a += 0x80) g_ignored_words.push_back(a + 0x2c);
+                // and the collision record's w lanes (OV(0x173e40) .. 0x173ec0: the known difference when the sphere meets the
+                // hero's moby): the craft copies the pushed point (+0x30) whole, so its position's w lane (+0x1c), its velocity's
+                // (pvars +0x15c) and its piece's position's (+0x1c) follow it; those words of the case's craft are added by the
+                // generator
+                for (uint32_t a = OV(0x00173e40); a < OV(0x00173ec0); a += 0x10) g_ignored_words.push_back(a + 0xc);
+                for (const uint32_t x : ms) {  // the play-test spots, and each craft's group, zone, route, box and flag
+                    const uint32_t xp = ee_read<uint32_t>(x + 0x78);
+                    const Vec4 q = ee_ref<Vec4>(x + 0x10);
+                    std::printf("  INFO class233: moby %u uid %d at %.1f %.1f %.1f group %d zone %d route %d box %d giant-only %d (paths %d)\n",
+                                (x - ee_read<uint32_t>(OV(0x0015ffd8))) >> 8, ee_read<int16_t>(x + 0xb2), q.x, q.y, q.z, ee_read<int32_t>(xp + 0x190),
+                                ee_read<int32_t>(xp + 0x194), ee_read<int32_t>(xp + 0x1ac), ee_read<int32_t>(xp + 0x1b0), ee_read<int32_t>(xp + 0x1a4),
+                                lvd::path_count());
+                }
+                lvcheck("class233_full", 0x002c5630, 480, Ret::None, [level, ms, maybe_50hz, put_in_box, give_hit] {
+                    level();
+                    const int st = states[ri(0, 20)];
+                    // (state 2 flies the route: only the crafts that have one get there)
+                    std::vector<uint32_t> cand;
+                    const bool lone = st == 1 && coin();  // (state 1: the crafts without a group, that wait for a target / their box)
+                    for (const uint32_t x : ms) {
+                        const uint32_t xp = ee_read<uint32_t>(x + 0x78);
+                        if (st == 2 && ee_read<int32_t>(xp + 0x1ac) == -1) continue;
+                        if (lone && ee_read<int32_t>(xp + 0x190) != -1) continue;
+                        cand.push_back(x);
+                    }
+                    const uint32_t m = cand[static_cast<size_t>(ri(0, static_cast<int>(cand.size()) - 1))];
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    const uint32_t pool = ee_read<uint32_t>(OV(0x0015ffd8));
+                    w8(0x001413f4u, 2);  // (the first update as the level starts it: the hero Giant Clank)
+                    w8(m + 0x20, 0);
+                    qua_class233_update_l15(m);
+                    w8(m + 0x20, u(st));
+                    maybe_50hz();
+                    if (ri(0, 3) == 0) wf(0x0015ed64, rf(0.5f, 3.0f));
+                    w8(0x001413f4u, ri(0, 2) == 0 ? 0u : 2u);
+                    w32(pv + 0x1a4, coin() ? 1u : 0u);
+                    if (ri(0, 3) == 0) w32(pv + 0x190, 0xffffffffu);
+                    if (ri(0, 3) == 0) w32(pv + 0x1b0, 0xffffffffu);
+                    // (no route only before the route (state 2 needs one); no zone only where the craft is not in it yet: states
+                    // 2 .. 5 walk the zone's polygon, a garbage path the interpreter wraps and the port refuses)
+                    if (st != 2 && ri(0, 5) == 0) w32(pv + 0x1ac, 0xffffffffu);
+                    if ((st <= 1 || st >= 6) && ri(0, 3) == 0) w32(pv + 0x194, 0xffffffffu);
+                    if (ri(0, 7) == 0) w8(pv + 0x2e, 0);
+                    w8(m + 0x31, coin() ? 1u : 0u);
+                    // on its route (state 2): at one of its points, mostly near the route's end (the braking, the arrival)
+                    if (st == 2 && coin()) {
+                        const uint32_t route = lvd::path(ee_read<int32_t>(pv + 0x1ac));
+                        const int32_t n = ee_read<int32_t>(route);
+                        if (n > 0) {
+                            const int mode = ri(0, 2) == 0 ? 3 : ri(0, 2);  // (3: on the route's last point, slower than a frame's braking)
+                            const int32_t k = mode == 3 ? n - 1 : mode >= 1 ? ri(std::max(0, n - 10), n - 1) : ri(0, n - 1);
+                            Vec4 p = ee_ref<Vec4>(route + 0x10 + u(k) * 0x10);
+                            if (mode != 3) { p.x += rf(-1.5f, 1.5f); p.y += rf(-1.5f, 1.5f); }
+                            p.w = ee_ref<Vec4>(m + 0x10).w;
+                            ee_ref<Vec4>(m + 0x10) = p;
+                            wf(pv + 0x170, mode == 3 ? rf(0.0f, 0.002f) : rf(0.0f, 0.4f));
+                        }
+                    }
+                    // the hero: in its box, inside its zone (the craft near him or not), near it, or out of its ranges; Clank near it or not
+                    Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    // (states 2 .. 5 want the target inside the zone and in range: mostly so)
+                    int where = ri(0, 4);
+                    if (st >= 2 && st <= 5) { const int k = ri(0, 3); where = k == 0 ? 4 : k <= 2 ? (st == 2 ? 1 : 2) : where; }
+                    if (st == 1 && coin()) where = 3;
+                    if (st == 1 && ee_read<int32_t>(pv + 0x1b0) >= 0 && ri(0, 3) != 0) where = 0;
+                    const int32_t zi = ee_read<int32_t>(pv + 0x194);
+                    if (where == 0 && ee_read<int32_t>(pv + 0x1b0) >= 0) {
+                        put_in_box(0x0013f3d0u, ee_read<int32_t>(pv + 0x1b0), true);
+                    } else if (where <= 2 && zi >= 0 && zi < lvd::path_count()) {
+                        const uint32_t zone = lvd::path(zi);
+                        const int32_t n = ee_read<int32_t>(zone);
+                        Vec4 c{};
+                        for (int32_t k = 0; k < n; ++k) { const Vec4 p = ee_ref<Vec4>(zone + 0x10 + u(k) * 0x10); c.x += p.x / n; c.y += p.y / n; c.z += p.z / n; }
+                        c.x += rf(-3.0f, 3.0f); c.y += rf(-3.0f, 3.0f); c.w = ee_ref<Vec4>(0x0013f3d0u).w;
+                        ee_ref<Vec4>(0x0013f3d0u) = c;
+                        if (where == 2 && st != 2) {  // the craft near him, inside the zone or at its edge (or on the ring 10 out)
+                            const float r = coin() ? rf(9.6f, 10.4f) : rf(3.0f, 25.0f), a = rf(-3.1f, 3.1f);
+                            Vec4 p = q; p.x = c.x + r * std::cos(a); p.y = c.y + r * std::sin(a);
+                            ee_ref<Vec4>(m + 0x10) = p;
+                            q = p;
+                        }
+                    } else {
+                        const float r = where <= 3 ? rf(2.0f, 25.0f) : rf(70.0f, 120.0f), a = rf(-3.1f, 3.1f);
+                        Vec4 h = q; h.x += r * std::cos(a); h.y += r * std::sin(a); h.z -= rf(0.0f, 10.0f);
+                        ee_ref<Vec4>(0x0013f3d0u) = h;
+                        if (st == 3 && where == 4 && zi >= 0 && zi < lvd::path_count() && coin()) {  // (the craft inside its zone, no target)
+                            const uint32_t zone = lvd::path(zi);
+                            const int32_t n = ee_read<int32_t>(zone);
+                            Vec4 c = q; c.x = 0; c.y = 0;
+                            for (int32_t k = 0; k < n; ++k) { const Vec4 p = ee_ref<Vec4>(zone + 0x10 + u(k) * 0x10); c.x += p.x / n; c.y += p.y / n; }
+                            ee_ref<Vec4>(m + 0x10) = c;
+                            q = c;
+                        }
+                    }
+                    { Vec4 c = q; c.x += coin() ? rf(-20.0f, 20.0f) : 80.0f; ee_ref<Vec4>(OV(0x00166dc0u)) = c; }
+                    {  // the hero's moby with him (target_select aims at the moby's position)
+                        const uint32_t hm = ee_read<uint32_t>(0x001413d0u);
+                        if (hm != 0) { Vec4 hp = ee_ref<Vec4>(0x0013f3d0u); hp.w = ee_ref<Vec4>(hm + 0x10).w; ee_ref<Vec4>(hm + 0x10) = hp; }
+                    }
+                    wf(pv + 0x170, coin() ? 0.0f : rf(0.0f, 0.4f));
+                    for (const uint32_t o : {0x150u, 0x154u}) wf(pv + o, rf(-0.3f, 0.3f));
+                    for (const uint32_t o : {0x174u, 0x178u, 0x17cu, 0x184u, 0x18cu}) wf(pv + o, rf(-0.05f, 0.05f));
+                    wf(pv + 0x180, rf(-3.0f, 3.0f)); wf(pv + 0x188, rf(-0.5f, 0.5f));
+                    { const float t = coin() ? 0.05f : 0.3f; wf(m + 0x40, rf(-t, t)); wf(m + 0x44, rf(-t, t)); } wf(m + 0x48, rf(-3.1f, 3.1f));
+                    { static const uint16_t tv[] = {0, 1, 5}; w16(pv + 0x168, tv[ri(0, 2)]); w16(pv + 0x16a, tv[ri(0, 2)]); }
+                    if (ri(0, 3) == 0 || (st == 1 && coin())) wf(pv + 0x198, rf(40.0f, 200.0f));  // (the waiting range: the level's, or wider)
+                    wf(pv + 0x16c, rf(-3.1f, 3.1f));
+                    if (coin()) wf(m + 0x18, ee_read<float>(m + 0x18) + rf(-2.0f, 2.0f));
+                    // a charge in flight: none, or a moby of the level made one (class 848), alive or going
+                    if (ri(0, 2) == 0) {
+                        w32(pv + 0x164, 0);
+                    } else {
+                        const uint32_t c = pool + (u(ri(0, 60)) << 8);
+                        if (c != m) {
+                            w16(c + 0xa6, coin() ? 0x350u : 0x351u);
+                            static const uint8_t cst[] = {0, 1, 0xfe, 0xfd};
+                            w8(c + 0x20, cst[ri(0, 3)]);
+                            w32(pv + 0x164, c);
+                        }
+                    }
+                    if (ri(0, 4) == 0) w32(pv + 0x160, 0);
+                    // its mates of the class: all gone (it is the nearest to the target), or some moved near it, in a state that counts or not
+                    const bool alone = ri(0, 2) == 0;
+                    for (const uint32_t x : ms) {
+                        if (x == m) continue;
+                        if (alone) { w8(x + 0x20, coin() ? 0x40u : 1u); continue; }
+                        if (!coin()) continue;
+                        Vec4 p = q; p.x += rf(-12.0f, 12.0f); p.y += rf(-12.0f, 12.0f);
+                        ee_ref<Vec4>(x + 0x10) = p;
+                        static const uint8_t mst[] = {1, 0x40, 2, 5};
+                        w8(x + 0x20, mst[ri(0, 3)]);
+                    }
+                    if (ri(0, 2) == 0) {
+                        give_hit(m, 0x330000u);
+                        if (ee_read<uint8_t>(m + 0xa4) != 0xff) {
+                            const uint32_t e = OV(0x00178100) + (ee_read<uint8_t>(m + 0xa4) << 6);
+                            if (coin()) w32(e + 0x1c, 0x45afdf66u);  // (applied: the push that throws it off)
+                        }
+                    }
+                    if (coin()) wf(pv + 0x20, coin() ? 0.5f : 3.0f);
+                    if (st == 64 && coin()) {  // (the moby's saved bits set, for state 0x40 to clear)
+                        const int32_t uid = ee_read<int16_t>(m + 0xb2);
+                        w8(OV(0x001ba5d0u) + u(uid) + 0x454, 1);
+                        w8(OV(0x001bb230u) + u(uid) + 0x454, 1);
+                        const uint32_t bit = 1u << (uid & 0x1f), word = u((uid >> 5) << 2);
+                        const uint32_t sa = 0x0014c190u + (ee_read<uint32_t>(0x0015ed84u) << 8) + word;
+                        w32(sa, ee_read<uint32_t>(sa) | bit);
+                        w32(OV(0x001ba4d0u) + word, ee_read<uint32_t>(OV(0x001ba4d0u) + word) | bit);
+                    }
+                    w32(OV(0x0015f5cc), R() & 0xffff);
+                    g_ignored_words.push_back(m + 0x1c);
+                    g_ignored_words.push_back(pv + 0x15c);
+                    if (ee_read<uint32_t>(pv + 0x160) != 0) g_ignored_words.push_back(ee_read<uint32_t>(pv + 0x160) + 0x1c);
+                    seed_rand();
+                    return Args{{m}, {}};
+                }, [](A a) { qua_class233_update_l15(a.i[0]); return uint64_t{0}; });
                 g_ignored_words.resize(ign_before);
             }
         }

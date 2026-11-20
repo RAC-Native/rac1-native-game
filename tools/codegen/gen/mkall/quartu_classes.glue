@@ -5,10 +5,7 @@
 0x00251c90: jump_arc_set(a0.w(), fr[12], fr[13]);
 0x00251d00: spark_burst(a0.w(), a1.w(), a2.w());
 0x002dd600: set32(v0, static_cast<uint32_t>(class819_launch(a0.w(), a1.w(), a2.w(), a3.w(), static_cast<int32_t>(t0.w()), fr[12])));
-0x002dee78: set32(v0, static_cast<uint32_t>(class848_spawn(a0.w(), a1.w(), a2.w(), a3.w(), fr[12])));
-0x002ea338: set32(v0, static_cast<uint32_t>(class1371_spawn(a0.w())));
 0x002f28b8: cam0_set_20c(fr[12], fr[13], fr[14]);
 0x002f78b8: cam_entry_mark(static_cast<int32_t>(a0.w()));
-0x002ea3d0: class1371_throw(0, a1.w());
 0x002ea9b0: panel_lights(a0.w(), 0x10u);
 0x002ec678: class_mates_mark_fixed(a0.w(), 1);

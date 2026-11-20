@@ -8,7 +8,6 @@
   "MKALL_WIDE_GPR": ""
  },
  "entries": [
-  "2c5630:qua_class233_update_l15:void:a0",
   "2cf3a8:qua_class491_update_l15:void:a0",
   "2e46b0:qua_class937_update_l15:void:a0",
   "2e73c0:qua_class1250_update_l15:void:a0",
@@ -33,7 +32,6 @@
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/quartu_classes_tr_3.cpp",
   "src/game/ovl/quartu_classes_tr_4.cpp",
   "src/game/ovl/quartu_classes_tr_5.cpp",
   "src/game/ovl/quartu_classes_tr_6.cpp"
