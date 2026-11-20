@@ -584,6 +584,9 @@ GLFW: MSYS2's certificate files are empty (#79, #69, #63). MSYS2's CLANG64 certi
 when the folder's path has a space in it, and leaves them empty. Since 0.5.0 `setup.cmd` (and the
 launcher) make them again with MSYS2's own tool whenever they are missing or empty: run `setup.cmd`
 again. No need to reinstall anything by hand.
+A folder whose path has accents or other non-English letters (`C:\Jogos\Cabeça\...`) breaks it too, and
+making them again does not help (#185): since 0.8.4 the setup stops at once and asks to move the game to a plain
+path such as `C:\Games\rac1-native`.
 
 **Windows: "Fatal Python error" while generating the code** (#72): Python itself crashed in one of
 the parallel jobs, not the generator. Since 0.5.0 a unit that crashes is run once more on its own;
