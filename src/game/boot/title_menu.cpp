@@ -14,6 +14,9 @@
 #include <game/ovl/ovl_reloc.h>
 namespace rac1 {
 
+// (graphics.cpp's, declared here: the headers of src/game are the generated code's fingerprint) the GPU / Renderer rows' restart popup
+void graphics_menu_frame(uint32_t ms, bool pause);
+
 namespace {
 constexpr FrConst<0x001d5bf0u> MS{};     // the menu's block (the overlays' 0x1b9cf0)
 constexpr FrConst<0x001d5d90u> MOBYS{};  // its 14 mobys (the overlays' 0x1b9e90)
@@ -143,6 +146,7 @@ void title_menu_update() {
     }
     if (st == 0 || st == 0x2d) title_menu_page_start();
     update_notice_menu_frame(MS, ROOT);  // enhancement: a newer version found: the update notice opened, once
+    graphics_menu_frame(MS, false);      // enhancement: the GPU or Renderer row changed: the restart popup opened
     if ((lwu(0x0015eeb4) & 1) != 0) {
         screen_open(3, lwu(MS + 4));
         return;

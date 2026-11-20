@@ -267,6 +267,31 @@ void launch_updater(const std::vector<std::string>& args, const std::filesystem:
     }
 }
 
+bool can_relaunch_self(int, char**) {
+    wchar_t buf[MAX_PATH * 4];
+    const DWORD n = GetModuleFileNameW(nullptr, buf, static_cast<DWORD>(sizeof buf / sizeof buf[0]));
+    return n > 0 && n < sizeof buf / sizeof buf[0];
+}
+
+bool relaunch_self(int, char**) {
+    wchar_t exe[MAX_PATH * 4];
+    const DWORD n = GetModuleFileNameW(nullptr, exe, static_cast<DWORD>(sizeof exe / sizeof exe[0]));
+    if (n == 0 || n >= sizeof exe / sizeof exe[0]) return false;
+    std::wstring cmd = GetCommandLineW();  // (the command line as it was given; the working directory and the environment are inherited)
+    STARTUPINFOW si{};
+    si.cb = sizeof si;
+    PROCESS_INFORMATION pi{};
+    if (!CreateProcessW(exe, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) return false;
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return true;
+}
+
+void set_environment(const char* name, const char* value) {
+    _putenv_s(name, value);
+    SetEnvironmentVariableA(name, value);
+}
+
 std::string python_program() {
     if (const char* p = std::getenv("RAC1_PYTHON"); p != nullptr && *p != 0) return p;
     return "python";

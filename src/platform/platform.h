@@ -106,6 +106,14 @@ int run_quiet(const std::vector<std::string>& args);
 // process (execvp); on Windows, starts a new console process so this executable can exit before the
 // setup replaces it.
 void launch_updater(const std::vector<std::string>& args, const std::filesystem::path& cwd);
+// The game process started again with the arguments and environment it has (the GPU / Renderer rows' Restart now, after the
+// game's clean shutdown): can_relaunch_self says before the shutdown whether this program's file is known; relaunch_self then
+// does it - POSIX: execv of that file (it returns only when that failed); Windows: CreateProcessW with the same command line and
+// working directory (it returns true once started: the caller ends the process)
+bool can_relaunch_self(int argc, char** argv);
+bool relaunch_self(int argc, char** argv);
+// An environment variable set (the restarted game's RAC1_RELAUNCHED marker)
+void set_environment(const char* name, const char* value);
 // The Python interpreter's name for run_quiet: python3; Windows: $RAC1_PYTHON (the setup sets it), else python.
 std::string python_program();
 // The names of the environment's variables that start with `prefix`.

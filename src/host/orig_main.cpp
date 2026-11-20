@@ -173,6 +173,7 @@
 #include "update_check.h"
 #include "progress.h"
 #include "vk_safety.h"
+#include <platform/gpu_select.h>
 #include <_devtools/item_give_quiet.h>  // (header only: also without the dev tools)
 #ifdef RAC1_DEVTOOLS
 #include <_devtools/dev_menu.h>
@@ -220,7 +221,7 @@ bool g_debug_tools = false;   // the debug tools asked for
 bool g_test_switches = false; // the RAC1_* testing variables and --level honoured (headless, or the debug tools)
 constexpr const char* PLAYER_ENV[] = {
     "RAC1_DEBUG_TOOLS", "RAC1_HEADLESS", "RAC1_ISO", "RAC1_MEMCARD_DIR", "RAC1_ADVANCED_FILE", "RAC1_GRAPHICS_FILE", "RAC1_CONTROLS_FILE",
-    "RAC1_RENDERER", "RAC1_WINDOW", "RAC1_FULLSCREEN", "RAC1_VSYNC", "RAC1_FPS_CAP", "RAC1_NO_AUDIO", "RAC1_AUDIO_DEVICE",
+    "RAC1_RENDERER", "RAC1_GPU", "RAC1_RELAUNCHED", "RAC1_WINDOW", "RAC1_FULLSCREEN", "RAC1_VSYNC", "RAC1_FPS_CAP", "RAC1_NO_AUDIO", "RAC1_AUDIO_DEVICE",
     "RAC1_AUDIO_PERIOD_MS", "RAC1_AUDIO_PERIODS", "RAC1_MOVIE_VOLUME", "RAC1_PRIORITY", "RAC1_IOP_MIRROR",
     "RAC1_PROGRESS",  // (where progress.json goes for the launcher, or 0: docs/launcher.md)
     "RAC1_MODS", "RAC1_MODS_FILE",  // (0: every mod off; the Mods menu's choices file: docs/mods.md)
@@ -2486,7 +2487,14 @@ void check_mrp_assets(bool moby, bool world) {
 
 }  // namespace
 
+// (the restart, rac1::platform::relaunch_self: main's arguments, and the loop's ask for it)
+static int g_argc = 0;
+static char** g_argv = nullptr;
+static bool g_restart_after_exit = false;
+
 int main(int argc, char** argv) {
+    g_argc = argc;  // (the restart: the game started again with these)
+    g_argv = argv;
     // (Windows: the console's QuickEdit off - a click in the console window froze the game - and the timer at 1 ms;
     // put back at the exit: platform.h)
     rac1::platform::process_begin();
@@ -2574,6 +2582,10 @@ int main(int argc, char** argv) {
     // Options > Graphics: the window, the view, the level of detail as the player left them (not read in a
     // headless run: g_advanced_disabled); the testing switches below override them
     rac1::graphics_load();
+    if (std::getenv("RAC1_RELAUNCHED") != nullptr) {  // (set by the restart below: the log says so, the marker is not passed on)
+        std::printf("[restart] the game was started again by its restart\n");
+        rac1::platform::unset_environment("RAC1_RELAUNCHED");
+    }
     rac1::graphics_set_gpu_lister([]() {  // (Options > Display > GPU: the Vulkan devices, listed once when the row first asks)
         std::vector<rac1::GraphicsGpu> out;
         for (const rac1::vk::GpuInfo& g : rac1::vk::list_gpus()) out.push_back({g.name, g.uuid});
@@ -2652,7 +2664,7 @@ int main(int argc, char** argv) {
         window = glfwCreateWindow(win_w0, win_h0, "Ratchet & Clank - original runtime", fs_monitor, nullptr);
         const bool vsync0 = !headless && (env_vsync >= 0 ? env_vsync != 0 : rac1::graphics_display().vsync);
         if (vk_by_row) rac1::vk_safety::starting();
-        rac1::vk::set_gpu_choice(rac1::graphics_display().gpu_name, rac1::graphics_display().gpu_uuid);  // (Options > Display > GPU; RAC1_GPU in vk::init)
+        rac1::vk::set_gpu_choice(rac1::graphics_gpu_name(), rac1::graphics_gpu_uuid());  // (Options > Display > GPU; RAC1_GPU in vk::init)
         if (window != nullptr && rac1::vk::init(window, vsync0, headless)) {
             if (!headless && fs_monitor == nullptr) host_window_on_monitor(window, rac1::graphics_display().monitor);
             if (vk_by_row) rac1::vk::set_device_lost_hook(rac1::vk_safety::device_lost);
@@ -2677,6 +2689,7 @@ int main(int argc, char** argv) {
     if (renderer_why != rac1::RendererWhy::kNone)
         std::fprintf(stderr, "[renderer] OpenGL instead of Vulkan: %s\n", renderer_text.empty() ? "Vulkan could not start" : renderer_text.c_str());
     rac1::graphics_set_renderer_running(window != nullptr, renderer_why);
+    if (window != nullptr) rac1::graphics_set_gpu_running(rac1::vk::device_name(), true);  // (OpenGL: below, once its context is up)
     const bool gl_host = window == nullptr;  // (the OpenGL renderer: the default)
     if (gl_host) {
         window = glfwCreateWindow(win_w0, win_h0, "Ratchet & Clank - original runtime", fs_monitor, nullptr);
@@ -2697,6 +2710,7 @@ int main(int argc, char** argv) {
         if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) { std::fprintf(stderr, "rac1-native: GL load failed\n"); return 1; }
         if (!ShaderManager::get().init()) { std::fprintf(stderr, "rac1-native: shaders failed\n"); return 1; }
         rac1::gl_draws_init();  // (the driver in the log; the multi-draws' single-draw path, issue #113)
+        if (const GLubyte* gl_name = glGetString(GL_RENDERER); gl_name != nullptr) rac1::graphics_set_gpu_running(reinterpret_cast<const char*>(gl_name), false);
     }
     sample_prof_start();  // (testing: RAC1_SAMPLE_PROF=<file>, see sample_prof.h)
     g_use_gpu_rendering = true;
@@ -3133,6 +3147,22 @@ int main(int argc, char** argv) {
         rac1::prof::frame_mark();  // (the debug menu's profiler: the frame before ends, this one starts)
         int prof_events = rac1::prof::begin(rac1::prof::kEvents);
         glfwPollEvents();
+        {  // the GPU / Renderer rows' Restart now (or the debug menu's): the game closes as by the window's close and starts again
+            static const long restart_test = std::getenv("RAC1_RESTART_TEST") != nullptr ? std::atol(std::getenv("RAC1_RESTART_TEST")) : -1;
+            if (restart_test >= 0 && static_cast<long>(frame) == restart_test) rac1::graphics_request_restart();  // (testing: the restart path once, at that game frame)
+            if (rac1::graphics_take_restart()) {
+                if (headless && restart_test < 0) {
+                    std::printf("[restart] a headless run does not start the game again\n");
+                } else if (!rac1::platform::can_relaunch_self(g_argc, g_argv)) {
+                    std::fprintf(stderr, "[restart] this program's file is not known: the game cannot start itself again, restart it by hand\n");
+                    rac1::graphics_restart_failed();
+                } else {
+                    std::printf("[restart] the game closes to start again\n");
+                    g_restart_after_exit = true;
+                    glfwSetWindowShouldClose(window, GLFW_TRUE);
+                }
+            }
+        }
         if (rac1::exit_menu_take()) {  // the main menu's Exit confirmed: the window closed, as by the system (the loop ends after this frame)
             std::printf("[orig] Exit chosen in the main menu: the window closes\n");
             glfwSetWindowShouldClose(window, GLFW_TRUE);
@@ -4869,6 +4899,14 @@ int main(int argc, char** argv) {
     if (std::getenv("RAC1_VU0_CHAIN") != nullptr) std::fprintf(stderr, "[vu0-chain] %016llx\n", static_cast<unsigned long long>(rac1::vu0::chain_hash()));
     rac1::progress::finish();  // (the launcher's progress.json: the time played since its last write)
     rac1::platform::process_end();  // (std::_Exit runs no atexit handler)
+    if (g_restart_after_exit) {  // the GPU / Renderer rows' Restart now: the same program, arguments, environment and folder (a test's trigger dropped)
+        rac1::platform::unset_environment("RAC1_RESTART_TEST");
+        rac1::platform::set_environment("RAC1_RELAUNCHED", "1");
+        std::printf("[restart] starting the game again\n");
+        std::fflush(stdout);
+        if (!rac1::platform::relaunch_self(g_argc, g_argv)) std::fprintf(stderr, "[restart] the game could not be started again: start it by hand\n");
+        else std::_Exit(0);  // (Windows: the new process runs; POSIX never gets here)
+    }
     rac1::update_check::run_update();
 #if defined(__SANITIZE_ADDRESS__)
     __lsan_do_leak_check();  // (an AddressSanitizer build: std::_Exit skips LeakSanitizer's own check at exit)

@@ -24,6 +24,7 @@
 #include <game/render/mrp_lighting.h>
 #include <game/render/mrp_particles.h>
 #include <game/enhance/graphics.h>
+#include <platform/gpu_select.h>
 #include <game/render/mrp_reflect.h>
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_world_renderer.h>
@@ -788,8 +789,25 @@ void renderer_set(bool mrp) {
 
 void tab_rendering() {
     const bool is_vk = rac1::vk::is_active();
-    ImGui::SeparatorText("Graphics API");
-    ImGui::Text("%s (Options > Graphics > Renderer, RAC1_RENDERER: from the next start)", is_vk ? "Vulkan 1.3" : "OpenGL 4.6");
+    ImGui::SeparatorText("Graphics API and GPU");
+    {  // the GPU: the one in use, and the choice (the Options > Display > GPU row's: kept in the preferences, from the next start)
+        const std::string& run = rac1::graphics_gpu_running();
+        ImGui::Text("In use: %s (%s)", run.empty() ? "?" : run.c_str(), is_vk ? "Vulkan" : "OpenGL");
+        ImGui::Text("%s (Options > Display > Renderer, RAC1_RENDERER: from the next start)", is_vk ? "Vulkan 1.3" : "OpenGL 4.6");
+        const std::vector<rac1::GraphicsGpu> gpus = rac1::graphics_gpu_list();
+        const int sel = rac1::graphics_gpu_selected();
+        if (ImGui::RadioButton("Automatic (the best of the devices that can run the renderer)##gpu", sel == -1)) rac1::graphics_gpu_choose(-1);
+        for (size_t i = 0; i < gpus.size(); ++i) {
+            const bool in_use = is_vk && gpus[i].name == run;
+            const std::string label = gpus[i].name + (in_use ? "  [in use]" : "") + "##gpu" + std::to_string(i);
+            if (ImGui::RadioButton(label.c_str(), sel == static_cast<int>(i))) rac1::graphics_gpu_choose(static_cast<int>(i));
+        }
+        if (sel == -2) ImGui::TextDisabled("The GPU chosen (%s) is not connected: Automatic is used.", rac1::graphics_gpu_name().c_str());
+        ImGui::TextDisabled("Options > Display > GPU is the same setting. RAC1_GPU overrides it for a run. Vulkan only.");
+        if (ImGui::Button("Restart now (the choice is saved)##gpu")) rac1::graphics_request_restart();
+        ImGui::SameLine();
+        ImGui::TextDisabled("closes the game and starts it again; progress since the last save is lost");
+    }
     const bool mrp = g_world_mrp && g_moby_renderer == MobyRenderer::kMrp;
     const bool vu = g_world_faithful && !g_world_mrp && g_moby_renderer == MobyRenderer::kFaithful;
     ImGui::SeparatorText("Renderer");

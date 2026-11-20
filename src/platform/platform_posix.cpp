@@ -25,6 +25,7 @@
 #endif
 
 #include <algorithm>
+#include <climits>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -310,6 +311,51 @@ void launch_updater(const std::vector<std::string>& args, const std::filesystem:
     argv.push_back(nullptr);
     ::execvp(argv[0], argv.data());
 }
+
+namespace {
+// orig: (host) this program's file: Linux /proc/self/exe, macOS _NSGetExecutablePath, else argv[0] when it holds a slash
+std::string self_exe(int argc, char** argv) {
+    char buf[4096];
+#if defined(__linux__)
+    const ssize_t n = ::readlink("/proc/self/exe", buf, sizeof buf - 1);
+    if (n > 0) {
+        buf[n] = 0;
+        std::string p = buf;
+        const std::string gone = " (deleted)";
+        if (p.size() > gone.size() && p.compare(p.size() - gone.size(), gone.size(), gone) == 0) p.resize(p.size() - gone.size());
+        return p;
+    }
+#elif defined(__APPLE__)
+    uint32_t size = sizeof buf;
+    if (_NSGetExecutablePath(buf, &size) == 0) {
+        char real[PATH_MAX];
+        return ::realpath(buf, real) != nullptr ? std::string(real) : std::string(buf);
+    }
+#endif
+    if (argc > 0 && argv != nullptr && argv[0] != nullptr && std::strchr(argv[0], '/') != nullptr) {
+        char real[PATH_MAX];
+        if (::realpath(argv[0], real) != nullptr) return real;
+    }
+    return std::string();
+}
+}  // namespace
+
+bool can_relaunch_self(int argc, char** argv) {
+    const std::string exe = self_exe(argc, argv);
+    return !exe.empty() && ::access(exe.c_str(), X_OK) == 0;
+}
+
+bool relaunch_self(int argc, char** argv) {
+    const std::string exe = self_exe(argc, argv);
+    if (exe.empty() || argv == nullptr) return false;
+    std::vector<char*> args;
+    for (int i = 0; i < argc; ++i) args.push_back(argv[i]);
+    args.push_back(nullptr);
+    ::execv(exe.c_str(), args.data());
+    return false;  // (execv returns only when it failed)
+}
+
+void set_environment(const char* name, const char* value) { ::setenv(name, value, 1); }
 
 std::string python_program() { return "python3"; }
 

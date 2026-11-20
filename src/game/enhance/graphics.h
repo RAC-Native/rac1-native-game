@@ -18,11 +18,6 @@
 namespace rac1 {
 
 // --- the host's side (orig_main.cpp) ---
-// A Vulkan device as the host lists it (runtime/vk/vk_context.h GpuInfo): the GPU row's values
-struct GraphicsGpu {
-    std::string name;
-    std::string uuid;
-};
 // The window as the settings ask for it
 struct GraphicsDisplay {
     bool vulkan = false;  // the Graphics page's Renderer row chosen (true: Vulkan, false: OpenGL); read once, at the window's making
@@ -34,15 +29,10 @@ struct GraphicsDisplay {
     bool vsync = true;
     int fps_cap = 60;  // 0: unlimited
     int monitor = -1;  // the Graphics page's Monitor row, an index in the host's list (-1: the primary monitor)
-    // the GPU row's choice (Vulkan; both empty: Automatic), by name and UUID; read once, at the renderer's start (vk::set_gpu_choice)
-    std::string gpu_name, gpu_uuid;
 };
 // orig: (none) — enhancement: the host's monitors as GLFW names them, in its order, given once after GLFW is up
 // (the Monitor row's values; the list is not fixed, and its order is not stable between sessions)
 void graphics_set_monitors(std::vector<std::string> names);
-// orig: (none) — enhancement: the host's function that lists the machine's Vulkan devices, called once, when the GPU row first needs
-// them (the OpenGL renderer may be the one running: the host lists them with an instance of its own)
-void graphics_set_gpu_lister(std::vector<GraphicsGpu> (*fn)());
 // Why the renderer running is not the Renderer row's choice (the row's value says "Vulkan (OpenGL)", its help why):
 // vk::init's failures (vk_context.h InitFailure, in its order), the safety net's markers (host/vk_safety.h), RAC1_RENDERER
 enum class RendererWhy { kNone, kNoShaders, kNoDriver, kNoVulkan13, kNoDevice, kMissing, kOther, kStartFailed, kDeviceLost, kEnv };

@@ -930,6 +930,8 @@ bool gpu_contains(const std::string& hay, const std::string& needle) {
 }
 }  // namespace
 
+std::string device_name() { return g_ctx.active ? std::string(g_ctx.dev_props.deviceName) : std::string(); }
+
 void set_gpu_choice(const std::string& name, const std::string& uuid) {
     g_gpu_name = name;
     g_gpu_uuid = uuid;

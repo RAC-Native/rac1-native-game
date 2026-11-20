@@ -216,6 +216,11 @@ Vulkan renderer only and is greyed while the Renderer row says OpenGL. The choic
 (`gpu` and `gpu_uuid` in `graphics_options.txt`), so an external GPU found at another bus address is still the one, and
 two identical cards are told apart. `RAC1_GPU=<number|name part|auto>` overrides it for one run.
 
+Changing the row (or the Renderer row) asks "Restart the game?": Restart Now saves the options, closes the game as a normal
+quit does (renderer, audio, window) and starts it again with the same arguments, environment and folder; Later keeps the
+change for the next start. A headless run never restarts. The debug menu's Rendering tab shows "In use: <GPU> (Vulkan|OpenGL)",
+the list of GPUs and a Restart now button.
+
 The log says what was found and why, at the start:
 
 ```

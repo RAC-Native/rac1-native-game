@@ -1,13 +1,13 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 487 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 489 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
 | [Player](#player-variables) | 26 | Settings a player may want to change: files, window, audio, the ISO |
 | [Debugging](#debugging-variables) | 352 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
-| [Automated testing](#automated-testing-variables) | 109 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
+| [Automated testing](#automated-testing-variables) | 111 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
 The oracle (`build/tests/ovl_oracle`) reads variables of its own (`ORACLE_*`, `RAC1_ORACLE_DUMPS`): see
 [The oracle](oracle.md).
@@ -489,6 +489,8 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_RAMDUMP` | frame,filename | At the given frame writes the whole 32 MB of EE RAM plus the scratchpad to the file, for offline comparison. |
 | `RAC1_RAMHASH` | file path; unset = off | After each game frame appends per-page hashes of EE RAM and scratchpad to the file, so two runs can be compared. |
 | `RAC1_REALTIME` | 1 = on; default off | A headless run steps the game as a window does: 60 game frames a second of the wall clock, several in one host frame when the host is slower, the stalls not caught up; with RAC1_FPS_CAP (the host frames' rate), RAC1_PACE_GAME=0 (a cap above 60, as VSync at 75 Hz), RAC1_HOST_DELAY_MS and RAC1_AUDIO_DEVICE=null it measures the game's speed and the sound's queue as a player's machine would. A host frame that runs no game frame is not drawn nor presented, as in a window; `RAC1_FPS_CAP=0` paces it as a window with the cap Unlimited. Prints `[pace]` (game steps a second) at the end and the `[display] presents` line (the presents' rate and spacing, 1 s to 5 s into the run). |
+| `RAC1_RELAUNCHED` | set by the game; any value | Set in the environment of the game started again by the Restart now of the GPU / Renderer rows ([Vulkan](vulkan.md#choosing-the-gpu)); the new game logs `[restart] the game was started again by its restart` and removes it. Not meant to be set by hand. |
+| `RAC1_RESTART_TEST` | game frame; default off | Asks for the restart (the popup's Restart now) at that game frame, to test the path without a display: the game closes as the window's close does and is started again with the same arguments and environment, without this variable (so it does not restart again), logging the `[restart]` lines. A headless run without it never restarts. |
 | `RAC1_SEQ_PEEK` | `<address>[:<n>]` entries separated by commas (decimal or 0x hex); default off | During a simulated-input script, at each RAC1_SEQ_TRACE line prints n signed halfwords (default 2) of EE memory from each address. |
 | `RAC1_SEQ_TRACE` | integer n; default 0 (off) | During a simulated-input script, every n frames prints the hero state, position, game mode, level and bolts. |
 | `RAC1_SEQ_WATCH` | integer moby class; default off | During a simulated-input script, traces every moby of that class each frame (state, flags, position, first pvar words), plus the hero-freeze word and the active camera. |

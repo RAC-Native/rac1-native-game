@@ -108,6 +108,8 @@ struct GpuInfo {
     const char* type;  // "discrete", "integrated", "virtual", "cpu", "other"
 };
 const std::vector<GpuInfo>& list_gpus();
+// The device the renderer runs on, its full name ("" when Vulkan is not running)
+std::string device_name();
 // The GPU the player chose (name and UUID, from the preferences; both empty: Automatic), read by init: the device is tried first,
 // and when it is not there or cannot run the renderer the automatic choice is used, with the reason in the log's [gpu] lines.
 // RAC1_GPU=<index|name part|auto> overrides it
