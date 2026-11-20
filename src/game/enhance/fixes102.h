@@ -64,6 +64,9 @@
 // - 37: the Vendor's hologram moby (class 11, vendor_update_tr 0x2a57a8, state 0): only sets the hologram moby's byte
 //   +0x73 to 0x20 when its class's byte +6 is non-zero; the North American build writes 0x20 unconditionally
 //   (veldin_shared_classes.cpp)
+// - 38: Gemlik Base's wall turrets' tops (class 36, spawned by class 29's L13:0x2b4958): +0x10 of the top's hit record (its
+//   pvars +0x30) 0.7 instead of 0.9; its use in play not understood (the Morph-o-Ray's beam copies a target's +0x10;
+//   other readers not traced) (gemlik_turret.cpp)
 // - 49: Oltanis's gondola (class 685, L14:0x2ee8d8, state 1): its ride starts only while its up row (+0xe0) and the
 //   hero's moby's point the same way (their dot product positive), as well as the hero standing on it within 1 of its
 //   centre; the North American build tests only the latter (oltanis_gondola.cpp)
@@ -182,6 +185,10 @@ bool fixes102_pokitaru_jet_camera();
 // non-zero); false with the fix off, except on the PAL 2.00 disc (region_core_moved()), whose own code it is
 bool fixes102_vendor_holo_alpha();
 
+// orig: (none) — enhancement: fix 38: Gemlik Base's turret top (class 36, spawned by L13:0x2b4958): true when the 1.02
+// build's value 0.7 (not 0.9) goes to +0x10 of the top's hit record (L13:0x2b5b08 on the PAL 2.00 disc); false with the
+// fix off, except on the PAL 2.00 disc (region_core_moved()), whose own code it is
+bool fixes102_gemlik_turret_aim();
 // orig: (none) — enhancement: fix 49: Oltanis's gondola (class 685, olt_class685_update_l14 L14:0x2ee8d8, state 1): true
 // when the 1.02 build's test applies (L14:0x2f0050 on the PAL 2.00 disc: the ride starts only while the gondola's up row
 // +0xe0 and the hero's moby's agree, their dot product positive); false with the fix off, except on the PAL 2.00 disc

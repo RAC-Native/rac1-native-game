@@ -46,6 +46,7 @@
 #include <optional>
 #include <cstring>
 #include <map>
+#include <random>
 #include <string>
 
 namespace rac1::oracle {
@@ -55,6 +56,7 @@ namespace {
 // walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
 // collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
 bool c2b_spr_check(const char* name) {
+    if (std::strncmp(name, "p132_class69_", 13) == 0) return true;  // (P13.2's ship checks: sphere_collide)
     static const char* const kNames[] = {"class1233_boss2800", "class1233_boss3500", "class1233_boss5000",
                                          "class1233_boss6500", "class1261_boss2800", "class1261_boss3500",
                                          "class1261_land200", "class1262_boss2000", "class1262_boss2800",
@@ -265,6 +267,98 @@ void batch_222() {
                 }
                 return Args{{m}, {}};
             }, [port](A a) { port(a.i[0]); return uint64_t{0}; });
+        }
+        // ---- P13.2: class 69, the ship (gml_class69_update_l13 and its helpers, gemlik_ship.cpp), on the dump's own ship: its
+        // states (the flight's above all), the pad's buttons (fire 0x84, missiles 0x28, boost 0x40 pressed / held / released, R1
+        // 0x200, triangle 0x10), the cooldowns, the missiles left, its health, a hit by Qwark's ships or others (below or above the
+        // health, pushing or not), the ship moved next to a live moby (a crash), its boxes, the fade, its checkpoint
+        if (std::getenv("B222_CLS") == nullptr || std::atoi(std::getenv("B222_CLS")) == 69) {
+            const std::mt19937 rng_before = rng;  // (the batch's later checks dealt the cases they had before this one was added)
+            load222(d);
+            std::vector<uint32_t> ships;
+            for (uint32_t m : live222(-1)) if (ee_read<uint32_t>(m + 0x74) == 0x002bb068u) ships.push_back(m);
+            if (!ships.empty()) {
+                const std::vector<uint32_t> others = live222(-1);
+                std::vector<uint32_t> qwarks;
+                for (uint32_t m : others) { const int c = static_cast<int16_t>(ee_read<uint16_t>(m + 0xa6)); if (c == 0x52 || c == 0x53) qwarks.push_back(m); }
+                const std::string nm = "p132_class69" + tag;
+                // two known differences of sphere_collide's shared port, left out here only: the collision record's triangle
+                // (OV(0x173e90) .. 0x173ebc; its unpacked vertices' scale when the ship meets the world), which the ship's code never
+                // reads (the original's only use, the crash's edge into its own frame, goes nowhere), and the pushed point's w lane
+                // (OV(0x173e7c), a VU0 leftover in the original) with the two words the ship copies it to (its own +0x1c, and the
+                // hero's place's w 0x13f3dc while it flies, and the w of its engine sound's place 0x13e5ec, sound slot 0's copy of it)
+                const size_t ign_tri = g_ignored_words.size();
+                for (uint32_t a = OV(0x00173e90); a < OV(0x00173ec0); a += 4) g_ignored_words.push_back(a);
+                g_ignored_words.push_back(OV(0x00173e7c));
+                g_ignored_words.push_back(0x0013f3dc);
+                g_ignored_words.push_back(0x0013e5ec);
+                for (uint32_t m : ships) g_ignored_words.push_back(m + 0x1c);
+                g2check(nm.c_str(), 0x002bb068, 200, Ret::None, [&d, ships, others, qwarks] {
+                    static std::vector<uint8_t> saved;
+                    uint32_t m = 0;
+                    for (int attempt = 0; attempt < 40; ++attempt) {
+                        load222(d);
+                        m = pick222(ships);
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        static const uint8_t sts[] = {4, 4, 4, 4, 4, 4, 1, 2, 5, 6, 7, 8, 0, 3, 9};
+                        const uint8_t st = coin() ? ee_read<uint8_t>(m + 0x20) : sts[ri(0, 14)];
+                        w8(m + 0x20, st);
+                        auto bits = [](uint32_t mask) { uint32_t v = 0; for (uint32_t b = 1; b != 0; b <<= 1) if ((mask & b) != 0 && coin()) v |= b; return v; };
+                        w32(0x0013caf0, bits(0x84 | 0x28 | 0x40));
+                        w32(0x0013caf4, bits(0x40));
+                        w32(0x0013caf8, bits(0x40));
+                        w32(0x0013cae0, bits(0x200));
+                        w32(0x0013cae4, bits(0x10));
+                        if (coin()) w32(pv + 0x80, u(ri(0, 2)));
+                        if (coin()) w32(pv + 0x84, u(ri(0, 2)));
+                        if (coin()) w8(0x00140946, u(ri(0, 4)));
+                        if (coin()) w32(pv + 0xdc, ri(0, 2) == 0 ? u(ri(1, 5)) : 0u);
+                        if (coin()) wf(0x0014094c, ri(0, 3) == 0 ? rf(0.5f, 6.0f) : rf(6.0f, 255.0f));
+                        if (ri(0, 3) == 0) w8(m + 0xbc, u(ri(0, 1)));
+                        if (ri(0, 2) == 0) w16(pv + 0x68, u(ri(0, 200)));
+                        if (ri(0, 3) == 0) wf(pv + 0x7c, coin() ? 0.0f : rf(0.9f, 1.0f));
+                        if (ri(0, 4) == 0) w32(pv + 0x110, 0xffffffffu);
+                        if (ri(0, 3) == 0) w8(pv + 0x60, u(ri(0, 1)));
+                        if (ri(0, 4) == 0) w32(pv + 0xe8, u(ri(0, 1)));
+                        if (ri(0, 3) == 0) w16(pv + 0x62, u(ri(0, 3)));
+                        if (ri(0, 5) == 0) w8(0x0013f350 + 0x160f, u(ri(0, 3)));
+                        if (ri(0, 5) == 0) w32(0x001613c4, 0);
+                        for (uint32_t o : {0xfcu, 0x100u, 0x12cu, 0x130u, 0x134u}) if (ri(0, 4) == 0) w32(pv + o, coin() ? 0xffffffffu : u(ri(0, 3)));
+                        if (ri(0, 5) == 0 && ee_read<uint8_t>(m + 0xb0) != 0xff) w8(0x0014c050u + ee_read<uint8_t>(m + 0xb0) + (ee_read<uint32_t>(0x0015ed84u) << 4), 0xffu);
+                        if (ri(0, 2) == 0) { w32(0x00151720, 0); w32(0x001516ec, 0xffffffffu); }
+                        if (ri(0, 3) == 0) w32(0x001413d4, coin() ? 0x32u : 0u);
+                        if (ri(0, 3) == 0) {  // next to a live moby: a crash
+                            const uint32_t o = pick222(others);
+                            // (not the hero's moby: when it is the one met, the collision record's triangle and the pushed point's w lane are
+                            // VU0 leftovers the shared sphere_collide port does not keep, a known difference of that port)
+                            if (o != m && o != ee_read<uint32_t>(0x001413d0)) { Vec4 q = ee_ref<Vec4>(o + 0x10); q.x += rf(-1.0f, 1.0f); q.y += rf(-1.0f, 1.0f); q.z += rf(-1.0f, 1.0f); ee_ref<Vec4>(m + 0x10) = q; }
+                        }
+                        if (ri(0, 8) == 0) wf(m + 0x10 + 4 * u(ri(0, 2)), coin() ? rf(1000.5f, 1100.0f) : rf(0.0f, 14.9f));  // (at the space's bounds)
+                        if (ri(0, 2) == 0) {  // a hit on the ship (the mask 0x30001)
+                            const uint32_t idx = u(ri(0, 15)), e = OV(0x00178100) + (idx << 6);
+                            w8(m + 0xa4, idx);
+                            w32(e + 0x34, m);
+                            w32(e + 0x24, 0x10000u | (coin() ? 1u : 0u) | (R() & 0xfe00u));
+                            wf(e + 0x2c, ri(0, 2) == 0 ? rf(200.0f, 400.0f) : rf(0.5f, 20.0f));
+                            wfrand(e + 0x10, 4, -0.5f, 0.5f);
+                            w32(e + 0x30, R() & 3u);
+                            w32(e + 0x20, ri(0, 3) == 0 || qwarks.empty() ? (coin() ? 0u : pick222(others)) : pick222(qwarks));
+                        }
+                        if (ri(0, 3) == 0) { wf(0x0015ed68, 1.2f); wf(0x0015ed6c, 0.02f); wf(0x0015ed70, 0.0004f); }  // (50 Hz)
+                        w32(OV(0x0015f5cc), R());
+                        seed_rand();
+                        saved.assign(ee_get_ram_base(), ee_get_ram_base() + 0x02000000);
+                        const uint32_t stack_top = ee_stack_ptr();
+                        const bool ok = run_trial(gml_class69_update_l13, m, 2);
+                        ee_stack_ptr() = stack_top;
+                        std::memcpy(ee_get_ram_base(), saved.data(), saved.size());
+                        if (ok) break;
+                    }
+                    return Args{{m}, {}};
+                }, [](A a) { gml_class69_update_l13(a.i[0]); return uint64_t{0}; });
+                g_ignored_words.resize(ign_tri);
+            }
+            rng = rng_before;
         }
         if (std::getenv("B222_CLS") != nullptr) continue;
         // ---- the classes' draw-list callbacks on the dump's own camera and mobys

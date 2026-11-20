@@ -224,6 +224,10 @@ add_library(rac1_game STATIC
     ovl/hoven_water.cpp
     ovl/gemlik_mobys.cpp
     ovl/gemlik_hooks.cpp
+    ovl/gemlik_lift.cpp
+    ovl/gemlik_ship.cpp
+    ovl/gemlik_trigger_box.cpp
+    ovl/gemlik_turret.cpp
     ovl/oltanis_mobys.cpp
     ovl/oltanis_hooks.cpp
     ovl/oltanis_lift.cpp

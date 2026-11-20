@@ -9,28 +9,31 @@
 
 namespace rac1 {
 
-void gml_class6_update_l13(uint32_t a0);  // L13:0x002b0e80
-TrRet gml_2b4060_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b4060
-void gml_class21_update_l13(uint32_t a0);  // L13:0x002b39e0
-TrRet gml_3061c8_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x003061c8
-TrRet gml_2b47a0_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b47a0
-TrRet gml_2b48d8_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b48d8
-TrRet gml_2b4958_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b4958
-void gml_class29_update_l13(uint32_t a0);  // L13:0x002b41b8
-TrRet gml_2b4a58_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b4a58
-void gml_class36_update_l13(uint32_t a0);  // L13:0x002b4c80
+// ---- hand-written (gemlik_trigger_box.cpp, gemlik_lift.cpp, gemlik_turret.cpp, gemlik_ship.cpp)
+void gml_class6_update_l13(uint32_t m);  // L13:0x002b0e80 (class 6, the trigger box)
+void gml_class21_update_l13(uint32_t m);  // L13:0x002b39e0 (class 21, the lift)
+void gml_2b4060_l13(uint32_t m, uint32_t pos, uint32_t rot);  // L13:0x002b4060 (the lift's ride camera)
+void gml_class29_update_l13(uint32_t m);  // L13:0x002b41b8 (class 29, the wall turret's base)
+void gml_class36_update_l13(uint32_t m);  // L13:0x002b4c80 (class 36, its top)
+uint32_t gml_3061c8_l13(uint32_t pos, uint32_t vel, uint32_t owner, float range);  // L13:0x003061c8 (class 1238's shot spawned)
+void gml_2b47a0_l13(uint32_t m);  // L13:0x002b47a0 (the turret fires)
+void gml_2b48d8_l13(uint32_t m);  // L13:0x002b48d8 (the turret's target)
+uint32_t gml_2b4958_l13(uint32_t m);  // L13:0x002b4958 (the turret's top spawned; fix 38)
+void gml_2b4a58_l13(uint32_t m, uint32_t pv);  // L13:0x002b4a58 (the top's hits)
+void gml_class69_update_l13(uint32_t m);  // L13:0x002bb068 (class 69, the ship; gemlik_ship.cpp)
+void gml_2ba178_l13(uint32_t m, uint32_t pv);  // L13:0x002ba178 (its flight)
+void gml_2b9df8_l13(uint32_t m, uint32_t pv, float yaw, float pitch);  // L13:0x002b9df8 (its guns)
+void gml_2b9f58_l13(uint32_t m, uint32_t pv);  // L13:0x002b9f58 (its missiles)
+void gml_2b8590_l13(uint32_t m, uint32_t pv);  // L13:0x002b8590 (its engines' trails)
+void gml_265170_l13(int32_t cls, uint32_t state);  // L13:0x00265170 (a class's mobys given a state)
+void gml_2651c8_l13(uint32_t list, uint32_t hidden, uint32_t solid, uint32_t glow);  // L13:0x002651c8 (listed classes' flags)
+
+// ---- generated (gemlik_classes_tr_N.cpp)
 TrRet gml_280400_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x00280400
 TrRet gml_2b4f28_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b4f28
 TrRet gml_2b4fb8_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b4fb8
 TrRet gml_2b4ff0_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b4ff0
 void gml_class63_update_l13(uint32_t a0);  // L13:0x002b50d8
-TrRet gml_265170_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x00265170
-TrRet gml_2651c8_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002651c8
-TrRet gml_2b8590_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b8590
-TrRet gml_2b9df8_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b9df8
-TrRet gml_2b9f58_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b9f58
-TrRet gml_2ba178_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002ba178
-void gml_class69_update_l13(uint32_t a0);  // L13:0x002bb068
 void gml_class82_update_l13(uint32_t a0);  // L13:0x002c1528
 void gml_class83_update_l13(uint32_t a0);  // L13:0x002c2048
 TrRet gml_2c2d30_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002c2d30

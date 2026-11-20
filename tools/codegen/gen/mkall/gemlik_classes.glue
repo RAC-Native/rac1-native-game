@@ -4,12 +4,10 @@
 0x00264f78: set32(v0, static_cast<uint32_t>(moby_group_count_l1(static_cast<int32_t>(a0.w()), static_cast<int32_t>(a1.w()))));
 0x00265000: moby_group_set_bc_l1(a0.w(), a1.w());
 0x00265050: moby_group_set_state(static_cast<int32_t>(a0.w()), a1.w());
-0x002650a8: group_set_flags(static_cast<int32_t>(a0.w()), static_cast<int32_t>(a1.w()), static_cast<int32_t>(a2.w()), static_cast<int32_t>(a3.w()));
 0x00265d68: push_without_direction(a0.w(), a1.w(), a2.w(), a3.w(), fr[12]);
 0x0026c818: v0.lo = static_cast<uint64_t>(moby_on_screen_l1(a0.w(), fr[12]));
 0x0026f828: plant_bolts_drop_l1(a0.w());
 0x0027d8d0: set32(v0, static_cast<uint32_t>(particle_33_spawn(a0.w(), a1.w())));
-0x00281100: set32(v0, static_cast<uint32_t>(particle_4a_spawn(a0.w(), a1.w(), a2.w(), a3.w(), t0.w())));
 0x00281d70: set32(v0, static_cast<uint32_t>(path_nearest_l1(a0.w(), a1.w(), fr[12])));
 0x00281e40: set32(v0, static_cast<uint32_t>(path_point_ahead(a0.w(), a1.w(), a2.w(), static_cast<int32_t>(a3.w()), static_cast<int32_t>(t0.w()), fr[12])));
 0x00282010: set32(v0, static_cast<uint32_t>(path_next_point_l1(a0.w(), a1.w(), a2.w(), a3.w())));
@@ -22,10 +20,7 @@
 0x002b7d50: hud_line_strip_turned(a0.w(), static_cast<int32_t>(a1.w()), a2.w(), a3.lo, fr[12], fr[13], fr[14], fr[15]);
 0x002b8320: hud_ring(a0.w(), a1.w(), a2.w(), a3.w(), fr[12], fr[13], fr[14], fr[15]);
 0x002b84e8: hud_screen_point(a0.w(), a1.w(), a2.w(), static_cast<int32_t>(a3.w()));
-0x002ba088: fr[0] = ease_between(static_cast<int32_t>(a0.w()), static_cast<int32_t>(a1.w()), fr[12], fr[13], fr[14], fr[15], fr[16]);
 0x002e1c50: set32(v0, static_cast<uint32_t>(spawn_at_place(a0.w(), a1.w())));
-0x002e6a58: set32(v0, static_cast<uint32_t>(class295_launch(a0.w(), a1.w(), a2.w(), a3.w(), static_cast<int32_t>(t0.w()), fr[12])));
-0x003025f8: set32(v0, static_cast<uint32_t>(class1009_launch(a0.w(), a1.w(), a2.w(), fr[12], fr[13])));
 0x00302cf8: set32(v0, static_cast<uint32_t>(class1017_launch(a0.w(), a1.w(), a2.w(), fr[12], fr[13], fr[14])));
 0x003072c0: set32(v0, static_cast<uint32_t>(particle34_puff_1(a0.w())));
 0x00309bc8: beam_sparks(a0.w());
