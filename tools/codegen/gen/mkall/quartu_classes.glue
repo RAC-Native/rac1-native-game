@@ -4,7 +4,6 @@
 0x002499d8: band_set(a0.w());
 0x00251c90: jump_arc_set(a0.w(), fr[12], fr[13]);
 0x00251d00: spark_burst(a0.w(), a1.w(), a2.w());
-0x00253268: plant_bolts_drop_l1(a0.w());
 0x002dd600: set32(v0, static_cast<uint32_t>(class819_launch(a0.w(), a1.w(), a2.w(), a3.w(), static_cast<int32_t>(t0.w()), fr[12])));
 0x002dee78: set32(v0, static_cast<uint32_t>(class848_spawn(a0.w(), a1.w(), a2.w(), a3.w(), fr[12])));
 0x002ea338: set32(v0, static_cast<uint32_t>(class1371_spawn(a0.w())));
@@ -13,4 +12,3 @@
 0x002ea3d0: class1371_throw(0, a1.w());
 0x002ea9b0: panel_lights(a0.w(), 0x10u);
 0x002ec678: class_mates_mark_fixed(a0.w(), 1);
-0x002be0b0: set32(v0, static_cast<uint32_t>(rock_spawn(a0.w(), a1.w(), a2.w(), static_cast<int32_t>(a3.w()), t0.w(), fr[12], fr[13], fr[14], fr[15])));

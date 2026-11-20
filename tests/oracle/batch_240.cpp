@@ -10,6 +10,7 @@
 #include <game/ovl/helmet_tr.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/hero_move_mode.h>
+#include <game/level/level_data.h>
 #include <game/ovl/quartu_mobys.h>
 #include <game/ovl/kerwan_camera.h>
 #include <game/ovl/novalis_mobys.h>
@@ -672,6 +673,374 @@ void batch_240() {
                 level();
                 return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
             }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
+        }
+    }
+
+    // P15.1: targeted coverage checks for Quartu's hand-ported classes 67, 92, 93, 148, 154, and 221
+    // (real level mobys and boxes, 50 Hz frame scale in 1/3 of cases, Giant Clank mode, persistent bits,
+    // hit-table entries, group mates, and calls into shared ports rock_spawn and plant_bolts_drop_l1).
+    // Scoped to saved_ignored so particle +0x2c (written by class148/154) is strictly checked.
+    g_ignored_words = saved_ignored;
+    if (g_oracle_level == 15) {
+        auto maybe_50hz = [] {
+            if (ri(0, 2) == 0) {
+                wf(0x0015ed68, 1.2f);
+                wf(0x0015ed6c, 0.02f);
+                wf(0x0015ed70, 0.0004f);
+            }
+        };
+        auto put_in_box = [](uint32_t pt_addr, int32_t box_idx, bool inside) {
+            if (box_idx < 0 || box_idx >= lvd::box_count(lvd::BOXES)) return;
+            Vec4 c = ee_ref<Vec4>(lvd::box(lvd::BOXES, box_idx) + 0x30);
+            if (!inside) { c.x += 500.0f; c.y += 500.0f; }
+            ee_ref<Vec4>(pt_addr) = c;
+        };
+        // the play-test spots: each placed moby of the six classes (its index in the moby table, its uid, its position)
+        level();
+        for (const auto& [cname, fn] : std::vector<std::pair<const char*, uint32_t>>{{"class67", 0x0029aff0}, {"class92", 0x002a36d0},
+                 {"class93", 0x002a3ba8}, {"class148", 0x002a7880}, {"class154", 0x002aa280}, {"class221", 0x002c2938}}) {
+            const uint32_t pool = ee_read<uint32_t>(OV(0x0015ffd8));
+            for (const uint32_t m : mobys_with(fn)) {
+                const Vec4 q = ee_ref<Vec4>(m + 0x10);
+                std::printf("  INFO %s: moby %u uid %d at %.1f %.1f %.1f\n", cname, (m - pool) >> 8, ee_read<int16_t>(m + 0xb2), q.x, q.y, q.z);
+            }
+        }
+
+        // class 67 (L15:0x0029aff0): horizontal sliding door
+        {
+            level();
+            const std::vector<uint32_t> ms = mobys_with(0x0029aff0);
+            if (!ms.empty()) {
+                lvcheck("class67_full", 0x0029aff0, 240, Ret::None, [level, ms, maybe_50hz, put_in_box] {
+                    level();
+                    maybe_50hz();
+                    const uint32_t m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    const uint32_t pool = ee_read<uint32_t>(OV(0x0015ffd8));
+                    const int st = ri(0, 5);
+                    if (st != 0) { w8(m + 0x20, 0); qua_class67_update_l15(m); }
+                    w8(m + 0x20, u(st));
+                    wf(m + 0x48, rf(-3.1f, 3.1f));
+                    const int32_t b_open = ee_read<int32_t>(pv + 0x10);
+                    const int32_t b_close = ee_read<int32_t>(pv + 0x14);
+                    put_in_box(0x0013f3d0u, b_open, coin());
+                    put_in_box(OV(0x00166dc0u), b_close, coin());
+                    if (st == 1) {
+                        const int trig_mode = ri(0, 3);
+                        if (trig_mode == 0) {
+                            w32(pv + 0x1c, 0xffffffffu);
+                        } else {
+                            w32(pv + 0x1c, 0u);
+                            w16(pool + 0xa6, trig_mode == 1 ? 0x4b9u : (trig_mode == 2 ? 0x596u : 0x100u));
+                            w8(pool + 0x20, coin() ? 4u : 1u);
+                        }
+                        w32(pv + 0x28, coin() ? 1u : 0u);
+                        const int32_t uid = ee_read<int16_t>(m + 0xb2);
+                        if (ri(0, 2) == 0) w8(OV(0x001bb230u) + u(uid) + 0x454, 1);
+                        else if (ri(0, 1) == 0) {
+                            const uint32_t wa = 0x0014c190u + (ee_read<uint32_t>(0x0015ed84u) << 8) + u((uid >> 5) << 2);
+                            w32(wa, ee_read<uint32_t>(wa) | (1u << (uid & 0x1f)));
+                        }
+                    } else if (st == 2 || st == 4) {
+                        const float dist = std::fabs(ee_read<float>(pv + 0x24)) + 1.0f;
+                        wf(pv + 0x24, dist);
+                        // the end of the travel: crossed this frame, just short of it (within a step), or far from it
+                        const int edge = ri(0, 2);
+                        wf(pv + 0x18, st == 2 ? (edge == 0 ? dist - 0.01f : edge == 1 ? dist - rf(0.0f, 0.2f) : rf(0.0f, dist * 0.5f))
+                                              : (edge == 0 ? 0.005f : edge == 1 ? rf(0.0f, 0.2f) : rf(dist * 0.3f, dist)));
+                        if (coin()) {
+                            const int32_t ch = ri(0, 3);
+                            w32(pv + 0x20, u(ch));
+                            const uint32_t slot = 0x0013e550u + u(ch * 0x70);
+                            w32(slot + 0x88, coin() ? m : 0u);
+                            w8(slot + 0x74, coin() ? 1u : 0u);
+                        } else {
+                            w32(pv + 0x20, 0xffffffffu);
+                        }
+                        if (st == 2) {
+                            w32(pv + 0x1c, coin() ? 0xffffffffu : 0u);
+                            w32(pv + 0x28, coin() ? 1u : 0u);
+                        }
+                    }
+                    seed_rand();
+                    return Args{{m}, {}};
+                }, [](A a) { qua_class67_update_l15(a.i[0]); return uint64_t{0}; });
+            }
+        }
+
+        // class 92 (L15:0x002a36d0): vertical sliding door
+        {
+            level();
+            const std::vector<uint32_t> ms = mobys_with(0x002a36d0);
+            if (!ms.empty()) {
+                lvcheck("class92_full", 0x002a36d0, 240, Ret::None, [level, ms, maybe_50hz, put_in_box] {
+                    level();
+                    maybe_50hz();
+                    const uint32_t m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    const uint32_t pool = ee_read<uint32_t>(OV(0x0015ffd8));
+                    const int st = ri(0, 6);
+                    if (st != 0) { w8(m + 0x20, 0); qua_class92_update_l15(m); }
+                    w8(m + 0x20, u(st));
+                    w8(0x0013dd50u, coin() ? 1u : 0u);
+                    w8(0x001413f4u, ri(0, 2) == 0 ? 2u : u(ri(0, 1)));
+                    if (coin()) w32(pv + 0x20, 0xffffffffu);
+                    else w32(pv + 0x20, u(ri(0, 2)));
+                    const int32_t b_open = ee_read<int32_t>(pv + 0x10);
+                    const int32_t b_close = ee_read<int32_t>(pv + 0x14);
+                    put_in_box(0x0013f3d0u, b_open, coin());
+                    put_in_box(OV(0x00166dc0u), b_close, coin());
+                    if (st == 1) {
+                        if (coin()) {
+                            w32(pv + 0x24, 0xffffffffu);
+                        } else {
+                            w32(pv + 0x24, 0u);
+                            w8(pool + 0x20, ri(0, 2) == 0 ? 0xfeu : (coin() ? 0xfdu : 1u));
+                            w32(OV(0x00161ac0u), coin() ? 0u : 1u);
+                        }
+                    } else if (st == 2 || st == 4) {
+                        const float h = ee_read<float>(0x001614f8u);
+                        const int edge = ri(0, 2);
+                        wf(pv + 0x18, st == 2 ? (edge == 0 ? h - 0.01f : edge == 1 ? h - rf(0.0f, 0.2f) : rf(0.0f, h * 0.5f))
+                                              : (edge == 0 ? 0.005f : edge == 1 ? rf(0.0f, 0.2f) : rf(h * 0.3f, h)));
+                        if (coin()) {
+                            const int32_t ch = ri(0, 3);
+                            w32(pv + 0x1c, u(ch));
+                            const uint32_t slot = 0x0013e550u + u(ch * 0x70);
+                            w32(slot + 0x88, coin() ? m : 0u);
+                            w8(slot + 0x74, coin() ? 1u : 0u);
+                        } else {
+                            w32(pv + 0x1c, 0xffffffffu);
+                        }
+                    } else if (st == 3) {
+                        w32(pv + 0x28, coin() ? 0u : 1u);
+                        if (ee_read<int32_t>(pv + 0x20) >= 0) put_in_box(0x0013f3d0u, ee_read<int32_t>(pv + 0x20), coin());
+                    }
+                    seed_rand();
+                    return Args{{m}, {}};
+                }, [](A a) { qua_class92_update_l15(a.i[0]); return uint64_t{0}; });
+            }
+        }
+
+        // class 93 (L15:0x002a3ba8): hinged swinging door
+        {
+            level();
+            const std::vector<uint32_t> ms = mobys_with(0x002a3ba8);
+            if (!ms.empty()) {
+                lvcheck("class93_full", 0x002a3ba8, 240, Ret::None, [level, ms, maybe_50hz, put_in_box] {
+                    level();
+                    maybe_50hz();
+                    const uint32_t m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    const uint32_t pool = ee_read<uint32_t>(OV(0x0015ffd8));
+                    const int st = ri(0, 5);
+                    if (st != 0) { w8(m + 0x20, 0); qua_class93_update_l15(m); }
+                    w8(m + 0x20, u(st));
+                    w32(pv + 0x10, coin() ? 1u : 0u);
+                    const int32_t b_open = ee_read<int32_t>(pv + 0x4);
+                    const int32_t b_close = ee_read<int32_t>(pv + 0x8);
+                    if (coin()) {
+                        w32(pv + 0x14, 0xffffffffu);
+                        // the hero and Clank each in the open box, the close box or neither
+                        for (const uint32_t who : {0x0013f3d0u, OV(0x00166dc0u)}) {
+                            const int where = ri(0, 2);
+                            put_in_box(who, where == 1 ? b_close : b_open, where != 2);
+                            if (where == 1 && b_close >= 0 && b_close < lvd::box_count(lvd::BOXES) && coin()) {
+                                // a point of the close box outside the open box (the open box usually lies inside the close box)
+                                const Vec4 c = ee_ref<Vec4>(lvd::box(lvd::BOXES, b_close) + 0x30);
+                                for (int k = 0; k < 40; ++k) {
+                                    Vec4 q = c;
+                                    q.x += rf(-12.0f, 12.0f); q.y += rf(-12.0f, 12.0f);
+                                    ee_ref<Vec4>(who) = q;
+                                    if (point_in_box(who, b_close) != 0 && point_in_box(who, b_open) == 0) break;
+                                    ee_ref<Vec4>(who) = c;
+                                }
+                            }
+                        }
+                        // the list at 0x15ffe4 (linked by +0x28): only the mobys whose first pvar word is set count
+                        std::vector<uint32_t> nodes;
+                        for (uint32_t n = ee_read<uint32_t>(OV(0x0015ffe4u)); n != 0 && nodes.size() < 64; n = ee_read<uint32_t>(n + 0x28))
+                            if ((ee_read<uint16_t>(n + 0x34) & 0x20) != 0 && ee_read<uint32_t>(ee_read<uint32_t>(n + 0x78)) != 0) nodes.push_back(n);
+                        for (const uint32_t n : nodes) {
+                            const int where = ri(0, 3);  // (most of them away from both boxes)
+                            if (where < 2) put_in_box(n + 0x10, where == 1 ? b_close : b_open, true);
+                            else put_in_box(n + 0x10, b_open, false);
+                        }
+                    } else {
+                        w32(pv + 0x14, 0u);
+                        w16(pool + 0xa6, coin() ? 0x49bu : 0x100u);
+                        w8(pool + 0x20, coin() ? 2u : 1u);
+                    }
+                    if (st == 2 || st == 4) {
+                        const float lim = ee_read<float>(0x001614fcu) * 0.017453292f;
+                        wf(pv + 0xc, st == 2 ? (coin() ? lim + 0.01f : lim * 0.5f)
+                                             : (coin() ? -0.01f : lim * 0.5f));
+                    }
+                    seed_rand();
+                    return Args{{m}, {}};
+                }, [](A a) { qua_class93_update_l15(a.i[0]); return uint64_t{0}; });
+            }
+        }
+
+        // class 148 (L15:0x002a7880): destructible pillar / tower (exercises rock_spawn, explosion_effect, spawn_particle_10)
+        {
+            level();
+            const std::vector<uint32_t> ms = mobys_with(0x002a7880);
+            if (!ms.empty()) {
+                lvcheck("class148_full", 0x002a7880, 120, Ret::None, [level, ms, maybe_50hz] {
+                    level();
+                    maybe_50hz();
+                    const uint32_t m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+                    w8(0x001413f4u, ri(0, 3) == 0 ? 0u : 2u);
+                    w8(m + 0x20, coin() ? 0u : 1u);
+                    w16(m + 0xa6, coin() ? 0x94u : 0x95u);
+                    w8(0x0013dd50u, coin() ? 1u : 0u);
+                    if (coin()) {
+                        const int32_t uid = ee_read<int16_t>(m + 0xb2);
+                        const uint32_t wa = 0x0014c190u + (ee_read<uint32_t>(0x0015ed84u) << 8) + u((uid >> 5) << 2);
+                        w32(wa, ee_read<uint32_t>(wa) | (1u << (uid & 0x1f)));
+                    }
+                    if (ri(0, 2) != 0) {
+                        const uint32_t slot = u(ri(0, 5));
+                        const uint32_t e = OV(0x00178100u) + (slot << 6);
+                        w32(e + 0x34, m);
+                        w32(e + 0x24, ri(0, 3) == 0 ? 0x40000u : 0x80000u);  // (an entry of the moby without the giant's flag: not a hit)
+                        if (coin()) {
+                            wf(e + 0x0, 0.0f); wf(e + 0x4, 0.0f); wf(e + 0x8, 0.0f);
+                        } else {
+                            Vec4 q = ee_ref<Vec4>(m + 0x10);
+                            q.x += rf(-2, 2); q.y += rf(-2, 2); q.z += rf(1, 5);
+                            ee_ref<Vec4>(e) = q;
+                        }
+                        wf(e + 0x10, rf(-1, 1)); wf(e + 0x14, rf(-1, 1)); wf(e + 0x18, rf(0, 1));
+                    }
+                    seed_rand();
+                    return Args{{m}, {}};
+                }, [](A a) { qua_class148_update_l15(a.i[0]); return uint64_t{0}; });
+            }
+        }
+
+        // class 154 (L15:0x002aa280): destructible wall / barrier (exercises rock_spawn, explosion_effect, spawn_particle_10)
+        {
+            level();
+            const std::vector<uint32_t> ms = mobys_with(0x002aa280);
+            if (!ms.empty()) {
+                lvcheck("class154_full", 0x002aa280, 120, Ret::None, [level, ms, maybe_50hz] {
+                    level();
+                    maybe_50hz();
+                    const uint32_t m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+                    w8(0x001413f4u, ri(0, 3) == 0 ? 0u : 2u);
+                    w8(m + 0x20, coin() ? 0u : 1u);
+                    wf(m + 0x48, rf(-1.5f, 1.5f));
+                    w8(0x0013dd50u, coin() ? 1u : 0u);
+                    if (coin()) {
+                        const int32_t uid = ee_read<int16_t>(m + 0xb2);
+                        const uint32_t wa = 0x0014c190u + (ee_read<uint32_t>(0x0015ed84u) << 8) + u((uid >> 5) << 2);
+                        w32(wa, ee_read<uint32_t>(wa) | (1u << (uid & 0x1f)));
+                    }
+                    if (ri(0, 2) != 0) {
+                        const uint32_t slot = u(ri(0, 5));
+                        const uint32_t e = OV(0x00178100u) + (slot << 6);
+                        w32(e + 0x34, m);
+                        w32(e + 0x24, ri(0, 3) == 0 ? 0x40000u : 0x80000u);  // (an entry of the moby without the giant's flag: not a hit)
+                        if (coin()) {
+                            wf(e + 0x0, 0.0f); wf(e + 0x4, 0.0f); wf(e + 0x8, 0.0f);
+                        } else {
+                            Vec4 q = ee_ref<Vec4>(m + 0x10);
+                            q.x += rf(-2, 2); q.y += rf(-2, 2); q.z += rf(1, 5);
+                            ee_ref<Vec4>(e) = q;
+                        }
+                        wf(e + 0x10, rf(-1, 1)); wf(e + 0x14, rf(-1, 1)); wf(e + 0x18, rf(0, 1));
+                    }
+                    seed_rand();
+                    return Args{{m}, {}};
+                }, [](A a) { qua_class154_update_l15(a.i[0]); return uint64_t{0}; });
+            }
+        }
+
+        // class 221 (L15:0x002c2938): spring-jointed factory emitter / plant (exercises lvd::group and plant_bolts_drop_l1)
+        {
+            level();
+            const std::vector<uint32_t> ms = mobys_with(0x002c2938);
+            if (!ms.empty()) {
+                // state 6's three debris mobys: the shared debris_spawn port leaves their w lanes +0x0c, +0x1c, +0x8c, +0x9c at 0 where
+                // the original leaves a VU0 sin / cos lane (a known difference of debris_spawn, COMMON.md; measured without this
+                // ignore: exactly those four words of each spawned moby differ, nothing else). Only this check.
+                const size_t ign_before = g_ignored_words.size();
+                for (uint32_t a = ee_read<uint32_t>(OV(0x0015ffe0)); a < ee_read<uint32_t>(OV(0x0015ffe0)) + 0x20000; a += 0x80) {
+                    g_ignored_words.push_back(a + 0xc);
+                    g_ignored_words.push_back(a + 0x1c);
+                }
+                lvcheck("class221_full", 0x002c2938, 240, Ret::None, [level, ms, maybe_50hz, give_hit] {
+                    level();
+                    maybe_50hz();
+                    const uint32_t m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    const int st = ri(0, 6);
+                    if (st != 0) { w8(m + 0x20, 0); qua_class221_update_l15(m); }
+                    w8(m + 0x20, u(st));
+                    if (ri(0, 5) == 0) give_hit(m, 0x10000u);
+                    if (coin()) {  // the joint node (pv +0x40.. angles, +0x50.. their speeds) in motion, the time step 0x15ed64 off 1
+                        for (uint32_t k = 0; k < 3; ++k) { wf(pv + 0x40 + k * 4, rf(-0.2f, 0.2f)); wf(pv + 0x50 + k * 4, rf(-0.05f, 0.05f)); }
+                    }
+                    if (ri(0, 3) == 0) wf(0x0015ed64, rf(0.5f, 3.0f));
+                    // Put camera near the moby so distance < 42 / < 20 checks pass in most cases, and hero within 7 so plant_bolts_drop_l1 drops bolts
+                    Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    if (coin()) {
+                        Vec4 h = q; h.x += rf(-3.0f, 3.0f); h.y += rf(-3.0f, 3.0f);
+                        ee_ref<Vec4>(0x0013f3d0u) = h;
+                    }
+                    const float dist = ri(0, 3) == 0 ? 60.0f : rf(1.0f, 15.0f);
+                    q.x += dist;
+                    ee_ref<Vec4>(OV(0x00166dc0u)) = q;
+                    if (st == 1) {
+                        w16(pv + 0x80, coin() ? 1u : 5u);
+                        if (ri(0, 3) == 0) w8(m + 0x21, 0xff);
+                        else {
+                            // the group's mates: all idle (state 1), all idle but one busy, or as the level has them
+                            const uint8_t grp = ee_read<uint8_t>(m + 0x21);
+                            if (grp != 0xff) {
+                                const uint32_t list = lvd::group(static_cast<int32_t>(grp));
+                                if (list != 0) {
+                                    std::vector<uint32_t> mates;
+                                    for (uint32_t p = list;; p += 2) {
+                                        const uint16_t entry = ee_read<uint16_t>(p);
+                                        const uint32_t mate = ee_read<uint32_t>(OV(0x0015ffd8u)) + (u(entry & 0x7fffu) << 8);
+                                        if (mate != m) mates.push_back(mate);
+                                        if ((entry & 0x8000u) != 0 || mates.size() > 64) break;
+                                    }
+                                    const int mode = ri(0, 2);
+                                    if (mode != 2) for (const uint32_t x : mates) w8(x + 0x20, 1);
+                                    if (mode == 1 && !mates.empty()) {
+                                        static const uint8_t busy[] = {0, 2, 3, 4, 5};
+                                        w8(mates[static_cast<size_t>(ri(0, static_cast<int>(mates.size()) - 1))] + 0x20, busy[ri(0, 4)]);
+                                    }
+                                }
+                            }
+                        }
+                    } else if (st == 2) {
+                        wf(pv + 0x84, rf(-0.2f, 0.2f));
+                        wf(pv + 0x8c, coin() ? ee_read<float>(pv + 0x84) : rf(-0.2f, 0.2f));
+                    } else if (st == 3) {
+                        const int16_t var = static_cast<int16_t>(ri(0, 1));
+                        w16(pv + 0x82, u(var));
+                        w8(m + 0x53, u((var << 1) + 1));
+                        w8(m + 0x70, coin() ? 2u : 0u);
+                    } else if (st == 4) {
+                        w8(m + 0x31, coin() ? 1u : 0u);
+                        w16(pv + 0x80, coin() ? 1u : 5u);
+                        wf(pv + 0x90, rf(-3.1f, 3.1f));
+                    } else if (st == 5) {
+                        const int16_t var = static_cast<int16_t>(ri(0, 1));
+                        w16(pv + 0x82, u(var));
+                        w8(m + 0x53, u((var << 1) + 3));
+                        w8(m + 0x70, coin() ? 2u : 0u);
+                    }
+                    seed_rand();
+                    return Args{{m}, {}};
+                }, [](A a) { qua_class221_update_l15(a.i[0]); return uint64_t{0}; });
+                g_ignored_words.resize(ign_before);
+            }
         }
     }
 

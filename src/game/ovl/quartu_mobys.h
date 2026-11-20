@@ -9,12 +9,14 @@
 
 namespace rac1 {
 
-void qua_class67_update_l15(uint32_t a0);  // L15:0x0029aff0
-void qua_class92_update_l15(uint32_t a0);  // L15:0x002a36d0
-void qua_class93_update_l15(uint32_t a0);  // L15:0x002a3ba8
-void qua_class148_update_l15(uint32_t a0);  // L15:0x002a7880
-void qua_class154_update_l15(uint32_t a0);  // L15:0x002aa280
-void qua_class221_update_l15(uint32_t a0);  // L15:0x002c2938
+// Hand-ported Quartu (level 15) moby classes (quartu_doors.cpp, quartu_destructibles.cpp, quartu_class221.cpp):
+void qua_class67_update_l15(uint32_t m);   // L15:0x0029aff0
+void qua_class92_update_l15(uint32_t m);   // L15:0x002a36d0
+void qua_class93_update_l15(uint32_t m);   // L15:0x002a3ba8
+void qua_class148_update_l15(uint32_t m);  // L15:0x002a7880
+void qua_class154_update_l15(uint32_t m);  // L15:0x002aa280
+void qua_class221_update_l15(uint32_t m);  // L15:0x002c2938
+
 TrRet qua_247e90_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x00247e90
 TrRet qua_2c4f88_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002c4f88
 TrRet qua_2c52b8_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002c52b8
