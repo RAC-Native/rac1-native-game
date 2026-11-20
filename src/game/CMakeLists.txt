@@ -260,6 +260,10 @@ add_library(rac1_game STATIC
     ovl/kalebo_mobys.cpp
     ovl/kalebo_path_runner.cpp
     ovl/kalebo_rocket.cpp
+    ovl/veldin_orbit_beams.cpp
+    ovl/veldin_orbit_cannon.cpp
+    ovl/veldin_orbit_doors.cpp
+    ovl/veldin_orbit_hazards.cpp
     ovl/veldin_orbit_hooks.cpp
     ovl/veldin_orbit_mobys.cpp
     ovl/veldin_finale_hooks.cpp

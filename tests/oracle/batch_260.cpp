@@ -11,6 +11,11 @@
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/hero_move_mode.h>
 #include <game/ovl/veldin_orbit_mobys.h>
+#include <game/ovl/veldin_orbit_own.h>
+#include <game/ovl/variants_l17.h>
+#include <game/collision/collision.h>
+#include <game/level/level_data.h>
+#include <game/ovl/pause_menu.h>
 #include <game/ovl/kerwan_camera.h>
 #include <game/ovl/novalis_camera.h>
 #include <game/ovl/novalis_mobys2.h>
@@ -76,7 +81,8 @@ namespace {
 bool c2b_spr_check(const char* name) {
     static const char* const kNames[] = {"class1379", "class1382", "class1843", "class44", "class835", "hero_move_mode",
                                          "class1134", "class1135", "class123", "class1448", "class408", "class805",
-                                         "class99"};
+                                         "class99", "p17_class99", "p17_class347", "p17_class347_break", "p17_class1368", "p17_class669",
+                                         "p17_class835"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -619,6 +625,475 @@ void batch_260() {
                 return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
             }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
         }
+    }
+
+    // ---- P17.1 (stage 4): the hand-written classes 99, 347, 669, 835, 1359, 1368 and their helpers (veldin_orbit_beams.cpp,
+    // _cannon.cpp, _hazards.cpp, _doors.cpp), each driven through its states with the hero, the camera, its boxes and its mates
+    // placed so that every branch is reached (the camera seeing the subject through render_view_setup, the hero moved with his
+    // moby, the frame scale at its 50 Hz value in a quarter of the cases); B260_INFO=1 prints the subjects and the re-dealt cases
+    if (g_oracle_level == 17) {
+        g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};
+        // (the class checks' batch-wide w lanes of the pvar area and the particle pool are not left out here: each check
+        // below leaves out only what it needs, saying why)
+        const std::vector<uint32_t> class_ignored = g_ignored_words;
+        g_ignored_words = saved_ignored;
+        const bool lone_w = g_ignore_lone_w_lanes;
+        g_ignore_lone_w_lanes = false;  // (no lone w lane is left out either: class 99's draw width pv + 0x4c is one)
+        const uint32_t P = 0x0013f350;
+        const bool info = std::getenv("B260_INFO") != nullptr;
+        static uint32_t p17_subject;
+        auto table = [] { return ee_read<uint32_t>(OV(0x0015ffd8)); };
+        auto live = [table] {
+            std::vector<uint32_t> v;
+            for (uint32_t m = table(); m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100)
+                if (ee_read<uint8_t>(m + 0x20) < 0xfe) v.push_back(m);
+            return v;
+        };
+        auto of_class = [live](int16_t cls) {
+            std::vector<uint32_t> v;
+            for (uint32_t m : live()) if (ee_read<int16_t>(m + 0xa6) == cls) v.push_back(m);
+            return v;
+        };
+        auto pick = [](const std::vector<uint32_t>& v) { return v[static_cast<size_t>(ri(0, static_cast<int>(v.size()) - 1))]; };
+        auto fifty = [] {
+            if (ri(0, 3) != 0) return;
+            wf(0x0015ed68, 1.2f); wf(0x0015ed6c, 0.02f); wf(0x0015ed70, 0.0004f);
+        };
+        auto hero_at = [P](const Vec4& q) {
+            ee_ref<Vec4>(P + 0x80) = q;
+            const uint32_t hm = ee_read<uint32_t>(P + 0x2080);
+            if (hm != 0) ee_ref<Vec4>(hm + 0x10) = q;
+        };
+        auto jitter = [](Vec4 q, float r, float rz) { q.x += rf(-r, r); q.y += rf(-r, r); q.z += rf(-rz, rz); return q; };
+        auto box_centre = [](int32_t b) { return ee_ref<Vec4>(lvd::box(lvd::BOXES, b) + 0x30); };
+        // the camera (0x166dc0) moved about `at` until the screen test sees it with radius r, the view matrices made from it
+        // (first behind `at` along the camera's forward row 0x166fd0, then anywhere about it)
+        // (the screen and projection constants first: the oracle's display leaves them broken, nothing projects; a 640 x 448
+        // screen, as batch 506 sets it up)
+        auto screen_ready = [] {
+            if (ee_read<uint16_t>(0x001518d0) == 0) { w16(0x001518d0, 640); w16(0x001518d2, 448); }
+            screen_setup();
+            projection_setup();
+        };
+        auto camera_sees = [screen_ready](const Vec4& at, float r, float spread) {
+            screen_ready();
+            for (int k = 0; k < 60; ++k) {
+                const Vec4 fwd = ee_ref<Vec4>(OV(0x00166fd0));
+                const float back = rf(8.0f, 30.0f);
+                ee_ref<Vec4>(OV(0x00166dc0)) = k < 30 ? Vec4{at.x - fwd.x * back + rf(-2, 2), at.y - fwd.y * back + rf(-2, 2), at.z - fwd.z * back + rf(-1, 1), 1.0f}
+                                                      : Vec4{at.x + rf(-spread, spread), at.y + rf(-spread, spread), at.z + rf(-spread / 4, spread / 4), 1.0f};
+                render_view_setup();
+                ee_ref<Vec4>(T4) = at;
+                if (point_on_screen(T4, r) != -1) return true;
+            }
+            return false;
+        };
+        auto camera_away = [screen_ready](const Vec4& at) {
+            screen_ready();
+            ee_ref<Vec4>(OV(0x00166dc0)) = Vec4{at.x + 400.0f, at.y + 400.0f, at.z + 300.0f, 1.0f};
+            render_view_setup();
+        };
+        auto finish = [] {
+            w32(OV(0x0015f5cc), R() & 0xffff);
+            seed_rand();
+        };
+        // a class update on `subjects` with the state `vary` makes; a state that sends the port through a pointer outside RAM is dealt
+        // again (counted: B260_INFO prints the re-deals)
+        auto pclass = [level, info](const char* name, uint32_t fn, void (*port)(uint32_t), int n, std::function<std::vector<uint32_t>()> subjects,
+                                    std::function<bool(uint32_t)> vary) {
+            if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
+            level();
+            const std::vector<uint32_t> ms0 = subjects();
+            if (ms0.empty()) { std::printf("%-26s L17:0x%08x  no subject on this level\n", name, fn); return; }
+            static int redeals;
+            redeals = 0;
+            l17check(name, fn, n, Ret::None, [level, subjects, vary, port] {
+                static std::vector<uint8_t> saved;
+                uint32_t m = 0;
+                for (int attempt = 0; attempt < 40; ++attempt) {
+                    level();
+                    const std::vector<uint32_t> ms = subjects();
+                    m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+                    p17_subject = 0;
+                    if (!vary(m)) continue;
+                    if (p17_subject != 0) m = p17_subject;  // (a subject the state made: class 1368's shot)
+                    uint8_t* ram = ee_get_ram_base();
+                    saved.assign(ram, ram + 0x02000000);
+                    const uint32_t stack_top = ee_stack_ptr();
+                    const bool ok = run_trial(port, m);
+                    ee_stack_ptr() = stack_top;
+                    std::memcpy(ram, saved.data(), saved.size());
+                    if (ok) break;
+                    ++redeals;
+                }
+                return Args{{m}, {}};
+            }, [port](A a) { port(a.i[0]); return uint64_t{0}; });
+            if (info) std::printf("INFO %s subjects %zu re-dealt %d\n", name, ms0.size(), redeals);
+        };
+        // a hit on `m` from a moby of class `cls` (another live moby given that class: only its class halfword is read)
+        auto hit_from = [give_hit, live, pick](uint32_t m, uint32_t kinds, int16_t cls) {
+            give_hit(m, kinds);
+            if (ee_read<uint8_t>(m + 0xa4) == 0xff) return;
+            const uint32_t e = OV(0x00178100) + (ee_read<uint8_t>(m + 0xa4) << 6);
+            w32(e + 0x24, kinds | (R() & 0xff));
+            const std::vector<uint32_t> all = live();
+            uint32_t q = pick(all);
+            if (q == m) q = all.front();
+            if (ri(0, 4) == 0) { w32(e + 0x20, 0); return; }
+            w32(e + 0x20, q);
+            w16(q + 0xa6, u(cls));
+        };
+
+        if (info) {  // the play-test spots: each placed moby of the hand-written classes (index, uid, position)
+            level();
+            for (uint32_t m : live()) {
+                const int16_t c = ee_read<int16_t>(m + 0xa6);
+                if (c == 0x63 || c == 0x15b || c == 0x29d || c == 0x343 || ee_read<uint32_t>(m + 0x74) == 0x002e87d8u) {
+                    const Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    std::printf("INFO p17 class %d moby %u uid %u at (%.1f, %.1f, %.1f)\n", c, (m - table()) >> 8, ee_read<uint16_t>(m + 0xb2), q.x, q.y, q.z);
+                }
+            }
+        }
+        // class 99, the laser beam: its states, its box with the hero in or out, its target (a box / a mate), a follower, the camera
+        {
+            auto beams = [of_class] { return of_class(0x63); };
+            pclass("p17_class99", 0x002a8da0, vo_class99_update_l17, 300, beams, [=](uint32_t m) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                static const uint8_t sts[] = {0, 1, 1, 2, 2, 2, 3, 4};
+                w8(m + 0x20, sts[ri(0, 7)]);
+                const std::vector<uint32_t> others = beams();
+                const int32_t nb = lvd::box_count(lvd::BOXES);
+                if (ri(0, 4) == 0) w32(pv + 0x40, 0xffffffffu);
+                else if (nb > 0 && coin()) w32(pv + 0x40, u(ri(0, nb - 1)));  // (the level's beams have none: a box given, the hero in it or not)
+                const int32_t box = ee_read<int32_t>(pv + 0x40);
+                switch (ri(0, 3)) {  // the target: a box, a mate, none
+                case 0: if (nb > 0) { w32(pv + 0x44, u(ri(0, nb - 1))); w32(pv + 0x68, 0xffffffffu); } break;
+                case 1: w32(pv + 0x44, 0xffffffffu); w32(pv + 0x68, (pick(others) - table()) >> 8); break;
+                case 2: w32(pv + 0x44, 0xffffffffu); w32(pv + 0x68, 0xffffffffu); break;
+                default: break;
+                }
+                if (ee_read<uint8_t>(m + 0x20) == 2 && ee_read<int32_t>(pv + 0x44) == -1 && ee_read<int32_t>(pv + 0x68) == -1) w32(pv + 0x68, (pick(others) - table()) >> 8);
+                wf(pv + 0x50, ri(0, 3) == 0 ? (coin() ? rf(0.95f, 1.0f) : rf(0.0f, 0.05f)) : rf(0.0f, 1.0f));
+                wf(pv + 0x54, coin() ? rf(-0.08f, 0.08f) : ee_read<float>(pv + 0x54));
+                // (the level's beams' animation has one frame: pv + 0x5c is 0 and the draw width's phase overflows; half the cases
+                // get a real animation span so the width's arithmetic is compared)
+                if (coin()) { wf(pv + 0x58, rf(0.0f, 2.0f)); wf(pv + 0x5c, rf(0.5f, 3.0f)); }
+                w32(pv + 0x60, ri(0, 2) == 0 ? pick(others) : 0u);
+                if (ee_read<uint32_t>(pv + 0x60) == m) w32(pv + 0x60, 0);
+                const Vec4 at = ee_ref<Vec4>(m + 0x10);
+                if (box >= 0 && box < nb && coin()) hero_at(jitter(box_centre(box), 1.0f, 0.5f));
+                else if (coin()) {  // across the beam
+                    const Vec4 d = ee_ref<Vec4>(m + 0xc0);
+                    const float t = rf(0, 13);
+                    hero_at(jitter(Vec4{at.x + d.x * t, at.y + d.y * t, at.z + d.z * t, 1.0f}, 0.6f, 0.6f));
+                } else hero_at(jitter(at, 30.0f, 5.0f));
+                if (ri(0, 2) != 0) camera_sees(at, 32.0f, 12.0f); else camera_away(at);
+                fifty();
+                finish();
+                return true;
+            });
+        }
+        // the spark (particle 0x4f) directly: tied to a beam or free
+        l17check("p17_26fb60", 0x0026fb60, 120, Ret::Int32, [level, of_class, pick] {
+            level();
+            const std::vector<uint32_t> bs = of_class(0x63);
+            const uint32_t m = ri(0, 2) == 0 || bs.empty() ? 0u : pick(bs);
+            const Vec4 at = m != 0 ? ee_ref<Vec4>(m + 0x10) : Vec4{rf(100, 800), rf(100, 800), rf(100, 400), 1.0f};
+            ee_ref<Vec4>(T4) = Vec4{at.x + rf(-5, 5), at.y + rf(-5, 5), at.z + rf(-5, 5), rf(-1, 1)};
+            wfrand(T4 + 0x10, 4, -1, 1);
+            if (ri(0, 3) == 0) { wf(0x0015ed68, 1.2f); wf(0x0015ed6c, 0.02f); wf(0x0015ed70, 0.0004f); }
+            seed_rand();
+            return Args{{m, T4, T4 + 0x10}, {}};
+        }, [](A a) { return r32(vo_26fb60_l17(a.i[0], a.i[1], a.i[2])); });
+
+        // class 347, the laser cannon (and through it 0x2cbc10's hits, 0x2cbd38, 0x2e94d8, 0x2f4fb8)
+        {
+            auto cannons = [of_class] { return of_class(0x15b); };
+            auto ships = [of_class] { return of_class(0x563); };
+            auto fighter_group = [of_class] {  // a group whose list holds a class-1843 fighter (-1: none)
+                for (int32_t g = 0; g < lvd::group_count(); ++g) {
+                    const uint32_t l = lvd::group(g);
+                    if (l == 0) continue;
+                    for (uint32_t e = l;; e += 2) {
+                        const uint32_t q = ee_read<uint32_t>(OV(0x0015ffd8)) + ((ee_read<uint16_t>(e) & 0x7fffu) << 8);
+                        if (ee_read<int16_t>(q + 0xa6) == 0x733) return g;
+                        if (ee_read<int16_t>(e) < 0) break;
+                    }
+                }
+                return -1;
+            };
+            // the hero walking (+0x308) or flying his ship (state 0x32 with a class-1379 moby as the vehicle), or neither
+            auto hero_mode = [P, ships, pick](int mode) {
+                w16(P + 0x308, mode == 0 ? u(ri(1, 3)) : 0u);
+                if (mode == 1) {
+                    w32(P + 0x2084, 0x32);
+                    const std::vector<uint32_t> s = ships();
+                    if (!s.empty() && ri(0, 7) != 0) w32(P + 0x15f0, pick(s));
+                    else if (coin()) w32(P + 0x15f0, 0);
+                } else if (coin()) w32(P + 0x2084, u(ri(0, 0x40)));
+            };
+            // the cannon turned toward `target` (yaw and the barrel's pitch from its pivot joint), with `err` radians off
+            auto aim_at = [](uint32_t m, const Vec4& target, float err) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                moby_joint_positions(m, 2, L17_ADDR(0x00161980), T4 + 0x40);
+                const Vec4 j = ee_ref<Vec4>(T4 + 0x40);
+                ee_ref<Vec4>(T4 + 0x60) = Vec4{target.x - j.x, target.y - j.y, target.z - j.z, 0.0f};
+                const Vec4 m0 = ee_ref<Vec4>(m + 0x10);
+                wf(m + 0x48, angle_wrap(atan2_f(target.x - m0.x, target.y - m0.y) + rf(-err, err)));
+                const float pitch = atan2_f(vec2_length(ee_ref<Vec4>(T4 + 0x60)), target.z - j.z);
+                wf(pv + 0xd4, -pitch + rf(-err, err));
+                wf(pv + 0x78, 0.0f);
+            };
+            // states 0 .. 3 with a health no dealt damage takes to 0 (`brk` false: every word compared), or the break (state
+            // 4, or a low health and a hit: `brk` true, in p17_class347_break)
+            auto vary347 = [=](uint32_t m, bool brk) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                const int st = brk ? (coin() ? 4 : ri(1, 3)) : (ri(0, 7) < 1 ? 0 : ri(1, 3));
+                w8(m + 0x20, u(st));
+                fifty();
+                wf(pv + 0x20, brk ? rf(0.1f, 3.0f) : rf(15.0f, 30.0f));
+                if (ri(0, 2) == 0) hit_from(m, NOT_ADDR(0x330000u), coin() ? 0x3f1 : (coin() ? 0x127 : 0x343));
+                else w8(m + 0xa4, 0xff);
+                const Vec4 at = ee_ref<Vec4>(m + 0x10);
+                const int32_t nb = lvd::box_count(lvd::BOXES);
+                if (st == 0) {
+                    if (coin()) { const int32_t g = fighter_group(); if (g >= 0) w16(pv + 0x80, u(g)); }
+                    if (ri(0, 3) == 0) w16(pv + 0x80, 0xffff);
+                    if (lvd::path_count() > 0) w32(pv + 0x84, u(ri(0, lvd::path_count() - 1)));
+                    if (ri(0, 3) == 0) w8(0x0014c050 + ee_read<uint8_t>(m + 0xb0) + (ee_read<uint32_t>(0x0015ed84) << 4), 0xff);
+                } else if (st == 1) {
+                    const int mode = ri(0, 2);
+                    hero_mode(mode);
+                    hero_at(jitter(at, coin() ? 240.0f : 300.0f, 30.0f));
+                } else if (st == 2) {
+                    hero_mode(coin() ? 0 : 2);
+                    int32_t b = ee_read<int32_t>(pv + 0x70);
+                    if (b < 0 || b >= nb) { if (nb == 0) return false; b = ri(0, nb - 1); w32(pv + 0x70, u(b)); }
+                    if (coin()) for (uint32_t k = 0; k < 0x30; k += 4) w32(lvd::box(lvd::BOXES, b) + k, 0);  // (a box of one point: every shot aims at its centre)
+                    aim_at(m, box_centre(b), coin() ? 0.01f : 0.3f);
+                    const int32_t period = frame_scale_i(0x5a);
+                    const int32_t frame = ri(0, 0xffff);
+                    w32(OV(0x0015f5cc), u(frame));
+                    w32(pv + 0x74, u(ri(0, 2) != 0 ? frame % period : ri(0, period - 1)));
+                    hero_at(jitter(at, 20.0f, 5.0f));
+                    seed_rand();
+                    return true;
+                } else if (st == 3) {
+                    hero_mode(ri(0, 4) == 0 ? 2 : 1);
+                    const Vec4 h = jitter(at, 60.0f, 20.0f);
+                    hero_at(h);
+                    const uint32_t ship = ee_read<uint32_t>(P + 0x15f0);
+                    if (ship != 0) ee_ref<Vec4>(ship + 0x10) = h;
+                    aim_at(m, h, coin() ? 0.01f : 0.3f);
+                    w32(pv + 0x74, coin() ? 1u : u(ri(0, 4)));
+                    if (coin()) { const int32_t g = fighter_group(); w32(pv + 0x7c, g >= 0 && coin() ? u(g) : 0u); }
+                }
+                finish();
+                return true;
+            };
+            pclass("p17_class347", 0x002cb310, vo_class347_update_l17, 400, cannons, [=](uint32_t m) { return vary347(m, false); });
+            // (the break's debris: the w lanes debris_spawn's port leaves at 0 in the spawned pieces' pvars, +0xc / +0x1c of
+            // each 0x80-byte block of the pvar area: a known difference, left out of this check only)
+            level();
+            const size_t ign347 = g_ignored_words.size();
+            for (uint32_t a = ee_read<uint32_t>(OV(0x0015ffe0)); a < ee_read<uint32_t>(OV(0x0015ffe0)) + 0x20000; a += 0x80) { g_ignored_words.push_back(a + 0xc); g_ignored_words.push_back(a + 0x1c); }
+            pclass("p17_class347_break", 0x002cb310, vo_class347_update_l17, 120, cannons, [=](uint32_t m) { return vary347(m, true); });
+            g_ignored_words.resize(ign347);
+            // the hits alone (0x2cbc10): from the hero's shots (classes 1009 / 295), from others, from no moby
+            l17check("p17_2cbc10", 0x002cbc10, 150, Ret::None, [=] {
+                level();
+                const std::vector<uint32_t> cs = cannons();
+                const uint32_t m = pick(cs), pv = ee_read<uint32_t>(m + 0x78);
+                w8(m + 0x20, u(ri(0, 4)));
+                wf(pv + 0x20, ri(0, 2) == 0 ? rf(0.0f, 2.0f) : rf(2.0f, 15.0f));
+                hit_from(m, NOT_ADDR(0x330000u), ri(0, 2) == 0 ? 0x3f1 : (coin() ? 0x127 : u(ri(1, 0x700))));
+                finish();
+                return Args{{m}, {}};
+            }, [](A a) { vo_2cbc10_l17(a.i[0]); return uint64_t{0}; });
+            // the fighters laid out (0x2cbd38): a group with fighters, another group, none; the level's paths
+            l17check("p17_2cbd38", 0x002cbd38, 120, Ret::None, [=] {
+                level();
+                const uint32_t m = pick(cannons()), pv = ee_read<uint32_t>(m + 0x78);
+                const int32_t g = fighter_group();
+                switch (ri(0, 4)) {
+                case 0: w16(pv + 0x80, 0xffff); break;
+                case 1: if (lvd::group_count() > 0) w16(pv + 0x80, u(ri(0, lvd::group_count() - 1))); break;
+                default: if (g >= 0) w16(pv + 0x80, u(g)); break;
+                }
+                if (lvd::path_count() > 0) w32(pv + 0x84, u(ri(0, lvd::path_count() - 1)));
+                return Args{{m}, {}};
+            }, [](A a) { vo_2cbd38_l17(a.i[0]); return uint64_t{0}; });
+            // a fighter of the group sent off (0x2f4fb8): some of them waiting (state 4), the camera's pitch on either side of its limit
+            l17check("p17_2f4fb8", 0x002f4fb8, 150, Ret::Int32, [=] {
+                level();
+                const int32_t g = fighter_group();
+                if (g < 0) return Args{{0xffffffffu}, {}};
+                for (uint32_t e = lvd::group(g);; e += 2) {
+                    const uint32_t q = table() + ((ee_read<uint16_t>(e) & 0x7fffu) << 8);
+                    if (ee_read<int16_t>(q + 0xa6) == 0x733) {
+                        w8(q + 0x20, ri(0, 2) != 0 ? 4u : u(ri(0, 6)));
+                        w32(ee_read<uint32_t>(q + 0x78) + 0x88, u(ri(0, 3)));
+                        w8(q + 0x53, coin() ? 0u : u(ri(1, 2)));
+                    }
+                    if (ee_read<int16_t>(e) < 0) break;
+                }
+                wfrand(L17_ADDR(0x001676d0), 3, -0.6f, 0.6f);
+                fifty();
+                finish();
+                return Args{{u(g)}, {}};
+            }, [](A a) { return r32(a.i[0] == 0xffffffffu ? 0u : vo_2f4fb8_l17(static_cast<int32_t>(a.i[0]))); });
+            // the shot's spawn (0x2e94d8) directly
+            l17check("p17_2e94d8", 0x002e94d8, 100, Ret::Int32, [=] {
+                level();
+                const uint32_t m = pick(cannons());
+                const Vec4 at = ee_ref<Vec4>(m + 0x10);
+                ee_ref<Vec4>(T4) = jitter(at, 3.0f, 3.0f);
+                ee_ref<Vec4>(T4 + 0x10) = jitter(at, 100.0f, 40.0f);
+                fifty();
+                return Args{{m, T4, T4 + 0x10}, {rf(0.5f, 4.0f)}};
+            }, [](A a) { return r32(vo_2e94d8_l17(a.i[0], a.i[1], a.i[2], a.f[0])); });
+
+            // class 1368, the shot: spawned by a cannon (the port's 0x2e94d8) at the hero, a mate cannon, the world or into the open
+            // (the collision record's triangle OV(0x173e90) .. 0x173ebc differs when the hero's moby is the one met: a known
+            // difference of segment_collide's port, left out of this check only)
+            const size_t ign1368 = g_ignored_words.size();
+            for (uint32_t k = 0; k < 0x30; k += 4) g_ignored_words.push_back(OV(0x00173e90) + k);
+            pclass("p17_class1368", 0x002e8e08, vo_class1368_update_l17, 400, cannons, [=](uint32_t m) {
+                const std::vector<uint32_t> cs = cannons();
+                const Vec4 at = ee_ref<Vec4>(m + 0x10);
+                hero_mode(ri(0, 3) == 0 ? ri(1, 2) : 0);
+                const uint32_t hm = ee_read<uint32_t>(P + 0x2080);
+                const bool at_hero = hm != 0 && ri(0, 2) == 0;  // (at the hero's moby where the collision grid has it: the hero not moved)
+                Vec4 h = at_hero ? ee_ref<Vec4>(hm + 0x10) : jitter(at, 40.0f, 10.0f);
+                if (at_hero) h.z += 0.5f; else hero_at(h);
+                if (coin()) ee_ref<Vec4>(P + 0xd0) = jitter(h, 6.0f, 2.0f);  // (the point the shot homes on within 8)
+                Vec4 from = jitter(at, 2.0f, 2.0f), to = h;
+                if (at_hero) {
+                    from = jitter(h, 4.0f, 1.0f);
+                    if (coin()) w16(0x00141dc0, 0);
+                    if (coin()) { w16(0x00141dc2, u(ri(0, 3))); w32(0x0015eea4, R() & 0xfffff); }  // (the record's time behind the play time)
+                }
+                else switch (ri(0, 4)) {
+                case 0: { const uint32_t o = pick(cs); to = ee_ref<Vec4>(o + 0x10); if (o != m) from = jitter(to, 14.0f, 4.0f); break; }
+                case 1: from = jitter(h, 1.0f, 1.0f); break;
+                case 2: to = jitter(at, 200.0f, 100.0f); break;
+                default: from = jitter(h, 12.0f, 3.0f); break;
+                }
+                if (ri(0, 7) == 0) { from = Vec4{coin() ? rf(0, 12) : rf(960, 975), rf(10, 900), rf(10, 900), 1.0f}; }
+                else if (ri(0, 6) == 0) { from.z = coin() ? rf(60, 85) : rf(885, 900); }
+                ee_ref<Vec4>(T4) = from;
+                ee_ref<Vec4>(T4 + 0x10) = to;
+                fifty();
+                const uint32_t s = vo_2e94d8_l17(m, T4, T4 + 0x10, fpu_mul(lwc1(0x0015ed6c), 60.0f));
+                if (s == 0) return false;
+                const uint32_t spv = ee_read<uint32_t>(s + 0x78);
+                if (coin()) w32(spv + 0x38, u(ri(0, 2) == 0 ? ri(0, 2) : (coin() ? ri(50, 75) : ri(60, 600))));
+                if (ri(0, 3) == 0) w8(s + 0x20, ri(0, 9) == 0 ? 2u : 1u);
+                if (coin()) w16(0x00141dc0, 0);
+                if (ri(0, 4) == 0) wf(ee_read<uint32_t>(s + 0x78) + 0x40, rf(0.5f, 3.0f));
+                p17_subject = s;  // (the subject is the shot)
+                finish();
+                return true;
+            });
+            g_ignored_words.resize(ign1368);
+        }
+
+        // class 669, the electric fan: its states, the hero near its arms or not, the camera seeing it or not
+        {
+            auto fans = [of_class] { return of_class(0x29d); };
+            pclass("p17_class669", 0x002d77f0, vo_class669_update_l17, 240, fans, [=](uint32_t m) {
+                static const uint8_t sts[] = {0, 1, 1, 1, 2};
+                w8(m + 0x20, sts[ri(0, 4)]);
+                // (it runs only while the hero is in one of four states, or in sub-state 0x11 / 0x12: sub_0020d568)
+                static const uint32_t hs[] = {0x6a, 0x82, 0x76, 0x75};
+                switch (ri(0, 5)) {
+                case 0: w32(P + 0x208c, u(ri(0x11, 0x12))); break;
+                case 1: w32(P + 0x208c, 0); w32(P + 0x2084, u(ri(0, 0x90))); break;
+                default: w32(P + 0x208c, 0); w32(P + 0x2084, hs[ri(0, 3)]); break;
+                }
+                const Vec4 at = ee_ref<Vec4>(m + 0x10);
+                hero_at(jitter(at, coin() ? 6.0f : 40.0f, 3.0f));
+                wf(m + 0x40, rf(-3.1f, 3.1f));
+                if (ri(0, 2) != 0) camera_sees(at, 20.0f, 15.0f); else camera_away(at);
+                fifty();
+                finish();
+                return true;
+            });
+        }
+        // class 835, the floating mine: hits by mines and others, stood on, a moby met, nothing met
+        {
+            auto mines = [of_class] { return of_class(0x343); };
+            pclass("p17_class835", 0x002dc3f8, vo_class835_update_l17, 300, mines, [=](uint32_t m) {
+                static const uint8_t sts[] = {0, 1, 1, 1, 2};
+                w8(m + 0x20, sts[ri(0, 4)]);
+                if (ri(0, 2) == 0) hit_from(m, NOT_ADDR(0x230000u), coin() ? 0x343 : u(ri(1, 0x700)));
+                else w8(m + 0xa4, 0xff);
+                switch (ri(0, 3)) {
+                case 0: w32(P + 0x23c, m); break;
+                case 1: w32(P + 0x240, m); break;
+                default: break;
+                }
+                if (coin()) {  // the mine next to another moby (mobys_in_sphere finds it in its grid cell)
+                    const std::vector<uint32_t> all = live();
+                    const uint32_t q = pick(all);
+                    if (q != m) { Vec4 p = ee_ref<Vec4>(q + 0x10); p.z -= 0.75f; ee_ref<Vec4>(m + 0x10) = jitter(p, 0.5f, 0.5f); }
+                }
+                coll_hit_set_moby(ri(0, 2) == 0 ? 0u : pick(live()));
+                hero_at(jitter(ee_ref<Vec4>(m + 0x10), 5.0f, 2.0f));
+                fifty();
+                finish();
+                return true;
+            });
+        }
+        // the sliding doors (classes 1359 .. 1373): every state, the hero / the camera / its mate in its boxes or not, its sound
+        {
+            auto doors = [live] {
+                std::vector<uint32_t> v;
+                for (uint32_t m : live()) if (ee_read<uint32_t>(m + 0x74) == 0x002e87d8u) v.push_back(m);
+                return v;
+            };
+            pclass("p17_class1359", 0x002e87d8, vo_class1359_update_l17, 400, doors, [=](uint32_t m) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                w8(m + 0x20, u(ri(0, 6)));
+                const std::vector<uint32_t> all = live();
+                if (ri(0, 9) == 0) w32(coin() ? pv + 0x18 : pv + 0x1c, 0xffffffffu);
+                if (ri(0, 7) == 0) w32(L17_ADDR(0x0015f5c4), 2);
+                const int32_t nb = lvd::box_count(lvd::BOXES);
+                const int32_t b18 = ee_read<int32_t>(pv + 0x18), b1c = ee_read<int32_t>(pv + 0x1c);
+                auto in_box = [&](int32_t b) { return b >= 0 && b < nb ? jitter(box_centre(b), 0.5f, 0.3f) : jitter(ee_ref<Vec4>(m + 0x10), 3.0f, 1.0f); };
+                hero_at(coin() ? in_box(coin() ? b18 : b1c) : jitter(ee_ref<Vec4>(m + 0x10), 30.0f, 5.0f));
+                ee_ref<Vec4>(OV(0x00166dc0)) = ri(0, 2) == 0 ? in_box(coin() ? b18 : b1c) : jitter(ee_ref<Vec4>(m + 0x10), 40.0f, 10.0f);
+                if (coin()) {
+                    const uint32_t q = pick(all);
+                    w32(pv + 0x10, (q - table()) >> 8);
+                    if (coin() && q != m) ee_ref<Vec4>(q + 0x10) = in_box(b18);
+                } else w32(pv + 0x10, 0xffffffffu);
+                wf(m + 0x40, coin() ? rf(-0.7f, 0.7f) : rf(0.8f, 3.1f) * (coin() ? 1.0f : -1.0f));
+                w16(P + 0x308, coin() ? 0u : 1u);
+                w8(m + 0xbc, u(ri(0, 1)));
+                wf(pv + 0x14, ri(0, 3) == 0 ? rf(-0.06f, 0.06f) : (coin() ? rf(-2.2f, 2.2f) : (coin() ? 1.99f : -1.99f)));
+                if (ri(0, 3) == 0) {  // its sound slot playing for it (or for another moby)
+                    const int32_t slot = ri(0, 7);
+                    w32(pv + 0x20, u(slot));
+                    const uint32_t e = 0x0013e550u + u(slot) * 0x70u;
+                    w32(e + 0x88, coin() ? m : pick(all));
+                    w8(e + 0x74, u(ri(0, 1)));
+                } else if (coin()) w32(pv + 0x20, 0xffffffffu);
+                fifty();
+                finish();
+                return true;
+            });
+        }
+        // the laser glow (particle 0x50, 0x26fdd0) directly
+        l17check("p17_26fdd0", 0x0026fdd0, 120, Ret::Int32, [level] {
+            level();
+            ee_ref<Vec4>(T4) = Vec4{rf(100, 800), rf(100, 800), rf(100, 400), rf(-1, 1)};
+            const int32_t fade = ri(0, 3) == 0 ? 0 : ri(-2, 17);
+            return Args{{T4, coin() ? 1u : 0u, u(fade)}, {}};
+        }, [](A a) { return r32(vo_26fdd0_l17(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]))); });
+        g_ignored_words = class_ignored;
+        g_ignore_lone_w_lanes = lone_w;
+        g_extra_noop_hooks.clear();
     }
 
     //@@NEXT

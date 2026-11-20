@@ -29,6 +29,7 @@
 #include <game/ovl/shared_particle_kinds.h>
 #include <game/ovl/veldin_finale_mobys.h>
 #include <game/ovl/veldin_orbit_mobys.h>
+#include <game/ovl/veldin_orbit_own.h>
 
 #include <algorithm>
 #include <cstring>
@@ -184,7 +185,7 @@ void batch_370() {
         std::function<uint32_t()> sp = [P, near, spawned] {
             near(P, 20.0f);
             const uint32_t kind = coin() ? 1u : 0u, n = u(ri(-2, 16));
-            return spawned(0x50, [&] { vo_26fdd0_l17(P, kind, n, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0); });
+            return spawned(0x50, [&] { vo_26fdd0_l17(P, kind, static_cast<int32_t>(n)); });
         };
         check("particle_50_update", 0x00275eb0, 200, Ret::None, [&] {
             level();

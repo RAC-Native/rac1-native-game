@@ -9,18 +9,15 @@
 
 namespace rac1 {
 
-TrRet vo_26fb60_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x0026fb60
-void vo_class99_update_l17(uint32_t a0);  // L17:0x002a8da0
-TrRet vo_2cbc10_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x002cbc10
-TrRet vo_2cbd38_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x002cbd38
-TrRet vo_2e94d8_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x002e94d8
-TrRet vo_2f4fb8_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x002f4fb8
-void vo_class347_update_l17(uint32_t a0);  // L17:0x002cb310
-void vo_class669_update_l17(uint32_t a0);  // L17:0x002d77f0
-void vo_class835_update_l17(uint32_t a0);  // L17:0x002dc3f8
-void vo_class1359_update_l17(uint32_t a0);  // L17:0x002e87d8
-TrRet vo_26fdd0_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x0026fdd0
-void vo_class1368_update_l17(uint32_t a0);  // L17:0x002e8e08
+// hand-written (veldin_orbit_beams.cpp, _cannon.cpp, _hazards.cpp, _doors.cpp)
+void vo_class99_update_l17(uint32_t m);    // L17:0x002a8da0 (the laser beam)
+void vo_class347_update_l17(uint32_t m);   // L17:0x002cb310 (the laser cannon)
+void vo_class669_update_l17(uint32_t m);   // L17:0x002d77f0 (the electric fan)
+void vo_class835_update_l17(uint32_t m);   // L17:0x002dc3f8 (the floating mine)
+void vo_class1359_update_l17(uint32_t m);  // L17:0x002e87d8 (the sliding doors, classes 1359 .. 1373)
+void vo_class1368_update_l17(uint32_t m);  // L17:0x002e8e08 (the cannon's shot)
+
+// generated (veldin_orbit_classes_tr_N.cpp)
 TrRet vo_253a90_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x00253a90
 TrRet vo_2ec000_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x002ec000
 TrRet vo_2ec150_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x002ec150

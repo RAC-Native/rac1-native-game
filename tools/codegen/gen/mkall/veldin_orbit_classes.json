@@ -7,12 +7,6 @@
   "MKALL_UNIFORM": "vo_hook_2f0040_u,vo_hook_2f0070_u"
  },
  "entries": [
-  "2a8da0:vo_class99_update_l17:void:a0",
-  "2cb310:vo_class347_update_l17:void:a0",
-  "2d77f0:vo_class669_update_l17:void:a0",
-  "2dc3f8:vo_class835_update_l17:void:a0",
-  "2e87d8:vo_class1359_update_l17:void:a0",
-  "2e8e08:vo_class1368_update_l17:void:a0",
   "2ed018:vo_class1379_update_l17:void:a0",
   "2ee2b0:vo_class1380_update_l17:void:a0",
   "2eeb68:vo_class1382_update_l17:void:a0",
@@ -32,9 +26,6 @@
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/veldin_orbit_classes_tr_1.cpp",
-  "src/game/ovl/veldin_orbit_classes_tr_2.cpp",
-  "src/game/ovl/veldin_orbit_classes_tr_3.cpp",
   "src/game/ovl/veldin_orbit_classes_tr_4.cpp",
   "src/game/ovl/veldin_orbit_classes_tr_5.cpp",
   "src/game/ovl/veldin_orbit_classes_tr_6.cpp",
