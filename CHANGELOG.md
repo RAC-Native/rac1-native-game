@@ -3,6 +3,14 @@
 What changed in each release. Releases are source only: you build the game with `./setup.sh`
 (`setup.cmd` on Windows) from your own disc. Issue numbers refer to this repository's issues.
 
+## Unreleased
+
+### Fixes (Windows)
+- **The setup stops at once in a folder with accents in its path** (#185), with a clear message to move the game to a
+  plain path such as `C:\Games\rac1-native`. The build tools live in the game's folder and CMake could not read their
+  certificates from such a path: the build failed after the tools' download with "error adding trust anchors from
+  file".
+
 ## 0.8.3
 
 A hotfix for Windows.

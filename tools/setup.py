@@ -497,6 +497,13 @@ def check_system_macos():
 
 
 def check_system_windows():
+    # (#185: the build's tools live in the game's folder, .toolchain\msys64, and CMake's downloads cannot read their
+    # certificates from a path with accents or other non-ASCII letters: "error adding trust anchors from file")
+    if not str(ROOT).isascii():
+        fail(f"The game's folder has letters the build tools cannot handle (accents or other non-English letters):\n"
+             f"    {ROOT}\n"
+             "  Move or install it to a folder whose path has only plain English letters, digits and spaces,\n"
+             f"  for example C:\\Games\\rac1-native, then run {SETUP_CMD} again.")
     missing_req, missing_opt = [], []
     for dep in WINDOWS_DEPENDENCIES:
         if not dep[2]():
