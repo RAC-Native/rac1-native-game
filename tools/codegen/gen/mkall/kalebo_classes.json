@@ -8,8 +8,6 @@
   "MKALL_WIDE_GPR": ""
  },
  "entries": [
-  "2cddb8:kal_class541_update_l16:void:a0",
-  "2d04a0:kal_class556_update_l16:void:a0",
   "2d6740:kal_class800_update_l16:void:a0",
   "2dee10:kal_class1111_update_l16:void:a0",
   "2e3190:kal_class1377_update_l16:void:a0",
@@ -46,7 +44,6 @@
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/kalebo_classes_tr_1.cpp",
   "src/game/ovl/kalebo_classes_tr_2.cpp",
   "src/game/ovl/kalebo_classes_tr_3.cpp",
   "src/game/ovl/kalebo_classes_tr_4.cpp",

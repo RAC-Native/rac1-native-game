@@ -1,11 +1,7 @@
 0x00260aa8: music_track_request(static_cast<int32_t>(a0.w()), a1.w());
 0x00254a30: group_set_flags(static_cast<int32_t>(a0.w()), static_cast<int32_t>(a1.w()), static_cast<int32_t>(a2.w()), static_cast<int32_t>(a3.w()));
-0x0025ea88: flame_spray_clear(a0.w());
-0x0025eab8: flame_spray(a0.w(), a1.w(), a2.w(), fr[12]);
-0x0025ee18: flame_spray_burn(a0.w(), a1.w(), a2.w());
 0x0025eef0: plant_bolts_drop_l1(a0.w());
 0x00261c98: talker_word_set(a0.w(), a1.w());
-0x00271250: set32(v0, static_cast<uint32_t>(path_nearest_l1(a0.w(), a1.w(), fr[12])));
 0x002923d0: level_movie_play(static_cast<int32_t>(a0.w()));
 0x002de298: set32(v0, static_cast<uint32_t>(class933_spawn(a0.w(), a1.w())));
 0x002e3e20: class933_carrier_start(a0.w());
@@ -13,7 +9,6 @@
 0x002e4190: class933_carrier_sparks(a0.w());
 0x002e4900: floater_arrive_l16(a0.w());
 0x002c4710: set32(v0, moby_in_state(a0.w(), 6u) ? 1u : 0u);
-0x002cfc00: hoverboard_boost_pads(a0.w(), 0x260u, 0x2f6u, 0x2dcu);
 0x002de3a8: set32(v0, moby_state_hook(a0.w(), 1u));
 0x002e30a8: class_mates_mark_fixed(a0.w(), 1u);
 0x002e4b58: floater_next_stage(a0.w(), 0xacu);

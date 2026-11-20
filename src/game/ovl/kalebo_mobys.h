@@ -9,12 +9,6 @@
 
 namespace rac1 {
 
-TrRet kal_2c6268_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002c6268
-TrRet kal_2cee70_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002cee70
-TrRet kal_2ce9f0_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002ce9f0
-TrRet kal_2ced20_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002ced20
-TrRet kal_2d5db0_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002d5db0
-TrRet kal_2d5e80_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002d5e80
 // hand-written (stage 4, P16.1): the level's own class updates registered in kalebo_mobys.cpp
 void kal_class1475_update_l16(uint32_t m);  // L16:0x002a3f38 (hand-written: kalebo_rocket.cpp)
 void kal_class257_update_l16(uint32_t m);   // L16:0x002c3d38 (hand-written: kalebo_path_runner.cpp)
@@ -27,14 +21,21 @@ void kal_class552_update_l16(uint32_t m);   // L16:0x002cf4a8 (hand-written: kal
 void kal_class647_update_l16(uint32_t m);   // L16:0x002d59e0 (hand-written: kalebo_arena.cpp)
 void kal_class650_update_l16(uint32_t m);   // L16:0x002d5cb8 (hand-written: kalebo_floor_plate.cpp)
 void kal_class654_update_l16(uint32_t m);   // L16:0x002d5ef8 (hand-written: kalebo_arena.cpp)
+// hand-written (stage 4, P16.2): class 541, the fighter, and its helpers (kalebo_fighter.cpp)
+void kal_class541_update_l16(uint32_t m);   // L16:0x002cddb8
+uint32_t kal_fighter_bomb_throw_l16(uint32_t thrower, uint32_t pos, uint32_t vel, uint32_t fuse, float fall);  // L16:0x002c6268
+void kal_fighter_group_spin_l16(uint32_t m);                       // L16:0x002cee70
+void kal_fighter_frame_l16(uint32_t m);                            // L16:0x002ce9f0
+uint32_t kal_fighter_step_l16(uint32_t m, uint32_t target, float yaw);  // L16:0x002ced20
+uint32_t kal_fighter_plate_find_l16(int32_t group, uint32_t p);    // L16:0x002d5db0
+void kal_fighter_plate_press_l16(uint32_t plate);                  // L16:0x002d5e80
+// hand-written (stage 4, P16.2): class 556, the race's racers, and its helpers (kalebo_racers.cpp)
+void kal_class556_update_l16(uint32_t m);   // L16:0x002d04a0
+void kal_racer_point_l16(uint32_t m, int32_t i, uint32_t out);     // L16:0x002cf9d0
+void kal_racer_next_point_l16(uint32_t m);                         // L16:0x002cf9f8
+void kal_racer_jump_l16(uint32_t m);                               // L16:0x002cff48
+void kal_racer_anims_l16(uint32_t m);                              // L16:0x002d0058
 
-void kal_class541_update_l16(uint32_t a0);  // L16:0x002cddb8
-TrRet kal_2cf9d0_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002cf9d0
-TrRet kal_2cf9f8_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002cf9f8
-TrRet kal_2cff48_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002cff48
-TrRet kal_2d0038_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002d0038
-TrRet kal_2d0058_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002d0058
-void kal_class556_update_l16(uint32_t a0);  // L16:0x002d04a0
 void kal_class800_update_l16(uint32_t a0);  // L16:0x002d6740
 void kal_class1111_update_l16(uint32_t a0);  // L16:0x002dee10 (class 1111, the open sea: kept generated, the PAL 2.00 build changed it beyond fix 24)
 void kal_class1377_update_l16(uint32_t a0);  // L16:0x002e3190

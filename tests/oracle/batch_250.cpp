@@ -65,7 +65,9 @@ bool c2a_spr_check(const char* name) {
                                          "class638", "hero_move_mode", "class1135", "class1455", "class1475", "class470",
                                          "class49", "class50", "class805", "class933",
                                          // (stage 4 P16.1's checks of the hand-written classes)
-                                         "class1475_cases", "class281_cases", "class470_cases", "class654_cases", "class257_cases"};
+                                         "class1475_cases", "class281_cases", "class470_cases", "class654_cases", "class257_cases",
+                                         // (stage 4 P16.2's: the fighter, the racers)
+                                         "class541_cases", "class556_cases"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -832,6 +834,305 @@ void batch_250() {
             wf(pv + 0x10, rf(-0.2f, 0.2f));
             finish();
         }, 60);
+
+        // ---- stage 4 P16.2: class 541, the fighter, and class 556, the racers (kalebo_fighter.cpp, kalebo_racers.cpp)
+        // the moby slots' w lanes (debris, bolts, the bombs spawned: a stale VU0 lane in the original) and the particle pool's
+        // velocity w lanes (the flame spray's particles), left out of the checks that spawn them, and only there
+        std::vector<uint32_t> spawn_lanes;
+        {
+            level();
+            for (uint32_t a = ee_read<uint32_t>(OV(0x0015ffe0)); a < ee_read<uint32_t>(OV(0x0015ffe0)) + 0x20000; a += 0x80) { spawn_lanes.push_back(a + 0xc); spawn_lanes.push_back(a + 0x1c); }
+            const uint32_t pool = ee_read<uint32_t>(OV(0x0016016c));
+            for (uint32_t k = 0; k < 0x800; ++k) spawn_lanes.push_back(pool + k * 0x40 + 0x2c);
+        }
+        auto with_spawn_lanes = [&](auto&& run) {
+            const size_t before = g_ignored_words.size();
+            g_ignored_words.insert(g_ignored_words.end(), spawn_lanes.begin(), spawn_lanes.end());
+            run();
+            g_ignored_words.resize(before);
+        };
+        auto walk = [](void (*fn)(uint32_t), uint32_t m) {  // one update by the port (a state it reaches on its own)
+            const uint32_t sp0 = ee_stack_ptr();
+            try { fn(m); } catch (const std::exception&) { ee_stack_ptr() = sp0; }
+        };
+        // a hit on the moby (the generic loop's hit record, with its state / damage words)
+        auto hit_on = [give_hit, P](uint32_t m, uint32_t kinds) {
+            give_hit(m, kinds);
+            if (ee_read<uint8_t>(m + 0xa4) == 0xff) return;
+            const uint32_t e = OV(0x00178100) + (ee_read<uint8_t>(m + 0xa4) << 6);
+            w8(e + 0x28, u(ri(0, 11))); w8(e + 0x29, u(ri(0, 4))); w16(e + 0x2a, coin() ? 0x47u : u(ri(0, 0x60)));
+            wf(e + 0x1c, coin() ? 5627.95f : 0.0f);
+            w32(e + 0x20, ri(0, 3) == 0 ? 0u : ee_read<uint32_t>(P + 0x2080));
+            wf(e + 0x2c, coin() ? rf(0.1f, 6) : 0.0f);
+        };
+        const std::vector<uint32_t> fighters = [&] { level(); return live(0x002cddb8, 0x21d); }();
+        auto fighter_path = [](uint32_t m) { return lvd::path(ee_read<int32_t>(ee_read<uint32_t>(m + 0x78) + 0xc4)); };
+        // the animation's time put near 15 (state 4's throw as it crosses 15: the time one frame past or not yet)
+        auto anim_near_15 = [](uint32_t m) {
+            const uint8_t set = ee_read<uint8_t>(m + 0x53);
+            w8(m + 0x52, set == 0xfe ? 0xfdu : (set ^ 1u));
+            const uint32_t cur = ee_read<uint32_t>(m + 0x68);
+            const float base = cur != 0 ? static_cast<float>(ee_read<int16_t>(cur + 4)) * 0.0625f : 0.0f;
+            wf(m + 0x54, 15.0f - base + rf(-0.6f, 1.6f));
+            wf(m + 0x58, 1.0f); wf(m + 0x5c, 1.0f);
+        };
+        if (std::getenv("B250_INFO") != nullptr)
+            for (uint32_t f : fighters) { const uint32_t pv = ee_read<uint32_t>(f + 0x78); std::printf("INFO P16 fighter idx %u kind %d path %d lives %d plates %d carried %08x\n", index_of(f), ee_read<int32_t>(pv + 0xc0), ee_read<int32_t>(pv + 0xc4), ee_read<int32_t>(pv + 0xc8), ee_read<int32_t>(pv + 0xcc), ee_read<uint32_t>(pv + 0x104)); }
+
+        // class 541 through its states: each state's fighter kind (3 / 4 the throwers, 5 / 6 the walkers, 7 / 8 the flames), at
+        // its path's point or near it (the step's arrival), the timers at their edges, a hit (reeling, its last health), out of
+        // health (+0x2e = 2) with lives left or none, the group's spin due or done this frame, the hero's moby where it walks
+        with_spawn_lanes([&] {
+        classcheck("class541_cases", 0x002cddb8, kal_class541_update_l16, [=](uint32_t m0) {
+            const uint32_t pv = ee_read<uint32_t>(m0 + 0x78);
+            static const int kByKind[4][10] = {{0, 2, 3, 3, 4, 4, 4, 9, 10, 11}, {0, 2, 5, 5, 5, 6, 6, 9, 10, 11},
+                                               {0, 2, 7, 7, 8, 8, 8, 9, 10, 11}, {0, 2, 9, 10, 11, 0, 2, 9, 10, 11}};
+            const int32_t kind = ee_read<int32_t>(pv + 0xc0);
+            const int st = kByKind[kind >= 0 && kind <= 2 ? kind : 3][ri(0, 9)];
+            const uint32_t path = fighter_path(m0);
+            const int32_t n = path != 0 ? ee_read<int32_t>(path) : 0;
+            if (st != 0 && ri(0, 4) != 0) { w8(m0 + 0x20, 0); walk(kal_class541_update_l16, m0); }  // (its set-up: what it carries spawned)
+            w8(m0 + 0x20, u(st));
+            w32(pv + 0xc8, u(ri(0, 2)));
+            if (ri(0, 6) == 0) w8(pv + 0x2e, 2);
+            w32(pv + 0x118, coin() ? ee_read<uint32_t>(OV(0x0015f5cc)) : 0u);
+            wf(pv + 0x20, coin() ? rf(0.05f, 0.5f) : rf(1, 3));
+            if (coin()) hit_on(m0, 0x330000u); else w8(m0 + 0xa4, 0xff);
+            const uint32_t dc = n > 0 ? (st == 5 && ri(0, 3) != 0 ? u(coin() ? 0 : n - 1) : u(ri(0, 1))) : 0u;  // (state 5: the path's ends turn it)
+            w32(pv + 0xdc, dc);
+            w32(pv + 0xf0, u(ri(0, 2) == 0 ? ri(0, 2) : ri(3, 70)));
+            wf(pv + 0xfc, coin() ? rf(0, 0.004f) : rf(0, 0.2f));
+            w32(pv + 0xb4, coin() ? 2u : u(ri(0, 1)));
+            w32(pv + 0x108, coin() ? 1u : 0xffffffffu);
+            w8(m0 + 0x70, u(ri(0, 3)));
+            if (coin()) w8(m0 + 0x53, u(ri(0, 0x17)));
+            if (st == 0) { w32(pv + 0xc0, u(ri(0, 3))); if (coin()) w32(pv + 0x104, 0); if (coin()) w32(pv + 0xc8, 0); }
+            if (path != 0 && n > 0 && st >= 2 && st <= 9) {  // at its point, near it, or a few away
+                Vec4 q = ee_ref<Vec4>(path + 0x10 + (st == 2 ? 0u : st == 6 ? ((dc + ee_read<uint32_t>(pv + 0x108)) & 1u) : dc) * 0x10);  // (2 goes to the first point)
+                const int near = st == 5 && coin() ? 0 : ri(0, 2);  // (state 5 arrives only within 1e-4)
+                if (near == 1) { q.x += rf(-0.03f, 0.03f); q.y += rf(-0.03f, 0.03f); }
+                else if (near == 2) { q.x += rf(-3, 3); q.y += rf(-3, 3); }
+                ee_ref<Vec4>(m0 + 0x10) = q;
+            }
+            if (st == 4) anim_near_15(m0);
+            if (st == 5) w8(m0 + 0x53, ri(0, 3) == 0 ? 0xau : 9u);
+            if (st == 9) { static const uint8_t back[] = {3, 5, 7}; w32(pv + 0x110, back[ri(0, 2)]); w32(pv + 0x114, u(ri(0, 0x17))); }
+            if (st == 5 && coin()) { Vec4 q = ee_ref<Vec4>(m0 + 0x10); q.x += rf(-0.3f, 0.3f); q.y += rf(-0.3f, 0.3f); hero_to(q); w32(0x0013f510, ri(0, 3) == 0 ? 5u : 0u); }
+            else hero_near(m0);
+            if (st == 11) wf(pv + 0xe8, ee_read<float>(m0 + 0x18) - rf(0, 2));
+            finish();
+        }, 160, fighters);
+        });
+
+        // class 541's helpers, each against its own address
+        lvcheck("fighter_plate_find", 0x002d5db0, 80, Ret::Int32, [=] {
+            level();
+            const uint32_t m = pick(fighters);
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            const int32_t g = ri(0, 4) == 0 ? ri(0, lvd::group_count() - 1) : ee_read<int32_t>(pv + 0xcc);
+            Vec4 q = ee_ref<Vec4>(m + 0x10);
+            if (coin()) { q.x += rf(-40, 40); q.y += rf(-40, 40); }
+            ee_ref<Vec4>(pv + 0x70) = q;  // (the point: in the fighter's own target slot)
+            const uint32_t e = lvd::group(g);  // (a group whose list holds other classes would loop in both: only plates' groups or none)
+            if (e != 0 && g != ee_read<int32_t>(pv + 0xcc)) {
+                const uint32_t o = ee_read<uint32_t>(OV(0x0015ffd8)) + ((ee_read<uint16_t>(e) & 0x7fffu) << 8);
+                if (ee_read<int16_t>(o + 0xa6) != 0x28a) return Args{{u(ee_read<int32_t>(pv + 0xcc)), pv + 0x70}, {}};
+            }
+            return Args{{u(g), pv + 0x70}, {}};
+        }, [](A a) { return r32(kal_fighter_plate_find_l16(static_cast<int32_t>(a.i[0]), a.i[1])); });
+        lvcheck("fighter_plate_press", 0x002d5e80, 60, Ret::None, [=] {
+            level();
+            const uint32_t plate = pick(live(0x002d5cb8, 0x28a));
+            w32(ee_read<uint32_t>(plate + 0x78) + 8, coin() ? 0u : u(ri(1, 6)));
+            finish();
+            w32(L16_ADDR(0x00161a88), ee_read<uint32_t>(OV(0x0015f5cc)) + u(ri(-6, 6)));
+            return Args{{plate}, {}};
+        }, [](A a) { kal_fighter_plate_press_l16(a.i[0]); return uint64_t{0}; });
+        lvcheck("fighter_step", 0x002ced20, 80, Ret::Int32, [=] {
+            level();
+            const uint32_t m = pick(fighters);
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            const uint32_t path = fighter_path(m);
+            const uint32_t t = path + 0x10 + u(ri(0, 1)) * 0x10;
+            Vec4 q = ee_ref<Vec4>(t);
+            const int near = ri(0, 2);
+            if (near == 0) { const float r = rf(0.04f, 0.065f), a = rf(-3.1f, 3.1f); q.x += r * std::cos(a); q.y += r * std::sin(a); }  // (the arrival's 0.05 edge)
+            else if (near == 1) { q.x += rf(-4, 4); q.y += rf(-4, 4); }
+            ee_ref<Vec4>(m + 0x10) = q;
+            wf(pv + 0xfc, near == 0 || coin() ? rf(0, 0.004f) : rf(0, 0.3f));
+            wf(pv + 0x100, rf(-0.2f, 0.2f));
+            finish();
+            return Args{{m, t}, {rf(-3.1f, 3.1f)}};
+        }, [](A a) { return r32(kal_fighter_step_l16(a.i[0], a.i[1], a.f[0])); });
+        lvcheck("fighter_bomb_throw", 0x002c6268, 60, Ret::Int32, [=] {
+            level();
+            const uint32_t m = pick(fighters);
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            ee_ref<Vec4>(pv + 0x70) = Vec4{rf(-0.4f, 0.4f), rf(-0.4f, 0.4f), rf(-0.1f, 0.3f), rf(-1, 1)};  // (the velocity: in the fighter's target slot)
+            finish();
+            return Args{{m, m + 0x10, pv + 0x70, u(ri(0, 300))}, {rf(0, 0.02f)}};
+        }, [](A a) { return r32(kal_fighter_bomb_throw_l16(a.i[0], a.i[1], a.i[2], a.i[3], a.f[0])); });
+        lvcheck("fighter_group_spin", 0x002cee70, 60, Ret::None, [=] {
+            level();
+            const uint32_t m = pick(fighters);
+            if (ri(0, 4) == 0) w8(m + 0x21, 0xff);
+            wf(ee_read<uint32_t>(m + 0x78) + 0x11c, rf(-3.14f, 3.14f));
+            finish();
+            return Args{{m}, {}};
+        }, [](A a) { kal_fighter_group_spin_l16(a.i[0]); return uint64_t{0}; });
+        with_spawn_lanes([&] {
+        lvcheck("fighter_frame", 0x002ce9f0, 120, Ret::None, [=] {
+            level();
+            const uint32_t m = pick(fighters);
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            static const uint8_t kStates[] = {1, 2, 3, 5, 8, 9, 9, 10, 11};
+            if (ri(0, 3) != 0) { w8(m + 0x20, 0); walk(kal_class541_update_l16, m); }  // (its set-up: what it carries spawned)
+            w8(m + 0x20, kStates[ri(0, 8)]);
+            if (ri(0, 4) == 0) { w8(pv + 0x2e, 2); w32(pv + 0xc8, u(ri(0, 1))); if (coin()) w32(pv + 0x104, 0); }
+            w32(pv + 0x118, coin() ? ee_read<uint32_t>(OV(0x0015f5cc)) : 0u);
+            wf(pv + 0x20, coin() ? rf(0.05f, 0.5f) : rf(1, 3));
+            if (ri(0, 4) != 0) hit_on(m, 0x330000u); else w8(m + 0xa4, 0xff);
+            if (coin()) w8(m + 0x53, 8);
+            hero_near(m);
+            finish();
+            return Args{{m}, {}};
+        }, [](A a) { kal_fighter_frame_l16(a.i[0]); return uint64_t{0}; });
+        });
+
+        // class 556, the racers (placed: five), made to race by one update of the port in state 1 with the hero racing, then:
+        // their point on the main path, at a fork (a side path's point: w lane > 10), on a side path near its end, at a
+        // take-off (w lane 1) on the ground; in the air (the trick's frames, the landing's pose); the start's timer running or
+        // out; over a boost pad with the hero's board set (hoverboard_boost_pads(m, 0x260, 0x2f6, 0x2dc)); shot (0x30000); shot
+        // off and coming back with the camera looking at it or away; out of the race; set-up (won or not, the attempts)
+        const std::vector<uint32_t> racers = [&] { level(); return live(0x002d04a0, 0x22c); }();
+        const std::vector<uint32_t> pads = [&] { level(); return live(0, 0x473); }();
+        const uint32_t board = [&] { level(); return pick(live(0, 0x1b7)); }();
+        auto take_offs = [](uint32_t path) {  // the points of `path` whose w lane is 1, when one of its points has a 2
+            std::vector<int32_t> v;
+            if (path == 0) return v;
+            const int32_t n = ee_read<int32_t>(path);
+            bool landing = false;
+            for (int32_t i = 0; i < n; ++i) if (ee_read<float>(path + 0x1c + u(i) * 0x10) == 2.0f) landing = true;
+            if (!landing) return v;
+            for (int32_t i = 0; i < n; ++i) if (ee_read<float>(path + 0x1c + u(i) * 0x10) == 1.0f) v.push_back(i);
+            return v;
+        };
+        if (std::getenv("B250_INFO") != nullptr) std::printf("INFO P16 racers %zu pads %zu board %08x\n", racers.size(), pads.size(), board);
+        auto racer_prep = [=](uint32_t m, int st) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w32(0x001413dc, 0x16);
+            if (st >= 2) { w8(m + 0x20, 1); walk(kal_class556_update_l16, m); }
+            w8(m + 0x20, u(st));
+            const int32_t mainp = ee_read<int32_t>(pv + 0x290);
+            uint32_t path = lvd::path(mainp);
+            const int where = ri(0, 4);
+            if (where == 3) {  // a side path (its slots +0x294 ..), near its end
+                const int32_t si = ee_read<int32_t>(pv + 0x294 + u(ri(0, 3)) * 4);
+                const uint32_t side = si >= 0 && si < lvd::path_count() ? lvd::path(si) : 0u;
+                if (side != 0 && side != path && ee_read<int32_t>(side) >= 3 && ee_read<int32_t>(side) < 1000) path = side;
+            }
+            w32(pv + 0x2c0, path);
+            const int32_t n = ee_read<int32_t>(path);
+            int32_t i = n > 0 ? ri(0, n - 1) : 0;
+            if (where == 1 && n > 0) { for (int32_t k = 0; k < n; ++k) if (ee_read<float>(path + 0x1c + u(k) * 0x10) > 10.0f && coin()) { i = (k + n - 1) % n; break; } }
+            if (where == 2) { const std::vector<int32_t> t = take_offs(path); if (!t.empty()) i = t[static_cast<size_t>(ri(0, static_cast<int>(t.size()) - 1))]; }
+            if (where == 3 && n > 2) i = n - 1 - ri(1, 2);
+            if (take_offs(path).empty())  // (a take-off with no landing on its path: both sides would search for it without end)
+                for (int32_t k = 0; k < n && ee_read<float>(path + 0x1c + u(i) * 0x10) == 1.0f; ++k) i = (i + 1) % n;
+            w16(pv + 0x2f4, u(i));
+            Vec4 q = ee_ref<Vec4>(path + 0x10 + u(i) * 0x10);
+            q.x += rf(-2.5f, 2.5f); q.y += rf(-2.5f, 2.5f); q.z += coin() ? rf(-0.3f, 0.3f) : rf(-1, 3);
+            ee_ref<Vec4>(pv + 0x260) = q;
+            ee_ref<Vec4>(m + 0x10) = q;
+            wf(m + 0x48, rf(-3.1f, 3.1f));
+            wf(pv + 0x2c8, coin() ? rf(-0.3f, 0.0f) : rf(-0.3f, 0.3f));
+            wf(pv + 0x2bc, rf(0.0f, 0.6f));
+            w32(pv + 0x2e4, ri(0, 2) == 0 || where == 1 ? 0u : u(ri(1, 22)));  // (not in the air at a fork: the side path taken there
+            // would leave the landing on the main path, and the rise's fit would walk the side path toward it without end)
+            // (the landing at its point: the rise's fit walks from the point to the landing with the path's wrap, so a landing of
+            // another path (the point may move onto a side path first) would never be reached; a jump's own landing comes from
+            // the take-offs, where == 2)
+            if (ee_read<int32_t>(pv + 0x2e4) != 0) { w16(pv + 0x2f0, u(i)); ee_ref<Vec4>(pv + 0x270) = ee_ref<Vec4>(path + 0x10 + u(i) * 0x10); }
+            w16(pv + 0x2f6, ri(0, 2) == 0 ? 0u : u(ri(1, 200)));
+            w16(pv + 0x2fe, ri(0, 2) == 0 ? 0xffffu : u(ri(1, 3)));
+            { static const uint8_t sets[] = {0, 1, 2, 3, 5, 5}; const uint8_t s = sets[ri(0, 5)]; w8(m + 0x53, s); w8(m + 0x52, coin() ? s : sets[ri(0, 5)]); }
+            w8(m + 0x70, u(ri(0, 3)));
+            wf(m + 0x54, rf(0, 1));
+            w32(P + 0x894, u(ri(0, 1000)));
+            w32(P + 0x8c0, u(ri(0, 5)));
+            for (uint32_t k = 0; k < 6; ++k) w16(P + 0x7c0 + k * 2, u(ri(0, 5)));
+            if (ri(0, 2) == 0 && !pads.empty() && board != 0) {  // over a boost pad, the hero on his board
+                w32(P + 0x86c, board);
+                w32(P + 0x894, u(ri(200, 2000)));
+                w32(pv + 0x2dc, coin() ? 0u : u(ri(0, 3)));
+                Vec4 p = ee_ref<Vec4>(pick(pads) + 0x10);
+                p.x += rf(-0.3f, 0.3f); p.y += rf(-0.3f, 0.3f); p.z -= 0.8f;
+                ee_ref<Vec4>(pv + 0x260) = p;
+            }
+            if (ri(0, 4) == 0) hit_on(m, 0x30000u); else w8(m + 0xa4, 0xff);
+            if (ri(0, 9) == 0) w32(0x001413dc, u(ri(0, 0x20)));
+        };
+        with_spawn_lanes([&] {
+        classcheck("class556_cases", 0x002d04a0, kal_class556_update_l16, [=](uint32_t m) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            static const int kStates[] = {0, 1, 2, 2, 2, 2, 2, 2, 3, 3};
+            const int st = kStates[ri(0, 9)];
+            racer_prep(m, st);
+            if (st == 0) { w8(0x0013d4df, u(ri(0, 1))); w32(0x0015ee3c, u(ri(0, 40))); }
+            if (st == 1) w32(pv + 0x2cc, u(ri(-1, 5)));
+            if (st == 3) {
+                w16(pv + 0x2f2, u(frame_scale_i(0xf0) + ri(-2, 2)));
+                if (ri(0, 3) != 0) {  // the camera looking away from it (its yaw opposite the camera-to-racer heading)
+                    const float dx = ee_read<float>(m + 0x10) - ee_read<float>(L16_ADDR(0x001671c0)), dy = ee_read<float>(m + 0x14) - ee_read<float>(L16_ADDR(0x001671c4));
+                    float a = std::atan2(dy, dx) + 3.14159265f;
+                    if (a > 3.14159265f) a -= 6.2831853f;
+                    wf(L16_ADDR(0x001671d8), a + rf(-0.5f, 0.5f));
+                } else {
+                    wf(L16_ADDR(0x001671d8), rf(-3.1f, 3.1f));
+                }
+            }
+            if (st == 2 && coin()) wf(pv + 0x2bc, ee_read<float>(pv + 0x2b4) + rf(-0.06f, 0.06f));  // (its speed near its target)
+            finish();
+        }, 160, racers);
+        });
+        lvcheck("racer_point", 0x002cf9d0, 40, Ret::None, [=] {
+            level();
+            const uint32_t m = pick(racers);
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            const int32_t n = ee_read<int32_t>(ee_read<uint32_t>(pv + 0x2c0));
+            return Args{{m, u(ri(0, n > 0 ? n - 1 : 0)), pv + 0x270}, {}};
+        }, [](A a) { kal_racer_point_l16(a.i[0], static_cast<int32_t>(a.i[1]), a.i[2]); return uint64_t{0}; });
+        lvcheck("racer_next_point", 0x002cf9f8, 120, Ret::None, [=] {
+            level();
+            const uint32_t m = pick(racers);
+            racer_prep(m, 2);
+            finish();
+            return Args{{m}, {}};
+        }, [](A a) { kal_racer_next_point_l16(a.i[0]); return uint64_t{0}; });
+        lvcheck("racer_jump", 0x002cff48, 80, Ret::None, [=] {
+            level();
+            const uint32_t m = pick(racers);
+            racer_prep(m, 2);
+            finish();
+            return Args{{m}, {}};
+        }, [](A a) { kal_racer_jump_l16(a.i[0]); return uint64_t{0}; });
+        lvcheck("racer_anims", 0x002d0058, 120, Ret::None, [=] {
+            level();
+            const uint32_t m = pick(racers);
+            racer_prep(m, 2);
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            if (coin()) wf(pv + 0x278, ee_read<float>(pv + 0x268) - rf(-2, 6));
+            if (coin()) w32(pv + 0x2e4, u(frame_scale_i(ri(0, 1) ? 7 : 11) + ri(-1, 1)));
+            if (coin()) {  // a trick playing, its time between 5 and 22 (the speed's fit to the air time)
+                w8(m + 0x52, ee_read<uint8_t>(m + 0x53)); w8(m + 0x51, 0); w8(m + 0x50, 1);
+                const uint32_t cur = ee_read<uint32_t>(m + 0x68);
+                const float base = cur != 0 ? static_cast<float>(ee_read<int16_t>(cur + 4)) * 0.0625f : 0.0f;
+                wf(m + 0x54, rf(5, 22) - base);
+                if (ee_read<int16_t>(pv + 0x2fe) == -1) w16(pv + 0x2fe, u(ri(1, 3)));
+            }
+            finish();
+            return Args{{m}, {}};
+        }, [](A a) { kal_racer_anims_l16(a.i[0]); return uint64_t{0}; });
         g_extra_noop_hooks.clear();
     }
 

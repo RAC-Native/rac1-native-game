@@ -257,6 +257,7 @@ add_library(rac1_game STATIC
     ovl/kalebo_barrier.cpp
     ovl/kalebo_beacon.cpp
     ovl/kalebo_conveyor.cpp
+    ovl/kalebo_fighter.cpp
     ovl/kalebo_fighter_bomb.cpp
     ovl/kalebo_floor_plate.cpp
     ovl/quartu_doors.cpp
@@ -266,6 +267,7 @@ add_library(rac1_game STATIC
     ovl/kalebo_hooks.cpp
     ovl/kalebo_mobys.cpp
     ovl/kalebo_path_runner.cpp
+    ovl/kalebo_racers.cpp
     ovl/kalebo_rocket.cpp
     ovl/veldin_orbit_beams.cpp
     ovl/veldin_orbit_cannon.cpp
