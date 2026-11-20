@@ -60,6 +60,7 @@ game opens with OpenGL:
    the best first (a discrete GPU, then an integrated one, then the others: `[vk] <name> cannot run
    the Vulkan renderer: trying <next>`), and the first that passes is used. A laptop whose discrete
    GPU misses something plays Vulkan on its integrated one.
+   Options > Display > GPU (or `RAC1_GPU`) puts a chosen device first; see [Choosing the GPU](#choosing-the-gpu).
 4. The last Vulkan run, by two markers in the settings' folder ($XDG_CONFIG_HOME/rac1-native,
    %APPDATA%\rac1-native on Windows): `vk_start_pending` is written before Vulkan starts and removed
    after 600 frames or when the game closes normally, so finding it means the last start crashed
@@ -206,3 +207,23 @@ gives it): Vulkan drivers may fold the sampler's anisotropy into `textureQueryLo
 sharper levels than OpenGL (the Gadgetron signs on Aridia and Hoven). `RAC1_VK_VALIDATION=1` turns the
 Khronos validation layer on when it is installed. `RAC1_PROFILER_DUMP=300` prints both renderers'
 stage times for a comparison.
+
+## Choosing the GPU
+
+A machine with more than one GPU (a laptop's integrated and discrete one, an external GPU) uses the best one by default:
+discrete before integrated. Options > Display > GPU picks another one, from the next start; the row works with the
+Vulkan renderer only and is greyed while the Renderer row says OpenGL. The choice is saved by the GPU's name and its UUID
+(`gpu` and `gpu_uuid` in `graphics_options.txt`), so an external GPU found at another bus address is still the one, and
+two identical cards are told apart. `RAC1_GPU=<number|name part|auto>` overrides it for one run.
+
+The log says what was found and why, at the start:
+
+```
+[gpu] Vulkan devices: 0 AMD Radeon 890M (integrated, ...) 1 NVIDIA GeForce RTX 4070 Ti (discrete, ...) [chosen]
+[gpu] Automatic (the best of the devices that can run the renderer: discrete before integrated): NVIDIA GeForce RTX 4070 Ti
+```
+
+When the chosen GPU is not there (the external one unplugged), or cannot run the renderer, the game starts on the Automatic
+choice and the second line says so (`[gpu] the GPU row's choice 'X': not found (not connected), Automatic instead: Y`); the
+saved choice is kept until you pick another one, and the row shows it marked `(not connected)`. This setting never stops
+the game from starting.

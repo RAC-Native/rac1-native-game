@@ -127,9 +127,10 @@ enum : uint32_t { PIC_GFX = 1, PIC_ORIGINAL = 2, PIC_MODERN = 3 };  // (advanced
 
 // The settings
 // (S_GFX: Graphics, 0 Original, 1 Enhanced; S_PRESET: no value of its own, the rows' match with PRESETS; S_LIGHTING: 0 Low,
+// S_GPU: the GPU row, the choice kept by name and UUID (State::gpu_name), never in the EE bytes (after S_PRESET: the RAM hashes);
 // 1 Medium, 2 High, 3 Original (LIGHTING_ORIGINAL, #138: the original's lighting under the effects) - until the switch, 0 was
 // Original and 1..3 Low..High)
-enum Setting : uint32_t { S_DISPLAY, S_MONITOR, S_WINDOW, S_SCALE, S_ASPECT, S_FIT, S_LOD, S_FOV, S_VSYNC, S_CAP, S_LIGHTING, S_DYN_SHADOWS, S_SEC_LIGHTS, S_SHADOW_DIST, S_AO, S_MIPS, S_SHADOW_STR, S_SUN_RAYS, S_AO_STR, S_HUD, S_RENDERER, S_SURFACE, S_PARTICLES, S_GRASS, S_WREFL, S_GFX, S_PRESET, S_COUNT };
+enum Setting : uint32_t { S_DISPLAY, S_MONITOR, S_WINDOW, S_SCALE, S_ASPECT, S_FIT, S_LOD, S_FOV, S_VSYNC, S_CAP, S_LIGHTING, S_DYN_SHADOWS, S_SEC_LIGHTS, S_SHADOW_DIST, S_AO, S_MIPS, S_SHADOW_STR, S_SUN_RAYS, S_AO_STR, S_HUD, S_RENDERER, S_SURFACE, S_PARTICLES, S_GRASS, S_WREFL, S_GFX, S_PRESET, S_GPU, S_COUNT };
 static_assert(S_COUNT <= 0x20, "the settings' values end where the step bytes begin");
 constexpr int LIGHTING_ORIGINAL = 3;  // the Lighting row's Original: the modern lighting's sun off (mrp_lighting.cpp g_lighting_original)
 constexpr float SHADOW_DISTS[] = {40.0f, 80.0f, 140.0f, 0.0f};  // Low, Medium, High, Maximum (0: as far as the cascades reach)
@@ -176,6 +177,7 @@ enum : int32_t {
     T_ORIGINAL, T_LOW, T_MEDIUM, T_HIGH, T_MAXIMUM, T_OFF, T_ON, T_UNLIMITED, T_SEC_GAME, T_SEC_ALL, T_FULL, T_ENHANCED, T_CUSTOM,
     T_MODE_ORIGINAL, T_MODE_MODERN, H_MODE_ORIGINAL, H_MODE_MODERN,
     T_NG_CURRENT, T_NG_ORIGINAL, T_NG_LOW, T_NG_MEDIUM, T_NG_HIGH, H_NG_CURRENT, H_NG_ORIGINAL, H_NG_LOW, H_NG_MEDIUM, H_NG_HIGH,
+    T_GPU, H_GPU,
     T_COUNT
 };
 // The rows' value texts (made from the values at each lookup): VALUE_FIRST + page * VISIBLE + slot (0x7e80..: free ids between
@@ -215,7 +217,8 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "The PS2's picture: Graphics Original.",
      "Our lighting and effects at the preset Low: the lightest.",
      "Our lighting and effects at the preset Medium.",
-     "Our lighting and effects at the preset High: the heaviest."},
+     "Our lighting and effects at the preset High: the heaviest.",
+     "GPU", "The graphics card Vulkan runs on, from the next start. Automatic: the best one."},
     {"Grafik", "Das Originalbild oder unsere Beleuchtung, Wasser und Effekte", "Anzeige", "Fenster, Bildformat, Details und Sicht der PC-Version",
      "Anzeigemodus", "Bildschirm", "Fenstergrosse", "Renderauflosung", "Seitenverhaltnis", "Bildanpassung", "Detailstufe", "Sichtfeld", "V-Sync", "Bildratenlimit", "Beleuchtung", "Dynamische Schatten", "Zusatzlichter", "Schattendistanz", "Umgebungsverdeckung", "Texturdetail", "Schattenstarke", "Sonnenstrahlen", "Verdeckungsstarke", "HUD", "Renderer", "Oberflachendetail", "Umgebungspartikel", "Gras", "Wasserspiegelung", "Voreinstellung",
      "Im Fenster oder im Vollbild.", "Auf welchem Bildschirm das Fenster liegt.", "Die Grosse des Fensters (im Fenstermodus).", "Die Auflosung der 3D-Grafik, mal die des Bildschirms. Das HUD bleibt scharf.",
@@ -249,7 +252,8 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Das Bild der PS2: Grafik Original.",
      "Unsere Beleuchtung und Effekte, Voreinstellung Niedrig: die leichteste.",
      "Unsere Beleuchtung und Effekte, Voreinstellung Mittel.",
-     "Unsere Beleuchtung und Effekte, Voreinstellung Hoch: die aufwendigste."},
+     "Unsere Beleuchtung und Effekte, Voreinstellung Hoch: die aufwendigste.",
+     "GPU", "Die Grafikkarte fur Vulkan, ab dem nachsten Start. Automatisch: die beste."},
     {"Graficos", "La imagen original, o nuestra iluminacion, agua y efectos", "Pantalla", "Ventana, formato, detalle y vista de la version PC",
      "Modo de pantalla", "Monitor", "Tamano de ventana", "Resolucion 3D", "Relacion de aspecto", "Ajuste", "Nivel de detalle", "Campo de vision", "V-Sync", "Limite de FPS", "Iluminacion", "Sombras dinamicas", "Luces secundarias", "Distancia de sombras", "Oclusion ambiental", "Detalle de texturas", "Intensidad de sombras", "Rayos de sol", "Intensidad de oclusion", "HUD", "Renderizador", "Detalle de superficies", "Particulas ambientales", "Hierba", "Reflejos del agua", "Preajuste",
      "En una ventana o a pantalla completa.", "En que pantalla se abre la ventana.", "El tamano de la ventana (en modo ventana).", "La resolucion del 3D, por la de la pantalla. El HUD sigue nitido.",
@@ -283,7 +287,8 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "La imagen de PS2: Graficos Original.",
      "Nuestra iluminacion y efectos, preajuste Bajo: el mas ligero.",
      "Nuestra iluminacion y efectos, preajuste Medio.",
-     "Nuestra iluminacion y efectos, preajuste Alto: el mas pesado."},
+     "Nuestra iluminacion y efectos, preajuste Alto: el mas pesado.",
+     "GPU", "La tarjeta grafica de Vulkan, desde el siguiente inicio. Automatico: la mejor."},
     {"Grafica", "L'immagine originale, o la nostra illuminazione, acqua ed effetti", "Schermo", "Finestra, formato, dettaglio e visuale della versione PC",
      "Modalita schermo", "Monitor", "Finestra", "Risoluzione 3D", "Formato", "Adattamento", "Livello di dettaglio", "Campo visivo", "V-Sync", "Limite FPS", "Illuminazione", "Ombre dinamiche", "Luci secondarie", "Distanza ombre", "Occlusione ambientale", "Dettaglio texture", "Intensita ombre", "Raggi di sole", "Intensita occlusione", "HUD", "Renderer", "Dettaglio superfici", "Particelle ambientali", "Erba", "Riflessi dell'acqua", "Preset",
      "In una finestra o a schermo intero.", "Su quale schermo va la finestra.", "La dimensione della finestra (in modalita finestra).", "La risoluzione del 3D, per quella dello schermo. L'HUD resta nitido.",
@@ -317,7 +322,8 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "L'immagine della PS2: Grafica Originale.",
      "La nostra illuminazione ed effetti, preset Basso: il piu leggero.",
      "La nostra illuminazione ed effetti, preset Medio.",
-     "La nostra illuminazione ed effetti, preset Alto: il piu pesante."},
+     "La nostra illuminazione ed effetti, preset Alto: il piu pesante.",
+     "GPU", "La scheda video di Vulkan, dal prossimo avvio. Automatica: la migliore."},
 };
 
 // Water Reflections' ray-traced values (value_text's words, not texts asked for by id - no id moved): Medium (RT), High (RT), per language
@@ -360,6 +366,14 @@ constexpr const char* LIGHT_ORIGINAL_TEXTS[4][2] = {
     {"Originale: luce e ombre della PS2, niente sole. Gli effetti sotto restano.",
      "Serve il sole moderno: spento con Illuminazione Originale. Il valore resta."},
 };
+// The GPU row's words (not texts asked for by id), per language as TEXTS: Automatic, the help when the row does nothing (the
+// renderer's choice is OpenGL), the help when RAC1_GPU chose, the mark of a choice whose GPU is not there now
+constexpr const char* GPU_TEXTS[4][4] = {
+    {"Automatic", "Works with Vulkan only: choose Renderer Vulkan first.", "Chosen for this run by RAC1_GPU.", "not connected"},
+    {"Automatisch", "Nur mit Vulkan: zuerst Renderer Vulkan wahlen.", "Fur diesen Lauf von RAC1_GPU gewahlt.", "nicht verbunden"},
+    {"Automatico", "Solo con Vulkan: elige antes Renderizador Vulkan.", "Elegida para esta ejecucion por RAC1_GPU.", "no conectada"},
+    {"Automatica", "Solo con Vulkan: scegli prima Renderer Vulkan.", "Scelta per questa esecuzione da RAC1_GPU.", "non collegata"},
+};
 constexpr const char* RT_WORDS[4][2] = {{"Medium (RT)", "High (RT)"}, {"Mittel (RT)", "Hoch (RT)"}, {"Medio (RT)", "Alto (RT)"}, {"Medio (RT)", "Alto (RT)"}};
 
 // The page's rows: the setting, its name, its help, the preferences' key
@@ -369,7 +383,7 @@ struct Row {
 };
 // The Display page (0): the renderer, the window, the picture, the view, the detail
 constexpr Row DISPLAY_ROWS[] = {
-    {S_RENDERER, T_RENDERER, H_RENDERER},
+    {S_RENDERER, T_RENDERER, H_RENDERER},    {S_GPU, T_GPU, H_GPU},
     {S_DISPLAY, T_DISPLAY, H_DISPLAY},       {S_MONITOR, T_MONITOR, H_MONITOR},                {S_WINDOW, T_WINDOW_SIZE, H_WINDOW_SIZE},          {S_VSYNC, T_VSYNC, H_VSYNC},
     {S_CAP, T_CAP, H_CAP},                   {S_SCALE, T_SCALE, H_SCALE},                       {S_ASPECT, T_ASPECT, H_ASPECT},
     {S_FIT, T_FIT, H_FIT},                   {S_HUD, T_HUD, H_HUD},                             {S_FOV, T_FOV, H_FOV},                             {S_LOD, T_LOD, H_LOD},
@@ -460,6 +474,12 @@ struct State {
     // and the row chosen by the player (`renderer_set 1`: a file without it, from 0.5.0..0.7.x whose `renderer opengl` was
     // the default then, is read as auto once). Never in State()'s value: S_RENDERER's EE byte stays 0 (the RAM hashes)
     bool renderer_auto = false, renderer_set = false;
+    // the GPU row: the choice by name and UUID (both empty: Automatic; what the preferences keep), the host's Vulkan devices (asked
+    // for once, when the row first needs them: graphics_set_gpu_lister), and what the row steps through (gpu_entries)
+    std::string gpu_name, gpu_uuid;
+    std::vector<GraphicsGpu> gpus;
+    bool gpus_loaded = false;
+    std::vector<GraphicsGpu> (*gpu_lister)() = nullptr;
 } gs_;
 
 // orig: (none) — enhancement: the number of values of a setting
@@ -485,6 +505,7 @@ uint32_t value_count(Setting s) {
         case S_LIGHTING: return 4;  // Low, Medium, High (mrp_lighting.h: the maps at 1024 / 2048 / 4096), Original (LIGHTING_ORIGINAL)
         case S_FOV: return sizeof(FOVS) / sizeof(int);
         case S_CAP: return sizeof(CAPS) / sizeof(int);
+        case S_GPU: return 1;  // (stepped by step() through gpu_entries)
         case S_MONITOR: return static_cast<uint32_t>(gs_.monitors.size());  // (the host's list; one before GLFW is up: the row shows '?')
         default: return 1;
     }
@@ -634,6 +655,8 @@ void apply() {
         gs_.display = d;
         ++gs_.serial;
     }
+    gs_.display.gpu_name = gs_.gpu_name;  // (the GPU row: read once, at the renderer's start, as the Renderer row)
+    gs_.display.gpu_uuid = gs_.gpu_uuid;
     gs_.display.vulkan = d.vulkan;  // (no serial: the host reads it once, at its start)
     gs_.display.vulkan_auto = d.vulkan_auto;
 }
@@ -686,6 +709,21 @@ bool prefs_read(const std::filesystem::path& path) {
                 const size_t start = n.find_first_not_of(' ');
                 gs_.monitor_name = start == std::string::npos ? std::string() : n.substr(start);
             }
+            continue;
+        }
+        if (std::strcmp(key, "gpu") == 0) {  // (the GPU row's choice: the name, the rest of the line, as the monitor's; its UUID on the next line)
+            char name[256] = {};
+            if (std::fgets(name, sizeof name, f) != nullptr) {
+                std::string n = name;
+                while (!n.empty() && (n.back() == '\n' || n.back() == '\r' || n.back() == ' ')) n.pop_back();
+                const size_t start = n.find_first_not_of(' ');
+                gs_.gpu_name = start == std::string::npos ? std::string() : n.substr(start);
+            }
+            continue;
+        }
+        if (std::strcmp(key, "gpu_uuid") == 0) {
+            char id[64] = {};
+            if (std::fscanf(f, "%63s", id) == 1) gs_.gpu_uuid = id;
             continue;
         }
         if (std::strcmp(key, "window") == 0) {
@@ -809,6 +847,10 @@ void prefs_write() {
         std::string text(static_cast<size_t>(std::max(len, 0)) + 1, '\0');
         format(text.data(), text.size());
         text.resize(static_cast<size_t>(std::max(len, 0)));
+        if (!gs_.gpu_name.empty() || !gs_.gpu_uuid.empty()) {  // (the GPU row: only when chosen; Automatic writes nothing)
+            text += "gpu " + gs_.gpu_name + "\n";
+            if (!gs_.gpu_uuid.empty()) text += "gpu_uuid " + gs_.gpu_uuid + "\n";
+        }
         if (!platform::write_file_replace(path, text)) std::fprintf(stderr, "[graphics] cannot write %s\n", path.string().c_str());
     }
     gs_.dirty = false;
@@ -847,6 +889,52 @@ const char* const* texts() {
     }
 }
 
+// orig: (none) — enhancement: the GPU row's values: Automatic (empty name), each Vulkan device the host lists (listed once), and the
+// choice kept when its GPU is not there now (an eGPU unplugged: marked, kept in the preferences until another is chosen)
+bool row_dimmed(Setting s);
+struct GpuEntry {
+    std::string label, name, uuid;
+    bool missing = false;
+};
+std::vector<GpuEntry> gpu_entries() {
+    const char* const* t = texts();
+    const int lang = t == TEXTS[1] ? 1 : t == TEXTS[2] ? 2 : t == TEXTS[3] ? 3 : 0;
+    if (!gs_.gpus_loaded) {
+        gs_.gpus_loaded = true;
+        if (gs_.gpu_lister != nullptr) gs_.gpus = gs_.gpu_lister();
+    }
+    std::vector<GpuEntry> e;
+    e.push_back({GPU_TEXTS[lang][0], "", "", false});
+    bool found = gs_.gpu_name.empty() && gs_.gpu_uuid.empty();
+    for (const GraphicsGpu& g : gs_.gpus) {
+        std::string label = g.name;
+        int same = 0;
+        for (const GraphicsGpu& o : gs_.gpus) same += o.name == g.name;
+        if (same > 1) label += " (" + g.uuid.substr(0, 8) + ")";  // (two identical cards: told apart by their UUID)
+        e.push_back({label, g.name, g.uuid, false});
+        if ((!gs_.gpu_uuid.empty() && g.uuid == gs_.gpu_uuid) || (gs_.gpu_uuid.empty() && g.name == gs_.gpu_name)) found = true;
+    }
+    if (!found) e.push_back({gs_.gpu_name + " (" + GPU_TEXTS[lang][3] + ")", gs_.gpu_name, gs_.gpu_uuid, true});
+    return e;
+}
+// orig: (none) — enhancement: the index in `e` of the GPU chosen (the UUID first, then the name; 0: Automatic)
+size_t gpu_index(const std::vector<GpuEntry>& e) {
+    if (gs_.gpu_name.empty() && gs_.gpu_uuid.empty()) return 0;
+    for (size_t i = 1; i < e.size(); ++i)
+        if (!gs_.gpu_uuid.empty() && e[i].uuid == gs_.gpu_uuid) return i;
+    for (size_t i = 1; i < e.size(); ++i)
+        if (e[i].name == gs_.gpu_name) return i;
+    return 0;
+}
+// orig: (none) — enhancement: the GPU row's help: the usual one, or why it does nothing, or that RAC1_GPU chose
+std::string gpu_help() {
+    const char* const* t = texts();
+    const int lang = t == TEXTS[1] ? 1 : t == TEXTS[2] ? 2 : t == TEXTS[3] ? 3 : 0;
+    if (const char* env = std::getenv("RAC1_GPU"); env != nullptr && *env != '\0') return GPU_TEXTS[lang][2];
+    if (row_dimmed(S_GPU)) return GPU_TEXTS[lang][1];
+    return t[H_GPU];
+}
+
 // orig: (none) — enhancement: a row's value as text
 std::string value_text(Setting s) {
     const char* const* t = texts();
@@ -862,6 +950,10 @@ std::string value_text(Setting s) {
             return std::string(chosen) + (gs_.run_vulkan ? " (Vulkan)" : " (OpenGL)");  // (why: the row's help, renderer_help)
         }
 #endif
+        case S_GPU: {
+            const std::vector<GpuEntry> e = gpu_entries();
+            return e[gpu_index(e)].label;
+        }
         case S_DISPLAY: return t[v != 0 ? T_FULLSCREEN : T_WINDOW];
         case S_MONITOR: return v >= 0 && static_cast<size_t>(v) < gs_.monitors.size() ? gs_.monitors[v] : std::string("?");
         case S_WINDOW: std::snprintf(b, sizeof b, "%d x %d", gs_.win_w, gs_.win_h); return b;
@@ -932,6 +1024,9 @@ bool value_supported(Setting s, int v) {
 // orig: (none) — enhancement: a row greyed: Lighting: Original (Graphics: Enhanced) has no sun - its shadows' strength and reach, the
 // point lights' shadows and the sun's rays do nothing then (#138). Shown dimmed with a help saying why; its value kept, not stepped
 bool row_dimmed(Setting s) {
+#if !defined(__APPLE__)
+    if (s == S_GPU) return gs_.value[S_RENDERER] == 0;  // (the GPU row is Vulkan's: with the Renderer row on OpenGL it does nothing)
+#endif
     if (gs_.value[S_GFX] == 0 || gs_.value[S_LIGHTING] != LIGHTING_ORIGINAL) return false;
     return s == S_SHADOW_STR || s == S_SHADOW_DIST || s == S_DYN_SHADOWS || s == S_SUN_RAYS;
 }
@@ -953,6 +1048,15 @@ void step(Setting s, int d) {
         gs_.win_w = SIZES[i].w;
         gs_.win_h = SIZES[i].h;
         gs_.value[S_DISPLAY] = 0;  // (a size: the window mode)
+        changed();
+        return;
+    }
+    if (s == S_GPU) {  // Automatic, the devices in turn, the choice of a GPU not there now last; kept by name and UUID
+        const std::vector<GpuEntry> e = gpu_entries();
+        const size_t n = e.size();
+        const size_t next = (gpu_index(e) + (d > 0 ? 1 : n - 1)) % n;
+        gs_.gpu_name = e[next].name;
+        gs_.gpu_uuid = e[next].uuid;
         changed();
         return;
     }
@@ -990,6 +1094,9 @@ void rows_shown(int p) {
     int n = 0;
     for (int i = 0; i < pd.count; ++i) {
         if (p == P_GRAPHICS && gs_.value[S_GFX] == 0 && pd.def[i].s != S_GFX) continue;
+#if defined(__APPLE__)
+        if (pd.def[i].s == S_GPU) continue;  // (macOS: Metal's one renderer; no GPU row)
+#endif
         gs_.shown[p][n++] = i;
     }
     gs_.shown_count[p] = n;
@@ -1175,7 +1282,7 @@ uint32_t graphics_text(int32_t id) {
         if (id < TEXT_FIRST || id >= TEXT_FIRST + T_COUNT) return 0;
         const int32_t k = id - TEXT_FIRST;
         if (k >= T_WINDOW && k <= T_CUSTOM) return 0;  // (a value word: never asked for, see string_slot)
-        s = k == H_RENDERER ? renderer_help() : texts()[k];
+        s = k == H_RENDERER ? renderer_help() : k == H_GPU ? gpu_help() : texts()[k];
         {  // (Lighting: Original: its own help, and why the rows it greys do nothing)
             const char* const* t = texts();
             const int lang = t == TEXTS[1] ? 1 : t == TEXTS[2] ? 2 : t == TEXTS[3] ? 3 : 0;
@@ -1239,6 +1346,8 @@ void graphics_set_renderer_running(bool vulkan, RendererWhy why) {
     gs_.run_choice = gs_.renderer_seen = gs_.value[S_RENDERER];
     gs_.run_why = why == RendererWhy::kNone && vulkan != (gs_.value[S_RENDERER] != 0) ? RendererWhy::kEnv : why;
 }
+// orig: (none) — enhancement (graphics.h)
+void graphics_set_gpu_lister(std::vector<GraphicsGpu> (*fn)()) { gs_.gpu_lister = fn; }
 // orig: (none) — enhancement (graphics.h)
 void graphics_set_renderer_chosen_hook(void (*fn)()) { gs_.chosen_hook = fn; }
 

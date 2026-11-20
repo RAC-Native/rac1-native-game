@@ -5,6 +5,13 @@ What changed in each release. Releases are source only: you build the game with 
 
 ## Unreleased
 
+### Graphics
+- **Options > Display > GPU: choose the graphics card Vulkan runs on**, for a laptop's integrated and discrete GPU or an
+  external one. Automatic (the default) is the best one that works, as before. The choice is kept by name and UUID and takes
+  effect at the next start; if that GPU is not there (an unplugged external one) the game starts on Automatic and the log says
+  why. The row is greyed with the OpenGL renderer. `RAC1_GPU=<number|name part>` chooses for one run, and the log lists the
+  devices (`[gpu] Vulkan devices: ...`).
+
 ### Fixes (Windows)
 - **The setup stops at once in a folder with accents in its path** (#185), with a clear message to move the game to a
   plain path such as `C:\Games\rac1-native`. The build tools live in the game's folder and CMake could not read their

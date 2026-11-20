@@ -2574,6 +2574,11 @@ int main(int argc, char** argv) {
     // Options > Graphics: the window, the view, the level of detail as the player left them (not read in a
     // headless run: g_advanced_disabled); the testing switches below override them
     rac1::graphics_load();
+    rac1::graphics_set_gpu_lister([]() {  // (Options > Display > GPU: the Vulkan devices, listed once when the row first asks)
+        std::vector<rac1::GraphicsGpu> out;
+        for (const rac1::vk::GpuInfo& g : rac1::vk::list_gpus()) out.push_back({g.name, g.uuid});
+        return out;
+    });
     if (!headless) {  // Options > Graphics's Monitor row: the host's monitors, for the row and for the window to go on
         std::vector<std::string> names;
         int n = 0;
@@ -2647,6 +2652,7 @@ int main(int argc, char** argv) {
         window = glfwCreateWindow(win_w0, win_h0, "Ratchet & Clank - original runtime", fs_monitor, nullptr);
         const bool vsync0 = !headless && (env_vsync >= 0 ? env_vsync != 0 : rac1::graphics_display().vsync);
         if (vk_by_row) rac1::vk_safety::starting();
+        rac1::vk::set_gpu_choice(rac1::graphics_display().gpu_name, rac1::graphics_display().gpu_uuid);  // (Options > Display > GPU; RAC1_GPU in vk::init)
         if (window != nullptr && rac1::vk::init(window, vsync0, headless)) {
             if (!headless && fs_monitor == nullptr) host_window_on_monitor(window, rac1::graphics_display().monitor);
             if (vk_by_row) rac1::vk::set_device_lost_hook(rac1::vk_safety::device_lost);

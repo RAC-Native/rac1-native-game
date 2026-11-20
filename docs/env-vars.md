@@ -1,11 +1,11 @@
 # Environment variables
 
-rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 486 in
+rac1-native reads a number of `RAC1_*` environment variables. This page lists all of them: 487 in
 total, in three groups.
 
 | Group | Count | Who it is for |
 |---|---|---|
-| [Player](#player-variables) | 25 | Settings a player may want to change: files, window, audio, the ISO |
+| [Player](#player-variables) | 26 | Settings a player may want to change: files, window, audio, the ISO |
 | [Debugging](#debugging-variables) | 352 | Developers: profilers, overlays, switching a renderer or an optimisation on or off to compare |
 | [Automated testing](#automated-testing-variables) | 109 | Scripted and headless runs: frame counts, screenshots, simulated input, self-checks |
 
@@ -42,6 +42,7 @@ The variables are read in `src/` and `runtime/` (search for `"RAC1_` to find the
 | `RAC1_FPS_CAP` | integer frames per second, 0 = unlimited; default from Options > Display (a headless run is not paced unless this is greater than 0) | Overrides the frame-rate cap of the display settings; in a headless run it paces the run to that rate. |
 | `RAC1_FULLSCREEN` | 0 or 1; default from Options > Display | Forces a fullscreen window (1) or a normal window (0) on the primary monitor at its own video mode, overriding the setting. |
 | `RAC1_WINDOW_NOT_TOPMOST` | 1 = on; default off | Windows: takes the fullscreen window out of the "always on top" band each frame and asks for the focus at the start (0.8.2's behaviour, off since 0.8.3: it broke the mouse on some systems, #175). |
+| `RAC1_GPU` | a device's number in the log's `[gpu] Vulkan devices:` line, a part of its name or UUID (any case), or `auto`; unset = the Options > Display GPU setting (default Automatic) | The graphics card the Vulkan renderer runs on for this run, over the setting. A device that is not there, or cannot run the renderer, leaves the Automatic choice, with the reason in a `[gpu]` line of the log. Not used by the OpenGL renderer. See [Vulkan](vulkan.md#choosing-the-gpu). |
 | `RAC1_GPU_WATCH` | 0 = off, 2 = a line every 10 s; default on in a window | On an NVIDIA GPU (NVML), writes a `[gpu]` line at the start (clocks, power limit) and one for every 10 s of play that the system held the GPU below its speed while the game kept it busy (a performance state under P2, the video memory under half its clock, a power limit under the driver's default), with the driver's reasons; 2 writes it every 10 s, held or not. |
 | `RAC1_GRAPHICS_FILE` | path; default $XDG_CONFIG_HOME/rac1-native/graphics_options.txt, else ~/.config/rac1-native/graphics_options.txt (%APPDATA%\rac1-native\graphics_options.txt on Windows) | Overrides the location of the file where the Options > Graphics settings are loaded from and saved to. |
 | `RAC1_HEADLESS` | set (any value, even 0) = on; default off (a window opens) | Runs without a window or audio device (default 300 frames, writes screenshot.ppm at the end); other RAC1_* test variables are honoured in this mode. |
