@@ -1,6 +1,6 @@
 // Drek's fleet's (level 17) hazards, ported by hand from the level's own code: class 669, a spinning electric fan
 // (three arms of five points turning about its axis; near the hero each arm hurts what crosses it, on screen the
-// first and last points throw sparks of particle 0x3c, and its draw L17:0x2d7cf0 (still generated) is queued), and
+// first and last points throw sparks of particle 0x3c, and its draw L17:0x2d7cf0 is queued: the arms as quads), and
 // class 835, a floating mine (it drifts about its place, bursts when a shot of another class hits it or when it
 // touches a moby other than another mine, scattering 150 sparks of particle 0x22). The original's order of calls and
 // float operations kept. Level 17 only: `orig: L17:`, the collision facade, the level's own data L17_ADDR, base ELF
@@ -11,9 +11,11 @@
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ee_regs.h>
+#include <game/ovl/nanotech_draw.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/quad_draw.h>
 #include <game/ovl/variants_l17.h>
 #include <game/ovl/weapons.h>
 
@@ -113,6 +115,67 @@ void vo_class669_update_l17(uint32_t m) {
                 spawn_particle_3c(from, vel, lwu(L17_ADDR(0x00161b94)), static_cast<uint32_t>(life) & 0xffu, frame, 0,
                                   lwc1(L17_ADDR(0x00161b8c)));
             }
+        }
+    }
+}
+
+// Class 669's draw callback: the fan's three arms as textured quads in the fan's turned frame (its angles +0x40, its place
+// +0x10), twice (two layers of the effect texture 0x28, each scrolled by its own rates), so six quads. A quad's corners: the
+// centre and three points at the arms' length (0x161b84), at the arm's angle (0x161b7c + the arm x 120 degrees) less and
+// plus the spread (0x161b80) and at the angle itself. The (s, t) pairs are the level's L17:0x1d3f70 plus the scroll phase
+// (the frame counter x the frame time x 0x161bbc, wrapped into [0, 1)) times the layer's rates (s 0x161bc8, t 0x161bc0);
+// colour 0x161bb8, the blend's four selectors 0x161b98 .. 0x161ba4. The original's frame (0x1e0) and offsets kept: +0 the
+// quad's descriptor for quad_draw (it reads 0x90: the points +0 .. +0x30, the colours +0x40, the (s, t) +0x50, the GS words
+// +0x70), +0x90 the fan's matrix (euler_to_mat4_vu writes 0x40; row 3 the place, w 1), +0xd0 the layer's two rates (an
+// 8-byte copy of 0x161bc0 for t, then of 0x161bc8 for s), +0xe0 the corners' angle offsets (16). VU0: no VU0 instruction of
+// its own; its callees are the host ports the generated code called (float_fmod_vu, euler_to_mat4_vu, vec_from_spherical_v,
+// quad_draw), which keep no VU0 state.
+// orig: L17:0x002d7cf0
+void vo_cb_2d7cf0_l17(uint32_t m) {
+    const Frame f(0x1e0);
+    const uint32_t q = f.sp, mat = f.sp + 0x90, rates = f.sp + 0xd0, offs = f.sp + 0xe0;
+    const float phase = float_fmod_vu(
+        fpu_mul(int_to_float(lw(L17_ADDR(0x0015f5cc))), fpu_mul(lwc1(L17_ADDR(0x00161bbc)), lwc1(0x0015ed6cu))), 1.0f);
+    euler_to_mat4_vu(M(mat), V(m + 0x40));
+    lq_sq(mat + 0x30, m + 0x10);
+    swc1(mat + 0x3c, 1.0f);
+    // the GS words: CLAMP 0, TEX0, TEX1, ALPHA (A | B << 2 | C << 4 | D << 6 of the level's words, sign-extended, FIX 0x80)
+    auto sx = [](uint32_t a) { return static_cast<uint64_t>(static_cast<int64_t>(lw(a))); };
+    const uint64_t alpha = sx(L17_ADDR(0x00161b98)) | (sx(L17_ADDR(0x00161b9c)) << 2) | (sx(L17_ADDR(0x00161ba0)) << 4) |
+                           (sx(L17_ADDR(0x00161ba4)) << 6) | (0x80ull << 32);
+    sd(q + 0x78, effect_tex0(0x28));
+    sd(q + 0x80, (0xff90ull << 32) | 0x260ull);  // TEX1
+    sd(q + 0x88, alpha);
+    sd(q + 0x70, 0);  // CLAMP
+    auto copy8 = [rates](uint32_t from) {
+        sw(rates, lwu(from));
+        sw(rates + 4, lwu(from + 4));
+    };
+    for (uint32_t layer = 0; layer < 2; ++layer) {
+        for (uint32_t k = 0; k < 4; ++k) {  // the t of each corner
+            copy8(L17_ADDR(0x00161bc0));
+            swc1(q + 0x54 + k * 8, fpu_add(lwc1(L17_ADDR(0x001d3f74) + k * 8), fpu_mul(phase, lwc1(rates + layer * 4))));
+        }
+        for (int32_t arm = 0; arm < 3; ++arm) {
+            for (uint32_t k = 0; k < 4; ++k) {  // the corners: the centre, the arm's two sides, its tip
+                const float spread = lwc1(L17_ADDR(0x00161b80));
+                copy8(L17_ADDR(0x00161bc8));
+                sw(offs + 0x0, 0);
+                swc1(offs + 0x4, fpu_mul(-spread, u2f(DEG)));
+                swc1(offs + 0x8, fpu_mul(spread, u2f(DEG)));
+                sw(offs + 0xc, 0);
+                swc1(q + 0x50 + k * 8, fpu_add(lwc1(L17_ADDR(0x001d3f70) + k * 8), fpu_mul(phase, lwc1(rates + layer * 4))));
+                const float radius = k == 0 ? 0.0f : lwc1(L17_ADDR(0x00161b84));
+                const float angle = angle_wrap(fpu_add(fpu_add(fpu_mul(lwc1(L17_ADDR(0x00161b7c)), u2f(DEG)),
+                                                               fpu_mul(int_to_float(arm), u2f(0x40060a92u))),  // (120 degrees)
+                                                       lwc1(offs + k * 4)));
+                const uint32_t corner = q + k * 0x10;
+                vec_from_spherical_v(V(corner), radius, u2f(0x3fc90fdbu), angle);
+                swc1(corner + 0xc, 1.0f);
+            }
+            const uint32_t rgba = lwu(L17_ADDR(0x00161bb8));
+            for (uint32_t k = 0; k < 4; ++k) sw(q + 0x40 + k * 4, rgba);
+            quad_draw(q, mat);
         }
     }
 }

@@ -2381,6 +2381,86 @@ void batch_260() {
                         return Args{{m}, {}};
                     }, [](A a) { vo_cb_2a95b8_l17(a.i[0]); return uint64_t{0}; });
             }
+
+            // ---- P17.5 (stage 4): the last two draws, each with the p17_cb_2a95b8 set-up (the screen and projection, the camera
+            // about the subject, the packet cursor on a buffer of the test area: 0x800000 + up to 8 quadwords, its end 0x8f0000),
+            // so quad_draw's packets are written there and compared. VU0: neither callback has a VU0 instruction of its own; the
+            // last VU0 writers in the original's run are its callees (quad_draw last, the vec3 helpers, sin_vu / cos_vu, Euler,
+            // float_fmod_vu, rgba_lerp), whose host ports keep no VU0 state, as in the generated code before: no lane is compared
+            // (P17.5's notes: the registers the originals leave, what reads them next).
+            // class 669's draw 0x2d7cf0 (veldin_orbit_hazards.cpp): the fan's angles (+0x40) anywhere, the frame counter and the
+            // frame time (50 Hz in a quarter), the camera seeing the fan from near (its quads partly off screen: the clipper) or
+            // from farther, or away; the arms' length / spread and the layers' rates the level's or dealt
+            {
+                const std::vector<uint32_t> fans = of_class(0x29d);
+                if (!fans.empty())
+                    l17check("p17_cb_2d7cf0", 0x002d7cf0, 300, Ret::None, [=] {
+                        level();
+                        const uint32_t m = pick(fans);
+                        for (uint32_t k = 0; k < 12; k += 4) wf(m + 0x40 + k, ri(0, 3) == 0 ? 0.0f : rf(-3.14f, 3.14f));
+                        if (ri(0, 3) == 0) wf(L17_ADDR(0x00161b84), rf(0.5f, 12.0f));
+                        if (ri(0, 3) == 0) wf(L17_ADDR(0x00161b80), rf(-40.0f, 40.0f));
+                        if (ri(0, 3) == 0) wf(L17_ADDR(0x00161b7c), rf(-180.0f, 180.0f));
+                        if (ri(0, 3) == 0) for (uint32_t k = 0; k < 16; k += 4) wf(L17_ADDR(0x00161bbc) + k, rf(-2.0f, 2.0f));
+                        if (ri(0, 4) == 0) for (uint32_t k = 0; k < 16; k += 4) w32(L17_ADDR(0x00161b98) + k, u(ri(0, 2)));
+                        if (ri(0, 4) == 0) w32(L17_ADDR(0x00161bb8), R());
+                        const Vec4 at = ee_ref<Vec4>(m + 0x10);
+                        const int how = ri(0, 4);
+                        if (how == 0) camera_away(at);
+                        else camera_sees(at, how == 1 ? 2.0f : 8.0f, how == 1 ? 3.0f : 12.0f);
+                        fifty();
+                        w32(OV(0x001611c0), 0x00800000u + u(ri(0, 8)) * 0x10u);
+                        w32(OV(0x0015f5f8), 0x008f0000u);
+                        finish();
+                        return Args{{m}, {}};
+                    }, [](A a) { vo_cb_2d7cf0_l17(a.i[0]); return uint64_t{0}; });
+            }
+            // class 1772's draw 0x2f32f0 (veldin_orbit_backdrop.cpp): its place and far point as the update lays them out (the
+            // update's port run once in state 0) or dealt about the moby, the far width +0x28, the level's scrolls (wrapping),
+            // fades (0, 1, between), angles and colours, the beams' frame scale 0x15ed7c (50 Hz in a quarter); the camera seeing
+            // the beams' middle, their place or the far squares (1000 above the far point), or away
+            {
+                const std::vector<uint32_t> backs = of_class(0x6ec);
+                if (!backs.empty())
+                    l17check("p17_cb_2f32f0", 0x002f32f0, 300, Ret::None, [=] {
+                        level();
+                        const uint32_t m = pick(backs);
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        if (ri(0, 3) != 0) {
+                            w8(m + 0x20, 0);
+                            vo_class1772_update_l17(m);
+                        } else {
+                            ee_ref<Vec4>(pv + 0x0) = jitter(ee_ref<Vec4>(m + 0x10), 2.0f, 1.0f);
+                            ee_ref<Vec4>(pv + 0x10) = jitter(ee_ref<Vec4>(m + 0x10), 300.0f, 100.0f);
+                        }
+                        wf(pv + 0x28, ri(0, 4) == 0 ? 0.0f : rf(0.5f, 60.0f));
+                        for (uint32_t k = 0; k < 8; k += 4) {
+                            if (coin()) wf(L17_ADDR(0x001de0a0) + k, rf(-1.0f, 2.0f));
+                            if (coin()) wf(L17_ADDR(0x001623c0) + k, rf(-2.0f, 2.0f));
+                            if (ri(0, 3) == 0) wf(L17_ADDR(0x001de0b8) + k, rf(0.0f, 40.0f));
+                        }
+                        for (uint32_t k = 0; k < 20; k += 4) {
+                            const int f = ri(0, 3);
+                            wf(L17_ADDR(0x001de040) + k, f == 0 ? 0.0f : f == 1 ? 1.0f : rf(0, 1));
+                            if (coin()) wf(L17_ADDR(0x001de0d0) + k, rf(-3.14f, 3.14f));
+                            if (ri(0, 3) == 0) w32(L17_ADDR(0x001de010) + k, R());
+                            if (ri(0, 3) == 0) w32(L17_ADDR(0x001de028) + k, R());
+                            if (ri(0, 4) == 0) wf(L17_ADDR(0x001ddff8) + k, rf(0.0f, 400.0f));
+                        }
+                        if (ri(0, 4) == 0) w32(L17_ADDR(0x001623b8), R());
+                        fifty4();
+                        const Vec4 p0 = ee_ref<Vec4>(pv + 0x0), p1 = ee_ref<Vec4>(pv + 0x10);
+                        const int how = ri(0, 4);
+                        if (how == 0) camera_away(p0);
+                        else if (how == 1) camera_sees(Vec4{(p0.x + p1.x) * 0.5f, (p0.y + p1.y) * 0.5f, (p0.z + p1.z) * 0.5f, 1.0f}, 20.0f, 60.0f);
+                        else if (how == 2) camera_sees(p0, 10.0f, 30.0f);
+                        else camera_sees(Vec4{p1.x, -7000.0f, p1.z, 1.0f}, 100.0f, 300.0f);
+                        w32(OV(0x001611c0), 0x00800000u + u(ri(0, 8)) * 0x10u);
+                        w32(OV(0x0015f5f8), 0x008f0000u);
+                        finish();
+                        return Args{{m}, {}};
+                    }, [](A a) { vo_cb_2f32f0_l17(a.i[0]); return uint64_t{0}; });
+            }
         }
 
         g_ignored_words = class_ignored;

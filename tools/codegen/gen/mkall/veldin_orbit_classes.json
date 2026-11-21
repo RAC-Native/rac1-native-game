@@ -7,13 +7,10 @@
   "MKALL_UNIFORM": ""
  },
  "entries": [
-  "2d7cf0:vo_cb_2d7cf0_l17:void:a0",
-  "2eb9a8:vo_cb_2eb9a8_l17:void:a0",
-  "2f32f0:vo_cb_2f32f0_l17:void:a0"
+  "2eb9a8:vo_cb_2eb9a8_l17:void:a0"
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/veldin_orbit_classes_tr_7.cpp",
-  "src/game/ovl/veldin_orbit_classes_tr_8.cpp"
+  "src/game/ovl/veldin_orbit_classes_tr_7.cpp"
  ]
 }
