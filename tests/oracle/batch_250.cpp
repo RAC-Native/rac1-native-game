@@ -7,6 +7,7 @@
 #include "ovl_oracle.h"
 #include "trial_guard.h"
 
+#include <game/enhance/advanced.h>
 #include <game/level/level_data.h>
 #include <game/ovl/variants_l16.h>
 #include <game/ovl/kerwan_camera.h>
@@ -31,6 +32,7 @@
 #include <game/ovl/shared_race_camera.h>
 #include <game/ovl/shared_seas.h>
 #include <game/ovl/shared_swingshot_target.h>
+#include <game/ovl/carry_hooks_levels.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/hero_move_mode.h>
 #include <game/ovl/kalebo_mobys.h>
@@ -40,11 +42,13 @@
 #include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 
+#include <algorithm>
 #include <cmath>
 #include <optional>
 #include <cstring>
 #include <string>
 #include <map>
+#include <unordered_set>
 
 namespace rac1::oracle {
 
@@ -67,7 +71,9 @@ bool c2a_spr_check(const char* name) {
                                          // (stage 4 P16.1's checks of the hand-written classes)
                                          "class1475_cases", "class281_cases", "class470_cases", "class654_cases", "class257_cases",
                                          // (stage 4 P16.2's: the fighter, the racers)
-                                         "class541_cases", "class556_cases"};
+                                         "class541_cases", "class556_cases",
+                                         // (stage 4 P16.2's: the race's organiser)
+                                         "class1455_cases", "class1455_fix10"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -431,13 +437,17 @@ void batch_250() {
     // (the carry hooks' shape: their callees read all four), on the mobys whose class owns the hook
     if (g_oracle_level == 16) {
         g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};
-        struct Hk { const char* name; uint32_t addr; uint32_t slot; TrRet (*fn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float); };
+        // (stage 4 P16.2: the hand-written hooks of class 1455's table 0x1e9050: the shared carry_state_hook with Kalebo's
+        // constants (carried 7, released 1), kalebo_race_organiser.cpp's +0xc / +0x10; a third of the cases start in state 7, the
+        // carried state, so that the release's branch runs. hook_dispatch_l16 below checks that the level's dispatch,
+        // class_hook_call_level, runs the same as these rows.)
+        struct Hk { const char* name; uint32_t addr; uint32_t slot; int32_t (*fn)(uint32_t, uint32_t, uint32_t, float); };
         static const Hk hks[] = {
-            {"hook_2e65d0", 0x2e65d0, 0x0, kal_hook_2e65d0_u},
-            {"hook_2e6620", 0x2e6620, 0x4, kal_hook_2e6620_u},
-            {"hook_2e6670", 0x2e6670, 0x8, kal_hook_2e6670_u},
-            {"hook_2e66c0", 0x2e66c0, 0xc, kal_hook_2e66c0_u},
-            {"hook_2e66f0", 0x2e66f0, 0x10, kal_hook_2e66f0_u},
+            {"hook_2e65d0", 0x2e65d0, 0x0, [](uint32_t m, uint32_t a1, uint32_t a2, float f) { return carry_state_hook(m, a1, a2, f, 0, 7, 1); }},
+            {"hook_2e6620", 0x2e6620, 0x4, [](uint32_t m, uint32_t a1, uint32_t a2, float f) { return carry_state_hook(m, a1, a2, f, 4, 7, 1); }},
+            {"hook_2e6670", 0x2e6670, 0x8, [](uint32_t m, uint32_t a1, uint32_t a2, float f) { return carry_state_hook(m, a1, a2, f, 8, 7, 1); }},
+            {"hook_2e66c0", 0x2e66c0, 0xc, kal_hook_2e66c0_l16},
+            {"hook_2e66f0", 0x2e66f0, 0x10, [](uint32_t m, uint32_t, uint32_t, float) { return static_cast<int32_t>(kal_hook_2e66f0_l16(m)); }},
         };
         for (const Hk& hk : hks) {
             level();
@@ -449,14 +459,65 @@ void batch_250() {
             if (own.empty()) { std::printf("%-26s L16:0x%08x  no moby owns it on this level\n", hk.name, hk.addr); continue; }
             if (std::getenv("B250_INFO") != nullptr) std::printf("INFO %s 0x%08x owners %zu\n", hk.name, hk.addr, own.size());
             auto fn = hk.fn;
-            lvcheck(hk.name, hk.addr, 40, Ret::Int32, [level, own] {
+            const bool getter = hk.slot == 0x10;  // (the pvars getter: also asked for no moby)
+            lvcheck(hk.name, hk.addr, 40, Ret::Int32, [level, own, getter] {
                 level();
                 const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8));
-                const uint32_t m = own[static_cast<size_t>(ri(0, static_cast<int>(own.size()) - 1))];
+                const uint32_t m = getter && ri(0, 3) == 0 ? 0u : own[static_cast<size_t>(ri(0, static_cast<int>(own.size()) - 1))];
+                if (m == 0) return Args{{0u, 0u, 0u}, {0.0f}};
                 if (ri(0, 4) == 0) w8(m + 0x20, coin() ? 0xfe : 0xfd);
+                else if (ri(0, 2) == 0) {
+                    w8(m + 0x20, 7);
+                    if (coin()) w16(ee_read<uint32_t>(m + 0x78) + 0x60 + 0x68, 8);  // (the carry record's state 8: the carry hooks answer 0, the release)
+                }
                 const uint32_t tgt = ri(0, 3) == 0 ? 0u : first + 0x100 * u(ri(0, 100));
                 return Args{{m, ri(0, 2) == 0 ? 0x0013f3d0u : m + 0x10, tgt}, {rf(-1, 3)}};
-            }, [fn](A a) { return r32(fn(a.i[0], a.i[1], a.i[2], 0, 0, 0, 0, 0, a.f[0], 0, 0, 0, 0, 0, 0, 0).v0); });
+            }, [fn](A a) { return r32(static_cast<uint32_t>(fn(a.i[0], a.i[1], a.i[2], a.f[0]))); });
+        }
+        // the level's dispatch (the game's call of a class hook by its address) against the rows above, port against port, from
+        // the same state: the same answer and the same RAM
+        if (const char* only = std::getenv("ORACLE_ONLY"); only == nullptr || std::strcmp(only, "hook_dispatch_l16") == 0) {
+            int bad = 0, n = 0;
+            static std::vector<uint8_t> start, direct;
+            for (const Hk& hk : hks) {
+                for (int c = 0; c < 30; ++c) {
+                    level();
+                    const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8));
+                    std::vector<uint32_t> own;
+                    for (uint32_t m = first; m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100) {
+                        const uint32_t cls = ee_read<uint32_t>(m + 0x24);
+                        if (ee_read<uint8_t>(m + 0x20) < 0xfe && cls != 0 && ee_read<uint32_t>(cls + 0x2c) != 0 && ee_read<uint32_t>(ee_read<uint32_t>(cls + 0x2c) + hk.slot) == hk.addr) own.push_back(m);
+                    }
+                    if (own.empty()) break;
+                    const uint32_t m = own[static_cast<size_t>(ri(0, static_cast<int>(own.size()) - 1))];
+                    if (ri(0, 2) == 0) {
+                        w8(m + 0x20, 7);
+                        if (coin()) w16(ee_read<uint32_t>(m + 0x78) + 0x60 + 0x68, 8);  // (the release, as above)
+                    }
+                    const uint32_t a1 = coin() ? 0x0013f3d0u : m + 0x10, a2 = ri(0, 3) == 0 ? 0u : first + 0x100 * u(ri(0, 100));
+                    const float f12 = rf(-1, 3);
+                    seed_rand();
+                    uint8_t* ram = ee_get_ram_base();
+                    start.assign(ram, ram + 0x02000000);
+                    const int32_t r0 = hk.fn(m, a1, a2, f12);
+                    direct.assign(ram, ram + 0x02000000);
+                    std::memcpy(ram, start.data(), start.size());  // (the random seed with it)
+                    int32_t r1 = 0;
+                    const bool found = class_hook_call_level(hk.addr, m, a1, a2, f12, r1);
+                    ++n;
+                    uint32_t diff = 0;  // (the first word that differs, the EE stack's frames left out)
+                    for (uint32_t x = 0x00100000; x < 0x02000000 && diff == 0; x += 4) {
+                        if (x >= ee_stack_ptr() - 0x10000 && x < ee_stack_ptr() + 0x10000) continue;
+                        if (std::memcmp(direct.data() + x, ram + x, 4) != 0) diff = x;
+                    }
+                    if (!found || r0 != r1 || diff != 0) {
+                        if (bad < 8) std::printf("  hook_dispatch_l16 %s case %d: found %d answer %d / %d, first word differing %08x (%08x / %08x, sp %08x)\n", hk.name, c, found, r1, r0, diff, diff ? ee_read<uint32_t>(diff) : 0u, diff ? *reinterpret_cast<const uint32_t*>(direct.data() + diff) : 0u, ee_stack_ptr());
+                        ++bad;
+                    }
+                }
+            }
+            std::printf("%-26s %s (%d cases)\n", "hook_dispatch_l16", bad == 0 && n > 0 ? "ok" : "FAIL", n);
+            if (bad != 0 || n == 0) ++g_fail;
         }
         g_extra_noop_hooks.clear();
     }
@@ -1133,6 +1194,192 @@ void batch_250() {
             finish();
             return Args{{m}, {}};
         }, [](A a) { kal_racer_anims_l16(a.i[0]); return uint64_t{0}; });
+
+        // ---- stage 4 P16.2: class 1455, the race's organiser (kalebo_race_organiser.cpp), on the level's own organiser. Kept short of
+        // the scenes the oracle cannot run: a record of his talk starting its scene (talk_update: the scene mode 0x15f5c4 set, or the
+        // hero out of the talk's reach, while state 1 runs), state 2's movie (talk +4 = 4 out of the scene mode) and state 4's prize
+        // and level change (the scene mode kept set there).
+        const std::vector<uint32_t> organisers = [&] { level(); return live(0x002e6808, -1); }();
+        for (uint32_t m : organisers)
+            std::printf("INFO P16 class 1455 idx %u uid %d at %.1f %.1f %.1f\n", index_of(m), ee_read<int16_t>(m + 0xb2),
+                        ee_read<float>(m + 0x10), ee_read<float>(m + 0x14), ee_read<float>(m + 0x18));
+        // the organiser in state `st` with what each state reads around its edges; `talk_free`: the talk may run (the hero out of
+        // its reach), else the scene mode is set while state 1 runs
+        // the talk's prompt: the hero 1 .. 2.5 in front of him facing him, in his normal state, the triangle not pressed and the
+        // record waiting for it (+8 = 0): talk_update runs talk_step and the prompt, never the record's scene
+        auto talk_prompt = [=](uint32_t m) {
+            const uint32_t t = ee_read<uint32_t>(m + 0x78) + 0x20;
+            const float yaw = ee_read<float>(m + 0x48) + rf(-0.5f, 0.5f), r = rf(1, 2.5f);
+            Vec4 q = ee_ref<Vec4>(m + 0x10);
+            q.x += r * std::cos(yaw); q.y += r * std::sin(yaw);
+            hero_to(q);
+            float face = yaw + 3.14159265f + rf(-0.3f, 0.3f);
+            if (face > 3.14159265f) face -= 6.2831853f;
+            wf(P + 0x98, face);
+            w32(OV(0x0015f5c4), 0u);
+            w32(0x001413d4, 0u);
+            w32(P + 0x22a8, 1u);
+            w8(t + 8, 0);
+            w32(0x0013cae4, R() & ~0x10u);
+        };
+        auto organiser_prep = [=](uint32_t m, int st) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78), t = pv + 0x20;
+            w8(m + 0x20, u(st));
+            w8(t + 9, 1);  // (the talk set up: talk_update does not run talk_init, which would reset +0x36)
+            w8(m + 0x31, u(ri(0, 1)));
+            if (ri(0, 3) == 0) {  // the camera within 28 of him or just past it
+                Vec4 c = ee_ref<Vec4>(m + 0x10);
+                const float r = coin() ? rf(0, 27.5f) : rf(27.5f, 29), a = rf(-3.1f, 3.1f);
+                c.x += r * std::cos(a); c.y += r * std::sin(a);
+                ee_ref<Vec4>(L16_ADDR(0x001671c0)) = c;
+            }
+            {  // the hero: within 3.5 (the help), within 8 in front of him or behind (the head's look), or farther
+                const int where = ri(0, 3);
+                const float r = where == 0 ? rf(0, 3.5f) : (where == 1 ? rf(3.5f, 8) : (where == 2 ? rf(0, 8) : rf(8, 30)));
+                const float a = ee_read<float>(m + 0x48) + (where == 2 ? rf(1.6f, 4.6f) : rf(-1.5f, 1.5f));
+                Vec4 q = ee_ref<Vec4>(m + 0x10);
+                q.x += r * std::cos(a); q.y += r * std::sin(a); q.z += rf(-0.5f, 2);
+                hero_to(q);
+                if (coin()) { Vec4 v{rf(-0.2f, 0.2f), rf(-0.2f, 0.2f), rf(-0.05f, 0.05f), 0}; if (coin()) v = Vec4{0.005f, 0, 0, 0}; ee_ref<Vec4>(P + 0x100) = v; }
+                else ee_ref<Vec4>(P + 0x100) = Vec4{0, 0, 0, 0};
+            }
+            {  // the head's timers at their edges, its look point
+                static const int32_t kT[] = {0, 0, 1, 2, 3, 60, 120};
+                w32(pv + 0xc8, u(kT[ri(0, 6)]));
+                w32(pv + 0xcc, u(kT[ri(0, 6)]));
+                if (coin()) { Vec4 q = ee_ref<Vec4>(m + 0x10); q.x += rf(-6, 6); q.y += rf(-6, 6); q.z += rf(0, 3); ee_ref<Vec4>(pv + 0xd0) = q; }
+            }
+            if (ri(0, 4) == 0) w8(m + 0x53, u(ri(1, 2)));
+            else w8(m + 0x53, 0);
+            w8(0x0015edb0, u(ri(0, 1)));
+            if (ri(0, 3) != 0) { w32(0x00151720, 0); w32(0x001516d0 + 0x50, 0); w32(0x001516d0 + 0x1c, 0xffffffffu); }  // (the help and dialogue idle)
+            w32(0x001413d4, coin() ? 0u : (coin() ? 0x1du : u(ri(0, 0x40))));  // (the hero's state)
+            {  // the help's clock: the game's frame count and the last time (in 600-frame units) on both sides of 18 minutes
+                const int32_t now = ri(0, 3) == 0 ? ri(0, 2000) : ri(2000, 200000);
+                w32(0x0015eea4, u(now));
+                const int k = ri(0, 3);
+                w16(0x00141da2, k == 0 ? 0u : (k == 1 ? u(ri(0, 400)) : u(std::max(0, now / 600 + ri(-3, 1)))));
+            }
+            w8(0x0013d4de, ri(0, 3) == 0 ? 1u : 0u);
+            w32(0x001413dc, ri(0, 2) == 0 ? 0x16u : (coin() ? 0xfu : (coin() ? 0u : u(ri(1, 0x20)))));  // (the hero's sub-state: 0x16 racing)
+            w32(OV(0x0015f5c4), 1u);  // (the scene mode: talk_update quiet)
+            if (st == 0) w32(0x0013dc1c, u(ri(0, 1)));
+            if (st == 1) {
+                static const int16_t k36[] = {3, 3, 3, 0, 1, 2, 4, -1};
+                w16(t + 0x36, u(k36[ri(0, 7)]));
+                w16(t + 4, u(ri(-1, 5)));
+                const int talk = ri(0, 3);
+                if (talk == 0) {  // the talk free to run, the hero out of its reach (twice +0xc)
+                    w32(OV(0x0015f5c4), 0u);
+                    Vec4 q = ee_ref<Vec4>(m + 0x10); const float a = rf(-3.1f, 3.1f), r = rf(8, 20);
+                    q.x += r * std::cos(a); q.y += r * std::sin(a); hero_to(q);
+                } else if (talk == 1) {
+                    talk_prompt(m);
+                }
+                if (talk != 1 && coin()) w32(0x001413d4, 0x1du);
+            }
+            if (st == 2) {
+                const bool scene = coin();
+                w32(OV(0x0015f5c4), scene ? 2u : 0u);
+                static const int16_t k4[] = {-1, 0, 1, 2, 3, 5};
+                w16(t + 4, u(scene && coin() ? 4 : k4[ri(0, 5)]));
+            }
+            if (st == 3 || st >= 5) {
+                const int k = ri(0, 3);
+                w32(P + 0x8a8, u(k == 0 ? 4500 + ri(-2, 2) : (k == 1 ? ri(0, 4499) : ri(4501, 20000))));
+                w8(0x0013d422, u(ri(0, 1)));
+                w32(0x0015ee6c, u(coin() ? 4500 + ri(-2, 2) : ri(0, 9000)));
+                if (coin()) w32(0x001413dc, 0u);
+                w8(m + 0xbc, u(ri(0, 3) == 0 ? 0 : ri(1, 4)));
+                w8(0x0013d507, u(ri(0, 1)));
+            } else if (ri(0, 2) == 0) {
+                w8(m + 0xbc, u(ri(0, 3)));
+            }
+            if (st == 4) w32(OV(0x0015f5c4), coin() ? 1u : 2u);  // (never 0: the prize and the level change)
+        };
+        classcheck("class1455_cases", 0x002e6808, kal_class1455_update_l16, [=](uint32_t m) {
+            static const int kStates[] = {0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 3, 3, 3, 3, 4, 5, 9};
+            organiser_prep(m, kStates[ri(0, 16)]);
+            finish();
+        }, 240, organisers);
+        lvcheck("sea_height_set", 0x002de3b8, 20, Ret::None, [=] {
+            level();
+            return Args{{}, {coin() ? rf(60, 120) : rf(-1e4f, 1e4f)}};
+        }, [](A a) { kal_sea_height_set_l16(a.f[0]); return uint64_t{0}; });
+        lvcheck("race_course_on", 0x002e70c0, 30, Ret::None, [=] {
+            level();
+            const uint32_t m = pick(organisers);
+            if (coin()) wf(L16_ADDR(0x0015f638), rf(0, 200));
+            finish();
+            return Args{{m}, {}};
+        }, [](A a) { kal_race_course_on_l16(a.i[0]); return uint64_t{0}; });
+        lvcheck("race_course_off", 0x002e7168, 30, Ret::None, [=] {
+            level();
+            const uint32_t m = pick(organisers);
+            if (coin()) kal_race_course_on_l16(m);  // (the course shown first: its groups' flags change back)
+            finish();
+            return Args{{m}, {}};
+        }, [](A a) { kal_race_course_off_l16(a.i[0]); return uint64_t{0}; });
+
+        // 1.02 Gameplay, fix 10 in class 1455 (run with RAC1_GAMEPLAY102=10): the port with the fix on leaves what it leaves with the
+        // fix off, with the hero's input lock (+0x20ac = 1) added where the race's scene ended (state 1, talk +0x36 = 3: "locked").
+        // The guard before talk_update (the hero in the state 0x1d: "held") changes nothing on this disc's code, whose talk_update
+        // returns at once in 0x1d: those cases must leave the same as without the fix.
+        if (const char* only = std::getenv("ORACLE_ONLY"); only == nullptr || std::strcmp(only, "class1455_fix10") == 0) {
+            if (std::getenv("RAC1_GAMEPLAY102") == nullptr || organisers.empty()) {
+                std::printf("%-26s skipped (run with RAC1_GAMEPLAY102=10)\n", "class1455_fix10");
+                ++g_skipped;
+            } else {
+                int bad = 0, n = 0, locked = 0, held = 0, talked = 0;
+                static std::vector<uint8_t> start, with_fix;
+                const std::unordered_set<uint32_t> ignored(g_ignored_words.begin(), g_ignored_words.end());
+                CollisionScratchIgnored spr;
+                for (int c = 0; c < 90; ++c) {
+                    level();
+                    const uint32_t m = organisers[0], pv = ee_read<uint32_t>(m + 0x78), t = pv + 0x20;
+                    organiser_prep(m, 1);
+                    const int kind = c % 3;
+                    w16(t + 0x36, kind == 0 ? 3u : u(ri(0, 2)));
+                    if (kind == 1) w32(0x001413d4, 0x1du);
+                    if (kind == 2) talk_prompt(m);  // the talk run in both (its prompt: the hero within its reach, not in 0x1d)
+                    finish();
+                    uint8_t* ram = ee_get_ram_base();
+                    start.assign(ram, ram + 0x02000000);
+                    const uint32_t sp0 = ee_stack_ptr();
+                    bool threw = false;
+                    g_advanced_disabled = false;
+                    try { kal_class1455_update_l16(m); } catch (const std::exception&) { threw = true; }
+                    g_advanced_disabled = true;
+                    ee_stack_ptr() = sp0;
+                    with_fix.assign(ram, ram + 0x02000000);
+                    std::memcpy(ram, start.data(), start.size());
+                    try { kal_class1455_update_l16(m); } catch (const std::exception&) { threw = true; }
+                    ee_stack_ptr() = sp0;
+                    if (threw) { if (bad < 8) std::printf("  class1455_fix10 case %d: the port threw\n", c); ++bad; continue; }
+                    const bool lock = kind == 0;
+                    if (lock) {
+                        if (ee_read<uint8_t>(m + 0x20) != 3u || with_fix[P + 0x20ac] != 1u) { if (bad < 8) std::printf("  class1455_fix10 case %d: not locked (state %u)\n", c, ee_read<uint8_t>(m + 0x20)); ++bad; }
+                        w8(P + 0x20ac, 1);
+                        ++locked;
+                    } else if (kind == 1) {
+                        ++held;
+                    } else {
+                        ++talked;
+                    }
+                    ++n;
+                    for (uint32_t a = 0x00100000; a < 0x02000000; a += 4) {
+                        if (ignored.count(a) != 0) continue;
+                        if (a >= ee_stack_ptr() - 0x10000 && a < ee_stack_ptr() + 0x10000) continue;
+                        uint32_t xw, yw;
+                        std::memcpy(&xw, &with_fix[a], 4); std::memcpy(&yw, &ram[a], 4);
+                        if (xw != yw) { if (bad < 8) std::printf("  class1455_fix10 case %d (kind %d): %08x fix=%08x expected=%08x\n", c, kind, a, xw, yw); ++bad; break; }
+                    }
+                }
+                std::printf("%-26s %s (%d cases, %d locked, %d held, %d talked)\n", "class1455_fix10",
+                            bad == 0 && locked > 0 && held > 0 && talked > 0 ? "ok" : "FAIL", n, locked, held, talked);
+                if (bad != 0 || locked == 0 || held == 0 || talked == 0) ++g_fail;
+            }
+        }
         g_extra_noop_hooks.clear();
     }
 

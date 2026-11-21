@@ -3,8 +3,8 @@
  "tool": "mkall_l16.py",
  "env": {
   "MKALL_HELPER_PREFIX": "kal_",
-  "MKALL_FORCE": "2e65d0,2e6620,2e6670,2e66c0,2e66f0,2ee790",
-  "MKALL_UNIFORM": "kal_cam0_set_124_u,kal_hook_2e65d0_u,kal_hook_2e6620_u,kal_hook_2e6670_u,kal_hook_2e66c0_u,kal_hook_2e66f0_u",
+  "MKALL_FORCE": "2ee790",
+  "MKALL_UNIFORM": "kal_25e948_l16,kal_cam0_set_124_u",
   "MKALL_WIDE_GPR": ""
  },
  "entries": [
@@ -18,7 +18,6 @@
   "2e5258:kal_class1441_update_l16:void:a0",
   "2e54a0:kal_class1442_update_l16:void:a0",
   "2e5e08:kal_class1445_update_l16:void:a0",
-  "2e6808:kal_class1455_update_l16:void:a0",
   "2e7208:kal_class1561_update_l16:void:a0",
   "2e76b8:kal_class1667_update_l16:void:a0",
   "2e7e00:kal_class1812_update_l16:void:a0",
@@ -28,11 +27,7 @@
   "2e8e80:kal_class1943_update_l16:void:a0",
   "2e93b0:kal_class1947_update_l16:void:a0",
   "2ee790:kal_cam0_set_124_u",
-  "2e65d0:kal_hook_2e65d0_u",
-  "2e6620:kal_hook_2e6620_u",
-  "2e6670:kal_hook_2e6670_u",
-  "2e66c0:kal_hook_2e66c0_u",
-  "2e66f0:kal_hook_2e66f0_u",
+  "25e948:kal_25e948_l16",
   "235660:kal_cb_235660_l16:void:a0",
   "238a30:kal_cb_238a30_l16:void:a0",
   "2c9cd0:kal_cb_2c9cd0_l16:void:a0",

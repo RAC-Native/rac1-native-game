@@ -22,6 +22,7 @@
 #include <game/ovl/kalebo_hooks.h>
 #include <game/ovl/kalebo_mobys.h>
 #include <game/ovl/kalebo_own.h>
+#include <game/ovl/shared_helpers.h>
 
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/empty_class_updates.h>
@@ -30,13 +31,13 @@ namespace rac1 {
 
 namespace {
 // orig: (none) -- adapter of L16:0x002e65d0 (a class hook +0 / +8 / +0xc: the indirect-call form, the moby only)
-void kal_hook_2e65d0_m(uint32_t m) { kal_hook_2e65d0_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+void kal_hook_2e65d0_m(uint32_t m) { carry_state_hook(m, 0, 0, 0.0f, 0, 7, 1); }
 
 // orig: (none) -- adapter of L16:0x002e6670 (a class hook +0 / +8 / +0xc: the indirect-call form, the moby only)
-void kal_hook_2e6670_m(uint32_t m) { kal_hook_2e6670_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+void kal_hook_2e6670_m(uint32_t m) { carry_state_hook(m, 0, 0, 0.0f, 8, 7, 1); }
 
 // orig: (none) -- adapter of L16:0x002e66c0 (a class hook +0 / +8 / +0xc: the indirect-call form, the moby only)
-void kal_hook_2e66c0_m(uint32_t m) { kal_hook_2e66c0_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+void kal_hook_2e66c0_m(uint32_t m) { kal_hook_2e66c0_l16(m, 0, 0, 0.0f); }
 
 }  // namespace
 

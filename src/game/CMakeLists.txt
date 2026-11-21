@@ -267,6 +267,7 @@ add_library(rac1_game STATIC
     ovl/kalebo_hooks.cpp
     ovl/kalebo_mobys.cpp
     ovl/kalebo_path_runner.cpp
+    ovl/kalebo_race_organiser.cpp
     ovl/kalebo_racers.cpp
     ovl/kalebo_rocket.cpp
     ovl/veldin_orbit_beams.cpp

@@ -339,11 +339,11 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         }
     case 16:  // Kalebo III: the 749-type five-hook table 0x1e9050 (Veldin's class-749 hooks with other constants: 9 -> 7, 5 -> 1, pvars + 0x60)
         switch (lvl_key(fn)) {
-        case L16_CASE(0x002e65d0): ret = u_call(kal_hook_2e65d0_u, m, a1, a2, f12); return true;
-        case L16_CASE(0x002e6620): ret = u_call(kal_hook_2e6620_u, m, a1, a2, f12); return true;
-        case L16_CASE(0x002e6670): ret = u_call(kal_hook_2e6670_u, m, a1, a2, f12); return true;
-        case L16_CASE(0x002e66c0): ret = u_call(kal_hook_2e66c0_u, m, a1, a2, f12); return true;
-        case L16_CASE(0x002e66f0): ret = u_call(kal_hook_2e66f0_u, m, a1, a2, f12); return true;
+        case L16_CASE(0x002e65d0): ret = carry_state_hook(m, a1, a2, f12, 0, 7, 1); return true;  // (shared_helpers.cpp)
+        case L16_CASE(0x002e6620): ret = carry_state_hook(m, a1, a2, f12, 4, 7, 1); return true;
+        case L16_CASE(0x002e6670): ret = carry_state_hook(m, a1, a2, f12, 8, 7, 1); return true;
+        case L16_CASE(0x002e66c0): ret = kal_hook_2e66c0_l16(m, a1, a2, f12); return true;  // (kalebo_race_organiser.cpp)
+        case L16_CASE(0x002e66f0): ret = static_cast<int32_t>(kal_hook_2e66f0_l16(m)); return true;
         default: return false;
         }
     case 17:  // Drek's fleet: class 0x566 (table 0x1e7854; +0xc and +0x10 are Veldin's class-749 hooks with other constants: 12 for 9, pvars + 0x60)

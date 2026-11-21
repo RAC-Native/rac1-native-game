@@ -35,6 +35,13 @@ void kal_racer_point_l16(uint32_t m, int32_t i, uint32_t out);     // L16:0x002c
 void kal_racer_next_point_l16(uint32_t m);                         // L16:0x002cf9f8
 void kal_racer_jump_l16(uint32_t m);                               // L16:0x002cff48
 void kal_racer_anims_l16(uint32_t m);                              // L16:0x002d0058
+// hand-written (stage 4, P16.2): class 1455, the race's organiser, its helpers and its class hooks (kalebo_race_organiser.cpp)
+void kal_class1455_update_l16(uint32_t m);  // L16:0x002e6808
+void kal_sea_height_set_l16(float z);       // L16:0x002de3b8
+void kal_race_course_on_l16(uint32_t m);    // L16:0x002e70c0
+void kal_race_course_off_l16(uint32_t m);   // L16:0x002e7168
+int32_t kal_hook_2e66c0_l16(uint32_t m, uint32_t a1, uint32_t a2, float f12);  // L16:0x002e66c0  hook +0xc (+0 / +4 / +8: carry_state_hook)
+uint32_t kal_hook_2e66f0_l16(uint32_t m);   // L16:0x002e66f0  hook +0x10
 
 void kal_class800_update_l16(uint32_t a0);  // L16:0x002d6740
 void kal_class1111_update_l16(uint32_t a0);  // L16:0x002dee10 (class 1111, the open sea: kept generated, the PAL 2.00 build changed it beyond fix 24)
@@ -51,11 +58,7 @@ void kal_class1442_update_l16(uint32_t a0);  // L16:0x002e54a0
 TrRet kal_2e6208_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e6208
 TrRet kal_2e6428_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e6428
 void kal_class1445_update_l16(uint32_t a0);  // L16:0x002e5e08
-TrRet kal_25e948_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x0025e948
-TrRet kal_2de3b8_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002de3b8
-TrRet kal_2e70c0_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e70c0
-TrRet kal_2e7168_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e7168
-void kal_class1455_update_l16(uint32_t a0);  // L16:0x002e6808
+TrRet kal_25e948_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x0025e948 (the copy of hero_walk_to: kept generated, a unit entry; class 1455 calls it)
 void kal_class1561_update_l16(uint32_t a0);  // L16:0x002e7208
 TrRet kal_2e7a30_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e7a30
 TrRet kal_2e7ba0_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e7ba0
@@ -71,11 +74,6 @@ void kal_class1923_update_l16(uint32_t a0);  // L16:0x002e8970
 void kal_class1943_update_l16(uint32_t a0);  // L16:0x002e8e80
 void kal_class1947_update_l16(uint32_t a0);  // L16:0x002e93b0
 TrRet kal_cam0_set_124_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002ee790
-TrRet kal_hook_2e65d0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e65d0
-TrRet kal_hook_2e6620_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e6620
-TrRet kal_hook_2e6670_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e6670
-TrRet kal_hook_2e66c0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e66c0
-TrRet kal_hook_2e66f0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e66f0
 void kal_cb_235660_l16(uint32_t a0);  // L16:0x00235660
 void kal_cb_238a30_l16(uint32_t a0);  // L16:0x00238a30
 void kal_cb_2c9cd0_l16(uint32_t a0);  // L16:0x002c9cd0
