@@ -4,6 +4,7 @@
 // by hand: the names are the entries', the helpers `vf_<addr>_l18` (uniform ABI: TrRet).
 #include <game/lib/libc.h>
 #include <game/ovl/veldin_finale_mobys.h>
+#include <game/ovl/veldin_finale_own.h>
 #include <game/ovl/quad_draw.h>
 #include <game/ovl/carry_hooks.h>
 #include <game/ovl/devastator.h>
@@ -58,43 +59,11 @@ namespace rac1 {
 using namespace eer;
 using namespace vu0m;
 
-//@gen vf_2d5348_l18
-
-//@gen vf_2d5cf8_l18
-
-//@gen vf_2d6b58_l18
-
-//@gen vf_2d6c80_l18
-
-//@gen vf_2d6d50_l18
-
-//@gen vf_2d6dc0_l18
-
-//@gen vf_28d878_l18
-
-//@gen vf_2d7f68_l18
-
-//@gen vf_2d7fd0_l18
-
-//@gen vf_2db938_l18
-
-//@gen vf_2dc3e0_l18
-
-//@gen vf_2dc458_l18
-
 //@gen vf_2dfaa0_l18
 
 //@gen vf_2dfb90_l18
 
-//@gen vf_2ea0f0_l18
-
-//@gen vf_2ea168_l18
-
-//@gen vf_2f0030_l18
-
 //@gen vf_2f1d08_l18
-
-//@gen vf_2fa888_l18
 
 //@gen vf_2f1c38_l18
 
@@ -103,8 +72,6 @@ using namespace vu0m;
 //@gen vf_2f5e18_l18
 
 //@gen vf_265ff8_l18
-
-//@gen vf_2d8050_l18
 
 //@gen vf_2f1cc8_l18
 
@@ -116,15 +83,7 @@ using namespace vu0m;
 
 //@gen vf_2f6aa0_l18
 
-//@gen vf_2d8858_l18
-
-//@gen vf_2d8888_l18
-
 //@gen vf_2f6e10_l18
-
-//@gen vf_2f6fa8_l18
-
-//@gen vf_2f7028_l18
 
 //@gen vf_2f70b8_l18
 
@@ -133,9 +92,5 @@ using namespace vu0m;
 //@gen vf_2f7288_l18
 
 //@gen vf_2f76a0_l18
-
-//@gen vf_2fc668_l18
-
-//@gen vf_2fc7e0_l18
 
 }  // namespace rac1

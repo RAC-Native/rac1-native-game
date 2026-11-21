@@ -2,7 +2,8 @@
 // names, declared in veldin_finale_mobys.h). Level 18 only; the files: veldin_finale_shots.cpp, veldin_finale_walking_bomb.cpp,
 // veldin_finale_rail_switch.cpp, veldin_finale_platforms.cpp,
 // veldin_finale_camera_pan.cpp, veldin_finale_breakable.cpp, veldin_finale_energy_ball.cpp, veldin_finale_diver.cpp,
-// veldin_finale_raft.cpp, veldin_finale_barrier.cpp, veldin_finale_water.cpp.
+// veldin_finale_raft.cpp, veldin_finale_barrier.cpp, veldin_finale_water.cpp, veldin_finale_boss_props.cpp,
+// veldin_finale_boss_spawns.cpp.
 #ifndef RAC1_GAME_OVL_VELDIN_FINALE_OWN_H
 #define RAC1_GAME_OVL_VELDIN_FINALE_OWN_H
 
@@ -51,6 +52,39 @@ void vf_water_group_l18(uint32_t m);  // L18:0x002f2598
 // the floating platforms (class 587): their bob and rocking, their bubbles
 void vf_float_bob_l18(uint32_t m);      // L18:0x002d8710
 void vf_float_bubbles_l18(uint32_t m);  // L18:0x002d88b8
+
+// the boss (class 1422), what it does to the other mobys (veldin_finale_boss_props.cpp; called by the generated boss
+// through the unit's glue): the level's sound `idx` on `moby` (the slot, -1 none); its moby groups hidden / shown; the
+// group's raft platforms' +0xbc; the group's robots (class 1906) out of their state 8; the gates (class 583): the one
+// farthest round from `from` seen from `ref`, the nearest to `at`, all of a group opened, one opened; the floating
+// platforms (class 587) sunk / rocked; the lift (class 586) polled, sent up, stopped
+int32_t vf_level_sound_l18(int32_t idx, uint32_t flags, uint32_t moby);               // L18:0x0028d878
+void vf_group_hide_l18(int32_t group);                                                // L18:0x002f6fa8
+void vf_group_show_l18(int32_t group);                                                // L18:0x002f7028
+void vf_group_platforms_flag_l18(int32_t group, uint32_t value);                      // L18:0x002fa888
+int32_t vf_robots_out_l18(int32_t group);                                             // L18:0x002fc7e0
+uint32_t vf_gate_farthest_round_l18(uint32_t from, uint32_t ref, int32_t group);      // L18:0x002d6b58
+uint32_t vf_gate_nearest_l18(uint32_t at, int32_t group);                             // L18:0x002d6c80
+void vf_gates_open_l18(int32_t group);                                                // L18:0x002d6d50
+void vf_gate_open_l18(uint32_t gate);                                                 // L18:0x002d6dc0
+uint32_t vf_float_sink_l18(uint32_t o);                                               // L18:0x002d8858
+uint32_t vf_float_rock_l18(uint32_t o, int32_t rock_wait, int32_t sink_wait);         // L18:0x002d8888
+int32_t vf_lift_poll_l18(uint32_t o);                                                 // L18:0x002d8050
+void vf_lift_start_l18(uint32_t o, int32_t wait);                                     // L18:0x002d7f68
+void vf_lift_stop_l18(uint32_t o);                                                    // L18:0x002d7fd0
+
+// the boss's shots and launches (veldin_finale_boss_spawns.cpp; called by the generated boss through the unit's glue;
+// EE points / vectors by address): its shell (class 564), ring (624), burst (628) spawned, the burst moved, its energy
+// ball (983) spawned and launched; a group's walking bomb (568) thrown, robot (1906) sent off, divers (1355) sent off
+uint32_t vf_shell_spawn_l18(uint32_t at, uint32_t vel, uint32_t to, int32_t frames, uint32_t flags, float f12, float f13);  // L18:0x002d5348
+void vf_ring_spawn_l18(uint32_t at, uint32_t dir, uint32_t owner, float radius, float speed);                        // L18:0x002db938
+uint32_t vf_burst_spawn_l18(uint32_t owner, uint32_t at, float radius);                                              // L18:0x002dc3e0
+void vf_burst_move_l18(uint32_t m, uint32_t at, float radius);                                                       // L18:0x002dc458
+uint32_t vf_ball_spawn_l18(uint32_t owner, uint32_t at, uint32_t frames);                                            // L18:0x002ea0f0
+void vf_ball_launch_l18(uint32_t m, uint32_t at, uint32_t target, uint32_t go, float f12);                           // L18:0x002ea168
+uint32_t vf_bomb_throw_l18(uint32_t owner, int32_t group, uint32_t from, uint32_t to, uint32_t fuse, float speed);  // L18:0x002d5cf8
+uint32_t vf_robot_launch_l18(int32_t group, uint32_t from, uint32_t to, float speed);                                // L18:0x002fc668
+uint32_t vf_divers_launch_l18(uint32_t owner, int32_t group, uint32_t from);                                         // L18:0x002f0030
 
 }  // namespace rac1
 

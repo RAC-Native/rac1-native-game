@@ -10,6 +10,7 @@
 #include "trial_guard.h"
 
 #include <game/enhance/advanced.h>
+#include <game/level/level_data.h>
 
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/hero_move_mode.h>
@@ -684,8 +685,8 @@ void batch_270() {
         }
 
         // (the segment record's word OV(0x173e9c): -0 or +0 by the VU0 register segment_collide's original finds left by the earlier
-        // checks (a known difference of the shared port, as hero_move_mode's above; seen in own41_rocket's case 26): left out of that
-        // check only)
+        // checks (a known difference of the shared port, as hero_move_mode's above; seen in own41_rocket's case 26, and in
+        // own564_shell's case 0 once P18.3 changed that generator's cases): left out of these two checks only)
         const size_t ign_seg = g_ignored_words.size();
         g_ignored_words.push_back(OV(0x00173e9c));
         // class 41, the troopers' rocket: from a trooper (class 1454) or another moby toward the hero, homing or not, its owner
@@ -710,7 +711,6 @@ void batch_270() {
             else if (coin()) VV(0x0013f410) = near(VV(m + 0x10), 0.5f, 6, 1);
             return m;
         });
-        g_ignored_words.resize(ign_seg);
         // class 564, the boss's shell: from above the boss / near the hero to a point by the hero, its frame anywhere in its
         // arc (its last too), every flag; across a class 419 moby; the hero dead, the level's mode 2, Giant Clank
         owncheck("own564_shell", 0x002d5050, vf_class564_update_l18, [=] {
@@ -727,7 +727,9 @@ void batch_270() {
             const Vec4 vel{rf(-0.3f, 0.3f), rf(-0.3f, 0.3f), rf(0, 0.6f), 0};
             put(SCR, from); put(SCR + 0x10, vel); put(SCR + 0x20, to);
             const int frames = ri(10, 90);
-            const uint32_t m = vf_2d5348_l18(SCR, SCR + 0x10, SCR + 0x20, u(frames), u(ri(0, 7)), 0, 0, 0, rf(-1.2f, 1.2f), rf(-1.2f, 1.2f), 0, 0, 0, 0, 0, 0).v0;
+            const uint32_t fl = u(ri(0, 7));
+            const float f12 = rf(-1.2f, 1.2f), f13 = rf(-1.2f, 1.2f);
+            const uint32_t m = vf_shell_spawn_l18(SCR, SCR + 0x10, SCR + 0x20, frames, fl, f12, f13);  // (the spawner: own1422_shell_spawn)
             if (m == 0) return 0u;
             moby_update_transform(m);
             const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -741,6 +743,14 @@ void batch_270() {
             w8(0x001413f4, coin() ? 2u : u(ri(0, 3)));
             return m;
         });
+        g_ignored_words.resize(ign_seg);
+        // (the segment record's words OV(0x173e90) .. 0x173e98: written by segment_collide's original (L18:0x1f8958, the store at
+        // 0x1f995c, called by the ring's hurt 0x2dbe80: ORACLE_WATCH) from a VU0 register the earlier work left, the same store
+        // as OV(0x173e9c)'s below; the known difference of the shared collision port in the segment records, COMMON.md; seen in
+        // this check's case 30 once P18.3 made its generator spawn through vf_ring_spawn_l18, which changed the cases dealt):
+        // left out of this check only)
+        const size_t ign_ring = g_ignored_words.size();
+        for (uint32_t k = 0; k < 12; k += 4) g_ignored_words.push_back(OV(0x00173e90) + k);
         // class 624, the boss's ring: falling to the ground (from above it, or below z 10), waiting there, widening (its radius
         // under 3: the sparks, in view of the camera), the hero on its edge; past its end; the hero dead, the mode 2
         owncheck("own624_ring", 0x002db460, vf_class624_update_l18, [=] {
@@ -764,7 +774,8 @@ void batch_270() {
             put(SCR, at);
             put(SCR + 0x10, Vec4{rf(-0.2f, 0.2f), rf(-0.2f, 0.2f), rf(-0.3f, 0.2f), 0});
             const float maxr = rf(3, 16);
-            vf_2db938_l18(SCR, SCR + 0x10, boss.empty() || coin() ? 0u : boss[0], 0, 0, 0, 0, 0, maxr, rf(0.05f, 0.5f), 0, 0, 0, 0, 0, 0);
+            const uint32_t owner = boss.empty() || coin() ? 0u : boss[0];
+            vf_ring_spawn_l18(SCR, SCR + 0x10, owner, maxr, rf(0.05f, 0.5f));  // (the spawner: own1422_ring_spawn)
             const std::vector<uint32_t> rings = mobys_with(0x002db460);  // (the spawner returns no moby; the level has no other ring)
             if (rings.size() != 1) return 0u;
             const uint32_t m = rings[0];
@@ -779,6 +790,7 @@ void batch_270() {
             if (ri(0, 9) == 0) w32(0x0015f5c4, 2);
             return m;
         });
+        g_ignored_words.resize(ign_ring);
         // class 628, the boss's burst: about the hero (inside its radius or not), its life at its end or not, the level's
         // counter's bit 4 both ways (the counter is dealt by the check)
         owncheck("own628_burst", 0x002dc260, vf_class628_update_l18, [=] {
@@ -787,7 +799,7 @@ void batch_270() {
             const uint32_t owner = !boss.empty() && coin() ? boss[0] : first_moby() + 0x100 * u(ri(0, 60));
             const float r = rf(1, 6);
             put(SCR, near(ee_ref<Vec4>(0x0013f3d0), 0, r + 2, 0.5f));
-            const uint32_t m = vf_2dc3e0_l18(owner, SCR, 0, 0, 0, 0, 0, 0, r, 0, 0, 0, 0, 0, 0, 0).v0;
+            const uint32_t m = vf_burst_spawn_l18(owner, SCR, r);  // (the spawner: own1422_burst_spawn)
             if (m == 0) return 0u;
             const uint32_t pv = ee_read<uint32_t>(m + 0x78);
             w32(pv + 8, u(ri(0, 4)));
@@ -1113,12 +1125,13 @@ void batch_270() {
             Vec4 from = near(h, 1, 10, 0);
             from.z = h.z + rf(0.2f, 4);
             put(SCR, from);
-            const uint32_t m = vf_2ea0f0_l18(owner, SCR, u(ri(0, 3) == 0 ? ri(0, 2) : ri(3, 300)), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0;
+            const uint32_t m = vf_ball_spawn_l18(owner, SCR, u(ri(0, 3) == 0 ? ri(0, 2) : ri(3, 300)));  // (the spawner: own1422_ball_spawn)
             if (m == 0) return 0u;
             const uint32_t pv = ee_read<uint32_t>(m + 0x78);
             Vec4 to = ri(0, 3) == 0 ? near(from, 0, 0.3f, 0.1f) : coin() ? h : near(h, 0, 15, 2);
             put(SCR + 0x10, to);
-            vf_2ea168_l18(m, SCR, SCR + 0x10, ri(0, 5) == 0 ? 0u : 1u, 0, 0, 0, 0, coin() ? rf(0.2f, 2) : 1.0f, 0, 0, 0, 0, 0, 0, 0);
+            const uint32_t go = ri(0, 5) == 0 ? 0u : 1u;
+            vf_ball_launch_l18(m, SCR, SCR + 0x10, go, coin() ? rf(0.2f, 2) : 1.0f);  // (own1422_ball_launch)
             moby_update_transform(m);
             if (ri(0, 4) == 0) w8(m + 0x20, u(ri(0, 3)));
             if (coin()) wf(pv + 0x24, ri(0, 3) == 0 ? rf(0, 0.25f) : rf(0.3f, 2));
@@ -1404,6 +1417,226 @@ void batch_270() {
             out.assign(ram, ram + 0x02000000);
             return changed;
         });
+
+        // ---- P18.3 (part 1): the boss's (class 1422, still generated) helpers that act on the level's other mobys, hand-written
+        // (veldin_finale_boss_props.cpp), each at its own address with its arguments in the order the boss passes them: the level's
+        // own groups (one holding the class the helper looks for, any other, one whose list is taken away), the group's mobys dealt
+        // into each state the helper tests (taken out, 0xfe / 0xfd, too), the lift's and the platforms' states and timers, the
+        // sound slots playing or not. The class loop's class1422 row and batch 271's fight dumps run them inside the boss.
+        auto own3 = [level](const char* name, uint32_t addr, Ret ret, std::function<Args()> make, std::function<uint64_t(A)> port, int n = 60) {
+            if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
+            l18check(name, addr, n, ret, [level, make] {
+                level();
+                Args a = make();
+                w32(0x0015f5cc, R() & 0xffff);
+                seed_rand();
+                return a;
+            }, port);
+        };
+        auto group_mobys = [=](int32_t g) {  // the mobys of the level's group `g`, in its list's order
+            std::vector<uint32_t> v;
+            uint32_t e = lvd::group(g);
+            if (e == 0) return v;
+            for (;; e += 2) {
+                v.push_back(first_moby() + ((u(ee_read<uint16_t>(e)) & 0x7fffu) << 8));
+                if ((ee_read<uint16_t>(e) & 0x8000u) != 0) break;
+            }
+            return v;
+        };
+        auto deal_group = [=](int16_t cls) -> int32_t {  // a group holding a moby of class `cls` in most cases, any group else
+            std::vector<int32_t> gs;
+            for (int32_t g = 0; g < lvd::group_count(); ++g)
+                for (const uint32_t o : group_mobys(g))
+                    if (ee_read<int16_t>(o + 0xa6) == cls) { gs.push_back(g); break; }
+            const int32_t g = !gs.empty() && ri(0, 4) != 0 ? gs[static_cast<size_t>(ri(0, static_cast<int>(gs.size()) - 1))]
+                                                          : ri(0, lvd::group_count() - 1);
+            if (ri(0, 12) == 0) w32(OV(0x001ab840) + u(g) * 4, 0);  // (the group without a list)
+            return g;
+        };
+        auto deal_states = [=](int32_t g, std::initializer_list<int> states) {  // the group's mobys in the states given (or left)
+            const std::vector<int> st(states);
+            for (const uint32_t o : group_mobys(g))
+                if (coin()) w8(o + 0x20, u(st[static_cast<size_t>(ri(0, static_cast<int>(st.size()) - 1))]));
+        };
+        // 0x28d878, the level's sound: an index of the level's own sounds, past their count, negative; flags; on the boss or any moby
+        own3("own1422_sound", 0x0028d878, Ret::Int32, [=] {
+            const int32_t n = ee_read<int32_t>(0x0015f5f0) - ee_read<int32_t>(0x0015f574);
+            const int32_t idx = ri(0, 6) == 0 ? ri(n - 1, n + 2) : ri(0, 5) == 0 ? ri(-3, 0) : ri(0, std::max(0, n - 1));
+            static const uint32_t fl[] = {0, 0, 0, 1, 4, 8, 8};
+            const std::vector<uint32_t> boss = mobys_with(0x002f2bf0);
+            const uint32_t m = !boss.empty() && coin() ? boss[0] : any_moby();
+            if (coin()) for (int k = 0; k < ri(0, 20); ++k) w8(0x0013e550 + u(ri(0, 15)) * 0x70 + 0x74, u(ri(0, 1)));
+            return Args{{u(idx), fl[ri(0, 6)], m}, {}};
+        }, [](A a) { return r32(static_cast<uint32_t>(vf_level_sound_l18(static_cast<int32_t>(a.i[0]), a.i[1], a.i[2]))); });
+        // 0x2f6fa8 / 0x2f7028, a group hidden / shown (a0 the boss, unused; a1 the group): the group's mobys in any state, taken out too
+        for (const bool show : {false, true}) {
+            own3(show ? "own1422_group_show" : "own1422_group_hide", show ? 0x002f7028 : 0x002f6fa8, Ret::None, [=] {
+                const std::vector<uint32_t> boss = mobys_with(0x002f2bf0);
+                const int32_t g = deal_group(static_cast<int16_t>(ri(0, 1) == 0 ? 0x247 : 0x24b));
+                deal_states(g, {0, 1, 2, 3, 0xfe, 0xfd});
+                for (const uint32_t o : group_mobys(g)) {
+                    if (coin()) w8(o + 0x31, u(ri(0, 2)));
+                    if (coin()) w16(o + 0x34, R() & 0xffff);
+                    if (coin()) w32(o + 0x94, R());
+                }
+                return Args{{boss.empty() ? 0u : boss[0], u(g)}, {}};
+            }, [show](A a) {
+                if (show) vf_group_show_l18(static_cast<int32_t>(a.i[1])); else vf_group_hide_l18(static_cast<int32_t>(a.i[1]));
+                return uint64_t{0};
+            });
+        }
+        // 0x2fa888, the raft platforms' +0xbc: groups with class 1584 platforms or none, any value
+        own3("own1422_platforms_flag", 0x002fa888, Ret::None, [=] {
+            const int32_t g = deal_group(0x630);
+            for (const uint32_t o : group_mobys(g)) w8(o + 0xbc, u(ri(0, 3)));
+            return Args{{u(g), coin() ? 1u : R() & 0xff}, {}};
+        }, [](A a) { vf_group_platforms_flag_l18(static_cast<int32_t>(a.i[0]), a.i[1]); return uint64_t{0}; });
+        // 0x2fc7e0, the robots out: the group's class 1906 robots in their state 8 or another
+        own3("own1422_robots_out", 0x002fc7e0, Ret::Int32, [=] {
+            const int32_t g = deal_group(0x772);
+            deal_states(g, {8, 8, 0, 1, 2, 9});
+            return Args{{u(g)}, {}};
+        }, [](A a) { return r32(static_cast<uint32_t>(vf_robots_out_l18(static_cast<int32_t>(a.i[0])))); });
+        // 0x2d6b58 / 0x2d6c80, the gates picked: points about the group's gates (some far away), the gates' class changed in part
+        auto gate_point = [=](int32_t g, float far) {
+            const std::vector<uint32_t> ms = group_mobys(g);
+            const Vec4 c = ms.empty() || ri(0, 5) == 0 ? ee_ref<Vec4>(0x0013f3d0) : VV(pick(ms) + 0x10);
+            return near(c, 0, far, 3);
+        };
+        own3("own1422_gate_round", 0x002d6b58, Ret::Int32, [=] {
+            const int32_t g = deal_group(0x247);
+            for (const uint32_t o : group_mobys(g)) if (ri(0, 6) == 0) w16(o + 0xa6, 0x248);
+            put(SCR, gate_point(g, 40));
+            put(SCR + 0x10, ri(0, 6) == 0 ? VV(SCR) : gate_point(g, 40));
+            return Args{{SCR, SCR + 0x10, u(g)}, {}};
+        }, [](A a) { return r32(vf_gate_farthest_round_l18(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]))); });
+        own3("own1422_gate_nearest", 0x002d6c80, Ret::Int32, [=] {
+            const int32_t g = deal_group(0x247);
+            for (const uint32_t o : group_mobys(g)) if (ri(0, 6) == 0) w16(o + 0xa6, 0x248);
+            put(SCR, gate_point(g, ri(0, 4) == 0 ? 400.0f : 30.0f));
+            return Args{{SCR, u(g)}, {}};
+        }, [](A a) { return r32(vf_gate_nearest_l18(a.i[0], static_cast<int32_t>(a.i[1]))); });
+        // 0x2d6d50 / 0x2d6dc0, the gates opened: a group's, one gate (or another moby with pvars)
+        own3("own1422_gates_open", 0x002d6d50, Ret::None, [=] {
+            const int32_t g = deal_group(0x247);
+            for (const uint32_t o : group_mobys(g)) if (ri(0, 6) == 0) w16(o + 0xa6, 0x248);
+            return Args{{u(g)}, {}};
+        }, [](A a) { vf_gates_open_l18(static_cast<int32_t>(a.i[0])); return uint64_t{0}; });
+        own3("own1422_gate_open", 0x002d6dc0, Ret::None, [=] {
+            const std::vector<uint32_t> gates = class_moby(0x247);
+            const uint32_t o = gates.empty() || ri(0, 6) == 0 ? pick(mobys_with(0x002f2bf0)) : pick(gates);
+            if (o != 0) { const uint32_t pv = ee_read<uint32_t>(o + 0x78); w32(pv + 0x2c, R() & 0xff); wf(pv + 0x24, rf(0, 2)); }
+            return Args{{o}, {}};
+        }, [](A a) { vf_gate_open_l18(a.i[0]); return uint64_t{0}; });
+        // 0x2d8858 / 0x2d8888, a floating platform (class 587) sunk / rocked: in each of its states; the waits as the boss passes them
+        own3("own1422_float_sink", 0x002d8858, Ret::Int32, [=] {
+            const uint32_t o = pick(mobys_with(0x002d82c0));
+            w8(o + 0x20, u(ri(0, 6)));
+            return Args{{o}, {}};
+        }, [](A a) { return r32(vf_float_sink_l18(a.i[0])); });
+        own3("own1422_float_rock", 0x002d8888, Ret::Int32, [=] {
+            fifty();
+            const uint32_t o = pick(mobys_with(0x002d82c0));
+            w8(o + 0x20, ri(0, 2) == 0 ? 1u : u(ri(0, 6)));
+            return Args{{o, u(frame_scale_i(0x3c)), u(frame_scale_i(ee_read<int32_t>(0x0016233c)))}, {}};
+        }, [](A a) { return r32(vf_float_rock_l18(a.i[0], static_cast<int32_t>(a.i[1]), static_cast<int32_t>(a.i[2]))); });
+        // 0x2d8050 / 0x2d7f68 / 0x2d7fd0, the lift (class 586): polled, sent up, stopped, in each of its states; its wait over or
+        // not; its sound slot playing for it, for another moby, idle, none
+        auto make586 = [=] {
+            const uint32_t o = pick(mobys_with(0x002d7b20));
+            if (o == 0) return 0u;
+            const uint32_t pv = ee_read<uint32_t>(o + 0x78);
+            w8(o + 0x20, ri(0, 2) == 0 ? 2u : u(ri(0, 4)));
+            timer(pv + 0x6c);
+            sound_slot(o, pv + 0x70);
+            return o;
+        };
+        own3("own1422_lift_poll", 0x002d8050, Ret::Int32, [=] { return Args{{make586()}, {}}; },
+             [](A a) { return r32(static_cast<uint32_t>(vf_lift_poll_l18(a.i[0]))); });
+        own3("own1422_lift_start", 0x002d7f68, Ret::None, [=] {
+            fifty();
+            return Args{{make586(), u(frame_scale_i(coin() ? 0x708 : ri(1, 200)))}, {}};
+        }, [](A a) { vf_lift_start_l18(a.i[0], static_cast<int32_t>(a.i[1])); return uint64_t{0}; });
+        own3("own1422_lift_stop", 0x002d7fd0, Ret::None, [=] { return Args{{make586()}, {}}; },
+             [](A a) { vf_lift_stop_l18(a.i[0]); return uint64_t{0}; });
+
+        // ---- P18.3 (part 1b): the boss's shots spawned and moved and its launches out of a group (veldin_finale_boss_spawns.cpp),
+        // each at its own address with every argument register and float the original reads (the own564 / own624 / own628 /
+        // own983 generators above spawn through these ports: these checks are the spawners' proof)
+        auto shot_from = [=] {  // a point above the boss or near the hero
+            const std::vector<uint32_t> boss = mobys_with(0x002f2bf0);
+            const Vec4 h = ee_ref<Vec4>(0x0013f3d0);
+            Vec4 p = !boss.empty() && coin() ? VV(boss[0] + 0x10) : near(h, 2, 20, 0);
+            p.z += rf(0.5f, 8);
+            return p;
+        };
+        auto shot_owner = [=] {
+            const std::vector<uint32_t> boss = mobys_with(0x002f2bf0);
+            return !boss.empty() && coin() ? boss[0] : ri(0, 4) == 0 ? 0u : any_moby();
+        };
+        own3("own1422_shell_spawn", 0x002d5348, Ret::Int32, [=] {
+            put(SCR, shot_from());
+            put(SCR + 0x10, Vec4{rf(-0.4f, 0.4f), rf(-0.4f, 0.4f), rf(-0.3f, 0.6f), rf(-1, 1)});
+            put(SCR + 0x20, near(ee_ref<Vec4>(0x0013f3d0), 0, 5, 1));
+            const int frames = ri(0, 8) == 0 ? ri(-3, 1) : ri(2, 120);
+            return Args{{SCR, SCR + 0x10, SCR + 0x20, u(frames), u(ri(0, 7))}, {rf(-1.5f, 1.5f), rf(-1.5f, 1.5f)}};
+        }, [](A a) { return r32(vf_shell_spawn_l18(a.i[0], a.i[1], a.i[2], static_cast<int32_t>(a.i[3]), a.i[4], a.f[0], a.f[1])); });
+        own3("own1422_ring_spawn", 0x002db938, Ret::None, [=] {
+            put(SCR, shot_from());
+            put(SCR + 0x10, Vec4{rf(-0.3f, 0.3f), rf(-0.3f, 0.3f), rf(-0.4f, 0.2f), rf(-1, 1)});
+            return Args{{SCR, SCR + 0x10, shot_owner()}, {rf(2, 20), rf(0.02f, 0.6f)}};
+        }, [](A a) { vf_ring_spawn_l18(a.i[0], a.i[1], a.i[2], a.f[0], a.f[1]); return uint64_t{0}; });
+        own3("own1422_burst_spawn", 0x002dc3e0, Ret::Int32, [=] {
+            put(SCR, shot_from());
+            return Args{{shot_owner(), SCR}, {rf(0.5f, 8)}};
+        }, [](A a) { return r32(vf_burst_spawn_l18(a.i[0], a.i[1], a.f[0])); });
+        own3("own1422_burst_move", 0x002dc458, Ret::None, [=] {
+            fifty();
+            put(SCR, shot_from());
+            const uint32_t m = vf_burst_spawn_l18(shot_owner(), SCR, rf(0.5f, 8));
+            if (m == 0) return Args{{0u, SCR}, {1.0f}};
+            const int32_t cap = frame_scale_i(ee_read<int32_t>(0x00161c9c));
+            w32(ee_read<uint32_t>(m + 0x78) + 8, u(ri(0, 2) == 0 ? ri(cap - 3, cap + 2) : ri(-2, cap)));
+            put(SCR + 0x10, near(VV(m + 0x10), 0, 3, 1));
+            return Args{{m, SCR + 0x10}, {rf(0.5f, 8)}};
+        }, [](A a) { vf_burst_move_l18(a.i[0], a.i[1], a.f[0]); return uint64_t{0}; });
+        own3("own1422_ball_spawn", 0x002ea0f0, Ret::Int32, [=] {
+            put(SCR, shot_from());
+            return Args{{shot_owner(), SCR, u(ri(0, 3) == 0 ? ri(0, 2) : ri(3, 300))}, {}};
+        }, [](A a) { return r32(vf_ball_spawn_l18(a.i[0], a.i[1], a.i[2])); });
+        own3("own1422_ball_launch", 0x002ea168, Ret::None, [=] {
+            fifty();
+            put(SCR, shot_from());
+            const uint32_t m = vf_ball_spawn_l18(shot_owner(), SCR, u(ri(3, 300)));
+            if (m == 0) return Args{{0u, SCR, SCR, 0u}, {1.0f}};
+            w8(m + 0x20, ri(0, 2) == 0 ? 0u : u(ri(0, 3)));
+            put(SCR + 0x10, near(VV(m + 0x10), 0, 2, 1));
+            put(SCR + 0x20, coin() ? ee_ref<Vec4>(0x0015f580) : near(ee_ref<Vec4>(0x0013f3d0), 0, 6, 1));
+            return Args{{m, SCR + 0x10, SCR + 0x20, ri(0, 2) == 0 ? 0u : (coin() ? 1u : R())}, {coin() ? 1.0f : rf(0.2f, 2)}};
+        }, [](A a) { vf_ball_launch_l18(a.i[0], a.i[1], a.i[2], a.i[3], a.f[0]); return uint64_t{0}; });
+        own3("own1422_bomb_throw", 0x002d5cf8, Ret::Int32, [=] {
+            fifty();
+            const int32_t g = deal_group(0x238);
+            deal_states(g, {5, 5, 5, 1, 3, 4});
+            for (const uint32_t o : group_mobys(g)) if (coin()) w8(o + 0x53, u(ri(0, 2)));
+            put(SCR, shot_from());
+            put(SCR + 0x10, near(ee_ref<Vec4>(0x0013f3d0), 0, 12, 1));
+            return Args{{shot_owner(), u(g), SCR, SCR + 0x10, u(ri(0, 4) == 0 ? ri(0, 2) : ri(30, 400))}, {rf(0.1f, 1.6f)}};
+        }, [](A a) { return r32(vf_bomb_throw_l18(a.i[0], static_cast<int32_t>(a.i[1]), a.i[2], a.i[3], a.i[4], a.f[0])); });
+        own3("own1422_robot_launch", 0x002fc668, Ret::Int32, [=] {
+            fifty();
+            const int32_t g = deal_group(0x772);
+            deal_states(g, {8, 8, 8, 0, 1, 2});
+            put(SCR, shot_from());
+            put(SCR + 0x10, near(ee_ref<Vec4>(0x0013f3d0), 0, 12, 1));
+            return Args{{u(g), SCR, ri(0, 2) == 0 ? SCR : SCR + 0x10}, {rf(0.1f, 1.6f)}};
+        }, [](A a) { return r32(vf_robot_launch_l18(static_cast<int32_t>(a.i[0]), a.i[1], a.i[2], a.f[0])); });
+        own3("own1422_divers_launch", 0x002f0030, Ret::Int32, [=] {
+            const int32_t g = deal_group(0x54b);
+            deal_states(g, {1, 1, 0, 2, 3});
+            put(SCR, shot_from());
+            return Args{{shot_owner(), u(g), SCR}, {}};
+        }, [](A a) { return r32(vf_divers_launch_l18(a.i[0], static_cast<int32_t>(a.i[1]), a.i[2])); });
         g_extra_noop_hooks.clear();
     }
 

@@ -4,6 +4,7 @@
 // by hand: the names are the entries', the helpers `vf_<addr>_l18` (uniform ABI: TrRet).
 #include <game/lib/libc.h>
 #include <game/ovl/veldin_finale_mobys.h>
+#include <game/ovl/veldin_finale_own.h>
 #include <game/ovl/quad_draw.h>
 #include <game/ovl/carry_hooks.h>
 #include <game/ovl/devastator.h>
