@@ -282,13 +282,16 @@ add_library(rac1_game STATIC
     ovl/kalebo_race_organiser.cpp
     ovl/kalebo_racers.cpp
     ovl/kalebo_rocket.cpp
+    ovl/veldin_orbit_backdrop.cpp
     ovl/veldin_orbit_beams.cpp
     ovl/veldin_orbit_cannon.cpp
     ovl/veldin_orbit_doors.cpp
+    ovl/veldin_orbit_fighter.cpp
     ovl/veldin_orbit_hazards.cpp
     ovl/veldin_orbit_hooks.cpp
     ovl/veldin_orbit_lift.cpp
     ovl/veldin_orbit_mobys.cpp
+    ovl/veldin_orbit_monitor.cpp
     ovl/veldin_orbit_pod.cpp
     ovl/veldin_orbit_props.cpp
     ovl/veldin_orbit_ship.cpp

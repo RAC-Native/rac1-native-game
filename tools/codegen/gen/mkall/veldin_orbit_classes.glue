@@ -1,9 +1,4 @@
-0x002c5360: set32(v0, static_cast<uint32_t>(spawn_at_place(a0.w(), a1.w())));
-0x002e2828: set32(v0, static_cast<uint32_t>(class1017_launch(a0.w(), a1.w(), a2.w(), fr[12], fr[13], fr[14])));
 0x002e9c28: hud_line_strip(a0.w(), static_cast<int32_t>(a1.w()), a2.w(), a3.lo, fr[12], fr[13], fr[14]);
 0x002e9e48: hud_line_strip_turned(a0.w(), static_cast<int32_t>(a1.w()), a2.w(), a3.lo, fr[12], fr[13], fr[14], fr[15]);
 0x002ea418: hud_ring(a0.w(), a1.w(), a2.w(), a3.w(), fr[12], fr[13], fr[14], fr[15]);
 0x002ea5e0: hud_screen_point(a0.w(), a1.w(), a2.w(), static_cast<int32_t>(a3.w()));
-0x002f3f10: class1319_trails_record(a0.w());
-0x002f4a18: class1319_hit(a0.w());
-0x002f4c90: class1319_path_pose(a0.w());

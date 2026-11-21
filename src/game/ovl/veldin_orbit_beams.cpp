@@ -2,8 +2,8 @@
 // emitter along its facing (13 units, cut where it meets the world), sliding to and fro between its start and a target
 // (a box's centre or another moby's start: pvars +0x44 / +0x68) or standing still, shown while the hero is inside its
 // box (pvars +0x40); where it is on screen it hurts what crosses it, throws sparks (particle 0x4f, L17:0x26fb60) along
-// it and at its end, and queues its draw (L17:0x2a95b8, still generated). The original's order of calls and float
-// operations kept. Level 17 only: `orig: L17:`, level data through lvd::* and the collision facade, the level's own
+// it and at its end, and queues its draw (L17:0x2a95b8: a camera-facing textured quad along the beam, quad_draw). The
+// original's order of calls and float operations kept. Level 17 only: `orig: L17:`, level data through lvd::* and the collision facade, the level's own
 // data L17_ADDR, base ELF bare. Registered in veldin_orbit_mobys.cpp.
 #include <game/ovl/veldin_orbit_own.h>
 
@@ -13,6 +13,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/quad_draw.h>
 #include <game/ovl/shared_little.h>
 #include <game/ovl/variants_l17.h>
 #include <game/ovl/veldin_orbit_mobys.h>
@@ -211,6 +212,44 @@ void vo_class99_update_l17(uint32_t m) {
         vo_26fb60_l17(0, pv + 0x20, axis);
     }
     sub_001f93e0(L17_ADDR(0x002a95b8), m);
+}
+
+// Class 99's draw callback: the beam between its two ends (pvars +0x10 / +0x20) as one quad facing the camera
+// (L17:0x1676c0), as wide as pvars +0x4c on either side, the effect texture 0xe, the colour 0x80243278 and the level's
+// four (s, t) pairs L17:0x1e6320. Every local lives in the original's frame at its offsets (+0 the quad's descriptor for
+// quad_draw: its points +0 .. +0x30, colours +0x40, (s, t) +0x50, GS words +0x70; +0x90 / +0xa0 the two sides, +0xb0 the
+// beam, +0xc0 a corner). VU0: no VU0 instruction of its own; its callees' ports (vec3_*, quad_draw) keep no VU0 state.
+// orig: L17:0x002a95b8
+void vo_cb_2a95b8_l17(uint32_t m) {
+    const Frame f(0x150);
+    const uint32_t q = f.sp, side_a = f.sp + 0x90, side_b = f.sp + 0xa0, beam = f.sp + 0xb0, corner = f.sp + 0xc0;
+    const uint32_t pv = lwu(m + 0x78);
+    const uint32_t a = pv + 0x10, b = pv + 0x20, cam = L17_ADDR(0x001676c0);
+    vec3_sub(V(beam), V(a), V(b));
+    vec3_sub(V(side_a), V(a), V(cam));
+    vec3_sub(V(side_b), V(b), V(cam));
+    vec3_cross_ba(V(side_a), V(side_a), V(beam));
+    vec3_set_length(V(side_a), V(side_a), lwc1(pv + 0x4c));
+    vec3_cross_ba(V(side_b), V(side_b), V(beam));
+    vec3_set_length(V(side_b), V(side_b), lwc1(pv + 0x4c));
+    sd(q + 0x78, effect_tex0(0xe));
+    sd(q + 0x80, (0xff90ull << 32) | 0x260ull);  // TEX1
+    sd(q + 0x88, (0x80ull << 32) | 0x48ull);     // ALPHA
+    sd(q + 0x70, 0);                             // CLAMP
+    for (uint32_t k = 0; k < 4; ++k) sw(q + 0x40 + k * 4, 0x80243278u);
+    for (uint32_t k = 0; k < 4 * 8; k += 8) {
+        swc1(q + 0x50 + k, lwc1(L17_ADDR(0x001e6320) + k));
+        swc1(q + 0x54 + k, lwc1(L17_ADDR(0x001e6320) + k + 4));
+    }
+    vec3_sub(V(corner), V(a), V(side_a));
+    lq_sq(q, corner);
+    vec3_add(V(corner), V(a), V(side_a));
+    lq_sq(q + 0x10, corner);
+    vec3_sub(V(corner), V(b), V(side_b));
+    lq_sq(q + 0x20, corner);
+    vec3_add(V(corner), V(b), V(side_b));
+    lq_sq(q + 0x30, corner);
+    quad_draw(q, 0);
 }
 
 }  // namespace rac1
