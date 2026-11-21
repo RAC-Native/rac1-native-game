@@ -272,6 +272,7 @@ add_library(rac1_game STATIC
     ovl/kalebo_arena.cpp
     ovl/kalebo_barrier.cpp
     ovl/kalebo_beacon.cpp
+    ovl/kalebo_carrier.cpp
     ovl/kalebo_chickens.cpp
     ovl/kalebo_conveyor.cpp
     ovl/kalebo_fighter.cpp
@@ -288,6 +289,8 @@ add_library(rac1_game STATIC
     ovl/kalebo_race_organiser.cpp
     ovl/kalebo_racers.cpp
     ovl/kalebo_rocket.cpp
+    ovl/kalebo_taxi.cpp
+    ovl/kalebo_walker.cpp
     ovl/veldin_orbit_backdrop.cpp
     ovl/veldin_orbit_beams.cpp
     ovl/veldin_orbit_cannon.cpp

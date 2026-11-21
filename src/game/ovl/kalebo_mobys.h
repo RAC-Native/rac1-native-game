@@ -62,16 +62,18 @@ void kal_chicken_release_l16(uint32_t m, const Vec4& point);  // L16:0x002c44f0
 void kal_class1943_update_l16(uint32_t m);  // L16:0x002e8e80
 void kal_class1947_update_l16(uint32_t m);  // L16:0x002e93b0
 void kal_cb_2e9270_l16(uint32_t m);         // L16:0x002e9270
+// hand-written (stage 4, P16.2 part 5): the taxi (kalebo_taxi.cpp), the carrier (kalebo_carrier.cpp), the walker
+// (kalebo_walker.cpp)
+void kal_class1410_update_l16(uint32_t m);  // L16:0x002e43e0
+void kal_taxi_route_l16(uint32_t m);        // L16:0x002e4a58
+void kal_class1401_update_l16(uint32_t m);  // L16:0x002e37a0
+int32_t kal_carrier_fly_l16(uint32_t m);    // L16:0x002e3fa0
+void kal_class1445_update_l16(uint32_t m);  // L16:0x002e5e08
+void kal_walker_frame_l16(uint32_t m);      // L16:0x002e6208
+float kal_walker_walk_to_l16(uint32_t m, uint32_t p);  // L16:0x002e6428
 
 void kal_class1111_update_l16(uint32_t a0);  // L16:0x002dee10 (class 1111, the open sea: kept generated, the PAL 2.00 build changed it beyond fix 24)
 void kal_class1377_update_l16(uint32_t a0);  // L16:0x002e3190
-TrRet kal_2e3fa0_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e3fa0
-void kal_class1401_update_l16(uint32_t a0);  // L16:0x002e37a0
-TrRet kal_2e4a58_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e4a58
-void kal_class1410_update_l16(uint32_t a0);  // L16:0x002e43e0
-TrRet kal_2e6208_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e6208
-TrRet kal_2e6428_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e6428
-void kal_class1445_update_l16(uint32_t a0);  // L16:0x002e5e08
 TrRet kal_25e948_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x0025e948 (the copy of hero_walk_to: kept generated, a unit entry; class 1455 calls it)
 TrRet kal_2e7a30_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e7a30
 TrRet kal_2e7ba0_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e7ba0
