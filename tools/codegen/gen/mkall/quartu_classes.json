@@ -8,12 +8,10 @@
   "MKALL_WIDE_GPR": ""
  },
  "entries": [
-  "2ed068:qua_class1451_update_l15:void:a0",
   "22db50:qua_cutscene_level_extras_u"
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/quartu_classes_tr_5.cpp",
   "src/game/ovl/quartu_classes_tr_6.cpp"
  ]
 }

@@ -35,6 +35,7 @@
 #include <game/ovl/shared_class830.h>
 #include <game/ovl/shared_class832.h>
 #include <game/ovl/shared_finale.h>
+#include <game/ovl/shared_clank_pad.h>
 #include <game/ovl/shared_flash.h>
 #include <game/ovl/shared_gold_bolt.h>
 #include <game/ovl/shared_helpers.h>
@@ -323,7 +324,7 @@ void batch_270() {
         {"class1799", 0x002fad28, vf_class1799_update_l18, 0x0, false},
         {"class1890", 0x002fae48, class1443_update, 0x0, false},
         {"class1898", 0x002fb548, flash_update, 0x0, false},
-        {"class1899", 0x002fb868, vf_class1899_update_l18, 0x0, false},
+        {"class1899", 0x002fb868, clank_pad_update, 0x0, false},
         {"class1906", 0x002fbb98, vf_class1906_update_l18, 0x0, false},
     };
     auto generic_prep = [give_hit, hero_near](uint32_t m, int st, int pass, void (*fn)(uint32_t), bool walk = false) {

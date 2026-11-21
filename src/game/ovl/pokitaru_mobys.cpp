@@ -8,6 +8,7 @@
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/novalis_water.h>
+#include <game/ovl/shared_class1111.h>
 #include <game/ovl/shared_class1179.h>
 #include <game/ovl/shared_class1319.h>
 #include <game/ovl/shared_class1844.h>
@@ -77,7 +78,7 @@ void pokitaru_moby_fns_register() {
     ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x00309098), class1017_update);
     ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x003094f8), class1034_update);
     ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x00309ac0), pok_class1075_update_l11);
-    ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x0030b358), pok_class1111_update_l11);  // (class 1111 stays generated: PAL 2.00)
+    ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x0030b358), class1111_update);
     ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x0030b730), gold_bolt_update);
     ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x0030c788), pok_class1156_update_l11);
     ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x0030d800), pok_class1157_update_l11);
@@ -113,7 +114,7 @@ void pokitaru_moby_fns_register() {
     ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x002f2d58), pok_cb_2f2d58_l11);
     ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x002fd6c0), class615_puzzle_draw);
     ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x00302e60), class832_draw);
-    ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x0030a908), pok_cb_30a908_l11);
+    ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x0030a908), class1111_draw);
     ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x0030e708), nov_water_751_draw_l1);
     ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x00311d50), pok_cb_311d50_l11);
     ovl_register_level_moby_fn(POKITARU, L11_ADDR(0x003192c8), class1319_trails_draw);

@@ -51,6 +51,7 @@
 #include <game/ovl/shared_class832.h>
 #include <game/ovl/shared_class848.h>
 #include <game/ovl/shared_class934.h>
+#include <game/ovl/shared_clank_pad.h>
 #include <game/ovl/shared_floor_switch.h>
 #include <game/ovl/shared_gadget_pickups.h>
 #include <game/ovl/shared_gold_bolt.h>
@@ -324,7 +325,7 @@ void batch_240() {
         {"class1428", 0x002ebd78, class1428_update, 0x0, false},
         {"class1430", 0x002ec030, qua_class1430_update_l15, 0x0, false},
         {"class1446", 0x002ec760, qua_class1446_update_l15, 0x1a0, false},
-        {"class1451", 0x002ed068, qua_class1451_update_l15, 0x0, false},
+        {"class1451", 0x002ed068, clank_pad_update, 0x0, false},
         {"class1469", 0x002ed398, qua_class1469_update_l15, 0x0, false},
         {"class1560", 0x002edb20, qua_class1560_update_l15, 0x0, false},
         {"class1565", 0x002edf58, class1565_update, 0x0, false},

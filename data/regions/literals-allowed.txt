@@ -21,11 +21,6 @@ SCES-50916-2.00.txt  15  001618e4  mirror_mesh_draw (0x2d19b0) and class 530 (0x
 # The Vendor's buttons of the frame before: the 1.02 build has no such word (its maps put it on the quantity's place);
 # on its discs vendor::pad_before() keeps it outside the game's memory, no OV() of it is read there
 SCES-50916-2.00.txt  *  00161e30  the 1.02 build's Vendor has no such word: vendor::pad_before() keeps it on that build's discs
-# The level literals (L<n>_ADDR) the runtime takes past the end of a run: class 1111's camera place (shared_class1111.cpp),
-# a bss word right after the Vendor's block, which the 1.02 build shortened by one word: the block's last run's
-# displacement (+0x7c) takes it on, and no other address lands there
-SCES-50916-2.00.txt  11  00162840  class 1111's last camera place: bss after the Vendor's block (+0x7c, its last run's)
-SCES-50916-2.00.txt  16  00162240  class 1111's last camera place: bss after the Vendor's block (+0x7c, its last run's)
 # Gemlik's class 63 (gemlik_trooper.cpp, state 99): its three explosion cooldown slots, zero bss on both builds; the 1.02
 # build's own code names the rule's place (L13:0x2b8514 `lui a0,0x16 / addiu a0,a0,0x1438`, NTSC-U 0x2b735c's 0x13b0)
 SCES-50916-2.00.txt  13  001613b0  class 63's cooldown slots: 0x161438 in the 1.02 code itself (L13:0x2b8514), zero bss on both

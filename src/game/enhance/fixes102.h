@@ -57,8 +57,9 @@
 // - 34: Batalia's unlinked gate (class 467, L8:0x2ea398, pvar +0x8 negative): once the level flag 0x13d3b6 is set, retires
 //   the live mobys of classes 0x24c..0x256 and 0x1d8 in its moby group (+0x21) and itself (batalia_fort.cpp)
 // - 35: Pokitaru's sewer water (class 1158, L11:0x30e088): sets the underwater colour bytes (0x161200..0x161206) back to the
-//   sewer's (0, 0x28, 0x30, 0x40) and (0, 0x28, 0x30) while the camera is at or below 180 (0x1677c8 <= 180), pairing with the
-//   1.02 open sea (class 1111) above 180 (pokitaru_sewer.cpp)
+//   sewer's (0, 0x28, 0x30, 0x40) and (0, 0x28, 0x30) while the camera is at or below 180 (0x1677c8 <= 180) (pokitaru_sewer.cpp);
+//   its pair, the open sea of Pokitaru and Kalebo III (class 1111, L11:0x30b358 / L16:0x2dee10, class1111_update,
+//   shared_class1111.cpp), sets them to (0x28, 0x90, 0x90, 0x40) and (0x28, 0x90, 0x90) each frame the camera is above 180
 // - 36: Pokitaru's fighter jet (class 1242, flight step L11:0x312838): drops the square-button camera toggle (+0x60) and its
 //   second camera offset, keeping the chase camera (pokitaru_jet.cpp)
 // - 37: the Vendor's hologram moby (class 11, vendor_update_tr 0x2a57a8, state 0): only sets the hologram moby's byte
@@ -99,11 +100,13 @@
 // - 21: Rilgar's moving water (class 831, L5:0x30ca80): its surface carries Ratchet swimming in it as it rises (his
 //   water height +0x2f0), and it holds still in the cutscenes (hooks.glue)
 // - 23: Giant Clank's pad (Quartu's class 1451 L15:0x2ed068, Veldin's finale's 1899 L18:0x2fb868; the shared port
-//   clank_pad_update, shared_clank_pad.cpp): boarding retires a moby still linked at its pvar +0x70, and on Quartu saves the
-//   pad's place as the checkpoint (checkpoint_save 0x284e50) before Ratchet is put on it
+//   clank_pad_update, shared_clank_pad.cpp, which both levels run; gameplay102_clank_pad(), on the PAL disc 2.00 always): boarding
+//   retires a moby still linked at its pvar +0x70, and on Quartu saves the pad's place as the checkpoint (checkpoint_save
+//   0x284e50) before Ratchet is put on it
 // - 24: the open sea of Pokitaru and Kalebo III (class 1111, L11:0x30b358 / L16:0x2dee10; the shared port class1111_update,
-//   shared_class1111.cpp) is the level's water disc (0x1612dc: on, centre (512, 512), radius 1024, at the swell's height,
-//   set each frame the sea is drawn), so that surface_height gives the hero's movement, the bombs and the mines its surface
+//   shared_class1111.cpp, which both levels run; gameplay102_open_sea_water(), on the PAL disc 2.00 always) is the level's water
+//   disc (0x1612dc: on, centre (512, 512), radius 1024, at the swell's height, set each frame the sea is drawn), so that
+//   surface_height gives the hero's movement, the bombs and the mines its surface
 // - 25: Gemlik Base's class 1885 (and Gaspar's copy; L9:0x30a9e8 / L13:0x30d3b8, the shared port class1885_hit,
 //   shared_class1885.cpp) killed with Ratchet at the height 248 (within 4) on Gemlik Base, and Gemlik Base's class 63
 //   (gml_class63_update_l13 L13:0x2b50d8, gemlik_trooper.cpp) killed with Ratchet at that height: their bolts with
@@ -249,6 +252,19 @@ bool gameplay102_gemlik_bolts_flag();
 // frame load (gml_class63_update_l13's end, the PAL 2.00 disc's L13:0x2b8af8; class1885_update's throw, 2.00 L13:0x30ec28):
 // true when it applies; false with the fix off, except on the PAL 2.00 disc (region_core_moved()), whose own code it is
 bool gameplay102_gemlik_load_thinning();
+// orig: (none) — enhancement: fix 23 (1.02 Gameplay): Giant Clank's pad's boarding (clank_pad_update, the PAL 2.00 disc's
+// L15:0x2ee668 .. 0x2ee704 and L18:0x2fced8 .. 0x2fcf74): true when the 1.02 build's two changes apply (a moby left linked
+// at pvar +0x70 retired, Quartu's checkpoint saved at the pad); false with the fix off, except on the PAL 2.00 disc
+// (region_core_moved()), whose own code it is
+bool gameplay102_clank_pad();
+// orig: (none) — enhancement: fix 24 (1.02 Gameplay): the open sea's water disc (class1111_update after the swell, the PAL
+// 2.00 disc's L11:0x30ca7c .. 0x30caa8 and L16:0x2e052c .. 0x2e0558): true when the 1.02 build's stores apply; false with the
+// fix off, except on the PAL 2.00 disc (region_core_moved()), whose own code it is
+bool gameplay102_open_sea_water();
+// orig: (none) — enhancement: fix 35 (1.02 Fixes), the open sea's half: class1111_update's underwater colours above 180 (the
+// PAL 2.00 disc's L11:0x30c7c8 .. 0x30c824 and L16:0x2e0278 .. 0x2e02d4): true when they apply; false with the fix off,
+// except on the PAL 2.00 disc (region_core_moved()), whose own code it is
+bool fixes102_open_sea_tint();
 // orig: (none) — enhancement: fix 21 (1.02 Gameplay): Rilgar's class 831 (the water) `m`: true when the 1.02 build skips
 // its update (a cutscene: game mode 2); false with the fix off, except on the PAL 2.00 disc (whose own code does it)
 bool gameplay102_water_held();

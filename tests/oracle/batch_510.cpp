@@ -61,9 +61,12 @@
 //   group_wake             (helper)                   L10:0x002e0138 / 0x002e47d8 (on the level's grouped mobys)
 //   bullet_particle_update (particle type 0x31)       Veldin 0x00271d20 (level 0), L5:0x0029bda0 (new records about the hero)
 //   timed_particle_update  (particle types 0x21 / 0x3f)  Veldin 0x0026f048 / 0x002738b0 (level 0)
-//   clank_pad_update       class 1451 / 1899          L15:0x002ed068 L18:0x002fb868 (and "clank_pad_fix23": its 1.02 fork,
-//                                                     run with RAC1_GAMEPLAY102=23, against the fork-off port plus the
-//                                                     1.02 build's two changes)
+//   clank_pad_update       class 1451 / 1899          L15:0x002ed068 L18:0x002fb868 (and its 1.02 fork, both run with
+//                                                     RAC1_GAMEPLAY102=23: "clank_pad_200", the port with the fork on against
+//                                                     the PAL disc 2.00's own build of the function, the set standin_200/ of
+//                                                     tools/oracle/standin_dumps.py loaded at the entry; "clank_pad_fix23",
+//                                                     the port with it against the fork-off port plus the 1.02 build's two
+//                                                     changes written out by hand)
 
 #include "ovl_oracle.h"
 
@@ -101,6 +104,7 @@
 #include <optional>
 #include <cmath>
 #include <cstring>
+#include <fstream>
 #include <initializer_list>
 #include <string>
 #include <unordered_set>
@@ -115,7 +119,8 @@ namespace {
 // collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
 bool c2b_spr_check(const char* name) {
     static const char* const kNames[] = {"flame_spray_burn", "homing_missile", "shell", "shockwave", "bullet_particle",
-                                         "flame_spray", "shot", "tracer"};
+                                         "flame_spray", "shot", "tracer",
+                                         "clank_pad", "clank_pad_200"};  // (the pad's boarding: floor_probe_v's scratch)
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -808,6 +813,83 @@ void batch_510() {
                 }
                 std::printf("%-26s %s (%d cases, %d retired a linked moby, %d saved the checkpoint)\n", "clank_pad_fix23", bad == 0 && n > 0 ? "ok" : "FAIL", n, retired, saved);
                 if (bad != 0 || n == 0) ++g_fail;
+            }
+        }
+        // the fork against the PAL disc 2.00's own code: its build of the function as the code generators take it back to the
+        // North American addresses (region_view.py's stand-in, the code a 2.00 player's generated copy was translated from;
+        // tools/oracle/standin_dumps.py writes it to the set standin_200/), written at the entry in every case and run in the
+        // interpreter, against the port with the fork on; the same states and variations as "clank_pad". The 2.00 build is
+        // 228 words, 24 more than this one: they cover the start of the next class's update (L15:0x2ed398, L18:0x2fbb98),
+        // which nothing in the pad's run calls. On Quartu the checkpoint runs the level's own copy of checkpoint_save
+        // (L15:0x274af8) against the host's. Region: on the 2.00 disc the fork is region_core_moved(), which the oracle cannot
+        // make true; the setting stands in for it.
+        if (const char* only = std::getenv("ORACLE_ONLY"); pad_fn != 0 && (only == nullptr || std::strcmp(only, "clank_pad_200") == 0)) {
+            static std::vector<uint32_t> standin;
+            standin.clear();
+            {
+                char rel[64];
+                std::snprintf(rel, sizeof rel, "standin_200/l%d_%06x.bin", g_oracle_level, pad_fn);
+                std::ifstream f(dump_path(rel), std::ios::binary);
+                std::vector<uint8_t> b((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+                for (size_t k = 0; k + 4 <= b.size(); k += 4)
+                    standin.push_back(u(b[k]) | u(b[k + 1]) << 8 | u(b[k + 2]) << 16 | u(b[k + 3]) << 24);
+            }
+            if (std::getenv("RAC1_GAMEPLAY102") == nullptr) {
+                std::printf("%-26s skipped (run with RAC1_GAMEPLAY102=23)\n", "clank_pad_200");
+                ++g_skipped;
+            } else if (standin.empty()) {
+                skip_check("clank_pad_200", pad_fn, "no set standin_200/: tools/oracle/standin_dumps.py");
+            } else {
+                struct ForkOn {
+                    ForkOn() { g_advanced_disabled = false; }
+                    ~ForkOn() { g_advanced_disabled = true; }
+                };
+                // (the moby left linked at +0x70: none, one of the level's live mobys outside the test area, or a retired one. A
+                // random slot of the table is not a state of the game: an empty slot, never placed in the moby grid, makes the
+                // original's grid removal (0x250b20's level copy) run past the `teq` trap the interpreter does not take, as no
+                // game run does)
+                states_check("clank_pad_200", pad_fn, [](uint32_t m) { ForkOn on; clank_pad_update(m); }, 4, 20,
+                             [pad_vary, pad_fn](uint32_t m) {
+                                 pad_vary(m);
+                                 const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                                 if (coin()) {  // (half the cases a press that boards, as "clank_pad_fix23"'s: the 1.02 block reached)
+                                     const uint32_t P = 0x0013f350;
+                                     w32(P + 0x2fc, m); w16(P + 0x30e, 0); w32(OV(0x0015f5c4), 0); w32(P + 0x2084, 0); w8(P + 0x20a4, 0);
+                                     w32(0x0013cae4, 0x10); w32(OV(0x0015f594), 4);
+                                 }
+                                 const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8)), end = ee_read<uint32_t>(OV(0x0015ffe0));
+                                 std::vector<uint32_t> live;
+                                 for (uint32_t o = first; o < end; o += 0x100)
+                                     if (o != m && ee_read<uint8_t>(o + 0x20) < 0x80 && ee_read<uint32_t>(o + 0x74) != 0 && ee_read<uint16_t>(o + 0xa6) != 0 &&
+                                         (o + 0x100 <= TEST_AREA || o >= TEST_AREA + 0x20000))
+                                         live.push_back(o);  // (a moby of the level: an update and a class; the table's empty slots are zero)
+                                 const int k = ri(0, 5);
+                                 if (k < 2 || live.empty()) w32(pv + 0x70, 0xffffffffu);
+                                 else {
+                                     const uint32_t o = live[static_cast<size_t>(ri(0, static_cast<int>(live.size()) - 1))];
+                                     w32(pv + 0x70, (o - first) >> 8);
+                                     if (k >= 4) w8(o + 0x20, k == 4 ? 0xfeu : 0xfdu);  // (retired: in the table's static part 0xfd, past it 0xfe)
+                                 }
+                                 // (on Veldin's finale the scenes the pad starts cannot run in the oracle: scene 6 (the level number 18)
+                                 // waits for a vsync the port's run has not, and Quartu's scenes 8 / 9 (the number 15) are not the
+                                 // level's; as "clank_pad_fix23", Ratchet boards there under the number 0, and Giant Clank's way back
+                                 // is Quartu's only)
+                                 if (g_oracle_level == 18) {
+                                     const uint32_t lv = ee_read<uint32_t>(0x0015ed84);
+                                     if (lv == 15 || (lv == 18 && ee_read<uint8_t>(0x0013f350 + 0x20a4) == 0)) w32(0x0015ed84, 0);
+                                 }
+                                 for (size_t i = 0; i < standin.size(); ++i) w32(pad_fn + 4 * static_cast<uint32_t>(i), standin[i]);
+                             });
+            }
+        }
+        // the play-test spots: each pad's moby index, uid and place
+        if (const char* only = std::getenv("ORACLE_ONLY"); pad_fn != 0 && (only == nullptr || std::strncmp(only, "clank_pad", 9) == 0)) {
+            level();
+            const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8));
+            for (const uint32_t m : mobys_with(pad_fn)) {
+                const Vec4 q = ee_ref<Vec4>(m + 0x10);
+                std::printf("INFO class %u moby %u uid %u at (%.1f, %.1f, %.1f) state %u\n", ee_read<uint16_t>(m + 0xa6), (m - first) >> 8,
+                            ee_read<uint16_t>(m + 0xb2), q.x, q.y, q.z, ee_read<uint8_t>(m + 0x20));
             }
         }
     }

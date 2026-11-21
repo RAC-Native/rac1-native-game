@@ -53,8 +53,7 @@ void vf_cb_2dba20_l18(uint32_t a0);  // L18:0x002dba20 (veldin_finale_shot_draws
 void vf_cb_2dc4b8_l18(uint32_t a0);  // L18:0x002dc4b8 (veldin_finale_shot_draws.cpp: class 628's)
 void vf_cb_2ea1f8_l18(uint32_t a0);  // L18:0x002ea1f8 (veldin_finale_shot_draws.cpp: class 983's)
 
-// still generated (veldin_finale_classes_tr_6.cpp)
-void vf_class1899_update_l18(uint32_t a0);  // L18:0x002fb868
+// (nothing of the level's own classes is generated any more: Giant Clank's pad, class 1899, runs the shared clank_pad_update)
 
 }  // namespace rac1
 

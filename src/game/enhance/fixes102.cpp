@@ -312,6 +312,24 @@ bool gameplay102_gemlik_load_thinning() {
     return gameplay102_on(48) || region_core_moved();
 }
 
+// orig: (none) — enhancement (fixes102.h)
+bool gameplay102_clank_pad() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return gameplay102_on(23) || region_core_moved();
+}
+
+// orig: (none) — enhancement (fixes102.h)
+bool gameplay102_open_sea_water() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return gameplay102_on(24) || region_core_moved();
+}
+
+// orig: (none) — enhancement (fixes102.h)
+bool fixes102_open_sea_tint() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(35) || region_core_moved();
+}
+
 // orig: (none) — enhancement (fixes102.h); the 1.02 build's Rilgar L5:0x30dedc (PAL disc 2.00): game mode 2: return
 bool gameplay102_water_held() {
     return water_fix21() && lw(OV(0x0015f5c4)) == 2;

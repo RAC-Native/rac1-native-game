@@ -105,7 +105,7 @@ const Cls kCls[] = {
     {11, 1017, 0x00309098, class1017_update},
     {11, 1034, 0x003094f8, class1034_update},
     {11, 1075, 0x00309ac0, pok_class1075_update_l11},
-    {11, 1111, 0x0030b358, pok_class1111_update_l11},
+    {11, 1111, 0x0030b358, class1111_update},
     {11, 1134, 0x0030b730, gold_bolt_update},
     {11, 1156, 0x0030c788, pok_class1156_update_l11},
     {11, 1157, 0x0030d800, pok_class1157_update_l11},

@@ -1,7 +1,7 @@
 // Quartu (level 15) own moby classes: the registration table. The ports are the transliterations in
 // quartu_classes_tr_N.cpp (declarations: quartu_mobys.h) and, for the classes other levels share, the shared hand-written
-// ports (shared_*.cpp, novalis_*.cpp: each proved against level 15's own copy by its family batch). Giant Clank's pad (class
-// 1451) keeps its generated copy: the PAL 2.00 disc changed it (1.02 Gameplay fix 23), and the shared port's fork is a setting. Keyed by level 15's own address and by level, so the indirect call (`jalr`) through
+// ports (shared_*.cpp, novalis_*.cpp: each proved against level 15's own copy by its family batch; Giant Clank's pad, class
+// 1451, with the PAL 2.00 disc's changes as 1.02 Gameplay fix 23). Keyed by level 15's own address and by level, so the indirect call (`jalr`) through
 // moby +0x74 (or a callback installed by a class) reaches them only while the played level's overlay is level 15's.
 #include <game/ovl/quartu_hooks.h>
 #include <game/ovl/quartu_mobys.h>
@@ -41,6 +41,7 @@
 #include <game/ovl/shared_class832.h>
 #include <game/ovl/shared_class848.h>
 #include <game/ovl/shared_class934.h>
+#include <game/ovl/shared_clank_pad.h>
 #include <game/ovl/shared_floor_switch.h>
 #include <game/ovl/shared_gadget_pickups.h>
 #include <game/ovl/shared_gold_bolt.h>
@@ -130,7 +131,7 @@ void quartu_moby_fns_register() {
     ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002ebd78), class1428_update);
     ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002ec030), qua_class1430_update_l15);
     ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002ec760), qua_class1446_update_l15);
-    ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002ed068), qua_class1451_update_l15);
+    ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002ed068), clank_pad_update);
     ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002ed398), qua_class1469_update_l15);
     ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002edb20), qua_class1560_update_l15);
     ovl_register_level_moby_fn(QUARTU, L15_ADDR(0x002edf58), class1565_update);

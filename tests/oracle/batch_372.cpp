@@ -39,6 +39,7 @@
 #include <game/ovl/shared_class638.h>
 #include <game/ovl/shared_class830.h>
 #include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_clank_pad.h>
 #include <game/ovl/shared_flash.h>
 #include <game/ovl/shared_gold_bolt.h>
 #include <game/ovl/shared_rock.h>
@@ -183,7 +184,7 @@ void batch_372() {
             {"class1799", 0x002fad28, vf_class1799_update_l18},
             {"class1890", 0x002fae48, class1443_update},
             {"class1898", 0x002fb548, flash_update},
-            {"class1899", 0x002fb868, vf_class1899_update_l18},
+            {"class1899", 0x002fb868, clank_pad_update},
             {"class1906", 0x002fbb98, vf_class1906_update_l18},
     };
     for (const char* f : {"1050", "1650", "1750"}) {

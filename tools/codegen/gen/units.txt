@@ -19,7 +19,6 @@ mkall:rilgar_classes
 mkall:rilgar_part2
 mkall:umbris_classes
 mkall:umbris_part2
-mkall:veldin_finale_classes
 asm2cpp:moby_shadows_asm
 asm2cpp:moby_skin
 asm2cpp:world_cull

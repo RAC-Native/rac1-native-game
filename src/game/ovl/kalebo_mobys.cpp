@@ -3,6 +3,7 @@
 // moby +0x74 (or a callback installed by a class) reaches them only while the played level's overlay is level 16's.
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/shared_class1111.h>
 #include <game/ovl/shared_class1135.h>
 #include <game/ovl/shared_class1356.h>
 #include <game/ovl/shared_class1443.h>
@@ -72,7 +73,7 @@ void kalebo_moby_fns_register() {
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002d69e0), spawn_point_update_l1);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002dddd8), empty_update);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002ddde0), class933_update);
-    ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002dee10), kal_class1111_update_l16);  // (class 1111 stays generated: PAL 2.00)
+    ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002dee10), class1111_update);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002df1e8), gold_bolt_update);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002e0120), teleporter_update_l1);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002e0f78), class1139_update);
@@ -109,7 +110,7 @@ void kalebo_moby_fns_register() {
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002c9cd0), kal_cb_2c9cd0_l16);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002cef60), kal_cb_2cef60_l16);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002cf7a8), kal_cb_2cf7a8_l16);
-    ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002de3c0), kal_cb_2de3c0_l16);
+    ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002de3c0), class1111_draw);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002e0a38), class1135_draw);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002e58d8), class1443_draw);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002e84e8), kal_cb_2e84e8_l16);

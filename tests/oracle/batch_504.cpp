@@ -4,8 +4,11 @@
 // original and the one shared port the port:
 //  - shared_class1886.cpp: class 1886, a blob class 1885 throws: its update, the mark it leaves, its retirement (levels 9, 13);
 //  - shared_path_ahead.cpp: the point a distance ahead along a path (levels 9, 13);
-//  - shared_class1111.cpp: class 1111, the open sea, and its draw callback (levels 11, 16); "class1111_fix24" checks its 1.02
-//    fork (1.02 Gameplay fix 24) when run with RAC1_GAMEPLAY102=24;
+//  - shared_class1111.cpp: class 1111, the open sea, and its draw callback (levels 11, 16); its update's 1.02 forks:
+//    "class1111_fix24" (1.02 Gameplay fix 24, run with RAC1_GAMEPLAY102=24) and "class1111_fix35" (1.02 Fixes fix 35's open-sea
+//    half, run with RAC1_FIXES102=35), each the port with the fork on against the port without it plus the 1.02 build's stores
+//    written out by hand; "class1111_200" (run with RAC1_GAMEPLAY102=24 RAC1_FIXES102=35) the port with both on against the PAL
+//    disc 2.00's own build of the update, the set standin_200/ of tools/oracle/standin_dumps.py loaded at the entry;
 //  - shared_race_hud.cpp: the hoverboard races' trick meter (update and draw) and their bottom bar (levels 5, 16);
 //  - shared_class224.cpp, shared_class295.cpp: the space levels' pickups (classes 224 / 228) and rocket (class 295)
 //    (levels 13, 17);
@@ -31,6 +34,7 @@
 #include <game/ovl/shared_class1886.h>
 #include <game/ovl/shared_path_ahead.h>
 #include <game/enhance/advanced.h>
+#include <game/enhance/fixes102.h>
 #include <game/ovl/shared_class1111.h>
 #include <game/ovl/shared_race_hud.h>
 #include <game/ovl/shared_class224.h>
@@ -47,7 +51,9 @@
 #include <optional>
 #include <cmath>
 #include <cstring>
+#include <fstream>
 #include <random>
+#include <string>
 #include <functional>
 #include <initializer_list>
 #include <unordered_set>
@@ -592,6 +598,9 @@ void class1111_checks() {
             int bad = 0, n = 0, set = 0;
             static std::vector<uint8_t> start, with_fix;
             const std::unordered_set<uint32_t> ignored(g_ignored_words.begin(), g_ignored_words.end());
+            g_advanced_disabled = false;
+            const bool tint = fixes102_open_sea_tint();  // (fix 35's half, when the 1.02 Fixes row or RAC1_FIXES102 has it)
+            g_advanced_disabled = true;
             for (int c = 0; c < 40; ++c) {
                 level();
                 const std::vector<uint32_t> ms = subjects();
@@ -609,7 +618,9 @@ void class1111_checks() {
                 std::memcpy(ram, start.data(), start.size());
                 const uint32_t pv = ee_read<uint32_t>(m + 0x78);
                 const bool drawn = ee_read<uint8_t>(m + 0x20) != 0 && ee_read<float>(pv + 0x20) < ee_read<float>(OV(0x00166dc0) + 8);
+                const bool tinted = tint && ee_read<uint8_t>(m + 0x20) != 0 && 180.0f < ee_read<float>(OV(0x00166dc0) + 8);
                 class1111_update(m);  // (the fix off: the North American code)
+                if (tinted) for (uint32_t k = 0; k < 7; ++k) w8(OV(0x00161200) + k, k == 3 ? 0x40u : k == 0 || k == 4 ? 0x28u : 0x90u);
                 if (drawn) {  // (the 1.02 build's stores, by hand: L11:0x30c728's after the swell)
                     w32(OV(0x001612dc), 1);
                     wf(OV(0x001612e0), 512.0f);
@@ -629,6 +640,127 @@ void class1111_checks() {
             }
             std::printf("%-26s %s (%d cases, %d set the water disc)\n", "class1111_fix24", bad == 0 && n > 0 && set > 0 ? "ok" : "FAIL", n, set);
             if (bad != 0 || n == 0 || set == 0) ++g_fail;
+        }
+    }
+
+    // the camera about the height 180 (the open sea's underwater colours: above it), the sea's height on either side of it
+    auto vary_180 = [vary](uint32_t m, int st) {
+        vary(m, st);
+        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+        if (coin()) {
+            Vec4 c = ee_ref<Vec4>(OV(0x00166dc0));
+            c.z = ri(0, 5) == 0 ? 180.0f : 180.0f + rf(-30.0f, 30.0f);
+            ee_ref<Vec4>(OV(0x00166dc0)) = c;
+            if (coin()) wf(pv + 0x20, c.z + rf(-20.0f, 20.0f));
+        }
+        if (ri(0, 3) == 0) for (uint32_t k = 0; k < 8; ++k) w8(OV(0x00161200) + k, R() & 0xff);
+    };
+    struct ForkOn {
+        ForkOn() { g_advanced_disabled = false; }
+        ~ForkOn() { g_advanced_disabled = true; }
+    };
+    // fix 35 (1.02 Fixes), the open sea's half: the port with the fix against the port without it plus the 1.02 build's
+    // colours by hand (L11:0x30c7c8 .. 0x30c824: every frame after the first, the camera above 180)
+    if (selected("class1111_fix35")) {
+        const char* fx = std::getenv("RAC1_FIXES102");
+        if (fx == nullptr || std::string(fx).find("35") == std::string::npos) {
+            std::printf("%-26s skipped (run with RAC1_FIXES102=35)\n", "class1111_fix35");
+            ++g_skipped;
+        } else {
+            int bad = 0, n = 0, set = 0;
+            static std::vector<uint8_t> start, with_fix;
+            const std::unordered_set<uint32_t> ignored(g_ignored_words.begin(), g_ignored_words.end());
+            g_advanced_disabled = false;
+            const bool water = gameplay102_open_sea_water();  // (fix 24, when the 1.02 Gameplay row or RAC1_GAMEPLAY102 has it)
+            g_advanced_disabled = true;
+            for (int c = 0; c < 60; ++c) {
+                level();
+                const std::vector<uint32_t> ms = subjects();
+                if (ms.empty()) break;
+                const uint32_t m = pick(ms);
+                vary_180(m, c % 6 == 0 ? 0 : 1);
+                seed_rand();
+                uint8_t* ram = ee_get_ram_base();
+                start.assign(ram, ram + 0x02000000);
+                { ForkOn on; class1111_update(m); }
+                with_fix.assign(ram, ram + 0x02000000);
+                std::memcpy(ram, start.data(), start.size());
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                const bool on = ee_read<uint8_t>(m + 0x20) != 0;
+                const bool tinted = on && 180.0f < ee_read<float>(OV(0x00166dc0) + 8);
+                const bool drawn = water && on && ee_read<float>(pv + 0x20) < ee_read<float>(OV(0x00166dc0) + 8);
+                class1111_update(m);  // (the fix off: the North American code)
+                if (tinted) {  // (the 1.02 build's bytes, by hand)
+                    for (uint32_t k = 0; k < 7; ++k) w8(OV(0x00161200) + k, k == 3 ? 0x40u : k == 0 || k == 4 ? 0x28u : 0x90u);
+                    ++set;
+                }
+                if (drawn) {
+                    w32(OV(0x001612dc), 1);
+                    wf(OV(0x001612e0), 512.0f);
+                    wf(OV(0x001612e4), 512.0f);
+                    wf(OV(0x001612e8), ee_read<float>(sea + 0x20));
+                    wf(OV(0x001612ec), 1024.0f);
+                }
+                ++n;
+                for (uint32_t a = 0x00100000; a < 0x02000000; a += 4) {
+                    if (ignored.count(a) != 0) continue;
+                    if (a >= ee_stack_ptr() - 0x10000 && a < ee_stack_ptr() + 0x10000) continue;  // (the port's stack frames)
+                    uint32_t x, y;
+                    std::memcpy(&x, &with_fix[a], 4); std::memcpy(&y, &ram[a], 4);
+                    if (x != y) { if (bad < 8) std::printf("  class1111_fix35 case %d: %08x fix=%08x expected=%08x\n", c, a, x, y); ++bad; break; }
+                }
+            }
+            std::printf("%-26s %s (%d cases, %d set the colours)\n", "class1111_fix35", bad == 0 && n > 0 && set > 0 ? "ok" : "FAIL", n, set);
+            if (bad != 0 || n == 0 || set == 0) ++g_fail;
+        }
+    }
+    // the update's 1.02 forks against the PAL disc 2.00's own build of it: its code as the code generators take it back to the
+    // North American addresses (region_view.py's stand-in, what a 2.00 player's generated copy was translated from;
+    // tools/oracle/standin_dumps.py writes the set standin_200/), written at the entry in every case and run in the
+    // interpreter, against the port with fixes 24 and 35 on; the states and variations of "class1111_update" with the camera
+    // about 180. The 2.00 build is 286 words, 40 more than this one: they cover the start of the next function (L11:0x30b730,
+    // the gold bolt's update; L16:0x2df1e8), which the update does not call. Region: on the 2.00 disc both forks are
+    // region_core_moved(), which the oracle cannot make true; the settings stand in for it. The data layout the 2.00 build
+    // changed (the camera's last place 0x80 on: data/regions/SCES-50916-2.00.txt) is not tested here (the North American
+    // memory on both sides); it is proved by reading.
+    if (selected("class1111_200")) {
+        static std::vector<uint32_t> standin;
+        standin.clear();
+        {
+            char rel[64];
+            std::snprintf(rel, sizeof rel, "standin_200/l%d_%06x.bin", g_oracle_level, upd);
+            std::ifstream f(dump_path(rel), std::ios::binary);
+            std::vector<uint8_t> b((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+            for (size_t k = 0; k + 4 <= b.size(); k += 4)
+                standin.push_back(u(b[k]) | u(b[k + 1]) << 8 | u(b[k + 2]) << 16 | u(b[k + 3]) << 24);
+        }
+        const char* gp = std::getenv("RAC1_GAMEPLAY102");
+        const char* fx = std::getenv("RAC1_FIXES102");
+        if (gp == nullptr || fx == nullptr || std::string(gp).find("24") == std::string::npos || std::string(fx).find("35") == std::string::npos) {
+            std::printf("%-26s skipped (run with RAC1_GAMEPLAY102=24 RAC1_FIXES102=35)\n", "class1111_200");
+            ++g_skipped;
+        } else if (standin.empty()) {
+            std::printf("%-26s 0x%08x  skipped (no set standin_200/: tools/oracle/standin_dumps.py)\n", "class1111_200", upd);
+            ++g_skipped;
+        } else {
+            for (int st = 0; st < 3; ++st)
+                classcheck("class1111_200", upd, subjects, [](uint32_t m) { ForkOn on; class1111_update(m); },
+                           [st, vary_180, upd](uint32_t m) {
+                               vary_180(m, st);
+                               for (size_t k = 0; k < standin.size(); ++k) w32(upd + 4 * static_cast<uint32_t>(k), standin[k]);
+                               seed_rand();
+                           }, st == 0 ? 20 : 60);
+        }
+    }
+    // the play-test spots: each open sea's moby index, uid and place
+    if (selected("class1111_update")) {
+        level();
+        const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8));
+        for (const uint32_t m : mobys_with(upd)) {
+            const Vec4 q = ee_ref<Vec4>(m + 0x10);
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            std::printf("INFO class 1111 moby %u uid %u at (%.1f, %.1f, %.1f) sea height %.1f drawn above %.1f\n", (m - first) >> 8,
+                        ee_read<uint16_t>(m + 0xb2), q.x, q.y, q.z, ee_read<float>(pv + 0x14), ee_read<float>(pv + 0x20));
         }
     }
 }

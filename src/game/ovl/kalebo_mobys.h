@@ -84,14 +84,12 @@ void kal_cb_2cef60_l16(uint32_t m);         // L16:0x002cef60
 void kal_cb_2cf7a8_l16(uint32_t m);         // L16:0x002cf7a8
 void kal_barrier_beam_l16(uint32_t a, uint32_t b);  // L16:0x002cf850
 
-void kal_class1111_update_l16(uint32_t a0);  // L16:0x002dee10 (class 1111, the open sea: kept generated, the PAL 2.00 build changed it beyond fix 24)
 TrRet kal_25e948_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x0025e948 (the copy of hero_walk_to: kept generated, a unit entry; class 1455 calls it)
 TrRet kal_cam0_set_124_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002ee790
 void kal_cb_235660_l16(uint32_t a0);  // L16:0x00235660
 void kal_cb_238a30_l16(uint32_t a0);  // L16:0x00238a30
 TrRet kal_1fe280_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x001fe280
 TrRet kal_1fafa8_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x001fafa8
-void kal_cb_2de3c0_l16(uint32_t a0);  // L16:0x002de3c0 (class 1111's draw-list callback: kept generated with its update)
 
 }  // namespace rac1
 

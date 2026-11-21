@@ -3,8 +3,8 @@
 // _walking_bomb.cpp, _rail_switch.cpp, _gate.cpp, _platforms.cpp: classes 41, 564, 568, 582, 583, 586, 587, 624, 628 and class
 // 568's carry hooks; the files named in veldin_finale_mobys.h for the others) and, for the classes other levels share, the shared
 // hand-written ports (shared_*.cpp, novalis_*.cpp, aridia_props.cpp: each proved against level 18's own copy by its family
-// batch; the adapters below pass a copy's own constants). Giant Clank's pad (class 1899) keeps its generated copy: the PAL
-// 2.00 disc changed it (1.02 Gameplay fix 23), and the shared port's fork is a setting. Keyed by level 18's own address and by level, so the indirect call (`jalr`)
+// batch; the adapters below pass a copy's own constants; Giant Clank's pad, class 1899, with the PAL 2.00 disc's changes as
+// 1.02 Gameplay fix 23). Keyed by level 18's own address and by level, so the indirect call (`jalr`)
 // through moby +0x74 (and the draw lists' callbacks) reaches them only while the played level's overlay is level 18's.
 #include <game/ovl/veldin_finale_hooks.h>
 #include <game/ovl/veldin_finale_mobys.h>
@@ -27,6 +27,7 @@
 #include <game/ovl/shared_class655_draw.h>
 #include <game/ovl/shared_class830.h>
 #include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_clank_pad.h>
 #include <game/ovl/shared_finale.h>
 #include <game/ovl/shared_flash.h>
 #include <game/ovl/shared_gold_bolt.h>
@@ -124,7 +125,7 @@ void veldin_finale_moby_fns_register() {
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002fad28), vf_class1799_update_l18);
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002fae48), class1443_update);
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002fb548), flash_update);
-    ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002fb868), vf_class1899_update_l18);
+    ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002fb868), clank_pad_update);
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002fbb98), vf_class1906_update_l18);
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002d6108), vf_hook_2d6108_m);
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002d61e0), vf_hook_2d61e0_m);

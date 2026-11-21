@@ -10,7 +10,8 @@
 // camera's height above which the sea is drawn, +0x24 the curtain's top below the camera, +0x28 the band's reach ahead,
 // +0x2c the height over which the tiles fade out.
 //
-// The 1.02 build (the PAL disc 2.00) changed the update: see class1111_update.
+// The 1.02 build (the PAL disc 2.00) changed the update: see class1111_update. Its draw callback is the North American code
+// relocated on both PAL discs, and so is the update on the PAL disc 1.00.
 #include <game/ovl/shared_class1111.h>
 
 #include <game/enhance/fixes102.h>
@@ -34,7 +35,8 @@ uint32_t sea() {
     if (on_level(KALEBO)) return L16_ADDR(0x00161c50);
     return L11_ADDR(0x00161df8);
 }
-// the camera's place at the last update
+// the camera's place at the last update (on the PAL disc 2.00 at its own place, 0x80 further: the 1.02 build aligns it after the
+// Vendor's block, which is a word shorter there; data/regions/SCES-50916-2.00.txt places it)
 uint32_t last_camera() {
     if (on_level(KALEBO)) return L16_ADDR(0x00162240);
     return L11_ADDR(0x00162840);
@@ -46,7 +48,7 @@ uint32_t buffers() {
     if (on_level(KALEBO)) return L16_ADDR(0x001d8a10);
     return L11_ADDR(0x001d9af0);
 }
-// the level's copy of the draw callback (queued by the update: the levels still register their copies)
+// the level's copy of the draw callback (queued by the update; the levels register class1111_draw at it)
 uint32_t draw_callback() {
     if (on_level(KALEBO)) return L16_ADDR(0x002de3c0);
     return L11_ADDR(0x0030a908);
@@ -97,11 +99,12 @@ void tile_point(uint32_t buf, int32_t k, uint32_t pv, uint32_t layer_scale, uint
 // frame: the layers scroll against the camera's motion (each at its scale over five tiles), only while the camera is
 // above the pvar's height; the swell rises and falls a quarter about the level once every 360 frames; the layers drift by
 // their rates; and the draw is queued.
-// The 1.02 build (the PAL disc 2.00) adds two things while the camera is above that height (data/regions/
-// SCES-50916-2.00.txt; its L11:0x30c728 / L16:0x2e01d8): with the camera above 180 the underwater colours (0x161200,
-// seven bytes) are set each frame (a look, not forked; docs/advanced.md), and after the swell the level's water disc
-// (0x1612dc: on, centre (512, 512), height the swell's, radius 1024) so that the open sea is water to the hero's movement,
-// the bombs and the mines (surface_height): 1.02 Gameplay fix 24 (fixes102.h), off by default.
+// The 1.02 build (the PAL disc 2.00: L11:0x30c728 / L16:0x2e01d8) adds two things: on every frame after the first, with the
+// camera above 180, the level's underwater colours (0x161200, seven bytes: 1.02 Fixes fix 35, the pair of the sewer's;
+// fixes102_open_sea_tint()); and, while the camera is above the sea's height, after the swell, the level's water disc (0x1612dc:
+// on, centre (512, 512), height the swell's, radius 1024) so that the open sea is water to the hero's movement, the bombs and
+// the mines (surface_height): 1.02 Gameplay fix 24 (gameplay102_open_sea_water()). Both are always taken on the PAL disc 2.00,
+// whose own code they are; the rest of its build is relocations and the compiler's register choice.
 // orig: L11:0x0030b358 L16:0x002dee10
 void class1111_update(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
@@ -116,6 +119,16 @@ void class1111_update(uint32_t m) {
         lq_sq(last_camera(), camera());
         swc1(s + 0x24, lwc1(pv + 0x14));
         return;
+    }
+    if (fixes102_open_sea_tint() && 180.0f < lwc1(camera() + 8)) {  // enhancement: 1.02 Fixes, fix 35 (region: the PAL 2.00 disc's own code)
+        const uint32_t tint = OV(0x00161200);  // (the level's underwater colours)
+        sb(tint, 0x28);
+        sb(tint + 1, 0x90);
+        sb(tint + 2, 0x90);
+        sb(tint + 3, 0x40);
+        sb(tint + 4, 0x28);
+        sb(tint + 5, 0x90);
+        sb(tint + 6, 0x90);
     }
     const uint32_t sp = ee_stack_alloc(0xb0);
     const uint32_t moved = sp, step = sp + 0x10;
@@ -141,7 +154,7 @@ void class1111_update(uint32_t m) {
         const float angle = fpu_sub(fpu_mul(int_to_float(frame), u2f(0x3c8ee7a7u)), u2f(0x4048f5c3u));  // (degrees to radians, - 3.14)
         const float swell = fpu_add(lwc1(s + 0x24), fpu_mul(sin_vu(angle), 0.25f));
         swc1(s + 0x20, swell);
-        if (gameplay102_on(24)) {  // enhancement: 1.02 Gameplay, fix 24 (fixes102.h): the open sea is water
+        if (gameplay102_open_sea_water()) {  // enhancement: 1.02 Gameplay, fix 24 (fixes102.h; region: the PAL 2.00 disc's own code): the open sea is water
             sw(OV(0x001612dc), 1);
             swc1(OV(0x001612e4), 512.0f);
             swc1(OV(0x001612ec), 1024.0f);

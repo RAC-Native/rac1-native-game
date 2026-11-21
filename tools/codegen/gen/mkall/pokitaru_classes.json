@@ -4,23 +4,19 @@
  "env": {
   "MKALL_HELPER_PREFIX": "pok_",
   "MKALL_WIDE_GPR": "",
-  "MKALL_FORCE": "22e0a8,231380",
+  "MKALL_FORCE": "",
   "MKALL_UNIFORM": "pok_hook_2fb7f0_u,pok_hook_2fb840_u,pok_hook_2fb890_u,pok_hook_2fb8c0_u,pok_hook_3162d0_u,pok_hook_3162f0_u"
  },
  "entries": [
-  "30b358:pok_class1111_update_l11:void:a0",
   "2fb7f0:pok_hook_2fb7f0_u",
   "2fb840:pok_hook_2fb840_u",
   "2fb890:pok_hook_2fb890_u",
   "2fb8c0:pok_hook_2fb8c0_u",
   "3162d0:pok_hook_3162d0_u",
-  "3162f0:pok_hook_3162f0_u",
-  "30a908:pok_cb_30a908_l11:void:a0"
+  "3162f0:pok_hook_3162f0_u"
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/pokitaru_classes_tr_2.cpp",
-  "src/game/ovl/pokitaru_classes_tr_5.cpp",
-  "src/game/ovl/pokitaru_classes_tr_6.cpp"
+  "src/game/ovl/pokitaru_classes_tr_5.cpp"
  ]
 }

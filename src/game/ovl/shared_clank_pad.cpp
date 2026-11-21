@@ -7,7 +7,10 @@
 //
 // The 1.02 build (the PAL disc 2.00: L15:0x2ee458, L18:0x2fccc8) changed the press that boards: a moby still linked at pvar
 // +0x70 is retired first (its index cleared), and on Quartu the pad's place is saved as the checkpoint (checkpoint_save,
-// 0x284e50) before Ratchet is put on it. That is 1.02 Gameplay fix 23 (fixes102.h), off by default.
+// 0x284e50; the levels' copies L15:0x274af8 / L18:0x286e08) before Ratchet is put on it. That is 1.02 Gameplay fix 23
+// (fixes102.h: gameplay102_clank_pad()), off by default, always on on the PAL disc 2.00, whose own code it is. Everything
+// else in the 2.00 build is a relocation or the compiler's scheduling, and the PAL disc 1.00 has the North American code
+// relocated.
 #include <game/ovl/shared_clank_pad.h>
 
 #include <game/enhance/fixes102.h>
@@ -87,7 +90,7 @@ void clank_pad_update(uint32_t m) {
     }
     if (lbu(HERO + 0x20a4) != 0) return;
     const uint32_t clank = moby_at(lw(pv + 0x60));
-    if (gameplay102_on(23)) {  // enhancement: 1.02 Gameplay, fix 23 (fixes102.h): a moby left linked is retired
+    if (gameplay102_clank_pad()) {  // enhancement: 1.02 Gameplay, fix 23 (fixes102.h; region: the PAL 2.00 disc's own code): a moby left linked is retired
         const int32_t left = lw(pv + 0x70);
         if (left != -1) {
             const uint32_t other = moby_at(left);
@@ -100,7 +103,7 @@ void clank_pad_update(uint32_t m) {
     const uint32_t sp = ee_stack_alloc(0x10);
     V(sp) = V(m + 0x10);
     swc1(sp + 8, fpu_add(floor_probe_v(0.5f, V(sp), 0), u2f(0x3dcccccdu)));  // (0.1 over the floor)
-    if (gameplay102_on(23) && game_level() == 0xf) checkpoint_save(sp, m + 0x40);  // enhancement: 1.02 Gameplay, fix 23: Quartu's checkpoint at the pad
+    if (gameplay102_clank_pad() && game_level() == 0xf) checkpoint_save(sp, m + 0x40);  // enhancement: 1.02 Gameplay, fix 23 (region: 2.00): Quartu's checkpoint at the pad
     hero_place(sp, m + 0x40, 0, 1);
     ee_stack_free(0x10);
     sb(clank + 0x31, 1);
