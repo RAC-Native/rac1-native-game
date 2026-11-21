@@ -24,5 +24,3 @@
 0x0030c2b0: set32(v0, static_cast<uint32_t>(particle34_puff_2(a0.w())));
 0x0030d4b0: set32(v0, static_cast<uint32_t>(class1885_free_slot(a0.w(), a1.w())));
 0x0030dbe8: set32(v0, static_cast<uint32_t>(class1885_throw(a0.w(), a1.w(), a2.w(), a3.w(), t0.w())));
-0x00316f20: cam_entry_mark(static_cast<int32_t>(a0.w()));
-0x00316f48: cam_entry_mark_type19(static_cast<int32_t>(a0.w()));

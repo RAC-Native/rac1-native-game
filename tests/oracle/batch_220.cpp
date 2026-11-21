@@ -18,6 +18,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
+#include <game/ovl/variants_l13.h>
 #include <game/ovl/empty_class_updates.h>
 #include <game/ovl/kerwan_camera.h>
 #include <game/ovl/novalis_mobys.h>
@@ -1876,6 +1877,358 @@ void batch_220() {
             common();
             return m;
         }, 4, 30, 0);
+
+        // ---- P13.5 (task of stage 4): class 388 (Qwark's ship, gemlik_qwark.cpp), its nineteen helpers and its run's beam (the
+        // draw callback 0x2ea8c8), on the level's own moby of the class (moby 396, set up by the level's first frame: its parts,
+        // paths and pvars): each state and the fight's stages, its path slot and points (their ends, the markers), the timers at
+        // their edges, its health about each stage's and the warning's threshold, hits on its damage piece, its parts and itself
+        // by its own missiles / mines, an asteroid or others (kinds 0x127 / 0x3f1 / others), Ratchet flying his ship (class 69)
+        // or not, near it or not, his ship model (moby +0x134) gone / exploding, its glow (class 352, spawned: its grid rect
+        // "none"), its sound slots, the lines (the dialog stream idle or busy, the lines said, the hold timers), the view set up
+        // (a run's aim on screen or not), the frame scale at its 50 Hz value in a quarter of the cases. Left out: the particle
+        // pool's +0x2c (as above). B220_INFO=1 prints the subject.
+        level();
+        const std::vector<uint32_t> c388 = mobys_with(0x002eb098);
+        auto screen_ready = [] {
+            if (ee_read<uint16_t>(0x001518d0) == 0) { w16(0x001518d0, 640); w16(0x001518d2, 448); }
+            screen_setup();
+            projection_setup();
+        };
+        // the camera 8 .. 30 behind `at` (its view's forward kept) or about it, until `at` is on screen (r); the view set up
+        auto camera_sees = [screen_ready](const Vec4& at, float r) {
+            screen_ready();
+            for (int k = 0; k < 60; ++k) {
+                const Vec4 fwd = ee_ref<Vec4>(OV(0x00166fd0));
+                const float back = rf(8.0f, 30.0f);
+                ee_ref<Vec4>(OV(0x00166dc0)) = k < 30 ? Vec4{at.x - fwd.x * back + rf(-2, 2), at.y - fwd.y * back + rf(-2, 2), at.z - fwd.z * back + rf(-1, 1), 1.0f}
+                                                      : Vec4{at.x + rf(-20, 20), at.y + rf(-20, 20), at.z + rf(-5, 5), 1.0f};
+                render_view_setup();
+                ee_ref<Vec4>(0x00180040u) = at;
+                if (point_on_screen(0x00180040u, r) != -1) return true;
+            }
+            return false;
+        };
+        if (std::getenv("B220_INFO") != nullptr)
+            for (uint32_t m : c388) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                const Vec4 q = ee_ref<Vec4>(m + 0x10);
+                std::printf("INFO class 388 moby %u uid %u at (%.1f, %.1f, %.1f) state %u stage %u health %.1f / %d model %d paths %d %d %d %d %d\n", index_of(m),
+                            ee_read<uint16_t>(m + 0xb2), q.x, q.y, q.z, ee_read<uint8_t>(m + 0x20), ee_read<uint8_t>(m + 0xbc), ee_read<float>(pv + 0x20),
+                            ee_read<int16_t>(pv + 0x24), ee_read<int32_t>(pv + 0x134), ee_read<int32_t>(pv + 0xb0), ee_read<int32_t>(pv + 0xb4),
+                            ee_read<int32_t>(pv + 0xb8), ee_read<int32_t>(pv + 0xbc), ee_read<int32_t>(pv + 0xc0));
+            }
+        // a hit on `on` (a part, the piece or the ship) by a missile / mine of its own, an asteroid or another moby, of kind 0x127 /
+        // 0x3f1 / another, its damage about `health`
+        auto hit388 = [hit_by, any_moby, spawn_at, c212](uint32_t on, float health) {
+            const int k = ri(0, 5);
+            uint32_t by = 0;
+            if (k == 0) by = spawn_at(coin() ? 0x52 : 0x53, on + 0x10, 3.0f);
+            else if (k == 1 && !c212.empty()) by = c212[static_cast<size_t>(ri(0, static_cast<int>(c212.size()) - 1))];
+            else if (k != 5) by = any_moby(on);
+            const float d = ri(0, 2) == 0 ? rf(0.0f, 1.0f) : (coin() ? health + rf(-0.5f, 0.5f) : rf(1.0f, 30.0f));
+            hit_by(on, by, 0x230000u, d);
+            const uint32_t e = OV(0x00178100) + (ee_read<uint8_t>(on + 0xa4) << 6);
+            { const int j = ri(0, 3); w16(e + 0x2a, j == 0 ? 0x127u : (j == 1 ? 0x3f1u : u(ri(0, 0x60)))); }
+            if (coin()) { w8(e + 0x28, u(ri(0, 11))); w8(e + 0x29, u(ri(0, 4))); }
+        };
+        // the subject in state `st`'s case: 0 set up (its save byte none / destroyed), 1 wait (the time the fight took to start),
+        // 2 approach (path 0's end near), 3 / 4 fight (stages 1 .. 7; 5: stage 4, the fighters' count), 6 fight hit, 7 / 8 a run
+        // (+0xff 0 / 1), 9 gloat, 10 dying, 11 crash, 12 reset, 13 any state with the frame's tail varied, 14 a run hit
+        auto prep388 = [P, ship, fly, hero_at, around, hit388, spawn_at, sound_slot, path_of, moby_base, camera_sees, common](uint32_t m, int st) -> uint32_t {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            static const uint8_t states[] = {0, 1, 2, 3, 4, 3, 3, 5, 5, 6, 7, 8, 9, 0, 5};
+            uint8_t s = states[st];
+            if (st == 13) s = u(ri(0, 12));
+            if (st == 5 || st == 6) s = coin() ? 3u : 4u;
+            w8(m + 0x20, s);
+            // the stage and the health about its thresholds
+            const uint8_t stage = st == 5 ? 4u : (st == 0 || st == 12 ? u(ri(0, 8)) : (ri(0, 7) == 0 ? u(ri(0, 1)) * 8u : u(ri(1, 7))));
+            w8(m + 0xbc, stage);
+            if (ri(0, 3) == 0) w16(pv + 0x24, coin() ? 102u : 120u);
+            const float full = static_cast<float>(ee_read<int16_t>(pv + 0x24)), per = full / 6.0f;
+            const float stage_hp = (6.0f - static_cast<float>(stage < 5 ? stage : stage - 1)) * per;
+            { const int k = ri(0, 4);
+              wf(pv + 0x20, k == 0 ? stage_hp + rf(-1.0f, 1.0f) : (k == 1 ? stage_hp + per * 0.3f + rf(-1.0f, 1.0f) : (k == 2 ? rf(0.0f, 1.0f) : rf(0.0f, full)))); }
+            // its path slot, its points (an end in part, its direction), its place between them
+            const uint8_t slot = st == 2 ? 0u : u(ri(0, 4));
+            w8(pv + 0x13b, slot);
+            const uint32_t path = path_of(ee_read<int32_t>(pv + 0xb0 + slot * 4u));
+            const int32_t np = path == 0 ? 0 : ee_read<int32_t>(path);
+            if (np < 4 || np > 600) return 0;
+            const int32_t dir = coin() ? 1 : -1;
+            int32_t to = ri(0, np - 1);
+            if (ri(0, 3) == 0 || st == 2 || st == 10) to = dir == 1 ? np - 1 - ri(0, 2) : ri(0, 2);
+            const int32_t from = (to - dir + np) % np;
+            w16(pv + 0x9c, u(to)); w16(pv + 0x9e, u(from));
+            w8(pv + 0x10c, dir == 1 ? 1u : 0xffu);
+            { const Vec4 a = ee_ref<Vec4>(path + 0x10 + u(from) * 0x10), b = ee_ref<Vec4>(path + 0x10 + u(to) * 0x10);
+              const float t = ri(0, 3) == 0 ? rf(0.9f, 1.1f) : rf(0.0f, 1.0f);
+              ee_ref<Vec4>(m + 0x10) = Vec4{a.x + (b.x - a.x) * t + rf(-1, 1), a.y + (b.y - a.y) * t + rf(-1, 1), a.z + (b.z - a.z) * t + rf(-1, 1), 0.0f}; }
+            if (ri(0, 5) == 0) wf(path + 0x10 + u(to) * 0x10 + 0xc, coin() ? 1.0f : -1.0f);  // (a marker point: its w above 0)
+            wf(pv + 0xac, ri(0, 3) == 0 ? rf(0.0f, 0.1f) : rf(0.1f, 2.0f));
+            wfrand(pv + 0x70, 3, -1.5f, 1.5f);
+            wf(pv + 0xa4, rf(-0.3f, 0.3f)); wf(pv + 0xa8, rf(-0.3f, 0.3f));
+            wf(m + 0x40, rf(-1.7f, 1.7f)); wf(m + 0x44, rf(-1.0f, 1.0f)); wf(m + 0x48, rf(-3.1f, 3.1f));
+            w8(m + 0x31, u(ri(0, 3) != 0 ? 1 : 0));
+            // the timers and counters at their edges
+            { static const int32_t f8s[] = {0, 1, 2, 30, 31, 119, 120, 121, 179, 180, 419, 420, 600};
+              const int k = ri(0, 2);
+              w32(pv + 0xf8, u(k == 0 ? ri(0, 700) : (k == 1 || st == 11 ? f8s[ri(0, 12)] : ri(0, 1)))); }
+            w32(pv + 0x100, u(ri(0, 2) == 0 ? ri(0, 1) : (coin() ? 0 : ri(1, 600))));
+            w32(pv + 0x124, u(ri(0, 2) == 0 ? ri(0, 1) : (coin() ? 0 : ri(1, 240))));
+            { static const uint8_t fds[] = {0, 1, 1, 2, 9, 10, 11}; w8(pv + 0xfd, coin() ? fds[ri(0, 6)] : u(ri(0, 50))); }
+            w8(pv + 0xfe, u(ri(0, 1))); w8(pv + 0xff, st == 7 ? 0u : (st == 8 ? 1u : u(ri(0, 1)))); w8(pv + 0xfc, u(ri(0, 3)));
+            w8(pv + 0x10e, coin() ? 0u : u(ri(1, 8)));
+            // the lines: said, held, queued; the dialog stream idle or busy (its state 3 in part)
+            w16(pv + 0x138, ri(0, 2) == 0 ? 0u : u(ri(0, 7)));
+            w32(pv + 0x13c, ri(0, 3) == 0 ? 0xffffffffu : (coin() ? 0u : R()));
+            w8(pv + 0x13a, u(ri(0, 2) == 0 ? 1 : 0));
+            w16(pv + 0x144, ri(0, 2) == 0 ? 0u : u(ri(1, 400))); w16(pv + 0x146, ri(0, 2) == 0 ? 0u : u(ri(1, 80)));
+            w8(pv + 0x148, u(ri(0, 1)));
+            if (coin()) { w8(pv + 0x148, 0); w16(pv + 0x144, 0); w16(pv + 0x146, 0); }
+            if (st == 10 && ri(0, 2) == 0) w32(pv + 0x13c, 0x40000000u | (R() & 0xffffu));
+            w32(L13_ADDR(0x00161950), ri(0, 5) == 0 ? u(ri(-1, 5)) : u(ri(0, 3)));
+            { const int k = ri(0, 3);
+              if (k != 0) { w32(0x00151720, 0); w32(0x001516ec, k == 1 ? u(ri(0, 60000)) : 0xffffffffu); } }
+            w16(0x0015172a, coin() ? 3u : u(ri(0, 5)));
+            // the fight's start (state 1): Ratchet's state, the first frame, the time it took
+            if (s == 1 || ri(0, 5) == 0) {
+                w32(L13_ADDR(0x00161954), coin() ? 0xffffffffu : u(ri(0, 50000)));
+                w32(0x0015eea4, ee_read<uint32_t>(L13_ADDR(0x00161954)) + u(coin() ? ri(0, 360 * 50) : 360 * ri(20, 60)));
+            }
+            // save byte (state 0): the ship destroyed in the save in part
+            if (s == 0 && ri(0, 3) == 0 && ee_read<uint8_t>(m + 0xb0) != 0xff)
+                w8(0x0014c050u + ee_read<uint8_t>(m + 0xb0) + (ee_read<uint32_t>(0x0015ed84u) << 4), 0xffu);
+            if (s == 0 && ri(0, 2) == 0) {  // a path closing on its first point (its last point dropped)
+                const uint32_t pth = path_of(ee_read<int32_t>(pv + 0xb0 + u(ri(0, 4)) * 4u));
+                const int32_t n = pth == 0 ? 0 : ee_read<int32_t>(pth);
+                if (n >= 3) { Vec4 q = ee_ref<Vec4>(pth + 0x10); q.x += rf(-0.3f, 0.3f); ee_ref<Vec4>(pth + 0x10 + u(n - 1) * 0x10) = q; }
+            }
+            // Ratchet: flying his ship near it or not; the hero at 60 .. 100 in part (a run's start)
+            fly(m + 0x10, ri(0, 2) != 0);
+            { const float d = ri(0, 2) == 0 ? rf(60.0f, 100.0f) : (coin() ? rf(5.0f, 60.0f) : rf(100.0f, 200.0f)); hero_at(around(m + 0x10, d, rf(-10.0f, 10.0f))); }
+            if (ship != 0 && ee_read<uint32_t>(ship + 0x78) != 0 && ri(0, 2) == 0) w32(ee_read<uint32_t>(ship + 0x78) + 0x120, coin() ? u(ri(1, 9999)) : 0u);
+            // its ship model (moby +0x134): there, exploding (7) or gone, in part
+            if (const int32_t mi = ee_read<int32_t>(pv + 0x134); mi >= 0 && mi < 2000 && ri(0, 5) == 0) w8(moby_base() + (u(mi) << 8) + 0x20, coin() ? 7u : 0xfeu);
+            // its glow, its damage piece, its parts (some gone), its sound slots, its light, the HUD bar none
+            { const int k = ri(0, 3);
+              uint32_t g = 0;
+              if (k != 0) g = spawn_at(0x160, m + 0x10, 1.0f);
+              if (g != 0) { w8(g + 0x20, k == 3 ? 0xfeu : u(ri(0, 5))); if (ri(0, 5) == 0) w16(g + 0xa6, 0x161); }
+              w32(pv + 0x110, g); }
+            { uint32_t pc = 0;
+              if (ri(0, 2) != 0) pc = spawn_at(0x191, m + 0x10, 1.0f);
+              if (pc != 0 && ri(0, 4) == 0) w8(pc + 0x20, coin() ? 0xfeu : 0xfdu);
+              w32(pv + 0xf0, pc); }
+            for (uint32_t i = 0; i < 10; ++i) if (ri(0, 6) == 0) w32(pv + 0xc4 + i * 4, 0);
+            sound_slot(m, pv + 0x114); sound_slot(m, pv + 0x118); sound_slot(m, pv + 0x11c);
+            w32(pv + 0x120, coin() ? 0xffffffffu : u(ri(0, 7)));
+            w32(pv + 0x104, (s == 0 || s == 9) && coin() ? u(ri(0, 3)) : 0xffffffffu);
+            if (ri(0, 7) == 0) {  // at the space's bounds
+                Vec4 q = ee_ref<Vec4>(m + 0x10); const int ax = ri(0, 2); (&q.x)[ax] = coin() ? rf(1.0f, 25.0f) : rf(998.0f, 1010.0f); ee_ref<Vec4>(m + 0x10) = q;
+            }
+            if (s != 5) wfrand(pv + 0x80, 4, 20.0f, 1000.0f);
+            // a run: its aim near the hero (within a frame's 40 a second or not), the view set up on it (on screen or not)
+            if (s == 5) {
+                const Vec4 h = ee_ref<Vec4>(0x0013f3d0);
+                ee_ref<Vec4>(pv + 0x80) = coin() ? around(0x0013f3d0, rf(0.0f, 0.6f), 0.0f) : Vec4{h.x + rf(-30, 30), h.y + rf(-30, 30), h.z + rf(-10, 10), 0.0f};
+                if (coin()) { if (!camera_sees(ee_ref<Vec4>(pv + 0x80), 100.0f)) return 0; }
+                if (st == 8 && ee_read<uint32_t>(P + 0x15f0) != 0 && coin()) { const uint32_t spv = ee_read<uint32_t>(ee_read<uint32_t>(P + 0x15f0) + 0x78); wf(spv + 0x38, rf(-3.1f, 3.1f)); wf(spv + 0x34, rf(-1.5f, 1.5f)); }
+            }
+            // hits (on the piece, a part or itself)
+            if (st == 6 || st == 14 || (st == 13 && coin()) || ri(0, 4) == 0) {
+                const uint32_t pc = ee_read<uint32_t>(pv + 0xf0);
+                const int k = ri(0, 2);
+                const uint32_t on = k == 0 && pc != 0 ? pc : (k == 1 ? m : ee_read<uint32_t>(pv + 0xc4 + u(ri(0, 9)) * 4));
+                if (on != 0) hit388(on, ee_read<float>(pv + 0x20));
+            }
+            w8(0x0014095f, ri(0, 7) == 0 ? u(ri(0, 3)) : 0u);  // (the hero's byte: a reset from states 2 .. 5)
+            if ((s == 3 || s == 4) && ri(0, 3) == 0) {  // a marker point reached, the stage's slot another: on its path's point count - 5
+                const int32_t ns = ee_read<int32_t>(L13_ADDR(0x001d3448) + u(stage) * 4u);
+                const uint32_t p2 = ns >= 0 && ns < 5 ? path_of(ee_read<int32_t>(pv + 0xb0 + u(ns) * 4u)) : 0u;
+                const int32_t n2 = p2 == 0 ? 0 : ee_read<int32_t>(p2);
+                if (ns != slot && n2 > 8 && n2 < 600) {
+                    ee_ref<Vec4>(m + 0x10) = ee_ref<Vec4>(p2 + 0x10 + u(n2 - 5) * 0x10);
+                    wf(path + 0x10 + u(to) * 0x10 + 0xc, 1.0f);
+                    wf(path + 0x10 + u((to + dir + np) % np) * 0x10 + 0xc, 1.0f);
+                }
+            }
+            common();
+            return m;
+        };
+        // A known difference (these checks only): a missile's rotation +0x40 is taken whole from 0x2ea540's frame, whose w lane
+        // (+0x1c) the function never writes: the original's holds an earlier callee's leftover (ORACLE_WATCH: written at pc
+        // 0x2c1448 under 0x2ea540 / 0x2c13b0, 1.0 from a deeper frame), the port's frame and the generated code's before it are
+        // cleared: the +0x4c word (the rotation's w; the transform's euler_to_mat3_vu reads x y z) of the moby slots moby_spawn
+        // takes from (*0x15ffdc .. *0x15ffe0: none of the level's placed mobys) is left out of the checks that launch missiles.
+        std::vector<uint32_t> rot_w = pool_w;
+        level();
+        for (uint32_t a = ee_read<uint32_t>(OV(0x0015ffdc)); a < ee_read<uint32_t>(OV(0x0015ffe0)); a += 0x100) rot_w.push_back(a + 0x4c);
+        if (std::getenv("B220_INFO") != nullptr)
+            std::printf("INFO mobys 0x%08x, spawned from 0x%08x .. 0x%08x\n", moby_base(), ee_read<uint32_t>(OV(0x0015ffdc)), ee_read<uint32_t>(OV(0x0015ffe0)));
+        p133("p135_class388", 0x002eb098, gml_class388_update_l13, c388, prep388, 15, 60, 1, rot_w);
+        // its helpers directly, on the states above
+        if (!c388.empty()) {
+            auto deal388 = [level, c388, prep388](int st) -> uint32_t {
+                for (int k = 0; k < 40; ++k) {
+                    level();
+                    const uint32_t m = prep388(c388[0], st);
+                    if (m != 0) return m;
+                }
+                return 0u;
+            };
+            static const int fight_cases[] = {3, 4, 5, 6, 7, 8, 13, 14};
+            auto any_fight = [] { return fight_cases[ri(0, 7)]; };
+            const size_t ign = g_ignored_words.size();
+            g_ignored_words.insert(g_ignored_words.end(), pool_w.begin(), pool_w.end());
+            {
+                std::optional<CollisionScratchIgnored> spr;
+                spr.emplace(false);
+                const size_t ign_rot = g_ignored_words.size();
+                g_ignored_words.insert(g_ignored_words.end(), rot_w.begin(), rot_w.end());
+                l13check("p135_2eac00", 0x002eac00, 150, Ret::None, [deal388, any_fight] {
+                    const uint32_t m = deal388(any_fight());
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    if (ri(0, 3) == 0) w8(m + 0x20, u(ri(3, 5)));
+                    if (ri(0, 3) == 0) { w8(m + 0xbc, 1); w8(m + 0x20, 4); w8(pv + 0xfd, u(ri(9, 10))); w32(pv + 0xf8, 1); }
+                    else if (coin()) { w32(pv + 0xf8, u(ri(0, 1))); w32(pv + 0x124, u(ri(0, 2))); w32(pv + 0x100, u(ri(0, 1))); w8(pv + 0xfd, u(ri(0, 2))); }
+                    if (coin()) {
+                        Vec4 nose;
+                        moby_chain_point_v(m, 0x13, nose);
+                        const float d = rf(55.0f, 105.0f), a = rf(-3.1f, 3.1f);
+                        ee_ref<Vec4>(0x0013f3d0) = Vec4{nose.x + d * std::cos(a), nose.y + d * std::sin(a), nose.z, 0.0f};
+                    }
+                    return Args{{m, ee_read<uint32_t>(m + 0x78)}, {}};
+                }, [](A a) { gml_2eac00_l13(a.i[0], a.i[1]); return uint64_t{0}; });
+                l13check("p135_2ea540", 0x002ea540, 120, Ret::Int32, [deal388] {
+                    const uint32_t m = deal388(ri(0, 3) == 0 ? 7 : ri(3, 4));
+                    if (ri(0, 3) == 0) w8(m + 0xbc, 6);
+                    return Args{{m, ee_read<uint32_t>(m + 0x78)}, {}};
+                }, [](A a) { return r32(gml_2ea540_l13(a.i[0], a.i[1])); });
+                g_ignored_words.resize(ign_rot);
+            }
+            l13check("p135_2e9a48", 0x002e9a48, 150, Ret::None, [deal388, hit388] {
+                const uint32_t m = deal388(ri(0, 2) == 0 ? 14 : 6);
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                if (ri(0, 4) == 0) w8(m + 0x20, u(ri(0, 8)));
+                if (coin()) { w8(pv + 0x148, 0); w16(pv + 0x144, 0); w16(pv + 0x146, 0); w32(pv + 0x13c, 0); w32(0x00151720, 0); w32(0x001516ec, 0xffffffffu); }
+                if (coin() && ee_read<uint32_t>(pv + 0xf0) != 0) {  // the damage piece hit, about its stage's health (stage 6 in part)
+                    if (coin()) w8(m + 0xbc, 6);
+                    const int32_t bc = ee_read<uint8_t>(m + 0xbc);
+                    const float per = static_cast<float>(ee_read<int16_t>(pv + 0x24)) / 6.0f, stage_hp = (6.0f - static_cast<float>(bc < 5 ? bc : bc - 1)) * per;
+                    wf(pv + 0x20, stage_hp + (coin() ? rf(0.1f, 0.3f * per) : rf(0.3f * per, 0.5f * per)));
+                    for (uint32_t i = 0; i < 11; ++i) if (const uint32_t o = ee_read<uint32_t>(pv + 0xc4 + i * 4); o != 0) w8(o + 0xa4, 0xff);
+                    hit388(ee_read<uint32_t>(pv + 0xf0), rf(0.2f, 0.4f) * per);
+                }
+                return Args{{m, ee_read<uint32_t>(m + 0x78)}, {}};
+            }, [](A a) { gml_2e9a48_l13(a.i[0], a.i[1]); return uint64_t{0}; });
+            l13check("p135_2e86f8", 0x002e86f8, 200, Ret::Int32, [deal388] {
+                const uint32_t m = deal388(ri(0, 14));
+                static const int32_t lines[] = {1, 3, 0xc, 0x10, 0x11, 0x13, 0x14, 0x16, 0x17, 0x1a, 0x1b, 0x1d, 0x1e, 0x1f, 0x20, 0x22, 0x23, 0x24};
+                const int32_t line = coin() ? lines[ri(0, 17)] : ri(0, 0x24);
+                const int32_t n = coin() ? ri(1, 9) : ri(1, 4);
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                if (coin()) { w8(pv + 0x148, u(ri(0, 2) == 0 ? 1 : 0)); w16(pv + 0x144, u(ri(0, 1))); w16(pv + 0x146, u(ri(0, 1))); w32(0x00151720, 0); w32(0x001516ec, 0xffffffffu); }
+                return Args{{m, pv, u(line), u(n)}, {}};
+            }, [](A a) { return r32(static_cast<uint32_t>(gml_2e86f8_l13(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]), static_cast<int32_t>(a.i[3])))); });
+            l13check("p135_2e9408", 0x002e9408, 120, Ret::Int32, [deal388] {
+                const uint32_t m = deal388(ri(3, 4));
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                if (ri(0, 2) == 0) wf(pv + 0xac, rf(0.15f, 0.2f));  // (about the turn round's threshold)
+                return Args{{m, pv, ee_read<uint8_t>(pv + 0x13b), u(ri(0, 3) != 0 ? 1 : 0)}, {}};
+            }, [](A a) { return r32(static_cast<uint32_t>(gml_2e9408_l13(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]), a.i[3] != 0))); });
+            l13check("p135_2e9160", 0x002e9160, 120, Ret::Int32, [deal388] {
+                const uint32_t m = deal388(ri(0, 2) == 0 ? 7 : ri(2, 4));
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                return Args{{m, pv, ee_read<uint8_t>(pv + 0x13b), u(ri(0, 3) != 0 ? 1 : 0)}, {}};
+            }, [](A a) { return r32(static_cast<uint32_t>(gml_2e9160_l13(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]), a.i[3] != 0))); });
+            l13check("p135_2e9018", 0x002e9018, 100, Ret::None, [deal388] {
+                const uint32_t m = deal388(3);
+                return Args{{m, ee_read<uint32_t>(m + 0x78)}, {rf(-3.1f, 3.1f), rf(-1.5f, 1.5f)}};
+            }, [](A a) { gml_2e9018_l13(a.i[0], a.i[1], a.f[0], a.f[1]); return uint64_t{0}; });
+            l13check("p135_2e9680", 0x002e9680, 100, Ret::None, [deal388] {
+                const uint32_t m = deal388(ri(3, 4));
+                return Args{{m, ee_read<uint32_t>(m + 0x78), u(ri(0, 10))}, {}};
+            }, [](A a) { gml_2e9680_l13(a.i[0], a.i[1], static_cast<int32_t>(a.i[2])); return uint64_t{0}; });
+            l13check("p135_2e97e0", 0x002e97e0, 60, Ret::None, [deal388] {
+                const uint32_t m = deal388(6);
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                return Args{{m, pv, pv + 0x20, 0}, {}};
+            }, [](A a) { gml_2e97e0_l13(a.i[0], a.i[1], a.i[2]); return uint64_t{0}; });
+            l13check("p135_2ea400", 0x002ea400, 120, Ret::Float, [deal388] {
+                const uint32_t m = deal388(ri(3, 4));
+                Vec4 q = ee_ref<Vec4>(m + 0x10); q.x += rf(-5, 5); q.y += rf(-5, 5); q.z += rf(-5, 5);
+                ee_ref<Vec4>(0x00180000u) = q;
+                return Args{{0x00180000u, coin() ? 0x00180014u : 0u, coin() ? 0x00180018u : 0u}, {coin() ? rf(0.1f, 1.0f) : (coin() ? 0.0f : -1.0f)}};
+            }, [](A a) { return rf32(gml_2ea400_l13(a.i[0], a.i[1], a.i[2], a.f[0])); });
+            l13check("p135_2ea330", 0x002ea330, 100, Ret::None, [deal388, ship] {
+                const uint32_t m = deal388(ri(3, 4));
+                if (ship != 0) w32(0x00140940, ship);
+                Vec4 q = ee_ref<Vec4>(m + 0x10); q.x += rf(-5, 5); q.y += rf(-5, 5);
+                ee_ref<Vec4>(0x00180000u) = q;
+                return Args{{0x00180020u, 0x00180000u}, {rf(0.05f, 1.0f)}};
+            }, [](A a) { gml_2ea330_l13(a.i[0], a.i[1], a.f[0]); return uint64_t{0}; });
+            l13check("p135_2ea6b8", 0x002ea6b8, 120, Ret::Int32, [deal388] {
+                const uint32_t m = deal388(ri(3, 4));
+                return Args{{m, ee_read<uint32_t>(m + 0x78)}, {}};
+            }, [](A a) { return r32(gml_2ea6b8_l13(a.i[0], a.i[1])); });
+            l13check("p135_2c13b0", 0x002c13b0, 80, Ret::Int32, [deal388, ship, any_moby, around] {
+                const uint32_t m = deal388(ri(3, 4));
+                ee_ref<Vec4>(0x00180000u) = around(m + 0x10, rf(0.0f, 5.0f), 0.0f);
+                wfrand(0x00180010u, 4, -3.0f, 3.0f);
+                const uint32_t t = ri(0, 3) == 0 ? 0u : (coin() && ship != 0 ? ship : any_moby(m));
+                return Args{{m, 0x00180000u, t, 0x00180010u, u(ri(1, 400))}, {rf(0.1f, 2.0f), rf(0.1f, 2.0f)}};
+            }, [](A a) { return r32(gml_2c13b0_l13(a.i[0], a.i[1], a.i[2], a.i[3], static_cast<int32_t>(a.i[4]), a.f[0], a.f[1])); });
+            l13check("p135_2c1f28", 0x002c1f28, 60, Ret::Int32, [deal388, around] {
+                const uint32_t m = deal388(ri(3, 4));
+                ee_ref<Vec4>(0x00180000u) = around(m + 0x10, rf(0.0f, 5.0f), 0.0f);
+                wfrand(0x00180010u, 4, -1.0f, 1.0f);
+                return Args{{m, 0x00180000u, 0x00180010u}, {}};
+            }, [](A a) { return r32(gml_2c1f28_l13(a.i[0], a.i[1], a.i[2])); });
+            l13check("p135_2e8920", 0x002e8920, 100, Ret::None, [deal388] {
+                const uint32_t m = deal388(ri(3, 4));
+                return Args{{m, ee_read<uint32_t>(m + 0x78)}, {}};
+            }, [](A a) { gml_2e8920_l13(a.i[0], a.i[1]); return uint64_t{0}; });
+            l13check("p135_2e8b58", 0x002e8b58, 100, Ret::None, [deal388] {
+                const uint32_t m = deal388(ri(0, 2) == 0 ? 10 : 11);
+                if (ri(0, 3) == 0) w8(m + 0xbc, 0);
+                return Args{{m, ee_read<uint32_t>(m + 0x78)}, {}};
+            }, [](A a) { gml_2e8b58_l13(a.i[0], a.i[1]); return uint64_t{0}; });
+            l13check("p135_2e8d28", 0x002e8d28, 100, Ret::None, [deal388] {
+                const uint32_t m = deal388(ri(0, 14));
+                return Args{{m, ee_read<uint32_t>(m + 0x78)}, {}};
+            }, [](A a) { gml_2e8d28_l13(a.i[0], a.i[1]); return uint64_t{0}; });
+            l13check("p135_2ecd10", 0x002ecd10, 60, Ret::Int32, [deal388] {
+                const uint32_t m = deal388(3);
+                static const int32_t cls[] = {0x185, 0x186, 0x18b, 0x190, 0x191, 0x160};
+                return Args{{m, u(ri(0, 0x14)), u(cls[ri(0, 5)])}, {}};
+            }, [](A a) { return r32(gml_2ecd10_l13(a.i[0], static_cast<int32_t>(a.i[1]), static_cast<int32_t>(a.i[2]))); });
+            l13check("p135_2e8438", 0x002e8438, 40, Ret::Int32, [deal388] {
+                return Args{{deal388(3)}, {}};
+            }, [](A a) { return r32(gml_2e8438_l13(a.i[0])); });
+            // its run's beam (the draw callback): the aim point +0x80 0 .. 120 from the nose (none, a few quads, the fade, 100 at
+            // most), the frame counter's scroll, the camera seeing the beam (mostly) or away, the screen and projection set up and
+            // the packet cursor on a buffer of the test area (0x800000 + up to 8 quadwords, its end 0x8f0000), so quad_draw's
+            // packets are written there and compared. VU0: the callback has no VU0 instruction; the last VU0 writers in the
+            // original's run are its callees (the vector routines vec3_add / vec3_sub / vec3_set_length / vec3_cross_ba, and
+            // quad_draw), whose ports are the ones the generated code called: no lane is compared.
+            l13check("p135_cb_2ea8c8", 0x002ea8c8, 200, Ret::None, [deal388, camera_sees, screen_ready] {
+                const uint32_t m = deal388(7);
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                Vec4 nose;
+                moby_chain_point_v(m, 0x13, nose);
+                const float d = ri(0, 4) == 0 ? rf(0.0f, 3.0f) : (coin() ? rf(3.0f, 15.0f) : rf(15.0f, 120.0f));
+                const float a = rf(-3.1f, 3.1f), b = rf(-0.6f, 0.6f);
+                ee_ref<Vec4>(pv + 0x80) = Vec4{nose.x + d * std::cos(a) * std::cos(b), nose.y + d * std::sin(a) * std::cos(b), nose.z + d * std::sin(b), rf(-1, 1)};
+                if (ri(0, 4) != 0) { if (!camera_sees(nose, 20.0f)) camera_sees(ee_ref<Vec4>(pv + 0x80), 20.0f); }
+                else { screen_ready(); ee_ref<Vec4>(OV(0x00166dc0)) = Vec4{nose.x + 400.0f, nose.y + 400.0f, nose.z + 300.0f, 1.0f}; render_view_setup(); }
+                w32(OV(0x001611c0), 0x00800000u + u(ri(0, 8)) * 0x10u);
+                w32(OV(0x0015f5f8), 0x008f0000u);
+                w32(OV(0x0015f5cc), R() & 0xffff);
+                return Args{{m}, {}};
+            }, [](A a) { gml_cb_2ea8c8_l13(a.i[0]); return uint64_t{0}; });
+            g_ignored_words.resize(ign);
+        }
 
         g_extra_noop_hooks.clear();
         g_ignored_words = keep_ignored;

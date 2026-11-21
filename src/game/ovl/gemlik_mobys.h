@@ -11,7 +11,7 @@ namespace rac1 {
 
 // ---- hand-written (gemlik_trigger_box.cpp, gemlik_lift.cpp, gemlik_turret.cpp, gemlik_ship.cpp, gemlik_boss_shots.cpp,
 // gemlik_drone.cpp, gemlik_swing.cpp, gemlik_tower.cpp, gemlik_asteroid.cpp, gemlik_target_group.cpp, gemlik_fighter.cpp,
-// gemlik_props.cpp, gemlik_logic.cpp)
+// gemlik_props.cpp, gemlik_logic.cpp, gemlik_qwark.cpp)
 void gml_class6_update_l13(uint32_t m);  // L13:0x002b0e80 (class 6, the trigger box)
 void gml_class21_update_l13(uint32_t m);  // L13:0x002b39e0 (class 21, the lift)
 void gml_2b4060_l13(uint32_t m, uint32_t pos, uint32_t rot);  // L13:0x002b4060 (the lift's ride camera)
@@ -60,6 +60,27 @@ void gml_2ed158_l13(uint32_t m, uint32_t pv);  // L13:0x002ed158 (its push out o
 void gml_class533_update_l13(uint32_t m);  // L13:0x002f3750 (class 533, a ship model hidden; gemlik_logic.cpp)
 void gml_class558_update_l13(uint32_t m);  // L13:0x002f3778 (class 558, the space fight's area)
 void gml_class667_update_l13(uint32_t m);  // L13:0x002f8880 (class 667, a state relay)
+void gml_class388_update_l13(uint32_t m);  // L13:0x002eb098 (class 388, Qwark's ship; gemlik_qwark.cpp)
+void gml_cb_2ea8c8_l13(uint32_t m);  // L13:0x002ea8c8 (its run's beam, a draw-list callback)
+uint32_t gml_2e8438_l13(uint32_t owner);  // L13:0x002e8438 (its glow, class 352, spawned)
+int32_t gml_2e86f8_l13(uint32_t m, uint32_t pv, int32_t line, int32_t n);  // L13:0x002e86f8 (a line of Qwark's queued)
+void gml_2e8920_l13(uint32_t m, uint32_t pv);  // L13:0x002e8920 (its engines' smoke)
+void gml_2e8b58_l13(uint32_t m, uint32_t pv);  // L13:0x002e8b58 (its sparks)
+uint32_t gml_2ecd10_l13(uint32_t m, int32_t joint, int32_t cls);  // L13:0x002ecd10 (a part spawned at a chain point)
+void gml_2e8d28_l13(uint32_t m, uint32_t pv);  // L13:0x002e8d28 (its parts, damage piece and glow kept on it)
+void gml_2e9018_l13(uint32_t m, uint32_t pv, float yaw, float pitch);  // L13:0x002e9018 (its turn and roll)
+int32_t gml_2e9160_l13(uint32_t m, uint32_t pv, int32_t slot, bool turn);  // L13:0x002e9160 (a frame along a path)
+int32_t gml_2e9408_l13(uint32_t m, uint32_t pv, int32_t slot, bool turn);  // L13:0x002e9408 (its path flight)
+void gml_2e9680_l13(uint32_t m, uint32_t pv, int32_t idx);  // L13:0x002e9680 (a part breaks off)
+void gml_2e97e0_l13(uint32_t m, uint32_t pv, uint32_t hs);  // L13:0x002e97e0 (its last health taken)
+void gml_2e9a48_l13(uint32_t m, uint32_t pv);  // L13:0x002e9a48 (its hits)
+uint32_t gml_2c13b0_l13(uint32_t m, uint32_t at, uint32_t target, uint32_t rot, int32_t frames, float speed, float top);  // L13:0x002c13b0 (a missile, class 82, spawned)
+void gml_2ea330_l13(uint32_t out, uint32_t from, float speed);  // L13:0x002ea330 (the point ahead of Ratchet's ship)
+float gml_2ea400_l13(uint32_t from, uint32_t pitch_out, uint32_t yaw_out, float speed);  // L13:0x002ea400 (the aim's angles)
+uint32_t gml_2ea540_l13(uint32_t m, uint32_t pv);  // L13:0x002ea540 (a missile launched)
+uint32_t gml_2c1f28_l13(uint32_t m, uint32_t at, uint32_t vel);  // L13:0x002c1f28 (a mine, class 83, spawned)
+uint32_t gml_2ea6b8_l13(uint32_t m, uint32_t pv);  // L13:0x002ea6b8 (a mine dropped)
+void gml_2eac00_l13(uint32_t m, uint32_t pv);  // L13:0x002eac00 (its attack)
 
 // ---- generated (gemlik_classes_tr_N.cpp)
 TrRet gml_280400_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x00280400
@@ -71,26 +92,6 @@ TrRet gml_250748_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_
 TrRet gml_250840_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x00250840
 TrRet gml_2a5390_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002a5390
 void gml_class304_update_l13(uint32_t a0);  // L13:0x002e7238
-TrRet gml_2e8438_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002e8438
-TrRet gml_2e86f8_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002e86f8
-TrRet gml_2e8920_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002e8920
-TrRet gml_2e8b58_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002e8b58
-TrRet gml_2ecd10_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002ecd10
-TrRet gml_2e8d28_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002e8d28
-TrRet gml_2e9018_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002e9018
-TrRet gml_2e9160_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002e9160
-TrRet gml_2e9408_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002e9408
-TrRet gml_2e9680_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002e9680
-TrRet gml_2e97e0_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002e97e0
-TrRet gml_2e9a48_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002e9a48
-TrRet gml_2c13b0_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002c13b0
-TrRet gml_2ea330_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002ea330
-TrRet gml_2ea400_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002ea400
-TrRet gml_2ea540_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002ea540
-TrRet gml_2c1f28_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002c1f28
-TrRet gml_2ea6b8_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002ea6b8
-TrRet gml_2eac00_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002eac00
-void gml_class388_update_l13(uint32_t a0);  // L13:0x002eb098
 void gml_class674_update_l13(uint32_t a0);  // L13:0x002f8a78
 TrRet gml_3060b8_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x003060b8
 TrRet gml_306148_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x00306148
@@ -122,7 +123,6 @@ TrRet gml_2b89f8_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_
 TrRet gml_2b8be0_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b8be0
 TrRet gml_2b95b8_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b95b8
 void gml_cb_2b97f8_l13(uint32_t a0);  // L13:0x002b97f8
-void gml_cb_2ea8c8_l13(uint32_t a0);  // L13:0x002ea8c8
 TrRet gml_hook_2b7980_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b7980
 TrRet gml_hook_2b79d0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b79d0
 TrRet gml_hook_2b7a20_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b7a20
