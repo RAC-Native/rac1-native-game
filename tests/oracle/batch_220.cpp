@@ -2230,6 +2230,491 @@ void batch_220() {
             g_ignored_words.resize(ign);
         }
 
+        // ---- P13.6 (task of stage 4): classes 674, 1271, 1353, 1558, 1577 (gemlik_logic.cpp), 1233 / 1238 (the drone's and
+        // the turret's shots, gemlik_shots.cpp), 1261 / 1634 (the charge and its debris, gemlik_explosive.cpp), 1263 (the pool,
+        // gemlik_water.cpp), 1270 (the turning lift, gemlik_lift.cpp), 1403 (gemlik_props.cpp), 1632 / 1805 (gemlik_tower.cpp)
+        // and their helpers, on the level's own mobys (the shots and the pieces spawned by the ports of their spawns: none at the
+        // level's start; their grid rect "none"): each state, the timers and counters at their edges, the watched mobys in and
+        // out of their lists, the hero in and out of each reach and box, hits by each kind, Ratchet flying his ship or not, the
+        // view on the subject or away, the frame scale at its 50 Hz value in a quarter of the cases. Left out: the particle
+        // pool's +0x2c (as above). Not run: class 1353's cutscenes 0 .. 3, its movie and its level change (below). B220_INFO=1 prints the subjects.
+        {
+            level();
+            const std::vector<uint32_t> c674 = mobys_with(0x002f8a78), c1261 = mobys_with(0x00307b10), c1263 = mobys_with(0x00309e88),
+                                        c1270 = mobys_with(0x0030a6d8), c1271 = mobys_with(0x0030af50), c1353 = mobys_with(0x0030b628),
+                                        c1403 = mobys_with(0x0030bb70), c1558 = mobys_with(0x0030bdf0), c1577 = mobys_with(0x0030be60),
+                                        c1632 = mobys_with(0x0030c060), c1805 = mobys_with(0x0030cdb8), c29 = mobys_with(0x002b41b8);
+            static const auto box_c = [](int32_t i) { return ee_read<uint32_t>(OV(0x001600ec)) + u(i) * 0x80 + 0x30; };  // a box's centre
+            auto moby_i = [moby_base](int32_t i) { return moby_base() + (u(i) << 8); };
+            if (std::getenv("B220_INFO") != nullptr)
+                for (const auto& [nm, v] : std::initializer_list<std::pair<const char*, const std::vector<uint32_t>*>>{{"674", &c674}, {"1261", &c1261}, {"1263", &c1263},
+                         {"1270", &c1270}, {"1271", &c1271}, {"1353", &c1353}, {"1403", &c1403}, {"1558", &c1558}, {"1577", &c1577}, {"1632", &c1632}, {"1805", &c1805}})
+                    for (uint32_t m : *v) {
+                        const Vec4 q = ee_ref<Vec4>(m + 0x10);
+                        std::printf("INFO class %s moby %u uid %u at (%.1f, %.1f, %.1f) state %u\n", nm, index_of(m), ee_read<uint16_t>(m + 0xb2), q.x, q.y, q.z, ee_read<uint8_t>(m + 0x20));
+                    }
+            static const auto pick = [](std::initializer_list<int32_t> v) { return *(v.begin() + ri(0, static_cast<int>(v.size()) - 1)); };
+            const size_t ign = g_ignored_words.size();
+            g_ignored_words.insert(g_ignored_words.end(), pool_w.begin(), pool_w.end());
+
+            // class 674: each state (5: beyond the table; 6: the set-up with no moby to watch), the watched moby's state in the
+            // first list, the second or neither, its strength about 0 and 1, the scroll about its two wraps, off at the start or not
+            p133("p136_class674", 0x002f8a78, gml_class674_update_l13, c674, [moby_i, common](uint32_t m, int st) -> uint32_t {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                w8(m + 0x20, st < 5 ? u(st) : (st == 5 ? u(ri(5, 255)) : 0u));
+                if (st == 6) w32(pv, 0xffffffffu);
+                if (ri(0, 3) == 0) for (uint32_t k = 0; k < 12; ++k) w8(pv + 4 + k, ri(0, 3) == 0 ? 0xffu : u(ri(0, 6)));
+                if (const int32_t i = ee_read<int32_t>(pv); i != -1) {
+                    const uint32_t o = moby_i(i);
+                    const int k = ri(0, 2);
+                    w8(o + 0x20, k == 0 ? ee_read<uint8_t>(pv + 4 + u(ri(0, 5))) : (k == 1 ? ee_read<uint8_t>(pv + 0xa + u(ri(0, 5))) : u(ri(0, 12))));
+                }
+                { const int k = ri(0, 3); wf(pv + 0x10, k == 0 ? rf(0.0f, 0.06f) : (k == 1 ? rf(0.94f, 1.0f) : (k == 2 ? (coin() ? 0.0f : 1.0f) : rf(0.0f, 1.0f)))); }
+                w32(pv + 0x18, u(ri(0, 1)));
+                { const int k = ri(0, 3); w32(pv + 0x14, u(k == 0 ? ri(3800, 4096) : (k == 1 ? ri(-0x100, 0) : (k == 2 ? pick({0xf3f, 0xf40, 0xf41, -0xbf, -0xc0, -0xc1}) : ri(0, 4096))))); }  // (the wraps' edges)
+                w8(m + 0x23, u(ri(0, 20)));
+                common();
+                return m;
+            }, 7, 30, 0);
+
+            // classes 1233 / 1238 spawned by the ports of their spawns: the drone's shot at its chain point 0 / 1 (held: its drone
+            // there, of another class, gone, hidden or not) or fired along a random direction at a target (flown about its range or
+            // past the target, next to a moby (its step meets it), hit by a class 0x1df moby or another, at the space's bounds, the
+            // world test's flag, visible or not); the turret's shot near the hero (his byte 0x141346, his six mobys 0x141370 with a
+            // hit of this frame or none, the turned-back mark), next to a moby, its frames at their edges, about its range's end
+            static const auto unit_dir = [](float lo, float hi) {
+                Vec4 v{rf(-1.0f, 1.0f), rf(-1.0f, 1.0f), rf(-0.4f, 0.4f), 0.0f};
+                const float l = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z) + 1e-3f, k = rf(lo, hi) / l;
+                v.x *= k; v.y *= k; v.z *= k;
+                return v;
+            };
+            auto prep1233 = [hit_by, any_moby, unit_dir, common](uint32_t d, int st) -> uint32_t {
+                const uint32_t s = gml_3058a8_l13(d, ri(0, 1));
+                if (s == 0) return 0u;
+                w32(s + 0xa0, 0x80807f7fu);
+                const uint32_t pv = ee_read<uint32_t>(s + 0x78);
+                if (st == 0) {
+                    const int k = ri(0, 4);
+                    if (k == 0) w32(pv + 0x20, 0); else if (k == 1) w16(d + 0xa6, 0x66); else if (k == 2) w8(d + 0x20, coin() ? 0xfeu : 0xfdu);
+                    w16(d + 0x34, ee_read<uint16_t>(d + 0x34) ^ u(ri(0, 1)));
+                    common();
+                    return s;
+                }
+                const Vec4 v = unit_dir(0.3f, 1.5f);
+                ee_ref<Vec4>(0x00180000u) = v;
+                const uint32_t t = ri(0, 3) == 0 ? ee_read<uint32_t>(0x001413d0) : any_moby(s);
+                const float range = rf(5.0f, 60.0f);
+                gml_305988_l13(s, 0x00180000u, t, range);
+                Vec4 q = ee_ref<Vec4>(pv + 0x10);
+                const float len = std::sqrt(v.x * v.x + v.y * v.y), along = ri(0, 2) == 0 ? (range + rf(-1.5f, 1.5f)) / (len + 1e-3f) : rf(0.0f, 2.0f * range / (len + 1e-3f));
+                q.x += v.x * along; q.y += v.y * along; q.z += v.z * along;
+                ee_ref<Vec4>(s + 0x10) = q;
+                if (st == 1 && t != 0 && coin()) {  // its start 1 .. 3 from its target, 4 .. its range flown: past the target
+                    Vec4 b = ee_ref<Vec4>(t + 0x10); b.x += rf(-3.0f, 3.0f); b.y += rf(-3.0f, 3.0f);
+                    ee_ref<Vec4>(pv + 0x10) = b;
+                    const float k = rf(4.0f, range) / (len + 1e-3f);
+                    ee_ref<Vec4>(s + 0x10) = Vec4{b.x + v.x * k, b.y + v.y * k, b.z + v.z * k, q.w};
+                }
+                if (st == 2) {  // next to a moby: its step meets it (from its start nearby)
+                    if (const uint32_t o = any_moby(s); o != 0) {
+                        Vec4 p = ee_ref<Vec4>(o + 0x10);
+                        p.x -= v.x * rf(0.3f, 0.9f); p.y -= v.y * rf(0.3f, 0.9f); p.z -= v.z * rf(0.3f, 0.9f) - rf(0.0f, 1.0f);
+                        ee_ref<Vec4>(s + 0x10) = p;
+                        Vec4 b = p; b.x -= v.x * rf(0.0f, 4.0f); b.y -= v.y * rf(0.0f, 4.0f);
+                        ee_ref<Vec4>(pv + 0x10) = b;
+                        if (coin()) w32(pv + 0x20, o);
+                    }
+                }
+                if (st == 3) {
+                    const uint32_t by = any_moby(s);
+                    if (by != 0 && coin()) w16(by + 0xa6, 0x1df);
+                    hit_by(s, ri(0, 4) == 0 ? 0u : by, 0x230000u, 1.0f);
+                }
+                if (st == 4) { wf(s + 0x10 + u(ri(0, 2)) * 4, coin() ? rf(1.0f, 3.0f) : rf(1020.0f, 1022.0f)); }
+                w16(pv + 0x24, u(ri(0, 1)));
+                w8(s + 0x31, u(ri(0, 1)));
+                common();
+                return s;
+            };
+            // (the collision record's triangle: the known VU0 leftovers of the shared segment_collide port, as p133_class82)
+            p133("p136_class1233", 0x00305a58, gml_class1233_update_l13, c101, prep1233, 5, 40, 1, coll_vu0);
+            auto prep1238 = [P, hero_at, around, hit_by, any_moby, unit_dir, common](uint32_t t, int st) -> uint32_t {
+                const Vec4 v = unit_dir(0.3f, 1.5f);
+                Vec4 at = around(t + 0x10, rf(1.0f, 10.0f), rf(0.0f, 2.0f));
+                if (st == 0 || st == 1) {  // near the hero
+                    hero_at(around(t + 0x10, rf(3.0f, 15.0f), 0.0f));
+                    at = around(0x0013f3d0, st == 1 ? rf(0.0f, 1.9f) : rf(1.5f, 3.0f), rf(-0.5f, 0.5f));
+                    w8(0x00141346, st == 1 || coin() ? 1u : 0u);
+                    for (uint32_t k = 0; k < 6; ++k) {
+                        const uint32_t o = ri(0, 2) == 0 ? 0u : any_moby(0);
+                        w32(0x00141370 + k * 4, o);
+                        if (o != 0) { if (coin()) hit_by(o, 0, 0xffffffffu, rf(0.0f, 3.0f)); else w8(o + 0xa4, 0xff); }
+                    }
+                }
+                if (st == 2) {  // next to a moby (the hero's in part: class 0)
+                    const uint32_t o = coin() ? ee_read<uint32_t>(0x001413d0) : any_moby(0);
+                    if (o != 0) { at = ee_ref<Vec4>(o + 0x10); at.x -= v.x * rf(0.3f, 0.9f); at.y -= v.y * rf(0.3f, 0.9f); at.z += rf(0.0f, 1.0f) - v.z * 0.5f; }
+                }
+                ee_ref<Vec4>(0x00180000u) = at;
+                ee_ref<Vec4>(0x00180010u) = v;
+                const float range = rf(3.0f, 40.0f);
+                const uint32_t s = gml_3061c8_l13(0x00180000u, 0x00180010u, coin() ? t : 0u, range);
+                if (s == 0) return 0u;
+                w32(s + 0xa0, 0x80807f7fu);
+                const uint32_t pv = ee_read<uint32_t>(s + 0x78);
+                Vec4 b = at;  // its start: about its range back
+                const float len = std::sqrt(v.x * v.x + v.y * v.y) + 1e-3f, back = (st == 3 ? range + rf(-1.5f, 1.5f) : rf(0.0f, range)) / len;
+                b.x -= v.x * back; b.y -= v.y * back;
+                ee_ref<Vec4>(pv + 0x10) = b;
+                { const int k = ri(0, 4); if (k == 0) w32(pv + 0x2c, 0); else if (k == 1) w32(pv + 0x2c, 1); else if (k == 2) w32(pv + 0x2c, 2); }
+                if (ri(0, 4) == 0) wf(pv + 0xc, u2f(0x46f4d334u));
+                if (st == 4) { wf(s + 0x10 + u(ri(0, 2)) * 4, coin() ? rf(1.0f, 3.0f) : rf(1020.0f, 1022.0f)); }
+                w32(pv + 0x24, u(ri(0, 1)));
+                w8(s + 0x31, u(ri(0, 1)));
+                common();
+                return s;
+            };
+            p133("p136_class1238", 0x00306300, gml_class1238_update_l13, c29, prep1238, 5, 40, 1, coll_vu0);
+            if (!c101.empty()) {
+                const CollisionScratchIgnored spr;  // (explosion_effect's mobys_in_sphere)
+                l13check("p136_3060b8", 0x003060b8, 40, Ret::None, [level, c101, prep1233] { level(); return Args{{prep1233(c101[0], 1)}, {}}; },
+                         [](A a) { gml_3060b8_l13(a.i[0]); return uint64_t{0}; });
+                l13check("p136_306148", 0x00306148, 40, Ret::None, [level, c101, prep1233] { level(); return Args{{prep1233(c101[0], 1)}, {}}; },
+                         [](A a) { gml_306148_l13(a.i[0]); return uint64_t{0}; });
+            }
+
+            // class 1261: waiting (no hit, a hit below its health, one that takes it, the reactions 1 / 2), the blast (its frames
+            // at the edges of its half and its end), any state; the camera near (sparks: fewer the farther), past 9 (two flashes);
+            // its debris 0x3073c8 and a piece 0x30c138 directly; class 1634 spawned by 0x30c138 (kinds 0 / 1, its frames about its
+            // quarter and its end, below the floor, next to a moby (a fast one stops))
+            static const auto cam_at = [](uint32_t at) {
+                Vec4 c = ee_ref<Vec4>(at);
+                const int k = ri(0, 4);  // (near, 6 .. 9, far, and about the edges 6 / 7 / 9)
+                const float d = k == 0 ? rf(0.5f, 5.9f) : (k == 1 ? rf(6.0f, 9.0f) : (k == 2 ? rf(9.1f, 40.0f) : (k == 3 ? rf(8.8f, 10.2f) : rf(5.8f, 7.2f)))), a = rf(-3.1f, 3.1f);
+                c.x += d * std::cos(a); c.y += d * std::sin(a); c.z += 1.0f;
+                ee_ref<Vec4>(OV(0x00166dc0)) = c;
+            };
+            auto prep1261 = [hit_by, any_moby, cam_at, common](uint32_t m, int st) -> uint32_t {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                w8(m + 0x20, st < 3 ? 0u : (st == 3 ? 1u : u(ri(0, 3))));
+                wf(pv + 0x20, rf(0.5f, 6.0f));
+                const float h = ee_read<float>(pv + 0x20);
+                if (st == 1) {  // a hit well below its health (in half of a kind whose reaction does not zero it)
+                    hit_by(m, any_moby(m), 0x330001u, rf(0.01f, h * 0.3f));
+                    const uint32_t e = OV(0x00178100) + (u(ee_read<uint8_t>(m + 0xa4)) << 6);
+                    if (coin()) { w8(e + 0x28, u(pick({2, 4, 5, 7}))); w8(e + 0x29, u(ri(0, 3))); w16(pv + 0x3c, 0); }  // (reactions other than 1 / 2, the repeat timer off)
+                }
+                if (st == 2 || st == 4) hit_by(m, any_moby(m), 0x330001u, coin() ? h : rf(h, h + 5.0f));
+                if (st == 0 && coin()) w8(m + 0xa4, 0xff);
+                const int32_t frames = frame_scale_i(ee_read<int32_t>(0x00161e2c)), half = frame_scale_i(ee_read<int32_t>(0x00161e2c)) / 2;
+                w32(pv + 0x70, u(pick({0, half - 1, half, half + 1, frames - 1, frames, frames + 1, ri(0, frames)})));
+                wfrand(m + 0x40, 2, -0.1f, 0.1f);
+                w8(m + 0x23, u(ri(0, 0x80)));
+                cam_at(m + 0x10);
+                common();
+                return m;
+            };
+            p133("p136_class1261", 0x00307b10, gml_class1261_update_l13, c1261, prep1261, 5, 40, 1);
+            if (!c1261.empty()) {
+                l13check("p136_3073c8", 0x003073c8, 80, Ret::None, [level, c1261, cam_at, common] {
+                    level();
+                    const uint32_t m = c1261[u(ri(0, static_cast<int>(c1261.size()) - 1))];
+                    cam_at(m + 0x10);
+                    common();
+                    return Args{{m}, {}};
+                }, [](A a) { gml_3073c8_l13(a.i[0]); return uint64_t{0}; });
+                l13check("p136_30c138", 0x0030c138, 60, Ret::Int32, [level, c1261, around, unit_dir, common] {
+                    level();
+                    ee_ref<Vec4>(0x00180000u) = around(c1261[0] + 0x10, rf(0.0f, 3.0f), rf(0.0f, 2.0f));
+                    ee_ref<Vec4>(0x00180010u) = unit_dir(0.05f, 0.4f);
+                    common();
+                    return Args{{0x00180000u, 0x00180010u, u(ri(1, 200)), u(ri(0, 1))}, {}};
+                }, [](A a) { return r32(gml_30c138_l13(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]), a.i[3])); });
+            }
+            auto prep1634 = [around, any_moby, unit_dir, common](uint32_t c, int st) -> uint32_t {
+                ee_ref<Vec4>(0x00180000u) = around(c + 0x10, rf(0.0f, 3.0f), rf(0.0f, 2.0f));
+                const Vec4 v = unit_dir(0.05f, 0.4f);
+                ee_ref<Vec4>(0x00180010u) = v;
+                const uint32_t s = gml_30c138_l13(0x00180000u, 0x00180010u, ri(5, 120), st == 0 ? 0u : 1u);
+                if (s == 0) return 0u;
+                w32(s + 0xa0, 0x80807f7fu);
+                const uint32_t pv = ee_read<uint32_t>(s + 0x78);
+                if (st == 2) {  // next to a moby: its step meets it
+                    if (const uint32_t o = any_moby(0); o != 0) {
+                        Vec4 p = ee_ref<Vec4>(o + 0x10);
+                        p.x -= v.x * rf(0.3f, 0.9f); p.y -= v.y * rf(0.3f, 0.9f); p.z += rf(0.0f, 1.0f) - v.z * 0.5f;
+                        ee_ref<Vec4>(s + 0x10) = p;
+                    }
+                }
+                if (st == 3) wf(s + 0x10 + u(ri(0, 2)) * 4, rf(-0.2f, 0.3f));  // (at the floor)
+                const int32_t life = ee_read<int16_t>(pv + 0x1a), q = life / 4;
+                w16(pv + 0x18, u(pick({0, 1, 2, q - 1, q, q + 1, ri(0, life)})));
+                w8(s + 0xbc, st == 0 ? 0u : (st == 4 ? u(ri(0, 3)) : 1u));
+                common();
+                return s;
+            };
+            p133("p136_class1634", 0x0030c3b8, gml_class1634_update_l13, c1261, prep1634, 5, 40, 1);
+
+            // class 1263, the pool: the tile 0's set-up (the grids, the light, the splashes) or another's, the bob (the hero in the
+            // states that hold it or not), the others, Ratchet flying his ship (a live class 0x45 moby and his state 0x32) or not,
+            // the view on the tile or away, the tile named by L13:0x161ef0 or not; the splash 0x2aeba8 directly
+            auto prep1263 = [P, fly, camera_sees, screen_ready, c1263, common](uint32_t m, int st) -> uint32_t {
+                if (st == 0)  // (the tile 0's moby: the grids' set-up)
+                    for (uint32_t o : c1263) if (ee_read<int32_t>(ee_read<uint32_t>(o + 0x78) + 0x10) == 0) m = o;
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                w8(m + 0x20, st <= 1 ? 0u : (st <= 3 ? 1u : u(ri(2, 255))));
+                if (st == 5) w8(m + 0x20, u(ri(0, 2)));
+                w32(P + 0x208c, u(pick({0x14, 0x19, 0, 1, 2})));
+                w32(P + 0x2084, u(pick({0x3d, 0x7b, 0x7c, 0, 0x32})));
+                if (st == 5) fly(m + 0x10, coin()); else w32(P + 0x15f0, 0);
+                wf(pv + 0x8, rf(-3.1f, 3.1f)); wf(pv + 0xc, rf(-0.2f, 0.2f));
+                if (coin()) w32(0x00161ef0, ee_read<uint32_t>(pv + 0x10));
+                if (ri(0, 3) != 0) camera_sees(ee_ref<Vec4>(m + 0x10), 10.0f);
+                else { screen_ready(); Vec4 c = ee_ref<Vec4>(m + 0x10); c.x += 300.0f; c.z += 200.0f; ee_ref<Vec4>(OV(0x00166dc0)) = c; render_view_setup(); }
+                common();
+                if (st == 3) {  // the bob's splash: the random seed dealt until its first rand_mod(200) is 0 (the seed put back each try)
+                    const uint32_t seed = ee_read<uint32_t>(0x0012f76c) + 0x58;
+                    for (int k = 0; k < 4000; ++k) {
+                        const uint32_t s0 = ee_read<uint32_t>(seed), s1 = ee_read<uint32_t>(seed + 4);
+                        const int32_t r = rand_mod(0xc8);
+                        w32(seed, s0); w32(seed + 4, s1);
+                        if (r == 0) break;
+                        seed_rand();
+                    }
+                }
+                return m;
+            };
+            if (!c1263.empty()) {
+                p133("p136_class1263", 0x00309e88, gml_class1263_update_l13, c1263, prep1263, 6, 60, 0);
+                l13check("p136_2aeba8", 0x002aeba8, 40, Ret::None, [level, common] {
+                    level();
+                    common();
+                    const uint32_t grids = 0x001d9bc0u + u(ri(0, 21)) * 0x1190u;
+                    return Args{{0x001d9bc0u, u(ri(1, 22))}, {ee_read<float>(grids) + rf(-6, 6), ee_read<float>(grids + 4) + rf(-6, 6), rf(0.5f, 3.0f), rf(-0.3f, 0.3f)}};
+                }, [](A a) { gml_2aeba8_l13(a.i[0], static_cast<int32_t>(a.i[1]), a.f[0], a.f[1], a.f[2], a.f[3]); return uint64_t{0}; });
+            }
+
+            // class 1270, the turning lift (as class 21's check, batch 220's P13.1): each state (8: beyond the table), its heights,
+            // the camera's move at its end or not, at its height or near, its turn's offset, its hold timer at its edges, the hero
+            // on it at its centre or not, in the air, near the other height or not, 5 .. 32 away, its ride's sound
+            auto prep1270 = [P, hero_at, around, sound_slot, common](uint32_t m, int st) -> uint32_t {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                w8(m + 0x20, st < 8 ? u(st) : u(ri(8, 255)));
+                w8(m + 0xbc, u(ri(0, 3)));
+                if (ri(0, 4) == 0) wf(pv + 0x60, ee_read<float>(m + 0x18) + rf(-12.0f, 12.0f));
+                if (ri(0, 4) == 0) wf(pv + 0x64, ee_read<float>(m + 0x18) + rf(-12.0f, 12.0f));
+                { const int k = ri(0, 3); if (k == 0) wf(pv + 0x70, rf(0.0f, 0.9f)); else if (k == 1) wf(pv + 0x70, rf(0.95f, 0.9999f)); else if (k == 2) wf(pv + 0x70, 1.0f); }
+                wf(pv + 0x74, rf(0.0f, 0.2f));
+                { const int k = ri(0, 3); const float to = ee_read<float>(pv + (coin() ? 0x60 : 0x64));
+                  if (k == 0) { wf(m + 0x18, to); wf(pv + 0x68, 0.0f); } else if (k == 1) wf(m + 0x18, to + rf(-0.05f, 0.05f)); else wf(pv + 0x68, rf(-0.3f, 0.3f)); }
+                wf(pv + 0x7c, rf(-180.0f, 180.0f));
+                w32(pv + 0x84, u(pick({0, 1, 2, ri(3, 90)})));
+                w32(pv + 0x6c, 0xffffffffu);
+                wf(pv + 0x78, rf(-3.1f, 3.1f));
+                static const float rs[] = {0.2f, 0.45f, 0.8f, 1.05f, 1.3f, 3.0f, 6.0f, 20.0f, 31.0f, 36.0f};
+                const bool ride = st >= 4 && st <= 7 && coin();
+                const float r = ride ? rf(0.0f, 0.45f) : rs[ri(0, 9)] * rf(0.9f, 1.1f);
+                hero_at(around(m + 0x10, r, rf(-1.0f, 2.0f)));
+                w32(P + 0x2fc, ride || ri(0, 2) != 0 ? m : 0u);
+                w16(P + 0x30e, !ride && ri(0, 3) == 0 ? 1u : 0u);
+                sound_slot(m, pv + 0x6c);  // (its ride's sound: none, a slot playing for it or not)
+                wf(P + 0x2d8, ee_read<float>(pv + (coin() ? 0x60 : 0x64)) + (coin() ? rf(-1.9f, 1.9f) : rf(2.1f, 6.0f)));
+                wfrand(P + 0xd0, 3, -2.0f, 2.0f);
+                common();
+                return m;
+            };
+            if (!c1270.empty()) {
+                p133("p136_class1270", 0x0030a6d8, gml_class1270_update_l13, c1270, prep1270, 9, 40, 0);
+                l13check("p136_30ad38", 0x0030ad38, 80, Ret::None, [level, c1270, prep1270] {
+                    level();
+                    return Args{{prep1270(c1270[u(ri(0, static_cast<int>(c1270.size()) - 1))], ri(0, 8)), 0x00180000u, 0x00180010u}, {}};
+                }, [](A a) { gml_30ad38_l13(a.i[0], a.i[1], a.i[2]); return uint64_t{0}; });
+            }
+
+            // class 1271: its groups' mobys all gone, some or none (lists ending early: -1), Ratchet flying his ship or not, the
+            // hero in its box or not (or no box), the state / step it takes or none; the count 0x30ae68 directly
+            auto group_kill = [moby_i](int32_t g, int how) {  // 0: all gone, 1: none, 2: some
+                const uint32_t list = ee_read<uint32_t>(OV(0x001ab840) + u(g) * 4);
+                if (list == 0 || how == 1) return;
+                for (uint32_t e = list;; e += 2) {
+                    const uint32_t h = ee_read<uint16_t>(e);
+                    if (how == 0 || coin()) w8(moby_i(static_cast<int32_t>(h & 0x7fffu)) + 0x20, coin() ? 0xfeu : 0x80u);
+                    if ((h & 0x8000u) != 0) break;
+                }
+            };
+            auto prep1271 = [P, HERO, fly, hero_at, box_c, group_kill, common](uint32_t m, int st) -> uint32_t {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                if (ri(0, 4) == 0) w32(pv + u(ri(0, 7)) * 4, 0xffffffffu);
+                for (uint32_t k = 0; k < 8; ++k)
+                    if (const int32_t g = ee_read<int32_t>(pv + k * 4); g != -1 && g < ee_read<int32_t>(OV(0x0015fff4))) group_kill(g, st == 0 ? 0 : (st == 1 ? 1 : ri(0, 2)));
+                fly(m + 0x10, coin());
+                if (ri(0, 4) == 0) w32(pv + 0x28, 0xffffffffu);
+                if (const int32_t b = ee_read<int32_t>(pv + 0x28); b != -1 && coin()) hero_at(ee_ref<Vec4>(box_c(b)));
+                else hero_at(ee_ref<Vec4>(HERO));
+                if (ri(0, 2) == 0) w32(pv + 0x20, coin() ? 0xffffffffu : u(ri(0, 8)));
+                if (ri(0, 2) == 0) w32(pv + 0x24, coin() ? 0xffffffffu : u(ri(0, 8)));
+                w8(m + 0x20, u(ri(0, 9)));
+                w8(m + 0xbc, u(ri(0, 9)));
+                common();
+                return m;
+            };
+            p133("p136_class1271", 0x0030af50, gml_class1271_update_l13, c1271, prep1271, 3, 40, 0);
+            l13check("p136_30ae68", 0x0030ae68, 120, Ret::Int32, [level, group_kill, moby_i] {
+                level();
+                const int32_t n = ee_read<int32_t>(OV(0x0015fff4)), g = ri(0, n > 0 ? n - 1 : 0);
+                group_kill(g, ri(0, 2));
+                if (const uint32_t list = ee_read<uint32_t>(OV(0x001ab840) + u(g) * 4); list != 0)  // (the mobys' hook-10 records: their +0x68 about 4)
+                    for (uint32_t e = list;; e += 2) {
+                        const uint32_t h = ee_read<uint16_t>(e), o = moby_i(static_cast<int32_t>(h & 0x7fffu));
+                        if (ee_read<uint8_t>(o + 0x20) < 0x80) { const uint32_t rec = class_hook_10(o); if (rec != 0) w16(rec + 0x68, u(pick({3, 4, 5}))); }
+                        if ((h & 0x8000u) != 0) break;
+                    }
+                return Args{{u(g), ri(0, 2) == 0 ? 0xffffffffu : u(ri(0, 10))}, {}};
+            }, [](A a) { return r32(static_cast<uint32_t>(gml_30ae68_l13(static_cast<int32_t>(a.i[0]), static_cast<int32_t>(a.i[1])))); });
+
+            // class 1353, the level's scenes: every state (those that would start a cutscene or the movie only where they start
+            // none: its flag set, a scene running), the scene word L13:0x15f5c4 (0, 2, other), the flags 0x13d3ec / ed / ee, the
+            // hero in its box or not (or none), its mobys -1 / there, alive or gone, of their class or not, the ship's slot free or
+            // not. The cutscenes 0 .. 3 and the movie 14 are not run (their stream waits on the IOP server 0x80000595, which the
+            // oracle has no host for: the port's side throws, the case is dealt again), nor the level change of state 11 (the ship
+            // kept alive there).
+            auto prep1353 = [HERO, hero_at, box_c, moby_i, common](uint32_t m, int st) -> uint32_t {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                const uint8_t s = u(st);
+                w8(m + 0x20, s);
+                w32(0x0015f5c4, u(pick({0, 2, 2, 1})));
+                for (uint32_t f = 0x0013d3ec; f <= 0x0013d3ee; ++f) w8(f, u(ri(0, 1)));
+                if (s == 1) w8(0x0013d3ec, 1);
+                if (s == 8 || s == 9) w32(0x0015f5c4, 2);
+                for (uint32_t at : {0x8u, 0xcu, 0x10u, 0x14u, 0x20u}) if (ri(0, 5) == 0) w32(pv + at, 0xffffffffu);
+                if (ri(0, s == 4 ? 2 : 4) == 0) w32(pv, 0xffffffffu);
+                if (const int32_t b = ee_read<int32_t>(pv); b != -1 && coin()) {
+                    hero_at(ee_ref<Vec4>(box_c(b)));
+                    if (s == 4) w8(0x0013d3ed, 1);  // (in the box with the flag clear: cutscene 1)
+                } else {
+                    hero_at(ee_ref<Vec4>(HERO));
+                }
+                if (const int32_t i = ee_read<int32_t>(pv + 0x14); i != -1) {
+                    const uint32_t o = moby_i(i);
+                    int k = ri(0, 2);
+                    if (s == 7 && ee_read<uint8_t>(0x0013d3ee) == 0) k = 3;  // (gone with the flag clear: cutscene 2)
+                    if (k == 1) w8(o + 0x20, 0xfe); else if (k == 2) w16(o + 0xa6, 0x184);
+                    else if (k == 3) { w16(o + 0xa6, 0x184); w8(o + 0x20, u(ri(0, 9))); }
+                }
+                if (const int32_t i = ee_read<int32_t>(pv + 0x10); i != -1) {
+                    const uint32_t o = moby_i(i);
+                    int k = ri(0, 3);
+                    if (s == 11) k = 1;  // (the ship alive: the level change it then asks is not run)
+                    if (k == 0) w8(o + 0x20, 0xfe); else if (k == 1) { w16(o + 0xa6, 0x45); w8(o + 0x20, u(ri(0, 9))); }
+                    w8(0x0015fc88u + ee_read<uint8_t>(o + 0xb0), coin() ? 0xffu : 0u);
+                }
+                common();
+                return m;
+            };
+            p133("p136_class1353", 0x0030b628, gml_class1353_update_l13, c1353, prep1353, 16, 30, 1);
+
+            // class 1403: the set-up (its path or none), its leader before its state 7 (it is at its place) or past it (the path's
+            // point nearest it, the point / the distance / the frames about their tests), the walk to the path's end, its leader
+            // gone or none, any state
+            auto prep1403 = [moby_i, path_of, any_moby, common](uint32_t m, int st) -> uint32_t {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                w8(m + 0x20, st == 0 ? 0u : (st <= 2 ? 1u : (st == 3 ? 2u : u(ri(0, 4)))));
+                if (ee_read<int32_t>(pv) == -1 && st != 4) { const uint32_t o = any_moby(m); if (o != 0) w32(pv, (o - ee_read<uint32_t>(OV(0x0015ffd8))) >> 8); }
+                if (ri(0, 4) == 0 || st == 4) w32(pv + 4, ri(0, 3) == 0 ? 0xffffffffu : u(ri(0, 20)));
+                const int32_t pi = ee_read<int32_t>(pv + 4);
+                const uint32_t path = pi == -1 ? 0u : path_of(pi);
+                const int32_t np = path == 0 ? 0 : ee_read<int32_t>(path);
+                if (pi != -1 && (np < 2 || np > 600)) return 0u;
+                if (const int32_t i = ee_read<int32_t>(pv); i != -1) {
+                    const uint32_t o = moby_i(i);
+                    if (st == 4) w8(o + 0x20, coin() ? 0xfeu : 0xfdu);
+                    else w8(o + 0x20, st == 1 ? u(ri(0, 6)) : u(ri(7, 12)));
+                    if (np > 0) {
+                        Vec4 q = ee_ref<Vec4>(path + 0x10 + u(ri(0, np - 1)) * 0x10);
+                        q.x += rf(-3, 3); q.y += rf(-3, 3); q.z += rf(-2, 2);
+                        ee_ref<Vec4>(o + 0x10) = q;
+                    }
+                }
+                if (np > 0) {
+                    w32(pv + 8, u(pick({0, np - 1, np - 2, ri(0, np - 1)})));
+                    wf(pv + 0xc, rf(0.0f, 5.0f));
+                    const Vec4 q = ee_ref<Vec4>(path + 0x10 + ee_read<uint32_t>(pv + 8) * 0x10);
+                    if (coin()) ee_ref<Vec4>(m + 0x10) = Vec4{q.x + rf(-1, 1), q.y + rf(-1, 1), q.z, 1.0f};
+                }
+                w32(pv + 0x10, u(pick({0, 28, 29, 30, 31, ri(0, 80)})));
+                common();
+                return m;
+            };
+            p133("p136_class1403", 0x0030bb70, gml_class1403_update_l13, c1403, prep1403, 6, 40, 0);
+
+            // classes 1558 (the two words at 2 or not, the moby named at L13:0x16cce0), 1577 (its eight mobys -1 / there, alive or
+            // gone, of their class or not, the number needed), 1632 (its parent there or gone or of another class, a hit or none)
+            p133("p136_class1558", 0x0030bdf0, gml_class1558_update_l13, c1558, [any_moby, spawn_at, common](uint32_t m, int st) -> uint32_t {
+                w8(m + 0x20, st == 0 ? 0u : (st == 1 ? 1u : u(ri(2, 9))));
+                w32(0x0015f5c4, u(pick({2, 2, 0, 1})));
+                w32(0x0016cb90, u(pick({2, 2, 0, 3})));
+                uint32_t smoker = 0;  // (a class 0x2ee moby: scene_moby_smoke does nothing for others)
+                for (uint32_t o = ee_read<uint32_t>(OV(0x0015ffd8)); o < ee_read<uint32_t>(OV(0x0015ffe0)) && smoker == 0; o += 0x100)
+                    if (ee_read<uint8_t>(o + 0x20) < 0xfd && ee_read<int16_t>(o + 0xa6) == 0x2ee) smoker = o;
+                if (smoker == 0 && coin()) smoker = spawn_at(0x2ee, m + 0x10, 2.0f);  // (none placed: one spawned, when the class is loaded)
+                w32(0x0016cce0, smoker != 0 && ri(0, 3) != 0 ? smoker : any_moby(m));
+                common();
+                return m;
+            }, 3, 30, 0);
+            p133("p136_class1577", 0x0030be60, gml_class1577_update_l13, c1577, [moby_i, first_run, common](uint32_t m, int st) -> uint32_t {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                if (st >= 1) first_run(gml_class1577_update_l13, m);
+                w8(m + 0x20, st == 0 ? 0u : (st == 1 ? 1u : u(ri(2, 9))));
+                for (uint32_t k = 0; k < 0x20; k += 4) {
+                    if (ri(0, 4) == 0) w32(pv + 0x10 + k, 0xffffffffu);
+                    if (ri(0, 5) == 0) w32(pv + 0x30 + k, 0xffffffffu);
+                    if (const int32_t i = ee_read<int32_t>(pv + 0x10 + k); i != -1 && ri(0, 3) == 0) {
+                        const uint32_t o = moby_i(i);
+                        if (coin()) w8(o + 0x20, coin() ? 0xfeu : 0xfdu); else w16(o + 0xa6, ee_read<uint16_t>(o + 0xa6) + 1u);
+                    }
+                }
+                w32(pv, u(ri(0, 8)));
+                common();
+                return m;
+            }, 3, 40, 0);
+            p133("p136_class1632", 0x0030c060, gml_class1632_update_l13, c1632, [hit_by, any_moby, common](uint32_t m, int st) -> uint32_t {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                const uint32_t parent = ee_read<uint32_t>(pv + 0x60);
+                if (st == 1) { const int k = ri(0, 3); if (k == 0) w32(pv + 0x60, 0); else if (k == 1 && parent != 0) w8(parent + 0x20, coin() ? 0xfeu : 0xfdu); else w32(pv + 0x64, u(ri(0, 0x700))); }
+                if (coin()) { hit_by(m, any_moby(m), 0xffffffffu, rf(0.0f, 5.0f)); w32(OV(0x00178100) + (u(ee_read<uint8_t>(m + 0xa4)) << 6) + 0x30, R()); }  // (its +0x30 passed on too)
+                else w8(m + 0xa4, 0xff);
+                if (parent != 0 && ri(0, 3) != 0) w8(parent + 0xa4, 0xff);
+                common();
+                return m;
+            }, 2, 40, 0);
+
+            // class 1805: broken before (the save's bit), the set-up, standing (no hit, one below its health, one that breaks it),
+            // broken (the last of its group or not, the help's flag 0x13d41e, no group)
+            // (the w lanes debris_spawn leaves at 0, the original a VU0 leftover: the spawned slots' +0xc / +0x1c, as the generic section)
+            std::vector<uint32_t> debris_w;
+            level();
+            for (uint32_t a = ee_read<uint32_t>(OV(0x0015ffe0)); a < ee_read<uint32_t>(OV(0x0015ffe0)) + 0x20000; a += 0x80) { debris_w.push_back(a + 0xc); debris_w.push_back(a + 0x1c); }
+            p133("p136_class1805", 0x0030cdb8, gml_class1805_update_l13, c1805, [hit_by, any_moby, group_kill, common](uint32_t m, int st) -> uint32_t {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                const uint32_t id = ee_read<uint16_t>(m + 0xb2);
+                const uint32_t save = 0x0014c190u + (ee_read<uint32_t>(0x0015ed84) << 8) + (u(static_cast<int32_t>(static_cast<int16_t>(id)) >> 5) << 2);
+                w32(save, st == 0 ? (ee_read<uint32_t>(save) | (1u << (id & 31))) : (ee_read<uint32_t>(save) & ~(1u << (id & 31))));
+                w8(m + 0x20, st <= 1 ? 0u : (st == 2 ? 1u : (st <= 4 ? 2u : u(ri(3, 9)))));
+                wf(pv + 0x20, rf(0.5f, 6.0f));
+                const float h = ee_read<float>(pv + 0x20);
+                if (st == 2) { if (ri(0, 3) == 0) w8(m + 0xa4, 0xff); else hit_by(m, any_moby(m), 0x10000u, pick({0, 1, 2}) == 0 ? h : (coin() ? rf(0.0f, h) : rf(h, h + 4.0f))); }  // (its health exactly in part)
+                if (st == 4) w8(m + 0x21, 0xff);
+                if (const uint32_t g = ee_read<uint8_t>(m + 0x21); g != 0xff && st == 3) {
+                    if (coin()) group_kill(static_cast<int32_t>(g), 0);
+                    w8(m + 0x20, 2);
+                    w8(0x0013d41e, u(ri(0, 1)));
+                }
+                common();
+                return m;
+            }, 6, 30, 0, debris_w);
+            g_ignored_words.resize(ign);
+        }
+
         g_extra_noop_hooks.clear();
         g_ignored_words = keep_ignored;
     }

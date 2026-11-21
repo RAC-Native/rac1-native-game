@@ -8,10 +8,19 @@
 // Its pvars: +0x20 its hit record (+0x20 its health), +0x60 its colour pulse, +0x70 its hum (a sound slot, -1 none),
 // +0x74 its entry of L13:0x1847a8 (-1 none). States: 0 set up (or gone when already broken), 1 standing, 2 breaking
 // (its +0xbc the bursts done). 1.02 Fixes, fix 43 (always on the PAL 2.00 disc): its proxy as the 1.02 build makes it.
+//
+// Class 1805: a box that breaks (kept broken by the save's bit, its +0xb2). pvars +0x20 its hit record (+0x20 its
+// health), +0x60 its colour pulse; the moby's +0x21 its group (0xff none). States: 0 set up, 1 standing (hits of the
+// kind 0x10000 take their damage), 2 broken: when it was the last of its group, the help message TXT(0x53d6) (once:
+// the byte 0x13d41e) with a sound; its sound, its bolts, its save and level bits set, eight pieces (classes 0x709 ..
+// 0x70c, twice) and an explosion, retired.
 #include <game/enhance/fixes102.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/gemlik_mobys.h>
+#include <game/ovl/metal.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/gemlik_own.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -174,6 +183,32 @@ uint32_t gml_30bfb0_l13(uint32_t parent, uint32_t pos, float scale) {
     return s;
 }
 
+// Class 1632's update, the hit proxy: retired once its parent (+0x60) is gone or no longer of its class (+0x64);
+// a hit on it is passed on to the parent (a copy of its hit record), then cleared.
+// orig: L13:0x0030c060
+void gml_class1632_update_l13(uint32_t m) {
+    const Frame f(96);
+    const uint32_t sp = f.sp;
+    const uint32_t pv = lwu(m + 0x78);
+    const uint32_t parent = lwu(pv + 0x60);
+    if (parent == 0 || lh(parent + 0xa6) != lw(pv + 0x64) || !alive(parent)) {
+        moby_retire(m);
+        return;
+    }
+    if (const uint32_t hit = sub_0025a420(m, 0xffffffffu, 0); hit != 0) {
+        lq_sq(sp, hit + 0x10);
+        sw(sp + 0x10, lwu(hit + 0x20));
+        sw(sp + 0x14, lwu(hit + 0x24));
+        sb(sp + 0x18, lbu(hit + 0x28));
+        sb(sp + 0x19, lbu(hit + 0x29));
+        sh(sp + 0x1a, lhu(hit + 0x2a));
+        swc1(sp + 0x1c, lwc1(hit + 0x2c));
+        sw(sp + 0x20, lwu(hit + 0x30));
+        moby_hit_record(lwu(pv + 0x60), sp);
+    }
+    sb(m + 0xa4, 0xff);
+}
+
 // orig: L13:0x002cefc0
 void gml_class170_update_l13(uint32_t m) {
     const Frame f(224);
@@ -248,6 +283,74 @@ void gml_class170_update_l13(uint32_t m) {
             gml_2ce688_l13(m, at, 1);
         }
         mark(pv, 1);
+        moby_retire(m);
+        return;
+    }
+    default:
+        return;
+    }
+}
+
+// orig: L13:0x0030cdb8
+void gml_class1805_update_l13(uint32_t m) {
+    const Frame f(224);
+    const uint32_t sp = f.sp;
+    const uint32_t id = lhu(m + 0xb2);
+    const uint32_t word = (static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(id)) >> 5) << 2);
+    const uint32_t save = 0x0014c190u + (lwu(0x0015ed84) << 8) + word;
+    if (((static_cast<int32_t>(lwu(save)) >> (id & 0x1f)) & 1) != 0) {  // broken before
+        moby_retire(m);
+        return;
+    }
+    const uint32_t pv = lwu(m + 0x78);
+    const uint32_t pulse = pv + 0x60;
+    const uint32_t hit = sub_0025a420(m, 0x10000, 0);
+    int32_t st = lw(sp + 0x30);
+    moby_hit_react_r(m, hit, pv + 0x20, 0, st, nullptr, nullptr, 4);
+    sw(sp + 0x30, static_cast<uint32_t>(st));
+    switch (lbu(m + 0x20)) {
+    case 0:
+        sb(m + 0x20, 1);
+        return;
+    case 1:
+        if (hit != 0) {
+            const float dmg = lwc1(hit + 0x2c), health = lwc1(pv + 0x20);
+            if (health < dmg) {
+                sb(m + 0x20, 2);
+            } else {
+                swc1(pv + 0x20, fpu_sub(health, dmg));
+                sb(pv + 0x67, 0xfa);
+                color_pulse_start(m, pulse);
+            }
+            sb(m + 0xa4, 0xff);
+        }
+        color_pulse_update(m, pulse);
+        return;
+    case 2: {  // broken
+        const uint32_t group = lbu(m + 0x21);
+        if (group != 0xff && moby_group_count_l1(static_cast<int32_t>(group), -1) == 1 && lbu(0x0013d41e) == 0) {  // the last of its group
+            sb(0x0013d41e, 1);
+            sound_play_indexed(1, 0, 0);
+            sub_00263d40(TXT(0x53d6), -1);
+        }
+        moby_sound_start(0, 0, m);
+        plant_bolts_drop_l1(m);
+        const uint32_t bit = 1u << (id & 0x1f);
+        sw(0x0014c190u + (lwu(0x0015ed84) << 8) + word, lwu(0x0014c190u + (lwu(0x0015ed84) << 8) + word) | bit);
+        const uint32_t level_bits = L13_ADDR(0x001ba7d0) + (static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(lhu(m + 0xb2))) >> 5) << 2);
+        sw(level_bits, lwu(level_bits) | (1u << (lhu(m + 0xb2) & 0x1f)));
+        const uint32_t at = sp + 0x20, look = L13_ADDR(0x0015f580);
+        for (int round = 0; round < 2; ++round) {
+            for (uint32_t cls = 0x709; cls < 0x70d; ++cls) {  // its pieces: at random within 1.5, 1.7 up
+                sq_zero(at);
+                metal_25f8e0(at, 1.5f);
+                swc1(at + 8, fpu_add(lwc1(at + 8), u2f(0x3fd9999au)));
+                vec3_add(V(at), V(at), V(m + 0x10));
+                sw(sp, look);
+                debris_spawn(m, cls, at, m + 0x40, 0, 0, look, look, lwu(sp), 0.0f);
+            }
+        }
+        explosion_effect(m, m + 0x10, 0, 0xa, 3, 0x10, 0, 1, 3, -1, 0, 0.0f, 0.0f, 6.0f, 3.0f, 9.0f, u2f(0x3f8ccccdu), 15.0f);
         moby_retire(m);
         return;
     }

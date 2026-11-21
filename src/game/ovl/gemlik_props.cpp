@@ -1,5 +1,6 @@
-// Gemlik Base's (level 13) classes 352, 389 and 404: a glow that grows over its maker, a piece of a fighter flying
-// off, and a field that keeps mobys out of its box until the moby it guards is destroyed. Level 13 only: the addresses
+// Gemlik Base's (level 13) classes 352, 389, 404 and 1403: a glow that grows over its maker, a piece of a fighter
+// flying off, a field that keeps mobys out of its box until the moby it guards is destroyed, and a mark that follows
+// a moby and then a path. Level 13 only: the addresses
 // are Gemlik's (`orig: L13:`), the level's own data L13_ADDR, the base ELF's bare. Registered in gemlik_mobys.cpp.
 //
 // Class 352: pvars +0 its maker, +4 its strength (0 .. 1: its alpha 60 times it), +8 its texture's scroll. States (the
@@ -14,7 +15,14 @@
 // none). States: 0 set up, 1 stands (pushes mobys out of its box) until the guarded moby is gone or its save bit (the
 // level's +0xb2 bit) set, 2 fades (5 % of a second a frame, its alpha 20 times its strength), 3 gone. Its texture
 // scrolls 0xc0 a frame (but in 3).
+// Class 1403: pvars +0 the moby it follows (an index, -1 none: it stays), +4 a path (lvd::path, -1 none), +8 / +0xc the
+// path's point it is at and its distance to it, +0x10 the frames since its leader stopped. State 0 sets up (the
+// path's points' w lanes given each segment's length, the original writing the level's data); every frame it is
+// retired with its leader gone; while the leader's state is below 7 it is at the leader's place; then, on the path:
+// state 1 the nearest point of the path to the leader (100 at most) while that goes on along the path or for 30
+// frames, then state 2: it walks the path to its end (a quarter a frame), state 3 there.
 #include <game/collision/collision.h>
+#include <game/level/level_data.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/gemlik_mobys.h>
@@ -22,6 +30,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/shared_path_ahead.h>
 #include <game/ovl/shared_small.h>
 #include <game/ovl/variants_l13.h>
 #include <game/ovl/weapons.h>
@@ -271,6 +280,67 @@ void gml_class404_update_l13(uint32_t m) {
         step = 0x10c0;
     }
     class_uv_scroll(lwu(m + 0x24), step, 0);
+}
+
+// orig: L13:0x0030bb70
+void gml_class1403_update_l13(uint32_t m) {
+    const Frame f(128);
+    const uint32_t sp = f.sp;
+    const uint32_t pv = lwu(m + 0x78);
+    if (lbu(m + 0x20) == 0) {  // set up: the path's segments' lengths into its points' w lanes
+        sb(m + 0x30, 0xff);
+        if (const int32_t pi = lw(pv + 4); pi != -1) {
+            const uint32_t path = lvd::path(pi);
+            for (int32_t i = 0; i < lw(path); ++i) {
+                const uint32_t p = path + 0x10 + (static_cast<uint32_t>(i) << 4);
+                const int32_t next = ee_rem(i + 1, lw(path));
+                swc1(p + 0xc, vec3_distance(V(p), V(path + 0x10 + (static_cast<uint32_t>(next) << 4))));
+            }
+        }
+        sw(pv + 0x8, 0);
+        sw(pv + 0xc, 0);
+        sb(m + 0x20, 1);
+        sw(pv + 0x10, 0);
+    }
+    const int32_t idx = lw(pv);
+    if (idx == -1) return;
+    const uint32_t leader = lwu(L13_ADDR(0x0015ffd8)) + (static_cast<uint32_t>(idx) << 8);
+    if (leader == 0 || !alive(leader)) {
+        moby_retire(m);
+        return;
+    }
+    if (lbu(leader + 0x20) < 7) {
+        lq_sq(m + 0x10, leader + 0x10);
+        return;
+    }
+    sw(pv + 0x10, lwu(pv + 0x10) + 1);
+    const int32_t pi = lw(pv + 4);
+    if (pi == -1) return;
+    const uint32_t path = lvd::path(pi);
+    if (lbu(m + 0x20) == 1) {  // the path's point nearest the leader, while that goes on (or for 30 frames)
+        int32_t seg = lw(sp + 0x10);
+        float t = lwc1(sp + 0x14);
+        path_closest_point_v(path, V(leader + 0x10), V(sp), &seg, &t, 0, 100.0f, 1.0f, 0.0f);
+        sw(sp + 0x10, static_cast<uint32_t>(seg));
+        swc1(sp + 0x14, t);
+        if (lw(pv + 8) < seg || lwc1(pv + 0xc) < t || lw(pv + 0x10) < 30) {
+            sw(pv + 8, static_cast<uint32_t>(seg));
+            swc1(pv + 0xc, t);
+            lq_sq(m + 0x10, sp);
+        } else {
+            sb(m + 0x20, 2);
+        }
+    }
+    if (lbu(m + 0x20) == 2) {  // along the path to its end
+        const int32_t at = lw(pv + 8);
+        if (at < lw(path) - 1) {
+            const int32_t next = path_point_ahead(m, path, m + 0x10, at, 1, fpu_mul(step60(), 0.25f));
+            sw(pv + 8, static_cast<uint32_t>(next));
+            swc1(pv + 0xc, vec3_distance(V(m + 0x10), V(path + 0x10 + (static_cast<uint32_t>(next) << 4))));
+        } else {
+            sb(m + 0x20, 3);
+        }
+    }
 }
 
 }  // namespace rac1

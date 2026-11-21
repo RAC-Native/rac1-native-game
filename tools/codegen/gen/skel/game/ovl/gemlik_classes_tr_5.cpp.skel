@@ -54,20 +54,6 @@ namespace rac1 {
 using namespace eer;
 using namespace vu0m;
 
-//@gen gml_3060b8_l13
-
-//@gen gml_306148_l13
-
-//@gen gml_class1233_update_l13
-
-//@gen gml_class1238_update_l13
-
-//@gen gml_30c138_l13
-
-//@gen gml_3073c8_l13
-
-//@gen gml_class1261_update_l13
-
 //@gen gml_3094f8_l13
 
 //@gen gml_308d10_l13
@@ -75,7 +61,5 @@ using namespace vu0m;
 //@gen gml_309370_l13
 
 //@gen gml_class1262_update_l13
-
-//@gen gml_2aeba8_l13
 
 }  // namespace rac1
