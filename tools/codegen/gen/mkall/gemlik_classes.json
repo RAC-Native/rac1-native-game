@@ -10,7 +10,6 @@
  "entries": [
   "2b50d8:gml_class63_update_l13:void:a0",
   "2e7238:gml_class304_update_l13:void:a0",
-  "307e98:gml_class1262_update_l13:void:a0",
   "30d550:gml_class1885_update_l13:void:a0",
   "2b97f8:gml_cb_2b97f8_l13:void:a0",
   "2b7980:gml_hook_2b7980_u",
@@ -23,7 +22,6 @@
  "files": [
   "src/game/ovl/gemlik_classes_tr_1.cpp",
   "src/game/ovl/gemlik_classes_tr_3.cpp",
-  "src/game/ovl/gemlik_classes_tr_5.cpp",
   "src/game/ovl/gemlik_classes_tr_6.cpp",
   "src/game/ovl/gemlik_classes_tr_7.cpp"
  ]

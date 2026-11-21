@@ -11,10 +11,13 @@
 #include "ovl_oracle.h"
 #include "trial_guard.h"
 
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/enhance/fixes102.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/gemlik_mobys.h>
+#include <game/math/vecmath.h>
+#include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
@@ -2712,6 +2715,251 @@ void batch_220() {
                 common();
                 return m;
             }, 6, 30, 0, debris_w);
+            g_ignored_words.resize(ign);
+        }
+
+        // ---- P13.7 (task of stage 4): class 1262 (the beam robot, gemlik_robot.cpp) and its three helpers, on the level's own
+        // mobys of the class as their state 0 left them: each state (17: past the table), the hero (its target) in and out of
+        // each reach and in front of it or not, the chase and attack timers at their edges, the animation's end and its time
+        // about the arm's frames 9 .. 15, a beam thrown (by the port of 0x309370) at each point of its life with its points'
+        // strengths about 0.98 / 1 and the hero on it, hits of the mask 0x330000 (from a class-1262 moby or another) about its
+        // health, the knock-back and the death run by enemy_physics, the floor: none, below, above, deadly (spots found by a
+        // scan of the floor's kinds about the mobys), steeper than 40 degrees, the space's bounds; the frame scale at its 50 Hz
+        // value in a quarter of the cases. "p137_robot_fix44" checks 1.02 Fixes, fix 44 (run with RAC1_FIXES102=44). Left out:
+        // the particle pool's +0x2c (beam_sparks' particles, as above); the collision routines' scratch. B220_INFO=1 prints the
+        // subjects, their ranges and the scan's spots.
+        {
+            level();
+            const std::vector<uint32_t> c1262 = mobys_with(0x00307e98);
+            static const auto pick = [](std::initializer_list<float> v) { return *(v.begin() + ri(0, static_cast<int>(v.size()) - 1)); };
+            // the scan: spots about the mobys whose floor (probed from 3 above) is of a deadly kind (L13:0x1f5670's 0, 1, 3, 11,
+            // 13) or steeper than 40 degrees, the floor's height in .z
+            std::vector<Vec4> deadly, steep;
+            for (uint32_t m : c1262)
+                for (int i = -12; i <= 12; ++i)
+                    for (int j = -12; j <= 12; ++j) {
+                        const Vec4 at = ee_ref<Vec4>(m + 0x10);
+                        const Vec4 q{at.x + 2.5f * static_cast<float>(i), at.y + 2.5f * static_cast<float>(j), at.z + 3.0f, 1.0f};
+                        const float fl = floor_probe_v(0.5f, q, 0);
+                        if (fl == 0.0f) continue;
+                        const int32_t k = sub_001f35d8();
+                        const Vec4 n = coll_hit_normal();
+                        if (k == 0 || k == 1 || k == 3 || k == 11 || k == 13) deadly.push_back(Vec4{q.x, q.y, fl, 1.0f});
+                        if (0.6981317f < std::atan2(std::sqrt(n.x * n.x + n.y * n.y), n.z)) steep.push_back(Vec4{q.x, q.y, fl, 1.0f});
+                    }
+            level();
+            if (std::getenv("B220_INFO") != nullptr) {
+                for (uint32_t m : c1262) {
+                    const Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    std::printf("INFO class 1262 moby %u uid %u at (%.1f, %.1f, %.1f) state %u ranges %.1f / %.1f path %d walls %d box %d\n", (m - moby_base()) >> 8,
+                                ee_read<uint16_t>(m + 0xb2), q.x, q.y, q.z, ee_read<uint8_t>(m + 0x20), ee_read<float>(pv + 0x19c), ee_read<float>(pv + 0x1a0),
+                                ee_read<int32_t>(pv + 0x180), ee_read<int32_t>(pv + 0x198), ee_read<int32_t>(pv + 0x1a4));
+                }
+                std::printf("INFO class 1262 floor scan: %zu deadly spots, %zu steep\n", deadly.size(), steep.size());
+            }
+            const size_t ign = g_ignored_words.size();
+            g_ignored_words.insert(g_ignored_words.end(), pool_w.begin(), pool_w.end());
+            // the hero (and his moby) `d` from the moby, in front of it (within 0.2 rad of its yaw) or anywhere about it
+            auto hero_from = [hero_at](uint32_t m, float d, bool in_front) {
+                const float yaw = ee_read<float>(m + 0x48);
+                const float a = in_front ? yaw + rf(-0.2f, 0.2f) : rf(-3.1f, 3.1f);
+                Vec4 q = ee_ref<Vec4>(m + 0x10);
+                q.x += d * std::cos(a); q.y += d * std::sin(a); q.z += ri(0, 3) == 0 ? rf(-5.0f, 5.0f) : rf(-0.5f, 0.5f);
+                hero_at(q);
+            };
+            // a beam thrown (the port of 0x309370), then its life and its points' strengths dealt, the points moved about
+            auto arm_beam = [](uint32_t m) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                gml_309370_l13(m);
+                wf(pv + 0x1fc, pick({1.0f, 2.0f, 20.0f, 21.0f, 0.0f, static_cast<float>(ri(3, 90))}));
+                for (uint32_t i = 0; i < 16; ++i) {
+                    const uint32_t p = pv + 0x210 + i * 0x10;
+                    if (ri(0, 2) == 0) wf(p + 0xc, pick({0.0f, 0.5f, 0.97f, 0.98f, 0.99f, 1.0f, 1.0f}));
+                    if (ri(0, 3) == 0) { wf(p, ee_read<float>(p) + rf(-3.0f, 3.0f)); wf(p + 4, ee_read<float>(p + 4) + rf(-3.0f, 3.0f)); wf(p + 8, ee_read<float>(p + 8) + rf(-1.0f, 2.0f)); }
+                }
+            };
+            // the animation's time (moby_anim_time) about `t`: the previous set made another (the blend added to the frame's)
+            auto anim_time = [](uint32_t m, float t) {
+                const uint32_t cur = ee_read<uint8_t>(m + 0x52) == 0xff ? ee_read<uint32_t>(m + 0x6c) : ee_read<uint32_t>(m + 0x68);
+                if (cur == 0 || cur >= 0x02000000u) return;  // (no animation record: a moby left as the level placed it)
+                w8(m + 0x52, ee_read<uint8_t>(m + 0x53) ^ 1u);
+                if (ee_read<uint8_t>(m + 0x52) == 0xff) return;
+                wf(m + 0x54, t - static_cast<float>(ee_read<int16_t>(cur + 4)) * 0.0625f);
+            };
+            auto prep1262 = [&, hero_from, arm_beam, anim_time](uint32_t m, int st) -> uint32_t {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                if (st >= 1 && ri(0, 7) != 0) first_run(gml_class1262_update_l13, m);  // (the level's moby as its state 0 leaves it)
+                w8(m + 0x20, st < 17 ? u(st) : u(ri(17, 0xfc)));
+                {  // the hero: in the arm's reach, beyond it (about L13:0x161e74 = 4), about 15, beyond, far off
+                    const int k = ri(0, 6);
+                    const float d = k == 0 ? rf(0.5f, 4.0f) : (k == 1 ? rf(3.8f, 4.2f) : (k == 2 ? rf(4.0f, 15.0f) : (k == 3 ? rf(14.5f, 15.5f) : (k == 4 ? rf(15.0f, 40.0f) : (k == 5 ? rf(40.0f, 120.0f) : rf(4.0f, 20.0f))))));
+                    hero_from(m, d, ri(0, 2) != 0);
+                }
+                if (coin()) w32(pv + 0x188, 0);
+                w32(pv + 0x38, u(ri(0, 3) == 0 ? 1 : 0));
+                w32(pv + 0x184, u(ri(0, 2) == 0 ? 0 : (coin() ? ri(1, 2) : ri(3, 240))));
+                w32(pv + 0x194, u(ri(0, 2) == 0 ? 0 : (coin() ? ri(1, 2) : ri(3, 60))));
+                w8(m + 0x70, (ee_read<uint8_t>(m + 0x70) & ~2u) | (coin() ? 2u : 0u));
+                if (coin()) w8(m + 0x53, u(ri(0, 6)));
+                if (st == 5 || st == 12 || ri(0, 5) == 0) anim_time(m, pick({8.9f, 9.0f, 9.1f, 12.0f, 14.9f, 15.0f, 15.1f, rf(0.0f, 20.0f)}));
+                if (ri(0, 2) == 0) arm_beam(m);
+                if (coin()) wf(pv + 0x20, rf(0.0f, 3.0f));
+                if (ri(0, 2) != 0) {
+                    const uint32_t by = coin() && c1262.size() > 1 ? c1262[static_cast<size_t>(ri(0, static_cast<int>(c1262.size()) - 1))] : any_moby(m);
+                    const float h = ee_read<float>(pv + 0x20);
+                    if (by != 0 && by != m && ri(0, 2) == 0) w16(by + 0xa6, 0x4ee);  // (a hit from another class-1262 moby: no damage)
+                    hit_by(m, by == m ? 0u : by, NOT_ADDR(0x00330000), coin() ? rf(0.0f, h) : rf(h, h + 3.0f));
+                    if (coin()) w8(OV(0x00178100) + (u(ee_read<uint8_t>(m + 0xa4)) << 6) + 0x28, u(ri(8, 12)));  // (the reactions' table's end: 10, 11, past it)
+                } else {
+                    w8(m + 0xa4, 0xff);
+                }
+                if (ri(0, 3) == 0) {  // home, by it or away
+                    Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    const float r = coin() ? rf(0.0f, 1.2f) : rf(1.0f, 30.0f);
+                    q.x += r; ee_ref<Vec4>(pv + 0x170) = q;
+                }
+                if (ri(0, 3) == 0) w32(pv + 0x1a4, 0xffffffffu);
+                if (coin()) wf(pv + 0x1a8, rf(-1.2f, 1.2f));
+                if (st == 3) {  // the run-up's end (the animation over), the target about 15 in front
+                    w8(m + 0x70, ee_read<uint8_t>(m + 0x70) | 2u);
+                    if (ri(0, 2) != 0) hero_from(m, rf(13.5f, 15.5f), true);
+                }
+                const bool homing = st == 13 && ri(0, 2) != 0;
+                if (homing) {  // home 2 .. 20 off, about 40 .. 45 degrees off the yaw, no hit (its knock-back would change the state) and
+                               // the moby where the level put it
+                    const float a = ee_read<float>(m + 0x48) + (coin() ? 1.0f : -1.0f) * rf(0.6f, 0.85f), r = rf(2.0f, 20.0f);
+                    Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    q.x += r * std::cos(a); q.y += r * std::sin(a);
+                    ee_ref<Vec4>(pv + 0x170) = q;
+                    w32(pv + 0x188, 0);
+                    w8(m + 0xa4, 0xff);
+                }
+                if (st == 15 || st == 16 || ri(0, 9) == 0) {  // knocked back / dying: the record set as the hit's reaction sets it
+                    wf(pv + 0x78, rf(0.0f, 0.3f)); wf(pv + 0x7c, rf(0.0f, 0.4f));
+                    wf(pv + 0xb0, st == 16 ? 9.0f : 8.0f); wf(pv + 0xb4, st == 16 ? 17.0f : 15.0f);
+                    move_state_start(m, pv + 0x60, st == 16 ? 8u : 7u, 1, 0, rf(-3.1f, 3.1f));
+                    if (coin()) wf(m + 0x18, ee_read<float>(m + 0x18) + rf(0.0f, 1.5f));
+                }
+                bool moved_far = false;
+                {  // the floor
+                    Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    const int k = homing ? 11 : ri(0, 11);
+                    moved_far = k <= 1;
+                    if (k == 0) q.z += rf(20.0f, 60.0f);
+                    else if (k == 1) { q.x += 400.0f; }
+                    else if (k == 2) { q.z += rf(0.05f, 2.0f); if (coin()) wf(pv + 0x68, rf(-2.5f, 0.0f)); }  // (the fall that crosses the floor)
+                    else if (k == 3) q.z -= rf(0.01f, 0.3f);
+                    else if (k == 4 && !deadly.empty()) { q = deadly[static_cast<size_t>(ri(0, static_cast<int>(deadly.size()) - 1))]; q.z += rf(-0.2f, 0.5f); }
+                    else if (k == 5 && !steep.empty()) { q = steep[static_cast<size_t>(ri(0, static_cast<int>(steep.size()) - 1))]; q.z += rf(-0.2f, 0.5f); }
+                    else if (k == 6) {  // (the space's bounds: x / y at either end, z at the low one; with z about 1021 a collision routine of
+                                         // the engine runs without end, on one side or both: not a place the game takes a robot)
+                        const int ax = ri(0, 2);
+                        const float e = ax == 2 ? pick({1.9f, 2.1f}) : pick({1.9f, 2.1f, 1020.9f, 1021.1f});
+                        (ax == 0 ? q.x : (ax == 1 ? q.y : q.z)) = e;
+                    }
+                    q.w = ee_read<float>(m + 0x1c);
+                    ee_ref<Vec4>(m + 0x10) = q;
+                    if (k <= 6) {  // (moved: its matrix and the arm's last point with it, as a frame of the game leaves them; a swing
+                                   // swept from the old place, far off, ran for minutes in the port's swept_collide)
+                        moby_update_transform(m);
+                        moby_chain_point_v(m, 0, V(pv + 0x1e0));
+                    }
+                }
+                if (!moved_far && ri(0, 3) == 0) {  // the camera within 28 of the moby or about 28 (the floor band), the moby visible
+                                                    // (not with the moby moved far up or off the level: a case of that kind ran without end)
+                    const Vec4 at = ee_ref<Vec4>(m + 0x10);
+                    const float r = coin() ? rf(0.0f, 27.0f) : rf(27.5f, 28.5f), a = rf(-3.1f, 3.1f);
+                    ee_ref<Vec4>(OV(0x00166dc0)) = Vec4{at.x + r * std::cos(a), at.y + r * std::sin(a), at.z, 1.0f};
+                    w8(m + 0x31, u(ri(1, 3)));
+                }
+                common();
+                return m;
+            };
+            p133("p137_class1262", 0x00307e98, gml_class1262_update_l13, c1262, prep1262, 18, 30, 1);
+            p133("p137_308d10", 0x00308d10, gml_308d10_l13, c1262, [prep1262](uint32_t m, int st) { return prep1262(m, st == 0 ? ri(1, 16) : (st == 1 ? 15 : 16)); }, 3, 40, 1);
+            p133("p137_3094f8", 0x003094f8, gml_3094f8_l13, c1262, [&, arm_beam](uint32_t m, int st) -> uint32_t {
+                arm_beam(m);
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                if (st == 1) {  // the hero on the beam: its strikes meet him
+                    const uint32_t p = pv + 0x210 + u(ri(0, 14)) * 0x10;
+                    Vec4 q = ee_ref<Vec4>(p); q.x += rf(-0.5f, 0.5f); q.y += rf(-0.5f, 0.5f); q.z -= rf(0.0f, 1.0f);
+                    hero_at(q);
+                    for (uint32_t i = 0; i < 16; ++i) if (ri(0, 3) != 0) wf(pv + 0x21c + i * 0x10, pick({0.98f, 1.0f}));
+                }
+                if (st == 2) wf(m + 0x48, rf(-3.1f, 3.1f));
+                common();
+                return m;
+            }, 3, 40, 1);
+            p133("p137_309370", 0x00309370, gml_309370_l13, c1262, [&](uint32_t m, int st) -> uint32_t {
+                Vec4 q = ee_ref<Vec4>(m + 0x10);
+                if (st == 1 && !steep.empty()) { q = steep[static_cast<size_t>(ri(0, static_cast<int>(steep.size()) - 1))]; q.z += rf(0.0f, 0.5f); }
+                else q.z += rf(-0.2f, 2.0f);
+                q.w = ee_read<float>(m + 0x1c);
+                ee_ref<Vec4>(m + 0x10) = q;
+                wf(m + 0x48, rf(-3.1f, 3.1f));
+                common();
+                return m;
+            }, 2, 40, 1);
+
+            // 1.02 Fixes, fix 44: in state 1, facing its target (+0x164 not 2) beyond L13:0x161e74, the robot with the fix on starts the
+            // run-up (state 2, animation 3) only nearer than 15; from 15 on it takes state 7 (animation 1 over frame_scale_i(20)):
+            // the RAM with the fix on is the RAM with it off, but in the cases that flip the state 7 and that animation set; in
+            // every other case the same. The animation was 3 before the flipping cases (the fix-off run then sets none); a
+            // flipping case with another animation is not compared (counted). The EE stack's page is not compared.
+            if (const char* only = std::getenv("ORACLE_ONLY"); (only == nullptr || std::strcmp(only, "p137_robot_fix44") == 0) && !c1262.empty()) {
+                if (std::getenv("RAC1_FIXES102") == nullptr) {
+                    std::printf("%-26s skipped (run with RAC1_FIXES102=44)\n", "p137_robot_fix44");
+                    ++g_skipped;
+                } else {
+                    int bad = 0, n = 0, flipped = 0, same = 0, skipped = 0;
+                    static std::vector<uint8_t> start, with_fix;
+                    for (int c = 0; c < 160; ++c) {
+                        level();
+                        const uint32_t m = c1262[static_cast<size_t>(ri(0, static_cast<int>(c1262.size()) - 1))];
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        first_run(gml_class1262_update_l13, m);
+                        w8(m + 0x20, 1);
+                        w32(pv + 0x188, 0);
+                        const int k = ri(0, 4);
+                        hero_from(m, k == 0 ? rf(14.5f, 15.5f) : (k == 1 ? rf(15.0f, 16.0f) : (k == 2 ? rf(4.5f, 15.0f) : (k == 3 ? rf(15.0f, 40.0f) : rf(0.5f, 40.0f)))), ri(0, 4) != 0);
+                        w8(m + 0xa4, 0xff);
+                        if (ri(0, 2) != 0) w8(m + 0x53, 3);
+                        if (coin()) w32(pv + 0x184, u(ri(1, 200)));
+                        common();
+                        uint8_t* ram = ee_get_ram_base();
+                        start.assign(ram, ram + 0x02000000);
+                        const uint8_t anim0 = ee_read<uint8_t>(m + 0x53);
+                        g_advanced_disabled = false;
+                        gml_class1262_update_l13(m);
+                        g_advanced_disabled = true;
+                        with_fix.assign(ram, ram + 0x02000000);
+                        std::memcpy(ram, start.data(), start.size());
+                        gml_class1262_update_l13(m);
+                        const uint32_t t = ee_read<uint32_t>(pv + 0x160);
+                        const float d = vec2_distance(V(m + 0x10), V(t + 0x10));
+                        const bool flips = ee_read<uint8_t>(m + 0x20) == 2 && !(d < 15.0f);
+                        if (flips) {
+                            if (anim0 != 3) { ++skipped; continue; }
+                            w8(m + 0x20, 7);
+                            moby_anim_set(m, 1, 0, frame_scale_i(20));
+                            ++flipped;
+                        } else {
+                            ++same;
+                        }
+                        ++n;
+                        for (uint32_t x = 0x00100000; x < 0x02000000; x += 4) {
+                            if (x >= ee_stack_ptr() - 0x10000 && x < ee_stack_ptr() + 0x10000) continue;
+                            uint32_t xw, yw;
+                            std::memcpy(&xw, &with_fix[x], 4); std::memcpy(&yw, &ram[x], 4);
+                            if (xw != yw) { if (bad < 8) std::printf("  p137_robot_fix44 case %d (%s, d %.3f): %08x fix=%08x expected=%08x\n", c, flips ? "flipped" : "same", d, x, xw, yw); ++bad; break; }
+                        }
+                    }
+                    std::printf("%-26s %s (%d cases: %d flipped, %d the same; %d flipping with another animation not compared)\n", "p137_robot_fix44",
+                                bad == 0 && flipped > 0 && same > 0 ? "ok" : "FAIL", n, flipped, same, skipped);
+                    if (bad != 0 || flipped == 0 || same == 0) ++g_fail;
+                }
+            }
             g_ignored_words.resize(ign);
         }
 

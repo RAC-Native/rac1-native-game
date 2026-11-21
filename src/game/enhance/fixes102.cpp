@@ -20,7 +20,7 @@
 namespace rac1 {
 
 namespace {
-constexpr int FIXES[] = {1, 2, 3, 5, 6, 7, 11, 15, 16, 17, 18, 19, 20, 22, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 43, 45, 46, 49};  // the fixes of the 1.02 Fixes row (fixes102.h)
+constexpr int FIXES[] = {1, 2, 3, 5, 6, 7, 11, 15, 16, 17, 18, 19, 20, 22, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 43, 44, 45, 46, 49};  // the fixes of the 1.02 Fixes row (fixes102.h)
 constexpr int GAMEPLAY[] = {4, 8, 9, 10, 12, 13, 14, 21, 23, 24, 25, 31};  // the fixes of the 1.02 Gameplay row (fixes102.h)
 
 // orig: (none) — enhancement: a list variable's fixes (RAC1_FIXES102 / RAC1_GAMEPLAY102) as bits (bit n: fix n), `set`
@@ -250,6 +250,13 @@ bool fixes102_gemlik_turret_aim() {
 bool fixes102_gemlik_tower_proxy() {
     // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
     return fixes102_on(43) || region_core_moved();
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L13:0x309544 .. 0x3095c4 (PAL 2.00 disc): Gemlik Base's beam
+// robot (class 1262) starts its beam's run-up from state 1 only while its target is nearer than 15.0
+bool fixes102_gemlik_robot_reach() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(44) || region_core_moved();
 }
 
 // orig: (none) — enhancement (fixes102.h); the 1.02 build's L14:0x2f0050 (PAL 2.00 disc): Oltanis's gondola (class 685)

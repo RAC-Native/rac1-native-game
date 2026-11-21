@@ -233,6 +233,7 @@ add_library(rac1_game STATIC
     ovl/gemlik_logic.cpp
     ovl/gemlik_props.cpp
     ovl/gemlik_qwark.cpp
+    ovl/gemlik_robot.cpp
     ovl/gemlik_shots.cpp
     ovl/gemlik_ship.cpp
     ovl/gemlik_swing.cpp

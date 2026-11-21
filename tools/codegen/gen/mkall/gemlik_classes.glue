@@ -8,6 +8,5 @@
 0x002b7d50: hud_line_strip_turned(a0.w(), static_cast<int32_t>(a1.w()), a2.w(), a3.lo, fr[12], fr[13], fr[14], fr[15]);
 0x002b8320: hud_ring(a0.w(), a1.w(), a2.w(), a3.w(), fr[12], fr[13], fr[14], fr[15]);
 0x002b84e8: hud_screen_point(a0.w(), a1.w(), a2.w(), static_cast<int32_t>(a3.w()));
-0x00309bc8: beam_sparks(a0.w());
 0x0030d4b0: set32(v0, static_cast<uint32_t>(class1885_free_slot(a0.w(), a1.w())));
 0x0030dbe8: set32(v0, static_cast<uint32_t>(class1885_throw(a0.w(), a1.w(), a2.w(), a3.w(), t0.w())));
