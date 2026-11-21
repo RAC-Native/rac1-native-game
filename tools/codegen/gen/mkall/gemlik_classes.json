@@ -9,15 +9,8 @@
  },
  "entries": [
   "2b50d8:gml_class63_update_l13:void:a0",
-  "2c4428:gml_class111_update_l13:void:a0",
   "2e7238:gml_class304_update_l13:void:a0",
-  "2e84d8:gml_class352_update_l13:void:a0",
   "2eb098:gml_class388_update_l13:void:a0",
-  "2ece00:gml_class389_update_l13:void:a0",
-  "2ed4a8:gml_class404_update_l13:void:a0",
-  "2f3750:gml_class533_update_l13:void:a0",
-  "2f3778:gml_class558_update_l13:void:a0",
-  "2f8880:gml_class667_update_l13:void:a0",
   "2f8a78:gml_class674_update_l13:void:a0",
   "305a58:gml_class1233_update_l13:void:a0",
   "306300:gml_class1238_update_l13:void:a0",
@@ -45,7 +38,6 @@
  "glue_files": [],
  "files": [
   "src/game/ovl/gemlik_classes_tr_1.cpp",
-  "src/game/ovl/gemlik_classes_tr_2.cpp",
   "src/game/ovl/gemlik_classes_tr_3.cpp",
   "src/game/ovl/gemlik_classes_tr_4.cpp",
   "src/game/ovl/gemlik_classes_tr_5.cpp",

@@ -1465,11 +1465,417 @@ void batch_220() {
             w16(pv + 0x84, u(ri(0, 200)));
             w16(pv + 0x24, u(ri(1, 4)));
             wf(pv + 0x20, rf(0.5f, 3.0f));
-            if (st >= 5 || ri(0, 2) == 0) hit_by(m, any_moby(m), 0x330000u, coin() ? rf(0.0f, 0.4f) : rf(3.0f, 9.0f));
+            if ((st >= 5 && st < 8) || (st < 5 && ri(0, 2) == 0)) hit_by(m, any_moby(m), 0x330000u, coin() ? rf(0.0f, 0.4f) : rf(3.0f, 9.0f));
             else w8(m + 0xa4, 0xff);
             common();
+            if (st == 8) {  // (P13.4) the leader's time running with 480 .. 1600 frames left, its tick due: the tick's cap fs(45)
+                const uint32_t lead = ee_read<uint32_t>(pv + 0x80) != 0 ? ee_read<uint32_t>(pv + 0x80) : m;
+                const uint32_t lpv = ee_read<uint32_t>(lead + 0x78);
+                w8(lead + 0x20, 2);
+                w8(lpv + 0x7a, 0); w8(lpv + 0x7b, u(ri(1, 4)));
+                w32(lpv + 0x7c, u(ri(30, 300)));
+                w16(lpv + 0x70, u(ri(480, 1600)));
+                w16(lpv + 0x72, u(ri(0, 1)));
+                w16(lpv + 0x74, u(ri(0, 1)));
+                w8(lead + 0xa4, 0xff);
+                return lead;
+            }
             return m;
-        }, 8, 30, 0);
+        }, 9, 30, 0);
+
+        // ---- P13.4 (task of stage 4): class 111 (the squadron's fighter, gemlik_fighter.cpp) and its six helpers; classes 352,
+        // 389, 404 and its push (gemlik_props.cpp); 533, 558, 667 (gemlik_logic.cpp). The same harness and generators' style;
+        // classes the level has no moby of at its start are spawned (their grid rect "none"). B220_INFO=1 prints the subjects.
+        level();
+        const std::vector<uint32_t> c111 = mobys_with(0x002c4428), c352 = mobys_with(0x002e84d8), c389 = mobys_with(0x002ece00),
+                                    c404 = mobys_with(0x002ed4a8), c533 = mobys_with(0x002f3750), c558 = mobys_with(0x002f3778),
+                                    c667 = mobys_with(0x002f8880);
+        auto index_of = [moby_base](uint32_t o) { return (o - moby_base()) >> 8; };
+        auto path_of = [](int32_t i) { return ee_read<uint32_t>(OV(0x001b04b0) + u(i) * 4); };
+        if (std::getenv("B220_INFO") != nullptr) {
+            for (const auto& [nm, v] : std::initializer_list<std::pair<const char*, const std::vector<uint32_t>*>>{{"111", &c111}, {"352", &c352}, {"389", &c389}, {"404", &c404}, {"533", &c533}, {"558", &c558}, {"667", &c667}})
+                for (uint32_t m : *v) {
+                    const Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    std::printf("INFO class %s moby %u uid %u at (%.1f, %.1f, %.1f) state %u\n", nm, index_of(m), ee_read<uint16_t>(m + 0xb2), q.x, q.y, q.z, ee_read<uint8_t>(m + 0x20));
+                }
+            for (uint32_t m : c111) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                const int32_t p = ee_read<int32_t>(pv + 0xa0), l = ee_read<int32_t>(pv + 0xbc);
+                const uint32_t lm = l == -1 ? 0u : moby_base() + (u(l) << 8);
+                std::printf("INFO class 111 moby %u path %d points %d leader %d (class %d state %u +0xbc %u)\n", index_of(m), p, p == -1 ? -1 : ee_read<int32_t>(path_of(p)), l,
+                            lm == 0 ? -1 : ee_read<int16_t>(lm + 0xa6), lm == 0 ? 0u : ee_read<uint8_t>(lm + 0x20), lm == 0 ? 0u : ee_read<uint8_t>(lm + 0xbc));
+            }
+            for (uint32_t m : c667) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                std::printf("INFO class 667 moby %u watches %d sets %d mode %d\n", index_of(m), ee_read<int32_t>(pv), ee_read<int32_t>(pv + 0x10), ee_read<int8_t>(pv + 0x1c));
+            }
+        }
+        // a live moby with pvars (not `not_this`), or 0
+        auto moby_with_pvars = [any_moby](uint32_t not_this) -> uint32_t {
+            for (int k = 0; k < 10; ++k) {
+                const uint32_t o = any_moby(not_this);
+                if (o != 0 && ee_read<uint32_t>(o + 0x78) != 0) return o;
+            }
+            return 0u;
+        };
+        // a spawned moby of `cls` at `at` (+ up to `r`), out of the grid; 0 when the class is not loaded
+        auto spawn_at = [](int32_t cls, uint32_t at, float r) -> uint32_t {
+            const uint32_t m = moby_spawn(static_cast<uint32_t>(cls));
+            if (m == 0) return 0;
+            Vec4 q = ee_ref<Vec4>(at);
+            q.x += rf(-r, r); q.y += rf(-r, r); q.z += rf(-r, r);
+            ee_ref<Vec4>(m + 0x10) = q;
+            moby_update_transform(m);
+            w32(m + 0xa0, 0x80807f7fu);  // (not in the moby grid: retiring it removes nothing)
+            return m;
+        };
+        auto sound_slot = [](uint32_t m, uint32_t at) {  // the moby's sound slot at `at`: none, or a slot playing for it or not
+            const int k = ri(0, 3);
+            if (k == 0) { w32(at, 0xffffffffu); return; }
+            if (k == 1) return;
+            const uint32_t slot = u(ri(0, 15)), e = 0x0013e550u + slot * 0x70;
+            w32(at, slot);
+            w32(e + 0x88, ri(0, 3) != 0 ? m : 0u);
+            w8(e + 0x74, u(ri(0, 3) != 0 ? 1 : 0));
+        };
+
+        // class 111: each state (0 its distances / its path none; 1 the leader's call or not, the camera along its path), state 2's
+        // steps (the ship, Ratchet's state, its sight, its leader waiting / gone / none, the squadron's attackers, the timers and
+        // the frame's load at their edges, the spread past a quarter turn, its hits and health), its path's points (the next one
+        // within its speed or not, both directions, the turn round), the explosion (the leader's count), the hiding, the bounds
+        auto prep111 = [P, ship, fly, hero_at, around, hit_by, moby_with_pvars, sound_slot, path_of, index_of, common](uint32_t m, int st) -> uint32_t {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            const int s = st < 5 ? st : (st < 9 ? 2 : (st == 9 ? 3 : 7));
+            w8(m + 0x20, u(s));
+            if (s == 0 && ri(0, 7) == 0) w32(pv + 0xa0, 0xffffffffu);  // (no path: retired in state 0; the other states read it)
+            const int32_t pi = ee_read<int32_t>(pv + 0xa0);
+            const uint32_t path = pi == -1 ? 0u : path_of(pi);
+            const int32_t np = path == 0 ? 0 : ee_read<int32_t>(path);
+            if (path != 0 && (np < 2 || np > 400)) return 0;
+            if (s == 0 && ri(0, 3) == 0) { w8(m + 0x30, 0); w16(m + 0x32, 0); if (coin()) w8(m + 0x31, u(ri(1, 255))); }
+            // its leader: none, gone, waiting (state 1), calling (+0xbc 4) or not; the squadron's counts
+            const int k = ri(0, 5);
+            uint32_t lead = k == 0 ? 0u : moby_with_pvars(m);
+            w32(pv + 0xbc, lead == 0 ? 0xffffffffu : index_of(lead));
+            if (lead != 0) {
+                const uint32_t lpv = ee_read<uint32_t>(lead + 0x78);
+                if (k == 1) w8(lead + 0x20, coin() ? 0xfeu : 0xfdu);
+                else w8(lead + 0x20, ri(0, 3) == 0 ? 1u : u(ri(2, 6)));
+                w8(lead + 0xbc, coin() ? 4u : u(ri(0, 3)));
+                w8(lpv + 0x10e, u(ri(0, 2)));
+                w8(lpv + 0x10f, ri(0, 2) == 0 ? u(ri(3, 4)) : u(ri(0, 2)));
+            }
+            // on its path: between its points +0xb6 and +0xb4, at their ends or past them
+            if (np >= 2) {
+                const int32_t dir = coin() ? 1 : -1, to = ri(0, 3) == 0 ? (dir == 1 ? np - 1 : 0) : ri(0, np - 1), from = (to - dir + np) % np;  // (its ends: the wrap)
+                w16(pv + 0xb4, u(to)); w16(pv + 0xb6, u(from));
+                w8(pv + 0xd0, dir == 1 ? 1u : 0xffu);
+                const Vec4 a = ee_ref<Vec4>(path + 0x10 + u(from) * 0x10), b = ee_ref<Vec4>(path + 0x10 + u(to) * 0x10);
+                const float t = ri(0, 3) == 0 ? rf(0.9f, 1.2f) : rf(0.0f, 1.0f);
+                Vec4 q{a.x + (b.x - a.x) * t + rf(-1, 1), a.y + (b.y - a.y) * t + rf(-1, 1), a.z + (b.z - a.z) * t + rf(-1, 1), 0.0f};
+                ee_ref<Vec4>(m + 0x10) = q;
+                if (s == 1 && coin()) {  // the camera near its path, looking along it
+                    const Vec4 c = ee_ref<Vec4>(path + 0x10 + u(ri(0, np - 1)) * 0x10);
+                    ee_ref<Vec4>(OV(0x00166dc0)) = Vec4{c.x + rf(-20, 20), c.y + rf(-20, 20), c.z + rf(-5, 5), 0.0f};
+                    ee_ref<Vec4>(OV(0x00166fd0)) = Vec4{rf(-1, 1), rf(-1, 1), rf(-0.3f, 0.3f), 0.0f};
+                }
+            }
+            if (st == 9 || st == 10 || ri(0, 7) == 0) {  // at the space's bounds
+                Vec4 q = ee_ref<Vec4>(m + 0x10); const int ax = ri(0, 2); (&q.x)[ax] = coin() ? rf(1.0f, 25.0f) : rf(998.0f, 1010.0f); ee_ref<Vec4>(m + 0x10) = q;
+            }
+            wf(pv + 0xcc, ri(0, 2) == 0 ? rf(3.0f, 30.0f) : rf(0.01f, 3.0f));
+            w16(pv + 0xd2, ri(0, 2) == 0 ? 1u : u(ri(2, 10)));
+            wfrand(pv + 0x70, 3, -2.0f, 2.0f);
+            wf(pv + 0x84, rf(-0.5f, 0.5f)); wf(pv + 0x88, rf(-0.5f, 0.5f));
+            wf(m + 0x40, rf(-1.7f, 1.7f)); wf(m + 0x44, rf(-1.0f, 1.0f)); wf(m + 0x48, rf(-3.1f, 3.1f));
+            w8(m + 0x31, u(ri(0, 3) != 0 ? 1 : 0));
+            w8(m + 0xbc, u(st >= 5 && st <= 7 ? st - 5 : ri(0, 3)));
+            // Ratchet: flying his ship near it or not, the ship flying (state 4), a ship of another class
+            fly(m + 0x10, ri(0, 2) != 0);
+            if (ship != 0 && ee_read<uint32_t>(P + 0x15f0) == ship) w8(ship + 0x20, coin() ? 4u : u(ri(0, 6)));
+            if (const uint32_t hm = ee_read<uint32_t>(0x001413d0); hm != 0 && ee_read<uint32_t>(P + 0x15f0) == hm && coin()) w16(hm + 0xa6, coin() ? 0x4dau : 0x45u);
+            hero_at(around(m + 0x10, coin() ? rf(0.0f, 39.0f) : rf(41.0f, 160.0f), rf(-5.0f, 5.0f)));
+            w32(pv + 0xa8, u(ri(0, 30)));
+            w32(pv + 0xb8, ri(0, 2) == 0 ? 1u : u(ri(2, 600)));
+            w32(pv + 0xa4, ri(0, 1) == 0 ? 1u : u(ri(2, 30)));
+            wf(OV(0x0015f5d0), ri(0, 3) == 0 ? rf(0.9f, 1.0f) : rf(0.0f, 0.85f));
+            wf(OV(0x0015f5d4), ri(0, 3) == 0 ? rf(0.9f, 1.0f) : rf(0.0f, 0.85f));
+            wf(pv + 0xac, rf(0.2f, 1.0f));
+            wf(pv + 0xb0, coin() ? rf(1.4f, 1.75f) : rf(-3.0f, 3.0f));
+            wf(pv + 0x20, coin() ? rf(0.2f, 1.0f) : rf(2.0f, 8.0f));
+            w16(pv + 0x24, u(ri(1, 8)));
+            sound_slot(m, pv + 0xd4);
+            if (s == 2 && ri(0, 2) != 0) {
+                hit_by(m, moby_with_pvars(m), 0x330000u, coin() ? rf(0.0f, 0.5f) : rf(1.0f, 9.0f));
+                w16(pv + 0x3c, coin() ? u(ri(0, 1)) : u(ri(2, 30)));  // (its hit record's repeat timer: due or not, the reaction's animation)
+            } else {
+                w8(m + 0xa4, 0xff);
+            }
+            if (st == 5 && lead != 0 && ship != 0 && coin()) {  // (step 0) everything for the attack but the attackers' count
+                w32(P + 0x15f0, ship); w32(0x001413d4, 0x32u); w8(ship + 0x20, 4); w8(m + 0x31, 1);
+                ee_ref<Vec4>(ship + 0x10) = around(m + 0x10, rf(1.0f, 100.0f), rf(-5.0f, 5.0f));
+                w8(ee_read<uint32_t>(lead + 0x78) + 0x10f, u(ri(0, 4)));
+                if (ee_read<uint8_t>(lead + 0x20) >= 0xfd || ee_read<uint8_t>(lead + 0x20) == 1) w8(lead + 0x20, 2);
+            }
+            if (lead != 0 && np >= 2 && ri(0, 2) == 0) {  // the leader (and the ship) on a point of its path (near its start in part): its aim on the path
+                const int32_t at = coin() ? ri(0, 6) : ri(0, np - 1);
+                Vec4 q = ee_ref<Vec4>(path + 0x10 + u(at) * 0x10); q.x += rf(-2, 2); q.y += rf(-2, 2);
+                ee_ref<Vec4>(lead + 0x10) = q;
+                if (const uint32_t sh_ = ee_read<uint32_t>(P + 0x15f0); sh_ != 0 && coin()) { q.x += rf(-2, 2); ee_ref<Vec4>(sh_ + 0x10) = q; }
+            }
+            common();
+            return m;
+        };
+        p133("p134_class111", 0x002c4428, gml_class111_update_l13, c111, prep111, 11, 30, 0, pool_w);
+        // its helpers directly, on the states above (state 2): 0x2c3fc0 and 0x2c3f08 with no leader too (the update never calls
+        // them so: it hides first), 0x2c3c88 / 0x2c3988 / 0x2c3ac8 / 0x2c37e0 with the update's arguments and others
+        if (!c111.empty()) {
+            auto deal111 = [level, c111, prep111](int st) -> uint32_t {
+                for (int k = 0; k < 40; ++k) {
+                    level();
+                    const uint32_t m = prep111(c111[static_cast<size_t>(ri(0, static_cast<int>(c111.size()) - 1))], st);
+                    if (m != 0) return m;
+                }
+                return 0u;
+            };
+            auto no_leader = [moby_with_pvars](uint32_t m) {  // its leader none or gone, in part
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                const int k = ri(0, 2);
+                if (k == 0) w32(pv + 0xbc, 0xffffffffu);
+                else if (k == 1) { const int32_t l = ee_read<int32_t>(pv + 0xbc); if (l != -1) w8(ee_read<uint32_t>(OV(0x0015ffd8)) + (u(l) << 8) + 0x20, coin() ? 0xfeu : 0xfdu); }
+            };
+            l13check("p134_2c3fc0", 0x002c3fc0, 120, Ret::Int32, [deal111, no_leader] {
+                const uint32_t m = deal111(2 + ri(0, 3));
+                if (coin()) no_leader(m);
+                return Args{{m, ee_read<uint32_t>(m + 0x78), u(ri(0, 3) != 0 ? 1 : 0)}, {}};
+            }, [](A a) { return r32(gml_2c3fc0_l13(a.i[0], a.i[1], a.i[2] != 0)); });
+            l13check("p134_2c3f08", 0x002c3f08, 120, Ret::None, [deal111] {
+                deal111(2);
+                return Args{{0x00180000u}, {ri(0, 3) == 0 ? rf(0.0f, 10.0f) : 140.0f}};
+            }, [](A a) { gml_2c3f08_l13(a.i[0], a.f[0]); return uint64_t{0}; });
+            l13check("p134_2c3c88", 0x002c3c88, 120, Ret::Int32, [deal111] {
+                const uint32_t m = deal111(2 + ri(0, 3));
+                return Args{{m, ee_read<uint32_t>(m + 0x78), u(ri(0, 3) != 0 ? 1 : 0)}, {}};
+            }, [](A a) { return r32(gml_2c3c88_l13(a.i[0], a.i[1], a.i[2] != 0)); });
+            l13check("p134_2c3988", 0x002c3988, 120, Ret::None, [deal111] {
+                const uint32_t m = deal111(2);
+                return Args{{m, ee_read<uint32_t>(m + 0x78)}, {rf(-3.1f, 3.1f), rf(-1.5f, 1.5f)}};
+            }, [](A a) { gml_2c3988_l13(a.i[0], a.i[1], a.f[0], a.f[1]); return uint64_t{0}; });
+            l13check("p134_2c3ac8", 0x002c3ac8, 120, Ret::Int32, [deal111, path_of] {
+                const uint32_t m = deal111(2);
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78), path = path_of(ee_read<int32_t>(pv + 0xa0));
+                Vec4 q = ee_ref<Vec4>(m + 0x10); q.x += rf(-40, 40); q.y += rf(-40, 40); q.z += rf(-10, 10);
+                ee_ref<Vec4>(0x00180000u) = q;
+                const int32_t np = ee_read<int32_t>(path);
+                return Args{{0x00180000u, path, u(ri(0, np - 1))}, {coin() ? 0.0f : rf(0.0f, 30.0f)}};
+            }, [](A a) { return r32(gml_2c3ac8_l13(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]), a.f[0])); });
+            {
+                const size_t ign = g_ignored_words.size();
+                g_ignored_words.insert(g_ignored_words.end(), pool_w.begin(), pool_w.end());
+                l13check("p134_2c37e0", 0x002c37e0, 120, Ret::None, [deal111, hit_by, moby_with_pvars] {
+                    const uint32_t m = deal111(ri(0, 3) == 0 ? 3 : 2);
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    if (ri(0, 3) != 0) hit_by(m, moby_with_pvars(m), 0x330000u, coin() ? rf(0.0f, 0.5f) : rf(1.0f, 9.0f));
+                    w16(pv + 0x3c, coin() ? u(ri(0, 1)) : u(ri(2, 30)));
+                    if (coin()) w8(pv + 0x28, u(ri(0, 3)));  // (other hit kinds: the reactions 1 / 2 its own kind never gives)
+                    return Args{{m, pv, pv + 0x20}, {}};
+                }, [](A a) { gml_2c37e0_l13(a.i[0], a.i[1], a.i[2]); return uint64_t{0}; });
+                g_ignored_words.resize(ign);
+            }
+        }
+
+        // class 352 (spawned): each state, its maker there / gone / none, its strength at its ends, its scroll at its wraps
+        p133("p134_class352", 0x002e84d8, gml_class352_update_l13, one, [c352, any_moby, spawn_at, common](uint32_t, int st) -> uint32_t {
+            const uint32_t at = any_moby(0);
+            if (at == 0) return 0;
+            const uint32_t m = c352.empty() ? spawn_at(0x160, at + 0x10, 3.0f) : c352[static_cast<size_t>(ri(0, static_cast<int>(c352.size()) - 1))];
+            if (m == 0) return 0;
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w8(m + 0x20, u(st));
+            const int k = ri(0, 3);
+            const uint32_t maker = k == 0 ? 0u : any_moby(m);
+            w32(pv, maker);
+            if (k == 1 && maker != 0) w8(maker + 0x20, coin() ? 0xfeu : 0xfdu);
+            wf(pv + 4, ri(0, 2) == 0 ? rf(0.97f, 1.0f) : (coin() ? rf(0.0f, 0.03f) : rf(0.0f, 1.0f)));
+            { const int j = ri(0, 2); w32(pv + 8, j == 0 ? u(ri(0, 0x3f)) : (j == 1 ? u(ri(0x1000, 0x1080)) : u(ri(0, 0x1000)))); }
+            wf(m + 0x2c, rf(0.1f, 6.0f));
+            common();
+            return m;
+        }, 6, 30, 0);
+
+        // class 389 (spawned): its owner a fighter of the fleet (class 0x184) or not, gone, none; each state; flying into a moby
+        // of the fleet's classes, another, the world, out of the bounds, its time out in sight or not
+        p133("p134_class389", 0x002ece00, gml_class389_update_l13, one, [c389, any_moby, spawn_at, common](uint32_t, int st) -> uint32_t {
+            const uint32_t owner = any_moby(0);
+            if (owner == 0) return 0;
+            const uint32_t m = c389.empty() ? spawn_at(0x185, owner + 0x10, 3.0f) : c389[static_cast<size_t>(ri(0, static_cast<int>(c389.size()) - 1))];
+            if (m == 0 || m == owner) return 0;
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            const int s = st < 5 ? st : (st == 5 ? 6 : 3);
+            w8(m + 0x20, u(s));
+            const int k = ri(0, 7);
+            w32(pv + 0x3c, k == 0 ? 0u : owner);
+            w16(owner + 0xa6, k == 1 ? u(ri(0x185, 0x191)) : 0x184u);
+            if (k == 2) w8(owner + 0x20, coin() ? 0xfeu : 0xfdu);
+            w16(owner + 0x34, u(ri(0, 0xffff)));
+            wf(owner + 0x2c, rf(0.5f, 3.0f));
+            wfrand(pv + 0x10, 3, -1.5f, 1.5f);
+            wfrand(pv + 0x30, 3, -0.3f, 0.3f);
+            w32(pv + 0x40, ri(0, 2) == 0 ? 1u : u(ri(2, 300)));
+            w8(m + 0x31, u(ri(0, 1)));
+            if (st >= 6) {  // next to a moby: of the fleet's classes (it passes) or another
+                const uint32_t o = any_moby(m);
+                if (o != 0 && o != owner) {
+                    ee_ref<Vec4>(m + 0x10) = ee_ref<Vec4>(o + 0x10);
+                    wf(m + 0x10, ee_read<float>(o + 0x10) + rf(-1.5f, 1.5f));
+                    if (coin()) { static const uint16_t fleet[] = {0x184, 0x185, 0x18a, 0x18c, 0x18f, 0x190, 0x191}; w16(o + 0xa6, coin() ? 0x190u : fleet[ri(0, 6)]); }
+                }
+            }
+            if (ri(0, 4) == 0) { Vec4 q = ee_ref<Vec4>(m + 0x10); const int ax = ri(0, 2); (&q.x)[ax] = coin() ? rf(5.0f, 11.0f) : rf(1012.0f, 1016.0f); ee_ref<Vec4>(m + 0x10) = q; }
+            common();
+            return m;
+        }, 8, 30, 1, coll_vu0);
+
+        // class 404: each state, the moby it guards none / gone / there with its save bit set or not, its region, its strength
+        // near 0, its scroll at its wraps; standing over another moby (inside its box near each face, or beyond) for the push
+        p133("p134_class404", 0x002ed4a8, gml_class404_update_l13, c404, [first_run, any_moby, index_of, common](uint32_t m, int st) -> uint32_t {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            if (st != 0) first_run(gml_class404_update_l13, m);
+            const int s = st < 5 ? st : 1;
+            w8(m + 0x20, u(s));
+            const int k = ri(0, 4);
+            const uint32_t g = k == 0 ? 0u : any_moby(m);
+            if (k == 0 || g == 0) w32(pv, 0xffffffffu);
+            else {
+                w32(pv, index_of(g));
+                if (k == 1) w8(g + 0x20, coin() ? 0xfeu : 0xfdu);
+                const uint32_t id = ee_read<uint16_t>(g + 0xb2);
+                const uint32_t wa = 0x0014c190u + (ee_read<uint32_t>(0x0015ed84u) << 8) + ((static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(id)) >> 5)) << 2);
+                if (coin()) w32(wa, ee_read<uint32_t>(wa) | (1u << (id & 0x1f)));
+                else w32(wa, ee_read<uint32_t>(wa) & ~(1u << (id & 0x1f)));
+            }
+            wf(pv + 4, coin() ? rf(0.0f, 0.06f) : rf(0.06f, 1.0f));
+            { const int j = ri(0, 2); w16(pv + 0xc, j == 0 ? u(ri(0, 0xf40)) : (j == 1 ? u(ri(0xf41, 0x1100)) : u(ri(0x8000, 0xffff)))); }
+            if (s == 3 && coin()) w16(pv + 0xe, u(ri(0, 7)));
+            if (st >= 5 || coin()) {  // over another moby (the grid has it where it is): inside its box or beyond its faces
+                const uint32_t o = any_moby(m);
+                if (o != 0) {
+                    const float hw = static_cast<float>(ee_read<int16_t>(pv + 8)) * 0.5f, hh = static_cast<float>(ee_read<int16_t>(pv + 0xa)) * 0.5f;
+                    Vec4 q = ee_ref<Vec4>(o + 0x10);
+                    const float span = coin() ? 1.0f : 1.5f;
+                    if (coin()) {  // (unturned, the moby 0.6 .. 0.9 beyond a side face at the box's middle height: the clamp's 0.7)
+                        const float r = std::fmax(hw, hh);
+                        q.x -= (coin() ? 1.0f : -1.0f) * (hw + rf(0.6f, 0.9f)); q.y -= rf(-1.0f, 1.0f); q.z -= r;
+                        ee_ref<Vec4>(m + 0x10) = q;
+                        wf(m + 0x40, 0.0f); wf(m + 0x44, 0.0f); wf(m + 0x48, 0.0f);
+                        common();
+                        return m;
+                    }
+                    q.x += rf(-hw * span - 1.0f, hw * span + 1.0f); q.y += rf(-2.0f, 2.0f); q.z -= rf(-hh * span - 2.0f, hh * span + 2.0f);
+                    ee_ref<Vec4>(m + 0x10) = q;
+                    wf(m + 0x48, coin() ? 0.0f : rf(-3.1f, 3.1f));
+                    if (coin()) { wf(m + 0x40, 0.0f); wf(m + 0x44, 0.0f); }
+                }
+            }
+            common();
+            return m;
+        }, 7, 30, 1);
+
+        // class 533 (spawned when the level has none): the arrival scene's ship or not
+        p133("p134_class533", 0x002f3750, gml_class533_update_l13, one, [c533, any_moby, spawn_at, common](uint32_t, int st) -> uint32_t {
+            const uint32_t at = any_moby(0);
+            if (at == 0) return 0;
+            const uint32_t m = c533.empty() ? spawn_at(0x215, at + 0x10, 3.0f) : c533[static_cast<size_t>(ri(0, static_cast<int>(c533.size()) - 1))];
+            if (m == 0) return 0;
+            w32(0x0013e030, st == 0 ? m : (coin() ? 0u : at));
+            w16(m + 0x34, u(ri(0, 0xffff)));
+            common();
+            return m;
+        }, 2, 20, 0);
+
+        // class 558: no scene or one, the hero's +0x208c, the pause word, its class 0xaa moby there / gone / of another class /
+        // none, the two flags, the hero inside each box or not, the help free or busy, the stats at their edges
+        level();
+        const int32_t nbox = ee_read<int32_t>(OV(0x001600f0));
+        p133("p134_class558", 0x002f3778, gml_class558_update_l13, c558, [P, nbox, hero_at, any_moby, index_of, common](uint32_t m, int st) -> uint32_t {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w32(OV(0x00179410), ri(0, 4) == 0 ? 1u : 0u);
+            w32(OV(0x00179434), ri(0, 4) == 0 ? 0u : 0xffffffffu);
+            { static const uint32_t walk[] = {0, 1, 2, 9, 5, 0x1d}; w32(0x001413dc, walk[ri(0, 5)]); }
+            w32(OV(0x0015f5c4), ri(0, 4) == 0 ? 1u : 0u);
+            {
+                const int k = ri(0, 4);
+                const uint32_t o = k == 0 ? 0u : any_moby(m);
+                w32(pv + 4, o == 0 ? 0xffffffffu : index_of(o));
+                if (o != 0) {
+                    w16(o + 0xa6, k == 1 ? u(ri(0, 0x100)) : 0xaau);
+                    if (k == 2) w8(o + 0x20, coin() ? 0xfeu : 0xfdu);
+                }
+            }
+            w8(0x0013d4cb, u(ri(0, 2) == 0 ? 1 : 0));
+            w8(0x0013d4cd, u(ri(0, 2) == 0 ? 1 : 0));
+            if (st == 1 && nbox > 0) {  // its box indices dealt among the level's boxes
+                w32(pv, u(ri(0, nbox - 1)));
+                w32(pv + 8, u(ri(0, nbox - 1)));
+            }
+            {  // the hero at the centre of one of its boxes, or away
+                const int j = ri(0, 2);
+                const int32_t bi = j == 0 ? ee_read<int32_t>(pv) : ee_read<int32_t>(pv + 8);
+                if (j < 2 && bi >= 0 && bi < nbox) {
+                    Vec4 c = ee_ref<Vec4>(ee_read<uint32_t>(OV(0x001600ec)) + u(bi) * 0x80 + 0x30);
+                    c.x += rf(-0.5f, 0.5f); c.y += rf(-0.5f, 0.5f);
+                    hero_at(c);
+                } else {
+                    Vec4 q = ee_ref<Vec4>(m + 0x10); q.x += rf(-200, 200); q.y += rf(-200, 200); hero_at(q);
+                }
+            }
+            if (ri(0, 2) != 0) { w32(0x00151720, 0); w32(0x001516d0 + 0x50, 0); w32(0x001516d0 + 0x1c, 0xffffffffu); }  // (the help free)
+            w32(P + 0x2994, coin() ? (R() & 0x7fffffffu) : (R() | 0x80000000u));
+            w16(P + 0x2990, ri(0, 3) == 0 ? u(ri(0xfffd, 0xffff)) : u(ri(0, 100)));
+            w32(OV(0x0015eea4), u(ri(0, 200000)));
+            w16(P + 0x2992, u(ri(0, 400)));
+            if (st >= 2) {  // 2: the stats counted (the time just past a multiple of 600 frames); 3: the help asked
+                w32(OV(0x00179410), 0); w32(OV(0x00179434), 0xffffffffu); w32(0x001413dc, u(ri(0, 1))); w32(OV(0x0015f5c4), 0);
+                if (st == 2) {
+                    w32(pv + 4, 0xffffffffu); w8(0x0013d4cb, 1);
+                    const int k = ri(1, 300);
+                    w32(OV(0x0015eea4), u(600 * k + ri(0, k - 1)));
+                    w16(P + 0x2992, coin() ? u(k - 1) : u(ri(0, k)));  // (k - 1: stored only by its 600)
+                } else {
+                    w8(0x0013d4cb, 0); w8(0x0013d4cd, 0);
+                    const int32_t bi = ee_read<int32_t>(pv);
+                    if (bi >= 0 && bi < nbox) hero_at(ee_ref<Vec4>(ee_read<uint32_t>(OV(0x001600ec)) + u(bi) * 0x80 + 0x30));
+                    w32(0x00151720, 0); w32(0x001516d0 + 0x50, 0); w32(0x001516d0 + 0x1c, 0xffffffffu);
+                    w32(P + 0x2994, R() & 0x7fffffffu);
+                }
+            }
+            common();
+            return m;
+        }, 4, 40, 0);
+
+        // class 667: each list waited on (and the set-up: its watched moby none or there, its start list), the watched moby's state
+        // in the list (each place) or not, the moby it sets none or there, each give / take byte -1 or not
+        p133("p134_class667", 0x002f8880, gml_class667_update_l13, c667, [any_moby, index_of, common](uint32_t m, int st) -> uint32_t {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            const int mode = st < 3 ? st : (coin() ? -1 : ri(3, 9));
+            w8(pv + 0x1c, static_cast<uint32_t>(mode) & 0xffu);
+            const uint32_t w = any_moby(m);
+            if (w == 0) return 0;
+            w32(pv, mode == 0 && ri(0, 2) == 0 ? 0xffffffffu : index_of(w));
+            w8(pv + 0x1d, u(ri(0, 1)));
+            for (uint32_t o = 4; o < 0x10; ++o) w8(pv + o, ri(0, 3) == 0 ? 0xffu : u(ri(0, 8)));
+            if (ri(0, 2) != 0) {  // the watched moby in one of the list's states
+                const uint32_t list = mode == 1 ? 0xau : 4u;
+                w8(w + 0x20, ee_read<uint8_t>(pv + list + u(ri(0, 5))) & 0x7fu);
+            } else {
+                w8(w + 0x20, u(ri(0, 9)));
+            }
+            const uint32_t t = ri(0, 3) == 0 ? 0u : any_moby(m);
+            w32(pv + 0x10, t == 0 ? 0xffffffffu : index_of(t));
+            for (uint32_t o = 0x14; o < 0x1c; ++o) w8(pv + o, ri(0, 3) == 0 ? 0xffu : u(ri(0, 8)));
+            common();
+            return m;
+        }, 4, 30, 0);
 
         g_extra_noop_hooks.clear();
         g_ignored_words = keep_ignored;

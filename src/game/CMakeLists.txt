@@ -227,7 +227,10 @@ add_library(rac1_game STATIC
     ovl/gemlik_asteroid.cpp
     ovl/gemlik_boss_shots.cpp
     ovl/gemlik_drone.cpp
+    ovl/gemlik_fighter.cpp
     ovl/gemlik_lift.cpp
+    ovl/gemlik_logic.cpp
+    ovl/gemlik_props.cpp
     ovl/gemlik_ship.cpp
     ovl/gemlik_swing.cpp
     ovl/gemlik_target_group.cpp
