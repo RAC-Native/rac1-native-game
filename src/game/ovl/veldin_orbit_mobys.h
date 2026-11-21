@@ -10,7 +10,7 @@
 namespace rac1 {
 
 // hand-written (veldin_orbit_beams.cpp, _cannon.cpp, _hazards.cpp, _doors.cpp, _ship.cpp, _lift.cpp, _trooper.cpp, _pod.cpp, _props.cpp,
-// _monitor.cpp, _backdrop.cpp, _fighter.cpp)
+// _monitor.cpp, _backdrop.cpp, _fighter.cpp, _hud.cpp)
 void vo_class99_update_l17(uint32_t m);    // L17:0x002a8da0 (the laser beam)
 void vo_cb_2a95b8_l17(uint32_t m);         // L17:0x002a95b8 (class 99's draw: the beam's quad)
 void vo_class347_update_l17(uint32_t m);   // L17:0x002cb310 (the laser cannon)
@@ -31,11 +31,11 @@ void vo_class1843_update_l17(uint32_t m);  // L17:0x002f40d8 (Drek's fighter)
 void vo_class1873_update_l17(uint32_t m);  // L17:0x002f5260 (a prop that breaks)
 void vo_class1876_update_l17(uint32_t m);  // L17:0x002f5390 (a prop that breaks)
 
-// generated (veldin_orbit_classes_tr_N.cpp)
-TrRet vo_2eaae0_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x002eaae0
-TrRet vo_2eace8_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x002eace8
-TrRet vo_2eb768_l17(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L17:0x002eb768
-void vo_cb_2eb9a8_l17(uint32_t a0);  // L17:0x002eb9a8
+// the radar HUD of the hero's ship (veldin_orbit_hud.cpp; the level's own code is all hand-written now)
+void vo_2eaae0_l17(uint32_t rot, uint32_t cam_pos, uint32_t target, uint32_t icon, uint32_t color, uint32_t tex_base);  // L17:0x002eaae0 (a blip)
+uint32_t vo_2eace8_l17(uint32_t ship, uint32_t pv, uint32_t cam_pos, uint32_t rot, uint32_t cur, uint32_t keep);  // L17:0x002eace8 (the blips, the next target)
+void vo_2eb768_l17(uint32_t ship, uint32_t pv);  // L17:0x002eb768 (the lock-on)
+void vo_cb_2eb9a8_l17(uint32_t m);               // L17:0x002eb9a8 (the ship's HUD: its draw callback)
 
 }  // namespace rac1
 

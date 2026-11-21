@@ -2162,6 +2162,10 @@ void batch_124() {
 
                 // pok_cb_311d50_l11 (fighter-jet HUD) + all 6 helpers (0x311710, 0x311a88, 0x311be8, 0x318050, 0x311948, 0x311c80)
                 if (!c1242.empty()) {
+                    // its 10 HUD-width hooks (the hooks.glue lines P11.3 carried into the port, 5f80a3bb^; each a jal and its return address
+                    // on the disc's code): the radar's two glyph_sprite 0x22baf8, a blip 0x311710, a missile 0x310ad0 (loaded 0x311f58, not 0x311f98)
+                    const HudHooksExpected hud_hooks({{0x00311df0, 2}, {0x00311df8, 0}, {0x00311e28, 2}, {0x00311e30, 0}, {0x00311ecc, 2},
+                                                      {0x00311ed4, 0}, {0x00311f58, 1}, {0x00311f60, 0}, {0x00311f98, 1}, {0x00311fa0, 0}});
                     l11check("p113_cb311d50", 0x00311d50, 48, Ret::None, [level, c1242, c1319, first_run, setup_pkt_buf, setup_view_looking_at, common, moby_base] {
                         level();
                         const uint32_t m = c1242[0], pv = ee_read<uint32_t>(m + 0x78);

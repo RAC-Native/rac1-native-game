@@ -286,8 +286,11 @@ float render_view_hud_shift(float fb_w) {
 void render_view_hud_note(uint32_t first, uint32_t end, uint8_t side) { hud_note_add(first, end, side, -1); }
 std::vector<HudNote> render_view_hud_notes() { return g_hud_notes; }
 
+void (*g_hud_hook_trace)(bool begin, uint8_t side) = nullptr;
+
 // orig: (host) see render_view.h (the packet cursor 0x1611c0)
 void render_view_hud_begin(uint8_t side) {
+    if (g_hud_hook_trace != nullptr) g_hud_hook_trace(true, side);
     g_hud_open.on = false;
     if (!render_view_hud_wide() || ee_read<int32_t>(OV(0x0015f5c4u)) == 5) return;
     g_hud_open.on = true;
@@ -296,6 +299,7 @@ void render_view_hud_begin(uint8_t side) {
     g_hud_open.slot = static_cast<int8_t>(mrp_lod_shadow_slot());
 }
 void render_view_hud_end() {
+    if (g_hud_hook_trace != nullptr) g_hud_hook_trace(false, 0);
     if (!g_hud_open.on) return;
     g_hud_open.on = false;
     if (static_cast<int8_t>(mrp_lod_shadow_slot()) != g_hud_open.slot) return;  // (a begin of another run: never seen)

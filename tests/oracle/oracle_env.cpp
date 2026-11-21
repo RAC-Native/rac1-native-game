@@ -1,5 +1,6 @@
 #include <stdexcept>
 #include <game/ovl/ovl_reloc.h>
+#include <game/render/render_view.h>
 #include "oracle_env.h"
 
 #include <runtime/kernel/disc.h>
@@ -89,6 +90,65 @@ bool spr_ignored(uint32_t addr) {
 }  // namespace
 std::vector<std::pair<uint32_t, std::function<void(EeCpu&)>>> g_extra_hooks;
 std::function<void(EeInterpreter&)> g_pre_call;
+std::vector<HudHook> g_hud_hooks;
+bool g_hud_every_point = true;
+namespace {
+// (H1) the HUD-width hooks' events of a case: the original's (an interpreter probe at each listed address, during check_fn's own
+// call of the original only) and the port's (render_view.h g_hud_hook_trace, during the port's run only)
+struct HudEvent {
+    bool begin;
+    uint8_t side;
+    uint32_t cursor;  // the packet cursor OV(0x1611c0) at the event
+    uint32_t at;      // (the original's) the listed address reached
+};
+std::vector<HudEvent> g_hud_orig, g_hud_port;
+bool g_hud_orig_on = false;
+uint32_t hud_cursor() { return ee_read<uint32_t>(OV(0x001611c0u)); }
+void hud_port_record(bool begin, uint8_t side) { g_hud_port.push_back({begin, begin ? side : uint8_t{0}, hud_cursor(), 0}); }
+// the port's recording on for one run of the port (off again however it ends)
+struct HudPortTrace {
+    explicit HudPortTrace(bool on) {
+        if (!on) return;
+        g_hud_port.clear();
+        g_hud_hook_trace = hud_port_record;
+    }
+    ~HudPortTrace() { g_hud_hook_trace = nullptr; }
+};
+void hud_event_text(char* b, size_t n, const HudEvent& e, bool orig) {
+    if (e.begin) std::snprintf(b, n, "begin(%u), cursor 0x%08x", e.side, e.cursor);
+    else std::snprintf(b, n, "end(), cursor 0x%08x", e.cursor);
+    if (orig) {
+        const size_t l = std::strlen(b);
+        std::snprintf(b + l, n - l, " (at 0x%08x)", e.at);
+    }
+}
+// the case's two sequences compared: true when equal; else the first differing event printed (when `print`)
+bool hud_compare(const char* name, int it, bool print) {
+    static const bool dump = std::getenv("ORACLE_HUD_TRACE") != nullptr;  // every case's two sequences printed
+    if (dump) {
+        std::printf("  [%s] HUD hooks (case %d) original:", name, it);
+        for (const HudEvent& e : g_hud_orig) std::printf(" %s%u@%08x/%x", e.begin ? "b" : "e", e.side, e.cursor, e.at);
+        std::printf("\n  [%s] HUD hooks (case %d) port:    ", name, it);
+        for (const HudEvent& e : g_hud_port) std::printf(" %s%u@%08x", e.begin ? "b" : "e", e.side, e.cursor);
+        std::printf("\n");
+    }
+    const size_t n = std::max(g_hud_orig.size(), g_hud_port.size());
+    for (size_t k = 0; k < n; ++k) {
+        const HudEvent* o = k < g_hud_orig.size() ? &g_hud_orig[k] : nullptr;
+        const HudEvent* p = k < g_hud_port.size() ? &g_hud_port[k] : nullptr;
+        if (o != nullptr && p != nullptr && o->begin == p->begin && o->side == p->side && o->cursor == p->cursor) continue;
+        if (print) {
+            char ob[96] = "none", pb[96] = "none";
+            if (o != nullptr) hud_event_text(ob, sizeof ob, *o, true);
+            if (p != nullptr) hud_event_text(pb, sizeof pb, *p, false);
+            std::printf("  [%s] HUD hooks (case %d): event %zu of %zu (original) / %zu (port) differs: original %s; port %s\n", name, it, k + 1,
+                        g_hud_orig.size(), g_hud_port.size(), ob, pb);
+        }
+        return false;
+    }
+    return true;
+}
+}  // namespace
 bool g_oracle_front = false;
 static bool g_vu_contact_reset = false;
 void oracle_vu_contact_reset() { g_vu_contact_reset = true; }
@@ -167,6 +227,24 @@ OrigResult call_original(uint32_t addr, const std::vector<uint32_t>& args, const
     for (const auto& [a, fn] : g_extra_hooks) {
         ee.set_hook(a, fn);
         installed_host.push_back(a);
+    }
+    {  // (H1) the HUD-width hooks' probes, in check_fn's own call of the original only; several points at one address in the list's order
+        static bool probes_set = false;
+        if (probes_set) ee.clear_probes();
+        probes_set = false;
+        if (g_hud_orig_on && !g_hud_hooks.empty()) {
+            std::vector<std::pair<uint32_t, std::vector<uint8_t>>> at;
+            for (const HudHook& h : g_hud_hooks) {
+                auto f = std::find_if(at.begin(), at.end(), [&h](const auto& x) { return x.first == h.at; });
+                if (f == at.end()) at.push_back({h.at, {h.side}});
+                else f->second.push_back(h.side);
+            }
+            for (const auto& [a, sides] : at)
+                ee.set_probe(a, [a = a, sides = sides](EeCpu&) {
+                    for (uint8_t s : sides) g_hud_orig.push_back({s != 0, s, hud_cursor(), a});
+                });
+            probes_set = true;
+        }
     }
     {  // the world lighting routines (task 0324): the level load's calls are ported and run for real; the render pass's per-frame
        // calls (the lists 0x1c5400 / 0x1c7300 / 0x1bcfb0 -- the boot module's 0x1e1300 / 0x1e3200 -- come from the culling passes
@@ -320,6 +398,11 @@ bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::fu
         focus_name = focus;
         if (const size_t c = focus_name.find(':'); c != std::string::npos) { focus_case = std::atoi(focus_name.c_str() + c + 1); focus_name.resize(c); }
     }
+    // (H1) the HUD-width hooks the check expects (g_hud_hooks): the cases run, the cases with events, the events, the points reached
+    const bool hud = !g_hud_hooks.empty();
+    int hud_run = 0, hud_with = 0;
+    size_t hud_events = 0;
+    std::unordered_set<uint32_t> hud_reached;
     for (int it = 0; it < iters; ++it) {
         if (scope == Scope::FullRam) restore_baseline();
         const Args args = gen();
@@ -328,7 +411,11 @@ bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::fu
         static Full before_f, a_f, b_f;
         if (scope == Scope::TestArea) before_t = save_range(TEST_AREA, TEST_AREA_SIZE);
         else save_full(before_f);
+        g_hud_orig.clear();
+        g_hud_port.clear();
+        g_hud_orig_on = hud;
         const OrigResult o = call_original(orig, args.i, args.f);
+        g_hud_orig_on = false;
         if (!o.ok) {
             std::printf("  [%s] interpreter: %s (case %d, a0..a3 %08x %08x %08x %08x)\n", name, o.error.c_str(), it,
                         args.i.size() > 0 ? args.i[0] : 0u, args.i.size() > 1 ? args.i[1] : 0u, args.i.size() > 2 ? args.i[2] : 0u, args.i.size() > 3 ? args.i[3] : 0u);
@@ -341,6 +428,7 @@ bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::fu
             a_t = save_range(TEST_AREA, TEST_AREA_SIZE);
             restore_range(TEST_AREA, before_t);
             try {
+                const HudPortTrace hud_trace(hud);
                 pr = port(args);
             } catch (const std::exception& e) {  // a port fault is a failing case, not the end of the run
                 std::printf("  [%s] port: %s (case %d, a0..a3 %08x %08x %08x %08x)\n", name, e.what(), it, args.i.size() > 0 ? args.i[0] : 0u,
@@ -384,6 +472,7 @@ bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::fu
             }
             restore_full(before_f);
             try {
+                const HudPortTrace hud_trace(hud);
                 pr = port(args);
             } catch (const std::exception& e) {  // a port fault is a failing case, not the end of the run
                 std::printf("  [%s] port: %s (case %d, a0..a3 %08x %08x %08x %08x)\n", name, e.what(), it, args.i.size() > 0 ? args.i[0] : 0u,
@@ -433,6 +522,13 @@ bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::fu
         }
         bool ok = nd == 0;
         if (nd != 0 && bad < bad_max) std::printf("  [%s] (case %d)\n", name, it);
+        if (hud) {
+            ++hud_run;
+            if (!g_hud_orig.empty()) ++hud_with;
+            hud_events += g_hud_orig.size();
+            for (const HudEvent& e : g_hud_orig) hud_reached.insert(e.at);
+            if (!hud_compare(name, it, bad < bad_max)) ok = false;
+        }
         switch (ret) {
             case Ret::None: break;
             case Ret::Int32:
@@ -463,6 +559,22 @@ bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::fu
             }
         }
         if (!ok) ++bad;
+    }
+    if (hud && hud_run != 0) {  // (H1) the census: a listed point no case reached is a failure of the check (a wrong address, a delay slot, a list no case exercises)
+        std::string unreached;
+        for (const HudHook& h : g_hud_hooks) {
+            if (hud_reached.count(h.at) != 0) continue;
+            char b[24];
+            std::snprintf(b, sizeof b, " 0x%08x", h.at);
+            if (unreached.find(b) == std::string::npos) unreached += b;
+        }
+        const bool whole = focus == nullptr && g_hud_every_point;  // (a focused run's few cases need not reach every point)
+        std::printf("HUDHOOKS %s: %zu points listed; events in %d of %d cases, %zu in all; never reached:%s\n", name, g_hud_hooks.size(), hud_with,
+                    hud_run, hud_events, unreached.empty() ? " none" : unreached.c_str());
+        if (!unreached.empty() && whole) {
+            std::printf("  [%s] HUD hooks: listed points no case reached (a point is the jal of a begin, its return address for an end)\n", name);
+            if (bad == 0) bad = 1;
+        }
     }
     std::printf("%-26s 0x%08x  %s (%d/%d)\n", name, orig, bad ? "FAIL" : "ok", iters - bad, iters);
     if (writes_on() && census.cases != 0)

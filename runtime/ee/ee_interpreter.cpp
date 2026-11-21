@@ -262,6 +262,10 @@ bool EeInterpreter::call(uint32_t addr, std::initializer_list<uint32_t> args, ui
 }
 
 bool EeInterpreter::step() {
+    if (!probes_.empty()) {
+        const auto pr = probes_.find(cpu_.pc);
+        if (pr != probes_.end()) pr->second(cpu_);
+    }
     if (!cond_hooks_.empty()) {
         const auto ch = cond_hooks_.find(cpu_.pc);
         if (ch != cond_hooks_.end() && ch->second(cpu_)) {

@@ -57,6 +57,7 @@
 #include <game/ovl/shared_gadget_pickups.h>
 #include <game/ovl/shared_gold_bolt.h>
 #include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_hud_shapes.h>
 #include <game/ovl/shared_little.h>
 #include <game/ovl/shared_ripples.h>
 #include <game/ovl/shared_ship_shots.h>
@@ -110,6 +111,16 @@ int32_t pvars60_hook(uint32_t m, uint32_t, uint32_t, float) { return static_cast
 
 // A random state can hold a pointer outside RAM that the port's vector helpers dereference without a check (a SIGSEGV where the interpreter would wrap it): the trial run of a state
 // turns it into "not a game state" (the state is dealt again), as the port's "Pointer resolution out of bounds" exception does.
+
+// The radar HUD's 18 HUD-width hooks (tools/codegen/hooks.glue's L17 lines; each a jal and its return address on the disc's code): in
+// 0x2eb9a8 the radar's two glyph_sprite 0x1f72f8 and the missiles' two hud_line_strip 0x2e9c28 (loaded / not), in 0x2eace8 its five
+// calls of the blip 0x2eaae0
+const std::vector<HudHook> kRadarHudHooks = {
+    {0x002eba48, 2}, {0x002eba50, 0}, {0x002eba84, 2}, {0x002eba8c, 0},                                     // the radar (0x2eb9a8)
+    {0x002eb074, 2}, {0x002eb07c, 0}, {0x002eb09c, 2}, {0x002eb0a4, 0}, {0x002eb344, 2}, {0x002eb34c, 0},  // a blip (0x2eace8)
+    {0x002eb490, 2}, {0x002eb498, 0}, {0x002eb4dc, 2}, {0x002eb4e4, 0},
+    {0x002ebc68, 1}, {0x002ebc70, 0}, {0x002ebca8, 1}, {0x002ebcb0, 0},                                     // a missile (0x2eb9a8)
+};
 
 // A check whose original is level 17's own function at `l9addr` (not a Veldin address to translate).
 void l17check(const char* name, uint32_t l9addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port,
@@ -445,6 +456,8 @@ void batch_260() {
             // cb2fd6c0 / cb311d50: their GIF packet words carry a callee-saved register (s7 / s?) the callback reads on a path that never set it (the original's interpreter holds the
             // harness' leftover there, the port's local 0): the packets (the cursor's buffer) are not compared for these two, everything else is
             const size_t ign_pk = g_ignored_words.size();
+            std::optional<HudHooksExpected> hud_hooks;  // (the radar HUD's hooks: the generic states need not draw every element)
+            if (std::strcmp(cb.name, "cb2eb9a8") == 0) hud_hooks.emplace(kRadarHudHooks, false);
             for (int st = 0; st < 4; ++st)
             for (int pass = 0; pass < 3; ++pass) {
                 if (clsfn == nullptr && (st != 0 || pass != 0)) continue;
@@ -2460,6 +2473,193 @@ void batch_260() {
                         finish();
                         return Args{{m}, {}};
                     }, [](A a) { vo_cb_2f32f0_l17(a.i[0]); return uint64_t{0}; });
+            }
+
+            // ---- H1 (stage 4): the radar HUD of the hero's ship (veldin_orbit_hud.cpp): its draw callback 0x2eb9a8, the lock-on
+            // 0x2eb768, the blips 0x2eace8 and one blip 0x2eaae0, each with its HUD-width hooks checked (HudHooksExpected: the
+            // hooks.glue lines the port carries) as well as the packets. The state: the ship (class 1379) and its pvars dealt (the
+            // target, the lock's timer about its thresholds, the frames off target, the crosshair, the health bar, the arrow's
+            // phase), the hero's missiles / their room / the ship's health, the pad's 0x2000, the view mode 3 / 4, the x flip
+            // 0x15edb4, the ship's state 8; a chain of drawn mobys (L17:0x15ffe4 by +0x28) built from the level's mobys, each given a
+            // class of the blips' switch (or its own), drawn (+0x31) or not, its flags 0x1000 / 1, its class record an enemy's
+            // (+0x46 5) or not, placed about the ship's camera 0x1676c0 (near: a blip; from 38 to 46 / 14: fading; far: none) or
+            // where the camera looks (candidates of the lock about the crosshair); the camera seeing that point; 50 Hz in a
+            // quarter; the packet cursor on a test-area buffer. VU0: none of the four has a VU0 instruction of its own; the
+            // last VU0 writers in the original's run are its callees (euler_to_mat4_vu, sin_vu, the vec3 helpers, the HUD
+            // shapes), whose ports keep no VU0 state, as in the generated code before: no lane is compared.
+            {
+                const std::vector<uint32_t> ships = of_class(0x563);
+                static const int16_t kClasses[] = {0x52, 0x53, 0xe0, 0xe4, 0x4c2, 0x4c4, 0x6f, 0x4be, 0x4bf, 0x184, 0x3eb, 0x504, 0x191, 0x15b,
+                                                   389, 393, 396, 397, 398, 399, 400, 1332, 1336, 1338, 1339, 1285, 228, 229, 1220, 1250};
+                // the radar's state: returns the ship (its pvars, the chain, the camera, the cursor dealt)
+                auto radar_state = [=](bool blips_only) {
+                    level();
+                    const uint32_t m = pick(ships), pv = ee_read<uint32_t>(m + 0x78);
+                    const Vec4 cam = ee_ref<Vec4>(L17_ADDR(0x001676c0));
+                    // where the camera looks: a point ahead of the ship's camera, the lock's candidates about it
+                    const Vec4 look = jitter(cam, 60.0f, 20.0f);
+                    if (ri(0, 4) != 0) camera_sees(look, 4.0f, 30.0f); else camera_away(look);
+                    // the chain
+                    std::vector<uint32_t> pool;
+                    for (uint32_t q : live()) if (q != m && ee_read<uint32_t>(q + 0x24) != 0) pool.push_back(q);
+                    const int n = std::min<int>(static_cast<int>(pool.size()), ri(0, 6) == 0 ? ri(0, 2) : ri(3, 14));
+                    std::vector<uint32_t> chain;
+                    for (int k = 0; k < n; ++k) {
+                        const uint32_t q = pick(pool);
+                        if (std::find(chain.begin(), chain.end(), q) == chain.end()) chain.push_back(q);
+                    }
+                    for (size_t k = 0; k < chain.size(); ++k) w32(chain[k] + 0x28, k + 1 < chain.size() ? chain[k + 1] : 0u);
+                    w32(L17_ADDR(0x0015ffe4), chain.empty() ? 0u : chain[0]);
+                    for (uint32_t q : chain) {
+                        if (ri(0, 4) != 0) w16(q + 0xa6, u(kClasses[ri(0, static_cast<int>(std::size(kClasses)) - 1)]));
+                        w8(q + 0x31, ri(0, 3) != 0 ? 1u : 0u);
+                        uint16_t fl = ee_read<uint16_t>(q + 0x34);
+                        fl = static_cast<uint16_t>(ri(0, 4) != 0 ? (fl | 0x1000) : (fl & ~0x1000));
+                        fl = static_cast<uint16_t>(ri(0, 4) == 0 ? (fl | 1) : (fl & ~1));
+                        w16(q + 0x34, fl);
+                        w8(q + 0x20, ri(0, 9) == 0 ? (coin() ? 0xfeu : 0xfdu) : u(ri(0, 4)));  // (dead ones: chosen, then dropped)
+                        w16(ee_read<uint32_t>(q + 0x24) + 0x46, ri(0, 3) != 0 ? 5u : u(ri(0, 8)));
+                        wf(q + 0xc, rf(0.2f, 3.0f));
+                        if (ri(0, 11) == 0) w32(q + 0x24, 0);  // (no class record: neither a candidate nor a blip of the default)
+                        const int where = ri(0, 4);
+                        ee_ref<Vec4>(q + 0x10) = where == 0 ? jitter(look, 6.0f, 3.0f)
+                                                 : where == 1 ? jitter(cam, 520.0f, 200.0f)
+                                                 : where == 2 ? jitter(cam, 640.0f, 40.0f)
+                                                 : where == 3 ? jitter(cam, 300.0f, 100.0f) : jitter(cam, 1500.0f, 500.0f);
+                    }
+                    // the crosshair: the screen's centre, or on a candidate's projection
+                    w32(pv + 0xe0, u(256 + ri(-30, 30)));
+                    w32(pv + 0xe4, u(208 + ri(-30, 30)));
+                    if (!chain.empty() && coin()) {
+                        const uint32_t q = pick(chain);
+                        hud_screen_point(q + 0x10, T4, T4 + 4, 0);
+                        w32(pv + 0xe0, ee_read<uint32_t>(T4) + u(ri(-8, 8)));
+                        w32(pv + 0xe4, ee_read<uint32_t>(T4 + 4) + u(ri(-8, 8)));
+                        if (coin()) {  // (on the edge of its lock radius, as 0x2eace8 measures it: one pixel inside, or on it)
+                            ee_ref<Vec4>(T4 + 0x10) = ee_ref<Vec4>(L17_ADDR(0x001678e0));
+                            vec3_scale(VV(T4 + 0x10), VV(L17_ADDR(0x001678e0)), ee_read<float>(q + 0xc) / 1280.0f);
+                            vec3_add(VV(T4 + 0x10), VV(T4 + 0x10), VV(q + 0x10));
+                            hud_screen_point(T4 + 0x10, T4 + 8, T4 + 0xc, 0);
+                            const int32_t rx = ee_read<int32_t>(T4 + 8) - ee_read<int32_t>(T4), ry = ee_read<int32_t>(T4 + 0xc) - ee_read<int32_t>(T4 + 4);
+                            const int32_t lim = float_to_int(sqrt_f(int_to_float(rx * rx + ry * ry))) + 0x1c;
+                            const int32_t d = lim - ri(0, 1), o = ri(0, std::max(0, lim - 1));
+                            const bool on_x = coin();
+                            w32(pv + 0xe0, ee_read<uint32_t>(T4) + u((coin() ? 1 : -1) * (on_x ? d : o)));
+                            w32(pv + 0xe4, ee_read<uint32_t>(T4 + 4) + u((coin() ? 1 : -1) * (on_x ? o : d)));
+                        }
+                    }
+                    // the lock: the target none, one of the chain, or another moby; its class kept or not; the timer about
+                    // the ring's start 0x162170 and the lock's 501, the frames off target about frame_scale_i(60)
+                    const int tg = ri(0, 3);
+                    const uint32_t t = tg == 0 || chain.empty() ? 0u : tg == 3 ? pick(pool) : pick(chain);
+                    if (t != 0 && ri(0, 5) == 0) w16(t + 0xa6, 0x3eb);  // (a locked class 0x3eb: kept over another class's candidate)
+                    if (t != 0 && coin()) {  // (the crosshair on the target: kept while inside its lock radius)
+                        hud_screen_point(t + 0x10, T4, T4 + 4, 0);
+                        w32(pv + 0xe0, ee_read<uint32_t>(T4) + u(ri(-6, 6)));
+                        w32(pv + 0xe4, ee_read<uint32_t>(T4 + 4) + u(ri(-6, 6)));
+                    }
+                    w32(pv + 0x88, t);
+                    w32(pv + 0x128, t != 0 && ri(0, 4) != 0 ? u(ee_read<int16_t>(t + 0xa6)) : (coin() ? 0xffffffffu : u(ri(0, 0x600))));
+                    if (t != 0 && ri(0, 5) == 0) w8(t + 0x20, coin() ? 0xfeu : 0xfdu);
+                    const int32_t base = ee_read<int32_t>(L17_ADDR(0x00162170));
+                    const int tm = ri(0, 4);
+                    const int32_t dur = std::max(1, ee_read<int32_t>(L17_ADDR(0x00162174)));
+                    w32(pv + 0x8c, u(tm == 0 ? 0 : tm == 1 ? base + ri(-3, 3) : tm == 2 ? 500 + ri(-2, 2) : tm == 3 ? ri(1, 60) : base + ri(1, dur)));
+                    w32(pv + 0x84, ri(0, 4) == 0 ? 1u : 0u);
+                    w32(pv + 0x118, u(coin() ? 0 : frame_scale_i(0x3c) + ri(-2, 1)));
+                    wf(pv + 0x34, rf(-3.1f, 3.1f));
+                    wf(pv + 0x38, rf(-3.1f, 3.1f));
+                    wf(pv + 0x114, rf(-3.1f, 3.1f));
+                    const float full = ee_read<float>(P + 0x1600) > 0.0f ? ee_read<float>(P + 0x1600) : 100.0f;
+                    wf(P + 0x1600, full);
+                    wf(P + 0x15fc, ri(0, 3) == 0 ? rf(0.0f, full * 0.1f) : rf(0.0f, full));
+                    wf(pv + 0xf0, ri(0, 4) == 0 ? ee_read<float>(P + 0x15fc) + rf(-0.5f, 0.5f) : rf(0.0f, full));
+                    w32(pv + 0xf4, u(ri(2, 253)));
+                    w8(P + 0x15f6, u(ri(0, 10)));
+                    w8(P + 0x15f7, u(ri(0, 5) == 0 ? 0 : ri(1, 10)));
+                    w32(0x0013caf4, coin() ? 0x2000u : (R() & ~0x2000u));
+                    w32(L17_ADDR(0x0015f5c4), u(ri(0, 5) == 0 ? ri(3, 4) : ee_read<int32_t>(L17_ADDR(0x0015f5c4))));
+                    w8(0x0015edb4, ri(0, 3) == 0 ? 1u : 0u);
+                    w8(m + 0x20, ri(0, 3) == 0 ? 8u : 4u);
+                    // a lock held (a quarter of the cases with a target of the chain): the target alive, drawn, a candidate (an enemy
+                    // on screen under the crosshair), its class kept, the timer running, the pad's 0x2000 up, missiles left; another
+                    // candidate beside it (not chosen over the held one); its class 0x3eb in a third of them
+                    if (t != 0 && chain.size() > 1 && std::find(chain.begin(), chain.end(), t) != chain.end() && ri(0, 3) == 0) {
+                        uint32_t other = pick(chain);
+                        for (uint32_t q : {t, other}) {
+                            if (ee_read<uint32_t>(q + 0x24) == 0) w32(q + 0x24, ee_read<uint32_t>(m + 0x24));
+                            w16(ee_read<uint32_t>(q + 0x24) + 0x46, 5);
+                            w16(q + 0x34, ee_read<uint16_t>(q + 0x34) | 0x1000);
+                            w8(q + 0x31, 1);
+                            w8(q + 0x20, 1);
+                            ee_ref<Vec4>(q + 0x10) = jitter(look, 2.0f, 1.0f);
+                        }
+                        if (ri(0, 2) == 0) w16(t + 0xa6, 0x3eb);
+                        w32(pv + 0x128, u(ee_read<int16_t>(t + 0xa6)));
+                        w32(pv + 0x8c, u(ri(1, 600)));
+                        w32(0x0013caf4, R() & ~0x2000u);
+                        w8(P + 0x15f6, u(ri(1, 10)));
+                        hud_screen_point(t + 0x10, T4, T4 + 4, 0);
+                        w32(pv + 0xe0, ee_read<uint32_t>(T4) + u(ri(-3, 3)));
+                        w32(pv + 0xe4, ee_read<uint32_t>(T4 + 4) + u(ri(-3, 3)));
+                    }
+                    // the health bar's colour strip on a test-area buffer (the level's pointer is null in the snapshot)
+                    if (ri(0, 5) != 0) w32(L17_ADDR(0x00162180), T3);
+                    (void)blips_only;
+                    fifty();
+                    w32(OV(0x001611c0), 0x00800000u + u(ri(0, 8)) * 0x10u);
+                    w32(OV(0x0015f5f8), 0x008f0000u);
+                    finish();
+                    return m;
+                };
+                if (info) {  // (the play-test spots: the ship's mobys, whose HUD it is)
+                    level();
+                    for (uint32_t m : ships) {
+                        const Vec4 q = ee_ref<Vec4>(m + 0x10);
+                        std::printf("INFO p17 radar HUD: ship moby %u uid %u at (%.1f, %.1f, %.1f) state %u\n", (m - table()) >> 8, ee_read<uint16_t>(m + 0xb2), q.x, q.y,
+                                    q.z, ee_read<uint8_t>(m + 0x20));
+                    }
+                }
+                // the hooks of 0x2eace8 alone (its five calls of the blip)
+                const std::vector<HudHook> blip_hooks(kRadarHudHooks.begin() + 4, kRadarHudHooks.begin() + 14);
+                if (!ships.empty()) {
+                    {
+                        const HudHooksExpected hud_hooks(kRadarHudHooks);
+                        l17check("p17_cb_2eb9a8", 0x002eb9a8, 300, Ret::None, [=] { return Args{{radar_state(false)}, {}}; },
+                                 [](A a) { vo_cb_2eb9a8_l17(a.i[0]); return uint64_t{0}; });
+                    }
+                    {
+                        const HudHooksExpected hud_hooks(blip_hooks);
+                        l17check("p17_2eb768", 0x002eb768, 300, Ret::None, [=] {
+                            const uint32_t m = radar_state(false);
+                            return Args{{m, ee_read<uint32_t>(m + 0x78)}, {}};
+                        }, [](A a) { vo_2eb768_l17(a.i[0], a.i[1]); return uint64_t{0}; });
+                    }
+                    {
+                        const HudHooksExpected hud_hooks(blip_hooks);
+                        l17check("p17_2eace8", 0x002eace8, 300, Ret::Int32, [=] {
+                            const uint32_t m = radar_state(true), pv = ee_read<uint32_t>(m + 0x78);
+                            uint32_t keep = 0;
+                            if (coin()) for (uint32_t q = ee_read<uint32_t>(L17_ADDR(0x0015ffe4)); q != 0; q = ee_read<uint32_t>(q + 0x28)) if (coin()) { keep = q; break; }
+                            return Args{{m, pv, L17_ADDR(0x001676c0), L17_ADDR(0x001676d0), coin() ? 0u : ee_read<uint32_t>(pv + 0x88), keep}, {}};
+                        }, [](A a) { return r32(vo_2eace8_l17(a.i[0], a.i[1], a.i[2], a.i[3], a.i[4], a.i[5])); });
+                    }
+                    l17check("p17_2eaae0", 0x002eaae0, 300, Ret::None, [=] {
+                        const uint32_t m = radar_state(true), pv = ee_read<uint32_t>(m + 0x78);
+                        const std::vector<uint32_t> all = live();
+                        const uint32_t q = pick(all);
+                        // about the ship's camera: near (a blip), 532 .. 644 away (38 .. 46 x 14: fading), or farther (none)
+                        const int band = ri(0, 3);
+                        const float r = band == 0 || band == 3 ? rf(0.0f, 520.0f) : band == 1 ? rf(530.0f, 650.0f) : rf(650.0f, 1500.0f);
+                        const float az = rf(-3.14f, 3.14f), el = rf(-1.2f, 1.2f);
+                        const Vec4 c = ee_ref<Vec4>(L17_ADDR(0x001676c0));
+                        ee_ref<Vec4>(q + 0x10) = Vec4{c.x + r * std::cos(el) * std::cos(az), c.y + r * std::cos(el) * std::sin(az), c.z + r * std::sin(el), rf(-1, 1)};
+                        static const uint32_t cols[] = {0x70004080u, 0x70007080u, 0x70808080u};
+                        const uint32_t rot = coin() ? L17_ADDR(0x001676d0) : T4;
+                        wfrand(T4, 4, -3.2f, 3.2f);
+                        return Args{{rot, coin() ? L17_ADDR(0x001676c0) : T4 + 0x10, q, u(ri(0, 2)), ri(0, 4) == 0 ? R() : cols[ri(0, 2)], ee_read<uint32_t>(pv + 0x104)}, {}};
+                    }, [](A a) { vo_2eaae0_l17(a.i[0], a.i[1], a.i[2], a.i[3], a.i[4], a.i[5]); return uint64_t{0}; });
+                }
             }
         }
 

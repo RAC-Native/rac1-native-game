@@ -97,6 +97,31 @@ struct CollisionScratchIgnored {
     CollisionScratchIgnored(const CollisionScratchIgnored&) = delete;
     CollisionScratchIgnored& operator=(const CollisionScratchIgnored&) = delete;
 };
+// (task H1) The HUD-width hooks a check expects (docs/oracle.md, "The HUD-width hooks"): render_view_hud_begin(side) /
+// render_view_hud_end() write no game memory, so the memory comparison cannot see them. While this list is set, each case
+// records the original's side as its code reaches each listed address (an interpreter probe: before the instruction there, as
+// tools/codegen/hooks.glue places a line) and the port's side as it calls the two functions (render_view.h g_hud_hook_trace),
+// each event with the packet cursor OV(0x1611c0) at that moment; the two sequences must be equal (length, begin / end, side,
+// cursor), and every listed address must be reached in some case of the check. One check's scope: HudHooksExpected.
+struct HudHook {
+    uint32_t at;   // the level's own address (L<n>:...): a jal for a begin, its return address (jal + 8) for an end
+    uint8_t side;  // 1 left, 2 right: render_view_hud_begin(side); 0: render_view_hud_end()
+};
+extern std::vector<HudHook> g_hud_hooks;
+extern bool g_hud_every_point;  // (false: a listed point no case reaches is printed, not failed: a generic row whose states need not draw it all)
+// Set on construction, cleared on destruction: the list of the one check made inside its scope (a batch row's hooks.glue lines).
+struct HudHooksExpected {
+    explicit HudHooksExpected(std::vector<HudHook> hooks, bool every_point = true) {
+        g_hud_hooks = std::move(hooks);
+        g_hud_every_point = every_point;
+    }
+    ~HudHooksExpected() {
+        g_hud_hooks.clear();
+        g_hud_every_point = true;
+    }
+    HudHooksExpected(const HudHooksExpected&) = delete;
+    HudHooksExpected& operator=(const HudHooksExpected&) = delete;
+};
 // Functions the interpreter skips (returning 0) while set: the TODO_PORT callees of a batch's checks.
 extern std::vector<uint32_t> g_extra_noop_hooks;
 // Functions the interpreter runs as host code while set: the host stand-ins the port calls in

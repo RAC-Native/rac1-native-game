@@ -146,6 +146,44 @@ Useful variables:
 | `ORACLE_STACK=1` | When the original stops in the interpreter, prints where. |
 | `RAC1_ORACLE_DUMPS=<dir>` | Where the RAM dumps are (default `assets/dumps/oracle`). |
 | `ORACLE_WRITES=1` | After each check, a `WRITES` line: in how many cases the original changed nothing (a check that compares nothing), how many words it changed, whether it wrote into the null page and how far it moved the packet cursor `0x1611c0`. Run it on a new check before trusting it. |
+| `ORACLE_HUD_TRACE=1` | In a check with HUD-width hooks (below), both sides' hook events of every case printed. |
+
+### The HUD-width hooks
+
+Some HUD draws carry two host calls the port adds around a call that draws a side element of the HUD:
+`render_view_hud_begin(side)` before it and `render_view_hud_end()` after it (`src/game/render/render_view.h`; the
+space fights' radar and missiles, placed in generated code by `tools/codegen/hooks.glue`). They write no game memory,
+so the memory comparison cannot see one that is missing, extra, around another call or with another side. A check
+of such a function declares the hooks it expects, and the oracle compares them too:
+
+```cpp
+// inside the check's block, before its call (check / check_fn and the batches' wrappers)
+const HudHooksExpected hud_hooks({{0x00311df0, 2}, {0x00311df8, 0}, {0x00311e28, 2}, {0x00311e30, 0}, ...});
+l11check("p113_cb311d50", 0x00311d50, 48, Ret::None, gen, port);
+```
+
+Each entry is one `hooks.glue` line of the function (and of its callees the original runs): `{address, side}` for a
+`render_view_hud_begin(side)` (side 1 left, 2 right) placed before the instruction at that address, `{address, 0}`
+for a `render_view_hud_end()`; the level's own NTSC-U address (a begin at the call's `jal`, an end at its return
+address). The list lives with the check: a ported function's lines leave `hooks.glue` (while a function is
+generated, `tools/codegen/check_hooks.py` guards its lines).
+
+In each case the original's side records an event when its code reaches a listed address (an interpreter probe,
+`EeInterpreter::set_probe`: before the instruction there, as the generator places the line), the port's side when it
+calls one of the two functions (`g_hud_hook_trace`, null in the game), each event with the packet cursor at that
+moment. The two sequences must be equal: the same number of events and, at each, the same kind (begin / end), side
+and cursor; the cursor is what shows a hook placed around another call. The first difference fails the case:
+
+```
+  [p113_cb311d50] HUD hooks (case 0): event 3 of 30 (original) / 28 (port) differs: original begin(2), cursor 0x008000b0 (at 0x00311e28); port begin(2), cursor 0x00800160
+```
+
+After the cases a `HUDHOOKS` line says in how many cases events happened and which listed addresses no case
+reached; a listed address no case reaches fails the check (a wrong address, a delay slot's, or cases that never draw
+that element), except under `ORACLE_FOCUS` or for a list given as `HudHooksExpected(list, false)` (a row run with
+generic states, which need not draw every element). A check of a still-generated function can carry its list too:
+the generated code calls the same two functions, which proves the list before the port. Batch 124's `p113_cb311d50`
+(Pokitaru's ship HUD, 10 hooks) and batch 260's `p17_cb_2eb9a8`, `p17_2eb768`, `p17_2eace8` (Drek's fleet's, 18) use it.
 
 ### The reference batches
 

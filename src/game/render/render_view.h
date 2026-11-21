@@ -112,6 +112,10 @@ bool render_view_hud_wide();
 // cursor, writes nothing of the game's.
 void render_view_hud_begin(uint8_t side);
 void render_view_hud_end();
+// orig: (host) (the oracle only: null in the game) called first thing by each render_view_hud_begin (begin true, its side) and
+// render_view_hud_end (false, 0), whatever the HUD's width: the oracle's HUD-width check records the port's hooks with it and
+// compares them with the original's code reaching the hooks.glue points (docs/oracle.md, "The HUD-width hooks").
+extern void (*g_hud_hook_trace)(bool begin, uint8_t side);
 // orig: (host) the chain range [first, end) such a callback drew (render_passes.cpp draw_list_run), in a widened view, in the real
 // block or in the effects' shadow block (its slot): the drawing takes the callback's 2D from the shadow's chain when the shadow
 // stands in for the real block (the shadow's mobys +0x31 are the widened moby pass's: the reticles of the targets in the side bands

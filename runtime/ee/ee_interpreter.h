@@ -61,6 +61,11 @@ public:
     using CondHook = std::function<bool(EeCpu&)>;
     void set_cond_hook(uint32_t addr, CondHook hook) { cond_hooks_[addr] = std::move(hook); }
     void remove_cond_hook(uint32_t addr) { cond_hooks_.erase(addr); }
+    // A probe: when the PC reaches `addr`, `probe` runs and the instruction there then executes as usual (nothing is
+    // replaced; run before the hooks above). A delay slot's address is never reached this way (it runs in its branch's
+    // step). The oracle's HUD-width check records the hooks.glue points of a function with them (tests/oracle, H1).
+    void set_probe(uint32_t addr, Hook probe) { probes_[addr] = std::move(probe); }
+    void clear_probes() { probes_.clear(); }
 
     // Call the original function at `addr` with $a0..$a3 = args, $gp = gp,
     // $sp = sp (a private stack is used when 0). Returns false on an
@@ -119,6 +124,7 @@ private:
     void vu0_drain();  // the EE waits for the running program's end
     std::unordered_map<uint32_t, Hook> hooks_;
     std::unordered_map<uint32_t, CondHook> cond_hooks_;
+    std::unordered_map<uint32_t, Hook> probes_;
     uint32_t watch_ = 0;
     std::vector<uint32_t> trace_pcs_;
     uint32_t pctrace_lo_ = 0, pctrace_hi_ = 0;

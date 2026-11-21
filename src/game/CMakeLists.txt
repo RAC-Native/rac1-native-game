@@ -319,6 +319,7 @@ add_library(rac1_game STATIC
     ovl/veldin_orbit_fighter.cpp
     ovl/veldin_orbit_hazards.cpp
     ovl/veldin_orbit_hooks.cpp
+    ovl/veldin_orbit_hud.cpp
     ovl/veldin_orbit_lift.cpp
     ovl/veldin_orbit_mobys.cpp
     ovl/veldin_orbit_monitor.cpp
