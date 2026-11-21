@@ -44,6 +44,13 @@ void ril_307570_l5(uint32_t m);                                         // L5:0x
 void ril_30d5c0_l5(uint32_t m);  // L5:0x0030d5c0 its group kept level
 void ril_30d6a0_l5(int32_t k);   // L5:0x0030d6a0 a cell's neighbours
 
+// ---- P5.4: class 844's helpers (rilgar_class844.cpp) and class 918's (rilgar_race_organiser.cpp)
+uint32_t ril_29bbe0_l5(uint32_t pos, uint32_t vel, int32_t life, int32_t spin, uint32_t colour, float size);  // L5:0x0029bbe0 a bubble particle
+void ril_30f218_l5(uint32_t m, float lo, float hi);  // L5:0x0030f218 the bubble column between two heights
+void ril_30f408_l5(uint32_t m, float k, float s);    // L5:0x0030f408 the float's sway
+void ril_316810_l5(uint32_t m, uint32_t pv);        // L5:0x00316810 the crowd's two cheering joints
+void ril_316990_l5(uint32_t m);                     // L5:0x00316990 the crowd in the race's scenes
+
 }  // namespace rac1
 
 #endif

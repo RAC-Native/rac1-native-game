@@ -1,5 +1,0 @@
-0x0022dc20: { int32_t t0 = a0.w() != 0 ? static_cast<int32_t>(lw_(a0.w())) : 0; set32(v0, static_cast<uint32_t>(timer_tick_i32(t0))); if (a0.w() != 0) sw_(a0.w(), static_cast<uint32_t>(t0)); }
-0x00278aa0: set32(v0, static_cast<uint32_t>(moby_spawn(a0.w())));
-0x002839d0: fr[0] = floor_probe(fr[12], a0.w(), a1.w());
-0x0028f5c8: music_track_request(static_cast<int32_t>(a0.w()), a1.w());
-0x002843a8: band_set(a0.w());

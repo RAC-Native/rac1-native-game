@@ -4,13 +4,10 @@
  "env": {
   "MKALL_HELPER_PREFIX": "ril_",
   "MKALL_WIDE_GPR": "",
-  "MKALL_FORCE": "21a0b0,28d960,29bbe0,2c9018,30f218,30f408,316810,316990",
+  "MKALL_FORCE": "21a0b0,2c9018",
   "MKALL_UNIFORM": "ril_hook_300b48_u,ril_hook_10_u"
  },
  "entries": [
-  "30e7f8:ril_class844_update_l5:void:a0",
-  "316ab8:ril_class918_update_l5:void:a0",
-  "31bf40:ril_class1347_update_l5:void:a0",
   "300b48:ril_hook_300b48_u",
   "300c18:ril_hook_10_u",
   "262f50:ril_cb_262f50_l5:void:a0",
@@ -18,8 +15,6 @@
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/rilgar_classes_tr_2.cpp",
-  "src/game/ovl/rilgar_classes_tr_3.cpp",
   "src/game/ovl/rilgar_classes_tr_4.cpp"
  ]
 }

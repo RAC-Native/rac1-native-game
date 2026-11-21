@@ -95,6 +95,10 @@ add_library(rac1_game STATIC
     ovl/rilgar_props.cpp
     ovl/rilgar_ocean.cpp
     ovl/rilgar_people.cpp
+    ovl/rilgar_help.cpp
+    ovl/rilgar_class844.cpp
+    ovl/rilgar_draws.cpp
+    ovl/rilgar_race_organiser.cpp
     ovl/umbris_part2.cpp
     ovl/veldin_extras.cpp
     ovl/veldin_vendor_draw.cpp

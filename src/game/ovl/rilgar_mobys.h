@@ -40,24 +40,18 @@ void ril_class893_update_l5(uint32_t m);   // L5:0x00316258 the hatches over the
 void ril_class919_update_l5(uint32_t m);   // L5:0x00317470 the pilot (rilgar_people.cpp)
 void ril_class925_update_l5(uint32_t m);   // L5:0x003180a0 the man with the item 0x17 (rilgar_people.cpp)
 void ril_class998_update_l5(uint32_t m);   // L5:0x00318c78 the raft (rilgar_ocean.cpp)
+void ril_class844_update_l5(uint32_t m);   // L5:0x0030e7f8 the float that leaps (rilgar_class844.cpp)
+void ril_class918_update_l5(uint32_t m);   // L5:0x00316ab8 the race organiser (rilgar_race_organiser.cpp)
+void ril_class1347_update_l5(uint32_t m);  // L5:0x0031bf40 the hint giver (rilgar_help.cpp)
 
 // ---- the entries (class updates, camera type functions) and the uniform-ABI entries
-void ril_class844_update_l5(uint32_t a0);  // L5:0x0030e7f8
-void ril_class918_update_l5(uint32_t a0);  // L5:0x00316ab8
-void ril_class1347_update_l5(uint32_t a0);  // L5:0x0031bf40
 void ril_cb_262f50_l5(uint32_t a0);  // L5:0x00262f50
 void ril_cb_266320_l5(uint32_t a0);  // L5:0x00266320
 
 // ---- the uniform-ABI entries and the level-only helpers
-TrRet ril_29bbe0_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x0029bbe0
-TrRet ril_30f218_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x0030f218
-TrRet ril_30f408_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x0030f408
 TrRet ril_3274b8_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x003274b8
-TrRet ril_316810_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x00316810
-TrRet ril_316990_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x00316990
 TrRet ril_hook_300b48_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x00300b48
 TrRet ril_hook_10_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x00300c18
-TrRet ril_28d960_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x0028d960  (hero_walk_to_l1's copy: kept until the PAL 2.00 walk-to fork is merged)
 
 }  // namespace rac1
 

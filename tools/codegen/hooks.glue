@@ -34,8 +34,7 @@ L14 0x00255ed8: { uint32_t pb_v0 = 0; if (palette_blend_loop(a0.w(), a1.w(), a3.
 # L11 0x00313290 (Pokitaru's class 1242): the fork is in pok_class1242_update_l11 (pokitaru_jet.cpp, P11.2), always taken on the PAL 2.00 disc.
 # L13 0x002bb6a8 (Gemlik's class 69): the fork is in gml_class69_update_l13 (gemlik_ship.cpp, P13.2), always taken on the PAL 2.00 disc.
 # L17 0x002ed508 / 0x002ed534 / 0x002ed6c4 (Drek's fleet's class 1379): the fork is in vo_class1379_update_l17 (veldin_orbit_ship.cpp, P17.2), always taken on the PAL 2.00 disc.
-L5 0x00316be0: if (gameplay102_talk_held()) { a0.lo = s1.lo + zero.lo; goto L_316c84; }  // enhancement: 1.02 Gameplay, fix 10 (no talk in 0x1d)
-L5 0x00316c78: gameplay102_talk_lock();  // enhancement: 1.02 Gameplay, fix 10 (+0x20ac)
+# L5 0x00316be0 / 0x00316c78 (Rilgar's class 918): the fork is in ril_class918_update_l5 (rilgar_race_organiser.cpp, P5.4), always taken on the PAL 2.00 disc.
 # L16 0x002e6958 / 0x002e6af8 (Kalebo III's class 1455): the fork is in kal_class1455_update_l16 (kalebo_race_organiser.cpp, P16.2), always taken on the PAL 2.00 disc.
 
 # ---- 1.02 Fixes, fixes 18, 19, 20 and 1.02 Gameplay, fix 21 (src/game/enhance/fixes102.h): the later build's (1.02: the Japanese
@@ -61,8 +60,7 @@ L16 0x00238c38: fixes102_race_text(sp.w(), 2, 0, static_cast<int32_t>(lw_(s1.w()
 # states 1 and 2 do (music_track_request(0, 8), L5:0x28f5c8: the 1.02 build's L5:0x318210), and after the prize's message (5013, "You won a
 # Platinum Zoomerator!") a skill point earned (its flag 0x13d411) is told: the sound 1 and the message 21462 ("You just earned
 # a Skill Point!") over it (L5:0x318364).
-L5 0x00316d30: if (fixes102_on(22)) music_track_request(0, 8);  // enhancement: 1.02 Fixes, fix 22 (the music)
-L5 0x00316e78: if (fixes102_on(22) && lbu(0x0013d411u) != 0) { sound_play_indexed(1, 0, 0); sub_00263d40(TXT(21462), -1); }  // enhancement: 1.02 Fixes, fix 22 (the skill point)
+# L5 0x00316d30 / 0x00316e78: the fork is in ril_class918_update_l5 (rilgar_race_organiser.cpp, P5.4), always taken on the PAL 1.00 and 2.00 discs.
 # ---- The space fights' HUD (issue #82): with Options > Display > HUD wider than 4:3 in a widened view, the radar (the frame's right:
 # its two background sprites at x 368, its blips about x 432) and the missiles (the frame's left: x 24..) of the player's ship's
 # draw-list callback (Pokitaru L11:0x311d50, Gemlik Base L13:0x2b97f8 - Qwark's fight -, Drek's fleet L17:0x2eb9a8) move toward the

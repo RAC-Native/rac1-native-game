@@ -5,6 +5,7 @@
 #include <game/level/level_data.h>
 #include <game/ovl/cutscene.h>
 #include <game/ovl/level_change.h>
+#include <game/ovl/novalis_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/rilgar_mobys.h>
@@ -105,7 +106,7 @@ void ril_class919_update_l5(uint32_t m) {
         swc1(pv + 0xc, u2f(0x406ccccdu));  // (3.7)
         band_set(m);
     } else if (state == 1) {  // (0x00317518)
-        if (talk_update(m, pv) != 0) ril_28d960_l5(m, pv, 0, 0, 0, 0, 0, 0, 2.5f, 0, 0, 0, 0, 0, 0, 0);
+        if (talk_update(m, pv) != 0) hero_walk_to_l1(2.5f, m);  // (L5:0x28d960, the shared port: batch 501)
         if (lh(pv + 4) == 5) {
             level_mark_visited(7);
             level_change_request(0, -1);
@@ -152,7 +153,7 @@ void ril_class925_update_l5(uint32_t m) {
         sb(m + 0x20, 1);
         talk_init(m, pv);
     } else if (state == 1) {  // (0x00318190)
-        if (talk_update(m, pv) != 0) ril_28d960_l5(m, pv, 0, 0, 0, 0, 0, 0, 2.0f, 0, 0, 0, 0, 0, 0, 0);
+        if (talk_update(m, pv) != 0) hero_walk_to_l1(2.0f, m);  // (L5:0x28d960, the shared port: batch 501)
         if (static_cast<uint32_t>(lhu(pv + 4) - 3u) < 2u) {
             item_give(0x17, 1);
             sub_00263d40(TXT(0x1396), -1);

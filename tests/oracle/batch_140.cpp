@@ -12,7 +12,10 @@
 
 #include "ovl_oracle.h"
 
+#include <game/level/level_data.h>
 #include <game/lib/libcdvd.h>
+#include <game/math/vecmath.h>
+#include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/particle_types_tr.h>
@@ -186,6 +189,102 @@ void batch_140() {
             seed_rand();
             return Args{{m}, {}};
         }, [cb](A a) { cb.fn(a.i[0]); return uint64_t{0}; });
+    }
+
+    // ---- P5.4: class 79's second draw (0x2d7920) and class 838's (0x30de90) hand-written (rilgar_draws.cpp), checked on their
+    // packets as batch 270's P18.4 / P18.5 sections: the screen and projection set up, the camera seeing the subject (from behind
+    // it, then about it) or away, the packet cursor on a buffer of the test area (0x800000 + up to 8 quadwords, its end
+    // 0x8f0000) so quad_draw's packets are written there and compared. VU0: no instruction of their own; the last VU0 writers
+    // in the original's run are their callees (quad_draw, point_on_screen, sin_vu, rgba_lerp, mat3_copy_affine, vec3_add),
+    // whose host ports the generated code called before: no lane compared.
+    if (g_oracle_level == 5) {
+        constexpr uint32_t SCR = 0x00880000;
+        auto screen_ready = [] {
+            if (ee_read<uint16_t>(0x001518d0) == 0) { w16(0x001518d0, 640); w16(0x001518d2, 448); }
+            screen_setup();
+            projection_setup();
+        };
+        auto camera_sees = [=](const Vec4& at, float r, float spread) {
+            screen_ready();
+            for (int k = 0; k < 60; ++k) {
+                const Vec4 fwd = VV(OV(0x00166fd0));
+                const float back = rf(4.0f, 30.0f);
+                VV(OV(0x00166dc0)) = k < 30 ? Vec4{at.x - fwd.x * back + rf(-2, 2), at.y - fwd.y * back + rf(-2, 2), at.z - fwd.z * back + rf(-1, 1), 1.0f}
+                                            : Vec4{at.x + rf(-spread, spread), at.y + rf(-spread, spread), at.z + rf(-spread / 4, spread / 4), 1.0f};
+                render_view_setup();
+                VV(SCR + 0x40) = at;
+                if (point_on_screen(SCR + 0x40, r) != -1) return true;
+            }
+            return false;
+        };
+        auto view_on = [=](const Vec4& at) {
+            if (ri(0, 4) != 0) {
+                camera_sees(at, coin() ? 0.5f : 3.0f, coin() ? 3.0f : 12.0f);
+            } else {
+                screen_ready();
+                VV(OV(0x00166dc0)) = Vec4{at.x + 400.0f, at.y + 400.0f, at.z + 300.0f, 1.0f};
+                render_view_setup();
+            }
+            w32(OV(0x001611c0), 0x00800000u + u(ri(0, 8)) * 0x10u);
+            w32(OV(0x0015f5f8), 0x008f0000u);
+        };
+        // the group's mobys of class `cls` (its list at lvd::group(+0x21))
+        auto group_of = [](uint32_t m, int16_t cls) {
+            std::vector<uint32_t> v;
+            uint32_t e = lvd::group(ee_read<uint8_t>(m + 0x21));
+            if (e == 0) return v;
+            for (;; e += 2) {
+                const uint32_t o = ee_read<uint32_t>(OV(0x0015ffd8)) + ((ee_read<uint16_t>(e) & 0x7fffu) << 8);
+                if (ee_read<int16_t>(o + 0xa6) == cls) v.push_back(o);
+                if (ee_read<int16_t>(e) < 0) break;
+            }
+            return v;
+        };
+        level();
+        std::vector<uint32_t> s79, s838;
+        for (uint32_t m : live(79)) if (lvd::group(ee_read<uint8_t>(m + 0x21)) != 0) s79.push_back(m);
+        for (uint32_t m : live(838)) if (lvd::group(ee_read<uint8_t>(m + 0x21)) != 0) s838.push_back(m);
+        // the contrails: the group's air traffic in state 1 (some not), each with 0 .. 16 segments of its three trails laid near
+        // the subject, the trails' head anywhere; the two switch words 0x1613f0 / 0x1613f4 and the option byte 0x15edb2 dealt
+        if (!s79.empty())
+            r2check("ril_class79_draw_b_pk", 0x002d7920, 200, Ret::None, [level, s79, pick, group_of, view_on] {
+                level();
+                const uint32_t m = pick(s79);
+                const Vec4 at = VV(m + 0x10);
+                for (const uint32_t o : group_of(m, 0x4f)) {
+                    w8(o + 0x20, ri(0, 4) != 0 ? 1u : u(ri(0, 3)));
+                    const uint32_t pv = ee_read<uint32_t>(o + 0x78);
+                    if (pv == 0) continue;
+                    VV(o + 0x10) = Vec4{at.x + rf(-4, 4), at.y + rf(-4, 4), at.z + rf(-2, 2), ee_read<float>(o + 0x1c)};
+                    w16(pv + 0x320, u(ri(0, 6) == 0 ? ri(0, 2) : ri(3, 16)));
+                    w16(pv + 0x322, u(ri(0, 15)));
+                    for (uint32_t k = 0; k < 48; ++k) VV(pv + 0x20 + k * 0x10) = Vec4{at.x + rf(-6, 6), at.y + rf(-6, 6), at.z + rf(-2, 2), rf(0, 1)};
+                }
+                w32(0x001613f0, ri(0, 12) == 0 ? 1u : 0u);
+                w32(0x001613f4, ri(0, 12) == 0 ? 1u : 0u);
+                w8(0x0015edb2, u(ri(0, 1)));
+                if (ri(0, 3) == 0) { w32(0x00161408, R()); w32(0x0016140c, R()); }
+                w32(OV(0x0015f5cc), R() & 0xffffu);
+                view_on(at);
+                return Args{{m}, {}};
+            }, [](A a) { ril_class79_draw_b_l5(a.i[0]); return uint64_t{0}; });
+        // the five-sided glow: the group's class-838 mobys in state 1 (some not), turned or as placed; the frame counter, the
+        // level's colours and blend words dealt in part
+        if (!s838.empty())
+            r2check("ril_class838_draw_pk", 0x0030de90, 200, Ret::None, [level, s838, pick, group_of, view_on] {
+                level();
+                const uint32_t m = pick(s838);
+                for (const uint32_t o : group_of(m, 0x346)) {
+                    w8(o + 0x20, ri(0, 4) != 0 ? 1u : u(ri(0, 3)));
+                    if (ri(0, 3) == 0) { wf(o + 0x40, rf(-3.1f, 3.1f)); wf(o + 0x48, rf(-3.1f, 3.1f)); euler_to_mat3_vu(MM(o + 0xc0), VV(o + 0x40)); }
+                }
+                if (ri(0, 3) == 0) for (uint32_t a = 0x00161d3c; a < 0x00161d4c; a += 4) w32(a, R());
+                w32(OV(0x0015f5cc), R() & 0xffffu);
+                Vec4 at = VV(m + 0x10);
+                at.z += rf(0, 4);
+                view_on(at);
+                return Args{{m}, {}};
+            }, [](A a) { ril_class838_draw_l5(a.i[0]); return uint64_t{0}; });
     }
 
     // ---- class 775's update: a moby of the class as spawn_moby_307 (0x2d7e90) puts one out at a live moby, its byte +0x23 near the end

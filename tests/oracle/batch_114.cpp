@@ -6,7 +6,9 @@
 
 #include "ovl_oracle.h"
 
+#include <game/level/level_data.h>
 #include <game/ovl/enemy_749.h>
+#include <game/ovl/globals.h>
 #include <game/ovl/rilgar_mobys.h>
 #include <game/ovl/rilgar_own.h>
 #include <game/enhance/advanced.h>
@@ -56,7 +58,8 @@ namespace {
 bool c2b_spr_check(const char* name) {
     static const char* const kNames[] = {"class133", "class133_x", "class1818", "class572", "class623", "class623_x",
                                          "class625", "class625_x", "class717", "class717_x", "class844", "ril_305898",
-                                         "class35", "class35_x", "class805", "class918", "class925", "class925_x",
+                                         "class35", "class35_x", "class805", "class918", "class925", "class925_x", "class844_x", "class918_x",
+                                         "class918_fix22", "class918_fix10", "ril_30f218", "ril_30f408",
                                          "ril_303390", "ril_303b08"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
@@ -1098,6 +1101,429 @@ void p53b_extras(Extras& x, const GiveHit& give_hit) {
     };
 }
 
+// ---- P5.4: Rilgar's classes 1347 (rilgar_help.cpp), 844 (rilgar_class844.cpp) and 918 (rilgar_race_organiser.cpp) ported
+// by hand: their own state, their helpers' checks, the forks of fixes 22 and 10 in class 918
+constexpr uint32_t LANES844 = LANES_DEBRIS | LANES_POOL, LANES918 = LANES_DEBRIS | LANES_POOL | LANES_TALKSAVE, LANES1347 = 0;
+constexpr uint32_t LANES844X = LANES_DEBRIS | LANES_POOL, LANES918X = LANES_TALKSAVE;
+constexpr uint32_t kRecord = 0x00141968, kStats = 0x00141848;  // the game record's slots, the statistics before them
+constexpr uint32_t kScratch = 0x00880000;                       // (scratch vectors of the helpers' checks: the test area)
+
+// the hero inside level box `b` (lvd::box: its centre +0x30), nothing for -1
+void p54_hero_in_box(int32_t b) {
+    if (b < 0 || b > 600) return;
+    Vec4 q = ee_ref<Vec4>(lvd::box(lvd::BOXES, b) + 0x30);
+    q.x += rf(-0.3f, 0.3f); q.y += rf(-0.3f, 0.3f); q.z += rf(-0.3f, 0.3f);
+    p52_hero_at(q);
+}
+// the first placed moby of class `cls`, 0 for none
+uint32_t p54_moby_of(int16_t cls) {
+    for (int32_t i = 0; i < p52_mobys(); ++i)
+        if (ee_read<uint8_t>(p52_moby(i) + 0x20) < 0xfe && ee_read<int16_t>(p52_moby(i) + 0xa6) == cls) return p52_moby(i);
+    return 0;
+}
+// the help messages free (the dialogue state 0x179410 idle, the stream 0x1516d0 idle) in most cases: the snapshot's refuse them
+void p54_messages_free() {
+    if (ri(0, 3) == 0) return;
+    w32(OV(0x00179410), 0);
+    w32(OV(0x00179434), 0xffffffffu);
+    w32(0x00151720, 0);
+    w32(0x001516ec, 0xffffffffu);
+}
+// a timer word: 0 (idle), 1 (runs out now), 2, 40, or around a frame-scaled threshold `t`
+uint32_t p54_timer(int32_t t) {
+    const int k = ri(0, 5);
+    return k < 4 ? p53b_timer() : u(ri(0, t * 2 + 2));
+}
+
+void p54_extras(Extras& x) {
+    // the hint giver: the hero in one of its boxes (or not), his states, the items and flags it reads, its counters near their
+    // edges, the slots of the game record and the statistics (0, counted, barred 0xffff, their times and level bits), the play
+    // time, the switches of its columns, the difficulty row, the level's first frames, the moby the hero stands on
+    x["class1347"] = [](uint32_t m, int) {
+        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+        if (pv == 0) return;
+        static const uint32_t boxes[] = {0x24, 0x24, 0x2c, 0x34, 0x38, 0x40, 0x48, 0x50, 0x50};
+        if (ri(0, 4) != 0) p54_hero_in_box(ee_read<int32_t>(pv + boxes[ri(0, 8)]));
+        static const uint32_t states[] = {0x11, 0x12, 0x12, 0x13, 0x16, 0, 1};
+        w32(kH + 0x208c, states[ri(0, 6)]);
+        w32(kH + 0x2084, ri(0, 2) == 0 ? 0xau : (coin() ? 0x12u : 0u));
+        p54_messages_free();
+        for (const uint32_t o : {0x110u, 0x118u, 0x120u, 0x128u, 0x130u, 0x220u, 0x250u, 0x2f0u})
+            if (coin()) w16(kRecord + o, ri(0, 4) == 0 ? 0xffffu : (coin() ? 0u : u(ri(1, 3))));
+        for (const uint32_t o : {0x11au, 0x122u, 0x12au, 0x2f2u}) if (coin()) w16(kRecord + o, u(ri(0, 400)));
+        for (const uint32_t o : {0x224u, 0x244u, 0x28cu, 0x394u, 0x134u}) if (coin()) w32(kRecord + o, ri(0, 2) == 0 ? R() : (coin() ? 0u : 0x80000000u | (1u << 5)));
+        for (const uint32_t o : {0x58u, 0x60u, 0x90u, 0xe8u}) if (coin()) w16(kStats + o, coin() ? 0u : u(ri(1, 3)));
+        for (const uint32_t o : {0x4au, 0x1417a2u - kStats, 0x14179au - kStats, 0x1417c2u - kStats, 0x141772u - kStats, 0x1417aau - kStats})
+            if (coin()) w16(kStats + o, u(ri(0, 300)));
+        w32(0x0015eea4, ri(0, 2) == 0 ? u(ri(0, 4000)) : u(ri(100000, 300000)));
+        for (const uint32_t b : {0x0013d4d6u, 0x0013d4cfu, 0x0013d395u, 0x0013d388u}) w8(b, coin() ? 1u : 0u);
+        w32(0x0013d464, u(ri(15, 25)));
+        for (const uint32_t w : {0x20u, 0x58u}) {
+            const uint32_t col = ee_read<uint32_t>(pv + w);
+            if (col < 0x10) w8(0x0014c050 + col + (ee_read<uint32_t>(0x0015ed84) << 4), coin() ? 0xffu : 0u);
+        }
+        if (ee_read<uint32_t>(pv + 0x20) < 0x40) w32(0x0014ee90 + (ee_read<uint32_t>(pv + 0x20) << 2), u(ri(0, 6)));
+        w32(OV(0x0015f5cc), ri(0, 2) == 0 ? u(ri(0, 80)) : R() & 0xffffu);
+        w32(pv + 0x68, u(ri(0, 2) == 0 ? ri(355, 365) : ri(0, 500)));
+        w32(pv + 0x60, u(ri(0, 3)));
+        if (coin()) {  // the moby to wake: one of class 0x33e (or as placed)
+            const uint32_t o = p54_moby_of(0x33e);
+            if (o != 0) w32(pv + 0x54, (o - p52_moby(0)) >> 8);
+        }
+        const int on = ri(0, 3);  // the moby the hero stands on: none, one of class 0x3e6 / 0x33e, another
+        const uint32_t o = on == 1 ? p54_moby_of(0x3e6) : on == 2 ? p54_moby_of(0x33e) : on == 3 ? p52_moby(ri(0, p52_mobys() - 1)) : 0u;
+        w32(kH + 0x2fc, o);
+        w16(kH + 0x30e, ri(0, 3) == 0 ? 1u : 0u);
+        if (coin()) {  // his last grounded point in one of the falls' boxes
+            const int32_t b = ee_read<int32_t>(pv + (coin() ? 0x34u : 0x38u));
+            if (b >= 0 && b <= 600) ee_ref<Vec4>(pv + 0x10) = ee_ref<Vec4>(lvd::box(lvd::BOXES, b) + 0x30);
+        }
+        // one hint's whole setting in two cases of three (its box, the hero's state, its slots and flags): the swimming hint, the
+        // hour's hint, the Hoverboard's two (due, not yet due: the time brought up to now), the five weapons' hint, 0x1389, the
+        // falls' hint, 0x4e20
+        const int sc = ri(0, 11);
+        const uint32_t units = static_cast<uint32_t>(frame_scale_i(ee_read<int32_t>(0x0015eea4)) / 600);
+        auto due = [&](uint32_t when) { w16(when, coin() ? u(ri(0, 3)) : units > 1 ? units - 1 : 0u); };  // (old, or a minute ago: not due)
+        switch (sc) {
+        case 0: p54_hero_in_box(ee_read<int32_t>(pv + 0x50)); w32(kH + 0x208c, coin() ? 0x12u : 0x11u); w32(pv + 0x68, u(ri(355, 420))); w32(kRecord + 0x224, coin() ? 0u : R()); break;
+        case 1: p54_hero_in_box(ee_read<int32_t>(pv + 0x40)); w32(0x0015eea4, u(ri(200000, 300000))); w16(kStats + 0x4a, u(ri(0, 40))); w32(kRecord + 0x244, coin() ? 0u : R()); break;
+        case 2: case 3: p54_hero_in_box(ee_read<int32_t>(pv + 0x24)); w32(kH + 0x2fc, 0); w8(0x0013d4d6, sc == 3 ? 1u : 0u);
+            w16(kRecord + 0x120, coin() ? 0u : 1u); due(kRecord + 0x11a); due(kRecord + 0x122); break;
+        case 4: p54_hero_in_box(ee_read<int32_t>(pv + 0x2c)); w16(kRecord + 0x130, u(ri(0, 1))); w32(kRecord + 0x134, coin() ? 0u : 0x80000020u);
+            if (ee_read<uint32_t>(pv + 0x20) < 0x10) { w8(0x0014c050 + ee_read<uint32_t>(pv + 0x20) + (ee_read<uint32_t>(0x0015ed84) << 4), 0); w32(0x0014ee90 + (ee_read<uint32_t>(pv + 0x20) << 2), u(ri(3, 6))); }
+            w32(0x0015eea4, u(ri(30000, 300000))); for (const uint32_t t : {0x1417a2u, 0x14179au, 0x1417c2u, 0x141772u, 0x1417aau}) w16(t, ri(0, 6) == 0 ? units : u(ri(0, 3))); break;
+        case 5: w8(0x0013d388, 1); w16(kRecord + 0x110, 0); w32(kH + 0x208c, 0x16); break;
+        case 6: case 7: { w16(kRecord + 0x2f0, 0); const int32_t b = ee_read<int32_t>(pv + (coin() ? 0x34u : 0x38u)); p54_hero_in_box(b);
+            w32(kH + 0x2084, coin() ? 0xau : 0u); w32(kH + 0x208c, coin() ? 0x12u : 0u); w32(pv + 0x60, u(ri(1, 3)));
+            if (b >= 0 && b <= 600 && coin()) ee_ref<Vec4>(pv + 0x10) = ee_ref<Vec4>(lvd::box(lvd::BOXES, b) + 0x30);
+            break;
+        }
+        case 8: p54_hero_in_box(ee_read<int32_t>(pv + 0x48)); w16(kStats + 0x90, 0); w16(kRecord + 0x250, 0); w8(0x0013d4cf, 1); w32(0x0013d464, u(ri(18, 30))); break;
+        case 9: {  // the wake in the level's first frames (about the 5th) with both switches done
+            const uint32_t o = p54_moby_of(0x33e);
+            if (o != 0) w32(pv + 0x54, (o - p52_moby(0)) >> 8);
+            for (const uint32_t w : {0x20u, 0x58u}) { const uint32_t col = ee_read<uint32_t>(pv + w); if (col < 0x10) w8(0x0014c050 + col + (ee_read<uint32_t>(0x0015ed84) << 4), 0xff); }
+            w32(OV(0x0015f5cc), u(ri(3, 6))); w32(kH + 0x2fc, 0); break;
+        }
+        default: break;
+        }
+        p51_fifty();
+    };
+    // the float: the hero near (within 24 or not), under it, or standing on it; the scene mode; its timer about its
+    // thresholds; its speed near 0; its height about the water; its bob; its sound slot; its companion; the frame counter
+    x["class844"] = [](uint32_t m, int st) {
+        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+        if (pv == 0) return;
+        const int k = ri(0, 3);
+        Vec4 q = ee_ref<Vec4>(m + 0x10);
+        if (k == 0) p52_hero_at(p52_near(q, coin() ? 22.0f : 40.0f, 2.0f));
+        else if (k == 1) { q.x += rf(-1.5f, 1.5f); q.y += rf(-1.5f, 1.5f); q.z -= rf(2.2f, 6.0f); p52_hero_at(q); }
+        else if (k == 2) { q.x += rf(-1.0f, 1.0f); q.y += rf(-1.0f, 1.0f); q.z += 0.6f; p52_hero_at(q); }
+        w32(0x0013f64c, k == 2 && ri(0, 3) != 0 ? m : 0u);
+        w16(0x0013f65e, ri(0, 3) == 0 ? 1u : 0u);
+        w32(OV(0x0015f5c4), ri(0, 4) == 0 ? 2u : 0u);
+        w32(pv + 0x8c, p54_timer(frame_scale_i(ee_read<int32_t>(0x00161db8))));
+        static const float speeds[] = {0.0f, 0.001f, -0.01f, 0.05f, 0.3f};
+        if (coin()) wf(pv + 0x68, speeds[ri(0, 4)]);
+        const float water = ee_read<float>(pv + 0x78);
+        if (st >= 2 && coin()) wf(m + 0x18, water + rf(-2.0f, 4.0f));
+        if (coin()) wf(pv + 0x7c, ee_read<float>(pv + 0x84) + rf(-0.6f, 0.6f));
+        if (st == 3 && coin()) {  // (at its bob's height and still: the bob turns, up or down)
+            wf(pv + 0x7c, ee_read<float>(pv + 0x84) + (coin() ? 0.5f : -0.5f));
+            wf(m + 0x18, water + ee_read<float>(pv + 0x7c));
+            wf(pv + 0x68, 0.0f);
+        }
+        const int s = ri(0, 3);
+        const int32_t slot = ri(0, 7);
+        w32(pv + 0xa8, s == 0 ? 0xffffffffu : s == 1 ? 0xffu : u(slot));
+        w32(0x0013e550 + u(slot) * 0x70 + 0x88, coin() ? m : p52_moby(ri(0, p52_mobys() - 1)));
+        w8(0x0013e550 + u(slot) * 0x70 + 0x74, u(ri(0, 1)));
+        if (ri(0, 3) == 0) w32(pv + 0xac, 0);
+        w32(OV(0x0015f5cc), R() & 0xffffu);
+        p51_fifty();
+    };
+    // the race organiser: his talk (unable to talk, or waiting for the button: no talk record run), its record index +0x36
+    // (3 starts the race) and +4 (4: the prize), the end screen's choice +0xbc, the race won 0x13d388 and the skill point
+    // 0x13d411, the scene mode, his animations and their timers, the hero before him (within 8 / 15) doing a trick or
+    // standing, the cheer, the option byte 0x15edb0, the race's scene record with him in its list
+    x["class918"] = [](uint32_t m, int st) {
+        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+        if (pv == 0) return;
+        if (st == 0) { w32(0x0013d6bc, coin() ? 1u : 0u); w32(0x0013d6cc, coin() ? 1u : 0u); }
+        w8(m + 0x53, u(ri(0, 2)));
+        w8(m + 0x70, u(ri(0, 3)));
+        w8(m + 0xbc, ri(0, 2) == 0 ? 0u : u(ri(1, 3)));
+        w16(pv + 0x36, u(ri(0, 4)));
+        w16(pv + 4, coin() ? 4u : u(ri(0, 3)));
+        w8(0x0013d388, u(ri(0, 1)));
+        w8(0x0013d411, u(ri(0, 1)));
+        w32(OV(0x0015f5c4), ri(0, 3) == 0 ? 2u : 0u);
+        for (const uint32_t o : {0x244u, 0x248u, 0x24cu}) w32(pv + o, p53b_timer());
+        if (coin()) p53b_hero_front(m, coin() ? 7.5f : 14.0f);
+        if (st == 1) p53b_talk(m, pv);
+        static const uint32_t hs[] = {0xb, 0xb, 4, 4, 0x1d, 0};
+        if (coin()) w32(kH + 0x2084, hs[ri(0, 5)]);
+        static const uint32_t frames[] = {0xf, 0xf, 0, 30, 21};
+        w32(kH + 0x198, frames[ri(0, 4)]);
+        static const uint32_t cheers[] = {0, 1, 19, 20, 7};
+        w32(pv + 0x260, cheers[ri(0, 4)]);
+        w32(0x00161ed0, coin() ? 0u : u(ri(1, 25)));
+        w8(0x0015edb0, u(ri(0, 1)));
+        if (coin()) w32(OV(0x0015f5cc), u(ri(0, 100) * 10));
+        if (ri(0, 4) == 0) {  // his head's point far below him, kept (no new point, not the hero)
+            Vec4 q = ee_ref<Vec4>(m + 0x10); q.x += rf(-1, 1); q.y += rf(-1, 1); q.z -= rf(2, 8);
+            ee_ref<Vec4>(pv + 0x250) = q; w32(pv + 0x248, 0); w32(pv + 0x24c, 40);
+        }
+        if (ri(0, 3) == 0) {  // the hero doing a trick before him, the cheer near its cap
+            p53b_hero_front(m, 12.0f); w32(kH + 0x2084, 0xb); w32(kH + 0x198, 0xf); static const uint32_t near_cap[] = {19, 20, 20, 5}; w32(pv + 0x260, near_cap[ri(0, 3)]);
+        }
+        if (coin()) { w16(0x00151708, u(ri(1, 6))); w8(0x001516f2, 0xff); w16(0x0015170e, 0); w16(0x00151746, coin() ? 1u : 0u); }  // (the race's music on, as after a race: the level's music requests change it; a stream busy: the request waits, +0x22 / +0x23)
+        if (st == 1 && ri(0, 3) == 0) w8(m + 0xbc, u(ri(1, 2)));  // (the end screen's choices 1 / 2: back to him with the level's music)
+        if (ri(0, 4) == 0) {  // the hero standing before him a while, the cheer at 0 or 1, a tenth frame
+            p53b_hero_front(m, 12.0f); w32(kH + 0x2084, 4); w32(kH + 0x198, 30); w32(pv + 0x260, u(ri(0, 1))); w32(OV(0x0015f5cc), u(ri(1, 100) * 10));
+        }
+        if (coin()) {  // the race's scene record (L5:0x16cc60): him and others in its moby list
+            const uint32_t sc = 0x0016cc60;
+            w16(sc + 0x44, u(ri(1, 3)));
+            for (uint32_t i = 0; i < 3; ++i) w32(sc + 0x178 + i * 4, coin() ? m : p52_moby(ri(0, p52_mobys() - 1)));
+            w8(0x0017c8a0 + 1, u(ri(0, 1)));
+        }
+        p51_fifty();
+    };
+}
+
+// the moby `m`'s update with the 1.02 rows on (RAC1_FIXES102 / RAC1_GAMEPLAY102 name them) and off, from the same RAM: the
+// RAM after each run (the stack's neighbourhood and the ignored words not compared by the caller)
+struct ForkRuns { std::vector<uint8_t> start, on, off; bool threw = false; };
+ForkRuns p54_fork_runs(void (*fn)(uint32_t), uint32_t m) {
+    ForkRuns r;
+    uint8_t* ram = ee_get_ram_base();
+    r.start.assign(ram, ram + 0x02000000);
+    const std::vector<uint8_t>& start = r.start;
+    const uint32_t sp0 = ee_stack_ptr();
+    g_advanced_disabled = false;
+    try { fn(m); } catch (const std::exception&) { r.threw = true; }
+    g_advanced_disabled = true;
+    ee_stack_ptr() = sp0;
+    r.on.assign(ram, ram + 0x02000000);
+    std::memcpy(ram, start.data(), start.size());
+    try { fn(m); } catch (const std::exception&) { r.threw = true; }
+    ee_stack_ptr() = sp0;
+    r.off.assign(ram, ram + 0x02000000);
+    return r;
+}
+// the first word where `a` and `b` differ (outside the ignored words and the stack's neighbourhood), 0 when none
+uint32_t p54_first_diff(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, const std::unordered_set<uint32_t>& ignored) {
+    for (uint32_t w = 0x00100000; w < 0x02000000; w += 4) {
+        if (ignored.count(w) != 0) continue;
+        if (w >= ee_stack_ptr() - 0x10000 && w < ee_stack_ptr() + 0x10000) continue;
+        if (std::memcmp(&a[w], &b[w], 4) != 0) return w;
+    }
+    return 0;
+}
+
+void p54_helper_checks(const std::function<void()>& level, const std::function<std::vector<uint32_t>(uint32_t)>& mobys_with,
+                       const std::function<std::vector<uint32_t>(uint32_t)>& with_lanes) {
+    if (g_oracle_level != 5) return;
+    level();
+    const std::vector<uint32_t> floats = mobys_with(0x0030e7f8), organisers = mobys_with(0x00316ab8);
+    // the play-test spots (P5.4): each placed moby of the five classes: its index, uid and place
+    for (const auto& [fn, cls] : std::vector<std::pair<uint32_t, int>>{{0x0031bf40, 1347}, {0x0030e7f8, 844}, {0x00316ab8, 918}, {0x002d7140, 79}, {0x0030dc68, 838}})
+        for (const uint32_t m : mobys_with(fn)) {
+            const Vec4 q = ee_ref<Vec4>(m + 0x10);
+            std::printf("INFO P5.4 class %d idx %u uid %d at %.1f %.1f %.1f\n", cls, (m - p52_moby(0)) >> 8, ee_read<int16_t>(m + 0xb2), q.x, q.y, q.z);
+        }
+    auto pick = [](const std::vector<uint32_t>& v) { return v[static_cast<size_t>(ri(0, static_cast<int>(v.size()) - 1))]; };
+    g_ignored_words = with_lanes(LANES_POOL);
+    // the bubble: at a point, a velocity, its life (1 .. 120 frames, 0 now and then), spin and colour, its size
+    l5check("ril_29bbe0", 0x0029bbe0, 150, Ret::Int32, [level] {
+        level();
+        ee_ref<Vec4>(kScratch) = Vec4{rf(-300, 300), rf(-300, 300), rf(-50, 100), rf(-1, 1)};
+        ee_ref<Vec4>(kScratch + 0x10) = Vec4{rf(-0.2f, 0.2f), rf(-0.2f, 0.2f), rf(0, 0.5f), rf(-1, 1)};
+        const int32_t life = ri(0, 9) == 0 ? 0 : ri(1, 120);
+        seed_rand();
+        return Args{{kScratch, kScratch + 0x10, u(life), u(ri(-30, 30)), R()}, {rf(0.01f, 2.0f)}};
+    }, [](A a) { return r32(ril_29bbe0_l5(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]), static_cast<int32_t>(a.i[3]), a.i[4], a.f[0])); });
+    if (!floats.empty()) {
+        // the bubble column: between the water and a height above it (or below: no bubble), at 50 Hz in part
+        l5check("ril_30f218", 0x0030f218, 150, Ret::None, [level, floats, pick] {
+            level();
+            const uint32_t m = pick(floats), pv = ee_read<uint32_t>(m + 0x78);
+            const float lo = ee_read<float>(pv + 0x78) + (coin() ? 0.0f : rf(-1, 1));
+            const float hi = lo + (ri(0, 5) == 0 ? rf(-2, 0) : rf(0, 30));
+            p51_fifty();
+            seed_rand();
+            return Args{{m}, {lo, hi}};
+        }, [](A a) { ril_30f218_l5(a.i[0], a.f[0], a.f[1]); return uint64_t{0}; });
+        // the sway: its scale k (0, the level's, any) and its rates' s, the hero standing on it (on the ground or not) or not
+        l5check("ril_30f408", 0x0030f408, 150, Ret::None, [level, floats, pick] {
+            level();
+            const uint32_t m = pick(floats), pv = ee_read<uint32_t>(m + 0x78);
+            const bool on = ri(0, 2) != 0;
+            Vec4 q = ee_ref<Vec4>(m + 0x10);
+            q.x += rf(-1.5f, 1.5f); q.y += rf(-1.5f, 1.5f); q.z += 0.5f;
+            if (on) p52_hero_at(q);
+            w32(0x0013f64c, on ? m : 0u);
+            w16(0x0013f65e, ri(0, 3) == 0 ? 1u : 0u);
+            for (uint32_t o = 0x90; o < 0xa8; o += 4) if (coin()) wf(pv + o, rf(-0.3f, 0.3f));
+            p51_fifty();
+            static const float ss[] = {1.0f, 8.0f, 10.0f};
+            const float k = ri(0, 2) == 0 ? 0.0f : coin() ? ee_read<float>(0x00161dd4) : rf(-2, 2);
+            return Args{{m}, {k, ss[ri(0, 2)]}};
+        }, [](A a) { ril_30f408_l5(a.i[0], a.f[0], a.f[1]); return uint64_t{0}; });
+    }
+    g_ignored_words = with_lanes(0);
+    if (!organisers.empty()) {
+        // the crowd's joints: the cheer 0 or up (past 18: the size's cap), the frame counter
+        l5check("ril_316810", 0x00316810, 150, Ret::None, [level, organisers, pick] {
+            level();
+            const uint32_t m = pick(organisers);
+            w32(0x00161ed0, coin() ? 0u : u(ri(1, 25)));
+            w32(OV(0x0015f5cc), R() & 0xffffu);
+            p51_fifty();
+            return Args{{m, ee_read<uint32_t>(m + 0x78)}, {}};
+        }, [](A a) { ril_316810_l5(a.i[0], a.i[1]); return uint64_t{0}; });
+        // the crowd in the scenes: the scene mode, the option byte, the cheer, the scene record's list (him, others), its node
+        l5check("ril_316990", 0x00316990, 150, Ret::None, [level, organisers, pick] {
+            level();
+            const uint32_t m = pick(organisers);
+            w32(OV(0x0015f5c4), ri(0, 4) == 0 ? 0u : 2u);
+            w8(0x0015edb0, u(ri(0, 1)));
+            w32(0x00161ed0, coin() ? 0u : u(ri(1, 25)));
+            const uint32_t sc = 0x0016cc60;
+            w16(sc + 0x44, u(ri(0, 4)));
+            for (uint32_t i = 0; i < 4; ++i) w32(sc + 0x178 + i * 4, coin() ? m : p52_moby(ri(0, p52_mobys() - 1)));
+            w8(0x0017c8a0 + 1, u(ri(0, 1)));
+            w32(OV(0x0015f5cc), R() & 0xffffu);
+            return Args{{m}, {}};
+        }, [](A a) { ril_316990_l5(a.i[0]); return uint64_t{0}; });
+    }
+
+    // ---- the forks in class 918 (1.02 Fixes 22, 1.02 Gameplay 10): the port with the row on against the port with it off (which
+    // the class checks prove against the original) plus the fork's own statements. Fix 22 also on the region flag 0x15ee90 (a
+    // PAL disc's own code): with the row off and the flag set, the port must take the fork (equal to the row on with the flag)
+    const std::unordered_set<uint32_t> ignored = [&] { const std::vector<uint32_t> v = with_lanes(LANES_TALKSAVE); return std::unordered_set<uint32_t>(v.begin(), v.end()); }();
+    auto organiser_prep = [&](uint32_t m, int st) {
+        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+        w8(m + 0x20, u(st));
+        w8(m + 0x53, u(ri(0, 2)));
+        w8(m + 0xbc, 0);
+        w16(pv + 0x36, u(ri(0, 2)));
+        w32(OV(0x0015f5c4), 0);
+        if (coin()) p53b_hero_front(m, 14.0f);
+        w32(kH + 0x22a8, 0);  // (no talk record run: the hero unable to talk, as p53b_talk's first case; kind 3 of fix 10 talks)
+        w32(OV(0x0015f5cc), R() & 0xffffu);
+        seed_rand();
+    };
+    if (organisers.empty()) {
+        // (no organiser placed: nothing to run)
+    } else if (const char* only = std::getenv("ORACLE_ONLY"); only == nullptr || std::strcmp(only, "class918_fix22") == 0) {
+        if (std::getenv("RAC1_FIXES102") == nullptr) {
+            std::printf("%-26s skipped (run with RAC1_FIXES102=22 on level 5)\n", "class918_fix22");
+            ++g_skipped;
+        } else {
+            int bad = 0, n = 0, music = 0, told = 0, untold = 0, region = 0;
+            CollisionScratchIgnored spr;
+            for (int c = 0; c < 120; ++c) {
+                level();
+                const uint32_t m = organisers[0], pv = ee_read<uint32_t>(m + 0x78);
+                const int kind = c % 4;  // 0 the race ended in state 3; 1 the prize with the skill point; 2 without it; 3 the region flag
+                const bool flag = kind == 3;
+                const int what = flag ? ri(0, 1) : kind;
+                organiser_prep(m, what == 0 ? 1 : 3);
+                if (what == 0) { w8(m + 0xbc, 3); w16(0x00151708, u(ri(1, 6))); w8(0x001516f2, 0xff); w16(0x0015170e, 0); w16(0x00151746, ri(0, 3) == 0 ? 1u : 0u); }
+                else { w16(pv + 4, 4); w8(0x0013d411, kind == 2 ? 0u : 1u); }
+                if (flag) w32(0x0015ee90, 1);
+                ForkRuns r = p54_fork_runs(ril_class918_update_l5, m);
+                if (r.threw) { if (bad < 8) std::printf("  class918_fix22 case %d: the port threw\n", c); ++bad; continue; }
+                uint8_t* ram = ee_get_ram_base();
+                uint32_t d = 0;
+                if (flag) {
+                    d = p54_first_diff(r.on, r.off, ignored);  // (the flag alone takes the fork)
+                    ++region;
+                } else {
+                    // expected: the row's statements and the run with the row off (the music first: nothing before it in the frame
+                    // reads the stream's words; the skill point's two calls after it: nothing after them reads theirs)
+                    if (what == 0) {
+                        std::memcpy(ram, r.start.data(), r.start.size());
+                        music_track_request(0, 8);
+                        const uint32_t sp0 = ee_stack_ptr();
+                        try { ril_class918_update_l5(m); } catch (const std::exception&) {}
+                        ee_stack_ptr() = sp0;
+                        ++music;
+                    } else {
+                        std::memcpy(ram, r.off.data(), r.off.size());
+                    }
+                    if (what == 0) {
+                    } else if (kind == 1 && ee_read<int16_t>(pv + 4) == 4) { sound_play_indexed(1, 0, 0); sub_00263d40(TXT(0x53d6), -1); ++told; }
+                    else ++untold;
+                    const std::vector<uint8_t> expected(ram, ram + 0x02000000);
+                    d = p54_first_diff(r.on, expected, ignored);
+                    if (what == 0 || kind == 1) {  // (the fork did something)
+                        if (p54_first_diff(r.on, r.off, ignored) == 0) { if (bad < 8) std::printf("  class918_fix22 case %d (kind %d): the row changed nothing\n", c, kind); ++bad; }
+                    }
+                }
+                ++n;
+                if (d != 0) {
+                    uint32_t x; std::memcpy(&x, &r.on[d], 4);
+                    if (bad < 8) std::printf("  class918_fix22 case %d (kind %d): %08x differs (row on %08x)\n", c, kind, d, x);
+                    ++bad;
+                }
+            }
+            std::printf("%-26s %s (%d cases, %d music, %d told, %d not, %d region)\n", "class918_fix22",
+                        bad == 0 && music > 0 && told > 0 && untold > 0 && region > 0 ? "ok" : "FAIL", n, music, told, untold, region);
+            if (bad != 0 || music == 0 || told == 0 || untold == 0 || region == 0) ++g_fail;
+        }
+    }
+    if (organisers.empty()) {
+    } else if (const char* only = std::getenv("ORACLE_ONLY"); only == nullptr || std::strcmp(only, "class918_fix10") == 0) {
+        if (std::getenv("RAC1_GAMEPLAY102") == nullptr) {
+            std::printf("%-26s skipped (run with RAC1_GAMEPLAY102=10 on level 5)\n", "class918_fix10");
+            ++g_skipped;
+        } else {
+            int bad = 0, n = 0, locked = 0, held = 0, kept = 0, talked = 0;
+            CollisionScratchIgnored spr;
+            for (int c = 0; c < 120; ++c) {
+                level();
+                const uint32_t m = organisers[0], pv = ee_read<uint32_t>(m + 0x78);
+                const int kind = c % 4;  // 0 the race starts (locked); 1 in 0x1d, no start; 2 in 0x1d at the start (held); 3 the talk
+                organiser_prep(m, 1);
+                if (kind == 0 || kind == 2) w16(pv + 0x36, 3);
+                if (kind == 3) p53b_talk(m, pv);
+                w32(g::HERO_STATE, kind == 1 || kind == 2 ? 0x1du : 0u);
+                w8(kH + 0x20ac, 0);
+                ForkRuns r = p54_fork_runs(ril_class918_update_l5, m);
+                if (r.threw) { if (bad < 8) std::printf("  class918_fix10 case %d: the port threw\n", c); ++bad; continue; }
+                uint32_t d = 0;
+                if (kind == 2) {  // the race not started with the row: the record, the state and the lock as they were
+                    int16_t rec; std::memcpy(&rec, &r.on[pv + 0x36], 2);
+                    if (rec != 3 || r.on[m + 0x20] != 1 || r.on[kH + 0x20ac] != 0) { if (bad < 8) std::printf("  class918_fix10 case %d: not held (record %d, state %u)\n", c, rec, r.on[m + 0x20]); ++bad; }
+                    std::memcpy(&rec, &r.off[pv + 0x36], 2);
+                    if (rec != 2) { if (bad < 8) std::printf("  class918_fix10 case %d: the race did not start with the row off\n", c); ++bad; }
+                    ++held;
+                } else {
+                    if (kind == 0) {
+                        if (r.on[kH + 0x20ac] != 1) { if (bad < 8) std::printf("  class918_fix10 case %d: not locked\n", c); ++bad; }
+                        r.off[kH + 0x20ac] = 1;
+                        ++locked;
+                    } else if (kind == 1) {
+                        ++kept;
+                    } else {
+                        ++talked;
+                    }
+                    d = p54_first_diff(r.on, r.off, ignored);
+                }
+                ++n;
+                if (d != 0) { if (bad < 8) std::printf("  class918_fix10 case %d (kind %d): %08x differs\n", c, kind, d); ++bad; }
+            }
+            std::printf("%-26s %s (%d cases, %d locked, %d held, %d kept, %d talked)\n", "class918_fix10",
+                        bad == 0 && locked > 0 && held > 0 && kept > 0 && talked > 0 ? "ok" : "FAIL", n, locked, held, kept, talked);
+            if (bad != 0 || locked == 0 || held == 0 || kept == 0 || talked == 0) ++g_fail;
+        }
+    }
+    g_ignored_words = with_lanes(0);
+}
+
 }  // namespace
 
 void batch_114() {
@@ -1273,7 +1699,7 @@ void batch_114() {
         {"class838", 0x0030dc68, ril_class838_update_l5, 0x0, false, LANES838},
         {"class841", 0x0030e1f8, ril_class841_update_l5, 0x0, false, LANES841},
         {"class843", 0x0030e508, ril_class843_update_l5, 0x0, false, LANES843},
-        {"class844", 0x0030e7f8, ril_class844_update_l5, 0x0, false},
+        {"class844", 0x0030e7f8, ril_class844_update_l5, 0x0, false, LANES844},
         {"class846", 0x0030f5c8, ril_class846_update_l5, 0x0, false, LANES846},
         {"class852", 0x00314eb0, ril_class852_update_l5, 0x0, false, LANES852},
         {"class855", 0x003150f0, ril_class855_update_l5, 0x0, false, LANES855},
@@ -1281,7 +1707,7 @@ void batch_114() {
         {"class879", 0x00316110, ril_class879_update_l5, 0x0, false, LANES879},
         {"class893", 0x00316258, ril_class893_update_l5, 0x0, false, LANES893},
         {"class895", 0x003166a0, ril_class895_update_l5, 0x0, false, LANES895},
-        {"class918", 0x00316ab8, ril_class918_update_l5, 0x0, false},
+        {"class918", 0x00316ab8, ril_class918_update_l5, 0x0, false, LANES918},
         {"class919", 0x00317470, ril_class919_update_l5, 0x0, false, LANES919},
         {"class920", 0x00317aa0, class447_update, 0x0, false},
         {"class925", 0x003180a0, ril_class925_update_l5, 0x0, false, LANES925},
@@ -1292,7 +1718,7 @@ void batch_114() {
         {"class1099", 0x00319c28, ril_class1099_update_l5, 0x0, false, LANES1099},
         {"class1134", 0x00319c60, gold_bolt_update, 0x6, false},
         {"class1139", 0x0031abe0, class1139_update, 0x0, false},
-        {"class1347", 0x0031bf40, ril_class1347_update_l5, 0x0, false},
+        {"class1347", 0x0031bf40, ril_class1347_update_l5, 0x0, false, LANES1347},
         {"class1511", 0x0031c8e0, class1511_update, 0x0, false},
         {"class1550", 0x0031d5c8, ril_class1550_update_l5, 0x0, false, LANES1550},
         {"class1633", 0x0031d760, class1633_update, 0x0, false},
@@ -1345,7 +1771,7 @@ void batch_114() {
         }
     }
     // P5.1: the hand-ported classes' own state on top of generic_prep (their pass 2 and their `_x` checks below)
-    const std::map<std::string, std::function<void(uint32_t, int)>> extras = [&give_hit] { Extras x = p51_extras(give_hit); p52_extras(x, give_hit); p53_extras(x); p53b_extras(x, give_hit); return x; }();
+    const std::map<std::string, std::function<void(uint32_t, int)>> extras = [&give_hit] { Extras x = p51_extras(give_hit); p52_extras(x, give_hit); p53_extras(x); p53b_extras(x, give_hit); p54_extras(x); return x; }();
     const bool no_lanes = std::getenv("B114_NO_LANES") != nullptr;  // (to find the classes that need the lanes ignored)
     for (const TrCls& c : trcls) {
         if (std::getenv("B114_CLS") != nullptr && std::strcmp(std::getenv("B114_CLS"), c.name) != 0) continue;
@@ -1388,6 +1814,9 @@ void batch_114() {
             {"class893_x", 0x00316258, ril_class893_update_l5, {0, 0, 1, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7}, LANES893},
             {"class919_x", 0x00317470, ril_class919_update_l5, {0, 0, 1, 1, 1, 1, 2}, LANES919X},
             {"class925_x", 0x003180a0, ril_class925_update_l5, {0, 0, 1, 1, 1, 1, 2}, LANES925X},
+            {"class1347_x", 0x0031bf40, ril_class1347_update_l5, {0, 1}, LANES1347},
+            {"class844_x", 0x0030e7f8, ril_class844_update_l5, {0, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 4}, LANES844X},
+            {"class918_x", 0x00316ab8, ril_class918_update_l5, {0, 1, 1, 1, 1, 1, 2, 3, 3, 3, 4}, LANES918X},
             {"class623_x", 0x00301f48, ril_class623_update_l5, {0, 1, 1, 2, 2, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 9, 10, 10, 10, 11, 11, 11, 12, 13, 13, 14, 14, 15, 15, 16}, LANES623},
         };
         for (const X& x : xs) {
@@ -1406,6 +1835,7 @@ void batch_114() {
     }
     p51_helper_checks(level, mobys_with, give_hit, extras);
     p52_helper_checks(level, mobys_with, extras, with_lanes);
+    p54_helper_checks(level, mobys_with, with_lanes);
     g_extra_noop_hooks.clear();
 
     if (g_oracle_level == 5 && std::getenv("B114_INFO") != nullptr) {  // the classes with an empty update: how many placements
