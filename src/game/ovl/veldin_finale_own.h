@@ -3,7 +3,8 @@
 // veldin_finale_rail_switch.cpp, veldin_finale_platforms.cpp,
 // veldin_finale_camera_pan.cpp, veldin_finale_breakable.cpp, veldin_finale_energy_ball.cpp, veldin_finale_diver.cpp,
 // veldin_finale_raft.cpp, veldin_finale_barrier.cpp, veldin_finale_water.cpp, veldin_finale_boss_props.cpp,
-// veldin_finale_boss_spawns.cpp, veldin_finale_boss_level.cpp, veldin_finale_boss_moves.cpp, veldin_finale_boss_frame.cpp.
+// veldin_finale_boss_spawns.cpp, veldin_finale_boss_level.cpp, veldin_finale_boss_moves.cpp, veldin_finale_boss_frame.cpp,
+// veldin_finale_troopers.cpp, veldin_finale_scene.cpp, veldin_finale_robots.cpp.
 #ifndef RAC1_GAME_OVL_VELDIN_FINALE_OWN_H
 #define RAC1_GAME_OVL_VELDIN_FINALE_OWN_H
 
@@ -116,6 +117,24 @@ void vf_boss_bearing_l18(uint32_t m, uint32_t out, uint32_t from, uint32_t to); 
 void vf_boss_preamble_l18(uint32_t m);                // L18:0x002f5e80
 void vf_boss_camera_l18(uint32_t m);                  // L18:0x002f7288
 void vf_boss_smoke_l18(uint32_t m, uint32_t at);      // L18:0x002f76a0
+
+// the troopers (class 1454, veldin_finale_troopers.cpp): their rocket (class 41) at the EE point `at` with the EE
+// velocity `vel`, homing when `homing` (0: none spawned); their every frame before the state (hits, target, aim); their
+// walk along their path
+uint32_t vf_rocket_spawn_l18(uint32_t owner, uint32_t at, uint32_t vel, uint32_t homing);  // L18:0x002a75f0
+void vf_trooper_frame_l18(uint32_t m);                                                     // L18:0x002f8050
+void vf_trooper_walk_l18(uint32_t m);                                                      // L18:0x002f8658
+
+// the classes the scenes drive (veldin_finale_scene.cpp): the game's save image built once into `buf`; the end scene's
+// sparks at the EE points `at` / `at2` moving by the EE vector `vel`
+void vf_save_image_once_l18(uint32_t buf);                                                  // L18:0x00281fa8
+void vf_scene_sparks_l18(uint32_t at, uint32_t at2, uint32_t vel, float size_a, float size_b);  // L18:0x002fa250
+
+// the boss's robots (class 1906, veldin_finale_robots.cpp): their every frame before the state (glow, hits, target);
+// their step toward the EE point `goal` (the distance to it); their carry hook +0xc
+void vf_robot_frame_l18(uint32_t m);                                               // L18:0x002fc100
+float vf_robot_walk_l18(uint32_t m, uint32_t goal);                                // L18:0x002fc4e0
+int32_t vf_robot_hookc_l18(uint32_t m, uint32_t a1, uint32_t a2, float f12);       // L18:0x002fcca0
 
 }  // namespace rac1
 

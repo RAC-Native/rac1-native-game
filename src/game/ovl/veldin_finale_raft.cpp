@@ -123,6 +123,41 @@ void vf_raft_platform_retire_l18(uint32_t o) {
     moby_retire(o);
 }
 
+// Class 1584, the raft's platform: bound to its raft (set up, state 1, by the raft's attach_bind: its record +0x20 .. at
+// its pvars), it keeps the raft's frame of its place (+0x20, from its last place +0x60 and turn +0x70); once its +0xbc is
+// set (vf_group_platforms_flag_l18) and its +0x80, a class 1892 moby (the ground the hero stands on) is spawned on it
+// (+0x84: its colour, as it draws, its size by its own against its class's); that moby follows it.
+// orig: L18:0x002fa728
+void vf_class1584_update_l18(uint32_t m) {
+    const Frame f(128);
+    const uint32_t sp = f.sp, pv = lwu(m + 0x78);
+    const uint8_t st = lbu(m + 0x20);
+    if (st == 0) {
+        sb(m + 0x20, 1);
+    } else if (st == 1) {
+        vec3_sub(V(sp), V(m + 0x10), V(pv + 0x60));
+        attach_frame_set(pv + 0x20, sp, pv + 0x70, m + 0x40);
+    }
+    if (lbu(m + 0xbc) != 0 && lwu(pv + 0x80) != 0 && lwu(pv + 0x84) == 0) {
+        const uint32_t o = moby_spawn(GROUND_CLASS);
+        sw(pv + 0x84, o);
+        if (o != 0) {
+            sh(o + 0x32, lhu(m + 0x32));
+            sb(o + 0x31, 1);
+            sd(o + 0x38, ld(m + 0x38));
+            const float scale = fpu_div(lwc1(m + 0x2c), lwc1(lwu(m + 0x24) + 0x24));
+            swc1(o + 0x2c, fpu_mul(lwc1(o + 0x2c), scale));
+        }
+    }
+    lq_sq(pv + 0x60, m + 0x10);
+    lq_sq(pv + 0x70, m + 0x40);
+    const uint32_t o = lwu(pv + 0x84);
+    if (o == 0) return;
+    lq_sq(o + 0x10, m + 0x10);
+    lq_sq(o + 0x40, m + 0x40);
+    moby_update_transform(o);
+}
+
 // orig: L18:0x002f16f0
 void vf_class1381_update_l18(uint32_t m) {
     const Frame f(112);

@@ -4,37 +4,20 @@
  "env": {
   "MKALL_HELPER_PREFIX": "vf_",
   "MKALL_WIDE_GPR": "",
-  "MKALL_UNIFORM": "vf_hook_2fcca0_u"
+  "MKALL_UNIFORM": ""
  },
  "entries": [
-  "2f7ab0:vf_class1432_update_l18:void:a0",
-  "2f7ad8:vf_class1434_update_l18:void:a0",
-  "2f7c40:vf_class1454_update_l18:void:a0",
-  "2f88e8:vf_class1563_update_l18:void:a0",
-  "2fa640:vf_class1568_update_l18:void:a0",
-  "2fa728:vf_class1584_update_l18:void:a0",
-  "2fad08:vf_class1750_update_l18:void:a0",
-  "2fad28:vf_class1799_update_l18:void:a0",
   "2fb868:vf_class1899_update_l18:void:a0",
-  "2fbb98:vf_class1906_update_l18:void:a0",
-  "2fcca0:vf_hook_2fcca0_u",
   "2d5768:vf_cb_2d5768_l18:void:a0",
   "2dba20:vf_cb_2dba20_l18:void:a0",
   "2dc4b8:vf_cb_2dc4b8_l18:void:a0",
   "2f0390:vf_cb_2f0390_l18:void:a0",
   "2f06c0:vf_cb_2f06c0_l18:void:a0",
   "2f1fd8:vf_cb_2f1fd8_l18:void:a0",
-  "2f7880:vf_cb_2f7880_l18:void:a0",
-  "2f9780:vf_cb_2f9780_l18:void:a0",
-  "2f9a98:vf_cb_2f9a98_l18:void:a0",
-  "2f9c20:vf_cb_2f9c20_l18:void:a0",
-  "2f9eb8:vf_cb_2f9eb8_l18:void:a0",
-  "2fc860:vf_cb_2fc860_l18:void:a0",
-  "2fca98:vf_cb_2fca98_l18:void:a0"
+  "2f7880:vf_cb_2f7880_l18:void:a0"
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/veldin_finale_classes_tr_5.cpp",
   "src/game/ovl/veldin_finale_classes_tr_6.cpp",
   "src/game/ovl/veldin_finale_classes_tr_7.cpp"
  ]

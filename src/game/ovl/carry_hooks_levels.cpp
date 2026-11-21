@@ -380,7 +380,7 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         case L18_CASE(0x002fcbb0): ret = carry_state_hook(m, a1, a2, f12, 0, 7, 2); return true;
         case L18_CASE(0x002fcc00): ret = carry_state_hook(m, a1, a2, f12, 4, 7, 2); return true;
         case L18_CASE(0x002fcc50): ret = carry_state_hook(m, a1, a2, f12, 8, 7, 2); return true;
-        case L18_CASE(0x002fcca0): ret = u_call(vf_hook_2fcca0_u, m, a1, a2, f12); return true;
+        case L18_CASE(0x002fcca0): ret = vf_robot_hookc_l18(m, a1, a2, f12); return true;  // (veldin_finale_robots.cpp)
         case L18_CASE(0x002fccd0): ret = static_cast<int32_t>(e749_hook_10(m)); return true;  // (Veldin's 0x2d5800, the same code)
         default: return false;
         }
