@@ -10,11 +10,11 @@
 // four), +0x93 the blobs' kind, +0x94 its group, +0xa0 .. +0xac four indices of the cameras' list (-1 none), +0xb0 its
 // blobs (20 words), +0x100 the target's point, +0x140 the target, +0x144 2 when it has none.
 //
-// The 1.02 build (the PAL disc 2.00) changed two things here: a killed one's bolts on Gemlik Base, with Ratchet at the height
-// 250 (within 4), get moby_drop_bolts' flag 0x200 (their flag 2, as when Ratchet stands next to it): 1.02 Gameplay fix 25
-// (fixes102.h), off by default; and
-// no blob is thrown, while some are out, when either of the frame's load factors (0x15f5d0 / 0x15f5d4) is 0.85 or more: a
-// throttle for the frame's load, not ported.
+// The 1.02 build (the PAL disc 2.00: its L13:0x30e91c / 0x30ec28, L9:0x30be34 / 0x30c140; the Japanese disc the same)
+// changed two things here, both its own code on that disc whatever the rows (region_core_moved()): a killed one's bolts on
+// Gemlik Base, with Ratchet at the height 248 (within 4; `lui at,0x4378`), get moby_drop_bolts' flag 0x200 (their flag 2,
+// as when Ratchet stands next to it): 1.02 Gameplay fix 25 (fixes102.h); and no blob is thrown, while some are out, when
+// either of the frame's load factors (0x15f5d4, then 0x15f5d0) is 0.85 or more: 1.02 Gameplay fix 48.
 #include <game/ovl/shared_class1885.h>
 
 #include <game/enhance/fixes102.h>
@@ -65,8 +65,8 @@ void class1885_hit(uint32_t m, uint32_t pv) {
         if (0.0f < health) {
             sb(pv + 0x67, 0x5a);
         } else {
-            // enhancement: 1.02 Gameplay, fix 25 (fixes102.h): on Gemlik Base with Ratchet at the height 250, the bolts' flag 0x200
-            const bool to_hero = gameplay102_on(25) && lw(0x0015ed84) == 0xd && abs_f(fpu_sub(lwc1(0x0013f3d8), 250.0f)) < 4.0f;
+            // enhancement: 1.02 Gameplay, fix 25 (fixes102.h): on Gemlik Base with Ratchet at the height 248, the bolts' flag 0x200
+            const bool to_hero = gameplay102_gemlik_bolts_flag() && lw(0x0015ed84) == 0xd && abs_f(fpu_sub(lwc1(0x0013f3d8), 248.0f)) < 4.0f;
             moby_drop_bolts(m, to_hero ? 0x200u : 0u, -1);
             sb(m + 0x20, 2);
             sb(pv + 0x67, 0x78);
@@ -170,6 +170,11 @@ void class1885_update(uint32_t m) {
     const int32_t slot = class1885_free_slot(m, pv);
     if (!(lbu(pv + 0x91) < lbu(pv + 0x90))) return;
     if (slot == -1) return;
+    // enhancement: 1.02 Gameplay, fix 48 (fixes102.h): with blobs out, none thrown while either load factor is 0.85 or more
+    if (gameplay102_gemlik_load_thinning() && lbu(pv + 0x91) != 0) {
+        if (!(lwc1(OV(0x0015f5d4)) < u2f(0x3f59999au))) return;  // (0.85)
+        if (!(lwc1(OV(0x0015f5d0)) < u2f(0x3f59999au))) return;
+    }
     const uint32_t sp = ee_stack_alloc(0x130);
     const uint32_t aim = sp + 0x20, vel = sp + 0x30, from = sp + 0x40, nudge = sp + 0x50;
     const uint32_t pos = m + 0x10;

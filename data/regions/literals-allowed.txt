@@ -26,6 +26,9 @@ SCES-50916-2.00.txt  *  00161e30  the 1.02 build's Vendor has no such word: vend
 # displacement (+0x7c) takes it on, and no other address lands there
 SCES-50916-2.00.txt  11  00162840  class 1111's last camera place: bss after the Vendor's block (+0x7c, its last run's)
 SCES-50916-2.00.txt  16  00162240  class 1111's last camera place: bss after the Vendor's block (+0x7c, its last run's)
+# Gemlik's class 63 (gemlik_trooper.cpp, state 99): its three explosion cooldown slots, zero bss on both builds; the 1.02
+# build's own code names the rule's place (L13:0x2b8514 `lui a0,0x16 / addiu a0,a0,0x1438`, NTSC-U 0x2b735c's 0x13b0)
+SCES-50916-2.00.txt  13  001613b0  class 63's cooldown slots: 0x161438 in the 1.02 code itself (L13:0x2b8514), zero bss on both
 # The hoverbike races' HUD (shared_race_hud.cpp, RACE_ADDR): NTSC-U's own format strings, which the PAL builds replaced by
 # their own formats and the level's texts; read on NTSC-U only: on a PAL disc (0x15ee90 not 0) the port's region fork
 # (pal_texts, fixes102_race_text) draws the disc's lines without them

@@ -105,8 +105,13 @@
 //   shared_class1111.cpp) is the level's water disc (0x1612dc: on, centre (512, 512), radius 1024, at the swell's height,
 //   set each frame the sea is drawn), so that surface_height gives the hero's movement, the bombs and the mines its surface
 // - 25: Gemlik Base's class 1885 (and Gaspar's copy; L9:0x30a9e8 / L13:0x30d3b8, the shared port class1885_hit,
-//   shared_class1885.cpp) killed with Ratchet at the height 250 (within 4) on Gemlik Base: its bolts with
+//   shared_class1885.cpp) killed with Ratchet at the height 248 (within 4) on Gemlik Base, and Gemlik Base's class 63
+//   (gml_class63_update_l13 L13:0x2b50d8, gemlik_trooper.cpp) killed with Ratchet at that height: their bolts with
 //   moby_drop_bolts' flag 0x200 (their flag 2, as when Ratchet stands next to it)
+// - 48: Gemlik Base's enemies under a heavy frame load (either of the frame's load factors 0x15f5d0 / 0x15f5d4): a class-63
+//   robot of a wave (pvar +0x20a 2) not drawn this frame, whose group has 3 or more live members, retired one frame in 29
+//   while a factor is above 0.98 (gml_class63_update_l13 L13:0x2b50d8, gemlik_trooper.cpp); a blob thrower (class 1885,
+//   Gemlik's and Gaspar's, class1885_update) with blobs out throws no more while a factor is 0.85 or more
 // - 31: the Tesla Claw's hits give their direction the z 1.0 (the North American build 0, unless the hit is straight
 //   below the claw): the arc's hit and the two held targets' (tesla_2b94d0 0x2b94d0: tesla.cpp)
 // In the generated code each hook is a test that fails with the row off; on another region's disc the transliterated
@@ -235,6 +240,15 @@ bool fixes102_finale_water_carry();
 // strength 1000 from Ratchet's place) when Ratchet swims (state 0x31) within 1.5 of it; nothing with the fix off
 void gameplay102_decoy_push(uint32_t m);
 
+// orig: (none) — enhancement: fix 25 (1.02 Gameplay): the bolts' flag 0x200 for a killed Gemlik class-63 robot or blob
+// thrower with Ratchet at the height 248 (class1885_hit, gml_class63_update_l13; the PAL 2.00 disc's L13:0x2b6638 and
+// 0x30e91c): true when the 1.02 build's test applies; false with the fix off, except on the PAL 2.00 disc
+// (region_core_moved()), whose own code it is
+bool gameplay102_gemlik_bolts_flag();
+// orig: (none) — enhancement: fix 48 (1.02 Gameplay): the 1.02 build's thinning of Gemlik Base's enemies under a heavy
+// frame load (gml_class63_update_l13's end, the PAL 2.00 disc's L13:0x2b8af8; class1885_update's throw, 2.00 L13:0x30ec28):
+// true when it applies; false with the fix off, except on the PAL 2.00 disc (region_core_moved()), whose own code it is
+bool gameplay102_gemlik_load_thinning();
 // orig: (none) — enhancement: fix 21 (1.02 Gameplay): Rilgar's class 831 (the water) `m`: true when the 1.02 build skips
 // its update (a cutscene: game mode 2); false with the fix off, except on the PAL 2.00 disc (whose own code does it)
 bool gameplay102_water_held();

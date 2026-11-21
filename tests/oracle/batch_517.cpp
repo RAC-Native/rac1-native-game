@@ -7,7 +7,8 @@
 //  - shared_class1400.cpp: class 1400, the weather about the camera: its update, its wind and its two particles (levels 8, 12,
 //    14);
 //  - shared_class1885.cpp: class 1885, the blob thrower: its update, hits, free slot, throw and two random helpers (levels 9,
-//    13); "class1885_fix25" checks its 1.02 fork (1.02 Gameplay fix 25) when run with RAC1_GAMEPLAY102=25;
+//    13); "class1885_fix25" / "class1885_fix48" check its 1.02 forks (1.02 Gameplay fixes 25 and 48) when run with
+//    RAC1_GAMEPLAY102=25 / 48;
 //  - shared_class1511.cpp: class 1511's update and its remains (levels 5, 14);
 //  - shared_floaters.cpp: the rafts' next stage (levels 5, 14, 16), each level's own build of the arrival it calls, and
 //    Oltanis's build of floater_find;
@@ -31,6 +32,7 @@
 #include "ovl_oracle.h"
 
 #include <game/enhance/advanced.h>
+#include <game/enhance/fixes102.h>
 #include <game/lib/libcdvd.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -725,6 +727,14 @@ void class1400_checks() {
                 [](A a) { class1400_mote(a.i[0], static_cast<int32_t>(a.i[1]), a.i[2], a.f[0]); return uint64_t{0}; });
 }
 
+// whether RAC1_GAMEPLAY102 lists the 1.02 Gameplay fix `n` (the oracle runs with every enhancement off otherwise)
+bool gameplay_fix_listed(int n) {
+    g_advanced_disabled = false;
+    const bool on = gameplay102_on(n);
+    g_advanced_disabled = true;
+    return on;
+}
+
 // ---- class 1885, the blob thrower (shared_class1885.cpp)
 void class1885_checks() {
     const uint32_t upd = copy_here({{9, 0x0030ab80}, {13, 0x0030d550}});
@@ -735,7 +745,7 @@ void class1885_checks() {
     const uint32_t radius = copy_here({{9, 0x00277688}, {13, 0x00263988}});
     if (upd == 0) {
         for (const char* n : {"class1885_update", "class1885_hit", "class1885_free_slot", "class1885_throw", "rand_disc_offset",
-                              "rand_radius", "class1885_fix25"})
+                              "rand_radius", "class1885_fix25", "class1885_fix48"})
             not_here(n);
         return;
     }
@@ -869,10 +879,11 @@ void class1885_checks() {
     }, [](A a) { return rf32(rand_radius(a.f[0])); });
 
     // fix 25 (1.02 Gameplay): the port with the fix against the 1.02 build's death, by hand (L13:0x30e880 on the PAL disc 2.00:
-    // on Gemlik Base (0x15ed84 13) with Ratchet's height within 4 of 250, moby_drop_bolts' flag 0x200), and against the port
-    // without it elsewhere
+    // on Gemlik Base (0x15ed84 13) with Ratchet's height within 4 of 248 (its `lui at,0x4378`; this check said 250 until
+    // P13.8, as the port did: a misread of the disc that the check, written from the same reading, could not see),
+    // moby_drop_bolts' flag 0x200), and against the port without it elsewhere
     if (const char* only = std::getenv("ORACLE_ONLY"); only == nullptr || std::strcmp(only, "class1885_fix25") == 0) {
-        if (std::getenv("RAC1_GAMEPLAY102") == nullptr) {
+        if (std::getenv("RAC1_GAMEPLAY102") == nullptr || !gameplay_fix_listed(25)) {
             std::printf("%-26s skipped (run with RAC1_GAMEPLAY102=25)\n", "class1885_fix25");
             ++g_skipped;
         } else {
@@ -883,7 +894,7 @@ void class1885_checks() {
                 level();
                 const uint32_t m = a_subject();
                 const uint32_t pv = pvar(m);
-                // (a hit that kills it, from a moby; Ratchet at 250 or about it; the level's number Gemlik Base's or not)
+                // (a hit that kills it, from a moby; Ratchet at 248 or about it; the level's number Gemlik Base's or not)
                 const uint32_t e = OV(0x00178100) + (5u << 6);
                 w8(m + 0xa4, 5);
                 w32(e + 0x34, m);
@@ -891,7 +902,7 @@ void class1885_checks() {
                 w32(e + 0x20, pick(live_mobys()));
                 wf(e + 0x2c, rf(1.0f, 10.0f));
                 wf(pv + 0x20, coin() ? rf(0.0f, 1.0f) : rf(1.0f, 20.0f));
-                wf(0x0013f3d8, 250.0f + (coin() ? rf(-3.9f, 3.9f) : rf(-10.0f, 10.0f)));
+                wf(0x0013f3d8, 248.0f + (coin() ? rf(-3.9f, 3.9f) : rf(-10.0f, 10.0f)));
                 w32(0x0015ed84, ri(0, 3) == 0 ? 9u : 13u);
                 seed_rand();
                 uint8_t* ram = ee_get_ram_base();
@@ -912,7 +923,7 @@ void class1885_checks() {
                         if (0.0f < health) {
                             w8(pv + 0x67, 0x5a);
                         } else {
-                            const bool flag = ee_read<int32_t>(0x0015ed84) == 0xd && std::fabs(ee_read<float>(0x0013f3d8) - 250.0f) < 4.0f;
+                            const bool flag = ee_read<int32_t>(0x0015ed84) == 0xd && std::fabs(ee_read<float>(0x0013f3d8) - 248.0f) < 4.0f;
                             if (flag) ++flagged;
                             moby_drop_bolts(m, flag ? 0x200u : 0u, -1);
                             w8(m + 0x20, 2);
@@ -934,6 +945,81 @@ void class1885_checks() {
             }
             std::printf("%-26s %s (%d cases, %d with the bolts' flag)\n", "class1885_fix25", bad == 0 && n > 0 && flagged > 0 ? "ok" : "FAIL", n, flagged);
             if (bad != 0 || n == 0 || flagged == 0) ++g_fail;
+        }
+    }
+
+    // fix 48 (1.02 Gameplay): the 1.02 build's throw throttle (L13:0x30ec28 / L9:0x30c140 on the PAL disc 2.00: after the free
+    // slot is found, with blobs out (+0x91 not 0), no throw while the load factor 0x15f5d4, or then 0x15f5d0, is not under
+    // 0.85). The port with the fix against the port without it, which with its most +0x90 set to 0 stops at the same point
+    // (the test `out < most`, right before the slot's), +0x90 put back: the expected memory when the throttle applies; the
+    // port without it otherwise. Cases: the update in state 1 ready to throw, blobs out or none, the two factors about 0.85.
+    if (const char* only = std::getenv("ORACLE_ONLY"); only == nullptr || std::strcmp(only, "class1885_fix48") == 0) {
+        if (std::getenv("RAC1_GAMEPLAY102") == nullptr || !gameplay_fix_listed(48) || gameplay_fix_listed(25)) {  // (fix 25 changes the kills)
+            std::printf("%-26s skipped (run with RAC1_GAMEPLAY102=48 alone)\n", "class1885_fix48");
+            ++g_skipped;
+        } else {
+            int bad = 0, n = 0, held = 0, thrown = 0;
+            static std::vector<uint8_t> start, with_fix, cut;
+            const std::unordered_set<uint32_t> ignored(g_ignored_words.begin(), g_ignored_words.end());
+            for (int c = 0; c < 200; ++c) {
+                level();
+                const uint32_t m = pick(subjects());
+                if (ri(0, 3) != 0) set_up(m);
+                vary(m, 1);
+                const uint32_t pv = pvar(m);
+                w16(pv + 0x8e, 1);
+                w32(pv + 0x144, 0);
+                w32(pv + 0x140, ee_read<uint32_t>(0x001413d0));
+                w8(pv + 0x90, ri(0, 4) == 0 ? u(ri(0, 3)) : 0xffu);
+                if (coin()) for (uint32_t k = 0; k < 20; ++k) w32(pv + 0xb0 + k * 4, 0);  // (none out)
+                else deal_blobs(m);
+                static const float near[] = {0.84f, 0.849f, 0.85f, 0.8500001f, 0.86f, 1.0f, 2.0f, 0.0f, 0.5f, 0.8499999f};
+                wf(OV(0x0015f5d4), coin() ? near[ri(0, 9)] : rf(0.0f, 0.84f));
+                wf(OV(0x0015f5d0), coin() ? near[ri(0, 9)] : rf(0.0f, 0.84f));
+                seed_rand();
+                uint8_t* ram = ee_get_ram_base();
+                start.assign(ram, ram + 0x02000000);
+                const uint32_t sp0 = ee_stack_ptr();
+                bool threw = false;
+                g_advanced_disabled = false;
+                try { class1885_update(m); } catch (const std::exception&) { threw = true; }
+                g_advanced_disabled = true;
+                ee_stack_ptr() = sp0;
+                with_fix.assign(ram, ram + 0x02000000);
+                // the throttled run: stopped at `out < most`, the most put back
+                std::memcpy(ram, start.data(), start.size());
+                const uint8_t most = ee_read<uint8_t>(pv + 0x90);
+                w8(pv + 0x90, 0);
+                try { class1885_update(m); } catch (const std::exception&) { threw = true; }
+                ee_stack_ptr() = sp0;
+                w8(pv + 0x90, most);
+                cut.assign(ram, ram + 0x02000000);
+                const bool loaded = !(ee_read<float>(OV(0x0015f5d4)) < 0.85f) || !(ee_read<float>(OV(0x0015f5d0)) < 0.85f);
+                const bool out = ee_read<uint8_t>(pv + 0x91) != 0;
+                // the run without the fix
+                std::memcpy(ram, start.data(), start.size());
+                try { class1885_update(m); } catch (const std::exception&) { threw = true; }
+                ee_stack_ptr() = sp0;
+                if (threw) continue;  // (a state the port refuses: not compared)
+                const bool hold = loaded && out;
+                const bool differs = std::memcmp(cut.data() + 0x100000, ram + 0x100000, 0x02000000 - 0x100000) != 0;
+                if (hold) {
+                    std::memcpy(ram, cut.data(), cut.size());
+                    if (differs) ++held;
+                } else if (differs) {
+                    ++thrown;
+                }
+                ++n;
+                for (uint32_t a = 0x00100000; a < 0x02000000; a += 4) {
+                    if (ignored.count(a) != 0) continue;
+                    if (a >= ee_stack_ptr() - 0x10000 && a < ee_stack_ptr() + 0x10000) continue;  // (the port's stack frames)
+                    uint32_t x, y;
+                    std::memcpy(&x, &with_fix[a], 4); std::memcpy(&y, &ram[a], 4);
+                    if (x != y) { if (bad < 8) std::printf("  class1885_fix48 case %d (%s): %08x fix=%08x expected=%08x\n", c, hold ? "held" : "free", a, x, y); ++bad; break; }
+                }
+            }
+            std::printf("%-26s %s (%d cases: %d held back a throw, %d threw with the fix)\n", "class1885_fix48", bad == 0 && held > 0 && thrown > 0 ? "ok" : "FAIL", n, held, thrown);
+            if (bad != 0 || held == 0 || thrown == 0) ++g_fail;
         }
     }
 }

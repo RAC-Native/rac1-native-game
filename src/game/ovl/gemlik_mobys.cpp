@@ -15,6 +15,7 @@
 #include <game/ovl/shared_beam.h>
 #include <game/ovl/shared_boss_bar.h>
 #include <game/ovl/shared_class1135.h>
+#include <game/ovl/shared_class1885.h>
 #include <game/ovl/shared_class1886.h>
 #include <game/ovl/shared_class224.h>
 #include <game/ovl/shared_class258.h>
@@ -87,12 +88,13 @@ void gemlik_moby_fns_register() {
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002cefc0), gml_class170_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002e1638), gml_class212_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002e4448), gml_class231_update_l13);
-    // the transliterated classes (gemlik_classes_tr_N.cpp, the translator)
+    // (gemlik_trooper.cpp)
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002b50d8), gml_class63_update_l13);
+    // the transliterated classes (gemlik_classes_tr_N.cpp, the translator)
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002c4428), gml_class111_update_l13);
-    // class 304 (the gold weapon case) stays transliterated: its port (gold_case_update_l1) starts the shared gold_weapon_scene,
-    // which no batch compares (it waits on the sound driver's stream replies); the level's own copy 0x2a5390 runs instead
-    ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002e7238), gml_class304_update_l13);
+    // class 304, the gold weapon case: Novalis's port (novalis_cases.cpp); its scene start stays the level's own transliterated
+    // copy (gml_2a5390_l13: the shared gold_weapon_scene is compared by no batch, it waits on the sound driver's stream replies)
+    ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002e7238), gold_case_update_l1);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002e84d8), gml_class352_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002eb098), gml_class388_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002ece00), gml_class389_update_l13);
@@ -116,9 +118,9 @@ void gemlik_moby_fns_register() {
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x0030c060), gml_class1632_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x0030c3b8), gml_class1634_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x0030cdb8), gml_class1805_update_l13);
-    // class 1885 (the blob thrower) stays transliterated: the PAL 2.00 build changed it and its hit (1.02 Gameplay fix 25, built in
-    // there, and a throw throttle on the frame's load the shared port does not have); its other helpers run the shared port
-    ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x0030d550), gml_class1885_update_l13);
+    // class 1885, the blob thrower: the shared port (shared_class1885.cpp, with the PAL 2.00 build's two changes: 1.02 Gameplay
+    // fixes 25 and 48)
+    ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x0030d550), class1885_update);
     // the classes' draw-list callbacks (queued with draw_list_add / L13:0x204dc8, 0x204f80; run by the frame's draw lists) and the HUD
     // element 0x11's draw function (L13:0x245cf8, requested by class 388's update with camera_request)
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002b97f8), gml_cb_2b97f8_l13);

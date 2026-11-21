@@ -30,6 +30,7 @@
 #include <game/ovl/shared_boss_bar.h>
 #include <game/ovl/shared_cam19.h>
 #include <game/ovl/shared_class1135.h>
+#include <game/ovl/shared_class1885.h>
 #include <game/ovl/shared_class1886.h>
 #include <game/ovl/shared_class224.h>
 #include <game/ovl/shared_class258.h>
@@ -193,7 +194,7 @@ void batch_222() {
             {101, 0x002c25b8, gml_class101_update_l13}, {104, 0x002c32d0, mover_platform_update}, {111, 0x002c4428, gml_class111_update_l13},
             {127, 0x002c7f38, gml_class127_update_l13}, {129, 0x002c8390, mover_door_update}, {170, 0x002cefc0, gml_class170_update_l13},
             {212, 0x002e1638, gml_class212_update_l13}, {224, 0x002e1cc8, class224_update}, {231, 0x002e4448, gml_class231_update_l13},
-            {258, 0x002e4bd0, class258_update}, {295, 0x002e6c08, class295_update}, {304, 0x002e7238, gml_class304_update_l13},
+            {258, 0x002e4bd0, class258_update}, {295, 0x002e6c08, class295_update}, {304, 0x002e7238, gold_case_update_l1},
             {352, 0x002e84d8, gml_class352_update_l13}, {388, 0x002eb098, gml_class388_update_l13}, {389, 0x002ece00, gml_class389_update_l13},
             {404, 0x002ed4a8, gml_class404_update_l13}, {447, 0x002edbe8, class447_update}, {533, 0x002f3750, gml_class533_update_l13},
             {558, 0x002f3778, gml_class558_update_l13}, {605, 0x002f51f0, zone_marker_update}, {615, 0x002f5618, class615_update},
@@ -206,7 +207,7 @@ void batch_222() {
             {1263, 0x00309e88, gml_class1263_update_l13}, {1270, 0x0030a6d8, gml_class1270_update_l13}, {1271, 0x0030af50, gml_class1271_update_l13},
             {1353, 0x0030b628, gml_class1353_update_l13}, {1403, 0x0030bb70, gml_class1403_update_l13}, {1558, 0x0030bdf0, gml_class1558_update_l13},
             {1577, 0x0030be60, gml_class1577_update_l13}, {1632, 0x0030c060, gml_class1632_update_l13}, {1634, 0x0030c3b8, gml_class1634_update_l13},
-            {1805, 0x0030cdb8, gml_class1805_update_l13}, {1885, 0x0030d550, gml_class1885_update_l13}, {1886, 0x0030dd80, class1886_update}};
+            {1805, 0x0030cdb8, gml_class1805_update_l13}, {1885, 0x0030d550, class1885_update}, {1886, 0x0030dd80, class1886_update}};
     struct Cb { const char* name; uint32_t addr; void (*fn)(uint32_t); int cls; };
     static const Cb cbs[] = {{"cb2b97f8", 0x002b97f8, gml_cb_2b97f8_l13, 69},   {"cb2ea8c8", 0x002ea8c8, gml_cb_2ea8c8_l13, 388},
                              {"cb2f5f30", 0x002f5f30, class615_puzzle_draw, 615},  {"cb2fcc08", 0x002fcc08, class832_draw, 832},

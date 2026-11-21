@@ -14,6 +14,7 @@
 #include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/enhance/fixes102.h>
+#include <game/level/level_data.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/gemlik_mobys.h>
 #include <game/math/vecmath.h>
@@ -31,6 +32,7 @@
 #include <game/ovl/shared_boss_bar.h>
 #include <game/ovl/shared_cam19.h>
 #include <game/ovl/shared_class1135.h>
+#include <game/ovl/shared_class1885.h>
 #include <game/ovl/shared_class1886.h>
 #include <game/ovl/shared_class224.h>
 #include <game/ovl/shared_class258.h>
@@ -45,6 +47,7 @@
 #include <game/ovl/shared_zones.h>
 #include <runtime/kernel/disc.h>
 
+#include <algorithm>
 #include <cmath>
 #include <optional>
 #include <cstring>
@@ -245,7 +248,7 @@ void batch_220() {
         {"class231", 0x002e4448, gml_class231_update_l13, 0x0, false},
         {"class258", 0x002e4bd0, class258_update, 0x0, false},
         {"class295", 0x002e6c08, class295_update, 0x0, false},
-        {"class304", 0x002e7238, gml_class304_update_l13, 0x10, false},  // (state 4 requests the level change)
+        {"class304", 0x002e7238, gold_case_update_l1, 0x10, false},  // (state 4 requests the level change)
         {"class352", 0x002e84d8, gml_class352_update_l13, 0x0, false},
         {"class388", 0x002eb098, gml_class388_update_l13, 0x20, false},  // (state 5 on the level's first frame aims a collision segment from unset pvars across more cells than the scratchpad holds: the fight's RAM dumps, batch 222, cover it)
         {"class389", 0x002ece00, gml_class389_update_l13, 0x0, false},
@@ -283,7 +286,7 @@ void batch_220() {
         {"class1632", 0x0030c060, gml_class1632_update_l13, 0x0, false},
         {"class1634", 0x0030c3b8, gml_class1634_update_l13, 0x0, false},
         {"class1805", 0x0030cdb8, gml_class1805_update_l13, 0x0, false},
-        {"class1885", 0x0030d550, gml_class1885_update_l13, 0x0, false},
+        {"class1885", 0x0030d550, class1885_update, 0x0, false},
         {"class1886", 0x0030dd80, class1886_update, 0x0, false},
     };
     auto generic_prep = [give_hit, hero_near](uint32_t m, int st, int pass, void (*fn)(uint32_t), bool walk = false) {
@@ -2961,6 +2964,412 @@ void batch_220() {
                 }
             }
             g_ignored_words.resize(ign);
+        }
+
+        // ---- P13.8 (task of stage 4): class 63 (the hovering trooper, gemlik_trooper.cpp) and its four helpers, on the level's own
+        // mobys of the class as their state 0 left them: each state (0 .. 18, the empty 9 / 19 .. 98, 99, past the table), the
+        // hero (its target) about the reach, the reach + 4 / + 6 and the strikes' 1.5 / 2.3 / 2.6, above or below it, the guard
+        // box, the timers at their ends, the wave flag, the alert flag, the walking and flying paths and the path point, the
+        // swerve, the animation (frame 13 of the strike, its end), hits of the mask 0x330000 (from classes 0xb0 / 0xb1 too) below
+        // and above the health, the knock-back / jump / death record, the floor (in the air, below, about it, fallen off), the
+        // space's bounds, a class-0 / 63 moby in the way, the guard moby, the camera near (drawn), the scripted scene, the frame
+        // scale at its 50 Hz value in a quarter of the cases. "p138_class63_fix25" checks 1.02 Gameplay fix 25 against the
+        // original with the 1.02 build's argument written into its code (run with RAC1_GAMEPLAY102=25), "p138_class63_fix48"
+        // fix 48 against the 1.02 build's block written out by hand (run with RAC1_GAMEPLAY102=48 alone). Left out: the
+        // collision routines' scratch (CollisionScratchIgnored). B220_INFO=1 prints the subjects.
+        {
+            level();
+            const std::vector<uint32_t> c63 = mobys_with(0x002b50d8);
+            auto pick63 = [](std::initializer_list<float> v) { return *(v.begin() + ri(0, static_cast<int>(v.size()) - 1)); };
+            // the level's groups by their live members: 3 or more, fewer
+            std::vector<int32_t> big_groups, small_groups;
+            for (int32_t g = 0; g < 256; ++g) {
+                if (lvd::group(g) == 0) continue;
+                (moby_group_count_l1(g, -1) >= 3 ? big_groups : small_groups).push_back(g);
+            }
+            const int32_t npaths = lvd::path_count();
+            // the class-63 mobys of the list state 13 walks (L13:0x15ffe4, linked at +0x28)
+            std::vector<uint32_t> listed63;
+            for (uint32_t o = ee_read<uint32_t>(0x0015ffe4), k = 0; o != 0 && k < 5000; o = ee_read<uint32_t>(o + 0x28), ++k)
+                if (ee_read<int16_t>(o + 0xa6) == 0x3f) listed63.push_back(o);
+            if (std::getenv("B220_INFO") != nullptr) {
+                for (uint32_t m : c63) {
+                    const Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    std::printf("INFO class 63 moby %u uid %u at (%.1f, %.1f, %.1f) state %u wave %d group %u walk path %d fly path %d reach %.1f\n",
+                                (m - moby_base()) >> 8, ee_read<uint16_t>(m + 0xb2), q.x, q.y, q.z, ee_read<uint8_t>(m + 0x20), ee_read<int16_t>(pv + 0x20a),
+                                ee_read<uint8_t>(m + 0x21), ee_read<int32_t>(pv + 0x21c), ee_read<int32_t>(pv + 0x220), ee_read<float>(pv + 0x1fc));
+                    std::printf("INFO   pvars +0x1f8: %08x %08x %08x %08x %08x  +0x218: %08x %08x %08x %08x\n", ee_read<uint32_t>(pv + 0x1f8), ee_read<uint32_t>(pv + 0x1fc),
+                                ee_read<uint32_t>(pv + 0x200), ee_read<uint32_t>(pv + 0x204), ee_read<uint32_t>(pv + 0x208), ee_read<uint32_t>(pv + 0x218),
+                                ee_read<uint32_t>(pv + 0x21c), ee_read<uint32_t>(pv + 0x220), ee_read<uint32_t>(pv + 0x22c));
+                }
+                std::printf("INFO class 63: %zu groups with 3 or more live members, %zu with fewer, %d paths\n", big_groups.size(), small_groups.size(), npaths);
+                // (the gold weapon case's price table as gold_case_update_l1 reads it, OV(0x1c40b0): the generated class 304's own
+                // literal there is L13:0x1c43b0)
+                std::printf("INFO OV(0x1c40b0) on this level %08x (class 304's own L13:0x001c43b0)\n", OV(0x001c40b0));
+                for (const auto& [cls, fn] : {std::pair<int, uint32_t>{304, 0x002e7238u}, std::pair<int, uint32_t>{1885, 0x0030d550u}})
+                    for (uint32_t m : mobys_with(fn)) {  // (the play test's spots of the classes moved onto shared ports)
+                        const Vec4 q = ee_ref<Vec4>(m + 0x10);
+                        std::printf("INFO class %d moby %u uid %u at (%.1f, %.1f, %.1f) state %u\n", cls, (m - moby_base()) >> 8, ee_read<uint16_t>(m + 0xb2), q.x, q.y, q.z,
+                                    ee_read<uint8_t>(m + 0x20));
+                    }
+                {  // the list state 13 walks (L13:0x15ffe4, linked at +0x28): its classes 0 / 63
+                    int n = 0, c0 = 0, c63n = 0;
+                    for (uint32_t o = ee_read<uint32_t>(0x0015ffe4); o != 0 && n < 5000; o = ee_read<uint32_t>(o + 0x28), ++n) {
+                        const int16_t c = ee_read<int16_t>(o + 0xa6);
+                        if (c == 0) ++c0;
+                        if (c == 0x3f) ++c63n;
+                    }
+                    std::printf("INFO the list 0x15ffe4: %d mobys, %d of class 0, %d of class 63 (the hero's moby %08x class %d)\n", n, c0, c63n,
+                                ee_read<uint32_t>(0x001413d0), ee_read<uint32_t>(0x001413d0) != 0 ? ee_read<int16_t>(ee_read<uint32_t>(0x001413d0) + 0xa6) : -1);
+                }
+            }
+            // a path index of the level (or -1) and a point index on it
+            auto a_path = [npaths](bool none_too) { return none_too && coin() ? -1 : (npaths > 0 ? ri(0, npaths - 1) : -1); };
+            // the strike's frame: the animation playing settled (+0x52 = +0x53) at time `t` (moby_anim_time)
+            auto anim_at = [](uint32_t m, float t) {
+                const uint32_t cur = ee_read<uint32_t>(m + 0x68);
+                if (cur == 0 || cur >= 0x02000000u || ee_read<uint8_t>(m + 0x53) == 0xff) return;
+                w8(m + 0x52, ee_read<uint8_t>(m + 0x53));
+                w8(m + 0x50, 1);
+                w8(m + 0x51, 0);
+                wf(m + 0x54, t - static_cast<float>(ee_read<int16_t>(cur + 4)) * 0.0625f);
+            };
+            // the random seed set so that the next `k` draws each make rand_mod(n) 0 (the states' one-in-n tests reached, whatever
+            // draws come before them in the frame)
+            auto steer = [](uint32_t n, int k) {
+                for (;;) {
+                    const uint32_t s0 = R();
+                    uint32_t s = s0;
+                    int ok = 0;
+                    while (ok < k) {
+                        s = s * 0x41c64e6du + 0x3039u;
+                        if (((s & 0x7fffffffu) >> 16 & 0x7fffu) % n != 0u) break;
+                        ++ok;
+                    }
+                    if (ok == k) { w32(ee_read<uint32_t>(0x0012f76c) + 0x58, s0); return; }
+                }
+            };
+            auto prep63 = [&, pick63, a_path, anim_at, steer](uint32_t m, int st) -> uint32_t {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                if (st >= 1 && ri(0, 7) != 0) first_run(gml_class63_update_l13, m);
+                const uint32_t s = st <= 18 ? u(st) : (st == 19 ? (coin() ? 9u : u(ri(19, 98))) : (st == 20 ? 99u : u(ri(100, 0xfc))));
+                w8(m + 0x20, s);
+                if (ri(0, 3) == 0) wf(pv + 0x1fc, rf(3.0f, 30.0f));
+                if (ri(0, 3) == 0) wf(pv + 0x1dc, rf(3.0f, 30.0f));
+                w32(pv + 0x38, ri(0, 3) == 0 ? 1u : 0u);
+                w16(pv + 0x214, u(ri(0, 2) == 0 ? 0 : (coin() ? ri(1, 2) : ri(3, 240))));
+                {  // the hero about the reach the frame will use (the alert's +0x200 while the reach's timer runs, else +0x1dc) and the
+                   // strikes' distances
+                    const uint32_t t214 = ee_read<uint32_t>(pv + 0x38) != 0 ? 2u : ee_read<uint16_t>(pv + 0x214);
+                    const float reach = s == 0 ? ee_read<float>(pv + 0x1fc) : ee_read<float>(pv + (t214 >= 2 ? 0x200u : 0x1dcu));
+                    const int k = ri(0, 7);
+                    float d = k == 0 ? rf(0.0f, 1.5f) : (k == 1 ? rf(1.4f, 2.7f) : (k == 2 ? rf(reach - 5.0f, reach - 3.0f) : (k == 3 ? rf(reach - 0.5f, reach + 0.5f)
+                              : (k == 4 ? rf(reach + 3.5f, reach + 4.5f) : (k == 5 ? rf(reach + 5.5f, reach + 6.5f) : (k == 6 ? rf(reach + 7.0f, reach + 60.0f) : rf(0.0f, 4.0f)))))));
+                    if (d < 0.0f) d = rf(0.0f, 1.0f);
+                    if (ri(0, 9) == 0) d = rf(300.0f, 600.0f);  // (no target at all)
+                    hero_at(around(m + 0x10, d, ri(0, 3) == 0 ? pick63({rf(-12.0f, 12.0f), 7.9f, 8.1f, 9.9f, 10.1f, -1.4f, 1.6f}) : rf(-1.0f, 1.0f)));
+                    // (a decoy's class, 0x10e, on the target in part of the walks and strikes: their 2.3 / 2.6)
+                    if ((s == 3 || s == 4) && ri(0, 3) == 0 && ee_read<uint32_t>(0x001413d0) != 0) w16(ee_read<uint32_t>(0x001413d0) + 0xa6, 0x10e);
+                }
+                const bool strike = (s == 3 || s == 4) && ri(0, 3) != 0;  // (the strike's distances in front of it, no hit, the animation at frame 13)
+                if (strike) {
+                    const int k = ri(0, 2);
+                    const float d = k == 0 ? (ri(0, 3) != 0 ? rf(1.35f, 1.65f) : rf(0.0f, 1.4f)) : (k == 1 ? rf(1.6f, 2.4f) : rf(1.9f, 2.7f));
+                    const float a = ee_read<float>(m + 0x48) + rf(-0.2f, 0.2f);
+                    Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    q.x += d * std::cos(a); q.y += d * std::sin(a); q.z += rf(-1.0f, 1.0f);
+                    hero_at(q);
+                    if (k != 0 && coin() && ee_read<uint32_t>(0x001413d0) != 0) w16(ee_read<uint32_t>(0x001413d0) + 0xa6, 0x10e);
+                }
+                w16(pv + 0x208, u(ri(0, 2) == 0 ? 0 : ri(1, 60)));
+                w32(pv + 0x20c, u(ri(0, 2) == 0 ? ri(0, 2) : ri(3, 120)));
+                w32(pv + 0x210, u(ri(0, 2) == 0 ? ri(0, 2) : ri(3, 90)));
+                w16(pv + 0x26, u(ri(0, 2) == 0 ? 0 : (coin() ? ri(1, 44) : ri(45, 60))));
+                if (coin()) w32(pv + 0x22c, coin() ? 0xffffffffu : u(ri(0, 3)));
+                w16(pv + 0x20a, u(ri(0, 3) == 0 ? 0 : (ri(0, 3) == 0 ? 1 : 2)));
+                w8(m + 0xbc, u(ri(0, 2)));
+                if (coin()) w32(pv + 0x21c, u(a_path(true)));
+                if (coin() || s == 18) w32(pv + 0x220, u(a_path(s != 18)));
+                if (ee_read<int32_t>(pv + 0x220) >= 0) {
+                    const int32_t cnt = ee_read<int32_t>(lvd::path(ee_read<int32_t>(pv + 0x220)));
+                    w32(pv + 0x224, u(cnt > 0 ? (coin() ? cnt - 1 : ri(0, cnt - 1)) : 0));
+                    if (ri(0, 3) == 0 && cnt > 0) {  // (at the path's point: the next one)
+                        Vec4 q = ee_ref<Vec4>(lvd::path(ee_read<int32_t>(pv + 0x220)) + 0x10 + (ee_read<uint32_t>(pv + 0x224) << 4));
+                        q.x += rf(-0.2f, 0.2f);
+                        q.w = ee_read<float>(m + 0x1c);
+                        ee_ref<Vec4>(m + 0x10) = q;
+                        moby_update_transform(m);
+                    }
+                }
+                if (coin()) wf(pv + 0x1f8, rf(-40.0f, 40.0f));
+                if (coin()) w8(m + 0x53, u(ri(0, 10)));
+                if (s == 17 && ri(0, 2) == 0) w8(m + 0x53, 2);
+                if (s == 0 && coin()) w8(m + 0x53, u(ri(1, 6)));
+                if ((s == 14 || s == 18) && ri(0, 3) == 0) wf(pv + 0x1d0, ee_read<float>(pv + 0x1d0) + 400.0f);  // (home off the level: no floor)
+                if (s == 15 || s == 18 || ri(0, 5) == 0) wfrand(pv + 0x40, 3, -0.3f, 0.3f);  // (a velocity of its own)
+                if (s == 1 && ri(0, 2) == 0) {  // (the target just beyond the reach + 6 or + 5 of a robot of no wave, no alert)
+                    const uint32_t t214 = ee_read<uint32_t>(pv + 0x38) != 0 ? 2u : ee_read<uint16_t>(pv + 0x214);
+                    const float reach = ee_read<float>(pv + (t214 >= 2 ? 0x200u : 0x1dcu));
+                    hero_at(around(m + 0x10, reach + rf(4.9f, 6.3f), rf(-0.3f, 0.3f)));
+                    w16(pv + 0x20a, 0);
+                    w8(m + 0xbc, 0);
+                }
+                if (s == 5 && coin()) {  // (home about 2 from it)
+                    Vec4 h = ee_ref<Vec4>(m + 0x10);
+                    const float r = pick63({1.9f, rf(2.0f, 2.25f), rf(2.0f, 2.25f), rf(2.05f, 2.2f), rf(0.0f, 3.0f)}), a = rf(-3.1f, 3.1f);
+                    h.x += r * std::cos(a); h.y += r * std::sin(a);
+                    ee_ref<Vec4>(pv + 0x1d0) = h;
+                }
+                if ((s == 15 || s == 18) && coin()) {  // (the goal next to it: reached this frame)
+                    Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    const float r = s == 18 || coin() ? rf(0.0f, 0.06f) : rf(0.0f, 1.0f);
+                    q.x += r; ee_ref<Vec4>(pv + 0x1e0) = q;
+                }
+                if (s == 13) {  // (its walk's way: next to another class-63 moby or the hero (class 0); a moby of the list going; the
+                                // animation set already 5 while another plays)
+                    const Vec4 at = ee_ref<Vec4>(m + 0x10);
+                    if (ri(0, 2) != 0) {
+                        const uint32_t o = ri(0, 3) != 0 && !listed63.empty() ? listed63[static_cast<size_t>(ri(0, static_cast<int>(listed63.size()) - 1))] : 0u;
+                        Vec4 q = at; q.x += rf(-1.8f, 1.8f); q.y += rf(-1.8f, 1.8f);
+                        if (o != 0 && o != m) { q.w = ee_read<float>(o + 0x1c); ee_ref<Vec4>(o + 0x10) = q; moby_update_transform(o); }
+                        else hero_at(q);
+                    }
+                    if (ri(0, 3) == 0) { const uint32_t o = any_moby(m); if (o != 0) w8(o + 0x20, 0xfd); }
+                    if (ri(0, 3) == 0) { w8(m + 0x52, 5); w8(m + 0x53, u(ri(0, 4))); }
+                }
+                w8(m + 0x70, (ee_read<uint8_t>(m + 0x70) & ~2u) | (coin() ? 2u : 0u));
+                if (s == 4 || ri(0, 7) == 0) anim_at(m, strike ? pick63({12.75f, 12.79f, 12.81f, 13.12f, 13.15f, 13.19f, 13.21f, rf(12.82f, 13.18f)}) : pick63({12.79f, 12.81f, 13.0f, 13.19f, 13.21f, rf(0.0f, 20.0f)}));
+                const bool chance_state = s == 1 || s == 2 || s == 8 || s == 12 || s == 14 || s == 18;  // (their one-in-n tests)
+                if (!strike && (chance_state ? ri(0, 2) == 0 : ri(0, 2) != 0)) {  // a hit: from another moby (a class 0xb0 / 0xb1 one in part), below or above the health
+                    const uint32_t by = coin() && c63.size() > 1 ? c63[static_cast<size_t>(ri(0, static_cast<int>(c63.size()) - 1))] : any_moby(m);
+                    if (by != 0 && by != m && ri(0, 3) == 0) w16(by + 0xa6, u(0xb0 + ri(0, 1)));
+                    const float h = ee_read<float>(pv + 0x20);
+                    hit_by(m, by == m ? 0u : by, NOT_ADDR(0x00330000), coin() ? rf(0.0f, h) : rf(h, h + 3.0f));
+                } else {
+                    w8(m + 0xa4, 0xff);
+                }
+                if (s == 6 || s == 11 || s == 99 || ri(0, 9) == 0) {  // the knock-back / jump / death record, as the hit or the jump sets it
+                    wf(pv + 0x138, rf(0.0f, 0.3f)); wf(pv + 0x13c, rf(-0.2f, 0.4f));
+                    wf(pv + 0x170, 5.0f); wf(pv + 0x174, 10.0f);
+                    move_state_start(m, pv + 0x120, u(9 + ri(0, 1)), 1, 0, rf(-3.1f, 3.1f));
+                }
+                {  // the place (its matrix with it, as a frame of the game leaves it)
+                    Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    const int k = ri(0, 11);
+                    if (k == 0) q.z += rf(5.0f, 20.0f);
+                    else if (k == 1) q.z -= rf(0.05f, 1.0f);
+                    else if (k == 2) q.z += rf(0.05f, 0.4f);
+                    else if (k == 3) q.z = pick63({rf(-1.0f, 4.9f), -0.1f, 0.1f, 4.9f, 5.1f});  // (fallen off the level)
+                    else if (k == 4) {  // (the space's bounds: x / y at either end, z at the low one)
+                        const int ax = ri(0, 2);
+                        (ax == 0 ? q.x : (ax == 1 ? q.y : q.z)) = ax == 2 ? pick63({1.9f, 2.1f}) : pick63({1.9f, 2.1f, 1020.9f, 1021.1f});
+                    } else if (k == 5) {  // (next to another class-63 moby or a class-0 one: state 13's push)
+                        const uint32_t o = c63.size() > 1 ? c63[static_cast<size_t>(ri(0, static_cast<int>(c63.size()) - 1))] : 0u;
+                        if (o != 0 && o != m) { q = ee_ref<Vec4>(o + 0x10); q.x += rf(-2.5f, 2.5f); q.y += rf(-2.5f, 2.5f); }
+                    }
+                    if (k <= 5) {
+                        q.w = ee_read<float>(m + 0x1c);
+                        ee_ref<Vec4>(m + 0x10) = q;
+                        moby_update_transform(m);
+                    }
+                }
+                if (s == 13 || ri(0, 5) == 0) {  // a guard moby and its radius (about its distance)
+                    const uint32_t g = coin() ? 0u : any_moby(m);
+                    w32(pv + 0x218, g);
+                    const float gd = g == 0 ? 10.0f : std::sqrt(std::pow(ee_read<float>(g + 0x10) - ee_read<float>(m + 0x10), 2.0f) + std::pow(ee_read<float>(g + 0x14) - ee_read<float>(m + 0x14), 2.0f));
+                    w16(pv + 0x216, u(std::max(0, std::min(0x7fff, static_cast<int>(gd) + ri(-3, 3)))));
+                }
+                if (ri(0, 3) == 0) {  // the camera within 28 of the moby or about 28, the moby drawn or not
+                    const Vec4 at = ee_ref<Vec4>(m + 0x10);
+                    const float r = coin() ? rf(0.0f, 27.0f) : rf(27.5f, 28.5f), a = rf(-3.1f, 3.1f);
+                    ee_ref<Vec4>(OV(0x00166dc0)) = Vec4{at.x + r * std::cos(a), at.y + r * std::sin(a), at.z, 1.0f};
+                }
+                w8(m + 0x31, u(ri(0, 2)));
+                if (coin()) w32(pv + 0x228, 0);
+                if (ri(0, 15) == 0) w32(OV(0x0015f5c4), 2);  // (a scripted scene)
+                common();
+                // (the one-in-19 / one-in-99 tests of the guards, the waits and the walks: the frame's first draw, without a hit)
+                if (ee_read<uint8_t>(m + 0xa4) == 0xff && ri(0, 3) != 0 && chance_state)
+                    steer(s == 12 ? 0x63u : (s == 14 || s == 18 ? (coin() ? 4u : 0x13u) : 0x13u), s == 12 ? 1 : 3);
+                return m;
+            };
+            // (states 15 / 18 fly through sphere_collide: the known difference of its shared port in the collision record's triangle,
+            // OV(0x173e90) .. 0x173ebc (the unpacked vertices' scale when the robot meets the world; batch 222's p132_class69), left
+            // out of this check only: class 63 reads only sphere_collide's answer)
+            p133("p138_class63", 0x002b50d8, gml_class63_update_l13, c63, prep63, 22, 40, 1, coll_vu0);
+            // the four helpers, on the same states
+            auto one_state = [prep63](uint32_t m) { return prep63(m, ri(0, 21)); };
+            if (const char* only = std::getenv("ORACLE_ONLY"); (only == nullptr || std::strcmp(only, "p138_280400") == 0) && !c63.empty())
+                l13check("p138_280400", 0x00280400, 80, Ret::Int32, [&, one_state] {
+                    level();
+                    const uint32_t m = one_state(c63[static_cast<size_t>(ri(0, static_cast<int>(c63.size()) - 1))]);
+                    if (ri(0, 9) == 0) for (int k = 0; k < 0x900; ++k) if (alloc_particle(0x44) == 0) break;  // (the pool full)
+                    return Args{{m, u(ri(0, 2)) | (coin() ? 0x100u : 0u), R(), R(), R() & 0x1ffu}, {rf(0.05f, 2.0f), rf(0.05f, 2.0f), rf(0.0f, 1.0f)}};
+                }, [](A a) { return r32(gml_280400_l13(a.i[0], a.i[1], a.i[2], a.i[3], a.i[4], a.f[0], a.f[1], a.f[2])); });
+            if (const char* only = std::getenv("ORACLE_ONLY"); (only == nullptr || std::strcmp(only, "p138_2b4f28") == 0) && !c63.empty())
+                l13check("p138_2b4f28", 0x002b4f28, 60, Ret::None, [&, one_state] {
+                    level();
+                    const uint32_t m = one_state(c63[static_cast<size_t>(ri(0, static_cast<int>(c63.size()) - 1))]);
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    w32(pv + 0x228, coin() ? 0u : alloc_particle(0x44));
+                    return Args{{m, pv}, {}};
+                }, [](A a) { gml_2b4f28_l13(a.i[0], a.i[1]); return uint64_t{0}; });
+            if (const char* only = std::getenv("ORACLE_ONLY"); (only == nullptr || std::strcmp(only, "p138_2b4fb8") == 0) && !c63.empty())
+                l13check("p138_2b4fb8", 0x002b4fb8, 40, Ret::None, [&] {
+                    level();
+                    const uint32_t m = c63[static_cast<size_t>(ri(0, static_cast<int>(c63.size()) - 1))];
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    w32(pv + 0x228, coin() ? 0u : alloc_particle(0x44));
+                    common();
+                    return Args{{pv}, {}};
+                }, [](A a) { gml_2b4fb8_l13(a.i[0]); return uint64_t{0}; });
+            if (const char* only = std::getenv("ORACLE_ONLY"); (only == nullptr || std::strcmp(only, "p138_2b4ff0") == 0) && !c63.empty()) {
+                const CollisionScratchIgnored spr;  // (floor_probe_v's scratch)
+                l13check("p138_2b4ff0", 0x002b4ff0, 80, Ret::None, [&] {
+                    level();
+                    const uint32_t m = c63[static_cast<size_t>(ri(0, static_cast<int>(c63.size()) - 1))];
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    const float floor = floor_probe_v(0.5f, ee_ref<Vec4>(m + 0x10), 0);
+                    if (floor != 0.0f) wf(m + 0x18, floor + pick63({rf(-0.5f, -0.01f), rf(0.0f, 0.29f), rf(0.31f, 3.0f), 0.3f}));
+                    else wf(m + 0x18, ee_read<float>(m + 0x18) + rf(-1.0f, 3.0f));
+                    wf(pv + 0x128, rf(-3.0f, 1.0f));
+                    common();
+                    return Args{{m, pv}, {}};
+                }, [](A a) { gml_2b4ff0_l13(a.i[0], a.i[1]); return uint64_t{0}; });
+            }
+
+            // whether RAC1_GAMEPLAY102 lists the 1.02 Gameplay fix `n` (the oracle runs with every enhancement off otherwise)
+            auto listed = [](int n) {
+                g_advanced_disabled = false;
+                const bool on = gameplay102_on(n);
+                g_advanced_disabled = true;
+                return on;
+            };
+            // 1.02 Gameplay, fix 25: the port with the fix on against the original whose death's moby_drop_bolts argument (L13:0x2b548c
+            // `move a1,zero`) is the 1.02 build's (`li a1,0x200`) when Ratchet is within 4 of the height 248 (the 1.02 build's
+            // L13:0x2b6638 .. 0x2b6674 on the PAL disc 2.00): a hit that kills it in most cases, Ratchet's height clear of the 4's edge
+            if (const char* only = std::getenv("ORACLE_ONLY"); (only == nullptr || std::strcmp(only, "p138_class63_fix25") == 0) && !c63.empty()) {
+                if (std::getenv("RAC1_GAMEPLAY102") == nullptr || !listed(25)) {
+                    std::printf("%-26s skipped (run with RAC1_GAMEPLAY102=25)\n", "p138_class63_fix25");
+                    ++g_skipped;
+                } else if (ee_read<uint32_t>(0x002b548c) != 0x0000282du) {
+                    std::printf("%-26s FAIL (L13:0x2b548c is not `move a1,zero`)\n", "p138_class63_fix25");
+                    ++g_fail;
+                } else {
+                    static int patched = 0;
+                    patched = 0;
+                    std::optional<CollisionScratchIgnored> spr;
+                    spr.emplace(false);
+                    l13check("p138_class63_fix25", 0x002b50d8, 160, Ret::None, [&] {
+                        level();
+                        const uint32_t m = c63[static_cast<size_t>(ri(0, static_cast<int>(c63.size()) - 1))];
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        if (ri(0, 7) != 0) first_run(gml_class63_update_l13, m);
+                        w8(m + 0x20, u(ri(1, 18)));
+                        w16(pv + 0x26, 0);
+                        const float d = (coin() ? 1.0f : -1.0f) * (ri(0, 2) != 0 ? rf(0.0f, 3.9f) : rf(4.1f, 10.0f));
+                        Vec4 q = around(m + 0x10, rf(0.0f, 20.0f), 0.0f);
+                        q.z = 248.0f + d;
+                        hero_at(q);
+                        uint32_t by = any_moby(m);
+                        if (by != 0 && (ee_read<uint16_t>(by + 0xa6) == 0xb0 || ee_read<uint16_t>(by + 0xa6) == 0xb1)) w16(by + 0xa6, 0x10);
+                        const float h = ee_read<float>(pv + 0x20);
+                        hit_by(m, by == m ? 0u : by, NOT_ADDR(0x00330000), ri(0, 3) != 0 ? h + rf(0.1f, 3.0f) : rf(0.0f, h));
+                        if (std::fabs(d) < 4.0f) { w32(0x002b548c, 0x24050200u); ++patched; }  // (the 1.02 build's argument)
+                        common();
+                        return Args{{m}, {}};
+                    }, [](A a) {
+                        g_advanced_disabled = false;
+                        gml_class63_update_l13(a.i[0]);
+                        g_advanced_disabled = true;
+                        return uint64_t{0};
+                    });
+                    std::printf("%-26s %d of 160 cases with Ratchet within 4 of 248 (the original's argument 0x200)\n", "p138_class63_fix25", patched);
+                }
+            }
+            // 1.02 Gameplay, fix 48: the port with the fix on against the port with it off followed by the 1.02 build's block (L13:0x2b8af8
+            // .. 0x2b8ba4 on the PAL disc 2.00, written out here from that listing: orch/w2/p13_8/pal.md), on frames that reach the end
+            // (the empty states, no hit, no scripted scene) in the space or out of it; a wave's robot or not, the load factors about
+            // 0.98, drawn or not, its group none / of 3 or more live members / of fewer; the random seed in most cases one whose first
+            // draw makes rand_mod(29) 0
+            if (const char* only = std::getenv("ORACLE_ONLY"); (only == nullptr || std::strcmp(only, "p138_class63_fix48") == 0) && !c63.empty()) {
+                if (std::getenv("RAC1_GAMEPLAY102") == nullptr || !listed(48) || listed(25)) {
+                    std::printf("%-26s skipped (run with RAC1_GAMEPLAY102=48 alone)\n", "p138_class63_fix48");
+                    ++g_skipped;
+                } else {
+                    int bad = 0, n = 0, thinned = 0, drawn = 0, kept = 0;
+                    static std::vector<uint8_t> start, with_fix;
+                    const std::unordered_set<uint32_t> ignored(g_ignored_words.begin(), g_ignored_words.end());
+                    CollisionScratchIgnored spr(false);
+                    for (int c = 0; c < 240; ++c) {
+                        level();
+                        const uint32_t m = c63[static_cast<size_t>(ri(0, static_cast<int>(c63.size()) - 1))];
+                        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                        if (ri(0, 7) != 0) first_run(gml_class63_update_l13, m);
+                        w8(m + 0x20, u(ri(0, 2) == 0 ? 9 : (coin() ? ri(19, 98) : ri(100, 0xfc))));
+                        w8(m + 0xa4, 0xff);
+                        if (ee_read<int32_t>(OV(0x0015f5c4)) == 2) w32(OV(0x0015f5c4), 0);
+                        w16(pv + 0x20a, u(ri(0, 4) == 0 ? ri(0, 1) : 2));
+                        wf(OV(0x0015f5d4), coin() ? pick63({0.97f, 0.98f, 0.9800001f, 0.99f, 1.0f, 2.0f, 0.0f}) : rf(0.0f, 0.97f));
+                        wf(OV(0x0015f5d0), coin() ? pick63({0.97f, 0.98f, 0.9800001f, 0.99f, 1.0f, 2.0f, 0.0f}) : rf(0.0f, 0.97f));
+                        w8(m + 0x31, coin() ? 0u : 1u);
+                        {
+                            const int k = ri(0, 3);
+                            if (k == 0) w8(m + 0x21, 0xff);
+                            else if (k == 1 && !big_groups.empty()) w8(m + 0x21, u(big_groups[static_cast<size_t>(ri(0, static_cast<int>(big_groups.size()) - 1))]));
+                            else if (k == 2 && !small_groups.empty()) w8(m + 0x21, u(small_groups[static_cast<size_t>(ri(0, static_cast<int>(small_groups.size()) - 1))]));
+                        }
+                        if (ri(0, 7) == 0) { wf(m + 0x10 + 4 * u(ri(0, 1)), pick63({1.9f, 1021.1f})); moby_update_transform(m); }  // (out of the space)
+                        common();
+                        if (ri(0, 3) != 0) {  // (a seed whose first draw gives rand_mod(29) 0)
+                            uint32_t s = R();
+                            while ((((s * 0x41c64e6du + 0x3039u) & 0x7fffffffu) >> 16 & 0x7fffu) % 29u != 0u) s = R();
+                            w32(ee_read<uint32_t>(0x0012f76c) + 0x58, s);
+                        }
+                        uint8_t* ram = ee_get_ram_base();
+                        start.assign(ram, ram + 0x02000000);
+                        const uint32_t sp0 = ee_stack_ptr();
+                        bool threw = false;
+                        g_advanced_disabled = false;
+                        try { gml_class63_update_l13(m); } catch (const std::exception&) { threw = true; }
+                        g_advanced_disabled = true;
+                        ee_stack_ptr() = sp0;
+                        with_fix.assign(ram, ram + 0x02000000);
+                        std::memcpy(ram, start.data(), start.size());
+                        try { gml_class63_update_l13(m); } catch (const std::exception&) { threw = true; }
+                        ee_stack_ptr() = sp0;
+                        if (threw) continue;
+                        // the 1.02 build's block after the bounds (the frame reached the end in these states)
+                        const float x = ee_read<float>(m + 0x10), y = ee_read<float>(m + 0x14), z = ee_read<float>(m + 0x18);
+                        const bool inside = !(x < 2.0f || 1021.0f < x || y < 2.0f || 1021.0f < y || z < 2.0f || 1021.0f < z);
+                        const float limit = u2f(0x3f7ae148u);
+                        if (inside && ee_read<int16_t>(pv + 0x20a) == 2 && (limit < ee_read<float>(OV(0x0015f5d4)) || limit < ee_read<float>(OV(0x0015f5d0)))) {
+                            if (rand_mod(0x1d) == 0) {
+                                if (ee_read<uint8_t>(m + 0x31) == 0) {
+                                    int32_t k = ee_rem(libc_rand(), 3);
+                                    const uint32_t g = ee_read<uint8_t>(m + 0x21);
+                                    if (g != 0xff) k = moby_group_count_l1(static_cast<int32_t>(g), -1);
+                                    if (k >= 3) { moby_retire(m); ++thinned; } else ++kept;
+                                } else {
+                                    ++drawn;
+                                }
+                            }
+                        }
+                        ++n;
+                        for (uint32_t a = 0x00100000; a < 0x02000000; a += 4) {
+                            if (ignored.count(a) != 0) continue;
+                            if (a >= ee_stack_ptr() - 0x10000 && a < ee_stack_ptr() + 0x10000) continue;  // (the port's stack frames)
+                            uint32_t xw, yw;
+                            std::memcpy(&xw, &with_fix[a], 4); std::memcpy(&yw, &ram[a], 4);
+                            if (xw != yw) { if (bad < 8) std::printf("  p138_class63_fix48 case %d: %08x fix=%08x expected=%08x\n", c, a, xw, yw); ++bad; break; }
+                        }
+                    }
+                    std::printf("%-26s %s (%d cases: %d thinned, %d kept (group under 3 / rand), %d drawn)\n", "p138_class63_fix48",
+                                bad == 0 && thinned > 0 && kept > 0 ? "ok" : "FAIL", n, thinned, kept, drawn);
+                    if (bad != 0 || thinned == 0 || kept == 0) ++g_fail;
+                }
+            }
         }
 
         g_extra_noop_hooks.clear();
