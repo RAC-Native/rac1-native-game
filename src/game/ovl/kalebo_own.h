@@ -25,6 +25,13 @@ struct Frame {
     Frame& operator=(const Frame&) = delete;
 };
 
+// orig: (host) the ALPHA word of a quad_draw descriptor (+0x88) as the level's draws build it from four selector words at
+// `at` (A, B, C, D: each word sign-extended, shifted by 0 / 2 / 4 / 6 in 64 bits) with FIX 0x80
+inline uint64_t quad_blend(uint32_t at) {
+    auto word = [](uint32_t a) { return static_cast<uint64_t>(static_cast<int64_t>(lw(a))); };
+    return word(at) | (word(at + 4) << 2) | (word(at + 8) << 4) | (word(at + 0xc) << 6) | (0x80ull << 32);
+}
+
 // orig: (host) the moby of index `i` in the moby table (0x15ffd8)
 inline uint32_t moby_at(uint32_t i) { return lwu(OV(0x0015ffd8)) + ((i & 0x7fffu) << 8); }
 

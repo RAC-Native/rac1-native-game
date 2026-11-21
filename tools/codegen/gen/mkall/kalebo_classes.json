@@ -9,18 +9,11 @@
  },
  "entries": [
   "2dee10:kal_class1111_update_l16:void:a0",
-  "2e3190:kal_class1377_update_l16:void:a0",
-  "2e76b8:kal_class1667_update_l16:void:a0",
-  "2e7f80:kal_class1826_update_l16:void:a0",
   "2ee790:kal_cam0_set_124_u",
   "25e948:kal_25e948_l16",
   "235660:kal_cb_235660_l16:void:a0",
   "238a30:kal_cb_238a30_l16:void:a0",
-  "2c9cd0:kal_cb_2c9cd0_l16:void:a0",
-  "2cef60:kal_cb_2cef60_l16:void:a0",
-  "2cf7a8:kal_cb_2cf7a8_l16:void:a0",
-  "2de3c0:kal_cb_2de3c0_l16:void:a0",
-  "2e84e8:kal_cb_2e84e8_l16:void:a0"
+  "2de3c0:kal_cb_2de3c0_l16:void:a0"
  ],
  "glue_files": [],
  "files": [

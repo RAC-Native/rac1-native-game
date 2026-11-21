@@ -294,6 +294,10 @@ add_library(rac1_game STATIC
     ovl/kalebo_rocket.cpp
     ovl/kalebo_taxi.cpp
     ovl/kalebo_walker.cpp
+    ovl/kalebo_npc.cpp
+    ovl/kalebo_flock.cpp
+    ovl/kalebo_lift.cpp
+    ovl/kalebo_draws.cpp
     ovl/veldin_orbit_backdrop.cpp
     ovl/veldin_orbit_beams.cpp
     ovl/veldin_orbit_cannon.cpp
