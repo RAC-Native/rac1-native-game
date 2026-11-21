@@ -60,20 +60,10 @@ namespace rac1 {
 using namespace eer;
 using namespace vu0m;
 
-//@gen vo_2f2180_l17
-
-//@gen vo_class1448_update_l17
-
 //@gen vo_class1470_update_l17
-
-//@gen vo_class1562_update_l17
 
 //@gen vo_class1772_update_l17
 
 //@gen vo_class1843_update_l17
-
-//@gen vo_class1873_update_l17
-
-//@gen vo_class1876_update_l17
 
 }  // namespace rac1

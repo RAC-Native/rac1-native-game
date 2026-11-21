@@ -283,7 +283,10 @@ add_library(rac1_game STATIC
     ovl/veldin_orbit_hooks.cpp
     ovl/veldin_orbit_lift.cpp
     ovl/veldin_orbit_mobys.cpp
+    ovl/veldin_orbit_pod.cpp
+    ovl/veldin_orbit_props.cpp
     ovl/veldin_orbit_ship.cpp
+    ovl/veldin_orbit_trooper.cpp
     ovl/veldin_finale_barrier.cpp
     ovl/veldin_finale_breakable.cpp
     ovl/veldin_finale_camera_pan.cpp

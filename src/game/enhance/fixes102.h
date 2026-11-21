@@ -67,6 +67,9 @@
 // - 38: Gemlik Base's wall turrets' tops (class 36, spawned by class 29's L13:0x2b4958): +0x10 of the top's hit record (its
 //   pvars +0x30) 0.7 instead of 0.9; its use in play not understood (the Morph-o-Ray's beam copies a target's +0x10;
 //   other readers not traced) (gemlik_turret.cpp)
+// - 39: Drek's fleet's pod (class 1448, L17:0x2f1940): counts its frames at rest (pvars +0xb0, cleared as it is set up and
+//   as it arrives) and offers its prompt, and takes the triangle, only past frame_scale_i(30) of them; the North American
+//   build offers it at once (veldin_orbit_pod.cpp)
 // - 49: Oltanis's gondola (class 685, L14:0x2ee8d8, state 1): its ride starts only while its up row (+0xe0) and the
 //   hero's moby's point the same way (their dot product positive), as well as the hero standing on it within 1 of its
 //   centre; the North American build tests only the latter (oltanis_gondola.cpp)
@@ -194,6 +197,11 @@ bool fixes102_gemlik_turret_aim();
 // +0xe0 and the hero's moby's agree, their dot product positive); false with the fix off, except on the PAL 2.00 disc
 // (region_core_moved()), whose own code it is
 bool fixes102_oltanis_gondola_upright();
+// orig: (none) — enhancement: fix 39: Drek's fleet's pod (class 1448, vo_class1448_update_l17 L17:0x2f1940): true when
+// the 1.02 build's wait applies (L17:0x2f3450 on the PAL 2.00 disc): the pod counts its frames at rest (+0xb0, cleared as it
+// is set up and as it arrives) and offers its prompt, and takes the triangle, only past frame_scale_i(30) of them; false
+// with the fix off, except on the PAL 2.00 disc (region_core_moved()), whose own code it is
+bool fixes102_drek_pod_wait();
 // orig: (none) — enhancement: fix 45: Veldin's finale's rafts (class 1381, vf_class1381_update_l18 L18:0x2f16f0, state 2):
 // true when the 1.02 build's test of the hero's ride applies (L18:0x2f2ae0 on the PAL 2.00 disc): the raft counts the
 // frames he stands on one of its platforms (+0x350) and takes him for a rider only past frame_scale_i(30) of them; held
