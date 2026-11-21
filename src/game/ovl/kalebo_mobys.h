@@ -5,6 +5,7 @@
 
 #include <cstdint>
 
+#include <game/math/vecmath.h>
 #include <game/ovl/novalis_mobys2.h>
 
 namespace rac1 {
@@ -42,37 +43,40 @@ void kal_race_course_on_l16(uint32_t m);    // L16:0x002e70c0
 void kal_race_course_off_l16(uint32_t m);   // L16:0x002e7168
 int32_t kal_hook_2e66c0_l16(uint32_t m, uint32_t a1, uint32_t a2, float f12);  // L16:0x002e66c0  hook +0xc (+0 / +4 / +8: carry_state_hook)
 uint32_t kal_hook_2e66f0_l16(uint32_t m);   // L16:0x002e66f0  hook +0x10
+// hand-written (stage 4, P16.2 part 4): small classes (kalebo_props.cpp), the chicken dispenser (kalebo_chickens.cpp),
+// classes 1943 / 1947 and 1947's draw (shared_envmap.cpp, with classes 1948 / 1953)
+void kal_class800_update_l16(uint32_t m);   // L16:0x002d6740
+void kal_class1387_update_l16(uint32_t m);  // L16:0x002e36e8
+void kal_class1439_update_l16(uint32_t m);  // L16:0x002e5010
+void kal_class1441_update_l16(uint32_t m);  // L16:0x002e5258
+void kal_class1442_update_l16(uint32_t m);  // L16:0x002e54a0
+void kal_switch_flip_l16(uint32_t m);       // L16:0x002e56e0
+void kal_class1561_update_l16(uint32_t m);  // L16:0x002e7208
+void kal_class1812_update_l16(uint32_t m);  // L16:0x002e7e00
+void kal_class1891_update_l16(uint32_t m);  // L16:0x002e88d0
+void kal_class1923_update_l16(uint32_t m);  // L16:0x002e8970
+uint32_t kal_chicken_waiting_l16(int32_t group);             // L16:0x002e8b08
+void kal_chicken_door_open_l16(uint32_t door);               // L16:0x002e0de0
+int32_t kal_chicken_door_stage_l16(uint32_t door);           // L16:0x002e0e28
+void kal_chicken_release_l16(uint32_t m, const Vec4& point);  // L16:0x002c44f0
+void kal_class1943_update_l16(uint32_t m);  // L16:0x002e8e80
+void kal_class1947_update_l16(uint32_t m);  // L16:0x002e93b0
+void kal_cb_2e9270_l16(uint32_t m);         // L16:0x002e9270
 
-void kal_class800_update_l16(uint32_t a0);  // L16:0x002d6740
 void kal_class1111_update_l16(uint32_t a0);  // L16:0x002dee10 (class 1111, the open sea: kept generated, the PAL 2.00 build changed it beyond fix 24)
 void kal_class1377_update_l16(uint32_t a0);  // L16:0x002e3190
-void kal_class1387_update_l16(uint32_t a0);  // L16:0x002e36e8
 TrRet kal_2e3fa0_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e3fa0
 void kal_class1401_update_l16(uint32_t a0);  // L16:0x002e37a0
 TrRet kal_2e4a58_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e4a58
 void kal_class1410_update_l16(uint32_t a0);  // L16:0x002e43e0
-void kal_class1439_update_l16(uint32_t a0);  // L16:0x002e5010
-void kal_class1441_update_l16(uint32_t a0);  // L16:0x002e5258
-TrRet kal_2e56e0_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e56e0
-void kal_class1442_update_l16(uint32_t a0);  // L16:0x002e54a0
 TrRet kal_2e6208_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e6208
 TrRet kal_2e6428_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e6428
 void kal_class1445_update_l16(uint32_t a0);  // L16:0x002e5e08
 TrRet kal_25e948_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x0025e948 (the copy of hero_walk_to: kept generated, a unit entry; class 1455 calls it)
-void kal_class1561_update_l16(uint32_t a0);  // L16:0x002e7208
 TrRet kal_2e7a30_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e7a30
 TrRet kal_2e7ba0_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e7ba0
 void kal_class1667_update_l16(uint32_t a0);  // L16:0x002e76b8
-void kal_class1812_update_l16(uint32_t a0);  // L16:0x002e7e00
 void kal_class1826_update_l16(uint32_t a0);  // L16:0x002e7f80
-void kal_class1891_update_l16(uint32_t a0);  // L16:0x002e88d0
-TrRet kal_2c44f0_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002c44f0
-TrRet kal_2e0de0_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e0de0
-TrRet kal_2e0e28_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e0e28
-TrRet kal_2e8b08_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002e8b08
-void kal_class1923_update_l16(uint32_t a0);  // L16:0x002e8970
-void kal_class1943_update_l16(uint32_t a0);  // L16:0x002e8e80
-void kal_class1947_update_l16(uint32_t a0);  // L16:0x002e93b0
 TrRet kal_cam0_set_124_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x002ee790
 void kal_cb_235660_l16(uint32_t a0);  // L16:0x00235660
 void kal_cb_238a30_l16(uint32_t a0);  // L16:0x00238a30
@@ -84,7 +88,6 @@ TrRet kal_1fe280_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_
 TrRet kal_1fafa8_l16(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L16:0x001fafa8
 void kal_cb_2de3c0_l16(uint32_t a0);  // L16:0x002de3c0 (class 1111's draw-list callback: kept generated with its update)
 void kal_cb_2e84e8_l16(uint32_t a0);  // L16:0x002e84e8
-void kal_cb_2e9270_l16(uint32_t a0);  // L16:0x002e9270
 
 }  // namespace rac1
 

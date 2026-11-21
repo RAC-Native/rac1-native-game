@@ -1,7 +1,8 @@
-// Kalebo III's (level 16) environment-mapped objects, classes 1943, 1948 and 1953: each draws two or three meshes of the
+// Kalebo III's (level 16) environment-mapped objects, classes 1943, 1947, 1948 and 1953: each draws one to three meshes of the
 // level's (their points, normals and colours in the level's tables) with the sky's reflection, sphere-mapped from the camera,
 // each mesh only when its bounding sphere is on screen. The three classes' code is the same with each its own tables and
-// mesh count; the five copies of the mapping helper are the same function. Level-only words (the tables, the spheres' block,
+// mesh count (class 1943's update leaves +0x30 / +0x32 as they are; class 1947's draw keeps its coordinates in a buffer of
+// its own); the five copies of the mapping helper are the same function. Level-only words (the tables, the spheres' block,
 // the draw callbacks) are L16_ADDR; the camera 0x166dc0 goes through OV(). The draw's matrices are set up by the level's own
 // function 0x1fafa8 (still transliterated). Header shared_envmap.h.
 #include <game/ovl/shared_envmap.h>
@@ -18,20 +19,23 @@ namespace rac1 {
 
 namespace {
 // One class's meshes: their tables (4 words each: the point counts, the points, a word the draw does not read, the normals,
-// the colours), the meshes' bounding spheres (16 bytes each, the coordinates' buffer after them), the mesh count.
+// the colours), the meshes' bounding spheres (16 bytes each), the mesh count, the coordinates' buffer (0: after the spheres).
 struct EnvSet {
     uint32_t counts, points, normals, colours, spheres;
     int32_t meshes;
+    uint32_t uv_buffer = 0;
 };
 
 EnvSet set_1943() { return {L16_ADDR(0x00161ef0), L16_ADDR(0x00161f00), L16_ADDR(0x00161f20), L16_ADDR(0x00161f30), L16_ADDR(0x001dc600), 3}; }
+EnvSet set_1947() { return {L16_ADDR(0x00161f40), L16_ADDR(0x00161f60), L16_ADDR(0x00161f70), L16_ADDR(0x00161f78), L16_ADDR(0x00161f80), 1, L16_ADDR(0x001ddc80)}; }
 EnvSet set_1948() { return {L16_ADDR(0x00161f90), L16_ADDR(0x00161f98), L16_ADDR(0x00161fa8), L16_ADDR(0x00161fb0), L16_ADDR(0x001df2b0), 2}; }
 EnvSet set_1953() { return {L16_ADDR(0x00162008), L16_ADDR(0x00162018), L16_ADDR(0x00162038), L16_ADDR(0x00162048), L16_ADDR(0x001e5390), 3}; }
 
 Vec4 packed(uint32_t at, float w) { return Vec4{lwc1(at), lwc1(at + 4), lwc1(at + 8), w}; }
 
-// State 0: each mesh's bounding sphere (the middle of its box, the farthest point's distance); then 1: the draw each frame.
-void envmap_update(uint32_t m, const EnvSet& s, uint32_t draw) {
+// State 0: each mesh's bounding sphere (the middle of its box, the farthest point's distance), then (`marks`) +0x30 / +0x32;
+// then 1: the draw each frame.
+void envmap_update(uint32_t m, const EnvSet& s, uint32_t draw, bool marks = true) {
     switch (lbu(m + 0x20)) {
     case 0:
         for (int32_t i = 0; i < s.meshes; ++i) {
@@ -64,9 +68,9 @@ void envmap_update(uint32_t m, const EnvSet& s, uint32_t draw) {
             }
             ee_stack_free(0x10);
         }
-        sb(m + 0x30, 0xff);
+        if (marks) sb(m + 0x30, 0xff);
         sb(m + 0x20, 1);
-        sh(m + 0x32, 0xff);
+        if (marks) sh(m + 0x32, 0xff);
         return;
     case 1:
         sub_001f93e0(draw, m);
@@ -84,7 +88,7 @@ void envmap_draw(const EnvSet& s) {
     sub_002a0ba8(8, 0);
     sub_002a0ba8(0x14, (0xff90ull << 32) | 0x260u);
     kal_1fafa8_l16(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);  // (reads none of them)
-    const uint32_t uvs = s.spheres + static_cast<uint32_t>(s.meshes) * 0x10;
+    const uint32_t uvs = s.uv_buffer != 0 ? s.uv_buffer : s.spheres + static_cast<uint32_t>(s.meshes) * 0x10;
     for (int32_t i = 0; i < s.meshes; ++i) {
         const uint32_t at = static_cast<uint32_t>(i) * 4;
         if (point_on_screen(s.spheres + static_cast<uint32_t>(i) * 0x10, 512.0f) == -1) continue;
@@ -120,6 +124,14 @@ void envmap_uvs(int32_t n, uint32_t normals, uint32_t verts, uint32_t out) {
     }
 }
 
+// (stage 4 P16.4: Kalebo's own entries of the two classes whose code the generator had kept: class 1943's update, class
+// 1947's update and draw, compared word for word with 1953's / 1948's on the disc: the registers and the tables differ.)
+// orig: L16:0x002e8e80
+void kal_class1943_update_l16(uint32_t m) { envmap_update(m, set_1943(), L16_ADDR(0x002e8d40), false); }
+// orig: L16:0x002e93b0
+void kal_class1947_update_l16(uint32_t m) { envmap_update(m, set_1947(), L16_ADDR(0x002e9270)); }
+// orig: L16:0x002e9270
+void kal_cb_2e9270_l16(uint32_t) { envmap_draw(set_1947()); }
 // orig: L16:0x002e98e0
 void envmap_1948_update(uint32_t m) { envmap_update(m, set_1948(), L16_ADDR(0x002e97a0)); }
 // orig: L16:0x002ea128

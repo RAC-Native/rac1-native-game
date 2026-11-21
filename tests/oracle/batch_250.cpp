@@ -73,7 +73,9 @@ bool c2a_spr_check(const char* name) {
                                          // (stage 4 P16.2's: the fighter, the racers)
                                          "class541_cases", "class556_cases",
                                          // (stage 4 P16.2's: the race's organiser)
-                                         "class1455_cases", "class1455_fix10"};
+                                         "class1455_cases", "class1455_fix10",
+                                         // (stage 4 P16.4's: the chicken dispenser's release, sphere_collide)
+                                         "class1923_cases", "chicken_release"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -1380,6 +1382,281 @@ void batch_250() {
                 if (bad != 0 || locked == 0 || held == 0 || talked == 0) ++g_fail;
             }
         }
+
+        // ---- stage 4 P16.2, part 4 (P16.4): the small classes (kalebo_props.cpp), the chicken dispenser and its helpers
+        // (kalebo_chickens.cpp), class 1947's draw (shared_envmap.cpp), each through its states with what it reads at its edges;
+        // the play-test spots of their placed mobys first
+        {
+            static const std::pair<uint32_t, int> kSpots4[] = {{0x002d6740, 800}, {0x002e36e8, 1387}, {0x002e5010, 1439}, {0x002e5258, 1441},
+                {0x002e54a0, 1442}, {0x002e7208, 1561}, {0x002e7e00, 1812}, {0x002e88d0, 1891}, {0x002e8970, 1923}, {0x002e8e80, 1943},
+                {0x002e93b0, 1947}};
+            level();
+            for (const auto& [fn, cls] : kSpots4)
+                for (uint32_t m : live(fn, -1))
+                    std::printf("INFO P16 class %d idx %u uid %d at %.1f %.1f %.1f\n", cls, index_of(m), ee_read<int16_t>(m + 0xb2),
+                                ee_read<float>(m + 0x10), ee_read<float>(m + 0x14), ee_read<float>(m + 0x18));
+        }
+        auto cases = [&](const char* name, uint32_t fn, void (*port)(uint32_t), int n, const std::vector<uint32_t>& subj, std::function<void(uint32_t)> vary) {
+            if (subj.empty()) {
+                if (const char* only = std::getenv("ORACLE_ONLY"); only == nullptr || std::strcmp(only, name) == 0) std::printf("%-26s L16:0x%08x  no moby on this level\n", name, fn);
+                return;
+            }
+            classcheck(name, fn, port, std::move(vary), n, subj);
+        };
+        auto help_idle = [] { w32(0x00151720, 0); w32(0x001516d0 + 0x50, 0); w32(0x001516d0 + 0x1c, 0xffffffffu); };
+        auto jit = [](Vec4 q, float r, float rz) { q.x += rf(-r, r); q.y += rf(-r, r); q.z += rf(-rz, rz); return q; };
+        auto of = [&](uint32_t fn) { level(); return live(fn, -1); };
+
+        // class 800, the crate: each state, a hit of kind 0x10000 (damage 0 or above) or none; state 2 breaks it (bolts, pieces)
+        with_spawn_lanes([&] {
+            cases("class800_cases", 0x002d6740, kal_class800_update_l16, 60, of(0x002d6740), [=](uint32_t m) {
+                const int st = ri(0, 3);
+                w8(m + 0x20, u(st == 3 ? ri(3, 9) : st));
+                hit_on(m, 0x10000u);
+                if (ee_read<uint8_t>(m + 0xa4) != 0xff) {  // (the damage about the test's 0: none, a little, more, negative)
+                    static const float kDm[] = {0.0f, 0.3f, 0.9f, 3.0f, -1.0f};
+                    wf(OV(0x00178100) + (ee_read<uint8_t>(m + 0xa4) << 6) + 0x2c, kDm[ri(0, 4)]);
+                }
+                finish();
+            });
+        });
+        // class 1387: state 0 (its half-axes scaled by pvars +0x0 / +0x4) or past it
+        cases("class1387_cases", 0x002e36e8, kal_class1387_update_l16, 30, of(0x002e36e8), [=](uint32_t m) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w8(m + 0x20, u(ri(0, 3) == 0 ? ri(1, 4) : 0));
+            if (coin()) { wf(pv, rf(0.2f, 12)); wf(pv + 4, rf(0.2f, 12)); }
+            if (coin()) { wfrand(m + 0xd0, 3, -2, 2); wfrand(m + 0xe0, 3, -2, 2); }
+            finish();
+        });
+        // class 1561, the skill point: each stage (pvar +0x8, a third past 1), Ratchet in either box or out, on foot or not, in the
+        // state 0x42 or not, the point earned or not; the help idle in most cases (the message shown)
+        cases("class1561_cases", 0x002e7208, kal_class1561_update_l16, 80, of(0x002e7208), [=](uint32_t m) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            const int stg = ri(0, 5);
+            w32(pv + 8, u(stg <= 1 ? 0 : (stg <= 4 ? 1 : ri(2, 5))));
+            const int where = ri(0, 3);
+            if (where < 3) hero_to(jit(box_centre(ee_read<int32_t>(pv + (where == 0 ? 0u : 4u))), 0.3f, 0.2f));
+            else hero_near(m);
+            w32(0x001413dc, coin() ? 0xfu : u(ri(0, 0x20)));
+            w32(0x001413d4, ri(0, 3) == 0 ? 0x42u : u(ri(0, 0x40)));
+            w8(0x0013d421, u(ri(0, 2) == 0 ? 1 : 0));
+            if (ri(0, 3) != 0) help_idle();
+            finish();
+        });
+        // class 1812: each state; in 1 the scene's mode (2 or not), 0x16cc90 set or not, the scene's moby the snapshot's or the
+        // hero's (the smoke spawned: the particle pool's lanes left out)
+        with_spawn_lanes([&] {
+            cases("class1812_cases", 0x002e7e00, kal_class1812_update_l16, 50, of(0x002e7e00), [=](uint32_t m) {
+                w8(m + 0x20, u(ri(0, 4) == 0 ? 0 : (ri(0, 5) == 0 ? ri(2, 6) : 1)));
+                w32(L16_ADDR(0x0015f5c4), ri(0, 3) == 0 ? u(ri(0, 3)) : 2u);
+                w32(L16_ADDR(0x0016cc90), ri(0, 3) == 0 ? 1u : 0u);
+                if (coin() || ee_read<uint32_t>(L16_ADDR(0x0016cde4)) == 0) w32(L16_ADDR(0x0016cde4), ee_read<uint32_t>(0x001413d0));
+                finish();
+            });
+        });
+        // class 1891: each state, its yaw anywhere, its scale
+        cases("class1891_cases", 0x002e88d0, kal_class1891_update_l16, 30, of(0x002e88d0), [=](uint32_t m) {
+            w8(m + 0x20, u(ri(0, 2) == 0 ? 0 : (ri(0, 3) == 0 ? ri(2, 6) : 1)));
+            wf(m + 0x48, rf(-3.14f, 3.14f));
+            wf(m + 0x2c, rf(0.1f, 4));
+            finish();
+        });
+        // classes 1439 / 1441, the pads: each state; in 1 Ratchet inside the pad's box (its own frame) or just past one of its six
+        // faces, or more than 16 away; in 2 the lit time at its edges; the level's frame counter anywhere (the colour's cycle)
+        auto pad_prep = [=](uint32_t m, uint32_t box) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            static const int kSt[] = {0, 1, 1, 1, 1, 1, 2, 2, 2, 5};
+            const int st = kSt[ri(0, 9)];
+            w8(m + 0x20, u(st));
+            if (st == 1 || st == 5) {
+                float p[3];
+                const int face = ri(0, 8);  // (0 .. 5: just past that face; else inside)
+                for (int k = 0; k < 3; ++k) {
+                    const float lo = ee_read<float>(box + 8 * k), hi = ee_read<float>(box + 8 * k + 4);
+                    p[k] = lo + (hi - lo) * rf(0.05f, 0.95f);
+                    if (face == 2 * k) p[k] = lo + (coin() ? -0.02f : 0.02f) * (hi - lo);
+                    if (face == 2 * k + 1) p[k] = hi + (coin() ? -0.02f : 0.02f) * (hi - lo);
+                }
+                const Vec4 o = ee_ref<Vec4>(m + 0x10), r0 = ee_ref<Vec4>(m + 0xc0), r1 = ee_ref<Vec4>(m + 0xd0), r2 = ee_ref<Vec4>(m + 0xe0);
+                Vec4 q{o.x + p[0] * r0.x + p[1] * r1.x + p[2] * r2.x, o.y + p[0] * r0.y + p[1] * r1.y + p[2] * r2.y,
+                       o.z + p[0] * r0.z + p[1] * r1.z + p[2] * r2.z, ee_ref<Vec4>(P + 0x80).w};
+                if (ri(0, 6) == 0) q = jit(o, 30.0f, 3.0f);
+                hero_to(q);
+            }
+            if (st == 2) { static const int32_t kT[] = {0, 1, 2, 3, 40}; w32(pv, u(kT[ri(0, 4)])); }
+            finish();
+        };
+        cases("class1439_cases", 0x002e5010, kal_class1439_update_l16, 80, of(0x002e5010), [=](uint32_t m) { pad_prep(m, L16_ADDR(0x001d9750)); });
+        cases("class1441_cases", 0x002e5258, kal_class1441_update_l16, 80, of(0x002e5258), [=](uint32_t m) { pad_prep(m, L16_ADDR(0x001d9768)); });
+        // class 1442, the switch: each state; in 1 its timer (pvar +0x4) idle, expiring or running, Ratchet within 4 or not, in the
+        // state 0x28 or not, his direction (+0x5a8: -1, 2, 3, 0); in half the cases his matrix turned so that the switch's point is
+        // just right or left of him and about level (|y| near 0.1); a hit of kind 0x330000; lit or not (the colour)
+        cases("class1442_cases", 0x002e54a0, kal_class1442_update_l16, 120, of(0x002e54a0), [=](uint32_t m) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            static const int kSt[] = {0, 1, 1, 1, 1, 1, 1, 2, 4};
+            w8(m + 0x20, u(kSt[ri(0, 8)]));
+            { static const int32_t kT[] = {0, 1, 2, 30}; w32(pv + 4, u(kT[ri(0, 3)])); }
+            w32(0x001413d4, ri(0, 3) != 0 ? 0x28u : u(ri(0, 0x40)));
+            { static const int32_t kD[] = {-1, 2, 3, 3, 2, 0}; w32(P + 0x5a8, u(kD[ri(0, 5)])); }
+            w8(m + 0xbc, u(ri(0, 1)));
+            if (coin()) {  // (Ratchet within 3.5 of it, his matrix a turn about z that puts the switch's point at the chosen side and height)
+                Vec4 sw;
+                mat3_transform(sw, ee_ref<Vec4>(L16_ADDR(0x00161df0)), ee_ref<Mat4>(m + 0xc0));
+                const Vec4 o = ee_ref<Vec4>(m + 0x10);
+                const Vec4 h{o.x + rf(-2.4f, 2.4f), o.y + rf(-2.4f, 2.4f), o.z + rf(-1, 1), ee_ref<Vec4>(P + 0x80).w};
+                hero_to(h);
+                const float dx = o.x + sw.x - h.x, dy = o.y + sw.y - h.y, rho = std::sqrt(dx * dx + dy * dy);
+                const float y = ri(0, 2) == 0 ? (coin() ? 1.0f : -1.0f) * rf(0.08f, 0.2f) : rf(-0.08f, 0.08f);
+                const bool right = coin();
+                if (ri(0, 2) != 0) w32(P + 0x5a8, right ? 3u : 2u);  // (the direction that flips it, in most cases)
+                if (rho > 0.25f) {
+                    const float sa = y / rho, ca = (right ? 1.0f : -1.0f) * std::sqrt(1.0f - sa * sa);
+                    const float th = std::atan2(sa, ca) - std::atan2(dy, dx), c = std::cos(th), sn = std::sin(th);
+                    ee_ref<Vec4>(P + 0x40) = Vec4{c, sn, 0, 0}; ee_ref<Vec4>(P + 0x50) = Vec4{-sn, c, 0, 0}; ee_ref<Vec4>(P + 0x60) = Vec4{0, 0, 1, 0};
+                }
+            } else {
+                hero_near(m);
+            }
+            if (ri(0, 2) == 0) hit_on(m, 0x330000u); else w8(m + 0xa4, 0xff);
+            finish();
+        });
+        // classes 1943 / 1947 (shared_envmap.cpp): state 0 (the bounding spheres; 1947 also +0x30 / +0x32, which 1943 leaves),
+        // 1 (the draw queued) or past it, +0x30 / +0x32 dealt
+        for (const auto& [nm, fn, port] : {std::tuple{"class1943_cases", 0x002e8e80u, kal_class1943_update_l16}, std::tuple{"class1947_cases", 0x002e93b0u, kal_class1947_update_l16}})
+            cases(nm, fn, port, 30, of(fn), [=](uint32_t m) {
+                w8(m + 0x20, u(ri(0, 2) == 0 ? ri(1, 3) : 0));
+                w8(m + 0x30, u(ri(0, 0xfe)));
+                w16(m + 0x32, u(ri(0, 0x200)));
+                finish();
+            });
+        lvcheck("switch_flip", 0x002e56e0, 20, Ret::None, [=] {
+            level();
+            const std::vector<uint32_t> s = live(0x002e54a0, -1);
+            const uint32_t m = s.empty() ? pick(live(0, -1)) : pick(s);
+            finish();
+            return Args{{m}, {}};
+        }, [](A a) { kal_switch_flip_l16(a.i[0]); return uint64_t{0}; });
+
+        // class 1923, the chicken dispenser: Ratchet in its box (pvar +0x8) or out, near its door (the moby of index pvar +0x4) or
+        // farther; each state; a chicken of its group (pvar +0x0) waiting (state 6) or none; the wait (pvar +0xc) at its edges; the
+        // door in its states 1 / 7 / 8 or another, opened past 0.2 or not; the door moved (where the chicken goes down: floor or
+        // not, something in the way or not); the feathers spawned (the slots' lanes left out); the collision's scratch is the host's
+        const std::vector<uint32_t> dispensers = of(0x002e8970);
+        auto group_chickens = [](int32_t group) {
+            std::vector<uint32_t> v;
+            uint32_t e = lvd::group(group);
+            if (e == 0) return v;
+            for (;; e += 2) {
+                const uint32_t c = ee_read<uint32_t>(OV(0x0015ffd8)) + ((ee_read<uint16_t>(e) & 0x7fffu) << 8);
+                if (ee_read<int16_t>(c + 0xa6) == 0x10e) v.push_back(c);
+                if (ee_read<int16_t>(e) < 0) break;
+            }
+            return v;
+        };
+        auto door_of = [](uint32_t m) { return ee_read<uint32_t>(OV(0x0015ffd8)) + (ee_read<uint32_t>(ee_read<uint32_t>(m + 0x78) + 4) << 8); };
+        auto dispenser_prep = [=](uint32_t m) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78), door = door_of(m), dpv = ee_read<uint32_t>(door + 0x78);
+            static const int kSt[] = {0, 1, 1, 1, 2, 2, 2, 2, 3};
+            w8(m + 0x20, u(kSt[ri(0, 8)]));
+            if (ri(0, 2) == 0) ee_ref<Vec4>(door + 0x10) = jit(ee_ref<Vec4>(door + 0x10), 3.0f, 1.5f);
+            const Vec4 dp = ee_ref<Vec4>(door + 0x10);
+            const int where = ri(0, 7);
+            if (where == 0) hero_near(m);
+            else {
+                Vec4 q = box_centre(ee_read<int32_t>(pv + 8));
+                if (where == 1) q = jit(dp, 2.0f, 0.5f);
+                hero_to(q);
+            }
+            for (uint32_t c : group_chickens(ee_read<int32_t>(pv))) w8(c + 0x20, u(ri(0, 2) == 0 ? 6 : ri(0, 8)));
+            { static const int32_t kT[] = {0, 1, 2, 90}; w32(pv + 0xc, u(kT[ri(0, 3)])); }
+            { static const int kD[] = {1, 1, 7, 8, 8, 8, 0, 3}; w8(door + 0x20, u(kD[ri(0, 7)])); }
+            if (dpv != 0) wf(dpv + 0x34, ri(0, 4) == 0 ? 0.2f : (coin() ? rf(0.0f, 0.19f) : rf(0.21f, 1.0f)));
+            finish();
+        };
+        if (std::getenv("B250_INFO") != nullptr)
+            for (uint32_t m : dispensers) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78), door = door_of(m);
+                std::printf("INFO P16 class 1923 idx %u group %d door idx %u class %d state %u box %d chickens %zu\n", index_of(m), ee_read<int32_t>(pv),
+                            ee_read<uint32_t>(pv + 4), ee_read<int16_t>(door + 0xa6), ee_read<uint8_t>(door + 0x20), ee_read<int32_t>(pv + 8),
+                            group_chickens(ee_read<int32_t>(pv)).size());
+            }
+        with_spawn_lanes([&] {
+            // (the collision record OV(0x173e40) .. +0x80, sphere_collide's: COMMON's known difference of the engine's port, a word
+            // the original leaves from an earlier case (+0x1c met in one case of chicken_release, which passes alone with
+            // ORACLE_FOCUS); the release reads only sphere_collide's answer. Left out of these two checks only.)
+            const size_t ign_rec = g_ignored_words.size();
+            for (uint32_t k = 0; k < 0x80; k += 4) g_ignored_words.push_back(OV(0x00173e40) + k);
+            if (std::getenv("B250_INFO") != nullptr) std::printf("INFO P16 the collision record at %08x\n", OV(0x00173e40));
+            cases("class1923_cases", 0x002e8970, kal_class1923_update_l16, 160, dispensers, dispenser_prep);
+            lvcheck("chicken_release", 0x002c44f0, 80, Ret::None, [=] {
+                level();
+                const uint32_t m = pick(dispensers), pv = ee_read<uint32_t>(m + 0x78);
+                std::vector<uint32_t> cs = group_chickens(ee_read<int32_t>(pv));
+                if (cs.empty()) cs = live(0, 0x10e);
+                const uint32_t c = cs.empty() ? m : pick(cs);
+                Vec4 at = jit(ee_ref<Vec4>(door_of(m) + 0x10), 3.0f, 1.5f);
+                if (ri(0, 3) == 0) at = jit(ee_ref<Vec4>(pick(live(0, -1)) + 0x10), 0.3f, 0.3f);  // (at another moby)
+                ee_ref<Vec4>(0x008f8000) = at;
+                finish();
+                return Args{{c, 0x008f8000u}, {}};
+            }, [](A a) { kal_chicken_release_l16(a.i[0], ee_ref<Vec4>(a.i[1])); return uint64_t{0}; });
+            g_ignored_words.resize(ign_rec);
+        });
+        lvcheck("chicken_waiting", 0x002e8b08, 60, Ret::Int32, [=] {
+            level();
+            const uint32_t m = pick(dispensers);
+            int32_t g = m != 0 ? ee_read<int32_t>(ee_read<uint32_t>(m + 0x78)) : 0;
+            if (ri(0, 3) == 0) g = ri(0, ee_read<int32_t>(OV(0x0015fff4)) - 1);
+            for (uint32_t c : group_chickens(g)) w8(c + 0x20, u(ri(0, 2) == 0 ? 6 : ri(0, 8)));
+            finish();
+            return Args{{u(g)}, {}};
+        }, [](A a) { return static_cast<uint64_t>(kal_chicken_waiting_l16(static_cast<int32_t>(a.i[0]))); });
+        lvcheck("chicken_door_open", 0x002e0de0, 30, Ret::None, [=] {
+            level();
+            const uint32_t door = dispensers.empty() ? pick(live(0, -1)) : door_of(pick(dispensers));
+            w8(door + 0x20, u(ri(0, 1) == 0 ? 1 : ri(0, 9)));
+            finish();
+            return Args{{door}, {}};
+        }, [](A a) { kal_chicken_door_open_l16(a.i[0]); return uint64_t{0}; });
+        lvcheck("chicken_door_stage", 0x002e0e28, 40, Ret::Int32, [=] {
+            level();
+            const uint32_t door = dispensers.empty() ? pick(live(0, -1)) : door_of(pick(dispensers));
+            { static const int kD[] = {6, 7, 8, 8, 9, 1}; w8(door + 0x20, u(kD[ri(0, 5)])); }
+            const uint32_t dpv = ee_read<uint32_t>(door + 0x78);
+            if (dpv != 0) wf(dpv + 0x34, ri(0, 4) == 0 ? 0.2f : rf(0.0f, 0.5f));
+            finish();
+            return Args{{door}, {}};
+        }, [](A a) { return static_cast<uint64_t>(static_cast<uint32_t>(kal_chicken_door_stage_l16(a.i[0]))); });
+
+        // class 1947's draw 0x2e9270 (shared_envmap.cpp): the class's update first from its state 0 (its mesh's bounding sphere), the
+        // camera before the sphere (the mesh drawn: its coordinates into 0x1ddc80, its packets) or away, the screen and projection set
+        // up, the packet cursor on a buffer of the test area (0x800000 + up to 8 quadwords, its end 0x8f0000). VU0: the callback has
+        // no VU0 instruction of its own; its last VU0 writers in the original's run are its callees (the level's 0x1fafa8, still
+        // generated, the same in both; envmap_uvs and prim_list_packet, host ports keeping no VU0 state, as in the generated code
+        // before): no lane is compared.
+        cases("cb2e9270_cases", 0x002e9270, kal_cb_2e9270_l16, 60, of(0x002e93b0), [=](uint32_t m) {
+            w8(m + 0x20, 0);
+            kal_class1947_update_l16(m);
+            if (ee_read<uint16_t>(0x001518d0) == 0) { w16(0x001518d0, 640); w16(0x001518d2, 448); }
+            screen_setup();
+            projection_setup();
+            const Vec4 s = ee_ref<Vec4>(L16_ADDR(0x00161f80));
+            if (ri(0, 4) != 0) {
+                for (int k = 0; k < 60; ++k) {
+                    const float r = std::fmax(s.w, 4.0f) * rf(1.2f, 3.0f), a = rf(-3.1f, 3.1f);
+                    ee_ref<Vec4>(OV(0x00166dc0)) = Vec4{s.x + r * std::cos(a), s.y + r * std::sin(a), s.z + rf(-2, 6), 1.0f};
+                    render_view_setup();
+                    ee_ref<Vec4>(0x008f8000) = Vec4{s.x, s.y, s.z, 1.0f};
+                    if (point_on_screen(0x008f8000, 512.0f) != -1) break;
+                }
+            } else {
+                ee_ref<Vec4>(OV(0x00166dc0)) = Vec4{s.x + 400.0f, s.y + 400.0f, s.z + 300.0f, 1.0f};
+                render_view_setup();
+            }
+            w32(OV(0x001611c0), 0x00800000u + u(ri(0, 8)) * 0x10u);
+            w32(OV(0x0015f5f8), 0x008f0000u);
+            finish();
+        });
         g_extra_noop_hooks.clear();
     }
 
