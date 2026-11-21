@@ -7,7 +7,6 @@
   "MKALL_UNIFORM": "vf_hook_2fcca0_u"
  },
  "entries": [
-  "2f2bf0:vf_class1422_update_l18:void:a0",
   "2f7ab0:vf_class1432_update_l18:void:a0",
   "2f7ad8:vf_class1434_update_l18:void:a0",
   "2f7c40:vf_class1454_update_l18:void:a0",
@@ -35,7 +34,6 @@
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/veldin_finale_classes_tr_4.cpp",
   "src/game/ovl/veldin_finale_classes_tr_5.cpp",
   "src/game/ovl/veldin_finale_classes_tr_6.cpp",
   "src/game/ovl/veldin_finale_classes_tr_7.cpp"

@@ -1,7 +1,7 @@
-// Veldin's finale (level 18): how the boss (class 1422, still generated: veldin_finale_classes_tr_5.cpp) moves and picks
+// Veldin's finale (level 18): how the boss (class 1422: its update in veldin_finale_boss.cpp) moves and picks
 // its attacks, hand-written (part 2 of its port): its home point stepped toward a goal, the charge at the hero and the
 // orbit about the arena (both clamped to the arena's box), the floating platform it flies to, the next attack, a
-// bearing against a moby's yaw. The generated boss calls them through tools/codegen/gen/mkall/veldin_finale_classes.glue.
+// bearing against a moby's yaw. The boss's update (veldin_finale_boss.cpp) calls them.
 // Level 18 only: the addresses are the finale's (`orig: L18:`), its own data L18_ADDR (the fight's tuning words
 // L18:0x162338 .. 0x16237c), the base ELF's bare (the hero 0x13f350, the frame time 0x15ed6c and its square 0x15ed70).
 // Declared in veldin_finale_own.h.

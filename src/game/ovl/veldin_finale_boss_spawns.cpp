@@ -1,8 +1,7 @@
-// Veldin's finale (level 18): the boss's (class 1422, still generated: veldin_finale_classes_tr_5.cpp) shots and its
+// Veldin's finale (level 18): the boss's (class 1422: its update in veldin_finale_boss.cpp) shots and its
 // launches of the level's other mobys, hand-written (part 1b of its port): its shell (class 564), its ring (class 624),
 // its burst (class 628) and its energy ball (class 983) spawned and moved, a walking bomb (class 568), a robot (class
-// 1906) and its divers (class 1355) thrown out of their groups. The generated boss calls them through
-// tools/codegen/gen/mkall/veldin_finale_classes.glue; the shots' own updates are veldin_finale_shots.cpp and
+// 1906) and its divers (class 1355) thrown out of their groups. The boss's update (veldin_finale_boss.cpp) calls them; the shots' own updates are veldin_finale_shots.cpp and
 // veldin_finale_energy_ball.cpp. Level 18 only: the addresses are the finale's (`orig: L18:`), its own data L18_ADDR, the
 // base ELF's bare (the frame time's square 0x15ed70). Declared in veldin_finale_own.h.
 #include <game/level/level_data.h>

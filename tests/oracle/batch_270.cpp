@@ -59,6 +59,13 @@
 namespace rac1::oracle {
 
 namespace {
+// ORACLE_ONLY: one check's name, or a prefix ending in '*' (the checks named so)
+bool only_mismatch(const char* only, const char* name) {
+    const size_t n = std::strlen(only);
+    if (n > 0 && only[n - 1] == '*') return std::strncmp(only, name, n - 1) != 0;
+    return std::strcmp(only, name) != 0;
+}
+
 // The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
 // walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
 // collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
@@ -66,10 +73,11 @@ bool c2b_spr_check(const char* name) {
     static const char* const kNames[] = {"class1454", "class1906", "class638", "class885", "hero_move_mode", "class1134",
                                          "class1135", "class1355", "class583", "class644", "class805",
                                          "own41_rocket", "own564_shell", "own624_ring", "own628_burst", "own568_bomb", "own583_gate", "own587_float",
-                                         "own644_pan", "own885_piece", "own983_ball", "own1355_diver"};  // (P18.2's: hero_place, sphere / floor collisions)  // (P18.1's: segment / sphere / floor collisions)
+                                         "own644_pan", "own885_piece", "own983_ball", "own1355_diver",
+                                         "own1422_preamble"};  // (P18.3 part 3: the phase change's floor_probe_v)  // (P18.2's: hero_place, sphere / floor collisions)  // (P18.1's: segment / sphere / floor collisions)
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
-    return false;
+    return std::strncmp(name, "own1422_update_s", 16) == 0;  // (P18.3 part 4: the boss's states' floor_probe_v)
 }
 
 // Veldin's class 749 hook +0x10 (the moby only) in the hook table's uniform form (T00: a level's copy of it)
@@ -102,7 +110,7 @@ TrRet bomb_hook_uniform(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t, uint32_
 void l18check(const char* name, uint32_t l9addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port,
              uint32_t ignore_word = 0, uint32_t ignore_word2 = 0) {
     if (g_only_batch != 0 && g_only_batch != g_batch) return;
-    if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
+    if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && only_mismatch(only, name)) return;
     if (const char* skip = std::getenv("B270_SKIP"); skip != nullptr && (std::string(",") + skip + ",").find(std::string(",") + name + ",") != std::string::npos) return;  // (the mutation test: checks already seen to fail)
     if (g_oracle_level != 18) {
         std::printf("%-26s L18:0x%08x  skipped (level 18 only: run with ORACLE_LEVEL=18)\n", name, l9addr);
@@ -198,7 +206,7 @@ void batch_270() {
     auto classcheck = [level, mobys_with](const char* name, uint32_t fn, void (*port)(uint32_t), std::function<void(uint32_t)> vary, int n = 60, std::vector<uint32_t> subjects = {}) {
         if (g_only_batch != 0 && g_only_batch != g_batch) return;
         if (g_oracle_level != 18) { l18check(name, fn, 0, Ret::None, nullptr, nullptr); return; }
-        if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
+        if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && only_mismatch(only, name)) return;
         level();
         const std::vector<uint32_t> ms = subjects.empty() ? mobys_with(fn) : subjects;
         if (ms.empty()) { std::printf("%-26s L18:0x%08x  no moby on this level\n", name, fn); return; }
@@ -643,7 +651,7 @@ void batch_270() {
         };
         // a check whose generator builds the subject (0: deal again), then the trial as the class loop's
         auto owncheck = [level](const char* name, uint32_t addr, void (*port)(uint32_t), std::function<uint32_t()> make, int n = 60) {
-            if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
+            if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && only_mismatch(only, name)) return;
             l18check(name, addr, n, Ret::None, [level, make, port] {
                 static std::vector<uint8_t> saved;
                 uint32_t m = 0;
@@ -1023,7 +1031,7 @@ void batch_270() {
         // a helper of one of these classes at its own address, on the states of its class's generator
         auto helpercheck = [level](const char* name, uint32_t addr, Ret ret, std::function<Args()> make, std::function<uint64_t(A)> port,
                                    int n = 60) {
-            if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
+            if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && only_mismatch(only, name)) return;
             l18check(name, addr, n, ret, [level, make] {
                 for (int attempt = 0; attempt < 60; ++attempt) {
                     level();
@@ -1315,7 +1323,7 @@ void batch_270() {
         // - fix 46, the water toward +0: Ratchet swimming below its surface gets its height when it is more than 0.1 from +0
         auto fixcheck = [=](const char* name, int fix, int cases, const std::function<uint32_t()>& make,
                             const std::function<int(uint32_t, std::vector<uint8_t>&)>& expect) {
-            if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
+            if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && only_mismatch(only, name)) return;
             const char* fx = std::getenv("RAC1_FIXES102");
             if (fx == nullptr || std::string(fx).find(std::to_string(fix)) == std::string::npos) {
                 std::printf("%-26s skipped (run with RAC1_FIXES102=%d)\n", name, fix);
@@ -1424,7 +1432,7 @@ void batch_270() {
         // into each state the helper tests (taken out, 0xfe / 0xfd, too), the lift's and the platforms' states and timers, the
         // sound slots playing or not. The class loop's class1422 row and batch 271's fight dumps run them inside the boss.
         auto own3 = [level](const char* name, uint32_t addr, Ret ret, std::function<Args()> make, std::function<uint64_t(A)> port, int n = 60) {
-            if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
+            if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && only_mismatch(only, name)) return;
             l18check(name, addr, n, ret, [level, make] {
                 level();
                 Args a = make();
@@ -1844,6 +1852,304 @@ void batch_270() {
             wf(0x001623a4, rf(0.2f, 3));
             return Args{{}, {}};
         }, [](A) { vf_drek_scale_l18(); return uint64_t{0}; });
+
+        // ---- P18.3 (part 3): the boss every frame around its state (veldin_finale_boss_frame.cpp), at its own address: the
+        // boss of boss_dealt in the states each branch tests, its phase 0 .. 5 (the damage floors 250 .. 0) and its health about
+        // the floor, a hit by each kind of moby the preamble sorts (its own ring / shell, a walking bomb thrown back or not,
+        // classes 0xb1 / 0x131, others, none; kind 0x80000 or not), its attached mobys taken away, its sound slot and camera
+        // request in each state, the lift (no state 2 with its wait over: that branch starts scene 7, which the oracle cannot
+        // run), the fight's restart word and 0x1415f8 both ways; the camera's states with the hero in his modes, a level
+        // camera slot of type 0x12 live or not, the hero's ride; the smoke's counts as the level has them or 0 .. 3.
+        auto boss_frame = [=](const uint8_t* states, int n_states) -> uint32_t {
+            const uint32_t m = boss_dealt();
+            if (m == 0) return 0u;
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w32(pv + 0x334, first_moby() + (ee_read<uint32_t>(pv + 0x220) << 8));  // (the camera move's moby, as state 0 sets it)
+            w8(m + 0x20, states[ri(0, n_states - 1)]);
+            if (coin()) w8(m + 0x53, u(ri(0, 0xe)));
+            sound_slot(m, pv + 0x3b0);
+            const int key = ri(0, 2);
+            if (key == 0) w32(pv + 0x368, 0xffffffffu);
+            else if (key == 1) w32(pv + 0x368, u(camera_request(0x16, 0xffff, ORACLE_LADDR(18, 0x00239360), ORACLE_LADDR(18, 0x00239480),
+                                                               ORACLE_LADDR(18, 0x0023cd60), pv + 0x36c, 0x15e)));
+            else w32(pv + 0x368, u(ri(0, 40)));
+            wf(pv + 0x38c, ri(0, 5) == 0 ? (coin() ? 0.0f : -rf(0, 5)) : rf(1, 400));
+            return m;
+        };
+        own3("own1422_preamble", 0x002f5e80, Ret::None, [=] {
+            static const uint8_t sts[] = {2, 2, 2, 12, 13, 14, 15, 16, 17, 18, 19, 19, 3, 7, 21, 26, 10, 0x1a};
+            const uint32_t m = boss_frame(sts, 18);
+            if (m == 0) return Args{{0u}, {}};
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            if (ri(0, 2) != 0) {  // a frame before by the port (the attached mobys spawned, the target found): no hit, the lift idle,
+                // no phase change (the state dealt again below)
+                const uint8_t st0 = ee_read<uint8_t>(m + 0x20);
+                w8(m + 0xa4, 0xff);
+                w8(first_moby() + (ee_read<uint32_t>(pv + 0x21c) << 8) + 0x20, 0);
+                w32(0x0016238c, 0);
+                w32(0x001415f8, 0);
+                vf_boss_preamble_l18(m);
+                w8(m + 0x20, st0);
+            }
+            const int kind_of_case = ri(0, 5);  // 0, 1: the floor crossed; 2: the death; else any
+            int32_t phase = ri(0, 5);
+            if (kind_of_case <= 1) phase = ri(0, 2);
+            if (kind_of_case == 2) phase = 5;
+            w32(pv + 0x34c, u(phase));
+            const float floor = static_cast<float>(5 - phase) / 7.0f * 350.0f;
+            if (ri(0, 4) != 0) wf(pv + 0x38c, floor + rf(-6, 14));
+            if (kind_of_case <= 1) wf(pv + 0x38c, floor + rf(0.1f, 3));
+            if (kind_of_case == 2) {
+                wf(pv + 0x38c, rf(1, 20));
+                if (coin()) {  // its sound slot playing for it
+                    const uint32_t slot = u(ri(0, 15));
+                    w32(pv + 0x3b0, slot);
+                    w32(0x0013e550 + slot * 0x70 + 0x88, m);
+                    w8(0x0013e550 + slot * 0x70 + 0x74, u(ri(1, 2)));
+                }
+            }
+            if (kind_of_case <= 2) {
+                static const uint8_t fight[] = {2, 2, 12, 13, 14, 15, 16, 17, 18, 19};
+                w8(m + 0x20, fight[ri(0, 9)]);
+            }
+            if (ri(0, 6) == 0) w32(pv + 0x3a0, 0);
+            if (ri(0, 6) == 0) w32(pv + 0x3a4, 0);
+            if (ri(0, 3) == 0) w32(pv + 0xb0, 0);
+            // the hit: its slot naming the boss, a kind in the mask 0x330000 (0x80000 in part) or not, a damage, its moby
+            if (ri(0, 4) != 0) {
+                const uint32_t idx = u(ri(0, 15)), e = OV(0x00178100) + (idx << 6);
+                w8(m + 0xa4, idx);
+                w32(e + 0x34, m);
+                w32(e + 0x24, ri(0, 5) == 0 ? (R() & ~0x330000u) : ((coin() ? 0x10000u : 0x20000u) | (coin() ? 0x80000u : 0u) | (R() & 0xffu)));
+                w8(e + 0x28, u(ri(0, 11))); w8(e + 0x29, u(ri(0, 4))); w16(e + 0x2a, coin() ? 0x47u : u(ri(0, 0x60)));
+                wf(e + 0x1c, coin() ? 5627.95f : 0.0f);
+                wfrand(e, 4, -1, 1);
+                const float health = ee_read<float>(pv + 0x38c);
+                const int dk = ri(0, 5);
+                wf(e + 0x2c, dk == 0 ? 0.0f : dk == 1 ? health : dk == 2 ? health - floor + rf(-1, 1) : rf(0.1f, 14));
+                if (kind_of_case <= 1) wf(e + 0x2c, rf(4, 10));
+                if (kind_of_case == 2) wf(e + 0x2c, health + rf(0, 5));
+                static const int16_t kinds[] = {0x270, 0x234, 0x238, 0x238, 0xb1, 0xb1, 0x131, 0x131, -1, -1, 0};
+                const int16_t kind = kinds[ri(0, 10)];
+                uint32_t by = 0;
+                if (kind != 0) {
+                    by = ri(0, 3) == 0 ? ee_read<uint32_t>(0x001413d0) : any_moby();
+                    if (by == m) by = ee_read<uint32_t>(0x001413d0);
+                    if (kind > 0 && by != ee_read<uint32_t>(0x001413d0)) { w16(by + 0xa6, u(kind)); w8(by + 0xbc, u(ri(0, 1))); }
+                }
+                w32(e + 0x20, by);
+            } else w8(m + 0xa4, 0xff);
+            // the lift: at its top, on its way with its wait running, or idle (never on its way with the wait over: scene 7)
+            {
+                const uint32_t lift = first_moby() + (ee_read<uint32_t>(pv + 0x21c) << 8);
+                const int ls = ri(0, 3);
+                w8(lift + 0x20, ls == 0 ? 3u : ls == 1 ? 2u : u(ri(0, 1)));
+                if (ls == 1) w32(ee_read<uint32_t>(lift + 0x78) + 0x6c, u(ri(1, 200)));
+            }
+            w32(0x0016238c, ri(0, 4) == 0 ? 1u : 0u);
+            w32(0x001415f8, ri(0, 3) != 0 ? 1u : 0u);
+            if (kind_of_case <= 1) { w32(0x0016238c, 0); w32(0x001415f8, 1); }
+            return Args{{m}, {}};
+        }, [](A a) { vf_boss_preamble_l18(a.i[0]); return uint64_t{0}; }, 120);
+        own3("own1422_camera", 0x002f7288, Ret::None, [=] {
+            static const uint8_t sts[] = {0, 1, 2, 3, 6, 9, 10, 11, 12, 13, 19, 19, 19, 19, 19, 19, 27, 27, 21, 15};
+            const uint32_t m = boss_frame(sts, 20);
+            if (m == 0) return Args{{0u}, {}};
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            if (ri(0, 2) == 0) w32(0x001413d4, 0x42);
+            if (ri(0, 3) == 0) for (uint32_t i = 0; i < 48; ++i) w32(0x0016a290 + i * 4, 0);  // (no live camera of type 0x12)
+            w32(pv + 0x364, ri(0, 3) == 0 ? 1u : 0u);
+            wf(pv + 0x390, rf(0, 40));
+            w32(pv + 0x360, ri(0, 2) == 0 ? 0u : u(ri(1, 30)));
+            w32(pv + 0x3ec, ri(0, 3) == 0 ? 1u : 0u);
+            {  // the hero's ride: a floating platform (class 587), another moby, none
+                const std::vector<uint32_t> fl = mobys_with(0x002d82c0);
+                const int k = ri(0, 3);
+                w32(0x0013f64c, k == 0 ? 0u : k == 1 ? any_moby() : pick(fl));
+            }
+            w32(0x001623a0, ri(0, 2) == 0 ? 1u : 0u);
+            if (coin()) {  // a level camera slot of type 0x12 live (its level camera one of the level's)
+                const uint32_t i = u(ri(0, 47)), c = 0x00167b50 + i * 0xa0;
+                w32(0x0016a290 + i * 4, 1);
+                w16(c + 0x86, 0x12);
+                w16(c + 0x84, u(ri(0, std::max(0, lvd::camera_count() - 1))));
+            }
+            const uint32_t active = ee_read<uint32_t>(0x00167800);
+            if (active != 0 && ri(0, 3) == 0) w16(active + 0x86, coin() ? 5u : 0u);
+            if (coin()) hero_at(near(VV(pv + 0x3c0), 0, ri(0, 2) == 0 ? 80.0f : 30.0f, 3));
+            if (coin()) {  // the camera's distance / height among the targets the states seek (so that the target chosen shows)
+                const uint32_t c = lvd::camera_data(ee_read<int32_t>(pv + 0x224));
+                float lo = 1e9f, hi = -1e9f, hlo = 1e9f, hhi = -1e9f;
+                for (const uint32_t t : {0x001623c0u, 0x001623c8u, 0x001623d0u, 0x001623d8u, 0x001623e0u}) {
+                    lo = std::min(lo, ee_read<float>(t)); hi = std::max(hi, ee_read<float>(t));
+                    hlo = std::min(hlo, ee_read<float>(t + 4)); hhi = std::max(hhi, ee_read<float>(t + 4));
+                }
+                wf(c + 0x34, rf(lo, hi)); wf(c + 0x38, rf(hlo, hhi));
+                if (coin()) { wf(pv + 0x378, 0.0f); wf(pv + 0x37c, 0.0f); }
+            }
+            if (ee_read<uint8_t>(m + 0x20) == 19 && coin())  // (about the 28 from the arena's centre)
+                hero_at(near(VV(lvd::box(lvd::BOXES, ee_read<int32_t>(pv + 0x344)) + 0x30), 18, 34, 2));
+            return Args{{m}, {}};
+        }, [](A a) { vf_boss_camera_l18(a.i[0]); return uint64_t{0}; }, 120);
+        own3("own1422_smoke", 0x002f76a0, Ret::None, [=] {
+            fifty();
+            const std::vector<uint32_t> bs = mobys_with(0x002f2bf0);
+            const uint32_t m = !bs.empty() && ri(0, 3) != 0 ? bs[0] : any_moby();
+            w8(m + 0xbc, u(ri(0, 3)));
+            if (coin()) {  // another facing
+                const float a = rf(-3.1f, 3.1f);
+                wf(m + 0xc0, std::cos(a)); wf(m + 0xc4, std::sin(a)); wf(m + 0xc8, rf(-0.3f, 0.3f));
+            }
+            if (ri(0, 2) == 0) w32(0x00162408, u(ri(0, 3)));
+            if (ri(0, 2) == 0) w32(0x00162438, u(ri(0, 3)));
+            put(SCR, near(VV(m + 0x10), 0, 3, 2));
+            return Args{{m, SCR}, {}};
+        }, [](A a) { vf_boss_smoke_l18(a.i[0], a.i[1]); return uint64_t{0}; });
+
+        // ---- P18.3 (part 4): the boss's update (veldin_finale_boss.cpp) at its own address, in each of its states, short of
+        // the scenes the oracle cannot run (state 1's Giant Clank box: his form kept off 2; state 2 above 301 health; state 4
+        // with the hero on a floating platform; state 7's hero lost; state 27's steps 0 .. 6, 8 and the menu; the preamble's
+        // lift lost): the boss after its state 0 (the port's, as the class loop's set-up), its fight dealt (boss_dealt), the
+        // phase's path flown and its point, the energy ball held or not, its animation and the animation's end flag, its
+        // timers at their edges, the scene record for state 7, the end's count for state 27
+        for (int st = 0; st < 28; ++st) {
+            if (st == 25 || st == 24 || st == 23) continue;  // (22 stands for the tail-only states 6, 22 .. 25)
+            const std::string nm = "own1422_update_s" + std::to_string(st);
+            owncheck(strdup(nm.c_str()), 0x002f2bf0, vf_class1422_update_l18, [=]() -> uint32_t {
+                const std::vector<uint32_t> bs = mobys_with(0x002f2bf0);
+                if (bs.empty()) return 0u;
+                const uint32_t m = bs[0], pv = ee_read<uint32_t>(m + 0x78);
+                set_up(m, vf_class1422_update_l18);
+                boss_dealt();
+                const int32_t phase = st == 21 ? ri(0, 5) : st == 12 ? ri(0, 3) : ri(0, 2);
+                w32(pv + 0x34c, u(phase));
+                const uint32_t path = lvd::path(ee_read<int32_t>(pv + 0x260 + u(ri(0, 2)) * 4));
+                w32(pv + 0x340, path);
+                const int32_t np = ee_read<int32_t>(path);
+                w32(pv + 0x348, u(ri(0, 4) == 0 ? std::max(0, np - ri(0, 2)) : ri(0, std::max(0, np - 1))));
+                if (coin()) w32(pv + 0x33c, 0);
+                else if (ee_read<uint32_t>(pv + 0x33c) == 0) w32(pv + 0x33c, vf_ball_spawn_l18(m, m + 0x10, u(frame_scale_i(0x12c))));
+                static const uint8_t anims[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0xa, 0xb, 0xc, 0xd, 0xe};
+                if (ri(0, 2) != 0) {  // an animation of the boss's at a frame its states test (1, 16, 30) or another
+                    const uint8_t a = anims[ri(0, 14)];
+                    static const int fr[] = {0, 1, 1, 16, 16, 30, 5};
+                    moby_anim_set(m, a, fr[ri(0, 6)], 0);
+                    if (coin()) w8(m + 0x52, a);
+                }
+                if (coin()) w8(m + 0x70, u(ri(0, 3)));
+                if (coin()) w8(m + 0x31, u(ri(0, 1)));
+                for (const uint32_t t : {0x354u, 0x358u, 0x35cu, 0x360u}) timer(pv + t);
+                if (ri(0, 3) == 0) w32(pv + 0x354, 1);  // (its last frame)
+                if (ri(0, 3) == 0) wf(pv + 0x390, rf(0, 50));
+                {  // the camera move (class 644): its state (3: done, as state 3 waits for) and its progress (states 8 / 9)
+                    const uint32_t pan = ee_read<uint32_t>(pv + 0x334);
+                    if (pan != 0 && coin()) w8(pan + 0x20, u(ri(2, 3)));
+                    if (pan != 0 && coin()) wf(ee_read<uint32_t>(pan + 0x78) + 0x60, rf(0.4f, 1.1f));
+                }
+                if (coin()) {  // the home at a goal its moves test: the lunge's box, the gate, the path's point
+                    const int k = ri(0, 2);
+                    const uint32_t g = ee_read<uint32_t>(pv + 0x330);
+                    Vec4 q = k == 0 ? VV(lvd::box(lvd::BOXES, ee_read<int32_t>(pv + 0x3a8)) + 0x30)
+                           : k == 1 && g != 0 ? VV(g + 0x10) : VV(path + 0x10 + (ee_read<uint32_t>(pv + 0x348) << 4));
+                    put(pv + 0x3c0, near(q, 0, 0.3f, 0));
+                    wf(pv + 0x374, rf(0, 0.5f));
+                }
+                if (ri(0, 3) == 0) w32(pv + 0x358, u(frame_scale_i(0x78) - ri(0, 1)));
+                if (ri(0, 4) == 0) w32(pv + 0x354, u(frame_scale_i(0x1e)));
+                wf(pv + 0x38c, rf(302, 400));
+                w8(0x001413f4, u(ri(0, 1)));  // (never Giant Clank: scene 0)
+                w32(0x0016238c, 0);
+                if (ri(0, 2) == 0) w32(0x00162360, 1);
+                if (ri(0, 2) == 0) w32(0x001623a0, 1);
+                if (ri(0, 3) == 0) w32(0x00162390, 1);
+                {  // the lift: never on its way up with its wait over (the preamble's scene 7)
+                    const uint32_t lift = first_moby() + (ee_read<uint32_t>(pv + 0x21c) << 8);
+                    const int ls = ri(0, 3);
+                    w8(lift + 0x20, ls == 0 ? 3u : ls == 1 ? 2u : u(ri(0, 1)));
+                    w32(ee_read<uint32_t>(lift + 0x78) + 0x6c, u(ri(1, 200)));
+                }
+                sound_slot(m, pv + 0x3b0);
+                if (st == 4 || ri(0, 3) == 0) {  // the hero on a floating platform (state 4: else scene 2), hanging, or not
+                    const std::vector<uint32_t> fl = mobys_with(0x002d82c0);
+                    w32(0x0013f64c, st == 4 || coin() ? pick(fl) : 0u);
+                    w16(0x0013f65e, st != 4 && coin() ? 1u : 0u);
+                }
+                if (st == 7) {  // the scene running (the level's mode 2: scene 2 / 3 at its frames) or over
+                    const bool running = coin();
+                    w32(0x0015f5c4, running ? 2u : u(ri(0, 1)));
+                    w8(pv + 0x39c, u(ri(0, 2) == 0 ? 5 : ri(9, 0x15)));
+                    const int32_t num = ri(2, 3);
+                    w32(0x0016d260 + 0x30, u(num));
+                    const int32_t lo = frame_scale_i(num == 2 ? 0xa28 : 0x3b6), hi = frame_scale_i(num == 2 ? 0xb36 : 0x3c0);
+                    w32(0x0016d260 + 0x34, u(ri(0, 2) == 0 ? ri(lo - 3, lo + 3) : ri(0, 2) == 0 ? ri(hi - 3, hi + 3) : ri(lo - 20, hi + 20)));
+                }
+                if (st == 27) {  // the end's steps the oracle can run: 7 (its count below the scene's 40 frames), 9 .. 12 with the
+                    // level not back in its mode 0
+                    const int step = ri(0, 2) == 0 ? 7 : ri(9, 12);
+                    w32(pv + 0x34c, u(step));
+                    w32(0x0015f5c4, u(ri(1, 2)));
+                    w32(pv + 0x3ac, u(ri(0, 2) == 0 ? 0 : ri(1, frame_scale_i(0x28) - 1)));
+                    if (coin()) {  // the hero on a gate in his mode 0x22
+                        const std::vector<uint32_t> gates = class_moby(0x247);
+                        w32(0x0013f64c, pick(gates));
+                        w16(0x0013f65e, 0);
+                        w32(0x001413d4, 0x22);
+                    }
+                }
+                if (st == 1) {  // the hero about the three boxes, inside the polygon (its points' mean)
+                    static const uint32_t bx[] = {0x250, 0x254, 0x258, 0x274};
+                    hero_at(near(VV(lvd::box(lvd::BOXES, ee_read<int32_t>(pv + bx[ri(0, 3)])) + 0x30), 0, ri(0, 2) == 0 ? 49.0f : 80.0f, 2));
+                    if (ri(0, 2) == 0) {
+                        const uint32_t poly = lvd::path(ee_read<int32_t>(pv + 0x270));
+                        Vec4 c{0, 0, 0, 0};
+                        const int32_t n = ee_read<int32_t>(poly);
+                        for (int32_t i = 0; i < n; ++i) { const Vec4 q = VV(poly + 0x10 + u(i) * 16); c.x += q.x / n; c.y += q.y / n; c.z += q.z / n; }
+                        hero_at(near(c, 0, 3, 1));
+                    }
+                }
+                if (st == 19 && coin()) w32(0x001413d4, 0x16);
+                // the state's own edges: its goal reached (21 the gate, 18 the lunge box), its animation at the frame it
+                // tests with its end flag (2 / 9 / 13 / 26), the path's end (11), the floor level with the robots' point (17),
+                // the boss near the camera (the floor band)
+                {  // the gate it heads for (+0x330: states 4 / 11 set it), a gate of the level
+                    const std::vector<uint32_t> gates = class_moby(0x247);
+                    if (!gates.empty()) w32(pv + 0x330, pick(gates));
+                }
+                const uint32_t g = ee_read<uint32_t>(pv + 0x330);
+                if (st == 9 && coin()) { put(pv + 0x3c0, near(VV(path + 0x10), 0, 0.05f, 0)); wf(pv + 0x374, rf(0, 0.05f)); }
+                if (st == 12 && coin()) {  // (the charge allowed: phase 3, the hero near its box)
+                    w32(pv + 0x34c, 3);
+                    w32(pv + 0x364, 0);
+                    hero_at(near(VV(lvd::box(lvd::BOXES, ee_read<int32_t>(pv + 0x25c)) + 0x30), 0, 20, 2));
+                }
+                if (st == 21 && g != 0 && coin()) { put(pv + 0x3c0, near(VV(g + 0x10), 0, 0.05f, 0)); wf(pv + 0x374, rf(0, 0.05f)); }
+                if (st == 18 && coin()) { put(pv + 0x3c0, near(VV(lvd::box(lvd::BOXES, ee_read<int32_t>(pv + 0x3a8)) + 0x30), 0, 0.05f, 0)); wf(pv + 0x374, rf(0, 0.05f)); }
+                if ((st == 2 || st == 9 || st == 13 || st == 26) && coin()) {
+                    const uint8_t a = st == 2 ? 0xa : st == 9 ? 7 : st == 13 ? (coin() ? 2 : 4) : 0xe;
+                    static const int fr[] = {1, 16, 30, 0};
+                    moby_anim_set(m, a, fr[ri(0, 3)], 0);
+                    w8(m + 0x52, a);
+                    w8(m + 0x70, u(ri(0, 3)));
+                }
+                if (st == 2 && coin()) wf(0x0013f418, ee_read<float>(pv + 0x3c8) + rf(-4, 4));
+                if (st == 16 && coin()) deal_states(ee_read<int32_t>(pv + 0x29c), {5, 5, 5, 1});  // (bombs to throw)
+                if (st == 11 && coin()) {
+                    w32(pv + 0x348, ee_read<uint32_t>(path));
+                    w32(0x0013f64c, 0);
+                    w16(0x0013f65e, 0);
+                    hero_at(near(VV(m + 0x10), 0, 45, 2));
+                }
+                if (st == 17 && coin()) {  // (the boss's height level with the floor 4.3 to its side)
+                    Vec4 q{}, d = VV(m + 0xd0);
+                    vec3_set_length(q, d, coin() ? 4.3f : -4.3f);
+                    vec3_add(q, q, VV(pv + 0x3c0));
+                    wf(pv + 0x3c8, floor_probe_v(0.5f, q, 0) + rf(-0.8f, 0.8f));
+                }
+                if (coin()) { w8(m + 0x31, 1); if (coin()) put(m + 0x10, near(VV(0x001677c0), 0, 30, 3)); }
+                w8(m + 0x20, u(st));
+                return m;
+            }, 60);
+        }
         g_extra_noop_hooks.clear();
     }
 

@@ -1,8 +1,7 @@
-// Veldin's finale (level 18): what the boss (class 1422, still generated: veldin_finale_classes_tr_5.cpp) does to the
+// Veldin's finale (level 18): what the boss (class 1422: its update in veldin_finale_boss.cpp) does to the
 // level's other mobys, hand-written (part 1 of its port): its moby groups shown and hidden, the gates (class 583) it
 // opens and picks, the floating platforms (class 587) and the lift (class 586) it drives, the robots (class 1906) it
-// counts, the raft platforms (class 1584) it flags, and the level's sound starter. The generated boss calls them through
-// tools/codegen/gen/mkall/veldin_finale_classes.glue. Level 18 only: the addresses are the finale's (`orig: L18:`), its
+// counts, the raft platforms (class 1584) it flags, and the level's sound starter. The boss's update (veldin_finale_boss.cpp) calls them. Level 18 only: the addresses are the finale's (`orig: L18:`), its
 // own data L18_ADDR, the base ELF's bare (the sound slots 0x13e550). Declared in veldin_finale_own.h.
 //
 // A moby group is the level's list of moby indices (lvd::group: halfwords, the last with bit 15 set); its mobys are the

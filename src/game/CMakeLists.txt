@@ -321,6 +321,8 @@ add_library(rac1_game STATIC
     ovl/veldin_orbit_ship.cpp
     ovl/veldin_orbit_trooper.cpp
     ovl/veldin_finale_barrier.cpp
+    ovl/veldin_finale_boss.cpp
+    ovl/veldin_finale_boss_frame.cpp
     ovl/veldin_finale_boss_level.cpp
     ovl/veldin_finale_boss_moves.cpp
     ovl/veldin_finale_boss_props.cpp

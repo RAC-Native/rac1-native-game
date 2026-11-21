@@ -1,8 +1,7 @@
-// Veldin's finale (level 18): what the boss (class 1422, still generated: veldin_finale_classes_tr_5.cpp) reads and sets
+// Veldin's finale (level 18): what the boss (class 1422: its update in veldin_finale_boss.cpp) reads and sets
 // in the level around it, hand-written (part 2 of its port): the scripted camera move (class 644) started and its
 // progress, the rafts (class 1381) held and sunk with the ties they free, the record its pvar word 0 names dimmed by the
-// hero's distance, the hero's ride on a floating platform counted, the scene's Drek model scaled. The generated boss calls
-// them through tools/codegen/gen/mkall/veldin_finale_classes.glue (and its still-generated preamble L18:0x2f5e80 calls
+// hero's distance, the hero's ride on a floating platform counted, the scene's Drek model scaled. The boss's update (veldin_finale_boss.cpp) calls them (and its still-generated preamble L18:0x2f5e80 calls
 // 0x2dfaa0, 0x2f1cc8, 0x265ff8 the same way). Level 18 only: the addresses are the finale's (`orig: L18:`), its own data
 // L18_ADDR, the base ELF's bare (the hero 0x13f350, the frame time's square 0x15ed70). Declared in veldin_finale_own.h.
 #include <game/level/level_data.h>

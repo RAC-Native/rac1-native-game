@@ -28,10 +28,7 @@ void vf_class1381_update_l18(uint32_t a0);  // L18:0x002f16f0 (veldin_finale_raf
 void vf_class1392_update_l18(uint32_t a0);  // L18:0x002f1e68 (veldin_finale_barrier.cpp)
 void vf_class1402_update_l18(uint32_t a0);  // L18:0x002f2310 (veldin_finale_water.cpp)
 
-TrRet vf_2f5e80_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002f5e80
-TrRet vf_2f7288_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002f7288
-TrRet vf_2f76a0_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002f76a0
-void vf_class1422_update_l18(uint32_t a0);  // L18:0x002f2bf0
+void vf_class1422_update_l18(uint32_t a0);  // L18:0x002f2bf0 (veldin_finale_boss.cpp)
 void vf_class1432_update_l18(uint32_t a0);  // L18:0x002f7ab0
 void vf_class1434_update_l18(uint32_t a0);  // L18:0x002f7ad8
 TrRet vf_2a75f0_l18(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L18:0x002a75f0
