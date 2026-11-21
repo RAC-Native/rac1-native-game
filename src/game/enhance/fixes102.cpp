@@ -20,7 +20,7 @@
 namespace rac1 {
 
 namespace {
-constexpr int FIXES[] = {1, 2, 3, 5, 6, 7, 11, 15, 16, 17, 18, 19, 20, 22, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 49};  // the fixes of the 1.02 Fixes row (fixes102.h)
+constexpr int FIXES[] = {1, 2, 3, 5, 6, 7, 11, 15, 16, 17, 18, 19, 20, 22, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 45, 46, 49};  // the fixes of the 1.02 Fixes row (fixes102.h)
 constexpr int GAMEPLAY[] = {4, 8, 9, 10, 12, 13, 14, 21, 23, 24, 25, 31};  // the fixes of the 1.02 Gameplay row (fixes102.h)
 
 // orig: (none) — enhancement: a list variable's fixes (RAC1_FIXES102 / RAC1_GAMEPLAY102) as bits (bit n: fix n), `set`
@@ -249,6 +249,20 @@ bool fixes102_gemlik_turret_aim() {
 bool fixes102_oltanis_gondola_upright() {
     // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
     return fixes102_on(49) || region_core_moved();
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L18:0x2f2d08 .. 0x2f2dac and L18:0x2f2c08 (PAL 2.00 disc):
+// Veldin's finale's raft (class 1381) takes the hero for a rider after frame_scale_i(30) frames on it
+bool fixes102_finale_raft_ride() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(45) || region_core_moved();
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L18:0x2f38d0 (PAL 2.00 disc): Veldin's finale's water (class
+// 1402) carries a swimming Ratchet up with it
+bool fixes102_finale_water_carry() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(46) || region_core_moved();
 }
 
 // orig: (none) — enhancement (fixes102.h); the 1.02 build's decoy_object_update 0x2c5f10 (PAL disc 2.00): hero state

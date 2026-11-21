@@ -194,6 +194,17 @@ bool fixes102_gemlik_turret_aim();
 // +0xe0 and the hero's moby's agree, their dot product positive); false with the fix off, except on the PAL 2.00 disc
 // (region_core_moved()), whose own code it is
 bool fixes102_oltanis_gondola_upright();
+// orig: (none) — enhancement: fix 45: Veldin's finale's rafts (class 1381, vf_class1381_update_l18 L18:0x2f16f0, state 2):
+// true when the 1.02 build's test of the hero's ride applies (L18:0x2f2ae0 on the PAL 2.00 disc): the raft counts the
+// frames he stands on one of its platforms (+0x350) and takes him for a rider only past frame_scale_i(30) of them; held
+// also on a sinking raft of its class (state 4); its wait before it sinks once he is off is frame_scale_i(5), not 30;
+// false with the fix off, except on the PAL 2.00 disc (region_core_moved()), whose own code it is
+bool fixes102_finale_raft_ride();
+// orig: (none) — enhancement: fix 46: Veldin's finale's water (class 1402, vf_class1402_update_l18 L18:0x2f2310, state 2):
+// true when the 1.02 build's carry applies (L18:0x2f3710 on the PAL 2.00 disc, after the water's seek toward its height:
+// while it is more than 0.1 from it, Ratchet swimming (+0x208c 0x11 / 0x12) below its surface (+0x2f0) gets its height,
+// as fix 21 does on Rilgar); false with the fix off, except on the PAL 2.00 disc (region_core_moved()), whose own code it is
+bool fixes102_finale_water_carry();
 
 // orig: (none) — enhancement: fix 14 (1.02 Gameplay): the decoy `m` in its state of 0x2c4c08 pushed (an event 0x10000 of
 // strength 1000 from Ratchet's place) when Ratchet swims (state 0x31) within 1.5 of it; nothing with the fix off

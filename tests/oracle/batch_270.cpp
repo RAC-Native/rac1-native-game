@@ -9,6 +9,8 @@
 #include "ovl_oracle.h"
 #include "trial_guard.h"
 
+#include <game/enhance/advanced.h>
+
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/hero_move_mode.h>
 #include <game/ovl/veldin_finale_mobys.h>
@@ -51,6 +53,7 @@
 #include <cstring>
 #include <string>
 #include <map>
+#include <unordered_set>
 
 namespace rac1::oracle {
 
@@ -61,7 +64,8 @@ namespace {
 bool c2b_spr_check(const char* name) {
     static const char* const kNames[] = {"class1454", "class1906", "class638", "class885", "hero_move_mode", "class1134",
                                          "class1135", "class1355", "class583", "class644", "class805",
-                                         "own41_rocket", "own564_shell", "own624_ring", "own628_burst", "own568_bomb", "own583_gate", "own587_float"};  // (P18.1's: segment / sphere / floor collisions)
+                                         "own41_rocket", "own564_shell", "own624_ring", "own628_burst", "own568_bomb", "own583_gate", "own587_float",
+                                         "own644_pan", "own885_piece", "own983_ball", "own1355_diver"};  // (P18.2's: hero_place, sphere / floor collisions)  // (P18.1's: segment / sphere / floor collisions)
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -975,6 +979,430 @@ void batch_270() {
                 if (ri(0, 4) == 0) w32(0x001413d4, 0x77);
             } else hero_at(near(VV(m + 0x10), 0, 8, 1));
             return m;
+        });
+
+        // ---- P18.2: classes 644, 885, 983, 1355, 1381, 1392, 1402 hand-written (veldin_finale_camera_pan / _breakable /
+        // _energy_ball / _diver / _raft / _barrier / _water.cpp): each class through its states as the level sets them, each
+        // helper at its own address on the same states. Class 983 has no moby at the level's start: the balls are spawned
+        // by the level's own spawner (the generated L18:0x2ea0f0) and launched by L18:0x2ea168, from points near the hero.
+        // The 1.02 fixes 45 / 46 have their own checks (run with RAC1_FIXES102=45,46).
+        auto class_moby = [](int32_t cls) {  // the level's mobys of class `cls` (+0xa6)
+            std::vector<uint32_t> v;
+            for (uint32_t o = ee_read<uint32_t>(0x0015ffd8); o < ee_read<uint32_t>(0x0015ffe0); o += 0x100)
+                if (ee_read<uint8_t>(o + 0x20) < 0xfe && ee_read<int16_t>(o + 0xa6) == cls) v.push_back(o);
+            return v;
+        };
+        auto any_moby = [=] { return first_moby() + 0x100 * u(ri(0, 300)); };
+        auto timer = [](uint32_t a) { w32(a, ri(0, 3) == 0 ? u(ri(0, 2)) : u(ri(3, 200))); };  // (0 idle, 1 ending, more running)
+        auto dialogue_idle = [] {  // (the dialogue system idle: sub_00203908 takes the request)
+            w32(0x00179410, 0);
+            w32(0x00179410 + 0x24, 0xffffffffu);
+            w32(0x001516d0 + 0x50, 0);
+            w32(0x001516d0 + 0x1c, 0xffffffffu);
+        };
+        auto sound_slot = [](uint32_t m, uint32_t word) {  // a sound channel in the word: playing on `m` or not, or none
+            if (coin()) {
+                const uint32_t slot = u(ri(0, 15)), e = 0x0013e550 + slot * 0x70;
+                w32(word, slot);
+                if (coin()) w32(e + 0x88, m);
+                w8(e + 0x74, u(ri(0, 1)));
+            } else w32(word, 0xffffffffu);
+        };
+        // a helper of one of these classes at its own address, on the states of its class's generator
+        auto helpercheck = [level](const char* name, uint32_t addr, Ret ret, std::function<Args()> make, std::function<uint64_t(A)> port,
+                                   int n = 60) {
+            if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
+            l18check(name, addr, n, ret, [level, make] {
+                for (int attempt = 0; attempt < 60; ++attempt) {
+                    level();
+                    Args a = make();
+                    if (a.i.empty() || a.i[0] == 0) continue;
+                    w32(0x0015f5cc, R() & 0xffff);
+                    seed_rand();
+                    return a;
+                }
+                return Args{{0}, {}};
+            }, port);
+        };
+        if (std::getenv("B270_OWN_INFO") != nullptr) {
+            level();
+            for (const uint32_t c : {0x002df608u, 0x002e9768u, 0x002efb88u, 0x002f16f0u, 0x002f1e68u, 0x002f2310u})
+                for (const uint32_t m : mobys_with(c)) {
+                    const Vec4 p = VV(m + 0x10);
+                    std::printf("INFO spot class fn 0x%08x moby %u uid %d class %d at %.1f %.1f %.1f\n", c, (m - first_moby()) >> 8,
+                                static_cast<int>(ee_read<int16_t>(m + 0xb2)), static_cast<int>(ee_read<int16_t>(m + 0xa6)), p.x, p.y, p.z);
+                }
+        }
+
+        // class 644, the camera's move: each state; the fade near its ends; the move's progress at its start, middle, a fifth,
+        // its end; its wait; Clank's line or not (the dialogue system idle in half); a talk running or not; the hero held or not
+        auto make644 = [=]() -> uint32_t {
+            const std::vector<uint32_t> ms = mobys_with(0x002df608);
+            if (ms.empty()) return 0u;
+            fifty();
+            const uint32_t m = pick(ms), pv = ee_read<uint32_t>(m + 0x78);
+            const int st = ri(0, 5) == 0 ? ri(0, 6) : ri(2, 5);
+            w8(m + 0x20, u(st));
+            const Vec4 h = ee_ref<Vec4>(0x0013f3d0);
+            put(pv + 0x00, near(h, 2, 12, 3));
+            put(pv + 0x10, near(h, 2, 12, 3));
+            for (uint32_t o = 0x20; o < 0x40; o += 4) wf(pv + o, rf(-3.1f, 3.1f));
+            put(pv + 0x40, near(h, 0, 4, 0.5f));
+            static const float ts[] = {0.0f, 0.1f, 0.19f, 0.21f, 0.5f, 0.98f, 1.0f, 1.2f};
+            wf(pv + 0x60, coin() ? ts[ri(0, 7)] : rf(0, 1.1f));
+            wf(pv + 0x64, rf(-0.05f, 0.1f));
+            wf(pv + 0x68, rf(0.0005f, 0.01f));
+            static const float fs[] = {0.0f, 0.01f, 0.5f, 0.95f, 0.99f, 1.0f};
+            wf(pv + 0x6c, coin() ? fs[ri(0, 5)] : rf(0, 1));
+            wf(pv + 0x70, rf(0.01f, 0.1f));
+            timer(pv + 0x74);
+            w32(pv + 0x78, coin() ? 1u : 0u);
+            wf(0x0015f3fc, rf(0, 1));
+            w32(0x00179e10, ri(0, 2) == 0 ? 1u : 0u);
+            w32(0x00179e34, coin() ? 0xffffffffu : u(ri(0, 8)));
+            w32(0x001413d4, coin() ? 0x72u : u(ri(0, 0x30)));
+            if (coin()) dialogue_idle();
+            return m;
+        };
+        owncheck("own644_pan", 0x002df608, vf_class644_update_l18, make644, 120);
+
+        // class 885, the breakable pieces: set up (gone for good or not, a record to mark or none), hit by the mask 0x80000 or
+        // not, broken (class 892 or not), flying (near the ground, below its start by 16, in the open)
+        auto make885 = [=]() -> uint32_t {
+            const std::vector<uint32_t> ms = mobys_with(0x002e9768);
+            if (ms.empty()) return 0u;
+            fifty();
+            const uint32_t m = pick(ms), pv = ee_read<uint32_t>(m + 0x78);
+            const int st = ri(0, 7) == 0 ? 4 : ri(0, 3);
+            w8(m + 0x20, u(st));
+            if (st == 0) {
+                const uint32_t k = coin() ? 0xffu : u(ri(0, 15));
+                w8(m + 0xb0, k);
+                if (k != 0xff) w8(0x0014c050 + (ee_read<uint32_t>(0x0015ed84) << 4) + k, coin() ? 0xffu : u(ri(0, 3)));
+                w32(pv + 0, coin() ? SCR + 0x40 : 0u);
+            }
+            if (st == 1) {
+                give_hit(m, 0x80000);
+                if (ee_read<uint8_t>(m + 0xa4) != 0xff) w32(OV(0x00178100) + (ee_read<uint8_t>(m + 0xa4) << 6) + 0x34, m);
+            }
+            if (st == 2 && coin()) w16(m + 0xa6, 0x37c);
+            if (st == 3) {
+                put(pv + 0x10, Vec4{rf(-0.3f, 0.3f), rf(-0.3f, 0.3f), rf(-0.3f, 0.3f), 0});
+                wf(pv + 8, rf(-0.1f, 0.1f));
+                const float z = ee_read<float>(m + 0x18);
+                wf(pv + 0x1c, ri(0, 2) == 0 ? z + rf(15.5f, 17) : z + rf(-2, 2));
+                if (coin()) wf(m + 0x18, z - rf(0, 1.5f));
+            }
+            hero_at(near(VV(m + 0x10), 0, 8, 1));
+            return m;
+        };
+        owncheck("own885_piece", 0x002e9768, vf_class885_update_l18, make885, 120);
+        helpercheck("own885_group_break", 0x002e9e50, Ret::None, [=] {
+            const std::vector<uint32_t> ms = mobys_with(0x002e9768);
+            return Args{{ms.empty() || coin() ? u(ri(1, 40)) : u(ee_read<uint8_t>(pick(ms) + 0x21))}, {}};
+        }, [](A a) { vf_group_break_l18(a.i[0]); return uint64_t{0}; }, 30);
+
+        // class 983, the energy ball: spawned near the hero by its owner (the boss, another moby, none), launched at a point (near
+        // enough to blow up this frame, or far), its life running or out, its size, its arc started again or not, the level bright or
+        // not; state 0's wait; the hero in its way
+        auto make983 = [=]() -> uint32_t {
+            fifty();
+            const std::vector<uint32_t> boss = mobys_with(0x002f2bf0);
+            const uint32_t owner = !boss.empty() && coin() ? boss[0] : ri(0, 3) == 0 ? 0u : any_moby();
+            const Vec4 h = ee_ref<Vec4>(0x0013f3d0);
+            Vec4 from = near(h, 1, 10, 0);
+            from.z = h.z + rf(0.2f, 4);
+            put(SCR, from);
+            const uint32_t m = vf_2ea0f0_l18(owner, SCR, u(ri(0, 3) == 0 ? ri(0, 2) : ri(3, 300)), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0;
+            if (m == 0) return 0u;
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            Vec4 to = ri(0, 3) == 0 ? near(from, 0, 0.3f, 0.1f) : coin() ? h : near(h, 0, 15, 2);
+            put(SCR + 0x10, to);
+            vf_2ea168_l18(m, SCR, SCR + 0x10, ri(0, 5) == 0 ? 0u : 1u, 0, 0, 0, 0, coin() ? rf(0.2f, 2) : 1.0f, 0, 0, 0, 0, 0, 0, 0);
+            moby_update_transform(m);
+            if (ri(0, 4) == 0) w8(m + 0x20, u(ri(0, 3)));
+            if (coin()) wf(pv + 0x24, ri(0, 3) == 0 ? rf(0, 0.25f) : rf(0.3f, 2));
+            if (coin()) timer(pv + 0x34);
+            if (coin()) timer(pv + 0x28);
+            w32(0x00161fec, ri(0, 2) == 0 ? 0u : 1u);
+            w8(0x0013e533, coin() ? 1u : 0u);
+            if (coin()) hero_at(near(VV(m + 0x10), 0, 2.5f, 0.5f));
+            return m;
+        };
+        owncheck("own983_ball", 0x002e9e70, vf_class983_update_l18, make983, 120);
+        // its helpers on the same balls (the arc's: started again first in half, as the update runs them)
+        auto ball_args = [=] { const uint32_t m = make983(); return Args{{m}, {}}; };
+        helpercheck("own983_fizz", 0x002ea598, Ret::None, ball_args, [](A a) { vf_ball_fizz_l18(a.i[0]); return uint64_t{0}; });
+        helpercheck("own983_blast", 0x002ea800, Ret::None, [=] {
+            const Args a = ball_args();
+            if (coin()) {  // (the shards' and the shake's sizes either side of 0, the sprays' counts small)
+                for (const uint32_t o : {0x00161fc0u, 0x00161fccu, 0x00161fd8u, 0x00161fe4u}) wf(o, coin() ? 0.0f : rf(0.1f, 2));
+                w32(0x00161f6c, u(ri(0, 4)));
+                w32(0x00161f98, u(ri(0, 4)));
+            }
+            return a;
+        }, [](A a) { vf_ball_blast_l18(a.i[0]); return uint64_t{0}; });
+        helpercheck("own983_arc_reset", 0x002eacd8, Ret::None, ball_args, [](A a) { vf_ball_arc_reset_l18(a.i[0]); return uint64_t{0}; });
+        helpercheck("own983_arc", 0x002eaea0, Ret::None, [=] {
+            const Args a = ball_args();
+            if (a.i[0] != 0 && coin()) {
+                w32(0x00161fec, 1);
+                vf_ball_arc_reset_l18(a.i[0]);
+                for (uint32_t j = 0; j < 4; ++j) w16(0x001620b8 + j * 2, u(ri(0, 3)));  // (some branches re-form, some flicker)
+            }
+            return a;
+        }, [](A a) { vf_ball_arc_l18(a.i[0]); return uint64_t{0}; });
+
+        // class 1355, the diver: set up, waiting, roaming (its point reached or not, its time up, the moby it keeps off near or
+        // not), diving (above or below its home's height), pitched up with its wait ending; the trail's frame and count; the level's
+        // mode 2 at the boss's phase 3; a dive's odds 1 in 1
+        auto make1355 = [=]() -> uint32_t {
+            const std::vector<uint32_t> ms = mobys_with(0x002efb88);
+            if (ms.empty()) return 0u;
+            fifty();
+            const uint32_t m = pick(ms), pv = ee_read<uint32_t>(m + 0x78);
+            set_up(m, vf_class1355_update_l18);
+            const int st = ri(0, 6) == 0 ? ri(0, 1) : ri(2, 4);
+            w8(m + 0x20, u(st));
+            const Vec4 home = VV(pv + 0x120);
+            Vec4 at = near(home, 0, 25, 0);
+            at.z = home.z + rf(-1, 12);
+            put(m + 0x10, at);
+            wf(m + 0x48, rf(-3.1f, 3.1f));
+            wf(m + 0x44, rf(-1.5f, 1.5f));
+            moby_update_transform(m);
+            if (coin()) put(pv + 0x110, near(at, 0, 2.5f, 1)); else put(pv + 0x110, near(home, 5, 20, 5));
+            timer(pv + 0x160);
+            if (coin()) { const uint32_t o = any_moby(); w32(pv + 0x16c, o); if (coin()) put(o + 0x10, near(at, 0, 5, 1)); }
+            else w32(pv + 0x16c, coin() ? 0u : ee_read<uint32_t>(0x001413d0));
+            wf(pv + 0x14c, rf(0, 1));
+            put(pv + 0x130, Vec4{rf(-0.3f, 0.3f), rf(-0.3f, 0.3f), rf(-0.3f, 0.1f), 0});
+            if (st == 3 && coin()) wf(m + 0x18, home.z + rf(-0.5f, 0.8f));
+            w16(pv + 0x164, u(ri(0, 5)));
+            w16(pv + 0x166, u(ri(0, 15)));
+            w32(0x00162230, coin() ? 0u : 0xffffffffu);
+            if (ri(0, 3) == 0) w32(0x00162234, 1);
+            if (ri(0, 6) == 0) { w32(0x0015f5c4, 2); w32(0x0016d290, coin() ? 3u : 2u); }
+            return m;
+        };
+        owncheck("own1355_diver", 0x002efb88, vf_class1355_update_l18, make1355, 120);
+        helpercheck("own1355_step", 0x002f0120, Ret::Int32, [=] {
+            const uint32_t m = make1355();
+            return Args{{m, m == 0 ? 0u : ee_read<uint32_t>(m + 0x78) + 0x110}, {}};
+        }, [](A a) { return uint64_t{vf_diver_step_l18(a.i[0], a.i[1])}; });
+        helpercheck("own1355_new_point", 0x002f02e8, Ret::None, [=] {
+            const uint32_t m = make1355();
+            return Args{{m, m == 0 ? 0u : ee_read<uint32_t>(m + 0x78) + 0x110}, {}};
+        }, [](A a) { vf_diver_new_point_l18(a.i[0], a.i[1]); return uint64_t{0}; });
+        helpercheck("own1355_trail", 0x002f0848, Ret::None, [=] { return Args{{make1355()}, {}}; },
+                    [](A a) { vf_diver_trail_l18(a.i[0]); return uint64_t{0}; });
+
+        // class 1381, the raft: set up, waiting, gliding (the level's word on or off, its progress about 1.5, the rocks' and the
+        // end's marks, the odds of a rock), the hero on one of its platforms, on a class 1892 moby, on another raft (sinking or
+        // not), on another moby or on none, in the air or not, its wait ending; sinking (above or below height 20)
+        auto make1381 = [=]() -> uint32_t {
+            const std::vector<uint32_t> ms = mobys_with(0x002f16f0);
+            if (ms.empty()) return 0u;
+            fifty();
+            const uint32_t m = pick(ms), pv = ee_read<uint32_t>(m + 0x78);
+            if (ri(0, 5) != 0) set_up(m, vf_class1381_update_l18);
+            const int st = ri(0, 5) == 0 ? ri(0, 5) : (coin() ? 2 : ri(1, 4));
+            w8(m + 0x20, u(st));
+            w32(0x00162288, ri(0, 3) == 0 ? 0u : 1u);
+            static const float ps[] = {0.0f, 0.5f, 1.4999f, 1.5f, 1.9f, 2.0f};
+            wf(pv + 0x330, coin() ? ps[ri(0, 5)] : rf(0, 2));
+            if (coin()) wf(pv + 0x330, ee_read<float>(coin() ? 0x001622b8u : 0x001622b4u) + rf(-0.05f, 0.05f));
+            wf(pv + 0x334, rf(-0.02f, 0.05f));
+            wf(pv + 0x344, ri(0, 2) == 0 ? 0.0f : rf(1, 12));
+            w32(pv + 8, coin() ? 1u : 0u);
+            w32(pv + 0x348, coin() ? 1u : 0u);
+            w32(pv + 0x350, u(ri(0, 40)));
+            timer(pv + 0x34c);
+            wf(pv + 0x340, rf(-0.5f, 0.2f));
+            if (st == 4 && coin()) wf(m + 0x18, 20.0f + rf(-0.6f, 0.6f));
+            const int n = ee_read<int32_t>(pv + 0x338);
+            const int who = ri(0, 5);
+            uint32_t under = 0;
+            if (who == 0 && n > 0) under = first_moby() + (ee_read<uint32_t>(pv + 0x50 + u(ri(0, n - 1)) * 0x30) << 8);
+            else if (who == 1) { const std::vector<uint32_t> g = class_moby(0x764); under = g.empty() ? 0u : pick(g); }
+            else if (who == 2) { under = pick(ms); if (coin()) w8(under + 0x20, 4); }
+            else if (who == 3) under = any_moby();
+            w32(HERO + 0x2fc, under);
+            w16(HERO + 0x30e, ri(0, 3) == 0 ? 1u : 0u);
+            return m;
+        };
+        owncheck("own1381_raft", 0x002f16f0, vf_class1381_update_l18, make1381, 160);
+        helpercheck("own1381_platform", 0x002fa8e0, Ret::None, [=] {
+            const uint32_t m = make1381();
+            if (m == 0) return Args{{0}, {}};
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            const int n = ee_read<int32_t>(pv + 0x338);
+            uint32_t o = n > 0 && ri(0, 3) != 0 ? first_moby() + (ee_read<uint32_t>(pv + 0x50 + u(ri(0, n - 1)) * 0x30) << 8) : any_moby();
+            if (ee_read<int16_t>(o + 0xa6) == 0x630) w32(ee_read<uint32_t>(o + 0x78) + 0x84, coin() ? any_moby() : 0u);  // (its +0x84 moby, or none)
+            return Args{{o}, {}};
+        }, [](A a) { vf_raft_platform_retire_l18(a.i[0]); return uint64_t{0}; });
+
+        // class 1392, the force field: set up, standing (its hum playing or not, its switch none / not a switch / below its state 3
+        // / at it or past), down (fading)
+        auto make1392 = [=]() -> uint32_t {
+            const std::vector<uint32_t> ms = mobys_with(0x002f1e68);
+            if (ms.empty()) return 0u;
+            fifty();
+            const uint32_t m = pick(ms), pv = ee_read<uint32_t>(m + 0x78);
+            const int st = ri(0, 5) == 0 ? ri(0, 3) : 1;
+            w8(m + 0x20, u(st));
+            const std::vector<uint32_t> sws = class_moby(0x267);
+            const int k = ri(0, 4);
+            if (k == 0) w32(pv + 0, 0xffffffffu);
+            else if (k == 1) w32(pv + 0, (any_moby() - first_moby()) >> 8);
+            else if (!sws.empty()) {
+                const uint32_t o = ee_read<uint32_t>(pv + 0) != 0xffffffffu && coin() ? first_moby() + (ee_read<uint32_t>(pv + 0) << 8) : pick(sws);
+                w32(pv + 0, (o - first_moby()) >> 8);
+                w8(o + 0x20, u(ri(0, 5)));
+            }
+            sound_slot(m, pv + 4);
+            wf(pv + 0xc, rf(0, 1));
+            return m;
+        };
+        owncheck("own1392_field", 0x002f1e68, vf_class1392_update_l18, make1392, 120);
+
+        // class 1402, the water: set up (the level's word set or not), its first frame (the flag set or not, its turn, the hero's
+        // byte), toward +0 / +4 (the hit bits 4 / 8, its turn), each kind of draw (the ripple's phase about 1); the hero swimming
+        auto make1402 = [=]() -> uint32_t {
+            const std::vector<uint32_t> ms = mobys_with(0x002f2310);
+            if (ms.empty()) return 0u;
+            fifty();
+            const uint32_t m = pick(ms), pv = ee_read<uint32_t>(m + 0x78);
+            const int st = ri(0, 7) == 0 ? 4 : ri(0, 3);
+            w8(m + 0x20, u(st));
+            w32(0x001622fc, ri(0, 2) == 0 ? 0u : (coin() ? 1u : 0x101u));
+            w32(0x001622f8, u(ri(0, 3)));
+            w8(0x0013d406, coin() ? 1u : 0u);
+            w8(0x00141400, ri(0, 2) == 0 ? 1u : 0u);
+            w32(pv + 8, coin() ? 1u : 0u);
+            w8(m + 0xbc, ri(0, 2) == 0 ? u(ri(0, 15)) : (coin() ? 4u : 8u));
+            w32(pv + 0x14, ri(0, 6) == 0 ? u(ri(3, 4)) : u(ri(0, 2)));
+            wf(0x00162308, rf(0.8f, 1.0f));
+            const float lo = ee_read<float>(pv + 0), hi = ee_read<float>(pv + 4);
+            wf(m + 0x18, coin() ? lo + (hi - lo) * rf(0, 1) : (coin() ? lo : hi) + rf(-0.15f, 0.15f));
+            wf(pv + 0x18, rf(-0.05f, 0.05f));
+            if (coin()) { w32(HERO + 0x208c, coin() ? 0x11u : 0x12u); wf(HERO + 0x2f0, ee_read<float>(m + 0x18) + rf(-1, 1)); }
+            return m;
+        };
+        owncheck("own1402_water", 0x002f2310, vf_class1402_update_l18, make1402, 120);
+        helpercheck("own1402_group", 0x002f2598, Ret::None, [=] { return Args{{make1402()}, {}}; },
+                    [](A a) { vf_water_group_l18(a.i[0]); return uint64_t{0}; });
+
+        // 1.02 fixes 45 and 46 (the PAL 2.00 disc's own code, ported): the port with the fix on against the port with it off on
+        // an equivalent state, the fix's own words set as its 2.00 code sets them. Run with RAC1_FIXES102=45,46.
+        // - fix 45, the raft: set up, its wait is frame_scale_i(5) and its +0x350 0; gliding with the hero on a platform, the
+        //   frames ridden counted and ridden only past frame_scale_i(30) (the port without the fix, which takes him for a rider at
+        //   once, run with the raft's +0x348 as the fix leaves it); on a sinking raft of its class held (the port without the fix
+        //   run with the hero in the air, +0x30e, put back); otherwise the same
+        // - fix 46, the water toward +0: Ratchet swimming below its surface gets its height when it is more than 0.1 from +0
+        auto fixcheck = [=](const char* name, int fix, int cases, const std::function<uint32_t()>& make,
+                            const std::function<int(uint32_t, std::vector<uint8_t>&)>& expect) {
+            if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
+            const char* fx = std::getenv("RAC1_FIXES102");
+            if (fx == nullptr || std::string(fx).find(std::to_string(fix)) == std::string::npos) {
+                std::printf("%-26s skipped (run with RAC1_FIXES102=%d)\n", name, fix);
+                ++g_skipped;
+                return;
+            }
+            int bad = 0, n = 0, differ = 0;
+            static std::vector<uint8_t> start, with_fix, expected;
+            const std::unordered_set<uint32_t> ignored(g_ignored_words.begin(), g_ignored_words.end());
+            for (int c = 0; c < cases; ++c) {
+                level();
+                const uint32_t m = make();
+                if (m == 0) continue;
+                w32(0x0015f5cc, R() & 0xffff);
+                seed_rand();
+                uint8_t* ram = ee_get_ram_base();
+                start.assign(ram, ram + 0x02000000);
+                g_advanced_disabled = false;
+                if (fix == 45) vf_class1381_update_l18(m); else vf_class1402_update_l18(m);
+                g_advanced_disabled = true;
+                with_fix.assign(ram, ram + 0x02000000);
+                std::memcpy(ram, start.data(), start.size());
+                differ += expect(m, expected);
+                ++n;
+                for (uint32_t a = 0x00100000; a < 0x02000000; a += 4) {
+                    if (ignored.count(a) != 0) continue;
+                    if (a >= ee_stack_ptr() - 0x10000 && a < ee_stack_ptr() + 0x10000) continue;
+                    uint32_t xw, yw;
+                    std::memcpy(&xw, &with_fix[a], 4); std::memcpy(&yw, &expected[a], 4);
+                    if (xw != yw) { if (bad < 8) std::printf("  %s case %d: %08x fix=%08x expected=%08x\n", name, c, a, xw, yw); ++bad; break; }
+                }
+            }
+            std::printf("%-26s %s (%d cases, %d where the fix changes the result)\n", name, bad == 0 && differ > 0 ? "ok" : "FAIL", n, differ);
+            if (bad != 0 || differ == 0) ++g_fail;
+        };
+        fixcheck("own1381_fix45", 45, 200, [=]() -> uint32_t {
+            const uint32_t m = make1381();
+            if (m == 0) return 0u;
+            if (ri(0, 4) == 0) w8(m + 0x20, 0);
+            else if (ri(0, 4) != 0) w8(m + 0x20, 2);
+            return m;
+        }, [=](uint32_t m, std::vector<uint8_t>& out) {
+            // the expected result: the port without the fix on the state the fix's test makes equivalent, then the fix's words
+            uint8_t* ram = ee_get_ram_base();
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            const int st = ee_read<uint8_t>(m + 0x20);
+            int changed = 0;
+            if (st == 0) {
+                vf_class1381_update_l18(m);
+                if (ee_read<uint8_t>(m + 0x20) == 1) { w32(pv + 0x34c, u(frame_scale_i(5))); w32(pv + 0x350, 0); ++changed; }
+                out.assign(ram, ram + 0x02000000);
+                return changed;
+            }
+            if (st != 2) { vf_class1381_update_l18(m); out.assign(ram, ram + 0x02000000); return 0; }
+            const int n = ee_read<int32_t>(pv + 0x338);
+            const uint32_t under = ee_read<uint32_t>(HERO + 0x2fc);
+            bool on_platform = false;
+            for (int k = 0; k < n; ++k)
+                if (under == first_moby() + (ee_read<uint32_t>(pv + 0x50 + u(k) * 0x30) << 8)) on_platform = true;
+            const bool on_sinking = under != 0 && ee_read<int16_t>(under + 0xa6) == ee_read<int16_t>(m + 0xa6) && ee_read<uint8_t>(under + 0x20) == 4;
+            if (on_platform) {
+                const uint32_t ridden = ee_read<uint32_t>(pv + 0x350) + 1;
+                const uint32_t was = ee_read<uint32_t>(pv + 0x348);
+                vf_class1381_update_l18(m);  // (without the fix: held, +0x348 1)
+                w32(pv + 0x350, ridden);
+                const uint32_t now = frame_scale_i(0x1e) < static_cast<int32_t>(ridden) ? 1u : was;
+                if (now != 1) ++changed;
+                w32(pv + 0x348, now);
+            } else if (on_sinking) {
+                const uint16_t air = ee_read<uint16_t>(HERO + 0x30e);
+                w16(HERO + 0x30e, 1);
+                vf_class1381_update_l18(m);
+                w16(HERO + 0x30e, air);
+                ++changed;
+            } else {
+                vf_class1381_update_l18(m);
+            }
+            out.assign(ram, ram + 0x02000000);
+            return changed;
+        });
+        fixcheck("own1402_fix46", 46, 160, [=]() -> uint32_t {
+            const uint32_t m = make1402();
+            if (m == 0) return 0u;
+            w8(m + 0x20, ri(0, 4) == 0 ? u(ri(0, 3)) : 2u);
+            w8(m + 0xbc, 0);
+            if (ri(0, 4) != 0) { w32(HERO + 0x208c, coin() ? 0x11u : 0x12u); wf(HERO + 0x2f0, ee_read<float>(m + 0x18) + rf(-1, 0.5f)); }
+            return m;
+        }, [=](uint32_t m, std::vector<uint8_t>& out) {
+            uint8_t* ram = ee_get_ram_base();
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            const bool toward_low = ee_read<uint8_t>(m + 0x20) == 2;
+            vf_class1402_update_l18(m);
+            int changed = 0;
+            if (toward_low) {
+                const float z = ee_read<float>(m + 0x18), goal = ee_read<float>(pv + 0);
+                const uint32_t swim = ee_read<uint32_t>(HERO + 0x208c);
+                if (0.1f < std::fabs(z - goal) && (swim == 0x11 || swim == 0x12) && ee_read<float>(HERO + 0x2f0) < z) { wf(HERO + 0x2f0, z); ++changed; }
+            }
+            out.assign(ram, ram + 0x02000000);
+            return changed;
         });
         g_extra_noop_hooks.clear();
     }
