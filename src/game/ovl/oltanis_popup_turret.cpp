@@ -168,10 +168,10 @@ void olt_class30_update_l14(uint32_t m) {
         break;
     }
     case 3: {  // (0x002b3e68) idle above ground
-        const uint32_t tgt_addr = ee_stack_alloc(0x10);
+        const uint32_t tgt_addr = ee_stack_alloc(0x50);  // (target_select's whole record, 0x48 bytes: +0 the point, +0x40 the moby, +0x44 the result)
         const int32_t sel = target_select_any(m, tgt_addr, 34.0f);
         const bool in_box = (sel != 2 && point_in_box(tgt_addr, lw(pv + 0x90)) != 0);
-        ee_stack_free(0x10);
+        ee_stack_free(0x50);
         if (in_box) {
             sb(m + 0x20, 4);
             moby_set_anim(m, 3, 0);
@@ -220,10 +220,10 @@ void olt_class30_update_l14(uint32_t m) {
             }
         }
 
-        const uint32_t tgt_addr = ee_stack_alloc(0x10);
+        const uint32_t tgt_addr = ee_stack_alloc(0x50);  // (target_select's whole record)
         const int32_t sel = target_select_any(m, tgt_addr, 34.0f);
         const bool lost = (sel == 2 || point_in_box(tgt_addr, lw(pv + 0x90)) == 0);
-        ee_stack_free(0x10);
+        ee_stack_free(0x50);
         if (lost && timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(pv + 0x74))) != 0 &&
             (lbu(m + 0x70) & 2) != 0 && lbu(m + 0x52) == 3) {
             sh(pv + 0x76, static_cast<uint16_t>(frame_scale_i(lw(L14_ADDR(0x00161534)))));
