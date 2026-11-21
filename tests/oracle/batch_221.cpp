@@ -52,6 +52,7 @@
 #include <game/ovl/shared_sandmouse.h>
 #include <game/ovl/shared_spawner.h>
 #include <game/ovl/shared_swingshot_target.h>
+#include <game/ovl/shadows.h>
 #include <game/ovl/sound_emitter.h>
 #include <game/ovl/variants_l14.h>
 #include <runtime/kernel/disc.h>
@@ -2791,6 +2792,217 @@ void batch_221() {
                     return Args{{CAM}, {}};
                 }, [](A a) { olt_cam_type21_exit_l14(a.i[0]); return uint64_t{0}; });
                 g_ignored_words.resize(n_ign);
+            }
+        }
+
+        // ---- P14.5: the draw-list callbacks of classes 8 (oltanis_searchlight_beams.cpp), 211, 386, 610 (oltanis_draws.cpp) and
+        // the level's copy of shadows_vu1_setup the beams' cone calls. The screen and projection set up, the camera dist away from
+        // the moby (a random side, dz above it) and the view from it, the packet cursor on a buffer of the test area (0x800000 +
+        // up to 8 quadwords, its end 0x8f0000), so that quad_draw / prim_list_packet write their packets there and they are
+        // compared. VU0: none of these callbacks has a VU0 instruction of its own; the last VU0 writers in the original's run are
+        // its matrix and drawing routines (mat4_mul, mat4_transform, quad_draw ...), whose ports keep no VU0 state, as in the
+        // generated code before: no lane is compared (mat4_scale_diag's lanes, the cone's only VU0 hand-off, are batch 506's).
+        {
+            auto view_from = [](uint32_t m, float dist, float dz) {
+                if (ee_read<uint16_t>(0x001518d0) == 0) { w16(0x001518d0, 640); w16(0x001518d2, 448); }
+                screen_setup();
+                projection_setup();
+                if (m != 0) {
+                    const Vec4 t = ee_ref<Vec4>(m + 0x10);
+                    const float a = rf(-3.1f, 3.1f);
+                    ee_ref<Vec4>(OV(0x00166dc0)) = Vec4{t.x - dist * std::cos(a), t.y - dist * std::sin(a), t.z + dz, 1.0f};
+                    wf(OV(0x00166dd8), a);
+                    wf(OV(0x00166dd4), 0.1f);
+                }
+                render_view_setup();
+                w32(OV(0x001611c0), 0x00800000u + u(ri(0, 8)) * 0x10u);
+                w32(OV(0x0015f5f8), 0x008f0000u);
+            };
+            auto near_point = [](uint32_t at, uint32_t m, float r, float w) {  // a point within r of moby m, its w lane w
+                const Vec4 c = ee_ref<Vec4>(m + 0x10);
+                ee_ref<Vec4>(at) = Vec4{c.x + rf(-r, r), c.y + rf(-r, r), c.z + rf(-r, r), w};
+            };
+            auto unit_dir = [](uint32_t at) {
+                const float a = rf(-3.1f, 3.1f), e = rf(-1.4f, 0.3f);
+                ee_ref<Vec4>(at) = Vec4{std::cos(e) * std::cos(a), std::cos(e) * std::sin(a), std::sin(e), coin() ? 0.0f : 1.0f};
+            };
+            const std::vector<uint32_t> drones = mobys_with(0x002ac618);
+            // L14:0x20f9d0, the level's copy of shadows_vu1_setup (Veldin's 0x1fc740): the VU1 program's upload or not, the Z bias
+            l14check("p145_shadows_vu1_setup", 0x0020f9d0, 40, Ret::None, [level, view_from, drones] {
+                level();
+                view_from(drones.empty() ? 0u : drones[static_cast<size_t>(ri(0, static_cast<int>(drones.size()) - 1))], rf(5.0f, 40.0f), rf(0.5f, 6.0f));
+                w32(OV(0x0015f5e0), coin() ? 7u : u(ri(0, 6)));
+                wf(OV(0x0015f308), coin() ? 0.0f : rf(-0.05f, 0.05f));
+                return Args{};
+            }, [](A) { shadows_vu1_setup(); return uint64_t{0}; });
+            if (!drones.empty()) {
+                // class 8's spot: its place near the drone, its size and pull, the alarm, the camera from on the spot (no pull)
+                // to 40 away, so that the pull is the most, the distance less the margin, or 0
+                l14check("p145_cb_2ae260", 0x002ae260, 300, Ret::None, [level, view_from, near_point, drones] {
+                    level();
+                    const uint32_t m = drones[static_cast<size_t>(ri(0, static_cast<int>(drones.size()) - 1))];
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    near_point(pv + 0x90, m, 6.0f, rf(-2.0f, 2.0f));
+                    w16(pv + 0x202, coin() ? 0u : u(ri(1, 3)));
+                    wf(pv + 0x214, rf(0.3f, 4.0f));
+                    wf(pv + 0x218, ri(0, 3) == 0 ? 0.0f : rf(0.5f, 12.0f));
+                    view_from(m, rf(3.0f, 40.0f), rf(0.5f, 8.0f));
+                    const int k = ri(0, 5);
+                    if (k == 0) {  // the camera on the raised spot: no pull
+                        Vec4 s = ee_ref<Vec4>(pv + 0x90);
+                        s.z = fpu_add(s.z, u2f(0x3c23d70au));
+                        s.w = 1.0f;
+                        ee_ref<Vec4>(OV(0x00166dc0)) = s;
+                    } else if (k == 1) {  // the camera about the margin away: the pull clamped at 0
+                        const Vec4 s = ee_ref<Vec4>(pv + 0x90);
+                        const float d = ee_read<float>(L14_ADDR(0x0016147c)) * rf(0.5f, 1.5f);
+                        ee_ref<Vec4>(OV(0x00166dc0)) = Vec4{s.x + d, s.y, s.z, 1.0f};
+                    }
+                    return Args{{m}, {}};
+                }, [](A a) { olt_cb_2ae260_l14(a.i[0]); return uint64_t{0}; });
+
+                // class 8's beams, from a drone as their master: 0 .. all of its group's drones drawn (never more: the original
+                // then reads the null moby), each drone's glow / cone bits (+0x20c: 8, 2, both, none), its alarm, its glow's place and
+                // angle, its beam's origin and direction, the drawn list left over from before; the camera among the group
+                l14check("p145_cb_2aee28", 0x002aee28, 300, Ret::None, [level, view_from, near_point, unit_dir, drones] {
+                    level();
+                    const uint32_t m = drones[static_cast<size_t>(ri(0, static_cast<int>(drones.size()) - 1))];
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    std::vector<uint32_t> group;
+                    const uint32_t mpool = ee_read<uint32_t>(OV(0x0015ffd8));
+                    if (uint32_t e = lvd::group(ee_read<uint8_t>(m + 0x21)); e != 0)
+                        for (;; e += 2) {
+                            group.push_back(mpool + ((ee_read<uint16_t>(e) & 0x7fffu) << 8));
+                            if (ee_read<int16_t>(e) < 0) break;
+                        }
+                    w16(pv + 0x20a, group.empty() ? 0u : u(ri(0, static_cast<int>(group.size()))));
+                    for (const uint32_t d : group) {
+                        const uint32_t dp = ee_read<uint32_t>(d + 0x78);
+                        if (ee_read<uint32_t>(d + 0x74) != 0x002ac618u) continue;  // (a member of another class: left as it is)
+                        static const uint32_t bits[] = {0, 2, 8, 0xa, 0xb};
+                        w32(dp + 0x20c, bits[ri(0, 4)]);
+                        w16(dp + 0x202, coin() ? 0u : 1u);
+                        wf(dp + 0x160, rf(-3.14f, 3.14f));
+                        near_point(dp + 0x1d4, d, 3.0f, 0.0f);
+                        near_point(dp + 0xd0, d, 2.0f, rf(-1.0f, 1.0f));
+                        unit_dir(dp + 0xa0);
+                    }
+                    for (uint32_t i = 0; i < 20; ++i) w32(L14_ADDR(0x001d8680) + i * 4, coin() ? 0xffffffffu : R());
+                    if (coin())  // the glow's colour and its fade per ring (the level's never reach 0 in 16 rings): to the 0 clamps
+                        for (uint32_t k = 0; k < 4; ++k) {
+                            w32(L14_ADDR(0x00161444) + k * 4, u(ri(0, 255)));
+                            w32(L14_ADDR(0x00161454) + k * 4, u(ri(0, 40)));
+                        }
+                    view_from(group.empty() ? m : group[static_cast<size_t>(ri(0, static_cast<int>(group.size()) - 1))], rf(4.0f, 60.0f), rf(0.5f, 10.0f));
+                    w32(OV(0x0015f5e0), coin() ? 7u : 0u);
+                    return Args{{m}, {}};
+                }, [](A a) { olt_cb_2aee28_l14(a.i[0]); return uint64_t{0}; });
+            }
+            // class 211's two lights: their places near the drone (the second's w lane as it comes), the camera around it
+            if (const std::vector<uint32_t> ms = mobys_with(0x002d5f40); !ms.empty())
+                l14check("p145_cb_2d71f0", 0x002d71f0, 200, Ret::None, [level, view_from, near_point, ms] {
+                    level();
+                    const uint32_t m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    near_point(pv + 0xe0, m, 2.0f, rf(-2.0f, 2.0f));
+                    near_point(pv + 0x200, m, 2.0f, coin() ? 1.0f : rf(-2.0f, 2.0f));
+                    view_from(m, rf(3.0f, 40.0f), rf(-2.0f, 8.0f));
+                    return Args{{m}, {}};
+                }, [](A a) { olt_cb_2d71f0_l14(a.i[0]); return uint64_t{0}; });
+            // class 386's ribbons: the scroll about its wrap at -8, the clock at 60 or 50 Hz, the moby's heading and angles, its two
+            // point lists along a random curve (distinct points)
+            if (const std::vector<uint32_t> ms = mobys_with(0x002dee28); !ms.empty())
+                l14check("p145_cb_2df458", 0x002df458, 200, Ret::None, [level, view_from, set_50hz, ms] {
+                    level();
+                    const uint32_t m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    if (ri(0, 2) == 0) set_50hz();
+                    wf(pv + 0x1ec, coin() ? rf(-8.3f, -7.6f) : rf(-8.0f, 1.0f));
+                    wf(m + 0x48, rf(-3.1f, 3.1f));
+                    if (coin()) { wf(m + 0x40, rf(-0.5f, 0.5f)); wf(m + 0x44, rf(-0.5f, 0.5f)); }
+                    for (uint32_t list = 0; list < 2; ++list) {
+                        const uint32_t base = pv + list * 0xa0, n = list == 0 ? 10u : 20u;
+                        Vec4 p{rf(-1.0f, 1.0f), rf(-1.0f, 1.0f), rf(-1.0f, 1.0f), 1.0f};
+                        const float a = rf(-3.1f, 3.1f);
+                        for (uint32_t i = 0; i < n; ++i) {
+                            const float b = a + rf(-0.6f, 0.6f), step = rf(0.2f, 1.0f);
+                            p.x += step * std::cos(b); p.y += step * std::sin(b); p.z += rf(-0.3f, 0.3f);
+                            p.w = coin() ? 1.0f : rf(-1.0f, 1.0f);
+                            ee_ref<Vec4>(base + i * 0x10) = p;
+                        }
+                    }
+                    view_from(m, rf(4.0f, 40.0f), rf(-1.0f, 8.0f));
+                    return Args{{m}, {}};
+                }, [](A a) { olt_cb_2df458_l14(a.i[0]); return uint64_t{0}; });
+            // class 610's sparks: each one's timer running or 0, its alpha, its place near the moby and its size (w)
+            if (const std::vector<uint32_t> ms = mobys_with(0x002eaf88); !ms.empty())
+                l14check("p145_cb_2eb810", 0x002eb810, 200, Ret::None, [level, view_from, near_point, ms] {
+                    level();
+                    const uint32_t m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    const int lit = ri(0, 3);
+                    for (uint32_t i = 0; i < 48; ++i) {
+                        w16(pv + 0x320 + i * 2, ri(0, 3) < lit ? u(ri(1, 60)) : 0u);
+                        w16(pv + 0x3e0 + i * 2, u(ri(0, 0x80)));
+                        near_point(pv + 0x20 + i * 0x10, m, 3.0f, rf(0.05f, 2.0f));
+                    }
+                    view_from(m, rf(3.0f, 40.0f), rf(-1.0f, 8.0f));
+                    return Args{{m}, {}};
+                }, [](A a) { olt_cb_2eb810_l14(a.i[0]); return uint64_t{0}; });
+            // class 684's bolt (the level's globals; the moby is not read): the points' and branches' timers about their ends and
+            // past the duration (the alpha 0 and 255 clamps), the duration, the fade byte, the colours, widths and ends perturbed,
+            // the branches' starts and offsets, 50 Hz (the duration is frame-scaled); the camera about the bolt's middle
+            if (const std::vector<uint32_t> ms = mobys_with(0x002ed280); !ms.empty())
+                l14check("p145_cb_2edc18", 0x002edc18, 150, Ret::None, [level, view_from, set_50hz, ms] {
+                    level();
+                    const uint32_t m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+                    if (ri(0, 2) == 0) set_50hz();
+                    const int dur = ri(0, 3) == 0 ? ri(1, 4) : ri(10, 60);
+                    w32(L14_ADDR(0x00161c70), u(dur));
+                    w8(L14_ADDR(0x00161ce0), coin() ? 0u : u(ri(0, 300) & 0xff));
+                    auto timer = [dur] { return u(ri(0, 4) == 0 ? ri(-3, 0) : ri(0, 4) == 0 ? ri(dur * 2, dur * 3) : ri(0, dur * 2)); };
+                    for (uint32_t i = 0; i < 40; ++i) w16(L14_ADDR(0x001e0000) + i * 2, timer());
+                    for (uint32_t i = 0; i < 48; ++i) w16(L14_ADDR(0x001e0350) + i * 2, timer());
+                    if (coin()) { w32(L14_ADDR(0x00161c78), R()); w32(L14_ADDR(0x00161c7c), R()); }
+                    if (coin()) { wf(L14_ADDR(0x00161c80), rf(0.0f, 1.0f)); wf(L14_ADDR(0x00161c84), rf(0.0f, 1.0f)); wf(L14_ADDR(0x00161c88), rf(0.5f, 3.0f)); }
+                    for (uint32_t b = 0; b < 3; ++b) if (coin()) w32(L14_ADDR(0x00161cf8) + b * 4, u(ri(0, 38)));
+                    if (coin()) for (uint32_t k = 0; k < 0x300; k += 0x10) { wf(L14_ADDR(0x001e0050) + k, rf(-0.5f, 0.5f)); wf(L14_ADDR(0x001e0050) + k + 8, rf(-0.5f, 0.5f)); }
+                    // the ends (zero in the snapshot, set when the bolt strikes): its end at the moby, its start 5 .. 30 away (in a few
+                    // cases left as they are)
+                    Vec4 s = ee_ref<Vec4>(L14_ADDR(0x00161cc0)), e = ee_ref<Vec4>(L14_ADDR(0x00161cd0));
+                    if (ri(0, 9) != 0) {
+                        const Vec4 c = ee_ref<Vec4>(m + 0x10);
+                        e = Vec4{c.x + rf(-1.0f, 1.0f), c.y + rf(-1.0f, 1.0f), c.z + rf(-1.0f, 1.0f), coin() ? 1.0f : 0.0f};
+                        const float a = rf(-3.1f, 3.1f), el = rf(-0.3f, 1.4f), d = rf(5.0f, 30.0f);
+                        s = Vec4{e.x + d * std::cos(el) * std::cos(a), e.y + d * std::cos(el) * std::sin(a), e.z + d * std::sin(el), e.w};
+                        ee_ref<Vec4>(L14_ADDR(0x00161cc0)) = s;
+                        ee_ref<Vec4>(L14_ADDR(0x00161cd0)) = e;
+                        // the bolt's points in its frame (x along it from the end, zero in the snapshot too): a jagged line
+                        for (uint32_t i = 0; i < 40; ++i)
+                            ee_ref<Vec4>(L14_ADDR(0x001dfd80) + i * 0x10) = Vec4{d * static_cast<float>(i) / 39.0f, rf(-1.0f, 1.0f), rf(-1.0f, 1.0f), 1.0f};
+                    }
+                    if (std::getenv("B221_INFO") != nullptr) std::printf("INFO p145_cb_2edc18 start %.1f %.1f %.1f end %.1f %.1f %.1f\n", s.x, s.y, s.z, e.x, e.y, e.z);
+                    // the camera from a side of the bolt's middle (a stand-in moby there for view_from)
+                    const uint32_t stand = TEST_AREA + 0x7000;
+                    ee_ref<Vec4>(stand + 0x10) = Vec4{(s.x + e.x) * 0.5f, (s.y + e.y) * 0.5f, (s.z + e.z) * 0.5f, 1.0f};
+                    view_from(stand, rf(5.0f, 60.0f), rf(-5.0f, 10.0f));
+                    return Args{{m}, {}};
+                }, [](A a) { olt_cb_2edc18_l14(a.i[0]); return uint64_t{0}; });
+            if (std::getenv("B221_INFO") != nullptr) {  // the play-test spots of P14.5's classes (index, uid, place, state)
+                level();
+                const uint32_t mpool = ee_read<uint32_t>(OV(0x0015ffd8));
+                static const struct { const char* name; uint32_t fn; } cls[] = {{"searchlight 8", 0x002ac618}, {"rail drone 211", 0x002d5f40},
+                                                                                {"class 386", 0x002dee28}, {"class 610", 0x002eaf88},
+                                                                                {"class 684", 0x002ed280}};
+                for (const auto& c : cls)
+                    for (const uint32_t x : mobys_with(c.fn)) {
+                        const Vec4 q = ee_ref<Vec4>(x + 0x10);
+                        const uint32_t xp = ee_read<uint32_t>(x + 0x78);
+                        std::printf("INFO P14.5 %s: moby %u uid %d at %.1f %.1f %.1f state %u group %u master %d beams %d bits %x\n", c.name,
+                                    (x - mpool) >> 8, ee_read<int16_t>(x + 0xb2), q.x, q.y, q.z, ee_read<uint8_t>(x + 0x20), ee_read<uint8_t>(x + 0x21),
+                                    c.fn == 0x002ac618 ? ee_read<int16_t>(xp + 0x1b6) : 0, c.fn == 0x002ac618 ? ee_read<int16_t>(xp + 0x20a) : 0,
+                                    c.fn == 0x002ac618 ? ee_read<uint32_t>(xp + 0x20c) : 0u);
+                    }
             }
         }
 

@@ -58,25 +58,21 @@ TrRet olt_cam_type21_accept_u(uint32_t cam, uint32_t other, uint32_t a2, uint32_
 void olt_cam_type21_init_l14(uint32_t cam);    // L14:0x003159d8
 void olt_cam_type21_update_l14(uint32_t cam);  // L14:0x00315d48
 void olt_cam_type21_exit_l14(uint32_t cam);    // L14:0x003167e0
+// the classes' draw-list callbacks written by hand (P14.5): class 8's light (oltanis_searchlight_beams.cpp), classes 211 / 386 /
+// 610 / 684's (oltanis_draws.cpp)
+void olt_cb_2ae260_l14(uint32_t m);  // L14:0x002ae260
+void olt_cb_2aee28_l14(uint32_t m);  // L14:0x002aee28
+void olt_cb_2d71f0_l14(uint32_t m);  // L14:0x002d71f0
+void olt_cb_2df458_l14(uint32_t m);  // L14:0x002df458
+void olt_cb_2eb810_l14(uint32_t m);  // L14:0x002eb810
+void olt_cb_2edc18_l14(uint32_t m);  // L14:0x002edc18
 
 TrRet olt_26b390_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x0026b390
 TrRet olt_213028_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x00213028
-TrRet olt_20f9d0_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x0020f9d0
-TrRet olt_2ae0a8_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002ae0a8
-TrRet olt_2ada18_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002ada18
-TrRet olt_2add48_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002add48
-TrRet olt_2aef28_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002aef28
-void olt_cb_2aee28_l14(uint32_t a0);  // L14:0x002aee28
-void olt_cb_2d71f0_l14(uint32_t a0);  // L14:0x002d71f0
-TrRet olt_2df510_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002df510
-void olt_cb_2df458_l14(uint32_t a0);  // L14:0x002df458
-void olt_cb_2eb810_l14(uint32_t a0);  // L14:0x002eb810
-void olt_cb_2edc18_l14(uint32_t a0);  // L14:0x002edc18
 TrRet olt_255ce0_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x00255ce0
 TrRet olt_2aac78_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002aac78
 TrRet olt_2ab378_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002ab378
 void olt_cb_303350_l14(uint32_t a0);  // L14:0x00303350
-void olt_cb_2ae260_l14(uint32_t a0);  // L14:0x002ae260
 TrRet olt_hook_2daed8_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002daed8
 void olt_cutscene_level_extras_l14(uint32_t a0);  // L14:0x002460f8
 

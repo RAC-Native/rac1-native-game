@@ -7,13 +7,7 @@
   "MKALL_UNIFORM": "olt_hook_2daed8_u,olt_26b390_l14"
  },
  "entries": [
-  "2aee28:olt_cb_2aee28_l14:void:a0",
-  "2d71f0:olt_cb_2d71f0_l14:void:a0",
-  "2df458:olt_cb_2df458_l14:void:a0",
-  "2eb810:olt_cb_2eb810_l14:void:a0",
-  "2edc18:olt_cb_2edc18_l14:void:a0",
   "303350:olt_cb_303350_l14:void:a0",
-  "2ae260:olt_cb_2ae260_l14:void:a0",
   "2daed8:olt_hook_2daed8_u",
   "2460f8:olt_cutscene_level_extras_l14:void:a0",
   "26b390:olt_26b390_l14"

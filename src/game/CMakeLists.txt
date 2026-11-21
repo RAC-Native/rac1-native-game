@@ -232,6 +232,8 @@ add_library(rac1_game STATIC
     ovl/oltanis_hooks.cpp
     ovl/oltanis_lift.cpp
     ovl/oltanis_searchlight.cpp
+    ovl/oltanis_searchlight_beams.cpp
+    ovl/oltanis_draws.cpp
     ovl/oltanis_popup_turret.cpp
     ovl/oltanis_bomber.cpp
     ovl/oltanis_wing.cpp
