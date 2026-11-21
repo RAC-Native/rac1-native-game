@@ -318,6 +318,11 @@ endif()
 add_executable(dualsense_test EXCLUDE_FROM_ALL tests/rumble/dualsense_test.cpp src/host/dualsense.cpp)
 target_include_directories(dualsense_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
 
+# ---- tests/gpu/ : the GPU row's short names on real-world device strings (header only: not built by default) ----
+#   cmake --build build --target gpu_name_test && ./build/gpu_name_test
+add_executable(gpu_name_test EXCLUDE_FROM_ALL tests/gpu/gpu_name_test.cpp)
+target_include_directories(gpu_name_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
 # ---- tests/neon/ : the scalar-equivalence test for the VU fast paths' NEON twins (tests/neon/vu_neon_equiv.cpp) ----
 # Off by default: ./setup.sh never builds it. It needs no generated sources and no disc: the one test that proves
 # the NEON port of the VU SIMD helpers bit-identical to the scalar rules, on x86 (the SSE path) and on AArch64.

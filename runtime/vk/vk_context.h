@@ -99,6 +99,21 @@ bool init(GLFWwindow* window, bool vsync, bool headless = false);
 enum class InitFailure { kNone, kNoShaders, kNoDriver, kNoVulkan13, kNoDevice, kMissing, kOther };
 InitFailure init_failure();
 const std::string& init_failure_text();
+// The GPU row's side (Options > Display > GPU, RAC1_GPU): the Vulkan devices of the machine, by their name and their UUID
+// (VkPhysicalDeviceIDProperties: it stays when an eGPU is re-enumerated at another bus address, and tells two identical
+// cards apart), listed with a short-lived instance (no surface, no device) when no context exists; the list is made once.
+struct GpuInfo {
+    std::string name;
+    std::string uuid;  // "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+    const char* type;  // "discrete", "integrated", "virtual", "cpu", "other"
+};
+const std::vector<GpuInfo>& list_gpus();
+// The device the renderer runs on, its full name ("" when Vulkan is not running)
+std::string device_name();
+// The GPU the player chose (name and UUID, from the preferences; both empty: Automatic), read by init: the device is tried first,
+// and when it is not there or cannot run the renderer the automatic choice is used, with the reason in the log's [gpu] lines.
+// RAC1_GPU=<index|name part|auto> overrides it
+void set_gpu_choice(const std::string& name, const std::string& uuid);
 // The host's hook called once when the device is lost (VK_ERROR_DEVICE_LOST), with where it was seen
 void set_device_lost_hook(void (*fn)(const char* where));
 void shutdown();

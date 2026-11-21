@@ -10,6 +10,7 @@
 #include <backends/imgui_impl_vulkan.h>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <map>
@@ -889,6 +890,84 @@ void pipeline_cache_close() {
     g_ctx.pipe_cache = VK_NULL_HANDLE;
 }
 
+namespace {
+std::string g_gpu_name, g_gpu_uuid;  // (set_gpu_choice: the Options row's choice)
+
+// orig: (host) a device's UUID as text
+std::string gpu_uuid_text(const uint8_t* u) {
+    char b[40];
+    std::snprintf(b, sizeof b, "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x", u[0], u[1], u[2], u[3], u[4], u[5], u[6], u[7],
+                  u[8], u[9], u[10], u[11], u[12], u[13], u[14], u[15]);
+    return b;
+}
+// orig: (host) a device's kind as a word
+const char* gpu_type_text(VkPhysicalDeviceType t) {
+    switch (t) {
+        case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: return "discrete";
+        case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: return "integrated";
+        case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU: return "virtual";
+        case VK_PHYSICAL_DEVICE_TYPE_CPU: return "cpu";
+        default: return "other";
+    }
+}
+// orig: (host) a device's name, kind and UUID (Vulkan 1.1's properties 2; `get` is vkGetPhysicalDeviceProperties2 of the instance)
+GpuInfo gpu_info(PFN_vkGetPhysicalDeviceProperties2 get, VkPhysicalDevice pd) {
+    VkPhysicalDeviceIDProperties idp{};
+    idp.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES;
+    VkPhysicalDeviceProperties2 p2{};
+    p2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    p2.pNext = &idp;
+    get(pd, &p2);
+    return {p2.properties.deviceName, gpu_uuid_text(idp.deviceUUID), gpu_type_text(p2.properties.deviceType)};
+}
+// orig: (host) `hay` holds `needle`, any case
+bool gpu_contains(const std::string& hay, const std::string& needle) {
+    auto low = [](std::string x) {
+        for (char& c : x) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return x;
+    };
+    return low(hay).find(low(needle)) != std::string::npos;
+}
+}  // namespace
+
+std::string device_name() { return g_ctx.active ? std::string(g_ctx.dev_props.deviceName) : std::string(); }
+
+void set_gpu_choice(const std::string& name, const std::string& uuid) {
+    g_gpu_name = name;
+    g_gpu_uuid = uuid;
+}
+
+const std::vector<GpuInfo>& list_gpus() {
+    static std::vector<GpuInfo> list;
+    static bool done = false;
+    if (done) return list;
+    done = true;
+    if (vkGetInstanceProcAddr == nullptr && volkInitialize() != VK_SUCCESS) return list;  // (no loader: no list, the row shows Automatic only)
+    VkApplicationInfo app{};
+    app.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    app.pApplicationName = "rac1-native";
+    app.pEngineName = "rac1-native";
+    app.apiVersion = VK_API_VERSION_1_1;
+    VkInstanceCreateInfo ici{};
+    ici.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    ici.pApplicationInfo = &app;
+    VkInstance inst = VK_NULL_HANDLE;
+    if (vkCreateInstance(&ici, nullptr, &inst) != VK_SUCCESS || inst == VK_NULL_HANDLE) return list;
+    // (the instance's own entry points: the global ones volk loads belong to the renderer's instance)
+    auto enumerate = reinterpret_cast<PFN_vkEnumeratePhysicalDevices>(vkGetInstanceProcAddr(inst, "vkEnumeratePhysicalDevices"));
+    auto props2 = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties2>(vkGetInstanceProcAddr(inst, "vkGetPhysicalDeviceProperties2"));
+    auto destroy = reinterpret_cast<PFN_vkDestroyInstance>(vkGetInstanceProcAddr(inst, "vkDestroyInstance"));
+    if (enumerate != nullptr && props2 != nullptr) {
+        uint32_t n = 0;
+        enumerate(inst, &n, nullptr);
+        std::vector<VkPhysicalDevice> devs(n);
+        if (n > 0 && enumerate(inst, &n, devs.data()) >= VK_SUCCESS)
+            for (uint32_t i = 0; i < n; ++i) list.push_back(gpu_info(props2, devs[i]));
+    }
+    if (destroy != nullptr) destroy(inst, nullptr);
+    return list;
+}
+
 bool init(GLFWwindow* window, bool vsync, bool headless) {
     if (g_ctx.active) return true;
     g_ctx = Context{};
@@ -1023,6 +1102,44 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
     }
     std::stable_sort(cands.begin(), cands.end(), [](const Candidate& a, const Candidate& b) { return a.score > b.score; });
 
+    // the GPU chosen (RAC1_GPU, else the Options row's choice): the device found among `devs` (-1: none, or Automatic asked), tried first
+    std::vector<GpuInfo> infos;
+    for (VkPhysicalDevice pd : devs) infos.push_back(gpu_info(vkGetPhysicalDeviceProperties2, pd));
+    std::string want_text;  // (what was asked, for the log)
+    int want = -1;
+    bool want_absent = false;
+    {
+        const char* env = std::getenv("RAC1_GPU");
+        if (env != nullptr && *env != '\0') {
+            want_text = std::string("RAC1_GPU=") + env;
+            if (std::strcmp(env, "auto") != 0) {
+                char* end = nullptr;
+                const long idx = std::strtol(env, &end, 10);
+                if (*end == '\0' && idx >= 0 && static_cast<size_t>(idx) < infos.size()) want = static_cast<int>(idx);
+                else  // (not a number of the list - "4070" - a part of a name)
+                    for (size_t i = 0; i < infos.size() && want < 0; ++i)
+                        if (gpu_contains(infos[i].name, env) || gpu_contains(infos[i].uuid, env)) want = static_cast<int>(i);
+                want_absent = want < 0;
+            } else {
+                want_text += " (Automatic)";
+            }
+        } else if (!g_gpu_name.empty() || !g_gpu_uuid.empty()) {
+            want_text = "the GPU row's choice '" + g_gpu_name + "'";
+            for (size_t i = 0; i < infos.size() && want < 0; ++i)  // (the UUID first: it stays when an eGPU moves; then the name)
+                if (!g_gpu_uuid.empty() && infos[i].uuid == g_gpu_uuid) want = static_cast<int>(i);
+            for (size_t i = 0; i < infos.size() && want < 0; ++i)
+                if (!g_gpu_name.empty() && infos[i].name == g_gpu_name) want = static_cast<int>(i);
+            want_absent = want < 0;
+        }
+    }
+    int want_cand = -1;  // (its place among the candidates: 1.3 and a queue that can present)
+    for (size_t c = 0; c < cands.size() && want >= 0; ++c)
+        if (cands[c].pd == devs[static_cast<size_t>(want)]) want_cand = static_cast<int>(c);
+    if (want_cand > 0) std::rotate(cands.begin(), cands.begin() + want_cand, cands.begin() + want_cand + 1);
+    std::string want_why;  // (why the device asked for is not the one running)
+    if (want_absent) want_why = "not connected";
+    else if (want >= 0 && want_cand < 0) want_why = "it has no Vulkan 1.3 or no queue that can show the window";
+
     if (cands.empty()) {
         std::fprintf(stderr, "[vk] no suitable Vulkan 1.3 physical device found\n");
         shutdown();
@@ -1057,6 +1174,7 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
         } else {
             chosen = check_device(g_ctx.phys_dev, has_ext, fake_failure("check") || (c == 0 && fake_failure("first")));
         }
+        if (!chosen && c == 0 && want_cand == 0) want_why = g_fail_text;
         if (!chosen && c + 1 < cands.size())
             std::fprintf(stderr, "[vk] %s cannot run the Vulkan renderer: trying %s\n", cands[c].props.deviceName, cands[c + 1].props.deviceName);
     }
@@ -1066,6 +1184,20 @@ bool init(GLFWwindow* window, bool vsync, bool headless) {
         return fail(InitFailure::kMissing, cands.size() > 1 ? g_fail_text + " (and so does every other one)" : g_fail_text);
     }
     if (cands.size() > 1) std::fprintf(stderr, "[vk] the device: %s (of %zu)\n", g_ctx.dev_props.deviceName, cands.size());
+    {  // the log: every device, the one running, and why (the Automatic choice: the best scored that passes)
+        std::string line;
+        for (size_t i = 0; i < infos.size(); ++i)
+            line += (i > 0 ? " " : "") + std::to_string(i) + " " + infos[i].name + " (" + infos[i].type + ", " + infos[i].uuid + ")" +
+                    (devs[i] == g_ctx.phys_dev ? " [chosen]" : "");
+        std::fprintf(stderr, "[gpu] Vulkan devices: %s\n", line.c_str());
+        const bool got_want = want >= 0 && devs[static_cast<size_t>(want)] == g_ctx.phys_dev;
+        if (got_want) std::fprintf(stderr, "[gpu] %s: %s\n", want_text.c_str(), g_ctx.dev_props.deviceName);
+        else if (!want_text.empty() && want >= 0 && want_why.empty()) std::fprintf(stderr, "[gpu] %s: %s cannot run the Vulkan renderer, Automatic instead: %s\n", want_text.c_str(), infos[static_cast<size_t>(want)].name.c_str(), g_ctx.dev_props.deviceName);
+        else if (!want_text.empty() && !want_why.empty())
+            std::fprintf(stderr, "[gpu] %s: %s%s%s, Automatic instead: %s\n", want_text.c_str(), want_absent ? "not found (not connected)" : infos[static_cast<size_t>(want)].name.c_str(),
+                         want_absent ? "" : ": ", want_absent ? "" : want_why.c_str(), g_ctx.dev_props.deviceName);
+        else std::fprintf(stderr, "[gpu] Automatic (the best of the devices that can run the renderer: discrete before integrated): %s\n", g_ctx.dev_props.deviceName);
+    }
     vkGetPhysicalDeviceMemoryProperties(g_ctx.phys_dev, &g_ctx.mem_props);
 
     std::vector<const char*> enabled_dexts;

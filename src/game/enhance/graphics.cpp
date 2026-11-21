@@ -51,6 +51,7 @@
 #include <game/render/render_toggles.h>
 #include <game/render/render_view.h>
 
+#include <platform/gpu_select.h>
 #include <platform/platform.h>
 
 #include <algorithm>
@@ -104,8 +105,21 @@ constexpr uint32_t POP2_ENTRIES = GFX + 0xf00;  // its list entries (5 and the e
 constexpr uint32_t POP2_HELP = GFX + 0xf50;     // its help label's texts
 constexpr uint32_t POP2_PICTURES = GFX + 0xf70;  // its picture's images (..0xf98)
 constexpr uint32_t STRINGS = GFX + 0x1000;    // the texts, made at each lookup (0xa0 each; the Controls page from 0xf6000)
-constexpr uint32_t STRING_SIZE = 0x80;  // (0xa0 until the Water, Foliage and Grass rows: the longest text is under 0x60)
+constexpr uint32_t STRING_SIZE = 0x70;  // (0xa0 until the Water, Foliage and Grass rows, 0x80 until the restart popup took the block's end: the longest text is under 0x70, texts_fit)
 constexpr int VISIBLE = 10;  // the rows the box shows at once
+// The restart popup (Restart now / Later: asked when the GPU or Renderer row changes), the last block of GFX: a copy of Options'
+// page like New Game's windows (window_build), its texts' ids 0x7ee0.. (free ones between the value texts' and the Advanced page's)
+constexpr uint32_t RP = GFX + 0x3a00;
+constexpr uint32_t RPAGE = RP;
+constexpr uint32_t RLIST = RP + 0xe0;
+constexpr uint32_t R_ENTRIES = RP + 0x200;   // (2 entries and the end)
+constexpr uint32_t R_HELP = RP + 0x240;
+constexpr uint32_t R_PICTURES = RP + 0x260;
+constexpr uint32_t R_STRINGS = RP + 0x300;   // (the texts, made at each lookup: R_OFFSETS)
+constexpr int32_t RT_FIRST = 0x7ee0;
+enum : int32_t { RT_TITLE, RT_NOW, RT_LATER, RT_HELP_NOW, RT_HELP_LATER, RT_COUNT };
+constexpr uint32_t R_OFFSETS[RT_COUNT + 1] = {0, 0x40, 0x80, 0xc0, 0x1c0, 0x2c0};  // (the strings' places: 0x40 each, the helps 0x100)
+static_assert(R_OFFSETS[RT_COUNT] <= 0x300, "the restart popup's texts end where its block does");
 
 // The game's data the pages are made from (Veldin's addresses, relocated: also in the boot module)
 constexpr OvConst<0x001b4950u> OPTIONS_PAGE{};
@@ -127,9 +141,10 @@ enum : uint32_t { PIC_GFX = 1, PIC_ORIGINAL = 2, PIC_MODERN = 3 };  // (advanced
 
 // The settings
 // (S_GFX: Graphics, 0 Original, 1 Enhanced; S_PRESET: no value of its own, the rows' match with PRESETS; S_LIGHTING: 0 Low,
+// S_GPU: the GPU row, the choice kept by name and UUID (State::gpu_name), never in the EE bytes (after S_PRESET: the RAM hashes);
 // 1 Medium, 2 High, 3 Original (LIGHTING_ORIGINAL, #138: the original's lighting under the effects) - until the switch, 0 was
 // Original and 1..3 Low..High)
-enum Setting : uint32_t { S_DISPLAY, S_MONITOR, S_WINDOW, S_SCALE, S_ASPECT, S_FIT, S_LOD, S_FOV, S_VSYNC, S_CAP, S_LIGHTING, S_DYN_SHADOWS, S_SEC_LIGHTS, S_SHADOW_DIST, S_AO, S_MIPS, S_SHADOW_STR, S_SUN_RAYS, S_AO_STR, S_HUD, S_RENDERER, S_SURFACE, S_PARTICLES, S_GRASS, S_WREFL, S_GFX, S_PRESET, S_COUNT };
+enum Setting : uint32_t { S_DISPLAY, S_MONITOR, S_WINDOW, S_SCALE, S_ASPECT, S_FIT, S_LOD, S_FOV, S_VSYNC, S_CAP, S_LIGHTING, S_DYN_SHADOWS, S_SEC_LIGHTS, S_SHADOW_DIST, S_AO, S_MIPS, S_SHADOW_STR, S_SUN_RAYS, S_AO_STR, S_HUD, S_RENDERER, S_SURFACE, S_PARTICLES, S_GRASS, S_WREFL, S_GFX, S_PRESET, S_GPU, S_COUNT };
 static_assert(S_COUNT <= 0x20, "the settings' values end where the step bytes begin");
 constexpr int LIGHTING_ORIGINAL = 3;  // the Lighting row's Original: the modern lighting's sun off (mrp_lighting.cpp g_lighting_original)
 constexpr float SHADOW_DISTS[] = {40.0f, 80.0f, 140.0f, 0.0f};  // Low, Medium, High, Maximum (0: as far as the cascades reach)
@@ -176,6 +191,7 @@ enum : int32_t {
     T_ORIGINAL, T_LOW, T_MEDIUM, T_HIGH, T_MAXIMUM, T_OFF, T_ON, T_UNLIMITED, T_SEC_GAME, T_SEC_ALL, T_FULL, T_ENHANCED, T_CUSTOM,
     T_MODE_ORIGINAL, T_MODE_MODERN, H_MODE_ORIGINAL, H_MODE_MODERN,
     T_NG_CURRENT, T_NG_ORIGINAL, T_NG_LOW, T_NG_MEDIUM, T_NG_HIGH, H_NG_CURRENT, H_NG_ORIGINAL, H_NG_LOW, H_NG_MEDIUM, H_NG_HIGH,
+    T_GPU, H_GPU,
     T_COUNT
 };
 // The rows' value texts (made from the values at each lookup): VALUE_FIRST + page * VISIBLE + slot (0x7e80..: free ids between
@@ -215,7 +231,8 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "The PS2's picture: Graphics Original.",
      "Our lighting and effects at the preset Low: the lightest.",
      "Our lighting and effects at the preset Medium.",
-     "Our lighting and effects at the preset High: the heaviest."},
+     "Our lighting and effects at the preset High: the heaviest.",
+     "GPU", "From the next start. Automatic: the best card."},
     {"Grafik", "Das Originalbild oder unsere Beleuchtung, Wasser und Effekte", "Anzeige", "Fenster, Bildformat, Details und Sicht der PC-Version",
      "Anzeigemodus", "Bildschirm", "Fenstergrosse", "Renderauflosung", "Seitenverhaltnis", "Bildanpassung", "Detailstufe", "Sichtfeld", "V-Sync", "Bildratenlimit", "Beleuchtung", "Dynamische Schatten", "Zusatzlichter", "Schattendistanz", "Umgebungsverdeckung", "Texturdetail", "Schattenstarke", "Sonnenstrahlen", "Verdeckungsstarke", "HUD", "Renderer", "Oberflachendetail", "Umgebungspartikel", "Gras", "Wasserspiegelung", "Voreinstellung",
      "Im Fenster oder im Vollbild.", "Auf welchem Bildschirm das Fenster liegt.", "Die Grosse des Fensters (im Fenstermodus).", "Die Auflosung der 3D-Grafik, mal die des Bildschirms. Das HUD bleibt scharf.",
@@ -249,7 +266,8 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "Das Bild der PS2: Grafik Original.",
      "Unsere Beleuchtung und Effekte, Voreinstellung Niedrig: die leichteste.",
      "Unsere Beleuchtung und Effekte, Voreinstellung Mittel.",
-     "Unsere Beleuchtung und Effekte, Voreinstellung Hoch: die aufwendigste."},
+     "Unsere Beleuchtung und Effekte, Voreinstellung Hoch: die aufwendigste.",
+     "GPU", "Ab dem nachsten Start. Automatisch: die beste Karte."},
     {"Graficos", "La imagen original, o nuestra iluminacion, agua y efectos", "Pantalla", "Ventana, formato, detalle y vista de la version PC",
      "Modo de pantalla", "Monitor", "Tamano de ventana", "Resolucion 3D", "Relacion de aspecto", "Ajuste", "Nivel de detalle", "Campo de vision", "V-Sync", "Limite de FPS", "Iluminacion", "Sombras dinamicas", "Luces secundarias", "Distancia de sombras", "Oclusion ambiental", "Detalle de texturas", "Intensidad de sombras", "Rayos de sol", "Intensidad de oclusion", "HUD", "Renderizador", "Detalle de superficies", "Particulas ambientales", "Hierba", "Reflejos del agua", "Preajuste",
      "En una ventana o a pantalla completa.", "En que pantalla se abre la ventana.", "El tamano de la ventana (en modo ventana).", "La resolucion del 3D, por la de la pantalla. El HUD sigue nitido.",
@@ -283,7 +301,8 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "La imagen de PS2: Graficos Original.",
      "Nuestra iluminacion y efectos, preajuste Bajo: el mas ligero.",
      "Nuestra iluminacion y efectos, preajuste Medio.",
-     "Nuestra iluminacion y efectos, preajuste Alto: el mas pesado."},
+     "Nuestra iluminacion y efectos, preajuste Alto: el mas pesado.",
+     "GPU", "Desde el siguiente inicio. Automatico: la mejor tarjeta."},
     {"Grafica", "L'immagine originale, o la nostra illuminazione, acqua ed effetti", "Schermo", "Finestra, formato, dettaglio e visuale della versione PC",
      "Modalita schermo", "Monitor", "Finestra", "Risoluzione 3D", "Formato", "Adattamento", "Livello di dettaglio", "Campo visivo", "V-Sync", "Limite FPS", "Illuminazione", "Ombre dinamiche", "Luci secondarie", "Distanza ombre", "Occlusione ambientale", "Dettaglio texture", "Intensita ombre", "Raggi di sole", "Intensita occlusione", "HUD", "Renderer", "Dettaglio superfici", "Particelle ambientali", "Erba", "Riflessi dell'acqua", "Preset",
      "In una finestra o a schermo intero.", "Su quale schermo va la finestra.", "La dimensione della finestra (in modalita finestra).", "La risoluzione del 3D, per quella dello schermo. L'HUD resta nitido.",
@@ -317,7 +336,8 @@ constexpr const char* TEXTS[4][T_COUNT] = {
      "L'immagine della PS2: Grafica Originale.",
      "La nostra illuminazione ed effetti, preset Basso: il piu leggero.",
      "La nostra illuminazione ed effetti, preset Medio.",
-     "La nostra illuminazione ed effetti, preset Alto: il piu pesante."},
+     "La nostra illuminazione ed effetti, preset Alto: il piu pesante.",
+     "GPU", "Dal prossimo avvio. Automatica: la scheda migliore."},
 };
 
 // Water Reflections' ray-traced values (value_text's words, not texts asked for by id - no id moved): Medium (RT), High (RT), per language
@@ -360,6 +380,27 @@ constexpr const char* LIGHT_ORIGINAL_TEXTS[4][2] = {
     {"Originale: luce e ombre della PS2, niente sole. Gli effetti sotto restano.",
      "Serve il sole moderno: spento con Illuminazione Originale. Il valore resta."},
 };
+// The GPU row's words (not texts asked for by id), per language as TEXTS: Automatic, the help when the row does nothing (the
+// renderer's choice is OpenGL), the help when RAC1_GPU chose, the mark of a choice whose GPU is not there now ("RTX 4070 Ti (gone)"),
+// "(in use)", the help when the restart could not be done, the note while the choice waits for a restart
+constexpr const char* GPU_TEXTS[4][7] = {
+    {"Automatic", "Works with Vulkan only: choose Renderer Vulkan first.", "Chosen for this run by RAC1_GPU.", "gone", "(in use)", "Restart the game to use it.", "Applies after a restart."},
+    {"Automatisch", "Nur mit Vulkan: zuerst Renderer Vulkan wahlen.", "Fur diesen Lauf von RAC1_GPU gewahlt.", "fehlt", "(im Einsatz)", "Starte das Spiel neu, um es zu nutzen.", "Gilt nach einem Neustart."},
+    {"Automatico", "Solo con Vulkan: elige antes Renderizador Vulkan.", "Elegida para esta ejecucion por RAC1_GPU.", "falta", "(en uso)", "Reinicia el juego para usarlo.", "Se aplica al reiniciar."},
+    {"Automatica", "Solo con Vulkan: scegli prima Renderer Vulkan.", "Scelta per questa esecuzione da RAC1_GPU.", "assente", "(in uso)", "Riavvia il gioco per usarla.", "Vale dopo il riavvio."},
+};
+// The restart popup's texts (ids RT_FIRST..), per language as TEXTS: its title, Restart now, Later, the sentence for the GPU row and
+// for the Renderer row, what is lost (in the pause menu) and what is not (the main menu), what Later does
+constexpr const char* RESTART_TEXTS[4][8] = {
+    {"Restart the game?", "Restart Now", "Later", "The game must restart to use this GPU.", "The game must restart to use this renderer.",
+     "Progress since the last save is lost.", "Nothing is lost here.", "The change applies at the next start."},
+    {"Spiel neu starten?", "Jetzt neu starten", "Spater", "Das Spiel muss neu starten, um diese GPU zu nutzen.", "Das Spiel muss neu starten, um diesen Renderer zu nutzen.",
+     "Fortschritt seit dem letzten Speichern geht verloren.", "Hier geht nichts verloren.", "Die Anderung gilt ab dem nachsten Start."},
+    {"Reiniciar el juego?", "Reiniciar ahora", "Mas tarde", "El juego debe reiniciarse para usar esta GPU.", "El juego debe reiniciarse para usar este renderizador.",
+     "Se pierde el progreso desde el ultimo guardado.", "Aqui no se pierde nada.", "El cambio se aplica en el siguiente inicio."},
+    {"Riavviare il gioco?", "Riavvia ora", "Dopo", "Il gioco deve riavviarsi per usare questa GPU.", "Il gioco deve riavviarsi per usare questo renderer.",
+     "Si perdono i progressi dall'ultimo salvataggio.", "Qui non si perde nulla.", "La modifica vale dal prossimo avvio."},
+};
 constexpr const char* RT_WORDS[4][2] = {{"Medium (RT)", "High (RT)"}, {"Mittel (RT)", "Hoch (RT)"}, {"Medio (RT)", "Alto (RT)"}, {"Medio (RT)", "Alto (RT)"}};
 
 // The page's rows: the setting, its name, its help, the preferences' key
@@ -369,7 +410,7 @@ struct Row {
 };
 // The Display page (0): the renderer, the window, the picture, the view, the detail
 constexpr Row DISPLAY_ROWS[] = {
-    {S_RENDERER, T_RENDERER, H_RENDERER},
+    {S_RENDERER, T_RENDERER, H_RENDERER},    {S_GPU, T_GPU, H_GPU},
     {S_DISPLAY, T_DISPLAY, H_DISPLAY},       {S_MONITOR, T_MONITOR, H_MONITOR},                {S_WINDOW, T_WINDOW_SIZE, H_WINDOW_SIZE},          {S_VSYNC, T_VSYNC, H_VSYNC},
     {S_CAP, T_CAP, H_CAP},                   {S_SCALE, T_SCALE, H_SCALE},                       {S_ASPECT, T_ASPECT, H_ASPECT},
     {S_FIT, T_FIT, H_FIT},                   {S_HUD, T_HUD, H_HUD},                             {S_FOV, T_FOV, H_FOV},                             {S_LOD, T_LOD, H_LOD},
@@ -417,7 +458,7 @@ static_assert(texts_fit(), "a Graphics page text is longer than its string");
 constexpr int32_t WORDS = T_CUSTOM - T_WINDOW + 1;
 constexpr int32_t string_slot(int32_t k) { return k > T_CUSTOM ? k - WORDS : k; }
 constexpr int32_t VALUE_SLOT = T_COUNT - WORDS;  // (the value texts' first string)
-static_assert(0x1000 + (VALUE_SLOT + PAGE_COUNT * VISIBLE) * STRING_SIZE <= 0x4000, "the Graphics page's texts end where the Controls page's block begins");
+static_assert(0x1000 + (VALUE_SLOT + PAGE_COUNT * VISIBLE) * STRING_SIZE <= 0x3a00, "the Graphics page's texts end where the restart popup's block begins");
 
 // The state the host reads (C++ side: the window is not the game's)
 struct State {
@@ -460,6 +501,20 @@ struct State {
     // and the row chosen by the player (`renderer_set 1`: a file without it, from 0.5.0..0.7.x whose `renderer opengl` was
     // the default then, is read as auto once). Never in State()'s value: S_RENDERER's EE byte stays 0 (the RAM hashes)
     bool renderer_auto = false, renderer_set = false;
+    // the GPU row: the choice by name and UUID (both empty: Automatic; what the preferences keep), the host's Vulkan devices (asked
+    // for once, when the row first needs them: graphics_set_gpu_lister), and what the row steps through (gpu_entries)
+    std::string gpu_name, gpu_uuid;
+    std::string gpu_start_name, gpu_start_uuid;  // (the choice the game started with: a row changed back needs no restart)
+    std::vector<GraphicsGpu> gpus;
+    bool gpus_loaded = false;
+    std::vector<GraphicsGpu> (*gpu_lister)() = nullptr;
+    std::string run_gpu;       // the device running (graphics_set_gpu_running), "" with OpenGL before the host says
+    bool run_gpu_vulkan = false;
+    // the restart popup: asked after a change of the GPU row (1) or the Renderer row (2) that the running game does not have;
+    // built (the pages' install), in which menu (the pause menu: progress is lost), the player's Restart now (the host takes it)
+    int ask = 0;
+    bool ask_due = false;  // (a GPU / Renderer change made and not yet asked about: the popup comes when the Display page is left)
+    bool rp_built = false, rp_pause = false, restart_requested = false, restart_failed = false;
 } gs_;
 
 // orig: (none) — enhancement: the number of values of a setting
@@ -485,6 +540,7 @@ uint32_t value_count(Setting s) {
         case S_LIGHTING: return 4;  // Low, Medium, High (mrp_lighting.h: the maps at 1024 / 2048 / 4096), Original (LIGHTING_ORIGINAL)
         case S_FOV: return sizeof(FOVS) / sizeof(int);
         case S_CAP: return sizeof(CAPS) / sizeof(int);
+        case S_GPU: return 1;  // (stepped by step() through gpu_entries)
         case S_MONITOR: return static_cast<uint32_t>(gs_.monitors.size());  // (the host's list; one before GLFW is up: the row shows '?')
         default: return 1;
     }
@@ -688,6 +744,21 @@ bool prefs_read(const std::filesystem::path& path) {
             }
             continue;
         }
+        if (std::strcmp(key, "gpu") == 0) {  // (the GPU row's choice: the name, the rest of the line, as the monitor's; its UUID on the next line)
+            char name[256] = {};
+            if (std::fgets(name, sizeof name, f) != nullptr) {
+                std::string n = name;
+                while (!n.empty() && (n.back() == '\n' || n.back() == '\r' || n.back() == ' ')) n.pop_back();
+                const size_t start = n.find_first_not_of(' ');
+                gs_.gpu_name = start == std::string::npos ? std::string() : n.substr(start);
+            }
+            continue;
+        }
+        if (std::strcmp(key, "gpu_uuid") == 0) {
+            char id[64] = {};
+            if (std::fscanf(f, "%63s", id) == 1) gs_.gpu_uuid = id;
+            continue;
+        }
         if (std::strcmp(key, "window") == 0) {
             if (std::fscanf(f, "%d %d", &a, &b) == 2 && a >= 320 && b >= 240 && a <= 16384 && b <= 16384) {
                 gs_.win_w = a;
@@ -809,6 +880,10 @@ void prefs_write() {
         std::string text(static_cast<size_t>(std::max(len, 0)) + 1, '\0');
         format(text.data(), text.size());
         text.resize(static_cast<size_t>(std::max(len, 0)));
+        if (!gs_.gpu_name.empty() || !gs_.gpu_uuid.empty()) {  // (the GPU row: only when chosen; Automatic writes nothing)
+            text += "gpu " + gs_.gpu_name + "\n";
+            if (!gs_.gpu_uuid.empty()) text += "gpu_uuid " + gs_.gpu_uuid + "\n";
+        }
         if (!platform::write_file_replace(path, text)) std::fprintf(stderr, "[graphics] cannot write %s\n", path.string().c_str());
     }
     gs_.dirty = false;
@@ -847,6 +922,86 @@ const char* const* texts() {
     }
 }
 
+// orig: (none) — enhancement: the GPU row's values: Automatic (empty name), each Vulkan device the host lists (listed once), and the
+// choice kept when its GPU is not there now (an eGPU unplugged: marked, kept in the preferences until another is chosen). The
+// label is the short name (gpu_short_name), cut to the value column; two with the same one told apart by " #2"; `full` is
+// the driver's name, for the help
+bool row_dimmed(Setting s);
+struct GpuEntry {
+    std::string label, name, uuid, full;
+    bool missing = false;
+};
+constexpr size_t GPU_LABEL_MAX = 18;  // (the value column's width in characters: the font is proportional, this fits its widest)
+std::vector<GpuEntry> gpu_entries() {
+    const char* const* t = texts();
+    const int lang = t == TEXTS[1] ? 1 : t == TEXTS[2] ? 2 : t == TEXTS[3] ? 3 : 0;
+    if (!gs_.gpus_loaded) {
+        gs_.gpus_loaded = true;
+        if (gs_.gpu_lister != nullptr) gs_.gpus = gs_.gpu_lister();
+    }
+    std::vector<GpuEntry> e;
+    e.push_back({GPU_TEXTS[lang][0], "", "", "", false});
+    bool found = gs_.gpu_name.empty() && gs_.gpu_uuid.empty();
+    std::vector<std::string> shorts;
+    for (const GraphicsGpu& g : gs_.gpus) {
+        const std::string sn = gpu_short_name(g.name);
+        int same = 0;  // (the devices before with this short name)
+        for (const std::string& o : shorts) same += o == sn;
+        shorts.push_back(sn);
+        const std::string suffix = same > 0 ? " #" + std::to_string(same + 1) : std::string();
+        e.push_back({gpu_clip(sn, GPU_LABEL_MAX - suffix.size()) + suffix, g.name, g.uuid, g.name, false});
+        if ((!gs_.gpu_uuid.empty() && g.uuid == gs_.gpu_uuid) || (gs_.gpu_uuid.empty() && g.name == gs_.gpu_name)) found = true;
+    }
+    if (!found) {
+        const std::string mark = std::string(" (") + GPU_TEXTS[lang][3] + ")";
+        e.push_back({gpu_clip(gpu_short_name(gs_.gpu_name), GPU_LABEL_MAX - mark.size()) + mark, gs_.gpu_name, gs_.gpu_uuid, gs_.gpu_name, true});
+    }
+    return e;
+}
+// orig: (none) — enhancement: the index in `e` of the GPU chosen (the UUID first, then the name; 0: Automatic)
+size_t gpu_index(const std::vector<GpuEntry>& e) {
+    if (gs_.gpu_name.empty() && gs_.gpu_uuid.empty()) return 0;
+    for (size_t i = 1; i < e.size(); ++i)
+        if (!gs_.gpu_uuid.empty() && e[i].uuid == gs_.gpu_uuid) return i;
+    for (size_t i = 1; i < e.size(); ++i)
+        if (e[i].name == gs_.gpu_name) return i;
+    return 0;
+}
+// orig: (none) — enhancement: the restart popup asked for after a change of the GPU row (kind 1) or the Renderer row (kind 2) when
+// the choice is not the one the game started with (a row changed back: nothing to ask; the popup itself opens from the menu's
+// frame, graphics_menu_frame)
+void ask_check(int kind) {
+    if (kind == 0) {
+        gs_.ask = 0;
+        gs_.ask_due = false;
+        return;
+    }
+    bool differs = false;
+    if (kind == 1) differs = gs_.gpu_name != gs_.gpu_start_name || gs_.gpu_uuid != gs_.gpu_start_uuid;
+#if !defined(__APPLE__)
+    else differs = gs_.run_known && gs_.value[S_RENDERER] != gs_.run_choice;
+#endif
+    gs_.ask = differs ? kind : 0;
+    gs_.ask_due = differs;
+    gs_.restart_failed = false;
+}
+// orig: (none) — enhancement: the GPU row's help: the usual one, or why it does nothing, or that RAC1_GPU chose; with the full name
+// of the GPU chosen (Automatic: of the one running)
+std::string gpu_help() {
+    const char* const* t = texts();
+    const int lang = t == TEXTS[1] ? 1 : t == TEXTS[2] ? 2 : t == TEXTS[3] ? 3 : 0;
+    if (gs_.restart_failed && gs_.ask == 1) return GPU_TEXTS[lang][5];
+    if (const char* env = std::getenv("RAC1_GPU"); env != nullptr && *env != '\0') return GPU_TEXTS[lang][2];
+    if (row_dimmed(S_GPU)) return GPU_TEXTS[lang][1];
+    const std::vector<GpuEntry> e = gpu_entries();
+    const size_t i = gpu_index(e);
+    std::string head;
+    if (i > 0) head = e[i].full + ". ";
+    else if (!gs_.run_gpu.empty()) head = gs_.run_gpu + " " + GPU_TEXTS[lang][4] + ". ";
+    if (gs_.gpu_name != gs_.gpu_start_name || gs_.gpu_uuid != gs_.gpu_start_uuid) return head + GPU_TEXTS[lang][6];  // (chosen, not running yet)
+    return head + t[H_GPU];
+}
+
 // orig: (none) — enhancement: a row's value as text
 std::string value_text(Setting s) {
     const char* const* t = texts();
@@ -862,6 +1017,10 @@ std::string value_text(Setting s) {
             return std::string(chosen) + (gs_.run_vulkan ? " (Vulkan)" : " (OpenGL)");  // (why: the row's help, renderer_help)
         }
 #endif
+        case S_GPU: {
+            const std::vector<GpuEntry> e = gpu_entries();
+            return e[gpu_index(e)].label;
+        }
         case S_DISPLAY: return t[v != 0 ? T_FULLSCREEN : T_WINDOW];
         case S_MONITOR: return v >= 0 && static_cast<size_t>(v) < gs_.monitors.size() ? gs_.monitors[v] : std::string("?");
         case S_WINDOW: std::snprintf(b, sizeof b, "%d x %d", gs_.win_w, gs_.win_h); return b;
@@ -905,6 +1064,7 @@ std::string value_text(Setting s) {
 std::string renderer_help() {
     const char* const* t = texts();
 #if !defined(__APPLE__)
+    if (gs_.restart_failed && gs_.ask == 2) return GPU_TEXTS[t == TEXTS[1] ? 1 : t == TEXTS[2] ? 2 : t == TEXTS[3] ? 3 : 0][5];
     const int v = gs_.value[S_RENDERER];
     // (auto fell back to OpenGL: the row says OpenGL, the help why)
     const bool auto_fell = gs_.renderer_auto && gs_.run_known && !gs_.run_vulkan && gs_.run_why != RendererWhy::kNone && gs_.run_why != RendererWhy::kEnv;
@@ -932,6 +1092,9 @@ bool value_supported(Setting s, int v) {
 // orig: (none) — enhancement: a row greyed: Lighting: Original (Graphics: Enhanced) has no sun - its shadows' strength and reach, the
 // point lights' shadows and the sun's rays do nothing then (#138). Shown dimmed with a help saying why; its value kept, not stepped
 bool row_dimmed(Setting s) {
+#if !defined(__APPLE__)
+    if (s == S_GPU) return gs_.value[S_RENDERER] == 0;  // (the GPU row is Vulkan's: with the Renderer row on OpenGL it does nothing)
+#endif
     if (gs_.value[S_GFX] == 0 || gs_.value[S_LIGHTING] != LIGHTING_ORIGINAL) return false;
     return s == S_SHADOW_STR || s == S_SHADOW_DIST || s == S_DYN_SHADOWS || s == S_SUN_RAYS;
 }
@@ -956,6 +1119,16 @@ void step(Setting s, int d) {
         changed();
         return;
     }
+    if (s == S_GPU) {  // Automatic, the devices in turn, the choice of a GPU not there now last; kept by name and UUID
+        const std::vector<GpuEntry> e = gpu_entries();
+        const size_t n = e.size();
+        const size_t next = (gpu_index(e) + (d > 0 ? 1 : n - 1)) % n;
+        gs_.gpu_name = e[next].name;
+        gs_.gpu_uuid = e[next].uuid;
+        changed();
+        ask_check(1);
+        return;
+    }
     if (s == S_PRESET) {  // the presets in turn (from Custom: the first forward, the last back), every row under it set
         const int p = preset_of(gs_.value);
         preset_set(gs_.value, p >= PRESET_COUNT ? (d > 0 ? 0 : PRESET_COUNT - 1) : (p + d + PRESET_COUNT) % PRESET_COUNT);
@@ -972,6 +1145,7 @@ void step(Setting s, int d) {
     if (v == gs_.value[s]) return;
     gs_.value[s] = v;
     changed();
+    if (s == S_RENDERER) ask_check(2);
 }
 
 // orig: (none) — enhancement: n bytes (a multiple of 4) copied in EE RAM
@@ -990,6 +1164,9 @@ void rows_shown(int p) {
     int n = 0;
     for (int i = 0; i < pd.count; ++i) {
         if (p == P_GRAPHICS && gs_.value[S_GFX] == 0 && pd.def[i].s != S_GFX) continue;
+#if defined(__APPLE__)
+        if (pd.def[i].s == S_GPU) continue;  // (macOS: Metal's one renderer; no GPU row)
+#endif
         gs_.shown[p][n++] = i;
     }
     gs_.shown_count[p] = n;
@@ -1115,6 +1292,8 @@ void graphics_load() {
             gs_.dirty = true;
         }
     }
+    gs_.gpu_start_name = gs_.gpu_name;
+    gs_.gpu_start_uuid = gs_.gpu_uuid;
     apply();
     values_to_ee();
     // (every enhancement off - the tests: the renderer's own switches, the testing variables', are what acts)
@@ -1151,12 +1330,16 @@ float graphics_render_scale() {
 // orig: (none) — enhancement (graphics.h)
 void graphics_set_render_scale_percent(int pct) { gs_.scale_override = std::clamp(pct, 25, 400); }
 
+namespace {
+void restart_page_build();
+}
 // orig: (none) — enhancement (graphics.h)
 uint32_t graphics_page_install(uint32_t parent) {
     graphics_load();
     values_to_ee();
     page_install(P_DISPLAY, parent);
     page_install(P_GRAPHICS, parent);
+    restart_page_build();
     return PAGE;
 }
 // orig: (none) — enhancement (graphics.h)
@@ -1166,6 +1349,22 @@ uint32_t graphics_display_page() { return DPAGE; }
 uint32_t graphics_text(int32_t id) {
     std::string s;
     int32_t slot = 0;  // (the string's)
+    if (id >= RT_FIRST && id < RT_FIRST + RT_COUNT) {  // the restart popup's
+        const char* const* rt = RESTART_TEXTS[texts() == TEXTS[1] ? 1 : texts() == TEXTS[2] ? 2 : texts() == TEXTS[3] ? 3 : 0];
+        const int32_t k = id - RT_FIRST;
+        const std::string what = rt[gs_.ask == 2 ? 4 : 3];
+        if (k == RT_TITLE) s = rt[0];
+        else if (k == RT_NOW) s = rt[1];
+        else if (k == RT_LATER) s = rt[2];
+        else if (k == RT_HELP_NOW) s = what + " " + rt[gs_.rp_pause ? 5 : 6];
+        else s = what + " " + rt[gs_.rp_pause ? 5 : 7];  // (Later's help, the one shown first: the pause menu's warning too)
+        const uint32_t at = R_STRINGS + R_OFFSETS[k];
+        char* p = static_cast<char*>(ee_ram_ptr(at));
+        const uint32_t size = R_OFFSETS[k + 1] - R_OFFSETS[k];
+        std::strncpy(p, s.c_str(), size - 1);
+        p[size - 1] = 0;
+        return at;
+    }
     if (id >= VALUE_FIRST && id < VALUE_FIRST + PAGE_COUNT * VISIBLE) {  // a shown row's value
         const int p = (id - VALUE_FIRST) / VISIBLE, i = (id - VALUE_FIRST) % VISIBLE;
         const Setting st = slot_setting(p, i);
@@ -1175,7 +1374,7 @@ uint32_t graphics_text(int32_t id) {
         if (id < TEXT_FIRST || id >= TEXT_FIRST + T_COUNT) return 0;
         const int32_t k = id - TEXT_FIRST;
         if (k >= T_WINDOW && k <= T_CUSTOM) return 0;  // (a value word: never asked for, see string_slot)
-        s = k == H_RENDERER ? renderer_help() : texts()[k];
+        s = k == H_RENDERER ? renderer_help() : k == H_GPU ? gpu_help() : texts()[k];
         {  // (Lighting: Original: its own help, and why the rows it greys do nothing)
             const char* const* t = texts();
             const int lang = t == TEXTS[1] ? 1 : t == TEXTS[2] ? 2 : t == TEXTS[3] ? 3 : 0;
@@ -1239,6 +1438,69 @@ void graphics_set_renderer_running(bool vulkan, RendererWhy why) {
     gs_.run_choice = gs_.renderer_seen = gs_.value[S_RENDERER];
     gs_.run_why = why == RendererWhy::kNone && vulkan != (gs_.value[S_RENDERER] != 0) ? RendererWhy::kEnv : why;
 }
+// orig: (none) — enhancement (gpu_select.h)
+void graphics_set_gpu_lister(std::vector<GraphicsGpu> (*fn)()) { gs_.gpu_lister = fn; }
+// orig: (none) — enhancement (gpu_select.h)
+const std::string& graphics_gpu_name() {
+    graphics_load();
+    return gs_.gpu_name;
+}
+// orig: (none) — enhancement (gpu_select.h)
+const std::string& graphics_gpu_uuid() {
+    graphics_load();
+    return gs_.gpu_uuid;
+}
+// orig: (none) — enhancement (gpu_select.h)
+void graphics_set_gpu_running(const std::string& name, bool vulkan) {
+    gs_.run_gpu = name;
+    gs_.run_gpu_vulkan = vulkan;
+}
+// orig: (none) — enhancement (gpu_select.h)
+const std::string& graphics_gpu_running() { return gs_.run_gpu; }
+// orig: (none) — enhancement (gpu_select.h)
+bool graphics_gpu_running_vulkan() { return gs_.run_gpu_vulkan; }
+// orig: (none) — enhancement (gpu_select.h)
+std::vector<GraphicsGpu> graphics_gpu_list() {
+    gpu_entries();  // (listed once)
+    return gs_.gpus;
+}
+// orig: (none) — enhancement (gpu_select.h)
+int graphics_gpu_selected() {
+    const std::vector<GpuEntry> e = gpu_entries();
+    const size_t i = gpu_index(e);
+    if (i == 0) return -1;
+    return e[i].missing ? -2 : static_cast<int>(i) - 1;
+}
+// orig: (none) — enhancement (gpu_select.h)
+void graphics_gpu_choose(int index) {
+    graphics_load();
+    gpu_entries();
+    if (index >= 0 && static_cast<size_t>(index) < gs_.gpus.size()) {
+        gs_.gpu_name = gs_.gpus[static_cast<size_t>(index)].name;
+        gs_.gpu_uuid = gs_.gpus[static_cast<size_t>(index)].uuid;
+    } else if (index == -1) {
+        gs_.gpu_name.clear();
+        gs_.gpu_uuid.clear();
+    }
+    changed();
+    ask_check(0);  // (the debug menu has its own Restart now button: no popup)
+}
+// orig: (none) — enhancement (gpu_select.h)
+void graphics_request_restart() {
+    gs_.restart_requested = true;
+    if (!g_advanced_disabled && gs_.dirty) prefs_write();  // (the choice saved before the game closes)
+}
+// orig: (none) — enhancement (gpu_select.h)
+bool graphics_take_restart() {
+    if (!gs_.restart_requested) return false;
+    gs_.restart_requested = false;
+    return true;
+}
+// orig: (none) — enhancement (gpu_select.h)
+void graphics_restart_failed() {
+    gs_.restart_failed = true;
+    if (gs_.ask == 0) gs_.ask = gs_.value[S_RENDERER] != gs_.run_choice ? 2 : 1;
+}
 // orig: (none) — enhancement (graphics.h)
 void graphics_set_renderer_chosen_hook(void (*fn)()) { gs_.chosen_hook = fn; }
 
@@ -1278,7 +1540,7 @@ void graphics_menu_back(uint32_t cur, uint32_t to, uint32_t mobys) {
         moby_set_anim(mx, exit_menu_set(), static_cast<int32_t>(lbu(seqx + 0x10)) - 1);
         swc1(mx + 0x58, -1.0f);
     }
-    if (cur != PAGE && cur != DPAGE && cur != POP_PAGE && cur != POP2_PAGE && cur != advanced_page() && cur != controls_page() && cur != language_page() && cur != mods_page() && cur != bug_fixes_page() && cur != update_notice_page() && cur != updates_page() &&
+    if (cur != PAGE && cur != DPAGE && cur != RPAGE && cur != POP_PAGE && cur != POP2_PAGE && cur != advanced_page() && cur != controls_page() && cur != language_page() && cur != mods_page() && cur != bug_fixes_page() && cur != update_notice_page() && cur != updates_page() &&
         cur != exit_menu_page()) return;
     boxes_hold(to, mobys);
 }
@@ -1439,7 +1701,60 @@ void window_build(uint32_t page, uint32_t opt, int32_t title_text, uint32_t entr
 static_assert(POP_TITLE == POP_PAGE + 0x90 && POP_LIST == POP_PAGE + 0xe0 && POP_LABEL == POP_PAGE + 0x130 && POP_PICTURE == POP_PAGE + 0x180 &&
                   POP2_TITLE == POP2_PAGE + 0x90 && POP2_LIST == POP2_PAGE + 0xe0 && POP2_LABEL == POP2_PAGE + 0x130 && POP2_PICTURE == POP2_PAGE + 0x180,
               "New Game's windows lay out their widgets alike");
+
+// orig: (none) — enhancement: the restart popup (Restart now, Later) built, a copy of Options' page whose parent is the Display page's
+// parent (both entries lead there, as Back from the Display page does: Restart now's action is the choice hook's,
+// graphics_restart_choice), Later selected first
+void restart_page_build() {
+    if (g_advanced_disabled) return;
+    const uint32_t opt = OPTIONS_PAGE;
+    const uint32_t entry = lwu(lwu(opt + 0x50) + 0x34);  // (an entry of Options' list: the flags to copy)
+    static constexpr int32_t NAMES[] = {RT_FIRST + RT_NOW - TEXT_FIRST, RT_FIRST + RT_LATER - TEXT_FIRST};
+    static constexpr int32_t HELPS[] = {RT_FIRST + RT_HELP_NOW - TEXT_FIRST, RT_FIRST + RT_HELP_LATER - TEXT_FIRST};
+    static constexpr uint32_t PICS[] = {PIC_GFX, PIC_GFX};
+    window_build(RPAGE, opt, RT_FIRST + RT_TITLE, R_ENTRIES, R_HELP, R_PICTURES, 2, NAMES, HELPS, PICS, entry, 3, lwu(DPAGE + 0x38), lwu(DPAGE + 0x38));  // (Later and Back: where Back from the Display page goes)
+    sw(RPAGE + 5 * 4, lwu(DPAGE + 5 * 4));  // (slot 5: as the Display page holds it)
+    sw(RLIST + 0x40, 1);
+    gs_.rp_built = true;
+}
 }  // namespace
+
+// orig: (none) — enhancement: the Display page's settings widget `w` focused in the menu `ms` (its state block), before its exit keys
+// (menu_settings_update, pause_menu_options.cpp; declared there: the headers of src/game are the generated code's fingerprint): Back
+// (triangle) or Start / Select / L1 (the menu closing) pressed with a GPU or Renderer change the running game does not have, asked
+// for once since the last change: the press is taken and the restart popup opened instead (its Later leaves the page as Back does)
+bool graphics_leave_ask(uint32_t w, uint32_t ms) {
+    if (!gs_.ask_due || !gs_.rp_built || g_advanced_disabled || w != DROWS_WIDGET) return false;
+    const uint32_t pressed = lwu(0x0013c940u + 0x1c4);  // (pad 1, as the exit keys read it)
+    const bool exits = ((pressed & 0xd00u) != 0 && lw(ms + 0x124) == 0) || (pressed & 0x10u) != 0;
+    if (!exits || lwu(ms + 8) != 0) return false;
+    // (still different from what the game started with: a row set back before leaving asks nothing)
+    const bool gpu = gs_.gpu_name != gs_.gpu_start_name || gs_.gpu_uuid != gs_.gpu_start_uuid;
+#if !defined(__APPLE__)
+    const bool renderer = gs_.run_known && gs_.value[S_RENDERER] != gs_.run_choice;
+#else
+    const bool renderer = false;
+#endif
+    gs_.ask_due = false;
+    if (!gpu && !renderer) return false;
+    gs_.ask = gpu ? 1 : 2;
+    gs_.rp_pause = ovl_reloc_level() != OVL_FRONT;  // (the pause menu: progress since the last save is lost)
+    sw(RLIST + 0x40, 1);  // (Later selected: a stray Cross loses nothing)
+    sw(ms + 8, RPAGE);
+    std::printf("[restart] popup: restart to use the %s (%s)\n", gs_.ask == 2 ? "renderer" : "GPU", gs_.rp_pause ? "pause menu: progress since the last save is lost" : "main menu");
+    return true;
+}
+
+// orig: (none) — enhancement: the list `w` runs its entry's action 3 (pause_menu.cpp, the list's update; declared there): the restart
+// popup's Restart now asks the host to close the game and start it again; true for our list
+bool graphics_restart_choice(uint32_t w) {
+    if (w != RLIST) return false;
+    if (lw(w + 0x40) == 0) {
+        std::printf("[restart] Restart Now chosen\n");
+        graphics_request_restart();
+    }
+    return true;
+}
 
 // orig: (none) — enhancement (graphics.h)
 void graphics_main_menu_install() {

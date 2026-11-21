@@ -27,6 +27,9 @@
 
 namespace rac1 {
 
+// (graphics.cpp's, declared here: the headers of src/game are the generated code's fingerprint) the GPU / Renderer rows' restart popup
+bool graphics_restart_choice(uint32_t w);
+
 namespace {
 constexpr OvConst<0x001b9cf0u> MS{};      // the menu's state
 constexpr OvConst<0x001b9e90u> MOBYS{};  // its 14 mobys
@@ -564,6 +567,7 @@ int32_t menu_button_update(uint32_t w) {
             case 2: moby_sound_start(2, 0x11, lwu(w + 0x14)); break;
             case 3:
                 update_notice_choice(w);  // enhancement: the update notice's Skip Version
+                graphics_restart_choice(w);  // enhancement: the restart popup's Restart Now
                 page_go();
                 break;
             case 4:
