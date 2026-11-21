@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reaching `lui` halves of the overlay's addresses (ADR 0008), for tools/codegen/asm2fn.py.
+"""Reaching `lui` halves of the overlay's addresses (ADR 0008), for tools/codegen/mips2cpp.py.
 
 A compiled function builds an address as `lui r,hi` + `addiu r,r,lo` (or uses r as the base of a load / store), and the
 two are often far apart: a `lui` before a loop, an `addiu` after a label. The text pass of tools/codegen/reloc_asm.py only

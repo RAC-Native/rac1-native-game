@@ -1,5 +1,5 @@
 // Oracle batch 113 (task 0341): Novalis on its own overlay by default: its camera type 0x315dd8, class 775
-// (0x2ff810), its four sound emitter updates (0x319928 / 0x319f18 / 0x31a078 / 0x31a128, transliterated), and
+// (0x2ff810), its four sound emitter updates (0x319928 / 0x319f18 / 0x31a078 / 0x31a128, sound_emitter_types.cpp), and
 // the shared code it reaches (Veldin's addresses: the particle types 0x06 / 0x08's updates 0x269d20 /
 // 0x26a5b8, the Vendor's draw 0x2a5040). Run with ORACLE_LEVEL=1 build/tests/ovl_oracle --batch 113 (needs the
 // ISO); level 0 runs the shared checks at Veldin's addresses on Novalis's data (as batch 69). The subjects are the level's own (its
@@ -7,9 +7,10 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/fx_26a5b8.h>
 #include <game/ovl/novalis_level_fns.h>
 #include <game/ovl/novalis_mobys2.h>
-#include <game/ovl/novalis_sound_tr.h>
+#include <game/ovl/sound_emitter.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/shared_fx_tr.h>
 #include <game/ovl/vendor_tr.h>
@@ -140,8 +141,8 @@ void batch_113() {
         uint32_t fn;
         void (*port)(uint32_t);
     };
-    const Em ems[] = {{"emitter_319928", 0x00319928, nov_emitter_319928_l1}, {"emitter_319f18", 0x00319f18, nov_emitter_319f18_l1},
-                      {"emitter_31a078", 0x0031a078, nov_emitter_31a078_l1}, {"emitter_31a128", 0x0031a128, nov_emitter_31a128_l1}};
+    const Em ems[] = {{"emitter_319928", 0x00319928, emitter_fade_box_update}, {"emitter_319f18", 0x00319f18, emitter_reverb_box_update},
+                      {"emitter_31a078", 0x0031a078, emitter_camera_bed_update}, {"emitter_31a128", 0x0031a128, emitter_music_box_update}};
     for (const Em& e : ems) {
         if (g_oracle_level != 1) {
             l1check(e.name, e.fn, 0, Ret::None, nullptr, nullptr);
@@ -187,9 +188,9 @@ void batch_113() {
                     for (int k = 0; k < 4; ++k) {
                         for (int c = 0; c < 3; ++c) wf(OUT + 4 * u(c), ee_read<float>(m + 0x10 + 4 * u(c)) + rf(-2.0f, 2.0f));
                         seed_rand();
-                        nov_27e900_l1(pv, OUT, ee_read<uint32_t>(pv + 0xc0), ee_read<uint8_t>(pv + 0xc6), ee_read<uint8_t>(pv + 0xc7), 0xff, 0, 0,
+                        nov_27e900_l1(pv, OUT, ee_read<int32_t>(pv + 0xc0), ee_read<uint8_t>(pv + 0xc6), ee_read<uint8_t>(pv + 0xc7), 0xff,
                                       ee_read<float>(OUT), ee_read<float>(OUT + 4), ee_read<float>(OUT + 8), rf(0.0f, 1.0f), rf(0.0f, 1.0f),
-                                      ee_read<float>(pv + 0xb0), ee_read<float>(pv + 0xb4), ee_read<float>(pv + 0xb8));
+                                      ee_read<float>(pv + 0xb0), ee_read<float>(pv + 0xb4), ee_read<float>(pv + 0xb8), ee_read<float>(pv + 0xbc));
                     }
                 }
         };
@@ -222,7 +223,7 @@ void batch_113() {
                     if (ee_read<uint8_t>(base + u(i) * 64) == 8 && ee_read<int8_t>(base + u(i) * 64 + 1) >= 0) p = base + u(i) * 64;
                 if (p != 0 && coin()) w16(p + 0xa, u(ri(0, 3)));
                 return Args{{p}, {}};
-            }, [](A a) { if (a.i[0] != 0) particle_08_update(a.i[0]); return uint64_t{0}; });
+            }, [](A a) { if (a.i[0] != 0) fx_26a5b8_update(a.i[0]); return uint64_t{0}; });
         } else {
             check("particle_08_update", 0x0026a5b8, 300, Ret::None, [with_particles, p8] {
                 with_particles();
@@ -230,7 +231,7 @@ void batch_113() {
                 if (coin()) w16(p + 0xa, u(ri(0, 3)));
                 seed_rand();
                 return Args{{p}, {}};
-            }, [](A a) { particle_08_update(a.i[0]); return uint64_t{0}; });
+            }, [](A a) { fx_26a5b8_update(a.i[0]); return uint64_t{0}; });
         }
     }
 
@@ -239,10 +240,11 @@ void batch_113() {
     struct PT {
         const char* name;
         uint32_t vaddr, type;
-        TrRet (*spawn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float);
+        uint32_t (*spawn)(uint32_t, uint32_t, float, float);
         void (*port)(uint32_t);
     };
-    const PT pts[] = {{"particle_38_update", 0x00272838, 0x38, nov_287b00_l1, particle_38_update},
+    const PT pts[] = {{"particle_38_update", 0x00272838, 0x38, [](uint32_t p, uint32_t v, float s, float) { return nov_287b00_l1(p, v, s); },
+                       particle_38_update},
                       {"particle_39_update", 0x002728e8, 0x39, nov_287c80_l1, particle_39_update}};
     for (const PT& t : pts) {
         if (g_oracle_level != 1) {
@@ -254,7 +256,8 @@ void batch_113() {
             wfrand(OUT, 4, 100, 140);
             wfrand(OUT + 0x10, 4, -1, 1);
             seed_rand();
-            t.spawn(OUT, OUT + 0x10, u(ri(1, 8)), 0, 0, 0, 0, 0, rf(0.2f, 2.0f), rf(0.0f, 1.0f), 0.0f, 0.0f);
+            (void)ri(1, 8);  // (the count the spawners never read, still drawn: the same cases as before)
+            t.spawn(OUT, OUT + 0x10, rf(0.2f, 2.0f), rf(0.0f, 1.0f));
             const std::vector<uint32_t> ps = particles_of(t.type);
             if (ps.empty()) return Args{{0u}, {}};
             const uint32_t p = ps[static_cast<size_t>(ri(0, static_cast<int>(ps.size()) - 1))];
@@ -287,6 +290,136 @@ void batch_113() {
                     seed_rand();
                     return Args{{m}, {}};
                 }, [](A a) { vendor_draw_tr(a.i[0]); return uint64_t{0}; });
+        check("vendor_draw_packets", 0x002a5040, 100, Ret::None, [level, vs] {
+            level();
+            if (ee_read<uint16_t>(0x001518d0) == 0) {
+                w16(0x001518d0, 640);
+                w16(0x001518d2, 448);
+            }
+            screen_setup();
+            projection_setup();
+            render_view_setup();
+            w32(OV(0x001611c0), TEST_AREA + 0x1000);
+            w32(OV(0x0015f5f8), TEST_AREA + 0x7000);
+            uint32_t m;
+            if (!vs.empty()) {
+                m = vs[static_cast<size_t>(ri(0, static_cast<int>(vs.size()) - 1))];
+            } else {
+                // Veldin's intro has no placed class-11 Vendor: copy the hero moby's pose/matrix into TEST_AREA.
+                m = TEST_AREA + 0x200;
+                const uint32_t hero = ee_read<uint32_t>(OV(0x0015ffd8));
+                std::memcpy(ee_ram_ptr(m), ee_ram_ptr(hero), 0x100);
+                w32(m + 0x78, TEST_AREA + 0x300);
+            }
+            for (int k = 0; k < 3; ++k) wf(m + 0x10 + 4 * u(k), ee_read<float>(0x0013f3d0 + 4 * u(k)) + rf(-1.2f, 1.2f));
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            if (pv >= 0x00100000u && pv < 0x02000000u) wf(pv + 0x90, rf(0.4f, 2.0f));
+            w32(m + 0x90, (R() & 0xffff0000u) | 0x40000000u);
+            wf(OV(0x00161394), coin() ? rf(0.992f, 1.05f) : rf(0.0f, 0.99f));
+            wf(OV(0x00161398), coin() ? rf(0.992f, 1.05f) : rf(0.0f, 0.99f));
+            if (ri(0, 3) == 0) {
+                wf(0x0015ed60, 1.2f);
+                wf(0x0015ed68, 1.2f);
+                wf(0x0015ed6c, 0.02f);
+                wf(0x0015ed70, 0.0004f);
+            }
+            seed_rand();
+            return Args{{m}, {}};
+        }, [](A a) { vendor_draw_tr(a.i[0]); return uint64_t{0}; });
+    }
+
+    // ---- shared (P0.1): direct L0/L1 checks of vec_damp_along (0x25c2b0) and particle types 0x06, 0x38, 0x39
+    {
+        check("p01_vec_damp_along", 0x0025c2b0, 100, Ret::None, [level] {
+            level();
+            wfrand(OUT, 4, -5.0f, 5.0f);
+            wfrand(OUT + 0x10, 4, -10.0f, 10.0f);
+            Vec4 dir{rf(-4.0f, 4.0f), rf(-4.0f, 4.0f), rf(-4.0f, 4.0f), 0.0f};
+            if (dir.x * dir.x + dir.y * dir.y + dir.z * dir.z < 0.01f) dir.z = 1.0f;
+            ee_ref<Vec4>(OUT + 0x20) = dir;
+            return Args{{OUT, OUT + 0x10, OUT + 0x20}, {rf(-2.0f, 2.5f)}};
+        }, [](A a) { vec_damp_along(ee_ref<Vec4>(a.i[0]), ee_ref<Vec4>(a.i[1]), ee_ref<Vec4>(a.i[2]), a.f[0]); return uint64_t{0}; });
+
+        {
+            const CollisionScratchIgnored spr_ignored;
+            check("p01_particle_06", 0x00269d20, 240, Ret::None, [level] {
+                level();
+                const uint32_t p = alloc_particle(6);
+                if (p == 0) return Args{{0u}, {}};
+                const uint32_t cfg = TEST_AREA + 0x2000;
+                const uint32_t hero = ee_read<uint32_t>(OV(0x0015ffd8));
+                const float hx = ee_read<float>(0x0013f3d0), hy = ee_read<float>(0x0013f3d4), hz = ee_read<float>(0x0013f3d8);
+                ee_ref<Vec4>(cfg + 0x00) = Vec4{rf(-0.3f, 0.3f), rf(-0.3f, 0.3f), rf(-0.3f, 0.3f), 0.0f};
+                const float box = ri(0, 6) == 0 ? 0.05f : 50.0f;
+                ee_ref<Vec4>(cfg + 0x10) = Vec4{hx - box, hy - box, hz - box, 0.0f};
+                ee_ref<Vec4>(cfg + 0x20) = Vec4{hx + box, hy + box, hz + box, 0.0f};
+                wf(cfg + 0x30, rf(-600.0f, 600.0f));
+                wf(cfg + 0x34, rf(-0.15f, 0.15f));
+                wf(cfg + 0x38, rf(0.05f, 0.4f));
+                wf(cfg + 0x3c, rf(1.0f, 2.0f));
+                wf(cfg + 0x40, rf(0.05f, 2.0f));
+                wf(cfg + 0x44, rf(0.1f, 0.3f));
+                wf(cfg + 0x48, rf(0.6f, 0.85f));
+                for (uint32_t k = 0; k < 3; ++k) {
+                    wf(cfg + 0x4c + k * 4, rf(0.05f, 0.4f));
+                    wf(cfg + 0x58 + k * 4, rf(0.15f, 0.35f));
+                    wf(cfg + 0x64 + k * 4, rf(0.65f, 0.85f));
+                }
+                uint32_t fl = R() & 0x8fffu;
+                if (coin()) fl |= 1u;  // segment_collide bounce
+                w32(cfg + 0x70, fl);
+                wf(cfg + 0x74, rf(500.0f, 2000.0f));
+                wf(cfg + 0x78, rf(3000.0f, 12000.0f));
+                w32(cfg + 0x7c, hero);
+
+                ee_ref<Vec4>(p + 0x10) = Vec4{hx + rf(-1.0f, 1.0f), hy + rf(-1.0f, 1.0f), hz + rf(-0.2f, 0.8f), 1.0f};
+                if (coin()) {
+                    ee_ref<Vec4>(p + 0x20) = Vec4{rf(-0.2f, 0.2f), rf(-0.2f, 0.2f), rf(-2.5f, -0.4f), 0.0f};
+                } else {
+                    ee_ref<Vec4>(p + 0x20) = Vec4{rf(-0.5f, 0.5f), rf(-0.5f, 0.5f), rf(-0.5f, 0.5f), 0.0f};
+                }
+                w32(p + 4, R());
+                w8(p + 8, R() & 0xff);
+                w16(p + 0xa, u(ri(0, 5) == 0 ? ri(0, 2) : ri(3, 60)));
+                wf(p + 0xc, rf(100.0f, 15000.0f));
+                w32(p + 0x2c, cfg);
+                wf(p + 0x30, ri(0, 6) == 0 ? rf(-0.05f, 0.0f) : rf(0.0f, 1.05f));
+                wf(p + 0x34, rf(0.0f, 1.0f));
+                w32(p + 0x38, R());
+                if (ri(0, 3) == 0) {
+                    wf(0x0015ed60, 1.2f);
+                    wf(0x0015ed68, 1.2f);
+                    wf(0x0015ed6c, 0.02f);
+                }
+                seed_rand();
+                return Args{{p}, {}};
+            }, [](A a) { if (a.i[0] != 0) particle_06_update(a.i[0]); return uint64_t{0}; }, OV(0x00173e8c), OV(0x00173e9c));
+        }
+
+        check("p01_particle_38", 0x00272838, 150, Ret::None, [level] {
+            level();
+            const uint32_t p = alloc_particle(0x38);
+            if (p == 0) return Args{{0u}, {}};
+            wfrand(p + 0x10, 4, 100.0f, 140.0f);
+            wfrand(p + 0x20, 4, -1.0f, 1.0f);
+            wf(p + 0xc, rf(0.0f, 30000.0f));
+            w32(p + 4, (R() & 0xffffff00u) | u(ri(0, 3) == 0 ? ri(0, 4) : ri(5, 255)));
+            return Args{{p}, {}};
+        }, [](A a) { if (a.i[0] != 0) particle_38_update(a.i[0]); return uint64_t{0}; });
+
+        check("p01_particle_39", 0x002728e8, 150, Ret::None, [level] {
+            level();
+            const uint32_t p = alloc_particle(0x39);
+            if (p == 0) return Args{{0u}, {}};
+            wfrand(p + 0x10, 4, 100.0f, 140.0f);
+            wfrand(p + 0x20, 4, -1.0f, 1.0f);
+            wf(p + 0xc, rf(0.0f, 30000.0f));
+            wf(p + 0x30, rf(-50.0f, 50.0f));
+            wf(p + 0x34, rf(-5.0f, 5.0f));
+            const int k = ri(0, 2);
+            w16(p + 0xa, u(k == 0 ? ri(0, 2) : k == 1 ? ri(3, 65) : ri(66, 127)));
+            return Args{{p}, {}};
+        }, [](A a) { if (a.i[0] != 0) particle_39_update(a.i[0]); return uint64_t{0}; });
     }
 
     // ---- the vendor's screens (game mode 5, Veldin's addresses): the start 0x29a6b0 from a Vendor (or 0: the hero's
@@ -339,8 +472,13 @@ void batch_113() {
                 std::printf("  mode 5 after %d frames: state %u, +0x14 %08x, +0x20 %08x, game mode %d\n", k, ee_read<uint32_t>(OV(0x001ca4c0)),
                             ee_read<uint32_t>(OV(0x001ca4c0) + 0x14), ee_read<uint32_t>(OV(0x001ca4c0) + 0x20), ee_read<int32_t>(OV(0x0015f5c4)));
         };
+        {
+        // (stage 5, task C2c) vendor_mode_update reaches segment_collide: A2's collision scratch
+        // ranges left out of this check (see batch 43's checks of it)
+        const CollisionScratchIgnored spr_ignored;
         check("vendor_mode_update", 0x0029c648, 120, Ret::None, [in_mode5] { in_mode5(240); return Args{{0u}, {}}; },
-              [](A) { vendor_mode_update_tr(0); return uint64_t{0}; });
+              [](A) { vendor_mode_update_tr(0); return uint64_t{0}; }, OV(0x00173e9c));
+        }
         check("vendor_mode_draw", 0x002a02b0, 120, Ret::None, [in_mode5] { in_mode5(240); return Args{{0u}, {}}; },
               [](A) { vendor_mode_draw_tr(0); return uint64_t{0}; });
         g_extra_noop_hooks.clear();

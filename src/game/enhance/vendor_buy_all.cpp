@@ -10,7 +10,7 @@
 //   the items' HUD table 0x179ac0 (0x4c bytes an item): +0x38 the tile's HUD animation (frame 2: the ammo tile);
 //   the ammo 0x13d428[item], the ammo bought 0x13dd70[item], the bolts 0x15ed98;
 //   0x161e18 / 0x161e10: the screens busy (an opening, the quantity box): the list does not move; 0x161e30 the pad's
-//     buttons of the frame before (a press counts once); 0x161e38 the cursor moved (the hologram made again).
+//     buttons of the frame before (a press counts once: vendor::pad_before()); 0x161e38 the cursor moved (the hologram made again).
 #include <game/enhance/vendor_buy_all.h>
 
 #include <game/enhance/advanced.h>
@@ -20,7 +20,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
-#include <game/ovl/vendor_tr.h>
+#include <game/ovl/vendor_screens.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -34,7 +34,6 @@ constexpr OvConst<0x00179ac0u> HUD_ITEMS{};
 constexpr OvConst<0x0015f5c4u> MODE{};
 constexpr OvConst<0x00161e18u> BUSY_OPEN{};
 constexpr OvConst<0x00161e10u> BUSY_QUANTITY{};
-constexpr OvConst<0x00161e30u> PAD_BEFORE{};
 constexpr OvConst<0x00161e38u> CURSOR_MOVED{};
 constexpr uint32_t AMMO = 0x0013d428, AMMO_BOUGHT = 0x0013dd70, BOLTS = 0x0015ed98;
 constexpr uint32_t PAD = 0x0013c940;
@@ -122,8 +121,8 @@ uint32_t ee_string(uint32_t a, const char* s, uint32_t n) {
     return a;
 }
 
-// orig: (none) — enhancement: the sign's text (the screens' marquee, 0x29b070), a game text id (0x203ad8)
-void sign_text_id(int32_t id) { ovl_29b070_tr(sub_00203ad8(id), 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f); }
+// orig: (none) — enhancement: the sign's text (the screens' marquee, vendor_sign_text 0x29b070), a game text id (0x203ad8)
+void sign_text_id(int32_t id) { vendor::vendor_sign_text(sub_00203ad8(id)); }
 
 // orig: (none) — enhancement: a Vendor sound (the moby's sound `k`: 0 error, 2 full, 7 purchased)
 void vendor_sound(int32_t k) { moby_sound_start(k, 0, lwu(LIST + 0x1c)); }
@@ -152,14 +151,14 @@ void buy_all() {
     }
     if (bought > 0) {
         const uint32_t before = lwu(entry(0));
-        ovl_29b4d8_tr(3, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);  // (the Vendor's thanks, as after an ammo purchase)
+        vendor::vendor_remark(3);  // (the Vendor's thanks, as after an ammo purchase)
         item_list_build(lw(LIST + 0x40) > 0 ? 1 : 0);
         sw(LIST + 0x58, 0);
         if (is_all(0) && lwu(entry(0)) != before) sw(CURSOR_MOVED, 1);  // (the entry's weapon changed: the game makes the hologram again)
-        sign_text_id(0x4f5f);
+        sign_text_id(TXT(0x4f5f));
         vendor_sound(7);
     } else if (short_of_bolts) {
-        sign_text_id(0x4f60);
+        sign_text_id(TXT(0x4f60));
         vendor_sound(0);
     } else {
         vendor_sound(2);
@@ -232,7 +231,7 @@ void vendor_buy_all_input() {
     if (!on_all() || !list_idle()) return;
     // (Cross as the game reads it, 0x29c648: pressed this frame and not the frame before; the game itself starts no
     // purchase on the entry, its +8 word not 0)
-    if ((lwu(PAD + 0x1c4) & CROSS) != 0 && (lwu(PAD_BEFORE) & CROSS) == 0) buy_all();
+    if ((lwu(PAD + 0x1c4) & CROSS) != 0 && (vendor::pad_before() & CROSS) == 0) buy_all();
 }
 
 // orig: (none) — enhancement (vendor_buy_all.h): on the entry, the item monitor's two title lines (0x29e198, an ammo

@@ -44,57 +44,12 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shadows.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
-
-//@gen gml_2f7208_l13
-
-//@gen gml_2f7480_l13
-
-//@gen gml_2f79d0_l13
-
-//@gen gml_cb_2f5f30_l13
-
-//@gen gml_cb_2fcc08_l13
-
-//@gen gml_cb_3051a0_l13
-
-//@gen gml_cb_3098d0_l13
-
-//@gen gml_259060_l13
-
-//@gen gml_2ae9f0_l13
-
-//@gen gml_2af528_l13
-
-//@gen gml_2595f0_l13
-
-//@gen gml_2af5d0_l13
-
-//@gen gml_20b500_l13
-
-//@gen gml_2ab548_l13
-
-//@gen gml_2af8b8_l13
-
-//@gen gml_2afae8_l13
-
-//@gen gml_cb_30a460_l13
-
-//@gen gml_298328_l13
-
-//@gen gml_emitter1_l13
-
-//@gen gml_316f80_l13
-
-//@gen gml_cam_type19_accept_u
-
-//@gen gml_cam_type19_init_l13
-
-//@gen gml_cam_type19_update_l13
 
 //@gen gml_hook_2b7980_u
 
@@ -105,13 +60,5 @@ using namespace vu0m;
 //@gen gml_hook_2b7ad0_u
 
 //@gen gml_hook_2b7b00_u
-
-//@gen gml_1f6b08_l13
-
-//@gen gml_cam0_hook_l13
-
-//@gen gml_cam_callback_l13
-
-//@gen gml_hud_245cf8_l13
 
 }  // namespace rac1

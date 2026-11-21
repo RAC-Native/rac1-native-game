@@ -6,9 +6,8 @@
 // type table 0x1ea880 +0x8c (0x14 each: id, then the accept / init / update / exit functions),
 // the active flag +0x8e. The active camera *(0x166e00), the previous one *(0x166e04); the view
 // the renderer reads: position 0x166dc0, Euler angles 0x166dd0, rows 0x166fd0..0x167000.
-#include <game/ovl/aridia_classes_tr.h>
 #include <game/ovl/camera_types.h>
-#include <game/ovl/kerwan_camera_tr.h>
+#include <game/ovl/kerwan_camera.h>
 #include <game/ovl/variants_l3.h>
 #include <game/ovl/eudora_mobys.h>
 #include <game/ovl/rilgar_hooks.h>
@@ -28,6 +27,7 @@
 #include <game/ovl/variants_l2.h>
 #include <game/ovl/novalis_level_fns.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/level/level_data.h>
 #include <game/ovl/ovl_common.h>
 #include <game/port_stubs.h>
 #include <cstdio>
@@ -49,7 +49,7 @@ uint32_t types_base() { return g_camera_types_table != 0 ? g_camera_types_table 
 // orig: (helper) the type-table function `col` (4 accept, 8 init, 0xc update, 0x10 exit) of a camera
 uint32_t type_fn(uint32_t cam, uint32_t col) { return lwu(types_base() + static_cast<uint32_t>(lh(cam + 0x8c) * 0x14) + col); }
 // orig: (helper) the level camera entry (0x20 each at *(0x15ef50)) of a camera
-uint32_t level_entry(uint32_t cam) { return lwu(OV(0x0015ef50)) + static_cast<uint32_t>(lh(cam + 0x84) * 0x20); }
+uint32_t level_entry(uint32_t cam) { return lvd::camera(lh(cam + 0x84)); }
 // orig: (helper) the three unit rows of the hero's matrix *(0x1413d0) + 0xc0
 void hero_rows(Vec4& r0, Vec4& r1, Vec4& r2) {
     vec3_set_length(r0, V(lwu(0x001413d0) + 0xc0), 1.0f);
@@ -87,7 +87,7 @@ void cam_trace_list() {
     static const bool on = std::getenv("RAC1_CAM_TRACE") != nullptr;
     if (!on) return;
     std::fprintf(stderr, "[cam] slots: follow-camera hook %08x, callback queue %08x\n", OV(0x00167010), OV(0x00168ff0));
-    for (int32_t i = 0; i < lw(OV(0x0015ef54)); ++i) {
+    for (int32_t i = 0; i < lvd::camera_count(); ++i) {
         const uint32_t cam = CAMS + static_cast<uint32_t>(i) * 0xa0;
         const uint32_t e = level_entry(cam), data = lwu(e + 0x1c);
         std::fprintf(stderr, "[cam] level cam %d: type %d row %d (fns %08x %08x %08x %08x) trig %u prio %u kind %u pos %.1f %.1f %.1f data %08x box %08x\n", i,
@@ -95,7 +95,7 @@ void cam_trace_list() {
                      lbu(cam + 0x7c), lbu(data + 0x1d), static_cast<double>(lwc1(e)), static_cast<double>(lwc1(e + 4)), static_cast<double>(lwc1(e + 8)), data,
                      lwu(data + 0xc));
         if (lw(data + 0xc) >= 0) {  // (its box, 0x80 each at *(0x1600ec): the centre +0x30)
-            const uint32_t box = lwu(OV(0x001600ec)) + static_cast<uint32_t>(lw(data + 0xc)) * 0x80;
+            const uint32_t box = lvd::box(lvd::BOXES, lw(data + 0xc));
             std::fprintf(stderr, "[cam]   box %d at %.1f %.1f %.1f\n", lw(data + 0xc), static_cast<double>(lwc1(box + 0x30)), static_cast<double>(lwc1(box + 0x34)),
                          static_cast<double>(lwc1(box + 0x38)));
         }
@@ -103,7 +103,7 @@ void cam_trace_list() {
         for (uint32_t k = 0; k < 0x40; k += 4) std::fprintf(stderr, " %08x", lwu(data + k));
         std::fprintf(stderr, "\n");
         if (lh(cam + 0x86) == 3 && lw(data + 0x24) >= 0) {
-            const uint32_t t = lwu(OV(0x0015f70c)) + static_cast<uint32_t>(lw(data + 0x24)) * 0x20;
+            const uint32_t t = lvd::rail(lw(data + 0x24));
             std::fprintf(stderr, "[cam]   0x15f70c[%d]:", lw(data + 0x24));
             for (uint32_t k = 0; k < 0x20; k += 4) std::fprintf(stderr, " %08x", lwu(t + k));
             std::fprintf(stderr, "\n");
@@ -171,12 +171,13 @@ int32_t camera_type_call(uint32_t fn, uint32_t cam, uint32_t other) {
         int32_t r = 0;
         if (hoven_camera_type_call(fn, cam, other, &r)) return r;
     }
-    if (on_camera_level(EUDORA)) {  // Eudora's own camera type (1: accept / init / update / exit at its own addresses, no Veldin equivalent)
+    if (on_camera_level(EUDORA)) {  // Eudora's own camera type (1: accept / init / update / exit at its own addresses, no Veldin
+                                    // equivalent; the port of Kerwan's and Eudora's copies, kerwan_camera.cpp)
         switch (lvl_key(fn)) {
-        case L4_CASE(0x002ed850): return static_cast<int32_t>(eud_cam_type1_accept_u(cam, other, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f).v0);
-        case L4_CASE(0x002ed920): eud_cam_type1_init_l4(cam); return 0;
-        case L4_CASE(0x002ed940): eud_cam_type1_update_l4(cam); return 0;
-        case L4_CASE(0x002ed960): eud_cam_type1_exit_l4(cam); return 0;
+        case L4_CASE(0x002ed850): return cam_type1_accept(cam, other);
+        case L4_CASE(0x002ed920): cam_type1_init(cam); return 0;
+        case L4_CASE(0x002ed940): cam_type1_update(cam); return 0;
+        case L4_CASE(0x002ed960): cam_type1_exit(cam); return 0;
         default: break;
         }
     }
@@ -203,8 +204,8 @@ int32_t camera_type_call(uint32_t fn, uint32_t cam, uint32_t other) {
     case 0x002eb210: case 0x002ebaf8: case 0x002ec6b8: return 0;  // types 2 / 3 / 4's accept: v0 = 0
     case 0x002eb270: case 0x002ebbd0: return 0;                   // types 2 / 3's exit: empty
     default:
-        // Aridia's own type 0x12 (its accept function: the modifier 6's, forked)
-        if (on_camera_level(ARIDIA) && fn == L2_ADDR(0x002fc298)) return static_cast<int32_t>(cam_type_12_accept_l2(cam, other));
+        // Aridia's own type 0x12 (its accept function: the modifier 6's, forked): the port of every level's copy (kerwan_camera.cpp)
+        if (on_camera_level(ARIDIA) && fn == L2_ADDR(0x002fc298)) return cam_type18_accept(cam, other);
         if (int32_t r = 0; level_camera_type_call(fn, cam, other, r)) return r;  // (a level's own camera type)
         TODO_PORT(fn, "camera type function")(cam, other);
         return 0;
@@ -213,12 +214,14 @@ int32_t camera_type_call(uint32_t fn, uint32_t cam, uint32_t other) {
 
 // orig: (helper) jalr to one of the end-of-update callbacks queued at 0x168ff0
 void camera_callback_call(uint32_t fn) {
-    if (on_camera_level(ARIDIA) && fn == L2_ADDR(0x002fa770)) {  // Aridia's own callback (queued by the camera hook 0x2fa710)
-        cam_callback_2fa770_l2(0);
+    // Aridia's and Eudora's own copies of the look-height callback (queued by their camera hooks 0x2fa710 / 0x2f0448): the
+    // port of every level's copy (kerwan_camera.cpp)
+    if (on_camera_level(ARIDIA) && fn == L2_ADDR(0x002fa770)) {
+        cam0_level_callback(0);
         return;
     }
-    if (on_camera_level(EUDORA) && fn == L4_ADDR(0x002f04a8)) {  // Eudora's own callback (queued by the camera hook 0x2f0448)
-        eud_cam_callback_l4(0);
+    if (on_camera_level(EUDORA) && fn == L4_ADDR(0x002f04a8)) {
+        cam0_level_callback(0);
         return;
     }
     if (on_camera_level(ORXON) && orxon_camera_callback_call(fn)) return;  // (level 10's own: 0x2f4b78, queued by the camera hook 0x2f4b18)
@@ -234,8 +237,8 @@ void camera_callback_call(uint32_t fn) {
     if (on_camera_level(UMBRIS) && umbris_camera_callback_call(fn)) return;  // (level 7's own: 0x3280f0, queued by the camera hook 0x328090)
     if (on_camera_level(BLARG) && blarg_camera_callback_call(fn)) return;  // (level 6's own: 0x314810, queued by the camera hook 0x3147b0)
     if (on_camera_level(RILGAR) && rilgar_camera_callback_call(fn)) return;  // (Rilgar's own: 0x328fe0, queued by the camera hook 0x328f80)
-    if (on_camera_level(KERWAN) && fn == L3_ADDR(0x002eb468)) {  // (Kerwan's own, queued by the camera hook 0x2eb408: kerwan_camera_tr.cpp)
-        ker_cam_callback_l3(0);
+    if (on_camera_level(KERWAN) && fn == L3_ADDR(0x002eb468)) {  // (Kerwan's own, queued by the camera hook 0x2eb408: kerwan_camera.cpp)
+        cam0_level_callback(0);
         return;
     }
     switch (ovl_code_to_veldin(fn)) {  // (the level's code address as Veldin's: the ports' cases)
@@ -393,7 +396,7 @@ int32_t camera_accept(uint32_t cam, uint32_t cur) {
         if (id != 3) return 1;
         const int32_t k = lw(lwu(level_entry(cam) + 0x1c) + 0x24);
         if (k < 0) return 1;
-        if (lw(0x0013f8b0) != lw(lwu(OV(0x0015f70c)) + static_cast<uint32_t>(k) * 0x20 + 0x10)) return 0;
+        if (lw(0x0013f8b0) != lw(lvd::rail(k) + 0x10)) return 0;
         return lw(0x0013f8c0) == 0 ? 1 : 0;
     }
     default:
@@ -929,9 +932,9 @@ void camera_init() {
     swc1(S + 0xb0, g);
     sw(S + 0xd4, 0);
     sw(S + 0xdc, 0);
-    for (int32_t i = 0; i < lw(OV(0x0015ef54)); ++i) {
+    for (int32_t i = 0; i < lvd::camera_count(); ++i) {
         const uint32_t cam = CAMS + static_cast<uint32_t>(i) * 0xa0;
-        const uint32_t e = lwu(OV(0x0015ef50)) + static_cast<uint32_t>(i) * 0x20;
+        const uint32_t e = lvd::camera(i);
         const uint32_t data = lwu(e + 0x1c);
         sh(cam + 0x84, static_cast<uint32_t>(i));
         sw(data + 4, cam);

@@ -10,6 +10,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/kernel/disc.h>
 
+#include <optional>
 #include <cmath>
 #include <cstring>
 #include <map>
@@ -17,6 +18,16 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach segment_collide, whose crossing lists, chunk buffers and vertices the port keeps on
+// the host stack (the original: 0x70003000 .. 0x70003fff, 0x70000000 .., 0x70002000): A2's collision scratch ranges
+// are left out of these checks, and only of them (stage 5, task C2c).
+bool c2c_spr_check(const char* name) {
+    static const char* const kNames[] = {"spawn_point_update"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // A check whose original is Aridia's own function at `l2addr` (not a Veldin address to translate).
 void l2check(const char* name, uint32_t l2addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port,
              uint32_t ignore_word = 0, uint32_t ignore_word2 = 0) {
@@ -28,6 +39,8 @@ void l2check(const char* name, uint32_t l2addr, int n, Ret ret, const std::funct
         return;
     }
     std::printf("%-26s L2:0x%08x\n", name, l2addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2c_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, l2addr, n, ret, gen, port, Scope::FullRam, ignore_word, ignore_word2)) ++g_fail;
 }
 }  // namespace

@@ -19,7 +19,6 @@ uint64_t sx(int32_t v) { return static_cast<uint64_t>(static_cast<int64_t>(v)); 
 // alpha).
 // orig: 0x001fead8
 void sparkles_draw() {
-    if (on_blarg()) { blg_call(blg_sparkles_draw_u); return; }  // (level 6's own: L6:0x002167c0)
     sub_002a0ba8(0x42, 0x8000000048ull);
     constexpr OvConst<0x0016ca40u> S{};
     const float k16 = 16.0f;

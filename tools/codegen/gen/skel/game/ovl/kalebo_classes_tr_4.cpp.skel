@@ -7,6 +7,7 @@
 #include <game/lib/libc.h>
 #include <game/ovl/kalebo_mobys.h>
 #include <game/ovl/quad_draw.h>
+#include <game/ovl/weapon_classes.h>
 #include <game/ovl/weapons.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/carry_hooks.h>
@@ -38,123 +39,22 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/hud_slot7_tr.h>
+#include <game/ovl/shadows.h>
+#include <game/ovl/shared_moby_helpers.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
 
-//@gen kal_class1826_update_l16
-
-//@gen kal_class1891_update_l16
-
-//@gen kal_2c7388_l16
-
-//@gen kal_2c44f0_l16
-
-//@gen kal_2e0de0_l16
-
-//@gen kal_2e0e28_l16
-
-//@gen kal_2c4710_l16
-
-//@gen kal_2e8b08_l16
-
-//@gen kal_class1923_update_l16
-
-//@gen kal_class1943_update_l16
-
-//@gen kal_class1947_update_l16
-
-//@gen kal_class1948_update_l16
-
-//@gen kal_class1952_update_l16
-
-//@gen kal_class1953_update_l16
-
-//@gen kal_286d80_l16
-
-//@gen kal_emitter1_l16
-
-//@gen kal_286ea8_l16
-
-//@gen kal_emitter3_l16
-
-//@gen kal_emitter6_l16
-
-//@gen kal_cam_type3_accept_u
-
-//@gen kal_2efe48_l16
-
-//@gen kal_cam_type3_init_l16
-
-//@gen kal_cam_type3_update_l16
-
-//@gen kal_cam_type3_exit_l16
-
-//@gen kal_cam_type8_accept_u
-
-//@gen kal_2f3fc8_l16
-
-//@gen kal_2f3e60_l16
-
-//@gen kal_2f4048_l16
-
-//@gen kal_2f41e8_l16
-
-//@gen kal_cam_type8_init_l16
-
-//@gen kal_2f43e0_l16
-
-//@gen kal_2f47f0_l16
-
-//@gen kal_cam_type8_update_l16
-
 //@gen kal_cam0_set_124_u
-
-//@gen kal_hook_2e65d0_u
-
-//@gen kal_hook_2e6620_u
-
-//@gen kal_hook_2e6670_u
-
-//@gen kal_hook_2e66c0_u
-
-//@gen kal_hook_2e66f0_u
-
-//@gen kal_1e9988_l16
-
-//@gen kal_cam0_hook_l16
-
-//@gen kal_cam_callback_l16
-
-//@gen kal_cb_2351f8_l16
-
-//@gen kal_cb_235268_l16
 
 //@gen kal_cb_235660_l16
 
-//@gen kal_cb_2388b0_l16
-
-//@gen kal_cb_2388f8_l16
-
-//@gen kal_1f9cd8_l16
-
 //@gen kal_cb_238a30_l16
 
-//@gen kal_cb_238e20_l16
-
-//@gen kal_cb_2c9cd0_l16
-
-//@gen kal_cb_2cef60_l16
-
-//@gen kal_2cf850_l16
-
-//@gen kal_cb_2cf7a8_l16
-
 //@gen kal_1fe280_l16
-
-//@gen kal_299e28_l16
 
 //@gen kal_1fafa8_l16
 

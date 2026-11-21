@@ -23,6 +23,8 @@
 //                (assets/dumps/oracle/vu1_moby: Veldin's intro / gameplay, Kerwan).
 // Debugging: ORACLE_MRP_DIR (the asset root), ORACLE_MRP_FRAMES, ORACLE_MRP_TRACE (the chain, the
 // mobys drawn, the first differences), ORACLE_MRP_BISECT (the moby the draw loop fails on).
+// mrp_scene_asset reads the scene's unpacks: run the batch with RAC1_PERF_MOBY_PARTS=0 for it (by default the scene's
+// parts come from the draw loop's notes, which carry none, and the check is skipped).
 
 #include "ovl_oracle.h"
 
@@ -1114,6 +1116,12 @@ void check_scene() {
     level_state();
     if (g_frame_failed) {
         skip_check("mrp_scene_asset", 0x00250038, "the level's first gameplay frame fails in the oracle");
+        return;
+    }
+    // (the scene's parts come from the draw loop's notes by default, without the unpacks this check reads: mrp_scene.cpp,
+    // RAC1_PERF_MOBY_PARTS; with it 0, or with RAC1_MRP_CHECK, the chains are decoded as before)
+    if (const char* pm = std::getenv("RAC1_PERF_MOBY_PARTS"); (pm == nullptr || std::atoi(pm) != 0) && std::getenv("RAC1_MRP_CHECK") == nullptr) {
+        skip_check("mrp_scene_asset", 0x00250038, "run with RAC1_PERF_MOBY_PARTS=0: the scene's parts decoded from the chain, with their unpacks");
         return;
     }
     LevelClasses& lc = classes();

@@ -44,6 +44,7 @@
 //   RAC1_MRP=1 (the Modern Rendering Pipeline for the mobys, the world and the sky: RAC1_MOBY_MRP=1 + RAC1_WORLD_MRP=1; either set
 // explicitly decides for its part)
 #include <runtime/ee/ps2_fpu.h>
+#include <io/asset_paths.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -71,6 +72,7 @@
 #endif
 
 #include "audio_limiter.h"
+#include "behav_trace.h"
 #include "host_language.h"
 #include "dualsense.h"
 #include "rumble.h"
@@ -81,6 +83,7 @@
 #include <game/enhance/session.h>
 #include <game/enhance/section_world.h>
 #include <game/enhance/twin.h>
+#include <game/level/level_registry.h>
 #include <game/enhance/advanced.h>
 #include <host/level_slots.h>
 #include <host/mod_code.h>
@@ -225,6 +228,7 @@ constexpr const char* PLAYER_ENV[] = {
     "RAC1_PROGRESS",  // (where progress.json goes for the launcher, or 0: docs/launcher.md)
     "RAC1_MODS", "RAC1_MODS_FILE",  // (0: every mod off; the Mods menu's choices file: docs/mods.md)
     "RAC1_PYTHON",  // (set by tools/setup.py for the setup mode: the Python it runs the overlay matcher with)
+    "RAC1_ASSETS",  // (the game's data elsewhere: src/io/asset_paths.h, docs/setup.md)
 };
 
 // orig: (host) the gate, from the ELF's .init_array before the static initialisers (glibc passes argc / argv; on Windows
@@ -1556,7 +1560,7 @@ bool level_host_load(int level) {
     LevelLoader::load_level_wad(level);
     prof.emplace("  engine_image_load");
     engine_image_load(level);
-    g_moby_glb_dir = "assets/generated/moby_glb/level" + std::to_string(level);
+    g_moby_glb_dir = rac1::io::asset_path("generated/moby_glb/level" + std::to_string(level));
     return true;
 }
 
@@ -2455,13 +2459,13 @@ void check_mrp_assets(bool moby, bool world) {
     std::vector<std::filesystem::path> want;
     if (moby) {
         const char* r = std::getenv("RAC1_MRP_DIR");  // (mrp_moby_renderer.cpp's asset_root)
-        const std::filesystem::path root = r != nullptr ? r : "assets/generated/mrp/moby";
+        const std::filesystem::path root = r != nullptr ? r : rac1::io::asset_path("generated/mrp/moby");
         for (const std::string& d : dirs) want.push_back(root / d / "textures.mrpt");
         for (int k = 0; k < 4; ++k) want.push_back(root / "armor" / (std::to_string(k) + ".mrpt"));
     }
     if (world) {
         const char* r = std::getenv("RAC1_MRPW_DIR");  // (mrp_world_renderer.cpp's asset_root)
-        const std::filesystem::path root = r != nullptr ? r : "assets/generated/mrp/world";
+        const std::filesystem::path root = r != nullptr ? r : rac1::io::asset_path("generated/mrp/world");
         for (const std::string& d : dirs) want.push_back(root / d / "world.mrpw");
     }
     size_t missing = 0;
@@ -2527,7 +2531,7 @@ int main(int argc, char** argv) {
                              "Run the setup again from the repository's root, with your disc image:\n"
                              "  ./setup.sh --iso <path-to-your-iso>   (setup.cmd on Windows)\n"
                              "and start the game from the repository's root.\n\n",
-                     have_disc ? "the game's data is missing (assets/)." : disc_why.c_str());
+                     have_disc ? ("the game's data is missing (" + rac1::io::asset_root() + "/).").c_str() : disc_why.c_str());
         return 1;
     }
     const bool headless = std::getenv("RAC1_HEADLESS") != nullptr;
@@ -3105,6 +3109,7 @@ int main(int argc, char** argv) {
     // (testing) RAC1_RAMHASH=<file>: after each game frame's update the 4 KB pages' hashes of the game's EE RAM
     // (32 MB) and the scratchpad are appended to the file; RAC1_RAMDUMP=<frame>,<file>: that frame's RAM + scratchpad raw
     FILE* ramhash = std::getenv("RAC1_RAMHASH") ? std::fopen(std::getenv("RAC1_RAMHASH"), "wb") : nullptr;
+    behav_trace_init();
     uint32_t display_serial = rac1::graphics_display_serial();
     int windowed_pos[2] = {100, 100};
     int display_settle = 0;  // (frames after a change before the window's size is reported back: the window manager answers late)
@@ -3430,6 +3435,7 @@ int main(int argc, char** argv) {
                     vsync_passed();
                     // (a game frame's RAM, also with "Original fades": the hashes of a run compare to another's game frame by game frame)
                     if (ramhash != nullptr) ram_hash_frame(ramhash, game_frame);
+                    behav_trace_frame(game_frame);
                     ++game_frame;
                 }
                 {
@@ -3950,6 +3956,7 @@ int main(int argc, char** argv) {
                 rac1::twin_frame(frame);
                 rac1::session_frame(frame);  // (a session's unloads and tests: nothing unless a session's memory is on)
                 rac1::world_probe_frame(frame);  // (testing: RAC1_COLL_PROBE, the collision probed on a grid)
+                rac1::lvd::registry_verify_frame(frame);  // (debugging: RAC1_LD_VERIFY, the native level registries against the EE tables)
             }
             // testing: RAC1_UNLOCK_PLANETS=<l>,<l>..: at the first gameplay frame those planets made reachable by
             // the ship (the game's own 0x2607d0, as a level's infobot does: 0x13dd40[l], the list 0x13d510 the galactic map shows)
@@ -4861,6 +4868,7 @@ int main(int argc, char** argv) {
     rac1::vu1::fallback_report();
     rac1::world_cull_check_report();  // (testing: RAC1_WORLD_CULL_FAST=2)
     if (std::getenv("RAC1_VU0_CHAIN") != nullptr) std::fprintf(stderr, "[vu0-chain] %016llx\n", static_cast<unsigned long long>(rac1::vu0::chain_hash()));
+    behav_trace_shutdown();
     rac1::progress::finish();  // (the launcher's progress.json: the time played since its last write)
     rac1::platform::process_end();  // (std::_Exit runs no atexit handler)
     rac1::update_check::run_update();

@@ -1,6 +1,6 @@
 #ifndef RAC1_GAME_OVL_DOOMLET_H
 #define RAC1_GAME_OVL_DOOMLET_H
-// doomlet, transliterated (doomlet_asm.cpp). Addresses are Veldin's overlay addresses (the shared engine).
+// The Glove of Doom's agents (doomlet.cpp), written by hand. Addresses are Veldin's overlay addresses (the shared engine).
 #include <cstdint>
 
 namespace rac1 {

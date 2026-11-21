@@ -3,7 +3,24 @@
 // L1_ADDR, the globals the engine shares with Veldin are the level's own (OV).
 #include <game/math/vecmath.h>
 #include <game/ovl/novalis_mobys.h>
+#include <game/ovl/variants_l1.h>
+#include <game/ovl/variants_l10.h>
+#include <game/ovl/variants_l11.h>
+#include <game/ovl/variants_l12.h>
+#include <game/ovl/variants_l13.h>
+#include <game/ovl/variants_l14.h>
+#include <game/ovl/variants_l15.h>
+#include <game/ovl/variants_l16.h>
+#include <game/ovl/variants_l17.h>
+#include <game/ovl/variants_l18.h>
+#include <game/ovl/variants_l2.h>
 #include <game/ovl/variants_l3.h>
+#include <game/ovl/variants_l4.h>
+#include <game/ovl/variants_l5.h>
+#include <game/ovl/variants_l6.h>
+#include <game/ovl/variants_l7.h>
+#include <game/ovl/variants_l8.h>
+#include <game/ovl/variants_l9.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/port_stubs.h>
@@ -94,8 +111,9 @@ void water_lily_update_l1(uint32_t m) {
 // is removed when that runs out; later frames: when the hero (or the moby he rides, +0x1090, state 0x1b) is in its
 // polygon / box (or it has none) it offers itself as the nearest marker (0x141390 the moby, 0x141394 its
 // distance, 0x141398 set when it is nearer than 20).
-// (Aridia's build, L2:0x002d74e0, is the same code with the counter at its own address 0x161a60.)
-// orig: L1:0x002f2eb8 L2:0x002d74e0 L3:0x002cbc38
+// Every level but Veldin has a copy of it (the same code, the counter a word of each level's own small data; Eudora's calls
+// its own copy of point_in_polygon, the same code): `counter` is the level's (zone_marker_update picks it).
+// orig: L1:0x002f2eb8 L2:0x002d74e0 L3:0x002cbc38 L4:0x002d46b8 L5:0x00301cd8 L6:0x002e1518 L7:0x002fd698 L8:0x002f1c08 L9:0x002f7658 L10:0x002c6470 L11:0x002fc980 L12:0x002f5540 L13:0x002f51f0 L14:0x002ead20 L15:0x002d5728 L16:0x002d2a80 L17:0x002d3da0 L18:0x002d8ba8
 void zone_marker_update_at(uint32_t m, uint32_t counter) {
     const uint32_t pv = lwu(m + 0x78);
     const uint32_t P = g::PLAYER;
@@ -148,6 +166,34 @@ void zone_marker_update_at(uint32_t m, uint32_t counter) {
     }
     ee_stack_free(0x10);
 }
+
+namespace {
+// the level's count of the zone markers met this frame (a word of its small data)
+uint32_t zone_marker_counter() {
+    if (on_level(NOVALIS)) return L1_ADDR(0x00161af0);
+    if (on_level(ARIDIA)) return L2_ADDR(0x00161a60);
+    if (on_level(KERWAN)) return L3_ADDR(0x00161990);
+    if (on_level(EUDORA)) return L4_ADDR(0x001619e0);
+    if (on_level(RILGAR)) return L5_ADDR(0x00161a70);
+    if (on_level(BLARG)) return L6_ADDR(0x00161960);
+    if (on_level(UMBRIS)) return L7_ADDR(0x00161930);
+    if (on_level(BATALIA)) return L8_ADDR(0x00161e30);
+    if (on_level(GASPAR)) return L9_ADDR(0x001619f0);
+    if (on_level(ORXON)) return L10_ADDR(0x00161950);
+    if (on_level(POKITARU)) return L11_ADDR(0x00161ac0);
+    if (on_level(HOVEN)) return L12_ADDR(0x00161b20);
+    if (on_level(GEMLIK)) return L13_ADDR(0x00161a20);
+    if (on_level(OLTANIS)) return L14_ADDR(0x00161c00);
+    if (on_level(QUARTU)) return L15_ADDR(0x00161bc0);
+    if (on_level(KALEBO)) return L16_ADDR(0x00161a70);
+    if (on_level(VELDIN_ORBIT)) return L17_ADDR(0x00161a50);
+    return L18_ADDR(0x00161ab8);
+}
+}  // namespace
+
+// Class 605 on the level whose overlay is loaded (its counter from the table above).
+// orig: L1:0x002f2eb8 L2:0x002d74e0 L3:0x002cbc38 L4:0x002d46b8 L5:0x00301cd8 L6:0x002e1518 L7:0x002fd698 L8:0x002f1c08 L9:0x002f7658 L10:0x002c6470 L11:0x002fc980 L12:0x002f5540 L13:0x002f51f0 L14:0x002ead20 L15:0x002d5728 L16:0x002d2a80 L17:0x002d3da0 L18:0x002d8ba8
+void zone_marker_update(uint32_t m) { zone_marker_update_at(m, zone_marker_counter()); }
 
 // orig: L1:0x002f2eb8 (the counter at 0x161af0)
 void zone_marker_update_l1(uint32_t m) { zone_marker_update_at(m, L1_ADDR(0x00161af0)); }

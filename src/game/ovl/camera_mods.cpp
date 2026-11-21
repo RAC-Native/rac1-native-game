@@ -6,6 +6,7 @@
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl.h>
+#include <game/level/level_data.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/kalebo_mobys.h>
 #include <game/ovl/variants_l16.h>
@@ -18,7 +19,7 @@ constexpr OvConst<0x00166e00u> ACTIVE{};
 constexpr uint32_t HERO = 0x0013f3d0, AXIS = 0x0013f5e0;
 const float DEG = u2f(0x3c8efa35u);  // pi / 180
 // orig: (helper) the level camera entry (0x20 each at *(0x15ef50)) of a camera
-uint32_t entry(uint32_t cam) { return lwu(OV(0x0015ef50)) + static_cast<uint32_t>(lh(cam + 0x84) * 0x20); }
+uint32_t entry(uint32_t cam) { return lvd::camera(lh(cam + 0x84)); }
 // orig: (helper) the follow camera's work area (the active camera's +0x70)
 uint32_t work() { return lwu(lwu(ACTIVE) + 0x70); }
 }  // namespace
@@ -91,7 +92,7 @@ void cam0_set_flags3() {
 // orig: 0x0025fa38
 int32_t point_in_cylinder(uint32_t pos, int32_t idx) {
     if (idx < 0) return 0;
-    const uint32_t c = lwu(OV(0x001600fc)) + (static_cast<uint32_t>(idx) << 7);
+    const uint32_t c = lvd::box(lvd::CYLINDERS, idx);
     Vec4 d, t;
     vec3_sub(d, V(pos), V(c + 0x30));
     d.w = 0.0f;
@@ -106,7 +107,7 @@ int32_t point_in_cylinder(uint32_t pos, int32_t idx) {
 // orig: 0x0025faf0
 int32_t point_in_sphere(uint32_t pos, int32_t idx) {
     if (idx < 0) return 0;
-    const uint32_t c = lwu(OV(0x001600f4)) + (static_cast<uint32_t>(idx) << 7);
+    const uint32_t c = lvd::box(lvd::SPHERES, idx);
     Vec4 d, t;
     vec3_sub(d, V(pos), V(c + 0x30));
     d.w = 0.0f;
@@ -132,7 +133,7 @@ int32_t cam_mod_inside(uint32_t cam) {
     const int32_t poly = lw(d + 0x14);
     if (poly < 0) return 0;
     if (on) return 1;
-    const uint32_t p = lwu(OV(0x001b04b0) + static_cast<uint32_t>(poly) * 4);
+    const uint32_t p = lvd::path(poly);
     return point_in_polygon(HERO, p + 0x10, lw(p)) != 0 ? 1 : 0;
 }
 

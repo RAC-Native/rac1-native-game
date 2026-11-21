@@ -9,7 +9,7 @@
 // packet), each the level's own function.
 #include "ovl_oracle.h"
 
-#include <game/ovl/aridia_classes_tr.h>
+#include <game/ovl/shared_class615.h>
 #include <game/ovl/blarg_mobys.h>
 #include <game/ovl/blarg_part2.h>
 #include <game/ovl/eudora_mobys.h>
@@ -90,6 +90,10 @@ void batch_146() {
         return 0u;
     };
     // the hero a little off / on the pad (its collision is ~0.9 x 1.7: the hero at its edge stands on the floor around it)
+    {
+    // (stage 5, task C2c) hero_ground_update reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_ground_update", 0x002127b8, 20, Ret::None, [load] {
         load(0);
         constexpr uint32_t P = g::PLAYER;
@@ -97,6 +101,7 @@ void batch_146() {
         wf(P + 0x88, ee_read<float>(P + 0x88) + rf(-0.05f, 0.5f));
         return Args{};
     }, [](A) { hero_ground_update(); return uint64_t{0}; });
+    }
     // the pad's update: on the pad (state 1) or in the puzzle, the buttons held / pressed (0x13cae0 / 0x13cae4) varied
     lvcheck("trespasser_pad_update", upd, 60, Ret::None, [load, pad] {
         load(ri(0, 3) == 0 ? 0 : 1);
@@ -104,11 +109,11 @@ void batch_146() {
         if (coin()) w32(0x0013cae4, u(ri(0, 0xffff)) & (ri(0, 1) ? 0xffffu : 0x00f0u));
         return Args{{pad()}, {}};
     }, [lv](A a) {
-        if (lv == 2) trespasser_pad_update_l2(a.i[0]);
-        else if (lv == 4) eud_class615_update_l4(a.i[0]);
-        else if (lv == 6) blg_class615_update_l6(a.i[0]);
-        else if (lv == 8) bat_class615_update_l8(a.i[0]);
-        else pok_class615_update_l11(a.i[0]);
+        if (lv == 2) class615_update(a.i[0]);
+        else if (lv == 4) class615_update(a.i[0]);  // (Eudora: the shared port it is re-glued onto)
+        else if (lv == 6) class615_update(a.i[0]);
+        else if (lv == 8) class615_update(a.i[0]);
+        else class615_update(a.i[0]);
         return uint64_t{0};
     });
     // the puzzle's draw (the pad's draw-list entry), the frame packet's cursor moved on a little (a draw later in the frame)
@@ -117,11 +122,11 @@ void batch_146() {
         w32(OV(0x001611c0), ee_read<uint32_t>(OV(0x001611c0)) + u(ri(0, 0x40)) * 0x10);
         return Args{{pad()}, {}};
     }, [lv](A a) {
-        if (lv == 2) trespasser_puzzle_draw_l2(a.i[0]);
-        else if (lv == 4) eud_trespasser_puzzle_draw_l4(a.i[0]);
-        else if (lv == 6) blg_class615_draw_l6(a.i[0]);
-        else if (lv == 8) bat_trespasser_puzzle_draw_l8(a.i[0]);
-        else pok_cb_2fd6c0_l11(a.i[0]);
+        if (lv == 2) class615_puzzle_draw(a.i[0]);
+        else if (lv == 4) class615_puzzle_draw(a.i[0]);  // (Eudora: the shared port it is re-glued onto)
+        else if (lv == 6) class615_puzzle_draw(a.i[0]);
+        else if (lv == 8) class615_puzzle_draw(a.i[0]);
+        else class615_puzzle_draw(a.i[0]);
         return uint64_t{0};
     });
     g_ignored_words = saved_ignored;

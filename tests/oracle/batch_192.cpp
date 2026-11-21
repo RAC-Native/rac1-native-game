@@ -12,15 +12,17 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/shared_class156.h>
 #include <game/ovl/batalia_mobys.h>
+#include <game/ovl/batalia_own.h>
 #include <game/ovl/blarg_mobys.h>
 #include <game/ovl/eudora_mobys.h>
 #include <game/ovl/gaspar_mobys.h>
-#include <game/ovl/kerwan_classes_tr.h>
 #include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/particle_types_tr.h>
+#include <game/ovl/shared_class1400.h>
 
 #include <algorithm>
 #include <cstring>
@@ -124,9 +126,7 @@ void batch_192() {
     {
         auto pv = [P, V, near] { near(P, 20.0f); VV(V) = Vec4{rf(-0.3f, 0.3f), rf(-0.3f, 0.3f), rf(-0.1f, 0.4f), 0.0f}; };
         std::function<uint32_t()> sp;
-        if (L == 1) sp = [pv, P, V, spawned] { return spawned(0x0a, [&] { pv(); smoke_particle_l1(P, V); }); };
-        if (L == 3) sp = [pv, P, V, spawned] { return spawned(0x0a, [&] { pv(); lv3_258a30_l3(P, V, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0); }); };
-        if (L == 4) sp = [pv, P, V, spawned] { return spawned(0x0a, [&] { pv(); eud_25d0e8_l4(P, V, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0); }); };
+        if (L == 1 || L == 3 || L == 4) sp = [pv, P, V, spawned] { return spawned(0x0a, [&] { pv(); smoke_particle_l1(P, V); }); };
         check("particle_0a_update", 0x0026a880, 200, Ret::None, [&] {
             level();
             const uint32_t q = make(0x0a, particle_0a_update, sp, [](uint32_t q) {
@@ -142,13 +142,10 @@ void batch_192() {
     {
         std::function<uint32_t()> sp;
         TrRet (*s156)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float) = nullptr;
-        if (L == 6) s156 = blg_27a850_l6;
-        if (L == 8) s156 = bat_275bd8_l8;
-        if (L == 9) s156 = gas_28a428_l9;
-        if (L == 1 || s156 != nullptr) sp = [s156, moby, L, spawned] {
+        if (L == 1 || L == 6 || L == 8 || L == 9 || s156 != nullptr) sp = [s156, moby, L, spawned] {
             const uint32_t flag = coin() ? 1u : 0u, m = moby();
             return spawned(0x0e, [&] {
-                if (L == 1) nov_280970_l1(flag, m, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+                if (L == 1 || L == 6 || L == 8 || L == 9) class156_trail(flag, m);
                 else s156(flag, m, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
             });
         };
@@ -168,7 +165,7 @@ void batch_192() {
     // 0x160200..0x16020c it copies (size, colour, distance, rate)
     {
         std::function<uint32_t()> sp;
-        if (L == 8) sp = [moby] { return bat_279f00_l8(moby(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0; };
+        if (L == 8) sp = [moby] { return bolt_prize_glow_l8(moby()); };
         check("particle_27_update", 0x0026fc38, 200, Ret::None, [&] {
             level();
             if (coin()) {
@@ -195,8 +192,12 @@ void batch_192() {
             VV(V) = Vec4{rf(-0.3f, 0.3f), rf(-0.3f, 0.3f), rf(-0.2f, 0.4f), 0.0f};
             const float z = VV(P).z + rf(-2.0f, 2.0f);
             const uint32_t kind = u(ri(0, 2));
-            return spawned(0x49, [&] { bat_27f5f0_l8(P, kind, V, 0, 0, 0, 0, 0, z, 0, 0, 0, 0, 0, 0, 0); });
+            return spawned(0x49, [&] { class1400_mote(P, static_cast<int32_t>(kind), V, z); });
         };
+        {
+        // (stage 5, task C2c) particle_49_update reaches segment_collide: A2's collision scratch
+        // ranges left out of this check (see batch 43's checks of it)
+        const CollisionScratchIgnored spr_ignored;
         check("particle_49_update", 0x00275320, 200, Ret::None, [&] {
             level();
             const uint32_t q = make(0x49, particle_49_update, sp, [moby](uint32_t q) {
@@ -210,6 +211,7 @@ void batch_192() {
             });
             return Args{{q}, {}};
         }, [](A a) { particle_49_update(a.i[0]); return uint64_t{0}; });
+        }
     }
 
     g_ee_null_is_ram = null_ram;

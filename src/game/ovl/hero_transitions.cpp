@@ -58,7 +58,7 @@ void stand_input(uint32_t hm0) {
         if (lbu(lwu(P + 0x2080) + 0x53) != sub_00205000(0)) hero_anim_set(sub_00205000(0), 0, -2.0f);
         idle_anim = false;
     }
-    if (lbu(P + 0x12e2) != 0) idle_anim = false;
+    if (hero_has_skate() && lbu(P + 0x12e2) != 0) idle_anim = false;
     if (lw(P + 0x11a4) == 2) pack_close(true, 7);
     if (u2f(0x3f1c61aau) < lwc1(FX + 0x258) || u2f(0x3edf66f3u) < lwc1(FX + 0x254)) pack_close(false, 0xc);
     if (sub_002050b8(lbu(hm0 + 0x53)) == sub_00205000(0) && idle_anim) {
@@ -137,11 +137,11 @@ void stand_input(uint32_t hm0) {
         set(4);
         return;
     }
-    if (lw(P + 0x56c) != 0) {
+    if (hero_has_grind() && lw(P + 0x56c) != 0) {
         set(0x28);
         return;
     }
-    if (lbu(P + 0x12e2) != 0 && u2f(0x3db2b8c2u) < lwc1(P + 0x2e0)) {
+    if (hero_has_skate() && lbu(P + 0x12e2) != 0 && u2f(0x3db2b8c2u) < lwc1(P + 0x2e0)) {
         set(0x2f);
         return;
     }
@@ -226,7 +226,7 @@ void landed_input() {
         set(0);
         return;
     }
-    if (lw(P + 0x56c) != 0) {
+    if (hero_has_grind() && lw(P + 0x56c) != 0) {
         set(0x28);
         return;
     }
@@ -344,7 +344,7 @@ void run_input(uint32_t hm0) {
         set(4);
         return;
     }
-    if (lbu(P + 0x12e2) != 0 && lw(P + 0x2084) == 0x2f) {  // the board's stand / push animations
+    if (hero_has_skate() && lbu(P + 0x12e2) != 0 && lw(P + 0x2084) == 0x2f) {  // the board's stand / push animations
         const float speed = vec2_length(V(P + 0x100));
         const uint32_t hm = lwu(P + 0x2080);
         bool done = false;
@@ -366,7 +366,7 @@ void run_input(uint32_t hm0) {
             hero_anim_set(s, 0, static_cast<float>(frame_scale_i(0x14)));
         }
     }
-    {
+    if (hero_has_skate()) {
         const uint32_t st = lwu(P + 0x2084);
         if (st == 2 || st == 0x7e) {
             if (lbu(P + 0x12e2) != 0) set(0x2f);
@@ -374,7 +374,7 @@ void run_input(uint32_t hm0) {
             set(2);
         }
     }
-    {
+    if (hero_has_water()) {
         const uint32_t st = lwu(P + 0x2084);
         if (st == 2) {
             if (lbu(P + 0x20a9) != 0) set(0x73);
@@ -382,8 +382,8 @@ void run_input(uint32_t hm0) {
             set(2);
         }
     }
-    if (lw(P + 0x2084) == 2 && lh(P + 0x308) != 0) set(0x3f);
-    if (lw(P + 0x56c) != 0) {
+    if (hero_has_beam() && lw(P + 0x2084) == 2 && lh(P + 0x308) != 0) set(0x3f);
+    if (hero_has_grind() && lw(P + 0x56c) != 0) {
         set(0x28);
         return;
     }
@@ -432,7 +432,7 @@ void run_input(uint32_t hm0) {
         }
         return;
     }
-    if (st == 0x2f) {  // the board: stop when slow and off the stick; the push animations' speed
+    if (hero_has_skate() && st == 0x2f) {  // the board: stop when slow and off the stick; the push animations' speed
         if (lw(PAD + 0x1d4) != 0 && vec2_length(V(P + 0xe0)) < fs6c() * u2f(0x3d4ccccdu) &&
             lwc1(P + 0x2e0) < u2f(0x3db2b8c2u) && hero_set_state(0, 0) != 0) {
             const uint32_t s = sub_00205000(0);
@@ -452,7 +452,7 @@ void run_input(uint32_t hm0) {
         }
         return;
     }
-    if (st == 0x73) {  // smoking: stop when slow; the animation speed from the run speed
+    if (hero_has_water() && st == 0x73) {  // smoking: stop when slow; the animation speed from the run speed
         if (lw(PAD + 0x1d4) != 0 && vec2_length(V(P + 0xe0)) < fs6c() * u2f(0x404ccccdu) && hero_set_state(0, 0) != 0) {
             const uint32_t s = sub_00205000(0);
             hero_anim_set(s, 0, static_cast<float>(frame_scale_i(0x11)));
@@ -522,11 +522,11 @@ void jump_input(uint32_t hm0) {
         set(0x22);
         return;
     }
-    if (lw(P + 0x56c) != 0) {
+    if (hero_has_grind() && lw(P + 0x56c) != 0) {
         set(0x28);
         return;
     }
-    if (lw(P + 0x5fc) != 0) {
+    if (hero_has_state_74() && lw(P + 0x5fc) != 0) {
         set(0x74);
         return;
     }
@@ -880,11 +880,11 @@ void fall_input() {
         set(0x18);
         return;
     }
-    if (lw(P + 0x56c) != 0) {
+    if (hero_has_grind() && lw(P + 0x56c) != 0) {
         set(0x28);
         return;
     }
-    if (lw(P + 0x5fc) != 0) set(0x74);
+    if (hero_has_state_74() && lw(P + 0x5fc) != 0) set(0x74);
 }
 
 
@@ -1261,7 +1261,7 @@ void state16_input() {
         set(6);
         return;
     }
-    if (lw(0x0015ed84) == 0x10 && lwc1(P + 0xe8) < 0.0f && lw(P + 0x22a8) == 0 && lw(P + 0x2094) == 0xf) {
+    if (hero_has_grind() && lw(0x0015ed84) == 0x10 && lwc1(P + 0xe8) < 0.0f && lw(P + 0x22a8) == 0 && lw(P + 0x2094) == 0xf) {
         set(0x77);
         return;
     }
@@ -1274,7 +1274,7 @@ void state16_input() {
         }
         return;
     }
-    set(lbu(P + 0x12e5) != 0 ? 0x7cu : 0x3du);
+    set((hero_has_state_7c() && lbu(P + 0x12e5) != 0) ? 0x7cu : 0x3du);
 }
 
 // State 0x43 (the stand of the 0x43..0x52 set): the 0x12 animation while +0x22fc runs out, the
@@ -2067,6 +2067,8 @@ void rail_hop_input() {
 // The per-state transitions. Each case is one target of the jump table 0x1e82b0.
 // orig: 0x00229b70 (jump table 0x1e82b0)
 bool transitions(uint32_t state, uint32_t hm0) {
+    if (!hero_has_giant_clank() && state >= 0x5au && state <= 0x61u) return false;
+    if (!hero_has_clank() && ((state >= 0x43u && state <= 0x52u && state != 0x47u) || state == 0x7du)) return false;
     switch (state) {
     case 0x77:
         return kill_fall_input();
@@ -2108,22 +2110,25 @@ bool transitions(uint32_t state, uint32_t hm0) {
         hero_lost();
         return true;
     case 0x7f:  // warping out: lost after 220 frames
+        if (!hero_has_sink_7f()) return false;
         if (!(frame_scale_i(0xdc) < lw(P + 0x198))) return false;
         hero_lost();
         return true;
     case 0x33: case 0x35:
-        swim_input();
+        if (hero_has_water()) swim_input();
         return false;
     case 0x34:  // drifting: the drift animation; any input swims on
+        if (!hero_has_water()) return false;
         if ((lw(P + 0xa98) & 2) != 0 && lbu(lwu(P + 0x2080) + 0x53) != 0x3c) {
             hero_anim_set(0x3c, 0, static_cast<float>(frame_scale_i(0xb)));
         }
         if (0.2f < lwc1(P + 0x229c) || (buttons() & 0xc0) != 0 || (lbu(0x0013d4c4) != 0 && (buttons() & 0xa) != 0)) dive();
         return false;
     case 0x36: case 0x37:
-        surface_input();
+        if (hero_has_water()) surface_input();
         return false;
     case 0x76:  // hurt under water: out of air → drowning (0x82 on levels 15 / 17); else swim on
+        if (!hero_has_water()) return false;
         if (!(0 < lw(P + 0x22a8))) {
             const uint32_t lvl = lwu(0x0015ed84);
             if (lvl == 0xf || lvl == 0x11) {
@@ -2141,6 +2146,7 @@ bool transitions(uint32_t state, uint32_t hm0) {
         if (frame_scale_i(0x32) < lw(P + 0x198)) hero_set_state(0x34, 0);
         return false;
     case 0x75:  // hurt on the surface: out of air → drowning; else back to the surface
+        if (!hero_has_water()) return false;
         if (!(0 < lw(P + 0x22a8))) {
             set(0x6a);
             hero_anim_set(0x5f, 0x25, static_cast<float>(frame_scale_i(0x12)));
@@ -2149,10 +2155,10 @@ bool transitions(uint32_t state, uint32_t hm0) {
         if (frame_scale_i(0x32) < lw(P + 0x198)) hero_set_state(0x37, 0);
         return false;
     case 0x38: case 0x39:  // riding: off when the item is not the rideable 0x16
-        if (lw(P + 0x10b8) != 0x16) set(0);
+        if (hero_has_hydropack() && lw(P + 0x10b8) != 0x16) set(0);
         return false;
     case 0x3a:
-        if ((lw(P + 0xa98) & 2) != 0) set(0);
+        if (hero_has_hydropack() && (lw(P + 0xa98) & 2) != 0) set(0);
         return false;
     case 0x65:
         walk_to_input();
@@ -2165,6 +2171,7 @@ bool transitions(uint32_t state, uint32_t hm0) {
         if (0.2f < vec2_distance(V(P + 0x80), V(P + 0x1640))) set(0x65);
         return false;
     case 0x68: {  // +0x1660 < 2: the jump 0x69 after 15 + 25 * +0x1660 frames
+        if (!hero_has_lava()) return false;
         const int32_t n = lw(P + 0x1660);
         if (n < 2) {
             const int32_t a = frame_scale_i(0xf);
@@ -2175,21 +2182,24 @@ bool transitions(uint32_t state, uint32_t hm0) {
         return lost_timer(u2f(0x3f99999au), 0xaa);
     }
     case 0x7b:
+        if (!hero_has_lava()) return false;
         return lost_timer(u2f(0x3f99999au), 0x96);
     case 0x7c:
+        if (!hero_has_state_7c()) return false;
         return lost_timer(u2f(0x3f99999au), 0x64);
     case 0x7d:
         return lost_timer(u2f(0x3f4ccccdu), 0x96);
     case 0x3f:
-        board_ready_input();
+        if (hero_has_beam()) board_ready_input();
         return false;
     case 0x24:  // standing with the item 0xc: back to 0 when it is put away
-        if (lw(P + 0x10b8) != 0xc) set(0);
+        if (hero_has_swingshot() && lw(P + 0x10b8) != 0xc) set(0);
         return false;
     case 0x25:
-        hold_input();
+        if (hero_has_swingshot()) hold_input();
         return false;
     case 0x26:  // let go: standing when low, else falling
+        if (!hero_has_swingshot()) return false;
         if ((buttons() & lwu(P + 0x10a0)) != 0) return false;
         speed_from_960();
         if (lwc1(P + 0x2dc) < u2f(0x3ecccccdu)) {
@@ -2200,6 +2210,7 @@ bool transitions(uint32_t state, uint32_t hm0) {
         sw(P + 0x2284, 0);
         return false;
     case 0x2c:  // let go after 10 frames: the fall 0x2d (+0x988 before 40 frames)
+        if (!hero_has_swingshot()) return false;
         if ((buttons() & lwu(P + 0x10a0)) != 0 || !(frame_scale_i(0xa) < lw(P + 0x198))) return false;
         if (lw(P + 0x198) < frame_scale_i(0x28)) sw(P + 0x988, 1);
         set(0x2d);
@@ -2211,6 +2222,7 @@ bool transitions(uint32_t state, uint32_t hm0) {
         return false;
     case 0x74:  // state 0x74: in its 0x73 animation the 11-frame cue (sound 0xd, sparks), then 0x66;
                 // falling 6 once +0x600 passes 5 frames
+        if (!hero_has_state_74()) return false;
         if (lbu(lwu(P + 0x2080) + 0x53) == 0x73) {
             if (sub_00211870(11.0f) != 0) {
                 hero_sound_start(0xd, 0);
@@ -2379,10 +2391,12 @@ bool transitions(uint32_t state, uint32_t hm0) {
         unready_input();
         return false;
     case 0x42:
+        if (!hero_has_grind()) return false;
         sh(P + 0x5be, 0);
         rail_hop_input();
         return false;
     case 0x28: case 0x29: case 0x2a: case 0x2b:
+        if (!hero_has_grind()) return false;
         if (rail_leave()) return false;
         if (state == 0x28) {
             grind_input(hm0);
@@ -2441,12 +2455,13 @@ bool transitions(uint32_t state, uint32_t hm0) {
         crouch_input();
         return false;
     case 0x70:  // the hover-board swing: standing once the combo step's end frame +0x18 passed
-        if (static_cast<float>(lw(OV(0x0017bc28) + lwu(P + 0xa60) * 0x2c + 0x18)) < lwc1(P + 0xaa8)) set(0);
+        if (hero_has_beam() && static_cast<float>(lw(OV(0x0017bc28) + lwu(P + 0xa60) * 0x2c + 0x18)) < lwc1(P + 0xaa8)) set(0);
         return false;
     case 0x71:  // the hover-board hop: standing after 25 frames
-        if (25.0f < lwc1(P + 0xaa8)) set(0);
+        if (hero_has_beam() && 25.0f < lwc1(P + 0xaa8)) set(0);
         return false;
     case 0x31:  // the board: off it (+0x12e3 clear, +0x1e0 run out) back to standing
+        if (!hero_has_ice_slide()) return false;
         if (lbu(P + 0x12e3) != 0 || lh(P + 0x1e0) != 0) return false;
         {
             const int32_t s = lw(P + 0x2220);
@@ -2485,8 +2500,10 @@ bool transitions(uint32_t state, uint32_t hm0) {
         }
         if (21.0f <= lwc1(P + 0xaa8)) hero_set_state(0, 0);
         return false;
+    case 0x6b: case 0x6c: case 0x6d: case 0x6e: case 0x6f:
+        return hero_has_hoverboard() && hero_hoverboard_input_update(state);
     case 0x05: case 0x1d: case 0x1f: case 0x27: case 0x32: case 0x3b: case 0x3e: case 0x48: case 0x63:
-    case 0x64: case 0x6b: case 0x6c: case 0x6d: case 0x6e: case 0x6f: case 0x72: case 0x78:
+    case 0x64: case 0x72: case 0x78:
         return false;  // no transitions of their own
     default:
         return false;  // past the jump table (0x83 states): no transitions
@@ -2503,16 +2520,6 @@ bool transitions(uint32_t state, uint32_t hm0) {
 // hero moby's animation resets the timers +0x1a0 / +0x1a4.
 // orig: 0x00229b70
 void hero_input_update() {
-    if (on_blarg()) { blg_call(blg_hero_input_update_u); return; }  // (level 6's own: L6:0x0023b440)
-    if (on_batalia()) { bat_call(bat_hero_input_update_u); return; }  // (level 8's own: L8:0x002370d8)
-    if (on_pokitaru()) { pok_call(pok_hero_input_update_u); return; }  // (level 11's own: L11:0x00253a18)
-    if (on_hoven()) { hov_call(hov_hero_input_update_u); return; }  // (level 12's own: L12:0x002461f0)
-    if (on_oltanis()) { olt_call(olt_hero_input_update_u); return; }  // (level 14's own: L14:0x00235600)
-    if (on_quartu()) { qua_call(qua_hero_input_update_u); return; }  // (level 15's own: L15:0x0021d040)
-    if (on_kalebo()) { kal_call(kal_hero_input_update_u); return; }  // (level 16's own: L16:0x002270c8)
-    if (on_veldin_finale()) { vf_call(vf_hero_input_update_u); return; }  // (level 18's own: L18:0x0022e8f8)
-    if (on_veldin_orbit()) { vo_call(vo_hero_input_update_u); return; }  // (level 17's own: L17:0x002258a8)
-    if (on_rilgar()) { ril_call(ril_hero_input_update_u); return; }  // (Rilgar's own: L5:0x00255960)
     if (on_l1_family()) return hero_input_update_l1();
     const uint32_t hm = lwu(P + 0x2080);
     const uint32_t mode0 = lwu(P + 0x208c);
@@ -2526,13 +2533,13 @@ void hero_input_update() {
             return;
         }
         if (hero_item_use() != 0) return;
-        if (hero_water_entry() != 0 || hero_water_air() != 0 || hero_try_item_stance() != 0) return;
+        if ((hero_has_water() && (hero_water_entry() != 0 || hero_water_air() != 0)) || hero_try_item_stance() != 0) return;
         if (((pressed() & 0x10) != 0 || (lwu(PAD + 0x1c4) & 0x10) != 0) && lbu(P + 0x10ac) != 2 && lw(OV(0x0015f594)) == 0) {
             const bool free_a = lbu(P + 0x20ac) == 0 || lbu(P + 0x20a4) == 1 || lh(P + 0x1b2) != 0;
             const bool free_b = lbu(P + 0x20a7) == 0 || lbu(P + 0x20a4) == 1 || lh(P + 0x1b2) != 0;
             const uint32_t mode = lbu(P + 0x20a4);
             if (free_a && free_b) {
-                if (mode == 1) {
+                if (hero_has_clank() && mode == 1) {
                     camera_request(3, 0, OVF(0x00238b18), OVF(0x00238b80), OVF(0x00238f88), 0, 0);
                 } else if (mode == 0 || mode == 3) {
                     sh(P + 0x22d2, static_cast<uint32_t>(frame_scale_i(lh(P + 0x22d6) != 0 ? 0x1b : 0xf)));

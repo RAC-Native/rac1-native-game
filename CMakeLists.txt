@@ -133,6 +133,8 @@ add_library(rac1_formats STATIC
     src/formats/tie_packet.cpp
     src/formats/wad_encode.cpp
     src/formats/host_meshes.cpp
+    src/formats/level_cache.cpp
+    src/formats/overlay_tables.cpp
 )
 target_link_libraries(rac1_formats PUBLIC rac1_io)
 target_include_directories(rac1_formats PUBLIC src)
@@ -197,6 +199,7 @@ add_library(rac1_runtime STATIC
     runtime/kernel/ee_memory.cpp
     runtime/kernel/disc.cpp
     runtime/kernel/mods.cpp
+    src/io/asset_paths.cpp  # (the run-time data's root: RAC1_ASSETS, assets.txt, assets/)
     runtime/kernel/bootstrap.cpp
     runtime/vu/vu_interpreter.cpp
     runtime/ee/ee_interpreter.cpp
@@ -313,6 +316,18 @@ if(RAC1_ORACLE)
     add_subdirectory(tests/oracle)
 endif()
 
+# ---- tests/unit/ : host unit tests of the project's own file formats (no disc, no generated code, well under a second) ----
+# Built with the developer's tests (on when the oracle is, RAC1_ORACLE); ./setup.sh never builds them. Run: ctest, or
+# ./build/tests/level_cache_test [a folder for its temporary files].
+option(RAC1_UNIT_TESTS "Build the host unit tests (tests/unit: build/tests/level_cache_test)" ${RAC1_ORACLE})
+if(RAC1_UNIT_TESTS)
+    enable_testing()
+    add_executable(level_cache_test tests/unit/level_cache_test.cpp)
+    target_link_libraries(level_cache_test PRIVATE rac1_formats)
+    set_target_properties(level_cache_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests)
+    add_test(NAME level_cache_test COMMAND level_cache_test)
+endif()
+
 # ---- tests/rumble/ : the DualSense output report's layout and CRC (host code only, no pad: not built by default) ----
 #   cmake --build build --target dualsense_test && ./build/dualsense_test
 add_executable(dualsense_test EXCLUDE_FROM_ALL tests/rumble/dualsense_test.cpp src/host/dualsense.cpp)
@@ -387,6 +402,7 @@ set(RAC1_HOST_SOURCES
     src/host/update_check.cpp
     src/host/progress.cpp
     src/host/vk_safety.cpp
+    src/host/behav_trace.cpp
     src/host/host_window.cpp
     src/host/host_gpu_watch.cpp
 )

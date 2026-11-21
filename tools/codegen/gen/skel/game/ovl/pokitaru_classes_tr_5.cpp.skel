@@ -40,67 +40,13 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shadows.h>
+#include <game/ovl/shared_scroll.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
-
-//@gen pok_31bb20_l11
-
-//@gen pok_31b648_l11
-
-//@gen pok_31bbc8_l11
-
-//@gen pok_31beb0_l11
-
-//@gen pok_31c140_l11
-
-//@gen pok_31c660_l11
-
-//@gen pok_31c790_l11
-
-//@gen pok_class1818_update_l11
-
-//@gen pok_288fc0_l11
-
-//@gen pok_289610_l11
-
-//@gen pok_class1859_update_l11
-
-//@gen pok_class1860_update_l11
-
-//@gen pok_31dd10_l11
-
-//@gen pok_31df00_l11
-
-//@gen pok_31e048_l11
-
-//@gen pok_31e120_l11
-
-//@gen pok_31e208_l11
-
-//@gen pok_class1903_update_l11
-
-//@gen pok_31eb70_l11
-
-//@gen pok_31ed60_l11
-
-//@gen pok_31eea8_l11
-
-//@gen pok_31ef80_l11
-
-//@gen pok_31f068_l11
-
-//@gen pok_class1919_update_l11
-
-//@gen pok_2b0e10_l11
-
-//@gen pok_emitter1_l11
-
-//@gen pok_emitter5_l11
-
-//@gen pok_hook_2fb780_u
 
 //@gen pok_hook_2fb7f0_u
 
@@ -110,41 +56,11 @@ using namespace vu0m;
 
 //@gen pok_hook_2fb8c0_u
 
-//@gen pok_hook_316160_u
-
-//@gen pok_hook_316210_u
-
-//@gen pok_hook_316270_u
-
 //@gen pok_hook_3162d0_u
 
 //@gen pok_hook_3162f0_u
 
-//@gen pok_21c988_l11
-
-//@gen pok_cam0_hook_l11
-
-//@gen pok_cam_callback_l11
-
-//@gen pok_cb_2f2d58_l11
-
-//@gen pok_22c5b8_l11
-
-//@gen pok_2fe6b0_l11
-
-//@gen pok_2fe998_l11
-
-//@gen pok_2fec10_l11
-
-//@gen pok_2ff160_l11
-
-//@gen pok_cb_2fd6c0_l11
-
-//@gen pok_cb_302e60_l11
-
 //@gen pok_231380_l11
-
-//@gen pok_2c3db0_l11
 
 //@gen pok_22e0a8_l11
 

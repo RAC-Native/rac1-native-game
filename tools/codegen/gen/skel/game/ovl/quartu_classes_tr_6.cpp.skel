@@ -41,116 +41,16 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/hud_slot7_tr.h>
+#include <game/ovl/glows.h>
+#include <game/ovl/shadows.h>
+#include <game/ovl/kerwan_camera.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
 
-//@gen qua_class1469_update_l15
-
-//@gen qua_class1560_update_l15
-
-//@gen qua_class1565_update_l15
-
-//@gen qua_class1567_update_l15
-
 //@gen qua_cutscene_level_extras_u
-
-//@gen qua_27bf18_l15
-
-//@gen qua_emitter3_l15
-
-//@gen qua_emitter5_l15
-
-//@gen qua_2f7958_l15
-
-//@gen qua_cam_type19_accept_u
-
-//@gen qua_cam_type19_init_l15
-
-//@gen qua_cam_type19_update_l15
-
-//@gen qua_cam_type19_exit_l15
-
-//@gen qua_2f28b8_l15
-
-//@gen qua_2f85a8_l15
-
-//@gen qua_2f8698_l15
-
-//@gen qua_2f88e8_l15
-
-//@gen qua_cam_type22_accept_u
-
-//@gen qua_cam_type22_init_l15
-
-//@gen qua_cam_type22_update_l15
-
-//@gen qua_cam_type22_exit_l15
-
-//@gen qua_hook_2bc4b0_u
-
-//@gen qua_hook_2bc500_u
-
-//@gen qua_hook_2bc550_u
-
-//@gen qua_hook_2bc5a0_u
-
-//@gen qua_hook_2bc5d0_u
-
-//@gen qua_1e4808_l15
-
-//@gen qua_cam0_hook_l15
-
-//@gen qua_cam_callback_l15
-
-//@gen qua_cb_296710_l15
-
-//@gen qua_cb_297808_l15
-
-//@gen qua_252d10_l15
-
-//@gen qua_cb_29aba8_l15
-
-//@gen qua_cb_2a29b8_l15
-
-//@gen qua_cb_2a3138_l15
-
-//@gen qua_cb_2a7628_l15
-
-//@gen qua_cb_2ca810_l15
-
-//@gen qua_cb_2cbd88_l15
-
-//@gen qua_cb_2d77c0_l15
-
-//@gen qua_2d8878_l15
-
-//@gen qua_2d8e48_l15
-
-//@gen qua_cb_2d8710_l15
-
-//@gen qua_cb_2de080_l15
-
-//@gen qua_cb_2e6a10_l15
-
-//@gen qua_1f9190_l15
-
-//@gen qua_28ee00_l15
-
-//@gen qua_1f5e78_l15
-
-//@gen qua_cb_2eac90_l15
-
-//@gen qua_cb_2eb108_l15
-
-//@gen qua_1f4ba8_l15
-
-//@gen qua_cb_2eb6b8_l15
-
-//@gen qua_cb_2edbe0_l15
-
-//@gen qua_cb_2edfc0_l15
 
 }  // namespace rac1

@@ -18,6 +18,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
+#include <game/level/level_data.h>
 #include <game/ovl/ovl_common.h>
 
 namespace rac1 {
@@ -453,7 +454,7 @@ void cam7_track(uint32_t cam) {
             const uint32_t r = lwu(P + 0x994);
             uint32_t best = 0;
             float bd = u2f(0x447a0000u);
-            uint32_t e = lwu(OV(0x001ab840) + lbu(r + 0x21) * 4u);
+            uint32_t e = lvd::group(lbu(r + 0x21));
             if (e != 0) {
                 int16_t v;
                 do {

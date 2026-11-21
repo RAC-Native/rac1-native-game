@@ -59,6 +59,14 @@ int32_t snd_stream_cd_read(uint32_t lsn, uint32_t n, uint32_t buf, uint32_t mode
 int32_t snd_cd_break();                                                  // orig: 0x0012eea8
 int32_t snd_cd_error();                                                  // orig: 0x0012eef0
 
+// Optional host-registered callbacks for semantic behaviour tracing (RAC1_BEHAV_TRACE).
+struct SndTraceHooks {
+    void (*sfx)(uint32_t snd, int32_t vol, int32_t pan, int32_t pm, int32_t pb) = nullptr;
+    void (*stream)(uint32_t group, int32_t vol, int32_t pan, uint32_t queue, uint32_t flags) = nullptr;
+    void (*stop_streams)() = nullptr;
+};
+void snd_set_trace_hooks(const SndTraceHooks& hooks);
+
 }  // namespace rac1
 
 #endif

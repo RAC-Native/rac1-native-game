@@ -24,6 +24,7 @@ int32_t blg_carry_hookc_l6(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12); 
 int32_t umb_carry_hookc_l7(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);   // L7:0x002f44b0
 int32_t bat_carry_hookc_l8(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);   // L8:0x002d8180
 int32_t orx_carry_hookc_l10(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);  // L10:0x002bcc60
+int32_t vo_carry_hookc_l17(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);   // L17:0x002f0040
 
 // orig: (host) the class hook at the code address `fn` (+0 .. +0xc: moby m, the registers a1 / a2 / f12 passed on; +0x10:
 // moby m, its carry record returned) when it is one of the played level's own class hooks (levels 1..14): the hook's

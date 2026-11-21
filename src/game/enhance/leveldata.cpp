@@ -7,6 +7,7 @@
 #include <game/enhance/sections.h>
 #include <game/enhance/session.h>
 #include <game/enhance/session_runtime.h>
+#include <game/level/level_registry.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/kernel/ee_memory.h>
@@ -198,6 +199,7 @@ bool ld_registry_make(int level) {
     R->block = session_heap_alloc(R->size, owner(level));
     if (R->block == 0) return false;
     if (!g.empty()) lay_out(g, R->block, &R->own_paths);
+    lvd::registry_context_made(level, real, g, R->block);  // (stage 5) its native twin (src/game/level/level_registry.h)
     // its shared pvar data (the level's block: (size, count, -, -), the data, then the pointers)
     if (const uint32_t p = static_cast<uint32_t>(rd32(g, 0x4c)); p != 0 && p + 0x10 <= g.size()) {
         const uint32_t size = static_cast<uint32_t>(rd32(g, p));

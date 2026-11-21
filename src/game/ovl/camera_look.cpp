@@ -8,6 +8,7 @@
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl.h>
+#include <game/level/level_data.h>
 #include <game/ovl/ovl_common.h>
 #include <game/port_stubs.h>
 
@@ -158,7 +159,7 @@ void cam_look_update(uint32_t cam) {
 // first camera at once when the view was turned 80 degrees or more away.
 // orig: 0x002ea488
 int32_t cam_look_accept(uint32_t cam, uint32_t other) {
-    const uint32_t d = lwu(lwu(OV(0x0015ef50)) + static_cast<uint32_t>(lh(cam + 0x84) * 0x20) + 0x1c);
+    const uint32_t d = lvd::camera_data(lh(cam + 0x84));
     const int32_t st = lw(P + 0x2284);
     if (st == lh(cam + 0x86) || st == 0x51) {
         const uint32_t act = lwu(ACTIVE);

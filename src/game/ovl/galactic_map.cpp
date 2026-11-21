@@ -8,11 +8,19 @@
 //   page 0x1b63f8 (0x10): two labels, the planet's info (0x27a108 / 0x27d2d0 / 0x27a068), its map, its model (0x27cbc0),
 //     the command line (0x27f5b0 / 0x278e10).
 #include <game/ovl/galactic_map.h>
-#include <host/level_slots.h>
+#include <game/lib/libc.h>
+#include <game/math/vecmath.h>
 #include <game/ovl/galactic_map_tr.h>
+#include <game/ovl/moby_pass.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/pause_menu.h>
+#include <game/ovl/pause_menu_pages.h>
+#include <game/port_stubs.h>
+#include <host/level_slots.h>
+
+#include <vector>
 
 namespace rac1 {
 
@@ -20,7 +28,233 @@ namespace {
 constexpr OvConst<0x001b9cf0u> MS{};  // the menu's state
 constexpr uint32_t PAD = 0x0013c940;  // pad 1 (+0x1c4: the buttons pressed this frame)
 constexpr uint32_t UNLOCKED = 0x0013d510;  // the planets the ship can fly to (words, 0 ends; base ELF data)
+
+inline uint64_t sxt64(uint32_t v) {
+    return static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(v)));
+}
+
+inline int32_t cvt_w_i32(float f) {
+    const uint32_t u = f2u(f);
+    if ((u & 0x7f800000u) >= 0x4f000000u) {
+        return static_cast<int32_t>((u & 0x80000000u) != 0 ? 0x80000000u : 0x7fffffffu);
+    }
+    return static_cast<int32_t>(f);
+}
 }  // namespace
+
+// orig: 0x0023bef8
+TrRet ovl_23bef8_tr(uint32_t tex_idx, uint32_t x16, uint32_t y16, uint32_t w16, uint32_t h16, uint32_t u16, uint32_t v16, uint32_t alpha, float, float, float, float) {
+    const uint32_t p = lwu(OV(0x001611c0u));
+    const uint32_t entry_ptr = lwu(OV(0x0017e4f8u)) + (tex_idx << 2);
+    const int32_t desc_idx = lh(entry_ptr + 2u);
+    const uint32_t desc = lwu(OV(0x0017e4fcu)) + static_cast<uint32_t>(desc_idx << 3);
+    const uint32_t th_uv = 1u << ((lbu(desc + 7u) + 4u) & 31u);
+    const uint32_t tw_uv = 1u << ((lbu(desc + 6u) + 4u) & 31u);
+
+    sw(p + 0x0u, 0x10000005u);
+    sw(p + 0x4u, 0u);
+    sw(p + 0x8u, 0u);
+    sw(p + 0xcu, 0x50000005u);
+    const uint32_t q = p + 0x10u;
+    sw(OV(0x001611c0u), q);
+
+    sd(q + 0x00u, (0xe800ull << 47) | 0x8001ull);
+    sd(q + 0x08u, 0x05353106ull);
+
+    const uint64_t tex0 = static_cast<uint64_t>(hud_tex0(static_cast<int32_t>(tex_idx)));
+    const uint64_t rgba = (sxt64(alpha) << 24) | 0x007f7f7full;
+    const uint64_t uv0 = sxt64(u16) | (sxt64(v16) << 16);
+    sd(q + 0x20u, rgba);
+    sd(q + 0x10u, tex0);
+    sd(q + 0x18u, 0x156ull);
+    sd(q + 0x28u, uv0);
+
+    const uint32_t x1_16 = x16 + w16;
+    const uint32_t y1_16 = y16 + h16;
+    const uint32_t v1_16 = v16 + th_uv;
+    const uint32_t u1_16 = u16 + tw_uv;
+
+    const uint32_t oy0 = lwu(0x0013e514u);
+    const uint32_t ox0 = lwu(0x0013e510u);
+    const uint64_t z0 = sxt64(lwu(OV(0x0017e4d8u) + 0xcu)) << 32;
+    const uint64_t xyz0 = sxt64(x16 + ox0 - 8u) | (sxt64(y16 + oy0 - 8u) << 16) | z0;
+    const uint64_t uv1 = sxt64(u1_16) | (sxt64(v1_16) << 16);
+    sd(q + 0x38u, uv1);
+    sd(q + 0x30u, xyz0);
+
+    const uint32_t oy1 = lwu(0x0013e514u);
+    const uint32_t ox1 = lwu(0x0013e510u);
+    const uint64_t z1 = sxt64(lwu(OV(0x0017e4d8u) + 0xcu)) << 32;
+    const uint64_t xyz1 = sxt64(x1_16 + ox1 - 8u) | (sxt64(y1_16 + oy1 - 8u) << 16) | z1;
+    sd(q + 0x48u, 0ull);
+    sd(q + 0x40u, xyz1);
+
+    const uint32_t end_p = lwu(OV(0x001611c0u)) + 0x50u;
+    sw(OV(0x001611c0u), end_p);
+    return TrRet{end_p, 0.0f};
+}
+
+// orig: 0x0023c920
+TrRet ovl_23c920_tr(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1, uint32_t colour, uint32_t subpixel, uint32_t, uint32_t, float, float, float, float) {
+    const uint32_t p = lwu(OV(0x001611c0u));
+    sw(p + 0x0u, 0x10000003u);
+    sw(p + 0x4u, 0u);
+    sw(p + 0x8u, 0u);
+    sw(p + 0xcu, 0x50000003u);
+    const uint32_t q = p + 0x10u;
+    sw(OV(0x001611c0u), q);
+
+    sd(q + 0x00u, (0x8800ull << 47) | 1ull);
+    sd(q + 0x08u, 0x4410ull);
+    sd(q + 0x10u, 0x41ull);
+    sd(q + 0x18u, static_cast<uint64_t>(colour));
+
+    constexpr uint64_t kLineZ = 0xfffff000ull << 24;
+    if (subpixel != 0) {
+        const uint32_t oy0 = lwu(0x0013e514u);
+        const uint32_t ox0 = lwu(0x0013e510u);
+        sd(q + 0x20u, sxt64(x0 + ox0 - 8u) | (sxt64(y0 + oy0 - 8u) << 16) | kLineZ);
+        const uint32_t oy1 = lwu(0x0013e514u);
+        const uint32_t ox1 = lwu(0x0013e510u);
+        sd(q + 0x28u, sxt64(x1 + ox1 - 8u) | (sxt64(y1 + oy1 - 8u) << 16) | kLineZ);
+    } else {
+        const uint32_t oy0 = lwu(0x0013e514u);
+        const uint32_t ox0 = lwu(0x0013e510u);
+        sd(q + 0x20u, sxt64((x0 << 4) + ox0 - 0x10u) | (sxt64((y0 << 4) + oy0 - 0x10u) << 16) | kLineZ);
+        const uint32_t oy1 = lwu(0x0013e514u);
+        const uint32_t ox1 = lwu(0x0013e510u);
+        sd(q + 0x28u, sxt64((x1 << 4) + ox1 - 0x10u) | (sxt64((y1 << 4) + oy1 - 0x10u) << 16) | kLineZ);
+    }
+
+    const uint32_t end_p = lwu(OV(0x001611c0u)) + 0x30u;
+    sw(OV(0x001611c0u), end_p);
+    return TrRet{end_p, 0.0f};
+}
+
+// orig: 0x002033c0
+TrRet galaxy_view_draw_u(uint32_t x0, uint32_t x1, uint32_t y0, uint32_t y1, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float) {
+    texture_block_begin(0);
+    sub_002a0ba8(0x42u, (0x8000ull << 24) | 0x44ull);
+    sub_002a0ba8(0x47u, 0x4bull);
+    gs_flat_rect(0, 0, 0x200, 0x1c0, 0x80000000ull, 0);
+
+    const uint32_t w16 = (x1 - x0) << 4;
+    const uint32_t h16 = (y1 - y0) << 4;
+    ovl_23bef8_tr(static_cast<uint32_t>(hud_frame(0xe99au, 0xe)), 0u, 0u, w16, h16, 0u, 0u, 0x80u, 0.0f, 0.0f, 0.0f, 0.0f);
+    sub_002a0ba8(0x8u, 0ull);
+    const uint32_t f15 = static_cast<uint32_t>(hud_frame(0xe99au, 0xf));
+    const uint32_t scroll_u = lwu(OV(0x0015f3f8u)) & 0xfffu;
+    ovl_23bef8_tr(f15, 0u, 0u, w16, h16, scroll_u, 0u, 0x80u, 0.0f, 0.0f, 0.0f, 0.0f);
+    sub_002a0ba8(0x8u, 5ull);
+
+    uint32_t row_ptr = OV(0x001c1f38u);
+    uint32_t off_1c = 0x10u;
+    for (int32_t planet = 1; planet < 20; ++planet, row_ptr += 0x10u, off_1c += 0x10u) {
+        const int32_t px = lw(row_ptr + 0x0u);
+        if (px == 0) continue;
+
+        int32_t vis = 0;
+        if (lbu(0x0013dd58u + static_cast<uint32_t>(planet)) != 0) {
+            vis = 3;
+        } else if (lbu(0x0013dd40u + static_cast<uint32_t>(planet)) != 0) {
+            vis = 2;
+        }
+        if (vis == 0) continue;
+
+        int32_t py = lw(row_ptr + 0x4u);
+        if (lw(0x0015ed80u) != 0) {
+            py = ee_div(py * 0x1c0, 0x1a0);
+        }
+
+        if (vis == 3) {
+            const int32_t dot = hud_frame(0xe99au, 0xc);
+            hud_sprite(dot, px - 5, py - 5, 0xa, 0xa, 0x80ull);
+        } else if (vis == 2) {
+            const int32_t t_on = frame_scale_i(0x16);
+            const int32_t period = t_on + frame_scale_i(0x8);
+            const int32_t phase = ee_rem(lw(OV(0x0015f3f8u)), period);
+            if (phase < frame_scale_i(0x16)) {
+                const int32_t dot = hud_frame(0xe99au, 0xc);
+                hud_sprite(dot, px - 5, py - 5, 0xa, 0xa, 0x80ull);
+            }
+        }
+
+        if (planet != lw(OV(0x001841f0u) + 0x224u)) continue;
+
+        const uint32_t dx_ptr = OV(0x001c1f30u) + off_1c;
+        const int32_t dy = lw(row_ptr + 0xcu);
+        const int32_t dx = lw(dx_ptr);
+        const int32_t lx = px + dx;
+        const int32_t ly = py + dy;
+        const int32_t ly_sh = ly + 1;
+        const int32_t lx_sh = lx + 1;
+
+        const Vec4 dv{static_cast<float>(dx), static_cast<float>(dy), 0.0f, 0.0f};
+        const int32_t dist_milli = cvt_w_i32(fpu_mul(vec2_length(dv), 1000.0f));
+        const int32_t seg = dist_milli - 0x1f40;
+        const int32_t sx = lx + ee_div((px - lx) * seg, dist_milli);
+        const int32_t sy = ly + ee_div((py - ly) * seg, dist_milli);
+
+        const uint32_t name_id_addr = OV(0x001c1e44u) + static_cast<uint32_t>(planet * 0xc);
+        const uint32_t name_str = static_cast<uint32_t>(sub_00203ad8(lw(name_id_addr)));
+        const int32_t tw = text_width_small(name_str, -1);
+        const int32_t end_x = (-1 < lw(dx_ptr)) ? (lx + tw) : (lx - tw);
+        int32_t tx = end_x;
+
+        ovl_23c920_tr(static_cast<uint32_t>(sx + 1), static_cast<uint32_t>(sy + 1), static_cast<uint32_t>(lx_sh), static_cast<uint32_t>(ly_sh), 0x80000000u, 0u, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
+        ovl_23c920_tr(static_cast<uint32_t>(lx_sh), static_cast<uint32_t>(ly_sh), static_cast<uint32_t>(end_x + 1), static_cast<uint32_t>(ly_sh), 0x80000000u, 0u, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
+        if (!(end_x < lx)) tx = lx;
+        text_small(tx + 1, (ly - lw(OV(0x0015f650u))) + 1, 0x80000000ull, name_str, -1);
+
+        ovl_23c920_tr(static_cast<uint32_t>(sx), static_cast<uint32_t>(sy), static_cast<uint32_t>(lx), static_cast<uint32_t>(ly), 0x80f0f0f0u, 0u, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
+        ovl_23c920_tr(static_cast<uint32_t>(lx), static_cast<uint32_t>(ly), static_cast<uint32_t>(end_x), static_cast<uint32_t>(ly), 0x80f0f0f0u, 0u, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
+        text_small(tx, ly - lw(OV(0x0015f650u)), 0x80f0f0f0ull, name_str, -1);
+
+        const int32_t ring = hud_frame(0xe99au, 0xd);
+        hud_sprite(ring, px - 0xa, py - 0xa, 0x14, 0x14, 0x80ull);
+    }
+
+    texture_block_end();
+    return TrRet{0u, 0.0f};
+}
+
+// orig: 0x0027cbc0
+TrRet galmap_planet_draw_u(uint32_t w, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float) {
+    const uint32_t m = lwu(w + 0x44u);
+    sw(m + 0x10u, f2u(fpu_add(u2f(lwu(OV(0x00166dc0u))), 8.0f)));
+    sw(m + 0x14u, f2u(fpu_add(u2f(lwu(OV(0x00166dc4u))), u2f(lwu(OV(0x00160364u))))));
+    sw(m + 0x18u, f2u(fpu_sub(u2f(lwu(OV(0x00166dc8u))), u2f(0x3dcccccdu))));
+    if (const uint32_t m_draw = lwu(w + 0x44u); m_draw != 0) {
+        moby_draw_list(m_draw, 1);
+    }
+
+    texture_block_begin(0);
+    uint32_t gb_found = 0;
+    uint32_t gb_ptr = 0x0014bec0u + (lwu(OV(0x00184414u)) << 2);
+    for (int32_t i = 3; i >= 0; --i, ++gb_ptr) {
+        if (lbu(gb_ptr) != 0) ++gb_found;
+    }
+
+    const uint32_t buf = ee_stack_alloc(0x100);
+    const uint32_t fmt = OV(0x00160368u);
+    const uint32_t s_4f4f = static_cast<uint32_t>(sub_00203ad8(0x4f4f));
+    const uint32_t s_4f53 = static_cast<uint32_t>(sub_00203ad8(0x4f53));
+    const uint32_t help_planet = lwu(OV(0x001841f0u) + 0x224u);
+    const uint32_t total_gb = lwu(OV(0x001c4988u) + (help_planet << 2));
+    const std::vector<uint64_t> args = {
+        sxt64(s_4f4f),
+        sxt64(gb_found),
+        sxt64(s_4f53),
+        sxt64(total_gb),
+    };
+    libc_sprintf(buf, fmt, args);
+
+    text_right(lw(w + 0x20u) - 0x10, (lw(0x0013e504u) >> 1) - 8, 0x80000000ull, buf, -1);
+    text_right(lw(w + 0x20u) - 0x11, (lw(0x0013e504u) >> 1) - 9, 0x80ffa888ull, buf, -1);
+    texture_block_end();
+    ee_stack_free(0x100);
+    return TrRet{8u, 0.0f};
+}
 
 // The galaxy page's title focus-in: nothing.
 // orig: 0x0027f440
@@ -129,7 +363,7 @@ int32_t galmap_planet_update(uint32_t w) {
     return 0;
 }
 
-// The planet page's model (transliterated: galactic_map_tr.cpp).
+// The planet page's model (0x27cbc0).
 // orig: 0x0027cbc0
 int32_t galmap_planet_draw(uint32_t w) {
     if (level_slots_map_row()) return 8;  // enhancement: a level mod's row: not the base level's gold bolts (src/host/level_slots.h)

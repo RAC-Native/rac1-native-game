@@ -25,8 +25,11 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/particle_types_tr.h>
 #include <game/ovl/quartu_mobys.h>
+#include <game/ovl/shared_class1523.h>
+#include <game/ovl/shared_particle_kinds.h>
 #include <game/ovl/veldin_finale_mobys.h>
 #include <game/ovl/veldin_orbit_mobys.h>
+#include <game/ovl/veldin_orbit_own.h>
 
 #include <algorithm>
 #include <cstring>
@@ -161,8 +164,8 @@ void batch_370() {
             near(P, 20.0f);
             const uint32_t color = R();
             return spawned(0x1f, [&] {
-                if (L == 15) qua_25e2c0_l15(color, P, m, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-                else vf_270af0_l18(color, P, m, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+                if (L == 15) class1523_streak(color, P, m);  // (Quartu: the shared port it is re-glued onto)
+                else class1523_streak(color, P, m);  // (Veldin's finale: the shared port it is re-glued onto)
             });
         };
         check("particle_1f_update", 0x0026eb88, 200, Ret::None, [&] {
@@ -182,16 +185,16 @@ void batch_370() {
         std::function<uint32_t()> sp = [P, near, spawned] {
             near(P, 20.0f);
             const uint32_t kind = coin() ? 1u : 0u, n = u(ri(-2, 16));
-            return spawned(0x50, [&] { vo_26fdd0_l17(P, kind, n, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0); });
+            return spawned(0x50, [&] { vo_26fdd0_l17(P, kind, static_cast<int32_t>(n)); });
         };
         check("particle_50_update", 0x00275eb0, 200, Ret::None, [&] {
             level();
-            const uint32_t q = make(0x50, particle_50_update, sp, [](uint32_t q) {
+            const uint32_t q = make(0x50, beam_particle_update, sp, [](uint32_t q) {
                 w32(q + 0x20, coin() ? 1u : 0u);
                 w32(q + 4, R());
             });
             return Args{{q}, {}};
-        }, [](A a) { if (a.i[0] != 0) particle_50_update(a.i[0]); return uint64_t{0}; });
+        }, [](A a) { if (a.i[0] != 0) beam_particle_update(a.i[0]); return uint64_t{0}; });
     } else {
         skip_check("particle_50_update", 0x00275eb0, "spawned on level 17: ORACLE_LEVEL=17");
     }
@@ -249,7 +252,7 @@ void batch_370() {
                     { const int k = ri(0, 3); if (k == 0) w16(p + 0xa, 0); else if (k == 1) w16(p + 0xa, u(ri(1, 2))); }
                     if (ri(0, 4) == 0) wf(0x0015ed60, rf(0.5f, 3.0f));
                     return Args{{p}, {}};
-                }, [](A a) { particle_50_update(a.i[0]); return uint64_t{0}; });
+                }, [](A a) { beam_particle_update(a.i[0]); return uint64_t{0}; });
             }
         }
     }

@@ -262,7 +262,7 @@ def translate(ins, jr_targets=(), inject=None, gp_fold=True, patches=None):
     for a, w, mn, ops in ins:
         st, br = tr(a, w, mn, ops)
         if br and br[0] == 'call':
-            st, br = f'#error {a:08x} {w:08x} {mn} {ops}  (calls: use asm2fn.py)', None
+            st, br = f'#error {a:08x} {w:08x} {mn} {ops}  (calls: asm2cpp.py does not translate them)', None
         if mn.startswith('v') and not mn.startswith('vcallms') and br is None and st.startswith('#error'):
             st = f'#error COP2 macro {mn} {ops}'
         tr_all.append((a, w, mn, ops, st, br))

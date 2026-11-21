@@ -49,6 +49,9 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/hud_slot7_tr.h>
+#include <game/ovl/glows.h>
+#include <game/ovl/screen_effects.h>
 
 namespace rac1 {
 
@@ -59,54 +62,12 @@ using namespace vu0m;
 
 //@gen vf_cb_2dc4b8_l18
 
-//@gen vf_cb_2e3f58_l18
-
-//@gen vf_2ebb60_l18
-
-//@gen vf_2ec130_l18
-
-//@gen vf_cb_2eb9f8_l18
-
-//@gen vf_cb_2ee490_l18
-
 //@gen vf_cb_2f0390_l18
-
-//@gen vf_265e28_l18
 
 //@gen vf_cb_2f06c0_l18
 
 //@gen vf_cb_2f1fd8_l18
 
-//@gen vf_cb_2f2620_l18
-
-//@gen vf_cb_2f27c8_l18
-
-//@gen vf_cb_2f2970_l18
-
 //@gen vf_cb_2f7880_l18
-
-//@gen vf_cb_2f9780_l18
-
-//@gen vf_cb_2f9a98_l18
-
-//@gen vf_cb_2f9c20_l18
-
-//@gen vf_cb_2f9eb8_l18
-
-//@gen vf_cb_2fb018_l18
-
-//@gen vf_1ff920_l18
-
-//@gen vf_cb_2fb690_l18
-
-//@gen vf_cb_2fc860_l18
-
-//@gen vf_cb_2fca98_l18
-
-//@gen vf_204258_l18
-
-//@gen vf_hud_slot7_draw_l18
-
-//@gen vf_hud_boss_draw_l18
 
 }  // namespace rac1

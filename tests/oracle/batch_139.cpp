@@ -2,7 +2,7 @@
 // ORACLE_LEVEL=4 (Eudora's own original against the relocated port; needs the ISO); the base ELF functions also on level 0.
 //  - libgcc's soft-float single -> double (base ELF): __unpack_f 0x1203b0, __pack_d 0x11f738, __make_dp 0x120370,
 //    __extendsfdf2 0x120478 (Eudora's enemy helper L4:0x293128 converts a distance for a debug print with it);
-//  - that helper, L4:0x293128, with the flags (a2 & 0x30) that take it to the conversion, on the woodcut bots (class 563);
+//  - that helper, L4:0x293128 (now the hand port walker_gait_update_l4, eudora_walker.cpp), with the flags (a2 & 0x30) that take it to the conversion, on the woodcut bots (class 563);
 //  - the states of the Suck Cannon (class 1120: 1 its scene, 2 the weapon given, the checkpoint, the save request, 3) and of the
 //    gold bolt (class 1134: 1 / 2, the help message and the save request) that batch 111 skips: here the level change request
 //    (L4:0x23fe20, Veldin 0x24d430) runs on both sides, the console's clock the host's on both (as batch 75); 1120's scene start itself
@@ -14,16 +14,30 @@
 #include <game/lib/libcdvd.h>
 #include <game/lib/libgcc_fp.h>
 #include <game/ovl/eudora_mobys.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_shell.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/kernel/disc.h>
 
+#include <optional>
 #include <cmath>
 #include <cstring>
 
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach segment_collide, whose crossing lists, chunk buffers and vertices the port keeps on
+// the host stack (the original: 0x70003000 .. 0x70003fff, 0x70000000 .., 0x70002000): A2's collision scratch ranges
+// are left out of these checks, and only of them (stage 5, task C2c).
+bool c2c_spr_check(const char* name) {
+    static const char* const kNames[] = {"class1134_scene", "class184", "enemy_helper_293128"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // A check whose original is Eudora's own function at `l4addr` (as batch 111's).
 void l4check139(const char* name, uint32_t l4addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
     if (g_only_batch != 0 && g_only_batch != g_batch) return;
@@ -34,6 +48,8 @@ void l4check139(const char* name, uint32_t l4addr, int n, Ret ret, const std::fu
         return;
     }
     std::printf("%-26s L4:0x%08x\n", name, l4addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2c_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, l4addr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
 }
 // a float of every kind: zero, a denormal, a normal number (small / large / near 1), infinity, NaN, any bits
@@ -181,7 +197,7 @@ void batch_139() {
                 seed_rand();
                 const uint32_t flags = ri(0, 3) == 0 ? (R() & 0xff) : ((R() & 0xcf) | 0x10u << ri(0, 1));
                 return Args{{m, rec, flags}, {rf(0, 3), rf(-3.1f, 3.1f), rf(0, 20)}};
-            }, [](A a) { eud_293128_l4(a.i[0], a.i[1], a.i[2], 0, 0, 0, 0, 0, a.f[0], a.f[1], a.f[2], 0, 0, 0, 0, 0); return uint64_t{0}; });
+            }, [](A a) { walker_gait_update_l4(a.i[0], a.i[1], a.i[2], a.f[0], a.f[1], a.f[2]); return uint64_t{0}; });
     }
 
     // ---- the scene / level-change states of the Suck Cannon (1120) and the gold bolt (1134): the level change request runs on both
@@ -197,7 +213,7 @@ void batch_139() {
     struct Cls { const char* name; uint32_t addr; void (*fn)(uint32_t); int st_lo, st_hi; };
     static const Cls cls[] = {
         {"class1120_scene", 0x002e1a10, eud_class1120_update_l4, 1, 3},
-        {"class1134_scene", 0x002e1f38, eud_class1134_update_l4, 1, 2},
+        {"class1134_scene", 0x002e1f38, gold_bolt_update, 1, 2},
     };
     for (const Cls& c : cls) {
         const std::vector<uint32_t> ms = mobys_with(c.addr);
@@ -249,8 +265,8 @@ void batch_139() {
     struct Spawned { const char* name; uint32_t addr; void (*fn)(uint32_t); float hx, hy, hz; };
     static const Spawned sp[] = {
         {"class1516", 0x002e5178, eud_class1516_update_l4, 222.0f, 166.0f, 56.0f},
-        {"class184", 0x002af058, eud_class184_update_l4, 157.0f, 226.0f, 60.0f},
-        {"class1633", 0x002e5928, eud_class1633_update_l4, 146.0f, 203.0f, 60.0f},
+        {"class184", 0x002af058, shot_update, 157.0f, 226.0f, 60.0f},
+        {"class1633", 0x002e5928, class1633_update, 146.0f, 203.0f, 60.0f},
     };
     for (const Spawned& c : sp) {
         if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, c.name) != 0) continue;
@@ -264,7 +280,10 @@ void batch_139() {
             if (c.addr == 0x002e5928 && frames == 60)  // (1633: its spawner L4:0x2e5818, which the Sandmouse's helper 0x2e6080 calls with the
                 // sandmouse as the parent and two distances, an angle, a scale in f12..f15: called here so on the level's Sandmouse)
                 for (uint32_t s : mobys_with(0x002e69d0))
-                    for (int k = 0; k < 3; ++k) eud_2e5818_l4(s, 0, 0, 0, 0, 0, 0, 0, rf(1, 5), rf(1, 5), rf(-3, 3), rf(0.5f, 1.5f), 0, 0, 0, 0);
+                    for (int k = 0; k < 3; ++k) {
+                        const float d0 = rf(1, 5), d1 = rf(1, 5), ang = rf(-3, 3), sc = rf(0.5f, 1.5f);
+                        class1633_spawn(s, 0, d0, d1, ang, sc);  // (the shared port of the spawner, shared_sandmouse.cpp)
+                    }
             ms = mobys_with(c.addr);
         }
         if (ms.empty()) { std::printf("%-26s L4:0x%08x  none spawned in %d frames (not compared)\n", c.name, c.addr, frames); continue; }

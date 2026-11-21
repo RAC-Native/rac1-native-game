@@ -44,47 +44,16 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/screen_effects.h>
+#include <game/ovl/shared_ship_shots.h>
+#include <game/ovl/shared_class295.h>
+#include <game/ovl/shared_hud_shapes.h>
+#include <game/ovl/shared_particle_4a.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
-
-//@gen gml_26ed40_l13
-
-//@gen gml_class726_update_l13
-
-//@gen gml_265050_l13
-
-//@gen gml_class6_update_l13
-
-//@gen gml_2b4060_l13
-
-//@gen gml_class21_update_l13
-
-//@gen gml_3061c8_l13
-
-//@gen gml_2b47a0_l13
-
-//@gen gml_2b48d8_l13
-
-//@gen gml_2b4958_l13
-
-//@gen gml_class29_update_l13
-
-//@gen gml_2b4a58_l13
-
-//@gen gml_class36_update_l13
-
-//@gen gml_2648a0_l13
-
-//@gen gml_265000_l13
-
-//@gen gml_281d70_l13
-
-//@gen gml_282010_l13
-
-//@gen gml_2b4ec0_l13
 
 //@gen gml_280400_l13
 
@@ -95,31 +64,5 @@ using namespace vu0m;
 //@gen gml_2b4ff0_l13
 
 //@gen gml_class63_update_l13
-
-//@gen gml_2650a8_l13
-
-//@gen gml_265170_l13
-
-//@gen gml_2651c8_l13
-
-//@gen gml_271070_l13
-
-//@gen gml_281100_l13
-
-//@gen gml_2b8590_l13
-
-//@gen gml_202620_l13
-
-//@gen gml_2b84e8_l13
-
-//@gen gml_3025f8_l13
-
-//@gen gml_2b9df8_l13
-
-//@gen gml_2e6a58_l13
-
-//@gen gml_2b9f58_l13
-
-//@gen gml_2ba088_l13
 
 }  // namespace rac1

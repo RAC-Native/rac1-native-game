@@ -183,6 +183,9 @@ void cheats_menu_entries() {
     sw(T + 0x14, sp15 ? 0x4fd3 : 0x4fd9);
     sw(T + 0x18, sp30 ? 0x4fd4 : 0x4fda);
     sw(T + 0x1c, gold ? 0x4fd7 : 0x4fdb);
+    // region: the PAL builds (1.00 and 2.00) hide the page's last entry, Commercials (its text 0 ends the list there), on
+    // the disc's region flag (1.00 0x002846f4..0x00284720; 2.00 the same code). Their discs have the three commercials.
+    if (lw(0x0015ee90) != 0) sh(E + 0x60, 0);
 }
 
 }  // namespace rac1

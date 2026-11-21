@@ -36,7 +36,7 @@ void cut_content_fred_dispatch_l3(uint32_t m);
 void cut_content_fred_update_l3(uint32_t m);
 
 // orig: (none) — enhancement: the update registered at L4:0x2ce060 (class 484): the restored ship
-// (cut_content_ships_update_l4) with the item on, or a ship already kept by it; else the faithful eud_class484_update_l4
+// (cut_content_ships_update_l4) with the item on, or a ship already kept by it; else the retail update (moby_retire)
 void cut_content_ships_dispatch_l4(uint32_t m);
 // orig: beta 2002-08 L4:0x002a18e8 — cut content restored: a Transport Ship's update, ported from the beta build
 void cut_content_ships_update_l4(uint32_t m);

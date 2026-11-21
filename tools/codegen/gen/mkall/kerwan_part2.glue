@@ -1,1 +1,4 @@
-0x0024e328: metal_25f8e0(a0.w(), fr[12]);
+0x001f8ae8: ari_spr_dma_to_l2(a0.w(), a1.w(), a2.w());
+0x0023bed0: ari_ocean_cells_clip_l2(a0.w());
+0x0023c208: ari_ocean_cells_draw_l2(a0.w());
+0x00291808: ari_ocean_end_body_l2(a0.w());

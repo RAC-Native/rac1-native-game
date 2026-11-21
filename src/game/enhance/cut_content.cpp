@@ -259,7 +259,7 @@ void cut_content_ships_dispatch_l4(uint32_t m) {
         cut_content_ships_update_l4(m);
         return;
     }
-    eud_class484_update_l4(m);
+    moby_retire(m);  // (the retail update, L4:0x002ce060: `j moby_retire`)
 }
 
 // orig: beta 2002-08 L4:0x002a18e8 (prototype 2002-06 L4:0x0029abf0; retail L4:0x002ce060 is moby_retire) — cut content

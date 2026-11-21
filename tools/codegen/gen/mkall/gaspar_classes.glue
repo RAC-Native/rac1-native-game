@@ -1,0 +1,5 @@
+0x0021ee30: ari_spr_dma_to_l2(a0.w(), a1.w(), a2.w());
+0x0026cce8: ari_ocean_cells_clip_l2(a0.w());
+0x0026d020: ari_ocean_cells_draw_l2(a0.w());
+0x002c1810: ari_ocean_end_body_l2(a0.w());
+0x0021f6f8: gas_mat_scale_l9(a0.w(), fr[12]);

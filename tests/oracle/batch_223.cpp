@@ -17,11 +17,39 @@
 #include "trial_guard.h"
 
 #include <game/lib/libcdvd.h>
+#include <game/ovl/empty_class_updates.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/oltanis_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/shared_class1224.h>
+#include <game/ovl/shared_class1331.h>
+#include <game/ovl/shared_class1400.h>
+#include <game/ovl/shared_class1511.h>
+#include <game/ovl/shared_class1629.h>
+#include <game/ovl/shared_class250.h>
+#include <game/ovl/shared_class252.h>
+#include <game/ovl/shared_class258.h>
+#include <game/ovl/shared_class28.h>
+#include <game/ovl/shared_class28_draw.h>
+#include <game/ovl/shared_class325.h>
+#include <game/ovl/shared_class403.h>
+#include <game/ovl/shared_class604.h>
+#include <game/ovl/shared_class686.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_class933.h>
+#include <game/ovl/shared_class994.h>
+#include <game/ovl/shared_cutscene_fx.h>
+#include <game/ovl/shared_env_objects.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_spawner.h>
+#include <game/ovl/shared_swingshot_target.h>
 #include <game/ovl/variants_l14.h>
 
+#include <optional>
 #include <cstring>
 #include <map>
 #include <string>
@@ -29,11 +57,39 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
+// walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
+// collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
+bool c2b_spr_check(const char* name) {
+    static const char* const kNames[] = {"class28_arr1000", "class28_arr30", "class28_arr300", "class28_arr60",
+                                         "class28_c1395", "class28_c685", "class28_c712", "class28_c851", "class28_c924",
+                                         "class28_talk851", "class28_talk924", "class28_town1700", "class8_arr300",
+                                         "class8_arr60", "class8_c924", "class8_talk924", "class8_town1700",
+                                         "class923_arr1000", "class923_arr30", "class923_arr300", "class923_arr60",
+                                         "class923_c1395", "class923_c685", "class923_c712", "class923_c851",
+                                         "class923_c924", "class923_talk851", "class923_talk924", "class923_town1700",
+                                         "class1354_arr1000", "class1354_arr30", "class1354_arr300", "class1354_arr60",
+                                         "class1354_c1395", "class1354_c685", "class1354_c712", "class1354_c924",
+                                         "class1354_talk851", "class1354_talk924", "class1354_town1700",
+                                         "class1400_arr1000", "class1400_arr30", "class1400_arr300", "class1400_arr60",
+                                         "class1400_c1395", "class1400_c685", "class1400_c712", "class1400_c851",
+                                         "class1400_c924", "class1400_talk851", "class1400_talk924", "class1400_town1700",
+                                         "class1818_arr1000", "class1818_arr300", "class1818_c1395", "class1818_c685",
+                                         "class1818_c712", "class1818_c851", "class1818_talk851", "class252_arr30",
+                                         "class252_arr300", "class252_arr60", "class252_c685", "class252_c712",
+                                         "class252_talk924", "class252_town1700"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // A check whose original is level 14's own function at `addr`.
 void o2check(const char* name, uint32_t addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
     if (g_only_batch != 0 && g_only_batch != g_batch) return;
     if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
     std::printf("%-26s L14:0x%08x\n", name, addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2b_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, addr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
 }
 const std::vector<uint8_t>& dump223(const std::string& path) {
@@ -126,44 +182,44 @@ void batch_223() {
         w32(e + 0x28, u(ri(0, 20)));
     };
     static const struct { int cls; uint32_t fn; void (*port)(uint32_t); } classes[] = {
-            {903, 0x002aba80, olt_class903_update_l14}, {8, 0x002ac618, olt_class8_update_l14}, {28, 0x002b17d8, olt_class28_update_l14},
+            {903, 0x002aba80, olt_class903_update_l14}, {8, 0x002ac618, olt_class8_update_l14}, {28, 0x002b17d8, class28_update},
             {30, 0x002b3bf0, olt_class30_update_l14}, {31, 0x002b46e8, olt_class31_update_l14}, {81, 0x002bac78, olt_class81_update_l14},
-            {211, 0x002d5f40, olt_class211_update_l14}, {250, 0x002d96e0, olt_class250_update_l14}, {252, 0x002d98f0, olt_class252_update_l14},
-            {258, 0x002db378, olt_class258_update_l14}, {309, 0x002de1f8, olt_class309_update_l14}, {325, 0x002de670, olt_class325_update_l14},
-            {386, 0x002dee28, olt_class386_update_l14}, {403, 0x002dfd10, olt_class403_update_l14}, {455, 0x002e1b20, olt_class455_update_l14},
-            {531, 0x002e7190, olt_class531_update_l14}, {545, 0x002e72d8, olt_class545_update_l14}, {557, 0x002e7bd8, olt_class557_update_l14},
-            {604, 0x002ea9d0, olt_class604_update_l14}, {605, 0x002ead20, olt_class605_update_l14}, {610, 0x002eaf88, olt_class610_update_l14},
+            {211, 0x002d5f40, olt_class211_update_l14}, {250, 0x002d96e0, class250_update}, {252, 0x002d98f0, class252_update},
+            {258, 0x002db378, class258_update}, {309, 0x002de1f8, olt_class309_update_l14}, {325, 0x002de670, class325_update},
+            {386, 0x002dee28, olt_class386_update_l14}, {403, 0x002dfd10, class403_update}, {455, 0x002e1b20, class455_update},
+            {531, 0x002e7190, empty_update}, {545, 0x002e72d8, class545_update}, {557, 0x002e7bd8, olt_class557_update_l14},
+            {604, 0x002ea9d0, class604_update}, {605, 0x002ead20, zone_marker_update}, {610, 0x002eaf88, olt_class610_update_l14},
             {643, 0x002ec810, olt_class643_update_l14}, {681, 0x002ece00, olt_class681_update_l14}, {684, 0x002ed280, olt_class684_update_l14},
-            {685, 0x002ee8d8, olt_class685_update_l14}, {686, 0x002ef840, olt_class686_update_l14}, {712, 0x002f0538, olt_class712_update_l14},
-            {758, 0x002f2cb8, olt_class758_update_l14}, {765, 0x002f3ef0, olt_class765_update_l14}, {805, 0x002f4190, olt_class805_update_l14},
-            {832, 0x002f6338, olt_class832_update_l14}, {851, 0x002fba20, olt_class851_update_l14}, {908, 0x002fc0f0, olt_class908_update_l14},
-            {913, 0x002fcba8, olt_class913_update_l14}, {921, 0x002fcbb0, olt_class921_update_l14}, {922, 0x002fdbb8, olt_class922_update_l14},
-            {923, 0x002fe2a0, olt_class923_update_l14}, {924, 0x002fefe0, olt_class924_update_l14}, {933, 0x002ff640, olt_class933_update_l14},
-            {1134, 0x002ffc18, olt_class1134_update_l14}, {1193, 0x00300e00, olt_class1193_update_l14}, {1224, 0x003015d0, olt_class1224_update_l14},
-            {1260, 0x00303370, olt_class1260_update_l14}, {1331, 0x003039e0, olt_class1331_update_l14}, {1352, 0x00305408, olt_class1352_update_l14},
-            {1354, 0x00305758, olt_class1354_update_l14}, {1395, 0x00305d28, olt_class1395_update_l14}, {1396, 0x00306150, olt_class1396_update_l14},
-            {1397, 0x003061d8, olt_class1397_update_l14}, {1400, 0x00306390, olt_class1400_update_l14}, {1416, 0x00306b78, olt_class1416_update_l14},
-            {1417, 0x00306ee0, olt_class1417_update_l14}, {1418, 0x00307a80, olt_class1418_update_l14}, {1511, 0x00307ad8, olt_class1511_update_l14},
-            {1514, 0x00308350, olt_class1514_update_l14}, {1559, 0x003087c0, olt_class1559_update_l14}, {1629, 0x003088b0, olt_class1629_update_l14},
-            {1633, 0x00308be0, olt_class1633_update_l14}, {1818, 0x00309c88, olt_class1818_update_l14}};
+            {685, 0x002ee8d8, olt_class685_update_l14}, {686, 0x002ef840, class686_update}, {712, 0x002f0538, olt_class712_update_l14},
+            {758, 0x002f2cb8, swingshot_target_update}, {765, 0x002f3ef0, empty_update}, {805, 0x002f4190, spawn_point_update_l1},
+            {832, 0x002f6338, class832_update}, {851, 0x002fba20, olt_class851_update_l14}, {908, 0x002fc0f0, olt_class908_update_l14},
+            {913, 0x002fcba8, empty_update}, {921, 0x002fcbb0, olt_class921_update_l14}, {922, 0x002fdbb8, olt_class922_update_l14},
+            {923, 0x002fe2a0, olt_class923_update_l14}, {924, 0x002fefe0, olt_class924_update_l14}, {933, 0x002ff640, class933_update},
+            {1134, 0x002ffc18, gold_bolt_update}, {1193, 0x00300e00, olt_class1193_update_l14}, {1224, 0x003015d0, class1224_update},
+            {1260, 0x00303370, class994_update}, {1331, 0x003039e0, class1331_update}, {1352, 0x00305408, olt_class1352_update_l14},
+            {1354, 0x00305758, olt_class1354_update_l14}, {1395, 0x00305d28, olt_class1395_update_l14}, {1396, 0x00306150, empty_update},
+            {1397, 0x003061d8, olt_class1397_update_l14}, {1400, 0x00306390, class1400_update}, {1416, 0x00306b78, olt_class1416_update_l14},
+            {1417, 0x00306ee0, olt_class1417_update_l14}, {1418, 0x00307a80, olt_class1418_update_l14}, {1511, 0x00307ad8, class1511_update},
+            {1514, 0x00308350, empty_update}, {1559, 0x003087c0, olt_class1559_update_l14}, {1629, 0x003088b0, class1629_update},
+            {1633, 0x00308be0, class1633_update}, {1818, 0x00309c88, sandmouse_update}};
     struct Cb { const char* name; uint32_t addr; void (*fn)(uint32_t); int cls; };
     static const Cb cbs[] = {{"cb2aee28", 0x002aee28, olt_cb_2aee28_l14, 8},
-                             {"cb2b2928", 0x002b2928, olt_cb_2b2928_l14, 28},
+                             {"cb2b2928", 0x002b2928, class28_draw_glows, 28},
                              {"cb2d71f0", 0x002d71f0, olt_cb_2d71f0_l14, 211},
-                             {"cb2da678", 0x002da678, olt_cb_2da678_l14, 252},
-                             {"cb2daf08", 0x002daf08, olt_cb_2daf08_l14, 252},
-                             {"cb2dec40", 0x002dec40, olt_cb_2dec40_l14, 325},
+                             {"cb2da678", 0x002da678, class252_draw_beam, 252},
+                             {"cb2daf08", 0x002daf08, class252_draw_glow, 252},
+                             {"cb2dec40", 0x002dec40, class325_draw, 325},
                              {"cb2df458", 0x002df458, olt_cb_2df458_l14, 386},
                              {"cb2eb810", 0x002eb810, olt_cb_2eb810_l14, 610},
                              {"cb2edc18", 0x002edc18, olt_cb_2edc18_l14, 684},
-                             {"cb2f6128", 0x002f6128, olt_cb_2f6128_l14, 832},
-                             {"cb301fa8", 0x00301fa8, olt_cb_301fa8_l14, 1224},
+                             {"cb2f6128", 0x002f6128, class832_draw, 832},
+                             {"cb301fa8", 0x00301fa8, class1224_draw, 1224},
                              {"cb303350", 0x00303350, olt_cb_303350_l14, 1260},
-                             {"cb307a28", 0x00307a28, olt_cb_307a28_l14, 1418},
-                             {"cb308150", 0x00308150, olt_cb_308150_l14, 1511},
-                             {"cb309bb0", 0x00309bb0, olt_cb_309bb0_l14, 1818},
+                             {"cb307a28", 0x00307a28, env_objects_callback, 1418},
+                             {"cb308150", 0x00308150, class1511_draw, 1511},
+                             {"cb309bb0", 0x00309bb0, sandmouse_glow, 1818},
                              {"cb2ae260", 0x002ae260, olt_cb_2ae260_l14, 8},
-                             {"cb2b3a20", 0x002b3a20, olt_cb_2b3a20_l14, 28}};
+                             {"cb2b3a20", 0x002b3a20, class28_draw_spot, 28}};
     static const char* const dumps[] = {"arr30", "arr60", "arr300", "arr1000", "town1700", "c712", "c924", "c851", "c1395", "c685", "talk924", "talk851"};
     for (const char* dn : dumps) {
         const std::string path = dump_path("gemlik_oltanis/") + dn + "_L14.bin";
@@ -259,7 +315,7 @@ void batch_223() {
                     w32(OV(0x0015f5cc), R());
                     seed_rand();
                     return Args{{sm}, {}};
-                }, [](A a) { olt_cb_2459c0_l14(a.i[0]); return uint64_t{0}; });
+                }, [](A a) { cutscene_l14_effect_draw(a.i[0]); return uint64_t{0}; });
         }
         g_ignored_words.resize(ign_pool);
     }

@@ -12,13 +12,45 @@
 #include "ovl_oracle.h"
 #include "trial_guard.h"
 
+#include <game/ovl/aridia_mobys.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/shared_class1221.h>
+#include <game/ovl/shared_class1371.h>
+#include <game/ovl/shared_class1400.h>
+#include <game/ovl/shared_class1844.h>
+#include <game/ovl/shared_class258.h>
+#include <game/ovl/shared_class341.h>
+#include <game/ovl/shared_class604.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_class886.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_homing_missile.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_shell.h>
+#include <game/ovl/shared_swingshot_target.h>
+#include <game/ovl/shared_tiles.h>
 #include <game/ovl/hoven_mobys.h>
+#include <game/ovl/kerwan_camera.h>
+#include <game/ovl/novalis_hooks.h>
+#include <game/ovl/novalis_water.h>
+#include <game/ovl/shared_class1111.h>
+#include <game/ovl/shared_class1179.h>
+#include <game/ovl/shared_class1319.h>
+#include <game/ovl/shared_class295.h>
+#include <game/ovl/shared_class615.h>
+#include <game/ovl/shared_class819.h>
+#include <game/ovl/shared_class830.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/shared_ship_shots.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/pokitaru_mobys.h>
+#include <game/ovl/empty_class_updates.h>
 #include <runtime/kernel/disc.h>
 #include <runtime/vu/vu0.h>
 
+#include <optional>
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
@@ -29,6 +61,17 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
+// walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
+// collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
+bool c2b_spr_check(const char* name) {
+    static const char* const kNames[] = {"d_class238", "d_class294", "d_class1134", "d_class114", "d_class1231",
+                                         "d_class1246", "d_class1259", "d_class1269", "d_class572"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // a random state can send the port's vector helpers through a pointer outside RAM (a SIGSEGV where the interpreter would wrap it):
 // the trial run of a state turns it into "not a game state" (the state is dealt again), as batch 124's
 bool trial_run(void (*port)(uint32_t), uint32_t m) {
@@ -41,35 +84,35 @@ bool trial_run(void (*port)(uint32_t), uint32_t m) {
 struct Cls { int level; int cls; uint32_t addr; void (*fn)(uint32_t); };
 const Cls kCls[] = {
     {11, 23, 0x002cb668, pok_class23_update_l11},
-    {11, 37, 0x002cb790, pok_class37_update_l11},
+    {11, 37, 0x002cb790, raritanium_pickup_update},
     {11, 65, 0x002cb810, pok_class65_update_l11},
     {11, 90, 0x002d0710, pok_class90_update_l11},
     {11, 114, 0x002d0fa8, pok_class114_update_l11},
     {11, 298, 0x002f0e40, pok_class298_update_l11},
     {11, 318, 0x002f2518, pok_class318_update_l11},
-    {11, 341, 0x002f30b0, pok_class341_update_l11},
+    {11, 341, 0x002f30b0, class341_update},
     {11, 361, 0x002f3350, pok_class361_update_l11},
-    {11, 572, 0x002f9998, pok_class572_update_l11},
-    {11, 604, 0x002fc630, pok_class604_update_l11},
-    {11, 605, 0x002fc980, pok_class605_update_l11},
-    {11, 615, 0x002fcda8, pok_class615_update_l11},
-    {11, 758, 0x00300010, pok_class758_update_l11},
-    {11, 805, 0x00300578, pok_class805_update_l11},
-    {11, 819, 0x00302510, pok_class819_update_l11},
-    {11, 830, 0x00302ae0, pok_class830_update_l11},
-    {11, 832, 0x00303070, pok_class832_update_l11},
-    {11, 1009, 0x003089d0, pok_class1009_update_l11},
-    {11, 1017, 0x00309098, pok_class1017_update_l11},
-    {11, 1034, 0x003094f8, pok_class1034_update_l11},
+    {11, 572, 0x002f9998, amoeboid_update_l1},
+    {11, 604, 0x002fc630, class604_update},
+    {11, 605, 0x002fc980, zone_marker_update},
+    {11, 615, 0x002fcda8, class615_update},
+    {11, 758, 0x00300010, swingshot_target_update},
+    {11, 805, 0x00300578, spawn_point_update_l1},
+    {11, 819, 0x00302510, class819_update},
+    {11, 830, 0x00302ae0, class830_update},
+    {11, 832, 0x00303070, class832_update},
+    {11, 1009, 0x003089d0, class1009_update},
+    {11, 1017, 0x00309098, class1017_update},
+    {11, 1034, 0x003094f8, class1034_update},
     {11, 1075, 0x00309ac0, pok_class1075_update_l11},
     {11, 1111, 0x0030b358, pok_class1111_update_l11},
-    {11, 1134, 0x0030b730, pok_class1134_update_l11},
+    {11, 1134, 0x0030b730, gold_bolt_update},
     {11, 1156, 0x0030c788, pok_class1156_update_l11},
     {11, 1157, 0x0030d800, pok_class1157_update_l11},
     {11, 1158, 0x0030e088, pok_class1158_update_l11},
     {11, 1159, 0x0030e978, pok_class1159_update_l11},
     {11, 1178, 0x0030eb90, pok_class1178_update_l11},
-    {11, 1179, 0x0030ee00, pok_class1179_update_l11},
+    {11, 1179, 0x0030ee00, class1179_update},
     {11, 1180, 0x0030f2a8, pok_class1180_update_l11},
     {11, 1218, 0x0030f728, pok_class1218_update_l11},
     {11, 1219, 0x00310028, pok_class1219_update_l11},
@@ -83,62 +126,62 @@ const Cls kCls[] = {
     {11, 1319, 0x00319838, pok_class1319_update_l11},
     {11, 1350, 0x0031aa80, pok_class1350_update_l11},
     {11, 1524, 0x0031ab08, pok_class1524_update_l11},
-    {11, 1633, 0x0031b758, pok_class1633_update_l11},
-    {11, 1818, 0x0031c800, pok_class1818_update_l11},
-    {11, 1859, 0x0031d7d8, pok_class1859_update_l11},
-    {11, 1860, 0x0031d8d0, pok_class1860_update_l11},
+    {11, 1633, 0x0031b758, class1633_update},
+    {11, 1818, 0x0031c800, sandmouse_update},
+    {11, 1859, 0x0031d7d8, class1844_update},
+    {11, 1860, 0x0031d8d0, empty_update},
     {11, 1903, 0x0031e2f0, pok_class1903_update_l11},
     {11, 1919, 0x0031f150, pok_class1919_update_l11},
     {12, 19, 0x002bf140, hov_class19_update_l12},
-    {12, 37, 0x002bf9b8, hov_class37_update_l12},
-    {12, 164, 0x002cb1e8, hov_class164_update_l12},
-    {12, 178, 0x002d30f8, hov_class178_update_l12},
-    {12, 184, 0x002d4378, hov_class184_update_l12},
+    {12, 37, 0x002bf9b8, raritanium_pickup_update},
+    {12, 164, 0x002cb1e8, empty_update},
+    {12, 178, 0x002d30f8, empty_update},
+    {12, 184, 0x002d4378, shot_update},
     {12, 238, 0x002e1be0, hov_class238_update_l12},
     {12, 240, 0x002e3ed8, hov_class240_update_l12},
-    {12, 258, 0x002e4cd8, hov_class258_update_l12},
+    {12, 258, 0x002e4cd8, class258_update},
     {12, 282, 0x002e6c48, hov_class282_update_l12},
     {12, 293, 0x002e7208, hov_class293_update_l12},
     {12, 294, 0x002e72c0, hov_class294_update_l12},
-    {12, 296, 0x002e8c10, hov_class296_update_l12},
+    {12, 296, 0x002e8c10, escalator_update_l2},
     {12, 326, 0x002e9f68, hov_class326_update_l12},
     {12, 328, 0x002eb570, hov_class328_update_l12},
     {12, 336, 0x002ebea8, hov_class336_update_l12},
     {12, 339, 0x002ec1d0, hov_class339_update_l12},
-    {12, 341, 0x002ec478, hov_class341_update_l12},
-    {12, 346, 0x002ec718, hov_class346_update_l12},
+    {12, 341, 0x002ec478, class341_update},
+    {12, 346, 0x002ec718, empty_update},
     {12, 384, 0x002ec720, hov_class384_update_l12},
     {12, 409, 0x002ece00, hov_class409_update_l12},
     {12, 422, 0x002ed280, hov_class422_update_l12},
-    {12, 458, 0x002ef648, hov_class458_update_l12},
-    {12, 499, 0x002f11b0, hov_class499_update_l12},
-    {12, 604, 0x002f51f0, hov_class604_update_l12},
-    {12, 605, 0x002f5540, hov_class605_update_l12},
-    {12, 758, 0x002f7b28, hov_class758_update_l12},
-    {12, 805, 0x002f8090, hov_class805_update_l12},
-    {12, 832, 0x002fa238, hov_class832_update_l12},
-    {12, 886, 0x002ff838, hov_class886_update_l12},
-    {12, 1134, 0x002ffdb0, hov_class1134_update_l12},
-    {12, 1135, 0x00300ce8, hov_class1135_update_l12},
-    {12, 1221, 0x00301d08, hov_class1221_update_l12},
-    {12, 1222, 0x00301df0, hov_class1222_update_l12},
+    {12, 458, 0x002ef648, homing_missile_update},
+    {12, 499, 0x002f11b0, empty_update},
+    {12, 604, 0x002f51f0, class604_update},
+    {12, 605, 0x002f5540, zone_marker_update},
+    {12, 758, 0x002f7b28, swingshot_target_update},
+    {12, 805, 0x002f8090, spawn_point_update_l1},
+    {12, 832, 0x002fa238, class832_update},
+    {12, 886, 0x002ff838, class886_update},
+    {12, 1134, 0x002ffdb0, gold_bolt_update},
+    {12, 1135, 0x00300ce8, teleporter_update_l1},
+    {12, 1221, 0x00301d08, class1221_update},
+    {12, 1222, 0x00301df0, class1221_update},
     {12, 1259, 0x00302f30, hov_class1259_update_l12},
     {12, 1267, 0x00303540, hov_class1267_update_l12},
     {12, 1269, 0x00304e00, hov_class1269_update_l12},
     {12, 1274, 0x003069d0, hov_class1274_update_l12},
-    {12, 1278, 0x003076d0, hov_class1278_update_l12},
-    {12, 1280, 0x003076d8, hov_class1280_update_l12},
+    {12, 1278, 0x003076d0, empty_update},
+    {12, 1280, 0x003076d8, empty_update},
     {12, 1281, 0x00307840, hov_class1281_update_l12},
-    {12, 1322, 0x003081a8, hov_class1322_update_l12},
+    {12, 1322, 0x003081a8, empty_update},
     {12, 1345, 0x003081b0, hov_class1345_update_l12},
-    {12, 1371, 0x00308918, hov_class1371_update_l12},
-    {12, 1400, 0x00308be0, hov_class1400_update_l12},
+    {12, 1371, 0x00308918, class1371_update},
+    {12, 1400, 0x00308be0, class1400_update},
     {12, 1404, 0x003093c8, hov_class1404_update_l12},
     {12, 1557, 0x003094a0, hov_class1557_update_l12},
-    {12, 1633, 0x00309648, hov_class1633_update_l12},
-    {12, 1818, 0x0030a6f0, hov_class1818_update_l12},
-    {12, 1862, 0x0030b6c8, hov_class1862_update_l12},
-    {12, 1863, 0x0030b7c0, hov_class1863_update_l12},
+    {12, 1633, 0x00309648, class1633_update},
+    {12, 1818, 0x0030a6f0, sandmouse_update},
+    {12, 1862, 0x0030b6c8, class1844_update},
+    {12, 1863, 0x0030b7c0, empty_update},
     {12, 1901, 0x0030bff0, hov_class1901_update_l12},
 };
 // the states batch 124 / 200 skip (the original leaves the harness there: the level change request, a kernel wait, a pointer read from a
@@ -257,6 +300,8 @@ void batch_202() {
         std::printf("%-26s L%d:0x%08x  (%zu dump(s))\n", name, lv, c.addr, subj.size());
         auto fn = c.fn;
         const uint32_t skip = skip_states(lv, c.cls);
+        std::optional<CollisionScratchIgnored> spr_ignored;
+        if (c2b_spr_check(name)) spr_ignored.emplace();
         const bool ok = check_fn(name, c.addr, 60, Ret::None, [subj, states, fn, skip] {
             static std::vector<uint8_t> saved, saved_spr;
             uint32_t m = 0;

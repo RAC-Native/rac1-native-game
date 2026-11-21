@@ -4,6 +4,7 @@
 #include <game/ovl/variants.h>
 #include <game/ovl/region_core.h>
 #include <runtime/kernel/disc.h>
+#include <io/asset_paths.h>
 
 #include <algorithm>
 #include <array>
@@ -87,8 +88,8 @@ struct RegionRuns {
 // orig: (host) see RegionRuns: unit n's (a level, or OVL_FRONT)
 RegionRuns region_load(int unit) {
     RegionRuns rr;
-    const std::string path = unit == OVL_FRONT ? std::string("assets/generated/overlay_map/region_boot.txt")
-                                               : "assets/generated/overlay_map/region_level" + std::to_string(unit) + ".txt";
+    const std::string path = io::asset_path(unit == OVL_FRONT ? std::string("generated/overlay_map/region_boot.txt")
+                                                              : "generated/overlay_map/region_level" + std::to_string(unit) + ".txt");
     std::ifstream in(path);
     if (!in) std::fprintf(stderr, "[ovl_reloc] %s missing (./setup.sh): its addresses kept\n", path.c_str());
     std::string line;
@@ -182,8 +183,8 @@ void ovl_reloc_set_level(int level) {
     // region's own build, translated like any level's (level0.txt)
     if (level == OVL_NONE || (level == 0 && !disc_other_region())) return;
     g_identity = false;
-    const std::string path = level == OVL_FRONT ? std::string("assets/generated/overlay_map/front_reloc.txt")
-                                                : "assets/generated/overlay_map/level" + std::to_string(level) + ".txt";
+    const std::string path = io::asset_path(level == OVL_FRONT ? std::string("generated/overlay_map/front_reloc.txt")
+                                                               : "generated/overlay_map/level" + std::to_string(level) + ".txt");
     std::ifstream in(path);
     if (!in) {
         std::fprintf(stderr, "[ovl_reloc] %s missing (setup.sh): level %d kept on Veldin's addresses\n", path.c_str(), level);
@@ -206,7 +207,7 @@ void ovl_reloc_set_level(int level) {
     }
     // the engine's data blocks with their extents (a level's own build only: not the boot module's, nor another region's)
     if (level != OVL_FRONT && !disc_other_region()) {
-        std::ifstream ext("assets/generated/overlay_map/level" + std::to_string(level) + ".ext");
+        std::ifstream ext(io::asset_path("generated/overlay_map/level" + std::to_string(level) + ".ext"));
         while (std::getline(ext, line)) {
             std::istringstream s(line);
             std::string kind;
@@ -217,7 +218,8 @@ void ovl_reloc_set_level(int level) {
             g_ext_l[e.level] = e;
         }
         if (g_ext_v.empty())
-            std::fprintf(stderr, "[ovl_reloc] level %d: no extents (assets/generated/overlay_map/level%d.ext: ./setup.sh): the nearest mapped address's rule\n", level, level);
+            std::fprintf(stderr, "[ovl_reloc] level %d: no extents (%s/generated/overlay_map/level%d.ext: ./setup.sh): the nearest mapped address's rule\n", level,
+                         io::asset_root().c_str(), level);
     }
     // the rows' level addresses are NTSC-U level N's: on another region's disc, the region
     // table's (a function the region changed: its entry, the NTSC-U port standing in; none: the row dropped)

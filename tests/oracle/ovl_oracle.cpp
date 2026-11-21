@@ -44,6 +44,10 @@ void veldin_boot() {
 int main(int argc, char** argv) {
     rac1::ps2fpu::enter_ee_rounding();  // the EE's float rounding (toward zero), as the runtime runs
     rac1::g_advanced_disabled = true;  // the PC version's enhancements off: the faithful port alone (src/game/enhance/advanced.h)
+    // the preferences are marked read while the settings are off, so they are never read: a fork check that lifts the
+    // line above for one call sees the fixes its run names (RAC1_FIXES102 / RAC1_GAMEPLAY102) and, for the other row,
+    // the settings' bytes of the snapshot (0: off), not this machine's preferences or the rows' default (on)
+    rac1::advanced_prefs_load();
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     // --batch N: that batch only; --level N (or ORACLE_LEVEL=N): on level N's own overlay (task 0307)
     int level = std::getenv("ORACLE_LEVEL") != nullptr ? std::atoi(std::getenv("ORACLE_LEVEL")) : 0;
@@ -246,6 +250,30 @@ int main(int argc, char** argv) {
     batch_481();
     batch_482();
     batch_483();
+    batch_501();
+    batch_502();
+    batch_503();
+    batch_505();
+    batch_506();
+    batch_504();
+    batch_507();
+    batch_508();
+    batch_509();
+    batch_510();
+    batch_511();
+    batch_512();
+    batch_513();
+    batch_514();
+    batch_515();
+    batch_517();
+    batch_518();
+    batch_516();
+    batch_519();
+    batch_520();
+    batch_530();
+    batch_531();
+    batch_541();
+    batch_542();
 
     // (also on level 0: a batch whose dumps are missing skips its checks, and a bare PASS would hide it)
     if (g_oracle_level != 0 || g_skipped != 0)

@@ -1,11 +1,35 @@
 // Oracle batch 106 (task 0330): the weapons and gadgets of R&C1, second part, on Veldin's real level
 // state (needs the ISO; also --level 1..3): the Glove of Doom's agent (class 0xe6) and its callees,
-// then the ports that follow in the same file as they are added.
+// then the ports that follow in the same file as they are added. A full run takes longer than 15 minutes on a busy machine:
+// ORACLE_ONLY=<check> runs one check at a time (the "/states", "/stream", "/rings", "/tail" checks reach the paths of the
+// doomlet and the Suck Cannon the first checks of those functions seldom take).
+
+// Audit 2 (2026-11-13): the screen (640 x 448), projection and view set up and the packet cursor on a test-area buffer in every
+// snapshot (view_setup: before, the weapons' and effects' draw callbacks projected nothing, e.g. the Decoy Glove's ring drew no
+// quad); each item's gold flag 0x13e520 + item set in half of the cases (no case had a gold weapon before); the Metal Detector
+// given a buried find and the Hydrodisplacer its water flags; screen_flash on a real screen with its packets in the test area.
+
+// Cover 3 (2026-11-13): checks that drive the weapons through the states the game reaches, measured with ORACLE_COVER_EE (the
+// original's instructions run, before -> after, the old and the new check together): the Swingshot's swing and reel-in
+// ("swingshot_update/swing", 607 -> 901 of 908), the Devastator's shot with targets of the level in its cones, the scope's ray and
+// the lead ("devastator_update/aim", 601 -> 936+ of 982), its rocket's homing, blast and gold ricochet with its target search
+// ("devastator_rocket_update/homing"), the Visibomb's shot and its bomb in flight, the Tesla Claw's beams on targets and their
+// draw, the Decoy Glove's throws and the decoy landed, the Morph-o-Ray's ray on a target, the R.Y.N.O.'s target search and
+// burst, the Metal Detector's dig, sounds and pulse draw, the Hydrodisplacer's spray, the particle types 0x08 / 0x20 / 0x4e /
+// 0x2c on particle records (the projectile list ran their updates on a moby standing in: those four entries are gone), and carry
+// hook +8's lobbed mark.
+// The targets are the level's own mobys of kind 5 put in the targets' list 0x1aba00 and moved in RAM about the weapon's aim; the
+// scope's lock puts the camera back along its ray from a target left where its collision is. They found two faults of the ports: the
+// gold Devastator's rocket kept its target through a ricochet (rocket.cpp; the original clears pvar +0x18 at 0x2b1990), and the
+// landed decoy took no stun from a stunning hit while its countdown +0x6f ran (decoy_obj.cpp: the mask of the bytes +0x6c .. +0x6e,
+// 0x00ffffff00000000 at 0x2c4ce8, was shifted by a byte).
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/helmet_tr.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/weapons.h>
+#include <cstring>
 #include <exception>
 #include <set>
 #include <game/ovl/metal_obj.h>
@@ -33,6 +57,7 @@
 #include <game/ovl/devastator.h>
 #include <game/ovl/swingshot.h>
 #include <map>
+#include <optional>
 #include <game/ovl/suck_cannon.h>
 #include <game/ovl/carry_hooks.h>
 #include <game/ovl/novalis_hooks.h>
@@ -40,6 +65,17 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach segment_collide, whose crossing lists, chunk buffers and vertices the port keeps on
+// the host stack (the original: 0x70003000 .. 0x70003fff, 0x70000000 .., 0x70002000): A2's collision scratch ranges
+// are left out of these checks, and only of them (stage 5, task C2c).
+bool c2c_spr_check(const char* name) {
+    static const char* const kNames[] = {"decoy_update", "devastator_update", "morph_update", "ryno_update",
+                                         "visibomb_update"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // A check whose original is Novalis's own function at `l1addr` (not a Veldin address to translate).
 void l1check(const char* name, uint32_t l1addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
     if (g_only_batch != 0 && g_only_batch != g_batch) return;
@@ -50,7 +86,23 @@ void l1check(const char* name, uint32_t l1addr, int n, Ret ret, const std::funct
         return;
     }
     std::printf("%-26s L1:0x%08x\n", name, l1addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2c_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, l1addr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
+}
+// The screen (640 x 448, as the game's), the projection and the view set up, and the packet cursor on a buffer of the test
+// area: after the level's first frame the oracle's display leaves the projection's constants broken (nothing projects onto
+// the screen) and the cursor 0, so the weapons' and effects' draw callbacks (the beams, rings, glows, trails) wrote nothing
+// past their GS state and the checks compared no quad of theirs (as batches 506 / 510 before their audit). Since audit 2.
+void view_setup() {
+    if (ee_read<uint16_t>(0x001518d0) == 0) {
+        w16(0x001518d0, 640);
+        w16(0x001518d2, 448);
+    }
+    screen_setup();
+    projection_setup();
+    render_view_setup();
+    w32(OV(0x001611c0), TEST_AREA + 0x8000 + u(ri(0, 0x40)) * 0x10);
 }
 // (task 0410) the carried classes' hook tables (`class +0x2c`) of the levels' own overlays (section 3: class, update, table), the
 // default class's left out: `own` a class of the level's own (the others are class 0x10e's, the Morph-o-Ray chicken's)
@@ -114,7 +166,7 @@ void batch_106() {
         } else {
             std::memcpy(ram, snap.data(), snap.size());
         }
-        render_view_setup();  // the camera's matrices in VU0 (point_on_screen)
+        view_setup();  // the screen, the projection and the camera's matrices in VU0 (point_on_screen), the packet cursor
         collide_vu_reset();  // the contact registers vf25..vf29 the collision leaves, the same on both sides
         oracle_vu_contact_reset();
     };
@@ -207,9 +259,12 @@ void batch_106() {
         return [=]() -> Args {
             const std::vector<uint8_t>& sn = item_snap(item, kind);
             std::memcpy(ee_get_ram_base(), sn.data(), sn.size());
-            render_view_setup();
+            view_setup();
             collide_vu_reset();
             oracle_vu_contact_reset();
+            // (the item's gold flag 0x13e520 + item: the snapshots are of the plain weapon; half of the cases the gold one, whose
+            // branches (cones, colours, sizes, classes) no case reached before)
+            w8(0x0013e520 + item, coin() ? 1u : 0u);
             const uint32_t m = moby_of_class(cls != 0 ? cls : hand_class(item));
             if (m == 0) return Args{{0u}, {}};
             const uint32_t pv = ee_read<uint32_t>(m + 0x78);
@@ -340,6 +395,10 @@ void batch_106() {
         if (ri(0, 8) == 0) w32(OV(0x0015f5c4), 2);
         return Args{{m}, {}};
     }, [](A a) { doom_agent_draw(a.i[0]); return uint64_t{0}; });
+    {
+    // (stage 5, task C2c) doom_agent_step reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("doom_agent_step", 0x002c8440, 1500, Ret::Int32, [doom_world, doom_agent, pick] {
         doom_world();
         const uint32_t a = doom_agent(pick({1u, 2u, 2u, 3u}), true);
@@ -347,6 +406,11 @@ void batch_106() {
         seed_rand();
         return Args{{ee_read<uint32_t>(a + 0x78), a, pick({0u, 1u, 2u})}, {}};
     }, [](A a) { return r32(a.i[0] != 0 ? u(doom_agent_step(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]))) : 0u); });
+    }
+    {
+    // (stage 5, task C2b) doom_agent_update reaches sphere_collide / capsule_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("doom_agent_update", 0x002c89e8, 3000, Ret::None, [doom_world, doom_agent, pick, near_hero] {
         doom_world();
         const uint32_t a = doom_agent(pick({0u, 1u, 2u, 2u, 2u, 3u, 3u, 4u, 5u, 6u}), ri(0, 4) != 0);
@@ -355,6 +419,7 @@ void batch_106() {
         seed_rand();
         return Args{{a}, {}};
     }, [](A a) { if (a.i[0] != 0) doom_agent_update(a.i[0]); return uint64_t{0}; });
+    }
 
     // --- the Suck Cannon (item 0x09, hand 0x2da790) and the carried mobys' class hooks
     static uint32_t shand = 0, kA = 0, kB = 0;
@@ -550,6 +615,10 @@ void batch_106() {
         wfrand(OUT, 3, -3.0f, 3.0f);
         return Args{{a, b, OUT}, {}};
     }, [](A a) { if (a.i[0] != 0) suck_2d9fd0(a.i[0], a.i[1], a.i[2]); return uint64_t{0}; });
+    {
+    // (stage 5, task C2c) suck_2ddf60 reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("suck_2ddf60", 0x002ddf60, 800, Ret::None, [suck_world, suck_hand, near_hero, pick] {
         suck_world();
         const uint32_t m = suck_hand(pick({1u, 2u, 3u, 4u}));
@@ -562,6 +631,11 @@ void batch_106() {
         seed_rand();
         return Args{{m, OUT}, {}};
     }, [](A a) { if (a.i[0] != 0) suck_2ddf60(a.i[0], a.i[1]); return uint64_t{0}; });
+    }
+    {
+    // (stage 5, task C2c) suck_2da360 reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("suck_2da360", 0x002da360, 800, Ret::None, [suck_world, suck_hand, pick] {
         suck_world();
         const uint32_t m = suck_hand(pick({1u, 2u, 3u, 4u}));
@@ -569,6 +643,11 @@ void batch_106() {
         seed_rand();
         return Args{{m, ee_read<uint32_t>(m + 0x78)}, {}};
     }, [](A a) { if (a.i[0] != 0) suck_2da360(a.i[0], a.i[1]); return uint64_t{0}; });
+    }
+    {
+    // (stage 5, task C2c) suck_cannon_update reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("suck_cannon_update", 0x002da790, 3000, Ret::None, [suck_world, suck_hand, pick] {
         suck_world();
         const uint32_t m = suck_hand(pick({0u, 1u, 2u, 2u, 3u, 3u, 4u, 4u, 5u, 6u}));
@@ -576,6 +655,128 @@ void batch_106() {
         seed_rand();
         return Args{{m}, {}};
     }, [](A a) { if (a.i[0] != 0) suck_cannon_update(a.i[0]); return uint64_t{0}; });
+    }
+    // (stage 3d) the paths the checks above seldom reach: the capture of a carried moby by 0x2da058 (its record in state 2,
+    // the gold cannon's ten slots), the release hook 0x2da1e0, the beam's particle stream (0x2ddf60 spawning and moving
+    // particles, 0x2df048 letting them go, 0x2dd8e8 drawing the rings), the pickups the beam pulls in (0x2df1e0), and the
+    // update's tail in game mode 3 and the rumble counters
+    auto suck_carried = [pick, pickf, near_hero, rec_of, fill_rec, spawn_carried](uint32_t hand, uint32_t& rec) -> uint32_t {
+        rec = 0;
+        const uint32_t c = pick({kA, kA, kB, 0x10eu});
+        const uint32_t o = c == 0 ? 0u : spawn_carried(c);
+        if (o == 0 || ee_read<uint32_t>(o + 0x78) == 0) return 0;
+        rec = rec_of(o, c);
+        if (rec == 0) return 0;
+        fill_rec(rec, o, hand);
+        near_hero(o + 0x10, 4.0f, -0.5f, 2.0f);
+        w16(o + 0x34, ee_read<uint16_t>(o + 0x34) | 0x1000u);
+        w8(o + 0x20, pick({0u, 1u, 2u, 0xfeu}));
+        w16(rec + 0x68, pick({2u, 2u, 2u, 2u, 3u, 5u, 1u, 4u, 8u}));
+        wf(rec + 0x6c, pickf({0.5f, 1.0f, 2.0f, 1.0f}));
+        return o;
+    };
+    if (kA == 0) {
+        skip_check("suck_2da058", 0x002da058, "the level has no carried class");
+        skip_check("suck_2da1e0", 0x002da1e0, "the level has no carried class");
+    } else {
+        check("suck_2da058", 0x002da058, 600, Ret::None, [suck_world, suck_hand, suck_carried, near_hero, pick] {
+            suck_world();
+            const uint32_t m = suck_hand(3);
+            uint32_t rec = 0;
+            const uint32_t o = m == 0 ? 0u : suck_carried(m, rec);
+            if (o == 0) return Args{{0u, 0u, 0u, 0u, 0u}, {}};
+            w8(0x0013e529, u(ri(0, 1)));  // the gold Suck Cannon: ten slots
+            w32(P + 0x2078, u(ri(0, 6)));
+            w32(P + 0x207c, u(ri(0, 6)));
+            for (uint32_t i = 0; i < 10; ++i) w32(P + 0x2050 + 4 * i, ri(0, 2) == 0 ? o : 0u);  // some slots taken
+            near_hero(OUT, 1.0f, 0.0f, 1.5f);
+            seed_rand();
+            return Args{{m, ee_read<uint32_t>(m + 0x78), o, rec, OUT}, {}};
+        }, [](A a) { if (a.i[0] != 0) suck_2da058(a.i[0], a.i[1], a.i[2], a.i[3], a.i[4]); return uint64_t{0}; });
+        check("suck_2da1e0", 0x002da1e0, 300, Ret::Int32, [suck_world, suck_hand, suck_carried] {
+            suck_world();
+            const uint32_t m = suck_hand(3);
+            uint32_t rec = 0;
+            const uint32_t o = m == 0 ? 0u : suck_carried(m, rec);
+            seed_rand();
+            return Args{{o}, {}};
+        }, [](A a) { return r32(a.i[0] != 0 ? u(suck_2da1e0(a.i[0])) : 0u); });
+    }
+    // the beam after a few frames of sucking: the rings built, particles in flight (the state made by the port's own 0x2ddf60,
+    // as the item snapshots are made by the port's frames)
+    auto suck_beam = [suck_world, suck_hand, near_hero](bool reset) -> uint32_t {
+        suck_world();
+        const uint32_t m = suck_hand(3);
+        if (m == 0) return 0;
+        near_hero(OUT, 1.0f, 0.0f, 1.5f);
+        w32(OV(0x00161b40), 1u);  // a fresh beam (0x2ddcb8 lays it out), then frames of it
+        w32(OV(0x00161b44), 1u);
+        for (int f = ri(1, 12); f > 0; --f) {
+            for (uint32_t k = 0; k < 10; ++k) if (ri(0, 2) != 0) w16(OV(0x001e6008) + 2 * k, u(ri(0x30, 0x90)));
+            if (ri(0, 3) == 0) near_hero(OUT, 1.0f, 0.0f, 1.5f);
+            suck_2ddf60(m, OUT);
+        }
+        if (reset && ri(0, 3) == 0) { w32(OV(0x00161b40), 1u); w32(OV(0x00161b44), ri(0, 1) == 0 ? 1u : 0u); }
+        if (ri(0, 3) == 0) w32(OV(0x00161b54), u(ri(0x38, 0x40)));  // the sway's turn near its end (0x3c frames)
+        if (ri(0, 3) == 0) w16(P + 0x22c8, 1u);  // leaning on a wall: the hand's own frame
+        if (ri(0, 2) == 0) near_hero(OV(0x00166dc0), 4.0f, -1.0f, 3.0f);  // the camera, for the rings' faces
+        if (ri(0, 2) == 0) { near_hero(OUT, 1.0f, 0.0f, 1.5f); }
+        return m;
+    };
+    {
+    // (stage 5, task C2c) suck_2ddf60/stream reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
+    check("suck_2ddf60/stream", 0x002ddf60, 600, Ret::None, [suck_beam] {
+        const uint32_t m = suck_beam(true);
+        seed_rand();
+        return Args{{m, OUT}, {}};
+    }, [](A a) { if (a.i[0] != 0) suck_2ddf60(a.i[0], a.i[1]); return uint64_t{0}; });
+    }
+    check("suck_2df048", 0x002df048, 300, Ret::None, [suck_beam] {
+        const uint32_t m = suck_beam(false);
+        seed_rand();
+        return Args{{m}, {}};
+    }, [](A a) { if (a.i[0] != 0) suck_2df048(a.i[0]); return uint64_t{0}; });
+    check("suck_beam_draw/rings", 0x002dd8e8, 300, Ret::None, [suck_beam] {
+        const uint32_t m = suck_beam(false);
+        for (uint32_t k = 0; k < 10; ++k) if (ri(0, 3) == 0) w16(OV(0x001e6008) + 2 * k, static_cast<uint32_t>(ri(-8, 0x50)) & 0xffffu);
+        seed_rand();
+        return Args{{m}, {}};
+    }, [](A a) { if (a.i[0] != 0) suck_beam_draw(a.i[0]); return uint64_t{0}; });
+    check("suck_2df1e0", 0x002df1e0, 600, Ret::None, [suck_beam, pick] {
+        const uint32_t m = suck_beam(false);
+        if (m == 0) return Args{{0u}, {}};
+        // a moby near one of the beam's points: a bolt (type 0x13) or whatever the level has there
+        const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8));
+        const uint32_t o = first + 0x100 * u(ri(1, 200));
+        if (ee_read<uint8_t>(o + 0x20) >= 0xf0) w8(o + 0x20, pick({0u, 1u, 0xfeu}));
+        const uint32_t ci = ee_read<uint32_t>(o + 0x24);
+        if (ci != 0 && ri(0, 1) == 0) w16(ci + 0x46, 0x13u);
+        Vec4 p = ee_ref<Vec4>(OV(0x001e5f40) + 0x10 * u(ri(0, 9)));
+        p.x += rf(-2.5f, 2.5f); p.y += rf(-2.5f, 2.5f); p.z += rf(-1.0f, 1.0f);
+        ee_ref<Vec4>(o + 0x10) = p;
+        for (uint32_t k = 0; k < 10; ++k) if (ri(0, 3) == 0) w16(OV(0x001e6008) + 2 * k, u(ri(0, 0x60)));
+        seed_rand();
+        return Args{{o}, {}};
+    }, [](A a) { if (a.i[0] != 0) suck_2df1e0(a.i[0]); return uint64_t{0}; });
+    {
+    // (stage 5, task C2c) suck_cannon_update/tail reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
+    check("suck_cannon_update/tail", 0x002da790, 1000, Ret::None, [suck_world, suck_hand, pick] {
+        suck_world();
+        const uint32_t m = suck_hand(pick({1u, 2u, 3u, 4u, 4u, 5u, 6u}));
+        if (m == 0) return Args{{0u}, {}};
+        w32(0x00140404, pick({3u, 3u, 0u, 1u}));  // the game mode: 3 stops the suction's sound, the button latched
+        w32(0x0013cae0, R() & 0xffu);
+        w16(0x00141680 + 0x48, pick({0u, 5u, 0xfffeu, 0xffffu}));  // the rumble's counters
+        w16(0x00141680 + 0x4a, pick({0u, 1u, u(ri(0, 40)), 0x7fffu}));
+        w32(0x0015ed84, u(ri(0, 40)));
+        seed_rand();
+        return Args{{m}, {}};
+    }, [](A a) { if (a.i[0] != 0) suck_cannon_update(a.i[0]); return uint64_t{0}; });
+    }
     // the hooks of the classes that use the carry machinery (a moby of the class, the hand as owner)
     auto hook_moby = [suck_world, suck_hand, pick, near_hero, rec_of, fill_rec, spawn_carried](uint32_t cls) -> uint32_t {
         suck_world();
@@ -613,6 +814,7 @@ void batch_106() {
             if (o == 0) return Args{{0u, 0u, 0u}, {}};
             near_hero(OUT, 3.0f, 0.0f, 2.0f);
             wfrand(OUT + 0x20, 4, -3.0f, 3.0f);
+            if (coin()) w32(OUT + 0xc, 0x3f9e0610u);  // (the lobbed throw's mark 1.2345 in the point's w, which hook +8 tests exactly)
             seed_rand();
             return Args{{o, OUT, ri(0, 2) == 0 ? 0u : ee_read<uint32_t>(0x0013f350 + 0x2080)}, {rf(0.0f, 2.0f)}};
         }, [fn](A a) { return r32(a.i[0] != 0 ? u(fn(a.i[0], a.i[1], a.i[2], a.f[0])) : 0u); });
@@ -634,6 +836,7 @@ void batch_106() {
                 if (o == 0) return Args{{0u, 0u, 0u}, {}};
                 near_hero(OUT, 3.0f, 0.0f, 2.0f);
                 wfrand(OUT + 0x20, 4, -3.0f, 3.0f);
+                if (coin()) w32(OUT + 0xc, 0x3f9e0610u);  // (the lobbed throw's mark, as above)
                 seed_rand();
                 return Args{{o, OUT, ri(0, 2) == 0 ? 0u : ee_read<uint32_t>(0x0013f350 + 0x2080)}, {rf(0.0f, 2.0f)}};
             }, [fn](A a) { return r32(a.i[0] != 0 ? u(fn(a.i[0], a.i[1], a.i[2], a.f[0])) : 0u); });
@@ -670,6 +873,7 @@ void batch_106() {
                 if (pv != 0 && rec != 0) fill_rec(static_cast<uint32_t>(rec), o, ee_read<uint32_t>(0x0013f350 + 0x2080));
                 near_hero(OUT, 3.0f, 0.0f, 2.0f);
                 wfrand(OUT + 0x20, 4, -3.0f, 3.0f);
+                if (coin()) w32(OUT + 0xc, 0x3f9e0610u);  // (the lobbed throw's mark, as above)
                 seed_rand();
                 return Args{{o, OUT, ri(0, 2) == 0 ? 0u : ee_read<uint32_t>(0x0013f350 + 0x2080)}, {rf(0.0f, 2.0f)}};
             };
@@ -677,6 +881,8 @@ void batch_106() {
                 if (a.i[0] == 0) return uint64_t{0};
                 return r32(u(hook_port(fn, slot, a.i[0], a.i[1], a.i[2], a.f[0])));
             };
+            std::optional<CollisionScratchIgnored> spr_ignored;
+            if (c2c_spr_check(name)) spr_ignored.emplace();
             if (!check_fn(name, fn, 300, Ret::Int32, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
         }
     }
@@ -735,8 +941,75 @@ void batch_106() {
         if (ee_read<uint8_t>(OV(0x00197bc0) + 0xd1) == 0xff) a.i[0] = 0;
         return a;
     }, [](A a) { return r32(a.i[0] != 0 ? swingshot_spawn_grapple(a.i[0], a.f[0]) : 0u); });
+    {
+    // (stage 5, task C2c) swingshot_update reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
     check("swingshot_update", 0x002c6158, 2500, Ret::None, [weapon_gen, swing_extra] { return weapon_gen(0x0c, 0, u(ri(0, 2)), 16, swing_extra)(); },
           [](A a) { if (a.i[0] != 0) swingshot_update(a.i[0]); return uint64_t{0}; });
+    }
+    // the swing as the hero's code drives it: the check above left the glove's states 2 .. 14 to random hero states, so
+    // the swing itself (state 5, the hero in 0x25 / 0x26), the hook's arrival at its target (2 -> 3), the reel-in to a versa
+    // target (hero state 0x2c: 0 -> 9 -> 0xb -> 0xc -> 0xd -> 0xe) and the rope's damping to its end never ran. Here: every state
+    // byte, the grapple present, the targets +0x964 / +0x994 live mobys of the level (a swing target, class 758 / 803, where the
+    // level has one) above the hero (a clear line) or below / far (the line meets the world), the hook's step +4 short or past the
+    // target, the rope's wave +0x20 about its end 0x3e2c0832, the hero's swing states, the fire button held or not.
+    auto swing_states = [safe_spawn, near_hero, pick](uint32_t m, uint32_t pv) {
+        if (pv == 0) return;
+        w8(m + 0x20, ri(0, 3) == 0 ? pick({2u, 4u, 5u, 9u, 0xbu, 0xcu, 0xeu}) : u(ri(0, 15)));
+        w8(m + 0x70, coin() ? 2u : 0u);
+        w8(m + 0x53, u(ri(0, 4)));
+        w32(P + 0x2084, pick({0u, 0x1eu, 0x24u, 0x25u, 0x26u, 0x2cu, 0x2cu, 0x25u, 0x26u}));
+        w32(P + 0x208c, ri(0, 3) == 0 ? 0xfu : 0u);
+        w32(P + 0x5b4, coin() ? 1u : 0u);
+        wf(P + 0x574, rf(0.0f, 1.0f));
+        w32(P + 0x2094, pick({0u, 2u, 4u}));
+        wf(P + 0x2dc, rf(0.0f, 4.0f));
+        w32(P + 0x10b0, u(ri(0, 40)));
+        w32(P + 0x978, coin() ? 1u : 0u);
+        ee_write<int16_t>(P + 0x30e, static_cast<int16_t>(coin() ? 1 : 0));
+        w32(0x0013cae0, coin() ? ee_read<uint32_t>(P + 0x10a0) : 0u);
+        // the targets: a swing target of the level's own (class 758 / 803) where it has one, else any live moby
+        uint32_t tg[2] = {0, 0};
+        int nt = 0;
+        for (uint32_t o = ee_read<uint32_t>(OV(0x0015ffd8)); o < ee_read<uint32_t>(OV(0x0015ffe0)) && nt < 2; o += 0x100) {
+            const uint16_t c = ee_read<uint16_t>(o + 0xa6);
+            if ((c == 758 || c == 803) && ee_read<uint8_t>(o + 0x20) < 0xf0 && ri(0, 2) == 0) tg[nt++] = o;
+        }
+        for (int k = nt; k < 2; ++k) tg[k] = ee_read<uint32_t>(OV(0x0015ffd8)) + 0x100 * u(ri(1, 200));
+        for (int k = 0; k < 2; ++k)
+            if (ri(0, 3) != 0) {  // (moved in RAM only: the line from the hero to it is tested against the world, not the moby)
+                if (ri(0, 3) != 0) near_hero(tg[k] + 0x10, 6.0f, 2.0f, 9.0f); else near_hero(tg[k] + 0x10, 12.0f, -6.0f, 1.0f);
+            }
+        w32(P + 0x964, tg[0]);
+        w32(P + 0x994, ri(0, 6) == 0 ? 0u : tg[1]);
+        w32(P + 0x968, coin() ? 1u : 0u);
+        // the grapple in the glove: the live one, else a new one
+        uint32_t g = ee_read<uint32_t>(pv + 0x14);
+        if (g == 0) { g = safe_spawn(0xd1); w32(pv + 0x14, g); }
+        if (g == 0) return;
+        const uint32_t gpv = ee_read<uint32_t>(g + 0x78);
+        if (gpv == 0) return;
+        w32(gpv, m);
+        wf(gpv + 4, ri(0, 2) == 0 ? rf(10.0f, 40.0f) : rf(0.1f, 3.0f));  // (past the target: the arrival; short: one more step)
+        const uint32_t near_t = ee_read<uint32_t>(P + (ee_read<uint8_t>(m + 0x20) >= 9 ? 0x994u : 0x964u));
+        if (near_t != 0 && ri(0, 2) != 0) {
+            Vec4 q = ee_ref<Vec4>(near_t + 0x10); q.x += rf(-2.0f, 2.0f); q.y += rf(-2.0f, 2.0f); q.z += rf(-2.0f, 2.0f);
+            ee_ref<Vec4>(g + 0x10) = q;
+        } else {
+            near_hero(g + 0x10, 6.0f, -1.0f, 6.0f);
+        }
+        wf(pv + 0x18, rf(0.0f, 6.0f));
+        wf(pv + 0x1c, rf(0.5f, 2.0f));
+        wf(pv + 0x20, ri(0, 2) == 0 ? rf(0.15f, 0.2f) : rf(0.0f, 0.4f));
+    };
+    {
+    // (stage 5, task C2c) swingshot_update/swing reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
+    check("swingshot_update/swing", 0x002c6158, 2000, Ret::None, [weapon_gen, swing_states] { return weapon_gen(0x0c, 0, u(ri(0, 2)), 0, swing_states)(); },
+          [](A a) { if (a.i[0] != 0) swingshot_update(a.i[0]); return uint64_t{0}; });
+    }
 
     // --- the other hands: each on the engine's own state with the item in hand (idle / fire pressed / fire held)
     struct HandT { const char* name; uint32_t item; uint32_t addr; uint32_t nstates; void (*fn)(uint32_t); };
@@ -763,10 +1036,428 @@ void batch_106() {
         for (uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)); m < ee_read<uint32_t>(OV(0x0015ffe0)) + 0x1000; m += 0x100)
             for (uint32_t o : {0xccu, 0xdcu, 0xecu}) g_ignored_words.push_back(m + o);
     }
+    // the Metal Detector's buried thing (class 0x25d, its bolts at pvar +0x18) as the hero's find 0x13f350 + 0x2040 at a distance
+    // +0x2044 within 1 (dug up), 10 (the beep, its pitch) or beyond: before, no find, the update's aim and dig never ran (since audit 2)
+    auto metal_extra = [safe_spawn](uint32_t m, uint32_t pv) {
+        if (ri(0, 3) == 0 || pv == 0) return;
+        uint32_t t = 0;
+        for (uint32_t c = ee_read<uint32_t>(OV(0x0015ffd8)); c < ee_read<uint32_t>(OV(0x0015ffe0)); c += 0x100)
+            if (ee_read<uint16_t>(c + 0xa6) == 0x25d && ee_read<uint8_t>(c + 0x20) < 0xfd) { t = c; break; }
+        if (t == 0) t = safe_spawn(0x25d);
+        if (t == 0) return;
+        Vec4 q = ee_ref<Vec4>(m + 0x10);
+        q.x += rf(-6.0f, 6.0f); q.y += rf(-6.0f, 6.0f); q.z += rf(-2.0f, 1.0f);
+        ee_ref<Vec4>(t + 0x10) = q;
+        const uint32_t tpv = ee_read<uint32_t>(t + 0x78);
+        if (tpv != 0) w32(tpv + 0x18, coin() ? 0u : u(ri(1, 30)));
+        if (ri(0, 4) == 0) w8(t + 0x20, coin() ? 0xfeu : 0xfdu);
+        w32(P + 0x2040, t);
+        wf(P + 0x2044, ri(0, 2) == 0 ? rf(0.0f, 1.0f) : coin() ? rf(1.0f, 10.0f) : rf(10.0f, 40.0f));
+        if (coin()) w8(m + 0x20, coin() ? 1u : 2u);
+    };
+    // the Hydrodisplacer's water: the hero's flag 0x13f350 + 0x20b0 (the pump running, its spray 0x2e01b0 and the hero's push),
+    // +0x10b4 = 3 (its other mode, 0x2e0340), the hero's state +0x2084 (0x38 / 0x39 leave the push out): before, none of them set,
+    // the update ran 88 of its 516 instructions (since audit 2)
+    auto hydro_extra = [pick](uint32_t, uint32_t) {
+        w8(P + 0x20b0, ri(0, 2) == 0 ? 0u : 1u);
+        if (ri(0, 3) == 0) w32(P + 0x10b4, 3u);
+        if (coin()) w32(P + 0x2084, pick({0u, 0x38u, 0x39u, 0x1eu}));
+        if (coin()) w32(OV(0x0015f5c4), 0u);
+        if (coin()) wfrand(P + 0x100, 3, -0.3f, 0.3f);  // (the hero's velocity the spray takes on)
+    };
+    // targets for the weapons that aim (the Devastator's cones, its rocket's homing and gold ricochet, the Tesla Claw, the
+    // Morph-o-Ray): the level's own mobys of kind 5 (class +0x46) put in the targets' list 0x1aba00 (null-ended, as the moby pass
+    // builds it each frame), with the target flag 0x1000 in most cases, placed (in RAM only) at `dist` from `from` about the
+    // direction `yaw` (within `spread` radians, the pitch about level), some closer than 2.5 (the close range's own branch). The
+    // mobys in the list are returned. Before, the snapshots' list held no target in front of the hand: the cones never took one.
+    auto kind5 = [](uint32_t skip) {
+        std::vector<uint32_t> v;
+        for (uint32_t o = ee_read<uint32_t>(OV(0x0015ffd8)); o < ee_read<uint32_t>(OV(0x0015ffe0)); o += 0x100) {
+            const uint32_t ci = ee_read<uint32_t>(o + 0x24);
+            if (o != skip && ee_read<uint8_t>(o + 0x20) < 0x80 && ci != 0 && ee_read<int16_t>(ci + 0x46) == 5) v.push_back(o);
+        }
+        return v;
+    };
+    auto aim_targets = [kind5, pick](uint32_t skip, const Vec4& from, float yaw, float spread, float dmin, float dmax) {
+        std::vector<uint32_t> all = kind5(skip), out;
+        const int n = all.empty() ? 0 : ri(1, std::min(4, static_cast<int>(all.size())));
+        for (int k = 0; k < n; ++k) {
+            const uint32_t o = all[static_cast<size_t>(ri(0, static_cast<int>(all.size()) - 1))];
+            if (std::find(out.begin(), out.end(), o) != out.end()) continue;
+            out.push_back(o);
+            const float d = ri(0, 4) == 0 ? rf(0.8f, 2.4f) : rf(dmin, dmax);
+            const float a = yaw + rf(-spread, spread);
+            const float pz = rf(-0.3f, 0.3f) * d;
+            ee_ref<Vec4>(o + 0x10) = Vec4{from.x + d * std::cos(a), from.y + d * std::sin(a), from.z + pz, 1.0f};
+            const uint16_t fl = ee_read<uint16_t>(o + 0x34);
+            ee_write<uint16_t>(o + 0x34, static_cast<uint16_t>(ri(0, 5) != 0 ? (fl | 0x1000u) : (fl & ~0x1000u)));
+            if (ri(0, 9) == 0) w8(o + 0x20, pick({0x80u, 0xfeu}));
+        }
+        // (an unrelated live moby first in some cases: the loop's skips)
+        uint32_t i = 0;
+        if (ri(0, 3) == 0) w32(OV(0x001aba00) + 4 * i++, ee_read<uint32_t>(OV(0x0015ffd8)) + 0x100 * u(ri(1, 60)));
+        for (uint32_t o : out) w32(OV(0x001aba00) + 4 * i++, o);
+        w32(OV(0x001aba00) + 4 * i, 0);
+        if (std::getenv("B106_INFO") != nullptr) std::printf("  [aim] %zu of kind 5 on the level, %zu targets\n", all.size(), out.size());
+        return out;
+    };
+    // the Devastator's shot (item 0x0b): the fire button down, the cooldown +0 and the gun's timer over, ammo, the targets in front
+    // of the hand (the hero's facing, row 0 of 0x13f990) or of the scope's camera; the lock +0x10 on one of them or none, a rocket
+    // in flight already on the first (0x1b0770's list: the lead's path), the hero's lock override +0x12b0, the strafe lock +0x22c8,
+    // the scope (hero state 0x1e, the hero moby's flag 1)
+    auto dev_aim = [aim_targets, pick](uint32_t m, uint32_t pv) {
+        if (pv == 0) return;
+        w32(pv, ri(0, 4) == 0 ? u(ri(0, 3)) : 0u);
+        w32(OV(0x0015f5c4), ri(0, 9) == 0 ? 2u : 0u);
+        w8(P + 0x20ac, ri(0, 9) == 0 ? 1u : 0u);
+        w8(m + 0x52, u(ri(0, 4) == 0 ? ri(0, 2) : 0));
+        w32(0x0013cae0, ri(0, 5) != 0 ? ee_read<uint32_t>(P + 0x10a0) : 0u);
+        w32(P + 0x10b0, u(ri(0, 4) == 0 ? ri(0, 30) : ri(23, 90)));
+        w32(0x0013d428 + 0x0b * 4, ri(0, 7) == 0 ? 0u : u(ri(1, 40)));
+        // (the hero's states: standing, the scope 0x1e, 2, and on the hoverboard 0x3f / 0x6b .. 0x6f / 0x70: a tester reported the
+        // homing lost there; the hand's update has no branch of its own on them, the cone runs on the facing +0x640 as on foot)
+        w32(P + 0x2084, pick({0u, 0u, 0x1eu, 0x1eu, 2u, 0x3fu, 0x6bu, 0x6cu, 0x6du, 0x6fu, 0x70u}));
+        const uint32_t hm = ee_read<uint32_t>(P + 0x2080);
+        if (hm != 0) {
+            const uint16_t fl = ee_read<uint16_t>(hm + 0x34);
+            ee_write<uint16_t>(hm + 0x34, static_cast<uint16_t>(coin() ? (fl | 1u) : (fl & ~1u)));
+        }
+        w32(P + 0x208c, coin() ? 0u : 1u);
+        wf(P + 0x229c, rf(0.0f, 1.5f));
+        ee_write<int16_t>(P + 0x22c8, static_cast<int16_t>(ri(0, 5) == 0 ? 1 : 0));
+        wf(P + 0x2e4, rf(-0.4f, 0.4f));
+        w8(m + 0x53, ri(0, 5) == 0 ? 2u : 0u);  // (the hand's animation 2: its light let go)
+        // the shots' count +0x58 (at its cap 0xffff in some cases) and the minutes +0x5a against the play time 0x15eea4
+        w32(0x0015eea4, u(ri(0, 3) == 0 ? ri(0, 600) : ri(600, 400000)));
+        ee_write<uint16_t>(0x00141680 + 0x58, static_cast<uint16_t>(ri(0, 5) == 0 ? 0xffff : ri(0, 50)));
+        ee_write<uint16_t>(0x00141680 + 0x5a, static_cast<uint16_t>(ri(0, 2) == 0 ? 0 : ri(0, 700)));
+        Vec4 from = ee_ref<Vec4>(m + 0x10);
+        float yaw = std::atan2(ee_read<float>(0x0013f994), ee_read<float>(0x0013f990));
+        if (ee_read<uint32_t>(P + 0x2084) == 0x1eu && coin()) {  // (about the camera's look: the scope's shot)
+            from = ee_ref<Vec4>(OV(0x00166dc0));
+            yaw = rf(-3.1f, 3.1f);
+        }
+        // the scope's ray (70 ahead of the camera, its matrix 0x166c80 transposed) through a kind-5 moby left where it stands (its
+        // collision is where the grid has it): the camera 0x166dc0 put back along the ray from the moby, so that the ray's hit
+        // locks it (+0x10 / +0x14 / +0x18; before, no case's ray met a target)
+        uint32_t scoped = 0;
+        if (ee_read<uint32_t>(P + 0x2084) == 0x1eu && coin()) {
+            uint32_t c = OV(0x0015ffd8);
+            std::vector<uint32_t> k5;
+            for (uint32_t o = ee_read<uint32_t>(c); o < ee_read<uint32_t>(OV(0x0015ffe0)); o += 0x100) {
+                const uint32_t ci = ee_read<uint32_t>(o + 0x24);
+                if (o != m && ee_read<uint8_t>(o + 0x20) < 0x80 && ci != 0 && ee_read<int16_t>(ci + 0x46) == 5) k5.push_back(o);
+            }
+            if (!k5.empty()) {
+                scoped = k5[static_cast<size_t>(ri(0, static_cast<int>(k5.size()) - 1))];
+                Mat4 cm{}, ct{};
+                mat3_copy(cm, ee_ref<Mat4>(OV(0x00166c80)));
+                mat3_transpose(ct, cm);
+                Vec4 d{0.0f, 0.0f, 70.0f, 0.0f};
+                mat4_transform(d, d, ct);
+                Vec4 tp = ee_ref<Vec4>(scoped + 0x10);
+                tp.z += rf(0.2f, 1.0f);
+                const float k = rf(0.05f, 0.5f);
+                ee_ref<Vec4>(OV(0x00166dc0)) = Vec4{tp.x - d.x * k, tp.y - d.y * k, tp.z - d.z * k, 1.0f};
+                const uint16_t fl = ee_read<uint16_t>(scoped + 0x34);
+                ee_write<uint16_t>(scoped + 0x34, static_cast<uint16_t>(ri(0, 4) != 0 ? (fl | 0x1000u) : (fl & ~0x1000u)));
+            }
+        }
+        const std::vector<uint32_t> t = aim_targets(scoped != 0 ? scoped : m, from, yaw, coin() ? 0.15f : 0.6f, 3.0f, 40.0f);
+        w32(pv + 0x10, !t.empty() && ri(0, 2) == 0 ? t[0] : 0u);
+        w32(pv + 0x14, u(ri(0, 25)));
+        wf(pv + 0x18, rf(0.0f, 1.0f));
+        w32(P + 0x12b0, ri(0, 6) == 0 ? 1u : 0u);
+        w32(P + 0x12b8, t.empty() ? 0u : t.back());
+        wf(P + 0x12bc, rf(-3.1f, 3.1f));
+        // a rocket in flight on the first target (its pvar +0x18): the shot then leads it instead of locking
+        const uint32_t list = OV(0x001b0770);
+        const int16_t cnt = ee_read<int16_t>(list);
+        if (!t.empty() && cnt > 0 && coin()) {
+            const uint32_t r = ee_read<uint32_t>(OV(0x0015ffd8)) + (static_cast<uint32_t>(ee_read<int16_t>(list + 2 * u(ri(1, cnt)))) << 8);
+            const uint32_t rpv = ee_read<uint32_t>(r + 0x78);
+            if (rpv != 0) w32(rpv + 0x18, t[0]);
+        }
+    };
+    {
+    // (stage 5, task C2c) devastator_update/aim reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
+    check("devastator_update/aim", 0x002b2100, 2000, Ret::None, [weapon_gen, dev_aim] { return weapon_gen(0x0b, 0, u(ri(0, 2)), 0, dev_aim)(); },
+          [](A a) { if (a.i[0] != 0) devastator_update(a.i[0]); return uint64_t{0}; });
+    }
+    // the counters of the weapons' statistics 0x141680 / 0x141848 (+0x58 .. the item's): the play time 0x15eea4 past the
+    // recorded minutes in some cases (the minutes' update), a use count at its cap 0xffff in others
+    auto stats_vary = [](uint32_t base, uint32_t off) {
+        w32(0x0015eea4, u(ri(0, 3) == 0 ? ri(0, 600) : ri(600, 400000)));
+        ee_write<uint16_t>(base + off, static_cast<uint16_t>(ri(0, 5) == 0 ? 0xffff : ri(0, 50)));
+        ee_write<uint16_t>(base + off + 2, static_cast<uint16_t>(ri(0, 2) == 0 ? 0 : ri(0, 700)));
+    };
+    // the Visibomb Gun's shot (item 0x0d): the fire button pressed, no bomb out, the hero's movement +0x208c and state
+    // +0x2084 (1: the scope's aim through the camera, with the hero moby's flag 1; 0x72 / 0x65: none), the strafe +0x22c8, the
+    // camera 0x166c80 + 0x180 (none, or of type 5: none), the ground +0x300, the ride +0x2fc (a moby, the classes 0x13e / 0x46f
+    // where the level has them), no ammo, the hand's animation; the hero's state 1 set after weapon_gen (the update has no
+    // hero_set_state(0x1e) of its own)
+    auto visi_fire = [pick, stats_vary](uint32_t m, uint32_t pv) {
+        if (pv == 0) return;
+        w32(pv, ri(0, 4) == 0 ? u(ri(1, 3)) : 0u);
+        w32(pv + 4, ri(0, 6) == 0 ? 1u : 0u);
+        w32(PAD + 0x1a4, ri(0, 5) != 0 ? ee_read<uint32_t>(P + 0x10a0) : 0u);
+        w8(P + 0x20ac, ri(0, 9) == 0 ? 1u : 0u);
+        w32(P + 0x208c, ri(0, 2) == 0 ? pick({0u, 1u, 7u, 0xcu, 0xdu, 8u}) : 0u);
+        w32(P + 0x2084, pick({0u, 0u, 0x1eu, 0x72u, 0x65u}));
+        const uint32_t hm = ee_read<uint32_t>(P + 0x2080);
+        if (hm != 0) ee_write<uint16_t>(hm + 0x34, static_cast<uint16_t>(coin() ? (ee_read<uint16_t>(hm + 0x34) | 1u) : (ee_read<uint16_t>(hm + 0x34) & ~1u)));
+        ee_write<int16_t>(P + 0x22c8, static_cast<int16_t>(ri(0, 3) == 0 ? 1 : 0));
+        const uint32_t cam = OV(0x00166c80) + 0x180;
+        const uint32_t ac = ee_read<uint32_t>(cam);
+        if (ri(0, 6) == 0) w32(cam, 0u);
+        else if (ac != 0 && ri(0, 6) == 0) ee_write<int16_t>(ac + 0x86, 5);
+        w32(P + 0x300, ri(0, 6) == 0 ? 0u : (ee_read<uint32_t>(P + 0x300) != 0 ? ee_read<uint32_t>(P + 0x300) : 1u));
+        uint32_t ride = 0;
+        if (ri(0, 2) == 0) {
+            for (uint32_t o = ee_read<uint32_t>(OV(0x0015ffd8)); o < ee_read<uint32_t>(OV(0x0015ffe0)); o += 0x100) {
+                const uint16_t c = ee_read<uint16_t>(o + 0xa6);
+                if ((c == 0x13e || c == 0x46f) && ee_read<uint8_t>(o + 0x20) < 0x80) { ride = o; break; }
+            }
+            if (ride == 0 || coin()) ride = ee_read<uint32_t>(OV(0x0015ffd8)) + 0x100 * u(ri(1, 60));
+        }
+        w32(P + 0x2fc, ride);
+        w32(0x0013d428 + 0x0d * 4, ri(0, 5) == 0 ? 0u : u(ri(1, 20)));
+        w8(m + 0x70, coin() ? 2u : 0u);
+        w8(m + 0x53, u(ri(0, 3)));
+        stats_vary(0x00141680, 0x68);
+    };
+    {
+    // (stage 5, task C2c) visibomb_update/fire reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
+    check("visibomb_update/fire", 0x002b3058, 1200, Ret::None, [weapon_gen, visi_fire] {
+        Args a = weapon_gen(0x0d, 0, u(ri(0, 2)), 0, visi_fire)();
+        if (a.i[0] != 0 && ri(0, 3) == 0) w32(P + 0x2084, 1u);
+        return a;
+    }, [](A a) { if (a.i[0] != 0) visibomb_update(a.i[0]); return uint64_t{0}; });
+    }
+    // the Tesla Claw (item 0x13): the fire button held, the hand's state 1 .. 5, the beam's cooldown +0x2c over, ammo,
+    // its light slot +0x30, its two targets +0x20 / +0x38 kind-5 mobys of the level about the hero's facing +0x98 (in reach, out of
+    // its angle 0x40060903, past 20, gone), their hold counters +0x28 / +0x2a at their ends, the gold reach 0x13e533, the hero's
+    // aim (state 1 through the first-person matrix 0x166fd0, the strafe, the facing), the item put away (+0x10b4 = 3)
+    auto tesla_fire = [pick, aim_targets, stats_vary](uint32_t m, uint32_t pv) {
+        if (pv == 0) return;
+        w8(m + 0x20, pick({1u, 1u, 3u, 3u, 2u, 4u, 5u, 0u}));
+        w32(PAD + 0x1a0, ri(0, 5) != 0 ? ee_read<uint32_t>(P + 0x10a0) : 0u);
+        w32(PAD + 0x1a4, coin() ? ee_read<uint32_t>(P + 0x10a0) : 0u);
+        w32(PAD + 0x1a8, coin() ? ee_read<uint32_t>(P + 0x10a0) : 0u);
+        w8(P + 0x20ac, ri(0, 9) == 0 ? 1u : 0u);
+        w32(P + 0x2084, pick({0u, 0u, 0x1eu, 0x72u}));
+        ee_write<int16_t>(P + 0x22c8, static_cast<int16_t>(ri(0, 3) == 0 ? 1 : 0));
+        w32(pv + 0x2c, ri(0, 4) == 0 ? u(ri(1, 16)) : 0u);
+        w32(0x0013d428 + 0x13 * 4, ri(0, 6) == 0 ? 0u : u(ri(1, 200)));
+        ee_write<int16_t>(pv + 0x3c, static_cast<int16_t>(ri(0, 3)));
+        w32(pv + 0x30, ri(0, 3) == 0 ? 0xffffffffu : ee_read<uint32_t>(pv + 0x30));
+        w32(pv + 0x34, u(ri(0, 12)));
+        w32(P + 0x10b4, ri(0, 6) == 0 ? 3u : 0u);
+        w8(0x0013e533, coin() ? 1u : 0u);
+        w32(P + 0x1bc, u(ri(0, 100)));
+        w8(P + 0x20b5, u(ri(0, 4)));
+        stats_vary(0x00141680, 0x98);
+        stats_vary(0x00141848, 0xd0);
+        const float yaw = ee_read<float>(P + 0x98);
+        const std::vector<uint32_t> t = aim_targets(m, ee_ref<Vec4>(P + 0x80), coin() ? yaw : yaw + 3.14f * (coin() ? 0.7f : 0.0f), coin() ? 0.6f : 2.6f, 3.0f, 24.0f);
+        w32(pv + 0x20, !t.empty() && ri(0, 2) != 0 ? t[0] : 0u);
+        w32(pv + 0x38, t.size() > 1 && ri(0, 2) != 0 ? t[1] : 0u);
+        ee_write<int16_t>(pv + 0x40, static_cast<int16_t>(coin() ? 1 : 0));
+        ee_write<int16_t>(pv + 0x42, static_cast<int16_t>(coin() ? 1 : 0));
+        ee_write<int16_t>(pv + 0x28, static_cast<int16_t>(pick({0u, 3u, 4u, 5u, 48u, 49u, 50u})));
+        ee_write<int16_t>(pv + 0x2a, static_cast<int16_t>(pick({0u, 3u, 4u, 5u, 48u, 49u, 50u})));
+        for (uint32_t o : t) if (ri(0, 4) == 0) w8(o + 0x31, 0u);
+    };
+    {
+    // (stage 5, task C2b) tesla_update/fire reaches sphere_collide or capsule_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
+    check("tesla_update/fire", 0x002b87e0, 1500, Ret::None, [weapon_gen, tesla_fire] {
+        Args a = weapon_gen(0x13, 0, u(ri(0, 2)), 0, tesla_fire)();
+        if (a.i[0] != 0 && ri(0, 3) == 0) w32(P + 0x2084, 1u);
+        return a;
+    }, [](A a) { if (a.i[0] != 0) tesla_update(a.i[0]); return uint64_t{0}; });
+    }
+    // the Decoy Glove (item 0x19): its throw's timer +0x54 over, the three ways to throw (the button with the hero in
+    // 0x1e and ammo; the hero's throw +0x20a8 at its frame +0x1bc = 0x11; state 0x23 at +0x198 = 0x10), the decoy held +0x50 (live,
+    // retired, of another class with the gold flag 0x13e539: re-made), every state of the glove
+    auto decoy_fire = [pick, stats_vary](uint32_t m, uint32_t pv) {
+        if (pv == 0) return;
+        // (with the gold flag, a frame of the port first in half of the cases: the held decoy re-made as the gold one (class 0x76c),
+        // which the next frame's test keeps; the snapshots' decoy is the plain one)
+        if (ee_read<uint8_t>(0x0013e539) != 0 && coin()) decoy_update(m);
+        w8(m + 0x20, u(ri(0, 7)));
+        w8(m + 0x70, coin() ? 2u : 0u);
+        w32(pv + 0x54, pick({0u, 1u, 1u, u(ri(2, 20))}));
+        w8(P + 0x20ac, ri(0, 9) == 0 ? 1u : 0u);
+        w8(P + 0x20a8, coin() ? 1u : 0u);
+        w32(P + 0x1bc, ri(0, 2) == 0 ? 0x11u : u(ri(0, 40)));
+        w32(P + 0x2084, pick({0u, 0x1eu, 0x1eu, 0x23u, 0x23u}));
+        w32(P + 0x198, ri(0, 2) == 0 ? 0x10u : u(ri(0, 30)));
+        w32(PAD + 0x1a4, coin() ? ee_read<uint32_t>(P + 0x10a0) : 0u);
+        w32(0x0013d428 + 0x19 * 4, ri(0, 5) == 0 ? 0u : u(ri(1, 20)));
+        const uint32_t held = ee_read<uint32_t>(pv + 0x50);
+        if (held != 0 && ri(0, 5) == 0) w8(held + 0x20, pick({0xfeu, 0xfdu}));
+        if (ri(0, 6) == 0) w32(pv + 0x50, 0u);
+        stats_vary(0x00141680, 0xc8);
+    };
+    {
+    // (stage 5, task C2c) decoy_update/throw reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
+    check("decoy_update/throw", 0x002d2670, 1200, Ret::None, [weapon_gen, decoy_fire] { return weapon_gen(0x19, 0, u(ri(0, 2)), 0, decoy_fire)(); },
+          [](A a) { if (a.i[0] != 0) decoy_update(a.i[0]); return uint64_t{0}; });
+    }
+    // the Morph-o-Ray (item 0x15): the fire button held in the movements that allow it, the hand's animation ready, a
+    // kind-5 moby of the level in the ray (the hero's facing, the scope's camera, the strafe), its lock +0x10 / +0x44 at its ends,
+    // its morph meter +0x18 / +0x14 near empty (the morph itself, 0x2c9348), the gold drain 0x13e535, the item put away
+    auto morph_fire = [pick, aim_targets, stats_vary](uint32_t m, uint32_t pv) {
+        if (pv == 0) return;
+        w8(m + 0x53, coin() ? 1u : 0u);
+        w32(P + 0x208c, pick({0u, 1u, 0xcu, 4u, 5u, 0u, 7u}));
+        w32(PAD + 0x1a0, ri(0, 5) != 0 ? ee_read<uint32_t>(P + 0x10a0) : 0u);
+        w32(P + 0x10b4, ri(0, 8) == 0 ? 3u : 0u);
+        w8(P + 0x20a8, coin() ? 1u : 0u);
+        w32(P + 0x2084, pick({0u, 0u, 0x1eu}));
+        const uint32_t hm = ee_read<uint32_t>(P + 0x2080);
+        if (hm != 0) ee_write<uint16_t>(hm + 0x34, static_cast<uint16_t>(coin() ? (ee_read<uint16_t>(hm + 0x34) | 1u) : (ee_read<uint16_t>(hm + 0x34) & ~1u)));
+        ee_write<int16_t>(P + 0x22c8, static_cast<int16_t>(ri(0, 4) == 0 ? 1 : 0));
+        ee_write<int16_t>(pv + 0x1e, static_cast<int16_t>(coin() ? 1 : 0));
+        ee_write<int16_t>(pv + 0x1c, static_cast<int16_t>(ri(0, 3)));
+        stats_vary(0x00141680, 0xa8);
+        const float yaw = std::atan2(ee_read<float>(0x0013f994), ee_read<float>(0x0013f990));
+        const std::vector<uint32_t> t = aim_targets(m, ee_ref<Vec4>(m + 0x10), yaw, coin() ? 0.1f : 0.5f, 2.6f, 20.0f);
+        w32(pv + 0x10, !t.empty() && coin() ? t[0] : 0u);
+        w32(pv + 0x44, pick({0u, 0u, 1u, u(ri(2, 30))}));
+        wf(pv + 0x14, ri(0, 4) == 0 ? 1.0f : rf(1.0f, 10.0f));
+        wf(pv + 0x18, ri(0, 2) == 0 ? rf(0.0f, 0.05f) : rf(0.0f, 10.0f));
+        w8(0x0013e535, coin() ? 1u : 0u);
+        w32(OV(0x001617c0), ri(0, 3) == 0 ? 0xffffffffu : ee_read<uint32_t>(OV(0x001617c0)));
+        w32(OV(0x001617c4), u(ri(0, 3)));
+        if (coin()) {  // its sound playing on a channel of the table 0x13e550 (+0x88 the hand, +0x74 on): the stop when the ray ends
+            const uint32_t slot = u(ri(0, 7));
+            w32(OV(0x001617c8), slot);
+            w32(0x0013e550 + slot * 0x70 + 0x88, ri(0, 3) != 0 ? m : 0u);
+            w8(0x0013e550 + slot * 0x70 + 0x74, coin() ? 1u : 0u);
+        }
+    };
+    {
+    // (stage 5, task C2c) morph_update/fire reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
+    check("morph_update/fire", 0x002bc7e8, 1500, Ret::None, [weapon_gen, morph_fire] { return weapon_gen(0x15, 0, u(ri(0, 2)), 0, morph_fire)(); },
+          [](A a) { if (a.i[0] != 0) morph_update(a.i[0]); return uint64_t{0}; });
+    }
+    // the R.Y.N.O. (item 0x17): every state, the targets of its search (kind-5 mobys of the level before the camera's look
+    // 0x166dd0 and about the hand), the target +0 live or gone, its timer +8 and the lock's +0x10 at their ends, the burst's step
+    // +6 over, the shots +4 at 6, the target's health +0x14 about 1 (the next target, the history +0x18 .. of 7 slots +0x12), the
+    // scope (hero state 0x1e), the fire buttons, the lock override +0x12b0
+    auto ryno_fire = [pick, aim_targets, stats_vary](uint32_t m, uint32_t pv) {
+        if (pv == 0) return;
+        w8(m + 0x20, ri(0, 2) == 0 ? pick({2u, 3u, 4u, 4u, 5u}) : u(ri(0, 8)));
+        w8(m + 0x70, coin() ? 2u : 0u);
+        w32(PAD + 0x1a0, coin() ? 5u : 0u);
+        w32(PAD + 0x1a4, coin() ? ee_read<uint32_t>(P + 0x10a0) : 0u);
+        w32(0x0013cae4, coin() ? ee_read<uint32_t>(P + 0x10a0) : 0u);
+        w8(P + 0x20ac, ri(0, 9) == 0 ? 1u : 0u);
+        w32(P + 0x2084, pick({0u, 0x1eu, 0x1eu}));
+        w32(P + 0x12b0, ri(0, 5) == 0 ? 1u : 0u);
+        wf(P + 0x12bc, rf(-3.1f, 3.1f));
+        w32(0x0013d428 + 0x17 * 4, ri(0, 6) == 0 ? 0u : u(ri(1, 30)));
+        const Vec4 look = ee_ref<Vec4>(OV(0x00166dd0));
+        const float yaw = coin() ? std::atan2(-look.y, look.x) : std::atan2(look.y, look.x);
+        const std::vector<uint32_t> t = aim_targets(m, ee_ref<Vec4>(m + 0x10), coin() ? yaw : rf(-3.1f, 3.1f), coin() ? 0.3f : 1.2f, 4.0f, 60.0f);
+        w32(pv, !t.empty() && coin() ? t[0] : 0u);
+        if (!t.empty() && ri(0, 3) == 0) {  // (the target gone, or not drawn: let go)
+            if (coin()) w8(t[0] + 0x20, pick({0xfeu, 0xfdu})); else w8(t[0] + 0x31, 0u);
+        }
+        stats_vary(0x00141680, 0xb8);
+        w32(pv + 8, pick({0u, 1u, u(ri(2, 20))}));
+        ee_write<int16_t>(pv + 0x10, static_cast<int16_t>(pick({0u, 1u, 1u, u(ri(2, 60))})));
+        ee_write<int16_t>(pv + 6, static_cast<int16_t>(pick({0u, 1u, 1u, 5u})));
+        w8(pv + 4, u(ri(0, 6)));
+        w8(pv + 5, u(ri(0, 8)));
+        wf(pv + 0x14, pick({0u, 1u}) != 0 ? rf(0.5f, 1.5f) : rf(1.5f, 5.0f));
+        ee_write<int16_t>(pv + 0x12, static_cast<int16_t>(ri(0, 6)));
+        for (uint32_t k = 0; k < 7; ++k) w32(pv + 0x18 + 4 * k, !t.empty() && coin() ? t[static_cast<size_t>(ri(0, static_cast<int>(t.size()) - 1))] : 0u);
+        // the burst's next target when the search finds none (the list empty): one of the last ones (+0x18 .., +0x12 of them) at
+        // random; the step +6 due, the target's health +0x14 spent, the history distinct live mobys
+        if (ri(0, 2) == 0) {
+            w32(OV(0x001aba00), 0u);
+            for (uint32_t k = 0; k < 7; ++k) w32(pv + 0x18 + 4 * k, ee_read<uint32_t>(OV(0x0015ffd8)) + 0x100 * (1u + 7u * k + u(ri(0, 6))));
+            ee_write<int16_t>(pv + 0x12, static_cast<int16_t>(ri(1, 6)));
+            w8(m + 0x20, 4u);
+            ee_write<int16_t>(pv + 6, 1);
+            w8(pv + 4, u(ri(0, 5)));
+            wf(pv + 0x14, rf(0.0f, 1.0f));
+        }
+    };
+    {
+    // (stage 5, task C2c) ryno_update/fire reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
+    check("ryno_update/fire", 0x002cc608, 1500, Ret::None, [weapon_gen, ryno_fire] { return weapon_gen(0x17, 0, u(ri(0, 2)), 0, ryno_fire)(); },
+          [](A a) { if (a.i[0] != 0) ryno_update(a.i[0]); return uint64_t{0}; });
+    }
+    // the Metal Detector's scan held (the button 0x20 down past +0x10b0 = 0xf) over its find (metal_extra's, nearer: the dig
+    // and its bolts), and its three sounds +0 / +4 / +0xc playing on a channel of the sound table 0x13e550 (+0x88 the hand,
+    // +0x74 on): their stops, which no case reached (the hand's slots held -1)
+    auto metal_dig = [metal_extra, pick](uint32_t m, uint32_t pv) {
+        if (pv == 0) return;
+        metal_extra(m, pv);
+        if (ee_read<uint32_t>(P + 0x2040) != 0 && coin()) wf(P + 0x2044, rf(0.0f, 1.0f));
+        w32(PAD + 0x1a0, ri(0, 4) != 0 ? 0x20u : 0u);
+        w32(PAD + 0x1a4, ri(0, 3) == 0 ? 0x20u : 0u);
+        w32(P + 0x10b0, u(ri(0, 3) == 0 ? ri(0, 15) : ri(16, 60)));
+        for (uint32_t o : {0u, 4u, 0xcu}) {
+            if (ri(0, 2) == 0) { w32(pv + o, 0xffffffffu); continue; }
+            const uint32_t slot = u(ri(0, 7));
+            w32(pv + o, slot);
+            const uint32_t ch = 0x0013e550 + slot * 0x70;
+            if (ri(0, 4) != 0) w32(ch + 0x88, m);
+            w8(ch + 0x74, coin() ? 1u : 0u);
+        }
+    };
+    // the Hydrodisplacer's spray 0x2e01b0 (its timer pvar +4 about to run out: before, 0 of its instructions ran), the
+    // hand's states 0 .. 5 away from a faucet (class 0x155 is Hoven's: batch 330 has the faucet), the item put away (+0x10b4 = 3)
+    // in the hand's state 4 and the hero's state 0x13 (0x2e0340)
+    auto hydro_spray = [hydro_extra, pick](uint32_t m, uint32_t pv) {
+        if (pv == 0) return;
+        hydro_extra(m, pv);
+        w8(P + 0x20b0, ri(0, 4) == 0 ? 0u : 1u);
+        w32(OV(0x0015f5c4), ri(0, 5) == 0 ? 1u : 0u);
+        w32(P + 0x2084, pick({0u, 0u, 0x1eu, 0x38u, 0x39u, 0x3au}));
+        w32(pv + 4, pick({0u, 1u, 1u, 1u, 2u, 5u}));
+        w8(m + 0x20, u(ri(0, 5)));
+        w32(pv, pick({0u, 1u, 2u, 30u}));
+        w32(P + 0x10b4, ri(0, 4) == 0 ? 3u : 0u);
+        w32(0x001413dc, ri(0, 3) == 0 ? 0x13u : 0u);
+        w32(P + 0x2fc, 0u);
+        w32(0x0013cae0, coin() ? ee_read<uint32_t>(P + 0x10a0) : 0u);
+        w8(m + 0x70, coin() ? 2u : 0u);
+    };
+    check("hydro_update/spray", 0x002df9a0, 800, Ret::None, [weapon_gen, hydro_spray] { return weapon_gen(0x16, 0, u(ri(0, 2)), 0, hydro_spray)(); },
+          [](A a) { if (a.i[0] != 0) hydro_update(a.i[0]); return uint64_t{0}; });
+    check("metal_update/dig", 0x002d2ee8, 1200, Ret::None, [weapon_gen, metal_dig] { return weapon_gen(0x1b, 0, u(ri(0, 2)), 0, metal_dig)(); },
+          [](A a) { if (a.i[0] != 0) metal_update(a.i[0]); return uint64_t{0}; });
     for (const HandT& h : hands) {
         const uint32_t item = h.item, ns = h.nstates;
         auto fn = h.fn;
-        check(h.name, h.addr, 1500, Ret::None, [weapon_gen, item, ns] { return weapon_gen(item, 0, u(ri(0, 2)), ns)(); },
+        auto extra = item == 0x1b ? std::function<void(uint32_t, uint32_t)>(metal_extra)
+                     : item == 0x16 ? std::function<void(uint32_t, uint32_t)>(hydro_extra) : nullptr;
+        // (stage 5, task C2a) The Tesla Claw's update reaches mobys_in_sphere, whose cell list and vertices the port keeps on the
+        // stack: A2's collision scratch ranges are left out of its check (only of it). They also hide what the posing it calls
+        // writes inside them: moby_pose_capture (0x251ce8) reads the bind pose at 0x70002000 in groups of four quads, so for
+        // a class whose joint count is not a multiple of 4 it copies up to three quads past them (stale vertices of the
+        // mobys_in_sphere before it, in the original) into the unused records of the joints past the last
+        // (0x70001be0 .. 0x70001bef in case 17: nothing else differs, the captured key frame in RAM is the same).
+        std::optional<CollisionScratchIgnored> spr_ignored;
+        if (item == 0x13 || c2c_spr_check(h.name)) spr_ignored.emplace();
+        check(h.name, h.addr, 1500, Ret::None, [weapon_gen, item, ns, extra] { return weapon_gen(item, 0, u(ri(0, 2)), ns, extra)(); },
               [fn](A a) { if (std::getenv("ASM_TRACE") != nullptr) std::printf("  [port call] seed %08x\n", ee_read<uint32_t>(ee_read<uint32_t>(0x0012f76c) + 0x58)); if (a.i[0] != 0) fn(a.i[0]); if (std::getenv("ASM_TRACE") != nullptr) std::printf("  [port end]\n"); return uint64_t{0}; });
     }
 
@@ -788,7 +1479,8 @@ void batch_106() {
             // (a class the level has not loaded -- the weapon's own projectile classes are loaded with the level that carries them: a moby of
             // the item's hand class stands in, the update called on it directly)
             if (no_class) cls = hand_class(item);
-            render_view_setup();
+            w8(0x0013e520 + item, coin() ? 1u : 0u);  // (the item's gold flag, as weapon_gen's)
+            view_setup();
             collide_vu_reset();
             oracle_vu_contact_reset();
             uint32_t m = moby_of_class(cls);
@@ -821,6 +1513,17 @@ void batch_106() {
                 }
             }
             if (ee_read<int32_t>(P + 0x2084) == 1) w32(P + 0x2084, 0x1eu);
+            // (the Decoy Glove's landing ring 0x2c31c0: its centre pvar +0x20 and its ground's normal +0x30 are the decoy's, which the
+            // hand class standing in for it does not hold: the ring was never on the screen, the check compared no quad. Its centre
+            // at the hero (whom the view looks at), its normal about up; from a counter, not the random sequence, so that the other
+            // checks keep their cases. Since audit 2)
+            if (fn == 0x002c31c0u && pv != 0) {
+                static uint32_t ring = 0;
+                const float k = static_cast<float>(ring++ % 16u);
+                const Vec4 h = ee_ref<Vec4>(0x0013f3d0);
+                ee_ref<Vec4>(pv + 0x20) = Vec4{h.x + (k - 8.0f) * 0.25f, h.y + (static_cast<float>(ring % 5u) - 2.0f) * 0.5f, h.z + 0.1f, 1.0f};
+                ee_ref<Vec4>(pv + 0x30) = Vec4{(k - 8.0f) * 0.05f, (static_cast<float>(ring % 3u) - 1.0f) * 0.2f, 1.0f, 0.0f};
+            }
             seed_rand();
             return Args{{m}, {}};
         };
@@ -830,14 +1533,10 @@ void batch_106() {
     static const ProjT projs[] = {
         {"swingshot_grapple_update", 0x0c, 0x002c7070, 6, 0x14, swingshot_grapple_update},
         {"devastator_rocket_update", 0x0b, 0x002b03a0, 6, 0, devastator_rocket_update},
-        {"devastator_271450_update", 0x0b, 0x00271450, 6, 0, devastator_271450_update},
         {"visibomb_ball_update", 0x0d, 0x002b6140, 8, 0, visibomb_ball_update},
         {"tesla_2ba970_update", 0x13, 0x002ba970, 6, 0, tesla_2ba970_update},
         {"decoy_object_update", 0x19, 0x002c4380, 8, 0, decoy_object_update},
         {"metal_2d2a90_update", 0x1b, 0x002d2a90, 6, 0, metal_2d2a90_update},
-        {"fx_26a5b8_update", 0x0b, 0x0026a5b8, 6, 0, fx_26a5b8_update},
-        {"fx_26ee48_update", 0x14, 0x0026ee48, 6, 0, fx_26ee48_update},
-        {"morph_275aa0_update", 0x15, 0x00275aa0, 6, 0, morph_275aa0_update},
         {"morph_2bdc50_update", 0x15, 0x002bdc50, 6, 0, morph_2bdc50_update},
         {"ryno_2cd1f0_update", 0x17, 0x002cd1f0, 6, 0, ryno_2cd1f0_update},
         {"decoy_2c31c0_update", 0x19, 0x002c31c0, 6, 0, decoy_2c31c0_update},
@@ -852,6 +1551,15 @@ void batch_106() {
         w32(OV(0x0015f30c), 1u);
         w32(OV(0x0015f310), OUT);
         ee_write<int16_t>(0x001518d2, static_cast<int16_t>(pick({0u, 1u, 2u, 3u, 5u, 8u})));
+        // (half of the cases a screen up to 448 high (view_setup makes it 640 wide: it was 0 wide before, quads of no width), the
+        // bands up to 40 lines high: the last band's clamp to the screen's last line reached; the packets on a buffer of the test
+        // area, not the null page)
+        if (coin()) {
+            ee_write<int16_t>(0x001518d0, 640);
+            ee_write<int16_t>(0x001518d2, static_cast<int16_t>(coin() ? 448 : ri(9, 448)));
+            w32(OUT + 0x10, u(ri(4, 40))); w32(OUT + 0x20, u(ri(0, 40)));
+        }
+        w32(OV(0x001611c0), TEST_AREA + 0x8000 + u(ri(0, 0x40)) * 0x10);
         seed_rand();
         return Args{{}, {}};
     }, [](A) { screen_flash(); return uint64_t{0}; });
@@ -872,6 +1580,349 @@ void batch_106() {
         check(p.name, p.addr, 1200, Ret::None, [proj_gen, item, addr, ns, oo] { return proj_gen(item, addr, ns, oo)(); },
               [fn](A a) { if (std::getenv("ASM_TRACE") != nullptr) std::printf("  [port call]\n"); if (a.i[0] != 0) fn(a.i[0]); if (std::getenv("ASM_TRACE") != nullptr) std::printf("  [port end]\n"); return uint64_t{0}; });
     }
+    // the Devastator's rocket (class 0x99, 0x2b03a0) with a target: its homing and lead (pvar +0x18 a kind-5 moby of the
+    // level about its heading, +0x14 about the arming time 0x12c - 5, +0x38 the lead, +0 the target's last place), its range +0x48
+    // and lifetime at their ends, its pitch toward the ground near the hero (the world's hit), a detonation already set (+0xbc 1 / 2:
+    // the blast, and with the gold flag 0x13e52b the ricochet and its new target's search 0x2affa8 among targets all about it),
+    // the bounces +0x40 at 0 .. 2, the particle load 0x15f5d0 / d4 high or low
+    check("devastator_rocket_update/homing", 0x002b03a0, 1500, Ret::None, [proj_gen, aim_targets, pick] {
+        const Args base = proj_gen(0x0b, 0x002b03a0, 0, 0)();
+        const uint32_t m = base.i[0];
+        if (m == 0) return base;
+        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+        if (pv == 0) return base;
+        Vec4 rp = ee_ref<Vec4>(0x0013f3d0);
+        rp.x += rf(-4.0f, 4.0f); rp.y += rf(-4.0f, 4.0f); rp.z += rf(0.2f, 3.0f);
+        ee_ref<Vec4>(m + 0x10) = rp;
+        wf(m + 0x48, rf(-3.14f, 3.14f));
+        wf(m + 0x44, ri(0, 2) == 0 ? rf(0.6f, 1.5f) : rf(-0.6f, 0.6f));
+        const std::vector<uint32_t> t = aim_targets(m, rp, ee_read<float>(m + 0x48), coin() ? 3.14f : 0.5f, 3.0f, 30.0f);
+        const uint32_t tgt = !t.empty() && ri(0, 4) != 0 ? t[0] : 0u;
+        w32(pv + 0x18, tgt);
+        w32(pv + 0x14, pick({0u, 1u, u(ri(2, 280)), 294u, 295u, 296u, 300u}));
+        w32(pv + 0x38, coin() ? 1u : 0u);
+        if (tgt != 0) {
+            Vec4 q = ee_ref<Vec4>(tgt + 0x10);
+            q.x += rf(-0.5f, 0.5f); q.y += rf(-0.5f, 0.5f); q.z += rf(-0.2f, 0.8f);
+            ee_ref<Vec4>(pv) = q;
+        }
+        wf(pv + 0x1c, rf(0.0f, 1.0f));
+        wf(pv + 0x20, rf(0.1f, 2.0f));
+        wf(pv + 0x34, rf(0.3f, 2.0f));
+        ee_write<int16_t>(pv + 0x3e, static_cast<int16_t>(ri(1, 60)));
+        ee_write<int16_t>(pv + 0x3c, static_cast<int16_t>(ri(0, ee_read<int16_t>(pv + 0x3e))));
+        wf(pv + 0x48, ri(0, 4) == 0 ? rf(0.5f, 4.0f) : rf(40.0f, 140.0f));
+        w32(pv + 0x40, u(ri(0, 2)));
+        w32(pv + 0x44, pick({0u, 1u, u(ri(2, 90))}));
+        w32(pv + 0x10, ri(0, 3) == 0 && !t.empty() ? t.back() : 0u);
+        w8(m + 0xbc, ri(0, 2) == 0 ? pick({1u, 2u}) : 0u);
+        // the hero moving (0x13f450 / 0x13f490: the rocket carries his speed, the lead takes it off the target's), the turn rates
+        // +0x24 / +0x28 up to past their cap (the seek's clamp), the aim's angles +0x2c / +0x30 the rocket turns to without a target
+        if (coin()) { wfrand(0x0013f450, 3, -0.4f, 0.4f); wfrand(0x0013f490, 3, -0.4f, 0.4f); }
+        if (coin()) { wf(pv + 0x24, rf(-6.0f, 6.0f)); wf(pv + 0x28, rf(-6.0f, 6.0f)); }
+        if (coin()) { wf(pv + 0x2c, rf(-3.1f, 3.1f)); wf(pv + 0x30, rf(-1.5f, 1.5f)); }
+        wf(OV(0x0015f5d0), ri(0, 4) == 0 ? rf(0.9f, 1.0f) : rf(0.0f, 0.5f));
+        wf(OV(0x0015f5d4), ri(0, 6) == 0 ? rf(0.9f, 1.0f) : rf(0.0f, 0.5f));
+        w8(0x0013e52b, coin() ? 1u : 0u);
+        seed_rand();
+        return Args{{m}, {}};
+    }, [](A a) { if (a.i[0] != 0) devastator_rocket_update(a.i[0]); return uint64_t{0}; });
+    // the Visibomb's bomb in flight (class 0xac, 0x2b6140): the live bomb of the fired snapshots (spawned, its fins'
+    // records +0x24 / +0x28 and its camera +0x14 are not the game's), its life +0x10 about the steering's start 0xbb8 - 5, the
+    // floor's grace 0xbb8 - 0x3c, the early window 0xbb8 - 0x1e, 0 and the end -0x64; the hero's states that end it or not, the
+    // stick +0x1d20 / +0x1d24, the boost (0x40) and the detonation (0x20) buttons, the bomb low over the ground or on its way out
+    // of the level's box, a detonation set (+0xbc 1 / 2)
+    check("visibomb_ball_update/flight", 0x002b6140, 1200, Ret::None, [item_snap, moby_of_class, class_of_fn, pick] {
+        const std::vector<uint8_t>& sn = item_snap(0x0d, ri(0, 3) == 0 ? 2u : 1u);
+        std::memcpy(ee_get_ram_base(), sn.data(), sn.size());
+        view_setup();
+        collide_vu_reset();
+        oracle_vu_contact_reset();
+        const uint32_t cls = class_of_fn(0x002b6140);
+        const uint32_t m = cls != 0 ? moby_of_class(cls) : 0u;
+        if (m == 0) return Args{{0u}, {}};
+        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+        if (pv == 0) return Args{{0u}, {}};
+        w8(0x0013e52d, coin() ? 1u : 0u);
+        w32(pv + 0x10, pick({0xbb8u - 5u, 0xbb8u - 4u, 0xbb8u - 6u, 0xbb8u - 0x3cu, 0xbb8u - 0x3du, 0xbb8u - 0x1eu, 0xbb8u - 0x1fu,
+                             u(ri(1, 2900)), u(ri(1, 2900)), 1u, 0u, 0xffffffffu, u(-ri(1, 99)), u(-100), u(-99)}));
+        w32(P + 0x2084, ri(0, 4) == 0 ? pick({0x16u, 0x3du, 0x72u, 0x65u}) : pick({0u, 0x1du, 0x1du}));
+        w32(P + 0x208c, ri(0, 5) == 0 ? pick({2u, 3u, 4u, 5u, 7u, 0xau, 0x10u, 0xdu}) : pick({0u, 1u, 6u, 0xcu}));
+        if (ri(0, 8) == 0) w32(P + 0x300, 0u);
+        if (ri(0, 6) == 0) w32(P + 0x2fc, ee_read<uint32_t>(OV(0x0015ffd8)) + 0x100 * u(ri(1, 60)));
+        wf(P + 0x1d20, rf(-1.0f, 1.0f));
+        wf(P + 0x1d24, rf(-1.0f, 1.0f));
+        w32(PAD + 0x1a0, coin() ? 0x40u : 0u);
+        w32(PAD + 0x1a4, ri(0, 3) == 0 ? 0x20u : 0u);
+        wf(pv + 0x18, rf(-1.0f, 1.0f));
+        wf(pv + 0x1c, rf(-1.0f, 1.0f));
+        wf(m + 0x44, rf(-1.6f, 1.6f));
+        const int where = ri(0, 3);
+        if (where == 0) {  // low over the ground near the hero
+            Vec4 q = ee_ref<Vec4>(0x0013f3d0); q.x += rf(-3.0f, 3.0f); q.y += rf(-3.0f, 3.0f); q.z += rf(-0.2f, 0.6f);
+            ee_ref<Vec4>(m + 0x10) = q;
+        } else if (where == 1) {  // at the level's box
+            const int ax = ri(0, 2);
+            wf(m + 0x10 + 4 * u(ax), coin() ? rf(4.0f, 5.0f) : rf(1017.0f, 1019.0f));
+        }
+        w8(m + 0xbc, ri(0, 4) == 0 ? pick({1u, 2u}) : 0u);
+        seed_rand();
+        return Args{{m}, {}};
+    }, [](A a) { if (a.i[0] != 0) visibomb_ball_update(a.i[0]); return uint64_t{0}; });
+    // the Metal Detector's pulse draw 0x2d2a90 on its own hand moby (the detector's: the projectile check above runs it on
+    // a stand-in with random pvars): the tip +0x10 near the hero (in the view), the scan's direction +0x30, the pulse's phase +0x24
+    // and its reach +0x28 across [0, 1] (the rings' loop, the wrap past 1), the hand's colour +0x90
+    // the Tesla Claw's beam draw 0x2ba970 on the claw's own hand with the beams the game left (the snapshot with the fire
+    // button held: the 20-point beams 0x1db5c0 and the side arcs 0x1dba20 made by 0x2b94d0 while firing), the beam's point count
+    // +0x3e and the arcs' alphas 0x161660 varied: above, it ran on a stand-in of the hand class with the beams of no shot
+    check("tesla_2ba970_update/beam", 0x002ba970, 600, Ret::None, [item_snap, moby_of_class, hand_class, pick] {
+        const std::vector<uint8_t>& sn = item_snap(0x13, ri(0, 3) == 0 ? 1u : 2u);
+        std::memcpy(ee_get_ram_base(), sn.data(), sn.size());
+        view_setup();
+        collide_vu_reset();
+        oracle_vu_contact_reset();
+        const uint32_t m = moby_of_class(hand_class(0x13));
+        if (m == 0) return Args{{0u}, {}};
+        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+        if (pv == 0) return Args{{0u}, {}};
+        if (coin()) ee_write<int16_t>(pv + 0x3e, static_cast<int16_t>(pick({0u, 1u, 2u, 10u, 20u})));
+        for (uint32_t i = 0; i < 4; ++i) if (coin()) ee_write<int16_t>(OV(0x00161660) + 2 * i, static_cast<int16_t>(ri(0, 0x80)));
+        if (coin()) w32(OV(0x001615d4), u(ri(0, 0x80)));
+        if (coin()) wf(OV(0x001615ec), rf(-8.0f, 0.0f));
+        w8(0x0013e533, coin() ? 1u : 0u);
+        seed_rand();
+        return Args{{m}, {}};
+    }, [](A a) { if (a.i[0] != 0) tesla_2ba970_update(a.i[0]); return uint64_t{0}; });
+    // the decoy itself (0x2c4380) as the glove threw it (the live one of the fired snapshots), landed: on the ground at the
+    // hero's height near him (states 3 / 4: its wobble's spring 0x2c40a0, its timers +0x5c / +0x6c), and its later states 5 .. 7,
+    // its life +0x44 and health +0x48 at their ends, the hero's flags +0x20a4 / +0x20a5, the gold flag 0x13e539
+    check("decoy_object_update/landed", 0x002c4380, 1000, Ret::None, [item_snap, moby_of_class, class_of_fn, pick] {
+        const std::vector<uint8_t>& sn = item_snap(0x19, ri(0, 1) == 0 ? 1u : 2u);
+        std::memcpy(ee_get_ram_base(), sn.data(), sn.size());
+        view_setup();
+        collide_vu_reset();
+        oracle_vu_contact_reset();
+        const uint32_t cls = class_of_fn(0x002c4380);
+        const uint32_t m = cls != 0 ? moby_of_class(cls) : 0u;
+        if (m == 0) return Args{{0u}, {}};
+        const uint32_t dpv = ee_read<uint32_t>(m + 0x78);
+        if (dpv == 0) return Args{{0u}, {}};
+        w8(0x0013e539, coin() ? 1u : 0u);
+        const uint32_t st = ri(0, 2) == 0 ? pick({3u, 4u, 4u}) : u(ri(2, 7));
+        w8(m + 0x20, st);
+        if (st >= 3 && ri(0, 3) != 0) {
+            Vec4 q = ee_ref<Vec4>(0x0013f3d0); q.x += rf(-3.0f, 3.0f); q.y += rf(-3.0f, 3.0f); q.z += rf(0.0f, 0.3f);
+            ee_ref<Vec4>(m + 0x10) = q;
+            if (coin()) ee_ref<Vec4>(dpv + 0x10) = Vec4{0.0f, 0.0f, 0.0f, 0.0f};
+            else ee_ref<Vec4>(dpv + 0x10) = Vec4{rf(-0.2f, 0.2f), rf(-0.2f, 0.2f), rf(-0.6f, 0.05f), 0.0f};  // (falling: the landing)
+            if (ri(0, 2) == 0) {  // the hero on the ground against it (0x2c40a0: he pushes it, its spring +0x60 / +0x64)
+                Vec4 h = ee_ref<Vec4>(0x0013f3d0); h.x += rf(-1.3f, 1.3f); h.y += rf(-1.3f, 1.3f); h.z += rf(-0.2f, 0.4f);
+                ee_ref<Vec4>(m + 0x10) = h;
+                ee_write<int16_t>(P + 0x1e2, static_cast<int16_t>(ri(0, 4) == 0 ? 0 : 1));
+                w32(dpv + 0x68, coin() ? 1u : 0u);
+            }
+        }
+        // an enemy's hit on it (the moby's hit entry 0x178100 + 0x40 * its +0xa4: the owner +0x34, the kinds +0x24, the attacker +0x20,
+        // the hit's kind +0x28 (0x101 the stun) and damage +0x2c), the last attacker +0x58 the same or not
+        if (ri(0, 1) == 0) {
+            const uint32_t i = u(ri(0, 0xff - 1));
+            const uint32_t e = OV(0x00178100) + i * 0x40;
+            const uint32_t att = ee_read<uint32_t>(OV(0x0015ffd8)) + 0x100 * u(ri(1, 60));
+            w8(m + 0xa4, i);
+            w32(e + 0x34, ri(0, 6) == 0 ? 0u : m);
+            w32(e + 0x24, pick({1u, 0x10000u, 0x20000u, 0x8u}));
+            w32(e + 0x20, att);
+            ee_write<uint16_t>(e + 0x28, static_cast<uint16_t>(coin() ? 0x101u : 0x3u));
+            wf(e + 0x2c, rf(0.1f, 4.0f));
+            w32(dpv + 0x58, coin() ? att : 0u);
+            if (coin()) ee_write<uint64_t>(dpv + 0x68, 0);
+        }
+        ee_write<int16_t>(dpv + 0x44, static_cast<int16_t>(pick({0u, 1u, 1u, u(ri(2, 600))})));
+        wf(dpv + 0x48, rf(-0.5f, 8.0f));
+        w32(dpv + 0x5c, u(ri(0, 3) == 0 ? 0 : ri(1, 30)));
+        ee_write<int16_t>(dpv + 0x6c, static_cast<int16_t>(ri(0, 3)));
+        w8(dpv + 0x6f, u(ri(0, 3)));
+        wfrand(dpv + 0x60, 2, -0.3f, 0.3f);
+        w8(P + 0x20a4, ri(0, 6) == 0 ? 1u : 0u);
+        w8(P + 0x20a5, ri(0, 4) == 0 ? 1u : 0u);
+        if (ri(0, 2) == 0) w32(P + 0x2084, 0x1eu);
+        w8(m + 0x70, coin() ? 2u : 0u);
+        seed_rand();
+        return Args{{m}, {}};
+    }, [](A a) { if (a.i[0] != 0) decoy_object_update(a.i[0]); return uint64_t{0}; });
+    // (region rule 3) the two small switches over the game's jump tables that the checks above reach at one index only: the decoy's
+    // surface test 0x2c4328 (the table 0x1e9c20: on the surfaces 0, 1, 3, 8, 11, 12, 13 the decoy breaks up, 0x2c3440) on the decoy
+    // as the glove threw it, the surface the last collision left (0x173e5c's low 5 bits; none: negative or 0x1f) any of the 32 or
+    // none; and the Visibomb's view overlay 0x203880 (the table 0x1e7b80, the overlay's state 0x179410 below 8) in its states 0 ..
+    // 8 and past them, its timer +4 and word +0x24 varied
+    check("decoy_obj_2c4328/surface", 0x002c4328, 400, Ret::None, [item_snap, moby_of_class, class_of_fn] {
+        const std::vector<uint8_t>& sn = item_snap(0x19, ri(0, 1) == 0 ? 1u : 2u);
+        std::memcpy(ee_get_ram_base(), sn.data(), sn.size());
+        view_setup();
+        const uint32_t cls = class_of_fn(0x002c4380);
+        const uint32_t m = cls != 0 ? moby_of_class(cls) : 0u;
+        if (m == 0) return Args{{0u}, {}};
+        w8(0x0013e539, coin() ? 1u : 0u);
+        const uint32_t surf = ri(0, 7) == 0 ? (coin() ? 0xffffffffu : 0x1fu) : u(ri(0, 31));
+        w32(OV(0x00173e5c), surf | (coin() ? (R() & 0x7fffffe0u) : 0u));
+        seed_rand();
+        return Args{{m}, {}};
+    }, [](A a) { if (a.i[0] != 0) decoy_obj_2c4328(a.i[0]); return uint64_t{0}; });
+    check("visibomb_203880/states", 0x00203880, 300, Ret::None, [level1] {
+        level1();
+        const uint32_t hud = OV(0x00179410);
+        w32(hud, u(ri(0, 10)));
+        w32(hud + 4, ri(0, 3) == 0 ? R() : u(ri(0, 8)));
+        w32(hud + 0x24, coin() ? 0u : R());
+        seed_rand();
+        return Args{};
+    }, [](A) { visibomb_203880(); return uint64_t{0}; });
+    check("metal_2d2a90_update/pulse", 0x002d2a90, 800, Ret::None, [item_snap, moby_of_class, hand_class, near_hero] {
+        const std::vector<uint8_t>& sn = item_snap(0x1b, u(ri(0, 2)));
+        std::memcpy(ee_get_ram_base(), sn.data(), sn.size());
+        view_setup();
+        collide_vu_reset();
+        oracle_vu_contact_reset();
+        const uint32_t m = moby_of_class(hand_class(0x1b));
+        if (m == 0) return Args{{0u}, {}};
+        const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+        if (pv == 0) return Args{{0u}, {}};
+        if (ri(0, 3) != 0) near_hero(pv + 0x10, 1.5f, 0.2f, 1.5f);
+        if (ri(0, 2) == 0) wfrand(pv + 0x30, 3, -1.0f, 1.0f);
+        wf(pv + 0x24, ri(0, 4) == 0 ? rf(0.9f, 1.0f) : rf(0.0f, 1.0f));
+        wf(pv + 0x28, ri(0, 3) == 0 ? 0.0f : rf(0.0f, 1.0f));
+        w32(m + 0x90, R());
+        seed_rand();
+        return Args{{m}, {}};
+    }, [](A a) { if (a.i[0] != 0) metal_2d2a90_update(a.i[0]); return uint64_t{0}; });
+    // four particle types' updates, which the "projectile" list above ran on a moby standing in (2 .. 4 words changed; taken out
+    // of that list in favour of these, whose original's coverage takes in all of theirs, ORACLE_COVER_EE): 0x26a5b8 type 0x08 (the Devastator's blast), 0x26ee48 type 0x20 (the glow on a moby), 0x275aa0 type 0x4e (the
+    // Morph-o-Ray's sparks), 0x271450 type 0x2c (the Devastator's smoke). Here on particle records of their types, made by their
+    // ported spawners (0x26a4c8, 0x26ed28, 0x275910, 0x2712b8) with the weapons' arguments, then advanced by 0 .. 40 frames of the
+    // port's update (the later parts of their lives), their last frames in some cases, their owners / targets live, retired or gone
+    {
+        auto alive = [](uint32_t q, uint32_t type) { return q != 0 && static_cast<int8_t>(ee_read<uint8_t>(q + 1)) >= 0 && ee_read<uint8_t>(q) == type; };
+        struct PartT { const char* name; uint32_t addr; uint32_t type; void (*fn)(uint32_t); };
+        static const PartT parts[] = {
+            {"particle_08_update", 0x0026a5b8, 0x08, fx_26a5b8_update}, {"particle_20_update", 0x0026ee48, 0x20, fx_26ee48_update},
+            {"particle_4e_update", 0x00275aa0, 0x4e, morph_275aa0_update}, {"particle_2c_update", 0x00271450, 0x2c, devastator_271450_update},
+        };
+        for (const PartT& pt : parts) {
+            const uint32_t type = pt.type;
+            auto fn = pt.fn;
+            check(pt.name, pt.addr, 600, Ret::None, [level1, near_hero, kind5, alive, pick, type, fn] {
+                level1();
+                const std::vector<uint32_t> mobs = kind5(0);
+                const uint32_t anym = ee_read<uint32_t>(OV(0x0015ffd8)) + 0x100 * u(ri(1, 60));
+                const uint32_t tgt = !mobs.empty() && coin() ? mobs[static_cast<size_t>(ri(0, static_cast<int>(mobs.size()) - 1))] : anym;
+                near_hero(OUT, 4.0f, 0.0f, 3.0f);
+                wfrand(OUT + 0x10, 3, -0.3f, 0.3f);
+                w32(OUT + 0x1c, 0u);
+                seed_rand();
+                const uint32_t pool = ee_read<uint32_t>(OV(0x0016016c));
+                // the record made (the pool's newest of the type); (a case never runs the original on no record: an update has
+                // no null test, the original would free a particle at address 0)
+                auto newest = [pool, alive, type] {
+                    uint32_t q = 0;
+                    const uint32_t hi = ee_read<uint32_t>(OV(0x00160174));
+                    for (uint32_t i = 0; i <= hi && i < 4096; ++i)
+                        if (alive(pool + 0x40u * i, type)) q = pool + 0x40u * i;
+                    return q;
+                };
+                auto make = [&] {
+                switch (type) {
+                case 0x08: spawn_particle_08(OUT, OUT + 0x10, R(), R(), ri(0, 6) == 0 ? ri(1, 6) : ri(7, 120), rf(1000.0f, 60000.0f)); break;
+                case 0x20: (void)glow_particle_20(tgt); break;
+                case 0x4e: morph_275910(OUT, u(ri(1, 60)), R(), u(ri(0, 1)), pick({1u, 0xffffffffu}), OUT + 0x10, ri(0, 3) == 0 ? 0u : tgt,
+                                        rf(0.01f, 0.2f), rf(0.01f, 0.5f)); break;
+                default: (void)dev_2712b8(OUT, OUT + 0x10, u(ri(1, 90)), u(ri(0, 0x7f)), R() & 0xffffffu, u(ri(-6, 6)), rf(1000.0f, 50000.0f),
+                                          rf(0.0f, 1000.0f), rf(0.9f, 1.0f), rf(-0.01f, 0.0f), rf(0.0f, 1.0f)); break;
+                }
+                return newest();
+                };
+                uint32_t q = make();
+                if (q != 0) {
+                    for (int k = ri(0, 3) == 0 ? 0 : ri(1, 40); k > 0 && alive(q, type); --k) fn(q);
+                    if (!alive(q, type)) q = make();  // (its life over on the way: a new one, not advanced)
+                }
+                if (q == 0) {  // (none made: a bare record of the type)
+                    q = alloc_particle(type);
+                    if (q == 0) return Args{{0u}, {}};
+                    near_hero(q + 0x10, 4.0f, 0.0f, 3.0f);
+                    ee_write<int16_t>(q + 0xa, static_cast<int16_t>(ri(1, 60)));
+                }
+                if (ri(0, 4) == 0) ee_write<int16_t>(q + 0xa, static_cast<int16_t>(ri(-1, 8)));  // (its last frames: the fades of the last 6)
+                if (type == 0x20 && ri(0, 5) == 0) w8(ee_read<uint32_t>(q + 0x20) != 0 ? ee_read<uint32_t>(q + 0x20) + 0x20 : tgt + 0x20, pick({0xfeu, 0xfdu}));
+                if (type == 0x20 && ri(0, 8) == 0) w32(q + 0x20, 0u);
+                if (type == 0x20)  // (a colour channel about to fade out: its clamp at 0)
+                    for (uint32_t c = 0; c < 3; ++c)
+                        if (ri(0, 3) == 0) wf(q + 0x30 + 4 * c, rf(0.0f, 0.02f));
+                if (type == 0x4e && ee_read<uint32_t>(q + 0x38) != 0 && coin()) {  // (its target within reach: the swirl)
+                    Vec4 p = ee_ref<Vec4>(ee_read<uint32_t>(q + 0x38) + 0x10);
+                    p.x += rf(-2.5f, 2.5f); p.y += rf(-2.5f, 2.5f); p.z += rf(-1.0f, 1.0f);
+                    ee_ref<Vec4>(q + 0x10) = p;
+                }
+                wf(0x0015ed60, ri(0, 3) == 0 ? rf(0.5f, 3.0f) : 1.0f);  // (the frame scale)
+                seed_rand();
+                return Args{{q}, {}};
+            }, [fn](A a) { if (a.i[0] != 0) fn(a.i[0]); return uint64_t{0}; });
+        }
+    }
+    // (stage 3d) the doomlet's states the projectile check above seldom reaches: every state byte (0xb the explosion, 0xd the
+    // owner's wait, 8 / 9 the falls, 0xc the jump's landing), the gold levels 0..3 (0x13e534: the size, the explosion's
+    // sound), a target in pvar +0x38 (the hero, or a moby of type 5 with the target flag 0x1000), its timers near their limits
+    if (g_oracle_level == 2) {
+        skip_check("doomlet_update/states", 0x002bffa8, "level 2: the sphere_collide record of doomlet_update above, not resolved");
+    } else {
+        check("doomlet_update/states", 0x002bffa8, 1500, Ret::None, [proj_gen, pick] {
+            const Args base = proj_gen(0x14, 0x002bffa8, 0, 0)();
+            const uint32_t m = base.i[0];
+            if (m == 0) return base;
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            if (pv == 0) return base;
+            w8(m + 0x20, ri(0, 2) == 0 ? pick({0xbu, 0xbu, 0xdu, 0xcu, 8u, 9u}) : u(ri(0, 15)));
+            w8(0x0013e534, u(ri(0, 3)));
+            // a target: the hero, a moby of type 5 with the target flag, a retired one, or none
+            uint32_t enemy = 0;
+            for (uint32_t o = ee_read<uint32_t>(OV(0x0015ffd8)); o < ee_read<uint32_t>(OV(0x0015ffe0)); o += 0x100) {
+                const uint32_t ci = ee_read<uint32_t>(o + 0x24);
+                if (o != m && ee_read<uint8_t>(o + 0x20) < 0xf0 && ci != 0 && ee_read<int16_t>(ci + 0x46) == 5 && ri(0, 2) == 0) { enemy = o; break; }
+            }
+            const uint32_t hero = ee_read<uint32_t>(0x001413d0);
+            const uint32_t tgt = pick({0u, hero, hero, enemy, enemy, enemy});
+            if (tgt != 0 && tgt != hero) {
+                if (ri(0, 4) != 0) ee_write<uint16_t>(tgt + 0x34, static_cast<uint16_t>(ee_read<uint16_t>(tgt + 0x34) | 0x1000u));
+                if (ri(0, 6) == 0) w8(tgt + 0x20, pick({0xfeu, 0xfdu}));
+                Vec4 p = ee_ref<Vec4>(m + 0x10);  // near the doomlet: the chase's jump, the contact
+                p.x += rf(-3.0f, 3.0f); p.y += rf(-3.0f, 3.0f); p.z += rf(-0.5f, 0.5f);
+                if (ri(0, 1) == 0) ee_ref<Vec4>(tgt + 0x10) = p;
+            }
+            w32(pv + 0x38, tgt);
+            w32(pv + 0x3c, ri(0, 2) == 0 ? tgt : 0u);
+            w32(pv + 0x30, pick({0u, 1u, u(ri(2, 600)), 3999u, 4000u, 4001u, 4500u}));
+            w32(pv + 0x34, pick({0u, u(ri(1, 100)), 0xe0fu, 0xe10u, 0xe11u}));
+            // the owner (pvar +0x60) state 0xd waits on: alive, retired, or none
+            const uint32_t owner = pick({0u, hero, enemy});
+            w32(pv + 0x60, owner);
+            if (owner != 0 && owner != hero && ri(0, 2) == 0) w8(owner + 0x20, pick({0xfeu, 0xfdu}));
+            if (ri(0, 4) == 0) wf(pv + 0x64, rf(-3.1f, 3.1f));
+            seed_rand();
+            return Args{{m}, {}};
+        }, [](A a) { if (a.i[0] != 0) doomlet_update(a.i[0]); return uint64_t{0}; });
+    }
+
+    // T00: Veldin's 0x2d6bf0 (the sparkles' set-up the infobot's and class 167's updates call, transliterated in
+    // shared_classes_tr.cpp until now) is the same code as 0x2e06a8: helmet_init_fx runs in its place (a moby's pvars +0x10 .. +0x4c)
+    check("helmet_init_fx/2d6bf0", 0x002d6bf0, 120, Ret::None, [level1] {
+        level1();
+        std::vector<uint32_t> ms;
+        for (uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)); m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100)
+            if (ee_read<uint8_t>(m + 0x20) < 0xfe && ee_read<uint32_t>(m + 0x78) != 0) ms.push_back(m);
+        const uint32_t m = ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+        if (ri(0, 3) == 0) wf(0x0015ed68, 1.2f);  // (the frame scale at its 50 Hz value: frame_scale_i's counts)
+        seed_rand();
+        return Args{{m}, {}};
+    }, [](A a) { helmet_init_fx(a.i[0]); return uint64_t{0}; });
 
     g_ignored_words = ign_saved;
     g_ee_null_is_ram = null_ram;

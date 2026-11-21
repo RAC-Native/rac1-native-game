@@ -19,7 +19,6 @@
 #include <game/ovl/nanotech_draw.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/pause_menu.h>
-#include <game/ovl/rilgar_hero.h>
 #include <game/ovl/rilgar_mobys.h>
 #include <game/ovl/variants_l5.h>
 #include <game/ovl/veldin_mobys.h>
@@ -29,45 +28,18 @@
 #include <game/port_stubs.h>
 #include <game/ovl/screen_fade.h>
 #include <game/ovl/hydro.h>
+#include <game/ovl/sound_emitter.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_class344.h>
+#include <game/ovl/aridia_mobys.h>
+#include <game/ovl/shared_floaters.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
 
-//@gen ril_318648_l5
-
-//@gen ril_class846_update_l5
-
-//@gen ril_class852_update_l5
-
-//@gen ril_29be70_l5
-
-//@gen ril_class855_update_l5
-
-//@gen ril_315ee0_l5
-
-//@gen ril_315f70_l5
-
-//@gen ril_class877_update_l5
-
-//@gen ril_228110_l5
-
-//@gen ril_2ce098_l5
-
-//@gen ril_2ce110_l5
-
-//@gen ril_class879_update_l5
-
-//@gen ril_class893_update_l5
-
-//@gen ril_class895_update_l5
-
-//@gen ril_2843a8_l5
-
 //@gen ril_28d960_l5
-
-//@gen ril_28f5c8_l5
 
 //@gen ril_316810_l5
 
@@ -75,73 +47,7 @@ using namespace vu0m;
 
 //@gen ril_class918_update_l5
 
-//@gen ril_317398_l5
-
-//@gen ril_class919_update_l5
-
-//@gen ril_2907b8_l5
-
-//@gen ril_3179a8_l5
-
-//@gen ril_class920_update_l5
-
-//@gen ril_317fb8_l5
-
-//@gen ril_class925_update_l5
-
-//@gen ril_class980_update_l5
-
-//@gen ril_class982_update_l5
-
-//@gen ril_class984_update_l5
-
-//@gen ril_319208_l5
-
-//@gen ril_3193a8_l5
-
-//@gen ril_319598_l5
-
-//@gen ril_319510_l5
-
-//@gen ril_3195f8_l5
-
-//@gen ril_319690_l5
-
-//@gen ril_319740_l5
-
-//@gen ril_3198e8_l5
-
-//@gen ril_class998_update_l5
-
-//@gen ril_class1099_update_l5
-
-//@gen ril_31a510_l5
-
-//@gen ril_31a9b0_l5
-
-//@gen ril_31a340_l5
-
-//@gen ril_31a430_l5
-
-//@gen ril_31a7a0_l5
-
-//@gen ril_class1134_update_l5
-
-//@gen ril_29e698_l5
-
-//@gen ril_class1139_update_l5
-
 //@gen ril_class1347_update_l5
-
-//@gen ril_28dd80_l5
-
-//@gen ril_31d160_l5
-
-//@gen ril_class1511_update_l5
-
-//@gen ril_class1550_update_l5
-
-//@gen ril_class1633_update_l5
 
 
 }  // namespace rac1

@@ -8,10 +8,9 @@ namespace rac1 {
 
 // orig: 0x002321a8
 void sub_002321a8() {
-    if (on_rilgar()) { ril_call(ril_sub_2321a8_u); return; }  // (Rilgar's own: L5:0x0025b538)
-    if (on_kalebo()) { kal_call(kal_sub_002321a8_u); return; }  // (level 16's own: L16:0x0022dc48)
     sw(g::PLAYER + 0x227c, 0);
     sw(g::PLAYER + 0x2278, 0);
+    if (hero_has_hoverboard()) hero_hoverboard_pair_table();
 }
 
 // orig: 0x002321c0 — look `key` up in the (s16 key, s16 value) list at
@@ -52,34 +51,24 @@ void sub_00232628() {
 
 // orig: 0x00233210 — set bit 0 of the u16 flags (+0x34) of both hero mobys.
 void hero_mobys_set_flag1() {
-    if (on_batalia()) { bat_call(bat_hero_mobys_set_flag1_u); return; }  // (level 8's own: L8:0x0023e4c0)
-    if (on_pokitaru()) { pok_call(pok_hero_mobys_set_flag1_u); return; }  // (level 11's own: L11:0x00259c80)
-    if (on_hoven()) { hov_call(hov_hero_mobys_set_flag1_u); return; }  // (level 12's own: L12:0x0024cac0)
-    if (on_oltanis()) { olt_call(olt_hero_mobys_set_flag1_u); return; }  // (level 14's own: L14:0x0023c550)
-    if (on_quartu()) { qua_call(qua_hero_mobys_set_flag1_u); return; }  // (level 15's own: L15:0x00223e48)
-    if (on_kalebo()) { kal_call(kal_hero_mobys_set_flag1_u); return; }  // (level 16's own: L16:0x0022ecd8)
-    if (on_veldin_finale()) { vf_call(vf_hero_mobys_set_flag1_u); return; }  // (level 18's own: L18:0x00236830)
     if (on_l1_family() || on_rilgar()) return hero_mobys_set_flag1_l1();
     const uint32_t m = lwu(g::PLAYER + 0x2080);
     sh(m + 0x34, lhu(m + 0x34) | 1u);
-    const uint32_t m2 = lwu(g::PLAYER + 0x1620);
-    if (m2 != 0) sh(m2 + 0x34, lhu(m2 + 0x34) | 1u);
+    if (hero_has_clank()) {
+        const uint32_t m2 = lwu(g::PLAYER + 0x1620);
+        if (m2 != 0) sh(m2 + 0x34, lhu(m2 + 0x34) | 1u);
+    }
 }
 
 // orig: 0x00233248
 void hero_mobys_clear_flag1() {
-    if (on_batalia()) { bat_call(bat_hero_mobys_clear_flag1_u); return; }  // (level 8's own: L8:0x0023e4d8)
-    if (on_pokitaru()) { pok_call(pok_hero_mobys_clear_flag1_u); return; }  // (level 11's own: L11:0x00259c98)
-    if (on_hoven()) { hov_call(hov_hero_mobys_clear_flag1_u); return; }  // (level 12's own: L12:0x0024cad8)
-    if (on_oltanis()) { olt_call(olt_hero_mobys_clear_flag1_u); return; }  // (level 14's own: L14:0x0023c568)
-    if (on_quartu()) { qua_call(qua_hero_mobys_clear_flag1_u); return; }  // (level 15's own: L15:0x00223e60)
-    if (on_kalebo()) { kal_call(kal_hero_mobys_clear_flag1_u); return; }  // (level 16's own: L16:0x0022ecf0)
-    if (on_veldin_finale()) { vf_call(vf_hero_mobys_clear_flag1_u); return; }  // (level 18's own: L18:0x00236848)
     if (on_l1_family() || on_rilgar()) return hero_mobys_clear_flag1_l1();
     const uint32_t m = lwu(g::PLAYER + 0x2080);
     sh(m + 0x34, lhu(m + 0x34) & 0xfffeu);
-    const uint32_t m2 = lwu(g::PLAYER + 0x1620);
-    if (m2 != 0) sh(m2 + 0x34, lhu(m2 + 0x34) & 0xfffeu);
+    if (hero_has_clank()) {
+        const uint32_t m2 = lwu(g::PLAYER + 0x1620);
+        if (m2 != 0) sh(m2 + 0x34, lhu(m2 + 0x34) & 0xfffeu);
+    }
 }
 
 // orig: 0x00233288

@@ -39,94 +39,15 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/shared_class933.h>
+#include <game/ovl/shared_helpers.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
 
-//@gen olt_313298_l14
-
-//@gen olt_class758_update_l14
-
-//@gen olt_class765_update_l14
-
-//@gen olt_class805_update_l14
-
-//@gen olt_class832_update_l14
-
 //@gen olt_26b390_l14
-
-//@gen olt_2ef578_l14
-
-//@gen olt_2ef5a8_l14
-
-//@gen olt_2fb938_l14
-
-//@gen olt_class851_update_l14
-
-//@gen olt_2fc3e8_l14
-
-//@gen olt_2fc890_l14
-
-//@gen olt_2fc9a0_l14
-
-//@gen olt_class908_update_l14
-
-//@gen olt_class913_update_l14
-
-//@gen olt_2fd310_l14
-
-//@gen olt_2fd808_l14
-
-//@gen olt_314190_l14
-
-//@gen olt_2fd918_l14
-
-//@gen olt_2fe228_l14
-
-//@gen olt_2fe238_l14
-
-//@gen olt_314168_l14
-
-//@gen olt_class921_update_l14
-
-//@gen olt_2fded0_l14
-
-//@gen olt_class922_update_l14
-
-//@gen olt_2fe900_l14
-
-//@gen olt_2fea80_l14
-
-//@gen olt_2fec28_l14
-
-//@gen olt_2feca8_l14
-
-//@gen olt_2ffaf8_l14
-
-//@gen olt_2ffc08_l14
-
-//@gen olt_class923_update_l14
-
-//@gen olt_2feef8_l14
-
-//@gen olt_class924_update_l14
-
-//@gen olt_class933_update_l14
-
-//@gen olt_3004c8_l14
-
-//@gen olt_300968_l14
-
-//@gen olt_3002f8_l14
-
-//@gen olt_3003e8_l14
-
-//@gen olt_300758_l14
-
-//@gen olt_class1134_update_l14
-
-//@gen olt_class1193_update_l14
 
 }  // namespace rac1

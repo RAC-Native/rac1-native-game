@@ -22,12 +22,16 @@ void shutdown_memory();
 // Resolve a 32-bit virtual address to a host pointer.
 // Returns nullptr if address is null, and throws if address is out of range.
 // (the common cases - RAM below 64 MB outside a journal, the scratchpad - inline; every other case, the same
-// rules as before, in ee_ram_ptr_slow)
+// rules as before, in ee_ram_ptr_slow. The bridge guard - RAC1_BRIDGE_GUARD, src/game/bridge/guard.h - turns the inline
+// cases off while it is on, so that every access reaches ee_ram_ptr_slow: off, the inline code is the same)
 namespace ee_detail {
 extern u8* g_ram;             // the RAM block (nullptr before init_memory)
-extern u8* g_spr;             // the scratchpad
-extern u32 g_fast_last;       // the last RAM address reached inline: 64 MB - 1, or 0 (no inline RAM: none yet, a journal on)
-extern u32 g_read_last;       // the same for reads (ee_read): a read is never journaled, so 64 MB - 1 once the RAM exists
+extern u8* g_spr;             // the scratchpad (for host code that addresses it directly: world_cull_hand.h, moby_draw_hand.cpp)
+extern u8* g_spr_fast;        // the scratchpad for the inline paths below: g_spr, or nullptr (none yet, the bridge guard on)
+extern u32 g_fast_last;       // the last RAM address reached inline: 64 MB - 1, or 0 (no inline RAM: none yet, a journal on,
+                              // the bridge guard on)
+extern u32 g_read_last;       // the same for reads (ee_read): a read is never journaled, so 64 MB - 1 once the RAM exists (0
+                              // while the bridge guard is on)
 extern const u8* g_jseen;     // while a journal is on: per 4 KB page, saved (one more entry, always set, past the last page)
 extern u32 g_game_end;        // ee_game_ram_end's
 extern u32 g_mirror_mask;     // the mirrors' fold: 32 MB - 1, or a session's RAM size - 1
@@ -60,7 +64,7 @@ u32 ee_mirror_phys(u32 vaddr);
 void* ee_ram_ptr_slow(u32 vaddr, bool journal = true, u32 size = 0);
 RAC1_HOT_INLINE void* ee_ram_ptr(u32 vaddr) {
     if (vaddr - 1u < ee_detail::g_fast_last) return ee_detail::g_ram + vaddr;  // (1 .. 64 MB - 1)
-    if (vaddr - SPR_BASE < static_cast<u32>(SPR_SIZE) && ee_detail::g_spr != nullptr) return ee_detail::g_spr + (vaddr - SPR_BASE);
+    if (vaddr - SPR_BASE < static_cast<u32>(SPR_SIZE) && ee_detail::g_spr_fast != nullptr) return ee_detail::g_spr_fast + (vaddr - SPR_BASE);
     if (ee_detail::g_jseen != nullptr && vaddr - 1u < ee_detail::g_read_last) {  // (a journal on: its page and the next saved already)
         const u32 p = vaddr >> 12;
         if ((ee_detail::g_jseen[p] & ee_detail::g_jseen[p + 1]) != 0) return ee_detail::g_ram + vaddr;
@@ -70,7 +74,7 @@ RAC1_HOT_INLINE void* ee_ram_ptr(u32 vaddr) {
 // A pointer for a write of `size` bytes (ee_write): the journal saves the pages those bytes are on
 RAC1_HOT_INLINE void* ee_ram_ptr_write(u32 vaddr, u32 size) {
     if (vaddr - 1u < ee_detail::g_fast_last) return ee_detail::g_ram + vaddr;
-    if (vaddr - SPR_BASE < static_cast<u32>(SPR_SIZE) && ee_detail::g_spr != nullptr) return ee_detail::g_spr + (vaddr - SPR_BASE);
+    if (vaddr - SPR_BASE < static_cast<u32>(SPR_SIZE) && ee_detail::g_spr_fast != nullptr) return ee_detail::g_spr_fast + (vaddr - SPR_BASE);
     if (ee_detail::g_jseen != nullptr && vaddr - 1u < ee_detail::g_read_last) {
         if ((ee_detail::g_jseen[vaddr >> 12] & ee_detail::g_jseen[(vaddr + size - 1) >> 12]) != 0) return ee_detail::g_ram + vaddr;
     }
@@ -80,7 +84,7 @@ RAC1_HOT_INLINE void* ee_ram_ptr_write(u32 vaddr, u32 size) {
 // change nothing to put back).
 RAC1_HOT_INLINE const void* ee_ram_ptr_read(u32 vaddr) {
     if (vaddr - 1u < ee_detail::g_read_last) return ee_detail::g_ram + vaddr;
-    if (vaddr - SPR_BASE < static_cast<u32>(SPR_SIZE) && ee_detail::g_spr != nullptr) return ee_detail::g_spr + (vaddr - SPR_BASE);
+    if (vaddr - SPR_BASE < static_cast<u32>(SPR_SIZE) && ee_detail::g_spr_fast != nullptr) return ee_detail::g_spr_fast + (vaddr - SPR_BASE);
     return ee_ram_ptr_slow(vaddr, false);
 }
 

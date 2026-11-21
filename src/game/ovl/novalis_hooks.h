@@ -10,10 +10,10 @@ namespace rac1 {
 
 int32_t peckbot_hook0_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);   // L1:0x002f1c78
 int32_t peckbot_hook4_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);   // L1:0x002f1cc8
-int32_t peckbot_hook8_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);   // L1:0x002f1d18
+int32_t peckbot_hook8_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);   // L1:0x002f1d18 L13:0x002b7a20
 int32_t peckbot_hookc_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);   // L1:0x002f1dc8
 uint32_t peckbot_hook10_l1(uint32_t m);                                          // L1:0x002f1df8
-int32_t amoeboid_hook0_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);  // L1:0x002efa88
+int32_t amoeboid_hook0_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);  // L1:0x002efa88 L11:0x002fb780
 int32_t amoeboid_hook4_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);  // L1:0x002efaf8
 int32_t amoeboid_hook8_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);  // L1:0x002efb48
 int32_t amoeboid_hookc_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);  // L1:0x002efb98

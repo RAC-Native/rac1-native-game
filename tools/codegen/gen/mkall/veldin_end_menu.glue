@@ -1,1 +1,0 @@
-0x0024ff08: moby_draw_list(a0.w(), static_cast<int32_t>(a1.w()));  // (moby_pass.cpp: the declaration's orig line is above it)

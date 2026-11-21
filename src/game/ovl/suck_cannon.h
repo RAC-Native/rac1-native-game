@@ -1,6 +1,6 @@
 #ifndef RAC1_GAME_OVL_SUCK_CANNON_H
 #define RAC1_GAME_OVL_SUCK_CANNON_H
-// The Suck Cannon (item 0x09) and its helpers, transliterated (suck_cannon_asm.cpp). Addresses are
+// The Suck Cannon (item 0x09) and its helpers (suck_cannon.cpp), written by hand. Addresses are
 // Veldin's overlay addresses (the shared engine).
 #include <cstdint>
 

@@ -36,6 +36,7 @@ void e749_hit_update(uint32_t m);                                             //
 void class_hook_retire(uint32_t m);                                           // orig: 0x002db868
 void explosion_burst(uint32_t m);                                             // orig: 0x002dbf28
 void explode_and_reset(uint32_t m, uint32_t r, uint32_t burst);               // orig: 0x002dc938
+void carry_hook_c(uint32_t m);                                                // orig: (helper) carry_update's call of the class hook +0xc
 int32_t carry_update(uint32_t m, uint32_t p);                                 // orig: 0x002dc9f0
 void e749_update(uint32_t m);                                                  // orig: 0x002d4610
 

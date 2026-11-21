@@ -41,6 +41,11 @@
 #include <game/ovl/walker.h>
 #include <game/render/render_view.h>  // (the space fights' HUD: tools/codegen/hooks.glue)
 #include <game/port_stubs.h>
+#include <game/ovl/glows.h>
+#include <game/ovl/shadows.h>
+#include <game/ovl/screen_effects.h>
+#include <game/ovl/shared_hud_shapes.h>
+#include <game/ovl/shared_scroll.h>
 
 namespace rac1 {
 
@@ -48,67 +53,5 @@ using namespace eer;
 using namespace vu0m;
 
 //@gen pok_cb_30a908_l11
-
-//@gen pok_273190_l11
-
-//@gen pok_2c7258_l11
-
-//@gen pok_2c7d78_l11
-
-//@gen pok_273720_l11
-
-//@gen pok_2c7e20_l11
-
-//@gen pok_2c8108_l11
-
-//@gen pok_2c8338_l11
-
-//@gen pok_cb_30e708_l11
-
-//@gen pok_22c158_l11
-
-//@gen pok_310ad0_l11
-
-//@gen pok_310cf8_l11
-
-//@gen pok_311048_l11
-
-//@gen pok_311710_l11
-
-//@gen pok_311a88_l11
-
-//@gen pok_311be8_l11
-
-//@gen pok_318050_l11
-
-//@gen pok_311948_l11
-
-//@gen pok_311c80_l11
-
-//@gen pok_cb_311d50_l11
-
-//@gen pok_cb_3192c8_l11
-
-//@gen pok_288cc0_l11
-
-//@gen pok_cb_31c728_l11
-
-//@gen pok_2739c0_l11
-
-//@gen pok_31d8d8_l11
-
-//@gen pok_31d9a0_l11
-
-//@gen pok_31da78_l11
-
-//@gen pok_cb_31db50_l11
-
-//@gen pok_31e6a8_l11
-
-//@gen pok_31e780_l11
-
-//@gen pok_31e858_l11
-
-//@gen pok_cb_31e930_l11
 
 }  // namespace rac1

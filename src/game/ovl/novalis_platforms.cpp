@@ -24,8 +24,9 @@ void moby_sound_release_l1(uint32_t m, int32_t slot) {
 
 // Whether the hero is carried by / standing on the moby: while the run flag (0x1413dc) is 3 or the
 // locomotion state (0x1413d4) is 0x1c the moby the hero holds (0x13f848); otherwise, when
-// the camera-side half 0x13f65e is 0, the platform record 0x13f64c.
-// orig: L1:0x00277fb8
+// the camera-side half 0x13f65e is 0, the platform record 0x13f64c. The same code (the base ELF's data only) on levels 3, 7,
+// 9, 10, 12, 13 and 14, some of them with several copies: this port serves them all.
+// orig: L1:0x00277fb8 L3:0x00251598 L3:0x002d3140 L3:0x002dcb70 L7:0x002cd258 L7:0x002cdad0 L7:0x00311b70 L9:0x00303348 L10:0x00256338 L10:0x00295bc8 L12:0x002e38f0 L13:0x0026ed40 L14:0x0026afa0
 int32_t moby_hero_on_l1(uint32_t m) {
     const uint32_t P = g::PLAYER;
     if (lw(P + 0x208c) == 3 || lw(P + 0x2084) == 0x1c) return lwu(P + 0x4f8) == m ? 1 : 0;
@@ -37,8 +38,9 @@ int32_t moby_hero_on_l1(uint32_t m) {
 // index +0xb4, the hero-near boxes +0xcc / +0xc0, the wait +0xba, the speed +0xb0 in
 // 60ths of a path per second, the phase +0xa4 in 0..1, its rate +0xa8 / +0xac, the sound slot +0xc4,
 // the attach frame +0x60). m+0xbc: 0 at the first point, 1 at the last, 2 on its way. It sets off
-// when the hero rides it or comes nearer to its far end than to its near one.
-// orig: L1:0x002b9eb0
+// when the hero rides it or comes nearer to its far end than to its near one. The same code (the engine's data and the base
+// ELF's only) on Kerwan, Orxon (class 1141) and Gemlik Base: this port serves them all.
+// orig: L1:0x002b9eb0 L3:0x00291dd0 L10:0x002de860 L13:0x002b0478
 void lift_update_l1(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
     bool ready = false;

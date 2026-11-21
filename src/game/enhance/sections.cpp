@@ -4,6 +4,7 @@
 #include <formats/host_meshes.h>
 #include <formats/scene_wad.h>
 #include <game/enhance/context.h>
+#include <io/asset_paths.h>
 #include <game/enhance/hero_modes.h>
 #include <game/enhance/leveldata.h>
 #include <game/enhance/section_world.h>
@@ -66,6 +67,12 @@ double budget_ms() {
         return v > 0.0 ? v : 2.0;
     }();
     return b;
+}
+
+// deterministic section streaming for headless behaviour trace verification (RAC1_SECTION_SYNC=1)
+bool section_sync() {
+    static const bool s = std::getenv("RAC1_SECTION_SYNC") != nullptr && std::atoi(std::getenv("RAC1_SECTION_SYNC")) != 0;
+    return s;
 }
 
 struct Entry {
@@ -1258,7 +1265,8 @@ void commit_frame() {
         if (g_secs[i].st == St::Committing) which = static_cast<int>(i);
     for (size_t i = 1; i < g_secs.size() && which < 0; ++i) {
         Section& s = g_secs[i];
-        if (s.st != St::Loading || s.fut.wait_for(std::chrono::seconds(0)) != std::future_status::ready) continue;
+        if (s.st != St::Loading) continue;
+        if (!section_sync() && s.fut.wait_for(std::chrono::seconds(0)) != std::future_status::ready) continue;
         s.b = s.fut.get();
         if (s.req_frame == 0) s.req_frame = g_frame;  // (asked at the arrival, before the session's first frame)
         if (!s.b.err.empty()) {
@@ -1276,7 +1284,7 @@ void commit_frame() {
     if (which < 0) return;
     Section& s = g_secs[static_cast<size_t>(which)];
     const double t0 = now_ms();
-    while (now_ms() - t0 < budget_ms())
+    while (section_sync() || now_ms() - t0 < budget_ms())
         if (!commit_step(s, which)) break;
     const double dt = now_ms() - t0;
     ++s.commit_frames;
@@ -1951,12 +1959,13 @@ void section_equiv_native([[maybe_unused]] uint32_t H) {
     const uint32_t n = (hi - lo) >> 8;
     // the level's gameplay file from the disc, decompressed into the heap (the native load's own copy at H has its pvar table
     // rewritten by pvar_move)
-    char path[96];
-    std::snprintf(path, sizeof path, "assets/disc/levels/level%02d/%s", level, lw(0x0015ed80) != 0 ? "gameplay_pal.bin" : "gameplay_ntsc.bin");
+    char rel[64];
+    std::snprintf(rel, sizeof rel, "disc/levels/level%02d/%s", level, lw(0x0015ed80) != 0 ? "gameplay_pal.bin" : "gameplay_ntsc.bin");
+    const std::string path = io::asset_path(rel);
     std::vector<uint8_t> packed, gp;
     if (!session_memory_on() || !read_all(path, packed) ||
         !decompress_wad(std::span<const std::byte>(reinterpret_cast<const std::byte*>(packed.data()), packed.size()), gp)) {
-        std::printf("[section] equivalence level %d: cannot run (%s; a session's memory: RAC1_SESSION_MEM=1)\n", level, path);
+        std::printf("[section] equivalence level %d: cannot run (%s; a session's memory: RAC1_SESSION_MEM=1)\n", level, path.c_str());
         return;
     }
     const uint32_t H2 = session_heap_alloc(static_cast<uint32_t>(gp.size()) + 0x10, "section equivalence");

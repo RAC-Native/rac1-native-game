@@ -15,7 +15,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/vendor_tr.h>
-#include <game/ovl/weapon_classes_tr.h>
+#include <game/ovl/weapon_classes.h>
 #include <runtime/ee/ee_interpreter.h>
 #include <runtime/kernel/disc.h>
 
@@ -100,7 +100,9 @@ void drones_hit() {
             }
             return Args{{m}, {}};
         };
-        check(name.c_str(), 0x002ce358, 400, Ret::None, gen, [](A a) { if (a.i[0] != 0) drone_update_tr(a.i[0]); return uint64_t{0}; });
+        // (stage 5, task C2b) drone_update reaches sphere_collide: A2's collision scratch ranges left out of this check
+        const CollisionScratchIgnored spr_ignored;
+        check(name.c_str(), 0x002ce358, 400, Ret::None, gen, [](A a) { if (a.i[0] != 0) drone_update(a.i[0]); return uint64_t{0}; });
     }
 }
 

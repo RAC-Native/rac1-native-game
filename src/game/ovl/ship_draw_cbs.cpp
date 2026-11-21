@@ -1,6 +1,7 @@
 // The ship's draw callbacks: the hand-written piece and the registration (see ship_draw_cbs.h).
 #include <game/ovl/ship_draw_cbs.h>
 
+#include <game/ovl/aridia_ship.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -42,9 +43,10 @@ int64_t point_on_screen_depth(uint32_t pt, uint32_t out, float r) {
 
 // orig: (none) — registers the ship's draw callbacks for the indirect calls (ovl_call_moby_fn)
 void ship_draw_cbs_register() {
-    ovl_register_moby_fn(0x0028e670, ship_shadow_draw);
-    ovl_register_moby_fn(0x0028efc8, ship_flame_draw);
-    ovl_register_moby_fn(0x0028f238, ship_trails_draw);
+    // the hand-written ports of Aridia's copies, proved against Veldin's at 0x28e670 / 0x28efc8 / 0x28f238 too (batch 503)
+    ovl_register_moby_fn(0x0028e670, ari_ship_glow_draw_l2);
+    ovl_register_moby_fn(0x0028efc8, ari_ship_engine_glow_draw_l2);
+    ovl_register_moby_fn(0x0028f238, ari_ship_takeoff_draw_l2);
 }
 
 }  // namespace rac1

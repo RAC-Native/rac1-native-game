@@ -1,4 +1,0 @@
-// glue of Novalis's own draw callbacks (src/game/ovl/novalis_draw_cbs_tr.cpp, tools/codegen/mkall.py --glue, keyed by Novalis's addresses)
-0x0021ae98: v0.lo = static_cast<uint64_t>(effect_tex0(static_cast<int32_t>(a0.w())));
-0x0021e340: shadows_vu1_setup();
-0x002781d0: glow_draw(a0.w(), a1.w(), fr[12], fr[13]);  /* Veldin's glow_draw 0x263618 (variants_l1.cpp: the same code) */

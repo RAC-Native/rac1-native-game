@@ -4,6 +4,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
+#include <game/level/level_data.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/quad_draw.h>
 
@@ -235,7 +236,7 @@ void smoke_wisps_draw(uint32_t m) {
     const uint32_t q = sp + 0xa0;
     const uint32_t alpha24 = static_cast<uint32_t>(lbu(pv + 0x5c)) << 24;
     const uint32_t rgb = (static_cast<uint32_t>(lbu(pv + 0x5f)) << 16) | (static_cast<uint32_t>(lbu(pv + 0x5e)) << 8) | lbu(pv + 0x5d);
-    const uint32_t vent = lwu(OV(0x001600ec)) + (lwu(pv + 4) << 7);
+    const uint32_t vent = lvd::box(lvd::BOXES, lw(pv + 4));
     const int32_t end = lh(pv) + lh(pv + 2) + lh(pv + 0x40);
     lq_sq(sp, m + 0x10);
     sd(sp + 0x10, 0);

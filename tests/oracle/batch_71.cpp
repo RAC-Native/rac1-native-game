@@ -106,7 +106,7 @@ void batch_71() {
         for (int c = 0; c < 100; ++c) {
             level1();
             particles();
-            w32(OV(0x001611c0), 0x01e10000u);
+            w32(OV(0x001611c0), 0x01e10000u); w32(OV(0x0015f5f8), 0x01f80000u);
             const uint32_t base = ee_read<uint32_t>(OV(0x0016016c));
             const int32_t n = ee_read<int32_t>(OV(0x00160174)) + 1;
             for (int32_t i = 0; i < n; ++i) w8(base + u(i) * 0x40 + 1, ee_read<uint8_t>(base + u(i) * 0x40 + 1) & ~0x20u);
@@ -127,13 +127,13 @@ void batch_71() {
     check("particles_draw", 0x00267c98, 300, Ret::None, [level1, particles] {
         level1();
         particles();
-        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100)));  // the packet buffer
+        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100))); w32(OV(0x0015f5f8), 0x01f80000u);  // the packet buffer
         return Args{};
     }, [](A) { particles_draw(); return uint64_t{0}; });
     check("particles_draw_many", 0x00267c98, 100, Ret::None, [level1, particles] {
         level1();
         particles(true);
-        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100)));
+        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100))); w32(OV(0x0015f5f8), 0x01f80000u);
         return Args{};
     }, [](A) { particles_draw(); return uint64_t{0}; });
     auto sparkles = [level1] {
@@ -154,7 +154,7 @@ void batch_71() {
         if (coin()) { w32(OV(0x0016d180) + 0x13 * 0x10, 0); w32(OV(0x0016d184) + 0x13 * 0x10, 0); }
         w32(OV(0x0015f418), u(ri(0, 0x40)));
         w32(0x0015ee74, u(ri(0x1000, 0x40000)) & ~0xffu);
-        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100)));
+        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100))); w32(OV(0x0015f5f8), 0x01f80000u);
     };
     if (std::getenv("ORACLE_SPARK_STATS") != nullptr) {  // coverage: sparkles drawn / culled
         int drawn = 0, culled = 0;
@@ -200,7 +200,7 @@ void batch_71() {
         for (int c = 0; c < 300; ++c) {
             level1();
             quad(M);
-            w32(OV(0x001611c0), 0x01e10000u);
+            w32(OV(0x001611c0), 0x01e10000u); w32(OV(0x0015f5f8), 0x01f80000u);
             quad_draw(M, 0);
             const uint32_t n = ee_read<uint32_t>(OV(0x001611c0)) - 0x01e10000u;
             (n == 0xd0 ? on : n == 0x60 ? clipped : out) += 1;
@@ -217,7 +217,7 @@ void batch_71() {
             const float m[16] = {std::cos(a), std::sin(a), 0, 0, -std::sin(a), std::cos(a), 0, 0, 0, 0, 1, 0, rf(-1, 1), rf(-1, 1), rf(-1, 1), 1};
             for (uint32_t i = 0; i < 16; ++i) wf(T + 4 * i, m[i]);
         }
-        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100)));
+        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100))); w32(OV(0x0015f5f8), 0x01f80000u);
         return Args{{M, mat, 0}, {}};
     }, [](A a) { quad_draw(a.i[0], a.i[1]); return uint64_t{0}; });
     g_extra_noop_hooks.clear();
@@ -244,7 +244,7 @@ void batch_71() {
         wrand(M + 0x40, 4);
         wfrand(M + 0x50, 8, 0, 1);
         wrand(M + 0x70, 8);
-        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100)));
+        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100))); w32(OV(0x0015f5f8), 0x01f80000u);
         return Args{{M, 0, 0}, {}};
     }, [](A a) { quad_draw(a.i[0], a.i[1]); return uint64_t{0}; });
     check("decals_draw", 0x001f9660, 300, Ret::None, [level1] {
@@ -264,7 +264,7 @@ void batch_71() {
         }
         if (coin()) wfrand(OV(0x0016c7e0), 16, -1, 1);
         if (coin()) { w32(OV(0x0016d180), 0); w32(OV(0x0016d184), 0); }
-        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100)));
+        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100))); w32(OV(0x0015f5f8), 0x01f80000u);
         return Args{};
     }, [](A) { decals_draw(); return uint64_t{0}; });
     g_extra_noop_hooks.clear();
@@ -278,7 +278,7 @@ void batch_71() {
         level1();
         near_point(OUT, ri(0, 5) == 0 ? -5.0f : 0.5f, 30);
         if (coin()) { w32(OV(0x0016d180) + 0xb * 0x10, 0); w32(OV(0x0016d184) + 0xb * 0x10, 0); }
-        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100)));
+        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100))); w32(OV(0x0015f5f8), 0x01f80000u);
         return Args{{OUT, R()}, {rf(0, ri(0, 4) == 0 ? 20.0f : 1.0f), rf(-0.5f, 0.5f)}};
     }, [](A a) { glow_draw(a.i[0], a.i[1], a.f[0], a.f[1]); return uint64_t{0}; });
     check("hero_glows_draw", 0x00207d40, 400, Ret::None, [level1, near_point] {
@@ -298,7 +298,7 @@ void batch_71() {
         w32(P + 0x22e4, R()); w32(P + 0x2300, R());
         w16(P + 0x22d8, coin() ? 0u : R()); w16(P + 0x22fc, R() & 1);
         w8(0x0015edb3, R() & 1); wf(0x0015ed60, rf(0, 3)); wf(0x0014097c, rf(0, 0.3f));
-        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100)));
+        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100))); w32(OV(0x0015f5f8), 0x01f80000u);
         return Args{{ee_read<uint32_t>(0x001413d0)}, {}};
     }, [](A a) { hero_glows_draw(a.i[0]); return uint64_t{0}; });
     // class 1060's glows on Veldin's own lights (and some other moby given the group / class)
@@ -315,7 +315,7 @@ void batch_71() {
         for (uint32_t l : lights) w8(l + 0x31, R() & 1);
         static const int32_t levels[] = {0, 1, 0x12, 3};
         w32(0x0015ed84, u(levels[ri(0, 3)]));
-        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100)));
+        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100))); w32(OV(0x0015f5f8), 0x01f80000u);
         return Args{{m}, {}};
     }, [](A a) { light_group_glows_draw(a.i[0]); return uint64_t{0}; });
     check("bomb_discs_draw", 0x002acbf0, 300, Ret::None, [level1, near_point] {
@@ -328,7 +328,7 @@ void batch_71() {
         w32(OV(0x0015f5c4), ri(0, 4) == 0 ? 2u : u(ri(0, 1)));
         w32(OV(0x0015f5cc), R() & 0xffff);
         if (coin()) for (uint32_t t : {0x11u, 0x12u}) { w32(OV(0x0016d180) + t * 0x10, 0); w32(OV(0x0016d184) + t * 0x10, 0); }
-        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100)));
+        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100))); w32(OV(0x0015f5f8), 0x01f80000u);
         return Args{{m}, {}};
     }, [](A a) { bomb_discs_draw(a.i[0]); return uint64_t{0}; });
     check("wrench_trail_draw", 0x002a7780, 400, Ret::None, [level1] {
@@ -348,7 +348,7 @@ void batch_71() {
         w32(OV(0x001613c0), coin() ? now - u(ri(0, 3)) : R());
         wf(OV(0x001613bc), rf(0.5f, 1.5f));
         if (coin()) for (uint32_t t : {0xcu, 0x14u}) { w32(OV(0x0016d180) + t * 0x10, 0); w32(OV(0x0016d184) + t * 0x10, 0); }
-        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100)));
+        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100))); w32(OV(0x0015f5f8), 0x01f80000u);
         return Args{{m}, {}};
     }, [](A a) { wrench_trail_draw(a.i[0]); return uint64_t{0}; });
     check("mirror_mesh_draw", 0x002d19b0, 200, Ret::None, [level1, with_class] {
@@ -370,7 +370,7 @@ void batch_71() {
         if (coin()) for (uint32_t k = 0; k < 3; ++k) wf(m + 0x10 + 4 * k, ee_read<float>(OV(0x00166dc0) + 4 * k) + rf(-20, 20));
         wfrand(OV(0x001e0e30), 0xcc, 0, 1);
         w32(OV(0x001618f0), u(ri(0, 0x20)));
-        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x80)));
+        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x80))); w32(OV(0x0015f5f8), 0x01f80000u);
         return Args{{m}, {}};
     }, [](A a) { mirror_mesh_draw(a.i[0]); return uint64_t{0}; });
     check("smoke_wisps_draw", 0x002d73e8, 200, Ret::None, [level1, with_class] {
@@ -396,7 +396,7 @@ void batch_71() {
         wf(0x0015ed60, rf(0.5f, 2));
         w32(OV(0x00161998), u(ri(0, 0x80)));
         seed_rand();
-        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x40)));
+        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x40))); w32(OV(0x0015f5f8), 0x01f80000u);
         return Args{{m}, {}};
     }, [](A a) { if (a.i[0] != 0) smoke_wisps_draw(a.i[0]); return uint64_t{0}; });
     g_extra_noop_hooks.clear();
@@ -417,7 +417,7 @@ void batch_71() {
     };
     check("screen_effect_draw", 0x001edc38, 300, Ret::None, [level1, effect_entry] {
         level1(); effect_entry(OUT);
-        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100)));
+        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100))); w32(OV(0x0015f5f8), 0x01f80000u);
         return Args{{OUT}, {rf(-100, 600), rf(-100, 500)}};
     }, [](A a) { screen_effect_draw(a.i[0], a.f[0], a.f[1]); return uint64_t{0}; });
     check("screen_effects_draw", 0x001ee040, 300, Ret::None, [level1, effect_entry] {
@@ -433,7 +433,7 @@ void batch_71() {
         }
         w32(OV(0x00169100), u(n));
         w32(0x001413d4, ri(0, 8) == 0 ? 0x72u : 0u);
-        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100)));
+        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100))); w32(OV(0x0015f5f8), 0x01f80000u);
         return Args{};
     }, [](A) { screen_effects_draw(); return uint64_t{0}; });
     check("lens_flare_draw", 0x001ed880, 300, Ret::None, [level1, near_point] {
@@ -452,7 +452,7 @@ void batch_71() {
             wf(S + 0x90 + 4 * i, rf(-1, 2));
             wf(S + 0xd0 + 4 * i, rf(0, 2));
         }
-        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100)));
+        w32(OV(0x001611c0), 0x01e10000u + 0x10 * u(ri(0, 0x100))); w32(OV(0x0015f5f8), 0x01f80000u);
         return Args{};
     }, [](A) { lens_flare_draw(); return uint64_t{0}; });
     // The VU1 program: the chain the draw wrote, walked from the same random VU1 state once with

@@ -2,6 +2,7 @@
 #include <game/enhance/context.h>
 
 #include <game/enhance/pool.h>
+#include <io/asset_paths.h>
 #include <game/enhance/session.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_reloc.h>
@@ -60,7 +61,7 @@ std::string owner(int level) { return "context " + std::to_string(level); }
 
 // the level's map: its engine objects (extents) and its functions paired with Veldin's
 bool read_map(Context& c) {
-    const std::string base = "assets/generated/overlay_map/level" + std::to_string(c.level);
+    const std::string base = io::asset_path("generated/overlay_map/level" + std::to_string(c.level));
     std::ifstream map(base + ".txt"), ext(base + ".ext");
     if (!map || !ext) {
         std::fprintf(stderr, "[ctx] level %d: %s.txt or .ext missing (./setup.sh): no context\n", c.level, base.c_str());

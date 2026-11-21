@@ -61,6 +61,7 @@ void batch_79() {
     // flags, fades, shadows, LOD distances and light sets varied; the light block random.
     auto mobys = [level1] {
         level1();
+        w32(OV(0x0015f5f8), 0x01e80000u);  // (the skinning ring the checks hand the loop starts here, above the packet buffer at 0x01e10000 as in the game: the port bounds both, packet_rings.h)
         const float cx = ee_read<float>(OV(0x00166dc0)), cy = ee_read<float>(OV(0x00166dc4)), cz = ee_read<float>(OV(0x00166dc8));
         float fw[3], rt[3], up[3];
         for (int k = 0; k < 3; ++k) {
@@ -197,7 +198,7 @@ void batch_79() {
     if (std::getenv("ORACLE_MOBY_STATS") != nullptr) {  // coverage: records and chain bytes the cases write
         for (int c = 0; c < 20; ++c) {
             mobys();
-            const uint32_t ring = 0x01d00000u, sp0 = ee_read<uint32_t>(OV(0x001611c0));
+            const uint32_t ring = 0x01e80000u, sp0 = ee_read<uint32_t>(OV(0x001611c0));
             const uint32_t end = moby_draw_loop(ee_read<uint32_t>(OV(0x0015ffd8)), ring, -1, c & 1);
             std::printf("case %d: ring %u bytes, chain %u bytes, sub-meshes %u, deferred %u\n", c, end - ring, ee_read<uint32_t>(OV(0x001611c0)) - sp0,
                         ee_read<uint32_t>(OV(0x0015fff8)), ee_read<uint32_t>(OV(0x0015fffc)));
@@ -205,7 +206,7 @@ void batch_79() {
     }
     check("moby_draw_loop", 0x002559c0, 150, Ret::Int32, [mobys] {
         mobys();
-        return Args{{ee_read<uint32_t>(OV(0x0015ffd8)), 0x01d00000u + 0x10 * u(ri(0, 0x100)), 0xffffffffu, u(ri(0, 1))}, {}};
+        return Args{{ee_read<uint32_t>(OV(0x0015ffd8)), 0x01e80000u + 0x10 * u(ri(0, 0x100)), 0xffffffffu, u(ri(0, 1))}, {}};
     }, [](A a) {
         vu0m::regs() = vu0_in;
         return static_cast<uint64_t>(moby_draw_loop(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]), a.i[3]));
@@ -215,7 +216,7 @@ void batch_79() {
         mobys();
         spr_moby_fill();
         vu0m::regs() = vu0_in;
-        const uint32_t r = moby_draw_loop(ee_read<uint32_t>(OV(0x0015ffd8)), 0x01d00000u, -1, u(ri(0, 1)));
+        const uint32_t r = moby_draw_loop(ee_read<uint32_t>(OV(0x0015ffd8)), 0x01e80000u, -1, u(ri(0, 1)));
         w32(OV(0x0015ffd4), r);
     };
     check("moby_textures", 0x002555c0, 150, Ret::Int32, [drawn] {
@@ -286,7 +287,7 @@ void batch_79() {
     }, [](A) { moby_texture_slots(); return uint64_t{0}; });
     check("moby_pass_start", 0x0024fe50, 50, Ret::None, [mobys] {
         mobys();
-        w32(OV(0x0015f5f8), 0x01d00000u + 0x10 * u(ri(0, 0x100)));
+        w32(OV(0x0015f5f8), 0x01e80000u + 0x10 * u(ri(0, 0x100)));
         w32(OV(0x0015f5fc), 0x01e80000u);
         return Args{};
     }, [](A) { moby_pass_start(); return uint64_t{0}; });
@@ -311,7 +312,7 @@ void batch_79() {
             int with = 0;
             for (int c = 0; c < 40; ++c) {
                 mobys();
-                w32(OV(0x0015f5f8), 0x01d00000u);
+                w32(OV(0x0015f5f8), 0x01e80000u);
                 w32(OV(0x0015f5fc), 0x01f80000u);
                 w32(OV(0x0016a018), 1);
                 vu0::vif0_send_chain(0x0010e4c0, true);
@@ -324,7 +325,7 @@ void batch_79() {
         check("moby_pass", 0x00250038, 100, Ret::None, [mobys] {
             mobys();
             vu0::vif0_send_chain(0x0010e4c0, true);
-            w32(OV(0x0015f5f8), 0x01d00000u + 0x10 * u(ri(0, 0x100)));
+            w32(OV(0x0015f5f8), 0x01e80000u + 0x10 * u(ri(0, 0x100)));
             // (the packet buffer's end, the skinning's work buffer above it: apart from the chain,
             // as in the game -- a full buffer is the draw loop check's)
             w32(OV(0x0015f5fc), 0x01f80000u);
@@ -359,7 +360,7 @@ void batch_79() {
         for (int c = 0; c < 10; ++c) {
             drawn();
             int recs = 0, jointed = 0, keys2 = 0, chans = 0, layers = 0;
-            for (uint32_t p = 0x01d00000u; ee_read<uint32_t>(p) != 0 && recs < 500; p = record(p, 1), ++recs) {
+            for (uint32_t p = 0x01e80000u; ee_read<uint32_t>(p) != 0 && recs < 500; p = record(p, 1), ++recs) {
                 if (ee_read<int16_t>(p + 0x10) != 0) ++jointed;
                 if (ee_read<uint32_t>(p + 4) != 0) ++keys2;
                 if (ee_read<uint32_t>(p + 8) != 0) ++chans;
@@ -375,19 +376,19 @@ void batch_79() {
             do {
                 drawn();
                 recs = 0;
-                for (uint32_t p = 0x01d00000u; ee_read<uint32_t>(p) != 0 && recs < 500; p = record(p, 1)) ++recs;
+                for (uint32_t p = 0x01e80000u; ee_read<uint32_t>(p) != 0 && recs < 500; p = record(p, 1)) ++recs;
             } while (recs == 0);
             // a record of a kind drawn at random when the frame has one: a second key, a second
             // key lerped only (0x400), blend channels, additive layers
             const int kind = ri(0, 4);
             std::vector<uint32_t> fit;
-            for (uint32_t p = 0x01d00000u; ee_read<uint32_t>(p) != 0 && fit.size() < 500; p = record(p, 1)) {
+            for (uint32_t p = 0x01e80000u; ee_read<uint32_t>(p) != 0 && fit.size() < 500; p = record(p, 1)) {
                 const bool k2 = ee_read<uint32_t>(p + 4) != 0;
                 if ((kind == 1 && k2) || (kind == 2 && k2 && (ee_read<uint16_t>(p + 0x12) & 0x400) != 0) ||
                     (kind == 3 && ee_read<uint32_t>(p + 8) != 0) || (kind == 4 && ee_read<uint32_t>(p + 0xc) != 0))
                     fit.push_back(p);
             }
-            job = !fit.empty() ? fit[u(ri(0, static_cast<int32_t>(fit.size()) - 1))] : record(0x01d00000u, ri(0, recs - 1));
+            job = !fit.empty() ? fit[u(ri(0, static_cast<int32_t>(fit.size()) - 1))] : record(0x01e80000u, ri(0, recs - 1));
             return Args{{job, 0x01f80000u}, {}};
         }, [](A a) {
             vu0m::regs() = vu0_in;
@@ -406,9 +407,9 @@ void batch_79() {
             do {
                 drawn();
                 recs = 0;
-                for (uint32_t p = 0x01d00000u; ee_read<uint32_t>(p) != 0 && recs < 500; p = record(p, 1)) ++recs;
+                for (uint32_t p = 0x01e80000u; ee_read<uint32_t>(p) != 0 && recs < 500; p = record(p, 1)) ++recs;
             } while (recs == 0);
-            job = record(0x01d00000u, ri(0, recs - 1));
+            job = record(0x01e80000u, ri(0, recs - 1));
             ee_vif0_chain(0x00100080, true);
             vu0::vif0_send_chain(0x00100080, true);
             mem_copy128(0x70003800, OV(0x00166080), 0x800);
@@ -444,7 +445,7 @@ void batch_79() {
             vu0m::regs().vf[0].v[3] = 1.0f;
             if (std::getenv("ORACLE_SKIN_LIST") != nullptr) {
                 int k = 0;
-                for (uint32_t p = 0x01d00000u; ee_read<uint32_t>(p) != 0 && k < 500; p = record(p, 1), ++k)
+                for (uint32_t p = 0x01e80000u; ee_read<uint32_t>(p) != 0 && k < 500; p = record(p, 1), ++k)
                     std::printf("    rec %d %08x: +0 %08x +4 %08x +8 %08x +c %08x +10 %08x +14 %08x\n", k, p, ee_read<uint32_t>(p), ee_read<uint32_t>(p + 4),
                                 ee_read<uint32_t>(p + 8), ee_read<uint32_t>(p + 12), ee_read<uint32_t>(p + 16), ee_read<uint32_t>(p + 20));
             }
@@ -458,7 +459,7 @@ void batch_79() {
                 ee.vu0().mem = p.mem;
                 ee.set_vu0_coexec(true, 1, 1);
             };
-            return Args{{0x01d00000u, 0x01f80000u}, {}};
+            return Args{{0x01e80000u, 0x01f80000u}, {}};
         }, [](A a) {
             moby_skin_all(a.i[0], a.i[1]);
             return uint64_t{0};
@@ -472,7 +473,7 @@ void batch_79() {
             do {
                 mobys();
                 spr_moby_fill();
-                moby_draw_loop(ee_read<uint32_t>(OV(0x0015ffd8)), 0x01d00000u, -1, 1);
+                moby_draw_loop(ee_read<uint32_t>(OV(0x0015ffd8)), 0x01e80000u, -1, 1);
             } while (ee_read<uint32_t>(OV(0x0015fffc)) == 0);
             vu0::vif0_send_chain(0x0010e4c0, true);
         };
@@ -697,9 +698,9 @@ void batch_79() {
             do {
                 drawn();
                 recs = 0;
-                for (uint32_t p = 0x01d00000u; ee_read<uint32_t>(p) != 0 && recs < 500; p = record(p, 1)) ++recs;
+                for (uint32_t p = 0x01e80000u; ee_read<uint32_t>(p) != 0 && recs < 500; p = record(p, 1)) ++recs;
             } while (recs == 0);
-            job = record(0x01d00000u, ri(0, recs - 1));
+            job = record(0x01e80000u, ri(0, recs - 1));
             ee_vif0_chain(0x00100080, true);
             mem_copy128(0x70003800, OV(0x00166080), 0x800);
             vu0m::regs() = vu0_in;
@@ -735,9 +736,9 @@ void batch_79() {
             do {
                 drawn();
                 recs = 0;
-                for (uint32_t p = 0x01d00000u; ee_read<uint32_t>(p) != 0 && recs < 500; p = record(p, 1)) ++recs;
+                for (uint32_t p = 0x01e80000u; ee_read<uint32_t>(p) != 0 && recs < 500; p = record(p, 1)) ++recs;
             } while (recs == 0);
-            job = record(0x01d00000u, ri(0, recs - 1));
+            job = record(0x01e80000u, ri(0, recs - 1));
             ee_vif0_chain(0x00100080, true);
             mem_copy128(0x70003800, OV(0x00166080), 0x800);
             vu0m::regs() = vu0_in;

@@ -1,6 +1,4 @@
-// The menu at the end of the game (Veldin's menu state 0x21 / 0x23 pages: their widget functions), transliterated (met at the end of the
-// game, level 18): the declarations of end_menu_tr.cpp (regen group veldin_end_menu). The widget functions are called by menu_widget_call
-// (pause_menu.cpp, through end_menu_widget_call).
+// End-of-game menu pages (menu state 0x21 and page state 0x23 widget functions; implemented in end_menu.cpp).
 #ifndef RAC1_GAME_OVL_END_MENU_TR_H
 #define RAC1_GAME_OVL_END_MENU_TR_H
 

@@ -5,7 +5,6 @@
 # player's ISO (and the boot ELF / overlay maps setup.sh extracts from it) plus the committed, hand-written generator
 # inputs (no generated file is read). The units:
 #   mkall:<group>   tools/codegen/gen_mkall.py   mips2cpp / mkall transliterations (tools/codegen/gen/mkall/<group>.json, .glue, gen/skel/)
-#   asm:<spec>      tools/codegen/gen_asm.py     asm2fn transliterations (tools/codegen/asm2fn_specs/<spec>.json)
 #   asm2cpp:<name>  tools/codegen/gen_asm2cpp.py hand-written routines transliterated by asm2cpp and reviewed (tools/codegen/gen/asm2cpp/<name>.json)
 #   vu:moby         tools/codegen/gen_moby_vu_fast.py   the moby pass's VU0 / VU1 programs (exact and fast)
 #   vu:world        tools/codegen/gen_world_vu.py       the world passes' six VU1 programs (exact and fast)
@@ -44,15 +43,37 @@ VU = {
 }
 
 
+UNITS_LIST = os.path.join(HERE, 'gen', 'units.txt')
+
+
+def listed_units():
+    """The mkall / asm2cpp units this version has (gen/units.txt)."""
+    with open(UNITS_LIST) as f:
+        return {ln.strip() for ln in f if ln.strip() and not ln.startswith('#')}
+
+
 def units():
-    """{unit: [generated files, relative to the repository]}"""
-    out = {}
-    for p in sorted(glob.glob(os.path.join(HERE, 'gen', 'mkall', '*.json'))):
-        out['mkall:' + os.path.splitext(os.path.basename(p))[0]] = json.load(open(p))['files']
-    for p in sorted(glob.glob(os.path.join(HERE, 'asm2fn_specs', '*.json'))):
-        out['asm:' + os.path.splitext(os.path.basename(p))[0]] = [json.load(open(p))['out']]
-    for p in sorted(glob.glob(os.path.join(HERE, 'gen', 'asm2cpp', '*.json'))):
-        out['asm2cpp:' + os.path.splitext(os.path.basename(p))[0]] = [json.load(open(p))['file']]
+    """{unit: [generated files, relative to the repository]}: the units gen/units.txt lists. A unit's inputs on disk that
+    the list does not name (left by an earlier version whose source zip this one was unpacked over: a unit since retired,
+    whose code calls functions that are hand-written now, #170) are skipped, with a warning on stderr; a listed unit whose
+    json is missing stops."""
+    listed = listed_units()
+    out, stray = {}, []
+    for kind, key in (('mkall', 'files'), ('asm2cpp', 'file')):
+        for p in sorted(glob.glob(os.path.join(HERE, 'gen', kind, '*.json'))):
+            u = kind + ':' + os.path.splitext(os.path.basename(p))[0]
+            if u not in listed:
+                stray.append(u)
+                continue
+            fs = json.load(open(p))[key]
+            out[u] = fs if kind == 'mkall' else [fs]
+    if stray:
+        sys.stderr.write('[generate_all] skipped %d unit(s) this version does not have (files left by an older version, e.g. a source '
+                         'zip unpacked over an older folder; unpack into an empty folder to be rid of them): %s\n'
+                         % (len(stray), ' '.join(stray)))
+    gone = sorted(listed - set(out))
+    if gone:
+        sys.exit('[generate_all] gen/units.txt lists unit(s) whose inputs are missing: %s' % ' '.join(gone))
     for k, fs in VU.items():
         out[k] = [OVL + f for f in fs]
     return out
@@ -63,8 +84,6 @@ def command(unit, root, strip, tmp):
     py = sys.executable
     if kind == 'mkall':
         return [py, os.path.join(HERE, 'gen_mkall.py'), 'gen', name, '--out', root, '--tmp', tmp] + (['--no-insn-comments'] if strip else [])
-    if kind == 'asm':
-        return [py, os.path.join(HERE, 'gen_asm.py'), 'gen', name, '--out', root, '--tmp', tmp] + (['--no-insn-comments'] if strip else [])
     if kind == 'asm2cpp':
         return [py, os.path.join(HERE, 'gen_asm2cpp.py'), 'gen', name, '--out', root] + (['--no-insn-comments'] if strip else [])
     out = os.path.join(root, OVL)

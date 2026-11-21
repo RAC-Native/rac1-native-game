@@ -9,7 +9,9 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/region_core.h>
 
+#include <bitset>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -18,16 +20,23 @@
 namespace rac1 {
 
 namespace {
-constexpr int FIXES[] = {1, 2, 3, 5, 6, 7, 11, 15, 16, 17, 18, 19, 20, 22};  // the fixes of the 1.02 Fixes row (fixes102.h)
-constexpr int GAMEPLAY[] = {4, 8, 9, 10, 12, 13, 14, 21};  // the fixes of the 1.02 Gameplay row (fixes102.h)
+constexpr int FIXES[] = {1, 2, 3, 5, 6, 7, 11, 15, 16, 17, 18, 19, 20, 22, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 43, 45, 46, 49};  // the fixes of the 1.02 Fixes row (fixes102.h)
+constexpr int GAMEPLAY[] = {4, 8, 9, 10, 12, 13, 14, 21, 23, 24, 25, 31};  // the fixes of the 1.02 Gameplay row (fixes102.h)
 
-// orig: (none) — enhancement: a list variable's fixes (RAC1_FIXES102 / RAC1_GAMEPLAY102) as bits (bit n: fix n); -1
-// unset; `fixes` the row's
+// orig: (none) — enhancement: a list variable's fixes (RAC1_FIXES102 / RAC1_GAMEPLAY102) as bits (bit n: fix n), `set`
+// false when the variable is unset; `fixes` the row's
+struct FixBits {
+    bool set = false;
+    std::bitset<128> bits;
+    bool on(int fix) const { return fix >= 0 && fix < 128 && bits.test(static_cast<size_t>(fix)); }
+};
 template <size_t N>
-int64_t env_list(const char* name, const int (&fixes)[N]) {
+FixBits env_list(const char* name, const int (&fixes)[N]) {
+    FixBits out;
     const char* e = std::getenv(name);
-    if (e == nullptr) return int64_t{-1};
-    int64_t bits = 0;
+    if (e == nullptr) return out;
+    out.set = true;
+    std::bitset<128>& bits = out.bits;
     const std::string list = e;
     size_t at = 0;
     while (at <= list.size()) {
@@ -37,7 +46,7 @@ int64_t env_list(const char* name, const int (&fixes)[N]) {
         at = end + 1;
         if (item.empty() || item == "none") continue;
         if (item == "all") {
-            for (const int f : fixes) bits |= int64_t{1} << f;
+            for (const int f : fixes) bits.set(static_cast<size_t>(f));
             continue;
         }
         char* stop = nullptr;
@@ -50,20 +59,20 @@ int64_t env_list(const char* name, const int (&fixes)[N]) {
             std::fprintf(stderr, "%s: %s is not one of the fixes (%sall, none)\n", name, item.c_str(), list_text.c_str());
             continue;
         }
-        bits |= int64_t{1} << n;
+        bits.set(static_cast<size_t>(n));
     }
-    return bits;
+    return out;
 }
 
-// orig: (none) — enhancement: RAC1_FIXES102's fixes as bits; -1 unset
-int64_t env_fixes() {
-    static const int64_t v = env_list("RAC1_FIXES102", FIXES);
+// orig: (none) — enhancement: RAC1_FIXES102's fixes as bits
+const FixBits& env_fixes() {
+    static const FixBits v = env_list("RAC1_FIXES102", FIXES);
     return v;
 }
 
-// orig: (none) — enhancement: RAC1_GAMEPLAY102's fixes as bits; -1 unset
-int64_t env_gameplay() {
-    static const int64_t v = env_list("RAC1_GAMEPLAY102", GAMEPLAY);
+// orig: (none) — enhancement: RAC1_GAMEPLAY102's fixes as bits
+const FixBits& env_gameplay() {
+    static const FixBits v = env_list("RAC1_GAMEPLAY102", GAMEPLAY);
     return v;
 }
 }  // namespace
@@ -71,8 +80,8 @@ int64_t env_gameplay() {
 // orig: (none) — enhancement (fixes102.h)
 bool fixes102_on(int fix) {
     if (g_advanced_disabled) return false;
-    const int64_t env = env_fixes();
-    if (env >= 0) return ((env >> fix) & 1) != 0;
+    const FixBits& env = env_fixes();
+    if (env.set) return env.on(fix);
     if (!advanced_fixes102()) return false;
     for (const int f : FIXES)
         if (f == fix) return true;
@@ -82,8 +91,8 @@ bool fixes102_on(int fix) {
 // orig: (none) — enhancement (fixes102.h)
 bool gameplay102_on(int fix) {
     if (g_advanced_disabled) return false;
-    const int64_t env = env_gameplay();
-    if (env >= 0) return ((env >> fix) & 1) != 0;
+    const FixBits& env = env_gameplay();
+    if (env.set) return env.on(fix);
     if (!advanced_gameplay102()) return false;
     for (const int f : GAMEPLAY)
         if (f == fix) return true;
@@ -134,7 +143,9 @@ void fixes102_cutscene_end() {
 // orig: (none) — enhancement (fixes102.h); the 1.02 build's L2:0x2d68d0 (PAL disc 2.00): the shark's place, 0.333
 // higher, to enemy_death_burst(m, place, 0.333, 0)
 void fixes102_sand_shark_burst(uint32_t m) {
-    if (!fixes102_on(18)) return;
+    // (region: the PAL disc 2.00 is the 1.02 build, whose own shark has the burst (region_core_moved()): there it bursts
+    // whatever the fix's row, as the disc's own code did while the shark was generated)
+    if (!fixes102_on(18) && !region_core_moved()) return;
     const float k = u2f(0x3eaa7efau);
     const uint32_t at = ee_stack_alloc(0x10);
     lq_sq(at, m + 0x10);
@@ -150,8 +161,6 @@ std::string ee_string(uint32_t a) {
     for (uint8_t c = lbu(a); c != 0; c = lbu(++a)) out += static_cast<char>(c);
     return out;
 }
-// orig: (none) — enhancement: fix 20's flag (fixes102_blarg_far_set)
-bool g_blarg_far = false;
 }  // namespace
 
 // orig: (none) — enhancement (fixes102.h); the 1.02 build's Rilgar L5:0x263a64 (the poses: "x%d %s", 20855 / 20856 by
@@ -159,7 +168,9 @@ bool g_blarg_far = false;
 // place - 1, at most 21032) (PAL disc 2.00, its text ids 5 higher past 20695); the original's own texts (English: "x%d
 // Poses", "%s + %d Flips", "% dst".."% dth") are written first, then this one over them
 bool fixes102_race_text(uint32_t buf, int kind, uint32_t name, int32_t n) {
-    if (!fixes102_on(19)) return false;
+    // (region: a PAL build's disc, 0x15ee90 not 0, draws these texts itself, 1.00 as 2.00 (PAL 1.00 L5:0x262cb4, 0x262f38,
+    // 0x2660ec, with the ids NTSC-U's): there they are written whatever the fix's row, the disc's own lines)
+    if (!fixes102_on(19) && lw(0x0015ee90) == 0) return false;
     std::string t;
     if (kind == 0) {
         t = "x" + std::to_string(n) + " " + ee_string(sub_00203ad8(TXT(n != 1 ? 20856 : 20855)));
@@ -175,10 +186,99 @@ bool fixes102_race_text(uint32_t buf, int kind, uint32_t name, int32_t n) {
     return true;
 }
 
-// orig: (none) — enhancement (fixes102.h); the 1.02 build's L6:0x3011c4 (0x300278's new argument: 0 when the break is
-// the far one) and L6:0x301754 (no debris loop with it 0)
-void fixes102_blarg_far_set(bool far) { g_blarg_far = far && fixes102_on(20); }
-bool fixes102_blarg_far() { return g_blarg_far; }
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L6:0x3011c4 (0x300278's new argument: `link` != -1, in the
+// far break only) and L6:0x301754 (no debris loop with it 0)
+bool fixes102_blarg_far_debris(int32_t link) {
+    // (region: the PAL disc 2.00 is the 1.02 build, whose own break this is (region_core_moved()): there its rule applies
+    // whatever the fix's row, as the disc's own code did while the class was generated)
+    if (!fixes102_on(20) && !region_core_moved()) return true;
+    return link != -1;
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L6:0x2fb0b8 (PAL disc 2.00): the Snagglebeast's state 1 tests
+// its countdown's flag (+0x170) first, the pump (+0xb4) and its target's class only while it is not set
+bool fixes102_snagglebeast_start() {
+    // (region: on the PAL disc 2.00, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(32) || region_core_moved();
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L7:0x316e6c and L7:0x314f50 (PAL 2.00 disc): the Snagglebeast's
+// walk flags tested with `& 4` and `& 2` in place of `== 4` and `== 2`
+bool fixes102_umbris_snagglebeast_walk() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(33) || region_core_moved();
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L8:0x2eb770 (PAL 2.00 disc): Batalia's class 467 retires its
+// group (classes 0x24c..0x256 and 0x1d8) and itself once 0x13d3b6 is set while its link +0x8 is negative
+bool fixes102_batalia_gate_group() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(34) || region_core_moved();
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L11:0x30f4f8 (PAL 2.00 disc): Pokitaru's class 1158 sets
+// 0x161200..0x161206 back to the sewer's underwater colours while 0x1677c8 <= 180
+bool fixes102_pokitaru_sewer_tint() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(35) || region_core_moved();
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L11:0x313d00 (PAL 2.00 disc): Pokitaru's fighter jet flight
+// step drops the square-button toggle of pvar +0x60 and its second camera offset
+bool fixes102_pokitaru_jet_camera() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(36) || region_core_moved();
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L0:0x2a6b80 (PAL 2.00 disc): the Vendor's state 0 only sets
+// the hologram moby's +0x73 to 0x20 when its class's byte +6 is non-zero
+bool fixes102_vendor_holo_alpha() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(37) || region_core_moved();
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L13:0x2b5b08 (PAL 2.00 disc): Gemlik Base's turret top (class
+// 36, spawned by its base's L13:0x2b4958) gets 0.7 at +0x10 of its hit record
+bool fixes102_gemlik_turret_aim() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(38) || region_core_moved();
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L13:0x2d0298 / 0x30d468 (PAL 2.00 disc): Gemlik Base's
+// breakable tower (class 170) spawns its hit proxy (class 1632) at 2.8 of its class's scale, with a hit record and the
+// moby flag 0x20
+bool fixes102_gemlik_tower_proxy() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(43) || region_core_moved();
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L14:0x2f0050 (PAL 2.00 disc): Oltanis's gondola (class 685)
+// starts its ride only while vec3_dot(its +0xe0 row, the hero's moby's +0xe0 row) > 0
+bool fixes102_oltanis_gondola_upright() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(49) || region_core_moved();
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L17:0x2f3450 (PAL 2.00 disc): Drek's fleet's pod (class 1448)
+// offers its prompt only past frame_scale_i(30) frames at rest (its pvars +0xb0)
+bool fixes102_drek_pod_wait() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(39) || region_core_moved();
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L18:0x2f2d08 .. 0x2f2dac and L18:0x2f2c08 (PAL 2.00 disc):
+// Veldin's finale's raft (class 1381) takes the hero for a rider after frame_scale_i(30) frames on it
+bool fixes102_finale_raft_ride() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(45) || region_core_moved();
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L18:0x2f38d0 (PAL 2.00 disc): Veldin's finale's water (class
+// 1402) carries a swimming Ratchet up with it
+bool fixes102_finale_water_carry() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(46) || region_core_moved();
+}
 
 // orig: (none) — enhancement (fixes102.h); the 1.02 build's decoy_object_update 0x2c5f10 (PAL disc 2.00): hero state
 // 0x31 (swimming at the surface) and the decoy within 1.5 of Ratchet (xy): sub_00259bc8(m, m, 0x10000, Ratchet's
@@ -189,14 +289,18 @@ void gameplay102_decoy_push(uint32_t m) {
     sub_00259bc8(m, m, 0x10000, g::PLAYER + 0x80, OV(0x0015f580), 1000.0f);
 }
 
+// orig: (none) — enhancement (fixes102.h); fix 21 on, or the PAL 2.00 disc (its own build of class 831 does it: the
+// port, rilgar_water.cpp, runs on every disc)
+static bool water_fix21() { return gameplay102_on(21) || region_core_moved(); }
+
 // orig: (none) — enhancement (fixes102.h); the 1.02 build's Rilgar L5:0x30dedc (PAL disc 2.00): game mode 2: return
 bool gameplay102_water_held() {
-    return gameplay102_on(21) && lw(OV(0x0015f5c4)) == 2;
+    return water_fix21() && lw(OV(0x0015f5c4)) == 2;
 }
 
 // orig: (none) — enhancement (fixes102.h); the 1.02 build's Rilgar L5:0x30e4b0, after the water's seek toward its height
 void gameplay102_water_carry(uint32_t m, float target) {
-    if (!gameplay102_on(21)) return;
+    if (!water_fix21()) return;
     if (!(u2f(0x3dcccccdu) < abs_f(fpu_sub(lwc1(m + 0x18), target)))) return;
     if (lw(g::PLAYER + 0x208c) - 0x11u >= 2u) return;
     const float z = lwc1(m + 0x18);
@@ -204,9 +308,9 @@ void gameplay102_water_carry(uint32_t m, float target) {
 }
 
 // orig: (none) — enhancement (fixes102.h); the 1.02 build's guard before its hud_message_request(7, ...) (Pokitaru
-// 0x314b34, Gemlik 0x2bc910, Drek's fleet 0x2eeff4)
+// 0x314b34, Gemlik 0x2bc910, Drek's fleet 0x2eeff4; on the PAL 2.00 disc Pokitaru's port runs on every disc)
 bool gameplay102_talk_blocked() {
-    if (!gameplay102_on(10)) return false;
+    if (!gameplay102_on(10) && !region_core_moved()) return false;
     const int32_t st = lw(g::HERO_STATE);
     return st == 0x32 || st == 0x1d || lbu(g::PLAYER + 0x20a4) != 0;
 }

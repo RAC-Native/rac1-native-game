@@ -37,8 +37,31 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/particle_types4_tr.h>
 #include <game/ovl/veldin_finale_mobys.h>
+#include <game/ovl/aridia_mobys.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/shared_boss_bar.h>
+#include <game/ovl/shared_class1021.h>
+#include <game/ovl/shared_class1356.h>
+#include <game/ovl/shared_class1443.h>
+#include <game/ovl/shared_class1523.h>
+#include <game/ovl/shared_class256.h>
+#include <game/ovl/shared_class341.h>
+#include <game/ovl/shared_class49.h>
+#include <game/ovl/shared_class615.h>
+#include <game/ovl/shared_class638.h>
+#include <game/ovl/shared_class830.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_flash.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_rock.h>
+#include <game/ovl/shared_shockwave.h>
+#include <game/ovl/shared_swingshot_target.h>
+#include <game/ovl/shared_zones.h>
 #include <game/ovl/veldin_orbit_mobys.h>
+#include <game/ovl/shared_gadget_pickups.h>
 
+#include <optional>
 #include <cmath>
 #include <cstring>
 #include <map>
@@ -47,6 +70,17 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach segment_collide, whose crossing lists, chunk buffers and vertices the port keeps on
+// the host stack (the original: 0x70003000 .. 0x70003fff, 0x70000000 .., 0x70002000): A2's collision scratch ranges
+// are left out of these checks, and only of them (stage 5, task C2c).
+bool c2c_spr_check(const char* name) {
+    static const char* const kNames[] = {"gold_bolt1134_l17", "gold_bolt1134_l18", "boss1422_fight4200",
+                                         "boss1422_fight5000", "boss1422_fight6000", "class1454_fight5000"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // A check whose original is level `lvl`'s own function at `laddr` (not a Veldin address to translate).
 void lcheck(int lvl, const char* name, uint32_t laddr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
     if (g_only_batch != 0 && g_only_batch != g_batch) return;
@@ -57,6 +91,8 @@ void lcheck(int lvl, const char* name, uint32_t laddr, int n, Ret ret, const std
         return;
     }
     std::printf("%-26s L%d:0x%08x\n", name, lvl, laddr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2c_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, laddr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
 }
 // a RAM dump of a headless run (32 MB + the scratchpad), empty when the file is missing
@@ -85,6 +121,73 @@ bool trial_run(void (*port)(uint32_t), uint32_t m) {
     return ok;
 }
 
+}  // namespace
+
+namespace {
+// The end menu's widgets in the states the dumps do not hold (each dump has one: the panel's model loaded, the epilogue at one
+// step), so that every branch of the functions is compared: before, the panel's update changed one word (end18000) or none
+// (end18300) in every case, the page's update / draw one step each, its focus-in nothing (its words already 0).
+void end_menu_vary(uint32_t fn, uint32_t w) {
+    switch (fn) {
+        case 0x00283530: {  // the panel's update: its state +0x34, the moby's state +0x20 (0 .. 7, the table 0x1e9350's cases),
+                            // its counter +0xbc, the dialogue's frames +0x52 / +0x53, its animation's end flag +0x70, the menu state
+            const uint32_t m = ee_read<uint32_t>(w + 0x44);
+            // (states 0 / 1 read the model from the disc and unpack it: the IOP's read, not run here; 2 the script, 3 failed)
+            w32(w + 0x34, ri(0, 5) == 0 ? 3u : 2u);
+            if (m >= 0x00100000u && m < 0x02000000u) {
+                w8(m + 0x20, ri(0, 5) == 0 ? u(ri(7, 8)) : u(ri(0, 6)));
+                static const uint32_t counts[] = {0, 0, 0, 1, 0x76, 0x77, 0x78, 0x79, 0xee, 0xef, 0xf0, 0xff};
+                w8(m + 0xbc, ri(0, 5) == 0 ? u(ri(0, 0xff)) : counts[ri(0, 11)]);  // (the counter about its limits 0x78 / 0xf0)
+                w8(m + 0x52, u(ri(0, 2)));
+                w8(m + 0x53, u(ri(0, 2)));
+                w8(m + 0x70, u(ri(0, 3)));
+            }
+            w16(0x0015172a, u(ri(0, 7)));
+            w32(0x0015ee20, u(ri(0, 1)));
+            w32(0x0015ed88, u(ri(0, 6)));
+            break;
+        }
+        case 0x0027fed8:  // the choice's update: the memory card's state 0x15eeb0 (1 / 0x10: a save to make first) under cross
+            w32(0x0015eeb0, coin() ? (coin() ? 1u : 0x10u) : u(ri(0, 0x18)));
+            if (coin()) w32(0x0013cae4, coin() ? 0x20u : 0x40u);
+            break;
+        case 0x00280020:  // the page's focus-in: what it clears
+            wrand(w + 0x3c, 2);
+            w32(w + 0x50, u(ri(0, 20)));
+            break;
+        case 0x00280038:    // the page's update: its step +0x50 (0 .. 19, beyond), timer +0x40, the end of its scroll +0x54, the
+        case 0x002803b0: {  // cheats' flag 0x1b9dcc and the root page's word +0x124; the draw: the step's text (a list or one id)
+            // (the widget's box laid out as a shown page's (+0x18 x, +0x1c y, +0x20 width, +0x24 height): the dumps' page is not
+            // shown, its box 0 x 0, where every character is a line and a text of more than 32 lines runs past the original
+            // text box's line arrays (0x1fbf48, batch 67's note) into its caller's frame: a state the game never reaches)
+            w32(w + 0x18, u(ri(0x20, 0x60)));
+            w32(w + 0x1c, u(ri(0x30, 0x80)));
+            w32(w + 0x20, u(ri(0x160, 0x1c0)));
+            w32(w + 0x24, u(ri(0xc0, 0x150)));
+            const uint32_t step = ri(0, 7) == 0 ? u(ri(20, 22)) : ri(0, 5) == 0 ? 19u : u(ri(0, 19));  // (19: the epilogue's end)
+            w32(w + 0x50, step);
+            w32(w + 0x40, coin() ? 0u : u(ri(1, 300)));
+            w32(w + 0x54, u(ri(0, 1)));
+            w32(w + 0x3c, u(ri(0, 0x800)));
+            w32(OV(0x001b9dcc), u(ri(0, 1)));
+            w32(OV(0x001b9cf0) + 0x124, u(ri(0, 1)));
+            w32(OV(0x001b9cf0) + 0xdc, u(ri(0, 1)));
+            if (ri(0, 2) == 0) w32(0x0013cae0, coin() ? 0xfu | (R() & 0x10u) : R() & 0xffu);  // (the shoulders held: the fast scroll)
+            if (ri(0, 2) == 0) w32(0x0013c940 + 0x1c4, coin() ? 0x10u : 0xd00u);  // (triangle: back; start / select: skip)
+            static const uint32_t lists[] = {0x001b9198, 0x001b9248, 0x001b9308, 0x001b9398, 0x001b93b0};
+            static const uint32_t ids[] = {0x50d5, 0x5137, 0x5143, 0x5175, 0x50a9};
+            if (step < 20) {  // (the draw's case of the step, read from the game's table 0x1e9300: a list, one text, nothing)
+                const uint32_t c = ovl_code_to_veldin(ee_read<uint32_t>(OV(0x001e9300) + step * 4));
+                if (c == 0x00280478u) w32(w + 0x34, ovl_xlate_data(lists[ri(0, 4)]));
+                else if (c == 0x00280538u) w32(w + 0x34, ids[ri(0, 4)]);
+            }
+            if (ri(0, 3) == 0) w32(w + 0x34, ovl_xlate_data(lists[ri(0, 4)]));
+            break;
+        }
+        default:
+            break;
+    }
+}
 }  // namespace
 
 void batch_271() {
@@ -171,8 +274,8 @@ void batch_271() {
         // (the Codebot's state 1 starts its scene: cutscene_start (Veldin's port, batches 76 / 80 / 112) waits on the 989snd replies its stream reads
         // ask for, which the interpreter's stand-in of the IOP leaves pending at the level's start: its states 0 and 2 here, its state 1 in batch 260)
         struct Gb { int lvl; const char* name; uint32_t addr; void (*fn)(uint32_t); int states; uint32_t skip; };
-        static const Gb gbs[] = {{17, "gold_bolt1134_l17", 0x002e3ff8, vo_class1134_update_l17, 3, 0}, {17, "codebot1428_l17", 0x002f1790, vo_class1428_update_l17, 3, 0x2},
-                                 {18, "gold_bolt1134_l18", 0x002ecc40, vf_class1134_update_l18, 3, 0}};
+        static const Gb gbs[] = {{17, "gold_bolt1134_l17", 0x002e3ff8, gold_bolt_update, 3, 0}, {17, "codebot1428_l17", 0x002f1790, class1428_update, 3, 0x2},
+                                 {18, "gold_bolt1134_l18", 0x002ecc40, gold_bolt_update, 3, 0}};
         for (const Gb& g : gbs) {
             if (g_oracle_level != g.lvl) { lcheck(g.lvl, g.name, g.addr, 0, Ret::None, nullptr, nullptr); continue; }
             level();
@@ -209,7 +312,7 @@ void batch_271() {
     // played with the Metal Detector owned and something buried near (the port's), then the element's fields varied (as batch 160 checks Batalia's)
     {
         struct H7 { int lvl; const char* name; uint32_t addr; void (*fn)(uint32_t); };
-        static const H7 h7s[] = {{17, "hud_slot7_draw_l17", 0x002355b8, vo_hud_slot7_draw_l17}, {18, "hud_slot7_draw_l18", 0x0023d1a8, vf_hud_slot7_draw_l18}};
+        static const H7 h7s[] = {{17, "hud_slot7_draw_l17", 0x002355b8, hud_slot7_draw_tr}, {18, "hud_slot7_draw_l18", 0x0023d1a8, hud_slot7_draw_tr}};
         for (const H7& h : h7s) {
             if (g_oracle_level != h.lvl) { lcheck(h.lvl, h.name, h.addr, 0, Ret::None, nullptr, nullptr); continue; }
             static std::vector<uint8_t> s7;
@@ -347,7 +450,7 @@ void batch_271() {
             if (coin()) wf(ee_read<uint32_t>(boss + 0x78) + 0x200, rf(0, 100));
             w32(OV(0x0015f5cc), R());
             return Args{{e}, {}};
-        }, [](A a) { vf_hud_boss_draw_l18(a.i[0]); return uint64_t{0}; });
+        }, [](A a) { boss_health_bar_draw(a.i[0]); return uint64_t{0}; });  // (the shared port, shared_boss_bar.cpp)
     }
     // the level's own classes alive on the dumps (as the game left them: the fight's and the ending's states; class 331, the Trackdrive, has no
     // moby at the level's start), the hero about them, the frame counter varied
@@ -357,39 +460,39 @@ void batch_271() {
         struct Cl { const char* name; uint32_t addr; void (*fn)(uint32_t); };
         static const Cl cls[] = {
             {"class41", 0x002a7220, vf_class41_update_l18},
-            {"class49", 0x002a76e0, vf_class49_update_l18},
-            {"class50", 0x002a7b90, vf_class50_update_l18},
-            {"class256", 0x002aa3b0, vf_class256_update_l18},
-            {"class1427", 0x002ab7c0, vf_class1427_update_l18},
-            {"class1523", 0x002abaa0, vf_class1523_update_l18},
-            {"class331", 0x002ce7d0, vf_class331_update_l18},
-            {"class341", 0x002ce800, vf_class341_update_l18},
-            {"class419", 0x002ceaa0, vf_class419_update_l18},
+            {"class49", 0x002a76e0, class49_update},
+            {"class50", 0x002a7b90, class50_update},
+            {"class256", 0x002aa3b0, class256_update},
+            {"class1427", 0x002ab7c0, shockwave_update},
+            {"class1523", 0x002abaa0, class1523_update},
+            {"class331", 0x002ce7d0, trackdrive_left_update_l2},
+            {"class341", 0x002ce800, class341_update},
+            {"class419", 0x002ceaa0, empty_update},
             {"class564", 0x002d5050, vf_class564_update_l18},
             {"class568", 0x002d5918, vf_class568_update_l18},
             {"class582", 0x002d62e8, vf_class582_update_l18},
             {"class583", 0x002d6600, vf_class583_update_l18},
             {"class586", 0x002d7b20, vf_class586_update_l18},
             {"class587", 0x002d82c0, vf_class587_update_l18},
-            {"class605", 0x002d8ba8, vf_class605_update_l18},
-            {"class615", 0x002d8fd0, vf_class615_update_l18},
+            {"class605", 0x002d8ba8, zone_marker_update},
+            {"class615", 0x002d8fd0, class615_update},
             {"class624", 0x002db460, vf_class624_update_l18},
             {"class628", 0x002dc260, vf_class628_update_l18},
-            {"class638", 0x002dc918, vf_class638_update_l18},
+            {"class638", 0x002dc918, class638_update},
             {"class644", 0x002df608, vf_class644_update_l18},
-            {"class696", 0x002dfda8, vf_class696_update_l18},
-            {"class830", 0x002e1508, vf_class830_update_l18},
-            {"class758", 0x002e19d8, vf_class758_update_l18},
-            {"class805", 0x002e1f40, vf_class805_update_l18},
-            {"class832", 0x002e4168, vf_class832_update_l18},
+            {"class696", 0x002dfda8, rock_update},
+            {"class830", 0x002e1508, class830_update},
+            {"class758", 0x002e19d8, swingshot_target_update},
+            {"class805", 0x002e1f40, spawn_point_update_l1},
+            {"class832", 0x002e4168, class832_update},
             {"class885", 0x002e9768, vf_class885_update_l18},
             {"class983", 0x002e9e70, vf_class983_update_l18},
-            {"class1021", 0x002ec3e8, vf_class1021_update_l18},
-            {"class1039", 0x002ec858, vf_class1039_update_l18},
-            {"class1134", 0x002ecc40, vf_class1134_update_l18},
-            {"class1135", 0x002edb78, vf_class1135_update_l18},
+            {"class1021", 0x002ec3e8, class1021_update},
+            {"class1039", 0x002ec858, deadly_zones_update},
+            {"class1134", 0x002ecc40, gold_bolt_update},
+            {"class1135", 0x002edb78, teleporter_update_l1},
             {"class1355", 0x002efb88, vf_class1355_update_l18},
-            {"class1356", 0x002f0920, vf_class1356_update_l18},
+            {"class1356", 0x002f0920, class1356_update},
             {"class1381", 0x002f16f0, vf_class1381_update_l18},
             {"class1392", 0x002f1e68, vf_class1392_update_l18},
             {"class1402", 0x002f2310, vf_class1402_update_l18},
@@ -402,8 +505,8 @@ void batch_271() {
             {"class1584", 0x002fa728, vf_class1584_update_l18},
             {"class1750", 0x002fad08, vf_class1750_update_l18},
             {"class1799", 0x002fad28, vf_class1799_update_l18},
-            {"class1890", 0x002fae48, vf_class1890_update_l18},
-            {"class1898", 0x002fb548, vf_class1898_update_l18},
+            {"class1890", 0x002fae48, class1443_update},
+            {"class1898", 0x002fb548, flash_update},
             {"class1899", 0x002fb868, vf_class1899_update_l18},
             {"class1906", 0x002fbb98, vf_class1906_update_l18},
         };
@@ -458,12 +561,55 @@ void batch_271() {
             if (ri(0, 2) == 0) w16(OV(0x0015f624), u(ri(-1, 0x26)));
             if (ri(0, 2) == 0) w16(OV(0x0015f626), u(ri(0, 0x200)));
             if (ri(0, 3) == 0) wf(OV(0x0015f3fc), rf(0, 1));
+            // (the frame against one text entry's window (0x173080, 0xb7 entries of 0x10: +8 its first frame, +0xa its length): its
+            // box's and text's fades in and out, its edges; before, the frame 0 .. 0x200 met the first entries' middles alone)
+            if (coin()) {
+                const uint32_t e = OV(0x00173080) + u(ri(0, 5) == 0 ? 0xb6 : ri(0, 0xb6)) * 0x10;  // (the last entry too)
+                const int32_t start = ee_read<int16_t>(e + 8), len = ee_read<int16_t>(e + 0xa);
+                const int k = ri(0, 5);
+                const int32_t at = k == 0 ? ri(0, 0x10) : k == 1 ? ri(0x10, 0x20) : k == 2 ? len - ri(0, 0x10) : k == 3 ? len - ri(0x10, 0x20) : k == 4 ? ri(0, len) : len + ri(-1, 2);
+                w16(OV(0x0015f626), u(start + at));
+            }
+            // (the update: the 0x41 build's page jumps (0x13d1d2), the button that ends the credits (0x13cae4 & 0x800), the slide's
+            // last frame (the page's end 0x173bf0 - 0x24, the frame about it); the screen's height the upload's chunks are cut by)
+            w8(0x0013d1d2, coin() ? 0x41u : 0u);
+            if (ri(0, 5) == 0) w32(0x0013cae4, coin() ? 0x800u : 0x400u);
+            // (and the update's ways one by one: a slide's last frame (state 0; the last pages 0x27 / 0x2b end the credits), the
+            // dissolve's columns (state 1, steps below 32), its end (steps from 36: the next slide, the 0x41 build's jumps from the
+            // pages 8, 0x11, 0x25))
+            switch (ri(0, 4)) {
+                case 0: {
+                    const int32_t page = coin() ? (coin() ? 0x27 : 0x2b) : ee_read<int16_t>(OV(0x0015f622));
+                    w16(OV(0x0015f622), u(page));
+                    if (page >= 0 && page < 0x2b) w16(OV(0x0015f626), u(ee_read<int32_t>(OV(0x00173bf0) + u(page) * 4) - 0x24 + ri(-2, 2)));
+                    w16(OV(0x0015f620), 0);
+                    break;
+                }
+                case 1:
+                    w16(OV(0x0015f620), 1);
+                    w16(OV(0x0015f624), u(ri(-1, 31)));
+                    break;
+                case 2: {
+                    static const uint32_t pages[] = {8, 0x11, 0x25, 0x11};
+                    w16(OV(0x0015f620), 1);
+                    w16(OV(0x0015f624), u(ri(32, 40)));
+                    w16(OV(0x0015f622), coin() ? pages[ri(0, 3)] : u(ri(0, 0x2a)));
+                    break;
+                }
+                default:
+                    break;
+            }
+            if (ri(0, 3) == 0) w32(0x0013e504, coin() ? 512u : u(ri(0x60, 0x220)));
+            if (coin()) w32(0x0015ed80, u(ri(0, 1)));  // (the 50 Hz build's slides: the other table of the disc's files)
             w32(OV(0x0015f5cc), R());
             return Args{{0}, {}};
         };
         g_extra_noop_hooks = {OVF(0x002a08c8), 0x00122298, 0x00118a80};
-        check(nu.c_str(), 0x00299c48, 60, Ret::None, gen, [](A) { credits_update_tr(0); return uint64_t{0}; });
-        check(nd.c_str(), 0x001f8f78, 60, Ret::None, gen, [](A) { credits_draw_tr(0); return uint64_t{0}; });
+        {
+            CollisionScratchIgnored spr_ignored;
+            check(nu.c_str(), 0x00299c48, 150, Ret::None, gen, [](A) { credits_update_tr(0); return uint64_t{0}; });
+        }
+        check(nd.c_str(), 0x001f8f78, 150, Ret::None, gen, [](A) { credits_draw_tr(0); return uint64_t{0}; });
         g_extra_noop_hooks.clear();
     }
     // the menu at the end of the game (menu state 0x21) and the page of its state 0x23: every widget function of the two pages (+0 update, +4 draw,
@@ -494,14 +640,61 @@ void batch_271() {
         g_extra_noop_hooks = {OVF(0x002a08c8), 0x00122298, 0x00118a80};
         // (the panel's model drawn by the moby pass 0x24ff08: the w lanes of its rows (sqc2 of VU0 registers) hold what the checks before left in
         // the VU0 registers, the interpreter's and the port's: a lone w lane is not compared, as batch 63 does; alone the check matches them too)
-        g_ignore_lone_w_lanes = true;
         for (const Wf& wf_ : wfs) {
+            // (only the panel's draw: before, every widget check left out every lone word at +0xc of a quadword, anywhere in
+            // RAM, which hid the panel update's dialogue request 0x1516ec; since audit 2)
+            g_ignore_lone_w_lanes = wf_.veldin == 0x002838b0;
             const std::string nm = std::string("end_menu_") + wf_.name + "_" + f;
             if (own[wf_.veldin].empty()) { std::printf("%-26s 0x%08x  no widget of the function on the dump's pages\n", nm.c_str(), wf_.veldin); continue; }
             const std::vector<uint32_t> ws = own[wf_.veldin];
-            check(nm.c_str(), wf_.veldin, 60, Ret::Int32, [&d, ws, pick] {
+            const uint32_t veldin = wf_.veldin;
+            check(nm.c_str(), wf_.veldin, veldin == 0x002803b0 ? 200 : 120, Ret::Int32, [&d, ws, pick, veldin] {  // (the epilogue's 20 steps)
                 load_dump(d);
                 const uint32_t w = pick(ws);
+                // (region rule 3: the two switches over the game's jump tables 0x1e9350 / 0x1e9300 reached at more than the dump's one
+                // index) the panel's model in each of its states 0 .. 6 (and one past them), its counter +0xbc about its limits; the
+                // epilogue page (menu state 0x23, page 0x1b6b38: the credits as a menu page) at a step 0 .. 19 (or past the table),
+                // reached through the page's own update (end_menu_page23_update_tr, its check below) from step 0, its timer +0x40 run out
+                // and its scroll +0x54 done each frame, so that +0x34 holds the step's text or list as the game left it.
+                // The page is not the one shown on these dumps (the end menu's 0x1b71f0 is), so its widgets' boxes +0x18 .. +0x24 are
+                // 0 x 0 there; the game never draws a widget so: the menu's draw (0x2772c0, pause_menu_draw.cpp) sets each shown widget's
+                // box from its slot's moby (that moby's projected box, kept at its pvars +0x50 .. +0x5c) before it draws it. The page's
+                // widget is given its slot's box the same way. (With the 0 x 0 box the text box 0x1fbf48 had a width of 0, every
+                // character a line: past 32 lines its line arrays overran the original's frame, 0x190 bytes, and the port's, 0xe0
+                // bytes below the caller's box, differently: the lists of the steps 5 .. 10 and 12 .. 18 differed, and no step drew.)
+                if (veldin == 0x00283530 && ee_read<uint32_t>(w + 0x34) == 2 && ee_read<uint32_t>(w + 0x44) != 0 && ri(0, 3) != 0) {
+                    const uint32_t m = ee_read<uint32_t>(w + 0x44);
+                    w8(m + 0x20, u(ri(0, 7)));
+                    w8(m + 0xbc, coin() ? 0u : u(ri(0, 0xf8)));
+                    if (coin()) w16(0x0015172a, u(ri(0, 4)));
+                }
+                if (veldin == 0x002803b0) {
+                    const uint32_t page = OV(0x001b6b38);
+                    for (uint32_t i = 0; i < 0xe; ++i) {
+                        if (ee_read<uint32_t>(page + 0x44 + 4 * i) != w) continue;
+                        const uint32_t sm = ee_read<uint32_t>(OV(0x001b9e90) + 4 * i);
+                        const uint32_t sd = sm != 0 ? ee_read<uint32_t>(sm + 0x78) : 0u;
+                        if (sd == 0) break;
+                        w32(w + 0x18, ee_read<uint32_t>(sd + 0x50));
+                        w32(w + 0x1c, ee_read<uint32_t>(sd + 0x54));
+                        w32(w + 0x20, ee_read<uint32_t>(sd + 0x58));
+                        w32(w + 0x24, ee_read<uint32_t>(sd + 0x5c));
+                        break;
+                    }
+                    if (ri(0, 3) != 0) {
+                        const uint32_t want = u(ri(0, 19));
+                        w32(w + 0x50, 0u);
+                        for (int k = 0; k < 40 && ee_read<uint32_t>(w + 0x50) != want; ++k) {
+                            w32(w + 0x40, 0u);
+                            w32(w + 0x54, 1u);
+                            (void)end_menu_page23_update_tr(w, 0);
+                        }
+                        if (ri(0, 7) == 0) w32(w + 0x50, u(ri(20, 40)));
+                        // (the scroll +0x3c the scrolling steps add 10 or 20 to each frame until the list's end is in the box: anywhere
+                        // up to past that end, so that the draw sees the end come in, +0x54)
+                        if (coin()) w32(w + 0x3c, u(ri(0, 0x2000)));
+                    }
+                }
                 // the pad: a packet of held buttons (cross / circle / the d-pad mostly), as batch 91 builds them
                 if (coin()) {
                     static const uint16_t bs[] = {0x0040, 0x0020, 0x1000, 0x4000, 0x0800, 0x0010, 0};
@@ -509,6 +702,7 @@ void batch_271() {
                     const uint8_t pk[6] = {static_cast<uint8_t>(low >> 8), static_cast<uint8_t>(low & 0xff), 0x7f, 0x7f, 0x7f, 0x7f};
                     pad_read_packet(0x0013c940, pk, 6);
                 }
+                end_menu_vary(veldin, w);
                 w32(OV(0x0015f5cc), R());
                 seed_rand();
                 return Args{{w, u(ri(0, 1))}, {}};

@@ -1,3 +1,0 @@
-// glue of the screens' drawing transliteration (src/game/ovl/screen_draw_tr.cpp, tools/codegen/mkall.py --glue, Veldin's addresses)
-0x00116808: set32(v0, libc_strncpy(a0.w(), a1.w(), a2.w()));
-0x00200298: v0.lo = static_cast<uint64_t>(rgba_lerp(a0.w(), a1.w(), fr[12]));  /* its result is ppach / ppacb packed: zero-extended (the uint32_t declaration's glue would sign-extend it) */

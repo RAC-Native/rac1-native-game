@@ -174,23 +174,29 @@ void batch_75() {
         if (coin()) wf(m + 0x18, ee_read<float>(m + 0x18) + rf(-4, 4));
         return Args{{m}, {}};
     }, [](A a) { clank_ship_update(a.i[0]); return uint64_t{0}; });
-    check("moby_shadow_probe", 0x0025a1e0, 60, Ret::None, [some_moby] {
-        const uint32_t m = some_moby();
-        if (coin()) wf(m + 0xc, rf(0.5f, 8));
-        return Args{{m}, {}};
-    }, [](A a) { moby_shadow_probe(a.i[0]); return uint64_t{0}; });
+    {
+        const CollisionScratchIgnored spr_ignored;
+        check("moby_shadow_probe", 0x0025a1e0, 60, Ret::None, [some_moby] {
+            const uint32_t m = some_moby();
+            if (coin()) wf(m + 0xc, rf(0.5f, 8));
+            return Args{{m}, {}};
+        }, [](A a) { moby_shadow_probe(a.i[0]); return uint64_t{0}; });
+    }
     check("hero_cam_target_set", 0x00233ee8, 30, Ret::None, [level] {
         level();
         wfrand(M, 4, -100, 100);
         w32(P + 0x2084, ri(0, 2) == 0 ? u(ri(0x64, 0x68)) : 0u);
         return Args{{M, R() & 3}, {rf(-2, 2)}};
     }, [](A a) { hero_cam_target_set(a.i[0], a.f[0], a.i[1]); return uint64_t{0}; });
-    check("hero_ship_floor_fix", 0x00234d40, 40, Ret::None, [level] {
-        level();
-        wfrand(P, 3, -0.5f, 0.5f);
-        if (coin()) wf(P + 0x88, ee_read<float>(P + 0x88) + rf(-1, 1));
-        return Args{};
-    }, [](A) { hero_ship_floor_fix(); return uint64_t{0}; });
+    {
+        const CollisionScratchIgnored spr_ignored;
+        check("hero_ship_floor_fix", 0x00234d40, 40, Ret::None, [level] {
+            level();
+            wfrand(P, 3, -0.5f, 0.5f);
+            if (coin()) wf(P + 0x88, ee_read<float>(P + 0x88) + rf(-1, 1));
+            return Args{};
+        }, [](A) { hero_ship_floor_fix(); return uint64_t{0}; });
+    }
     auto scene_mobys = [level, scene_load] {  // a scene's mobys spawned (a block decoded)
         level();
         w16(G + 0x26, u(ri(0, 2)));
@@ -236,12 +242,15 @@ void batch_75() {
         if (coin()) w32(S + 0x20, 0x00ff0000u | (R() & 0xff000000u));
         return Args{{m}, {}};
     }, [](A a) { moby_light_zone_pick(a.i[0]); return uint64_t{0}; });
-    check("hero_place", 0x00216f90, 30, Ret::None, [level] {
-        level();
-        for (uint32_t k = 0; k < 3; ++k) wf(M + k * 4, ee_read<float>(P + 0x80 + k * 4) + rf(-3, 3));
-        wfrand(M2, 3, -3, 3);
-        return Args{{M, M2, coin() ? 0xffffffffu : u(ri(0, 3)), u(ri(0, 1))}, {}};
-    }, [](A a) { hero_place(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]), static_cast<int32_t>(a.i[3])); return uint64_t{0}; });
+    {
+        const CollisionScratchIgnored spr_ignored;
+        check("hero_place", 0x00216f90, 30, Ret::None, [level] {
+            level();
+            for (uint32_t k = 0; k < 3; ++k) wf(M + k * 4, ee_read<float>(P + 0x80 + k * 4) + rf(-3, 3));
+            wfrand(M2, 3, -3, 3);
+            return Args{{M, M2, coin() ? 0xffffffffu : u(ri(0, 3)), u(ri(0, 1))}, {}};
+        }, [](A a) { hero_place(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]), static_cast<int32_t>(a.i[3])); return uint64_t{0}; });
+    }
     // ---- the sequences
     // the class update functions of the mobys spawned since the snapshot (the scene's): no-ops on
     // both sides when not ported
@@ -301,50 +310,53 @@ void batch_75() {
         w32(OV(0x0015f5d8), 0);
         hook_new_mobys();
     };
-    check("ship_sequence_update_8", 0x00290590, 60, Ret::None, [running] { running(8); return Args{}; },
-          [](A) { ship_sequence_update(); return uint64_t{0}; });
-    check("ship_sequence_update_0", 0x00290590, 60, Ret::None, [running] { running(0); return Args{}; },
-          [](A) { ship_sequence_update(); return uint64_t{0}; });
-    // the flight (step 3): a path of 6..12 points at T for 0x1b04b0[0] (the table 0x2464a8 fills,
-    // not ported), the level cameras' blend, the riders
-    check("ship_sequence_update_3", 0x00290590, 60, Ret::None, [setup, sound_ready, hook_new_mobys] {
-        setup();
-        sound_ready();
-        const int32_t n = ri(6, 12);
-        w32(T, u(n));
-        float x = rf(-50, 50), y = rf(-50, 50);
-        for (int32_t k = 0; k < n; ++k) {
-            x += rf(-20, 20);
-            y += rf(-20, 20);
-            wf(T + 0x10 + u(k) * 0x10, x);
-            wf(T + 0x14 + u(k) * 0x10, y);
-            wf(T + 0x18 + u(k) * 0x10, rf(0, 60));
-            wf(T + 0x1c + u(k) * 0x10, 0.0f);
-        }
-        w32(OV(0x001b04b0), T);
-        w32(G + 0x20, 3);
-        w32(G + 0x30, ri(0, 3) == 0 ? 0xffffffffu : 0u);
-        const int32_t first = ri(0, 2);
-        w16(G + 0x24, first == 0 ? 0xffffu : u(ri(0, 300)));
-        const int32_t ncam = ee_read<int32_t>(OV(0x001600f0));
-        w32(G + 0x34, ri(0, 2) == 0 || ncam <= 0 ? 0xffffffffu : u(ri(0, ncam - 1)));
-        w32(G + 0x38, ri(0, 2) == 0 || ncam <= 0 ? 0xffffffffu : u(ri(0, ncam - 1)));
-        wf(G + 0x48, rf(0, 1));
-        wf(G + 0x4c, rf(-0.1f, 0.1f));
-        if (first != 0 && ee_read<int32_t>(G + 0x30) >= 0) {  // the riders and the path set up as the first frame does
-            ee_write<int16_t>(G + 0x24, -1);
-            ship_sequence_update();
-            w16(G + 0x24, u(ri(0, 300)));
-            wf(G + 0x3c, rf(0, static_cast<float>(n)));
-            wf(G + 0x40, rf(0, 110));
-        }
-        wf(OV(0x0015f3fc), ri(0, 2) == 0 ? 0.0f : rf(0, 1));
-        w32(0x0013cae4, ri(0, 3) == 0 ? 0x50u : 0u);
-        w32(OV(0x0015f5d8), 0);
-        w32(OV(0x0015f570), 0);
-        hook_new_mobys();
-        return Args{};
-    }, [](A) { ship_sequence_update(); return uint64_t{0}; });
+    {
+        const CollisionScratchIgnored spr_ignored;
+        check("ship_sequence_update_8", 0x00290590, 60, Ret::None, [running] { running(8); return Args{}; },
+              [](A) { ship_sequence_update(); return uint64_t{0}; });
+        check("ship_sequence_update_0", 0x00290590, 60, Ret::None, [running] { running(0); return Args{}; },
+              [](A) { ship_sequence_update(); return uint64_t{0}; });
+        // the flight (step 3): a path of 6..12 points at T for 0x1b04b0[0] (the table 0x2464a8 fills,
+        // not ported), the level cameras' blend, the riders
+        check("ship_sequence_update_3", 0x00290590, 60, Ret::None, [setup, sound_ready, hook_new_mobys] {
+            setup();
+            sound_ready();
+            const int32_t n = ri(6, 12);
+            w32(T, u(n));
+            float x = rf(-50, 50), y = rf(-50, 50);
+            for (int32_t k = 0; k < n; ++k) {
+                x += rf(-20, 20);
+                y += rf(-20, 20);
+                wf(T + 0x10 + u(k) * 0x10, x);
+                wf(T + 0x14 + u(k) * 0x10, y);
+                wf(T + 0x18 + u(k) * 0x10, rf(0, 60));
+                wf(T + 0x1c + u(k) * 0x10, 0.0f);
+            }
+            w32(OV(0x001b04b0), T);
+            w32(G + 0x20, 3);
+            w32(G + 0x30, ri(0, 3) == 0 ? 0xffffffffu : 0u);
+            const int32_t first = ri(0, 2);
+            w16(G + 0x24, first == 0 ? 0xffffu : u(ri(0, 300)));
+            const int32_t ncam = ee_read<int32_t>(OV(0x001600f0));
+            w32(G + 0x34, ri(0, 2) == 0 || ncam <= 0 ? 0xffffffffu : u(ri(0, ncam - 1)));
+            w32(G + 0x38, ri(0, 2) == 0 || ncam <= 0 ? 0xffffffffu : u(ri(0, ncam - 1)));
+            wf(G + 0x48, rf(0, 1));
+            wf(G + 0x4c, rf(-0.1f, 0.1f));
+            if (first != 0 && ee_read<int32_t>(G + 0x30) >= 0) {  // the riders and the path set up as the first frame does
+                ee_write<int16_t>(G + 0x24, -1);
+                ship_sequence_update();
+                w16(G + 0x24, u(ri(0, 300)));
+                wf(G + 0x3c, rf(0, static_cast<float>(n)));
+                wf(G + 0x40, rf(0, 110));
+            }
+            wf(OV(0x0015f3fc), ri(0, 2) == 0 ? 0.0f : rf(0, 1));
+            w32(0x0013cae4, ri(0, 3) == 0 ? 0x50u : 0u);
+            w32(OV(0x0015f5d8), 0);
+            w32(OV(0x0015f570), 0);
+            hook_new_mobys();
+            return Args{};
+        }, [](A) { ship_sequence_update(); return uint64_t{0}; });
+    }
     check("ship_sequence_update_x", 0x00290590, 20, Ret::None, [level] {  // the other steps: the count only
         level();
         static const uint32_t st[] = {1, 2, 5, 6, 7, 9, 0x20, 0xffffffffu};

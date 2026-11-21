@@ -1,5 +1,5 @@
 // Novalis's own moby classes, part 2d: the path follower library the flying classes use (the jets and
-// the ship): a "follower" struct {+0 the current index, +4 a byte (negative: an open path with a single point),
+// the ship; the same code on the levels whose copies the definitions list): a "follower" struct {+0 the current index, +4 a byte (negative: an open path with a single point),
 // +0x10 the path (count at +0, the points 0x10 apart from +0x10, each with its segment length at +0x1c), +0x14 the
 // path's number in the table 0x1b04b0}. Header novalis_mobys2.h. Addresses are
 // Novalis's (`orig: L1:`); the globals Novalis shares with Veldin are the level's own (OV), the base ELF's are bare.
@@ -14,7 +14,8 @@ namespace rac1 {
 
 // A follower started: its +5 and index +8 cleared, its path (the table 0x1b04b0 / Novalis 0x1b0930 at its +0x14)
 // found, and each point's segment length (the distance to the next point, wrapping) stored at its +0x1c.
-// orig: L1:0x0028b410
+// (Shared: the same code on Kerwan, Eudora, Hoven and Oltanis.)
+// orig: L1:0x0028b410 L3:0x00264458 L4:0x00268b18 L12:0x0028eb00 L14:0x0027df78
 void path_follower_init_l1(uint32_t f) {
     sb(f + 5, 0);
     const uint32_t path0 = lwu(OV(0x001b04b0) + (lwu(f + 0x14) << 2));
@@ -39,7 +40,9 @@ void path_follower_init_l1(uint32_t f) {
 
 // The index of the point of path `path` whose distance to `at` is nearest to `bias` (the comparison against the best
 // kept as the distance itself).
-// orig: L1:0x0028b510
+// (Shared: the same code on Kerwan, Eudora, Rilgar, Umbris, Batalia, Gaspar, Hoven, Gemlik, Oltanis and Kalebo III; the
+// hoverboard race's (hero_hoverboard.cpp) on Rilgar and Kalebo III.)
+// orig: L1:0x0028b510 L3:0x00264558 L4:0x00268c18 L5:0x002a0260 L7:0x0029e610 L8:0x002806a8 L9:0x00294a10 L12:0x0028ec00 L13:0x00281d70 L14:0x0027e078 L16:0x00271250
 int32_t path_nearest_l1(uint32_t at, uint32_t path, float bias) {
     int32_t best = 0;
     float f21 = u2f(0x51ba43b7u);
@@ -63,7 +66,8 @@ int32_t path_nearest_l1(uint32_t at, uint32_t path, float bias) {
 
 // The address of point `i` of the follower's path: i < 0 counts from the end (past the last point's +0x20 offset);
 // beyond the last wraps around the count; a follower with the byte +4 negative has the single point 0.
-// orig: L1:0x0028b7b0
+// (Shared: the same code on Kerwan, Eudora and Oltanis.)
+// orig: L1:0x0028b7b0 L3:0x00264660 L4:0x00268d20 L14:0x0027e180
 uint32_t path_point_l1(uint32_t f, int32_t i) {
     uint32_t a0;
     int32_t v1;
@@ -81,7 +85,8 @@ uint32_t path_point_l1(uint32_t f, int32_t i) {
 }
 
 // Index `i` wrapped into the follower's path (negative: counted back from the last index; past it, modulo the count).
-// orig: L1:0x0028b828
+// (Shared: the same code on Kerwan, Eudora and Oltanis.)
+// orig: L1:0x0028b828 L3:0x002646d8 L4:0x00268d98 L14:0x0027e1f8
 int32_t path_index_wrap_l1(uint32_t f, int32_t i) {
     int32_t v1 = 0;
     if (!(static_cast<int8_t>(lbu(f + 4)) < 0)) v1 = lw(lwu(f + 0x10)) - 1;
@@ -91,7 +96,8 @@ int32_t path_index_wrap_l1(uint32_t f, int32_t i) {
 }
 
 // The follower's index (+0) advanced by one, wrapped modulo the count; stored and returned.
-// orig: L1:0x0028b878
+// (Shared: the same code on Kerwan, Eudora and Oltanis.)
+// orig: L1:0x0028b878 L3:0x00264728 L4:0x00268de8 L14:0x0027e248
 int32_t path_index_advance_l1(uint32_t f) {
     int32_t a2 = 0;
     if (!(static_cast<int8_t>(lbu(f + 4)) < 0)) a2 = lw(lwu(f + 0x10)) - 1;
@@ -104,7 +110,8 @@ int32_t path_index_advance_l1(uint32_t f) {
 // The tangent at `idx` of the follower's path: the points idx - 1 / idx / idx + 1 (from the follower's index +0),
 // the two differences scaled by (1 - a)(1 - b) / 2 and (1 - a)(1 + b) / 2, summed, and limited to the shorter of the
 // two segments * 1.1 (written to `out`; w untouched by the scaled math as the vector ports do).
-// orig: L1:0x0028b8c8
+// (Shared: the same code on Kerwan, Eudora and Oltanis.)
+// orig: L1:0x0028b8c8 L3:0x00264778 L4:0x00268e38 L14:0x0027e298
 void path_spline_tangent_l1(uint32_t out, uint32_t f, int32_t idx, float a, float b) {
     const uint32_t buf = ee_stack_alloc(0x40);
     libc_memset(buf, 0, 0xc);
@@ -137,7 +144,8 @@ void path_spline_tangent_l1(uint32_t out, uint32_t f, int32_t idx, float a, floa
 
 // The cubic Hermite curve at t between p0 and p1 with tangents m0 / m1: out = p0 (2t^3 - 3t^2 + 1) + m0 (t^3 - 2t^2 + t)
 // + m1 (t^3 - t^2) + p1 (3t^2 - 2t^3).
-// orig: L1:0x0028ba80
+// (Shared: the same code on Kerwan, Eudora and Oltanis.)
+// orig: L1:0x0028ba80 L3:0x00264930 L4:0x00268ff0 L14:0x0027e450
 void hermite_l1(uint32_t out, uint32_t p0, uint32_t p1, uint32_t m0, uint32_t m1, float t) {
     const uint32_t buf = ee_stack_alloc(0x10);
     const float f0 = u2f(0x3f800000u);
@@ -160,7 +168,8 @@ void hermite_l1(uint32_t out, uint32_t p0, uint32_t p1, uint32_t m0, uint32_t m1
 // A debug particle (kind 0x29, alloc_particle) at the point `pos`: its +4 = `a3`, its colour byte +9 / +3 from t0 / t2
 // (t2 == 0xff: a random one from t0), +0xc = f12 * 210000, +2 from the table 0x1b2124 / Novalis 0x1b25a4 at `a2`, +0xa =
 // t1, +8 = 0xa0 and its +0x20 = `a1`. Returns the particle (0: none free).
-// orig: L1:0x00285768
+// (Shared: the same code on Aridia, Kerwan, Eudora, Blarg, Orxon and Oltanis.)
+// orig: L1:0x00285768 L2:0x00271d80 L3:0x0025e9e0 L4:0x00263098 L6:0x0027f648 L10:0x002634e8 L14:0x00278390
 uint32_t debug_particle_l1(uint32_t pos, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, int32_t t1, uint32_t t2, float f12) {
     const uint32_t s1 = t0 & 0xffu, s2 = t2 & 0xffu;
     const int32_t s7 = static_cast<int16_t>(static_cast<uint32_t>(t1) & 0xffffu);
@@ -189,7 +198,8 @@ uint32_t debug_particle_l1(uint32_t pos, uint32_t a1, uint32_t a2, uint32_t a3, 
 // The length of the follower's path: each segment sampled by the Hermite curve from the tangents (t from 0.05 up in
 // steps of 0.05 to 1), the pieces' distances summed into the segment's +0x1c and the total returned; the follower's
 // index (+0) is restored. With `debug` set the samples are drawn as particles (debug_particle_l1).
-// orig: L1:0x0028bb90
+// (Shared: the same code on Kerwan, Eudora and Oltanis.)
+// orig: L1:0x0028bb90 L3:0x00264a40 L4:0x00269100 L14:0x0027e560
 float path_measure_l1(uint32_t f, uint32_t debug, uint32_t color, float fa, float fb) {
     const uint32_t buf = ee_stack_alloc(0x70);
     float f26 = 0.0f;

@@ -1,12 +1,5 @@
-0x0021e8d8: set32(v0, static_cast<uint32_t>(segment_collide(a0.w(), a1.w(), a2.w(), a3.w(), t0.w())));
 0x0022dc20: { int32_t t0 = a0.w() != 0 ? static_cast<int32_t>(lw_(a0.w())) : 0; set32(v0, static_cast<uint32_t>(timer_tick_i32(t0))); if (a0.w() != 0) sw_(a0.w(), static_cast<uint32_t>(t0)); }
-0x0024cee8: set32(v0, static_cast<uint32_t>(hero_set_state(a0.w(), static_cast<int32_t>(a1.w()))));
 0x00278aa0: set32(v0, static_cast<uint32_t>(moby_spawn(a0.w())));
-0x00279a30: moby_chain_point(a0.w(), a1.w(), a2.w());
-0x0027a558: moby_set_color_hi(a0.w(), static_cast<int64_t>(a1.lo), static_cast<int64_t>(a2.lo), static_cast<int64_t>(a3.lo));
 0x002839d0: fr[0] = floor_probe(fr[12], a0.w(), a1.w());
-0x002846d8: set32(v0, static_cast<uint32_t>(sub_0025a420(a0.w(), a1.w(), static_cast<int32_t>(a2.w()))));
-0x00284730: set32(v0, static_cast<uint32_t>(moby_hit_react(a0.w(), a1.w(), a2.w(), a3.w(), t0.w(), t1.w(), t2.w(), static_cast<int32_t>(t3.w()))));
-0x00284e00: vec_yaw_marked(a0.w(), a1.w(), a2.w(), a3.w());
-0x00286910: set32(v0, static_cast<uint32_t>(enemy_physics(a0.w(), a1.w())));
-0x00311368: set32(v0, static_cast<uint32_t>(class_hook_10(a0.w())));
+0x0028f5c8: music_track_request(static_cast<int32_t>(a0.w()), a1.w());
+0x002843a8: band_set(a0.w());

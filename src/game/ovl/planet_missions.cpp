@@ -226,6 +226,19 @@ int32_t missions_draw(uint32_t w) {
     sub_002a0ba8(0x42, 0x44);
     sub_002a0ba8(0x47, 0x10b);
     text_small(4, 4, 0x80ffa888ull, sub_00203ad8(0x4f59), -1);
+    // region: the PAL builds (1.00 and 2.00; the same code, 2.00's text ids 5 higher) draw each goal in a text box (the
+    // box +0, made once from its template +0x20) and take its height from the lines the box wrapped it into, where the
+    // North American build takes one line for a short goal and two for any other (a third line of a long translated goal
+    // overlapped the next goal). The PAL discs only (their region flag); 1.00 0x0027ccfc..0x0027ce3c.
+    const bool pal = lw(0x0015ee90) != 0;
+    if (pal) {
+        const uint32_t tpl = sp + 0x20;
+        libc_memset(tpl, 0, 0x18);
+        sh(tpl + 2, lhu(w + 0x24));
+        sh(tpl + 6, lhu(w + 0x20));
+        sh(tpl + 0x10, 0x10);
+        for (uint32_t o = 0; o < 0x18; o += 2) sh(sp + o, lhu(tpl + o));
+    }
     int32_t y = 0x18;
     if (n > 0) {
         uint32_t t = SPR;
@@ -237,14 +250,30 @@ int32_t missions_draw(uint32_t w) {
                 c = 0xffffffff8020ffffull;
                 text_colour_codes_off();
             }
-            const int32_t h = text_wrapped_med(0x10, y, lw(w + 0x20) - 0x11, 0x3e8, c, sub_00203ad8(lw(t)), -1);
-            if (sel) sub_001fb028();
-            const int32_t lines = h < 0x11 ? 1 : 2;
+            int32_t lines;
+            if (pal) {
+                sh(sp + 0xa, static_cast<uint32_t>(y));
+                sh(sp + 8, 0x10);
+                text_box_draw(sp, c, sub_00203ad8(lw(t)), -1);
+                if (sel) sub_001fb028();
+                // (the box's height +0xe over its line height +0x10: the lines)
+                lines = ee_div(static_cast<int16_t>(lhu(sp + 0xe)), lh(sp + 0x10));
+            } else {
+                const int32_t h = text_wrapped_med(0x10, y, lw(w + 0x20) - 0x11, 0x3e8, c, sub_00203ad8(lw(t)), -1);
+                if (sel) sub_001fb028();
+                lines = h < 0x11 ? 1 : 2;
+            }
             mission_box(9, lines != 2 ? ybox : y + 0x10, (lw(sp + 0x40) >> (i & 31)) & 1);
             y += lines << 4;
         }
     }
-    if (lw(sp + 0x40) < 0) {
+    if (lw(sp + 0x40) < 0 && pal) {
+        // region: (the PAL builds) the same box, centred under the goals
+        sh(sp + 0x12, 1);
+        sh(sp + 0xa, static_cast<uint32_t>(y + 8));
+        sh(sp + 8, static_cast<uint32_t>(lw(w + 0x24) >> 1));
+        text_box_draw(sp, 0x8020ffffull, sub_00203ad8(TXT(0x523d)), -1);
+    } else if (lw(sp + 0x40) < 0) {
         const uint32_t tpl = sp + 0x20;
         libc_memset(tpl, 0, 0x18);
         sh(tpl + 2, lhu(w + 0x24));

@@ -2,7 +2,7 @@
 // (issue #9) and Clank hit while attacking (issue #32).
 //  - Issue #26: Kerwan's helicopter (class 631, L3:0x2cca00) and its missile (class 848, L3:0x2d47c0, spawned by L3:0x2d5208); and the
 //    helicopter's bullets: particle type 0x31 (Veldin's update 0x271d20, Kerwan's L3:0x260210, spawned by L3:0x260130 from the 848's
-//    update; ported as particle_31_update), on the dumps' live bullets and on new records of the type (frames, position, velocity
+//    update; ported as bullet_particle_update, shared_particles.cpp), on the dumps' live bullets and on new records of the type (frames, position, velocity
 //    varied). The subjects of the classes are the dumps' live mobys, their state and the hero's position varied; the original is
 //    Kerwan's own function at its own address. ORACLE_LEVEL=3.
 //  - Issue #9: Kerwan's hero input (Veldin 0x229b70, Kerwan's variant) during a jump with the Heli-Pack, the pad's pressed history
@@ -30,11 +30,16 @@
 
 #include "ovl_oracle.h"
 
-#include <game/ovl/kerwan_classes_tr.h>
+#include <game/ovl/shared_particles.h>
+
+#include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/shared_class631.h>
+#include <game/ovl/shared_class848.h>
 #include <game/ovl/particle_types_tr.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 
+#include <optional>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -47,6 +52,22 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
+// walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
+// collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
+bool c2b_spr_check(const char* name) {
+    static const char* const kNames[] = {"missile848_b1620", "clank_frame_orxon_atk884", "clank_frame_orxon_atk892",
+                                         "clank_frame_orxon_idle900", "clank_frame_ring_3015", "clank_frame_ring_3815",
+                                         "heli631_m1205", "heli631_m1230", "heli_input_j26", "heli_input_j32",
+                                         "missile848_m1230", "missile848_m1440", "particle31_live_b1765",
+                                         "particle31_live_m1765", "particle31_new_b1606", "particle31_new_b1620",
+                                         "particle31_new_b1765", "particle31_new_m1205", "particle31_new_m1230",
+                                         "particle31_new_m1440", "particle31_new_m1600", "particle31_new_m1765"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 void k3check(const char* name, uint32_t l3addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
     if (g_only_batch != 0 && g_only_batch != g_batch) return;
     if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
@@ -56,6 +77,8 @@ void k3check(const char* name, uint32_t l3addr, int n, Ret ret, const std::funct
         return;
     }
     std::printf("%-26s L3:0x%08x\n", name, l3addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2b_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, l3addr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
 }
 const std::vector<uint8_t>& b191_dump(const std::string& path) {
@@ -146,7 +169,7 @@ void batch_191() {
                 w32(OV(0x0015f5cc), R());
                 seed_rand();
                 return Args{{m}, {}};
-            }, [](A a) { kerwan_class848_update_l3(a.i[0]); return uint64_t{0}; });
+            }, [](A a) { class848_update(a.i[0]); return uint64_t{0}; });
         }
         if (!helis.empty()) {
             const std::string nm = "heli631_" + base;
@@ -158,7 +181,7 @@ void batch_191() {
                 w32(OV(0x0015f5cc), R());
                 seed_rand();
                 return Args{{m}, {}};
-            }, [](A a) { kerwan_class631_update_l3(a.i[0]); return uint64_t{0}; });
+            }, [](A a) { class631_update(a.i[0]); return uint64_t{0}; });
         }
     }
     // ---- issue #26: the bullets, particle type 0x31
@@ -178,16 +201,20 @@ void batch_191() {
         std::printf("  (on %s: %zu live bullets)\n", path.c_str(), qs.size());
         if (!qs.empty()) {
             const std::string nm = "particle31_live_" + base;
+            std::optional<CollisionScratchIgnored> spr_ignored;
+            if (c2b_spr_check(nm.c_str())) spr_ignored.emplace();
             check(nm.c_str(), 0x00271d20, 60, Ret::None, [&d, qs] {
                 b191_load(d);
                 const uint32_t q = qs[static_cast<size_t>(ri(0, static_cast<int>(qs.size()) - 1))];
                 if (ri(0, 3) == 0) w16(q + 0xa, u(ri(-1, 3)));
                 seed_rand();
                 return Args{{q}, {}};
-            }, [](A a) { particle_31_update(a.i[0]); return uint64_t{0}; });
+            }, [](A a) { bullet_particle_update(a.i[0]); return uint64_t{0}; });
         }
         // new records: about the hero (into the ground or the air), their frames and velocity varied
         const std::string nm = "particle31_new_" + base;
+        std::optional<CollisionScratchIgnored> spr_ignored;
+        if (c2b_spr_check(nm.c_str())) spr_ignored.emplace();
         check(nm.c_str(), 0x00271d20, 80, Ret::None, [&d] {
             b191_load(d);
             const uint32_t q = alloc_particle(0x31);
@@ -201,7 +228,7 @@ void batch_191() {
             w16(q + 0xa, u(ri(0, 4) == 0 ? ri(-1, 2) : ri(2, 45)));
             seed_rand();
             return Args{{q}, {}};
-        }, [](A a) { particle_31_update(a.i[0]); return uint64_t{0}; });
+        }, [](A a) { bullet_particle_update(a.i[0]); return uint64_t{0}; });
     }
     // ---- issue #9: the glide's start from the jump (hero_input_update on Kerwan, its variant)
     {
@@ -213,6 +240,8 @@ void batch_191() {
             const std::vector<uint8_t>& d = b191_dump(path);
             if (d.empty()) continue;
             const std::string nm = "heli_input_" + b191_base(path);
+            std::optional<CollisionScratchIgnored> spr_ignored;
+            if (c2b_spr_check(nm.c_str())) spr_ignored.emplace();
             check(nm.c_str(), 0x00229b70, 60, Ret::None, [&d] {
                 b191_load(d);
                 const uint32_t P = 0x0013c940;  // (the pad)
@@ -271,11 +300,15 @@ void batch_191() {
                 seed_rand();
             };
             std::string nm = "clank_frame_" + base;
+            {
+            std::optional<CollisionScratchIgnored> spr_ignored;
+            if (c2b_spr_check(nm.c_str())) spr_ignored.emplace();
             check(nm.c_str(), 0x002070d0, 40, Ret::None, [&d, vary] {
                 b191_load(d);
                 vary();
                 return Args{};
             }, [](A) { hero_frame_update(); return uint64_t{0}; }, OV(0x00173e7c));
+            }
             nm = "clank_hurt_" + base;
             check(nm.c_str(), 0x00210ce8, 60, Ret::Int32, [&d, vary] {
                 b191_load(d);

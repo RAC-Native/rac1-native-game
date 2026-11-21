@@ -8,6 +8,7 @@
 // The random-state checks of the three ring functions are in batch 67 (level 0; also run with ORACLE_LEVEL=6 / 10).
 #include "ovl_oracle.h"
 
+#include <game/ovl/shared_class857.h>
 #include <game/ovl/blarg_mobys.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -15,6 +16,7 @@
 #include <game/ovl/variants_l6.h>
 #include <runtime/ee/ee_interpreter.h>
 
+#include <optional>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -25,6 +27,16 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach segment_collide, whose crossing lists, chunk buffers and vertices the port keeps on
+// the host stack (the original: 0x70003000 .. 0x70003fff, 0x70000000 .., 0x70002000): A2's collision scratch ranges
+// are left out of these checks, and only of them (stage 5, task C2c).
+bool c2c_spr_check(const char* name) {
+    static const char* const kNames[] = {"gadgebot_857_command"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 const std::vector<uint8_t>& cl_dump(const std::string& path) {
     static std::map<std::string, std::vector<uint8_t>> cache;
     std::vector<uint8_t>& d = cache[path];
@@ -45,6 +57,8 @@ void cl_load(const std::vector<uint8_t>& d) {
 void lvcheck(const char* name, uint32_t at, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
     if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
     std::printf("%-26s L%d:0x%08x\n", name, g_oracle_level, at);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2c_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, at, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
 }
 constexpr uint32_t PAD = 0x0013c940;
@@ -99,7 +113,7 @@ void batch_151() {
         const uint32_t m = bots.empty() ? 0u : bots[static_cast<size_t>(ri(0, static_cast<int>(bots.size()) - 1))];
         w32(0x00141610, u(ri(0, 4)));
         return Args{{m}, {}};
-    }, [](A a) { if (a.i[0] != 0) blg_class857_update_l6(a.i[0]); return uint64_t{0}; });
+    }, [](A a) { if (a.i[0] != 0) class857_update(a.i[0]); return uint64_t{0}; });
     g_ignored_words = saved_ignored;
     g_ee_null_is_ram = null_ram;
 }

@@ -1,5 +1,6 @@
 // Ported overlay code: the level setup (0x244110) and the loaders it calls.
 #include <game/ovl/ovl_common.h>
+#include <game/bridge/guard.h>
 #include <game/enhance/pool.h>
 #include <game/enhance/session.h>
 #include <game/ovl/ovl_reloc.h>
@@ -534,6 +535,7 @@ void sub_00241788(uint32_t, int32_t) {}
 // end of each half. A bad magic or an invalid code traps (teq) in the original.
 // orig: 0x0024d8d0
 int32_t wad_decompress(uint32_t src, uint32_t dst) {
+    const SprScope spr_scope(SprScopeId::WadDecompress);  // (RAC1_BRIDGE_GUARD=spr: the scratchpad's data flow, src/game/bridge/guard.h)
     if ((lhu(src) ^ 0x4157u) != (lbu(src + 2) ^ 0x44u)) std::abort();  // teq: trap
     uint32_t size = static_cast<uint32_t>(lbu(src + 3)) | static_cast<uint32_t>(lbu(src + 4)) << 8 | static_cast<uint32_t>(lbu(src + 5)) << 16 |
                     static_cast<uint32_t>(lbu(src + 6)) << 24;
@@ -932,6 +934,7 @@ void gs_ram_upload(uint32_t data, int32_t n, uint32_t list) {
 // 0x160564 / 0x160568 = 1, 0x16056c = 0. Returns the end of the copy.
 // orig: 0x0023fa00
 uint32_t armor_load(uint32_t dst, uint32_t core) {
+    const SprScope spr_scope(SprScopeId::ArmorLoad);  // (RAC1_BRIDGE_GUARD=spr: the scratchpad's data flow, src/game/bridge/guard.h)
     const int32_t armor = lh(0x0013e056);
     mem_copy128(dst, lwu(0x0015ee54), lw(0x00137b80 + static_cast<uint32_t>(armor + 1) * 8 + 0x12cc) << 11);
     const uint32_t w0 = lwu(dst), s3 = lwu(dst + 4), w8 = lwu(dst + 8), s7 = lwu(dst + 0xc);

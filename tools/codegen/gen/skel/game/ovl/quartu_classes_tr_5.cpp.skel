@@ -41,103 +41,16 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/sound_emitter.h>
+#include <game/ovl/helmet_tr.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/shared_panel_lights.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
-
-//@gen qua_class832_update_l15
-
-//@gen qua_261560_l15
-
-//@gen qua_class848_update_l15
-
-//@gen qua_262d68_l15
-
-//@gen qua_class934_update_l15
-
-//@gen qua_class937_update_l15
-
-//@gen qua_2e5020_l15
-
-//@gen qua_2e54c0_l15
-
-//@gen qua_2e4e50_l15
-
-//@gen qua_2e4f40_l15
-
-//@gen qua_2e52b0_l15
-
-//@gen qua_class1134_update_l15
-
-//@gen qua_248ac8_l15
-
-//@gen qua_class1209_update_l15
-
-//@gen qua_class1221_update_l15
-
-//@gen qua_class1222_update_l15
-
-//@gen qua_2e6260_l15
-
-//@gen qua_2e6850_l15
-
-//@gen qua_2e6fa0_l15
-
-//@gen qua_class1224_update_l15
-
-//@gen qua_class1250_update_l15
-
-//@gen qua_class1257_update_l15
-
-//@gen qua_class1331_update_l15
-
-//@gen qua_class1371_update_l15
-
-//@gen qua_2ea8d0_l15
-
-//@gen qua_2ea9b0_l15
-
-//@gen qua_class1388_update_l15
-
-//@gen qua_2e7ed8_l15
-
-//@gen qua_class1394_update_l15
-
-//@gen qua_class1408_update_l15
-
-//@gen qua_class1409_update_l15
-
-//@gen qua_class1419_update_l15
-
-//@gen qua_class1425_update_l15
-
-//@gen qua_2eba70_l15
-
-//@gen qua_2ebb50_l15
-
-//@gen qua_class1428_update_l15
-
-//@gen qua_2eb9e0_l15
-
-//@gen qua_2ebf28_l15
-
-//@gen qua_2ebfb0_l15
-
-//@gen qua_2f78b8_l15
-
-//@gen qua_2f78e0_l15
-
-//@gen qua_class1430_update_l15
-
-//@gen qua_2499d8_l15
-
-//@gen qua_254c50_l15
-
-//@gen qua_2ec678_l15
-
-//@gen qua_class1446_update_l15
 
 //@gen qua_class1451_update_l15
 

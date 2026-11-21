@@ -7,13 +7,14 @@
 
 #include <game/ovl/cutscene.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/region_core.h>
 #include <game/lib/libvu0.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/music_streams.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/pause_menu_pages.h>
 #include <game/ovl/screen_fade.h>
-#include <game/ovl/shared_fx_tr.h>
+#include <game/ovl/shared_cutscene_fx.h>
 #include <game/ovl/umbris_call.h>
 #include <game/ovl/oltanis_mobys.h>
 #include <game/ovl/particle_16_spawn.h>
@@ -290,7 +291,9 @@ void cutscene_end() {
     }
     sb(P + 0x20a5, 0);
     sub_002330d0();
-    if (lh(SC + 0x46) != 0) {
+    // (region: the 1.02 build, the PAL disc 2.00, keeps the flag as a byte at +0x4a, its +0x46 the scene's frame count; its
+    // own walk-to code sets it there: the levels' copies the code generators translate from that disc, 0x00299e70 reads it)
+    if (region_core_moved() ? lbu(SC + 0x4a) != 0 : lh(SC + 0x46) != 0) {
         f20 = floor_probe(0.5f, SC + 0x10, 0);
         if (2.0f < f20) {
             if (abs_f(lwc1(SC + 0x18) - f20) < 2.0f) swc1(SC + 0x18, f20);
@@ -315,7 +318,7 @@ void cutscene_end() {
 // engines (0x2935b8); level 2, the class 0x1b1 mobys flagged 0x800; level 3 scene 5 frames
 // 900..1100, four sparks (particle_16_spawn 0x26ced0) from the scene's fourth moby's (+0x184) chain points; level 7
 // scene 4, the ship (0x214, second moby) with its engines; level 14 scene 0 frames 0x1c..0x21,
-// the first moby's effect 0x23e008 and its draw 0x23db30 (shared_fx_tr.cpp; Oltanis runs its own
+// the first moby's effect 0x23e008 (shared_cutscene_fx.cpp) and its draw 0x23db30 (shared_fx_tr.cpp; Oltanis runs its own
 // build of this function, so only a level 14 without it would reach them); level 15 scenes 3 / 4,
 // the mobys' lights. Aridia's and Kerwan's overlays carry their own builds with only their level's branch (L2:0x002400c8,
 // L3:0x0022c728: the same instructions as this one's level 2 / level 3 branch; the others are keyed on other levels): this
@@ -366,7 +369,7 @@ void cutscene_level_extras() {
     if (lw(0x0015ed84) == 0xe && lw(SC + 0x30) == 0) {
         const uint32_t m = lwu(SC + 0x17c);
         if (m != 0 && static_cast<uint32_t>(lw(SC + 0x34) - 0x1c) < 6u) {
-            cutscene_l14_effect_tr(m);
+            cutscene_l14_effect(m);
             sub_001f93e0(OVF(0x0023db30), m);
         }
     }

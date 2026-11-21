@@ -5,11 +5,12 @@
 //    (regen group veldin_finale_classes), registered in veldin_finale_mobys.cpp. Subjects: the level's live mobys (the class's own when
 //    placed), their +0x53 (the animation branch), +0x34, +0x31, +0x94 varied;
 //  - level 2 (ORACLE_LEVEL=2): Aridia's camera end-of-update callback L2:0x2fa770, queued by its camera hook 0x2fa710 when the look height
-//    0x16760c is not 0 (the same code as Eudora's / Orxon's ported callbacks, at Aridia's data): transliterated in aridia_classes_tr.cpp
-//    (regen group aridia), wired in camera_callback_call. Its block 0x167600 varied;
+//    0x16760c is not 0 (the same code as Eudora's / Orxon's ported callbacks, at Aridia's data): every level's copy is
+//    kerwan_camera.cpp's cam0_level_callback, wired in camera_callback_call. Its block 0x167600 varied;
 //  - levels 0 and 14 (ORACLE_LEVEL=0 / 14): the scenes' level 14 effect 0x23e008 and its draw 0x23db30 (cutscene_level_extras's level 14
 //    branch; Oltanis runs its own build of the function, so the port's Veldin build reaches them only on a level 14 without it):
-//    transliterated at Veldin's addresses in shared_fx_tr.cpp (regen group veldin_fx), the draw registered for the moby dispatch. Subject: the
+//    the shared ports (shared_cutscene_fx.cpp; until the re-glue R0 Veldin's transliterations in shared_fx_tr.cpp), the draw registered for
+//    the moby dispatch. Subject: the
 //    hero (a model with chain points: both read the moby's chain 0), its position, the frame scale and the random seed varied. On level 14 the
 //    original is Oltanis's own copy (the map's 0x245e98 / 0x2459c0), the same code.
 // No RAM dumps: the states are built from the level.
@@ -17,11 +18,13 @@
 
 #include "ovl_oracle.h"
 
-#include <game/ovl/aridia_classes_tr.h>
+#include <game/ovl/kerwan_camera.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/shared_cutscene_fx.h>
 #include <game/ovl/shared_fx_tr.h>
 #include <game/ovl/veldin_finale_mobys.h>
+#include <game/ovl/shared_finale.h>
 
 #include <cstring>
 #include <functional>
@@ -79,7 +82,9 @@ void batch_401() {
     // ---- level 18: the hook +0x14 of classes 568 / 1906
     {
         struct Hk { const char* name; uint32_t addr; uint16_t cls; void (*fn)(uint32_t); };
-        static const Hk hks[] = {{"vf_hook_2d6280_l18", 0x002d6280, 568, vf_hook_2d6280_l18}, {"vf_hook_2fcd00_l18", 0x002fcd00, 1906, vf_hook_2fcd00_l18}};
+        // (the shared port finale_stop_hook, shared_finale.cpp, with each copy's state: 5 / 8, as batch 510 checks them)
+        static const Hk hks[] = {{"vf_hook_2d6280_l18", 0x002d6280, 568, [](uint32_t m) { finale_stop_hook(m, 5); }},
+                                 {"vf_hook_2fcd00_l18", 0x002fcd00, 1906, [](uint32_t m) { finale_stop_hook(m, 8); }}};
         for (const Hk& h : hks) {
             if (g_oracle_level != 18) { l401check(18, h.name, h.addr, 0, Ret::None, nullptr, nullptr); continue; }
             level();
@@ -118,14 +123,14 @@ void batch_401() {
             wf(B + 0xc, ri(0, 3) == 0 ? rf(0.0f, 0.05f) : rf(-1.0f, 4.0f));
             seed_rand();
             return Args{{}, {}};
-        }, [](A) { cam_callback_2fa770_l2(0); return uint64_t{0}; });
+        }, [](A) { cam0_level_callback(0); return uint64_t{0}; });
     }
 
     // ---- levels 0 and 14: the scenes' level 14 effect and its draw (Veldin's build), on the hero
     {
         struct Fx { const char* name; uint32_t addr; void (*fn)(uint32_t); int n; };
-        static const Fx fxs[] = {{"cutscene_l14_effect_tr", 0x0023e008, cutscene_l14_effect_tr, 60},
-                                 {"cutscene_l14_effect_draw_tr", 0x0023db30, cutscene_l14_effect_draw_tr, 60}};
+        static const Fx fxs[] = {{"cutscene_l14_effect", 0x0023e008, cutscene_l14_effect, 60},
+                                 {"cutscene_l14_effect_draw", 0x0023db30, cutscene_l14_effect_draw, 60}};
         for (const Fx& f : fxs) {
             if (g_oracle_level != 0 && g_oracle_level != 14) {
                 skip_check(f.name, f.addr, "levels 0 and 14 only (ORACLE_LEVEL=0 / 14)");

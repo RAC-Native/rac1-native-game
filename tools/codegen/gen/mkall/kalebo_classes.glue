@@ -1,0 +1,4 @@
+0x002e8b98: envmap_uvs(static_cast<int32_t>(a0.w()), a1.w(), a2.w(), t0.w());
+0x002e95f8: envmap_uvs(static_cast<int32_t>(a0.w()), a1.w(), a2.w(), t0.w());
+0x002e9b38: envmap_uvs(static_cast<int32_t>(a0.w()), a1.w(), a2.w(), t0.w());
+0x002e9e40: envmap_uvs(static_cast<int32_t>(a0.w()), a1.w(), a2.w(), t0.w());

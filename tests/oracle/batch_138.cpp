@@ -1,5 +1,5 @@
 // Oracle batch 138 (task 0385): Kerwan (level 3) part 2: the Spawner (455), the Gold Bolt (1134), class 994's draw callback and
-// the level's own sound emitter types (kerwan_part2_tr.cpp), on the level's real data. Run with
+// the level's own sound emitter types (sound_emitter_types.cpp), on the level's real data. Run with
 // ORACLE_LEVEL=3 build/tests/ovl_oracle --batch 138 (needs the ISO). The subjects are the level's own mobys / emitters after the
 // first gameplay frame, perturbed; the original is Kerwan's own function at its own address.
 
@@ -8,19 +8,40 @@
 #include <game/lib/libcdvd.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/ovl_common.h>
-#include <game/ovl/kerwan_classes_tr.h>
+#include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/kerwan_mobys.h>
 #include <game/ovl/kerwan_part2_tr.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/shared_class235.h>
+#include <game/ovl/shared_class631.h>
+#include <game/ovl/shared_class848.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_spawner.h>
+#include <game/ovl/sound_emitter.h>
 #include <game/ovl/swingshot_rope_tr.h>
+#include <game/ovl/variants_l3.h>
 #include <runtime/vu/vu0.h>
 #include <game/ovl/ovl_reloc.h>
 
+#include <optional>
 #include <cmath>
 #include <cstring>
 
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
+// walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
+// collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
+bool c2b_spr_check(const char* name) {
+    static const char* const kNames[] = {"life627", "life833", "spawned627", "gold_bolt1134_states",
+                                         "gold_bolt1134_update", "spawned545", "spawner455_states"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // A check whose original is Kerwan's own function at `l3addr`.
 void k2check(const char* name, uint32_t l3addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
     if (g_only_batch != 0 && g_only_batch != g_batch) return;
@@ -31,6 +52,8 @@ void k2check(const char* name, uint32_t l3addr, int n, Ret ret, const std::funct
         return;
     }
     std::printf("%-26s L3:0x%08x\n", name, l3addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2b_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, l3addr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
 }
 
@@ -135,8 +158,8 @@ void batch_138() {
     // ---- the Spawner (455), the Gold Bolt (1134): their state byte (0 / 1 / as placed / random small), a hit, the hero near or far
     struct Cls { uint32_t fn; const char* name; void (*port)(uint32_t); };
     static const Cls classes[] = {
-        {0x002bef68u, "spawner455_update", kerwan_class455_update_l3},
-        {0x002dd188u, "gold_bolt1134_update", kerwan_class1134_update_l3},
+        {0x002bef68u, "spawner455_update", class455_update},
+        {0x002dd188u, "gold_bolt1134_update", gold_bolt_update},
     };
     for (const Cls& c : classes)
     for (int pass = 0; pass < 8; ++pass)
@@ -151,7 +174,7 @@ void batch_138() {
     // the Spawner's own states: the moby's state 0..9 (its jump table), the sub-state pvars +0x84 (0..6), its health +0x20, the
     // spawned count +0x86 / the most +0x87, its box +0xd0, the hero within / beyond its radii (+0x90 / +0x9c)
     for (int pass = 0; pass < 10; ++pass)
-    classcheck("spawner455_states", 0x002bef68u, kerwan_class455_update_l3, [pass, give_hit, hero_near](uint32_t m) {
+    classcheck("spawner455_states", 0x002bef68u, class455_update, [pass, give_hit, hero_near](uint32_t m) {
         const uint32_t pv = ee_read<uint32_t>(m + 0x78);
         w8(m + 0x20, u(pass));
         w8(pv + 0x84, u(ri(0, 6)));
@@ -175,7 +198,7 @@ void batch_138() {
     // the Gold Bolt's states 0 / 1 / 2, the hero right at it (the pickup: within 3 in xy, 2 in z), alive (+0x22a8) and in a state
     // that may collect (+0x20a4 0 / 3 / other), the bolt already collected or not (its byte of 0x14bec0), the bolt's kind (+0xc)
     for (int pass = 0; pass < 8; ++pass)
-    classcheck("gold_bolt1134_states", 0x002dd188u, kerwan_class1134_update_l3, [pass](uint32_t m) {
+    classcheck("gold_bolt1134_states", 0x002dd188u, gold_bolt_update, [pass](uint32_t m) {
         const uint32_t pv = ee_read<uint32_t>(m + 0x78), P = 0x0013f350;
         w8(m + 0x20, u(pass % 3));
         Vec4 q = ee_ref<Vec4>(m + 0x10);
@@ -259,13 +282,13 @@ void batch_138() {
     // near / far)
     struct Spawned { int cls, parent; uint32_t fn; const char* name; void (*port)(uint32_t); int frames; void (*parent_port)(uint32_t); };
     static const Spawned spawned[] = {
-        {235, 75, 0x002bae48u, "spawned235", kerwan_class235_update_l3, 0, nullptr},                         // (the ships': the landing's dump)
-        {545, 455, 0x002c4718u, "spawned545", kerwan_class545_update_l3, 900, nullptr},                      // (the Spawner's)
+        {235, 75, 0x002bae48u, "spawned235", class235_update, 0, nullptr},                         // (the ships': the landing's dump)
+        {545, 455, 0x002c4718u, "spawned545", class545_update, 900, nullptr},                      // (the Spawner's)
         {627, 578, 0x002cbea8u, "spawned627", kerwan_class627_update_l3, 900, nullptr},                      // (the mine layer's mines)
         {833, 574, 0x002d43c8u, "spawned833", kerwan_class833_update_l3, 900, kerwan_class574_update_l3},
-        {848, 631, 0x002d47c0u, "spawned848", kerwan_class848_update_l3, 900, kerwan_class631_update_l3},    // (the Blarg helicopter's)
+        {848, 631, 0x002d47c0u, "spawned848", class848_update, 900, class631_update},    // (the Blarg helicopter's)
         {898, 899, 0x002db020u, "spawned898", kerwan_class898_update_l3, 900, nullptr},
-        {1633, 1818, 0x002e08c8u, "spawned1633", kerwan_class1633_update_l3, 900, kerwan_class1818_update_l3},  // (the Sandmouse's)
+        {1633, 1818, 0x002e08c8u, "spawned1633", class1633_update, 900, sandmouse_update},  // (the Sandmouse's)
     };
     // The ships' 235s are spawned during the landing (game mode 6, its own frame loop: the oracle's gameplay frames leave the ships
     // still): their subjects come from a RAM dump of a headless run at its frame 20 (`tools/oracle/kerwan_tour.sh dumps` writes it to
@@ -346,6 +369,212 @@ void batch_138() {
         g_ignored_words = ign_before;
     }
 
+    // ---- (P3.3) the trooper's bolt (833) and the mine (627) through their lives: grown as above, then the port's gameplay frames
+    // run on (the parent's update, and the subject's where the frame's moby pass leaves it alone: its life word unchanged) and the
+    // RAM kept every few frames while one is alive (a bolt's flight, a mine thrown, landed, armed). The checks pick a kept frame
+    // and one of its subjects and set up a moment of the life: a bolt as it flies, the hero in its next step (a hit on the hero),
+    // its next step down into the floor at its trooper's feet (a hit on the world), its life's end, its burst; a mine as it is,
+    // the hero standing on it, its layer back within 3 after the wait (picked up), its age past 3600 / 5400 frames, its blast
+    // (the camera near or far: the spray's count and the shake), its fade, its flight back to the layer, its throw
+    {
+        struct Life { int cls, parent; uint32_t fn; const char* name; void (*port)(uint32_t); void (*parent_port)(uint32_t); uint32_t life_word; int span, every; };
+        static const Life lives[] = {
+            {833, 574, 0x002d43c8u, "life833", kerwan_class833_update_l3, kerwan_class574_update_l3, 0x14, 60, 3},
+            {627, 578, 0x002cbea8u, "life627", kerwan_class627_update_l3, nullptr, 0x6c, 400, 25},
+            {898, 899, 0x002db020u, "life898", kerwan_class898_update_l3, nullptr, 0x64, 60, 5},
+        };
+        for (const Life& s : lives) {
+            if (g_oracle_level != 3) { k2check(s.name, s.fn, 0, Ret::None, nullptr, nullptr); continue; }
+            if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, s.name) != 0) continue;
+            static std::vector<std::vector<uint8_t>> kept;
+            static std::vector<std::vector<uint32_t>> subjects;
+            kept.clear();
+            subjects.clear();
+            level();
+            w32(OV(0x0015f5c4), 0);
+            const std::vector<uint32_t> parents = mobys_of_class(s.parent);
+            if (parents.empty()) { std::printf("%-26s no parent (class %d)\n", s.name, s.parent); ++g_fail; continue; }
+            {
+                const uint32_t buf = ee_stack_alloc(0x20);
+                ee_ref<Vec4>(buf) = ee_ref<Vec4>(parents[0] + 0x10);
+                wf(buf, ee_read<float>(buf) + 6.0f);
+                wf(buf + 8, ee_read<float>(buf + 8) + 1.0f);
+                w32(buf + 0xc, 0);
+                for (uint32_t k = 0x10; k < 0x20; k += 4) w32(buf + k, 0);
+                hero_place(buf, buf + 0x10, -1, 1);
+                ee_stack_free(0x20);
+            }
+            if (s.cls == 833) {  // (the oracle's frames leave the troopers unalerted: each fires one bolt as its fire state does, at the
+                                 // hero or 10 ahead of itself: the muzzle (its chain point 0), the step of length 6 dt halved in z)
+                const uint32_t buf = ee_stack_alloc(0x20);
+                const float step = ee_read<float>(0x0015ed6c) * 6.0f;
+                for (size_t i = 0; i < parents.size() && i < 8; ++i) {
+                    const uint32_t t = parents[i];
+                    moby_chain_point_v(t, 0, ee_ref<Vec4>(buf));
+                    Vec4 aim = ee_ref<Vec4>(0x0013f3d0);
+                    if (i % 2 == 1) {
+                        aim = ee_ref<Vec4>(t + 0x10);
+                        aim.x += 10.0f * std::cos(ee_read<float>(t + 0x48)); aim.y += 10.0f * std::sin(ee_read<float>(t + 0x48)); aim.z += 1.0f;
+                    }
+                    Vec4 d = aim;
+                    d.x -= ee_read<float>(buf); d.y -= ee_read<float>(buf + 4); d.z -= ee_read<float>(buf + 8);
+                    const float len = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
+                    if (len < 0.01f) continue;
+                    d.x *= step / len; d.y *= step / len; d.z *= 0.5f * step / len; d.w = 0.0f;
+                    ee_ref<Vec4>(buf + 0x10) = d;
+                    trooper_bolt_spawn_l3(buf + 0x10, buf, t, frame_scale_i(0x82), atan2_f(d.x, d.y), step, 0.75f);
+                }
+                ee_stack_free(0x20);
+            }
+            int frames = 0, since = -1;
+            for (; frames < 900 + s.span && kept.size() < 12; ++frames) {
+                ee_ref<Vec4>(OV(0x00166dc0)) = ee_ref<Vec4>(parents[static_cast<size_t>(frames) % parents.size()] + 0x10);
+                std::vector<std::pair<uint32_t, uint32_t>> before;
+                for (uint32_t m : mobys_of_class(s.cls)) before.push_back({m, ee_read<uint32_t>(ee_read<uint32_t>(m + 0x78) + s.life_word)});
+                gameplay_frame();
+                if (s.parent_port != nullptr)
+                    for (uint32_t p : parents)
+                        if (ee_read<uint8_t>(p + 0x20) < 0xfd) s.parent_port(p);
+                for (const auto& [m, w] : before)
+                    if (ee_read<uint8_t>(m + 0x20) < 0xfe && static_cast<int16_t>(ee_read<uint16_t>(m + 0xa6)) == s.cls &&
+                        ee_read<uint32_t>(ee_read<uint32_t>(m + 0x78) + s.life_word) == w)
+                        s.port(m);
+                const std::vector<uint32_t> ms = mobys_of_class(s.cls);
+                if (ms.empty()) continue;
+                if (since < 0) since = frames;
+                if ((frames - since) % s.every == 0) {
+                    kept.emplace_back(ee_get_ram_base(), ee_get_ram_base() + 0x02000000);
+                    subjects.push_back(ms);
+                }
+            }
+            if (kept.empty()) { std::printf("%-26s L3:0x%08x  none spawned in %d frames\n", s.name, s.fn, frames); ++g_fail; continue; }
+            {
+                std::string states;
+                for (const auto& v : subjects) { states += std::to_string(v.size()); states += ' '; }
+                std::printf("  (%s: %zu frames kept from frame %d, subjects per frame: %s)\n", s.name, kept.size(), since, states.c_str());
+            }
+            g_pre_call = k2_vu0_capture;
+            const std::vector<uint32_t> ign_before = g_ignored_words;
+            for (uint32_t a = OV(0x00173e80); a < OV(0x00173fc0); a += 0x10) g_ignored_words.push_back(a + 0xc);
+            for (uint32_t i = 0; i < 0x20; ++i) g_ignored_words.push_back(OV(0x0016e080) + i * 0x20 + 0x1c);
+            if (s.cls == 833) {
+                // (a bolt's step into the floor: the segment collision's first triangle word (Veldin's 0x173e90, coll_hit_tri(0), stored
+                // from a VU0 register by the original's collide (L3 pc 0x1ea5dc): 0 there, the port's own leftover vector; batch 124's
+                // note on its w lane) and the scratchpad's 0x70003700 .. 0x7000371c (COMMON's known leftovers: saved registers' upper
+                // halves); only for this check)
+                for (uint32_t k = 0; k < 0x10; k += 4) g_ignored_words.push_back(OV(0x00173e90) + k);
+                for (uint32_t a = 0x70003700; a < 0x70003720; a += 4) g_ignored_words.push_back(a);
+            }
+            const int cls = s.cls;
+            for (int pass = 0; pass < 8; ++pass)
+            k2check(s.name, s.fn, 20, Ret::None, [pass, cls, parents, hero_near] {
+                // (a mine touched by its layer: the first frames kept, the layer still by its mines)
+                const size_t f = static_cast<size_t>(ri(0, cls == 627 && pass == 2 ? std::min(2, static_cast<int>(kept.size()) - 1) : static_cast<int>(kept.size()) - 1));
+                std::memcpy(ee_get_ram_base(), kept[f].data(), kept[f].size());
+                const uint32_t m = subjects[f][static_cast<size_t>(ri(0, static_cast<int>(subjects[f].size()) - 1))];
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78), hero = ee_read<uint32_t>(0x001413d0);
+                Vec4 at = ee_ref<Vec4>(m + 0x10);
+                auto hero_at = [hero](const Vec4& q) { ee_ref<Vec4>(0x0013f3d0) = q; ee_ref<Vec4>(hero + 0x10) = q; };
+                if (cls == 833) {
+                    if (coin()) { Vec4 mv = ee_ref<Vec4>(0x0013f490); mv.x = rf(-0.3f, 0.3f); mv.y = rf(-0.3f, 0.3f); mv.z = rf(-0.3f, 0.3f); ee_ref<Vec4>(0x0013f490) = mv; }  // (the hero's move this frame: the bolt drifts with it, its z scaled by L3:0x161b28)
+                    if (pass == 0) hero_near(at, 3.0f, 30.0f);
+                    if (pass == 1 || pass == 2) {  // the hero in its next step
+                        const float t = rf(0.2f, 1.2f);
+                        Vec4 q = at;
+                        q.x += ee_read<float>(pv) * t; q.y += ee_read<float>(pv + 4) * t; q.z += ee_read<float>(pv + 8) * t - rf(0.0f, 1.0f);
+                        hero_at(q);
+                    }
+                    if (pass == 3) {  // into the floor at its trooper's feet
+                        const uint32_t p = parents[static_cast<size_t>(ri(0, static_cast<int>(parents.size()) - 1))];
+                        Vec4 q = ee_ref<Vec4>(p + 0x10);
+                        q.x += rf(-1.0f, 1.0f); q.y += rf(-1.0f, 1.0f); q.z += rf(0.1f, 0.6f);
+                        ee_ref<Vec4>(m + 0x10) = q;
+                        wf(pv + 8, -rf(0.8f, 2.0f));
+                        if (coin()) w32(pv + 0x10, p);
+                    }
+                    if (pass == 4) w32(pv + 0x14, u(ri(0, 2)));
+                    if (pass == 5) w8(m + 0x20, 2);
+                    if (pass == 6) { w8(m + 0x20, u(ri(0, 3))); hero_near(at, 2.0f, 12.0f); }
+                    if (pass == 7) { wf(pv + 0x1c, rf(-3.1f, 3.1f)); wf(pv + 0x20, rf(-1.0f, 1.0f)); hero_near(at, 1.0f, 8.0f); }
+                } else if (cls == 898) {  // an escalator's step: along its path, at its last leg (it retires there), the speed word
+                    const uint32_t path = ee_read<uint32_t>(pv + 0x60);
+                    const int32_t n = path != 0 ? static_cast<int32_t>(ee_read<uint32_t>(path)) : 0;
+                    const float leg = path != 0 ? ee_read<float>(path + 0x1c) : 0.0f;
+                    if (n > 2 && n < 1000 && leg > 0.0f && leg < 1000.0f) {
+                        if (pass >= 4) wf(pv + 0x64, leg * static_cast<float>(n - 2) + rf(-1.5f * leg, 0.5f * leg));
+                        else if (pass >= 2) wf(pv + 0x64, rf(0.0f, leg * static_cast<float>(n - 1)));
+                    }
+                    if (coin()) wf(L3_ADDR(0x00161bc0), rf(0.02f, 0.2f));
+                } else {
+                    const uint32_t layer = ee_read<uint32_t>(pv + 0x68);
+                    if (pass == 0) hero_near(at, 3.0f, 30.0f);
+                    if (pass == 1) {  // the hero standing on it (armed)
+                        w8(m + 0x20, 3);
+                        Vec4 q = at;
+                        q.x += rf(-0.4f, 0.4f); q.y += rf(-0.4f, 0.4f);
+                        hero_at(q);
+                        wf(0x0013f3d8, at.z + rf(-0.35f, 0.35f));
+                    }
+                    if (pass == 2 && layer != 0) {  // its layer back after the wait
+                        w8(m + 0x20, 3);
+                        w32(pv + 0x64, u(ri(0, 1)));
+                        Vec4 q = at;
+                        q.x += rf(-3.5f, 3.5f); q.y += rf(-3.5f, 3.5f);
+                        ee_ref<Vec4>(layer + 0x10) = q;
+                        if (ri(0, 4) == 0) w8(layer + 0x20, coin() ? 0xfeu : 0xfdu);
+                        if (ri(0, 3) != 0) {  // touching it (within 1): its layer during the wait or after, or a sibling mine (a moby
+                                              // already near it: the sphere query finds mobys by their grid cells) made one that can be hit
+                            Vec4 t = at;
+                            t.x += rf(-0.6f, 0.6f); t.y += rf(-0.6f, 0.6f);
+                            uint32_t o = layer;
+                            if (coin()) for (uint32_t p : subjects[f]) if (p != m) { o = p; break; }
+                            ee_ref<Vec4>(o + 0x10) = t;
+                            if (ri(0, 3) != 0) w16(o + 0x34, ee_read<uint16_t>(o + 0x34) | 0x1000u);
+                            w32(pv + 0x64, coin() ? 0u : u(ri(2, 30)));
+                        }
+                    }
+                    if (pass == 3) {  // old
+                        w8(m + 0x20, 3);
+                        w32(pv + 0x6c, u(ri(3590, 5410)));
+                        if (layer != 0 && coin()) w8(layer + 0x20, 0xfe);
+                        if (ri(0, 4) == 0) w32(pv + 0x68, 0);
+                    }
+                    if (pass == 4) {  // the blast
+                        w8(m + 0x20, 4);
+                        Vec4 c = at;
+                        const float r = rf(0.0f, 2.0f) < 1.0f ? rf(0.0f, 20.0f) : rf(20.0f, 40.0f), a = rf(-3.1f, 3.1f);
+                        c.x += r * std::cos(a); c.y += r * std::sin(a);
+                        ee_ref<Vec4>(OV(0x00166dc0)) = c;
+                        if (coin()) hero_near(at, 2.0f, 6.0f);
+                    }
+                    if (pass == 5) {  // the fade
+                        w8(m + 0x20, 5);
+                        const float full = ee_read<float>(ee_read<uint32_t>(m + 0x24) + 0x24);
+                        wf(m + 0x2c, full * (coin() ? rf(0.0095f, 0.0115f) : rf(0.01f, 1.0f)));
+                    }
+                    if (pass == 6 && layer != 0) {  // back to the layer
+                        w8(m + 0x20, 2);
+                        Vec4 q = ee_ref<Vec4>(layer + 0x10);
+                        const float r = coin() ? rf(0.0f, 0.3f) : rf(0.3f, 10.0f);
+                        q.x += r; q.z += rf(-1.0f, 1.0f);
+                        ee_ref<Vec4>(m + 0x10) = q;
+                    }
+                    if (pass == 7) {  // thrown
+                        w8(m + 0x20, 1);
+                        if (coin()) w8(m + 0x53, u(ri(0, 2)));
+                        if (coin()) wf(m + 0x18, rf(3.0f, 7.0f));
+                    }
+                }
+                seed_rand();
+                return Args{{m}, {}};
+            }, [s](A a) { k2_vu0_sync(); s.port(a.i[0]); return uint64_t{0}; });
+            g_pre_call = nullptr;
+            g_ignored_words = ign_before;
+            kept.clear();
+            kept.shrink_to_fit();
+        }
+    }
+
     // ---- (task 0385b) the train ride: the RAM of a headless run 855 frames into a ride (the hero boarded at frame 800; the far
     // station's camera trigger 737 near the end of its shot: `tools/oracle/kerwan_tour.sh dumps` writes assets/dumps/oracle/kerwan_0385/train1655.bin);
     // the locomotive (822), its carriages (1210) and the stations' camera triggers (737), the frame counter varied, and the 737s' shot
@@ -363,7 +592,7 @@ void batch_138() {
         static const RideCls ride_cls[] = {
             {822, 0x00292e98u, "train_ride822", kerwan_class822_update_l3},
             {1210, 0x002953f8u, "train_ride1210", train_carriage_update_l3},
-            {737, 0x002cf340u, "train_ride737", kerwan_class737_update_l3},
+            {737, 0x002cf340u, "train_ride737", scripted_camera_trigger_update_l1},
         };
         for (const RideCls& rc : ride_cls) {
             if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, rc.name) != 0) continue;
@@ -419,8 +648,8 @@ void batch_138() {
     // their timers / channel words perturbed
     struct Em { uint32_t fn; const char* name; void (*port)(uint32_t); };
     static const Em ems[] = {
-        {0x002ed800u, "emitter_2ed800", kerwan_emitter_2ed800_l3},
-        {0x002ed960u, "emitter_2ed960", kerwan_emitter_2ed960_l3},
+        {0x002ed800u, "emitter_2ed800", emitter_reverb_box_update},
+        {0x002ed960u, "emitter_2ed960", emitter_music_box_update},
     };
     for (const Em& e : ems) {
         if (g_oracle_level != 3) { k2check(e.name, e.fn, 0, Ret::None, nullptr, nullptr); continue; }

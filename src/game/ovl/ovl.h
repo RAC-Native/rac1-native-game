@@ -652,6 +652,7 @@ void sub_00262cf0(uint32_t dst, uint32_t base, float r, float a, float b);  // o
 void sub_00263d40(int32_t v, int32_t frames);            // orig: 0x00263d40
 int32_t pad_buttons_together(uint32_t mask_a, uint32_t mask_b, int32_t back, int32_t max_gap);  // orig: 0x00266e00
 void sub_00262b80(uint32_t dst, uint32_t a, uint32_t b, float r, float da, float db);  // orig: 0x00262b80
+void dma_cnt_vif(uint32_t vif);                          // orig: 0x002a0b60
 void sub_002a0ba8(uint32_t reg, uint64_t d);             // orig: 0x002a0ba8
 uint32_t alloc_particle(uint32_t kind);                  // orig: 0x002678b8
 void free_particle(uint32_t p);                                   // orig: 0x00267a08
@@ -678,10 +679,9 @@ uint32_t spawn_moby_5f3(uint32_t unused, uint32_t pos);  // orig: 0x002a9aa0
 uint32_t spawn_moby_a7(uint32_t v);                      // orig: 0x002b4138
 void place_moby_5f3(uint32_t unused, uint32_t pos);      // orig: 0x002a9b80
 void place_moby_5f3_v(uint32_t unused, const Vec4& pos);  // orig: 0x002a9b80
-void spawn_particle_4_v(const Vec4& pos, const Vec4& vel, uint32_t colour, uint32_t a, uint32_t b, uint32_t c, uint32_t d,
-                        int32_t additive);  // orig: 0x00269958
-void spawn_particle_4(uint32_t pos, uint32_t vel, uint32_t colour, uint32_t a, uint32_t b, uint32_t c, uint32_t d,
-                      int32_t additive);                 // orig: 0x00269958
+// (one line each: tools/codegen/mkall.py glues the levels' calls of 0x269958 to the port from its declaration)
+void spawn_particle_4_v(const Vec4& pos, const Vec4& vel, uint32_t colour, uint32_t a, uint32_t b, uint32_t c, uint32_t d, int32_t additive);  // orig: 0x00269958
+void spawn_particle_4(uint32_t pos, uint32_t vel, uint32_t colour, uint32_t a, uint32_t b, uint32_t c, uint32_t d, int32_t additive);  // orig: 0x00269958
 void spawn_particle_23_v(const Vec4& pos, const Vec4& vel, int32_t kind, uint32_t a);  // orig: 0x0026f548
 void spawn_particle_23(uint32_t pos, uint32_t vel, int32_t kind, uint32_t a);  // orig: 0x0026f548
 uint32_t spawn_particle_22_v(const Vec4& pos, const Vec4& vel, float scale, float h);  // orig: 0x0026f080
@@ -700,10 +700,9 @@ void attach_frame_set_v(uint32_t out, const Vec4& pos, const Vec4& base_ang, con
 void attach_frame_set(uint32_t out, uint32_t pos, uint32_t base_ang, uint32_t ang);  // orig: 0x00260738
 int32_t sub_002604f0_v(uint32_t obj, uint32_t moby, Vec4& pos, Vec4& ang, Vec4& out_pos, Vec4& out_ang);  // orig: 0x002604f0
 int32_t sub_002604f0(uint32_t obj, uint32_t moby, uint32_t pos, uint32_t ang, uint32_t out_pos, uint32_t out_ang);  // orig: 0x002604f0
-uint32_t spawn_particle_35_v(const Vec4& pos, uint32_t a, uint32_t colour, int32_t mode, uint32_t b, const Vec4& vec, float s0,
-                             float s1, float c);  // orig: 0x00272060
-uint32_t spawn_particle_35(uint32_t pos, uint32_t a, uint32_t colour, int32_t mode, uint32_t b, uint32_t vec, float s0,
-                           float s1, float c);  // orig: 0x00272060
+// (one line each: tools/codegen/mkall.py glues the levels' calls of 0x272060 to the port from its declaration)
+uint32_t spawn_particle_35_v(const Vec4& pos, uint32_t a, uint32_t colour, int32_t mode, uint32_t b, const Vec4& vec, float s0, float s1, float c);  // orig: 0x00272060
+uint32_t spawn_particle_35(uint32_t pos, uint32_t a, uint32_t colour, int32_t mode, uint32_t b, uint32_t vec, float s0, float s1, float c);  // orig: 0x00272060
 int32_t sphere_mesh_collide(uint32_t pos, float radius);  // orig: 0x001f3170
 int32_t mobys_in_sphere_v(const Vec4& pos, float radius, uint32_t flags, uint32_t ignore, const uint32_t* rec);  // orig: 0x001f2868
 int32_t mobys_in_sphere(uint32_t pos, float radius, uint32_t flags, uint32_t ignore, uint32_t rec);  // orig: 0x001f2868
@@ -939,6 +938,7 @@ uint32_t hud_alloc(int32_t n);                                               // 
 void hud_request_flags(int32_t serial, uint32_t f);                          // orig: 0x002359f8
 void hud_init();                                                             // orig: 0x00234e98
 void hud_weapon_element();                                                   // orig: 0x0023adb8
+void hud_weapon_element_release();                                           // orig: 0x0023af30
 int32_t hud_update(int32_t run);                                             // orig: 0x0023ac78
 void hud_tex_upload(uint32_t src, int32_t dbp, int32_t psm, int32_t wl, int32_t hl, int32_t immediate);// orig: 0x0023c7b0
 void hud_tex_relocate(int32_t set, uint32_t base);                           // orig: 0x002351b0

@@ -3,6 +3,7 @@
 // into the menu's buffer and swapped in as the text table), the scrolling text lists, the
 // skill / map pictures, the weapons / gadgets help lists.
 #include <game/enhance/corrected_texts.h>
+#include <game/enhance/fixes102.h>
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/music_streams.h>
@@ -278,12 +279,16 @@ int32_t icon_list_update(uint32_t w) {
         if (v < lw(w + 0x40)) sw(w + 0x3c, static_cast<uint32_t>(v));
     }
     if (lw(w + 0x3c) != old) moby_sound_start(1, 0x11, lwu(w + 0x14));
+    // (1.02 Fixes, fix 28: the 1.02 build, 2.00 0x00278a50..0x00278adc, packs the icons 0x252 apart (37.1 pixels, not 38)
+    // and starts them 0x52 / 0x182 down (not 0x60 / 0x190): its icon_list_draw steps the same 0x252)
+    const bool tight = fixes102_on(28);
+    const int32_t step = tight ? 0x252 : 0x260;
     const int32_t h = lw(w + 0x24) << 4;
-    if (!(ee_div(h, 0x260) < lw(w + 0x40))) {
-        sw(w + 0x5c, 0x60);
+    if (!(ee_div(h, step) < lw(w + 0x40))) {
+        sw(w + 0x5c, tight ? 0x52u : 0x60u);
         return 0;
     }
-    int32_t rows = ee_div(h - 0x28, 0x260);
+    int32_t rows = ee_div(h - 0x28, step);
     const int32_t sel = lw(w + 0x3c);
     if (!(lw(w + 0x60) < sel)) {
         const int32_t v = sel - 1;
@@ -293,7 +298,7 @@ int32_t icon_list_update(uint32_t w) {
     rows -= 2;
     const int32_t top = lw(w + 0x3c) - rows;
     if (lw(w + 0x60) < top) sw(w + 0x60, static_cast<uint32_t>(top));
-    sw(w + 0x5c, static_cast<uint32_t>(0x190 - lw(w + 0x60) * 0x260));
+    sw(w + 0x5c, static_cast<uint32_t>((tight ? 0x182 : 0x190) - lw(w + 0x60) * step));
     return 0;
 }
 
@@ -307,7 +312,9 @@ int32_t icon_list_draw(uint32_t w) {
     texture_block_begin(0);
     if (lw(w + 0x40) > 0) {
         uint32_t off = 0;
-        for (int32_t i = 0; i < lw(w + 0x40); ++i, off += 10, y += 0x260) {
+        // (1.02 Fixes, fix 28: the 1.02 build's step 0x252, 2.00 0x00278c24)
+        const int32_t step = fixes102_on(28) ? 0x252 : 0x260;
+        for (int32_t i = 0; i < lw(w + 0x40); ++i, off += 10, y += step) {
             const uint32_t cell = lwu(w + 0x48) + off;
             if (lw(w + 0x3c) == i) {
                 const int32_t a = abs_i(static_cast<int32_t>(lwu(OV(0x0015f3f8)) & 0x3f) - 0x20);

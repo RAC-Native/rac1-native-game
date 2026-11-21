@@ -25,7 +25,29 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/hydro.h>
 #include <game/ovl/veldin_finale_mobys.h>
+#include <game/ovl/aridia_mobys.h>
+#include <game/ovl/novalis_mobys.h>
+#include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/shared_class1021.h>
+#include <game/ovl/shared_class1356.h>
+#include <game/ovl/shared_class1443.h>
+#include <game/ovl/shared_class1523.h>
+#include <game/ovl/shared_class256.h>
+#include <game/ovl/shared_class341.h>
+#include <game/ovl/shared_class49.h>
+#include <game/ovl/shared_class615.h>
+#include <game/ovl/shared_class638.h>
+#include <game/ovl/shared_class830.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_flash.h>
+#include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_rock.h>
+#include <game/ovl/shared_shockwave.h>
+#include <game/ovl/shared_swingshot_target.h>
+#include <game/ovl/shared_zones.h>
+#include <game/ovl/empty_class_updates.h>
 
+#include <optional>
 #include <cstring>
 #include <map>
 #include <string>
@@ -34,6 +56,18 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
+// walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
+// collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
+bool c2b_spr_check(const char* name) {
+    static const char* const kNames[] = {"class1454_hydro_1050", "class1454_hydro_1650", "class1454_hydro_1750",
+                                         "hero_frame_swim_1100", "hero_frame_swim_1160", "hero_frame_swim_1200",
+                                         "hero_frame_swim_980"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 const std::vector<uint8_t>& dump372(const std::string& path) {
     static std::map<std::string, std::vector<uint8_t>> cache;
     std::vector<uint8_t>& d = cache[path];
@@ -50,6 +84,8 @@ const std::vector<uint8_t>& dump372(const std::string& path) {
 void l18check372(const char* name, uint32_t laddr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
     if (const char* only = std::getenv("ORACLE_ONLY"); only != nullptr && std::strcmp(only, name) != 0) return;
     std::printf("%-26s L18:0x%08x\n", name, laddr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2b_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, laddr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
 }
 void load372(const std::vector<uint8_t>& d) {
@@ -91,6 +127,8 @@ void batch_372() {
             if (ri(0, 2) == 0) wf(0x0013f350 + 0x2f0, rf(84.0f, 93.0f));  // (the water height the hero keeps)
             seed_rand();
         };
+        std::optional<CollisionScratchIgnored> spr_ignored;
+        if (c2b_spr_check(nm.c_str())) spr_ignored.emplace();
         check(nm.c_str(), 0x002070d0, 40, Ret::None, [&d, vary] { load372(d); vary(); return Args{}; },
               [](A) { hero_frame_update(); return uint64_t{0}; });
     }
@@ -98,39 +136,39 @@ void batch_372() {
     struct Cl { const char* name; uint32_t addr; void (*fn)(uint32_t); };
     static const Cl cls[] = {
             {"class41", 0x002a7220, vf_class41_update_l18},
-            {"class49", 0x002a76e0, vf_class49_update_l18},
-            {"class50", 0x002a7b90, vf_class50_update_l18},
-            {"class256", 0x002aa3b0, vf_class256_update_l18},
-            {"class1427", 0x002ab7c0, vf_class1427_update_l18},
-            {"class1523", 0x002abaa0, vf_class1523_update_l18},
-            {"class331", 0x002ce7d0, vf_class331_update_l18},
-            {"class341", 0x002ce800, vf_class341_update_l18},
-            {"class419", 0x002ceaa0, vf_class419_update_l18},
+            {"class49", 0x002a76e0, class49_update},
+            {"class50", 0x002a7b90, class50_update},
+            {"class256", 0x002aa3b0, class256_update},
+            {"class1427", 0x002ab7c0, shockwave_update},
+            {"class1523", 0x002abaa0, class1523_update},
+            {"class331", 0x002ce7d0, trackdrive_left_update_l2},
+            {"class341", 0x002ce800, class341_update},
+            {"class419", 0x002ceaa0, empty_update},
             {"class564", 0x002d5050, vf_class564_update_l18},
             {"class568", 0x002d5918, vf_class568_update_l18},
             {"class582", 0x002d62e8, vf_class582_update_l18},
             {"class583", 0x002d6600, vf_class583_update_l18},
             {"class586", 0x002d7b20, vf_class586_update_l18},
             {"class587", 0x002d82c0, vf_class587_update_l18},
-            {"class605", 0x002d8ba8, vf_class605_update_l18},
-            {"class615", 0x002d8fd0, vf_class615_update_l18},
+            {"class605", 0x002d8ba8, zone_marker_update},
+            {"class615", 0x002d8fd0, class615_update},
             {"class624", 0x002db460, vf_class624_update_l18},
             {"class628", 0x002dc260, vf_class628_update_l18},
-            {"class638", 0x002dc918, vf_class638_update_l18},
+            {"class638", 0x002dc918, class638_update},
             {"class644", 0x002df608, vf_class644_update_l18},
-            {"class696", 0x002dfda8, vf_class696_update_l18},
-            {"class830", 0x002e1508, vf_class830_update_l18},
-            {"class758", 0x002e19d8, vf_class758_update_l18},
-            {"class805", 0x002e1f40, vf_class805_update_l18},
-            {"class832", 0x002e4168, vf_class832_update_l18},
+            {"class696", 0x002dfda8, rock_update},
+            {"class830", 0x002e1508, class830_update},
+            {"class758", 0x002e19d8, swingshot_target_update},
+            {"class805", 0x002e1f40, spawn_point_update_l1},
+            {"class832", 0x002e4168, class832_update},
             {"class885", 0x002e9768, vf_class885_update_l18},
             {"class983", 0x002e9e70, vf_class983_update_l18},
-            {"class1021", 0x002ec3e8, vf_class1021_update_l18},
-            {"class1039", 0x002ec858, vf_class1039_update_l18},
-            {"class1134", 0x002ecc40, vf_class1134_update_l18},
-            {"class1135", 0x002edb78, vf_class1135_update_l18},
+            {"class1021", 0x002ec3e8, class1021_update},
+            {"class1039", 0x002ec858, deadly_zones_update},
+            {"class1134", 0x002ecc40, gold_bolt_update},
+            {"class1135", 0x002edb78, teleporter_update_l1},
             {"class1355", 0x002efb88, vf_class1355_update_l18},
-            {"class1356", 0x002f0920, vf_class1356_update_l18},
+            {"class1356", 0x002f0920, class1356_update},
             {"class1381", 0x002f16f0, vf_class1381_update_l18},
             {"class1392", 0x002f1e68, vf_class1392_update_l18},
             {"class1402", 0x002f2310, vf_class1402_update_l18},
@@ -143,8 +181,8 @@ void batch_372() {
             {"class1584", 0x002fa728, vf_class1584_update_l18},
             {"class1750", 0x002fad08, vf_class1750_update_l18},
             {"class1799", 0x002fad28, vf_class1799_update_l18},
-            {"class1890", 0x002fae48, vf_class1890_update_l18},
-            {"class1898", 0x002fb548, vf_class1898_update_l18},
+            {"class1890", 0x002fae48, class1443_update},
+            {"class1898", 0x002fb548, flash_update},
             {"class1899", 0x002fb868, vf_class1899_update_l18},
             {"class1906", 0x002fbb98, vf_class1906_update_l18},
     };

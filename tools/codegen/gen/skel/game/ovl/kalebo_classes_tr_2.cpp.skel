@@ -36,94 +36,14 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/sound_emitter.h>
+#include <game/ovl/shared_hoverboard.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
 
-//@gen kal_class556_update_l16
-
-//@gen kal_class605_update_l16
-
-//@gen kal_2a09a0_l16
-
-//@gen kal_2d3f78_l16
-
-//@gen kal_2d38b0_l16
-
-//@gen kal_2d3eb8_l16
-
-//@gen kal_2d4070_l16
-
-//@gen kal_2d41f8_l16
-
-//@gen kal_2d4590_l16
-
-//@gen kal_2d4908_l16
-
-//@gen kal_class638_update_l16
-
-//@gen kal_class647_update_l16
-
-//@gen kal_class650_update_l16
-
-//@gen kal_254900_l16
-
-//@gen kal_2ceca8_l16
-
-//@gen kal_2d5ad0_l16
-
-//@gen kal_2d5bc8_l16
-
-//@gen kal_2d6260_l16
-
-//@gen kal_class654_update_l16
-
-//@gen kal_2f3a50_l16
-
-//@gen kal_2f3b40_l16
-
-//@gen kal_class758_update_l16
-
-//@gen kal_25eef0_l16
-
-//@gen kal_class800_update_l16
-
-//@gen kal_class805_update_l16
-
-//@gen kal_class876_update_l16
-
-//@gen kal_class933_update_l16
-
 //@gen kal_class1111_update_l16
-
-//@gen kal_2dfa98_l16
-
-//@gen kal_2dff38_l16
-
-//@gen kal_2df8c8_l16
-
-//@gen kal_2df9b8_l16
-
-//@gen kal_2dfd28_l16
-
-//@gen kal_class1134_update_l16
-
-//@gen kal_2549d8_l16
-
-//@gen kal_260aa8_l16
-
-//@gen kal_2e0070_l16
-
-//@gen kal_2e0818_l16
-
-//@gen kal_2e0978_l16
-
-//@gen kal_2e0d30_l16
-
-//@gen kal_2e0d80_l16
-
-//@gen kal_class1135_update_l16
 
 }  // namespace rac1

@@ -50,45 +50,15 @@
 #include <game/ovl/walker.h>
 #include <game/render/render_view.h>  // (the space fights' HUD: tools/codegen/hooks.glue)
 #include <game/port_stubs.h>
+#include <game/ovl/glows.h>
+#include <game/ovl/screen_effects.h>
+#include <game/ovl/shadows.h>
+#include <game/ovl/shared_hud_shapes.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
-
-//@gen vo_cb_2a8808_l17
-
-//@gen vo_cb_2a95b8_l17
-
-//@gen vo_cb_2acf00_l17
-
-//@gen vo_cb_2cc740_l17
-
-//@gen vo_cb_2d5e38_l17
-
-//@gen vo_2d6ef0_l17
-
-//@gen vo_2d74c0_l17
-
-//@gen vo_cb_2d6d88_l17
-
-//@gen vo_cb_2d7cf0_l17
-
-//@gen vo_cb_2e5848_l17
-
-//@gen vo_cb_2e6e40_l17
-
-//@gen vo_cb_2e9798_l17
-
-//@gen vo_1f7958_l17
-
-//@gen vo_2e9c28_l17
-
-//@gen vo_2ea0c8_l17
-
-//@gen vo_2ea418_l17
-
-//@gen vo_2e9e48_l17
 
 //@gen vo_2eaae0_l17
 
@@ -97,17 +67,5 @@ using namespace vu0m;
 //@gen vo_2eb768_l17
 
 //@gen vo_cb_2eb9a8_l17
-
-//@gen vo_cb_2f0448_l17
-
-//@gen vo_1fcac0_l17
-
-//@gen vo_299118_l17
-
-//@gen vo_1f97a8_l17
-
-//@gen vo_cb_2f04d0_l17
-
-//@gen vo_cb_2f0948_l17
 
 }  // namespace rac1

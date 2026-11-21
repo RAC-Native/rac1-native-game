@@ -16,6 +16,8 @@
 
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl_common.h>
+#include <game/ovl/ee_regs.h>
+#include <game/ovl/vu0_regs.h>
 #include <game/render/mrp_fx.h>
 
 #include <cstdio>
@@ -107,13 +109,44 @@ void packet_ref_13cf10() {
     sw(CUR, p + 0x10);
 }
 
-// orig: 0x001ffa18 — a matrix of diagonal (s, s, s) and row 3 vf0 (VU0)
+// The VU0 registers the original (0x1ffa18 and each level's copy) leaves: it builds the matrix in VU0 (vf1..vf3 the diagonal,
+// k on x / y / z; vf4 = vf0; vf5 = QMTC2 of the 32-bit word: (k, its sign, 0, 0), the upper half the caller's `at`, zero in the
+// transliterated copies) and stores vf1..vf4. Later code reads some of them stale: the moby pass's shadow meshes take vf5's w
+// lane into their XYZ-masked rows (moby_draw_hand.cpp), after the draw callbacks that set up VU1 program 7 (shadows_vu1_setup)
+// ran. (Found by the PAL smoke test of wave 5: Oltanis's sky-reflecting objects, inv5 item 1.)
+// orig: 0x001ffa18 (its VU0 registers; L1:0x00221928 L2:0x00210a80 L3:0x001f93b0 L4:0x001f2480 L5:0x0022e700 L6:0x00217ab8
+// L7:0x00227880 L8:0x00212598 L9:0x0021f6f8 L10:0x001f3080 L11:0x00231380 L12:0x00222928 L13:0x0020b500 L14:0x00213028
+// L15:0x001f9190 L16:0x001fe280 L17:0x001fcac0 L18:0x00208800)
+void mat4_scale_diag_vu0(float k) {
+    using namespace vu0m;
+    Vf* r = vf();
+    eer::Q128 v{};
+    v.lo = static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(f2u(k))));
+    eer::qmtc2(5, v);
+    eer::vmacro();
+    mulbc(r[1], r[0], r[0].v[0], XYZW);
+    eer::vmacro();
+    mulbc(r[2], r[0], r[0].v[0], XYZW);
+    eer::vmacro();
+    mulbc(r[3], r[0], r[0].v[0], XYZW);
+    eer::vmacro();
+    r[4] = r[0];
+    eer::vmacro();
+    addbc(r[1], r[1], r[5].v[0], X);
+    eer::vmacro();
+    addbc(r[2], r[2], r[5].v[0], Y);
+    eer::vmacro();
+    addbc(r[3], r[3], r[5].v[0], Z);
+}
+
+// orig: 0x001ffa18 — a matrix of diagonal (s, s, s) and row 3 vf0 (VU0); the VU0 registers left as the original leaves them
 void mat4_scale_diag(Mat4& d, float s) {
     const float z = vuc(0.0f * 0.0f);
     d.r[0] = Vec4{vuc(z + vuc(s)), z, z, vuc(1.0f * 0.0f)};
     d.r[1] = Vec4{z, vuc(z + vuc(s)), z, vuc(1.0f * 0.0f)};
     d.r[2] = Vec4{z, z, vuc(z + vuc(s)), vuc(1.0f * 0.0f)};
     d.r[3] = Vec4{0.0f, 0.0f, 0.0f, 1.0f};
+    mat4_scale_diag_vu0(s);
 }
 
 // orig: 0x001fe6d8

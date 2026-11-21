@@ -6,7 +6,7 @@
 // from the target and the distances (+0x15c / +0x160), +0x190 / +0x1a8 the springs, +0x1d0
 // the collision state, +0x220 the pitch state, +0x240 the previous target.
 #include <game/enhance/advanced.h>
-#include <game/ovl/kerwan_camera_tr.h>
+#include <game/ovl/kerwan_camera.h>
 #include <game/ovl/variants_l3.h>
 #include <game/ovl/eudora_mobys.h>
 #include <game/ovl/rilgar_hooks.h>
@@ -22,8 +22,8 @@
 #include <game/ovl/kalebo_hooks.h>
 #include <game/ovl/veldin_orbit_hooks.h>
 #include <game/ovl/veldin_finale_hooks.h>
-#include <game/ovl/aridia_classes_tr.h>
 #include <game/ovl/variants_l2.h>
+#include <game/level/level_data.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/port_stubs.h>
@@ -511,12 +511,13 @@ void cam0_nop_d(uint32_t) {}
 // orig: (helper) jalr to the per-frame camera hook *(0x167010): the levels' own hooks (Aridia's 0x2fa710: the look height from the
 // float 0x16760c; Eudora's 0x2f0448, set by 0x2f0410: its camera's look height follows a value)
 void cam0_hook_call(uint32_t fn) {
+    // Aridia's and Eudora's own copies of the look-height hook: the port of every level's copy (kerwan_camera.cpp)
     if (on_camera_level(ARIDIA) && fn == L2_ADDR(0x002fa710)) {
-        cam_mode_hook_2fa710_l2(0);
+        cam0_level_hook(0);
         return;
     }
     if (on_camera_level(EUDORA) && fn == L4_ADDR(0x002f0448)) {
-        eud_cam0_hook_l4(0);
+        cam0_level_hook(0);
         return;
     }
     if (on_camera_level(ORXON) && orxon_camera_hook_call(fn)) return;  // (level 10's own: 0x2f4b18)
@@ -532,8 +533,8 @@ void cam0_hook_call(uint32_t fn) {
     if (on_camera_level(UMBRIS) && umbris_camera_hook_call(fn)) return;  // (level 7's own: 0x328090)
     if (on_camera_level(BLARG) && blarg_camera_hook_call(fn)) return;  // (level 6's own: 0x3147b0)
     if (on_camera_level(RILGAR) && rilgar_camera_hook_call(fn)) return;  // (Rilgar's own: 0x328f80)
-    if (on_camera_level(KERWAN) && fn == L3_ADDR(0x002eb408)) {  // (Kerwan's own: kerwan_camera_tr.cpp)
-        ker_cam0_hook_l3(0);
+    if (on_camera_level(KERWAN) && fn == L3_ADDR(0x002eb408)) {  // (Kerwan's own: kerwan_camera.cpp)
+        cam0_level_hook(0);
         return;
     }
     TODO_PORT(fn, "camera mode hook")();
@@ -1082,12 +1083,12 @@ int32_t cam_volume_contains(const Vec4& pos, uint32_t rec, float r) {
     const int32_t type = lw(rec + 0x10);
     alignas(16) Vec4 d, l;
     if (type == 5) {
-        const uint32_t s = lwu(OV(0x001600f4)) + lwu(rec + 0x14) * 0x80;
+        const uint32_t s = lvd::box(lvd::SPHERES, lw(rec + 0x14));
         const float rad = vec3_length(V(s)) + r;
         return vec3_distance(p, V(s + 0x30)) < rad ? 1 : 0;
     }
     if (type == 3) {
-        const uint32_t s = lwu(OV(0x001600ec)) + lwu(rec + 0x14) * 0x80;
+        const uint32_t s = lvd::box(lvd::BOXES, lw(rec + 0x14));
         vec3_sub(d, p, V(s + 0x30));
         d.w = 0.0f;
         mat3_transform(l, d, M(s + 0x40));
@@ -1097,7 +1098,7 @@ int32_t cam_volume_contains(const Vec4& pos, uint32_t rec, float r) {
         return l.z <= 1.0f ? 1 : 0;
     }
     if (type == 6) {
-        const uint32_t s = lwu(OV(0x001600fc)) + lwu(rec + 0x14) * 0x80;
+        const uint32_t s = lvd::box(lvd::CYLINDERS, lw(rec + 0x14));
         vec3_sub(d, p, V(s + 0x30));
         d.w = 0.0f;
         mat3_transform(l, d, M(s + 0x40));
@@ -1106,7 +1107,7 @@ int32_t cam_volume_contains(const Vec4& pos, uint32_t rec, float r) {
         return l.z <= 1.0f ? 1 : 0;
     }
     if (type == 7) {
-        const uint32_t s = lwu(OV(0x001600e4)) + lwu(rec + 0x14) * 0x90;
+        const uint32_t s = lvd::volume(lw(rec + 0x14));
         vec3_sub(d, p, V(s + 0x30));
         d.w = 0.0f;
         mat3_transform(l, d, M(s + 0x40));
@@ -1136,7 +1137,7 @@ uint32_t cam_volume_find(const Vec4& pos, float r) {
         debug_printf_stub();
         return 0;
     }
-    const uint32_t tab = lwu(OV(0x0015ef80));
+    const uint32_t tab = lvd::cam_volume_grid();
     const uint32_t off = lwu(tab + static_cast<uint32_t>(y * 64 + x) * 4);
     if (off == 0) return 0;
     const uint32_t list = off + tab;
@@ -1160,7 +1161,7 @@ int32_t cam0_volume_push(const Vec4& pos, float r) {
     const Vec4 p = pos;
     const uint32_t e = cam_volume_find(p, r);
     if (e == 0) return 0;
-    const uint32_t s = lwu(OV(0x001600f4)) + lwu(e + 0x14) * 0x80;
+    const uint32_t s = lvd::box(lvd::SPHERES, lw(e + 0x14));
     alignas(16) Vec4 d;
     vec3_sub(d, pos, V(s + 0x30));
     const float rad = vec3_length(V(s));
@@ -1499,14 +1500,14 @@ void cam0_ease_offset(uint32_t cam) {
 void cam0_volume_pass() {
     for (int32_t y = 0; y < 0x40; ++y) {
         for (int32_t x = 0; x < 0x40; ++x) {
-            const uint32_t tab = lwu(OV(0x0015ef80));
+            const uint32_t tab = lvd::cam_volume_grid();
             const uint32_t off = lwu(tab + static_cast<uint32_t>(y * 64 + x) * 4);
             if (off == 0) continue;
             const uint32_t list = off + tab;
             for (int32_t i = 0; i < lw(list); ++i) {
                 const uint32_t e = list + 0x10 + static_cast<uint32_t>(i) * 0x30;
                 if (lw(e + 0x10) != 5) continue;
-                const uint32_t s = lwu(OV(0x001600f4)) + lwu(e + 0x14) * 0x80;
+                const uint32_t s = lvd::box(lvd::SPHERES, lw(e + 0x14));
                 sub_001f6c30(s + 0x30, vec3_length(V(s)));
             }
         }

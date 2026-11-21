@@ -1,2 +1,0 @@
-0x0022b728: set32(v0, static_cast<uint32_t>(hero_set_state_l1(a0.w(), static_cast<int32_t>(a1.w()))));
-0x002e6500: set32(v0, class_hook_10_l2(a0.w()));

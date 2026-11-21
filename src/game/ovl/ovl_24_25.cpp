@@ -4,6 +4,7 @@
 #include <game/enhance/session_runtime.h>
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/level/level_data.h>
 #include <game/ovl/ovl_common.h>
 #include <runtime/kernel/bootstrap.h>
 #include <cstdio>
@@ -645,7 +646,7 @@ float turn_towards(uint32_t ang, int32_t dir, float target, float step) {
 // (128-byte entries: centre +0x30, inverse axes +0x40)?
 int32_t point_in_box(uint32_t pos, int32_t idx) {
     if (idx == -1) return 0;
-    const uint32_t box = lwu(OV(0x001600ec)) + static_cast<uint32_t>(idx << 7);
+    const uint32_t box = lvd::box(lvd::BOXES, idx);
     Vec4 d;
     vec3_sub(d, V(pos), V(box + 0x30));
     d.w = 0.0f;
@@ -2708,7 +2709,9 @@ uint32_t moby_pose_matrices(uint32_t m, int32_t n, int32_t out, uint32_t t8, uin
     uint32_t a3 = 0;  // what the key loops leave in $a3 (a later key halfword; 0x1f2868 stores it)
     auto sx16 = [](uint32_t a) { return static_cast<uint32_t>(static_cast<int32_t>(lh(a))); };
     constexpr uint32_t S = 0x70000000u;
-    // the caller's $t8 / $t9 are spilled here (lq/sq; their upper 96 bits taken as 0)
+    // the caller's $t8 / $t9 are spilled here (lq/sq; their upper 96 bits taken as 0: in the original the caller's MMI
+    // leftovers, e.g. 0x400 at 0x70003718 in one of batch 180's cases; read back only by this function's own restore, and the
+    // world cull's list at SPR 0x3700 is written before it is read: a harmless difference, #145)
     sd(S + 0x3700, static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(t8))));
     sd(S + 0x3708, 0);
     sd(S + 0x3710, static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(t9))));

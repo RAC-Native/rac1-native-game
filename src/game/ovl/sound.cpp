@@ -4,8 +4,8 @@
 // position; their per-frame update 0x28cc08 sends them to 989snd.
 #include <game/lib/snd989.h>
 #include <runtime/iop/snd989_iop.h>
-#include <game/ovl/aridia_classes_tr.h>
-#include <game/ovl/blarg_call.h>
+#include <game/ovl/blarg_own.h>
+#include <game/ovl/variants_l6.h>
 #include <game/ovl/umbris_call.h>
 #include <game/ovl/umbris_hooks.h>
 #include <game/ovl/gaspar_hooks.h>
@@ -28,6 +28,7 @@
 #include <game/ovl/rilgar_hooks.h>
 #include <game/ovl/music_streams.h>
 #include <game/ovl/novalis_level_fns.h>
+#include <game/ovl/sound_emitter.h>
 #include <game/ovl/ovl.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl_common.h>
@@ -364,8 +365,8 @@ int32_t sound_play_indexed(int32_t idx, uint32_t flags, uint32_t moby) {
 // position (+0x40); the slot remembers the sound and the emitter. -1 when none.
 // orig: 0x0028ddd8
 int32_t level_sound_play(int32_t idx, uint32_t flags, uint32_t emitter, int32_t volume) {
-    if (on_umbris()) return static_cast<int32_t>(umb_call(umb_level_sound_play_u, static_cast<uint32_t>(idx), flags, emitter, static_cast<uint32_t>(volume)).v0);  // (level 7's own: L7:0x002b4a00)
-    if (on_blarg()) return static_cast<int32_t>(blg_call(blg_level_sound_play_u, static_cast<uint32_t>(idx), flags, emitter, static_cast<uint32_t>(volume)).v0);  // (level 6's own: L6:0x0029aec0)
+    if (on_umbris()) return sound_play_indexed(idx, flags, emitter);  // (level 7's own build, L7:0x002b4a00, is Veldin's sound_play_indexed 0x28dd40: the same code)
+    if (on_blarg()) return level_sound_play_l6(idx, flags, emitter);  // (level 6's own build, L6:0x0029aec0: no volume, the level's base)
     if (!(idx < lw(OV(0x0015f5f0)))) return -1;
     const int32_t ch = sound_start(lwu(OV(0x0015f5f4)) + static_cast<uint32_t>(idx) * 0x20, flags, 0, emitter + 0x40, volume);
     if (ch > -1) {
@@ -376,7 +377,6 @@ int32_t level_sound_play(int32_t idx, uint32_t flags, uint32_t emitter, int32_t 
     return ch;
 }
 
-namespace {
 // the emitter's next start: `lo` + rand(hi - lo) seconds (params +4 / +8) into its timer +0xc
 // orig: (helper) repeated in 0x002ed950 / 0x002edad8
 void emitter_rearm(uint32_t prm) {
@@ -391,7 +391,6 @@ bool emitter_playing(uint32_t em, uint32_t prm) {
     const uint32_t e = 0x0013e5c0 + lwu(prm + 0x10) * 0x70;
     return lwu(e + 0x1c) == em && lbu(e + 4) != 0;
 }
-}  // namespace
 
 // A sphere sound emitter (params +8: sound +0, interval +4..+8, timer +0xc, slot +0x10): within
 // its radius +0xc of the camera its sound starts when the timer allows; leaving it (1 unit
@@ -463,9 +462,9 @@ void sound_emitters_update() {
         if (fn == 0) continue;
         if (fn == OVF(0x002ed950)) emitter_sphere_update(em);
         else if (fn == OVF(0x002edad8)) emitter_box_update(em);
-        else if (on_eudora() && fn == L4_ADDR(0x002f1988)) eud_music_box_emitter_l4(em);  // Eudora's own emitter type (a box that starts the music)
-        else if (on_aridia() && fn == L2_ADDR(0x002fc6f0)) sound_emitter_2fc6f0_l2(em);  // (Aridia's own emitter types)
-        else if (on_aridia() && fn == L2_ADDR(0x002fc850)) sound_emitter_2fc850_l2(em);
+        else if (on_eudora() && fn == L4_ADDR(0x002f1988)) emitter_music_box_update(em);  // Eudora's own emitter type 6 (a box that starts the music)
+        else if (on_aridia() && fn == L2_ADDR(0x002fc6f0)) emitter_reverb_box_update(em);  // (Aridia's own emitter types 3 / 6)
+        else if (on_aridia() && fn == L2_ADDR(0x002fc850)) emitter_music_box_update(em);
         else if (on_batalia() && batalia_sound_emitter_call(fn, em)) {}  // (level 8's own emitter types 1 / 3 / 4 / 6)
         else if (on_umbris() && umbris_sound_emitter_call(fn, em)) {}  // (level 7's own emitter types 3 / 6)
         else if (on_level(ORXON) && orxon_sound_emitter_call(fn, em)) {}  // (level 10's own emitter type 3)

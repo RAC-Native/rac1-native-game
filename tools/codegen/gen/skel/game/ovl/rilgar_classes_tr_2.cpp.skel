@@ -19,7 +19,6 @@
 #include <game/ovl/nanotech_draw.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/pause_menu.h>
-#include <game/ovl/rilgar_hero.h>
 #include <game/ovl/rilgar_mobys.h>
 #include <game/ovl/variants_l5.h>
 #include <game/ovl/veldin_mobys.h>
@@ -27,99 +26,17 @@
 #include <game/ovl/walker.h>
 #include <game/ovl/weapons.h>
 #include <game/port_stubs.h>
+#include <game/ovl/doomlet.h>
+#include <game/ovl/visibomb_ball.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_hoverboard.h>
+#include <game/ovl/shared_little.h>
+#include <game/ovl/novalis_water.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
-
-//@gen ril_2899f8_l5
-
-//@gen ril_305178_l5
-
-//@gen ril_305898_l5
-
-//@gen ril_class625_update_l5
-
-//@gen ril_class679_update_l5
-
-//@gen ril_2f8718_l5
-
-//@gen ril_306d30_l5
-
-//@gen ril_2a0260_l5
-
-//@gen ril_306e10_l5
-
-//@gen ril_307010_l5
-
-//@gen ril_307358_l5
-
-//@gen ril_307470_l5
-
-//@gen ril_307480_l5
-
-//@gen ril_307570_l5
-
-//@gen ril_class717_update_l5
-
-//@gen ril_328f48_l5
-
-//@gen ril_329038_l5
-
-//@gen ril_class758_update_l5
-
-//@gen ril_class805_update_l5
-
-//@gen ril_class810_update_l5
-
-//@gen ril_class812_update_l5
-
-//@gen ril_class823_update_l5
-
-//@gen ril_class830_update_l5
-
-//@gen ril_283498_l5
-
-//@gen ril_28a858_l5
-
-//@gen ril_2cc428_l5
-
-//@gen ril_2cc648_l5
-
-//@gen ril_2cc8d0_l5
-
-//@gen ril_276d28_l5
-
-//@gen ril_276bc0_l5
-
-//@gen ril_276fe8_l5
-
-//@gen ril_2cc910_l5
-
-//@gen ril_2cc9c0_l5
-
-//@gen ril_30d5c0_l5
-
-//@gen ril_30d6a0_l5
-
-//@gen ril_class831_update_l5
-
-//@gen ril_232860_l5
-
-//@gen ril_2e1478_l5
-
-//@gen ril_3282b8_l5
-
-//@gen ril_2e17a8_l5
-
-//@gen ril_class832_update_l5
-
-//@gen ril_class838_update_l5
-
-//@gen ril_class841_update_l5
-
-//@gen ril_class843_update_l5
 
 //@gen ril_29bbe0_l5
 
@@ -128,10 +45,6 @@ using namespace vu0m;
 //@gen ril_30f408_l5
 
 //@gen ril_class844_update_l5
-
-//@gen ril_29c350_l5
-
-//@gen ril_2af5e8_l5
 
 
 }  // namespace rac1

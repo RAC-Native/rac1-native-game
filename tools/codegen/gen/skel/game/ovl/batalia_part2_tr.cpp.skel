@@ -27,21 +27,17 @@
 #include <game/ovl/vu0_regs.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/ovl/hud_slot7_tr.h>
+#include <game/ovl/glows.h>
+#include <game/ovl/shadows.h>
+#include <game/ovl/aridia_ocean.h>
+#include <game/ovl/shared_helpers.h>
+#include <game/ovl/shared_scroll.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
-
-//@gen bat_class252_draw_a_l8
-
-//@gen bat_class252_draw_b_l8
-
-//@gen bt2_211cd0_l8
-
-//@gen bt2_2577e8_l8
-
-//@gen bt2_257b20_l8
 
 //@gen bt2_212598_l8
 
@@ -49,21 +45,9 @@ using namespace vu0m;
 
 //@gen bt2_2acd08_l8
 
-//@gen bt2_2a8f80_l8
-
-//@gen bt2_2ad2f8_l8
-
 //@gen bt2_2ad408_l8
 
 //@gen bat_class327_draw_l8
-
-//@gen bt2_20d760_l8
-
-//@gen bat_class440_draw_l8
-
-//@gen bat_class452_draw_l8
-
-//@gen bt2_2a92d8_l8
 
 //@gen bt2_20f250_l8
 
@@ -77,30 +61,10 @@ using namespace vu0m;
 
 //@gen bat_class600_draw_l8
 
-//@gen bt2_27b450_l8
-
-//@gen bt2_2f5d98_l8
-
-//@gen bat_class671_draw_l8
-
-//@gen bat_class832_draw_l8
-
-//@gen bat_class1135_draw_l8
-
 //@gen bt2_308db8_l8
 
 //@gen bt2_308e90_l8
 
-//@gen bt2_308f68_l8
-
 //@gen bat_class1649_draw_l8
-
-//@gen bt2_26d590_l8
-
-//@gen bat_sandmouse_glow_l8
-
-//@gen bt2_20df80_l8
-
-//@gen bat_hud_slot7_draw_l8
 
 }  // namespace rac1

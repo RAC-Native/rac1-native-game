@@ -1,7 +1,6 @@
 // Ported overlay code 0x00220000..0x0022ffff.
 #include <game/ovl/ovl_common.h>
-#include <game/ovl/rilgar_hero.h>
-#include <game/ovl/kalebo_call.h>
+#include <game/ovl/hero_l1.h>
 
 #include <game/ovl/ovl_reloc.h>
 namespace rac1 {
@@ -359,8 +358,6 @@ int32_t hero_idle_event_pick(int32_t* out) {
 // sphere (flag 2) stepping 0.1 from 0.7 to 1.6 ahead sets +0x260 = 1 and +0x25c = radius + step.
 // orig: 0x00221310
 void hero_motion_update() {
-    if (on_rilgar()) { ril_call(ril_hero_motion_update_u); return; }  // (Rilgar's own: L5:0x0024bdc0)
-    if (on_kalebo()) { kal_call(kal_hero_motion_update_u); return; }  // (level 16's own: L16:0x0021d270)
     const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
     if (lbu(P + 0x20ad) == 0) hero_move_integrate();
     if (lw(OV(0x0015f5cc)) % 3 == 0) {
@@ -376,35 +373,38 @@ void hero_motion_update() {
             }
         }
     }
-    if (lw(OV(0x0015f5cc)) % 5 != 0) return;
-    sw(P + 0x260, 0);
-    sw(P + 0x258, 0);
-    if (lw(P + 0x300) == 0) return;
-    const float a0 = lwc1(P + 0x258);
-    Vec4 top, bot;
-    sub_00233660_v(top, u2f(0x3f8ccccdu), a0, 1.0f);
-    sub_00233660_v(bot, u2f(0x3f8ccccdu), a0, -20.0f);
-    if (bot.z < 0.5f) bot.z = 0.5f;
-    float depth = 20.0f;
-    const int32_t hit = segment_collide_v(top, bot, 2, lwu(P + 0x2080), nullptr);
-    if (hit != 0) {
-        depth = vec3_distance(top, V(OUTB + 0x20));
-        if (!(3.0f < depth)) return;
-    }
-    for (float x = u2f(0xbecccccdu);;) {
-        Vec4 s;
-        sub_00233660_v(s, x + u2f(0x3f8ccccdu), a0, a0);
-        if (sphere_collide_v(s, lwc1(P + 0x234), 2, 0) == 0) {
-            sw(P + 0x260, 1);
-            swc1(P + 0x258, hit == 0 ? 20.0f : depth);
-            const float r = lwc1(P + 0x234) + x;
-            swc1(P + 0x25c, r);
-            if (r < a0) sw(P + 0x25c, 0);
-            return;
+    [&] {
+        if (lw(OV(0x0015f5cc)) % 5 != 0) return;
+        sw(P + 0x260, 0);
+        sw(P + 0x258, 0);
+        if (lw(P + 0x300) == 0) return;
+        const float a0 = lwc1(P + 0x258);
+        Vec4 top, bot;
+        sub_00233660_v(top, u2f(0x3f8ccccdu), a0, 1.0f);
+        sub_00233660_v(bot, u2f(0x3f8ccccdu), a0, -20.0f);
+        if (bot.z < 0.5f) bot.z = 0.5f;
+        float depth = 20.0f;
+        const int32_t hit = segment_collide_v(top, bot, 2, lwu(P + 0x2080), nullptr);
+        if (hit != 0) {
+            depth = vec3_distance(top, V(OUTB + 0x20));
+            if (!(3.0f < depth)) return;
         }
-        x = x + u2f(0x3dcccccdu);
-        if (!(x < 0.5f)) return;
-    }
+        for (float x = u2f(0xbecccccdu);;) {
+            Vec4 s;
+            sub_00233660_v(s, x + u2f(0x3f8ccccdu), a0, a0);
+            if (sphere_collide_v(s, lwc1(P + 0x234), 2, 0) == 0) {
+                sw(P + 0x260, 1);
+                swc1(P + 0x258, hit == 0 ? 20.0f : depth);
+                const float r = lwc1(P + 0x234) + x;
+                swc1(P + 0x25c, r);
+                if (r < a0) sw(P + 0x25c, 0);
+                return;
+            }
+            x = x + u2f(0x3dcccccdu);
+            if (!(x < 0.5f)) return;
+        }
+    }();
+    if (hero_has_hoverboard()) hero_hoverboard_moby_sync();
 }
 
 }  // namespace rac1

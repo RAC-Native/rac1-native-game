@@ -3,6 +3,7 @@
 #include <game/enhance/vendor_buy_all.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/lib/libc.h>
+#include <game/level/level_data.h>
 #include <game/ovl/ovl_common.h>
 
 namespace rac1 {
@@ -311,6 +312,17 @@ void sub_00262b80(uint32_t dst, uint32_t a, uint32_t b, float r, float da, float
     swc1(dst + 0x44, y);
     swc1(a, angle_add(lwc1(a), da));
     swc1(b, angle_add(lwc1(b), db));
+}
+
+// A CNT tag of no data with the VIF code `vif` in its second word, at the packet cursor (0x1611c0).
+// orig: 0x002a0b60
+void dma_cnt_vif(uint32_t vif) {
+    constexpr OvConst<0x001611c0u> CUR{};
+    sw(lwu(CUR) + 0x0, 0x10000000u);
+    sw(lwu(CUR) + 0x4, 0);
+    sw(lwu(CUR) + 0x8, 0);
+    sw(lwu(CUR) + 0xc, vif);
+    sw(CUR, lwu(CUR) + 0x10);
 }
 
 // orig: 0x002a0ba8 — append a 0x30-byte GIF packet (A+D, one register write: data `d`
@@ -1420,7 +1432,7 @@ void remove_moby_5f3() {
 // If any segment was touched, out = the pushed point with its original height along the axis
 // restored, and 1 is returned; otherwise out is left alone.
 int32_t path_push_out(uint32_t idx, uint32_t pos, uint32_t out, float r) {
-    const uint32_t path = lw(OV(0x001b04b0) + idx * 4);
+    const uint32_t path = lvd::path(static_cast<int32_t>(idx));
     const Vec4& axis = V(0x0013f5e0);
     Vec4 p = V(pos);
     const float h0 = vec3_dot(p, axis);

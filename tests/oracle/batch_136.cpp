@@ -8,12 +8,17 @@
 
 #include "ovl_oracle.h"
 
+#include <game/ovl/aridia_ship.h>
 #include <game/ovl/empty_class_updates.h>
 #include <game/ovl/novalis_draw_cbs.h>
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/particle_16_spawn.h>
+#include <game/ovl/shared_class1135.h>
+#include <game/ovl/shared_class325.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_sandmouse.h>
 #include <game/ovl/ship_draw_cbs.h>
 #include <game/ovl/variants_l1.h>
 
@@ -150,9 +155,14 @@ void batch_136() {
         seed_rand();
         return Args{{m}, {}};
     };
-    check("ship_shadow_draw", 0x0028e670, 100, Ret::None, ship_gen, [](A a) { ship_shadow_draw(a.i[0]); return uint64_t{0}; });
-    check("ship_flame_draw", 0x0028efc8, 100, Ret::None, ship_gen, [](A a) { ship_flame_draw(a.i[0]); return uint64_t{0}; });
-    check("ship_trails_draw", 0x0028f238, 100, Ret::None, ship_gen, [](A a) { ship_trails_draw(a.i[0]); return uint64_t{0}; });
+    {
+    // (stage 5, task C2c) ship_shadow_draw reaches segment_collide: A2's collision scratch
+    // ranges left out of this check (see batch 43's checks of it)
+    const CollisionScratchIgnored spr_ignored;
+    check("ship_shadow_draw", 0x0028e670, 100, Ret::None, ship_gen, [](A a) { ari_ship_glow_draw_l2(a.i[0]); return uint64_t{0}; });
+    }
+    check("ship_flame_draw", 0x0028efc8, 100, Ret::None, ship_gen, [](A a) { ari_ship_engine_glow_draw_l2(a.i[0]); return uint64_t{0}; });
+    check("ship_trails_draw", 0x0028f238, 100, Ret::None, ship_gen, [](A a) { ari_ship_takeoff_draw_l2(a.i[0]); return uint64_t{0}; });
 
     // ---- Novalis's own draw callbacks: a moby of the class (any when the level places none) moved about the camera, its
     // pvars' floats / counters and the level's scroll state varied
@@ -162,8 +172,9 @@ void batch_136() {
         void (*fn)(uint32_t);
         int cls;
     };
-    const Cb cbs[] = {{"nov_class832_draw", 0x00302438, nov_class832_draw_l1, 832}, {"nov_teleporter_draw", 0x003094f0, nov_teleporter_draw_l1, 1135},
-                      {"nov_class1510_draw", 0x0030bfa8, nov_class1510_draw_l1, 1510}, {"nov_class1818_glow", 0x0030de68, nov_class1818_glow_l1, 1818},
+    // (classes 832, 1135, 1510 and 1818: the shared ports, shared_*.cpp, registered for them since the level's re-glue)
+    const Cb cbs[] = {{"nov_class832_draw", 0x00302438, class832_draw, 832}, {"nov_teleporter_draw", 0x003094f0, class1135_draw, 1135},
+                      {"nov_class1510_draw", 0x0030bfa8, class325_draw, 1510}, {"nov_class1818_glow", 0x0030de68, sandmouse_glow, 1818},
                       {"nov_class1848_draw", 0x0030f0e0, nov_class1848_draw_l1, 1848}};
     for (const Cb& cb : cbs) {
         if (g_oracle_level != 1) {
@@ -191,6 +202,33 @@ void batch_136() {
             seed_rand();
             return Args{{m}, {}};
         }, [cb](A a) { cb.fn(a.i[0]); return uint64_t{0}; });
+    }
+
+    // ---- class 1848's draw (stage 4 task P1.1, novalis_reflections.cpp) with its packets compared: the frame's packet cursor
+    // (0x1611c0, 0 after an update alone: the null page, which checks leave out) on a buffer of the test area, the skinning
+    // ring's start (0x15f5f8) past it as the game lays them out; the camera about the meshes, the scroll varied
+    if (g_oracle_level == 1) {
+        const std::vector<uint32_t> ms = mobys_of(-1);
+        l1check136("nov_class1848_draw_pk", 0x0030f0e0, 60, Ret::None, [level, ms, pick] {
+            level();
+            const uint32_t m = pick(ms);
+            w32(OV(0x001611c0), TEST_AREA + 0x10000 + u(ri(0, 0x40)) * 0x10);
+            w32(OV(0x0015f5f8), 0x01f80000u);
+            if (coin()) wfrand(L1_ADDR(0x00162110u), 2, -1.0f, 1.0f);
+            if (coin()) {  // (the camera at one of the meshes' vertices, off it)
+                const uint32_t k = u(ri(0, 4));
+                const int32_t n = ee_read<int32_t>(L1_ADDR(0x00202ea0u) + 4 * k);
+                const uint32_t pos = ee_read<uint32_t>(L1_ADDR(0x00208108u) + 4 * k);
+                if (n > 0) {
+                    const uint32_t v = pos + u(ri(0, n - 1)) * 0xc;
+                    wf(L1_ADDR(0x00167240u), ee_read<float>(v) + rf(-20, 20));
+                    wf(L1_ADDR(0x00167244u), ee_read<float>(v + 4) + rf(-20, 20));
+                    wf(L1_ADDR(0x00167248u), ee_read<float>(v + 8) + rf(-5, 10));
+                }
+            }
+            seed_rand();
+            return Args{{m}, {}};
+        }, [](A a) { nov_class1848_draw_l1(a.i[0]); return uint64_t{0}; });
     }
 
     // ---- the two empty class updates (jr ra): 531 (the ship *(0x13e030)) and 1816 (none placed), on any of the level's mobys

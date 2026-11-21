@@ -79,8 +79,8 @@ void glide_update() {
 // idle of 3, then speed and the ground velocity follow-up.
 // orig: 0x00217970 (block 0x217a00)
 void idle_update() {
-    if (lbu(P + 0x20a9) != 0) sub_00209540(0xf, 0x1e);
-    if (lbu(P + 0x12e2) != 0) {
+    if (hero_has_water() && lbu(P + 0x20a9) != 0) sub_00209540(0xf, 0x1e);
+    if (hero_has_skate() && lbu(P + 0x12e2) != 0) {
         sub_002132b8(u2f(0x3f333333u), fs6c() * 0.0f);
     } else {
         sub_002132b8(0.5f, fs6c() + fs6c());
@@ -144,7 +144,7 @@ void idle_update() {
             }
         }
     } else if (lw(P + 0x2084) == 4) {
-        speed = fs70() * (lbu(P + 0x12e2) != 0 ? u2f(0x3fd9999au) : u2f(0x40cf5c29u));
+        speed = fs70() * (hero_has_skate() && lbu(P + 0x12e2) != 0 ? u2f(0x3fd9999au) : u2f(0x40cf5c29u));
     } else {
         speed = fs70() * u2f(0x4149999au);
     }
@@ -166,7 +166,7 @@ void idle_update() {
         hero_wall_slide(0);
         ground_end();
     }
-    if (lw(P + 0x22f4) != 0) sub_00217450();
+    if (hero_has_state_7c() && lw(P + 0x22f4) != 0) sub_00217450();
 }
 
 // Running (states 2 / 0x73): dust and smoke by speed, skid (+0x3b8) and sharp-turn (+0x3be)
@@ -174,11 +174,13 @@ void idle_update() {
 // then speed limits and the ground velocity follow-up.
 // orig: 0x00217970 (block 0x21bf50)
 void run_update() {
-    const bool riding = lbu(P + 0x12e4) != 0 && lwc1(P + 0x22a4) < 0.25f;
-    if (lbu(P + 0x20a9) != 0 || riding) {
-        if (fs6c() < lwc1(P + 0x164)) sub_00209638(0, 2);
-        if (fs6c() * 0.5f < lwc1(P + 0x164)) sub_00209848(2, 4);
-        hero_smoke_puffs(5, 2);
+    if (hero_has_water()) {
+        const bool riding = lbu(P + 0x12e4) != 0 && lwc1(P + 0x22a4) < 0.25f;
+        if (lbu(P + 0x20a9) != 0 || riding) {
+            if (fs6c() < lwc1(P + 0x164)) sub_00209638(0, 2);
+            if (fs6c() * 0.5f < lwc1(P + 0x164)) sub_00209848(2, 4);
+            hero_smoke_puffs(5, 2);
+        }
     }
     if (advanced_rac3_movement()) {  // enhancement: R&C 3's "move along the stick" rule
         advanced_rac3_along_stick();
@@ -255,7 +257,7 @@ void jump_update() {
         if (lw(P + 0x418) != 0) hero_stick_move(0, fs6c() * u2f(0x40b66666u));
         hero_stick_move(0, lwc1(P + 0x424));
     }
-    if (lw(P + 0x2084) == 0x12) {
+    if (hero_has_water() && lw(P + 0x2084) == 0x12) {
         if (lw(P + 0x198) == frame_scale_i(0x14)) {
             hero_land_fx(3, 0x10, 1);
             if (lwu(OV(0x001612d0)) != 0) {
@@ -278,13 +280,13 @@ void jump_update() {
     }
     if (push) {
         hero_horizontal_velocity();
-        if (lw(P + 0x2084) == 0x12) {
+        if (hero_has_water() && lw(P + 0x2084) == 0x12) {
             float len = vec2_length(V(P + 0xe0));
             const float lim = fs6c() * u2f(0x406ccccdu);
             if (lim < len) len = lim;
             vec2_set_length(V(P + 0xe0), V(P + 0xe0), len);
         }
-    } else if (lh(P + 0x4a8) != 0) {
+    } else if (hero_has_skate() && lh(P + 0x4a8) != 0) {
         hero_slide_move();
         if (lw(P + 0x2084) == 0xa && lw(P + 0x198) < frame_scale_i(10) && lwc1(P + 0x168) < fs6c() * 7.0f) {
             const float k = u2f(0x3f333333u);
@@ -336,7 +338,7 @@ void jump_update() {
         }
     }
     if (lbu(P + 0x20a4) == 0) hero_run_lean();
-    if (lbu(P + 0x20a4) == 1) hero_body_lean();
+    if (hero_has_clank() && lbu(P + 0x20a4) == 1) hero_body_lean();
     if (lw(P + 0x2084) == 0x10 || lw(P + 0x2084) == 0xd) {
         trail_update(P + 0x1670, (frame_scale_i(0xc) < lw(P + 0x198) ? 1 : 0) << 1);
     }
@@ -353,7 +355,7 @@ void jump_update() {
             }
         }
     }
-    if (lw(P + 0x2084) == 0x3c && lh(P + 0x41e) == 0 && fs6c() * 1.5f < lwc1(P + 0xe8)) hero_smoke_fx();
+    if (hero_has_state_7c() && lw(P + 0x2084) == 0x3c && lh(P + 0x41e) == 0 && fs6c() * 1.5f < lwc1(P + 0xe8)) hero_smoke_fx();
     hero_vertical_velocity();
     hero_air_wall_check();
 }
@@ -437,7 +439,7 @@ void crouch_update() {
     }
     const float s = lwc1(P + 0x229c), f = fs70();
     float spd = s < 0.2f ? f * 3.5f : f * 7.0f;
-    if (lbu(P + 0x12e2) != 0) spd = s < 0.2f ? f * u2f(0x3f99999au) : f * u2f(0x406ccccdu);
+    if (hero_has_skate() && lbu(P + 0x12e2) != 0) spd = s < 0.2f ? f * u2f(0x3f99999au) : f * u2f(0x406ccccdu);
     sub_00213e68(spd);
     hero_run_lean();
     hero_wall_slide(1);
@@ -495,7 +497,7 @@ void slam_chase(float ease) {
 void slam_update() {
     if (lw(P + 0xa9c) != 0 || lwc1(P + 0xaa8) < static_cast<float>(lw(OV(0x0017bc28) + lwu(P + 0xa60) * 0x2c + 0x18))) sh(P + 0x10a8, 2);
     swc1(P + 0x190, 0.0f);
-    if (lbu(P + 0x12e2) != 0) {
+    if (hero_has_skate() && lbu(P + 0x12e2) != 0) {
         if (lwu(P + 0xa54) != 0) {
             slam_chase(4.0f);
         } else {
@@ -605,7 +607,7 @@ void spin_update() {
         }
     }
     if (lw(P + 0xa9c) == 0 && sub_00211870(33.0f) != 0) {
-        if (lbu(P + 0x12e2) != 0 && lwc1(P + 0x160) < fs6c() + fs6c()) {
+        if (hero_has_skate() && lbu(P + 0x12e2) != 0 && lwc1(P + 0x160) < fs6c() + fs6c()) {
             const float k = u2f(0x3fa66666u);
             swc1(P + 0xe0, lwc1(P + 0xe0) + cos_vu(lwc1(P + 0x98)) * (fs6c() * k));
             swc1(P + 0xe4, lwc1(P + 0xe4) + sin_vu(lwc1(P + 0x98)) * (fs6c() * k));
@@ -613,7 +615,7 @@ void spin_update() {
         }
         hero_hold_moby_start();
     }
-    if (lbu(P + 0x12e2) != 0) {
+    if (hero_has_skate() && lbu(P + 0x12e2) != 0) {
         if (sub_00211870(84.0f) != 0) {
             const float a = angle_add(lwc1(P + 0x98), u2f(0x40490fdbu));
             float sp = fs6c() * 2.5f;
@@ -635,7 +637,7 @@ void spin_update() {
 // the animation rate +0xa90 eased to 1, the turn to the target, speed limits, ground follow-up.
 // orig: 0x00217970 (block 0x21b1d0)
 void swing_update() {
-    if (lbu(P + 0x12e2) != 0) {
+    if (hero_has_skate() && lbu(P + 0x12e2) != 0) {
         hero_slide_move();
         return;
     }
@@ -740,7 +742,7 @@ void strike_update() {
         sub_00262528(list, 0xc, 6);
     }
     trail_update(P + 0x1670, to < lw(P + 0x198) ? 5 : 0);
-    if (lbu(P + 0x12e2) != 0) {
+    if (hero_has_skate() && lbu(P + 0x12e2) != 0) {
         if (from < lw(P + 0x198) && lw(P + 0x198) < from + frame_scale_i(7) && lwc1(P + 0x168) < fs6c() * 8.5f) {
             const float k = u2f(0x3f99999au);
             swc1(P + 0xe0, lwc1(P + 0xe0) + cos_vu(lwc1(P + 0x98)) * (fs6c() * k));
@@ -2345,12 +2347,15 @@ void swim_update() {
 // The per-state update. Each case is one target of the jump table 0x1e7e20.
 // orig: 0x00217970
 void update_state(uint32_t state, uint32_t hm) {
+    if (!hero_has_giant_clank() && state >= 0x5au && state <= 0x62u && state != 0x5eu) return;
+    if (!hero_has_clank() && ((state >= 0x43u && state <= 0x52u && state != 0x49u && state != 0x4cu) || state == 0x7du)) return;
     switch (state) {
     case 0x00: case 0x01: case 0x03: case 0x04: case 0x17: case 0x1d: case 0x1e: case 0x1f:
     case 0x3d: case 0x70: case 0x71: case 0x72: case 0x80:
         idle_update();
         return;
     case 0x7f: {  // warp-out: the effect moby 0x52a follows the hero moby and fades in
+        if (!hero_has_sink_7f()) return;
         if (lwu(P + 0x6a4) == 0) {
             const uint32_t m = moby_spawn(0x52a);
             sw(P + 0x6a4, m);
@@ -2425,16 +2430,16 @@ void update_state(uint32_t state, uint32_t hm) {
         throw_stance_update();
         return;
     case 0x3f:
-        beam_update();
+        if (hero_has_beam()) beam_update();
         return;
     case 0x2f:
-        board_update(hm);
+        if (hero_has_skate()) board_update(hm);
         return;
     case 0x31:
-        surface_swim_update(hm);
+        if (hero_has_ice_slide()) surface_swim_update(hm);
         return;
     case 0x74:
-        grind_update();
+        if (hero_has_state_74()) grind_update();
         return;
     case 0x18:
     case 0x19:
@@ -2487,39 +2492,41 @@ void update_state(uint32_t state, uint32_t hm) {
         clank_walk_update();
         return;
     case 0x76:
-        dive_update();
+        if (hero_has_water()) dive_update();
         return;
     case 0x75:
-        dive_75_update();
+        if (hero_has_water()) dive_75_update();
         return;
     case 0x6a:
     case 0x82:
-        underwater_update();
+        if (hero_has_water()) underwater_update();
         return;
     case 0x36:
     case 0x37:
-        surface_update();
+        if (hero_has_water()) surface_update();
         return;
     case 0x38:
     case 0x39:
     case 0x3a:
-        ride_update();
+        if (hero_has_hydropack()) ride_update();
         return;
     case 0x30:
         talk_update();
         return;
     case 0x24:
+        if (hero_has_swingshot()) swing_aim_update(hm);
+        return;
     case 0x2e:
         swing_aim_update(hm);
         return;
     case 0x25:
-        swing_pull_update(hm);
+        if (hero_has_swingshot()) swing_pull_update(hm);
         return;
     case 0x26:
-        swing_hang_update();
+        if (hero_has_swingshot()) swing_hang_update();
         return;
     case 0x2c:
-        swing_update(hm);
+        if (hero_has_swingshot()) swing_update(hm);
         return;
     case 0x22:
         comet_update();
@@ -2531,6 +2538,7 @@ void update_state(uint32_t state, uint32_t hm) {
         vec_clear(V(P + 0xe0));
         return;
     case 0x68: {  // bounce: fall slowly while still far below the target height
+        if (!hero_has_lava()) return;
         vec_clear(V(P + 0xe0));
         const float need = static_cast<float>(lw(P + 0x1660) + 1) * 0.5f;
         float v = fs6c();
@@ -2539,10 +2547,12 @@ void update_state(uint32_t state, uint32_t hm) {
         return;
     }
     case 0x7b:
+        if (!hero_has_lava()) return;
         vec_clear(V(P + 0xe0));
         swc1(P + 0xe8, -fs6c());
         return;
     case 0x7c:
+        if (!hero_has_state_7c()) return;
         sub_00217450();
         vec_clear(V(P + 0xe0));
         swc1(P + 0xe8, -fs6c());
@@ -2599,12 +2609,18 @@ void update_state(uint32_t state, uint32_t hm) {
         return;
     }
     case 0x33: case 0x34: case 0x35:
-        swim_update();
+        if (hero_has_water()) swim_update();
         return;
     case 0x28: case 0x29: case 0x2a: case 0x2b: case 0x42:
-        grind_rail_update();
+        if (hero_has_grind()) grind_rail_update();
         return;
-    default:  // 5, 0x27, 0x32, 0x3b, 0x3e, 0x41, 0x48, 0x6b..0x6f, 0x78, 0x7e: nothing per frame
+    case 0x3e:
+        if (hero_has_state_3e()) hero_state_3e_update();
+        return;
+    case 0x6b: case 0x6c: case 0x6d: case 0x6e: case 0x6f:
+        if (hero_has_hoverboard()) hero_hoverboard_state_update(state);
+        return;
+    default:  // 5, 0x27, 0x32, 0x3b, 0x41, 0x48, 0x78, 0x7e: nothing per frame
         return;
     }
 }
@@ -2617,22 +2633,13 @@ void hero_grind_update_v() { grind_update(); }
 // the sub-state +0x2088 resets the timer +0x1a0, a change of the hero moby's animation +0x53
 // resets +0x1a4.
 void hero_state_update() {
-    if (on_blarg()) { blg_call(blg_hero_state_update_u); return; }  // (level 6's own: L6:0x0022e020)
-    if (on_batalia()) { bat_call(bat_hero_state_update_u); return; }  // (level 8's own: L8:0x002284e0)
-    if (on_pokitaru()) { pok_call(pok_hero_state_update_u); return; }  // (level 11's own: L11:0x00246b70)
-    if (on_hoven()) { hov_call(hov_hero_state_update_u); return; }  // (level 12's own: L12:0x00238900)
-    if (on_oltanis()) { olt_call(olt_hero_state_update_u); return; }  // (level 14's own: L14:0x00228cd0)
-    if (on_quartu()) { qua_call(qua_hero_state_update_u); return; }  // (level 15's own: L15:0x0020ed50)
-    if (on_kalebo()) { kal_call(kal_hero_state_update_u); return; }  // (level 16's own: L16:0x00214598)
-    if (on_veldin_finale()) { vf_call(vf_hero_state_update_u); return; }  // (level 18's own: L18:0x0021eac8)
-    if (on_veldin_orbit()) { vo_call(vo_hero_state_update_u); return; }  // (level 17's own: L17:0x00214760)
-    if (on_rilgar()) { ril_call(ril_hero_state_update_u); return; }  // (Rilgar's own: L5:0x00244a70)
     if (on_l1_family()) return hero_state_update_l1();
     const uint32_t hm = lwu(P + 0x2080);
     const uint32_t sub = lwu(P + 0x2088);
     const uint32_t anim = lbu(hm + 0x53);
     const uint32_t state = lwu(P + 0x2084);
-    if (state < 0x83) update_state(state, hm);
+    const uint32_t limit = hero_has_water() ? 0x83u : 0x82u;
+    if (state < limit) update_state(state, hm);
     if (sub != lwu(P + 0x2088)) sw(P + 0x1a0, 0);
     if (anim != lbu(hm + 0x53)) sw(P + 0x1a4, 0);
 }

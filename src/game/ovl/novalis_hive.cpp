@@ -11,7 +11,8 @@ namespace rac1 {
 
 // How many of group `group`'s mobys (the list 0x1ab840 / Novalis 0x1abcc0, halfword ids, the last with bit 15) are
 // alive (state byte +0x20 not negative) and, unless `state` is -1, not in state `state`.
-// orig: L1:0x0026e008
+// (Shared: the same code on Blarg, Gaspar, Pokitaru, Hoven, Gemlik, Oltanis, Quartu and Kalebo III.)
+// orig: L1:0x0026e008 L6:0x00267ee8 L9:0x00278c78 L11:0x0027f058 L12:0x00271ff8 L13:0x00264f78 L14:0x00261728 L15:0x002489f0 L16:0x00254900
 int32_t moby_group_count_l1(int32_t group, int32_t state) {
     uint32_t p = lwu(OV(0x001ab840) + (static_cast<uint32_t>(group) << 2));
     if (p == 0) return 0;

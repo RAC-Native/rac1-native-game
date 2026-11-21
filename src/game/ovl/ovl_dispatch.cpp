@@ -37,7 +37,7 @@
 #include <game/ovl/ship_draw_cbs.h>
 #include <game/ovl/veldin_extras.h>
 #include <game/ovl/empty_class_updates.h>
-#include <game/ovl/weapon_classes_tr.h>
+#include <game/ovl/weapon_classes.h>
 #include <game/port_stubs.h>
 #include <game/enhance/session.h>
 #include <game/enhance/leveldata.h>

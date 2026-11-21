@@ -11,6 +11,10 @@
 // No RAM dumps: the states are built from the level.
 // Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 400, N in 0 .. 18.
 
+// Audit 2 (2026-11-13): the packets go to a test-area buffer (the cursor was 0 and the null page, the first sprites' packets,
+// was left out); 0x13e504 is the screen's height (mostly a real one); the detector's signal 0x141398 and both counters at 0
+// varied, so that the update's end of the element is compared.
+
 #include "ovl_oracle.h"
 
 #include <game/ovl/hud_slot7_tr.h>
@@ -27,7 +31,8 @@ void batch_400() {
     g_batch = 400;
     const std::vector<uint32_t> saved_ignored = g_ignored_words;
     g_ignored_words = vcross_lanes();
-    for (uint32_t a = 0; a < 0x100; a += 4) g_ignored_words.push_back(a);  // (the null page: a stale pointer of a random state)
+    // (no null page left out: the draws' packets go to a buffer of the test area, packet_cursor below; before, the cursor was 0 after
+    // the frame and the null page's first 0x100 bytes, the first sprites' packets, were not compared)
     g_extra_noop_hooks.clear();
     const bool null_ram = g_ee_null_is_ram;
     g_ee_null_is_ram = true;  // as in the runtime
@@ -91,17 +96,22 @@ void batch_400() {
             const uint32_t P = 0x0013f350;
             if (coin()) w32(e + 0x7c, u(ri(-2, 300)));
             if (coin()) w32(e + 0x40, u(ri(0, 8)));
-            if (ri(0, 3) != 0) w8(e + 0x70, u(ri(0, 0xff)));  // (0: the draw returns early)
-            if (coin()) w8(e + 0x71, u(ri(0, 0xff)));
+            if (ri(0, 3) != 0) w8(e + 0x70, u(coin() ? ri(0, 3) : ri(0, 0xff)));  // (0: the draw returns early)
+            if (coin()) w8(e + 0x71, u(coin() ? ri(0, 3) : ri(0, 0xff)));
+            // (the detector's signal 0x141398: the update's two ways, the counters up or down to the element's end)
+            if (coin()) w32(0x00141398, coin() ? 0u : 1u);
+            if (ri(0, 5) == 0) { w8(e + 0x70, 0); w8(e + 0x71, 0); }  // (both run out: the update's end of the element)
             if (coin()) w32(e + 0x74, u(ri(0, 0x200)));
             if (coin()) w32(e + 0x78, u(ri(0, 0x200)));
-            if (coin()) w32(0x0013e504, u(ri(0, 99999)));  // (the bolts the display prints)
+            // (0x13e504: the screen's height the display stands on, not the bolts: mostly a real one, the sprites on the screen)
+            if (coin()) w32(0x0013e504, ri(0, 3) == 0 ? u(ri(0, 99999)) : coin() ? 448u : u(ri(0x60, 0x200)));
             if (ri(0, 5) == 0) w8(P + 0x20a4, 2);  // (the hero's state the draw skips)
             if (ri(0, 5) == 0) w32(P + 0x2084, 0x32);
             if (coin()) w32(0x0015ed80, ri(0, 3) == 0 ? 1u : 0u);
             const uint32_t a = ee_read<uint32_t>(e + 0x2c);
             if (a != 0 && coin()) w32(a, u(ri(0, 2)));
             w32(OV(0x0015f5cc), R());
+            w32(OV(0x001611c0), TEST_AREA + 0x8000 + u(ri(0, 0x40)) * 0x10);  // (the packet cursor on a buffer of the test area)
             seed_rand();
             return Args{{e}, {}};
         }, [h](A a) { h.fn(a.i[0]); return uint64_t{0}; });

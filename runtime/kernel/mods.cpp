@@ -1,6 +1,7 @@
 // See mods.h.
 #include "mods.h"
 
+#include <io/asset_paths.h>
 #include <platform/platform.h>
 
 #include <json.hpp>  // (nlohmann::json, bundled with TinyGLTF)
@@ -397,7 +398,7 @@ std::vector<std::pair<std::string, std::filesystem::path>> mods_files(const char
 }
 
 // orig: (none) — enhancement (mods.h)
-std::filesystem::path mods_level_build_dir(const std::string& folder) { return std::filesystem::path("assets/generated/mods") / folder; }
+std::filesystem::path mods_level_build_dir(const std::string& folder) { return std::filesystem::path(io::asset_path("generated/mods")) / folder; }
 
 // orig: (none) — enhancement (mods.h)
 // orig: (none) — enhancement: the stamp of `files` (their paths, sizes and bytes)

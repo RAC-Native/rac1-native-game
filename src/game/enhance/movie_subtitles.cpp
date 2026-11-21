@@ -3,6 +3,7 @@
 #include <game/enhance/movie_subtitles.h>
 
 #include <game/enhance/advanced.h>
+#include <io/asset_paths.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/kernel/disc.h>
@@ -76,7 +77,7 @@ const char* language_suffix(uint32_t lang) {
 // orig: (none) — enhancement: the folder of the files (RAC1_MOVIE_SUBTITLES_DIR, testing)
 std::string folder() {
     if (const char* d = std::getenv("RAC1_MOVIE_SUBTITLES_DIR")) return d;
-    return "assets/movie-subtitles";
+    return io::asset_path("movie-subtitles");
 }
 
 // orig: (none) — enhancement: the movie file at sector `lsn` of the game's disc, by its layout (assets/disc/layout.txt:

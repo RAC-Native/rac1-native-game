@@ -18,14 +18,23 @@
 
 #include <game/lib/libcdvd.h>
 #include <game/ovl/batalia_mobys.h>
+#include <game/ovl/batalia_own.h>
 #include <game/ovl/batalia_part2.h>
 #include <game/ovl/hud_slot7_tr.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/particle_types2_tr.h>
+#include <game/ovl/shared_class1023.h>
+#include <game/ovl/shared_class1135.h>
+#include <game/ovl/shared_class1629.h>
+#include <game/ovl/shared_class252.h>
+#include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_spawner.h>
 #include <game/ovl/variants_l8.h>
 
+#include <optional>
 #include <cstring>
 #include <filesystem>
 #include <map>
@@ -34,6 +43,29 @@
 namespace rac1::oracle {
 
 namespace {
+// The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
+// walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
+// collision scratch ranges are left out of these checks, and only of them (stage 5, task C2b).
+bool c2b_spr_check(const char* name) {
+    static const char* const kNames[] = {"class1023_c1818", "class1023_para2760", "class1023_para2800",
+                                         "class1023_para2900", "class1023_para2960", "class1023_para3035",
+                                         "class1023_para3050", "class1023_c452", "class1023_c671", "class1130_arrival1500",
+                                         "class1144_c1135", "class1818_c1135", "class1818_c1629n", "class1818_c1818",
+                                         "class1818_c252", "class1818_c327", "class1818_c452", "class1818_para2760",
+                                         "class1818_para2900", "class1818_para3035", "class1818_rain2800",
+                                         "class1818_slot7_5003", "class1818_slot7_5040", "class1818_vb832",
+                                         "class253_arrival1500", "class253_c1135", "class253_c1629n", "class253_c1649",
+                                         "class253_c1818", "class253_c252", "class253_c327", "class253_c440",
+                                         "class253_c452", "class253_c600", "class253_c671", "class253_para2760",
+                                         "class253_para2800", "class253_para2900", "class253_para2960",
+                                         "class253_para3035", "class253_para3050", "class253_rain2800",
+                                         "class253_slot7_5003", "class253_slot7_5040", "class253_slot7_5150",
+                                         "class253_vb832"};
+    for (const char* n : kNames)
+        if (std::strcmp(n, name) == 0) return true;
+    return false;
+}
+
 // A check whose original is Batalia's own function at `l8addr`.
 void b8check(const char* name, uint32_t l8addr, int n, Ret ret, const std::function<Args()>& gen, const std::function<uint64_t(const Args&)>& port) {
     if (g_only_batch != 0 && g_only_batch != g_batch) return;
@@ -44,6 +76,8 @@ void b8check(const char* name, uint32_t l8addr, int n, Ret ret, const std::funct
         return;
     }
     std::printf("%-26s L8:0x%08x\n", name, l8addr);
+    std::optional<CollisionScratchIgnored> spr_ignored;
+    if (c2b_spr_check(name)) spr_ignored.emplace();
     if (!check_fn(name, l8addr, n, ret, gen, port, Scope::FullRam, 0, 0)) ++g_fail;
 }
 // the point at `p` put about the camera, until the port's screen test (0x2002e0) sees it with radius r (as batch 142's); w = 1
@@ -159,12 +193,12 @@ void batch_160() {
         void (*fn)(uint32_t);
         int cls;
     };
-    const Cb cbs[] = {{"bat_class252_draw_a", 0x002d3878, bat_class252_draw_a_l8, 252}, {"bat_class252_draw_b", 0x002d4108, bat_class252_draw_b_l8, 252},
+    const Cb cbs[] = {{"bat_class252_draw_a", 0x002d3878, class252_draw_beam, 252}, {"bat_class252_draw_b", 0x002d4108, class252_draw_glow, 252},
                       {"bat_class327_draw", 0x002da0d0, bat_class327_draw_l8, 327},     {"bat_class440_draw", 0x002deee0, bat_class440_draw_l8, 440},
                       {"bat_class452_draw", 0x002e5188, bat_class452_draw_l8, 452},     {"bat_class600_draw", 0x002f0dc8, bat_class600_draw_l8, 600},
-                      {"bat_class671_draw", 0x002f5e58, bat_class671_draw_l8, 671},     {"bat_class832_draw", 0x002fb948, bat_class832_draw_l8, 832},
-                      {"bat_class1135_draw", 0x00304bc0, bat_class1135_draw_l8, 1135},  {"bat_class1649_draw", 0x00309030, bat_class1649_draw_l8, 1649},
-                      {"bat_sandmouse_glow", 0x0030ab50, bat_sandmouse_glow_l8, 1818}};
+                      {"bat_class671_draw", 0x002f5e58, bat_class671_draw_l8, 671},     {"bat_class832_draw", 0x002fb948, class832_draw, 832},
+                      {"bat_class1135_draw", 0x00304bc0, class1135_draw, 1135},  {"bat_class1649_draw", 0x00309030, bat_class1649_draw_l8, 1649},
+                      {"bat_sandmouse_glow", 0x0030ab50, sandmouse_glow, 1818}};
     for (const Cb& cb : cbs) {
         if (g_oracle_level != 8) {
             b8check(cb.name, cb.addr, 0, Ret::None, nullptr, nullptr);
@@ -294,9 +328,9 @@ void batch_160() {
         // on their live mobys of the dump, state / pvars varied
         {
             static const struct { int cls; uint32_t fn; void (*port)(uint32_t); } classes[] = {
-                {1023, 0x00301158, bat_class1023_update_l8}, {1629, 0x003085f0, bat_class1629_update_l8}, {440, 0x002e0328, bat_class440_update_l8},
+                {1023, 0x00301158, class1023_update}, {1629, 0x003085f0, class1629_update}, {440, 0x002e0328, bat_class440_update_l8},
                 {1283, 0x003065d8, bat_class1283_update_l8}, {1130, 0x00302ce8, bat_class1130_update_l8}, {1144, 0x00305270, bat_class1144_update_l8},
-                {253, 0x002d42d8, bat_class253_update_l8},   {455, 0x002e6530, bat_class455_update_l8},   {1818, 0x0030ac28, bat_class1818_update_l8}};
+                {253, 0x002d42d8, bat_class253_update_l8},   {455, 0x002e6530, class455_update},   {1818, 0x0030ac28, sandmouse_update}};
             for (const auto& c : classes) {
                 load_dump(d);
                 std::vector<uint32_t> ms;
@@ -347,7 +381,7 @@ void batch_160() {
             };
             const H hs[] = {{"hud_slot7_start_tr", 0x00235dc0, hud_slot7_start_tr, false},
                             {"hud_slot7_update_tr", 0x0023a218, hud_slot7_update_tr, false},
-                            {"bat_hud_slot7_draw", 0x00244ab0, bat_hud_slot7_draw_l8, true}};
+                            {"bat_hud_slot7_draw", 0x00244ab0, hud_slot7_draw_tr, true}};
             if (!es.empty())
                 for (const H& h : hs) {
                     const std::string nm = std::string(h.name) + tag;

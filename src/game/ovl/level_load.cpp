@@ -1,5 +1,6 @@
 // Ported overlay code: the gameplay data loader of the level setup (0x241940).
 #include <game/enhance/corrected_texts.h>
+#include <game/bridge/guard.h>
 #include <game/enhance/fixes102.h>
 #include <game/ovl/world_lighting.h>
 #include <host/level_slots.h>
@@ -8,6 +9,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl_common.h>
 #include <game/enhance/session.h>
+#include <game/level/level_registry.h>
 #include <game/enhance/sections.h>
 #include <array>
 #include <game/lib/libc.h>
@@ -80,6 +82,7 @@ int32_t disc_read_wait(uint32_t dst, uint32_t lba, uint32_t n) {
 // and returns the end.
 // orig: 0x00241940
 uint32_t gameplay_load(int32_t level) {
+    const SprScope spr_scope(SprScopeId::GameplayLoad);  // (RAC1_BRIDGE_GUARD=spr: the scratchpad's data flow, src/game/bridge/guard.h)
     level_slots_level_start(lw(0x0015ed84));  // enhancement: a level mod's level records in or out (src/host/level_slots.h)
     mod_code_level_load();                     // enhancement: the mods' code: loaded, the level before ended (src/host/mod_code.h)
     const uint32_t H = lwu(OV(0x00173e04));
@@ -835,6 +838,7 @@ uint32_t gameplay_load(int32_t level) {
     sw(OV(0x0015f318), alt ? OV(0x0016c7b0u) : OV(0x0016c780u));
     sw(OV(0x0015f310), lwu(OV(0x0015f318)));
     mod_code_level_loaded();  // enhancement: a level mod's spawn pools (src/host/mod_code.h; nothing on the game's levels)
+    lvd::registry_level_loaded(H);  // (stage 5) the native level registry from the file just laid out (src/game/level/level_registry.h)
     return s8;
 }
 

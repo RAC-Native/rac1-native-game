@@ -1,3 +1,0 @@
-0x002226d0: hero_mode_exit();
-0x00230b38: set32(v0, static_cast<uint32_t>(hero_set_state(a0.w(), static_cast<int32_t>(a1.w()))));
-0x00234c18: hero_enter_idle();
