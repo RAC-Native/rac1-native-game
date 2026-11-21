@@ -47,22 +47,6 @@ namespace rac1 {
 using namespace eer;
 using namespace vu0m;
 
-//@gen olt_cam_type20_accept_u
-
-//@gen olt_cam_type20_init_l14
-
-//@gen olt_2d6570_l14
-
-//@gen olt_cam_type20_update_l14
-
-//@gen olt_cam_type21_accept_u
-
-//@gen olt_cam_type21_init_l14
-
-//@gen olt_cam_type21_update_l14
-
-//@gen olt_cam_type21_exit_l14
-
 //@gen olt_hook_2daed8_u
 
 //@gen olt_cutscene_level_extras_l14

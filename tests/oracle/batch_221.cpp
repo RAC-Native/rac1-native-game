@@ -98,7 +98,9 @@ bool c2a_spr_check(const char* name) {
                                          // (P14.3: the carrier craft's look at its cargo, the carrier's fall, the bomb's spheres and way)
                                          "p143_class921", "p143_class923", "p143_class1193",
                                          // (P14.3: class 851's floor band, as class31_cov's)
-                                         "p143_class851"};
+                                         "p143_class851",
+                                         // (P14.4: the pickup's floor probe; type 20's hero_place, as cam_type20_init's)
+                                         "p144_class1354", "p144_cam20_init", "p144_cam20_update"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -2354,6 +2356,443 @@ void batch_221() {
             if (coin()) w16(ee_read<uint32_t>(S + 0x17c) + 0xa6, 0x2ee);  // (the class scene_moby_smoke puffs for: none on Oltanis)
             seed_rand();
         }, 120);
+
+        // ---- P14.4: classes 1354 (the pickup, oltanis_pickup.cpp), 1395 and 1416 (the bridge and the pad,
+        // oltanis_bridge.cpp), 1417 (the path platform, oltanis_path_platform.cpp) through every state and helper
+        if (std::getenv("B221_INFO") != nullptr) {  // the play-test spots: each placed moby of the four classes (index, uid, place)
+            level();
+            const uint32_t mpool = ee_read<uint32_t>(OV(0x0015ffd8));
+            static const struct { const char* name; uint32_t fn; } cls[] = {{"pickup 1354", 0x00305758}, {"bridge 1395", 0x00305d28},
+                                                                            {"pad 1416", 0x00306b78}, {"path platform 1417", 0x00306ee0}};
+            for (const auto& c : cls)
+                for (const uint32_t x : mobys_with(c.fn)) {
+                    const Vec4 q = ee_ref<Vec4>(x + 0x10);
+                    const uint32_t xp = ee_read<uint32_t>(x + 0x78);
+                    std::printf("INFO P14.4 %s: moby %u uid %d at %.1f %.1f %.1f state %u slot %u pvars %d %d %d %d path %d box %d carried %d\n", c.name,
+                                (x - mpool) >> 8, ee_read<int16_t>(x + 0xb2), q.x, q.y, q.z, ee_read<uint8_t>(x + 0x20), ee_read<uint8_t>(x + 0xb0),
+                                ee_read<int32_t>(xp), ee_read<int32_t>(xp + 4), ee_read<int32_t>(xp + 8), ee_read<int32_t>(xp + 0x1c),
+                                ee_read<int32_t>(xp + 0x78), ee_read<int32_t>(xp + 0xc4), ee_read<int32_t>(xp + 0xa0));
+                }
+        }
+        // the help line and the dialogue idle (half the cases), so that the messages' requests are taken and compared
+        auto help_idle = [] {
+            if (coin()) return;
+            w32(0x00151720, 0);
+            w32(0x001516d0 + 0x50, 0);
+            w32(0x001516d0 + 0x1c, 0xffffffffu);
+            w32(OV(0x00179410), 0);
+            w32(OV(0x00179434), 0xffffffffu);
+        };
+        {  // class 1354: its state 2 requests the level change: run for real on both sides (the talkers' way above)
+            const std::time_t saved_clock = g_host_clock_fixed;
+            g_host_clock_fixed = 1759658400;
+            const auto saved_hooks = g_extra_hooks;
+            g_extra_hooks = {{0x00121780, [](EeCpu& c) { c.set32(2, cd_read_clock(c.r32(4))); }},
+                             {0x0012d6d8, [](EeCpu& c) { clock_to_local(c.r32(4)); }},
+                             {0x00121450, [](EeCpu& c) { c.set32(2, cd_read(c.r32(4), c.r32(5), c.r32(6), c.r32(7))); }}};
+            g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80};
+            // set up (its checkpoint slot 0xff or not); spinning, every tenth frame or not, the hero within 1 across and 2 up or
+            // just past either (his +0x22a8 at 0: the scene's start takes its early way out, the scene's stream is never read),
+            // the flag 0x13d4d5 either way; after the scene (game mode 2 or not, its slot 0xff or not, either message); fading
+            // out near its end; other states; 50 Hz
+            classcheck("p144_class1354", 0x00305758, olt_class1354_update_l14, [set_50hz, hero_at, run_port, slot_done, help_idle](uint32_t m) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                const uint32_t P = 0x0013f350;
+                if (ri(0, 2) == 0) set_50hz();
+                const int st = ri(0, 4);
+                if (st != 0 && ee_read<uint8_t>(m + 0x20) == 0 && !run_port(olt_class1354_update_l14, m)) return;  // (the set-up first)
+                w8(m + 0x20, u(st == 4 ? ri(4, 9) : st));
+                if ((st == 0 || st == 2) && coin()) slot_done(ee_read<uint8_t>(m + 0xb0));
+                if (st == 1) {
+                    w32(L14_ADDR(0x0015f5cc), coin() ? u(10 * ri(0, 500)) : (R() & 0xffff));
+                    // (its place this frame: its kept place plus the bob)
+                    const Vec4 c = ee_ref<Vec4>(pv), b = ee_ref<Vec4>(m + 0xd0);
+                    const float k = ee_read<float>(L14_ADDR(0x001621f0));
+                    const int rk = ri(0, 2);  // (within 1, about 1, past it)
+                    const float r = rk == 0 ? rf(0.0f, 0.95f) : rk == 1 ? rf(0.95f, 1.25f) : rf(1.25f, 3.0f), a = rf(-3.1f, 3.1f);
+                    const float dz = coin() ? rf(-1.9f, 1.9f) : (coin() ? 1.0f : -1.0f) * rf(2.1f, 3.0f);
+                    hero_at(Vec4{c.x + k * b.x + r * std::cos(a), c.y + k * b.y + r * std::sin(a), c.z + k * b.z + dz, 1.0f});
+                    w8(0x0013d4d5, coin() ? 1u : 0u);
+                    w32(P + 0x22a8, 0);
+                    if (coin()) {  // (the glitter: its phases about to wrap past 255 or 0, its timers at their ends)
+                        for (uint32_t g = 0; g < 4; ++g) {
+                            wf(pv + 0x20 + g * 4, coin() ? rf(252.0f, 254.9f) : rf(0.0f, 2.5f));
+                            if (coin()) w32(pv + 0x40 + g * 4, u(ri(1, 2)));
+                        }
+                    }
+                } else if (st == 2) {
+                    w32(L14_ADDR(0x0015f5c4), coin() ? 2u : u(ri(0, 1)));
+                    w32(pv + 0x18, coin() ? 1u : 0u);
+                } else if (st == 3) {
+                    const int k = ri(0, 2);
+                    wf(m + 0x2c, k == 0 ? 0.0f : k == 1 ? rf(0.0f, 0.004f) : rf(0.1f, 2.0f));
+                }
+                help_idle();
+                seed_rand();
+            }, 300);
+            g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};
+            g_extra_hooks = saved_hooks;
+            g_host_clock_fixed = saved_clock;
+        }
+        // class 1395, the bridge: set up (its lid there or not, some pieces laid before); waiting, the watched moby in its
+        // state 2 or not; a piece tipping (each of the six, the timer running or at its end); the lid turning (the timer
+        // running or at its end, its sound slot its own and playing or not); 50 Hz
+        classcheck("p144_class1395", 0x00305d28, olt_class1395_update_l14, [set_50hz, run_port, sound_slot](uint32_t m) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            if (ri(0, 2) == 0) set_50hz();
+            const int st = ri(0, 4);
+            if (st == 0) {
+                w8(m + 0x20, 0);
+                if (ri(0, 3) == 0) {  // (laid before: the lid or some of the pieces)
+                    const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8));
+                    if (coin()) w32(pv, first + 0x100 * u(ri(0, 60)));
+                    for (uint32_t k = 0; k < 6; ++k) if (ri(0, 3) == 0) w32(pv + 4 + k * 4, first + (ee_read<uint32_t>(pv + 0x28 + k * 4) << 8));
+                }
+                seed_rand();
+                return;
+            }
+            if (ee_read<uint8_t>(m + 0x20) == 0 && !run_port(olt_class1395_update_l14, m)) return;  // (the set-up first)
+            if (ee_read<int32_t>(pv) == 0) return;
+            w8(m + 0x20, u(st == 4 ? ri(4, 7) : st));
+            if (st == 1) {
+                const uint32_t watched = ee_read<uint32_t>(OV(0x0015ffd8)) + (ee_read<uint32_t>(pv + 0x1c) << 8);
+                w8(watched + 0x20, coin() ? 2u : u(ri(0, 3)));
+            } else if (st == 2 || st == 3) {
+                static const int16_t ts[] = {1, 2, 17, 30};
+                w16(pv + 0x20, u(ts[ri(0, 3)]));
+                wf(pv + 0x24, 1.0f / rf(20.0f, 40.0f));
+                w16(pv + 0x22, u(ri(0, 5)));
+                sound_slot(m, pv + 0x40);
+            }
+            seed_rand();
+        }, 240);
+        // class 1416, the pad: set up (done before by its uid's byte or save bit, a checkpoint slot (+8) 0xff or not; its way's
+        // path, one of its points' w lane its +4); pulsing, the hero on it or not, the halfword 0x13f65e set or not; 50 Hz
+        classcheck("p144_class1416", 0x00306b78, olt_class1416_update_l14, [set_50hz, uid_done, slot_done, path_of](uint32_t m) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            if (ri(0, 2) == 0) set_50hz();
+            const int st = ri(0, 2);
+            w8(m + 0x20, u(st == 2 ? ri(2, 5) : st));
+            if (ee_read<int32_t>(pv) < 0 && coin()) w32(pv, u(ri(100, 140)));  // (the level's pads have no way (-1): one dealt, the code seen)
+            if (ee_read<int32_t>(pv) >= 0 && coin()) {  // (one of its way's points carrying the pad's value)
+                const uint32_t path = path_of(pv, 0);
+                const int32_t n = ee_read<int32_t>(path);
+                if (n > 0) {
+                    const uint32_t w = path + 0x1cu + (u(ri(0, n - 1)) << 4);
+                    w32(w, ee_read<uint32_t>(pv + 4));
+                }
+            }
+            if (st == 0) {
+                const int k = ri(0, 3);
+                if (k <= 1) uid_done(m, k);
+                w32(pv + 8, coin() ? 1u : 0u);
+                if (coin()) slot_done(ee_read<uint8_t>(m + 0xb0));
+            } else if (st == 1) {
+                wf(pv + 0xc, rf(-3.1f, 3.1f));
+                w32(0x0013f64c, ri(0, 3) != 0 ? m : 0u);
+                w16(0x0013f65e, ri(0, 3) == 0 ? 1u : 0u);
+            }
+            seed_rand();
+        }, 200);
+        // class 1417, the path platform: set up (no path, a path without points, its box or none, its carried moby or none);
+        // hidden, the hero in its box or not; flying (along its path, near its end looping or not, low near the level's floor;
+        // ridden in each of the two ways and the two hero states of the camera's test or not; the current camera of type 7 or
+        // not; the carried moby's timer and class 803); gone, its delay running or at its end; hits of kind 0x800000; its
+        // sound; 50 Hz
+        classcheck("p144_class1417", 0x00306ee0, olt_class1417_update_l14, [set_50hz, run_port, give_hit, sound_slot, hero_at, box_centre, path_of, along](uint32_t m) {
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            const uint32_t P = 0x0013f350;
+            if (ri(0, 2) == 0) set_50hz();
+            const int st = ri(0, 4);
+            if (st == 0) {
+                w8(m + 0x20, 0);
+                const int k = ri(0, 7);
+                if (k == 0) w32(pv + 0x78, 0xffffffffu);
+                else if (k == 1) w32(pv + 0xc4, 0xffffffffu);
+                else if (k == 2) w32(pv + 0xa0, 0xffffffffu);
+                if (ri(0, 4) == 0) give_hit(m, 0x00800000u);
+                seed_rand();
+                return;
+            }
+            if (ee_read<uint8_t>(m + 0x20) == 0 && !run_port(olt_class1417_update_l14, m)) return;  // (the set-up first)
+            if (ee_read<uint8_t>(m + 0x20) >= 0x80) return;
+            w8(m + 0x20, u(st == 4 ? ri(4, 7) : st));
+            const int32_t carried = ee_read<int32_t>(pv + 0xa0);
+            const uint32_t o = carried >= 0 ? ee_read<uint32_t>(OV(0x0015ffd8)) + (u(carried) << 8) : 0u;
+            if (st == 1) {
+                if (ee_read<int32_t>(pv + 0xc4) >= 0 && ri(0, 2) != 0) hero_at(box_centre(ee_read<int32_t>(pv + 0xc4)));
+            } else if (st == 2) {
+                const uint32_t path = path_of(pv, 0x78);
+                const int32_t n = ee_read<int32_t>(path);
+                const int k = ri(0, 3);
+                const int32_t seg = k == 0 ? n - 2 : ri(0, n - 1);  // (near its end, or anywhere)
+                const float t = k == 0 ? rf(0.9f, 1.0f) : rf(0.0f, 1.0f);
+                w32(pv + 0x70, u(seg));
+                wf(pv + 0x74, ee_read<float>(path + 0x1cu + (u(seg < 0 ? 0 : seg) << 4)) * t);
+                w16(pv + 0x8e, coin() ? 1u : 0u);
+                Vec4 q = along(path, seg, t);
+                const float path_z = q.z;
+                q.x += rf(-0.5f, 0.5f); q.y += rf(-0.5f, 0.5f);
+                if (k == 0 && coin()) q.x += (coin() ? 1.0f : -1.0f) * rf(0.0f, 0.009f);
+                q.z += ri(0, 4) == 0 ? -(q.z - ee_read<float>(L14_ADDR(0x0016228c))) + rf(-0.5f, 0.5f) : rf(-0.5f, 0.5f);  // (near the floor)
+                ee_ref<Vec4>(m + 0x10) = q;
+                wf(pv + 0xb0, coin() ? 0.0f : ri(0, 2) == 0 ? path_z - rf(0.0f, 9.0f) : rf(0.0f, 30.0f));  // (low: its point lowered below the 10)
+                wf(pv + 0xb4, rf(0.0f, 0.5f));
+                wfrand(pv + 0x80, 3, -0.3f, 0.3f);
+                // ridden: the hero's riding states on the carried moby, or not
+                const int ride = ri(0, 5);
+                w32(P + 0x2084, ride == 0 ? 0x25u : ride == 1 ? 0x26u : u(ri(0, 0x24)));
+                w32(P + 0x208c, ride == 2 ? 0xeu : u(ri(0, 13)));
+                w32(P + 0x964, ride <= 1 && coin() ? o : (coin() ? o : 0u));
+                w32(P + 0x994, ride == 2 || coin() ? o : 0u);
+                w32(0x001413dc, ri(0, 2) == 0 ? 0xdu : ri(0, 1) == 0 ? 0xeu : u(ri(0, 20)));
+                {  // (the current camera of type 7 or not: its state block in the test area)
+                    const uint32_t cam = ee_read<uint32_t>(L14_ADDR(0x00167500));
+                    if (cam >= 0x00100000u && cam < 0x02000000u && coin()) {
+                        w16(cam + 0x86, coin() ? 7u : u(ri(0, 21)));
+                        if (ee_read<uint32_t>(cam + 0x70) < 0x00100000u || ee_read<uint32_t>(cam + 0x70) >= 0x02000000u) w32(cam + 0x70, TEST_AREA + 0x6800);
+                    }
+                }
+                if (o != 0) {
+                    static const int32_t ts[] = {0, 1, 2, 40};
+                    w32(pv + 0xcc, u(ts[ri(0, 3)]));
+                    if (coin()) w16(o + 0xa6, 0x323);
+                }
+            } else if (st == 3) {
+                static const int16_t ts[] = {1, 2, 30};
+                w16(pv + 0x8c, u(ts[ri(0, 2)]));
+                if (coin()) w32(pv + 0xc4, 0xffffffffu);
+            }
+            if (ri(0, 3) == 0) give_hit(m, 0x00800000u);
+            sound_slot(m, pv + 0x7c);
+            seed_rand();
+        }, 300);
+
+        // ---- P14.4: camera types 20 and 21 (oltanis_cameras.cpp). No camera record of the level is of these types after the
+        // first frame (the cam_type20 / 21 checks above run them on another type's data): here a camera of the test area named
+        // by the level's camera record 0, its data block in the test area laid out as each type reads it (batch 506's way for
+        // type 19), from the level's own paths, boxes, rails and mobys
+        {
+            const uint32_t CAM = TEST_AREA + 0x6000, ST = CAM + 0x100, D = CAM + 0x200, OTHER = CAM + 0x300, SRC = CAM + 0x400, CUR = CAM + 0x500;
+            level();
+            std::vector<int32_t> paths;
+            for (int32_t i = 0; i < 176; ++i) {
+                const uint32_t p = lvd::path(i);
+                if (p >= 0x00100000u && p < 0x02000000u && ee_read<int32_t>(p) >= 2 && ee_read<int32_t>(p) <= 64) paths.push_back(i);
+            }
+            const int32_t nboxes = lvd::box_count(lvd::BOXES), nrails = lvd::rail_count();
+            // the rail drones (class 211: their rail +0x60, their path +0x88) and the mobys whose group's first three are drones
+            const std::vector<uint32_t> drones = mobys_with(0x002d5f40);
+            std::vector<uint32_t> owners;
+            for (uint32_t x = ee_read<uint32_t>(OV(0x0015ffd8)); x < ee_read<uint32_t>(OV(0x0015ffe0)); x += 0x100) {
+                uint32_t e = lvd::group(ee_read<uint8_t>(x + 0x21));
+                if (ee_read<uint8_t>(x + 0x20) >= 0xfe || e == 0) continue;
+                int n = 0;
+                for (;; e += 2) {
+                    const uint32_t y = ee_read<uint32_t>(OV(0x0015ffd8)) + ((ee_read<uint16_t>(e) & 0x7fffu) << 8);
+                    if (ee_read<uint32_t>(y + 0x74) == 0x002d5f40u) ++n;
+                    if (n >= 3 || ee_read<int16_t>(e) < 0) break;
+                }
+                if (n >= 3) owners.push_back(x);
+            }
+            if (std::getenv("B221_INFO") != nullptr)
+                std::printf("INFO P14.4 cameras: %zu paths, %d boxes, %d rails, %zu drones, %zu group owners\n", paths.size(), nboxes, nrails, drones.size(), owners.size());
+            auto pickp = [paths] { return paths[static_cast<size_t>(ri(0, static_cast<int>(paths.size()) - 1))]; };
+            auto path_at = [](int32_t i) { return lvd::path(i); };
+            auto rail_path = [](int32_t i) { return ee_read<uint32_t>(lvd::rail(i) + 0x10); };
+            // the hero on a rail (its path, a leg and a fraction of it)
+            auto hero_rail = [](uint32_t path) {
+                const uint32_t P = 0x0013f350;
+                w32(P + 0x560, path);
+                const int32_t n = ee_read<int32_t>(path);
+                w32(P + 0x564, u(ri(0, n > 1 ? n - 2 : 0)));
+                wf(P + 0x568, rf(0.0f, 1.0f));
+            };
+            // the common part: the camera (its matrix source SRC, its rows from it or random), the other camera, the current one
+            auto cam_common = [CAM, ST, D, OTHER, SRC, CUR, set_50hz](int type) {
+                if (ri(0, 2) == 0) set_50hz();  // (the frame scale's calls: the timers, the speed)
+                for (uint32_t o = 0; o < 0x600; o += 4) w32(CAM + o, 0);
+                w32(lvd::camera(0) + 0x1c, D);
+                w16(CAM + 0x84, 0);
+                w32(CAM + 0x70, ST);
+                w16(CAM + 0x86, u(type));
+                w8(CAM + 0x7c, u(ri(0, 3)));
+                {
+                    const float a = rf(-3.1f, 3.1f), ca = std::cos(a), sa = std::sin(a);
+                    for (uint32_t r = 0; r < 3; ++r) {
+                        const Vec4 v = ee_ref<Vec4>(OV(0x00166fd0) + r * 0x10);
+                        ee_ref<Vec4>(SRC + r * 0x10) = coin() ? v : Vec4{ca * v.x - sa * v.y, sa * v.x + ca * v.y, v.z, v.w};
+                    }
+                    const Vec4 c = ee_ref<Vec4>(OV(0x00166dc0));
+                    ee_ref<Vec4>(SRC + 0x30) = Vec4{c.x + rf(-2, 2), c.y + rf(-2, 2), c.z + rf(-1, 1), c.w};
+                    w32(L14_ADDR(0x00167504), SRC);
+                }
+                const int start = ri(0, 2);
+                for (uint32_t r = 0; r < 4; ++r) {
+                    if (start == 0) ee_ref<Vec4>(CAM + r * 0x10) = ee_ref<Vec4>(SRC + r * 0x10);
+                    else if (start == 1) wfrand(CAM + r * 0x10, 3, -1.0f, 1.0f);
+                }
+                w16(OTHER + 0x86, coin() ? 0x14u : u(ri(0, 0x20)));
+                w16(OTHER + 0x7e, u(ri(0, 1)));
+                w8(OTHER + 0x7c, u(ri(0, 3)));
+                w16(CUR + 0x86, coin() ? 0x14u : u(ri(0, 0x20)));
+                if (coin()) w32(L14_ADDR(0x00167500), CUR);
+                w32(0x001413dc, ri(0, 3) == 0 ? 0xfu : u(ri(0, 20)));
+            };
+            // type 20's data: the zone (as type 19's), the paths (the camera path's w lanes: none or a field of view), the moby
+            // looked at, the flags, frames and speed, the hero's states, the group's owner, the hero's box; the hero near
+            auto cam20_setup = [level, cam_common, D, pickp, path_at, nboxes, owners, drones](bool fresh) {
+                level();
+                cam_common(20);
+                const int kind = ri(0, 4);
+                w32(D + 0xc, kind == 0 ? u(ri(0, nboxes > 0 ? nboxes - 1 : 0)) : 0xffffffffu);
+                w32(D + 0x10, kind == 1 ? u(ri(0, 4)) : 0xffffffffu);
+                w32(D + 8, kind == 2 ? u(ri(0, 4)) : 0xffffffffu);
+                w32(D + 0x14, kind == 3 ? u(pickp()) : 0xffffffffu);
+                w32(D + 0x20, u(pickp()));
+                w32(D + 0x24, u(pickp()));
+                if (fresh && coin()) {
+                    const uint32_t path = path_at(ee_read<int32_t>(D + 0x20));
+                    for (int32_t k = 0; k < ee_read<int32_t>(path); ++k) wf(path + 0x1c + u(k) * 0x10, ri(0, 2) == 0 ? rf(20.0f, 120.0f) : 0.0f);
+                }
+                w32(D + 0x28, coin() ? 0xffffffffu : u(ri(0, 40)));
+                wfrand(D + 0x2c, 3, -2.0f, 2.0f);
+                w8(D + 0x38, ri(0, 3) == 0 ? 1u : 0u);
+                w8(D + 0x39, ri(0, 4) == 0 ? 1u : 0u);
+                w16(D + 0x3a, u(ri(0, 3) == 0 ? 0 : ri(1, 300)));
+                wf(D + 0x3c, rf(0.5f, 20.0f));
+                w32(D + 0x44, coin() ? 0xffffffffu : ee_read<uint32_t>(0x001413d4));
+                w32(D + 0x48, coin() ? 0xffffffffu : (coin() ? ee_read<uint32_t>(0x001413dc) : 7u));
+                const uint32_t mpool = ee_read<uint32_t>(OV(0x0015ffd8));
+                const uint32_t owner = !owners.empty() && ri(0, 4) != 0 ? owners[static_cast<size_t>(ri(0, static_cast<int>(owners.size()) - 1))]
+                                                                         : (!drones.empty() ? drones[0] : mpool);
+                w32(D + 0x50, (owner - mpool) >> 8);
+                w32(D + 0x54, u(ri(0, nboxes > 0 ? nboxes - 1 : 0)));
+                const uint32_t path = path_at(ee_read<int32_t>(kind == 3 && coin() ? D + 0x14 : D + 0x20));
+                const Vec4 q = ee_ref<Vec4>(path + 0x10 + u(ri(0, ee_read<int32_t>(path) - 1)) * 0x10);
+                const float r = coin() ? rf(0.0f, 3.0f) : rf(10.0f, 60.0f);
+                ee_ref<Vec4>(0x0013f3d0) = Vec4{q.x + rf(-r, r), q.y + rf(-r, r), q.z + rf(-1, 2), 1.0f};
+                if (kind == 0 && coin()) {
+                    const Vec4 c = ee_ref<Vec4>(lvd::box(lvd::BOXES, ee_read<int32_t>(D + 0xc)) + 0x30);
+                    const float e = coin() ? 0.2f : rf(0.5f, 6.0f);
+                    ee_ref<Vec4>(0x0013f3d0) = Vec4{c.x + rf(-e, e), c.y + rf(-e, e), c.z + rf(-e, e), 1.0f};
+                }
+            };
+            // type 21's data: the state, the rails' three mobys (drones) and their rails, the counters; the hero on one of the
+            // rails (or another), his moby's facing
+            auto cam21_setup = [level, cam_common, D, drones, nrails, rail_path, hero_rail] {
+                level();
+                cam_common(21);
+                w32(D + 0x20, u(ri(0, 3)));
+                const uint32_t mpool = ee_read<uint32_t>(OV(0x0015ffd8));
+                for (uint32_t k = 0; k < 3; ++k) {
+                    const uint32_t x = drones.empty() ? mpool : drones[static_cast<size_t>(ri(0, static_cast<int>(drones.size()) - 1))];
+                    w32(D + 0x24 + k * 4, (x - mpool) >> 8);
+                    const int32_t rail = drones.empty() || ri(0, 3) == 0 ? ri(0, nrails - 1) : ee_read<int32_t>(ee_read<uint32_t>(x + 0x78) + 0x60);
+                    w32(D + 0x34 + k * 4, u(rail));
+                }
+                w16(D + 0x30, u(ri(0, 4)));
+                w16(D + 0x32, u(ri(0, 2)));
+                const int which = ri(0, 4);
+                const int32_t rail = which < 3 ? ee_read<int32_t>(D + 0x34 + u(which) * 4)
+                                               : (which == 3 && !drones.empty() ? ee_read<int32_t>(ee_read<uint32_t>(ee_read<uint32_t>(OV(0x0015ffd8)) + (ee_read<uint32_t>(D + 0x24) << 8) + 0x78) + 0x60)
+                                                                                : ri(0, nrails - 1));
+                hero_rail(rail_path(rail));
+                const uint32_t hm = ee_read<uint32_t>(0x001413d0);
+                wf(hm + 0xd0, rf(-1, 1));
+                wf(hm + 0xd4, rf(-1, 1));
+            };
+            if (!paths.empty() && nboxes > 0 && nrails > 0) {
+                l14check("p144_cam20_accept", 0x00315920, 300, Ret::Int32, [cam20_setup, CAM, OTHER] {
+                    cam20_setup(true);
+                    seed_rand();
+                    return Args{{CAM, coin() ? OTHER : 0u}, {}};
+                }, [](A a) { return r32(olt_cam_type20_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0); });
+                l14check("p144_cam20_init", 0x00314f00, 150, Ret::None, [cam20_setup, CAM] {
+                    cam20_setup(true);
+                    seed_rand();
+                    return Args{{CAM}, {}};
+                }, [](A a) { olt_cam_type20_init_l14(a.i[0]); return uint64_t{0}; });
+                // the update: the camera started by the init (the port's, checked above), then its phase, timer, leg varied; at its
+                // end the hero on a rail (a drone's of the group, or another); the w lanes of the camera's side and up rows left
+                // out (VCROSS's stale lane, as type 19's check)
+                const size_t n_ign = g_ignored_words.size();
+                g_ignored_words.push_back(CAM + 0x1c);
+                g_ignored_words.push_back(CAM + 0x2c);
+                l14check("p144_cam20_update", 0x00315290, 400, Ret::None, [cam20_setup, CAM, ST, D, path_at, rail_path, hero_rail, nrails] {
+                    for (int attempt = 0; attempt < 10; ++attempt) {
+                        cam20_setup(true);
+                        const uint32_t sp0 = ee_stack_ptr();
+                        try { olt_cam_type20_init_l14(CAM); break; } catch (const std::exception&) { ee_stack_ptr() = sp0; }
+                    }
+                    const uint32_t blk = ST + 0x40;
+                    w16(blk + 0x14, ri(0, 3) == 0 ? 0u : 1u);
+                    if (coin()) w16(blk + 0x16, u(ri(0, 3) == 0 ? 1 : ri(0, 30)));
+                    const uint32_t path = path_at(ee_read<int32_t>(D + 0x20));
+                    const int32_t n = ee_read<int32_t>(path);
+                    const int k = ri(0, 3);
+                    w32(blk, u(k == 0 ? n - 2 : ri(0, n - 1)));
+                    wf(blk + 4, k == 0 ? rf(0.0f, ee_read<float>(path + 0x1c + u(n - 2) * 0x10)) : rf(0.0f, 2.0f));
+                    if (coin()) wf(blk + 0x10, rf(0.0f, ee_read<float>(blk + 8)));
+                    // the end's rails: a drone's of the group (the hero put by the nearest member), or another
+                    const uint32_t owner = ee_read<uint32_t>(OV(0x0015ffd8)) + (ee_read<uint32_t>(D + 0x50) << 8);
+                    const uint32_t e = lvd::group(ee_read<uint8_t>(owner + 0x21));
+                    if (e != 0 && coin()) {
+                        const uint32_t y = ee_read<uint32_t>(OV(0x0015ffd8)) + ((ee_read<uint16_t>(e + u(ri(0, 2)) * 2) & 0x7fffu) << 8);
+                        hero_rail(rail_path(ee_read<int32_t>(ee_read<uint32_t>(y + 0x78) + 0x60)));
+                        if (coin()) {  // (the drone's own path's start moved off the rail: the nearest point's search range seen)
+                            const uint32_t own = path_at(ee_read<int32_t>(ee_read<uint32_t>(y + 0x78) + 0x88));
+                            wf(own + 0x10, ee_read<float>(own + 0x10) + (coin() ? 1.0f : -1.0f) * rf(3.0f, 30.0f));
+                            wf(own + 0x14, ee_read<float>(own + 0x14) + rf(-10.0f, 10.0f));
+                        }
+                    } else {
+                        hero_rail(rail_path(ri(0, nrails - 1)));
+                    }
+                    seed_rand();
+                    return Args{{CAM}, {}};
+                }, [](A a) { olt_cam_type20_update_l14(a.i[0]); return uint64_t{0}; });
+                g_ignored_words.resize(n_ign);
+                l14check("p144_cam21_accept", 0x00316748, 300, Ret::Int32, [cam21_setup, CAM, OTHER] {
+                    cam21_setup();
+                    seed_rand();
+                    return Args{{CAM, coin() ? OTHER : 0u}, {}};
+                }, [](A a) { return r32(olt_cam_type21_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0); });
+                g_ignored_words.push_back(CAM + 0x1c);
+                g_ignored_words.push_back(CAM + 0x2c);
+                l14check("p144_cam21_init", 0x003159d8, 150, Ret::None, [cam21_setup, CAM] {
+                    cam21_setup();
+                    seed_rand();
+                    return Args{{CAM}, {}};
+                }, [](A a) { olt_cam_type21_init_l14(a.i[0]); return uint64_t{0}; });
+                // the update: started by the init (the port's), then its keyframe, counters, last targets and ease varied
+                l14check("p144_cam21_update", 0x00315d48, 400, Ret::None, [cam21_setup, CAM, ST, D] {
+                    for (int attempt = 0; attempt < 10; ++attempt) {
+                        cam21_setup();
+                        const uint32_t sp0 = ee_stack_ptr();
+                        try { olt_cam_type21_init_l14(CAM); break; } catch (const std::exception&) { ee_stack_ptr() = sp0; }
+                    }
+                    // (the keyframe: the first ones, near the list's end, or any)
+                    int32_t last = 0;
+                    while (last < 38 && ee_read<int32_t>(L14_ADDR(0x001f6488) + u(last + 1) * 0x30 + 0x14) != 0x2710) ++last;
+                    const int k = ri(0, 3);
+                    w32(ST + 0x8c, u(k == 0 ? ri(0, 2) : k == 1 ? (last > 0 ? last - 1 : 0) + ri(0, 1) : ri(0, last)));
+                    w16(D + 0x30, u(ri(0, 4)));
+                    w16(D + 0x32, u(ri(0, 2)));
+                    if (coin()) { wf(ST + 0x90, coin() ? 0.0f : rf(-3.1f, 3.1f)); wf(ST + 0x94, coin() ? 0.0f : rf(-3.1f, 3.1f)); }
+                    wf(ST + 0x98, rf(0.0f, 1.0f));
+                    if (coin()) wfrand(ST + 0x74, 5, -0.2f, 0.2f);
+                    if (coin()) wf(ST + 0x70, rf(-0.5f, 0.5f));  // (the turn about the up row: the keyframes' +0x10 are 0 on the level)
+                    seed_rand();
+                    return Args{{CAM}, {}};
+                }, [](A a) { olt_cam_type21_update_l14(a.i[0]); return uint64_t{0}; });
+                l14check("p144_cam21_exit", 0x003167e0, 60, Ret::None, [cam21_setup, CAM] {
+                    cam21_setup();
+                    seed_rand();
+                    return Args{{CAM}, {}};
+                }, [](A a) { olt_cam_type21_exit_l14(a.i[0]); return uint64_t{0}; });
+                g_ignored_words.resize(n_ign);
+            }
+        }
 
         g_ignored_words = batch_ignored;
         g_extra_noop_hooks.clear();

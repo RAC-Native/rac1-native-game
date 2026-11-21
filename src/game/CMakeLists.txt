@@ -250,6 +250,10 @@ add_library(rac1_game STATIC
     ovl/oltanis_carrier.cpp
     ovl/oltanis_mortar_bomb.cpp
     ovl/oltanis_small_classes.cpp
+    ovl/oltanis_pickup.cpp
+    ovl/oltanis_bridge.cpp
+    ovl/oltanis_path_platform.cpp
+    ovl/oltanis_cameras.cpp
     ovl/levels13_14_shared.cpp
     ovl/quartu_hooks.cpp
     ovl/quartu_mobys.cpp

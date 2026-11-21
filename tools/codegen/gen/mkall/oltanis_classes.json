@@ -4,13 +4,9 @@
  "env": {
   "MKALL_HELPER_PREFIX": "olt_",
   "MKALL_WIDE_GPR": "",
-  "MKALL_UNIFORM": "olt_cam_type20_accept_u,olt_cam_type21_accept_u,olt_hook_2daed8_u,olt_26b390_l14"
+  "MKALL_UNIFORM": "olt_hook_2daed8_u,olt_26b390_l14"
  },
  "entries": [
-  "305758:olt_class1354_update_l14:void:a0",
-  "305d28:olt_class1395_update_l14:void:a0",
-  "306b78:olt_class1416_update_l14:void:a0",
-  "306ee0:olt_class1417_update_l14:void:a0",
   "2aee28:olt_cb_2aee28_l14:void:a0",
   "2d71f0:olt_cb_2d71f0_l14:void:a0",
   "2df458:olt_cb_2df458_l14:void:a0",
@@ -18,13 +14,6 @@
   "2edc18:olt_cb_2edc18_l14:void:a0",
   "303350:olt_cb_303350_l14:void:a0",
   "2ae260:olt_cb_2ae260_l14:void:a0",
-  "315920:olt_cam_type20_accept_u",
-  "314f00:olt_cam_type20_init_l14:void:a0",
-  "315290:olt_cam_type20_update_l14:void:a0",
-  "316748:olt_cam_type21_accept_u",
-  "3159d8:olt_cam_type21_init_l14:void:a0",
-  "315d48:olt_cam_type21_update_l14:void:a0",
-  "3167e0:olt_cam_type21_exit_l14:void:a0",
   "2daed8:olt_hook_2daed8_u",
   "2460f8:olt_cutscene_level_extras_l14:void:a0",
   "26b390:olt_26b390_l14"
@@ -32,7 +21,6 @@
  "glue_files": [],
  "files": [
   "src/game/ovl/oltanis_classes_tr_4.cpp",
-  "src/game/ovl/oltanis_classes_tr_5.cpp",
   "src/game/ovl/oltanis_classes_tr_6.cpp",
   "src/game/ovl/oltanis_classes_tr_7.cpp"
  ]
