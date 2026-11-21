@@ -65,16 +65,6 @@ using namespace vu0m;
 
 //@gen qua_cam_type22_accept_u
 
-//@gen qua_hook_2bc4b0_u
-
-//@gen qua_hook_2bc500_u
-
-//@gen qua_hook_2bc550_u
-
-//@gen qua_hook_2bc5a0_u
-
-//@gen qua_hook_2bc5d0_u
-
 //@gen qua_cb_2eb6b8_l15
 
 }  // namespace rac1

@@ -24,9 +24,11 @@ void qua_2c4f88_l15(uint32_t m, const Vec4& goal, const Vec4& look);  // L15:0x0
 void qua_2c52b8_l15(uint32_t m, uint32_t out, uint32_t target);  // L15:0x002c52b8 its place near the target
 void qua_2c6900_l15(uint32_t m);  // L15:0x002c6900 its hits
 
-TrRet qua_2cf110_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002cf110
-TrRet qua_2d0fa8_l15(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002d0fa8
-void qua_class491_update_l15(uint32_t a0);  // L15:0x002cf3a8
+// The melee robot (class 491) and its helpers (quartu_class491.cpp):
+void qua_class491_update_l15(uint32_t m);  // L15:0x002cf3a8
+float qua_2cf110_l15(uint32_t m, uint32_t out, float range);  // L15:0x002cf110 its place near the target (returns the yaw toward it)
+void qua_2d0fa8_l15(uint32_t m);  // L15:0x002d0fa8 its hits and its target
+
 void qua_class937_update_l15(uint32_t a0);  // L15:0x002e46b0
 void qua_class1250_update_l15(uint32_t a0);  // L15:0x002e73c0
 void qua_class1257_update_l15(uint32_t a0);  // L15:0x002e7f68
