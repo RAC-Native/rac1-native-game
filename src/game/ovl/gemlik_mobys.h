@@ -113,20 +113,16 @@ uint32_t gml_280400_l13(uint32_t m, uint32_t joint, uint32_t c0, uint32_t c1, ui
 void gml_2b4f28_l13(uint32_t m, uint32_t pv);  // L13:0x002b4f28 (the particle kept while drawn)
 void gml_2b4fb8_l13(uint32_t pv);  // L13:0x002b4fb8 (the particle freed)
 void gml_2b4ff0_l13(uint32_t m, uint32_t pv);  // L13:0x002b4ff0 (onto the floor)
+// the HUD of Ratchet's ship in Qwark's fight (gemlik_ship_hud.cpp, task H2)
+void gml_cb_2b97f8_l13(uint32_t m);  // L13:0x002b97f8 (the ship's HUD, its draw-list callback)
+void gml_2b95b8_l13(uint32_t ship, uint32_t pv);  // L13:0x002b95b8 (the lock-on)
+uint32_t gml_2b8be0_l13(uint32_t ship, uint32_t pv, uint32_t cam_pos, uint32_t rot, uint32_t cur, uint32_t keep);  // L13:0x002b8be0 (the blips, reticles, arrows; the next target)
+void gml_2b89f8_l13(uint32_t rot, uint32_t cam_pos, uint32_t target, uint32_t icon, uint32_t color, uint32_t tex_base);  // L13:0x002b89f8 (a blip)
+// class 63's hook +8 (gemlik_hooks.cpp; its hooks +0 / +4 / +0xc / +0x10 are the shared ports of Gaspar's same code: gemlik_class_hook_call)
+int32_t gml_hook_2b7a20_l13(uint32_t m, uint32_t a1, uint32_t a2, float f12);  // L13:0x002b7a20
 
 // ---- generated (gemlik_classes_tr_N.cpp)
-TrRet gml_250748_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x00250748
-TrRet gml_250840_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x00250840
 TrRet gml_2a5390_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002a5390
-TrRet gml_2b89f8_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b89f8
-TrRet gml_2b8be0_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b8be0
-TrRet gml_2b95b8_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b95b8
-void gml_cb_2b97f8_l13(uint32_t a0);  // L13:0x002b97f8
-TrRet gml_hook_2b7980_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b7980
-TrRet gml_hook_2b79d0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b79d0
-TrRet gml_hook_2b7a20_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b7a20
-TrRet gml_hook_2b7ad0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b7ad0
-TrRet gml_hook_2b7b00_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002b7b00
 
 }  // namespace rac1
 

@@ -2,19 +2,29 @@
 #include <game/ovl/gemlik_hooks.h>
 #include <game/ovl/sound_emitter.h>
 
+#include <game/ovl/blarg_own.h>
+#include <game/ovl/carry_hooks.h>
+#include <game/ovl/enemy_749.h>
+#include <game/ovl/gaspar_mobys.h>
 #include <game/ovl/kerwan_camera.h>
+#include <game/ovl/ovl.h>
+#include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/shared_cam19.h>
+#include <game/ovl/shared_helpers.h>
 namespace rac1 {
 
-namespace {
-// a transliterated function in the uniform ABI (TrRet: every argument register) called with a0 / a1 / a2 and f12
-TrRet u_call3(TrRet (*f)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float,
-                         float, float, float),
-              uint32_t a0, uint32_t a1, uint32_t a2, float f12) {
-    return f(a0, a1, a2, 0, 0, 0, 0, 0, f12, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+// Class 63's hook +8 (the trooper let go by what carried it): its carry record first (the class's hook +0x10, 0x2b7b00: pvars + 0x60),
+// then Veldin's carry hook +8; carried: the state 7, let go from 7: the state 1; the record's +0x68 at 6: the sound 2 on the moby.
+// orig: L13:0x002b7a20
+int32_t gml_hook_2b7a20_l13(uint32_t m, uint32_t a1, uint32_t a2, float f12) {
+    const uint32_t rec = class_hook_10(m);
+    const int32_t r = carry_hook8(m, a1, a2, f12);
+    if (r != 0) sb(m + 0x20, 7);
+    else if (lbu(m + 0x20) == 7) sb(m + 0x20, 1);
+    if (rec != 0 && lh(rec + 0x68) == 6) moby_sound_start(2, 0, m);
+    return r;
 }
-}  // namespace
 
 // orig: (host) see gemlik_hooks.h
 bool gemlik_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t* ret) {
@@ -51,18 +61,16 @@ bool gemlik_camera_callback_call(uint32_t fn) {
 
 // orig: (host) see gemlik_hooks.h
 bool gemlik_class_hook_call(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, float f12, int32_t& ret) {
-    TrRet (*f)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float,
-               float, float) = nullptr;
     switch (lvl_key(fn)) {
-    case L13_CASE(0x002b7980): f = gml_hook_2b7980_u; break;
-    case L13_CASE(0x002b79d0): f = gml_hook_2b79d0_u; break;
-    case L13_CASE(0x002b7a20): f = gml_hook_2b7a20_u; break;
-    case L13_CASE(0x002b7ad0): f = gml_hook_2b7ad0_u; break;
-    case L13_CASE(0x002b7b00): f = gml_hook_2b7b00_u; break;
+    // (+0 / +4 / +0xc / +0x10: word for word Gaspar's class 193's hooks L9:0x2e2680 / 0x2e26d0 / 0x2e2770 / 0x2e27a0 and Kalebo III's,
+    // masked for relocations: their shared ports; +0x10 is Blarg's L6:0x2ea800 too)
+    case L13_CASE(0x002b7980): ret = carry_state_hook(m, a1, a2, f12, 0, 7, 1); return true;  // (shared_helpers.cpp)
+    case L13_CASE(0x002b79d0): ret = carry_state_hook(m, a1, a2, f12, 4, 7, 1); return true;
+    case L13_CASE(0x002b7a20): ret = gml_hook_2b7a20_l13(m, a1, a2, f12); return true;
+    case L13_CASE(0x002b7ad0): ret = gas_hook_2e2770_l9(m, a1, a2, f12); return true;  // (gaspar_carry.cpp)
+    case L13_CASE(0x002b7b00): ret = static_cast<int32_t>(class_hook_pvars60_l6(m)); return true;  // (blarg_own.cpp)
     default: return false;
     }
-    ret = static_cast<int32_t>(u_call3(f, m, a1, a2, f12).v0);
-    return true;
 }
 
 }  // namespace rac1

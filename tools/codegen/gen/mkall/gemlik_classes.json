@@ -3,23 +3,15 @@
  "tool": "mkall_l13.py",
  "env": {
   "MKALL_HELPER_PREFIX": "gml_",
-  "MKALL_FORCE": "250748,250840",
+  "MKALL_FORCE": "",
   "MKALL_WIDE_GPR": "",
-  "MKALL_UNIFORM": "gml_2a5390_l13,gml_hook_2b7980_u,gml_hook_2b79d0_u,gml_hook_2b7a20_u,gml_hook_2b7ad0_u,gml_hook_2b7b00_u"
+  "MKALL_UNIFORM": "gml_2a5390_l13"
  },
  "entries": [
-  "2a5390:gml_2a5390_l13",
-  "2b97f8:gml_cb_2b97f8_l13:void:a0",
-  "2b7980:gml_hook_2b7980_u",
-  "2b79d0:gml_hook_2b79d0_u",
-  "2b7a20:gml_hook_2b7a20_u",
-  "2b7ad0:gml_hook_2b7ad0_u",
-  "2b7b00:gml_hook_2b7b00_u"
+  "2a5390:gml_2a5390_l13"
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/gemlik_classes_tr_3.cpp",
-  "src/game/ovl/gemlik_classes_tr_6.cpp",
-  "src/game/ovl/gemlik_classes_tr_7.cpp"
+  "src/game/ovl/gemlik_classes_tr_3.cpp"
  ]
 }

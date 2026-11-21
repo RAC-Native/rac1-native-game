@@ -241,6 +241,7 @@ add_library(rac1_game STATIC
     ovl/gemlik_trooper.cpp
     ovl/gemlik_shots.cpp
     ovl/gemlik_ship.cpp
+    ovl/gemlik_ship_hud.cpp
     ovl/gemlik_swing.cpp
     ovl/gemlik_target_group.cpp
     ovl/gemlik_tower.cpp

@@ -22,7 +22,9 @@
 #include <game/ovl/shared_class295.h>
 #include <game/ovl/shared_class447.h>
 #include <game/ovl/shared_class615.h>
+#include <game/ovl/gaspar_mobys.h>
 #include <game/ovl/shared_class832.h>
+#include <game/ovl/shared_helpers.h>
 #include <game/ovl/shared_gold_bolt.h>
 #include <game/ovl/shared_movers.h>
 #include <game/ovl/shared_ship_shots.h>
@@ -32,14 +34,14 @@
 namespace rac1 {
 
 namespace {
-// orig: (none) -- adapter of L13:0x002b7980 (class 63's hook +0: the indirect-call form, the moby only)
-void gml_hook_2b7980_m(uint32_t m) { gml_hook_2b7980_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+// orig: (none) -- adapter of L13:0x002b7980 (class 63's hook +0: the indirect-call form, the moby only; Gaspar's L9:0x2e2680, the same code)
+void gml_hook_2b7980_m(uint32_t m) { carry_state_hook(m, 0, 0, 0.0f, 0, 7, 1); }
 
 // orig: (none) -- adapter of L13:0x002b7a20 (class 63's hook +8: the indirect-call form, the moby only)
-void gml_hook_2b7a20_m(uint32_t m) { gml_hook_2b7a20_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+void gml_hook_2b7a20_m(uint32_t m) { gml_hook_2b7a20_l13(m, 0, 0, 0.0f); }
 
-// orig: (none) -- adapter of L13:0x002b7ad0 (class 63's hook +0xc: the indirect-call form, the moby only)
-void gml_hook_2b7ad0_m(uint32_t m) { gml_hook_2b7ad0_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+// orig: (none) -- adapter of L13:0x002b7ad0 (class 63's hook +0xc: the indirect-call form, the moby only; Gaspar's L9:0x2e2770, the same code)
+void gml_hook_2b7ad0_m(uint32_t m) { gas_hook_2e2770_l9(m, 0, 0, 0.0f); }
 }  // namespace
 
 // orig: (none) -- level 13's registrations

@@ -71,25 +71,8 @@ L16 0x00238c38: fixes102_race_text(sp.w(), 2, 0, static_cast<int32_t>(lw_(s1.w()
 # checked on SCES-50916 1.00): no `PAL:` lines.
 # Pokitaru (L11:0x311d50): hand-ported in src/game/ovl/pokitaru_jet_hud.cpp (pok_cb_311d50_l11 carries all 10 render_view_hud_begin/end hooks;
 # batch 124's p113_cb311d50 checks them against the original's code, task H1).
-# Gemlik Base: the missiles (L13:0x2b7b30), the radar's sprites, its blips (L13:0x2b89f8, from L13:0x2b8be0)
-L13 0x002b9a18: render_view_hud_begin(1);  // enhancement: the HUD's width (a missile)
-L13 0x002b9a20: render_view_hud_end();
-L13 0x002b9a58: render_view_hud_begin(1);
-L13 0x002b9a60: render_view_hud_end();
-L13 0x002b9d70: render_view_hud_begin(2);  // (the radar)
-L13 0x002b9d78: render_view_hud_end();
-L13 0x002b9dac: render_view_hud_begin(2);
-L13 0x002b9db4: render_view_hud_end();
-L13 0x002b8f48: render_view_hud_begin(2);  // (a blip)
-L13 0x002b8f50: render_view_hud_end();
-L13 0x002b8f70: render_view_hud_begin(2);
-L13 0x002b8f78: render_view_hud_end();
-L13 0x002b93b0: render_view_hud_begin(2);
-L13 0x002b93b8: render_view_hud_end();
-L13 0x002b948c: render_view_hud_begin(2);
-L13 0x002b9494: render_view_hud_end();
-L13 0x002b9558: render_view_hud_begin(2);
-L13 0x002b9560: render_view_hud_end();
+# Gemlik Base (L13:0x2b97f8): hand-ported in src/game/ovl/gemlik_ship_hud.cpp (gml_cb_2b97f8_l13 / gml_2b8be0_l13 carry all 18
+# render_view_hud_begin/end hooks; batch 220's p13h_cb_2b97f8 checks them against the original's code, task H2).
 # Drek's fleet (L17:0x2eb9a8): hand-ported in src/game/ovl/veldin_orbit_hud.cpp (vo_cb_2eb9a8_l17 / vo_2eace8_l17 carry all 18
 # render_view_hud_begin/end hooks; batch 260's p17_cb_2eb9a8 checks them against the original's code, task H1).
 # ---- The board's race camera (camera type 8: its update 0x329358 on Rilgar, 0x2f3e60 on Kalebo III, the same code) keeps its target over a

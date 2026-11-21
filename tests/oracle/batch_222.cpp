@@ -52,6 +52,8 @@
 
 namespace rac1::oracle {
 
+extern const std::vector<HudHook> kShipHudHooks;  // (batch_220.cpp: the ship's HUD's 18 HUD-width hooks)
+
 namespace {
 // The checks named here reach sphere_collide or capsule_collide, whose chunk buffers, unpacked vertices and cell
 // walk the port keeps on the host stack (the original: 0x70000000 .. 0x70002000, 0x70002000, 0x70003800): A2's
@@ -368,6 +370,8 @@ void batch_222() {
             const std::vector<uint32_t> ms = live222(cb.cls);
             if (ms.empty()) continue;
             const std::string nm = std::string(cb.name) + tag;
+            std::optional<HudHooksExpected> hud_hooks;  // (the ship's HUD's hooks, batch 220's list: the dump's states need not draw every element)
+            if (cb.fn == gml_cb_2b97f8_l13) hud_hooks.emplace(kShipHudHooks, false);
             g2check(nm.c_str(), cb.addr, 40, Ret::None, [&d, ms, vary_pvars] {
                 load222(d);
                 const uint32_t m = pick222(ms);

@@ -183,7 +183,8 @@ reached; a listed address no case reaches fails the check (a wrong address, a de
 that element), except under `ORACLE_FOCUS` or for a list given as `HudHooksExpected(list, false)` (a row run with
 generic states, which need not draw every element). A check of a still-generated function can carry its list too:
 the generated code calls the same two functions, which proves the list before the port. Batch 124's `p113_cb311d50`
-(Pokitaru's ship HUD, 10 hooks) and batch 260's `p17_cb_2eb9a8`, `p17_2eb768`, `p17_2eace8` (Drek's fleet's, 18) use it.
+(Pokitaru's ship HUD, 10 hooks), batch 260's `p17_cb_2eb9a8`, `p17_2eb768`, `p17_2eace8` (Drek's fleet's, 18) and batch 220's
+`p13h_cb_2b97f8`, `p13h_2b95b8`, `p13h_2b8be0` (Gemlik Base's, 18) use it.
 
 ### The reference batches
 

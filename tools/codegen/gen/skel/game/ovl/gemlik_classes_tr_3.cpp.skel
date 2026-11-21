@@ -45,15 +45,12 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/ovl/shared_little.h>
+#include <game/ovl/vendor_tr.h>
 
 namespace rac1 {
 
 using namespace eer;
 using namespace vu0m;
-
-//@gen gml_250748_l13
-
-//@gen gml_250840_l13
 
 //@gen gml_2a5390_l13
 

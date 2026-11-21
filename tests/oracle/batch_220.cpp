@@ -16,6 +16,7 @@
 #include <game/enhance/fixes102.h>
 #include <game/level/level_data.h>
 #include <game/ovl/enemy_749.h>
+#include <game/ovl/gemlik_hooks.h>
 #include <game/ovl/gemlik_mobys.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
@@ -41,6 +42,7 @@
 #include <game/ovl/shared_class615.h>
 #include <game/ovl/shared_class832.h>
 #include <game/ovl/shared_gold_bolt.h>
+#include <game/ovl/shared_hud_shapes.h>
 #include <game/ovl/shared_movers.h>
 #include <game/ovl/shared_ship_shots.h>
 #include <game/ovl/shared_swingshot_target.h>
@@ -50,6 +52,7 @@
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <stdexcept>
 #include <cstring>
 #include <string>
 #include <map>
@@ -95,6 +98,18 @@ void l13check(const char* name, uint32_t l9addr, int n, Ret ret, const std::func
     if (!check_fn(name, l9addr, n, ret, gen, port, Scope::FullRam, ignore_word, ignore_word2)) ++g_fail;
 }
 }  // namespace
+
+// The ship's HUD's 18 HUD-width hooks (tools/codegen/hooks.glue's L13 lines before task H2; each a jal and its return address on
+// the disc's code, l13_hud.dis): in 0x2b97f8 the missiles' two hud_line_strip 0x2b7b30 (loaded / not) and the radar's two
+// glyph_sprite 0x205c78, in 0x2b8be0 its five calls of the blip 0x2b89f8. The end 0x2b9560 is also where the classes 389 .. 400
+// and from 1285 go, and the blips of the classes 0x184 / 0x3eb / 0x504 (an end alone: nothing pending). Batch 222 uses it too.
+extern const std::vector<HudHook> kShipHudHooks;
+const std::vector<HudHook> kShipHudHooks = {
+    {0x002b9a18, 1}, {0x002b9a20, 0}, {0x002b9a58, 1}, {0x002b9a60, 0},                                     // a missile (0x2b97f8)
+    {0x002b9d70, 2}, {0x002b9d78, 0}, {0x002b9dac, 2}, {0x002b9db4, 0},                                     // the radar (0x2b97f8)
+    {0x002b8f48, 2}, {0x002b8f50, 0}, {0x002b8f70, 2}, {0x002b8f78, 0}, {0x002b93b0, 2}, {0x002b93b8, 0},  // a blip (0x2b8be0)
+    {0x002b948c, 2}, {0x002b9494, 0}, {0x002b9558, 2}, {0x002b9560, 0},
+};
 
 void batch_220() {
     if (g_only_batch != 220) return;
@@ -377,6 +392,8 @@ void batch_220() {
             const size_t ign_pk = g_ignored_words.size();
             if (std::strcmp(cb.name, "cb2fd6c0") == 0 || std::strcmp(cb.name, "cb311d50") == 0)
                 for (uint32_t a = 0x00800000u; a < 0x00810000u; a += 4) g_ignored_words.push_back(a);
+            std::optional<HudHooksExpected> hud_hooks;  // (the ship's HUD's hooks: the generic states need not draw every element)
+            if (std::strcmp(cb.name, "cb2b97f8") == 0) hud_hooks.emplace(kShipHudHooks, false);
             for (int st = 0; st < 4; ++st)
             for (int pass = 0; pass < 3; ++pass) {
                 if (clsfn == nullptr && (st != 0 || pass != 0)) continue;
@@ -425,13 +442,15 @@ void batch_220() {
     // (the carry hooks' shape: their callees read all four), on the mobys whose class owns the hook
     if (g_oracle_level == 13) {
         g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};
-        struct Hk { const char* name; uint32_t addr; uint32_t slot; TrRet (*fn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float); };
+        // (the port: the level's dispatch gemlik_class_hook_call, as the game's class_hook_* reach it: H2 bound +0 / +4 / +0xc / +0x10
+        // to the shared ports of the same code, +8 to its hand port gml_hook_2b7a20_l13)
+        struct Hk { const char* name; uint32_t addr; uint32_t slot; };
         static const Hk hks[] = {
-            {"hook_2b7980", 0x2b7980, 0x0, gml_hook_2b7980_u},
-            {"hook_2b79d0", 0x2b79d0, 0x4, gml_hook_2b79d0_u},
-            {"hook_2b7a20", 0x2b7a20, 0x8, gml_hook_2b7a20_u},
-            {"hook_2b7ad0", 0x2b7ad0, 0xc, gml_hook_2b7ad0_u},
-            {"hook_2b7b00", 0x2b7b00, 0x10, gml_hook_2b7b00_u},
+            {"hook_2b7980", 0x2b7980, 0x0},
+            {"hook_2b79d0", 0x2b79d0, 0x4},
+            {"hook_2b7a20", 0x2b7a20, 0x8},
+            {"hook_2b7ad0", 0x2b7ad0, 0xc},
+            {"hook_2b7b00", 0x2b7b00, 0x10},
         };
         for (const Hk& hk : hks) {
             level();
@@ -442,7 +461,7 @@ void batch_220() {
             }
             if (own.empty()) { std::printf("%-26s L13:0x%08x  no moby owns it on this level\n", hk.name, hk.addr); continue; }
             if (std::getenv("B220_INFO") != nullptr) std::printf("INFO %s 0x%08x owners %zu\n", hk.name, hk.addr, own.size());
-            auto fn = hk.fn;
+            const uint32_t fn = hk.addr;
             l13check(hk.name, hk.addr, 40, Ret::Int32, [level, own] {
                 level();
                 const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8));
@@ -450,7 +469,11 @@ void batch_220() {
                 if (ri(0, 4) == 0) w8(m + 0x20, coin() ? 0xfe : 0xfd);
                 const uint32_t tgt = ri(0, 3) == 0 ? 0u : first + 0x100 * u(ri(0, 100));
                 return Args{{m, ri(0, 2) == 0 ? 0x0013f3d0u : m + 0x10, tgt}, {rf(-1, 3)}};
-            }, [fn](A a) { return r32(fn(a.i[0], a.i[1], a.i[2], 0, 0, 0, 0, 0, a.f[0], 0, 0, 0, 0, 0, 0, 0).v0); });
+            }, [fn](A a) {
+                int32_t r = 0x7eadbeef;
+                if (!gemlik_class_hook_call(fn, a.i[0], a.i[1], a.i[2], a.f[0], r)) throw std::runtime_error("not one of level 13's hooks");
+                return r32(static_cast<uint32_t>(r));
+            });
         }
         g_extra_noop_hooks.clear();
     }
@@ -3369,6 +3392,263 @@ void batch_220() {
                                 bad == 0 && thinned > 0 && kept > 0 ? "ok" : "FAIL", n, thinned, kept, drawn);
                     if (bad != 0 || thinned == 0 || kept == 0) ++g_fail;
                 }
+            }
+        }
+
+        // ---- H2 (stage 4): the HUD of Ratchet's ship in Qwark's fight (gemlik_ship_hud.cpp): its draw-list callback 0x2b97f8, the
+        // lock-on 0x2b95b8, the blips and reticles 0x2b8be0 and one blip 0x2b89f8, each with its HUD-width hooks checked
+        // (HudHooksExpected: kShipHudHooks, the hooks.glue lines the port carries) as well as the packets. The state: the ship (class
+        // 69, the level's one) and its pvars dealt (the target, the lock's timer about frame_scale_i(500) / + frame_scale_i(75) and
+        // 501, the frames off target about frame_scale_i(60), the crosshair, the health bar, the arrow's phase, the aim's angles),
+        // the hero's missiles / their room / the ship's health, the pad's 0x2000, the view mode 3 / 4; a chain of drawn mobys
+        // (L13:0x15ffe4 by +0x28) built from the level's mobys, each given a class on each edge of the blips' compares (or its own),
+        // drawn (+0x31) or not, its flags 0x1000 / 2 / 1, its class record an enemy's (+0x46 5) or not, placed about the camera
+        // (near: a blip; from 38 to 46 / 14: fading; far: none) or where it looks (candidates of the lock about the crosshair); the
+        // ship's aim on a moby that is not drawn (its arrow's two reticles within a quarter turn) in part of the cases; the camera
+        // seeing that point or away; 50 Hz in a quarter; the health strip's pointer on a test-area buffer; the packet cursor on a
+        // test-area buffer. VU0: none of the four has a VU0 instruction of its own; the last VU0 writers in the original's run are
+        // its callees (euler_to_mat4_vu, sin_vu, the vec3 helpers, the HUD shapes), whose ports keep no VU0 state, as in the
+        // generated code before: no lane is compared. B220_INFO=1 prints the ship (the play-test spot).
+        if (!c69.empty()) {
+            static const int16_t kHudClasses[] = {0x52, 0x53, 81, 84, 0x6f, 110, 112, 223, 0xe0, 225, 0xe4, 229, 0x184, 0x184, 387, 389, 393, 398,
+                                                  399, 400, 0x191, 0x191, 402, 0x3eb, 0x3eb, 1002, 1004, 0x4be, 0x4bf, 0x4bf, 1216, 0x4c2, 1219, 0x4c4,
+                                                  1221, 0x504, 0x504, 1285, 1286, 2000, -1, -300};
+            const std::vector<uint32_t> ships = c69;
+            auto pick = [](const std::vector<uint32_t>& v) { return v[static_cast<size_t>(ri(0, static_cast<int>(v.size()) - 1))]; };
+            auto jitter = [](Vec4 q, float r, float rz) { q.x += rf(-r, r); q.y += rf(-r, r); q.z += rf(-rz, rz); return q; };
+            // the HUD's state: returns the ship (its pvars, the chain, the camera, the cursor dealt)
+            auto hud_state = [=]() -> uint32_t {
+                level();
+                common();  // (50 Hz in a quarter, the frame counter, the random seed: first, frame_scale_i below depends on it)
+                const uint32_t m = pick(ships), pv = ee_read<uint32_t>(m + 0x78);
+                const Vec4 cam0 = ee_ref<Vec4>(OV(0x00166dc0));
+                const Vec4 look = jitter(cam0, 60.0f, 20.0f);
+                if (ri(0, 4) != 0) camera_sees(look, 4.0f);
+                else { screen_ready(); ee_ref<Vec4>(OV(0x00166dc0)) = Vec4{look.x + 400.0f, look.y + 400.0f, look.z + 300.0f, 1.0f}; render_view_setup(); }
+                const Vec4 cam = ee_ref<Vec4>(OV(0x00166dc0));  // (L13:0x1670c0, the blips' centre)
+                ee_ref<Vec4>(m + 0x10) = jitter(cam, 12.0f, 4.0f);
+                if (ri(0, 4) != 0) hero_at(ee_ref<Vec4>(m + 0x10));
+                // the chain
+                std::vector<uint32_t> pool;
+                for (uint32_t q = moby_base(); q < ee_read<uint32_t>(OV(0x0015ffe0)); q += 0x100)
+                    if (q != m && ee_read<uint8_t>(q + 0x20) < 0xfe && ee_read<uint32_t>(q + 0x24) != 0) pool.push_back(q);
+                const int n = std::min<int>(static_cast<int>(pool.size()), ri(0, 6) == 0 ? ri(0, 2) : ri(3, 14));
+                std::vector<uint32_t> chain;
+                for (int k = 0; k < n; ++k) {
+                    const uint32_t q = pick(pool);
+                    if (std::find(chain.begin(), chain.end(), q) == chain.end()) chain.push_back(q);
+                }
+                for (size_t k = 0; k < chain.size(); ++k) w32(chain[k] + 0x28, k + 1 < chain.size() ? chain[k + 1] : 0u);
+                w32(L13_ADDR(0x0015ffe4), chain.empty() ? 0u : chain[0]);
+                for (uint32_t q : chain) {
+                    if (ri(0, 5) != 0) w16(q + 0xa6, u(kHudClasses[ri(0, static_cast<int>(std::size(kHudClasses)) - 1)]));
+                    w8(q + 0x31, ri(0, 3) != 0 ? 1u : 0u);
+                    uint16_t fl = ee_read<uint16_t>(q + 0x34);
+                    fl = static_cast<uint16_t>(ri(0, 4) != 0 ? (fl | 0x1000) : (fl & ~0x1000));
+                    fl = static_cast<uint16_t>(ri(0, 4) == 0 ? (fl | 1) : (fl & ~1));
+                    fl = static_cast<uint16_t>(ri(0, 5) == 0 ? (fl | 2) : (fl & ~2));
+                    w16(q + 0x34, fl);
+                    w8(q + 0x20, ri(0, 9) == 0 ? (coin() ? 0xfeu : 0xfdu) : u(ri(0, 4)));  // (dead ones: chosen, then dropped)
+                    w16(ee_read<uint32_t>(q + 0x24) + 0x46, ri(0, 3) != 0 ? 5u : u(ri(0, 8)));
+                    wf(q + 0xc, rf(0.2f, 3.0f));
+                    if (ri(0, 11) == 0) w32(q + 0x24, 0);  // (no class record: not a candidate)
+                    const int where = ri(0, 4);
+                    ee_ref<Vec4>(q + 0x10) = where == 0 ? jitter(look, 6.0f, 3.0f)
+                                             : where == 1 ? jitter(cam, 520.0f, 200.0f)
+                                             : where == 2 ? jitter(cam, 640.0f, 40.0f)
+                                             : where == 3 ? jitter(cam, 300.0f, 100.0f) : jitter(cam, 1500.0f, 500.0f);
+                }
+                // the ship's aim: its heading / pitch (+0x38 / +0x34) about the way to a moby of the chain (the arrow's reticles of
+                // an undrawn 0x184 / 0x3eb / 0x504 within a quarter turn of both), or at random
+                wf(pv + 0x34, rf(-3.1f, 3.1f));
+                wf(pv + 0x38, rf(-3.1f, 3.1f));
+                if (!chain.empty() && ri(0, 2) != 0) {
+                    const uint32_t q = pick(chain);
+                    if (coin()) { w16(q + 0xa6, coin() ? 0x184u : (coin() ? 0x3ebu : 0x504u)); w8(q + 0x31, 0); }
+                    const Vec4 a = ee_ref<Vec4>(q + 0x10), s = ee_ref<Vec4>(m + 0x10);
+                    wf(pv + 0x38, atan2_f(a.x - s.x, a.y - s.y) + rf(-1.0f, 1.0f));
+                    wf(pv + 0x34, -atan2_f(vec2_distance(ee_ref<Vec4>(m + 0x10), ee_ref<Vec4>(q + 0x10)), a.z - s.z) + rf(-1.0f, 1.0f));
+                }
+                // the crosshair: the screen's centre, or on a candidate's projection (or on the edge of its lock radius)
+                w32(pv + 0xe0, u(256 + ri(-30, 30)));
+                w32(pv + 0xe4, u(208 + ri(-30, 30)));
+                if (!chain.empty() && coin()) {
+                    const uint32_t q = pick(chain);
+                    hud_screen_point(q + 0x10, T4, T4 + 4, 0);
+                    w32(pv + 0xe0, ee_read<uint32_t>(T4) + u(ri(-8, 8)));
+                    w32(pv + 0xe4, ee_read<uint32_t>(T4 + 4) + u(ri(-8, 8)));
+                    if (coin()) {  // (on the edge of its lock radius, as 0x2b8be0 measures it: one pixel inside, or on it)
+                        ee_ref<Vec4>(T4 + 0x10) = ee_ref<Vec4>(L13_ADDR(0x001672e0));
+                        vec3_scale(VV(T4 + 0x10), VV(L13_ADDR(0x001672e0)), ee_read<float>(q + 0xc) / 1280.0f);
+                        vec3_add(VV(T4 + 0x10), VV(T4 + 0x10), VV(q + 0x10));
+                        hud_screen_point(T4 + 0x10, T4 + 8, T4 + 0xc, 0);
+                        const int32_t rx = ee_read<int32_t>(T4 + 8) - ee_read<int32_t>(T4), ry = ee_read<int32_t>(T4 + 0xc) - ee_read<int32_t>(T4 + 4);
+                        const int32_t lim = float_to_int(sqrt_f(int_to_float(rx * rx + ry * ry))) + 0x1c;
+                        const int32_t d = lim - ri(0, 1), o = ri(0, std::max(0, lim - 1));
+                        const bool on_x = coin();
+                        w32(pv + 0xe0, ee_read<uint32_t>(T4) + u((coin() ? 1 : -1) * (on_x ? d : o)));
+                        w32(pv + 0xe4, ee_read<uint32_t>(T4 + 4) + u((coin() ? 1 : -1) * (on_x ? o : d)));
+                    }
+                }
+                // the lock: the target none, one of the chain, or another moby; its class kept or not; the timer about the ring's
+                // start frame_scale_i(500), its end + frame_scale_i(75) and the lock's 501, the frames off target about
+                // frame_scale_i(60)
+                const int tg = ri(0, 3);
+                const uint32_t t = tg == 0 || chain.empty() ? 0u : tg == 3 ? pick(pool) : pick(chain);
+                if (t != 0 && ri(0, 5) == 0) w16(t + 0xa6, 0x3eb);
+                if (t != 0 && coin()) {  // (the crosshair on the target: kept while inside its lock radius)
+                    hud_screen_point(t + 0x10, T4, T4 + 4, 0);
+                    w32(pv + 0xe0, ee_read<uint32_t>(T4) + u(ri(-6, 6)));
+                    w32(pv + 0xe4, ee_read<uint32_t>(T4 + 4) + u(ri(-6, 6)));
+                }
+                w32(pv + 0x88, t);
+                w32(pv + 0x124, t != 0 && ri(0, 4) != 0 ? u(ee_read<int16_t>(t + 0xa6)) : (coin() ? 0xffffffffu : u(ri(0, 0x600))));
+                if (t != 0 && ri(0, 5) == 0) w8(t + 0x20, coin() ? 0xfeu : 0xfdu);
+                const int32_t base = frame_scale_i(500), dur = frame_scale_i(75);
+                const int tm = ri(0, 5);
+                w32(pv + 0x8c, u(tm == 0 ? 0 : tm == 1 ? base + ri(-3, 3) : tm == 2 ? 501 + ri(-2, 2) : tm == 3 ? ri(1, 60) : tm == 4 ? base + ri(1, dur) : base + dur + ri(-3, 3)));
+                w32(pv + 0x138, u(coin() ? frame_scale_i(0x23f) : ri(1, 700)));
+                w32(pv + 0x84, ri(0, 4) == 0 ? 1u : 0u);
+                w32(pv + 0x118, u(coin() ? 0 : frame_scale_i(0x3c) + ri(-2, 2)));
+                wf(pv + 0x114, rf(-3.1f, 3.1f));
+                const float full = ee_read<float>(P + 0x1600) > 0.0f ? ee_read<float>(P + 0x1600) : 100.0f;
+                wf(P + 0x1600, full);
+                wf(P + 0x15fc, ri(0, 3) == 0 ? rf(0.0f, full * 0.1f) : rf(0.0f, full));
+                wf(pv + 0xf0, ri(0, 4) == 0 ? ee_read<float>(P + 0x15fc) + rf(-0.5f, 0.5f) : rf(0.0f, full));
+                w32(pv + 0xf4, u(ri(2, 253)));
+                w8(P + 0x15f6, u(ri(0, 10)));
+                w8(P + 0x15f7, u(ri(0, 5) == 0 ? 0 : ri(1, 10)));
+                w32(0x0013caf4, coin() ? 0x2000u : (R() & ~0x2000u));
+                if (ri(0, 5) == 0) w32(OV(0x0015f5c4), u(ri(3, 4)));
+                // a lock held (a quarter of the cases with a target of the chain): the target alive, drawn, a candidate (an enemy on
+                // screen under the crosshair), its class kept, the timer running, the pad's 0x2000 up, missiles left; another
+                // candidate beside it (not chosen over the held one); its class 0x3eb in a third of them
+                if (t != 0 && chain.size() > 1 && std::find(chain.begin(), chain.end(), t) != chain.end() && ri(0, 3) == 0) {
+                    const uint32_t other = pick(chain);
+                    for (uint32_t q : {t, other}) {
+                        if (ee_read<uint32_t>(q + 0x24) == 0) w32(q + 0x24, ee_read<uint32_t>(m + 0x24));
+                        w16(ee_read<uint32_t>(q + 0x24) + 0x46, 5);
+                        w16(q + 0x34, (ee_read<uint16_t>(q + 0x34) | 0x1000) & ~3u);
+                        w8(q + 0x31, 1);
+                        w8(q + 0x20, 1);
+                        ee_ref<Vec4>(q + 0x10) = jitter(look, 2.0f, 1.0f);
+                    }
+                    if (ri(0, 2) == 0) w16(t + 0xa6, 0x3eb);
+                    w32(pv + 0x124, u(ee_read<int16_t>(t + 0xa6)));
+                    w32(pv + 0x8c, u(ri(1, 600)));
+                    w32(0x0013caf4, R() & ~0x2000u);
+                    w8(P + 0x15f6, u(ri(1, 10)));
+                    if (coin()) {  // (the crosshair on the held target; else it may be lost: off target since about frame_scale_i(60))
+                        hud_screen_point(t + 0x10, T4, T4 + 4, 0);
+                        w32(pv + 0xe0, ee_read<uint32_t>(T4) + u(ri(-3, 3)));
+                        w32(pv + 0xe4, ee_read<uint32_t>(T4 + 4) + u(ri(-3, 3)));
+                    } else {
+                        w32(pv + 0x118, u(frame_scale_i(0x3c) + ri(-1, 2)));
+                    }
+                } else if (t == 0 && chain.size() > 2 && ri(0, 2) == 0) {
+                    // no target: several candidates about the crosshair (the nearest of them chosen), the pad's 0x2000 up or not
+                    for (int k = 0; k < 3; ++k) {
+                        const uint32_t q = pick(chain);
+                        if (ee_read<uint32_t>(q + 0x24) == 0) w32(q + 0x24, ee_read<uint32_t>(m + 0x24));
+                        w16(ee_read<uint32_t>(q + 0x24) + 0x46, 5);
+                        w16(q + 0x34, (ee_read<uint16_t>(q + 0x34) | 0x1000) & ~3u);
+                        w8(q + 0x31, 1);
+                        ee_ref<Vec4>(q + 0x10) = jitter(look, 3.0f, 1.0f);
+                    }
+                    ee_ref<Vec4>(T4 + 0x10) = look;
+                    hud_screen_point(T4 + 0x10, T4, T4 + 4, 0);
+                    w32(pv + 0xe0, ee_read<uint32_t>(T4) + u(ri(-4, 4)));
+                    w32(pv + 0xe4, ee_read<uint32_t>(T4 + 4) + u(ri(-4, 4)));
+                    if (ri(0, 3) == 0) w8(P + 0x15f6, 0);  // (none locked: off target, frames counted)
+                }
+                // the health strip's pointer on a test-area buffer (in most cases)
+                if (ri(0, 5) != 0) w32(L13_ADDR(0x001613c0), T3);
+                w32(OV(0x001611c0), 0x00800000u + u(ri(0, 8)) * 0x10u);
+                w32(OV(0x0015f5f8), 0x008f0000u);
+                return m;
+            };
+            if (std::getenv("B220_INFO") != nullptr) {  // (the play-test spot: the ship, whose HUD it is)
+                level();
+                for (uint32_t m : ships) {
+                    const Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    std::printf("INFO H2 ship HUD: ship moby %u uid %u at (%.1f, %.1f, %.1f) state %u strip 0x%08x tex 0x%x\n", index_of(m), ee_read<uint16_t>(m + 0xb2), q.x, q.y,
+                                q.z, ee_read<uint8_t>(m + 0x20), ee_read<uint32_t>(L13_ADDR(0x001613c0)), ee_read<uint32_t>(ee_read<uint32_t>(m + 0x78) + 0x104));
+                }
+            }
+            // the hooks of 0x2b8be0 alone (its five calls of the blip)
+            const std::vector<HudHook> blip_hooks(kShipHudHooks.begin() + 8, kShipHudHooks.end());
+            {
+                const HudHooksExpected hud_hooks(kShipHudHooks);
+                l13check("p13h_cb_2b97f8", 0x002b97f8, 300, Ret::None, [=] { return Args{{hud_state()}, {}}; },
+                         [](A a) { gml_cb_2b97f8_l13(a.i[0]); return uint64_t{0}; });
+            }
+            {
+                const HudHooksExpected hud_hooks(blip_hooks);
+                l13check("p13h_2b95b8", 0x002b95b8, 300, Ret::None, [=] {
+                    const uint32_t m = hud_state();
+                    return Args{{m, ee_read<uint32_t>(m + 0x78)}, {}};
+                }, [](A a) { gml_2b95b8_l13(a.i[0], a.i[1]); return uint64_t{0}; });
+            }
+            {
+                const HudHooksExpected hud_hooks(blip_hooks);
+                l13check("p13h_2b8be0", 0x002b8be0, 300, Ret::Int32, [=] {
+                    const uint32_t m = hud_state(), pv = ee_read<uint32_t>(m + 0x78);
+                    uint32_t keep = 0;
+                    if (coin()) for (uint32_t q = ee_read<uint32_t>(L13_ADDR(0x0015ffe4)); q != 0; q = ee_read<uint32_t>(q + 0x28)) if (coin()) { keep = q; break; }
+                    return Args{{m, pv, L13_ADDR(0x001670c0), L13_ADDR(0x001670d0), coin() ? 0u : ee_read<uint32_t>(pv + 0x88), keep}, {}};
+                }, [](A a) { return r32(gml_2b8be0_l13(a.i[0], a.i[1], a.i[2], a.i[3], a.i[4], a.i[5])); });
+            }
+            l13check("p13h_2b89f8", 0x002b89f8, 300, Ret::None, [=] {
+                const uint32_t m = hud_state(), pv = ee_read<uint32_t>(m + 0x78);
+                uint32_t q = any_moby(m);
+                if (q == 0) q = m;
+                // about the camera: near (a blip), 532 .. 644 away (38 .. 46 x 14: fading), or farther (none)
+                const int band = ri(0, 3);
+                const float r = band == 0 || band == 3 ? rf(0.0f, 520.0f) : band == 1 ? rf(530.0f, 650.0f) : rf(650.0f, 1500.0f);
+                const float az = rf(-3.14f, 3.14f), el = rf(-1.2f, 1.2f);
+                const Vec4 c = ee_ref<Vec4>(L13_ADDR(0x001670c0));
+                ee_ref<Vec4>(q + 0x10) = Vec4{c.x + r * std::cos(el) * std::cos(az), c.y + r * std::cos(el) * std::sin(az), c.z + r * std::sin(el), rf(-1, 1)};
+                static const uint32_t cols[] = {0x75004080u, 0x75007080u, 0x75808080u};
+                const uint32_t rot = coin() ? L13_ADDR(0x001670d0) : T4;
+                wfrand(T4, 4, -3.2f, 3.2f);
+                return Args{{rot, coin() ? L13_ADDR(0x001670c0) : T4 + 0x10, q, u(ri(0, 2)), ri(0, 4) == 0 ? R() : cols[ri(0, 2)], ee_read<uint32_t>(pv + 0x104)}, {}};
+            }, [](A a) { gml_2b89f8_l13(a.i[0], a.i[1], a.i[2], a.i[3], a.i[4], a.i[5]); return uint64_t{0}; });
+        }
+        // ---- H2: class 63's five hooks (the table L13:0x1f6174) through the level's dispatch gemlik_class_hook_call, on states dealt
+        // for them: the trooper's state about 7 (carried / let go: 7 -> 1) or retired (0xfe / 0xfd), its carry record's state
+        // (pvars + 0x60 + 0x68) each of 0 .. 9 (8: refused), its progress +0x6c about 1, the position handed over (a1) with its w at
+        // the lob's 0x3f9e0610 (the hook +8's record state 6, then its sound 2) or not, the target (a2) a moby of the level or none
+        {
+            level();
+            std::vector<uint32_t> c63h;
+            for (uint32_t q = moby_base(); q < ee_read<uint32_t>(OV(0x0015ffe0)); q += 0x100) {
+                const uint32_t cls = ee_read<uint32_t>(q + 0x24);
+                if (ee_read<uint8_t>(q + 0x20) < 0xfe && cls != 0 && ee_read<uint32_t>(cls + 0x2c) == 0x001f6174u) c63h.push_back(q);
+            }
+            static const uint32_t kHooks[] = {0x002b7980, 0x002b79d0, 0x002b7a20, 0x002b7ad0, 0x002b7b00};
+            static const char* const kNames[] = {"p13h_hook_2b7980", "p13h_hook_2b79d0", "p13h_hook_2b7a20", "p13h_hook_2b7ad0", "p13h_hook_2b7b00"};
+            for (int k = 0; k < 5 && !c63h.empty(); ++k) {
+                const uint32_t fn = kHooks[k];
+                l13check(kNames[k], fn, 160, Ret::Int32, [=] {
+                    level();
+                    common();
+                    const uint32_t m = c63h[static_cast<size_t>(ri(0, static_cast<int>(c63h.size()) - 1))];
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    const int s = ri(0, 9);
+                    w8(m + 0x20, s == 0 ? (coin() ? 0xfeu : 0xfdu) : s < 5 ? 7u : u(ri(0, 12)));
+                    const int rs = ri(0, 10);
+                    w16(pv + 0xc8, rs == 10 ? u(ri(10, 0x7fff)) : u(rs));
+                    wf(pv + 0xcc, coin() ? rf(0.9f, 1.1f) : rf(0.0f, 2.0f));
+                    if (ri(0, 5) == 0) w32(m + 0x78, 0);  // (no pvars: no record)
+                    ee_ref<Vec4>(T4) = Vec4{ee_read<float>(m + 0x10) + rf(-3, 3), ee_read<float>(m + 0x14) + rf(-3, 3), ee_read<float>(m + 0x18) + rf(-1, 3), coin() ? u2f(0x3f9e0610u) : rf(-1, 2)};
+                    const uint32_t tgt = ri(0, 3) == 0 ? 0u : any_moby(m);
+                    const int a1k = ri(0, 2);
+                    return Args{{coin() || k != 4 ? m : 0u, a1k == 0 ? 0x0013f3d0u : a1k == 1 ? m + 0x10 : T4, tgt}, {rf(-1, 3)}};
+                }, [fn](A a) {
+                    int32_t r = 0x7eadbeef;
+                    if (!gemlik_class_hook_call(fn, a.i[0], a.i[1], a.i[2], a.f[0], r)) throw std::runtime_error("not one of level 13's hooks");
+                    return r32(static_cast<uint32_t>(r));
+                });
             }
         }
 
