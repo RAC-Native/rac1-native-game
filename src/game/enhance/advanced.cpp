@@ -136,7 +136,7 @@ static_assert(6 * T_COUNT * STRING_SIZE <= 0x3000, "the Advanced page's texts fi
 
 // The page's rows: the name in the settings file, the id in the saves' files (never reused),
 // the byte, the name's text, the values' texts (the byte's value is the index; value 0 is the
-// default: the original's behaviour, or for a console compromise removed ("faithful
+// default unless the row's `def` says another: the original's behaviour, or for a console compromise removed ("faithful
 // to the game's code, not to the PS2's limits") the port's - Fades: 0 fast, 1 the original's),
 // whether the row is kept with the saves, and whether it is global: a setting of the whole game, not of a playthrough,
 // shown on the main menu's Advanced page (the others, a playthrough's settings, on the pause menu's)
@@ -148,6 +148,7 @@ struct Row {
     int32_t values[4];
     bool in_saves = true;
     bool global = false;
+    uint8_t def = 0;  // the value where no preferences file names the row (the 1.02 rows: 1, on)
 };
 constexpr Row SETTINGS_ROWS[] = {
     {"quick_select_pause", 1, QS_PAUSE, T_QUICK_SELECT, {T_NORMAL, T_PAUSE, -1, -1}},
@@ -162,9 +163,11 @@ constexpr Row SETTINGS_ROWS[] = {
     {"cut_content", 12, CUT_CONTENT, T_CUT_CONTENT, {T_OFF, T_ON, -1, -1}, false, true},  // (global: the main menu's page)
     {"corrected_texts", 13, CORRECTED_TEXTS, T_CORRECTED_TEXTS, {T_OFF, T_ON, -1, -1}, false, true},  // (shown with a data disc
                                                                                                        // that gives the texts)
-    {"fixes_102", 14, FIXES102, T_FIXES102, {T_OFF, T_ON, -1, -1}, false, true},  // (global)
-    {"gameplay_102", 15, GAMEPLAY102, T_GAMEPLAY102, {T_OFF, T_ON, -1, -1}, false, true},  // (global)
+    {"fixes_1_02", 14, FIXES102, T_FIXES102, {T_OFF, T_ON, -1, -1}, false, true, 1},  // (global; on unless turned off)
+    {"gameplay_1_02", 15, GAMEPLAY102, T_GAMEPLAY102, {T_OFF, T_ON, -1, -1}, false, true, 1},  // (global; on unless turned off)
 };
+// (the keys "fixes_102" and "gameplay_102" were these two rows while they were off by default: a settings file that has
+// them loads, the values ignored, so the rows start on for everyone)
 // (ids 7 and 8, keys "ship" and "clank": the ship selector and Clank's movement, removed; a settings file or a save
 // that has them loads, the values ignored. Id 11, key "voice_step": the Voice row, now on the Language page
 // (language.cpp), never written with the saves. Ids 32..56: the Display and Graphics pages' settings and the mode, written
@@ -289,6 +292,8 @@ void settings_load() {
     if (g_loaded) return;
     g_loaded = true;
     if (g_advanced_disabled) return;  // (every setting 0: off)
+    for (const Row& r : SETTINGS_ROWS)
+        if (r.def != 0) sb(r.byte, r.def);  // (the rows whose default is not 0; the file's value over it)
     if (!prefs_read(prefs_path()) && std::getenv("RAC1_ADVANCED_FILE") == nullptr) prefs_read("advanced_options.txt");
     if (lbu(CONTROLS) != 0 && lbu(MOVEMENT) == 0) sb(MOVEMENT, 1);  // (Aiming = Modern needs the strafe)
     if (fades_env() >= 0) sb(FADES, static_cast<uint32_t>(fades_env()));  // (the switch over the preferences, not saved unless changed)

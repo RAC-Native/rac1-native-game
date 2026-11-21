@@ -1,6 +1,7 @@
 // The "Advanced" options: settings of this PC version that the original does not have. Each one is off by default, so the
 // game plays as the original unless
-// the player turns it on. They are shown as a page of Options (Options > Advanced), built from the original's own
+// the player turns it on; the two rows of the game's own later build (1.02 Fixes, 1.02 Gameplay: fixes102.h) are on by
+// default and can be turned off. They are shown as a page of Options (Options > Advanced), built from the original's own
 // widgets: the page, its title and its settings widget are copies of the Camera page's, kept in a block of EE RAM the
 // game never uses. Two kinds of rows: a playthrough's settings (the gameplay rows: the pause menu's page; New Game's
 // Original / Modern sets them; kept with the saves, save<N>.pc next to the game's save<N>.bin, which stays untouched)

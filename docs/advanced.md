@@ -14,6 +14,10 @@ from the PS2 compromises the port removes (see [Overview](overview.md#faithful-t
 - **An enhancement** changes the game's behaviour or state: how Ratchet moves, how the controls map,
   whether the world pauses. Enhancements are **optional, off by default, and labelled as changes to
   the game**. With all of them off, the game plays as the original.
+- **The game's own later build** (1.02: the Japanese disc and the PAL disc 2.00) fixed things the first build has.
+  Those fixes are the game's, not ours: the two rows that hold them, [1.02 Fixes](#102-fixes) and
+  [1.02 Gameplay](#102-gameplay), are **on by default on every disc, and can be turned off** to play the first
+  build as it was.
 
 The Advanced page has these rows:
 
@@ -684,8 +688,9 @@ overrides the row for testing ([Environment variables](env-vars.md)).
 
 ## 1.02 Fixes
 
-The main menu's Advanced page has a row **1.02 Fixes: Off / On** (off by default), a global setting kept in the
-preferences only (`fixes_102 0|1` in `advanced_options.txt`), never with a save. The game's later build, 1.02 (the
+The main menu's Advanced page has a row **1.02 Fixes: Off / On** (on by default, on every disc), a global setting kept
+in the preferences only (`fixes_1_02 0|1` in `advanced_options.txt`; the older `fixes_102` line, from when the row was off
+by default, is ignored), never with a save. The game's later build, 1.02 (the
 Japanese disc and the PAL disc 2.00, the "Platinum"), changed about a hundred functions of each level's copy of the
 engine; most of it is the memory card, the Japanese text layouts and recompiled code, and some of it fixes the game.
 With the row on, those fixes run on the North American build's code: each one is the 1.02 build's
@@ -730,12 +735,14 @@ What the 1.02 build changed but is not ported: the memory card's code and screen
 own card library), the Japanese text layouts, the pad's reads (the host's input replaces them), the PAL disc 2.00's
 movie code, the credits (two more lines; on the PAL disc 2.00 itself its two more pages run), and changes that show nothing (recompiled code, a development timing display
 removed). The row is read where each fix runs; it is changed on the main menu only, so a playthrough sees it from its
-start. `RAC1_FIXES102=<n>,<n>...` (`all`, `none`) turns single fixes on for testing ([Environment variables](env-vars.md)).
+start. A headless run has both rows off unless it keeps the settings (`RAC1_ADVANCED=1`), and so do the golden tours
+and the oracle. `RAC1_FIXES102=<n>,<n>...` (`all`, `none`) turns single fixes on for testing ([Environment variables](env-vars.md)).
 
 ## 1.02 Gameplay
 
-The main menu's Advanced page has a third row of the later build's fixes, **1.02 Gameplay: Off / On** (off by default), a
-global setting kept in the preferences only (`gameplay_102 0|1` in `advanced_options.txt`), never with a save: the 1.02
+The main menu's Advanced page has a third row of the later build's fixes, **1.02 Gameplay: Off / On** (on by default, on every disc), a
+global setting kept in the preferences only (`gameplay_1_02 0|1` in `advanced_options.txt`; the older `gameplay_102` line is
+ignored), never with a save: the 1.02
 build's fixes that change how the game plays, most of them closing a way round the game (an exploit), which stays
 possible with the row off. It is built as [1.02 Fixes](#102-fixes): each fix is the 1.02 build's own change, read from
 its code (the PAL disc 2.00's, its addresses taken back through `data/regions/SCES-50916-2.00.txt`; the Japanese disc has

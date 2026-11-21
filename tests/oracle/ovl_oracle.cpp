@@ -44,6 +44,10 @@ void veldin_boot() {
 int main(int argc, char** argv) {
     rac1::ps2fpu::enter_ee_rounding();  // the EE's float rounding (toward zero), as the runtime runs
     rac1::g_advanced_disabled = true;  // the PC version's enhancements off: the faithful port alone (src/game/enhance/advanced.h)
+    // the preferences are marked read while the settings are off, so they are never read: a fork check that lifts the
+    // line above for one call sees the fixes its run names (RAC1_FIXES102 / RAC1_GAMEPLAY102) and, for the other row,
+    // the settings' bytes of the snapshot (0: off), not this machine's preferences or the rows' default (on)
+    rac1::advanced_prefs_load();
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     // --batch N: that batch only; --level N (or ORACLE_LEVEL=N): on level N's own overlay (task 0307)
     int level = std::getenv("ORACLE_LEVEL") != nullptr ? std::atoi(std::getenv("ORACLE_LEVEL")) : 0;

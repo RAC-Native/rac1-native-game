@@ -1,5 +1,5 @@
 // 1.02 Fixes: fixes of the game's later build, 1.02 (the Japanese disc and the PAL disc 2.00, the "Platinum"), ported onto
-// the North American build's code as an option (main menu > Options > Advanced > 1.02 Fixes, off by default; a global
+// the North American build's code as an option (main menu > Options > Advanced > 1.02 Fixes, on by default; a global
 // setting, kept in the preferences only). Each fix is the 1.02 build's own change to a function the port has, translated
 // from that build's code (its addresses taken back to the North American ones: data/regions/SCES-50916-2.00.txt), at the
 // place it made it; with the row off the North American port runs, byte for byte the same. The fixes that change how the
@@ -71,7 +71,7 @@
 //   hero's moby's point the same way (their dot product positive), as well as the hero standing on it within 1 of its
 //   centre; the North American build tests only the latter (oltanis_gondola.cpp)
 //
-// 1.02 Gameplay (main menu > Options > Advanced > 1.02 Gameplay, off by default, global; docs/advanced.md "1.02 Gameplay"):
+// 1.02 Gameplay (main menu > Options > Advanced > 1.02 Gameplay, on by default, global; docs/advanced.md "1.02 Gameplay"):
 // the 1.02 build's fixes that change how the game plays (the exploits stay possible with the row off), numbered as the
 // analysis's for RAC1_GAMEPLAY102:
 // - 4: the RYNO's targets from the target list 0x1aba00 (fixes102_ryno_targets, in place of ryno_2cc360 0x2cc360)
