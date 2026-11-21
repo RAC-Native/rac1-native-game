@@ -44,16 +44,17 @@ void vf_cb_2f9c20_l18(uint32_t a0);  // L18:0x002f9c20 (veldin_finale_draws.cpp:
 void vf_cb_2f9eb8_l18(uint32_t a0);  // L18:0x002f9eb8 (veldin_finale_draws.cpp: class 1563's)
 void vf_cb_2fc860_l18(uint32_t a0);  // L18:0x002fc860 (veldin_finale_draws.cpp: class 1906's)
 void vf_cb_2fca98_l18(uint32_t a0);  // L18:0x002fca98 (veldin_finale_draws.cpp: class 1906's)
+void vf_cb_2f0390_l18(uint32_t a0);  // L18:0x002f0390 (veldin_finale_draws.cpp: class 1355's)
+void vf_cb_2f06c0_l18(uint32_t a0);  // L18:0x002f06c0 (veldin_finale_draws.cpp: class 1355's)
+void vf_cb_2f1fd8_l18(uint32_t a0);  // L18:0x002f1fd8 (veldin_finale_draws.cpp: class 1392's)
+void vf_cb_2f7880_l18(uint32_t a0);  // L18:0x002f7880 (veldin_finale_draws.cpp: class 1422's)
+void vf_cb_2d5768_l18(uint32_t a0);  // L18:0x002d5768 (veldin_finale_shot_draws.cpp: class 564's)
+void vf_cb_2dba20_l18(uint32_t a0);  // L18:0x002dba20 (veldin_finale_shot_draws.cpp: class 624's)
+void vf_cb_2dc4b8_l18(uint32_t a0);  // L18:0x002dc4b8 (veldin_finale_shot_draws.cpp: class 628's)
+void vf_cb_2ea1f8_l18(uint32_t a0);  // L18:0x002ea1f8 (veldin_finale_shot_draws.cpp: class 983's)
 
-// still generated (veldin_finale_classes_tr_6.cpp / _tr_7.cpp)
+// still generated (veldin_finale_classes_tr_6.cpp)
 void vf_class1899_update_l18(uint32_t a0);  // L18:0x002fb868
-void vf_cb_2d5768_l18(uint32_t a0);  // L18:0x002d5768
-void vf_cb_2dba20_l18(uint32_t a0);  // L18:0x002dba20
-void vf_cb_2dc4b8_l18(uint32_t a0);  // L18:0x002dc4b8
-void vf_cb_2f0390_l18(uint32_t a0);  // L18:0x002f0390
-void vf_cb_2f06c0_l18(uint32_t a0);  // L18:0x002f06c0
-void vf_cb_2f1fd8_l18(uint32_t a0);  // L18:0x002f1fd8
-void vf_cb_2f7880_l18(uint32_t a0);  // L18:0x002f7880
 
 }  // namespace rac1
 

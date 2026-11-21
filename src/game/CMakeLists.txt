@@ -340,6 +340,7 @@ add_library(rac1_game STATIC
     ovl/veldin_finale_rail_switch.cpp
     ovl/veldin_finale_robots.cpp
     ovl/veldin_finale_scene.cpp
+    ovl/veldin_finale_shot_draws.cpp
     ovl/veldin_finale_shots.cpp
     ovl/veldin_finale_troopers.cpp
     ovl/veldin_finale_walking_bomb.cpp

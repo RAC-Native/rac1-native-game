@@ -1,11 +1,14 @@
 // Veldin's finale (level 18): the draw callbacks of the level's own classes queued on the level's draw list
 // (sub_001f93e0), hand-written: the robots' (class 1906) glows and pop, the end scene's (class 1563) glows on the scene's
-// moby. Each is called with the moby the class queued it for. Level 18 only: the addresses are the finale's (`orig:
-// L18:`), its own data L18_ADDR, the base ELF's bare. Registered in veldin_finale_mobys.cpp.
+// moby, the divers' (class 1355) trails and glows, the force field (class 1392), the boss's (class 1422) glows. Each is
+// called with the moby the class queued it for. Level 18 only: the addresses are the finale's (`orig: L18:`), its own
+// data L18_ADDR, the base ELF's bare. Registered in veldin_finale_mobys.cpp. (The boss's shots' draws are in
+// veldin_finale_shot_draws.cpp.)
 //
 // VU0: none of these callbacks has a VU0 instruction of its own; their vector work is in the engine's helpers (glow_draw,
-// quad_draw, moby_chain_point_v / moby_chain_world_one, the vec3 helpers, sin_vu, rgba_lerp), which the generated code
-// called the same way before (the notes of task P18.4 list the registers the originals leave).
+// quad_draw, moby_chain_point_v / moby_chain_world_one, the vec3 / matrix helpers, sin_vu, angle_add, rgba_lerp), which
+// the generated code called the same way before (the notes of tasks P18.4 / P18.5 list the registers the originals leave).
+#include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/level/level_data.h>
 #include <game/ovl/glows.h>
@@ -22,6 +25,8 @@ namespace rac1 {
 
 namespace {
 constexpr int16_t ROBOT_CLASS = 0x772;  // (1906)
+constexpr int16_t DIVER_CLASS = 0x54b;  // (1355)
+constexpr float DEG = 0.01745329238474369f;  // (pi / 180)
 
 // an EE stack frame of the original's size (its locals are passed to the callees by address)
 struct Frame {
@@ -64,6 +69,24 @@ void facing_frame(uint32_t frame, uint32_t ref) {
     vec3_set_length(V(frame + 0x10), V(frame + 0x10), 1.0f);
     vec3_cross_ba(V(frame + 0x20), V(frame + 0x10), V(frame));
 }
+
+// the GS ALPHA register of a quad: the four selectors (the level's words, sign-extended, at bits 0 / 2 / 4 / 6), fixed
+// alpha 0x80
+uint64_t blend_word(uint32_t a, uint32_t b, uint32_t c, uint32_t d) {
+    auto sx = [](uint32_t w) { return static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(w))); };
+    return sx(lw(a)) | (sx(lw(b)) << 2) | (sx(lw(c)) << 4) | (sx(lw(d)) << 6) | (uint64_t{0x8000} << 24);
+}
+
+// the quad descriptor's fixed part: its texture, the GIF tag's register list, its blend, the word +0x70 clear
+void quad_begin(uint32_t desc, uint64_t tex, uint64_t blend) {
+    sd(desc + 0x78, tex);
+    sd(desc + 0x70, 0);
+    sd(desc + 0x80, (uint64_t{0xff90} << 32) | 0x260);
+    sd(desc + 0x88, blend);
+}
+
+// the moby of a group list's entry
+uint32_t group_moby(uint32_t e) { return lwu(L18_ADDR(0x0015ffd8)) + ((lhu(e) & 0x7fff) << 8); }
 }  // namespace
 
 // The robot's pop (+0x1f4 of its pvars running back to 0): a camera-facing quad over it, wider as the pop ends (1 - pop
@@ -251,6 +274,156 @@ void vf_cb_2f9eb8_l18(uint32_t m) {
         }
         for (uint32_t k = 0; k < 4; ++k) mat4_transform(V(desc + k * 0x10), V(corners + k * 0x10), M(down));
         quad_draw(desc, 0);
+    }
+}
+
+// The divers' trails (class 1355 queues it on one diver; nothing while L18:0x162238 is set): sixteen quads made ready
+// (texture 0x13, blend L18:0x162240 .. 0x16224c, (s, t) the four pairs at L18:0x1da2f0, the colours between L18:0x162250
+// and 0x162254 by the quad's place along the trail, a quarter a quad, shifted by the level's counter's low two bits), then
+// for every diver of the moby's group, unless L18:0x16223c is set, quad i of its trail between its trail points (the 16 at
+// pvars +0x10, the newest at +0x166, +0x164 of them) i and i + 1 back, 0.15 above and below each.
+// orig: L18:0x002f0390
+void vf_cb_2f0390_l18(uint32_t m) {
+    const Frame f(0x9f0);
+    if (lw(L18_ADDR(0x00162238)) != 0) return;
+    const uint32_t offsets = f.sp + 0x900;
+    for (int32_t q = 0; q < 16; ++q) {
+        const uint32_t desc = f.sp + static_cast<uint32_t>(q) * 0x90;
+        quad_begin(desc, effect_tex0(0x13), blend_word(L18_ADDR(0x00162240), L18_ADDR(0x00162244), L18_ADDR(0x00162248), L18_ADDR(0x0016224c)));
+        const float shift = fpu_mul(int_to_float((lw(L18_ADDR(0x0015f5cc)) + 3) & 3), 0.0625f);
+        for (int32_t k = 0; k < 4; ++k) {
+            swc1(desc + 0x50 + k * 8, lwc1(L18_ADDR(0x001da2f0) + k * 8));
+            swc1(desc + 0x54 + k * 8, lwc1(L18_ADDR(0x001da2f0) + k * 8 + 4));
+            float t = fpu_add(fpu_mul(int_to_float(q - ((k >> 1) - 1)), 0.25f), shift);
+            if (t > 1.0f) t = 1.0f;
+            else if (t < 0.0f) t = 0.0f;
+            sw(desc + 0x40 + k * 4, rgba_lerp(lwu(L18_ADDR(0x00162250)), lwu(L18_ADDR(0x00162254)), t));
+        }
+    }
+    libc_memset(offsets, 0, 0x20);
+    swc1(offsets + 0x08, 0.15000000596046448f);
+    swc1(offsets + 0x18, -0.15000000596046448f);
+    for (uint32_t e = lvd::group(lbu(m + 0x21));; e += 2) {
+        uint32_t o = group_moby(e);
+        // (the original reads the same entry again while it is not a diver: it never ends there; the level's groups that
+        // queue this hold divers only)
+        while (lh(o + 0xa6) != DIVER_CLASS) o = group_moby(e);
+        const uint32_t pv = lwu(o + 0x78);
+        for (int32_t i = 0; i < lh(pv + 0x164); ++i) {
+            const int32_t back = (lh(pv + 0x166) - i + 0xf) & 0xf;
+            if (lw(L18_ADDR(0x0016223c)) != 0) continue;
+            const uint32_t desc = f.sp + static_cast<uint32_t>(i) * 0x90;
+            for (int32_t c = 0; c < 4; ++c) {
+                const uint32_t point = pv + 0x10 + (static_cast<uint32_t>((back + (c >> 1)) & 0xf) << 4);
+                vec3_add(V(desc + static_cast<uint32_t>(c) * 0x10), V(point), V(offsets + static_cast<uint32_t>(c & 1) * 0x10));
+            }
+            quad_draw(desc, 0);
+        }
+        if (lh(e) < 0) break;
+    }
+}
+
+// The divers' glows (class 1355 queues it on one diver; nothing while L18:0x162238 is set): on every diver of the moby's
+// group in states 2 .. 4, a glow L18:0x16226c ahead along its first row, its colour between L18:0x162260 and 0x162264 by
+// the sine of its pvars +0x168, its size L18:0x162268; the angle +0x168 then turned by L18:0x162258 degrees a second
+// (states 2, 3) or L18:0x16225c (state 4).
+// orig: L18:0x002f06c0
+void vf_cb_2f06c0_l18(uint32_t m) {
+    const Frame f(0x80);
+    const uint32_t at = f.sp;
+    if (lw(L18_ADDR(0x00162238)) != 0) return;
+    const float turn_flying = fpu_mul(fpu_mul(lwc1(L18_ADDR(0x00162258)), DEG), lwc1(0x0015ed6c));
+    const float turn_diving = fpu_mul(fpu_mul(lwc1(L18_ADDR(0x0016225c)), DEG), lwc1(0x0015ed6c));
+    for (uint32_t e = lvd::group(lbu(m + 0x21));; e += 2) {
+        const uint32_t o = group_moby(e);
+        if (lh(o + 0xa6) == DIVER_CLASS) {
+            const uint32_t pv = lwu(o + 0x78);
+            const float t = fpu_add(fpu_mul(sin_vu(lwc1(pv + 0x168)), 0.5f), 0.5f);
+            const uint32_t colour = rgba_lerp(lwu(L18_ADDR(0x00162260)), lwu(L18_ADDR(0x00162264)), t);
+            vec3_set_length(V(at), V(o + 0xc0), lwc1(L18_ADDR(0x0016226c)));
+            vec3_add(V(at), V(at), V(o + 0x10));
+            const uint8_t st = lbu(o + 0x20);
+            if (st >= 2 && st <= 4) {
+                glow_draw(at, colour, lwc1(L18_ADDR(0x00162268)), 0.0f);
+                swc1(pv + 0x168, angle_add(lwc1(pv + 0x168), st < 4 ? turn_flying : turn_diving));
+            }
+        }
+        if (lh(e) < 0) break;
+    }
+}
+
+// The force field (class 1392): four quads (texture 0xe, blend L18:0x1622e4 .. 0x1622f0) of the level's corners
+// L18:0x1da370 in the field's frame (its rotation, its place), drawn three times, lifted by L18:0x1622d0 each time. The
+// scroll (pvars +8) runs on by L18:0x1622e0 a second and wraps past 1; quad q's phase is the scroll + q / 4, its (s, t) the
+// pairs at L18:0x1da350 with s shifted by q / 4, its corners raised / lowered by the phase's fraction x L18:0x1622d4, its
+// colour between L18:0x1622c8 and 0x1622cc by that fraction, from alpha 0 by the glow: (48 - the camera's distance) / 4,
+// 0 .. pvars +0xc.
+// orig: L18:0x002f1fd8
+void vf_cb_2f1fd8_l18(uint32_t m) {
+    const Frame f(0x340);
+    const uint32_t mat = f.sp + 0x240, pv = lwu(m + 0x78);
+    mat3_copy_affine(M(mat), M(m + 0xc0));
+    lq_sq(mat + 0x30, m + 0x10);
+    swc1(mat + 0x3c, 1.0f);
+    float scroll = fpu_add(lwc1(pv + 8), fpu_mul(lwc1(L18_ADDR(0x001622e0)), lwc1(0x0015ed6c)));
+    if (scroll > 1.0f) scroll = fpu_sub(scroll, 1.0f);
+    swc1(pv + 8, scroll);
+    float glow = fpu_mul(fpu_sub(48.0f, vec3_distance(V(m + 0x10), V(L18_ADDR(0x001677c0)))), 0.25f);
+    if (lwc1(pv + 0xc) < glow) glow = lwc1(pv + 0xc);
+    else if (glow < 0.0f) glow = 0.0f;
+    for (int32_t q = 0; q < 4; ++q) {
+        const uint32_t desc = f.sp + static_cast<uint32_t>(q) * 0x90;
+        quad_begin(desc, effect_tex0(0xe), blend_word(L18_ADDR(0x001622e4), L18_ADDR(0x001622e8), L18_ADDR(0x001622ec), L18_ADDR(0x001622f0)));
+        const float shift = fpu_mul(int_to_float(q), 0.25f);
+        float phase = fpu_add(lwc1(pv + 8), shift);
+        phase = fpu_sub(phase, int_to_float(float_to_int(phase)));
+        const uint32_t base = rgba_lerp(lwu(L18_ADDR(0x001622c8)), lwu(L18_ADDR(0x001622cc)), phase);
+        const uint32_t colour = rgba_lerp(base & 0xffffff, base, glow);
+        const float rise = fpu_mul(phase, lwc1(L18_ADDR(0x001622d4)));
+        for (uint32_t k = 0; k < 4; ++k) {
+            const uint32_t c = desc + k * 0x10;
+            swc1(desc + 0x50 + k * 8, fpu_add(lwc1(L18_ADDR(0x001da350) + k * 8), shift));
+            swc1(desc + 0x54 + k * 8, lwc1(L18_ADDR(0x001da350) + k * 8 + 4));
+            sw(desc + 0x40 + k * 4, colour);
+            lq_sq(c, L18_ADDR(0x001da370) + k * 0x10);
+            swc1(c + 8, (k & 1) != 0 ? fpu_add(lwc1(c + 8), rise) : fpu_sub(lwc1(c + 8), rise));
+        }
+    }
+    for (int pass = 0; pass < 3; ++pass) {
+        swc1(mat + 0x38, fpu_add(lwc1(mat + 0x38), lwc1(L18_ADDR(0x001622d0))));
+        for (uint32_t q = 0; q < 4; ++q) quad_draw(f.sp + q * 0x90, mat);
+    }
+}
+
+// The boss's glows (class 1422 queues it while it is seen): at joints 1 and 2 of its attached moby (pvars +0x3a0) a glow
+// of size L18:0x162450 / 0x162454 pulsing between L18:0x162458 and 0x16245c over frame_scale_i(L18:0x162460) frames of
+// the level's counter; in its animations 0xb .. 0xd also at its own joints 5 and 6 (size L18:0x162464 / 0x162468, pulsing
+// between L18:0x16246c and 0x162470 over L18:0x162474); and at its joints 0xb .. 0x12 a glow 0.7 / 0.5 in its glow colour
+// (pvars +0x3b8).
+// orig: L18:0x002f7880
+void vf_cb_2f7880_l18(uint32_t m) {
+    const Frame f(0x90);
+    const uint32_t at = f.sp, at2 = f.sp + 0x10, pv = lwu(m + 0x78);
+    auto pulse = [](int32_t period, uint32_t a, uint32_t b) {
+        const float phase = fpu_div(int_to_float(ee_rem(lw(L18_ADDR(0x0015f5cc)), period)), int_to_float(period));
+        const float x = fpu_sub(fpu_mul(phase, u2f(0x40c5dc9cu)), u2f(0x40490fd0u));  // (6.18318, 3.14159)
+        return rgba_lerp(lwu(a), lwu(b), fpu_add(fpu_mul(sin_vu(x), 0.5f), 0.5f));
+    };
+    const uint32_t colour = pulse(frame_scale_i(lw(L18_ADDR(0x00162460))), L18_ADDR(0x00162458), L18_ADDR(0x0016245c));
+    for (uint32_t joint = 1; joint < 3; ++joint) {
+        moby_chain_point_v(lwu(pv + 0x3a0), joint, V(at));
+        glow_draw(at, colour, lwc1(L18_ADDR(0x00162450)), lwc1(L18_ADDR(0x00162454)));
+    }
+    if (static_cast<uint32_t>(lbu(m + 0x53)) - 0xbu < 3u) {
+        const uint32_t colour2 = pulse(frame_scale_i(lw(L18_ADDR(0x00162474))), L18_ADDR(0x0016246c), L18_ADDR(0x00162470));
+        for (uint32_t joint = 5; joint < 7; ++joint) {
+            moby_chain_point_v(m, joint, V(at2));
+            glow_draw(at2, colour2, lwc1(L18_ADDR(0x00162464)), lwc1(L18_ADDR(0x00162468)));
+        }
+    }
+    for (uint32_t joint = 0xb; joint < 0x13; ++joint) {
+        moby_chain_point_v(m, joint, V(at));
+        glow_draw(at, lwu(pv + 0x3b8), 0.699999988079071f, 0.5f);
     }
 }
 

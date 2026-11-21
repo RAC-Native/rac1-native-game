@@ -7,18 +7,10 @@
   "MKALL_UNIFORM": ""
  },
  "entries": [
-  "2fb868:vf_class1899_update_l18:void:a0",
-  "2d5768:vf_cb_2d5768_l18:void:a0",
-  "2dba20:vf_cb_2dba20_l18:void:a0",
-  "2dc4b8:vf_cb_2dc4b8_l18:void:a0",
-  "2f0390:vf_cb_2f0390_l18:void:a0",
-  "2f06c0:vf_cb_2f06c0_l18:void:a0",
-  "2f1fd8:vf_cb_2f1fd8_l18:void:a0",
-  "2f7880:vf_cb_2f7880_l18:void:a0"
+  "2fb868:vf_class1899_update_l18:void:a0"
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/veldin_finale_classes_tr_6.cpp",
-  "src/game/ovl/veldin_finale_classes_tr_7.cpp"
+  "src/game/ovl/veldin_finale_classes_tr_6.cpp"
  ]
 }

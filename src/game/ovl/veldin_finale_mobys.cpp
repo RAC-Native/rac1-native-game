@@ -141,6 +141,7 @@ void veldin_finale_moby_fns_register() {
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002dba20), vf_cb_2dba20_l18);
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002dc4b8), vf_cb_2dc4b8_l18);
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002e3f58), class832_draw);
+    ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002ea1f8), vf_cb_2ea1f8_l18);  // (class 983's glow: queued by its update, served by nothing before P18.5)
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002eb9f8), class655_draw);
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002ee490), class1135_draw);
     ovl_register_level_moby_fn(VELDIN_FINALE, L18_ADDR(0x002f0390), vf_cb_2f0390_l18);

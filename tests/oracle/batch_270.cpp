@@ -399,6 +399,7 @@ void batch_270() {
         {"cb2dba20", 0x002dba20, vf_cb_2dba20_l18, 0x002db460, 624},
         {"cb2dc4b8", 0x002dc4b8, vf_cb_2dc4b8_l18, 0x002dc260, 628},
         {"cb2e3f58", 0x002e3f58, class832_draw, 0x002e4168, 832},
+        {"cb2ea1f8", 0x002ea1f8, vf_cb_2ea1f8_l18, 0x002e9e70, 983},
         {"cb2eb9f8", 0x002eb9f8, class655_draw, 0x002e9e70, 983},
         {"cb2ee490", 0x002ee490, class1135_draw, 0x002edb78, 1135},
         {"cb2f0390", 0x002f0390, vf_cb_2f0390_l18, 0x002efb88, 1355},
@@ -2653,6 +2654,183 @@ void batch_270() {
             view_on(c);
             return Args{{m}, {}};
         }, [](A a) { vf_cb_2f9eb8_l18(a.i[0]); return uint64_t{0}; }, 200);
+
+        // ---- P18.5: the level's last seven draw callbacks hand-written (veldin_finale_shot_draws.cpp: the shell's glow 0x2d5768,
+        // the ring's 0x2dba20, the burst's 0x2dc4b8, the energy ball's glow 0x2ea1f8 that nothing served before; veldin_finale_
+        // draws.cpp: the divers' trails 0x2f0390 and glows 0x2f06c0, the force field 0x2f1fd8, the boss's glows 0x2f7880). As
+        // part 2's: each at its own address on the moby its class queues it for (the shots spawned through the boss's spawners,
+        // P18.3's ports), the view set up on the subject or away, the packet cursor on the test area's buffer. VU0: no
+        // instruction of their own (the notes of P18.5): no lane compared.
+        auto chance = [](int n) { return ri(0, n - 1) == 0; };
+        // the shell's glow: a shell from near the hero to a point by him (its pvars +0x10, the glow's place), its frame count
+        // +0x2c anywhere (its low four bits: the pulse), the level's two colours dealt in part
+        helpercheck("own564_cb_2d5768", 0x002d5768, Ret::None, [=] {
+            fifty();
+            const Vec4 h = ee_ref<Vec4>(0x0013f3d0);
+            Vec4 from = near(h, 4, 20, 0), to = near(h, 0, 4, 0.5f);
+            from.z = h.z + rf(1, 10);
+            put(SCR, from); put(SCR + 0x10, Vec4{rf(-0.3f, 0.3f), rf(-0.3f, 0.3f), rf(0, 0.6f), 0}); put(SCR + 0x20, to);
+            const uint32_t m = vf_shell_spawn_l18(SCR, SCR + 0x10, SCR + 0x20, ri(10, 90), u(ri(0, 7)), rf(-1.2f, 1.2f), rf(-1.2f, 1.2f));
+            if (m == 0) return Args{{0}, {}};
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w32(pv + 0x2c, coin() ? u(ri(0, 15)) : R());
+            if (chance(3)) { w32(0x00161980, R()); w32(0x00161984, R()); }
+            view_on(to);
+            return Args{{m}, {}};
+        }, [](A a) { vf_cb_2d5768_l18(a.i[0]); return uint64_t{0}; }, 200);
+        // the ring's: a ring spawned by the hero (its size, the size it grows to and its speed: the fade below 0, between, past 1),
+        // the level's step (a quad every 30 degrees and others), lift, sizes and colours dealt in part
+        helpercheck("own624_cb_2dba20", 0x002dba20, Ret::None, [=] {
+            fifty();
+            const Vec4 h = ee_ref<Vec4>(0x0013f3d0);
+            Vec4 at = near(h, 0, 8, 0);
+            at.z = h.z + rf(-0.3f, 0.5f);
+            put(SCR, at);
+            put(SCR + 0x10, Vec4{rf(-0.2f, 0.2f), rf(-0.2f, 0.2f), rf(-0.3f, 0.2f), 0});
+            vf_ring_spawn_l18(SCR, SCR + 0x10, 0, rf(3, 16), rf(0.05f, 0.5f));
+            const std::vector<uint32_t> rings = mobys_with(0x002db460);
+            if (rings.size() != 1) return Args{{0}, {}};
+            const uint32_t m = rings[0], pv = ee_read<uint32_t>(m + 0x78);
+            const float r = rf(0.2f, 12);
+            wf(pv + 0x24, r);
+            const int fade = ri(0, 3);  // (the fade below 0, between, past 1, the speed 0)
+            wf(pv + 0x28, fade == 0 ? r - rf(0, 3) : fade == 1 ? r + rf(0, 4) : r + rf(4, 40));
+            wf(pv + 0x20, fade == 3 && coin() ? 0.0f : rf(0.02f, 0.6f));
+            if (chance(3)) wf(0x00161c64, coin() ? 30.0f : rf(25, 120));
+            if (chance(3)) { wf(0x00161c68, rf(-1, 2)); wf(0x00161c70, rf(-1, 2)); wf(0x00161c74, rf(0, 3)); }
+            if (chance(3)) { wf(0x00161c6c, rf(0, 2)); wf(0x00161c78, rf(0.5f, 4)); wf(0x00161c7c, rf(0.5f, 60)); }
+            if (chance(3)) { w32(0x00161c5c, R()); w32(0x00161c60, R()); }
+            view_on(at);
+            return Args{{m}, {}};
+        }, [](A a) { vf_cb_2dba20_l18(a.i[0]); return uint64_t{0}; }, 200);
+        // the burst's: a burst about the hero (its radius, phase and frames left: the fade 0 .. past 1), the level's words dealt
+        // in part
+        helpercheck("own628_cb_2dc4b8", 0x002dc4b8, Ret::None, [=] {
+            fifty();
+            const float r = rf(0.5f, 8);
+            const Vec4 at = near(ee_ref<Vec4>(0x0013f3d0), 0, 4, 0.5f);
+            put(SCR, at);
+            const uint32_t m = vf_burst_spawn_l18(0, SCR, r);
+            if (m == 0) return Args{{0}, {}};
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            wf(pv + 0, r);
+            wf(pv + 4, rf(-2, 3));
+            w32(pv + 8, chance(4) ? u(ri(-3, 1)) : u(ri(0, 80)));
+            if (chance(3)) w32(0x00161c9c, u(ri(1, 60)));
+            if (chance(3)) wf(0x00161cc0, coin() ? 45.0f : rf(25, 120));
+            if (chance(3)) { wf(0x00161cc4, rf(-1, 2)); wf(0x00161ccc, rf(-1, 2)); wf(0x00161cc8, rf(0, 2)); wf(0x00161cd4, rf(0.5f, 4)); }
+            if (chance(3)) { w32(0x00161cb8, R()); w32(0x00161cbc, R()); }
+            view_on(at);
+            return Args{{m}, {}};
+        }, [](A a) { vf_cb_2dc4b8_l18(a.i[0]); return uint64_t{0}; }, 200);
+        // the energy ball's glow: a ball as own983_ball's (its size, its glow angles), the camera about it at every elevation,
+        // the level's colours dealt in part
+        if (std::getenv("B270_OWN_INFO") != nullptr) {  // (does the level run a spawned ball? its update word +0x74 and class record +0x24)
+            level();
+            put(SCR, VV(0x0013f3d0));
+            const uint32_t b = vf_ball_spawn_l18(0, SCR, 100);
+            if (b != 0)
+                std::printf("INFO class 983 spawned: moby %u class index %u update 0x%08x class record 0x%08x flags 0x%04x\n", (b - first_moby()) >> 8,
+                            u(ee_read<uint8_t>(b + 0x22)), ee_read<uint32_t>(b + 0x74), ee_read<uint32_t>(b + 0x24), u(ee_read<uint16_t>(b + 0x34)));
+        }
+        helpercheck("own983_cb_2ea1f8", 0x002ea1f8, Ret::None, [=] {
+            const uint32_t m = make983();
+            if (m == 0) return Args{{0}, {}};
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            wf(pv + 0x24, chance(4) ? 0.0f : rf(0.05f, 2.5f));
+            wf(pv + 0x2c, rf(-3.1f, 3.1f));
+            wf(pv + 0x30, rf(-3.1f, 3.1f));
+            if (chance(3)) for (uint32_t k = 0; k < 4; ++k) w32(0x00161ef8 + k * 4, R());
+            Vec4 c = VV(m + 0x10);
+            c.z += rf(-6, 6);
+            view_on(c);
+            return Args{{m}, {}};
+        }, [](A a) { vf_cb_2ea1f8_l18(a.i[0]); return uint64_t{0}; }, 200);
+        // the divers' draws: a diver and its group (divers only: the trail's walk never leaves an entry that is not one), each
+        // diver's trail points about it, their count 0 .. 16 and newest anywhere, its state 0 .. 5 and glow angle; the level's
+        // two switches L18:0x162238 / 0x16223c on in part, its counter anywhere, its colours and sizes dealt in part
+        auto deal_divers = [=]() -> uint32_t {
+            const std::vector<uint32_t> ms = mobys_with(0x002efb88);
+            if (ms.empty()) return 0u;
+            fifty();
+            const uint32_t m = pick(ms);
+            const std::vector<uint32_t> g = group_mobys(ee_read<uint8_t>(m + 0x21));
+            if (g.empty()) return 0u;
+            for (const uint32_t o : g) if (ee_read<int16_t>(o + 0xa6) != 0x54b) return 0u;
+            for (const uint32_t o : g) {
+                const uint32_t pv = ee_read<uint32_t>(o + 0x78);
+                if (chance(3)) set_up(o, vf_class1355_update_l18);
+                w8(o + 0x20, u(ri(0, 5)));
+                Vec4 p = VV(o + 0x10);
+                for (uint32_t k = 0; k < 16; ++k) { p = near(p, 0, 1.2f, 0.4f); p.w = 1.0f; put(pv + 0x10 + k * 0x10, p); }
+                w16(pv + 0x164, u(chance(5) ? 0 : ri(1, 16)));
+                w16(pv + 0x166, u(ri(0, 15)));
+                wf(pv + 0x168, rf(-3.1f, 3.1f));
+                if (chance(4)) { wf(o + 0x40, rf(-1, 1)); wf(o + 0x48, rf(-3.1f, 3.1f)); moby_update_transform(o); }
+            }
+            w32(0x00162238, chance(8) ? 1u : 0u);
+            w32(0x0016223c, chance(8) ? 1u : 0u);
+            if (chance(3)) { w32(0x00162250, R()); w32(0x00162254, R()); w32(0x00162260, R()); w32(0x00162264, R()); }
+            if (chance(3)) { wf(0x00162258, rf(-400, 400)); wf(0x0016225c, rf(-400, 400)); wf(0x00162268, rf(0.1f, 3)); wf(0x0016226c, rf(-2, 2)); }
+            view_on(VV(m + 0x10));
+            return m;
+        };
+        helpercheck("own1355_cb_2f0390", 0x002f0390, Ret::None, [=] { return Args{{deal_divers()}, {}}; },
+                    [](A a) { vf_cb_2f0390_l18(a.i[0]); return uint64_t{0}; }, 200);
+        helpercheck("own1355_cb_2f06c0", 0x002f06c0, Ret::None, [=] {  // (here a group member of another class in a quarter: skipped)
+            const uint32_t m = deal_divers();
+            if (m != 0 && chance(4)) {
+                const std::vector<uint32_t> g = group_mobys(ee_read<uint8_t>(m + 0x21));
+                w16(pick(g) + 0xa6, 0x772);
+            }
+            return Args{{m}, {}};
+        },
+                    [](A a) { vf_cb_2f06c0_l18(a.i[0]); return uint64_t{0}; }, 200);
+        // the force field: a field set up or not, turned, its scroll about the wrap, its glow's cap, the camera within 48 or
+        // farther (the glow's clamps), the level's speed, lift, rise and colours dealt in part
+        helpercheck("own1392_cb_2f1fd8", 0x002f1fd8, Ret::None, [=] {
+            const std::vector<uint32_t> ms = mobys_with(0x002f1e68);
+            if (ms.empty()) return Args{{0}, {}};
+            fifty();
+            const uint32_t m = pick(ms), pv = ee_read<uint32_t>(m + 0x78);
+            if (coin()) set_up(m, vf_class1392_update_l18);
+            if (chance(3)) { wf(m + 0x48, rf(-3.1f, 3.1f)); moby_update_transform(m); }
+            wf(pv + 8, coin() ? rf(0.97f, 1.0f) : rf(0, 1));
+            wf(pv + 0xc, chance(5) ? 0.0f : rf(0.1f, 1.5f));
+            if (chance(3)) { wf(0x001622e0, rf(0, 3)); wf(0x001622d0, rf(-1, 2)); wf(0x001622d4, rf(0, 2)); }
+            if (chance(3)) { w32(0x001622c8, R()); w32(0x001622cc, R()); }
+            Vec4 c = VV(m + 0x10);
+            if (chance(3)) c.z += rf(30, 60);
+            view_on(c);
+            if (chance(4)) camera_away(c);
+            else if (chance(2)) {  // (the camera 38 .. 50 back along its view: the glow between its clamps)
+                const Vec4 fwd = VV(OV(0x00166fd0));
+                const float d = rf(38, 50);
+                VV(OV(0x00166dc0)) = Vec4{c.x - fwd.x * d, c.y - fwd.y * d, c.z - fwd.z * d, 1.0f};
+                render_view_setup();
+            }
+            return Args{{m}, {}};
+        }, [](A a) { vf_cb_2f1fd8_l18(a.i[0]); return uint64_t{0}; }, 200);
+        // the boss's glows: the boss after its set-up (its attached mobys found) or with another of the level's mobys attached,
+        // its animation 0xa .. 0xe (0xb .. 0xd: the extra pair), its glow colour, the pulses' periods and the level's counter
+        // anywhere, the sizes and colours dealt in part
+        helpercheck("own1422_cb_2f7880", 0x002f7880, Ret::None, [=] {
+            const std::vector<uint32_t> boss = mobys_with(0x002f2bf0);
+            if (boss.empty()) return Args{{0}, {}};
+            fifty();
+            const uint32_t m = boss[0], pv = ee_read<uint32_t>(m + 0x78);
+            set_up(m, vf_class1422_update_l18);
+            if (ee_read<uint32_t>(pv + 0x3a0) == 0 || chance(4)) w32(pv + 0x3a0, coin() ? m : pick(mobys_with(0x002f7c40)));
+            if (ee_read<uint32_t>(pv + 0x3a0) == 0) return Args{{0}, {}};
+            w8(m + 0x53, u(ri(0xa, 0xe)));
+            w32(pv + 0x3b8, R());
+            w32(0x0015f5cc, R() & 0xffff);
+            if (chance(3)) { w32(0x00162460, u(ri(1, 120))); w32(0x00162474, u(ri(1, 120))); }
+            if (chance(3)) { wf(0x00162450, rf(0.1f, 3)); wf(0x00162454, rf(0, 1)); wf(0x00162464, rf(0.1f, 3)); wf(0x00162468, rf(0, 1)); }
+            if (chance(3)) { w32(0x00162458, R()); w32(0x0016245c, R()); w32(0x0016246c, R()); w32(0x00162470, R()); }
+            view_on(VV(m + 0x10));
+            return Args{{m}, {}};
+        }, [](A a) { vf_cb_2f7880_l18(a.i[0]); return uint64_t{0}; }, 200);
         g_extra_noop_hooks.clear();
     }
 
