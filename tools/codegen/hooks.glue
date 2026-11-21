@@ -33,10 +33,7 @@ L14 0x00255ed8: { uint32_t pb_v0 = 0; if (palette_blend_loop(a0.w(), a1.w(), a3.
 # 0x3180a8 / 0x318150, Kalebo III 0x2e7dc0 / 0x2e7f70.
 # L11 0x00313290 (Pokitaru's class 1242): the fork is in pok_class1242_update_l11 (pokitaru_jet.cpp, P11.2), always taken on the PAL 2.00 disc.
 # L13 0x002bb6a8 (Gemlik's class 69): the fork is in gml_class69_update_l13 (gemlik_ship.cpp, P13.2), always taken on the PAL 2.00 disc.
-L17 0x002ed508: if (gameplay102_talk_blocked()) goto L_2ed524;  // enhancement: 1.02 Gameplay, fix 10 (guard)
-L17 0x002ed534: if (gameplay102_on(10)) hero_set_state(0x32, 1);  // enhancement: 1.02 Gameplay, fix 10 (0x32 at the press)
-L17 0x002ed6c4: if (gameplay102_on(10)) goto L_2ed6d0;  // enhancement: 1.02 Gameplay, fix 10 (the later 0x32 skipped)
-L17 0x002ed6d0 label
+# L17 0x002ed508 / 0x002ed534 / 0x002ed6c4 (Drek's fleet's class 1379): the fork is in vo_class1379_update_l17 (veldin_orbit_ship.cpp, P17.2), always taken on the PAL 2.00 disc.
 L5 0x00316be0: if (gameplay102_talk_held()) { a0.lo = s1.lo + zero.lo; goto L_316c84; }  // enhancement: 1.02 Gameplay, fix 10 (no talk in 0x1d)
 L5 0x00316c78: gameplay102_talk_lock();  // enhancement: 1.02 Gameplay, fix 10 (+0x20ac)
 # L16 0x002e6958 / 0x002e6af8 (Kalebo III's class 1455): the fork is in kal_class1455_update_l16 (kalebo_race_organiser.cpp, P16.2), always taken on the PAL 2.00 disc.

@@ -8,7 +8,11 @@
 #include "ovl_oracle.h"
 #include "trial_guard.h"
 
+#include <game/enhance/advanced.h>
+#include <game/enhance/fixes102.h>
 #include <game/ovl/enemy_749.h>
+#include <game/ovl/blarg_own.h>
+#include <game/ovl/carry_hooks_levels.h>
 #include <game/ovl/hero_move_mode.h>
 #include <game/ovl/veldin_orbit_mobys.h>
 #include <game/ovl/veldin_orbit_own.h>
@@ -71,6 +75,8 @@
 #include <cstring>
 #include <string>
 #include <map>
+#include <unordered_set>
+#include <algorithm>
 
 namespace rac1::oracle {
 
@@ -82,7 +88,7 @@ bool c2b_spr_check(const char* name) {
     static const char* const kNames[] = {"class1379", "class1382", "class1843", "class44", "class835", "hero_move_mode",
                                          "class1134", "class1135", "class123", "class1448", "class408", "class805",
                                          "class99", "p17_class99", "p17_class347", "p17_class347_break", "p17_class1368", "p17_class669",
-                                         "p17_class835"};
+                                         "p17_class835", "p17_class1379", "p17_class1379_hits", "p17_2ec360"};
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -98,6 +104,7 @@ TrRet hook_uniform(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t, uint32_t, ui
 int32_t drop_hook0(uint32_t m, uint32_t a1, uint32_t a2, float f12) { return carry_drop_hook(m, a1, a2, f12, 0); }  // L17:0x2efea8
 int32_t drop_hook4(uint32_t m, uint32_t a1, uint32_t a2, float f12) { return carry_drop_hook(m, a1, a2, f12, 4); }  // L17:0x2eff30
 int32_t drop_hook8(uint32_t m, uint32_t a1, uint32_t a2, float f12) { return carry_drop_hook(m, a1, a2, f12, 8); }  // L17:0x2effb8
+int32_t pvars60_hook(uint32_t m, uint32_t, uint32_t, float) { return static_cast<int32_t>(class_hook_pvars60_l6(m)); }  // L17:0x2f0070 (Blarg's L6:0x2ea800, the same code)
 
 // A random state can hold a pointer outside RAM that the port's vector helpers dereference without a check (a SIGSEGV where the interpreter would wrap it): the trial run of a state
 // turns it into "not a game state" (the state is dealt again), as the port's "Pointer resolution out of bounds" exception does.
@@ -489,8 +496,8 @@ void batch_260() {
             {"hook_2efea8", 0x2efea8, 0x0, hook_uniform<drop_hook0>},
             {"hook_2eff30", 0x2eff30, 0x4, hook_uniform<drop_hook4>},
             {"hook_2effb8", 0x2effb8, 0x8, hook_uniform<drop_hook8>},
-            {"hook_2f0040", 0x2f0040, 0xc, vo_hook_2f0040_u},
-            {"hook_2f0070", 0x2f0070, 0x10, vo_hook_2f0070_u},
+            {"hook_2f0040", 0x2f0040, 0xc, hook_uniform<vo_carry_hookc_l17>},
+            {"hook_2f0070", 0x2f0070, 0x10, hook_uniform<pvars60_hook>},
         };
         for (const Hk& hk : hks) {
             level();
@@ -1091,6 +1098,531 @@ void batch_260() {
             const int32_t fade = ri(0, 3) == 0 ? 0 : ri(-2, 17);
             return Args{{T4, coin() ? 1u : 0u, u(fade)}, {}};
         }, [](A a) { return r32(vo_26fdd0_l17(a.i[0], a.i[1], static_cast<int32_t>(a.i[2]))); });
+
+        // ---- P17.2 (stage 4): class 1379, the hero's ship (veldin_orbit_ship.cpp), with its helpers 0x253a90 (a class's
+        // mobys shown / solid), 0x2ec000 (the guns), 0x2ec150 (the missiles), 0x2ec360 (the flight), 0x2edf10 (the arena's
+        // edge): each state with the hero by its pad or not, the prompt free or refused, its boxes the level's / others /
+        // none, the stick and the buttons, the speed and the frames about their thresholds, the ship about its arena's edges,
+        // its sounds playing or not, the HUD's record, the camera seeing it, hits and crashes (p17_class1379_hits)
+        {
+            auto ships = [of_class] { return of_class(0x563); };
+            // the camera record of uid 5 (the table OV(0x167150), 48 records of 0xa0, the uid at +0x86, the cached one at OV(0x166e00)):
+            // uid5_set_pvar_80 / _90 write the flight's (and the lift's) camera place and angles into its +0x70's +0x80 / +0x90; when the
+            // level has no such record, or its +0x70 is 0, the writes land in the null page (not compared): one is made with its +0x70
+            // on a test buffer (T3) in most of the cases
+            auto cam5_ready = [] {
+                const uint32_t tab = OV(0x00167150);
+                uint32_t r = 0;
+                for (uint32_t k = 0; k < 48 && r == 0; ++k) if (ee_read<int16_t>(tab + k * 0xa0 + 0x86) == 5) r = tab + k * 0xa0;
+                if (r == 0) { r = tab + 47 * 0xa0; w16(r + 0x86, 5); }
+                if (ee_read<uint32_t>(r + 0x70) == 0) w32(r + 0x70, T3);
+                w32(OV(0x00166e00), r);
+            };
+            if (info) {
+                level();
+                const uint32_t tab = OV(0x00167150);
+                for (uint32_t k = 0; k < 48; ++k) if (ee_read<int16_t>(tab + k * 0xa0 + 0x86) == 5) std::printf("INFO p17 the level's uid-5 camera record %u, +0x70 %08x\n", k, ee_read<uint32_t>(tab + k * 0xa0 + 0x70));
+            }
+            auto any_box = [] { const int32_t nb = lvd::box_count(lvd::BOXES); return nb > 0 ? ri(0, nb - 1) : -1; };
+            auto box_ok = [](int32_t b) { return b >= 0 && b < lvd::box_count(lvd::BOXES); };
+            auto help_idle = [] { w32(0x00151720, 0); w32(0x001516d0 + 0x50, 0); w32(0x001516d0 + 0x1c, 0xffffffffu); };
+            // a sound slot in the pvar word `at`: none, one playing for the ship, or one stopped / another moby's
+            auto sound_slot = [live, pick](uint32_t m, uint32_t at) {
+                if (ri(0, 3) == 0) { w32(at, 0xffffffffu); return; }
+                const int32_t s = ri(0, 7);
+                w32(at, u(s));
+                const uint32_t e = 0x0013e550u + u(s) * 0x70u;
+                w32(e + 0x88, ri(0, 3) != 0 ? m : pick(live()));
+                w8(e + 0x74, u(ri(0, 1)));
+            };
+            if (info) {
+                level();
+                for (uint32_t m : ships()) {
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    const Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    std::printf("INFO p17 class 1379 moby %u uid %u at (%.1f, %.1f, %.1f) boxes fc %d 100 %d 110 %d 120 %d 12c %d group %d sounds %d %d\n",
+                                (m - table()) >> 8, ee_read<uint16_t>(m + 0xb2), q.x, q.y, q.z, ee_read<int32_t>(pv + 0xfc), ee_read<int32_t>(pv + 0x100),
+                                ee_read<int32_t>(pv + 0x110), ee_read<int32_t>(pv + 0x120), ee_read<int32_t>(pv + 0x12c), ee_read<int32_t>(pv + 0x11c),
+                                ee_read<int32_t>(pv + 0x108), ee_read<int32_t>(pv + 0x10c));
+                }
+            }
+            // the flight's inputs: the frames about the speed's (L17:0x162000) and the stick's (0x162014) thresholds, the
+            // stick, the buttons (0x13caf0 held: 0x84 the guns, 0x28 the missiles, 0x40 the boost; 0x13caf4 / 0x13caf8 pressed /
+            // released; 0x13cae0 0x200 R1), the cooldowns, the missiles left, the speed, the angles, the camera's offset
+            auto flight_inputs = [=](uint32_t m) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                const int32_t t0 = ee_read<int32_t>(L17_ADDR(0x00162000)), t1 = ee_read<int32_t>(L17_ADDR(0x00162014));
+                switch (ri(0, 3)) {
+                case 0: w16(pv + 0x68, u(ri(0, std::max(t0, 0) + 1))); break;
+                case 1: w16(pv + 0x68, u(std::max(t1 + ri(-1, 1), 0))); break;
+                default: w16(pv + 0x68, u(std::max(t0, t1) + ri(1, 300))); break;
+                }
+                wf(0x00141070, ri(0, 4) == 0 ? 0.0f : rf(-1.0f, 1.0f));
+                wf(0x00141074, ri(0, 4) == 0 ? 0.0f : rf(-1.0f, 1.0f));
+                w32(0x0013caf0, R() & 0xecu);
+                w32(0x0013caf4, coin() ? 0x40u : 0u);
+                w32(0x0013caf8, coin() ? 0x40u : 0u);
+                w32(0x0013cae0, coin() ? 0x200u : 0u);
+                w32(pv + 0x80, u(ri(0, 3)));
+                w32(pv + 0x84, u(ri(0, 3)));
+                w8(P + 0x15f6, u(ri(0, 3)));
+                w32(pv + 0xec, coin() ? 0u : pick(live()));
+                const float sc = ee_read<float>(L17_ADDR(0x001620a0)), top = ee_read<float>(L17_ADDR(0x00162008)) * sc;
+                wf(pv + 0x64, ri(0, 5) == 0 ? ee_read<float>(L17_ADDR(0x00162004)) * sc : rf(0.0f, top * 1.3f));
+                w8(pv + 0x60, u(ri(0, 1)));
+                w32(pv + 0xdc, ri(0, 2) == 0 ? 0u : u(ri(1, 5)));
+                wf(pv + 0x34, rf(-1.6f, 1.6f)); wf(pv + 0x38, rf(-3.1f, 3.1f)); wf(m + 0x44, rf(-1.6f, 1.6f)); wf(pv + 0x30, rf(-0.8f, 0.8f));
+                wf(pv + 0x6c, rf(-1.0f, 1.0f)); wf(pv + 0x70, rf(-1.0f, 1.0f));
+                { const float h = rf(-3.1f, 3.1f), p = rf(-1.0f, 1.0f); ee_ref<Vec4>(pv + 0x10) = Vec4{std::cos(h) * std::cos(p), std::sin(h) * std::cos(p), std::sin(p), 0.0f}; }
+                if (ri(0, 3) == 0) w32(pv + 0x110, 0xffffffffu); else if (coin()) w32(pv + 0x110, u(any_box()));
+                if (!box_ok(ee_read<int32_t>(pv + 0x12c)) || ri(0, 4) == 0) w32(pv + 0x12c, u(any_box()));
+                sound_slot(m, pv + 0x10c);
+            };
+            // the ship about its arena (the box +0x12c): inside, or near its horizontal edge / its top / its bottom (0x2edf10)
+            auto in_arena = [=](uint32_t m) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                const uint32_t b = lvd::box(lvd::BOXES, ee_read<int32_t>(pv + 0x12c));
+                const Vec4 c = ee_ref<Vec4>(b + 0x30), r0 = ee_ref<Vec4>(b);
+                const float reach = std::sqrt(r0.x * r0.x + r0.y * r0.y), half = ee_read<float>(b + 0x28);
+                const float a = rf(-3.1f, 3.1f);
+                float d = rf(0.0f, reach * 0.6f), z = c.z + rf(-half * 0.6f, half * 0.6f);
+                switch (ri(0, 3)) {
+                case 0: d = reach + rf(-15.0f, 5.0f); break;
+                case 1: z = c.z + half + rf(-15.0f, 5.0f); break;
+                case 2: z = c.z - half + rf(-5.0f, 15.0f); break;
+                default: break;
+                }
+                ee_ref<Vec4>(m + 0x10) = Vec4{c.x + d * std::cos(a), c.y + d * std::sin(a), z, 1.0f};
+                if (ri(0, 4) == 0) wf(m + 0x10 + 4u * u(ri(0, 2)), coin() ? rf(0.0f, 20.0f) : rf(1000.0f, 1020.0f));  // (the space's bounds)
+            };
+            // a state of the ship; `crash`: next to a live moby (of a class it ignores, a hull cannon, another) or the world, a hit on
+            // it that may take the last of its health (the debris)
+            auto vary1379 = [=](uint32_t m, bool crash) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                static const uint8_t sts[] = {0, 1, 1, 1, 2, 2, 2, 3, 4, 4, 4, 4, 5, 6, 7, 7, 8, 8, 8, 9, 9, 10, 12};
+                static const uint8_t crash_sts[] = {4, 4, 4, 4, 2, 8, 8, 0, 3, 5, 9};
+                const int st = crash ? crash_sts[ri(0, 10)] : sts[ri(0, 22)];
+                w8(m + 0x20, u(st));
+                w8(m + 0xbc, ri(0, 5) == 0 ? 1u : 0u);
+                const float full = ee_read<float>(L17_ADDR(0x00162084));
+                wf(P + 0x15fc, rf(full * 0.2f, full));
+                if (coin()) w32(P + 0x15f0, m); else if (coin()) w32(P + 0x15f0, 0);
+                if (ri(0, 3) == 0) w8(P + 0x160f, u(R() & 3u));
+                if (!box_ok(ee_read<int32_t>(pv + 0xfc)) || ri(0, 4) == 0) w32(pv + 0xfc, u(any_box()));
+                sound_slot(m, pv + 0x108);
+                sound_slot(m, pv + 0x10c);
+                switch (ri(0, 3)) {  // its moby group: none, 0, a group of the level
+                case 0: w32(pv + 0x11c, coin() ? 0xffffffffu : 0u); break;
+                case 1: if (lvd::group_count() > 1) w32(pv + 0x11c, u(ri(1, lvd::group_count() - 1))); if (lvd::group(ee_read<int32_t>(pv + 0x11c)) == 0) w32(pv + 0x11c, 0); break;
+                default: break;
+                }
+                const Vec4 at = ee_ref<Vec4>(m + 0x10);
+                switch (st) {
+                case 0:
+                    w32(L17_ADDR(0x00162184), coin() ? 1u : 0u);
+                    if (ee_read<uint8_t>(m + 0xb0) != 0xff && coin()) w8(0x0014c050 + ee_read<uint8_t>(m + 0xb0) + (ee_read<uint32_t>(0x0015ed84) << 4), coin() ? 0xffu : 0u);
+                    if (ri(0, 8) == 0) w32(L17_ADDR(0x0015f420), ee_read<uint32_t>(L17_ADDR(0x0015f420)) + 4u * u(ri(1, 3)));  // (the palette's copy unaligned)
+                    break;
+                case 1: {
+                    wf(pv + 0x130, coin() ? 0.0f : rf(0.0f, 1.0f));
+                    const float gap = ee_read<float>(L17_ADDR(0x00161fe0));
+                    const bool near = coin();
+                    hero_at(near ? jitter(at, 0.5f, 0.3f) : jitter(at, gap * 4.0f + 4.0f, 2.0f));
+                    const uint32_t hm = ee_read<uint32_t>(P + 0x2080);  // (moby_sphere_gap: the mobys' spheres +0)
+                    if (near && hm != 0) { ee_ref<Vec4>(hm) = ee_ref<Vec4>(m); wf(hm, ee_read<float>(m) + rf(-0.5f, 0.5f)); }
+                    if (ri(0, 4) != 0) help_idle();
+                    w32(0x0013cae4, coin() ? 0x10u : (R() & ~0x10u));
+                    w32(P + 0x2084, ri(0, 3) == 0 ? (coin() ? 0x32u : 0x1du) : 0u);
+                    break;
+                }
+                case 2:
+                    wf(pv + 0x130, ri(0, 3) == 0 ? 1.0f : (coin() ? rf(0.95f, 1.0f) : rf(0.0f, 0.95f)));
+                    w32(pv + 0x120, coin() ? 0xffffffffu : u(any_box()));
+                    flight_inputs(m);
+                    in_arena(m);
+                    break;
+                case 4: case 8:
+                    flight_inputs(m);
+                    in_arena(m);
+                    if (st == 4) {
+                        w32(pv + 0xe8, ri(0, 4) == 0 ? u(ri(-1, 0)) : 1u);
+                        wf(pv + 0x130, coin() ? 0.0f : rf(0.0f, 1.0f));
+                    } else {
+                        w32(pv + 0xf8, u(ri(0, 3)));
+                        wf(pv + 0x130, ri(0, 3) == 0 ? 1.0f : (coin() ? rf(0.9f, 1.0f) : rf(0.0f, 0.9f)));
+                        w32(pv + 0x100, coin() ? 0xffffffffu : u(any_box()));
+                        if (ri(0, 4) == 0) w32(pv + 0xfc, 0xffffffffu);
+                        if (ri(0, 3) == 0) w8(m + 0xb0, 0xff);
+                    }
+                    break;
+                case 7:
+                    w16(pv + 0x62, u(ri(0, 3)));
+                    break;
+                case 9:
+                    wf(pv + 0x130, coin() ? 0.0f : rf(0.0f, 0.2f));
+                    break;
+                default:
+                    break;
+                }
+                // a hit (not in the states 1, 2, 7): the damage below the health, or with `crash` above it in part of the cases
+                if (st != 1 && st != 2 && st != 7 && ri(0, 2) != 0) {
+                    give_hit(m, 0x30001u);
+                    if (ee_read<uint8_t>(m + 0xa4) != 0xff) {
+                        const uint32_t e = OV(0x00178100) + (ee_read<uint8_t>(m + 0xa4) << 6);
+                        w32(e + 0x24, 0x30001u | (R() & 0xffu));
+                        const float health = ee_read<float>(P + 0x15fc);
+                        wf(e + 0x2c, crash && coin() ? rf(health, health * 2.0f + 1.0f) : rf(0.0f, health * 0.9f));
+                        w32(e + 0x30, R());
+                        wfrand(e + 0x10, 4, -3.0f, 3.0f);
+                    }
+                } else {
+                    w8(m + 0xa4, 0xff);
+                }
+                if (crash && (st == 4 || st == 8 || st == 2)) {  // next to a moby or on the world
+                    const std::vector<uint32_t> all = live();
+                    uint32_t q = pick(all);
+                    if (q == m) q = all.front();
+                    if (q != m) {
+                        static const int16_t cls[] = {0x15b, 0x192, 0x4c2, 0x52, 0, -1, -1, -1};
+                        const int16_t c = cls[ri(0, 7)];
+                        if (c >= 0) w16(q + 0xa6, u(c));
+                        ee_ref<Vec4>(m + 0x10) = jitter(ee_ref<Vec4>(q + 0x10), 1.5f, 1.5f);
+                    }
+                    if (coin()) wf(P + 0x15fc, rf(0.0f, ee_read<float>(L17_ADDR(0x00162060)) * 1.5f));
+                    w32(pv + 0xdc, coin() ? 0u : 2u);
+                }
+                if (ri(0, 2) != 0) camera_sees(ee_ref<Vec4>(m + 0x10), 6.0f, 25.0f); else camera_away(ee_ref<Vec4>(m + 0x10));
+                if (ri(0, 4) != 0) cam5_ready();
+                fifty();
+                finish();
+                return true;
+            };
+            // The guns' shot (class 1009, class1009_launch) takes the aim's vector whole as its velocity (its pvars +0): the aim's
+            // w lane is never written by 0x2ec000 (vec_from_spherical_v and vec3_add write x y z), the original's is a stale lane
+            // of its frame (an earlier callee's leftover; ORACLE_WATCH: written at pc 0x2e21f8 under 0x2ec000), the port's frame
+            // and the generated code's before it are cleared: the +0xc word of each 0x80-byte block of the pvar area beyond the
+            // ship's own is left out of the checks that run the guns from the flight (with `debris`, also +0x1c: the blasts' pieces,
+            // the w lanes debris_spawn's port leaves at 0). A known difference, these checks only.
+            auto pvar_w_ignored = [level, ships](bool debris) {
+                level();
+                std::vector<uint32_t> own;
+                for (uint32_t s : ships()) own.push_back(ee_read<uint32_t>(s + 0x78));
+                for (uint32_t a = ee_read<uint32_t>(OV(0x0015ffe0)); a < ee_read<uint32_t>(OV(0x0015ffe0)) + 0x20000; a += 0x80) {
+                    bool mine = false;
+                    for (uint32_t pv : own) mine = mine || (a >= pv && a < pv + 0x180);
+                    if (mine) continue;
+                    g_ignored_words.push_back(a + 0xc);
+                    if (debris) g_ignored_words.push_back(a + 0x1c);
+                }
+            };
+            // (and the collision record's triangle OV(0x173e90) .. 0x173ebc, which differs when a moby is the one met: a known
+            // difference of the collision ports, left out of the checks that run the flight's sphere_collide only)
+            auto triangle_ignored = [] { for (uint32_t k = 0; k < 0x30; k += 4) g_ignored_words.push_back(OV(0x00173e90) + k); };
+            const size_t ign1379 = g_ignored_words.size();
+            pvar_w_ignored(false);
+            triangle_ignored();
+            // the states without a blast (a case the port blows up is dealt again: p17_class1379_hits has them)
+            pclass("p17_class1379", 0x002ed018, vo_class1379_update_l17, 500, ships, [=](uint32_t m) {
+                if (!vary1379(m, false)) return false;
+                static std::vector<uint8_t> keep;
+                uint8_t* ram = ee_get_ram_base();
+                keep.assign(ram, ram + 0x02000000);
+                const uint32_t stack_top = ee_stack_ptr();
+                const uint8_t st0 = ee_read<uint8_t>(m + 0x20);
+                bool blast = false;
+                try {
+                    vo_class1379_update_l17(m);
+                    blast = st0 != 7 && ee_read<uint8_t>(m + 0x20) == 7;  // (every blast puts it in the state 7)
+                } catch (const std::exception&) {}
+                ee_stack_ptr() = stack_top;
+                std::memcpy(ram, keep.data(), keep.size());
+                return !blast;
+            });
+            g_ignored_words.resize(ign1379);
+            // the hits and the crashes (the blasts' debris: pvar_w_ignored(true))
+            pvar_w_ignored(true);
+            triangle_ignored();
+            pclass("p17_class1379_hits", 0x002ed018, vo_class1379_update_l17, 300, ships, [=](uint32_t m) { return vary1379(m, true); });
+            g_ignored_words.resize(ign1379);
+            pvar_w_ignored(false);
+            triangle_ignored();
+            // the flight alone (0x2ec360), without a blast
+            l17check("p17_2ec360", 0x002ec360, 300, Ret::None, [=] {
+                for (int k = 0; k < 40; ++k) {
+                    level();
+                    const uint32_t m = pick(ships()), pv = ee_read<uint32_t>(m + 0x78);
+                    w8(m + 0x20, coin() ? 4u : 8u);
+                    w8(m + 0xbc, ri(0, 5) == 0 ? 1u : 0u);
+                    const float full = ee_read<float>(L17_ADDR(0x00162084));
+                    wf(P + 0x15fc, rf(full * 0.2f, full));
+                    flight_inputs(m);
+                    in_arena(m);
+                    if (ri(0, 2) != 0) camera_sees(ee_ref<Vec4>(m + 0x10), 6.0f, 25.0f); else camera_away(ee_ref<Vec4>(m + 0x10));
+                    cam5_ready();
+                    fifty();
+                    finish();
+                    static std::vector<uint8_t> keep;
+                    uint8_t* ram = ee_get_ram_base();
+                    keep.assign(ram, ram + 0x02000000);
+                    const uint32_t stack_top = ee_stack_ptr();
+                    bool blast = true;
+                    try {
+                        vo_2ec360_l17(m, pv);
+                        blast = ee_read<uint8_t>(m + 0x20) == 7;  // (every blast puts it in the state 7)
+                    } catch (const std::exception&) {}
+                    ee_stack_ptr() = stack_top;
+                    std::memcpy(ram, keep.data(), keep.size());
+                    if (!blast) return Args{{m, pv}, {}};
+                }
+                return Args{{0u, 0u}, {}};
+            }, [](A a) { if (a.i[0] != 0) vo_2ec360_l17(a.i[0], a.i[1]); return uint64_t{0}; });
+            g_ignored_words.resize(ign1379);
+            // the arena's edge (0x2edf10) on the stick's two words in the test area
+            l17check("p17_2edf10", 0x002edf10, 300, Ret::None, [=] {
+                level();
+                const uint32_t m = pick(ships());
+                flight_inputs(m);
+                in_arena(m);
+                wf(T4, rf(-1.0f, 1.0f)); wf(T4 + 4, rf(-1.0f, 1.0f));
+                fifty();
+                return Args{{m, T4, T4 + 4}, {}};
+            }, [](A a) { vo_2edf10_l17(a.i[0], a.i[1], a.i[2]); return uint64_t{0}; });
+            // the guns (0x2ec000) along an aim
+            l17check("p17_2ec000", 0x002ec000, 240, Ret::None, [=] {
+                level();
+                const uint32_t m = pick(ships()), pv = ee_read<uint32_t>(m + 0x78);
+                flight_inputs(m);
+                in_arena(m);
+                if (ri(0, 2) != 0) camera_sees(ee_ref<Vec4>(m + 0x10), 6.0f, 25.0f); else camera_away(ee_ref<Vec4>(m + 0x10));
+                fifty();
+                finish();
+                return Args{{m, pv}, {rf(-3.1f, 3.1f), rf(-1.5f, 1.5f)}};
+            }, [](A a) { vo_2ec000_l17(a.i[0], a.i[1], a.f[0], a.f[1]); return uint64_t{0}; });
+            // the missiles (0x2ec150)
+            l17check("p17_2ec150", 0x002ec150, 240, Ret::None, [=] {
+                level();
+                const uint32_t m = pick(ships()), pv = ee_read<uint32_t>(m + 0x78);
+                flight_inputs(m);
+                in_arena(m);
+                fifty();
+                finish();
+                return Args{{m, pv}, {}};
+            }, [](A a) { vo_2ec150_l17(a.i[0], a.i[1]); return uint64_t{0}; });
+            // a class's mobys shown / solid / glowing (0x253a90): class 0x325, a live moby's class, a class with none
+            l17check("p17_253a90", 0x00253a90, 200, Ret::None, [=] {
+                level();
+                const std::vector<uint32_t> all = live();
+                const int k = ri(0, 3);
+                const uint32_t cls = k == 0 ? 0x325u : (k == 1 ? 0x7ffu : static_cast<uint32_t>(ee_read<int16_t>(pick(all) + 0xa6)));
+                if (coin()) for (int n = 0; n < 4; ++n) { const uint32_t q = pick(all); if (ee_read<int16_t>(q + 0xa6) == static_cast<int16_t>(cls)) w8(q + 0x20, coin() ? 0xfeu : 3u); }
+                for (uint32_t q : all) if (ee_read<int16_t>(q + 0xa6) == static_cast<int16_t>(cls)) { w16(q + 0x34, R() & 0xffffu); w8(q + 0x31, u(ri(0, 1))); }
+                auto v = [] { return u(ri(-1, 2)); };
+                return Args{{cls, v(), v(), v()}, {}};
+            }, [](A a) { vo_253a90_l17(static_cast<int32_t>(a.i[0]), static_cast<int32_t>(a.i[1]), static_cast<int32_t>(a.i[2]), static_cast<int32_t>(a.i[3])); return uint64_t{0}; });
+
+            // 1.02 Gameplay, fix 10 in class 1379: with the fix on, the pad's prompt is not offered while the hero is in the state 0x32
+            // / 0x1d or a vehicle mode (+0x20a4), the triangle's press sets the hero's state 0x32 at once, and the fade's end (state 2)
+            // does not set it again. Run with RAC1_GAMEPLAY102=10: the port with the fix on leaves what the port with the fix off
+            // leaves with the fix's effect added by hand (kind 0: the hero out of reach; 1: hero_set_state(0x32, 1) after it; 2: the
+            // fade's hero_set_state made a no-op by the scene mode 0x15f5c4 = 2), as batch 220's p132_class69_fix10 does
+            if (const char* only = std::getenv("ORACLE_ONLY"); only == nullptr || std::strcmp(only, "p17_class1379_fix10") == 0) {
+                const std::vector<uint32_t> c1379 = mobys_with(0x002ed018);
+                if (std::getenv("RAC1_GAMEPLAY102") == nullptr || c1379.empty()) {
+                    std::printf("%-26s skipped (run with RAC1_GAMEPLAY102=10)\n", "p17_class1379_fix10");
+                    ++g_skipped;
+                } else {
+                    int bad = 0, n = 0, blocked = 0, boarded = 0, fade_skipped = 0;
+                    static std::vector<uint8_t> start, with_fix;
+                    const std::unordered_set<uint32_t> ignored(g_ignored_words.begin(), g_ignored_words.end());
+                    for (int c = 0; c < 90; ++c) {
+                        level();
+                        const uint32_t m = c1379[0], pv = ee_read<uint32_t>(m + 0x78), hm = ee_read<uint32_t>(0x001413d0u);
+                        const int kind = c % 3;
+                        if (kind < 2) {
+                            w8(m + 0x20, 1u);
+                            ee_ref<Vec4>(hm) = ee_ref<Vec4>(m);  // (the hero's moby's sphere at the ship's)
+                            wf(hm, ee_read<float>(m) + rf(-0.5f, 0.5f));
+                            help_idle();
+                            w32(OV(0x0015f5c4), 0u);
+                            w32(0x0013cae4u, 0x10u);
+                            if (kind == 0) {
+                                const int blk = ri(0, 2);
+                                w32(0x001413d4u, blk == 0 ? 0x32u : (blk == 1 ? 0x1du : 0u));
+                                w8(0x001413f4u, blk == 2 ? 1u : 0u);
+                            } else {
+                                w32(0x001413d4u, 0u);
+                                w8(0x001413f4u, 0u);
+                            }
+                        } else {
+                            w8(m + 0x20, 2u);
+                            wf(pv + 0x130, 0.99f);
+                            w32(OV(0x0015f5c4), 2u);  // (both runs in the scene mode 2: hero_set_state(0x32, 1) a no-op in the run without the fix)
+                            if (c % 2 == 0) w32(pv + 0x120, 0xffffffffu);  // (no boarding box: hero_place, which enters 0x32 itself, not called)
+                            w32(0x001413d4u, 0u);
+                        }
+                        if (ri(0, 3) == 0) { wf(0x0015ed68, 1.2f); wf(0x0015ed6c, 0.02f); wf(0x0015ed70, 0.0004f); }  // (50 Hz)
+                        seed_rand();
+                        uint8_t* ram = ee_get_ram_base();
+                        start.assign(ram, ram + 0x02000000);
+                        g_advanced_disabled = false;
+                        vo_class1379_update_l17(m);
+                        g_advanced_disabled = true;
+                        with_fix.assign(ram, ram + 0x02000000);
+                        std::memcpy(ram, start.data(), start.size());
+                        if (kind == 0) {
+                            const float h0 = ee_read<float>(hm);
+                            wf(hm, h0 + 200000.0f);
+                            vo_class1379_update_l17(m);
+                            wf(hm, h0);
+                            ++blocked;
+                        } else if (kind == 1) {
+                            vo_class1379_update_l17(m);
+                            if (ee_read<uint8_t>(m + 0x20) != 2u) { if (bad < 8) std::printf("  p17_class1379_fix10 case %d: not boarded\n", c); ++bad; }
+                            hero_set_state(0x32, 1);
+                            ++boarded;
+                        } else {
+                            // out of the scene mode: without the fix the fade's end enters 0x32, with it not
+                            w32(OV(0x0015f5c4), 0u);
+                            vo_class1379_update_l17(m);
+                            const bool unfixed_entered = ee_read<uint32_t>(0x001413d4u) == 0x32u;
+                            std::memcpy(ram, start.data(), start.size());
+                            w32(OV(0x0015f5c4), 0u);
+                            g_advanced_disabled = false;
+                            vo_class1379_update_l17(m);
+                            g_advanced_disabled = true;
+                            const bool fixed_entered = ee_read<uint32_t>(0x001413d4u) == 0x32u;
+                            const bool fixed_flew = ee_read<uint8_t>(m + 0x20) == 4u;
+                            std::memcpy(ram, start.data(), start.size());
+                            vo_class1379_update_l17(m);  // (the run without the fix in the scene mode, compared below)
+                            const bool placed = ee_read<int32_t>(ee_read<uint32_t>(m + 0x78) + 0x120) != -1;
+                            if (unfixed_entered && (placed || !fixed_entered) && fixed_flew && with_fix[m + 0x20] == 4u) { if (!placed) ++fade_skipped; }
+                            else { if (bad < 8) std::printf("  p17_class1379_fix10 case %d: the fade: entered %d / %d, flew %d\n", c, unfixed_entered, fixed_entered, fixed_flew); ++bad; }
+                        }
+                        ++n;
+                        for (uint32_t a = 0x00100000; a < 0x02000000; a += 4) {
+                            if (ignored.count(a) != 0) continue;
+                            if (a >= ee_stack_ptr() - 0x10000 && a < ee_stack_ptr() + 0x10000) continue;
+                            uint32_t xw, yw;
+                            std::memcpy(&xw, &with_fix[a], 4); std::memcpy(&yw, &ram[a], 4);
+                            if (xw != yw) { if (bad < 8) std::printf("  p17_class1379_fix10 case %d (kind %d): %08x fix=%08x expected=%08x\n", c, kind, a, xw, yw); ++bad; break; }
+                        }
+                    }
+                    std::printf("%-26s %s (%d cases, %d blocked, %d boarded, %d fade_skipped)\n", "p17_class1379_fix10",
+                                bad == 0 && blocked > 0 && boarded > 0 && fade_skipped > 0 ? "ok" : "FAIL", n, blocked, boarded, fade_skipped);
+                    if (bad != 0 || blocked == 0 || boarded == 0 || fade_skipped == 0) ++g_fail;
+                }
+            }
+        }
+        // class 1380, a lift (veldin_orbit_lift.cpp), with its helpers 0x2ee9c0 (the camera beside it) and 0x2eea70 (the hero's
+        // path laid out on it): each state, the hero on it or not, walking or not, at its centre or near it below / above, its
+        // height about its two stops, its sound playing or not, its path the level's / none / another, the camera's ease
+        {
+            auto lifts = [of_class] { return of_class(0x564); };
+            auto cam5_ready = [] {  // (as class 1379's: the camera record of uid 5 with its +0x70 on a test buffer)
+                const uint32_t tab = OV(0x00167150);
+                uint32_t r = 0;
+                for (uint32_t k = 0; k < 48 && r == 0; ++k) if (ee_read<int16_t>(tab + k * 0xa0 + 0x86) == 5) r = tab + k * 0xa0;
+                if (r == 0) { r = tab + 47 * 0xa0; w16(r + 0x86, 5); }
+                if (ee_read<uint32_t>(r + 0x70) == 0) w32(r + 0x70, T3);
+                w32(OV(0x00166e00), r);
+            };
+            if (info) {
+                level();
+                for (uint32_t m : lifts()) {
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    const Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    std::printf("INFO p17 class 1380 moby %u uid %u at (%.1f, %.1f, %.1f) state %u heights %.2f %.2f path %d (%d points) 7c %d\n",
+                                (m - table()) >> 8, ee_read<uint16_t>(m + 0xb2), q.x, q.y, q.z, ee_read<uint8_t>(m + 0x20), ee_read<float>(pv + 0x60),
+                                ee_read<float>(pv + 0x64), ee_read<int32_t>(pv + 0x80),
+                                ee_read<int32_t>(pv + 0x80) >= 0 ? ee_read<int32_t>(lvd::path(ee_read<int32_t>(pv + 0x80))) : -1, ee_read<int32_t>(pv + 0x7c));
+                }
+            }
+            auto hero_on = [P, live, pick](uint32_t m) {  // the moby the hero stands on, his walk, his +0x30e
+                switch (ri(0, 4)) {
+                case 0: w32(P + 0x2fc, 0); break;
+                case 1: w32(P + 0x2fc, pick(live())); break;
+                default: w32(P + 0x2fc, m); break;
+                }
+                w16(P + 0x308, ri(0, 2) != 0 ? u(ri(1, 3)) : 0u);
+                w16(P + 0x30e, ri(0, 3) == 0 ? 1u : 0u);
+            };
+            auto vary1380 = [=](uint32_t m) {
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                const int st = ri(0, 11);
+                w8(m + 0x20, u(st));
+                w32(pv + 0x7c, ri(0, 2) == 0 ? 1u : 0u);
+                w8(m + 0xbc, u(ri(0, 2)));
+                const float hi = ee_read<float>(pv + 0x60), lo = ee_read<float>(pv + 0x64);
+                const Vec4 at = ee_ref<Vec4>(m + 0x10);
+                switch (ri(0, 3)) {  // its height: between its stops, at one (to the last bit or a hair off), past them
+                case 0: wf(m + 0x18, lo + (hi - lo) * rf(0.0f, 1.0f)); break;
+                case 1: wf(m + 0x18, coin() ? hi : lo); break;
+                case 2: wf(m + 0x18, (coin() ? hi : lo) + rf(-0.01f, 0.01f)); break;
+                default: wf(m + 0x18, coin() ? hi + rf(0.0f, 3.0f) : lo - rf(0.0f, 3.0f)); break;
+                }
+                wf(pv + 0x68, coin() ? 0.0f : rf(-0.3f, 0.3f));
+                if (ri(0, 3) == 0) w32(pv + 0x6c, 0xffffffffu);
+                else {
+                    const int32_t slot = ri(0, 7);
+                    w32(pv + 0x6c, u(slot));
+                    const uint32_t e = 0x0013e550u + u(slot) * 0x70u;
+                    w32(e + 0x88, ri(0, 3) != 0 ? m : pick(live()));
+                    w8(e + 0x74, u(ri(0, 1)));
+                }
+                hero_on(m);
+                const Vec4 top = Vec4{at.x, at.y, ee_read<float>(m + 0x18), 1.0f};
+                switch (ri(0, 3)) {  // the hero at its centre, near it (2 .. 32), on it off centre, or far
+                case 0: hero_at(jitter(top, 0.3f, 0.2f)); break;
+                case 1: { const float r = rf(1.5f, 34.0f), a = rf(-3.1f, 3.1f); hero_at(Vec4{at.x + r * std::cos(a), at.y + r * std::sin(a), coin() ? hi : lo, 1.0f}); break; }
+                case 2: hero_at(jitter(top, 1.5f, 0.2f)); break;
+                default: hero_at(jitter(at, 80.0f, 20.0f)); break;
+                }
+                {  // his ground's height: near the lift's lower stop, its upper, or elsewhere
+                    const float half = std::fabs(hi - lo) * 0.5f;
+                    const int k = ri(0, 2);
+                    wf(P + 0x2d8, k == 0 ? lo + rf(-half * 1.2f, half * 1.2f) : (k == 1 ? hi + rf(-half * 1.2f, half * 1.2f) : rf(0.0f, 900.0f)));
+                }
+                ee_ref<Vec4>(P + 0xd0) = jitter(ee_ref<Vec4>(P + 0x80), 2.0f, 1.0f);
+                if (st == 0) {
+                    const int k = ri(0, 3);
+                    if (k == 0) w32(pv + 0x80, 0xffffffffu);
+                    else if (k == 1 && lvd::path_count() > 0) w32(pv + 0x80, u(ri(0, lvd::path_count() - 1)));
+                } else if (st == 1) {
+                    wf(pv + 0x70, coin() ? rf(0.0f, 1.0f) : rf(0.97f, 1.0f));
+                    wf(pv + 0x74, rf(0.0f, 0.2f));
+                    ee_ref<Vec4>(OV(0x00166dc0)) = jitter(at, 20.0f, 8.0f);
+                    wfrand(OV(0x00166dd0), 3, -3.0f, 3.0f);
+                    w8(m + 0xbc, u(ri(0, 9)));
+                    if (ri(0, 4) != 0) cam5_ready();
+                } else if (st == 6 || st == 7) {
+                    wf(pv + 0x78, rf(-3.1f, 3.1f));
+                }
+                wf(m + 0x40, rf(-0.3f, 0.3f)); wf(m + 0x48, rf(-3.1f, 3.1f));
+                fifty();
+                finish();
+                return true;
+            };
+            pclass("p17_class1380", 0x002ee2b0, vo_class1380_update_l17, 400, lifts, vary1380);
+            // the camera's place and angles beside the lift (0x2ee9c0) on the test area
+            l17check("p17_2ee9c0", 0x002ee9c0, 150, Ret::None, [=] {
+                level();
+                const uint32_t m = pick(lifts());
+                ee_ref<Vec4>(OV(0x00166dc0)) = jitter(ee_ref<Vec4>(m + 0x10), 20.0f, 8.0f);
+                ee_ref<Vec4>(P + 0xd0) = jitter(ee_ref<Vec4>(m + 0x10), 5.0f, 2.0f);
+                wfrand(T4, 8, -9.0f, 9.0f);
+                return Args{{m, T4, T4 + 0x10}, {}};
+            }, [](A a) { vo_2ee9c0_l17(a.i[0], a.i[1], a.i[2]); return uint64_t{0}; });
+            // the hero's path on the lift (0x2eea70): him on it or not, walking or not, the moby turned
+            l17check("p17_2eea70", 0x002eea70, 150, Ret::None, [=] {
+                level();
+                const uint32_t m = pick(lifts());
+                hero_on(m);
+                wf(m + 0x48, rf(-3.1f, 3.1f)); wf(m + 0x40, rf(-0.4f, 0.4f));
+                moby_update_transform(m);
+                return Args{{m}, {}};
+            }, [](A a) { vo_2eea70_l17(a.i[0]); return uint64_t{0}; });
+        }
+
         g_ignored_words = class_ignored;
         g_ignore_lone_w_lanes = lone_w;
         g_extra_noop_hooks.clear();

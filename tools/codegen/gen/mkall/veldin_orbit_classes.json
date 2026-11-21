@@ -4,11 +4,9 @@
  "env": {
   "MKALL_HELPER_PREFIX": "vo_",
   "MKALL_WIDE_GPR": "",
-  "MKALL_UNIFORM": "vo_hook_2f0040_u,vo_hook_2f0070_u"
+  "MKALL_UNIFORM": ""
  },
  "entries": [
-  "2ed018:vo_class1379_update_l17:void:a0",
-  "2ee2b0:vo_class1380_update_l17:void:a0",
   "2eeb68:vo_class1382_update_l17:void:a0",
   "2f1940:vo_class1448_update_l17:void:a0",
   "2f26d0:vo_class1470_update_l17:void:a0",
@@ -17,8 +15,6 @@
   "2f40d8:vo_class1843_update_l17:void:a0",
   "2f5260:vo_class1873_update_l17:void:a0",
   "2f5390:vo_class1876_update_l17:void:a0",
-  "2f0040:vo_hook_2f0040_u",
-  "2f0070:vo_hook_2f0070_u",
   "2a95b8:vo_cb_2a95b8_l17:void:a0",
   "2d7cf0:vo_cb_2d7cf0_l17:void:a0",
   "2eb9a8:vo_cb_2eb9a8_l17:void:a0",
@@ -26,7 +22,6 @@
  ],
  "glue_files": [],
  "files": [
-  "src/game/ovl/veldin_orbit_classes_tr_4.cpp",
   "src/game/ovl/veldin_orbit_classes_tr_5.cpp",
   "src/game/ovl/veldin_orbit_classes_tr_6.cpp",
   "src/game/ovl/veldin_orbit_classes_tr_7.cpp",

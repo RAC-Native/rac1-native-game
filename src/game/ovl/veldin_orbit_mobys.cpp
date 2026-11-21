@@ -4,6 +4,7 @@
 // through moby +0x74 (and the draw lists' callbacks) reaches them only while the played level's overlay is level 17's.
 #include <game/ovl/veldin_orbit_hooks.h>
 #include <game/ovl/veldin_orbit_mobys.h>
+#include <game/ovl/carry_hooks_levels.h>
 #include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/shared_class1021.h>
@@ -62,7 +63,8 @@ void vo_hook_2efea8_m(uint32_t m) { carry_drop_hook(m, 0, 0, 0.0f, 0); }
 void vo_hook_2effb8_m(uint32_t m) { carry_drop_hook(m, 0, 0, 0.0f, 8); }
 
 // orig: (none) -- adapter of L17:0x002f0040 (class 1382's hook +0xc: the indirect-call form, the moby only)
-void vo_hook_2f0040_m(uint32_t m) { vo_hook_2f0040_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+// (its port: vo_carry_hookc_l17, carry_hooks_levels.cpp; the other argument registers zero, as the transliterated hook had them)
+void vo_hook_2f0040_m(uint32_t m) { vo_carry_hookc_l17(m, 0, 0, 0.0f); }
 }  // namespace
 
 // orig: (none) -- level 17's registrations

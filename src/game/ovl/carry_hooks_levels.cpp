@@ -205,6 +205,14 @@ int32_t orx_carry_hookc_l10(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) 
     return res;
 }
 
+// Drek's fleet's class 1382: hook +0xc (the overlay map pairs it with Veldin's class-749 hook 0x2d57d0, whose state is 9).
+// orig: L17:0x002f0040
+int32_t vo_carry_hookc_l17(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
+    const int32_t res = carry_hookc(m, pa1, pa2, pf12);
+    sb(m + 0x20, 0xc);
+    return res;
+}
+
 namespace {
 // a transliterated helper in the uniform ABI (TrRet: every argument register) called as a hook: a0 = the moby, a1 / a2 and
 // f12 passed on
@@ -351,8 +359,8 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         case L17_CASE(0x002efea8): ret = carry_drop_hook(m, a1, a2, f12, 0); return true;  // (shared_little.cpp: the carry hook +0)
         case L17_CASE(0x002eff30): ret = carry_drop_hook(m, a1, a2, f12, 4); return true;  // (shared_little.cpp: the carry hook +4)
         case L17_CASE(0x002effb8): ret = carry_drop_hook(m, a1, a2, f12, 8); return true;  // (shared_little.cpp: the carry hook +8)
-        case L17_CASE(0x002f0040): ret = u_call(vo_hook_2f0040_u, m, a1, a2, f12); return true;
-        case L17_CASE(0x002f0070): ret = u_call(vo_hook_2f0070_u, m, a1, a2, f12); return true;
+        case L17_CASE(0x002f0040): ret = vo_carry_hookc_l17(m, a1, a2, f12); return true;
+        case L17_CASE(0x002f0070): ret = static_cast<int32_t>(class_hook_pvars60_l6(m)); return true;  // (Blarg's L6:0x2ea800, the same code)
         default: return false;
         }
     case 18:  // Veldin, the finale: classes 0x238 (table 0x1f3498) and 0x772 (table 0x1f34c8); class 749's five hooks, Veldin's

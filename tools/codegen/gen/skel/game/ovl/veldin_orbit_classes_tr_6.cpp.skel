@@ -76,8 +76,4 @@ using namespace vu0m;
 
 //@gen vo_class1876_update_l17
 
-//@gen vo_hook_2f0040_u
-
-//@gen vo_hook_2f0070_u
-
 }  // namespace rac1
