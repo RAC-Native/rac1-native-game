@@ -70,6 +70,9 @@
 // - 39: Drek's fleet's pod (class 1448, L17:0x2f1940): counts its frames at rest (pvars +0xb0, cleared as it is set up and
 //   as it arrives) and offers its prompt, and takes the triangle, only past frame_scale_i(30) of them; the North American
 //   build offers it at once (veldin_orbit_pod.cpp)
+// - 43: Gemlik Base's breakable towers (class 170, L13:0x2cefc0, state 0): the hit proxy each spawns (class 1632, by
+//   L13:0x30bfb0) is scaled 2.8 instead of 2.7 of its class's scale and gets a hit record (its pvars +0 pointing at +0x20)
+//   and the moby flag 0x20 (+0x34), as the 1.02 build does (gemlik_tower.cpp)
 // - 49: Oltanis's gondola (class 685, L14:0x2ee8d8, state 1): its ride starts only while its up row (+0xe0) and the
 //   hero's moby's point the same way (their dot product positive), as well as the hero standing on it within 1 of its
 //   centre; the North American build tests only the latter (oltanis_gondola.cpp)
@@ -192,6 +195,11 @@ bool fixes102_vendor_holo_alpha();
 // build's value 0.7 (not 0.9) goes to +0x10 of the top's hit record (L13:0x2b5b08 on the PAL 2.00 disc); false with the
 // fix off, except on the PAL 2.00 disc (region_core_moved()), whose own code it is
 bool fixes102_gemlik_turret_aim();
+// orig: (none) — enhancement: fix 43: Gemlik Base's breakable tower (class 170, L13:0x2cefc0) and its hit proxy (class
+// 1632, spawned by L13:0x30bfb0): true when the 1.02 build's proxy applies (L13:0x2d0298 / 0x30d468 on the PAL 2.00 disc:
+// its scale 2.8 of its class's, not 2.7; its pvars +0 = their +0x20, a hit record; its +0x34 | 0x20); false with the fix
+// off, except on the PAL 2.00 disc (region_core_moved()), whose own code it is
+bool fixes102_gemlik_tower_proxy();
 // orig: (none) — enhancement: fix 49: Oltanis's gondola (class 685, olt_class685_update_l14 L14:0x2ee8d8, state 1): true
 // when the 1.02 build's test applies (L14:0x2f0050 on the PAL 2.00 disc: the ride starts only while the gondola's up row
 // +0xe0 and the hero's moby's agree, their dot product positive); false with the fix off, except on the PAL 2.00 disc

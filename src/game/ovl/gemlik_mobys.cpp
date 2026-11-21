@@ -72,22 +72,24 @@ void gemlik_moby_fns_register() {
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x003098d0), beam_draw);  // (class 1262)
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x0030a460), nov_water_751_draw_l1);  // (class 1263)
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x00245cf8), boss_health_bar_draw);  // (the HUD element 0x11)
-    // the level's own classes written by hand (gemlik_trigger_box.cpp, gemlik_lift.cpp, gemlik_turret.cpp, gemlik_ship.cpp)
+    // the level's own classes written by hand (gemlik_trigger_box.cpp, gemlik_lift.cpp, gemlik_turret.cpp, gemlik_ship.cpp,
+    // and below)
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002b0e80), gml_class6_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002b39e0), gml_class21_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002b41b8), gml_class29_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002b4c80), gml_class36_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002bb068), gml_class69_update_l13);
-    // the transliterated classes (gemlik_classes_tr_N.cpp, the translator)
-    ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002b50d8), gml_class63_update_l13);
+    // (gemlik_boss_shots.cpp, gemlik_drone.cpp, gemlik_swing.cpp, gemlik_tower.cpp, gemlik_asteroid.cpp, gemlik_target_group.cpp)
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002c1528), gml_class82_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002c2048), gml_class83_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002c25b8), gml_class101_update_l13);
-    ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002c4428), gml_class111_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002c7f38), gml_class127_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002cefc0), gml_class170_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002e1638), gml_class212_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002e4448), gml_class231_update_l13);
+    // the transliterated classes (gemlik_classes_tr_N.cpp, the translator)
+    ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002b50d8), gml_class63_update_l13);
+    ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002c4428), gml_class111_update_l13);
     // class 304 (the gold weapon case) stays transliterated: its port (gold_case_update_l1) starts the shared gold_weapon_scene,
     // which no batch compares (it waits on the sound driver's stream replies); the level's own copy 0x2a5390 runs instead
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002e7238), gml_class304_update_l13);

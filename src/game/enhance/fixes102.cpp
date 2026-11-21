@@ -20,7 +20,7 @@
 namespace rac1 {
 
 namespace {
-constexpr int FIXES[] = {1, 2, 3, 5, 6, 7, 11, 15, 16, 17, 18, 19, 20, 22, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 45, 46, 49};  // the fixes of the 1.02 Fixes row (fixes102.h)
+constexpr int FIXES[] = {1, 2, 3, 5, 6, 7, 11, 15, 16, 17, 18, 19, 20, 22, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36, 37, 38, 39, 43, 45, 46, 49};  // the fixes of the 1.02 Fixes row (fixes102.h)
 constexpr int GAMEPLAY[] = {4, 8, 9, 10, 12, 13, 14, 21, 23, 24, 25, 31};  // the fixes of the 1.02 Gameplay row (fixes102.h)
 
 // orig: (none) — enhancement: a list variable's fixes (RAC1_FIXES102 / RAC1_GAMEPLAY102) as bits (bit n: fix n), `set`
@@ -242,6 +242,14 @@ bool fixes102_vendor_holo_alpha() {
 bool fixes102_gemlik_turret_aim() {
     // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
     return fixes102_on(38) || region_core_moved();
+}
+
+// orig: (none) — enhancement (fixes102.h); the 1.02 build's L13:0x2d0298 / 0x30d468 (PAL 2.00 disc): Gemlik Base's
+// breakable tower (class 170) spawns its hit proxy (class 1632) at 2.8 of its class's scale, with a hit record and the
+// moby flag 0x20
+bool fixes102_gemlik_tower_proxy() {
+    // (region: on the PAL 2.00 disc, the 1.02 build, whatever the fix's row: its own code)
+    return fixes102_on(43) || region_core_moved();
 }
 
 // orig: (none) — enhancement (fixes102.h); the 1.02 build's L14:0x2f0050 (PAL 2.00 disc): Oltanis's gondola (class 685)
