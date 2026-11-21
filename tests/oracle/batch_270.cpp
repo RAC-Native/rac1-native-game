@@ -1637,6 +1637,213 @@ void batch_270() {
             put(SCR, shot_from());
             return Args{{shot_owner(), u(g), SCR}, {}};
         }, [](A a) { return r32(vf_divers_launch_l18(a.i[0], static_cast<int32_t>(a.i[1]), a.i[2])); });
+
+        // ---- P18.3 (part 2): the boss's moves and what it sets in the level (veldin_finale_boss_moves.cpp /
+        // veldin_finale_boss_level.cpp), each at its own address with every argument the original reads (the camera move's ninth
+        // word on the stack): the boss with its fight's pvars dealt (the arena one of the boxes its pvars name, its home inside
+        // and outside the orbit's radius, its speed, height, state, phase, last attack), the hero about the arena in his modes
+        // (0xf, 0x77 or another), the rafts and the ties of their boxes, the class 644 camera move, the scene's moby list. A third
+        // of the cases at 50 Hz where the frame time is read.
+        auto boss_dealt = [=]() -> uint32_t {
+            const std::vector<uint32_t> bs = mobys_with(0x002f2bf0);
+            if (bs.empty()) return 0u;
+            const uint32_t m = bs[0], pv = ee_read<uint32_t>(m + 0x78);
+            static const uint32_t boxes[] = {0x250, 0x254, 0x258, 0x25c, 0x294, 0x2a0};
+            w32(pv + 0x344, ee_read<uint32_t>(pv + boxes[ri(0, 5)]));
+            const Vec4 c = VV(lvd::box(lvd::BOXES, ee_read<int32_t>(pv + 0x344)) + 0x30);
+            put(pv + 0x3c0, near(c, 0, ri(0, 3) == 0 ? 60.0f : 26.0f, 3));
+            put(m + 0x10, near(VV(pv + 0x3c0), 0, 4, 2));
+            wf(pv + 0x374, ri(0, 3) == 0 ? rf(0, 0.12f) : rf(-0.5f, 2));
+            wf(pv + 0x3c8, c.z + rf(-6, 6));
+            static const uint8_t st[] = {2, 2, 12, 13, 13, 15, 15, 19, 21, 10};
+            w8(m + 0x20, st[ri(0, 9)]);
+            hero_at(near(c, 0, ri(0, 3) == 0 ? 70.0f : 32.0f, 3));
+            if (ri(0, 2) == 0) w32(0x001413dc, 0xf);
+            wf(0x0013f4b0, rf(0, 1.5f));
+            fifty();
+            // (in a third of the cases the frame time's square raised: the home's acceleration then reaches the top speed the move
+            // computes in one frame, so that top speed shows in +0x374)
+            if (ri(0, 2) == 0) wf(0x0015ed70, rf(0.05f, 0.5f));
+            return m;
+        };
+        own3("own1422_home_step", 0x002f6878, Ret::Int32, [=] {
+            const uint32_t m = boss_dealt();
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            const int k = ri(0, 3);
+            put(SCR, near(VV(pv + 0x3c0), k == 0 ? 0.0f : k == 1 ? 0.05f : 0.2f, k == 0 ? 0.09f : k == 1 ? 0.15f : 24.0f, 2));
+            return Args{{m, SCR}, {ri(0, 3) == 0 ? rf(0.01f, 0.2f) : rf(0.2f, 25)}};
+        }, [](A a) { return r32(vf_boss_home_step_l18(a.i[0], a.i[1], a.f[0])); });
+        own3("own1422_charge", 0x002f6960, Ret::None, [=] { return Args{{boss_dealt()}, {}}; },
+             [](A a) { vf_boss_charge_l18(a.i[0]); return uint64_t{0}; });
+        own3("own1422_orbit", 0x002f6aa0, Ret::None, [=] { return Args{{boss_dealt()}, {}}; },
+             [](A a) { vf_boss_orbit_l18(a.i[0]); return uint64_t{0}; });
+        own3("own1422_float_pick", 0x002f6e10, Ret::Int32, [=] {
+            const uint32_t m = boss_dealt();
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            const int32_t g = ri(0, 2) == 0 ? ee_read<int32_t>(pv + 0x204) : deal_group(0x24b);
+            w32(pv + 0x398, u(g));
+            if (ri(0, 8) == 0) w32(OV(0x001ab840) + u(g) * 4, 0);  // (the group without a list)
+            deal_states(g, {0, 1, 1, 2, 2, 3, 4, 5});
+            const std::vector<uint32_t> ms = group_mobys(g);
+            if (!ms.empty()) put(pv + 0x3c0, near(VV(pick(ms) + 0x10), 0, 30, 2));
+            if (coin()) put(m + 0xc0, Vec4{rf(-1, 1), rf(-1, 1), rf(-0.3f, 0.3f), 0});
+            return Args{{m}, {}};
+        }, [](A a) { return r32(vf_boss_float_pick_l18(a.i[0])); });
+        own3("own1422_next_attack", 0x002f70b8, Ret::Int32, [=] {
+            const uint32_t m = boss_dealt();
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            w32(pv + 0x34c, u(ri(0, 3)));
+            static const uint32_t last[] = {13, 14, 15, 16, 17, 19, 14, 19, 0, 12};
+            w32(pv + 0x350, last[ri(0, 9)]);
+            w32(pv + 0x364, ri(0, 3) == 0 ? 1u : 0u);
+            const Vec4 c = VV(lvd::box(lvd::BOXES, ee_read<int32_t>(pv + 0x25c)) + 0x30);
+            const bool far = coin();  // (past the charge's reach L18:0x162378 + 2 = 32 or within it)
+            hero_at(near(c, far ? 33.0f : 0.0f, far ? 70.0f : 31.0f, 2));
+            return Args{{m}, {}};
+        }, [](A a) { return r32(static_cast<uint32_t>(vf_boss_next_attack_l18(a.i[0]))); });
+        own3("own1422_bearing", 0x002f7220, Ret::None, [=] {
+            const std::vector<uint32_t> bs = mobys_with(0x002f2bf0);
+            const uint32_t m = !bs.empty() && coin() ? bs[0] : any_moby();
+            wf(m + 0x48, rf(-3.1f, 3.1f));
+            put(SCR, near(ee_ref<Vec4>(0x0013f3d0), 0, 30, 3));
+            put(SCR + 0x10, ri(0, 6) == 0 ? VV(SCR) : near(VV(SCR), 0, 30, 3));
+            const uint32_t out = !bs.empty() && coin() ? ee_read<uint32_t>(bs[0] + 0x78) + 0x140 : SCR + 0x100;
+            return Args{{m, out, SCR, SCR + 0x10}, {}};
+        }, [](A a) { vf_boss_bearing_l18(a.i[0], a.i[1], a.i[2], a.i[3]); return uint64_t{0}; });
+        // the camera move (class 644): started from five vectors (frames none, negative, few, many), its progress read back
+        auto pan_moby = [=] { return pick(mobys_with(0x002df608)); };
+        own3("own1422_pan_start", 0x002dfaa0, Ret::None, [=] {
+            fifty();
+            for (uint32_t k = 0; k < 0x50; k += 0x10) put(SCR + k, Vec4{rf(-700, 700), rf(-700, 700), rf(-10, 200), rf(-4, 4)});
+            const int32_t frames = ri(0, 8) == 0 ? ri(-2, 1) : ri(10, 600);
+            return Args{{pan_moby(), SCR, SCR + 0x10, SCR + 0x20, SCR + 0x30, SCR + 0x40, u(frames), u(ri(0, 6) == 0 ? ri(-1, 1) : ri(2, 300)),
+                         coin() ? u(ri(0, 1)) : R()}, {}};
+        }, [](A a) { vf_pan_start_l18(a.i[0], a.i[1], a.i[2], a.i[3], a.i[4], a.i[5], static_cast<int32_t>(a.i[6]), static_cast<int32_t>(a.i[7]), a.i[8]); return uint64_t{0}; });
+        own3("own1422_pan_progress", 0x002dfb90, Ret::Float, [=] {
+            const uint32_t o = pan_moby();
+            wf(ee_read<uint32_t>(o + 0x78) + 0x60, rf(-1, 2));
+            return Args{{o}, {}};
+        }, [](A a) { return fbits(vf_pan_progress_l18(a.i[0])); });
+        // the rafts (class 1381): sent off with their platforms, sunk by the ball (in each state, another class's update in part),
+        // the ties of the three kinds (and other kinds the level loaded) freed in the rafts' boxes and others
+        auto raft_dealt = [=] {
+            const uint32_t o = pick(mobys_with(0x002f16f0));
+            if (o == 0) return 0u;
+            const uint32_t pv = ee_read<uint32_t>(o + 0x78);
+            w8(o + 0x20, ri(0, 2) == 0 ? 1u : u(ri(0, 4)));
+            if (ri(0, 5) == 0) w16(o + 0xa6, 0x566);
+            if (coin()) { w32(pv + 0x330, R()); w32(pv + 0x344, R()); }
+            if (ri(0, 5) == 0) w32(pv + 0xc, 0xffffffffu);
+            else if (ri(0, 4) == 0) w32(pv + 0xc, u(ri(0, lvd::box_count(lvd::BOXES) - 1)));
+            return o;
+        };
+        auto ties_dealt = [=](uint32_t kind) {  // the kind's instances' +0xc / +0x14 set to other values in part
+            const uint32_t idx = ee_read<uint8_t>(0x001c6500 + kind);
+            const uint32_t hdr = ee_read<uint32_t>(0x001c6200 + idx * 4);
+            const uint32_t inst = ee_read<uint32_t>(hdr + 0x28);
+            for (int32_t i = 0; i < ee_read<int16_t>(hdr + 0x26); ++i)
+                if (coin()) { w32(inst + u(i) * 0x20 + 0xc, coin() ? 1u : R()); wf(inst + u(i) * 0x20 + 0x14, rf(0, 1)); }
+        };
+        // a few of the kind's instances moved about the box `box`'s edges (inside, outside, past one side only: the box's own
+        // frame through mat3_transform, as the original tests it)
+        auto ties_near_box = [=](uint32_t kind, int32_t box) {
+            const uint32_t hdr = ee_read<uint32_t>(0x001c6200 + u(ee_read<uint8_t>(0x001c6500 + kind)) * 4);
+            const int32_t n = ee_read<int16_t>(hdr + 0x26);
+            if (n <= 0) return;
+            const uint32_t b = lvd::box(lvd::BOXES, box);
+            for (int k = 0, put_n = 0; k < 400 && put_n < 6; ++k) {
+                Vec4 p = near(VV(b + 0x30), 0, rf(1, 40), 0), loc{};
+                vec3_sub(loc, p, VV(b + 0x30));
+                mat3_transform(loc, loc, ee_ref<Mat4>(b + 0x40));
+                const float e = std::max(std::fabs(loc.x), std::fabs(loc.y));
+                if (e < 0.6f || e > 1.6f) continue;
+                const uint32_t inst = ee_read<uint32_t>(hdr + 0x28) + u(ri(0, n - 1)) * 0x20;
+                wf(inst + 0, p.x); wf(inst + 4, p.y); wf(inst + 8, p.z);
+                ++put_n;
+            }
+        };
+        own3("own1422_raft_hold", 0x002f1cc8, Ret::None, [=] {
+            const uint32_t o = raft_dealt();
+            const uint32_t pv = ee_read<uint32_t>(o + 0x78);
+            const int32_t n = ee_read<int32_t>(pv + 0x338);
+            if (ri(0, 3) == 0) w32(pv + 0x338, u(ri(0, std::max(0, n))));
+            put(o + 0x10, near(VV(o + 0x10), 0, 6, 1));
+            return Args{{o}, {}};
+        }, [](A a) { vf_raft_hold_l18(a.i[0]); return uint64_t{0}; });
+        own3("own1422_ties_free", 0x002f1d08, Ret::None, [=] {
+            static const uint32_t kinds[] = {0x802, 0x908, 0x954};
+            uint32_t kind = kinds[ri(0, 2)];
+            if (ri(0, 5) == 0)
+                for (int t = 0; t < 50; ++t) {
+                    const uint32_t k = u(ri(0, 0xbff));
+                    if (ee_read<uint8_t>(0x001c6500 + k) != 0xff) { kind = k; break; }
+                }
+            ties_dealt(kind);
+            const std::vector<uint32_t> rafts = mobys_with(0x002f16f0);
+            int32_t box = ri(0, lvd::box_count(lvd::BOXES) - 1);
+            if (!rafts.empty() && ri(0, 3) != 0) box = ee_read<int32_t>(ee_read<uint32_t>(pick(rafts) + 0x78) + 0xc);
+            if (box < 0) box = 0;
+            ties_near_box(kind, box);
+            return Args{{kind, u(box)}, {}};
+        }, [](A a) { vf_ties_free_l18(a.i[0], static_cast<int32_t>(a.i[1])); return uint64_t{0}; });
+        own3("own1422_raft_sink", 0x002f1c38, Ret::None, [=] {
+            const uint32_t o = raft_dealt();
+            for (const uint32_t kind : {0x802u, 0x908u, 0x954u}) {
+                ties_dealt(kind);
+                if (coin() && ee_read<int32_t>(ee_read<uint32_t>(o + 0x78) + 0xc) >= 0) ties_near_box(kind, ee_read<int32_t>(ee_read<uint32_t>(o + 0x78) + 0xc));
+            }
+            for (const uint32_t p : group_mobys(ee_read<uint8_t>(o + 0x21))) w8(p + 0xbc, u(ri(0, 3)));
+            return Args{{o}, {}};
+        }, [](A a) { vf_raft_sink_l18(a.i[0]); return uint64_t{0}; });
+        // 0x265ff8: the record of the boss's (or another moby's) pvar word 0 by the hero's distance (no moby, no flag 0x20, no record)
+        own3("own1422_record_dist", 0x00265ff8, Ret::None, [=] {
+            const std::vector<uint32_t> bs = mobys_with(0x002f2bf0);
+            uint32_t m = !bs.empty() && coin() ? bs[0] : any_moby();
+            if (ri(0, 10) == 0) m = 0;
+            if (m != 0) {  // (a moby without pvars in RAM never has the flag; another than the boss gets a record in the test area)
+                const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                const bool has_pv = pv >= 0x00100000 && pv < 0x01ff0000;
+                const bool own = (ee_read<uint16_t>(m + 0x34) & 0x20) != 0 && coin();  // (the game's own record kept)
+                if (has_pv && ri(0, 4) != 0) w16(m + 0x34, ee_read<uint16_t>(m + 0x34) | 0x20); else w16(m + 0x34, ee_read<uint16_t>(m + 0x34) & 0xffdf);
+                if (has_pv && !own) w32(pv, ri(0, 8) == 0 ? 0u : SCR + 0x200);
+                w8(SCR + 0x20a, R() & 0xff);
+                hero_at(near(VV(m + 0x10), 0, ri(0, 3) == 0 ? 80.0f : 20.0f, 3));
+            }
+            return Args{{m}, {coin() ? 0.5f : rf(0, 4)}};
+        }, [](A a) { vf_record_by_hero_distance_l18(a.i[0], a.f[0]); return uint64_t{0}; });
+        // 0x2f5e18: the hero's ride on a floating platform (he stands on one or not, in his state 0x77 or not; counted already)
+        own3("own1422_float_count", 0x002f5e18, Ret::None, [=] {
+            const std::vector<uint32_t> bs = mobys_with(0x002f2bf0);
+            if (bs.empty()) return Args{{0u}, {}};
+            const uint32_t pv = ee_read<uint32_t>(bs[0] + 0x78);
+            const std::vector<uint32_t> fl = mobys_with(0x002d82c0);
+            auto some = [&] { const int k = ri(0, 4); return k == 0 ? 0u : k == 1 ? any_moby() : pick(fl); };
+            w32(pv + 0x3e4, ri(0, 4) == 0 ? 1u : 0u);
+            w32(pv + 0x3e8, some());
+            w32(0x0013f650, coin() ? 1u : 0u);
+            w32(0x0013f64c, some());
+            if (ri(0, 3) != 0) w32(0x001413d4, 0x77);
+            w32(0x001623a8, u(ri(0, 5)));
+            return Args{{bs[0]}, {}};
+        }, [](A a) { vf_hero_float_count_l18(a.i[0]); return uint64_t{0}; });
+        // 0x2f2b18: Drek's model (class 1249) of the scene's moby list scaled (the level's mode 2 or not, the flag, the list's
+        // count, Drek's models and others, the joint node set up already)
+        own3("own1422_drek_scale", 0x002f2b18, Ret::None, [=] {
+            w32(0x0015f5c4, ri(0, 3) != 0 ? 2u : u(ri(0, 5)));
+            w8(0x0015edb0, ri(0, 3) != 0 ? 1u : 0u);
+            const std::vector<uint32_t> dk = class_moby(0x4e1);
+            const std::vector<uint32_t> bs = mobys_with(0x002f2bf0);
+            const int32_t n = ri(0, 6) == 0 ? ri(-1, 0) : ri(1, 8);
+            w16(0x0016d2a4, u(n) & 0xffff);
+            for (int32_t i = 0; i < std::max(n, 0); ++i) {
+                uint32_t o = ri(0, 2) == 0 || dk.empty() ? (bs.empty() || coin() ? any_moby() : bs[0]) : pick(dk);
+                if (ri(0, 5) == 0 && !bs.empty()) { o = bs[0]; w16(o + 0xa6, 0x4e1); }
+                w32(0x0016d260 + 0x178 + u(i) * 4, o);
+            }
+            w8(0x0017ce40 + 1, ri(0, 4) == 0 ? 1u : 0u);
+            wf(0x001623a4, rf(0.2f, 3));
+            return Args{{}, {}};
+        }, [](A) { vf_drek_scale_l18(); return uint64_t{0}; });
         g_extra_noop_hooks.clear();
     }
 

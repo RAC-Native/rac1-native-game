@@ -26,3 +26,16 @@
 0x002d5cf8: set32(v0, vf_bomb_throw_l18(a0.w(), static_cast<int32_t>(a1.w()), a2.w(), a3.w(), t0.w(), fr[12]));
 0x002fc668: set32(v0, vf_robot_launch_l18(static_cast<int32_t>(a0.w()), a1.w(), a2.w(), fr[12]));
 0x002f0030: set32(v0, vf_divers_launch_l18(a0.w(), static_cast<int32_t>(a1.w()), a2.w()));
+0x002dfaa0: vf_pan_start_l18(a0.w(), a1.w(), a2.w(), a3.w(), t0.w(), t1.w(), static_cast<int32_t>(t2.w()), static_cast<int32_t>(t3.w()), lw_(sp.w() + 0x0));
+0x002dfb90: fr[0] = vf_pan_progress_l18(a0.w());
+0x002f1cc8: vf_raft_hold_l18(a0.w());
+0x002f1c38: vf_raft_sink_l18(a0.w());
+0x00265ff8: vf_record_by_hero_distance_l18(a0.w(), fr[12]);
+0x002f5e18: vf_hero_float_count_l18(a0.w());
+0x002f2b18: vf_drek_scale_l18();
+0x002f7220: vf_boss_bearing_l18(a0.w(), a1.w(), a2.w(), a3.w());
+0x002f6878: set32(v0, vf_boss_home_step_l18(a0.w(), a1.w(), fr[12]));
+0x002f6960: vf_boss_charge_l18(a0.w());
+0x002f6aa0: vf_boss_orbit_l18(a0.w());
+0x002f6e10: set32(v0, vf_boss_float_pick_l18(a0.w()));
+0x002f70b8: set32(v0, static_cast<uint32_t>(vf_boss_next_attack_l18(a0.w())));

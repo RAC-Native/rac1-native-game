@@ -3,7 +3,7 @@
 // veldin_finale_rail_switch.cpp, veldin_finale_platforms.cpp,
 // veldin_finale_camera_pan.cpp, veldin_finale_breakable.cpp, veldin_finale_energy_ball.cpp, veldin_finale_diver.cpp,
 // veldin_finale_raft.cpp, veldin_finale_barrier.cpp, veldin_finale_water.cpp, veldin_finale_boss_props.cpp,
-// veldin_finale_boss_spawns.cpp.
+// veldin_finale_boss_spawns.cpp, veldin_finale_boss_level.cpp, veldin_finale_boss_moves.cpp.
 #ifndef RAC1_GAME_OVL_VELDIN_FINALE_OWN_H
 #define RAC1_GAME_OVL_VELDIN_FINALE_OWN_H
 
@@ -85,6 +85,30 @@ void vf_ball_launch_l18(uint32_t m, uint32_t at, uint32_t target, uint32_t go, f
 uint32_t vf_bomb_throw_l18(uint32_t owner, int32_t group, uint32_t from, uint32_t to, uint32_t fuse, float speed);  // L18:0x002d5cf8
 uint32_t vf_robot_launch_l18(int32_t group, uint32_t from, uint32_t to, float speed);                                // L18:0x002fc668
 uint32_t vf_divers_launch_l18(uint32_t owner, int32_t group, uint32_t from);                                         // L18:0x002f0030
+
+// the boss in the level (veldin_finale_boss_level.cpp; called by the generated boss through the unit's glue): the camera
+// move (class 644) started from five EE vectors, its progress; a raft (class 1381) sent off with its platforms, the ties
+// of a kind freed in a box, a raft sunk by the energy ball; the byte +0xa of a moby's pvar-word-0 record by the hero's
+// distance; the hero's ride on a floating platform counted; the scene's Drek model scaled
+void vf_pan_start_l18(uint32_t pan, uint32_t first, uint32_t last, uint32_t first_angles, uint32_t last_angles,
+                      uint32_t hero_at, int32_t frames, int32_t wait, uint32_t clank);  // L18:0x002dfaa0
+float vf_pan_progress_l18(uint32_t pan);                                                  // L18:0x002dfb90
+void vf_raft_hold_l18(uint32_t o);                                                        // L18:0x002f1cc8
+void vf_ties_free_l18(uint32_t kind, int32_t box);                                        // L18:0x002f1d08
+void vf_raft_sink_l18(uint32_t o);                                                        // L18:0x002f1c38
+void vf_record_by_hero_distance_l18(uint32_t m, float scale);                             // L18:0x00265ff8
+void vf_hero_float_count_l18(uint32_t m);                                                 // L18:0x002f5e18
+void vf_drek_scale_l18();                                                                 // L18:0x002f2b18
+
+// the boss's moves (veldin_finale_boss_moves.cpp; called by the generated boss through the unit's glue): its home
+// stepped toward an EE point (1: there), the charge at the hero, the orbit about the arena, the floating platform to
+// fly to (0: none), the next attack (a state), a bearing against a moby's yaw into `out` + 0x68
+uint32_t vf_boss_home_step_l18(uint32_t m, uint32_t goal, float max);       // L18:0x002f6878
+void vf_boss_charge_l18(uint32_t m);                                         // L18:0x002f6960
+void vf_boss_orbit_l18(uint32_t m);                                          // L18:0x002f6aa0
+uint32_t vf_boss_float_pick_l18(uint32_t m);                                 // L18:0x002f6e10
+int32_t vf_boss_next_attack_l18(uint32_t m);                                 // L18:0x002f70b8
+void vf_boss_bearing_l18(uint32_t m, uint32_t out, uint32_t from, uint32_t to);  // L18:0x002f7220
 
 }  // namespace rac1
 
