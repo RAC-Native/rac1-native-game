@@ -12,6 +12,7 @@
 #include <game/ovl/hero_move_mode.h>
 #include <game/level/level_data.h>
 #include <game/ovl/quartu_mobys.h>
+#include <game/ovl/variants_l15.h>
 #include <game/ovl/kerwan_camera.h>
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/shared_cam19.h>
@@ -89,7 +90,8 @@ bool c2a_spr_check(const char* name) {
     static const char* const kNames[] = {"class28", "class44", "class156", "class1257", "class1427", "mobys_in_sphere",
                                          "class193", "class325", "class403", "class934", "hero_move_mode", "class1134",
                                          "class123", "class1430", "class1446", "class200", "class256", "class408",
-                                         "class49", "class567", "class805", "class819", "class233_full", "class491_full"};  // (class233_full: sphere_collide in 0x247e90; class491_full: the punch's mobys_in_sphere / segment_collide, walker_step, the floor probes)
+                                         "class49", "class567", "class805", "class819", "class233_full", "class491_full",
+                                         "class1257_full", "class1430_full", "class1446_full"};  // (class233_full: sphere_collide in 0x247e90; class491_full: the punch's mobys_in_sphere / segment_collide, walker_step, the floor probes)
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -1532,6 +1534,452 @@ void batch_240() {
                 g_ignored_words.resize(ign_before);
             }
         }
+    }
+
+    // P15.3 (the rest): Quartu's Giant Clank part, hand-ported (quartu_props.cpp, quartu_triggers.cpp, quartu_clank_pad.cpp,
+    // quartu_class1446.cpp, quartu_class1469.cpp, quartu_cam22.cpp): the play-test spots, then targeted checks
+    g_ignored_words = saved_ignored;
+    if (g_oracle_level == 15) {
+        const char* only = std::getenv("ORACLE_ONLY");
+        if (only == nullptr || std::strcmp(only, "p15_4_info") == 0) {  // the play-test spots: each placed moby of the classes, with the words its code reads
+            level();
+            const uint32_t pool = ee_read<uint32_t>(OV(0x0015ffd8));
+            for (const auto& [cname, fn] : std::vector<std::pair<const char*, uint32_t>>{{"class937", 0x002e46b0}, {"class1250", 0x002e73c0},
+                     {"class1560", 0x002edb20}, {"class1394", 0x002eabd8}, {"class1257", 0x002e7f68}, {"class1425", 0x002eb928}, {"class1388", 0x002ea748},
+                     {"class1419", 0x002eb4c0}, {"class1430", 0x002ec030}, {"class1446", 0x002ec760}, {"class1469", 0x002ed398}}) {
+                for (const uint32_t m : mobys_with(fn)) {
+                    const Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    std::printf("  INFO %s: moby %u uid %d at %.1f %.1f %.1f state %u cp %u pv", cname, (m - pool) >> 8, ee_read<int16_t>(m + 0xb2), q.x, q.y, q.z,
+                                ee_read<uint8_t>(m + 0x20), ee_read<uint8_t>(m + 0xb0));
+                    if (pv != 0) for (uint32_t o = 0; o < 0x60; o += 4) std::printf(" %x", ee_read<uint32_t>(pv + o));
+                    std::printf("\n");
+                }
+            }
+            for (uint32_t i = 0; i < 48; ++i)
+                if (ee_read<uint32_t>(OV(0x00169890) + i * 4) != 0) {
+                    const uint32_t cam = OV(0x00167150) + i * 0xa0;
+                    std::printf("  INFO camera %u: row %d entry %d cur86 %d\n", i, ee_read<int16_t>(cam + 0x8c), ee_read<int16_t>(cam + 0x84), ee_read<int16_t>(ee_read<uint32_t>(L15_ADDR(0x00167400u)) + 0x86));
+                }
+            for (int32_t i = 0; i < lvd::camera_count(); ++i) {
+                const uint32_t d = lvd::camera_data(i);
+                std::printf("  INFO level camera %d: type %d data", i, ee_read<int32_t>(lvd::camera(i)));
+                if (d != 0) for (uint32_t o = 0; o < 0x50; o += 4) std::printf(" %x", ee_read<uint32_t>(d + o));
+                std::printf("\n");
+            }
+        }
+    }
+    if (g_oracle_level == 15) {
+        g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};
+        auto maybe_50hz = [] {
+            if (ri(0, 2) == 0) { wf(0x0015ed68, 1.2f); wf(0x0015ed6c, 0.02f); wf(0x0015ed70, 0.0004f); }
+        };
+        if (std::getenv("B240_INFO") != nullptr) {
+            level();
+            int n750 = 0;
+            for (uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)); m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100) if (ee_read<uint8_t>(m + 0x20) < 0xfe && ee_read<int16_t>(m + 0xa6) == 0x2ee) ++n750;
+            std::printf("INFO class 750 mobys live: %d\n", n750);
+        }
+        // the hero at `p`, his moby with him (target and distance tests read either)
+        auto hero_to = [](Vec4 p) {
+            ee_ref<Vec4>(0x0013f3d0u) = p;
+            if (const uint32_t hm = ee_read<uint32_t>(0x001413d0u); hm != 0) { Vec4 q = p; q.w = ee_ref<Vec4>(hm + 0x10).w; ee_ref<Vec4>(hm + 0x10) = q; }
+        };
+        // the help system and the voice line free (the snapshot's busy word and stream refuse every request)
+        auto help_free = [] { w32(OV(0x00179410), 0); w32(OV(0x00179434), 0xffffffffu); w32(0x00151720, 0); w32(0x001516ec, 0xffffffffu); };
+        auto live = [] {
+            std::vector<uint32_t> v;
+            for (uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)); m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100)
+                if (ee_read<uint8_t>(m + 0x20) < 0xfe && ee_read<uint32_t>(m + 0x78) != 0) v.push_back(m);
+            return v;
+        };
+        auto pick = [](const std::vector<uint32_t>& v) { return v[static_cast<size_t>(ri(0, static_cast<int>(v.size()) - 1))]; };
+        auto shape_at = [](lvd::BoxList list, int32_t i) { return ee_ref<Vec4>(lvd::box(list, i) + 0x30); };
+        auto near = [](Vec4 p, float r, float dz) { const float a = rf(-3.1f, 3.1f), d = rf(0.0f, r); p.x += d * std::cos(a); p.y += d * std::sin(a); p.z += dz; return p; };
+        auto index_of = [](uint32_t m) { return (m - ee_read<uint32_t>(OV(0x0015ffd8))) >> 8; };
+
+        // class 937 (0x2e46b0): the linked moby in its states 2 / 4 (and others), its flag +0x10 both ways, no link
+        if (const std::vector<uint32_t> ms = mobys_with(0x002e46b0); !ms.empty())
+            lvcheck("class937_full", 0x002e46b0, 120, Ret::None, [=] {
+                level(); maybe_50hz();
+                const uint32_t m = pick(ms), pv = ee_read<uint32_t>(m + 0x78);
+                const int r = ri(0, 4);
+                if (r == 0) w32(pv, 0xffffffffu);
+                else if (r >= 2) w32(pv, index_of(pick(live())));
+                if (const int32_t link = ee_read<int32_t>(pv); link != -1) {
+                    const uint32_t o = ee_read<uint32_t>(OV(0x0015ffd8)) + (u(link) << 8);
+                    static const uint8_t st[] = {2, 4, 2, 4, 0, 3, 1};
+                    w8(o + 0x20, st[ri(0, 6)]);
+                    if (ee_read<uint32_t>(o + 0x78) != 0) w32(ee_read<uint32_t>(o + 0x78) + 0x10, coin() ? 1u : 0u);
+                }
+                wf(m + 0x48, rf(-3.1f, 3.1f));
+                return Args{{m}, {}};
+            }, [](A a) { qua_class937_update_l15(a.i[0]); return uint64_t{0}; });
+
+        // class 1560 (0x2edb20): in a scene or not, each shot of the scene, the scene's moby list dealt from the level's mobys
+        if (const std::vector<uint32_t> ms = mobys_with(0x002edb20); !ms.empty())
+            lvcheck("class1560_full", 0x002edb20, 120, Ret::None, [=] {
+                level(); maybe_50hz();
+                const uint32_t m = pick(ms);
+                w8(m + 0x20, u(ri(0, 2)));
+                w32(L15_ADDR(0x0015f5c4u), ri(0, 2) != 0 ? 2u : u(ri(0, 3)));
+                w32(L15_ADDR(0x0016ce90u), u(ri(0, 7)));
+                const std::vector<uint32_t> lv = live();
+                // (scene_moby_smoke smokes only the scene's mobys, class 750: the level's own, when it has any, else any live moby,
+                // which it leaves alone; a moby made class 750 is smoked by Veldin's port otherwise than by the level's copy when it
+                // has no joint chain of the kind the scenes' mobys have: not dealt)
+                std::vector<uint32_t> own;
+                for (const uint32_t o : lv) if (ee_read<int16_t>(o + 0xa6) == 0x2ee) own.push_back(o);
+                for (uint32_t k = 0; k < 5; ++k) w32(L15_ADDR(0x0016cfd8u) + 4 * k, !own.empty() && ri(0, 4) != 0 ? pick(own) : pick(lv));
+                return Args{{m}, {}};
+            }, [](A a) { qua_class1560_update_l15(a.i[0]); return uint64_t{0}; });
+
+        // class 1257 (0x2e7f68): a ball spawned as its dropper spawns it (0x2e7ed8's fields), falling onto the floor, a moby or the hero,
+        // riding a moby (gone, or one with a pvar word 2), hit by its own class or another, with its burst flag set
+        // (this check only: the collision record's w lanes, OV(0x173e40) .. 0x173ec0, a known difference of the shared collision ports)
+        const size_t ign_1257 = g_ignored_words.size();
+        for (uint32_t k = 0; k < 8; ++k) g_ignored_words.push_back(OV(0x00173e40) + k * 0x10 + 0xc);
+        if (const std::vector<uint32_t> drops = mobys_with(0x002eabd8); !drops.empty())
+            lvcheck("class1257_full", 0x002e7f68, 240, Ret::None, [=] {
+                level(); maybe_50hz();
+                const std::vector<uint32_t> lv = live();
+                std::vector<uint32_t> solid;
+                for (const uint32_t o : lv) if (ee_read<uint32_t>(o + 0x94) != 0) solid.push_back(o);
+                const int where = ri(0, 3);
+                const Vec4 from = where == 0 ? ee_ref<Vec4>(pick(drops) + 0x10) : where == 1 ? ee_ref<Vec4>(pick(solid) + 0x10) : where == 2 ? ee_ref<Vec4>(0x0013f3d0u)
+                                                                                     : ee_ref<Vec4>(pick(mobys_with(0x002e73c0)) + 0x10);
+                const uint32_t b = moby_spawn(0x4e9);
+                if (b == 0) return Args{{0}, {}};
+                const uint32_t pv = ee_read<uint32_t>(b + 0x78);
+                w16(b + 0x32, 0x7f); w8(b + 0x30, 0xff); w8(b + 0x31, 1); w8(b + 0x20, 0); w8(b + 0xbc, 0); w32(pv + 0x10, 0);
+                ee_ref<Vec4>(pv) = Vec4{};
+                ee_ref<Vec4>(b + 0x10) = near(from, 0.5f, where == 0 ? -rf(0.0f, 3.0f) : rf(0.0f, 1.5f));
+                w32(b + 0x94, ee_read<uint32_t>(ee_read<uint32_t>(b + 0x24) + 0x10));
+                w32(b + 0xa0, 0x80807f7fu);  // (not in the grid)
+                moby_update_transform(b);
+                const int st = ri(0, 3);
+                w8(b + 0x20, u(st == 3 ? ri(2, 5) : st == 2 ? 0 : st));
+                if (st == 0 || st == 2) wf(pv + 8, -rf(0.0f, 0.6f));
+                if (st == 1) {
+                    // (the mounts: the conveyor pieces the droppers drop onto, whose pvar word 2 is their attach record; another solid moby)
+                    const uint32_t mount = ri(0, 5) == 0 ? 0u : ri(0, 3) != 0 ? pick(mobys_with(0x002e73c0)) : pick(solid);
+                    w32(pv + 0x10, mount);
+                    if (mount != 0) {
+                        const int k = ri(0, 5);
+                        if (k == 0) w8(mount + 0x20, 0xfe); else if (k == 1) w8(mount + 0x20, 0xfd);
+                        Vec4 p = ee_ref<Vec4>(mount + 0x10); p.z += rf(0.0f, 1.0f); ee_ref<Vec4>(b + 0x10) = p;
+                    }
+                }
+                if (st == 1 && coin()) wfrand(pv, 3, -0.3f, 0.3f);  // (an old velocity the ride replaces)
+                if (ri(0, 5) == 0) w8(b + 0xbc, 1);
+                if (ri(0, 2) == 0) {  // a hit naming it, from a moby of its class or another
+                    const uint32_t idx = u(ri(0, 63)), e = OV(0x00178100) + (idx << 6);
+                    w8(b + 0xa4, idx); w32(e + 0x34, b); w32(e + 0x24, coin() ? 0x830000u : (0x10000u << ri(0, 7)));
+                    w32(e + 0x20, ri(0, 3) == 0 ? 0u : coin() ? b : pick(lv));
+                }
+                seed_rand();
+                return Args{{b}, {}};
+            }, [](A a) { if (a.i[0] != 0) qua_class1257_update_l15(a.i[0]); return uint64_t{0}; });
+        g_ignored_words.resize(ign_1257);
+
+        // class 1425 (0x2eb928): its puffs (one frame in 0x16219c - 1), the particle compared whole (the class loop leaves its +0x2c out)
+        if (const std::vector<uint32_t> ms = mobys_with(0x002eb928); !ms.empty())
+            lvcheck("class1425_full", 0x002eb928, 120, Ret::None, [=] {
+                level(); maybe_50hz();
+                const uint32_t m = pick(ms);
+                if (coin()) wf(ee_read<uint32_t>(m + 0x78), rf(-2.0f, 6.0f));
+                if (ri(0, 2) == 0) w32(L15_ADDR(0x0016219cu), u(ri(2, 6)));
+                seed_rand();
+                return Args{{m}, {}};
+            }, [](A a) { qua_class1425_update_l15(a.i[0]); return uint64_t{0}; });
+
+        // class 1388 (0x2ea748): set up with the item held or not, waiting (the hero 3 or more away: nearer starts a scene the
+        // interpreter cannot run), its scene running, done
+        if (const std::vector<uint32_t> ms = mobys_with(0x002ea748); !ms.empty())
+            lvcheck("class1388_full", 0x002ea748, 120, Ret::None, [=] {
+                level(); maybe_50hz();
+                const uint32_t m = pick(ms);
+                static const uint8_t st[] = {0, 1, 2, 3, 4};
+                const uint8_t s = st[ri(0, 4)];
+                w8(m + 0x20, s);
+                w8(0x0013d50a, coin() ? 1u : 0u);
+                if (s == 2) w32(L15_ADDR(0x0015f5c4u), 2);  // (the scene still running: the level change waits)
+                Vec4 h = ee_ref<Vec4>(m + 0x10); h.x += rf(3.05f, 9.0f) * (coin() ? 1.0f : -1.0f); hero_to(h);
+                wf(m + 0x48, rf(-3.1f, 3.1f));
+                return Args{{m}, {}};
+            }, [](A a) { qua_class1388_update_l15(a.i[0]); return uint64_t{0}; });
+
+        // class 1419 (0x2eb4c0): waiting with its checkpoint collected or not, 0x161ac0, the hero in its box or not, the linked moby
+        // in its state 3 or not (all four at once start a scene: left out); its other states inside a scene (or the movie of state 2)
+        if (const std::vector<uint32_t> ms = mobys_with(0x002eb4c0); !ms.empty())
+            lvcheck("class1419_full", 0x002eb4c0, 120, Ret::None, [=] {
+                level(); maybe_50hz();
+                const uint32_t m = pick(ms), pv = ee_read<uint32_t>(m + 0x78);
+                const int s = ri(0, 5);
+                w8(m + 0x20, u(s));
+                w32(L15_ADDR(0x0015f5c4u), (s == 1 || s == 3 || ri(0, 2) == 0) ? 2u : 0u);
+                const uint32_t cp = 0x0014c050u + ee_read<uint8_t>(m + 0xb0) + (ee_read<uint32_t>(0x0015ed84u) << 4);
+                w8(cp, coin() ? 0xffu : 0u);
+                w32(L15_ADDR(0x00161ac0u), ri(0, 3) == 0 ? 1u : 0u);
+                const bool in = coin();
+                if (in) hero_to(shape_at(lvd::BOXES, ee_read<int32_t>(pv)));
+                const uint32_t link = ee_read<uint32_t>(OV(0x0015ffd8)) + (ee_read<uint32_t>(pv + 8) << 8);
+                w8(link + 0x20, (in && ee_read<uint8_t>(cp) != 0xff && ee_read<uint32_t>(L15_ADDR(0x00161ac0u)) == 0) ? 2u : (coin() ? 3u : 1u));
+                return Args{{m}, {}};
+            }, [](A a) { qua_class1419_update_l15(a.i[0]); return uint64_t{0}; });
+
+        // the subtitle callback (0x2eb6b8): the scene's shots 3 / 4 (and others), its frame inside each text's window, at its edges, or
+        // anywhere; the packet cursor on a buffer of the test area
+        if (const std::vector<uint32_t> ms = mobys_with(0x002eb4c0); !ms.empty())
+            lvcheck("cb2eb6b8_text", 0x002eb6b8, 240, Ret::None, [=] {
+                level(); maybe_50hz();
+                w32(OV(0x001611c0), 0x00800000u + u(ri(0, 8)) * 0x10u);
+                static const int32_t shots[] = {3, 3, 3, 4, 4, 1, 5};
+                const int32_t shot = shots[ri(0, 6)];
+                static const int32_t win[4][2] = {{0xb5, 0x104}, {0x1c2, 0x280}, {0x2ee, 0x3a2}, {0x8fc, 0x960}};
+                const int w = shot == 4 ? 3 : ri(0, 2);
+                const int32_t lo = frame_scale_i(win[w][0]), hi = frame_scale_i(win[w][1]);
+                const int e = ri(0, 5);
+                const int32_t t = e == 0 ? lo : e == 1 ? hi : e == 2 ? lo + 1 : e == 3 ? hi - 1 : e == 4 ? ri(0, 0xa00) : ri(lo + 1, hi - 1);
+                w32(L15_ADDR(0x0016ce90u), u(shot));
+                w32(L15_ADDR(0x0016ce94u), u(t));
+                return Args{{pick(ms)}, {}};
+            }, [](A a) { qua_cb_2eb6b8_l15(a.i[0]); return uint64_t{0}; });
+
+        // class 1430 (0x2ec030) and its helpers: each state, with its saved bits, its groups, the item, the hero near or not, Giant
+        // Clank or not, the level camera's frame mode (0x2f78e0), the Clank spawned / missing / swinging out and back, its group's
+        // mobys gone (0x2ebfb0's count to 10), the reward taken or not, the linked moby it rides along with
+        if (const std::vector<uint32_t> ms = mobys_with(0x002ec030); !ms.empty())
+            lvcheck("class1430_full", 0x002ec030, 480, Ret::None, [=] {
+                level(); maybe_50hz();
+                const uint32_t m = pick(ms), pv = ee_read<uint32_t>(m + 0x78), pool = ee_read<uint32_t>(OV(0x0015ffd8));
+                const int s = ri(0, 5);
+                w8(m + 0x20, u(s));
+                if (ri(0, 2) == 0) w32(pv + 0xc, 0xffffffffu);
+                if (const int32_t link = ee_read<int32_t>(pv + 0xc); link != -1) {
+                    Vec4 p = ee_ref<Vec4>(pool + (u(link) << 8) + 0x10); p.x += rf(-0.5f, 0.5f); p.y += rf(-0.5f, 0.5f); ee_ref<Vec4>(pv + 0x10) = p;
+                }
+                const int32_t group = ee_read<int32_t>(pv + 0x20);
+                for (uint32_t k = 1; k < 24; ++k) if (ri(0, 7) == 0) w32(pv + 0x20 + 4 * k, u(ri(0, 20)));
+                const int32_t uid = ee_read<int16_t>(m + 0xb2);
+                if (s == 0) {
+                    if (ri(0, 3) == 0) w8(L15_ADDR(0x001bb830u) + u(uid) + 0x454, 1);
+                    else if (ri(0, 2) == 0) { const uint32_t wa = 0x0014c190u + (ee_read<uint32_t>(0x0015ed84u) << 8) + u((uid >> 5) << 2); w32(wa, ee_read<uint32_t>(wa) | (1u << (uid & 0x1f))); }
+                }
+                w8(0x0013d38a, ri(0, 3) != 0 ? 1u : 0u);
+                if (ri(0, 2) != 0) hero_to(near(ee_ref<Vec4>(m + 0x10), coin() ? 2.9f : 6.0f, 0.0f));
+                w8(0x001413f4, ri(0, 3) == 0 ? 2u : (ri(0, 3) == 0 ? 1u : 0u));
+                {  // 0x2f78e0: the current camera's type and the level camera's frame mode
+                    w16(ee_read<uint32_t>(L15_ADDR(0x00167400u)) + 0x86, coin() ? 0x13u : u(ri(0, 2)));
+                    const uint32_t fr = ee_read<uint32_t>(ee_read<uint32_t>(lvd::camera_data(ee_read<int32_t>(pv)) + 4) + 0x70);
+                    static const uint16_t modes[] = {1, 3, 0, 2};
+                    w16(fr + 0x54, modes[ri(0, 3)]);
+                    wf(L15_ADDR(0x0015f3fcu), coin() ? 0.0f : rf(0.1f, 2.0f));
+                }
+                if (s >= 3) {  // the Clank: spawned, another moby, or missing
+                    uint32_t c = 0;
+                    if (ri(0, 3) != 0) {
+                        c = moby_spawn(0x594);
+                        if (c != 0) { w32(c + 0xa0, 0x80807f7fu); ee_ref<Vec4>(c + 0x10) = ee_ref<Vec4>(m + 0x10); }
+                    }
+                    w32(pv + 4, c);
+                    wf(pv + 8, coin() ? rf(-3.14f, 3.14f) : rf(2.0f, 3.14f) * (coin() ? 1.0f : -1.0f));
+                }
+                if (s == 4) {
+                    w8(0x0013d3f5, ri(0, 3) == 0 ? 1u : 0u);
+                    if (ri(0, 5) == 0) w32(pv + 0x20, u(ri(0, 111)));  // (a group that may have no list)
+                    if (const uint32_t e0 = lvd::group(group); e0 != 0) {  // some of its group's mobys gone
+                        const int keep = ri(0, 3) == 0 ? 0 : ri(0, 40);
+                        int k = 0;
+                        const int how = ri(0, 2);  // (gone as 0xfe, as 0xfd, or either)
+                        for (uint32_t e = e0;; e += 2, ++k) { if (k >= keep) w8(pool + ((ee_read<uint16_t>(e) & 0x7fffu) << 8) + 0x20, how == 0 ? 0xfeu : how == 1 ? 0xfdu : coin() ? 0xfeu : 0xfdu); if (ee_read<int16_t>(e) < 0) break; }
+                    }
+                }
+                seed_rand();
+                return Args{{m}, {}};
+            }, [](A a) { qua_class1430_update_l15(a.i[0]); return uint64_t{0}; });
+
+        // class 1446 (0x2ec760): its states but the scene starts and the level change (5, 7, 8), state 6 in a scene; its talk with the
+        // hero in its box and free; its groups gone; its head's look point (the hero in front within 8 or not, moving or not, its
+        // timers at their edges)
+        if (const std::vector<uint32_t> ms = mobys_with(0x002ec760); !ms.empty())
+            lvcheck("class1446_full", 0x002ec760, 480, Ret::None, [=] {
+                level(); maybe_50hz();
+                const uint32_t m = pick(ms), pv = ee_read<uint32_t>(m + 0x78), pool = ee_read<uint32_t>(OV(0x0015ffd8));
+                static const uint8_t st[] = {0, 1, 1, 2, 3, 3, 4, 6, 9, 10};
+                const uint8_t s = st[ri(0, 9)];
+                if (s != 0) { w8(m + 0x20, 0); qua_class1446_update_l15(m); }  // (its talk record set up)
+                w8(m + 0x20, s);
+                if (ri(0, 7) == 0) w32(pv + 0x14c, 0xffffffffu);
+                w8(0x001413f4, coin() ? 2u : 0u);
+                w32(L15_ADDR(0x0015f5c4u), ri(0, 2) == 0 ? 2u : 0u);  // (state 6 out of a scene: its movie, which the interpreter runs)
+                const uint32_t cp = 0x0014c050u + ee_read<uint32_t>(pv + 0x280) + (ee_read<uint32_t>(0x0015ed84u) << 4);
+                if (s == 0 || s == 1) {  // (mates of its checkpoint for the retire loop: live mobys given its +0x280 as their +0xb0)
+                    w8(cp, coin() ? 0xffu : 0u); w8(0x0013dd50, coin() ? 1u : 0u);
+                    std::vector<uint32_t> lv;  // (the level's moby list 0x15ffe4, +0x28 the next: the mobys the retire loop walks)
+                    for (uint32_t o = ee_read<uint32_t>(L15_ADDR(0x0015ffe4u)); o != 0 && lv.size() < 400; o = ee_read<uint32_t>(o + 0x28)) lv.push_back(o);
+                    if (lv.empty()) lv.push_back(m);
+                    for (int k = ri(0, 3); k > 0; --k) {
+                        const uint32_t o = pick(lv);
+                        w8(o + 0xb0, ee_read<uint8_t>(pv + 0x280));
+                        if (ri(0, 2) == 0) w8(o + 0x20, coin() ? 0xfeu : 0xfdu);
+                    }
+                    if (coin()) w8(m + 0xb0, ee_read<uint8_t>(pv + 0x280));  // (itself among them)
+                }
+                if (s == 1) {  // (the hero in its box and free to talk runs talk_update, whose voice stream (a disc read) the interpreter
+                               // cannot run: in its box he is busy (+0xc 3), else anywhere)
+                    const bool in = coin();
+                    if (in) hero_to(shape_at(lvd::BOXES, ee_read<int32_t>(pv + 0x27c)));
+                    static const uint32_t fr[] = {0, 1, 9, 3};
+                    w32(0x001413dc, in ? 3u : fr[ri(0, 3)]);
+                }
+                if (s == 2) w16(pv + 4, coin() ? 1u : 0u);
+                if (s == 3) {
+                    w8(0x0013f350u + 0x20a4, coin() ? 2u : 0u);
+                    if (ri(0, 2) == 0) w32(pv + 0x158, 0xffffffffu);
+                    else if (coin()) w32(pv + 0x158, index_of(pick(live())));
+                    const int gone = ri(0, 2);  // (0: as they are, 1: all at 0x40 (done), 2: all at 0x40 but one)
+                    for (const uint32_t g : {0x144u, 0x148u})
+                        if (const uint32_t e0 = lvd::group(ee_read<int32_t>(pv + g)); e0 != 0 && gone != 0)
+                            for (uint32_t e = e0;; e += 2) { w8(pool + ((ee_read<uint16_t>(e) & 0x7fffu) << 8) + 0x20, (gone == 2 && ri(0, 3) == 0) ? 1u : 0x40u); if (ee_read<int16_t>(e) < 0) break; }
+                    if (ee_read<int32_t>(pv + 0x158) != -1 && coin()) w8(pool + (ee_read<uint32_t>(pv + 0x158) << 8) + 0x20, coin() ? 0xfeu : 0xfdu);
+                }
+                if (s == 4) w32(pv + 0x15c, u(ri(2, 60)));  // (its timer running: once out, the music stream starts, which the interpreter cannot run)
+                // the head
+                if (s != 1) {  // (state 1: the hero left where it put him)
+                    const float yaw = ee_read<float>(m + 0x48), off = coin() ? rf(-1.4f, 1.4f) : rf(1.7f, 3.1f) * (coin() ? 1.0f : -1.0f), d = coin() ? rf(0.5f, 7.9f) : rf(8.1f, 20.0f);
+                    Vec4 h = ee_ref<Vec4>(m + 0x10); h.x += d * std::cos(yaw + off); h.y += d * std::sin(yaw + off); h.z += rf(-6.0f, 4.0f);
+                    hero_to(h);
+                    ee_ref<Vec4>(0x0013f420u) = Vec4{h.x, h.y, h.z + 1.0f, 0.0f};
+                }
+                ee_ref<Vec4>(0x0013f450u) = coin() ? Vec4{} : Vec4{rf(-0.1f, 0.1f), rf(-0.1f, 0.1f), 0.0f, 0.0f};
+                static const uint32_t t1[] = {0, 1, 2, 60};
+                w32(pv + 0x274, t1[ri(0, 3)]);
+                w32(pv + 0x278, t1[ri(0, 3)]);
+                w8(0x0015edb0, coin() ? 1u : 0u);
+                seed_rand();
+                return Args{{m}, {}};
+            }, [](A a) { qua_class1446_update_l15(a.i[0]); return uint64_t{0}; });
+
+        // class 1469 (0x2ed398): the hero in each of its boxes or none, the game's flags and counters each way, the help system free or
+        // busy, the pad moby alive or not, the reminders' counters at the 18-second edge
+        if (const std::vector<uint32_t> ms = mobys_with(0x002ed398); !ms.empty())
+            lvcheck("class1469_full", 0x002ed398, 480, Ret::None, [=] {
+                level(); maybe_50hz();
+                const uint32_t m = pick(ms), pv = ee_read<uint32_t>(m + 0x78), pool = ee_read<uint32_t>(OV(0x0015ffd8));
+                w8(m + 0x20, ri(0, 7) == 0 ? u(ri(0, 2)) : 1u);
+                if (ri(0, 2) != 0) help_free();
+                static const uint32_t boxes[] = {0x0, 0xc, 0x1c, 0x20, 0x24, 0x28, 0x2c, 0x54};
+                if (ri(0, 7) != 0) hero_to(near(shape_at(lvd::BOXES, ee_read<int32_t>(pv + boxes[ri(0, 7)])), 0.5f, 0.0f));
+                w8(0x0013d4df, coin() ? 1u : 0u); w8(0x0013d4c4, coin() ? 1u : 0u);
+                w8(0x0013d3f7, ri(0, 3) == 0 ? 1u : 0u); w8(0x0013d3f6, ri(0, 3) == 0 ? 1u : 0u);
+                const int32_t now = ri(0, 0x40000);
+                w32(0x0015eea4, u(now));
+                const int32_t step = frame_scale_i(now) / 600;
+                for (const uint32_t a : {0x00141d42u, 0x00141d4au}) w16(a, u(std::max(0, step - ri(-1, 3))));
+                w16(0x00141d48, coin() ? 1u : 0u);
+                w16(0x00141db0, ri(0, 3) == 0 ? 1u : 0u); w16(0x00141da8, ri(0, 3) == 0 ? 1u : 0u);
+                w32(0x00141d54, coin() ? 0u : 0xffffffffu); w32(0x00141d6c, coin() ? 0u : 0xffffffffu); w32(0x00141d7c, coin() ? 0u : R());
+                w32(L15_ADDR(0x0015f5a4u), coin() ? 1u : 0u); w32(L15_ADDR(0x00161ac0u), ri(0, 3) == 0 ? 1u : 0u);
+                static const uint32_t fr[] = {0, 1, 9, 4};
+                w32(0x001413dc, fr[ri(0, 3)]);
+                static const uint8_t modes[] = {0, 2, 3, 3};
+                w8(0x001413f4, modes[ri(0, 3)]);
+                w16(0x0013f350u + 0x22e0, ri(0, 3) == 0 ? 1u : 0u);
+                if (ri(0, 3) == 0) w32(0x0013f350u + 0x2084, 0x35);
+                w32(pv + 0x34, coin() ? u(frame_scale_i(0x4b0)) : u(ri(0, 4)));
+                w32(pv + 0x3c, coin() ? u(ri(0, 8)) : u(ri(0, 0x600)));
+                w32(pv + 0x38, coin() ? u(frame_scale_i(0xe10) + ri(-1, 2)) : u(ri(0, 0x1000)));
+                w32(pv + 0x40, coin() ? 0xffffffffu : ee_read<uint32_t>(pv + boxes[ri(0, 7)]));
+                if (const int32_t k = ee_read<int32_t>(pv + 0x10); k != -1) {
+                    static const uint8_t pst[] = {0, 1, 2, 3, 0xfe, 1};
+                    w8(pool + (u(k) << 8) + 0x20, pst[ri(0, 5)]);
+                    if (ri(0, 7) == 0) w16(pool + (u(k) << 8) + 0xa6, 0x4f);
+                }
+                if (ri(0, 5) == 0) w32(pv + 0x10, 0xffffffffu);
+                if (ri(0, 2) == 0) {  // the hints' conditions met: the pad alive, the hero free and in one of the boxes, the counters past their waits
+                    help_free();
+                    if (const int32_t k = ee_read<int32_t>(pv + 0x10); k != -1) { w8(pool + (u(k) << 8) + 0x20, 1); w16(pool + (u(k) << 8) + 0xa6, 0x4e); }
+                    w32(0x001413dc, coin() ? 0u : 9u);
+                    static const uint32_t hb[] = {0x0, 0xc, 0xc, 0x1c, 0x20, 0x24, 0x28};
+                    const uint32_t bx = hb[ri(0, 6)];
+                    hero_to(near(shape_at(lvd::BOXES, ee_read<int32_t>(pv + bx)), 0.3f, 0.0f));
+                    if (ri(0, 2) == 0) w32(pv + 0x40, ee_read<uint32_t>(pv + bx));  // (the box's message given already)
+                    static const uint32_t hs[] = {0x6a, 0x82, 0x76, 0x75, 0x0};  // (sub_0020d568: the hero's states that allow the minute's hint)
+                    w32(0x001413d4, hs[ri(0, 4)]);
+                    if (ri(0, 3) == 0) w32(0x001413dc, u(ri(0x11, 0x12)));
+                    if (bx == 0x1c) { w8(0x001413f4, 2); w8(0x0013d3f7, 0); w32(0x00141d6c, 0); }
+                    w32(pv + 0x3c, u(ee_read<int32_t>(pv + 0x34) + ri(0, 3)));
+                    w32(pv + 0x38, u(frame_scale_i(0xe10) + ri(-1, 2)));
+                    w8(0x0013d4c4, 1);
+                    if (coin()) {  // the reminders' 18 seconds at their edge: the game time ~1080 frames past the counter's step
+                        const int32_t hu = ri(1, 300), target = hu * 600 + frame_scale_i(0x12) * 60 + ri(-2, 2);
+                        int32_t t = target;
+                        for (int k = 0; k < 40000 && frame_scale_i(t) < target; ++k) ++t;
+                        w32(0x0015eea4, u(t));
+                        w16(0x00141d42, u(hu)); w16(0x00141d4a, u(hu)); w16(0x00141d48, coin() ? 1u : 0u);
+                    }
+                }
+                // Giant Clank's animation 0xc (0x13d3f7)
+                if (coin()) w8(ee_read<uint32_t>(0x001413d0u) + 0x52, coin() ? 0xcu : 0x3u);
+                seed_rand();
+                return Args{{m}, {}};
+            }, [](A a) { qua_class1469_update_l15(a.i[0]); return uint64_t{0}; });
+
+        // camera type 22 (0x2f8ba8, with 0x2f88e8 / 0x2f8698 / 0x2f85a8): a live camera of the type, the current camera's +0x86, the
+        // data's counters at their edges, the hero Giant Clank or not, inside the data's volumes or out, the claim free / its own /
+        // another's, the right stick, the data's rate / distance / heights set or not
+        {
+            std::vector<uint32_t> cams;
+            for (uint32_t i = 0; i < 48; ++i)
+                if (ee_read<uint32_t>(OV(0x00169890) + i * 4) != 0 && ee_read<int16_t>(OV(0x00167150) + i * 0xa0 + 0x8c) == 7) cams.push_back(OV(0x00167150) + i * 0xa0);
+            auto deal_cam = [=](bool counters) {
+                level(); maybe_50hz();
+                const uint32_t cam = pick(cams), d = lvd::camera_data(ee_read<int16_t>(cam + 0x84));
+                const uint32_t cur = ee_read<uint32_t>(L15_ADDR(0x00167400u));
+                w16(cur + 0x86, ri(0, 3) == 0 ? 1u : 0u);
+                w8(0x001413f4, ri(0, 3) != 0 ? 2u : 0u);
+                const uint32_t frm = ee_read<uint32_t>(cur + 0x70);
+                w32(frm + 0x220, ri(0, 2) == 0 ? 0u : coin() ? cam : pick(cams));
+                // the volumes: the hero in the data's cylinder / excluded cylinder / box / sphere / polygon, or away
+                if (ri(0, 2) == 0) w32(d + 0x28, 0xffffffffu);
+                if (ri(0, 3) == 0) { w32(d + 0x10, 0xffffffffu); w32(d + 0xc, coin() ? u(ri(0, 40)) : 0xffffffffu); if (coin()) w32(d + 8, u(ri(0, 10))); else if (coin()) w32(d + 0x14, u(ri(0, 40))); }
+                const int where = ri(0, 5);
+                if (where == 0 && ee_read<int32_t>(d + 0x10) >= 0) hero_to(near(shape_at(lvd::CYLINDERS, ee_read<int32_t>(d + 0x10)), 1.0f, 0.0f));
+                else if (where == 1 && ee_read<int32_t>(d + 0x28) >= 0) hero_to(near(shape_at(lvd::CYLINDERS, ee_read<int32_t>(d + 0x28)), 1.0f, 0.0f));
+                else if (where == 2 && ee_read<int32_t>(d + 0xc) >= 0) hero_to(near(shape_at(lvd::BOXES, ee_read<int32_t>(d + 0xc)), 1.0f, 0.0f));
+                else if (where == 3 && ee_read<int32_t>(d + 8) >= 0) hero_to(near(shape_at(lvd::SPHERES, ee_read<int32_t>(d + 8)), 1.0f, 0.0f));
+                else if (where == 4 && ee_read<int32_t>(d + 0x14) >= 0) { const uint32_t p = lvd::path(ee_read<int32_t>(d + 0x14)); if (p != 0) hero_to(ee_ref<Vec4>(p + 0x10)); }
+                if (counters) {
+                    const int32_t edges[] = {-1, 0, 1, frame_scale_i(0xc8), frame_scale_i(0xc8) + 1, frame_scale_i(0x12c) - 1, frame_scale_i(0x12c), frame_scale_i(0x230) - 1, frame_scale_i(0x230), ri(0, 0x300)};
+                    w16(d + 0x20, u(edges[ri(0, 9)]));
+                    const int32_t c3[] = {0, frame_scale_i(0x190) - 2, frame_scale_i(0x190) - 1, ri(0, 0x300)};
+                    w32(d + 0x3c, u(c3[ri(0, 3)]));
+                    wf(0x0013ca40, ri(0, 3) == 0 ? rf(-1, 1) : 0.0f); wf(0x0013ca44, ri(0, 3) == 0 ? rf(-1, 1) : 0.0f);
+                    for (const uint32_t o : {0x0u, 0x34u, 0x38u, 0x44u}) if (ri(0, 3) == 0) wf(d + o, coin() ? 0.0f : rf(-20.0f, 30.0f));
+                }
+                // the current camera's place and direction near its box or not (0x2f8698's angles)
+                if (coin()) { Vec4 p = ee_ref<Vec4>(cur + 0x30); p.x += rf(-10, 10); p.y += rf(-10, 10); p.z += rf(-5, 5); ee_ref<Vec4>(cur + 0x30) = p; }
+                if (coin()) wfrand(cur, 3, -1, 1);
+                else if (counters && coin()) {  // (its direction toward the data's box: 0x2f8698 true in 0x2f88e8)
+                    const Vec4 b = ee_ref<Vec4>(lvd::box(lvd::BOXES, ee_read<int32_t>(d + 0x48)) + 0x30), c = ee_ref<Vec4>(cur + 0x30);
+                    ee_ref<Vec4>(cur) = Vec4{b.x - c.x + rf(-0.5f, 0.5f), b.y - c.y + rf(-0.5f, 0.5f), b.z - c.z, 0.0f};
+                }
+                return cam;
+            };
+            if (!cams.empty()) {
+                lvcheck("cam22_full", 0x002f8ba8, 400, Ret::Int32, [=] { return Args{{deal_cam(true), 0}, {}}; },
+                        [](A a) { return r32(qua_cam_type22_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0); });
+                lvcheck("cam22_2f85a8", 0x002f85a8, 200, Ret::Int32, [=] { return Args{{deal_cam(false)}, {}}; },
+                        [](A a) { return r32(qua_2f85a8_l15(a.i[0]) ? 1u : 0u); });
+                lvcheck("cam22_2f8698", 0x002f8698, 300, Ret::Int32, [=] {
+                    const uint32_t cam = deal_cam(false);
+                    static const float tol[] = {0.0f, 30.0f, 5.0f, 90.0f};
+                    return Args{{cam}, {coin() ? tol[ri(0, 3)] : rf(0, 180), coin() ? tol[ri(0, 3)] : rf(0, 180)}};
+                }, [](A a) { return r32(qua_2f8698_l15(a.i[0], a.f[0], a.f[1]) ? 1u : 0u); });
+            }
+        }
+        g_extra_noop_hooks.clear();
     }
 
     //@@NEXT

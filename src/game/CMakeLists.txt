@@ -287,6 +287,12 @@ add_library(rac1_game STATIC
     ovl/quartu_class233.cpp
     ovl/quartu_class491.cpp
     ovl/quartu_carry_hooks.cpp
+    ovl/quartu_props.cpp
+    ovl/quartu_triggers.cpp
+    ovl/quartu_clank_pad.cpp
+    ovl/quartu_class1446.cpp
+    ovl/quartu_class1469.cpp
+    ovl/quartu_cam22.cpp
     ovl/kalebo_hooks.cpp
     ovl/kalebo_mobys.cpp
     ovl/kalebo_path_runner.cpp

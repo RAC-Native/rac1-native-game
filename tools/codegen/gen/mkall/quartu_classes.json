@@ -4,25 +4,12 @@
  "env": {
   "MKALL_HELPER_PREFIX": "qua_",
   "MKALL_FORCE": "",
-  "MKALL_UNIFORM": "qua_cutscene_level_extras_u,qua_cam_type22_accept_u",
+  "MKALL_UNIFORM": "qua_cutscene_level_extras_u",
   "MKALL_WIDE_GPR": ""
  },
  "entries": [
-  "2e46b0:qua_class937_update_l15:void:a0",
-  "2e73c0:qua_class1250_update_l15:void:a0",
-  "2e7f68:qua_class1257_update_l15:void:a0",
-  "2ea748:qua_class1388_update_l15:void:a0",
-  "2eabd8:qua_class1394_update_l15:void:a0",
-  "2eb4c0:qua_class1419_update_l15:void:a0",
-  "2eb928:qua_class1425_update_l15:void:a0",
-  "2ec030:qua_class1430_update_l15:void:a0",
-  "2ec760:qua_class1446_update_l15:void:a0",
   "2ed068:qua_class1451_update_l15:void:a0",
-  "2ed398:qua_class1469_update_l15:void:a0",
-  "2edb20:qua_class1560_update_l15:void:a0",
-  "22db50:qua_cutscene_level_extras_u",
-  "2f8ba8:qua_cam_type22_accept_u",
-  "2eb6b8:qua_cb_2eb6b8_l15:void:a0"
+  "22db50:qua_cutscene_level_extras_u"
  ],
  "glue_files": [],
  "files": [
