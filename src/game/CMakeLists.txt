@@ -826,7 +826,7 @@ if(NOT RAC1_GEN_DEBUG_INFO AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     set_source_files_properties(${_rac1_gen_files} PROPERTIES COMPILE_OPTIONS "-g0")
 endif()
 
-# The generated code must match the generators and the headers it is built against: a `git pull` that changes them
+# The generated code must match the generators and their inputs: a `git pull` that changes them
 # reconfigures the build (CMAKE_CONFIGURE_DEPENDS), and this check then asks for ./setup.sh, which regenerates the code.
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 execute_process(COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/setup.py" --code-inputs
@@ -838,7 +838,7 @@ string(REPLACE "\n" ";" _rac1_gen_inputs "${_rac1_gen_inputs}")
 list(POP_FRONT _rac1_gen_inputs _rac1_fingerprint)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_rac1_gen_list}" ${_rac1_gen_inputs})
 if(NOT _rac1_fingerprint STREQUAL RAC1_CODEGEN_FINGERPRINT)
-    message(FATAL_ERROR "The game's generated sources are out of date: the generators (tools/codegen/) or the headers "
-                        "they read changed since they were generated.\n"
+    message(FATAL_ERROR "The game's generated sources are out of date: the generators (tools/codegen/) or their "
+                        "inputs changed since they were generated.\n"
                         "Run ./setup.sh again: it regenerates the code, then builds the game.")
 endif()

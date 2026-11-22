@@ -63,7 +63,7 @@ public:
     void remove_cond_hook(uint32_t addr) { cond_hooks_.erase(addr); }
     // A probe: when the PC reaches `addr`, `probe` runs and the instruction there then executes as usual (nothing is
     // replaced; run before the hooks above). A delay slot's address is never reached this way (it runs in its branch's
-    // step). The oracle's HUD-width check records the hooks.glue points of a function with them (tests/oracle, H1).
+    // step). The oracle's HUD-width check records the hook points of a function with them (tests/oracle, H1).
     void set_probe(uint32_t addr, Hook probe) { probes_[addr] = std::move(probe); }
     void clear_probes() { probes_.clear(); }
 

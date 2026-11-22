@@ -85,19 +85,6 @@ def strip_insn_comments(text):
     return '\n'.join(out)
 
 
-_LVL = re.compile(r'\bL\d+_ADDR\(')
-
-
-def region_proof(text):
-    """The text made region-proof when it names a level's own addresses (tools/codegen/reloc_level.py: the jump tables'
-    dispatch through lvl_key, the `lui` halves' uses folded): before strip_insn_comments, whose comments it reads. The
-    identity on the NTSC-U disc's values."""
-    if not _LVL.search(text):
-        return text
-    import reloc_level
-    return reloc_level.relocate(text)[0]
-
-
 def write_if_changed(path, text):
     """Writes the file only when its content differs (a build does not recompile an unchanged generated file)."""
     if os.path.exists(path):

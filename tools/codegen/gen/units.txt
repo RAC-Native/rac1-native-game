@@ -1,5 +1,5 @@
-# The generated units this version of the game has (tools/codegen/generate_all.py): one `mkall:<group>` per
-# gen/mkall/<group>.json, one `asm2cpp:<name>` per gen/asm2cpp/<name>.json. A unit is generated only when it is listed
+# The generated units this version of the game has (tools/codegen/generate_all.py): one `asm2cpp:<name>` per
+# gen/asm2cpp/<name>.json (the `vu:` units are always generated). A unit is generated only when it is listed
 # here: the inputs of a unit an earlier version retired (its json, glue and skeletons) stay on disk when a newer source
 # zip is unpacked over an older folder, and their code names functions that are hand-written now (#170). Retiring a
 # unit removes its line with its files; a new unit adds one.

@@ -62,7 +62,7 @@ def cmd_gen(name, out_root, strip):
     missing = set(frags) - used
     if missing:
         sys.exit('%s: fragments the skeleton does not place: %s' % (name, ' '.join(sorted(missing))))
-    text = gen_common.region_proof('\n'.join(out))
+    text = '\n'.join(out)
     if strip:
         text = gen_common.strip_insn_comments(text)
     p = os.path.join(out_root, d['file'])

@@ -3,7 +3,7 @@
 #
 # A function's listing straight from a level's overlay (read from the ISO by tools/overlay_match, no Ghidra
 # project needed): lines `addr word mnemonic operands` in Ghidra's operand style (`addiu sp,sp,-0x60`), the
-# input of tools/codegen/mips2cpp.py (which decodes the word itself; the text, tools/codegen/r5900dis.py's, is for the reader only). The function runs from `addr` to the first `jr ra` (and its delay slot)
+# input of tools/codegen/asm2cpp.py (gen_asm2cpp.py; the text is tools/codegen/r5900dis.py's). The function runs from `addr` to the first `jr ra` (and its delay slot)
 # that no earlier branch of the function jumps beyond, capped at the next function start.
 import os
 import re
@@ -62,7 +62,7 @@ def _text(w, a):
 
 
 def _jump_table(O, win):
-    """The targets of the jump table a `jr` reads (the idiom of tools/codegen/mkall.py: sltiu bound; lui / addiu base; sll 2; addu; lw; jr)."""
+    """The targets of the jump table a `jr` reads (the compiler's switch idiom: sltiu bound; lui / addiu base; sll 2; addu; lw; jr)."""
     bound = None
     for w in reversed(win):
         if (w >> 26) == 0xb and bound is None:  # sltiu
@@ -110,7 +110,7 @@ def listing(level, addr, maxwords=40000):
         w = O.code[i0 + k]
         op = w >> 26
         if op in (4, 5, 6, 7, 0x14, 0x15, 0x16, 0x17) or (op == 1 and ((w >> 16) & 0x1f) in (0, 1, 2, 3)) or (op in (0x11, 0x12) and ((w >> 21) & 0x1f) == 8):
-            # (not bltzal / bgezal: those are calls to routines of their own, tools/codegen/mkall.py appends them; bc1t / bc1f / ..l, bc2t / bc2f: COP rs field = 8)
+            # (not bltzal / bgezal: those are calls to routines of their own; bc1t / bc1f / ..l, bc2t / bc2f: COP rs field = 8)
             imm = (w & 0xffff) - ((w & 0x8000) << 1)
             maxt = max(maxt, a + 4 + 4 * imm)
         if op == 2:  # j: a jump inside the function (before the next function start) to code that follows a `jr ra`

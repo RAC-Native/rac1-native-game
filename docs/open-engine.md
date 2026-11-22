@@ -1061,8 +1061,9 @@ ABI 12 (`mod_code.cpp`).
 ### What the design said, and what was done
 
 DESIGN 5.8 set moby 0's update function to a tag of A's hero update. That was not needed: the hero's update is Veldin's port
-on every level, and the ports of the hero controller already dispatch, line by line, to a level's transliterated build
-(`if (on_kalebo()) { kal_call(kal_hero_set_state_u ...) }`) while that level is the translation target. A **hero context** is
+on every level, and the ports of the hero controller already dispatch, line by line, to a level's own build (then its
+transliterated build, `if (on_kalebo()) { kal_call(kal_hero_set_state_u ...) }`; its hand-written variant since stage 4 of
+the native track) while that level is the translation target. A **hero context** is
 a second target for those lines only: `g_hero_level` (variants.h), which `on_kalebo()`, `on_quartu()`, `on_gemlik()`,
 `on_orxon()` and `on_rilgar()` also accept (`on_hero_level`). Their sites are the hero controller's and the camera system's
 (camera types, camera hooks); the sound emitters' and the cutscene extras' lines ask `on_level` (the overlay's only). The
@@ -1365,7 +1366,8 @@ arena saw follows from that:
 - **`world rilgar` with `hero rilgar board`** (Rilgar's finish line at z 73.6): Rilgar's code read 16, so Kalebo III's 76: a
   fall at once, for ever (the "wait for the start" the arena saw).
 
-The fix (hooks in both builds, tools/codegen/hooks.glue, `level_mod_hero.h`; the original's levels as transliterated): on a
+The fix (hooks in both builds, in the hand-written ports `hero_hoverboard.cpp`, `hero_update.cpp`, `ovl_21.cpp` and
+`shared_race_camera.cpp`, `level_mod_hero.h`; the original's levels unchanged): on a
 level mod's level the compares see **the board's planet** when the current section's world is Kalebo III's or Rilgar's
 (`world rilgar`: 5, its own heights and start line, its race as on Rilgar), and elsewhere the board is **free**
 (`hero_modes.cpp`): its race path none (pvars +0x20 -1, the player's +0x8b4 0: no laps), no race HUD at the mount, its own
@@ -1395,8 +1397,8 @@ update) keeps its target over a floor chosen by the level number: on Rilgar 62.4
 77.5, so the camera at 78.89 wherever Ratchet was (the arena's report: "the camera goes up, framing the floor"): 5.2 to 6 units
 over him from the finish line (z 73), 2.8 to 3.0 on the track at 76 (Rilgar 2.0 to 2.2), 17 to 18.5 in a fall (Rilgar 7 to
 8: the 67.2 floor). The compare now sees the current section's world (`level_mod_camera_planet`, hooks in both builds; none
-in main and the mod's own sections, so no floor of the base's on the mod's geometry; the original's levels as
-transliterated). The higher camera in a fall is Rilgar's own: on Rilgar too it stays over 67.2 while he falls under the track.
+in main and the mod's own sections, so no floor of the base's on the mod's geometry; the original's levels
+unchanged). The higher camera in a fall is Rilgar's own: on Rilgar too it stays over 67.2 while he falls under the track.
 
 | Test (`RAC1_HERO_STATE=1`: Ratchet and the camera each frame) | Result |
 |---|---|

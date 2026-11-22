@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 # usage: generate_all.py [--out ROOT] [--check] [--no-insn-comments] [--jobs N] [--only UNIT ...] [--list] [--files]
 #
-# The single entry point of the code generated from the game's own code: every machine-transliterated port, written whole from the
-# player's ISO (and the boot ELF / overlay maps setup.sh extracts from it) plus the committed, hand-written generator
-# inputs (no generated file is read). The units:
-#   mkall:<group>   tools/codegen/gen_mkall.py   mips2cpp / mkall transliterations (tools/codegen/gen/mkall/<group>.json, .glue, gen/skel/)
+# The single entry point of the code generated from the game's own code: the routines still transliterated by machine, written
+# whole from the player's ISO (and the boot ELF setup.sh extracts from it) plus the committed, hand-written generator inputs (no
+# generated file is read). The units:
 #   asm2cpp:<name>  tools/codegen/gen_asm2cpp.py hand-written routines transliterated by asm2cpp and reviewed (tools/codegen/gen/asm2cpp/<name>.json)
 #   vu:moby         tools/codegen/gen_moby_vu_fast.py   the moby pass's VU0 / VU1 programs (exact and fast)
 #   vu:world        tools/codegen/gen_world_vu.py       the world passes' six VU1 programs (exact and fast)
@@ -17,11 +16,10 @@
 #                   token once its comments are gone (g++ -fpreprocessed -E: the compiler's own comment removal; the generated code
 #                   uses no __LINE__), i.e. that --no-insn-comments compiles to the same object code
 # --list / --files  the units / every generated file (relative paths), nothing generated
-# Environment: RAC1_ASSETS (default assets/): iso/rac1-ntsc-u.iso, dumps/SCUS_971.99, generated/overlay_map/ (setup.sh).
+# Environment: RAC1_ASSETS (default assets/): iso/rac1-ntsc-u.iso, dumps/SCUS_971.99 (setup.sh).
 #   RAC1_ISO: the disc. On another region's disc (the PAL one: iso/rac1-pal.iso, dumps/SCES_509.16) the overlays are read at
-#   NTSC-U addresses through the region table (tools/overlay_match/region_view.py), and the generators' maps are
-#   generated/overlay_map/codegen/; a function the region changed is translated from that disc's code as a labelled
-#   stand-in (RAC1_PAL_CHANGED=fail stops instead).
+#   NTSC-U addresses through the region table (tools/overlay_match/region_view.py); a function the region changed is
+#   translated from that disc's code as a labelled stand-in (RAC1_PAL_CHANGED=fail stops instead).
 import concurrent.futures
 import filecmp
 import glob
@@ -47,7 +45,7 @@ UNITS_LIST = os.path.join(HERE, 'gen', 'units.txt')
 
 
 def listed_units():
-    """The mkall / asm2cpp units this version has (gen/units.txt)."""
+    """The asm2cpp units this version has (gen/units.txt)."""
     with open(UNITS_LIST) as f:
         return {ln.strip() for ln in f if ln.strip() and not ln.startswith('#')}
 
@@ -59,14 +57,12 @@ def units():
     json is missing stops."""
     listed = listed_units()
     out, stray = {}, []
-    for kind, key in (('mkall', 'files'), ('asm2cpp', 'file')):
-        for p in sorted(glob.glob(os.path.join(HERE, 'gen', kind, '*.json'))):
-            u = kind + ':' + os.path.splitext(os.path.basename(p))[0]
-            if u not in listed:
-                stray.append(u)
-                continue
-            fs = json.load(open(p))[key]
-            out[u] = fs if kind == 'mkall' else [fs]
+    for p in sorted(glob.glob(os.path.join(HERE, 'gen', 'asm2cpp', '*.json'))):
+        u = 'asm2cpp:' + os.path.splitext(os.path.basename(p))[0]
+        if u not in listed:
+            stray.append(u)
+            continue
+        out[u] = [json.load(open(p))['file']]
     if stray:
         sys.stderr.write('[generate_all] skipped %d unit(s) this version does not have (files left by an older version, e.g. a source '
                          'zip unpacked over an older folder; unpack into an empty folder to be rid of them): %s\n'
@@ -79,11 +75,9 @@ def units():
     return out
 
 
-def command(unit, root, strip, tmp):
+def command(unit, root, strip):
     kind, name = unit.split(':', 1)
     py = sys.executable
-    if kind == 'mkall':
-        return [py, os.path.join(HERE, 'gen_mkall.py'), 'gen', name, '--out', root, '--tmp', tmp] + (['--no-insn-comments'] if strip else [])
     if kind == 'asm2cpp':
         return [py, os.path.join(HERE, 'gen_asm2cpp.py'), 'gen', name, '--out', root] + (['--no-insn-comments'] if strip else [])
     out = os.path.join(root, OVL)
@@ -98,12 +92,10 @@ def command(unit, root, strip, tmp):
     raise SystemExit('unknown unit ' + unit)
 
 
-def run_unit(unit, root, strip, tmpbase):
-    tmp = os.path.join(tmpbase, unit.replace(':', '_'))
-    os.makedirs(tmp, exist_ok=True)
+def run_unit(unit, root, strip):
     os.makedirs(os.path.join(root, OVL), exist_ok=True)
     t0 = time.time()
-    r = subprocess.run(command(unit, root, strip, tmp), capture_output=True, text=True, cwd=W)
+    r = subprocess.run(command(unit, root, strip), capture_output=True, text=True, cwd=W)
     return unit, r.returncode, time.time() - t0, (r.stderr or r.stdout)[-1500:]
 
 
@@ -119,7 +111,7 @@ def verify_strip(sel, us, jobs):
     roots = {False: os.path.join(tmp, 'full'), True: os.path.join(tmp, 'stripped')}
     for strip, root in roots.items():
         with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as ex:
-            res = list(ex.map(lambda u: run_unit(u, root, strip, os.path.join(tmp, 'work')), sel))
+            res = list(ex.map(lambda u: run_unit(u, root, strip), sel))
         bad = [u for u, rc, dt, err in res if rc]
         if bad:
             print('generation failed:', ' '.join(bad))
@@ -183,7 +175,7 @@ def main():
     failed = []
     crashed = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as ex:
-        futs = [ex.submit(run_unit, u, root, strip, tmpbase) for u in sel]
+        futs = [ex.submit(run_unit, u, root, strip) for u in sel]
         for f in concurrent.futures.as_completed(futs):
             unit, rc, dt, err = f.result()
             crashed[unit] = rc < 0 or rc >= 0xC0000000 or 'Fatal Python error' in err
@@ -194,7 +186,7 @@ def main():
     # A unit whose Python crashed (an exit code from a Windows exception, 0xC0000000 and up: "Fatal Python error"
     # from CPython 3.14's interpreter, GitHub issue #72) is run once more, alone: the crash is not the generator's
     for unit in [u for u in failed if crashed.get(u)]:
-        unit, rc, dt, err = run_unit(unit, root, strip, tmpbase)
+        unit, rc, dt, err = run_unit(unit, root, strip)
         print('%-34s %s %6.1f s (run again)' % (unit, 'ok  ' if rc == 0 else 'FAIL', dt), flush=True)
         if rc == 0:
             failed.remove(unit)

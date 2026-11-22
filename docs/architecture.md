@@ -156,34 +156,29 @@ and data. Neither changes the game's behaviour unless an enhancement is turned o
 
 ### The generated code
 
-About 230 source files of the port (some 48 MB of C++) are translated instruction by instruction
-from the game's own MIPS and VU code, by the generators in `tools/codegen/`. They are proved against
-the original like any port, and never edited by hand. Because they are a mechanical rewrite of the
-game's code, they are not in the repository: the setup generates them from the player's own disc,
-as other static-recompilation projects do.
+22 source files of the port (some 7.7 MB of C++) are translated instruction by instruction from the
+game's own MIPS and VU code, by the generators in `tools/codegen/`. They are proved against the
+original like any port, and never edited by hand. Because they are a mechanical rewrite of the game's
+code, they are not in the repository: the setup generates them from the player's own disc, as other
+static-recompilation projects do. (The levels' own code, generated until stage 4 of the native track,
+is hand-written now; the drawing and culling routines below are the generated code left.)
 
 | Kind | Files | Generator | From |
 |---|---|---|---|
-| `*_tr.cpp`, `*_tr_N.cpp` and a few others (`sky_ee.cpp`, `novalis_birdbot.cpp`, `title_sky.cpp`...) | 171 | `gen_mkall.py`: `mkall.py` (`mkall_l8.py` .. `mkall_l18.py` for levels 8 to 18) and `mips2cpp.py`, whole functions and their callees | each level's overlay; the boot module |
 | `moby_skin.cpp`, `moby_shadows_asm.cpp`, `world_cull.cpp`, `world_lighting.cpp` | 4 | `gen_asm2cpp.py`: `asm2cpp.py`, plus the reviewed changes kept as patches | Veldin's overlay |
 | `moby_vu0*.cpp`, `moby_vu1*.cpp`, `world_vu1_*.cpp`, `world_light_vu0*.cpp` | 18 | `gen_moby_vu_fast.py`, `gen_world_vu.py`, `gen_light_vu0.py`: `vu2cpp.py` and `vu2cpp_fast.py` | the VU microcode in the boot executable |
 
 `tools/codegen/generate_all.py` runs all of them (`--list` shows the units, `--files` the files they
 write). The generators read only:
 
-- the disc image: each level's overlay, read from the disc by `tools/overlay_match/`
-  (`tools/codegen/ovlist.py`), with `tools/codegen/r5900dis.py` disassembling it;
-- the boot executable, `assets/dumps/SCUS_971.99`, and the overlay address maps,
-  `assets/generated/overlay_map/`, both made from the disc by the setup (from the PAL disc, through the
-  region table: see [The region layer](#the-region-layer));
-- their committed inputs in `tools/codegen/`, which hold no game data: `gen/mkall/` (each run: the
-  level, the entry functions with their names and signatures, the generator's options, and call-site
-  glue), `gen/asm2cpp/` (the routines and the review's patches), the `*.glue` files
-  (C++ statements for the calls into hand-written ports, keyed by address), and `gen/skel/`, the
-  skeleton of each output file (its head, includes, the hand-written C++ around the generated
-  functions, and where each generated function goes);
-- the headers of `src/game/`, whose `// orig: 0x...` declarations tell the generators which callees
-  are ported and with which signature, and the levels' variant tables (`src/game/ovl/variants_l<n>.cpp`).
+- the disc image: Veldin's overlay, read from the disc by `tools/overlay_match/`
+  (`tools/codegen/ovlist.py`), with `tools/codegen/r5900dis.py` disassembling it (from the PAL disc,
+  through the region table: see [The region layer](#the-region-layer));
+- the boot executable, `assets/dumps/SCUS_971.99`, made from the disc by the setup;
+- their committed inputs in `tools/codegen/`, which hold no game data: `gen/units.txt` (the units this
+  version has), `gen/asm2cpp/` (the routines and the review's patches) and `gen/skel/`, the skeleton of
+  each output file (its head, includes, the hand-written C++ around the generated functions, and where
+  each generated function goes).
 
 The headers that declare the generated functions stay in `src/game/` with the hand-written code,
 which calls through them.
@@ -192,10 +187,10 @@ The setup runs `generate_all.py --out assets/generated --no-insn-comments`, so t
 `assets/generated/src/game/...`, mirroring `src/`. `--no-insn-comments` leaves out the comment each
 translated line carries with its original instruction (`// lw a1,0xf0(sp)`); the code is the same,
 token for token. The setup also writes `assets/generated/src/generated_sources.cmake`: the list of
-the files, and a fingerprint of the generators and of the headers they read. `src/game/CMakeLists.txt`
+the files, and a fingerprint of the generators and their inputs. `src/game/CMakeLists.txt`
 adds those files to `rac1_game` (`RAC1_GENERATED_SRC` points elsewhere if needed). Configuring fails
 with a message asking for `./setup.sh` when the list is missing, a file is missing, or the
-fingerprint no longer matches the sources (after a `git pull` that changed a generator or a header);
+fingerprint no longer matches the sources (after a `git pull` that changed a generator or its inputs);
 `./setup.sh` then generates the code again before it builds.
 
 The generated files are built with the same include paths as the rest of `src/game/`
@@ -356,15 +351,11 @@ rebuilt code is word for word the North American code; the table's `fix` lines c
 the analysis cannot take back alone (a `lui` half built in another function, an address two runs claim),
 `start` / `nostart` lines align the function starts, and `pair` lines pair the few functions the PAL
 build rewrote (`region_view.py check` compares the rebuilt code with the North American disc's). The
-generators' own maps go to `overlay_map/codegen/`. A function the PAL build changed has no North American
-code on the PAL disc: it is translated from the PAL code instead, placed at the North American entry, and
-marked `STAND-IN` in the generated file.
-
-The generated level-only code is made region-proof by `tools/codegen/reloc_level.py` (run by the
-generators on every file that names a level's own addresses): a jump table's `switch` compares
-`lvl_key(pointer)` (the pointer back to the North American address), and a `lui` half kept apart from its
-low half becomes `L<n>_PAGE` with its uses folded into the full address. On the North American disc the
-code it writes computes the same values.
+setup also makes maps on the rebuilt code, in `overlay_map/codegen/` (the port inventory reads them,
+`tools/inventory/`). A function the PAL build changed has no North American
+code on the PAL disc: `region_view.py` gives the PAL code placed at the North American entry instead (a
+stand-in), but none of the routines still generated is such a function (no `entry` line of either PAL
+table names one).
 
 **At run time** (`src/game/ovl/ovl_reloc.h`): `disc_other_region()` reads the disc's `SYSTEM.CNF`; on
 the PAL disc the game loads `SCES_509.16`, translates Veldin's addresses too, and translates:

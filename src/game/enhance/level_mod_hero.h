@@ -6,8 +6,8 @@
 
 namespace rac1 {
 
-// orig: (none) — enhancement: Kalebo III's own hero_surface_update (L16:0x002097a0, kalebo_hero_tr_1.cpp: the generator's hook,
-// tools/codegen/hooks.glue) after its surface flags, `kind` the surface under the hero (its +0x12e0 as the frame began). Kalebo's
+// orig: (none) — enhancement: Kalebo III's own hero_surface_update (L16:0x002097a0: hero_update.cpp's Kalebo III branch
+// calls it) after its surface flags, `kind` the surface under the hero (its +0x12e0 as the frame began). Kalebo's
 // build has no lava (kind 3) and no deadly liquid (kind 1): on a level mod's level (a host slot; the original's Kalebo III
 // never) they are flagged as the generic build flags them (+0x12e6, +0x12e5) and act with the states Kalebo's hero has (it has
 // none of the generic 0x68 / 0x7b / 0x7c / 0x7d; its 0x69 / 0x3c hold him in place when entered without them): coming down into
@@ -20,7 +20,7 @@ bool level_mod_kalebo_surface(int32_t kind);
 // (0x002127b8: the lava's top +0x2f4, the ground under it) that Kalebo's build lacks
 bool level_mod_kalebo_lava_ground();
 
-// The board (Kalebo III's and Rilgar's builds: the generator's hooks, tools/codegen/hooks.glue) outside a race, on a level mod's
+// The board (Kalebo III's and Rilgar's builds: hooks in hero_hoverboard.cpp, shared_race_camera.cpp) outside a race, on a level mod's
 // level (hero_modes.h's rules; the original's levels: as transliterated, every hook a test that fails):
 // orig: (none) — enhancement: the level number the board's race code compares (its fall test, its race's start line): the
 // planet whose race it rides (`world rilgar` on Kalebo III's base: 5), else `level` as read

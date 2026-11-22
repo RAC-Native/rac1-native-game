@@ -664,8 +664,9 @@ only for a moby the moby pass drew (+0x31, the 4:3 view's decision). In a widene
   logic (the target's choice, the timers, the help messages) runs in both as the game's: the shadow's
   is put back with the rest of its memory, so the game's state is the 4:3 run's.
 - **The radar and the missiles follow the HUD's width** (Options > Display > HUD wider than 4:3).
-  The generator puts host calls around the calls that draw them (`tools/codegen/hooks.glue`:
-  `render_view_hud_begin` / `render_view_hud_end`, which only read the packet cursor), so their ranges
+  The ports of the ships' draw callbacks (`pokitaru_jet_hud.cpp`, `gemlik_ship_hud.cpp`, `veldin_orbit_hud.cpp`) put
+  host calls around the calls that draw them (`render_view_hud_begin` / `render_view_hud_end`, which only read the
+  packet cursor), so their ranges
   are noted as hud_draw's side elements are, in the real block and in the shadow (`MrpChainInput::Hud::sub`),
   and move toward their side by `Viewport::hud_shift`.
 

@@ -1,2 +1,0 @@
-// glue of the ship's draw callbacks (src/game/ovl/ship_draw_cbs_tr.cpp, tools/codegen/mkall.py --glue, with vendor_v.glue)
-0x002003d8: v0.lo = static_cast<uint64_t>(point_on_screen_depth(a0.w(), a1.w(), fr[12]));  /* hand port: its VU0 tail reads 0x2002e0's vf3 */

@@ -1,6 +1,6 @@
 // Class 1290 (Wrench's "Pilot's Helmet"), the item pickup that gives the Pilot's Helmet (item 7) on Gaspar: Veldin's update
 // (0x2e03a0, shared by every level's class table and unported before), transliterated at Veldin's addresses
-// (tools/codegen/gen/mkall/veldin_helmet.json).
+// (generated until stage 4; helmet.cpp now).
 #ifndef RAC1_GAME_OVL_HELMET_TR_H
 #define RAC1_GAME_OVL_HELMET_TR_H
 

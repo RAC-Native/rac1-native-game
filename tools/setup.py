@@ -115,12 +115,11 @@ OVERLAY_MAPS = ASSETS_DIR / "generated/overlay_map"
 # against), data/regions/<serial>.txt; tools/overlay_match/region_maps.py and region_view.py read it.
 REGIONS = ROOT / "data/regions"
 
-# The generated code's sources: the generators and their inputs, and the headers (with variants_l<n>.cpp, the
-# levels' variant tables) whose `// orig:` declarations the generators read. (The boot executable and the overlay
-# maps they also read are steps of their own, below.)
+# The generated code's sources: the generators and their inputs, the overlay readers they import and the region tables
+# (a PAL disc's code is read at NTSC-U's addresses through them). No header of src/game: the generators left read
+# none. (The boot executable they also read is a step of its own, below.)
 CODE_SOURCES = ["tools/codegen/**/*", "tools/overlay_match/overlay_match.py", "tools/overlay_match/front_match.py",
-                "tools/overlay_match/region_maps.py", "tools/overlay_match/region_view.py", "data/regions/*.txt",
-                "src/game/**/*.h", "src/game/ovl/variants*.cpp"]
+                "tools/overlay_match/region_maps.py", "tools/overlay_match/region_view.py", "data/regions/*.txt"]
 # What the generated VU programs come from, for the data steps that run them
 VU_CODEGEN = ["tools/codegen/vu2cpp*.py", "tools/codegen/vu_micro.py"]
 

@@ -238,11 +238,12 @@ into it back too ([Architecture](architecture.md#the-region-layer)). Then, as fo
   text wrapping, the pad's reads...) run the North American port where the port has one by hand. The 1.02
   changes ported so far reach those functions through main menu > Options > Advanced > [1.02 Fixes](advanced.md#102-fixes)
   and [1.02 Gameplay](advanced.md#102-gameplay), as on the other discs; the rest are to come one by one.
-- The generated ones are translated from the Platinum's own code, as stand-ins (`STAND-IN` in the generated
-  sources): on Veldin the credits, the end menu's page, the vendor's screens and the Morph-o-Ray's chicken,
-  and per level the same engine functions (the hero's horizontal velocity, the HUD counters...). The hero's
-  velocity functions are hand-written ports and run on every disc, the Platinum included, so R&C 3 movement's air
-  braking and the strafe flip's speed act on its levels as on the other discs.
+- No code is generated from the Platinum's changed functions any more: the ones the setup used to translate
+  from its own code as stand-ins (on Veldin the credits, the end menu's page, the vendor's screens and the
+  Morph-o-Ray's chicken; per level the hero's horizontal velocity, the HUD counters...) are hand-written ports
+  now, and none of the routines still generated is a function the Platinum changed. The hero's velocity
+  functions run on every disc, the Platinum included, so R&C 3 movement's air braking and the strafe flip's
+  speed act on its levels as on the other discs.
 - The save folder is the same as version 1.00's (`BESCES-50916RATCHET`), as on a console. The saves are the
   port's, as from the other discs.
 - The disc's Italian vendor lines (the voice language Italian) are the Japanese ones: the Platinum was mastered
@@ -266,13 +267,11 @@ into it back too ([Architecture](architecture.md#the-region-layer)). Then, as fo
   (the table maps one to the other). So the PAL fixes in these functions are missing: hero sound 1 on
   the hero's velocity, Rilgar's skill point message, the PAL text wrapping, the PAL new game keeping two
   settings, and the removed developer profile.
-- Ten generated functions are on the PAL disc only in their PAL form: the memory card / result screen
-  (`screen_draw_tr.cpp`), the hero's horizontal velocity on Rilgar, Blarg, Batalia and Pokitaru, the HUD
-  counters on Rilgar (two), Blarg and Umbris, and Rilgar's class 918. From the PAL disc these are
-  translated from the PAL code, as temporary stand-ins: they are marked `STAND-IN` in the generated
-  sources and are not yet proved against the original. The four hero velocity stand-ins carry the same
-  enhancement hook points as the North American code (R&C 3 movement's air braking and the strafe flip's
-  speed), placed at the matching instructions of the PAL code (`PAL:` lines in `tools/codegen/hooks.glue`).
+- Ten functions that the setup used to translate from the PAL code as temporary stand-ins (the memory card /
+  result screen, the hero's horizontal velocity on Rilgar, Blarg, Batalia and Pokitaru, the HUD counters on
+  Rilgar (two), Blarg and Umbris, and Rilgar's class 918) are hand-written ports now: they run the port's
+  code as the functions of the point above do, with the PAL change carried where the port has it (Rilgar's
+  class 918: [1.02 Fixes](advanced.md#102-fixes) fix 22, taken on both PAL discs).
 
 ## Which disc images
 
@@ -367,7 +366,7 @@ gameplay files directly. Without a data disc, nothing changes.
 
 - **Run `./setup.sh` again at any time**, for example after a `git pull`. It rebuilds only what
   changed (CMake recompiles only what needs it), generates the code again only when the generators
-  (`tools/codegen/`), the overlay matcher, the region table or the headers they read changed, and redoes a data step
+  (`tools/codegen/`), the overlay readers they use or the region tables changed, and redoes a data step
   only when the code that makes it changed, or when that step did not finish. A step whose files were deleted since
   (all of `assets/generated`, or part of it) is redone too: the setup says which files are missing, and the game says
   at start when the modern renderer's assets are missing. A step added by an update (such as the
@@ -442,11 +441,11 @@ gameplay files directly. Without a data disc, nothing changes.
 
 On its own, `--setup` skips a file that exists without checking whether it is up to date; that is
 what `./setup.sh` adds. `./setup.sh` makes the boot executable and the overlay maps itself, before
-the build, because the code generation needs them; the `elf` and `overlay` steps of `--setup` make
+the build (the code generation needs the boot executable); the `elf` and `overlay` steps of `--setup` make
 the same files.
 
 The code generation on its own, from the repository's root (after `./setup.sh` has made the boot
-executable and the overlay maps):
+executable):
 
 ```bash
 python3 tools/codegen/generate_all.py --out assets/generated --no-insn-comments

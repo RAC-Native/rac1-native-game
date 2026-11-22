@@ -28,7 +28,7 @@
 // - 17: the ship's landing / take-off scene skipped (and its flight hurried) with circle too, not only triangle / cross
 //   (ship_sequence_update 0x290590: the presses' mask 0x50 -> 0x70)
 // - 18: Aridia's sand shark, killed, bursts (enemy_death_burst at its place) before it dives off to its next spot
-//   (L2:0x2d3e50; tools/codegen/hooks.glue)
+//   (L2:0x2d3e50; aridia_sand_shark.cpp)
 // - 19: the hoverbike races' texts from the level's text table, in the game's language and with a singular: the place
 //   ("1st".. "5th"), the poses ("x1 Pose") and the flips ("+ 360 Flip") in place of English built into the code
 //   (Rilgar L5:0x262f50 / 0x266320, Kalebo III L16:0x235660 / 0x238a30; fixes102_race_text, called by shared_race_hud.cpp)
@@ -36,7 +36,7 @@
 //   no debris (its 50 pieces: moby slots) (L6:0x2ffcb0 / 0x300278: blarg_tank.cpp)
 // - 22: Rilgar's race organiser (class 918, L5:0x316ab8): the level's music back after a race ended in its state 3, and a
 //   skill point earned at the race told (its flag 0x13d411: "You just earned a Skill Point!" over the prize's message)
-//   (hooks.glue)
+//   (rilgar_race_organiser.cpp)
 // - 26: the Vendor's purchase screens: the message box shows the case's own text ("Back" for an ammo full or the bolts
 //   short, "Buy" for ammo, none for a weapon the bolts pay) in place of "Buy" each time, and no "No" prompt for a weapon,
 //   whose quantity box already asks Yes / No (vendor_draw.cpp: panel_message 0x29e6c0, panel_prompt 0x29e918)
@@ -90,15 +90,15 @@
 //   visibomb.cpp, visibomb_ball.cpp)
 // - 9: deadly ground (+0x12ea) for the Hologuise's states, the hoverboard's ride-off, quicksand in a vehicle mode
 //   (hero_input_update 0x229b70, hero_set_state 0x2223f8, hero_surface_update 0x20b960 and their levels' copies:
-//   the hand ports and tools/codegen/hooks.glue)
-// - 10: the characters' talk guards (gameplay_frame 0x297f78; pokitaru_jet.cpp and four levels' classes in tools/codegen/hooks.glue)
+//   the hand ports)
+// - 10: the characters' talk guards (gameplay_frame 0x297f78; pokitaru_jet.cpp and four levels' classes' hand ports)
 // - 12: the tilt to the ground stiffer and its speed capped (sub_002163f0 0x2163f0)
 // - 13: the Hologuise's use test (sub_0020fe30 0x20fe30), its countdown stopped by hero_place 0x216f90, the state a forced
 //   hero_set_state leaves it with
 // - 14: the Decoy Glove's decoy pushed off by Ratchet swimming into it (state 0x31 within 1.5: decoy_object_update
 //   0x2c4380: decoy_obj.cpp)
 // - 21: Rilgar's moving water (class 831, L5:0x30ca80): its surface carries Ratchet swimming in it as it rises (his
-//   water height +0x2f0), and it holds still in the cutscenes (hooks.glue)
+//   water height +0x2f0), and it holds still in the cutscenes (rilgar_water.cpp)
 // - 23: Giant Clank's pad (Quartu's class 1451 L15:0x2ed068, Veldin's finale's 1899 L18:0x2fb868; the shared port
 //   clank_pad_update, shared_clank_pad.cpp, which both levels run; gameplay102_clank_pad(), on the PAL disc 2.00 always): boarding
 //   retires a moby still linked at its pvar +0x70, and on Quartu saves the pad's place as the checkpoint (checkpoint_save

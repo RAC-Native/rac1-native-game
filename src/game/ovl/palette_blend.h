@@ -9,7 +9,7 @@
 
 namespace rac1 {
 
-// The routine's last loop (its label after the two palettes' conversions; the port and tools/codegen/hooks.glue call it there), the
+// The routine's last loop (its label after the two palettes' conversions; the port calls it there), the
 // registers at its start: `a0` the texels written (one word each), `a1` / `a3` the two index streams (a byte each), `t1` the
 // texels' count (the loop: t1 >> 2 groups of four). Each texel: the palettes at the scratchpad's 0x0 (a1's index) and 0x2000
 // (a3's), converted to floats by the routine, weighted by vf31.w / vf31.x (VMULbc), summed (VADD), to integers (VFTOI0), each

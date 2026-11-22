@@ -105,8 +105,8 @@ bool render_view_hud_wide();
 // orig: (host) the space fights' HUD (Pokitaru's L11:0x311d50, Gemlik Base's L13:0x2b97f8, Drek's fleet's L17:0x2eb9a8: the draw-list
 // callback of the player's ship, queued on the list 0x16d880) draws its radar at the frame's right, its missiles at its left, and
 // its target reticles at the targets' projections (in the 4:3 frame's coordinates: past its sides for a target in the widened
-// view's side bands; the per-target ones only for a moby the moby pass drew, +0x31). Calls the generator puts in those callbacks
-// (tools/codegen/hooks.glue) note each side element's chain range as hud_draw does (render_view_hud_note): `begin` before the
+// view's side bands; the per-target ones only for a moby the moby pass drew, +0x31). Calls the ports of those callbacks make
+// (pokitaru_jet_hud.cpp, gemlik_ship_hud.cpp, veldin_orbit_hud.cpp) note each side element's chain range as hud_draw does (render_view_hud_note): `begin` before the
 // element's call (the packet cursor kept; side 1 left, 2 right), `end` after it (the range noted; nothing without a pending begin).
 // Noted in the real block and in the effects' shadow block (HudNote::slot), with a HUD wider than 4:3 only. Reads the packet
 // cursor, writes nothing of the game's.
@@ -114,7 +114,7 @@ void render_view_hud_begin(uint8_t side);
 void render_view_hud_end();
 // orig: (host) (the oracle only: null in the game) called first thing by each render_view_hud_begin (begin true, its side) and
 // render_view_hud_end (false, 0), whatever the HUD's width: the oracle's HUD-width check records the port's hooks with it and
-// compares them with the original's code reaching the hooks.glue points (docs/oracle.md, "The HUD-width hooks").
+// compares them with the original's code reaching the hooks' points (docs/oracle.md, "The HUD-width hooks").
 extern void (*g_hud_hook_trace)(bool begin, uint8_t side);
 // orig: (host) the chain range [first, end) such a callback drew (render_passes.cpp draw_list_run), in a widened view, in the real
 // block or in the effects' shadow block (its slot): the drawing takes the callback's 2D from the shadow's chain when the shadow

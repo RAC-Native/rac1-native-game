@@ -696,7 +696,7 @@ void ari_ocean_tex_upload_l2(uint32_t dst, uint32_t idx0, uint32_t clut0, uint32
     unpack_clut_spr(u, 0x70002c00u, 0x70002000u);
 
     // The texel loop on the host (palette_blend.h): at the point the levels' generated copies had it (the loop's set-up after the
-    // two palettes' conversions, tools/codegen/hooks.glue), the same registers: the texels' words (the original's a0), the two
+    // two palettes' conversions), the same registers: the texels' words (the original's a0), the two
     // index streams (a1 / a3), the texels' count (t1). It reads the weights (vf31) from the VU0 and leaves vf2 .. vf9 there as the
     // loop below does: the copy's registers stored first, and not again after it. RAC1_PERF_PALETTE_BLEND=0: the loop below.
     u.store();

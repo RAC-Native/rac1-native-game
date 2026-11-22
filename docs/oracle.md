@@ -152,7 +152,7 @@ Useful variables:
 
 Some HUD draws carry two host calls the port adds around a call that draws a side element of the HUD:
 `render_view_hud_begin(side)` before it and `render_view_hud_end()` after it (`src/game/render/render_view.h`; the
-space fights' radar and missiles, placed in generated code by `tools/codegen/hooks.glue`). They write no game memory,
+space fights' radar and missiles, in the hand-written ports of the ships' draw callbacks). They write no game memory,
 so the memory comparison cannot see one that is missing, extra, around another call or with another side. A check
 of such a function declares the hooks it expects, and the oracle compares them too:
 
@@ -162,11 +162,11 @@ const HudHooksExpected hud_hooks({{0x00311df0, 2}, {0x00311df8, 0}, {0x00311e28,
 l11check("p113_cb311d50", 0x00311d50, 48, Ret::None, gen, port);
 ```
 
-Each entry is one `hooks.glue` line of the function (and of its callees the original runs): `{address, side}` for a
+Each entry is one hook of the function (and of its callees the original runs): `{address, side}` for a
 `render_view_hud_begin(side)` (side 1 left, 2 right) placed before the instruction at that address, `{address, 0}`
 for a `render_view_hud_end()`; the level's own NTSC-U address (a begin at the call's `jal`, an end at its return
-address). The list lives with the check: a ported function's lines leave `hooks.glue` (while a function is
-generated, `tools/codegen/check_hooks.py` guards its lines).
+address). The list lives with the check (until stage 4 of the native track the generated code placed these hooks
+from a list of its own; the ports carry them now).
 
 In each case the original's side records an event when its code reaches a listed address (an interpreter probe,
 `EeInterpreter::set_probe`: before the instruction there, as the generator places the line), the port's side when it
@@ -181,12 +181,11 @@ and cursor; the cursor is what shows a hook placed around another call. The firs
 After the cases a `HUDHOOKS` line says in how many cases events happened and which listed addresses no case
 reached; a listed address no case reaches fails the check (a wrong address, a delay slot's, or cases that never draw
 that element), except under `ORACLE_FOCUS` or for a list given as `HudHooksExpected(list, false)` (a row run with
-generic states, which need not draw every element). A check of a still-generated function can carry its list too:
-the generated code calls the same two functions, which proves the list before the port. Batch 124's `p113_cb311d50`
+generic states, which need not draw every element). Batch 124's `p113_cb311d50`
 (Pokitaru's ship HUD, 10 hooks), batch 260's `p17_cb_2eb9a8`, `p17_2eb768`, `p17_2eace8` (Drek's fleet's, 18) and batch 220's
 `p13h_cb_2b97f8`, `p13h_2b95b8`, `p13h_2b8be0` (Gemlik Base's, 18) use it.
 
-A hook that writes game memory (a 1.02 fork a `hooks.glue` line placed in a generated function) is checked by putting its
+A hook that writes game memory (a 1.02 fork the port carries at an instruction of the original's) is checked by putting its
 statement into the original's run at the same address: `ExtraProbes` (`oracle_env.h`) takes `{address, function}` pairs, each
 run on the interpreter's registers when the original's code reaches the address, before the instruction there. Batches 114 and
 250's `race_fix19_meter` / `race_fix19_bar` (`race_hud_checks.h`) run the hoverboard races' HUD that way with fix 19's three
@@ -218,7 +217,7 @@ shared code every level runs:
 | 15 | 240, 241, 242 (and the hero batches 44 .. 55, 123) |
 | 16 | 250, 242 (and the hero batches 44 .. 55, 123) |
 | 0 and 3 (its dumps); 0 .. 18 (its level-built checks) | 180 (the shared weapon classes: the drones, the chicken and its debris, classes 804 and 166, the Morph-o-Ray's HUD element, particle types 5 and 0x37) |
-| 0, 1, 3 and 5 | 190 (it proves a fix of the code generator, `tools/codegen/mips2cpp.py`) |
+| 0, 1, 3 and 5 | 190 (it proved a fix of the level code's generator, `mips2cpp.py`, retired with stage 4) |
 | 3, 6 and 10 | 191 |
 | 0, 1, 3, 4, 6, 8 and 9 | 192 (the particle types 0x0a, 0x0e, 0x27, 0x49; no dumps: states built from the level) |
 | 17 | 260, 261, 271 (and the hero batches 44 .. 55) |

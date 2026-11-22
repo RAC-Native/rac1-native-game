@@ -114,8 +114,8 @@ inline uint32_t region_site() {
     }
     return v;
 }
-// A `lui` half of a level-only address that the transliteration keeps apart from its low
-// half (tools/codegen/reloc_level.py folds every use it can follow into the full address): the NTSC-U value,
+// A `lui` half of a level-only address that the transliteration kept apart from its low
+// half (the level code's generator folded every use it could follow into the full address): the NTSC-U value,
 // never translated (a page is not an address: the addresses around it move by different amounts on
 // another region's disc). RAC1_PAGE_POISON=1 moves it 16 MB away: a diagnostic for the oracle (a use left unfolded
 // fails; so does a page that is a value: a mask passed to a call, a colour built by lui + ori).
