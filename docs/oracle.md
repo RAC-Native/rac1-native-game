@@ -186,6 +186,12 @@ the generated code calls the same two functions, which proves the list before th
 (Pokitaru's ship HUD, 10 hooks), batch 260's `p17_cb_2eb9a8`, `p17_2eb768`, `p17_2eace8` (Drek's fleet's, 18) and batch 220's
 `p13h_cb_2b97f8`, `p13h_2b95b8`, `p13h_2b8be0` (Gemlik Base's, 18) use it.
 
+A hook that writes game memory (a 1.02 fork a `hooks.glue` line placed in a generated function) is checked by putting its
+statement into the original's run at the same address: `ExtraProbes` (`oracle_env.h`) takes `{address, function}` pairs, each
+run on the interpreter's registers when the original's code reaches the address, before the instruction there. Batches 114 and
+250's `race_fix19_meter` / `race_fix19_bar` (`race_hud_checks.h`) run the hoverboard races' HUD that way with fix 19's three
+`fixes102_race_text` calls (`RAC1_FIXES102=19`), and `race_pal_meter` / `race_pal_bar` with the PAL discs' lines.
+
 ### The reference batches
 
 Before a change to game code is merged, its own batch passes, and so do these. They cover the

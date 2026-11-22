@@ -85,8 +85,9 @@ int32_t amoeboid_hook0_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
     return res;
 }
 
-// Large Amoeboid (class 0x23c / Small Amoeboid 0x362): hook +4.
-// orig: L1:0x002efaf8
+// Large Amoeboid (class 0x23c / Small Amoeboid 0x362): hook +4. Rilgar's hook 0x300b48 is the same code (word for word): this
+// port serves it (carry_hooks_levels.cpp; task H3).
+// orig: L1:0x002efaf8 L5:0x00300b48
 int32_t amoeboid_hook4_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
     const int32_t res = carry_hook4(m, pa1, pa2, pf12);
     if (res != 0) {
@@ -117,8 +118,9 @@ int32_t amoeboid_hookc_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
     return res;
 }
 
-// Large Amoeboid (class 0x23c / Small Amoeboid 0x362): hook +0x10 (its carry record at pvars +0xc0).
-// orig: L1:0x002efbc8
+// Large Amoeboid (class 0x23c / Small Amoeboid 0x362): hook +0x10 (its carry record at pvars +0xc0). Rilgar's 0x300c18 is the
+// same code: this port serves it (H3).
+// orig: L1:0x002efbc8 L5:0x00300c18
 uint32_t amoeboid_hook10_l1(uint32_t m) {
     if (m == 0) return 0;
     const uint32_t pv = lwu(m + 0x78);

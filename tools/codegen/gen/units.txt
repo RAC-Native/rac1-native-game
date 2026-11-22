@@ -15,7 +15,6 @@ mkall:oltanis_classes
 mkall:orxon_classes
 mkall:pokitaru_classes
 mkall:quartu_classes
-mkall:rilgar_classes
 mkall:rilgar_part2
 mkall:umbris_classes
 mkall:umbris_part2

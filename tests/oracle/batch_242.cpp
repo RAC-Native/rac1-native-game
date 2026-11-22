@@ -181,8 +181,8 @@ void batch_242() {
         // Rilgar's): a0 = the hero's moby, the display packet cursor given a real buffer
         struct Cb { const char* name; uint32_t addr; void (*fn)(uint32_t); };
         static const Cb cbs[] = {
-            {"cb2351f8", 0x002351f8, race_hud_start}, {"cb235268", 0x00235268, race_meter_update}, {"cb235660", 0x00235660, kal_cb_235660_l16},
-            {"cb2388b0", 0x002388b0, race_hud_reset}, {"cb2388f8", 0x002388f8, race_hud_update}, {"cb238a30", 0x00238a30, kal_cb_238a30_l16},
+            {"cb2351f8", 0x002351f8, race_hud_start}, {"cb235268", 0x00235268, race_meter_update}, {"cb235660", 0x00235660, race_meter_draw},
+            {"cb2388b0", 0x002388b0, race_hud_reset}, {"cb2388f8", 0x002388f8, race_hud_update}, {"cb238a30", 0x00238a30, race_bar_draw},
             {"cb238e20", 0x00238e20, race_hud_draw},
         };
         for (const Cb& cb : cbs) {

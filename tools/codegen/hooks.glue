@@ -47,12 +47,9 @@ L14 0x00255ed8: { uint32_t pb_v0 = 0; if (palette_blend_loop(a0.w(), a1.w(), a3.
 # original's sprintf of the poses ("x%d Poses", a2 the count), the flips ("%s + %d Flips", a2 the trick's name, a3 the degrees) and
 # the place ("% dst".."% dth", +0x8c0 of the player block s1), the 1.02 build's text written over it (L5:0x263a64, 0x263d00,
 # 0x266e88 in the PAL disc 2.00).
-L5 0x002630d8: fixes102_race_text(sp.w(), 0, 0, static_cast<int32_t>(a2.w()));  // enhancement: 1.02 Fixes, fix 19 (the poses)
-L5 0x00263350: fixes102_race_text(sp.w(), 1, a2.w(), static_cast<int32_t>(a3.w()));  // enhancement: 1.02 Fixes, fix 19 (the flips)
-L5 0x00266528: fixes102_race_text(sp.w(), 2, 0, static_cast<int32_t>(lw_(s1.w() + 0x8c0)));  // enhancement: 1.02 Fixes, fix 19 (the place)
-L16 0x002357e8: fixes102_race_text(sp.w(), 0, 0, static_cast<int32_t>(a2.w()));  // enhancement: 1.02 Fixes, fix 19 (the poses)
-L16 0x00235a60: fixes102_race_text(sp.w(), 1, a2.w(), static_cast<int32_t>(a3.w()));  // enhancement: 1.02 Fixes, fix 19 (the flips)
-L16 0x00238c38: fixes102_race_text(sp.w(), 2, 0, static_cast<int32_t>(lw_(s1.w() + 0x8c0)));  // enhancement: 1.02 Fixes, fix 19 (the place)
+# L5 0x002630d8 / 0x00263350 / 0x00266528, L16 0x002357e8 / 0x00235a60 / 0x00238c38: the fork is in the hand-written ports
+# race_meter_draw / race_bar_draw (shared_race_hud.cpp), which both levels run since H3 (batch 114's / 250's race_fix19_meter /
+# race_fix19_bar check it with RAC1_FIXES102=19; on a PAL disc the texts are written whatever the fix's row).
 # Fix 20 (Blarg's class 1083 / 0x300278) lives in the hand port src/game/ovl/blarg_tank.cpp (fixes102_blarg_far_debris).
 # 1.02 Gameplay, fix 21, Rilgar's class 831 (0x30ca80, the water that rises and falls): the fork is in the hand-written port
 # ril_class831_update_l5 (rilgar_water.cpp, P5.2), always taken on the PAL 2.00 disc (fixes102.cpp water_fix21).

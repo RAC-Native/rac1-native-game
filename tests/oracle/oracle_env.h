@@ -127,6 +127,17 @@ extern std::vector<uint32_t> g_extra_noop_hooks;
 // Functions the interpreter runs as host code while set: the host stand-ins the port calls in
 // their place (e.g. the console's clock), the same code on both sides.
 extern std::vector<std::pair<uint32_t, std::function<void(EeCpu&)>>> g_extra_hooks;
+// (task H3) Observers of the original's run while set: when its code reaches the address, the function runs (on the interpreter's
+// registers and the shared EE memory), then the instruction there executes as usual (EeInterpreter::set_probe). A check puts the
+// statements a code generator's hooks.glue line placed in generated code (a 1.02 fork) into the original's run with them, at the
+// same address, so that the port with the fork is compared with the original plus the fork. One check's scope: ExtraProbes.
+extern std::vector<std::pair<uint32_t, std::function<void(EeCpu&)>>> g_extra_probes;
+struct ExtraProbes {
+    explicit ExtraProbes(std::vector<std::pair<uint32_t, std::function<void(EeCpu&)>>> probes) { g_extra_probes = std::move(probes); }
+    ~ExtraProbes() { g_extra_probes.clear(); }
+    ExtraProbes(const ExtraProbes&) = delete;
+    ExtraProbes& operator=(const ExtraProbes&) = delete;
+};
 // Run on the interpreter just before each call of the original while set: registers a
 // hand-written callee reads stale from its caller ($s6, VU0 lanes), set as the port receives them.
 extern std::function<void(EeInterpreter&)> g_pre_call;

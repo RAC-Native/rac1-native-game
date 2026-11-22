@@ -4,7 +4,10 @@
 // mobys of each class (placed by its gameplay data) after the first gameplay frame, perturbed; the original is level 16's own function at its
 // own address, the port the one registered for it (the transliterations kalebo_classes_tr_N.cpp / kalebo_hero_tr_N.cpp, generated from the disc by
 // tools/codegen/mkall_l16.py). Made after batch 124 (Pokitaru).
+// H3: the race's HUD draws 0x235660 / 0x238a30 (race_hud_checks.h: also on batch 242's race dumps levels_15_16/race_*_L16.bin when
+// they are there; race_fix19_meter / race_fix19_bar with RAC1_FIXES102=19).
 #include "ovl_oracle.h"
+#include "race_hud_checks.h"
 #include "trial_guard.h"
 
 #include <game/enhance/advanced.h>
@@ -2326,6 +2329,20 @@ void batch_250() {
             return Args{{a, b}, {}};
         }, [](A a) { kal_barrier_beam_l16(a.i[0], a.i[1]); return uint64_t{0}; });
         g_extra_noop_hooks.clear();
+    }
+
+    // ---- H3: the race's HUD draws (the trick meter 0x235660, the bottom bar 0x238a30: shared_race_hud.cpp, one body with
+    // Rilgar's), 1.02 Fixes fix 19 and the PAL discs' lines (race_hud_checks.h); every word compared (no ignore list)
+    if (g_oracle_level == 16) {
+        const std::vector<uint32_t> keep_ignored = g_ignored_words;
+        g_ignored_words.clear();
+        const race_hud::Check chk = [](const char* n, uint32_t a, int k, Ret r, const std::function<Args()>& g, const std::function<uint64_t(const Args&)>& p) {
+            lvcheck(n, a, k, r, g, p);
+        };
+        race_hud::draws(race_hud::kKalebo, chk, level, race_meter_draw, race_bar_draw);
+        race_hud::fix19(race_hud::kKalebo, chk, level, race_meter_draw, race_bar_draw);
+        race_hud::pal(race_hud::kKalebo, chk, level, race_meter_draw, race_bar_draw);
+        g_ignored_words = keep_ignored;
     }
 
     //@@NEXT

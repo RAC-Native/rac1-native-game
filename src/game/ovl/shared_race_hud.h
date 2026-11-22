@@ -1,7 +1,8 @@
 // The hoverboard races' HUD (Rilgar, Kalebo III): the trick meter (HUD element 0x10, which the race's hero code requests:
 // its update and draw) and the bottom bar of the lap and the place (element 5's draw). One port of the two levels' copies
-// (shared_race_hud.cpp). Phase 1 of stage 4: the levels' generated copies still run; these are proved against them by
-// oracle batch 504.
+// (shared_race_hud.cpp). Both levels run them (task H3: their generated copies retired); proved against each level's own
+// copy by oracle batch 504 and by batches 114 (Rilgar) / 250 (Kalebo III), with fix 19 and the PAL discs' lines
+// (tests/oracle/race_hud_checks.h).
 #ifndef RAC1_GAME_OVL_SHARED_RACE_HUD_H
 #define RAC1_GAME_OVL_SHARED_RACE_HUD_H
 

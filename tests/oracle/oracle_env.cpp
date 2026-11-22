@@ -92,6 +92,7 @@ std::vector<std::pair<uint32_t, std::function<void(EeCpu&)>>> g_extra_hooks;
 std::function<void(EeInterpreter&)> g_pre_call;
 std::vector<HudHook> g_hud_hooks;
 bool g_hud_every_point = true;
+std::vector<std::pair<uint32_t, std::function<void(EeCpu&)>>> g_extra_probes;
 namespace {
 // (H1) the HUD-width hooks' events of a case: the original's (an interpreter probe at each listed address, during check_fn's own
 // call of the original only) and the port's (render_view.h g_hud_hook_trace, during the port's run only)
@@ -232,17 +233,29 @@ OrigResult call_original(uint32_t addr, const std::vector<uint32_t>& args, const
         static bool probes_set = false;
         if (probes_set) ee.clear_probes();
         probes_set = false;
+        std::vector<std::pair<uint32_t, std::vector<uint8_t>>> at;
         if (g_hud_orig_on && !g_hud_hooks.empty()) {
-            std::vector<std::pair<uint32_t, std::vector<uint8_t>>> at;
             for (const HudHook& h : g_hud_hooks) {
                 auto f = std::find_if(at.begin(), at.end(), [&h](const auto& x) { return x.first == h.at; });
                 if (f == at.end()) at.push_back({h.at, {h.side}});
                 else f->second.push_back(h.side);
             }
-            for (const auto& [a, sides] : at)
-                ee.set_probe(a, [a = a, sides = sides](EeCpu&) {
-                    for (uint8_t s : sides) g_hud_orig.push_back({s != 0, s, hud_cursor(), a});
-                });
+        }
+        // (H3) the check's own observers (g_extra_probes), after the HUD events at the same address
+        std::vector<uint32_t> addrs;
+        for (const auto& [a, sides] : at) addrs.push_back(a);
+        for (const auto& [a, fn] : g_extra_probes)
+            if (std::find(addrs.begin(), addrs.end(), a) == addrs.end()) addrs.push_back(a);
+        for (const uint32_t a : addrs) {
+            std::vector<uint8_t> sides;
+            if (auto f = std::find_if(at.begin(), at.end(), [a](const auto& x) { return x.first == a; }); f != at.end()) sides = f->second;
+            std::vector<std::function<void(EeCpu&)>> extra;
+            for (const auto& [pa, fn] : g_extra_probes)
+                if (pa == a) extra.push_back(fn);
+            ee.set_probe(a, [a, sides, extra](EeCpu& c) {
+                for (uint8_t s : sides) g_hud_orig.push_back({s != 0, s, hud_cursor(), a});
+                for (const auto& fn : extra) fn(c);
+            });
             probes_set = true;
         }
     }

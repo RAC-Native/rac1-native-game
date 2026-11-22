@@ -16,8 +16,8 @@
 // from the level's text table in the player's language, and their formats are their own ("x%d %s", "%s + %d %s", "%s";
 // the combo "%s" and the label " %s:  "), at other places than NTSC-U's, where the NTSC-U formats are not (region: on a
 // PAL disc, 0x15ee90 not 0, the port draws the disc's lines). 1.02 Fixes fix 19 brings the same three texts to NTSC-U
-// (fixes102_race_text, at the three sprintf the generated copies hook as well; on a PAL disc it writes them whatever the
-// fix's row).
+// (fixes102_race_text, after the three sprintf where the generated copies' hooks.glue lines stood until H3; on a PAL disc it
+// writes them whatever the fix's row).
 #include <game/ovl/shared_race_hud.h>
 
 #include <game/enhance/fixes102.h>

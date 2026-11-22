@@ -70,12 +70,13 @@ void rilgar_moby_fns_register() {
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x0031e808), sandmouse_update);  // (class 1818)
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x0030d678), nov_water_751_draw_l1);  // (class 831's draw-list callback)
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x0030d8b8), class832_draw);  // (its draw-list callback)
-    // the race's HUD elements: start, reset, update, draw of the lap / time element, the trick meter's update (shared with
-    // Kalebo III). The trick meter's draw (0x262f50) and the bottom bar (0x266320) stay transliterated below: both PAL builds
-    // changed them (their texts come from the level's text table there; data/regions/SCES-50916*.txt), and they carry
-    // 1.02 Fixes' fix 19 (tools/codegen/hooks.glue).
+    // the race's HUD elements (shared with Kalebo III): start, reset, update, draw of the lap / time element, the trick meter's
+    // update and draw, the bottom bar. Both PAL builds changed the meter's draw and the bar (their texts from the level's text
+    // table: the port's region fork) and they carry 1.02 Fixes' fix 19 (shared_race_hud.cpp; task H3)
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x00262ae8), race_hud_start);
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x00262b58), race_meter_update);
+    ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x00262f50), race_meter_draw);
+    ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x00266320), race_bar_draw);
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x002661a0), race_hud_reset);
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x002661e8), race_hud_update);
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x00266710), race_hud_draw);
@@ -114,8 +115,6 @@ void rilgar_moby_fns_register() {
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x0031d5c8), ril_class1550_update_l5);
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x00300b98), ril_hook_300b98_m);
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x00300be8), ril_hook_300be8_m);
-    ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x00262f50), ril_cb_262f50_l5);
-    ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x00266320), ril_cb_266320_l5);
     rilgar_part2_register();  // (the classes' draw callbacks)
 }
 

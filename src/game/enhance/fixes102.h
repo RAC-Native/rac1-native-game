@@ -31,7 +31,7 @@
 //   (L2:0x2d3e50; tools/codegen/hooks.glue)
 // - 19: the hoverbike races' texts from the level's text table, in the game's language and with a singular: the place
 //   ("1st".. "5th"), the poses ("x1 Pose") and the flips ("+ 360 Flip") in place of English built into the code
-//   (Rilgar L5:0x262f50 / 0x266320, Kalebo III L16:0x235660 / 0x238a30; fixes102_race_text; hooks.glue)
+//   (Rilgar L5:0x262f50 / 0x266320, Kalebo III L16:0x235660 / 0x238a30; fixes102_race_text, called by shared_race_hud.cpp)
 // - 20: Blarg's class 1083 breaking 32 units or more from Ratchet without the moby it breaks for (its pvar +0x20 -1) leaves
 //   no debris (its 50 pieces: moby slots) (L6:0x2ffcb0 / 0x300278: blarg_tank.cpp)
 // - 22: Rilgar's race organiser (class 918, L5:0x316ab8): the level's music back after a race ended in its state 3, and a

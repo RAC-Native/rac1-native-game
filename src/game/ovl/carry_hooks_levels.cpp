@@ -256,13 +256,13 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         case L4_CASE(0x002c41b0): ret = static_cast<int32_t>(eud_hook_10_l4(m)); return true;  // (the saw's carry record, eudora_saw.cpp)
         default: return false;
         }
-    case 5:  // Rilgar: classes 0x23c / 0x362 (tables 0x2193e8 / 0x219400)
+    case 5:  // Rilgar: classes 0x23c / 0x362, the Amoeboids (tables 0x2193e8 / 0x219400)
         switch (lvl_key(fn)) {
         case L5_CASE(0x00300ad8): ret = ril_carry_hook0_l5(m, a1, a2, f12); return true;
-        case L5_CASE(0x00300b48): ret = u_call(ril_hook_300b48_u, m, a1, a2, f12); return true;
+        case L5_CASE(0x00300b48): ret = amoeboid_hook4_l1(m, a1, a2, f12); return true;  // (Novalis's 0x2efaf8, word for word: H3)
         case L5_CASE(0x00300b98): ret = ril_carry_hook8_l5(m, a1, a2, f12); return true;
         case L5_CASE(0x00300be8): ret = ril_carry_hookc_l5(m, a1, a2, f12); return true;
-        case L5_CASE(0x00300c18): ret = u_call(ril_hook_10_u, m, a1, a2, f12); return true;
+        case L5_CASE(0x00300c18): ret = static_cast<int32_t>(amoeboid_hook10_l1(m)); return true;  // (Novalis's 0x2efbc8: H3)
         default: return false;
         }
     case 6:  // Blarg: class 0x10e's hook +0xc (table 0x20239c), class 0x33b (table 0x2023b4)

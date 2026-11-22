@@ -102,10 +102,10 @@ void kalebo_moby_fns_register() {
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002ea128), envmap_1953_update);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002351f8), race_hud_start);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x00235268), race_meter_update);
-    ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x00235660), kal_cb_235660_l16);
+    ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x00235660), race_meter_draw);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002388b0), race_hud_reset);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002388f8), race_hud_update);
-    ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x00238a30), kal_cb_238a30_l16);
+    ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x00238a30), race_bar_draw);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x00238e20), race_hud_draw);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002c9cd0), kal_cb_2c9cd0_l16);
     ovl_register_level_moby_fn(KALEBO, L16_ADDR(0x002cef60), kal_cb_2cef60_l16);

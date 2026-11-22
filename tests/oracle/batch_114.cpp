@@ -3,8 +3,11 @@
 // mobys of each class (placed by its gameplay data) after the first gameplay frame, perturbed; the
 // original is Rilgar's own function at its own address, the port the one registered for it (the
 // transliterations rilgar_classes_tr_N.cpp, the shared hand ports shared_*.cpp / novalis_*.cpp).
+// H3: the race's HUD draws 0x262f50 / 0x266320 (race_hud_checks.h: also on the race's dump rilgar_0387/race1200.bin when it is
+// there; race_fix19_meter / race_fix19_bar with RAC1_FIXES102=19), the Amoeboids' hooks 0x300b48 / 0x300c18 through the dispatch.
 
 #include "ovl_oracle.h"
+#include "race_hud_checks.h"
 
 #include <game/level/level_data.h>
 #include <game/ovl/enemy_749.h>
@@ -19,6 +22,7 @@
 #include <game/ovl/empty_class_updates.h>
 #include <game/ovl/kerwan_camera.h>
 #include <game/ovl/novalis_camera.h>
+#include <game/ovl/novalis_hooks.h>
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/novalis_water.h>
@@ -47,6 +51,7 @@
 #include <string>
 #include <map>
 #include <memory>
+#include <stdexcept>
 #include <unordered_set>
 
 namespace rac1::oracle {
@@ -1979,7 +1984,8 @@ void batch_114() {
         l5check("cam_callback", 0x00328fe0, 120, Ret::None, [cam_prep] { cam_prep(); return Args{}; }, [](A) { cam0_level_callback(0); return uint64_t{0}; });
     }
 
-    // ---- Rilgar's class hooks: +4 (0x300b48), +0x10 (0x300c18: pvars + 0xc0; the matcher pairs it with class 749's 0x2d5800), and the dispatcher on it
+    // ---- Rilgar's class hooks: +0x10 (0x300c18: pvars + 0xc0, Novalis's amoeboid_hook10_l1 since H3; the matcher pairs it with class
+    // 749's 0x2d5800, +0xd0: a wrong pair), and the dispatcher on it (H3's hook_300b48 / hook_300c18 below: both through the level's dispatch)
     if (g_oracle_level == 5) {
         l5check("hook_10", 0x00300c18, 60, Ret::Int32, [level] {
             level();
@@ -1987,7 +1993,7 @@ void batch_114() {
             const uint32_t m = ri(0, 4) == 0 ? 0u : first + 0x100 * u(ri(0, 100));
             if (m != 0 && ri(0, 3) == 0) w32(m + 0x78, 0);
             return Args{{m}, {}};
-        }, [](A a) { return r32(ril_hook_10_u(a.i[0], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0); });
+        }, [](A a) { return r32(amoeboid_hook10_l1(a.i[0])); });  // (H3: Novalis's 0x2efbc8, the same code)
     }
     if (g_oracle_level == 5) {
         level();
@@ -2019,6 +2025,65 @@ void batch_114() {
                 level();
                 return Args{{R(), R(), R(), R()}, {rf(-9, 9)}};
             }, [](A a) { empty_update(a.i[0]); return uint64_t{0}; });
+        }
+    }
+
+    // ---- H3: the race's HUD draws (the trick meter 0x262f50, the bottom bar 0x266320: shared_race_hud.cpp, one body with
+    // Kalebo III's), 1.02 Fixes fix 19 and the PAL discs' lines (race_hud_checks.h); every word compared (no ignore list)
+    if (g_oracle_level == 5) {
+        const std::vector<uint32_t> keep_ignored = g_ignored_words;
+        g_ignored_words.clear();
+        const race_hud::Check chk = [](const char* n, uint32_t a, int k, Ret r, const std::function<Args()>& g, const std::function<uint64_t(const Args&)>& p) {
+            l5check(n, a, k, r, g, p);
+        };
+        race_hud::draws(race_hud::kRilgar, chk, level, race_meter_draw, race_bar_draw);
+        race_hud::fix19(race_hud::kRilgar, chk, level, race_meter_draw, race_bar_draw);
+        race_hud::pal(race_hud::kRilgar, chk, level, race_meter_draw, race_bar_draw);
+        g_ignored_words = keep_ignored;
+    }
+
+    // ---- H3: the Amoeboids' (classes 0x23c / 0x362, tables 0x2193e8 / 0x219400) hook +4 (0x300b48: Novalis's 0x2efaf8, word for
+    // word) and hook +0x10 (0x300c18: Novalis's 0x2efbc8) through the level's dispatch class_hook_call_level, on the level's
+    // Amoeboids: the state about 0xe (carried / let go 0xe -> 1) or retired, the carry record's (pvars + 0xc0) state +0x68 each
+    // of 0 .. 9, its progress +0x6c about 1, no pvars in a sixth, the position handed over (a1: the hero's, the moby's, a test
+    // vector), the target (a2) another moby or none
+    if (g_oracle_level == 5) {
+        level();
+        std::vector<uint32_t> am;
+        for (uint32_t q = ee_read<uint32_t>(OV(0x0015ffd8)); q < ee_read<uint32_t>(OV(0x0015ffe0)); q += 0x100) {
+            const uint32_t cls = ee_read<uint32_t>(q + 0x24);
+            if (ee_read<uint8_t>(q + 0x20) < 0xfe && cls != 0 && ee_read<uint32_t>(cls + 0x2c) != 0 &&
+                ee_read<uint32_t>(ee_read<uint32_t>(cls + 0x2c) + 4) == 0x00300b48u)
+                am.push_back(q);
+        }
+        if (std::getenv("B114_INFO") != nullptr) std::printf("INFO H3 amoeboids %zu (first %08x)\n", am.size(), am.empty() ? 0u : am[0]);
+        if (am.empty()) {
+            std::printf("hook_300b48                no Amoeboid on this level\n");
+        } else {
+            constexpr uint32_t T4 = TEST_AREA + 0x3000;
+            for (const uint32_t fn : {0x00300b48u, 0x00300c18u}) {
+                l5check(fn == 0x00300b48u ? "hook_300b48" : "hook_300c18", fn, 160, Ret::Int32, [=] {
+                    level();
+                    const uint32_t m = am[static_cast<size_t>(ri(0, static_cast<int>(am.size()) - 1))];
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    const int s = ri(0, 9);
+                    w8(m + 0x20, s == 0 ? (coin() ? 0xfeu : 0xfdu) : s < 5 ? 0xeu : u(ri(0, 16)));
+                    if (pv != 0) {
+                        const int rs = ri(0, 10);
+                        w16(pv + 0xc0 + 0x68, rs == 10 ? u(ri(10, 0x7fff)) : u(rs));
+                        wf(pv + 0xc0 + 0x6c, coin() ? rf(0.9f, 1.1f) : rf(0.0f, 2.0f));
+                    }
+                    if (ri(0, 5) == 0) w32(m + 0x78, 0);  // (no pvars: no record)
+                    ee_ref<Vec4>(T4) = Vec4{ee_read<float>(m + 0x10) + rf(-3, 3), ee_read<float>(m + 0x14) + rf(-3, 3), ee_read<float>(m + 0x18) + rf(-1, 3), rf(-1, 2)};
+                    const uint32_t tgt = ri(0, 3) == 0 ? 0u : am[static_cast<size_t>(ri(0, static_cast<int>(am.size()) - 1))];
+                    const int a1k = ri(0, 2);
+                    return Args{{coin() || fn != 0x00300c18u ? m : 0u, a1k == 0 ? 0x0013f3d0u : a1k == 1 ? m + 0x10 : T4, tgt}, {rf(-1, 3)}};
+                }, [fn](A a) {
+                    int32_t r = 0x7eadbeef;
+                    if (!class_hook_call_level(fn, a.i[0], a.i[1], a.i[2], a.f[0], r)) throw std::runtime_error("not one of level 5's hooks");
+                    return r32(static_cast<uint32_t>(r));
+                });
+            }
         }
     }
 

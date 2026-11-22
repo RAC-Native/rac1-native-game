@@ -10,9 +10,7 @@
  "entries": [
   "2ee790:kal_cam0_set_124_u",
   "25e948:kal_25e948_l16",
-  "1fafa8:kal_1fafa8_l16",
-  "235660:kal_cb_235660_l16:void:a0",
-  "238a30:kal_cb_238a30_l16:void:a0"
+  "1fafa8:kal_1fafa8_l16"
  ],
  "glue_files": [],
  "files": [

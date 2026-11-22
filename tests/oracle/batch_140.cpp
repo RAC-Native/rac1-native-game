@@ -448,8 +448,8 @@ void batch_140() {
     const Dumped racers[] = {{"race_racer717", 0x00307910, ril_class717_update_l5}, {"race_board439", 0x002f87a8, class439_update},
                              {"race_ring1139", 0x0031abe0, class1139_update}, {"race_girl918", 0x00316ab8, ril_class918_update_l5}};
     const Dumped huds[] = {{"race_hud_262ae8", 0x00262ae8, race_hud_start}, {"race_hud_262b58", 0x00262b58, race_meter_update},
-                           {"race_hud_262f50", 0x00262f50, ril_cb_262f50_l5}, {"race_hud_2661a0", 0x002661a0, race_hud_reset},
-                           {"race_hud_2661e8", 0x002661e8, race_hud_update}, {"race_hud_266320", 0x00266320, ril_cb_266320_l5},
+                           {"race_hud_262f50", 0x00262f50, race_meter_draw}, {"race_hud_2661a0", 0x002661a0, race_hud_reset},
+                           {"race_hud_2661e8", 0x002661e8, race_hud_update}, {"race_hud_266320", 0x00266320, race_bar_draw},
                            {"race_hud_266710", 0x00266710, race_hud_draw}, {"race_hud_29bda0", 0x0029bda0, bullet_particle_update},
                            {"race_hud_2a00f0", 0x002a00f0, beam_particle_update}};
     // the collision's contact vectors' w lanes (vf25..vf29's, caller leftovers the port stores as 0, -0.0 in the original after the racers'
