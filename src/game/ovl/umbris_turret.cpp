@@ -91,9 +91,10 @@ void umb_class1041_update_l7(uint32_t m) {
     }
     sb(m + 0xa4, 0xff);
     color_pulse_update(m, pv + 0x60);
-    // (the target's place, its shells' frames: the original's stack, passed by address)
-    const uint32_t sp = ee_stack_alloc(0x40);
-    const uint32_t tgt = sp + 0x0, from = sp + 0x10, at = sp + 0x20, vel = sp + 0x30;
+    // (the target's record, its shells' frames: the original's stack, passed by address. The record is target_select's,
+    // 0x48 bytes: +0 the point, +0x40 the moby, +0x44 the result; the original keeps it at sp+0x30 of a 0x1e0 frame)
+    const uint32_t sp = ee_stack_alloc(0x80);
+    const uint32_t tgt = sp + 0x0, from = sp + 0x50, at = sp + 0x60, vel = sp + 0x70;
     target_select_any(m, tgt, 20.0f);
     const uint32_t st = lbu(m + 0x20);
     bool next_rest = false;
@@ -166,7 +167,7 @@ void umb_class1041_update_l7(uint32_t m) {
             }
         }
     }
-    ee_stack_free(0x40);
+    ee_stack_free(0x80);
     if (next_rest && !(static_cast<int32_t>(frame_counter()) < lw(pv + 0xb4))) {
         const int32_t rest = frame_scale_i(120);
         sw(pv + 0xb4, frame_counter() + static_cast<uint32_t>(rest));
