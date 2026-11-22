@@ -320,15 +320,14 @@ void cutscene_end() {
 // engines (0x2935b8); level 2, the class 0x1b1 mobys flagged 0x800; level 3 scene 5 frames
 // 900..1100, four sparks (particle_16_spawn 0x26ced0) from the scene's fourth moby's (+0x184) chain points; level 7
 // scene 4, the ship (0x214, second moby) with its engines; level 14 scene 0 frames 0x1c..0x21,
-// the first moby's effect 0x23e008 (shared_cutscene_fx.cpp) and its draw 0x23db30 (shared_fx_tr.cpp; Oltanis runs its own
-// build of this function, so only a level 14 without it would reach them); level 15 scenes 3 / 4,
-// the mobys' lights. Aridia's and Kerwan's overlays carry their own builds with only their level's branch (L2:0x002400c8,
-// L3:0x0022c728: the same instructions as this one's level 2 / level 3 branch; the others are keyed on other levels): this
-// port runs there, proved against both builds by batch 410.
-// orig: 0x0023e268 L2:0x002400c8 L3:0x0022c728
+// the second moby's (+0x17c) effect 0x23e008 (shared_cutscene_fx.cpp) and its draw 0x23db30 queued; level 15 scenes 3 / 4,
+// the mobys' lights. Aridia's, Kerwan's and Oltanis's overlays carry their own builds with only their level's branch
+// (L2:0x002400c8, L3:0x0022c728, L14:0x002460f8: the same instructions as this one's level 2 / 3 / 14 branch, relocated; the
+// others are keyed on other levels): this port runs there, proved against Aridia's and Kerwan's builds by batch 410 and
+// against Oltanis's (its own effect 0x245e98 and draw 0x2459c0) by batches 221 and 223.
+// orig: 0x0023e268 L2:0x002400c8 L3:0x0022c728 L14:0x002460f8
 void cutscene_level_extras() {
     if (on_umbris()) { umb_cutscene_level_extras_l7(); return; }  // (level 7's own: L7:0x00265bd8, umbris_scene_fx.cpp)
-    if (on_oltanis()) { olt_cutscene_level_extras_l14(0); return; }  // (level 14's own: L14:0x002460f8, its scene 0 effect and draw)
     if (on_level(QUARTU)) { qua_cutscene_level_extras_l15(); return; }  // (level 15's own: L15:0x0022db50, quartu_props.cpp)
     if (lw(0x0015ed84) == 0) {
         for (int32_t i = 0; i < lh(SC + 0x44); ++i) {

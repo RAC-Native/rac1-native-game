@@ -28,6 +28,7 @@
 
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/empty_class_updates.h>
+#include <game/ovl/veldin_finale_own.h>
 
 namespace rac1 {
 
@@ -36,11 +37,13 @@ namespace {
 // hook +0, every copy's port: novalis_hooks.cpp; the other argument registers zero, as the transliterated hook had them)
 void pok_hook_2fb780_m(uint32_t m) { amoeboid_hook0_l1(m, 0, 0, 0.0f); }
 
-// orig: (none) -- adapter of L11:0x002fb840 (a class hook +0 / +8 / +0xc: the indirect-call form, the moby only)
-void pok_hook_2fb840_m(uint32_t m) { pok_hook_2fb840_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+// orig: (none) -- adapter of L11:0x002fb840 (a class hook +0 / +8 / +0xc: the indirect-call form, the moby only; the Amoeboid's
+// hook +8, Novalis's port of the same code: novalis_hooks.cpp; the other argument registers zero, as the transliterated hook had them)
+void pok_hook_2fb840_m(uint32_t m) { amoeboid_hook8_l1(m, 0, 0, 0.0f); }
 
-// orig: (none) -- adapter of L11:0x002fb890 (a class hook +0 / +8 / +0xc: the indirect-call form, the moby only)
-void pok_hook_2fb890_m(uint32_t m) { pok_hook_2fb890_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+// orig: (none) -- adapter of L11:0x002fb890 (a class hook +0 / +8 / +0xc: the indirect-call form, the moby only; the Amoeboid's
+// hook +0xc, Novalis's port of the same code)
+void pok_hook_2fb890_m(uint32_t m) { amoeboid_hookc_l1(m, 0, 0, 0.0f); }
 
 // orig: (none) -- adapter of L11:0x00316160 (a class hook +0 / +8 / +0xc: the indirect-call form, the moby only)
 void pok_hook_316160_m(uint32_t m) { pok_hook_316160_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
@@ -49,8 +52,9 @@ void pok_hook_316160_m(uint32_t m) { pok_hook_316160_u(m, 0, 0, 0, 0, 0, 0, 0, 0
 // carry_keep_state_hook on the carry hook +8, shared_little.cpp; the other argument registers zero, as the transliterated hook had them)
 void pok_hook_316270_m(uint32_t m) { carry_keep_state_hook(m, 0, 0, 0.0f, 8); }
 
-// orig: (none) -- adapter of L11:0x003162d0 (a class hook +0 / +8 / +0xc: the indirect-call form, the moby only)
-void pok_hook_3162d0_m(uint32_t m) { pok_hook_3162d0_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+// orig: (none) -- adapter of L11:0x003162d0 (a class hook +0 / +8 / +0xc: the indirect-call form, the moby only; the carry hook
+// +0xc, the same code as L18:0x2d6230: veldin_finale_walking_bomb.cpp)
+void pok_hook_3162d0_m(uint32_t m) { vf_bomb_hookc_l18(m, 0, 0, 0.0f); }
 
 }  // namespace
 

@@ -23,7 +23,7 @@ void vf_ring_hurt_l18(uint32_t m);                            // L18:0x002dbe80
 // the walking bombs (class 568): their checks before the state; their carry hooks +0, +0xc, +0x10 (the table L18:0x1f3498)
 void vf_bomb_fuse_l18(uint32_t m);                                                // L18:0x002d5f20
 int32_t vf_bomb_hook0_l18(uint32_t m, uint32_t a1, uint32_t a2, float f12);       // L18:0x002d6108
-int32_t vf_bomb_hookc_l18(uint32_t m, uint32_t a1, uint32_t a2, float f12);       // L18:0x002d6230
+int32_t vf_bomb_hookc_l18(uint32_t m, uint32_t a1, uint32_t a2, float f12);       // L18:0x002d6230 L11:0x003162d0
 uint32_t vf_bomb_hook10_l18(uint32_t m);                                          // L18:0x002d6250
 
 // the rail switch (class 582): a Nanotech pickup (class 806) at `at` (an EE point); returns it (0: none)

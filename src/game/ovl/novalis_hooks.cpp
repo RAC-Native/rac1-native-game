@@ -85,9 +85,9 @@ int32_t amoeboid_hook0_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
     return res;
 }
 
-// Large Amoeboid (class 0x23c / Small Amoeboid 0x362): hook +4. Rilgar's hook 0x300b48 is the same code (word for word): this
-// port serves it (carry_hooks_levels.cpp; task H3).
-// orig: L1:0x002efaf8 L5:0x00300b48
+// Large Amoeboid (class 0x23c / Small Amoeboid 0x362): hook +4. Rilgar's hook 0x300b48 is the same code (word for word), and
+// so are Pokitaru's Amoeboids' hooks +4 .. +0x10 (0x2fb7f0 .. 0x2fb8c0): these ports serve them (carry_hooks_levels.cpp).
+// orig: L1:0x002efaf8 L5:0x00300b48 L11:0x002fb7f0
 int32_t amoeboid_hook4_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
     const int32_t res = carry_hook4(m, pa1, pa2, pf12);
     if (res != 0) {
@@ -99,7 +99,7 @@ int32_t amoeboid_hook4_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
 }
 
 // Large Amoeboid (class 0x23c / Small Amoeboid 0x362): hook +8.
-// orig: L1:0x002efb48
+// orig: L1:0x002efb48 L11:0x002fb840
 int32_t amoeboid_hook8_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
     const int32_t res = carry_hook8(m, pa1, pa2, pf12);
     if (res != 0) {
@@ -111,16 +111,16 @@ int32_t amoeboid_hook8_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
 }
 
 // Large Amoeboid (class 0x23c / Small Amoeboid 0x362): hook +0xc.
-// orig: L1:0x002efb98
+// orig: L1:0x002efb98 L11:0x002fb890
 int32_t amoeboid_hookc_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
     const int32_t res = carry_hookc(m, pa1, pa2, pf12);
     sb(m + 0x20, 0xe);
     return res;
 }
 
-// Large Amoeboid (class 0x23c / Small Amoeboid 0x362): hook +0x10 (its carry record at pvars +0xc0). Rilgar's 0x300c18 is the
-// same code: this port serves it (H3).
-// orig: L1:0x002efbc8 L5:0x00300c18
+// Large Amoeboid (class 0x23c / Small Amoeboid 0x362): hook +0x10 (its carry record at pvars +0xc0). Rilgar's 0x300c18 and
+// Pokitaru's 0x2fb8c0 are the same code: this port serves them.
+// orig: L1:0x002efbc8 L5:0x00300c18 L11:0x002fb8c0
 uint32_t amoeboid_hook10_l1(uint32_t m) {
     if (m == 0) return 0;
     const uint32_t pv = lwu(m + 0x78);

@@ -13,11 +13,13 @@
 
 #include "ovl_oracle.h"
 #include "trial_guard.h"
+#include "class_hook_deal.h"
 
 #include <game/enhance/advanced.h>
 #include <game/level/level_data.h>
 #include <game/lib/libcdvd.h>
 #include <game/ovl/carry_hooks.h>
+#include <game/ovl/cutscene.h>
 #include <game/ovl/empty_class_updates.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/hero_move_mode.h>
@@ -477,7 +479,7 @@ void batch_221() {
             {"hook_2dadb0", 0x2dadb0, 0x4, hook_uniform<enemy10e_hook4>},
             {"hook_2dae00", 0x2dae00, 0x8, hook_uniform<olt_hook_2dae00>},
             {"hook_2dae50", 0x2dae50, 0xc, hook_uniform<class252_hook_c>},
-            {"hook_2daed8", 0x2daed8, 0x10, olt_hook_2daed8_u},
+            {"hook_2daed8", 0x2daed8, 0x10, hook_dispatched<0x2daed8>},  // (Y1: the level's dispatch, L6:0x2ea800's port)
         };
         for (const Hk& hk : hks) {
             level();
@@ -637,7 +639,7 @@ void batch_221() {
             return ee_read<uint32_t>(SC + 0x17c);
         };
         l14check("cutscene_level_extras", 0x002460f8, 120, Ret::None, [scene_prep] { scene_prep(); return Args{}; },
-                 [](A) { olt_cutscene_level_extras_l14(0); return uint64_t{0}; });
+                 [](A) { cutscene_level_extras(); return uint64_t{0}; });  // (Y1: Veldin's port, its level 14 branch)
         l14check("cb2459c0", 0x002459c0, 60, Ret::None, [scene_prep, live] { uint32_t m = scene_prep(); if (m == 0) m = live[0]; return Args{{m}, {}}; },
                  [](A a) { cutscene_l14_effect_draw(a.i[0]); return uint64_t{0}; });
         g_ignored_words.resize(ign_before);
@@ -3007,6 +3009,17 @@ void batch_221() {
         }
 
         g_ignored_words = batch_ignored;
+        g_extra_noop_hooks.clear();
+    }
+
+    // ---- Y1: class 252's hook +0x10 (table 0x001fd9d0: Blarg's L6:0x2ea800, word for word; not Veldin's 0x2d5800, the overlay map's
+    // pair) through the level's dispatch class_hook_call_level, the moby 0 in half, its pvars 0 in a sixth
+    if (g_oracle_level == 14) {
+        g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};
+        auto chk = [](const char* nm, uint32_t a, int n, Ret r, const std::function<Args()>& g, const std::function<uint64_t(const Args&)>& p) {
+            l14check(nm, a, n, r, g, p);
+        };
+        class_hook_deal_checks(chk, level, {0x001fd9d0u}, {{"y1_hook_2daed8", 0x2daed8, 0x10, 0, 0}}, 120);
         g_extra_noop_hooks.clear();
     }
 

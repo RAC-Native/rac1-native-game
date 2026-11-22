@@ -4,7 +4,7 @@
 // (state 0) unless the level's byte by its uid (0x1bb930 + 0x454) or its save bit (0x14c190) says it is done, or its
 // gondola or checkpoint box (+0x48) is missing. Talking (1): the hero in its box (+0x40) the first time takes the
 // checkpoint at the box +0x48 and readies the gondola (its direction byte +0xbc by the ride's sense, its +0x124 set);
-// the talk done, the hero walks to a spot 3 in front (the level's copy of hero_walk_to, kept generated) and it waits
+// the talk done, the hero walks to a spot 3 in front (hero_walk_to_l1, the shared port of the level's copy) and it waits
 // for the scene's end (2). Then a choice of 3 or 4 is the deal: the item given with its message, the gondola done (its
 // bits set), its own save bits set, the level change asked for and it goes; other choices talk again (1).
 // Class 924 gives the coordinates of level 15. Set up as class 851, and gone as well when the story flag 0x13dd4f is
@@ -22,6 +22,7 @@
 #include <game/ovl/checkpoint.h>
 #include <game/ovl/cutscene.h>
 #include <game/ovl/level_change.h>
+#include <game/ovl/novalis_mobys.h>
 #include <game/ovl/oltanis_mobys.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -176,7 +177,7 @@ void olt_class851_update_l14(uint32_t m) {
             swc1(pv + 0xc, u2f(0x3fd9999au));
         }
         if (talk_update(m, pv) == 0) break;
-        olt_26b390_l14(m, 0, 0, 0, 0, 0, 0, 0, 3.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);  // (hero_walk_to: 3 in front)
+        hero_walk_to_l1(3.0f, m);  // (L14:0x26b390, the shared port: 3 in front; batch 501)
         sb(m + 0x20, 2);
         break;
     case 2: {  // (0x002fbc44) the scene over: the deal

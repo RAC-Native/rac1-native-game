@@ -7,6 +7,7 @@
 // "p10_" checks (task P10.1) drive the hand-written classes through Clank's part and the states the generic ones miss.
 
 #include "ovl_oracle.h"
+#include "class_hook_deal.h"
 
 #include <game/ovl/helmet_tr.h>
 #include <game/lib/libc.h>
@@ -407,15 +408,15 @@ void batch_122() {
     // (the carry hooks' shape: their callees read all four), on the mobys whose class owns the hook
     if (g_oracle_level == 10) {
         g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, 0x0023fea8};
-        // (hooks +0 .. +0xc: the shared ports of class 827's carry hooks, shared_class827.cpp; +0x10 is level 10's own, generated)
+        // (hooks +0 .. +0xc: the shared ports of class 827's carry hooks, shared_class827.cpp; +0x10: Blarg's L6:0x2ea800's port, Y1)
         struct Hk { const char* name; uint32_t addr; uint32_t slot; int32_t (*fn)(uint32_t, uint32_t, uint32_t, float); };
         static const Hk hks[] = {
             {"hook_2ce618", 0x2ce618, 0x0, class827_hook_carry0},
             {"hook_2ce6e0", 0x2ce6e0, 0x4, [](uint32_t m, uint32_t a1, uint32_t a2, float f12) { return class827_hook_carry(m, a1, a2, f12, 4); }},
             {"hook_2ce770", 0x2ce770, 0x8, [](uint32_t m, uint32_t a1, uint32_t a2, float f12) { return class827_hook_carry(m, a1, a2, f12, 8); }},
             {"hook_2ce800", 0x2ce800, 0xc, class827_hook_carryc},
-            {"hook_2ce838", 0x2ce838, 0x10, [](uint32_t m, uint32_t a1, uint32_t a2, float f12) {
-                 return static_cast<int32_t>(orx_hook_2ce838_u(m, a1, a2, 0, 0, 0, 0, 0, f12, 0, 0, 0, 0, 0, 0, 0).v0); }},
+            {"hook_2ce838", 0x2ce838, 0x10, [](uint32_t m, uint32_t a1, uint32_t a2, float f12) {  // (Y1: the level's dispatch, L6:0x2ea800's port)
+                 return static_cast<int32_t>(hook_dispatched<0x2ce838>(m, a1, a2, 0, 0, 0, 0, 0, f12, 0, 0, 0, 0, 0, 0, 0).v0); }},
         };
         for (const Hk& hk : hks) {
             level();
@@ -1690,6 +1691,17 @@ void batch_122() {
                 }, [](A) { draw_list_da80(); return uint64_t{0}; });
             }
         }
+        g_extra_noop_hooks.clear();
+    }
+
+    // ---- Y1: class 827's hook +0x10 (table 0x001dde58: Blarg's L6:0x2ea800, word for word; not Veldin's 0x2d5800, the overlay map's
+    // pair) through the level's dispatch class_hook_call_level, the moby 0 in half, its pvars 0 in a sixth
+    if (g_oracle_level == 10) {
+        g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, 0x0023fea8};
+        auto chk = [](const char* nm, uint32_t a, int n, Ret r, const std::function<Args()>& g, const std::function<uint64_t(const Args&)>& p) {
+            l10check(nm, a, n, r, g, p);
+        };
+        class_hook_deal_checks(chk, level, {0x001dde58u}, {{"y1_hook_2ce838", 0x2ce838, 0x10, 0, 0}}, 120);
         g_extra_noop_hooks.clear();
     }
 

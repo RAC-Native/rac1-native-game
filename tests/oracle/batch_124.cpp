@@ -7,6 +7,7 @@
 
 #include "ovl_oracle.h"
 #include "trial_guard.h"
+#include "class_hook_deal.h"
 
 #include <game/enhance/advanced.h>
 #include <game/enhance/fixes102.h>
@@ -431,15 +432,15 @@ void batch_124() {
         struct Hk { const char* name; uint32_t addr; uint32_t slot; TrRet (*fn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float); };
         static const Hk hks[] = {
             {"hook_2fb780", 0x2fb780, 0x0, hook_uniform<amoeboid_hook0_l1>},
-            {"hook_2fb7f0", 0x2fb7f0, 0x4, pok_hook_2fb7f0_u},
-            {"hook_2fb840", 0x2fb840, 0x8, pok_hook_2fb840_u},
-            {"hook_2fb890", 0x2fb890, 0xc, pok_hook_2fb890_u},
-            {"hook_2fb8c0", 0x2fb8c0, 0x10, pok_hook_2fb8c0_u},
+            {"hook_2fb7f0", 0x2fb7f0, 0x4, hook_dispatched<0x2fb7f0>},  // (Y1: the level's dispatch, Novalis's Amoeboid hooks)
+            {"hook_2fb840", 0x2fb840, 0x8, hook_dispatched<0x2fb840>},
+            {"hook_2fb890", 0x2fb890, 0xc, hook_dispatched<0x2fb890>},
+            {"hook_2fb8c0", 0x2fb8c0, 0x10, hook_dispatched<0x2fb8c0>},
             {"hook_316160", 0x316160, 0x0, pok_hook_316160_u},
             {"hook_316210", 0x316210, 0x4, hook_uniform<keep_state_hook4>},
             {"hook_316270", 0x316270, 0x8, hook_uniform<keep_state_hook8>},
-            {"hook_3162d0", 0x3162d0, 0xc, pok_hook_3162d0_u},
-            {"hook_3162f0", 0x3162f0, 0x10, pok_hook_3162f0_u},
+            {"hook_3162d0", 0x3162d0, 0xc, hook_dispatched<0x3162d0>},  // (Y1: L18:0x2d6230's port)
+            {"hook_3162f0", 0x3162f0, 0x10, hook_dispatched<0x3162f0>},  // (Y1: L6:0x2ea800's port)
         };
         for (const Hk& hk : hks) {
             level();
@@ -2219,6 +2220,22 @@ void batch_124() {
 
         g_extra_hooks = saved_hooks;
         g_host_clock_fixed = saved_clock;
+        g_extra_noop_hooks.clear();
+    }
+
+    // ---- Y1: the hooks of the Amoeboids (classes 0x23c / 0x362, tables 0x21c008 / 0x21c020: Novalis's L1:0x2efaf8 .. 0x2efbc8, word
+    // for word; carried: state 0xe, the record at pvars + 0xc0) and of class 1246 (table 0x21c038: +0xc L18:0x2d6230's code, +0x10
+    // L6:0x2ea800's, the record at pvars + 0x60), through the level's dispatch class_hook_call_level, on states dealt for them
+    if (g_oracle_level == 11) {
+        g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};
+        auto chk = [](const char* nm, uint32_t a, int n, Ret r, const std::function<Args()>& g, const std::function<uint64_t(const Args&)>& p) {
+            l11check(nm, a, n, r, g, p);
+        };
+        class_hook_deal_checks(chk, level, {0x0021c008u, 0x0021c020u},
+                               {{"y1_hook_2fb7f0", 0x2fb7f0, 0x4, 0xc0, 0xe}, {"y1_hook_2fb840", 0x2fb840, 0x8, 0xc0, 0xe},
+                                {"y1_hook_2fb890", 0x2fb890, 0xc, 0xc0, 0xe}, {"y1_hook_2fb8c0", 0x2fb8c0, 0x10, 0, 0}}, 160);
+        class_hook_deal_checks(chk, level, {0x0021c038u},
+                               {{"y1_hook_3162d0", 0x3162d0, 0xc, 0x60, 0}, {"y1_hook_3162f0", 0x3162f0, 0x10, 0, 0}}, 160);
         g_extra_noop_hooks.clear();
     }
 

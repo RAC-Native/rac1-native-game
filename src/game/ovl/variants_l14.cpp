@@ -44,7 +44,7 @@ constexpr VariantRow kOltanis[] = {
     {0x00229b70, 0x00235600, 0x5a48}, // hero_input_update
     {0x00233210, 0x0023c550, 0x18},   // hero_mobys_set_flag1
     {0x00233248, 0x0023c568, 0x20},   // hero_mobys_clear_flag1
-    // level 14's cutscene_level_extras (its scene 0 effect and draw callback; oltanis_classes_tr_*.cpp)
+    // level 14's cutscene_level_extras (its scene 0 branch only: Veldin's port runs it, cutscene.cpp)
     {0x0023e268, 0x002460f8, 0x78},   // cutscene_level_extras
 };
 }  // namespace

@@ -46,13 +46,6 @@ void pok_class1903_update_l11(uint32_t m);  // L11:0x0031e2f0 a water-surface sc
 void pok_cb_31e930_l11(uint32_t m);         // L11:0x0031e930 class 1919's water draw callback
 void pok_class1919_update_l11(uint32_t m);  // L11:0x0031f150 a water-surface scroll class
 
-TrRet pok_hook_2fb7f0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002fb7f0
-TrRet pok_hook_2fb840_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002fb840
-TrRet pok_hook_2fb890_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002fb890
-TrRet pok_hook_2fb8c0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x002fb8c0
-TrRet pok_hook_3162d0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x003162d0
-TrRet pok_hook_3162f0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x003162f0
-
 }  // namespace rac1
 
 #endif

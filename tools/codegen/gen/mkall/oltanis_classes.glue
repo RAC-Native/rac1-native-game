@@ -1,4 +1,3 @@
-0x00245e98: cutscene_l14_effect(a0.w());
 0x00212760: ari_spr_dma_to_l2(a0.w(), a1.w(), a2.w());
 0x00255788: ari_ocean_cells_clip_l2(a0.w());
 0x00255ac0: ari_ocean_cells_draw_l2(a0.w());

@@ -26,8 +26,10 @@ int32_t level_sound_play_l6(int32_t idx, uint32_t flags, uint32_t moby) {
 }
 
 // A class hook (+0x10 of the class table of level 6's class-827 copies): the moby's pvars + 0x60, 0 without a moby or
-// pvars.
-// orig: L6:0x002ea800
+// pvars. The same code on Batalia (class 252's table 0x1fd200), Orxon (class 827's 0x1dde58), Pokitaru (class 1246's
+// 0x21c038) and Oltanis (class 252's 0x1fd9d0), which the levels' dispatch calls it for (carry_hooks_levels.cpp,
+// oltanis_hooks.cpp; the overlay map pairs those copies with Veldin's 0x2d5800, pvars + 0xd0: not this code).
+// orig: L6:0x002ea800 L8:0x002d40d8 L10:0x002ce838 L11:0x003162f0 L14:0x002daed8
 uint32_t class_hook_pvars60_l6(uint32_t m) {
     if (m == 0) return 0;
     const uint32_t pv = lwu(m + 0x78);

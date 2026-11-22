@@ -285,7 +285,7 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         case L8_CASE(0x002d3fb0): ret = enemy10e_hook4(m, a1, a2, f12); return true;  // (Veldin's 0x2cae10, the same code)
         case L8_CASE(0x002d4000): ret = carry_state_hook(m, a1, a2, f12, 8, 5, 1); return true;  // (shared_helpers.cpp)
         case L8_CASE(0x002d4050): ret = class252_hook_c(m, a1, a2, f12); return true;  // (shared_helpers.cpp)
-        case L8_CASE(0x002d40d8): ret = u_call(bat_hook_2d40d8_u, m, a1, a2, f12); return true;
+        case L8_CASE(0x002d40d8): ret = static_cast<int32_t>(class_hook_pvars60_l6(m)); return true;  // (L6:0x2ea800's code, not the map's 0x2d5800)
         case L8_CASE(0x002d8180): ret = bat_carry_hookc_l8(m, a1, a2, f12); return true;
         default: return false;
         }
@@ -305,21 +305,22 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         case L10_CASE(0x002ce6e0): ret = class827_hook_carry(m, a1, a2, f12, 4); return true;
         case L10_CASE(0x002ce770): ret = class827_hook_carry(m, a1, a2, f12, 8); return true;
         case L10_CASE(0x002ce800): ret = class827_hook_carryc(m, a1, a2, f12); return true;
-        case L10_CASE(0x002ce838): ret = u_call(orx_hook_2ce838_u, m, a1, a2, f12); return true;
+        case L10_CASE(0x002ce838): ret = static_cast<int32_t>(class_hook_pvars60_l6(m)); return true;  // (L6:0x2ea800's code, not the map's 0x2d5800)
         default: return false;
         }
-    case 11:  // Pokitaru: classes 0x23c / 0x362 (tables 0x21c008 / 0x21c020), class 0x4de (table 0x21c038)
+    case 11:  // Pokitaru: classes 0x23c / 0x362 (tables 0x21c008 / 0x21c020: the Amoeboids, Novalis's hooks word for word), class
+              // 0x4de (table 0x21c038)
         switch (lvl_key(fn)) {
         case L11_CASE(0x002fb780): ret = amoeboid_hook0_l1(m, a1, a2, f12); return true;  // (every copy's port: novalis_hooks.cpp)
-        case L11_CASE(0x002fb7f0): ret = u_call(pok_hook_2fb7f0_u, m, a1, a2, f12); return true;
-        case L11_CASE(0x002fb840): ret = u_call(pok_hook_2fb840_u, m, a1, a2, f12); return true;
-        case L11_CASE(0x002fb890): ret = u_call(pok_hook_2fb890_u, m, a1, a2, f12); return true;
-        case L11_CASE(0x002fb8c0): ret = u_call(pok_hook_2fb8c0_u, m, a1, a2, f12); return true;
+        case L11_CASE(0x002fb7f0): ret = amoeboid_hook4_l1(m, a1, a2, f12); return true;  // (L1:0x2efaf8, the same code)
+        case L11_CASE(0x002fb840): ret = amoeboid_hook8_l1(m, a1, a2, f12); return true;  // (L1:0x2efb48)
+        case L11_CASE(0x002fb890): ret = amoeboid_hookc_l1(m, a1, a2, f12); return true;  // (L1:0x2efb98)
+        case L11_CASE(0x002fb8c0): ret = static_cast<int32_t>(amoeboid_hook10_l1(m)); return true;  // (L1:0x2efbc8: pvars + 0xc0)
         case L11_CASE(0x00316160): ret = u_call(pok_hook_316160_u, m, a1, a2, f12); return true;
         case L11_CASE(0x00316210): ret = carry_keep_state_hook(m, a1, a2, f12, 4); return true;  // (shared_little.cpp: the carry hook +4)
         case L11_CASE(0x00316270): ret = carry_keep_state_hook(m, a1, a2, f12, 8); return true;  // (the carry hook +8)
-        case L11_CASE(0x003162d0): ret = u_call(pok_hook_3162d0_u, m, a1, a2, f12); return true;
-        case L11_CASE(0x003162f0): ret = u_call(pok_hook_3162f0_u, m, a1, a2, f12); return true;
+        case L11_CASE(0x003162d0): ret = vf_bomb_hookc_l18(m, a1, a2, f12); return true;  // (L18:0x2d6230, the same code: the carry hook +0xc)
+        case L11_CASE(0x003162f0): ret = static_cast<int32_t>(class_hook_pvars60_l6(m)); return true;  // (Blarg's L6:0x2ea800, the same code)
         default: return false;
         }
     case 12:  // Hoven: class 0xee (table 0x20d228), class 0x10e's hook +0xc (table 0x20d240: Veldin's 0x2caf10 code, the map pairs it with 0x2d57d0)

@@ -5,6 +5,7 @@
 // transliterations batalia_classes_tr_N.cpp, or the shared hand-written ports registered since the level's re-glue).
 
 #include "ovl_oracle.h"
+#include "class_hook_deal.h"
 
 #include <game/ovl/aridia_mobys.h>
 #include <game/ovl/batalia_mobys.h>
@@ -457,7 +458,7 @@ void batch_120() {
             {"hook_2d3fb0", 0x2d3fb0, 0x4, hook_uniform<enemy10e_hook4>},
             {"hook_2d4000", 0x2d4000, 0x8, hook_uniform<bat_hook_2d4000>},
             {"hook_2d4050", 0x2d4050, 0xc, hook_uniform<class252_hook_c>},
-            {"hook_2d40d8", 0x2d40d8, 0x10, bat_hook_2d40d8_u},
+            {"hook_2d40d8", 0x2d40d8, 0x10, hook_dispatched<0x2d40d8>},  // (Y1: the level's dispatch, L6:0x2ea800's port)
             {"hook_2d8180", 0x2d8180, 0xc, hook_uniform<bat_carry_hookc_l8>},
         };
         for (const Hk& hk : hks) {
@@ -3224,6 +3225,17 @@ void batch_120() {
         g_host_clock_fixed = saved_clock_p83;
         g_extra_noop_hooks.clear();
         g_ignored_words = saved_ignored;
+    }
+
+    // ---- Y1: class 252's hook +0x10 (table 0x001fd200: Blarg's L6:0x2ea800, word for word; not Veldin's 0x2d5800, the overlay map's
+    // pair) through the level's dispatch class_hook_call_level, the moby 0 in half, its pvars 0 in a sixth
+    if (g_oracle_level == 8) {
+        g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, 0x002763f8};
+        auto chk = [](const char* nm, uint32_t a, int n, Ret r, const std::function<Args()>& g, const std::function<uint64_t(const Args&)>& p) {
+            l8check(nm, a, n, r, g, p);
+        };
+        class_hook_deal_checks(chk, level, {0x001fd200u}, {{"y1_hook_2d40d8", 0x2d40d8, 0x10, 0, 0}}, 120);
+        g_extra_noop_hooks.clear();
     }
 
     //@@NEXT

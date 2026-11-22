@@ -109,7 +109,7 @@ void blg_class1512_update_l6(uint32_t m);  // L6:0x00308c68  class 1512
 // 0x15f574, below the count 0x15f5f0) started on the moby `moby` with the flags `flags`; its slot (-1 none)
 int32_t level_sound_play_l6(int32_t idx, uint32_t flags, uint32_t moby);  // L6:0x0029aec0
 // class hook +0x10 of level 6's class 827 copies: the moby's pvars + 0x60 (0 without a moby or pvars)
-uint32_t class_hook_pvars60_l6(uint32_t m);  // L6:0x002ea800
+uint32_t class_hook_pvars60_l6(uint32_t m);  // L6:0x002ea800 L8:0x002d40d8 L10:0x002ce838 L11:0x003162f0 L14:0x002daed8
 
 // orig: (helper) repeated in L6:0x002f3ad8 / 0x002f55a0 / 0x002f6470 -- the moby `owner`'s sound in the sound slot `slot`
 // (-1: none) stopped while that slot still plays it (its owner +0x88, playing +0x74)

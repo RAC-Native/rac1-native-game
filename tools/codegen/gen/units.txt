@@ -3,14 +3,11 @@
 # here: the inputs of a unit an earlier version retired (its json, glue and skeletons) stay on disk when a newer source
 # zip is unpacked over an older folder, and their code names functions that are hand-written now (#170). Retiring a
 # unit removes its line with its files; a new unit adds one.
-mkall:batalia_classes
 mkall:batalia_part2
 mkall:gaspar_classes
 mkall:kalebo_classes
 mkall:kerwan_part2
 mkall:oltanis_classes
-mkall:orxon_classes
-mkall:pokitaru_classes
 mkall:rilgar_part2
 mkall:umbris_part2
 asm2cpp:moby_shadows_asm

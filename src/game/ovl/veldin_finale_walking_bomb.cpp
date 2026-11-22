@@ -172,8 +172,8 @@ int32_t vf_bomb_hook0_l18(uint32_t m, uint32_t a1, uint32_t a2, float f12) {
     return 2;
 }
 
-// Hook +0xc: the carry hook +0xc.
-// orig: L18:0x002d6230
+// Hook +0xc: the carry hook +0xc. (Pokitaru's class 1246's hook +0xc, 0x3162d0, is the same code: this port serves it.)
+// orig: L18:0x002d6230 L11:0x003162d0
 int32_t vf_bomb_hookc_l18(uint32_t m, uint32_t a1, uint32_t a2, float f12) { return carry_hookc(m, a1, a2, f12); }
 
 // Hook +0x10: the moby's pvars +0x60 (0 without the moby or its pvars).

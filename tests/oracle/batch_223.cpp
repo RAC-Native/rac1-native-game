@@ -19,6 +19,7 @@
 #include <game/lib/libcdvd.h>
 #include <game/ovl/empty_class_updates.h>
 #include <game/ovl/novalis_mobys.h>
+#include <game/ovl/cutscene.h>
 #include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/oltanis_mobys.h>
 #include <game/ovl/ovl_common.h>
@@ -304,7 +305,7 @@ void batch_223() {
                 w32(OV(0x0015f5cc), R());
                 seed_rand();
                 return Args{};
-            }, [](A) { olt_cutscene_level_extras_l14(0); return uint64_t{0}; });
+            }, [](A) { cutscene_level_extras(); return uint64_t{0}; });  // (Y1: Veldin's port, its level 14 branch)
             load223(d);
             const uint32_t sm = ee_read<uint32_t>(SC + 0x17c);
             if (sm != 0)

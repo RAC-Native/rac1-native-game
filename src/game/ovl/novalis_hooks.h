@@ -14,10 +14,10 @@ int32_t peckbot_hook8_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);   
 int32_t peckbot_hookc_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);   // L1:0x002f1dc8
 uint32_t peckbot_hook10_l1(uint32_t m);                                          // L1:0x002f1df8
 int32_t amoeboid_hook0_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);  // L1:0x002efa88 L11:0x002fb780
-int32_t amoeboid_hook4_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);  // L1:0x002efaf8 L5:0x00300b48
-int32_t amoeboid_hook8_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);  // L1:0x002efb48
-int32_t amoeboid_hookc_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);  // L1:0x002efb98
-uint32_t amoeboid_hook10_l1(uint32_t m);                                         // L1:0x002efbc8 L5:0x00300c18
+int32_t amoeboid_hook4_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);  // L1:0x002efaf8 L5:0x00300b48 L11:0x002fb7f0
+int32_t amoeboid_hook8_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);  // L1:0x002efb48 L11:0x002fb840
+int32_t amoeboid_hookc_l1(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12);  // L1:0x002efb98 L11:0x002fb890
+uint32_t amoeboid_hook10_l1(uint32_t m);                                         // L1:0x002efbc8 L5:0x00300c18 L11:0x002fb8c0
 
 // orig: (host) the hook (+0 / +4 / +8 / +0xc: moby m, registers a1 / a2 / f12 passed on) at the code address `fn`,
 // when it is one of Novalis's own and the played level's overlay is Novalis's (RAC1_OWN_OVERLAY=1 RAC1_LEVEL=1):
