@@ -5,7 +5,6 @@
 # unit removes its line with its files; a new unit adds one.
 mkall:batalia_part2
 mkall:gaspar_classes
-mkall:kalebo_classes
 mkall:kerwan_part2
 mkall:oltanis_classes
 mkall:rilgar_part2

@@ -23,6 +23,7 @@
 #include <game/ovl/kalebo_mobys.h>
 #include <game/ovl/kalebo_own.h>
 #include <game/ovl/level_change.h>
+#include <game/ovl/novalis_mobys.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -184,7 +185,7 @@ void kal_class1455_update_l16(uint32_t m) {
         swc1(L16_ADDR(0x0015f638), lw(g::HERO_SUBSTATE) == 0xf ? 100.0f : 115.0f);  // (the death height)
         if (!(fix10 && lw(g::HERO_STATE) == 0x1d) && talk_update(m, talk) != 0) {
             swc1(m + 0x48, lwc1(pv + 0xc4));
-            kal_25e948_l16(m, 0, 0, 0, 0, 0, 0, 0, 3.5f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);  // (the hero walked to 3.5 in front: hero_walk_to's copy)
+            hero_walk_to_l1(3.5f, m);  // (the hero walked to 3.5 in front of him: the level's copy L16:0x25e948 of the shared walk-to)
             sb(m + 0x20, 2);
         }
         race_help(m);

@@ -3,8 +3,9 @@
 // each mesh only when its bounding sphere is on screen. The three classes' code is the same with each its own tables and
 // mesh count (class 1943's update leaves +0x30 / +0x32 as they are; class 1947's draw keeps its coordinates in a buffer of
 // its own); the five copies of the mapping helper are the same function. Level-only words (the tables, the spheres' block,
-// the draw callbacks) are L16_ADDR; the camera 0x166dc0 goes through OV(). The draw's matrices are set up by the level's own
-// function 0x1fafa8 (still transliterated). Header shared_envmap.h.
+// the draw callbacks) are L16_ADDR; the camera 0x166dc0 goes through OV(). The draw's matrices are set up by the level's copy
+// L16:0x1fafa8 of Veldin's 0x1fc740, shadows_vu1_setup (the same code relocated: the engine's port, shadows.cpp, as
+// shared_envmap_meshes.cpp and shared_class1111.cpp call it on this level). Header shared_envmap.h.
 #include <game/ovl/shared_envmap.h>
 
 #include <game/math/vecmath.h>
@@ -13,6 +14,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/shadows.h>
 #include <game/ovl/variants_l16.h>
 
 namespace rac1 {
@@ -87,7 +89,7 @@ void envmap_draw(const EnvSet& s) {
     sub_002a0ba8(0x42, (0x8000ull << 23) | 0x64u);
     sub_002a0ba8(8, 0);
     sub_002a0ba8(0x14, (0xff90ull << 32) | 0x260u);
-    kal_1fafa8_l16(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);  // (reads none of them)
+    shadows_vu1_setup();  // (L16:0x1fafa8)
     const uint32_t uvs = s.uv_buffer != 0 ? s.uv_buffer : s.spheres + static_cast<uint32_t>(s.meshes) * 0x10;
     for (int32_t i = 0; i < s.meshes; ++i) {
         const uint32_t at = static_cast<uint32_t>(i) * 4;

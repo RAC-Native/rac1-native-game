@@ -45,7 +45,9 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/sound_emitter.h>
 #include <game/ovl/empty_class_updates.h>
+#include <game/ovl/shadows.h>
 #include <runtime/kernel/disc.h>
+#include <runtime/vu/vu0.h>
 
 #include <algorithm>
 #include <cmath>
@@ -79,6 +81,8 @@ bool c2a_spr_check(const char* name) {
                                          "class541_cases", "class556_cases",
                                          // (stage 4 P16.2's: the race's organiser)
                                          "class1455_cases", "class1455_fix10",
+                                         // (stage 4 Y4's: the organiser's talk ending, the hero walked to him)
+                                         "y4_class1455_walk",
                                          // (stage 4 P16.4's: the chicken dispenser's release, sphere_collide)
                                          "class1923_cases", "chicken_release",
                                          // (stage 4 P16.5's: the carrier's fall, the walker's moves, hit and carry)
@@ -1318,6 +1322,38 @@ void batch_250() {
             organiser_prep(m, kStates[ri(0, 16)]);
             finish();
         }, 240, organisers);
+        // Y4: the talk ending in state 1 (talk_update's 1 without a scene: the record +0x36 of the script +0x3c run by itself,
+        // the talk's +8 not 0, its scene +4 made -1 and its condition +8 0, the hero within its reach, the talk's first frame 0x179110 reached), so that
+        // the organiser turns back to his facing +0xc4 and walks the hero to 3.5 in front of him (hero_walk_to_l1, the shared
+        // walk-to, in place of the level's copy L16:0x25e948: the call's constant). class1455_cases stays short of it (its talk
+        // never ends: a scene the oracle cannot run).
+        classcheck("y4_class1455_walk", 0x002e6808, kal_class1455_update_l16, [=](uint32_t m) {
+            w8(m + 0x20, 0);
+            kal_class1455_update_l16(m);  // (state 0 first: the talk set up, its script and reach 3.7)
+            organiser_prep(m, 1);
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78), t = pv + 0x20, script = ee_read<uint32_t>(t + 0x3c);
+            int16_t r = ee_read<int16_t>(t + 0x36);
+            if (r < 0 || r > 4) r = static_cast<int16_t>(ri(0, 3));
+            w16(t + 0x36, u(r));
+            if (script != 0) {
+                w16(script + u(r) * 0x1c + 4, 0xffffu);  // (no scene, no movie: the next record)
+                w16(script + u(r) * 0x1c + 8, 0);  // (no condition: talk_step keeps the record, its +8 as dealt)
+            }
+            w8(t + 8, u(ri(1, 3)));
+            w32(OV(0x0015f5c4), 0u);
+            w32(0x001413d4, 0u);
+            w32(P + 0x22a8, 1u);
+            const float yaw = ee_read<float>(m + 0x48) + rf(-3.1f, 3.1f), d = ri(0, 4) == 0 ? rf(7.4f, 9.0f) : rf(0.5f, 7.0f);
+            Vec4 q = ee_ref<Vec4>(m + 0x10);
+            q.x += d * std::cos(yaw); q.y += d * std::sin(yaw);
+            hero_to(q);
+            wf(m + 0x48, rf(-3.1f, 3.1f));
+            wf(pv + 0xc4, rf(-3.1f, 3.1f));
+            w32(OV(0x00179110), ri(0, 5) == 0 ? 0x10000u : 0u);  // (the talk's frame not reached in a few)
+            wfrand(OV(0x0016c860) + 0x10, 8, -50, 50);  // (the walk-to's words of the scene record: its place, its turn)
+            w16(OV(0x0016c860) + 0x46, 0);
+            finish();
+        }, 120, organisers);
         lvcheck("sea_height_set", 0x002de3b8, 20, Ret::None, [=] {
             level();
             return Args{{}, {coin() ? rf(60, 120) : rf(-1e4f, 1e4f)}};
@@ -1645,9 +1681,9 @@ void batch_250() {
         // class 1947's draw 0x2e9270 (shared_envmap.cpp): the class's update first from its state 0 (its mesh's bounding sphere), the
         // camera before the sphere (the mesh drawn: its coordinates into 0x1ddc80, its packets) or away, the screen and projection set
         // up, the packet cursor on a buffer of the test area (0x800000 + up to 8 quadwords, its end 0x8f0000). VU0: the callback has
-        // no VU0 instruction of its own; its last VU0 writers in the original's run are its callees (the level's 0x1fafa8, still
-        // generated, the same in both; envmap_uvs and prim_list_packet, host ports keeping no VU0 state, as in the generated code
-        // before): no lane is compared.
+        // no VU0 instruction of its own; its last VU0 writers in the original's run are its callees (the level's 0x1fafa8, now the
+        // engine's shadows_vu1_setup: y4_shadows_vu1_setup below; envmap_uvs and prim_list_packet, host ports keeping no VU0 state,
+        // as in the generated code before): no lane is compared.
         cases("cb2e9270_cases", 0x002e9270, kal_cb_2e9270_l16, 60, of(0x002e93b0), [=](uint32_t m) {
             w8(m + 0x20, 0);
             kal_class1947_update_l16(m);
@@ -2343,6 +2379,83 @@ void batch_250() {
         race_hud::fix19(race_hud::kKalebo, chk, level, race_meter_draw, race_bar_draw);
         race_hud::pal(race_hud::kKalebo, chk, level, race_meter_draw, race_bar_draw);
         g_ignored_words = keep_ignored;
+    }
+
+    // ---- Y4 (stage 4): the level's last generated functions now run the shared ports. L16:0x1fafa8, the level's copy of
+    // shadows_vu1_setup (Veldin's 0x1fc740 relocated; shared_envmap.cpp's draw calls the engine's port now, as the other callers
+    // on this level already did), against that port: the screen and projection set up, the camera about one of the
+    // environment-mapped objects (classes 1943 / 1947 / 1948 / 1953) or anywhere and the view from it, the VU1 program loaded
+    // (0x15f5e0 = 7) or not, the Z bias 0x15f308, the packet cursor on a buffer of the test area (0x800000 + up to 8 quadwords,
+    // its end 0x8f0000). VU0: the original's registers at its call are given to the port's side, and after both vf3 is compared
+    // (all four lanes), the one register the original leaves as its mat4_scale_diag copy (0x1fe280) wrote it: its vec3_scale copy
+    // (0x1fdb68) writes vf1 / vf2 after it, its mat4_mul copy (0x1fe640) vf4 .. vf9 and ACC; their host ports keep no VU0 state,
+    // as in the generated copy before (the registers after the call are what the game had before this change; mat4_scale_diag's
+    // own lanes vf1 .. vf5 are batch 506's check against L16:0x1fe280).
+    if (g_oracle_level == 16) {
+        static EeInterpreter* s_ee = nullptr;
+        static VUState s_vu0_in;
+        auto vu0_given = [] {
+            VUState& v = vu0::global().st;
+            v.vf = s_vu0_in.vf; v.vi = s_vu0_in.vi; v.acc = s_vu0_in.acc; v.q = s_vu0_in.q; v.i = s_vu0_in.i; v.r = s_vu0_in.r;
+            v.p = s_vu0_in.p; v.macflag = s_vu0_in.macflag; v.statusflag = s_vu0_in.statusflag; v.clipflag = s_vu0_in.clipflag;
+            std::memcpy(v.mem.data(), s_vu0_in.mem.data(), 0x1000);
+        };
+        auto vf3_compare = [] {  // (a difference: a word the original does not write, so that the case fails)
+            if (s_ee == nullptr) return;
+            const VUState& o = s_ee->vu0();
+            const VUState& q = vu0::global().st;
+            int bad = 0;
+            for (int i = 0; i < 4; ++i)
+                if (o.vf[3].u[i] != q.vf[3].u[i] && bad++ < 4) std::printf("  VU0 vf3 lane %d: orig=%08x port=%08x\n", i, o.vf[3].u[i], q.vf[3].u[i]);
+            if (bad != 0) w32(0x008ff000u, 0x0bad0000u + u(bad));
+        };
+        level();
+        std::vector<uint32_t> env;
+        for (uint32_t fn : {0x002e8e80u, 0x002e93b0u, 0x002e98e0u, 0x002ea128u})
+            for (uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)); m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100)
+                if (ee_read<uint8_t>(m + 0x20) < 0xfe && ee_read<uint32_t>(m + 0x74) == fn) env.push_back(m);
+        std::printf("INFO Y4 %zu environment-mapped objects\n", env.size());
+        g_pre_call = [](EeInterpreter& ee) { s_ee = &ee; s_vu0_in = ee.vu0(); };
+        lvcheck("y4_shadows_vu1_setup", 0x001fafa8, 80, Ret::None, [env, level] {
+            level();
+            if (ee_read<uint16_t>(0x001518d0) == 0) { w16(0x001518d0, 640); w16(0x001518d2, 448); }
+            screen_setup();
+            projection_setup();
+            if (!env.empty() && ri(0, 3) != 0) {
+                const Vec4 t = ee_ref<Vec4>(env[static_cast<size_t>(ri(0, static_cast<int>(env.size()) - 1))] + 0x10);
+                const float a = rf(-3.1f, 3.1f), d = rf(3.0f, 60.0f);
+                ee_ref<Vec4>(OV(0x00166dc0)) = Vec4{t.x - d * std::cos(a), t.y - d * std::sin(a), t.z + rf(-2.0f, 20.0f), 1.0f};
+                wf(OV(0x00166dd8), a);
+                wf(OV(0x00166dd4), rf(-0.4f, 0.4f));
+            } else {
+                ee_ref<Vec4>(OV(0x00166dc0)) = Vec4{rf(-100.0f, 900.0f), rf(-100.0f, 900.0f), rf(-50.0f, 400.0f), coin() ? 1.0f : rf(-2.0f, 2.0f)};
+            }
+            render_view_setup();
+            w32(OV(0x0015f5e0), coin() ? 7u : u(ri(0, 8)));
+            wf(OV(0x0015f308), ri(0, 2) == 0 ? 0.0f : rf(-0.05f, 0.05f));
+            w32(OV(0x001611c0), 0x00800000u + u(ri(0, 8)) * 0x10u);
+            w32(OV(0x0015f5f8), 0x008f0000u);
+            return Args{};
+        }, [vu0_given, vf3_compare](A) { vu0_given(); shadows_vu1_setup(); vf3_compare(); return uint64_t{0}; });
+        g_pre_call = nullptr;
+
+        // L16:0x2ee790, the level's copy of cam0_set_rates (0x2e8590: the follow camera's work +0x11c / +0x120, each when not 0;
+        // the overlay map pairs cam0_set_124 0x2e85d8 with it, of which the level carries no copy), run through cam0_set_124's
+        // dispatch on this level (camera_mods.cpp): the active camera 0x166e00 the follow camera (+0x86 = 0) or another type,
+        // each rate 0, -0 or another, the work's +0x11c .. +0x128 dealt before
+        lvcheck("y4_cam0_set_124", 0x002ee790, 120, Ret::None, [level] {
+            level();
+            uint32_t cam = 0;
+            for (uint32_t i = 0; i < 48 && cam == 0; ++i)
+                if (ee_read<uint32_t>(OV(0x00169890) + i * 4) != 0 && ee_read<int16_t>(OV(0x00167150) + i * 0xa0 + 0x86) == 0) cam = OV(0x00167150) + i * 0xa0;
+            if (cam == 0) cam = ee_read<uint32_t>(OV(0x00166e00));
+            w32(OV(0x00166e00), cam);
+            const uint32_t work = ee_read<uint32_t>(cam + 0x70);
+            wfrand(work + 0x11c, 4, -1.0f, 1.0f);
+            w16(cam + 0x86, ri(0, 3) == 0 ? u(ri(1, 0x17)) : 0u);
+            auto rate = [] { const int k = ri(0, 4); return k == 0 ? 0.0f : (k == 1 ? -0.0f : rf(-0.5f, 0.5f)); };
+            return Args{{}, {rate(), rate()}};
+        }, [](A a) { cam0_set_124(a.f[0], a.f[1]); return uint64_t{0}; });
     }
 
     //@@NEXT

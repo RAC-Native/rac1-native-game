@@ -440,7 +440,8 @@ void cam0_set_mode(int32_t m) {
     if (lh(cam + 0x86) != 0) return;
     sh(work(cam) + 0x10, static_cast<uint32_t>(m));
 }
-// orig: 0x002e8590 — the spring rates +0x11c / +0x120 (0 keeps the old one).
+// orig: 0x002e8590 L16:0x002ee790 — the spring rates +0x11c / +0x120 (0 keeps the old one). (Also run on level 16 for
+// cam0_set_124, which that level does not carry: camera_mods.cpp.)
 void cam0_set_rates(float a, float b) {
     const uint32_t cam = lwu(OV(0x00166e00));
     if (lh(cam + 0x86) != 0) return;

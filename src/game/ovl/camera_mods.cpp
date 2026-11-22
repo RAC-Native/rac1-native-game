@@ -8,7 +8,6 @@
 #include <game/ovl/ovl.h>
 #include <game/level/level_data.h>
 #include <game/ovl/ovl_common.h>
-#include <game/ovl/kalebo_mobys.h>
 #include <game/ovl/variants_l16.h>
 #include <game/port_stubs.h>
 
@@ -69,10 +68,13 @@ void cam0_set_1cc(float v) {
     if (lh(lwu(ACTIVE) + 0x86) == 0) swc1(work() + 0x1cc, v);
 }
 
-// The follow camera's work +0x124 / +0x128, each when not 0.
+// The follow camera's work +0x124 / +0x128, each when not 0. Kalebo III (level 16) carries no copy of it: the overlay map
+// pairs it with L16:0x2ee790, which is that level's copy of cam0_set_rates (0x2e8590, the work's +0x11c / +0x120; the same
+// code but the active camera's address), so there the rates are set, as before. No code of level 16 calls it (its camera
+// type table holds neither the modifier 0x11 nor type 0x12, the callers of this function).
 // orig: 0x002e85d8
 void cam0_set_124(float a, float b) {
-    if (on_camera_level(KALEBO)) { kal_cam0_set_124_u(0, 0, 0, 0, 0, 0, 0, 0, a, b, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); return; }  // (level 16's own: L16:0x002ee790, the work's +0x11c / +0x120)
+    if (on_camera_level(KALEBO)) { cam0_set_rates(a, b); return; }  // (L16:0x002ee790)
     if (lh(lwu(ACTIVE) + 0x86) != 0) return;
     const uint32_t w = work() + 0x40;
     if (a != 0.0f) swc1(w + 0xe4, a);

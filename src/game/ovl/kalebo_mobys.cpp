@@ -1,5 +1,5 @@
-// Kalebo III (level 16) own moby classes: the registration table. The ports are the transliterations in
-// kalebo_classes_tr_N.cpp (declarations: kalebo_mobys.h). Keyed by level 16's own address and by level, so the indirect call (`jalr`) through
+// Kalebo III (level 16) own moby classes: the registration table. The ports are hand-written (kalebo_*.cpp, shared_*.cpp;
+// declarations: kalebo_mobys.h). Keyed by level 16's own address and by level, so the indirect call (`jalr`) through
 // moby +0x74 (or a callback installed by a class) reaches them only while the played level's overlay is level 16's.
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/novalis_mobys2.h>
