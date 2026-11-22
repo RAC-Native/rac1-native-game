@@ -1,6 +1,6 @@
-// Oltanis (level 14) own moby classes: the registration table. The ports are the transliterations in
-// oltanis_classes_tr_N.cpp (declarations: oltanis_mobys.h) and, for the classes several levels carry, the hand-written shared
-// ports (shared_*.cpp, novalis_*.cpp). Keyed by level 14's own address and by level, so the indirect call (`jalr`)
+// Oltanis (level 14) own moby classes: the registration table. The ports are the level's hand-written ones (oltanis_*.cpp,
+// declarations: oltanis_mobys.h; the last transliterations, oltanis_classes_tr_N.cpp, went with task Y5) and, for the classes
+// several levels carry, the hand-written shared ports (shared_*.cpp, novalis_*.cpp). Keyed by level 14's own address and by level, so the indirect call (`jalr`)
 // through moby +0x74 (or a draw list) reaches them only while the played level's overlay is level 14's.
 #include <game/ovl/oltanis_hooks.h>
 #include <game/ovl/oltanis_mobys.h>
@@ -32,6 +32,7 @@
 #include <game/ovl/shared_gold_bolt.h>
 #include <game/ovl/shared_helpers.h>
 #include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_sea_draw.h>
 #include <game/ovl/shared_spawner.h>
 #include <game/ovl/shared_swingshot_target.h>
 
@@ -124,7 +125,7 @@ void oltanis_moby_fns_register() {
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002edc18), olt_cb_2edc18_l14);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x002f6128), class832_draw);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x00301fa8), class1224_draw);
-    ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x00303350), olt_cb_303350_l14);
+    ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x00303350), sea_draw);  // (class 1260's sea: shared_sea_draw.cpp, task Y5)
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x00307a28), env_objects_callback);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x00308150), class1511_draw);
     ovl_register_level_moby_fn(OLTANIS, L14_ADDR(0x00309bb0), sandmouse_glow);

@@ -22,6 +22,7 @@
 #include <game/ovl/cutscene.h>
 #include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/oltanis_mobys.h>
+#include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/shared_class1224.h>
@@ -215,7 +216,7 @@ void batch_223() {
                              {"cb2edc18", 0x002edc18, olt_cb_2edc18_l14, 684},
                              {"cb2f6128", 0x002f6128, class832_draw, 832},
                              {"cb301fa8", 0x00301fa8, class1224_draw, 1224},
-                             {"cb303350", 0x00303350, olt_cb_303350_l14, 1260},
+                             {"cb303350", 0x00303350, [](uint32_t m) { ovl_call_moby_fn(0x00303350, m); }, 1260},  // (task Y5: the level's registration, the shared sea_draw)
                              {"cb307a28", 0x00307a28, env_objects_callback, 1418},
                              {"cb308150", 0x00308150, class1511_draw, 1511},
                              {"cb309bb0", 0x00309bb0, sandmouse_glow, 1818},

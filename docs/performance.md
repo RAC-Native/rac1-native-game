@@ -796,14 +796,15 @@ Found the same way, each with a `RAC1_PERF_*=0` switch: the game's own code wher
 terrain.
 
 - **The palette blend** (`RAC1_PERF_PALETTE_BLEND`, `src/game/ovl/palette_blend.cpp`, called by the shared port
-  `ari_ocean_tex_upload_l2` (`aridia_ocean.cpp`), which runs the routine on Aridia 0x24fca0, Kerwan 0x23c428, Rilgar 0x277b20, Umbris
-  0x2762e0, Batalia 0x257d40 and Gaspar 0x26d240 on every disc, and hooked by `tools/codegen/hooks.glue` into Oltanis's generated
-  copy 0x255ce0, NTSC-U): its texel loop weighted both palettes' entries (VMULbc) for each of 4096 texels; each entry's product is now
-  made once (256 per palette) and the texels add the two they index, leaving the VU0 registers as the loop does (not its ops' flags,
-  which nothing reads after). `RAC1_RAMHASH` identical on and off on levels 3, 5, 7, 8, 9 and 14 (3000 frames each, the routine
-  running on all six). Kerwan, the routine's call (the palettes' DMA and conversion included): 0.124 to 0.035 ms, about one call a
-  frame. Oltanis's generated copy on a PAL disc runs the loop as transliterated (the hook's address is NTSC-U's). Oracle: batch 513's
-  `ocean_tex_upload` / `ocean_tex_upload_vu` on every level's copy, run with the loop on and with `RAC1_PERF_PALETTE_BLEND=0`.
+  `ari_ocean_tex_upload_l2` (`aridia_ocean.cpp`), which runs the routine on Aridia 0x24fca0, Kerwan 0x23c428, Rilgar 0x277b20,
+  Umbris 0x2762e0, Batalia 0x257d40, Gaspar 0x26d240 and Oltanis 0x255ce0 on every disc): its texel loop weighted both palettes'
+  entries (VMULbc) for each of 4096 texels; each entry's product is now made once (256 per palette) and the texels add the two they
+  index, leaving the VU0 registers as the loop does (not its ops' flags, which nothing reads after). `RAC1_RAMHASH` identical on
+  and off on levels 3, 5, 7, 8, 9 and 14 (3000 frames each, the routine running on all six). Kerwan, the routine's call (the
+  palettes' DMA and conversion included): 0.124 to 0.035 ms, about one call a frame. The PAL discs run it too (before the levels'
+  seas ran the shared port, their generated copies were hooked at NTSC-U addresses, so a PAL player ran the loop as transliterated;
+  Oltanis's was the last, until task Y5). Oracle: batch 513's `ocean_tex_upload` / `ocean_tex_upload_vu` on every level's copy, run
+  with the loop on and with `RAC1_PERF_PALETTE_BLEND=0`.
 - **The VU clamp once per operand** (`RAC1_PERF_VU_CLAMP`, `ovl_1e_1f.cpp` `segment_collide_v`'s triangle test, `ovl_24_25.cpp`
   `moby_transform_core`): the hand ports' `q*` / `vmul` / `vmadd` helpers clamp both operands and the result of every op by the VU
   rules; where every operand is already a VU result, a small integer's float or a value clamped as it is read, `vuc(x)` is `x`, so
@@ -1028,7 +1029,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_TFRAG_FIND=0` | the world walker's lookup of every tfrag draw's entry, also where the host makes the tfrags |
 | `RAC1_PERF_GS_MEM=0`, `RAC1_PERF_VU1_LOOKUP=0`, `RAC1_PERF_XGKICK=0` | the chain reader's GS memory, VU1 port lookups (and the world walker's program lookup) and kicks as before |
 | `RAC1_PERF_TEXTABLE=0`, `RAC1_PERF_TFRAG_ALLOC=0`, `RAC1_PERF_VU7=0`, `RAC1_PERF_PKT_MEMO=0` | the scene's and the effects' preparation as before |
-| `RAC1_PERF_PALETTE_BLEND=0` | the six levels' palette blend as the game's loop |
+| `RAC1_PERF_PALETTE_BLEND=0` | the seven levels' palette blend as the game's loop |
 | `RAC1_PERF_VU_CLAMP=0` | the collision triangle test and the moby transform clamping every operand at each op |
 | `RAC1_PERF_COLL_MESH=1` | the collision segment test's moby meshes kept between calls (off by default) |
 | `RAC1_PERF_COPIES=0` | the EE journal's pages zero-filled then copied, the moby observer's record built aside and copied |

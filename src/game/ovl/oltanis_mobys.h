@@ -1,5 +1,5 @@
-// Oltanis (level 14) transliterated moby classes, camera types, class hooks, draw callbacks, the camera mode hook, the cutscene extras and level-only engine functions: the declarations of
-// oltanis_classes_tr_N.cpp (generated: `void` = a class update / entry in the entry ABI, `TrRet` = a helper or a `_u` entry in the uniform ABI).
+// Oltanis (level 14)'s own moby classes, camera types, class hooks, draw callbacks, the camera mode hook and level-only engine functions, all
+// hand-written (src/game/ovl/oltanis_*.cpp; the level has no generated code since task Y5): `TrRet` = a camera type's accept in the uniform ABI.
 #ifndef RAC1_GAME_OVL_OLTANIS_MOBYS_H
 #define RAC1_GAME_OVL_OLTANIS_MOBYS_H
 
@@ -66,12 +66,6 @@ void olt_cb_2d71f0_l14(uint32_t m);  // L14:0x002d71f0
 void olt_cb_2df458_l14(uint32_t m);  // L14:0x002df458
 void olt_cb_2eb810_l14(uint32_t m);  // L14:0x002eb810
 void olt_cb_2edc18_l14(uint32_t m);  // L14:0x002edc18
-
-TrRet olt_213028_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x00213028
-TrRet olt_255ce0_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x00255ce0
-TrRet olt_2aac78_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002aac78
-TrRet olt_2ab378_l14(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x002ab378
-void olt_cb_303350_l14(uint32_t a0);  // L14:0x00303350
 
 }  // namespace rac1
 

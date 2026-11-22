@@ -1,6 +1,6 @@
 // The sea's draw callback of Kerwan, Umbris, Batalia and Oltanis (the callback the seas' controllers queue: classes 994,
 // 460, 327 and 1260; Umbris's class 1018 draws a second sea), shared_sea_draw.cpp, proved against every copy by
-// oracle batch 520. Kerwan, Umbris and Batalia run it since task Y3; Oltanis's copy (0x303350) is still generated.
+// oracle batch 520. Kerwan, Umbris and Batalia run it since task Y3, Oltanis since task Y5.
 #ifndef RAC1_GAME_OVL_SHARED_SEA_DRAW_H
 #define RAC1_GAME_OVL_SHARED_SEA_DRAW_H
 

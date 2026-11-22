@@ -16,7 +16,7 @@
 # loop's setup after the two palettes' conversions. Each palette entry's weighted value made once instead of once per texel.
 # L3 0x0023c620, L5 0x00277d18, L7 0x002764d8, L8 0x00257f38, L9 0x0026d438 (Kerwan, Rilgar, Umbris, Batalia, Gaspar): the fork is in the
 # shared port ari_ocean_tex_upload_l2 (aridia_ocean.cpp, task Y3), which those levels' seas and Gaspar's lava streams run now.
-L14 0x00255ed8: { uint32_t pb_v0 = 0; if (palette_blend_loop(a0.w(), a1.w(), a3.w(), t1.w(), &pb_v0)) return TrRet{pb_v0, fr[0]}; }  // palette blend
+# L14 0x00255ed8 (Oltanis): the same shared port, which Oltanis's sea (class 1260's draw 0x303350, shared_sea_draw.cpp) runs since task Y5.
 
 # ---- 1.02 Gameplay, fix 10 (src/game/enhance/fixes102.h): the later build's (1.02: the Japanese disc, the PAL disc 2.00) guards on
 # the characters that take the hero's input. A prompted character (hud_message_request(7, ...), then the triangle: Pokitaru's

@@ -1,6 +1,6 @@
 // The levels' palette blend (Aridia's 0x24fca0, Kerwan's 0x23c428, Rilgar's 0x277b20, Umbris's 0x2762e0, Batalia's 0x257d40,
 // Gaspar's 0x26d240, Oltanis's 0x255ce0: one routine, the same code in each overlay) - its texel loop on the host. Called by the
-// shared port ari_ocean_tex_upload_l2 (aridia_ocean.cpp) and by the copies still generated (tools/codegen/hooks.glue).
+// shared port ari_ocean_tex_upload_l2 (aridia_ocean.cpp), which every level's copy runs (Oltanis's since task Y5).
 // orig: (host)
 #ifndef RAC1_GAME_OVL_PALETTE_BLEND_H
 #define RAC1_GAME_OVL_PALETTE_BLEND_H
