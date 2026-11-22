@@ -3,12 +3,11 @@
 // table each level's own (L<n>_ADDR), the base ELF's are bare.
 #include <game/math/vecmath.h>
 #include <game/ovl/cutscene.h>
-#include <game/ovl/gemlik_mobys.h>
 #include <game/ovl/level_change.h>
-#include <game/ovl/novalis_gold_scene.h>
 #include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/shared_gold_scene.h>
 #include <game/ovl/variants_l1.h>
 #include <game/ovl/variants_l13.h>
 #include <game/port_stubs.h>
@@ -65,11 +64,9 @@ void gold_case_update_l1(uint32_t m) {
         const uint32_t w2 = lwu(table + (lwu(pv + 0x40) << 2));
         const int32_t price = static_cast<int32_t>(lhu(w2 * 0x18 + OV(0x001c40b0) + 0x14));
         sw(0x0015ed98, static_cast<uint32_t>(lw(0x0015ed98) - price));
-        // (jal L1:0x2aea70 / L13:0x2a5390. Both levels keep their generated copies: the oracle cannot compare the shared
-        // port of this function (gold_weapon_scene), the original waits on the sound driver in every case, so no check
-        // proves the port at either level's address)
-        if (on_level(GEMLIK)) gml_2a5390_l13(m, w2, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
-        else gold_weapon_scene_l1(m, w2);
+        // (jal L1:0x2aea70 / L13:0x2a5390: the two levels' copies of the scene start, the shared port; batch 510's
+        // gold_weapon_scene at both addresses, the sound driver's and the stream's waits answered)
+        gold_weapon_scene(m, w2);
         return;
     }
     case 2:

@@ -36,7 +36,7 @@
 //   beam_shard_update      class 1085 ..              L6:0x00300b90 L10:0x002dd010 L13:0x00303878 (on shards spawned)
 //   arcs_update / arc_between / arc_sparks (helpers)  L4:0x002c46d0 / 0x002c45b8 / 0x002c41e0 (Eudora's build), L8:0x002da8d8 /
 //                                                     0x002da7c0 / 0x002da3f0 (Batalia's) (on any moby, near the hero)
-//   gold_weapon_scene      (the cases' scene start)   L1:0x002aea70 L13:0x002a5390: not compared (989snd's SIF, the stream load)
+//   gold_weapon_scene      (the cases' scene start)   L1:0x002aea70 L13:0x002a5390 (989snd's IOP and the stream's wait answered)
 //   tile_links             (helper)                   L7:0x0030cd48 L11:0x0030e730 L12:0x002bf770 L13:0x0030a488
 //   tile_group_height      (helper)                   L11:0x0030e690 L12:0x002bf6d0 (on the level's grouped mobys)
 //   raritanium_pickup_update  class 37                L11:0x002cb790 L12:0x002bf9b8
@@ -98,6 +98,9 @@
 #include <game/enhance/advanced.h>
 #include <game/ovl/checkpoint.h>
 #include <game/ovl/shared_homing_missile.h>
+#include <game/lib/libcdvd.h>
+#include <game/ovl/shared_gold_scene.h>
+#include <runtime/ee/ee_thread.h>
 #include <runtime/kernel/disc.h>
 #include <runtime/vu/vu0.h>
 
@@ -107,6 +110,7 @@
 #include <fstream>
 #include <initializer_list>
 #include <string>
+#include <stdexcept>
 #include <unordered_set>
 #include <vector>
 
@@ -120,7 +124,8 @@ namespace {
 bool c2b_spr_check(const char* name) {
     static const char* const kNames[] = {"flame_spray_burn", "homing_missile", "shell", "shockwave", "bullet_particle",
                                          "flame_spray", "shot", "tracer",
-                                         "clank_pad", "clank_pad_200"};  // (the pad's boarding: floor_probe_v's scratch)
+                                         "clank_pad", "clank_pad_200",  // (the pad's boarding: floor_probe_v's scratch)
+                                         "gold_weapon_scene"};  // (Ratchet's place before the case: floor_probe_v's scratch)
     for (const char* n : kNames)
         if (std::strcmp(n, name) == 0) return true;
     return false;
@@ -218,6 +223,18 @@ void place_drawn(const std::function<void()>& run, const std::function<void(cons
         }
     }
     if (info()) std::printf("INFO not placed\n");
+}
+
+// The gold weapons' scene start (gold_weapon_scene): its wait for the scene's stream (0x1516d0 + 0x5a == 3) answered the same
+// way on both sides, counted in vsyncs: the original's vsync wait 0x122298 (an interpreter hook) and the port's ee_thread_vsync
+// (the host's vsync hook) each count one, and from the `g_gold_answer`-th one on (0: the state was 3 before the call) the state is
+// 3. The screen fade inside the scene's stream load (0x2454c8: screen_fade(4), six vsyncs) counts on both sides alike. A run that
+// waits past 2000 vsyncs gets its answer too (the count printed: never in a passing run).
+int g_gold_vsyncs = 0, g_gold_answer = 0, g_gold_most = 0;
+void gold_vsync() {
+    ++g_gold_vsyncs;
+    if (g_gold_vsyncs > g_gold_most) g_gold_most = g_gold_vsyncs;
+    if (g_gold_vsyncs >= g_gold_answer || g_gold_vsyncs > 2000) ee_write<uint16_t>(0x001516d0 + 0x5a, 3);
 }
 
 // A check of a shared port against this level's copy at `addr` (0: the level has none, skipped).
@@ -1096,11 +1113,93 @@ void batch_510() {
         }, [](A a) { arc_sparks(a.i[0], a.i[1], a.i[2], static_cast<int32_t>(a.i[3]), a.f[0], a.f[1]); return uint64_t{0}; });
     }
 
-    // ---- the gold weapons' scene start (Novalis, Gemlik): not compared. The original's first 989snd call (snd_cmd_16 /
-    // snd_flush) spins on the SIF in the interpreter at every case, and the scene's stream load (0x2454c8's disc read, then its
-    // vsync wait) never completes in a native run here either (batch 136 skips the generated copy for the same reason); the
-    // port was read against both levels' generated copies line by line
-    skip_check("gold_weapon_scene", copy_here({{1, 0x002aea70}, {13, 0x002a5390}}), "989snd's SIF and the scene's stream load: not in the oracle (batch 136)");
+    // ---- the gold weapons' scene start (Novalis L1:0x2aea70, Gemlik L13:0x2a5390; task Y2), at the level's own address, the
+    // whole function: 989snd's IOP server above answers the sound calls and the stream system's disc read (command 0x38: the
+    // scene's sectors read into EE RAM), the stream system put up on a copy of the level as batch 270 does, the original's packet
+    // kick (0x2a08c8, the port's TODO_PORT stand-in) a no-op, sceCdRead / the clock the host's on both sides (batch 112), and
+    // the wait for the scene's stream answered in vsyncs (gold_vsync above: 0 .. 12, the fade's six among them). The subject is a
+    // gold weapon case of the level (class 304), the weapon its own (the level's table: L1:0x1deb10 / L13:0x1d3420) or another
+    // entry of that table; the 50 Hz video in a quarter (other scene sectors), the weapon's gold flag in half.
+    {
+        const uint32_t scene_fn = copy_here({{1, 0x002aea70}, {13, 0x002a5390}});
+        const uint32_t case_fn = copy_here({{1, 0x002e1ac0}, {13, 0x002e7238}});
+        const uint32_t table = copy_here({{1, ORACLE_LADDR(1, 0x001deb10)}, {13, ORACLE_LADDR(13, 0x001d3420)}});
+        const auto saved_hooks = g_extra_hooks;
+        const auto saved_noop = g_extra_noop_hooks;
+        const std::time_t saved_clock = g_host_clock_fixed;
+        g_host_clock_fixed = 1759658400;
+        g_extra_hooks = {{0x00121780, [](EeCpu& c) { c.set32(2, cd_read_clock(c.r32(4))); }},
+                         {0x0012d6d8, [](EeCpu& c) { clock_to_local(c.r32(4)); }},
+                         {0x00121450, [](EeCpu& c) { c.set32(2, cd_read(c.r32(4), c.r32(5), c.r32(6), c.r32(7))); }},
+                         {0x00122298, [](EeCpu&) { gold_vsync(); }}};
+        g_extra_noop_hooks = {OVF(0x002a08c8)};
+        ee_thread_set_vsync_hook([](EeVsyncFrame) { gold_vsync(); });
+        g_gold_most = 0;
+        int waited = 0, loops = 0;
+        // Ratchet's place on the floor (floor_probe_v): the collision record's w lanes and the segment record's x / y / z, the
+        // known difference of the native collision (collision_lanes above; the original's are its VU0 registers' leftovers of
+        // the checks before), left out in this check only
+        const std::vector<uint32_t> gold_saved_ignored = g_ignored_words;
+        collision_lanes();
+        // the play-test spots of task Y2 (INFO Y2 lines, on the level's first gameplay frame): the gold weapon cases (class 304)
+        // with their weapons, Blarg's scientist (class 1105, the walk-to), Gaspar's lava (class 317, the pools' draw), the
+        // class-0x214 mobys of Umbris (its scene 4's callback)
+        if (const char* only = std::getenv("ORACLE_ONLY"); only == nullptr || std::strcmp(only, "gold_weapon_scene") == 0) {
+            const uint32_t subj = copy_here({{1, 0x002e1ac0}, {13, 0x002e7238}, {6, 0x00301070}, {9, 0x002ef7f8}});
+            if (subj != 0 || g_oracle_level == 7) {
+                level();
+                for (uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)); m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100) {
+                    const bool mine = subj != 0 ? ee_read<uint32_t>(m + 0x74) == subj : ee_read<uint16_t>(m + 0xa6) == 0x214;
+                    if (!mine || ee_read<uint8_t>(m + 0x20) >= 0xfe) continue;
+                    const Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    std::printf("INFO Y2 L%d class %u moby %u uid %u at (%.1f, %.1f, %.1f) state %u", g_oracle_level, ee_read<uint16_t>(m + 0xa6),
+                                (m - ee_read<uint32_t>(OV(0x0015ffd8))) >> 8, ee_read<uint16_t>(m + 0xb2), q.x, q.y, q.z, ee_read<uint8_t>(m + 0x20));
+                    const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+                    if (table != 0 && pv != 0 && ee_read<uint32_t>(pv + 0x40) < 8)
+                        std::printf(" case %u weapon %u", ee_read<uint32_t>(pv + 0x40), ee_read<uint32_t>(table + ee_read<uint32_t>(pv + 0x40) * 4));
+                    std::printf("\n");
+                }
+            }
+        }
+        fcheck("gold_weapon_scene", scene_fn, 40, Ret::None, [level, mobys_with, case_fn, table, &waited, &loops] {
+            level();
+            w32(0x0015ec8c, 1);  // (the stream system up, the disc idle: batch 270's)
+            w32(0x00137b00, 0);
+            sub_00264bf8();
+            const std::vector<uint32_t> cases = mobys_with(case_fn);
+            if (cases.empty()) throw std::runtime_error("no gold weapon case on the level");
+            const uint32_t m = cases[static_cast<size_t>(ri(0, static_cast<int>(cases.size()) - 1))];
+            const uint32_t pv = ee_read<uint32_t>(m + 0x78);
+            int idx = static_cast<int>(ee_read<uint32_t>(pv + 0x40));
+            if (idx < 0 || idx > 7 || ri(0, 2) == 0) idx = ri(0, 3);
+            const uint32_t weapon = ee_read<uint32_t>(table + u(idx) * 4);
+            w8(0x0013e520 + weapon, coin() ? 1u : 0u);
+            if (coin()) wrand(OV(0x001ca4c0), 0x220 / 4);  // (an earlier scene's record left in the block the function clears)
+            if (ri(0, 3) == 0) {  // (the 50 Hz video: the scene's other sectors)
+                w32(0x0015ed80, 1);
+                wf(0x0015ed68, 1.2f);
+                wf(0x0015ed6c, 0.02f);
+                wf(0x0015ed70, 0.0004f);
+            }
+            const int k = ri(0, 3) == 0 ? 0 : ri(1, 12);
+            w16(0x001516d0 + 0x5a, k == 0 ? 3u : u(ri(0, 2)));
+            if (k > 6) ++loops;
+            ++waited;
+            g_gold_vsyncs = 0;
+            g_gold_answer = k;
+            return Args{{m, weapon}, {}};
+        }, [](A a) {
+            g_gold_vsyncs = 0;
+            gold_weapon_scene(a.i[0], a.i[1]);
+            return uint64_t{0};
+        });
+        if (scene_fn != 0) std::printf("INFO gold_weapon_scene L%d: %d cases, %d through the wait loop, most vsyncs %d\n", g_oracle_level, waited, loops, g_gold_most);
+        ee_thread_set_vsync_hook(nullptr);
+        g_ignored_words = gold_saved_ignored;
+        g_extra_hooks = saved_hooks;
+        g_extra_noop_hooks = saved_noop;
+        g_host_clock_fixed = saved_clock;
+    }
 
     // ---- the tile grids (Umbris, Pokitaru, Hoven, Gemlik): a tile's links with some of the others moved to 16 from it (and a
     // little off); a grouped moby's height given to its group; the Raritanium pickup with Ratchet near or not

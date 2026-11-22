@@ -121,9 +121,6 @@ void gml_2b89f8_l13(uint32_t rot, uint32_t cam_pos, uint32_t target, uint32_t ic
 // class 63's hook +8 (gemlik_hooks.cpp; its hooks +0 / +4 / +0xc / +0x10 are the shared ports of Gaspar's same code: gemlik_class_hook_call)
 int32_t gml_hook_2b7a20_l13(uint32_t m, uint32_t a1, uint32_t a2, float f12);  // L13:0x002b7a20
 
-// ---- generated (gemlik_classes_tr_N.cpp)
-TrRet gml_2a5390_l13(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L13:0x002a5390
-
 }  // namespace rac1
 
 #endif

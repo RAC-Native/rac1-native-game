@@ -8,6 +8,7 @@
 //   class 1257  the ball: falls under the level's gravity, rides a moby it lands on (one whose pvar word 2 is set), and
 //               bursts (blast, sound, hits around it) on anything else, on a hit, or when hitting the floor fast
 //   class 1425  a steam vent: now and then (one frame in the level's 0x16219c - 1) a puff of particle 0x22 upward
+//   and the level's own build of the scenes' extras (cutscene_level_extras): the scene's mobys lit in its shots 3 and 4
 // The original's order of calls and float operations is kept. Header quartu_mobys.h.
 #include <game/ovl/quartu_mobys.h>
 
@@ -203,6 +204,17 @@ void qua_class1425_update_l15(uint32_t m) {
     swc1(vel + 0x8, fpu_mul(fpu_mul(up, lwc1(L15_ADDR(0x00162198u))), frame_time()));
     const float size = rand_range_f(u2f(0x3d75c28f), u2f(0x3df5c28f));  // (0.06 .. 0.12)
     spawn_particle_22(m + 0x10, vel, fpu_mul(size, 210000.0f), lwc1(pv + 0x0));
+}
+
+// The scenes' level extras, Quartu's own build of the engine's cutscene_level_extras (cutscene.cpp dispatches here on level
+// 15): in the level's scene 3 or 4 (the scene record 0x16ce60's +0x30), each of the scene's mobys (+0x44 of them, listed
+// from +0x178) has its lighting updated (moby_update_light), the count read again after each.
+// orig: L15:0x0022db50
+void qua_cutscene_level_extras_l15() {
+    if (lw(0x0015ed84) != 15) return;  // (the level's number)
+    const uint32_t scene = L15_ADDR(0x0016ce60);
+    if (static_cast<uint32_t>(lw(scene + 0x30) - 3) >= 2u) return;
+    for (int32_t i = 0; i < lh(scene + 0x44); ++i) moby_update_light(lwu(scene + 0x178 + static_cast<uint32_t>(i) * 4));
 }
 
 }  // namespace rac1

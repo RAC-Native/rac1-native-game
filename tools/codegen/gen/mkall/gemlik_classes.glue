@@ -1,2 +1,0 @@
-0x00250748: { const TrRet r = ovl_2454c8_tr(a0.w(), a1.w(), a2.w(), a3.w(), t0.w(), t1.w(), t2.w(), t3.w(), fr[12], fr[13], fr[14], fr[15]); set32(v0, r.v0); fr[0] = r.f0; }  /* Veldin 0x2454c8 (scene_stream_load), vendor_tr.cpp: the same code */
-0x00250840: { const TrRet r = ovl_2455c0_tr(a0.w(), a1.w(), a2.w(), a3.w(), t0.w(), t1.w(), t2.w(), t3.w(), fr[12], fr[13], fr[14], fr[15]); set32(v0, r.v0); fr[0] = r.f0; }  /* Veldin 0x2455c0 (scene_block_select), vendor_tr.cpp: the same code */

@@ -67,6 +67,24 @@ void vu0_sync() {
 
 bool info() { return std::getenv("B513_INFO") != nullptr; }
 
+// The VU0 registers the original left (the interpreter it ran on, kept by g_pre_call) against the port's: a differing lane
+// writes into the test area (VU0_MARK), so the case fails (batch 506's vu0_out_check). `lanes` per register: a bit per lane, x 1.
+EeInterpreter* g_last_ee = nullptr;
+constexpr uint32_t VU0_MARK = TEST_AREA + 0x7f00;
+void vu0_out_check(std::initializer_list<std::pair<int, unsigned>> regs) {
+    if (g_last_ee == nullptr) return;
+    const VUState& o = g_last_ee->vu0();
+    const VUState& p = vu0::global().st;
+    for (const auto& [r, lanes] : regs)
+        for (int k = 0; k < 4; ++k) {
+            if ((lanes & (1u << k)) == 0) continue;
+            uint32_t a, b;
+            std::memcpy(&a, &o.vf[static_cast<size_t>(r)].f[k], 4);
+            std::memcpy(&b, &p.vf[static_cast<size_t>(r)].f[k], 4);
+            if (a != b) w32(VU0_MARK + static_cast<uint32_t>(r & 0xf) * 0x10 + static_cast<uint32_t>(k) * 4, a ^ b);
+        }
+}
+
 struct LvAddr {
     int level;
     uint32_t addr;
@@ -662,6 +680,24 @@ void ocean_checks() {
         return Args{{TEST_AREA + 0x8000, src + u(ri(0, 0x40)) * 16, src + 0x1400, src + u(ri(0, 0x40)) * 16, src + 0x1800, count},
                     {ri(0, 4) == 0 ? (coin() ? 0.0f : 1.0f) : rf(0.0f, 1.0f)}};
     }, [](A a) { ari_ocean_tex_upload_l2(a.i[0], a.i[1], a.i[2], a.i[3], a.i[4], a.i[5], a.f[0]); return uint64_t{0}; });
+    // (task Y2) the VU0 registers the blend leaves: its last group's vf2 .. vf9 (the palettes' entries weighted, summed, made
+    // integers) and vf31 (the weights), every lane but vf31.z (QMTC2's upper half: the caller's register's stale upper bits in
+    // the original, 0 in the port; seen in a full run of the batch, as batch 506's vf5.z / w). Inside the ocean's one-record draw (ocean_draw_one) the cells' clip then
+    // rewrites vf2 and vf31 whole and vf1 .. vf6 in part; vf7 .. vf9 keep the blend's values in the ports to the draw's end,
+    // where the original's end (0x2a46e0 and its copies: render_view_setup's libvu0 matrix calls) writes them again and the
+    // host ports of those calls do not: a known difference of the engine's render_view_setup port, not compared here
+    fcheck("ocean_tex_upload_vu", tex, 60, Ret::None, [] {
+        level();
+        const uint32_t src = T2;
+        for (uint32_t a = src; a < src + 0x2000; a += 4) w32(a, R());
+        const uint32_t count = u(ri(1, 0x100)) * 16;
+        return Args{{TEST_AREA + 0x8000, src + u(ri(0, 0x40)) * 16, src + 0x1400, src + u(ri(0, 0x40)) * 16, src + 0x1800, count},
+                    {ri(0, 4) == 0 ? (coin() ? 0.0f : 1.0f) : rf(0.0f, 1.0f)}};
+    }, [](A a) {
+        ari_ocean_tex_upload_l2(a.i[0], a.i[1], a.i[2], a.i[3], a.i[4], a.i[5], a.f[0]);
+        vu0_out_check({{2, 0xf}, {3, 0xf}, {4, 0xf}, {5, 0xf}, {6, 0xf}, {7, 0xf}, {8, 0xf}, {9, 0xf}, {31, 0xb}});
+        return uint64_t{0};
+    });
     if (one == 0) not_here("ocean_draw_one");
     else
         fcheck("ocean_draw_one", one, 120, Ret::None, [] {
@@ -699,6 +735,7 @@ void batch_513() {
             g_vu0_in.macflag = o.macflag;
             g_vu0_in.statusflag = o.statusflag;
             g_vu0_in.clipflag = o.clipflag;
+            g_last_ee = &ee;
             std::memcpy(g_vu0_in.mem.data(), o.mem.data(), 0x1000);
         };
 

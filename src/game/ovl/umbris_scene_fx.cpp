@@ -1,5 +1,6 @@
 // Umbris's own moby classes: the arena ammo resupply spawner (class 1142) and the two cutscene smoke controllers (classes
-// 1552 and 1789) — hand-ported from Umbris's own overlay. Header umbris_mobys.h, registered in umbris_mobys.cpp. Addresses
+// 1552 and 1789), and the level's own build of the scenes' extras (cutscene_level_extras) — hand-ported from Umbris's own
+// overlay. Header umbris_mobys.h, registered in umbris_mobys.cpp. Addresses
 // are Umbris's (`orig: L7:`); Umbris-only data is L7_ADDR, the base ELF's are bare (the ammo counts 0x13d428, the hero
 // 0x13f3d0), the paths the level-data facade's.
 #include <game/level/level_data.h>
@@ -199,6 +200,19 @@ void umb_class1789_update_l7(uint32_t m) {
         smoke_burst(pt_a, pt_a, dir, lwc1(L7_ADDR(0x00161cdc)), lwc1(L7_ADDR(0x00161ce0)));
     }
     ee_stack_free(0x90);
+}
+
+// The scenes' level extras, Umbris's own build of the engine's cutscene_level_extras (cutscene.cpp dispatches here on level
+// 7): in the level's scene 4 (the scene record 0x16c8e0's +0x30), when its fourth moby (+0x178's fourth word, +0x188) is a
+// class 0x214, that moby's draw callback for this frame (the level's 0x2ba260, as class 529's, umbris_director.cpp).
+// orig: L7:0x00265bd8
+void umb_cutscene_level_extras_l7() {
+    if (lw(0x0015ed84) != 7) return;  // (the level's number)
+    const uint32_t scene = L7_ADDR(0x0016c8e0);
+    if (lw(scene + 0x30) != 4) return;
+    const uint32_t m = lwu(scene + 0x188);
+    if (m == 0 || lh(m + 0xa6) != 0x214) return;
+    sub_001f93e0(L7_ADDR(0x002ba260), m);
 }
 
 }  // namespace rac1

@@ -11,6 +11,7 @@
 #include <game/ovl/cutscene.h>
 #include <game/ovl/hydro.h>
 #include <game/ovl/level_change.h>
+#include <game/ovl/novalis_mobys.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -110,8 +111,8 @@ void blg_class1105_update_l6(uint32_t m) {
             timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(pv + 0x174))) != 0 && talk_update(m, pv) != 0) {
             sb(m + 0x20, 2);
             if (lh(pv + 0x176) != 0) step_forward();
-            // (the hero's walk-to: Ratchet put 2.2 in front of him when the scene ends; it reads a0 and f12 only)
-            blg_272670_l6(m, 0, 0, 0, 0, 0, 0, 0, 2.2f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+            // (the hero's walk-to: Ratchet put 2.2 in front of him when the scene ends; L6:0x272670, the shared port: batch 501)
+            hero_walk_to_l1(2.2f, m);
         }
         if (lw(PLAYER + 0x208c) == 0xf) door_set_open_l6(door_at(pv + 0x160));
         break;

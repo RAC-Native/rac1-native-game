@@ -11,6 +11,7 @@
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/hero_move_mode.h>
 #include <game/level/level_data.h>
+#include <game/ovl/cutscene.h>
 #include <game/ovl/quartu_mobys.h>
 #include <game/ovl/variants_l15.h>
 #include <game/ovl/kerwan_camera.h>
@@ -652,7 +653,24 @@ void batch_240() {
             level();
             if (ri(0, 2) == 0) w32(OV(0x0015ed84), ri(0, 1) ? 15u : u(ri(0, 18)));
             return Args{};
-        }, [](A) { qua_cutscene_level_extras_u(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0); return uint64_t{0}; });
+        }, [](A) { qua_cutscene_level_extras_l15(); return uint64_t{0}; });
+        // Y2: the hand port (quartu_props.cpp) through the engine's dispatch (cutscene.cpp), its branches reached: the level's
+        // number 15 or another, the scene record's +0x30 about 3 .. 4, its moby count +0x44 (none, negative, up to 12) and
+        // list +0x178 (the level's live mobys)
+        lvcheck("cutscene_level_extras_x", 0x0022db50, 240, Ret::None, [level] {
+            level();
+            const uint32_t sc = OV(0x0016c860);
+            std::vector<uint32_t> live;
+            for (uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)); m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100)
+                if (ee_read<uint8_t>(m + 0x20) < 0xfe) live.push_back(m);
+            w32(0x0015ed84, ri(0, 5) == 0 ? u(ri(0, 18)) : 15u);
+            w32(sc + 0x30, ri(0, 3) == 0 ? u(ri(-1, 8)) : u(ri(3, 4)));
+            const int n = ri(0, 5) == 0 ? ri(-2, 0) : ri(1, 12);
+            w16(sc + 0x44, static_cast<uint32_t>(n) & 0xffffu);
+            for (int i = 0; i < 12 && !live.empty(); ++i)
+                w32(sc + 0x178 + u(i) * 4, live[static_cast<size_t>(ri(0, static_cast<int>(live.size()) - 1))]);
+            return Args{};
+        }, [](A) { cutscene_level_extras(); return uint64_t{0}; });
     }
 
     // T00: the level's copy of Veldin's helmet_init_fx (0x2e06a8; the scan's body hash pairs them, the overlay map does not) at

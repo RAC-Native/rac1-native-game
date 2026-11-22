@@ -4,7 +4,7 @@
 //  - particle_20_update 0x271fc0: particle type 0x20's update;
 //  - point_on_screen_depth 0x2003d8 and the ship's draw callbacks 0x28e670 / 0x28efc8 / 0x28f238 (every level's landing / take-off);
 //  - Novalis's own draw callbacks L1:0x302438 / 0x3094f0 / 0x30bfa8 / 0x30de68 / 0x30f0e0 (with 0x30ef18);
-//  - gold_weapon_scene_l1 L1:0x2aea70, the gold weapon cases' scene start: skipped (see below).
+//  - the gold weapon cases' scene start L1:0x2aea70: batch 510 checks its shared port (see below).
 
 #include "ovl_oracle.h"
 
@@ -261,12 +261,8 @@ void batch_136() {
         }
     }
 
-    // ---- the gold weapon cases' scene start L1:0x2aea70 (gold_weapon_scene_l1): not compared here. It reads the weapon's scene
-    // from the disc through 989snd's streams (0x2454c8: the read awaited, 0x2660c0) and then waits for the dialog line to play
-    // (0x1516d0 + 0x5a == 3); both end on 989snd's replies, whose callbacks the EE library runs from the SIF's end function, which
-    // the oracle's host SIF never runs: the original waits until the interpreter's budget. Checked in the running game instead
-    // (docs/worklog/0383-novalis-part2.md: the Gold Suck Cannon bought, its scene played, the game back on Novalis).
-    skip_check("gold_weapon_scene", 0x002aea70, "989snd's stream replies: no SIF end function in the oracle; checked in the game");
+    // ---- the gold weapon cases' scene start L1:0x2aea70: the shared port gold_weapon_scene (shared_gold_scene.cpp), checked by
+    // batch 510 at Novalis's and Gemlik Base's addresses (989snd's IOP server answering, the stream's wait answered in vsyncs)
 
     g_extra_noop_hooks.clear();
     g_ee_null_is_ram = null_ram;

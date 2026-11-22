@@ -10,6 +10,7 @@
 #include <game/ovl/carry_hooks_levels.h>
 #include <game/lib/libcdvd.h>
 #include <game/ovl/enemy_749.h>
+#include <game/ovl/cutscene.h>
 #include <game/ovl/umbris_mobys.h>
 #include <game/ovl/variants_l7.h>
 #include <game/level/level_data.h>
@@ -508,7 +509,28 @@ void batch_119() {
             level();
             if (ri(0, 2) == 0) w32(OV(0x0015ed84), ri(0, 1) ? 7u : u(ri(0, 18)));
             return Args{};
-        }, [](A) { umb_cutscene_level_extras_u(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0); return uint64_t{0}; });
+        }, [](A) { umb_cutscene_level_extras_l7(); return uint64_t{0}; });
+        // Y2: the hand port (umbris_scene_fx.cpp) through the engine's dispatch (cutscene.cpp), its branches reached: the level's
+        // number 7 or another, the scene record's +0x30 4 or another, its fourth moby (+0x188) none or one of the level's live
+        // mobys made a class 0x214 or a neighbour (0x213 / 0x215) or left as it is
+        l7check("cutscene_level_extras_x", 0x00265bd8, 240, Ret::None, [level] {
+            level();
+            const uint32_t sc = OV(0x0016c860);
+            std::vector<uint32_t> live;
+            for (uint32_t m = ee_read<uint32_t>(OV(0x0015ffd8)); m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100)
+                if (ee_read<uint8_t>(m + 0x20) < 0xfe) live.push_back(m);
+            w32(0x0015ed84, ri(0, 5) == 0 ? u(ri(0, 18)) : 7u);
+            w32(sc + 0x30, ri(0, 4) == 0 ? u(ri(-1, 8)) : 4u);
+            uint32_t m = 0;
+            if (ri(0, 5) != 0 && !live.empty()) {
+                m = live[static_cast<size_t>(ri(0, static_cast<int>(live.size()) - 1))];
+                const int k = ri(0, 5);
+                if (k < 3) w16(m + 0xa6, 0x214);
+                else if (k == 3) w16(m + 0xa6, coin() ? 0x213u : 0x215u);
+            }
+            w32(sc + 0x188, m);
+            return Args{};
+        }, [](A) { cutscene_level_extras(); return uint64_t{0}; });
     }
 
     // T00: the level's bare `jr ra` functions its classes and cameras reach through a pointer (class updates, camera

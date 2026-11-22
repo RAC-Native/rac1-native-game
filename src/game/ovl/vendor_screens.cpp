@@ -509,7 +509,7 @@ void vendor_screen_start_tr(uint32_t a0) {
     sw(ANIMS_READING, 0);
 }
 
-// The adapters of the generated code's calls (the novalis_gold unit's glue, uniform ABI: v0 and f0 returned; f0 is 0).
+// The two in the uniform ABI (v0 and f0 returned; f0 is 0): the gold weapons' scene start's calls (shared_gold_scene.cpp).
 // orig: 0x002454c8
 TrRet ovl_2454c8_tr(uint32_t a0, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float) {
     return TrRet{scene_stream_load(static_cast<int32_t>(a0)), 0.0f};

@@ -94,8 +94,8 @@ void gemlik_moby_fns_register() {
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002b50d8), gml_class63_update_l13);
     // the transliterated classes (gemlik_classes_tr_N.cpp, the translator)
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002c4428), gml_class111_update_l13);
-    // class 304, the gold weapon case: Novalis's port (novalis_cases.cpp); its scene start stays the level's own transliterated
-    // copy (gml_2a5390_l13: the shared gold_weapon_scene is compared by no batch, it waits on the sound driver's stream replies)
+    // class 304, the gold weapon case: Novalis's port (novalis_cases.cpp); its scene start L13:0x2a5390 the shared port
+    // gold_weapon_scene (shared_gold_scene.cpp, batch 510)
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002e7238), gold_case_update_l1);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002e84d8), gml_class352_update_l13);
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002eb098), gml_class388_update_l13);

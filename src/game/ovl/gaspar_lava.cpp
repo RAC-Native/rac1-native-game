@@ -1,12 +1,14 @@
 // Gaspar's own draw of its lava (class 317's draw callback): the lava's streams (strips of quads with an animated, blended
-// texture) and its pools (the ocean records' set-up and cells, still generated: gaspar_classes_tr_4.cpp), then the pools'
+// texture) and its pools (an ocean record: the shared port ocean_draw_one, aridia_ocean.cpp), then the pools'
 // edges — hand-ported from Gaspar's own overlay. Header gaspar_mobys.h, registered in gaspar_mobys.cpp. Addresses are
 // Gaspar's (`orig: L9:`): the engine's data at Gaspar's places are L9_ADDR (the packet cursor 0x1611c0, the camera 0x166f40
 // and its matrices 0x166e40 / 0x166ec0, the view 0x16cbc0, the textures' table 0x16d300 and data 0x15f420), the base ELF's
 // are bare (the VRAM cursor 0x15ee74, the packet head 0x10e800).
 //
-// What stays generated on purpose: the pools' draw L9:0x002c1920 (its set-up 0x2c1220 and the texture blend 0x26d240 with
-// the palette-blend hook of tools/codegen/hooks.glue); the streams' blend calls that blend (gas_26d240_l9) as it is.
+// What stays generated on purpose: the texture blend L9:0x26d240 (gas_26d240_l9, with the palette-blend hook of
+// tools/codegen/hooks.glue), which the streams call as it is. The pools' draw L9:0x002c1920 (with its set-up 0x2c1220) is
+// Gaspar's copy of the ocean's one-record draw, relocations only (batch 513's ocean_draw_one at L9): the shared port, whose
+// set-up blends the pools' texture with ari_ocean_tex_upload_l2 (the same bits, without the hook's host loop).
 #include <game/math/vecmath.h>
 #include <game/ovl/aridia_ocean.h>
 #include <game/ovl/gaspar_mobys.h>
@@ -285,7 +287,7 @@ void gas_class317_draw_l9(uint32_t) {
     const int32_t k = ee_div(frame, 20);
     const float blend = fpu_sub(fpu_div(int_to_float(frame), 20.0f), int_to_float(k));
     gas_21e8c0_l9(L9_ADDR(0x001f3080), 0x6c, (k & 0xf) + 0x2c, ((k + 1) & 0xf) + 0x2c, blend);
-    gas_2c1920_l9(L9_ADDR(0x001fc740), 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+    ocean_draw_one(L9_ADDR(0x001fc740));  // (L9:0x2c1920, the shared port)
     gas_2c1978_l9(L9_ADDR(0x001fc740), L9_ADDR(0x001f63c0), 0xa);
 }
 

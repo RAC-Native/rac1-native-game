@@ -1,5 +1,5 @@
 // The gold weapons' scene start of Novalis's and Gemlik Base's cases (shared_gold_scene.cpp: one port for both levels'
-// copies). Phase 1 of stage 4: the levels' generated copies still run.
+// copies; batch 510's gold_weapon_scene checks it at both levels' addresses).
 #ifndef RAC1_GAME_OVL_SHARED_GOLD_SCENE_H
 #define RAC1_GAME_OVL_SHARED_GOLD_SCENE_H
 

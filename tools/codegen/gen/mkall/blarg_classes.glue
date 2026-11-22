@@ -1,1 +1,0 @@
-0x0029aec0: set32(v0, static_cast<uint32_t>(level_sound_play_l6(static_cast<int32_t>(a0.w()), a1.w(), a2.w())));

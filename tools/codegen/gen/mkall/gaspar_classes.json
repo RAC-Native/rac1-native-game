@@ -4,10 +4,9 @@
  "env": {
   "MKALL_HELPER_PREFIX": "gas_",
   "MKALL_FORCE": "",
-  "MKALL_UNIFORM": "gas_2c1920_l9,gas_26d240_l9"
+  "MKALL_UNIFORM": "gas_26d240_l9"
  },
  "entries": [
-  "2c1920:gas_2c1920_l9",
   "26d240:gas_26d240_l9"
  ],
  "glue_files": [],

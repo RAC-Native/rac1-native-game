@@ -56,7 +56,7 @@ bool qua_2f85a8_l15(uint32_t cam);                                // L15:0x002f8
 bool qua_2f8698_l15(uint32_t cam, float turn_tol, float tilt_tol);  // L15:0x002f8698 the camera within the angles of its box
 void qua_2f88e8_l15(uint32_t cam);                                // L15:0x002f88e8 the camera steered for Giant Clank
 
-TrRet qua_cutscene_level_extras_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x0022db50
+void qua_cutscene_level_extras_l15();  // L15:0x0022db50 (quartu_props.cpp: the scenes' level extras, cutscene.cpp's dispatch)
 TrRet qua_hook_2bc4b0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002bc4b0
 TrRet qua_hook_2bc500_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002bc500
 TrRet qua_hook_2bc550_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002bc550

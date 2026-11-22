@@ -83,7 +83,7 @@ void umb_class1552_update_l7(uint32_t a0);  // L7:0x0031eba8
 void umb_class1686_update_l7(uint32_t a0);  // L7:0x0031f780 (umbris_props.cpp)
 void umb_class1789_update_l7(uint32_t a0);  // L7:0x0031f900 (umbris_scene_fx.cpp)
 
-TrRet umb_cutscene_level_extras_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x00265bd8
+void umb_cutscene_level_extras_l7();  // L7:0x00265bd8 (umbris_scene_fx.cpp: the scenes' level extras, cutscene.cpp's dispatch)
 
 }  // namespace rac1
 

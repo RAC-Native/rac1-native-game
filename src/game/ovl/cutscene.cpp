@@ -15,11 +15,13 @@
 #include <game/ovl/pause_menu_pages.h>
 #include <game/ovl/screen_fade.h>
 #include <game/ovl/shared_cutscene_fx.h>
-#include <game/ovl/umbris_call.h>
+#include <game/ovl/umbris_mobys.h>
 #include <game/ovl/oltanis_mobys.h>
 #include <game/ovl/particle_16_spawn.h>
 #include <game/ovl/variants_l14.h>
-#include <game/ovl/quartu_call.h>
+#include <game/ovl/variants_l15.h>
+#include <game/ovl/variants_l7.h>
+#include <game/ovl/quartu_mobys.h>
 #include <game/enhance/advanced.h>
 #include <game/enhance/fixes102.h>
 #include <game/port_stubs.h>
@@ -325,9 +327,9 @@ void cutscene_end() {
 // port runs there, proved against both builds by batch 410.
 // orig: 0x0023e268 L2:0x002400c8 L3:0x0022c728
 void cutscene_level_extras() {
-    if (on_umbris()) { umb_call(umb_cutscene_level_extras_u); return; }  // (level 7's own: L7:0x00265bd8)
+    if (on_umbris()) { umb_cutscene_level_extras_l7(); return; }  // (level 7's own: L7:0x00265bd8, umbris_scene_fx.cpp)
     if (on_oltanis()) { olt_cutscene_level_extras_l14(0); return; }  // (level 14's own: L14:0x002460f8, its scene 0 effect and draw)
-    if (on_level(QUARTU)) { qua_call(qua_cutscene_level_extras_u); return; }  // (level 15's own: L15:0x0022db50; its overlay's only, never a hero context's)
+    if (on_level(QUARTU)) { qua_cutscene_level_extras_l15(); return; }  // (level 15's own: L15:0x0022db50, quartu_props.cpp)
     if (lw(0x0015ed84) == 0) {
         for (int32_t i = 0; i < lh(SC + 0x44); ++i) {
             const uint32_t m = lwu(SC + 0x178 + static_cast<uint32_t>(i) * 4);
