@@ -13,6 +13,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/ovl/palette_blend.h>
 #include <game/ovl/quad_draw.h>
 #include <game/ovl/shadows.h>
 #include <game/ovl/variants_l2.h>
@@ -693,6 +694,14 @@ void ari_ocean_tex_upload_l2(uint32_t dst, uint32_t idx0, uint32_t clut0, uint32
     eer::hw_sw(0x1000d420u, count >> 4);
     eer::hw_sw(0x1000d400u, 0x100u);
     unpack_clut_spr(u, 0x70002c00u, 0x70002000u);
+
+    // The texel loop on the host (palette_blend.h): at the point the levels' generated copies had it (the loop's set-up after the
+    // two palettes' conversions, tools/codegen/hooks.glue), the same registers: the texels' words (the original's a0), the two
+    // index streams (a1 / a3), the texels' count (t1). It reads the weights (vf31) from the VU0 and leaves vf2 .. vf9 there as the
+    // loop below does: the copy's registers stored first, and not again after it. RAC1_PERF_PALETTE_BLEND=0: the loop below.
+    u.store();
+    uint32_t last_word = 0;
+    if (palette_blend_loop(dst, idx0, idx1, count, &last_word)) return;
 
     for (uint32_t rem = count >> 2; rem != 0; --rem, idx0 += 4u, idx1 += 4u, dst += 0x10u) {
         for (int k = 0; k < 4; ++k) {

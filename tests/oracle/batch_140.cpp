@@ -1,7 +1,7 @@
 // Oracle batch 140 (task 0387, Rilgar part 2): what a play-through of Rilgar still reached unported, and the race's code on the race's
 // own state. Run with ORACLE_LEVEL=5 build/tests/ovl_oracle --batch 140 (Rilgar's own original against the relocated port; needs the
 // ISO); the shared functions also on level 0.
-//  - Rilgar's seven class draw callbacks (rilgar_part2_tr.cpp; 823, 1511 and 1818's the shared ports since the re-glue R5): 79 (two),
+//  - Rilgar's seven class draw callbacks (hand-written since P5.4 / Y3; 823, 1511 and 1818's the shared ports since the re-glue R5): 79 (two),
 //    823, 838, 879, 1511, 1818;
 //  - class 775's update 0x2d7f38, particle type 0x43's update 0x274518 (veldin_extras.cpp, particle_types_tr.cpp);
 //  - the screens' drawing 0x2018c8 transliterated whole (screen_draw_tr.cpp) and screen_draw (screens.cpp: the hand-ported kinds and the
@@ -35,6 +35,7 @@
 #include <game/ovl/veldin_extras.h>
 
 #include <optional>
+#include <cmath>
 #include <cstring>
 #include <map>
 #include <string>
@@ -285,6 +286,74 @@ void batch_140() {
                 view_on(at);
                 return Args{{m}, {}};
             }, [](A a) { ril_class838_draw_l5(a.i[0]); return uint64_t{0}; });
+
+        // ---- task Y3: class 879's draw callback (0x316070, rilgar_ocean.cpp), run through the level's registration as the draw
+        // list calls it: the sea's wave record (0x211b20) drawn by the shared ocean_draw_one (aridia_ocean.cpp: the set-up, the
+        // texture blend with the host's texel loop, the cells' test and draw, the end) unless the camera (0x1671c0, Veldin's
+        // 0x166dc0) is inside one of the up to eight boxes the moby's pvars name (-1: an empty slot). The level's class-879 moby,
+        // its eight slots as placed or dealt (-1, one of the level's boxes), the camera at the centre of one of its boxes, over
+        // the record (near or high), or away; the frame counter (the texture's frames) and the fog mode dealt in part; the packet
+        // cursor on the test area's buffer. VU0: the sea's set-up, blend, cells and end are the shared ports batch 513 checks
+        // lane by lane; this check compares memory (packets, the texture buffer, the view's saved words, the VRAM cursor).
+        const std::mt19937 rng_before = rng;  // (the batch's later checks dealt the cases they had before this one was added)
+        const std::vector<uint32_t> s879 = live(879);
+        if (s879.empty()) {
+            std::printf("%-26s no moby of class 879\n", "ril_class879_draw_pk");
+        } else {
+            const uint32_t m879 = s879[0];
+            {
+                const uint32_t pv = ee_read<uint32_t>(m879 + 0x78);
+                const Vec4 q = VV(m879 + 0x10);
+                std::printf("INFO Y3 class 879 moby %u uid %d at (%.1f, %.1f, %.1f) boxes", (m879 - ee_read<uint32_t>(OV(0x0015ffd8))) >> 8,
+                            ee_read<int16_t>(m879 + 0xb2), q.x, q.y, q.z);
+                for (uint32_t k = 0; k < 8; ++k) std::printf(" %d", ee_read<int32_t>(pv + k * 4));
+                std::printf("; camera word L5:0x%08x (Veldin's 0x166dc0 here: 0x%08x)\n", 0x001671c0u, OV(0x00166dc0));
+            }
+            r2check("ril_class879_draw_pk", 0x00316070, 240, Ret::None, [level, m879, screen_ready] {
+                level();
+                const uint32_t pv = ee_read<uint32_t>(m879 + 0x78);
+                const int nbox = lvd::box_count(lvd::BOXES);
+                if (coin() && nbox > 0)
+                    for (uint32_t k = 0; k < 8; ++k) {
+                        const int c = ri(0, 2);
+                        if (c == 0) w32(pv + k * 4, 0xffffffffu);
+                        else if (c == 1) w32(pv + k * 4, u(ri(0, nbox - 1)));
+                    }
+                std::vector<int32_t> mine;
+                for (uint32_t k = 0; k < 8; ++k)
+                    if (ee_read<int32_t>(pv + k * 4) != -1) mine.push_back(ee_read<int32_t>(pv + k * 4));
+                screen_ready();
+                Vec4& cam = VV(OV(0x00166dc0));
+                const uint32_t rec = 0x00211b20;
+                const int where = ri(0, 4);
+                if (where <= 1 && !mine.empty()) {
+                    const Vec4 c = VV(lvd::box(lvd::BOXES, mine[static_cast<size_t>(ri(0, static_cast<int>(mine.size()) - 1))]) + 0x30);
+                    cam = Vec4{c.x + rf(-0.2f, 0.2f), c.y + rf(-0.2f, 0.2f), c.z + rf(-0.2f, 0.2f), 1.0f};
+                } else {
+                    const float ox = ee_read<float>(rec), oy = ee_read<float>(rec + 4), oz = ee_read<float>(rec + 8);
+                    const float st = ee_read<float>(rec + 0x10);
+                    const float spread = where == 4 ? 600.0f : (where == 3 ? 120.0f : 15.0f);
+                    cam = Vec4{ox + rf(0.0f, st * ee_read<uint16_t>(rec + 0x18)) + rf(-spread, spread),
+                               oy + rf(0.0f, st * ee_read<uint16_t>(rec + 0x1a)) + rf(-spread, spread), oz + 2.0f + rf(0.5f, spread / 3), 1.0f};
+                }
+                if (coin()) {  // (the view turned about z, as batch 513's)
+                    const float a = rf(-3.14f, 3.14f), cs = std::cos(a), sn = std::sin(a);
+                    for (uint32_t r = OV(0x00166fd0); r < OV(0x00166fd0) + 0x30; r += 0x10) {
+                        Vec4& v = VV(r);
+                        const float px = v.x, py = v.y;
+                        v.x = cs * px - sn * py;
+                        v.y = sn * px + cs * py;
+                    }
+                }
+                render_view_setup();
+                w32(OV(0x001611c0), 0x00800000u + u(ri(0, 8)) * 0x10u);
+                w32(OV(0x0015f5f8), 0x008f0000u);
+                if (ri(0, 3) == 0) w32(OV(0x0015f5cc), R() & 0xffffu);  // (the frame counter: the texture's frames)
+                if (ri(0, 2) == 0) w32(OV(0x0015f458), u(ri(0, 2)));    // (the fog's mode the set-up tests)
+                return Args{{m879}, {}};
+            }, [](A a) { ovl_call_moby_fn(0x00316070, a.i[0]); return uint64_t{0}; });
+        }
+        rng = rng_before;
     }
 
     // ---- class 775's update: a moby of the class as spawn_moby_307 (0x2d7e90) puts one out at a live moby, its byte +0x23 near the end

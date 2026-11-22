@@ -777,6 +777,17 @@ void sea_draw_checks() {
         if (x.level != g_oracle_level) continue;
         (std::strcmp(x.name, "sea_draw") == 0 ? any : any2) = true;
         const Sd d = x;
+        {  // (task Y3: the play-test spots, the level's mobys of the class that queues this sea's draw)
+            level();
+            const int cls = d.addr == 0x002dc990 ? 994 : d.addr == 0x002f8038 ? 460 : d.addr == 0x0030d420 ? 1018 : d.addr == 0x002da0d0 ? 327 : 1260;
+            const uint32_t first = ee_read<uint32_t>(OV(0x0015ffd8));
+            for (uint32_t m = first; m < ee_read<uint32_t>(OV(0x0015ffe0)); m += 0x100)
+                if (ee_read<uint8_t>(m + 0x20) < 0xfe && ee_read<int16_t>(m + 0xa6) == cls) {
+                    const Vec4 q = ee_ref<Vec4>(m + 0x10);
+                    std::printf("INFO Y3 L%d sea %s class %d moby %u uid %d at (%.1f, %.1f, %.1f) state %u\n", g_oracle_level, d.name, cls,
+                                (m - first) >> 8, ee_read<int16_t>(m + 0xb2), q.x, q.y, q.z, ee_read<uint8_t>(m + 0x20));
+                }
+        }
         fcheck(d.name, d.addr, 60, Ret::None, [d] {
             level();
             packet_cursor();

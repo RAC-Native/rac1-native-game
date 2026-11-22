@@ -1,7 +1,7 @@
 // Gaspar (level 9) own moby classes, class hooks and level-only engine functions: the declarations of the hand-written ports
 // (gaspar_structure / _meteors / _breakables / _platform / _controller / _lift / _fuses / _turret / _hazard / _ferry / _lava /
-// _carry.cpp) and of the one function still generated, the palette blend 0x26d240 (gaspar_classes_tr_4.cpp: `TrRet`, the
-// uniform ABI; the lava pools' draw 0x2c1920 is the shared ocean_draw_one, aridia_ocean.h).
+// _carry.cpp) (the palette blend 0x26d240 and the lava pools' draw 0x2c1920 are the shared ari_ocean_tex_upload_l2 and
+// ocean_draw_one, aridia_ocean.h).
 #ifndef RAC1_GAME_OVL_GASPAR_MOBYS_H
 #define RAC1_GAME_OVL_GASPAR_MOBYS_H
 
@@ -46,7 +46,6 @@ int32_t gas_30a298_l9(uint32_t m);  // L9:0x0030a298  the raft's ride (1: arrive
 void gas_class1766_update_l9(uint32_t a0);  // L9:0x00309c08
 void gas_mat_scale_l9(uint32_t out, float s);  // L9:0x0021f6f8  a scale matrix
 void gas_21baf8_l9();  // L9:0x0021baf8  VU1 program 7's constants for the lava's streams
-TrRet gas_26d240_l9(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L9:0x0026d240
 void gas_21e560_l9(int32_t a, int32_t b, float blend);  // L9:0x0021e560  the streams' texture
 void gas_21e8c0_l9(uint32_t recs, int32_t n, int32_t a, int32_t b, float blend);  // L9:0x0021e8c0  the lava's streams
 void gas_2c1978_l9(uint32_t rec, uint32_t strips, int32_t n);  // L9:0x002c1978  the lava pools' edges

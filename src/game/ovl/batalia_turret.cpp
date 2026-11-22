@@ -1,6 +1,6 @@
 // Batalia (level 8) own moby classes, hand-ported: class 440, the anti-air turret Ratchet mans to defend the fort from
 // the four Blarg gunships, and its helpers (the missile under the sights, the outcome handed to the Commander). Its HUD
-// draw callback L8:0x002deee0 stays in batalia_part2_tr.cpp. Header batalia_own.h; registered in batalia_mobys.cpp.
+// draw callback L8:0x002deee0 is in batalia_draws.cpp. Header batalia_own.h; registered in batalia_mobys.cpp.
 // Addresses are level 8's (`orig: L8:`); its own data and code are L8_ADDR (tuning and offsets at 0x161a90 .. 0x161bf0,
 // the camera 0x1675c0 and shake 0x1675e0 .. 0x1675f8), the base ELF's are bare.
 #include <game/math/vecmath.h>

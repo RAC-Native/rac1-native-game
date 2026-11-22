@@ -795,13 +795,15 @@ Found the same way, each with a `RAC1_PERF_*=0` switch: the game's own code wher
 `RAC1_RAMHASH` on the levels that run it and by the oracle batches of the hand-ported functions), and the sky drawn after the
 terrain.
 
-- **The palette blend** (`RAC1_PERF_PALETTE_BLEND`, `src/game/ovl/palette_blend.cpp`, hooked by `tools/codegen/hooks.glue` into the
-  six overlays' copies of the routine: Kerwan 0x23c428, Rilgar 0x277b20, Umbris 0x2762e0, Batalia 0x257d40, Gaspar 0x26d240, Oltanis
-  0x255ce0, NTSC-U): its texel loop weighted both palettes' entries (VMULbc) for each of 4096 texels; each entry's product is now
+- **The palette blend** (`RAC1_PERF_PALETTE_BLEND`, `src/game/ovl/palette_blend.cpp`, called by the shared port
+  `ari_ocean_tex_upload_l2` (`aridia_ocean.cpp`), which runs the routine on Aridia 0x24fca0, Kerwan 0x23c428, Rilgar 0x277b20, Umbris
+  0x2762e0, Batalia 0x257d40 and Gaspar 0x26d240 on every disc, and hooked by `tools/codegen/hooks.glue` into Oltanis's generated
+  copy 0x255ce0, NTSC-U): its texel loop weighted both palettes' entries (VMULbc) for each of 4096 texels; each entry's product is now
   made once (256 per palette) and the texels add the two they index, leaving the VU0 registers as the loop does (not its ops' flags,
   which nothing reads after). `RAC1_RAMHASH` identical on and off on levels 3, 5, 7, 8, 9 and 14 (3000 frames each, the routine
   running on all six). Kerwan, the routine's call (the palettes' DMA and conversion included): 0.124 to 0.035 ms, about one call a
-  frame. The PAL build runs the loop as transliterated. No oracle batch: the routine's scratchpad DMA is not in the interpreter.
+  frame. Oltanis's generated copy on a PAL disc runs the loop as transliterated (the hook's address is NTSC-U's). Oracle: batch 513's
+  `ocean_tex_upload` / `ocean_tex_upload_vu` on every level's copy, run with the loop on and with `RAC1_PERF_PALETTE_BLEND=0`.
 - **The VU clamp once per operand** (`RAC1_PERF_VU_CLAMP`, `ovl_1e_1f.cpp` `segment_collide_v`'s triangle test, `ovl_24_25.cpp`
   `moby_transform_core`): the hand ports' `q*` / `vmul` / `vmadd` helpers clamp both operands and the result of every op by the VU
   rules; where every operand is already a VU result, a small integer's float or a value clamped as it is read, `vuc(x)` is `x`, so

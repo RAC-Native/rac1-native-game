@@ -1,4 +1,0 @@
-0x0022de38: ari_spr_dma_to_l2(a0.w(), a1.w(), a2.w());
-0x002775c8: ari_ocean_cells_clip_l2(a0.w());
-0x00277900: ari_ocean_cells_draw_l2(a0.w());
-0x002ce720: ari_ocean_end_body_l2(a0.w());

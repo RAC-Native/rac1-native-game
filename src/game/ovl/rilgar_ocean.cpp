@@ -1,13 +1,15 @@
-// Rilgar's (level 5) water: the open sea's controller (class 879: the ocean's swell height; its draw, 0x316070, stays generated:
-// it is the only caller of the ocean's chain, rl2_2ce830_l5, which keeps the palette blend's hook) and the bay's water
+// Rilgar's (level 5) water: the open sea (class 879: the ocean's swell height, and its draw: the wave record through the shared
+// ocean_draw_one, aridia_ocean.cpp, unless the camera is in one of the moby's boxes) and the bay's water
 // disc (class 982: the level's water disc, 0x1612dc, set over the hero while he is in its box), the waterfalls
 // (class 855 and its drops) and the raft (class 998). Ported by hand from Rilgar's own code (L5:0x316110, 0x318a68,
-// 0x3150f0, 0x29be70, 0x318c78, 0x3193a8), the original's order of calls and float operations kept.
+// 0x3150f0, 0x29be70, 0x318c78, 0x3193a8, 0x316070), the original's order of calls and float operations kept.
 #include <game/ovl/aridia_mobys.h>
+#include <game/ovl/aridia_ocean.h>
 #include <game/ovl/ee_regs.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/rilgar_mobys.h>
+#include <game/ovl/rilgar_part2.h>
 #include <game/ovl/shared_floaters.h>
 #include <game/ovl/shared_helpers.h>
 #include <game/level/level_data.h>
@@ -44,6 +46,20 @@ void ril_class879_update_l5(uint32_t m) {
     default:
         break;
     }
+}
+
+// Class 879's draw callback (queued by its update): the sea's wave record drawn (ocean_draw_one: its set-up, cells and texture
+// blend, the shared ports of every level with an ocean), unless the camera (0x1671c0) is inside one of the up to eight boxes
+// whose indices the moby's pvars hold (-1: none in that slot).
+// orig: L5:0x00316070
+void ril_class879_draw_l5(uint32_t m) {
+    const uint32_t boxes = lwu(m + 0x78);
+    for (uint32_t i = 0; i < 8; ++i) {
+        const int32_t box = lw(boxes + i * 4);
+        if (box == -1) continue;
+        if (point_in_box(L5_ADDR(0x001671c0u), box) != 0) return;  // the camera in one of the boxes: no sea
+    }
+    ocean_draw_one(L5_ADDR(0x00211b20u));
 }
 
 // Class 982, the bay's water disc: while the hero is in its box (+0) the level's water disc (0x1612dc on, centred on him

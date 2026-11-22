@@ -2,7 +2,6 @@
 #include <game/enhance/cut_content.h>
 #include <game/ovl/empty_class_updates.h>
 #include <game/ovl/kerwan_mobys.h>
-#include <game/ovl/kerwan_part2_tr.h>
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/shared_class1221.h>
@@ -15,6 +14,7 @@
 #include <game/ovl/shared_class994.h>
 #include <game/ovl/shared_gold_bolt.h>
 #include <game/ovl/shared_sandmouse.h>
+#include <game/ovl/shared_sea_draw.h>
 #include <game/ovl/shared_spawner.h>
 #include <game/ovl/shared_swingshot_target.h>
 
@@ -81,10 +81,9 @@ void kerwan_moby_fns_register() {
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002db558), kerwan_class909_update_l3);
     // the help triggers 1342 (kerwan_help_triggers.cpp)
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002df520), kerwan_class1342_update_l3);
-    // part 2 (kerwan_part2_tr.cpp): class 994's draw callback (queued by its update through 0x1f93e0). It stays transliterated
-    // with the ocean's set-up and texture upload it reaches: the texture upload carries the palette-blend hook
-    // (tools/codegen/hooks.glue, RAC1_PERF_PALETTE_BLEND) that the shared port (sea_draw, ari_ocean_tex_upload_l2) lacks.
-    ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002dc990), kerwan_class994_draw_l3);
+    // class 994's draw callback (queued by its update through 0x1f93e0): the sea's shared draw (shared_sea_draw.cpp: the level's
+    // wave record through ocean_draw_one, aridia_ocean.cpp, whose texture blend runs the host's texel loop, palette_blend.h)
+    ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002dc990), sea_draw);
     // class 1548, the scenes' smoke and flashes (kerwan_props.cpp; game mode 2)
     ovl_register_level_moby_fn(KERWAN, L3_ADDR(0x002e01d0), kerwan_class1548_update_l3);
 }

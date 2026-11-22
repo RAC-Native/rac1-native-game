@@ -7,10 +7,10 @@
 
 #include <game/lib/libcdvd.h>
 #include <game/ovl/arrival.h>
+#include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/kerwan_mobys.h>
-#include <game/ovl/kerwan_part2_tr.h>
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/shared_class235.h>
 #include <game/ovl/shared_class631.h>
@@ -641,7 +641,7 @@ void batch_138() {
                 ee_ref<Vec4>(OV(0x00166dc0)) = ee_ref<Vec4>(m + 0x10);  // the camera at the moby, or somewhere else
                 if (coin()) wfrand(OV(0x00166dc0), 3, -50, 400);
                 return Args{{m}, {}};
-            }, [](A a) { kerwan_class994_draw_l3(a.i[0]); return uint64_t{0}; });
+            }, [](A a) { ovl_call_moby_fn(0x002dc990, a.i[0]); return uint64_t{0}; });  // (task Y3: the level's registration, the shared sea_draw)
     }
 
     // ---- the level's own sound emitter types (0x2ed800, 0x2ed960): the level's emitters of each type, the hero / camera near or far,

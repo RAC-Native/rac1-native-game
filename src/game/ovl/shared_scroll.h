@@ -1,6 +1,6 @@
 // The scrolling textures of Batalia's, Pokitaru's and Hoven's meshes (water, lava, energy: shared_scroll.cpp, one port for
-// every copy; the copies differ only in the level tables they work on, numbered as below). Phase 1 of stage 4: the levels'
-// generated copies still run; these are proved against them by oracle batch 510.
+// every copy; the copies differ only in the level tables they work on, numbered as below), proved against every copy by oracle batches
+// 510 and 520; Batalia's two layer draws (classes 600 / 1649) run them since task Y3 (batch 160 checks them through the registration).
 #ifndef RAC1_GAME_OVL_SHARED_SCROLL_H
 #define RAC1_GAME_OVL_SHARED_SCROLL_H
 

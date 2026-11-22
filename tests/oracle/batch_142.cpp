@@ -13,6 +13,7 @@
 #include "ovl_oracle.h"
 
 #include <game/lib/libcdvd.h>
+#include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/particle_types_tr.h>
@@ -174,9 +175,10 @@ void batch_142() {
         void (*fn)(uint32_t);
         int cls;
     };
-    const Cb cbs[] = {{"umb_class460_draw", 0x002f8038, umb_class460_draw_l7, 460},       {"umb_class823_draw", 0x003048b0, class823_draw, 823},
+    // (task Y3: the seas of classes 460 / 1018 through the level's registration, the shared sea_draw / sea_draw_2)
+    const Cb cbs[] = {{"umb_class460_draw", 0x002f8038, [](uint32_t m) { ovl_call_moby_fn(0x002f8038, m); }, 460},       {"umb_class823_draw", 0x003048b0, class823_draw, 823},
                       {"umb_class832_draw", 0x00304c40, class832_draw, 832},       {"umb_class902_draw", 0x0030cd20, nov_water_751_draw_l1, 902},
-                      {"umb_class1018_draw", 0x0030d420, umb_class1018_draw_l7, 1018},    {"umb_class1046_draw", 0x0030dcf0, umb_class1046_draw_l7, 1046},
+                      {"umb_class1018_draw", 0x0030d420, [](uint32_t m) { ovl_call_moby_fn(0x0030d420, m); }, 1018},    {"umb_class1046_draw", 0x0030dcf0, umb_class1046_draw_l7, 1046},
                       {"umb_class1106_draw_a", 0x00312420, umb_class1106_draw_a_l7, 1106}, {"umb_class1106_draw_b", 0x00312dc8, umb_class1106_draw_b_l7, 1106},
                       {"umb_class1106_draw_c", 0x003131b0, umb_class1106_draw_c_l7, 1106}, {"umb_draw_317910", 0x00317910, umb_draw_317910_l7, 1106},
                       {"umb_class1135_draw", 0x0031ce40, class1135_draw, 1135}};

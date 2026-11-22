@@ -5,10 +5,10 @@
 // and its matrices 0x166e40 / 0x166ec0, the view 0x16cbc0, the textures' table 0x16d300 and data 0x15f420), the base ELF's
 // are bare (the VRAM cursor 0x15ee74, the packet head 0x10e800).
 //
-// What stays generated on purpose: the texture blend L9:0x26d240 (gas_26d240_l9, with the palette-blend hook of
-// tools/codegen/hooks.glue), which the streams call as it is. The pools' draw L9:0x002c1920 (with its set-up 0x2c1220) is
-// Gaspar's copy of the ocean's one-record draw, relocations only (batch 513's ocean_draw_one at L9): the shared port, whose
-// set-up blends the pools' texture with ari_ocean_tex_upload_l2 (the same bits, without the hook's host loop).
+// The texture blend L9:0x26d240 the streams call is Gaspar's copy of the ocean's palette blend (relocations only): the shared
+// port ari_ocean_tex_upload_l2 (aridia_ocean.cpp, with the host's texel loop of palette_blend.h; batch 513's ocean_tex_upload at
+// L9). The pools' draw L9:0x002c1920 (with its set-up 0x2c1220) is Gaspar's copy of the ocean's one-record draw, relocations only
+// (batch 513's ocean_draw_one at L9): the shared port, whose set-up blends the pools' texture with the same port.
 #include <game/math/vecmath.h>
 #include <game/ovl/aridia_ocean.h>
 #include <game/ovl/gaspar_mobys.h>
@@ -105,7 +105,7 @@ void gas_21baf8_l9() {
 }
 
 // The streams' texture: frame `a` of the level's animated textures, or, between two frames (`b` the next), their blend by
-// `blend` uploaded to 0x161fd0 (gas_26d240_l9, the palette blend) and sent to VRAM at its cursor (moved 0x4000 on), its
+// `blend` uploaded to 0x161fd0 (the palette blend L9:0x26d240: ari_ocean_tex_upload_l2) and sent to VRAM at its cursor (moved 0x4000 on), its
 // TEX0 / TEX1 / CLAMP / the alpha words, the texture flushed.
 // orig: L9:0x0021e560
 void gas_21e560_l9(int32_t a, int32_t b, float blend) {
@@ -125,8 +125,8 @@ void gas_21e560_l9(int32_t a, int32_t b, float blend) {
     const uint32_t buf = L9_ADDR(0x00161fc0);
     sd(buf, 0x0800000000000400ull);
     sd(buf + 8, 0);
-    gas_26d240_l9(buf + 0x10, data + (lhu(ea + 8) << 4), data + (lhu(ea + 0xa) << 4), data + (lhu(eb + 8) << 4), data + (lhu(eb + 0xa) << 4),
-                  0x1000, 0, 0, blend, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+    ari_ocean_tex_upload_l2(buf + 0x10, data + (lhu(ea + 8) << 4), data + (lhu(ea + 0xa) << 4), data + (lhu(eb + 8) << 4),
+                            data + (lhu(eb + 0xa) << 4), 0x1000, blend);
     tag(0x10000006u, 0, 0x50000006u);
     const uint32_t a2 = cursor(), a1 = a2 + 0x10;
     set_cursor(a1);

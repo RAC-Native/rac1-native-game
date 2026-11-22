@@ -1,7 +1,7 @@
 // Oracle batch 160 (Batalia part 2): what a play-through of Batalia (level 8) still reached unported. Run with ORACLE_LEVEL=8
 // build/tests/ovl_oracle --batch 160 (Batalia's own original against the relocated port; needs the ISO); the shared particle types
 // also with ORACLE_LEVEL=0 (Veldin's own original).
-//  - Batalia's own draw-list callbacks (batalia_part2_tr.cpp): class 252's two (L8:0x2d3878 on list d880, 0x2d4108 on da80), 327
+//  - Batalia's draw-list callbacks (hand-written; 327, 600 and 1649 the shared ports since Y3, run through the registration): class 252's two (L8:0x2d3878 on list d880, 0x2d4108 on da80), 327
 //    (0x2da0d0), 440 (0x2deee0), 452 (0x2e5188), 600 (0x2f0dc8), 671 (0x2f5e58), 832 (0x2fb948), 1135 (0x304bc0), 1649 (0x309030), the
 //    Sandmouse 1818's glow (0x30ab50);
 //  - particle types 0 / 1 (Veldin's 0x268d48 / 0x268fe8, L8:0x272eb8 / 0x273158: the rain, emitted by class 1629), 0x4d (0x275860),
@@ -34,7 +34,10 @@
 #include <game/ovl/shared_spawner.h>
 #include <game/ovl/variants_l8.h>
 
+#include <runtime/vu/vu0.h>
+
 #include <optional>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <map>
@@ -194,10 +197,10 @@ void batch_160() {
         int cls;
     };
     const Cb cbs[] = {{"bat_class252_draw_a", 0x002d3878, class252_draw_beam, 252}, {"bat_class252_draw_b", 0x002d4108, class252_draw_glow, 252},
-                      {"bat_class327_draw", 0x002da0d0, bat_class327_draw_l8, 327},     {"bat_class440_draw", 0x002deee0, bat_class440_draw_l8, 440},
-                      {"bat_class452_draw", 0x002e5188, bat_class452_draw_l8, 452},     {"bat_class600_draw", 0x002f0dc8, bat_class600_draw_l8, 600},
+                      {"bat_class327_draw", 0x002da0d0, [](uint32_t m) { ovl_call_moby_fn(0x002da0d0, m); }, 327},     {"bat_class440_draw", 0x002deee0, bat_class440_draw_l8, 440},
+                      {"bat_class452_draw", 0x002e5188, bat_class452_draw_l8, 452},     {"bat_class600_draw", 0x002f0dc8, [](uint32_t m) { ovl_call_moby_fn(0x002f0dc8, m); }, 600},
                       {"bat_class671_draw", 0x002f5e58, bat_class671_draw_l8, 671},     {"bat_class832_draw", 0x002fb948, class832_draw, 832},
-                      {"bat_class1135_draw", 0x00304bc0, class1135_draw, 1135},  {"bat_class1649_draw", 0x00309030, bat_class1649_draw_l8, 1649},
+                      {"bat_class1135_draw", 0x00304bc0, class1135_draw, 1135},  {"bat_class1649_draw", 0x00309030, [](uint32_t m) { ovl_call_moby_fn(0x00309030, m); }, 1649},
                       {"bat_sandmouse_glow", 0x0030ab50, sandmouse_glow, 1818}};
     for (const Cb& cb : cbs) {
         if (g_oracle_level != 8) {
@@ -228,6 +231,92 @@ void batch_160() {
             }, cb.fn);
             return Args{{m}, {}};
         }, [cb](A a) { cb.fn(a.i[0]); return uint64_t{0}; });
+    }
+
+    // ---- task Y3: the scrolling layers' draws of classes 600 / 1649 (the shared class600_draw / class1649_draw, shared_scroll.cpp)
+    // through the level's registration, on their packets and on the VU0 lanes the original's own code writes last. The screen and
+    // projection set up, the camera at the moby (or anywhere), the packet cursor on the test area's buffer (0x800000 .. 0x8f0000),
+    // the layers' alpha words, the fade byte and the scroll offsets dealt in part (batch 520's), the VU0 the interpreter starts
+    // from given to the port. Compared: vf1.xyz, vf2, vf3 and vf11 (written last by the last mesh's offsets, 0x258090 /
+    // uv_offset_pairs: vf1.xyz cleared, vf11 the offset, vf2 / vf3 the last pairs). Not compared: vf1.w, whose last writer is the
+    // set-up's vec3_scale (Veldin's 0x1ff300, VU0 code: vf1 = the camera 0x166dc0 scaled, its w the camera's w), and vf4 .. vf9,
+    // rewritten by its mat4_mul (0x1ffdd8): host ports that keep no VU0 state, the generated copies glued to them as well. The
+    // camera keeps the level's own w: with another w the original's odd vertices' t (vf11.w = vf1.w + v) differ by that w from the
+    // ports' (the generated code's as well as the shared port's; NOTES of task Y3), which this check does not test.
+    if (g_oracle_level == 8) {
+        const std::mt19937 rng_before = rng;  // (the batch's later checks dealt the cases they had before these were added)
+        static EeInterpreter* s_ee = nullptr;
+        static VUState s_vu0_in;
+        g_pre_call = [](EeInterpreter& ee) { s_ee = &ee; s_vu0_in = ee.vu0(); };
+        auto vu0_given = [] {
+            VUState& v = vu0::global().st;
+            v.vf = s_vu0_in.vf; v.vi = s_vu0_in.vi; v.acc = s_vu0_in.acc; v.q = s_vu0_in.q; v.i = s_vu0_in.i; v.r = s_vu0_in.r;
+            v.p = s_vu0_in.p; v.macflag = s_vu0_in.macflag; v.statusflag = s_vu0_in.statusflag; v.clipflag = s_vu0_in.clipflag;
+            std::memcpy(v.mem.data(), s_vu0_in.mem.data(), 0x1000);
+        };
+        auto vu0_compare = [] {
+            if (s_ee == nullptr) return;
+            const VUState& o = s_ee->vu0();
+            const VUState& p = vu0::global().st;
+            const int regs[][2] = {{1, 7}, {2, 15}, {3, 15}, {11, 15}};
+            int bad = 0;
+            for (const auto& r : regs)
+                for (int i = 0; i < 4; ++i)
+                    if ((r[1] >> i & 1) != 0 && o.vf[static_cast<size_t>(r[0])].u[i] != p.vf[static_cast<size_t>(r[0])].u[i] && bad++ < 4)
+                        std::printf("  VU0 vf%d lane %d: orig=%08x port=%08x\n", r[0], i, o.vf[static_cast<size_t>(r[0])].u[i], p.vf[static_cast<size_t>(r[0])].u[i]);
+            if (bad != 0) w32(0x008ff000u, 0x0bad0000u + u(bad));
+        };
+        struct Lw {
+            const char* name;
+            uint32_t addr;
+            int cls;
+            uint32_t words, fade, offsets[3];
+        };
+        static const Lw lws[] = {{"bat_class600_draw_vu", 0x002f0dc8, 600, 0x00161dd0, 0x00161e08, {0x001e8348, 0x00161e10, 0x00161e20}},
+                                 {"bat_class1649_draw_vu", 0x00309030, 1649, 0x00162390, 0x001623f0, {0x001f8548, 0x001623f8, 0x00162408}}};
+        for (const Lw& x : lws) {
+            level();
+            const std::vector<uint32_t> ms = live(x.cls);
+            if (ms.empty()) {
+                std::printf("%-26s no moby of class %d\n", x.name, x.cls);
+                continue;
+            }
+            {
+                const Vec4 q = ee_ref<Vec4>(ms[0] + 0x10);
+                std::printf("INFO Y3 class %d moby %u uid %d at (%.1f, %.1f, %.1f) state %u; the camera's w %g\n", x.cls,
+                            (ms[0] - ee_read<uint32_t>(OV(0x0015ffd8))) >> 8, ee_read<int16_t>(ms[0] + 0xb2), q.x, q.y, q.z,
+                            ee_read<uint8_t>(ms[0] + 0x20), ee_ref<Vec4>(OV(0x00166dc0)).w);
+            }
+            const Lw d = x;
+            b8check(d.name, d.addr, 80, Ret::None, [level, ms, pick, d] {
+                level();
+                if (ee_read<uint16_t>(0x001518d0) == 0) { w16(0x001518d0, 640); w16(0x001518d2, 448); }
+                screen_setup();
+                projection_setup();
+                const uint32_t m = pick(ms);
+                if (coin()) {
+                    const Vec4 t = ee_ref<Vec4>(m + 0x10);
+                    const float a = rf(-3.1f, 3.1f), r = rf(5.0f, 60.0f);
+                    Vec4& cam = ee_ref<Vec4>(OV(0x00166dc0));
+                    cam = Vec4{t.x - r * std::cos(a), t.y - r * std::sin(a), t.z + rf(0.5f, 10.0f), cam.w};  // (w: the level's)
+                }
+                render_view_setup();
+                w32(OV(0x001611c0), 0x00800000u + u(ri(0, 8)) * 0x10u);
+                w32(OV(0x0015f5f8), 0x008f0000u);
+                if (coin()) for (uint32_t k = 0; k < 0x34; k += 4) w32(d.words + k, coin() ? u(ri(0, 0x80)) : R());  // (the alphas)
+                w8(d.fade, coin() ? 0x80u : (R() & 0xffu));
+                for (const uint32_t o : d.offsets) if (coin()) wfrand(o, 6, -1.0f, 1.0f);
+                w32(OV(0x0015f5cc), R());
+                return Args{{m}, {}};
+            }, [vu0_given, vu0_compare, d](A a) {
+                vu0_given();
+                ovl_call_moby_fn(d.addr, a.i[0]);
+                vu0_compare();
+                return uint64_t{0};
+            });
+        }
+        g_pre_call = nullptr;
+        rng = rng_before;
     }
 
     // ---- the particle types: a particle of the pool of the type, its frames, bytes, floats, colours varied

@@ -1,5 +1,5 @@
-// Umbris (level 7) part 2: the declarations of umbris_part2_tr.cpp (generated, regen group umbris_part2:
-// `void` = an entry in the entry ABI, `TrRet` = a helper in the uniform ABI) and their registration (umbris_part2.cpp).
+// Umbris (level 7) part 2: its own draw callbacks (hand-written) and their registration (umbris_part2.cpp; the seas of classes
+// 460 / 1018 are the shared sea_draw / sea_draw_2, shared_sea_draw.h).
 #ifndef RAC1_GAME_OVL_UMBRIS_PART2_H
 #define RAC1_GAME_OVL_UMBRIS_PART2_H
 
@@ -8,13 +8,6 @@
 #include <game/ovl/novalis_mobys2.h>
 
 namespace rac1 {
-
-TrRet um2_227880_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x00227880
-TrRet um2_2762e0_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x002762e0
-TrRet um2_2cc6a0_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x002cc6a0
-TrRet um2_2ccda0_l7(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L7:0x002ccda0
-void umb_class460_draw_l7(uint32_t a0);  // L7:0x002f8038
-void umb_class1018_draw_l7(uint32_t a0);  // L7:0x0030d420
 
 // hand-ported (umbris_snagglebeast_draws.cpp)
 void umb_class1106_draw_a_l7(uint32_t a0);  // L7:0x00312420

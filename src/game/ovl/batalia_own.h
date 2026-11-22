@@ -29,7 +29,7 @@ void bomber_tank_break_wall_l8(uint32_t m);                                 // L
 void bomber_tank_wall_gone_l8(uint32_t m);                                  // L8:0x002d6450
 uint32_t bomber_tank_bomb_l8(uint32_t m, uint32_t at, uint32_t vel);        // L8:0x002dc8a0
 
-// ---- the sea below the fort (batalia_sea.cpp; its draw L8:0x2da0d0 stays generated with the ocean's chain)
+// ---- the sea below the fort (batalia_sea.cpp; its draw L8:0x2da0d0 is the shared sea_draw, shared_sea_draw.cpp)
 void bat_class327_update_l8(uint32_t m);  // L8:0x002da0f0  class 327
 
 // ---- the grenadier (batalia_grenadier.cpp)
