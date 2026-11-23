@@ -2,6 +2,7 @@
 // select (quick_select.cpp: its slots 0x17dac0, 0x1c bytes each, +0 the icon's animation, +0x18 the item) and the pause
 // menu's Quick Select page (pause_menu_quick.cpp: its items at w+0x30).
 #include <host/quick_rings.h>
+#include <game/enhance/advanced.h>
 #include <host/mod_code.h>
 
 #include <game/math/vecmath.h>
@@ -54,7 +55,7 @@ bool quick_select_open() { return lw(OV(0x0015f5c4)) == 0 && lwu(OV(0x0017dc50) 
 void slots_fill() {
     for (uint32_t i = 0; i < 8; ++i) {
         uint32_t item = quick_rings_item(g_current, static_cast<int>(i));
-        if (!mod_code_weapon_allowed(item)) item = 0;
+        if (!mod_code_weapon_allowed(item) || !quick_rings_item_valid(item)) item = 0;
         sw(OV(0x0017dac0) + i * 0x1c + 0x18, item);
         sw(OV(0x0017dac0) + i * 0x1c, lhu(item * 0x4c + OV(0x00179ac0) + 0x38));
     }
@@ -97,11 +98,37 @@ void ring_write(int r, uint32_t src) {
 // orig: (none) — enhancement (quick_rings.h)
 int quick_rings_shown() { return quick_rings_count() > 1 ? g_current : 0; }
 
+// orig: (none) — robustness (#178, quick_rings.h)
+bool quick_rings_item_valid(uint32_t item) {
+    if (item == 0) return true;
+    return item < ITEMS && lw(OV(0x00179ac0) + item * 0x4c + 8) == 0;
+}
+
+// orig: (none) — enhancement (#178, quick_rings.h)
+bool quick_rings_equip_ok(uint32_t item) { return g_advanced_disabled || quick_rings_item_valid(item); }
+
+// orig: (none) — robustness (#178, quick_rings.h)
+void quick_rings_sanitize() {
+    for (uint32_t i = 0; i < 8; ++i) {
+        const uint32_t item = lwu(RING1 + i * 4);
+        if (quick_rings_item_valid(item)) continue;
+        std::printf("[quick rings] ring 1 place %u held item 0x%x, which is not a held item: emptied\n", i + 1, item);
+        sw(RING1 + i * 4, 0);
+    }
+    for (int r = 0; r < 2; ++r)
+        for (uint32_t i = 0; i < 8; ++i) {
+            const uint32_t item = g_rings[r][i];
+            if (quick_rings_item_valid(item)) continue;
+            std::printf("[quick rings] ring %d place %u held item 0x%x, which is not a held item: emptied\n", r + 2, i + 1, item);
+            g_rings[r][i] = 0;
+        }
+}
+
 // orig: (none) — enhancement (quick_rings.h)
 uint32_t quick_rings_item(int ring, int place) {
     if (place < 0 || place >= 8) return 0;
-    if (ring <= 0 || ring > 2) return lwu(RING1 + static_cast<uint32_t>(place) * 4);
-    return g_rings[ring - 1][place];
+    const uint32_t item = ring <= 0 || ring > 2 ? lwu(RING1 + static_cast<uint32_t>(place) * 4) : g_rings[ring - 1][place];
+    return g_advanced_disabled || quick_rings_item_valid(item) ? item : 0;  // (enhancements on: an item that cannot be held, the place shown empty)
 }
 
 // orig: (none) — enhancement (quick_rings.h)
@@ -237,7 +264,7 @@ void quick_rings_menu_draw(uint32_t w) {
 
 // orig: (none) — enhancement (quick_rings.h)
 void quick_rings_give(uint32_t id) {
-    if (quick_rings_count() < 3 || id == 0 || id >= ITEMS) return;
+    if (quick_rings_count() < 3 || id == 0 || id >= ITEMS || !quick_rings_item_valid(id)) return;
     for (auto& ring : g_rings)
         for (uint8_t& place : ring)
             if (place == 0) {

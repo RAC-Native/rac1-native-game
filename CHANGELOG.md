@@ -16,6 +16,14 @@ What changed in each release. Releases are source only: you build the game with 
   starts it again with the same arguments (the pause menu's says that progress since the last save is lost). The debug
   menu's Rendering tab has the GPU choice too, with "In use: <GPU>" and a Restart now button.
 
+### Fixes
+- **An item that cannot be held is no longer equipped from the Quick Select, which crashed the game** (#178). A pack (the
+  Heli-Pack, say) in a Quick Select place made the hero load a weapon class it does not have when it was equipped. With the Advanced settings on, a place
+  now holds only a held item (a weapon or a gadget such as the Swingshot): any other item shows an empty place and is never
+  equipped, and the places of a save that already hold one are emptied once a level is running (`[quick rings] ... emptied` in
+  the log, with the Advanced settings on). The Quick Select Rings' new-item rule is the game's: only a held item goes to a free place. Nothing changes for
+  a save without such an item.
+
 ### Fixes (Windows)
 - **The setup stops at once in a folder with accents in its path** (#185), with a clear message to move the game to a
   plain path such as `C:\Games\rac1-native`. The build tools live in the game's folder and CMake could not read their
