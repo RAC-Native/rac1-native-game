@@ -1,6 +1,7 @@
 // Ported overlay code: Decoy Glove decoy object (classes 0xcb / gold 0x76c, update 0x002c4380).
 #include <game/ovl/decoy_obj.h>
 
+#include <game/collision/collision.h>
 #include <game/enhance/fixes102.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
@@ -107,11 +108,10 @@ int32_t decoy_obj_2c3af8(uint32_t p0, uint32_t p1, uint32_t p2) {
 
     if (segment_collide_v(hero_start, cur_pos, 0x10u, hero, nullptr) != 0) {
         if (sub_001f35d8() != 0 || !(0.0f < vel.z)) {
-            const uint32_t cr = OV(0x00173e40u);
-            const uint32_t hit_m = lwu(cr + 0x18);
+            const uint32_t hit_m = coll_hit_moby();
             if (hit_m != 0) {
-                if (lw(cr + 0x1c) > 0) {
-                    V(p0 + 0x20) = V(OV(0x00173e60u));
+                if (coll_hit_flags_signed() > 0) {
+                    V(p0 + 0x20) = coll_hit_point();
                     landed = 1;
                 } else {
                     bool accept = true;
@@ -127,8 +127,8 @@ int32_t decoy_obj_2c3af8(uint32_t p0, uint32_t p1, uint32_t p2) {
                         landed = 1;
                     }
                 }
-            } else if (lw(cr + 0x1c) > 0) {
-                V(p0 + 0x20) = V(OV(0x00173e60u));
+            } else if (coll_hit_flags_signed() > 0) {
+                V(p0 + 0x20) = coll_hit_point();
                 landed = 1;
             }
         }
@@ -143,11 +143,10 @@ int32_t decoy_obj_2c3af8(uint32_t p0, uint32_t p1, uint32_t p2) {
             }
             if (segment_collide_v(prev_pos, cur_pos, 0x10u, p1, nullptr) != 0) {
                 if (sub_001f35d8() != 0 || !(0.0f < vel.z)) {
-                    const uint32_t cr = OV(0x00173e40u);
-                    const uint32_t hit_m = lwu(cr + 0x18);
+                    const uint32_t hit_m = coll_hit_moby();
                     if (hit_m != 0) {
-                        if (lw(cr + 0x1c) > 0) {
-                            V(p0 + 0x20) = V(OV(0x00173e60u));
+                        if (coll_hit_flags_signed() > 0) {
+                            V(p0 + 0x20) = coll_hit_point();
                             break;
                         }
                         bool accept = true;
@@ -162,8 +161,8 @@ int32_t decoy_obj_2c3af8(uint32_t p0, uint32_t p1, uint32_t p2) {
                             (void)floor_probe_v(0.5f, probe, 0u);
                             break;
                         }
-                    } else if (lw(cr + 0x1c) > 0) {
-                        V(p0 + 0x20) = V(OV(0x00173e60u));
+                    } else if (coll_hit_flags_signed() > 0) {
+                        V(p0 + 0x20) = coll_hit_point();
                         break;
                     }
                 }
@@ -175,20 +174,20 @@ int32_t decoy_obj_2c3af8(uint32_t p0, uint32_t p1, uint32_t p2) {
     if (ticks == 0) return 0;
 
     if (p2 == 0) {
-        const uint32_t hm = lwu(OV(0x00173e58u));
+        const uint32_t hm = coll_hit_moby();
         if (hm == 0 || moby_pvar_word2(hm) == 0) return 0;
     }
 
     bool draw_ring = true;
     if (p2 == 2) {
-        const uint32_t hm = lwu(OV(0x00173e58u));
+        const uint32_t hm = coll_hit_moby();
         if (hm != 0 && moby_pvar_word2(hm) != 0) draw_ring = false;
     }
     if (draw_ring) {
         sub_001f93e0(OVF(0x002c31c0u), p1);
     }
 
-    V(p0 + 0x30) = V(OV(0x00173e80u));
+    V(p0 + 0x30) = coll_hit_normal();
     vec3_sub(prev_pos, V(p0 + 0x20), V(OV(0x00166dc0u)));
     vec3_scale(prev_pos, prev_pos, u2f(0x3f733333u));
     vec3_add(V(p0 + 0x20), prev_pos, V(OV(0x00166dc0u)));
@@ -379,9 +378,8 @@ void decoy_object_update(uint32_t m) {
                     }
                 }
 
-                vec3_reflect(V(dpv + 0x10), V(dpv + 0x10), V(OV(0x00173e80u)));
-                const uint32_t cr = OV(0x00173e40u);
-                if (lwu(cr + 0x18) != 0 && lw(cr + 0x1c) <= 0) {
+                vec3_reflect(V(dpv + 0x10), V(dpv + 0x10), coll_hit_normal());
+                if (coll_hit_moby() != 0 && coll_hit_flags_signed() <= 0) {
                     vec3_scale(V(dpv + 0x10), V(dpv + 0x10), u2f(0x3f866666u));
                 } else {
                     vec3_scale(V(dpv + 0x10), V(dpv + 0x10), u2f(0x3e4ccccdu));
@@ -401,13 +399,13 @@ void decoy_object_update(uint32_t m) {
                 }
 
                 if (low_speed) {
-                    const float nxy = vec2_length(V(cr + 0x40));
-                    const float ang = atan2_f(lwc1(cr + 0x48), nxy);
+                    const float nxy = vec2_length(coll_hit_normal());
+                    const float ang = atan2_f(coll_hit_normal().z, nxy);
                     if (ang < u2f(0x3f1c61aau)) {
                         const uint32_t cnt = lhu(dpv + 0x44) + 1u;
                         sh(dpv + 0x44, cnt);
                         bool settle = true;
-                        if (lwu(cr + 0x18) != 0 && lw(cr + 0x1c) <= 0) {
+                        if (coll_hit_moby() != 0 && coll_hit_flags_signed() <= 0) {
                             if (!(frame_scale_i(0xf0) < static_cast<int32_t>(static_cast<int16_t>(cnt)))) {
                                 settle = false;
                             }
@@ -421,9 +419,9 @@ void decoy_object_update(uint32_t m) {
                             vec_clear(V(dpv + 0x10));
                             sb(m + 0x20, 3);
                             sh(dpv + 0x44, static_cast<uint32_t>(frame_scale_i(0x258)));
-                            swc1(m + 0x18, lwc1(OV(0x00173e40u) + 0x28));
+                            swc1(m + 0x18, coll_hit_point().z);
 
-                            const Vec4 nrm = V(OV(0x00173e40u) + 0x40);
+                            const Vec4 nrm = coll_hit_normal();
                             const float k01 = u2f(0x3dcccccdu);
                             float c = cos_vu(lwc1(m + 0x48));
                             float s = sin_vu(lwc1(m + 0x48));
@@ -552,7 +550,7 @@ void decoy_object_update(uint32_t m) {
                 if (lwc1(m + 0x18) < fh1) {
                     swc1(m + 0x18, fh1);
                     vec_clear(V(dpv + 0x10));
-                    const Vec4 nrm = V(OV(0x00173e80u));
+                    const Vec4 nrm = coll_hit_normal();
                     float c = cos_vu(lwc1(m + 0x48));
                     float s = sin_vu(lwc1(m + 0x48));
                     const float rx = fpu_add(fpu_mul(nrm.x, c), fpu_mul(nrm.y, s));
@@ -568,7 +566,7 @@ void decoy_object_update(uint32_t m) {
                 vec_clear(V(dpv + 0x10));
             }
 
-            const uint32_t floor_m = lwu(OV(0x00173e58u));
+            const uint32_t floor_m = coll_hit_moby();
             if (floor_m != 0) {
                 (void)sub_00260400(m, floor_m, m + 0x10, m + 0x40, m + 0x10, m + 0x40);
             }
@@ -591,7 +589,7 @@ void decoy_object_update(uint32_t m) {
     }
     case 5: {  // (0x002c5124)
         if (floor_probe_v(0.5f, V(m + 0x10), 0u) != 0.0f) {
-            const uint32_t floor_m = lwu(OV(0x00173e58u));
+            const uint32_t floor_m = coll_hit_moby();
             if (floor_m != 0) {
                 (void)sub_00260400(m, floor_m, m + 0x10, m + 0x40, m + 0x10, m + 0x40);
             }
@@ -606,7 +604,7 @@ void decoy_object_update(uint32_t m) {
     }
     case 6: {  // (0x002c51b0)
         if (floor_probe_v(0.5f, V(m + 0x10), 0u) != 0.0f) {
-            const uint32_t floor_m = lwu(OV(0x00173e58u));
+            const uint32_t floor_m = coll_hit_moby();
             if (floor_m != 0) {
                 (void)sub_00260400(m, floor_m, m + 0x10, m + 0x40, m + 0x10, m + 0x40);
             }

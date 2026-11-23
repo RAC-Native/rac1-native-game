@@ -9,6 +9,7 @@
 // heading around the hero, +0x30 the target moby (+0x48 its class, to tell a reused moby), +0x34 / +0x40 the pitch / heading
 // it heads for, +0x3c its height, +0x4c / +0x50 its two trail particles, +0x54 its slot, +0x56 its hit points against
 // class 0x4d6, +0x58 / +0x5c the turn rates of its heading / pitch.
+#include <game/collision/collision.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
@@ -37,7 +38,6 @@ constexpr uint32_t FRAME_SCALE_2 = 0x0015ed70u;
 
 constexpr OvConst<0x0015f5c4u> GAME_MODE{};
 constexpr OvConst<0x0015ffe4u> MOBY_LIST{};  // the live mobys' list (linked through +0x28)
-constexpr OvConst<0x00173e40u> HIT{};        // the last collision's record: +0x18 the moby hit, +0x30 the point
 constexpr OvConst<0x00166dc0u> WALK_POS{};   // walker_move's resolved position, less its probe offset
 constexpr OvConst<0x00166fd0u> WALK_OFS_A{};
 constexpr OvConst<0x00166ff0u> WALK_OFS_B{};
@@ -71,9 +71,9 @@ void drone_hit(uint32_t m, uint32_t pv, uint32_t rec, uint32_t kind) {
     swc1(rec + 0x0c, u2f(0x45afdf66u));
     sb(rec + 0x18, 1);
     sh(rec + 0x1a, lhu(m + 0xa6));
-    moby_hit_record(lwu(HIT + 0x18u), rec);
+    moby_hit_record(coll_hit_moby(), rec);
     if (kind != 5) return;
-    const uint32_t victim = lwu(HIT + 0x18u);
+    const uint32_t victim = coll_hit_moby();
     const int32_t hp = lh(pv + 0x56);
     if (victim != 0 && lh(victim + 0xa6) == 0x4d6 && hp > 0) {
         const int32_t dmg = float_to_int(lwc1(rec + 0x1c));
@@ -328,7 +328,7 @@ void drone_update(uint32_t m) {
         V(probe) = V(m + 0x10);
         if (sphere_collide(probe, u2f(0x3e4ccccdu), 0, m) != 0) {
             // a live moby of kind 5, 7 or 8 that is not the hero (class 0): a hit
-            const uint32_t h = lwu(HIT + 0x18u);
+            const uint32_t h = coll_hit_moby();
             if (h != 0 && lh(h + 0xa6) != 0 && !moby_dying(h)) {
                 const uint32_t hcls = lwu(h + 0x24);
                 const uint32_t kind = hcls != 0 ? lbu(hcls + 0x46) : 0u;
@@ -379,9 +379,9 @@ void drone_update(uint32_t m) {
         V(pv + 0x10) = tp;
         V(probe) = V(m + 0x10);
         if (sphere_collide(probe, 0.25f, 0, m) != 0) {
-            const uint32_t h = lwu(HIT + 0x18u);
+            const uint32_t h = coll_hit_moby();
             if (h == 0 || moby_dying(h) || h != lwu(pv + 0x30) || lh(h + 0xa6) == 0) {
-                V(m + 0x10) = V(HIT + 0x30u);  // (stopped at the contact)
+                V(m + 0x10) = coll_hit_pushed();  // (stopped at the contact)
             } else {
                 const uint32_t hcls = lwu(h + 0x24);
                 drone_hit(m, pv, rec, hcls != 0 ? lbu(hcls + 0x46) : 0u);

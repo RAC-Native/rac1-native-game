@@ -2,6 +2,7 @@
 // 0x2c1718 is the hand moby's (shown while the pad's button mask 0x1403f0 is held) and, with a
 // non-zero pvar +4, the pickup lying in the world (0x2c1778: it spins, and when the hero walks
 // up to it, within 1 in the plane and 2 in height, gives the item).
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl.h>
@@ -28,7 +29,7 @@ void trespasser_pickup_update(uint32_t m) {
         swc1(m + 0x40, u2f(0x3fc90fdbu));
         swc1(m + 0x44, u2f(0x40490fdbu));
         sb(m + 0x20, 1);
-        swc1(m + 0x18, lwc1(OV(0x00173e68)) + lwc1(OV(0x00166c00u - 0x53d8)));
+        swc1(m + 0x18, coll_hit_point().z + lwc1(OV(0x00166c00u - 0x53d8)));
         break;
     }
     case 1: {

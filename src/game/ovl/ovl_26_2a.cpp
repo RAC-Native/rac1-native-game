@@ -1,5 +1,6 @@
 // Ported overlay code 0x00260000..0x002affff.
 #include <algorithm>
+#include <game/collision/collision.h>
 #include <game/enhance/vendor_buy_all.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/lib/libc.h>
@@ -250,7 +251,7 @@ uint32_t spawn_projectile_100_v(uint32_t owner, const Vec4& pos, uint32_t target
     a.z = pos.z;
     if (segment_collide_v(a, pos, 0, lwu(g::PLAYER + 0x2080), nullptr) != 0) {
         sb(m + 0xbc, 1);
-        V(m + 0x10) = V(OV(0x00173e60));
+        V(m + 0x10) = coll_hit_point();
     }
     moby_update_transform(m);
     sub_0025f780(m, OV(0x001b0770), 0x1f);

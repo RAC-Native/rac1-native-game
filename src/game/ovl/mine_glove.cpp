@@ -4,6 +4,7 @@
 // mine flying (0x2aa008) on the arc 0x2c1928 computes. The glove's pvars: +0x40 the mine's place
 // in the hand, +0x50 the mine held, +0x54 the refill timer, +0x58 the throw timer, +0x5c its first
 // frames.
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl_reloc.h>
@@ -132,11 +133,11 @@ void mine_throw_start(const Vec4& from, uint32_t mine, uint32_t vel) {
     Vec4 start = V(lwu(P + 0x2080) + 0x10);
     start.z = from.z;
     if (segment_collide_v(start, from, 0, lwu(P + 0x2080), nullptr) != 0) {
-        V(mine + 0x10) = V(OV(0x00173e60));
+        V(mine + 0x10) = coll_hit_point();
         Vec4 push;
-        vec3_set_length(push, V(OV(0x00173e80)), lwc1(0x0015ed70) * u2f(0x411b3333u));
+        vec3_set_length(push, coll_hit_normal(), lwc1(0x0015ed70) * u2f(0x411b3333u));
         vec3_add(V(mine + 0x10), V(mine + 0x10), push);
-        vec3_reflect(V(pv), V(pv), V(OV(0x00173e80)));
+        vec3_reflect(V(pv), V(pv), coll_hit_normal());
         vec3_scale(V(pv), V(pv), u2f(0x3f19999au));
     }
 }
@@ -236,8 +237,8 @@ void mine_glove_update(uint32_t m) {
                 aim.z = slope_reach;
                 Vec4 end;
                 vec3_add(end, V(OV(0x00166dc0)), aim);
-                if (segment_collide_v(V(OV(0x00166dc0)), end, 2, m, nullptr) != 0 && lwu(OV(0x00173e40) + 0x18) != lwu(P + 0x2080)) {
-                    target = V(OV(0x00173e60));
+                if (segment_collide_v(V(OV(0x00166dc0)), end, 2, m, nullptr) != 0 && coll_hit_moby() != lwu(P + 0x2080)) {
+                    target = coll_hit_point();
                     hit = true;
                     yaw = atan2_f(target.x - from.x, target.y - from.y);
                 }

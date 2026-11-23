@@ -1,4 +1,5 @@
 // Ported overlay code: the level setup (0x244110) and the loaders it calls.
+#include <game/collision/collision.h>
 #include <game/ovl/ovl_common.h>
 #include <game/bridge/guard.h>
 #include <game/enhance/pool.h>
@@ -173,7 +174,7 @@ void moby_class_register(uint32_t hdr, uint32_t tex, uint32_t remap, uint32_t cl
 // records whose +0x1c word is relocated) to 0x15f618.
 // orig: 0x00241728
 void level_collision_set(uint32_t p) {
-    if (lw(p) != 0) sw(OV(0x00173e40), p + lwu(p));
+    if (lw(p) != 0) coll_set_tree(p + lwu(p));
     if (lw(p + 4) == 0) return;
     const uint32_t l = p + lwu(p + 4);
     sw(OV(0x0015f618), l);

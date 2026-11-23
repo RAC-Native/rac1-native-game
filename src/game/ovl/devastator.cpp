@@ -2,6 +2,7 @@
 // spawner (0x002712b8), rocket spawner (0x002afc70), and muzzle/exhaust effects.
 #include <game/ovl/devastator.h>
 
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
@@ -145,7 +146,7 @@ void dev_2afc70_v(uint32_t owner, const Vec4& pos, uint32_t target, float aim_ya
 
     if (segment_collide_v(origin, pos, 0u, lwu(0x001413d0u), nullptr) != 0) {
         sb(r + 0xbc, 1);
-        V(r + 0x10) = V(OV(0x00173e60u));
+        V(r + 0x10) = coll_hit_point();
     }
 
     moby_update_transform(r);
@@ -347,13 +348,12 @@ void devastator_update(uint32_t m) {
         vec3_add(ray_end, cam_pos, ray_dir);
 
         if (segment_collide_v(cam_pos, ray_end, 0u, m, nullptr) != 0) {
-            const uint32_t outb = OV(0x00173e40u);
-            const uint32_t hit = lwu(outb + 0x18);
+            const uint32_t hit = coll_hit_moby();
             if (hit != 0 && (lhu(hit + 0x34) & 0x1000u) != 0) {
                 sw(pv + 0x10, hit);
                 sw(pv + 0x14, static_cast<uint32_t>(frame_scale_i(0x14)));
                 const uint32_t locked = lwu(pv + 0x10);
-                swc1(pv + 0x18, fpu_sub(lwc1(outb + 0x28), lwc1(locked + 0x18)));
+                swc1(pv + 0x18, fpu_sub(coll_hit_point().z, lwc1(locked + 0x18)));
             }
         }
 
@@ -386,7 +386,7 @@ void devastator_update(uint32_t m) {
         sw(pv + 0x10, lwu(HERO + 0x12b8));
         sw(pv + 0x14, static_cast<uint32_t>(frame_scale_i(0x14)));
         const uint32_t locked = lwu(pv + 0x10);
-        swc1(pv + 0x18, fpu_sub(lwc1(OV(0x00173e68u)), lwc1(locked + 0x18)));
+        swc1(pv + 0x18, fpu_sub(coll_hit_point().z, lwc1(locked + 0x18)));
     }
 
     // Firing check

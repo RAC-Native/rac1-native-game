@@ -15,6 +15,7 @@
 // toward the hero.
 #include <game/ovl/camera_types.h>
 
+#include <game/collision/collision.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
@@ -105,7 +106,7 @@ void camera_collide_sweep(uint32_t pos, float radius) {
         vec3_add(V(pos), V(pos), step);
         for (int32_t k = 0; k < 6; ++k) {
             if (sphere_collide(pos, radius, lwu(OV(0x0015ef5c)), lwu(P + 0x2080)) == 0) break;
-            lq_sq(pos, OV(0x00173e70));
+            lq_sq(pos, coll_hit_pushed_addr());
             const uint32_t c = lwu(ACTIVE);
             if (lbu(c + 0x89) == 0) sb(c + 0x89, 1);
         }
@@ -505,14 +506,14 @@ void cam7_track(uint32_t cam) {
         return;
     }
     Vec4 d;
-    vec3_sub(d, V(OV(0x00173e60)), V(pos));
+    vec3_sub(d, coll_hit_point(), V(pos));
     const float l = vec3_length(d);
     if (0.5f < l) {
         vec3_scale(d, d, fpu_div(l - 0.5f, l));
         vec3_add(at, V(pos), d);
         for (int32_t i = 0; i < 5; ++i) {
             if (sphere_collide_v(at, 0.75f, 0, 0) == 0) break;
-            at = V(OV(0x00173e70));
+            at = coll_hit_pushed();
         }
     }
     V(pos) = at;

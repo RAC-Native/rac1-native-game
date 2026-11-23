@@ -1,4 +1,5 @@
 // Ported overlay code 0x00200000..0x0020ffff.
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/enhance/fixes102.h>
 #include <game/enhance/setpieces.h>
@@ -52,7 +53,7 @@ int32_t hero_wall_probe(float* dist, float z, float reach) {
     sub_002335c8_v(a, lwc1(g::PLAYER + 0x234) - u2f(0x3ca3d70au), 0.0f, z);
     sub_002335c8_v(b, reach, 0.0f, z);
     if (segment_collide_v(a, b, 2, 0, nullptr) == 0) return 0;
-    if (dist != nullptr) *dist = vec2_distance(V(g::PLAYER + 0x80), V(OV(0x00173e60)));
+    if (dist != nullptr) *dist = vec2_distance(V(g::PLAYER + 0x80), coll_hit_point());
     return 1;
 }
 // orig: 0x0020a240 (EE-address form; dist = 0: none)
@@ -70,7 +71,7 @@ int32_t hero_wall_probe(uint32_t dist, float z, float reach) {
 // at most 3 tall).
 // orig: 0x00208b60
 void hero_shadow_update() {
-    const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
+    const uint32_t P = g::PLAYER;
     const int32_t sub = lw(P + 0x208c);
     if (sub == 0x12 || sub == 0x15 || lw(P + 0x2084) == 0x7d || sub == 0x16) {
         const uint32_t hm = lwu(P + 0x2080);
@@ -128,8 +129,8 @@ void hero_shadow_update() {
         vec3_set_length(b, light, len);
         vec3_add(b, a0, b);
         if (segment_collide_v(a0, b, 0x22, 0, nullptr) != 0) {
-            lo = min_f(lo, lwc1(OUTB + 0x28));
-            hi = max_f(hi, lwc1(OUTB + 0x28));
+            lo = min_f(lo, coll_hit_point().z);
+            hi = max_f(hi, coll_hit_point().z);
         }
     }
     const uint32_t m = lwu(P + 0x2080);
@@ -176,7 +177,7 @@ void hero_footsteps_update() {
 // orig: 0x0020c758
 int32_t hero_ledge_check_v(const Vec4& pos, const float* ref_yaw) {
     if (on_l1_family() || on_rilgar()) return hero_ledge_check_v_l1(pos, ref_yaw);
-    const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
+    const uint32_t P = g::PLAYER;
     if (lh(P + 0x308) == 2) return 0;
     float drop = u2f(0xbf333333u), step = u2f(0x3e99999au), top = 1.5f, high = u2f(0x3f933333u), min = u2f(0x3fe66666u);
     if (hero_has_clank() && lbu(P + 0x20a4) == 1) {
@@ -201,11 +202,11 @@ int32_t hero_ledge_check_v(const Vec4& pos, const float* ref_yaw) {
         if (segment_collide_v(a, b, 4, lwu(P + 0x2080), nullptr) == 0) continue;
         const int32_t t = sub_001f35d8();
         if (t == 9 || t == 0xc) continue;
-        if (atan2_f(lwc1(OUTB + 0x48), vec2_length(V(OUTB + 0x40))) < u2f(0x3eb2b8c2u)) found = true;
+        if (atan2_f(coll_hit_normal().z, vec2_length(coll_hit_normal())) < u2f(0x3eb2b8c2u)) found = true;
     }
     if (!found) return 0;
-    if (pos.z + top < lwc1(OUTB + 0x28)) return 0;
-    const Vec4 c = V(OUTB + 0x20);
+    if (pos.z + top < coll_hit_point().z) return 0;
+    const Vec4 c = coll_hit_point();
     const float dir = atan2_f(c.x - pos.x, c.y - pos.y);
     if (c.z - lwc1(P + 0x2d8) < min) return 0;
     bool wall = false;
@@ -221,7 +222,7 @@ int32_t hero_ledge_check_v(const Vec4& pos, const float* ref_yaw) {
         a.z = z;
         if (segment_collide_v(a, b, 2, 0, nullptr) != 0) {
             wall = true;
-            wall_yaw = atan2_f(lwc1(OUTB + 0x40), lwc1(OUTB + 0x44));
+            wall_yaw = atan2_f(coll_hit_normal().x, coll_hit_normal().y);
             break;
         }
     }
@@ -258,7 +259,7 @@ int32_t hero_ledge_check(uint32_t pos, const float* ref_yaw) { return hero_ledge
 // orig: 0x0020bed0
 void hero_ledge_grab_check() {
     if (on_l1_family() || on_rilgar()) return hero_ledge_grab_check_l1();
-    const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
+    const uint32_t P = g::PLAYER;
     if (lh(P + 0x308) == 2) return;
     sw(P + 0x4e8, 0);
     if (lh(P + 0x1b0) != 0) return;
@@ -315,13 +316,13 @@ void hero_ledge_grab_check() {
         if (segment_collide_v(a, b, 4, lwu(P + 0x2080), nullptr) == 0) continue;
         const int32_t t = sub_001f35d8();
         if (t == 9 || t == 0xc || t == 0) continue;
-        if (atan2_f(lwc1(OUTB + 0x48), vec2_length(V(OUTB + 0x40))) < u2f(0x3eb2b8c2u)) found = true;
+        if (atan2_f(coll_hit_normal().z, vec2_length(coll_hit_normal())) < u2f(0x3eb2b8c2u)) found = true;
     }
     if (!found) return;
-    const uint32_t hit = lwu(OUTB + 0x18);
+    const uint32_t hit = coll_hit_moby();
     if (hit != 0) {
         const uint32_t pw = moby_pvar_word0(hit);
-        const uint32_t w2 = moby_pvar_word2(lwu(OUTB + 0x18));
+        const uint32_t w2 = moby_pvar_word2(coll_hit_moby());
         bool grab = false;
         if (pw != 0 && (lhu(pw + 0x1e) & 1) != 0) {
             grab = true;
@@ -330,15 +331,15 @@ void hero_ledge_grab_check() {
         }
         if (!grab) return;
     }
-    sw(P + 0x4f8, lwu(OUTB + 0x18));
-    if (lwc1(P + 0x88) + top < lwc1(OUTB + 0x28)) return;
-    const Vec4 c = V(OUTB + 0x20);
+    sw(P + 0x4f8, coll_hit_moby());
+    if (lwc1(P + 0x88) + top < coll_hit_point().z) return;
+    const Vec4 c = coll_hit_point();
     Vec4 c5 = c;
     c5.z = c5.z + u2f(0x3d4ccccdu);  // (sp+0x20)
     Vec4 h = V(P + 0x80);
     h.z = c5.z;
     if (segment_collide_v(h, c5, 4, lwu(P + 0x2080), nullptr) != 0) return;
-    Vec4 cap = V(OUTB + 0x20);
+    Vec4 cap = coll_hit_point();
     cap.z = cap.z + u2f(0x3f19999au);
     if (capsule_collide_v(cap, u2f(0x3ee66666u), u2f(0x3f19999au), 4, lwu(P + 0x2080)) != 0) {
         sw(P + 0x4f4, lwu(P + 0x4f4) | 1u);
@@ -360,7 +361,7 @@ void hero_ledge_grab_check() {
         a.z = z;
         if (segment_collide_v(a, b, 2, 0, nullptr) != 0) {
             wall = true;
-            swc1(P + 0x4e4, atan2_f(lwc1(OUTB + 0x40), lwc1(OUTB + 0x44)));
+            swc1(P + 0x4e4, atan2_f(coll_hit_normal().x, coll_hit_normal().y));
             break;
         }
     }
@@ -400,7 +401,7 @@ void hero_ledge_grab_check() {
 // within 170 degrees of the old one, opens the wall-jump window +0x1b4 (6 frames, 7 in 0x11).
 // orig: 0x0020b5b8
 void hero_air_wall_check() {
-    const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
+    const uint32_t P = g::PLAYER;
     if (lwc1(P + 0x2dc) < u2f(0x3ecccccdu)) return;
     if (sub_00233a78(P + 0xe0) < lwc1(0x0015ed6c) * -20.0f) return;
     if (lw(P + 0x4e8) != 0) {
@@ -428,14 +429,14 @@ void hero_air_wall_check() {
     if (segment_collide_v(a, b, 2, 0, nullptr) == 0) return;
     const int32_t t = sub_001f35d8();
     if (t == 10 || t == 12) return;
-    if (sub_00233d30(OUTB + 0x40) < u2f(0x3fa78d36u)) return;
+    if (sub_00233d30(coll_hit_normal_addr()) < u2f(0x3fa78d36u)) return;
     Vec4 ln;
-    mat4_transform(ln, V(OUTB + 0x40), M(P + 0x40));
+    mat4_transform(ln, coll_hit_normal(), M(P + 0x40));
     if (u2f(0x3f5f66f3u) < angle_dist(atan2_f(ln.x, ln.y), u2f(0x40490fdbu))) return;
     const float lim = lw(P + 0x2084) == 0x11 ? u2f(0x3f733333u) : u2f(0x3f3851ecu);
-    if (lim < vec2_distance(V(OUTB + 0x20), a)) return;
-    V(P + 0x460) = V(OUTB + 0x40);
-    swc1(P + 0x46c, atan2_f(lwc1(OUTB + 0x40), lwc1(OUTB + 0x44)));
+    if (lim < vec2_distance(coll_hit_point(), a)) return;
+    V(P + 0x460) = coll_hit_normal();
+    swc1(P + 0x46c, atan2_f(coll_hit_normal().x, coll_hit_normal().y));
     if (lw(P + 0x208c) != 4 && lw(P + 0x2094) != 4 && lw(P + 0x20a0) != 4) return;
     if (lw(P + 0x22b4) != 0 && angle_dist(lwc1(P + 0x47c), lwc1(P + 0x46c)) < u2f(0x403de44eu)) return;
     sw(P + 0x1b4, static_cast<uint32_t>(frame_scale_i(lw(P + 0x2084) == 0x11 ? 7 : 6)));
@@ -547,13 +548,13 @@ void hero_wall_lean() {
     const float z = lbu(P + 0x20a8) != 0 ? u2f(0x3f333333u) : u2f(0x3f11eb85u);
     if (hero_wall_probe(nullptr, z, reach) == 0) return;
     if (lbu(P + 0x20a8) != 0) {
-        const uint32_t hit = lwu(OV(0x00173e58));
+        const uint32_t hit = coll_hit_moby();
         if (hit != 0 && moby_in_range_class_500(hit) != 0) return;
     }
     const float fs = lwc1(0x0015ed64);
     swc1(X + 0x6d4, fs * u2f(0x3d4ccccdu));
     swc1(X + 0x6d8, fs * u2f(0x3e99999au));
-    const float d = vec3_distance(V(P + 0x80), V(OV(0x00173e60))) - lwc1(P + 0x234);
+    const float d = vec3_distance(V(P + 0x80), coll_hit_point()) - lwc1(P + 0x234);
     const float r = u2f(0x3fa66666u), lo = u2f(0xbf9c61aau), hi = u2f(0xbf060a92u);
     float lean = fpu_div(r - d, r) * 1.25f * lo;
     if (hi < lean) lean = hi;

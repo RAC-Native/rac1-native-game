@@ -6,6 +6,7 @@
 // cluck timer, +0x66 the state timer, +0x68 the turn rate, +0x6c the fall speed, +0x70 the countdown to its end under load
 // (-1: none), +0x74 the puffs (an explosion when it bursts), +0x78 its health (it bursts below 1), +0x7c the hit timer.
 // Its states: 1 idle (pecking), 2 turning away from the hero, 3 running away, 4 fleeing, 5 carried, 6 gone (not drawn).
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/lib/libc.h>
 #include <game/ovl/carry_hooks.h>
@@ -38,9 +39,6 @@ constexpr OvConst<0x0016186cu> DEBRIS_SPREAD_HI{};
 constexpr OvConst<0x001618a0u> DEBRIS_SCALE{};
 constexpr OvConst<0x001618a4u> DEBRIS_LIFE{};  // frames (an integer)
 constexpr OvConst<0x001618a8u> DEBRIS_DRAG{};
-constexpr OvConst<0x00173e68u> FLOOR_Z{};       // the last floor probe's height
-constexpr OvConst<0x00173e80u> FLOOR_NORMAL{};  // and its normal
-constexpr OvConst<0x00177f00u> HIT_LIST{};
 
 constexpr float DEG2RAD = std::bit_cast<float>(0x3c8efa35u);
 constexpr float QUARTER_PI = std::bit_cast<float>(0x3f490fdbu);
@@ -294,7 +292,7 @@ void chicken_update(uint32_t m) {
             explosion_effect(m, vel, 0, 0, 0, 0, -1, 1, 1, -1, lbu(pv + 0x74), 0.0f, 2.0f, 4.0f, 3.0f, 9.0f, 1.0f, 12.0f);
             const int32_t n = mobys_in_sphere(m + 0x10, 3.0f, 0x10, m, 0);
             V(pos) = V(m + 0x10);
-            moby_list_hit(m, pos, HIT_LIST, n, 0, NOT_ADDR(0x00830000u), 2, 1, 1.0f, 1.0f, 1.0f);
+            moby_list_hit(m, pos, coll_hit_list(), n, 0, NOT_ADDR(0x00830000u), 2, 1, 1.0f, 1.0f, 1.0f);
         }
         // then 5 .. 8 pieces of debris, halved under load, one under a heavy one
         int32_t count = rand_range(5, 8);
@@ -435,8 +433,8 @@ void chicken_update(uint32_t m) {
     }
     if (sub_001f35d8() == 0) sw(pv + 0x78, 0);
     if (lbu(m + 0x20) != 5) {  // on the floor: lean with it
-        swc1(m + 0x18, lwc1(FLOOR_Z));
-        const Vec4 n = V(FLOOR_NORMAL);
+        swc1(m + 0x18, coll_hit_point().z);
+        const Vec4 n = coll_hit_normal();
         const float c = cos_vu(lwc1(m + 0x48));
         const float s = sin_vu(lwc1(m + 0x48));
         const float fwd = fpu_add(fpu_mul(n.x, c), fpu_mul(n.y, s));

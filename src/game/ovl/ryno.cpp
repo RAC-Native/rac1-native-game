@@ -2,6 +2,7 @@
 // acquisition scan (0x002cc360), and rocket spawner (0x002ccee0).
 #include <game/ovl/ryno.h>
 
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/enhance/fixes102.h>
 #include <game/lib/libc.h>
@@ -115,7 +116,7 @@ void ryno_2ccee0(uint32_t p0, uint32_t p1, uint32_t p2, float pf12, float pf13, 
     from.z = lwc1(p1 + 8);
     if (segment_collide_v(from, V(p1), 0u, hero_moby, nullptr) != 0) {
         sb(r + 0xbc, 2);
-        V(r + 0x10) = V(OV(0x00173e60u));
+        V(r + 0x10) = coll_hit_point();
         explosion_effect(r, 0u, 0u, 0xa, 3, 9, 0, 1, 1, -1, 0u, 0.0f, 0.0f, 4.0f, 2.0f, 9.0f, 1.0f, 15.0f);
         moby_retire(r);
     }

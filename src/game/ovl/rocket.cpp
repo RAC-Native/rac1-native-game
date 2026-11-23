@@ -3,6 +3,7 @@
 #include <game/ovl/rocket.h>
 
 #include <bit>
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/devastator.h>
 #include <game/ovl/enemy_749.h>
@@ -284,8 +285,12 @@ void devastator_rocket_update(uint32_t m) {
 
     Vec4 vel{};
     vec_from_spherical_v(vel, lwc1(pv + 0x20), lwc1(m + 0x48), -lwc1(m + 0x44));
-    vec3_set_length(V(OV(0x00173e80u)), vel, 1.0f);
-    vec3_scale(V(OV(0x00173e80u)), V(OV(0x00173e80u)), -1.0f);
+    {
+        Vec4 n = coll_hit_normal();
+        vec3_set_length(n, vel, 1.0f);
+        vec3_scale(n, n, -1.0f);
+        coll_hit_set_normal(n);
+    }
 
     // Exhaust smoke & spark trail (throttled to even frames under particle load)
     if (overloaded == 0 || (lwu(OV(0x0015f5ccu)) & 1u) == 0) {
@@ -360,29 +365,28 @@ void devastator_rocket_update(uint32_t m) {
     };
 
     if (segment_collide_v(prev_pos, V(m + 0x10), 0u, lwu(HERO + 0x2080), rec) != 0) {
-        const uint32_t outb = OV(0x00173e40u);
-        const uint32_t hit = lwu(outb + 0x18);
+        const uint32_t hit = coll_hit_moby();
         if (hit == 0) {
-            if (lw(outb + 0x1c) > 0) {
+            if (coll_hit_flags_signed() > 0) {
                 sb(m + 0xbc, 1);
-                V(m + 0x10) = V(outb + 0x20);
-                vec3_sub(tang, V(outb + 0x50), V(outb + 0x60));
+                V(m + 0x10) = coll_hit_point();
+                vec3_sub(tang, coll_hit_tri(0), coll_hit_tri(1));
                 vec3_set_length(tang, tang, 1.0f);
-                vec3_reflect(refl, vel, V(outb + 0x40));
+                vec3_reflect(refl, vel, coll_hit_normal());
                 const float g2 = fpu_add(lwc1(0x0015ed6cu), lwc1(0x0015ed6cu));
                 vec3_set_length(refl, refl, g2);
-                vec3_set_length(norm, V(outb + 0x40), 1.0f);
+                vec3_set_length(norm, coll_hit_normal(), 1.0f);
             }
         } else if (hit != lwu(HERO + 0x2080) && hit != lwu(pv + 0x10)) {
             sb(m + 0xbc, 2);
-            V(m + 0x10) = V(outb + 0x20);
-            vec3_sub(tang, V(outb + 0x50), V(outb + 0x60));
+            V(m + 0x10) = coll_hit_point();
+            vec3_sub(tang, coll_hit_tri(0), coll_hit_tri(1));
             direct_hit_moby = m;
             vec3_set_length(tang, tang, 1.0f);
-            vec3_reflect(refl, vel, V(outb + 0x40));
+            vec3_reflect(refl, vel, coll_hit_normal());
             const float g2 = fpu_add(lwc1(0x0015ed6cu), lwc1(0x0015ed6cu));
             vec3_set_length(refl, refl, g2);
-            vec3_set_length(norm, V(outb + 0x40), 1.0f);
+            vec3_set_length(norm, coll_hit_normal(), 1.0f);
         }
     } else if (timer_tick_i32(*static_cast<int32_t*>(ee_ram_ptr(pv + 0x14))) != 0 ||
                lwc1(pv + 0x48) < vec2_distance(V(m + 0x10), V(HERO + 0x80))) {
@@ -405,7 +409,7 @@ void devastator_rocket_update(uint32_t m) {
 
         const float blast_rad = fpu_add(gold_scale, gold_scale);
         const int32_t n_hit = mobys_in_sphere_v(V(m + 0x10), blast_rad, 0x10u, m, nullptr);
-        moby_list_hit_v(m, V(m + 0x10), OV(0x00177f00u), n_hit, direct_hit_moby, 0x00830000u, 3u, 1u, 3.0f, 1.0f, 1.0f);
+        moby_list_hit_v(m, V(m + 0x10), coll_hit_list(), n_hit, direct_hit_moby, 0x00830000u, 3u, 1u, 3.0f, 1.0f, 1.0f);
 
         Mat4 K{}, K2{};
         K.r[0] = Vec4{0.0f, norm.z, -norm.y, 0.0f};
@@ -592,30 +596,32 @@ void devastator_rocket_update(uint32_t m) {
         sw(pv + 0x18, 0);
 
         // Gold Devastator ricochet
-        const uint32_t out_norm = OV(0x00173e80u);
-        const uint32_t outb = out_norm - 0x40u;
         sb(m + 0xbc, 0);
-        vec3_set_length(V(out_norm), V(out_norm), 1.0f);
+        {
+            Vec4 n = coll_hit_normal();
+            vec3_set_length(n, n, 1.0f);
+            coll_hit_set_normal(n);
+        }
 
         Vec4 bounce_dir{};
-        vec3_reflect(bounce_dir, vel, V(out_norm));
+        vec3_reflect(bounce_dir, vel, coll_hit_normal());
         swc1(m + 0x48, atan2_f(bounce_dir.x, bounce_dir.y));
         swc1(m + 0x44, -atan2_f(vec2_length(bounce_dir), bounce_dir.z));
         sw(pv + 0x24, 0);
         sw(pv + 0x28, 0);
 
         Vec4 push_out{};
-        vec3_set_length(push_out, V(out_norm), u2f(0x3d4ccccdu));
+        vec3_set_length(push_out, coll_hit_normal(), u2f(0x3d4ccccdu));
         vec3_add(V(m + 0x10), V(m + 0x10), push_out);
 
-        const uint32_t hit_moby = lwu(outb + 0x18);
+        const uint32_t hit_moby = coll_hit_moby();
         if (hit_moby != 0) {
             sw(pv + 0x10, hit_moby);
         }
         if (lwu(pv + 0x44) == 0) {
             sw(pv + 0x44, static_cast<uint32_t>(frame_scale_i(0x5a)));
         }
-        rocket_2affa8(m, pv, lwu(outb + 0x18));
+        rocket_2affa8(m, pv, coll_hit_moby());
         (void)moby_sound_start(1, 0, m);
     }
 

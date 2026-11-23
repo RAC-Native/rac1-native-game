@@ -1,6 +1,7 @@
 // Ported overlay code: Tesla Claw weapon moby update, target selection, beam simulation, and hit recording.
 #include <game/ovl/tesla.h>
 
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/enhance/fixes102.h>
 #include <game/math/vecmath.h>
@@ -352,7 +353,7 @@ void tesla_2b94d0(uint32_t p0) {
         std::memcpy(rec, &hit_dir, 16);
 
         if (seg_hit != 0) {
-            const uint32_t hm = lwu(OV(0x00173e58u));
+            const uint32_t hm = coll_hit_moby();
             if (hm != 0) {
                 const uint32_t h_pw0 = moby_pvar_word0(hm);
                 const uint32_t h_cls = (h_pw0 != 0) ? lwu(hm + 0x24) : 0u;
@@ -365,11 +366,11 @@ void tesla_2b94d0(uint32_t p0) {
                 }
             }
             if (seg_hit != 0) {
-                const Vec4 hit_pt = V(OV(0x00173e60u));
+                const Vec4 hit_pt = coll_hit_point();
                 V(pt_cur) = hit_pt;
                 sh(pv + 0x3e, static_cast<uint32_t>(i));
                 V(pv + 0x10) = hit_pt;
-                const uint32_t hm2 = lwu(OV(0x00173e58u));
+                const uint32_t hm2 = coll_hit_moby();
                 if (hm2 == 0) {
                     sw(pv + 0x20, 0);
                     sh(pv + 0x40, 0);

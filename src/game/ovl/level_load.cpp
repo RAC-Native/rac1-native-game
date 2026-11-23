@@ -1,4 +1,5 @@
 // Ported overlay code: the gameplay data loader of the level setup (0x241940).
+#include <game/collision/collision.h>
 #include <game/enhance/corrected_texts.h>
 #include <game/bridge/guard.h>
 #include <game/enhance/fixes102.h>
@@ -107,11 +108,11 @@ uint32_t gameplay_load(int32_t level) {
     } else if (!(sc == 1.0f)) {
         frame_rate_set(0);
     }
-    sw(OV(0x00173e48), OV(0x00173ec0));
-    sw(OV(0x00173e44), OV(0x00173f00));
-    sw(OV(0x00173e54), 0);
-    sw(OV(0x00173e4c), 0);
-    sw(OV(0x00173e50), 0);
+    coll_set_joint_cache_keys(OV(0x00173ec0));
+    coll_set_joint_cache_buffers(OV(0x00173f00));
+    coll_set_contact_next(0);
+    coll_set_joint_cache_next(0);
+    coll_set_query_counter(0);
     mem_clear128(OV(0x0019b7e0), 0x10000);
     mem_clear128(OV(0x001ab7e0), 0x60);
     // the level's settings

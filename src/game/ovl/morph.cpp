@@ -3,6 +3,7 @@
 // transformation (0x2c92d8 / 0x2c9348), and class 804 (0x2d7f88, a piece on the hand moby).
 #include <game/ovl/morph.h>
 
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
@@ -145,7 +146,7 @@ int32_t morph_2bc3b0_v(uint32_t p0, const Vec4& from, uint32_t p2, uint32_t p3) 
 
         bool clear = true;
         if (segment_collide_v(from, cand_pos, 6u, p0, nullptr) != 0) {
-            const uint32_t hit_moby = lwu(OV(0x00173e40u) + 0x18u);
+            const uint32_t hit_moby = coll_hit_moby();
             if (hit_moby == 0u || hit_moby != cand) {
                 clear = false;
             }
@@ -231,7 +232,7 @@ void morph_2bd0a0(uint32_t p0) {
     if (tgt1 != 0u) {
         beam_len = vec2_distance(V(tgt1 + 0x10u), V(pv));
     } else if (segment_collide_v(V(pv), end_pt, 0x14u, lwu(P + 0x2080u), nullptr) != 0) {
-        beam_len = vec2_distance(V(OV(0x00173e60u)), V(pv));
+        beam_len = vec2_distance(coll_hit_point(), V(pv));
     }
 
     swc1(OV(0x001617ccu), fpu_mul(beam_len, lwc1(OV(0x001616f0u))));
@@ -492,9 +493,8 @@ void morph_2c9348(uint32_t p0) {
     const float floor_z = floor_probe(0.5f, m + 0x10u, 0u);
     if (lwc1(m + 0x18u) <= floor_z) {
         swc1(m + 0x18u, floor_z);
-        const uint32_t col_hit = OV(0x00173e40u);
-        swc1(m + 0x18u, lwc1(col_hit + 0x28u));
-        const Vec4 nrm = V(col_hit + 0x40u);
+        swc1(m + 0x18u, coll_hit_point().z);
+        const Vec4 nrm = coll_hit_normal();
 
         const float c1 = cos_vu(lwc1(m + 0x48u));
         const float s1 = sin_vu(lwc1(m + 0x48u));

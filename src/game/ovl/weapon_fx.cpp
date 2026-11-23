@@ -2,6 +2,7 @@
 // seek, the moby list removal, the contact record initialiser, the type-8 glow particle, the floor
 // light registration, and the generic explosion effect 0x25e450 (debris, smoke and spark particles,
 // shards, a camera shake and a sound, from the 18 arguments of the weapons' blasts).
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/enhance/fixes102.h>
 #include <game/ovl/ovl_reloc.h>
@@ -92,7 +93,7 @@ void floor_light_add(uint32_t m, float scale) {
     const float h = floor_probe_v(0.5f, V(m + 0x10), 0);
     if (sub_001f35d8() == 0) return;
     swc1(e + 8, h + u2f(0x3ccccccdu));
-    V(e + 0x10) = V(OV(0x00173e80));
+    V(e + 0x10) = coll_hit_normal();
     const float above = abs_f(lwc1(m + 0x18) - h);
     float k = (8.0f - above) * u2f(0x3e000000u);
     if (k < u2f(0x3e800000u)) k = u2f(0x3e800000u);

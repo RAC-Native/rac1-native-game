@@ -2,6 +2,7 @@
 // carried-moby suction helpers, and ammo bar HUD callbacks.
 #include <game/ovl/suck_cannon.h>
 
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/carry_hooks.h>
@@ -302,7 +303,7 @@ void suck_2ddf60(uint32_t a0, uint32_t a1) {
 
     const uint32_t alphas = OV(0x001e6008u);
     if (segment_collide_v(V(a1), ray_end, 0x14u, lwu(HERO + 0x2080), nullptr) != 0) {
-        const float dist = vec2_distance(V(OV(0x00173e60u)), V(a1));
+        const float dist = vec2_distance(coll_hit_point(), V(a1));
         const int32_t seg = float_to_int(fpu_div(dist, lwc1(OV(0x00161b84u))));
         for (int32_t i = seg; i < 10; ++i) {
             const uint32_t p = alphas + (static_cast<uint32_t>(i) << 1);
@@ -890,13 +891,12 @@ void suck_cannon_update(uint32_t m) {
             Vec4 ray_end{};
             vec3_add(ray_end, V(cam + 0x140), ray_vec);
             if (segment_collide_v(V(cam + 0x140), ray_end, 0u, m, nullptr) != 0) {
-                const uint32_t col = OV(0x00173e40u);
-                const uint32_t hit_m = lwu(col + 0x18);
+                const uint32_t hit_m = coll_hit_moby();
                 if (hit_m != 0u && (lhu(hit_m + 0x34) & 0x1000u) != 0u) {
                     sw(pvar + 0x10, hit_m);
                     sw(pvar + 0x14, static_cast<uint32_t>(frame_scale_i(20)));
                     const uint32_t cur_tgt = lwu(pvar + 0x10);
-                    swc1(pvar + 0x18, fpu_sub(lwc1(col + 0x28), lwc1(cur_tgt + 0x18)));
+                    swc1(pvar + 0x18, fpu_sub(coll_hit_point().z, lwc1(cur_tgt + 0x18)));
                 }
             }
             const uint32_t color = (lwu(pvar + 0x10) != 0u && lwu(pvar + 0x8) == 0u)
@@ -909,7 +909,7 @@ void suck_cannon_update(uint32_t m) {
             sw(pvar + 0x10, lwu(HERO + 0x12b8));
             sw(pvar + 0x14, static_cast<uint32_t>(frame_scale_i(20)));
             const uint32_t cur_tgt = lwu(pvar + 0x10);
-            swc1(pvar + 0x18, fpu_sub(lwc1(OV(0x00173e68u)), lwc1(cur_tgt + 0x18)));
+            swc1(pvar + 0x18, fpu_sub(coll_hit_point().z, lwc1(cur_tgt + 0x18)));
         }
 
         if (lwu(pvar + 0xc) == 0u &&

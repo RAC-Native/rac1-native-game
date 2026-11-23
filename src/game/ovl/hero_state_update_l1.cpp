@@ -1,6 +1,7 @@
 // Novalis's (level 1) per-frame update of the hero's current state: Veldin's 0x217970 in
 // Novalis's build (L1:0x002370b8), without the states and features Novalis does not have. Addresses in
 // the block comments are Novalis's.
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <cstring>
 
@@ -337,8 +338,8 @@ void jump_update() {
             Vec4 d;
             vec3_scale(d, V(P + 0x100), 7.0f);
             for (int32_t i = 0; i < n; ++i) {
-                const uint32_t m = lwu(OV(0x00177f00) + static_cast<uint32_t>(i) * 4);
-                if (moby_in_range_class_500(m) != 0) sub_00259bc8_v(lwu(OV(0x00177f00) + static_cast<uint32_t>(i) * 4), lwu(P + 0x2080), 0x10000, P + 0x80, d, 1.0f);
+                const uint32_t m = coll_hit_list_at(i);
+                if (moby_in_range_class_500(m) != 0) sub_00259bc8_v(coll_hit_list_at(i), lwu(P + 0x2080), 0x10000, P + 0x80, d, 1.0f);
             }
         }
     }

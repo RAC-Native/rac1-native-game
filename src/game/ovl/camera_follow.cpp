@@ -5,6 +5,7 @@
 // and its offsets +0x50..+0xe0, the hero moby +0x100, the height +0xf0), +0x130 the offset
 // from the target and the distances (+0x15c / +0x160), +0x190 / +0x1a8 the springs, +0x1d0
 // the collision state, +0x220 the pitch state, +0x240 the previous target.
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/ovl/kerwan_camera.h>
 #include <game/ovl/variants_l3.h>
@@ -73,7 +74,7 @@ int32_t cam0_target_v(Vec4& out, int32_t flag) {
     vec3_scale(t, V(OV(0x00166e40)), -30.0f);
     vec3_add(b, pos, t);
     if (segment_collide_v(a, b, 0x12, lwu(0x001413d0), nullptr) != 0) {
-        out = V(OV(0x00173e60));
+        out = coll_hit_point();
         return 0;
     }
     out = pos;
@@ -125,11 +126,11 @@ void cam0_place(int32_t reset) {
         vec3_scale(s8, V(lwu(t + 0xc0) + 0xe0), lwc1(t + 0xb0));
         vec3_add(s4, V(t), s8);
         if (segment_collide_v(s4, V(cam + 0x30), 0x94, lwu(0x001413d0), nullptr) != 0) {
-            if (vec2_distance(V(OV(0x00173e60)), s4) < u2f(0x3a83126fu)) mask = 0x96;
+            if (vec2_distance(coll_hit_point(), s4) < u2f(0x3a83126fu)) mask = 0x96;
         }
         auto pull = [&](const Vec4& from) {  // to 0.5 short of the hit point
             Vec4 h;
-            vec3_sub(h, V(OV(0x00173e60)), from);
+            vec3_sub(h, coll_hit_point(), from);
             const float l = vec3_length(h);
             if (l == 0.0f) {
                 lq_sq(cam + 0x30, t);
@@ -140,7 +141,7 @@ void cam0_place(int32_t reset) {
         };
         if (segment_collide_v(s4, V(cam + 0x30), mask, lwu(0x001413d0), nullptr) != 0) {
             Vec4 h;
-            vec3_sub(h, V(OV(0x00173e60)), s4);
+            vec3_sub(h, coll_hit_point(), s4);
             const float l = vec3_length(h);
             if (l == 0.0f) {
                 lq_sq(cam + 0x30, t);
@@ -154,7 +155,7 @@ void cam0_place(int32_t reset) {
                 float r = 0.5f;
                 for (int32_t i = 0; i < 3;) {
                     if (sphere_collide_v(s4, r, 4, 0) != 0) {
-                        s4 = V(OV(0x00173e70));
+                        s4 = coll_hit_pushed();
                         ++i;
                         continue;
                     }
@@ -619,7 +620,7 @@ void cam0_modes(uint32_t cam) {
     }
     const int32_t n = mobys_in_sphere(HERO_POS, 15.0f, 1, lwu(0x001413d0), 0);
     for (int32_t i = 0; i < n; ++i) {
-        const uint32_t pv = moby_pvar_word0(lwu(OV(0x00177f00) + static_cast<uint32_t>(i) * 4));
+        const uint32_t pv = moby_pvar_word0(coll_hit_list_at(i));
         if (pv == 0) continue;
         if (static_cast<float>(lbu(pv + 0xd)) == 0.0f) continue;
         sw(p + 0x10, 1);
@@ -1051,10 +1052,10 @@ void cam0_target_update(uint32_t cam) {
     const float half = lwc1(OV(0x00161cd8)) + (lwc1(aw + 0x214) * lwc1(aw + 0x20c)) * (lwc1(aw + 0x210) - 1.0f);
     vec3_scale(top, V(OV(0x00166e30)), 20.0f);
     vec3_add(top, p, top);
-    if (segment_collide_v(p, top, lwu(OV(0x0015ef58)), lwu(0x001413d0), nullptr) != 0) top = V(OV(0x00173e60));
+    if (segment_collide_v(p, top, lwu(OV(0x0015ef58)), lwu(0x001413d0), nullptr) != 0) top = coll_hit_point();
     vec3_scale(bot, V(OV(0x00166e30)), 20.0f);
     vec3_sub(bot, p, bot);
-    if (segment_collide_v(p, bot, lwu(OV(0x0015ef58)), lwu(0x001413d0), nullptr) != 0) bot = V(OV(0x00173e60));
+    if (segment_collide_v(p, bot, lwu(OV(0x0015ef58)), lwu(0x001413d0), nullptr) != 0) bot = coll_hit_point();
     vec3_sub(d, bot, top);
     alignas(16) Vec4 h;
     if (vec3_length(d) < half + half) {
@@ -1167,10 +1168,13 @@ int32_t cam0_volume_push(const Vec4& pos, float r) {
     vec3_sub(d, pos, V(s + 0x30));
     const float rad = vec3_length(V(s));
     const float k = fpu_div(1.0f, vec3_length(d));
-    vec3_scale(V(OV(0x00173e70)), d, (rad + r) * k);
-    vec3_scale(V(OV(0x00173e60)), d, rad * k);
-    vec3_add(V(OV(0x00173e70)), V(OV(0x00173e70)), V(s + 0x30));
-    vec3_add(V(OV(0x00173e60)), V(OV(0x00173e60)), V(s + 0x30));
+    Vec4 pushed = coll_hit_pushed(), point = coll_hit_point();
+    vec3_scale(pushed, d, (rad + r) * k);
+    vec3_scale(point, d, rad * k);
+    vec3_add(pushed, pushed, V(s + 0x30));
+    vec3_add(point, point, V(s + 0x30));
+    coll_hit_set_pushed(pushed);
+    coll_hit_set_point(point);
     return 1;
 }
 
@@ -1233,14 +1237,14 @@ int32_t cam0_probe(uint32_t cam) {
             break;
         }
         if (lh(col + 0x38) != 0) {
-            vec3_sub(d, V(OV(0x00173e60)), p);
+            vec3_sub(d, coll_hit_point(), p);
             vec3_set_length(d, d, 1.0f);
             const float f = vec3_dot(V(OV(0x00166e40)), d);
             if (0.75f < f) sh(col + 0x38, 1);
             else if (f < -0.75f) sh(col + 0x38, 0xffff);
             else sh(col + 0x38, 0);
         }
-        p = V(OV(0x00173e70));
+        p = coll_hit_pushed();
     }
     const int32_t r2 = cam0_apply_probe(cam, p, hit_volume, hit_wall);
     vec3_add(V(col + 0x20), V(t + 0x50), V(off));
@@ -1275,8 +1279,8 @@ int32_t cam0_slide(uint32_t cam, Vec4& pos, float back, float r) {
     alignas(16) Vec4 acc, start, hit, push, end, near, step;
     vec_clear(acc);
     start = pos;
-    hit = V(OV(0x00173e60));
-    push = V(OV(0x00173e70));
+    hit = coll_hit_point();
+    push = coll_hit_pushed();
     vec3_add(end, V(w + 0x90), V(off));
     auto need = [&](float& gap) {  // the clearance the camera needs at the nearest point
         const float dn = closest_point_on_segment_r(near, hit, V(w + 0x90), end, 0.0f);
@@ -1295,12 +1299,12 @@ int32_t cam0_slide(uint32_t cam, Vec4& pos, float back, float r) {
         if (sphere_collide_v(pos, r, lwu(OV(0x0015ef5c)), lwu(0x001413d0)) != 0) {
             for (int32_t i = 0; i < 2; ++i) {
                 vec3_sub(step, start, pos);
-                vec3_add(hit, V(OV(0x00173e60)), step);
+                vec3_add(hit, coll_hit_point(), step);
                 if (!need(gap)) break;
                 cam0_slide_step(cam, step, near, hit, start, gap, back);
                 vec3_add(acc, acc, step);
                 if (i == 1) break;
-                pos = V(OV(0x00173e70));
+                pos = coll_hit_pushed();
                 if (sphere_collide_v(pos, r, lwu(OV(0x0015ef5c)), lwu(0x001413d0)) == 0) break;
             }
         }
@@ -1314,7 +1318,7 @@ int32_t cam0_slide(uint32_t cam, Vec4& pos, float back, float r) {
 int32_t cam0_hit_behind(uint32_t cam, int32_t step, const Vec4& pos) {
     if (step != 1) return 0;
     alignas(16) Vec4 d;
-    vec3_sub(d, V(OV(0x00173e60)), pos);
+    vec3_sub(d, coll_hit_point(), pos);
     return vec3_dot(d, V(work(cam) + 0x130)) < 0.0f ? 1 : 0;
 }
 
@@ -1333,7 +1337,7 @@ int32_t cam0_walk_probe(uint32_t cam) {
     for (int32_t i = 0; i < float_to_int(lwc1(col + 0x40) - 1.0f); ++i) {
         if (i > 0 && cam0_in_volume(p) == 0 && sphere_collide_v(p, r, lwu(OV(0x0015ef5c)), lwu(0x001413d0)) != 0 &&
             cam0_hit_behind(cam, i, p) == 0) {
-            const Vec4 hit = V(OV(0x00173e60)), from = p;
+            const Vec4 hit = coll_hit_point(), from = p;
             if (cam0_slide(cam, p, travelled, r) != 0) {
                 slid = 1;
                 if (lbu(0x001413f4) != 2 && u2f(0x3d4ccccdu) < abs_f(lwc1(0x0013ca40))) {
@@ -1383,7 +1387,7 @@ void cam0_collide(uint32_t cam) {
     const int32_t n = mobys_in_sphere_v(mid, reach * 0.5f, 1, lwu(0x001413d0), nullptr);
     uint32_t outp = OV(0x001e75c0);
     for (int32_t i = 0; i < n; ++i) {
-        const uint32_t m = lwu(OV(0x00177f00) + static_cast<uint32_t>(i) * 4);
+        const uint32_t m = coll_hit_list_at(i);
         if (lwu(m + 0x94) == 0) continue;
         if (moby_coll_flag8(m) != 0 && coll_too == 0) continue;
         const int32_t cls = lh(m + 0xa6);
@@ -1438,9 +1442,9 @@ void cam0_collide(uint32_t cam) {
     vec3_add(campos, V(off), V(look));
     bool clear = true;
     if (hs != 0x7f && !(lw(0x0015ed84) == 0xd && hs == 0x7b) &&
-        segment_collide_v(V(look), campos, lwu(OV(0x0015ef58)), lwu(0x001413d0), nullptr) != 0 && cam0_in_volume(V(OV(0x00173e60))) == 0) {
+        segment_collide_v(V(look), campos, lwu(OV(0x0015ef58)), lwu(0x001413d0), nullptr) != 0 && cam0_in_volume(coll_hit_point()) == 0) {
         clear = false;
-        const uint32_t m = lwu(OV(0x00173e58));
+        const uint32_t m = coll_hit_moby();
         if (m != 0 && moby_in_range_class_500(m) != 0) {
             alignas(16) Vec4 d;
             vec3_sub(d, V(m + 0x10), V(OV(0x00166dc0)));
@@ -1460,7 +1464,7 @@ void cam0_collide(uint32_t cam) {
             rec[0x18] = 3;
             const uint16_t cls = lhu(lwu(0x001413d0) + 0xa6);
             std::memcpy(rec + 0x1a, &cls, 2);
-            moby_hit_record_v(lwu(OV(0x00173e58)), rec);
+            moby_hit_record_v(coll_hit_moby(), rec);
         }
         sw(col + 0x4c, lwu(col + 0x4c) + 1);
         if (!(lw(col + 0x4c) < frame_scale_i(0x1e))) camera_select_first();

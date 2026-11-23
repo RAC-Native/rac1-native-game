@@ -3,6 +3,7 @@
 // frames left, +0xc the size, +0x10 the position, +0x20.. the type's own fields) is walked once
 // a frame and each live particle handed to its type's function (table 0x1b1e80, filled by
 // 0x268900).
+#include <game/collision/collision.h>
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/math/vecmath.h>
@@ -605,7 +606,7 @@ void particle_23_update(uint32_t p) {
     } else if (mode == 1) {
         Vec4 to;
         if (hits(to)) {
-            if (sub_001f35d8() == 0) spawn_particle_2d(OV(0x00173e60), 0, 0xffffffffu, 0.2f, u2f(0x45a41000u));
+            if (sub_001f35d8() == 0) spawn_particle_2d(coll_hit_point_addr(), 0, 0xffffffffu, 0.2f, u2f(0x45a41000u));
             free_particle(p);
             return;
         }
@@ -623,8 +624,8 @@ void particle_23_update(uint32_t p) {
         Vec4 to;
         if (hits(to)) {
             if (sub_001f35d8() != 0) {
-                swc1(OV(0x00173e68), lwc1(OV(0x00173e68)) + u2f(0x3d4ccccdu));
-                spawn_particle_42(OV(0x00173e60), -1, 0.25f, u2f(0x4544e000u));
+                coll_hit_set_point_z(coll_hit_point().z + u2f(0x3d4ccccdu));
+                spawn_particle_42(coll_hit_point_addr(), -1, 0.25f, u2f(0x4544e000u));
             }
             free_particle(p);
             return;
@@ -1121,7 +1122,7 @@ void particle_19_update(uint32_t p) {
     vec3_add(to, V(p + 0x10), V(q));
     const bool still = lwc1(q) == 0.0f && lwc1(q + 4) == 0.0f && lwc1(q + 8) == 0.0f;
     if (!still && segment_collide_v(V(p + 0x10), to, 2, lwu(0x001413d0), nullptr) != 0) {
-        V(p + 0x10) = V(OV(0x00173e60));
+        V(p + 0x10) = coll_hit_point();
         vec_clear(V(q));
         swc1(p + 0xc, lwc1(p + 0xc) + lwc1(p + 0xc));
     } else if (!still) {

@@ -3,6 +3,7 @@
 // the hero's facing, or with the strafe aim along the camera, the nearest hit as the target) and, on the
 // throw (state 3 of the glove), sets the agent flying (0x2c82f0) on the arc 0x2c7320 computes. The
 // glove's pvars: +0x40 the agent's place in the hand, +0x50 the agent held, +0x54 the throw timer.
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/enhance/fixes102.h>
 #include <game/math/vecmath.h>
@@ -104,12 +105,12 @@ void doom_agent_launch(uint32_t from, uint32_t agent, uint32_t vel) {
     V(sp) = V(lwu(P + 0x2080) + 0x10);
     swc1(sp + 8, lwc1(from + 8));
     if (segment_collide(sp, from, 0, lwu(P + 0x2080), 0) != 0) {
-        V(agent + 0x10) = V(OV(0x00173e60));
+        V(agent + 0x10) = coll_hit_point();
         const float g = lwc1(0x0015ed70);
         const float len = g * u2f(0x41100000u) - g * u2f(0x3dcccccdu);
-        vec3_set_length(V(sp + 0x10), V(OV(0x00173e80)), len);
+        vec3_set_length(V(sp + 0x10), coll_hit_normal(), len);
         vec3_add(V(agent + 0x10), V(agent + 0x10), V(sp + 0x10));
-        vec3_reflect(V(pv), V(pv), V(OV(0x00173e80)));
+        vec3_reflect(V(pv), V(pv), coll_hit_normal());
         vec3_scale(V(pv), V(pv), u2f(0x3f19999au));
     }
     ee_stack_free(0x40);
@@ -176,8 +177,8 @@ void doom_aim(uint32_t hand, uint32_t pv, uint32_t from_pos) {
             swc1(sp + 0xa4, sin_vu(f22) * f21);
             swc1(sp + 0xa8, f23);
             vec3_add(V(sp + 0xc0), V(OV(0x00166dc0)), V(sp + 0xa0));
-            if (segment_collide_v(V(OV(0x00166dc0)), V(sp + 0xc0), 2, hand, nullptr) != 0 && lwu(OV(0x00173e40) + 0x18) != lwu(P + 0x2080)) {
-                V(sp + 0x90) = V(OV(0x00173e60));
+            if (segment_collide_v(V(OV(0x00166dc0)), V(sp + 0xc0), 2, hand, nullptr) != 0 && coll_hit_moby() != lwu(P + 0x2080)) {
+                V(sp + 0x90) = coll_hit_point();
                 aimed = true;
                 f22 = atan2_f(lwc1(sp + 0x90) - lwc1(sp), lwc1(sp + 0x94) - lwc1(sp + 4));
             }

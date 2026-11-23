@@ -2,6 +2,7 @@
 // debris_spawn (0x263fd8) breaks off a moby: on Veldin the robot 1440's pieces 0x78d..0x78f and
 // 0x7ab, on Novalis the Peckbot's 0x6d3..0x6d5 (Novalis's copy L1:0x30cd18, the same code), and
 // the other levels' copies of it. Proved against the original.
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/debris_piece.h>
 #include <game/ovl/ovl.h>
@@ -80,8 +81,9 @@ void debris_piece_update(uint32_t m) {
     mat3_transform(sp80, V(pv + 0x20), M(m + 0xc0));
     vec3_add(sp80, sp80, V(m + 0x10));
     if (sphere_collide_v(sp80, radius, 0, m) == 0) return;
-    Vec4& n = V(OV(0x00173e80));
+    Vec4 n = coll_hit_normal();
     vec3_set_length(n, n, 1.0f);
+    coll_hit_set_normal(n);
     const float speed = vec3_length(V(pv));
     const float into = vec3_dot(V(pv), n);
     if (!(into < 0.0f)) return;

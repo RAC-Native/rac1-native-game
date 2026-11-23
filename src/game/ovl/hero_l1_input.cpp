@@ -1,5 +1,6 @@
 // Novalis's (level 1) variants of the hero's input / hurt functions. Addresses are
 // Novalis's; the code is Veldin's minus the features Novalis's build does not have.
+#include <game/collision/collision.h>
 #include <game/ovl/hero_l1.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -29,7 +30,7 @@ int32_t hero_hurt_l1(int32_t knock) {
     const uint32_t hm = lwu(P + 0x2080);
     const uint32_t idx = lbu(hm + 0xa4);
     if (idx == 0xff) return 0;
-    const uint32_t rec = OV(0x00178100) + idx * 64;
+    const uint32_t rec = coll_contact(idx);
     if (lwu(rec + 0x34) != hm) return 0;
     if ((lw(rec + 0x24) & 1) == 0) return 0;
     const uint32_t lvl = lwu(0x0015ed84);

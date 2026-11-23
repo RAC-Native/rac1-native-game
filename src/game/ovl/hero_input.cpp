@@ -1,5 +1,6 @@
 // Ported overlay code: the hero's per-frame input -> state transitions (0x229b70) and the
 // checks it runs before the per-state part.
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/ovl/hero_l1.h>
 #include <game/ovl/ovl_common.h>
@@ -129,7 +130,7 @@ int32_t hero_water_entry() {
                 const int32_t kind = sub_001f35d8();
                 sh(P + 0x12e0, static_cast<uint32_t>(kind));
                 if ((kind & 0xffff) == 0) {
-                    a.z = lwc1(OV(0x00173e68)) - u2f(0x3c23d70au);
+                    a.z = coll_hit_point().z - u2f(0x3c23d70au);
                     if (segment_collide_v(a, b, 2, lwu(P + 0x2080), nullptr) == 0) {
                         hero_set_state(0x34, 1);
                         return 1;
@@ -250,7 +251,7 @@ int32_t hero_hurt(int32_t knock) {
     const uint32_t hm = lwu(P + 0x2080);
     const uint32_t idx = lbu(hm + 0xa4);
     if (idx == 0xff) return 0;
-    const uint32_t rec = OV(0x00178100) + idx * 64;
+    const uint32_t rec = coll_contact(idx);
     if (lwu(rec + 0x34) != hm) return 0;
     if (hero_has_giant_clank() && lbu(P + 0x20a4) == 2) {
         if ((lw(rec + 0x24) & 2) == 0) return 0;

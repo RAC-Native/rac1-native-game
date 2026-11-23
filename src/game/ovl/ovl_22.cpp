@@ -1,4 +1,5 @@
 // Ported overlay code 0x00220000..0x0022ffff.
+#include <game/collision/collision.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/hero_l1.h>
 
@@ -187,7 +188,7 @@ int32_t hero_floor_ahead() {
     a.z = a.z + u2f(0x3ef0a3d7u);
     b.z = b.z - 1.0f;
     if (segment_collide_v(a, b, 2, lwu(P + 0x2080), nullptr) == 0) return 0;
-    const float dz = lwc1(OV(0x00173e68)) - lwc1(P + 0x88);
+    const float dz = coll_hit_point().z - lwc1(P + 0x88);
     if (!(dz < u2f(0x3ebd70a4u))) return 0;
     return -1.0f < dz ? 1 : 0;
 }
@@ -358,15 +359,15 @@ int32_t hero_idle_event_pick(int32_t* out) {
 // sphere (flag 2) stepping 0.1 from 0.7 to 1.6 ahead sets +0x260 = 1 and +0x25c = radius + step.
 // orig: 0x00221310
 void hero_motion_update() {
-    const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
+    const uint32_t P = g::PLAYER;
     if (lbu(P + 0x20ad) == 0) hero_move_integrate();
     if (lw(OV(0x0015f5cc)) % 3 == 0) {
         swc1(P + 0x248, 4.0f);
         sb(P + 0x254, 0);
         sb(P + 0x255, 0);
         if (hero_wall_probe(P + 0x248, u2f(0x3f333333u), 4.0f) != 0) {
-            swc1(P + 0x250, atan2_f(lwc1(OUTB + 0x48), vec2_length(V(OUTB + 0x40))));
-            const uint32_t m = lwu(OUTB + 0x18);
+            swc1(P + 0x250, atan2_f(coll_hit_normal().z, vec2_length(coll_hit_normal())));
+            const uint32_t m = coll_hit_moby();
             if (m != 0) {
                 sb(P + 0x255, 1);
                 if (moby_in_range_class_500(m) != 0) sb(P + 0x254, 1);
@@ -386,7 +387,7 @@ void hero_motion_update() {
         float depth = 20.0f;
         const int32_t hit = segment_collide_v(top, bot, 2, lwu(P + 0x2080), nullptr);
         if (hit != 0) {
-            depth = vec3_distance(top, V(OUTB + 0x20));
+            depth = vec3_distance(top, coll_hit_point());
             if (!(3.0f < depth)) return;
         }
         for (float x = u2f(0xbecccccdu);;) {

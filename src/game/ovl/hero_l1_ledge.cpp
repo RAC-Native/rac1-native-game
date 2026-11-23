@@ -1,5 +1,6 @@
 // Novalis's (level 1) variants of the hero's ledge checks: Veldin's code minus the
 // +0x20a4 == 1 movement mode (Novalis's build has no such branch). Addresses are Novalis's.
+#include <game/collision/collision.h>
 #include <game/ovl/hero_l1.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -10,7 +11,7 @@ namespace rac1 {
 // +0x20a4 == 1 sizes: top 1.5, high 1.15, step 0.3, drop -0.7, min 1.8.
 // orig: L1:0x0022d838 L2:0x0021c228
 int32_t hero_ledge_check_v_l1(const Vec4& pos, const float* ref_yaw) {
-    const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
+    const uint32_t P = g::PLAYER;
     if (lh(P + 0x308) == 2) return 0;
     float drop = u2f(0xbf333333u), step = u2f(0x3e99999au), top = 1.5f, high = u2f(0x3f933333u), min = u2f(0x3fe66666u);
     Vec4 p = pos;
@@ -28,11 +29,11 @@ int32_t hero_ledge_check_v_l1(const Vec4& pos, const float* ref_yaw) {
         if (segment_collide_v(a, b, 4, lwu(P + 0x2080), nullptr) == 0) continue;
         const int32_t t = sub_001f35d8();
         if (t == 9 || t == 0xc) continue;
-        if (atan2_f(lwc1(OUTB + 0x48), vec2_length(V(OUTB + 0x40))) < u2f(0x3eb2b8c2u)) found = true;
+        if (atan2_f(coll_hit_normal().z, vec2_length(coll_hit_normal())) < u2f(0x3eb2b8c2u)) found = true;
     }
     if (!found) return 0;
-    if (pos.z + top < lwc1(OUTB + 0x28)) return 0;
-    const Vec4 c = V(OUTB + 0x20);
+    if (pos.z + top < coll_hit_point().z) return 0;
+    const Vec4 c = coll_hit_point();
     const float dir = atan2_f(c.x - pos.x, c.y - pos.y);
     if (c.z - lwc1(P + 0x2d8) < min) return 0;
     bool wall = false;
@@ -48,7 +49,7 @@ int32_t hero_ledge_check_v_l1(const Vec4& pos, const float* ref_yaw) {
         a.z = z;
         if (segment_collide_v(a, b, 2, 0, nullptr) != 0) {
             wall = true;
-            wall_yaw = atan2_f(lwc1(OUTB + 0x40), lwc1(OUTB + 0x44));
+            wall_yaw = atan2_f(coll_hit_normal().x, coll_hit_normal().y);
             break;
         }
     }
@@ -74,7 +75,7 @@ int32_t hero_ledge_check_v_l1(const Vec4& pos, const float* ref_yaw) {
 // or with +0x41e, substate 2, states 8 / 0x1a / 0x1b (not state 0xe below 37 on +0xaa8).
 // orig: L1:0x0022d090 L2:0x0021ba80
 void hero_ledge_grab_check_l1() {
-    const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
+    const uint32_t P = g::PLAYER;
     if (lh(P + 0x308) == 2) return;
     sw(P + 0x4e8, 0);
     if (lh(P + 0x1b0) != 0) return;
@@ -111,13 +112,13 @@ void hero_ledge_grab_check_l1() {
         if (segment_collide_v(a, b, 4, lwu(P + 0x2080), nullptr) == 0) continue;
         const int32_t t = sub_001f35d8();
         if (t == 9 || t == 0xc || t == 0) continue;
-        if (atan2_f(lwc1(OUTB + 0x48), vec2_length(V(OUTB + 0x40))) < u2f(0x3eb2b8c2u)) found = true;
+        if (atan2_f(coll_hit_normal().z, vec2_length(coll_hit_normal())) < u2f(0x3eb2b8c2u)) found = true;
     }
     if (!found) return;
-    const uint32_t hit = lwu(OUTB + 0x18);
+    const uint32_t hit = coll_hit_moby();
     if (hit != 0) {
         const uint32_t pw = moby_pvar_word0(hit);
-        const uint32_t w2 = moby_pvar_word2(lwu(OUTB + 0x18));
+        const uint32_t w2 = moby_pvar_word2(coll_hit_moby());
         bool grab = false;
         if (pw != 0 && (lhu(pw + 0x1e) & 1) != 0) {
             grab = true;
@@ -126,15 +127,15 @@ void hero_ledge_grab_check_l1() {
         }
         if (!grab) return;
     }
-    sw(P + 0x4f8, lwu(OUTB + 0x18));
-    if (lwc1(P + 0x88) + top < lwc1(OUTB + 0x28)) return;
-    const Vec4 c = V(OUTB + 0x20);
+    sw(P + 0x4f8, coll_hit_moby());
+    if (lwc1(P + 0x88) + top < coll_hit_point().z) return;
+    const Vec4 c = coll_hit_point();
     Vec4 c5 = c;
     c5.z = c5.z + u2f(0x3d4ccccdu);  // (sp+0x20)
     Vec4 h = V(P + 0x80);
     h.z = c5.z;
     if (segment_collide_v(h, c5, 4, lwu(P + 0x2080), nullptr) != 0) return;
-    Vec4 cap = V(OUTB + 0x20);
+    Vec4 cap = coll_hit_point();
     cap.z = cap.z + u2f(0x3f19999au);
     if (capsule_collide_v(cap, u2f(0x3ee66666u), u2f(0x3f19999au), 4, lwu(P + 0x2080)) != 0) {
         sw(P + 0x4f4, lwu(P + 0x4f4) | 1u);
@@ -156,7 +157,7 @@ void hero_ledge_grab_check_l1() {
         a.z = z;
         if (segment_collide_v(a, b, 2, 0, nullptr) != 0) {
             wall = true;
-            swc1(P + 0x4e4, atan2_f(lwc1(OUTB + 0x40), lwc1(OUTB + 0x44)));
+            swc1(P + 0x4e4, atan2_f(coll_hit_normal().x, coll_hit_normal().y));
             break;
         }
     }

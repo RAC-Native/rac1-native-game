@@ -2,6 +2,7 @@
 // position it is headed for, +0x20 the surface normal it hit, +0x30 / +0x40 the moby it stuck to
 // (its position, the bomb's offset from it), +0x50 the glove moby, +0x54 the frames left,
 // +0x56 the glove's lock, +0x60 the moby it stuck to, +0x64 the frames stuck there.
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/enhance/fixes102.h>
 #include <game/ovl/ovl_reloc.h>
@@ -14,7 +15,6 @@ namespace rac1 {
 
 namespace {
 constexpr uint32_t P = 0x0013f350;
-constexpr OvConst<0x00173e40u> HIT{};  // the collision's result: +0x18 the moby hit, +0x1c the face, +0x20 the point, +0x40 the normal
 int16_t& h16(uint32_t a) { return *static_cast<int16_t*>(ee_ram_ptr(a)); }
 }  // namespace
 
@@ -82,9 +82,9 @@ int32_t bomb_trace(uint32_t pv, uint32_t m, int32_t mode) {
     const float z0 = pos.z;
     from.z = z0;
     if (segment_collide_v(from, pos, 0x10, lwu(P + 0x2080), nullptr) != 0 && (sub_001f35d8() != 0 || 0.0f < vel.z)) {
-        const uint32_t o = lwu(HIT + 0x18);
-        if (0 < lw(HIT + 0x1c)) {
-            V(pv + 0x10) = V(OV(0x00173e60));
+        const uint32_t o = coll_hit_moby();
+        if (0 < coll_hit_flags_signed()) {
+            V(pv + 0x10) = coll_hit_point();
             hit = true;
         } else if (o != 0 && !too_soon(o)) {
             stick(o);
@@ -104,24 +104,24 @@ int32_t bomb_trace(uint32_t pv, uint32_t m, int32_t mode) {
         }
         if (segment_collide_v(prev, pos, 0x10, m, nullptr) == 0) continue;
         if (sub_001f35d8() == 0 && 0.0f < vel.z) continue;
-        const uint32_t o = lwu(HIT + 0x18);
-        if (o != 0 && !(0 < lw(HIT + 0x1c))) {
+        const uint32_t o = coll_hit_moby();
+        if (o != 0 && !(0 < coll_hit_flags_signed())) {
             if (pos.z - z0 < 2.0f) {
                 if (too_soon(o)) continue;
                 stick(o);
                 break;
             }
         }
-        if (!(0 < lw(HIT + 0x1c))) continue;
-        V(pv + 0x10) = V(OV(0x00173e60));
+        if (!(0 < coll_hit_flags_signed())) continue;
+        V(pv + 0x10) = coll_hit_point();
         break;
     }
     if (frames == 0) return 0;
     if (mode == 0) {
-        if (lwu(OV(0x00173e58)) == 0) return 0;
-        if (moby_pvar_word2(lwu(OV(0x00173e58))) == 0) return 0;
+        if (coll_hit_moby() == 0) return 0;
+        if (moby_pvar_word2(coll_hit_moby()) == 0) return 0;
     }
-    if (!(mode == 2 && lwu(OV(0x00173e58)) != 0 && moby_pvar_word2(lwu(OV(0x00173e58))) != 0)) sub_001f93e0(OVF(0x002acbf0), m);
+    if (!(mode == 2 && coll_hit_moby() != 0 && moby_pvar_word2(coll_hit_moby()) != 0)) sub_001f93e0(OVF(0x002acbf0), m);
     if (stuck == 0) {
         const uint32_t o = lwu(pv + 0x60);
         if (o != 0) {
@@ -132,7 +132,7 @@ int32_t bomb_trace(uint32_t pv, uint32_t m, int32_t mode) {
             }
         }
     }
-    V(pv + 0x20) = V(OV(0x00173e80));
+    V(pv + 0x20) = coll_hit_normal();
     Vec4 d;
     vec3_sub(d, V(pv + 0x10), V(OV(0x00166dc0)));
     vec3_scale(d, d, u2f(0x3f733333u));
@@ -209,7 +209,7 @@ void bomb_update(uint32_t m) {
         const float r = lerp_f(0.5f, big, t);
         const int32_t n = mobys_in_sphere(s8, r, 0x10, m, 0);
         V(f + 0xb0) = V(m + 0x10);
-        moby_list_hit(m, f + 0xb0, OV(0x00177f00), n, 0, 0x00830000, 2, 1, 2.0f, 1.0f, 1.0f);
+        moby_list_hit(m, f + 0xb0, coll_hit_list(), n, 0, 0x00830000, 2, 1, 2.0f, 1.0f, 1.0f);
         const uint32_t k = (lbu(m + 0xbc) + 1u) & 0xffu;
         sb(m + 0xbc, k);
         if (frame_scale_i(0xf) < static_cast<int32_t>(k)) moby_retire(m);
@@ -310,7 +310,7 @@ void bomb_update(uint32_t m) {
                 swc1(pv + 8, lwc1(0x0015ed6c) * -1.5f);
                 swc1(f + 0xf0, lwc1(m + 0x10));
                 swc1(f + 0xf4, lwc1(m + 0x14));
-                swc1(f + 0xf8, lwc1(OV(0x00173e68)));
+                swc1(f + 0xf8, coll_hit_point().z);
                 const uint32_t o = spawn_moby_307(f + 0xf0, 2.0f);
                 if (o != 0) sb(o + 0x23, 0x70);
                 for (int32_t i = 0xf; i >= 0; --i) {
@@ -328,10 +328,10 @@ void bomb_update(uint32_t m) {
             }
         }
         if (check) {
-            const uint32_t o = lwu(HIT + 0x18);
+            const uint32_t o = coll_hit_moby();
             bool boom = false;
             if (o == 0) {
-                boom = 0 < lw(HIT + 0x1c);
+                boom = 0 < coll_hit_flags_signed();
             } else if ((o == lwu(P + 0x2080) || o == lwu(pv + 0x50)) && !(lh(pv + 0x54) < frame_scale_i(0x12c) - frame_scale_i(0xa))) {
                 boom = false;
             } else {
@@ -339,10 +339,10 @@ void bomb_update(uint32_t m) {
             }
             if (boom) {
                 sb(m + 0xbc, 1);
-                V(s8) = V(HIT + 0x20);
-                vec3_reflect(V(f + 0x80), V(pv), V(HIT + 0x40));
+                V(s8) = coll_hit_point();
+                vec3_reflect(V(f + 0x80), V(pv), coll_hit_normal());
                 vec3_set_length(V(f + 0x80), V(f + 0x80), lwc1(0x0015ed6c) + lwc1(0x0015ed6c));
-                vec3_set_length(V(f + 0x90), V(HIT + 0x40), 1.0f);
+                vec3_set_length(V(f + 0x90), coll_hit_normal(), 1.0f);
             }
         }
     }
@@ -363,7 +363,7 @@ void bomb_update(uint32_t m) {
     if (lh(pv + 0x68) < frame_scale_i(0x14)) {
         const int32_t n = mobys_in_sphere(s8, big * 0.5f, 0x10, m, 0);
         V(f + 0xf0) = V(m + 0x10);
-        moby_list_hit(m, f + 0xf0, OV(0x00177f00), n, 0, 0x00830000, 2, 1, 2.0f, 1.0f, 1.0f);
+        moby_list_hit(m, f + 0xf0, coll_hit_list(), n, 0, 0x00830000, 2, 1, 2.0f, 1.0f, 1.0f);
         sb(m + 0x20, 2);
     }
     // (1.02 Fixes, fix 2: the 1.02 build, 0x2aedd0, spawns these debris only while 51 moby slots or more are free,

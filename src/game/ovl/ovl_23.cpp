@@ -1,4 +1,5 @@
 // Ported overlay code 0x00230000..0x0023ffff.
+#include <game/collision/collision.h>
 #include <game/enhance/hero_modes.h>
 #include <game/ovl/hero_l1.h>
 #include <game/ovl/ovl_common.h>
@@ -1095,7 +1096,7 @@ float hero_fall_time(float t, float g, float h) {
             Vec4 q = V(P + 0x80);
             sub_0025d238_v(q, p);
             q = V(P + 0x80);
-            if (segment_collide_v(q, p, fall_flags(), 0, nullptr) != 0 && sub_00233d30(OV(0x00173e80)) <= u2f(0x3f5f66f3u)) h = lwc1(OV(0x00173e68));
+            if (segment_collide_v(q, p, fall_flags(), 0, nullptr) != 0 && sub_00233d30(coll_hit_normal_addr()) <= u2f(0x3f5f66f3u)) h = coll_hit_point().z;
         }
         if (!(0.0f < h)) return t;
         float r_hi = 0.0f, r_lo = 0.0f;
@@ -1128,7 +1129,7 @@ float hero_fall_time(float t, float g, float h) {
     const float b = sub_00233a78(P + 0xe0) - a;
     const float z = sub_00233a78(P + 0x80);
     float r_hi = 0.0f, r_lo = 0.0f;
-    if (solve_quadratic(&r_hi, &r_lo, a, b, z - sub_00233a78(OV(0x00173e60))) <= 0) return t;
+    if (solve_quadratic(&r_hi, &r_lo, a, b, z - sub_00233a78(coll_hit_point_addr())) <= 0) return t;
     return 0.0f < r_hi ? r_hi : t;
 }
 

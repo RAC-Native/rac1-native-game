@@ -1,4 +1,5 @@
 // Ported overlay code 0x00210000..0x0021ffff.
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/enhance/fixes102.h>
 #include <game/enhance/level_mod_hero.h>
@@ -400,16 +401,15 @@ void wrench_hit_sparks(uint32_t moby, int32_t n) {
         sw(g::PLAYER + 0xa64, 1);
     }
     if (n <= 0) return;
-    uint32_t p = OV(0x00177f00);
-    for (int32_t left = n; left != 0; --left, p += 4) {
-        const uint32_t m = lwu(p);
+    for (int32_t left = n, i = 0; left != 0; --left, ++i) {
+        const uint32_t m = coll_hit_list_at(i);
         int32_t kind = 0;
         if (m != 0) {
             const uint32_t c = lwu(m + 0x24);
             if (c != 0) kind = lh(c + 0x46);
         }
         if (kind != 5 && kind != 9) continue;
-        Vec4 at = V(lwu(p) + 0x10);
+        Vec4 at = V(coll_hit_list_at(i) + 0x10);
         sub_002336e8_v(at, at, 0.5f);
         spark_pairs_v(at, 4);
     }
@@ -1399,8 +1399,8 @@ void hero_edge_brake(float k, float min_len) {
     if (lbu(P + 0x20a4) == 2) drop = u2f(0xbf333333u);
     sub_00233810_v(b, b, drop);
     float brake = 1.0f;
-    if (segment_collide_v(a, b, 4, lwu(P + 0x2080), nullptr) != 0 && 0 < lw(OV(0x00173e5c))) {
-        if (sub_00233d30(OV(0x00173e80)) <= u2f(0x3f5f66f3u)) brake = 0.0f;
+    if (segment_collide_v(a, b, 4, lwu(P + 0x2080), nullptr) != 0 && 0 < coll_hit_flags_signed()) {
+        if (sub_00233d30(coll_hit_normal_addr()) <= u2f(0x3f5f66f3u)) brake = 0.0f;
     }
     if (brake != 0.0f) sub_00213de8(0.0f);
 }
@@ -1415,7 +1415,7 @@ void hero_edge_brake(float k, float min_len) {
 // orig: 0x00212318
 void hero_wall_slide(int32_t facing) {
     if (on_l1_family() || on_rilgar()) return hero_wall_slide_l1(facing);
-    const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
+    const uint32_t P = g::PLAYER;
     if (lh(P + 0x308) != 0) return;
     if (sub_002339d0(P + 0xe0) < lwc1(0x0015ed6c) * u2f(0x3dcccccdu)) return;
     float lift = u2f(0x3ebd70a4u), len = 0.5f;
@@ -1452,19 +1452,21 @@ void hero_wall_slide(int32_t facing) {
     vec3_add(a, a, s1);
     int32_t surf = -1;
     vec3_add(b, b, s2);
-    if (segment_collide_v(s2, b, 4, lwu(P + 0x2080), nullptr) != 0 && 0 < lw(OUTB + 0x1c)) surf = sub_001f35d8();
+    if (segment_collide_v(s2, b, 4, lwu(P + 0x2080), nullptr) != 0 && 0 < coll_hit_flags_signed()) surf = sub_001f35d8();
     float pitch = 0.0f;
-    if (segment_collide_v(s1, a, 4, lwu(P + 0x2080), nullptr) != 0 && 0 < lw(OUTB + 0x1c)) {
-        pitch = atan2_f(lwc1(OUTB + 0x48), vec2_length(V(OUTB + 0x40)));
+    if (segment_collide_v(s1, a, 4, lwu(P + 0x2080), nullptr) != 0 && 0 < coll_hit_flags_signed()) {
+        pitch = atan2_f(coll_hit_normal().z, vec2_length(coll_hit_normal()));
     }
     if (!(u2f(0x3f5f66f3u) <= pitch) && surf != 8 && surf != 0xc) return;
-    sw(OUTB + 0x48, 0);
-    sw(P + 0x240, lwu(OUTB + 0x18));
-    Vec4& n = V(OUTB + 0x40);
+    coll_hit_clear_normal_z();
+    sw(P + 0x240, coll_hit_moby());
+    Vec4 n = coll_hit_normal();
     vu0_normalize(n, n);
+    coll_hit_set_normal(n);
     const float into = -lwc1(P + 0xe0) * n.x - lwc1(P + 0xe4) * n.y;
     if (!(0.0f < into)) return;
     vec3_scale(n, n, into);
+    coll_hit_set_normal(n);
     vec3_add(V(P + 0xe0), V(P + 0xe0), n);
 }
 
@@ -1480,7 +1482,7 @@ void hero_wall_slide(int32_t facing) {
 // orig: 0x002133a8
 int32_t hero_collide_push(int32_t mode) {
     if (on_l1_family()) return hero_collide_push_l1(mode);
-    const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
+    const uint32_t P = g::PLAYER;
     if (lw(P + 0x1cc) != 0) return 1;
     const Vec4 old = V(P + 0x80);
     Vec4 off;
@@ -1525,10 +1527,10 @@ int32_t hero_collide_push(int32_t mode) {
             hit = a | b;
         }
         if (hit == 0) break;
-        V(P + 0x80) = V(OUTB + 0x30);
-        V(P + 0x200) = V(OUTB + 0x40);
-        V(P + 0x210) = V(OUTB + 0x20);
-        sw(P + 0x23c, lwu(OUTB + 0x18));
+        V(P + 0x80) = coll_hit_pushed();
+        V(P + 0x200) = coll_hit_normal();
+        V(P + 0x210) = coll_hit_point();
+        sw(P + 0x23c, coll_hit_moby());
         sb(P + 0x257, 1);
     }
     vec3_sub(V(P + 0x80), V(P + 0x80), off);
@@ -1674,7 +1676,7 @@ void hero_slide_move() {
 // orig: 0x002127b8
 void hero_ground_update() {
     if (on_l1_family()) return hero_ground_update_l1();
-    const uint32_t P = g::PLAYER, OUTB = OV(0x00173e40);
+    const uint32_t P = g::PLAYER;
     swc1(P + 0x278, 1.0f);
     sh(P + 0x30e, lhu(P + 0x30e) + 1u);
     sh(P + 0x30c, lhu(P + 0x30c) + 1u);
@@ -1698,7 +1700,7 @@ void hero_ground_update() {
         const int32_t t = sub_001f35d8();
         sh(P + 0x12e0, static_cast<uint32_t>(t));
         if ((static_cast<uint32_t>(t) << 16) == 0) {
-            const float h = surface_height(OUTB + 0x20, P + 0x280);
+            const float h = surface_height(coll_hit_point_addr(), P + 0x280);
             swc1(P + 0x2f0, h);
             if (lwc1(P + 0x88) < h && lw(P + 0x2f8) <= 0) sw(P + 0x2f8, 1);
             if (segment_collide_v(a, b, 0x24, lwu(P + 0x2080), nullptr) == 0) return false;
@@ -1708,41 +1710,43 @@ void hero_ground_update() {
             sb(P + 0x12ed, static_cast<uint32_t>(k));
         }
         if (hero_has_sink_7f() && lh(P + 0x12e0) == 0xd) {
-            const float cz = lwc1(OUTB + 0x28);
+            const float cz = coll_hit_point().z;
             swc1(P + 0x2f0, cz);
             a.z = cz - u2f(0x3c23d70au);
             if (segment_collide_v(a, b, 4, lwu(P + 0x2080), nullptr) == 0) return false;
         }
         if ((hero_has_lava() && lh(P + 0x12e0) == 3) || (on_kalebo() && level_mod_kalebo_lava_ground())) {
-            const float cz = lwc1(OUTB + 0x28);
+            const float cz = coll_hit_point().z;
             swc1(P + 0x2f4, cz);
             a.z = cz - u2f(0x3c23d70au);
             if (segment_collide_v(a, b, 4, lwu(P + 0x2080), nullptr) == 0) return false;
         }
         if (hero_has_quicksand() && lh(P + 0x12e0) == 0xb) {
-            swc1(P + 0x2f4, lwc1(OUTB + 0x28));
+            swc1(P + 0x2f4, coll_hit_point().z);
             return false;
         }
         if (hero_has_state_7c() && lh(P + 0x12e0) == 1 && static_cast<uint32_t>(lw(P + 0x2084) - 0x7c) < 2u) return false;
-        const uint32_t hit = lwu(OUTB + 0x18);
+        const uint32_t hit = coll_hit_moby();
         if (hit != 0) {
             if (moby_in_range_class_500(hit) != 0) {
                 sh(P + 0x30a, 1);
                 if (hero_has_hoverboard() && static_cast<uint32_t>(lw(P + 0x208c) - 0x15) < 2u) {
-                    sub_002334d0_v(V(OUTB + 0x20), V(OUTB + 0x20), 1.0f);
+                    Vec4 pt = coll_hit_point();
+                    sub_002334d0_v(pt, pt, 1.0f);
+                    coll_hit_set_point(pt);
                 }
             }
-            const uint32_t pw = moby_pvar_word0(lwu(OUTB + 0x18));
+            const uint32_t pw = moby_pvar_word0(coll_hit_moby());
             if (pw != 0 && (lhu(pw + 0x1e) & 8) != 0) sh(P + 0x30a, 1);
         }
-        if (lw(OUTB + 0x1c) <= 0) return true;
-        V(P + 0x2a0) = V(OUTB + 0x20);
-        swc1(P + 0x2d8, lwc1(OUTB + 0x28));
+        if (coll_hit_flags_signed() <= 0) return true;
+        V(P + 0x2a0) = coll_hit_point();
+        swc1(P + 0x2d8, coll_hit_point().z);
         swc1(P + 0x2dc, vec3_distance(V(P + 0x80), V(P + 0x2a0)));
-        sw(P + 0x2fc, lwu(OUTB + 0x18));
-        vu0_normalize(V(P + 0x270), V(OUTB + 0x40));
-        swc1(P + 0x2e0, sub_00233d30(OUTB + 0x40));
-        swc1(P + 0x2ec, atan2_f(lwc1(OUTB + 0x40), lwc1(OUTB + 0x44)));
+        sw(P + 0x2fc, coll_hit_moby());
+        vu0_normalize(V(P + 0x270), coll_hit_normal());
+        swc1(P + 0x2e0, sub_00233d30(coll_hit_normal_addr()));
+        swc1(P + 0x2ec, atan2_f(coll_hit_normal().x, coll_hit_normal().y));
         Vec4 d;
         vec3_sub(d, V(P + 0x2a0), V(P + 0x80));
         if (0.0f < vec3_dot(d, V(P + 0x270))) swc1(P + 0x2dc, -lwc1(P + 0x2dc));
@@ -1750,7 +1754,7 @@ void hero_ground_update() {
             sh(P + 0x30c, 0);
             if (lwc1(P + 0x2e0) <= u2f(0x3f5f66f3u) || lbu(P + 0x20b3) == 1 || lw(P + 0x208c) == 0x16) {
                 sh(P + 0x30e, 0);
-                sw(P + 0xa80, lwu(OUTB + 0x18));
+                sw(P + 0xa80, coll_hit_moby());
             }
         }
         return true;
@@ -1796,11 +1800,11 @@ void hero_ground_update() {
             swc1(P + 0x2d0 + 4 * i, lwc1(P + 0x2e8));
             continue;
         }
-        const float dz = lwc1(OUTB + 0x28) - lwc1(P + 0x2d8);
+        const float dz = coll_hit_point().z - lwc1(P + 0x2d8);
         swc1(P + 0x2c0 + 4 * i, dz);
         if (u2f(0x3ecccccdu) < abs_f(dz)) sw(P + 0x2c0 + 4 * i, 0);
         Vec4 n;
-        vu0_normalize(n, V(OUTB + 0x40));
+        vu0_normalize(n, coll_hit_normal());
         float sa[2];
         sub_00216078_v(n, sa);
         if (-q < sa[1] && sa[1] < q) swc1(P + 0x2c8 + 4 * i, sa[1]);
@@ -1845,7 +1849,7 @@ void hero_move_integrate() {
             top.z = top.z + 0.5f;
             vec3_add(end, top, V(P + 0xe0));
             if (segment_collide_v(V(P + 0x80), end, 2, 0, nullptr) != 0) {
-                const uint32_t hm = lwu(OV(0x00173e40) + 0x18);
+                const uint32_t hm = coll_hit_moby();
                 if (hm == 0 || lh(hm + 0xa6) == 0x1f6 || lh(hm + 0xa6) == 0x59f) {
                     if (lw(P + 0x1cc) == 0 && r < vec2_length(V(P + 0xe0))) {
                         vec2_set_length(V(P + 0xe0), V(P + 0xe0), r);

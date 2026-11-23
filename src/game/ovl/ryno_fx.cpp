@@ -1,6 +1,7 @@
 // Ported overlay code: R.Y.N.O. homing rocket projectile (class 0x1c9, update 0x002cd1f0).
 #include <game/ovl/ryno_fx.h>
 
+#include <game/collision/collision.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
@@ -216,22 +217,21 @@ void ryno_2cd1f0_update(uint32_t m) {
     };
 
     if (segment_collide_v(prev_pos, V(m + 0x10), 0u, m, rec) != 0) {
-        const uint32_t outb = OV(0x00173e40u);
-        const uint32_t hit = lwu(outb + 0x18);
+        const uint32_t hit = coll_hit_moby();
         if (hit != 0) {
             if (hit != lwu(0x001413d0u) && hit != lwu(pv + 0x20)) {
                 const int32_t hit_cls = lh(hit + 0xa6);
                 if (hit_cls != 0x1c9 && hit_cls != 0) {
                     sb(m + 0xbc, 2);
-                    V(m + 0x10) = V(outb + 0x20);
+                    V(m + 0x10) = coll_hit_point();
                     explosion_effect(m, 0u, 0u, 0xa, 3, 9, 0, 1, 1, -1, 0u, 0.0f, 0.0f, 4.0f, 2.0f, 9.0f, 1.0f, 15.0f);
                     moby_retire(m);
                     return;
                 }
             }
-        } else if (lw(outb + 0x1c) > 0) {
+        } else if (coll_hit_flags_signed() > 0) {
             sb(m + 0xbc, 1);
-            V(m + 0x10) = V(outb + 0x20);
+            V(m + 0x10) = coll_hit_point();
             explosion_effect(m, 0u, 0u, 0xa, 3, 9, 0, 1, 1, -1, 0u, 0.0f, 1.0f, 4.0f, 2.0f, 9.0f, 1.0f, 15.0f);
             moby_retire(m);
             return;

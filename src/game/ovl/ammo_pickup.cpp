@@ -5,6 +5,7 @@
 // wrench (wrench_pull_pickups) could take them.
 #include <cmath>
 
+#include <game/collision/collision.h>
 #include <game/ovl/ammo_pickup.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/math/vecmath.h>
@@ -62,7 +63,7 @@ void ammo_pickup_update(uint32_t m) {
             Vec4 probe = V(m + 0x10);
             probe.z = probe.z + 0.5f;
             if (sphere_collide_v(probe, u2f(0x3ecccccdu), 2, 0) != 0) {
-                lq_sq(m + 0x10, OV(0x00173e70));
+                lq_sq(m + 0x10, coll_hit_pushed_addr());
                 swc1(m + 0x18, lwc1(m + 0x18) - 0.5f);
             }
         }
@@ -76,7 +77,7 @@ void ammo_pickup_update(uint32_t m) {
         from.z = from.z + u2f(0x3dcccccdu);
         if (segment_collide_v(from, to, 2, 0, nullptr) != 0) {
             vec_clear(vel);
-            lq_sq(m + 0x10, OV(0x00173e60));
+            lq_sq(m + 0x10, coll_hit_point_addr());
         } else {
             V(m + 0x10) = to;
         }

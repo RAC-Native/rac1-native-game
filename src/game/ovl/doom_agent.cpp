@@ -6,6 +6,7 @@
 // +0x10 the last contact point (its normal +0x20), +0x30 the glove moby, +0x34 the glow timer, +0x38
 // the bounce / spawn timer (u16), +0x3a a flag (the throw is under way), +0x3c the agents spawned.
 // The draw callback 0x2c7df8 (two crossed discs at the contact point) is queued by the collision step.
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl.h>
@@ -219,7 +220,6 @@ int32_t doom_agent_step(uint32_t pv, uint32_t m, int32_t mode) {
     if (lw(OV(0x0015f5c4)) != 0) return 0;
     StackFrame fr(0x110);
     const uint32_t sp = fr.base;
-    const uint32_t rec = OV(0x00173e40);
     const uint32_t s4 = sp + 0x20, s6 = sp + 0x10;
     int32_t s8 = 0;
     int32_t v0 = 0, tick = 0, s0 = 0;
@@ -260,15 +260,15 @@ int32_t doom_agent_step(uint32_t pv, uint32_t m, int32_t mode) {
     // the first ray hit
     sv = sub_001f35d8();
     if (sv == 0 && !(0.0f < lwc1(sp + 0x18))) goto L88cc;
-    hit = lwu(rec + 0x18);
+    hit = coll_hit_moby();
     if (hit == 0) {
-        if (!(lw(rec + 0x1c) > 0)) goto L88cc;
-        V(pv + 0x10) = V(OV(0x00173e60));
+        if (!(coll_hit_flags_signed() > 0)) goto L88cc;
+        V(pv + 0x10) = coll_hit_point();
         s8 = 1;
         goto L88cc;
     }
-    if (lw(rec + 0x1c) > 0) {
-        V(pv + 0x10) = V(OV(0x00173e60));
+    if (coll_hit_flags_signed() > 0) {
+        V(pv + 0x10) = coll_hit_point();
         s8 = 1;
         goto L88cc;
     }
@@ -276,7 +276,7 @@ int32_t doom_agent_step(uint32_t pv, uint32_t m, int32_t mode) {
         s0 = frame_scale_i(0x12c) - frame_scale_i(0xa);
         if (!(lw(sp + 0x50) < s0)) goto L88cc;
     }
-    hit = lwu(rec + 0x18);
+    hit = coll_hit_moby();
     V(pv + 0x10) = V(hit + 0x10);
     sw(sp + 0x40, 0);
     sw(sp + 0x44, 0);
@@ -297,15 +297,15 @@ L8760:
     if (segment_collide(s4, sp, 0x10, m, 0) == 0) goto L88cc;
     sv = sub_001f35d8();
     if (sv == 0 && 0.0f < lwc1(sp + 0x18)) goto L88cc;
-    hit = lwu(rec + 0x18);
+    hit = coll_hit_moby();
     if (hit == 0) {
-        if (!(lw(rec + 0x1c) > 0)) goto L88cc;
-        V(pv + 0x10) = V(OV(0x00173e60));
+        if (!(coll_hit_flags_signed() > 0)) goto L88cc;
+        V(pv + 0x10) = coll_hit_point();
         v0 = lw(sp + 0x50);
         goto L88e4;
     }
-    if (lw(rec + 0x1c) > 0) {
-        V(pv + 0x10) = V(OV(0x00173e60));
+    if (coll_hit_flags_signed() > 0) {
+        V(pv + 0x10) = coll_hit_point();
         v0 = lw(sp + 0x50);
         goto L88e4;
     }
@@ -313,7 +313,7 @@ L8760:
         s0 = frame_scale_i(0x12c) - frame_scale_i(0xa);
         if (!(lw(sp + 0x50) < s0)) goto L88cc;
     }
-    hit = lwu(rec + 0x18);
+    hit = coll_hit_moby();
     V(pv + 0x10) = V(hit + 0x10);
     sw(sp + 0x40, 0);
     sw(sp + 0x44, 0);
@@ -333,16 +333,16 @@ L88e4:
     {
         bool draw = true;
         if (mode == 0) {
-            const uint32_t a0 = lwu(OV(0x00173e58));
+            const uint32_t a0 = coll_hit_moby();
             if (a0 == 0) return 0;
             if (moby_pvar_word2(a0) == 0) return 0;
         } else if (mode == 2) {
-            const uint32_t a0 = lwu(OV(0x00173e58));
+            const uint32_t a0 = coll_hit_moby();
             if (a0 != 0 && moby_pvar_word2(a0) != 0) draw = false;
         }
         if (draw) sub_001f93e0(OVF(0x002c7df8), m);
     }
-    V(pv + 0x20) = V(OV(0x00173e80));
+    V(pv + 0x20) = coll_hit_normal();
     vec3_sub(V(s4), V(pv + 0x10), V(OV(0x00166dc0)));
     vec3_scale(V(s4), V(s4), u2f(0x3f733333u));
     vec3_add(V(pv + 0x10), V(s4), V(OV(0x00166dc0)));
@@ -433,21 +433,20 @@ void doom_agent_update(uint32_t m) {
         const float f20 = f21 * u2f(0x3e4ccccdu);
         swc1(sp + 0x38, lwc1(sp + 0x38) + f20);
         if (sphere_collide(s0, f21 * u2f(0x3e99999au), 4, lwu(P + 0x2080)) != 0) {
-            V(s1) = V(OV(0x00173e70));
+            V(s1) = coll_hit_pushed();
             swc1(m + 0x18, lwc1(m + 0x18) - f20);
         } else {
             if (segment_collide(s5, s4, 0, lwu(P + 0x2080), 0) == 0) {
                 V(s1) = V(sp);
                 return;
             }
-            V(s1) = V(OV(0x00173e60));
+            V(s1) = coll_hit_point();
             const float kk = (lwc1(0x0015ed60) * f23) * lwc1(m + 0x2c);
             swc1(m + 0x18, lwc1(m + 0x18) + fpu_div(kk, lwc1(lwu(m + 0x24) + 0x24)));
         }
         const float f21b = u2f(0x3c23d70au);
-        vec3_reflect(V(pv), V(pv), V(OV(0x00173e80)));
+        vec3_reflect(V(pv), V(pv), coll_hit_normal());
         vec3_scale(V(pv), V(pv), f22);
-        const uint32_t rec = OV(0x00173e40);
         bool count = false;
         if (vec3_length(V(pv)) < lwc1(0x0015ed60) * f21b) {
             count = true;
@@ -463,7 +462,7 @@ void doom_agent_update(uint32_t m) {
             const uint32_t n = lhu(pv + 0x38) + 1u;
             sh(pv + 0x38, n);
             bool stop = true;  // (to state 3)
-            if (lwu(rec + 0x18) != 0 && !(lw(rec + 0x1c) > 0)) stop = frame_scale_i(0xf0) < static_cast<int16_t>(n);
+            if (coll_hit_moby() != 0 && !(coll_hit_flags_signed() > 0)) stop = frame_scale_i(0xf0) < static_cast<int16_t>(n);
             if (stop) {
                 sb(m + 0x20, 3);
                 sh(pv + 0x38, 0);
@@ -480,7 +479,7 @@ void doom_agent_update(uint32_t m) {
     case 3: {
         const uint32_t s0 = m + 0x10;
         if (floor_probe(0.5f, s0, 0) != 0.0f) {
-            const uint32_t a1 = lwu(OV(0x00173e58));
+            const uint32_t a1 = coll_hit_moby();
             if (a1 != 0) (void)sub_00260400(m, a1, s0, m + 0x40, s0, m + 0x40);
         }
         int32_t v0;
@@ -524,7 +523,7 @@ void doom_agent_update(uint32_t m) {
         swc1(m + 0x2c, lwc1(m + 0x2c) * u2f(0x3f6b851fu));
         sb(m + 0x23, lbu(m + 0x23) - 4u);
         if (floor_probe(0.5f, s0, 0) != 0.0f) {
-            const uint32_t a1 = lwu(OV(0x00173e58));
+            const uint32_t a1 = coll_hit_moby();
             if (a1 != 0) (void)sub_00260400(m, a1, s0, m + 0x40, s0, m + 0x40);
         }
         if (lbu(m + 0x23) != 0) return;

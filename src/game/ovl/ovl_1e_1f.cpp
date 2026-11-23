@@ -1,5 +1,6 @@
 // Ported overlay code 0x001e0000..0x001fffff (excluding the math library, see game/math/vecmath.cpp, and the collision
 // routines, see game/collision/).
+#include <game/collision/collision.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 
@@ -23,7 +24,7 @@ void debug_printf_stub() {}
 
 // orig: 0x001f35d8
 int32_t sub_001f35d8() {
-    const int32_t v = lw(OV(0x00173e5c));
+    const int32_t v = coll_hit_flags_signed();
     if (v < 0) return -1;
     const int32_t m = v & 0x1f;
     return m == 0x1f ? -1 : m;
@@ -31,7 +32,7 @@ int32_t sub_001f35d8() {
 
 // orig: 0x001f3608
 int32_t sub_001f3608() {
-    const int32_t v = lw(OV(0x00173e5c));
+    const int32_t v = coll_hit_flags_signed();
     if (v < 0) return 0;
     const int32_t m = v & 0x60;
     return m == 0x60 ? 0 : (m >> 5);

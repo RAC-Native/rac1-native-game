@@ -1,6 +1,7 @@
 // The ground enemies' stepping, see walker.h.
 #include <game/ovl/walker.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/ovl_common.h>
@@ -20,8 +21,8 @@ int32_t walker_probe(float up, float down, uint32_t pos, uint32_t self, uint32_t
     end.z = z;
     if (z < 0.0f) end.z = 0.0f;
     int32_t r = segment_collide_v(start, end, 0x22, self, nullptr);
-    if (!(-1 < lw(OV(0x00173e5c)))) r = 0;
-    if (no_moby != 0 && lwu(OV(0x00173e58)) != 0) r = 0;
+    if (!(-1 < coll_hit_flags_signed())) r = 0;
+    if (no_moby != 0 && coll_hit_moby() != 0) r = 0;
     return r;
 }
 
@@ -68,8 +69,8 @@ uint32_t walker_record_step(float scale, uint32_t m, uint32_t rec, uint32_t targ
         flags = (lw(rec + 0x38) & 8) != 0 ? 8u : 0x22u;
         blocked_or = flags & 2u;
     } else {
-        const float z1 = lwc1(OV(0x00173e68));
-        if (0.5f < atan2_f(lwc1(OV(0x00173e88)), vec2_length(V(OV(0x00173e80)))) && u2f(0x3dcccccdu) < vec2_length(V(vel))) {
+        const float z1 = coll_hit_point().z;
+        if (0.5f < atan2_f(coll_hit_normal().z, vec2_length(coll_hit_normal())) && u2f(0x3dcccccdu) < vec2_length(V(vel))) {
             vec3_set_length(V(cand2), V(vel), u2f(0x3f11eb85u));
             vec3_add(V(cand2), V(cand2), V(m + 0x10));
             swc1(cand2 + 8, lwc1(m + 0x18) - lwc1(rec + 0x30));
@@ -77,8 +78,8 @@ uint32_t walker_record_step(float scale, uint32_t m, uint32_t rec, uint32_t targ
                 flags = 0x22;
                 if ((lw(rec + 0x38) & 8) != 0 && z1 < top) flags = 8;
             } else {
-                const float z2 = lwc1(OV(0x00173e68));
-                if (!(0.5f <= atan2_f(lwc1(OV(0x00173e88)), vec2_length(V(OV(0x00173e80)))))) {
+                const float z2 = coll_hit_point().z;
+                if (!(0.5f <= atan2_f(coll_hit_normal().z, vec2_length(coll_hit_normal())))) {
                     // (flags stay 0)
                 } else if ((lw(rec + 0x38) & 8) == 0) {
                     flags = 0x22;

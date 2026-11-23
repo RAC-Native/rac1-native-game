@@ -1,6 +1,7 @@
 // Ported overlay code: Decoy Glove (item 0x19, hand class 0x232, decoy classes 0xcb / gold 0x76c).
 #include <game/ovl/decoy.h>
 
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
@@ -42,13 +43,13 @@ void decoy_2c3888(uint32_t p0, uint32_t p1, uint32_t p2) {
         return;
     }
 
-    V(p1 + 0x10) = V(OV(0x00173e60u));
+    V(p1 + 0x10) = coll_hit_point();
     vec_clear(V(dpv + 0x10));
     sb(p1 + 0x20, 4);
     sh(dpv + 0x44, static_cast<uint32_t>(frame_scale_i(0x1e)));
-    swc1(p1 + 0x18, lwc1(OV(0x00173e40u) + 0x28));
+    swc1(p1 + 0x18, coll_hit_point().z);
 
-    const Vec4 nrm = V(OV(0x00173e40u) + 0x40);
+    const Vec4 nrm = coll_hit_normal();
     const float k01 = u2f(0x3dcccccdu);
     float c = cos_vu(lwc1(p1 + 0x48));
     float s = sin_vu(lwc1(p1 + 0x48));
@@ -263,8 +264,8 @@ void decoy_2d2158(uint32_t p0, uint32_t p1, uint32_t p2) {
             Vec4 ray_end{};
             vec3_add(ray_end, V(OV(0x00166dc0u)), dir);
             if (segment_collide_v(V(OV(0x00166dc0u)), ray_end, 2u, p0, nullptr) != 0) {
-                if (lwu(OV(0x00173e40u) + 0x18) != lwu(0x001413d0u)) {
-                    V(target) = V(OV(0x00173e40u) + 0x20);
+                if (coll_hit_moby() != lwu(0x001413d0u)) {
+                    V(target) = coll_hit_point();
                     hit_ok = 1;
                     cam_yaw = atan2_f(fpu_sub(lwc1(target + 0x0), lwc1(from + 0x0)),
                                       fpu_sub(lwc1(target + 0x4), lwc1(from + 0x4)));

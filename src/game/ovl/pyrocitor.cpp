@@ -7,6 +7,7 @@
 // and throw streaks when they die. The hand's pvars: +0 the nozzle moby, +4..+0x3f 15 kept
 // flame particles, +0x44 the light slot, +0x4a the fire sound, +0x4c the fire's least time,
 // +0x4e the sparks' timer, +0x50 the frames fired in a row (0x2b8230).
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl_reloc.h>
@@ -400,7 +401,7 @@ void pyrocitor_update(uint32_t m) {
         } else if (segment_collide(from, to, 2, 0, 0) == 0) {
             len = lwc1(OV(0x00166c00u - 0x56e0)) + up4;
         } else {
-            len = vec3_distance(V(from), V(OV(0x00173e60))) - 0.75f;
+            len = vec3_distance(V(from), coll_hit_point()) - 0.75f;
             if (len < 0.0f) len = 0.0f;
         }
         const float acc = lwc1(OV(0x001601e8));

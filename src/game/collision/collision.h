@@ -38,6 +38,8 @@ struct CollisionHit {
 inline uint32_t coll_hit_moby() { return lwu(OV(0x00173e58)); }
 // orig: (host) the last hit's flags (+0x1c; signed: a primitive's is negative)
 inline uint32_t coll_hit_flags() { return lwu(OV(0x00173e5c)); }
+// orig: (host) the same flags read signed (+0x1c: above 0 a triangle of the level, below 0 a moby's primitive)
+inline int32_t coll_hit_flags_signed() { return lw(OV(0x00173e5c)); }
 // orig: (host) the last contact point (+0x20; its y and z are +0x24 / +0x28)
 inline Vec4 coll_hit_point() { return V(OV(0x00173e60)); }
 // orig: (host) the query's position pushed out of the last contact (+0x30)
@@ -61,6 +63,43 @@ inline CollisionHit coll_hit() {
 inline void coll_hit_set_moby(uint32_t moby) { sw(OV(0x00173e58), moby); }
 // orig: (host) the last contact's normal set (+0x40), as a few class updates do (they shorten it in place)
 inline void coll_hit_set_normal(const Vec4& n) { V(OV(0x00173e80)) = n; }
+// orig: (host) the contact point set (+0x20), as the hero on a hoverboard and the camera's sphere volumes do
+inline void coll_hit_set_point(const Vec4& p) { V(OV(0x00173e60)) = p; }
+// orig: (host) the pushed-out position set (+0x30), as the camera's sphere volumes do
+inline void coll_hit_set_pushed(const Vec4& p) { V(OV(0x00173e70)) = p; }
+// orig: (host) the contact point's z set (+0x28), as a particle does to lift its landing point
+inline void coll_hit_set_point_z(float z) { swc1(OV(0x00173e68), z); }
+// orig: (host) the pushed-out position's z set (+0x38), as a doomlet does after its floor probe
+inline void coll_hit_set_pushed_z(float z) { swc1(OV(0x00173e78), z); }
+// orig: (host) the normal's z cleared (+0x48, a word write of 0), as the hero's wall slide does
+inline void coll_hit_clear_normal_z() { sw(OV(0x00173e88), 0); }
+// The EE addresses of the hit's vectors, for the callees that still take an address (a later task gives them values).
+// orig: (host) the contact point's EE address (+0x20)
+inline uint32_t coll_hit_point_addr() { return OV(0x00173e60); }
+// orig: (host) the pushed-out position's EE address (+0x30)
+inline uint32_t coll_hit_pushed_addr() { return OV(0x00173e70); }
+// orig: (host) the normal's EE address (+0x40)
+inline uint32_t coll_hit_normal_addr() { return OV(0x00173e80); }
+
+// The queries' own state (the words before +0x18: not part of a hit).
+// orig: (host) the level's collision tree (+0x00)
+inline uint32_t coll_tree() { return lwu(OV(0x00173e40)); }
+// orig: (host) the level's collision tree set (+0x00), as level_collision_set does
+inline void coll_set_tree(uint32_t tree) { sw(OV(0x00173e40), tree); }
+// orig: (host) the posed-joint cache's buffers set (+0x04: eight of 0x800 bytes), as gameplay_load does
+inline void coll_set_joint_cache_buffers(uint32_t a) { sw(OV(0x00173e44), a); }
+// orig: (host) the posed-joint cache's key ring set (+0x08: eight pairs of words), as gameplay_load does
+inline void coll_set_joint_cache_keys(uint32_t a) { sw(OV(0x00173e48), a); }
+// orig: (host) the posed-joint cache's next slot set (+0x0c, 0..7), as gameplay_load does
+inline void coll_set_joint_cache_next(uint32_t slot) { sw(OV(0x00173e4c), slot); }
+// orig: (host) the query counter (+0x10: a moby's +0x9c stamp; the pause menu and a level's exit set its top bit)
+inline uint32_t coll_query_counter() { return lwu(OV(0x00173e50)); }
+// orig: (host) the query counter set (+0x10)
+inline void coll_set_query_counter(uint32_t n) { sw(OV(0x00173e50), n); }
+// orig: (host) the contact ring's next index (+0x14, 0..63)
+inline uint32_t coll_contact_next() { return lwu(OV(0x00173e54)); }
+// orig: (host) the contact ring's next index set (+0x14)
+inline void coll_set_contact_next(uint32_t i) { sw(OV(0x00173e54), i); }
 
 // The hit list 0x177f00: the mobys the last mobys_in_sphere touched, 0-terminated (room for 0x80 words, up to the ring).
 // orig: (host) its EE address (what moby_list_hit and its kin take)

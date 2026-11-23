@@ -1,4 +1,5 @@
 // Ported overlay code 0x00240000..0x0025ffff.
+#include <game/collision/collision.h>
 #include <game/enhance/sections.h>
 #include <game/enhance/session.h>
 #include <game/enhance/session_runtime.h>
@@ -135,7 +136,7 @@ void sub_00259888(float f, uint32_t dst, int32_t a, int32_t b, uint32_t src) {
 uint32_t sub_0025a420(uint32_t moby, uint32_t mask, int32_t clear) {
     const uint32_t idx = lbu(moby + 0xa4);
     if (idx == 0xff) return 0;
-    const uint32_t e = OV(0x00178100) + (idx << 6);
+    const uint32_t e = coll_contact(idx);
     const uint32_t owner = lwu(e + 0x34);
     if (owner != moby) return 0;
     if ((lwu(e + 0x24) & mask) != 0) return e;
@@ -373,7 +374,7 @@ float floor_probe_v(float up, const Vec4& pos, uint32_t flags) {
     Vec4 hi = pos;
     hi.z = hi.z + up;
     if (segment_collide_v(hi, lo, flags | 2, 0, nullptr) == 0) return 0.0f;
-    return lwc1(OV(0x00173e68));
+    return coll_hit_point().z;
 }
 // orig: 0x00259698 (EE-address form)
 float floor_probe(float up, uint32_t pos, uint32_t flags) { return floor_probe_v(up, V(pos), flags); }
@@ -887,14 +888,13 @@ int32_t sub_00256de0(uint32_t pos, float* t, int32_t* idx) {
 // *(0x173e54)), unless its current entry is stronger than `strength`. (Gemlik's build, its own ring and counter: the same
 // instructions, proved by batch 410.)
 void sub_00259bc8_v(uint32_t moby, uint32_t a, uint32_t b, uint32_t pos, const Vec4& dir, float strength) {
-    const uint32_t RING = OV(0x00178100), NEXT = OV(0x00173e54);
-    const uint32_t s = lwu(NEXT);
+    const uint32_t s = coll_contact_next();
     const uint32_t cur = lbu(moby + 0xa4);
     if (cur != 0xff) {
-        const uint32_t e = RING + (cur << 6);
+        const uint32_t e = coll_contact(cur);
         if (lwu(e + 0x34) == moby && strength < lwc1(e + 0x2c)) return;
     }
-    const uint32_t e = RING + (s << 6);
+    const uint32_t e = coll_contact(s);
     sw(e + 0x20, a);
     sw(e + 0x24, b);
     swc1(e + 0x2c, strength);
@@ -904,7 +904,7 @@ void sub_00259bc8_v(uint32_t moby, uint32_t a, uint32_t b, uint32_t pos, const V
     lq_sq(e, pos);
     V(e + 0x10) = dir;
     sb(moby + 0xa4, s);
-    sw(NEXT, (s + 1) & 0x3f);
+    coll_set_contact_next((s + 1) & 0x3f);
 }
 // orig: 0x00259bc8 (EE-address form)
 void sub_00259bc8(uint32_t moby, uint32_t a, uint32_t b, uint32_t pos, uint32_t dir, float strength) {
@@ -3756,15 +3756,15 @@ int32_t moby_coll_flag8(uint32_t m) {
 // orig: 0x00259a88 — record a hit on moby m in the 64-entry ring at 0x178100 (next slot
 // *(0x173e54)), unless the moby's current record is newer (+0x1c below its +0x2c).
 void moby_hit_record_v(uint32_t m, const uint8_t* rec) {
-    const int32_t slot = lw(OV(0x00173e54));
+    const int32_t slot = static_cast<int32_t>(coll_contact_next());
     const uint32_t cur = lbu(m + 0xa4);
     float strength;
     std::memcpy(&strength, rec + 0x1c, 4);
     if (cur != 0xff) {
-        const uint32_t e = OV(0x00178100) + cur * 0x40;
+        const uint32_t e = coll_contact(cur);
         if (lwu(e + 0x34) == m && strength < lwc1(e + 0x2c)) return;
     }
-    const uint32_t e = OV(0x00178100) + static_cast<uint32_t>(slot) * 0x40;
+    const uint32_t e = coll_contact(slot);
     vec_clear(V(e));
     std::memcpy(ee_ram_ptr(e + 0x10), rec, 16);
     uint32_t w;
@@ -3783,7 +3783,7 @@ void moby_hit_record_v(uint32_t m, const uint8_t* rec) {
     sw(e + 0x30, w);
     sw(e + 0x34, m);
     sb(m + 0xa4, static_cast<uint32_t>(slot));
-    sw(OV(0x00173e54), static_cast<uint32_t>((slot + 1) & 0x3f));
+    coll_set_contact_next(static_cast<uint32_t>((slot + 1) & 0x3f));
 }
 // orig: 0x00259a88 (EE-address form)
 void moby_hit_record(uint32_t m, uint32_t rec) { moby_hit_record_v(m, static_cast<const uint8_t*>(ee_ram_ptr(rec))); }

@@ -2,6 +2,7 @@
 // handle, +4 the state (7 to start, 1 started, 2 playing, 4 to stop, 6 stopping, 0 free), +8 the
 // sound's definition (+0x1a the sound, +0x1c the bank), +0x18 the moby it follows, +0x20 the
 // position; their per-frame update 0x28cc08 sends them to 989snd.
+#include <game/collision/collision.h>
 #include <game/lib/snd989.h>
 #include <runtime/iop/snd989_iop.h>
 #include <game/ovl/blarg_own.h>
@@ -72,7 +73,7 @@ void sound_listener_point_v(Vec4& p) {
     rand_dir_scaled_v(p, 0.5f, 6.0f);
     vec3_add(p, p, V(OV(0x00166dc0)));
     if (segment_collide_v(V(OV(0x00166dc0)), p, 0x82, lwu(0x0013e5bc), nullptr) != 0) {
-        vec3_sub(p, V(OV(0x00173e60)), V(OV(0x00166dc0)));
+        vec3_sub(p, coll_hit_point(), V(OV(0x00166dc0)));
         vec3_scale(p, p, 0.75f);
         vec3_add(p, p, V(OV(0x00166dc0)));
     }

@@ -3,6 +3,7 @@
 // pages and widgets are game data (0x1b2588. in the overlay); see pause_menu.h Callees not ported are TODO_PORT (the other
 // pages' functions,
 // the frame capture, the planet map / ship screens).
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/enhance/fixes102.h>
 #include <game/enhance/graphics.h>
@@ -259,7 +260,7 @@ void hud_tex_unrelocate(int32_t set) {
 // buffers, HUD textures and camera, the menu mobys spawned with their page animations.
 // orig: 0x00276368
 void menu_page_start() {
-    sw(OV(0x00173e50), lwu(OV(0x00173e50)) | 0x80000000u);
+    coll_set_query_counter(coll_query_counter() | 0x80000000u);
     sw(MS + 0x124, 0);
     sw(MS + 0xd0, 0);
     const int32_t st = lw(MS);
@@ -433,7 +434,7 @@ void menu_close() {
     for (uint32_t i = lwu(MS + 0xcc); static_cast<int32_t>(i) < static_cast<int32_t>(lbu(lwu(OV(0x00197300)) + 0xc)); ++i) sw(lwu(OV(0x00197300)) + i * 4 + 0x48, 0);
     sb(lwu(OV(0x00197300)) + 0xc, lbu(MS + 0xcc));
     sw(OV(0x0015f5d8), 1);
-    sw(OV(0x00173e50), lwu(OV(0x00173e50)) & 0x7fffffffu);
+    coll_set_query_counter(coll_query_counter() & 0x7fffffffu);
     TODO_PORT(0x002a08c8, "DMA: packet kick")();
     dma_wait(1);
 }

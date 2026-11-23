@@ -2,6 +2,7 @@
 // and shared walker-approach / jump helpers (0x00259028, 0x0025b440).
 #include <game/ovl/doomlet.h>
 
+#include <game/collision/collision.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
@@ -90,12 +91,11 @@ float doomlet_2bec80_v(const Vec4& pos, uint32_t p1) {
         return 0.0f;
     }
 
-    const uint32_t rec = OV(0x00173e40u);
-    const uint32_t hit = lwu(rec + 0x18);
+    const uint32_t hit = coll_hit_moby();
     if (hit != 0) {
         const uint32_t ci = lwu(hit + 0x24);
         if (ci != 0 && lh(ci + 0x46) == 5) {
-            return lwc1(rec + 0x28);
+            return coll_hit_point().z;
         }
     }
 
@@ -106,7 +106,7 @@ float doomlet_2bec80_v(const Vec4& pos, uint32_t p1) {
     default:  // 2, 4..7, 9, 10 (0x002bed6c), and kinds past the table
         break;
     }
-    return lwc1(OV(0x00173e40u) + 0x28u);
+    return coll_hit_point().z;
 }
 
 // orig: (helper) Vec4 form of doomlet_2beab0 (0x002beab0)
@@ -119,8 +119,7 @@ int32_t doomlet_2beab0_v(uint32_t p0, uint32_t p1, const Vec4* p2) {
     pos.z = fpu_add(pos.z, dz);
     const int32_t hit = sphere_collide_v(pos, radius, p1, p0);
     if (hit != 0) {
-        const uint32_t rec = OV(0x00173e40u);
-        swc1(rec + 0x38, fpu_sub(lwc1(rec + 0x38), dz));
+        coll_hit_set_pushed_z(fpu_sub(coll_hit_pushed().z, dz));
     }
     return hit;
 }
@@ -167,7 +166,7 @@ int32_t doomlet_2bf9f0_v(uint32_t p0, uint32_t p1, const Vec4& target, uint32_t 
     const float max_rise = fpu_div(fpu_mul(lwc1(p0 + 0x2c), 3.0f), lwc1(lwu(p0 + 0x24) + 0x24));
     if (max_rise < dz) return retry();
 
-    Vec4 probe = V(OV(0x00173e80u));
+    Vec4 probe = coll_hit_normal();
     vec3_set_length(probe, probe, 1.0f);
     const float n_xy = fpu_add(abs_f(probe.x), abs_f(probe.y));
     if (abs_f(probe.z) < n_xy) return retry();
@@ -207,10 +206,10 @@ int32_t doomlet_2bf9f0_v(uint32_t p0, uint32_t p1, const Vec4& target, uint32_t 
     doomlet_2bf810_v(land_top, probe, 10);
 
     if (segment_collide_v(from_top, probe, 6, p0, nullptr) != 0) {
-        if (lwu(OV(0x00173e58u)) != lwu(p1 + 0x38)) return retry();
+        if (coll_hit_moby() != lwu(p1 + 0x38)) return retry();
     }
     if (segment_collide_v(probe, land_top, 6, p0, nullptr) != 0) {
-        if (lwu(OV(0x00173e58u)) != lwu(p1 + 0x38)) return retry();
+        if (coll_hit_moby() != lwu(p1 + 0x38)) return retry();
     }
 
     sb(p0 + 0xbc, 0xd);
@@ -335,12 +334,12 @@ float doomlet_2bf050_v(uint32_t p0, const Vec4& origin, uint32_t p2, float& out_
             out_dist = pf16;
         }
     } else {
-        if (hit_is_enemy(lwu(OV(0x00173e58u)))) {
+        if (hit_is_enemy(coll_hit_moby())) {
             out_dist = 100.0f;
             return ref_ang;
         }
         best_ang = ref_ang;
-        const float d = vec3_distance(ray_from, V(OV(0x00173e60u)));
+        const float d = vec3_distance(ray_from, coll_hit_point());
         best_adist = 0.0f;
         const float prev_out = out_dist;
         best_dist = d;
@@ -374,11 +373,11 @@ float doomlet_2bf050_v(uint32_t p0, const Vec4& origin, uint32_t p2, float& out_
                 }
             }
         } else {
-            if (hit_is_enemy(lwu(OV(0x00173e40u) + 0x18u))) {
+            if (hit_is_enemy(coll_hit_moby())) {
                 out_dist = 100.0f;
                 return cur_ang;
             }
-            const float d = vec3_distance(ray_from, V(OV(0x00173e60u)));
+            const float d = vec3_distance(ray_from, coll_hit_point());
             if (best_dist < d) {
                 best_ang = cur_ang;
                 best_dist = d;
@@ -413,8 +412,8 @@ float doomlet_2bf050_v(uint32_t p0, const Vec4& origin, uint32_t p2, float& out_
     ray_to.y = fpu_add(ray_to.y, fpu_mul(sin_vu(best_ang), pf16));
     ray_to.x = fpu_add(ray_to.x, fpu_mul(cos_vu(best_ang), pf16));
     ray_to.z = fpu_add(ray_to.z, u2f(0x3df5c28fu));
-    if (segment_collide_v(ray_from, ray_to, 4, p0, nullptr) != 0 && !hit_is_enemy(lwu(OV(0x00173e58u)))) {
-        const float d = vec3_distance(ray_from, V(OV(0x00173e60u)));
+    if (segment_collide_v(ray_from, ray_to, 4, p0, nullptr) != 0 && !hit_is_enemy(coll_hit_moby())) {
+        const float d = vec3_distance(ray_from, coll_hit_point());
         const float num = fpu_mul(fpu_sub(pf16, d), u2f(0x40490fdbu));
         const float den = fpu_mul(pf16, 3.0f);
         best_ang = angle_add(best_ang, fpu_div(num, den));
@@ -429,8 +428,8 @@ float doomlet_2bf050_v(uint32_t p0, const Vec4& origin, uint32_t p2, float& out_
     ray_to.y = fpu_add(ray_to.y, fpu_mul(sin_vu(best_ang), pf16));
     ray_to.x = fpu_add(ray_to.x, fpu_mul(cos_vu(best_ang), pf16));
     ray_to.z = fpu_add(ray_to.z, u2f(0x3df5c28fu));
-    if (segment_collide_v(ray_from, ray_to, 4, p0, nullptr) != 0 && !hit_is_enemy(lwu(OV(0x00173e58u)))) {
-        const float d = vec3_distance(ray_from, V(OV(0x00173e60u)));
+    if (segment_collide_v(ray_from, ray_to, 4, p0, nullptr) != 0 && !hit_is_enemy(coll_hit_moby())) {
+        const float d = vec3_distance(ray_from, coll_hit_point());
         const float num = fpu_mul(fpu_sub(pf16, d), u2f(0x40490fdbu));
         const float den = fpu_mul(pf16, 3.0f);
         best_ang = angle_sub(best_ang, fpu_div(num, den));
@@ -456,7 +455,7 @@ int32_t doomlet_2bfec8(uint32_t p0) {
         return s0;
     }
 
-    const uint32_t hit = lwu(OV(0x00173e58u));
+    const uint32_t hit = coll_hit_moby();
     if (hit != 0) {
         const uint32_t ci = lwu(hit + 0x24);
         if (ci != 0 && lh(ci + 0x46) == 5) {
@@ -761,12 +760,11 @@ void doomlet_update(uint32_t m) {
         V(pv + 0x20) = V(m + 0x10);
 
         if (doomlet_2beab0_v(m, 5, nullptr) != 0) {
-            const uint32_t rec = OV(0x00173e40u);
-            const uint32_t hit = lwu(rec + 0x18);
+            const uint32_t hit = coll_hit_moby();
             bool do_pushout = false;
             if (hit == 0) {
                 do_pushout = true;
-            } else if (lw(rec + 0x1c) < 0) {
+            } else if (coll_hit_flags_signed() < 0) {
                 if ((lhu(hit + 0x34) & 0x1000u) != 0 && lwu(hit + 0x24) != 0 && lh(lwu(hit + 0x24) + 0x46) == 5) {
                     sb(m + 0x20, 0xb);
                 } else {
@@ -776,11 +774,11 @@ void doomlet_update(uint32_t m) {
 
             if (do_pushout) {
                 const float old_z = lwc1(m + 0x18);
-                V(m + 0x10) = V(OV(0x00173e70u));
+                V(m + 0x10) = coll_hit_pushed();
                 if (u2f(0x3f19999au) < abs_f(fpu_sub(old_z, old_z))) {
                     swc1(m + 0x18, fpu_add(old_z, u2f(0x3c23d70au)));
                 }
-                V(pv + 0x10) = V(OV(0x00173e70u) + 0x10u);
+                V(pv + 0x10) = coll_hit_normal();
                 const float k05 = u2f(0x3d4ccccdu);
                 (void)vec3_clamp_length_vu(V(pv + 0x10), V(pv + 0x10), fpu_mul(lwc1(0x0015ed60u), k05));
                 (void)vec2_clamp_length(V(pv + 0x10), V(pv + 0x10), fpu_mul(lwc1(0x0015ed60u), k05));
@@ -807,7 +805,7 @@ void doomlet_update(uint32_t m) {
     }
 
     if (floor_probe(0.5f, m + 0x10, 0) != 0.0f) {
-        const uint32_t ground_moby = lwu(OV(0x00173e58u));
+        const uint32_t ground_moby = coll_hit_moby();
         if (ground_moby != 0) {
             (void)sub_00260400(m, ground_moby, m + 0x10, m + 0x40, m + 0x10, m + 0x40);
         }
@@ -1019,7 +1017,7 @@ void doomlet_update(uint32_t m) {
 
         bool can_walk = true;
         if (segment_collide_v(feet, feet_ahead, 6, m, nullptr) != 0) {
-            const uint32_t hit = lwu(OV(0x00173e58u));
+            const uint32_t hit = coll_hit_moby();
             if (hit != lwu(pv + 0x38)) {
                 if (hit == 0 || lwu(hit + 0x24) == 0 || lh(lwu(hit + 0x24) + 0x46) != 5) {
                     clearance = 0.0f;
@@ -1035,7 +1033,7 @@ void doomlet_update(uint32_t m) {
             if (1.0f < abs_f(fpu_sub(lwc1(m + 0x18), saved_z))) {
                 swc1(m + 0x18, saved_z);
                 if (doomlet_2beab0_v(m, 5, nullptr) != 0) {
-                    V(m + 0x10) = V(OV(0x00173e70u));
+                    V(m + 0x10) = coll_hit_pushed();
                     if (1.0f < abs_f(fpu_sub(lwc1(m + 0x18), saved_z))) {
                         swc1(m + 0x18, saved_z);
                     }
@@ -1125,7 +1123,7 @@ void doomlet_update(uint32_t m) {
         explosion_effect(m, 0, m + 0x10, 5, 2, 4, -1, 1, 5, -1, gold, 0.0f, 0.0f, fpu_add(grow_half, grow_half), grow_half, 9.0f, 1.0f, 15.0f);
         const int32_t count = mobys_in_sphere(m + 0x10, grow_half, 0x15, m, 0);
         const Vec4 hit_pos = V(m + 0x10);
-        moby_list_hit_v(m, hit_pos, OV(0x00177f00u), count, 0, 0x10000u, 2, 3, 3.0f, 1.0f, 1.0f);
+        moby_list_hit_v(m, hit_pos, coll_hit_list(), count, 0, 0x10000u, 2, 3, 3.0f, 1.0f, 1.0f);
         if (lbu(DOOM_GOLD_ADDR) != 0) {
             (void)moby_sound_start(4, 0, m);
         } else {
@@ -1155,10 +1153,9 @@ void doomlet_update(uint32_t m) {
         Vec4 push{};
         vec3_add(push, V(m + 0x10), V(vel_addr));
         if (sphere_collide_v(V(m + 0x10), fpu_mul(grow, 0.5f), 1, m) != 0) {
-            const uint32_t rec = OV(0x00173e40u);
-            const uint32_t hit = lwu(rec + 0x18);
+            const uint32_t hit = coll_hit_moby();
             if (hit != 0 && lh(hit + 0xa6) == 0xba) {
-                vec3_sub(push, V(rec + 0x30), V(m + 0x10));
+                vec3_sub(push, coll_hit_pushed(), V(m + 0x10));
                 const float len = vec3_length(push);
                 push.z = 0.0f;
                 vec3_set_length(push, push, fpu_mul(len, u2f(0x3f8ccccdu)));

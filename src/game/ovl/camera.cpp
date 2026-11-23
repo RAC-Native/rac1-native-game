@@ -6,6 +6,7 @@
 // type table 0x1ea880 +0x8c (0x14 each: id, then the accept / init / update / exit functions),
 // the active flag +0x8e. The active camera *(0x166e00), the previous one *(0x166e04); the view
 // the renderer reads: position 0x166dc0, Euler angles 0x166dd0, rows 0x166fd0..0x167000.
+#include <game/collision/collision.h>
 #include <game/ovl/camera_types.h>
 #include <game/ovl/kerwan_camera.h>
 #include <game/ovl/variants_l3.h>
@@ -769,11 +770,11 @@ void camera_ground_check() {
     for (int32_t i = 0; i < 6; ++i) {
         if (segment_collide_v(a, b, 0x12, 0, nullptr) == 0) return;
         if (sub_001f35d8() == 0) {
-            const float h = surface_height(OV(0x00173e60), 0);
+            const float h = surface_height(coll_hit_point_addr(), 0);
             sw(OV(0x00167014), lwc1(OV(0x00166dc8)) < h + u2f(0x3d23d70au) ? 1u : 0u);
             return;
         }
-        a = V(OV(0x00173e60));
+        a = coll_hit_point();
         a.z = a.z - u2f(0x3c23d70au);
     }
 }

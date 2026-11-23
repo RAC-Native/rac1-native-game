@@ -5,6 +5,7 @@
 // normal, +0x30 the hand moby, +0x34 / +0x36 the arc's frames left / flag, +0x40..0x4c the
 // armed spin / target, +0x50 in water, +0x54 the thing it hit, +0x58 the fuse, +0x5c its stamp
 // (-1: the glove's eighth-oldest mine, to go), +0x60..0x70 roll / tilt, +0x74 the frame it landed.
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/enemy_749.h>
@@ -61,7 +62,7 @@ int32_t mine_predict(uint32_t pv, uint32_t mine, int32_t mode) {
     V(sp + 0x30) = V(lwu(P + 0x2080) + 0x10);
     swc1(sp + 0x38, z0);
     if (segment_collide(sp + 0x30, sp, 0x10, lwu(P + 0x2080), 0) != 0) {
-        if (sub_001f35d8() != 0 && lw(OV(0x00173e40) + 0x1c) > 0) V(pv + 0x10) = V(OV(0x00173e60));
+        if (sub_001f35d8() != 0 && coll_hit_flags_signed() > 0) V(pv + 0x10) = coll_hit_point();
     }
     for (;;) {
         if (timer_tick_i32(*static_cast<int32_t*>(ee_ram_ptr(sp + 0x40))) != 0) break;
@@ -75,24 +76,24 @@ int32_t mine_predict(uint32_t pv, uint32_t mine, int32_t mode) {
         }
         if (segment_collide(sp + 0x20, sp, 0x12, mine, 0) == 0) continue;
         if (sub_001f35d8() == 0 && 0.0f < lwc1(sp + 0x18)) continue;
-        if (lw(OV(0x00173e40) + 0x1c) > 0) {
-            V(pv + 0x10) = V(OV(0x00173e60));
+        if (coll_hit_flags_signed() > 0) {
+            V(pv + 0x10) = coll_hit_point();
             break;
         }
     }
     if (lw(sp + 0x40) == 0) return 0;
     if (mode == 0) {
-        const uint32_t hit = lwu(OV(0x00173e58));
+        const uint32_t hit = coll_hit_moby();
         if (hit == 0) return 0;
         if (moby_pvar_word2(hit) == 0) return 0;
     }
     bool call = true;
     if (mode == 2) {
-        const uint32_t hit = lwu(OV(0x00173e58));
+        const uint32_t hit = coll_hit_moby();
         if (hit != 0 && moby_pvar_word2(hit) != 0) call = false;
     }
     if (call) sub_001f93e0(OVF(0x002a9c50), mine);
-    V(pv + 0x20) = V(OV(0x00173e80));
+    V(pv + 0x20) = coll_hit_normal();
     vec3_sub(V(sp + 0x20), V(pv + 0x10), V(OV(0x00166dc0)));
     vec3_scale(V(sp + 0x20), V(sp + 0x20), u2f(0x3f733333u));
     vec3_add(V(pv + 0x10), V(sp + 0x20), V(OV(0x00166dc0)));
@@ -230,7 +231,7 @@ void mine_update(uint32_t m) {
         swc1(pv + 8, lwc1(0x0015ed6c) * u2f(0xbfc00000u));
         swc1(sp + 0x120, lwc1(m + 0x10));
         swc1(sp + 0x124, lwc1(m + 0x14));
-        swc1(sp + 0x128, lwc1(OV(0x00173e68)));
+        swc1(sp + 0x128, coll_hit_point().z);
         const uint32_t r307 = spawn_moby_307(sp + 0x120, 2.0f);
         if (r307 != 0) sb(r307 + 0x23, 0x70);
         f20 = 0.0f;
@@ -255,49 +256,53 @@ L_aacd4:
     if (lh(pv + 0x50) != 0) goto L_aacec;
     if (sub_001f35d8() == 0) goto L_ab7e4;
 L_aacec:
-    hitm = lwu(OV(0x00173e58));
+    hitm = coll_hit_moby();
     if (hitm == 0) goto L_aaed0;
     if (moby_in_range_class_500(hitm) == 0) {
-        if ((lhu(lwu(OV(0x00173e58)) + 0x34) & 0x5000) == 0) goto L_aad88;
+        if ((lhu(coll_hit_moby() + 0x34) & 0x5000) == 0) goto L_aad88;
     }
-    hitm = lwu(OV(0x00173e58));
+    hitm = coll_hit_moby();
     if (lh(hitm + 0xa6) == lh(m + 0xa6)) goto L_aad88;
     if (hitm == lwu(P + 0x2080)) goto L_aad88;
     if (hitm == lwu(pv + 0x30)) goto L_aad88;
     sb(m + 0xbc, 1);
     if (lbu(m + 0x20) == 1) goto L_ab7e4;
-    V(pos) = V(OV(0x00173e60));
+    V(pos) = coll_hit_point();
     swc1(m + 0x18, floor_probe_v(0.5f, V(pos), 0));
     goto L_ab7e4;
 L_aad88:
-    hitm = lwu(OV(0x00173e58));
+    hitm = coll_hit_moby();
     if (hitm == 0) goto L_aaed4;
     if (lh(hitm + 0xa6) != lh(m + 0xa6)) goto L_aaeb8;
     // a mine against a mine: pushed apart
-    vec3_sub(V(OV(0x00173e80)), V(pos), V(hitm + 0x10));
+    {
+        Vec4 n = coll_hit_normal();
+        vec3_sub(n, V(pos), V(hitm + 0x10));
+        coll_hit_set_normal(n);
+    }
     if (lwc1(pv + 8) < lwc1(0x0015ed6c) * u2f(0xc11ccccdu)) {
         sb(m + 0xbc, 1);
-        V(pos) = V(OV(0x00173e60));
-        vec3_reflect(V(sp + 0xc0), V(pv), V(OV(0x00173e80)));
+        V(pos) = coll_hit_point();
+        vec3_reflect(V(sp + 0xc0), V(pv), coll_hit_normal());
         vec3_set_length(V(sp + 0xc0), V(sp + 0xc0), lwc1(0x0015ed6c) + lwc1(0x0015ed6c));
-        vec3_set_length(V(sp + 0xe0), V(OV(0x00173e80)), 1.0f);
+        vec3_set_length(V(sp + 0xe0), coll_hit_normal(), 1.0f);
         goto L_ab7e8;
     }
-    V(pos) = V(OV(0x00173e60));
-    vec3_set_length(V(sp + 0x120), V(OV(0x00173e80)), lwc1(0x0015ed70) * u2f(0x411b3333u));
+    V(pos) = coll_hit_point();
+    vec3_set_length(V(sp + 0x120), coll_hit_normal(), lwc1(0x0015ed70) * u2f(0x411b3333u));
     vec3_add(V(pos), V(pos), V(sp + 0x120));
-    vec3_reflect(V(pv), V(pv), V(OV(0x00173e80)));
+    vec3_reflect(V(pv), V(pv), coll_hit_normal());
     vec3_scale(V(pv), V(pv), u2f(0x3ecccccdu));
-    vec3_set_length(V(sp + 0x120), V(OV(0x00173e80)), 1.0f);
+    vec3_set_length(V(sp + 0x120), coll_hit_normal(), 1.0f);
     (void)vec3_dot(V(sp + 0x120), V(sp + 0xe0));
-    V(sp + 0x130) = V(OV(0x00173e80));
+    V(sp + 0x130) = coll_hit_normal();
     goto L_ab198;
 L_aaeb8:
     if (hitm == lwu(P + 0x2080)) goto L_aaed4;
     if (hitm != lwu(pv + 0x30)) goto L_aaee4;
 L_aaed0:
 L_aaed4:
-    if (lw(OV(0x00173e5c)) <= 0) goto L_ab7e8;
+    if (coll_hit_flags_signed() <= 0) goto L_ab7e8;
 L_aaee4:
     if (lh(pv + 0x50) != 0) goto L_aaf24;
     if (sub_001f35d8() == 0) goto L_aaf20;
@@ -305,19 +310,19 @@ L_aaee4:
 L_aaf20:
 L_aaf24:
     sb(m + 0xbc, 1);
-    V(pos) = V(OV(0x00173e60));
-    vec3_reflect(V(sp + 0xc0), V(pv), V(OV(0x00173e80)));
+    V(pos) = coll_hit_point();
+    vec3_reflect(V(sp + 0xc0), V(pv), coll_hit_normal());
     vec3_set_length(V(sp + 0xc0), V(sp + 0xc0), lwc1(0x0015ed6c) + lwc1(0x0015ed6c));
-    vec3_set_length(V(sp + 0xe0), V(OV(0x00173e80)), 1.0f);
+    vec3_set_length(V(sp + 0xe0), coll_hit_normal(), 1.0f);
     goto L_ab7e8;
 L_aaf88:
-    if (lwu(OV(0x00173e58)) != 0) s6 = moby_pvar_word2(lwu(OV(0x00173e58)));
-    V(pos) = V(OV(0x00173e60));
-    vec3_set_length(V(sp + 0x120), V(OV(0x00173e80)), lwc1(0x0015ed70) * u2f(0x411b3333u));
+    if (coll_hit_moby() != 0) s6 = moby_pvar_word2(coll_hit_moby());
+    V(pos) = coll_hit_point();
+    vec3_set_length(V(sp + 0x120), coll_hit_normal(), lwc1(0x0015ed70) * u2f(0x411b3333u));
     f20 = 0.0f;
     vec3_add(V(pos), V(pos), V(sp + 0x120));
     V(sp + 0x150) = V(pv);
-    vec3_reflect(V(pv), V(pv), V(OV(0x00173e80)));
+    vec3_reflect(V(pv), V(pv), coll_hit_normal());
     vec3_scale(V(pv), V(pv), u2f(0x3f19999au));
     swc1(pv + 8, lwc1(pv + 8) * 0.5f);
     if (lwc1(pv + 0x6c) == f20) {
@@ -327,7 +332,7 @@ L_aaf88:
         swc1(pv + 0x70, t);
         sw(pv + 0x74, lwu(OV(0x0015f5cc)));
     }
-    vec3_set_length(V(sp + 0x120), V(OV(0x00173e80)), 1.0f);
+    vec3_set_length(V(sp + 0x120), coll_hit_normal(), 1.0f);
     if (vec3_dot(V(sp + 0x120), V(sp + 0xe0)) > u2f(0x3f34fdf4u) && lwc1(sp + 0x158) < 0.0f) {
         const float fl = floor_probe_v(0.5f, V(pos), 0);
         if (lwc1(m + 0x18) < fl) swc1(m + 0x18, fl);
@@ -338,11 +343,11 @@ L_aaf88:
             vec_clear(V(pv));
             sb(m + 0x20, lbu(m + 0x20) | 4);
             sw(m + 0x94, lwu(lwu(m + 0x24) + 0x10));
-            const uint32_t hm = lwu(OV(0x00173e58));
+            const uint32_t hm = coll_hit_moby();
             if (hm != 0 && s6 != 0) sw(pv + 0x4c, hm);
         }
     }
-    V(sp + 0x130) = V(OV(0x00173e80));
+    V(sp + 0x130) = coll_hit_normal();
 L_ab198:
     // tilt toward the surface: the normal (sp130) in the mine's frame (yaw m+0x48)
     do {
@@ -374,8 +379,8 @@ L_ab268:
             if (st == 0xfe || st == 0xfd) {
                 sb(m + 0xbc, 1);
                 sw(pv + 0x4c, 0);
-            } else if (lwu(OV(0x00173e58)) != 0) {
-                s6 = moby_pvar_word2(lwu(OV(0x00173e58)));
+            } else if (coll_hit_moby() != 0) {
+                s6 = moby_pvar_word2(coll_hit_moby());
                 if (s6 == 0) goto L_ab2f0;
                 (void)sub_00260400(m, lwu(pv + 0x4c), pos, m + 0x40, pos, m + 0x40);
             }
@@ -397,9 +402,9 @@ L_ab268:
         if (lwc1(m + 0x18) - f3 < lwc1(0x0015ed70) * u2f(0x42200000u)) {
             swc1(m + 0x18, f3);
             sh(pv + 0x34, 0);
-            if (lwu(OV(0x00173e58)) == 0) goto L_ab42c;
-            if (moby_pvar_word2(lwu(OV(0x00173e58))) == 0) goto L_ab42c;
-            sw(pv + 0x4c, lwu(OV(0x00173e58)));
+            if (coll_hit_moby() == 0) goto L_ab42c;
+            if (moby_pvar_word2(coll_hit_moby()) == 0) goto L_ab42c;
+            sw(pv + 0x4c, coll_hit_moby());
             goto L_ab428;
         }
         sb(m + 0x20, 1);
@@ -479,7 +484,7 @@ L_ab42c:
         V(sp + 0x170) = V(pos);
         swc1(sp + 0x178, lwc1(sp + 0x178) + u2f(0x3eb33333u));
         if (mobys_in_sphere(sp + 0x170, u2f(0x3eb33333u), 0x10, m, sp + 0x140) != 0) {
-            const uint32_t hm = lwu(OV(0x00173e58));
+            const uint32_t hm = coll_hit_moby();
             if (hm != 0) {
                 const int32_t c = lh(hm + 0xa6);
                 if (c != 0x363 && c != 0x4a && c != 0x458 && c != 0x365 && c != 0x367) sb(m + 0xbc, 1);
@@ -488,7 +493,7 @@ L_ab42c:
         V(sp + 0x170) = V(pos);
         swc1(sp + 0x178, lwc1(sp + 0x178) + u2f(0x3e800000u));
         if (sphere_collide(sp + 0x170, u2f(0x3e800000u), 0, m) != 0) {
-            vec3_sub(V(sp + 0x180), V(OV(0x00173e70)), V(sp + 0x170));
+            vec3_sub(V(sp + 0x180), coll_hit_pushed(), V(sp + 0x170));
             vec3_add(V(pos), V(pos), V(sp + 0x180));
         }
         if (timer_tick_i32(*static_cast<int32_t*>(ee_ram_ptr(pv + 0x58))) != 0) sb(m + 0xbc, 1);
@@ -655,7 +660,7 @@ L_abbf8:
         const float radius = (int_to_float(lbu(0x0013e531)) * 0.5f + 1.0f);
         const int32_t n = mobys_in_sphere(pos, radius + radius, 0x10, m, 0);
         V(sp + 0x120) = V(m + 0x10);
-        moby_list_hit_v(m, V(sp + 0x120), OV(0x00177f00), n, 0, 0x810000u, 4, 1, 3.0f, 0.25f, 1.5f);
+        moby_list_hit_v(m, V(sp + 0x120), coll_hit_list(), n, 0, 0x810000u, 4, 1, 3.0f, 0.25f, 1.5f);
     }
     {
         const float fl = floor_probe_20_v(V(pos));

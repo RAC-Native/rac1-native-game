@@ -8,6 +8,7 @@
 // (5 + upgrade bounces) and leaves a trail of 16 glows (type 0x48) behind its head glow, sparks
 // (type 0x1b) where it hits; 0x2cbcc0 ends it. The hand's pvars: +0 the fire timer, +4 the
 // lock-on timer, +0x10 the light slot, +0x14 the light's frames.
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_reloc.h>
@@ -21,7 +22,6 @@ namespace rac1 {
 namespace {
 constexpr uint32_t P = 0x0013f350;
 constexpr uint32_t PAD = 0x0013c940;
-constexpr OvConst<0x00173e40u> HIT{};  // the collision's result: +0x18 the moby, +0x20 the point, +0x40 the normal
 int16_t& h16(uint32_t a) { return *static_cast<int16_t*>(ee_ram_ptr(a)); }
 int32_t& w32ref(uint32_t a) { return *static_cast<int32_t*>(ee_ram_ptr(a)); }
 // orig: (helper) repeated in 0x002b49a8 / 0x002b46a8 / 0x002caf70 — a moby's aim point: its
@@ -43,7 +43,7 @@ void hit_sparks(uint32_t pos, uint32_t dir, uint32_t f) {
         swc1(a + 4, rand_range_f(-1.0f, 1.0f));
         swc1(a + 8, rand_range_f(-1.0f, 1.0f));
         V(b) = V(a);
-        vec3_reflect(V(a), V(dir), V(OV(0x00173e80)));
+        vec3_reflect(V(a), V(dir), coll_hit_normal());
         vec3_set_length(V(b), V(b), vec3_length(V(a)) * 0.5f);
         vec3_add(V(a), V(a), V(b));
         const float fs = lwc1(0x0015ed6c);
@@ -352,7 +352,7 @@ void blaster_bolt_update(uint32_t o) {
             const int32_t left = lh(pv + 0x24);
             if (frame_scale_i(3) < left) sh(pv + 0x24, static_cast<uint32_t>(frame_scale_i(3)));
         } else {
-            V(pos) = V(HIT + 0x20);
+            V(pos) = coll_hit_point();
             hit_sparks(pos, step, tmp - 0x10);  // (the original's +0x60 / +0x50)
             if (lbu(0x0013e52f) == 0) {
                 finish(0);
@@ -365,13 +365,13 @@ void blaster_bolt_update(uint32_t o) {
                 finish(1);
                 return;
             }
-            vec3_reflect(V(pt), V(step), V(OV(0x00173e80)));
+            vec3_reflect(V(pt), V(step), coll_hit_normal());
             swc1(o + 0x48, atan2_f(lwc1(pt), lwc1(pt + 4)));
             swc1(o + 0x44, -atan2_f(vec2_length(V(pt)), lwc1(pt + 8)));
             sw(pv + 0x10, 0);
             sw(pv + 0x14, 0);
-            vec3_set_length(V(tmp), V(OV(0x00173e80)), u2f(0x3d4ccccdu));
-            vec3_add(V(pos), V(OV(0x00173e60)), V(tmp));
+            vec3_set_length(V(tmp), coll_hit_normal(), u2f(0x3d4ccccdu));
+            vec3_add(V(pos), coll_hit_point(), V(tmp));
             const uint32_t h = lwu(0x001403e0);
             if (h != 0 && lh(h + 0xa6) == 0xa8 && lbu(h + 0x20) != 0xfe && lbu(h + 0x20) != 0xfd) moby_sound_start(4, 0, h);
         }
@@ -451,7 +451,7 @@ uint32_t blaster_bolt_spawn(uint32_t from, uint32_t pos, uint32_t target, float 
     swc1(start + 8, lwc1(muzzle + 8));
     if (segment_collide(start, muzzle, 0, from, 0) != 0) {
         vec_from_spherical_v(V(step), lwc1(0x0015ed6c) * 40.0f, lwc1(o + 0x48), -lwc1(o + 0x44));
-        V(o + 0x10) = V(HIT + 0x20);
+        V(o + 0x10) = coll_hit_point();
         hit_sparks(o + 0x10, step, f + 0x40);
         if (lbu(0x0013e52f) == 0) {
             blaster_bolt_end(o, 0);
@@ -466,7 +466,7 @@ uint32_t blaster_bolt_spawn(uint32_t from, uint32_t pos, uint32_t target, float 
             ee_stack_free(0x60);
             return 0;
         }
-        vec3_reflect(V(step), V(step), V(OV(0x00173e80)));
+        vec3_reflect(V(step), V(step), coll_hit_normal());
         swc1(o + 0x48, atan2_f(lwc1(step), lwc1(step + 4)));
         swc1(o + 0x44, -atan2_f(vec2_length(V(step)), lwc1(step + 8)));
         ee_stack_free(0x60);
@@ -583,7 +583,7 @@ void blaster_update(uint32_t m) {
             vec3_add(V(hit + 0x10), V(hit), V(muzzle));
             V(hit) = V(hit + 0x10);
             if (segment_collide(OV(0x00166dc0), hit, 0, m, 0) != 0) {
-                const uint32_t o = lwu(HIT + 0x18);
+                const uint32_t o = coll_hit_moby();
                 if (o != 0 && (lhu(o + 0x34) & 0x1000u) != 0) target = o;
             }
         }

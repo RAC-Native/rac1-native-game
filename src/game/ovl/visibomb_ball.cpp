@@ -2,6 +2,7 @@
 // its exhaust nozzle / tail-fin animation, detonation particles, and camera/fog teardown.
 #include <game/ovl/visibomb_ball.h>
 
+#include <game/collision/collision.h>
 #include <game/enhance/fixes102.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
@@ -172,7 +173,7 @@ void visibomb_ball_update(uint32_t m) {
         const float floor_z = floor_probe(0.5f, m + 0x10, 0u);
         const float min_z = fpu_add(floor_z, lwc1(pv + 0x44));
         if (lwc1(m + 0x18) < min_z) {
-            const uint32_t hit_m = lwu(OV(0x00173e58u));
+            const uint32_t hit_m = coll_hit_moby();
             bool push_up = false;
             if (hit_m == 0) {
                 push_up = true;
@@ -252,17 +253,16 @@ void visibomb_ball_update(uint32_t m) {
 
     bool hit_hero = false;
     if (segment_collide_v(old_pos, V(m + 0x10), 0u, ignore, rec) != 0) {
-        const uint32_t outb = OV(0x00173e40u);
-        const uint32_t hit_moby = lwu(outb + 0x18);
+        const uint32_t hit_moby = coll_hit_moby();
         bool valid_hit = false;
         if (hit_moby != 0) {
             sb(m + 0xbc, 2u);
             hit_hero = (hit_moby == lwu(P + 0x2080));
-            V(m + 0x10) = V(outb + 0x20);
+            V(m + 0x10) = coll_hit_point();
             valid_hit = true;
-        } else if (lw(outb + 0x1c) > 0) {
+        } else if (coll_hit_flags_signed() > 0) {
             sb(m + 0xbc, 1u);
-            V(m + 0x10) = V(outb + 0x20);
+            V(m + 0x10) = coll_hit_point();
             valid_hit = true;
         }
         if (valid_hit) {
@@ -285,7 +285,7 @@ void visibomb_ball_update(uint32_t m) {
             explosion_effect(m, 0u, 0u, 0xa, 3, 0x10, 1, 1, 1, -1, 0u, 0.0f, 0.0f, 4.0f, 2.0f, 0.0f, 1.0f, 20.0f);
             const int32_t hit_cnt = mobys_in_sphere_v(V(m + 0x10), 4.0f, 0x10u, m, nullptr);
             const Vec4 hit_pos = V(m + 0x10);
-            moby_list_hit_v(m, hit_pos, OV(0x00177f00u), hit_cnt, 0u, 0x00830000u, 3u, 2u, 6.0f, 1.0f, 1.0f);
+            moby_list_hit_v(m, hit_pos, coll_hit_list(), hit_cnt, 0u, 0x00830000u, 3u, 2u, 6.0f, 1.0f, 1.0f);
         }
 
         sh(m + 0x34, lhu(m + 0x34) | 1u);

@@ -2,6 +2,7 @@
 // its HUD / fog / orbit-camera helpers, and rocket spawn (class 0xac).
 #include <game/ovl/visibomb.h>
 
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/enhance/fixes102.h>
 #include <game/math/vecmath.h>
@@ -88,7 +89,7 @@ int32_t visibomb_spawn_v(uint32_t hand, const Vec4& pos, float yaw, float pitch)
     seg_start.z = pos.z;
     if (segment_collide_v(seg_start, pos, 0u, lwu(P + 0x2080), nullptr) != 0) {
         sb(ball + 0xbc, 1u);
-        V(ball + 0x10) = V(OV(0x00173e60u));
+        V(ball + 0x10) = coll_hit_point();
     }
 
     sw(OV(0x0015f608u), 1u);

@@ -5,6 +5,7 @@
 // its callees. The function's loops (the loading screen's frames, the load's wait) run one pass a
 // host frame: level_exit_start / level_exit_frame / level_exit_finish.
 
+#include <game/collision/collision.h>
 #include <game/ovl/memory_card.h>
 #include <host/level_slots.h>
 #include <game/ovl/ovl_reloc.h>
@@ -658,7 +659,7 @@ void exit_to_loading_screen() {
 LevelExit level_exit_start() {
     int32_t lang = lw(0x0015ed88) - 1;
     if (!(-1 < lang)) lang = 0;
-    sw(OV(0x00173e50), lwu(OV(0x00173e50)) | 0x80000000u);
+    coll_set_query_counter(coll_query_counter() | 0x80000000u);
     sw(OV(0x0015f5c4), 6);
     sh(0x0013e056, 0);
     if (lbu(0x0013dd48) != 0 || !(lw(OV(0x0015f5c0)) < 8)) sh(0x0013e056, 1);
