@@ -1,7 +1,7 @@
 // Class 44 of Quartu and Drek's fleet: a guard that walks its path, raises the alarms of class 408 when it sees the hero,
 // shoots class 934's shots and calls its group (shared_class44.cpp: one port of both levels' copies, the same code relinked;
-// its glows' draw is shared_three_glows.cpp, the alarms shared_class408.cpp, the shots shared_class78.cpp). Phase 1 of stage
-// 4: the levels' generated copies still run; these are proved against them by oracle batch 516.
+// its glows' draw is shared_three_glows.cpp, the alarms shared_class408.cpp, the shots shared_class78.cpp). Every level with
+// a copy runs these ports; they are proved against each level's own copy by oracle batch 516.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS44_H
 #define RAC1_GAME_OVL_SHARED_CLASS44_H
 

@@ -32,7 +32,7 @@ void flight_sky_pass() { flight_sky(); }
 // orig: 0x0028b440
 void flight_sky() {
     const uint32_t sp = ee_stack_alloc(0x10);  // (the original's frame: the angles at sp+0)
-    ovl_28b680_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    ovl_28b680_tr();
     int32_t i = 0;  // s1
     sh(lwu(OV(0x0016051c)) + 4, 0);
     mat4_identity(M(OV(0x001bd7e0)));
@@ -82,11 +82,11 @@ void flight_sky() {
             vec4_scale(V(m + 0x10), V(m + 0x10), scale);
             vec4_scale(V(m + 0x20), V(m + 0x20), scale);
             lq_sq(m + 0x30, OV(0x00160520));  // the camera's position
-            ovl_28b848_tr(static_cast<uint32_t>(i), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            ovl_28b848_tr(static_cast<uint32_t>(i));
             ++i;
         } while (i < lh(lwu(OV(0x0016051c)) + 6));
     }
-    ovl_28b710_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    ovl_28b710_tr();
     sub_002a0ba8(0x47, 0x5360b);
     sub_002a0ba8(0x4e, zbuf_word());
     ee_stack_free(0x10);

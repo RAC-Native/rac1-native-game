@@ -2,7 +2,7 @@
 // ORACLE_LEVEL=10 build/tests/ovl_oracle --batch 122 (needs the ISO). The subjects are the level's own
 // mobys of each class (placed by its gameplay data) after the first gameplay frame, perturbed; the
 // original is level 10's own function at its own address, the port the one registered for it (the level's classes
-// written by hand, orxon_classes.h, the transliterations orxon_classes_tr_N.cpp, and the shared ports of the classes, hooks
+// written by hand, orxon_classes.h, the hand ports that replaced orxon_classes_tr_N.cpp, and the shared ports of the classes, hooks
 // and camera functions other levels carry too: shared_*.cpp, novalis_*.cpp, kerwan_*.cpp, aridia_ocean.cpp). The
 // "p10_" checks (task P10.1) drive the hand-written classes through Clank's part and the states the generic ones miss.
 
@@ -214,7 +214,7 @@ void batch_122() {
         }
     }
 
-    // ---- the level's own classes (transliterated by tools/codegen/mkall_l10.py): the level's own mobys of each class, the first
+    // ---- the level's own classes (once transliterated by tools/codegen/mkall_l10.py; hand ports now): the level's own mobys of each class, the first
     // update (state 0) done by the port, then a state, a hit, the hero near, the pvars' floats / counters moved as typed
     g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, 0x0023fea8};  // (+ the level change request: the original would run the CD / movie path)
     struct TrCls { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t skip_states = 0; bool walk = false; uint32_t skip_p0 = 0; uint32_t skip_p1 = 0; };  // (skip_p0 / skip_p1: states skipped in pass 0 / 1 only, see docs/reversing/orxon_classes.md)  // (the states that start a scene / a level change: the original runs the kernel / movie path for real)

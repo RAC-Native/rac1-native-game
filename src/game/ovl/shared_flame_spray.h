@@ -1,5 +1,5 @@
 // The flame spray of Aridia's and Kalebo III's flamethrowers (shared_flame_spray.cpp: one port for both levels' copies).
-// Phase 1 of stage 4: the levels' generated copies still run; these are proved against them by oracle batch 510.
+// Every level with a copy runs these ports; they are proved against each level's own copy by oracle batch 510.
 #ifndef RAC1_GAME_OVL_SHARED_FLAME_SPRAY_H
 #define RAC1_GAME_OVL_SHARED_FLAME_SPRAY_H
 

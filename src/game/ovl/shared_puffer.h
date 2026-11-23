@@ -1,5 +1,5 @@
 // The puffer of Batalia and Orxon (class 648): a vent that puffs clouds (shared_puffer.cpp: one port for both levels'
-// copies). Phase 1 of stage 4: the levels' generated copies still run; this is proved against them by oracle batch 510.
+// copies). Every level with a copy runs this port; it is proved against each level's own copy by oracle batch 510.
 #ifndef RAC1_GAME_OVL_SHARED_PUFFER_H
 #define RAC1_GAME_OVL_SHARED_PUFFER_H
 

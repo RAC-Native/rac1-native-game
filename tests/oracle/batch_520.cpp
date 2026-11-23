@@ -1,38 +1,27 @@
 // Oracle batch 520 (stage 4 task F14, #149): class code and helpers of levels 1, 2, 3, 4, 6, 7, 8, 14, 15 and 17 that two or
 // more copies carry, each family ported once as shared hand-written code (src/game/ovl/shared_*.cpp) on top of the families
-// earlier tasks ported, against every copy at its own level's address. The level copies stay transliterated in their units
-// until each level is re-glued; here every copy is the original and the one shared port the port:
-//  - shared_class437.cpp: class 437, an older build of the Sandmouse (Novalis, Aridia, Eudora), its update and its six
-//    helpers (its step, target search, shot, goal by the hero, fall home, and the moby's collision point);
-//  - shared_gadget_pickups.cpp: the gadgets picked up before a panel (Aridia's class 1005, the Trespasser, Blarg's class
-//    1016; Quartu's and Drek's fleet's class 1428);
-//  - shared_class1629.cpp: class 1629, a shower of class 1400's drops (Batalia, Oltanis);
-//  - shared_scroll.cpp: Batalia's two draws of three layers of scrolling meshes (classes 600 and 1649) and their third
-//    layer's set (the twelfth mesh set);
-//  - shared_sea_draw.cpp: the sea's draw callback (Kerwan, Umbris's two, Batalia, Oltanis).
-// The shared ports and their copies (each level's address):
-//   class437_update        L1:0x002e3f20 L2:0x002ccc08 L4:0x002c7e28
-//   class437_move          L1:0x002e3830 L2:0x002cc518 L4:0x002c7738
-//   class437_find_target   L1:0x002e32a8 L2:0x002cbf90 L4:0x002c71b0
-//   moby_collision_point   L1:0x00263a28 L2:0x002512b8 L4:0x00241980
-//   class437_shoot         L1:0x002e35a8 L2:0x002cc290 L4:0x002c74b0
-//   class437_goal_by_hero  L1:0x002e3110 L2:0x002cbdf8 L4:0x002c7018
-//   class437_sink          L1:0x002e3208 L2:0x002cbef0 L4:0x002c7110
-//   gadget_pickup_update   L2:0x002ea210 L6:0x002f4638
-//   class1428_update       L15:0x002ebd78 L17:0x002f1790
-//   class1629_update       L8:0x003085f0 L14:0x003088b0
-//   class600_draw          L8:0x002f0dc8
-//   class1649_draw         L8:0x00309030
-//   uv_scroll_meshes       (set 11) L8:0x00308f68
-//   sea_draw               L3:0x002dc990 L7:0x002f8038 L8:0x002da0d0 L14:0x00303350
-//   sea_draw_2             L7:0x0030d420
-// Not checked: Veldin's finale's class 1750 update (L18:0x002fad08), the same shape as the sea's draw callback but another
-// function (it writes the card's save image), not ported.
-// Subjects: the level's own mobys of the class after the first gameplay frame (the screen, the projection and the view set
-// up, as batch 519), perturbed through every state; mobys of the class spawned where the level places none. B520_INFO=1
-// prints the subjects found and, per draw check, how many cases wrote packets beyond a state header.
-// Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 520, N = 1, 2, 3, 4, 6, 7, 8, 14, 15 and 17; a check prints "skipped"
-// on a level without its copy. No RAM dumps; the frame scale (0x15ed68) at its 50 Hz value in a quarter of the cases.
+// earlier tasks ported, against every copy at its own level's address. Every level runs the shared port since its re-glue
+// (stage 4); here every copy is the original and the one shared port the port: - shared_class437.cpp: class 437, an older
+// build of the Sandmouse (Novalis, Aridia, Eudora), its update and its six helpers (its step, target search, shot, goal by
+// the hero, fall home, and the moby's collision point); - shared_gadget_pickups.cpp: the gadgets picked up before a panel
+// (Aridia's class 1005, the Trespasser, Blarg's class 1016; Quartu's and Drek's fleet's class 1428); - shared_class1629.cpp:
+// class 1629, a shower of class 1400's drops (Batalia, Oltanis); - shared_scroll.cpp: Batalia's two draws of three layers of
+// scrolling meshes (classes 600 and 1649) and their third layer's set (the twelfth mesh set); - shared_sea_draw.cpp: the
+// sea's draw callback (Kerwan, Umbris's two, Batalia, Oltanis). The shared ports and their copies (each level's address):
+// class437_update        L1:0x002e3f20 L2:0x002ccc08 L4:0x002c7e28 class437_move          L1:0x002e3830 L2:0x002cc518
+// L4:0x002c7738 class437_find_target   L1:0x002e32a8 L2:0x002cbf90 L4:0x002c71b0 moby_collision_point   L1:0x00263a28
+// L2:0x002512b8 L4:0x00241980 class437_shoot         L1:0x002e35a8 L2:0x002cc290 L4:0x002c74b0 class437_goal_by_hero
+// L1:0x002e3110 L2:0x002cbdf8 L4:0x002c7018 class437_sink          L1:0x002e3208 L2:0x002cbef0 L4:0x002c7110
+// gadget_pickup_update   L2:0x002ea210 L6:0x002f4638 class1428_update       L15:0x002ebd78 L17:0x002f1790 class1629_update
+// L8:0x003085f0 L14:0x003088b0 class600_draw          L8:0x002f0dc8 class1649_draw         L8:0x00309030 uv_scroll_meshes
+// (set 11) L8:0x00308f68 sea_draw               L3:0x002dc990 L7:0x002f8038 L8:0x002da0d0 L14:0x00303350 sea_draw_2
+// L7:0x0030d420 Not checked: Veldin's finale's class 1750 update (L18:0x002fad08), the same shape as the sea's draw callback
+// but another function (it writes the card's save image), not ported. Subjects: the level's own mobys of the class after the
+// first gameplay frame (the screen, the projection and the view set up, as batch 519), perturbed through every state; mobys
+// of the class spawned where the level places none. B520_INFO=1 prints the subjects found and, per draw check, how many
+// cases wrote packets beyond a state header. Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 520, N = 1, 2, 3, 4, 6, 7,
+// 8, 14, 15 and 17; a check prints "skipped" on a level without its copy. No RAM dumps; the frame scale (0x15ed68) at its 50
+// Hz value in a quarter of the cases.
 
 #include "ovl_oracle.h"
 

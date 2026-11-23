@@ -4,8 +4,8 @@
 // functions: +0 the Suck Cannon takes the moby, +4, +8, +0xc, +0x10 its carry record) holds the level's own functions:
 // most levels have a class of their own with its own hooks (Eudora's Circular Saw Enemy, Rilgar's 0x23c / 0x362, Blarg's
 // 0x33b...), and the overlay matcher pairs several of them with a Veldin hook whose state numbers differ (it masks small
-// immediates). The ports below are at each level's own address (carry_hooks_levels_asm.cpp, plus the ones the levels'
-// class tasks transliterated earlier); class_hook_call_level finds them by address while that level's overlay is played.
+// immediates). The ports below are at each level's own address (carry_hooks_levels.cpp, plus the ones the levels'
+// class tasks ported earlier); class_hook_call_level finds them by address while that level's overlay is played.
 #include <cstdint>
 
 namespace rac1 {

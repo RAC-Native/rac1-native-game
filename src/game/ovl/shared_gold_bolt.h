@@ -1,8 +1,8 @@
 // Class 1134, the gold bolt: it spins and bobs over its place with a ring of glitter and sparkles; the hero taking it starts
 // its scene (the camera about the hero, the glitter at its hand) and then the level change to the gold bolt's tally. One port
 // of the copies every level from Novalis to Veldin's finale carries (shared_gold_bolt.cpp), and the glitter's pvars set up
-// (the gold bolt's, and another build of it at the pvars' start other classes use). Phase 1 of stage 4: the levels'
-// generated copies still run; these are proved against them by oracle batch 514.
+// (the gold bolt's, and another build of it at the pvars' start other classes use). Every level with a copy runs these ports;
+// they are proved against each level's own copy by oracle batch 514.
 #ifndef RAC1_GAME_OVL_SHARED_GOLD_BOLT_H
 #define RAC1_GAME_OVL_SHARED_GOLD_BOLT_H
 

@@ -1,5 +1,5 @@
 // Hoven (level 12) own sound emitters, camera type 0x12's accept and camera mode hook: the dispatch from the Veldin ports' indirect
-// calls (`jalr`) to the transliterations in hoven_classes_tr_N.cpp, while the translation target is level 12's overlay. Each returns
+// calls (`jalr`) to the level's hand-written ports, while the translation target is level 12's overlay. Each returns
 // false when the address is not one of level 12's own functions (the caller goes on to its Veldin cases).
 #ifndef RAC1_GAME_OVL_HOVEN_HOOKS_H
 #define RAC1_GAME_OVL_HOVEN_HOOKS_H

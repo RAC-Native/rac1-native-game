@@ -44,7 +44,7 @@ uint32_t class_hook_10_l2(uint32_t m) {
     return static_cast<uint32_t>(TODO_PORT(fn, "class hook +0x10")(m));
 }
 
-// The Sand Shark's hooks as the `jalr` of the transliterated code reaches them (the moby dispatcher: a0 = moby, the
+// The Sand Shark's hooks as the original's `jalr` reaches them (the moby dispatcher: a0 = moby, the
 // result unused there): one adapter each (the hooks +0 .. +0xc are hand-written: carry_hooks_levels.cpp, and +0xc is
 // Veldin's e749_hookc, the same code; the other argument registers zero, as the transliterated hooks had them).
 // orig: (none) -- adapter of L2:0x002d61c0

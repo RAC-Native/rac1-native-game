@@ -1,6 +1,6 @@
 // Class 28's two draw callbacks on Oltanis and Quartu (its update queues them): its five glows and the glow at its place,
-// each a quad facing the camera; one port of the two levels' copies (shared_class28_draw.cpp). Phase 1 of stage 4: the
-// levels' generated copies still run; these are proved against them by oracle batch 507.
+// each a quad facing the camera; one port of the two levels' copies (shared_class28_draw.cpp). Every level with a copy
+// runs these ports; they are proved against each level's own copy by oracle batch 507.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS28_DRAW_H
 #define RAC1_GAME_OVL_SHARED_CLASS28_DRAW_H
 

@@ -1,5 +1,5 @@
-// Small helpers several levels carry a copy of (shared_small.cpp: one port for every level's copy). Phase 1 of stage 4: the
-// levels' generated copies still run; these are proved against them by oracle batch 510.
+// Small helpers several levels carry a copy of (shared_small.cpp: one port for every level's copy). Every level with a copy
+// runs these ports; they are proved against each level's own copy by oracle batch 510.
 #ifndef RAC1_GAME_OVL_SHARED_SMALL_H
 #define RAC1_GAME_OVL_SHARED_SMALL_H
 

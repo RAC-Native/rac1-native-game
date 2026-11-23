@@ -1,7 +1,7 @@
-// Pokitaru (level 11) own moby classes: the registration table. The ports are the transliterations in
-// pokitaru_classes_tr_N.cpp (declarations: pokitaru_mobys.h) and, for the classes several levels carry a copy of, the shared
-// hand-written ports (shared_*.cpp, novalis_*.cpp). Keyed by level 11's own address and by level, so the indirect call (`jalr`) through
-// moby +0x74) reaches them only while the played level's overlay is level 11's.
+// Pokitaru (level 11) own moby classes: the registration table. The ports are the level's own, written by hand (declarations:
+// pokitaru_mobys.h) and, for the classes several levels carry a copy of, the shared hand-written ports (shared_*.cpp, novalis_*.cpp).
+// Keyed by level 11's own address and by level, so the indirect call (`jalr`) through moby +0x74) reaches them only while the played
+// level's overlay is level 11's.
 #include <game/ovl/pokitaru_hooks.h>
 #include <game/ovl/pokitaru_mobys.h>
 #include <game/ovl/novalis_hooks.h>
@@ -46,7 +46,7 @@ void pok_hook_2fb840_m(uint32_t m) { amoeboid_hook8_l1(m, 0, 0, 0.0f); }
 void pok_hook_2fb890_m(uint32_t m) { amoeboid_hookc_l1(m, 0, 0, 0.0f); }
 
 // orig: (none) -- adapter of L11:0x00316160 (a class hook +0 / +8 / +0xc: the indirect-call form, the moby only)
-void pok_hook_316160_m(uint32_t m) { pok_hook_316160_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+void pok_hook_316160_m(uint32_t m) { pok_hook_316160_u(m, 0, 0, 0.0f); }
 
 // orig: (none) -- adapter of L11:0x00316270 (a class hook +0 / +8 / +0xc: the indirect-call form, the moby only; its port:
 // carry_keep_state_hook on the carry hook +8, shared_little.cpp; the other argument registers zero, as the transliterated hook had them)

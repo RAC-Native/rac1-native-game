@@ -1,33 +1,27 @@
 // Oracle batch 506 (stage 4 task F3, #149): the class code several levels carry a copy of, each family ported once as shared
-// hand-written code (src/game/ovl/shared_*.cpp), against every level's own copy at that level's own address. The level
-// copies stay transliterated in their units until each level is re-glued; here every copy is the original and the one
-// shared port the port:
-//  - shared_spawner.cpp: classes 455 (the Spawner) and 545 (its pods) with their helpers (levels 3, 8, 14);
-//  - shared_sandmouse.cpp: class 1633, the Sandmouse's shot, and the Sandmouse's glow (levels 1, 2, 3, 4, 5, 6, 8, 11, 12, 14);
-//  - shared_class567.cpp: class 567, a falling fire bomb (levels 1, 8, 9, 15, 17);
-//  - shared_class679.cpp: class 679, a current along paths that carries the hero (levels 1, 5, 8, 15);
-//  - shared_rock.cpp: the rocks (classes 696..698, 1806 on level 10, 200 on level 15) and their spawn (levels 1, 2, 7, 10, 15, 18);
-//  - shared_height_map.cpp: the height map's lookup and the ground's dust puffs (Veldin's 0x263468 / 0x2634f8 / 0x268f10;
-//    levels 0, 8, 12, 14);
-//  - shared_class258.cpp: class 258, the zones that show / wake / make solid mobys (levels 5, 7, 9, 10, 12, 13, 14, 15, 17);
-//  - shared_class341.cpp: class 341, a pad the hero steps on, and its glow (levels 5, 7, 11, 12, 18);
-//  - shared_class1135.cpp: class 1135's draw, the teleporter's ring (levels 1, 7, 8, 12, 13, 16, 17, 18);
-//  - shared_class252.cpp: class 252's two draws, a beam and a glow (levels 8, 14);
-//  - shared_boss_bar.cpp: the bosses' health bar on the HUD (levels 6, 7, 13, 18);
-//  - shared_cam19.cpp: camera type 19, a scripted fly-through (levels 10, 13, 14, 15), on a camera of the test area whose
-//    record (the level's first) names data of the test area: the level's own paths, zones and mobys, started from a camera
-//    record of the test area with the view's rows and place (the matrix source 0x166e04, 0 after the first frame alone);
-//  - shared_helpers.cpp: small helpers (each on its own levels: their checks name them), on random records in the test
-//    area or the level's own data.
-// Subjects: the level's own mobys of the class after the first gameplay frame (the port's; the screen, the projection and the
-// view set up), perturbed; the pods (never
-// placed) thrown by the shared port's own spawn from a Spawner of the level before the check; the shots (never placed)
-// spawned (moby_spawn) at the hero or at a Sandmouse with their pvars dealt; the bombs (class 567) likewise, over the
-// hero or a moby of the level; the rocks thrown by the shared spawn (checked first) about the camera; the draw callbacks'
-// subjects at the hero (whom the view looks at), their packets into a buffer of the test area. No RAM dumps.
-// Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 506, N = each level a family names (0 .. 18); a family the level
-// does not carry says so and is not run. B506_INFO=1 prints, per check, how many cases wrote packets beyond a state header
-// and, for the cameras, how many turned, moved or changed the view's angle.
+// hand-written code (src/game/ovl/shared_*.cpp), against every level's own copy at that level's own address. Every level runs the
+// shared port since its re-glue (stage 4); here every copy is the original and the one shared port the port: - shared_spawner.cpp:
+// classes 455 (the Spawner) and 545 (its pods) with their helpers (levels 3, 8, 14); - shared_sandmouse.cpp: class 1633, the
+// Sandmouse's shot, and the Sandmouse's glow (levels 1, 2, 3, 4, 5, 6, 8, 11, 12, 14); - shared_class567.cpp: class 567, a falling
+// fire bomb (levels 1, 8, 9, 15, 17); - shared_class679.cpp: class 679, a current along paths that carries the hero (levels 1, 5,
+// 8, 15); - shared_rock.cpp: the rocks (classes 696..698, 1806 on level 10, 200 on level 15) and their spawn (levels 1, 2, 7, 10,
+// 15, 18); - shared_height_map.cpp: the height map's lookup and the ground's dust puffs (Veldin's 0x263468 / 0x2634f8 / 0x268f10;
+// levels 0, 8, 12, 14); - shared_class258.cpp: class 258, the zones that show / wake / make solid mobys (levels 5, 7, 9, 10, 12,
+// 13, 14, 15, 17); - shared_class341.cpp: class 341, a pad the hero steps on, and its glow (levels 5, 7, 11, 12, 18); -
+// shared_class1135.cpp: class 1135's draw, the teleporter's ring (levels 1, 7, 8, 12, 13, 16, 17, 18); - shared_class252.cpp: class
+// 252's two draws, a beam and a glow (levels 8, 14); - shared_boss_bar.cpp: the bosses' health bar on the HUD (levels 6, 7, 13,
+// 18); - shared_cam19.cpp: camera type 19, a scripted fly-through (levels 10, 13, 14, 15), on a camera of the test area whose
+// record (the level's first) names data of the test area: the level's own paths, zones and mobys, started from a camera record of
+// the test area with the view's rows and place (the matrix source 0x166e04, 0 after the first frame alone); - shared_helpers.cpp:
+// small helpers (each on its own levels: their checks name them), on random records in the test area or the level's own data.
+// Subjects: the level's own mobys of the class after the first gameplay frame (the port's; the screen, the projection and the view
+// set up), perturbed; the pods (never placed) thrown by the shared port's own spawn from a Spawner of the level before the check;
+// the shots (never placed) spawned (moby_spawn) at the hero or at a Sandmouse with their pvars dealt; the bombs (class 567)
+// likewise, over the hero or a moby of the level; the rocks thrown by the shared spawn (checked first) about the camera; the draw
+// callbacks' subjects at the hero (whom the view looks at), their packets into a buffer of the test area. No RAM dumps. Run:
+// ORACLE_LEVEL=N build/tests/ovl_oracle --batch 506, N = each level a family names (0 .. 18); a family the level does not carry
+// says so and is not run. B506_INFO=1 prints, per check, how many cases wrote packets beyond a state header and, for the cameras,
+// how many turned, moved or changed the view's angle.
 
 #include "ovl_oracle.h"
 

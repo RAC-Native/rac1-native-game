@@ -6,7 +6,6 @@
 #include <runtime/iop/snd989_iop.h>
 #include <game/ovl/blarg_own.h>
 #include <game/ovl/variants_l6.h>
-#include <game/ovl/umbris_call.h>
 #include <game/ovl/umbris_hooks.h>
 #include <game/ovl/gaspar_hooks.h>
 #include <game/ovl/batalia_hooks.h>

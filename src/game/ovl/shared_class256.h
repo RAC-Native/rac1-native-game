@@ -1,6 +1,6 @@
 // Class 256, a homing rocket (Quartu, Veldin): an earlier build of the Devastator's rocket (rocket.cpp), without the gold
 // weapon's bounces or the particle load's thinning; one port of the two levels' copies of its update (shared_class256.cpp).
-// Phase 1 of stage 4: the levels' generated copies still run; this is proved against them by oracle batch 505.
+// Every level with a copy runs this port; it is proved against each level's own copy by oracle batch 505.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS256_H
 #define RAC1_GAME_OVL_SHARED_CLASS256_H
 

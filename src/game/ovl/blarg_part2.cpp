@@ -1,4 +1,4 @@
-// Blarg's Nebula G34 part 2: its own draw callbacks registered for the indirect calls (the functions: blarg_part2_tr.cpp).
+// Blarg's Nebula G34 part 2: its own draw callbacks registered for the indirect calls (the functions: their hand ports, formerly blarg_part2_tr.cpp).
 #include <game/ovl/shared_beam.h>
 #include <game/ovl/shared_blarg_meshes.h>
 #include <game/ovl/shared_boss_bar.h>

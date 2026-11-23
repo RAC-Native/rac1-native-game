@@ -15,12 +15,11 @@
 namespace rac1 {
 
 // orig: front:0x0022ae70
-TrRet front_sky_shells_tr(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float,
-                          float, float) {
+uint32_t front_sky_shells_tr() {
     sh(lwu(FR(0x0016045cu)) + 4, 0);
     mat4_identity(M(FR(0x001d96e0u)));
-    ovl_28b848_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-    ovl_28b848_tr(1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    ovl_28b848_tr(0);
+    ovl_28b848_tr(1);
 
     uint32_t sky = lwu(FR(0x0016045cu));
     if (lh(sky + 8) == 0) {
@@ -106,10 +105,10 @@ TrRet front_sky_shells_tr(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint
         }
     }
 
-    ovl_28bd58_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    ovl_28bd58_tr();
     sub_002a0ba8(0x42, (uint64_t{0x8000} << 24) | 0x44u);
-    ovl_28b848_tr(2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-    return ovl_28b848_tr(3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    ovl_28b848_tr(2);
+    return ovl_28b848_tr(3);
 }
 
 }  // namespace rac1

@@ -1,8 +1,8 @@
 // The draw callbacks the draw-queuing classes of Kalebo III and Drek's fleet queue (shared_class1952.cpp): each draws its
 // meshes (one to three) with the sky's reflection sphere-mapped from the camera, as Kalebo III's environment-mapped
 // objects do (shared_envmap.cpp) but with no on-screen test. One port of the seven copies (shared_envmap_meshes.cpp); each
-// copy's texture, mesh count, blend word and tables are its own. Phase 1 of stage 4: the levels' generated copies still
-// run; these are proved against them by oracle batch 517.
+// copy's texture, mesh count, blend word and tables are its own. Every level with a copy runs these ports; they are proved
+// against each level's own copy by oracle batch 517.
 #ifndef RAC1_GAME_OVL_SHARED_ENVMAP_MESHES_H
 #define RAC1_GAME_OVL_SHARED_ENVMAP_MESHES_H
 

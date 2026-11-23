@@ -1,7 +1,7 @@
 // Class 1443 (class 1890 on Veldin), a target of spinning rings: it spins and hums until every moby of its group has been
 // hit, then goes quiet (the group's nearest member sounds) until they recover; and its draw callback, the rings as quads; one
-// port of the two levels' copies (shared_class1443.cpp). Phase 1 of stage 4: the levels' generated copies still run; this is
-// proved against them by oracle batch 505.
+// port of the two levels' copies (shared_class1443.cpp). Every level with a copy runs this port; it is proved against each
+// level's own copy by oracle batch 505.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS1443_H
 #define RAC1_GAME_OVL_SHARED_CLASS1443_H
 

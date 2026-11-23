@@ -1,11 +1,11 @@
-// Veldin, the finale (level 18) own moby classes: the registration table. The ports are the transliterations in
-// veldin_finale_classes_tr_N.cpp (declarations: veldin_finale_mobys.h), the level's own hand-written classes (veldin_finale_shots.cpp,
-// _walking_bomb.cpp, _rail_switch.cpp, _gate.cpp, _platforms.cpp: classes 41, 564, 568, 582, 583, 586, 587, 624, 628 and class
-// 568's carry hooks; the files named in veldin_finale_mobys.h for the others) and, for the classes other levels share, the shared
-// hand-written ports (shared_*.cpp, novalis_*.cpp, aridia_props.cpp: each proved against level 18's own copy by its family
-// batch; the adapters below pass a copy's own constants; Giant Clank's pad, class 1899, with the PAL 2.00 disc's changes as
-// 1.02 Gameplay fix 23). Keyed by level 18's own address and by level, so the indirect call (`jalr`)
-// through moby +0x74 (and the draw lists' callbacks) reaches them only while the played level's overlay is level 18's.
+// Veldin, the finale (level 18) own moby classes: the registration table. The ports are the level's own, written by hand
+// (declarations: veldin_finale_mobys.h), the level's own hand-written classes (veldin_finale_shots.cpp, _walking_bomb.cpp,
+// _rail_switch.cpp, _gate.cpp, _platforms.cpp: classes 41, 564, 568, 582, 583, 586, 587, 624, 628 and class 568's carry hooks; the
+// files named in veldin_finale_mobys.h for the others) and, for the classes other levels share, the shared hand-written ports
+// (shared_*.cpp, novalis_*.cpp, aridia_props.cpp: each proved against level 18's own copy by its family batch; the adapters below pass
+// a copy's own constants; Giant Clank's pad, class 1899, with the PAL 2.00 disc's changes as 1.02 Gameplay fix 23). Keyed by level
+// 18's own address and by level, so the indirect call (`jalr`) through moby +0x74 (and the draw lists' callbacks) reaches them only
+// while the played level's overlay is level 18's.
 #include <game/ovl/veldin_finale_hooks.h>
 #include <game/ovl/veldin_finale_mobys.h>
 #include <game/ovl/veldin_finale_own.h>

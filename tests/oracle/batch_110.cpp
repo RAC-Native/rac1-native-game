@@ -130,22 +130,22 @@ void batch_110() {
     // the sky's sprites (stars): a leaf of the variants, run alone
     check("sky_sprites", 0x0028bd58, 24, Ret::None, [&] {
         frame_state();
-        for (int k = ri(1, 3); k > 0; --k) ovl_289108_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);  // the sprites live (updated: proved by sky_289108)
+        for (int k = ri(1, 3); k > 0; --k) ovl_289108_tr();  // the sprites live (updated: proved by sky_289108)
         return Args{{}, {}};
-    }, [](A) { vu0_prelude(); ovl_28bd58_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0); return uint64_t{0}; });
+    }, [](A) { vu0_prelude(); ovl_28bd58_tr(); return uint64_t{0}; });
 
     check("sky_289108", 0x00289108, 24, Ret::None, [&] {
         frame_state();
         return Args{{}, {}};
-    }, [](A) { vu0_prelude(); ovl_289108_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0); return uint64_t{0}; });
+    }, [](A) { vu0_prelude(); ovl_289108_tr(); return uint64_t{0}; });
     check("sky_288ec0", 0x00288ec0, 24, Ret::None, [&] {
         frame_state();
         return Args{{u(ri(0, 300)), u(ri(1, 20))}, {}};
-    }, [](A a) { vu0_prelude(); ovl_288ec0_tr(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0); return uint64_t{0}; });
+    }, [](A a) { vu0_prelude(); ovl_288ec0_tr(a.i[0], a.i[1]); return uint64_t{0}; });
     check("sky_28b848", 0x0028b848, 20, Ret::None, [&] {
         frame_state();
         return Args{{u(ri(0, 4))}, {}};
-    }, [](A a) { vu0_prelude(); ovl_28b848_tr(a.i[0], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0); return uint64_t{0}; });
+    }, [](A a) { vu0_prelude(); ovl_28b848_tr(a.i[0]); return uint64_t{0}; });
 
     // each variant alone (the level's equivalent where the matcher paired it, else skipped)
     {

@@ -178,7 +178,7 @@ is a denormal or has exponent 255). Divisions, square roots, conversions, `VOPMU
 - `RAC1_RAMHASH` identical to the build before on the 19 levels at 4:3 and widened with LOD High on the game thread (there
   `RAC1_MRP_SCENE_HASH` identical and `RAC1_MRP_LOD_VERIFY=1` without a difference too); the check modes of the routines
   written by hand, which compare their local-copy ops with the transliterations' (`RAC1_WORLD_CULL_FAST=2`,
-  `RAC1_PERF_MOBY_DRAW=2`, `RAC1_DROP_SHADOWS_FAST=2`, `RAC1_SKY_FAST=2`, `RAC1_WORLD_LIGHTING_FAST=2`,
+  `RAC1_PERF_MOBY_DRAW=2`, `RAC1_DROP_SHADOWS_FAST=2`, `RAC1_SKY_FAST=2` (until stage 2b), `RAC1_WORLD_LIGHTING_FAST=2`,
   `RAC1_PERF_POSE_MEMO=2`): 0 differing on the 19 levels widened (the culls 19,879 calls, the drop shadows 471,635, the sky
   253,481, the lighting 6,673, the pose memo 694,563; every call on five levels, one in ten on the others; the moby draw
   loop 7,793 calls on nine levels); the oracle's batches as above; the reference images.
@@ -829,7 +829,7 @@ terrain.
   a `vu0_regs.h` op builds the MAC and status flags of every result (the larger part of its work). The pass gives `vu0nf`'s ops -
   the same lanes, clamps and ACC, no flags - to every generated file whose CFC2 reads of the status / MAC flags all follow, in
   straight-line code, an op into vf0 (those ops keep their flags: `vu0nf` sends a vf0 destination to `vu0m`): 176 of the generated
-  files (the world's lighting, the levels' program-7 surfaces, `sky_ee`, `world_cull`, the transliterated classes). A build
+  files at the time (the world's lighting, the levels' program-7 surfaces, `sky_ee`, `world_cull`, the transliterated classes; 3 files since stage 4, `generate_all.py`'s log). A build
   defining `RAC1_VU0_EXACT` keeps `vu0m`'s ops. `RAC1_RAMHASH` identical on and off on every level 0-18 (2000 frames each) and the
   chain; the oracle batches 79, 101, 102, 110, 113, 126 (L1), 112, 138, 190, 192 (L3), 140 (L5), 180 pass. The game code a frame
   (main thread, the last 600 of 1860 frames, three runs each): Veldin 1.25-1.26 to 1.17-1.19 ms, Kerwan 1.82-1.83 to 1.72-1.83,
@@ -1041,7 +1041,7 @@ These are testing variables: they are honoured in a headless run, or in a window
 | `RAC1_PERF_VU0_NF=0` | the generated code's VU0 ops with their flags |
 | `RAC1_WORLD_CULL_FAST=0` | the world passes' three culls as transliterated (`=2`: both, compared at every call) |
 | `RAC1_PERF_MOBY_DRAW=0` | the moby draw loop as transliterated (`=2`: both, compared at every call of the real pass) |
-| `RAC1_DROP_SHADOWS_FAST=0`, `RAC1_SKY_FAST=0` | the drop shadows' and the sky's routines as transliterated (`=2`: both, compared; `RAC1_HAND_CHECK_EVERY` to check one call in n) |
+| `RAC1_DROP_SHADOWS_FAST=0` | the drop shadows' routines as transliterated (`=2`: both, compared; `RAC1_HAND_CHECK_EVERY` to check one call in n; the sky's `RAC1_SKY_FAST` went with its transliteration in stage 2b: the sky runs `sky_hand.cpp` only) |
 | `RAC1_PERF_UPLOAD_MEMO=0` | every texture upload's piece written into the GS memory model, as before (`=2`: both, checked) |
 | `RAC1_PERF_DIRECT_WORLD=0` | the world passes' chain ranges copied and walked when the host makes the world (`=2`: both, compared; `=3`: the direct world at 4:3 Original too) |
 | `RAC1_PERF_WORLD_CHAINED=0` | at 4:3 Original the world passes' whole ranges unpacked and run on the scene worker's private VU1, the passes taking no notes (`=2`: both scenes, compared) |

@@ -55,7 +55,7 @@ void vf_float_bob_l18(uint32_t m);      // L18:0x002d8710
 void vf_float_bubbles_l18(uint32_t m);  // L18:0x002d88b8
 
 // the boss (class 1422), what it does to the other mobys (veldin_finale_boss_props.cpp; called by the boss's
-// update and other classes' generated code): the level's sound `idx` on `moby` (the slot, -1 none); its moby groups hidden / shown; the
+// update and other classes' code): the level's sound `idx` on `moby` (the slot, -1 none); its moby groups hidden / shown; the
 // group's raft platforms' +0xbc; the group's robots (class 1906) out of their state 8; the gates (class 583): the one
 // farthest round from `from` seen from `ref`, the nearest to `at`, all of a group opened, one opened; the floating
 // platforms (class 587) sunk / rocked; the lift (class 586) polled, sent up, stopped

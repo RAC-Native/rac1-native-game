@@ -1,7 +1,7 @@
 // Class 1400, the weather about the camera (Batalia, Hoven, Oltanis): drops (or, on Hoven, motes) spawned about the camera
 // each frame, drifting with a wind dealt anew now and then, and splashes on the ground. One port of the three levels'
-// copies of its update, its wind's set-up and its two particles (shared_class1400.cpp). Phase 1 of stage 4: the levels'
-// generated copies still run; these are proved against them by oracle batch 517.
+// copies of its update, its wind's set-up and its two particles (shared_class1400.cpp). Every level with a copy runs these
+// ports; they are proved against each level's own copy by oracle batch 517.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS1400_H
 #define RAC1_GAME_OVL_SHARED_CLASS1400_H
 

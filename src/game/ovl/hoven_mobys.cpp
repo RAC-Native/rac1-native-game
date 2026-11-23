@@ -1,6 +1,6 @@
-// Hoven (level 12) own moby classes: the registration table. The ports are the transliterations in
-// hoven_classes_tr_N.cpp (declarations: hoven_mobys.h). Keyed by level 12's own address and by level, so the indirect call (`jalr`
-// through moby +0x74) reaches them only while the played level's overlay is level 12's.
+// Hoven (level 12) own moby classes: the registration table. The ports are the level's own, written by hand (declarations:
+// hoven_mobys.h). Keyed by level 12's own address and by level, so the indirect call (`jalr` through moby +0x74) reaches them only
+// while the played level's overlay is level 12's.
 #include <game/ovl/aridia_mobys.h>
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/novalis_mobys2.h>

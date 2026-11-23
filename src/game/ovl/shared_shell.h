@@ -1,5 +1,5 @@
 // The shells of Gaspar and Orxon (class 0x4ea / 1258) and the shots of Eudora and Hoven (class 0xb8 / 184): their launch and
-// their flight (shared_shell.cpp: one port for each kind's two levels' copies). Phase 1 of stage 4: the levels' generated copies still run; these are proved against them by oracle
+// their flight (shared_shell.cpp: one port for each kind's two levels' copies). Every level with a copy runs these ports; they are proved against each level's own copy by oracle
 // batch 510.
 #ifndef RAC1_GAME_OVL_SHARED_SHELL_H
 #define RAC1_GAME_OVL_SHARED_SHELL_H

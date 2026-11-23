@@ -1,6 +1,6 @@
 #ifndef RAC1_GAME_OVL_ROCKET_H
 #define RAC1_GAME_OVL_ROCKET_H
-// rocket, transliterated (rocket_asm.cpp). Addresses are Veldin's overlay addresses (the shared engine).
+// rocket, ported by hand (rocket.cpp). Addresses are Veldin's overlay addresses (the shared engine).
 #include <cstdint>
 
 namespace rac1 {

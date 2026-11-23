@@ -1,7 +1,7 @@
 // The sky-reflecting objects of Hoven and Oltanis (one draw callback each level: hov_cb_2e71b0 / olt_cb_307a28): their meshes
-// drawn with two effect textures, the second's coordinates the view's reflection, sphere-mapped by the VU0 in macro mode.
-// One port of the two levels' copies (shared_env_objects.cpp). Phase 1 of stage 4: the levels' generated copies still run;
-// these are proved against them by oracle batch 517.
+// drawn with two effect textures, the second's coordinates the view's reflection, sphere-mapped by the VU0 in macro mode. One
+// port of the two levels' copies (shared_env_objects.cpp). Every level with a copy runs these ports; they are proved against
+// each level's own copy by oracle batch 517.
 #ifndef RAC1_GAME_OVL_SHARED_ENV_OBJECTS_H
 #define RAC1_GAME_OVL_SHARED_ENV_OBJECTS_H
 

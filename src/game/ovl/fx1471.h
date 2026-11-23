@@ -1,6 +1,6 @@
 #ifndef RAC1_GAME_OVL_FX1471_H
 #define RAC1_GAME_OVL_FX1471_H
-// The class-1471 effect manager's beams (the shooting robot 1440's beam), transliterated (fx1471_asm.cpp). Addresses are
+// The class-1471 effect manager's beams (the shooting robot 1440's beam), ported by hand (fx1471.cpp). Addresses are
 // Veldin's overlay addresses (the shared engine).
 #include <cstdint>
 

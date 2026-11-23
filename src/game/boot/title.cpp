@@ -134,9 +134,9 @@ void title_camera() {
 // 0x47 / 0x4e of the next primitives. (The levels' 0x23d968 with the boot module's variant.)
 // orig: front:0x001e9ab8
 void title_sky() {
-    ovl_28b680_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);       // (front: 0x22b4c8)
-    front_sky_shells_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);  // (front: 0x22ae70)
-    ovl_28b710_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);       // (front: 0x22b558)
+    ovl_28b680_tr();        // (front: 0x22b4c8)
+    front_sky_shells_tr();  // (front: 0x22ae70)
+    ovl_28b710_tr();        // (front: 0x22b558)
     sub_002a0ba8(0x47, 0x5360b);
     // (or a1, v0, a1: the sign-extended arithmetic shift of the word, ORed with 0x01000000)
     sub_002a0ba8(0x4e, 0x01000000ull | static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(lw(0x0015ee88)) >> 13)));

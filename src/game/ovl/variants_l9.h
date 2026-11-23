@@ -1,7 +1,7 @@
 // Gaspar (level 9) on its own overlay. Level 9's engine build is Veldin's almost
 // everywhere (1887 of Veldin's 1974 functions found in its overlay, 95.5 %, like Umbris's): the hero controller and the engine run the Veldin
 // ports; what is level 9's own is its class table (40 update functions), two sound emitter types, the five hooks of class 193's table and
-// the camera mode hook, transliterated at its addresses (`// orig: L9:0x00xxxxxx`, gaspar_classes_tr_*.cpp).
+// the camera mode hook, ported by hand at its addresses (`// orig: L9:0x00xxxxxx`).
 // The generic parts (the table rows, on_level) are in variants.h.
 #ifndef RAC1_GAME_OVL_VARIANTS_L9_H
 #define RAC1_GAME_OVL_VARIANTS_L9_H

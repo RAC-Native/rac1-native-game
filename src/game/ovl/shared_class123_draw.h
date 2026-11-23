@@ -1,6 +1,6 @@
 // Class 123's draw callback on Quartu and Drek's fleet (its update queues it): a beam from just off the moby to its target
-// point, a quad turned to the camera; one port of the two levels' copies (shared_class123_draw.cpp). Phase 1 of stage 4:
-// the levels' generated copies still run; this is proved against them by oracle batch 507.
+// point, a quad turned to the camera; one port of the two levels' copies (shared_class123_draw.cpp). Every level with a
+// copy runs this port; it is proved against each level's own copy by oracle batch 507.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS123_DRAW_H
 #define RAC1_GAME_OVL_SHARED_CLASS123_DRAW_H
 

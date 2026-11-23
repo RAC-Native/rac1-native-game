@@ -1,5 +1,5 @@
 // Oltanis (level 14)'s own moby classes, camera types, class hooks, draw callbacks, the camera mode hook and level-only engine functions, all
-// hand-written (src/game/ovl/oltanis_*.cpp; the level has no generated code since task Y5): `TrRet` = a camera type's accept in the uniform ABI.
+// hand-written (src/game/ovl/oltanis_*.cpp; the level has no generated code since task Y5).
 #ifndef RAC1_GAME_OVL_OLTANIS_MOBYS_H
 #define RAC1_GAME_OVL_OLTANIS_MOBYS_H
 
@@ -50,11 +50,11 @@ void olt_class1354_update_l14(uint32_t m);  // L14:0x00305758
 void olt_class1395_update_l14(uint32_t m);  // L14:0x00305d28
 void olt_class1416_update_l14(uint32_t m);  // L14:0x00306b78
 void olt_class1417_update_l14(uint32_t m);  // L14:0x00306ee0
-// ... and camera types 20 and 21 (oltanis_cameras.cpp; the accepts in the uniform form the camera hook calls).
-TrRet olt_cam_type20_accept_u(uint32_t cam, uint32_t other, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x00315920
+// ... and camera types 20 and 21 (oltanis_cameras.cpp; oltanis_hooks.cpp's camera hook calls them).
+int32_t olt_cam_type20_accept_l14(uint32_t cam, uint32_t other);  // L14:0x00315920
 void olt_cam_type20_init_l14(uint32_t cam);    // L14:0x00314f00
 void olt_cam_type20_update_l14(uint32_t cam);  // L14:0x00315290
-TrRet olt_cam_type21_accept_u(uint32_t cam, uint32_t other, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L14:0x00316748
+int32_t olt_cam_type21_accept_l14(uint32_t cam, uint32_t other);  // L14:0x00316748
 void olt_cam_type21_init_l14(uint32_t cam);    // L14:0x003159d8
 void olt_cam_type21_update_l14(uint32_t cam);  // L14:0x00315d48
 void olt_cam_type21_exit_l14(uint32_t cam);    // L14:0x003167e0

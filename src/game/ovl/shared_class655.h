@@ -1,6 +1,6 @@
 // Class 655 of Quartu and Drek's fleet: an electric field that strikes the hero while it stands in its area on the ground,
 // with its arcs (shared_class655.cpp: one port of both levels' copies, the same code relinked; its glows are
-// shared_class655_glows.cpp). Phase 1 of stage 4: the levels' generated copies still run; these are proved against them by
+// shared_class655_glows.cpp). Every level with a copy runs these ports; they are proved against each level's own copy by
 // oracle batch 516.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS655_H
 #define RAC1_GAME_OVL_SHARED_CLASS655_H

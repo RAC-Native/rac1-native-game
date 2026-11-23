@@ -1,7 +1,7 @@
 // Small helpers several levels carry copies of, each ported once (shared_helpers.cpp). Each function's `orig:` line lists
 // every level's address. A function of Veldin's own (an L0 copy) is declared with its levels' addresses only, without
-// the `orig:` prefix the code generator reads: the copies stay transliterated in their units until each level is
-// re-glued (then the declaration takes Veldin's `// orig: 0x...` form).
+// the `orig:` prefix (written while the copies were still generated in their units, before each level's
+// re-glue).
 #ifndef RAC1_GAME_OVL_SHARED_HELPERS_H
 #define RAC1_GAME_OVL_SHARED_HELPERS_H
 

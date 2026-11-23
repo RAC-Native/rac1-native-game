@@ -1,7 +1,7 @@
 // The rippling surfaces of Quartu (classes 1408, 1409, 1565, 1567) and Drek's fleet (classes 1405, 1406, 1407, 1426): one
 // update for all eight classes (it only queues the class's draw) and the draws of two kinds of surface, meshes whose points
 // bob on a sine of their distance from the centre and whose texture scrolls; one port of the levels' copies
-// (shared_ripples.cpp). Phase 1 of stage 4: the levels' generated copies still run; these are proved against them by
+// (shared_ripples.cpp). Every level with a copy runs these ports; they are proved against each level's own copy by
 // oracle batch 507.
 #ifndef RAC1_GAME_OVL_SHARED_RIPPLES_H
 #define RAC1_GAME_OVL_SHARED_RIPPLES_H

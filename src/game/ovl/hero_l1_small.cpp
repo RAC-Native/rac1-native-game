@@ -98,7 +98,7 @@ void sub_002076a8_l1() {
 
 // The hero's per-frame update (Veldin's 0x2070d0), Novalis's build: the same sequence without the
 // rail land / grab checks (0x20cf58 / 0x20d330 do not exist on Novalis); a movement mode
-// (+0x20a4) runs the level's own update (L1:0x228000, hero_move_mode_l<N>_tr_1.cpp).
+// (+0x20a4) runs the level's own update (L1:0x228000).
 // orig: L1:0x00228870 L2:0x002179c8 L3:0x002002f8 (Kerwan: plus the rail grab check)
 void hero_frame_update_l1() {
     const float x = lwc1(P + 0x80);

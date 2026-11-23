@@ -2,7 +2,7 @@
 // ORACLE_LEVEL=14 build/tests/ovl_oracle --batch 221 (needs the ISO; nothing else: the level is laid out from the disc).
 // The subjects are the level's own mobys of each class (placed by its gameplay data) after the first gameplay frame,
 // perturbed; the original is level 14's own function at its own address, the port the one registered for it (hand-written
-// since the own-code tasks P14.* and Y5; at first the transliterations oltanis_classes_tr_N.cpp / oltanis_hero_tr_N.cpp, generated
+// since the own-code tasks P14.* and Y5; at first the hand ports that replaced oltanis_classes_tr_N.cpp / oltanis_hero_tr_N.cpp, generated
 // by tools/codegen/mkall_l14.py). Checked: the 59 class updates, the classes' 17 draw-list
 // callbacks, sound emitter types 1 / 3 / 4 / 6, camera types 0x13 / 0x14 / 0x15, class 252's five hooks and class 270's +0xc (Veldin's
 // port), the camera mode hook and its callback, the cutscene extras, the movement-mode hero update (the Novalis family's build), and the
@@ -263,7 +263,7 @@ void batch_221() {
         }
     }
 
-    // ---- the level's own classes (transliterated by tools/codegen/mkall_l14.py): the level's own mobys of each class, the first
+    // ---- the level's own classes (once transliterated by tools/codegen/mkall_l14.py; hand ports now): the level's own mobys of each class, the first
     // update (state 0) done by the port, then a state, a hit, the hero near, the pvars' floats / counters moved as typed
     g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};  // (+ the level change request: the original would run the CD / movie path)
     struct TrCls { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t skip_states = 0; bool walk = false; uint32_t skip_p0 = 0; uint32_t skip_p1 = 0; };  // (skip_p0 / skip_p1: states skipped in pass 0 / 1 only, per class, below)  // (the states that start a scene / a level change: the original runs the kernel / movie path for real)
@@ -593,7 +593,7 @@ void batch_221() {
             static int k = 0;
             auto name = [&](const char* what) { char* p = nm[k++ & 3]; std::snprintf(p, 48, "cam_type%d_%s", type, what); return static_cast<const char*>(p); };
             l14check(name("accept"), ct.accept, 300, Ret::Int32, [cam_setup, type] { uint32_t other = 0; const uint32_t cam = cam_setup(type, true, &other); return Args{{cam, other}, {}}; },
-                    [type](A a) { return r32(a.i[0] != 0 ? (type == 19 ? static_cast<uint32_t>(cam_type19_accept(a.i[0], a.i[1])) : (type == 20 ? olt_cam_type20_accept_u : olt_cam_type21_accept_u)(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0) : 0u); });
+                    [type](A a) { return r32(a.i[0] != 0 ? (type == 19 ? static_cast<uint32_t>(cam_type19_accept(a.i[0], a.i[1])) : static_cast<uint32_t>((type == 20 ? olt_cam_type20_accept_l14 : olt_cam_type21_accept_l14)(a.i[0], a.i[1]))) : 0u); });
             l14check(name("init"), ct.init, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
                     [type](A a) { if (a.i[0] != 0) (type == 19 ? cam_type19_init : type == 20 ? olt_cam_type20_init_l14 : olt_cam_type21_init_l14)(a.i[0]); return uint64_t{0}; });
             l14check(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
@@ -2711,7 +2711,7 @@ void batch_221() {
                     cam20_setup(true);
                     seed_rand();
                     return Args{{CAM, coin() ? OTHER : 0u}, {}};
-                }, [](A a) { return r32(olt_cam_type20_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0); });
+                }, [](A a) { return r32(static_cast<uint32_t>(olt_cam_type20_accept_l14(a.i[0], a.i[1]))); });
                 l14check("p144_cam20_init", 0x00314f00, 150, Ret::None, [cam20_setup, CAM] {
                     cam20_setup(true);
                     seed_rand();
@@ -2760,7 +2760,7 @@ void batch_221() {
                     cam21_setup();
                     seed_rand();
                     return Args{{CAM, coin() ? OTHER : 0u}, {}};
-                }, [](A a) { return r32(olt_cam_type21_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0); });
+                }, [](A a) { return r32(static_cast<uint32_t>(olt_cam_type21_accept_l14(a.i[0], a.i[1]))); });
                 g_ignored_words.push_back(CAM + 0x1c);
                 g_ignored_words.push_back(CAM + 0x2c);
                 l14check("p144_cam21_init", 0x003159d8, 150, Ret::None, [cam21_setup, CAM] {

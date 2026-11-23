@@ -1,5 +1,5 @@
 // Class 1209 of Quartu and Drek's fleet: a floor switch of a group (shared_floor_switch.cpp: one port of both levels'
-// copies, the same code relinked). Phase 1 of stage 4: the levels' generated copies still run; this is proved against them
+// copies, the same code relinked). Every level with a copy runs this port; it is proved against each level's own copy
 // by oracle batch 519.
 #ifndef RAC1_GAME_OVL_SHARED_FLOOR_SWITCH_H
 #define RAC1_GAME_OVL_SHARED_FLOOR_SWITCH_H

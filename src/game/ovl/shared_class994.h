@@ -1,6 +1,6 @@
 // Class 994 of Kerwan and class 1260 of Oltanis: the sea's controller (shared_class994.cpp: one port of both levels' copies,
-// the same code relinked, the wave's alpha the one difference). Phase 1 of stage 4: the levels' generated copies still run;
-// this is proved against them by oracle batch 519.
+// the same code relinked, the wave's alpha the one difference). Every level with a copy runs this port; it is proved against
+// each level's own copy by oracle batch 519.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS994_H
 #define RAC1_GAME_OVL_SHARED_CLASS994_H
 

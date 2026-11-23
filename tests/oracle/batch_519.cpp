@@ -1,35 +1,24 @@
 // Oracle batch 519 (stage 4 task F13, #149): class code and helpers of levels 3, 6, 7, 8, 11, 14, 15, 17 and 18 that two or
 // more copies carry, each family ported once as shared hand-written code (src/game/ovl/shared_*.cpp) on top of the families
-// earlier tasks ported, against every copy at its own level's address. The level copies stay transliterated in their units
-// until each level is re-glued; here every copy is the original and the one shared port the port:
-//  - shared_floor_switch.cpp: class 1209, a floor switch of a group (Quartu, Drek's fleet);
-//  - shared_class934.cpp: class 934, a spinning shot (Quartu, Drek's fleet);
-//  - shared_breakables.cpp: the breakable props of Blarg (classes 1655, 1660, 1664) and Umbris (1650, 1663);
-//  - shared_ship_exhaust.cpp: the exhaust of the ships the hero rides (Pokitaru's class 1242, Drek's fleet's 1379);
-//  - shared_pump_camera.cpp: Blarg's hydro pumps' camera (class 1051), its start and its follow;
-//  - shared_flash.cpp: the flash's draw (class 1898 of Blarg and Veldin's finale);
-//  - shared_scroll.cpp: three more sets of the scrolling textures' meshes (Batalia, Pokitaru);
-//  - shared_class994.cpp: the sea's controller (Kerwan's class 994, Oltanis's class 1260).
-// The shared ports and their copies (each level's address):
-//   floor_switch_update   L15:0x002e5958 L17:0x002e5f50
-//   class934_update       L15:0x002e4380 L17:0x002e1c20
-//   class1655_update      L6:0x00309860
-//   class1650_update      L7:0x0031f3d8
-//   class1663_update      L7:0x0031f5b0
-//   class1660_update      L6:0x00309e08
-//   class1664_update      L6:0x00309fa8
-//   ship_exhaust_spawn    L11:0x003112b8 L17:0x002ea688
-//   pump_camera_start     L6:0x002fb148 / 0x002fb508 / 0x002fb8c8
-//   pump_camera_follow    L6:0x002fb668 / 0x002fba28
-//   flash_draw_quad       L6:0x0030bfa8 L18:0x002fb690
-//   uv_scroll_meshes      (sets 8, 9, 10) L8:0x002f0b40 / 0x00308db8, L11:0x0031e6a8
-//   class994_update       L3:0x002dc9b0 L14:0x00303370
-// Subjects: the level's own mobys of the class after the first gameplay frame (the screen, the projection and the view set
-// up, as batch 518), placed or live, perturbed through every state; mobys of the class spawned where the level places none
-// awake. The draws write to a packet buffer of the test area; B519_INFO=1 prints the subjects found and, per check, how many
-// cases wrote packets beyond a state header.
-// Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 519, N = 3, 6, 7, 8, 11, 14, 15, 17 and 18; a check prints "skipped"
-// on a level without its copy. No RAM dumps; the frame scale (0x15ed68) at its 50 Hz value in a quarter of the cases.
+// earlier tasks ported, against every copy at its own level's address. Every level runs the shared port since its re-glue
+// (stage 4); here every copy is the original and the one shared port the port: - shared_floor_switch.cpp: class 1209, a
+// floor switch of a group (Quartu, Drek's fleet); - shared_class934.cpp: class 934, a spinning shot (Quartu, Drek's fleet);
+// - shared_breakables.cpp: the breakable props of Blarg (classes 1655, 1660, 1664) and Umbris (1650, 1663); -
+// shared_ship_exhaust.cpp: the exhaust of the ships the hero rides (Pokitaru's class 1242, Drek's fleet's 1379); -
+// shared_pump_camera.cpp: Blarg's hydro pumps' camera (class 1051), its start and its follow; - shared_flash.cpp: the
+// flash's draw (class 1898 of Blarg and Veldin's finale); - shared_scroll.cpp: three more sets of the scrolling textures'
+// meshes (Batalia, Pokitaru); - shared_class994.cpp: the sea's controller (Kerwan's class 994, Oltanis's class 1260). The
+// shared ports and their copies (each level's address): floor_switch_update   L15:0x002e5958 L17:0x002e5f50 class934_update
+// L15:0x002e4380 L17:0x002e1c20 class1655_update      L6:0x00309860 class1650_update      L7:0x0031f3d8 class1663_update
+// L7:0x0031f5b0 class1660_update      L6:0x00309e08 class1664_update      L6:0x00309fa8 ship_exhaust_spawn    L11:0x003112b8
+// L17:0x002ea688 pump_camera_start     L6:0x002fb148 / 0x002fb508 / 0x002fb8c8 pump_camera_follow    L6:0x002fb668 /
+// 0x002fba28 flash_draw_quad       L6:0x0030bfa8 L18:0x002fb690 uv_scroll_meshes      (sets 8, 9, 10) L8:0x002f0b40 /
+// 0x00308db8, L11:0x0031e6a8 class994_update       L3:0x002dc9b0 L14:0x00303370 Subjects: the level's own mobys of the class
+// after the first gameplay frame (the screen, the projection and the view set up, as batch 518), placed or live, perturbed
+// through every state; mobys of the class spawned where the level places none awake. The draws write to a packet buffer of
+// the test area; B519_INFO=1 prints the subjects found and, per check, how many cases wrote packets beyond a state header.
+// Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 519, N = 3, 6, 7, 8, 11, 14, 15, 17 and 18; a check prints "skipped" on
+// a level without its copy. No RAM dumps; the frame scale (0x15ed68) at its 50 Hz value in a quarter of the cases.
 
 #include "ovl_oracle.h"
 

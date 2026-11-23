@@ -1,6 +1,6 @@
 // The camera of Blarg's class 1051 (the hydro pumps' switch) while its pump runs: its start and its follow, each a function
-// the level carries several copies of (shared_pump_camera.cpp: one port of the copies, the same code). Phase 1 of stage 4:
-// the level's generated copies still run; these are proved against them by oracle batch 519.
+// the level carries several copies of (shared_pump_camera.cpp: one port of the copies, the same code). Every level with a
+// copy runs these ports; they are proved against each level's own copy by oracle batch 519.
 #ifndef RAC1_GAME_OVL_SHARED_PUMP_CAMERA_H
 #define RAC1_GAME_OVL_SHARED_PUMP_CAMERA_H
 

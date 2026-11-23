@@ -1,6 +1,6 @@
 #ifndef RAC1_GAME_OVL_METAL_OBJ_H
 #define RAC1_GAME_OVL_METAL_OBJ_H
-// metal_obj, transliterated (metal_obj_asm.cpp). Addresses are Veldin's overlay addresses (the shared engine).
+// metal_obj, ported by hand (metal_obj.cpp). Addresses are Veldin's overlay addresses (the shared engine).
 #include <cstdint>
 
 namespace rac1 {

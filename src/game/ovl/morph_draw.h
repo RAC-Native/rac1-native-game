@@ -1,6 +1,6 @@
 #ifndef RAC1_GAME_OVL_MORPH_DRAW_H
 #define RAC1_GAME_OVL_MORPH_DRAW_H
-// morph_draw, transliterated (morph_draw_asm.cpp). Addresses are Veldin's overlay addresses (the shared engine).
+// morph_draw, ported by hand (morph_draw.cpp). Addresses are Veldin's overlay addresses (the shared engine).
 #include <cstdint>
 
 namespace rac1 {

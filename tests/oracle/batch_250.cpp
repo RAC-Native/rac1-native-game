@@ -2,7 +2,7 @@
 // the camera types, the class hooks, the camera mode hook and its callback, the movement-mode hero update, moby_spawn and mobys_in_sphere
 // (level 16's copies). Run with ORACLE_LEVEL=16 build/tests/ovl_oracle --batch 250 (needs the ISO; no dumps). The subjects are the level's own
 // mobys of each class (placed by its gameplay data) after the first gameplay frame, perturbed; the original is level 16's own function at its
-// own address, the port the one registered for it (the transliterations kalebo_classes_tr_N.cpp / kalebo_hero_tr_N.cpp, generated from the disc by
+// own address, the port the one registered for it (the hand ports that replaced kalebo_classes_tr_N.cpp / kalebo_hero_tr_N.cpp, generated from the disc by
 // tools/codegen/mkall_l16.py). Made after batch 124 (Pokitaru).
 // H3: the race's HUD draws 0x235660 / 0x238a30 (race_hud_checks.h: also on batch 242's race dumps levels_15_16/race_*_L16.bin when
 // they are there; race_fix19_meter / race_fix19_bar with RAC1_FIXES102=19).
@@ -257,7 +257,7 @@ void batch_250() {
         }
     }
 
-    // ---- the level's own classes (transliterated by tools/codegen/mkall_l16.py): the level's own mobys of each class, the first
+    // ---- the level's own classes (once transliterated by tools/codegen/mkall_l16.py; hand ports now): the level's own mobys of each class, the first
     // update (state 0) done by the port, then a state, a hit, the hero near, the pvars' floats / counters moved as typed
     g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};  // (+ the level change request: the original would run the CD / movie path)
     struct TrCls { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t skip_states = 0; bool walk = false; uint32_t skip_p0 = 0; uint32_t skip_p1 = 0; };  // (skip_p0 / skip_p1: states skipped in pass 0 / 1 only)  // (the states that start a scene / a level change: the original runs the kernel / movie path for real)

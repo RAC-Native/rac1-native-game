@@ -3,7 +3,7 @@
 // blips and the targets' reticles over the drawn mobys (0x2eace8) and one blip (0x2eaae0). Level 17 only: `orig: L17:`, the
 // level's own data L17_ADDR, the base ELF bare. The original's order of float operations kept; its EE frames of its own sizes.
 //
-// It carries the 18 HUD-width hooks the generator placed in its code (tools/codegen/hooks.glue, the space fights' HUD, #82):
+// It carries the 18 HUD-width hooks the generator placed in its code (once tools/codegen/hooks.glue's, the space fights' HUD, #82):
 // render_view_hud_begin(side) before each call that draws a side element (the radar's two sprites and each blip: side 2, the
 // missiles: side 1), render_view_hud_end() at the call's return address. The original's code reaches one of those return
 // addresses, 0x2eb4e4, also on two other paths (after the blip of a class 0x15b, and for the classes 399 / 400, which draw

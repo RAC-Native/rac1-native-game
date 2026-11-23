@@ -1,6 +1,6 @@
 // Small moby helpers several of the levels 11, 13, 16 and 17 carry copies of (shared_moby_helpers.cpp): a group's members
-// shown / hidden / made solid, a moby spawned at a place, an eased value between two times, a moby's state tested. Phase
-// 1 of stage 4: the levels' generated copies still run; these are proved against them by oracle batch 504.
+// shown / hidden / made solid, a moby spawned at a place, an eased value between two times, a moby's state tested. Every
+// level with a copy runs these ports; they are proved against each level's own copy by oracle batch 504.
 #ifndef RAC1_GAME_OVL_SHARED_MOBY_HELPERS_H
 #define RAC1_GAME_OVL_SHARED_MOBY_HELPERS_H
 

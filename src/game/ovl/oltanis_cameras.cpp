@@ -160,16 +160,14 @@ float legs(uint32_t path, int32_t from, int32_t to, float sum) {
 }  // namespace
 
 // orig: L14:0x00315920
-TrRet olt_cam_type20_accept_u(uint32_t cam, uint32_t other, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float,
-                              float, float, float, float, float) {
+int32_t olt_cam_type20_accept_l14(uint32_t cam, uint32_t other) {
     const uint32_t d = cam_data(cam);
-    const auto ret = [](int32_t v) { return TrRet{static_cast<uint32_t>(v), 0.0f}; };
-    if (lbu(d + 0x38) != 0) return ret(-1);
-    if (other != 0 && lh(other + 0x7e) == 0 && lw(0x001413dcu) != 0xf) return ret(0);
-    if (cam_type19_zone(cam) == 0) return ret(0);
-    if (lw(d + 0x48) >= 0 && lw(0x001413dcu) != lw(d + 0x48)) return ret(0);
-    if (lw(d + 0x44) >= 0 && lw(0x001413d4u) != lw(d + 0x44)) return ret(0);
-    return ret(1);
+    if (lbu(d + 0x38) != 0) return -1;
+    if (other != 0 && lh(other + 0x7e) == 0 && lw(0x001413dcu) != 0xf) return 0;
+    if (cam_type19_zone(cam) == 0) return 0;
+    if (lw(d + 0x48) >= 0 && lw(0x001413dcu) != lw(d + 0x48)) return 0;
+    if (lw(d + 0x44) >= 0 && lw(0x001413d4u) != lw(d + 0x44)) return 0;
+    return 1;
 }
 
 // orig: L14:0x00314f00
@@ -313,19 +311,17 @@ void olt_cam_type20_update_l14(uint32_t cam) {
 }
 
 // orig: L14:0x00316748
-TrRet olt_cam_type21_accept_u(uint32_t cam, uint32_t other, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float,
-                              float, float, float, float, float) {
+int32_t olt_cam_type21_accept_l14(uint32_t cam, uint32_t other) {
     const uint32_t d = cam_data(cam);
-    const auto ret = [](uint32_t v) { return TrRet{v, 0.0f}; };
     const bool current_is_20 = lh(lwu(L14_ADDR(0x00167500)) + 0x86) == 0x14;  // (the current camera)
     if (lw(d + 0x20) == 0) {  // (waiting: accepted, for the next frame, once the current camera is of type 20)
         if (current_is_20) sw(d + 0x20, 1);
-        return ret(0);
+        return 0;
     }
-    if (lw(d + 0x20) != 1) return ret(0);
-    if (!current_is_20) return ret(1);
-    if (other == 0 || lh(other + 0x7e) != 0) return ret(1);
-    return ret(0);
+    if (lw(d + 0x20) != 1) return 0;
+    if (!current_is_20) return 1;
+    if (other == 0 || lh(other + 0x7e) != 0) return 1;
+    return 0;
 }
 
 // orig: L14:0x003159d8

@@ -1,6 +1,6 @@
 #ifndef RAC1_GAME_OVL_TESLA_H
 #define RAC1_GAME_OVL_TESLA_H
-// tesla, transliterated (tesla_asm.cpp). Addresses are Veldin's overlay addresses (the shared engine).
+// tesla, ported by hand (tesla.cpp). Addresses are Veldin's overlay addresses (the shared engine).
 #include <cstdint>
 
 namespace rac1 {

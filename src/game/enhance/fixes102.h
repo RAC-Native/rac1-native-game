@@ -117,8 +117,8 @@
 //   Gemlik's and Gaspar's, class1885_update) with blobs out throws no more while a factor is 0.85 or more
 // - 31: the Tesla Claw's hits give their direction the z 1.0 (the North American build 0, unless the hit is straight
 //   below the claw): the arc's hit and the two held targets' (tesla_2b94d0 0x2b94d0: tesla.cpp)
-// In the generated code each hook is a test that fails with the row off; on another region's disc the transliterated
-// functions that region changed (stand-ins: on the PAL disc 2.00 the 1.02 build's own) get none.
+// Each hook is a test that fails with the row off (the North American port as it was); on another region's disc the
+// functions that region changed run the ports of the North American build unless a row ports the change.
 //
 // The EE block FIX (0xffc00..0x100000, in the PS2 kernel's first megabyte past corrected_texts.cpp's block: nothing of
 // the game or the runtime lives there) holds the new state fix 3 needs. The oracle and the headless runs have the row

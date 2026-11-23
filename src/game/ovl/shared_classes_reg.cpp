@@ -1,5 +1,5 @@
-// The registration of the shared classes' transliterated updates (shared_classes_tr.cpp, generated): hand-written, kept out of
-// the generated file (a generated file holds only the generator's output).
+// The registration of the shared classes' updates (veldin_shared_classes.cpp, formerly the generated shared_classes_tr.cpp): kept out of
+// that file (written when it was generated: a generated file holds only the generator's output).
 #include <game/ovl/ovl.h>
 #include <game/ovl/shared_classes_tr.h>
 

@@ -271,8 +271,8 @@ int32_t kal_hook_2e66c0_l16(uint32_t m, uint32_t a1, uint32_t a2, float f12) {
     return r;
 }
 
-// Class hook +0x10: the moby's pvars +0x60 (0 without the moby or its pvars). (The same code as Gaspar's
-// gas_hook_2e27a0_l9.)
+// Class hook +0x10: the moby's pvars +0x60 (0 without the moby or its pvars). (The same code as Blarg's
+// class_hook_pvars60_l6.)
 // orig: L16:0x002e66f0
 uint32_t kal_hook_2e66f0_l16(uint32_t m) {
     if (m == 0) return 0;

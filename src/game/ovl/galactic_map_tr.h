@@ -8,10 +8,10 @@
 
 namespace rac1 {
 
-TrRet ovl_23bef8_tr(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);  // 0x0023bef8
-TrRet ovl_23c920_tr(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);  // 0x0023c920
-TrRet galaxy_view_draw_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);  // 0x002033c0
-TrRet galmap_planet_draw_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15);  // 0x0027cbc0
+uint32_t ovl_23bef8_tr(uint32_t tex_idx, uint32_t x16, uint32_t y16, uint32_t w16, uint32_t h16, uint32_t u16, uint32_t v16, uint32_t alpha);  // 0x0023bef8
+uint32_t ovl_23c920_tr(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1, uint32_t colour, uint32_t subpixel);  // 0x0023c920
+void galaxy_view_draw(uint32_t x0, uint32_t x1, uint32_t y0, uint32_t y1);  // 0x002033c0
+uint32_t galmap_planet_draw_base(uint32_t w);  // 0x0027cbc0 (galactic_map.h's galmap_planet_draw: with a level mod's row)
 
 }  // namespace rac1
 

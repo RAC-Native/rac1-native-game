@@ -1,7 +1,7 @@
 // Oracle batch 260 (levels 17 / 18 port, 0.3.0): Drek's fleet's (level 17, code name Veldin Orbit) own code on its real level data. Run with
 // ORACLE_LEVEL=17 build/tests/ovl_oracle --batch 260 (needs the ISO; no RAM dump). The subjects are the level's own mobys of each class
 // (placed by its gameplay data) after the first gameplay frame, perturbed; the original is level 17's own function at its own address, the
-// port the one registered for it (the transliterations veldin_orbit_classes_tr_N.cpp): the 59 class updates, the 26 draw callbacks the
+// port the one registered for it (the hand ports that replaced veldin_orbit_classes_tr_N.cpp): the 59 class updates, the 26 draw callbacks the
 // classes queue, sound emitter type 5, camera type 3, class 1382's five hooks, the camera mode hook and its callback, and the movement-mode
 // hero update (L17:0x00203290, veldin_orbit_hero_tr_*.cpp). The other hero variants are proved by batch 261. Built after batch 124.
 
@@ -112,7 +112,7 @@ int32_t pvars60_hook(uint32_t m, uint32_t, uint32_t, float) { return static_cast
 // A random state can hold a pointer outside RAM that the port's vector helpers dereference without a check (a SIGSEGV where the interpreter would wrap it): the trial run of a state
 // turns it into "not a game state" (the state is dealt again), as the port's "Pointer resolution out of bounds" exception does.
 
-// The radar HUD's 18 HUD-width hooks (tools/codegen/hooks.glue's L17 lines; each a jal and its return address on the disc's code): in
+// The radar HUD's 18 HUD-width hooks (tools/codegen/hooks.glue's L17 lines before task H1; each a jal and its return address on the disc's code): in
 // 0x2eb9a8 the radar's two glyph_sprite 0x1f72f8 and the missiles' two hud_line_strip 0x2e9c28 (loaded / not), in 0x2eace8 its five
 // calls of the blip 0x2eaae0
 const std::vector<HudHook> kRadarHudHooks = {
@@ -276,7 +276,7 @@ void batch_260() {
         }
     }
 
-    // ---- the level's own classes (transliterated by tools/codegen/mkall_l17.py): the level's own mobys of each class, the first
+    // ---- the level's own classes (once transliterated by tools/codegen/mkall_l17.py; hand ports now): the level's own mobys of each class, the first
     // update (state 0) done by the port, then a state, a hit, the hero near, the pvars' floats / counters moved as typed
     g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};  // (+ the level change request: the original would run the CD / movie path)
     struct TrCls { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t skip_states = 0; bool walk = false; uint32_t skip_p0 = 0; uint32_t skip_p1 = 0; };  // (skip_p0 / skip_p1: states skipped in pass 0 / 1 only, see the batch's notes)  // (the states that start a scene / a level change: the original runs the kernel / movie path for real)

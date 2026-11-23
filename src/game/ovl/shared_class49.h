@@ -1,6 +1,6 @@
 // Class 49, a shot that flies straight and bursts into shards where it hits (Quartu, Kalebo III, Drek's fleet, Veldin), and
 // its trail of sparks, which class 50 shares with a tuning record of its own: one port of the four levels' copies
-// (shared_class49.cpp). Phase 1 of stage 4: the levels' generated copies still run; this is proved against them by oracle
+// (shared_class49.cpp). Every level with a copy runs this port; it is proved against each level's own copy by oracle
 // batch 505.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS49_H
 #define RAC1_GAME_OVL_SHARED_CLASS49_H

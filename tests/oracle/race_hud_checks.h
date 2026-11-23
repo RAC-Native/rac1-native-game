@@ -17,7 +17,7 @@
 //  - race_pal_meter / race_pal_bar: a PAL disc's state (the region flag 0x15ee90 set): the original runs with the PAL builds'
 //    lines put in at the same points (their code: orch/w7/h3/pal.md; the poses, the flips and the place from the level's text
 //    table as fix 19 writes them, the label " %s:  " with its two spaces), the port with its region fork.
-// The HUD-width hooks (render_view_hud_begin / _end): none in these two functions (tools/codegen/hooks.glue has no line for
+// The HUD-width hooks (render_view_hud_begin / _end): none in these two functions (tools/codegen/hooks.glue had no line for
 // levels 5 / 16; the race's elements are placed by the HUD's slots, hud.cpp's hud_race_bar keys on their EE addresses).
 #ifndef RAC1_TESTS_ORACLE_RACE_HUD_CHECKS_H
 #define RAC1_TESTS_ORACLE_RACE_HUD_CHECKS_H

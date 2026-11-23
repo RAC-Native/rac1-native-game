@@ -1,7 +1,7 @@
 #ifndef RAC1_GAME_OVL_DEVASTATOR_H
 #define RAC1_GAME_OVL_DEVASTATOR_H
-// The Devastator (item 0x0b, hand class 0x9d): the hand's update and its helpers, transliterated
-// (devastator_asm.cpp). Addresses are Veldin's overlay addresses (the shared engine).
+// The Devastator (item 0x0b, hand class 0x9d): the hand's update and its helpers, ported by hand
+// (devastator.cpp). Addresses are Veldin's overlay addresses (the shared engine).
 #include <cstdint>
 
 namespace rac1 {

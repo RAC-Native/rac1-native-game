@@ -1,5 +1,5 @@
 // Two families of Veldin's finale's own (level 18) with several copies of the same code: a textured strip's draw and a
-// class hook (shared_finale.cpp). Phase 1 of stage 4: the generated copies still run; proved against them by batch 510.
+// class hook (shared_finale.cpp). Every level with a copy runs them; proved against each level's own copy by batch 510.
 #ifndef RAC1_GAME_OVL_SHARED_FINALE_H
 #define RAC1_GAME_OVL_SHARED_FINALE_H
 

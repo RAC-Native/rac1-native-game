@@ -1,24 +1,21 @@
 // Oracle batch 512 (stage 4 task G5, #149): hand-written ports of one level made to serve every level that carries a copy
 // of the same code (layer 1: they call the ports tasks G1 and G2 generalised), each against every level's own copy at that
-// level's own address (the copies stay transliterated in their units until each level is re-glued; here every copy is the
-// original and the one port the port):
-//  - kerwan_camera.cpp: camera type 18 (0x12), the follow camera's modifier toward a moby: its accept (where its frame
-//    runs), the frame, the moby's cone test, the hero's zone test, and the follow camera's word +0x218 (levels 2, 3, 6, 7,
-//    8, 12, 18), on a camera of the test area whose record (the level's first) names data of the test area: every kind
-//    (+0x3c 0 .. 8), the counts at their edges, the moby from a group list or by index (live or not), every zone shape (the
-//    override moby, the platform, the radius, a box, cylinder, sphere and polygon of the test area), the right stick, the
-//    claim held by the camera, another or none, the follow camera given a real view;
-//  - novalis_path.cpp: the path follower's point, index wrap and advance, the spline tangent, the Hermite curve and the
-//    path's length (levels 1, 3, 4, 14), on followers of the level's paths and of paths of the test area;
-//  - novalis_jet_base.cpp: the aircraft base (Kerwan's class 845, Eudora's and Oltanis's copies; levels 1, 3, 4, 14) on the
-//    level's own aircraft (Oltanis has none placed at its start: live mobys given an aircraft's pvars in the test area),
-//    each state, every row of its jump table (the classes 0x33 .. 0x4a), its bank (and Kerwan's second build of it, class
-//    75's, with its pair at +0x140) and its smoke particle;
-//  - novalis_mobys.cpp: class 737, the scripted-camera trigger (levels 1, 2, 3, 7, 10, 13), each state, its boxes in the
-//    test area.
-// No RAM dumps: states built from the level after its first gameplay frame.
-// Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 512, N = 1, 2, 3, 4, 6, 7, 8, 10, 12, 13, 14, 18; a family the level
-// does not carry says so (B512_INFO=1 prints the subjects found).
+// level's own address (every level runs the shared port since its re-glue (stage 4); here every copy is the original and
+// the one port the port): - kerwan_camera.cpp: camera type 18 (0x12), the follow camera's modifier toward a moby: its
+// accept (where its frame runs), the frame, the moby's cone test, the hero's zone test, and the follow camera's word +0x218
+// (levels 2, 3, 6, 7, 8, 12, 18), on a camera of the test area whose record (the level's first) names data of the test
+// area: every kind (+0x3c 0 .. 8), the counts at their edges, the moby from a group list or by index (live or not), every
+// zone shape (the override moby, the platform, the radius, a box, cylinder, sphere and polygon of the test area), the right
+// stick, the claim held by the camera, another or none, the follow camera given a real view; - novalis_path.cpp: the path
+// follower's point, index wrap and advance, the spline tangent, the Hermite curve and the path's length (levels 1, 3, 4,
+// 14), on followers of the level's paths and of paths of the test area; - novalis_jet_base.cpp: the aircraft base (Kerwan's
+// class 845, Eudora's and Oltanis's copies; levels 1, 3, 4, 14) on the level's own aircraft (Oltanis has none placed at its
+// start: live mobys given an aircraft's pvars in the test area), each state, every row of its jump table (the classes 0x33
+// .. 0x4a), its bank (and Kerwan's second build of it, class 75's, with its pair at +0x140) and its smoke particle; -
+// novalis_mobys.cpp: class 737, the scripted-camera trigger (levels 1, 2, 3, 7, 10, 13), each state, its boxes in the test
+// area. No RAM dumps: states built from the level after its first gameplay frame. Run: ORACLE_LEVEL=N
+// build/tests/ovl_oracle --batch 512, N = 1, 2, 3, 4, 6, 7, 8, 10, 12, 13, 14, 18; a family the level does not carry says
+// so (B512_INFO=1 prints the subjects found).
 
 #include "ovl_oracle.h"
 

@@ -722,7 +722,7 @@ void batch_103() {
     if (!std::getenv("B103_ST") || std::atoi(std::getenv("B103_ST")) == st) classcheck("amoeboid_update", 0x002edca0, amoeboid_update_l1, [st, pass, amoeba_prep](uint32_t m) { amoeba_prep(m, st, pass); }, 40);
     g_extra_noop_hooks.clear();
 
-    // ---- the remaining classes (transliterated by tools/codegen/mkall.py, or the shared ports shared_*.cpp registered for them since
+    // ---- the remaining classes (once transliterated by tools/codegen/mkall.py; hand ports now, or the shared ports shared_*.cpp registered for them since
     // the level's re-glue): the level's own mobys of each class, the first
     // update (state 0) done by the port, then a state, a hit, the hero near, the pvars' floats / counters moved as typed
     g_extra_noop_hooks = {0x00122298, 0x00118a80, 0x00122fe0, 0x001232c8, OVF(0x00299460), OVF(0x0023e008), OVF(0x0024d430),
@@ -785,7 +785,7 @@ void batch_103() {
     }
     g_extra_noop_hooks.clear();
 
-    // ---- the classes shared with Veldin (transliterated at Veldin's addresses, run on both levels: ORACLE_LEVEL=0 / 1)
+    // ---- the classes shared with Veldin (ported at Veldin's addresses, run on both levels: ORACLE_LEVEL=0 / 1)
     {
         g_extra_noop_hooks = {0x00122298, 0x00118a80, 0x00122fe0, 0x001232c8, OVF(0x002a08c8), OVF(0x0029a6b0), OVF(0x00299460), OVF(0x0023e008),
                               OVF(0x0026ced0), OVF(0x0024d430), OVF(0x00266040), OVF(0x00264740)};

@@ -1,6 +1,6 @@
 // Classes 196 (Quartu) and 197 (Quartu, Drek's fleet): a lift that slides out along its facing when another moby reaches a
 // state or the hero steps into a box, and back when he leaves another; one port of the two levels' copies of its update
-// (shared_class196.cpp). Phase 1 of stage 4: the levels' generated copies still run; this is proved against them by oracle
+// (shared_class196.cpp). Every level with a copy runs this port; it is proved against each level's own copy by oracle
 // batch 507.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS196_H
 #define RAC1_GAME_OVL_SHARED_CLASS196_H

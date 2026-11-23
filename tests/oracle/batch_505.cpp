@@ -1,23 +1,20 @@
 // Oracle batch 505 (stage 4 task F2, #149): class code several of the levels 15, 16, 17 and 18 carry a copy of, each family
 // ported once as shared hand-written code (src/game/ovl/shared_*.cpp), against every level's own copy at that level's own
-// address. The level copies stay transliterated in their units until each level is re-glued; here every copy is the
-// original and the one shared port the port:
-//  - shared_class49.cpp: class 49, a shot that bursts into shards (its update, its trail, which class 50's copies on levels
-//    16 and 18 share with a tuning record of their own, and its shards; levels 15, 16, 17, 18);
-//  - shared_class256.cpp: class 256, a homing rocket, an earlier build of the Devastator's (levels 15, 18);
-//  - shared_class638.cpp: class 638, a hovering gun drone (its update, hits, seek, turn, burst, aim, sparks and group timers;
-//    levels 16, 18), and the class 49 shot it fires (shared_class49.cpp's class49_spawn);
-//  - shared_class1356.cpp: class 1356, a carrier of four drones (its update, hits, path following, the paths' headings, its
-//    joint, a drone attached and let go; levels 16, 18), and the class 50 shot it fires (shared_class49.cpp's class50_spawn);
-//  - shared_class1523.cpp: class 1523, Giant Clank's charged shot, and its streak (levels 15, 18);
-//  - shared_class123.cpp: class 123's update, a laser emitter that circles, swings or slides (levels 15, 17);
-//  - shared_class1443.cpp: class 1443 (1890 on level 18), a target of spinning rings: its update, its group's helpers and its
-//    draw callback (levels 16, 18);
-// Subjects: the level's own mobys of the class after the first gameplay frame (the port's, the view set up), or one spawned
-// by the game's moby_spawn when the level places none, perturbed; the draw callbacks' packets into a buffer of the test area.
-// No RAM dumps. Harness: batch 507's.
-// Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 505, N = 15, 16, 17 and 18; a family the level does not carry says so
-// and is not run.
+// address. Every level runs the shared port since its re-glue (stage 4); here every copy is the original and the one shared
+// port the port: - shared_class49.cpp: class 49, a shot that bursts into shards (its update, its trail, which class 50's
+// copies on levels 16 and 18 share with a tuning record of their own, and its shards; levels 15, 16, 17, 18); -
+// shared_class256.cpp: class 256, a homing rocket, an earlier build of the Devastator's (levels 15, 18); -
+// shared_class638.cpp: class 638, a hovering gun drone (its update, hits, seek, turn, burst, aim, sparks and group timers;
+// levels 16, 18), and the class 49 shot it fires (shared_class49.cpp's class49_spawn); - shared_class1356.cpp: class 1356, a
+// carrier of four drones (its update, hits, path following, the paths' headings, its joint, a drone attached and let go;
+// levels 16, 18), and the class 50 shot it fires (shared_class49.cpp's class50_spawn); - shared_class1523.cpp: class 1523,
+// Giant Clank's charged shot, and its streak (levels 15, 18); - shared_class123.cpp: class 123's update, a laser emitter that
+// circles, swings or slides (levels 15, 17); - shared_class1443.cpp: class 1443 (1890 on level 18), a target of spinning
+// rings: its update, its group's helpers and its draw callback (levels 16, 18); Subjects: the level's own mobys of the class
+// after the first gameplay frame (the port's, the view set up), or one spawned by the game's moby_spawn when the level places
+// none, perturbed; the draw callbacks' packets into a buffer of the test area. No RAM dumps. Harness: batch 507's. Run:
+// ORACLE_LEVEL=N build/tests/ovl_oracle --batch 505, N = 15, 16, 17 and 18; a family the level does not carry says so and is
+// not run.
 
 #include "ovl_oracle.h"
 

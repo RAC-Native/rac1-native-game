@@ -3,7 +3,7 @@
 // zones' polygons 0x1b04b0, the draw flag 0x15f30c) or the base ELF's (bare: the hero's state 0x1413d4, the screen's size
 // 0x13e500); the levels' own word is the address of the draw callback the update queues (per level below). The bomb's end
 // is Veldin's visibomb_ball_2b5b20 (Novalis', Aridia's, Kerwan's, Eudora's and Rilgar's copies are its code, which the
-// overlay maps pair with it; their units still transliterate it). Header shared_class832.h.
+// overlay maps pair with it; their calls run this port). Header shared_class832.h.
 //
 // The pvars: twenty zone records +0.. +0x13f (the polygon's path index +0 (-1 none), its floor +4 and ceiling +8, a box +0xc),
 // the frames out of them +0x140.

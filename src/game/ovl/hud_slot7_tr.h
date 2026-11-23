@@ -1,5 +1,5 @@
-// HUD slot 7's start (Veldin's 0x235dc0), update (0x23a218) and draw (0x23a2d0, the Metal Detector's display), transliterated (met on
-// Batalia, level 8; the draw on the levels whose build is Veldin's): the declarations of hud_slot7_tr.cpp (regen group veldin_hud7).
+// HUD slot 7's start (Veldin's 0x235dc0), update (0x23a218) and draw (0x23a2d0, the Metal Detector's display), ported by hand (met on
+// Batalia, level 8; the draw on the levels whose build is Veldin's): the declarations of hud_slot7.cpp's ports (formerly hud_slot7_tr.cpp).
 #ifndef RAC1_GAME_OVL_HUD_SLOT7_TR_H
 #define RAC1_GAME_OVL_HUD_SLOT7_TR_H
 

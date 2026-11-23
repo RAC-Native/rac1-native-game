@@ -1,6 +1,6 @@
 #ifndef RAC1_GAME_OVL_VISIBOMB_H
 #define RAC1_GAME_OVL_VISIBOMB_H
-// visibomb, transliterated (visibomb_asm.cpp). Addresses are Veldin's overlay addresses (the shared engine).
+// visibomb, ported by hand (visibomb.cpp). Addresses are Veldin's overlay addresses (the shared engine).
 #include <cstdint>
 
 namespace rac1 {

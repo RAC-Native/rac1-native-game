@@ -1,5 +1,5 @@
 // Blarg's Nebula G34 (level 6) own camera type, camera hook and class hooks: the dispatch from the Veldin ports' indirect calls
-// (`jalr`) to the transliterations in blarg_classes_tr_N.cpp, while the translation target is level 6's overlay. Each returns false when the
+// (`jalr`) to the level's hand-written ports, while the translation target is level 6's overlay. Each returns false when the
 // address is not one of level 6's own functions (the caller goes on to its Veldin cases).
 #ifndef RAC1_GAME_OVL_BLARG_HOOKS_H
 #define RAC1_GAME_OVL_BLARG_HOOKS_H

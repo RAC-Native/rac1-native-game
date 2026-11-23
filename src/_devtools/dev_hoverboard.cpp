@@ -3,7 +3,7 @@
 // Hoverboard anywhere on the levels without the board (all but Rilgar, 5, and Kalebo III, 16, where the game's own board is
 // mounted: dev_menu.cpp). What the board needs, and where it lives:
 // - the riding code: the board state 0x6b (sub-state 0x16), the wipe-out 0x6d and the fall 0x6e are level-own code of 5 and 16
-//   (their transliterated hero controllers, rilgar_hero_tr_*.cpp / kalebo_hero_tr_*.cpp, read their jump tables and globals
+//   (their own hero controllers' ports read their jump tables and globals
 //   at level 5's / 16's own data addresses: they cannot run on another level's memory). On every other level the hero
 //   controllers send 0x6b to the same place as state 5: nothing per frame, no transitions, the set_state's common tail only.
 //   So 0x6b is a state the host can own there: the game leaves the hero where he is (his animation, moby, camera, hits,

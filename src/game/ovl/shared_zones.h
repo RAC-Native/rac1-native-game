@@ -1,5 +1,5 @@
 // The deadly zones of Blarg, Batalia, Gemlik Base and Veldin's finale (class 1039): shared_zones.cpp, one port for the four
-// levels' copies. Phase 1 of stage 4: the levels' generated copies still run; proved against them by oracle batch 510.
+// levels' copies. Every level with a copy runs them; proved against each level's own copy by oracle batch 510.
 #ifndef RAC1_GAME_OVL_SHARED_ZONES_H
 #define RAC1_GAME_OVL_SHARED_ZONES_H
 

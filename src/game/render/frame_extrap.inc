@@ -5,9 +5,9 @@
 // mobys' places carried forward by a fraction of a step along the motion of the two steps before it, presented between it and the
 // next step's picture. Nothing of the game's state is read or written: the view's history is the snapshots the pipelined frames
 // took (render_view_snapshot), the mobys' the draw lists the MRP built from them; the drawing reads them while
-// g_draw_from_snapshot, as the frame's first picture does. (An .inc, not a .h, and kept out of render_view.h and the renderers'
-// headers: every src/game/**/*.h is an input of the generated code's fingerprint, tools/setup.py CODE_SOURCES, and a change
-// there asks for ./setup.sh again; no generated code includes this.)
+// g_draw_from_snapshot, as the frame's first picture does. (An .inc, not a .h, kept out of render_view.h and the renderers'
+// headers since a src/game header was an input of the generated code's fingerprint, tools/setup.py CODE_SOURCES, until
+// stage 4's end; no generated code includes this.)
 #pragma once
 
 #include <glm/glm.hpp>

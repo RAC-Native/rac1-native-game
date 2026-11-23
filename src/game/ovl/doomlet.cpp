@@ -4,7 +4,6 @@
 
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
-#include <game/ovl/blarg_call.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>

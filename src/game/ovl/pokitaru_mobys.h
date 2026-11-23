@@ -1,5 +1,5 @@
-// Pokitaru (level 11) transliterated moby classes, class hooks, draw callbacks, the camera mode hook and level-only engine functions: the declarations of
-// pokitaru_classes_tr_N.cpp (generated: `void` = a class update / entry in the entry ABI, `TrRet` = a helper or a `_u` entry in the uniform ABI).
+// Pokitaru (level 11) moby classes, class hooks, draw callbacks, the camera mode hook and level-only engine functions: the declarations of
+// their hand-written ports (once the generated pokitaru_classes_tr_N.cpp).
 #ifndef RAC1_GAME_OVL_POKITARU_MOBYS_H
 #define RAC1_GAME_OVL_POKITARU_MOBYS_H
 
@@ -33,7 +33,7 @@ void pok_class1231_update_l11(uint32_t m);  // L11:0x00310180 the energy-ball th
 void pok_cb_311d50_l11(uint32_t m);         // L11:0x00311d50 the fighter jet's HUD draw callback
 void pok_class1242_update_l11(uint32_t m);  // L11:0x00313290 the fighter jet
 void pok_class1246_update_l11(uint32_t m);  // L11:0x00314318 the pufferfish enemy
-TrRet pok_hook_316160_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L11:0x00316160 class 1246's carry hook +0
+int32_t pok_hook_316160_u(uint32_t m, uint32_t a1, uint32_t a2, float f12);  // L11:0x00316160 class 1246's carry hook +0
 void pok_class1248_update_l11(uint32_t m);  // L11:0x00316320 the rising double-panel bridge
 void pok_class1264_update_l11(uint32_t m);  // L11:0x003172c0 the sky cargo train
 void pok_class1265_update_l11(uint32_t m);  // L11:0x003181f0 a cargo train carriage

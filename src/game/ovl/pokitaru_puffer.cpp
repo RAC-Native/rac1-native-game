@@ -199,9 +199,8 @@ int32_t pok_316090_l11(uint32_t m) {
 
 // Class 1246 carry hook +0: saves the current state into moby +0xbc and enters state 0x14 while carried.
 // orig: L11:0x00316160
-TrRet pok_hook_316160_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t,
-                        float f12, float, float, float, float, float, float, float) {
-    uint32_t res = static_cast<uint32_t>(carry_hook0(a0, a1, a2, f12));
+int32_t pok_hook_316160_u(uint32_t a0, uint32_t a1, uint32_t a2, float f12) {
+    int32_t res = carry_hook0(a0, a1, a2, f12);
     const uint32_t st = lbu(a0 + 0x20);
     if (res != 0) {
         if (st == 2 || st == 4 || st == 5 || st == 6 || st == 0xe || st == 0xf || st == 0x10 || st == 0x14) {
@@ -215,7 +214,7 @@ TrRet pok_hook_316160_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t, uint32_
     } else if (st == 0x14) {
         sb(a0 + 0x20, lbu(a0 + 0xbc));
     }
-    return TrRet{res, 0.0f};
+    return res;
 }
 
 // Class 1246 update: beach/water/raft pufferfish enemy (states 0..20).

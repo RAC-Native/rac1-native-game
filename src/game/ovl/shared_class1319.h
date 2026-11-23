@@ -1,8 +1,8 @@
 // The shared code of Pokitaru's class 1319 and Drek's fleet's class 1843 (the same flyer): the vapour trails its group
 // leaves (a record of the last points of two trails per moby and the draw callback that strips them), its pose along a
 // path, and its reaction to a hit (shared_class1319.cpp). One port of the two levels' copies; the classes' own updates
-// (L11:0x319838, L17:0x2f40d8) stay the levels'. Phase 1 of stage
-// 4: the levels' generated copies still run; these are proved against them by oracle batch 504.
+// (L11:0x319838, L17:0x2f40d8) stay the levels'. Every level with a copy runs these ports; they are proved against
+// each level's own copy by oracle batch 504.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS1319_H
 #define RAC1_GAME_OVL_SHARED_CLASS1319_H
 

@@ -1,7 +1,7 @@
 // Drek's fleet (level 17, code name Veldin Orbit) on its own overlay. Level 17's engine build: 1542 of Veldin's 1974 functions
 // found in its overlay (84.4 %, docs/reversing/level_change.md section 2). The hero controller has twelve functions of its own build
 // (its shapes are Veldin's, with Blarg's in places); they, the class table, the sound emitters and the class hooks are level 17's own,
-// transliterated at its addresses (`// orig: L17:0x00xxxxxx`, veldin_orbit_hero_tr_*.cpp, veldin_orbit_classes_tr_*.cpp). The generic
+// ported by hand at its addresses (`// orig: L17:0x00xxxxxx`). The generic
 // parts (the table rows, on_level) are in variants.h.
 #ifndef RAC1_GAME_OVL_VARIANTS_L17_H
 #define RAC1_GAME_OVL_VARIANTS_L17_H

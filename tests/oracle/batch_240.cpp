@@ -2,7 +2,7 @@
 // the camera types, the class hooks, the camera mode hook and its callback, cutscene_level_extras, the movement-mode hero update, moby_spawn and mobys_in_sphere
 // (level 15's copies). Run with ORACLE_LEVEL=15 build/tests/ovl_oracle --batch 240 (needs the ISO; no dumps). The subjects are the level's own
 // mobys of each class (placed by its gameplay data) after the first gameplay frame, perturbed; the original is level 15's own function at its
-// own address, the port the one registered for it (the transliterations quartu_classes_tr_N.cpp / quartu_hero_tr_N.cpp, generated from the disc by
+// own address, the port the one registered for it (the hand ports that replaced quartu_classes_tr_N.cpp / quartu_hero_tr_N.cpp, generated from the disc by
 // tools/codegen/mkall_l15.py). Made after batch 124 (Pokitaru).
 #include "ovl_oracle.h"
 #include "trial_guard.h"
@@ -13,6 +13,9 @@
 #include <game/level/level_data.h>
 #include <game/ovl/cutscene.h>
 #include <game/ovl/quartu_mobys.h>
+#include <game/ovl/blarg_own.h>
+#include <game/ovl/gaspar_mobys.h>
+#include <game/ovl/shared_helpers.h>
 #include <game/ovl/variants_l15.h>
 #include <game/ovl/kerwan_camera.h>
 #include <game/ovl/novalis_mobys.h>
@@ -257,7 +260,7 @@ void batch_240() {
         }
     }
 
-    // ---- the level's own classes (transliterated by tools/codegen/mkall_l15.py): the level's own mobys of each class, the first
+    // ---- the level's own classes (once transliterated by tools/codegen/mkall_l15.py; hand ports now): the level's own mobys of each class, the first
     // update (state 0) done by the port, then a state, a hit, the hero near, the pvars' floats / counters moved as typed
     g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};  // (+ the level change request: the original would run the CD / movie path)
     struct TrCls { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t skip_states = 0; bool walk = false; uint32_t skip_p0 = 0; uint32_t skip_p1 = 0; };  // (skip_p0 / skip_p1: states skipped in pass 0 / 1 only)  // (the states that start a scene / a level change: the original runs the kernel / movie path for real)
@@ -474,13 +477,15 @@ void batch_240() {
     // (the carry hooks' shape: their callees read all four), on the mobys whose class owns the hook
     if (g_oracle_level == 15) {
         g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};
-        struct Hk { const char* name; uint32_t addr; uint32_t slot; TrRet (*fn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float, float, float); };
+        // (the ports: +0 / +4 / +8 the shared carry_state_hook, +0xc Gaspar's gas_hook_2e2770_l9, +0x10 Blarg's class_hook_pvars60_l6:
+        // the same code, word for word)
+        struct Hk { const char* name; uint32_t addr; uint32_t slot; int32_t (*fn)(uint32_t, uint32_t, uint32_t, float); };
         static const Hk hks[] = {
-            {"hook_2bc4b0", 0x2bc4b0, 0x0, qua_hook_2bc4b0_u},
-            {"hook_2bc500", 0x2bc500, 0x4, qua_hook_2bc500_u},
-            {"hook_2bc550", 0x2bc550, 0x8, qua_hook_2bc550_u},
-            {"hook_2bc5a0", 0x2bc5a0, 0xc, qua_hook_2bc5a0_u},
-            {"hook_2bc5d0", 0x2bc5d0, 0x10, qua_hook_2bc5d0_u},
+            {"hook_2bc4b0", 0x2bc4b0, 0x0, [](uint32_t m, uint32_t a1, uint32_t a2, float f) { return carry_state_hook(m, a1, a2, f, 0, 7, 1); }},
+            {"hook_2bc500", 0x2bc500, 0x4, [](uint32_t m, uint32_t a1, uint32_t a2, float f) { return carry_state_hook(m, a1, a2, f, 4, 7, 1); }},
+            {"hook_2bc550", 0x2bc550, 0x8, [](uint32_t m, uint32_t a1, uint32_t a2, float f) { return carry_state_hook(m, a1, a2, f, 8, 7, 1); }},
+            {"hook_2bc5a0", 0x2bc5a0, 0xc, gas_hook_2e2770_l9},
+            {"hook_2bc5d0", 0x2bc5d0, 0x10, [](uint32_t m, uint32_t, uint32_t, float) { return static_cast<int32_t>(class_hook_pvars60_l6(m)); }},
         };
         for (const Hk& hk : hks) {
             level();
@@ -506,7 +511,7 @@ void batch_240() {
                 }
                 const uint32_t tgt = ri(0, 3) == 0 ? 0u : first + 0x100 * u(ri(0, 100));
                 return Args{{m, ri(0, 2) == 0 ? 0x0013f3d0u : m + 0x10, tgt}, {rf(-1, 3)}};
-            }, [fn](A a) { return r32(fn(a.i[0], a.i[1], a.i[2], 0, 0, 0, 0, 0, a.f[0], 0, 0, 0, 0, 0, 0, 0).v0); });
+            }, [fn](A a) { return r32(static_cast<uint32_t>(fn(a.i[0], a.i[1], a.i[2], a.f[0]))); });
         }
         g_extra_noop_hooks.clear();
     }
@@ -636,7 +641,7 @@ void batch_240() {
             }
             if (type == 22) {
             lvcheck(name("accept"), ct.accept, 300, Ret::Int32, [cam_setup, type] { uint32_t other = 0; const uint32_t cam = cam_setup(type, true, &other); return Args{{cam, other}, {}}; },
-                    [](A a) { return r32(a.i[0] != 0 ? qua_cam_type22_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0 : 0u); });
+                    [](A a) { return r32(a.i[0] != 0 ? static_cast<uint32_t>(qua_cam_type22_accept_l15(a.i[0])) : 0u); });
             lvcheck(name("init"), ct.init, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
                     [](A a) { if (a.i[0] != 0) empty_update(a.i[0]); return uint64_t{0}; });
             lvcheck(name("update"), ct.update, 100, Ret::None, [cam_setup, type] { return Args{{cam_setup(type, false, nullptr)}, {}}; },
@@ -1988,7 +1993,7 @@ void batch_240() {
             };
             if (!cams.empty()) {
                 lvcheck("cam22_full", 0x002f8ba8, 400, Ret::Int32, [=] { return Args{{deal_cam(true), 0}, {}}; },
-                        [](A a) { return r32(qua_cam_type22_accept_u(a.i[0], a.i[1], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0).v0); });
+                        [](A a) { return r32(static_cast<uint32_t>(qua_cam_type22_accept_l15(a.i[0]))); });
                 lvcheck("cam22_2f85a8", 0x002f85a8, 200, Ret::Int32, [=] { return Args{{deal_cam(false)}, {}}; },
                         [](A a) { return r32(qua_2f85a8_l15(a.i[0]) ? 1u : 0u); });
                 lvcheck("cam22_2f8698", 0x002f8698, 300, Ret::Int32, [=] {

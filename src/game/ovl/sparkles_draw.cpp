@@ -1,7 +1,6 @@
 // Ported overlay code: the sparkles' draw (see sparkles_draw.h).
 #include <game/ovl/sparkles_draw.h>
 
-#include <game/ovl/blarg_call.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl_common.h>
 

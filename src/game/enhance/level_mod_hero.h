@@ -21,7 +21,7 @@ bool level_mod_kalebo_surface(int32_t kind);
 bool level_mod_kalebo_lava_ground();
 
 // The board (Kalebo III's and Rilgar's builds: hooks in hero_hoverboard.cpp, shared_race_camera.cpp) outside a race, on a level mod's
-// level (hero_modes.h's rules; the original's levels: as transliterated, every hook a test that fails):
+// level (hero_modes.h's rules; the original's levels: as ported, every hook a test that fails):
 // orig: (none) — enhancement: the level number the board's race code compares (its fall test, its race's start line): the
 // planet whose race it rides (`world rilgar` on Kalebo III's base: 5), else `level` as read
 uint32_t level_mod_board_planet(uint32_t level);

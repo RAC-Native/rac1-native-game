@@ -53,7 +53,7 @@ bool hop_or_lost(uint32_t hop) {
 
 // orig: (none) — enhancement (level_mod_hero.h)
 bool level_mod_kalebo_surface(int32_t kind) {
-    if (!level_slots_on() || level_slot_current() < 0) return false;  // (the original's Kalebo III: as transliterated)
+    if (!level_slots_on() || level_slot_current() < 0) return false;  // (the original's Kalebo III: as ported)
     ++g_frames;
     if (g_lost) {
         if (lbu(P + 0x20b1) != 0) return false;  // (the respawn under way)

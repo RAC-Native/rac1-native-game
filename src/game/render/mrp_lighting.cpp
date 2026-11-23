@@ -39,7 +39,7 @@
 namespace rac1 {
 
 // (mrp_particles.cpp: the ambient particles' sky grid - docs/particles.md, "Under a roof" - which the materials' rain rings read too;
-// declared here, not in mrp_particles.h: the headers of src/game are the generated code's fingerprint)
+// declared here, not in mrp_particles.h)
 void mrp_particles_sky_frame();
 const vk::GpuImage* mrp_particles_sky_vk();
 
@@ -56,7 +56,7 @@ int g_shadow_quality = std::clamp(env_int("RAC1_SHADOW_RES", 1), 0, 2);
 // interiors - the original's lighting, its drop shadows drawn (mrp_moby_renderer), no sun's shadows, cascades, sun rays nor point-light
 // shadows - while the effects on top of it (occlusion, materials, reflections, grass, particles, the point lights) keep working. 0
 // (default) the modern sun (RAC1_LIGHTING_ORIGINAL). Declared where it is used (graphics.cpp, mrp_moby_renderer.cpp, the debug menu),
-// not in mrp_lighting.h: the headers of src/game are the generated code's fingerprint
+// not in mrp_lighting.h
 int g_lighting_original = env_int("RAC1_LIGHTING_ORIGINAL", 0);
 int g_shadow_strength = std::clamp(env_int("RAC1_SHADOW_STRENGTH", 70), 0, 100);
 int g_shadow_debug = env_int("RAC1_SHADOW_DEBUG", 0);
@@ -138,8 +138,8 @@ struct Cascade {
 };
 
 }  // namespace
-// (mrp_moby_renderer.cpp: declared here, not in mrp_lighting.h - a game header is an input of the generated code's fingerprint, and
-// changing one asks for ./setup.sh again) the light's clip-space rectangle of each moby part a caster pass draws, 8 floats each
+// (mrp_moby_renderer.cpp: declared here, not in mrp_lighting.h)
+// the light's clip-space rectangle of each moby part a caster pass draws, 8 floats each
 // appended to `out` (x0, y0, x1, y1, its world centre, radius); the parts' count
 int mrp_moby_caster_parts(const float* light_vp, std::vector<float>& out, const float* within = nullptr);
 namespace {
@@ -5023,7 +5023,7 @@ bool mrp_lighting_screen_point(float u, float v, float out[3]) {
 
 // orig: (host) mrp_moby_renderer.cpp: the joint that carries the drawn moby's surface nearest a world point (the heaviest joint of
 // the nearest skinned triangle's vertex nearest the point), -1 none (not drawn, no pose); `dist` that triangle's distance. (Declared
-// here, not in mrp_lighting.h: a change to that header asks every build for ./setup.sh again - the generated code is built against it.)
+// here, not in mrp_lighting.h.)
 int mrp_moby_surface_joint(uint32_t moby, const float p[3], float* dist = nullptr);
 
 // orig: (host) see mrp_lighting.h

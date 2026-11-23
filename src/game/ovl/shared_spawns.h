@@ -1,5 +1,5 @@
 // Small spawn and group helpers several levels carry copies of (shared_spawns.cpp; Gaspar's spawn is another build, written
-// as its own function). Phase 1 of stage 4: the levels' generated copies still run; proved against them by oracle batch 510.
+// as its own function). Every level with a copy runs them; proved against each level's own copy by oracle batch 510.
 #ifndef RAC1_GAME_OVL_SHARED_SPAWNS_H
 #define RAC1_GAME_OVL_SHARED_SPAWNS_H
 

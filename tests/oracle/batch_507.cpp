@@ -1,29 +1,23 @@
 // Oracle batch 507 (stage 4 task F4, #149): class code several of the levels 1, 3, 7, 14, 15 and 17 carry a copy of, each
 // family ported once as shared hand-written code (src/game/ovl/shared_*.cpp), against every level's own copy at that level's
-// own address. The level copies stay transliterated in their units until each level is re-glued; here every copy is the
-// original and the one shared port the port:
-//  - shared_class1224.cpp: class 1224, a bolt of lightning along a volume: its update, the new bolt, the strike sweeps, the
-//    fade and the draw callback (levels 14, 15, 17);
-//  - shared_class403.cpp: class 403, a rocket on a path and in free flight, and its trail (levels 14, 15);
-//  - shared_class325.cpp: class 325, a burning shell (levels 14, 15), and its glow's draw (also Novalis's class 1510's; levels
-//    1, 14, 15);
-//  - shared_class250.cpp: class 250, animations in step with the camera of type 20 (levels 14, 15);
-//  - shared_class1331.cpp: class 1331, the three effect slots' manager (levels 14, 15);
-//  - shared_class28_draw.cpp: class 28's two draw callbacks, its five glows and its spot (levels 14, 15);
-//  - shared_class77.cpp: class 77, a mine, and its group's glow (levels 15, 17);
-//  - shared_class78_draw.cpp, shared_class123_draw.cpp: the draw callbacks of classes 78 and 123 (levels 15, 17);
-//  - shared_three_glows.cpp: the three glows of classes 44 (levels 15, 17) and 1382 (level 17);
-//  - shared_ripples.cpp: the rippling surfaces' update (classes 1408, 1409, 1565, 1567 on level 15; 1405, 1406, 1407, 1426 on
-//    level 17) and two of their draws, the rings and the pool (levels 15, 17);
-//  - shared_class196.cpp: classes 196 / 197, a lift (levels 15, 17);
-//  - shared_class655_glows.cpp, shared_class408_tint.cpp: class 655's glows and class 408's tint (levels 15, 17);
-//  - shared_class848.cpp: class 848, a helicopter's gunfire, and its bullet (levels 3, 7, 15);
-//  - shared_level_helpers.cpp: a spark at a chain point (levels 7, 15, 17), the held moby shown (levels 1, 14);
-//  - shared_class686.cpp: class 686, a shell that blows up at its target (levels 1, 14).
-// Subjects: the level's own mobys of the class after the first gameplay frame (the port's, the view set up), perturbed; the
-// draw callbacks' packets into a buffer of the test area. No RAM dumps.
-// Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 507, N = 1, 3, 7, 14, 15 and 17; a family the level does not carry
-// says so and is not run.
+// own address. Every level runs the shared port since its re-glue (stage 4); here every copy is the original and the one
+// shared port the port: - shared_class1224.cpp: class 1224, a bolt of lightning along a volume: its update, the new bolt, the
+// strike sweeps, the fade and the draw callback (levels 14, 15, 17); - shared_class403.cpp: class 403, a rocket on a path and
+// in free flight, and its trail (levels 14, 15); - shared_class325.cpp: class 325, a burning shell (levels 14, 15), and its
+// glow's draw (also Novalis's class 1510's; levels 1, 14, 15); - shared_class250.cpp: class 250, animations in step with the
+// camera of type 20 (levels 14, 15); - shared_class1331.cpp: class 1331, the three effect slots' manager (levels 14, 15); -
+// shared_class28_draw.cpp: class 28's two draw callbacks, its five glows and its spot (levels 14, 15); - shared_class77.cpp:
+// class 77, a mine, and its group's glow (levels 15, 17); - shared_class78_draw.cpp, shared_class123_draw.cpp: the draw
+// callbacks of classes 78 and 123 (levels 15, 17); - shared_three_glows.cpp: the three glows of classes 44 (levels 15, 17) and
+// 1382 (level 17); - shared_ripples.cpp: the rippling surfaces' update (classes 1408, 1409, 1565, 1567 on level 15; 1405,
+// 1406, 1407, 1426 on level 17) and two of their draws, the rings and the pool (levels 15, 17); - shared_class196.cpp: classes
+// 196 / 197, a lift (levels 15, 17); - shared_class655_glows.cpp, shared_class408_tint.cpp: class 655's glows and class 408's
+// tint (levels 15, 17); - shared_class848.cpp: class 848, a helicopter's gunfire, and its bullet (levels 3, 7, 15); -
+// shared_level_helpers.cpp: a spark at a chain point (levels 7, 15, 17), the held moby shown (levels 1, 14); -
+// shared_class686.cpp: class 686, a shell that blows up at its target (levels 1, 14). Subjects: the level's own mobys of the
+// class after the first gameplay frame (the port's, the view set up), perturbed; the draw callbacks' packets into a buffer of
+// the test area. No RAM dumps. Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 507, N = 1, 3, 7, 14, 15 and 17; a family
+// the level does not carry says so and is not run.
 
 #include "ovl_oracle.h"
 

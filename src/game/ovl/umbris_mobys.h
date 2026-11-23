@@ -1,6 +1,6 @@
-// Umbris (level 7) transliterated moby classes, camera type 0x12, class hooks and level-only engine
-// functions: the declarations of umbris_classes_tr_N.cpp
-// (generated: `void` = a class update / entry in the entry ABI, `TrRet` = a helper or a `_u` entry in the uniform ABI).
+// Umbris (level 7) moby classes, camera type 0x12, class hooks and level-only engine
+// functions: the declarations of their hand-written ports
+// (once the generated umbris_classes_tr_N.cpp).
 #ifndef RAC1_GAME_OVL_UMBRIS_MOBYS_H
 #define RAC1_GAME_OVL_UMBRIS_MOBYS_H
 

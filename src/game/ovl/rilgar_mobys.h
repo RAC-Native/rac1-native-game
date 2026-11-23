@@ -1,5 +1,5 @@
 // Rilgar's (level 5) moby classes and camera types: the declarations of their hand-written ports (the unit
-// rilgar_classes_tr_N.cpp is retired since H3; `TrRet` = a helper in the uniform ABI).
+// rilgar_classes_tr_N.cpp is retired since H3).
 #ifndef RAC1_GAME_OVL_RILGAR_MOBYS_H
 #define RAC1_GAME_OVL_RILGAR_MOBYS_H
 
@@ -43,9 +43,6 @@ void ril_class998_update_l5(uint32_t m);   // L5:0x00318c78 the raft (rilgar_oce
 void ril_class844_update_l5(uint32_t m);   // L5:0x0030e7f8 the float that leaps (rilgar_class844.cpp)
 void ril_class918_update_l5(uint32_t m);   // L5:0x00316ab8 the race organiser (rilgar_race_organiser.cpp)
 void ril_class1347_update_l5(uint32_t m);  // L5:0x0031bf40 the hint giver (rilgar_help.cpp)
-
-// ---- the uniform-ABI entries and the level-only helpers
-TrRet ril_3274b8_l5(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L5:0x003274b8
 
 }  // namespace rac1
 

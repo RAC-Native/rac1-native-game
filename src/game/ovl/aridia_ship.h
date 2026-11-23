@@ -1,5 +1,5 @@
 // The ship's draw callbacks on Aridia, and the one port of every level's copy of them (aridia_ship.cpp): the shadow / glow,
-// the engine glow and the exhaust trails (Veldin's 0x28e670 / 0x28efc8 / 0x28f238, still transliterated on Veldin:
+// the engine glow and the exhaust trails (Veldin's 0x28e670 / 0x28efc8 / 0x28f238, Veldin's own ports:
 // ship_draw_cbs.h). Proved against the original on every level (batch 503).
 #ifndef RAC1_GAME_OVL_ARIDIA_SHIP_H
 #define RAC1_GAME_OVL_ARIDIA_SHIP_H

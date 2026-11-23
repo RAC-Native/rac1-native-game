@@ -1,7 +1,7 @@
 // Class 437 of Novalis, Aridia and Eudora: an older build of the Sandmouse (class 1818, shared_sandmouse.cpp) that waits at
 // its house, takes the hero, runs about shooting class 1633's shots at targets and burrows back (shared_class437.cpp: one
-// port of the three levels' copies, the same code relinked). Phase 1 of stage 4: the levels' generated copies still run;
-// these are proved against them by oracle batch 520.
+// port of the three levels' copies, the same code relinked). Every level with a copy runs these ports; they are proved
+// against each level's own copy by oracle batch 520.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS437_H
 #define RAC1_GAME_OVL_SHARED_CLASS437_H
 

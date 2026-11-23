@@ -1,9 +1,8 @@
-// Oracle batch 124 (task 0357): level 11's (Pokitaru) own moby classes on its real level data. Run with
-// ORACLE_LEVEL=11 build/tests/ovl_oracle --batch 124 (needs the ISO). The subjects are the level's own
-// mobys of each class (placed by its gameplay data) after the first gameplay frame, perturbed; the
-// original is level 11's own function at its own address, the port the one registered for it (the
-// transliterations pokitaru_classes_tr_N.cpp, or the hand-written pokitaru_*.cpp; the "p111_" checks drive the hand-written
-// classes of stage 4 P11.1 through their states).
+// Oracle batch 124 (task 0357): level 11's (Pokitaru) own moby classes on its real level data. Run with ORACLE_LEVEL=11
+// build/tests/ovl_oracle --batch 124 (needs the ISO). The subjects are the level's own mobys of each class (placed by its
+// gameplay data) after the first gameplay frame, perturbed; the original is level 11's own function at its own address, the
+// port the one registered for it (the hand ports that replaced pokitaru_classes_tr_N.cpp, or the hand-written
+// pokitaru_*.cpp; the "p111_" checks drive the hand-written classes of stage 4 P11.1 through their states).
 
 #include "ovl_oracle.h"
 #include "trial_guard.h"
@@ -235,7 +234,7 @@ void batch_124() {
         }
     }
 
-    // ---- the level's own classes (transliterated by tools/codegen/mkall_l11.py): the level's own mobys of each class, the first
+    // ---- the level's own classes (once transliterated by tools/codegen/mkall_l11.py; hand ports now): the level's own mobys of each class, the first
     // update (state 0) done by the port, then a state, a hit, the hero near, the pvars' floats / counters moved as typed
     g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};  // (+ the level change request: the original would run the CD / movie path)
     struct TrCls { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t skip_states = 0; bool walk = false; uint32_t skip_p0 = 0; uint32_t skip_p1 = 0; };  // (skip_p0 / skip_p1: states skipped in pass 0 / 1 only, see docs/reversing/pokitaru_classes.md)  // (the states that start a scene / a level change: the original runs the kernel / movie path for real)
@@ -436,7 +435,7 @@ void batch_124() {
             {"hook_2fb840", 0x2fb840, 0x8, hook_dispatched<0x2fb840>},
             {"hook_2fb890", 0x2fb890, 0xc, hook_dispatched<0x2fb890>},
             {"hook_2fb8c0", 0x2fb8c0, 0x10, hook_dispatched<0x2fb8c0>},
-            {"hook_316160", 0x316160, 0x0, pok_hook_316160_u},
+            {"hook_316160", 0x316160, 0x0, hook_uniform<pok_hook_316160_u>},
             {"hook_316210", 0x316210, 0x4, hook_uniform<keep_state_hook4>},
             {"hook_316270", 0x316270, 0x8, hook_uniform<keep_state_hook8>},
             {"hook_3162d0", 0x3162d0, 0xc, hook_dispatched<0x3162d0>},  // (Y1: L18:0x2d6230's port)
@@ -1944,8 +1943,7 @@ void batch_124() {
                         w32(T + 0x20, m);
                         return Args{{m, T, T + 0x20, 0, 0, 0, 0, 0}, {rf(0.0f, 5.0f), 0, 0, 0, 0, 0, 0, 0}};
                     }, [](A a) {
-                        const TrRet r = pok_hook_316160_u(a.i[0], a.i[1], a.i[2], 0, 0, 0, 0, 0, a.f[0], 0, 0, 0, 0, 0, 0, 0);
-                        return r32(r.v0);
+                        return r32(static_cast<uint32_t>(pok_hook_316160_u(a.i[0], a.i[1], a.i[2], a.f[0])));
                     });
                 }
 

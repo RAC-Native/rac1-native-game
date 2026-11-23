@@ -1,29 +1,24 @@
 // Oracle batch 509 (stage 4 task F6, #149): the class code several levels carry a copy of, each family ported once as shared
-// hand-written code (src/game/ovl/shared_*.cpp), against every level's own copy at that level's own address. The level copies
-// stay transliterated in their units until each level is re-glued; here every copy is the original and the one shared port
-// the port:
-//  - shared_class827.cpp: class 827, a walker with a rider, its helpers and its class hooks (levels 6, 10);
-//  - shared_class302.cpp: class 302's draw (an environment-mapped mesh) and class 303's update (levels 6, 10);
-//  - shared_class1302.cpp, shared_class857.cpp: class 1302's draw (a sign and its ring) and class 857's (glows; levels 6, 10);
-//  - shared_swingshot_target.cpp: the swingshot's targets (classes 758 / 803), the camera's look toward them and its hook's
-//    install (levels 2 .. 7, 9 .. 18);
-//  - shared_class819.cpp: class 819, a homing shot (levels 10, 11, 15, 17), on shots spawned for the check;
-//  - shared_class1021.cpp: class 1021, a flower of petals that opens on a trigger (levels 6, 17, 18);
-//  - shared_class832.cpp: class 832, the Visibomb's range: its update (on a Visibomb missile spawned for the check) and its
-//    static's draw callback (levels 1 .. 15, 18);
-//  - shared_class604.cpp: class 604, an animated mechanism (levels 1 .. 6, 8, 11, 12, 14);
-//  - shared_particle_4a.cpp: particle 0x4a's spawn (levels 1 .. 6, 8, 11 .. 14, 17); shared_path_links.cpp: the links of a
-//    path's points (levels 5, 6, 7, 10, 11);
-//  - shared_class830.cpp: class 830, a floor switch (levels 5, 11, 15, 17, 18);
-//  - shared_class1038.cpp: classes 1038 (a crystal's holder, its glow) and 1040 (the crystal, its burst; levels 6, 10, 17);
-//  - shared_class1378.cpp: class 1378 and its draw callback, a field of rippling quads (levels 10, 17);
-//  - shared_class1108.cpp: class 1108's draw callback, a countdown on the screen (levels 6, 15, 17, 18);
-// Subjects: the level's own mobys of the class after the first gameplay frame (the port's; the screen, the projection and the
-// view set up), perturbed, or (a level that places none) live mobys with pvars; the helpers on the class's mobys with
-// arguments built from the level's state; the draw callbacks' subjects at the hero (whom the view looks at), their packets
-// into a buffer of the test area. No RAM dumps.
-// Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 509, N = each level a family names (1 .. 18); a family the level does
-// not carry says so and is not run. B509_INFO=1 prints, per draw check, how far each case's packets grew.
+// hand-written code (src/game/ovl/shared_*.cpp), against every level's own copy at that level's own address. Every level runs
+// the shared port since its re-glue (stage 4); here every copy is the original and the one shared port the port: -
+// shared_class827.cpp: class 827, a walker with a rider, its helpers and its class hooks (levels 6, 10); -
+// shared_class302.cpp: class 302's draw (an environment-mapped mesh) and class 303's update (levels 6, 10); -
+// shared_class1302.cpp, shared_class857.cpp: class 1302's draw (a sign and its ring) and class 857's (glows; levels 6, 10); -
+// shared_swingshot_target.cpp: the swingshot's targets (classes 758 / 803), the camera's look toward them and its hook's
+// install (levels 2 .. 7, 9 .. 18); - shared_class819.cpp: class 819, a homing shot (levels 10, 11, 15, 17), on shots spawned
+// for the check; - shared_class1021.cpp: class 1021, a flower of petals that opens on a trigger (levels 6, 17, 18); -
+// shared_class832.cpp: class 832, the Visibomb's range: its update (on a Visibomb missile spawned for the check) and its
+// static's draw callback (levels 1 .. 15, 18); - shared_class604.cpp: class 604, an animated mechanism (levels 1 .. 6, 8, 11,
+// 12, 14); - shared_particle_4a.cpp: particle 0x4a's spawn (levels 1 .. 6, 8, 11 .. 14, 17); shared_path_links.cpp: the links
+// of a path's points (levels 5, 6, 7, 10, 11); - shared_class830.cpp: class 830, a floor switch (levels 5, 11, 15, 17, 18); -
+// shared_class1038.cpp: classes 1038 (a crystal's holder, its glow) and 1040 (the crystal, its burst; levels 6, 10, 17); -
+// shared_class1378.cpp: class 1378 and its draw callback, a field of rippling quads (levels 10, 17); - shared_class1108.cpp:
+// class 1108's draw callback, a countdown on the screen (levels 6, 15, 17, 18); Subjects: the level's own mobys of the class
+// after the first gameplay frame (the port's; the screen, the projection and the view set up), perturbed, or (a level that
+// places none) live mobys with pvars; the helpers on the class's mobys with arguments built from the level's state; the draw
+// callbacks' subjects at the hero (whom the view looks at), their packets into a buffer of the test area. No RAM dumps. Run:
+// ORACLE_LEVEL=N build/tests/ovl_oracle --batch 509, N = each level a family names (1 .. 18); a family the level does not
+// carry says so and is not run. B509_INFO=1 prints, per draw check, how far each case's packets grew.
 
 #include "ovl_oracle.h"
 

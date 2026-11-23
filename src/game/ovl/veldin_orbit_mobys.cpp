@@ -1,7 +1,7 @@
-// Drek's fleet (level 17) own moby classes: the registration table. The ports are the transliterations in
-// veldin_orbit_classes_tr_N.cpp (declarations: veldin_orbit_mobys.h) and, for the classes several levels carry a copy of, the
-// shared hand-written ports (shared_*.cpp, novalis_*.cpp). Keyed by level 17's own address and by level, so the indirect call (`jalr`)
-// through moby +0x74 (and the draw lists' callbacks) reaches them only while the played level's overlay is level 17's.
+// Drek's fleet (level 17) own moby classes: the registration table. The ports are the level's own, written by hand (declarations:
+// veldin_orbit_mobys.h) and, for the classes several levels carry a copy of, the shared hand-written ports (shared_*.cpp,
+// novalis_*.cpp). Keyed by level 17's own address and by level, so the indirect call (`jalr`) through moby +0x74 (and the draw lists'
+// callbacks) reaches them only while the played level's overlay is level 17's.
 #include <game/ovl/veldin_orbit_hooks.h>
 #include <game/ovl/veldin_orbit_mobys.h>
 #include <game/ovl/carry_hooks_levels.h>

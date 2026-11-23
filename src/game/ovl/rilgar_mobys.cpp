@@ -1,5 +1,5 @@
 // Rilgar's own moby classes: the registration table. The classes several levels share run their hand-written ports
-// (shared_*.cpp, novalis_*.cpp); the level's own are the transliterations in rilgar_classes_tr_N.cpp (declarations:
+// (shared_*.cpp, novalis_*.cpp); the level's own are the level's hand-written ports (declarations:
 // rilgar_mobys.h); classes whose update is a bare `jr ra` are empty here.
 // Keyed by Rilgar's own address and by level, so the indirect call (`jalr` through moby +0x74) reaches them only
 // while the played level's overlay is Rilgar's (RAC1_OWN_OVERLAY=1 RAC1_LEVEL=5).
@@ -83,7 +83,7 @@ void rilgar_moby_fns_register() {
     // particle updates (the same code as Veldin's / the shared kinds)
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x0029bda0), bullet_particle_update);
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x002a00f0), beam_particle_update);
-    // the transliterated classes (rilgar_classes_tr_N.cpp, the translator)
+    // the level's other classes (their hand ports; once rilgar_classes_tr_N.cpp)
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x002d1688), ril_class35_update_l5);
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x002d7140), ril_class79_update_l5);
     ovl_register_level_moby_fn(RILGAR, L5_ADDR(0x002dac80), ril_class133_update_l5);

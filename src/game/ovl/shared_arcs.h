@@ -1,6 +1,6 @@
 // The electric arcs of Eudora's and Batalia's machines (shared_arcs.cpp: one port for both levels' copies; the arc's sparks
-// are another build on each level, the difference explicit). Phase 1 of stage 4: the levels' generated copies still run;
-// these are proved against them by oracle batch 510.
+// are another build on each level, the difference explicit). Every level with a copy runs these ports; they are proved
+// against each level's own copy by oracle batch 510.
 #ifndef RAC1_GAME_OVL_SHARED_ARCS_H
 #define RAC1_GAME_OVL_SHARED_ARCS_H
 

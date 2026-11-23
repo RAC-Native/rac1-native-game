@@ -185,7 +185,7 @@
 using namespace rac1;
 namespace rac1 {
 // orig: (host) Vulkan, right after the frame's begin (nothing recorded yet binds the ray tracing's set): the change mrp_rt_level /
-// mrp_rt_level_drop asked during a frame made (mrp_rt.cpp; declared here, mrp_rt.h being one of the generated code's inputs)
+// mrp_rt_level_drop asked during a frame made (mrp_rt.cpp; declared here)
 void mrp_rt_frame_begin();
 }  // namespace rac1
 

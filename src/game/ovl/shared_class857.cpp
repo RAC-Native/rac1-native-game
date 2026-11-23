@@ -1,7 +1,7 @@
 // Class 857 of Blarg (L6) and Orxon (L10), the Gadgebot (one of the little robots Clank commands): its update, its helpers
 // and its draw callback, one port of the two levels' copies, which are the same code relinked (the normalised texts
 // compared, the jump table's entries the same offsets) but for the draw's glow: Orxon's copy calls Veldin's glow_draw,
-// Blarg's its own build of it (L6:0x272498, a variant, still transliterated). Its addresses are the engine's (OV: the
+// Blarg's its own build of it (L6:0x272498, a variant: variants_l6.cpp). Its addresses are the engine's (OV: the
 // level's moby list 0x1aba00, the moby table 0x15ffd8, the frame counter 0x15f5cc, the camera 0x166dc0 and its yaw
 // 0x166dd8, the path table 0x1b04b0, the collision results 0x173e40 .., the Gadgebots in the command ring's range 0x17e504)
 // or the base ELF's (bare: the hero 0x13f3d0 (his height also at 0x13f5f8) and his moby 0x1413d0, the hero's mode

@@ -1,7 +1,7 @@
 // The level's height map (the ground's height under a point, as a byte grid) and the dust puff the ground's points raise:
 // Veldin's functions 0x263468 / 0x2634f8 / 0x268f10, which Batalia, Hoven and Oltanis carry copies of (shared_height_map.cpp).
-// The levels' addresses are given without the `orig:` prefix the code generator reads: their copies stay transliterated
-// in their units until each level is re-glued (then the declarations take Veldin's `// orig: 0x...` form).
+// The levels' addresses are given without the `orig:` prefix (written while their copies were still generated in their units,
+// before each level's re-glue).
 #ifndef RAC1_GAME_OVL_SHARED_HEIGHT_MAP_H
 #define RAC1_GAME_OVL_SHARED_HEIGHT_MAP_H
 

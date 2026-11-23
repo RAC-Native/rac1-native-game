@@ -1,6 +1,6 @@
 // Class 655's two glows (Quartu, Drek's fleet): a helper of its draw callback, two quads facing the camera at its pvar point
 // +0xf0, pulled towards the camera, their sizes a little random; one port of the two levels' copies
-// (shared_class655_glows.cpp). Phase 1 of stage 4: the levels' generated copies still run; this is proved against them by
+// (shared_class655_glows.cpp). Every level with a copy runs this port; it is proved against each level's own copy by
 // oracle batch 507.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS655_GLOWS_H
 #define RAC1_GAME_OVL_SHARED_CLASS655_GLOWS_H

@@ -63,7 +63,7 @@ void credits_start_tr(uint32_t) {
 }
 
 // orig: 0x00299c00
-TrRet cr_299c00_tr(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float) {
+uint32_t cr_299c00_tr() {
     dma_wait(1u);
     screen_fade(0xc);
     disc_read_break();
@@ -71,7 +71,7 @@ TrRet cr_299c00_tr(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, u
     sw(OV(0x0015f5d8u), 1u);
     sw(OV(0x0015f3fcu), 0u);
     sub_002a07c8();
-    return TrRet{1u, 0.0f};
+    return 1u;
 }
 
 // orig: 0x00299c48
@@ -98,7 +98,7 @@ void credits_update_tr(uint32_t) {
             // ends at the page 0x29 / before 0x2d (the PAL 2.00 build's 0x0029b078 / 0x0029b09c)
             const bool b102 = region_core_moved();
             if ((!mode_41 && cur_page == (b102 ? 0x29 : 0x27)) || !(cur_page < (b102 ? 0x2d : 43))) {
-                cr_299c00_tr(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
+                cr_299c00_tr();
                 return;
             }
             sh(OV(0x0015f624u), 0xffffu);
@@ -149,13 +149,13 @@ void credits_update_tr(uint32_t) {
     sh(OV(0x0015f624u), lhu(OV(0x0015f624u)) + 1u);
     sh(OV(0x0015f626u), lhu(OV(0x0015f626u)) + 1u);
     if ((lwu(0x0013cae4u) & 0x800u) != 0) {
-        cr_299c00_tr(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
+        cr_299c00_tr();
     }
     sound_frame();
 }
 
 // orig: 0x001fc558
-TrRet cr_1fc558_tr(uint32_t src, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float) {
+uint32_t cr_1fc558_tr(uint32_t src) {
     uint32_t tbp = static_cast<uint32_t>(lw(0x0015ee84u) >> 8);
     int32_t rows_left = lw(0x0013e504u);
     uint32_t last_cursor = 0;
@@ -197,15 +197,11 @@ TrRet cr_1fc558_tr(uint32_t src, uint32_t, uint32_t, uint32_t, uint32_t, uint32_
     } while (rows_left > 0);
 
     packet_ref_1c2f00();
-    return TrRet{last_cursor, 0.0f};
+    return last_cursor;
 }
 
 // orig: 0x001fcb28
-TrRet cr_1fcb28_tr(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t str, uint32_t, uint32_t, uint32_t, uint32_t, float box_scale, float text_scale, float, float) {
-    const int32_t x_in = static_cast<int32_t>(a0_in);
-    const int32_t y = static_cast<int32_t>(a1_in);
-    const int32_t align = static_cast<int32_t>(a2_in);
-
+void cr_1fcb28_tr(int32_t x_in, int32_t y, int32_t align, uint32_t str, float box_scale, float text_scale) {
     const int32_t raw_w = text_width_small(str, -1);
     const int32_t w = cvt_w_i32(fpu_mul(static_cast<float>(raw_w), box_scale));
 
@@ -236,16 +232,14 @@ TrRet cr_1fcb28_tr(uint32_t a0_in, uint32_t a1_in, uint32_t a2_in, uint32_t str,
     text_small(left + 1, y - 7, shadow_col, str, -1);
     text_small(left, y - 8, fg_col, str, -1);
     sub_001fb028();
-    return TrRet{0u, 0.0f};
 }
 
 // orig: 0x001fcca0
-TrRet cr_1fcca0_tr(uint32_t entry, uint32_t a1_in, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float) {
-    const int32_t frame = static_cast<int32_t>(a1_in);
+void cr_1fcca0_tr(uint32_t entry, int32_t frame) {
     const int32_t start = lh(entry + 0x8u);
     const int32_t end = start + lh(entry + 0xau);
     if (frame < start || end < frame) {
-        return TrRet{0u, 0.0f};
+        return;
     }
 
     float box_scale = 1.0f;
@@ -300,10 +294,7 @@ TrRet cr_1fcca0_tr(uint32_t entry, uint32_t a1_in, uint32_t, uint32_t, uint32_t,
             }
         }
         sb(dst, 0u);
-        cr_1fcb28_tr(static_cast<uint32_t>(lh(entry + 0x4u)),
-                     static_cast<uint32_t>(lh(entry + 0x6u)),
-                     static_cast<uint32_t>(lh(entry + 0xcu)),
-                     buf, 0, 0, 0, 0, box_scale, text_scale, 0.0f, 0.0f);
+        cr_1fcb28_tr(lh(entry + 0x4u), lh(entry + 0x6u), lh(entry + 0xcu), buf, box_scale, text_scale);
     } else {
         uint32_t dst = buf;
         int32_t y = lh(entry + 0x6u);
@@ -318,10 +309,7 @@ TrRet cr_1fcca0_tr(uint32_t entry, uint32_t a1_in, uint32_t, uint32_t, uint32_t,
                     if (c == 0) break;
                 } else {
                     sb(dst, 0u);
-                    cr_1fcb28_tr(static_cast<uint32_t>(lh(entry + 0x4u)),
-                                 static_cast<uint32_t>(y),
-                                 static_cast<uint32_t>(lh(entry + 0xcu)),
-                                 buf, 0, 0, 0, 0, box_scale, text_scale, 0.0f, 0.0f);
+                    cr_1fcb28_tr(lh(entry + 0x4u), y, lh(entry + 0xcu), buf, box_scale, text_scale);
                     y += 0x1a;
                     dst = buf;
                     if (lbu(src) == 1u) {
@@ -336,21 +324,17 @@ TrRet cr_1fcca0_tr(uint32_t entry, uint32_t a1_in, uint32_t, uint32_t, uint32_t,
         }
         if (buf < dst) {
             sb(dst, 0u);
-            cr_1fcb28_tr(static_cast<uint32_t>(lh(entry + 0x4u)),
-                         static_cast<uint32_t>(y),
-                         static_cast<uint32_t>(lh(entry + 0xcu)),
-                         buf, 0, 0, 0, 0, box_scale, text_scale, 0.0f, 0.0f);
+            cr_1fcb28_tr(lh(entry + 0x4u), y, lh(entry + 0xcu), buf, box_scale, text_scale);
         }
     }
     ee_stack_free(0x100);
-    return TrRet{0u, 0.0f};
 }
 
 // orig: 0x001f8f78
 void credits_draw_tr(uint32_t) {
     if (lw(OV(0x0015f5d8u)) != 0) return;
 
-    cr_1fc558_tr(lwu(OV(0x0015f628u)), 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
+    cr_1fc558_tr(lwu(OV(0x0015f628u)));
     float fade = u2f(lwu(OV(0x0015f3fcu)));
     if (0.0f < fade) {
         if (1.0f < fade) {
@@ -365,7 +349,7 @@ void credits_draw_tr(uint32_t) {
     texture_block_begin(0);
     uint32_t entry = OV(0x00173080u);
     for (int32_t i = 0xb6; i >= 0; --i, entry += 0x10u) {
-        cr_1fcca0_tr(entry, static_cast<uint32_t>(lh(OV(0x0015f626u))), 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
+        cr_1fcca0_tr(entry, lh(OV(0x0015f626u)));
     }
     texture_block_end();
 }

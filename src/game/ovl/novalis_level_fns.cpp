@@ -1,6 +1,6 @@
 // Novalis on its own overlay by default: see novalis_level_fns.h. Hand ports of the short functions
 // (camera type, class 775) and the dispatch of Novalis's sound emitters (sound_emitter_types.cpp) and of
-// the shared effects (shared_fx_tr.cpp).
+// the shared effects (formerly shared_fx_tr.cpp).
 #include <game/ovl/novalis_level_fns.h>
 
 #include <game/ovl/help_panel_tr.h>

@@ -62,13 +62,13 @@ uint32_t draw_sky_shell(uint32_t shell, bool vertex_colours) {
     if (vis[0] == 1) {
         const uint32_t qwc = static_cast<uint32_t>(static_cast<int32_t>(lh(shell + 0x2e)) >> 4);
         const uint32_t spr_dst = lwu(OV(0x001604c8u) + (first_buf << 2));
-        ovl_24d678_tr(lwu(shell + 0x20), qwc, spr_dst, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        ovl_24d678_tr(lwu(shell + 0x20), qwc, spr_dst);
     }
 
     if (lw(shell + 0x0) > 0) {
         for (int32_t i = 0; i < lw(shell + 0x0); ++i) {
             if (vis[i] == 1) {
-                ovl_24d698_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+                ovl_24d698_tr();
             }
             const uint32_t next_buf = 1u - lwu(OV(0x001604d0u));
             sw(OV(0x001604d0u), next_buf);
@@ -77,7 +77,7 @@ uint32_t draw_sky_shell(uint32_t shell, bool vertex_colours) {
                 const uint32_t next_part = shell + static_cast<uint32_t>(next_i << 5);
                 const uint32_t qwc = static_cast<uint32_t>(static_cast<int32_t>(lh(next_part + 0x2e)) >> 4);
                 const uint32_t spr_dst = lwu(OV(0x001604c8u) + (next_buf << 2));
-                ovl_24d678_tr(lwu(next_part + 0x20), qwc, spr_dst, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+                ovl_24d678_tr(lwu(next_part + 0x20), qwc, spr_dst);
             }
             if (vis[i] == 1) {
                 const uint32_t cur_buf = 1u - lwu(OV(0x001604d0u));
@@ -87,13 +87,13 @@ uint32_t draw_sky_shell(uint32_t shell, bool vertex_colours) {
                 const uint32_t data_off = static_cast<uint32_t>(lh(part + 0x2a));
                 const uint32_t vtx_off = static_cast<uint32_t>(lh(part + 0x28));
                 const uint32_t n_vtx = static_cast<uint32_t>(lh(part + 0x24));
-                const TrRet proj = ovl_28c14c_tr(base + vtx_off, 0x70002000u, n_vtx, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-                if (proj.v0 == 0) {
+                const uint32_t proj = ovl_28c14c_tr(base + vtx_off, 0x70002000u, n_vtx);
+                if (proj == 0) {
                     const uint32_t n_tri = static_cast<uint32_t>(lh(part + 0x26));
                     if (vertex_colours) {
-                        ovl_28c298_tr(n_tri, base + tri_off, base + data_off, 0x70002000u, 0, 0, 0, 0, 0, 0, 0, 0);
+                        ovl_28c298_tr(n_tri, base + tri_off, base + data_off, 0x70002000u);
                     } else {
-                        ovl_28c3c0_tr(n_tri, base + tri_off, base + data_off, 0x70002000u, 0, 0, 0, 0, 0, 0, 0, 0);
+                        ovl_28c3c0_tr(n_tri, base + tri_off, base + data_off, 0x70002000u);
                     }
                 }
             }
@@ -108,7 +108,7 @@ uint32_t draw_sky_shell(uint32_t shell, bool vertex_colours) {
 }
 
 inline void draw_shell_idx(uint32_t idx) {
-    ovl_28b848_tr(idx, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    ovl_28b848_tr(idx);
 }
 
 inline void set_sky_yaw(float yaw, float pitch_y = 0.0f) {
@@ -226,58 +226,56 @@ void sky_shells_turn_triple(int32_t s_slow, int32_t s_mid, int32_t s_fast) {
 void run_standard_stars(uint32_t n_stars, uint32_t n_extra) {
     const uint32_t sky = lwu(OV(kSkyPtrAddr));
     if (lh(sky + 0x8) == 0) {
-        ovl_288ec0_tr(n_stars, n_extra, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        ovl_288ec0_tr(n_stars, n_extra);
     }
-    ovl_289108_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-    ovl_28bd58_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    ovl_289108_tr();
+    ovl_28bd58_tr();
     sub_002a0ba8(kGsAlphaSky, kGsAlphaStarsVal);
 }
 
 }  // namespace
 
 // orig: 0x0024d678 — kick normal-mode DMA9 (toSPR) transfer into scratchpad
-TrRet ovl_24d678_tr(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float) {
+uint32_t ovl_24d678_tr(uint32_t a0, uint32_t a1, uint32_t a2) {
     eer::hw_sw(0x1000d480u, a2);
     eer::hw_sw(0x1000d420u, a1);
     eer::hw_sw(0x1000d410u, a0);
     eer::hw_sw(0x1000d400u, 0x100u);
-    return TrRet{0x100u, 0.0f};
+    return 0x100u;
 }
 
 // orig: 0x0024d698 — wait for DMA9 (toSPR) completion
-TrRet ovl_24d698_tr(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float) {
+void ovl_24d698_tr() {
     while ((eer::hw_lw(0x1000d400u) & 0x100u) != 0) {}
-    return TrRet{0u, 0.0f};
 }
 
 // orig: 0x0028b8a0 — draw textured sky shell
-TrRet ovl_28b8a0_tr(uint32_t a0, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float) {
-    return TrRet{draw_sky_shell(a0, false), 0.0f};
+uint32_t ovl_28b8a0_tr(uint32_t a0) {
+    return draw_sky_shell(a0, false);
 }
 
 // orig: 0x0028bae0 — draw vertex-coloured sky shell
-TrRet ovl_28bae0_tr(uint32_t a0, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float) {
-    return TrRet{draw_sky_shell(a0, true), 0.0f};
+uint32_t ovl_28bae0_tr(uint32_t a0) {
+    return draw_sky_shell(a0, true);
 }
 
 // orig: 0x0028b848 — dispatch sky shell `a0` to textured or vertex-coloured path
-TrRet ovl_28b848_tr(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13,
-                    float f14, float f15) {
+uint32_t ovl_28b848_tr(uint32_t a0) {
     const uint32_t sky = lwu(OV(kSkyPtrAddr));
-    if (static_cast<int32_t>(a0) >= lh(sky + 0x6)) return TrRet{0u, 0.0f};
+    if (static_cast<int32_t>(a0) >= lh(sky + 0x6)) return 0u;
     const uint32_t shell = lwu(sky + 0x20 + (a0 << 2));
     if (lwu(shell + 0x4) != 0) {
-        return ovl_28bae0_tr(shell, a1, a2, a3, t0, t1, t2, t3, f12, f13, f14, f15);
+        return ovl_28bae0_tr(shell);
     }
-    return ovl_28b8a0_tr(shell, a1, a2, a3, t0, t1, t2, t3, f12, f13, f14, f15);
+    return ovl_28b8a0_tr(shell);
 }
 
 // orig: 0x00288ec0 — initialise `a0` twinkling stars + `a1` orbiting satellites in the sky sprite list
-TrRet ovl_288ec0_tr(uint32_t a0, uint32_t a1, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float) {
+void ovl_288ec0_tr(uint32_t a0, uint32_t a1) {
     const uint32_t sky0 = lwu(OV(kSkyPtrAddr));
     const int16_t total = static_cast<int16_t>(a0 + a1);
     sh(sky0 + 0x8, static_cast<uint16_t>(total));
-    if (total <= 0) return TrRet{0u, 0.0f};
+    if (total <= 0) return;
 
     for (int32_t i = 0; i < lh(lwu(OV(kSkyPtrAddr)) + 0x8); ++i) {
         const uint32_t s = lwu(lwu(OV(kSkyPtrAddr)) + 0x1c) + static_cast<uint32_t>(i << 5);
@@ -292,13 +290,12 @@ TrRet ovl_288ec0_tr(uint32_t a0, uint32_t a1, uint32_t, uint32_t, uint32_t, uint
             sb(s + 0x3, 0x48u);
         }
     }
-    return TrRet{0u, 0.0f};
 }
 
 // orig: 0x00289108 — per-frame update of standard sky sprites (type 0 satellites and type 1 stars)
-TrRet ovl_289108_tr(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float) {
+void ovl_289108_tr() {
     const uint32_t sky0 = lwu(OV(kSkyPtrAddr));
-    if (lh(sky0 + 0x8) <= 0) return TrRet{0u, 0.0f};
+    if (lh(sky0 + 0x8) <= 0) return;
 
     for (int32_t i = 0; i < lh(lwu(OV(kSkyPtrAddr)) + 0x8); ++i) {
         const uint32_t s = lwu(lwu(OV(kSkyPtrAddr)) + 0x1c) + static_cast<uint32_t>(i << 5);
@@ -309,7 +306,6 @@ TrRet ovl_289108_tr(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, 
             update_twinkle_star_colour(s);
         }
     }
-    return TrRet{0u, 0.0f};
 }
 
 // orig: 0x002892d0 — default sky variant: draw all shells with identity matrix
@@ -378,7 +374,7 @@ TrRet ovl_2895a0_tr(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, 
         }
     }
 
-    ovl_28bd58_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    ovl_28bd58_tr();
     sub_002a0ba8(kGsAlphaSky, kGsAlphaStarsVal);
     draw_shell_idx(2);
     draw_shell_idx(3);
@@ -490,7 +486,7 @@ TrRet ovl_289cb8_tr(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, 
         }
     }
 
-    ovl_28bd58_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    ovl_28bd58_tr();
     sub_002a0ba8(kGsAlphaSky, kGsAlphaStarsVal);
     draw_shell_idx(1);
     draw_shell_idx(2);
@@ -639,7 +635,7 @@ TrRet ovl_28ac88_tr(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, 
         }
     }
 
-    ovl_28bd58_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    ovl_28bd58_tr();
     sub_002a0ba8(kGsAlphaSky, kGsAlphaStarsVal);
     draw_shell_idx(1);
     draw_shell_idx(2);
@@ -723,7 +719,7 @@ TrRet ovl_28b1a0_tr(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, 
 }
 
 // orig: 0x0028b680 — begin sky pass: reserve opening DMA link, reset GS texture allocator, clear cached TEX0 words
-TrRet ovl_28b680_tr(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float) {
+void ovl_28b680_tr() {
     const uint32_t cur = lwu(OV(0x001611c0u));
     sw(OV(0x00160530u), cur);
     sw(OV(0x001611c0u), cur + 0x10);
@@ -735,11 +731,10 @@ TrRet ovl_28b680_tr(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, 
     for (int32_t i = 0; i < lh(sky + 0xc); ++i) {
         sd(lwu(sky + 0x10) + static_cast<uint32_t>(i << 4), 0ull);
     }
-    return TrRet{0u, 0.0f};
 }
 
 // orig: 0x0028b710 — finish sky pass: splice queued texture uploads in front of the sky DMA chain
-TrRet ovl_28b710_tr(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float) {
+uint32_t ovl_28b710_tr() {
     const uint32_t end_tag = lwu(OV(0x001611c0u));
     sw(OV(0x00160534u), end_tag);
     sw(OV(0x001611c0u), end_tag + 0x10);
@@ -769,12 +764,12 @@ TrRet ovl_28b710_tr(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, 
     sw(final_end + 0x8, 0u);
     sw(final_end + 0xc, 0u);
     sw(0x15ee74u, lwu(0x15ee78u));
-    return TrRet{final_end, 0.0f};
+    return final_end;
 }
 
 // orig: 0x0023d968 — Veldin's 20-entry level sky dispatcher
 void sky_render_tr(uint32_t) {
-    ovl_28b680_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    ovl_28b680_tr();
 
     using VariantFn = TrRet (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float);
     static constexpr VariantFn kVariants[20] = {
@@ -807,7 +802,7 @@ void sky_render_tr(uint32_t) {
         ovl_2892d0_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     }
 
-    ovl_28b710_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    ovl_28b710_tr();
     sub_002a0ba8(0x47u, 0x5360bull);
     sub_002a0ba8(0x4eu, 0x01000000ull | static_cast<uint64_t>(static_cast<int64_t>(lw(0x15ee88u) >> 13)));
 }

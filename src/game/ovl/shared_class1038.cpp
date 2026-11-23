@@ -1,6 +1,6 @@
 // Classes 1038 and 1040: one port of the copies Blarg (L6), Orxon (L10) and Drek's fleet (L17) carry, the same code relinked
 // (the normalised texts compared; Orxon's copy pushes the crystal through its own build of sub_00259bc8, L10:0x24c6b8, where
-// Orxon's other generated code calls the Veldin port too). Its addresses are the engine's (OV: the camera 0x166dc0, the
+// Orxon's other code calls the Veldin port too). Its addresses are the engine's (OV: the camera 0x166dc0, the
 // frame counter 0x15f5cc, the flag words 0x1ba4d0) or the base ELF's (bare: the level number 0x15ed84, the per-level flag
 // words 0x14c190 and bytes 0x14c050, the sound channels 0x13e550, the frame time 0x15ed6c); the level's own data is one block
 // of the classes' tunings (per level below). Header shared_class1038.h.

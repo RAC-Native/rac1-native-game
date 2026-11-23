@@ -1,7 +1,7 @@
 #ifndef RAC1_GAME_OVL_CARRY_HOOKS_H
 #define RAC1_GAME_OVL_CARRY_HOOKS_H
-// The class hooks (class +0x2c table: +0 .. +0x10) of the mobys the Suck Cannon takes, transliterated
-// (carry_hooks_asm.cpp). Addresses are Veldin's overlay addresses (the shared engine). The hooks take the moby and
+// The class hooks (class +0x2c table: +0 .. +0x10) of the mobys the Suck Cannon takes, ported by hand
+// (carry_hooks.cpp). Addresses are Veldin's overlay addresses (the shared engine). The hooks take the moby and
 // pass the rest of the registers on (a1, a2, f12) to the generic bodies.
 #include <cstdint>
 

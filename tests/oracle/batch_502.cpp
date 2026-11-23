@@ -1,27 +1,22 @@
 // Oracle batch 502 (stage 4 task G2, #149): hand-written ports of one level made to serve every level that carries a copy of
-// the same code, each against every level's own copy at that level's own address (the copies stay transliterated in their
-// units until each level is re-glued; here every copy is the original and the one port the port):
-//  - novalis_camera.cpp: camera type 3, the path camera (reset, init, update, exit; levels 1, 5, 8, 16, 17), on a camera of
-//    the test area whose record (the level's first) names data of the test area: the level's own paths as the camera path,
-//    waypoint lists and rails of the test area (the rail table 0x15f70c pointed at them), every hand-back kind (0, 2, 3,
-//    others), the hero on a rail or not;
-//  - kerwan_camera.cpp: camera type 1 (accept, init, update, exit and the init / update's callees; levels 3, 4) on the level's
-//    live type-1 cameras (batch 126's setup); the follow camera's look-height hook and its callback, the callback queue (every
-//    level but 0, 1 and 8), the distance rates 0x2e6f80's copies (levels 2, 3, 6, 7, 8, 12, 15, 18), the turn toward a
-//    direction 0x24e6f8 (levels 3, 4);
-//  - novalis_props.cpp: class 605, the zone marker (levels 1 .. 18), on the level's own markers (or live mobys given a
-//    marker's pvars when the level has none placed);
-//  - novalis_teleporter.cpp: the teleporter pad's pieces (levels 1, 7, 8, 11, 12, 13, 16, 17, 18) and the moby group's state
-//    (levels 1, 5, 6, 7, 8, 11, 12, 13, 15, 16, 17, 18);
-//  - novalis_hooks.cpp: the Peckbot's hook +8 (levels 1, 13) and the Amoeboid's hook +0 (levels 1, 11), on the mobys whose
-//    class's hook table names the level's copy;
-//  - novalis_platforms.cpp: whether the hero is on a moby (levels 1, 3, 7, 9, 10, 12, 13, 14: thirteen copies);
-//  - kerwan_props.cpp: class 915 (levels 3, 10).
-// Not checked here: the copies of the 7-word wrappers the plan grouped with camera type 1 (L11:0x3162d0, L11:0x3191a0,
-// L16:0x2cb600, L16:0x2d0038, L18:0x2d6230): the same words, but they call other functions (a carry hook, moby_retire,
-// moby_anim_set), not camera type 1's; they are not this port.
-// No RAM dumps: states built from the level after its first gameplay frame.
-// Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 502, N = 1 .. 18; a family the level does not carry says so.
+// the same code, each against every level's own copy at that level's own address (every level runs the shared port since its
+// re-glue (stage 4); here every copy is the original and the one port the port): - novalis_camera.cpp: camera type 3, the path
+// camera (reset, init, update, exit; levels 1, 5, 8, 16, 17), on a camera of the test area whose record (the level's first)
+// names data of the test area: the level's own paths as the camera path, waypoint lists and rails of the test area (the rail
+// table 0x15f70c pointed at them), every hand-back kind (0, 2, 3, others), the hero on a rail or not; - kerwan_camera.cpp:
+// camera type 1 (accept, init, update, exit and the init / update's callees; levels 3, 4) on the level's live type-1 cameras
+// (batch 126's setup); the follow camera's look-height hook and its callback, the callback queue (every level but 0, 1 and 8),
+// the distance rates 0x2e6f80's copies (levels 2, 3, 6, 7, 8, 12, 15, 18), the turn toward a direction 0x24e6f8 (levels 3, 4);
+// - novalis_props.cpp: class 605, the zone marker (levels 1 .. 18), on the level's own markers (or live mobys given a marker's
+// pvars when the level has none placed); - novalis_teleporter.cpp: the teleporter pad's pieces (levels 1, 7, 8, 11, 12, 13,
+// 16, 17, 18) and the moby group's state (levels 1, 5, 6, 7, 8, 11, 12, 13, 15, 16, 17, 18); - novalis_hooks.cpp: the
+// Peckbot's hook +8 (levels 1, 13) and the Amoeboid's hook +0 (levels 1, 11), on the mobys whose class's hook table names the
+// level's copy; - novalis_platforms.cpp: whether the hero is on a moby (levels 1, 3, 7, 9, 10, 12, 13, 14: thirteen copies); -
+// kerwan_props.cpp: class 915 (levels 3, 10). Not checked here: the copies of the 7-word wrappers the plan grouped with camera
+// type 1 (L11:0x3162d0, L11:0x3191a0, L16:0x2cb600, L16:0x2d0038, L18:0x2d6230): the same words, but they call other functions
+// (a carry hook, moby_retire, moby_anim_set), not camera type 1's; they are not this port. No RAM dumps: states built from the
+// level after its first gameplay frame. Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 502, N = 1 .. 18; a family the
+// level does not carry says so.
 
 #include "ovl_oracle.h"
 

@@ -1,4 +1,4 @@
-// (Here, not in src/game: the generated code is fingerprinted by src/game's headers; the code is src/game/enhance/quick_rings.cpp.)
+// (Here, not in src/game: the code is src/game/enhance/quick_rings.cpp.)
 // Three quick select rings (an enhancement, Advanced > Quick Select Rings: 1 / 3, 1 by default; New Game > Modern turns it
 // to 3), as the later games of the series have them. Ring 1 is the game's own (0x141ea0[8], in the game's save as before);
 // rings 2 and 3 are ours, eight items each, kept in save<N>.pc (advanced.cpp, item 0x400) next to the game's save.

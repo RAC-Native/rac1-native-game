@@ -1,8 +1,8 @@
 // Oracle batch 117 (task 0350): level 6's (Blarg's Nebula G34) own moby classes on its real level data. Run with
-// ORACLE_LEVEL=6 build/tests/ovl_oracle --batch 117 (needs the ISO). The subjects are the level's own
-// mobys of each class (placed by its gameplay data) after the first gameplay frame, perturbed; the
-// original is level 6's own function at its own address, the port the one registered for it (the
-// transliterations blarg_classes_tr_N.cpp).
+// ORACLE_LEVEL=6 build/tests/ovl_oracle --batch 117 (needs the ISO). The subjects are the level's own mobys of
+// each class (placed by its gameplay data) after the first gameplay frame, perturbed; the original is level 6's
+// own function at its own address, the port the one registered for it (the hand ports that replaced
+// blarg_classes_tr_N.cpp).
 
 #include "ovl_oracle.h"
 
@@ -223,7 +223,7 @@ void batch_117() {
         }
     }
 
-    // ---- the level's own classes (transliterated by tools/codegen/generate_all.py): the level's own mobys of each class, the first
+    // ---- the level's own classes (once transliterated by tools/codegen/generate_all.py; hand ports now): the level's own mobys of each class, the first
     // update (state 0) done by the port, then a state, a hit, the hero near, the pvars' floats / counters moved as typed
     g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, 0x002763f8};  // (+ the level change request: the original would run the CD / movie path)
     struct TrCls { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t skip_states = 0; bool walk = false; };  // (the states that start a scene / a level change: the original runs the kernel / movie path for real)

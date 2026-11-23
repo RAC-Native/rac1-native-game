@@ -293,7 +293,6 @@ add_library(rac1_game STATIC
     ovl/quartu_class221.cpp
     ovl/quartu_class233.cpp
     ovl/quartu_class491.cpp
-    ovl/quartu_carry_hooks.cpp
     ovl/quartu_props.cpp
     ovl/quartu_triggers.cpp
     ovl/quartu_clank_pad.cpp
@@ -820,7 +819,7 @@ endforeach()
 target_sources(rac1_game PRIVATE ${_rac1_gen_files})
 # The generated code without debug info: the same machine code (the objects' code is identical), about a third less time to
 # compile it, a far smaller link and binary and less memory per compile job (the setup's job count follows the free memory).
-# RAC1_GEN_DEBUG_INFO=ON keeps it, for stepping into the generated *_tr.cpp in a debugger.
+# RAC1_GEN_DEBUG_INFO=ON keeps it, for stepping into the generated files in a debugger.
 option(RAC1_GEN_DEBUG_INFO "Compile the generated sources with debug info (the build type's -g)" OFF)
 if(NOT RAC1_GEN_DEBUG_INFO AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     set_source_files_properties(${_rac1_gen_files} PROPERTIES COMPILE_OPTIONS "-g0")

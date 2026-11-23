@@ -1,33 +1,25 @@
 // Oracle batch 517 (stage 4 task F11, #149): layer-1 families several levels carry a copy of, each ported once as shared
-// hand-written code (src/game/ovl/shared_*.cpp) on top of the earlier tasks' shared ports, against every level's own copy
-// at that level's own address. The level copies stay transliterated in their units until each level is re-glued; here every
-// copy is the original and the one shared port the port:
-//  - shared_class252_update.cpp: class 252's update, its move and its hits (levels 8, 14);
-//  - shared_class52.cpp: class 52's update and its hits (levels 9, 16);
-//  - shared_class1400.cpp: class 1400, the weather about the camera: its update, its wind and its two particles (levels 8, 12,
-//    14);
-//  - shared_class1885.cpp: class 1885, the blob thrower: its update, hits, free slot, throw and two random helpers (levels 9,
-//    13); "class1885_fix25" / "class1885_fix48" check its 1.02 forks (1.02 Gameplay fixes 25 and 48) when run with
-//    RAC1_GAMEPLAY102=25 / 48;
-//  - shared_class1511.cpp: class 1511's update and its remains (levels 5, 14);
-//  - shared_floaters.cpp: the rafts' next stage (levels 5, 14, 16), each level's own build of the arrival it calls, and
-//    Oltanis's build of floater_find;
-//  - shared_seas.cpp: the sea of Umbris and Gaspar (classes 460 / 317; levels 7, 9), class 1139 (levels 5, 16), the puff of
-//    particle 0x34 about a moby (levels 10, 12, 13);
-//  - shared_class49.cpp: class 50's update, a homing shot (levels 16, 18);
-//  - shared_class886.cpp: class 886, a checkpoint pad (levels 7, 12);
-//  - shared_bg_ships.cpp: ship 1, class 1212 (levels 2, 9);
-//  - shared_envmap_meshes.cpp: the meshes' draw callbacks of classes 1952 (level 16) and 1907 .. 1918 (level 17), and
-//    shared_little.cpp's second build of envmap_uvs4 (class 1913's);
-//  - shared_class655_draw.cpp: class 655's draw callback and its strips of quads (levels 15, 17, 18), and the finale's build of
-//    its glows (shared_class655_glows.cpp);
-//  - shared_env_objects.cpp: Hoven's and Oltanis's sky-reflecting objects: the callback, the draw and the VU0 mapping (levels
-//    12, 14);
-// Subjects: the level's own mobys of the class after the first gameplay frame (the port's; the screen, the projection and the
-// view set up), perturbed through every state; the helpers on the class's mobys with arguments built from the level's state;
-// the frame scale (0x15ed68) at its 50 Hz value in a quarter of the cases. No RAM dumps; no broad list of left-out words.
-// Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 517, N = each level a family names (2, 5, 7 .. 10, 12 .. 18); a family
-// the level does not carry says so and is not run. B517_INFO=1 prints the subjects each family finds.
+// hand-written code (src/game/ovl/shared_*.cpp) on top of the earlier tasks' shared ports, against every level's own copy at
+// that level's own address. Every level runs the shared port since its re-glue (stage 4); here every copy is the original and
+// the one shared port the port: - shared_class252_update.cpp: class 252's update, its move and its hits (levels 8, 14); -
+// shared_class52.cpp: class 52's update and its hits (levels 9, 16); - shared_class1400.cpp: class 1400, the weather about the
+// camera: its update, its wind and its two particles (levels 8, 12, 14); - shared_class1885.cpp: class 1885, the blob thrower:
+// its update, hits, free slot, throw and two random helpers (levels 9, 13); "class1885_fix25" / "class1885_fix48" check its
+// 1.02 forks (1.02 Gameplay fixes 25 and 48) when run with RAC1_GAMEPLAY102=25 / 48; - shared_class1511.cpp: class 1511's
+// update and its remains (levels 5, 14); - shared_floaters.cpp: the rafts' next stage (levels 5, 14, 16), each level's own
+// build of the arrival it calls, and Oltanis's build of floater_find; - shared_seas.cpp: the sea of Umbris and Gaspar (classes
+// 460 / 317; levels 7, 9), class 1139 (levels 5, 16), the puff of particle 0x34 about a moby (levels 10, 12, 13); -
+// shared_class49.cpp: class 50's update, a homing shot (levels 16, 18); - shared_class886.cpp: class 886, a checkpoint pad
+// (levels 7, 12); - shared_bg_ships.cpp: ship 1, class 1212 (levels 2, 9); - shared_envmap_meshes.cpp: the meshes' draw
+// callbacks of classes 1952 (level 16) and 1907 .. 1918 (level 17), and shared_little.cpp's second build of envmap_uvs4 (class
+// 1913's); - shared_class655_draw.cpp: class 655's draw callback and its strips of quads (levels 15, 17, 18), and the finale's
+// build of its glows (shared_class655_glows.cpp); - shared_env_objects.cpp: Hoven's and Oltanis's sky-reflecting objects: the
+// callback, the draw and the VU0 mapping (levels 12, 14); Subjects: the level's own mobys of the class after the first gameplay
+// frame (the port's; the screen, the projection and the view set up), perturbed through every state; the helpers on the class's
+// mobys with arguments built from the level's state; the frame scale (0x15ed68) at its 50 Hz value in a quarter of the cases.
+// No RAM dumps; no broad list of left-out words. Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 517, N = each level a
+// family names (2, 5, 7 .. 10, 12 .. 18); a family the level does not carry says so and is not run. B517_INFO=1 prints the
+// subjects each family finds.
 
 #include "ovl_oracle.h"
 

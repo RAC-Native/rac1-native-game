@@ -1,6 +1,6 @@
 #ifndef RAC1_GAME_OVL_HYDRO_H
 #define RAC1_GAME_OVL_HYDRO_H
-// hydro, transliterated (hydro_asm.cpp). Addresses are Veldin's overlay addresses (the shared engine).
+// hydro, ported by hand (hydro.cpp). Addresses are Veldin's overlay addresses (the shared engine).
 #include <cstdint>
 
 namespace rac1 {

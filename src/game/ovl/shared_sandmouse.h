@@ -1,7 +1,7 @@
 // Class 1633 (the Sandmouse's shot) and class 1818 (the Sandmouse: its update, helpers and glow, its draw callback), shared
 // by every level that has them: one port of the levels' copies (shared_sandmouse.cpp). Each function's `orig:` line lists
-// every level's address. The update and its helpers are phase 1 of stage 4: the levels' generated copies still run; these
-// are proved against them by oracle batch 514.
+// every level's address. Every level with a copy runs the update and its helpers; they
+// are proved against each level's own copy by oracle batch 514.
 #ifndef RAC1_GAME_OVL_SHARED_SANDMOUSE_H
 #define RAC1_GAME_OVL_SHARED_SANDMOUSE_H
 

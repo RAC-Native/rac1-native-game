@@ -1,6 +1,6 @@
 #ifndef RAC1_GAME_OVL_DECOY_H
 #define RAC1_GAME_OVL_DECOY_H
-// decoy, transliterated (decoy_asm.cpp). Addresses are Veldin's overlay addresses (the shared engine).
+// decoy, ported by hand (decoy.cpp). Addresses are Veldin's overlay addresses (the shared engine).
 #include <cstdint>
 
 namespace rac1 {

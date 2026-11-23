@@ -16,12 +16,4 @@ int32_t gas_hook_2e2770_l9(uint32_t m, uint32_t a1, uint32_t a2, float f12) {
     return r;
 }
 
-// Class 193's hook +0x10: the moby's pvars +0x60 (0 without the moby or its pvars).
-// orig: L9:0x002e27a0
-uint32_t gas_hook_2e27a0_l9(uint32_t m) {
-    if (m == 0) return 0;
-    const uint32_t pv = lwu(m + 0x78);
-    return pv != 0 ? pv + 0x60 : 0;
-}
-
 }  // namespace rac1

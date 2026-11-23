@@ -100,7 +100,7 @@ struct CollisionScratchIgnored {
 // (task H1) The HUD-width hooks a check expects (docs/oracle.md, "The HUD-width hooks"): render_view_hud_begin(side) /
 // render_view_hud_end() write no game memory, so the memory comparison cannot see them. While this list is set, each case
 // records the original's side as its code reaches each listed address (an interpreter probe: before the instruction there, as
-// tools/codegen/hooks.glue places a line) and the port's side as it calls the two functions (render_view.h g_hud_hook_trace),
+// tools/codegen/hooks.glue placed a line until stage 4) and the port's side as it calls the two functions (render_view.h g_hud_hook_trace),
 // each event with the packet cursor OV(0x1611c0) at that moment; the two sequences must be equal (length, begin / end, side,
 // cursor), and every listed address must be reached in some case of the check. One check's scope: HudHooksExpected.
 struct HudHook {

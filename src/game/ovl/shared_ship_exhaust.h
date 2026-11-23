@@ -1,6 +1,6 @@
 // The exhaust of Pokitaru's class 1242 and Drek's fleet's class 1379 (the ships the hero rides; shared_ship_exhaust.cpp: one
-// port of both levels' copies, the same code relinked). Phase 1 of stage 4: the levels' generated copies still run; this is
-// proved against them by oracle batch 519.
+// port of both levels' copies, the same code relinked). Every level with a copy runs this port; it is proved against each
+// level's own copy by oracle batch 519.
 #ifndef RAC1_GAME_OVL_SHARED_SHIP_EXHAUST_H
 #define RAC1_GAME_OVL_SHARED_SHIP_EXHAUST_H
 

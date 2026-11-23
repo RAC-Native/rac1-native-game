@@ -1,5 +1,5 @@
-// Eudora's (level 4) moby classes: the declarations of eudora_classes_tr_N.cpp (generated: `void` = a class update /
-// entry, `TrRet` = a level-only helper in the uniform ABI) and of the hand ports eudora_*.cpp (classes 86, 161, 217;
+// Eudora's (level 4) moby classes: the declarations of its hand ports (once the generated
+// eudora_classes_tr_N.cpp), among them eudora_*.cpp (classes 86, 161, 217;
 // their helpers in eudora_flock.h and eudora_walker.h).
 #ifndef RAC1_GAME_OVL_EUDORA_MOBYS_H
 #define RAC1_GAME_OVL_EUDORA_MOBYS_H

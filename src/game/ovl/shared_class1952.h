@@ -1,7 +1,7 @@
 // The classes whose update only queues their draw callback (Kalebo III's 1952, Drek's fleet's 1907, 1908, 1910, 1911, 1913,
 // 1918): state 0 goes to 1, state 1 queues the class's draw each frame (shared_class1952.cpp). One body for the seven copies,
-// each class's draw callback its own (the levels still register their copies of the draws). Phase 1 of stage 4: the
-// levels' generated copies still run; these are proved against them by oracle batch 504.
+// each class's draw callback its own (the levels still register their copies of the draws). Every level with a copy runs
+// these ports; they are proved against each level's own copy by oracle batch 504.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS1952_H
 #define RAC1_GAME_OVL_SHARED_CLASS1952_H
 

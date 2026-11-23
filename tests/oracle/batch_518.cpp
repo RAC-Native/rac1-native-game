@@ -1,37 +1,24 @@
 // Oracle batch 518 (stage 4 task F12, #149): the class code of Blarg (level 6) and Orxon (level 10) that both levels carry a
 // copy of, each family ported once as shared hand-written code (src/game/ovl/shared_*.cpp) on top of the families earlier
-// tasks ported, against each level's own copy at that level's own address. The level copies stay transliterated in their
-// units until each level is re-glued; here every copy is the original and the one shared port the port:
-//  - shared_class1302.cpp: class 1302, the Gadgebots' entrance (its update, and the opening of its mobys);
-//  - shared_class1068.cpp: class 1068, a walking robot with an electric beam (its update, its frame's common part, the
-//    beam's start and run); shared_beam.cpp: the shards' spawn; shared_class302.cpp: class 302's update and break, the
-//    spawns of classes 302 / 303;
-//  - shared_class857.cpp: class 857, the Gadgebot (its update and helpers).
-// The shared ports and their copies (each level's address):
-//   class1302_update        L6:0x00307d30 L10:0x002e7cd8
-//   class1302_open          L6:0x00307c48 L10:0x002e7bf0
-//   class1068_update        L6:0x002fdbd0 L10:0x002dabe8
-//   class1068_think         L6:0x002feb40 L10:0x002dbb58
-//   class1068_beam_run      L6:0x002ff2c8 L10:0x002dc2e0
-//   class1068_beam_start    L6:0x002ff100 L10:0x002dc118
-//   class302_update         L6:0x002d85a0 L10:0x002bd0e8
-//   class302_break          L6:0x002d8178 L10:0x002bccc0
-//   beam_shard_spawn        L6:0x00300c60 L10:0x002dd0e0
-//   class302_spawn          L6:0x002d8510 L10:0x002bd058
-//   class303_spawn          L6:0x002d8b98 L10:0x002bd6e0
-//   class857_update         L6:0x002f0040 L10:0x002d4078
-//   class857_assign         L6:0x002f2250 L10:0x002d6288
-//   class857_arrive         L6:0x002f2c28 L10:0x002d6c60
-//   class857_pick_dest      L6:0x002f2910 L10:0x002d6948
-//   class857_find           L6:0x002f32f0 L10:0x002d7328
-//   class857_score          L6:0x002f2148 L10:0x002d6180
-//   class857_react          L6:0x002f3640 L10:0x002d7678
-//   class857_glow           L6:0x002f38c8 L10:0x002d7900
-// Subjects: the level's own mobys of the class after the first gameplay frame (the port's; the screen, the projection and the
-// view set up, as batch 509), perturbed through every state, or (a level that places none awake) live mobys given the
-// class's pvars; the helpers on the class's mobys with arguments built from the level's state. Blarg's Gadgebots sleep
-// after the first frame: their cases mostly start from batch 151's Clank-section dumps (clank_0415/ring_3015.bin and
-// ring_3815.bin: tools/oracle/blarg_tour.sh clankdumps), from the level alone without them.
+// tasks ported, against each level's own copy at that level's own address. Every level runs the shared port since its re-glue
+// (stage 4); here every copy is the original and the one shared port the port: - shared_class1302.cpp: class 1302, the
+// Gadgebots' entrance (its update, and the opening of its mobys); - shared_class1068.cpp: class 1068, a walking robot with an
+// electric beam (its update, its frame's common part, the beam's start and run); shared_beam.cpp: the shards' spawn;
+// shared_class302.cpp: class 302's update and break, the spawns of classes 302 / 303; - shared_class857.cpp: class 857, the
+// Gadgebot (its update and helpers). The shared ports and their copies (each level's address): class1302_update
+// L6:0x00307d30 L10:0x002e7cd8 class1302_open          L6:0x00307c48 L10:0x002e7bf0 class1068_update        L6:0x002fdbd0
+// L10:0x002dabe8 class1068_think         L6:0x002feb40 L10:0x002dbb58 class1068_beam_run      L6:0x002ff2c8 L10:0x002dc2e0
+// class1068_beam_start    L6:0x002ff100 L10:0x002dc118 class302_update         L6:0x002d85a0 L10:0x002bd0e8 class302_break
+// L6:0x002d8178 L10:0x002bccc0 beam_shard_spawn        L6:0x00300c60 L10:0x002dd0e0 class302_spawn          L6:0x002d8510
+// L10:0x002bd058 class303_spawn          L6:0x002d8b98 L10:0x002bd6e0 class857_update         L6:0x002f0040 L10:0x002d4078
+// class857_assign         L6:0x002f2250 L10:0x002d6288 class857_arrive         L6:0x002f2c28 L10:0x002d6c60
+// class857_pick_dest      L6:0x002f2910 L10:0x002d6948 class857_find           L6:0x002f32f0 L10:0x002d7328 class857_score
+// L6:0x002f2148 L10:0x002d6180 class857_react          L6:0x002f3640 L10:0x002d7678 class857_glow           L6:0x002f38c8
+// L10:0x002d7900 Subjects: the level's own mobys of the class after the first gameplay frame (the port's; the screen, the
+// projection and the view set up, as batch 509), perturbed through every state, or (a level that places none awake) live
+// mobys given the class's pvars; the helpers on the class's mobys with arguments built from the level's state. Blarg's
+// Gadgebots sleep after the first frame: their cases mostly start from batch 151's Clank-section dumps
+// (clank_0415/ring_3015.bin and ring_3815.bin: tools/oracle/blarg_tour.sh clankdumps), from the level alone without them.
 // Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 518, N = 6 and 10; on another level every check says "not on level".
 // B518_INFO=1 prints the subjects found.
 

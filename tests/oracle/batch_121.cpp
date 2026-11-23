@@ -1,8 +1,8 @@
 // Oracle batch 121 (task 0356): level 9's (Gaspar) own moby classes on its real level data. Run with
 // ORACLE_LEVEL=9 build/tests/ovl_oracle --batch 121 (needs the ISO). The subjects are the level's own
 // mobys of each class (placed by its gameplay data) after the first gameplay frame, perturbed; the
-// original is level 9's own function at its own address, the port the one registered for it (the
-// transliterations batalia_classes_tr_N.cpp).
+// original is level 9's own function at its own address, the port the one registered for it (the hand
+// ports that replaced batalia_classes_tr_N.cpp).
 
 #include "ovl_oracle.h"
 
@@ -28,6 +28,7 @@
 #include <game/ovl/enemy_749.h>
 #include <game/level/level_data.h>
 #include <game/ovl/gaspar_mobys.h>
+#include <game/ovl/blarg_own.h>
 #include <game/ovl/variants_l9.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -204,7 +205,7 @@ void batch_121() {
     }
     const std::vector<uint32_t> batch_ignored = g_ignored_words;
 
-    // ---- the level's own classes (transliterated by tools/codegen/mkall_l9.py): the level's own mobys of each class, the first
+    // ---- the level's own classes (once transliterated by tools/codegen/mkall_l9.py; hand ports now): the level's own mobys of each class, the first
     // update (state 0) done by the port, then a state, a hit, the hero near, the pvars' floats / counters moved as typed
     g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, 0x002763f8};  // (+ the level change request: the original would run the CD / movie path)
     struct TrCls { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t skip_states = 0; bool walk = false; };  // (the states that start a scene / a level change: the original runs the kernel / movie path for real)
@@ -359,7 +360,7 @@ void batch_121() {
             {"hook_2e26d0", 0x2e26d0, 0x4, [](uint32_t m, uint32_t a1, uint32_t a2, float f) { return carry_state_hook(m, a1, a2, f, 4, 7, 1); }},
             {"hook_2e2720", 0x2e2720, 0x8, [](uint32_t m, uint32_t a1, uint32_t a2, float f) { return carry_state_hook(m, a1, a2, f, 8, 7, 1); }},
             {"hook_2e2770", 0x2e2770, 0xc, gas_hook_2e2770_l9},
-            {"hook_2e27a0", 0x2e27a0, 0x10, [](uint32_t m, uint32_t, uint32_t, float) { return static_cast<int32_t>(gas_hook_2e27a0_l9(m)); }},
+            {"hook_2e27a0", 0x2e27a0, 0x10, [](uint32_t m, uint32_t, uint32_t, float) { return static_cast<int32_t>(class_hook_pvars60_l6(m)); }},
         };
         for (const Hk& hk : hks) {
             level();

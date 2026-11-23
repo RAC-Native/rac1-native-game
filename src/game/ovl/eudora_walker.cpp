@@ -1,6 +1,6 @@
 // Eudora's legged walkers (header eudora_walker.h: the record's layout): the engine that walks a two-legged moby on its
 // gaits' animations, its legs bent toward the ground, its body kept on it, stepping up and down, running, jumping and
-// landing. Called by class 217 (eudora_biped.cpp) and, through the generator's glue, by class 563 (generated). Addresses
+// landing. Called by class 217 (eudora_biped.cpp) and by class 563. Addresses
 // are Eudora's (`orig: L4:`) but for the four Veldin functions; Eudora-only data is L4_ADDR, the base ELF's are bare.
 #include <game/ovl/eudora_walker.h>
 

@@ -51,7 +51,6 @@ void gas_21e8c0_l9(uint32_t recs, int32_t n, int32_t a, int32_t b, float blend);
 void gas_2c1978_l9(uint32_t rec, uint32_t strips, int32_t n);  // L9:0x002c1978  the lava pools' edges
 void gas_class317_draw_l9(uint32_t a0);  // L9:0x002ef750
 int32_t gas_hook_2e2770_l9(uint32_t m, uint32_t a1, uint32_t a2, float f12);  // L9:0x002e2770  class 193's hook +0xc
-uint32_t gas_hook_2e27a0_l9(uint32_t m);  // L9:0x002e27a0  class 193's hook +0x10
 // (class 193's hooks +0 / +4 / +8, L9:0x002e2680 / 0x2e26d0 / 0x2e2720: shared_helpers.h's carry_state_hook)
 
 }  // namespace rac1

@@ -1,7 +1,7 @@
 // Screen-space shapes the space combat's HUD (Pokitaru, Gemlik Base, Drek's fleet) draws straight into the frame's packet
 // (the cursor 0x1611c0): a line strip from a table of points, the same turned, a textured quad turned about a corner, a
 // ring of four such quads, and a point of the world on the screen (shared_hud_shapes.cpp). One port of the levels'
-// copies. Phase 1 of stage 4: the levels' generated copies still run; these are proved against them by oracle batch 504.
+// copies. Every level with a copy runs these ports; they are proved against each level's own copy by oracle batch 504.
 #ifndef RAC1_GAME_OVL_SHARED_HUD_SHAPES_H
 #define RAC1_GAME_OVL_SHARED_HUD_SHAPES_H
 

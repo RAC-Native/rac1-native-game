@@ -1,6 +1,6 @@
 #ifndef RAC1_GAME_OVL_GRAPPLE_H
 #define RAC1_GAME_OVL_GRAPPLE_H
-// grapple, transliterated (grapple_asm.cpp). Addresses are Veldin's overlay addresses (the shared engine).
+// grapple, ported by hand (grapple.cpp). Addresses are Veldin's overlay addresses (the shared engine).
 #include <cstdint>
 
 namespace rac1 {

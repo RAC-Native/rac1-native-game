@@ -15,7 +15,7 @@ bool quartu_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t*
     case L15_CASE(0x002f7a38): cam_type19_init(cam); return true;
     case L15_CASE(0x002f7df8): cam_type19_update(cam); return true;
     case L15_CASE(0x002f85a0): empty_update(cam); return true;
-    case L15_CASE(0x002f8ba8): *ret = static_cast<int32_t>(qua_cam_type22_accept_u(cam, other, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f).v0); return true;
+    case L15_CASE(0x002f8ba8): *ret = qua_cam_type22_accept_l15(cam); return true;
     case L15_CASE(0x002f8c10): empty_update(cam); return true;
     case L15_CASE(0x002f8c18): empty_update(cam); return true;
     case L15_CASE(0x002f8c20): empty_update(cam); return true;

@@ -1,7 +1,7 @@
-// Hoven (level 12) on its own overlay. Level 12's engine build is Novalis's family, as Pokitaru's (the hero controller
-// has the shapes of Novalis's / Pokitaru's, with its own sizes): 1518 of Veldin's functions are found in its overlay (81.5 %). The hero controller's
-// variants, the class table, the sound emitters, the class hooks and camera type 0x12's first function are level 12's own, transliterated at its addresses
-// (`// orig: L12:0x00xxxxxx`, hoven_hero_tr_*.cpp, hoven_classes_tr_*.cpp). The generic parts (the table rows, on_level) are in variants.h.
+// Hoven (level 12) on its own overlay. Level 12's engine build is Novalis's family, as Pokitaru's (the hero controller has the shapes of Novalis's /
+// Pokitaru's, with its own sizes): 1518 of Veldin's functions are found in its overlay (81.5 %). The hero controller's variants, the class table, the
+// sound emitters, the class hooks and camera type 0x12's first function are level 12's own, ported by hand at its addresses (`// orig: L12:0x00xxxxxx`).
+// The generic parts (the table rows, on_level) are in variants.h.
 #ifndef RAC1_GAME_OVL_VARIANTS_L12_H
 #define RAC1_GAME_OVL_VARIANTS_L12_H
 

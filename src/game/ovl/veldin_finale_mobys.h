@@ -1,5 +1,5 @@
-// Veldin, the finale (level 18) transliterated moby classes, camera type, class hooks, draw callbacks, the camera mode hook and level-only engine functions: the declarations of
-// veldin_finale_classes_tr_N.cpp (generated: `void` = a class update / entry in the entry ABI, `TrRet` = a helper or a `_u` entry in the uniform ABI).
+// Veldin, the finale (level 18) moby classes, camera type, class hooks, draw callbacks, the camera mode hook and level-only engine functions: the declarations of
+// their hand-written ports (once the generated veldin_finale_classes_tr_N.cpp).
 #ifndef RAC1_GAME_OVL_VELDIN_FINALE_MOBYS_H
 #define RAC1_GAME_OVL_VELDIN_FINALE_MOBYS_H
 

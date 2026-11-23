@@ -1,10 +1,10 @@
-// Oracle batch 114 (task 0340): Rilgar's own moby classes (level 5) on its real level data. Run with
-// ORACLE_LEVEL=5 build/tests/ovl_oracle --batch 114 (needs the ISO). The subjects are the level's own
-// mobys of each class (placed by its gameplay data) after the first gameplay frame, perturbed; the
-// original is Rilgar's own function at its own address, the port the one registered for it (the
-// transliterations rilgar_classes_tr_N.cpp, the shared hand ports shared_*.cpp / novalis_*.cpp).
-// H3: the race's HUD draws 0x262f50 / 0x266320 (race_hud_checks.h: also on the race's dump rilgar_0387/race1200.bin when it is
-// there; race_fix19_meter / race_fix19_bar with RAC1_FIXES102=19), the Amoeboids' hooks 0x300b48 / 0x300c18 through the dispatch.
+// Oracle batch 114 (task 0340): Rilgar's own moby classes (level 5) on its real level data. Run with ORACLE_LEVEL=5
+// build/tests/ovl_oracle --batch 114 (needs the ISO). The subjects are the level's own mobys of each class (placed by its
+// gameplay data) after the first gameplay frame, perturbed; the original is Rilgar's own function at its own address, the port
+// the one registered for it (the hand ports that replaced rilgar_classes_tr_N.cpp, the shared hand ports shared_*.cpp /
+// novalis_*.cpp). H3: the race's HUD draws 0x262f50 / 0x266320 (race_hud_checks.h: also on the race's dump
+// rilgar_0387/race1200.bin when it is there; race_fix19_meter / race_fix19_bar with RAC1_FIXES102=19), the Amoeboids' hooks
+// 0x300b48 / 0x300c18 through the dispatch.
 
 #include "ovl_oracle.h"
 #include "race_hud_checks.h"

@@ -45,9 +45,9 @@ void sky_render() {
     // went to EE address 0), and turns its own shells. The dispatchers' init and tail are the same on every build.
     if (const int from = sky_drawn_level(); from >= 0 && from != static_cast<int32_t>(lw(0x0015ed84))) {
         if (const SkyTrFn v = sky_variant_of(from); v != nullptr) {
-            ovl_28b680_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            ovl_28b680_tr();
             v(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-            ovl_28b710_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+            ovl_28b710_tr();
             sub_002a0ba8(0x47, 0x5360b);
             sub_002a0ba8(0x4e, 0x01000000ull | static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(lw(OV(0x0015ee88))) >> 13)));
             return;
@@ -59,10 +59,10 @@ void sky_render() {
         return;
     }
     // the level's own build: jal init (0x28b680); level == N ? variant : default (0x2892d0); jal tail (0x28b710); the two 0x2a0ba8 calls
-    ovl_28b680_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    ovl_28b680_tr();
     if (lw(0x0015ed84) == static_cast<uint32_t>(s->level)) s->variant(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     else ovl_2892d0_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-    ovl_28b710_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    ovl_28b710_tr();
     sub_002a0ba8(0x47, 0x5360b);
     // (or a1, v0, a1 in the delay slot: the sign-extended arithmetic shift of the word, ORed with 0x01000000)
     sub_002a0ba8(0x4e, 0x01000000ull | static_cast<uint64_t>(static_cast<int64_t>(static_cast<int32_t>(lw(OV(0x0015ee88))) >> 13)));

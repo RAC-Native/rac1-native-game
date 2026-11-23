@@ -1,6 +1,6 @@
 // Class 52, a floating creature that drifts after its target and bursts (Gaspar, Kalebo III): one port of the two levels'
-// copies of its update and its hit handler (shared_class52.cpp). Phase 1 of stage 4: the levels' generated copies still
-// run; these are proved against them by oracle batch 517.
+// copies of its update and its hit handler (shared_class52.cpp). Every level with a copy runs these ports; they are
+// proved against each level's own copy by oracle batch 517.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS52_H
 #define RAC1_GAME_OVL_SHARED_CLASS52_H
 

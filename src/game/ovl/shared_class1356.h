@@ -1,6 +1,6 @@
 // Class 1356, a carrier that flies along a path, drops its four class 638 drones over the hero and fires class 50's homing
-// shots (Kalebo III, Veldin), and its helpers: one port of the two levels' copies (shared_class1356.cpp). Phase 1 of stage
-// 4: the levels' generated copies still run; this is proved against them by oracle batch 505.
+// shots (Kalebo III, Veldin), and its helpers: one port of the two levels' copies (shared_class1356.cpp). Every level with
+// a copy runs this port; it is proved against each level's own copy by oracle batch 505.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS1356_H
 #define RAC1_GAME_OVL_SHARED_CLASS1356_H
 

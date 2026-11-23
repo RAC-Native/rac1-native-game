@@ -1,5 +1,5 @@
 // The help message panel: the three callbacks of help_hint_update's request (0x264328: id 0xc, init 0x237190 /
-// update 0x2371e0 / draw 0x237200), transliterated at Veldin's addresses, proved against the original.
+// update 0x2371e0 / draw 0x237200), ported by hand at Veldin's addresses, proved against the original.
 #ifndef RAC1_GAME_OVL_HELP_PANEL_TR_H
 #define RAC1_GAME_OVL_HELP_PANEL_TR_H
 

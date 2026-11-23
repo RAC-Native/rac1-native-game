@@ -43,7 +43,7 @@ inline int32_t cvt_w_i32(float f) {
 }  // namespace
 
 // orig: 0x0023bef8
-TrRet ovl_23bef8_tr(uint32_t tex_idx, uint32_t x16, uint32_t y16, uint32_t w16, uint32_t h16, uint32_t u16, uint32_t v16, uint32_t alpha, float, float, float, float) {
+uint32_t ovl_23bef8_tr(uint32_t tex_idx, uint32_t x16, uint32_t y16, uint32_t w16, uint32_t h16, uint32_t u16, uint32_t v16, uint32_t alpha) {
     const uint32_t p = lwu(OV(0x001611c0u));
     const uint32_t entry_ptr = lwu(OV(0x0017e4f8u)) + (tex_idx << 2);
     const int32_t desc_idx = lh(entry_ptr + 2u);
@@ -91,11 +91,11 @@ TrRet ovl_23bef8_tr(uint32_t tex_idx, uint32_t x16, uint32_t y16, uint32_t w16, 
 
     const uint32_t end_p = lwu(OV(0x001611c0u)) + 0x50u;
     sw(OV(0x001611c0u), end_p);
-    return TrRet{end_p, 0.0f};
+    return end_p;
 }
 
 // orig: 0x0023c920
-TrRet ovl_23c920_tr(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1, uint32_t colour, uint32_t subpixel, uint32_t, uint32_t, float, float, float, float) {
+uint32_t ovl_23c920_tr(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1, uint32_t colour, uint32_t subpixel) {
     const uint32_t p = lwu(OV(0x001611c0u));
     sw(p + 0x0u, 0x10000003u);
     sw(p + 0x4u, 0u);
@@ -128,11 +128,11 @@ TrRet ovl_23c920_tr(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1, uint32_t
 
     const uint32_t end_p = lwu(OV(0x001611c0u)) + 0x30u;
     sw(OV(0x001611c0u), end_p);
-    return TrRet{end_p, 0.0f};
+    return end_p;
 }
 
 // orig: 0x002033c0
-TrRet galaxy_view_draw_u(uint32_t x0, uint32_t x1, uint32_t y0, uint32_t y1, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float) {
+void galaxy_view_draw(uint32_t x0, uint32_t x1, uint32_t y0, uint32_t y1) {
     texture_block_begin(0);
     sub_002a0ba8(0x42u, (0x8000ull << 24) | 0x44ull);
     sub_002a0ba8(0x47u, 0x4bull);
@@ -140,11 +140,11 @@ TrRet galaxy_view_draw_u(uint32_t x0, uint32_t x1, uint32_t y0, uint32_t y1, uin
 
     const uint32_t w16 = (x1 - x0) << 4;
     const uint32_t h16 = (y1 - y0) << 4;
-    ovl_23bef8_tr(static_cast<uint32_t>(hud_frame(0xe99au, 0xe)), 0u, 0u, w16, h16, 0u, 0u, 0x80u, 0.0f, 0.0f, 0.0f, 0.0f);
+    ovl_23bef8_tr(static_cast<uint32_t>(hud_frame(0xe99au, 0xe)), 0u, 0u, w16, h16, 0u, 0u, 0x80u);
     sub_002a0ba8(0x8u, 0ull);
     const uint32_t f15 = static_cast<uint32_t>(hud_frame(0xe99au, 0xf));
     const uint32_t scroll_u = lwu(OV(0x0015f3f8u)) & 0xfffu;
-    ovl_23bef8_tr(f15, 0u, 0u, w16, h16, scroll_u, 0u, 0x80u, 0.0f, 0.0f, 0.0f, 0.0f);
+    ovl_23bef8_tr(f15, 0u, 0u, w16, h16, scroll_u, 0u, 0x80u);
     sub_002a0ba8(0x8u, 5ull);
 
     uint32_t row_ptr = OV(0x001c1f38u);
@@ -201,13 +201,13 @@ TrRet galaxy_view_draw_u(uint32_t x0, uint32_t x1, uint32_t y0, uint32_t y1, uin
         const int32_t end_x = (-1 < lw(dx_ptr)) ? (lx + tw) : (lx - tw);
         int32_t tx = end_x;
 
-        ovl_23c920_tr(static_cast<uint32_t>(sx + 1), static_cast<uint32_t>(sy + 1), static_cast<uint32_t>(lx_sh), static_cast<uint32_t>(ly_sh), 0x80000000u, 0u, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
-        ovl_23c920_tr(static_cast<uint32_t>(lx_sh), static_cast<uint32_t>(ly_sh), static_cast<uint32_t>(end_x + 1), static_cast<uint32_t>(ly_sh), 0x80000000u, 0u, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
+        ovl_23c920_tr(static_cast<uint32_t>(sx + 1), static_cast<uint32_t>(sy + 1), static_cast<uint32_t>(lx_sh), static_cast<uint32_t>(ly_sh), 0x80000000u, 0u);
+        ovl_23c920_tr(static_cast<uint32_t>(lx_sh), static_cast<uint32_t>(ly_sh), static_cast<uint32_t>(end_x + 1), static_cast<uint32_t>(ly_sh), 0x80000000u, 0u);
         if (!(end_x < lx)) tx = lx;
         text_small(tx + 1, (ly - lw(OV(0x0015f650u))) + 1, 0x80000000ull, name_str, -1);
 
-        ovl_23c920_tr(static_cast<uint32_t>(sx), static_cast<uint32_t>(sy), static_cast<uint32_t>(lx), static_cast<uint32_t>(ly), 0x80f0f0f0u, 0u, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
-        ovl_23c920_tr(static_cast<uint32_t>(lx), static_cast<uint32_t>(ly), static_cast<uint32_t>(end_x), static_cast<uint32_t>(ly), 0x80f0f0f0u, 0u, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
+        ovl_23c920_tr(static_cast<uint32_t>(sx), static_cast<uint32_t>(sy), static_cast<uint32_t>(lx), static_cast<uint32_t>(ly), 0x80f0f0f0u, 0u);
+        ovl_23c920_tr(static_cast<uint32_t>(lx), static_cast<uint32_t>(ly), static_cast<uint32_t>(end_x), static_cast<uint32_t>(ly), 0x80f0f0f0u, 0u);
         text_small(tx, ly - lw(OV(0x0015f650u)), 0x80f0f0f0ull, name_str, -1);
 
         const int32_t ring = hud_frame(0xe99au, 0xd);
@@ -215,11 +215,10 @@ TrRet galaxy_view_draw_u(uint32_t x0, uint32_t x1, uint32_t y0, uint32_t y1, uin
     }
 
     texture_block_end();
-    return TrRet{0u, 0.0f};
 }
 
 // orig: 0x0027cbc0
-TrRet galmap_planet_draw_u(uint32_t w, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float) {
+uint32_t galmap_planet_draw_base(uint32_t w) {
     const uint32_t m = lwu(w + 0x44u);
     sw(m + 0x10u, f2u(fpu_add(u2f(lwu(OV(0x00166dc0u))), 8.0f)));
     sw(m + 0x14u, f2u(fpu_add(u2f(lwu(OV(0x00166dc4u))), u2f(lwu(OV(0x00160364u))))));
@@ -253,7 +252,7 @@ TrRet galmap_planet_draw_u(uint32_t w, uint32_t, uint32_t, uint32_t, uint32_t, u
     text_right(lw(w + 0x20u) - 0x11, (lw(0x0013e504u) >> 1) - 9, 0x80ffa888ull, buf, -1);
     texture_block_end();
     ee_stack_free(0x100);
-    return TrRet{8u, 0.0f};
+    return 8u;
 }
 
 // The galaxy page's title focus-in: nothing.
@@ -325,7 +324,7 @@ int32_t galmap_view_update(uint32_t) {
 // orig: 0x0027f578
 int32_t galmap_view_draw(uint32_t w) {
     const uint32_t x = lwu(w + 0x18), y = lwu(w + 0x1c);
-    galaxy_view_draw_u(x, x + lwu(w + 0x20), y, y + lwu(w + 0x24), 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
+    galaxy_view_draw(x, x + lwu(w + 0x20), y, y + lwu(w + 0x24));
     return 2;
 }
 
@@ -367,7 +366,7 @@ int32_t galmap_planet_update(uint32_t w) {
 // orig: 0x0027cbc0
 int32_t galmap_planet_draw(uint32_t w) {
     if (level_slots_map_row()) return 8;  // enhancement: a level mod's row: not the base level's gold bolts (src/host/level_slots.h)
-    return static_cast<int32_t>(galmap_planet_draw_u(w, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f).v0);
+    return static_cast<int32_t>(galmap_planet_draw_base(w));
 }
 
 // orig: (helper) `jalr` to a widget function of the galactic map's pages (the level's address as Veldin's)

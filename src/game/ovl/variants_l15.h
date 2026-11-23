@@ -1,7 +1,7 @@
-// Quartu (level 15) on its own overlay. Level 15's engine build has its own hero controller (the Novalis family's shape, with
-// Giant Clank's states; none of its rows is the same code as another level's port): the hero controller's variants, the class table,
-// the sound emitters, the class hooks and the camera mode hook are level 15's own, transliterated at its addresses
-// (`// orig: L15:0x00xxxxxx`, quartu_hero_tr_*.cpp, quartu_classes_tr_*.cpp). The generic parts (the table rows, on_level) are in variants.h.
+// Quartu (level 15) on its own overlay. Level 15's engine build has its own hero controller (the Novalis family's shape, with Giant Clank's
+// states; none of its rows is the same code as another level's port): the hero controller's variants, the class table, the sound emitters,
+// the class hooks and the camera mode hook are level 15's own, ported by hand at its addresses (`// orig: L15:0x00xxxxxx`). The generic parts
+// (the table rows, on_level) are in variants.h.
 #ifndef RAC1_GAME_OVL_VARIANTS_L15_H
 #define RAC1_GAME_OVL_VARIANTS_L15_H
 

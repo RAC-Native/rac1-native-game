@@ -76,18 +76,6 @@ void helmet_spawn_fx(uint32_t m) {
 
 }  // namespace
 
-// orig: 0x002e06a8
-TrRet ovl_2e06a8_tr(uint32_t a0, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float) {
-    helmet_init_fx(a0);
-    return TrRet{0, 0.0f};
-}
-
-// orig: 0x002e0788
-TrRet ovl_2e0788_tr(uint32_t a0, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float) {
-    helmet_spawn_fx(a0);
-    return TrRet{0, 0.0f};
-}
-
 // orig: 0x002e03a0
 void helmet_update_tr(uint32_t m) {
     const float d_ang = fpu_mul(lwc1(0x0015ed6cu), u2f(0x3fc90fdbu));

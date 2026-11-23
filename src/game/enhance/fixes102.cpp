@@ -1,5 +1,5 @@
 // 1.02 Fixes and 1.02 Gameplay (see fixes102.h): the switches, and the pieces shared by more than one site or called from
-// the generated code. Each fix's own change is at its site, in the North American port, behind fixes102_on(n) /
+// the levels' ports. Each fix's own change is at its site, in the North American port, behind fixes102_on(n) /
 // gameplay102_on(n).
 #include <game/enhance/fixes102.h>
 

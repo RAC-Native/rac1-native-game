@@ -1,6 +1,6 @@
 // Breakable props of Blarg and Umbris (classes 1655, 1660 and 1664 of Blarg, 1650 and 1663 of Umbris): hit, they break into
 // debris and leave their broken piece (shared_breakables.cpp: one port of the five copies, the same code bound to each
-// class's debris and piece). Phase 1 of stage 4: the levels' generated copies still run; these are proved against them by
+// class's debris and piece). Every level with a copy runs these ports; they are proved against each level's own copy by
 // oracle batch 519.
 #ifndef RAC1_GAME_OVL_SHARED_BREAKABLES_H
 #define RAC1_GAME_OVL_SHARED_BREAKABLES_H

@@ -1,17 +1,16 @@
 // Oracle batch 511 (stage 4 task G4, #149): hand-written ports of Novalis made to serve every level that carries a copy of the
-// same code, each against every level's own copy at that level's own address (the copies stay transliterated in their units
-// until each level is re-glued; here every copy is the original and the one port the port):
-//  - novalis_amoeboid.cpp: classes 572 / 865 / 866, the Amoeboids (levels 1, 5, 11): the update through every state, its
-//    frame before the state (the hit, the split, the water, the target), the split, the nearest class-0x26f moby of a group,
-//    the splash and the drips; on the level's own Amoeboids past their first update, the hero, a hit, the water, the group
-//    lists (a list of the test area naming the level's mobys made halves waiting to take a split's place or class-0x26f
-//    mobys), the alert and the target's state varied;
-//  - novalis_water.cpp: the water (levels 1, 5, 7, 11, 12, 13): the VU1 set-up, the grid's light and positions, the uv
-//    scroll, a cell's packet, a cell, the tiles' draw and the class's draw callback, on each level's own tile records (the
-//    callback's) with their moving fields varied and the camera over them or away; the packet cursor on a buffer of the test
-//    area (`B511_INFO=1` prints the subjects and how far each case's packets grew).
-// No RAM dumps: states built from the level after its first gameplay frame, the screen and projection set up (640 x 448).
-// Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 511, N = 1, 5, 7, 11, 12, 13; a family the level does not carry says so.
+// same code, each against every level's own copy at that level's own address (every level runs the shared port since its
+// re-glue (stage 4); here every copy is the original and the one port the port): - novalis_amoeboid.cpp: classes 572 / 865 /
+// 866, the Amoeboids (levels 1, 5, 11): the update through every state, its frame before the state (the hit, the split, the
+// water, the target), the split, the nearest class-0x26f moby of a group, the splash and the drips; on the level's own
+// Amoeboids past their first update, the hero, a hit, the water, the group lists (a list of the test area naming the level's
+// mobys made halves waiting to take a split's place or class-0x26f mobys), the alert and the target's state varied; -
+// novalis_water.cpp: the water (levels 1, 5, 7, 11, 12, 13): the VU1 set-up, the grid's light and positions, the uv scroll, a
+// cell's packet, a cell, the tiles' draw and the class's draw callback, on each level's own tile records (the callback's) with
+// their moving fields varied and the camera over them or away; the packet cursor on a buffer of the test area (`B511_INFO=1`
+// prints the subjects and how far each case's packets grew). No RAM dumps: states built from the level after its first
+// gameplay frame, the screen and projection set up (640 x 448). Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 511, N = 1,
+// 5, 7, 11, 12, 13; a family the level does not carry says so.
 
 #include "ovl_oracle.h"
 

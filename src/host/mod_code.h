@@ -1,4 +1,4 @@
-// (Here, not in src/game: the generated code is fingerprinted by src/game's headers; the code is src/game/enhance/mod_code.cpp.)
+// (Here, not in src/game: the code is src/game/enhance/mod_code.cpp.)
 // The mods' code (docs/custom-levels.md, "Code"): the native plugins of the mods on whose code is loaded
 // (runtime/kernel/mods.h, ModInfo::code_on), loaded at the first level's load, called through the C interface of
 // sdk/rac1_mod.h. Every hook here does nothing when no plugin is loaded (no mod with code on: the original, byte for byte).

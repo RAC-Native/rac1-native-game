@@ -1,6 +1,6 @@
 // Class 156, a shot that flies straight, faced to the camera, trailing sparks, and bursts on what it meets: one port of the
 // copies Novalis, Blarg, Batalia, Gaspar, Quartu and Veldin's orbit carry (shared_class156.cpp), with its burst and its trail's
-// particle. Phase 1 of stage 4: the levels' generated copies still run; these are proved against them by oracle batch 514.
+// particle. Every level with a copy runs these ports; they are proved against each level's own copy by oracle batch 514.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS156_H
 #define RAC1_GAME_OVL_SHARED_CLASS156_H
 

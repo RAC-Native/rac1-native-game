@@ -1,7 +1,7 @@
-// Pokitaru (level 11) on its own overlay. Level 11's engine build is Novalis's family (the hero controller
-// has the shapes of Novalis's / Rilgar's / Batalia's, with its own sizes): 1835 of Veldin's 1974 functions are found in its overlay (82.8 %). The hero controller's
-// variants, the class table, the camera types, the sound emitters and the class hooks are level 11's own, transliterated at its addresses
-// (`// orig: L11:0x00xxxxxx`, pokitaru_hero_tr_*.cpp, pokitaru_classes_tr_*.cpp). The generic parts (the table rows, on_level) are in variants.h.
+// Pokitaru (level 11) on its own overlay. Level 11's engine build is Novalis's family (the hero controller has the shapes of Novalis's / Rilgar's / Batalia's, with
+// its own sizes): 1835 of Veldin's 1974 functions are found in its overlay (82.8 %). The hero controller's variants, the class table, the camera types, the sound
+// emitters and the class hooks are level 11's own, ported by hand at its addresses (`// orig: L11:0x00xxxxxx`). The generic parts (the table rows, on_level) are in
+// variants.h.
 #ifndef RAC1_GAME_OVL_VARIANTS_L11_H
 #define RAC1_GAME_OVL_VARIANTS_L11_H
 

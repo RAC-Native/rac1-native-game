@@ -154,13 +154,16 @@ Aridia and Kerwan.
 
 ### Machine-transliterated files
 
-Much of the level-only code is not written by hand. Files named `*_tr*.cpp` (and `*_asm.cpp`) were
-transliterated instruction by instruction from the overlay's MIPS code by a generator, then proved
-against the original with the oracle. They keep the original's control flow and the PS2's float
-rules by construction, and use a uniform calling convention (`TrRet` in
-`src/game/ovl/novalis_mobys2.h`). They are not in the repository: the setup generates them from your
-disc with the generators in `tools/codegen/` (see
-[Architecture](architecture.md#the-generated-code)).
+The levels' own code is written by hand since stage 4: no level has generated code left. What is still
+transliterated instruction by instruction from the disc's code by a generator is drawing code: 22 files
+from 7 units (`generate_all.py --list`), the 20 MIPS functions of the skinning (`moby_skin`), the drop
+shadows (`moby_shadows_asm`), the world's culling (`world_cull`) and lighting (`world_lighting`), and the
+10 VU microprograms of `vu:moby`, `vu:world` and `vu:light`, each in an exact and a fast form. They keep
+the original's control flow and the PS2's float rules by construction, are proved against the original
+with the oracle, and are not in the repository: the setup generates them from your disc with the
+generators in `tools/codegen/` (see [Architecture](architecture.md#the-generated-code)). Many
+hand-written files keep the `*_tr` names of the generated files they replaced; the generators' uniform
+calling convention (`TrRet` in `src/game/ovl/novalis_mobys2.h`) is left in the sky's per-level variants.
 
 ## Mobys
 
@@ -210,7 +213,7 @@ moby's address at +0x2080). The hero's update is `hero_frame_update` (0x2070d0,
 flowchart TD
     F["hero_frame_update (0x2070d0)"] --> L{"level with its<br/>own hero build?"}
     L -->|"Novalis, Aridia, Kerwan, Rilgar"| L1["hero_frame_update_l1"]
-    L -->|"Nebula G34, Batalia, Pokitaru"| LT["that level's transliterated build"]
+    L -->|"Nebula G34, Batalia, Pokitaru"| LT["that level's own build"]
     L -->|"no"| M{"special movement<br/>mode?"}
     M -->|"yes"| MM["hero_move_mode_u (0x2062b0)"]
     M -->|"no"| A["hero_anim_advance (0x232670)"]
@@ -233,7 +236,7 @@ flowchart TD
 
 Several levels build parts of the hero code differently. The `*_l1` files are Novalis's build of
 the same functions (shared by Aridia and Kerwan, with `hero_l2_small.cpp` for Aridia's few
-differences), and Nebula G34, Batalia and Pokitaru dispatch to their own transliterated builds.
+differences), and Nebula G34, Batalia and Pokitaru dispatch to their own builds (ported by hand at their addresses).
 (The code's level names and the names in the game are mapped in [Status](status.md#level-names).)
 
 The optional modern controls and Ratchet & Clank 3 movement plug into these functions at a few

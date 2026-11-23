@@ -1,7 +1,7 @@
 // Class 1886, a blob that class 1885 throws (Gaspar, Gemlik Base): it flies, bounces off the scenery and off the other
-// blobs, glows on the floor, and where it comes to rest leaves one of its thrower's group behind before it fades. One
-// port of the two levels' copies of its update and its two helpers (shared_class1886.cpp). Phase 1 of stage 4: the levels'
-// generated copies still run; these are proved against them by oracle batch 504.
+// blobs, glows on the floor, and where it comes to rest leaves one of its thrower's group behind before it fades. One port
+// of the two levels' copies of its update and its two helpers (shared_class1886.cpp). Every level with a copy runs these
+// ports; they are proved against each level's own copy by oracle batch 504.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS1886_H
 #define RAC1_GAME_OVL_SHARED_CLASS1886_H
 

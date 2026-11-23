@@ -1,8 +1,8 @@
 // Class 848, a helicopter's burst of gunfire (the helicopters: class 631 on Kerwan and Umbris, class 233 on Quartu): an aim
 // point that runs along the ground towards the nearest target while the owner's two guns fire bullets at it by turns, with
 // sparks at the guns and where the line of fire meets the scenery, until the owner stops or dies, its timer ends or the
-// fire hits the hero; and the bullets' particle. One port of the three levels' copies (shared_class848.cpp). Phase 1 of
-// stage 4: the levels' generated copies still run; these are proved against them by oracle batch 507.
+// fire hits the hero; and the bullets' particle. One port of the three levels' copies (shared_class848.cpp). Every level
+// with a copy runs these ports; they are proved against each level's own copy by oracle batch 507.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS848_H
 #define RAC1_GAME_OVL_SHARED_CLASS848_H
 

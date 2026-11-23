@@ -1,5 +1,5 @@
-// Quartu (level 15) transliterated moby classes, camera types, class hooks, draw callbacks and level-only engine functions: the declarations of
-// quartu_classes_tr_N.cpp (generated until stage 4: `void` = a class update / entry in the entry ABI, `TrRet` = a helper or a `_u` entry in the uniform ABI). Oracle batch 240 (ORACLE_LEVEL=15).
+// Quartu (level 15) moby classes, camera types, class hooks, draw callbacks and level-only engine functions: the declarations of
+// their hand-written ports (once the generated quartu_classes_tr_N.cpp). Oracle batch 240 (ORACLE_LEVEL=15).
 #ifndef RAC1_GAME_OVL_QUARTU_MOBYS_H
 #define RAC1_GAME_OVL_QUARTU_MOBYS_H
 
@@ -50,18 +50,13 @@ bool qua_2f78e0_l15(int32_t camera);                    // L15:0x002f78e0 the le
 // The talking character (quartu_class1446.cpp) and the help-message director (quartu_class1469.cpp):
 void qua_class1446_update_l15(uint32_t m);  // L15:0x002ec760
 void qua_class1469_update_l15(uint32_t m);  // L15:0x002ed398
-// The camera type 22 (Giant Clank's camera; quartu_cam22.cpp): the accept in the uniform ABI (quartu_hooks.cpp's dispatch)
-TrRet qua_cam_type22_accept_u(uint32_t cam, uint32_t other, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002f8ba8
+// The camera type 22 (Giant Clank's camera; quartu_cam22.cpp): the accept (quartu_hooks.cpp's dispatch; it reads the camera only)
+int32_t qua_cam_type22_accept_l15(uint32_t cam);  // L15:0x002f8ba8
 bool qua_2f85a8_l15(uint32_t cam);                                // L15:0x002f85a8 the hero inside the camera's volume
 bool qua_2f8698_l15(uint32_t cam, float turn_tol, float tilt_tol);  // L15:0x002f8698 the camera within the angles of its box
 void qua_2f88e8_l15(uint32_t cam);                                // L15:0x002f88e8 the camera steered for Giant Clank
 
 void qua_cutscene_level_extras_l15();  // L15:0x0022db50 (quartu_props.cpp: the scenes' level extras, cutscene.cpp's dispatch)
-TrRet qua_hook_2bc4b0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002bc4b0
-TrRet qua_hook_2bc500_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002bc500
-TrRet qua_hook_2bc550_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002bc550
-TrRet qua_hook_2bc5a0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002bc5a0
-TrRet qua_hook_2bc5d0_u(uint32_t a0, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t t0, uint32_t t1, uint32_t t2, uint32_t t3, float f12, float f13, float f14, float f15, float f16, float f17, float f18, float f19);  // L15:0x002bc5d0
 
 }  // namespace rac1
 

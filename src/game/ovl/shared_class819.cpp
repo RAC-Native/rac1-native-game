@@ -1,6 +1,6 @@
 // Class 819, a homing shot: one port of the copies Orxon (L10), Pokitaru (L11), Quartu (L15) and Drek's fleet (L17)
 // carry, the same code relinked (the normalised texts compared). Orxon's copy pushes what it hits through its own build of
-// sub_00259bc8 (L10:0x24c6b8, a variant of the overlay map; Orxon's generated code calls the Veldin port there too). Every
+// sub_00259bc8 (L10:0x24c6b8, a variant of the overlay map; Orxon's code calls the Veldin port there too). Every
 // address is the engine's (OV: the collision result 0x173e40..) or the base ELF's (bare: the hero 0x13f350, the level
 // number 0x15ed84, the frame time 0x15ed6c and its square 0x15ed70). Header shared_class819.h.
 //

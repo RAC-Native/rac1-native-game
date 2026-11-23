@@ -32,7 +32,7 @@
 // stiff section that gives way (a click) for the others, a harder one for the Devastator and the R.Y.N.O., a short kick
 // at each shot, nothing for the wrench and the gadgets; the light bar shows the health (green to red).
 // Reading the game's results, not hooking the functions that make them, covers every level's own build of the hero and
-// weapon code (several levels run transliterated copies) with one reader, and cannot change the game.
+// weapon code (several levels run their own copies) with one reader, and cannot change the game.
 //
 // The host takes the result once a game frame (vibration_take, before the next frame: neutral when no gameplay frame
 // ran, so a menu, a pause or a level's loading stops the motors and gives the triggers and the light bar back) and

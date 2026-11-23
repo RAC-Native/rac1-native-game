@@ -12,13 +12,6 @@
 
 namespace rac1 {
 
-namespace {
-using UFn = TrRet (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float, float, float,
-                      float, float);
-// a transliterated function in the uniform ABI (TrRet: every argument register) called with a0 / a1 / a2 and f12
-TrRet u_call3(UFn f, uint32_t a0, uint32_t a1, uint32_t a2, float f12) { return f(a0, a1, a2, 0, 0, 0, 0, 0, f12, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
-}  // namespace
-
 // orig: (host) see oltanis_hooks.h
 bool oltanis_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t* ret) {
     *ret = 0;
@@ -27,11 +20,11 @@ bool oltanis_camera_type_call(uint32_t fn, uint32_t cam, uint32_t other, int32_t
     case L14_CASE(0x003142a8): cam_type19_init(cam); return true;
     case L14_CASE(0x00314668): cam_type19_update(cam); return true;
     case L14_CASE(0x00314e10): empty_update(cam); return true;
-    case L14_CASE(0x00315920): *ret = static_cast<int32_t>(u_call3(olt_cam_type20_accept_u, cam, other, 0, 0.0f).v0); return true;
+    case L14_CASE(0x00315920): *ret = olt_cam_type20_accept_l14(cam, other); return true;
     case L14_CASE(0x00314f00): olt_cam_type20_init_l14(cam); return true;
     case L14_CASE(0x00315290): olt_cam_type20_update_l14(cam); return true;
     case L14_CASE(0x003159d0): empty_update(cam); return true;
-    case L14_CASE(0x00316748): *ret = static_cast<int32_t>(u_call3(olt_cam_type21_accept_u, cam, other, 0, 0.0f).v0); return true;
+    case L14_CASE(0x00316748): *ret = olt_cam_type21_accept_l14(cam, other); return true;
     case L14_CASE(0x003159d8): olt_cam_type21_init_l14(cam); return true;
     case L14_CASE(0x00315d48): olt_cam_type21_update_l14(cam); return true;
     case L14_CASE(0x003167e0): olt_cam_type21_exit_l14(cam); return true;

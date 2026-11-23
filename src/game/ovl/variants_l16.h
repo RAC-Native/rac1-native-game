@@ -1,7 +1,7 @@
-// Kalebo III (level 16) on its own overlay. Level 16's engine build has its own hero controller (the Novalis family's shape; several
-// rows are the same words as Rilgar's (the hoverboard), transliterated at level 16's addresses rather than shared): the hero controller's variants, the class table,
-// the sound emitters, the class hooks and the camera mode hook are level 16's own, transliterated at its addresses
-// (`// orig: L16:0x00xxxxxx`, kalebo_hero_tr_*.cpp, kalebo_classes_tr_*.cpp). The generic parts (the table rows, on_level) are in variants.h.
+// Kalebo III (level 16) on its own overlay. Level 16's engine build has its own hero controller (the Novalis family's shape; several rows are the same words as
+// Rilgar's (the hoverboard), transliterated at level 16's addresses rather than shared): the hero controller's variants, the class table, the sound emitters, the
+// class hooks and the camera mode hook are level 16's own, ported by hand at its addresses (`// orig: L16:0x00xxxxxx`). The generic parts (the table rows, on_level)
+// are in variants.h.
 #ifndef RAC1_GAME_OVL_VARIANTS_L16_H
 #define RAC1_GAME_OVL_VARIANTS_L16_H
 

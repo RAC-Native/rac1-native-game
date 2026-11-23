@@ -1,6 +1,6 @@
 // Class 638, a hovering gun drone that patrols a path and fires class 49's shots (Kalebo III, Veldin), and its helpers: one
-// port of the two levels' copies (shared_class638.cpp). Phase 1 of stage 4: the levels' generated copies still run; this
-// is proved against them by oracle batch 505.
+// port of the two levels' copies (shared_class638.cpp). Every level with a copy runs this port; it is proved against each
+// level's own copy by oracle batch 505.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS638_H
 #define RAC1_GAME_OVL_SHARED_CLASS638_H
 

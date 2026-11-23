@@ -1,5 +1,5 @@
 // Kalebo III's environment-mapped objects (classes 1943 / 1948 / 1953: shared_envmap.cpp, one port for the level's three
-// copies of their code). Phase 1 of stage 4: the generated copies still run; these are proved against them by batch 510.
+// copies of their code). Every level with a copy runs these ports; they are proved against each level's own copy by batch 510.
 #ifndef RAC1_GAME_OVL_SHARED_ENVMAP_H
 #define RAC1_GAME_OVL_SHARED_ENVMAP_H
 

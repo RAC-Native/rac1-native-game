@@ -1,7 +1,7 @@
 // Small class code task F11 ported once for several levels: Umbris's and Gaspar's sea (classes 460 / 317, the same code),
 // class 1139's glints (Rilgar, Kalebo III), and the puff of particle 0x34 about a moby several classes of Orxon, Hoven and
-// Gemlik Base make (shared_seas.cpp). Phase 1 of stage 4: the levels' generated copies still run; these are proved against
-// them by oracle batch 517.
+// Gemlik Base make (shared_seas.cpp). Every level with a copy runs these ports; they are proved against each level's own
+// copy by oracle batch 517.
 #ifndef RAC1_GAME_OVL_SHARED_SEAS_H
 #define RAC1_GAME_OVL_SHARED_SEAS_H
 

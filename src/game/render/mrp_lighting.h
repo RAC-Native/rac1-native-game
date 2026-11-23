@@ -431,8 +431,8 @@ float mrp_moby_nearest_part(const float p[3]);
 
 }  // namespace rac1
 
-// the surface materials' GLSL (RAC1_MATERIALS_FS, the end of RAC1_SHADOW_FS): in a file of its own, not a header - the game's
-// generated code is fingerprinted with every header of src/game, and a shader's change must not ask for ./setup.sh again
+// the surface materials' GLSL (RAC1_MATERIALS_FS, the end of RAC1_SHADOW_FS): in a file of its own, not a header (written when the game's
+// generated code was fingerprinted with every header of src/game: a shader's change was not to ask for ./setup.sh again)
 #include "mrp_materials_glsl.inc"
 
 // The GLSL snippets (spliced into the MRP's shaders after their #version line and declarations).

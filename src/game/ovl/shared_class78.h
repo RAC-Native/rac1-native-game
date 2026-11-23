@@ -1,6 +1,6 @@
 // Class 78 of Quartu and Drek's fleet (a sleeping turret the alarms of class 408 wake) and two helpers of class 44's guards:
 // the class-78 break and the shot of class 934 (shared_class78.cpp: one port of both levels' copies, the same code
-// relinked). Phase 1 of stage 4: the levels' generated copies still run; these are proved against them by oracle batch 516.
+// relinked). Every level with a copy runs these ports; they are proved against each level's own copy by oracle batch 516.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS78_H
 #define RAC1_GAME_OVL_SHARED_CLASS78_H
 

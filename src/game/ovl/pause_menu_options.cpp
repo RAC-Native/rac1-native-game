@@ -16,7 +16,7 @@
 
 namespace rac1 {
 
-// (exit_menu.cpp's, declared here: the headers of src/game are the generated code's fingerprint)
+// (exit_menu.cpp's, declared here)
 bool exit_menu_confirm(uint32_t w);
 int32_t exit_menu_text_id(uint32_t w, bool line, int32_t id);
 
@@ -231,7 +231,7 @@ int32_t menu_sound_draw(uint32_t w) {
     return 2;
 }
 
-// enhancement (graphics.cpp; declared here: the headers of src/game are the generated code's fingerprint): our pages' greyed rows
+// enhancement (graphics.cpp; declared here): our pages' greyed rows
 bool graphics_row_dimmed(uint32_t w, int32_t i);
 
 // --- Camera: a list of settings ----------------------------------------------------------------

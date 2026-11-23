@@ -120,10 +120,9 @@ void qua_2f88e8_l15(uint32_t cam) {
 }
 
 // orig: L15:0x002f8ba8
-TrRet qua_cam_type22_accept_u(uint32_t cam, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float,
-                              float, float, float, float) {
+int32_t qua_cam_type22_accept_l15(uint32_t cam) {
     if (lh(current_camera() + 0x86) == 0 && lh(data_of(cam) + 0x20) >= 0 && lbu(HERO_FORM) == 2) qua_2f88e8_l15(cam);
-    return TrRet{0xffffffffu, 0.0f};
+    return -1;
 }
 
 }  // namespace rac1

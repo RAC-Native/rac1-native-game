@@ -27,7 +27,7 @@
 
 namespace rac1 {
 
-// (update_notice.cpp's, declared here: the headers of src/game are the generated code's fingerprint)
+// (update_notice.cpp's, declared here)
 uint32_t updates_root_widget();
 
 namespace {

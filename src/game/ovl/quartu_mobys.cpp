@@ -1,10 +1,11 @@
-// Quartu (level 15) own moby classes: the registration table. The ports are the transliterations in
-// quartu_classes_tr_N.cpp (declarations: quartu_mobys.h) and, for the classes other levels share, the shared hand-written
-// ports (shared_*.cpp, novalis_*.cpp: each proved against level 15's own copy by its family batch; Giant Clank's pad, class
-// 1451, with the PAL 2.00 disc's changes as 1.02 Gameplay fix 23). Keyed by level 15's own address and by level, so the indirect call (`jalr`) through
-// moby +0x74 (or a callback installed by a class) reaches them only while the played level's overlay is level 15's.
+// Quartu (level 15) own moby classes: the registration table. The ports are the level's own, written by hand (declarations: quartu_mobys.h) and, for
+// the classes other levels share, the shared hand-written ports (shared_*.cpp, novalis_*.cpp: each proved against level 15's own copy by its family
+// batch; Giant Clank's pad, class 1451, with the PAL 2.00 disc's changes as 1.02 Gameplay fix 23). Keyed by level 15's own address and by level, so
+// the indirect call (`jalr`) through moby +0x74 (or a callback installed by a class) reaches them only while the played level's overlay is level 15's.
 #include <game/ovl/quartu_hooks.h>
 #include <game/ovl/quartu_mobys.h>
+#include <game/ovl/gaspar_mobys.h>
+#include <game/ovl/shared_helpers.h>
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/shared_class1108.h>
 #include <game/ovl/shared_class1179.h>
@@ -58,14 +59,17 @@
 namespace rac1 {
 
 namespace {
-// orig: (none) -- adapter of L15:0x002bc4b0 (a class hook +0 / +8 / +0xc: the indirect-call form, the moby only)
-void qua_hook_2bc4b0_m(uint32_t m) { qua_hook_2bc4b0_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+// orig: (none) -- adapter of L15:0x002bc4b0 (a class hook +0 / +8 / +0xc: the indirect-call form, the moby only; the shared
+// carry_state_hook: Gaspar's L9:0x2e2680, the same code)
+void qua_hook_2bc4b0_m(uint32_t m) { carry_state_hook(m, 0, 0, 0.0f, 0, 7, 1); }
 
-// orig: (none) -- adapter of L15:0x002bc550 (a class hook +0 / +8 / +0xc: the indirect-call form, the moby only)
-void qua_hook_2bc550_m(uint32_t m) { qua_hook_2bc550_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+// orig: (none) -- adapter of L15:0x002bc550 (a class hook +0 / +8 / +0xc: the indirect-call form, the moby only; Gaspar's
+// L9:0x2e2720, the same code)
+void qua_hook_2bc550_m(uint32_t m) { carry_state_hook(m, 0, 0, 0.0f, 8, 7, 1); }
 
-// orig: (none) -- adapter of L15:0x002bc5a0 (a class hook +0 / +8 / +0xc: the indirect-call form, the moby only)
-void qua_hook_2bc5a0_m(uint32_t m) { qua_hook_2bc5a0_u(m, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f); }
+// orig: (none) -- adapter of L15:0x002bc5a0 (a class hook +0 / +8 / +0xc: the indirect-call form, the moby only; Gaspar's
+// L9:0x2e2770, the same code)
+void qua_hook_2bc5a0_m(uint32_t m) { gas_hook_2e2770_l9(m, 0, 0, 0.0f); }
 
 }  // namespace
 

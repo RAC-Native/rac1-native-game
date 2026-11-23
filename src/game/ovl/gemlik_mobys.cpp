@@ -1,6 +1,6 @@
 // Gemlik Base (level 13) own moby classes: the registration table. The classes several levels share run their hand-written
 // ports (shared_*.cpp, novalis_*.cpp); the level's own are hand-written (gemlik_trigger_box.cpp, gemlik_lift.cpp,
-// gemlik_turret.cpp, gemlik_ship.cpp) or still the transliterations in gemlik_classes_tr_N.cpp (declarations: gemlik_mobys.h). Keyed by
+// gemlik_turret.cpp, gemlik_ship.cpp and the others; declarations: gemlik_mobys.h). Keyed by
 // level 13's own address and by level, so the indirect call (`jalr`) through moby +0x74 (or a draw list, a HUD element)
 // reaches them only while the played level's overlay is level 13's.
 #include <game/ovl/gemlik_hooks.h>
@@ -11,6 +11,7 @@
 #include <game/ovl/empty_class_updates.h>
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/novalis_mobys2.h>
+#include <game/ovl/novalis_hooks.h>
 #include <game/ovl/novalis_water.h>
 #include <game/ovl/shared_beam.h>
 #include <game/ovl/shared_boss_bar.h>
@@ -38,7 +39,7 @@ namespace {
 void gml_hook_2b7980_m(uint32_t m) { carry_state_hook(m, 0, 0, 0.0f, 0, 7, 1); }
 
 // orig: (none) -- adapter of L13:0x002b7a20 (class 63's hook +8: the indirect-call form, the moby only)
-void gml_hook_2b7a20_m(uint32_t m) { gml_hook_2b7a20_l13(m, 0, 0, 0.0f); }
+void gml_hook_2b7a20_m(uint32_t m) { peckbot_hook8_l1(m, 0, 0, 0.0f); }
 
 // orig: (none) -- adapter of L13:0x002b7ad0 (class 63's hook +0xc: the indirect-call form, the moby only; Gaspar's L9:0x2e2770, the same code)
 void gml_hook_2b7ad0_m(uint32_t m) { gas_hook_2e2770_l9(m, 0, 0, 0.0f); }
@@ -92,7 +93,7 @@ void gemlik_moby_fns_register() {
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002e4448), gml_class231_update_l13);
     // (gemlik_trooper.cpp)
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002b50d8), gml_class63_update_l13);
-    // the transliterated classes (gemlik_classes_tr_N.cpp, the translator)
+    // the level's other classes (their hand ports; once gemlik_classes_tr_N.cpp)
     ovl_register_level_moby_fn(GEMLIK, L13_ADDR(0x002c4428), gml_class111_update_l13);
     // class 304, the gold weapon case: Novalis's port (novalis_cases.cpp); its scene start L13:0x2a5390 the shared port
     // gold_weapon_scene (shared_gold_scene.cpp, batch 510)

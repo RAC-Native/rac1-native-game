@@ -1,6 +1,6 @@
 // Blarg's and Veldin's finale's flash (class 1898) and two small helpers of both levels (shared_flash.cpp: one port for
-// both levels' copies; the state query is another build on each, both written). Phase 1 of stage 4: the generated copies
-// still run; proved against them by oracle batch 510.
+// both levels' copies; the state query is another build on each, both written). Every level with a copy runs them;
+// proved against each level's own copy by oracle batch 510.
 #ifndef RAC1_GAME_OVL_SHARED_FLASH_H
 #define RAC1_GAME_OVL_SHARED_FLASH_H
 

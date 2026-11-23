@@ -1,5 +1,5 @@
-// Oracle batch 132 (task 0374): the galactic map, the ship's planet menu (galactic_map.cpp by hand, galactic_map_tr.cpp
-// transliterated at Veldin's addresses). The menu opened as the take-off's end opens it (0x276190(0), state 0xe: the galaxy
+// Oracle batch 132 (task 0374): the galactic map, the ship's planet menu (galactic_map.cpp by hand, once galactic_map_tr.cpp
+// transliterated at Veldin's addresses: galactic_map.cpp too now). The menu opened as the take-off's end opens it (0x276190(0), state 0xe: the galaxy
 // page 0x1b6088, state 0xf) and run by the port's menu frames; the planet page 0x1b63f8 (0x10) reached by a cross. Then the
 // pages' widget functions: the planet list's focus-in 0x27f448 (the unlocked planets 0x13d510 and the help planet varied),
 // the galaxy view's update / draw 0x27f550 / 0x27f578 (and its body 0x2033c0 in random boxes), the planet page's command
@@ -178,7 +178,7 @@ void batch_132() {
         w32(OV(0x0015f3f8), R());
         const int x = ri(0, 300), y = ri(0, 300);
         return Args{{u(x), u(x + ri(1, 300)), u(y), u(y + ri(1, 200))}, {}};
-    }, [](A a) { (void)galaxy_view_draw_u(a.i[0], a.i[1], a.i[2], a.i[3], 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f); return uint64_t{0}; });
+    }, [](A a) { galaxy_view_draw(a.i[0], a.i[1], a.i[2], a.i[3]); return uint64_t{0}; });
     check("galmap_planet_draw", 0x0027cbc0, 80, Ret::Int32, [menu, bolts] {
         menu(0x10);
         if (ri(0, 3) != 0) bolts();

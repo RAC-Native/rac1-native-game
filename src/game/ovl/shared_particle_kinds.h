@@ -1,6 +1,6 @@
 // Particle types' update and spawns that Veldin and other levels carry copies of (shared_particle_kinds.cpp: one port for
-// every copy). Phase 1 of stage 4: the levels' generated copies are still compiled; Veldin's registration
-// (veldin_extras.cpp) runs the update; the Veldin copies of the spawns stay generated (their callers are).
+// every copy). Every level with a copy runs this port; Veldin's registration
+// (veldin_extras.cpp) runs the update; the spawns' callers call the port.
 #ifndef RAC1_GAME_OVL_SHARED_PARTICLE_KINDS_H
 #define RAC1_GAME_OVL_SHARED_PARTICLE_KINDS_H
 

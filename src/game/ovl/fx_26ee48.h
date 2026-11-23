@@ -1,6 +1,6 @@
 #ifndef RAC1_GAME_OVL_FX_26EE48_H
 #define RAC1_GAME_OVL_FX_26EE48_H
-// fx_26ee48, transliterated (fx_26ee48_asm.cpp). Addresses are Veldin's overlay addresses (the shared engine).
+// fx_26ee48, ported by hand (fx_26ee48.cpp). Addresses are Veldin's overlay addresses (the shared engine).
 #include <cstdint>
 
 namespace rac1 {

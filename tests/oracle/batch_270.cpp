@@ -1,7 +1,7 @@
 // Oracle batch 270 (levels 17 / 18 port, 0.3.0): Veldin's finale's (level 18) own code on its real level data. Run with
 // ORACLE_LEVEL=18 build/tests/ovl_oracle --batch 270 (needs the ISO; no RAM dump). The subjects are the level's own mobys of each class
 // (placed by its gameplay data) after the first gameplay frame, perturbed; the original is level 18's own function at its own address, the
-// port the one registered for it (the transliterations veldin_finale_classes_tr_N.cpp): the 50 class updates, the 23 draw callbacks the
+// port the one registered for it (the hand ports that replaced veldin_finale_classes_tr_N.cpp): the 50 class updates, the 23 draw callbacks the
 // classes queue, sound emitter types 3 / 5 / 6, camera type 0x12's accept, the ten hooks of classes 568 and 1906, the camera mode hook and its
 // callback, and the movement-mode hero update (L18:0x0020efa8, veldin_finale_hero_tr_*.cpp). The other hero variants are proved by batch 261.
 // Built after batch 260 (level 18's).
@@ -271,7 +271,7 @@ void batch_270() {
         }
     }
 
-    // ---- the level's own classes (transliterated by tools/codegen/mkall_l18.py): the level's own mobys of each class, the first
+    // ---- the level's own classes (once transliterated by tools/codegen/mkall_l18.py; hand ports now): the level's own mobys of each class, the first
     // update (state 0) done by the port, then a state, a hit, the hero near, the pvars' floats / counters moved as typed
     g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, OVF(0x0024d430)};  // (+ the level change request: the original would run the CD / movie path)
     struct TrCls { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t skip_states = 0; bool walk = false; uint32_t skip_p0 = 0; uint32_t skip_p1 = 0; };  // (skip_p0 / skip_p1: states skipped in pass 0 / 1 only, see the batch's notes)  // (the states that start a scene / a level change: the original runs the kernel / movie path for real)

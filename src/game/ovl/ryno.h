@@ -1,6 +1,6 @@
 #ifndef RAC1_GAME_OVL_RYNO_H
 #define RAC1_GAME_OVL_RYNO_H
-// ryno, transliterated (ryno_asm.cpp). Addresses are Veldin's overlay addresses (the shared engine).
+// ryno, ported by hand (ryno.cpp). Addresses are Veldin's overlay addresses (the shared engine).
 #include <cstdint>
 
 namespace rac1 {

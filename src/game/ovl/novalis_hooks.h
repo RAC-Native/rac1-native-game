@@ -1,7 +1,7 @@
 #ifndef RAC1_GAME_OVL_NOVALIS_HOOKS_H
 #define RAC1_GAME_OVL_NOVALIS_HOOKS_H
 // Novalis's own class hooks for the Suck Cannon: the Peckbot (class 577) and the Large Amoeboid
-// (class 572), at Novalis's own addresses (`// orig: L1:0x...`), transliterated (novalis_hooks_asm.cpp). The class
+// (class 572), at Novalis's own addresses (`// orig: L1:0x...`), ported by hand (novalis_hooks.cpp). The class
 // hook tables (class +0x2c) of Novalis's mobys hold these addresses; the dispatchers below find them while the
 // played level's overlay is Novalis's own.
 #include <cstdint>

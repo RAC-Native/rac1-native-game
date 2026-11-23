@@ -1,7 +1,7 @@
-// Umbris (level 7) own moby classes: the registration table. The ports are the transliterations in
-// umbris_classes_tr_N.cpp (declarations: umbris_mobys.h) and, for the classes several levels carry a copy of, the shared
-// hand-written ports (shared_*.cpp, novalis_*.cpp). Keyed by level 7's own address and by level, so the indirect call (`jalr` through
-// moby +0x74) reaches them only while the played level's overlay is level 7's.
+// Umbris (level 7) own moby classes: the registration table. The ports are the level's own, written by hand (declarations:
+// umbris_mobys.h) and, for the classes several levels carry a copy of, the shared hand-written ports (shared_*.cpp, novalis_*.cpp).
+// Keyed by level 7's own address and by level, so the indirect call (`jalr` through moby +0x74) reaches them only while the played
+// level's overlay is level 7's.
 #include <game/ovl/carry_hooks_levels.h>
 #include <game/ovl/umbris_hooks.h>
 #include <game/ovl/umbris_mobys.h>

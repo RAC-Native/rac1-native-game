@@ -1,6 +1,6 @@
 // Class 1224, a bolt of lightning that strikes along a volume of the level (Oltanis, Quartu, Drek's fleet), shared by the
 // three levels that have it: one port of the levels' copies of its update, its helpers and its draw callback
-// (shared_class1224.cpp). Phase 1 of stage 4: the levels' generated copies still run; these are proved against them by
+// (shared_class1224.cpp). Every level with a copy runs these ports; they are proved against each level's own copy by
 // oracle batch 507.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS1224_H
 #define RAC1_GAME_OVL_SHARED_CLASS1224_H

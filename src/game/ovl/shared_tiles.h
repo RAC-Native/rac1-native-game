@@ -1,6 +1,6 @@
 // The tile grids of Umbris, Pokitaru, Hoven and Gemlik Base (records of 0x1190 bytes in a level buffer: their place, their
 // height, their eight neighbours) and Pokitaru's / Hoven's Raritanium pickup (class 37): shared_tiles.cpp, one port for the
-// levels' copies. Phase 1 of stage 4: the levels' generated copies still run; proved against them by oracle batch 510.
+// levels' copies. Every level with a copy runs them; proved against each level's own copy by oracle batch 510.
 #ifndef RAC1_GAME_OVL_SHARED_TILES_H
 #define RAC1_GAME_OVL_SHARED_TILES_H
 

@@ -1,9 +1,8 @@
-// Eudora's own moby classes: the registration table. The ports are the transliterations in
-// eudora_classes_tr_N.cpp (declarations: eudora_mobys.h) and, for the classes other levels share, the shared hand-written
-// ports (shared_*.cpp, novalis_*.cpp: each proved against Eudora's own copy by its family batch); classes whose update is a
-// bare `jr ra` are empty here.
-// Keyed by Eudora's own address and by level, so the indirect call (`jalr` through moby +0x74) reaches them only
-// while the played level's overlay is Eudora's (RAC1_OWN_OVERLAY=1 RAC1_LEVEL=4).
+// Eudora's own moby classes: the registration table. The ports are the level's own, written by hand (declarations:
+// eudora_mobys.h) and, for the classes other levels share, the shared hand-written ports (shared_*.cpp, novalis_*.cpp: each
+// proved against Eudora's own copy by its family batch); classes whose update is a bare `jr ra` are empty here. Keyed by
+// Eudora's own address and by level, so the indirect call (`jalr` through moby +0x74) reaches them only while the played
+// level's overlay is Eudora's (RAC1_OWN_OVERLAY=1 RAC1_LEVEL=4).
 #include <game/ovl/eudora_mobys.h>
 
 #include <game/enhance/cut_content.h>

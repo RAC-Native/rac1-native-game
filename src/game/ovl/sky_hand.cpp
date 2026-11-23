@@ -1,8 +1,8 @@
 // The sky's routines (sky_ee.cpp's, Veldin's addresses relocated) written by hand from the routines: the same arithmetic, the
 // same memory read and written in the same order, the VU0 registers as a local copy (vu0_local.h) written back at the end; as in
 // the transliteration (vu0_nf.h), the ops make no flags. Each returns what its transliteration returns ($v0, $f0), which the
-// callers read. The transliterations (sky_ee.cpp's *_ref_tr, generated) stay the reference: RAC1_SKY_FAST (sky_fast.cpp) picks
-// one or checks one against the other.
+// callers read. The transliterations (sky_ee.cpp's *_ref_tr) and RAC1_SKY_FAST, which picked
+// one or checked one against the other, are gone: batch 483 checks these against the original.
 //  - 0x28c14c: a sky part's vertices to the screen: per vertex (8 bytes: three s16 and a byte at +6) the point through the view
 //    matrix (0x166d80.., times the sky's own 0x1bd7e0..), the perspective divide, the viewport (0x16cbd0 scaled by 1/4, 0x16cbe0),
 //    as 12.4 fixed point with the vertex's byte at +0xc and its clip bits (0x2f of the VCLIP) at +0xf: 16 bytes each to `out`.

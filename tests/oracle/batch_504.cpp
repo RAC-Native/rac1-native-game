@@ -1,31 +1,26 @@
 // Oracle batch 504 (stage 4 task F1, #149): class code several of the levels 5, 9, 11, 13, 16 and 17 carry a copy of, each
 // family ported once as shared hand-written code (src/game/ovl/shared_*.cpp), against every level's own copy at that level's
-// own address. The level copies stay transliterated in their units until each level is re-glued; here every copy is the
-// original and the one shared port the port:
-//  - shared_class1886.cpp: class 1886, a blob class 1885 throws: its update, the mark it leaves, its retirement (levels 9, 13);
-//  - shared_path_ahead.cpp: the point a distance ahead along a path (levels 9, 13);
-//  - shared_class1111.cpp: class 1111, the open sea, and its draw callback (levels 11, 16); its update's 1.02 forks:
-//    "class1111_fix24" (1.02 Gameplay fix 24, run with RAC1_GAMEPLAY102=24) and "class1111_fix35" (1.02 Fixes fix 35's open-sea
-//    half, run with RAC1_FIXES102=35), each the port with the fork on against the port without it plus the 1.02 build's stores
-//    written out by hand; "class1111_200" (run with RAC1_GAMEPLAY102=24 RAC1_FIXES102=35) the port with both on against the PAL
-//    disc 2.00's own build of the update, the set standin_200/ of tools/oracle/standin_dumps.py loaded at the entry;
-//  - shared_race_hud.cpp: the hoverboard races' trick meter (update and draw) and their bottom bar (levels 5, 16);
-//  - shared_class224.cpp, shared_class295.cpp: the space levels' pickups (classes 224 / 228) and rocket (class 295)
-//    (levels 13, 17);
-//  - shared_ship_shots.cpp: the space combat's shots, classes 1009 (homing; and its target search) and 1017; class 1034,
-//    the other build of the rocket (shared_class295.cpp) (levels 11, 13, 17);
-//  - shared_class1319.cpp: Pokitaru's class 1319 / Drek's fleet's 1843: the trails' record and draw, the path pose, the hit
-//    (levels 11, 17);
-//  - shared_hud_shapes.cpp: the space combat HUD's line strips, turned quads, ring and screen point (levels 11, 13, 17);
-//  - the launchers of the rocket 295 and the shots 1009 / 1017 (levels 11, 13, 17);
-//  - shared_moby_helpers.cpp: a group's flags (13, 16, 17), a spawn at a place and an eased value (13, 17), a state test (11,
-//    16); shared_class1952.cpp: the draw-queuing classes 1952 (16) and 1907, 1908, 1910, 1911, 1913, 1918 (17);
-//@@HEADER
-// Subjects: the level's own mobys of the class after the first gameplay frame (the port's, the view set up), or mobys of the
-// class spawned for the check, perturbed; the helpers on arguments built from the level's state in the test area; the draw
-// callbacks' packets into a buffer of the test area. No RAM dumps.
-// Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 504, N = 5, 9, 11, 13, 16 and 17; a family the level does not carry
-// says so and is not run. B504_INFO=1 prints how many subjects each check had and how far the draws' packets grew.
+// own address. Every level runs the shared port since its re-glue (stage 4); here every copy is the original and the one shared
+// port the port: - shared_class1886.cpp: class 1886, a blob class 1885 throws: its update, the mark it leaves, its retirement
+// (levels 9, 13); - shared_path_ahead.cpp: the point a distance ahead along a path (levels 9, 13); - shared_class1111.cpp:
+// class 1111, the open sea, and its draw callback (levels 11, 16); its update's 1.02 forks: "class1111_fix24" (1.02 Gameplay
+// fix 24, run with RAC1_GAMEPLAY102=24) and "class1111_fix35" (1.02 Fixes fix 35's open-sea half, run with RAC1_FIXES102=35),
+// each the port with the fork on against the port without it plus the 1.02 build's stores written out by hand; "class1111_200"
+// (run with RAC1_GAMEPLAY102=24 RAC1_FIXES102=35) the port with both on against the PAL disc 2.00's own build of the update,
+// the set standin_200/ of tools/oracle/standin_dumps.py loaded at the entry; - shared_race_hud.cpp: the hoverboard races' trick
+// meter (update and draw) and their bottom bar (levels 5, 16); - shared_class224.cpp, shared_class295.cpp: the space levels'
+// pickups (classes 224 / 228) and rocket (class 295) (levels 13, 17); - shared_ship_shots.cpp: the space combat's shots,
+// classes 1009 (homing; and its target search) and 1017; class 1034, the other build of the rocket (shared_class295.cpp)
+// (levels 11, 13, 17); - shared_class1319.cpp: Pokitaru's class 1319 / Drek's fleet's 1843: the trails' record and draw, the
+// path pose, the hit (levels 11, 17); - shared_hud_shapes.cpp: the space combat HUD's line strips, turned quads, ring and
+// screen point (levels 11, 13, 17); - the launchers of the rocket 295 and the shots 1009 / 1017 (levels 11, 13, 17); -
+// shared_moby_helpers.cpp: a group's flags (13, 16, 17), a spawn at a place and an eased value (13, 17), a state test (11, 16);
+// shared_class1952.cpp: the draw-queuing classes 1952 (16) and 1907, 1908, 1910, 1911, 1913, 1918 (17); @@HEADER Subjects: the
+// level's own mobys of the class after the first gameplay frame (the port's, the view set up), or mobys of the class spawned
+// for the check, perturbed; the helpers on arguments built from the level's state in the test area; the draw callbacks' packets
+// into a buffer of the test area. No RAM dumps. Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 504, N = 5, 9, 11, 13, 16
+// and 17; a family the level does not carry says so and is not run. B504_INFO=1 prints how many subjects each check had and how
+// far the draws' packets grew.
 
 #include "ovl_oracle.h"
 

@@ -1,6 +1,6 @@
 // Class 1523, Giant Clank's charged shot (Quartu, Veldin): charged while the button is held (streaks drawn in, a light that
 // grows), then fired along his heading, hurting what it passes; one port of the two levels' copies, and its streak
-// (shared_class1523.cpp). Phase 1 of stage 4: the levels' generated copies still run; this is proved against them by oracle
+// (shared_class1523.cpp). Every level with a copy runs this port; it is proved against each level's own copy by oracle
 // batch 505.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS1523_H
 #define RAC1_GAME_OVL_SHARED_CLASS1523_H

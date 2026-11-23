@@ -1,21 +1,19 @@
 // Oracle batch 513 (stage 4 task G6, #149): hand-written ports of one level made to serve every level that carries a copy of
-// the same code, each against every level's own copy at that level's own address (the copies stay transliterated in their
-// units until each level is re-glued; here every copy is the original and the one port the port):
-//  - novalis_teleporter.cpp: class 1135, the teleporter pad: its update through every state, the trigger, the hint, the
-//    hide and the show (levels 1, 7, 8, 12, 13, 16, 17, 18), on the level's own pads past their first update (the pieces
-//    spawned), the destination pad, the hero on the pad or not, the level number varied (the hint's tables of every level);
-//  - novalis_platforms.cpp: the lift (class 726 on 1, 3, 13, class 1141 on 10), on the level's own lifts or live mobys given
-//    a lift's pvars on one of the level's paths, at its ends and on its way, the hero riding it, near it or in its boxes;
-//  - novalis_cases.cpp: the gold weapon case (classes 304, 1456 .. 1465; levels 1, 13), in its states but the scene start
-//    (the case answered in state 1 starts gold_weapon_scene, which no batch compares: 989snd's SIF, batch 510) and state 4's
-//    level change (run for real by the original: the IOP);
-//  - aridia_ocean.cpp: the ocean's helpers (levels 2, 3, 5, 7, 8, 9, 14): the set-up, the transfer to the scratchpad, the
-//    cells' test and draw, the texture blend, the end, and the one-record draw of the levels other than Aridia (3 .. 14), on
-//    each level's own ocean records (Aridia's seven surfaces) with the camera over them or away; the packet cursor on a
-//    buffer of the test area (`B513_INFO=1` prints how far each case's packets grew).
-// No RAM dumps: states built from the level after its first gameplay frame, the screen and projection set up (640 x 448).
-// Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 513, N = 1, 2, 3, 5, 7, 8, 9, 10, 12, 13, 14, 16, 17, 18; a family the
-// level does not carry says so.
+// the same code, each against every level's own copy at that level's own address (every level runs the shared port since its
+// re-glue (stage 4); here every copy is the original and the one port the port): - novalis_teleporter.cpp: class 1135, the
+// teleporter pad: its update through every state, the trigger, the hint, the hide and the show (levels 1, 7, 8, 12, 13, 16,
+// 17, 18), on the level's own pads past their first update (the pieces spawned), the destination pad, the hero on the pad or
+// not, the level number varied (the hint's tables of every level); - novalis_platforms.cpp: the lift (class 726 on 1, 3, 13,
+// class 1141 on 10), on the level's own lifts or live mobys given a lift's pvars on one of the level's paths, at its ends
+// and on its way, the hero riding it, near it or in its boxes; - novalis_cases.cpp: the gold weapon case (classes 304, 1456
+// .. 1465; levels 1, 13), in its states but the scene start (the case answered in state 1 starts gold_weapon_scene, which no
+// batch compares: 989snd's SIF, batch 510) and state 4's level change (run for real by the original: the IOP); -
+// aridia_ocean.cpp: the ocean's helpers (levels 2, 3, 5, 7, 8, 9, 14): the set-up, the transfer to the scratchpad, the
+// cells' test and draw, the texture blend, the end, and the one-record draw of the levels other than Aridia (3 .. 14), on
+// each level's own ocean records (Aridia's seven surfaces) with the camera over them or away; the packet cursor on a buffer
+// of the test area (`B513_INFO=1` prints how far each case's packets grew). No RAM dumps: states built from the level after
+// its first gameplay frame, the screen and projection set up (640 x 448). Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch
+// 513, N = 1, 2, 3, 5, 7, 8, 9, 10, 12, 13, 14, 16, 17, 18; a family the level does not carry says so.
 
 #include "ovl_oracle.h"
 

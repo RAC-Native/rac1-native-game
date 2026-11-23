@@ -1,8 +1,8 @@
-// Oracle batch 120 (task 0353): level 8's (Batalia) own moby classes on its real level data. Run with
-// ORACLE_LEVEL=8 build/tests/ovl_oracle --batch 120 (needs the ISO). The subjects are the level's own
-// mobys of each class (placed by its gameplay data) after the first gameplay frame, perturbed; the
-// original is level 8's own function at its own address, the port the one registered for it (the
-// transliterations batalia_classes_tr_N.cpp, or the shared hand-written ports registered since the level's re-glue).
+// Oracle batch 120 (task 0353): level 8's (Batalia) own moby classes on its real level data. Run with ORACLE_LEVEL=8
+// build/tests/ovl_oracle --batch 120 (needs the ISO). The subjects are the level's own mobys of each class (placed
+// by its gameplay data) after the first gameplay frame, perturbed; the original is level 8's own function at its own
+// address, the port the one registered for it (the hand ports that replaced batalia_classes_tr_N.cpp, or the shared
+// hand-written ports registered since the level's re-glue).
 
 #include "ovl_oracle.h"
 #include "class_hook_deal.h"
@@ -235,7 +235,7 @@ void batch_120() {
         }
     }
 
-    // ---- the level's own classes (transliterated by tools/codegen/mkall_l8.py): the level's own mobys of each class, the first
+    // ---- the level's own classes (once transliterated by tools/codegen/mkall_l8.py; hand ports now): the level's own mobys of each class, the first
     // update (state 0) done by the port, then a state, a hit, the hero near, the pvars' floats / counters moved as typed
     g_extra_noop_hooks = {0x00122298, 0x00120478, 0x001232c8, 0x00122fe0, 0x00118a80, 0x002763f8};  // (+ the level change request: the original would run the CD / movie path)
     struct TrCls { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t skip_states = 0; bool walk = false; };  // (the states that start a scene / a level change: the original runs the kernel / movie path for real)

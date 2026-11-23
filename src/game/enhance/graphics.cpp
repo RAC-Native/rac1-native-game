@@ -63,7 +63,7 @@
 
 namespace rac1 {
 
-// (mrp_lighting.cpp's, declared here: the headers of src/game are the generated code's fingerprint) Lighting: Original
+// (mrp_lighting.cpp's, declared here) Lighting: Original
 extern int g_lighting_original;
 
 namespace {
@@ -1341,8 +1341,8 @@ bool graphics_settings_dpad(uint32_t w, uint32_t e, uint32_t pressed) {
 }
 
 // orig: (none) — enhancement: row `i` of settings widget `w` drawn greyed (one of our pages' rows that does nothing now: row_dimmed);
-// false for any other widget (the game's own pages drawn as they are). Declared in pause_menu_options.cpp (the headers of src/game
-// are the generated code's fingerprint)
+// false for any other widget (the game's own pages drawn as they are). Declared in pause_menu_options.cpp.
+//
 bool graphics_row_dimmed(uint32_t w, int32_t i) {
     for (int p = 0; p < PAGE_COUNT; ++p)
         if (PAGES[p].rows_widget == w) {

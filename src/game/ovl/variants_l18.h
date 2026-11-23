@@ -1,8 +1,7 @@
-// Veldin, the finale (level 18) on its own overlay. Level 18's engine build: 1532 of Veldin's 1974 functions found in its
-// overlay (82.1 %, docs/reversing/level_change.md section 2). The hero controller is the Novalis family's (26 functions of its own build, as
-// Pokitaru's); they, the class table, the camera type, the sound emitters and the class hooks are level 18's own, transliterated at its
-// addresses (`// orig: L18:0x00xxxxxx`, veldin_finale_hero_tr_*.cpp, veldin_finale_classes_tr_*.cpp). The generic
-// parts (the table rows, on_level) are in variants.h.
+// Veldin, the finale (level 18) on its own overlay. Level 18's engine build: 1532 of Veldin's 1974 functions found in its overlay (82.1 %,
+// docs/reversing/level_change.md section 2). The hero controller is the Novalis family's (26 functions of its own build, as Pokitaru's);
+// they, the class table, the camera type, the sound emitters and the class hooks are level 18's own, ported by hand at its addresses (`//
+// orig: L18:0x00xxxxxx`). The generic parts (the table rows, on_level) are in variants.h.
 #ifndef RAC1_GAME_OVL_VARIANTS_L18_H
 #define RAC1_GAME_OVL_VARIANTS_L18_H
 

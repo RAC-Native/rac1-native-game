@@ -1,6 +1,6 @@
 // The hoverboard races' camera (camera type 8 on Rilgar and Kalebo III: the same code at each level's own address), one port
-// of both levels' copies (shared_race_camera.cpp). Phase 1 of stage 4: the levels' transliterated copies still run (their
-// hooks: rilgar_hooks.cpp, kalebo_hooks.cpp); these are proved against them by oracle batch 503.
+// of both levels' copies (shared_race_camera.cpp). Both levels run it (their
+// hooks: rilgar_hooks.cpp, kalebo_hooks.cpp); proved against each level's own copy by oracle batch 503.
 //
 // The camera record `cam`: its basis rows +0x00 / +0x10 / +0x20, position +0x30, rotation +0x40, the orbit's angles and
 // distance +0x50 / +0x54 / +0x58, the point it came from +0x64, its block +0x70, its entry +0x84 in the level's camera table

@@ -1,10 +1,9 @@
-// Oracle batch 111 (task 0337): Eudora's own moby classes (level 4) on its real level data. Run with
-// ORACLE_LEVEL=4 build/tests/ovl_oracle --batch 111 (needs the ISO). The subjects are the level's own
-// mobys of each class (placed by its gameplay data) after the first gameplay frame, perturbed; the
-// original is Eudora's own function at its own address, the port the one registered for it (the
-// transliterations eudora_classes_tr_N.cpp, the hand ports eudora_*.cpp, the shared ports of the classes and camera
-// functions other levels carry too: shared_*.cpp, novalis_*.cpp, kerwan_camera.cpp; class 484's retail update is a bare
-// tail call of moby_retire).
+// Oracle batch 111 (task 0337): Eudora's own moby classes (level 4) on its real level data. Run with ORACLE_LEVEL=4
+// build/tests/ovl_oracle --batch 111 (needs the ISO). The subjects are the level's own mobys of each class (placed by
+// its gameplay data) after the first gameplay frame, perturbed; the original is Eudora's own function at its own
+// address, the port the one registered for it (the hand ports that replaced eudora_classes_tr_N.cpp, the hand ports
+// eudora_*.cpp, the shared ports of the classes and camera functions other levels carry too: shared_*.cpp,
+// novalis_*.cpp, kerwan_camera.cpp; class 484's retail update is a bare tail call of moby_retire).
 
 #include "ovl_oracle.h"
 
@@ -207,7 +206,7 @@ void batch_111() {
         for (uint32_t a = ee_read<uint32_t>(OV(0x0015ffe0)); a < ee_read<uint32_t>(OV(0x0015ffe0)) + 0x20000; a += 0x80) { g_ignored_words.push_back(a + 0xc); g_ignored_words.push_back(a + 0x1c); }
     }
 
-    // ---- the level's own classes (transliterated by tools/codegen/generate_all.py): the level's own mobys of each class, the first
+    // ---- the level's own classes (once transliterated by tools/codegen/generate_all.py; hand ports now): the level's own mobys of each class, the first
     // update (state 0) done by the port, then a state, a hit, the hero near, the pvars' floats / counters moved as typed
     g_extra_noop_hooks = {0x00122298, 0x001232c8, 0x00122fe0, 0x00118a80, 0x0023fe20};  // (+ the level change request: the original would run the CD / movie path; batch 139 runs it. 0x120478: ported, task 0386)
     struct TrCls { const char* name; uint32_t addr; void (*fn)(uint32_t); uint32_t skip_states = 0; };  // (the states that start a scene / a level change: the original runs the kernel / movie path for real)

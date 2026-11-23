@@ -1,5 +1,5 @@
-// Gemlik Base (level 13) transliterated moby classes, camera type, class hooks, draw callbacks, HUD element, the camera mode hook and level-only engine functions: the declarations of
-// gemlik_classes_tr_N.cpp (generated: `void` = a class update / entry in the entry ABI, `TrRet` = a helper or a `_u` entry in the uniform ABI).
+// Gemlik Base (level 13) moby classes, camera type, class hooks, draw callbacks, HUD element, the camera mode hook and level-only engine functions: the declarations of
+// their hand-written ports (once the generated gemlik_classes_tr_N.cpp).
 #ifndef RAC1_GAME_OVL_GEMLIK_MOBYS_H
 #define RAC1_GAME_OVL_GEMLIK_MOBYS_H
 
@@ -119,7 +119,6 @@ void gml_2b95b8_l13(uint32_t ship, uint32_t pv);  // L13:0x002b95b8 (the lock-on
 uint32_t gml_2b8be0_l13(uint32_t ship, uint32_t pv, uint32_t cam_pos, uint32_t rot, uint32_t cur, uint32_t keep);  // L13:0x002b8be0 (the blips, reticles, arrows; the next target)
 void gml_2b89f8_l13(uint32_t rot, uint32_t cam_pos, uint32_t target, uint32_t icon, uint32_t color, uint32_t tex_base);  // L13:0x002b89f8 (a blip)
 // class 63's hook +8 (gemlik_hooks.cpp; its hooks +0 / +4 / +0xc / +0x10 are the shared ports of Gaspar's same code: gemlik_class_hook_call)
-int32_t gml_hook_2b7a20_l13(uint32_t m, uint32_t a1, uint32_t a2, float f12);  // L13:0x002b7a20
 
 }  // namespace rac1
 

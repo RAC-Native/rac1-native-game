@@ -1,56 +1,41 @@
-// Oracle batch 508 (stage 4 task F5, #149): class code and helpers several levels carry a copy of, each family ported once as
-// shared hand-written code (src/game/ovl/shared_*.cpp), against every level's own copy at that level's own address. The level
-// copies stay transliterated in their units until each level is re-glued; here every copy is the original and the one shared
-// port the port. Run it on each level that has a copy: ORACLE_LEVEL=<n> build/tests/ovl_oracle --batch 508 for n in 0, 2 .. 8
-// and 10 .. 17 (needs the ISO; no dumps); a check prints "not on level N" on a level without its copy. The level snapshot is
-// the level after its first gameplay frame (the port's) with the view set up (render_view_setup); the draws' packet cursor is
-// put on a buffer of the test area so that their packets are compared, and each draw check says how many of its cases drew
-// (B508_INFO=1 prints it per case); the port gets the VU0 registers the original started from (vu0_sync). Class updates run on
-// the level's own mobys of the class (or mobys spawned for the check), through every state, perturbed; helpers on arguments
-// built from the level's state; the frame scale (0x15ed68) at its 50 Hz value in a quarter of the cases. No broad list of
-// left-out words: the one check that meets a known difference of existing code (the collision records, class 344's)
-// leaves out its own words, with the reason.
-//
-// The shared ports and their copies (each level's address):
-//   class1179_update     class 1179      L11:0x0030ee00 L15:0x002d9100
-//   class933_update      class 933       L14:0x002ff640 L16:0x002ddde0
-//   class933_spawn       (helper)        L14:0x002ffaf8 L16:0x002de298
-//   class933_carrier_start / _hold / _sparks (helpers of class 923 on L14, 1401 on L16)
-//                                        L14:0x002fe900 / 0x002fec28 / 0x002feca8, L16:0x002e3e20 / 0x002e4110 / 0x002e4190
-//   class235_update      class 235       L3:0x002bae48 L16:0x002c3be8 (on trails spawned for the check)
-//   class439_update      class 439       L5:0x002f87a8 L16:0x002c7788
-//   hoverboard_boost_pads (helper of class 717 on L5, 556 on L16)  L5:0x00307010 L16:0x002cfc00
-//   race_hud_start / _update / _reset / _draw (the race's HUD element)  L5:0x00262ae8 / 0x002661e8 / 0x002661a0 / 0x00266710,
-//                                        L16:0x002351f8 / 0x002388f8 / 0x002388b0 / 0x00238e20 (on a HUD slot)
-//   class344_update      class 344 .. (L8), 980 (L5)   L5:0x003186f8 L8:0x002dba40 (on pieces thrown for the check)
-//   class344_throw       (helper)        L5:0x00318648 L8:0x002db990
-//   floater_bob          (raft helper)   L5:0x00319740 L8:0x002dc4a0 L14:0x002f1490 L16:0x002e4d88
-//   floater_ride / _lay_path             L5:0x003195f8 / 0x003198e8, L14:0x002f1360 / 0x002f1638, L16:0x002e4c40 / 0x002e4f30
-//   floater_message / _find              L5:0x00319690 / 0x00319598, L16:0x002e4cd8 / 0x002e4be0
-//   (the rafts: class 998 on L5, 424 on L8, 712 on L14, 1410 on L16; each level's pvars offsets passed as the levels' copies use them)
-//   the small helpers of shared_little.cpp, each on its own copies (the addresses in the checks and in shared_little.h):
-//   moby_is_in_state, moby_alive_in_state, moby_largest, moby_show_default, moby_rest_sparkles, cam_entry_mark,
-//   cam_entry_mark_type19, camera_angles_set, class_anim_last_time / _first_time, particle_33_spawn, class848_spawn,
-//   carry_keep_state_hook, carry_drop_hook, kerwan_class816_turn / _class1012_turn, blarg_class1051_switch
-//   cutscene_l14_effect / _draw (Oltanis's arrival sparks and glow)  L0:0x0023e008 / 0x0023db30, L14:0x00245e98 / 0x002459c0
-//   beam_particle_update (particle 0x50) L0:0x00275eb0 L5:0x002a00f0 L7:0x0029e4a0
-//   particle_43_spawn    L0:0x002743a8 L5:0x0029e698 L16:0x0026f7e8
-//   particle_3a_spawn    L0:0x002729c8 L7:0x0029ae58
-//   particle_28_spawn    L0:0x0026fd28 L10:0x00262b08
-//   path_point_even      L0:0x00262360 L10:0x002554e0
-//   class1221_update     classes 1221 / 1222  L3:0x002de370 / 0x002de458 L7:0x0031d9f8 / 0x0031dae0 L12:0x00301d08 / 0x00301df0
-//                                        L15:0x002e5e70 / 0x002e5f58 (on pieces spawned for the check)
-//   class1371_update / _spawn / _throw   L12:0x00308918 / 0x00308670 / 0x00308708, L15:0x002ea5e0 / 0x002ea338 / 0x002ea3d0
-//   class823_update / _draw              L5:0x0030c0a8 / 0x0030c220, L7:0x00304738 / 0x003048b0
-//   class1511_draw       (draw callback) L5:0x0031cf58 L14:0x00308150
-//   panel_lights         base 0: L2:0x002ea8b0 L6:0x002f4cd8 L15:0x002ebb50 L17:0x002f1568; base 0x10: L10:0x00298940 L15:0x002ea9b0
-//   class819_launch      L10:0x002cc1b8 L15:0x002dd600
-//   envmap_uvs4          L17:0x002f54d8 / 0x002f57f0 / 0x002f5b08 / 0x002f5e20 / 0x002f6450
-//   path_mover_start     L14:0x002fc890 / 0x002fd808
-//   quartu_waves_draw_a / _b             L15:0x002edbe0 / 0x002edfc0
-//   fleet_waves_draw_a / _b              L17:0x002f0948 / 0x002f0d08
-//   blarg_class1083_draw_a / _b / _c / _d  L6:0x003003f0 / 0x00300588 / 0x00300720 / 0x00300958
-//   blarg_class1062_draw_b / _c            L6:0x002fd460 / 0x002fd748 (the camera put before one of the mesh's points)
+// Oracle batch 508 (stage 4 task F5, #149): class code and helpers several levels carry a copy of, each family ported once as shared
+// hand-written code (src/game/ovl/shared_*.cpp), against every level's own copy at that level's own address. Every level runs the
+// shared port since its re-glue (stage 4); here every copy is the original and the one shared port the port. Run it on each level that
+// has a copy: ORACLE_LEVEL=<n> build/tests/ovl_oracle --batch 508 for n in 0, 2 .. 8 and 10 .. 17 (needs the ISO; no dumps); a check
+// prints "not on level N" on a level without its copy. The level snapshot is the level after its first gameplay frame (the port's)
+// with the view set up (render_view_setup); the draws' packet cursor is put on a buffer of the test area so that their packets are
+// compared, and each draw check says how many of its cases drew (B508_INFO=1 prints it per case); the port gets the VU0 registers the
+// original started from (vu0_sync). Class updates run on the level's own mobys of the class (or mobys spawned for the check), through
+// every state, perturbed; helpers on arguments built from the level's state; the frame scale (0x15ed68) at its 50 Hz value in a
+// quarter of the cases. No broad list of left-out words: the one check that meets a known difference of existing code (the collision
+// records, class 344's) leaves out its own words, with the reason.  The shared ports and their copies (each level's address):
+// class1179_update     class 1179      L11:0x0030ee00 L15:0x002d9100 class933_update      class 933       L14:0x002ff640
+// L16:0x002ddde0 class933_spawn       (helper)        L14:0x002ffaf8 L16:0x002de298 class933_carrier_start / _hold / _sparks (helpers
+// of class 923 on L14, 1401 on L16) L14:0x002fe900 / 0x002fec28 / 0x002feca8, L16:0x002e3e20 / 0x002e4110 / 0x002e4190 class235_update
+// class 235       L3:0x002bae48 L16:0x002c3be8 (on trails spawned for the check) class439_update      class 439       L5:0x002f87a8
+// L16:0x002c7788 hoverboard_boost_pads (helper of class 717 on L5, 556 on L16)  L5:0x00307010 L16:0x002cfc00 race_hud_start / _update
+// / _reset / _draw (the race's HUD element)  L5:0x00262ae8 / 0x002661e8 / 0x002661a0 / 0x00266710, L16:0x002351f8 / 0x002388f8 /
+// 0x002388b0 / 0x00238e20 (on a HUD slot) class344_update      class 344 .. (L8), 980 (L5)   L5:0x003186f8 L8:0x002dba40 (on pieces
+// thrown for the check) class344_throw       (helper)        L5:0x00318648 L8:0x002db990 floater_bob          (raft helper)
+// L5:0x00319740 L8:0x002dc4a0 L14:0x002f1490 L16:0x002e4d88 floater_ride / _lay_path             L5:0x003195f8 / 0x003198e8,
+// L14:0x002f1360 / 0x002f1638, L16:0x002e4c40 / 0x002e4f30 floater_message / _find              L5:0x00319690 / 0x00319598,
+// L16:0x002e4cd8 / 0x002e4be0 (the rafts: class 998 on L5, 424 on L8, 712 on L14, 1410 on L16; each level's pvars offsets passed as
+// the levels' copies use them) the small helpers of shared_little.cpp, each on its own copies (the addresses in the checks and in
+// shared_little.h): moby_is_in_state, moby_alive_in_state, moby_largest, moby_show_default, moby_rest_sparkles, cam_entry_mark,
+// cam_entry_mark_type19, camera_angles_set, class_anim_last_time / _first_time, particle_33_spawn, class848_spawn,
+// carry_keep_state_hook, carry_drop_hook, kerwan_class816_turn / _class1012_turn, blarg_class1051_switch cutscene_l14_effect / _draw
+// (Oltanis's arrival sparks and glow)  L0:0x0023e008 / 0x0023db30, L14:0x00245e98 / 0x002459c0 beam_particle_update (particle 0x50)
+// L0:0x00275eb0 L5:0x002a00f0 L7:0x0029e4a0 particle_43_spawn    L0:0x002743a8 L5:0x0029e698 L16:0x0026f7e8 particle_3a_spawn
+// L0:0x002729c8 L7:0x0029ae58 particle_28_spawn    L0:0x0026fd28 L10:0x00262b08 path_point_even      L0:0x00262360 L10:0x002554e0
+// class1221_update     classes 1221 / 1222  L3:0x002de370 / 0x002de458 L7:0x0031d9f8 / 0x0031dae0 L12:0x00301d08 / 0x00301df0
+// L15:0x002e5e70 / 0x002e5f58 (on pieces spawned for the check) class1371_update / _spawn / _throw   L12:0x00308918 / 0x00308670 /
+// 0x00308708, L15:0x002ea5e0 / 0x002ea338 / 0x002ea3d0 class823_update / _draw              L5:0x0030c0a8 / 0x0030c220, L7:0x00304738
+// / 0x003048b0 class1511_draw       (draw callback) L5:0x0031cf58 L14:0x00308150 panel_lights         base 0: L2:0x002ea8b0
+// L6:0x002f4cd8 L15:0x002ebb50 L17:0x002f1568; base 0x10: L10:0x00298940 L15:0x002ea9b0 class819_launch      L10:0x002cc1b8
+// L15:0x002dd600 envmap_uvs4          L17:0x002f54d8 / 0x002f57f0 / 0x002f5b08 / 0x002f5e20 / 0x002f6450 path_mover_start
+// L14:0x002fc890 / 0x002fd808 quartu_waves_draw_a / _b             L15:0x002edbe0 / 0x002edfc0 fleet_waves_draw_a / _b
+// L17:0x002f0948 / 0x002f0d08 blarg_class1083_draw_a / _b / _c / _d  L6:0x003003f0 / 0x00300588 / 0x00300720 / 0x00300958
+// blarg_class1062_draw_b / _c            L6:0x002fd460 / 0x002fd748 (the camera put before one of the mesh's points)
 
 #include "ovl_oracle.h"
 

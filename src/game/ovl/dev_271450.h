@@ -1,6 +1,6 @@
 #ifndef RAC1_GAME_OVL_DEV_271450_H
 #define RAC1_GAME_OVL_DEV_271450_H
-// dev_271450, transliterated (dev_271450_asm.cpp). Addresses are Veldin's overlay addresses (the shared engine).
+// dev_271450, ported by hand (dev_271450.cpp). Addresses are Veldin's overlay addresses (the shared engine).
 #include <cstdint>
 
 namespace rac1 {

@@ -265,7 +265,7 @@ into it back too ([Architecture](architecture.md#the-region-layer)). Then, as fo
 
 - Where the port has a hand-written port of the North American function, that port runs in its place
   (the table maps one to the other). So the PAL fixes in these functions are missing: hero sound 1 on
-  the hero's velocity, Rilgar's skill point message, the PAL text wrapping, the PAL new game keeping two
+  the hero's velocity, the PAL text wrapping, the PAL new game keeping two
   settings, and the removed developer profile.
 - Ten functions that the setup used to translate from the PAL code as temporary stand-ins (the memory card /
   result screen, the hero's horizontal velocity on Rilgar, Blarg, Batalia and Pokitaru, the HUD counters on

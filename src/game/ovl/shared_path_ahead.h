@@ -1,6 +1,6 @@
-// A point a distance ahead of a moby along a path of points (a count at +0, the points 0x10 apart from +0x10), the
-// helper Gaspar's class 263 and Gemlik Base's copy of it walk with (shared_path_ahead.cpp). Phase 1 of stage 4: the levels'
-// generated copies still run; this is proved against them by oracle batch 504.
+// A point a distance ahead of a moby along a path of points (a count at +0, the points 0x10 apart from +0x10), the helper
+// Gaspar's class 263 and Gemlik Base's copy of it walk with (shared_path_ahead.cpp). Every level with a copy runs this
+// port; it is proved against each level's own copy by oracle batch 504.
 #ifndef RAC1_GAME_OVL_SHARED_PATH_AHEAD_H
 #define RAC1_GAME_OVL_SHARED_PATH_AHEAD_H
 

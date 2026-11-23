@@ -1,8 +1,8 @@
 // Oltanis (level 14) on its own overlay. Level 14's engine build is neither Veldin's nor exactly the Novalis family's: 1850 of Veldin's 1974
 // functions are found in its overlay (84.6 %); its hero controller is its own build (the family's movement-mode update, Veldin's grind rails,
 // hero_fall_time with the collision flags 0xd24 as Blarg's). The hero controller's variants, the class table, the camera types 0x13 / 0x14 /
-// 0x15, the sound emitters, the class hooks and the cutscene extras are level 14's own, transliterated at its addresses
-// (`// orig: L14:0x00xxxxxx`, oltanis_hero_tr_*.cpp, oltanis_classes_tr_*.cpp). The generic parts (the table rows, on_level) are in variants.h.
+// 0x15, the sound emitters, the class hooks and the cutscene extras are level 14's own, ported by hand at its addresses (`// orig:
+// L14:0x00xxxxxx`). The generic parts (the table rows, on_level) are in variants.h.
 #ifndef RAC1_GAME_OVL_VARIANTS_L14_H
 #define RAC1_GAME_OVL_VARIANTS_L14_H
 

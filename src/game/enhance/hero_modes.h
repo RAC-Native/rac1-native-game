@@ -2,7 +2,7 @@
 //
 // A session runs on its base level's overlay (Veldin's): its hero code is that level's build. Another level's own hero build
 // (Kalebo III's, which rides the race's hoverboard; Quartu's, Giant Clank's planet) and its own camera code can run Ratchet
-// instead: a **hero context**. The Veldin ports of the hero controller already dispatch to a level's transliterated build
+// instead: a **hero context**. The Veldin ports of the hero controller already dispatch to a level's own build
 // while that level is the translation target (`on_kalebo()`...); in a session the hero context makes those lines take the
 // level's branch (variants.h on_hero_level) while the session's overlay stays loaded, and the build's own addresses go
 // through the level's context (context.h: its data copied and relocated, its code tags). Levels with a hero build or camera

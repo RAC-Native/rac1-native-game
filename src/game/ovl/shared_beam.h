@@ -1,6 +1,6 @@
 // The electric beams of Blarg, Orxon and Gemlik Base (class 1068's draw and sparks) and the shards of class 1085 (their
-// update and spawn; shared_beam.cpp: one port for the levels' copies). Phase 1 of stage 4: the levels' generated copies
-// still run; these are proved against them by oracle batches 510 and 518 (the spawn).
+// update and spawn; shared_beam.cpp: one port for the levels' copies). Every level with a copy runs these ports; they
+// are proved against each level's own copy by oracle batches 510 and 518 (the spawn).
 #ifndef RAC1_GAME_OVL_SHARED_BEAM_H
 #define RAC1_GAME_OVL_SHARED_BEAM_H
 

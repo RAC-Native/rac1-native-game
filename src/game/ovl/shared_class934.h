@@ -1,5 +1,5 @@
 // Class 934 of Quartu and Drek's fleet: a spinning shot (shared_class934.cpp: one port of both levels' copies, the same code
-// relinked). Phase 1 of stage 4: the levels' generated copies still run; this is proved against them by oracle batch 519.
+// relinked). Every level with a copy runs this port; it is proved against each level's own copy by oracle batch 519.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS934_H
 #define RAC1_GAME_OVL_SHARED_CLASS934_H
 

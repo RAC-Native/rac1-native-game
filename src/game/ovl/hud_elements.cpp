@@ -485,7 +485,7 @@ void hud_element_fns_register() {
     ovl_register_moby_fn(0x00235dc0, hud_slot7_start_tr);  // (slot 7, the Metal Detector's)
     ovl_register_moby_fn(0x0023a218, hud_slot7_update_tr);
     // (its draw, the Metal Detector's display: every level has the same code; Batalia, Drek's fleet and the Veldin finale keep the
-    // transliterations of their own copies, registered for the level, which the dispatch tries first)
+    // ports of their own copies, registered for the level, which the dispatch tries first)
     ovl_register_moby_fn(0x0023a2d0, hud_slot7_draw_tr);
     hud_o2_fns_register();
 }

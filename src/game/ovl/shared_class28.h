@@ -1,7 +1,7 @@
 // Class 28, a turret that rides a path, wakes when another moby of its group calls it, turns its body and head toward the
 // hero and fires rockets (class 403) from a firing position; when it dies it throws class 325's shells. One port of the
-// copies Oltanis and Quartu carry (shared_class28.cpp; its two draw callbacks are shared_class28_draw.cpp). Phase 1 of
-// stage 4: the levels' generated copies still run; these are proved against them by oracle batch 514.
+// copies Oltanis and Quartu carry (shared_class28.cpp; its two draw callbacks are shared_class28_draw.cpp). Every level
+// with a copy runs these ports; they are proved against each level's own copy by oracle batch 514.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS28_H
 #define RAC1_GAME_OVL_SHARED_CLASS28_H
 

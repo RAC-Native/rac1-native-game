@@ -1,6 +1,6 @@
-// Gaspar (level 9) own moby classes: the registration table. The ports are the transliterations in
-// gaspar_classes_tr_N.cpp (declarations: gaspar_mobys.h). Keyed by level 9's own address and by level, so the indirect call (`jalr`) through
-// moby +0x74) reaches them only while the played level's overlay is level 9's.
+// Gaspar (level 9) own moby classes: the registration table. The ports are the level's own, written by hand (declarations: gaspar_mobys.h).
+// Keyed by level 9's own address and by level, so the indirect call (`jalr`) through moby +0x74) reaches them only while the played level's
+// overlay is level 9's.
 #include <game/ovl/aridia_ocean.h>
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/shared_bg_ships.h>

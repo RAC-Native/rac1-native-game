@@ -1,7 +1,7 @@
 #ifndef RAC1_GAME_OVL_SWINGSHOT_H
 #define RAC1_GAME_OVL_SWINGSHOT_H
 // The Swingshot (item 0x0c, hand class 0xd0): the hand's update and the spawn of its grapple moby (class 0xd1),,
-// transliterated (swingshot_asm.cpp). Addresses are Veldin's overlay addresses (the shared engine).
+// ported by hand (swingshot.cpp). Addresses are Veldin's overlay addresses (the shared engine).
 #include <cstdint>
 
 namespace rac1 {

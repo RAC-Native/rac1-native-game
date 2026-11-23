@@ -1,8 +1,8 @@
 // The shots of the space combat (Pokitaru, Gemlik Base, Drek's fleet): class 1009, a homing shot that picks a target ahead
 // of it (a moby of the target list within a cone and a range) every sixth frame and turns towards it at a limited rate, and
 // class 1017, a straight shot trailing sparks; both burst into sparks where they meet something (shared_ship_shots.cpp).
-// One port of the three levels' copies of their updates and of the target search. Phase 1 of stage 4: the levels'
-// generated copies still run; these are proved against them by oracle batch 504.
+// One port of the three levels' copies of their updates and of the target search. Every level with a copy runs these ports;
+// they are proved against each level's own copy by oracle batch 504.
 #ifndef RAC1_GAME_OVL_SHARED_SHIP_SHOTS_H
 #define RAC1_GAME_OVL_SHARED_SHIP_SHOTS_H
 

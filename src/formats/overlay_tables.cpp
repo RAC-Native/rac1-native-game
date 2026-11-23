@@ -24,7 +24,7 @@ const TableDef kDefs[] = {
     // level_setup.cpp read [level] and [level + 1])
     {fourcc("TALK"), "the talkers' ranges", 0x001c44b8u, Extent::Fixed, 0x50, 0, 0},
     // The GIF tag quadword of the sparkles' and the screen quads' packets (sparkles_draw, gs_quad_packet, and the levels'
-    // generated copies: an lq, never a store)
+    // copies: an lq, never a store)
     {fourcc("GIFT"), "the quads' GIF tag", 0x001609a0u, Extent::Fixed, 0x10, 0, 0},
     // The overlay's three tables of rows ended by a -1 key, each a section of its own (3, 4, 5): the classes' update
     // functions (class, function, +0x2c word: class_update_fn_set), the camera types (id, accept / init / update / exit:

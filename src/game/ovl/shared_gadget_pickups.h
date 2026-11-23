@@ -1,7 +1,7 @@
 // The gadgets the hero picks up before a panel of four pulsing lights: Aridia's class 1005 (the Trespasser) and Blarg's class
 // 1016 (one update, the same code relinked; the class number picks the item and the scene), and Quartu's and Drek's fleet's
-// class 1428 (shared_gadget_pickups.cpp). Phase 1 of stage 4: the levels' generated copies still run; these are proved
-// against them by oracle batch 520.
+// class 1428 (shared_gadget_pickups.cpp). Every level with a copy runs these ports; they are proved against each level's own
+// copy by oracle batch 520.
 #ifndef RAC1_GAME_OVL_SHARED_GADGET_PICKUPS_H
 #define RAC1_GAME_OVL_SHARED_GADGET_PICKUPS_H
 

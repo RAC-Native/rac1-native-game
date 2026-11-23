@@ -213,16 +213,6 @@ int32_t vo_carry_hookc_l17(uint32_t m, uint32_t pa1, uint32_t pa2, float pf12) {
     return res;
 }
 
-namespace {
-// a transliterated helper in the uniform ABI (TrRet: every argument register) called as a hook: a0 = the moby, a1 / a2 and
-// f12 passed on
-int32_t u_call(TrRet (*f)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, float, float, float, float,
-                          float, float, float, float),
-               uint32_t m, uint32_t a1, uint32_t a2, float f12) {
-    return static_cast<int32_t>(f(m, a1, a2, 0, 0, 0, 0, 0, f12, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f).v0);
-}
-}  // namespace
-
 // orig: (host) see carry_hooks_levels.h
 bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, float f12, int32_t& ret) {
     // (a session: a tag of level A's context is A's hook, whatever overlay is loaded; ovl_reloc.h)
@@ -295,7 +285,7 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         case L9_CASE(0x002e26d0): ret = carry_state_hook(m, a1, a2, f12, 4, 7, 1); return true;
         case L9_CASE(0x002e2720): ret = carry_state_hook(m, a1, a2, f12, 8, 7, 1); return true;
         case L9_CASE(0x002e2770): ret = gas_hook_2e2770_l9(m, a1, a2, f12); return true;  // (gaspar_carry.cpp)
-        case L9_CASE(0x002e27a0): ret = static_cast<int32_t>(gas_hook_2e27a0_l9(m)); return true;
+        case L9_CASE(0x002e27a0): ret = static_cast<int32_t>(class_hook_pvars60_l6(m)); return true;  // (Blarg's L6:0x2ea800, the same code)
         default: return false;
         }
     case 10:  // Orxon: class 0x10e's hook +0xc (table 0x1dde40), class 0x33b (table 0x1dde58)
@@ -316,7 +306,7 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         case L11_CASE(0x002fb840): ret = amoeboid_hook8_l1(m, a1, a2, f12); return true;  // (L1:0x2efb48)
         case L11_CASE(0x002fb890): ret = amoeboid_hookc_l1(m, a1, a2, f12); return true;  // (L1:0x2efb98)
         case L11_CASE(0x002fb8c0): ret = static_cast<int32_t>(amoeboid_hook10_l1(m)); return true;  // (L1:0x2efbc8: pvars + 0xc0)
-        case L11_CASE(0x00316160): ret = u_call(pok_hook_316160_u, m, a1, a2, f12); return true;
+        case L11_CASE(0x00316160): ret = pok_hook_316160_u(m, a1, a2, f12); return true;
         case L11_CASE(0x00316210): ret = carry_keep_state_hook(m, a1, a2, f12, 4); return true;  // (shared_little.cpp: the carry hook +4)
         case L11_CASE(0x00316270): ret = carry_keep_state_hook(m, a1, a2, f12, 8); return true;  // (the carry hook +8)
         case L11_CASE(0x003162d0): ret = vf_bomb_hookc_l18(m, a1, a2, f12); return true;  // (L18:0x2d6230, the same code: the carry hook +0xc)
@@ -339,11 +329,13 @@ bool class_hook_call_level(uint32_t fn, uint32_t m, uint32_t a1, uint32_t a2, fl
         return oltanis_class_hook_call(fn, m, a1, a2, f12, ret);
     case 15:  // Quartu: the 749-type five-hook table 0x1e3e9c (Veldin's class-749 hooks with other constants: 9 -> 7, 5 -> 1, pvars + 0x60)
         switch (lvl_key(fn)) {
-        case L15_CASE(0x002bc4b0): ret = u_call(qua_hook_2bc4b0_u, m, a1, a2, f12); return true;
-        case L15_CASE(0x002bc500): ret = u_call(qua_hook_2bc500_u, m, a1, a2, f12); return true;
-        case L15_CASE(0x002bc550): ret = u_call(qua_hook_2bc550_u, m, a1, a2, f12); return true;
-        case L15_CASE(0x002bc5a0): ret = u_call(qua_hook_2bc5a0_u, m, a1, a2, f12); return true;
-        case L15_CASE(0x002bc5d0): ret = u_call(qua_hook_2bc5d0_u, m, a1, a2, f12); return true;
+        // (+0 .. +0x10: word for word Gaspar's class 193's hooks L9:0x2e2680 .. 0x2e2770 and Blarg's L6:0x2ea800, masked for
+        // relocations: their ports)
+        case L15_CASE(0x002bc4b0): ret = carry_state_hook(m, a1, a2, f12, 0, 7, 1); return true;  // (shared_helpers.cpp)
+        case L15_CASE(0x002bc500): ret = carry_state_hook(m, a1, a2, f12, 4, 7, 1); return true;
+        case L15_CASE(0x002bc550): ret = carry_state_hook(m, a1, a2, f12, 8, 7, 1); return true;
+        case L15_CASE(0x002bc5a0): ret = gas_hook_2e2770_l9(m, a1, a2, f12); return true;  // (gaspar_carry.cpp)
+        case L15_CASE(0x002bc5d0): ret = static_cast<int32_t>(class_hook_pvars60_l6(m)); return true;  // (blarg_engine_l6.cpp)
         default: return false;
         }
     case 16:  // Kalebo III: the 749-type five-hook table 0x1e9050 (Veldin's class-749 hooks with other constants: 9 -> 7, 5 -> 1, pvars + 0x60)

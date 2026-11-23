@@ -1,6 +1,6 @@
 #ifndef RAC1_GAME_OVL_SCREEN_FLASH_H
 #define RAC1_GAME_OVL_SCREEN_FLASH_H
-// screen_flash, transliterated (screen_flash_asm.cpp). Addresses are Veldin's overlay addresses (the shared engine).
+// screen_flash, ported by hand (screen_flash.cpp). Addresses are Veldin's overlay addresses (the shared engine).
 #include <cstdint>
 
 namespace rac1 {

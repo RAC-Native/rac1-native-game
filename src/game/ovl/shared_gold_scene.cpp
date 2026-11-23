@@ -65,9 +65,9 @@ void gold_weapon_scene(uint32_t m, uint32_t weapon) {
     hero_slot_close(0, 0);
     sw(HERO + 0x20b8, weapon);
     item_class_load(lwu(OV(0x00179ac0) + weapon * 0x4c + 0x10), -1);
-    ovl_2454c8_tr(data, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);  // (reads its a0 only)
+    ovl_2454c8_tr(data);
     sw(STREAMS + 0x1c, 0x2734);
-    ovl_2455c0_tr(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f);
+    ovl_2455c0_tr(0);
     while (lh(STREAMS + 0x5a) != 3) {  // (the scene's data streamed in)
         sound_frame();
         ee_thread_vsync(EeVsyncFrame::Held, true);  // (the vsync wait of the stream's load loop: nothing new is drawn, a vsync passes, ADR 0012)

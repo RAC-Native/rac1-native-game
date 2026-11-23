@@ -1,4 +1,4 @@
-// (Here, not in src/game: the generated code is fingerprinted by src/game's headers; the code is src/game/enhance/level_slots.cpp.)
+// (Here, not in src/game: the code is src/game/enhance/level_slots.cpp.)
 // Host level slots (docs/mods.md, "Level mods"): a level mod's level is a level of its own to the player and to the host,
 // on host slot S (19, 20, ...: runtime/kernel/mods.h), and runs on a base level B of the game (its code, its address map:
 // format 1, Veldin, level 0). While S is current the game's level number (0x15ed84) is B: the game's own code is B's,

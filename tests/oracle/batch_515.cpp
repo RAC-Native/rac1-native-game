@@ -1,25 +1,20 @@
 // Oracle batch 515 (stage 4 task F9, #149): class code several levels carry a copy of, each family ported once as shared
-// hand-written code (src/game/ovl/shared_*.cpp), against every level's own copy at that level's own address. The level
-// copies stay transliterated in their units until each level is re-glued; here every copy is the original and the one shared
-// port the port:
-//  - shared_class615.cpp: class 615, the Trespasser's pad (its update, the camera's goal, the hero pulled onto it) and its
-//    puzzle's draw callback with the link, ring, marker and frame draws (levels 2, 4, 6, 8, 11, 13, 18);
-//  - shared_class1844.cpp: class 1844, a breakable prop (Eudora's 1834, Batalia's 1844, Gaspar's 1849, Pokitaru's 1859,
-//    Hoven's 1862; levels 4, 8, 9, 11, 12);
-//  - aridia_props.cpp: the ocean's wave table with the alpha 0x80 (ocean_wave_table_set_80; levels 5, 7, 8);
-//  - shared_class447.cpp: class 447 (Kerwan's and Rilgar's class 920), a creature that looks at the hero (levels 3, 5, 7, 13);
-//  - shared_class1023.cpp: class 1023, a walker that patrols, leaps, fires and strikes, its every-frame part and its shot's
-//    spawn (levels 8, 9);
-//  - shared_class280.cpp: class 280, the pump the hero works with the Hydrodisplacer, Novalis's story flags of its pumps and
-//    the scripted camera's angles (levels 1, 4, 8);
-//  - shared_class631.cpp: class 631, a flying craft with a rider that drops class 848's charges, and its hits (levels 3, 7);
-//@@HEADER
-// Subjects: the level's own mobys of the class after the first gameplay frame (the port's; the screen, the projection and the
-// view set up), perturbed through every state; the helpers on arguments built from the level's state; the draws' packets
-// into a buffer of the test area (the packet cursor put there), the frame scale (0x15ed68) at its 50 Hz value in a quarter
-// of the cases. No RAM dumps. No broad list of left-out words.
-// Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 515, N = each level a family names (1 .. 9, 11, 12, 13, 18); a family
-// the level does not carry says so and is not run. B515_INFO=1 prints, per draw check, how many cases drew (the packet
+// hand-written code (src/game/ovl/shared_*.cpp), against every level's own copy at that level's own address. Every level runs
+// the shared port since its re-glue (stage 4); here every copy is the original and the one shared port the port: -
+// shared_class615.cpp: class 615, the Trespasser's pad (its update, the camera's goal, the hero pulled onto it) and its
+// puzzle's draw callback with the link, ring, marker and frame draws (levels 2, 4, 6, 8, 11, 13, 18); - shared_class1844.cpp:
+// class 1844, a breakable prop (Eudora's 1834, Batalia's 1844, Gaspar's 1849, Pokitaru's 1859, Hoven's 1862; levels 4, 8, 9,
+// 11, 12); - aridia_props.cpp: the ocean's wave table with the alpha 0x80 (ocean_wave_table_set_80; levels 5, 7, 8); -
+// shared_class447.cpp: class 447 (Kerwan's and Rilgar's class 920), a creature that looks at the hero (levels 3, 5, 7, 13); -
+// shared_class1023.cpp: class 1023, a walker that patrols, leaps, fires and strikes, its every-frame part and its shot's spawn
+// (levels 8, 9); - shared_class280.cpp: class 280, the pump the hero works with the Hydrodisplacer, Novalis's story flags of
+// its pumps and the scripted camera's angles (levels 1, 4, 8); - shared_class631.cpp: class 631, a flying craft with a rider
+// that drops class 848's charges, and its hits (levels 3, 7); @@HEADER Subjects: the level's own mobys of the class after the
+// first gameplay frame (the port's; the screen, the projection and the view set up), perturbed through every state; the
+// helpers on arguments built from the level's state; the draws' packets into a buffer of the test area (the packet cursor put
+// there), the frame scale (0x15ed68) at its 50 Hz value in a quarter of the cases. No RAM dumps. No broad list of left-out
+// words. Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 515, N = each level a family names (1 .. 9, 11, 12, 13, 18); a
+// family the level does not carry says so and is not run. B515_INFO=1 prints, per draw check, how many cases drew (the packet
 // cursor moved) of the cases compared.
 
 #include "ovl_oracle.h"

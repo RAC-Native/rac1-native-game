@@ -1,45 +1,27 @@
 // Oracle batch 516 (stage 4 task F10, #149): the class code of Quartu (level 15) and Drek's fleet (17) that both levels carry a
 // copy of, each family ported once as shared hand-written code (src/game/ovl/shared_*.cpp) on top of the families earlier tasks
-// ported, against each level's own copy at its own address. The level copies stay transliterated in their units until each
-// level is re-glued; here every copy is the original and the one shared port the port:
-//  - shared_class44.cpp: class 44, a guard (its update through every state, its frame's common part, its look, and its
-//    helpers: the ally search, the turns, the walk, the group's alert and calm, the path order, the look at another);
-//  - shared_class408.cpp: class 408, the guards' alarm (its update, the frame's alarm, its raise, its wake);
-//  - shared_class78.cpp: class 78, a turret the alarms wake (its update, its wake, its break), the sparks it spawns
-//    (particle 0x47) and the guards' shot (class 934);
-//  - shared_class655.cpp: class 655, an electric field (its update, its arc and the arc's reset, the hero's ground test,
-//    class 1179's lift).
-// The shared ports and their copies (each level's address):
-//   class44_update        L15:0x002979d8 L17:0x0029f8d8
-//   class44_think         L15:0x0029a570 L17:0x002a2470
-//   class44_aim           L15:0x0029a2a8 L17:0x002a21a8
-//   class44_find_ally     L15:0x00299dd8 L17:0x002a1cd8
-//   class44_turn_to       L15:0x00299880 L17:0x002a1780
-//   class44_turn_toward   L15:0x00299a68 L17:0x002a1968
-//   class44_walk_to       L15:0x00299ae0 L17:0x002a19e0
-//   class44_alert_group   L15:0x0029a0d0 L17:0x002a1fd0
-//   class44_group_calm    L15:0x00299ca0 L17:0x002a1ba0
-//   class44_path_first    L15:0x00299ff8 L17:0x002a1ef8
-//   class44_look_at       L15:0x0029a248 L17:0x002a2148
-//   class408_update       L15:0x002cb4c8 L17:0x002cbe80
-//   class408_alarm        L15:0x002cbc30 L17:0x002cc5e8
-//   class408_raise        L15:0x002cbac0 L17:0x002cc478
-//   class408_wake         L15:0x002cbba0 L17:0x002cc558
-//   class78_update        L15:0x002a2bf0 L17:0x002a82c0
-//   class78_wake          L15:0x002a2868 L17:0x002a7f38
-//   class78_break         L15:0x002a35d8 L17:0x002a8ca8
-//   particle_47_spawn     L15:0x002647f0 L17:0x0026e978
-//   class934_shot_spawn   L15:0x002e4580 L17:0x002e1e20
-//   class655_update       L15:0x002d6810 L17:0x002d4e88
-//   class655_arcs         L15:0x002d7bb0 L17:0x002d6228
-//   class655_arcs_reset   L15:0x002d79e8 L17:0x002d6060
-//   class655_hero_grounded L15:0x002d6770 L17:0x002d4de8
-//   class1179_lift        L15:0x002d95a0 L17:0x002d77a8
-// Subjects: the level's own mobys of the class after the first gameplay frame (the screen, the projection and the view set
-// up, as batch 518), placed or live, their pvars dealt through every state from the level's own (paths, alarms, groups,
-// boxes, other mobys swapped between the class's mobys); the helpers on those mobys with arguments built from the level.
-// B516_INFO=1 prints the subjects found.
-// Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 516, N = 15 and 17; on another level every check says "skipped". No
+// ported, against each level's own copy at its own address. Every level runs the shared port since its re-glue (stage 4); here
+// every copy is the original and the one shared port the port: - shared_class44.cpp: class 44, a guard (its update through
+// every state, its frame's common part, its look, and its helpers: the ally search, the turns, the walk, the group's alert and
+// calm, the path order, the look at another); - shared_class408.cpp: class 408, the guards' alarm (its update, the frame's
+// alarm, its raise, its wake); - shared_class78.cpp: class 78, a turret the alarms wake (its update, its wake, its break), the
+// sparks it spawns (particle 0x47) and the guards' shot (class 934); - shared_class655.cpp: class 655, an electric field (its
+// update, its arc and the arc's reset, the hero's ground test, class 1179's lift). The shared ports and their copies (each
+// level's address): class44_update        L15:0x002979d8 L17:0x0029f8d8 class44_think         L15:0x0029a570 L17:0x002a2470
+// class44_aim           L15:0x0029a2a8 L17:0x002a21a8 class44_find_ally     L15:0x00299dd8 L17:0x002a1cd8 class44_turn_to
+// L15:0x00299880 L17:0x002a1780 class44_turn_toward   L15:0x00299a68 L17:0x002a1968 class44_walk_to       L15:0x00299ae0
+// L17:0x002a19e0 class44_alert_group   L15:0x0029a0d0 L17:0x002a1fd0 class44_group_calm    L15:0x00299ca0 L17:0x002a1ba0
+// class44_path_first    L15:0x00299ff8 L17:0x002a1ef8 class44_look_at       L15:0x0029a248 L17:0x002a2148 class408_update
+// L15:0x002cb4c8 L17:0x002cbe80 class408_alarm        L15:0x002cbc30 L17:0x002cc5e8 class408_raise        L15:0x002cbac0
+// L17:0x002cc478 class408_wake         L15:0x002cbba0 L17:0x002cc558 class78_update        L15:0x002a2bf0 L17:0x002a82c0
+// class78_wake          L15:0x002a2868 L17:0x002a7f38 class78_break         L15:0x002a35d8 L17:0x002a8ca8 particle_47_spawn
+// L15:0x002647f0 L17:0x0026e978 class934_shot_spawn   L15:0x002e4580 L17:0x002e1e20 class655_update       L15:0x002d6810
+// L17:0x002d4e88 class655_arcs         L15:0x002d7bb0 L17:0x002d6228 class655_arcs_reset   L15:0x002d79e8 L17:0x002d6060
+// class655_hero_grounded L15:0x002d6770 L17:0x002d4de8 class1179_lift        L15:0x002d95a0 L17:0x002d77a8 Subjects: the
+// level's own mobys of the class after the first gameplay frame (the screen, the projection and the view set up, as batch 518),
+// placed or live, their pvars dealt through every state from the level's own (paths, alarms, groups, boxes, other mobys swapped
+// between the class's mobys); the helpers on those mobys with arguments built from the level. B516_INFO=1 prints the subjects
+// found. Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 516, N = 15 and 17; on another level every check says "skipped". No
 // RAM dumps; the frame scale (0x15ed68) at its 50 Hz value in a quarter of the cases.
 
 #include "ovl_oracle.h"

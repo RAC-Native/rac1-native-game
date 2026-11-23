@@ -1,6 +1,6 @@
 // Class 655's draw callback (Quartu, Drek's fleet, Veldin's finale) and the strips of quads it draws: one port of the three
-// levels' copies (shared_class655_draw.cpp). Phase 1 of stage 4: the levels' generated copies still run; these are proved
-// against them by oracle batch 517.
+// levels' copies (shared_class655_draw.cpp). Every level with a copy runs these ports; they are proved against each level's
+// own copy by oracle batch 517.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS655_DRAW_H
 #define RAC1_GAME_OVL_SHARED_CLASS655_DRAW_H
 

@@ -1,4 +1,4 @@
-// The registration of particle types 0x47 and 0x4f's updates (particle_types4_tr.cpp, see particle_types4_tr.h).
+// The registration of particle types 0x47 and 0x4f's updates (formerly particle_types4_tr.cpp, see particle_types4_tr.h).
 #include <game/ovl/particle_types4_tr.h>
 
 #include <game/ovl/ovl.h>

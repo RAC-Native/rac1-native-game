@@ -51,7 +51,7 @@
 
 namespace rac1 {
 
-// (mrp_lighting.cpp's, declared here: the headers of src/game are the generated code's fingerprint) Lighting: Original - the modern
+// (mrp_lighting.cpp's, declared here) Lighting: Original - the modern
 // lighting without its sun, the drop shadows drawn -, and the occlusion's mobys' marking taken up again after them (OpenGL)
 extern int g_lighting_original;
 void mrp_lighting_ao_moby_restart();
@@ -60,8 +60,8 @@ int g_mrp_moby_projection = 0;
 bool g_mrp_moby_keep_scissor = false;
 int g_mrp_moby_mip = 0;
 int g_mrp_moby_fog = 1;
-// The debug menu's free hoverboard (src/_devtools/dev_hoverboard.cpp; declared there, not in a header: the generated code is
-// fingerprinted with the headers of src/game, and a debug tool must not ask for ./setup.sh again): another level's class
+// The debug menu's free hoverboard (src/_devtools/dev_hoverboard.cpp; declared there, not in a header): another level's class
+//
 // drawn on the hero's feet. `g_mrp_guest_class`: level * 10000 + o_class to load beside the level's own (-1 none; loaded at
 // the next frame, with its textures added to the level's); `g_mrp_guest_on`: drawn this frame; `g_mrp_guest_lift`: its
 // origin above the hero's along his up axis.

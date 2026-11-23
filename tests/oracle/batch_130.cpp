@@ -169,7 +169,7 @@ void batch_130() {
         return Args{};
     }, [stats](A) {
         const uint32_t c0 = ee_read<uint32_t>(OV(0x001611c0));
-        (void)front_sky_shells_tr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        (void)front_sky_shells_tr();
         stats("sky shells", c0);
         return uint64_t{0};
     });

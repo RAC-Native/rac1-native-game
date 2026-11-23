@@ -66,8 +66,8 @@
 #include <vector>
 
 namespace rac1 {
-// (mrp_particles.cpp: 1 rain, snow and ash kept out from under roofs, RAC1_PARTICLES_SKY; declared here, not in mrp_particles.h - the
-// game's generated code is fingerprinted with the headers of src/game, and a debug switch must not ask for ./setup.sh again)
+// (mrp_particles.cpp: 1 rain, snow and ash kept out from under roofs, RAC1_PARTICLES_SKY; declared here, not in mrp_particles.h)
+//
 extern int g_particles_sky;
 // (mrp_lighting.cpp: Lighting: Original, the modern lighting without its sun - #138; declared here for the same reason)
 extern int g_lighting_original;

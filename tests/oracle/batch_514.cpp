@@ -1,20 +1,17 @@
 // Oracle batch 514 (stage 4 task F8, #149): class code several levels carry a copy of, each family ported once as shared
-// hand-written code (src/game/ovl/shared_*.cpp), against every level's own copy at that level's own address. The level copies
-// stay transliterated in their units until each level is re-glued; here every copy is the original and the one shared port
-// the port:
-//  - shared_class28.cpp: class 28, a path-riding turret, its update and its sixteen helpers (levels 14, 15);
-//  - shared_class156.cpp: class 156, a shot that bursts on what it meets, its burst and its trail's particle (levels 1, 6, 8,
-//    9, 15, 17), on shots spawned for the check;
-//  - shared_class193.cpp: class 193, a walking creature that charges and strikes (levels 9, 15);
-//  - shared_gold_bolt.cpp: class 1134, the gold bolt, its update and helpers, and the glitter's pvars set up (the gold bolt's
-//    build and the other one; levels 1 .. 18);
-//  - shared_sandmouse.cpp: class 1818, the Sandmouse, its update and helpers, the shot's spawn (class 1633), and the point
-//    ahead of the hero other classes' copies use too (levels 1 .. 6, 8, 11, 12, 14);
-// Subjects: the level's own mobys of the class after the first gameplay frame (the port's; the screen, the projection and the
-// view set up), perturbed through every state; the helpers on the class's mobys with arguments built from the level's state;
-// the frame scale (0x15ed68) at its 50 Hz value in a quarter of the cases. No RAM dumps; no broad list of left-out words.
-// Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 514, N = each level a family names (1 .. 18); a family the level does
-// not carry says so and is not run.
+// hand-written code (src/game/ovl/shared_*.cpp), against every level's own copy at that level's own address. Every level runs
+// the shared port since its re-glue (stage 4); here every copy is the original and the one shared port the port: -
+// shared_class28.cpp: class 28, a path-riding turret, its update and its sixteen helpers (levels 14, 15); -
+// shared_class156.cpp: class 156, a shot that bursts on what it meets, its burst and its trail's particle (levels 1, 6, 8, 9,
+// 15, 17), on shots spawned for the check; - shared_class193.cpp: class 193, a walking creature that charges and strikes
+// (levels 9, 15); - shared_gold_bolt.cpp: class 1134, the gold bolt, its update and helpers, and the glitter's pvars set up
+// (the gold bolt's build and the other one; levels 1 .. 18); - shared_sandmouse.cpp: class 1818, the Sandmouse, its update
+// and helpers, the shot's spawn (class 1633), and the point ahead of the hero other classes' copies use too (levels 1 .. 6,
+// 8, 11, 12, 14); Subjects: the level's own mobys of the class after the first gameplay frame (the port's; the screen, the
+// projection and the view set up), perturbed through every state; the helpers on the class's mobys with arguments built from
+// the level's state; the frame scale (0x15ed68) at its 50 Hz value in a quarter of the cases. No RAM dumps; no broad list of
+// left-out words. Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 514, N = each level a family names (1 .. 18); a family
+// the level does not carry says so and is not run.
 
 #include "ovl_oracle.h"
 

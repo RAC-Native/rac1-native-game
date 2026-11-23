@@ -1,6 +1,6 @@
 // Class 1885, a creature that throws blobs (class 1886, shared_class1886.h) at its target (Gaspar, Gemlik Base): its update
-// and its five helpers, one port of the two levels' copies (shared_class1885.cpp). Phase 1 of stage 4: the levels'
-// generated copies still run; these are proved against them by oracle batch 517.
+// and its five helpers, one port of the two levels' copies (shared_class1885.cpp). Every level with a copy runs these
+// ports; they are proved against each level's own copy by oracle batch 517.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS1885_H
 #define RAC1_GAME_OVL_SHARED_CLASS1885_H
 

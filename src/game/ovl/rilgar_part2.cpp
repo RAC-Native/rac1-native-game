@@ -1,4 +1,4 @@
-// Rilgar's part 2: its draw callbacks registered for the indirect calls (the level's own: rilgar_part2_tr.cpp; the shared
+// Rilgar's part 2: its draw callbacks registered for the indirect calls (the level's own: their hand ports, formerly rilgar_part2_tr.cpp; the shared
 // classes' draws: their ports).
 #include <game/ovl/rilgar_part2.h>
 

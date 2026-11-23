@@ -1,7 +1,6 @@
 // Class 295, a rocket of the space levels (Gemlik Base, Drek's fleet), and class 1034, another build of it (Pokitaru too): it flies on, homing on its target while it keeps
-// near the point it last saw it at, trails smoke and sparks, and blows up where it meets something (shared_class295.cpp).
-// One port of the levels' copies of the two updates. Phase 1 of stage 4: the levels' generated copies still run; this is
-// proved against them by oracle batch 504.
+// near the point it last saw it at, trails smoke and sparks, and blows up where it meets something (shared_class295.cpp). One port of the levels' copies of the two
+// updates. Every level with a copy runs this port; it is proved against each level's own copy by oracle batch 504.
 #ifndef RAC1_GAME_OVL_SHARED_CLASS295_H
 #define RAC1_GAME_OVL_SHARED_CLASS295_H
 

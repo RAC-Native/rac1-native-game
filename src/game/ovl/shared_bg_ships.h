@@ -1,7 +1,7 @@
 // The background ships of Aridia, Gaspar and Orxon (class 1213 on Aridia and Gaspar, 1973 on Orxon: the same code), and
 // the helpers their two kinds share (the glow's draw request, the exhaust puffs): one port for the copies of the three
-// levels (shared_bg_ships.cpp, where every level's address is). Phase 1 of stage 4: the levels' generated copies still
-// run; these are proved against them by oracle batch 510.
+// levels (shared_bg_ships.cpp, where every level's address is). Every level with a copy runs these ports; they are
+// proved against each level's own copy by oracle batch 510.
 #ifndef RAC1_GAME_OVL_SHARED_BG_SHIPS_H
 #define RAC1_GAME_OVL_SHARED_BG_SHIPS_H
 

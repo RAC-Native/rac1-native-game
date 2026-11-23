@@ -1,5 +1,5 @@
-// Small helpers several of the levels 1, 7, 14, 15 and 17 carry a copy of (shared_level_helpers.cpp). Phase 1 of stage 4:
-// the levels' generated copies still run; these are proved against them by oracle batch 507.
+// Small helpers several of the levels 1, 7, 14, 15 and 17 carry a copy of (shared_level_helpers.cpp). Every level with a
+// copy runs these ports; they are proved against each level's own copy by oracle batch 507.
 #ifndef RAC1_GAME_OVL_SHARED_LEVEL_HELPERS_H
 #define RAC1_GAME_OVL_SHARED_LEVEL_HELPERS_H
 
