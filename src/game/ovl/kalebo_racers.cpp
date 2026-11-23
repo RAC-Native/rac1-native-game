@@ -4,6 +4,7 @@
 // path, taking its side paths now and then and jumping its gaps, using the boost pads, speeding up or easing off by their
 // place, with tricks in the air and sparks under the board. Level 16 only: `orig: L16:`, level data L16_ADDR / lvd::*, base
 // ELF bare. Registered in kalebo_mobys.cpp; checked by batch 250 (class556, class556_cases) and batch 371 (the race's dumps).
+#include <game/collision/collision.h>
 #include <game/level/level_data.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/kalebo_mobys.h>
@@ -320,8 +321,7 @@ void kal_class556_update_l16(uint32_t m) {
         if (n != 0) {
             vec3_scale(V(spark), V(step), 7.0f);
             for (int32_t k = 0; k < n; ++k) {
-                const uint32_t slot = L16_ADDR(0x00178300) + static_cast<uint32_t>(k) * 4;
-                if (moby_in_range_class_500(lwu(slot)) != 0) sub_00259bc8(lwu(slot), m, 0x30000u, at, spark, 1.0f);
+                if (moby_in_range_class_500(coll_hit_list_at(k)) != 0) sub_00259bc8(coll_hit_list_at(k), m, 0x30000u, at, spark, 1.0f);
             }
         }
         // the ground: falling while above it or rising, landed within 0.5

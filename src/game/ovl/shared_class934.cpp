@@ -7,6 +7,7 @@
 // The moby's +0x40 its spin. State 0 flying; any other state nothing.
 #include <game/ovl/shared_class934.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -39,7 +40,7 @@ void class934_update(uint32_t m) {
     for (uint32_t k = 0; k < 9; ++k) record[k] = lwu(rec + 4 * k);
     const bool met = segment_collide_v(V(pos), V(next), 0, m, record) != 0 || sphere_collide(pos, 0.3f, 0, m) != 0 ||
                      timer_tick_i32(*static_cast<int32_t*>(ee_ram_ptr(pv + 0x38))) != 0;
-    const uint32_t hit = lwu(OV(0x00173e58));
+    const uint32_t hit = coll_hit_moby();
     if (met && hit != 0 && hit != lwu(pv + 0x3c)) {
         if (lh(hit + 0xa6) != BUMPER_CLASS) moby_sphere_contact(m, pos, 1, 0, 1, 0, 0.5f, 2.0f, 0.0f);
         explosion_burst(m, pos, -1, 0.5f, 13.0f);

@@ -1,5 +1,6 @@
 // The class-1440 enemy of Veldin (update 0x2e0b88) and the helpers its chain needs.
 #include <cmath>
+#include <game/collision/collision.h>
 #include <game/ovl/ovl_reloc.h>
 #include <cstring>
 
@@ -839,10 +840,10 @@ void e1440_update(uint32_t m) {
             sb(m + 0x20, 6);
             set(7, frame_scale_i(10));
         };
-        if (segment_collide_v(start, body, 0, m, rec) != 0 && done && lwu(OV(0x00173e58)) == lwu(0x001413d0)) hit_hero();
+        if (segment_collide_v(start, body, 0, m, rec) != 0 && done && coll_hit_moby() == lwu(0x001413d0)) hit_hero();
         if (segment_collide_v(start, end, 0, m, rec) != 0) {
-            end = V(OV(0x00173e60));
-            if (done && lwu(OV(0x00173e58)) == lwu(0x001413d0)) hit_hero();
+            end = coll_hit_point();
+            if (done && coll_hit_moby() == lwu(0x001413d0)) hit_hero();
         }
         fx1471_set_v(m, mat, end);
         if ((lbu(m + 0x70) & 2u) == 0) break;

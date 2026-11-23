@@ -1,6 +1,7 @@
 // See class_profiles.h.
 #include <game/enhance/class_profiles.h>
 
+#include <game/collision/collision.h>
 #include <game/enhance/leveldata.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -193,19 +194,18 @@ bool level_hit(const float a[3], const float b[3], uint32_t self, float* point, 
     Vec4 s{a[0], a[1], a[2], 1.0f};
     const Vec4 e{b[0], b[1], b[2], 1.0f};
     uint32_t skip = self;
-    const uint32_t outb = OV(0x00173e40);
     for (int k = 0; k < 4; ++k) {
         if (segment_collide_v(s, e, 0, skip, nullptr) == 0) return false;
-        const uint32_t m = lwu(outb + 0x18);
+        const uint32_t m = coll_hit_moby();
         if (!is_moby(m)) {
             for (uint32_t c = 0; c < 3; ++c) {
-                if (point != nullptr) point[c] = lwc1(outb + 0x20 + 4 * c);
-                if (normal != nullptr) normal[c] = lwc1(outb + 0x40 + 4 * c);
+                if (point != nullptr) point[c] = coll_hit_point_lane(c);
+                if (normal != nullptr) normal[c] = coll_hit_normal_lane(c);
             }
             return true;
         }
         skip = m;  // (a moby: through it, on from where it was hit)
-        s = Vec4{lwc1(outb + 0x20), lwc1(outb + 0x24), lwc1(outb + 0x28), 1.0f};
+        s = Vec4{coll_hit_point().x, coll_hit_point().y, coll_hit_point().z, 1.0f};
     }
     return false;
 }

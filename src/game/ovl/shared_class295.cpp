@@ -9,6 +9,7 @@
 // the yaw's and the pitch's turning rates, +0x3c the target's class.
 #include <game/ovl/shared_class295.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/devastator.h>
 #include <game/ovl/ovl.h>
@@ -130,7 +131,7 @@ void rocket_update(uint32_t m, const RocketBuild& b) {
     }
     moby_chain_point_v(m, 1, V(nose));
     if (segment_collide_v(V(from), V(nose), 0, lwu(pv + 0x20), nullptr) != 0) {
-        uint32_t at = OV(0x00173e60);
+        uint32_t at = coll_hit_point_addr();
         if (b.blast_at_copy) {
             lq_sq(puff, at);
             at = puff;

@@ -3,6 +3,7 @@
 // gameplay102_on(n).
 #include <game/enhance/fixes102.h>
 
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/globals.h>
@@ -444,7 +445,7 @@ int32_t fixes102_ryno_targets(uint32_t from, uint32_t aim, uint32_t skip, float 
         else score = fpu_div(dist, 5.0f);
         if (!(score < best_score)) continue;
         if (segment_collide_v(V(from), at, 2, m, nullptr) != 0) {
-            const uint32_t hit = lwu(OV(0x00173e40) + 0x18);
+            const uint32_t hit = coll_hit_moby();
             if (hit == 0) continue;
             const uint32_t hc = lwu(hit + 0x24);
             if (hc == 0) continue;

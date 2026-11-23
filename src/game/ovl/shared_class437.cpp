@@ -15,6 +15,7 @@
 // dust's size, +0x3c its alpha, +0x40 its spread, +0x44 .. +0x4c the turn toward a target.
 #include <game/ovl/shared_class437.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/lib/libc.h>
 #include <game/ovl/enemy_749.h>
@@ -91,7 +92,7 @@ void class437_goal_by_hero(uint32_t m, uint32_t pv) {
     if (lwu(pv + 0x68) != 0) {
         swc1(pv + 8, fpu_add(lwc1(pv + 8), 1.0f));
     } else if (walker_probe(lwc1(sandmouse_walker_rec() + 8), 2.0f, pv, m, 0) != 0) {
-        swc1(pv + 8, lwc1(OV(0x00173e68)));
+        swc1(pv + 8, coll_hit_point().z);
     }
     ee_stack_free(0x80);
 }
@@ -184,7 +185,7 @@ uint32_t class437_find_target(uint32_t m, uint32_t from, uint32_t angles, float 
         if (!(score < best_score)) continue;
         // seen: nothing between, or what is between is of its kind (not the hero)
         if (segment_collide_v(V(from), V(aim), 0, m, nullptr) != 0) {
-            const uint32_t hit = lwu(OV(0x00173e40) + 0x18);
+            const uint32_t hit = coll_hit_moby();
             if (hit == 0 || hit == lwu(HERO + 0x2080)) continue;
             const uint32_t hcls = lwu(hit + 0x24);
             if (hcls == 0 || lh(hcls + 0x46) != kind) continue;
@@ -414,7 +415,7 @@ void class437_update(uint32_t m) {
             lq_sq(to, HERO + 0x80);
             swc1(to + 8, fpu_add(lwc1(to + 8), u2f(0x3e4ccccdu)));  // (0.2)
             if (point_in_box(HERO + 0x80, lw(pv + 0x40)) == 0) return Exit::Out;
-            if (segment_collide_v(V(from), V(to), 0, m, nullptr) != 0 && lwu(OV(0x00173e58)) != lwu(HERO + 0x2080)) return Exit::Out;
+            if (segment_collide_v(V(from), V(to), 0, m, nullptr) != 0 && coll_hit_moby() != lwu(HERO + 0x2080)) return Exit::Out;
             point_ahead_of_hero(m, pv);
             const uint32_t held = lwu(HERO + 0x1130);
             if (held != 0 && lh(held + 0xa6) == 0x1b1) {

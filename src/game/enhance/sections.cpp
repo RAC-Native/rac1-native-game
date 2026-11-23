@@ -3,6 +3,7 @@
 
 #include <formats/host_meshes.h>
 #include <formats/scene_wad.h>
+#include <game/collision/collision.h>
 #include <game/enhance/context.h>
 #include <io/asset_paths.h>
 #include <game/enhance/hero_modes.h>
@@ -1017,7 +1018,7 @@ void apply_state(int idx) {
         rows_put(world ? s.world : -1);           // (stage 10: its level's state, the session's own outside)
     }
     const bool own_coll = idx != 0 && s.coll_tree != 0;
-    sw(OV(0x00173e40), own_coll ? s.coll_tree : g_main.coll_tree);
+    coll_set_tree(own_coll ? s.coll_tree : g_main.coll_tree);
     sw(OV(0x0015f618), own_coll ? s.coll_list : g_main.coll_list);
     sw(OV(0x0016051c), idx != 0 && s.sky != 0 ? s.sky : g_main.sky);
     for (uint32_t k = 0; k < 3; ++k) {
@@ -1564,7 +1565,7 @@ void sections_arrival() {
         ld_engine_restore();
         world_renderer_level(-1);
     }
-    g_main.coll_tree = lwu(OV(0x00173e40));
+    g_main.coll_tree = coll_tree();
     g_main.coll_list = lwu(OV(0x0015f618));
     g_main.sky = lwu(OV(0x0016051c));
     for (uint32_t k = 0; k < 3; ++k) {
@@ -2006,13 +2007,13 @@ void section_equiv_native([[maybe_unused]] uint32_t H) {
     mem_fill32(lo, 0, static_cast<int32_t>(n << 8));
     // (the moby queries' stamp counter, which the mobys' ground probes count up and leave in +0x9c: as gameplay_load set it
     // before its mobys, 0; at the end it is the native load's again)
-    const uint32_t stamp = lwu(OV(0x00173e50));
-    sw(OV(0x00173e50), 0);
+    const uint32_t stamp = coll_query_counter();
+    coll_set_query_counter(0);
     SpawnOpts o;
     o.test = true;
     o.owner = "section equivalence";
     const SpawnResult r = section_spawn_placements(H2, o);
-    const bool stamp_same = lwu(OV(0x00173e50)) == stamp;
+    const bool stamp_same = coll_query_counter() == stamp;
     // the self-offset and shared-data words of each table index (rebased, not compared as they are)
     std::map<int32_t, std::set<uint32_t>> self_w, shared_w;
     if (lw(H2 + 0x5c) != 0)

@@ -7,6 +7,7 @@
 // The bomb's pvars: its velocity +0, its thrower +0x10, its life +0x14, its height above the floor +0x18.
 #include <game/ovl/shared_class567.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -57,7 +58,7 @@ void class567_update(uint32_t m) {
         swc1(pv + 8, fpu_sub(lwc1(pv + 8), fpu_mul(lwc1(0x0015ed70), u2f(0x412ccccdu))));  // (10.8)
     }
     if (segment_collide_v(V(pos), V(was), 0, lwu(pv + 0x10), nullptr) != 0) {
-        if (lwu(OV(0x00173e58)) != 0) {
+        if (coll_hit_moby() != 0) {
             sub_00259888(1.0f, rec, static_cast<int32_t>(m), 0x10001, pv);
             vec2_set_length(V(rec), V(rec), 1.0f);
             swc1(rec + 8, 1.0f);
@@ -65,7 +66,7 @@ void class567_update(uint32_t m) {
             sb(rec + 0x19, 1);
             sh(rec + 0x1a, lhu(m + 0xa6));
             sb(rec + 0x18, 0);
-            moby_hit_record(lwu(OV(0x00173e58)), rec);
+            moby_hit_record(coll_hit_moby(), rec);
         }
         sb(m + 0x20, 2);
     }

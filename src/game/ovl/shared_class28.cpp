@@ -16,6 +16,7 @@
 // +0x27c the path's direction, +0x280 / +0x284 the tilt and its rate, +0x288 hidden for the difficulty.
 #include <game/ovl/shared_class28.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/aridia_mobys.h>
 #include <game/ovl/enemy_749.h>
@@ -668,7 +669,7 @@ void class28_update(uint32_t m) {
             sh(rec + 0x1a, lhu(m + 0xa6));
             sb(rec + 0x18, 0);
             if (segment_collide_v(V(from), V(to), 0, m, static_cast<const uint32_t*>(ee_ram_ptr(rec))) != 0)
-                lq_sq(to, OV(0x00173e60));
+                lq_sq(to, coll_hit_point_addr());
             fx1471_set(m, frame, to);
             if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(pv + 0x262))) != 0) {
                 anim(m, 6, 0xa);

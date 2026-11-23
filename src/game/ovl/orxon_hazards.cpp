@@ -144,28 +144,29 @@ uint32_t orx_2d8170_l10(uint32_t m, uint32_t pv, uint32_t from) {
     if (lh(pv + 0x14) != 0) return 0;
     const uint32_t pos = m + 0x10;
     if (segment_collide_v(start, V(pos), 0x10, m, nullptr) == 0) return 0;
-    const uint32_t normal = OV(0x00173e80);  // (the hit record's normal +0x40: written here when a moby was hit)
     Vec4 push;
     const uint32_t hit = coll_hit_moby();
     if (hit != 0) {
-        vec3_sub(V(normal), V(pos), V(hit + 0x10));
+        Vec4 normal = coll_hit_normal();  // (the hit record's normal +0x40: written here when a moby was hit)
+        vec3_sub(normal, V(pos), V(hit + 0x10));
+        coll_hit_set_normal(normal);
         V(pos) = coll_hit_point();
-        vec3_set_length(push, V(normal), fpu_mul(dt2(), u2f(0x411b3333u)));
+        vec3_set_length(push, coll_hit_normal(), fpu_mul(dt2(), u2f(0x411b3333u)));
         vec3_add(V(pos), V(pos), push);
-        vec3_reflect(V(pv), V(pv), V(normal));
+        vec3_reflect(V(pv), V(pv), coll_hit_normal());
         vec3_scale(V(pv), V(pv), u2f(0x3eb33333u));
-        vec3_set_length(push, V(normal), 1.0f);  // (and its dot with up, which the original leaves unused)
-        blob_lean(m, V(normal));
+        vec3_set_length(push, coll_hit_normal(), 1.0f);  // (and its dot with up, which the original leaves unused)
+        blob_lean(m, coll_hit_normal());
         moby_sound_start(1, 0, m);
         return 1;
     }
     if (static_cast<int32_t>(coll_hit_flags()) <= 0) return 0;
     V(pos) = coll_hit_point();
-    vec3_set_length(push, V(normal), fpu_mul(dt2(), u2f(0x411b3333u)));
+    vec3_set_length(push, coll_hit_normal(), fpu_mul(dt2(), u2f(0x411b3333u)));
     vec3_add(V(pos), V(pos), push);
-    vec3_reflect(V(pv), V(pv), V(normal));
+    vec3_reflect(V(pv), V(pv), coll_hit_normal());
     vec3_scale(V(pv), V(pv), 0.5f);
-    vec3_set_length(push, V(normal), 1.0f);
+    vec3_set_length(push, coll_hit_normal(), 1.0f);
     if (u2f(0x3f34fdf4u) < vec3_dot(push, up)) {  // a floor
         const float floor = floor_probe_v(0.5f, V(pos), 0);
         if (lwc1(m + 0x18) < floor) swc1(m + 0x18, floor);
@@ -176,7 +177,7 @@ uint32_t orx_2d8170_l10(uint32_t m, uint32_t pv, uint32_t from) {
             return 3;
         }
     }
-    blob_lean(m, V(normal));
+    blob_lean(m, coll_hit_normal());
     moby_sound_start(1, 0, m);
     return 2;
 }
@@ -563,7 +564,7 @@ void orx_class859_update_l10(uint32_t m) {
                 swc1(spark + 4, rand_range_f(-1.0f, 1.0f));
                 swc1(spark + 8, rand_range_f(-1.0f, 1.0f));
                 lq_sq(vel, spark);
-                vec3_reflect(V(spark), V(pv), V(OV(0x00173e80)));
+                vec3_reflect(V(spark), V(pv), coll_hit_normal());
                 vec3_set_length(V(vel), V(vel), fpu_mul(vec3_length(V(spark)), 0.5f));
                 vec3_add(V(vel), V(spark), V(vel));
                 vec3_set_length(V(vel), V(vel), rand_range_f(fpu_mul(dt(), 3.0f), fpu_mul(dt(), 6.0f)));

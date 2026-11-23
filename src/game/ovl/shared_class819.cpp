@@ -8,6 +8,7 @@
 // the warning sound's state +0x30 (closing in) / +0x34 (played), the distance to the hero last frame +0x38.
 #include <game/ovl/shared_class819.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/ovl.h>
@@ -111,12 +112,12 @@ void class819_update(uint32_t m) {
     if (dist < lwc1(pv + 0x38)) sw(pv + 0x30, 1);
     swc1(pv + 0x38, dist);
     if (segment_collide_v(V(pos), V(from), 0x10, lwu(pv + 0x10), nullptr) != 0) {  // (back from where it is now)
-        const uint32_t hit = lwu(OV(0x00173e58));
+        const uint32_t hit = coll_hit_moby();
         if (hit != lwu(pv + 0x10)) {
             if (hit != 0) {
                 vec2_set_length(V(rel), V(pv), 1.0f);
                 swc1(pv + 8, 1.0f);
-                sub_00259bc8(lwu(OV(0x00173e58)), m, 0x10003u, OV(0x00173e60), rel, 1.0f);
+                sub_00259bc8(coll_hit_moby(), m, 0x10003u, coll_hit_point_addr(), rel, 1.0f);
             }
             sb(m + 0x20, 2);
         }

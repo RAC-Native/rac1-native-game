@@ -2,6 +2,7 @@
 #include <game/enhance/cut_content.h>
 
 #include <formats/level_core.h>
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>
@@ -57,7 +58,7 @@ void fred_snap_to_ground(uint32_t m) {
     Vec4 from = V(m + 0x10), to = V(m + 0x10);
     from.z = from.z + FRED_SNAP_UP;
     to.z = to.z - FRED_SNAP_DOWN;
-    if (segment_collide_v(from, to, 2, m, nullptr) != 0) swc1(m + 0x18, lwc1(OV(0x00173e60) + 8));  // (the hit point)
+    if (segment_collide_v(from, to, 2, m, nullptr) != 0) swc1(m + 0x18, coll_hit_point().z);  // (the hit point)
 }
 
 // Kerwan's citizens' idle (#128: they held their rest pose, arms out). Nebula G34's citizen "Fred" (level 6, class 1105)

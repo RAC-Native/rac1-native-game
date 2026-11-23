@@ -1,6 +1,7 @@
 // The mobys of the ship sequences (game mode 6): the ship's thrusters, Clank and Ratchet riding
 // it, the shadow probe of the scene's mobys, the scripted camera, Ratchet put back on the ground
 // at the end.
+#include <game/collision/collision.h>
 #include <game/ovl/arrival.h>
 #include <game/enhance/fixes102.h>
 #include <game/enhance/hero_modes.h>
@@ -132,7 +133,7 @@ void moby_shadow_probe(uint32_t m) {
     }
     lq_sq(s2, s1);
     const float f5 = lwc1(m + 0xc);
-    const float f21 = lwc1(OV(0x00173e68));
+    const float f21 = coll_hit_point().z;
     float g3 = lwc1(s2 + 8);
     float g2 = lwc1(sp) * f5;
     float g1 = lwc1(sp + 4) * f5;
@@ -152,7 +153,7 @@ void moby_shadow_probe(uint32_t m) {
     swc1(s2, g4);
     vec3_set_length(V(sp), V(sp), f12);
     vec3_add(V(s3), V(s2), V(sp));
-    if (segment_collide(s2, s3, 0x22, 0, 0) != 0) f22 = lwc1(OV(0x00173e68));
+    if (segment_collide(s2, s3, 0x22, 0, 0) != 0) f22 = coll_hit_point().z;
     swc1(m + 0x84, min_f(f21, f22) - 0.25f);
     const float hi = max_f(f21, f22) + 0.25f;
     const float cap = lwc1(m + 0x84) + 4.0f;

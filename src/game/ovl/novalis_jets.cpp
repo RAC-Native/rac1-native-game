@@ -2,6 +2,7 @@
 // (666). Header novalis_mobys2.h. Addresses are Novalis's (`orig: L1:`);
 // Novalis-only data is L1_ADDR, the globals the engine shares with Veldin are the level's own (OV), the base ELF's
 // are bare.
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/hydro.h>
 #include <game/ovl/arrival.h>
@@ -562,7 +563,7 @@ void jet_bomber_update_l1(uint32_t m) {
                         if (r == 0) {
                             --s0;
                         } else {
-                            const uint32_t who = lwu(OV(0x00173e58));
+                            const uint32_t who = coll_hit_moby();
                             if (who == 0) {
                                 sw(s1, 0xffffffffu);
                                 --s4;

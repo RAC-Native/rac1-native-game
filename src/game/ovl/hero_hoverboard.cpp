@@ -2,6 +2,7 @@
 // and Kalebo III's slide/board state 0x3e.
 #include <game/ovl/hero_hoverboard.h>
 
+#include <game/collision/collision.h>
 #include <game/enhance/level_mod_hero.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>
@@ -577,7 +578,6 @@ void board_trick_score_update() {
 // Crash / fall / landing checks for states 0x6b and 0x6c; returns 1 when it changed state.
 // orig: L5:0x00255208 / L16:0x00226970
 int32_t board_crash_and_land_check() {
-    const uint32_t OUTB = HB_ADDR(0x00174240u);
     if (lwc1(0x0015ed6cu) * 12.0f < lwc1(P + 0x164)) {
         Vec4 top;
         sub_00233660_v(top, 0.0f, 0.0f, 0.75f);
@@ -588,9 +588,9 @@ int32_t board_crash_and_land_check() {
         Vec4 end;
         vec3_add(end, top, fwd);
         if (segment_collide_v(top, end, 2, 0, nullptr) != 0 &&
-            lw(OUTB + 0x18) == 0 && lw(OUTB + 0x1c) != 0 &&
-            u2f(0x3f9c61aau) < atan2_f(lwc1(OUTB + 0x48), vec2_length(V(OUTB + 0x40)))) {
-            const float wall_yaw = angle_add(atan2_f(lwc1(OUTB + 0x40), lwc1(OUTB + 0x44)), u2f(0x40490fdbu));
+            static_cast<int32_t>(coll_hit_moby()) == 0 && coll_hit_flags_signed() != 0 &&
+            u2f(0x3f9c61aau) < atan2_f(coll_hit_normal().z, vec2_length(coll_hit_normal()))) {
+            const float wall_yaw = angle_add(atan2_f(coll_hit_normal().x, coll_hit_normal().y), u2f(0x40490fdbu));
             swc1(P + 0x8a4, wall_yaw);
             if (angle_dist(atan2_f(lwc1(P + 0xe0), lwc1(P + 0xe4)), lwc1(P + 0x8a4)) < u2f(0x3f490fdbu)) {
                 hero_set_state(lwc1(P + 0x2dc) < 1.0f ? 0x6fu : 0x6du, 1);
@@ -1346,9 +1346,8 @@ void hero_hoverboard_state_update(uint32_t state) {
                 Vec4 push;
                 vec3_scale(push, V(P + 0x100), 7.0f);
                 if (nhits > 0) {
-                    uint32_t list = HB_ADDR(0x00178300u);
-                    for (; nhits != 0; --nhits, list += 4) {
-                        const uint32_t m = lwu(list);
+                    for (int32_t i = 0; nhits != 0; --nhits, ++i) {
+                        const uint32_t m = coll_hit_list_at(i);
                         if (moby_in_range_class_500(m) != 0 || lh(m + 0xa6) == 0x85) {
                             sub_00259bc8_v(m, lwu(P + 0x2080), 0x10000u, P + 0x80, push, 1.0f);
                         }

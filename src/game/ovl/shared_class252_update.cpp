@@ -3,6 +3,7 @@
 // file another task edits; the header is shared_class252.h.
 #include <game/ovl/shared_class252.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/ovl.h>
@@ -58,7 +59,7 @@ void class252_move(uint32_t m) {
     lq_sq(step, pos);
     swc1(step + 8, fpu_add(lwc1(step + 8), 0.5f));
     if (zero_stub() != 0) {
-        vec3_sub(V(step), V(OV(0x00173e70)), V(pos));
+        vec3_sub(V(step), coll_hit_pushed(), V(pos));
         const float lim = fpu_mul(lwc1(0x0015ed6c), 3.0f);
         const float z = lwc1(step + 8);
         if (lim < z) swc1(step + 8, lim);

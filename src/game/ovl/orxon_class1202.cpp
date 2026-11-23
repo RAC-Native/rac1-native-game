@@ -155,7 +155,7 @@ void orx_2e3ef0_l10(uint32_t m) {
                     vec3_sub(V(d), V(to), V(from));
                     lq_sq(n1, d);
                     vec3_set_length(V(n1), V(n1), 1.0f);
-                    vec3_set_length(V(n2), V(OV(0x00173e80)), 1.0f);  // (the hit record's normal)
+                    vec3_set_length(V(n2), coll_hit_normal(), 1.0f);  // (the hit record's normal)
                     if (0.5f < abs_f(vec3_dot(V(n1), V(n2)))) nothing();
                 }
             }

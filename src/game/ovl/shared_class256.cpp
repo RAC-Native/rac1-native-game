@@ -11,6 +11,7 @@
 // its start).
 #include <game/ovl/shared_class256.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/devastator.h>
 #include <game/ovl/enemy_749.h>
@@ -200,30 +201,29 @@ void class256_update(uint32_t m) {
     sb(e0 + 9, 1);
     const uint32_t hero_moby = lwu(0x001413d0);
     if (segment_collide(was, pos, 0, hero_moby, d0) != 0) {
-        const uint32_t res = OV(0x00173e40);
-        const uint32_t hit = lwu(res + 0x18);
-        uint32_t wall = 0;
+        const uint32_t hit = coll_hit_moby();
+        bool wall = false;
         if (hit == 0) {
-            if (lw(res + 0x1c) > 0) {
+            if (coll_hit_flags_signed() > 0) {
                 sb(m + 0xbc, 1);
-                lq_sq(pos, res + 0x20);
-                vec3_sub(V(side), V(res + 0x50), V(res + 0x60));
-                wall = res + 0x40;
+                lq_sq(pos, coll_hit_point_addr());
+                vec3_sub(V(side), coll_hit_tri(0), coll_hit_tri(1));
+                wall = true;
             }
         } else if (hit != lwu(0x001413d0)) {
             if (hit != lwu(pv + 0x10)) {
                 sb(m + 0xbc, 2);
-                lq_sq(pos, res + 0x20);
-                vec3_sub(V(side), V(res + 0x50), V(res + 0x60));
-                wall = res + 0x40;
+                lq_sq(pos, coll_hit_point_addr());
+                vec3_sub(V(side), coll_hit_tri(0), coll_hit_tri(1));
+                wall = true;
                 direct = m;
             }
         }
-        if (wall != 0) {
+        if (wall) {
             vec3_set_length(V(side), V(side), 1.0f);
-            vec3_reflect(V(refl), V(vel), V(wall));
+            vec3_reflect(V(refl), V(vel), coll_hit_normal());
             vec3_set_length(V(refl), V(refl), fpu_add(dt(), dt()));
-            vec3_set_length(V(norm), V(wall), 1.0f);
+            vec3_set_length(V(norm), coll_hit_normal(), 1.0f);
         }
     } else if (timer_tick_i32(*static_cast<int32_t*>(ee_ram_ptr(pv + 0x14))) != 0 ||
                260.0f < vec2_distance(V(pos), V(0x0013f3d0))) {
@@ -238,7 +238,7 @@ void class256_update(uint32_t m) {
     {
         const int32_t n = mobys_in_sphere(pos, 2.0f, 0x10, m, 0);
         lq_sq(lead, pos);
-        moby_list_hit(m, lead, OV(0x00177f00), n, direct, 0x810000, 3, 1, 3.0f, 1.0f, 1.0f);
+        moby_list_hit(m, lead, coll_hit_list(), n, direct, 0x810000, 3, 1, 3.0f, 1.0f, 1.0f);
     }
     // (the cross-product matrix of the burst's normal, and its square: the sparks spread about the plane it hit)
     {

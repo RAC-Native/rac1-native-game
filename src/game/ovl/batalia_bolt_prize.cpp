@@ -133,20 +133,20 @@ void bat_class152_update_l8(uint32_t m) {
                 } else {
                     // back to its radius off the hit point
                     const uint32_t back = sp + 0x50;
-                    vec3_sub(V(back), V(pos), V(L8_ADDR(0x00174660)));
+                    vec3_sub(V(back), V(pos), coll_hit_point());
                     vec3_set_length(V(back), V(back), lwc1(L8_ADDR(0x0016144c)));
-                    vec3_add(V(pos), V(L8_ADDR(0x00174660)), V(back));
+                    vec3_add(V(pos), coll_hit_point(), V(back));
                 }
                 if (bounce) {
                     const uint32_t out = sp + 0x10;
-                    vec3_reflect(V(out), V(vel), V(L8_ADDR(0x00174680)));
+                    vec3_reflect(V(out), V(vel), coll_hit_normal());
                     float left = fpu_sub(vec3_length(V(out)), lwc1(L8_ADDR(0x0016145c)));
                     if (left < 0.0f) left = 0.0f;
                     vec3_set_length(V(vel), V(out), left);
                 } else {
                     // it settles on the hit point, its radius above it; on the ground (no moby hit) it stays (state 2)
                     vec_clear(V(vel));
-                    lq_sq(pos, L8_ADDR(0x00174660));
+                    lq_sq(pos, coll_hit_point_addr());
                     swc1(pos + 8, fpu_add(lwc1(pos + 8), lwc1(L8_ADDR(0x0016144c))));
                     if (coll_hit_moby() == 0) {
                         vec_clear(V(vel));

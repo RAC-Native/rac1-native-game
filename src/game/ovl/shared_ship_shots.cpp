@@ -8,6 +8,7 @@
 // the target was last seen / (1017) the hit record's reach, +0x2c (1009) the target.
 #include <game/ovl/shared_ship_shots.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/ovl.h>
@@ -42,7 +43,7 @@ void sparks(uint32_t pos, uint32_t vel, uint32_t spark, uint32_t bounce) {
         swc1(bounce + 4, rand_range_f(-1.0f, 1.0f));
         swc1(bounce + 8, rand_range_f(-1.0f, 1.0f));
         lq_sq(spark, bounce);
-        vec3_reflect(V(bounce), V(vel), V(OV(0x00173e80)));
+        vec3_reflect(V(bounce), V(vel), coll_hit_normal());
         vec3_set_length(V(spark), V(spark), fpu_mul(vec3_length(V(bounce)), 0.5f));
         vec3_add(V(spark), V(bounce), V(spark));
         const float ft = lwc1(0x0015ed6c);

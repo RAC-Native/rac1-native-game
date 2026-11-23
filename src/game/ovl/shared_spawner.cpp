@@ -13,6 +13,7 @@
 // the moby it brought +0x18, the flags +0x1c, the sound timer +0x20.
 #include <game/ovl/shared_spawner.h>
 
+#include <game/collision/collision.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
@@ -406,12 +407,12 @@ void class545_update(uint32_t m) {
 
     // off what it met (the collision's result: the moby +0x18, the normal +0x40)
     auto bounce = [&] {
-        const uint32_t other = lwu(OV(0x00173e58));
+        const uint32_t other = coll_hit_moby();
         if (other != 0 && lh(other + 0xa6) == static_cast<int32_t>(POD_CLASS)) {
             swc1(pv + 8, fpu_mul(lwc1(pv + 8), rand_range_f(u2f(0x3f666666u), u2f(0x3f8ccccdu))));
         } else {
-            vec3_reflect(V(pv), V(pv), V(OV(0x00173e80)));
-            const float slope = atan2_f(lwc1(OV(0x00173e88)), vec2_length(V(OV(0x00173e80))));
+            vec3_reflect(V(pv), V(pv), coll_hit_normal());
+            const float slope = atan2_f(coll_hit_normal().z, vec2_length(coll_hit_normal()));
             if (slope < u2f(0x3f32b8c2u) && sub_001f35d8() == -1) {  // (40 degrees)
                 if (other != 0) {
                     vec3_scale(V(pv), V(pv), u2f(0x3f99999au));
@@ -443,15 +444,15 @@ void class545_update(uint32_t m) {
         sw(m + 0x94, 0);
         sw(lwu(pv + 0x10) + 0x94, 0);
         if (segment_collide_v(V(was), V(ahead), 4, m, nullptr) != 0) {
-            vec3_sub(V(ahead), V(OV(0x00173e60)), V(ahead));
+            vec3_sub(V(ahead), coll_hit_point(), V(ahead));
             vec3_set_length(V(ahead), V(ahead), u2f(0x3e5c28f6u));
             vec3_add(V(pos), V(pos), V(ahead));
             bounce();
         }
         if (sphere_collide(pos, 0.2f, 4, m) != 0) {
-            vec3_sub(V(ahead), V(OV(0x00173e60)), V(OV(0x00173e70)));
+            vec3_sub(V(ahead), coll_hit_point(), coll_hit_pushed());
             vec3_set_length(V(ahead), V(ahead), u2f(0x3c75c28fu));
-            vec3_add(V(pos), V(OV(0x00173e70)), V(ahead));
+            vec3_add(V(pos), coll_hit_pushed(), V(ahead));
             bounce();
         }
         for (uint32_t o = lwu(OV(0x0015ffe4)); o != 0; o = lwu(o + 0x28)) {

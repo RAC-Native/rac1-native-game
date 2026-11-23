@@ -8,6 +8,7 @@
 // +0x1c, its gravity +0x24, the fade mode +0x20 with the life it fades over +0x28.
 #include <game/ovl/shared_rock.h>
 
+#include <game/collision/collision.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
@@ -91,12 +92,13 @@ void rock_update(uint32_t m) {
         swc1(m + 0x40, rand_range_f(-pi, pi));
         swc1(m + 0x44, rand_range_f(-pi, pi));
         swc1(m + 0x48, rand_range_f(-pi, pi));
-        const uint32_t normal = OV(0x00173e80);
-        vec3_reflect(V(pv), V(pv), V(normal));
+        vec3_reflect(V(pv), V(pv), coll_hit_normal());
         vec3_scale(V(pv), V(pv), rand_range_f(u2f(0x3d8f5c29u), u2f(0x3e051eb8u)));
         vec3_add(V(pv), V(pv), V(kick));
-        vec3_set_length(V(normal), V(normal), u2f(0x3dcccccdu));
-        vec3_add(V(pos), V(normal), V(OV(0x00173e60)));
+        Vec4 nrm = coll_hit_normal();
+        vec3_set_length(nrm, nrm, u2f(0x3dcccccdu));
+        coll_hit_set_normal(nrm);
+        vec3_add(V(pos), coll_hit_normal(), coll_hit_point());
         const float dt = lwc1(0x0015ed6c);
         float spin = rand_range_f(fpu_mul(dt, u2f(0x3fc90fdbu)), fpu_mul(dt, u2f(0x40c90fdbu)));
         if (0.0f < lwc1(pv + 0x18)) spin = -spin;

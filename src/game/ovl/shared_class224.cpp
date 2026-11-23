@@ -9,6 +9,7 @@
 // taken (it shrinks), 6 gone or back to 1.
 #include <game/ovl/shared_class224.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/globals.h>
 #include <game/ovl/ovl.h>
@@ -65,7 +66,7 @@ void shown(uint32_t m, uint32_t ship, uint32_t at, uint32_t pull) {
     }
     bool hit = false;
     if (sphere_collide(at, 2.0f, 1, m) != 0) {
-        const uint32_t met = lwu(OV(0x00173e58));
+        const uint32_t met = coll_hit_moby();
         if (met != 0 && ship_class(lh(met + 0xa6))) hit = true;
     }
     float dist = 100000.0f;

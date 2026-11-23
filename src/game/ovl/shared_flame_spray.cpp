@@ -5,6 +5,7 @@
 // frame time 0x15ed6c and its square 0x15ed70 are the base ELF's. Header shared_flame_spray.h.
 #include <game/ovl/shared_flame_spray.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -56,7 +57,7 @@ void flame_spray(uint32_t rec, uint32_t pos, uint32_t dir, float len) {
     vec3_add(V(to), V(reach_vec), V(from));
     float reach = len;
     if (segment_collide_v(V(from), V(to), 2, 0, nullptr) != 0) {  // (a wall: as far as the hit, 0.75 short)
-        reach = fpu_sub(vec3_distance(V(from), V(OV(0x00173e60))), 0.75f);
+        reach = fpu_sub(vec3_distance(V(from), coll_hit_point()), 0.75f);
         if (reach < 0.0f) reach = 0.0f;
     }
     seek_1d(sp + 0x50, sp + 0x54, reach, 1.0f, fpu_mul(lwc1(0x0015ed70), 48.0f), fpu_mul(lwc1(tune), lwc1(0x0015ed6c)));

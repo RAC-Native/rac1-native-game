@@ -6,6 +6,7 @@
 // original's order of calls and float operations kept.
 #include <game/ovl/rilgar_own.h>
 
+#include <game/collision/collision.h>
 #include <game/level/level_data.h>
 #include <game/ovl/ee_regs.h>
 #include <game/ovl/novalis_mobys2.h>
@@ -321,8 +322,8 @@ void ril_class717_update_l5(uint32_t m) {
             const uint32_t push = sp + 0x30;
             vec3_scale(V(push), V(step), 7.0f);
             for (int32_t k = 0; k < n; ++k) {
-                const uint32_t o = lwu(L5_ADDR(0x00178300u) + static_cast<uint32_t>(k) * 4);
-                if (moby_in_range_class_500(o) != 0) sub_00259bc8(lwu(L5_ADDR(0x00178300u) + static_cast<uint32_t>(k) * 4), m, 0x30000u, at, push, 1.0f);
+                const uint32_t o = coll_hit_list_at(k);
+                if (moby_in_range_class_500(o) != 0) sub_00259bc8(coll_hit_list_at(k), m, 0x30000u, at, push, 1.0f);
             }
         }
         // the ground: falling while above it or rising, landed within 0.5

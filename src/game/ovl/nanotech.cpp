@@ -3,6 +3,7 @@
 // one *(0x15f63c)) that fly to the hero and heal him (health 0x1415f8).
 #include <cmath>
 
+#include <game/collision/collision.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
@@ -58,16 +59,16 @@ void nanotech_ground(uint32_t m) {
     Vec4 b = a;
     b.z = b.z - 1.5f;
     const bool hit = segment_collide_v(a, b, 2, m, nullptr) != 0;
-    const float g = hit ? lwc1(OV(0x00173e68)) : b.z;
+    const float g = hit ? coll_hit_point().z : b.z;
     if (hit) {
-        const uint32_t h = lwu(OV(0x00173e58));
+        const uint32_t h = coll_hit_moby();
         if (h != 0) {
             if (moby_in_range_class_500(h) != 0) {
                 swc1(pv + 0x10, lwc1(h + 0x10));
                 swc1(m + 0x10, lwc1(h + 0x10));
                 swc1(pv + 0x14, lwc1(h + 0x14));
                 swc1(m + 0x14, lwc1(h + 0x14));
-                const float z = lwc1(OV(0x00173e68));
+                const float z = coll_hit_point().z;
                 swc1(m + 0x18, z);
                 swc1(pv + 0x18, z + 0.5f);
             } else if (lh(pv + 0xa) != 0) {

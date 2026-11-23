@@ -8,6 +8,7 @@
 // index in the thrower's list (the thrower's pvar +0xb0, 20 words). States: 0 flying, 1 come to rest, 2 fading.
 #include <game/ovl/shared_class1886.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/ovl.h>
@@ -30,13 +31,12 @@ float class_scale(uint32_t m) { return lwc1(lwu(m + 0x24) + 0x24); }
 // (when sub_001f35d8 says -1), sped up (off a moby) or halved, the blob coming to rest (state 1) once it is slower than
 // 0.025 (off the scenery). Its bounce sound then plays unless it played in the last 12 frames.
 void bounce(uint32_t m, uint32_t pv) {
-    const uint32_t met = lwu(OV(0x00173e58));
-    const uint32_t normal = OV(0x00173e80);
+    const uint32_t met = coll_hit_moby();
     if (met != 0 && lh(met + 0xa6) == BLOB_CLASS) {
         swc1(pv + 8, fpu_mul(lwc1(pv + 8), rand_range_f(0.9f, 1.1f)));
     } else {
-        vec3_reflect(V(pv), V(pv), V(normal));
-        const float slope = atan2_f(lwc1(normal + 8), vec2_length(V(normal)));
+        vec3_reflect(V(pv), V(pv), coll_hit_normal());
+        const float slope = atan2_f(coll_hit_normal().z, vec2_length(coll_hit_normal()));
         if (slope < u2f(0x3f32b8c2u) && sub_001f35d8() == -1) {  // (40 degrees)
             if (met != 0) {
                 vec3_scale(V(pv), V(pv), 1.2f);
@@ -68,15 +68,15 @@ void fly(uint32_t m, uint32_t pv, uint32_t from, uint32_t ahead, uint32_t apart)
     sw(m + 0x94, 0);
     sw(lwu(pv + 0x10) + 0x94, 0);
     if (segment_collide_v(V(from), V(ahead), 4, m, nullptr) != 0) {
-        vec3_sub(V(ahead), V(OV(0x00173e60)), V(ahead));
+        vec3_sub(V(ahead), coll_hit_point(), V(ahead));
         vec3_set_length(V(ahead), V(ahead), 0.215f);
         vec3_add(V(pos), V(pos), V(ahead));
         bounce(m, pv);
     }
     if (sphere_collide(pos, 0.2f, 4, m) != 0) {
-        vec3_sub(V(ahead), V(OV(0x00173e60)), V(OV(0x00173e70)));
+        vec3_sub(V(ahead), coll_hit_point(), coll_hit_pushed());
         vec3_set_length(V(ahead), V(ahead), 0.015f);
-        vec3_add(V(pos), V(OV(0x00173e70)), V(ahead));
+        vec3_add(V(pos), coll_hit_pushed(), V(ahead));
         bounce(m, pv);
     }
     const uint32_t list = lwu(lwu(pv + 0x10) + 0x78) + 0xb0;

@@ -192,7 +192,7 @@ void gml_class1238_update_l13(uint32_t m) {
             sh(rec + 0x1a, lhu(m + 0xa6));
             sb(rec + 0x19, 1);
             const uint32_t idx = lbu(o + 0xa4);
-            const uint32_t e = L13_ADDR(0x00178400) + (idx << 6);
+            const uint32_t e = coll_contact(idx);
             if (idx != 0xff && lwu(e + 0x34) == o) {  // (a hit of this frame on it: one more damage)
                 swc1(e + 0x2c, fpu_add(lwc1(e + 0x2c), 1.0f));
                 sb(e + 0x28, 1);

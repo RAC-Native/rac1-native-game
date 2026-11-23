@@ -16,6 +16,7 @@
 // range +0x24c, the pulse's phase +0x248, the joint's node +0x250.
 #include <game/ovl/shared_class827.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/carry_hooks.h>
 #include <game/ovl/enemy_749.h>
@@ -114,11 +115,11 @@ void class827_move(uint32_t m, uint32_t step, uint32_t on_path, float up, float 
     vec3_add(V(pos), V(pos), V(step));
     vec3_add(V(centre), V(pos), V(lift));
     if (radius < vec3_length(V(step)) && segment_collide_v(V(from), V(centre), 0, m, nullptr) != 0) {
-        lq_sq(centre, OV(0x00173e60));
+        lq_sq(centre, coll_hit_point_addr());
         vec3_sub(V(pos), V(centre), V(lift));
     }
     for (int32_t i = 0; i < 6 && sphere_collide(centre, radius, 4, m) != 0; ++i) {
-        lq_sq(centre, OV(0x00173e70));
+        lq_sq(centre, coll_hit_pushed_addr());
         vec3_sub(V(pos), V(centre), V(lift));
     }
     if (on_path != 0) path_push_out_2d(lwu(lwu(m + 0x78) + 0x1ec), pos, pos, 0.5f);
@@ -411,7 +412,7 @@ void class827_update(uint32_t m) {
     // speed (the vector at `step`)
     auto walk = [m, pv](uint32_t dir, uint32_t step, uint32_t on_path) {
         class827_ground(m);
-        class827_turn(m, OV(0x00173e80), dir);
+        class827_turn(m, coll_hit_normal_addr(), dir);
         vec3_set_length(V(step), V(m + 0xc0), fpu_mul(lwc1(pv + 0x1e4), frame_time()));
         class827_move(m, step, on_path, u2f(0x3e99999au), u2f(0x3e99999au));
     };
@@ -492,7 +493,7 @@ void class827_update(uint32_t m) {
     case 3:  // (0x002e8a30)
         vec3_sub(V(sp), V(target + 0x10), V(m + 0x10));
         class827_ground(m);
-        class827_turn(m, OV(0x00173e80), sp);
+        class827_turn(m, coll_hit_normal_addr(), sp);
         if (vec2_distance(V(HERO_POS), V(m + 0x10)) < lwc1(pv + 0x24c)) go(4, 4, 0, frame_scale_i(5));
         break;
     case 4: {  // (0x002e8a9c) along the path's points to its last, then a jump there

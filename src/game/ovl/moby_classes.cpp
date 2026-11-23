@@ -1,6 +1,7 @@
 // Ported overlay code: the update functions of the moby classes (moby +0x74, called by the
 // update pass 0x264848 through ovl_call_moby_fn) and their helpers.
 #include <cmath>
+#include <game/collision/collision.h>
 #include <game/ovl/debris_piece.h>
 #include <game/ovl/fx1471.h>
 #include <game/ovl/ovl_reloc.h>
@@ -1377,7 +1378,7 @@ void crate_stack_update(uint32_t m) {
             start.z = start.z + lwc1(p + 0xb0) * 0.75f;
             end.z = end.z + lwc1(p + 0x48);
             hit = segment_collide_v(start, end, 2, 0, nullptr) != 0;
-            ground = V(OV(0x00173e60));
+            ground = coll_hit_point();
         } else {
             ground = V(below + 0x10);
             ground.z = ground.z + 1.0f;
@@ -1780,17 +1781,17 @@ void bolt_update(uint32_t m) {
         sh(m + 0x34, lhu(m + 0x34) & 0xfffeu);
     }
     auto ground_frame = [m, p] {  // the frame of the ground hit 0x173e40 (normal +0x40)
-        V(p) = V(OV(0x00173e60));
+        V(p) = coll_hit_point();
         vec_clear(V(p + 0x10));
-        swc1(p + 0x18, atan2_f(lwc1(OV(0x00173e80)), lwc1(OV(0x00173e84))));
-        const float l = vec2_length(V(OV(0x00173e80)));
-        swc1(p + 0x14, atan2_f(lwc1(OV(0x00173e88)), l));
+        swc1(p + 0x18, atan2_f(coll_hit_normal().x, coll_hit_normal().y));
+        const float l = vec2_length(coll_hit_normal());
+        swc1(p + 0x14, atan2_f(coll_hit_normal().z, l));
     };
     auto ride = [m, p] {  // lying on a moby that carries things
-        const uint32_t on = lwu(OV(0x00173e58));
+        const uint32_t on = coll_hit_moby();
         if (on != 0 && moby_pvar_word2(on) != 0) {
-            sw(p + 0x5c, lwu(OV(0x00173e58)));
-            sub_00260668(m, lwu(OV(0x00173e58)), p, p + 0x10, p, p + 0x10);
+            sw(p + 0x5c, coll_hit_moby());
+            sub_00260668(m, coll_hit_moby(), p, p + 0x10, p, p + 0x10);
         }
     };
     switch (lbu(m + 0x20)) {
@@ -1850,7 +1851,7 @@ void bolt_update(uint32_t m) {
         if (sphere_collide(m + 0x10, r, 0x22, m) == 0) return;
         ground_frame();
         Vec4 n;
-        vec3_sub(n, V(m + 0x10), V(OV(0x00173e60)));
+        vec3_sub(n, V(m + 0x10), coll_hit_point());
         vec3_reflect(V(p + 0x20), V(p + 0x20), n);
         if (vec2_distance(V(m + 0x10), V(0x0013f3d0)) < lwc1(P + 0x2288) && abs_f(lwc1(m + 0x18) - lwc1(P + 0x88)) < lwc1(P + 0x228c)) {
             if (lw(P + 0x22a8) == 0) return;
@@ -1861,7 +1862,7 @@ void bolt_update(uint32_t m) {
         }
         const float flat = u2f(0x3f490fdbu);
         if (!(atan2_f(n.z, vec2_length(n)) < flat)) return;
-        if (!(atan2_f(lwc1(OV(0x00173e88)), vec2_length(V(OV(0x00173e80)))) < flat)) return;
+        if (!(atan2_f(coll_hit_normal().z, vec2_length(coll_hit_normal())) < flat)) return;
         sb(m + 0x20, 2);
         const uint32_t t2 = static_cast<uint32_t>(float_to_int(frame_scale_f(rand_range_f(30.0f, 40.0f))));
         sb(p + 0x56, t2);
@@ -2106,7 +2107,7 @@ void wrench_pull_pickups(uint32_t m) {
 // orig: 0x002a8028
 void wrench_hit_burst(uint32_t m) {
     Vec4 dir;  // the view vector, then (x, y, z only) each spark's direction
-    vec3_sub(dir, V(OV(0x00166dc0)), V(OV(0x00173e60)));
+    vec3_sub(dir, V(OV(0x00166dc0)), coll_hit_point());
     const float pi = u2f(0x40490fdbu);
     const float pitch = -atan2_f(vec2_length(dir), dir.z);
     // (the original also takes atan2_f(dir.x, dir.y) here and drops it)
@@ -2116,13 +2117,13 @@ void wrench_hit_burst(uint32_t m) {
         const float a = angle_add(rand_range_signed_f(0.0f, pi), pitch);
         vec_from_spherical_v(dir, u2f(0x3e4ccccdu), a, b);
         vec3_scale(at, dir, rand_range_f(1.0f, 3.0f));
-        vec3_add(at, at, V(OV(0x00173e60)));
+        vec3_add(at, at, coll_hit_point());
         spawn_particle_13_v(at, dir);
     }
     for (int32_t i = 8; i >= -1; --i) {
-        at.x = lwc1(OV(0x00173e60)) + rand_range_signed_f(0.0f, 0.1f);
-        at.y = lwc1(OV(0x00173e64)) + rand_range_signed_f(0.0f, 0.1f);
-        at.z = lwc1(OV(0x00173e68)) + rand_range_signed_f(0.0f, 0.1f);
+        at.x = coll_hit_point().x + rand_range_signed_f(0.0f, 0.1f);
+        at.y = coll_hit_point().y + rand_range_signed_f(0.0f, 0.1f);
+        at.z = coll_hit_point().z + rand_range_signed_f(0.0f, 0.1f);
         const float b = angle_add(rand_range_signed_f(0.0f, pi), pitch);
         const float a = angle_add(rand_range_signed_f(0.0f, pi), pitch);
         vec_from_spherical_v(dir, u2f(0x3d4ccccdu), a, b);
@@ -2130,13 +2131,13 @@ void wrench_hit_burst(uint32_t m) {
         const int32_t n = rand_range(lo, frame_scale_i(0x14));
         spawn_particle_15_v(at, dir, 0x4f007fffu, 0x1fffffffu, static_cast<uint32_t>(n), 1, 20000.0f);
     }
-    if (lh(lwu(m + 0x78) + 0x78) == 0x2b) spark_pairs(OV(0x00173e60), 10);
+    if (lh(lwu(m + 0x78) + 0x78) == 0x2b) spark_pairs(coll_hit_point_addr(), 10);
 }
 
 // Whether the moby hit last (0x173e58) is "soft" (its pvar record +9 == 1).
 // orig: 0x002a7d90
 int32_t hit_moby_soft() {
-    const uint32_t h = lwu(OV(0x00173e58));
+    const uint32_t h = coll_hit_moby();
     const uint32_t r = h != 0 ? moby_pvar_word0(h) : 0u;
     if (r == 0) return 0;
     return lbu(r + 9) == 1 ? 1 : 0;
@@ -2145,7 +2146,7 @@ int32_t hit_moby_soft() {
 // Whether the moby hit last (0x173e58) has flag 2 in its pvar record +0x1e.
 // orig: 0x002a7de0
 int32_t hit_moby_flag2() {
-    const uint32_t r = moby_pvar_word0(lwu(OV(0x00173e58)));
+    const uint32_t r = moby_pvar_word0(coll_hit_moby());
     if (r == 0) return 0;
     return (lhu(r + 0x1e) & 2u) != 0 ? 1 : 0;
 }
@@ -2277,7 +2278,7 @@ void wrench_update(uint32_t m) {
             vec3_add(aim, aim, V(OV(0x00166dc0)));
             if (segment_collide_v(V(OV(0x00166dc0)), aim, 4, lwu(P + 0x2080), nullptr) != 0) {
                 sh(p + 0x7e, hs0);
-                V(p + 0x50) = V(OV(0x00173e60));
+                V(p + 0x50) = coll_hit_point();
             }
         }
         draw_callback_add(OVF(0x002a7780), m);
@@ -2378,18 +2379,18 @@ void wrench_update(uint32_t m) {
             throw_turn_scale_v(reach);
             vec3_add(a1, a1, reach);
             if (lw(P + 0xa64) == 0 && segment_collide_v(a0, a1, 2, 0, nullptr) != 0 && sub_001f35d8() != 0) {
-                const uint32_t h = lwu(OV(0x00173e58));
+                const uint32_t h = coll_hit_moby();
                 if (h == 0 || moby_not_crate_or_1f6(h) != 0) {
                     sw(P + 0xa64, 1);
                     moby_sound_start(2, 0, m);
                     wrench_hit_burst(m);
-                    if (lw(OV(0x00173e58)) != 0) {
+                    if (static_cast<int32_t>(coll_hit_moby()) != 0) {
                         Vec4 d;
                         d.x = cos_vu(yaw);
                         d.y = sin_vu(yaw);
                         d.z = 0.0f;
                         d.w = 0.0f;  // (an unset stack word in the original)
-                        sub_00259bc8_v(lwu(OV(0x00173e58)), m, 0x10000, OV(0x00173e60), d, 1.0f);
+                        sub_00259bc8_v(coll_hit_moby(), m, 0x10000, coll_hit_point_addr(), d, 1.0f);
                     }
                 }
             }
@@ -2427,12 +2428,12 @@ void wrench_update(uint32_t m) {
             rec[7] = f2u(static_cast<float>(strength));
             rec[8] = 1;
             if (swept_collide(V(P + 0x9f0), V(P + 0xa00), V(P + 0xa10), V(P + 0xa20), lwu(P + 0x2080), rec, 5) != 0) {
-                const uint32_t h = lwu(OV(0x00173e58));
+                const uint32_t h = coll_hit_moby();
                 if (h != 0) {
                     if (hit_moby_flag2() != 0) {
                         hard = true;
                     } else if (lw(P + 0xa64) == 0) {
-                        const uint32_t h2 = lwu(OV(0x00173e58));
+                        const uint32_t h2 = coll_hit_moby();
                         if (!(h2 != 0 && lw(h2 + 0x24) != 0 && lh(lwu(h2 + 0x24) + 0x46) == 0x14)) {
                             sw(P + 0xa64, 1);
                             moby_sound_start(hit_moby_soft(), 0, m);
@@ -2449,7 +2450,7 @@ void wrench_update(uint32_t m) {
             if (lw(P + 0x208c) == 0xf) r = u2f(0x3f333333u);
             if (lw(P + 0x2084) == 0x14) r = u2f(0x3ef0a3d7u);
             if (mobys_in_sphere_v(at, r, 0, lwu(P + 0x2080), rec) != 0) {
-                const uint32_t h = lwu(OV(0x00177f00));
+                const uint32_t h = coll_hit_list_at(0);
                 if (!(h != 0 && lw(h + 0x24) != 0 && lh(lwu(h + 0x24) + 0x46) == 0x12)) {
                     if (hit_moby_flag2() != 0) {
                         hard = true;
@@ -2463,7 +2464,7 @@ void wrench_update(uint32_t m) {
         }
         if (!hard) return;
         hero_set_state(0x21, 1);
-        const uint32_t h = lwu(OV(0x00173e58));
+        const uint32_t h = coll_hit_moby();
         if (h != 0) {
             swc1(P + 0xa68, atan2_f(lwc1(P + 0x80) - lwc1(h + 0x10), lwc1(P + 0x84) - lwc1(h + 0x14)));
         } else {
@@ -2537,8 +2538,8 @@ void wrench_update(uint32_t m) {
     }
     bool touched = false;
     if (segment_collide_v(before, V(m + 0x10), 2, 0, nullptr) != 0 && sub_001f35d8() != 0) {
-        const uint32_t h = lwu(OV(0x00173e58));
-        if (h == 0 || moby_in_range_class_500(h) == 0) touched = lw(OV(0x00173e5c)) != 0;
+        const uint32_t h = coll_hit_moby();
+        if (h == 0 || moby_in_range_class_500(h) == 0) touched = coll_hit_flags_signed() != 0;
     }
     if (touched || lh(p + 0x76) != 0) {
         sh(p + 0x76, 0);
@@ -2573,13 +2574,13 @@ void wrench_update(uint32_t m) {
         if (mobys_in_sphere_v(tip, u2f(0x3ecccccdu), 0, lwu(P + 0x2080), rec) == 0) return;
     }
     if (lw(P + 0xa64) != 0) return;
-    const uint32_t h = lwu(OV(0x00173e58));
+    const uint32_t h = coll_hit_moby();
     if (h == 0) return;
     if (lw(h + 0x24) != 0 && lh(lwu(h + 0x24) + 0x46) == 0x14) return;
     const uint32_t r = moby_pvar_word0(h);
     if (r != 0 && !(lh(r + 0x1c) < 2) && lh(r + 0x14) == static_cast<int32_t>(rec[6] >> 16)) return;
     Vec4 mid;
-    vec4_lerp_v(mid, tip, V(lwu(OV(0x00173e58)) + 0x10), 0.5f);
+    vec4_lerp_v(mid, tip, V(coll_hit_moby() + 0x10), 0.5f);
     spark_pairs_v(mid, 5);
     sw(p + 0x6c, static_cast<uint32_t>(frame_scale_i(0x1e)));
     sw(P + 0xa64, 1);
@@ -2683,8 +2684,8 @@ void moby_floor_band(uint32_t m) {
     Vec4 up = V(m + 0x10);
     up.z = up.z + 0.5f;
     if (segment_collide_v(up, down, 0x22, 0, nullptr) != 0) {
-        swc1(m + 0x84, lwc1(OV(0x00173e68)) - u2f(0x3e4ccccdu));
-        swc1(m + 0x88, lwc1(OV(0x00173e68)) + u2f(0x3e4ccccdu));
+        swc1(m + 0x84, coll_hit_point().z - u2f(0x3e4ccccdu));
+        swc1(m + 0x88, coll_hit_point().z + u2f(0x3e4ccccdu));
     } else {
         sw(m + 0x88, 0);
         sw(m + 0x84, 0);
@@ -3035,9 +3036,9 @@ uint32_t enemy_physics(uint32_t m, uint32_t p) {
     vec3_add(probe, to, V(p));
     const int32_t n = mobys_in_sphere_v(probe, int_to_float(lw(p + 0x20)) * u2f(0x3a8ccccdu), 0x10, m, nullptr);
     for (int32_t i = 0; i < n; ++i) {
-        const uint32_t h = lwu(OV(0x00177f00) + static_cast<uint32_t>(i) * 4);
+        const uint32_t h = coll_hit_list_at(i);
         if (moby_in_range_class_500(h) != 0) {
-            sub_00259bc8_v(lwu(OV(0x00177f00) + static_cast<uint32_t>(i) * 4), m, 0x10000, m + 0x10, V(p), 1.0f);
+            sub_00259bc8_v(coll_hit_list_at(i), m, 0x10000, m + 0x10, V(p), 1.0f);
         } else if ((lwu(p + 0x24) & 0x20u) != 0 && lh(p + 0x3e) == 2) {
             r |= 0x100;
         }
@@ -3045,18 +3046,18 @@ uint32_t enemy_physics(uint32_t m, uint32_t p) {
     const float k = u2f(0x3a800000u);
     if (static_cast<float>(lw(p + 0x20)) * k < vec3_length(V(p))) {
         segment_collide_v(from, to, 0x24, m, nullptr);
-        to = V(OV(0x00173e60));
+        to = coll_hit_point();
     }
     if (sphere_collide_v(to, int_to_float(lw(p + 0x20)) * k, 0x24, m) != 0) {
         r |= 2;
-        V(m + 0x10) = V(OV(0x00173e70));
+        V(m + 0x10) = coll_hit_pushed();
         swc1(m + 0x18, lwc1(m + 0x18) - lwc1(p + 0x28));
         Vec4 nrm, push;
-        vec3_set_length(nrm, V(OV(0x00173e80)), 1.0f);
+        vec3_set_length(nrm, coll_hit_normal(), 1.0f);
         if (u2f(0x3f34fdf4u) <= nrm.z) {
             const float d = vec3_dot(V(p), nrm);
             if (d < 0.0f) {
-                if (lw(OV(0x00173e58)) == 0 || 0 < lw(OV(0x00173e5c))) {
+                if (static_cast<int32_t>(coll_hit_moby()) == 0 || 0 < coll_hit_flags_signed()) {
                     r |= 1;
                     sh(p + 0x3e, 2);
                 }
@@ -3254,16 +3255,19 @@ int32_t walker_step_v(uint32_t m, Vec4& from, Vec4& to, uint32_t flags, float up
     lift.z = up;
     vec3_add(a, from, lift);
     vec3_add(b, a, ahead);
-    if (ok != 0 && segment_collide_v(a, b, f2 | 0x24u, m, nullptr) != 0 && 0 < lw(OV(0x00173e5c))) {
-        const uint32_t n = OV(0x00173e80);
-        if (slope <= atan2_f(lwc1(n + 8), vec2_length(V(n)))) {
-            sw(n + 8, 0);
-            vec3_normalize_vu(V(n), V(n));
-            const float k = (-d.x * lwc1(n)) - d.y * lwc1(n + 4);
+    if (ok != 0 && segment_collide_v(a, b, f2 | 0x24u, m, nullptr) != 0 && 0 < coll_hit_flags_signed()) {
+        if (slope <= atan2_f(coll_hit_normal().z, vec2_length(coll_hit_normal()))) {
+            coll_hit_clear_normal_z();
+            Vec4 n = coll_hit_normal();
+            vec3_normalize_vu(n, n);
+            coll_hit_set_normal(n);
+            const float k = (-d.x * coll_hit_normal().x) - d.y * coll_hit_normal().y;
             if (0.0f < k) {
-                vec3_scale(V(n), V(n), k);
+                n = coll_hit_normal();
+                vec3_scale(n, n, k);
+                coll_hit_set_normal(n);
                 ok = 0;
-                vec3_add(d, d, V(n));
+                vec3_add(d, d, coll_hit_normal());
             }
         }
         vec3_add(to, from, d);
@@ -3274,9 +3278,9 @@ int32_t walker_step_v(uint32_t m, Vec4& from, Vec4& to, uint32_t flags, float up
             Vec4 c = to;
             c.z = c.z + h;
             if (sphere_collide_v(c, r, 0x24, m) == 0) break;
-            const float ang = atan2_f(vec2_distance(to, V(OV(0x00173e60))), lwc1(OV(0x00173e68)) - to.z);
-            if (lw(OV(0x00173e58)) != 0 || slope < ang) {
-                to = V(OV(0x00173e70));
+            const float ang = atan2_f(vec2_distance(to, coll_hit_point()), coll_hit_point().z - to.z);
+            if (static_cast<int32_t>(coll_hit_moby()) != 0 || slope < ang) {
+                to = coll_hit_pushed();
                 ok = 0;
                 to.z = to.z - h;
             }
@@ -3390,10 +3394,10 @@ void chunk_update(uint32_t m) {
     sh(p + 0xe, static_cast<uint16_t>(t));
     if (due == 0 || lh(p + 0xc) == 0) return;
     if (sphere_collide_v(V(m + 0x10), lwc1(p + 8), 2, 0) == 0) return;
-    if (!(vec3_dot(V(p + 0x10), V(OV(0x00173e80))) < 0.0f)) return;
-    V(m + 0x10) = V(OV(0x00173e70));
+    if (!(vec3_dot(V(p + 0x10), coll_hit_normal()) < 0.0f)) return;
+    V(m + 0x10) = coll_hit_pushed();
     sh(p + 0xc, lhu(p + 0xc) - 1u);
-    vec3_reflect(V(p + 0x10), V(p + 0x10), V(OV(0x00173e80)));
+    vec3_reflect(V(p + 0x10), V(p + 0x10), coll_hit_normal());
     vec3_scale(V(p + 0x10), V(p + 0x10), 0.75f);
     swc1(p + 0x20, 0.0f);
     const float deg = u2f(0x3c8efa35u);
@@ -3526,7 +3530,6 @@ int32_t crate_ray_down(uint32_t m, float above, uint32_t ignore) {
 // stack the platform ride and the path state (the paths 0x1b04b0[pvars +0xc0]) are handed up.
 // orig: 0x002cfcb8
 void crate_settle(uint32_t m0) {
-    constexpr OvConst<0x00173e40u> HIT{};
     uint32_t p = lwu(m0 + 0x78);
     const uint32_t grp = lbu(m0 + 0x21);
     sw(p + 0xac, lwu(p + 0xac) | 4u);
@@ -3537,9 +3540,9 @@ void crate_settle(uint32_t m0) {
             sw(p + 0xa4, 0);
             return;
         }
-        const uint32_t hit = lwu(HIT + 0x18);
+        const uint32_t hit = coll_hit_moby();
         if (hit == 0) {
-            swc1(m + 0x18, lwc1(HIT + 0x28));
+            swc1(m + 0x18, coll_hit_point().z);
             sw(p + 0xa4, 0);
             return;
         }
@@ -3561,8 +3564,8 @@ void crate_settle(uint32_t m0) {
         if (moby_in_range_class_500(m) != 0 && crate_settle_start(m, p)) {
             if (crate_ray_down(m, 0.5f, 0) == 0) {
                 sw(p + 0xa4, 0);
-            } else if (const uint32_t hit = lwu(HIT + 0x18); hit == 0) {
-                swc1(m + 0x18, lwc1(HIT + 0x28));
+            } else if (const uint32_t hit = coll_hit_moby(); hit == 0) {
+                swc1(m + 0x18, coll_hit_point().z);
                 sw(p + 0xa4, 0);
             } else if (moby_in_range_class_500(hit) == 0 && lhu(hit + 0xa6) - 0x128u >= 2u) {
                 sw(p + 0xa4, 0);
@@ -3575,13 +3578,13 @@ void crate_settle(uint32_t m0) {
             } else if (moby_in_range_class_500(hit) == 0) {
                 sw(p + 0xcc, 0);
                 sw(p + 0xa4, 0);
-                swc1(m + 0x18, lwc1(HIT + 0x28));
+                swc1(m + 0x18, coll_hit_point().z);
             } else {  // on another crate of the group
-                sw(p + 0xa4, lwu(HIT + 0x18));
-                const uint32_t below = lwu(HIT + 0x18);
+                sw(p + 0xa4, coll_hit_moby());
+                const uint32_t below = coll_hit_moby();
                 lq_sq(m + 0x10, below + 0x10);
                 vec3_add(V(m + 0x10), V(m + 0x10), V(below + 0xe0));
-                const uint32_t bp = lwu(lwu(HIT + 0x18) + 0x78);
+                const uint32_t bp = lwu(coll_hit_moby() + 0x78);
                 if (moby_in_range_class_500(m) != 0) {
                     sw(bp + 0xa0, m);
                 } else {
@@ -3599,13 +3602,13 @@ void crate_settle(uint32_t m0) {
         if (moby_in_range_class_500(m2) != 0 && lwu(p + 0xa4) == 0) {
             const float up = lwc1(p + 0xb0) * 0.5f;
             if (crate_ray_down(m2, up, c40) != 0) {
-                const uint32_t hit = lwu(HIT + 0x18);
+                const uint32_t hit = coll_hit_moby();
                 if (hit != 0 && moby_pvar_word2(hit) != 0) {
                     if (c40 != 0) sh(c40 + 0x36, 0x7f80);
-                    sub_00260668(0, lwu(HIT + 0x18), m2 + 0x10, m2 + 0x40, p + 0xd0, p + 0xe0);
+                    sub_00260668(0, coll_hit_moby(), m2 + 0x10, m2 + 0x40, p + 0xd0, p + 0xe0);
                     sw(p + 0xf4, 0);
                     sw(p + 0xac, lwu(p + 0xac) | 8u);
-                    sw(p + 0xf0, lwu(HIT + 0x18));
+                    sw(p + 0xf0, coll_hit_moby());
                 }
             }
             c40 = m2;

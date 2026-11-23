@@ -22,6 +22,7 @@
 // +0x30c.
 #include <game/ovl/shared_class857.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/blarg_part2.h>
 #include <game/ovl/enemy_749.h>
@@ -237,7 +238,7 @@ void class857_assign() {
             lq_sq(to, c + 0x10);
             swc1(from + 8, fpu_add(lwc1(from + 8), 0.25f));
             swc1(to + 8, fpu_add(lwc1(to + 8), 0.25f));
-            if (segment_collide_v(V(from), V(to), 2, bot, nullptr) != 0 && lwu(OV(0x00173e40) + 0x18) != c) continue;
+            if (segment_collide_v(V(from), V(to), 2, bot, nullptr) != 0 && coll_hit_moby() != c) continue;
             const float score = class857_score(bot, c, 5);
             int32_t at = 0;
             for (; at < lh(bpv + 0x192); ++at) {
@@ -566,7 +567,7 @@ void follow(uint32_t m, uint32_t pv, Frame& f, float dist, float height) {
         const float near = vec2_distance(V(m + 0x10), V(HERO_POS));
         const float below = abs_f(fpu_sub(lwc1(m + 0x18), lwc1(HERO_POS + 0x228)));
         floor_probe_v(0.5f, V(m + 0x10), 0);
-        const uint32_t under = lwu(OV(0x00173e58));
+        const uint32_t under = coll_hit_moby();
         if (under != 0 && lh(under + 0xa6) == SLOT_945) lq_sq(m + 0x10, f.buf60);
         // stuck: every 14 frames of walking, within its reach of where it was
         bool stuck = false;
@@ -649,7 +650,7 @@ void attack(uint32_t m, uint32_t pv, Frame& f) {
             lq_sq(f.buf80, f.buf70);
             swc1(f.buf70, fpu_add(lwc1(f.buf70), fpu_mul(cos_vu(lwc1(m + 0x48)), on)));
             swc1(f.buf70 + 4, fpu_add(lwc1(f.buf70 + 4), fpu_mul(sin_vu(lwc1(m + 0x48)), on)));
-            if (segment_collide_v(V(f.buf70), V(f.buf80), 0, m, nullptr) != 0 && lwu(OV(0x00173e58)) == lwu(pv + 0x174))
+            if (segment_collide_v(V(f.buf70), V(f.buf80), 0, m, nullptr) != 0 && coll_hit_moby() == lwu(pv + 0x174))
                 sb(m + 0xbc, 2);
         }
         break;
@@ -777,9 +778,9 @@ void tail(uint32_t m, uint32_t pv, Frame& f) {
                     lq_sq(f.buf50, m + 0x10);
                     swc1(f.buf50 + 8, fpu_add(lwc1(f.buf50 + 8), lwc1(pv + 0x34)));
                     if (sphere_collide(f.buf50, fpu_mul(int_to_float(lw(pv + 0x30)), u2f(0x3a800000u)), 6, m) == 0) break;
-                    const float flat = vec2_length(V(OV(0x00173e80)));
-                    if (u2f(0x3f060a92u) < atan2_f(lwc1(OV(0x00173e88)), flat)) {  // (the normal 30 degrees up or more)
-                        lq_sq(m + 0x10, OV(0x00173e70));
+                    const float flat = vec2_length(coll_hit_normal());
+                    if (u2f(0x3f060a92u) < atan2_f(coll_hit_normal().z, flat)) {  // (the normal 30 degrees up or more)
+                        lq_sq(m + 0x10, coll_hit_pushed_addr());
                         swc1(m + 0x18, fpu_sub(lwc1(m + 0x18), lwc1(pv + 0x34)));
                     }
                 }
@@ -814,15 +815,15 @@ void tail(uint32_t m, uint32_t pv, Frame& f) {
             return;
         }
     }
-    const uint32_t under = lwu(OV(0x00173e58));
-    sw(pv + 0x19c, under != 0 && lw(OV(0x00173e5c)) > 0 ? under : 0u);
+    const uint32_t under = coll_hit_moby();
+    sw(pv + 0x19c, under != 0 && coll_hit_flags_signed() > 0 ? under : 0u);
     lq_sq(f.buf40, m + 0x10);
     const float low = fpu_sub(lwc1(f.buf40 + 8), 2.0f);
     swc1(f.buf40 + 8, low < 0.5f ? 0.5f : low);
     lq_sq(f.buf50, m + 0x10);
     swc1(f.buf50 + 8, fpu_add(lwc1(f.buf50 + 8), 1.0f));
     if (segment_collide_v(V(f.buf50), V(f.buf40), 0, m, nullptr) != 0) {
-        const uint32_t o = lwu(OV(0x00173e58));
+        const uint32_t o = coll_hit_moby();
         if (o != 0) {
             const int32_t cls = lh(o + 0xa6);
             if (cls == 0x409 || cls == CLASS || moby_in_range_class_500(o) != 0) lq_sq(m + 0x10, f.start);

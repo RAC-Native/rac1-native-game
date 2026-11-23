@@ -9,6 +9,7 @@
 // shared_gadget_pickups.h.
 #include <game/ovl/shared_gadget_pickups.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/cutscene.h>
@@ -50,7 +51,7 @@ void gadget_pickup_update(uint32_t m) {
         swc1(m + 0x44, u2f(0x40490fdbu));  // (pi)
         swc1(m + 0x40, u2f(0x3fc90fdbu));  // (pi / 2)
         sb(m + 0x20, 1);
-        swc1(m + 0x18, fpu_add(lwc1(OV(0x00173e68)), u2f(0x3e4ccccdu)));  // (0.2 above the floor)
+        swc1(m + 0x18, fpu_add(coll_hit_point().z, u2f(0x3e4ccccdu)));  // (0.2 above the floor)
         return;
     case 1:  // (L2:0x002ea30c) spinning; every tenth frame: the hero by it, its scene
         swc1(m + 0x48, angle_add(lwc1(m + 0x48), spin));

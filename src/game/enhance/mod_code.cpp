@@ -4,6 +4,7 @@
 
 #include <host/level_slots.h>
 #include <runtime/iop/snd989_iop.h>
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/enhance/class_profiles.h>
 #include <game/enhance/hero_modes.h>
@@ -321,7 +322,7 @@ int api_collide_line(const float from[3], const float to[3], float hit[3]) {
     swc1(SCRATCH + 0x1c, 1.0f);
     const int32_t r = segment_collide(SCRATCH, SCRATCH + 0x10, 0, 0, 0);
     if (r != 0 && hit != nullptr)
-        for (int i = 0; i < 3; ++i) hit[i] = lwc1(OV(0x00173e60) + 4 * static_cast<uint32_t>(i));
+        for (int i = 0; i < 3; ++i) hit[i] = coll_hit_point_lane(static_cast<uint32_t>(i));
     return r != 0 ? 1 : 0;
 }
 
@@ -831,14 +832,13 @@ int api_collide_ray(const float from[3], const float to[3], uint32_t ignore, uin
     if (r == 0) return 0;
     rac1_ray_hit h{};
     h.size = sizeof h;
-    const uint32_t outb = OV(0x00173e40);
     for (uint32_t k = 0; k < 3; ++k) {
-        h.point[k] = lwc1(outb + 0x20 + 4 * k);
-        h.normal[k] = lwc1(outb + 0x40 + 4 * k);
+        h.point[k] = coll_hit_point_lane(k);
+        h.normal[k] = coll_hit_normal_lane(k);
     }
     const float nl = std::sqrt(h.normal[0] * h.normal[0] + h.normal[1] * h.normal[1] + h.normal[2] * h.normal[2]);
     for (float& c : h.normal) c = nl > 0.0f && std::isfinite(nl) ? c / nl : 0.0f;  // (the test leaves it unscaled)
-    const uint32_t m = lwu(outb + 0x18);
+    const uint32_t m = coll_hit_moby();
     h.moby = is_moby(m) ? m : 0;
     h.object = api_object_of_moby(h.moby);
     fill_out(out, h);

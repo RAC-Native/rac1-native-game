@@ -7,6 +7,7 @@
 // integer, 1024ths), its offset +0x10, its spin +0x20..+0x28, its velocity +0x30.
 #include <game/ovl/shared_class344.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ee_regs.h>
 #include <game/ovl/ovl.h>
@@ -60,13 +61,11 @@ void class344_update(uint32_t m) {
     }
     const float radius = fpu_mul(int_to_float(lw(pv + 0xc)), u2f(0x3a800000u));
     if (sphere_collide(centre, radius, 0, m) != 0) {
-        const uint32_t hit = OV(0x00173e40);
-        const uint32_t other = lwu(hit + 0x18);
+        const uint32_t other = coll_hit_moby();
         if (other == 0 || other != lwu(pv + 8)) {
-            const uint32_t normal = hit + 0x40;
             sw(pv, 0);
-            if (vec3_dot(V(vel), V(normal)) < 0.0f) {
-                vec3_reflect(V(vel), V(vel), V(normal));
+            if (vec3_dot(V(vel), coll_hit_normal()) < 0.0f) {
+                vec3_reflect(V(vel), V(vel), coll_hit_normal());
                 vec3_scale(V(vel), V(vel), 0.5f);
             }
         }

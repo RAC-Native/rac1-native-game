@@ -1,5 +1,6 @@
 // Orxon's own moby classes (level 10): class 1229 (a flying gun drone on its paths) and its frame helper. Header
 // orxon_classes.h, registered in orxon_mobys.cpp; level 10's own addresses (`orig: L10:`).
+#include <game/collision/collision.h>
 #include <game/level/level_data.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/orxon_classes.h>
@@ -101,7 +102,7 @@ void aim_point(uint32_t m, uint32_t pv, uint32_t target, uint32_t frame) {
         vec3_add_inplace(V(aim), V(step));
         swc1(aim + 8, floor_probe_v(0.5f, V(aim), 0));
     }
-    sw(OV(0x00173e58), target);
+    coll_hit_set_moby(target);
     swc1(aim + 8, fpu_add(lwc1(aim + 8), u2f(0x3e4ccccdu)));
 }
 
@@ -230,7 +231,7 @@ void orx_class1229_update_l10(uint32_t m) {
             swc1(m + 0x58, lwc1(L10_ADDR(0x00161eec)));
         }
         if (lbu(m + 0x52) == 3) {
-            if (lw(pv + 0x114) != 2 && lwu(OV(0x00173e58)) == target) {
+            if (lw(pv + 0x114) != 2 && coll_hit_moby() == target) {
                 const int32_t at1 = anim_crossed(m, 1.0f);
                 const int32_t at16 = anim_crossed(m, 16.0f);
                 if (at1 != 0 || at16 != 0) {  // a shot from its hand (joint 1 at the first cue, 0 at the second)

@@ -445,7 +445,7 @@ void umb_class1059_update_l7(uint32_t m) {
                 swc1(chain + 0x0, fpu_add(lwc1(chain + 0x0), dx));
                 const float dy = rand_range_f(u2f(0xbe19999au), u2f(0x3e19999au));
                 swc1(chain + 0x4, fpu_add(lwc1(chain + 0x4), dy));
-                swc1(chain + 0x8, surface_height(OV(0x00173e60), 0));
+                swc1(chain + 0x8, surface_height(coll_hit_point_addr(), 0));
                 spawn_particle_2d(chain, 0, 0xffffffffu, size, 5250.0f);
             }
         }

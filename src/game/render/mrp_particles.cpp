@@ -1,6 +1,7 @@
 // The MRP's ambient particles (see mrp_particles.h; docs/particles.md). Host code, an enhancement: nothing here is the game's.
 #include <game/render/mrp_particles.h>
 
+#include <game/collision/collision.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/render/mrp_fx.h>
@@ -1535,7 +1536,7 @@ void mrp_particles_fx_capture() {
     const bool mat_rain = g_surface_detail > 0 && g_modern_shadows != 0 && mrp_user_rain();
     if (g_ambient_particles > 0 || mat_rain) {  // the level's lava ("source lava") and sky, once per level: its collision read here, on the game's thread
         const int level = draw_lw(0x0015ed84);
-        const uint32_t tree = draw_lwu(OV(0x00173e40));
+        const uint32_t tree = draw_lwu(coll_tree_addr());
         // (read when the level, the tree's place or its index changed and then stayed so for 30 frames: not while a level loads)
         uint32_t fp = level * 2654435761u ^ tree;
         if (tree >= 0x100000u && tree + 0x100u < ee_game_ram_end())

@@ -2,6 +2,7 @@
 #include <game/enhance/section_world.h>
 
 #include <formats/scene_wad.h>
+#include <game/collision/collision.h>
 #include <game/enhance/session.h>
 #include <io/asset_paths.h>
 #include <game/math/vecmath.h>
@@ -665,7 +666,7 @@ void world_probe_frame(uint64_t frame) {
         }
     if (list != nullptr) std::fclose(list);
     std::printf("[probe] frame %llu, the collision %08x: %d points, %d hit the floor, their heights' sum %.3f, hash %016llx\n", static_cast<unsigned long long>(frame),
-                lwu(OV(0x00173e40)), n, hits, sum, static_cast<unsigned long long>(h));
+                coll_tree(), n, hits, sum, static_cast<unsigned long long>(h));
 }
 
 namespace {

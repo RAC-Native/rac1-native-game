@@ -7,6 +7,7 @@
 // that fired last (0 / 1).
 #include <game/ovl/shared_class848.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -40,7 +41,7 @@ void sound_end(uint32_t slot, uint32_t owner) {
 
 // what the last collision met ends the burst: the hero's moby or a moby of class 0x1df
 bool hit_ends(uint32_t m) {
-    const uint32_t hit = lwu(OV(0x00173e58));
+    const uint32_t hit = coll_hit_moby();
     if (hit == 0) return false;
     if (hit == lwu(0x001413d0) || lh(hit + 0xa6) == 0x1df) {
         sb(m + 0x20, 2);
@@ -194,12 +195,12 @@ void class848_update(uint32_t m) {
         class848_bullet(lwu(pv + 0x10), spark, dir, push, frame_scale_i(0x2d));
         if (segment_collide_v(V(gun), V(far), 0, lwu(pv + 0x10), nullptr) != 0) {
             // ten sparks off the scenery where the line of fire meets it
-            lq_sq(gun, OV(0x00173e60));
+            lq_sq(gun, coll_hit_point_addr());
             vec3_set_length(V(out), V(out), fpu_mul(lwc1(0x0015ed6c), 10.0f));
             for (int32_t i = 0; i < 10; ++i) {
                 rand_cube(dir);
                 lq_sq(spark, dir);
-                vec3_reflect(V(dir), V(out), V(OV(0x00173e80)));
+                vec3_reflect(V(dir), V(out), coll_hit_normal());
                 vec3_set_length(V(spark), V(spark), fpu_mul(vec3_length(V(dir)), 0.5f));
                 vec3_add(V(dir), V(dir), V(spark));
                 const float ft = lwc1(0x0015ed6c);

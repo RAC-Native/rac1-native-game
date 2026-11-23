@@ -187,7 +187,7 @@ void gml_2ed158_l13(uint32_t m, uint32_t pv) {
     if (n == 0) return;
     // (the original's copy of the list, below its frame)
     const uint32_t list = ee_stack_ptr() -= ((static_cast<uint32_t>(n) << 2) + 15u) & ~15u;
-    libc_memcpy(list, L13_ADDR(0x00178200), static_cast<uint32_t>(n) << 2);
+    libc_memcpy(list, coll_hit_list(), static_cast<uint32_t>(n) << 2);
     for (int32_t i = 0; i < n; ++i) {
         const uint32_t o = lwu(list + (static_cast<uint32_t>(i) << 2));
         if (o == 0 || !alive(o)) continue;
@@ -210,7 +210,7 @@ void gml_2ed158_l13(uint32_t m, uint32_t pv) {
         vec3_add(V(at), V(at), V(m + 0x10));
         const int32_t k = mobys_in_sphere(at, u2f(0x3f333333u), 0x10, m, 0);
         for (int32_t j = 0; j < k; ++j)
-            if (lwu(L13_ADDR(0x00178200) + (static_cast<uint32_t>(j) << 2)) == o) push_without_direction(o, m, 0x10001, at, 1.0f);
+            if (coll_hit_list_at(j) == o) push_without_direction(o, m, 0x10001, at, 1.0f);
     }
     ee_stack_ptr() = sp;  // (the list given back; the frame freed on return)
 }

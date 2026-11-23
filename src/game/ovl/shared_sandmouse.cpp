@@ -7,6 +7,7 @@
 // shooter +0x10, its life +0x14.
 #include <game/ovl/shared_sandmouse.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/lib/libc.h>
 #include <game/ovl/batalia_mobys.h>
@@ -118,7 +119,7 @@ void class1633_update(uint32_t m) {
         moby_retire(m);
     } else if (segment_collide_v(V(was), V(pos), 0, lwu(pv + 0x10), static_cast<const uint32_t*>(ee_ram_ptr(rec))) != 0) {
         if (sub_001f35d8() != 0) {
-            lq_sq(pos, OV(0x00173e60));
+            lq_sq(pos, coll_hit_point_addr());
             moby_retire(m);
         } else if (frame_scale_i(3) < lh(pv + 0x14)) {
             sh(pv + 0x14, static_cast<uint32_t>(frame_scale_i(3)));
@@ -370,7 +371,7 @@ uint32_t sandmouse_find_target(uint32_t m, uint32_t from, uint32_t angles, float
         if (!(score < best_score)) continue;
         // seen: nothing between, or what is between is of its kind (not the hero)
         if (segment_collide_v(V(from), V(aim), 0, m, nullptr) != 0) {
-            const uint32_t hit = lwu(OV(0x00173e58));
+            const uint32_t hit = coll_hit_moby();
             if (hit == 0 || hit == lwu(HERO_MOBY)) continue;
             const uint32_t hcls = lwu(hit + 0x24);
             if (hcls == 0 || lh(hcls + 0x46) != kind) continue;
@@ -588,7 +589,7 @@ void sandmouse_update(uint32_t m) {
             lq_sq(to, HERO + 0x80);
             swc1(to + 8, fpu_add(lwc1(to + 8), u2f(0x3e4ccccdu)));  // (0.2)
             bool seen = point_in_box(HERO + 0x80, lw(pv + 0x40)) != 0;
-            if (seen && segment_collide_v(V(from), V(to), 0, m, nullptr) != 0) seen = lwu(OV(0x00173e58)) == lwu(HERO + 0x2080);
+            if (seen && segment_collide_v(V(from), V(to), 0, m, nullptr) != 0) seen = coll_hit_moby() == lwu(HERO + 0x2080);
             ee_stack_free(0x90);
             if (!seen) return Exit::Out;
             point_ahead_of_hero(m, pv);

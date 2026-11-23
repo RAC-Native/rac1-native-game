@@ -13,6 +13,7 @@
 // +0x630 / +0x640 the clipped ends.
 #include <game/ovl/shared_class1224.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -79,7 +80,7 @@ bool clip_end(uint32_t m, uint32_t centre, uint32_t end, uint32_t out, uint32_t 
         lq_sq(out, end);
         return false;
     }
-    vec3_sub(V(gap), V(OV(0x00173e60)), V(centre));
+    vec3_sub(V(gap), coll_hit_point(), V(centre));
     const float length = vec3_length(V(gap));
     vec3_scale(V(gap), V(gap), fpu_div(fpu_mul(length, u2f(0x3f7ae148u)), length));  // (0.98 of the way)
     vec3_add(V(out), V(centre), V(gap));

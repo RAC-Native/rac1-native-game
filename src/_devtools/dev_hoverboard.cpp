@@ -22,6 +22,7 @@
 
 #include <formats/level_core.h>
 #include <formats/scene_wad.h>
+#include <game/collision/collision.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants_l14.h>
@@ -70,8 +71,6 @@ constexpr uint32_t LEVEL = 0x0015ed84;
 constexpr OvConst<0x0015f5c4u> GAME_MODE{};  // 0 playing, 3 the pause menu, 2 / 6 a dialog, a cutscene, the level's exit
 constexpr OvConst<0x00166dd8u> CAM_YAW{};   // the camera's yaw (hero_stick_move's)
 constexpr OvConst<0x0015f638u> KILL_Z{};    // the level's kill height (the input transition's fall, state 0x77)
-constexpr OvConst<0x00173e60u> HIT_POINT{};  // segment_collide's hit (0x173e40 +0x20 the point, +0x40 the normal)
-constexpr OvConst<0x00173e80u> HIT_NORMAL{};
 constexpr uint32_t CROSS = 0x40;
 
 constexpr uint32_t RIDE_STATE = 0x6b;       // the board state: nothing per frame on the levels without the board
@@ -134,11 +133,11 @@ bool segment(const V3& a, const V3& b, V3& hit, V3& n) {
     ee_journal_begin();
     const bool got = segment_collide_v(s, e, floor_flags(), ru(HERO_MOBY), nullptr) != 0;
     if (got) {
-        hit = rv(HIT_POINT);
+        hit = rv(coll_hit_point_addr());
         // the normal as the query leaves it is not of unit length (a triangle's edges crossed in the query's x 1024 units: a floor's
         // z in the millions; a sphere's, its hit minus its centre): the ride's tests (a floor above 0.5, a wall within 0.6) took
         // almost no face for a wall, and a ground hit that failed the floor's test let the board fall through the ground (#120)
-        n = rv(HIT_NORMAL);
+        n = rv(coll_hit_normal_addr());
         const float l = std::sqrt(n.x * n.x + n.y * n.y + n.z * n.z);
         if (l > 0.0f) n = {n.x / l, n.y / l, n.z / l};
     }

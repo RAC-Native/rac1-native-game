@@ -5,6 +5,7 @@
 // shared_height_map.h.
 #include <game/ovl/shared_height_map.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -56,10 +57,9 @@ void ground_puff_at(uint32_t pos) {
         lq_sq(bottom, top);
         swc1(bottom + 8, fpu_sub(lwc1(bottom + 8), fpu_add(step, step)));
         if (segment_collide_v(V(top), V(bottom), 0x12, 0, nullptr) != 0) {
-            const uint32_t hit = OV(0x00173e60);
-            vec3_sub(V(off), V(hit), V(OV(0x00166dc0)));
+            vec3_sub(V(off), coll_hit_point(), V(OV(0x00166dc0)));
             const float shade = fpu_add(fpu_mul(fpu_div(vec2_length(V(off)), 60.0f), 191.0f), 64.0f);
-            ground_puff_spawn(hit, static_cast<uint32_t>(float_to_int(shade)) & 0xffu);
+            ground_puff_spawn(coll_hit_point_addr(), static_cast<uint32_t>(float_to_int(shade)) & 0xffu);
         }
     }
     ee_stack_free(0x80);

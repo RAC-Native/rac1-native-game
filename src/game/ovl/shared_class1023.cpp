@@ -13,6 +13,7 @@
 // patrol path +0x1fc (-1 none), the leaps +0x1da, the patrol's direction +0x20c, the shot's index +0x20e.
 #include <game/ovl/shared_class1023.h>
 
+#include <game/collision/collision.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/doomlet.h>
@@ -417,7 +418,7 @@ void class1023_update(uint32_t m) {
                 strike(m);
                 break;
             }
-            if (lwu(OV(0x00173e58)) == target) {  // (in sight: fire)
+            if (coll_hit_moby() == target) {  // (in sight: fire)
                 swc1(pv + 0x1e8, 1.0f);
                 sb(m + 0x20, 5);
                 sh(pv + 0x20e, 0);

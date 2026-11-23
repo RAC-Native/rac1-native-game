@@ -4,6 +4,7 @@
 // word; the fade levels and the hit's moby and point 0x173e58 / 0x173e60 go through OV(). Header shared_tracer.h.
 #include <game/ovl/shared_tracer.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -33,9 +34,9 @@ void tracer_update(uint32_t m) {
         }
         vec3_add(V(m + 0x10), V(m + 0x10), V(pv));
         if (segment_collide_v(V(m + 0x10), from, 0x10, lwu(pv + 0x10), nullptr) != 0) {  // (from where it is back to where it was)
-            const uint32_t hit = lwu(OV(0x00173e58));
+            const uint32_t hit = coll_hit_moby();
             if (hit != lwu(pv + 0x10)) {
-                if (hit != 0) sub_00259bc8(hit, m, 0x10001, OV(0x00173e60), pv, 1.0f);
+                if (hit != 0) sub_00259bc8(hit, m, 0x10001, coll_hit_point_addr(), pv, 1.0f);
                 sb(m + 0x20, 2);
             }
         }

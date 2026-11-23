@@ -6,6 +6,7 @@
 // the frame time 0x15ed6c, the game's level number 0x15ed84). Header shared_shell.h.
 #include <game/ovl/shared_shell.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -72,7 +73,7 @@ void sparks(uint32_t m, uint32_t pv, float size) {
         r.y = rand_range_f(-1.0f, 1.0f);
         r.z = rand_range_f(-1.0f, 1.0f);
         V(spark) = r;
-        vec3_reflect(V(bounce), V(pv), V(OV(0x00173e80)));
+        vec3_reflect(V(bounce), V(pv), coll_hit_normal());
         vec3_set_length(V(spark), V(spark), fpu_mul(vec3_length(V(bounce)), 0.5f));
         vec3_add(V(spark), V(bounce), V(spark));
         vec3_set_length(V(spark), V(spark), rand_range_f(fpu_mul(dt(), 3.0f), fpu_mul(dt(), 6.0f)));
@@ -147,7 +148,7 @@ void shell_update(uint32_t m) {
         return;
     }
     if (segment_collide_v(from, V(m + 0x10), 0, lwu(pv + 0x18), armed ? record : nullptr) == 0) return;
-    V(m + 0x10) = V(OV(0x00173e60));  // (the hit point)
+    V(m + 0x10) = coll_hit_point();  // (the hit point)
     if (lbu(m + 0xbc) == 0) sparks(m, pv, 60000.0f);
     explosion_effect(m, pv, 0, 4, 3, 6, -1, 0, 1, -1, 0, 0.0f, 0.0f, 1.1f, 0.6f, 1.0f, 0.9f, 0.0f);
     mobys_in_sphere_v(V(m + 0x10), 1.1f, 0x10, m, armed ? record : nullptr);
@@ -219,7 +220,7 @@ void shot_update(uint32_t m) {
         return;
     }
     if (segment_collide_v(from, V(m + 0x10), 0, lwu(pv + 0x18), armed ? record : nullptr) == 0) return;
-    V(m + 0x10) = V(OV(0x00173e60));  // (the hit point)
+    V(m + 0x10) = coll_hit_point();  // (the hit point)
     if (lbu(m + 0xbc) == 0) sparks(m, pv, 30000.0f);
     moby_retire(m);
 }

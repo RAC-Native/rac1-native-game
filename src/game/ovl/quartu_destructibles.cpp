@@ -4,6 +4,7 @@
 // The original's order of calls and float operations is preserved.
 #include <game/ovl/quartu_mobys.h>
 
+#include <game/collision/collision.h>
 #include <game/lib/libgcc_fp.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
@@ -19,9 +20,8 @@ namespace rac1 {
 namespace {
 
 uint32_t find_giant_hit(uint32_t m) {
-    const uint32_t base = L15_ADDR(0x00178700u);
     for (uint32_t i = 0; i < 64; ++i) {
-        const uint32_t e = base + (i << 6);
+        const uint32_t e = coll_contact(i);
         if (lwu(e + 0x34) == m && (lwu(e + 0x24) & 0x80000u) != 0) {
             return e;
         }

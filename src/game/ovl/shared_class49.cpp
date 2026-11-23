@@ -7,6 +7,7 @@
 // The pvars: +0 the velocity, +0x10 the sound of its flight played, +0x14 its life, +0x18 its owner (not hit).
 #include <game/ovl/shared_class49.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -157,7 +158,7 @@ void class49_update(uint32_t m) {
     sh(rec + 0x1a, lhu(m + 0xa6));
     bool burst = segment_collide(back, next, 0x10, m, rec) != 0;
     if (!burst) burst = timer_tick_i32(*static_cast<int32_t*>(ee_ram_ptr(pv + 0x14))) != 0;
-    if (burst && lwu(pv + 0x18) != lwu(OV(0x00173e58))) {
+    if (burst && lwu(pv + 0x18) != coll_hit_moby()) {
         moby_sound_play(8, 0, m, SOUND_SET);
         class49_shards(m);
         moby_retire(m);

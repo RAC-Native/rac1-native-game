@@ -6,6 +6,7 @@
 // +0x20 the velocity.
 #include <game/ovl/shared_class156.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -73,21 +74,20 @@ uint32_t class156_trail(uint32_t spin, uint32_t m) {
 void class156_burst(uint32_t) {
     const uint32_t sp = ee_stack_alloc(0xa0);
     const uint32_t dir = sp, at = sp + 0x10;
-    const uint32_t hit = OV(0x00173e60);
     // about the angle from the hit point up to the camera
-    vec3_sub(V(dir), V(OV(0x00166dc0)), V(hit));
+    vec3_sub(V(dir), V(OV(0x00166dc0)), coll_hit_point());
     const float pitch = -atan2_f(vec2_length(V(dir)), lwc1(dir + 8));
     for (int32_t k = 0; k < 20; ++k) {  // (sparks: 1 .. 3 times 0.2 out, flying on)
         scattered(dir, u2f(0x3e4ccccdu), pitch);  // (0.2)
         vec3_scale(V(at), V(dir), rand_range_f(1.0f, 3.0f));
-        vec3_add(V(at), V(at), V(hit));
+        vec3_add(V(at), V(at), coll_hit_point());
         spawn_particle_13_v(V(at), V(dir));
     }
     const float spread = u2f(0x3dcccccdu);  // (0.1)
     for (int32_t k = 0; k < 10; ++k) {  // (smoke about the hit point, 10 .. 20 frames)
-        swc1(at, fpu_add(lwc1(hit), rand_range_signed_f(0.0f, spread)));
-        swc1(at + 4, fpu_add(lwc1(hit + 4), rand_range_signed_f(0.0f, spread)));
-        swc1(at + 8, fpu_add(lwc1(hit + 8), rand_range_signed_f(0.0f, spread)));
+        swc1(at, fpu_add(coll_hit_point().x, rand_range_signed_f(0.0f, spread)));
+        swc1(at + 4, fpu_add(coll_hit_point().y, rand_range_signed_f(0.0f, spread)));
+        swc1(at + 8, fpu_add(coll_hit_point().z, rand_range_signed_f(0.0f, spread)));
         scattered(dir, u2f(0x3d4ccccdu), pitch);  // (0.05)
         const int32_t lo = frame_scale_i(0xa);
         const int32_t life = rand_range(lo, frame_scale_i(0x14));
@@ -116,8 +116,8 @@ void class156_update(uint32_t m) {
         sub_00259888(0.0f, rec, static_cast<int32_t>(m), 0, dir);
         bool burst = false;
         if (mobys_in_sphere(pos, lwc1(t + 8), 0x10, lwu(pv + 0x18), rec) != 0 && zero_stub() == 0) {
-            const uint32_t hit = lwu(OV(0x00173e58));
-            if (hit != 0) sub_00259bc8(hit, m, 0x10001, OV(0x00173e60), dir, 1.0f);
+            const uint32_t hit = coll_hit_moby();
+            if (hit != 0) sub_00259bc8(hit, m, 0x10001, coll_hit_point_addr(), dir, 1.0f);
             burst = true;
         }
         ee_stack_free(0xb0);

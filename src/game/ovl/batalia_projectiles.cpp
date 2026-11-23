@@ -3,8 +3,8 @@
 // fires from its gun (spawned by bat_2dc8a0 the same way). Both fly under gravity, test their path with segment_collide
 // and blow up on what they hit or when their fuse runs out. Addresses are level 8's (`orig: L8:`); its own data and code
 // are L8_ADDR, the base ELF's are bare (the frame time 0x15ed6c and its square 0x15ed70). The last collision query's
-// block is level 8's 0x174640 (Veldin's 0x173e40): the moby hit +0x18 and the flags +0x1c through collision.h, the
-// contact point +0x20 (0x174660) and the normal +0x40 (0x174680) by address.
+// block is level 8's 0x174640 (Veldin's 0x173e40): the moby hit +0x18, the flags +0x1c, the contact point +0x20 and the
+// normal +0x40 through collision.h (OV() of Veldin's address gives level 8's on the three discs).
 #include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/batalia_own.h>
@@ -51,8 +51,8 @@ void bat_class248_update_l8(uint32_t m) {
     // set off where it hit: the state `st`, at the contact point, its velocity bounced off the normal, two frames' worth
     const auto set_off = [&](uint32_t st) {
         sb(m + 0x20, st);
-        lq_sq(pos, L8_ADDR(0x00174660));
-        vec3_reflect(V(vel), V(vel), V(L8_ADDR(0x00174680)));
+        lq_sq(pos, coll_hit_point_addr());
+        vec3_reflect(V(vel), V(vel), coll_hit_normal());
         vec3_set_length(V(vel), V(vel), fpu_add(dt(), dt()));
     };
 
@@ -106,11 +106,11 @@ void bat_class248_update_l8(uint32_t m) {
         }
         // a bounce: back to the contact 0.16 up, the velocity reflected, pushed sideways at random, slowed to 0.4
         moby_sound_start(1, 0, m);
-        lq_sq(pos, L8_ADDR(0x00174660));
+        lq_sq(pos, coll_hit_point_addr());
         swc1(m + 0x18, fpu_add(lwc1(m + 0x18), 0.16f));
-        vec3_reflect(V(vel), V(vel), V(L8_ADDR(0x00174680)));
+        vec3_reflect(V(vel), V(vel), coll_hit_normal());
         const uint32_t side = sp + 0x70;
-        vec3_cross_ba(V(side), V(vel), V(L8_ADDR(0x00174680)));
+        vec3_cross_ba(V(side), V(vel), coll_hit_normal());
         const float spread = fpu_mul(dt(), 1.5f);
         vec3_set_length(V(side), V(side), rand_range_f(-spread, spread));
         vec3_add(V(vel), V(vel), V(side));
@@ -202,8 +202,8 @@ void bat_class425_update_l8(uint32_t m) {
         const uint32_t owner = lwu(pv + 0x20);
         if (owner == 0 || coll_hit_moby() == owner) break;  // (no owner: the path's hits are ignored)
         sb(m + 0x20, 0x63);
-        lq_sq(pos, L8_ADDR(0x00174660));
-        vec3_reflect(V(pv), V(pv), V(L8_ADDR(0x00174680)));
+        lq_sq(pos, coll_hit_point_addr());
+        vec3_reflect(V(pv), V(pv), coll_hit_normal());
         vec3_set_length(V(pv), V(pv), fpu_add(dt(), dt()));
         break;
     }

@@ -5,6 +5,7 @@
 // shared_particles.h.
 #include <game/ovl/shared_particles.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -32,7 +33,7 @@ void bullet_particle_update(uint32_t p) {
     if (life_out(p)) return;
     if (segment_collide_v(V(p + 0x20), V(p + 0x10), 0x10, lwu(p + 0x3c), nullptr) == 0) return;
     sh(p + 0xa, 0);  // (it hit: its last frame, at the hit point)
-    V(p + 0x10) = V(OV(0x00173e60));
+    V(p + 0x10) = coll_hit_point();
 }
 
 // orig: 0x0026f048 0x002738b0

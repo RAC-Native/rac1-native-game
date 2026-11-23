@@ -6,6 +6,7 @@
 // shared_homing_missile.h.
 #include <game/ovl/shared_homing_missile.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -174,7 +175,7 @@ void homing_missile_update(uint32_t m) {
         ee_stack_free(0x140);
         return;
     }
-    V(m + 0x10) = V(OV(0x00173e60));  // (the hit point)
+    V(m + 0x10) = coll_hit_point();  // (the hit point)
     const float hx = lwc1(m + 0x10), hy = lwc1(m + 0x14), hz = lwc1(m + 0x18);
     if (15.0f < hx && 15.0f < hy && 15.0f < hz) {
         float size = 24.0f;  // (at most 24, and no deeper than the level's floor allows)

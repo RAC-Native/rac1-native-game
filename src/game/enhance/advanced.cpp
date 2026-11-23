@@ -10,6 +10,7 @@
 // The block ADV (EE RAM 0xf0000..0xf2000) is in the PS2 kernel's first megabyte: the port's
 // kernel is the host's, so nothing of the game or the runtime lives there. Its second half (0xf1000..) is the Bug Fixes
 // page's (bug_fixes.cpp).
+#include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <host/level_slots.h>
 #include <host/mod_code.h>
@@ -1064,7 +1065,7 @@ void aim_shoulder(uint32_t cam, bool aiming) {
     const float h = g_aim_yaw;
     const Vec4 from = Vec4{pivot.x + sin_vu(h) * side * w, pivot.y - cos_vu(h) * side * w, pivot.z, 0.0f};
     if (segment_collide_v(from, pos, 0x94, lwu(HERO + 0x2080), nullptr) != 0) {
-        const Vec4 hit = V(OV(0x00173e60));
+        const Vec4 hit = coll_hit_point();
         Vec4 d;
         vec3_sub(d, from, hit);
         const float len = vec3_length(d);
@@ -1201,8 +1202,8 @@ Vec4 aim_shot(const Vec4& from, float speed) {
     Vec4 aim;
     vec3_scale(aim, f, AIM_DISTANCE);
     vec3_add(aim, aim, eye);
-    if (segment_collide_v(eye, aim, 0, lwu(HERO + 0x2080), nullptr) != 0 && lwu(OV(0x00173e40) + 0x18) != lwu(HERO + 0x2080)) {
-        const Vec4 hit = V(OV(0x00173e60));
+    if (segment_collide_v(eye, aim, 0, lwu(HERO + 0x2080), nullptr) != 0 && coll_hit_moby() != lwu(HERO + 0x2080)) {
+        const Vec4 hit = coll_hit_point();
         Vec4 to;
         vec3_sub(to, hit, eye);
         if (2.0f < vec3_length(to)) aim = hit;  // (a hit right at the camera: ignored)

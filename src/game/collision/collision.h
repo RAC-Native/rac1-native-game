@@ -48,6 +48,10 @@ inline Vec4 coll_hit_pushed() { return V(OV(0x00173e70)); }
 inline Vec4 coll_hit_normal() { return V(OV(0x00173e80)); }
 // orig: (host) the last triangle hit's corner k = 0..2 (+0x50 + k * 0x10)
 inline Vec4 coll_hit_tri(int k) { return V(OV(0x00173e90) + static_cast<uint32_t>(k) * 0x10u); }
+// orig: (host) the last contact point's lane k = 0..2 (x, y, z: +0x20 + k * 4), as a loop over the lanes reads it
+inline float coll_hit_point_lane(uint32_t k) { return lwc1(OV(0x00173e60) + 4u * k); }
+// orig: (host) the last contact's normal's lane k = 0..2 (+0x40 + k * 4)
+inline float coll_hit_normal_lane(uint32_t k) { return lwc1(OV(0x00173e80) + 4u * k); }
 // orig: (host) the whole hit (+0x18 .. +0x7f), read now
 inline CollisionHit coll_hit() {
     CollisionHit h;
@@ -84,6 +88,9 @@ inline uint32_t coll_hit_normal_addr() { return OV(0x00173e80); }
 // The queries' own state (the words before +0x18: not part of a hit).
 // orig: (host) the level's collision tree (+0x00)
 inline uint32_t coll_tree() { return lwu(OV(0x00173e40)); }
+// orig: (host) the tree word's EE address (+0x00), for a reader that reads it through its own path (the drawing's copy of EE
+// memory: draw_lwu)
+inline uint32_t coll_tree_addr() { return OV(0x00173e40); }
 // orig: (host) the level's collision tree set (+0x00), as level_collision_set does
 inline void coll_set_tree(uint32_t tree) { sw(OV(0x00173e40), tree); }
 // orig: (host) the posed-joint cache's buffers set (+0x04: eight of 0x800 bytes), as gameplay_load does

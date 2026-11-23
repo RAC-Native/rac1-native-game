@@ -4,6 +4,7 @@
 
 #include <formats/level_core.h>
 #include <formats/scene_wad.h>
+#include <game/collision/collision.h>
 #include <game/enhance/context.h>
 #include <game/enhance/level_mod_hero.h>
 #include <game/enhance/pool.h>
@@ -638,7 +639,7 @@ int32_t hero_board_touching(uint32_t* out, int32_t max) {
     const int32_t n = mobys_in_sphere_v(at, 1.6f, 0, hm, nullptr);  // (the game's own query: the mobys whose collision the sphere touches)
     int32_t k = 0;
     for (int32_t i = 0; i < n && k < max; ++i) {
-        const uint32_t m = lwu(OV(0x00177f00) + 4 * static_cast<uint32_t>(i));  // (its list of hits)
+        const uint32_t m = coll_hit_list_at(i);  // (its list of hits)
         if (m == 0) break;
         if (m == hm || m == board || m == lwu(OWN) || static_cast<int8_t>(lbu(m + 0x20)) < 0) continue;
         out[k++] = m;

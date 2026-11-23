@@ -8,6 +8,7 @@
 // which it arrives.
 #include <game/ovl/shared_class686.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -103,7 +104,7 @@ void class686_update(uint32_t m) {
         vec_clear(V(rec));
         sw(rec + 0x20, 0);
         mobys_in_sphere(pos, 1.0f, 9, lwu(0x001413d0), rec);
-        const uint32_t hit = lwu(OV(0x00173e58));
+        const uint32_t hit = coll_hit_moby();
         const int32_t cls = hit != 0 ? lh(hit + 0xa6) : 0;
         moby_sound_start(hit != 0 && cls >= 709 && cls < 712 ? 2 : 1, 0, m);
     }

@@ -15,6 +15,7 @@
 // node +0x420.
 #include <game/ovl/shared_class1068.h>
 
+#include <game/collision/collision.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/ovl.h>
@@ -119,7 +120,7 @@ void class1068_beam_start(uint32_t m) {
     const uint32_t sp = ee_stack_alloc(0x10);
     const uint32_t out = sp;
     floor_probe_v(0.5f, V(m + 0x10), 0);
-    vec3_set_length(V(pv + 0x220), V(OV(0x00173e80)), 1.0f);
+    vec3_set_length(V(pv + 0x220), coll_hit_normal(), 1.0f);
     moby_chain_point_v(m, 0, V(pv + 0x210));
     swc1(pv + 0x218, lwc1(m + 0x18));
     for (int32_t i = 0; i < kBeamPoints; ++i) {

@@ -1,5 +1,6 @@
 // The class-749 enemy of Veldin (update 0x2d4610) and the helpers its chain needs.
 #include <cmath>
+#include <game/collision/collision.h>
 #include <game/ovl/ovl_reloc.h>
 #include <cstring>
 
@@ -212,7 +213,7 @@ uint32_t walker_move_v(uint32_t m, Vec4& d, uint32_t flags, float up, float r, f
         vec3_add(b, ahead, pos);
         b.z = b.z + up;
         if (segment_collide_v(a, b, f, m, nullptr) != 0) {
-            vec3_sub(pos, V(OV(0x00173e60)), ahead);
+            vec3_sub(pos, coll_hit_point(), ahead);
             res = 1;
             pos.z = pos.z - up;
         }
@@ -221,7 +222,7 @@ uint32_t walker_move_v(uint32_t m, Vec4& d, uint32_t flags, float up, float r, f
         a = pos;
         a.z = a.z + up;
         if (sphere_collide_v(a, r, f | 4u, m) == 0) break;
-        pos = V(OV(0x00173e70));
+        pos = coll_hit_pushed();
         res |= 1;
         pos.z = pos.z - up;
     }
@@ -230,10 +231,10 @@ uint32_t walker_move_v(uint32_t m, Vec4& d, uint32_t flags, float up, float r, f
     b = pos;
     a.z = a.z + up;
     b.z = floor - u2f(0x3d4ccccdu);
-    if (segment_collide_v(a, b, f | 2u, m, nullptr) != 0 && 0 < lw(OV(0x00173e5c))) {
+    if (segment_collide_v(a, b, f | 2u, m, nullptr) != 0 && 0 < coll_hit_flags_signed()) {
         res |= 2;
-        if (0.5f < atan2_f(lwc1(OV(0x00173e88)), vec2_length(V(OV(0x00173e80))))) res |= 4;
-        const float h = lwc1(OV(0x00173e68));
+        if (0.5f < atan2_f(coll_hit_normal().z, vec2_length(coll_hit_normal()))) res |= 4;
+        const float h = coll_hit_point().z;
         if (floor < h) pos.z = pos.z + (h - floor) * u2f(0x3e99999au);
     }
     vec3_sub(d, pos, old);
@@ -619,7 +620,7 @@ void explosion_burst(uint32_t m) {
     if (lbu(B + 9) == 0) return;
     const int32_t n = mobys_in_sphere(pos, 3.0f, 0x10, m, 0);
     const Vec4 at = V(m + 0x10);
-    moby_list_hit_v(m, at, OV(0x00177f00), n, 0, 0x00830000u, 2, 1, 2.0f, 1.0f, 1.0f);
+    moby_list_hit_v(m, at, coll_hit_list(), n, 0, 0x00830000u, 2, 1, 2.0f, 1.0f, 1.0f);
 }
 
 // Moby m blown up (0x2dbf28 when `burst`) and reset for its class's hook +0x14 (else retired):
@@ -683,7 +684,7 @@ int32_t carry_update(uint32_t m, uint32_t p) {
     if (s == 0xfe) return 0;
     if (s == 0xfd) return 0;
     const uint32_t r = class_hook_10(m);
-    const uint32_t P = 0x0013f350, HIT = OV(0x00173e40);
+    const uint32_t P = 0x0013f350;
     if (r != 0) {
         V(r + 0x30) = V(m + 0x10);
         const int32_t st = static_cast<int16_t>(lhu(r + 0x68) - 1u);
@@ -871,10 +872,10 @@ int32_t carry_update(uint32_t m, uint32_t p) {
                 uint32_t hit = static_cast<uint32_t>(mobys_in_sphere_v(V(m + 0x10), lwc1(r + 0x80), 1, m, rec));
                 hit |= static_cast<uint32_t>(sphere_collide_v(V(m + 0x10), lwc1(r + 0x80), 0, m));
                 if (hit != 0) {
-                    V(m + 0x10) = V(OV(0x00173e70));
-                    vec3_sub(V(r + 0x50), V(OV(0x00173e60)), V(m + 0x10));
+                    V(m + 0x10) = coll_hit_pushed();
+                    vec3_sub(V(r + 0x50), coll_hit_point(), V(m + 0x10));
                 }
-                if (lwu(HIT + 0x18) != 0 && lh(lwu(HIT + 0x18) + 0xa6) == 0) hit = 0;
+                if (coll_hit_moby() != 0 && lh(coll_hit_moby() + 0xa6) == 0) hit = 0;
                 if (lh(r + 0x68) == 6) {  // tumbling about the contact
                     const uint32_t cls = lwu(m + 0x24);
                     sh(m + 0x34, lhu(m + 0x34) & 0x7fffu);
@@ -903,14 +904,16 @@ int32_t carry_update(uint32_t m, uint32_t p) {
                 }
                 if (hit != 0) {
                     int32_t kind = 0;
-                    const uint32_t o = lwu(HIT + 0x18);
+                    const uint32_t o = coll_hit_moby();
                     if (o != 0 && lwu(o + 0x24) != 0) kind = lh(lwu(o + 0x24) + 0x46);
-                    vec3_set_length(V(HIT + 0x40), V(HIT + 0x40), 1.0f);
+                    Vec4 nrm = coll_hit_normal();
+                    vec3_set_length(nrm, nrm, 1.0f);
+                    coll_hit_set_normal(nrm);
                     const uint32_t set = lbu(lwu(r + 0x70) + 6);
                     if (lbu(m + 0x53) != set) moby_anim_set(m, set, 0, frame_scale_i(0x14));
                     sw(m + 0x98, lwu(r + 0x88));
                     sh(r + 0x68, 6);
-                    if (u2f(0x3f5f66f3u) < atan2_f(lwc1(HIT + 0x48), vec2_length(V(HIT + 0x40)))) {  // a wall
+                    if (u2f(0x3f5f66f3u) < atan2_f(coll_hit_normal().z, vec2_length(coll_hit_normal()))) {  // a wall
                         if (lh(r + 0x9e) >= 0) moby_sound_start(lh(r + 0x9e), 0, m);
                         explode_and_reset(m, r, 1);
                         return 0;
@@ -920,7 +923,7 @@ int32_t carry_update(uint32_t m, uint32_t p) {
                         explode_and_reset(m, r, 1);
                     }
                     Vec4 n{};
-                    n.z = lwc1(HIT + 0x48);
+                    n.z = coll_hit_normal().z;
                     vec3_reflect(vel, vel, n);
                 }
                 const bool expired = timer_tick_i32(*static_cast<int32_t*>(ee_ram_ptr(r + 0x94))) != 0;

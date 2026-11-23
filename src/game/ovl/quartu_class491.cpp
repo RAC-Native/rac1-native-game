@@ -16,6 +16,7 @@
 // Header quartu_mobys.h.
 #include <game/ovl/quartu_mobys.h>
 
+#include <game/collision/collision.h>
 #include <game/level/level_data.h>
 #include <game/lib/libc.h>
 #include <game/lib/libgcc_fp.h>
@@ -242,7 +243,7 @@ void qua_2d0fa8_l15(uint32_t m) {
     sw(pv + 0x1c8, 0);
     uint32_t hit = 0;
     for (uint32_t i = 0; i < 64; ++i) {
-        const uint32_t e = L15_ADDR(0x00178700u) + (i << 6);
+        const uint32_t e = coll_contact(i);
         if (lwu(e + 0x34) != m) continue;
         const uint32_t kinds = lwu(e + 0x24);
         if ((kinds & 0xa0000) == 0) continue;

@@ -7,6 +7,7 @@
 // quarter), +0x24 the radius, +0x28 the phase, +0x2c the plane's heading, +0x30 the period (seconds).
 #include <game/ovl/shared_class123.h>
 
+#include <game/collision/collision.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
@@ -143,7 +144,7 @@ void class123_update(uint32_t m) {
     vec3_sub(V(back), V(pos), V(was));
     lq_sq(f + 0x30, back);
     segment_collide(pos, far, 9, m, rec);
-    if (segment_collide(pos, far, 2, 0, 0) != 0) lq_sq(pv + 0x10, OV(0x00173e60));
+    if (segment_collide(pos, far, 2, 0, 0) != 0) lq_sq(pv + 0x10, coll_hit_point_addr());
     else lq_sq(pv + 0x10, far);
 
     // the sparks along it

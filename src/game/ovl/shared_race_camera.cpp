@@ -3,6 +3,7 @@
 // level's own word (Rilgar's 0x1621a8, Kalebo III's 0x162198).
 #include <game/ovl/shared_race_camera.h>
 
+#include <game/collision/collision.h>
 #include <game/enhance/level_mod_hero.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
@@ -266,7 +267,7 @@ void race_cam_follow(uint32_t cam) {
         int32_t i = 0;
         for (; i < 6; ++i) {
             if (sphere_collide_v(probe, 0.5f, 0x12, 0) != 0) {
-                const float rise = fpu_sub(lwc1(OV(0x00173e78)), anchor.z);
+                const float rise = fpu_sub(coll_hit_pushed().z, anchor.z);
                 swc1(dist + 0x10, camera_spring(lwc1(dist + 0x10), rise, u2f(0x3d4ccccdu), u2f(0x3e4ccccdu), 0.0f, par + 0x48));
                 break;
             }
