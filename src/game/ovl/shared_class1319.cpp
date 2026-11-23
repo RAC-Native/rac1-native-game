@@ -20,6 +20,7 @@
 #include <game/ovl/variants.h>
 #include <game/ovl/variants_l11.h>
 #include <game/ovl/variants_l17.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -138,7 +139,7 @@ void class1319_path_pose(uint32_t m) {
     const uint32_t sp = ee_stack_alloc(0x150);
     const uint32_t matrix = sp, p0 = sp + 0x40, p1 = sp + 0x50, p2 = sp + 0x60, at = sp + 0x70, rot = sp + 0x80;
     const uint32_t step = sp + 0x90, dist = sp + 0xa0;
-    const uint32_t path = lwu(OV(0x001b04b0) + (lwu(pv + 0x60) << 2));
+    const uint32_t path = lvd::path(lwu(pv + 0x60));
     const int32_t i = lw(pv + 0x64), count = lw(path);
     lq_sq(p0, path + 0x10 + (static_cast<uint32_t>(i) << 4));
     lq_sq(p1, path + 0x10 + (static_cast<uint32_t>(ee_rem(i + 1, count)) << 4));

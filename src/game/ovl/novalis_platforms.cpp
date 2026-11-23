@@ -7,6 +7,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/port_stubs.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -45,7 +46,7 @@ void lift_update_l1(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
     bool ready = false;
     if (lw(pv + 0xb4) == -1) return;
-    const uint32_t path = lwu(OV(0x001b04b0) + static_cast<uint32_t>(lw(pv + 0xb4)) * 4);
+    const uint32_t path = lvd::path(lw(pv + 0xb4));
     const uint32_t hero = 0x0013f3d0;
     const uint32_t level = static_cast<uint32_t>(lw(0x0015ed84));
     if (lw(pv + 0xcc) != -1) {

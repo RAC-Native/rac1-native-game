@@ -12,6 +12,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -26,7 +27,7 @@ void press(uint32_t m, uint32_t pv, uint32_t asked) {
     const int32_t idx = lw(pv);
     if (idx == -1) return;
     for (int32_t i = 0;; ++i) {
-        const uint32_t path = lwu(OV(0x001b04b0) + (static_cast<uint32_t>(lw(pv)) << 2));
+        const uint32_t path = lvd::path(lw(pv));
         if (!(i < lw(path))) break;
         const uint32_t pt = path + (static_cast<uint32_t>(i) << 4);
         if (lwc1(pt + 0x1c) == lwc1(pv + 4)) sw(pt + 0x1c, 0);

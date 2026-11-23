@@ -20,13 +20,14 @@
 #include <game/ovl/walker.h>
 #include <game/ovl/weapons.h>
 #include <game/port_stubs.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
 namespace {
 // the level's path `i` (the table Veldin's 0x1b04b0 / Novalis's 0x1b0930: every level that carries the wall-path helpers
 // has it where its overlay map pairs it with Veldin's)
-uint32_t level_path(int32_t i) { return lwu(OV(0x001b04b0) + static_cast<uint32_t>(i) * 4); }
+uint32_t level_path(int32_t i) { return lvd::path(i); }
 uint32_t path_point(uint32_t path, int32_t i) { return path + 0x10 + static_cast<uint32_t>(i) * 16; }
 float dt_l1() { return lwc1(0x0015ed6c); }  // the frame's time scale
 }  // namespace

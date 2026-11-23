@@ -28,6 +28,7 @@
 #include <game/ovl/variants_l14.h>
 #include <game/ovl/variants_l15.h>
 #include <game/ovl/weapons.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -48,7 +49,7 @@ uint32_t draw_spot_callback() { return on_level(QUARTU) ? L15_ADDR(0x00297808) :
 uint32_t draw_glows_callback() { return on_level(QUARTU) ? L15_ADDR(0x00296710) : L14_ADDR(0x002b2928); }
 
 // the path of index `idx` in the path table
-uint32_t path_at(int32_t idx) { return lwu(OV(0x001b04b0) + (static_cast<uint32_t>(idx) << 2)); }
+uint32_t path_at(int32_t idx) { return lvd::path(idx); }
 // the moby of index `idx` in the moby list
 uint32_t moby_at(uint32_t idx) { return lwu(OV(0x0015ffd8)) + (idx << 8); }
 
@@ -333,7 +334,7 @@ uint32_t class28_spawn_rocket(uint32_t m, uint32_t speed, uint32_t state) {
         sw(rpv + 0x14, 0);
         sw(rpv + 0xc, zone);
         sw(rpv + 0x10, 0);
-        const uint32_t path = lwu(lwu(OV(0x0015f70c)) + (zone << 5) + 0x10);
+        const uint32_t path = lwu(lvd::rail(zone) + 0x10);
         int32_t idx = lw(rpv + 0x10);
         float dist = lwc1(rpv + 0x14);
         path_closest_point_v(path, V(r + 0x10), V(sp), &idx, &dist, 0, 20.0f, 5.0f, lwc1(rpv + 0x14));

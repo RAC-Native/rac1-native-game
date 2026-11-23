@@ -6,12 +6,13 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
 // orig: L5:0x0028be78 L6:0x00270b68 L7:0x0028a440 L10:0x00254ae8 L11:0x002873b0
 void path_links_build(uint32_t walls, int32_t count, uint32_t path) {
-    const uint32_t p = lwu(OV(0x001b04b0) + (path << 2));
+    const uint32_t p = lvd::path(path);
     auto point = [p](int32_t i) { return p + 0x10 + (static_cast<uint32_t>(i) << 4); };
     for (int32_t i = 0; i < lw(p); ++i) sw(point(i) + 0xc, 0);
     for (int32_t a = 0; a < lw(p); ++a) {

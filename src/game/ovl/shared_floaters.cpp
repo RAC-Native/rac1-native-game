@@ -13,6 +13,7 @@
 #include <game/ovl/variants_l14.h>
 #include <game/ovl/variants_l16.h>
 #include <game/ovl/variants_l5.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -69,7 +70,7 @@ void floater_lay_path(uint32_t m, uint32_t path) {
     const uint32_t pv = lwu(m + 0x78);
     const int32_t index = lw(pv + path);
     if (index == -1) return;
-    const uint32_t p = lwu(OV(0x001b04b0) + (static_cast<uint32_t>(index) << 2));
+    const uint32_t p = lvd::path(index);
     if (lw(p) != 7) return;
     const uint32_t offsets = path_offsets();
     for (uint32_t k = 0; k < 7; ++k) {
@@ -127,7 +128,7 @@ uint32_t floater_find_checked(uint32_t m, int32_t value, uint32_t key) {
 
 namespace {
 // the camera point `idx` of the level's list (0x80 bytes each: +0x30 a place, +0x70 a turn)
-uint32_t camera_point(uint32_t idx) { return lwu(OV(0x001600ec)) + (idx << 7); }
+uint32_t camera_point(uint32_t idx) { return lvd::box(lvd::BOXES, idx); }
 
 // the raft's ride's point and turn (pvars +0x60 / +0x70) its stage's (pvars `stage`) camera point's
 void ride_to_stage(uint32_t pv, uint32_t stage) {

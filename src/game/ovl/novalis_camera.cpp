@@ -8,6 +8,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -21,11 +22,11 @@ constexpr uint32_t RAIL_REV = 0x0013f8c0u;
 constexpr uint32_t HERO_CAM_REQ = 0x001415d4u;
 
 uint32_t entry_of(uint32_t cam) {
-    return lwu(OV(0x0015ef50u)) + static_cast<uint32_t>(lh(cam + 0x84) * 0x20);
+    return lvd::camera(lh(cam + 0x84));
 }
 
 uint32_t path_at(int32_t idx) {
-    return lwu(OV(0x001b04b0u) + static_cast<uint32_t>(idx) * 4u);
+    return lvd::path(idx);
 }
 
 void approach_step(uint32_t addr, float target, float step) {
@@ -132,7 +133,7 @@ void cam_type3_reset(uint32_t cam) {
     if (lw(data + 0x30u) == 2 && lh(data + 0x34u) == 0) {
         const uint32_t wp0 = path_at(lw(data + 0x28u));
         const uint32_t cam_path = path_at(lw(data + 0x20u));
-        const uint32_t rail_entry = lwu(OV(0x0015f70cu)) + static_cast<uint32_t>(lw(data + 0x24u)) * 0x20u;
+        const uint32_t rail_entry = lvd::rail(lw(data + 0x24u));
         const uint32_t rail_path = lwu(rail_entry + 0x10u);
         const uint32_t wp1 = path_at(lw(data + 0x2cu));
         sh(data + 0x34u, 1u);
@@ -220,7 +221,6 @@ void cam_type3_update(uint32_t cam) {
     Vec4 look_base{};
 
     if (mode == 0) {
-        const uint32_t cam_path_slot = OV(0x001b04b0u) + static_cast<uint32_t>(path_idx) * 4u;
         const int32_t rail_seg = lw(RAIL_SEG);
         const float rail_off = lwc1(RAIL_OFF);
         sp78 = rail_seg;
@@ -231,13 +231,13 @@ void cam_type3_update(uint32_t cam) {
         int32_t adv_seg = rail_seg;
         float adv_off = rail_off;
         Vec4 adv_out{};
-        path_advance_v(lwu(cam_path_slot), adv_out, &adv_seg, &adv_off, 0, 1.0f);
+        path_advance_v(lvd::path(path_idx), adv_out, &adv_seg, &adv_off, 0, 1.0f);
         sw(w + 0x150u, static_cast<uint32_t>(adv_seg));
         swc1(w + 0x154u, adv_off);
         V(w + 0x80u) = adv_out;
 
         const uint32_t rail_path = lwu(RAIL_PATH);
-        const uint32_t cam_path = lwu(cam_path_slot);
+        const uint32_t cam_path = lvd::path(path_idx);
         const float frac = fpu_div(sp7c, lwc1(rail_path + static_cast<uint32_t>(sp78) * 0x10u + 0x1cu));
         const float cam_len = fpu_mul(lwc1(cam_path + static_cast<uint32_t>(sp78) * 0x10u + 0x1cu), frac);
 
@@ -256,7 +256,7 @@ void cam_type3_update(uint32_t cam) {
         const uint32_t cam_path = path_at(path_idx);
         const uint32_t wp1 = path_at(lw(data + 0x2cu));
         const uint32_t wp0 = path_at(lw(data + 0x28u));
-        const uint32_t rail_path = lwu(lwu(OV(0x0015f70cu)) + static_cast<uint32_t>(lw(data + 0x24u)) * 0x20u + 0x10u);
+        const uint32_t rail_path = lwu(lvd::rail(lw(data + 0x24u)) + 0x10u);
 
         int32_t span = 0;
         int32_t prev = lw(wp1) - 1;
@@ -376,7 +376,7 @@ void cam_type3_exit(uint32_t cam) {
     if (lw(HERO_CAM_REQ) == lh(cam + 0x86u)) {
         const int32_t k = lw(data + 0x24u);
         if (k < 0) return;
-        const uint32_t rail = lwu(lwu(OV(0x0015f70cu)) + static_cast<uint32_t>(k) * 0x20u + 0x10u);
+        const uint32_t rail = lwu(lvd::rail(k) + 0x10u);
         if (lwu(RAIL_PATH) == rail && lw(RAIL_REV) == 0) return;
     }
     sh(cam + 0x7eu, lw(data + 0x30u) == 3 ? 5u : 3u);

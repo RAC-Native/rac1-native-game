@@ -22,6 +22,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/weapons.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -54,7 +55,7 @@ void count_live_pods(uint32_t pv) {
 // orig: L3:0x002beba0 L8:0x002e6168 L14:0x002e1758
 uint32_t class455_box_point(int32_t box, uint32_t out) {
     if (box == -1) return 1;
-    const uint32_t b = lwu(OV(0x001600ec)) + (static_cast<uint32_t>(box) << 7);
+    const uint32_t b = lvd::box(lvd::BOXES, box);
     swc1(out, rand_range_f(-1.0f, 1.0f));
     swc1(out + 4, rand_range_f(-1.0f, 1.0f));
     swc1(out + 8, rand_range_f(-1.0f, 1.0f));

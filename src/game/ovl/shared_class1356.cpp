@@ -21,6 +21,7 @@
 #include <game/ovl/variants_l16.h>
 #include <game/ovl/variants_l18.h>
 #include <game/ovl/weapons.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -38,7 +39,7 @@ uint32_t drone_point() { return on_level(VELDIN_FINALE) ? L18_ADDR(0x001da310) :
 
 float dt() { return lwc1(0x0015ed6c); }
 
-uint32_t path_of(int32_t i) { return lwu(OV(0x001b04b0) + (static_cast<uint32_t>(i) << 2)); }
+uint32_t path_of(int32_t i) { return lvd::path(i); }
 uint32_t moby_at(int32_t i) { return lwu(OV(0x0015ffd8)) + (static_cast<uint32_t>(i) << 8); }
 
 // the wings' tilt (+0x17c) eased towards `to`

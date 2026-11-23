@@ -16,6 +16,7 @@
 #include <game/ovl/variants.h>
 #include <game/ovl/variants_l18.h>
 #include <game/ovl/variants_l6.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -102,7 +103,7 @@ uint32_t flash_spawn(uint32_t pos, int32_t frames, uint32_t a, uint32_t b) {
 // orig: L6:0x00316330 L18:0x00306338
 void camera_type12_flag(uint32_t cam) {
     if (lh(cam + 0x86) != 0x12) return;
-    const uint32_t rec = lwu(OV(0x0015ef50)) + (static_cast<uint32_t>(static_cast<int32_t>(lh(cam + 0x84))) << 5);
+    const uint32_t rec = lvd::camera(static_cast<int32_t>(lh(cam + 0x84)));
     sw(lwu(rec + 0x1c) + 0x50, 1);
 }
 

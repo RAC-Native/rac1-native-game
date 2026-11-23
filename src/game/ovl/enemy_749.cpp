@@ -12,6 +12,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/port_stubs.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -132,13 +133,12 @@ int32_t path_crossed_v(uint32_t path, const Vec4& a, const Vec4& b) {
     vec_clear(f.r[2]);
     f.r[2].z = 1.0f;
     f.r[3] = Vec4{};  // (not read: rows 0..2 only)
-    const uint32_t tbl = OV(0x001b04b0) + path * 4;
     Vec4 p0;
-    vec3_sub(p0, V(lwu(tbl) + 0x10), a);
+    vec3_sub(p0, V(lvd::path(path) + 0x10), a);
     mat3_transform(p0, p0, f);
-    for (int32_t i = 1; i < lw(lwu(tbl)); ++i) {
+    for (int32_t i = 1; i < lw(lvd::path(path)); ++i) {
         Vec4 p1;
-        vec3_sub(p1, V(lwu(tbl) + 0x10 + static_cast<uint32_t>(i) * 0x10), a);
+        vec3_sub(p1, V(lvd::path(path) + 0x10 + static_cast<uint32_t>(i) * 0x10), a);
         mat3_transform(p1, p1, f);
         if (!(p0.w == 0.0f && p1.w == 0.0f) && p1.y * p0.y < 0.0f) {
             const float x = fpu_div(p0.x - p1.x, p0.y - p1.y) * -p1.y + p1.x;
@@ -158,15 +158,14 @@ int32_t path_crossed(uint32_t path, uint32_t a, uint32_t b) { return path_crosse
 int32_t path_push_out_2d_v(uint32_t path, const Vec4& pos, Vec4& out, float r) {
     int32_t hit = 0;
     Vec4 p = pos;
-    const uint32_t tbl = OV(0x001b04b0) + path * 4;
-    for (int32_t i = 0; i < lw(lwu(tbl)) - 1; ++i) {
-        const uint32_t pts = lwu(tbl);
+    for (int32_t i = 0; i < lw(lvd::path(path)) - 1; ++i) {
+        const uint32_t pts = lvd::path(path);
         const uint32_t o = static_cast<uint32_t>(i) * 0x10;
         if (lwc1(pts + o + 0x1c) == 0.0f && lwc1(pts + o + 0x2c) == 0.0f) continue;
         Vec4 rel, seg, dir, cr, t, proj;
         vec3_sub(rel, p, V(pts + o + 0x10));
         rel.z = 0.0f;
-        vec3_sub(seg, V(lwu(tbl) + o + 0x20), V(lwu(tbl) + o + 0x10));
+        vec3_sub(seg, V(lvd::path(path) + o + 0x20), V(lvd::path(path) + o + 0x10));
         seg.z = 0.0f;
         vec3_set_length(dir, seg, 1.0f);
         vec3_cross_ba(cr, rel, dir);
@@ -177,14 +176,14 @@ int32_t path_push_out_2d_v(uint32_t path, const Vec4& pos, Vec4& out, float r) {
             if (!(vec3_length(rel) < r)) continue;
             vec3_set_length(t, rel, r);
             hit = 1;
-            vec3_add(p, t, V(lwu(tbl) + o + 0x10));
+            vec3_add(p, t, V(lvd::path(path) + o + 0x10));
         } else {
             vec3_set_length(proj, dir, along);
             hit = 1;
             vec3_sub(t, rel, proj);
             vec3_set_length(t, t, r);
             vec3_add(t, t, proj);
-            vec3_add(p, t, V(lwu(tbl) + o + 0x10));
+            vec3_add(p, t, V(lvd::path(path) + o + 0x10));
         }
         p.z = pos.z;
     }
@@ -333,8 +332,8 @@ void moby_33e_wake(uint32_t m) {
     sw(m + 0x90, 0x80208020u);
     moby_sound_start(0, 0, m);
     if (lw(pv) == -1) return;
-    for (int32_t i = 0; i < lw(lwu(OV(0x001b04b0) + static_cast<uint32_t>(lw(pv)) * 4)); ++i) {
-        const uint32_t e = lwu(OV(0x001b04b0) + static_cast<uint32_t>(lw(pv)) * 4) + static_cast<uint32_t>(i) * 0x10;
+    for (int32_t i = 0; i < lw(lvd::path(lw(pv))); ++i) {
+        const uint32_t e = lvd::path(lw(pv)) + static_cast<uint32_t>(i) * 0x10;
         if (lwc1(e + 0x1c) == lwc1(pv + 4)) sw(e + 0x1c, 0);
     }
 }
@@ -498,7 +497,7 @@ void e749_hit_update(uint32_t m) {
     sb(m + 0xa4, 0xff);
     color_pulse_update(m, pv + 0x60);
     const bool far = lbu(m + 0x20) == 3;
-    const uint32_t path = lwu(OV(0x001b04b0) + static_cast<uint32_t>(lw(pv + (far ? 0x1e4 : 0x1e0))) * 4);
+    const uint32_t path = lvd::path(lw(pv + (far ? 0x1e4 : 0x1e0)));
     target_select(m, pv + 0x180, 0, 0, path + 0x10, lw(path), far ? 64.0f : 24.0f);
     if (lw(pv + 0x1c0) == 0) {
         sw(pv + 0x1c0, lwu(0x0013f350 + 0x2080));
@@ -1010,7 +1009,7 @@ void e749_update(uint32_t m) {
         if (lbu(m + 0x53) == set) return;
         anim(set, 0, frame_scale_i(frames));
     };
-    const auto path_tbl = [](uint32_t idx) { return lwu(OV(0x001b04b0) + idx * 4); };
+    const auto path_tbl = [](uint32_t idx) { return lvd::path(idx); };
     const uint32_t st = lbu(m + 0x20);
     switch (st < 13 ? st : 13) {
         case 0: {  // set up

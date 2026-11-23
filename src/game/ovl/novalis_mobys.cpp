@@ -11,6 +11,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/port_stubs.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -260,7 +261,7 @@ void scripted_camera_trigger_update_l1(uint32_t m) {
         const uint32_t buf = ee_stack_alloc(0x20);
         lq_sq(buf, OV(0x00166dc0));
         lq_sq(buf + 0x10, OV(0x00166dd0));
-        const uint32_t boxes = lwu(OV(0x001600ec));
+        const uint32_t boxes = lvd::box_list(lvd::BOXES);
         const int32_t to = lw(pv + 0x28);
         if (to == -1) {
             hero_place(hero_pos, hero_pos + 0x10, 0x72, 1);

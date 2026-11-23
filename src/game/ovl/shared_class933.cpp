@@ -18,6 +18,7 @@
 #include <game/ovl/variants_l14.h>
 #include <game/ovl/variants_l16.h>
 #include <game/ovl/weapons.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -183,8 +184,7 @@ uint32_t class933_spawn(uint32_t owner, uint32_t pos) {
 // orig: L14:0x002fe900 L16:0x002e3e20
 void class933_carrier_start(uint32_t c) {
     const uint32_t pv = lwu(c + 0x78);
-    const uint32_t paths = OV(0x001b04b0);
-    const uint32_t path = lwu(paths + (lwu(pv + 0xd8) << 2));
+    const uint32_t path = lvd::path(lwu(pv + 0xd8));
     path_lengths(path);
     sw(pv + 0xd0, 0);
     sw(pv + 0xd4, 0);
@@ -195,7 +195,7 @@ void class933_carrier_start(uint32_t c) {
     swc1(pv + 0xe8, 0.0f);
     swc1(pv + 0xe4, 0.0f);
     if (lw(pv + 0xfc) == 1) return;
-    path_lengths(lwu(paths + (lwu(pv + 0xdc) << 2)));
+    path_lengths(lvd::path(lwu(pv + 0xdc)));
 }
 
 // The one the carrier holds (pvars +0xf4) kept at its place on it (along its x and y rows by the tuning's +0 / +4).

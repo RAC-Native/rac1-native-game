@@ -16,6 +16,7 @@
 #include <game/ovl/variants_l14.h>
 #include <game/ovl/variants_l15.h>
 #include <game/ovl/weapons.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -110,7 +111,7 @@ void class403_update(uint32_t m) {
     const uint32_t sp = ee_stack_alloc(0xb0);
     const uint32_t was = sp + 0x20, step = sp + 0x30;
     if (lbu(m + 0x20) == 0) {
-        const uint32_t path = lwu(lwu(OV(0x0015f70c)) + (lwu(pv + 0xc) << 5) + 0x10);
+        const uint32_t path = lwu(lvd::rail(lwu(pv + 0xc)) + 0x10);
         lq_sq(was, m + 0x10);
         int32_t index = lw(pv + 0x10);
         float frac = lwc1(pv + 0x14);

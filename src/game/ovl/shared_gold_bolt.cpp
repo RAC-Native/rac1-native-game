@@ -39,6 +39,7 @@
 #include <game/ovl/variants_l7.h>
 #include <game/ovl/variants_l8.h>
 #include <game/ovl/variants_l9.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -172,10 +173,10 @@ void gold_bolt_camera(uint32_t m) {
         swc1(ang + 4, fpu_mul(k, u2f(0xbe2e147bu)));        // (-0.17)
     } else {
         // between the camera path's two points (0x80 bytes each: +0x30 the place, +0x70 the angles)
-        const uint32_t list = lwu(OV(0x001600ec));
+        const uint32_t list = lvd::box_list(lvd::BOXES);
         vec3_lerp(V(pos), V(list + (static_cast<uint32_t>(a) << 7) + 0x30), V(list + (static_cast<uint32_t>(b) << 7) + 0x30), k);
-        lq_sq(ang_a, lwu(OV(0x001600ec)) + (lwu(pv + 4) << 7) + 0x70);
-        lq_sq(ang_b, lwu(OV(0x001600ec)) + (lwu(pv + 8) << 7) + 0x70);
+        lq_sq(ang_a, lvd::box(lvd::BOXES, lwu(pv + 4)) + 0x70);
+        lq_sq(ang_b, lvd::box(lvd::BOXES, lwu(pv + 8)) + 0x70);
         for (uint32_t c : {8u, 4u, 0u})
             swc1(ang + c, angle_add(fpu_mul(angle_sub(lwc1(ang_b + c), lwc1(ang_a + c)), k), lwc1(ang_a + c)));
     }

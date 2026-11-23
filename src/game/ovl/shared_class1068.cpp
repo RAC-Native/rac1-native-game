@@ -28,6 +28,7 @@
 #include <game/ovl/variants_l6.h>
 #include <game/ovl/walker.h>
 #include <game/ovl/weapons.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -291,7 +292,7 @@ void class1068_think(uint32_t m) {
     sb(m + 0xa4, 0xff);
     color_pulse_update(m, pv + 0x110);
     swc1(pv + 0x198, lw(pv + 0x188) != 0 ? fpu_add(lwc1(tunings(4)), 6.0f) : lwc1(tunings(4)));
-    const uint32_t path = lwu(OV(0x001b04b0) + (lwu(pv + 0x180) << 2));
+    const uint32_t path = lvd::path(lwu(pv + 0x180));
     if (target_select(m, pv + 0x120, 0, 0, path + 0x10, lw(path), lwc1(pv + 0x198)) != 2) {
         if (lwc1(pv + 0x198) < vec2_distance(V(pv + 0x170), V(pv + 0x120))) sw(pv + 0x164, 2);
         else if (3.0f < abs_f(fpu_sub(lwc1(m + 0x18), lwc1(pv + 0x128)))) sw(pv + 0x164, 2);
@@ -434,7 +435,7 @@ void class1068_update(uint32_t m) {
     }
     case 14: {  // (0x2fdf1c)
         if (lbu(m + 0x53) != 1) moby_anim_set(m, 1, 0, frame_scale_i(12));
-        const uint32_t path = lwu(OV(0x001b04b0) + (lwu(pv + 0x1a8) << 2));
+        const uint32_t path = lvd::path(lwu(pv + 0x1a8));
         lq_sq(goal, path + (lwu(path) << 4));  // (its last point)
         float dist = vec2_distance(V(m + 0x10), V(goal));
         if (dist < 0.25f) {

@@ -72,6 +72,15 @@ inline uint32_t box(BoxList list, int32_t i) {
     }
     return base + static_cast<uint32_t>(i) * 0x80;
 }
+// orig: (host) the EE address of list `list`'s first shape (*0x1600ec / *0x1600f4 / *0x1600fc), for a reader that keeps
+// the list's base and adds 0x80 per shape itself
+inline uint32_t box_list(BoxList list) {
+    switch (list) {
+    case BOXES: return lwu(OV(0x001600ec));
+    case SPHERES: return lwu(OV(0x001600f4));
+    default: return lwu(OV(0x001600fc));
+    }
+}
 
 // ---- level cameras
 

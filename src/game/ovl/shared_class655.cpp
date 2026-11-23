@@ -23,6 +23,7 @@
 #include <game/ovl/variants.h>
 #include <game/ovl/variants_l15.h>
 #include <game/ovl/variants_l17.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -49,7 +50,7 @@ uint32_t down_draw() { return on_level(VELDIN_ORBIT) ? L17_ADDR(0x002d5e38) : L1
 
 uint32_t first_moby() { return lwu(OV(0x0015ffd8)); }
 uint32_t moby_at(uint32_t index) { return first_moby() + (index << 8); }
-uint32_t spot(uint32_t index) { return lwu(OV(0x001600ec)) + (index << 7); }
+uint32_t spot(uint32_t index) { return lvd::box(lvd::BOXES, index); }
 
 // the sound on channel `slot`'s word stopped, when that channel still plays it on `owner`
 void stop_sound(uint32_t slot, uint32_t owner) {

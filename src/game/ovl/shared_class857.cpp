@@ -38,6 +38,7 @@
 #include <game/ovl/variants_l10.h>
 #include <game/ovl/variants_l6.h>
 #include <game/ovl/walker.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -76,7 +77,7 @@ void anim_to(uint32_t m, uint32_t set, int32_t frame = 0) {
 
 // whether the point is inside the walls' path `path` (an index of the path table: a closed polygon)
 bool inside(uint32_t pos, int32_t path) {
-    const uint32_t p = lwu(OV(0x001b04b0) + (static_cast<uint32_t>(path) << 2));
+    const uint32_t p = lvd::path(path);
     return point_in_polygon(pos, p + 0x10, lw(p)) != 0;
 }
 

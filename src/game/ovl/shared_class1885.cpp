@@ -27,6 +27,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/weapons.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -35,7 +36,7 @@ constexpr int32_t BLOB_CLASS = 0x75e;  // (1886)
 constexpr int32_t SLOTS = 20;          // (its list of blobs, pvars +0xb0)
 
 // the cameras' list entry `idx`
-uint32_t camera_point(int32_t idx) { return lwu(OV(0x001600ec)) + (static_cast<uint32_t>(idx) << 7); }
+uint32_t camera_point(int32_t idx) { return lvd::box(lvd::BOXES, idx); }
 }  // namespace
 
 // orig: L9:0x00277688 L13:0x00263988
@@ -160,7 +161,7 @@ void class1885_update(uint32_t m) {
             nbox = 1;
         }
         if (lw(pv + 0x88) != -1) {
-            const uint32_t path = lwu(OV(0x001b04b0) + (lwu(pv + 0x88) << 2));
+            const uint32_t path = lvd::path(lwu(pv + 0x88));
             poly = path + 0x10;
             npoly = lw(path);
         }

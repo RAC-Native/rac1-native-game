@@ -24,6 +24,7 @@
 #include <game/ovl/walker.h>
 #include <game/ovl/weapons.h>
 #include <game/lib/libc.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -66,7 +67,7 @@ uint32_t step_ahead(uint32_t m, uint32_t pv, uint32_t way, uint32_t dir) {
 // the way point toward `goal` into `way`: along the path home when it has one
 void way_toward(uint32_t m, uint32_t pv, uint32_t goal, uint32_t way) {
     const int32_t path = lw(pv + 0x21c);
-    if (path != -1) path_next_point_l1(m, lwu(OV(0x001b04b0) + (static_cast<uint32_t>(path) << 2)), goal, way);
+    if (path != -1) path_next_point_l1(m, lvd::path(path), goal, way);
     else lq_sq(way, goal);
 }
 // a new veer: its side flipped at random, a time of 30 .. 90 frames

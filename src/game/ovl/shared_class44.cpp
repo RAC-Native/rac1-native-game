@@ -31,6 +31,7 @@
 #include <game/ovl/variants.h>
 #include <game/ovl/variants_l15.h>
 #include <game/ovl/variants_l17.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -76,7 +77,7 @@ void to_state(uint32_t m, uint32_t state, uint32_t set, int32_t frames = 0xa) {
 // the group's list (0x1ab840): the first entry, 0 when none
 uint32_t group_list(uint32_t group) { return lwu(OV(0x001ab840) + (group << 2)); }
 // its path and the point it walks to
-uint32_t path_of(uint32_t pv) { return lwu(OV(0x001b04b0) + (lwu(pv + 0x124) << 2)); }
+uint32_t path_of(uint32_t pv) { return lvd::path(lwu(pv + 0x124)); }
 uint32_t path_point(uint32_t pv) { return path_of(pv) + 0x10 + (lwu(pv + 0x13c) << 4); }
 // on to the path's next point (when it stood at one)
 void next_point(uint32_t pv) {
@@ -269,7 +270,7 @@ void class44_update(uint32_t m) {
     switch (lbu(m + 0x20)) {  // (the table L15:0x1e2560)
     case 0: {  // (0x00297bf8) the start: on its home path, else gone
         const int32_t home = lw(pv + 0x120);
-        if (home == -1 || lwu(lwu(OV(0x001b04b0) + (static_cast<uint32_t>(home) << 2))) == 0) {
+        if (home == -1 || lwu(lvd::path(home)) == 0) {
             moby_retire(m);
             end = End::Return;
             break;
@@ -749,7 +750,7 @@ void class44_think(uint32_t m, uint32_t quiet) {
         sb(pv + 0x15a, 0);
     }
     // its target along its home path's polygon
-    const uint32_t poly = lwu(OV(0x001b04b0) + (lwu(pv + 0x120) << 2));
+    const uint32_t poly = lvd::path(lwu(pv + 0x120));
     if (target_select(m, pv + 0xd0, 0, 0, poly + 0x10, lw(poly), 128.0f) == 2) {
         sb(pv + 0x19f, 0);
         sb(pv + 0x15b, 1);

@@ -31,6 +31,7 @@
 #include <game/ovl/variants_l8.h>
 #include <game/ovl/variants_l9.h>
 #include <game/ovl/visibomb_ball.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -107,12 +108,11 @@ void class832_update(uint32_t m) {
         sw(pv + 0x140, 0);
         return;
     }
-    const uint32_t polys = OV(0x001b04b0);
     sw(pv + 0x140, lwu(pv + 0x140) + 1u);
     for (uint32_t rec = pv; rec < pv + RECORDS; rec += 0x10) {
         const int32_t poly_idx = lw(rec);
         if (poly_idx != -1 && lwc1(rec + 4) < lwc1(bomb + 0x18) && lwc1(bomb + 0x18) < lwc1(rec + 8)) {
-            const uint32_t poly = lwu(polys + (static_cast<uint32_t>(poly_idx) << 2));
+            const uint32_t poly = lvd::path(poly_idx);
             if (point_in_polygon(bomb + 0x10, poly + 0x10, lw(poly)) != 0) {
                 sw(pv + 0x140, 0);
                 break;

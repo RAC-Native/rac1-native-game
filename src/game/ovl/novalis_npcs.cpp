@@ -12,6 +12,7 @@
 #include <game/ovl/variants_l1.h>
 #include <game/ovl/variants_l8.h>
 #include <game/port_stubs.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -139,7 +140,7 @@ void plumber_update_l1(uint32_t m) {
         if (lbu(0x0014c050 + idx + (level << 4)) != 0xff) {
             checkpoint_mark_collected(idx);
             if (lw(pv + 0x4c) != -1) {
-                const uint32_t box = lwu(OV(0x001600ec)) + (static_cast<uint32_t>(lw(pv + 0x4c)) << 7);
+                const uint32_t box = lvd::box(lvd::BOXES, lw(pv + 0x4c));
                 checkpoint_save(box + 0x30, box + 0x70);
             }
         }

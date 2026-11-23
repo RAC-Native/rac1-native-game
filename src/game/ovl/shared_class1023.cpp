@@ -26,6 +26,7 @@
 #include <game/ovl/variants.h>
 #include <game/ovl/variants_l8.h>
 #include <game/ovl/variants_l9.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -47,7 +48,7 @@ uint32_t tuning(uint32_t o) {
 float frame_time() { return lwc1(0x0015ed6c); }
 float frame_time2() { return lwc1(0x0015ed70); }
 // a path of the level's table (by index)
-uint32_t level_path(int32_t i) { return lwu(OV(0x001b04b0) + (static_cast<uint32_t>(i) << 2)); }
+uint32_t level_path(int32_t i) { return lvd::path(i); }
 // the point `i` of `path`
 uint32_t path_point(uint32_t path, int32_t i) { return path + (static_cast<uint32_t>(i) << 4) + 0x10; }
 // a pvar timer word ticked

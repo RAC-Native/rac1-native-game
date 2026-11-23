@@ -28,6 +28,7 @@
 #include <game/ovl/variants_l7.h>
 #include <game/ovl/variants_l9.h>
 #include <game/port_stubs.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -43,7 +44,7 @@ constexpr uint32_t PAD_RX = 0x0013ca40u;
 constexpr uint32_t PAD_RY = 0x0013ca44u;
 
 uint32_t entry_of(uint32_t cam) {
-    return lwu(OV(0x0015ef50u)) + static_cast<uint32_t>(lh(cam + 0x84u) * 0x20);
+    return lvd::camera(lh(cam + 0x84u));
 }
 
 // The level's own end-of-update callback of the look-height hook (cam0_level_callback's copy: the address the hook
@@ -182,7 +183,7 @@ int32_t cam_type18_inside(uint32_t cam) {
     if (lw(data + 0x8u) >= 0) return point_in_sphere(HERO_POS, lw(data + 0x8u)) != 0 ? 1 : 0;
     const int32_t poly = lw(data + 0x14u);
     if (poly < 0) return 0;
-    const uint32_t p = lwu(OV(0x001b04b0u) + static_cast<uint32_t>(poly) * 4u);
+    const uint32_t p = lvd::path(poly);
     return point_in_polygon(HERO_POS, p + 0x10u, lw(p)) != 0 ? 1 : 0;
 }
 
@@ -489,7 +490,7 @@ void cam_type1_init(uint32_t cam) {
     sw(w0 + 0xcu, 0);
 
     const int32_t idx = lh(cam + 0x84u);
-    const uint32_t e = lwu(OV(0x0015ef50u)) + static_cast<uint32_t>(idx * 0x20);
+    const uint32_t e = lvd::camera(idx);
     const uint32_t data = lwu(e + 0x1cu);
     if (idx < 0) {
         debug_trap();

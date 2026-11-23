@@ -8,6 +8,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/port_stubs.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -662,7 +663,7 @@ void e1440_hits_and_target(uint32_t m) {
     color_pulse_update(m, pulse);
     const uint32_t st = lbu(m + 0x20);
     if (st == 1) {
-        const uint32_t area = lwu(OV(0x001b04b0) + lwu(pv + 0x1b4) * 4);
+        const uint32_t area = lvd::path(lwu(pv + 0x1b4));
         target_select(m, pv + 0xd0, 0, 0, area + 0x10, lw(area), 64.0f);
     } else if (st != 5) {
         const float r = lh(pv + 0x1da) != 0 ? 37.0f : lwc1(OV(0x00166c00u - 0x5030));
@@ -739,7 +740,7 @@ void e1440_update(uint32_t m) {
                 moby_retire(m);
                 return;
             }
-            lq_sq(m + 0x10, lwu(OV(0x001b04b0) + static_cast<uint32_t>(path) * 4) + 0x10);
+            lq_sq(m + 0x10, lvd::path(path) + 0x10);
             sb(m + 0x20, 1);
         } else {
             sb(m + 0x20, 3);
@@ -762,7 +763,7 @@ void e1440_update(uint32_t m) {
         if (lbu(m + 0x53) != 9) moby_anim_set(m, 9, 0, frame_scale_i(10));
         break;
     case 2: {
-        const uint32_t path = lwu(OV(0x001b04b0) + lwu(pv + 0x1b8) * 4);
+        const uint32_t path = lvd::path(lwu(pv + 0x1b8));
         float left = 0.0f;
         const Vec4 wp = V(path + lwu(pv + 0x1dc) * 0x10 + 0x10);
         turn_to(wp.x, wp.y, lwc1(0x0015ed70) * four_pi, lwc1(0x0015ed6c) * four_pi);

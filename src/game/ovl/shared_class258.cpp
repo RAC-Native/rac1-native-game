@@ -14,6 +14,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -70,7 +71,7 @@ void class258_update(uint32_t m) {
     bool inside = false;
     if (0.0f < lwc1(pv + 4)) inside = vec3_distance(V(m + 0x10), V(at)) < lwc1(pv + 4);
     if (!inside && lw(pv) != -1) {
-        const uint32_t poly = lwu(OV(0x001b04b0) + (lwu(pv) << 2));
+        const uint32_t poly = lvd::path(lwu(pv));
         inside = point_in_polygon(at, poly + 0x10, lw(poly)) != 0;
     }
     for (uint32_t i = 0; i < 6 && !inside; ++i) {

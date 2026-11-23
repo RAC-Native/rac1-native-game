@@ -32,6 +32,7 @@
 #include <game/ovl/variants_l4.h>
 #include <game/ovl/variants_l6.h>
 #include <game/ovl/variants_l8.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -397,7 +398,7 @@ void class615_camera_goal(uint32_t pos, uint32_t rot, uint32_t m) {
     const uint32_t sp = ee_stack_alloc(0x80);
     const int32_t record = lw(lwu(m + 0x78) + 0xe8);
     if (record != -1) {
-        const uint32_t r = (static_cast<uint32_t>(record) << 7) + lwu(OV(0x001600ec));
+        const uint32_t r = lvd::box(lvd::BOXES, record);
         lq_sq(pos, r + 0x30);
         lq_sq(rot, r + 0x70);
         ee_stack_free(0x80);

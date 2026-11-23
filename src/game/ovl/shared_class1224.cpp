@@ -23,6 +23,7 @@
 #include <game/ovl/variants_l14.h>
 #include <game/ovl/variants_l15.h>
 #include <game/ovl/variants_l17.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -53,7 +54,7 @@ constexpr int32_t POINTS = 32;
 constexpr int32_t FORKS = 4;
 
 // the moby's volume (pvar +0 its index)
-uint32_t volume(uint32_t pv) { return lwu(OV(0x001600ec)) + (lwu(pv) << 7); }
+uint32_t volume(uint32_t pv) { return lvd::box(lvd::BOXES, lwu(pv)); }
 
 uint32_t point(uint32_t pv, int32_t i) { return pv + 0x20 + static_cast<uint32_t>(i) * 0x10; }
 uint32_t drift(uint32_t pv, int32_t i) { return pv + 0x220 + static_cast<uint32_t>(i) * 0x10; }

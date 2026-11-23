@@ -11,6 +11,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants_l16.h>
 #include <game/ovl/variants_l5.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -22,7 +23,7 @@ constexpr uint32_t HERO_MOBY = 0x001413d0u;
 
 // the camera's entry parameters (the level's camera table *(0x15ef50), the entry +0x84, its +0x1c)
 uint32_t entry_params(uint32_t cam) {
-    return lwu(lwu(OV(0x0015ef50)) + (static_cast<uint32_t>(lh(cam + 0x84)) << 5) + 0x1c);
+    return lvd::camera_data(lh(cam + 0x84));
 }
 
 // `cur` stepped by `step` toward `target`, `target` itself when within the step

@@ -15,6 +15,7 @@
 #include <game/ovl/variants_l10.h>
 #include <game/ovl/variants_l2.h>
 #include <game/ovl/variants_l9.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -95,8 +96,7 @@ void bg_ship_exhaust(uint32_t m, uint32_t from, int32_t count, uint32_t scales, 
 // orig: L2:0x002ece18 L9:0x00306720 L10:0x002ebb08
 void bg_ship2_update(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
-    const uint32_t paths = OV(0x001b04b0);
-    const uint32_t path = lwu(paths + (lwu(pv + 0x60) << 2));  // (read before the index is checked, as the original does)
+    const uint32_t path = lvd::path(lwu(pv + 0x60));  // (read before the index is checked, as the original does)
     const uint32_t tune = ship2_tuning();
     const uint32_t sp = ee_stack_alloc(0xb0);
     const uint32_t old_pos = sp + 0x10;  // (also the debris' velocity)
@@ -113,7 +113,7 @@ void bg_ship2_update(uint32_t m) {
             retire = true;
             break;
         }
-        const uint32_t own = lwu(paths + (static_cast<uint32_t>(index) << 2));
+        const uint32_t own = lvd::path(index);
         if (lwu(own) == 0) {
             debug_printf_stub();  // (an empty path)
             retire = true;
@@ -123,7 +123,7 @@ void bg_ship2_update(uint32_t m) {
         sb(pv + 0x2c, 0x28);
         swc1(pv + 0x70, leg);
         sb(pv + 0x2b, 1);
-        V(m + 0x10) = V(lwu(paths + (lwu(pv + 0x60) << 2)) + 0x10);  // (the 16 bytes as they are)
+        V(m + 0x10) = V(lvd::path(lwu(pv + 0x60)) + 0x10);  // (the 16 bytes as they are)
         swc1(pv + 0x68, rand_angle());
         sw(pv + 0x6c, 0xffffffffu);
         sb(m + 0x20, 1);
@@ -218,8 +218,7 @@ uint32_t ship1_glow_draw() { return on_level(GASPAR) ? L9_ADDR(0x00305c10) : L2_
 // orig: L2:0x002ec4b8 L9:0x00305dc0
 void bg_ship1_update(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
-    const uint32_t paths = OV(0x001b04b0);
-    const uint32_t path = lwu(paths + (lwu(pv + 0x60) << 2));  // (read before the index is checked, as the original does)
+    const uint32_t path = lvd::path(lwu(pv + 0x60));  // (read before the index is checked, as the original does)
     const uint32_t tune = ship1_tuning();
     const uint32_t sp = ee_stack_alloc(0xb0);
     const uint32_t old_pos = sp + 0x10;  // (also the pieces' velocity)
@@ -229,7 +228,7 @@ void bg_ship1_update(uint32_t m) {
         sb(m + 0x30, 0xff);
         sh(m + 0x32, 0xff);
         const int32_t index = lw(pv + 0x60);
-        const uint32_t own = index == -1 ? 0u : lwu(paths + (static_cast<uint32_t>(index) << 2));
+        const uint32_t own = index == -1 ? 0u : lvd::path(index);
         if (index == -1 || lwu(own) == 0) {
             debug_printf_stub();  // (the ship's moby has no path, or an empty one)
             moby_retire(m);
@@ -240,7 +239,7 @@ void bg_ship1_update(uint32_t m) {
         sb(pv + 0x2c, 0x28);
         swc1(pv + 0x70, leg);
         sb(pv + 0x2b, 1);
-        V(m + 0x10) = V(lwu(paths + (lwu(pv + 0x60) << 2)) + 0x10);  // (the 16 bytes as they are)
+        V(m + 0x10) = V(lvd::path(lwu(pv + 0x60)) + 0x10);  // (the 16 bytes as they are)
         swc1(pv + 0x68, rand_angle());
         sw(pv + 0x6c, 0xffffffffu);
         sb(m + 0x20, 1);

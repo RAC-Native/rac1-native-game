@@ -26,6 +26,7 @@
 #include <game/ovl/variants_l3.h>
 #include <game/ovl/variants_l7.h>
 #include <game/ovl/weapons.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -44,7 +45,7 @@ uint32_t tuning(uint32_t o) {
 
 float frame_time() { return lwc1(0x0015ed6c); }
 float frame_time2() { return lwc1(0x0015ed70); }
-uint32_t level_path(int32_t i) { return lwu(OV(0x001b04b0) + (static_cast<uint32_t>(i) << 2)); }
+uint32_t level_path(int32_t i) { return lvd::path(i); }
 uint32_t moby_at(int32_t i) { return lwu(OV(0x0015ffd8)) + (static_cast<uint32_t>(i) << 8); }
 
 // each segment's length into its first point's w (+0x1c), up to the path's last but one

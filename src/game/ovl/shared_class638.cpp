@@ -22,6 +22,7 @@
 #include <game/ovl/variants.h>
 #include <game/ovl/variants_l16.h>
 #include <game/ovl/variants_l18.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -42,7 +43,7 @@ float dt() { return lwc1(0x0015ed6c); }
 
 // the point `i` of the path `path` (+0x10 the first)
 uint32_t path_point(int32_t path, int32_t i) {
-    return lwu(OV(0x001b04b0) + (static_cast<uint32_t>(path) << 2)) + (static_cast<uint32_t>(i) << 4) + 0x10;
+    return lvd::path(path) + (static_cast<uint32_t>(i) << 4) + 0x10;
 }
 
 // the animation set changed to `set` over `frames` (scaled) unless it is already that set
@@ -332,7 +333,7 @@ void class638_hits(uint32_t m) {
     } else {
         const int32_t path = lw(pv + 0x12c);
         if (path >= 0 && looking == 0) {
-            const uint32_t p = lwu(OV(0x001b04b0) + (static_cast<uint32_t>(path) << 2));
+            const uint32_t p = lvd::path(path);
             target_select(m, point, 0, 0, p + 0x10, lw(p), 24.0f);
         } else {
             target_select_any(m, point, 24.0f);
@@ -385,7 +386,7 @@ void class638_update(uint32_t m) {
         }
         const int32_t path = lw(pv + 0x120);
         if (path >= 0) {
-            const uint32_t p = lwu(OV(0x001b04b0) + (static_cast<uint32_t>(path) << 2));
+            const uint32_t p = lvd::path(path);
             const int32_t i = float_to_int(rand_range_f(0.0f, static_cast<float>(lw(p) - 1)));
             sh(pv + 0x300, static_cast<uint32_t>(i));
             lq_sq(m + 0x10, path_point(lw(pv + 0x120), static_cast<int16_t>(i)));

@@ -12,6 +12,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -33,7 +34,7 @@ void pump_camera_start(uint32_t m) {
     const uint32_t sp = ee_stack_alloc(0x80);
     const uint32_t cam = sp, rot = sp + 0x10, back = sp + 0x20;
     const uint32_t pv = lwu(m + 0x78);
-    const uint32_t spot = lwu(OV(0x001600ec)) + (lwu(pv + 0xf8) << 7);
+    const uint32_t spot = lvd::box(lvd::BOXES, lwu(pv + 0xf8));
     sw(pv + 0x118, 0);
     hero_place(spot + 0x30, spot + 0x70, 0x72, 0);
     // 8 behind the switch, 2 above the hero
@@ -47,7 +48,7 @@ void pump_camera_start(uint32_t m) {
     camera_scripted_set(cam, rot, 1, 0, 0);
     uid5_set_pvar_80(cam);
     uid5_set_pvar_90(rot);
-    sw(lwu(OV(0x001b04b0) + (lwu(pv + 0xec) << 2)), 0);
+    sw(lvd::path(lwu(pv + 0xec)), 0);
     ee_stack_free(0x80);
 }
 

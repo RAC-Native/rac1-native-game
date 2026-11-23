@@ -9,6 +9,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -212,7 +213,7 @@ void peckbot_update_l1(uint32_t m) {
     };
     // the point it heads for: the next one of its path toward `goal`, or `goal` itself
     auto waypoint = [&](uint32_t goal) {
-        if (lw(pv + 0x21c) != -1) path_next_point_l1(m, lwu(OV(0x001b04b0) + static_cast<uint32_t>(lw(pv + 0x21c)) * 4), goal, wp);
+        if (lw(pv + 0x21c) != -1) path_next_point_l1(m, lvd::path(lw(pv + 0x21c)), goal, wp);
         else lq_sq(wp, goal);
     };
     // the ground check every walking state ends with: the surface kinds 0 / 8 (water) send it to 0x10

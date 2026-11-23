@@ -19,6 +19,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -26,8 +27,8 @@ namespace {
 constexpr uint32_t HERO_POS = 0x0013f3d0;  // the hero's position
 constexpr uint32_t WORLD_UP = 0x0013f5e0;  // (a vector of the hero's block: its negation is the camera's up)
 
-uint32_t cam_data(uint32_t cam) { return lwu(lwu(OV(0x0015ef50)) + (static_cast<uint32_t>(lh(cam + 0x84)) << 5) + 0x1c); }
-uint32_t level_path(int32_t idx) { return lwu(OV(0x001b04b0) + (static_cast<uint32_t>(idx) << 2)); }
+uint32_t cam_data(uint32_t cam) { return lvd::camera_data(lh(cam + 0x84)); }
+uint32_t level_path(int32_t idx) { return lvd::path(idx); }
 
 // the field of view from its angle in degrees (the projection's tan of the half angle)
 void set_view_angle(float half) {

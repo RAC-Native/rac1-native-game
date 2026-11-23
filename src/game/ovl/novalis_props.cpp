@@ -24,6 +24,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/port_stubs.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -148,7 +149,7 @@ void zone_marker_update_at(uint32_t m, uint32_t counter) {
     lq_sq(buf, ridden != 0 && lw(P + 0x10b8) == 0x1b ? lwu(ridden + 0x78) + 0x10 : 0x0013f3d0u);
     bool in_zone = false;
     if (lw(pv + 0x10) != -1) {
-        const uint32_t path = lwu(OV(0x001b04b0) + static_cast<uint32_t>(lw(pv + 0x10)) * 4);
+        const uint32_t path = lvd::path(lw(pv + 0x10));
         in_zone = point_in_polygon(buf, path + 0x10, lw(path)) != 0;
     }
     if (!in_zone) {

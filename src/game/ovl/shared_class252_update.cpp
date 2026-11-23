@@ -14,6 +14,7 @@
 #include <game/ovl/variants_l14.h>
 #include <game/ovl/variants_l8.h>
 #include <game/ovl/weapons.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 // ---- class 252's update and its two helpers (task F11). Their level-own words: a record the update hands its pvars
@@ -89,7 +90,7 @@ void class252_hit(uint32_t m) {
     const uint32_t state = lbu(m + 0x20);
     if (state != 0 && state != 4) {
         // its target: one in its path's boxes within 14; too far from home or too far above or below it: out of reach
-        const uint32_t path = lwu(OV(0x001b04b0) + (lwu(pv + 0x21c) << 2));
+        const uint32_t path = lvd::path(lwu(pv + 0x21c));
         const float range = 14.0f;
         if (target_select(m, pv + 0x170, 0, 0, path + 0x10, lw(path), range) != 2) {
             if (range < vec2_distance(V(pv + 0x1c0), V(pv + 0x170))) sw(pv + 0x1b4, 2);

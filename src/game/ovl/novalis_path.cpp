@@ -9,6 +9,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/port_stubs.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -18,7 +19,7 @@ namespace rac1 {
 // orig: L1:0x0028b410 L3:0x00264458 L4:0x00268b18 L12:0x0028eb00 L14:0x0027df78
 void path_follower_init_l1(uint32_t f) {
     sb(f + 5, 0);
-    const uint32_t path0 = lwu(OV(0x001b04b0) + (lwu(f + 0x14) << 2));
+    const uint32_t path0 = lvd::path(lwu(f + 0x14));
     sw(f + 8, 0);
     sw(f + 0x10, path0);
     if (!(lw(path0) > 0)) return;

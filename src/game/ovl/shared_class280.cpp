@@ -25,6 +25,7 @@
 #include <game/ovl/variants_l1.h>
 #include <game/ovl/variants_l4.h>
 #include <game/ovl/variants_l8.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -51,7 +52,7 @@ void camera_rot_set(uint32_t src) {
 
 float frame_time() { return lwc1(0x0015ed6c); }
 float frame_time2() { return lwc1(0x0015ed70); }
-uint32_t camera_record(int32_t i) { return lwu(OV(0x001600ec)) + (static_cast<uint32_t>(i) << 7); }
+uint32_t camera_record(int32_t i) { return lvd::box(lvd::BOXES, i); }
 
 // the pump's flag (its index +0xb2: the byte at 0x1bb230 + 0x454, or the bit of the level's words 0x14c190): worked before
 bool done_before(uint32_t m) {

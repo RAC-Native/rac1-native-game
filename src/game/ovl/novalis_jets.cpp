@@ -12,6 +12,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/port_stubs.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -147,7 +148,7 @@ void jet_ship_update_l1(uint32_t m) {
                 sb(lwu(OV(0x0015ffd8)) + (lwu(pv + 0x180) << 8) + 0xbc, 1);
             }
             if (lw(pv + 0x74) != -1) {
-                const uint32_t path = lwu(OV(0x001b04b0) + (lwu(pv + 0x74) << 2));
+                const uint32_t path = lvd::path(lwu(pv + 0x74));
                 const int32_t count = lw(path);
                 if (count > 0) {
                     int32_t i = 0;
@@ -173,7 +174,7 @@ void jet_ship_update_l1(uint32_t m) {
             const uint32_t s0 = lwu(lwu(OV(0x0015ffd8)) + (static_cast<uint32_t>(v1) << 8) + 0x78);
             const float cx = lwc1(OV(0x00166dc0)), cy = lwc1(OV(0x00166dc4));
             float f20 = atan2_f(lwc1(m + 0x10) - cx, lwc1(m + 0x14) - cy);
-            const uint32_t boxes = lwu(OV(0x001600ec));
+            const uint32_t boxes = lvd::box_list(lvd::BOXES);
             const float f1 = angle_sub(lwc1((lwu(s0 + 0x24) << 7) + boxes + 0x78), f20);
             if (f1 < 0.0f) {
                 f20 = lwc1((lwu(s0 + 0x24) << 7) + boxes + 0x78);
@@ -196,7 +197,7 @@ void jet_ship_update_l1(uint32_t m) {
             swc1(s0 + 0x18, angle_seek_rate(pv + 0x18c, lwc1(OV(0x00166dd8)), f20, f14, f15, f16));
         }
         if (lw(pv + 0x74) != -1) {
-            const uint32_t path = lwu(OV(0x001b04b0) + (lwu(pv + 0x74) << 2));
+            const uint32_t path = lvd::path(lwu(pv + 0x74));
             const int32_t f_idx = lw(pv + 0x60);
             const int32_t stop = lw(pv + 0x17c);
             bool at_stop = false;
@@ -389,7 +390,7 @@ void jet_bomber_update_l1(uint32_t m) {
         if (lbu(m + 0x20) == 0) {
             const int32_t pn = lw(fol + 0x14);
             if (pn != -1) {
-                const uint32_t path = lwu(OV(0x001b04b0) + (static_cast<uint32_t>(pn) << 2));
+                const uint32_t path = lvd::path(pn);
                 swc1(pv + 0xfc, lwc1(pv + 0xfc) + lwc1(pv + 0xfc));
                 int32_t s2 = 0;
                 const float dd = vec3_distance(V(path + 0x10), V(path + (static_cast<uint32_t>(lw(path)) << 4)));
@@ -484,7 +485,7 @@ void jet_bomber_update_l1(uint32_t m) {
                     sh(m + 0x34, lhu(m + 0x34) & 0xffbeu);
                     if (lw(pv + 0x174) != -1) {
                         hero_set_state_l1(0x72, 0);
-                        const uint32_t box = lwu(OV(0x001600ec)) + (lwu(pv + 0x174) << 7);
+                        const uint32_t box = lvd::box(lvd::BOXES, lwu(pv + 0x174));
                         camera_scripted_set(box + 0x30, box + 0x70, 0, 0, 0);
                         sw(OV(0x0015f404), 1);
                         sw(m + 0x94, 0);
@@ -558,7 +559,7 @@ void jet_bomber_update_l1(uint32_t m) {
                     uint32_t s1 = buf + 0x30 + (static_cast<uint32_t>(s0) << 2);
                     for (;;) {
                         const int32_t v0 = lw(s1 - 0x10);
-                        const uint32_t box = lwu(OV(0x001600ec)) + (static_cast<uint32_t>(v0) << 7);
+                        const uint32_t box = lvd::box(lvd::BOXES, v0);
                         const int32_t r = segment_collide_v(V(OV(0x00166dc0)), V(box + 0x30), 0x86, m, nullptr);
                         if (r == 0) {
                             --s0;
@@ -605,9 +606,9 @@ void jet_bomber_update_l1(uint32_t m) {
                     sh(pv + 0x184, v1b);
                     moby_chain_point_v(m, static_cast<uint32_t>(static_cast<int16_t>(v1b)), V(p50));
                     boxi <<= 7;
-                    vec3_sub(V(p40), V(lwu(OV(0x001600ec)) + boxi + 0x30), V(p50));
+                    vec3_sub(V(p40), V(lvd::box_list(lvd::BOXES) + boxi + 0x30), V(p50));
                     vec3_set_length(V(p40), V(p40), lwc1(0x0015ed6c) * u2f(0x43200000u));
-                    lq_sq(p60, lwu(OV(0x001600ec)) + boxi + 0x30);
+                    lq_sq(p60, lvd::box_list(lvd::BOXES) + boxi + 0x30);
                     const int32_t inbox = point_in_box(0x0013f3d0, lw(pv + 0x18c));
                     const uint32_t shot = bomber_shot_spawn_l1(m, p50, p40, p60, static_cast<uint32_t>(inbox));
                     if (shot != 0) {

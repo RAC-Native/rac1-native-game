@@ -13,6 +13,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants_l3.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -25,7 +26,7 @@ int32_t carry_hook(uint32_t which, uint32_t m, uint32_t a1, uint32_t a2, float f
 }
 
 // the camera entry `i`'s record
-uint32_t cam_entry_record(int32_t i) { return lwu(lwu(OV(0x0015ef50)) + (static_cast<uint32_t>(i) << 5) + 0x1c); }
+uint32_t cam_entry_record(int32_t i) { return lvd::camera_data(i); }
 
 // class `cls`'s animation set `set`
 uint32_t anim_set(uint32_t cls, uint32_t set) { return lwu(lwu(OV(0x00197300) + (cls << 2)) + (set << 2) + 0x48); }
@@ -196,7 +197,7 @@ void kerwan_class1012_turn(uint32_t m) { kerwan_turn(m, L3_ADDR(0x00161bd8), 0xa
 void blarg_class1051_switch(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
     hero_set_state(0, 0);
-    const uint32_t path = lwu(OV(0x001b04b0) + (lwu(pv + 0xec) << 2));
+    const uint32_t path = lvd::path(lwu(pv + 0xec));
     sw(path, lwu(pv + 0x114));
     hydro_2eac18(2);
 }
@@ -285,7 +286,7 @@ void envmap_uvs4(int32_t n, uint32_t normals, uint32_t points, uint32_t /*unused
 // orig: L14:0x002fc890 L14:0x002fd808
 void path_mover_start(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
-    const uint32_t path = lwu(OV(0x001b04b0) + (lwu(pv + 0x68) << 2));
+    const uint32_t path = lvd::path(lwu(pv + 0x68));
     for (int32_t i = 0; i < lw(path) - 1; ++i) {
         const uint32_t at = path + 0x10 + static_cast<uint32_t>(i) * 0x10;
         swc1(at + 0xc, vec3_distance(V(at), V(at + 0x10)));

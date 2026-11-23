@@ -12,6 +12,7 @@
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -29,7 +30,7 @@ constexpr uint32_t HERO = 0x0013f350;  // the hero (+0x80 its position, +0xf0 it
 void class679_update(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
     if (pv == 0 || lw(pv) == -1 || lw(pv + 0x70) == 0) return;
-    auto path_of = [pv](int32_t i) { return lwu(OV(0x001b04b0) + (lwu(pv + static_cast<uint32_t>(i) * 4) << 2)); };
+    auto path_of = [pv](int32_t i) { return lvd::path(lwu(pv + static_cast<uint32_t>(i) * 4)); };
     if (lw(pv + 0x68) == 0) {
         sw(pv + 0x68, 1);
         for (int32_t i = 0; i < lw(pv + 0x70); ++i) {

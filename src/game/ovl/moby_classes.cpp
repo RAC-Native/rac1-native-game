@@ -16,6 +16,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/lib/libc.h>
 #include <game/port_stubs.h>
+#include <game/level/level_data.h>
 
 namespace rac1 {
 
@@ -194,7 +195,7 @@ void path_point(float t, uint32_t path, int32_t loop, uint32_t pos, uint32_t rot
 void moby_1564_update(uint32_t m) {
     const uint32_t p = lwu(m + 0x78);
     const int32_t which = lw(p + 0x60);
-    const uint32_t path = lwu(OV(0x001b04b0) + static_cast<uint32_t>(which) * 4);
+    const uint32_t path = lvd::path(which);
     const uint32_t st = lbu(m + 0x20);
     if (st == 0) {
         if (which == -1) {
@@ -613,15 +614,15 @@ int32_t path_crossing_v(int32_t path, const Vec4& from, const Vec4& to, Vec4& ou
     basis.r[1].y = -basis.r[0].x;
     vec_clear(basis.r[2]);
     basis.r[2].z = 1.0f;
-    const uint32_t pts = lwu(OV(0x001b04b0) + static_cast<uint32_t>(path) * 4);
+    const uint32_t pts = lvd::path(path);
     Vec4 p;
     vec3_sub(p, V(pts + 0x10), from);
     mat3_transform(p, p, basis);
     float best = 1.0f;
     int32_t found = 0;
-    for (int32_t i = 1; i < lw(lwu(OV(0x001b04b0) + static_cast<uint32_t>(path) * 4)); ++i) {
+    for (int32_t i = 1; i < lw(lvd::path(path)); ++i) {
         Vec4 q;
-        vec3_sub(q, V(lwu(OV(0x001b04b0) + static_cast<uint32_t>(path) * 4) + 0x10 + static_cast<uint32_t>(i) * 0x10), from);
+        vec3_sub(q, V(lvd::path(path) + 0x10 + static_cast<uint32_t>(i) * 0x10), from);
         mat3_transform(q, q, basis);
         if ((p.w != 0.0f || q.w != 0.0f) && q.y * p.y < 0.0f) {
             float t = fpu_div(p.x - q.x, p.y - q.y);
@@ -1003,7 +1004,7 @@ void bolts_drop(uint32_t m, int32_t lo, int32_t hi, uint32_t flags, int32_t path
         vec3_set_length(side, side, 0.5f);
         vec3_add(pos, pos, side);
         if (!(path < 0)) {  // keep the bolt's flight inside the wall path
-            const uint32_t pts = lwu(OV(0x001b04b0) + static_cast<uint32_t>(path) * 4);
+            const uint32_t pts = lvd::path(path);
             const float half_g = lwc1(0x0015ed70) * u2f(0x412ccccdu) * -0.5f;
             float r_hi = 0.0f, r_lo = 0.0f;
             float t = 120.0f;
@@ -1140,7 +1141,7 @@ void crate_break_drops(uint32_t m) {
             swc1(q + 0x18, vz);
             if (lw(pv + 0xc0) < 0) continue;
             const float g = lwc1(0x0015ed70) * u2f(0x412ccccdu) * -0.5f;
-            const uint32_t pts = lwu(OV(0x001b04b0) + lwu(pv + 0xc0) * 4);
+            const uint32_t pts = lvd::path(lwu(pv + 0xc0));
             float r_hi, r_lo;
             const int32_t roots = solve_quadratic(&r_hi, &r_lo, g, vz - g, lwc1(pk + 0x18) - lwc1(pts + 0x18));
             float t = 120.0f;
@@ -3631,7 +3632,7 @@ void crate_settle(uint32_t m0) {
                 if ((lh(p + 0xc6) != 0 || lh(cur + 0xa6) == 0x1f5) && lwu(p + 0xa0) != 0) {
                     const int32_t idx = lw(p + 0xc0);
                     if (idx != -1) {
-                        const uint32_t path = lwu(OV(0x001b04b0) + static_cast<uint32_t>(idx) * 4);
+                        const uint32_t path = lvd::path(idx);
                         const int32_t n = lw(path);
                         const uint32_t st = lwu(path + 0x1c);
                         if (n == 0 || st == 1 || st == 3 || st == 0x111) {
@@ -3644,8 +3645,8 @@ void crate_settle(uint32_t m0) {
                             }
                         } else {
                             sw(path + 0x1c, 0x11);
-                            for (int32_t k = 0; k < lw(lwu(OV(0x001b04b0) + lwu(p + 0xc0) * 4)); ++k)
-                                sw(lwu(OV(0x001b04b0) + lwu(p + 0xc0) * 4) + static_cast<uint32_t>(k) * 0x10 + 0x1c, 0);
+                            for (int32_t k = 0; k < lw(lvd::path(lwu(p + 0xc0))); ++k)
+                                sw(lvd::path(lwu(p + 0xc0)) + static_cast<uint32_t>(k) * 0x10 + 0x1c, 0);
                         }
                     }
                 }
