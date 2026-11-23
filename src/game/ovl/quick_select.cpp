@@ -180,7 +180,7 @@ void quick_select_update(uint32_t e) {
         const int32_t s = lw(e + 0x74);
         if (s >= 0) {
             const uint32_t item = lwu(qs_slot(s) + 0x18);
-            if (item != 0) {
+            if (item != 0 && quick_rings_equip_ok(item)) {  // (enhancement, #178: never an item that cannot be held)
                 if (lwu(P + 0x10b8) != item) {
                     const uint32_t c = lhu(0x001418e8);
                     if (!(0xfffe < c)) sh(0x001418e8, c + 1);

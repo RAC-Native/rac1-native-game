@@ -82,6 +82,19 @@ void quick_rings_challenge_restore();
 // orig: (none) — enhancement: our texts (0x7a00..0x7a02: "Ring 1".."Ring 3"); 0 for another id
 uint32_t quick_rings_text(int32_t id);
 
+// orig: (none) — robustness (#178): an item may sit in a quick select place (0 empty) only when it is a held item: the item
+// table's kind (0x179ac0, +8) 0. A pack, a helmet or boots (kinds 2, 3), the Hoverboard and the like (1, 4, 5) in a place
+// made the hero load a weapon class they do not have when the quick select equipped it, and the game crashed. The game
+// itself never puts one there (item_give 0x260860); a save written by an older build or a plugin might hold one
+bool quick_rings_item_valid(uint32_t item);
+// orig: (none) — enhancement (#178): the quick select may equip `item` (always true while the enhancements are off: the
+// game's own code runs as it is; otherwise only a valid item)
+bool quick_rings_equip_ok(uint32_t item);
+// orig: (none) — robustness (#178): every ring's places that hold an item that is not valid emptied (ring 1 0x141ea0 as well,
+// a save that holds one): called every gameplay frame by advanced_frame (so never with the enhancements off: the ported
+// functions stay the game's own)
+void quick_rings_sanitize();
+
 }  // namespace rac1
 
 #endif

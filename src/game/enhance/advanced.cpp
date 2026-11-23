@@ -690,6 +690,7 @@ void advanced_frame() {
     if (g_advanced_disabled) return;
     settings_load();
     combo_table_sync();
+    if (lw(OV(0x0015f5c4)) == 0) quick_rings_sanitize();  // (#178: a place holding an item that cannot be held emptied, in a level)
     items_frame();
     vibration_frame(lbu(VIBRATION), lbu(TRIGGERS), modern_aim());
     for (uint32_t i = 0; i < ROW_COUNT; ++i)
