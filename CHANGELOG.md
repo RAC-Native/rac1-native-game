@@ -17,6 +17,10 @@ What changed in each release. Releases are source only: you build the game with 
   menu's Rendering tab has the GPU choice too, with "In use: <GPU>" and a Restart now button.
 
 ### Fixes
+- **PAL discs: Ratchet moves left and right again while hanging from a ledge** (#130, #168), on Aridia's construction site
+  and the other levels where it failed. The PAL setup left the shimmy's speed tables (and a few other values: the boss
+  bar, the race HUD's words) at the NTSC addresses on 13 levels, so the game read a speed of 0. The PAL maps now place them
+  by their bytes; NTSC-U is unchanged. Run the setup again to pick it up.
 - **An item that cannot be held is no longer equipped from the Quick Select, which crashed the game** (#178). A pack (the
   Heli-Pack, say) in a Quick Select place made the hero load a weapon class it does not have when it was equipped. With the Advanced settings on, a place
   now holds only a held item (a weapon or a gadget such as the Swingshot): any other item shows an empty place and is never
