@@ -422,6 +422,13 @@
     "#endif\n" \
     "}\n"                                                                                                                                                    \
     "#endif\n"                                                                                                                                                    \
+    "/* a texel of the planar view: whatever was drawn there counts as held, whatever its alpha - the sky's layers are blended over each\n" \
+    "   other and leave the last one's alpha in the target (0 over the haze above the horizon, partial between the clouds), so the far\n"    \
+    "   sea took the sky as nothing there and added it over the cube map: a bright band that flickered with the clouds (#176) */\n"          \
+    "vec4 sm_refl_planar(vec2 uv) {\n"                                                                                                       \
+    "    vec4 s = textureLod(uReflPlanar, uv, 0.0);\n"                                                                                       \
+    "    return vec4(s.rgb, max(s.a, smoothstep(0.0, 0.03, max(s.r, max(s.g, s.b)))));\n"                                                    \
+    "}\n"                                                                                                                                    \
     "/* the water's reflection: `miss` (the level's sky colour) where the cube map has nothing; on Medium the planar view where the water lies\n"         \
     "   at its plane (faded out over a few tenths of a unit off it, and where the surface is not flat - a stream's slope), read at the pixel's\n"         \
     "   own place moved by the ripples (Nw, a gentle slope, against the face's N: less far away), over a few of its texels (the ripples moving the read over the\n"        \
@@ -457,8 +464,8 @@
     "            vec2 uv = (gl_FragCoord.xy - v.xy) * v.zw + (Nw.xy - N.xy) * (0.18 * 8.0 / (8.0 + d));\n"                                                \
     "            vec2 o = v.zw * 1.5;  /* (the view is drawn at half the size: some three of its texels) */\n"                                            \
     "            uv = clamp(uv, o + 0.002, 1.0 - o - 0.002);\n"                                                                                           \
-    "            p = (textureLod(uReflPlanar, uv, 0.0) * 2.0 + textureLod(uReflPlanar, uv + vec2(o.x, o.y), 0.0) + textureLod(uReflPlanar, uv - vec2(o.x, o.y), 0.0)\n"\
-    "                 + textureLod(uReflPlanar, uv + vec2(o.x, -o.y), 0.0) + textureLod(uReflPlanar, uv - vec2(o.x, -o.y), 0.0)) / 6.0;\n"                \
+    "            p = (sm_refl_planar(uv) * 2.0 + sm_refl_planar(uv + vec2(o.x, o.y)) + sm_refl_planar(uv - vec2(o.x, o.y))\n"                              \
+    "                 + sm_refl_planar(uv + vec2(o.x, -o.y)) + sm_refl_planar(uv - vec2(o.x, -o.y))) / 6.0;\n"                                            \
     "        }\n"                                                                                                                                         \
     "    }\n"                                                                                                                                             \
     "    /* (testing: green the planar view, red the planar view without anything there, blue the cube map, black neither - the sky colour;\n"            \

@@ -290,7 +290,7 @@ materials, no grass shells in it). Lighter since 2026-11-03 (Daino: Medium "very
   box: its packets' templates' vertex boxes through its rows; the same culling for the probes' faces) - a quarter to a third of their
   draws.
 Each of these pictures is the same as before to the pixel except the lighting (`RAC1_REFLECT_CULL=0` draws the whole view and every
-instance, to compare). The water reads the planar view as a premultiplied picture (its empty texels weigh in as nothing). The water reads it at its own pixel - the mirror makes the reflection of a point of the plane fall on that point's own
+instance, to compare). The water reads the planar view as a premultiplied picture (its empty texels weigh in as nothing); whatever was drawn in a texel counts as there whatever its alpha (`sm_refl_planar`, #176: the sky's layers leave the last one's alpha in the target, 0 over the haze above the horizon, and the far sea added that sky over the cube map, an over-bright band that changed with the clouds). The water reads it at its own pixel - the mirror makes the reflection of a point of the plane fall on that point's own
 pixel - moved by the ripples (a gentler slope than the glint's: the finer trains glittered over the reflected lights), less far away,
 over six taps of the half-size picture. Where the water does not lie at the plane (another body, a stream's slope: over 0.08 to 0.35
 units off it, or a face not flat) or the planar view drew nothing there, the cube map.
