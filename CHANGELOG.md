@@ -17,6 +17,11 @@ What changed in each release. Releases are source only: you build the game with 
   menu's Rendering tab has the GPU choice too, with "In use: <GPU>" and a Restart now button.
 
 ### Fixes
+- **Water Reflections Medium: no more bright, flickering patches on the far sea** (#176), Pokitaru's most of all. The planar
+  view's sky keeps the last sky layer's alpha (0 over the haze above the horizon, partial between the clouds), so the water took
+  the reflected sky there as nothing and added it over the cube map: an over-bright band with a hard edge that changed with the
+  clouds and the camera. Whatever the planar view drew now counts as there (as Low's sky faces already did). Graphics: Original
+  and the RT values are unchanged.
 - **PAL discs: Ratchet moves left and right again while hanging from a ledge** (#130, #168), on Aridia's construction site
   and the other levels where it failed. The PAL setup left the shimmy's speed tables (and a few other values: the boss
   bar, the race HUD's words) at the NTSC addresses on 13 levels, so the game read a speed of 0. The PAL maps now place them
