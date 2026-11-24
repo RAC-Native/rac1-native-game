@@ -324,8 +324,7 @@ void check_queries() {
     std::vector<uint8_t> ee_ram, ee_spr;
     const bool check_was = coll_scene_check(), native_was = coll_scene_native();
     coll_scene_set_check(false);
-    const uint64_t parses0 = coll_scene_stats().parses;
-    (void)coll_scene_tree(coll_tree());  // (parsed here, outside the timed queries)
+    (void)coll_scene_tree(coll_tree());  // (parsed here, outside the timed queries, unless the level's set-up already took it)
     (void)coll_scene_mesh(r32(OV(0x0015f618)));
     int kinds[4] = {0, 0, 0, 0}, hits[4] = {0, 0, 0, 0}, bad = 0;
     double us[2][4] = {};  // (each kind's time, ee and native, microseconds)
@@ -387,13 +386,12 @@ void check_queries() {
     }
     coll_scene_set_native(native_was);
     coll_scene_set_check(check_was);
-    const uint64_t parses = coll_scene_stats().parses - parses0;
     level();
     if (bad != 0) {
         fail(name, std::to_string(bad) + " of " + std::to_string(n) + " queries differ; first: " + first);
         return;
     }
-    if (parses == 0 || coll_scene_tree(coll_tree()) == nullptr) {
+    if (coll_scene_tree(coll_tree()) == nullptr) {
         fail(name, "the native runs had no scene for the tree");
         return;
     }
