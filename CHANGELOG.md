@@ -27,6 +27,9 @@ What changed in each release. Releases are source only: you build the game with 
   equipped, and the places of a save that already hold one are emptied once a level is running (`[quick rings] ... emptied` in
   the log, with the Advanced settings on). The Quick Select Rings' new-item rule is the game's: only a held item goes to a free place. Nothing changes for
   a save without such an item.
+- **The main menu's Exit button keeps its text and closes the game after a visit to Options > Language** (#187, #137).
+  The Language page's texts ran past their memory block into the Exit button's and page's, so the button lost its text and
+  choosing it left the menu stuck (Alt+F4 was the only way out). The texts now fit their block. Any disc and language.
 
 ### Fixes (Windows)
 - **The setup stops at once in a folder with accents in its path** (#185), with a clear message to move the game to a

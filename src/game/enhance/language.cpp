@@ -30,7 +30,7 @@ constexpr uint32_t ROWS_WIDGET = LNG + 0xe0;   // its settings widget (a copy of
 constexpr uint32_t STEPS = LNG + 0x130;        // the rows' step bytes (by Row: the settings widget writes them)
 constexpr uint32_t ROWS = LNG + 0x140;         // the widget's rows (0x18 bytes, ended by text 0)
 constexpr uint32_t STRINGS = LNG + 0x200;      // the texts, made at each lookup (..0xfa800)
-constexpr uint32_t STRING_SIZE = 0x80;
+constexpr uint32_t STRING_SIZE = 0x60;         // (10 of them: 0x80 each ran 0x100 bytes into the Exit page's block, #187)
 
 constexpr uint32_t LANGUAGE = 0x0015ed88u;   // the game's language: the text's
 constexpr uint32_t SUBTITLES = 0x0015ee40u;  // the game's Subtitles switch (one of its options, in its save)
@@ -45,7 +45,7 @@ enum Row : uint32_t { R_TEXT, R_VOICE, R_SUBTITLES, R_MOVIE_SUBTITLES, ROW_COUNT
 // The texts' ids (after the Controls page's 0x7fa0..0x7fb6), each made at its lookup into its string
 constexpr int32_t TEXT_FIRST = 0x7fc0;
 enum : int32_t { I_TITLE, I_HELP, I_NAME, I_VALUE = I_NAME + ROW_COUNT, I_COUNT = I_VALUE + ROW_COUNT };
-static_assert(I_COUNT * STRING_SIZE <= 0x600, "the Language page's texts end at 0xfa800");
+static_assert(STRINGS + I_COUNT * STRING_SIZE <= 0x000fa800u, "the Language page's texts end at 0xfa800 (the Exit page's block)");
 
 // per language (0x15ed88: 0 English, 2 French (in English for now, as the other pages: the font's accented letters not
 // looked at yet), 3 German, 4 Spanish, 5 Italian)
@@ -67,6 +67,24 @@ constexpr const char* NAMES[4][6] = {
 };
 // The text languages, in the order of the game's own list
 constexpr uint32_t TEXT_LANGUAGES[] = {0, 2, 3, 4, 5};
+
+// orig: (none) — enhancement: every text and language name fits its string (with its 0)
+constexpr bool texts_fit() {
+    for (const auto& row : TEXTS)
+        for (const char* t : row) {
+            uint32_t n = 0;
+            while (t[n] != 0) ++n;
+            if (n >= STRING_SIZE) return false;
+        }
+    for (const auto& row : NAMES)
+        for (const char* t : row) {
+            uint32_t n = 0;
+            while (t[n] != 0) ++n;
+            if (n >= STRING_SIZE) return false;
+        }
+    return true;
+}
+static_assert(texts_fit(), "a Language page text is longer than its string");
 
 int32_t g_voice = -1;      // the Voice row's choice as kept in the preferences (voice_language.h; RAC1_VOICE_LANGUAGE over it)
 int32_t g_subtitles = -1;  // the Subtitles choice: -1 never chosen (the game's own), 0 off, 1 on
