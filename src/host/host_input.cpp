@@ -403,11 +403,19 @@ void direct_look(const Bindings& b, float dx, float dy, PadOutput& o) {
     o.aim_y = o.look_y * b.aim_sensitivity;
 }
 
+namespace {
+// orig: (host) a keyboard key or a mouse button
+bool keyboard_input(const HostInput& in) { return in.kind == InputKind::kKey || in.kind == InputKind::kMouseButton; }
+}  // namespace
+
 PadOutput compute(const Bindings& b, const HostState& s, bool direct) {
     PadOutput o;
     for (int i = 0; i < kButtonCount; ++i)
         for (const HostInput& in : b.map[i])
             if (input_pressed(in, s, b)) { o.held |= control_info(i).bit; break; }
+    for (int i = 0; i < kButtonCount; ++i)
+        for (const HostInput& in : b.map[i])
+            if (keyboard_input(in) && input_pressed(in, s, b)) { o.key_held |= control_info(i).bit; break; }
     auto half = [&](PadControl c) {
         float v = 0.0f;
         for (const HostInput& in : b.map[static_cast<int>(c)]) {
@@ -420,6 +428,14 @@ PadOutput compute(const Bindings& b, const HostState& s, bool direct) {
     for (const HostInput& in : b.map[static_cast<int>(P::kNextItem)]) o.next_item |= input_pressed(in, s, b);
     for (const HostInput& in : b.map[static_cast<int>(P::kPrevItem)]) o.prev_item |= input_pressed(in, s, b);
     if (direct) direct_look(b, s.mouse_dx, s.mouse_dy, o);
+    auto key_half = [&](PadControl c) {
+        for (const HostInput& in : b.map[static_cast<int>(c)])
+            if (keyboard_input(in) && input_pressed(in, s, b)) return 1.0f;
+        return 0.0f;
+    };
+    o.key_left = key_half(P::kLeftStickLeft);
+    o.key_right = key_half(P::kLeftStickRight);
+    o.key_up = key_half(P::kLeftStickUp);
     o.lx = half(P::kLeftStickRight) - half(P::kLeftStickLeft);
     o.ly = half(P::kLeftStickDown) - half(P::kLeftStickUp);
     o.rx = half(P::kRightStickRight) - half(P::kRightStickLeft);
@@ -428,6 +444,18 @@ PadOutput compute(const Bindings& b, const HostState& s, bool direct) {
     stick_to_square(o.lx, o.ly);
     stick_to_square(o.rx, o.ry);
     return o;
+}
+
+// orig: (host) see host_input.h
+void board_steer_keys(PadOutput& o) {
+    using P = PadControl;
+    const uint16_t left = control_info(P::kLeft).bit, right = control_info(P::kRight).bit, up = control_info(P::kUp).bit;
+    const bool to_left = o.key_left > 0.0f || (o.key_held & left) != 0;
+    const bool to_right = o.key_right > 0.0f || (o.key_held & right) != 0;
+    if (to_left == to_right) return;  // (no side key, or both)
+    o.lx = to_right ? 1.0f : -1.0f;
+    if (o.key_up > 0.0f && o.ly < 0.0f) o.ly = 0.0f;
+    if ((o.key_held & up) != 0) o.held = static_cast<uint16_t>(o.held & ~up);
 }
 
 void WheelPulse::scroll(double y) {
