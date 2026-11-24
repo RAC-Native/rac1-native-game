@@ -4,6 +4,9 @@
 #include <game/collision/collide_common.h>
 #include <game/collision/collide_hit.h>
 #include <game/bridge/guard.h>
+#include <game/collision/collision_scene.h>
+
+#include <memory>
 
 namespace rac1 {
 using namespace collide_detail;
@@ -26,18 +29,41 @@ void collide_vu_save(float out[15]) {
 // orig: (host)
 void collide_vu_restore(const float in[15]) { std::memcpy(&g_vu, in, sizeof(VuContact)); }
 
-// orig: 0x001f3170 — sphere (pos, radius) against the collision mesh *(gp-0x75e8) in 1/64 units
-// (hand-written VU0 macro code): bounding spheres select chunks, their vertices get outcodes, and each front-facing
-// triangle's closest point inside the radius shrinks it; the nearest hit goes to 0x173e40 (+0x20 point, +0x30 pushed-out pos,
-// +0x40 normal, +0x50.. triangle, +0x1c 0x1000 | flags, +0x18 0). Returns 1 on a hit. vf25..vf29 w lanes (caller leftovers)
-// are stored as 0. The original's chunk list (0x70000000 + 4 i) and vertices (0x70002000 + 16 i) are on the stack here
-// (8 KB: chunks[] 4 KB, verts 4 KB): nothing reads them after the call (stage 5, task C2a).
-int32_t sphere_mesh_collide(uint32_t pos, float radius) {
-    const SprScope spr_scope(SprScopeId::SphereMeshCollide);  // (RAC1_BRIDGE_GUARD=spr: the scratchpad's data flow, src/game/bridge/guard.h)
-    uint32_t t8 = lwu(OV(0x00166c00u - 0x75e8));
-    if (t8 == 0) return 0;
-    int32_t t9 = lw(t8);
-    t8 += 0x10;
+namespace {
+// The mesh list's values as sphere_mesh_collide reads them: from EE memory (as the original, at the list's addresses) ...
+struct MeshFromEe {
+    uint32_t list;
+    int32_t count() const { return lw(list); }
+    static uint32_t at(uint32_t i) { return 0x10 + i * 0x10; }
+    L3 centre(uint32_t i) const { return u16x3(list + at(i)); }
+    uint32_t radius(uint32_t i) const { return lhu(list + at(i) + 6); }
+    uint32_t ntri(uint32_t i) const { return lbu(list + at(i) + 8); }
+    int32_t nv(uint32_t i) const { return lhu(list + at(i) + 0xa); }
+    // vertex k's coordinate a (0 .. 2) and w (3)
+    uint32_t vert(uint32_t i, uint32_t k, uint32_t a) const { return lhu(lwu(list + at(i) + 0xc) + k * 8 + a * 2); }
+    // triangle t's byte b (a, b, c, flags)
+    uint32_t tri(uint32_t i, uint32_t t, uint32_t b) const {
+        return lbu(lwu(list + at(i) + 0xc) + static_cast<uint32_t>(lhu(list + at(i) + 0xa)) * 8 + t * 4 + b);
+    }
+};
+// ... or from the collision scene's copy (RAC1_COLL_SCENE=native: collision_scene.h)
+struct MeshFromScene {
+    const CollMeshScene& m;
+    int32_t count() const { return m.count(); }
+    L3 centre(uint32_t i) const {
+        const uint16_t* c = m.chunk(i).s;
+        return L3{static_cast<float>(c[0]), static_cast<float>(c[1]), static_cast<float>(c[2])};
+    }
+    uint32_t radius(uint32_t i) const { return m.chunk(i).s[3]; }
+    uint32_t ntri(uint32_t i) const { return m.chunk(i).ntri; }
+    int32_t nv(uint32_t i) const { return m.chunk(i).nv; }
+    uint32_t vert(uint32_t i, uint32_t k, uint32_t a) const { return m.vertex(m.chunk(i), k)[a]; }
+    uint32_t tri(uint32_t i, uint32_t t, uint32_t b) const { return m.triangle(m.chunk(i), t)[b]; }
+};
+
+template <class Mesh>
+int32_t sphere_mesh_collide_from(const Mesh& mesh, uint32_t pos, float radius) {
+    int32_t t9 = mesh.count();
     const float w21 = u2f(0x3f7fdf3bu);
     const float r = qmul(radius, 64.0f);
     const L3 p = muls(l3(pos), 64.0f);
@@ -51,15 +77,15 @@ int32_t sphere_mesh_collide(uint32_t pos, float radius) {
     constexpr uint32_t kListCap = 0x1000 / 4;
     uint32_t chunks[kListCap];
     uint32_t nchunks = 0;
-    for (; t9 > 0; --t9, t8 += 0x10) {
-        const L3 c = u16x3(t8);
-        float s = qadd(r, static_cast<float>(lhu(t8 + 6)));
+    for (uint32_t ci = 0; t9 > 0; --t9, ++ci) {
+        const L3 c = mesh.centre(ci);
+        float s = qadd(r, static_cast<float>(mesh.radius(ci)));
         s = qmul(s, s);
         const L3 d = mul3(sub3(c, p), sub3(c, p));
         const float y = qmadd(qmadd(qsub(d.y, s), 1.0f, d.x), 1.0f, d.z);
         const int64_t v = static_cast<int64_t>((static_cast<uint64_t>(fbits(y)) << 32) | fbits(d.x));
         if (v > 0) continue;
-        if (nchunks < kListCap) chunks[nchunks] = t8;
+        if (nchunks < kListCap) chunks[nchunks] = ci;
         ++nchunks;
     }
     const uint32_t walked = nchunks & (kListCap - 1);  // (the wrap above)
@@ -71,30 +97,30 @@ int32_t sphere_mesh_collide(uint32_t pos, float radius) {
     for (uint32_t i = 0; i < walked; ++i) {
         const uint32_t ent = chunks[i];
         // vertices (pairs) as floats + outcode (bit 0 below, bit 1 above, per axis)
-        uint32_t vs = lwu(ent + 0xc);
         uint32_t vi = 0;
-        int32_t nv = lhu(ent + 0xa);
+        int32_t nv = mesh.nv(ent);
         do {
-            for (uint32_t k = 0; k < 2; ++k, vs += 8, ++vi) {
+            for (uint32_t k = 0; k < 2; ++k, ++vi) {
                 uint32_t oc = 0;
+                uint16_t c3[3];
                 for (uint32_t a = 0; a < 3; ++a) {
-                    const uint16_t c = lhu(vs + a * 2);
+                    const uint16_t c = static_cast<uint16_t>(mesh.vert(ent, vi, a));
+                    c3[a] = c;
                     if ((static_cast<uint16_t>(c - lo[a]) & 0x8000u) != 0) oc |= 1u << (a * 8);
                     if ((static_cast<uint16_t>(hi[a] - c) & 0x8000u) != 0) oc |= 2u << (a * 8);
                 }
-                verts.put(vi, u16x3(vs), oc);
-                if (k == 1) w2 = lhu(vs + 6);  // vf2 keeps the raw w of the pair's second vertex
+                verts.put(vi, L3{static_cast<float>(c3[0]), static_cast<float>(c3[1]), static_cast<float>(c3[2])}, oc);
+                if (k == 1) w2 = mesh.vert(ent, vi, 3);  // vf2 keeps the raw w of the pair's second vertex
             }
             nv -= 2;
         } while (nv > 0);
         // triangles
-        uint32_t tri = lwu(ent + 0xc) + static_cast<uint32_t>(lhu(ent + 0xa)) * 8;
-        const uint32_t tend = tri + static_cast<uint32_t>(lbu(ent + 8)) * 4;
-        for (; tri != tend; tri += 4) {
-            const CollVerts::Vert& c0 = verts[lbu(tri)];
-            const CollVerts::Vert& c1 = verts[lbu(tri + 1)];
-            const CollVerts::Vert& c2 = verts[lbu(tri + 2)];
-            const uint32_t flags = lbu(tri + 3);
+        const uint32_t ntri = mesh.ntri(ent);
+        for (uint32_t ti = 0; ti != ntri; ++ti) {
+            const CollVerts::Vert& c0 = verts[mesh.tri(ent, ti, 0)];
+            const CollVerts::Vert& c1 = verts[mesh.tri(ent, ti, 1)];
+            const CollVerts::Vert& c2 = verts[mesh.tri(ent, ti, 2)];
+            const uint32_t flags = mesh.tri(ent, ti, 3);
             if ((c0.oc & c1.oc & c2.oc) != 0) continue;
             const L3 v1 = c0.p;
             w2 = c1.oc;
@@ -163,6 +189,31 @@ int32_t sphere_mesh_collide(uint32_t pos, float radius) {
     coll_hit_mirror(out);
     g_vu = VuContact{h_pt, h_n, h_a, h_b, h_c};
     return 1;
+}
+
+}  // namespace
+
+// orig: 0x001f3170 — sphere (pos, radius) against the collision mesh *(gp-0x75e8) in 1/64 units
+// (hand-written VU0 macro code): bounding spheres select chunks, their vertices get outcodes, and each front-facing
+// triangle's closest point inside the radius shrinks it; the nearest hit goes to 0x173e40 (+0x20 point, +0x30 pushed-out pos,
+// +0x40 normal, +0x50.. triangle, +0x1c 0x1000 | flags, +0x18 0). Returns 1 on a hit. vf25..vf29 w lanes (caller leftovers)
+// are stored as 0. The original's chunk list (0x70000000 + 4 i) and vertices (0x70002000 + 16 i) are on the stack here
+// (8 KB: chunks[] 4 KB, verts 4 KB): nothing reads them after the call (stage 5, task C2a).
+// From RAC1_COLL_SCENE=native on, the list's values come from the collision scene of the list pointer (collision_scene.h;
+// in the check mode its source bytes' hash is compared with EE memory's first, a difference parses it again).
+int32_t sphere_mesh_collide(uint32_t pos, float radius) {
+    const SprScope spr_scope(SprScopeId::SphereMeshCollide);  // (RAC1_BRIDGE_GUARD=spr: the scratchpad's data flow, src/game/bridge/guard.h)
+    const uint32_t list = lwu(OV(0x00166c00u - 0x75e8));
+    if (list == 0) return 0;
+    if (coll_scene_native()) {
+        std::shared_ptr<const CollMeshScene> m = coll_scene_mesh(list);
+        if (m != nullptr && coll_scene_check() && m->hash_ee() != m->source_hash()) {
+            m = coll_scene_mesh_stale(list, false);
+            if (m != nullptr && m->hash_ee() != m->source_hash()) coll_scene_mesh_stale(list, true);
+        }
+        if (m != nullptr) return sphere_mesh_collide_from(MeshFromScene{*m}, pos, radius);
+    }
+    return sphere_mesh_collide_from(MeshFromEe{list}, pos, radius);
 }
 
 }  // namespace rac1

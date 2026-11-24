@@ -25,6 +25,7 @@ add_library(rac1_game STATIC
     collision/collide_sphere.cpp
     collision/collide_capsule.cpp
     collision/collide_segment.cpp
+    collision/collision_scene.cpp
     ovl/veldin_mobys.cpp
     ovl/ovl_20.cpp
     ovl/ovl_21.cpp

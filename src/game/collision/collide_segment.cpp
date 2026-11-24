@@ -100,10 +100,11 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
     if (long_segment) img.load_from_spr();
     img.sw(SPR + 0x3800, 0);
     img.sw(SPR + 0x3804, cellw);
+    CollTreeSrc cells(tree, (flags & 1) == 0);  // (the collision scene's or EE memory's: collision_scene.h)
     if ((flags & 1) == 0) {
-        const uint32_t chunk = coll_tree_cell(tree, static_cast<int32_t>(c0[0] & 0xffff), static_cast<int32_t>(c0[1]), static_cast<int32_t>(c0[2]));
+        const CollTreeScene::Cell chunk = cells.cell(static_cast<int32_t>(c0[0] & 0xffff), static_cast<int32_t>(c0[1]), static_cast<int32_t>(c0[2]));
         bufs.clear_head(0);
-        if (chunk != 0) bufs.fetch(0, (chunk >> 8) + tree, chunk & 0xff);
+        if (chunk.word != 0) cells.fetch(bufs, 0, chunk);
     }
     uint32_t list = SPR + 0x3800;
     if (c0[0] != c1[0] || c0[1] != c1[1] || c0[2] != c1[2]) {
@@ -220,10 +221,10 @@ int32_t segment_collide_v(const Vec4& start, const Vec4& end, uint32_t flags, ui
             const uint32_t ncw = img.lw(e + 0xc);
             buf ^= 1;
             if (tnext != 0x3f800000u) {
-                const uint32_t chunk = coll_tree_cell(tree, static_cast<int32_t>(ncw & 0xff), static_cast<int32_t>((ncw >> 8) & 0xff), static_cast<int32_t>(ncw >> 16));
+                const CollTreeScene::Cell chunk = cells.cell(static_cast<int32_t>(ncw & 0xff), static_cast<int32_t>((ncw >> 8) & 0xff), static_cast<int32_t>(ncw >> 16));
                 const uint32_t other = buf ^ 1;
                 bufs.clear_head(other);
-                if (chunk != 0) bufs.fetch(other, (chunk >> 8) + tree, chunk & 0xff);
+                if (chunk.word != 0) cells.fetch(bufs, other, chunk);
             }
             const uint32_t nv = bufs.byte(buf, 2);
             const L3 pin = madds(muls(seg, u2f(t)), ps, 1.0f), pout = madds(muls(seg, u2f(tnext)), ps, 1.0f);

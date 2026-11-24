@@ -6,6 +6,7 @@
 // return value.
 
 
+#include <game/collision/collision_scene.h>
 #include <game/enhance/advanced.h>
 #include <runtime/ee/ps2_fpu.h>
 #include "ovl_oracle.h"
@@ -48,6 +49,7 @@ int main(int argc, char** argv) {
     // line above for one call sees the fixes its run names (RAC1_FIXES102 / RAC1_GAMEPLAY102) and, for the other row,
     // the settings' bytes of the snapshot (0: off), not this machine's preferences or the rows' default (on)
     rac1::advanced_prefs_load();
+    rac1::coll_scene_set_check(true);  // the collision scene (RAC1_COLL_SCENE=native) compared with EE memory at every use
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     // --batch N: that batch only; --level N (or ORACLE_LEVEL=N): on level N's own overlay (task 0307)
     int level = std::getenv("ORACLE_LEVEL") != nullptr ? std::atoi(std::getenv("ORACLE_LEVEL")) : 0;
@@ -272,6 +274,7 @@ int main(int argc, char** argv) {
     batch_520();
     batch_530();
     batch_531();
+    batch_540();
     batch_541();
     batch_542();
 

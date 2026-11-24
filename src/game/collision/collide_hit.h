@@ -13,8 +13,10 @@
 // the scratchpad (stage 7): their words, and the joint positions the primitive tests read back from there, stay.
 #include <game/collision/collide_common.h>
 #include <game/collision/collision.h>
+#include <game/collision/collision_scene.h>
 
 #include <cstdint>
+#include <memory>
 
 namespace rac1 {
 
@@ -131,12 +133,62 @@ struct CollChunkBufs {
         if (off < 0x2000u && (off & 0xfffu) >> 2 < used[off >> 12]) return w[off >> 12][(off & 0xfffu) >> 2];
         return lwu(a);
     }
+    // orig: (host) the same fetch from a collision scene's copy of the quadwords (RAC1_COLL_SCENE=native): n words
+    void fetch_words(uint32_t b, const uint32_t* src, uint32_t n) {
+        std::memcpy(w[b], src, n * 4);
+        used[b] = std::max(used[b], n);
+    }
     uint32_t word(uint32_t b, uint32_t off) const { return w[b][(off >> 2) & (kWords - 1)]; }
     uint32_t byte(uint32_t b, uint32_t off) const { return (word(b, off) >> ((off & 3) * 8)) & 0xffu; }
     void set_byte(uint32_t b, uint32_t off, uint32_t v) {
         uint32_t& x = w[b][(off >> 2) & (kWords - 1)];
         const uint32_t sh = (off & 3) * 8;
         x = (x & ~(0xffu << sh)) | ((v & 0xffu) << sh);
+    }
+};
+
+// orig: (host) where one query takes the level collision tree's cells from: the collision scene of the tree pointer
+// (collision_scene.h; RAC1_COLL_SCENE=native and a scene that holds the tree) or EE memory (`ee`, or no scene). In the check
+// mode every cell word and fetched word taken from the scene is compared with EE memory; a difference drops the scene and
+// parses it again (an edit of the tree's bytes in place: the oracle's test trees), a difference right after that is the
+// parse's own error (counted, and the scene's value kept so that the query shows it).
+struct CollTreeSrc {
+    uint32_t tree;
+    std::shared_ptr<const CollTreeScene> scene;
+    bool check = false;
+    // (`used` false: a query that does not test the level, flags & 1: no scene looked up)
+    explicit CollTreeSrc(uint32_t t, bool used = true) : tree(t) {
+        if (used && coll_scene_native()) {
+            scene = coll_scene_tree(t);
+            check = scene != nullptr && coll_scene_check();
+        }
+    }
+    // orig: (host) the cell word at (x, y, z) (coll_tree_cell) and, from a scene, its fetched words
+    CollTreeScene::Cell cell(int32_t x, int32_t y, int32_t z) {
+        if (scene == nullptr) return CollTreeScene::Cell{coll_tree_cell(tree, x, y, z), nullptr};
+        CollTreeScene::Cell c = scene->cell(x, y, z);
+        if (check && !same_as_ee(x, y, z, c)) {
+            scene = coll_scene_tree_stale(tree, false);
+            if (scene == nullptr) return CollTreeScene::Cell{coll_tree_cell(tree, x, y, z), nullptr};
+            c = scene->cell(x, y, z);
+            if (!same_as_ee(x, y, z, c)) coll_scene_tree_stale(tree, true);
+        }
+        return c;
+    }
+    // orig: (host) the cell's quadwords into buffer b, as the original's DMA from (word >> 8) + tree
+    void fetch(CollChunkBufs& bufs, uint32_t b, const CollTreeScene::Cell& c) const {
+        if (c.words == nullptr) bufs.fetch(b, (c.word >> 8) + tree, c.word & 0xff);
+        else bufs.fetch_words(b, c.words, (c.word & 0xffu) * 4);
+    }
+
+private:
+    bool same_as_ee(int32_t x, int32_t y, int32_t z, const CollTreeScene::Cell& c) const {
+        if (coll_tree_cell(tree, x, y, z) != c.word) return false;
+        if (c.word == 0) return true;
+        const uint32_t src = ((c.word >> 8) + tree) & ~15u, n = (c.word & 0xffu) * 4;
+        for (uint32_t i = 0; i < n; ++i)
+            if (lwu(src + i * 4) != c.words[i]) return false;
+        return true;
     }
 };
 
@@ -175,15 +227,15 @@ struct CollChunkBufs {
 // orig: (host) a triangle word (bytes a, b, c, flags) read from EE memory byte by byte, as the moby tests do
 [[maybe_unused]] static uint32_t coll_tri_word_ee(uint32_t t) { return lbu(t) | lbu(t + 1) << 8 | lbu(t + 2) << 16 | lbu(t + 3) << 24; }
 
-// orig: (host) the cells of the level collision tree *(0x173e40) whose 4-unit box (4096 in 1024ths) reaches the sphere
-// (p, r: nr2 = -r * r), cells c0 .. c1 (x fastest, then y, then z), in the original's order: for each one with a chunk,
-// the chunk fetched into its buffer (the k-th into k & 1, its first two words cleared first) and fn(org, buffer) called
-// with the cell's centre. The original lists them first as (centre, chunk) quadwords at 0x70003800 (the empty cells'
+// orig: (host) the cells of the level collision tree *(0x173e40) (from `tree`: the scene or EE memory) whose 4-unit box (4096
+// in 1024ths) reaches the sphere (p, r: nr2 = -r * r), cells c0 .. c1 (x fastest, then y, then z), in the original's order:
+// for each one with a chunk, the chunk fetched into its buffer (the k-th into k & 1, its first two words cleared first) and
+// fn(org, buffer) called with the cell's centre. The original lists them first as (centre, chunk) quadwords at 0x70003800 (the empty cells'
 // entries written and overwritten, a terminator, the next entry read ahead), then walks the list: the same cells in the same
 // order, since testing a chunk writes nothing the list depends on. (Its room before the scratchpad's end was 127 cells: a
 // bigger box ran past it, which the port's memory refused. The walk has no such limit.)
 template <typename Fn>
-static void coll_tree_chunks(uint32_t tree, const L3& p, float nr2, const int32_t c0[3], const int32_t c1[3], CollChunkBufs& bufs, Fn&& fn) {
+static void coll_tree_chunks(CollTreeSrc& tree, const L3& p, float nr2, const int32_t c0[3], const int32_t c1[3], CollChunkBufs& bufs, Fn&& fn) {
     const L3 base = L3{static_cast<float>(c0[0] << 12), static_cast<float>(c0[1] << 12), static_cast<float>(c0[2] << 12)};
     L3 corner = base;
     uint32_t k = 0;
@@ -199,11 +251,11 @@ static void coll_tree_chunks(uint32_t tree, const L3& p, float nr2, const int32_
                 const L3 dq = mul3(d, d);
                 const float gap = qmadd(qmadd(qadd(nr2, dq.x), 1.0f, dq.y), 1.0f, dq.z);
                 if (neg(gap)) {
-                    const uint32_t chunk = coll_tree_cell(tree, cx, cy, cz);
-                    if (chunk != 0) {
+                    const CollTreeScene::Cell chunk = tree.cell(cx, cy, cz);
+                    if (chunk.word != 0) {
                         const uint32_t b = k & 1;
                         bufs.clear_head(b);
-                        bufs.fetch(b, (chunk >> 8) + tree, chunk & 0xff);
+                        tree.fetch(bufs, b, chunk);
                         fn(ctr, b);
                         ++k;
                     }

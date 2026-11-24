@@ -165,7 +165,8 @@ int32_t capsule_collide_v(const Vec4& pos, float radius, float height, uint32_t 
         // the level: the cells of the collision tree whose box reaches the capsule's box, their chunks in two buffers
         const int32_t c0[3] = {static_cast<int32_t>(static_cast<uint32_t>(ilo[0]) >> 2), static_cast<int32_t>(static_cast<uint32_t>(ilo[1]) >> 2), static_cast<int32_t>(static_cast<uint32_t>(ilo[2]) >> 2)};
         const int32_t c1[3] = {static_cast<int32_t>(static_cast<uint32_t>(ihi[0]) >> 2), static_cast<int32_t>(static_cast<uint32_t>(ihi[1]) >> 2), static_cast<int32_t>(static_cast<uint32_t>(ihi[2]) >> 2)};
-        coll_tree_chunks(tree, p, nr2, c0, c1, bufs, [&](const L3& org, uint32_t b) {
+        CollTreeSrc cells(tree);  // (the collision scene's or EE memory's: collision_scene.h)
+        coll_tree_chunks(cells, p, nr2, c0, c1, bufs, [&](const L3& org, uint32_t b) {
             const L3 rel = sub3(p, org);
             if (bufs.byte(b, 2) == 0) return;
             const L3 rlo = sub3(lo, org), rhi = sub3(hi, org);

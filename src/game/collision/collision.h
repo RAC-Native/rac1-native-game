@@ -91,8 +91,13 @@ inline uint32_t coll_tree() { return lwu(OV(0x00173e40)); }
 // orig: (host) the tree word's EE address (+0x00), for a reader that reads it through its own path (the drawing's copy of EE
 // memory: draw_lwu)
 inline uint32_t coll_tree_addr() { return OV(0x00173e40); }
-// orig: (host) the level's collision tree set (+0x00), as level_collision_set does
-inline void coll_set_tree(uint32_t tree) { sw(OV(0x00173e40), tree); }
+// orig: (host) the level's collision tree set (+0x00), as level_collision_set does (a changed word also tells the collision
+// scene: collision_scene.h)
+void coll_scene_tree_set(uint32_t old_tree, uint32_t tree);
+inline void coll_set_tree(uint32_t tree) {
+    coll_scene_tree_set(lwu(OV(0x00173e40)), tree);
+    sw(OV(0x00173e40), tree);
+}
 // orig: (host) the posed-joint cache's buffers set (+0x04: eight of 0x800 bytes), as gameplay_load does
 inline void coll_set_joint_cache_buffers(uint32_t a) { sw(OV(0x00173e44), a); }
 // orig: (host) the posed-joint cache's key ring set (+0x08: eight pairs of words), as gameplay_load does
