@@ -6,8 +6,8 @@
 // vertices and the face bytes; the chunks' u16 spheres, counts and vertices and their triangle bytes), so the routines compute
 // the same values from them as from EE memory.
 //
-// RAC1_COLL_SCENE=native: the routines (collide_sphere / _capsule / _segment / _mesh .cpp) take a cell's words and a chunk's
-// data from the scene; `ee` (the default while stage 5 runs) or no scene for the pointer: from EE memory, as before. The moby
+// RAC1_COLL_SCENE=native (the default): the routines (collide_sphere / _capsule / _segment / _mesh .cpp) take a cell's
+// words and a chunk's data from the scene; `ee`, or no scene for the pointer: from EE memory, as before. The moby
 // collision data (a class header's +0x94) stays in EE.
 //
 // Each part is keyed on its EE pointer. A part is parsed on the first query that meets a pointer, kept (a few per part:
@@ -139,7 +139,7 @@ private:
 };
 
 // ---- the switch and the current parts ----
-// orig: (host) RAC1_COLL_SCENE=native (true) or ee (false; the default), read once
+// orig: (host) RAC1_COLL_SCENE=native (true; the default) or ee (false), read once
 bool coll_scene_native();
 // orig: (host, testing) the switch set (batch 540 runs the same query both ways)
 void coll_scene_set_native(bool on);

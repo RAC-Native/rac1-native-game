@@ -255,9 +255,9 @@ int env_int(const char* name, int dflt) {
     const char* v = std::getenv(name);
     return v != nullptr && *v != 0 ? std::atoi(v) : dflt;
 }
-std::atomic<bool> g_native{[] {  // (ee unless RAC1_COLL_SCENE=native)
+std::atomic<bool> g_native{[] {  // (native unless RAC1_COLL_SCENE=ee)
     const char* v = std::getenv("RAC1_COLL_SCENE");
-    return v != nullptr && std::strcmp(v, "native") == 0;
+    return v == nullptr || std::strcmp(v, "ee") != 0;
 }()};
 std::atomic<bool> g_check{env_int("RAC1_COLL_SCENE_CHECK", 0) != 0};
 const bool g_trace = std::getenv("RAC1_COLL_SCENE_TRACE") != nullptr;
