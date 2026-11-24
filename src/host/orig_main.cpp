@@ -82,6 +82,7 @@
 #include <game/enhance/section_world.h>
 #include <game/enhance/twin.h>
 #include <game/enhance/advanced.h>
+#include <game/enhance/hero_modes.h>
 #include <host/level_slots.h>
 #include <host/mod_code.h>
 #include <host/host_window.h>
@@ -2046,7 +2047,9 @@ void pad_packet(GLFWwindow* win, uint64_t frame, int pre = -1) {
     if (win != nullptr && !simulated && g_input_ready) {
         devices = pre >= 0 && static_cast<size_t>(pre) < g_pad_pre.size() ? g_pad_pre[static_cast<size_t>(pre)] : host_state(win, g_remap.active());
         have_devices = true;
-        const hi::PadOutput o = hi::compute(g_bindings, devices, direct);
+        hi::PadOutput o = hi::compute(g_bindings, devices, direct);
+        // (enhancement, #186: on the hoverboard a held side key steers as the stick pushed to that side)
+        if (!rac1::g_advanced_disabled && rac1::hero_mode_now() == rac1::HERO_MODE_BOARD) hi::board_steer_keys(o);
         held = o.held;
         lx = o.lx;
         ly = o.ly;

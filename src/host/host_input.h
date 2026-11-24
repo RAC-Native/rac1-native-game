@@ -108,12 +108,24 @@ struct PadOutput {
     // Direct mouse (compute's `direct`): the right stick's mouse movement as angles (radians, right / down positive,
     // invert_look_y applied), at the look and at the aim sensitivity; that movement is then not in rx / ry
     float look_x = 0, look_y = 0, aim_x = 0, aim_y = 0;
+    // the part the keyboard and the mouse buttons give alone (the hoverboard's steering keys, board_steer_keys): the held
+    // mask's bits and the left stick's halves (each 0 or 1)
+    uint16_t key_held = 0;
+    float key_left = 0, key_right = 0, key_up = 0;
 };
 // How much an input is pressed, 0..1.
 float input_value(const HostInput& in, const HostState& s, const Bindings& b);
 // `direct`: the mouse's movement bound to the right stick given as look_* / aim_* instead of a stick deflection (the
 // game consumes it: the host asks, advanced_mouse_direct); false: as a stick (MouseMode::kStick, or the game not able to)
 PadOutput compute(const Bindings& b, const HostState& s, bool direct = false);
+// The hoverboard's steering keys (#186), while Ratchet rides the board: its steering heads for the stick's direction
+// (Rilgar's and Kalebo III's board code: the heading the stick's angle from the camera's), so a held A / D with W held
+// asks for 45 degrees, half the turn of a stick pushed to the side, and W with the Right arrow (the D-pad, read by the
+// game only with the stick under 0.25) none at all. A side key of the keyboard (A / D or the Left / Right arrow, as bound)
+// is made the stick pushed fully to that side and its forward key (W / Up, which does not speed the board) let go: the
+// turn of the stick at the side. Back (S) is kept: the sharper turn, as the stick pushed back to the side. The pad's own
+// inputs are not changed.
+void board_steer_keys(PadOutput& o);
 // The right stick's mouse movement (dx, dy pixels) as Direct's angles into o (look_* / aim_*)
 void direct_look(const Bindings& b, float dx, float dy, PadOutput& o);
 

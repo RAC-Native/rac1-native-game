@@ -22,6 +22,10 @@ What changed in each release. Releases are source only: you build the game with 
   the reflected sky there as nothing and added it over the cube map: an over-bright band with a hard edge that changed with the
   clouds and the camera. Whatever the planar view drew now counts as there (as Low's sky faces already did). Graphics: Original
   and the RT values are unchanged.
+- **The hoverboard turns fully with the keyboard** (#186). The board steers toward the stick's direction, so A / D with W
+  held asked for half the turn of a stick pushed to the side, and W with the Right arrow did not turn at all. On the board a
+  held side key (A / D or the Left / Right arrows) now steers as the stick pushed fully to that side and W / Up is let go
+  while it is held (W does not speed the board); S with a side key keeps the sharper turn. A gamepad is unchanged.
 - **PAL discs: Ratchet moves left and right again while hanging from a ledge** (#130, #168), on Aridia's construction site
   and the other levels where it failed. The PAL setup left the shimmy's speed tables (and a few other values: the boss
   bar, the race HUD's words) at the NTSC addresses on 13 levels, so the game read a speed of 0. The PAL maps now place them
