@@ -256,12 +256,12 @@ uint32_t spawn_particle_02(uint32_t pos, uint32_t a, uint32_t b, uint32_t c0, ui
 // A kind 0xf particle (a spark, moved by type 0xf) at `pos` moving `vel`: colours `c0` / `c1`,
 // `n` frames (none without), +0x3a `h3a`, texture `tex` (-1: 0x1b20bc's), blend `blend` (-1:
 // additive 0x48), size `size`.
-// orig: 0x0026bb70
-uint32_t spawn_particle_0f(uint32_t pos, uint32_t vel, uint32_t c0, uint32_t c1, uint32_t n, uint32_t h3a, int32_t tex, int32_t blend, float size) {
+// orig: 0x0026bb70 (value form: `pos` read where the original reads it, after the particle's allocation)
+uint32_t spawn_particle_0f_v(const Vec4& pos, uint32_t vel, uint32_t c0, uint32_t c1, uint32_t n, uint32_t h3a, int32_t tex, int32_t blend, float size) {
     if (n == 0) return 0;
     const uint32_t p = alloc_particle(0xf);
     if (p == 0) return 0;
-    V(p + 0x10) = V(pos);
+    V(p + 0x10) = pos;
     sw(p + 4, c0);
     const int32_t s = float_to_int(4.0f);
     sb(p + 9, static_cast<uint32_t>(s - 0x60));
@@ -279,6 +279,10 @@ uint32_t spawn_particle_0f(uint32_t pos, uint32_t vel, uint32_t c0, uint32_t c1,
     sh(q + 0x1a, h3a);
     V(q) = V(vel);
     return p;
+}
+// orig: 0x0026bb70 (EE-address form)
+uint32_t spawn_particle_0f(uint32_t pos, uint32_t vel, uint32_t c0, uint32_t c1, uint32_t n, uint32_t h3a, int32_t tex, int32_t blend, float size) {
+    return spawn_particle_0f_v(V(pos), vel, c0, c1, n, h3a, tex, blend, size);
 }
 
 // A kind 0x40 particle (smoke) at `pos` moving `vel`: `n` frames, colour `color`, +0x38 `w38`,

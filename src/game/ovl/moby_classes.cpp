@@ -3108,8 +3108,8 @@ uint32_t color_swap_channels(uint32_t col, uint32_t mask) {
 // Spawns an effect moby (class 0x27f) at `pos` from the effect description `def` (its
 // direction: `dir`, or def +0; colours +0x10..+0x1f and sizes +0x20..+0x30, draw distance
 // +0x3c, the rest copied into its pvars), with `arg` at pvars +0x20; placed and hero-lit.
-// orig: 0x002d3838
-uint32_t effect_spawn(uint32_t def, uint32_t pos, uint32_t arg, uint32_t dir) {
+// orig: 0x002d3838 (value form: `pos` the quadword the original's lq reads, read where it reads it, after the spawn)
+uint32_t effect_spawn_v(uint32_t def, const Vec4& pos, uint32_t arg, uint32_t dir) {
     const uint32_t m = moby_spawn(0x27f);
     if (m == 0) return 0;
     sb(m + 0x30, 0xff);
@@ -3118,7 +3118,7 @@ uint32_t effect_spawn(uint32_t def, uint32_t pos, uint32_t arg, uint32_t dir) {
     const uint32_t p = lwu(m + 0x78);
     sb(m + 0x20, 0);
     sb(m + 0xbc, 0);
-    lq_sq(m + 0x10, pos);
+    ee_write<Vec4>((m + 0x10) & ~15u, pos);
     lq_sq(p, dir != 0 ? dir : def);
     sw(p + 0x20, arg);
     sh(m + 0x32, lbu(def + 0x3c));
@@ -3142,6 +3142,8 @@ uint32_t effect_spawn(uint32_t def, uint32_t pos, uint32_t arg, uint32_t dir) {
     moby_copy_hero_color(m);
     return m;
 }
+// orig: 0x002d3838 (EE-address form: the quadword at pos & ~15, as the original's lq)
+uint32_t effect_spawn(uint32_t def, uint32_t pos, uint32_t arg, uint32_t dir) { return effect_spawn_v(def, V(pos & ~15u), arg, dir); }
 
 // An enemy's death burst at `pos`: three sparks (colour pairs from 0x1e9030 / 0x1e9048 with
 // red and green swapped) of size `scale`, two orange shards off `src` (if any), and the blast

@@ -475,6 +475,7 @@ void blocking_loop_vsync(rac1::EeVsyncFrame kind) {
 
 // orig: (host) testing: the page hashes of the game's RAM and scratchpad at the end of a frame's update
 static void ram_hash_frame(FILE* f, uint64_t frame) {
+    coll_state_ee_sync();  // (the collision's results written to their EE words first, in native: collision_state.h)
     static std::vector<uint64_t> h;
     h.assign(8192 + 4, 0);
     auto hash_page = [](const uint8_t* p) {

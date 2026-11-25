@@ -2,10 +2,11 @@
 #define RAC1_GAME_COLLISION_COLLISION_H
 // What the collision queries leave for their callers, typed. segment_collide, sphere_collide, capsule_collide,
 // sphere_mesh_collide and mobys_in_sphere (src/game/collision/collide_*.cpp, declared in game/ovl/ovl.h) leave their nearest
-// contact (the hit) and the mobys they touch (the hit list) in native state (collision_state.h) and in the original's EE
-// words, the block at 0x173e40 and the list 0x177f00, written at the same moment; contact records go to the ring 0x178100.
-// The accessors here read the hit and the list from the native state (RAC1_COLL_STATE=native, the default) or from those EE
-// words (RAC1_COLL_STATE=ee); the setters write both. The block's head, the ring and coll_hit_point_addr() are EE memory.
+// contact (the hit) and the mobys they touch (the hit list) in native state (collision_state.h); the original's EE words of
+// them, the block at 0x173e40 +0x18 .. +0x7f and the list 0x177f00, are written by a flush where a tool looks at EE memory
+// (RAC1_COLL_STATE=native, the default), or with the state at the same moment (mirror, ee); contact records go to the ring
+// 0x178100. The accessors here read the hit and the list from the native state (native, mirror) or from those EE words (ee);
+// the setters write the state (and the EE words with the projection). The block's head and the ring are EE memory.
 //
 // The block 0x173e40 (the words before +0x18 are the queries' own state, not part of a hit):
 //   +0x00 the level's collision tree, +0x08 the posed-joint cache ring, +0x10 the query counter (a moby's +0x9c stamp),
@@ -26,8 +27,9 @@
 
 namespace rac1 {
 
-// Each read below takes the native state (RAC1_COLL_STATE=native) or the EE word (=ee); in the check mode
-// (RAC1_COLL_STATE_CHECK=1) it first compares the two and reports a difference under the accessor's name.
+// Each read below takes the native state (RAC1_COLL_STATE=native or mirror) or the EE word (=ee); in the check mode
+// (RAC1_COLL_STATE_CHECK=1, which keeps the EE words current) it first compares the two and reports a difference under the
+// accessor's name.
 // orig: (host) the moby the last query hit, 0 for the level's collision (+0x18: the most read word)
 inline uint32_t coll_hit_moby() {
     if (__builtin_expect(g_coll_state_check, false)) coll_state_check_word("coll_hit_moby", OV(0x00173e58), g_coll_state.hit.moby);
@@ -92,7 +94,7 @@ inline CollisionHit coll_hit() {
     for (int k = 0; k < 3; ++k) h.tri[k] = coll_hit_tri(k);
     return h;
 }
-// The setters write the native state and the EE words the original stores, at once (collision_state.h).
+// The setters write the native state, and with the projection the EE words the original stores, at once (collision_state.h).
 // orig: (host) the hit moby set (+0x18), as a few class updates do after a query
 inline void coll_hit_set_moby(uint32_t moby) { coll_state_put_moby(moby); }
 // orig: (host) the last contact's normal set (+0x40), as a few class updates do (they shorten it in place)
@@ -110,10 +112,10 @@ inline void coll_hit_clear_normal_z() { coll_state_put_lane(0x40, 2, 0); }
 // orig: (host) a vector stored at `dst` as the original's lq / sq copy of it stores it (the 16 bytes at dst & ~15: the four
 // lanes' words as they are), for the copies of the hit's vectors into a caller's memory
 inline void coll_vec_store(uint32_t dst, const Vec4& v) { ee_write<Vec4>(dst & ~15u, v); }
-// orig: (host) the contact point's EE address (+0x20), for the one callee that still reads the point there: the rocket of
-// class 1034 hands it to explosion_effect, whose own mobys_in_sphere rewrites the point before the blast reads it again
-// (shared_class295.cpp)
-inline uint32_t coll_hit_point_addr() { return OV(0x00173e60); }
+// orig: (host) the contact point as a live reference (+0x20): a read through it sees the later writes of the hit (the native
+// state's point, or the EE words with RAC1_COLL_STATE=ee), for a callee that reads the point again after its own query
+// rewrites it (explosion_effect_at_hit: the rocket of class 1034, shared_class295.cpp)
+inline const Vec4& coll_hit_point_live() { return g_coll_state_native ? g_coll_state.hit.point : V(OV(0x00173e60)); }
 
 // The queries' own state (the words before +0x18: not part of a hit): EE memory (collision_state.h says why).
 // orig: (host) the level's collision tree (+0x00)

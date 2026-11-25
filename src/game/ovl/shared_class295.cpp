@@ -131,14 +131,14 @@ void rocket_update(uint32_t m, const RocketBuild& b) {
     }
     moby_chain_point_v(m, 1, V(nose));
     if (segment_collide_v(V(from), V(nose), 0, lwu(pv + 0x20), nullptr) != 0) {
-        // (class 1034's blast at the hit point's EE address: explosion_effect's own mobys_in_sphere rewrites the point,
-        // (0, 0, 0, 1), before the blast's particles read it there)
-        uint32_t at = coll_hit_point_addr();
+        // (class 1034's blast at the hit point itself: explosion_effect's own mobys_in_sphere rewrites the point, (0, 0, 0, 1),
+        // before the blast's particles read it; class 295's at a copy of it)
         if (b.blast_at_copy) {
             coll_vec_store(puff, coll_hit_point());
-            at = puff;
+            explosion_effect(m, pv, puff, 0xa, 3, 0x10, b.blast_c, 0, 1, -1, 0, 2.0f, 10.0f, 4.0f, 2.0f, 9.0f, 1.0f, 20.0f);
+        } else {
+            explosion_effect_at_hit(m, 0xa, 3, 0x10, b.blast_c, 0, 1, -1, 0, 2.0f, 10.0f, 4.0f, 2.0f, 9.0f, 1.0f, 20.0f);
         }
-        explosion_effect(m, pv, at, 0xa, 3, 0x10, b.blast_c, 0, 1, -1, 0, 2.0f, 10.0f, 4.0f, 2.0f, 9.0f, 1.0f, 20.0f);
         moby_retire(m);
     } else if (timer_tick_i32(*static_cast<int32_t*>(ee_ram_ptr(pv + 0x28))) != 0) {
         moby_retire(m);

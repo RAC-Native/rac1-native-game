@@ -1,20 +1,26 @@
 #ifndef RAC1_GAME_COLLISION_COLLISION_STATE_H
 #define RAC1_GAME_COLLISION_COLLISION_STATE_H
 // The collision's results as native state (stage 5): the last hit and the moby hit list the queries leave for their
-// callers. The routines (src/game/collision/collide_*.cpp) write this state and, at the same moment, the EE words the
-// original writes: the block 0x173e40 +0x18 .. +0x7f and the hit list 0x177f00 (the projection), so EE memory stays byte
-// for byte what it was and the one callee that still takes the point's EE address (collision.h's coll_hit_point_addr())
-// finds the words there.
-// collision.h's accessors read this state (RAC1_COLL_STATE=native, the default) or the EE words (RAC1_COLL_STATE=ee: the
-// state is still written, not read). RAC1_COLL_STATE_CHECK=1 compares every accessor read with the EE words and reports
-// each difference with the accessor's name: a difference is an EE write that did not reach the state.
+// callers. The routines (src/game/collision/collide_*.cpp) and collision.h's setters write this state; the original's EE
+// words of the same results (the block 0x173e40 +0x18 .. +0x7f and the hit list 0x177f00) are written by a flush.
+// RAC1_COLL_STATE picks the mode:
+//   - native (the default): the state alone. No game code reads those EE words; coll_state_flush() writes the whole state to
+//     them at once, where a tool or a proof looks at EE memory (coll_state_ee_sync(): the RAM hash and its dump, the dev
+//     menu's state snapshot, the oracle after each compared port run). RAC1_COLL_STATE_NO_FLUSH=1 (testing) leaves them out.
+//   - mirror: the routines and the setters also store the original's EE words at the original's moments (the projection);
+//     the accessors read the state.
+//   - ee: the projection too, and the accessors read the EE words.
+// RAC1_COLL_STATE_CHECK=1 compares every accessor read with the EE words and reports each difference with the accessor's
+// name (a difference is an EE write that did not reach the state); it needs the EE words current, so it turns the projection
+// on in native (as mirror).
 //
 // What the state holds and what stays EE memory:
 //   - the hit (+0x18 .. +0x7f): written by the five routines (coll_hit_mirror) and by the few class updates that change it
-//     in place (collision.h's setters, which write both); read through collision.h. Native.
+//     in place (collision.h's setters); read through collision.h. Native.
 //   - the hit list (0x80 words 0x177f00 .. 0x1780ff, the words past its terminator included, as stale as in EE memory):
 //     written by mobys_in_sphere only. Native. A list of 0x80 mobys or more runs into the contact ring 0x178100, as the
-//     original's: those entries (and that terminator) are EE memory only, read from there.
+//     original's: those entries (and that terminator) are stored to EE memory in every mode and read from there; such
+//     queries are counted (a line `[coll-state] overflow` at exit when there were any).
 //   - the head (+0x00 the tree, +0x04 / +0x08 / +0x0c the posed-joint cache, +0x10 the query counter, +0x14 the contact
 //     ring's next index) stays EE memory: the tree keys the collision scene; the query counter is read and written by the
 //     pause menu, a level's exit and the sections, the ring's index by moby_hit_record, the joint cache words by the boot
@@ -48,28 +54,47 @@ struct CollState {
     uint32_t list[kCollHitListWords];  // the hit list's words 0x177f00 + 4 i
 };
 
+// RAC1_COLL_STATE's values (above)
+enum class CollStateMode : uint8_t { Native, Mirror, Ee };
+
 // orig: (host) the state (the game thread's: the queries and their readers run there)
 extern CollState g_coll_state;
-// orig: (host) RAC1_COLL_STATE: true (native, the default) the accessors read g_coll_state, false (ee) the EE words
+// orig: (host) true (native, mirror) the accessors read g_coll_state, false (ee) the EE words
 extern bool g_coll_state_native;
+// orig: (host) true (mirror, ee, or the check mode on) the routines and the setters also store the EE words (the projection)
+extern bool g_coll_state_project;
 // orig: (host) RAC1_COLL_STATE_CHECK: every accessor read compared with the EE words
 extern bool g_coll_state_check;
 
-// orig: (host) the switch's value / set (the oracle's batch 543 runs both)
+// orig: (host) the mode / set it (the oracle runs its harness in mirror, the compared port runs in native; batch 543 all
+// three). A change of mode writes nothing: from native to a mode with the projection, the EE words stay as they were until a
+// coll_state_flush().
+CollStateMode coll_state_mode();
+void coll_state_set_mode(CollStateMode m);
+// orig: (host) where the accessors read (true: the state)
 inline bool coll_state_native() { return g_coll_state_native; }
-void coll_state_set_native(bool on);
-// orig: (host) the check mode's value / set (the oracle turns it on at its start)
+// orig: (host) whether the routines and the setters store the EE words too
+inline bool coll_state_projected() { return g_coll_state_project; }
+// orig: (host) the check mode's value / set (on, it turns the projection on)
 inline bool coll_state_check() { return g_coll_state_check; }
 void coll_state_set_check(bool on);
 // orig: (host) the differences the check mode found so far
 uint64_t coll_state_differences();
 // orig: (host) the check mode's report lines off (`quiet`) or on: batch 543 plants differences on purpose and counts them
 void coll_state_set_check_quiet(bool quiet);
+// orig: (host) the queries so far whose hit list ran past its 0x80 words (into the contact ring)
+uint64_t coll_state_overflows();
 
 // orig: (host) the EE words (the block +0x18 .. +0x7f and the list's 0x80 words, the level's copy) decoded into `out`
 void coll_state_decode_ee(CollState& out);
 // orig: (host) the state taken from the EE words (coll_state_decode_ee): after an EE write that did not come through here
 void coll_state_import();
+// orig: (host) the whole state written to its EE words (the inverse of coll_state_decode_ee: the hit's words +0x18 .. +0x7f
+// and the list's 0x80 words, nothing else), as the original's stores leave them
+void coll_state_flush();
+// orig: (host) coll_state_flush() when the EE words are not kept current (native, the check mode off), unless
+// RAC1_COLL_STATE_NO_FLUSH=1: for a tool or a proof about to read or copy EE memory
+void coll_state_ee_sync();
 // orig: (host) `a` and `b` the same, bit for bit; the first differing field's name in *field (when not null)
 bool coll_state_same(const CollState& a, const CollState& b, const char** field);
 
@@ -80,14 +105,15 @@ bool coll_state_same(const CollState& a, const CollState& b, const char** field)
 // orig: (host) a vector's four words
 [[gnu::cold]] void coll_state_check_vec(const char* accessor, uint32_t ee, const Vec4& native);
 
-// The writers outside the routines (collision.h's setters): the state's field and the original's EE store, at once.
+// The writers outside the routines (collision.h's setters): the state's field, and the original's EE store with the projection.
 // orig: (host) +0x18 (sw)
 void coll_state_put_moby(uint32_t moby);
 // orig: (host) +0x20 / +0x30 / +0x40 (a quadword store: `off` 0x20, 0x30 or 0x40)
 void coll_state_put_vec(uint32_t off, const Vec4& v);
 // orig: (host) one lane's word of +0x20 / +0x30 / +0x40 (`off` + 4 * lane: 0x28, 0x38, 0x48 ...)
 void coll_state_put_lane(uint32_t off, uint32_t lane, uint32_t word);
-// orig: (host) hit list entry i (mobys_in_sphere's store at 0x177f00 + 4 i; the state's when i < 0x80)
+// orig: (host) hit list entry i (mobys_in_sphere's store at 0x177f00 + 4 i: the state's when i < 0x80, with the projection
+// its EE word too; past the list's room the EE word in every mode)
 void coll_state_list_put(uint32_t i, uint32_t moby);
 // orig: (host) hit list entry i as the routine that just wrote it reads it back (the state's when i < 0x80, else EE memory)
 inline uint32_t coll_state_list_entry(uint32_t i) { return i < kCollHitListWords ? g_coll_state.list[i] : lwu(OV(0x00177f00) + i * 4u); }

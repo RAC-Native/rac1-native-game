@@ -57,12 +57,12 @@ void hit_rec_init(uint32_t rec, uint32_t owner, uint32_t flags, float f) {
 
 // A type 8 particle (a glow: colour `color`, +0x30 / +0x34 the colours, size from `size` over
 // `life` frames) at `pos` moving by `vel`; none without a life.
-// orig: 0x0026a4c8
-void spawn_particle_08(uint32_t pos, uint32_t vel, uint32_t color, uint32_t color2, int32_t life, float size) {
+// orig: 0x0026a4c8 (value form: `pos` read where the original reads it, after the particle's allocation)
+void spawn_particle_08_v(const Vec4& pos, uint32_t vel, uint32_t color, uint32_t color2, int32_t life, float size) {
     if (life == 0) return;
     const uint32_t p = alloc_particle(8);
     if (p == 0) return;
-    V(p + 0x10) = V(pos);
+    V(p + 0x10) = pos;
     const uint32_t q = p + 0x20;
     sw(p + 4, color);
     sb(p + 9, static_cast<uint32_t>(float_to_int(4.0f) - 0x60));
@@ -77,6 +77,10 @@ void spawn_particle_08(uint32_t pos, uint32_t vel, uint32_t color, uint32_t colo
     swc1(q + 0x1c, fpu_div(size, int_to_float(life)));
     sw(q + 0x14, color2);
     sw(q + 0x10, color);
+}
+// orig: 0x0026a4c8 (EE-address form)
+void spawn_particle_08(uint32_t pos, uint32_t vel, uint32_t color, uint32_t color2, int32_t life, float size) {
+    spawn_particle_08_v(V(pos), vel, color, color2, life, size);
 }
 
 // Registers a floor light for the moby `m` (when its +0x31 is set and fewer than 0x20 are
@@ -111,11 +115,11 @@ void floor_light_add(uint32_t m, float scale) {
 // when `src` is set, a screen shake (0x166de0 / 0x166de8) when on screen, a moby sound `C`, and a
 // `f26`-sized effect (0x1b0250, or 0x1b02a0 with G) when `F` is 0; a sphere of `radius` around
 // `pos` hits the mobys as the contact record `rec` (owner `src`, flags 0x810001, f13).
-// orig: 0x0025e450
-void explosion_effect(uint32_t src, uint32_t a1_unused, uint32_t pos, int32_t n1, int32_t A, int32_t B, int32_t C, int32_t D,
-                      int32_t E, int32_t F, uint32_t G, float radius, float f13, float f27, float f28, float f29, float S,
-                      float f26) {
-    (void)a1_unused;
+namespace {
+// orig: 0x0025e450 (its body: the place read through `P` at each of the original's reads of it; `P16` the quadword the
+// effect's lq reads, P's own 16 bytes when P is aligned)
+void explosion_body(uint32_t src, const Vec4& P, const Vec4& P16, int32_t n1, int32_t A, int32_t B, int32_t C, int32_t D, int32_t E,
+                    int32_t F, uint32_t G, float radius, float f13, float f27, float f28, float f29, float S, float f26) {
     float f3 = lwc1(OV(0x0015f5d4)) + lwc1(OV(0x0015f5d0));
     Vec4 sp0{};  // the debris sparks' velocity: straight up
     sp0.z = (lwc1(0x0015ed6c) * 8.0f) * S;
@@ -124,18 +128,13 @@ void explosion_effect(uint32_t src, uint32_t a1_unused, uint32_t pos, int32_t n1
         F = 0;
         if (u2f(0x3fd9999au) < f3) F = 1;
     }
-    uint32_t s5 = pos;
-    if (s5 == 0) {
-        if (src == 0) return;
-        s5 = src + 0x10;
-    }
     if (0.0f < radius) {
         const uint32_t rec = ee_stack_alloc(0x30);
         hit_rec_init(rec, src, 0x810001u, f13);
         sb(rec + 0x18, 2);
         sb(rec + 0x19, 1);
         sh(rec + 0x1a, lhu(src + 0xa6));
-        (void)mobys_in_sphere(s5, radius, 0x10, src, rec);
+        (void)mobys_in_sphere_v(P, radius, 0x10, src, static_cast<const uint32_t*>(ee_ram_ptr(rec)));
         ee_stack_free(0x30);
     }
     if (n1 > 0) {
@@ -156,12 +155,11 @@ void explosion_effect(uint32_t src, uint32_t a1_unused, uint32_t pos, int32_t n1
             const int32_t life = rand_range(a, b);
             const uint32_t vel = ee_stack_alloc(0x10);
             V(vel) = v20;
-            const uint32_t posv = s5;
-            (void)spawn_particle_0f(posv, vel, c0, c1, static_cast<uint32_t>(life - scale_life), 1u, -1, -1, f22);
+            (void)spawn_particle_0f_v(P, vel, c0, c1, static_cast<uint32_t>(life - scale_life), 1u, -1, -1, f22);
             ee_stack_free(0x10);
         }
     }
-    vec3_sub(sp10, V(OV(0x00166dc0)), V(s5));
+    vec3_sub(sp10, V(OV(0x00166dc0)), P);
     const float dist = vec3_length(sp10);
     if (E != 0) {
         Vec4 sp30{};
@@ -180,7 +178,7 @@ void explosion_effect(uint32_t src, uint32_t a1_unused, uint32_t pos, int32_t n1
             const int32_t a = frame_scale_i(0x3c);
             const int32_t b = frame_scale_i(0x5a);
             const int32_t life = rand_range(a, b);
-            (void)debris_7a_spawn_v(V(s5), sp20, static_cast<uint32_t>(life), 0u, 0u);
+            (void)debris_7a_spawn_v(P, sp20, static_cast<uint32_t>(life), 0u, 0u);
         }
         int32_t s8 = E - 1;
         if (fixes102_on(2)) {  // (1.02 Fixes, fix 2: the 1.02 build, 0x25f4a8, leaves 10 moby slots free, 0x15ffbc)
@@ -203,7 +201,7 @@ void explosion_effect(uint32_t src, uint32_t a1_unused, uint32_t pos, int32_t n1
                 const int32_t a = frame_scale_i(0x3c);
                 const int32_t b = frame_scale_i(0x5a);
                 const int32_t life = rand_range(a, b);
-                (void)debris_7a_spawn_v(V(s5), sp30, static_cast<uint32_t>(life), keep, 0u);
+                (void)debris_7a_spawn_v(P, sp30, static_cast<uint32_t>(life), keep, 0u);
             } while (i < s8);
         }
     }
@@ -237,7 +235,7 @@ void explosion_effect(uint32_t src, uint32_t a1_unused, uint32_t pos, int32_t n1
                 const int32_t c = frame_scale_i(0x1e);
                 const int32_t d = frame_scale_i(0x2d);
                 const int32_t t1 = rand_range(c, d) - F5;
-                spawn_particle_0b_v(V(s5), sp0, s3, s2, static_cast<uint32_t>(s1), static_cast<uint32_t>(t1), 0, 0, f21, f20);
+                spawn_particle_0b_v(P, sp0, s3, s2, static_cast<uint32_t>(s1), static_cast<uint32_t>(t1), 0, 0, f21, f20);
             }
             {
                 const int32_t a = frame_scale_i(5);
@@ -246,7 +244,7 @@ void explosion_effect(uint32_t src, uint32_t a1_unused, uint32_t pos, int32_t n1
                 const int32_t c = frame_scale_i(0xf);
                 const int32_t d = frame_scale_i(0x14);
                 const int32_t t1 = rand_range(c, d) - F3;
-                spawn_particle_0b_v(V(s5), sp0, 0x7fffffffu, 0x00ffffffu, static_cast<uint32_t>(s1), static_cast<uint32_t>(t1), 0, 0, f21, f20 * 0.5f);
+                spawn_particle_0b_v(P, sp0, 0x7fffffffu, 0x00ffffffu, static_cast<uint32_t>(s1), static_cast<uint32_t>(t1), 0, 0, f21, f20 * 0.5f);
             }
         }
     }
@@ -272,7 +270,7 @@ void explosion_effect(uint32_t src, uint32_t a1_unused, uint32_t pos, int32_t n1
             const int32_t life = rand_range(a, b) - F5;
             const uint32_t vel = ee_stack_alloc(0x10);
             V(vel) = sp70;
-            spawn_particle_08(s5, vel, s2, s1, life, u2f(0x48435000u));
+            spawn_particle_08_v(P, vel, s2, s1, life, u2f(0x48435000u));
             ee_stack_free(0x10);
         }
     }
@@ -286,15 +284,15 @@ void explosion_effect(uint32_t src, uint32_t a1_unused, uint32_t pos, int32_t n1
             }
             const uint32_t s2 = t0 & 0xffu;
             if (lwc1(OV(0x0015f5d0)) < u2f(0x3f733333u) && f29 < dist) {
-                (void)shard_spawn_v(src, V(s5), sp0, static_cast<uint32_t>(frame_scale_i(0x10)), static_cast<uint32_t>(s1), 0x96u, static_cast<uint32_t>(s0), 0x20u, f27);
-                (void)shard_spawn_v(src, V(s5), sp0, static_cast<uint32_t>(frame_scale_i(0x16)), s2, 0x7fu, 0x50u, 0x20u, f27);
+                (void)shard_spawn_v(src, P, sp0, static_cast<uint32_t>(frame_scale_i(0x10)), static_cast<uint32_t>(s1), 0x96u, static_cast<uint32_t>(s0), 0x20u, f27);
+                (void)shard_spawn_v(src, P, sp0, static_cast<uint32_t>(frame_scale_i(0x16)), s2, 0x7fu, 0x50u, 0x20u, f27);
             }
-            (void)shard_spawn_v(src, V(s5), sp0, static_cast<uint32_t>(frame_scale_i(0x1e)), s2, 0x7fu, 0u, 0x30u, f27);
+            (void)shard_spawn_v(src, P, sp0, static_cast<uint32_t>(frame_scale_i(0x1e)), s2, 0x7fu, 0u, 0x30u, f27);
         }
-        if (0.0f < f28) (void)shard_spawn_v(src, V(s5), sp0, static_cast<uint32_t>(frame_scale_i(0x1b)), 0xffu, 0xffu, 0xffu, 0x20u, f28);
+        if (0.0f < f28) (void)shard_spawn_v(src, P, sp0, static_cast<uint32_t>(frame_scale_i(0x1b)), 0xffu, 0xffu, 0xffu, 0x20u, f28);
     }
     if (D != 0) {
-        Vec4 sp20 = V(s5);
+        Vec4 sp20 = P;
         sp20.w = 2.0f;
         if (point_on_screen_v(sp20, u2f(0x41200000u)) != -1) {
             if (dist < u2f(0x41a00000u)) swc1(OV(0x00166de0), u2f(0x3ecccccdu) - dist * u2f(0x3c8f5c29u));
@@ -306,7 +304,7 @@ void explosion_effect(uint32_t src, uint32_t a1_unused, uint32_t pos, int32_t n1
     if (f26 == 0.0f) return;
     if (F != 0) return;
     {
-        Vec4 sp20 = V(s5);
+        Vec4 sp20 = P;
         sp20.w = f26;
         if (point_on_screen_v(sp20, u2f(0x42c80000u)) == -1) return;
     }
@@ -320,8 +318,31 @@ void explosion_effect(uint32_t src, uint32_t a1_unused, uint32_t pos, int32_t n1
         swc1(def + 0x24, u2f(0x41700000u));
         swc1(def + 0x28, u2f(0x41700000u));
     }
-    if (G != 0) (void)effect_spawn(OV(0x001b02a0), s5, 0, 0);
-    else (void)effect_spawn(def, s5, 0, 0);
+    if (G != 0) (void)effect_spawn_v(OV(0x001b02a0), P16, 0, 0);
+    else (void)effect_spawn_v(def, P16, 0, 0);
+}
+}  // namespace
+
+// orig: 0x0025e450
+void explosion_effect(uint32_t src, uint32_t a1_unused, uint32_t pos, int32_t n1, int32_t A, int32_t B, int32_t C, int32_t D,
+                      int32_t E, int32_t F, uint32_t G, float radius, float f13, float f27, float f28, float f29, float S,
+                      float f26) {
+    (void)a1_unused;
+    uint32_t s5 = pos;
+    if (s5 == 0) {
+        if (src == 0) return;
+        s5 = src + 0x10;
+    }
+    explosion_body(src, V(s5), V(s5 & ~15u), n1, A, B, C, D, E, F, G, radius, f13, f27, f28, f29, S, f26);
+}
+
+// orig: 0x0025e450 (the blast at the last hit's point, as the original given the point's EE address 0x173e60: each read of
+// the place takes the point as it is at that moment, so the blast's own mobys_in_sphere's (0, 0, 0, 1) is what its debris,
+// sparks and effect read after it)
+void explosion_effect_at_hit(uint32_t src, int32_t n1, int32_t A, int32_t B, int32_t C, int32_t D, int32_t E, int32_t F, uint32_t G,
+                             float radius, float f13, float f27, float f28, float f29, float S, float f26) {
+    const Vec4& P = coll_hit_point_live();
+    explosion_body(src, P, P, n1, A, B, C, D, E, F, G, radius, f13, f27, f28, f29, S, f26);
 }
 
 }  // namespace rac1

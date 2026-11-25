@@ -13,10 +13,15 @@ float angle_seek_limited(float cur, float target, float limit);              // 
 void moby_list_remove(uint32_t m, uint32_t list);                            // orig: 0x0025f800
 void hit_rec_init(uint32_t rec, uint32_t owner, uint32_t flags, float f);    // orig: 0x00259858
 void spawn_particle_08(uint32_t pos, uint32_t vel, uint32_t color, uint32_t color2, int32_t life, float size);  // orig: 0x0026a4c8
+void spawn_particle_08_v(const Vec4& pos, uint32_t vel, uint32_t color, uint32_t color2, int32_t life, float size);  // orig: 0x0026a4c8
 void floor_light_add(uint32_t m, float scale);                               // orig: 0x00259fe8
 void explosion_effect(uint32_t src, uint32_t a1_unused, uint32_t pos, int32_t n1, int32_t A, int32_t B, int32_t C, int32_t D,
                       int32_t E, int32_t F, uint32_t G, float radius, float f13, float f27, float f28, float f29, float S,
                       float f26);                                            // orig: 0x0025e450
+// the same blast at the last hit's point (collision.h), read at each of the original's reads of its place (orig: 0x0025e450
+// given 0x173e60)
+void explosion_effect_at_hit(uint32_t src, int32_t n1, int32_t A, int32_t B, int32_t C, int32_t D, int32_t E, int32_t F, uint32_t G,
+                             float radius, float f13, float f27, float f28, float f29, float S, float f26);  // orig: 0x0025e450
 
 // --- Mine Glove (item 0x11, hand class 0xbe, mine class 0x4a) ---
 void mine_throw_velocity_v(const Vec4& from, const Vec4& target, uint32_t out, float g, float lo, float range);  // orig: 0x002c1928

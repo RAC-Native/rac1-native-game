@@ -19,7 +19,7 @@ void put_vec(uint32_t a, const Vec4& v) {
 // orig: (host) see collide_hit.h. The original's routines store these words in their own orders (sphere_mesh_collide the
 // point, the normal, the triangle, +0x18, +0x1c and the pushed-out position last; mobys_in_sphere +0x20, +0x1c, +0x18): no
 // two overlap and nothing runs between them, so the block ends the same. The native state (collision_state.h) takes the
-// same parts first, then EE memory takes the same words (the projection).
+// same parts first, then, with the projection (RAC1_COLL_STATE mirror or ee), EE memory takes the same words.
 void coll_hit_mirror(const CollisionHit& hit, uint32_t parts) {
     CollisionHit& st = g_coll_state.hit;
     if ((parts & kHitMoby) != 0) st.moby = hit.moby;
@@ -29,6 +29,7 @@ void coll_hit_mirror(const CollisionHit& hit, uint32_t parts) {
     if ((parts & kHitNormal) != 0) st.normal = hit.normal;
     if ((parts & kHitTri) != 0)
         for (uint32_t k = 0; k < 3; ++k) st.tri[k] = hit.tri[k];
+    if (!g_coll_state_project) return;
     const BridgeScope bridge;
     constexpr OvConst<0x00173e40u> OUTB{};
     if ((parts & kHitMoby) != 0) sw(OUTB + 0x18, hit.moby);

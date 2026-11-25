@@ -400,22 +400,42 @@ bool writes_on() {
 }  // namespace
 
 namespace {
-// (stage 5, C6a) one case's generator and original run with the collision's results read from EE memory (RAC1_COLL_STATE=ee,
-// the check mode off; the routines and setters still write the native state and EE memory both): a generator restores RAM
-// by its own copies and runs port code on it (its trials), which then reads what it read before the native state existed,
-// and deals the same states. restore() gives the switch and the check mode back for the compared port run (also at the
-// scope's end: a case left early).
+// (stage 5) the collision's results in the compared port runs: ORACLE_COLL_STATE=native (the default: the state alone, the
+// EE words written by the flush after the run), mirror (the projection, the accessors reading the state, the check mode on:
+// the port runs as before C6b2) or ee
+CollStateMode port_coll_mode() {
+    static const CollStateMode m = [] {
+        const char* v = std::getenv("ORACLE_COLL_STATE");
+        if (v != nullptr && std::strcmp(v, "mirror") == 0) return CollStateMode::Mirror;
+        if (v != nullptr && std::strcmp(v, "ee") == 0) return CollStateMode::Ee;
+        return CollStateMode::Native;
+    }();
+    return m;
+}
+
+// (stage 5, C6a / C6b2) one case's generator and original run with the collision's results read from EE memory and written to
+// both (RAC1_COLL_STATE=ee, the check mode off): a generator restores RAM by its own copies and runs port code on it (its
+// trials), which then reads what it read before the native state existed, and deals the same states. port_run() sets the
+// compared port run's mode (port_coll_mode(); the check mode as the harness's, off in native: the EE words are not current
+// there); port_done() after it (also when it throws) writes the state to the EE words in native (the flush), so the RAM
+// comparison with the original compares the collision's results through the native state; the scope's end gives the
+// harness's mode and check mode back.
 struct CollStateEeScope {
-    const bool native = coll_state_native(), check = coll_state_check();
+    const CollStateMode mode = coll_state_mode();
+    const bool check = coll_state_check();
     CollStateEeScope() {
-        coll_state_set_native(false);
         coll_state_set_check(false);
+        coll_state_set_mode(CollStateMode::Ee);
     }
-    ~CollStateEeScope() { restore(); }
-    void restore() const {
-        coll_state_set_native(native);
+    ~CollStateEeScope() {
+        coll_state_set_mode(mode);
         coll_state_set_check(check);
     }
+    void port_run() const {
+        coll_state_set_mode(port_coll_mode());
+        coll_state_set_check(port_coll_mode() == CollStateMode::Native ? false : check);
+    }
+    static void port_done() { coll_state_ee_sync(); }
     CollStateEeScope(const CollStateEeScope&) = delete;
     CollStateEeScope& operator=(const CollStateEeScope&) = delete;
 };
@@ -468,9 +488,11 @@ bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::fu
             try {
                 const HudPortTrace hud_trace(hud);
                 coll_state_import();  // (stage 5, C6a: the case's EE state, as the generator and the restore left it, into the collision's native hit and hit list)
-                coll_ee.restore();
+                coll_ee.port_run();
                 pr = port(args);
+                CollStateEeScope::port_done();
             } catch (const std::exception& e) {  // a port fault is a failing case, not the end of the run
+                CollStateEeScope::port_done();
                 std::printf("  [%s] port: %s (case %d, a0..a3 %08x %08x %08x %08x)\n", name, e.what(), it, args.i.size() > 0 ? args.i[0] : 0u,
                             args.i.size() > 1 ? args.i[1] : 0u, args.i.size() > 2 ? args.i[2] : 0u, args.i.size() > 3 ? args.i[3] : 0u);
                 ++bad;
@@ -514,9 +536,11 @@ bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::fu
             try {
                 const HudPortTrace hud_trace(hud);
                 coll_state_import();  // (stage 5, C6a: the case's EE state, as the generator and the restore left it, into the collision's native hit and hit list)
-                coll_ee.restore();
+                coll_ee.port_run();
                 pr = port(args);
+                CollStateEeScope::port_done();
             } catch (const std::exception& e) {  // a port fault is a failing case, not the end of the run
+                CollStateEeScope::port_done();
                 std::printf("  [%s] port: %s (case %d, a0..a3 %08x %08x %08x %08x)\n", name, e.what(), it, args.i.size() > 0 ? args.i[0] : 0u,
                             args.i.size() > 1 ? args.i[1] : 0u, args.i.size() > 2 ? args.i[2] : 0u, args.i.size() > 3 ? args.i[3] : 0u);
                 ++bad;

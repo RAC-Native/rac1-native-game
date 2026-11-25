@@ -1,6 +1,7 @@
-// Oracle batch 543 (#150 stage 5, task C6a): the collision's native results (src/game/collision/collision_state.h: the last
-// hit and the moby hit list) against their EE words - a host check at the boundary, no original code run. On the level after
-// its first gameplay frame (the port's, as batches 530 and 540):
+// Oracle batch 543 (#150 stage 5, tasks C6a, C6b2): the collision's native results (src/game/collision/collision_state.h: the
+// last hit and the moby hit list) against their EE words - a host check at the boundary, no original code run. On the level
+// after its first gameplay frame (the port's, as batches 530 and 540). The first four checks run in RAC1_COLL_STATE=mirror
+// (the projection on: the EE words written with the state):
 //  - state_queries: B543_N (100) queries of each kind around the hero and the level's mobys - segment_collide (flags 0, 2,
 //    0x10, 1; a contact record now and then), sphere_collide, capsule_collide, sphere_mesh_collide, mobys_in_sphere (a contact
 //    record now and then) - one after another on the same state (the level put back every 50 queries, then imported): after
@@ -12,6 +13,16 @@
 //  - state_check: with the check mode on (its report lines off), each accessor's field changed in EE memory alone: that
 //    accessor's read counts one difference and returns the native value (native) or the EE word (ee); unchanged, none
 //  - state_setters: each setter of collision.h writes the native field and the EE word(s) the original stores, nothing else
+// and in native (the default: the state alone, the EE words written by coll_state_flush()):
+//  - state_native: the same kind of random queries (B543_N of each kind; their inputs drawn first), run once in mirror and once
+//    in native from the same state (the level put back every 50 queries in both): after each 50 and at the end, native and a
+//    flush leave EE memory and the scratchpad byte for byte as mirror leaves them (a hash of each 50, the whole of it at the
+//    end) and the same native state; and in native no query changes the hit's or the list's EE words
+//  - state_setters_native: each setter writes the native field and no EE byte; a flush then writes the word(s) the original
+//    stores, nothing else
+//  - state_overflow: the list's entries past its 0x80 words (the contact ring's words) stored to EE memory in native too, read
+//    back from there, the state's list untouched, the terminator there counted once (a query listing more than 0x80 mobys is
+//    not built: the store and the count are checked directly)
 // Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 543, N = 0 .. 18.
 
 #include "ovl_oracle.h"
@@ -20,6 +31,7 @@
 #include <game/collision/collision_state.h>
 #include <game/ovl/ovl.h>
 
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -91,10 +103,10 @@ uint32_t scratch() {
 
 uint32_t vw(const Vec4& v, int k) { return f2u(k == 0 ? v.x : k == 1 ? v.y : k == 2 ? v.z : v.w); }
 
-// every accessor of the hit and the list read with the switch at `native`, as words
+// every accessor of the hit and the list read from the state (`native`: mirror) or from the EE words (ee), as words
 std::vector<uint32_t> read_all(bool native) {
-    const bool was = coll_state_native();
-    coll_state_set_native(native);
+    const CollStateMode was = coll_state_mode();
+    coll_state_set_mode(native ? CollStateMode::Mirror : CollStateMode::Ee);
     std::vector<uint32_t> v;
     v.push_back(coll_hit_moby());
     v.push_back(coll_hit_flags());
@@ -110,7 +122,7 @@ std::vector<uint32_t> read_all(bool native) {
         for (int k = 0; k < 4; ++k) v.push_back(vw(x, k));
     for (int i = 0; i < static_cast<int>(kCollHitListWords); ++i) v.push_back(coll_hit_list_at(i));
     v.push_back(static_cast<uint32_t>(coll_hit_list_count()));
-    coll_state_set_native(was);
+    coll_state_set_mode(was);
     return v;
 }
 
@@ -257,7 +269,8 @@ void check_check() {
         {"coll_hit_list_at", 0x1000, [] { return coll_hit_list_at(0); }},
         {"coll_hit_list_at", 0x1000 + 0x1fc, [] { return coll_hit_list_at(0x7f); }},
     };
-    const bool check_was = coll_state_check(), native_was = coll_state_native();
+    const bool check_was = coll_state_check();
+    const CollStateMode mode_was = coll_state_mode();
     coll_state_set_check(true);
     coll_state_set_check_quiet(true);
     int bad = 0, planted = 0;
@@ -267,7 +280,7 @@ void check_check() {
     };
     for (const Probe& p : probes) {
         for (const bool native : {true, false}) {
-            coll_state_set_native(native);
+            coll_state_set_mode(native ? CollStateMode::Mirror : CollStateMode::Ee);
             const uint32_t a = ee_of(p.off);
             const uint32_t was = r32(a);
             uint64_t d0 = coll_state_differences();
@@ -288,7 +301,7 @@ void check_check() {
     }
     coll_state_set_check_quiet(false);
     coll_state_set_check(check_was);
-    coll_state_set_native(native_was);
+    coll_state_set_mode(mode_was);
     level();
     if (bad != 0) {
         fail(name, std::to_string(bad) + " problem(s); first: " + first);
@@ -297,12 +310,15 @@ void check_check() {
     std::printf("%-26s ok: %d planted differences found, one each, under the accessor read; none without\n", name, planted);
 }
 
-void check_setters() {
-    const char* name = "state_setters";
+// (mirror) the setter writes the field and its EE word(s); (native) the field alone, no EE byte, and a flush then the word(s)
+void check_setters(bool native) {
+    const char* name = native ? "state_setters_native" : "state_setters";
     if (!selected(name)) return;
     level();
     const bool check_was = coll_state_check();
+    const CollStateMode mode_was = coll_state_mode();
     coll_state_set_check(false);
+    coll_state_set_mode(native ? CollStateMode::Native : CollStateMode::Mirror);
     int bad = 0, n = 0;
     std::string first;
     const uint32_t b = OV(0x00173e40);
@@ -328,7 +344,12 @@ void check_setters() {
         default: coll_state_list_put(static_cast<uint32_t>(ri(0, 0x7f)), m); break;
         }
         ++n;
-        std::string why = state_vs_ee();
+        std::string why;
+        if (native) {
+            if (std::memcmp(before.data(), ram, before.size()) != 0) why = "an EE byte changed with the projection off";
+            coll_state_flush();
+        }
+        if (why.empty()) why = state_vs_ee();
         for (const auto& [a, w] : expect)
             if (why.empty() && r32(a) != w) why = "the word at " + hex(a) + " is " + hex(r32(a)) + ", not " + hex(w);
         if (why.empty() && which != 7) {  // nothing else changed
@@ -340,13 +361,186 @@ void check_setters() {
         }
         if (!why.empty() && bad++ == 0) first = "setter " + std::to_string(which) + ": " + why;
     }
+    coll_state_set_mode(mode_was);
     coll_state_set_check(check_was);
     level();
     if (bad != 0) {
         fail(name, std::to_string(bad) + " of " + std::to_string(n) + ": " + first);
         return;
     }
-    std::printf("%-26s ok: %d setter calls, the native field and the EE word(s) written, nothing else\n", name, n);
+    if (native) std::printf("%-26s ok: %d setter calls in native, the native field written and no EE byte; the flush then the EE word(s), nothing else\n", name, n);
+    else std::printf("%-26s ok: %d setter calls, the native field and the EE word(s) written, nothing else\n", name, n);
+}
+
+// one query's inputs (state_native: drawn first, run in both modes)
+struct Query {
+    int kind = 0;
+    Vec4 at{}, to{};
+    uint32_t fl = 0, ignore = 0, ms_flags = 0;
+    float r = 0.0f, h = 0.0f;
+    bool with_rec = false;
+    std::array<uint32_t, 9> rec{};
+};
+
+// the inputs of n * 5 queries as check_queries draws them, on the level (no query moves a moby: their places stay the level's)
+std::vector<Query> draw_queries(int n) {
+    std::vector<Query> qs;
+    level();
+    const uint32_t hero = r32(0x001413d0);
+    const std::vector<uint32_t> ms = live_mobys();
+    const uint32_t list = r32(OV(0x0015f618));
+    for (int k = 0; k < n * 5; ++k) {
+        Query q;
+        const uint32_t from_m = ms.empty() || coin() ? hero : ms[static_cast<size_t>(ri(0, static_cast<int>(ms.size()) - 1))];
+        q.kind = k % 5;
+        q.at = around(ee_ref<Vec4>(from_m + 0x10), 0.0f, 3.0f, -0.5f, 2.0f);
+        if (q.kind == 3 && list >= 0x1000u && static_cast<int32_t>(r32(list)) > 0 && ri(0, 3) != 0) {
+            const uint32_t e = list + 0x10 + static_cast<uint32_t>(ri(0, static_cast<int32_t>(r32(list)) - 1)) * 0x10;
+            const float rad = static_cast<float>(r16(e + 6)) / 64.0f;
+            q.at = Vec4{static_cast<float>(r16(e)) / 64.0f + rf(-rad, rad), static_cast<float>(r16(e + 2)) / 64.0f + rf(-rad, rad),
+                        static_cast<float>(r16(e + 4)) / 64.0f + rf(-rad, rad), 1.0f};
+        }
+        q.fl = ri(0, 3) != 0 ? 0u : (ri(0, 2) == 0 ? 2u : (coin() ? 0x10u : 1u));
+        q.ignore = coin() ? from_m : 0u;
+        q.to = around(q.at, 1.0f, ri(0, 3) == 0 ? 120.0f : 25.0f, -8.0f, 8.0f);
+        q.r = rf(0.2f, q.kind == 3 ? 4.0f : (q.kind == 4 ? 8.0f : 2.5f));
+        q.h = rf(0.1f, 2.0f);
+        for (uint32_t& w : q.rec) w = R();
+        q.with_rec = ri(0, 3) == 0;
+        q.ms_flags = coin() ? 0u : 2u;
+        qs.push_back(q);
+    }
+    return qs;
+}
+
+uint64_t fnv(const uint8_t* p, size_t n, uint64_t h = 1469598103934665603ull) {
+    for (size_t i = 0; i < n; ++i) h = (h ^ p[i]) * 1099511628211ull;
+    return h;
+}
+
+// what one mode's run of the queries leaves: a hash of EE memory and the scratchpad after each 50 (after a flush in native),
+// the whole of them and the state at the end, the queries that changed the hit's or the list's EE words, the hits
+struct Run {
+    std::vector<uint64_t> hashes;
+    std::vector<uint8_t> ram, spr;
+    CollState state{};
+    int changed = 0, hits = 0;
+};
+Run run_queries(const std::vector<Query>& qs, CollStateMode mode) {
+    Run out;
+    const uint32_t S = scratch();
+    uint8_t* ram = ee_get_ram_base();
+    uint8_t* spr = hp<uint8_t>(0x70000000u);
+    const uint32_t hit_ee = OV(0x00173e58), list_ee = OV(0x00177f00);
+    auto words = [&] {  // the hit's 0x68 bytes and the list's 0x200
+        std::vector<uint8_t> w(ram + (hit_ee & 0x01ffffffu), ram + (hit_ee & 0x01ffffffu) + 0x68);
+        w.insert(w.end(), ram + (list_ee & 0x01ffffffu), ram + (list_ee & 0x01ffffffu) + 0x200);
+        return w;
+    };
+    auto mark = [&] {
+        coll_state_ee_sync();  // (native: the flush; mirror: nothing to write)
+        out.hashes.push_back(fnv(spr, 0x4000, fnv(ram, 0x02000000)));
+    };
+    level();
+    coll_state_set_mode(mode);
+    for (size_t k = 0; k < qs.size(); ++k) {
+        if (k % 50 == 0 && k != 0) {
+            mark();
+            level();
+        }
+        const Query& q = qs[k];
+        const std::vector<uint8_t> w0 = words();
+        int32_t got = 0;
+        switch (q.kind) {
+        case 0: got = segment_collide_v(q.at, q.to, q.fl, q.ignore, q.with_rec ? q.rec.data() : nullptr); break;
+        case 1: got = sphere_collide_v(q.at, q.r, q.fl & ~0x10u, q.ignore); break;
+        case 2: got = capsule_collide_v(q.at, q.r, q.h, q.fl & ~0x10u, q.ignore); break;
+        case 3:
+            ee_ref<Vec4>(S) = q.at;
+            got = sphere_mesh_collide(S, q.r);
+            break;
+        default: got = mobys_in_sphere_v(q.at, q.r, q.ms_flags, q.ignore, q.with_rec ? q.rec.data() : nullptr); break;
+        }
+        out.hits += got != 0 ? 1 : 0;
+        if (words() != w0) ++out.changed;
+    }
+    mark();
+    out.ram.assign(ram, ram + 0x02000000);
+    out.spr.assign(spr, spr + 0x4000);
+    out.state = g_coll_state;
+    coll_state_set_mode(CollStateMode::Mirror);
+    return out;
+}
+
+void check_native() {
+    const char* name = "state_native";
+    if (!selected(name)) return;
+    const int n = std::getenv("B543_N") != nullptr ? std::atoi(std::getenv("B543_N")) : 100;
+    const bool check_was = coll_state_check();
+    const CollStateMode mode_was = coll_state_mode();
+    coll_state_set_check(false);
+    const std::vector<Query> qs = draw_queries(n);
+    const Run m = run_queries(qs, CollStateMode::Mirror);
+    const Run v = run_queries(qs, CollStateMode::Native);
+    coll_state_set_mode(mode_was);
+    coll_state_set_check(check_was);
+    level();
+    std::string why;
+    for (size_t i = 0; i < m.hashes.size() && why.empty(); ++i)
+        if (i >= v.hashes.size() || m.hashes[i] != v.hashes[i]) why = "EE memory after query " + std::to_string(std::min(qs.size(), (i + 1) * 50)) + " differs from mirror's";
+    if (why.empty() && m.ram != v.ram) {
+        uint32_t a = 0;
+        while (a < 0x02000000u && std::memcmp(&m.ram[a], &v.ram[a], 4) == 0) a += 4;
+        why = "EE memory at the end differs from mirror's at " + hex(a);
+    }
+    if (why.empty() && m.spr != v.spr) why = "the scratchpad at the end differs from mirror's";
+    const char* field = nullptr;
+    if (why.empty() && !coll_state_same(m.state, v.state, &field)) why = std::string("the native state's ") + field + " differs from mirror's";
+    if (why.empty() && m.hits != v.hits) why = "the queries hit " + std::to_string(v.hits) + " times, in mirror " + std::to_string(m.hits);
+    if (why.empty() && v.changed != 0) why = std::to_string(v.changed) + " queries in native changed the hit's or the list's EE words";
+    if (why.empty() && m.changed == 0) why = "no query in mirror changed the hit's or the list's EE words (the test tests nothing)";
+    if (!why.empty()) {
+        fail(name, why);
+        return;
+    }
+    std::printf("%-26s ok: %zu queries (%d hits), native + flush equal to mirror byte for byte (%zu points: EE memory, the scratchpad; the state at the end); "
+                "the EE words unchanged by every query in native (%d of them changed in mirror)\n",
+                name, qs.size(), v.hits, m.hashes.size(), m.changed);
+}
+
+void check_overflow() {
+    const char* name = "state_overflow";
+    if (!selected(name)) return;
+    level();
+    const bool check_was = coll_state_check();
+    const CollStateMode mode_was = coll_state_mode();
+    coll_state_set_check(false);
+    coll_state_set_mode(CollStateMode::Native);
+    const uint32_t l = OV(0x00177f00);
+    const CollState s0 = g_coll_state;
+    std::vector<uint32_t> list0;
+    for (uint32_t i = 0; i < kCollHitListWords; ++i) list0.push_back(r32(l + i * 4));
+    const uint64_t o0 = coll_state_overflows();
+    const uint32_t m = R() | 0x00100000u;
+    std::string why;
+    coll_state_list_put(0x80, m);
+    if (coll_state_overflows() != o0) why = "an entry past the room counted as a query's overflow";
+    coll_state_list_put(0x81, 0);
+    if (why.empty() && coll_state_overflows() != o0 + 1) why = "the terminator past the room counted " + std::to_string(coll_state_overflows() - o0) + " times";
+    if (why.empty() && (r32(l + 0x200) != m || r32(l + 0x204) != 0)) why = "the EE words past the room not stored";
+    if (why.empty() && (coll_state_list_entry(0x80) != m || coll_hit_list_at(0x80) != m || coll_state_list_entry(0x81) != 0)) why = "the entries past the room not read from EE memory";
+    if (why.empty() && !coll_state_same(g_coll_state, s0, nullptr)) why = "the state changed";
+    for (uint32_t i = 0; i < kCollHitListWords && why.empty(); ++i)
+        if (r32(l + i * 4) != list0[i]) why = "the list's EE word " + std::to_string(i) + " changed";
+    coll_state_set_mode(mode_was);
+    coll_state_set_check(check_was);
+    level();
+    if (!why.empty()) {
+        fail(name, why);
+        return;
+    }
+    std::printf("%-26s ok: in native the entries past the list's room stored to EE memory and read from there, the terminator counted once, the state untouched "
+                "(a query listing more than 0x80 mobys not built)\n", name);
 }
 
 }  // namespace
@@ -355,10 +549,14 @@ void batch_543() {
     if (g_only_batch != 543) return;
     g_batch = 543;
     std::printf("batch 543: the collision's native results on level %d\n", g_oracle_level);
+    coll_state_set_mode(CollStateMode::Mirror);  // (the oracle's harness mode; the checks below set native where they say so)
     check_queries();
     check_import();
     check_check();
-    check_setters();
+    check_setters(false);
+    check_native();
+    check_setters(true);
+    check_overflow();
 }
 
 }  // namespace rac1::oracle

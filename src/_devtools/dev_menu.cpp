@@ -2581,6 +2581,7 @@ void dev_menu_poll(GLFWwindow* window) {
     if (g_snap_pending != 0) {  // between game frames
         constexpr size_t RAM = 64u * 1024u * 1024u;
         if (g_snap_pending == 1) {
+            coll_state_ee_sync();  // (the collision's hit and hit list written to their EE words first, in native: the snapshot carries them)
             g_snap_ram.assign(ee_get_ram_base(), ee_get_ram_base() + RAM);
             g_snap_spr.assign(ee_get_scratchpad_base(), ee_get_scratchpad_base() + SPR_SIZE);
             g_snap_level = r32(0x0015ed84);

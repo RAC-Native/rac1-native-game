@@ -51,7 +51,11 @@ int main(int argc, char** argv) {
     // the settings' bytes of the snapshot (0: off), not this machine's preferences or the rows' default (on)
     rac1::advanced_prefs_load();
     rac1::coll_scene_set_check(true);  // the collision scene (RAC1_COLL_SCENE=native) compared with EE memory at every use
-    rac1::coll_state_set_check(true);  // the collision's native hit and hit list compared with the EE words at every accessor read
+    // the collision's results (stage 5): the harness (level set-ups, generators, a batch's own code) in mirror, the native state
+    // and the EE words written at once, with the check mode on (every accessor read compared with the EE words); the compared
+    // port runs in ORACLE_COLL_STATE's mode (native by default, the flush after each: oracle_env.cpp's check_fn)
+    rac1::coll_state_set_mode(rac1::CollStateMode::Mirror);
+    rac1::coll_state_set_check(true);
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     // --batch N: that batch only; --level N (or ORACLE_LEVEL=N): on level N's own overlay (task 0307)
     int level = std::getenv("ORACLE_LEVEL") != nullptr ? std::atoi(std::getenv("ORACLE_LEVEL")) : 0;

@@ -107,6 +107,15 @@ It prints one line per check (`ok (40 cases)`, or the differences), then `PASS` 
 number of failing functions. The exit code is 0 for a pass, 1 for a failure, and 77 when the disc's
 files, or the level's address map, are missing. Each batch's header says which levels it runs on and what it needs.
 
+The collision's results (the last hit and the moby hit list, `src/game/collision/collision_state.h`) are native state in
+the game, which writes their EE words only where something looks at memory. In the oracle, each check's compared port run
+uses that mode (`RAC1_COLL_STATE=native`), and right after it (also when it throws) the state is written to its EE words
+(`coll_state_flush`): the RAM comparison with the original then compares the original's block 0x173e40 +0x18 .. +0x7f and
+its list 0x177f00 with the port's native state, byte for byte, through the usual comparison and the checks' ignore lists.
+Everything else (the level set-ups, the generators, a batch's own code) runs in `mirror` (the state and the EE words written
+at once) with `RAC1_COLL_STATE_CHECK` on, as before. `ORACLE_COLL_STATE=mirror` (or `ee`) runs the compared port runs in that
+mode instead, for comparison. Batch 543 checks the state against the EE words and native against mirror.
+
 ### Native trial guards
 
 Some batches first try a random state in the native port, rejecting a `std::exception` or an invalid

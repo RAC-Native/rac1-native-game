@@ -826,6 +826,7 @@ uint32_t enemy_physics(uint32_t m, uint32_t p);                               //
 void swap3_by_mask(uint32_t& a, uint32_t& b, uint32_t& c, uint32_t mask);    // orig: 0x0025c088
 uint32_t color_swap_channels(uint32_t col, uint32_t mask);                    // orig: 0x0025c0e8
 uint32_t effect_spawn(uint32_t def, uint32_t pos, uint32_t arg, uint32_t dir);  // orig: 0x002d3838
+uint32_t effect_spawn_v(uint32_t def, const Vec4& pos, uint32_t arg, uint32_t dir);  // orig: 0x002d3838
 void enemy_death_burst(uint32_t src, uint32_t pos, float scale, float size);  // orig: 0x0025f3e8
 float angle_lerp(float a, float b, float t);                                  // orig: 0x0025b750
 float round_decimals(int32_t n, float v);                                     // orig: 0x00261858
@@ -1055,6 +1056,7 @@ void dir_pack(uint32_t v, uint32_t out);                                     // 
 void dir_unpack(Vec4& d, uint32_t packed);                                   // orig: 0x002615a8
 uint32_t spawn_particle_02(uint32_t pos, uint32_t a, uint32_t b, uint32_t c0, uint32_t c1, uint32_t n, uint32_t h32, uint32_t h34, int32_t tex);  // orig: 0x002690b8
 uint32_t spawn_particle_0f(uint32_t pos, uint32_t vel, uint32_t c0, uint32_t c1, uint32_t n, uint32_t h3a, int32_t tex, int32_t blend, float size);  // orig: 0x0026bb70
+uint32_t spawn_particle_0f_v(const Vec4& pos, uint32_t vel, uint32_t c0, uint32_t c1, uint32_t n, uint32_t h3a, int32_t tex, int32_t blend, float size);  // orig: 0x0026bb70
 uint32_t spawn_particle_40(uint32_t pos, uint32_t vel, uint32_t n, uint32_t color, uint32_t w38, uint32_t add, float size, float a, float b);  // orig: 0x002738e8
 int32_t sound_play_indexed(int32_t idx, uint32_t flags, uint32_t moby);      // orig: 0x0028dd40
 void packet_scissor(int32_t x0, int32_t x1, int32_t y0, int32_t y1);         // orig: 0x002a0c68

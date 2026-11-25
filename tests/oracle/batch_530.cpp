@@ -108,6 +108,7 @@ bool trial(const std::function<void()>& port) {
 // the RAM itself is compared with the original's as always, so the facade reads what the original wrote)
 uint32_t facade_mismatch() {
     const uint32_t B = OV(0x00173e40), H = OV(0x00177f00);
+    coll_state_ee_sync();  // (the compared port run in native: the state written to the EE words first, as the run's end does)
     auto same = [](const Vec4& v, uint32_t at) { return std::memcmp(&v, &ee_ref<Vec4>(at), sizeof(Vec4)) == 0; };
     const CollisionHit h = coll_hit();
     uint32_t bad = 0;
@@ -128,8 +129,9 @@ uint32_t facade_mismatch() {
     // the writer: a value set and read back raw, then the word put back as it was (the RAM stays the port's)
     const uint32_t keep = ee_read<uint32_t>(B + 0x18);
     coll_hit_set_moby(keep ^ 0x5a5a0000u);
-    if (ee_read<uint32_t>(B + 0x18) != (keep ^ 0x5a5a0000u)) bad |= 0x08000000u;
-    w32(B + 0x18, keep);
+    coll_state_ee_sync();
+    if (ee_read<uint32_t>(B + 0x18) != (keep ^ 0x5a5a0000u) || coll_hit_moby() != (keep ^ 0x5a5a0000u)) bad |= 0x08000000u;
+    coll_hit_set_moby(keep);
     if (bad != 0) {
         static int shown = 0;
         if (shown++ < 4) std::printf("  [coll_hit facade] mismatch mask %08x\n", bad);
