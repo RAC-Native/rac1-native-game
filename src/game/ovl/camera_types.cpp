@@ -106,7 +106,7 @@ void camera_collide_sweep(uint32_t pos, float radius) {
         vec3_add(V(pos), V(pos), step);
         for (int32_t k = 0; k < 6; ++k) {
             if (sphere_collide(pos, radius, lwu(OV(0x0015ef5c)), lwu(P + 0x2080)) == 0) break;
-            lq_sq(pos, coll_hit_pushed_addr());
+            coll_vec_store(pos, coll_hit_pushed());
             const uint32_t c = lwu(ACTIVE);
             if (lbu(c + 0x89) == 0) sb(c + 0x89, 1);
         }

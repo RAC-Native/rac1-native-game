@@ -167,7 +167,7 @@ void hero_ground_update_l1() {
         const int32_t t = sub_001f35d8();
         sh(P + 0x12e0, static_cast<uint32_t>(t));
         if ((static_cast<uint32_t>(t) << 16) == 0) {
-            const float h = surface_height(coll_hit_point_addr(), P + 0x280);
+            const float h = surface_height_at(coll_hit_point(), &V(P + 0x280));
             swc1(P + 0x2f0, h);
             if (lwc1(P + 0x88) < h && lw(P + 0x2f8) <= 0) sw(P + 0x2f8, 1);
             if (segment_collide_v(a, b, 0x24, lwu(P + 0x2080), nullptr) == 0) return false;
@@ -204,7 +204,7 @@ void hero_ground_update_l1() {
         swc1(P + 0x2dc, vec3_distance(V(P + 0x80), V(P + 0x2a0)));
         sw(P + 0x2fc, coll_hit_moby());
         vu0_normalize(V(P + 0x270), coll_hit_normal());
-        swc1(P + 0x2e0, sub_00233d30(coll_hit_normal_addr()));
+        swc1(P + 0x2e0, sub_00233d30_v(coll_hit_normal()));
         swc1(P + 0x2ec, atan2_f(coll_hit_normal().x, coll_hit_normal().y));
         Vec4 d;
         vec3_sub(d, V(P + 0x2a0), V(P + 0x80));

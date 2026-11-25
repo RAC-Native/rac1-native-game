@@ -195,7 +195,7 @@ void class848_update(uint32_t m) {
         class848_bullet(lwu(pv + 0x10), spark, dir, push, frame_scale_i(0x2d));
         if (segment_collide_v(V(gun), V(far), 0, lwu(pv + 0x10), nullptr) != 0) {
             // ten sparks off the scenery where the line of fire meets it
-            lq_sq(gun, coll_hit_point_addr());
+            coll_vec_store(gun, coll_hit_point());
             vec3_set_length(V(out), V(out), fpu_mul(lwc1(0x0015ed6c), 10.0f));
             for (int32_t i = 0; i < 10; ++i) {
                 rand_cube(dir);

@@ -5,6 +5,7 @@
 #define RAC1_GAME_OVL_SHARED_CLASS827_H
 
 #include <cstdint>
+#include <runtime/kernel/vu0.h>  // (Vec4)
 
 namespace rac1 {
 
@@ -25,6 +26,7 @@ void class827_target_score(uint32_t m, uint32_t current, uint32_t cand, uint32_t
 // The death's glow (twenty sparks).
 void class827_glow_burst(uint32_t m);  // L6:0x002ea498 L10:0x002ce4d0
 // The matrix turned toward the direction at `dir`, upright along the vector at `up`.
+void class827_turn_v(uint32_t m, const Vec4& up, uint32_t dir);  // L6:0x002e9998 L10:0x002cdbd8
 void class827_turn(uint32_t m, uint32_t up, uint32_t dir);  // L6:0x002e9998 L10:0x002cdbd8
 // The ground under it along its up axis (the collision's result); nonzero when found.
 int32_t class827_ground(uint32_t m);  // L6:0x002e9aa8 L10:0x002cdce8

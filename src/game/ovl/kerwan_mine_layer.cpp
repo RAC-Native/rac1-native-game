@@ -384,7 +384,7 @@ void kerwan_class627_update_l3(uint32_t m) {
         const float cam_d = vec2_distance(V(m + 0x10), V(OV(0x00166dc0)));
         const int32_t n = mobys_in_sphere(m + 0x10, 2.0f, 0x10, m, 0);
         lq_sq(sp + 0x50, m + 0x10);
-        moby_list_hit(m, sp + 0x50, coll_hit_list(), n, 0, NOT_ADDR(0x810001u), 4, 1, 3.0f, 0.25f, 1.5f);
+        moby_list_hit_coll(m, V(sp + 0x50), n, 0, NOT_ADDR(0x810001u), 4, 1, 3.0f, 0.25f, 1.5f);
         const uint32_t ups = sp + 0x50, vel = sp + 0x60, at = sp + 0x70;
         for (int32_t left = float_to_int(fpu_mul(cam_d, 15.0f)); left > 0; --left) {
             const int32_t kind = rand_mod(4);

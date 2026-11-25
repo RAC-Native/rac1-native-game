@@ -670,7 +670,7 @@ void class28_update(uint32_t m) {
             sh(rec + 0x1a, lhu(m + 0xa6));
             sb(rec + 0x18, 0);
             if (segment_collide_v(V(from), V(to), 0, m, static_cast<const uint32_t*>(ee_ram_ptr(rec))) != 0)
-                lq_sq(to, coll_hit_point_addr());
+                coll_vec_store(to, coll_hit_point());
             fx1471_set(m, frame, to);
             if (timer_tick_i16(*static_cast<int16_t*>(ee_ram_ptr(pv + 0x262))) != 0) {
                 anim(m, 6, 0xa);

@@ -781,7 +781,7 @@ void tail(uint32_t m, uint32_t pv, Frame& f) {
                     if (sphere_collide(f.buf50, fpu_mul(int_to_float(lw(pv + 0x30)), u2f(0x3a800000u)), 6, m) == 0) break;
                     const float flat = vec2_length(coll_hit_normal());
                     if (u2f(0x3f060a92u) < atan2_f(coll_hit_normal().z, flat)) {  // (the normal 30 degrees up or more)
-                        lq_sq(m + 0x10, coll_hit_pushed_addr());
+                        coll_vec_store(m + 0x10, coll_hit_pushed());
                         swc1(m + 0x18, fpu_sub(lwc1(m + 0x18), lwc1(pv + 0x34)));
                     }
                 }

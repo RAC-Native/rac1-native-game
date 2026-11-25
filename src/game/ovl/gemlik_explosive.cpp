@@ -270,7 +270,7 @@ void gml_class1261_update_l13(uint32_t m) {
         const float t = fpu_div(int_to_float(lw(pv + 0x70)), int_to_float(frame_scale_i(lw(L13_ADDR(0x00161e2c)))));
         const float r = lerp_f(lwc1(L13_ADDR(0x00161e30)), lwc1(L13_ADDR(0x00161e34)), t);
         const int32_t n = mobys_in_sphere(sp, r, 0x10, m, 0);
-        moby_list_hit(m, sp, coll_hit_list(), n, 0, 0x830001, 2, 1, lwc1(L13_ADDR(0x00161e38)), 1.0f, 1.0f);
+        moby_list_hit_coll(m, V(sp), n, 0, 0x830001, 2, 1, lwc1(L13_ADDR(0x00161e38)), 1.0f, 1.0f);
         const float half = frame_scale_f(fpu_mul(static_cast<float>(lw(L13_ADDR(0x00161e2c))), 0.5f));
         if (half < static_cast<float>(lw(pv + 0x70))) {
             sh(m + 0x34, lhu(m + 0x34) | 0x41u);

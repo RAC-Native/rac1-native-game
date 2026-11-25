@@ -206,14 +206,14 @@ void class256_update(uint32_t m) {
         if (hit == 0) {
             if (coll_hit_flags_signed() > 0) {
                 sb(m + 0xbc, 1);
-                lq_sq(pos, coll_hit_point_addr());
+                coll_vec_store(pos, coll_hit_point());
                 vec3_sub(V(side), coll_hit_tri(0), coll_hit_tri(1));
                 wall = true;
             }
         } else if (hit != lwu(0x001413d0)) {
             if (hit != lwu(pv + 0x10)) {
                 sb(m + 0xbc, 2);
-                lq_sq(pos, coll_hit_point_addr());
+                coll_vec_store(pos, coll_hit_point());
                 vec3_sub(V(side), coll_hit_tri(0), coll_hit_tri(1));
                 wall = true;
                 direct = m;
@@ -238,7 +238,7 @@ void class256_update(uint32_t m) {
     {
         const int32_t n = mobys_in_sphere(pos, 2.0f, 0x10, m, 0);
         lq_sq(lead, pos);
-        moby_list_hit(m, lead, coll_hit_list(), n, direct, 0x810000, 3, 1, 3.0f, 1.0f, 1.0f);
+        moby_list_hit_coll(m, V(lead), n, direct, 0x810000, 3, 1, 3.0f, 1.0f, 1.0f);
     }
     // (the cross-product matrix of the burst's normal, and its square: the sparks spread about the plane it hit)
     {

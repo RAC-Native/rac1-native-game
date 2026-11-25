@@ -887,7 +887,7 @@ int32_t sub_00256de0(uint32_t pos, float* t, int32_t* idx) {
 // orig: 0x00259bc8 L13:0x00265c30 — record an event for moby in the 64-entry ring 0x178100 (next index
 // *(0x173e54)), unless its current entry is stronger than `strength`. (Gemlik's build, its own ring and counter: the same
 // instructions, proved by batch 410.)
-void sub_00259bc8_v(uint32_t moby, uint32_t a, uint32_t b, uint32_t pos, const Vec4& dir, float strength) {
+void sub_00259bc8_vv(uint32_t moby, uint32_t a, uint32_t b, const Vec4& pos, const Vec4& dir, float strength) {
     const uint32_t s = coll_contact_next();
     const uint32_t cur = lbu(moby + 0xa4);
     if (cur != 0xff) {
@@ -901,10 +901,14 @@ void sub_00259bc8_v(uint32_t moby, uint32_t a, uint32_t b, uint32_t pos, const V
     sw(e + 0x34, moby);
     sw(e + 0x38, 0);
     sw(e + 0x30, u2f(0x38d1b717u) < vec3_length(dir) ? 1u : 0u);
-    lq_sq(e, pos);
+    ee_write<Vec4>(e & ~15u, pos);  // (the original's lq / sq of pos)
     V(e + 0x10) = dir;
     sb(moby + 0xa4, s);
     coll_set_contact_next((s + 1) & 0x3f);
+}
+// orig: 0x00259bc8 (EE-address form of pos: its quadword at pos & ~15, read where the original's lq reads it)
+void sub_00259bc8_v(uint32_t moby, uint32_t a, uint32_t b, uint32_t pos, const Vec4& dir, float strength) {
+    sub_00259bc8_vv(moby, a, b, V(pos & ~15u), dir, strength);
 }
 // orig: 0x00259bc8 (EE-address form)
 void sub_00259bc8(uint32_t moby, uint32_t a, uint32_t b, uint32_t pos, uint32_t dir, float strength) {
@@ -1780,21 +1784,24 @@ void item_class_load(uint32_t cls, int32_t buf) {
 
 // orig: 0x00259e58 — water/floor height under pos: the region height grid if any region covers
 // it, else the level's flat water disc (height 0x1612e8, centre 0x1612e0, radius 0x1612ec, within
-// 0.5 of pos.z), else pos.z; *n gets the surface normal (up when not from the grid). n may be null.
-float surface_height_v(uint32_t pos, Vec4* n) {
+// 0.5 of pos.z), else pos.z; *n gets the surface normal (up when not from the grid). n may be null. pos is read at each of
+// the original's loads (the address form hands its EE words).
+float surface_height_at(const Vec4& pos, Vec4* n) {
     if (lw(OV(0x001612d8)) != 0) {
-        float h = lwc1(pos + 8);
-        if (region_height_sample_v(&h, n, lwc1(pos + 0), lwc1(pos + 4), lwc1(pos + 8)) != 0) return h;
+        float h = pos.z;
+        if (region_height_sample_v(&h, n, pos.x, pos.y, pos.z) != 0) return h;
     }
-    bool disc = lw(OV(0x001612dc)) != 0 && abs_f(lwc1(pos + 8) - lwc1(OV(0x001612e8))) < 0.5f;
-    if (disc) disc = vec2_distance(V(pos), V(OV(0x001612e0))) < lwc1(OV(0x001612ec));
+    bool disc = lw(OV(0x001612dc)) != 0 && abs_f(pos.z - lwc1(OV(0x001612e8))) < 0.5f;
+    if (disc) disc = vec2_distance(pos, V(OV(0x001612e0))) < lwc1(OV(0x001612ec));
     if (disc) {
         if (n != nullptr) vec_set_unit_z(*n);
         return lwc1(OV(0x001612e8));
     }
     if (n != nullptr) vec_set_unit_z(*n);
-    return lwc1(pos + 8);
+    return pos.z;
 }
+// orig: 0x00259e58 (EE-address form of pos)
+float surface_height_v(uint32_t pos, Vec4* n) { return surface_height_at(V(pos), n); }
 // orig: 0x00259e58 — EE-address wrapper (n = 0: no normal)
 float surface_height(uint32_t pos, uint32_t n) { return surface_height_v(pos, n != 0 ? &V(n) : nullptr); }
 

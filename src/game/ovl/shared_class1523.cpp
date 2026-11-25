@@ -200,7 +200,7 @@ void class1523_update(uint32_t m) {
     {
         const int32_t n = mobys_in_sphere(pos, reach, 0x10, m, 0);
         lq_sq(at, pos);
-        moby_list_hit(m, at, coll_hit_list(), n, 0, 0x8b0000, 2, 1, 20.0f, 1.0f, 1.0f);
+        moby_list_hit_coll(m, V(at), n, 0, 0x8b0000, 2, 1, 20.0f, 1.0f, 1.0f);
     }
     const int32_t left = frame_scale_i(0x3c) - lw(pv + 0x14);
     const int32_t glow_life = left < frame_scale_i(5) ? frame_scale_i(0x3c) - lw(pv + 0x14) : frame_scale_i(5);

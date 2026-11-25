@@ -373,7 +373,7 @@ void particle_36_update(uint32_t p) {
     const uint32_t owner = lwu(q + 0x14);
     const int32_t count = mobys_in_sphere(pos, u2f(0x3e19999au), 0x10, owner, 0);
     lq_sq(sp + 0x10, pos);
-    moby_list_hit(owner, sp + 0x10, coll_hit_list(), count, 0, NOT_ADDR(0x00810001u), 2, 1, 2.0f, 1.0f, 1.0f);
+    moby_list_hit_coll(owner, V(sp + 0x10), count, 0, NOT_ADDR(0x00810001u), 2, 1, 2.0f, 1.0f, 1.0f);
     ee_stack_free(0x30);
 }
 

@@ -117,7 +117,7 @@ void class819_update(uint32_t m) {
             if (hit != 0) {
                 vec2_set_length(V(rel), V(pv), 1.0f);
                 swc1(pv + 8, 1.0f);
-                sub_00259bc8(coll_hit_moby(), m, 0x10003u, coll_hit_point_addr(), rel, 1.0f);
+                sub_00259bc8_vv(coll_hit_moby(), m, 0x10003u, coll_hit_point(), V(rel), 1.0f);
             }
             sb(m + 0x20, 2);
         }

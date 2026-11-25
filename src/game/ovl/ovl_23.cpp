@@ -169,18 +169,20 @@ void sub_00233ba0_v(Vec4& dst, const Vec4& src, float len) {
 void sub_00233ba0(uint32_t dst, uint32_t src, float len) { sub_00233ba0_v(V(dst), V(src), len); }
 
 // orig: 0x00233d30 — pitch of v (atan2(z, |xy|)) in the current move mode's frame.
-float sub_00233d30(uint32_t v) {
+float sub_00233d30_v(const Vec4& v) {
     const uint32_t mode = lbu(g::PLAYER + 0x20b3);
     if (mode == 0) {
-        const float l = vec2_length(V(v));
-        return atan2_f(lwc1(v + 8), l);
+        const float l = vec2_length(v);
+        return atan2_f(v.z, l);
     }
     if (!(mode < 3)) return 0.0f;
-    Vec4 t = V(v);
+    Vec4 t = v;
     mat4_transform(t, t, M(g::PLAYER + 0x40));
     const float l = vec2_length(t);
     return atan2_f(t.z, l);
 }
+// orig: 0x00233d30 (EE-address form)
+float sub_00233d30(uint32_t v) { return sub_00233d30_v(V(v)); }
 
 // orig: 0x00233db8 — take `amount` from counter idx (0x13d428) into 0x13dea0; 0 if not enough.
 int32_t sub_00233db8(int32_t idx, int32_t amount) {
@@ -1096,7 +1098,7 @@ float hero_fall_time(float t, float g, float h) {
             Vec4 q = V(P + 0x80);
             sub_0025d238_v(q, p);
             q = V(P + 0x80);
-            if (segment_collide_v(q, p, fall_flags(), 0, nullptr) != 0 && sub_00233d30(coll_hit_normal_addr()) <= u2f(0x3f5f66f3u)) h = coll_hit_point().z;
+            if (segment_collide_v(q, p, fall_flags(), 0, nullptr) != 0 && sub_00233d30_v(coll_hit_normal()) <= u2f(0x3f5f66f3u)) h = coll_hit_point().z;
         }
         if (!(0.0f < h)) return t;
         float r_hi = 0.0f, r_lo = 0.0f;
@@ -1129,7 +1131,7 @@ float hero_fall_time(float t, float g, float h) {
     const float b = sub_00233a78(P + 0xe0) - a;
     const float z = sub_00233a78(P + 0x80);
     float r_hi = 0.0f, r_lo = 0.0f;
-    if (solve_quadratic(&r_hi, &r_lo, a, b, z - sub_00233a78(coll_hit_point_addr())) <= 0) return t;
+    if (solve_quadratic(&r_hi, &r_lo, a, b, z - sub_00233a78_v(coll_hit_point())) <= 0) return t;
     return 0.0f < r_hi ? r_hi : t;
 }
 

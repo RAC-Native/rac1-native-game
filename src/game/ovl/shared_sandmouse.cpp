@@ -119,7 +119,7 @@ void class1633_update(uint32_t m) {
         moby_retire(m);
     } else if (segment_collide_v(V(was), V(pos), 0, lwu(pv + 0x10), static_cast<const uint32_t*>(ee_ram_ptr(rec))) != 0) {
         if (sub_001f35d8() != 0) {
-            lq_sq(pos, coll_hit_point_addr());
+            coll_vec_store(pos, coll_hit_point());
             moby_retire(m);
         } else if (frame_scale_i(3) < lh(pv + 0x14)) {
             sh(pv + 0x14, static_cast<uint32_t>(frame_scale_i(3)));

@@ -117,7 +117,7 @@ void class156_update(uint32_t m) {
         bool burst = false;
         if (mobys_in_sphere(pos, lwc1(t + 8), 0x10, lwu(pv + 0x18), rec) != 0 && zero_stub() == 0) {
             const uint32_t hit = coll_hit_moby();
-            if (hit != 0) sub_00259bc8(hit, m, 0x10001, coll_hit_point_addr(), dir, 1.0f);
+            if (hit != 0) sub_00259bc8_vv(hit, m, 0x10001, coll_hit_point(), V(dir), 1.0f);
             burst = true;
         }
         ee_stack_free(0xb0);

@@ -130,18 +130,22 @@ bool segment(const V3& a, const V3& b, V3& hit, V3& n) {
     e.x = b.x, e.y = b.y, e.z = b.z;
     float regs[15];
     collide_vu_save(regs);
+    const CollState results = g_coll_state;  // (the game's last hit and hit list: the journal puts back only their EE words)
     ee_journal_begin();
     const bool got = segment_collide_v(s, e, floor_flags(), ru(HERO_MOBY), nullptr) != 0;
     if (got) {
-        hit = rv(coll_hit_point_addr());
+        const Vec4 p = coll_hit_point();
+        hit = {p.x, p.y, p.z};
         // the normal as the query leaves it is not of unit length (a triangle's edges crossed in the query's x 1024 units: a floor's
         // z in the millions; a sphere's, its hit minus its centre): the ride's tests (a floor above 0.5, a wall within 0.6) took
         // almost no face for a wall, and a ground hit that failed the floor's test let the board fall through the ground (#120)
-        n = rv(coll_hit_normal_addr());
+        const Vec4 q = coll_hit_normal();
+        n = {q.x, q.y, q.z};
         const float l = std::sqrt(n.x * n.x + n.y * n.y + n.z * n.z);
         if (l > 0.0f) n = {n.x / l, n.y / l, n.z / l};
     }
     ee_journal_restore();
+    g_coll_state = results;
     collide_vu_restore(regs);
     return got;
 }

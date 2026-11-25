@@ -209,7 +209,7 @@ void bomb_update(uint32_t m) {
         const float r = lerp_f(0.5f, big, t);
         const int32_t n = mobys_in_sphere(s8, r, 0x10, m, 0);
         V(f + 0xb0) = V(m + 0x10);
-        moby_list_hit(m, f + 0xb0, coll_hit_list(), n, 0, 0x00830000, 2, 1, 2.0f, 1.0f, 1.0f);
+        moby_list_hit_coll(m, V(f + 0xb0), n, 0, 0x00830000, 2, 1, 2.0f, 1.0f, 1.0f);
         const uint32_t k = (lbu(m + 0xbc) + 1u) & 0xffu;
         sb(m + 0xbc, k);
         if (frame_scale_i(0xf) < static_cast<int32_t>(k)) moby_retire(m);
@@ -363,7 +363,7 @@ void bomb_update(uint32_t m) {
     if (lh(pv + 0x68) < frame_scale_i(0x14)) {
         const int32_t n = mobys_in_sphere(s8, big * 0.5f, 0x10, m, 0);
         V(f + 0xf0) = V(m + 0x10);
-        moby_list_hit(m, f + 0xf0, coll_hit_list(), n, 0, 0x00830000, 2, 1, 2.0f, 1.0f, 1.0f);
+        moby_list_hit_coll(m, V(f + 0xf0), n, 0, 0x00830000, 2, 1, 2.0f, 1.0f, 1.0f);
         sb(m + 0x20, 2);
     }
     // (1.02 Fixes, fix 2: the 1.02 build, 0x2aedd0, spawns these debris only while 51 moby slots or more are free,

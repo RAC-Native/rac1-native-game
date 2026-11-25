@@ -1123,7 +1123,7 @@ void doomlet_update(uint32_t m) {
         explosion_effect(m, 0, m + 0x10, 5, 2, 4, -1, 1, 5, -1, gold, 0.0f, 0.0f, fpu_add(grow_half, grow_half), grow_half, 9.0f, 1.0f, 15.0f);
         const int32_t count = mobys_in_sphere(m + 0x10, grow_half, 0x15, m, 0);
         const Vec4 hit_pos = V(m + 0x10);
-        moby_list_hit_v(m, hit_pos, coll_hit_list(), count, 0, 0x10000u, 2, 3, 3.0f, 1.0f, 1.0f);
+        moby_list_hit_coll(m, hit_pos, count, 0, 0x10000u, 2, 3, 3.0f, 1.0f, 1.0f);
         if (lbu(DOOM_GOLD_ADDR) != 0) {
             (void)moby_sound_start(4, 0, m);
         } else {

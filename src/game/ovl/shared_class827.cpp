@@ -82,11 +82,11 @@ int32_t class827_ground(uint32_t m) {
 // The matrix +0xc0 blended (the tunings' +0x10) toward the one whose up is `up` and whose forward is `dir` made
 // perpendicular to it.
 // orig: L6:0x002e9998 L10:0x002cdbd8
-void class827_turn(uint32_t m, uint32_t up, uint32_t dir) {
+void class827_turn_v(uint32_t m, const Vec4& up, uint32_t dir) {
     const uint32_t sp = ee_stack_alloc(0xf0);
     const uint32_t q = sp, goal_q = sp + 0x10, axis = sp + 0x20, fwd = sp + 0x30, along = sp + 0x40;
     const uint32_t goal = sp + 0x50;  // the goal's rows: forward +0x50, side +0x60, up +0x70
-    vec3_set_length(V(axis), V(up), 1.0f);
+    vec3_set_length(V(axis), up, 1.0f);
     vec3_set_length(V(along), V(axis), vec3_dot(V(axis), V(dir)));
     vec3_sub(V(fwd), V(dir), V(along));
     vec3_set_length(V(fwd), V(fwd), 1.0f);
@@ -99,6 +99,8 @@ void class827_turn(uint32_t m, uint32_t up, uint32_t dir) {
     quat_to_mat3(V(q), M(m + 0xc0));
     ee_stack_free(0xf0);
 }
+// orig: L6:0x002e9998 L10:0x002cdbd8 (EE-address form of up)
+void class827_turn(uint32_t m, uint32_t up, uint32_t dir) { class827_turn_v(m, V(up), dir); }
 
 // The step `step` (a vector's address) plus gravity (`up` along the moby's up axis, less a frame's worth), the moby moved
 // by it; a step longer than `radius` is cut at the first wall (from its centre `up` above), then the sphere of `radius`
@@ -116,11 +118,11 @@ void class827_move(uint32_t m, uint32_t step, uint32_t on_path, float up, float 
     vec3_add(V(pos), V(pos), V(step));
     vec3_add(V(centre), V(pos), V(lift));
     if (radius < vec3_length(V(step)) && segment_collide_v(V(from), V(centre), 0, m, nullptr) != 0) {
-        lq_sq(centre, coll_hit_point_addr());
+        coll_vec_store(centre, coll_hit_point());
         vec3_sub(V(pos), V(centre), V(lift));
     }
     for (int32_t i = 0; i < 6 && sphere_collide(centre, radius, 4, m) != 0; ++i) {
-        lq_sq(centre, coll_hit_pushed_addr());
+        coll_vec_store(centre, coll_hit_pushed());
         vec3_sub(V(pos), V(centre), V(lift));
     }
     if (on_path != 0) path_push_out_2d(lwu(lwu(m + 0x78) + 0x1ec), pos, pos, 0.5f);
@@ -412,7 +414,7 @@ void class827_update(uint32_t m) {
     // speed (the vector at `step`)
     auto walk = [m, pv](uint32_t dir, uint32_t step, uint32_t on_path) {
         class827_ground(m);
-        class827_turn(m, coll_hit_normal_addr(), dir);
+        class827_turn_v(m, coll_hit_normal(), dir);
         vec3_set_length(V(step), V(m + 0xc0), fpu_mul(lwc1(pv + 0x1e4), frame_time()));
         class827_move(m, step, on_path, u2f(0x3e99999au), u2f(0x3e99999au));
     };
@@ -493,7 +495,7 @@ void class827_update(uint32_t m) {
     case 3:  // (0x002e8a30)
         vec3_sub(V(sp), V(target + 0x10), V(m + 0x10));
         class827_ground(m);
-        class827_turn(m, coll_hit_normal_addr(), sp);
+        class827_turn_v(m, coll_hit_normal(), sp);
         if (vec2_distance(V(HERO_POS), V(m + 0x10)) < lwc1(pv + 0x24c)) go(4, 4, 0, frame_scale_i(5));
         break;
     case 4: {  // (0x002e8a9c) along the path's points to its last, then a jump there

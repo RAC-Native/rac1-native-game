@@ -530,10 +530,10 @@ void particle_22_update(uint32_t p) {
 // size `size` (* 210000), 4 frames, spreading 0.0015 .. 0.0025 a frame in a random direction,
 // +0x30 `z`.
 // orig: 0x002741a0
-uint32_t spawn_particle_42(uint32_t pos, int32_t colour, float size, float z) {
+uint32_t spawn_particle_42_v(const Vec4& pos, int32_t colour, float size, float z) {
     const uint32_t p = alloc_particle(0x42);
     if (p == 0) return 0;
-    V(p + 0x10) = V(pos);
+    V(p + 0x10) = pos;
     uint32_t c = static_cast<uint32_t>(colour);
     if (colour == -1) c = (static_cast<uint32_t>(rand_mod(6) + 0x14) << 24) | 0x808080u;
     sw(p + 4, c);
@@ -554,6 +554,8 @@ uint32_t spawn_particle_42(uint32_t pos, int32_t colour, float size, float z) {
     swc1(q + 4, sin_vu(a) * r);
     return p;
 }
+// orig: 0x002741a0 (EE-address form)
+uint32_t spawn_particle_42(uint32_t pos, int32_t colour, float size, float z) { return spawn_particle_42_v(V(pos), colour, size, z); }
 
 // A kind 0x10 particle (steam) at `pos` moving `vel`: none without frames, and only one in 3 / 2
 // / never when the frame load 0x15f5d0 is over 0.9 / 0.95 / 1.0; colours `c0` / `c1`, `n`
@@ -606,7 +608,7 @@ void particle_23_update(uint32_t p) {
     } else if (mode == 1) {
         Vec4 to;
         if (hits(to)) {
-            if (sub_001f35d8() == 0) spawn_particle_2d(coll_hit_point_addr(), 0, 0xffffffffu, 0.2f, u2f(0x45a41000u));
+            if (sub_001f35d8() == 0) spawn_particle_2d_v(coll_hit_point(), 0, 0xffffffffu, 0.2f, u2f(0x45a41000u));
             free_particle(p);
             return;
         }
@@ -625,7 +627,7 @@ void particle_23_update(uint32_t p) {
         if (hits(to)) {
             if (sub_001f35d8() != 0) {
                 coll_hit_set_point_z(coll_hit_point().z + u2f(0x3d4ccccdu));
-                spawn_particle_42(coll_hit_point_addr(), -1, 0.25f, u2f(0x4544e000u));
+                spawn_particle_42_v(coll_hit_point(), -1, 0.25f, u2f(0x4544e000u));
             }
             free_particle(p);
             return;

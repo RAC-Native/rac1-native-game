@@ -429,7 +429,7 @@ void hero_air_wall_check() {
     if (segment_collide_v(a, b, 2, 0, nullptr) == 0) return;
     const int32_t t = sub_001f35d8();
     if (t == 10 || t == 12) return;
-    if (sub_00233d30(coll_hit_normal_addr()) < u2f(0x3fa78d36u)) return;
+    if (sub_00233d30_v(coll_hit_normal()) < u2f(0x3fa78d36u)) return;
     Vec4 ln;
     mat4_transform(ln, coll_hit_normal(), M(P + 0x40));
     if (u2f(0x3f5f66f3u) < angle_dist(atan2_f(ln.x, ln.y), u2f(0x40490fdbu))) return;

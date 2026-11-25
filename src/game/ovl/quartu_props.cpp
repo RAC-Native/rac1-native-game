@@ -189,7 +189,7 @@ void qua_class1257_update_l15(uint32_t m) {
     const int32_t n = mobys_in_sphere(m + 0x10, 2.0f, 0x10, m, 0);
     const uint32_t at = frame.sp + 0x40;
     V(at) = V(m + 0x10);
-    moby_list_hit(m, at, coll_hit_list(), n, 0, NOT_ADDR(0x00830001u), 2, 1, 1.0f, 1.0f, 1.0f);
+    moby_list_hit_coll(m, V(at), n, 0, NOT_ADDR(0x00830001u), 2, 1, 1.0f, 1.0f, 1.0f);
     moby_retire(m);
 }
 

@@ -36,7 +36,7 @@ void tracer_update(uint32_t m) {
         if (segment_collide_v(V(m + 0x10), from, 0x10, lwu(pv + 0x10), nullptr) != 0) {  // (from where it is back to where it was)
             const uint32_t hit = coll_hit_moby();
             if (hit != lwu(pv + 0x10)) {
-                if (hit != 0) sub_00259bc8(hit, m, 0x10001, coll_hit_point_addr(), pv, 1.0f);
+                if (hit != 0) sub_00259bc8_vv(hit, m, 0x10001, coll_hit_point(), V(pv), 1.0f);
                 sb(m + 0x20, 2);
             }
         }

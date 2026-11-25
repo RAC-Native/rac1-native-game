@@ -23,6 +23,7 @@ int32_t path_push_out_2d(uint32_t path, uint32_t pos, uint32_t out, float r);   
 uint32_t walker_move_v(uint32_t m, Vec4& d, uint32_t flags, float up, float r, float drop);   // orig: 0x00258830
 uint32_t walker_move(uint32_t m, uint32_t d, uint32_t flags, float up, float r, float drop);  // orig: 0x00258830
 uint32_t walker_move_fx(uint32_t m, uint32_t d, int32_t r, uint32_t flags, float up, float drop);  // orig: 0x00258ad0
+void moby_list_hit_coll(uint32_t m, const Vec4& pos, int32_t n, uint32_t skip, uint32_t b, uint32_t a, uint32_t c, float f, float speed, float z);  // orig: 0x0025a9f8
 void moby_list_hit_v(uint32_t m, const Vec4& pos, uint32_t list, int32_t n, uint32_t skip, uint32_t b, uint32_t a, uint32_t c, float f, float speed, float z);  // orig: 0x0025a9f8
 void moby_list_hit(uint32_t m, uint32_t pos, uint32_t list, int32_t n, uint32_t skip, uint32_t b, uint32_t a, uint32_t c, float f, float speed, float z);  // orig: 0x0025a9f8
 void spawn_particle_12(uint32_t pos, uint32_t mat);                           // orig: 0x0026c3d0

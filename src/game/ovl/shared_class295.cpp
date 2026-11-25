@@ -131,9 +131,11 @@ void rocket_update(uint32_t m, const RocketBuild& b) {
     }
     moby_chain_point_v(m, 1, V(nose));
     if (segment_collide_v(V(from), V(nose), 0, lwu(pv + 0x20), nullptr) != 0) {
+        // (class 1034's blast at the hit point's EE address: explosion_effect's own mobys_in_sphere rewrites the point,
+        // (0, 0, 0, 1), before the blast's particles read it there)
         uint32_t at = coll_hit_point_addr();
         if (b.blast_at_copy) {
-            lq_sq(puff, at);
+            coll_vec_store(puff, coll_hit_point());
             at = puff;
         }
         explosion_effect(m, pv, at, 0xa, 3, 0x10, b.blast_c, 0, 1, -1, 0, 2.0f, 10.0f, 4.0f, 2.0f, 9.0f, 1.0f, 20.0f);

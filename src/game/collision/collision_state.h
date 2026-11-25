@@ -3,7 +3,8 @@
 // The collision's results as native state (stage 5): the last hit and the moby hit list the queries leave for their
 // callers. The routines (src/game/collision/collide_*.cpp) write this state and, at the same moment, the EE words the
 // original writes: the block 0x173e40 +0x18 .. +0x7f and the hit list 0x177f00 (the projection), so EE memory stays byte
-// for byte what it was and the callees that still take an EE address (collision.h's *_addr()) find the words there.
+// for byte what it was and the one callee that still takes the point's EE address (collision.h's coll_hit_point_addr())
+// finds the words there.
 // collision.h's accessors read this state (RAC1_COLL_STATE=native, the default) or the EE words (RAC1_COLL_STATE=ee: the
 // state is still written, not read). RAC1_COLL_STATE_CHECK=1 compares every accessor read with the EE words and reports
 // each difference with the accessor's name: a difference is an EE write that did not reach the state.
@@ -21,8 +22,8 @@
 //   - the hit moby and the list's entries are EE addresses of mobys (moby state stays EE memory); the contact ring's
 //     records are moby state too: EE memory.
 // EE writes that do not come through here reach the state by coll_state_import(): after the overlay image is loaded
-// (a level's start, the boot module's), after a dev tool's state snapshot is loaded, after ground_puff_spawn raises the
-// hit point it was handed by address, and in the oracle before each port runs (tests/oracle/oracle_env.cpp).
+// (a level's start, the boot module's), after a dev tool's state snapshot is loaded, and in the oracle before each port
+// runs (tests/oracle/oracle_env.cpp).
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 

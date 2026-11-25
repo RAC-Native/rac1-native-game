@@ -163,6 +163,7 @@ void sub_00233b20_v(Vec4& dst, const Vec4& src, float z);  // orig: 0x00233b20
 void sub_00233b20(uint32_t dst, uint32_t src, float z);  // orig: 0x00233b20
 void sub_00233ba0_v(Vec4& dst, const Vec4& src, float len);  // orig: 0x00233ba0
 void sub_00233ba0(uint32_t dst, uint32_t src, float len);  // orig: 0x00233ba0
+float sub_00233d30_v(const Vec4& v);                     // orig: 0x00233d30
 float sub_00233d30(uint32_t v);                          // orig: 0x00233d30
 int32_t sub_00233db8(int32_t idx, int32_t amount);       // orig: 0x00233db8
 void sub_00235988(uint32_t obj, uint32_t key);
@@ -297,6 +298,7 @@ int32_t path_closest_point_v(uint32_t path, const Vec4& p, Vec4& out, int32_t* i
 int32_t path_closest_point(uint32_t path, uint32_t p, uint32_t out, int32_t* idx, float* dist, int32_t loop, float range, float step, float h);  // orig: 0x0025df68
 void spawn_particle_1c_v(const Vec4& pos, const Mat4* mat, float speed);  // orig: 0x0026de90
 void spawn_particle_1c(uint32_t pos, uint32_t mat, float speed);  // orig: 0x0026de90
+float surface_height_at(const Vec4& pos, Vec4* n);      // orig: 0x00259e58
 float surface_height_v(uint32_t pos, Vec4* n);           // orig: 0x00259e58
 float surface_height(uint32_t pos, uint32_t n);          // orig: 0x00259e58
 void moby_class_relocate(uint32_t cls, uint32_t tex, uint32_t remap, uint32_t idx);  // orig: 0x002406b0
@@ -624,6 +626,7 @@ float closest_point_on_segment(uint32_t out, uint32_t p, uint32_t a, uint32_t b,
 uint32_t moby_update_light(uint32_t m);                  // orig: 0x00257024
 int32_t sub_00256de0(uint32_t pos, float* t, int32_t* idx);  // orig: 0x00256de0
 void sub_00259bc8(uint32_t moby, uint32_t a, uint32_t b, uint32_t pos, uint32_t dir, float strength);  // orig: 0x00259bc8
+void sub_00259bc8_vv(uint32_t moby, uint32_t a, uint32_t b, const Vec4& pos, const Vec4& dir, float strength);  // orig: 0x00259bc8
 void sub_00259bc8_v(uint32_t moby, uint32_t a, uint32_t b, uint32_t pos, const Vec4& dir, float strength);  // orig: 0x00259bc8
 void mat_to_euler_r(const Mat4& m, Vec4& out);           // orig: 0x0025d330
 void mat_to_euler_v(const Mat4& m, uint32_t out);        // orig: 0x0025d330
@@ -1035,6 +1038,7 @@ void particle_3c_update(uint32_t p);                                         // 
 void particle_10_update(uint32_t p);                                         // orig: 0x0026c088
 void particle_17_update(uint32_t p);                                         // orig: 0x0026d1b0
 void particle_19_update(uint32_t p);                                         // orig: 0x0026d700
+uint32_t spawn_particle_42_v(const Vec4& pos, int32_t colour, float size, float z);  // orig: 0x002741a0
 uint32_t spawn_particle_42(uint32_t pos, int32_t colour, float size, float z);  // orig: 0x002741a0
 uint32_t spawn_particle_10(uint32_t pos, uint32_t vel, uint32_t c0, uint32_t c1, uint32_t n, uint32_t h, float size);  // orig: 0x0026bed0
 int32_t bomb_trace(uint32_t pv, uint32_t m, int32_t mode);                    // orig: 0x002ad410

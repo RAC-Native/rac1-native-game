@@ -146,7 +146,7 @@ void bat_class152_update_l8(uint32_t m) {
                 } else {
                     // it settles on the hit point, its radius above it; on the ground (no moby hit) it stays (state 2)
                     vec_clear(V(vel));
-                    lq_sq(pos, coll_hit_point_addr());
+                    coll_vec_store(pos, coll_hit_point());
                     swc1(pos + 8, fpu_add(lwc1(pos + 8), lwc1(L8_ADDR(0x0016144c))));
                     if (coll_hit_moby() == 0) {
                         vec_clear(V(vel));

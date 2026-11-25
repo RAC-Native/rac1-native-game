@@ -770,7 +770,7 @@ void camera_ground_check() {
     for (int32_t i = 0; i < 6; ++i) {
         if (segment_collide_v(a, b, 0x12, 0, nullptr) == 0) return;
         if (sub_001f35d8() == 0) {
-            const float h = surface_height(coll_hit_point_addr(), 0);
+            const float h = surface_height_at(coll_hit_point(), nullptr);
             sw(OV(0x00167014), lwc1(OV(0x00166dc8)) < h + u2f(0x3d23d70au) ? 1u : 0u);
             return;
         }

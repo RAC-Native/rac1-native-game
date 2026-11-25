@@ -51,7 +51,7 @@ void bat_class248_update_l8(uint32_t m) {
     // set off where it hit: the state `st`, at the contact point, its velocity bounced off the normal, two frames' worth
     const auto set_off = [&](uint32_t st) {
         sb(m + 0x20, st);
-        lq_sq(pos, coll_hit_point_addr());
+        coll_vec_store(pos, coll_hit_point());
         vec3_reflect(V(vel), V(vel), coll_hit_normal());
         vec3_set_length(V(vel), V(vel), fpu_add(dt(), dt()));
     };
@@ -106,7 +106,7 @@ void bat_class248_update_l8(uint32_t m) {
         }
         // a bounce: back to the contact 0.16 up, the velocity reflected, pushed sideways at random, slowed to 0.4
         moby_sound_start(1, 0, m);
-        lq_sq(pos, coll_hit_point_addr());
+        coll_vec_store(pos, coll_hit_point());
         swc1(m + 0x18, fpu_add(lwc1(m + 0x18), 0.16f));
         vec3_reflect(V(vel), V(vel), coll_hit_normal());
         const uint32_t side = sp + 0x70;
@@ -202,7 +202,7 @@ void bat_class425_update_l8(uint32_t m) {
         const uint32_t owner = lwu(pv + 0x20);
         if (owner == 0 || coll_hit_moby() == owner) break;  // (no owner: the path's hits are ignored)
         sb(m + 0x20, 0x63);
-        lq_sq(pos, coll_hit_point_addr());
+        coll_vec_store(pos, coll_hit_point());
         vec3_reflect(V(pv), V(pv), coll_hit_normal());
         vec3_set_length(V(pv), V(pv), fpu_add(dt(), dt()));
         break;

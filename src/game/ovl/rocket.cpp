@@ -409,7 +409,7 @@ void devastator_rocket_update(uint32_t m) {
 
         const float blast_rad = fpu_add(gold_scale, gold_scale);
         const int32_t n_hit = mobys_in_sphere_v(V(m + 0x10), blast_rad, 0x10u, m, nullptr);
-        moby_list_hit_v(m, V(m + 0x10), coll_hit_list(), n_hit, direct_hit_moby, 0x00830000u, 3u, 1u, 3.0f, 1.0f, 1.0f);
+        moby_list_hit_coll(m, V(m + 0x10), n_hit, direct_hit_moby, 0x00830000u, 3u, 1u, 3.0f, 1.0f, 1.0f);
 
         Mat4 K{}, K2{};
         K.r[0] = Vec4{0.0f, norm.z, -norm.y, 0.0f};

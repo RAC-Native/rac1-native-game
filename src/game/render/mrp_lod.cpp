@@ -2,6 +2,7 @@
 #include <game/render/mrp_lod.h>
 #include <game/render/mrp_fx.h>
 
+#include <game/collision/collision_state.h>
 #include <game/debug_hooks.h>
 #include <game/ovl/ee_regs.h>
 #include <game/ovl/ovl.h>
@@ -426,10 +427,14 @@ struct Vu0Save {
     VuMicroRun run;
     uint32_t cmsar0 = 0;
     bool full = false;
+    // the collision's results (collision_state.h: the last hit, the hit list), which a shadow run's queries overwrite: the
+    // journal puts their EE words back, this their native state
+    CollState coll_state;
     explicit Vu0Save(bool save_mem_and_micro) : full(save_mem_and_micro) {
         const vu0::Vu0& v = vu0::global();
         const VUState& s = v.st;
         collide_vu_save(coll);
+        coll_state = g_coll_state;
         vf = s.vf; vi = s.vi; acc = s.acc;
         q = s.q; i = s.i; r = s.r; p = s.p;
         macflag = s.macflag; statusflag = s.statusflag; clipflag = s.clipflag;
@@ -451,6 +456,7 @@ struct Vu0Save {
             if (std::memcmp(now, coll, sizeof coll) != 0) ++g_collide_vu_put_back;
             collide_vu_restore(coll);
         }
+        g_coll_state = coll_state;
         s.vf = vf; s.vi = vi; s.acc = acc;
         s.q = q; s.i = i; s.r = r; s.p = p;
         s.macflag = macflag; s.statusflag = statusflag; s.clipflag = clipflag;

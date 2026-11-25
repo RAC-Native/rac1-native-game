@@ -24,12 +24,9 @@ float ground_height_at(const Vec4& p) {
     return fpu_add(fpu_mul(fpu_sub(lwc1(OV(0x0015fca4)), low), fpu_sub(1.0f, shade)), low);
 }
 
-// orig: L0:0x00268f10 L8:0x00273080 L12:0x002817e8 L14:0x00270a78
-void ground_puff_spawn(uint32_t pos, uint32_t alpha) {
-    const uint32_t p = alloc_particle(1);
-    if (p == 0) return;
-    swc1(pos + 8, fpu_add(lwc1(pos + 8), 0.1f));
-    lq_sq(p + 0x10, pos);
+namespace {
+// (the puff's particle `p` after its position's copy: the rest of ground_puff_spawn's stores)
+void ground_puff_fill(uint32_t p, uint32_t alpha) {
     sw(p + 4, alpha << 24 | 0x907070u);
     sb(p + 9, static_cast<uint32_t>(float_to_int(2.0f) + 0x40));
     sb(p + 3, 0x48);
@@ -39,6 +36,27 @@ void ground_puff_spawn(uint32_t pos, uint32_t alpha) {
     sb(p + 8, 0xa0);
     sh(p + 0xa, static_cast<uint32_t>(frame_scale_i(0x1b)));
     sw(p + 0x20, alpha);
+}
+}  // namespace
+
+// orig: L0:0x00268f10 L8:0x00273080 L12:0x002817e8 L14:0x00270a78
+void ground_puff_spawn(uint32_t pos, uint32_t alpha) {
+    const uint32_t p = alloc_particle(1);
+    if (p == 0) return;
+    swc1(pos + 8, fpu_add(lwc1(pos + 8), 0.1f));
+    lq_sq(p + 0x10, pos);
+    ground_puff_fill(p, alpha);
+}
+// orig: L0:0x00268f10 L8:0x00273080 L12:0x002817e8 L14:0x00270a78 (pos the last hit's point: its z raised through
+// collision.h's setter, the state's and the EE word at the original's store, then the point copied as raised)
+void ground_puff_spawn_hit(uint32_t alpha) {
+    const uint32_t p = alloc_particle(1);
+    if (p == 0) return;
+    Vec4 at = coll_hit_point();
+    at.z = fpu_add(at.z, 0.1f);
+    coll_hit_set_point_z(at.z);
+    coll_vec_store(p + 0x10, at);
+    ground_puff_fill(p, alpha);
 }
 
 // The ground's height there plus a step (a 256th of the map's range); below the camera's height + 5, a segment from it
@@ -59,8 +77,7 @@ void ground_puff_at(uint32_t pos) {
         if (segment_collide_v(V(top), V(bottom), 0x12, 0, nullptr) != 0) {
             vec3_sub(V(off), coll_hit_point(), V(OV(0x00166dc0)));
             const float shade = fpu_add(fpu_mul(fpu_div(vec2_length(V(off)), 60.0f), 191.0f), 64.0f);
-            ground_puff_spawn(coll_hit_point_addr(), static_cast<uint32_t>(float_to_int(shade)) & 0xffu);
-            coll_state_import();  // (ground_puff_spawn raised the hit point's z through its EE address: the native hit takes it)
+            ground_puff_spawn_hit(static_cast<uint32_t>(float_to_int(shade)) & 0xffu);
         }
     }
     ee_stack_free(0x80);

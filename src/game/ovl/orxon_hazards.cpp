@@ -273,7 +273,7 @@ void orx_class938_update_l10(uint32_t m) {
         const int32_t n = mobys_in_sphere(m + 0x10, 1.5f, 0x10, m, 0);
         const uint32_t at = frame + 0x10;
         lq_sq(at, m + 0x10);
-        moby_list_hit(m, at, coll_hit_list(), n, 0, NOT_ADDR(0x810001u), 2, 1, 1.0f, 1.0f, 1.0f);
+        moby_list_hit_coll(m, V(at), n, 0, NOT_ADDR(0x810001u), 2, 1, 1.0f, 1.0f, 1.0f);
         explosion_burst(m, m + 0x10, 0, 0.5f, 13.0f);
         moby_retire(m);
         ee_stack_free(0x100);
@@ -419,7 +419,7 @@ void orx_class1090_update_l10(uint32_t m) {
     if (fpu_mul(lwc1(lwu(m + 0x24) + 0x24), 0.25f) < lwc1(m + 0x2c)) {
         const int32_t n = mobys_in_sphere(m + 0x10, u2f(0x3e19999au), 0x10, lwu(pv + 0x10), 0);
         lq_sq(at, m + 0x10);
-        moby_list_hit(lwu(pv + 0x10), at, coll_hit_list(), n, 0, NOT_ADDR(0x810001u), 2, 1, 2.0f, 1.0f, 1.0f);
+        moby_list_hit_coll(lwu(pv + 0x10), V(at), n, 0, NOT_ADDR(0x810001u), 2, 1, 2.0f, 1.0f, 1.0f);
     }
     ee_stack_free(0x40);
 }

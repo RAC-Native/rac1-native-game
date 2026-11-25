@@ -144,7 +144,7 @@ void class123_update(uint32_t m) {
     vec3_sub(V(back), V(pos), V(was));
     lq_sq(f + 0x30, back);
     segment_collide(pos, far, 9, m, rec);
-    if (segment_collide(pos, far, 2, 0, 0) != 0) lq_sq(pv + 0x10, coll_hit_point_addr());
+    if (segment_collide(pos, far, 2, 0, 0) != 0) coll_vec_store(pv + 0x10, coll_hit_point());
     else lq_sq(pv + 0x10, far);
 
     // the sparks along it

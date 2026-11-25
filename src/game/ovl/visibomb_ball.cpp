@@ -285,7 +285,7 @@ void visibomb_ball_update(uint32_t m) {
             explosion_effect(m, 0u, 0u, 0xa, 3, 0x10, 1, 1, 1, -1, 0u, 0.0f, 0.0f, 4.0f, 2.0f, 0.0f, 1.0f, 20.0f);
             const int32_t hit_cnt = mobys_in_sphere_v(V(m + 0x10), 4.0f, 0x10u, m, nullptr);
             const Vec4 hit_pos = V(m + 0x10);
-            moby_list_hit_v(m, hit_pos, coll_hit_list(), hit_cnt, 0u, 0x00830000u, 3u, 2u, 6.0f, 1.0f, 1.0f);
+            moby_list_hit_coll(m, hit_pos, hit_cnt, 0u, 0x00830000u, 3u, 2u, 6.0f, 1.0f, 1.0f);
         }
 
         sh(m + 0x34, lhu(m + 0x34) | 1u);

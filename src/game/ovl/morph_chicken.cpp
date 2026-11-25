@@ -292,7 +292,7 @@ void chicken_update(uint32_t m) {
             explosion_effect(m, vel, 0, 0, 0, 0, -1, 1, 1, -1, lbu(pv + 0x74), 0.0f, 2.0f, 4.0f, 3.0f, 9.0f, 1.0f, 12.0f);
             const int32_t n = mobys_in_sphere(m + 0x10, 3.0f, 0x10, m, 0);
             V(pos) = V(m + 0x10);
-            moby_list_hit(m, pos, coll_hit_list(), n, 0, NOT_ADDR(0x00830000u), 2, 1, 1.0f, 1.0f, 1.0f);
+            moby_list_hit_coll(m, V(pos), n, 0, NOT_ADDR(0x00830000u), 2, 1, 1.0f, 1.0f, 1.0f);
         }
         // then 5 .. 8 pieces of debris, halved under load, one under a heavy one
         int32_t count = rand_range(5, 8);

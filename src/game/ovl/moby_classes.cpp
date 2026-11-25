@@ -2132,7 +2132,12 @@ void wrench_hit_burst(uint32_t m) {
         const int32_t n = rand_range(lo, frame_scale_i(0x14));
         spawn_particle_15_v(at, dir, 0x4f007fffu, 0x1fffffffu, static_cast<uint32_t>(n), 1, 20000.0f);
     }
-    if (lh(lwu(m + 0x78) + 0x78) == 0x2b) spark_pairs(coll_hit_point_addr(), 10);
+    if (lh(lwu(m + 0x78) + 0x78) == 0x2b) {
+        // (the sparks jitter the point they are handed: the hit point, as the original's spark_pairs moves it in place)
+        Vec4 at = coll_hit_point();
+        spark_pairs_v(at, 10);
+        coll_hit_set_point(at);
+    }
 }
 
 // Whether the moby hit last (0x173e58) is "soft" (its pvar record +9 == 1).
@@ -2391,7 +2396,7 @@ void wrench_update(uint32_t m) {
                         d.y = sin_vu(yaw);
                         d.z = 0.0f;
                         d.w = 0.0f;  // (an unset stack word in the original)
-                        sub_00259bc8_v(coll_hit_moby(), m, 0x10000, coll_hit_point_addr(), d, 1.0f);
+                        sub_00259bc8_vv(coll_hit_moby(), m, 0x10000, coll_hit_point(), d, 1.0f);
                     }
                 }
             }

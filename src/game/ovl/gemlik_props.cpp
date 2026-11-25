@@ -187,7 +187,7 @@ void gml_2ed158_l13(uint32_t m, uint32_t pv) {
     if (n == 0) return;
     // (the original's copy of the list, below its frame)
     const uint32_t list = ee_stack_ptr() -= ((static_cast<uint32_t>(n) << 2) + 15u) & ~15u;
-    libc_memcpy(list, coll_hit_list(), static_cast<uint32_t>(n) << 2);
+    for (uint32_t i = 0; i < static_cast<uint32_t>(n); ++i) sw(list + (i << 2), coll_hit_list_at(static_cast<int>(i)));  // (libc_memcpy's bytes)
     for (int32_t i = 0; i < n; ++i) {
         const uint32_t o = lwu(list + (static_cast<uint32_t>(i) << 2));
         if (o == 0 || !alive(o)) continue;

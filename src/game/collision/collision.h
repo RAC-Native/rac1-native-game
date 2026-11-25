@@ -5,7 +5,7 @@
 // contact (the hit) and the mobys they touch (the hit list) in native state (collision_state.h) and in the original's EE
 // words, the block at 0x173e40 and the list 0x177f00, written at the same moment; contact records go to the ring 0x178100.
 // The accessors here read the hit and the list from the native state (RAC1_COLL_STATE=native, the default) or from those EE
-// words (RAC1_COLL_STATE=ee); the setters write both. The block's head, the ring and the *_addr() forms are EE memory.
+// words (RAC1_COLL_STATE=ee); the setters write both. The block's head, the ring and coll_hit_point_addr() are EE memory.
 //
 // The block 0x173e40 (the words before +0x18 are the queries' own state, not part of a hit):
 //   +0x00 the level's collision tree, +0x08 the posed-joint cache ring, +0x10 the query counter (a moby's +0x9c stamp),
@@ -107,15 +107,13 @@ inline void coll_hit_set_point_z(float z) { coll_state_put_lane(0x20, 2, f2u(z))
 inline void coll_hit_set_pushed_z(float z) { coll_state_put_lane(0x30, 2, f2u(z)); }
 // orig: (host) the normal's z cleared (+0x48, a word write of 0), as the hero's wall slide does
 inline void coll_hit_clear_normal_z() { coll_state_put_lane(0x40, 2, 0); }
-// The EE addresses of the hit's vectors, for the callees that still take an address (a later task gives them values): the
-// projection keeps the words there current. A callee that writes through one (ground_puff_spawn raises the point's z) is
-// followed by coll_state_import().
-// orig: (host) the contact point's EE address (+0x20)
+// orig: (host) a vector stored at `dst` as the original's lq / sq copy of it stores it (the 16 bytes at dst & ~15: the four
+// lanes' words as they are), for the copies of the hit's vectors into a caller's memory
+inline void coll_vec_store(uint32_t dst, const Vec4& v) { ee_write<Vec4>(dst & ~15u, v); }
+// orig: (host) the contact point's EE address (+0x20), for the one callee that still reads the point there: the rocket of
+// class 1034 hands it to explosion_effect, whose own mobys_in_sphere rewrites the point before the blast reads it again
+// (shared_class295.cpp)
 inline uint32_t coll_hit_point_addr() { return OV(0x00173e60); }
-// orig: (host) the pushed-out position's EE address (+0x30)
-inline uint32_t coll_hit_pushed_addr() { return OV(0x00173e70); }
-// orig: (host) the normal's EE address (+0x40)
-inline uint32_t coll_hit_normal_addr() { return OV(0x00173e80); }
 
 // The queries' own state (the words before +0x18: not part of a hit): EE memory (collision_state.h says why).
 // orig: (host) the level's collision tree (+0x00)
@@ -146,7 +144,7 @@ inline uint32_t coll_contact_next() { return lwu(OV(0x00173e54)); }
 inline void coll_set_contact_next(uint32_t i) { sw(OV(0x00173e54), i); }
 
 // The hit list 0x177f00: the mobys the last mobys_in_sphere touched, 0-terminated (room for 0x80 words, up to the ring).
-// orig: (host) its EE address (what moby_list_hit and its kin take)
+// orig: (host) its EE address (batch 530's check of the facade; the readers take the entries below)
 inline uint32_t coll_hit_list() { return OV(0x00177f00); }
 // orig: (host) its entry i (past the list's room, i < 0 or i >= 0x80, the EE word there: the contact ring's)
 inline uint32_t coll_hit_list_at(int i) {

@@ -660,7 +660,7 @@ L_abbf8:
         const float radius = (int_to_float(lbu(0x0013e531)) * 0.5f + 1.0f);
         const int32_t n = mobys_in_sphere(pos, radius + radius, 0x10, m, 0);
         V(sp + 0x120) = V(m + 0x10);
-        moby_list_hit_v(m, V(sp + 0x120), coll_hit_list(), n, 0, 0x810000u, 4, 1, 3.0f, 0.25f, 1.5f);
+        moby_list_hit_coll(m, V(sp + 0x120), n, 0, 0x810000u, 4, 1, 3.0f, 0.25f, 1.5f);
     }
     {
         const float fl = floor_probe_20_v(V(pos));

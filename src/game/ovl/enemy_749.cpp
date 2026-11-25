@@ -251,12 +251,14 @@ uint32_t walker_move_fx(uint32_t m, uint32_t d, int32_t r, uint32_t flags, float
 // Hits (0x259a88) each moby of the n at `list` but `skip`, pushed away from pos (speed, z, w
 // 5627.95): from moby m, b, bytes a / c, m's class, strength f.
 // orig: 0x0025a9f8
-void moby_list_hit_v(uint32_t m, const Vec4& pos, uint32_t list, int32_t n, uint32_t skip, uint32_t b, uint32_t a, uint32_t c, float f, float speed, float z) {
+// (the loop's body for the list's two forms: `entry(i)` gives the list's word i, read at each of the original's lw)
+template <typename Entry>
+void moby_list_hit_each(uint32_t m, const Vec4& pos, const Entry& entry, int32_t n, uint32_t skip, uint32_t b, uint32_t a, uint32_t c, float f, float speed, float z) {
     const Vec4 p = pos;
     if (n <= 0) return;
     alignas(16) uint8_t rec[0x24] = {};
-    for (; n != 0; --n, list += 4) {
-        const uint32_t t = lwu(list);
+    for (uint32_t i = 0; n != 0; --n, ++i) {
+        const uint32_t t = entry(i);
         if (t == skip) continue;
         const uint16_t cls = lhu(m + 0xa6);
         std::memcpy(rec + 0x10, &m, 4);
@@ -274,8 +276,16 @@ void moby_list_hit_v(uint32_t m, const Vec4& pos, uint32_t list, int32_t n, uint
         std::memcpy(rec + 4, &y, 4);
         std::memcpy(rec + 8, &z, 4);
         std::memcpy(rec + 0xc, &w, 4);
-        moby_hit_record_v(lwu(list), rec);
+        moby_hit_record_v(entry(i), rec);
     }
+}
+// orig: 0x0025a9f8 (the list at `list`: its EE words)
+void moby_list_hit_v(uint32_t m, const Vec4& pos, uint32_t list, int32_t n, uint32_t skip, uint32_t b, uint32_t a, uint32_t c, float f, float speed, float z) {
+    moby_list_hit_each(m, pos, [list](uint32_t i) { return lwu(list + i * 4u); }, n, skip, b, a, c, f, speed, z);
+}
+// orig: 0x0025a9f8 (the list the last mobys_in_sphere left, 0x177f00: its entries from collision.h's coll_hit_list_at)
+void moby_list_hit_coll(uint32_t m, const Vec4& pos, int32_t n, uint32_t skip, uint32_t b, uint32_t a, uint32_t c, float f, float speed, float z) {
+    moby_list_hit_each(m, pos, [](uint32_t i) { return coll_hit_list_at(static_cast<int>(i)); }, n, skip, b, a, c, f, speed, z);
 }
 // orig: 0x0025a9f8 (EE-address form)
 void moby_list_hit(uint32_t m, uint32_t pos, uint32_t list, int32_t n, uint32_t skip, uint32_t b, uint32_t a, uint32_t c, float f, float speed, float z) {
@@ -619,7 +629,7 @@ void explosion_burst(uint32_t m) {
     if (lbu(B + 9) == 0) return;
     const int32_t n = mobys_in_sphere(pos, 3.0f, 0x10, m, 0);
     const Vec4 at = V(m + 0x10);
-    moby_list_hit_v(m, at, coll_hit_list(), n, 0, 0x00830000u, 2, 1, 2.0f, 1.0f, 1.0f);
+    moby_list_hit_coll(m, at, n, 0, 0x00830000u, 2, 1, 2.0f, 1.0f, 1.0f);
 }
 
 // Moby m blown up (0x2dbf28 when `burst`) and reset for its class's hook +0x14 (else retired):
