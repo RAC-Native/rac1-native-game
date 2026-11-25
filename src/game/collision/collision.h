@@ -1,11 +1,11 @@
 #ifndef RAC1_GAME_COLLISION_COLLISION_H
 #define RAC1_GAME_COLLISION_COLLISION_H
 // What the collision queries leave for their callers, typed. segment_collide, sphere_collide, capsule_collide,
-// sphere_mesh_collide and mobys_in_sphere (src/game/collision/collide_*.cpp, declared in game/ovl/ovl.h) write their nearest
-// contact into the block at 0x173e40, the mobys they touch into the hit list 0x177f00 and contact records into the ring
-// 0x178100; the game's code reads those words back. For now every accessor here reads (or writes) exactly those EE words,
-// at the moment it is called: a reader moved onto it changes nothing the oracle, the tours or the RAM hash can see. A later
-// task moves the storage behind it.
+// sphere_mesh_collide and mobys_in_sphere (src/game/collision/collide_*.cpp, declared in game/ovl/ovl.h) leave their nearest
+// contact (the hit) and the mobys they touch (the hit list) in native state (collision_state.h) and in the original's EE
+// words, the block at 0x173e40 and the list 0x177f00, written at the same moment; contact records go to the ring 0x178100.
+// The accessors here read the hit and the list from the native state (RAC1_COLL_STATE=native, the default) or from those EE
+// words (RAC1_COLL_STATE=ee); the setters write both. The block's head, the ring and the *_addr() forms are EE memory.
 //
 // The block 0x173e40 (the words before +0x18 are the queries' own state, not part of a hit):
 //   +0x00 the level's collision tree, +0x08 the posed-joint cache ring, +0x10 the query counter (a moby's +0x9c stamp),
@@ -18,6 +18,7 @@
 //   (sphere / capsule / sphere_mesh; segment_collide leaves it), +0x40 the normal (the push for sphere_collide),
 //   +0x50 / +0x60 / +0x70 the triangle hit (the previous contact's after a primitive).
 // Field names: inferred from what the writers store and what the readers do with them; see the report of task C1.
+#include <game/collision/collision_state.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 
@@ -25,33 +26,61 @@
 
 namespace rac1 {
 
-struct CollisionHit {
-    uint32_t moby;   // +0x18
-    uint32_t flags;  // +0x1c
-    Vec4 point;      // +0x20
-    Vec4 pushed;     // +0x30
-    Vec4 normal;     // +0x40
-    Vec4 tri[3];     // +0x50, +0x60, +0x70
-};
-
+// Each read below takes the native state (RAC1_COLL_STATE=native) or the EE word (=ee); in the check mode
+// (RAC1_COLL_STATE_CHECK=1) it first compares the two and reports a difference under the accessor's name.
 // orig: (host) the moby the last query hit, 0 for the level's collision (+0x18: the most read word)
-inline uint32_t coll_hit_moby() { return lwu(OV(0x00173e58)); }
+inline uint32_t coll_hit_moby() {
+    if (__builtin_expect(g_coll_state_check, false)) coll_state_check_word("coll_hit_moby", OV(0x00173e58), g_coll_state.hit.moby);
+    return g_coll_state_native ? g_coll_state.hit.moby : lwu(OV(0x00173e58));
+}
 // orig: (host) the last hit's flags (+0x1c; signed: a primitive's is negative)
-inline uint32_t coll_hit_flags() { return lwu(OV(0x00173e5c)); }
+inline uint32_t coll_hit_flags() {
+    if (__builtin_expect(g_coll_state_check, false)) coll_state_check_word("coll_hit_flags", OV(0x00173e5c), g_coll_state.hit.flags);
+    return g_coll_state_native ? g_coll_state.hit.flags : lwu(OV(0x00173e5c));
+}
 // orig: (host) the same flags read signed (+0x1c: above 0 a triangle of the level, below 0 a moby's primitive)
-inline int32_t coll_hit_flags_signed() { return lw(OV(0x00173e5c)); }
+inline int32_t coll_hit_flags_signed() {
+    if (__builtin_expect(g_coll_state_check, false)) coll_state_check_word("coll_hit_flags_signed", OV(0x00173e5c), g_coll_state.hit.flags);
+    return g_coll_state_native ? static_cast<int32_t>(g_coll_state.hit.flags) : lw(OV(0x00173e5c));
+}
 // orig: (host) the last contact point (+0x20; its y and z are +0x24 / +0x28)
-inline Vec4 coll_hit_point() { return V(OV(0x00173e60)); }
+inline Vec4 coll_hit_point() {
+    if (__builtin_expect(g_coll_state_check, false)) coll_state_check_vec("coll_hit_point", OV(0x00173e60), g_coll_state.hit.point);
+    return g_coll_state_native ? g_coll_state.hit.point : V(OV(0x00173e60));
+}
 // orig: (host) the query's position pushed out of the last contact (+0x30)
-inline Vec4 coll_hit_pushed() { return V(OV(0x00173e70)); }
+inline Vec4 coll_hit_pushed() {
+    if (__builtin_expect(g_coll_state_check, false)) coll_state_check_vec("coll_hit_pushed", OV(0x00173e70), g_coll_state.hit.pushed);
+    return g_coll_state_native ? g_coll_state.hit.pushed : V(OV(0x00173e70));
+}
 // orig: (host) the last contact's normal (+0x40; its z is +0x48)
-inline Vec4 coll_hit_normal() { return V(OV(0x00173e80)); }
+inline Vec4 coll_hit_normal() {
+    if (__builtin_expect(g_coll_state_check, false)) coll_state_check_vec("coll_hit_normal", OV(0x00173e80), g_coll_state.hit.normal);
+    return g_coll_state_native ? g_coll_state.hit.normal : V(OV(0x00173e80));
+}
 // orig: (host) the last triangle hit's corner k = 0..2 (+0x50 + k * 0x10)
-inline Vec4 coll_hit_tri(int k) { return V(OV(0x00173e90) + static_cast<uint32_t>(k) * 0x10u); }
+inline Vec4 coll_hit_tri(int k) {
+    const uint32_t a = OV(0x00173e90) + static_cast<uint32_t>(k) * 0x10u;
+    if (k < 0 || k > 2) return V(a);  // (no such corner: the EE words there, as the original's read)
+    if (__builtin_expect(g_coll_state_check, false)) coll_state_check_vec("coll_hit_tri", a, g_coll_state.hit.tri[k]);
+    return g_coll_state_native ? g_coll_state.hit.tri[k] : V(a);
+}
+// orig: (host) a vector's lane k = 0..3 as a float (the state's side of the lane accessors below)
+inline float coll_vec_lane(const Vec4& v, uint32_t k) { return k == 0 ? v.x : k == 1 ? v.y : k == 2 ? v.z : v.w; }
 // orig: (host) the last contact point's lane k = 0..2 (x, y, z: +0x20 + k * 4), as a loop over the lanes reads it
-inline float coll_hit_point_lane(uint32_t k) { return lwc1(OV(0x00173e60) + 4u * k); }
+inline float coll_hit_point_lane(uint32_t k) {
+    const uint32_t a = OV(0x00173e60) + 4u * k;
+    if (k > 3) return lwc1(a);  // (past the vector: the EE word there)
+    if (__builtin_expect(g_coll_state_check, false)) coll_state_check_word("coll_hit_point_lane", a, f2u(coll_vec_lane(g_coll_state.hit.point, k)));
+    return g_coll_state_native ? coll_vec_lane(g_coll_state.hit.point, k) : lwc1(a);
+}
 // orig: (host) the last contact's normal's lane k = 0..2 (+0x40 + k * 4)
-inline float coll_hit_normal_lane(uint32_t k) { return lwc1(OV(0x00173e80) + 4u * k); }
+inline float coll_hit_normal_lane(uint32_t k) {
+    const uint32_t a = OV(0x00173e80) + 4u * k;
+    if (k > 3) return lwc1(a);  // (past the vector: the EE word there)
+    if (__builtin_expect(g_coll_state_check, false)) coll_state_check_word("coll_hit_normal_lane", a, f2u(coll_vec_lane(g_coll_state.hit.normal, k)));
+    return g_coll_state_native ? coll_vec_lane(g_coll_state.hit.normal, k) : lwc1(a);
+}
 // orig: (host) the whole hit (+0x18 .. +0x7f), read now
 inline CollisionHit coll_hit() {
     CollisionHit h;
@@ -63,21 +92,24 @@ inline CollisionHit coll_hit() {
     for (int k = 0; k < 3; ++k) h.tri[k] = coll_hit_tri(k);
     return h;
 }
+// The setters write the native state and the EE words the original stores, at once (collision_state.h).
 // orig: (host) the hit moby set (+0x18), as a few class updates do after a query
-inline void coll_hit_set_moby(uint32_t moby) { sw(OV(0x00173e58), moby); }
+inline void coll_hit_set_moby(uint32_t moby) { coll_state_put_moby(moby); }
 // orig: (host) the last contact's normal set (+0x40), as a few class updates do (they shorten it in place)
-inline void coll_hit_set_normal(const Vec4& n) { V(OV(0x00173e80)) = n; }
+inline void coll_hit_set_normal(const Vec4& n) { coll_state_put_vec(0x40, n); }
 // orig: (host) the contact point set (+0x20), as the hero on a hoverboard and the camera's sphere volumes do
-inline void coll_hit_set_point(const Vec4& p) { V(OV(0x00173e60)) = p; }
+inline void coll_hit_set_point(const Vec4& p) { coll_state_put_vec(0x20, p); }
 // orig: (host) the pushed-out position set (+0x30), as the camera's sphere volumes do
-inline void coll_hit_set_pushed(const Vec4& p) { V(OV(0x00173e70)) = p; }
+inline void coll_hit_set_pushed(const Vec4& p) { coll_state_put_vec(0x30, p); }
 // orig: (host) the contact point's z set (+0x28), as a particle does to lift its landing point
-inline void coll_hit_set_point_z(float z) { swc1(OV(0x00173e68), z); }
+inline void coll_hit_set_point_z(float z) { coll_state_put_lane(0x20, 2, f2u(z)); }
 // orig: (host) the pushed-out position's z set (+0x38), as a doomlet does after its floor probe
-inline void coll_hit_set_pushed_z(float z) { swc1(OV(0x00173e78), z); }
+inline void coll_hit_set_pushed_z(float z) { coll_state_put_lane(0x30, 2, f2u(z)); }
 // orig: (host) the normal's z cleared (+0x48, a word write of 0), as the hero's wall slide does
-inline void coll_hit_clear_normal_z() { sw(OV(0x00173e88), 0); }
-// The EE addresses of the hit's vectors, for the callees that still take an address (a later task gives them values).
+inline void coll_hit_clear_normal_z() { coll_state_put_lane(0x40, 2, 0); }
+// The EE addresses of the hit's vectors, for the callees that still take an address (a later task gives them values): the
+// projection keeps the words there current. A callee that writes through one (ground_puff_spawn raises the point's z) is
+// followed by coll_state_import().
 // orig: (host) the contact point's EE address (+0x20)
 inline uint32_t coll_hit_point_addr() { return OV(0x00173e60); }
 // orig: (host) the pushed-out position's EE address (+0x30)
@@ -85,7 +117,7 @@ inline uint32_t coll_hit_pushed_addr() { return OV(0x00173e70); }
 // orig: (host) the normal's EE address (+0x40)
 inline uint32_t coll_hit_normal_addr() { return OV(0x00173e80); }
 
-// The queries' own state (the words before +0x18: not part of a hit).
+// The queries' own state (the words before +0x18: not part of a hit): EE memory (collision_state.h says why).
 // orig: (host) the level's collision tree (+0x00)
 inline uint32_t coll_tree() { return lwu(OV(0x00173e40)); }
 // orig: (host) the tree word's EE address (+0x00), for a reader that reads it through its own path (the drawing's copy of EE
@@ -116,8 +148,13 @@ inline void coll_set_contact_next(uint32_t i) { sw(OV(0x00173e54), i); }
 // The hit list 0x177f00: the mobys the last mobys_in_sphere touched, 0-terminated (room for 0x80 words, up to the ring).
 // orig: (host) its EE address (what moby_list_hit and its kin take)
 inline uint32_t coll_hit_list() { return OV(0x00177f00); }
-// orig: (host) its entry i
-inline uint32_t coll_hit_list_at(int i) { return lwu(OV(0x00177f00) + static_cast<uint32_t>(i) * 4u); }
+// orig: (host) its entry i (past the list's room, i < 0 or i >= 0x80, the EE word there: the contact ring's)
+inline uint32_t coll_hit_list_at(int i) {
+    const uint32_t a = OV(0x00177f00) + static_cast<uint32_t>(i) * 4u;
+    if (i < 0 || i >= static_cast<int>(kCollHitListWords)) return lwu(a);
+    if (__builtin_expect(g_coll_state_check, false)) coll_state_check_word("coll_hit_list_at", a, g_coll_state.list[i]);
+    return g_coll_state_native ? g_coll_state.list[i] : lwu(a);
+}
 // orig: (host) its length (the entries before the 0; mobys_in_sphere returns the same count)
 inline int coll_hit_list_count() {
     int n = 0;

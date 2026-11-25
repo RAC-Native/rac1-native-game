@@ -75,7 +75,7 @@ static bool moby_prims_hit(uint32_t m, uint32_t col, uint32_t flags, uint32_t s0
 // front faces unless flags & 0x10, types filtered by flags >> 8 when flags & 0x20, skipped with
 // tri flag & 0x80 when flags & 0x80), then its primitive records (spheres, joint spheres,
 // vertical capsules, joint segments; joint positions from moby_pose_matrices, cached in the
-// 8-entry ring at *(0x173e48)). Hits are listed at 0x177f00 (0-terminated); with `rec`, mobys
+// 8-entry ring at *(0x173e48)). Hits are listed at 0x177f00 (0-terminated; the native list too, collision_state.h); with `rec`, mobys
 // flagged 0x4000 also get a 64-byte contact record in the ring 0x178100. Returns the count.
 // `ignore` is skipped. Coordinates must lie in [r, 1024 - r).
 // The original's cell list (0x70003800) and vertices (0x70002000) are not kept: the cells are walked directly, the vertices
@@ -233,7 +233,7 @@ int32_t mobys_in_sphere_v(const Vec4& pos, float radius, uint32_t flags, uint32_
                 }
                 if (!hit) hit = moby_prims_hit(m, col, flags, s0, posed, p, r, r2, mp, R0, R1, R2, sc);
                 if (hit) {
-                    sw(hits, m);
+                    coll_state_list_put((hits - HITS) >> 2, m);
                     hits += 4;
                 }
             }
@@ -242,9 +242,9 @@ int32_t mobys_in_sphere_v(const Vec4& pos, float radius, uint32_t flags, uint32_
         }
         if (y == y1) break;
     }
-    sw(hits, 0);
+    coll_state_list_put((hits - HITS) >> 2, 0);
     CollisionHit out{};
-    out.moby = lwu(HITS);
+    out.moby = coll_state_list_entry(0);  // (the list's first word, written above: a moby or the terminator)
     out.flags = 0x3f;
     out.point = Vec4{0.0f, 0.0f, 0.0f, 1.0f};
     coll_hit_mirror(out, kHitMoby | kHitFlags | kHitPoint);  // (the rest of the block as it was)
@@ -252,7 +252,7 @@ int32_t mobys_in_sphere_v(const Vec4& pos, float radius, uint32_t flags, uint32_
         constexpr OvConst<0x00178100u> CONTACTS{};
         uint32_t next = lwu(OUTB + 0x14);
         for (uint32_t h = HITS; h != hits; h += 4) {
-            const uint32_t m = lwu(h);
+            const uint32_t m = coll_state_list_entry((h - HITS) >> 2);  // (written above; past 0x80 entries the ring's EE words)
             if ((lhu(m + 0x34) & 0x4000) == 0) continue;
             const int32_t old = static_cast<int8_t>(lbu(m + 0xa4));
             if (old >= 0) {

@@ -7,6 +7,7 @@
 
 
 #include <game/collision/collision_scene.h>
+#include <game/collision/collision_state.h>
 #include <game/enhance/advanced.h>
 #include <runtime/ee/ps2_fpu.h>
 #include "ovl_oracle.h"
@@ -50,6 +51,7 @@ int main(int argc, char** argv) {
     // the settings' bytes of the snapshot (0: off), not this machine's preferences or the rows' default (on)
     rac1::advanced_prefs_load();
     rac1::coll_scene_set_check(true);  // the collision scene (RAC1_COLL_SCENE=native) compared with EE memory at every use
+    rac1::coll_state_set_check(true);  // the collision's native hit and hit list compared with the EE words at every accessor read
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     // --batch N: that batch only; --level N (or ORACLE_LEVEL=N): on level N's own overlay (task 0307)
     int level = std::getenv("ORACLE_LEVEL") != nullptr ? std::atoi(std::getenv("ORACLE_LEVEL")) : 0;
@@ -277,6 +279,7 @@ int main(int argc, char** argv) {
     batch_540();
     batch_541();
     batch_542();
+    batch_543();
 
     // (also on level 0: a batch whose dumps are missing skips its checks, and a bare PASS would hide it)
     if (g_oracle_level != 0 || g_skipped != 0)

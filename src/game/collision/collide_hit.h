@@ -31,7 +31,8 @@ enum CollHitPart : uint32_t {
     kHitAll = 0x3fu,
 };
 
-// orig: (host) the hit block 0x173e40 (+0x18 .. +0x7f, the level's copy) written from `hit`: the parts in `parts`, every word
+// orig: (host) the hit (collision_state.h's native state) and its projection, the hit block 0x173e40 (+0x18 .. +0x7f, the
+// level's copy), written from `hit`: the parts in `parts` (the others are left as they were, in both), every EE word
 // of them (the four lanes of each vector, w included: a lane that carries a raw word, as the pushed-out position's w carries
 // a vertex's outcode, keeps its bits, since a Vec4 lane set with u2f and read with f2u is only ever moved), through sw only
 // (the bytes as the original's on any host). The only writer of those words in the collision routines; it runs inside a

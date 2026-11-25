@@ -96,6 +96,7 @@
 #include <game/boot/front_image.h>
 #include <game/boot/level_read.h>
 #include <game/lib/libcdvd.h>
+#include <game/collision/collision_state.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/cutscene.h>
 #include <game/ovl/level_change.h>
@@ -1525,6 +1526,7 @@ void engine_image_load(int played) {
     const int level = own ? played : 0;
     LevelLoader::load_level_overlay(level);  // (after the level's files, as the PS2: their load writes into the overlay's data, which this copy restores)
     ovl_reloc_set_level(level);
+    coll_state_import();  // (the image's words of the collision's hit and hit list taken into their native state)
 }
 
 // The boot module's loader (0x204428: the level's files and sound bank, its reply callback
@@ -1623,6 +1625,7 @@ bool title_return() {
         return false;
     }
     ovl_reloc_set_level(OVL_FRONT);
+    coll_state_import();  // (the image's words of the collision's hit and hit list taken into their native state)
     boot_return_start();
     std::printf("[orig] quit to the title: the boot module started again\n");
     return true;
@@ -2975,6 +2978,7 @@ int main(int argc, char** argv) {
             return 1;
         }
         ovl_reloc_set_level(OVL_FRONT);
+        coll_state_import();  // (the image's words of the collision's hit and hit list taken into their native state)
         // the title's scene: its own passes' chain (MRP / faithful); RAC1_TITLE_HOST=1 the old host renderers
         if (const char* th = std::getenv("RAC1_TITLE_HOST")) g_title_scene_host = std::atoi(th) != 0;
         if (g_title_scene_host) g_boot_title_loaded_hook = title_scene_host_load;

@@ -60,6 +60,7 @@ void ground_puff_at(uint32_t pos) {
             vec3_sub(V(off), coll_hit_point(), V(OV(0x00166dc0)));
             const float shade = fpu_add(fpu_mul(fpu_div(vec2_length(V(off)), 60.0f), 191.0f), 64.0f);
             ground_puff_spawn(coll_hit_point_addr(), static_cast<uint32_t>(float_to_int(shade)) & 0xffu);
+            coll_state_import();  // (ground_puff_spawn raised the hit point's z through its EE address: the native hit takes it)
         }
     }
     ee_stack_free(0x80);

@@ -1,4 +1,5 @@
 #include <stdexcept>
+#include <game/collision/collision_state.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/render/render_view.h>
 #include "oracle_env.h"
@@ -379,6 +380,7 @@ void set_baseline_current() {
 void restore_baseline() {
     std::memcpy(ee_get_ram_base(), g_baseline_ram.data(), RAM_SIZE);
     std::memcpy(ee_get_scratchpad_base(), g_baseline_spr.data(), SPR_SIZE);
+    coll_state_import();  // (stage 5, C6a: the collision's native hit and hit list follow the restored words, for a generator's own port calls)
 }
 
 // ORACLE_WRITES=1: per check, what the original actually changed in each case (the words of RAM below the interpreter's
@@ -395,6 +397,28 @@ bool writes_on() {
     static const bool on = std::getenv("ORACLE_WRITES") != nullptr;
     return on;
 }
+}  // namespace
+
+namespace {
+// (stage 5, C6a) one case's generator and original run with the collision's results read from EE memory (RAC1_COLL_STATE=ee,
+// the check mode off; the routines and setters still write the native state and EE memory both): a generator restores RAM
+// by its own copies and runs port code on it (its trials), which then reads what it read before the native state existed,
+// and deals the same states. restore() gives the switch and the check mode back for the compared port run (also at the
+// scope's end: a case left early).
+struct CollStateEeScope {
+    const bool native = coll_state_native(), check = coll_state_check();
+    CollStateEeScope() {
+        coll_state_set_native(false);
+        coll_state_set_check(false);
+    }
+    ~CollStateEeScope() { restore(); }
+    void restore() const {
+        coll_state_set_native(native);
+        coll_state_set_check(check);
+    }
+    CollStateEeScope(const CollStateEeScope&) = delete;
+    CollStateEeScope& operator=(const CollStateEeScope&) = delete;
+};
 }  // namespace
 
 bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::function<Args()>& gen,
@@ -417,6 +441,7 @@ bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::fu
     size_t hud_events = 0;
     std::unordered_set<uint32_t> hud_reached;
     for (int it = 0; it < iters; ++it) {
+        const CollStateEeScope coll_ee;
         if (scope == Scope::FullRam) restore_baseline();
         const Args args = gen();
         if (focus != nullptr && (focus_name != name || (focus_case >= 0 && it != focus_case))) continue;
@@ -442,6 +467,8 @@ bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::fu
             restore_range(TEST_AREA, before_t);
             try {
                 const HudPortTrace hud_trace(hud);
+                coll_state_import();  // (stage 5, C6a: the case's EE state, as the generator and the restore left it, into the collision's native hit and hit list)
+                coll_ee.restore();
                 pr = port(args);
             } catch (const std::exception& e) {  // a port fault is a failing case, not the end of the run
                 std::printf("  [%s] port: %s (case %d, a0..a3 %08x %08x %08x %08x)\n", name, e.what(), it, args.i.size() > 0 ? args.i[0] : 0u,
@@ -486,6 +513,8 @@ bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::fu
             restore_full(before_f);
             try {
                 const HudPortTrace hud_trace(hud);
+                coll_state_import();  // (stage 5, C6a: the case's EE state, as the generator and the restore left it, into the collision's native hit and hit list)
+                coll_ee.restore();
                 pr = port(args);
             } catch (const std::exception& e) {  // a port fault is a failing case, not the end of the run
                 std::printf("  [%s] port: %s (case %d, a0..a3 %08x %08x %08x %08x)\n", name, e.what(), it, args.i.size() > 0 ? args.i[0] : 0u,

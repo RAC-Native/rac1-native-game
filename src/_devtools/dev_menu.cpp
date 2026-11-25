@@ -9,6 +9,7 @@
 #include <io/asset_paths.h>
 #include "dev_profiler.h"
 
+#include <game/collision/collision_state.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/debug_hooks.h>
 #include <game/ovl/cutscene.h>
@@ -2586,6 +2587,7 @@ void dev_menu_poll(GLFWwindow* window) {
         } else if (!g_snap_ram.empty() && g_snap_level == r32(0x0015ed84)) {
             std::memcpy(ee_get_ram_base(), g_snap_ram.data(), RAM);
             std::memcpy(ee_get_scratchpad_base(), g_snap_spr.data(), SPR_SIZE);
+            coll_state_import();  // (the collision's hit and hit list: their native state taken from the snapshot's words)
             g_freeze.mobys.clear();  // the spawned mobys may not be the same any more
             update_freeze_hook();
         }
