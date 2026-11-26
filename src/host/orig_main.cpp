@@ -4872,6 +4872,7 @@ int main(int argc, char** argv) {
     rac1::vu0::fallback_report();  // (testing: RAC1_VU_FALLBACK)
     rac1::vu1::fallback_report();
     rac1::world_cull_check_report();  // (testing: RAC1_WORLD_CULL_FAST=2)
+    rac1::lvd::registry_verify_end();  // (testing: RAC1_LD_VERIFY)
     if (std::getenv("RAC1_VU0_CHAIN") != nullptr) std::fprintf(stderr, "[vu0-chain] %016llx\n", static_cast<unsigned long long>(rac1::vu0::chain_hash()));
     behav_trace_shutdown();
     rac1::progress::finish();  // (the launcher's progress.json: the time played since its last write)

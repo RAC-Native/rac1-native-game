@@ -9,6 +9,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/pause_menu.h>
+#include <game/level/level_write.h>
 #include <host/level_slots.h>
 #include <runtime/kernel/ee_memory.h>
 
@@ -111,9 +112,9 @@ void rail_apply(Rail& r) {
     const float v = lwc1(e + 0xc);
     if (!r.enabled && v >= 0.0f) {
         r.radius = v;
-        swc1(e + 0xc, -1.0f);  // (find_rail_v: a rail whose reach is less than the distance is skipped)
+        lvd::set_rail_reach(e, -1.0f);  // (find_rail_v: a rail whose reach is less than the distance is skipped)
     } else if (r.enabled && v < 0.0f) {
-        swc1(e + 0xc, r.radius);
+        lvd::set_rail_reach(e, r.radius);
     }
 }
 

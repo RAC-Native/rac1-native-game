@@ -169,6 +169,118 @@ View block_view(uint32_t b) {
     return v;
 }
 
+// ---- the records' EE addresses ----
+// The addresses of `r`'s records as the tables of `v` name them now (its build: the load or lay_out has just placed them)
+void take_addresses(LevelRegistry& r, const View& v) {
+    r.path_ee.assign(r.paths.size(), 0);
+    for (size_t i = 0; i < r.paths.size() && i < LD_PATH_MAX; ++i) r.path_ee[i] = lwu(v.path_table + 4 * static_cast<uint32_t>(i));
+    const auto run = [](std::vector<uint32_t>& out, size_t n, uint32_t base, uint32_t size) {
+        out.assign(n, 0);
+        if (base != 0)
+            for (size_t i = 0; i < n; ++i) out[i] = base + static_cast<uint32_t>(i) * size;
+    };
+    run(r.volume_ee, r.volumes.size(), lwu(v.vol), 0x90);
+    for (uint32_t l = 0; l < 3; ++l) run(r.shape_ee[l], r.shapes[l].size(), lwu(v.shape[l]), 0x80);
+    run(r.camera_ee, r.cameras.size(), lwu(v.cam), 0x20);
+    run(r.rail_ee, r.rails.size(), lwu(v.rail), 0x20);
+    r.spine_ee.assign(r.rails.size(), 0);
+    for (size_t i = 0; i < r.rails.size(); ++i)
+        if (r.rail_ee[i] != 0) r.spine_ee[i] = lwu(r.rail_ee[i] + 0x10);
+}
+
+// A path's bytes in EE: its count word, 12 bytes, its points
+uint32_t path_bytes(const PathSpline& p) { return 0x10 + 0x10 * static_cast<uint32_t>(p.points.size()); }
+
+// A path read from EE at `a` with `points` points (the words as they are: floats by their bits)
+PathSpline read_path(uint32_t a, size_t points) {
+    PathSpline p;
+    p.count = lw(a);
+    for (uint32_t k = 0; k < 3; ++k) p.head[k] = lwu(a + 4 + 4 * k);
+    p.points.resize(points);
+    for (size_t k = 0; k < points; ++k) {
+        const uint32_t q = a + 0x10 + 0x10 * static_cast<uint32_t>(k);
+        p.points[k] = Vec4f{std::bit_cast<float>(lwu(q)), std::bit_cast<float>(lwu(q + 4)), std::bit_cast<float>(lwu(q + 8)), std::bit_cast<float>(lwu(q + 12))};
+    }
+    return p;
+}
+// the number of points a path read from EE gets: its count word, within [0, 4096]
+size_t points_of(uint32_t a) { return static_cast<size_t>(std::clamp<int32_t>(lw(a), 0, 4096)); }
+
+// ---- the address index ----
+struct Entry {
+    uint32_t lo, hi;  // the record's bytes [lo, hi)
+    int16_t key;
+    RecordKind kind;
+    uint8_t list;
+    int32_t index;
+};
+std::vector<Entry> g_index;
+bool g_index_dirty = true;
+std::vector<std::pair<Entry, Entry>> g_overlaps;  // (live records whose bytes overlap: an error the verify reports)
+bool g_overlaps_said = true;
+IndexStats g_stats;
+
+LevelRegistry* reg_of(int key) {
+    if (key == KEY_BASE) return g_base.get();
+    return key >= 0 && key < KEYS ? g_twin[key].get() : nullptr;
+}
+
+void index_add(std::vector<Entry>& out, const LevelRegistry& r) {
+    const auto put = [&](uint32_t ee, uint32_t size, RecordKind k, uint32_t list, size_t i) {
+        if (ee != 0 && size != 0) out.push_back(Entry{ee, ee + size, static_cast<int16_t>(r.key), k, static_cast<uint8_t>(list), static_cast<int32_t>(i)});
+    };
+    for (size_t i = 0; i < r.paths.size() && i < r.path_ee.size(); ++i) put(r.path_ee[i], path_bytes(r.paths[i]), RecordKind::PATH, 0, i);
+    for (size_t i = 0; i < r.volumes.size() && i < r.volume_ee.size(); ++i) put(r.volume_ee[i], 0x90, RecordKind::VOLUME, 0, i);
+    for (uint32_t l = 0; l < 3; ++l)
+        for (size_t i = 0; i < r.shapes[l].size() && i < r.shape_ee[l].size(); ++i) put(r.shape_ee[l][i], 0x80, RecordKind::SHAPE, l, i);
+    for (size_t i = 0; i < r.cameras.size() && i < r.camera_ee.size(); ++i) put(r.camera_ee[i], 0x20, RecordKind::CAMERA, 0, i);
+    for (size_t i = 0; i < r.rails.size() && i < r.rail_ee.size(); ++i) put(r.rail_ee[i], 0x20, RecordKind::RAIL, 0, i);
+    for (size_t i = 0; i < r.rails.size() && i < r.spine_ee.size(); ++i) put(r.spine_ee[i], path_bytes(r.rails[i].spine), RecordKind::SPINE, 0, i);
+    for (const LevelRegistry::AddedPath& a : r.added) {
+        if (a.ee != 0) out.push_back(Entry{a.ee, a.ee + path_bytes(a.path), static_cast<int16_t>(r.key), RecordKind::ADDED_PATH, 0, a.slot});
+    }
+}
+
+void index_rebuild() {
+    g_index.clear();
+    if (g_base != nullptr) index_add(g_index, *g_base);
+    for (int k = 0; k < KEYS; ++k)
+        if (g_twin[k] != nullptr) index_add(g_index, *g_twin[k]);
+    std::sort(g_index.begin(), g_index.end(), [](const Entry& a, const Entry& b) { return a.lo != b.lo ? a.lo < b.lo : a.hi < b.hi; });
+    g_overlaps.clear();
+    size_t far = 0;
+    for (size_t k = 1; k < g_index.size(); ++k) {
+        if (g_index[k].lo < g_index[far].hi) g_overlaps.emplace_back(g_index[far], g_index[k]);
+        if (g_index[k].hi > g_index[far].hi) far = k;
+    }
+    g_overlaps_said = g_overlaps.empty();
+    g_index_dirty = false;
+    ++g_stats.rebuilds;
+}
+
+const Entry* index_find(uint32_t a) {
+    if (g_index_dirty) index_rebuild();
+    const auto it = std::upper_bound(g_index.begin(), g_index.end(), a, [](uint32_t x, const Entry& e) { return x < e.lo; });
+    if (it == g_index.begin()) return nullptr;
+    const Entry& e = *(it - 1);
+    return a < e.hi ? &e : nullptr;
+}
+
+// ---- the native slot of a record's word ----
+void* path_slot(PathSpline& p, uint32_t o) {
+    if (o == 0) return &p.count;
+    if (o < 0x10) return &p.head[(o - 4) / 4];
+    const size_t k = (o - 0x10) / 0x10;
+    if (k >= p.points.size()) return nullptr;
+    switch ((o - 0x10) & 0xc) {
+    case 0: return &p.points[k].x;
+    case 4: return &p.points[k].y;
+    case 8: return &p.points[k].z;
+    default: return &p.points[k].w;
+    }
+}
+void* shape_slot(Shape& s, uint32_t o) { return o < 0x40 ? static_cast<void*>(&s.matrix[o / 4]) : o < 0x80 ? static_cast<void*>(&s.to_unit[(o - 0x40) / 4]) : nullptr; }
+
 // A difference's handler: true when it is a run-time write the native side follows (the slot then takes the EE value)
 using Sink = bool (*)(void* ctx, const RegistryDiff& d);
 
@@ -184,7 +296,7 @@ public:
         const uint32_t ee = lwu(a);
         const uint32_t nat = std::bit_cast<uint32_t>(slot);
         if (nat == ee) return;
-        if (diff(obj, idx, off, nat, ee)) slot = std::bit_cast<T>(ee);
+        if (diff(obj, idx, off, nat, ee, a)) slot = std::bit_cast<T>(ee);
     }
     void value(const char* obj, int32_t idx, uint32_t off, uint32_t nat, uint32_t ee) {
         if (nat != ee) diff(obj, idx, off, nat, ee);
@@ -216,10 +328,22 @@ public:
         for (uint32_t k = 0; k < 16; ++k) word(obj, idx, 4 * k, s.matrix[k], a + 4 * k);
         for (uint32_t k = 0; k < 16; ++k) word(obj, idx, 0x40 + 4 * k, s.to_unit[k], a + 0x40 + 4 * k);
     }
+    // a table's word `a` (a path's entry, a list's pointer, a rail's spine word): it must name the first byte of a live record
+    // of kind `k` (or `k2`) in the index; none: a difference (native the record found or 0, EE the word), counted unresolved
+    void resolve(const char* obj, int32_t idx, uint32_t off, uint32_t a, RecordKind k, RecordKind k2 = RecordKind::NONE) {
+        if (a == 0) return;
+        ++resolved_;
+        const RecordRef rr = record_at(a);
+        if (rr && rr.offset == 0 && (rr.kind == k || rr.kind == k2)) return;
+        ++unresolved_;
+        diff(obj, idx, off, rr ? rr.ee : 0u, a);
+    }
+    uint64_t resolved() const { return resolved_; }
+    uint64_t unresolved() const { return unresolved_; }
 
 private:
-    bool diff(const char* obj, int32_t idx, uint32_t off, uint32_t nat, uint32_t ee) {
-        RegistryDiff d{obj, idx, off, nat, ee};
+    bool diff(const char* obj, int32_t idx, uint32_t off, uint32_t nat, uint32_t ee, uint32_t addr = 0) {
+        RegistryDiff d{obj, idx, off, nat, ee, addr};
         if (sink_ != nullptr && sink_(ctx_, d)) return true;
         ++found_;
         return false;
@@ -228,10 +352,14 @@ private:
     void* ctx_;
     size_t max_;
     size_t found_ = 0;
+    uint64_t resolved_ = 0, unresolved_ = 0;
 };
 
-// The registry `r` against the EE tables of `v`
+// The registry `r` against the EE tables of `v`: its counts against the tables' count words, each table word against the index
+// (it names a live record at that address), each record against EE at its own address, the added paths against their table
+// slots and EE
 void compare_view(LevelRegistry& r, const View& v, Comparer& c) {
+    const auto at = [](const std::vector<uint32_t>& ee, size_t i) { return i < ee.size() ? ee[i] : 0u; };
     if (r.has_paths) {
         const uint32_t n = static_cast<uint32_t>(r.paths.size());
         c.value("path count", -1, 0, n, lwu(v.path_count));
@@ -239,31 +367,41 @@ void compare_view(LevelRegistry& r, const View& v, Comparer& c) {
         for (uint32_t i = 0; i < n && i < LD_PATH_MAX && !c.full(); ++i) {
             const uint32_t a = lwu(v.path_table + 4 * i);
             c.value("path table", static_cast<int32_t>(i), 0, r.paths[i].offset, a - data);
-            if (a != 0) c.path("path", static_cast<int32_t>(i), r.paths[i], a);
+            c.resolve("path table (no record)", static_cast<int32_t>(i), 0, a, RecordKind::PATH, RecordKind::ADDED_PATH);
+            if (const uint32_t e = at(r.path_ee, i); e != 0) c.path("path", static_cast<int32_t>(i), r.paths[i], e);
         }
+    }
+    for (LevelRegistry::AddedPath& a : r.added) {
+        if (c.full()) break;
+        if (a.slot >= 0 && a.slot < static_cast<int32_t>(LD_PATH_MAX)) c.value("added path table", a.slot, 0, a.ee, lwu(v.path_table + 4 * static_cast<uint32_t>(a.slot)));
+        c.path("added path", a.slot, a.path, a.ee);
     }
     if (r.has_volumes) {
         c.value("volume count", -1, 0, static_cast<uint32_t>(r.volumes.size()), lwu(v.vol_n));
-        const uint32_t base = lwu(v.vol);
+        if (!r.volumes.empty()) c.resolve("volume table (no record)", -1, 0, lwu(v.vol), RecordKind::VOLUME);
         for (size_t i = 0; i < r.volumes.size() && !c.full(); ++i) {
-            const uint32_t a = base + static_cast<uint32_t>(i) * 0x90;
+            const uint32_t a = at(r.volume_ee, i);
+            if (a == 0) continue;
             c.shape("volume", static_cast<int32_t>(i), r.volumes[i].shape, a);
             for (uint32_t k = 0; k < 4; ++k) c.word("volume", static_cast<int32_t>(i), 0x80 + 4 * k, r.volumes[i].tail[k], a + 0x80 + 4 * k);
         }
     }
     static const char* const kShape[3] = {"box", "sphere", "cylinder"};
     static const char* const kShapeN[3] = {"box count", "sphere count", "cylinder count"};
+    static const char* const kShapeT[3] = {"box table (no record)", "sphere table (no record)", "cylinder table (no record)"};
     for (size_t l = 0; l < 3; ++l) {
         if (!r.has_shapes[l]) continue;
         c.value(kShapeN[l], -1, 0, static_cast<uint32_t>(r.shapes[l].size()), lwu(v.shape_n[l]));
-        const uint32_t base = lwu(v.shape[l]);
-        for (size_t i = 0; i < r.shapes[l].size() && !c.full(); ++i) c.shape(kShape[l], static_cast<int32_t>(i), r.shapes[l][i], base + static_cast<uint32_t>(i) * 0x80);
+        if (!r.shapes[l].empty()) c.resolve(kShapeT[l], -1, 0, lwu(v.shape[l]), RecordKind::SHAPE);
+        for (size_t i = 0; i < r.shapes[l].size() && !c.full(); ++i)
+            if (const uint32_t a = at(r.shape_ee[l], i); a != 0) c.shape(kShape[l], static_cast<int32_t>(i), r.shapes[l][i], a);
     }
     if (r.has_cameras) {
         c.value("camera count", -1, 0, static_cast<uint32_t>(r.cameras.size()), lwu(v.cam_n));
-        const uint32_t base = lwu(v.cam);
+        if (!r.cameras.empty()) c.resolve("camera table (no record)", -1, 0, lwu(v.cam), RecordKind::CAMERA);
         for (size_t i = 0; i < r.cameras.size() && !c.full(); ++i) {
-            const uint32_t a = base + static_cast<uint32_t>(i) * 0x20;
+            const uint32_t a = at(r.camera_ee, i);
+            if (a == 0) continue;
             const int32_t idx = static_cast<int32_t>(i);
             LdCamera& p = r.cameras[i].placement;
             for (uint32_t k = 0; k < 3; ++k) c.word("camera", idx, 4 * k, p.position[k], a + 4 * k);
@@ -272,18 +410,23 @@ void compare_view(LevelRegistry& r, const View& v, Comparer& c) {
             c.word("camera", idx, 0x1c, r.cameras[i].pvars, a + 0x1c);
         }
     }
-    if (r.has_rails && v.rails != View::Rails::Skip) {
+    if (r.has_rails) {
         const uint32_t n = static_cast<uint32_t>(r.rails.size()), ee_n = lwu(v.rail_n);
-        if (v.rails == View::Rails::Exact || ee_n < n) c.value("rail count", -1, 0, n, ee_n);
-        const uint32_t base = lwu(v.rail);
-        for (uint32_t i = 0; i < n && i < ee_n && !c.full(); ++i) {
-            const uint32_t a = base + i * 0x20;
+        // (the counts and the table's pointer: a section's table is its own, Prefix holds the level's rails first, as copies)
+        if (v.rails == View::Rails::Exact || (v.rails == View::Rails::Prefix && ee_n < n)) c.value("rail count", -1, 0, n, ee_n);
+        if (v.rails == View::Rails::Exact && n != 0) c.resolve("rail table (no record)", -1, 0, lwu(v.rail), RecordKind::RAIL);
+        for (uint32_t i = 0; i < n && !c.full(); ++i) {
+            const uint32_t a = at(r.rail_ee, i);
+            if (a == 0) continue;
             const int32_t idx = static_cast<int32_t>(i);
             Rail& rl = r.rails[i];
             for (uint32_t k = 0; k < 3; ++k) c.word("rail", idx, 4 * k, rl.centre[k], a + 4 * k);
             c.word("rail", idx, 0xc, rl.radius, a + 0xc);
             c.word("rail", idx, 0x14, rl.loop, a + 0x14);
-            if (const uint32_t s = lwu(a + 0x10); s != 0) c.path("rail spine", idx, rl.spine, s);
+            const uint32_t s = lwu(a + 0x10);
+            c.value("rail spine word", idx, 0x10, at(r.spine_ee, i), s);
+            c.resolve("rail spine word (no record)", idx, 0x10, s, RecordKind::SPINE);
+            if (const uint32_t e = at(r.spine_ee, i); e != 0) c.path("rail spine", idx, rl.spine, e);
         }
     }
     if (v.cam_volumes != 0 && !r.cam_volumes.empty() && !c.full()) {
@@ -302,17 +445,12 @@ struct Followed {
     const char* name;
     bool (*match)(const RegistryDiff& d);
 };
-bool is_path(const RegistryDiff& d) { return d.object == "path" || d.object == "rail spine"; }
+bool is_path(const RegistryDiff& d) { return d.object == "path" || d.object == "rail spine" || d.object == "added path"; }
 // a point's lane (0 x, 4 y, 8 z, 0xc w); -1 the count word and the 12 bytes after it
 int32_t point_lane(const RegistryDiff& d) { return d.offset < 0x10 ? -1 : static_cast<int32_t>((d.offset - 0x10) & 0xc); }
+// (LD1: the shapes', volumes' and rails' writers write the native record too, level_write.h: no rule follows them; a difference
+// there is one. The paths' writers are LD3's.)
 const Followed kFollowed[] = {
-    // smoke_vent_update (0x2d6f28, smoke_vent.cpp), at a vent's first update: its box's +0x3c (the centre row's w lane) set to 1
-    {"a smoke vent's box +0x3c set to 1 (smoke_vent_update)", [](const RegistryDiff& d) { return d.object == "box" && d.offset == 0x3c && d.ee == 0x3f800000u; }},
-    // a shape's centre (+0x30 .. +0x38) moved by the class that owns it (a moving volume: Kerwan box 57, Pokitaru boxes 27 / 28;
-    // the census: pok_2d14b0_l11, olt_3017f8_l14)
-    {"a shape's centre moved (its class)", [](const RegistryDiff& d) {
-         return (d.object == "box" || d.object == "sphere" || d.object == "cylinder" || d.object == "volume") && d.offset >= 0x30 && d.offset < 0x3c;
-     }},
     // a point's w lane: the file's -1 replaced by the segment's length to the next point when a mover first measures the path
     // (lv3_264458_l3, path_measure_l1, path_follower_init_l1, hov_28eb00_l12 ... 50 functions in the census), or by a class's
     // own per-point value (Rilgar's and Pokitaru's small integers)
@@ -327,9 +465,6 @@ const Followed kFollowed[] = {
      }},
     // a path's points rewritten by a class (Kerwan paths 17 .. 28, Batalia 96, Pokitaru 14 / 29: bat_class679_update_l8, pok_2873b0_l11 ...)
     {"a path's points moved (its class)", [](const RegistryDiff& d) { return is_path(d) && point_lane(d) >= 0 && point_lane(d) < 0xc; }},
-    // a rail's reach: -1 while a level mod's rail is off (setpieces.cpp rail_apply), 0 on Veldin 2 (vf_class582_update_l18), its
-    // own value again after
-    {"a rail's reach (+0xc) switched (setpieces rail_apply, vf_class582_update_l18)", [](const RegistryDiff& d) { return d.object == "rail" && d.offset == 0xc; }},
 };
 
 // ---- the verify's log ----
@@ -337,6 +472,7 @@ struct Log {
     std::set<std::string> said;        // (object, index) whose first difference was logged
     std::map<std::string, uint64_t> followed;  // a followed write's name (and object index) -> times
     uint64_t passes = 0, diffs = 0, follows = 0;
+    uint64_t resolved = 0, unresolved = 0;  // table words looked up in the index, those naming no record
     bool as_engine = false;  // (a world's: compared as the engine's tables once)
 };
 Log g_log[KEYS + 1];  // [KEYS] the base's
@@ -360,6 +496,12 @@ struct SinkCtx {
     Log* log;
 };
 
+std::string hex8(uint32_t a) {
+    char b[12];
+    std::snprintf(b, sizeof b, "%08x", a);
+    return b;
+}
+
 bool verify_sink(void* p, const RegistryDiff& d) {
     SinkCtx& s = *static_cast<SinkCtx*>(p);
     char kb[32];
@@ -376,7 +518,8 @@ bool verify_sink(void* p, const RegistryDiff& d) {
     ++s.log->diffs;
     const std::string id = d.object + " " + std::to_string(d.index);
     if (s.log->said.insert(id).second)
-        std::printf("[ld-verify] DIFFERENCE level %d %s: %s (%s)\n", s.level, key_name(s.key, kb, sizeof kb), d.text().c_str(), when().c_str());
+        std::printf("[ld-verify] DIFFERENCE level %d %s: %s%s (%s)\n", s.level, key_name(s.key, kb, sizeof kb), d.text().c_str(),
+                    d.addr != 0 ? (" at " + hex8(d.addr)).c_str() : "", when().c_str());
     return false;
 }
 
@@ -387,14 +530,35 @@ void verify(LevelRegistry& r, const View& v, int key, bool follow) {
     Comparer c(verify_sink, &ctx, 1u << 30);
     compare_view(r, v, c);
     ++log.passes;
+    log.resolved += c.resolved();
+    log.unresolved += c.unresolved();
+    // (two live records over the same bytes: reported once per rebuild of the index)
+    if (!g_overlaps_said) {
+        g_overlaps_said = true;
+        for (size_t k = 0; k < g_overlaps.size(); ++k) {
+            ++log.diffs;
+            const Entry &a = g_overlaps[k].first, &b = g_overlaps[k].second;
+            if (k < 16)
+                std::printf("[ld-verify] DIFFERENCE level %d: overlapping records: %s %d of registry %d [%08x, %08x) and %s %d of registry %d [%08x, %08x) (%s)\n", r.level,
+                            record_kind_name(a.kind, a.list), a.index, a.key, a.lo, a.hi, record_kind_name(b.kind, b.list), b.index, b.key, b.lo, b.hi, when().c_str());
+        }
+    }
 }
 
 void summary(int key, const LevelRegistry& r) {
     Log& log = g_log[key == KEY_BASE ? KEYS : key];
     if (log.passes != 0) {
+        if (g_index_dirty) index_rebuild();
         char kb[32];
-        std::printf("[ld-verify] level %d %s: %llu comparisons, %llu differing words, %llu run-time writes followed (%zu objects)\n", r.level, key_name(key, kb, sizeof kb),
-                    static_cast<unsigned long long>(log.passes), static_cast<unsigned long long>(log.diffs), static_cast<unsigned long long>(log.follows), log.followed.size());
+        size_t own = 0;
+        for (const Entry& e : g_index) own += e.key == key ? 1u : 0u;
+        std::printf("[ld-verify] level %d %s: %llu comparisons, %llu differing words, %llu run-time writes followed (%zu objects); index: %zu records here, %zu in all, "
+                    "%zu overlapping pairs, %llu table words looked up, %llu naming no record; all lookups %llu, misses %llu; the write facade %llu words, %llu with no "
+                    "record, %llu not held\n",
+                    r.level, key_name(key, kb, sizeof kb), static_cast<unsigned long long>(log.passes), static_cast<unsigned long long>(log.diffs),
+                    static_cast<unsigned long long>(log.follows), log.followed.size(), own, g_index.size(), g_overlaps.size(), static_cast<unsigned long long>(log.resolved),
+                    static_cast<unsigned long long>(log.unresolved), static_cast<unsigned long long>(g_stats.lookups), static_cast<unsigned long long>(g_stats.misses),
+                    static_cast<unsigned long long>(g_stats.writes), static_cast<unsigned long long>(g_stats.write_misses), static_cast<unsigned long long>(g_stats.write_unheld));
     }
     log = Log{};
 }
@@ -417,6 +581,7 @@ void drop_gone_twins() {
             summary(k, *g_twin[k]);
             g_twin[k].reset();
             g_twin_block[k] = 0;
+            g_index_dirty = true;
         }
 }
 
@@ -497,7 +662,11 @@ void registry_level_loaded(uint32_t gameplay) {
     const auto t0 = std::chrono::steady_clock::now();
     if (g_base != nullptr) summary(KEY_BASE, *g_base);
     drop_gone_twins();
+    // (the base's added paths live until ld_base_reset or their release: kept across the load)
+    std::vector<LevelRegistry::AddedPath> added;
+    if (g_base != nullptr) added = std::move(g_base->added);
     g_base.reset();
+    g_index_dirty = true;
     const uint32_t ram = ee_ram_size();
     if (gameplay == 0 || gameplay >= ram) return;
     // (the file the load has just unpacked: the bytes it lays out, read in place; a byte image, as on the disc)
@@ -513,6 +682,8 @@ void registry_level_loaded(uint32_t gameplay) {
     if (r->has_cameras && lwu(OV(0x0015ef54)) == r->cameras.size())
         for (size_t k = 0; k < r->cameras.size(); ++k) r->cameras[k].pvars = lwu(lwu(OV(0x0015ef50)) + static_cast<uint32_t>(k) * 0x20 + 0x1c);
     copy_zone_grid(lwu(OV(0x0015f600)), r->zones);
+    take_addresses(*r, engine_view());
+    r->added = std::move(added);
     g_base = std::move(r);
     g_base_ovl = ovl_reloc_level();
     const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count();
@@ -530,6 +701,7 @@ void registry_context_made(int key, int level, const std::vector<uint8_t>& gamep
     const auto t0 = std::chrono::steady_clock::now();
     if (g_twin[key] != nullptr) summary(key, *g_twin[key]);
     g_twin[key].reset();
+    g_index_dirty = true;
     auto r = std::make_unique<LevelRegistry>();
     std::string error;
     if (gameplay.empty() || !registry_parse(gameplay, level, *r, &error)) return;  // (no level data: leveldata.cpp's registry is empty too)
@@ -540,12 +712,329 @@ void registry_context_made(int key, int level, const std::vector<uint8_t>& gamep
     const uint32_t cams = lwu(block + R_CAMERAS);
     if (r->has_cameras && cams != 0 && lwu(block + R_CAMERAS + 4) == r->cameras.size())
         for (size_t k = 0; k < r->cameras.size(); ++k) r->cameras[k].pvars = lwu(cams + static_cast<uint32_t>(k) * 0x20 + 0x1c);
+    take_addresses(*r, block_view(block));
     g_twin[key] = std::move(r);
     g_twin_block[key] = block;
     g_twin_rails[key] = lwu(block + R_RAILS);
     const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count();
     report_build(*g_twin[key], key, us, error);
     if (g_ld_verify > 0) verify(*g_twin[key], block_view(block), key, false);
+}
+
+// orig: (host) see level_registry.h
+const char* record_kind_name(RecordKind k, int list) {
+    switch (k) {
+    case RecordKind::PATH: return "path";
+    case RecordKind::SPINE: return "rail spine";
+    case RecordKind::VOLUME: return "volume";
+    case RecordKind::SHAPE: return list == 0 ? "box" : list == 1 ? "sphere" : "cylinder";
+    case RecordKind::CAMERA: return "camera";
+    case RecordKind::RAIL: return "rail";
+    case RecordKind::ADDED_PATH: return "added path";
+    default: return "none";
+    }
+}
+
+// orig: (host) see level_registry.h
+RecordRef record_at(uint32_t ee) {
+    ++g_stats.lookups;
+    const Entry* e = index_find(ee);
+    if (e == nullptr) {
+        ++g_stats.misses;
+        return RecordRef{};
+    }
+    RecordRef r;
+    r.kind = e->kind;
+    r.key = e->key;
+    r.list = e->list;
+    r.index = e->index;
+    r.offset = ee - e->lo;
+    r.ee = e->lo;
+    r.size = e->hi - e->lo;
+    return r;
+}
+
+// orig: (host) see level_registry.h
+IndexStats index_stats() {
+    if (g_index_dirty) index_rebuild();
+    IndexStats s = g_stats;
+    s.records = g_index.size();
+    s.overlaps = g_overlaps.size();
+    return s;
+}
+
+// orig: (host) see level_registry.h
+void* record_slot(const RecordRef& r) {
+    LevelRegistry* g = reg_of(r.key);
+    if (g == nullptr || !r) return nullptr;
+    const uint32_t o = r.offset & ~3u;
+    const size_t i = static_cast<size_t>(r.index);
+    switch (r.kind) {
+    case RecordKind::PATH: return i < g->paths.size() ? path_slot(g->paths[i], o) : nullptr;
+    case RecordKind::SPINE: return i < g->rails.size() ? path_slot(g->rails[i].spine, o) : nullptr;
+    case RecordKind::ADDED_PATH:
+        for (LevelRegistry::AddedPath& a : g->added)
+            if (a.slot == r.index) return path_slot(a.path, o);
+        return nullptr;
+    case RecordKind::VOLUME:
+        if (i >= g->volumes.size()) return nullptr;
+        return o < 0x80 ? shape_slot(g->volumes[i].shape, o) : static_cast<void*>(&g->volumes[i].tail[(o - 0x80) / 4]);
+    case RecordKind::SHAPE: return i < g->shapes[r.list].size() ? shape_slot(g->shapes[r.list][i], o) : nullptr;
+    case RecordKind::CAMERA: {
+        if (i >= g->cameras.size()) return nullptr;
+        Camera& c = g->cameras[i];
+        if (o < 0xc) return &c.placement.position[o / 4];
+        if (o == 0xc) return &c.placement.type;
+        if (o < 0x1c) return &c.placement.rotation[(o - 0x10) / 4];
+        return &c.pvars;
+    }
+    case RecordKind::RAIL: {
+        if (i >= g->rails.size()) return nullptr;
+        Rail& rl = g->rails[i];
+        if (o < 0xc) return &rl.centre[o / 4];
+        if (o == 0xc) return &rl.radius;
+        if (o == 0x10) return i < g->spine_ee.size() ? &g->spine_ee[i] : nullptr;
+        if (o == 0x14) return &rl.loop;
+        return nullptr;  // (+0x18 / +0x1c: not held)
+    }
+    default: return nullptr;
+    }
+}
+
+// orig: (host) see level_registry.h
+void record_written(uint32_t a, const uint32_t* w, uint32_t n) {
+    for (uint32_t k = 0; k < n; ++k) {
+        ++g_stats.writes;
+        const RecordRef r = record_at(a + 4 * k);
+        if (!r) {
+            if (g_ld_verify > 0 && g_stats.write_misses < 8) std::printf("[ld-verify] the write facade: no record holds %08x (its EE word alone written)\n", a + 4 * k);
+            ++g_stats.write_misses;
+            continue;
+        }
+        void* slot = record_slot(r);
+        if (slot == nullptr) {
+            ++g_stats.write_unheld;
+            continue;
+        }
+        std::memcpy(slot, &w[k], 4);
+    }
+}
+
+// orig: (host) see level_registry.h
+void registry_context_dropped(int key) {
+    if (key < 0 || key >= KEYS || g_twin[key] == nullptr) return;
+    summary(key, *g_twin[key]);
+    g_twin[key].reset();
+    g_twin_block[key] = 0;
+    g_index_dirty = true;
+}
+
+// orig: (host) see level_registry.h
+void registry_path_added(int key, int32_t slot, uint32_t mem, uint32_t size) {
+    LevelRegistry* g = reg_of(key);
+    if (g == nullptr || mem == 0 || size < 0x10) return;
+    std::erase_if(g->added, [&](const LevelRegistry::AddedPath& a) { return a.slot == slot; });
+    g->added.push_back(LevelRegistry::AddedPath{slot, mem, read_path(mem, (size - 0x10) / 0x10)});
+    g_index_dirty = true;
+}
+
+// orig: (host) see level_registry.h
+void registry_path_released(int key, int32_t slot) {
+    LevelRegistry* g = reg_of(key);
+    if (g == nullptr) return;
+    if (std::erase_if(g->added, [&](const LevelRegistry::AddedPath& a) { return a.slot == slot; }) != 0) g_index_dirty = true;
+}
+
+// orig: (host) see level_registry.h
+void registry_base_added_reset() {
+    if (g_base == nullptr || g_base->added.empty()) return;
+    g_base->added.clear();
+    g_index_dirty = true;
+}
+
+// orig: (host) see level_registry.h
+void registry_paths_taken(int key, uint32_t table, uint32_t n) {
+    LevelRegistry* g = reg_of(key);
+    if (g == nullptr || key == KEY_BASE) return;
+    g->added.clear();  // (ld_paths_take frees them)
+    const uint32_t data = lwu(g_twin_block[key] + R_VOLUMES + 0x24);
+    g->has_paths = true;
+    g->paths.assign(n, PathSpline{});
+    g->path_ee.assign(n, 0);
+    for (uint32_t k = 0; k < n; ++k) {
+        const uint32_t a = lwu(table + 4 * k);
+        if (a != 0) g->paths[k] = read_path(a, points_of(a));
+        g->paths[k].offset = a - data;
+        g->path_ee[k] = a;
+    }
+    g_index_dirty = true;
+}
+
+// orig: (host) see level_registry.h
+void registry_path_set(uint32_t mem, const float (*pts)[3], int n) {
+    const RecordRef r = record_at(mem);
+    const uint32_t words = 1 + 4 * static_cast<uint32_t>(std::max(n, 0));
+    g_stats.writes += words;
+    PathSpline* p = nullptr;
+    if (r && r.offset == 0) {
+        LevelRegistry* g = reg_of(r.key);
+        if (r.kind == RecordKind::ADDED_PATH) {
+            for (LevelRegistry::AddedPath& a : g->added)
+                if (a.slot == r.index) p = &a.path;
+        } else if (r.kind == RecordKind::PATH) {
+            p = &g->paths[static_cast<size_t>(r.index)];
+        }
+    }
+    if (p == nullptr) {
+        g_stats.write_misses += words;
+        return;
+    }
+    p->count = n;
+    for (int k = 0; k < n; ++k) {
+        if (static_cast<size_t>(k) >= p->points.size()) {
+            g_stats.write_unheld += 4;
+            continue;
+        }
+        p->points[static_cast<size_t>(k)] = Vec4f{pts[k][0], pts[k][1], pts[k][2], 0.0f};
+    }
+}
+
+namespace {
+
+// A record's contents read again from EE at its own address
+void refresh(LevelRegistry& r) {
+    const auto at = [](const std::vector<uint32_t>& ee, size_t i) { return i < ee.size() ? ee[i] : 0u; };
+    const auto f = [](uint32_t a) { return std::bit_cast<float>(lwu(a)); };
+    const auto shape = [&](Shape& s, uint32_t a) {
+        for (uint32_t k = 0; k < 16; ++k) s.matrix[k] = f(a + 4 * k);
+        for (uint32_t k = 0; k < 16; ++k) s.to_unit[k] = f(a + 0x40 + 4 * k);
+    };
+    for (size_t i = 0; i < r.paths.size(); ++i)
+        if (const uint32_t a = at(r.path_ee, i); a != 0) {
+            const uint32_t off = r.paths[i].offset;
+            r.paths[i] = read_path(a, std::max(r.paths[i].points.size(), points_of(a)));
+            r.paths[i].offset = off;
+        }
+    for (LevelRegistry::AddedPath& p : r.added) p.path = read_path(p.ee, p.path.points.size());
+    for (size_t i = 0; i < r.volumes.size(); ++i)
+        if (const uint32_t a = at(r.volume_ee, i); a != 0) {
+            shape(r.volumes[i].shape, a);
+            for (uint32_t k = 0; k < 4; ++k) r.volumes[i].tail[k] = f(a + 0x80 + 4 * k);
+        }
+    for (uint32_t l = 0; l < 3; ++l)
+        for (size_t i = 0; i < r.shapes[l].size(); ++i)
+            if (const uint32_t a = at(r.shape_ee[l], i); a != 0) shape(r.shapes[l][i], a);
+    for (size_t i = 0; i < r.cameras.size(); ++i)
+        if (const uint32_t a = at(r.camera_ee, i); a != 0) {
+            LdCamera& p = r.cameras[i].placement;
+            for (uint32_t k = 0; k < 3; ++k) p.position[k] = f(a + 4 * k);
+            p.type = lw(a + 0xc);
+            for (uint32_t k = 0; k < 3; ++k) p.rotation[k] = f(a + 0x10 + 4 * k);
+            r.cameras[i].pvars = lwu(a + 0x1c);
+        }
+    for (size_t i = 0; i < r.rails.size(); ++i)
+        if (const uint32_t a = at(r.rail_ee, i); a != 0) {
+            Rail& rl = r.rails[i];
+            for (uint32_t k = 0; k < 3; ++k) rl.centre[k] = f(a + 4 * k);
+            rl.radius = f(a + 0xc);
+            rl.loop = lw(a + 0x14);
+            const uint32_t s = lwu(a + 0x10);
+            if (i < r.spine_ee.size()) {
+                const size_t keep = s == r.spine_ee[i] ? rl.spine.points.size() : 0;
+                r.spine_ee[i] = s;
+                if (s != 0) {
+                    const uint32_t off = rl.spine.offset;
+                    rl.spine = read_path(s, std::max(keep, points_of(s)));
+                    rl.spine.offset = off;
+                }
+            }
+        }
+}
+
+// The records' addresses and counts taken again from the tables of `v` (`rails`: the rail table's too), then their contents
+void pull_view(LevelRegistry& r, const View& v, bool rails) {
+    const uint32_t data = lwu(v.path_data);
+    if (r.has_paths) {
+        const uint32_t n = static_cast<uint32_t>(std::clamp<int32_t>(lw(v.path_count), 0, static_cast<int32_t>(LD_PATH_MAX)));
+        std::vector<PathSpline> paths(n);
+        std::vector<uint32_t> ee(n, 0);
+        for (uint32_t i = 0; i < n; ++i) {
+            ee[i] = lwu(v.path_table + 4 * i);
+            // (the points a record at the same address had: a mover may have lowered its count word)
+            if (i < r.paths.size() && i < r.path_ee.size() && r.path_ee[i] == ee[i]) paths[i].points.resize(r.paths[i].points.size());
+            paths[i].offset = ee[i] - data;
+        }
+        for (uint32_t i = 0; i < n; ++i)
+            if (ee[i] != 0) {
+                const uint32_t off = paths[i].offset;
+                paths[i] = read_path(ee[i], std::max(paths[i].points.size(), points_of(ee[i])));
+                paths[i].offset = off;
+            }
+        r.paths = std::move(paths);
+        r.path_ee = std::move(ee);
+    }
+    const auto run = [](std::vector<uint32_t>& out, uint32_t n, uint32_t base, uint32_t size) {
+        out.assign(n, 0);
+        if (base != 0)
+            for (uint32_t i = 0; i < n; ++i) out[i] = base + i * size;
+    };
+    const auto count = [](uint32_t a) { return static_cast<uint32_t>(std::clamp<int32_t>(lw(a), 0, 0x10000)); };
+    if (r.has_volumes) {
+        r.volumes.resize(count(v.vol_n));
+        run(r.volume_ee, static_cast<uint32_t>(r.volumes.size()), lwu(v.vol), 0x90);
+    }
+    for (uint32_t l = 0; l < 3; ++l)
+        if (r.has_shapes[l]) {
+            r.shapes[l].resize(count(v.shape_n[l]));
+            run(r.shape_ee[l], static_cast<uint32_t>(r.shapes[l].size()), lwu(v.shape[l]), 0x80);
+        }
+    if (r.has_cameras) {
+        r.cameras.resize(count(v.cam_n));
+        run(r.camera_ee, static_cast<uint32_t>(r.cameras.size()), lwu(v.cam), 0x20);
+    }
+    if (r.has_rails && rails) {
+        const uint32_t n = count(v.rail_n);
+        std::vector<uint32_t> old = r.spine_ee;
+        r.rails.resize(n);
+        run(r.rail_ee, n, lwu(v.rail), 0x20);
+        old.resize(n, 0);
+        r.spine_ee = std::move(old);
+    }
+    refresh(r);
+}
+
+}  // namespace
+
+// orig: (host) see level_registry.h
+void registry_pull_from_ee() {
+    int taken = -1;
+    if (g_ld_world) {
+        const int w = sections_world();
+        taken = w >= 0 ? ld_world_key(w) : -2;
+    }
+    if (g_base != nullptr) {
+        if (taken == -1 && base_current()) pull_view(*g_base, engine_view(), sections_current() <= 0);
+        else refresh(*g_base);
+    }
+    for (int k = 0; k < KEYS; ++k) {
+        if (g_twin[k] == nullptr) continue;
+        if (k == taken) {
+            pull_view(*g_twin[k], engine_view(), false);
+        } else {
+            const View bv = block_view(g_twin_block[k]);
+            pull_view(*g_twin[k], bv, lwu(bv.rail) == g_twin_rails[k]);
+        }
+    }
+    g_index_dirty = true;
+}
+
+// orig: (host) see level_registry.h
+void registry_verify_end() {
+    if (g_ld_verify <= 0) return;
+    if (g_base != nullptr) summary(KEY_BASE, *g_base);
+    for (int k = 0; k < KEYS; ++k)
+        if (g_twin[k] != nullptr) summary(k, *g_twin[k]);
+    std::fflush(stdout);
 }
 
 // orig: (host) see level_registry.h

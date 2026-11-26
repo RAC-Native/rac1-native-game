@@ -18,6 +18,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/shared_level_helpers.h>
 #include <game/ovl/veldin_mobys.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -101,12 +102,12 @@ void nov_class730_update_l1(uint32_t m) {
                 const uint32_t cpv = lwu(cam + 0x78);
                 sw(cpv + 0x2c, static_cast<uint32_t>(frame_scale_i(420)));
                 sb(cam + 0xbc, 1);
-                vec_clear(V(lvd::box(lvd::BOXES, lw(cpv + 0x24)) + 0x70));
+                lvd::set_shape_row(lvd::box(lvd::BOXES, lw(cpv + 0x24)) + 0x70, Vec4{0.0f, 0.0f, 0.0f, 0.0f});
                 vec_clear(V(cpv + 0x10));
                 const float pitch = pitch_to(m, lvd::box(lvd::BOXES, lw(cpv + 0x24)));
-                swc1(lvd::box(lvd::BOXES, lw(cpv + 0x24)) + 0x74, pitch);
+                lvd::set_shape_f32(lvd::box(lvd::BOXES, lw(cpv + 0x24)) + 0x74, pitch);
                 const float heading = heading_to(m, lvd::box(lvd::BOXES, lw(cpv + 0x24)));
-                swc1(lvd::box(lvd::BOXES, lw(cpv + 0x24)) + 0x78, heading);
+                lvd::set_shape_f32(lvd::box(lvd::BOXES, lw(cpv + 0x24)) + 0x78, heading);
             }
             sb(m + 0x20, 2);
             break;

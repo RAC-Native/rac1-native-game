@@ -22,6 +22,7 @@
 #include <game/ovl/shared_little.h>
 #include <game/ovl/sound_emitter.h>
 #include <game/port_stubs.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -416,13 +417,17 @@ void kerwan_class822_update_l3(uint32_t m) {
         camera_look_at(cpv, back + 0x10);
         const float behind = fpu_add(lwc1(pv + 0xdc), 4.0f);
         const uint32_t box = lvd::box(lvd::BOXES, lw(cpv + 0x28));
-        swc1(box + 0x30, fpu_mul(cos_vu(first_leg_heading(back)), -behind));
-        swc1(box + 0x34, fpu_mul(sin_vu(first_leg_heading(back)), -behind));
-        sw(box + 0x38, 0);
-        vec3_add(V(box + 0x30), V(box + 0x30), V(back + 0x10));
-        swc1(box + 0x38, fpu_add(lwc1(box + 0x38), u2f(0x402ccccdu)));
-        vec_clear(V(box + 0x70));
-        swc1(box + 0x78, first_leg_heading(back));
+        lvd::set_shape_f32(box + 0x30, fpu_mul(cos_vu(first_leg_heading(back)), -behind));
+        lvd::set_shape_f32(box + 0x34, fpu_mul(sin_vu(first_leg_heading(back)), -behind));
+        lvd::set_shape_word(box + 0x38, 0);
+        {
+            Vec4 at_back;
+            vec3_add(at_back, V(box + 0x30), V(back + 0x10));
+            lvd::set_shape_row(box + 0x30, at_back);
+        }
+        lvd::set_shape_f32(box + 0x38, fpu_add(lwc1(box + 0x38), u2f(0x402ccccdu)));
+        lvd::set_shape_row(box + 0x70, Vec4{0.0f, 0.0f, 0.0f, 0.0f});
+        lvd::set_shape_f32(box + 0x78, first_leg_heading(back));
         sw(cpv + 0x2c, static_cast<uint32_t>(frame_scale_i(0x2710)));
         lq_sq(at, back + 0x10);
         train_place_l3(m, at, first_leg_heading(back));

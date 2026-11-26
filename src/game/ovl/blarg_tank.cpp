@@ -16,6 +16,7 @@
 #include <game/ovl/shared_beam.h>
 #include <game/ovl/shared_little.h>
 #include <game/ovl/variants_l6.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -34,8 +35,8 @@ void tank_fade(int32_t t) {
 // the hero's place mark (the box pvar +0xc's centre) put where he stands, half a unit lower, and the mark used up
 void mark_hero_place(uint32_t pv) {
     const uint32_t b = lvd::box(lvd::BOXES, lw(pv + 0xc));
-    lq_sq(b + 0x30, HERO_POS);
-    swc1(b + 0x38, fpu_sub(lwc1(b + 0x38), 0.5f));
+    lvd::copy_shape_row(b + 0x30, HERO_POS);
+    lvd::set_shape_f32(b + 0x38, fpu_sub(lwc1(b + 0x38), 0.5f));
     sw(pv + 0xc, 0xffffffffu);
 }
 }  // namespace
@@ -123,7 +124,7 @@ void blg_class1083_update_l6(uint32_t m) {
             uid5_set_pvar_90(sp + 0x10);
             sw(pv + 0x18, 0);
             const uint32_t place = lvd::box(lvd::BOXES, lw(pv + 0x10));
-            swc1(place + 0x78, atan2_f(fpu_sub(lwc1(m + 0x10), lwc1(place + 0x30)), fpu_sub(lwc1(m + 0x14), lwc1(place + 0x34))));
+            lvd::set_shape_f32(place + 0x78, atan2_f(fpu_sub(lwc1(m + 0x10), lwc1(place + 0x30)), fpu_sub(lwc1(m + 0x14), lwc1(place + 0x34))));
             hero_place(place + 0x30, place + 0x70, 0x72, 0);
         }
         const int32_t t = lw(pv + 0x24);

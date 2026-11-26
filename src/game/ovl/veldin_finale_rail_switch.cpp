@@ -16,6 +16,7 @@
 #include <game/ovl/variants_l18.h>
 #include <game/ovl/veldin_finale_mobys.h>
 #include <game/ovl/veldin_finale_own.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -82,8 +83,8 @@ void vf_class582_update_l18(uint32_t m) {
                     ++pairs;
                     sw(slot + 4, twin);
                     swc1(slot + 0x24, lwc1(twin + 0xc));
-                    sw(twin + 0xc, 0);
-                    sw(rail + 0xc, 0);
+                    lvd::set_rail_reach_word(twin, 0);
+                    lvd::set_rail_reach_word(rail, 0);
                     break;
                 }
             }
@@ -102,11 +103,11 @@ void vf_class582_update_l18(uint32_t m) {
             const float to_first = vec2_distance(V(HERO + 0x80), V(path_first(lwu(slot))));
             const float to_twin = vec2_distance(V(HERO + 0x80), V(path_first(lwu(slot + 4))));
             if (to_first < to_twin) {
-                swc1(lwu(slot) + 0xc, lwc1(slot + 0x20));
-                sw(lwu(slot + 4) + 0xc, 0);
+                lvd::set_rail_reach(lwu(slot), lwc1(slot + 0x20));
+                lvd::set_rail_reach_word(lwu(slot + 4), 0);
             } else {
-                sw(lwu(slot) + 0xc, 0);
-                swc1(lwu(slot + 4) + 0xc, lwc1(slot + 0x24));
+                lvd::set_rail_reach_word(lwu(slot), 0);
+                lvd::set_rail_reach(lwu(slot + 4), lwc1(slot + 0x24));
             }
         }
         return;

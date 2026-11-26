@@ -24,6 +24,7 @@
 #include <game/ovl/shared_moby_helpers.h>
 #include <game/ovl/shared_path_links.h>
 #include <game/ovl/variants_l11.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -375,8 +376,8 @@ void pok_2d14b0_l11(uint32_t m) {
         lq_sq(m + 0x10, b + 0x30);
         lq_sq(m + 0x40, b + 0x70);
     };
-    auto lift = [&](uint32_t off, float by) { swc1(box(off) + 0x38, fpu_add(lwc1(box(off) + 0x38), by)); };
-    auto lower = [&](uint32_t off) { swc1(box(off) + 0x38, fpu_sub(lwc1(box(off) + 0x38), 500.0f)); };
+    auto lift = [&](uint32_t off, float by) { lvd::set_shape_f32(box(off) + 0x38, fpu_add(lwc1(box(off) + 0x38), by)); };
+    auto lower = [&](uint32_t off) { lvd::set_shape_f32(box(off) + 0x38, fpu_sub(lwc1(box(off) + 0x38), 500.0f)); };
     switch (lbu(m + 0x20)) {  // (jump table L11:0x21aa80)
     case 0: {  // (0x002d159c)
         talk_init(m, talk);

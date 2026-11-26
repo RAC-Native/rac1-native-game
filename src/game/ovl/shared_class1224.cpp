@@ -24,6 +24,7 @@
 #include <game/ovl/variants_l15.h>
 #include <game/ovl/variants_l17.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -119,7 +120,7 @@ void class1224_bolt(uint32_t m) {
     const uint32_t sp = ee_stack_alloc(0x560);
     const uint32_t points = sp + 0x10, drifts = sp + 0x210;  // (32 points and their drift, before smoothing)
     const uint32_t step = sp + 0x410, jitter = sp + 0x420, matrix = sp + 0x430;
-    swc1(volume(pv) + 0x3c, 1.0f);
+    lvd::set_shape_f32(volume(pv) + 0x3c, 1.0f);
     const int32_t lo = frame_scale_i(lw(tune + 4));
     const int32_t frames = rand_range(lo, frame_scale_i(lw(tune + 8)));
     sw(pv + 0x620, static_cast<uint32_t>(static_cast<int32_t>(static_cast<int16_t>(frames))));

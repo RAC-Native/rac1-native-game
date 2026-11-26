@@ -20,9 +20,10 @@
 //     level_setup_body points 0x15f600 at it; copied with its extent walked as zone_grid_cell walks it);
 //   - not held: the moby groups (stage 7, Q5), the rail records' +0x18 / +0x1c (the load leaves them as the memory had them).
 //
-// Run-time writes into the tables' contents (G0's census, RAC1_LD_VERIFY on the tours; level_registry.cpp lists each one and
-// its writer): the verify follows them as the game makes them (the native value refreshed from the game's write, counted
-// and logged once per object), every other difference is logged as one.
+// Run-time writes into the tables' contents: the shapes', volumes', cameras' and rails' writers write the native record beside
+// the EE word (level_write.h, the write facade); the paths' writers (G0's census, RAC1_LD_VERIFY on the tours; level_registry.cpp
+// lists each one) do not yet: the verify follows those (the native value refreshed from the game's write, counted and logged
+// once per object), every other difference is logged as one.
 #ifndef RAC1_GAME_LEVEL_LEVEL_REGISTRY_H
 #define RAC1_GAME_LEVEL_LEVEL_REGISTRY_H
 
@@ -91,6 +92,21 @@ struct LevelRegistry {
     uint32_t rail_data_size = 0;
     CamVolumeGrid cam_volumes;
     ZoneGrid zones;  // the base's only
+    // Each record's EE address (index for index with its container; 0: none), taken from the tables at the build (the base's
+    // from the engine's, an open-engine registry's from its block): a path's is its table entry, a rail spine's its rail's
+    // +0x10 word. A record never moves while its registry lives (the load and lay_out place it once; a repointed table names
+    // other records).
+    std::vector<uint32_t> path_ee, volume_ee, camera_ee, rail_ee, spine_ee;
+    std::array<std::vector<uint32_t>, 3> shape_ee;
+    // The paths the open engine adds past the level's own (leveldata.cpp's ld_path_reserve, filled by ld_path_set, given back
+    // by ld_path_release, ld_base_reset or ld_paths_take; the twin's taken table's paths): its table slot, its EE address, its
+    // contents (read from EE when it is added, then written beside the EE words by ld_path_set)
+    struct AddedPath {
+        int32_t slot = -1;
+        uint32_t ee = 0;
+        PathSpline path;
+    };
+    std::vector<AddedPath> added;
     // the host memory it holds (its containers' bytes)
     size_t host_bytes() const;
 };
@@ -106,10 +122,61 @@ void registry_level_loaded(uint32_t gameplay);
 // the one lay_out has just laid out into the session heap block `block`
 void registry_context_made(int key, int level, const std::vector<uint8_t>& gameplay, uint32_t block);
 
+// orig: (host) leveldata.cpp's hooks: registry `key`'s twin dropped (ld_registry_drop); a path of `size` bytes at EE `mem` added
+// at table slot `slot` of registry `key` (KEY_BASE: the base's) or given back; the base's added paths forgotten (ld_base_reset);
+// registry `key`'s paths made the `n` paths of the table at `table` (ld_paths_take: they become its records, read from EE)
+void registry_context_dropped(int key);
+void registry_path_added(int key, int32_t slot, uint32_t mem, uint32_t size);
+void registry_path_released(int key, int32_t slot);
+void registry_base_added_reset();
+void registry_paths_taken(int key, uint32_t table, uint32_t n);
+// orig: (host) ld_path_set's native side: the record at `mem` (an added path) takes the count `n` and the points `pts` (w 0), as
+// the EE words have just been written
+void registry_path_set(uint32_t mem, const float (*pts)[3], int n);
+
+// ---- the address index ----
+// One sorted table of every live record's EE bytes [ee, ee + size) over the base, the open-engine registries and their added
+// paths; rebuilt at the next lookup after a registry is built or dropped or a path added or given back (O(n log n), n the
+// records); a lookup is a binary search (O(log n)).
+enum class RecordKind : uint8_t { NONE, PATH, SPINE, VOLUME, SHAPE, CAMERA, RAIL, ADDED_PATH };
+struct RecordRef {
+    RecordKind kind = RecordKind::NONE;
+    int key = KEY_BASE;   // its registry (KEY_BASE the base's, else leveldata.cpp's key)
+    int list = 0;         // a shape's list (BOXES, SPHERES, CYLINDERS)
+    int32_t index = -1;   // its index in its container (an added path's: its table slot)
+    uint32_t offset = 0;  // the byte offset of the address in the record
+    uint32_t ee = 0;      // the record's EE address
+    uint32_t size = 0;    // its size in bytes
+    explicit operator bool() const { return kind != RecordKind::NONE; }
+};
+// orig: (host) the record whose bytes hold EE address `ee` (kind NONE: none)
+RecordRef record_at(uint32_t ee);
+// orig: (host) a record kind's name ("path", "rail spine", "volume", "box" ...)
+const char* record_kind_name(RecordKind k, int list = 0);
+// The index's counters (since the start)
+struct IndexStats {
+    size_t records = 0;          // records indexed now
+    size_t overlaps = 0;         // pairs of live records whose bytes overlap (an error)
+    uint64_t rebuilds = 0, lookups = 0, misses = 0;
+    uint64_t writes = 0, write_misses = 0, write_unheld = 0;  // the write facade's words: written, no record, a field not held
+};
+IndexStats index_stats();
+// orig: (host) the native slot of a record's word at `offset` (a 4-byte field of its container's element, read and written
+// with memcpy), nullptr when the registry does not hold it (a rail's +0x18 / +0x1c)
+void* record_slot(const RecordRef& r);
+// orig: (host) the write facade's native side (level_write.h): the native record's `n` words from EE address `a` take `w` (the
+// words the game has just stored there), each found through the index; no record: the EE store alone, counted
+void record_written(uint32_t a, const uint32_t* w, uint32_t n);
+// orig: (host) every live registry's records and added paths and the index rebuilt from the EE tables and records as they are
+// now (the oracle's import: its cases write the level data to EE)
+void registry_pull_from_ee();
+
 // ---- RAC1_LD_VERIFY ----
 // RAC1_LD_VERIFY=<n> (0 / unset off): every registry compared with its EE tables at its build and then every n game frames.
 extern int g_ld_verify;
 void registry_verify_frame_slow(uint64_t frame);
+// orig: (host) the game's end (orig_main.cpp): the summary lines of the registries still live (RAC1_LD_VERIFY on)
+void registry_verify_end();
 // orig: (host) once a game frame at its boundary (orig_main.cpp, beside session_frame): the comparison when it is due
 inline void registry_verify_frame(uint64_t frame) {
     if (g_ld_verify > 0) registry_verify_frame_slow(frame);
@@ -121,6 +188,7 @@ struct RegistryDiff {
     int32_t index = 0;   // the object's index (-1 its count / pointer)
     uint32_t offset = 0; // the byte offset in its record
     uint32_t native = 0, ee = 0;
+    uint32_t addr = 0;   // the EE address compared (0: a count or a value not read at one address)
     std::string text() const;
 };
 // orig: (host) the base registry compared with the engine's EE tables (OV()) word by word: the differences (at most `max` kept,

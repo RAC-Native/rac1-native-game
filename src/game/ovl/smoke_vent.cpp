@@ -8,6 +8,7 @@
 #include <game/level/level_data.h>
 #include <game/ovl/ovl_common.h>
 #include <game/port_stubs.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -140,7 +141,7 @@ void smoke_vent_update(uint32_t m) {
             sb(OV(0x001d2860) + static_cast<uint32_t>(i), static_cast<uint32_t>(r));
             wisp_init_hover(m, i);
         }
-        swc1(lvd::box(lvd::BOXES, lw(pv + 4)) + 0x3c, 1.0f);
+        lvd::set_shape_f32(lvd::box(lvd::BOXES, lw(pv + 4)) + 0x3c, 1.0f);
         sw(pv + 0x38, (lbu(pv + 0x3e) << 16) | (lbu(pv + 0x3d) << 8) | lbu(pv + 0x3c));
         return;
     }

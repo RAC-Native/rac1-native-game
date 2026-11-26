@@ -8,6 +8,7 @@
 #include <game/enhance/session.h>
 #include <game/enhance/session_runtime.h>
 #include <game/level/level_registry.h>
+#include <game/level/level_write.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <runtime/kernel/ee_memory.h>
@@ -222,6 +223,7 @@ void ld_registry_drop(int level) {
     if (g_taken == level) ld_engine_restore();  // (a world section's: the engine's objects back first)
     session_heap_free_owner(owner(level));
     g_reg[level].reset();
+    lvd::registry_context_dropped(level);  // (stage 5) its native twin and its records in the address index
     for (uint8_t& l : g_ld_class_level)
         if (l == level + 1) l = 0;
 }
@@ -240,6 +242,7 @@ void ld_base_reset() {
     if (session_memory_on()) session_heap_free_owner(BASE_OWNER);
     g_base_added.clear();
     g_base_free.clear();
+    lvd::registry_base_added_reset();  // (stage 5) the base registry's added paths
 }
 
 // orig: (host) see leveldata.h
@@ -262,6 +265,7 @@ int32_t ld_path_reserve(int level, int n, uint32_t* mem) {
         g_base_added[slot] = a;
         sw(PATH_TABLE + static_cast<uint32_t>(slot) * 4, a);
         *mem = a;
+        lvd::registry_path_added(lvd::KEY_BASE, slot, a, size);  // (stage 5) a record of the base registry
         return slot;
     }
     if (!ld_registry_has(level)) {  // (the base's own objects)
@@ -271,6 +275,7 @@ int32_t ld_path_reserve(int level, int n, uint32_t* mem) {
         g_base_mem += size;
         for (uint32_t k = 0; k < size; k += 4) sw(*mem + k, 0);
         sw(PATH_TABLE + static_cast<uint32_t>(slot) * 4, *mem);
+        lvd::registry_path_added(lvd::KEY_BASE, slot, *mem, size);  // (stage 5) a record of the base registry
         return slot;
     }
     Registry& R = *g_reg[level];
@@ -290,6 +295,7 @@ int32_t ld_path_reserve(int level, int n, uint32_t* mem) {
     R.added[slot] = a;
     sw(R.block + R_PATHS + static_cast<uint32_t>(slot) * 4, a);
     *mem = a;
+    lvd::registry_path_added(level, slot, a, size);  // (stage 5) a record of its native twin
     return slot;
 }
 
@@ -302,6 +308,7 @@ void ld_path_release(int level, int32_t index) {
         g_base_added.erase(it);
         sw(PATH_TABLE + static_cast<uint32_t>(index) * 4, 0);
         g_base_free.push_back(index);
+        lvd::registry_path_released(lvd::KEY_BASE, index);
         return;
     }
     Registry& R = *g_reg[level];
@@ -311,6 +318,7 @@ void ld_path_release(int level, int32_t index) {
     R.added.erase(it);
     sw(R.block + R_PATHS + static_cast<uint32_t>(index) * 4, 0);
     R.free_slots.push_back(index);
+    lvd::registry_path_released(level, index);
 }
 
 // orig: (host) see leveldata.h
@@ -318,6 +326,7 @@ void ld_path_set(uint32_t mem, const float (*pts)[3], int n) {
     sw(mem, static_cast<uint32_t>(n));
     for (int k = 0; k < n; ++k)
         for (uint32_t c = 0; c < 4; ++c) swc1(mem + 0x10 + 0x10 * static_cast<uint32_t>(k) + 4 * c, c < 3 ? pts[k][c] : 0.0f);
+    lvd::registry_path_set(mem, pts, n);  // (stage 5) the same words into its native record
 }
 
 // orig: (host) see leveldata.h
@@ -593,6 +602,7 @@ bool ld_paths_take(int level, uint32_t table, uint32_t n) {
     R.free_slots.clear();
     for (const auto& [i, a] : R.added) session_heap_free(a);
     R.added.clear();
+    lvd::registry_paths_taken(level, table, n);  // (stage 5) the table's paths its native twin's records
     return true;
 }
 
@@ -604,7 +614,7 @@ void ld_registry_move(int level, const float d[3]) {
     for (uint32_t l = 0; l < 3; ++l) {  // (the three lists of 0x80-byte volumes: their centre at +0x30)
         const uint32_t a = lwu(r + R_VOLUMES + 8 + 8 * l), c = lwu(r + R_VOLUMES + 12 + 8 * l);
         for (uint32_t k = 0; a != 0 && k < c; ++k, ++n)
-            for (uint32_t i = 0; i < 3; ++i) swc1(a + k * 0x80 + 0x30 + 4 * i, lwc1(a + k * 0x80 + 0x30 + 4 * i) + d[i]);
+            lvd::move_shape_centre(a + k * 0x80, d);  // (the EE words and the native record)
     }
     std::printf("[ld] level %d's registry: its %zu volumes moved by %.2f %.2f %.2f\n", level, n, d[0], d[1], d[2]);
 }

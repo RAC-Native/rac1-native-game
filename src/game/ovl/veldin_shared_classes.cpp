@@ -24,6 +24,7 @@
 #include <game/ovl/shared_helpers.h>
 #include <game/ovl/veldin_mobys.h>
 #include <game/ovl/vendor_tr.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -588,6 +589,7 @@ void infobot_update_tr(uint32_t m) {
             V(sp + 0x10) = Vec4{0.0f, 0.0f, 0.0f, 0.0f};
             const uint32_t box_ctr = lvd::box(lvd::BOXES, lw(pv + 0x50)) + 0x30;
             sub_00260400(m, linked, box_ctr, sp + 0x10, box_ctr, sp + 0x10);
+            lvd::shape_row_written(box_ctr);  // (the box's centre, moved with the moby it rides: into the native record too)
             const uint32_t box_ctr2 = lvd::box(lvd::BOXES, lw(pv + 0x50)) + 0x30;
             vec3_add(V(sp + 0x20), V(sp), V(box_ctr2));
             lq_sq(m + 0x10, sp + 0x20);

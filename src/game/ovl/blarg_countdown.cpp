@@ -18,6 +18,7 @@
 #include <game/ovl/shared_little.h>
 #include <game/ovl/sound_emitter.h>
 #include <game/ovl/variants_l6.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -206,7 +207,7 @@ void blg_class1108_update_l6(uint32_t m) {
         group_bring_back_l6(lw(pv + 8));
         moby_state_hook(table_moby(lw(pv + 0x20)), 3u);
         const uint32_t raised = lvd::box(lvd::BOXES, lw(pv + 0xc));
-        swc1(raised + 0x38, fpu_add(lwc1(raised + 0x38), 10.0f));
+        lvd::set_shape_f32(raised + 0x38, fpu_add(lwc1(raised + 0x38), 10.0f));
         // the camera at the path's point 1 looking at its point 0
         const uint32_t path = lvd::path(lw(pv + 0x24));
         lq_sq(p0, path + 0x20);
