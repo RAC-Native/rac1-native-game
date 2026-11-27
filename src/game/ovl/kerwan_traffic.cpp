@@ -13,6 +13,7 @@
 // speed's sway (its size, its rate in degrees, its phase), +0x140 / +0x144 the bank's sway, +0x148 the horn's wait (-1: the
 // first, +0x14c + up to +0x14e), +0x14a the time gone after a hit, +0x150 the engine sound's slot.
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/kerwan_mobys.h>
@@ -379,7 +380,7 @@ void kerwan_class75_update_l3(uint32_t m) {
         sh(m + 0x34, lhu(m + 0x34) | 0x1000u);
         if (lw(fol + 0x14) != -1) {
             const uint32_t path = lvd::path(lw(fol + 0x14));
-            if (vec3_distance(V(path + 0x10), V(path + static_cast<uint32_t>(lw(path)) * 16)) < 0.5f) sw(path, static_cast<uint32_t>(lw(path) - 1));
+            if (vec3_distance(V(path + 0x10), V(path + static_cast<uint32_t>(lw(path)) * 16)) < 0.5f) lvd::set_path_count(path, static_cast<uint32_t>(lw(path) - 1));
         }  // (else a debug message naming the moby and its class)
         sb(m + 0x30, 0xff);
         sb(pv + 0x2b, 1);

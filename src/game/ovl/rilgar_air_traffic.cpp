@@ -11,6 +11,7 @@
 #include <game/ovl/rilgar_mobys.h>
 #include <game/ovl/rilgar_part2.h>
 #include <game/ovl/variants_l5.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -86,22 +87,22 @@ void ril_class79_update_l5(uint32_t m) {
         if (lwc1(path + 0x1c) == -1.0f) {  // the path's turns not worked out yet
             const int32_t last = lw(path) - 1;
             float sharpest = 0.0f;
-            swc1(point(0) + 0xc, angle_sub(heading(0, 1), heading(last, 0)));
+            lvd::set_path_f32(point(0) + 0xc, angle_sub(heading(0, 1), heading(last, 0)));
             int32_t i = 1;
             for (; i < lw(path) - 1; ++i) {
                 const float in = heading(i - 1, i);
                 const float turn = angle_sub(heading(i, i + 1), in);
-                swc1(point(i) + 0xc, turn);
+                lvd::set_path_f32(point(i) + 0xc, turn);
                 if (sharpest < abs_f(turn)) sharpest = abs_f(lwc1(point(i) + 0xc));
             }
             const int32_t n = lw(path);
             {
                 const float in = heading(n - 2, n - 1);
-                swc1(point(n - 1) + 0xc, angle_sub(heading(n - 1, 0), in));
+                lvd::set_path_f32(point(n - 1) + 0xc, angle_sub(heading(n - 1, 0), in));
             }
             const float scale = fpu_div(u2f(0x3f860a92u), sharpest);  // (60 degrees over the sharpest)
             if (lw(path) > 0)
-                for (int32_t k = 0; k < lw(path); ++k) swc1(point(k) + 0xc, fpu_mul(lwc1(point(k) + 0xc), scale));
+                for (int32_t k = 0; k < lw(path); ++k) lvd::set_path_f32(point(k) + 0xc, fpu_mul(lwc1(point(k) + 0xc), scale));
         }
         swc1(pv + 0xc, vec3_distance(V(path + 0x10), V(path + 0x20)));
         sb(m + 0x20, 1);

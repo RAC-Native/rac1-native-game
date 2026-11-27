@@ -24,6 +24,7 @@
 #include <game/ovl/variants_l7.h>
 #include <game/ovl/walker.h>
 #include <game/ovl/weapons.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -1066,7 +1067,7 @@ void umb_class1106_update_l7(uint32_t m) {
                 for (int32_t i = 0; i < n; ++i) {
                     const uint32_t cur = p + static_cast<uint32_t>(i << 4);
                     const uint32_t nxt = p + static_cast<uint32_t>(ee_rem(i + 1, n) << 4);
-                    swc1(cur + 0x1c, vec3_distance(V(cur + 0x10), V(nxt + 0x10)));
+                    lvd::set_path_f32(cur + 0x1c, vec3_distance(V(cur + 0x10), V(nxt + 0x10)));
                     const uint32_t p_again = lvd::path(lw(pv + 0x18c)) + static_cast<uint32_t>(i << 4);
                     swc1(pv + 0x190, fpu_add(lwc1(pv + 0x190), lwc1(p_again + 0x1c)));
                 }
@@ -1077,7 +1078,7 @@ void umb_class1106_update_l7(uint32_t m) {
                     const int32_t n = lw(p);
                     const uint32_t cur = p + static_cast<uint32_t>(i << 4);
                     const uint32_t nxt = p + static_cast<uint32_t>(ee_rem(i + 1, n) << 4);
-                    swc1(cur + 0x1c, vec3_distance(V(cur + 0x10), V(nxt + 0x10)));
+                    lvd::set_path_f32(cur + 0x1c, vec3_distance(V(cur + 0x10), V(nxt + 0x10)));
                 }
             }
             if (lw(pv + 0x188) != -1) {

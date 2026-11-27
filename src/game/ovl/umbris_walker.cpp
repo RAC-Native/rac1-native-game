@@ -12,6 +12,7 @@
 // rates +0x120 / +0x124, its joint node +0x150.
 #include <game/collision/collision.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
@@ -150,7 +151,7 @@ void umb_30eb38_l7(uint32_t path) {
     if (path == 0) return;
     for (int32_t i = 0; i < lw(path); ++i) {
         const int32_t next = ee_rem(i + 1, lw(path));
-        swc1(path + (static_cast<uint32_t>(i) << 4) + 0x1c,
+        lvd::set_path_f32(path + (static_cast<uint32_t>(i) << 4) + 0x1c,
              vec3_distance(V(path + (static_cast<uint32_t>(i) << 4) + 0x10), V(path + (static_cast<uint32_t>(next) << 4) + 0x10)));
     }
 }

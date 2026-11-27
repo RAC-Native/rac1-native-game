@@ -29,6 +29,7 @@
 #include <game/ovl/variants_l15.h>
 #include <game/ovl/weapons.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -244,7 +245,7 @@ void class28_path_lengths(uint32_t m) {
     for (int32_t i = 0; i < lw(path); ++i) {
         const int32_t next = ee_rem(i + 1, lw(path));
         const uint32_t at = path + 0x10 + (static_cast<uint32_t>(i) << 4);
-        swc1(at + 0xc, vec3_distance(V(at), V(path + 0x10 + (static_cast<uint32_t>(next) << 4))));
+        lvd::set_path_f32(at + 0xc, vec3_distance(V(at), V(path + 0x10 + (static_cast<uint32_t>(next) << 4))));
     }
 }
 

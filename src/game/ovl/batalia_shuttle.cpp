@@ -4,6 +4,7 @@
 // Header batalia_own.h; registered in batalia_mobys.cpp. Addresses are level 8's (`orig: L8:`); its own data is L8_ADDR,
 // the base ELF's are bare.
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/batalia_own.h>
 #include <game/ovl/enemy_749.h>
@@ -50,6 +51,7 @@ void shuttle_corners_l8(uint32_t m) {
         const uint32_t pt = path_pt(path, k);
         mat3_transform(V(pt), V(L8_ADDR(0x001db280) + static_cast<uint32_t>(k) * 0x10), M(m + 0xc0));
         vec3_add(V(pt), V(pt), V(m + 0x10));
+        lvd::path_rows_written(pt);
     }
 }
 

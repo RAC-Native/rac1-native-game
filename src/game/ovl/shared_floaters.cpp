@@ -14,6 +14,7 @@
 #include <game/ovl/variants_l16.h>
 #include <game/ovl/variants_l5.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -77,6 +78,7 @@ void floater_lay_path(uint32_t m, uint32_t path) {
         const uint32_t at = p + 0x10 + k * 0x10;
         mat3_transform(V(at), V(offsets + k * 0x10), M(m + 0xc0));
         vec3_add(V(at), V(at), V(m + 0x10));
+        lvd::path_rows_written(at);
     }
     sh(0x0013f350 + 0x22da, lhu(pv + path));
 }

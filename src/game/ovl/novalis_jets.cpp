@@ -13,6 +13,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/port_stubs.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -394,7 +395,7 @@ void jet_bomber_update_l1(uint32_t m) {
                 swc1(pv + 0xfc, lwc1(pv + 0xfc) + lwc1(pv + 0xfc));
                 int32_t s2 = 0;
                 const float dd = vec3_distance(V(path + 0x10), V(path + (static_cast<uint32_t>(lw(path)) << 4)));
-                if (dd < u2f(0x3f000000u)) sw(path, static_cast<uint32_t>(lw(path) - 1));
+                if (dd < u2f(0x3f000000u)) lvd::set_path_count(path, static_cast<uint32_t>(lw(path) - 1));
                 if (lw(path) > 0) {
                     int32_t s0 = 0;
                     if (lwc1(path + 0x1c) == f20) {

@@ -5,6 +5,7 @@
 // The pvars: the current's velocity +0 (z kept 0), its path +0x20 (-1 none), its top speed +0x24, its reach +0x28, the hero
 // pulled toward the path's line +0x2c, the path's lengths set +0x2e.
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/novalis_mobys2.h>
 #include <game/ovl/ovl.h>
@@ -59,10 +60,10 @@ void nov_class613_update_l1(uint32_t m) {
         int32_t i = 0;
         for (; i < lw(path) - 1; ++i) {
             const uint32_t p = path + 0x10 + static_cast<uint32_t>(i) * 0x10;
-            swc1(p + 0xc, vec3_distance(V(p), V(p + 0x10)));
+            lvd::set_path_f32(p + 0xc, vec3_distance(V(p), V(p + 0x10)));
         }
         const uint32_t last = path + 0x10 + static_cast<uint32_t>(i) * 0x10;
-        swc1(last + 0xc, vec3_distance(V(last), V(path + 0x10)));
+        lvd::set_path_f32(last + 0xc, vec3_distance(V(last), V(path + 0x10)));
         sb(m + 0x30, 0xff);
     }
     if (!hero_in_water()) return;

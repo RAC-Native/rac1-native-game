@@ -7,6 +7,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -14,7 +15,7 @@ namespace rac1 {
 void path_links_build(uint32_t walls, int32_t count, uint32_t path) {
     const uint32_t p = lvd::path(path);
     auto point = [p](int32_t i) { return p + 0x10 + (static_cast<uint32_t>(i) << 4); };
-    for (int32_t i = 0; i < lw(p); ++i) sw(point(i) + 0xc, 0);
+    for (int32_t i = 0; i < lw(p); ++i) lvd::set_path_word(point(i) + 0xc, 0);
     for (int32_t a = 0; a < lw(p); ++a) {
         for (int32_t b = a + 1; b < lw(p); ++b) {
             bool blocked = false;
@@ -25,8 +26,8 @@ void path_links_build(uint32_t walls, int32_t count, uint32_t path) {
                 }
             }
             if (blocked) continue;
-            sw(point(a) + 0xc, lwu(point(a) + 0xc) | (1u << (b & 31)));
-            sw(point(b) + 0xc, lwu(point(b) + 0xc) | (1u << (a & 31)));
+            lvd::set_path_word(point(a) + 0xc, lwu(point(a) + 0xc) | (1u << (b & 31)));
+            lvd::set_path_word(point(b) + 0xc, lwu(point(b) + 0xc) | (1u << (a & 31)));
         }
     }
 }

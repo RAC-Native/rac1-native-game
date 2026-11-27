@@ -4,6 +4,7 @@
 // from anything but class 0x283 reaches it, or when the hero touches it (hero +0x23c), a bigger blast for the latter.
 // The set-up measures the path's segments into the points' w lanes.
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/oltanis_mobys.h>
 #include <game/ovl/ovl.h>
@@ -38,7 +39,7 @@ void olt_class643_update_l14(uint32_t m) {
         }
         for (int32_t k = 0; k < lw(path); ++k) {  // each segment's length into its first point's w lane (the path loops)
             const int32_t next = ee_rem(k + 1, lw(path));
-            swc1(path + 0x1cu + (static_cast<uint32_t>(k) << 4),
+            lvd::set_path_f32(path + 0x1cu + (static_cast<uint32_t>(k) << 4),
                  vec3_distance(V(path + 0x10u + (static_cast<uint32_t>(k) << 4)), V(path + 0x10u + (static_cast<uint32_t>(next) << 4))));
         }
         sw(pv + 0x64, 0);

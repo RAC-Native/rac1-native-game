@@ -20,6 +20,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -41,7 +42,7 @@ void measure_path(uint32_t path, uint32_t total) {
     for (int32_t k = 0; k < lw(path); ++k) {
         const int32_t next = ee_rem(k + 1, lw(path));
         const float len = vec3_distance(V(path + (static_cast<uint32_t>(k) << 4) + 0x10), V(path + (static_cast<uint32_t>(next) << 4) + 0x10));
-        swc1(path + (static_cast<uint32_t>(k) << 4) + 0x1c, len);
+        lvd::set_path_f32(path + (static_cast<uint32_t>(k) << 4) + 0x1c, len);
         if (k < lw(path) - 1) swc1(total, fpu_add(lwc1(total), len));
     }
 }
@@ -131,7 +132,7 @@ void cam_type19_init(uint32_t cam) {
             }
             const int32_t next = ee_rem(k + 1, lw(path));
             const float len = vec3_distance(V(pt + 0x10), V(path + (static_cast<uint32_t>(next) << 4) + 0x10));
-            swc1(pt + 0x1c, len);
+            lvd::set_path_f32(pt + 0x1c, len);
             if (k < lw(path) - 1) swc1(blk + 8, fpu_add(lwc1(blk + 8), len));
         }
     }

@@ -22,6 +22,7 @@
 #include <game/ovl/variants_l18.h>
 #include <game/ovl/weapons.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -90,10 +91,10 @@ void class1356_release(uint32_t drone, int32_t frames) {
 void class1356_path_headings(uint32_t path) {
     for (int32_t i = 0; i < lw(path) - 1; ++i) {
         const uint32_t p = path + 0x10 + (static_cast<uint32_t>(i) << 4);
-        swc1(p + 0xc, atan2_f(fpu_sub(lwc1(p + 0x10), lwc1(p)), fpu_sub(lwc1(p + 0x14), lwc1(p + 4))));
+        lvd::set_path_f32(p + 0xc, atan2_f(fpu_sub(lwc1(p + 0x10), lwc1(p)), fpu_sub(lwc1(p + 0x14), lwc1(p + 4))));
     }
     const int32_t n = lw(path);
-    if (n >= 2) swc1(path + (static_cast<uint32_t>(n - 1) << 4) + 0x1c, lwc1(path + (static_cast<uint32_t>(n - 2) << 4) + 0x1c));
+    if (n >= 2) lvd::set_path_f32(path + (static_cast<uint32_t>(n - 1) << 4) + 0x1c, lwc1(path + (static_cast<uint32_t>(n - 2) << 4) + 0x1c));
 }
 
 // orig: L16:0x002e3050 L18:0x002f1698

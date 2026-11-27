@@ -4,6 +4,7 @@
 // base ELF bare. Registered in hoven_mobys.cpp.
 #include <game/collision/collision.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/hoven_mobys.h>
 #include <game/ovl/ovl.h>
@@ -42,7 +43,7 @@ void gunship_path_lengths(int32_t path_idx) {
         const int32_t next = ee_rem(i + 1, n);
         const float d = vec3_distance(V(path + 0x10 + (static_cast<uint32_t>(i) << 4)),
                                       V(path + 0x10 + (static_cast<uint32_t>(next) << 4)));
-        swc1(path + 0x1c + (static_cast<uint32_t>(i) << 4), d);
+        lvd::set_path_f32(path + 0x1c + (static_cast<uint32_t>(i) << 4), d);
     }
 }
 

@@ -15,6 +15,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants_l14.h>
 #include <game/ovl/weapons.h>
+#include <game/level/level_write.h>
 
 #include <cstdint>
 
@@ -99,7 +100,7 @@ void class8_paths_init(uint32_t m) {
             const uint32_t p0 = path + 0x10u + (static_cast<uint32_t>(i) << 4);
             const uint32_t p1 = path + 0x10u + (static_cast<uint32_t>(next) << 4);
             const float d = vec3_distance(V(p0), V(p1));
-            swc1(path + 0x1cu + (static_cast<uint32_t>(i) << 4), d);
+            lvd::set_path_f32(path + 0x1cu + (static_cast<uint32_t>(i) << 4), d);
             if (total_out != 0 && i != lw(path) - 1) {
                 swc1(total_out, fpu_add(lwc1(total_out), d));
             }

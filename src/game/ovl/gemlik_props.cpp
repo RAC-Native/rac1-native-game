@@ -23,6 +23,7 @@
 // frames, then state 2: it walks the path to its end (a quarter a frame), state 3 there.
 #include <game/collision/collision.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/gemlik_mobys.h>
@@ -294,7 +295,7 @@ void gml_class1403_update_l13(uint32_t m) {
             for (int32_t i = 0; i < lw(path); ++i) {
                 const uint32_t p = path + 0x10 + (static_cast<uint32_t>(i) << 4);
                 const int32_t next = ee_rem(i + 1, lw(path));
-                swc1(p + 0xc, vec3_distance(V(p), V(path + 0x10 + (static_cast<uint32_t>(next) << 4))));
+                lvd::set_path_f32(p + 0xc, vec3_distance(V(p), V(path + 0x10 + (static_cast<uint32_t>(next) << 4))));
             }
         }
         sw(pv + 0x8, 0);

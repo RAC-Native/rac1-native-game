@@ -22,6 +22,7 @@
 // hero, 6 gloat, 7 dying, 8 crash, 9 reset.
 #include <game/collision/collision.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
@@ -923,7 +924,7 @@ void gml_class388_update_l13(uint32_t m) {
         sw(pv + 0xec, m);
         for (uint32_t k = 0; k < 5; ++k) {  // a path that closes on its first point loses its last
             const uint32_t path = lvd::path(lw(pv + 0xb0 + k * 4));
-            if (vec3_distance(V(path + 0x10), V(path + (static_cast<uint32_t>(lw(path)) << 4))) < 0.5f) sw(path, lwu(path) - 1u);
+            if (vec3_distance(V(path + 0x10), V(path + (static_cast<uint32_t>(lw(path)) << 4))) < 0.5f) lvd::set_path_count(path, lwu(path) - 1u);
         }
         swc1(pv + 0xac, fpu_mul(fpu_mul(dt(), 42.0f), 0.1f));
         swc1(pv + 0x70, fpu_mul(cos_vu(lwc1(m + 0x48)), lwc1(pv + 0xac)));

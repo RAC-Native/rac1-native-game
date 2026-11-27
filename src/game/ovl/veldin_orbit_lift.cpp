@@ -14,6 +14,7 @@
 // with the hero (his path laid out), 4 / 5 up / down without him, 6 / 7 waiting below / above (the lights pulse; the hero
 // on it at its centre starts it, the hero near below / above calls it), 8 / 9 stopped (until the hero leaves it).
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/ovl.h>
@@ -75,6 +76,7 @@ void vo_2eea70_l17(uint32_t m) {
         mat3_transform(V(pt), V(tmpl), M(on + 0xc0));
         vec3_add(V(pt), V(pt), V(on + 0x10));
         swc1(pt + 0xc, 1.0f);
+        lvd::path_rows_written(pt);
     }
     sh(P + 0x22da, lhu(pv + 0x80));
 }

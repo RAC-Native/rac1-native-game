@@ -27,6 +27,7 @@
 #include <game/ovl/variants_l7.h>
 #include <game/ovl/weapons.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -52,7 +53,7 @@ uint32_t moby_at(int32_t i) { return lwu(OV(0x0015ffd8)) + (static_cast<uint32_t
 void segment_lengths(uint32_t path) {
     for (int32_t i = 0; i < lw(path) - 2; ++i) {
         const uint32_t p = path + 0x10 + static_cast<uint32_t>(i) * 0x10;
-        swc1(p + 0xc, vec3_distance(V(p), V(p + 0x10)));
+        lvd::set_path_f32(p + 0xc, vec3_distance(V(p), V(p + 0x10)));
     }
 }
 // a pause (state 4) before the state `next` (+0xbc)

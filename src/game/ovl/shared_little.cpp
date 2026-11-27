@@ -14,6 +14,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants_l3.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -198,7 +199,7 @@ void blarg_class1051_switch(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
     hero_set_state(0, 0);
     const uint32_t path = lvd::path(lwu(pv + 0xec));
-    sw(path, lwu(pv + 0x114));
+    lvd::set_path_count(path, lwu(pv + 0x114));
     hydro_2eac18(2);
 }
 
@@ -289,7 +290,7 @@ void path_mover_start(uint32_t m) {
     const uint32_t path = lvd::path(lwu(pv + 0x68));
     for (int32_t i = 0; i < lw(path) - 1; ++i) {
         const uint32_t at = path + 0x10 + static_cast<uint32_t>(i) * 0x10;
-        swc1(at + 0xc, vec3_distance(V(at), V(at + 0x10)));
+        lvd::set_path_f32(at + 0xc, vec3_distance(V(at), V(at + 0x10)));
     }
     sw(pv + 0x60, 0);
     sw(pv + 0x64, 0);

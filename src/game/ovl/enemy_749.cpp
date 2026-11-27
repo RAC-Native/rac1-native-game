@@ -13,6 +13,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/port_stubs.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -344,7 +345,7 @@ void moby_33e_wake(uint32_t m) {
     if (lw(pv) == -1) return;
     for (int32_t i = 0; i < lw(lvd::path(lw(pv))); ++i) {
         const uint32_t e = lvd::path(lw(pv)) + static_cast<uint32_t>(i) * 0x10;
-        if (lwc1(e + 0x1c) == lwc1(pv + 4)) sw(e + 0x1c, 0);
+        if (lwc1(e + 0x1c) == lwc1(pv + 4)) lvd::set_path_word(e + 0x1c, 0);
     }
 }
 

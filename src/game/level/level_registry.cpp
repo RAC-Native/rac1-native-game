@@ -47,10 +47,6 @@ uint32_t le32(const std::vector<uint8_t>& b, uint32_t off) {
     return static_cast<uint32_t>(b[off]) | static_cast<uint32_t>(b[off + 1]) << 8 | static_cast<uint32_t>(b[off + 2]) << 16 |
            static_cast<uint32_t>(b[off + 3]) << 24;
 }
-void put_le32(std::vector<uint8_t>& b, uint32_t off, uint32_t v) {
-    if (off > b.size() || b.size() - off < 4) return;
-    for (uint32_t k = 0; k < 4; ++k) b[off + k] = static_cast<uint8_t>(v >> (8 * k));
-}
 
 void fill(LevelRegistry& r, GameplayLevelData&& d) {
     r.has_paths = d.has_paths;
@@ -281,8 +277,8 @@ void* path_slot(PathSpline& p, uint32_t o) {
 }
 void* shape_slot(Shape& s, uint32_t o) { return o < 0x40 ? static_cast<void*>(&s.matrix[o / 4]) : o < 0x80 ? static_cast<void*>(&s.to_unit[(o - 0x40) / 4]) : nullptr; }
 
-// A difference's handler: true when it is a run-time write the native side follows (the slot then takes the EE value)
-using Sink = bool (*)(void* ctx, const RegistryDiff& d);
+// A difference's handler (the comparison only reports: no native slot changes)
+using Sink = void (*)(void* ctx, const RegistryDiff& d);
 
 class Comparer {
 public:
@@ -292,25 +288,24 @@ public:
 
     // one word: the native slot (a float, a signed or unsigned word) against the EE word at `a`
     template <class T>
-    void word(const char* obj, int32_t idx, uint32_t off, T& slot, uint32_t a) {
+    void word(const char* obj, int32_t idx, uint32_t off, const T& slot, uint32_t a) {
         const uint32_t ee = lwu(a);
         const uint32_t nat = std::bit_cast<uint32_t>(slot);
-        if (nat == ee) return;
-        if (diff(obj, idx, off, nat, ee, a)) slot = std::bit_cast<T>(ee);
+        if (nat != ee) diff(obj, idx, off, nat, ee, a);
     }
     void value(const char* obj, int32_t idx, uint32_t off, uint32_t nat, uint32_t ee) {
         if (nat != ee) diff(obj, idx, off, nat, ee);
     }
     // a little-endian byte image (a grid) against EE from `a`
-    void bytes(const char* obj, std::vector<uint8_t>& b, uint32_t a) {
+    void bytes(const char* obj, const std::vector<uint8_t>& b, uint32_t a) {
         const uint32_t n = static_cast<uint32_t>(b.size());
         for (uint32_t off = 0; off + 4 <= n && !full(); off += 4) {
             const uint32_t ee = lwu(a + off), nat = le32(b, off);
-            if (nat != ee && diff(obj, -1, off, nat, ee)) put_le32(b, off, ee);
+            if (nat != ee) diff(obj, -1, off, nat, ee);
         }
         for (uint32_t off = n & ~3u; off < n && !full(); ++off) {
             const uint32_t ee = lbu(a + off);
-            if (b[off] != ee && diff(obj, -1, off, b[off], ee)) b[off] = static_cast<uint8_t>(ee);
+            if (b[off] != ee) diff(obj, -1, off, b[off], ee);
         }
     }
     void path(const char* obj, int32_t idx, PathSpline& p, uint32_t a) {
@@ -342,11 +337,10 @@ public:
     uint64_t unresolved() const { return unresolved_; }
 
 private:
-    bool diff(const char* obj, int32_t idx, uint32_t off, uint32_t nat, uint32_t ee, uint32_t addr = 0) {
-        RegistryDiff d{obj, idx, off, nat, ee, addr};
-        if (sink_ != nullptr && sink_(ctx_, d)) return true;
+    void diff(const char* obj, int32_t idx, uint32_t off, uint32_t nat, uint32_t ee, uint32_t addr = 0) {
+        const RegistryDiff d{obj, idx, off, nat, ee, addr};
+        if (sink_ != nullptr) sink_(ctx_, d);
         ++found_;
-        return false;
     }
     Sink sink_;
     void* ctx_;
@@ -437,41 +431,10 @@ void compare_view(LevelRegistry& r, const View& v, Comparer& c) {
     }
 }
 
-// ---- the run-time writers the verify follows ----
-// Each entry: a field of the tables' contents the game (or the open engine) rewrites at run time, found by G0's write census
-// (orch/w5/g0/census) and by this verify on the nine tours; the native value takes the game's. Task L3a: these writes must
-// reach the native registry (or the field stays EE state). The writers named are the census's.
-struct Followed {
-    const char* name;
-    bool (*match)(const RegistryDiff& d);
-};
-bool is_path(const RegistryDiff& d) { return d.object == "path" || d.object == "rail spine" || d.object == "added path"; }
-// a point's lane (0 x, 4 y, 8 z, 0xc w); -1 the count word and the 12 bytes after it
-int32_t point_lane(const RegistryDiff& d) { return d.offset < 0x10 ? -1 : static_cast<int32_t>((d.offset - 0x10) & 0xc); }
-// (LD1: the shapes', volumes' and rails' writers write the native record too, level_write.h: no rule follows them; a difference
-// there is one. The paths' writers are LD3's.)
-const Followed kFollowed[] = {
-    // a point's w lane: the file's -1 replaced by the segment's length to the next point when a mover first measures the path
-    // (lv3_264458_l3, path_measure_l1, path_follower_init_l1, hov_28eb00_l12 ... 50 functions in the census), or by a class's
-    // own per-point value (Rilgar's and Pokitaru's small integers)
-    {"a path point's w lane (its cached segment length or a class's value)", [](const RegistryDiff& d) { return is_path(d) && point_lane(d) == 0xc; }},
-    // a point's z lane rounded by those measurers' z + 0.5 - 0.5 (lv3_264458_l3: one ulp)
-    {"a path point's z lane rounded (z + 0.5 - 0.5)", [](const RegistryDiff& d) {
-         return is_path(d) && point_lane(d) == 8 && (d.ee - d.native + 1u) <= 2u;
-     }},
-    // a path's count word lowered (a mover dropping a looped path's closing point: Novalis, Kerwan, Gemlik Base)
-    {"a path's count word lowered", [](const RegistryDiff& d) {
-         return is_path(d) && d.offset == 0 && static_cast<int32_t>(d.ee) >= 0 && static_cast<int32_t>(d.ee) < static_cast<int32_t>(d.native);
-     }},
-    // a path's points rewritten by a class (Kerwan paths 17 .. 28, Batalia 96, Pokitaru 14 / 29: bat_class679_update_l8, pok_2873b0_l11 ...)
-    {"a path's points moved (its class)", [](const RegistryDiff& d) { return is_path(d) && point_lane(d) >= 0 && point_lane(d) < 0xc; }},
-};
-
 // ---- the verify's log ----
 struct Log {
     std::set<std::string> said;        // (object, index) whose first difference was logged
-    std::map<std::string, uint64_t> followed;  // a followed write's name (and object index) -> times
-    uint64_t passes = 0, diffs = 0, follows = 0;
+    uint64_t passes = 0, diffs = 0;
     uint64_t resolved = 0, unresolved = 0;  // table words looked up in the index, those naming no record
     bool as_engine = false;  // (a world's: compared as the engine's tables once)
 };
@@ -492,7 +455,6 @@ const char* key_name(int key, char* buf, size_t n) {
 struct SinkCtx {
     int key;
     int level;
-    bool follow;
     Log* log;
 };
 
@@ -502,31 +464,20 @@ std::string hex8(uint32_t a) {
     return b;
 }
 
-bool verify_sink(void* p, const RegistryDiff& d) {
+void verify_sink(void* p, const RegistryDiff& d) {
     SinkCtx& s = *static_cast<SinkCtx*>(p);
     char kb[32];
-    if (s.follow)
-        for (const Followed& f : kFollowed)
-            if (f.match(d)) {
-                ++s.log->follows;
-                const std::string what = std::string(f.name) + " (" + d.object + " " + std::to_string(d.index) + ")";
-                if (s.log->followed[what]++ == 0)
-                    std::printf("[ld-verify] level %d %s: a run-time write followed: %s +0x%x %08x -> %08x (%s)\n", s.level, key_name(s.key, kb, sizeof kb), what.c_str(),
-                                d.offset, d.native, d.ee, when().c_str());
-                return true;
-            }
     ++s.log->diffs;
     const std::string id = d.object + " " + std::to_string(d.index);
     if (s.log->said.insert(id).second)
         std::printf("[ld-verify] DIFFERENCE level %d %s: %s%s (%s)\n", s.level, key_name(s.key, kb, sizeof kb), d.text().c_str(),
                     d.addr != 0 ? (" at " + hex8(d.addr)).c_str() : "", when().c_str());
-    return false;
 }
 
-void verify(LevelRegistry& r, const View& v, int key, bool follow) {
+void verify(LevelRegistry& r, const View& v, int key, bool at_build) {
     Log& log = g_log[key == KEY_BASE ? KEYS : key];
-    g_at_build = !follow;  // (at a build nothing is followed: no frame has run on the tables yet)
-    SinkCtx ctx{key, r.level, follow, &log};
+    g_at_build = at_build;
+    SinkCtx ctx{key, r.level, &log};
     Comparer c(verify_sink, &ctx, 1u << 30);
     compare_view(r, v, c);
     ++log.passes;
@@ -552,11 +503,11 @@ void summary(int key, const LevelRegistry& r) {
         char kb[32];
         size_t own = 0;
         for (const Entry& e : g_index) own += e.key == key ? 1u : 0u;
-        std::printf("[ld-verify] level %d %s: %llu comparisons, %llu differing words, %llu run-time writes followed (%zu objects); index: %zu records here, %zu in all, "
+        std::printf("[ld-verify] level %d %s: %llu comparisons, %llu differing words; index: %zu records here, %zu in all, "
                     "%zu overlapping pairs, %llu table words looked up, %llu naming no record; all lookups %llu, misses %llu; the write facade %llu words, %llu with no "
                     "record, %llu not held\n",
-                    r.level, key_name(key, kb, sizeof kb), static_cast<unsigned long long>(log.passes), static_cast<unsigned long long>(log.diffs),
-                    static_cast<unsigned long long>(log.follows), log.followed.size(), own, g_index.size(), g_overlaps.size(), static_cast<unsigned long long>(log.resolved),
+                    r.level, key_name(key, kb, sizeof kb), static_cast<unsigned long long>(log.passes), static_cast<unsigned long long>(log.diffs), own, g_index.size(),
+                    g_overlaps.size(), static_cast<unsigned long long>(log.resolved),
                     static_cast<unsigned long long>(log.unresolved), static_cast<unsigned long long>(g_stats.lookups), static_cast<unsigned long long>(g_stats.misses),
                     static_cast<unsigned long long>(g_stats.writes), static_cast<unsigned long long>(g_stats.write_misses), static_cast<unsigned long long>(g_stats.write_unheld));
     }
@@ -690,7 +641,7 @@ void registry_level_loaded(uint32_t gameplay) {
     report_build(*g_base, KEY_BASE, us, error);
     if (g_ld_verify > 0) {
         View v = engine_view();
-        verify(*g_base, v, KEY_BASE, false);
+        verify(*g_base, v, KEY_BASE, true);
     }
 }
 
@@ -718,7 +669,7 @@ void registry_context_made(int key, int level, const std::vector<uint8_t>& gamep
     g_twin_rails[key] = lwu(block + R_RAILS);
     const double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count();
     report_build(*g_twin[key], key, us, error);
-    if (g_ld_verify > 0) verify(*g_twin[key], block_view(block), key, false);
+    if (g_ld_verify > 0) verify(*g_twin[key], block_view(block), key, true);
 }
 
 // orig: (host) see level_registry.h
@@ -1054,7 +1005,7 @@ void registry_verify_frame_slow(uint64_t frame) {
         if (base_current()) {
             // (a section of the mod's own: its rail table the engine's, not the level's)
             if (cur > 0) ev.rails = View::Rails::Skip;
-            verify(*g_base, ev, KEY_BASE, true);
+            verify(*g_base, ev, KEY_BASE, false);
         }
     } else if (taken >= 0 && taken < KEYS && g_twin[taken] != nullptr) {
         ev.zones = 0;  // (the world's zone grid is its core data's: not in a registry made from its gameplay file)
@@ -1065,37 +1016,30 @@ void registry_verify_frame_slow(uint64_t frame) {
                         key_name(taken, kb, sizeof kb), static_cast<unsigned long long>(frame));
             g_log[taken].as_engine = true;
         }
-        verify(*g_twin[taken], ev, taken, true);
+        verify(*g_twin[taken], ev, taken, false);
     }
     for (int k = 0; k < KEYS; ++k) {
         if (g_twin[k] == nullptr || k == taken) continue;
         View bv = block_view(g_twin_block[k]);
         if (lwu(bv.rail) != g_twin_rails[k]) bv.rails = View::Rails::Prefix;  // (ld_rails_put: a world section's table)
-        verify(*g_twin[k], bv, k, true);
+        verify(*g_twin[k], bv, k, false);
     }
 }
 
 // orig: (host) see level_registry.h
-int registry_compare_base(std::vector<RegistryDiff>& out, size_t max, bool follow) {
+int registry_compare_base(std::vector<RegistryDiff>& out, size_t max) {
     out.clear();
     if (g_base == nullptr) return -1;
     struct Ctx {
         std::vector<RegistryDiff>* out;
         size_t max;
-        bool follow;
-    } ctx{&out, max, follow};
+    } ctx{&out, max};
     const Sink collect = [](void* p, const RegistryDiff& d) {
         Ctx& c = *static_cast<Ctx*>(p);
-        if (c.follow)
-            for (const Followed& f : kFollowed)
-                if (f.match(d)) return true;
         if (c.out->size() < c.max) c.out->push_back(d);
-        return false;
     };
-    // (on a copy: the comparison writes nothing, the registry stays as built)
-    LevelRegistry copy = *g_base;
     Comparer c(collect, &ctx, 1u << 30);
-    compare_view(copy, engine_view(), c);
+    compare_view(*g_base, engine_view(), c);
     return static_cast<int>(c.found());
 }
 

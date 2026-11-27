@@ -9,6 +9,7 @@
 // speed +0x7c and spacing +0x80, whether they are moved +0x84 (-1: no), its nearest point +0x90. A member's: the leader
 // +0xa0, its move +0x60, where it is +0x80 (+0x70 its start), its segment +0x90 (+0x94 the next), its timer +0x98.
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/novalis_mobys2.h>
@@ -94,7 +95,7 @@ void umb_class871_update_l7(uint32_t m) {
         // each point's +0xc: its segment's length (the path closed)
         for (int32_t i = 0; i < lw(path); ++i) {
             const int32_t next = ee_rem(i + 1, lw(path));
-            swc1(path + (static_cast<uint32_t>(i) << 4) + 0x1c,
+            lvd::set_path_f32(path + (static_cast<uint32_t>(i) << 4) + 0x1c,
                  vec3_distance(V(path + (static_cast<uint32_t>(i) << 4) + 0x10), V(path + (static_cast<uint32_t>(next) << 4) + 0x10)));
         }
         if (group_first(it, lw(pv + 0x74), 1, 0) != 0) {

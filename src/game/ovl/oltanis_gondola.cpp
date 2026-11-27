@@ -11,6 +11,7 @@
 // pulse's phase.
 #include <game/enhance/fixes102.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/oltanis_mobys.h>
 #include <game/ovl/ovl.h>
@@ -40,10 +41,10 @@ float measure_path(uint32_t path, uint32_t total) {
     for (; k < lw(path) - 1; ++k) {
         const uint32_t p = path + 0x10u + (static_cast<uint32_t>(k) << 4);
         const float d = vec3_distance(V(p), V(p + 0x10));
-        swc1(p + 0xc, d);
+        lvd::set_path_f32(p + 0xc, d);
         swc1(total, fpu_add(lwc1(total), d));
     }
-    swc1(path + 0x1cu + (static_cast<uint32_t>(k) << 4), vec3_distance(V(path + 0x10u + (static_cast<uint32_t>(k) << 4)), V(path + 0x10)));
+    lvd::set_path_f32(path + 0x1cu + (static_cast<uint32_t>(k) << 4), vec3_distance(V(path + 0x10u + (static_cast<uint32_t>(k) << 4)), V(path + 0x10)));
     return lwc1(total);
 }
 
@@ -145,6 +146,7 @@ void gondola_camera_path(uint32_t m) {
         mat3_transform(V(p), V(L14_ADDR(0x001e03b0) + (k << 4)), M(m + 0xc0));
         vec3_add(V(p), V(p), V(m + 0x10));
         swc1(p + 0xc, 1.0f);
+        lvd::path_rows_written(p);
     }
     sh(0x0014162au, lhu(pv + 0x114));
 }

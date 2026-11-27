@@ -4,6 +4,7 @@
 // are Umbris's (`orig: L7:`); Umbris-only data is L7_ADDR, the base ELF's are bare (the ammo counts 0x13d428, the hero
 // 0x13f3d0), the paths the level-data facade's.
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -51,7 +52,7 @@ void umb_class1142_update_l7(uint32_t m) {
                 const uint32_t p1 = path + static_cast<uint32_t>(next << 4) + 0x10;
                 const float seg_len = vec3_distance(V(p0), V(p1));
                 path = lvd::path(lw(pv + 0x4));
-                swc1(path + static_cast<uint32_t>(i << 4) + 0x1c, seg_len);
+                lvd::set_path_f32(path + static_cast<uint32_t>(i << 4) + 0x1c, seg_len);
                 path = lvd::path(lw(pv + 0x4));
                 const float cur = lwc1(pv + 0x20);
                 swc1(pv + 0x20, fpu_add(cur, lwc1(path + static_cast<uint32_t>(i << 4) + 0x1c)));

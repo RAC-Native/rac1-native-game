@@ -34,6 +34,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants_l14.h>
 #include <game/ovl/shared_cam19.h>
+#include <game/level/level_write.h>
 
 #include <cstdint>
 
@@ -69,7 +70,7 @@ void measure_path(uint32_t path, uint32_t total) {
     for (int32_t k = 0; k < lw(path); ++k) {
         const int32_t next = ee_rem(k + 1, lw(path));
         const float len = vec3_distance(V(path + (static_cast<uint32_t>(k) << 4) + 0x10), V(path + (static_cast<uint32_t>(next) << 4) + 0x10));
-        swc1(path + (static_cast<uint32_t>(k) << 4) + 0x1c, len);
+        lvd::set_path_f32(path + (static_cast<uint32_t>(k) << 4) + 0x1c, len);
         if (k < lw(path) - 1) swc1(total, fpu_add(lwc1(total), len));
     }
 }
@@ -197,7 +198,7 @@ void olt_cam_type20_init_l14(uint32_t cam) {
             }
             const int32_t next = ee_rem(k + 1, lw(path));
             const float len = vec3_distance(V(path + (static_cast<uint32_t>(k) << 4) + 0x10), V(path + (static_cast<uint32_t>(next) << 4) + 0x10));
-            swc1(w, len);
+            lvd::set_path_f32(w, len);
             if (k < lw(path) - 1) swc1(st + 0x48, fpu_add(lwc1(st + 0x48), len));
         }
     }

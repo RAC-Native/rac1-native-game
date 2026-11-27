@@ -328,7 +328,7 @@ void infobot_update_tr(uint32_t m) {
         const int32_t count = lw(path) - 2;
         for (int32_t i = 0; i < count; ++i) {
             const uint32_t a = path + 0x10 + static_cast<uint32_t>(i) * 0x10;
-            swc1(a + 0xc, vec3_distance(V(a), V(a + 0x10)));
+            lvd::set_path_f32(a + 0xc, vec3_distance(V(a), V(a + 0x10)));
         }
     };
 

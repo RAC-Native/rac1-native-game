@@ -11,6 +11,7 @@
 // its colour. Its sound (4, the slot +0x7c) plays while it flies. Ported by hand from Oltanis's own code (L14:0x306ee0,
 // 0x307510, 0x307620, 0x3135b8), the original's order of calls and float operations kept.
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/oltanis_mobys.h>
 #include <game/ovl/ovl.h>
@@ -85,7 +86,7 @@ void path_setup(uint32_t m) {
     const uint32_t path = lvd::path(lw(pv + 0x78));
     for (int32_t i = 0; i < lw(path); ++i) {
         const int32_t next = ee_rem(i + 1, lw(path));
-        swc1(path + (static_cast<uint32_t>(i) << 4) + 0x1c,
+        lvd::set_path_f32(path + (static_cast<uint32_t>(i) << 4) + 0x1c,
              vec3_distance(V(path + (static_cast<uint32_t>(i) << 4) + 0x10), V(path + (static_cast<uint32_t>(next) << 4) + 0x10)));
     }
     path_start(m, pv, path);

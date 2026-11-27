@@ -4,6 +4,7 @@
 // it crosses to the other station along +0xdc when its target comes near (7) and flies back out when the target has
 // left (3). Shot down, it sheds both wings (class 81) and explodes (9).
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/oltanis_mobys.h>
 #include <game/ovl/ovl.h>
@@ -131,7 +132,7 @@ void class31_paths_measure(uint32_t m) {
         for (int32_t i = 0; i < n; ++i) {
             const uint32_t p0 = path + 0x10u + (static_cast<uint32_t>(i) << 4);
             const uint32_t p1 = path + 0x20u + (static_cast<uint32_t>(i) << 4);
-            swc1(path + 0x1cu + (static_cast<uint32_t>(i) << 4), vec3_distance(V(p0), V(p1)));
+            lvd::set_path_f32(path + 0x1cu + (static_cast<uint32_t>(i) << 4), vec3_distance(V(p0), V(p1)));
         }
     };
     measure(lvd::path(lw(pv + 0xd0)));

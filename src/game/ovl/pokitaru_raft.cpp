@@ -12,6 +12,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/pokitaru_mobys.h>
 #include <game/ovl/variants_l11.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -112,6 +113,7 @@ void pok_class1075_update_l11(uint32_t m) {
         for (int32_t i = 0; i < lw(world); ++i) {
             mat3_transform(V(point(world, static_cast<uint32_t>(i))), V(point(local, static_cast<uint32_t>(i))), M(m + 0xc0));
             vec3_add(V(point(world, static_cast<uint32_t>(i))), V(point(world, static_cast<uint32_t>(i))), V(m + 0x10));
+            lvd::path_rows_written(point(world, static_cast<uint32_t>(i)));
         }
     };
     switch (lbu(m + 0x20)) {  // (jump table L11:0x21b460)
@@ -125,6 +127,7 @@ void pok_class1075_update_l11(uint32_t m) {
             Vec4 rel{};
             vec3_sub(rel, V(point(world, static_cast<uint32_t>(i))), V(m + 0x10));
             mat4_transform(V(point(local, static_cast<uint32_t>(i))), rel, inv);
+            lvd::path_rows_written(point(local, static_cast<uint32_t>(i)));
         }
         const uint32_t path = lvd::path(lw(pv + 0xa0));
         sw(pv + 0xc4, path);

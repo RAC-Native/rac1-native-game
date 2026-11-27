@@ -27,6 +27,7 @@
 #include <game/ovl/variants_l15.h>
 #include <game/ovl/veldin_mobys.h>
 #include <game/ovl/weapons.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -325,7 +326,7 @@ void qua_class233_update_l15(uint32_t m) {
                 const uint32_t route = lvd::path(lw(pv + 0x1ac));
                 for (int32_t i = 0; i < lw(route) - 2; ++i) {  // each segment's length into its first point's w
                     const uint32_t p = route + 0x10 + static_cast<uint32_t>(i) * 0x10;
-                    swc1(p + 0xc, vec3_distance(V(p), V(p + 0x10)));
+                    lvd::set_path_f32(p + 0xc, vec3_distance(V(p), V(p + 0x10)));
                 }
                 lq_sq(pos, route + 0x10);
             }

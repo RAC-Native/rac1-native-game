@@ -18,6 +18,7 @@
 // four boxes +0x150 .. +0x15c (-1: none), the hidden time +0x170 (hidden while +0x174 is set), the draw distance +0x178,
 // the carried moby's index +0x17c (-1: none).
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/eudora_mobys.h>
 #include <game/ovl/novalis_mobys2.h>
@@ -77,7 +78,7 @@ void eud_class466_update_l4(uint32_t m) {
     if (state0 == 0) {
         if (const int32_t id = lw(pv + 0x74); id != -1) {
             const uint32_t path = lvd::path(id);
-            if (vec3_distance(V(path + 0x10), V(path + (lwu(path) << 4))) < 0.5f) sw(path, lwu(path) - 1);
+            if (vec3_distance(V(path + 0x10), V(path + (lwu(path) << 4))) < 0.5f) lvd::set_path_count(path, lwu(path) - 1);
         } else {
             debug_printf_stub();  // (no path: the ship's index and class)
         }

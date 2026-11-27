@@ -13,6 +13,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -36,8 +37,8 @@ void class679_update(uint32_t m) {
         for (int32_t i = 0; i < lw(pv + 0x70); ++i) {
             const uint32_t path = path_of(i);
             uint32_t pt = path + 0x10;
-            for (int32_t k = 0; k < lw(path) - 1; ++k, pt += 0x10) swc1(pt + 0xc, vec3_distance(V(pt), V(pt + 0x10)));
-            swc1(pt + 0xc, vec3_distance(V(pt), V(path + 0x10)));
+            for (int32_t k = 0; k < lw(path) - 1; ++k, pt += 0x10) lvd::set_path_f32(pt + 0xc, vec3_distance(V(pt), V(pt + 0x10)));
+            lvd::set_path_f32(pt + 0xc, vec3_distance(V(pt), V(path + 0x10)));
         }
         sb(m + 0x30, 0xff);
     }

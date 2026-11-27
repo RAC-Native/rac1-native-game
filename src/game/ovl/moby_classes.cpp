@@ -17,6 +17,7 @@
 #include <game/lib/libc.h>
 #include <game/port_stubs.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -3646,14 +3647,14 @@ void crate_settle(uint32_t m0) {
                             sw(p + 0xc0, 0xffffffffu);
                         } else if (st - 0x11u < 0x100u) {
                             if (static_cast<int32_t>(st - 0x10u) < n) {
-                                sw(path + 0x1c, st + 1);
+                                lvd::set_path_word(path + 0x1c, st + 1);
                             } else {
                                 sw(p + 0xc0, 0xffffffffu);
                             }
                         } else {
-                            sw(path + 0x1c, 0x11);
+                            lvd::set_path_word(path + 0x1c, 0x11);
                             for (int32_t k = 0; k < lw(lvd::path(lwu(p + 0xc0))); ++k)
-                                sw(lvd::path(lwu(p + 0xc0)) + static_cast<uint32_t>(k) * 0x10 + 0x1c, 0);
+                                lvd::set_path_word(lvd::path(lwu(p + 0xc0)) + static_cast<uint32_t>(k) * 0x10 + 0x1c, 0);
                         }
                     }
                 }

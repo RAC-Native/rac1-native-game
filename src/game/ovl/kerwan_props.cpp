@@ -2,6 +2,7 @@
 // kerwan_mobys.h. Addresses are Kerwan's (`orig: L3:`); data only Kerwan
 // has is L3_ADDR, the globals the engine shares with Veldin are the level's own (OV), the base ELF's are bare.
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/checkpoint.h>
 #include <game/ovl/cutscene.h>
@@ -226,7 +227,7 @@ void kerwan_class899_update_l3(uint32_t m) {
         swc1(L3_ADDR(0x00161bc0), fpu_mul(lwc1(0x0015ed6c), 3.0f));
         for (int32_t i = 0; i < lw(path) - 2; ++i) {
             const uint32_t p = path + 0x10 + static_cast<uint32_t>(i) * 0x10;
-            swc1(p + 0xc, vec3_distance(V(p), V(p + 0x10)));
+            lvd::set_path_f32(p + 0xc, vec3_distance(V(p), V(p + 0x10)));
         }
         sw(pv + 4, 0);
         sb(m + 0x20, 1);

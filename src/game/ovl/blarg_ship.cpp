@@ -7,6 +7,7 @@
 // pieces' launch. Header blarg_own.h; registered in blarg_mobys.cpp. Addresses are level 6's (`orig: L6:`); its own data
 // is L6_ADDR (the ship's tuning and the particles' at 0x1620f4 .. 0x162194), the base ELF's are bare.
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/blarg_own.h>
@@ -290,8 +291,8 @@ bool ship_flight_l6(uint32_t m, int32_t route) {
     const int32_t event = float_to_int(lwc1(here_w));
     const int32_t prev_event = ci == 0 ? -1 : float_to_int(lwc1(prev_w));
     if (event >= 0 || prev_event >= 0) {
-        swc1(here_w, -1.0f);
-        swc1(prev_w, -1.0f);
+        lvd::set_path_f32(here_w, -1.0f);
+        lvd::set_path_f32(prev_w, -1.0f);
         if (event < 8 && prev_event < 8) {
             level_sound_play_l6(0, 0, m);
             const uint32_t b = lvd::box(lvd::BOXES, lw(pv + 0xd0 + (static_cast<uint32_t>(event) << 2)));

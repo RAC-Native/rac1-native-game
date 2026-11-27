@@ -16,6 +16,7 @@
 // to.
 #include <game/collision/collision.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/doomlet.h>
 #include <game/ovl/enemy_749.h>
@@ -498,7 +499,7 @@ void kerwan_class574_update_l3(uint32_t m) {
         sb(pv + 0x263, 0);
         if (path != 0) {  // each leg's length in its first point's w
             for (int32_t i = 0; i < lw(path) - 2; ++i)
-                swc1(path + 0x1c + static_cast<uint32_t>(i) * 16,
+                lvd::set_path_f32(path + 0x1c + static_cast<uint32_t>(i) * 16,
                      vec3_distance(V(path + 0x10 + static_cast<uint32_t>(i) * 16), V(path + 0x20 + static_cast<uint32_t>(i) * 16)));
         }
         if (lw(pv + 0x284) != -1 && lw(pv + 0x290) == -1) {
@@ -845,6 +846,7 @@ void kerwan_class574_update_l3(uint32_t m) {
                 sd(ang + 8, 0);
                 const uint32_t pt = lwu(pv + 0x130) + 0x10 + static_cast<uint32_t>(i) * 16;
                 sub_00260400(m, o, pt, ang, pt, ang);
+                lvd::path_rows_written(pt);  // (the point moved with the moby `o` it rides: the callee's stores)
             }
         }
         sub_00260400(m, o, m + 0x10, m + 0x40, m + 0x10, moved_ang);

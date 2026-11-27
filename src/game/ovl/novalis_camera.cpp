@@ -9,6 +9,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -46,8 +47,8 @@ void map_waypoints_to_path(uint32_t wp, uint32_t target, int32_t& seg_idx, float
             const uint32_t pt = meta + 0x10u;
             Vec4 closest{};
             path_closest_point_v(target, V(pt), closest, &seg_idx, &dist, 0, 20.0f, 5.0f, 0.0f);
-            swc1(meta + 0x10u, lwc1(meta + 0x1cu));
-            swc1(meta + 0x1cu, static_cast<float>(seg_idx));
+            lvd::set_path_f32(meta + 0x10u, lwc1(meta + 0x1cu));
+            lvd::set_path_f32(meta + 0x1cu, static_cast<float>(seg_idx));
             n = lw(wp);
         }
     }
@@ -69,7 +70,7 @@ void map_waypoints_to_path(uint32_t wp, uint32_t target, int32_t& seg_idx, float
                     sum = fpu_add(sum, lwc1(target + static_cast<uint32_t>(rem) * 0x10u + 0x1cu));
                 }
             }
-            swc1(cur_meta + 0x14u, sum);
+            lvd::set_path_f32(cur_meta + 0x14u, sum);
             dist = sum;
             prev_i = i;
             n = lw(wp);
@@ -166,7 +167,7 @@ void cam_type3_init(uint32_t cam) {
             const int32_t next = ee_rem(i + 1, n);
             const float d = vec3_distance(V(path + 0x10u + static_cast<uint32_t>(i) * 0x10u),
                                           V(path + 0x10u + static_cast<uint32_t>(next) * 0x10u));
-            swc1(path + static_cast<uint32_t>(i) * 0x10u + 0x1cu, d);
+            lvd::set_path_f32(path + static_cast<uint32_t>(i) * 0x10u + 0x1cu, d);
             n = lw(path);
         }
     }

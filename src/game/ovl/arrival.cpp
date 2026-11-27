@@ -14,6 +14,7 @@
 #include <game/ovl/pause_menu.h>
 #include <game/ovl/screen_fade.h>
 #include <game/port_stubs.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -425,7 +426,7 @@ void ship_sequence_update() {
             if (pi >= 0) {
                 const uint32_t path = lvd::path(pi);
                 float f21 = lwc1(G + 0x48);
-                swc1(path + 0x1c, f21);
+                lvd::set_path_f32(path + 0x1c, f21);
                 for (int32_t k = 1; k < lw(path) - 1;) {  // the turn at each point
                     const uint32_t p0 = path + static_cast<uint32_t>(k) * 0x10;
                     const uint32_t pm = path + static_cast<uint32_t>(k - 1) * 0x10;
@@ -434,7 +435,7 @@ void ship_sequence_update() {
                     const uint32_t pn = path + static_cast<uint32_t>(k) * 0x10;
                     const float b = atan2_f(lwc1(pn + 0x10) - lwc1(p0 + 0x10), lwc1(pn + 0x14) - lwc1(p0 + 0x14));
                     const float d = angle_sub(b, a);
-                    swc1(p0 + 0x1c, d);
+                    lvd::set_path_f32(p0 + 0x1c, d);
                     if (f21 < abs_f(d)) f21 = abs_f(lwc1(p0 + 0x1c));
                 }
                 {  // the last point: the turn back to the first
@@ -444,12 +445,12 @@ void ship_sequence_update() {
                     const uint32_t pl = path + static_cast<uint32_t>(lw(path) - 1) * 0x10;
                     const float b = atan2_f(lwc1(path + 0x10) - lwc1(pl + 0x10), lwc1(path + 0x14) - lwc1(pl + 0x14));
                     const float d = angle_sub(b, a);
-                    swc1(path + static_cast<uint32_t>(lw(path) - 1) * 0x10 + 0x1c, d);
+                    lvd::set_path_f32(path + static_cast<uint32_t>(lw(path) - 1) * 0x10 + 0x1c, d);
                 }
                 const float scale = fpu_div(u2f(0x3eb2b8c2u), f21);
                 for (int32_t k = 0; k < lw(path); ++k) {
                     const uint32_t p = path + static_cast<uint32_t>(k) * 0x10;
-                    swc1(p + 0x1c, lwc1(p + 0x1c) * scale);
+                    lvd::set_path_f32(p + 0x1c, lwc1(p + 0x1c) * scale);
                 }
                 swc1(G + 0x44, vec3_distance(V(path + 0x10), V(path + 0x20)));
                 const uint32_t ship2 = lwu(G);

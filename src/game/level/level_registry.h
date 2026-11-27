@@ -20,10 +20,8 @@
 //     level_setup_body points 0x15f600 at it; copied with its extent walked as zone_grid_cell walks it);
 //   - not held: the moby groups (stage 7, Q5), the rail records' +0x18 / +0x1c (the load leaves them as the memory had them).
 //
-// Run-time writes into the tables' contents: the shapes', volumes', cameras' and rails' writers write the native record beside
-// the EE word (level_write.h, the write facade); the paths' writers (G0's census, RAC1_LD_VERIFY on the tours; level_registry.cpp
-// lists each one) do not yet: the verify follows those (the native value refreshed from the game's write, counted and logged
-// once per object), every other difference is logged as one.
+// Run-time writes into the tables' contents: every writer of a path, a shape, a volume or a rail writes the native record beside
+// the EE word (level_write.h, the write facade); RAC1_LD_VERIFY reports any difference between a record and its EE words.
 #ifndef RAC1_GAME_LEVEL_LEVEL_REGISTRY_H
 #define RAC1_GAME_LEVEL_LEVEL_REGISTRY_H
 
@@ -192,9 +190,8 @@ struct RegistryDiff {
     std::string text() const;
 };
 // orig: (host) the base registry compared with the engine's EE tables (OV()) word by word: the differences (at most `max` kept,
-// all counted); -1 when there is no base registry. `follow`: the run-time writes the verify follows are not differences (on a
-// copy: the registry stays as built). Batch 541's check.
-int registry_compare_base(std::vector<RegistryDiff>& out, size_t max = 64, bool follow = false);
+// all counted); -1 when there is no base registry (the comparison changes nothing). Batch 541's check.
+int registry_compare_base(std::vector<RegistryDiff>& out, size_t max = 64);
 // orig: (host) a registry built from the unpacked gameplay file `file` of level `level` (no EE read: no camera pvars, no zone
 // grid), to compare with another (batch 541: the disc's file against the one the load unpacked)
 bool registry_parse(std::span<const uint8_t> file, int level, LevelRegistry& out, std::string* error = nullptr);

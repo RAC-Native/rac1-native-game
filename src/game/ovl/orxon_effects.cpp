@@ -10,6 +10,7 @@
 #include <game/ovl/quad_draw.h>
 #include <game/ovl/vu0_regs.h>
 #include <game/port_stubs.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -212,7 +213,7 @@ void orx_class1544_update_l10(uint32_t m) {
             } else {
                 uint32_t pt;
                 const int32_t n = points(pt);
-                for (int32_t i = 0; i < n; ++i) swc1(pt + static_cast<uint32_t>(i) * 0x10 + 0xc, floor_probe_v(0.5f, V(pt + static_cast<uint32_t>(i) * 0x10), 0));
+                for (int32_t i = 0; i < n; ++i) lvd::set_path_f32(pt + static_cast<uint32_t>(i) * 0x10 + 0xc, floor_probe_v(0.5f, V(pt + static_cast<uint32_t>(i) * 0x10), 0));
             }
             sb(m + 0x20, 2);
             break;

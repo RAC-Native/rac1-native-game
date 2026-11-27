@@ -13,6 +13,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -48,7 +49,7 @@ void pump_camera_start(uint32_t m) {
     camera_scripted_set(cam, rot, 1, 0, 0);
     uid5_set_pvar_80(cam);
     uid5_set_pvar_90(rot);
-    sw(lvd::path(lwu(pv + 0xec)), 0);
+    lvd::set_path_count(lvd::path(lwu(pv + 0xec)), 0);
     ee_stack_free(0x80);
 }
 

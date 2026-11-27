@@ -19,6 +19,7 @@
 #include <game/ovl/variants_l16.h>
 #include <game/ovl/weapons.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -44,7 +45,7 @@ void carrier_point(uint32_t c, uint32_t out, uint32_t tmp, float along_x, float 
 void path_lengths(uint32_t path) {
     for (int32_t i = 0; i < lw(path) - 1; ++i) {
         const uint32_t at = path + 0x10 + static_cast<uint32_t>(i) * 0x10;
-        swc1(at + 0xc, vec3_distance(V(at), V(at + 0x10)));
+        lvd::set_path_f32(at + 0xc, vec3_distance(V(at), V(at + 0x10)));
     }
 }
 

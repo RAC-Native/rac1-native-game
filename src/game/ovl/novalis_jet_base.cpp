@@ -15,6 +15,7 @@
 #include <game/ovl/variants_l4.h>
 #include <game/port_stubs.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -263,7 +264,7 @@ void jet_update_base_l1(uint32_t m) {
         if (pn != -1) {
             const uint32_t path = lvd::path(pn);
             const float d = vec3_distance(V(path + 0x10), V(path + (static_cast<uint32_t>(lw(path)) << 4)));
-            if (d < u2f(0x3f000000u)) sw(path, static_cast<uint32_t>(lw(path) - 1));
+            if (d < u2f(0x3f000000u)) lvd::set_path_count(path, static_cast<uint32_t>(lw(path) - 1));
         } else {
             debug_printf_stub();
         }

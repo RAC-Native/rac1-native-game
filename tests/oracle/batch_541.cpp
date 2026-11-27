@@ -7,14 +7,17 @@
 //  - the level's gameplay file read again from the disc and unpacked by the host (decompress_wad, not the game's
 //    wad_decompress into EE memory) and parsed into a second registry: the same objects as the first;
 //  - the cameras' pvar blocks: none exactly where the file's pvar index is negative;
-//  - after one gameplay frame: equal again but for the run-time writes the verify follows (level_registry.cpp's list);
+//  - after one gameplay frame: equal again (the run-time writers write the native records too, level_write.h);
 //  - the comparison itself: a fault put into one word of each object kind's EE table (a record's word changed by far more
 //    than an ulp, a count, a table entry) must be found, named with that object and index; every fault is undone;
 //  - (LD1) every record's EE address equals the table's word that names it; the address index gives each record for its first
 //    and last byte and not for the byte past it (and the lookups' cost); a write through each function of the write facade
 //    (level_write.h) changes the EE word and the native record alike (then put back); an added path (ld_path_reserve,
 //    ld_path_set) is indexed with its points, dropped by ld_base_reset; EE words of each kind changed by hand, then
-//    registry_pull_from_ee: the native records equal EE again (then put back and pulled again).
+//    registry_pull_from_ee: the native records equal EE again (then put back and pulled again);
+//  - (LD3) a write through each of the paths' write calls (level_write.h) changes the EE words and the native record alike (a
+//    lane, a row, a copied row, two rows a callee wrote, the count lowered and raised, a rail spine's lane; then put back);
+//    after the gameplay frame the paths' run-time writers have written their native records too: nothing differs.
 // Run: ORACLE_LEVEL=N build/tests/ovl_oracle --batch 541, N = 0 .. 18.
 
 #include "ovl_oracle.h"
@@ -26,6 +29,7 @@
 #include <game/level/level_write.h>
 #include <runtime/kernel/disc.h>
 
+#include <array>
 #include <bit>
 #include <chrono>
 #include <cstdio>
@@ -53,9 +57,9 @@ void level_setup() {
     level_setup_body(1, 0);
 }
 
-void check_tables(const char* name, bool follow) {
+void check_tables(const char* name) {
     std::vector<lvd::RegistryDiff> d;
-    const int n = lvd::registry_compare_base(d, 16, follow);
+    const int n = lvd::registry_compare_base(d, 16);
     if (n < 0) {
         fail(name, "no registry was built");
         return;
@@ -371,6 +375,93 @@ void check_facade() {
     std::printf("%-26s ok: %d writes (EE and native alike), put back\n", name, done);
 }
 
+// (LD3) a write through each of the paths' write calls (on the first path with two points or more, and the first rail's spine):
+// the EE words and the native record alike; the count lowered and raised; two rows a "callee" wrote through an out-pointer
+// taken in; a store at an address no record holds is the EE store alone, counted; then every word put back
+void check_path_facade() {
+    const char* name = "registry_path_facade";
+    const lvd::LevelRegistry& r = *lvd::registry_base();
+    int bad = 0, done = 0;
+    const auto same = [&](const char* what, uint32_t a, uint32_t words, const uint32_t* want) {
+        ++done;
+        for (uint32_t k = 0; k < words; ++k) {
+            uint32_t nat = 0;
+            const uint32_t ee = lwu(a + 4 * k);
+            if (!native_word(a + 4 * k, nat) || nat != ee || ee != want[k]) {
+                if (++bad <= 8) std::printf("    %s at %08x +%u: EE %08x, native %08x, written %08x\n", what, a, 4 * k, ee, nat, want[k]);
+                return;
+            }
+        }
+    };
+    const auto bits = [](const Vec4& v) { return std::array<uint32_t, 4>{std::bit_cast<uint32_t>(v.x), std::bit_cast<uint32_t>(v.y), std::bit_cast<uint32_t>(v.z), std::bit_cast<uint32_t>(v.w)}; };
+    int32_t pick = -1;
+    for (size_t i = 0; i < r.paths.size() && pick < 0; ++i)
+        if (r.paths[i].points.size() >= 2 && r.paths[i].count >= 2) pick = static_cast<int32_t>(i);
+    uint32_t paths = 0;
+    if (pick >= 0) {
+        const uint32_t path = lvd::path(pick);
+        const uint32_t size = 0x30;  // (the count word, the 12 bytes after it, points 0 and 1)
+        uint32_t keep[size / 4];
+        for (uint32_t k = 0; k < size / 4; ++k) keep[k] = lwu(path + 4 * k);
+        const float f = std::bit_cast<float>(keep[7]) + 2.5f;
+        lvd::set_path_f32(path + 0x1c, f);
+        const uint32_t wf = std::bit_cast<uint32_t>(f);
+        same("set_path_f32 (point 0's w)", path + 0x1c, 1, &wf);
+        const uint32_t ww = keep[11] ^ 0x00010001u;
+        lvd::set_path_word(path + 0x2c, ww);
+        same("set_path_word (point 1's w)", path + 0x2c, 1, &ww);
+        const uint32_t n = keep[0];
+        lvd::set_path_count(path, n - 1);
+        const uint32_t lowered = n - 1, raised = n + 1;
+        same("set_path_count (lowered)", path, 1, &lowered);
+        lvd::set_path_count(path, n + 1);
+        same("set_path_count (raised)", path, 1, &raised);
+        lvd::set_path_count(path, n);
+        const Vec4 v{12.5f, -7.25f, 3.0f, -1.0f};
+        lvd::set_path_row(path + 0x20, v);
+        same("set_path_row (point 1)", path + 0x20, 4, bits(v).data());
+        lvd::copy_path_row(path + 0x10, path + 0x20);
+        same("copy_path_row (point 0)", path + 0x10, 4, bits(v).data());
+        const Vec4 v0{-3.5f, 8.0f, 0.25f, 4.0f}, v1{6.0f, -0.5f, -9.75f, 0.0f};
+        V(path + 0x10) = v0;  // (a callee's stores through an out-pointer, two rows)
+        V(path + 0x20) = v1;
+        lvd::path_rows_written(path + 0x10, 2);
+        same("path_rows_written (point 0)", path + 0x10, 4, bits(v0).data());
+        same("path_rows_written (point 1)", path + 0x20, 4, bits(v1).data());
+        for (uint32_t k = 0; k < size / 4; ++k) lvd::set_path_word(path + 4 * k, keep[k]);  // (put back)
+        ++paths;
+    }
+    if (!r.rails.empty() && !r.rails[0].spine.points.empty()) {
+        const uint32_t spine = lwu(lvd::rail(0) + 0x10), keep = lwu(spine + 0x1c);
+        const float f = std::bit_cast<float>(keep) + 1.0f;
+        lvd::set_path_f32(spine + 0x1c, f);
+        const uint32_t w = std::bit_cast<uint32_t>(f);
+        same("set_path_f32 (a rail spine's point 0's w)", spine + 0x1c, 1, &w);
+        lvd::set_path_word(spine + 0x1c, keep);
+        ++paths;
+    }
+    {  // (an address no record holds: the EE store alone, counted)
+        const uint32_t sp = ee_stack_alloc(0x10);
+        const uint64_t misses = lvd::index_stats().write_misses;
+        lvd::set_path_word(sp + 0xc, 0x12345678u);
+        if (lwu(sp + 0xc) != 0x12345678u || lvd::index_stats().write_misses != misses + 1) {
+            ++bad;
+            std::printf("    set_path_word at %08x (no record): EE %08x, misses %llu -> %llu\n", sp + 0xc, lwu(sp + 0xc), static_cast<unsigned long long>(misses),
+                        static_cast<unsigned long long>(lvd::index_stats().write_misses));
+        }
+        ++done;
+        ee_stack_free(0x10);
+    }
+    std::vector<lvd::RegistryDiff> diffs;
+    const int n = lvd::registry_compare_base(diffs, 4);
+    if (bad != 0 || n != 0) {
+        print_diffs(diffs, 4);
+        fail(name, std::to_string(bad) + " writes differ, " + std::to_string(n) + " differing words after putting back");
+        return;
+    }
+    std::printf("%-26s ok: %d writes on %u paths (EE and native alike), put back\n", name, done, paths);
+}
+
 // an added path of the base: indexed, written beside, dropped by ld_base_reset
 void check_added_path() {
     const char* name = "registry_added_path";
@@ -462,21 +553,22 @@ void batch_541() {
         fail("registry_base", "no registry after the level's setup");
         return;
     }
-    check_tables("registry_tables", false);
+    check_tables("registry_tables");
     check_disc();
     check_pvars();
     check_faults();
     check_addresses();
     check_index();
     check_facade();
+    check_path_facade();
     check_added_path();
     check_pull();
-    // after a gameplay frame (the mobys' first updates: the run-time writers the verify follows)
+    // after a gameplay frame (the mobys' first updates: their writers write the native records too, nothing differs)
     w32(OV(0x0016c060), 0xf);
     w32(0x0013f2e8, 0xffffffffu);
     if (g_oracle_level == 14) w8(0x0013d3f0, 1);
     gameplay_frame();
-    check_tables("registry_tables_frame", true);
+    check_tables("registry_tables_frame");
 }
 
 }  // namespace rac1::oracle

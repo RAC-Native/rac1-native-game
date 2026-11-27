@@ -13,6 +13,7 @@
 // moby under him, 0x13f64c, and the halfword 0x13f65e clear) sets its bits (the save's and the level's), lights it with
 // its sound. Lit, it opens the way: the points of the path named at its pvars +0 whose w lane equals its +4 are given 0.
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/oltanis_mobys.h>
 #include <game/ovl/ovl.h>
@@ -83,7 +84,7 @@ void open_way(uint32_t pv) {
     const uint32_t path = lvd::path(lw(pv));
     for (int32_t i = 0; i < lw(path); ++i) {
         const uint32_t w = path + (static_cast<uint32_t>(i) << 4) + 0x1c;
-        if (lwc1(w) == lwc1(pv + 4)) sw(w, 0);
+        if (lwc1(w) == lwc1(pv + 4)) lvd::set_path_word(w, 0);
     }
 }
 }  // namespace

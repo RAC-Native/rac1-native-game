@@ -14,6 +14,7 @@
 #include <game/ovl/arrival.h>
 #include <game/ovl/variants_l5.h>
 #include <game/ovl/veldin_mobys.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -649,6 +650,7 @@ void lift_ring(uint32_t m) {
         sw(p + 8, 0);
         swc1(p + 4, y);
         vec3_add(V(p), V(p), V(m + 0x10));
+        lvd::path_rows_written(p);
         a = angle_add(a, step);
     }
 }

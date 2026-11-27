@@ -10,6 +10,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/port_stubs.h>
 #include <game/level/level_data.h>
+#include <game/level/level_write.h>
 
 namespace rac1 {
 
@@ -30,9 +31,9 @@ void path_follower_init_l1(uint32_t f) {
         const uint32_t s1 = static_cast<uint32_t>(a1) << 4;
         const int32_t next = ee_rem(s0, lw(v1));
         const float d = vec3_distance(V(v1 + s1 + 0x10), V(v1 + (static_cast<uint32_t>(next) << 4) + 0x10));
-        swc1(lwu(f + 0x10) + s1 + 0x1c, d);
-        swc1(lwu(f + 0x10) + s1 + 0x18, lwc1(lwu(f + 0x10) + s1 + 0x18) + half);
-        swc1(lwu(f + 0x10) + s1 + 0x18, lwc1(lwu(f + 0x10) + s1 + 0x18) - half);
+        lvd::set_path_f32(lwu(f + 0x10) + s1 + 0x1c, d);
+        lvd::set_path_f32(lwu(f + 0x10) + s1 + 0x18, lwc1(lwu(f + 0x10) + s1 + 0x18) + half);
+        lvd::set_path_f32(lwu(f + 0x10) + s1 + 0x18, lwc1(lwu(f + 0x10) + s1 + 0x18) - half);
         a1 = s0;
         v1 = lwu(f + 0x10);
         if (!(a1 < lw(v1))) break;
@@ -241,7 +242,7 @@ float path_measure_l1(uint32_t f, uint32_t debug, uint32_t color, float fa, floa
             }
             s0 = s7;
             f26 = f26 + f21;
-            swc1(lwu(f + 0x10) + s6 + 0x1c, f21);
+            lvd::set_path_f32(lwu(f + 0x10) + s6 + 0x1c, f21);
             if (!(s0 < count)) break;
         }
     }
