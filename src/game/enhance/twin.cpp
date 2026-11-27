@@ -360,9 +360,13 @@ bool capture() {
         const uint32_t n = std::min<uint32_t>(lwu(OV(PATH_COUNT)), TWIN_PATH_MAX);
         for (uint32_t k = 0; k < n; ++k) {
             const uint32_t p = lwu(OV(PATH_TABLE) + 4 * k);
-            const uint32_t pts = p != 0 ? std::min<uint32_t>(lwu(p), 0x400) : 0;
+            // (the whole path, within what read_capture takes: 0x10000 bytes, 0xfff points; beyond it, the copy's count word
+            // the points copied, so that the session's copy and its count agree)
+            const uint32_t pts = p != 0 ? std::min<uint32_t>(lwu(p), 0xfff) : 0;
             std::vector<uint8_t> b(p != 0 ? 0x10 + 0x10 * pts : 0);
             for (uint32_t i = 0; i < b.size(); ++i) b[i] = lbu(p + i);
+            if (p != 0 && lwu(p) != pts)
+                for (uint32_t i = 0; i < 4; ++i) b[i] = static_cast<uint8_t>(pts >> (8 * i));
             c.paths.push_back(std::move(b));
         }
         std::printf("[twin] native: the level's %u paths taken\n", n);

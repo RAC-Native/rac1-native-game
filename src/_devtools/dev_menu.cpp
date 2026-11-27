@@ -10,6 +10,7 @@
 #include "dev_profiler.h"
 
 #include <game/collision/collision_state.h>
+#include <game/level/level_registry.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/debug_hooks.h>
 #include <game/ovl/cutscene.h>
@@ -2552,6 +2553,29 @@ void dev_menu_shutdown() {
     g_window = nullptr;
 }
 
+// the pending Save state / Load state (g_snap_pending), between game frames: the debug menu's buttons, or RAC1_SNAP_AT (testing)
+static void snap_pending_apply() {
+    if (g_snap_pending != 0) {  // between game frames
+        constexpr size_t RAM = 64u * 1024u * 1024u;
+        if (g_snap_pending == 1) {
+            coll_state_ee_sync();  // (the collision's hit and hit list written to their EE words first, in native: the snapshot carries them)
+            g_snap_ram.assign(ee_get_ram_base(), ee_get_ram_base() + RAM);
+            g_snap_spr.assign(ee_get_scratchpad_base(), ee_get_scratchpad_base() + SPR_SIZE);
+            g_snap_level = r32(0x0015ed84);
+        } else if (!g_snap_ram.empty() && g_snap_level == r32(0x0015ed84)) {
+            std::memcpy(ee_get_ram_base(), g_snap_ram.data(), RAM);
+            std::memcpy(ee_get_scratchpad_base(), g_snap_spr.data(), SPR_SIZE);
+            coll_state_import();  // (the collision's hit and hit list: their native state taken from the snapshot's words)
+            // (the level registry's native records: taken again from the snapshot's tables and records, as the oracle's import
+            // does; the collision scene's and the grids' kept copies are keyed on their EE bytes' hash, unchanged within a level)
+            lvd::registry_pull_from_ee();
+            g_freeze.mobys.clear();  // the spawned mobys may not be the same any more
+            update_freeze_hook();
+        }
+        g_snap_pending = 0;
+    }
+}
+
 void dev_menu_poll(GLFWwindow* window) {
     if (!g_menu) return;  // (no menu, no moving Ratchet by hand without the debug tools)
     bool down = glfwGetKey(window, GLFW_KEY_F1) == GLFW_PRESS;
@@ -2578,22 +2602,7 @@ void dev_menu_poll(GLFWwindow* window) {
             }
         }
     }
-    if (g_snap_pending != 0) {  // between game frames
-        constexpr size_t RAM = 64u * 1024u * 1024u;
-        if (g_snap_pending == 1) {
-            coll_state_ee_sync();  // (the collision's hit and hit list written to their EE words first, in native: the snapshot carries them)
-            g_snap_ram.assign(ee_get_ram_base(), ee_get_ram_base() + RAM);
-            g_snap_spr.assign(ee_get_scratchpad_base(), ee_get_scratchpad_base() + SPR_SIZE);
-            g_snap_level = r32(0x0015ed84);
-        } else if (!g_snap_ram.empty() && g_snap_level == r32(0x0015ed84)) {
-            std::memcpy(ee_get_ram_base(), g_snap_ram.data(), RAM);
-            std::memcpy(ee_get_scratchpad_base(), g_snap_spr.data(), SPR_SIZE);
-            coll_state_import();  // (the collision's hit and hit list: their native state taken from the snapshot's words)
-            g_freeze.mobys.clear();  // the spawned mobys may not be the same any more
-            update_freeze_hook();
-        }
-        g_snap_pending = 0;
-    }
+    snap_pending_apply();
 }
 
 bool dev_menu_owns_input() { return g_menu && ((g_settings.open && g_settings.block_game_input) || g_cam.on || g_move.on); }
@@ -2682,6 +2691,23 @@ void dev_hoverboard_apply() {
     }
     g_board_on = hoverboard_riding();
     g_board_level = r32(LEVEL);
+}
+
+// testing: RAC1_SNAP_AT=<save frame>,<load frame>: the debug menu's Save state and Load state at those game frames, a headless
+// run too (the headless loop calls this between game frames)
+void dev_snap_test(unsigned long long game_frame) {
+    static long long at_save = -2, at_load = -2;
+    if (at_save == -2) {
+        at_save = at_load = -1;
+        if (const char* e = std::getenv("RAC1_SNAP_AT")) std::sscanf(e, "%lld,%lld", &at_save, &at_load);
+    }
+    const long long f = static_cast<long long>(game_frame);
+    if (f != at_save && f != at_load) return;
+    g_snap_pending = f == at_save ? 1 : 2;
+    const bool had = !g_snap_ram.empty();
+    snap_pending_apply();
+    std::printf("[orig] RAC1_SNAP_AT: state %s at frame %lld (level %d)%s\n", f == at_save ? "saved" : "loaded", f, r32(0x0015ed84),
+                f == at_load && !had ? ": none saved, nothing loaded" : "");
 }
 
 void dev_menu_game_frame() {

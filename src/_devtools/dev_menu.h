@@ -52,6 +52,8 @@ void dev_menu_poll(GLFWwindow* window);
 bool dev_menu_owns_input();
 // The cheats that hold every game frame (after the game's update).
 void dev_menu_game_frame();
+// testing: RAC1_SNAP_AT=<save frame>,<load frame> (the debug menu's Save / Load state; the headless loop between game frames)
+void dev_snap_test(unsigned long long game_frame);
 // Kills Ratchet through the game's own death state (done at the next game frame's end). Also RAC1_DIE_AT=<game frame> (testing).
 void dev_kill_hero();
 void dev_kill_apply();  // the pending kill, between game frames (dev_menu_game_frame calls it; the headless loop too)

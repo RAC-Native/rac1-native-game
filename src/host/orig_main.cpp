@@ -3431,6 +3431,7 @@ int main(int argc, char** argv) {
                 } else {
                     dt::dev_kill_apply();
                     dt::dev_hoverboard_apply();
+                    dt::dev_snap_test(game_frame);
                 }
     #endif
                 mrp_scene_end_frame();
