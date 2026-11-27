@@ -5552,6 +5552,9 @@ void batches_unit() {
         return Args{{u(ri(0, 12)), u(ri(0, 1))}, {}};
     }, [](A a) { return ri32(hero_try_jump(static_cast<int32_t>(a.i[0]), static_cast<int32_t>(a.i[1]))); }, OV(0x00173e7c));
     g_ignore_lone_w_lanes = false;
+    {
+    // (stage 5, task SPR) hero_water_air calls segment_collide: the collision scratch words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_water_air", 0x00227778, N * 4, Ret::Int32, [inpenv, inp_state, boxenv] {
         inpenv(inp_state());
         if (ri(0, 2)) w32(g::PLAYER + 0x208c, ri(0, 1) ? 0x11u : 0x12u);
@@ -5565,6 +5568,10 @@ void batches_unit() {
         return Args{};
     },
           [](A) { return ri32(hero_water_air()); }, OV(0x00173e7c));
+    }
+    {
+    // (stage 5, task SPR) hero_water_entry calls segment_collide: the collision scratch words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_water_entry", 0x002279b0, N * 4, Ret::Int32, [inpenv, inp_state] {
         inpenv(inp_state());
         constexpr uint32_t P = g::PLAYER;
@@ -5577,6 +5584,7 @@ void batches_unit() {
         return Args{};
     },
           [](A) { return ri32(hero_water_entry()); }, OV(0x00173e7c));
+    }
     check("hero_land", 0x002293a8, N * 4, Ret::None, [inpenv, inp_state] { inpenv(inp_state()); return Args{}; },
           [](A) { hero_land(); return uint64_t{0}; }, OV(0x00173e7c));
     check("hero_hurt", 0x00210ce8, N * 10, Ret::Int32, [inpenv, inp_state] {
@@ -5734,6 +5742,10 @@ void batches_unit() {
     }
     // ======== batch 50: the focused variants of batch 49
     g_batch = 50;
+    {
+    // (stage 5, task SPR) hero_input_update reaches segment_collide (through hero_water_entry): the collision
+    // scratch words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_input_update/pre", 0x00229b70, N * 8, Ret::None, [transenv] {  // the checks before the per-state part
         constexpr uint32_t P = g::PLAYER;
         static const uint32_t sts[] = {0, 0, 0x20, 0x23, 0x05, 0x3e};  // (ported states; 0 or 2 for the 0x3d check)
@@ -5749,6 +5761,11 @@ void batches_unit() {
         w32(P + 0x22a8, ri(0, 3) ? 1u : 0u); w32(0x00141660, u(ri(0, 0x20))); w32(P + 0x10b8, ri(0, 2) ? 8u : u(ri(0, 0x1f)));  // (not item 0x20: its mode start 0x29a6b0 is not ported)
         return Args{};
     }, [](A) { hero_input_update(); return uint64_t{0}; }, OV(0x00173e7c));
+    }
+    {
+    // (stage 5, task SPR) hero_input_update reaches segment_collide (through hero_water_entry): the collision
+    // scratch words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_input_update/02-jump", 0x00229b70, N * 8, Ret::None, [transenv] {  // running: the jump press and the long jump
         transenv(2);
         constexpr uint32_t P = g::PLAYER;
@@ -5761,6 +5778,11 @@ void batches_unit() {
         wf(P + 0x164, ee_read<float>(OV(0x0017bdb8) + 0x18) * ee_read<float>(0x0015ed6c) * rf(0.6f, 1.1f)); w32(P + 0x1090, 0);
         return Args{};
     }, [](A) { hero_input_update(); return uint64_t{0}; }, OV(0x00173e7c));
+    }
+    {
+    // (stage 5, task SPR) hero_input_update reaches segment_collide (through hero_water_entry): the collision
+    // scratch words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_input_update/02-late", 0x00229b70, N * 8, Ret::None, [transenv] {  // running on the ground, no jump: the rest
         static const uint32_t sts[] = {2, 2, 0x2f, 0x73, 0x7e};
         const uint32_t st = sts[ri(0, 4)];
@@ -5775,6 +5797,11 @@ void batches_unit() {
         w32(P + 0x198, u(ri(0, 40))); w32(g::PAD + 0x1d4, u(ri(0, 1))); wfrand(P + 0xe0, 2, -0.2f, 0.2f); wf(P + 0x3b0, rf(-0.5f, 1)); w32(P + 0x1090, 0);
         return Args{};
     }, [](A) { hero_input_update(); return uint64_t{0}; }, OV(0x00173e7c));
+    }
+    {
+    // (stage 5, task SPR) hero_input_update reaches segment_collide (through hero_water_entry): the collision
+    // scratch words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_input_update/2f-board", 0x00229b70, N * 8, Ret::None, [transenv] {  // on the board, no buttons: its animations
         transenv(0x2f);
         constexpr uint32_t P = g::PLAYER;
@@ -5785,6 +5812,11 @@ void batches_unit() {
         wfrand(P + 0x100, 2, -0.3f, 0.3f); w32(P + 0x56c, 0); w32(P + 0x1090, 0);
         return Args{};
     }, [](A) { hero_input_update(); return uint64_t{0}; }, OV(0x00173e7c));
+    }
+    {
+    // (stage 5, task SPR) hero_input_update reaches segment_collide (through hero_water_entry): the collision
+    // scratch words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_input_update/02-stop", 0x00229b70, N * 8, Ret::None, [transenv] {  // running, the stick let go: skid or stop
         transenv(2);
         constexpr uint32_t P = g::PLAYER;
@@ -5795,6 +5827,7 @@ void batches_unit() {
         for (uint32_t i = 0; i < 30; ++i) wf(g::PAD + 0x2d0 + 4 * i, rf(0, 1));  // the stick magnitude history
         return Args{};
     }, [](A) { hero_input_update(); return uint64_t{0}; }, OV(0x00173e7c));
+    }
     {
     // (stage 5, task C2c) hero_input_update/jump-air reaches segment_collide: A2's collision scratch
     // ranges left out of this check (see batch 43's checks of it)
@@ -6233,6 +6266,10 @@ void batches_unit() {
     };
     check("pad_build", 0x002671b0, N * 16, Ret::None, padenv, [](A a) { pad_build(a.i[0], hp<uint8_t>(a.i[1]), static_cast<int32_t>(a.i[2])); return uint64_t{0}; });
 
+    {
+    // (stage 5, task SPR) hero_init reaches segment_collide (through hero_ground_update): the collision scratch
+    // words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("hero_init", 0x00204c60, N * 2, Ret::None, [updenv] {  // the level start: the hero moby found and placed
         updenv(0);
         constexpr uint32_t MB = 0x01e60000;
@@ -6242,6 +6279,7 @@ void batches_unit() {
         w32(OV(0x0015fbc4), 0); w32(OV(0x0015fbc0), 0x01e20000); for (uint32_t o = 0; o < 0x4000; o += 4) w32(0x01e20000 + o, 0);
         return Args{};
     }, [](A) { hero_init(); return uint64_t{0}; }, OV(0x00173e7c));
+    }
 
     // ======== batch 57: the level setup's loaders (0x244110), task 0293
     g_batch = 57;

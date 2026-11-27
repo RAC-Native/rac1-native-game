@@ -98,6 +98,9 @@ void batch_98() {
         const uint32_t h = mhand != 0 ? mhand : ee_read<uint32_t>(P + 0x2080);
         return Args{{h, OUT, OUT + 0x20}, {}};
     }, [](A a) { return r32(mine_spawn(a.i[0], a.i[1])); });
+    {
+    // (stage 5, task SPR) mine_throw_start calls segment_collide: the collision scratch words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("mine_throw_start", 0x002aa008, 300, Ret::None, [level1, near_hero, pick, a_level_moby] {
         level1();
         near_hero(OUT, ri(0, 3) == 0 ? 6.0f : 1.0f, 0.2f, 2.0f);
@@ -122,6 +125,11 @@ void batch_98() {
         near_hero(OUT + 0x40, ri(0, 3) == 0 ? 8.0f : 1.0f, 0.2f, 2.0f);
         return Args{{OUT + 0x40, mine, pv}, {}};
     }, [](A a) { if (a.i[1] != 0) mine_throw_start(VV(a.i[0]), a.i[1], a.i[2]); return uint64_t{0}; });
+    }
+    {
+    // (stage 5, task SPR) mine_glove_update calls segment_collide: the collision scratch words left out
+    // (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("mine_glove_update", 0x002c1ad0, 500, Ret::None, [level1, hero_vary, pick, near_hero] {
         level1();
         if (mhand == 0) return Args{{0u}, {}};
@@ -154,6 +162,7 @@ void batch_98() {
         w32(0x0015ed84, u(ri(0, 31)));
         return Args{{m}, {}};
     }, [](A a) { if (a.i[0] != 0) mine_glove_update(a.i[0]); return uint64_t{0}; });
+    }
     // --- the Trespasser (item 0x1a, hand / pickup class 0xbc)
     static uint32_t thand = 0;
     {
@@ -161,6 +170,10 @@ void batch_98() {
         thand = item_moby(OVF(0x002c1718));
         std::printf("  (trespasser moby %08x)\n", thand);
     }
+    {
+    // (stage 5, task SPR) trespasser_pickup_update reaches segment_collide (through floor_probe_v): the
+    // collision scratch words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("trespasser_pickup_update", 0x002c1778, 400, Ret::None, [level1, pick, near_hero] {
         level1();
         if (thand == 0) return Args{{0u}, {}};
@@ -173,6 +186,11 @@ void batch_98() {
         wf(m + 0x48, rf(-3.1f, 3.1f));
         return Args{{m}, {}};
     }, [](A a) { if (a.i[0] != 0) trespasser_pickup_update(a.i[0]); return uint64_t{0}; });
+    }
+    {
+    // (stage 5, task SPR) trespasser_update reaches segment_collide (through trespasser_pickup_update,
+    // floor_probe_v): the collision scratch words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("trespasser_update", 0x002c1718, 200, Ret::None, [level1, pick, near_hero] {
         level1();
         if (thand == 0) return Args{{0u}, {}};
@@ -186,6 +204,7 @@ void batch_98() {
         w32(0x0013cae0, R()); w32(0x001403f0, R());
         return Args{{m}, {}};
     }, [](A a) { if (a.i[0] != 0) trespasser_update(a.i[0]); return uint64_t{0}; });
+    }
     // --- the shared effect helpers
     check("angle_seek_limited", 0x00200510, 300, Ret::Float, [] {
         return Args{{}, {rf(-3.1f, 3.1f), rf(-3.1f, 3.1f), ri(0, 3) == 0 ? rf(0, 0.05f) : rf(0, 4.0f)}};
@@ -213,6 +232,10 @@ void batch_98() {
         seed_rand();
         return Args{{OUT, OUT + 0x10, R(), R(), ri(0, 5) == 0 ? 0u : u(ri(1, 100))}, {rf(0, 300000)}};
     }, [](A a) { spawn_particle_08(a.i[0], a.i[1], a.i[2], a.i[3], static_cast<int32_t>(a.i[4]), a.f[0]); return uint64_t{0}; });
+    {
+    // (stage 5, task SPR) floor_light_add reaches segment_collide (through floor_probe_v): the collision scratch
+    // words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("floor_light_add", 0x00259fe8, 200, Ret::None, [level1, near_hero] {
         level1();
         const uint32_t m = moby_spawn(0x4a);
@@ -222,6 +245,11 @@ void batch_98() {
         w32(OV(0x0015f434), ri(0, 8) == 0 ? 0x20u : u(ri(0, 0x1f)));
         return Args{{m}, {rf(0, 2)}};
     }, [](A a) { if (a.i[0] != 0) floor_light_add(a.i[0], a.f[0]); return uint64_t{0}; });
+    }
+    {
+    // (stage 5, task SPR) explosion_effect reaches mobys_in_sphere (through explosion_body): the collision
+    // scratch words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("explosion_effect", 0x0025e450, 400, Ret::None, [level1, near_hero, a_level_moby, pick, pickf] {
         level1();
         const uint32_t src = ri(0, 6) == 0 ? 0u : a_level_moby();
@@ -242,6 +270,7 @@ void batch_98() {
                          static_cast<int32_t>(a.i[7]), static_cast<int32_t>(a.i[8]), static_cast<int32_t>(a.i[9]), a.i[10], a.f[0], a.f[1], a.f[2], a.f[3], a.f[4], a.f[5], a.f[6]);
         return uint64_t{0};
     });
+    }
     // --- the mine (class 0x4a)
     auto make_mine = [near_hero, pick, a_level_moby](uint32_t state) -> uint32_t {
         const uint32_t m = moby_spawn(0x4a);
@@ -294,6 +323,9 @@ void batch_98() {
         w32(OV(0x001aba00) + n * 4, 0);
         if (ri(0, 2) == 0) { wfrand(OV(0x00166c80), 3, -1.0f, 1.0f); near_hero(OV(0x00166dc0), 8.0f, -1.0f, 4.0f); }
     };
+    {
+    // (stage 5, task SPR) mine_predict calls segment_collide: the collision scratch words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("mine_predict", 0x002aa2a8, 300, Ret::Int32, [mine_world, make_mine, pick] {
         mine_world();
         const uint32_t m = make_mine(pick({0u, 0u, 1u, 1u, 2u, 6u}));
@@ -302,6 +334,10 @@ void batch_98() {
         w32(OV(0x0015f5c4), u(ri(0, 9) == 0));
         return Args{{pv, m, u(ri(0, 2))}, {}};
     }, [](A a) { if (a.i[1] == 0) return r32(0); return r32(static_cast<uint32_t>(mine_predict(a.i[0], a.i[1], static_cast<int32_t>(a.i[2])))); });
+    }
+    {
+    // (stage 5, task SPR) mine_update calls segment_collide: the collision scratch words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("mine_update", 0x002aa670, 2500, Ret::None, [mine_world, make_mine, pick] {
         mine_world();
         const uint32_t m = make_mine(pick({0u, 1u, 1u, 1u, 1u, 2u, 6u, 6u, 6u, 0x16u, 0x14u, 5u, 0x12u}));
@@ -309,6 +345,7 @@ void batch_98() {
         seed_rand();
         return Args{{m}, {}};
     }, [](A a) { if (a.i[0] != 0) mine_update(a.i[0]); return uint64_t{0}; });
+    }
     // --- the Taunter (item 0x0e, hand class 0xaf)
     static uint32_t thand2 = 0;
     {
@@ -527,6 +564,10 @@ void batch_98() {
         const uint32_t h = dhand != 0 ? dhand : ee_read<uint32_t>(P + 0x2080);
         return Args{{h, OUT, OUT + 0x20}, {}};
     }, [](A a) { return r32(doom_agent_spawn(a.i[0], a.i[1], a.i[2])); });
+    {
+    // (stage 5, task SPR) doom_agent_launch calls segment_collide: the collision scratch words left out
+    // (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("doom_agent_launch", 0x002c82f0, 300, Ret::None, [level1, near_hero] {
         level1();
         const uint32_t ag = moby_spawn(0xe6);
@@ -537,6 +578,7 @@ void batch_98() {
         w32(P + 0x2fc, ri(0, 4) == 0 ? ee_read<uint32_t>(P + 0x2080) : 0u);
         return Args{{OUT, ag, apv}, {}};
     }, [](A a) { if (a.i[1] != 0) doom_agent_launch(a.i[0], a.i[1], a.i[2]); return uint64_t{0}; });
+    }
     auto doom_hand = [pick, near_hero](uint32_t state) -> uint32_t {
         if (dhand == 0) return 0;
         const uint32_t m = moby_spawn(ee_read<uint16_t>(dhand + 0xa6));
@@ -564,6 +606,9 @@ void batch_98() {
         w32(P + 0x2fc, ri(0, 4) == 0 ? ee_read<uint32_t>(P + 0x2080) : 0u);
         if (ee_read<int32_t>(P + 0x2084) == 1) w32(P + 0x2084, 0x1eu);  // (hero_set_state(0x1e, 1) waits for a VU job the interpreter never finishes here; the same call is checked in the other hands)
     };
+    {
+    // (stage 5, task SPR) doom_aim calls segment_collide: the collision scratch words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("doom_aim", 0x002c7548, 400, Ret::None, [doom_world, doom_hand] {
         doom_world();
         const uint32_t m = doom_hand(2);
@@ -572,6 +617,11 @@ void batch_98() {
         seed_rand();
         return Args{{m, pv, OUT}, {}};
     }, [](A a) { if (a.i[0] != 0) doom_aim(a.i[0], a.i[1], a.i[2]); return uint64_t{0}; });
+    }
+    {
+    // (stage 5, task SPR) doom_glove_update reaches segment_collide (through doom_aim): the collision scratch
+    // words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("doom_glove_update", 0x002c7a58, 1000, Ret::None, [doom_world, doom_hand, pick] {
         doom_world();
         const uint32_t m = doom_hand(pick({0u, 1u, 2u, 2u, 3u, 3u, 4u, 5u, 6u}));
@@ -579,6 +629,7 @@ void batch_98() {
         seed_rand();
         return Args{{m}, {}};
     }, [](A a) { if (a.i[0] != 0) doom_glove_update(a.i[0]); return uint64_t{0}; });
+    }
     g_ignored_words = ign_saved;
     g_ee_null_is_ram = null_ram;
 }

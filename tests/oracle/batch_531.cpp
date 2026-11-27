@@ -489,11 +489,30 @@ void batch_531() {
                 if (hang_and_play()) return Args{};
             return Args{};
         };
+        {
+        // (stage 5, task SPR) hero_frame_update reaches sphere_collide (through hero_surface_update): the
+        // collision scratch words left out (docs/oracle.md)
+        const CollisionScratchIgnored spr_ignored;
         check("hero_frame_update/hang", 0x002070d0, ncase, Ret::None, played, [](A) { hero_frame_update(); return uint64_t{0}; }, OV(0x00173e7c));
+        }
+        {
+        // (stage 5, task SPR) hero_input_update reaches segment_collide (through hero_water_entry): the
+        // collision scratch words left out (docs/oracle.md)
+        const CollisionScratchIgnored spr_ignored;
         check("hero_input_update/hang", 0x00229b70, ncase, Ret::None, played, [](A) { hero_input_update(); return uint64_t{0}; }, OV(0x00173e7c));
+        }
+        {
+        // (stage 5, task SPR) hero_state_update reaches segment_collide (through update_state, jump_update):
+        // the collision scratch words left out (docs/oracle.md)
+        const CollisionScratchIgnored spr_ignored;
         check("hero_state_update/hang", 0x00217970, ncase, Ret::None, played, [](A) { hero_state_update(); return uint64_t{0}; }, OV(0x00173e7c));
+        }
         // the ledge check from the hero's place or 0.3 to either side, the facing and the reference yaw varied
         find_typed();
+        {
+        // (stage 5, task SPR) hero_ledge_check reaches segment_collide (through hero_ledge_check_v): the
+        // collision scratch words left out (docs/oracle.md)
+        const CollisionScratchIgnored spr_ignored;
         check("hero_ledge_check/level", 0x0020c758, ncase, Ret::Int32, [played] {
             played();
             if (ri(0, 3) == 0) before_typed();  // (a quarter of the time before a top of type 0 / 9 / 12)
@@ -512,12 +531,17 @@ void batch_531() {
             if (ri(0, 3) == 0) swc1(P + 0x2d8, at.z + rf(-1.0f, 1.5f));  // (the ground close below the edge: no ledge)
             return Args{{OUT, OUT + 0x20}, {}};
         }, [](A a) { return ri32(hero_ledge_check(a.i[0], hp<float>(a.i[1]))); }, OV(0x00173e7c));
+        }
         // the grab in the shimmy states from the hero's place or 0.3 to the side (as the shimmy's update runs it), or beside
         // a moby. Left out of this check only: the segment record 0x173e90 .. 0x173e9c, which segment_collide leaves from VU0
         // registers in the original when a line hits a moby (the known difference of the port, COMMON.md / batch 520's
         // segment_words; nothing reads it): met here on the grab's probe of a moby's top
         const std::vector<uint32_t> saved_ignored = g_ignored_words;
         for (uint32_t k = 0; k < 0x10; k += 4) g_ignored_words.push_back(OV(0x00173e90) + k);
+        {
+        // (stage 5, task SPR) hero_ledge_grab_check calls segment_collide: the collision scratch words left
+        // out (docs/oracle.md)
+        const CollisionScratchIgnored spr_ignored;
         check("hero_ledge_grab_check/shimmy", 0x0020bed0, ncase, Ret::None, [played] {
             played();
             const int side = ri(0, 2);
@@ -548,6 +572,7 @@ void batch_531() {
             }
             return Args{};
         }, [](A) { hero_ledge_grab_check(); return uint64_t{0}; }, OV(0x00173e7c));
+        }
         g_ignored_words = saved_ignored;
     }
     snd_server(false);

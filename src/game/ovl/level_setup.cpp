@@ -534,9 +534,17 @@ void moby_lod_set(uint32_t p, uint32_t tex) {
 void sub_00241788(uint32_t, int32_t) {}
 
 // Decompress a "WAD" block (LZ with the magic "WAD" at +0, the compressed size at +3, data from
-// +0x10) to `dst`; returns the bytes written. The input is streamed through the scratchpad by
-// DMA in 0x2000-byte halves (0x70000000 / 0x70002000), a 0x11 code with distance 0 marking the
-// end of each half. A bad magic or an invalid code traps (teq) in the original.
+// +0x10) to `dst`; returns the bytes written. The input is streamed in 0x2000-byte halves
+// (0x70000000 / 0x70002000), a 0x11 code with distance 0 marking the end of each half. A bad
+// magic or an invalid code traps (teq) in the original.
+// The original streams the input by DMA into the scratchpad and reads it back from there. Here
+// the same DMA schedule (the two first halves, then a half each time the reader crosses one,
+// 0x200 quadwords from the same source addresses) fills `img`, a host image of the scratchpad's
+// 16 KB, and the decompressor reads the image (`in` keeps the scratchpad's addresses; an address
+// past the scratchpad's end reads EE memory as before). At every exit after the first transfer
+// the image is copied to 0x70000000 .. 0x70004000 once, so that the scratchpad holds what the
+// original leaves there: posing, skinning and the drawing passes' copy-outs read those words
+// after the call. The copy goes when those readers stop reading what it leaves (stages 7 / 8).
 // orig: 0x0024d8d0
 int32_t wad_decompress(uint32_t src, uint32_t dst) {
     const SprScope spr_scope(SprScopeId::WadDecompress);  // (RAC1_BRIDGE_GUARD=spr: the scratchpad's data flow, src/game/bridge/guard.h)
@@ -544,9 +552,19 @@ int32_t wad_decompress(uint32_t src, uint32_t dst) {
     uint32_t size = static_cast<uint32_t>(lbu(src + 3)) | static_cast<uint32_t>(lbu(src + 4)) << 8 | static_cast<uint32_t>(lbu(src + 5)) << 16 |
                     static_cast<uint32_t>(lbu(src + 6)) << 24;
     uint32_t madr = src + 0x10, half = 0;
-    auto dma = [&] {
-        spr_dma_to(half, madr, 0x200);
+    struct Qw { uint64_t lo, hi; };
+    Qw img[0x400];  // the scratchpad's image, quadword by quadword (both halves written by the first two transfers)
+    auto dma = [&] {  // spr_dma_to(half, madr, 0x200) into the image: 0x200 quadwords, even past the block's end
+        for (uint32_t q = 0; q < 0x200u; ++q) img[((half + q * 16) & 0x3ff0u) >> 4] = ee_read<Qw>((madr + q * 16) & ~15u);
         half ^= 0x2000;
+    };
+    auto spr_leave = [&img] {  // the image copied to the scratchpad: what the original's transfers leave there
+        for (uint32_t q = 0; q < 0x400u; ++q) ee_write<Qw>(0x70000000u + q * 16, img[q]);
+    };
+    const uint8_t* const img_bytes = reinterpret_cast<const uint8_t*>(img);
+    auto inb = [img_bytes](uint32_t a) {  // a byte of the input at its scratchpad address
+        const uint32_t o = a - 0x70000000u;
+        return o < 0x4000u ? static_cast<uint32_t>(img_bytes[o]) : static_cast<uint32_t>(lbu(a));
     };
     dma();
     madr += 0x2000;
@@ -555,7 +573,7 @@ int32_t wad_decompress(uint32_t src, uint32_t dst) {
     uint32_t in = 0x70000000u, end = 0x80000000u, out = dst;
     size -= 0x10;
     if (!(0x1fffu < size)) end = in + size;
-    auto rd = [&in] { return static_cast<uint32_t>(lbu(in++)); };
+    auto rd = [&in, &inb] { return inb(in++); };
     auto put = [&out](uint32_t v) { sb(out++, v); };
     auto copy_match = [&](uint32_t from, int32_t n) {
         sb(out, lbu(from));
@@ -571,7 +589,7 @@ int32_t wad_decompress(uint32_t src, uint32_t dst) {
     uint32_t v = 0;
     for (;;) {
         if (st == St::First) {
-            const int32_t lit = static_cast<int32_t>(lbu(in)) - 0x11;
+            const int32_t lit = static_cast<int32_t>(inb(in)) - 0x11;
             if (0 < lit) {
                 ++in;
                 for (int32_t c = lit; c > 0; --c) put(rd());
@@ -583,17 +601,17 @@ int32_t wad_decompress(uint32_t src, uint32_t dst) {
         }
         if (st == St::Top) {  // 0x24d988: a literal run may follow
             const bool more = in < end;
-            v = lbu(in);
+            v = inb(in);
             ++in;
             if (!more) break;
             if (v < 0x10) {
                 if (v == 0) {
-                    v = lbu(in) + 0xf;
+                    v = inb(in) + 0xf;
                     ++in;
                 }
-                put(lbu(in));
-                put(lbu(in + 1));
-                put(lbu(in + 2));
+                put(inb(in));
+                put(inb(in + 1));
+                put(inb(in + 2));
                 in += 3;
                 int32_t c = static_cast<int32_t>(v);
                 do {
@@ -605,7 +623,7 @@ int32_t wad_decompress(uint32_t src, uint32_t dst) {
             }
         } else {  // 0x24d9f8
             const bool more = in < end;
-            v = lbu(in);
+            v = inb(in);
             ++in;
             if (!more) break;
         }
@@ -614,26 +632,26 @@ int32_t wad_decompress(uint32_t src, uint32_t dst) {
         int32_t n;
         bool copy = true;
         if (0x40 <= v) {
-            from = out - 1 - ((v >> 2) & 7) - lbu(in) * 8u;
+            from = out - 1 - ((v >> 2) & 7) - inb(in) * 8u;
             ++in;
             n = static_cast<int32_t>(v >> 5) - 1;
         } else if (0x20 <= v) {
             n = static_cast<int32_t>(v & 0x1f);
             if (n == 0) {
-                n = static_cast<int32_t>(lbu(in)) + 0x1f;
+                n = static_cast<int32_t>(inb(in)) + 0x1f;
                 ++in;
             }
-            const uint32_t d = (static_cast<uint32_t>(lbu(in)) >> 2) + lbu(in + 1) * 64u;
+            const uint32_t d = (static_cast<uint32_t>(inb(in)) >> 2) + inb(in + 1) * 64u;
             in += 2;
             from = out - 1 - d;
         } else if (0x10 <= v) {
             from = out - ((v & 8) << 11);
             n = static_cast<int32_t>(v & 7);
             if (n == 0) {
-                n = static_cast<int32_t>(lbu(in)) + 7;
+                n = static_cast<int32_t>(inb(in)) + 7;
                 ++in;
             }
-            const uint32_t d = (static_cast<uint32_t>(lbu(in)) >> 2) + lbu(in + 1) * 64u;
+            const uint32_t d = (static_cast<uint32_t>(inb(in)) >> 2) + inb(in + 1) * 64u;
             in += 2;
             from -= d;
             if (from == out) {
@@ -651,22 +669,24 @@ int32_t wad_decompress(uint32_t src, uint32_t dst) {
                 from -= 0x4000;
             }
         } else {
+            spr_leave();
             std::abort();  // teq: trap
         }
         if (copy) copy_match(from, n);
         // 0x24db60: up to 3 literals after a match (low bits of its last byte)
-        const uint32_t k = lbu(in - 2) & 3u;
+        const uint32_t k = inb(in - 2) & 3u;
         if (k == 0) {
             st = St::Top;
             continue;
         }
-        sb(out, lbu(in));
-        sb(out + 1, lbu(in + 1));
-        sb(out + 2, lbu(in + 2));
+        sb(out, inb(in));
+        sb(out + 1, inb(in + 1));
+        sb(out + 2, inb(in + 2));
         out += k;
         in += k;
         st = St::Next;
     }
+    spr_leave();
     return static_cast<int32_t>(out - dst);
 }
 

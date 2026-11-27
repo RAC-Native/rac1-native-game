@@ -154,6 +154,10 @@ void batch_82() {
     // moby_pose_matrices 0x2531e0 spills the caller's $t8 / $t9 with sq: their upper lanes are stale
     for (uint32_t a = 0x70003708; a < 0x70003710; a += 4) g_ignored_words.push_back(a);
     for (uint32_t a = 0x70003718; a < 0x70003720; a += 4) g_ignored_words.push_back(a);
+    {
+    // (stage 5, task SPR) pyrocitor_flames_hit calls mobys_in_sphere: the collision scratch words left out
+    // (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("pyrocitor_flames_hit", 0x002b8438, 300, Ret::None, [level1] {
         level1();
         if (hand == 0) return Args{{0u}, {}};
@@ -178,6 +182,10 @@ void batch_82() {
         }
         return Args{{m}, {}};
     }, [](A a) { if (a.i[0] != 0) pyrocitor_flames_hit(a.i[0]); return uint64_t{0}; });
+    }
+    {
+    // (stage 5, task SPR) pyrocitor_update calls segment_collide: the collision scratch words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("pyrocitor_update", 0x002b77f0, 400, Ret::None, [level1, hero_vary, pick] {
         level1();
         if (hand == 0) return Args{{0u}, {}};
@@ -204,6 +212,7 @@ void batch_82() {
         seed_rand();
         return Args{{m}, {}};
     }, [](A a) { if (a.i[0] != 0) pyrocitor_update(a.i[0]); return uint64_t{0}; });
+    }
     // --- the Blaster (item 0x0f, hand class 0xa8)
     static uint32_t bhand = 0;
     {
@@ -296,6 +305,10 @@ void batch_82() {
         if (o == 0) return Args{{0u, 0u}, {}};
         return Args{{o, u(coin())}, {}};
     }, [](A a) { if (a.i[0] != 0) blaster_bolt_end(a.i[0], static_cast<int32_t>(a.i[1])); return uint64_t{0}; });
+    {
+    // (stage 5, task SPR) blaster_bolt_update calls segment_collide: the collision scratch words left out
+    // (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("blaster_bolt_update", 0x002cb418, 400, Ret::None, [level1, bolt] {
         level1();
         uint32_t o; bolt(o);
@@ -303,6 +316,7 @@ void batch_82() {
         if (ri(0, 6) == 0) w32(0x001403e0, bhand);
         return Args{{o}, {}};
     }, [](A a) { if (a.i[0] != 0) blaster_bolt_update(a.i[0]); return uint64_t{0}; });
+    }
     // the targets list 0x15ffe4: some level mobys linked in (+0x28 the next), flagged 0x1000
     auto targets = [a_level_moby] {
         uint32_t head = 0;
@@ -320,6 +334,9 @@ void batch_82() {
         }
         w32(OV(0x0015ffe4), head);
     };
+    {
+    // (stage 5, task SPR) blaster_auto_aim calls segment_collide: the collision scratch words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("blaster_auto_aim", 0x002b46a8, 300, Ret::Int32, [level1, targets, near_hero] {
         level1(); targets();
         near_hero(OUT, 1, 0.5f, 1.5f);
@@ -331,6 +348,9 @@ void batch_82() {
         }
         return Args{{bhand, OUT, OUT + 0x10, OUT + 0x14}, {}};
     }, [](A a) { return r32(blaster_auto_aim(a.i[0], a.i[1], a.i[2], a.i[3])); });
+    }
+    // (stage 5, task SPR) not marked: after its collision calls the moby's pose capture (moby_anim_set) copies the
+    // collision's leftover past the bind pose into a pose record, inside the collision scratch mask (docs/oracle.md)
     check("blaster_update", 0x002b49a8, 500, Ret::None, [level1, hero_vary, pick, targets] {
         level1();
         if (bhand == 0) return Args{{0u}, {}};

@@ -64,6 +64,9 @@ void batch_68() {
         level1(); Vec4 p{rf(100, 200), rf(100, 200), rf(20, 40), 1}; ee_ref<Vec4>(OUT) = p; seed_rand();
         return Args{{R() & 0x1fffff0u, OUT}, {}};
     }, [](A a) { return r32(bomb_spawn(a.i[0], a.i[1])); });
+    {
+    // (stage 5, task SPR) bomb_throw_start calls segment_collide: the collision scratch words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("bomb_throw_start", 0x002acfd8, 200, Ret::None, [level1, hero_vary] {
         level1(); hero_vary();
         const uint32_t b = bomb_spawn(0, 0x0013f3d0);
@@ -80,6 +83,11 @@ void batch_68() {
         if (ri(0, 4) == 0) w32(0x0013f350 + 0x2fc, 0);
         return Args{{OUT, b, OUT + 0x10}, {}};
     }, [](A a) { bomb_throw_start(a.i[0], a.i[1], a.i[2]); return uint64_t{0}; });
+    }
+    {
+    // (stage 5, task SPR) bomb_glove_update calls segment_collide: the collision scratch words left out
+    // (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("bomb_glove_update", 0x002c26c8, 300, Ret::None, [level1, item_moby, hero_vary, pick] {
         level1();
         glove = item_moby(OVF(0x002c26c8));
@@ -96,6 +104,10 @@ void batch_68() {
         else w32(pv + 0x50, 0);
         return Args{{glove}, {}};
     }, [](A a) { bomb_glove_update(a.i[0]); return uint64_t{0}; });
+    }
+    {
+    // (stage 5, task SPR) bomb_trace calls segment_collide: the collision scratch words left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("bomb_trace", 0x002ad410, 300, Ret::Int32, [level1, item_moby, hero_vary] {
         level1(); hero_vary();
         const uint32_t g = item_moby(OVF(0x002c26c8));
@@ -110,6 +122,11 @@ void batch_68() {
         if (ri(0, 3) == 0) w32(ee_read<uint32_t>(g + 0x78) + 0x50, R());
         return Args{{pv, b, u(ri(0, 2))}, {}};
     }, [](A a) { return r32(static_cast<uint32_t>(bomb_trace(a.i[0], a.i[1], static_cast<int32_t>(a.i[2])))); });
+    }
+    {
+    // (stage 5, task SPR) bomb_update reaches segment_collide (through bomb_trace): the collision scratch words
+    // left out (docs/oracle.md)
+    const CollisionScratchIgnored spr_ignored;
     check("bomb_update", 0x002adb30, 400, Ret::None, [level1, item_moby, hero_vary, pick] {
         level1(); hero_vary();
         const uint32_t g = item_moby(OVF(0x002c26c8));
@@ -135,6 +152,7 @@ void batch_68() {
         seed_rand();
         return Args{{b}, {}};
     }, [](A a) { bomb_update(a.i[0]); return uint64_t{0}; });
+    }
     check("debris_7a_update", 0x002af5b8, 300, Ret::None, [level1] {
         level1();
         Vec4 p = ee_ref<Vec4>(0x0013f3d0); p.x += rf(-5, 5); p.y += rf(-5, 5); p.z += rf(0, 3);

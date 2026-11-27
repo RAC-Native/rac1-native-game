@@ -116,6 +116,27 @@ Everything else (the level set-ups, the generators, a batch's own code) runs in 
 at once) with `RAC1_COLL_STATE_CHECK` on, as before. `ORACLE_COLL_STATE=mirror` (or `ee`) runs the compared port runs in that
 mode instead, for comparison. Batch 543 checks the state against the EE words and native against mirror.
 
+The collision routines (segment_collide, sphere_collide, capsule_collide, mobys_in_sphere, sphere_mesh_collide) keep their
+work on the host's stack, where the original leaves it in the scratchpad: the chunk lists (+0x0 .. +0x2000), the transformed
+vertices (+0x2000 .. +0x3000), segment_collide's crossings (+0x3000 .. +0x3600), the merged list (+0x3800 .. +0x3c00) and
+the step bytes (+0x3ffc). A check whose function reaches one of them leaves those words out of its comparison inside a
+`CollisionScratchIgnored` scope (tests/oracle/oracle_env.h), with a comment naming the routine its function reaches;
+`ORACLE_NO_SPR_IGNORE=1` compares them anyway. Besides the collision routines' own checks, these callers are marked: batch
+531's five checks (levels 1 and 2), `hero_water_air` and `hero_water_entry` (batch 48), `hero_input_update`'s `/pre`,
+`/02-jump`, `/02-late`, `/2f-board` and `/02-stop` (batch 50, levels 15 .. 18; `/jump-air` already was), `hero_init` (56),
+the bombs' four (68), the Pyrocitor's two and the blaster bolt's and aim's (82), and the mines', the Trespasser's, the floor
+light's, the explosion's and the doom agents' eleven (98). Without the mark they fail on the original's collision scratch
+alone: with `ORACLE_NO_SPR_IGNORE=1` every differing word is inside the mask and nothing else differs. The mask also covers
+words posing writes (the joint matrices from +0x0, the bind pose and the key frame it stages at +0x2000 and +0x3000):
+posing's own checks (batches 39 and 79) compare them unmasked, and the marked checks still compare EE memory whole, where
+posing's results go. `blaster_update` (82) is not marked: after its collision calls, the pose capture `moby_anim_set` starts
+(`moby_pose_capture`) copies the quadword past the class's bind pose (+0x26f0, which the original's collision leaves) into
+the record past the last joint (+0x1be0), a posing write inside the mask that the mask would hide; it fails on that until
+the mask is finer. A finer mask (only the words the original's collision routines wrote) needs the comparison in
+oracle_env.cpp to know them. With these marks the reference batches of levels 0, 1, 3, 5 and 14, and batches 48 and 50 on 15
+.. 18, pass: no failure is left in them. A batch run on a level it is not written for can still fail or stop (batch 79,
+Veldin's, aborts on levels 15 and 16 and does not finish on 18).
+
 The grids' host copies (the zone grid and the camera-volume grid, `src/game/level/level_grids.h`) are compared with EE memory
 at every lookup in the oracle (`RAC1_LD_GRIDS_CHECK` on, set by its main): a test grid rebuilt at the same address is parsed
 again. Batch 544 (levels 0 .. 18; `ORACLE_ONLY=grids_title` on level 0 for the title's word) checks the copies against EE
