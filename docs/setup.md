@@ -162,11 +162,11 @@ folders, `setup-state.json`), and every other option of that run reads and write
 
 - `assets/generated/src/`, the generated sources: a build input, not run-time data; it stays in the repository's
   `assets/` (the build compiles it from there).
-- `assets/update-version.txt` (the installed version) and the movie subtitles' speech to text: with `--output-dir`,
-  `./setup.sh` does not make movie subtitles (`tools/movie_subtitles.py` knows `assets/` only).
+- `assets/update-version.txt` (the installed version of the sources).
 - Python: the overlay maps step still runs `tools/overlay_match/` until the native 1.0 removes the maps.
 
-The game (and its setup mode, and `tools/setup.py`) chooses the folder once, at start, in this order:
+The game (and its setup mode, `tools/setup.py`, the other Python tools through `tools/asset_root.py`, and the
+launcher) chooses the folder once, at start, in this order (a tool's own path options still win):
 
 1. **`RAC1_ASSETS`**, when set: the folder (a relative path is taken against the current directory and printed once:
    `[assets] the game's data: ...`).
@@ -175,7 +175,11 @@ The game (and its setup mode, and `tools/setup.py`) chooses the folder once, at 
    anywhere). `--remember` writes it (an absolute path); `./build/rac1-native --setup --forget`, or deleting the file,
    goes back to the default.
 3. **`assets`**, relative to the current directory: what the game always did; nothing changes for anyone who sets
-   neither.
+   neither. (The Python tools take the repository's `assets/`, the launcher the game folder's: the same folder when the
+   game runs from the repository's root, as `./setup.sh` and the launcher run it.)
+
+With a folder other than the default one, the setup passes it on to the tools it runs (`RAC1_ASSETS`), `--output-dir`
+included: the movie subtitles' speech to text (its `stt/`) and the subtitle files go there too.
 
 Without `--remember`, run the game with `RAC1_ASSETS=<dir> ./build/rac1-native` (`./setup.sh` prints the line).
 `./build/rac1-native --setup --status` shows the folder the game reads and where that choice came from.

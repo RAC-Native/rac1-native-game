@@ -16,7 +16,7 @@ namespace Rac1Launcher
         static readonly Regex Name = new Regex(@"^row_[0-9a-f]{4}\.(en|fr|de|es|it)\.srt$", RegexOptions.IgnoreCase);
         const long MaxFile = 1 << 20;  // (the game reads no file over 1 MB)
 
-        public static string Dir(GameDir game) => game.P("assets", "movie-subtitles");
+        public static string Dir(GameDir game) => game.A("movie-subtitles");
 
         /// <summary>The languages the setup can make movie subtitles in (the movies' sound tracks).</summary>
         public static readonly string[] Languages = { "en", "fr", "de", "es", "it" };

@@ -428,6 +428,9 @@ int run_setup(int argc, char** argv) {
     // the data's folder, before anything reads a path (src/io/asset_paths.h): every step, the pool, the mods' builds and the
     // disc's files then go there
     if (!assets_dir.empty() && !io::asset_root_set(assets_dir)) return 1;
+    // the setup's Python children (tools/overlay_match/deps.py, run by the level composition: tools/asset_root.py) read the
+    // same folder; the default root leaves the environment as it is
+    if (io::asset_root_source() != "default") platform::set_environment("RAC1_ASSETS", fs::absolute(io::asset_root()).string());
     if (forget) {
         std::string why;
         if (!io::asset_root_forget(why)) {

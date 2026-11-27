@@ -45,7 +45,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WINDOWS = os.name == "nt"
-ASSETS = ROOT / "assets"
+sys.path.append(str(ROOT / "tools"))
+from asset_root import asset_root  # noqa: E402
+ASSETS = asset_root()  # the game's run-time data: RAC1_ASSETS, build/assets.txt, else assets/ (tools/asset_root.py)
 DISC_TOC = ASSETS / "disc" / "toc"
 OUT_DIR = ASSETS / "movie-subtitles"
 MANIFEST = OUT_DIR / "generated.txt"
@@ -437,7 +439,7 @@ def main():
     ap.add_argument("--check-installed", action="store_true",
                     help="exit status 0 when the local back end is installed (assets/stt/venv), 1 when not")
     ap.add_argument("--out", default=None, metavar="DIR", help="write the files there instead (testing; the game reads "
-                                                               "assets/movie-subtitles/, or RAC1_MOVIE_SUBTITLES_DIR)")
+                                                               "the data's movie-subtitles/, or RAC1_MOVIE_SUBTITLES_DIR)")
     ap.add_argument("--keep-wav", default=None, metavar="DIR", help="keep the WAV files in DIR (testing)")
     ap.add_argument("--json", default=None, metavar="FILE", help="also write the timings and back end per file (testing)")
     args = ap.parse_args()

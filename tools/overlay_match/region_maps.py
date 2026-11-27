@@ -69,6 +69,9 @@ import overlay_match as om  # noqa: E402
 import front_match as fm  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.append(str(ROOT / "tools"))
+from asset_root import asset_root  # noqa: E402
+ASSETS = asset_root()  # the game's run-time data: RAC1_ASSETS, build/assets.txt, else assets/ (tools/asset_root.py)
 SECTOR = 2048
 CORE_END = 0x15EF00  # the base ELF below the boot module / overlays (NTSC-U): the same at the same addresses, unless
 #                     the table has a `core` unit (the 1.02 core: Core below)
@@ -539,7 +542,7 @@ def level_literal_places(lv, lits, N, L, R, maps=None, window=0x40):
     rule on that disc) through the level's runs `R`, kept where the bytes say so: the same 8 bytes (not all zero) on the
     disc's level `L` as on NTSC-U's `N`, else the one place within `window` of the runs' where a window of 0x40 /
     0x20 / 0x10 bytes matches (the literal's own first 16 bytes not zero; literal_points' rule)."""
-    maps = Path(maps or ROOT / "assets/generated/overlay_map")
+    maps = Path(maps or ASSETS / "generated/overlay_map")
     mp, ext = maps / f"level{lv}.txt", maps / f"level{lv}.ext"
     if not mp.is_file() or not ext.is_file():
         return {}
@@ -1230,9 +1233,9 @@ def cmd_check_literals(a):
     ni, pi = open(a.ntsc, "rb"), open(a.pal, "rb")
     failed = 0
     for lv in [int(x) for x in a.levels.split(",")]:
-        _nf, nd = read_map(ROOT / f"assets/generated/overlay_map/level{lv}.txt")
+        _nf, nd = read_map(ASSETS / f"generated/overlay_map/level{lv}.txt")
         ext = sorted((int(t[1], 16), int(t[2], 16), int(t[3], 16)) for t in
-                     (s.split() for s in (ROOT / f"assets/generated/overlay_map/level{lv}.ext").read_text().splitlines())
+                     (s.split() for s in (ASSETS / f"generated/overlay_map/level{lv}.ext").read_text().splitlines())
                      if t and t[0] == "ext")
         _pf, pd = read_map(Path(a.maps) / f"level{lv}.txt")
         pk = sorted(pd)
@@ -1398,8 +1401,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     t = sub.add_parser("table")
-    t.add_argument("--pal", default=str(ROOT / "assets/iso/Ratchet Clank.iso"))
-    t.add_argument("--ntsc", default=str(ROOT / "assets/iso/rac1-ntsc-u.iso"))
+    t.add_argument("--pal", default=str(ASSETS / "iso/Ratchet Clank.iso"))
+    t.add_argument("--ntsc", default=str(ASSETS / "iso/rac1-ntsc-u.iso"))
     t.add_argument("-o", required=True)
     p = sub.add_parser("apply")
     p.add_argument("--iso", required=True)
@@ -1408,28 +1411,28 @@ def main():
     p.add_argument("-o", required=True)
     c = sub.add_parser("check")
     c.add_argument("--maps", required=True, help="apply's output")
-    c.add_argument("--pal", default=str(ROOT / "assets/iso/Ratchet Clank.iso"))
-    c.add_argument("--ntsc", default=str(ROOT / "assets/iso/rac1-ntsc-u.iso"))
+    c.add_argument("--pal", default=str(ASSETS / "iso/Ratchet Clank.iso"))
+    c.add_argument("--ntsc", default=str(ASSETS / "iso/rac1-ntsc-u.iso"))
     c.add_argument("--levels", default=",".join(str(i) for i in range(19)) + ",front")
     c.add_argument("--show", type=int, default=8)
     k = sub.add_parser("check-levels")
     k.add_argument("--table", required=True)
-    k.add_argument("--pal", default=str(ROOT / "assets/iso/Ratchet Clank.iso"))
-    k.add_argument("--ntsc", default=str(ROOT / "assets/iso/rac1-ntsc-u.iso"))
+    k.add_argument("--pal", default=str(ASSETS / "iso/Ratchet Clank.iso"))
+    k.add_argument("--ntsc", default=str(ASSETS / "iso/rac1-ntsc-u.iso"))
     k.add_argument("--levels", default="", help="e.g. 3,5,boot (default: every level with literals)")
     k.add_argument("--show", type=int, default=8)
     q = sub.add_parser("check-literals")
     q.add_argument("--table", required=True)
     q.add_argument("--maps", required=True, help="apply's output for that disc")
-    q.add_argument("--pal", default=str(ROOT / "assets/iso/Ratchet Clank.iso"))
-    q.add_argument("--ntsc", default=str(ROOT / "assets/iso/rac1-ntsc-u.iso"))
+    q.add_argument("--pal", default=str(ASSETS / "iso/Ratchet Clank.iso"))
+    q.add_argument("--ntsc", default=str(ASSETS / "iso/rac1-ntsc-u.iso"))
     q.add_argument("--allow", default=str(ROOT / "data/regions/literals-allowed.txt"))
     q.add_argument("--levels", default=",".join(str(i) for i in range(1, 19)))
     q.add_argument("--show", type=int, default=20)
     o = sub.add_parser("check-core")
     o.add_argument("--table", required=True)
-    o.add_argument("--pal", default=str(ROOT / "assets/iso/Ratchet Clank.iso"))
-    o.add_argument("--ntsc", default=str(ROOT / "assets/iso/rac1-ntsc-u.iso"))
+    o.add_argument("--pal", default=str(ASSETS / "iso/Ratchet Clank.iso"))
+    o.add_argument("--ntsc", default=str(ASSETS / "iso/rac1-ntsc-u.iso"))
     o.add_argument("--show", type=int, default=8)
     a = ap.parse_args()
     {"table": cmd_table, "apply": cmd_apply, "check": cmd_check, "check-levels": cmd_check_levels,

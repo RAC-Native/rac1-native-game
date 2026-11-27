@@ -36,9 +36,12 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.append(str(ROOT / "tools"))
+from asset_root import asset_root  # noqa: E402
+ASSETS = asset_root()  # the game's run-time data: RAC1_ASSETS, build/assets.txt, else assets/ (tools/asset_root.py)
 GEN = ROOT / "assets/generated/src/game/ovl"
 HAND = ROOT / "src/game/ovl"
-MAPS = ROOT / "assets/generated/overlay_map"
+MAPS = ASSETS / "generated/overlay_map"
 SPAWNS = ROOT / "data/pool/spawns.txt"
 PROBE = re.compile(r"^\[deps\] probe level (\d+): class (\d+) spawned (\S+)")
 BASE = 0x15EF00
@@ -266,7 +269,7 @@ def merge_probe(logs):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--levels", default=",".join(str(n) for n in range(0, 19)))
-    ap.add_argument("--pool", default=str(ROOT / "assets/generated/pool"))
+    ap.add_argument("--pool", default=str(ASSETS / "generated/pool"))
     ap.add_argument("--class", dest="one", help="<level>:<class>: print its closure only")
     ap.add_argument("--probe", nargs="+", help="RAC1_DEPS_PROBE logs: their spawns merged into data/pool/spawns.txt")
     a = ap.parse_args()

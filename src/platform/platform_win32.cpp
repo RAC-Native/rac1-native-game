@@ -287,6 +287,11 @@ void unset_environment(const char* name) {
     SetEnvironmentVariableA(name, nullptr);
 }
 
+void set_environment(const char* name, const std::string& value) {
+    _putenv_s(name, value.c_str());
+    SetEnvironmentVariableA(name, value.c_str());
+}
+
 // ---- Threads, time ----
 
 std::uint64_t thread_id() { return static_cast<std::uint64_t>(GetCurrentThreadId()); }

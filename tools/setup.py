@@ -50,6 +50,7 @@ import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import asset_root  # noqa: E402
 import bundled_mods  # noqa: E402
 import disc_extract  # noqa: E402
 
@@ -59,7 +60,7 @@ MACOS = sys.platform == "darwin"  # (Apple silicon: the Metal renderer, docs/met
 SETUP_CMD = "setup.cmd" if WINDOWS else "./setup.sh"  # (what the messages tell the player to run)
 BUILD_DIR = ROOT / "build"
 EXE = BUILD_DIR / ("rac1-native.exe" if WINDOWS else "rac1-native")
-REPO_ASSETS = ROOT / "assets"  # (the generated sources, a build input, always here: CODE_ROOT)
+REPO_ASSETS = asset_root.REPO_ASSETS  # (the generated sources, a build input, always here: CODE_ROOT)
 
 
 def take_output_dir(argv):
@@ -76,23 +77,9 @@ def take_output_dir(argv):
     return None
 
 
-def remembered_root():
-    """The folder build/assets.txt names (`--remember`; the game reads it there: src/io/asset_paths.cpp), or None."""
-    try:
-        lines = (BUILD_DIR / "assets.txt").read_text(encoding="utf-8-sig").splitlines()
-    except OSError:
-        return None
-    for line in lines:
-        line = line.strip()
-        if line and not line.startswith("#"):
-            return (BUILD_DIR / Path(line).expanduser()).resolve()
-    return None
-
-
 # The game's run-time data: --output-dir, else the game's own choice (RAC1_ASSETS, build/assets.txt, assets/)
 OUTPUT_DIR = take_output_dir(sys.argv) if __name__ == "__main__" else None
-ASSETS_DIR = (OUTPUT_DIR or (Path(os.environ["RAC1_ASSETS"]).expanduser().resolve() if os.environ.get("RAC1_ASSETS") else None)
-              or remembered_root() or REPO_ASSETS)
+ASSETS_DIR = OUTPUT_DIR or asset_root.asset_root()  # (tools/asset_root.py: the tools' copy of the game's rule)
 # where the setup finds the disc again (runtime/kernel/disc.cpp: the game too, with RAC1_READ_ISO=1): a link, one name
 # per region
 GAME_ISOS = {"NTSC-U": ASSETS_DIR / "iso/rac1-ntsc-u.iso", "PAL": ASSETS_DIR / "iso/rac1-pal.iso"}
@@ -2621,9 +2608,11 @@ def movie_subtitles_step(args):
         return
     print(color("1", "\nMaking the movie subtitles (speech to text)"), flush=True)
     tool = [sys.executable, str(ROOT / "tools/movie_subtitles.py")]
+    # (the data elsewhere, --output-dir too: the tool reads and writes there, tools/asset_root.py)
+    env = dict(os.environ, RAC1_ASSETS=str(ASSETS_DIR)) if ASSETS_DIR != REPO_ASSETS else None
     if not want.get("stt_url"):
-        r = subprocess.run(tool + ["--check-installed"], cwd=ROOT)
-        if r.returncode and subprocess.run(tool + ["--install"], cwd=ROOT).returncode:
+        r = subprocess.run(tool + ["--check-installed"], cwd=ROOT, env=env)
+        if r.returncode and subprocess.run(tool + ["--install"], cwd=ROOT, env=env).returncode:
             warn("Movie subtitles: the speech to text could not be installed (see above); run the setup again to retry.")
             return
     cmd = tool + ["--languages", want["languages"]]
@@ -2631,7 +2620,7 @@ def movie_subtitles_step(args):
         cmd += ["--model", want["model"]]
     if want.get("stt_url"):
         cmd += ["--stt-url", want["stt_url"]]
-    if subprocess.run(cmd, cwd=ROOT).returncode:
+    if subprocess.run(cmd, cwd=ROOT, env=env).returncode:
         warn("Movie subtitles: not all were made (see above); run the setup again to go on where it stopped.")
     else:
         ok("Movie subtitles ready (Options > Language > Movie Subtitles shows them)")
@@ -2791,10 +2780,7 @@ def main():
         generate(iso, args.force)
         check_disc_files(iso)
     if not args.build_only:
-        if ASSETS_DIR != REPO_ASSETS:  # (tools/movie_subtitles.py reads the movies in assets/disc/ and writes assets/)
-            warn(f"Movie subtitles: not made while the data is in {ASSETS_DIR} (tools/movie_subtitles.py knows assets/ only).")
-        else:
-            movie_subtitles_step(args)
+        movie_subtitles_step(args)
     if args.remember:
         (BUILD_DIR / "assets.txt").write_text("# the game's data (tools/setup.py --output-dir --remember; RAC1_ASSETS overrides "
                                               f"it)\n{ASSETS_DIR}\n", encoding="utf-8")
@@ -2805,8 +2791,7 @@ def main():
           "needs the image.\nKeep the image anyway: an update that changes what is made from the disc asks for it again.")
     play = "build\\rac1-native.exe" if WINDOWS else "./build/rac1-native"
     # (the folder the game would read by itself: RAC1_ASSETS, build/assets.txt, assets/; told when it is not the data's)
-    game_reads = (Path(os.environ["RAC1_ASSETS"]).expanduser().resolve() if os.environ.get("RAC1_ASSETS") else None) \
-        or remembered_root() or REPO_ASSETS
+    game_reads = asset_root.asset_root()
     elsewhere = game_reads != ASSETS_DIR
     if elsewhere:
         play = (f"set RAC1_ASSETS={ASSETS_DIR}\n    " if WINDOWS else f"RAC1_ASSETS='{ASSETS_DIR}' ") + play

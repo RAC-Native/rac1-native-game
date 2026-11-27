@@ -325,6 +325,8 @@ std::vector<std::string> environment_names(const char* prefix) {
 
 void unset_environment(const char* name) { unsetenv(name); }
 
+void set_environment(const char* name, const std::string& value) { setenv(name, value.c_str(), 1); }
+
 // ---- Threads, time ----
 
 std::uint64_t thread_id() {

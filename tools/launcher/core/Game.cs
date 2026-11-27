@@ -124,6 +124,32 @@ namespace Rac1Launcher
         public GameDir(string dir) { Dir = dir; }
 
         public string P(params string[] parts) => Path.Combine(new[] { Dir }.Concat(parts).ToArray());
+        /// <summary>The folder the game's run-time data is in, by the game's own rule (src/io/asset_paths.h, tools/asset_root.py):
+        /// RAC1_ASSETS (a relative path is taken against the game folder, where the game and the setup run), else the first
+        /// line of build/assets.txt that is not empty or a # comment (a relative path: against build/), else the game
+        /// folder's assets.</summary>
+        public string Assets
+        {
+            get
+            {
+                string env = Environment.GetEnvironmentVariable("RAC1_ASSETS")?.Trim();
+                if (!string.IsNullOrEmpty(env)) return Path.GetFullPath(Path.Combine(Dir, env));
+                try
+                {
+                    string pf = P("build", "assets.txt");
+                    if (File.Exists(pf))
+                        foreach (var raw in File.ReadAllLines(pf, Encoding.UTF8))
+                        {
+                            string line = raw.Trim();
+                            if (line.Length > 0 && line[0] != '#') return Path.GetFullPath(Path.Combine(P("build"), line));
+                        }
+                }
+                catch (Exception) { }
+                return P("assets");
+            }
+        }
+        /// <summary>A path in the data's folder (Assets).</summary>
+        public string A(params string[] parts) => Path.Combine(new[] { Assets }.Concat(parts).ToArray());
         public bool Downloaded => File.Exists(P("tools", "setup.py")) && File.Exists(P("CMakeLists.txt"));
         public string Exe => P("build", Platform.ExeName);
         public bool Built => File.Exists(Exe);
@@ -173,14 +199,14 @@ namespace Rac1Launcher
         {
             try
             {
-                string f = P("assets", "iso", "disc-path.txt");
+                string f = A("iso", "disc-path.txt");
                 if (File.Exists(f))
                 {
                     string first = File.ReadAllLines(f, Encoding.UTF8).FirstOrDefault()?.Trim();
                     if (!string.IsNullOrEmpty(first) && File.Exists(first)) return first;
                 }
                 foreach (var n in new[] { "rac1-ntsc-u.iso", "rac1-pal.iso" })
-                    if (File.Exists(P("assets", "iso", n))) return P("assets", "iso", n);
+                    if (File.Exists(A("iso", n))) return A("iso", n);
             }
             catch (Exception) { }
             return null;
@@ -354,10 +380,12 @@ namespace Rac1Launcher
                 }
             }
             log($"Unpacked {hashes.Count} files.");
-            string assets = Path.Combine(dir, "assets");
+            string assets = Path.Combine(dir, "assets");  // (the sources' version: in the game folder, as tools/setup.py's)
             Directory.CreateDirectory(assets);
             File.WriteAllText(Path.Combine(assets, "update-version.txt"), string.Join("\n", versionLines) + "\n", Encoding.ASCII);
-            string state = Path.Combine(assets, "setup-state.json");
+            string data = new GameDir(dir).Assets;  // (the setup's state: in the data's folder, as tools/setup.py's)
+            Directory.CreateDirectory(data);
+            string state = Path.Combine(data, "setup-state.json");
             if (!File.Exists(state))
             {
                 var sb = new StringBuilder("{\n  \"source_hashes\": {\n");

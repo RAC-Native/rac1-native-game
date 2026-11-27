@@ -19,11 +19,14 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.append(str(ROOT / "tools"))
+from asset_root import asset_root  # noqa: E402
+ASSETS = asset_root()  # the game's run-time data: RAC1_ASSETS, build/assets.txt, else assets/ (tools/asset_root.py)
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import overlay_match as om  # noqa: E402
 
-MAPS = ROOT / "assets/generated/overlay_map"
-POOL = ROOT / "assets/generated/pool"
+MAPS = ASSETS / "generated/overlay_map"
+POOL = ASSETS / "generated/pool"
 BASE = 0x15EF00
 
 
@@ -156,7 +159,7 @@ def rows():
 
 def main():
     args = sys.argv[1:]
-    iso_path = ROOT / "assets/iso/rac1-ntsc-u.iso"
+    iso_path = ASSETS / "iso/rac1-ntsc-u.iso"
     if "--iso" in args:
         k = args.index("--iso")
         iso_path = Path(args[k + 1])

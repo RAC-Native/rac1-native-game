@@ -1547,7 +1547,7 @@ bool rails_meshes(const std::vector<LevelTxt::Rail>& rails, const std::vector<Ob
 // rail), built again as the composer builds a collision; the level's hero groups (their own block, its offsets its own) kept
 bool world_collision_with_rails(int level, const std::vector<LevelTxt::Rail>& rails, uint8_t type, std::vector<uint8_t>& out, Log& log,
                                 std::string& err) {
-    const fs::path wp = fs::path("assets/disc") / fmt("levels/level%02d", level) / "data.wad";
+    const fs::path wp = fs::path(disc_files_dir()) / fmt("levels/level%02d", level) / "data.wad";
     std::vector<uint8_t> wad, blob;
     uint32_t off = 0, size = 0;
     bool packed = false;
@@ -3021,7 +3021,7 @@ bool compose_world(LevelTxt::Section& S, LevelTxt& lt, int base, int& uid_next, 
     }
     // its level's gameplay file: the placements (+0x44: a count, then records of their own size: +0xc the uid, +0x18 the class,
     // +0x30 the position)
-    const fs::path gpath = fs::path("assets/disc") / fmt("levels/level%02d", S.world) / "gameplay_ntsc.bin";
+    const fs::path gpath = fs::path(disc_files_dir()) / fmt("levels/level%02d", S.world) / "gameplay_ntsc.bin";
     std::vector<uint8_t> packed, g;
     if (!read_file(gpath, packed) || !decompress_wad(std::span<const std::byte>(reinterpret_cast<const std::byte*>(packed.data()), packed.size()), g)) {
         err = gpath.generic_string() + " cannot be read";
@@ -3159,7 +3159,7 @@ bool compose_sections(const fs::path& ldir, LevelTxt& lt, int base, const std::v
         if (S.sky_level >= 0) {
             std::vector<uint8_t> w, c;
             int32_t SH[48];
-            const fs::path sp = fs::path("assets/disc") / fmt("levels/level%02d", S.sky_level) / "data.wad";
+            const fs::path sp = fs::path(disc_files_dir()) / fmt("levels/level%02d", S.sky_level) / "data.wad";
             if (!read_file(sp, w) || !data_core(w, c, SH, err)) return fail(sp.generic_string() + ": its sky cannot be read (" + err + ")");
             if (SH[4] <= 0 || SH[5] <= SH[4] || static_cast<size_t>(SH[5]) > c.size()) return fail(fmt("level %d has no sky", S.sky_level));
             o.sky.assign(c.begin() + SH[4], c.begin() + SH[5]);
@@ -3593,7 +3593,7 @@ bool compose_level_mod(const std::string& folder, bool force) {
     // the base level's files (the player's disc, as the setup extracted it)
     char base_dir[32];
     std::snprintf(base_dir, sizeof base_dir, "levels/level%02d", m.level_base);
-    const fs::path bdir = fs::path("assets/disc") / base_dir;
+    const fs::path bdir = fs::path(disc_files_dir()) / base_dir;
     std::vector<uint8_t> base_wad, base_gp_file, base_gp;
     if (!read_file(bdir / "data.wad", base_wad) || !read_file(bdir / "gameplay_ntsc.bin", base_gp_file))
         return fail("the base level's files are missing (" + bdir.generic_string() + "): run the setup with your disc first");
@@ -3604,7 +3604,7 @@ bool compose_level_mod(const std::string& folder, bool force) {
     if (lt.sky_level >= 0 && lt.sky_level != m.level_base) {
         std::vector<uint8_t> w, c;
         int32_t SH[48];
-        const fs::path sp = fs::path("assets/disc") / fmt("levels/level%02d", lt.sky_level) / "data.wad";
+        const fs::path sp = fs::path(disc_files_dir()) / fmt("levels/level%02d", lt.sky_level) / "data.wad";
         if (!read_file(sp, w) || !data_core(w, c, SH, err)) return fail(sp.generic_string() + ": its sky cannot be read (" + err + ")");
         if (SH[4] <= 0 || SH[5] <= SH[4] || static_cast<size_t>(SH[5]) > c.size()) return fail(fmt("level %d has no sky", lt.sky_level));
         sky.assign(c.begin() + SH[4], c.begin() + SH[5]);

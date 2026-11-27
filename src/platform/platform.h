@@ -112,6 +112,8 @@ std::string python_program();
 std::vector<std::string> environment_names(const char* prefix);
 // Removes a variable from the environment.
 void unset_environment(const char* name);
+// Sets a variable in the environment (the child processes started after it see it too).
+void set_environment(const char* name, const std::string& value);
 
 // ---- Threads, time ----
 

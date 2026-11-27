@@ -36,6 +36,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.append(str(ROOT / "tools"))
+from asset_root import asset_root  # noqa: E402
+ASSETS = asset_root()  # the game's run-time data: RAC1_ASSETS, build/assets.txt, else assets/ (tools/asset_root.py)
 SECTOR = 2048
 VELDIN = 0
 
@@ -569,8 +572,8 @@ def compare(V, L, level, out, ported):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--iso", default=str(ROOT / "assets/iso/rac1-ntsc-u.iso"))
-    ap.add_argument("--out", default=str(ROOT / "assets/generated/overlay_map"))
+    ap.add_argument("--iso", default=str(ASSETS / "iso/rac1-ntsc-u.iso"))
+    ap.add_argument("--out", default=str(ASSETS / "generated/overlay_map"))
     ap.add_argument("--levels", default=",".join(str(i) for i in range(1, 19)))
     ap.add_argument("--ported", action="store_true", help="count the ported functions with an equivalent")
     a = ap.parse_args()

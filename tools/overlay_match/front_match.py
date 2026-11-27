@@ -33,6 +33,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import overlay_match as om  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.append(str(ROOT / "tools"))
+from asset_root import asset_root  # noqa: E402
+ASSETS = asset_root()  # the game's run-time data: RAC1_ASSETS, build/assets.txt, else assets/ (tools/asset_root.py)
 SECTIONS = [".lit", ".bss", ".data", "lvl.vtbl", "lvl.camvtbl", "lvl.sndvtbl", ".text"]
 
 
@@ -76,11 +79,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--elf", help="the disc's boot ELF (default: the one the setup extracted from the disc)")
     ap.add_argument("--iso", help="the disc image (default: $RAC1_ISO, else the setup's link)")
-    ap.add_argument("--out", default=str(ROOT / "assets/generated/overlay_map"))
+    ap.add_argument("--out", default=str(ASSETS / "generated/overlay_map"))
     a = ap.parse_args()
     import region_view  # noqa: E402  (it imports this module)
-    a.iso = a.iso or region_view.disc_path(str(ROOT / "assets"))
-    a.elf = a.elf or region_view.boot_elf_path(str(ROOT / "assets"))
+    a.iso = a.iso or region_view.disc_path(str(ASSETS))
+    a.elf = a.elf or region_view.boot_elf_path(str(ASSETS))
     elf = open(a.elf, "rb").read()
     entry = boot_entry(elf)
     F = om.Overlay(boot_module(elf), entry)

@@ -424,7 +424,10 @@ def layout_missing(directory):
 def main():
     ap = argparse.ArgumentParser(description="Extracts a Ratchet & Clank disc image into the files the game reads.")
     ap.add_argument("--iso", required=True, help="the disc image")
-    ap.add_argument("--out", default="assets/disc", help="the directory to write (replaced; default assets/disc)")
+    from asset_root import asset_root  # (tools/: the game's rule; by default the relative assets/disc, as always)
+    ap.add_argument("--out", default=str(asset_root(default="assets") / "disc"),
+                    help="the directory to write (replaced; default the data's disc/: RAC1_ASSETS, build/assets.txt, else "
+                         "assets/disc)")
     ap.add_argument("--plan", action="store_true", help="only list the files it would write")
     a = ap.parse_args()
     try:

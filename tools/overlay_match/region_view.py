@@ -44,6 +44,9 @@ import front_match as fm  # noqa: E402
 import region_maps as rm  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.append(str(ROOT / "tools"))
+from asset_root import asset_root  # noqa: E402
+ASSETS = asset_root()  # the game's run-time data: RAC1_ASSETS, build/assets.txt, else assets/ (tools/asset_root.py)
 NTSC_ELF = "SCUS_971.99"
 CORE_END = 0x15EF00
 GP = om.GP_VALUE
@@ -784,15 +787,15 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("check")
-    c.add_argument("--pal", default=str(ROOT / "assets/iso/Ratchet Clank.iso"))
-    c.add_argument("--ntsc", default=str(ROOT / "assets/iso/rac1-ntsc-u.iso"))
+    c.add_argument("--pal", default=str(ASSETS / "iso/Ratchet Clank.iso"))
+    c.add_argument("--ntsc", default=str(ASSETS / "iso/rac1-ntsc-u.iso"))
     c.add_argument("--table")
     c.add_argument("--units", default="")
     c.add_argument("--show", type=int, default=6)
     c.add_argument("--data", action="store_true")
     f = sub.add_parser("fixes")
-    f.add_argument("--pal", default=str(ROOT / "assets/iso/Ratchet Clank.iso"))
-    f.add_argument("--ntsc", default=str(ROOT / "assets/iso/rac1-ntsc-u.iso"))
+    f.add_argument("--pal", default=str(ASSETS / "iso/Ratchet Clank.iso"))
+    f.add_argument("--ntsc", default=str(ASSETS / "iso/rac1-ntsc-u.iso"))
     f.add_argument("--table", required=True)
     m = sub.add_parser("maps")
     m.add_argument("--iso", required=True)

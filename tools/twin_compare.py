@@ -20,6 +20,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.append(str(ROOT / "tools"))
+from asset_root import asset_root  # noqa: E402
+ASSETS = asset_root()  # the game's run-time data: RAC1_ASSETS, build/assets.txt, else assets/ (tools/asset_root.py)
 BASE = 0x15EF00
 KEPT = {0x21, 0x22, 0x24, 0x25, 0x26, 0x27, *range(0x74, 0x7C), 0xA0, 0xA1, 0xA2, 0xA3, *range(0xA8, 0xB0),
         *range(0x9C, 0xA0), *range(0x28, 0x2C)}  # (+0x9c: the collision queries' stamp, a counter of the whole game;
@@ -60,7 +63,7 @@ class LevelMap:
     """Level N's engine objects (levelN.ext) and functions paired with Veldin's (levelN.txt), both ways."""
 
     def __init__(self, level):
-        d = ROOT / "assets/generated/overlay_map"
+        d = ASSETS / "generated/overlay_map"
         self.ext = []  # (level start, veldin start, size)
         for line in (d / f"level{level}.ext").read_text().splitlines():
             p = line.split()

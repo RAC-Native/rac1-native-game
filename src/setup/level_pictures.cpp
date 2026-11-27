@@ -5,6 +5,7 @@
 #include <formats/level_file.h>
 #include <formats/level_textures.h>
 #include <formats/ratchet_executable.h>
+#include <runtime/kernel/disc.h>
 
 #include <imgui.h>
 #include <stb_image.h>  // (its implementation: static_skinned_render.cpp)
@@ -181,7 +182,7 @@ const GameFont& game_font() {
     static bool tried = false;
     if (tried) return f;
     tried = true;
-    std::ifstream in("assets/disc/levels/level00/data.wad", std::ios::binary);
+    std::ifstream in(std::string(disc_files_dir()) + "/levels/level00/data.wad", std::ios::binary);
     std::vector<uint8_t> wad((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     if (wad.size() < sizeof(LevelFileHeader)) return f;
     LevelFileHeader h;

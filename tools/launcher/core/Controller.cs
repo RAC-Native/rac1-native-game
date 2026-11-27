@@ -746,7 +746,7 @@ namespace Rac1Launcher
 
         /// <summary>assets/iso/more-discs.txt: images elsewhere the setup also looks at, one path a line (docs/setup.md,
         /// "Which disc images").</summary>
-        string MoreDiscsFile => Game.P("assets", "iso", "more-discs.txt");
+        string MoreDiscsFile => Game.A("iso", "more-discs.txt");
 
         /// <summary>A disc image the player added: its path listed in more-discs.txt (nothing is copied or linked); the next
         /// setup picks what it is for (a data disc removed before is taken again). Null when done, else what is wrong.</summary>

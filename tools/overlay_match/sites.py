@@ -32,7 +32,10 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-MAPS = ROOT / "assets/generated/overlay_map"
+sys.path.append(str(ROOT / "tools"))
+from asset_root import asset_root  # noqa: E402
+ASSETS = asset_root()  # the game's run-time data: RAC1_ASSETS, build/assets.txt, else assets/ (tools/asset_root.py)
+MAPS = ASSETS / "generated/overlay_map"
 BASE = 0x15EF00
 SITE = re.compile(r"\bL(\d+)_ADDR\(0x([0-9a-fA-F]+)u?\)")
 LVL = re.compile(r"\bLVL_ADDR\((\d+),\s*0x([0-9a-fA-F]+)u?\)")
@@ -110,7 +113,7 @@ def scan(files):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--levels", default=",".join(str(n) for n in range(1, 19)))
-    ap.add_argument("--out", default=str(ROOT / "assets/generated/pool/sites"))
+    ap.add_argument("--out", default=str(ASSETS / "generated/pool/sites"))
     ap.add_argument("--check-rel", action="store_true", help="check the jump tables against the contexts' .rel files")
     a = ap.parse_args()
     levels = [int(x) for x in a.levels.split(",") if x]
@@ -143,7 +146,7 @@ def main():
         (out / f"level{n:02d}.txt").write_text("\n".join(head + body) + "\n")
         line = f"level {n}: {len(sites[n])} addresses ({summary}); {len(jl)} jump tables"
         if a.check_rel:
-            rel = ROOT / f"assets/generated/pool/context/level{n:02d}.rel"
+            rel = ASSETS / f"generated/pool/context/level{n:02d}.rel"
             if rel.exists():
                 tagged = {int(p[0], 16) for p in (l.split() for l in rel.read_text().splitlines() if not l.startswith("#")) if len(p) == 4
                           and p[2] == "own-code"}

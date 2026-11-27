@@ -37,7 +37,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from overlay_match import (ADDI, ADDI_TRAP, GP, MEM, ROOT, SP, VELDIN, Overlay, gpr_written, level_overlay,  # noqa: E402
+from overlay_match import (ADDI, ADDI_TRAP, ASSETS, GP, MEM, ROOT, SP, VELDIN, Overlay, gpr_written, level_overlay,  # noqa: E402
                            sx16)
 
 DATA_LO = 0x15EF00  # the overlays' first address (section 0)
@@ -267,8 +267,8 @@ def check(L, data, ext, names, dump_path, lv):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--iso", default=str(ROOT / "assets/iso/rac1-ntsc-u.iso"))
-    ap.add_argument("--maps", default=str(ROOT / "assets/generated/overlay_map"))
+    ap.add_argument("--iso", default=str(ASSETS / "iso/rac1-ntsc-u.iso"))
+    ap.add_argument("--maps", default=str(ASSETS / "generated/overlay_map"))
     ap.add_argument("--out", default=None, help="where the .ext files go (default: beside the maps)")
     ap.add_argument("--levels", default=",".join(str(i) for i in range(1, 19)))
     ap.add_argument("--check", metavar="DUMP", help="(one level) a RAM dump of a frame of that level (RAC1_RAMDUMP): its "
