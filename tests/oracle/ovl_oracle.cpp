@@ -9,6 +9,7 @@
 #include <game/collision/collision_scene.h>
 #include <game/collision/collision_state.h>
 #include <game/enhance/advanced.h>
+#include <game/level/level_grids.h>
 #include <runtime/ee/ps2_fpu.h>
 #include "ovl_oracle.h"
 
@@ -51,6 +52,7 @@ int main(int argc, char** argv) {
     // the settings' bytes of the snapshot (0: off), not this machine's preferences or the rows' default (on)
     rac1::advanced_prefs_load();
     rac1::coll_scene_set_check(true);  // the collision scene (RAC1_COLL_SCENE=native) compared with EE memory at every use
+    rac1::ld_grids_set_check(true);  // the grids' copies (RAC1_LD_GRIDS=native) compared with EE memory at every lookup
     // the collision's results (stage 5): the harness (level set-ups, generators, a batch's own code) in mirror, the native state
     // and the EE words written at once, with the check mode on (every accessor read compared with the EE words); the compared
     // port runs in ORACLE_COLL_STATE's mode (native by default, the flush after each: oracle_env.cpp's check_fn)
@@ -284,6 +286,7 @@ int main(int argc, char** argv) {
     batch_541();
     batch_542();
     batch_543();
+    batch_544();
 
     // (also on level 0: a batch whose dumps are missing skips its checks, and a bare PASS would hide it)
     if (g_oracle_level != 0 || g_skipped != 0)

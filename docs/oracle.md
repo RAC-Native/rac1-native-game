@@ -116,6 +116,12 @@ Everything else (the level set-ups, the generators, a batch's own code) runs in 
 at once) with `RAC1_COLL_STATE_CHECK` on, as before. `ORACLE_COLL_STATE=mirror` (or `ee`) runs the compared port runs in that
 mode instead, for comparison. Batch 543 checks the state against the EE words and native against mirror.
 
+The grids' host copies (the zone grid and the camera-volume grid, `src/game/level/level_grids.h`) are compared with EE memory
+at every lookup in the oracle (`RAC1_LD_GRIDS_CHECK` on, set by its main): a test grid rebuilt at the same address is parsed
+again. Batch 544 (levels 0 .. 18; `ORACLE_ONLY=grids_title` on level 0 for the title's word) checks the copies against EE
+memory and the lookups (`zone_grid_cell`, `zones_from_camera`, `cam_volume_find`, `cam0_volume_pass`) with
+`RAC1_LD_GRIDS=ee` against `native`, and the copies' keys.
+
 ### Native trial guards
 
 Some batches first try a random state in the native port, rejecting a `std::exception` or an invalid

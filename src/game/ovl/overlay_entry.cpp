@@ -2,9 +2,12 @@
 // loop), the per-frame helpers it calls and the render view setup 0x1f6e48.
 // Callees not ported (or not yet proven with the oracle) are TODO_PORT. The hardware the loop
 // waits on (the RCNT1 counter, vsync, DMA kicks) is the host's: see host_rcnt1().
+// The zone grid *(0x15f600) (zone_grid_cell, zones_from_camera) is read from its host copy with RAC1_LD_GRIDS=native
+// (src/game/level/level_grids.h); the masks' EE addresses and the visible masks 0x173d00 .. are as before.
 #include <host/mod_code.h>
 #include <game/enhance/session_runtime.h>
 #include <game/level/level_cache_load.h>
+#include <game/level/level_grids.h>
 #include <game/ovl/credits_tr.h>
 #include <game/ovl/screen_flash.h>
 #include <game/ovl/memory_card.h>
@@ -211,8 +214,10 @@ void render_view_setup() {
 // *(0x15f600): z rows, then y rows, then x cells (each row: first index, count, then halfword
 // offsets / 4); the cell's entry 0xffff is none, else the 0x80-byte zone mask at +*(grid) +
 // entry * 0x80. 0 when the cell is outside the grid.
-// orig: 0x001f7278
-uint32_t zone_grid_cell(int32_t x, int32_t y, int32_t z) {
+// With RAC1_LD_GRIDS=native the walk reads the grid's host copy (src/game/level/level_grids.h), the same values; the
+// mask's EE address is returned either way.
+// orig: (host) 0x1f7278's walk on EE memory
+static uint32_t zone_grid_cell_ee(int32_t x, int32_t y, int32_t z) {
     const uint32_t g = lwu(OV(0x0015f600));
     const uint32_t masks = g + lwu(g);
     z -= static_cast<int32_t>(lhu(g + 4));
@@ -229,6 +234,36 @@ uint32_t zone_grid_cell(int32_t x, int32_t y, int32_t z) {
     if (x < 0 || !(x < static_cast<int32_t>(lhu(xr + 2)))) return 0;
     const uint32_t e = lhu(xr + 4 + static_cast<uint32_t>(x) * 2);
     return e == 0xffff ? 0u : masks + e * 0x80;
+}
+
+// orig: 0x001f7278
+uint32_t zone_grid_cell(int32_t x, int32_t y, int32_t z) {
+    if (!ld_grids_native()) return zone_grid_cell_ee(x, y, z);
+    const uint32_t g = lwu(OV(0x0015f600));
+    std::shared_ptr<const ZoneGridCopy> c = ld_grids_zone(g);
+    if (c == nullptr) return zone_grid_cell_ee(x, y, z);
+    if (!ld_grids_check()) return c->cell<false>(x, y, z, nullptr);
+    bool bad = false;
+    uint32_t r = c->cell<true>(x, y, z, &bad);
+    if (bad) {  // (a copy that differs from EE memory: parsed again and walked again; a second difference is the parse's error)
+        c = ld_grids_zone_stale(g, false);
+        if (c == nullptr) return zone_grid_cell_ee(x, y, z);
+        bad = false;
+        r = c->cell<true>(x, y, z, &bad);
+        if (bad) ld_grids_zone_stale(g, true);
+    }
+    return r;
+}
+
+// zones_from_camera's copies of a mask: from the zone grid's host copy with RAC1_LD_GRIDS=native when the mask is one of
+// its masks, else EE memory (mem_copy128 / mem_or128, as before)
+static void zone_mask_copy(uint32_t dst, uint32_t src) {
+    if (ld_grids_native()) ld_grids_mask_copy(lwu(OV(0x0015f600)), dst, src);
+    else mem_copy128(dst, src, 0x80);
+}
+static void zone_mask_or(uint32_t dst, uint32_t a, uint32_t b) {
+    if (ld_grids_native()) ld_grids_mask_or(lwu(OV(0x0015f600)), dst, a, b);
+    else mem_or128(dst, a, b, 0x80);
 }
 
 // The nearer of two neighbour cells first (the fraction of the camera in its cell, under 0.5:
@@ -259,7 +294,7 @@ void zones_from_camera() {
     uint32_t list = zone_grid_cell(x, y, z);
     if (list != 0) {
         sw(OV(0x0015f60c), 0);
-        mem_copy128(OV(0x00173d00), list, 0x80);
+        zone_mask_copy(OV(0x00173d00), list);
         sw(OV(0x0015f610), list);
     } else {
         sw(OV(0x0015f60c), 1);
@@ -269,12 +304,12 @@ void zones_from_camera() {
             const uint32_t nz = zone_grid_neighbour(lwc1(OV(0x00166dc8)) * 0.25f - int_to_float(z), x, y, z - 1, x, y, z + 1);
             if (nx != 0 || ny != 0 || nz != 0) {
                 mem_clear128(OV(0x00173d80), 0x80);
-                if (nx != 0) mem_or128(OV(0x00173d80), OV(0x00173d80), nx, 0x80);
-                if (ny != 0) mem_or128(OV(0x00173d80), OV(0x00173d80), ny, 0x80);
-                if (nz != 0) mem_or128(OV(0x00173d80), OV(0x00173d80), nz, 0x80);
+                if (nx != 0) zone_mask_or(OV(0x00173d80), OV(0x00173d80), nx);
+                if (ny != 0) zone_mask_or(OV(0x00173d80), OV(0x00173d80), ny);
+                if (nz != 0) zone_mask_or(OV(0x00173d80), OV(0x00173d80), nz);
                 list = OV(0x00173d80);
                 sw(OV(0x0015f610), list);
-                mem_copy128(OV(0x00173d00), list, 0x80);
+                zone_mask_copy(OV(0x00173d00), list);
             }
         }
         if (list == 0) {
@@ -282,7 +317,7 @@ void zones_from_camera() {
             auto last_or_all = [] {
                 const uint32_t last = lwu(OV(0x0015f610));
                 if (lw(OV(0x0016c06c)) == 0 && last != 0) {
-                    mem_copy128(OV(0x00173d00), last, 0x80);
+                    zone_mask_copy(OV(0x00173d00), last);
                 } else {
                     mem_fill32(OV(0x00173d00), 0xffffffffu, 0x80);
                 }
@@ -623,7 +658,9 @@ void overlay_entry_start() {
     sw(OV(0x0015f5c4), 6);
     overlay_init_tables();
     sh(0x00151708, 0);
+    ld_grids_level_started();  // (host: the grids' copies dropped; a level may load its grids where the last level's were)
     level_setup(1, 0);
+    ld_grids_level_started();  // (and again once the level's setup has written them)
     sw(OV(0x0016c060), 0xf);
     sw(OV(0x0016c088), lwu(0x0015ed80));
     sw(OV(0x0016c090), 0xffffffffu);

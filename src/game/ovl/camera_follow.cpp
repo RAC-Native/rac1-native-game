@@ -5,6 +5,9 @@
 // and its offsets +0x50..+0xe0, the hero moby +0x100, the height +0xf0), +0x130 the offset
 // from the target and the distances (+0x15c / +0x160), +0x190 / +0x1a8 the springs, +0x1d0
 // the collision state, +0x220 the pitch state, +0x240 the previous target.
+//
+// The camera-volume grid *(0x15ef80) (cam_volume_find, cam0_volume_pass) is read from its host copy with RAC1_LD_GRIDS=native
+// (src/game/level/level_grids.h); the records' EE addresses are returned as before.
 #include <game/collision/collision.h>
 #include <game/enhance/advanced.h>
 #include <game/ovl/kerwan_camera.h>
@@ -25,6 +28,7 @@
 #include <game/ovl/veldin_finale_hooks.h>
 #include <game/ovl/variants_l2.h>
 #include <game/level/level_data.h>
+#include <game/level/level_grids.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/port_stubs.h>
@@ -1080,17 +1084,18 @@ void cam0_target_update(uint32_t cam) {
 
 // orig: 0x001ee318 — is pos inside the camera volume `rec` (+0x10 type, +0x14 index)? 3: box
 // (0x1600ec), 5: sphere grown by r (0x1600f4), 6: cylinder (0x1600fc), 7: capsule (0x1600e4).
-int32_t cam_volume_contains(const Vec4& pos, uint32_t rec, float r) {
+// orig: (host) the test for a record of type `type`, `idx()` its +0x14 (the EE word or the grid copy's)
+template <class Idx>
+static int32_t cam_volume_test(const Vec4& pos, int32_t type, Idx idx, float r) {
     const Vec4 p = pos;
-    const int32_t type = lw(rec + 0x10);
     alignas(16) Vec4 d, l;
     if (type == 5) {
-        const uint32_t s = lvd::box(lvd::SPHERES, lw(rec + 0x14));
+        const uint32_t s = lvd::box(lvd::SPHERES, idx());
         const float rad = vec3_length(V(s)) + r;
         return vec3_distance(p, V(s + 0x30)) < rad ? 1 : 0;
     }
     if (type == 3) {
-        const uint32_t s = lvd::box(lvd::BOXES, lw(rec + 0x14));
+        const uint32_t s = lvd::box(lvd::BOXES, idx());
         vec3_sub(d, p, V(s + 0x30));
         d.w = 0.0f;
         mat3_transform(l, d, M(s + 0x40));
@@ -1100,7 +1105,7 @@ int32_t cam_volume_contains(const Vec4& pos, uint32_t rec, float r) {
         return l.z <= 1.0f ? 1 : 0;
     }
     if (type == 6) {
-        const uint32_t s = lvd::box(lvd::CYLINDERS, lw(rec + 0x14));
+        const uint32_t s = lvd::box(lvd::CYLINDERS, idx());
         vec3_sub(d, p, V(s + 0x30));
         d.w = 0.0f;
         mat3_transform(l, d, M(s + 0x40));
@@ -1109,7 +1114,7 @@ int32_t cam_volume_contains(const Vec4& pos, uint32_t rec, float r) {
         return l.z <= 1.0f ? 1 : 0;
     }
     if (type == 7) {
-        const uint32_t s = lvd::volume(lw(rec + 0x14));
+        const uint32_t s = lvd::volume(idx());
         vec3_sub(d, p, V(s + 0x30));
         d.w = 0.0f;
         mat3_transform(l, d, M(s + 0x40));
@@ -1129,16 +1134,12 @@ int32_t cam_volume_contains(const Vec4& pos, uint32_t rec, float r) {
     return 0;
 }
 
-// orig: 0x001ee1b0 — the camera volume record (0x30 each, in the 64 x 64 grid of 16-unit
-// cells at *(0x15ef80)) that contains pos (grown by r), or 0.
-uint32_t cam_volume_find(const Vec4& pos, float r) {
-    const Vec4 p = pos;
-    const int32_t x = float_to_int(p.x * 0.0625f);
-    const int32_t y = float_to_int(p.y * 0.0625f);
-    if (x < 0 || y < 0 || !(x < 0x41) || !(y < 0x41)) {
-        debug_printf_stub();
-        return 0;
-    }
+int32_t cam_volume_contains(const Vec4& pos, uint32_t rec, float r) {
+    return cam_volume_test(pos, lw(rec + 0x10), [rec] { return lw(rec + 0x14); }, r);
+}
+
+// orig: (host) 0x1ee1b0's walk of the grid on EE memory for the cell (x, y) (its bounds tested by the caller)
+static uint32_t cam_volume_find_ee(const Vec4& p, float r, int32_t x, int32_t y) {
     const uint32_t tab = lvd::cam_volume_grid();
     const uint32_t off = lwu(tab + static_cast<uint32_t>(y * 64 + x) * 4);
     if (off == 0) return 0;
@@ -1152,6 +1153,73 @@ uint32_t cam_volume_find(const Vec4& pos, float r) {
         if (vec2_length(d) < rad + r && cam_volume_contains(p, e, r) != 0) return e;
     }
     return 0;
+}
+
+// orig: (host) 0x1ee1b0's walk on the grid's copy: the same records in the same order, the same tests (the record's centre
+// and radius as their bits); a cell the copy does not hold: EE memory. `Check`: each value compared with EE
+// memory, `*bad` set on a difference
+template <bool Check>
+static uint32_t cam_volume_find_copy(const CamGridCopy& c, const Vec4& p, float r, int32_t x, int32_t y, bool* bad) {
+    const uint32_t tab = c.grid();
+    const int32_t cell = y * 64 + x;
+    auto chk = [&](uint32_t a, uint32_t v) {
+        if constexpr (Check) {
+            const uint32_t e = lwu(a);
+            if (e != v) {
+                ld_grids_differs("camera-volume grid", tab, a, v, e);
+                *bad = true;
+            }
+        }
+    };
+    chk(tab + static_cast<uint32_t>(cell) * 4, c.word(cell));
+    if (c.word(cell) == 0) return 0;
+    const int32_t li = c.list_of(cell);
+    if (li < 0) return cam_volume_find_ee(p, r, x, y);
+    const CamGridCopy::List& L = c.list(li);
+    chk(L.ee, static_cast<uint32_t>(L.count));
+    for (int32_t i = 0; i < L.count; ++i) {
+        const uint32_t e = L.ee + 0x10 + static_cast<uint32_t>(i) * 0x30;
+        const CamGridCopy::Record& R = c.record(L, i);
+        if constexpr (Check) {
+            for (uint32_t k = 0; k < 4; ++k) chk(e + k * 4, R.w[k]);
+            chk(e + 0x10, static_cast<uint32_t>(R.type));
+            chk(e + 0x14, static_cast<uint32_t>(R.index));
+        }
+        const Vec4 rv{u2f(R.w[0]), u2f(R.w[1]), u2f(R.w[2]), u2f(R.w[3])};
+        alignas(16) Vec4 d;
+        vec3_sub(d, rv, p);
+        const float rad = u2f(R.w[3]);
+        d.w = 1.0f;
+        if (vec2_length(d) < rad + r && cam_volume_test(p, R.type, [&R] { return R.index; }, r) != 0) return e;
+    }
+    return 0;
+}
+
+// orig: 0x001ee1b0 — the camera volume record (0x30 each, in the 64 x 64 grid of 16-unit
+// cells at *(0x15ef80)) that contains pos (grown by r), or 0.
+uint32_t cam_volume_find(const Vec4& pos, float r) {
+    const Vec4 p = pos;
+    const int32_t x = float_to_int(p.x * 0.0625f);
+    const int32_t y = float_to_int(p.y * 0.0625f);
+    if (x < 0 || y < 0 || !(x < 0x41) || !(y < 0x41)) {
+        debug_printf_stub();
+        return 0;
+    }
+    if (!ld_grids_native()) return cam_volume_find_ee(p, r, x, y);
+    const uint32_t tab = lvd::cam_volume_grid();
+    std::shared_ptr<const CamGridCopy> c = ld_grids_cam(tab);
+    if (c == nullptr) return cam_volume_find_ee(p, r, x, y);
+    if (!ld_grids_check()) return cam_volume_find_copy<false>(*c, p, r, x, y, nullptr);
+    bool bad = false;
+    uint32_t e = cam_volume_find_copy<true>(*c, p, r, x, y, &bad);
+    if (bad) {  // (a copy that differs from EE memory: parsed again and walked again; a second difference is the parse's error)
+        c = ld_grids_cam_stale(tab, false);
+        if (c == nullptr) return cam_volume_find_ee(p, r, x, y);
+        bad = false;
+        e = cam_volume_find_copy<true>(*c, p, r, x, y, &bad);
+        if (bad) ld_grids_cam_stale(tab, true);
+    }
+    return e;
 }
 
 // orig: 0x002e4290 — is pos inside a camera volume?
@@ -1502,7 +1570,9 @@ void cam0_ease_offset(uint32_t cam) {
 
 // orig: 0x002e9aa0 — walk the 64 x 64 camera volume grid and hand every sphere volume to
 // 0x1f6c30 (empty in this build).
-void cam0_volume_pass() {
+// With RAC1_LD_GRIDS=native the grid's copy gives the type-5 records' sphere indices in the same order (the shapes' table
+// stays EE); the cells the copy does not hold, and the check mode, walk cell by cell.
+static void cam0_volume_pass_ee() {
     for (int32_t y = 0; y < 0x40; ++y) {
         for (int32_t x = 0; x < 0x40; ++x) {
             const uint32_t tab = lvd::cam_volume_grid();
@@ -1516,6 +1586,76 @@ void cam0_volume_pass() {
                 sub_001f6c30(s + 0x30, vec3_length(V(s)));
             }
         }
+    }
+}
+
+void cam0_volume_pass() {
+    if (!ld_grids_native()) return cam0_volume_pass_ee();
+    const uint32_t tab = lvd::cam_volume_grid();
+    std::shared_ptr<const CamGridCopy> c = ld_grids_cam(tab);
+    if (c == nullptr) return cam0_volume_pass_ee();
+    if (ld_grids_check()) {  // (each value the pass takes compared with EE memory first: a difference parses the copy again)
+        bool bad = false;
+        for (int pass = 0; pass < 2; ++pass) {
+            bad = false;
+            for (int32_t cell = 0; cell < 64 * 64; ++cell) {
+                const uint32_t a = tab + static_cast<uint32_t>(cell) * 4;
+                if (lwu(a) != c->word(cell)) {
+                    ld_grids_differs("camera-volume grid", tab, a, c->word(cell), lwu(a));
+                    bad = true;
+                }
+                const int32_t li = c->list_of(cell);
+                if (li < 0) continue;
+                const CamGridCopy::List& L = c->list(li);
+                if (lw(L.ee) != L.count) {
+                    ld_grids_differs("camera-volume grid", tab, L.ee, static_cast<uint32_t>(L.count), lwu(L.ee));
+                    bad = true;
+                    continue;
+                }
+                for (int32_t i = 0; i < L.count; ++i) {
+                    const uint32_t e = L.ee + 0x10 + static_cast<uint32_t>(i) * 0x30;
+                    const CamGridCopy::Record& R = c->record(L, i);
+                    for (uint32_t k = 0x10; k <= 0x14; k += 4) {
+                        const uint32_t v = static_cast<uint32_t>(k == 0x10 ? R.type : R.index);
+                        if (lwu(e + k) != v) {
+                            ld_grids_differs("camera-volume grid", tab, e + k, v, lwu(e + k));
+                            bad = true;
+                        }
+                    }
+                }
+            }
+            if (!bad) break;
+            c = ld_grids_cam_stale(tab, pass == 1);
+            if (c == nullptr) return cam0_volume_pass_ee();
+            if (pass == 1) break;
+        }
+    }
+    if (!c->all_held()) {  // (a cell's list the copy does not hold: the cells walked one by one, those from EE memory)
+        for (int32_t cell = 0; cell < 64 * 64; ++cell) {
+            const int32_t li = c->list_of(cell);
+            if (li == -1) continue;
+            if (li == -2) {
+                const uint32_t list = c->word(cell) + tab;
+                for (int32_t i = 0; i < lw(list); ++i) {
+                    const uint32_t e = list + 0x10 + static_cast<uint32_t>(i) * 0x30;
+                    if (lw(e + 0x10) != 5) continue;
+                    const uint32_t s = lvd::box(lvd::SPHERES, lw(e + 0x14));
+                    sub_001f6c30(s + 0x30, vec3_length(V(s)));
+                }
+                continue;
+            }
+            const CamGridCopy::List& L = c->list(li);
+            for (int32_t i = 0; i < L.count; ++i) {
+                if (c->record(L, i).type != 5) continue;
+                const uint32_t s = lvd::box(lvd::SPHERES, c->record(L, i).index);
+                sub_001f6c30(s + 0x30, vec3_length(V(s)));
+            }
+        }
+        return;
+    }
+    for (const int32_t idx : c->pass_spheres()) {
+        const uint32_t s = lvd::box(lvd::SPHERES, idx);
+        sub_001f6c30(s + 0x30, vec3_length(V(s)));
     }
 }
 

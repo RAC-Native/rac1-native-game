@@ -269,6 +269,7 @@ void batch_540();  // the collision scene against EE memory and the EE reads (st
 void batch_541();  // the native level registry against the EE tables (stage 5, L2)
 void batch_542();
 void batch_543();  // the collision's native results (hit, hit list) against their EE words (stage 5, C6a)
+void batch_544();  // the grids' host copies (zone grid, camera-volume grid) against their EE lookups (stage 5, LD2)
 
 }  // namespace rac1::oracle
 
