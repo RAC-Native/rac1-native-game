@@ -11,6 +11,7 @@
 // its colour. Its sound (4, the slot +0x7c) plays while it flies. Ported by hand from Oltanis's own code (L14:0x306ee0,
 // 0x307510, 0x307620, 0x3135b8), the original's order of calls and float operations kept.
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/oltanis_mobys.h>
@@ -61,8 +62,8 @@ void lay_carried(uint32_t m, uint32_t pv, uint32_t o, uint32_t off) {
 void path_start(uint32_t m, uint32_t pv, uint32_t path) {
     sw(pv + 0x70, 0);
     sw(pv + 0x74, 0);
-    lq_sq(m + 0x10, path + 0x10);
-    swc1(m + 0x48, atan2_f(fpu_sub(lwc1(path + 0x20), lwc1(path + 0x10)), fpu_sub(lwc1(path + 0x24), lwc1(path + 0x14))));
+    lvd::path_copy_row(m + 0x10, path + 0x10);
+    swc1(m + 0x48, atan2_f(fpu_sub(lvd::path_f32(path + 0x20), lvd::path_f32(path + 0x10)), fpu_sub(lvd::path_f32(path + 0x24), lvd::path_f32(path + 0x14))));
     for (uint32_t o : {0x90u, 0x88u, 0x84u, 0x80u, 0x98u, 0x94u}) swc1(pv + o, 0.0f);
 }
 

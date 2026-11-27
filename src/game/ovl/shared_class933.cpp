@@ -19,6 +19,7 @@
 #include <game/ovl/variants_l16.h>
 #include <game/ovl/weapons.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/level/level_write.h>
 
 namespace rac1 {
@@ -43,9 +44,9 @@ void carrier_point(uint32_t c, uint32_t out, uint32_t tmp, float along_x, float 
 
 // the w lanes of a path's points: each the distance to the next
 void path_lengths(uint32_t path) {
-    for (int32_t i = 0; i < lw(path) - 1; ++i) {
+    for (int32_t i = 0; i < lvd::path_n(path) - 1; ++i) {
         const uint32_t at = path + 0x10 + static_cast<uint32_t>(i) * 0x10;
-        lvd::set_path_f32(at + 0xc, vec3_distance(V(at), V(at + 0x10)));
+        lvd::set_path_f32(at + 0xc, vec3_distance(lvd::path_row(at), lvd::path_row(at + 0x10)));
     }
 }
 
@@ -189,8 +190,8 @@ void class933_carrier_start(uint32_t c) {
     path_lengths(path);
     sw(pv + 0xd0, 0);
     sw(pv + 0xd4, 0);
-    lq_sq(c + 0x10, path + 0x10);
-    swc1(c + 0x48, atan2_f(fpu_sub(lwc1(path + 0x20), lwc1(path + 0x10)), fpu_sub(lwc1(path + 0x24), lwc1(path + 0x14))));
+    lvd::path_copy_row(c + 0x10, path + 0x10);
+    swc1(c + 0x48, atan2_f(fpu_sub(lvd::path_f32(path + 0x20), lvd::path_f32(path + 0x10)), fpu_sub(lvd::path_f32(path + 0x24), lvd::path_f32(path + 0x14))));
     swc1(pv + 0xf0, 0.0f);
     swc1(pv + 0xec, 0.0f);
     swc1(pv + 0xe8, 0.0f);

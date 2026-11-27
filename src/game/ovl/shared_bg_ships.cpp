@@ -16,6 +16,7 @@
 #include <game/ovl/variants_l2.h>
 #include <game/ovl/variants_l9.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 
 namespace rac1 {
 
@@ -114,21 +115,21 @@ void bg_ship2_update(uint32_t m) {
             break;
         }
         const uint32_t own = lvd::path(index);
-        if (lwu(own) == 0) {
+        if (lvd::path_u32(own) == 0) {
             debug_printf_stub();  // (an empty path)
             retire = true;
             break;
         }
-        const float leg = vec3_distance(V(own + 0x10), V(own + 0x20));
+        const float leg = vec3_distance(lvd::path_row(own + 0x10), lvd::path_row(own + 0x20));
         sb(pv + 0x2c, 0x28);
         swc1(pv + 0x70, leg);
         sb(pv + 0x2b, 1);
-        V(m + 0x10) = V(lvd::path(lwu(pv + 0x60)) + 0x10);  // (the 16 bytes as they are)
+        V(m + 0x10) = lvd::path_row(lvd::path(lwu(pv + 0x60)) + 0x10);  // (the 16 bytes as they are)
         swc1(pv + 0x68, rand_angle());
         sw(pv + 0x6c, 0xffffffffu);
         sb(m + 0x20, 1);
         sh(m + 0x34, lhu(m + 0x34) | 0x10u);
-        swc1(pv + 0x64, fpu_mul(lwc1(pv + 0x74), int_to_float(lw(path))));
+        swc1(pv + 0x64, fpu_mul(lwc1(pv + 0x74), int_to_float(lvd::path_n(path))));
         break;
     }
     case 1: {
@@ -142,7 +143,7 @@ void bg_ship2_update(uint32_t m) {
         if (game_level() == 10) step = fpu_mul(step, 0.25f);
         float t = fpu_add(lwc1(pv + 0x64), fpu_div(step, lwc1(pv + 0x70)));
         swc1(pv + 0x64, t);
-        const float points = int_to_float(lw(path));
+        const float points = int_to_float(lvd::path_n(path));
         if (points < t) swc1(pv + 0x64, fpu_sub(t, points));
         const bool loops = static_cast<uint32_t>(game_level() - 9) < 2;  // (Gaspar and Orxon)
         path_point(lwc1(pv + 0x64), path, loops ? 1 : 0, m + 0x10, m + 0x40, 0);
@@ -229,22 +230,22 @@ void bg_ship1_update(uint32_t m) {
         sh(m + 0x32, 0xff);
         const int32_t index = lw(pv + 0x60);
         const uint32_t own = index == -1 ? 0u : lvd::path(index);
-        if (index == -1 || lwu(own) == 0) {
+        if (index == -1 || lvd::path_u32(own) == 0) {
             debug_printf_stub();  // (the ship's moby has no path, or an empty one)
             moby_retire(m);
             ee_stack_free(0xb0);
             return;
         }
-        const float leg = vec3_distance(V(own + 0x10), V(own + 0x20));
+        const float leg = vec3_distance(lvd::path_row(own + 0x10), lvd::path_row(own + 0x20));
         sb(pv + 0x2c, 0x28);
         swc1(pv + 0x70, leg);
         sb(pv + 0x2b, 1);
-        V(m + 0x10) = V(lvd::path(lwu(pv + 0x60)) + 0x10);  // (the 16 bytes as they are)
+        V(m + 0x10) = lvd::path_row(lvd::path(lwu(pv + 0x60)) + 0x10);  // (the 16 bytes as they are)
         swc1(pv + 0x68, rand_angle());
         sw(pv + 0x6c, 0xffffffffu);
         sb(m + 0x20, 1);
         sh(m + 0x34, lhu(m + 0x34) | 0x10u);
-        swc1(pv + 0x64, fpu_mul(lwc1(pv + 0x74), int_to_float(lw(path))));
+        swc1(pv + 0x64, fpu_mul(lwc1(pv + 0x74), int_to_float(lvd::path_n(path))));
         break;
     }
     case 1: {
@@ -252,7 +253,7 @@ void bg_ship1_update(uint32_t m) {
         if (sub_0028d8c0(m, lw(pv + 0x6c)) == 0) sw(pv + 0x6c, static_cast<uint32_t>(moby_sound_start(1, 4, m)));
         const float t = fpu_add(lwc1(pv + 0x64), fpu_div(fpu_mul(lwc1(tune), lwc1(0x0015ed6c)), lwc1(pv + 0x70)));
         swc1(pv + 0x64, t);
-        const float points = int_to_float(lw(path));
+        const float points = int_to_float(lvd::path_n(path));
         if (points < t) swc1(pv + 0x64, fpu_sub(t, points));
         path_point(lwc1(pv + 0x64), path, game_level() == 9 ? 1 : 0, m + 0x10, m + 0x40, 0);  // (Gaspar's loops)
         if (lwc1(m + 0x10) < 8.0f || lwc1(m + 0x14) < 8.0f) sw(m + 0x94, 0);

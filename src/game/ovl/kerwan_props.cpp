@@ -2,6 +2,7 @@
 // kerwan_mobys.h. Addresses are Kerwan's (`orig: L3:`); data only Kerwan
 // has is L3_ADDR, the globals the engine shares with Veldin are the level's own (OV), the base ELF's are bare.
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/checkpoint.h>
@@ -173,10 +174,10 @@ uint32_t escalator_step_spawn_l3(uint32_t path, float along) {
     sb(s + 0x31, 1);
     sh(s + 0x34, lhu(s + 0x34) | 0x20u);
     moby_copy_hero_color(s);
-    lq_sq(s + 0x10, path + 0x10);
+    lvd::path_copy_row(s + 0x10, path + 0x10);
     vec_clear(V(s + 0x40));
-    const uint32_t last = path + ((lwu(path) - 1u) << 4);
-    swc1(s + 0x48, atan2_f(fpu_sub(lwc1(last + 0x10), lwc1(s + 0x10)), fpu_sub(lwc1(last + 0x14), lwc1(s + 0x14))));
+    const uint32_t last = path + ((lvd::path_u32(path) - 1u) << 4);
+    swc1(s + 0x48, atan2_f(fpu_sub(lvd::path_f32(last + 0x10), lwc1(s + 0x10)), fpu_sub(lvd::path_f32(last + 0x14), lwc1(s + 0x14))));
     swc1(pv + 0x64, along);
     sw(pv + 0x60, path);
     sw(pv + 8, pv + 0x20);

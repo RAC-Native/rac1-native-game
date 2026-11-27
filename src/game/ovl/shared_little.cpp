@@ -14,6 +14,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/variants_l3.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/level/level_write.h>
 
 namespace rac1 {
@@ -207,20 +208,20 @@ void blarg_class1051_switch(uint32_t m) {
 void path_point_even(uint32_t path, uint32_t index, uint32_t frac, uint32_t out, float dist, float leg) {
     const int32_t i = float_to_int(fpu_div(dist, leg));
     sw(index, static_cast<uint32_t>(i));
-    const int32_t last = lw(path) - 1;
+    const int32_t last = lvd::path_n(path) - 1;
     if (!(i < last) || i < 0) {
         sw(index, static_cast<uint32_t>(i < last ? 0 : last));
         sw(frac, 0);
-        lq_sq(out, path + 0x10 + (lwu(index) << 4));
+        lvd::path_copy_row(out, path + 0x10 + (lwu(index) << 4));
         return;
     }
     const uint32_t sp = ee_stack_alloc(0x60);
     swc1(frac, fpu_sub(dist, fpu_mul(int_to_float(i), leg)));
     const uint32_t at = path + 0x10 + (lwu(index) << 4);
-    vec3_sub(V(sp), V(at + 0x10), V(at));
+    vec3_sub(V(sp), lvd::path_row(at + 0x10), lvd::path_row(at));
     lq_sq(out, sp);
     vec3_set_length(V(out), V(out), lwc1(frac));
-    vec3_add(V(sp), V(out), V(path + 0x10 + (lwu(index) << 4)));
+    vec3_add(V(sp), V(out), lvd::path_row(path + 0x10 + (lwu(index) << 4)));
     lq_sq(out, sp);
     ee_stack_free(0x60);
 }
@@ -288,14 +289,14 @@ void envmap_uvs4(int32_t n, uint32_t normals, uint32_t points, uint32_t /*unused
 void path_mover_start(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
     const uint32_t path = lvd::path(lwu(pv + 0x68));
-    for (int32_t i = 0; i < lw(path) - 1; ++i) {
+    for (int32_t i = 0; i < lvd::path_n(path) - 1; ++i) {
         const uint32_t at = path + 0x10 + static_cast<uint32_t>(i) * 0x10;
-        lvd::set_path_f32(at + 0xc, vec3_distance(V(at), V(at + 0x10)));
+        lvd::set_path_f32(at + 0xc, vec3_distance(lvd::path_row(at), lvd::path_row(at + 0x10)));
     }
     sw(pv + 0x60, 0);
     sw(pv + 0x64, 0);
-    lq_sq(m + 0x10, path + 0x10);
-    swc1(m + 0x48, atan2_f(fpu_sub(lwc1(path + 0x20), lwc1(path + 0x10)), fpu_sub(lwc1(path + 0x24), lwc1(path + 0x14))));
+    lvd::path_copy_row(m + 0x10, path + 0x10);
+    swc1(m + 0x48, atan2_f(fpu_sub(lvd::path_f32(path + 0x20), lvd::path_f32(path + 0x10)), fpu_sub(lvd::path_f32(path + 0x24), lvd::path_f32(path + 0x14))));
     for (const uint32_t o : {0x80u, 0x78u, 0x74u, 0x70u, 0x88u, 0x84u}) swc1(pv + o, 0.0f);
 }
 

@@ -21,6 +21,7 @@
 namespace rac1::lvd {
 
 int g_ld_verify = 0;
+uint32_t g_ld_gen = 0;
 
 namespace {
 
@@ -212,6 +213,11 @@ struct Entry {
 };
 std::vector<Entry> g_index;
 bool g_index_dirty = true;
+// (a record may have moved or gone: the index is rebuilt at the next lookup, the read API's resolved views drop theirs)
+void index_dirty() {
+    g_index_dirty = true;
+    ++g_ld_gen;
+}
 std::vector<std::pair<Entry, Entry>> g_overlaps;  // (live records whose bytes overlap: an error the verify reports)
 bool g_overlaps_said = true;
 IndexStats g_stats;
@@ -532,7 +538,7 @@ void drop_gone_twins() {
             summary(k, *g_twin[k]);
             g_twin[k].reset();
             g_twin_block[k] = 0;
-            g_index_dirty = true;
+            index_dirty();
         }
 }
 
@@ -617,7 +623,7 @@ void registry_level_loaded(uint32_t gameplay) {
     std::vector<LevelRegistry::AddedPath> added;
     if (g_base != nullptr) added = std::move(g_base->added);
     g_base.reset();
-    g_index_dirty = true;
+    index_dirty();
     const uint32_t ram = ee_ram_size();
     if (gameplay == 0 || gameplay >= ram) return;
     // (the file the load has just unpacked: the bytes it lays out, read in place; a byte image, as on the disc)
@@ -652,7 +658,7 @@ void registry_context_made(int key, int level, const std::vector<uint8_t>& gamep
     const auto t0 = std::chrono::steady_clock::now();
     if (g_twin[key] != nullptr) summary(key, *g_twin[key]);
     g_twin[key].reset();
-    g_index_dirty = true;
+    index_dirty();
     auto r = std::make_unique<LevelRegistry>();
     std::string error;
     if (gameplay.empty() || !registry_parse(gameplay, level, *r, &error)) return;  // (no level data: leveldata.cpp's registry is empty too)
@@ -753,6 +759,22 @@ void* record_slot(const RecordRef& r) {
 }
 
 // orig: (host) see level_registry.h
+const PathSpline* record_path(const RecordRef& r) {
+    LevelRegistry* g = reg_of(r.key);
+    if (g == nullptr) return nullptr;
+    const size_t i = static_cast<size_t>(r.index);
+    switch (r.kind) {
+    case RecordKind::PATH: return i < g->paths.size() ? &g->paths[i] : nullptr;
+    case RecordKind::SPINE: return i < g->rails.size() ? &g->rails[i].spine : nullptr;
+    case RecordKind::ADDED_PATH:
+        for (const LevelRegistry::AddedPath& a : g->added)
+            if (a.slot == r.index) return &a.path;
+        return nullptr;
+    default: return nullptr;
+    }
+}
+
+// orig: (host) see level_registry.h
 void record_written(uint32_t a, const uint32_t* w, uint32_t n) {
     for (uint32_t k = 0; k < n; ++k) {
         ++g_stats.writes;
@@ -777,7 +799,7 @@ void registry_context_dropped(int key) {
     summary(key, *g_twin[key]);
     g_twin[key].reset();
     g_twin_block[key] = 0;
-    g_index_dirty = true;
+    index_dirty();
 }
 
 // orig: (host) see level_registry.h
@@ -786,21 +808,21 @@ void registry_path_added(int key, int32_t slot, uint32_t mem, uint32_t size) {
     if (g == nullptr || mem == 0 || size < 0x10) return;
     std::erase_if(g->added, [&](const LevelRegistry::AddedPath& a) { return a.slot == slot; });
     g->added.push_back(LevelRegistry::AddedPath{slot, mem, read_path(mem, (size - 0x10) / 0x10)});
-    g_index_dirty = true;
+    index_dirty();
 }
 
 // orig: (host) see level_registry.h
 void registry_path_released(int key, int32_t slot) {
     LevelRegistry* g = reg_of(key);
     if (g == nullptr) return;
-    if (std::erase_if(g->added, [&](const LevelRegistry::AddedPath& a) { return a.slot == slot; }) != 0) g_index_dirty = true;
+    if (std::erase_if(g->added, [&](const LevelRegistry::AddedPath& a) { return a.slot == slot; }) != 0) index_dirty();
 }
 
 // orig: (host) see level_registry.h
 void registry_base_added_reset() {
     if (g_base == nullptr || g_base->added.empty()) return;
     g_base->added.clear();
-    g_index_dirty = true;
+    index_dirty();
 }
 
 // orig: (host) see level_registry.h
@@ -818,7 +840,7 @@ void registry_paths_taken(int key, uint32_t table, uint32_t n) {
         g->paths[k].offset = a - data;
         g->path_ee[k] = a;
     }
-    g_index_dirty = true;
+    index_dirty();
 }
 
 // orig: (host) see level_registry.h
@@ -976,7 +998,7 @@ void registry_pull_from_ee() {
             pull_view(*g_twin[k], bv, lwu(bv.rail) == g_twin_rails[k]);
         }
     }
-    g_index_dirty = true;
+    index_dirty();
 }
 
 // orig: (host) see level_registry.h

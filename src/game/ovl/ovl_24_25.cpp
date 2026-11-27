@@ -6,6 +6,7 @@
 #include <game/lib/libc.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/ovl/ovl_common.h>
 #include <runtime/kernel/bootstrap.h>
 #include <cstdio>
@@ -518,13 +519,13 @@ uint32_t sub_0024f028(uint32_t moby, uint32_t idx) {
 // under gravity g: -((a.z - b.z) + g t^2 / 2) / t (0 when t is 0); *t_out = t when given.
 float sub_0025abf0(uint32_t a, uint32_t b, float* t_out, float speed, float g) {
     Vec4 d;
-    vec3_sub(d, V(b), V(a));
+    vec3_sub(d, lvd::path_row(b), V(a));
     const float t = fpu_div(vec2_length(d), speed);
     if (t_out != nullptr) *t_out = t;
     if (t == 0.0f) return 0.0f;
     // (the EE FPU's mul / add / sub: a divide by speed 0 gives t = FLT_MAX, and t * t clamps, it does not overflow to Inf)
     const float k = fpu_mul(fpu_mul(g, fpu_mul(t, t)), 0.5f);
-    const float r = -fpu_add(fpu_sub(lwc1(a + 8), lwc1(b + 8)), k);
+    const float r = -fpu_add(fpu_sub(lwc1(a + 8), lvd::path_f32(b + 8)), k);
     return fpu_div(r, t);
 }
 
@@ -1264,8 +1265,8 @@ int32_t path_advance_v(uint32_t path, Vec4& out, int32_t* idx, float* frac, int3
         step = -step;
         dir = -1;
     }
-    auto seg_len = [path](int32_t i) { return lwc1(path + static_cast<uint32_t>(i << 4) + 0x1c); };
-    int32_t n = lw(path);
+    auto seg_len = [path](int32_t i) { return lvd::path_f32(path + static_cast<uint32_t>(i << 4) + 0x1c); };
+    int32_t n = lvd::path_n(path);
     int32_t i = *idx;
     while (!(step == 0.0f) && (i != n - 1 || loop != 0)) {
         float f2;
@@ -1282,7 +1283,7 @@ int32_t path_advance_v(uint32_t path, Vec4& out, int32_t* idx, float* frac, int3
             step = 0.0f;
         } else {
             int32_t ni = i + dir;
-            const int32_t cnt = lw(path);
+            const int32_t cnt = lvd::path_n(path);
             if (!(ni < cnt) || ni < 0) ni = ee_rem(ni + cnt, cnt);
             if (dir == 1) {
                 const float rest = seg_len(*idx) - f2;
@@ -1293,24 +1294,24 @@ int32_t path_advance_v(uint32_t path, Vec4& out, int32_t* idx, float* frac, int3
                 step = step - f2;
                 *frac = seg_len(ni);
             }
-            if (dir == 1 ? *idx == lw(path) - 1 : *idx == 0) ended = 1;
+            if (dir == 1 ? *idx == lvd::path_n(path) - 1 : *idx == 0) ended = 1;
             *idx = ni;
         }
-        n = lw(path);
+        n = lvd::path_n(path);
         i = *idx;
     }
-    out = V(path + static_cast<uint32_t>(i << 4) + 0x10);
+    out = lvd::path_row(path + static_cast<uint32_t>(i << 4) + 0x10);
     if (i == n - 1 && loop == 0) {
         if (dir != -1) return 1;
         *idx = 0;
-        out = V(path + 0x10);
+        out = lvd::path_row(path + 0x10);
         *frac = 0.0f;
         return 1;
     }
     int32_t next = i + 1;
     if (!(next < n)) next = ee_rem(next, n);
     Vec4 d;
-    vec3_sub(d, V(path + static_cast<uint32_t>(next << 4) + 0x10), V(path + static_cast<uint32_t>(i << 4) + 0x10));
+    vec3_sub(d, lvd::path_row(path + static_cast<uint32_t>(next << 4) + 0x10), lvd::path_row(path + static_cast<uint32_t>(i << 4) + 0x10));
     vec3_set_length(d, d, *frac);
     vec3_add(out, out, d);
     return ended;
@@ -1812,12 +1813,12 @@ float surface_height(uint32_t pos, uint32_t n) { return surface_height_v(pos, n 
 int32_t path_closest_point_v(uint32_t path, const Vec4& p, Vec4& out, int32_t* idx, float* dist, int32_t loop, float range, float step, float h) {
     int32_t cur = 0;
     float frac = 0.0f;
-    Vec4 walk = V(path + 0x10);
+    Vec4 walk = lvd::path_row(path + 0x10);
     Vec4 pp = p;
     float best_frac = 0.0f;
     int32_t best = 0;
     float best_d = sub_0025da70_v(walk, pp, h);
-    if (lw(path) == 0) {
+    if (lvd::path_n(path) == 0) {
         vec_clear(out);
         return 0;
     }
@@ -1845,25 +1846,25 @@ int32_t path_closest_point_v(uint32_t path, const Vec4& p, Vec4& out, int32_t* i
     best_d = u2f(0x4e6e6b28u);
     for (;;) {
         const Vec4 q = p;
-        const Vec4 v = V(path + 0x10 + static_cast<uint32_t>(cur) * 16);
+        const Vec4 v = lvd::path_row(path + 0x10 + static_cast<uint32_t>(cur) * 16);
         const float d = sub_0025da70_v(v, q, h);
         if (d < best_d) {
             best = cur;
             best_d = d;
         }
         if (cur == to) break;
-        cur = ee_rem(cur + 1, lw(path));
+        cur = ee_rem(cur + 1, lvd::path_n(path));
     }
     best_d = u2f(0x4e6e6b28u);
-    int32_t n = lw(path);
+    int32_t n = lvd::path_n(path);
     if (best > 0 || loop != 0) {
         const int32_t prev = ee_rem(best + n - 1, n);
         best_d = closest_point_on_segment_v(out, p, path + 0x10 + static_cast<uint32_t>(prev) * 16, path + 0x10 + static_cast<uint32_t>(best) * 16, h);
         *idx = prev;
-        const Vec4 a = V(path + 0x10 + static_cast<uint32_t>(prev) * 16);
+        const Vec4 a = lvd::path_row(path + 0x10 + static_cast<uint32_t>(prev) * 16);
         const Vec4 o = out;
         *dist = sub_0025da70_v(a, o, 0.0f);
-        n = lw(path);
+        n = lvd::path_n(path);
     }
     if (!(best < n - 1) && loop == 0) return 1;
     const int32_t next = ee_rem(best + 1, n);
@@ -1872,7 +1873,7 @@ int32_t path_closest_point_v(uint32_t path, const Vec4& p, Vec4& out, int32_t* i
     if (!(d < best_d)) return 1;
     out = c;
     *idx = best;
-    const Vec4 a = V(path + 0x10 + static_cast<uint32_t>(best) * 16);
+    const Vec4 a = lvd::path_row(path + 0x10 + static_cast<uint32_t>(best) * 16);
     const Vec4 o = out;
     *dist = sub_0025da70_v(a, o, 0.0f);
     return 1;

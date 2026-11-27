@@ -13,6 +13,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/port_stubs.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/level/level_write.h>
 
 namespace rac1 {
@@ -135,11 +136,11 @@ int32_t path_crossed_v(uint32_t path, const Vec4& a, const Vec4& b) {
     f.r[2].z = 1.0f;
     f.r[3] = Vec4{};  // (not read: rows 0..2 only)
     Vec4 p0;
-    vec3_sub(p0, V(lvd::path(path) + 0x10), a);
+    vec3_sub(p0, lvd::path_row(lvd::path(path) + 0x10), a);
     mat3_transform(p0, p0, f);
-    for (int32_t i = 1; i < lw(lvd::path(path)); ++i) {
+    for (int32_t i = 1; i < lvd::path_n(lvd::path(path)); ++i) {
         Vec4 p1;
-        vec3_sub(p1, V(lvd::path(path) + 0x10 + static_cast<uint32_t>(i) * 0x10), a);
+        vec3_sub(p1, lvd::path_row(lvd::path(path) + 0x10 + static_cast<uint32_t>(i) * 0x10), a);
         mat3_transform(p1, p1, f);
         if (!(p0.w == 0.0f && p1.w == 0.0f) && p1.y * p0.y < 0.0f) {
             const float x = fpu_div(p0.x - p1.x, p0.y - p1.y) * -p1.y + p1.x;
@@ -159,14 +160,14 @@ int32_t path_crossed(uint32_t path, uint32_t a, uint32_t b) { return path_crosse
 int32_t path_push_out_2d_v(uint32_t path, const Vec4& pos, Vec4& out, float r) {
     int32_t hit = 0;
     Vec4 p = pos;
-    for (int32_t i = 0; i < lw(lvd::path(path)) - 1; ++i) {
+    for (int32_t i = 0; i < lvd::path_n(lvd::path(path)) - 1; ++i) {
         const uint32_t pts = lvd::path(path);
         const uint32_t o = static_cast<uint32_t>(i) * 0x10;
-        if (lwc1(pts + o + 0x1c) == 0.0f && lwc1(pts + o + 0x2c) == 0.0f) continue;
+        if (lvd::path_f32(pts + o + 0x1c) == 0.0f && lvd::path_f32(pts + o + 0x2c) == 0.0f) continue;
         Vec4 rel, seg, dir, cr, t, proj;
-        vec3_sub(rel, p, V(pts + o + 0x10));
+        vec3_sub(rel, p, lvd::path_row(pts + o + 0x10));
         rel.z = 0.0f;
-        vec3_sub(seg, V(lvd::path(path) + o + 0x20), V(lvd::path(path) + o + 0x10));
+        vec3_sub(seg, lvd::path_row(lvd::path(path) + o + 0x20), lvd::path_row(lvd::path(path) + o + 0x10));
         seg.z = 0.0f;
         vec3_set_length(dir, seg, 1.0f);
         vec3_cross_ba(cr, rel, dir);
@@ -177,14 +178,14 @@ int32_t path_push_out_2d_v(uint32_t path, const Vec4& pos, Vec4& out, float r) {
             if (!(vec3_length(rel) < r)) continue;
             vec3_set_length(t, rel, r);
             hit = 1;
-            vec3_add(p, t, V(lvd::path(path) + o + 0x10));
+            vec3_add(p, t, lvd::path_row(lvd::path(path) + o + 0x10));
         } else {
             vec3_set_length(proj, dir, along);
             hit = 1;
             vec3_sub(t, rel, proj);
             vec3_set_length(t, t, r);
             vec3_add(t, t, proj);
-            vec3_add(p, t, V(lvd::path(path) + o + 0x10));
+            vec3_add(p, t, lvd::path_row(lvd::path(path) + o + 0x10));
         }
         p.z = pos.z;
     }
@@ -343,9 +344,9 @@ void moby_33e_wake(uint32_t m) {
     sw(m + 0x90, 0x80208020u);
     moby_sound_start(0, 0, m);
     if (lw(pv) == -1) return;
-    for (int32_t i = 0; i < lw(lvd::path(lw(pv))); ++i) {
+    for (int32_t i = 0; i < lvd::path_n(lvd::path(lw(pv))); ++i) {
         const uint32_t e = lvd::path(lw(pv)) + static_cast<uint32_t>(i) * 0x10;
-        if (lwc1(e + 0x1c) == lwc1(pv + 4)) lvd::set_path_word(e + 0x1c, 0);
+        if (lvd::path_f32(e + 0x1c) == lwc1(pv + 4)) lvd::set_path_word(e + 0x1c, 0);
     }
 }
 
@@ -509,7 +510,7 @@ void e749_hit_update(uint32_t m) {
     color_pulse_update(m, pv + 0x60);
     const bool far = lbu(m + 0x20) == 3;
     const uint32_t path = lvd::path(lw(pv + (far ? 0x1e4 : 0x1e0)));
-    target_select(m, pv + 0x180, 0, 0, path + 0x10, lw(path), far ? 64.0f : 24.0f);
+    target_select(m, pv + 0x180, 0, 0, path + 0x10, lvd::path_n(path), far ? 64.0f : 24.0f);
     if (lw(pv + 0x1c0) == 0) {
         sw(pv + 0x1c0, lwu(0x0013f350 + 0x2080));
         lq_sq(pv + 0x180, 0x0013f350 + 0x80);
@@ -1047,8 +1048,8 @@ void e749_update(uint32_t m) {
             }
             if (lw(pv + 0x1e4) >= 0) {
                 const uint32_t path = path_tbl(static_cast<uint32_t>(patrol));
-                V(pv + 0x1d0) = V(path + static_cast<uint32_t>(lw(path)) * 16);
-                V(m + 0x10) = V(path + 0x10);
+                V(pv + 0x1d0) = lvd::path_row(path + static_cast<uint32_t>(lvd::path_s32(path)) * 16);
+                V(m + 0x10) = lvd::path_row(path + 0x10);
                 sb(m + 0x20, 3);
                 break;
             }
@@ -1086,7 +1087,7 @@ void e749_update(uint32_t m) {
             const uint32_t path = path_tbl(static_cast<uint32_t>(lw(pv + 0x1e8)));
             const uint32_t at = path + static_cast<uint32_t>(lh(pv + 0x274)) * 16 + 0x10;
             if (e749_chase(m, at, 0.5f) < 1.0f) {
-                if (lh(pv + 0x274) < lw(path) - 1) {
+                if (lh(pv + 0x274) < lvd::path_s32(path) - 1) {
                     sh(pv + 0x274, lhu(pv + 0x274) + 1u);
                     break;
                 }

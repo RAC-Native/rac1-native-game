@@ -23,6 +23,7 @@
 #include <game/ovl/variants_l16.h>
 #include <game/ovl/variants_l18.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 
 namespace rac1 {
 
@@ -83,11 +84,11 @@ void knocked(uint32_t m, uint32_t pv, uint32_t hit, uint32_t sp, uint32_t yaw_at
 float class638_seek(uint32_t m, uint32_t to) {
     const uint32_t sp = ee_stack_alloc(0x70);
     const uint32_t pv = lwu(m + 0x78), hover = pv + 0x2c0;
-    const float d = vec3_distance(V(hover), V(to));
+    const float d = vec3_distance(V(hover), lvd::path_row(to));
     const float turn = fpu_mul(lwc1(0x0015ed70), 4.0f);
     sw(sp + 0x10, 0);
     seek_1d(sp + 0x10, pv + 0x2d4, d, turn, turn, fpu_mul(dt(), 5.0f));
-    vec3_sub(V(sp), V(to), V(hover));
+    vec3_sub(V(sp), lvd::path_row(to), V(hover));
     vec3_set_length(V(sp), V(sp), lwc1(pv + 0x2d4));
     vec3_add(V(hover), V(hover), V(sp));
     ee_stack_free(0x70);
@@ -116,7 +117,7 @@ void class638_group_timers(uint32_t m, int32_t lo, int32_t hi) {
 void class638_turn(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
     const uint32_t pt = path_point(lw(pv + 0x120), lh(pv + 0x300)) - 0x10;
-    const float yaw = atan2_f(fpu_sub(lwc1(pt + 0x10), lwc1(m + 0x10)), fpu_sub(lwc1(pt + 0x14), lwc1(m + 0x14)));
+    const float yaw = atan2_f(fpu_sub(lvd::path_f32(pt + 0x10), lwc1(m + 0x10)), fpu_sub(lvd::path_f32(pt + 0x14), lwc1(m + 0x14)));
     const float off = angle_sub(yaw, lwc1(m + 0x48));
     const bool swapped = (lhu(m + 0x34) & 0x8000u) != 0;
     if (off < QUARTER_PI && -QUARTER_PI < off) anim_to(m, 1, 0x14);
@@ -334,7 +335,7 @@ void class638_hits(uint32_t m) {
         const int32_t path = lw(pv + 0x12c);
         if (path >= 0 && looking == 0) {
             const uint32_t p = lvd::path(path);
-            target_select(m, point, 0, 0, p + 0x10, lw(p), 24.0f);
+            target_select(m, point, 0, 0, p + 0x10, lvd::path_n(p), 24.0f);
         } else {
             target_select_any(m, point, 24.0f);
         }
@@ -387,9 +388,9 @@ void class638_update(uint32_t m) {
         const int32_t path = lw(pv + 0x120);
         if (path >= 0) {
             const uint32_t p = lvd::path(path);
-            const int32_t i = float_to_int(rand_range_f(0.0f, static_cast<float>(lw(p) - 1)));
+            const int32_t i = float_to_int(rand_range_f(0.0f, static_cast<float>(lvd::path_n(p) - 1)));
             sh(pv + 0x300, static_cast<uint32_t>(i));
-            lq_sq(m + 0x10, path_point(lw(pv + 0x120), static_cast<int16_t>(i)));
+            lvd::path_copy_row(m + 0x10, path_point(lw(pv + 0x120), static_cast<int16_t>(i)));
         }
         sw(pv + 0x308, 1);
         lq_sq(pv + 0x2c0, m + 0x10);

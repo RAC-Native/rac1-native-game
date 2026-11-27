@@ -9,6 +9,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/level/level_write.h>
 
 namespace rac1 {
@@ -40,16 +41,16 @@ void approach_step(uint32_t addr, float target, float step) {
 }
 
 void map_waypoints_to_path(uint32_t wp, uint32_t target, int32_t& seg_idx, float& dist) {
-    int32_t n = lw(wp);
+    int32_t n = lvd::path_n(wp);
     if (n > 0) {
         for (int32_t i = 0; i < n; ++i) {
             const uint32_t meta = wp + static_cast<uint32_t>(i) * 0x10u;
             const uint32_t pt = meta + 0x10u;
             Vec4 closest{};
-            path_closest_point_v(target, V(pt), closest, &seg_idx, &dist, 0, 20.0f, 5.0f, 0.0f);
-            lvd::set_path_f32(meta + 0x10u, lwc1(meta + 0x1cu));
+            path_closest_point_v(target, lvd::path_row(pt), closest, &seg_idx, &dist, 0, 20.0f, 5.0f, 0.0f);
+            lvd::set_path_f32(meta + 0x10u, lvd::path_f32(meta + 0x1cu));
             lvd::set_path_f32(meta + 0x1cu, static_cast<float>(seg_idx));
-            n = lw(wp);
+            n = lvd::path_n(wp);
         }
     }
     if (n > 0) {
@@ -57,23 +58,23 @@ void map_waypoints_to_path(uint32_t wp, uint32_t target, int32_t& seg_idx, float
         for (int32_t i = 0; i < n; ++i) {
             const uint32_t prev_meta = wp + static_cast<uint32_t>(prev_i) * 0x10u;
             const uint32_t cur_meta = wp + static_cast<uint32_t>(i) * 0x10u;
-            const int32_t start_seg = float_to_int(lwc1(prev_meta + 0x1cu));
-            const int32_t end_seg = float_to_int(lwc1(cur_meta + 0x1cu));
+            const int32_t start_seg = float_to_int(lvd::path_f32(prev_meta + 0x1cu));
+            const int32_t end_seg = float_to_int(lvd::path_f32(cur_meta + 0x1cu));
             int32_t count = end_seg - start_seg;
-            if (count < 0) count += lw(target);
+            if (count < 0) count += lvd::path_n(target);
             float sum = 0.0f;
             if (count > 0) {
                 // Preserves original L1:0x315184 loop indexing: uses (start_seg + i) % target_count
                 const int32_t seg_idx_sum = start_seg + i;
                 for (int32_t k = 0; k < count; ++k) {
-                    const int32_t rem = ee_rem(seg_idx_sum, lw(target));
-                    sum = fpu_add(sum, lwc1(target + static_cast<uint32_t>(rem) * 0x10u + 0x1cu));
+                    const int32_t rem = ee_rem(seg_idx_sum, lvd::path_n(target));
+                    sum = fpu_add(sum, lvd::path_f32(target + static_cast<uint32_t>(rem) * 0x10u + 0x1cu));
                 }
             }
             lvd::set_path_f32(cur_meta + 0x14u, sum);
             dist = sum;
             prev_i = i;
-            n = lw(wp);
+            n = lvd::path_n(wp);
         }
     }
 }

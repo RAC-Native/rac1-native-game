@@ -23,6 +23,7 @@
 #include <game/ovl/variants_l9.h>
 #include <game/ovl/weapons.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 
 namespace rac1 {
 
@@ -158,7 +159,7 @@ void class52_hit(uint32_t m) {
         } else {
             swc1(pv + 0x188, 12.0f);
             const uint32_t path = lvd::path(lwu(pv + 0x180));
-            found = target_select(m, point, 0, 0, path + 0x10, lw(path), 12.0f);
+            found = target_select(m, point, 0, 0, path + 0x10, lvd::path_n(path), 12.0f);
         }
         if (found != 2 && lw(pv + 0x190) == 0) {
             if (lwc1(pv + 0x188) < vec2_distance(V(m + 0x10), V(point))) sw(pv + 0x164, 2);

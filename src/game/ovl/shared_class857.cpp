@@ -39,6 +39,7 @@
 #include <game/ovl/variants_l6.h>
 #include <game/ovl/walker.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 
 namespace rac1 {
 
@@ -78,7 +79,7 @@ void anim_to(uint32_t m, uint32_t set, int32_t frame = 0) {
 // whether the point is inside the walls' path `path` (an index of the path table: a closed polygon)
 bool inside(uint32_t pos, int32_t path) {
     const uint32_t p = lvd::path(path);
-    return point_in_polygon(pos, p + 0x10, lw(p)) != 0;
+    return point_in_polygon(pos, p + 0x10, lvd::path_n(p)) != 0;
 }
 
 // the point a Gadgebot goes to at `o`: the moby's position, or (but for classes 1301 and 351) a step along its x axis

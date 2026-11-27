@@ -14,6 +14,7 @@
 // with the hero (his path laid out), 4 / 5 up / down without him, 6 / 7 waiting below / above (the lights pulse; the hero
 // on it at its centre starts it, the hero near below / above calls it), 8 / 9 stopped (until the hero leaves it).
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
@@ -101,7 +102,7 @@ void vo_class1380_update_l17(uint32_t m) {
         swc1(pv + 0x78, rand_angle());
         const int32_t path = lw(pv + 0x80);
         sw(pv + 0x6c, 0xffffffffu);
-        if (path != -1 && lw(lvd::path(path)) == 0xb) {
+        if (path != -1 && lvd::path_n(lvd::path(path)) == 0xb) {
             sb(m + 0x20, 6);
             break;
         }

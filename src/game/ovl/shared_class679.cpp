@@ -13,6 +13,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/level/level_write.h>
 
 namespace rac1 {
@@ -37,8 +38,8 @@ void class679_update(uint32_t m) {
         for (int32_t i = 0; i < lw(pv + 0x70); ++i) {
             const uint32_t path = path_of(i);
             uint32_t pt = path + 0x10;
-            for (int32_t k = 0; k < lw(path) - 1; ++k, pt += 0x10) lvd::set_path_f32(pt + 0xc, vec3_distance(V(pt), V(pt + 0x10)));
-            lvd::set_path_f32(pt + 0xc, vec3_distance(V(pt), V(path + 0x10)));
+            for (int32_t k = 0; k < lvd::path_s32(path) - 1; ++k, pt += 0x10) lvd::set_path_f32(pt + 0xc, vec3_distance(lvd::path_row(pt), lvd::path_row(pt + 0x10)));
+            lvd::set_path_f32(pt + 0xc, vec3_distance(lvd::path_row(pt), lvd::path_row(path + 0x10)));
         }
         sb(m + 0x30, 0xff);
     }
@@ -81,9 +82,9 @@ void class679_update(uint32_t m) {
         return;
     }
     if (lw(0x0015ed84) == 1) {
-        const int32_t last = lw(path) - 1;
+        const int32_t last = lvd::path_s32(path) - 1;
         float left = 0.0f;
-        for (int32_t k = lw(leg); k < last; ++k) left = fpu_add(left, lwc1(path + 0x1c + (static_cast<uint32_t>(k) << 4)));
+        for (int32_t k = lw(leg); k < last; ++k) left = fpu_add(left, lvd::path_f32(path + 0x1c + (static_cast<uint32_t>(k) << 4)));
         const float dt = lwc1(0x0015ed6c);
         float speed;
         if (left < 8.0f) speed = fpu_mul(dt, 3.0f);

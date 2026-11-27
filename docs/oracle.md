@@ -122,6 +122,18 @@ again. Batch 544 (levels 0 .. 18; `ORACLE_ONLY=grids_title` on level 0 for the t
 memory and the lookups (`zone_grid_cell`, `zones_from_camera`, `cam_volume_find`, `cam0_volume_pass`) with
 `RAC1_LD_GRIDS=ee` against `native`, and the copies' keys.
 
+The level data's typed read API (`src/game/level/level_read.h`: the reads of a path's, a shape's, a volume's, a level
+camera's and a rail's words, keyed by the record's EE address) reads EE memory (`RAC1_LD_READ=ee`, the game's default) or the
+indexed native records (`native`). In the oracle, each check's generator and original run with `ee` and the check mode off;
+right before the compared port run, `registry_pull_from_ee()` reads every live registry's records again from EE as the case
+left them (the generators store into the level data directly: no native record carries over from another case), then the
+port runs in `ORACLE_LD_READ`'s mode (`native` by default; `ee` runs it as before the API) with `RAC1_LD_READ_CHECK` on (set by
+the oracle's main: every native read compared with the EE words, "[ld-read] differs" lines). The run's end prints the pulls'
+count and cost and the read API's summary ("[ld-read] mode ..., N native reads, M misses read from EE, D differing", then the
+misses by accessor: the addresses no record holds). Batch 545 (levels 0 .. 18) checks every accessor on every record of the
+level with `ee` against `native` (after the setup and after a gameplay frame), the check mode (a word changed by hand is
+reported), a miss (read from EE and counted) and the pull (native follows EE words changed by hand).
+
 ### Native trial guards
 
 Some batches first try a random state in the native port, rejecting a `std::exception` or an invalid

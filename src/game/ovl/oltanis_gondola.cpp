@@ -11,6 +11,7 @@
 // pulse's phase.
 #include <game/enhance/fixes102.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/oltanis_mobys.h>
@@ -30,21 +31,21 @@ constexpr uint32_t HERO = 0x0013f350u;
 
 // a path's last segment: the cursor (+0xa4 segment, +0xa8 its length) put at its end
 void cursor_at_end(uint32_t pv, uint32_t path) {
-    const int32_t last = lw(path) - 2;
+    const int32_t last = lvd::path_n(path) - 2;
     sw(pv + 0xa4, static_cast<uint32_t>(last));
-    swc1(pv + 0xa8, lwc1(path + 0x1cu + (static_cast<uint32_t>(last) << 4)));
+    swc1(pv + 0xa8, lvd::path_f32(path + 0x1cu + (static_cast<uint32_t>(last) << 4)));
 }
 
 // a looping path's segments measured into its points' w lanes (the last one back to the first); their sum
 float measure_path(uint32_t path, uint32_t total) {
     int32_t k = 0;
-    for (; k < lw(path) - 1; ++k) {
+    for (; k < lvd::path_n(path) - 1; ++k) {
         const uint32_t p = path + 0x10u + (static_cast<uint32_t>(k) << 4);
-        const float d = vec3_distance(V(p), V(p + 0x10));
+        const float d = vec3_distance(lvd::path_row(p), lvd::path_row(p + 0x10));
         lvd::set_path_f32(p + 0xc, d);
         swc1(total, fpu_add(lwc1(total), d));
     }
-    lvd::set_path_f32(path + 0x1cu + (static_cast<uint32_t>(k) << 4), vec3_distance(V(path + 0x10u + (static_cast<uint32_t>(k) << 4)), V(path + 0x10)));
+    lvd::set_path_f32(path + 0x1cu + (static_cast<uint32_t>(k) << 4), vec3_distance(lvd::path_row(path + 0x10u + (static_cast<uint32_t>(k) << 4)), lvd::path_row(path + 0x10)));
     return lwc1(total);
 }
 

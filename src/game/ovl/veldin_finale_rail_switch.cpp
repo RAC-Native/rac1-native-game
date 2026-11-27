@@ -9,6 +9,7 @@
 // The pvars: +0 .. +0x1c four pairs of rail records (each the rail, then its twin), +0x20 .. +0x3c their radii,
 // +0x40 / +0x44 the boxes of the two pickups.
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -35,8 +36,8 @@ struct Frame {
 // a rail's path's first point and its last
 uint32_t path_first(uint32_t rail) { return lwu(rail + 0x10) + 0x10; }
 uint32_t path_last(uint32_t rail) {
-    const uint32_t path = lwu(rail + 0x10);
-    return path + (lwu(path) << 4);
+    const uint32_t path = lvd::rail_spine(rail);
+    return path + (lvd::path_u32(path) << 4);
 }
 }  // namespace
 

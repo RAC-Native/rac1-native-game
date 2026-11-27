@@ -32,6 +32,7 @@
 // fix 48. The PAL 1.00 build: relocations only; the four helpers: relocations only on both.
 #include <game/enhance/fixes102.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ee_regs.h>
@@ -96,7 +97,7 @@ uint32_t path_point(uint32_t path, int32_t i) { return path + 0x10 + (static_cas
 // the flying path's next point when the moby is within `near` of the current one (the index wrapped at the count)
 void path_point_next(uint32_t pv, uint32_t path) {
     sw(pv + 0x224, static_cast<uint32_t>(lw(pv + 0x224) + 1));
-    if (!(lw(pv + 0x224) < lw(path))) sw(pv + 0x224, 0);
+    if (!(lw(pv + 0x224) < lvd::path_n(path))) sw(pv + 0x224, 0);
 }
 
 // a random goal about home (up to `radius` across, 5 .. 7 up) over a floor (higher than 1): ten tries at most, the

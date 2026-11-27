@@ -18,6 +18,7 @@
 
 #include <game/collision/collision.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/lib/libc.h>
 #include <game/lib/libgcc_fp.h>
 #include <game/math/vecmath.h>
@@ -79,7 +80,7 @@ void stop_jets_sound(uint32_t m, uint32_t pv) {
 // The jump toward `goal` (an EE vector): the horizontal speed +0x40 toward it at the level's jump speed, the vertical speed
 // +0x48 that lands it there under the level's gravity.
 void jump_toward(uint32_t m, uint32_t pv, uint32_t goal) {
-    vec3_sub(V(pv + 0x40), V(goal), V(m + 0x10));
+    vec3_sub(V(pv + 0x40), lvd::path_row(goal), V(m + 0x10));
     vec2_set_length(V(pv + 0x40), V(pv + 0x40), fpu_mul(lwc1(L15_ADDR(0x00161b14u)), frame_time()));
     const float gravity = fpu_mul(lwc1(L15_ADDR(0x00161b18u)), frame_time2());
     const float speed = fpu_mul(lwc1(L15_ADDR(0x00161b14u)), frame_time());

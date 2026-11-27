@@ -1,5 +1,7 @@
 #include <stdexcept>
 #include <game/collision/collision_state.h>
+#include <game/level/level_read.h>
+#include <game/level/level_registry.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/render/render_view.h>
 #include "oracle_env.h"
@@ -12,6 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <unordered_set>
 
@@ -441,6 +444,63 @@ struct CollStateEeScope {
 };
 }  // namespace
 
+namespace {
+// (stage 5, LD4) the level data's reads in the compared port runs: ORACLE_LD_READ=native (the default: the indexed native
+// records, pulled from EE right before the run; the check mode as the harness's, on) or ee (the EE words, as before LD4)
+lvd::ReadMode port_ld_mode() {
+    static const lvd::ReadMode m = [] {
+        const char* v = std::getenv("ORACLE_LD_READ");
+        return v != nullptr && std::strcmp(v, "ee") == 0 ? lvd::ReadMode::EE : lvd::ReadMode::NATIVE;
+    }();
+    return m;
+}
+uint64_t g_ld_pulls = 0;
+double g_ld_pull_us = 0.0;
+
+// (stage 5, LD4) one case's generator and original run with the level data read from EE (RAC1_LD_READ=ee, the check off): a
+// generator restores RAM by its own copies and runs port code on it (its trials), which then reads what it read before the
+// read API existed and deals the same cases. port_run() pulls the native records from EE as the case left them (the
+// generator's and the restore's words: 38 batch files store into the level data directly), so that no record carries over
+// from another case, then sets the compared port run's mode and check mode; port_done() (also when the run throws) gives
+// back ee and the check off; the scope's end gives the harness's mode and check mode back.
+struct LdReadEeScope {
+    const lvd::ReadMode mode = lvd::read_mode();
+    const bool check = lvd::read_check();
+    LdReadEeScope() {
+        lvd::set_read_check(false);
+        lvd::set_read_mode(lvd::ReadMode::EE);
+    }
+    ~LdReadEeScope() {
+        lvd::set_read_mode(mode);
+        lvd::set_read_check(check);
+    }
+    void port_run() const {
+        if (port_ld_mode() == lvd::ReadMode::NATIVE) {
+            const auto t0 = std::chrono::steady_clock::now();
+            lvd::registry_pull_from_ee();
+            g_ld_pull_us += std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count();
+            ++g_ld_pulls;
+        }
+        lvd::set_read_mode(port_ld_mode());
+        lvd::set_read_check(check);
+    }
+    static void port_done() {
+        lvd::set_read_mode(lvd::ReadMode::EE);
+        lvd::set_read_check(false);
+    }
+    LdReadEeScope(const LdReadEeScope&) = delete;
+    LdReadEeScope& operator=(const LdReadEeScope&) = delete;
+};
+}  // namespace
+
+// orig: (host) see oracle_env.h
+void ld_read_oracle_report() {
+    if (g_ld_pulls != 0)
+        std::printf("[ld-read] oracle: %llu pulls before the port runs, %.1f ms in all (%.1f us each)\n", static_cast<unsigned long long>(g_ld_pulls),
+                    g_ld_pull_us / 1000.0, g_ld_pull_us / static_cast<double>(g_ld_pulls));
+    lvd::read_report();
+}
+
 bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::function<Args()>& gen,
               const std::function<uint64_t(const Args&)>& port, Scope scope, uint32_t ignore_word, uint32_t ignore_word2) {
     int bad = 0;
@@ -462,6 +522,7 @@ bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::fu
     std::unordered_set<uint32_t> hud_reached;
     for (int it = 0; it < iters; ++it) {
         const CollStateEeScope coll_ee;
+        const LdReadEeScope ld_ee;
         if (scope == Scope::FullRam) restore_baseline();
         const Args args = gen();
         if (focus != nullptr && (focus_name != name || (focus_case >= 0 && it != focus_case))) continue;
@@ -489,9 +550,12 @@ bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::fu
                 const HudPortTrace hud_trace(hud);
                 coll_state_import();  // (stage 5, C6a: the case's EE state, as the generator and the restore left it, into the collision's native hit and hit list)
                 coll_ee.port_run();
+                ld_ee.port_run();
                 pr = port(args);
+                LdReadEeScope::port_done();
                 CollStateEeScope::port_done();
             } catch (const std::exception& e) {  // a port fault is a failing case, not the end of the run
+                LdReadEeScope::port_done();
                 CollStateEeScope::port_done();
                 std::printf("  [%s] port: %s (case %d, a0..a3 %08x %08x %08x %08x)\n", name, e.what(), it, args.i.size() > 0 ? args.i[0] : 0u,
                             args.i.size() > 1 ? args.i[1] : 0u, args.i.size() > 2 ? args.i[2] : 0u, args.i.size() > 3 ? args.i[3] : 0u);
@@ -537,9 +601,12 @@ bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::fu
                 const HudPortTrace hud_trace(hud);
                 coll_state_import();  // (stage 5, C6a: the case's EE state, as the generator and the restore left it, into the collision's native hit and hit list)
                 coll_ee.port_run();
+                ld_ee.port_run();
                 pr = port(args);
+                LdReadEeScope::port_done();
                 CollStateEeScope::port_done();
             } catch (const std::exception& e) {  // a port fault is a failing case, not the end of the run
+                LdReadEeScope::port_done();
                 CollStateEeScope::port_done();
                 std::printf("  [%s] port: %s (case %d, a0..a3 %08x %08x %08x %08x)\n", name, e.what(), it, args.i.size() > 0 ? args.i[0] : 0u,
                             args.i.size() > 1 ? args.i[1] : 0u, args.i.size() > 2 ? args.i[2] : 0u, args.i.size() > 3 ? args.i[3] : 0u);

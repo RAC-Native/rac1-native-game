@@ -7,6 +7,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/ovl.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/variants_l16.h>
 #include <game/port_stubs.h>
@@ -136,7 +137,7 @@ int32_t cam_mod_inside(uint32_t cam) {
     if (poly < 0) return 0;
     if (on) return 1;
     const uint32_t p = lvd::path(poly);
-    return point_in_polygon(HERO, p + 0x10, lw(p)) != 0 ? 1 : 0;
+    return point_in_polygon(HERO, p + 0x10, lvd::path_n(p)) != 0 ? 1 : 0;
 }
 
 // The type-5 modifier while the hero is inside (and it holds the claim, faces within 80

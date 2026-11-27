@@ -5,6 +5,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/lib/libc.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/ovl/ovl_common.h>
 
 namespace rac1 {
@@ -1438,12 +1439,12 @@ int32_t path_push_out(uint32_t idx, uint32_t pos, uint32_t out, float r) {
     Vec4 p = V(pos);
     const float h0 = vec3_dot(p, axis);
     int32_t hit = 0;
-    for (int32_t i = 0; i < lw(path) - 1; ++i) {
+    for (int32_t i = 0; i < lvd::path_n(path) - 1; ++i) {
         const uint32_t a = path + 0x10 + static_cast<uint32_t>(i) * 16;
-        if (lwc1(a + 0xc) == 0.0f && lwc1(a + 0x1c) == 0.0f) continue;
+        if (lvd::path_f32(a + 0xc) == 0.0f && lvd::path_f32(a + 0x1c) == 0.0f) continue;
         Vec4 d, s, t, u, c;
-        vec3_sub(d, p, V(a));
-        vec3_sub(s, V(a + 0x10), V(a));
+        vec3_sub(d, p, lvd::path_row(a));
+        vec3_sub(s, lvd::path_row(a + 0x10), lvd::path_row(a));
         vec3_set_length(t, axis, vec3_dot(d, axis));
         vec3_sub(d, d, t);
         vec3_set_length(t, axis, vec3_dot(s, axis));
@@ -1458,14 +1459,14 @@ int32_t path_push_out(uint32_t idx, uint32_t pos, uint32_t out, float r) {
             if (!(vec3_length(d) < r)) continue;
             hit = 1;
             vec3_set_length(q, d, r);
-            vec3_add(p, q, V(a));
+            vec3_add(p, q, lvd::path_row(a));
         } else {
             hit = 1;
             vec3_set_length(t, u, along);
             vec3_sub(q, d, t);
             vec3_set_length(q, q, r);
             vec3_add(q, q, t);
-            vec3_add(p, q, V(a));
+            vec3_add(p, q, lvd::path_row(a));
         }
     }
     if (hit == 0) return 0;

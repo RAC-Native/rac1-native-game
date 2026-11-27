@@ -7,6 +7,7 @@
 
 #include <game/collision/collision.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/eudora_mobys.h>
@@ -277,7 +278,7 @@ void flock_member_move_l4(uint32_t m, uint32_t pv, uint32_t params, float lift) 
 int32_t path_advance_l4(uint32_t m, uint32_t path, int32_t idx, int32_t dir, float ahead) {
     const uint32_t sp = ee_stack_alloc(0xd0);
     const uint32_t leg = sp, rel = sp + 0x10;
-    const int32_t n = lw(path);
+    const int32_t n = lvd::path_n(path);
     auto point = [&](int32_t i) { return path + 0x10 + static_cast<uint32_t>(i) * 16; };
     // the point after `i` in the direction `dir` (turning back at the ends)
     auto next = [&](int32_t i) {
@@ -286,20 +287,20 @@ int32_t path_advance_l4(uint32_t m, uint32_t path, int32_t idx, int32_t dir, flo
         return dir < 1 ? n - 1 : 1;
     };
     int32_t to = next(idx);
-    vec3_sub(V(leg), V(point(to)), V(point(idx)));
+    vec3_sub(V(leg), lvd::path_row(point(to)), lvd::path_row(point(idx)));
     const float length = vec3_length(V(leg));
     vec3_set_length(V(leg), V(leg), 1.0f);
-    vec3_sub(V(rel), V(m + 0x10), V(point(idx)));
+    vec3_sub(V(rel), V(m + 0x10), lvd::path_row(point(idx)));
     float along = fpu_add(vec3_dot(V(rel), V(leg)), ahead);
     if (length < along) {  // past the leg's end: on the next leg
         idx = to;
         to = next(idx);
-        vec3_sub(V(leg), V(point(to)), V(point(idx)));
+        vec3_sub(V(leg), lvd::path_row(point(to)), lvd::path_row(point(idx)));
         along = fpu_sub(along, length);
         vec3_set_length(V(leg), V(leg), 1.0f);
     }
     vec3_set_length(V(leg), V(leg), along);
-    vec3_add(V(m + 0x10), V(leg), V(point(idx)));
+    vec3_add(V(m + 0x10), V(leg), lvd::path_row(point(idx)));
     ee_stack_free(0xd0);
     return idx;
 }

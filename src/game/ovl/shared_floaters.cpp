@@ -14,6 +14,7 @@
 #include <game/ovl/variants_l16.h>
 #include <game/ovl/variants_l5.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/level/level_write.h>
 
 namespace rac1 {
@@ -72,7 +73,7 @@ void floater_lay_path(uint32_t m, uint32_t path) {
     const int32_t index = lw(pv + path);
     if (index == -1) return;
     const uint32_t p = lvd::path(index);
-    if (lw(p) != 7) return;
+    if (lvd::path_n(p) != 7) return;
     const uint32_t offsets = path_offsets();
     for (uint32_t k = 0; k < 7; ++k) {
         const uint32_t at = p + 0x10 + k * 0x10;

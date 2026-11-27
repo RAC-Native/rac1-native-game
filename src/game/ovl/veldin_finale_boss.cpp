@@ -23,6 +23,7 @@
 // +0x340 / +0x348 the path flown and its point, +0x350 the last attack, +0x354 .. 0x35c timers, +0x3a8 the lunge's box,
 // +0x3ac the end's count, +0x3b4 the glow's phase, +0x3b8 its colour, +0x3bc the rings' spread, +0x3d0 .. 0x3e0 the hover.
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/checkpoint.h>
@@ -54,7 +55,7 @@ float dt() { return lwc1(0x0015ed6c); }     // the frame's time scale
 float dt_sq() { return lwc1(0x0015ed70); }  // its square
 uint32_t table_moby(uint32_t index) { return lwu(L18_ADDR(0x0015ffd8)) + (index << 8); }
 uint32_t box_centre(int32_t i) { return lvd::box(lvd::BOXES, i) + 0x30; }
-uint32_t path_last(uint32_t path) { return path + (lwu(path) << 4); }  // a path's last point
+uint32_t path_last(uint32_t path) { return path + (lvd::path_u32(path) << 4); }  // a path's last point
 
 // an EE stack frame of the original's size (its locals are passed to the callees by address)
 struct Frame {

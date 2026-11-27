@@ -28,6 +28,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/ovl/weapons.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 
 namespace rac1 {
 
@@ -163,7 +164,7 @@ void class1885_update(uint32_t m) {
         if (lw(pv + 0x88) != -1) {
             const uint32_t path = lvd::path(lwu(pv + 0x88));
             poly = path + 0x10;
-            npoly = lw(path);
+            npoly = lvd::path_n(path);
         }
         target_select(m, point, box, nbox, poly, npoly, lwc1(pv + 0x80));
     }

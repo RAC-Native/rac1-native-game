@@ -4,6 +4,7 @@
 // through coll_hit_list_at, Hoven-only data L12_ADDR, base ELF bare. Registered in hoven_mobys.cpp.
 #include <game/collision/collision.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/lib/libc.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
@@ -209,15 +210,15 @@ void trooper_walk_toward(uint32_t m, uint32_t target, float yaw_offset, float sp
     const Frame f(192);
     const uint32_t sp = f.sp, pv = lwu(m + 0x78);
     if (lbu(pv + 0x242) != 0) {
-        const float yaw = atan2_f(fpu_sub(lwc1(target + 0), lwc1(m + 0x10)), fpu_sub(lwc1(target + 4), lwc1(m + 0x14)));
+        const float yaw = atan2_f(fpu_sub(lvd::path_f32(target + 0), lwc1(m + 0x10)), fpu_sub(lvd::path_f32(target + 4), lwc1(m + 0x14)));
         const float dt2 = lwc1(0x0015ed70), dt = lwc1(0x0015ed6c);
         yaw_seek(m + 0x48, pv + 0x23c, yaw, fpu_mul(dt2, u2f(0x417b53d1u)), fpu_mul(dt2, u2f(0x41490fdbu)),
                  fpu_mul(dt, u2f(0x41c90fdbu)));
         return;
     }
 
-    const float dist = vec2_distance(V(m + 0x10), V(target));
-    float yaw = atan2_f(fpu_sub(lwc1(target + 0), lwc1(m + 0x10)), fpu_sub(lwc1(target + 4), lwc1(m + 0x14)));
+    const float dist = vec2_distance(V(m + 0x10), lvd::path_row(target));
+    float yaw = atan2_f(fpu_sub(lvd::path_f32(target + 0), lwc1(m + 0x10)), fpu_sub(lvd::path_f32(target + 4), lwc1(m + 0x14)));
     if (6.5f < dist && yaw_offset != 0.0f) yaw = angle_add(yaw, yaw_offset);
     {
         const float dt2 = lwc1(0x0015ed70), dt = lwc1(0x0015ed6c);
@@ -228,7 +229,7 @@ void trooper_walk_toward(uint32_t m, uint32_t target, float yaw_offset, float sp
         approach_f(pv + 0xf4, speed_override, fpu_mul(lwc1(0x0015ed70), 7.0f));
     } else {
         const float to_yaw =
-            atan2_f(fpu_sub(lwc1(target + 0), lwc1(m + 0x10)), fpu_sub(lwc1(target + 4), lwc1(m + 0x14)));
+            atan2_f(fpu_sub(lvd::path_f32(target + 0), lwc1(m + 0x10)), fpu_sub(lvd::path_f32(target + 4), lwc1(m + 0x14)));
         if (angle_dist(lwc1(m + 0x48), to_yaw) < u2f(0x3fc90fdbu) && 6.0f < dist) {
             const float dt = lwc1(0x0015ed6c), dt2 = lwc1(0x0015ed70);
             approach_f(pv + 0xf4, fpu_mul(dt, 7.0f), fpu_mul(dt2, 7.0f));
@@ -247,7 +248,7 @@ void trooper_walk_toward(uint32_t m, uint32_t target, float yaw_offset, float sp
         vec3_add(V(sp + 0x20), V(sp + 0x0), V(sp + 0x30));
         if (path_crossing(bound_path, m + 0x10, sp + 0x20, sp + 0x10) != 0) {
             const uint32_t p = lvd::path(lw(pv + 0x26c));
-            if (point_in_polygon(m + 0x10, p + 0x10, lw(p)) == 0) lq_sq(m + 0x10, sp + 0x10);
+            if (point_in_polygon(m + 0x10, p + 0x10, lvd::path_n(p)) == 0) lq_sq(m + 0x10, sp + 0x10);
             if (vec3_distance(V(m + 0x10), V(sp + 0x0)) < fpu_mul(lwc1(0x0015ed6c), 0.5f)) {
                 const uint8_t stuck = static_cast<uint8_t>(lbu(pv + 0x243) + 1u);
                 sb(pv + 0x243, stuck);

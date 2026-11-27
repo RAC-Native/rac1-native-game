@@ -9,6 +9,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/port_stubs.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 
 namespace rac1 {
 
@@ -192,13 +193,14 @@ int32_t point_in_polygon(uint32_t p, uint32_t v, int32_t n) {
     int32_t in = 0;
     const float px = lwc1(p), py = lwc1(p + 4);
     int32_t j = 0;
+    const lvd::PathView pts(v);  // (the polygon's points: one lookup for the loop)
     for (int32_t i = 0; i < n; ++i) {
         const uint32_t a = v + static_cast<uint32_t>(i) * 0x10;
         if (++j == n) j = 0;
         const uint32_t b = v + static_cast<uint32_t>(j) * 0x10;
-        const float ay = lwc1(a + 4), by = lwc1(b + 4);
+        const float ay = pts.f32(a + 4), by = pts.f32(b + 4);
         if (!((ay < py && py <= by) || (by < py && py <= ay))) continue;
-        const float x = lwc1(a) + fpu_div(py - ay, by - ay) * (lwc1(b) - lwc1(a));
+        const float x = pts.f32(a) + fpu_div(py - ay, by - ay) * (pts.f32(b) - pts.f32(a));
         if (x < px) in = in == 0 ? 1 : 0;
     }
     return in;
@@ -664,7 +666,7 @@ void e1440_hits_and_target(uint32_t m) {
     const uint32_t st = lbu(m + 0x20);
     if (st == 1) {
         const uint32_t area = lvd::path(lwu(pv + 0x1b4));
-        target_select(m, pv + 0xd0, 0, 0, area + 0x10, lw(area), 64.0f);
+        target_select(m, pv + 0xd0, 0, 0, area + 0x10, lvd::path_n(area), 64.0f);
     } else if (st != 5) {
         const float r = lh(pv + 0x1da) != 0 ? 37.0f : lwc1(OV(0x00166c00u - 0x5030));
         if (target_select_any(m, pv + 0xd0, r) != 2 && r < vec2_distance(V(m + 0x10), V(pv + 0xd0))) sw(pv + 0x114, 2);
@@ -740,7 +742,7 @@ void e1440_update(uint32_t m) {
                 moby_retire(m);
                 return;
             }
-            lq_sq(m + 0x10, lvd::path(path) + 0x10);
+            lvd::path_copy_row(m + 0x10, lvd::path(path) + 0x10);
             sb(m + 0x20, 1);
         } else {
             sb(m + 0x20, 3);
@@ -765,17 +767,17 @@ void e1440_update(uint32_t m) {
     case 2: {
         const uint32_t path = lvd::path(lwu(pv + 0x1b8));
         float left = 0.0f;
-        const Vec4 wp = V(path + lwu(pv + 0x1dc) * 0x10 + 0x10);
+        const Vec4 wp = lvd::path_row(path + lwu(pv + 0x1dc) * 0x10 + 0x10);
         turn_to(wp.x, wp.y, lwc1(0x0015ed70) * four_pi, lwc1(0x0015ed6c) * four_pi);
         Vec4 d;
         vec3_sub(d, wp, V(m + 0x10));
-        const float dist = vec3_distance(V(m + 0x10), V(path + lwu(path) * 0x10));
+        const float dist = vec3_distance(V(m + 0x10), lvd::path_row(path + lvd::path_u32(path) * 0x10));
         const float dt2 = lwc1(0x0015ed70), dt = lwc1(0x0015ed6c);
         seek_1d_v(left, *static_cast<float*>(ee_ram_ptr(pv + 0x1d4)), dist, dt2 * 8.0f, dt2 * 16.0f, dt * 12.0f);
         if (vec3_length(d) < lwc1(pv + 0x1d4) + lwc1(pv + 0x1d4)) {
             const int32_t n = lw(pv + 0x1dc) + 1;
             sw(pv + 0x1dc, static_cast<uint32_t>(n));
-            if (n == lw(path)) {
+            if (n == lvd::path_n(path)) {
                 sb(m + 0x20, 3);
                 set(1, frame_scale_i(10));
             }

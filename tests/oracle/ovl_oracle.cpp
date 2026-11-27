@@ -10,6 +10,7 @@
 #include <game/collision/collision_state.h>
 #include <game/enhance/advanced.h>
 #include <game/level/level_grids.h>
+#include <game/level/level_read.h>
 #include <runtime/ee/ps2_fpu.h>
 #include "ovl_oracle.h"
 
@@ -53,6 +54,10 @@ int main(int argc, char** argv) {
     rac1::advanced_prefs_load();
     rac1::coll_scene_set_check(true);  // the collision scene (RAC1_COLL_SCENE=native) compared with EE memory at every use
     rac1::ld_grids_set_check(true);  // the grids' copies (RAC1_LD_GRIDS=native) compared with EE memory at every lookup
+    // the level data's reads (stage 5, LD4): the harness reads EE (RAC1_LD_READ's default); the compared port runs in
+    // ORACLE_LD_READ's mode (native by default, the records pulled from EE before each: oracle_env.cpp's check_fn), every native
+    // read compared with the EE words
+    rac1::lvd::set_read_check(true);
     // the collision's results (stage 5): the harness (level set-ups, generators, a batch's own code) in mirror, the native state
     // and the EE words written at once, with the check mode on (every accessor read compared with the EE words); the compared
     // port runs in ORACLE_COLL_STATE's mode (native by default, the flush after each: oracle_env.cpp's check_fn)
@@ -287,10 +292,12 @@ int main(int argc, char** argv) {
     batch_542();
     batch_543();
     batch_544();
+    batch_545();
 
     // (also on level 0: a batch whose dumps are missing skips its checks, and a bare PASS would hide it)
     if (g_oracle_level != 0 || g_skipped != 0)
         std::printf("level %d: %d check(s) skipped (no equivalent function, or no dump)\n", g_oracle_level, g_skipped);
+    rac1::oracle::ld_read_oracle_report();  // (stage 5, LD4: the pulls' cost, the read API's misses and differences)
     rac1::ps2fpu::raw_report();  // (RAC1_PERF_FPU_RAW=2 / RAC1_PERF_VU0_RAW=2: the helpers' raw forms against their rules)
     std::printf("%s: %d failing function(s)\n", g_fail ? "FAIL" : "PASS", g_fail);
     return g_fail ? 1 : 0;

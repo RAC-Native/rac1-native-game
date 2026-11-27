@@ -1,8 +1,8 @@
 // The native level registry (stage 5, task L2): the level-data objects of a level - its paths, volumes and the three lists of
 // shapes, level cameras, grind rails, the camera-volume grid and (the loaded level's) zone grid - held in host containers,
 // parsed from the level's gameplay file with explicit little-endian reads (formats/level_gameplay.h), beside the EE tables the
-// engine reads (level_data.h, the facade, describes them). Nothing reads it yet: task L3a makes the facade read it and the EE
-// tables its projection. Until then RAC1_LD_VERIFY compares it with the EE tables (docs/env-vars.md).
+// engine reads (level_data.h, the facade, describes them). The typed read API (level_read.h) reads its records with
+// RAC1_LD_READ=native (found by their EE addresses); RAC1_LD_VERIFY compares it with the EE tables (docs/env-vars.md).
 //
 // One registry per place the engine's level data lives:
 //   - the base: the loaded level's, built at the end of its load (gameplay_load, level_load.cpp) from the gameplay file the
@@ -162,6 +162,11 @@ IndexStats index_stats();
 // orig: (host) the native slot of a record's word at `offset` (a 4-byte field of its container's element, read and written
 // with memcpy), nullptr when the registry does not hold it (a rail's +0x18 / +0x1c)
 void* record_slot(const RecordRef& r);
+// orig: (host) the path record (a level's path, a rail's spine, an added path) `r` names; nullptr for another kind. Valid while
+// g_ld_gen is unchanged (no registry built or dropped, no path added, given back, taken or pulled since)
+const PathSpline* record_path(const RecordRef& r);
+// The index's generation: bumped whenever the index is marked for a rebuild (a record may have moved or gone)
+extern uint32_t g_ld_gen;
 // orig: (host) the write facade's native side (level_write.h): the native record's `n` words from EE address `a` take `w` (the
 // words the game has just stored there), each found through the index; no record: the EE store alone, counted
 void record_written(uint32_t a, const uint32_t* w, uint32_t n);

@@ -22,6 +22,7 @@
 #include <game/ovl/veldin_orbit_own.h>
 
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/ovl.h>
@@ -56,7 +57,7 @@ float yaw_to(uint32_t m, uint32_t at) {
 // the hero inside the trooper's area (the level's path +0x1d0 taken as a polygon)
 bool hero_in_area(uint32_t pv) {
     const uint32_t area = lvd::path(lw(pv + 0x1d0));
-    return point_in_polygon(P + 0x80, area + 0x10, lw(area)) != 0;
+    return point_in_polygon(P + 0x80, area + 0x10, lvd::path_n(area)) != 0;
 }
 }  // namespace
 

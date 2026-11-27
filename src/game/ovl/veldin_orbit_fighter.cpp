@@ -17,6 +17,7 @@
 #include <game/ovl/veldin_orbit_mobys.h>
 
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ovl.h>
 #include <game/ovl/ovl_common.h>
@@ -170,11 +171,11 @@ void vo_class1843_update_l17(uint32_t m) {
         swc1(pv + 0x68, t);
         if (1.0f < t) {
             swc1(pv + 0x68, fpu_sub(t, 1.0f));
-            const int32_t n = lw(lvd::path(lw(pv + 0x60)));
+            const int32_t n = lvd::path_n(lvd::path(lw(pv + 0x60)));
             sw(pv + 0x64, static_cast<uint32_t>(ee_rem(lw(pv + 0x64) + 1, n)));
         } else if (t < 0.0f) {
             swc1(pv + 0x68, fpu_add(t, 1.0f));
-            const int32_t n = lw(lvd::path(lw(pv + 0x60)));
+            const int32_t n = lvd::path_n(lvd::path(lw(pv + 0x60)));
             sw(pv + 0x64, static_cast<uint32_t>(ee_rem(lw(pv + 0x64) + n - 1, n)));
         }
         (void)angle_add(lwc1(pv + 0x70), lwc1(pv + 0x74));  // (the original computes it and keeps nothing)

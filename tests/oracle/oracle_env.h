@@ -170,6 +170,9 @@ bool check_fn(const char* name, uint32_t orig, int iters, Ret ret, const std::fu
 // before every FullRam case.
 void set_baseline_current();
 void restore_baseline();
+// orig: (host) (stage 5, LD4) the pulls check_fn made before the compared port runs (their count and cost) and the read API's
+// summary (level_read.h: the misses by accessor, the differences the check found), at the run's end
+void ld_read_oracle_report();
 
 inline uint64_t fbits(float f) { uint32_t u; std::memcpy(&u, &f, 4); return u; }
 

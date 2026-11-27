@@ -6,6 +6,7 @@
 
 #include <game/enhance/fixes102.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/checkpoint.h>
 #include <game/ovl/cutscene.h>
@@ -187,10 +188,10 @@ void infobot_follow_path(uint32_t m, uint32_t path, uint8_t done_state) {
     float frac = 0.0f;
     path_closest_point_v(path, V(pos), target, &seg, &frac, 0, 999.0f, 5.0f, 0.0f);
 
-    const float step_len = lwc1(path + 0x1c);
+    const float step_len = lvd::path_f32(path + 0x1c);
     const float along = fpu_add(fpu_add(fpu_mul(static_cast<float>(seg), step_len), frac), 2.0f);
-    const uint32_t end_pt = path + (lwu(path) << 4);
-    const float dist_end = vec3_distance(V(pos), V(end_pt));
+    const uint32_t end_pt = path + (lvd::path_u32(path) << 4);
+    const float dist_end = vec3_distance(V(pos), lvd::path_row(end_pt));
 
     const float dt2 = lwc1(0x0015ed70);
     const float accel = fpu_mul(dt2, 16.0f);
@@ -205,9 +206,9 @@ void infobot_follow_path(uint32_t m, uint32_t path, uint8_t done_state) {
         swc1(pv + 0x60, max_spd < ns ? max_spd : ns);
     }
 
-    seg = float_to_int(fpu_div(along, lwc1(path + 0x1c)));
-    const float seg_len = lwc1(path + 0x1c);
-    const int32_t npts = lw(path);
+    seg = float_to_int(fpu_div(along, lvd::path_f32(path + 0x1c)));
+    const float seg_len = lvd::path_f32(path + 0x1c);
+    const int32_t npts = lvd::path_n(path);
     frac = fpu_div(fpu_sub(along, fpu_mul(static_cast<float>(seg), seg_len)), seg_len);
     if (seg >= npts - 1) {
         seg = npts - 2;
@@ -216,20 +217,20 @@ void infobot_follow_path(uint32_t m, uint32_t path, uint8_t done_state) {
 
     const uint32_t p0 = path + (static_cast<uint32_t>(seg) << 4) + 0x10;
     const uint32_t p1 = p0 + 0x10;
-    vec3_sub(target, V(p1), V(p0));
+    vec3_sub(target, lvd::path_row(p1), lvd::path_row(p0));
     vec3_scale(target, target, frac);
-    vec3_add(target, target, V(p0));
+    vec3_add(target, target, lvd::path_row(p0));
 
-    if (vec2_distance(V(path + (lwu(path) << 4)), V(pos)) < 1.0f &&
+    if (vec2_distance(lvd::path_row(path + (lvd::path_u32(path) << 4)), V(pos)) < 1.0f &&
         lwc1(pv + 0x60) <= fpu_mul(lwc1(OV(0x00161990)), lwc1(0x0015ed6c))) {
         sb(m + 0x20, done_state);
     }
 
     float aim_x, aim_y;
-    if (seg + 1 < lw(path) - 8) {
+    if (seg + 1 < lvd::path_n(path) - 8) {
         const uint32_t look = path + (static_cast<uint32_t>(seg + 1) << 4);
-        aim_x = lwc1(look + 0x10);
-        aim_y = lwc1(look + 0x14);
+        aim_x = lvd::path_f32(look + 0x10);
+        aim_y = lvd::path_f32(look + 0x14);
     } else {
         aim_x = lwc1(g::PLAYER + 0x80);
         aim_y = lwc1(g::PLAYER + 0x84);
@@ -325,10 +326,10 @@ void infobot_update_tr(uint32_t m) {
     };
 
     auto cache_path_lengths = [](uint32_t path) {
-        const int32_t count = lw(path) - 2;
+        const int32_t count = lvd::path_n(path) - 2;
         for (int32_t i = 0; i < count; ++i) {
             const uint32_t a = path + 0x10 + static_cast<uint32_t>(i) * 0x10;
-            lvd::set_path_f32(a + 0xc, vec3_distance(V(a), V(a + 0x10)));
+            lvd::set_path_f32(a + 0xc, vec3_distance(lvd::path_row(a), lvd::path_row(a + 0x10)));
         }
     };
 
@@ -355,7 +356,7 @@ void infobot_update_tr(uint32_t m) {
                 if (pid != -1) cache_path_lengths(lvd::path(pid));
             }
             const uint32_t p0 = lvd::path(lw(pv + 0x70));
-            lq_sq(m + 0x10, p0 + 0x10);
+            lvd::path_copy_row(m + 0x10, p0 + 0x10);
             sw(pv + 0xa8, 0);
             sb(m + 0x20, 3);
         }
@@ -436,10 +437,10 @@ void infobot_update_tr(uint32_t m) {
                 sb(m + 0x20, 6);
                 sw(pv + 0x50, 0xffffffffu);
                 const uint32_t ep = lvd::path(lw(pv + 0x58));
-                lq_sq(m + 0x10, ep + 0x10);
+                lvd::path_copy_row(m + 0x10, ep + 0x10);
                 const uint32_t ep2 = lvd::path(lw(pv + 0x58));
-                swc1(m + 0x48, atan2_f(fpu_sub(lwc1(ep2 + 0x20), lwc1(ep2 + 0x10)),
-                                       fpu_sub(lwc1(ep2 + 0x24), lwc1(ep2 + 0x14))));
+                swc1(m + 0x48, atan2_f(fpu_sub(lvd::path_f32(ep2 + 0x20), lvd::path_f32(ep2 + 0x10)),
+                                       fpu_sub(lvd::path_f32(ep2 + 0x24), lvd::path_f32(ep2 + 0x14))));
                 cache_path_lengths(lvd::path(lw(pv + 0x58)));
             }
         }
@@ -454,10 +455,10 @@ void infobot_update_tr(uint32_t m) {
         float frac = 0.0f;
         path_closest_point_v(path, V(pos), V(sp + 0x20), &seg, &frac, 0, 999.0f, 5.0f, 0.0f);
 
-        const float step_len = lwc1(path + 0x1c);
+        const float step_len = lvd::path_f32(path + 0x1c);
         const float along = fpu_add(fpu_add(fpu_mul(static_cast<float>(seg), step_len), frac), 2.0f);
-        const uint32_t end_pt = path + (lwu(path) << 4);
-        const float dist_end = vec3_distance(V(pos), V(end_pt));
+        const uint32_t end_pt = path + (lvd::path_u32(path) << 4);
+        const float dist_end = vec3_distance(V(pos), lvd::path_row(end_pt));
 
         const float dt2 = lwc1(0x0015ed70);
         const float accel = fpu_mul(dt2, 16.0f);
@@ -471,14 +472,14 @@ void infobot_update_tr(uint32_t m) {
             swc1(pv + 0x60, max_spd < ns ? max_spd : ns);
         }
 
-        seg = float_to_int(fpu_div(along, lwc1(path + 0x1c)));
-        const float seg_len = lwc1(path + 0x1c);
+        seg = float_to_int(fpu_div(along, lvd::path_f32(path + 0x1c)));
+        const float seg_len = lvd::path_f32(path + 0x1c);
         frac = fpu_div(fpu_sub(along, fpu_mul(static_cast<float>(seg), seg_len)), seg_len);
-        const int32_t npts = lw(path);
+        const int32_t npts = lvd::path_n(path);
         if (seg >= npts - 1) {
             if (lwc1(pv + 0x60) <= fpu_mul(lwc1(0x0015ed70), 16.0f)) {
                 sb(m + 0x20, 7);
-                lq_sq(pos, path + (static_cast<uint32_t>(npts) << 4));
+                lvd::path_copy_row(pos, path + (static_cast<uint32_t>(npts) << 4));
                 break;
             }
             seg = npts - 2;
@@ -487,11 +488,11 @@ void infobot_update_tr(uint32_t m) {
 
         const uint32_t p0 = path + (static_cast<uint32_t>(seg) << 4) + 0x10;
         const uint32_t p1 = p0 + 0x10;
-        vec3_sub(V(sp + 0x20), V(p1), V(p0));
+        vec3_sub(V(sp + 0x20), lvd::path_row(p1), lvd::path_row(p0));
         vec3_scale(V(sp + 0x20), V(sp + 0x20), frac);
-        vec3_add(V(sp + 0x20), V(sp + 0x20), V(p0));
+        vec3_add(V(sp + 0x20), V(sp + 0x20), lvd::path_row(p0));
 
-        const float want_yaw = atan2_f(fpu_sub(lwc1(p1), lwc1(p0)), fpu_sub(lwc1(p1 + 4), lwc1(p0 + 4)));
+        const float want_yaw = atan2_f(fpu_sub(lvd::path_f32(p1), lvd::path_f32(p0)), fpu_sub(lvd::path_f32(p1 + 4), lvd::path_f32(p0 + 4)));
         swc1(m + 0x48, angle_seek_rate(pv + 0x6c, lwc1(m + 0x48), want_yaw,
                                        u2f(0x3c23d70au), u2f(0x3e99999au), u2f(0x3dcccccd)));
 
@@ -528,11 +529,11 @@ void infobot_update_tr(uint32_t m) {
         const float rate = fpu_mul(dt, u2f(0x41c90fdbu));
         swc1(m + 0x48, angle_seek_rate(pv + 0x6c, lwc1(m + 0x48), want_yaw, rate, rate, fpu_mul(dt, u2f(0x41490fdbu))));
 
-        const uint32_t end_pt = path + (lwu(path) << 4);
-        vec3_add(V(sp + 0x10), V(sp), V(end_pt));
+        const uint32_t end_pt = path + (lvd::path_u32(path) << 4);
+        vec3_add(V(sp + 0x10), V(sp), lvd::path_row(end_pt));
         lq_sq(m + 0x10, sp + 0x10);
 
-        if (vec3_distance(V(g::PLAYER + 0x80), V(path + (lwu(path) << 4))) < 2.0f && lwu(0x001415f8) != 0) {
+        if (vec3_distance(V(g::PLAYER + 0x80), lvd::path_row(path + (lvd::path_u32(path) << 4))) < 2.0f && lwu(0x001415f8) != 0) {
             sb(m + 0x20, 8);
         }
         settle_pitch_roll(0.0f, 0.0f);

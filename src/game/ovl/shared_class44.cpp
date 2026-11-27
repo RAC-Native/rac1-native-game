@@ -32,6 +32,7 @@
 #include <game/ovl/variants_l15.h>
 #include <game/ovl/variants_l17.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 
 namespace rac1 {
 
@@ -82,7 +83,7 @@ uint32_t path_point(uint32_t pv) { return path_of(pv) + 0x10 + (lwu(pv + 0x13c) 
 // on to the path's next point (when it stood at one)
 void next_point(uint32_t pv) {
     if (lwu(pv + 0x144) == 0) return;
-    sw(pv + 0x13c, static_cast<uint32_t>(ee_rem(lw(pv + 0x13c) + 1, lw(path_of(pv)))));
+    sw(pv + 0x13c, static_cast<uint32_t>(ee_rem(lw(pv + 0x13c) + 1, lvd::path_n(path_of(pv)))));
 }
 // the angle (as the original measures it) from the moby to the point `p`
 float facing_to(uint32_t m, uint32_t p) {
@@ -270,7 +271,7 @@ void class44_update(uint32_t m) {
     switch (lbu(m + 0x20)) {  // (the table L15:0x1e2560)
     case 0: {  // (0x00297bf8) the start: on its home path, else gone
         const int32_t home = lw(pv + 0x120);
-        if (home == -1 || lwu(lvd::path(home)) == 0) {
+        if (home == -1 || lvd::path_u32(lvd::path(home)) == 0) {
             moby_retire(m);
             end = End::Return;
             break;
@@ -751,7 +752,7 @@ void class44_think(uint32_t m, uint32_t quiet) {
     }
     // its target along its home path's polygon
     const uint32_t poly = lvd::path(lwu(pv + 0x120));
-    if (target_select(m, pv + 0xd0, 0, 0, poly + 0x10, lw(poly), 128.0f) == 2) {
+    if (target_select(m, pv + 0xd0, 0, 0, poly + 0x10, lvd::path_n(poly), 128.0f) == 2) {
         sb(pv + 0x19f, 0);
         sb(pv + 0x15b, 1);
         sh(pv + 0x158, 0);

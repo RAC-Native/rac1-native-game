@@ -10,6 +10,7 @@
 #include <game/ovl/walker.h>
 #include <game/port_stubs.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 
 namespace rac1 {
 
@@ -78,9 +79,9 @@ int32_t path_next_point_l1(uint32_t m, uint32_t path, uint32_t target, uint32_t 
     const float d_moby = vec3_distance(V(m + 0x10), V(target));
     float best_moby = u2f(0x461c4000u), best_target = best_moby;
     uint32_t p = path + 0x10;
-    for (int32_t i = 0; i < lw(path); ++i, p += 0x10) {
-        const float to_target = vec3_distance(V(p), V(target));
-        const float to_moby = vec3_distance(V(p), V(m + 0x10));
+    for (int32_t i = 0; i < lvd::path_n(path); ++i, p += 0x10) {
+        const float to_target = vec3_distance(lvd::path_row(p), V(target));
+        const float to_moby = vec3_distance(lvd::path_row(p), V(m + 0x10));
         if (to_moby < best_moby) {
             best_moby = to_moby;
             near_moby = i;
@@ -95,14 +96,14 @@ int32_t path_next_point_l1(uint32_t m, uint32_t path, uint32_t target, uint32_t 
         return -1;
     }
     if (near_moby == near_target) {
-        lq_sq(out, path + static_cast<uint32_t>(near_moby) * 16 + 0x10);
+        lvd::path_copy_row(out, path + static_cast<uint32_t>(near_moby) * 16 + 0x10);
         return near_moby;
     }
     if (near_moby < near_target) {
-        lq_sq(out, path + static_cast<uint32_t>(near_moby) * 16 + 0x20);
+        lvd::path_copy_row(out, path + static_cast<uint32_t>(near_moby) * 16 + 0x20);
         return near_moby + 1;
     }
-    lq_sq(out, path + static_cast<uint32_t>(near_moby) * 16);
+    lvd::path_copy_row(out, path + static_cast<uint32_t>(near_moby) * 16);
     return near_moby - 1;
 }
 

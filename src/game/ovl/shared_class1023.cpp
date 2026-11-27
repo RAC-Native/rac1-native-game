@@ -27,6 +27,7 @@
 #include <game/ovl/variants_l8.h>
 #include <game/ovl/variants_l9.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 
 namespace rac1 {
 
@@ -83,7 +84,7 @@ void leap_start(uint32_t m, uint32_t pv) {
 }
 void leap_turn(uint32_t m, uint32_t pv, uint32_t sp) {
     const uint32_t d = sp + 0x10;
-    vec3_sub(V(d), V(path_point(level_path(lw(pv + 0x1d4)), lw(pv + 0x1f4))), V(m + 0x10));
+    vec3_sub(V(d), lvd::path_row(path_point(level_path(lw(pv + 0x1d4)), lw(pv + 0x1f4))), V(m + 0x10));
     const uint32_t set = vec3_dot(V(m + 0xd0), V(d)) < 0.0f ? 0x12u : 0x10u;
     if (lbu(m + 0x53) == set) return;
     moby_anim_set(m, set, 0, frame_scale_i(5));
@@ -251,7 +252,7 @@ void class1023_frame(uint32_t m) {
     // followed while it lives
     if (rand_mod(4) == 0) {
         const uint32_t poly = level_path(lw(pv + 0x1d0));
-        const int32_t r = target_select(m, pv + 0x120, 0, 0, poly + 0x10, lw(poly), lwc1(pv + 0x1dc));
+        const int32_t r = target_select(m, pv + 0x120, 0, 0, poly + 0x10, lvd::path_n(poly), lwc1(pv + 0x1dc));
         if (r != 2) {
             if (lwc1(pv + 0x1dc) < vec2_distance(V(m + 0x10), V(pv + 0x120))) sw(pv + 0x164, 2);
             else if (3.0f < abs_f(fpu_sub(lwc1(m + 0x18), lwc1(pv + 0x128)))) sw(pv + 0x164, 2);
@@ -334,7 +335,7 @@ void class1023_update(uint32_t m) {
             swc1(pv + 0xfc, 0.2f);
             swc1(pv + 0x10c, turn);
             if ((libc_rand() & 1) != 0) sh(m + 0x34, lhu(m + 0x34) | 0x8000);
-            lq_sq(m + 0x10, level_path(lw(pv + 0x1d4)) + 0x10);
+            lvd::path_copy_row(m + 0x10, level_path(lw(pv + 0x1d4)) + 0x10);
             uint32_t next = 3;
             if (patrol != 0) {
                 sh(pv + 0x20c, static_cast<uint32_t>((libc_rand() & 1) * 2 - 1));
@@ -349,7 +350,7 @@ void class1023_update(uint32_t m) {
         }
         case 1: {  // patrolling its path to and fro; back home when the target is in sight long enough
             const int32_t at = lw(pv + 0x1f4);
-            if (vec2_distance(V(m + 0x10), V(path_point(patrol, at))) < lwc1(pv + 0xe0)) patrol_bounce(pv, patrol, at, true);
+            if (vec2_distance(V(m + 0x10), lvd::path_row(path_point(patrol, at))) < lwc1(pv + 0xe0)) patrol_bounce(pv, patrol, at, true);
             doomlet_259028(m, pv + 0xd0, path_point(patrol, lw(pv + 0x1f4)), out);
             if (target == 0 || lw(pv + 0x164) == 2 || tick32(pv + 0x1f0) == 0) break;
             sw(pv + 0x1f4, static_cast<uint32_t>(path_nearest_l1(m + 0x10, level_path(lw(pv + 0x1d4)), 0.0f)));
@@ -359,7 +360,7 @@ void class1023_update(uint32_t m) {
         case 2: {  // back to the home path's nearer point
             const int32_t at = path_nearest_l1(m + 0x10, level_path(lw(pv + 0x1d4)), 0.0f);
             sw(pv + 0x1f4, static_cast<uint32_t>(at));
-            const float d = vec2_distance(V(m + 0x10), V(path_point(level_path(lw(pv + 0x1d4)), at)));
+            const float d = vec2_distance(V(m + 0x10), lvd::path_row(path_point(level_path(lw(pv + 0x1d4)), at)));
             if (d < 1.0f || d < lwc1(pv + 0xe0)) {
                 swc1(pv + 0xe0, 0.0f);
                 sb(m + 0x20, 3);
@@ -398,7 +399,7 @@ void class1023_update(uint32_t m) {
                 float k = fpu_sub(1.0f, fpu_div(fpu_sub(23.0f, t), 11.0f));
                 if (1.0f < k) k = 1.0f;
                 else if (k < 0.0f) k = 0.0f;
-                vec3_lerp(V(out), V(pv + 0x1c0), V(path_point(level_path(lw(pv + 0x1d4)), lw(pv + 0x1f4))), k);
+                vec3_lerp(V(out), V(pv + 0x1c0), lvd::path_row(path_point(level_path(lw(pv + 0x1d4)), lw(pv + 0x1f4))), k);
                 const float h = fpu_add(fpu_sub(k, 0.5f), fpu_sub(k, 0.5f));
                 swc1(out + 8, fpu_add(lwc1(out + 8), fpu_mul(lwc1(tuning(0x50)), fpu_sub(1.0f, fpu_mul(h, h)))));
                 lq_sq(m + 0x10, out);
@@ -471,7 +472,7 @@ void class1023_update(uint32_t m) {
             turn_to(m, pv, target);
             const float t = moby_anim_time(m);
             if (12.0f < t && t < 23.0f && lwc1(m + 0x54) == 0.0f) {
-                vec3_sub(V(out), V(level_path(lw(pv + 0x1d4)) + 0x10), V(m + 0x10));
+                vec3_sub(V(out), lvd::path_row(level_path(lw(pv + 0x1d4)) + 0x10), V(m + 0x10));
                 vec3_clamp_length(out, fpu_mul(frame_time(), 24.0f));
                 walker_move(m, out, 0, lwc1(tuning(0x34)), lwc1(tuning(0x38)), 0.0f);
                 break;

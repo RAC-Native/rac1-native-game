@@ -10,6 +10,7 @@
 #include <game/ovl/level_change.h>
 #include <game/lib/libvu0.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/pause_menu.h>
 #include <game/ovl/screen_fade.h>
@@ -427,43 +428,43 @@ void ship_sequence_update() {
                 const uint32_t path = lvd::path(pi);
                 float f21 = lwc1(G + 0x48);
                 lvd::set_path_f32(path + 0x1c, f21);
-                for (int32_t k = 1; k < lw(path) - 1;) {  // the turn at each point
+                for (int32_t k = 1; k < lvd::path_n(path) - 1;) {  // the turn at each point
                     const uint32_t p0 = path + static_cast<uint32_t>(k) * 0x10;
                     const uint32_t pm = path + static_cast<uint32_t>(k - 1) * 0x10;
-                    const float a = atan2_f(lwc1(p0 + 0x10) - lwc1(pm + 0x10), lwc1(p0 + 0x14) - lwc1(pm + 0x14));
+                    const float a = atan2_f(lvd::path_f32(p0 + 0x10) - lvd::path_f32(pm + 0x10), lvd::path_f32(p0 + 0x14) - lvd::path_f32(pm + 0x14));
                     ++k;
                     const uint32_t pn = path + static_cast<uint32_t>(k) * 0x10;
-                    const float b = atan2_f(lwc1(pn + 0x10) - lwc1(p0 + 0x10), lwc1(pn + 0x14) - lwc1(p0 + 0x14));
+                    const float b = atan2_f(lvd::path_f32(pn + 0x10) - lvd::path_f32(p0 + 0x10), lvd::path_f32(pn + 0x14) - lvd::path_f32(p0 + 0x14));
                     const float d = angle_sub(b, a);
                     lvd::set_path_f32(p0 + 0x1c, d);
-                    if (f21 < abs_f(d)) f21 = abs_f(lwc1(p0 + 0x1c));
+                    if (f21 < abs_f(d)) f21 = abs_f(lvd::path_f32(p0 + 0x1c));
                 }
                 {  // the last point: the turn back to the first
-                    const int32_t n = lw(path);
+                    const int32_t n = lvd::path_n(path);
                     const uint32_t pa = path + static_cast<uint32_t>(n - 2) * 0x10, pb = path + static_cast<uint32_t>(n - 1) * 0x10;
-                    const float a = atan2_f(lwc1(pb + 0x10) - lwc1(pa + 0x10), lwc1(pb + 0x14) - lwc1(pa + 0x14));
-                    const uint32_t pl = path + static_cast<uint32_t>(lw(path) - 1) * 0x10;
-                    const float b = atan2_f(lwc1(path + 0x10) - lwc1(pl + 0x10), lwc1(path + 0x14) - lwc1(pl + 0x14));
+                    const float a = atan2_f(lvd::path_f32(pb + 0x10) - lvd::path_f32(pa + 0x10), lvd::path_f32(pb + 0x14) - lvd::path_f32(pa + 0x14));
+                    const uint32_t pl = path + static_cast<uint32_t>(lvd::path_n(path) - 1) * 0x10;
+                    const float b = atan2_f(lvd::path_f32(path + 0x10) - lvd::path_f32(pl + 0x10), lvd::path_f32(path + 0x14) - lvd::path_f32(pl + 0x14));
                     const float d = angle_sub(b, a);
-                    lvd::set_path_f32(path + static_cast<uint32_t>(lw(path) - 1) * 0x10 + 0x1c, d);
+                    lvd::set_path_f32(path + static_cast<uint32_t>(lvd::path_n(path) - 1) * 0x10 + 0x1c, d);
                 }
                 const float scale = fpu_div(u2f(0x3eb2b8c2u), f21);
-                for (int32_t k = 0; k < lw(path); ++k) {
+                for (int32_t k = 0; k < lvd::path_n(path); ++k) {
                     const uint32_t p = path + static_cast<uint32_t>(k) * 0x10;
-                    lvd::set_path_f32(p + 0x1c, lwc1(p + 0x1c) * scale);
+                    lvd::set_path_f32(p + 0x1c, lvd::path_f32(p + 0x1c) * scale);
                 }
-                swc1(G + 0x44, vec3_distance(V(path + 0x10), V(path + 0x20)));
+                swc1(G + 0x44, vec3_distance(lvd::path_row(path + 0x10), lvd::path_row(path + 0x20)));
                 const uint32_t ship2 = lwu(G);
                 sw(G + 0x3c, 0);
                 sw(G + 0x40, 0);
                 sw(G + 0x50, 0);
                 sw(G + 0x54, 0);
                 lq_sq(G + 0x80, ship2 + 0x10);
-                lq_sq(G + 0x90, path + 0x10);
+                lvd::path_copy_row(G + 0x90, path + 0x10);
                 lq_sq(G + 0xa0, ship2 + 0x40);
-                const float h = vec2_distance(V(path + 0x20), V(path + 0x10));
-                swc1(G + 0xb4, atan2_f(h, lwc1(path + 0x18) - lwc1(path + 0x28)));
-                swc1(G + 0xb8, atan2_f(lwc1(path + 0x20) - lwc1(path + 0x10), lwc1(path + 0x24) - lwc1(path + 0x14)));
+                const float h = vec2_distance(lvd::path_row(path + 0x20), lvd::path_row(path + 0x10));
+                swc1(G + 0xb4, atan2_f(h, lvd::path_f32(path + 0x18) - lvd::path_f32(path + 0x28)));
+                swc1(G + 0xb8, atan2_f(lvd::path_f32(path + 0x20) - lvd::path_f32(path + 0x10), lvd::path_f32(path + 0x24) - lvd::path_f32(path + 0x14)));
             }
         }
         if (lw(G + 0x34) >= 0 && lw(G + 0x38) >= 0) {  // the camera between two level cameras
@@ -515,7 +516,7 @@ void ship_sequence_update() {
                 if (100.0f < sp0) swc1(G + 0x40, 100.0f);
                 // (1.02 Fixes, fix 17: circle too, the 1.02 build's mask 0x70)
                 if ((lwu(0x0013cae4) & (fixes102_on(17) ? 0x70u : 0x50u)) != 0 && lwc1(OV(0x0015f3fc)) < 0.0625f) swc1(OV(0x0015f3fc), 0.0625f);
-                if (int_to_float(lw(path) - 6) < lwc1(G + 0x3c) && lwc1(OV(0x0015f3fc)) < 0.0625f) swc1(OV(0x0015f3fc), 0.0625f);
+                if (int_to_float(lvd::path_n(path) - 6) < lwc1(G + 0x3c) && lwc1(OV(0x0015f3fc)) < 0.0625f) swc1(OV(0x0015f3fc), 0.0625f);
                 if (lh(G + 0x26) < 2) {
                     sb(lwu(G) + 0xbc, 0x32);
                     sh(lwu(G) + 0xb2, 0xa);
@@ -523,7 +524,7 @@ void ship_sequence_update() {
                 }
                 const float t = lwc1(G + 0x3c) + fpu_div(lwc1(G + 0x40) * lwc1(0x0015ed6c), lwc1(G + 0x44));
                 swc1(G + 0x3c, t);
-                if (int_to_float(lw(path) - 1) < t || 1.0f <= lwc1(OV(0x0015f3fc))) {  // the end: the next level
+                if (int_to_float(lvd::path_n(path) - 1) < t || 1.0f <= lwc1(OV(0x0015f3fc))) {  // the end: the next level
                     sw(OV(0x0015f5d8), 1);
                     sw(OV(0x0015f570), 1);
                 } else {

@@ -17,6 +17,7 @@
 #include <game/lib/libc.h>
 #include <game/port_stubs.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/level/level_write.h>
 
 namespace rac1 {
@@ -150,7 +151,7 @@ void moby_809_update(uint32_t m) {
 void path_point(float t, uint32_t path, int32_t loop, uint32_t pos, uint32_t rot, uint32_t flags) {
     bool clamp = false;
     int32_t i = float_to_int(t);
-    const int32_t n = lw(path);
+    const int32_t n = lvd::path_n(path);
     if (loop == 0 && !(i < n - 2)) {
         i = n - 2;
         clamp = true;
@@ -162,8 +163,8 @@ void path_point(float t, uint32_t path, int32_t loop, uint32_t pos, uint32_t rot
         i1 = ee_rem(i1, n);
         i2 = ee_rem(i2, n);
     }
-    const Vec4 p0 = V(path + 0x10 + static_cast<uint32_t>(i) * 0x10);
-    const Vec4 p1 = V(path + 0x10 + static_cast<uint32_t>(i1) * 0x10);
+    const Vec4 p0 = lvd::path_row(path + 0x10 + static_cast<uint32_t>(i) * 0x10);
+    const Vec4 p1 = lvd::path_row(path + 0x10 + static_cast<uint32_t>(i1) * 0x10);
     vec3_lerp(V(pos), p0, p1, frac);
     if ((flags & 1u) != 0) return;
     Vec4 d;
@@ -175,7 +176,7 @@ void path_point(float t, uint32_t path, int32_t loop, uint32_t pos, uint32_t rot
     if (clamp) {
         roll1 = 0.0f;
     } else {
-        const Vec4 p2 = V(path + 0x10 + static_cast<uint32_t>(i2) * 0x10);
+        const Vec4 p2 = lvd::path_row(path + 0x10 + static_cast<uint32_t>(i2) * 0x10);
         vec3_sub(d, p2, p1);
         yaw2 = atan2_f(d.x, d.y);
         pitch = atan2_f(vec2_length(d), d.z);
@@ -203,12 +204,12 @@ void moby_1564_update(uint32_t m) {
             moby_retire(m);
             return;
         }
-        const float d1 = vec3_distance(V(path + 0x10), V(path + 0x20));
-        const float d2 = vec3_distance(V(path + 0x10), V(path + lwu(path) * 0x10));
+        const float d1 = vec3_distance(lvd::path_row(path + 0x10), lvd::path_row(path + 0x20));
+        const float d2 = vec3_distance(lvd::path_row(path + 0x10), lvd::path_row(path + lvd::path_u32(path) * 0x10));
         float sp = lwc1(OV(0x00161c98)) * lwc1(0x0015ed6c);
         swc1(p + 0x74, fpu_div(sp, d1));
         sw(p + 0x70, abs_f(d1 - d2) < u2f(0x3dcccccdu) ? 1u : 0u);
-        swc1(p + 0x6c, lwc1(p + 0x68) * static_cast<float>(lw(path)));
+        swc1(p + 0x6c, lwc1(p + 0x68) * static_cast<float>(lvd::path_n(path)));
         sb(m + 0x20, 1);
         sb(m + 0x30, 0xff);
         swc1(m + 0x2c, lwc1(m + 0x2c) * lwc1(OV(0x00161c9c)));
@@ -221,7 +222,7 @@ void moby_1564_update(uint32_t m) {
     swc1(m + 0x18, lwc1(m + 0x18) + lwc1(p + 0x64));
     float t = lwc1(p + 0x6c) + lwc1(p + 0x74);
     swc1(p + 0x6c, t);
-    const float n = static_cast<float>(lw(path));
+    const float n = static_cast<float>(lvd::path_n(path));
     if (n < t) swc1(p + 0x6c, t - n);
     if ((lbu(m + 0x70) & 2u) == 0) return;
     if (!(z0 < lwc1(m + 0x18)) && rand_mod(3) == 0) {
@@ -617,13 +618,13 @@ int32_t path_crossing_v(int32_t path, const Vec4& from, const Vec4& to, Vec4& ou
     basis.r[2].z = 1.0f;
     const uint32_t pts = lvd::path(path);
     Vec4 p;
-    vec3_sub(p, V(pts + 0x10), from);
+    vec3_sub(p, lvd::path_row(pts + 0x10), from);
     mat3_transform(p, p, basis);
     float best = 1.0f;
     int32_t found = 0;
-    for (int32_t i = 1; i < lw(lvd::path(path)); ++i) {
+    for (int32_t i = 1; i < lvd::path_n(lvd::path(path)); ++i) {
         Vec4 q;
-        vec3_sub(q, V(lvd::path(path) + 0x10 + static_cast<uint32_t>(i) * 0x10), from);
+        vec3_sub(q, lvd::path_row(lvd::path(path) + 0x10 + static_cast<uint32_t>(i) * 0x10), from);
         mat3_transform(q, q, basis);
         if ((p.w != 0.0f || q.w != 0.0f) && q.y * p.y < 0.0f) {
             float t = fpu_div(p.x - q.x, p.y - q.y);
@@ -1009,7 +1010,7 @@ void bolts_drop(uint32_t m, int32_t lo, int32_t hi, uint32_t flags, int32_t path
             const float half_g = lwc1(0x0015ed70) * u2f(0x412ccccdu) * -0.5f;
             float r_hi = 0.0f, r_lo = 0.0f;
             float t = 120.0f;
-            const int32_t roots = solve_quadratic(&r_hi, &r_lo, half_g, vel.z - half_g, pos.z - lwc1(pts + 0x18));
+            const int32_t roots = solve_quadratic(&r_hi, &r_lo, half_g, vel.z - half_g, pos.z - lvd::path_f32(pts + 0x18));
             if (1.0f <= static_cast<float>(roots) && 0.0f < r_hi && r_hi < t) t = r_hi;
             Vec4 end;
             vec3_scale(end, vel, t);
@@ -1144,7 +1145,7 @@ void crate_break_drops(uint32_t m) {
             const float g = lwc1(0x0015ed70) * u2f(0x412ccccdu) * -0.5f;
             const uint32_t pts = lvd::path(lwu(pv + 0xc0));
             float r_hi, r_lo;
-            const int32_t roots = solve_quadratic(&r_hi, &r_lo, g, vz - g, lwc1(pk + 0x18) - lwc1(pts + 0x18));
+            const int32_t roots = solve_quadratic(&r_hi, &r_lo, g, vz - g, lwc1(pk + 0x18) - lvd::path_f32(pts + 0x18));
             float t = 120.0f;
             if (1.0f <= static_cast<float>(roots) && 0.0f < r_hi && r_hi < 120.0f) t = r_hi;
             Vec4 to, hit, back;
@@ -3641,8 +3642,8 @@ void crate_settle(uint32_t m0) {
                     const int32_t idx = lw(p + 0xc0);
                     if (idx != -1) {
                         const uint32_t path = lvd::path(idx);
-                        const int32_t n = lw(path);
-                        const uint32_t st = lwu(path + 0x1c);
+                        const int32_t n = lvd::path_n(path);
+                        const uint32_t st = lvd::path_u32(path + 0x1c);
                         if (n == 0 || st == 1 || st == 3 || st == 0x111) {
                             sw(p + 0xc0, 0xffffffffu);
                         } else if (st - 0x11u < 0x100u) {
@@ -3653,7 +3654,7 @@ void crate_settle(uint32_t m0) {
                             }
                         } else {
                             lvd::set_path_word(path + 0x1c, 0x11);
-                            for (int32_t k = 0; k < lw(lvd::path(lwu(p + 0xc0))); ++k)
+                            for (int32_t k = 0; k < lvd::path_n(lvd::path(lwu(p + 0xc0))); ++k)
                                 lvd::set_path_word(lvd::path(lwu(p + 0xc0)) + static_cast<uint32_t>(k) * 0x10 + 0x1c, 0);
                         }
                     }

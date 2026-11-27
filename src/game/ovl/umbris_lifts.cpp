@@ -8,6 +8,7 @@
 // (seconds), its rise this frame +0xbc, the hero gone off it +0xb8, a pause +0xba, its sound +0xc4, whether it carries the
 // hero alone (+0xc8 0: the hero is told to hold still while it rides).
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/novalis_mobys.h>
 #include <game/ovl/ovl.h>
@@ -74,7 +75,7 @@ void lift_update(uint32_t m, uint32_t pv, uint32_t path, uint32_t at_end) {
             swc1(m + 0x2c, s);
             if (s < 0.0f) {
                 swc1(m + 0x2c, lwc1(cls + 0x24));
-                V(pos) = V(start);
+                V(pos) = lvd::path_row(start);
                 sb(m + 0xbc, 1);
                 swc1(pv + 0xa4, 0.0f);
             }
@@ -121,16 +122,16 @@ void lift_update(uint32_t m, uint32_t pv, uint32_t path, uint32_t at_end) {
                 sh(pv + 0xba, static_cast<uint32_t>(frame_scale_i(15)));
                 sound_off(m, pv);
             }
-            const int32_t k = float_to_int(fpu_mul(int_to_float(lw(path) - 1), lwc1(pv + 0xa4)));
-            const float frac = fpu_sub(fpu_mul(int_to_float(lw(path) - 1), lwc1(pv + 0xa4)), int_to_float(k));
+            const int32_t k = float_to_int(fpu_mul(int_to_float(lvd::path_n(path) - 1), lwc1(pv + 0xa4)));
+            const float frac = fpu_sub(fpu_mul(int_to_float(lvd::path_n(path) - 1), lwc1(pv + 0xa4)), int_to_float(k));
             const uint32_t p0 = start + (static_cast<uint32_t>(k) << 4);
-            if (k == lw(path) - 1) {
-                V(pos) = V(p0);
+            if (k == lvd::path_n(path) - 1) {
+                V(pos) = lvd::path_row(p0);
             } else {
                 Vec4 d;
-                vec3_sub(d, V(p0 + 0x10), V(p0));
+                vec3_sub(d, lvd::path_row(p0 + 0x10), lvd::path_row(p0));
                 vec3_scale(d, d, frac);
-                vec3_add(V(pos), d, V(p0));
+                vec3_add(V(pos), d, lvd::path_row(p0));
             }
             swc1(pv + 0xbc, fpu_sub(lwc1(m + 0x18), old.z));
             break;

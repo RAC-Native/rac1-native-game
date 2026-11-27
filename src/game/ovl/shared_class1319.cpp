@@ -21,6 +21,7 @@
 #include <game/ovl/variants_l11.h>
 #include <game/ovl/variants_l17.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 
 namespace rac1 {
 
@@ -140,10 +141,10 @@ void class1319_path_pose(uint32_t m) {
     const uint32_t matrix = sp, p0 = sp + 0x40, p1 = sp + 0x50, p2 = sp + 0x60, at = sp + 0x70, rot = sp + 0x80;
     const uint32_t step = sp + 0x90, dist = sp + 0xa0;
     const uint32_t path = lvd::path(lwu(pv + 0x60));
-    const int32_t i = lw(pv + 0x64), count = lw(path);
-    lq_sq(p0, path + 0x10 + (static_cast<uint32_t>(i) << 4));
-    lq_sq(p1, path + 0x10 + (static_cast<uint32_t>(ee_rem(i + 1, count)) << 4));
-    lq_sq(p2, path + 0x10 + (static_cast<uint32_t>(ee_rem(i + 2, count)) << 4));
+    const int32_t i = lw(pv + 0x64), count = lvd::path_n(path);
+    lvd::path_copy_row(p0, path + 0x10 + (static_cast<uint32_t>(i) << 4));
+    lvd::path_copy_row(p1, path + 0x10 + (static_cast<uint32_t>(ee_rem(i + 1, count)) << 4));
+    lvd::path_copy_row(p2, path + 0x10 + (static_cast<uint32_t>(ee_rem(i + 2, count)) << 4));
     vec_clear(V(rot));
     const float yaw01 = atan2_f(fpu_sub(lwc1(p0), lwc1(p1)), fpu_sub(lwc1(p0 + 4), lwc1(p1 + 4)));
     const float yaw12 = atan2_f(fpu_sub(lwc1(p1), lwc1(p2)), fpu_sub(lwc1(p1 + 4), lwc1(p2 + 4)));

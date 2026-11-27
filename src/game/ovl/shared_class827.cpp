@@ -28,6 +28,7 @@
 #include <game/ovl/variants_l10.h>
 #include <game/ovl/variants_l6.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 
 namespace rac1 {
 
@@ -356,7 +357,7 @@ void class827_react(uint32_t m) {
                 sw(pv + 0x1c4, 2);
             } else {
                 const uint32_t zone = lvd::path(lwu(pv + 0x1f4));
-                if (point_in_polygon(t + 0x10, zone + 0x10, lw(zone)) != 0 &&
+                if (point_in_polygon(t + 0x10, zone + 0x10, lvd::path_n(zone)) != 0 &&
                     (lh(t + 0xa6) != static_cast<int32_t>(MATE_CLASS) || !(2.0f < vec2_distance(V(m + 0x10), V(t + 0x10))))) {
                     sw(pv + 0x1c4, 0);
                 } else {
@@ -367,7 +368,7 @@ void class827_react(uint32_t m) {
         }
     } else {
         const uint32_t zone = lvd::path(lwu(pv + 0x1f4));
-        if (target_select(m, pv + 0x180, 0, 0, zone + 0x10, lw(zone), lwc1(pv + 0x1e0)) != 2) {
+        if (target_select(m, pv + 0x180, 0, 0, zone + 0x10, lvd::path_n(zone), lwc1(pv + 0x1e0)) != 2) {
             if (lwc1(pv + 0x1e0) < vec2_distance(V(pv + 0x210), V(pv + 0x180)))
                 sw(pv + 0x1c4, 2);
             else if (3.0f < abs_f(fpu_sub(lwc1(m + 0x18), lwc1(pv + 0x188))))
@@ -500,17 +501,17 @@ void class827_update(uint32_t m) {
         break;
     case 4: {  // (0x002e8a9c) along the path's points to its last, then a jump there
         const uint32_t path = lvd::path(lwu(pv + 0x1f8));
-        lq_sq(sp + 0x10, path + 0x10 + (static_cast<uint32_t>(lh(pv + 0x208)) << 4));
+        lvd::path_copy_row(sp + 0x10, path + 0x10 + (static_cast<uint32_t>(lh(pv + 0x208)) << 4));
         vec3_sub(V(sp), V(sp + 0x10), V(m + 0x10));
         walk(sp, sp + 0x20, 0);
         mat3_transform(V(sp), V(sp), M(m + 0xc0));
         if (!(vec2_length(V(sp)) < 0.5f)) break;
-        const int32_t n = lw(path);
+        const int32_t n = lvd::path_n(path);
         if (lh(pv + 0x208) < n - 2) {
             sh(pv + 0x208, lhu(pv + 0x208) + 1u);
             break;
         }
-        lq_sq(pv + 0x210, path + (static_cast<uint32_t>(n) << 4));
+        lvd::path_copy_row(pv + 0x210, path + (static_cast<uint32_t>(n) << 4));
         lq_sq(pv + 0x230, pv + 0x210);
         const float speed = fpu_div(vec2_distance(V(m + 0x10), V(pv + 0x210)), int_to_float(frame_scale_i(0x1e)));
         swc1(pv + 0x138, speed);

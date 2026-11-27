@@ -29,6 +29,7 @@
 #include <game/ovl/variants_l15.h>
 #include <game/ovl/weapons.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/level/level_write.h>
 
 namespace rac1 {
@@ -223,7 +224,7 @@ void class28_pick_target(uint32_t m) {
     const uint32_t pv = lwu(m + 0x78);
     const uint32_t zone = path_at(lw(pv + 0x244));
     const uint32_t point = pv + 0xd0;
-    if (target_select(m, point, 0, 0, zone + 0x10, lw(zone), lwc1(pv + 0x234)) != 2 &&
+    if (target_select(m, point, 0, 0, zone + 0x10, lvd::path_n(zone), lwc1(pv + 0x234)) != 2 &&
         lwc1(pv + 0x234) < vec2_distance(V(m + 0x10), V(point)))
         sw(pv + 0x114, 2);
     if (lwu(pv + 0x110) == 0) sw(pv + 0x110, lwu(HERO_MOBY));
@@ -241,11 +242,11 @@ void class28_path_lengths(uint32_t m) {
     const int32_t idx = lw(pv + 0x240);
     if (idx == -1) return;
     const uint32_t path = path_at(idx);
-    if (lw(path) <= 0) return;
-    for (int32_t i = 0; i < lw(path); ++i) {
-        const int32_t next = ee_rem(i + 1, lw(path));
+    if (lvd::path_n(path) <= 0) return;
+    for (int32_t i = 0; i < lvd::path_n(path); ++i) {
+        const int32_t next = ee_rem(i + 1, lvd::path_n(path));
         const uint32_t at = path + 0x10 + (static_cast<uint32_t>(i) << 4);
-        lvd::set_path_f32(at + 0xc, vec3_distance(V(at), V(path + 0x10 + (static_cast<uint32_t>(next) << 4))));
+        lvd::set_path_f32(at + 0xc, vec3_distance(lvd::path_row(at), lvd::path_row(path + 0x10 + (static_cast<uint32_t>(next) << 4))));
     }
 }
 
@@ -525,12 +526,12 @@ void class28_update(uint32_t m) {
         case 0: {  // (L14:0x002b1954) set up: checked, on its path, its joints and pvars
             const uint32_t rides = lbu(pv + 0x24a);
             if (rides != 0) {
-                if (lw(pv + 0x240) == -1 || lw(path_at(lw(pv + 0x240))) == 0) {
+                if (lw(pv + 0x240) == -1 || lvd::path_n(path_at(lw(pv + 0x240))) == 0) {
                     debug_printf_stub();  // (the original's message: no path, or an empty one)
                     return Exit::Retire;
                 }
             }
-            if (lw(pv + 0x244) == -1 || lw(path_at(lw(pv + 0x244))) == 0) {
+            if (lw(pv + 0x244) == -1 || lvd::path_n(path_at(lw(pv + 0x244))) == 0) {
                 debug_printf_stub();  // (no zone, or an empty one)
                 return Exit::Retire;
             }
@@ -540,7 +541,7 @@ void class28_update(uint32_t m) {
             }
             if (rand_mod(2) != 0) sh(m + 0x34, lhu(m + 0x34) | 0x8000);
             class28_path_lengths(m);
-            if (lw(pv + 0x240) != -1) lq_sq(m + 0x10, path_at(lw(pv + 0x240)) + 0x10);
+            if (lw(pv + 0x240) != -1) lvd::path_copy_row(m + 0x10, path_at(lw(pv + 0x240)) + 0x10);
             sb(pv + 0x28, 1);
             sb(pv + 0x29, 0);
             swc1(pv + 0x20, 2.0f);
@@ -574,8 +575,8 @@ void class28_update(uint32_t m) {
             sb(m + 0x20, 2);
             moby_set_anim(m, 1, 0);
             const uint32_t path = path_at(lw(pv + 0x240));
-            swc1(m + 0x48, atan2_f(fpu_sub(lwc1(path + 0x20), lwc1(path + 0x10)),
-                                   fpu_sub(lwc1(path + 0x24), lwc1(path + 0x14))));
+            swc1(m + 0x48, atan2_f(fpu_sub(lvd::path_f32(path + 0x20), lvd::path_f32(path + 0x10)),
+                                   fpu_sub(lvd::path_f32(path + 0x24), lvd::path_f32(path + 0x14))));
             path_reset(pv, true);
             return Exit::Done;
         }
@@ -605,7 +606,7 @@ void class28_update(uint32_t m) {
                 if (lbu(m + 0x53) != 3) anim(m, 3, 0x14);
                 const int32_t point = lw(pv + 0x24c) - 1;
                 sw(pv + 0x24c, static_cast<uint32_t>(point));
-                const float frac = lwc1(path_at(lw(pv + 0x240)) + (static_cast<uint32_t>(point) << 4) + 0x1c);
+                const float frac = lvd::path_f32(path_at(lw(pv + 0x240)) + (static_cast<uint32_t>(point) << 4) + 0x1c);
                 swc1(pv + 0x254, 0.0f);
                 swc1(pv + 0x250, frac);
                 swc1(pv + 0x27c, -1.0f);
@@ -700,8 +701,8 @@ void class28_update(uint32_t m) {
             return Exit::Turn;
         case 9: {  // (L14:0x002b1ce8) settling at its path's start, then asleep
             const uint32_t path = path_at(lw(pv + 0x240));
-            spring_to(m + 0x10, pv + 0x254, lwc1(path + 0x10), u2f(0x3c23d70au), u2f(0x3e4ccccdu), 0.0f);
-            spring_to(m + 0x14, pv + 0x258, lwc1(path + 0x14), u2f(0x3c23d70au), u2f(0x3e4ccccdu), 0.0f);
+            spring_to(m + 0x10, pv + 0x254, lvd::path_f32(path + 0x10), u2f(0x3c23d70au), u2f(0x3e4ccccdu), 0.0f);
+            spring_to(m + 0x14, pv + 0x258, lvd::path_f32(path + 0x14), u2f(0x3c23d70au), u2f(0x3e4ccccdu), 0.0f);
             if (!anim_done(m)) return Exit::Turn;
             anim(m, 0, 0xa);
             sb(m + 0x20, 1);

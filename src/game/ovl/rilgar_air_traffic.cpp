@@ -5,6 +5,7 @@
 #include <game/ovl/rilgar_own.h>
 
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/ovl/glows.h>
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
@@ -50,7 +51,7 @@ void ril_2d7890_l5(uint32_t m, uint32_t path) {
     const uint32_t pv = lwu(m + 0x78);
     float at = fpu_add(lwc1(pv + 8), fpu_div(fpu_mul(lwc1(L5_ADDR(0x001613d0u)), dt()), lwc1(pv + 0xc)));
     swc1(pv + 8, at);
-    const float points = static_cast<float>(lw(path));
+    const float points = static_cast<float>(lvd::path_n(path));
     if (points < at) swc1(pv + 8, fpu_sub(at, points));
     path_point(lwc1(pv + 8), path, 1, m + 0x10, m + 0x40, 0);
     swc1(m + 0x40, lwc1(m + 0x4c));

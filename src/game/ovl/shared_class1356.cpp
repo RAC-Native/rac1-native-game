@@ -22,6 +22,7 @@
 #include <game/ovl/variants_l18.h>
 #include <game/ovl/weapons.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/level/level_write.h>
 
 namespace rac1 {
@@ -89,12 +90,12 @@ void class1356_release(uint32_t drone, int32_t frames) {
 
 // orig: L16:0x002e2fa0 L18:0x002f15e8
 void class1356_path_headings(uint32_t path) {
-    for (int32_t i = 0; i < lw(path) - 1; ++i) {
+    for (int32_t i = 0; i < lvd::path_n(path) - 1; ++i) {
         const uint32_t p = path + 0x10 + (static_cast<uint32_t>(i) << 4);
-        lvd::set_path_f32(p + 0xc, atan2_f(fpu_sub(lwc1(p + 0x10), lwc1(p)), fpu_sub(lwc1(p + 0x14), lwc1(p + 4))));
+        lvd::set_path_f32(p + 0xc, atan2_f(fpu_sub(lvd::path_f32(p + 0x10), lvd::path_f32(p)), fpu_sub(lvd::path_f32(p + 0x14), lvd::path_f32(p + 4))));
     }
-    const int32_t n = lw(path);
-    if (n >= 2) lvd::set_path_f32(path + (static_cast<uint32_t>(n - 1) << 4) + 0x1c, lwc1(path + (static_cast<uint32_t>(n - 2) << 4) + 0x1c));
+    const int32_t n = lvd::path_n(path);
+    if (n >= 2) lvd::set_path_f32(path + (static_cast<uint32_t>(n - 1) << 4) + 0x1c, lvd::path_f32(path + (static_cast<uint32_t>(n - 2) << 4) + 0x1c));
 }
 
 // orig: L16:0x002e3050 L18:0x002f1698
@@ -116,12 +117,12 @@ int32_t class1356_follow(uint32_t m, uint32_t path) {
     const int32_t i = float_to_int(t);
     sw(pv + 0x168, static_cast<uint32_t>(i));
     swc1(pv + 0x16c, fpu_sub(t, static_cast<float>(i)));
-    if (!(i < lw(path) - 1)) return 1;
+    if (!(i < lvd::path_n(path) - 1)) return 1;
     const uint32_t sp = ee_stack_alloc(0x70);
     path_point(t, path, 0, m + 0x10, m + 0x40, 0);
     swc1(pv + 0x194, lwc1(m + 0x18));
     sw(sp, 0);
-    const float left = vec3_distance(V(m + 0x10), V(path + (static_cast<uint32_t>(lw(path)) << 4)));
+    const float left = vec3_distance(V(m + 0x10), lvd::path_row(path + (static_cast<uint32_t>(lvd::path_n(path)) << 4)));
     const uint32_t tune = tuning();
     const float accel = fpu_mul(lwc1(tune + 0xc), lwc1(0x0015ed70));
     seek_1d(sp, pv + 0x170, left, accel, accel, fpu_mul(lwc1(tune + 8), dt()));
@@ -183,7 +184,7 @@ void class1356_hits(uint32_t m) {
         sw(pv + 0xb4, 2);
     } else {
         const uint32_t p = path_of(area);
-        target_select(m, pv + 0x70, 0, 0, p + 0x10, lw(p), 128.0f);
+        target_select(m, pv + 0x70, 0, 0, p + 0x10, lvd::path_n(p), 128.0f);
     }
     if (lwu(pv + 0xb0) == 0) {
         sw(pv + 0xb0, lwu(0x001413d0));
@@ -224,8 +225,8 @@ void class1356_update(uint32_t m) {
             break;
         }
         const uint32_t in = path_of(lw(pv + 0xd8));
-        swc1(pv + 0x174, vec3_distance(V(in + 0x10), V(in + 0x20)));
-        lq_sq(m + 0x10, in + 0x10);
+        swc1(pv + 0x174, vec3_distance(lvd::path_row(in + 0x10), lvd::path_row(in + 0x20)));
+        lvd::path_copy_row(m + 0x10, in + 0x10);
         const uint32_t bits = lhu(m + 0x34);
         sb(m + 0x20, 1);
         sb(m + 0x31, 0);
@@ -237,7 +238,7 @@ void class1356_update(uint32_t m) {
         if (lw(OV(0x0015f5c4)) != 0) break;
         if (lw(pv + 0xd4) != -1) {
             const uint32_t p = path_of(lw(pv + 0xd4));
-            if (point_in_polygon(0x0013f3d0, p + 0x10, lw(p)) == 0) break;
+            if (point_in_polygon(0x0013f3d0, p + 0x10, lvd::path_n(p)) == 0) break;
         }
         sb(m + 0x20, 2);
         const uint32_t bits = lhu(m + 0x34) & 0xfffeu;
@@ -258,7 +259,7 @@ void class1356_update(uint32_t m) {
         for (uint32_t k = 0; k < 4; ++k)
             if (lw(pv + 0xc0 + k * 4) >= 0) carrying = true;
         const uint32_t in = path_of(lw(pv + 0xd8));
-        if (carrying && fpu_mul(static_cast<float>(lw(in) - lw(pv + 0x168)), lwc1(pv + 0x174)) < 16.0f) tilt_to(pv, HALF_PI);
+        if (carrying && fpu_mul(static_cast<float>(lvd::path_n(in) - lw(pv + 0x168)), lwc1(pv + 0x174)) < 16.0f) tilt_to(pv, HALF_PI);
         if (class1356_follow(m, in) == 0) break;
         if (carrying) sb(m + 0x20, 3);
         else sb(m + 0x20, lw(pv + 0xdc) == -1 ? 6 : 4);
@@ -284,7 +285,7 @@ void class1356_update(uint32_t m) {
         break;
     }
     case 4: {  // (L16:0x002e2668)
-        const float heading = lwc1(path_of(lw(pv + 0xdc)) + 0x1c);
+        const float heading = lvd::path_f32(path_of(lw(pv + 0xdc)) + 0x1c);
         const float rate = fpu_mul(lwc1(0x0015ed70), TWO_PI);
         seek_1d(m + 0x48, pv + 0x178, heading, rate, rate, fpu_mul(dt(), TWO_PI));
         if (angle_dist(lwc1(m + 0x48), heading) < 0.01f) {

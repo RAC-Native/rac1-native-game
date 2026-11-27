@@ -7,6 +7,7 @@
 // pieces' launch. Header blarg_own.h; registered in blarg_mobys.cpp. Addresses are level 6's (`orig: L6:`); its own data
 // is L6_ADDR (the ship's tuning and the particles' at 0x1620f4 .. 0x162194), the base ELF's are bare.
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/level/level_write.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>
@@ -43,7 +44,7 @@ uint32_t table_moby(uint32_t i) { return lwu(L6_ADDR(0x0015ffd8)) + (i << 8); }
 uint32_t path_point(uint32_t path, int32_t i) { return path + 0x10 + (static_cast<uint32_t>(i) << 4); }
 
 // the index of the path at `path`'s last point, as a float
-float path_last(uint32_t path) { return static_cast<float>(static_cast<int32_t>(lwu(path) - 1u)); }
+float path_last(uint32_t path) { return static_cast<float>(static_cast<int32_t>(lvd::path_u32(path) - 1u)); }
 
 // the level's checkpoint whose index the pvar `word` holds taken (its byte of this level's row of 0x14c050 is 0xff)
 bool checkpoint_taken(uint32_t word) {

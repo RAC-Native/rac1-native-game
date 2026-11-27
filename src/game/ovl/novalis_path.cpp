@@ -10,6 +10,7 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/port_stubs.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/level/level_write.h>
 
 namespace rac1 {
@@ -48,16 +49,16 @@ void path_follower_init_l1(uint32_t f) {
 int32_t path_nearest_l1(uint32_t at, uint32_t path, float bias) {
     int32_t best = 0;
     float f21 = u2f(0x51ba43b7u);
-    int32_t n = lw(path);
+    int32_t n = lvd::path_n(path);
     if (n > 0) {
         uint32_t s0 = path + 0x10;
         for (int32_t i = 0;;) {
-            const float d = vec3_distance(V(s0), V(at));
+            const float d = vec3_distance(lvd::path_row(s0), V(at));
             if (abs_f(d - bias) < f21) {
                 f21 = d;
                 best = i;
             }
-            n = lw(path);
+            n = lvd::path_n(path);
             ++i;
             s0 += 0x10;
             if (!(i < n)) break;
@@ -78,7 +79,7 @@ uint32_t path_point_l1(uint32_t f, int32_t i) {
         v1 = 0;
     } else {
         a0 = lwu(f + 0x10);
-        v1 = lw(a0) - 1;
+        v1 = lvd::path_n(a0) - 1;
     }
     if (i < 0) return a0 + (static_cast<uint32_t>(v1 + i) << 4) + 0x20;
     if (!(v1 < i)) return a0 + (static_cast<uint32_t>(i) << 4) + 0x10;
@@ -91,7 +92,7 @@ uint32_t path_point_l1(uint32_t f, int32_t i) {
 // orig: L1:0x0028b828 L3:0x002646d8 L4:0x00268d98 L14:0x0027e1f8
 int32_t path_index_wrap_l1(uint32_t f, int32_t i) {
     int32_t v1 = 0;
-    if (!(static_cast<int8_t>(lbu(f + 4)) < 0)) v1 = lw(lwu(f + 0x10)) - 1;
+    if (!(static_cast<int8_t>(lbu(f + 4)) < 0)) v1 = lvd::path_n(lwu(f + 0x10)) - 1;
     if (i < 0) return v1 + i;
     if (!(v1 < i)) return i;
     return ee_rem(i, v1 + 1);
@@ -128,13 +129,13 @@ void path_spline_tangent_l1(uint32_t out, uint32_t f, int32_t idx, float a, floa
     fa = fa * fb;
     const float f23 = f1 * half;
     const float f22 = fa * half;
-    const float d1 = vec3_distance(V(lwu(buf)), V(lwu(buf + 4)));
-    const float d2 = vec3_distance(V(lwu(buf + 4)), V(lwu(buf + 8)));
+    const float d1 = vec3_distance(lvd::path_row(lwu(buf)), lvd::path_row(lwu(buf + 4)));
+    const float d2 = vec3_distance(lvd::path_row(lwu(buf + 4)), lvd::path_row(lwu(buf + 8)));
     float f21 = d1 < d2 ? d1 : d2;
     const uint32_t s1 = buf + 0x10, s0 = buf + 0x20, s2 = buf + 0x30;
-    vec3_sub(V(s1), V(lwu(buf + 4)), V(lwu(buf)));
+    vec3_sub(V(s1), lvd::path_row(lwu(buf + 4)), lvd::path_row(lwu(buf)));
     vec3_scale(V(s1), V(s1), f22);
-    vec3_sub(V(s0), V(lwu(buf + 8)), V(lwu(buf + 4)));
+    vec3_sub(V(s0), lvd::path_row(lwu(buf + 8)), lvd::path_row(lwu(buf + 4)));
     vec3_scale(V(s0), V(s0), f23);
     vec3_add(V(s2), V(s1), V(s0));
     f21 = f21 * u2f(0x3f8ccccdu);
@@ -177,7 +178,7 @@ uint32_t debug_particle_l1(uint32_t pos, uint32_t a1, uint32_t a2, uint32_t a3, 
     const int32_t s7 = static_cast<int16_t>(static_cast<uint32_t>(t1) & 0xffffu);
     const uint32_t s0 = alloc_particle(0x29);
     if (s0 == 0) return 0;
-    lq_sq(s0 + 0x10, pos);
+    lvd::path_copy_row(s0 + 0x10, pos);
     sw(s0 + 4, a3);
     if (s2 != 0xff) {
         sb(s0 + 9, s1);

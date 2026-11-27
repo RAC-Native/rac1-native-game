@@ -17,6 +17,7 @@
 // kept inside the space's bounds (20 .. 1003 on each axis) but on retiring and on hiding.
 #include <game/lib/libc.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/enemy_749.h>
 #include <game/ovl/gemlik_mobys.h>
@@ -96,17 +97,17 @@ void gml_2c37e0_l13(uint32_t m, uint32_t pv, uint32_t hs) {
 int32_t gml_2c3ac8_l13(uint32_t at, uint32_t path, int32_t start, float bias) {
     float best = u2f(0x51ba43b7u);  // (1e11)
     int32_t found = start;
-    for (int32_t k = 0; k < lw(path) / 2; ++k) {
-        const int32_t n = lw(path);
+    for (int32_t k = 0; k < lvd::path_n(path) / 2; ++k) {
+        const int32_t n = lvd::path_n(path);
         int32_t i = ee_rem(start + k, n);
-        float d = vec3_distance(V(path_point(path, i)), V(at));
+        float d = vec3_distance(lvd::path_row(path_point(path, i)), V(at));
         float score = fpu_add(abs_f(fpu_sub(d, bias)), fpu_mul(int_to_float(k), 0.4f));
         if (score < fpu_add(best, fpu_mul(int_to_float(k), 0.1f))) {
             best = d;
             found = i;
         }
         i = ee_rem(n + start - k, n);
-        d = vec3_distance(V(path_point(path, i)), V(at));
+        d = vec3_distance(lvd::path_row(path_point(path, i)), V(at));
         score = fpu_add(abs_f(fpu_sub(d, bias)), fpu_mul(int_to_float(k), 0.4f));
         if (score < best) {
             best = d;

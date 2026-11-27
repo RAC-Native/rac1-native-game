@@ -12,7 +12,9 @@
 // - Each address literal sits inside its own OV() (region rule 1: region_maps.py check-levels sees it); a list chosen by
 //   an argument is a switch of three literals, folded away when the argument is a constant.
 // - The values are EE addresses (an entry, a record) and counts: the records' fields are read by the callers through the
-//   usual accessors (lw, lwc1, V() ...), never through a host pointer with an assumed byte order.
+//   typed read API (level_read.h: the EE words or, with RAC1_LD_READ=native, the native record behind the address) or, where
+//   a reader is not converted yet, through the usual accessors (lw, lwc1, V() ...), never through a host pointer with an
+//   assumed byte order.
 // - Reading only: the writers (gameplay_load, the open engine's registries, the set pieces, the sections) stay as they are.
 //
 // The objects (Veldin's addresses, the same as enhance/leveldata.h's LD_*):

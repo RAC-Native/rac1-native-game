@@ -10,6 +10,7 @@
 // camera mobys), +0xdc the gap to the engine, +0xe0 eight class 574 mobys of the station, +0x104 the whistle's wait,
 // +0x108 the rolling sound's slot, +0x10c how long the hero has been below the track. The state is the moby's byte +0xbc.
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/kerwan_mobys.h>
 #include <game/ovl/novalis_mobys.h>
@@ -46,15 +47,15 @@ float coupling_gap() { return lwc1(L3_ADDR(0x00161368)); }
 
 // The heading of a path's first leg (its point 0 toward point 1).
 float first_leg_heading(uint32_t path) {
-    return atan2_f(fpu_sub(lwc1(path + 0x20), lwc1(path + 0x10)), fpu_sub(lwc1(path + 0x24), lwc1(path + 0x14)));
+    return atan2_f(fpu_sub(lvd::path_f32(path + 0x20), lvd::path_f32(path + 0x10)), fpu_sub(lvd::path_f32(path + 0x24), lvd::path_f32(path + 0x14)));
 }
 
 // A scripted camera moby (`cam`'s pvar +0x18 / +0x14: its yaw and pitch) turned to look from the camera's place at `at`.
 void camera_look_at(uint32_t cam_pv, uint32_t at) {
     const uint32_t eye = camera_pos();
-    swc1(cam_pv + 0x18, atan2_f(fpu_sub(lwc1(at), lwc1(eye)), fpu_sub(lwc1(at + 4), lwc1(eye + 4))));
-    const float d = vec2_distance(V(eye), V(at));
-    swc1(cam_pv + 0x14, -atan2_f(d, fpu_sub(lwc1(at + 8), lwc1(eye + 8))));
+    swc1(cam_pv + 0x18, atan2_f(fpu_sub(lvd::path_f32(at), lwc1(eye)), fpu_sub(lvd::path_f32(at + 4), lwc1(eye + 4))));
+    const float d = vec2_distance(V(eye), lvd::path_row(at));
+    swc1(cam_pv + 0x14, -atan2_f(d, fpu_sub(lvd::path_f32(at + 8), lwc1(eye + 8))));
 }
 
 // The moby's sound in the slot word `slot_word` stopped when that slot still plays it, and the word set to -1.

@@ -22,6 +22,7 @@
 
 #include <game/enhance/fixes102.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/hydro.h>
@@ -102,47 +103,47 @@ int32_t vo_2f2180_l17(uint32_t m, int32_t dir) {
     const uint32_t pv = lwu(m + 0x78);
     const uint32_t cam_path = ride_path(pv, 0x60, dir), look_path = ride_path(pv, 0x68, dir), pod_path = ride_path(pv, 0x70, dir);
     approach_f(pv + 0xa4, 1.0f, fpu_div(1.0f, static_cast<float>(frame_scale_i(0x384))));
-    const float ta = fpu_mul(lwc1(pv + 0xa4), static_cast<float>(lw(cam_path) - 1));
+    const float ta = fpu_mul(lwc1(pv + 0xa4), static_cast<float>(lvd::path_n(cam_path) - 1));
     const int32_t ia = float_to_int(ta);
     const float fia = static_cast<float>(ia);
     float tb = fpu_mul(lwc1(pv + 0xa4), u2f(0x3f828f5cu));  // (1.02: the look a little ahead)
     const float frac_a = fpu_sub(ta, fia);
     if (1.0f < tb) tb = 1.0f;
-    const float tb_n = fpu_mul(tb, static_cast<float>(lw(look_path) - 1));
+    const float tb_n = fpu_mul(tb, static_cast<float>(lvd::path_n(look_path) - 1));
     const int32_t ib = float_to_int(tb_n);
     const float frac_b = fpu_sub(tb_n, static_cast<float>(ib));
-    const float tc = fpu_mul(lwc1(pv + 0xa4), static_cast<float>(lw(pod_path) - 1));
+    const float tc = fpu_mul(lwc1(pv + 0xa4), static_cast<float>(lvd::path_n(pod_path) - 1));
     const float frac_c = fpu_sub(tc, fia);  // (the original takes the camera path's index here)
     const int32_t ic = float_to_int(tc);
     auto point = [](uint32_t path, int32_t k) { return path + 0x10 + static_cast<uint32_t>(k) * 0x10; };
-    vec3_lerp(V(cam), V(point(cam_path, ia)), V(point(cam_path, ia + 1)), frac_a);
-    vec3_lerp(V(m + 0x10), V(point(pod_path, ic)), V(point(pod_path, ic + 1)), frac_c);
+    vec3_lerp(V(cam), lvd::path_row(point(cam_path, ia)), lvd::path_row(point(cam_path, ia + 1)), frac_a);
+    vec3_lerp(V(m + 0x10), lvd::path_row(point(pod_path, ic)), lvd::path_row(point(pod_path, ic + 1)), frac_c);
     uid5_set_pvar_80(cam);
     const uint32_t hide = lvd::box(lvd::BOXES, lw(pv + 0x84));
     hero_place(hide + 0x30, hide + 0x70, 0x72, 0);
     if (ic > 0) {  // the pod's yaw and pitch between its path's turns at the points ic - 1, ic, ic + 1
         const uint32_t p0 = point(pod_path, ic - 1), p1 = point(pod_path, ic), p2 = point(pod_path, ic + 1);
-        const float y0 = atan2_f(fpu_sub(lwc1(p1 + 0), lwc1(p0 + 0)), fpu_sub(lwc1(p1 + 4), lwc1(p0 + 4)));
-        const float y1 = atan2_f(fpu_sub(lwc1(p2 + 0), lwc1(p1 + 0)), fpu_sub(lwc1(p2 + 4), lwc1(p1 + 4)));
+        const float y0 = atan2_f(fpu_sub(lvd::path_f32(p1 + 0), lvd::path_f32(p0 + 0)), fpu_sub(lvd::path_f32(p1 + 4), lvd::path_f32(p0 + 4)));
+        const float y1 = atan2_f(fpu_sub(lvd::path_f32(p2 + 0), lvd::path_f32(p1 + 0)), fpu_sub(lvd::path_f32(p2 + 4), lvd::path_f32(p1 + 4)));
         swc1(m + 0x48, angle_add(fpu_mul(angle_sub(y1, y0), frac_c), y0));
-        const float a0 = -atan2_f(vec2_distance(V(p0), V(p1)), fpu_sub(lwc1(p1 + 8), lwc1(p0 + 8)));
-        const float a1 = -atan2_f(vec2_distance(V(p1), V(p2)), fpu_sub(lwc1(p2 + 8), lwc1(p1 + 8)));
+        const float a0 = -atan2_f(vec2_distance(lvd::path_row(p0), lvd::path_row(p1)), fpu_sub(lvd::path_f32(p1 + 8), lvd::path_f32(p0 + 8)));
+        const float a1 = -atan2_f(vec2_distance(lvd::path_row(p1), lvd::path_row(p2)), fpu_sub(lvd::path_f32(p2 + 8), lvd::path_f32(p1 + 8)));
         swc1(m + 0x44, angle_add(fpu_mul(angle_sub(a1, a0), frac_c), a0));
         swc1(m + 0x44, fpu_mul(lwc1(m + 0x44), cos_vu(lwc1(pv + 0x88))));
         swc1(m + 0x48, angle_add(lwc1(m + 0x48), lwc1(pv + 0x88)));
     } else {  // at its start: along its first leg
         const uint32_t p0 = point(pod_path, 0), p1 = point(pod_path, 1);
-        swc1(m + 0x44, -atan2_f(vec2_distance(V(p0), V(p1)), fpu_sub(lwc1(p1 + 8), lwc1(p0 + 8))));
-        swc1(m + 0x48, atan2_f(fpu_sub(lwc1(p1 + 0), lwc1(p0 + 0)), fpu_sub(lwc1(p1 + 4), lwc1(p0 + 4))));
+        swc1(m + 0x44, -atan2_f(vec2_distance(lvd::path_row(p0), lvd::path_row(p1)), fpu_sub(lvd::path_f32(p1 + 8), lvd::path_f32(p0 + 8))));
+        swc1(m + 0x48, atan2_f(fpu_sub(lvd::path_f32(p1 + 0), lvd::path_f32(p0 + 0)), fpu_sub(lvd::path_f32(p1 + 4), lvd::path_f32(p0 + 4))));
     }
     if (ia > 0 && ib > 0) {  // the camera's angles from its place toward the look path's points ib, ib + 1
         vec_clear(V(look));
         const uint32_t q0 = point(look_path, ib), q1 = point(look_path, ib + 1);
-        const float y0 = atan2_f(fpu_sub(lwc1(q0 + 0), lwc1(cam + 0)), fpu_sub(lwc1(q0 + 4), lwc1(cam + 4)));
-        const float y1 = atan2_f(fpu_sub(lwc1(q1 + 0), lwc1(cam + 0)), fpu_sub(lwc1(q1 + 4), lwc1(cam + 4)));
+        const float y0 = atan2_f(fpu_sub(lvd::path_f32(q0 + 0), lwc1(cam + 0)), fpu_sub(lvd::path_f32(q0 + 4), lwc1(cam + 4)));
+        const float y1 = atan2_f(fpu_sub(lvd::path_f32(q1 + 0), lwc1(cam + 0)), fpu_sub(lvd::path_f32(q1 + 4), lwc1(cam + 4)));
         swc1(look + 8, angle_add(fpu_mul(angle_sub(y1, y0), frac_b), y0));
-        const float a0 = -atan2_f(vec2_distance(V(cam), V(q0)), fpu_sub(lwc1(q0 + 8), lwc1(cam + 8)));
-        const float a1 = -atan2_f(vec2_distance(V(cam), V(q1)), fpu_sub(lwc1(q1 + 8), lwc1(cam + 8)));
+        const float a0 = -atan2_f(vec2_distance(V(cam), lvd::path_row(q0)), fpu_sub(lvd::path_f32(q0 + 8), lwc1(cam + 8)));
+        const float a1 = -atan2_f(vec2_distance(V(cam), lvd::path_row(q1)), fpu_sub(lvd::path_f32(q1 + 8), lwc1(cam + 8)));
         swc1(look + 4, angle_add(fpu_mul(angle_sub(a1, a0), frac_b), a0));
         uid5_set_pvar_90(look);
     }
@@ -222,8 +223,8 @@ void vo_class1448_update_l17(uint32_t m) {
             sw(pv + 0x88, 0);
             const int32_t dir = lw(pv + 0x98);
             const uint32_t at = sp + 0x50, to = sp + 0x30, ang = sp + 0x40;
-            lq_sq(at, ride_path(pv, 0x60, dir) + 0x10);
-            lq_sq(to, ride_path(pv, 0x68, dir) + 0x10);
+            lvd::path_copy_row(at, ride_path(pv, 0x60, dir) + 0x10);
+            lvd::path_copy_row(to, ride_path(pv, 0x68, dir) + 0x10);
             vec_clear(V(ang));
             swc1(ang + 8, atan2_f(fpu_sub(lwc1(to + 0), lwc1(at + 0)), fpu_sub(lwc1(to + 4), lwc1(at + 4))));
             swc1(ang + 4, -atan2_f(vec2_distance(V(at), V(to)), fpu_sub(lwc1(to + 8), lwc1(at + 8))));

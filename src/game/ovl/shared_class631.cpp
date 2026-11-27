@@ -27,6 +27,7 @@
 #include <game/ovl/variants_l7.h>
 #include <game/ovl/weapons.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/level/level_write.h>
 
 namespace rac1 {
@@ -51,9 +52,9 @@ uint32_t moby_at(int32_t i) { return lwu(OV(0x0015ffd8)) + (static_cast<uint32_t
 
 // each segment's length into its first point's w (+0x1c), up to the path's last but one
 void segment_lengths(uint32_t path) {
-    for (int32_t i = 0; i < lw(path) - 2; ++i) {
+    for (int32_t i = 0; i < lvd::path_n(path) - 2; ++i) {
         const uint32_t p = path + 0x10 + static_cast<uint32_t>(i) * 0x10;
-        lvd::set_path_f32(p + 0xc, vec3_distance(V(p), V(p + 0x10)));
+        lvd::set_path_f32(p + 0xc, vec3_distance(lvd::path_row(p), lvd::path_row(p + 0x10)));
     }
 }
 // a pause (state 4) before the state `next` (+0xbc)
@@ -71,8 +72,8 @@ float path_ahead(uint32_t m, uint32_t pv, uint32_t path, uint32_t near, uint32_t
     path_closest_point_v(path, V(m + 0x10), V(near), &i, &t, 0, 999.0f, 5.0f, 0.0f);
     sw(idx, static_cast<uint32_t>(i));
     swc1(frac, t);
-    const float ahead = fpu_add(fpu_add(fpu_mul(int_to_float(lw(idx)), lwc1(path + 0x1c)), lwc1(frac)), 2.0f);
-    const float to_end = vec3_distance(V(m + 0x10), V(path + (lwu(path) << 4)));
+    const float ahead = fpu_add(fpu_add(fpu_mul(int_to_float(lw(idx)), lvd::path_f32(path + 0x1c)), lwc1(frac)), 2.0f);
+    const float to_end = vec3_distance(V(m + 0x10), lvd::path_row(path + (lvd::path_u32(path) << 4)));
     const float step = fpu_mul(frame_time2(), 10.0f);
     const float speed = lwc1(pv + 0x214);
     if (to_end <= fpu_div(fpu_mul(speed, speed), fpu_add(step, step))) {
@@ -86,18 +87,18 @@ float path_ahead(uint32_t m, uint32_t pv, uint32_t path, uint32_t near, uint32_t
         const float fastest = fpu_mul(frame_time(), 20.0f);
         if (fastest < s) swc1(pv + 0x214, fastest);
     }
-    const int32_t at = float_to_int(fpu_div(ahead, lwc1(path + 0x1c)));
+    const int32_t at = float_to_int(fpu_div(ahead, lvd::path_f32(path + 0x1c)));
     sw(idx, static_cast<uint32_t>(at));
-    const float len = lwc1(path + 0x1c);
+    const float len = lvd::path_f32(path + 0x1c);
     swc1(frac, fpu_div(fpu_sub(ahead, fpu_mul(int_to_float(at), len)), len));
     return ahead;
 }
 // the point `frac` of the way along the path's segment `idx` into `out`
 void path_lerp(uint32_t path, uint32_t out, uint32_t idx, uint32_t frac) {
     const uint32_t p = path + (lwu(idx) << 4);
-    vec3_sub(V(out), V(p + 0x20), V(p + 0x10));
+    vec3_sub(V(out), lvd::path_row(p + 0x20), lvd::path_row(p + 0x10));
     vec3_scale(V(out), V(out), lwc1(frac));
-    vec3_add(V(out), V(out), V(path + (lwu(idx) << 4) + 0x10));
+    vec3_add(V(out), V(out), lvd::path_row(path + (lwu(idx) << 4) + 0x10));
 }
 // the move by `dir` (an EE vector) done, the craft tilted with it: its pitch and roll toward the speed's share along and
 // across its yaw (`div`: the tilt's divisor, 20 or 10)
@@ -252,7 +253,7 @@ void class631_update(uint32_t m) {
             const uint32_t path = level_path(lw(pv + 0x24c));
             segment_lengths(path);
             sb(m + 0x20, 1);
-            lq_sq(m + 0x10, path + 0x10);
+            lvd::path_copy_row(m + 0x10, path + 0x10);
             break;
         }
         case 1: {  // (0x2ccdd0) its first path, once the hero is in its start zone
@@ -262,7 +263,7 @@ void class631_update(uint32_t m) {
             sw(pv + 0x248, 0xffffffffu);
             const uint32_t at = sp + 0x100, frac = sp + 0x104;
             path_ahead(m, pv, path, near, at, frac);
-            if (!(lw(at) < lw(path) - 1)) {
+            if (!(lw(at) < lvd::path_n(path) - 1)) {
                 const bool slow = lwc1(pv + 0x214) <= fpu_mul(lwc1(tuning(8)), frame_time());
                 if (lw(pv + 0x134) != -1 && slow) {  // (its end reached: the start path's start, a pause)
                     sw(pv + 0x23c, 0);
@@ -276,14 +277,14 @@ void class631_update(uint32_t m) {
                     ee_stack_free(0x1e0);
                     return;
                 }
-                sw(at, static_cast<uint32_t>(lw(path) - 2));
+                sw(at, static_cast<uint32_t>(lvd::path_n(path) - 2));
                 swc1(frac, 1.0f);
             }
             path_lerp(path, near, at, frac);
             const int32_t next = lw(at) + 1;
-            if (next < lw(path) - 8) {
+            if (next < lvd::path_n(path) - 8) {
                 const uint32_t p = path + (static_cast<uint32_t>(next) << 4) + 0x10;
-                yaw_toward(m, pv, lwc1(p), lwc1(p + 4));
+                yaw_toward(m, pv, lvd::path_f32(p), lvd::path_f32(p + 4));
             } else {
                 yaw_toward(m, pv, lwc1(target), lwc1(target + 4));
             }
@@ -316,8 +317,8 @@ void class631_update(uint32_t m) {
             const uint32_t off = static_cast<uint32_t>(at) << 4;
             if (at > 0) {
                 const uint32_t path = lwu(follower + 0x10);
-                if (at < lw(path) - 1) {
-                    const float d = vec2_distance(V(path + off + 0x10), V(target));
+                if (at < lvd::path_n(path) - 1) {
+                    const float d = vec2_distance(lvd::path_row(path + off + 0x10), V(target));
                     if (d < 20.0f && abs_f(fpu_sub(lwc1(target + 8), lwc1(m + 0x18))) < 10.0f &&
                         d < vec3_distance(V(lwu(follower + 0x10) + off + 0x20), V(target)) && at < lw(lwu(follower + 0x10)) - 2)
                         sw(follower, lwu(follower) + 1);
@@ -377,7 +378,7 @@ void class631_update(uint32_t m) {
             const uint32_t path = level_path(lw(pv + 0x23c) != 0 ? lw(pv + 0x234) : first);
             const uint32_t at = sp + 0x108, frac = sp + 0x10c;
             path_ahead(m, pv, path, near, at, frac);
-            if (!(lw(at) < lw(path) - 1)) {
+            if (!(lw(at) < lvd::path_n(path) - 1)) {
                 const bool slow = lwc1(pv + 0x214) <= fpu_mul(lwc1(tuning(8)), frame_time());
                 if (lw(pv + 0x234) != -1 && lw(pv + 0x164) != -1 && slow) {  // (its end: the other follower's path, a pause)
                     const uint32_t flip = lwu(pv + 0x23c) ^ 1;
@@ -393,7 +394,7 @@ void class631_update(uint32_t m) {
                     ee_stack_free(0x1e0);
                     return;
                 }
-                sw(at, static_cast<uint32_t>(lw(path) - 2));
+                sw(at, static_cast<uint32_t>(lvd::path_n(path) - 2));
                 swc1(frac, 1.0f);
             }
             path_lerp(path, near, at, frac);

@@ -25,6 +25,7 @@
 // velocities +0x74 .. +0x84. On the way, the data's +0x30 counts three events (the three mobys +0x24 / +0x28 / +0x2c of
 // the rails get their +0xbc and timers) and +0x32 two (the second sets the level's two angles L14:0x17aff4 / 0x17aff8).
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/arrival.h>
 #include <game/ovl/camera_types.h>
@@ -67,11 +68,11 @@ void set_view_angle(float half) {
 
 // the leg lengths of `path` into its points' w (the last's back to the first), their sum but the last into `total`
 void measure_path(uint32_t path, uint32_t total) {
-    for (int32_t k = 0; k < lw(path); ++k) {
-        const int32_t next = ee_rem(k + 1, lw(path));
-        const float len = vec3_distance(V(path + (static_cast<uint32_t>(k) << 4) + 0x10), V(path + (static_cast<uint32_t>(next) << 4) + 0x10));
+    for (int32_t k = 0; k < lvd::path_n(path); ++k) {
+        const int32_t next = ee_rem(k + 1, lvd::path_n(path));
+        const float len = vec3_distance(lvd::path_row(path + (static_cast<uint32_t>(k) << 4) + 0x10), lvd::path_row(path + (static_cast<uint32_t>(next) << 4) + 0x10));
         lvd::set_path_f32(path + (static_cast<uint32_t>(k) << 4) + 0x1c, len);
-        if (k < lw(path) - 1) swc1(total, fpu_add(lwc1(total), len));
+        if (k < lvd::path_n(path) - 1) swc1(total, fpu_add(lwc1(total), len));
     }
 }
 
@@ -155,7 +156,7 @@ void group_to_rail(uint32_t m) {
 
 // the sum of the legs' lengths of `path` from point `from` up to (not with) point `to`, added to `sum`
 float legs(uint32_t path, int32_t from, int32_t to, float sum) {
-    for (int32_t k = from; k < to; ++k) sum = fpu_add(sum, lwc1(path + (static_cast<uint32_t>(k) << 4) + 0x1c));
+    for (int32_t k = from; k < to; ++k) sum = fpu_add(sum, lvd::path_f32(path + (static_cast<uint32_t>(k) << 4) + 0x1c));
     return sum;
 }
 }  // namespace

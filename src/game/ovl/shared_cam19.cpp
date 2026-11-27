@@ -20,6 +20,7 @@
 #include <game/ovl/ovl_common.h>
 #include <game/ovl/ovl_reloc.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/level/level_write.h>
 
 namespace rac1 {
@@ -39,11 +40,11 @@ void set_view_angle(float half) {
 
 // the leg lengths of `path` into its points' w (the last's back to the first), their sum but the last into `total`
 void measure_path(uint32_t path, uint32_t total) {
-    for (int32_t k = 0; k < lw(path); ++k) {
-        const int32_t next = ee_rem(k + 1, lw(path));
-        const float len = vec3_distance(V(path + (static_cast<uint32_t>(k) << 4) + 0x10), V(path + (static_cast<uint32_t>(next) << 4) + 0x10));
+    for (int32_t k = 0; k < lvd::path_n(path); ++k) {
+        const int32_t next = ee_rem(k + 1, lvd::path_n(path));
+        const float len = vec3_distance(lvd::path_row(path + (static_cast<uint32_t>(k) << 4) + 0x10), lvd::path_row(path + (static_cast<uint32_t>(next) << 4) + 0x10));
         lvd::set_path_f32(path + (static_cast<uint32_t>(k) << 4) + 0x1c, len);
-        if (k < lw(path) - 1) swc1(total, fpu_add(lwc1(total), len));
+        if (k < lvd::path_n(path) - 1) swc1(total, fpu_add(lwc1(total), len));
     }
 }
 
@@ -77,7 +78,7 @@ int32_t cam_type19_zone(uint32_t cam) {
     else if (lw(d + 8) >= 0) in = point_in_sphere(HERO_POS, lw(d + 8));
     else if (lw(d + 0x14) >= 0) {
         const uint32_t poly = level_path(lw(d + 0x14));
-        in = point_in_polygon(HERO_POS, poly + 0x10, lw(poly));
+        in = point_in_polygon(HERO_POS, poly + 0x10, lvd::path_n(poly));
     } else {
         return lbu(d + 0x38) != 0 && lbu(d + 0x39) == 0 ? 1 : 0;
     }
@@ -119,9 +120,9 @@ void cam_type19_init(uint32_t cam) {
     if (lw(d + 0x20) >= 0) {
         const uint32_t path = level_path(lw(d + 0x20));
         uint32_t slot = 0;
-        for (int32_t k = 0; k < lw(path); ++k) {
+        for (int32_t k = 0; k < lvd::path_n(path); ++k) {
             const uint32_t pt = path + (static_cast<uint32_t>(k) << 4);
-            const float deg = lwc1(pt + 0x1c);
+            const float deg = lvd::path_f32(pt + 0x1c);
             if (0.0f < deg) {
                 // (the angle stored first, then, above 180, the starting view's in its place, read after that store: a ninth
                 // view point's angle lands on the starting view +0x30, which it then reads)
@@ -130,10 +131,10 @@ void cam_type19_init(uint32_t cam) {
                 sh(points + slot * 2, static_cast<uint32_t>(k));
                 ++slot;
             }
-            const int32_t next = ee_rem(k + 1, lw(path));
-            const float len = vec3_distance(V(pt + 0x10), V(path + (static_cast<uint32_t>(next) << 4) + 0x10));
+            const int32_t next = ee_rem(k + 1, lvd::path_n(path));
+            const float len = vec3_distance(lvd::path_row(pt + 0x10), lvd::path_row(path + (static_cast<uint32_t>(next) << 4) + 0x10));
             lvd::set_path_f32(pt + 0x1c, len);
-            if (k < lw(path) - 1) swc1(blk + 8, fpu_add(lwc1(blk + 8), len));
+            if (k < lvd::path_n(path) - 1) swc1(blk + 8, fpu_add(lwc1(blk + 8), len));
         }
     }
     if (lh(d + 0x3a) > 0)
@@ -177,13 +178,13 @@ void cam_type19_update(uint32_t cam) {
             swc1(fade, 1.0f);
             sw(OV(0x0015f404), 1);
             sh(blk + 0x14, 1);
-            lq_sq(cam + 0x30, path + 0x10);
+            lvd::path_copy_row(cam + 0x30, path + 0x10);
             // (here the direction is sp+0 and the up sp+0x10)
             if (lw(d + 0x28) >= 0) {
                 moby_point(d, dir, up);
                 vec3_sub(V(sp), V(up), V(cam + 0x30));
             } else {
-                vec3_sub(V(sp), V(look + 0x10), V(cam + 0x30));
+                vec3_sub(V(sp), lvd::path_row(look + 0x10), V(cam + 0x30));
             }
             aim(cam, sp, dir);
         }
@@ -256,10 +257,10 @@ void cam_type19_update(uint32_t cam) {
                 const int32_t b = lh(points + static_cast<uint32_t>(next) * 2);
                 if (leg < b) {
                     float from_a = 0.0f;
-                    for (int32_t k = a; k < leg; ++k) from_a = fpu_add(from_a, lwc1(path + (static_cast<uint32_t>(k) << 4) + 0x1c));
+                    for (int32_t k = a; k < leg; ++k) from_a = fpu_add(from_a, lvd::path_f32(path + (static_cast<uint32_t>(k) << 4) + 0x1c));
                     float span = from_a;
                     from_a = fpu_add(from_a, lwc1(blk + 4));
-                    for (int32_t k = leg; k < b; ++k) span = fpu_add(span, lwc1(path + (static_cast<uint32_t>(k) << 4) + 0x1c));
+                    for (int32_t k = leg; k < b; ++k) span = fpu_add(span, lvd::path_f32(path + (static_cast<uint32_t>(k) << 4) + 0x1c));
                     const uint32_t angles = points + 0x10;
                     const float deg = cos_ease(lwc1(angles + static_cast<uint32_t>(i) * 4), lwc1(angles + static_cast<uint32_t>(next) * 4),
                                                fpu_div(from_a, span));

@@ -10,6 +10,7 @@
 
 #include <game/collision/collision.h>
 #include <game/level/level_data.h>
+#include <game/level/level_read.h>
 #include <game/math/vecmath.h>
 #include <game/ovl/ee_regs.h>
 #include <game/ovl/ovl.h>
@@ -123,14 +124,14 @@ void vo_2cbd38_l17(uint32_t m) {
     }
     if (count == 0) return;  // (the original divides by it: nothing below is reached with no fighter)
     const uint32_t path = lvd::path(lw(pv + 0x84));
-    const int32_t step = static_cast<int16_t>(ee_div(lw(path), count));
+    const int32_t step = static_cast<int16_t>(ee_div(lvd::path_n(path), count));
     int32_t point = 0;
     uint32_t at = path + 0x10;
     for (uint32_t e = lvd::group(group);; e += 2) {
         const uint32_t f = group_moby(e);
         if (lh(f + 0xa6) == FIGHTER) {
             const uint32_t fpv = lwu(f + 0x78);
-            lq_sq(f + 0x10, at);
+            lvd::path_copy_row(f + 0x10, at);
             sw(fpv + 0x64, static_cast<uint32_t>(point));
             sw(fpv + 0x60, lwu(pv + 0x84));
             sw(fpv + 0x68, 0);

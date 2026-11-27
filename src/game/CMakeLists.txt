@@ -630,6 +630,7 @@ add_library(rac1_game STATIC
     enhance/pool.cpp
     enhance/context.cpp
     enhance/leveldata.cpp
+    level/level_read.cpp
     level/level_registry.cpp
     level/level_grids.cpp
     enhance/class_profiles.cpp
