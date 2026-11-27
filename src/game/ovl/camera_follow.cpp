@@ -33,6 +33,8 @@
 #include <game/ovl/ovl_reloc.h>
 #include <game/port_stubs.h>
 
+#include <exception>
+
 namespace rac1 {
 
 namespace {
@@ -1139,7 +1141,7 @@ int32_t cam_volume_contains(const Vec4& pos, uint32_t rec, float r) {
 }
 
 // orig: (host) 0x1ee1b0's walk of the grid on EE memory for the cell (x, y) (its bounds tested by the caller)
-static uint32_t cam_volume_find_ee(const Vec4& p, float r, int32_t x, int32_t y) {
+static uint32_t cam_volume_walk_ee(const Vec4& p, float r, int32_t x, int32_t y) {
     const uint32_t tab = lvd::cam_volume_grid();
     const uint32_t off = lwu(tab + static_cast<uint32_t>(y * 64 + x) * 4);
     if (off == 0) return 0;
@@ -1153,6 +1155,21 @@ static uint32_t cam_volume_find_ee(const Vec4& p, float r, int32_t x, int32_t y)
         if (vec2_length(d) < rad + r && cam_volume_contains(p, e, r) != 0) return e;
     }
     return 0;
+}
+
+// The original's bound is x and y below 0x41, so x = 64 or y = 64 passes it: for y = 64 (and x = 64, y = 63) the cell index
+// is past the 64 x 64 table and its word is one of the bytes that follow the table, taken as a list's offset. The original
+// walks whatever lies there as records: a count of up to two billion from those bytes, records through RAM's mirrors,
+// shape indices of no shape. Where that walk reaches an address with no memory the interpreter reads 0 and walks on; the port's read
+// throws and the game would stop. The port answers 0 (no record) there; every walk that ends without such a read gives the
+// same answer as before. The copy's walk sends these cells here too (it never holds them).
+static uint32_t cam_volume_find_ee(const Vec4& p, float r, int32_t x, int32_t y) {
+    if (y * 64 + x < 64 * 64) return cam_volume_walk_ee(p, r, x, y);
+    try {
+        return cam_volume_walk_ee(p, r, x, y);
+    } catch (const std::exception&) {  // (an EE read the port cannot resolve: an unmapped address, or 0)
+        return 0;
+    }
 }
 
 // orig: (host) 0x1ee1b0's walk on the grid's copy: the same records in the same order, the same tests (the record's centre

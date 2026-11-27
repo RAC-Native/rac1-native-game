@@ -15,6 +15,11 @@
 //  - grids_cam_find: cam_volume_find 0x1ee1b0 on a lattice of positions covering the 64 x 64 cells and one cell past every
 //    side (each cell's 0, 4, 8, 12 and 15.99 units, so every edge), each with r = 0, 0.25 and 3 and z about a record of the
 //    cell, with `ee` and `native`: the same record address; 2000 more with the check mode on; cam0_volume_pass both ways
+//  - grids_cam_edge (task CF1): cam_volume_find over the grid's 65-th column and row (x = 64 for y 0 .. 64, y = 64 for x
+//    0 .. 63), whose cells past the table read the bytes after it as a list: the table of those 65 words, then 9675 lookups
+//    (0, 4, 8, 12, 15.99 units on both axes, r = 0, 0.25 and 3) with `ee`, `native` and `native` with the check mode: equal,
+//    none throws, the answers' hash printed (a throw counted as 0, as the base's run gives it); the original 0x1ee1b0 on every
+//    position, the positions where its answer differs from the port's counted and hashed (printed, not a failure)
 //  - grids_cam_synthetic: no level's grid has records in its 64 x 64 cells (grids_cam_cells: the lookups find records only
 //    in the 65 words past the table, from EE memory): a grid in the test area whose records name the level's own shapes
 //    (types 3 boxes, 5 spheres, 6 cylinders, 7 volumes, and a type no test knows), each in the cell of its shape's centre;
@@ -395,6 +400,184 @@ void check_cam_find() {
                 tab, n, hits, nchk, threw);
 }
 
+// The grid's 65-th column and row (task CF1): cam_volume_find takes x and y up to 64, so x = 64 reads cell (0, y + 1) for
+// y < 63 and the cells (64, 63) .. (64, 64) and (0 .. 63, 64) read the 65 words past the 64 x 64 table (4096 .. 4160): bytes
+// that follow the table, taken as a list's offset. The table of those 65 words (word, list address, where the list lies, its
+// count word), then a lattice over the 129 cells (each cell's 0, 4, 8, 12 and 15.99 units on both axes, r = 0, 0.25 and 3)
+// with `ee`, `native` and `native` with the check mode: the answers' hash (a throw counted as 0), the throws by where they
+// read; a failure when the modes differ or a lookup throws. Then the original 0x1ee1b0 on 258 of those positions.
+namespace edge {
+// the addresses the port's EE reads resolve (ee_ram_ptr_slow): RAM, the scratchpad, RAM's mirrors; elsewhere a read throws
+bool maps(uint32_t a) {
+    if (a < ee_ram_size() || a - SPR_BASE < SPR_SIZE) return true;
+    return (a >> 28) != 0x7 && ee_mirror_phys(a) != 0xffffffffu;
+}
+const char* region(uint32_t a) {
+    if (a < ee_ram_size()) return "RAM";
+    if (a - SPR_BASE < SPR_SIZE) return "scratchpad";
+    if ((a >> 28) == 0x7) return "0x7... past the scratchpad";
+    if (ee_mirror_phys(a) != 0xffffffffu) return "a mirror of RAM";
+    const uint32_t ph = a & 0x1fffffffu;
+    if (ph < 0x12000000u) return "registers / VU memory (0x10..0x11)";
+    if (ph >= 0x1fc00000u) return "boot ROM (0x1fc..)";
+    return "unmapped";
+}
+struct Cell {
+    int32_t x, y;
+};
+std::vector<Cell> cells() {
+    std::vector<Cell> v;
+    for (int32_t y = 0; y <= 64; ++y) v.push_back({64, y});
+    for (int32_t x = 0; x < 64; ++x) v.push_back({x, 64});
+    return v;
+}
+constexpr float kOffs[] = {0.0f, 4.0f, 8.0f, 12.0f, 15.99f};
+constexpr float kRs[] = {0.0f, 0.25f, 3.0f};
+}  // namespace edge
+
+void check_cam_edge() {
+    const char* name = "grids_cam_edge";
+    if (!selected(name)) return;
+    level();
+    const uint32_t tab = lvd::cam_volume_grid();
+    const std::shared_ptr<const CamGridCopy> c = CamGridCopy::parse(tab);
+    const float hz = ee_read<float>(0x0013f3d8);  // (the hero's z)
+    // the 65 words past the table
+    int none = 0, out = 0, empty = 0, some = 0;
+    for (int32_t k = 64 * 64; k < CamGridCopy::kCells; ++k) {
+        const uint32_t w = rd32(tab + u(k) * 4), l = w + tab;
+        const int32_t held = c != nullptr ? c->list_of(k) : -3;
+        if (w == 0) {
+            ++none;
+            continue;
+        }
+        std::string what;
+        if (!edge::maps(l)) {
+            ++out;
+            what = "outside RAM: the port's read throws";
+        } else {
+            const int32_t n = static_cast<int32_t>(rd32(l));
+            (n <= 0 ? empty : some) += 1;
+            what = "count " + std::to_string(n) + (n <= 0 ? " (no record)" : " (records read from those bytes)") + ((l & 3u) != 0 ? ", not 4-aligned" : "");
+        }
+        std::printf("  edge word %d (x %d, y %d) %s list %s [%s] %s, copy %d\n", k, k - 4096, 64, hex(w).c_str(), hex(l).c_str(),
+                    edge::region(l), what.c_str(), held);
+    }
+    std::printf("  edge words: %d zero, %d outside RAM, %d in RAM with a count <= 0, %d in RAM with a count > 0\n", none, out, empty, some);
+    // the lattice, the three modes
+    const std::vector<edge::Cell> cs = edge::cells();
+    struct Mode {
+        const char* name = "";
+        bool native = false, check = false;
+        uint64_t hash = 1469598103934665603ull;
+        int threw = 0, at_count = 0, at_record = 0, elsewhere = 0, hits = 0;
+        std::vector<uint32_t> ans;
+    };
+    Mode ms[3];
+    ms[0].name = "ee";
+    ms[1].name = "native";
+    ms[2].name = "native+check";
+    ms[1].native = ms[2].native = ms[2].check = true;
+    for (Mode& m : ms) {
+        ld_grids_set_native(m.native);
+        ld_grids_set_check(m.check);
+        for (const edge::Cell& cl : cs) {
+            const uint32_t w = rd32(tab + u(cl.y * 64 + cl.x) * 4), l = w + tab;
+            const int32_t cnt = w != 0 && edge::maps(l) ? static_cast<int32_t>(rd32(l)) : 0;
+            for (const float oy : edge::kOffs) {
+                for (const float ox : edge::kOffs) {
+                    const Vec4 p{static_cast<float>(cl.x) * 16.0f + ox, static_cast<float>(cl.y) * 16.0f + oy, hz, 1.0f};
+                    for (const float r : edge::kRs) {
+                        uint32_t v = 0;
+                        try {
+                            v = cam_volume_find(p, r);
+                            if (v != 0) ++m.hits;
+                        } catch (const std::out_of_range& e) {
+                            ++m.threw;
+                            v = 0;
+                            const char* h = std::strstr(e.what(), "0x");
+                            const uint32_t a = h != nullptr ? static_cast<uint32_t>(std::strtoul(h + 2, nullptr, 16)) : 0u;
+                            const uint64_t lo = l, hi = lo + 0x10 + uint64_t(cnt > 0 ? cnt : 0) * 0x30;
+                            if (a == l) ++m.at_count;
+                            else if (a >= lo + 0x10 && a < hi) ++m.at_record;
+                            else ++m.elsewhere;
+                            m.ans.push_back(0xdeadbeefu);
+                            for (int b = 0; b < 4; ++b) m.hash = (m.hash ^ 0u) * 1099511628211ull;
+                            continue;
+                        }
+                        m.ans.push_back(v);
+                        for (int b = 0; b < 4; ++b) m.hash = (m.hash ^ ((v >> (8 * b)) & 0xffu)) * 1099511628211ull;
+                    }
+                }
+            }
+        }
+    }
+    ld_grids_set_native(true);
+    ld_grids_set_check(true);
+    int differ = 0;
+    for (size_t i = 0; i < ms[0].ans.size(); ++i)
+        if (ms[0].ans[i] != ms[1].ans[i] || ms[0].ans[i] != ms[2].ans[i]) ++differ;
+    for (const Mode& m : ms)
+        std::printf("  edge %-12s %zu lookups, hash %016llx (a throw as 0), %d found a record, %d threw (%d at the list's count word, %d at a record, %d "
+                    "elsewhere)\n", m.name, m.ans.size(), static_cast<unsigned long long>(m.hash), m.hits, m.threw, m.at_count, m.at_record, m.elsewhere);
+    const int threw = ms[0].threw + ms[1].threw + ms[2].threw;
+    if (differ != 0 || threw != 0) {
+        fail(name, std::to_string(differ) + " of " + std::to_string(ms[0].ans.size()) + " lookups differ between the modes, " + std::to_string(threw) +
+                       " threw (" + std::to_string(none) + " zero words, " + std::to_string(out) + " lists outside RAM)");
+    } else {
+        std::printf("%-26s ok: grid 0x%08x, %zu lookups each with ee, native, native + check equal, none threw (%d found a record); words past the table: %d "
+                    "zero, %d outside RAM, %d count <= 0, %d count > 0\n", name, tab, ms[0].ans.size(), ms[0].hits, none, out, empty, some);
+    }
+    // the original 0x1ee1b0 on every position of the lattice, from the same RAM (its stack's top put back after each call): the
+    // interpreter reads 0 where the port's read throws and walks on, so there it can find a record of those bytes; the
+    // positions where its answer differs from the port's (a throw counted as 0) are hashed by index, the same set on the base
+    // and on the fix
+    level();
+    const uint32_t at = g_oracle_level != 0 ? ovl_code_lookup(0x001ee1b0) : 0x001ee1b0;
+    auto for_each_byte = [](uint64_t& h, size_t v) {  // (FNV-1a over the index's 4 bytes)
+        for (int b = 0; b < 4; ++b) h = (h ^ ((v >> (8 * b)) & 0xffu)) * 1099511628211ull;
+    };
+    int same = 0, differ0 = 0, other = 0, stopped = 0, threw0 = 0;
+    uint64_t dhash = 1469598103934665603ull, ohash = dhash;
+    size_t i = 0;
+    std::string why;
+    for (const edge::Cell& cl : cs) {
+        for (const float oy : edge::kOffs) {
+            for (const float ox : edge::kOffs) {
+                for (const float r : edge::kRs) {
+                    wf(TEST_AREA, static_cast<float>(cl.x) * 16.0f + ox);
+                    wf(TEST_AREA + 4, static_cast<float>(cl.y) * 16.0f + oy);
+                    wf(TEST_AREA + 8, hz);
+                    wf(TEST_AREA + 12, 1.0f);
+                    const std::vector<uint8_t> stack = save_range(0x02000000u - 0x10000u, 0x10000u);
+                    const OrigResult o = call_original(at, {TEST_AREA}, {r});
+                    restore_range(0x02000000u - 0x10000u, stack);
+                    const uint32_t pv = ms[0].ans[i] == 0xdeadbeefu ? 0u : ms[0].ans[i], ov = static_cast<uint32_t>(o.v0);
+                    if (!o.ok) {
+                        ++stopped;
+                    } else if (ov == pv) {
+                        ++same;
+                        if (ms[0].ans[i] == 0xdeadbeefu) ++threw0;
+                    } else if (pv == 0) {
+                        ++differ0;
+                        for_each_byte(dhash, i);
+                    } else {
+                        for_each_byte(ohash, i);
+                        if (other++ == 0)
+                            why = "(" + std::to_string(cl.x) + ", " + std::to_string(cl.y) + ") + (" + std::to_string(ox) + ", " + std::to_string(oy) + ") r " +
+                                  std::to_string(r) + ": the original " + hex(ov) + ", the port " + hex(pv);
+                    }
+                    ++i;
+                }
+            }
+        }
+    }
+    level();
+    std::printf("  edge original 0x%08x: %zu positions, %d the port's answer (%d of them where the port threw: 0 both), %d a record where the port answers 0 "
+                "(index hash %016llx), %d another record than the port's (index hash %016llx; first %s), %d stopped\n", at, i, same, threw0, differ0,
+                static_cast<unsigned long long>(dhash), other, static_cast<unsigned long long>(ohash), other != 0 ? why.c_str() : "none", stopped);
+}
+
 // small grids in the test area: zone grids at Z(i) (masks from +0x100), camera-volume grids at C(i) (cell (1, 2)'s list at +0x4200)
 constexpr uint32_t kZone[2] = {TEST_AREA + 0x0000, TEST_AREA + 0x0400};
 constexpr uint32_t kCam[2] = {TEST_AREA + 0x1000, TEST_AREA + 0x7000};
@@ -689,6 +872,7 @@ void batch_544() {
     check_zones_update(cells);
     check_cam_cells();
     check_cam_find();
+    check_cam_edge();
     check_cam_synthetic();
     check_keys();
     const LdGridsStats st = ld_grids_stats();
