@@ -42,8 +42,12 @@ source code, the files that are a mechanical translation of the game's own code 
   too: the `glslang-tools` package on Debian / Ubuntu releases without a `glslc` package);
 - an internet connection for the first build (CMake downloads GLFW, GLM, Dear ImGui, TinyGLTF,
   miniaudio, Vulkan-Headers and volk);
-- about 5 GB of free disk for the game's data and generated code (4 GB of it the disc's files, which the
-  game reads instead of the image), besides the disc image, plus about 2 GB for the build;
+- about 7.5 GB of free disk in the game's folder for a first setup, besides the disc image: the disc's
+  files 4 GB (the game reads them instead of the image), the build up to 2 GB, the game's data 0.7 GB
+  (the moby models and the world), the generated code 50 MB, and 0.5 GB of room; on Windows the
+  build's tools (`.toolchain\`) take about 1 GB more, and the optional movie subtitles about 2 GB
+  (`assets/stt/`: the speech to text and its model). The setup checks this before it writes anything
+  ([Troubleshooting](#troubleshooting): "Not enough free disk space");
 - a GPU and driver with **OpenGL 4.6** and, for the Vulkan renderer (the default), **Vulkan 1.3**:
   without it the game runs on OpenGL.
 
@@ -557,8 +561,25 @@ while playing: a file in `assets/disc/` was deleted or changed since; run `./set
 the generated code or data, the setup needs your disc image again, even when the game itself no
 longer reads it. Give it with `--iso <path>`.
 
-**"Extracting the disc failed: not enough free disk space"**: the disc's files take about 4 GB in the
-repository's folder; free some space, or move the repository to a larger disk, and run the setup again.
+**"Not enough free disk space for the setup in ..."**: before it writes anything (and again before the
+build and before the game's data), the setup adds up what its steps still have to write, and stops
+when the disk has less free: the message says how much is free, how much is needed and for what. Free
+some space on that disk, or move the game's folder to a larger one, and run the setup again. Only what
+is still to make counts: a step that is up to date writes nothing, and one made again (after an
+update) rewrites its files in place, so a setup run again needs much less than the first (about 1 GB
+for a rebuild and room). The sizes are in the [system requirements](#what-you-need). A data disc's
+extraction checks its own space (the Japanese disc about 1.7 GB, another disc's texts 10 MB):
+**"Extracting the data disc ... failed: not enough free disk space"**.
+
+**"The disk is full: ... stopped for lack of space"**: the disk filled up during a step anyway
+(another program wrote to it meanwhile, or the guess was short; GitHub issue #189: the moby
+conversion failed with a generic error). Free some space and run the setup again: a step that did
+not finish is not recorded as made, so the setup makes it again from the start. `play.cmd` and the
+launcher see that step as still to do and offer the setup before the game starts; a game started
+anyway (or directly) draws the levels without what is missing (a level without its world, say) and
+says "the modern renderer's assets are missing" in its log. The same for
+**"Extracting the disc failed: not enough free disk space"**: the disc's files take about 4 GB in
+the game's folder.
 
 **"The game's generated sources are missing"** or **"... are out of date"** when building: the build
 needs the code that `./setup.sh` generates from your disc. Run `./setup.sh` (it generates the code,

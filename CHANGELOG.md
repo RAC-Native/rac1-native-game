@@ -40,6 +40,13 @@ What changed in each release. Releases are source only: you build the game with 
   The Language page's texts ran past their memory block into the Exit button's and page's, so the button lost its text and
   choosing it left the menu stuck (Alt+F4 was the only way out). The texts now fit their block. Any disc and language.
 
+- **The setup checks the free disk space before it writes, and says when the disk is full** (#189). A disk that filled
+  up during the setup made a step fail with a generic error ("Generating the moby models and textures failed") and could
+  leave a half-made install behind. The setup now adds up what its steps still have to write (about 7.5 GB for a first
+  setup; a run again needs only what changed) and stops at once with how much is free, how much is needed and where; a
+  disk that fills up anyway is reported as "The disk is full", and a step that did not finish is never recorded as made,
+  so the next setup makes it again (its record was kept before, when a re-run of a step with some files gone failed).
+
 ### Fixes (Windows)
 - **The setup stops at once in a folder with accents in its path** (#185), with a clear message to move the game to a
   plain path such as `C:\Games\rac1-native`. The build tools live in the game's folder and CMake could not read their
