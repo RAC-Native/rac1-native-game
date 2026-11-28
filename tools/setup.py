@@ -30,8 +30,10 @@ build container's name, image and packages, for immutable systems (SteamOS, Bazz
 """
 
 import argparse
+import errno
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -180,6 +182,59 @@ def warn(msg):
 def fail(msg):
     print(color("1;31", f"  ERROR  {msg}"), flush=True)
     sys.exit(1)
+
+
+# --- A full disk (GitHub issue #189) ------------------------------------------------------------
+# A disk that fills up during the setup made a step fail with a generic error and left the install half made. The setup
+# now checks the free space before it writes (check_space, below), and reports a disk that filled up anyway as such.
+
+GB = 2**30
+LOW_SPACE = 512 << 20  # (after a step failed: less than this free on its disk, and the full disk is the likely cause)
+NO_SPACE = 64 << 20  # (after a data step that finished: less than this, and a file's last bytes may not have been written)
+DISK_FULL_TEXTS = ("No space left on device", "There is not enough space on the disk", "disk is full")
+
+
+def is_disk_full(e):
+    """An OSError for a full disk: ENOSPC (Linux, macOS; Python maps Windows' errors to it too), or Windows'
+    ERROR_DISK_FULL (112) / ERROR_HANDLE_DISK_FULL (39)."""
+    return isinstance(e, OSError) and (e.errno == errno.ENOSPC or getattr(e, "winerror", None) in (112, 39))
+
+
+def existing_dir(path):
+    """`path` (resolved: assets/disc may be a link to another disk), or its nearest folder that exists."""
+    p = Path(path)
+    try:
+        p = p.resolve()
+    except OSError:
+        pass
+    while not p.exists() and p.parent != p:
+        p = p.parent
+    return p
+
+
+def free_bytes(path):
+    try:
+        return shutil.disk_usage(existing_dir(path)).free
+    except OSError:
+        return None
+
+
+def fail_disk_full(path, doing, need=None):
+    """The disk of `path` filled up while `doing`: the error, with what to do."""
+    free = free_bytes(path)
+    left = "" if free is None else f" ({free / GB:.1f} GB free)"
+    needed = f"\n  The setup needs about {need / GB:.1f} GB free there to finish." if need else ""
+    fail(f"The disk is full: {doing} stopped for lack of space on the disk of\n    {existing_dir(path)}{left}{needed}\n"
+         f"  Free some space on that disk (or move the game's folder to a larger one), then run {SETUP_CMD} again:\n"
+         "  what was not finished is made again.")
+
+
+def fail_if_disk_full(path, doing, output=""):
+    """After a step failed (a child program, whose error cannot be read): when its disk is (nearly) full, or its output
+    says so, the disk-full error instead of the generic one."""
+    free = free_bytes(path)
+    if (free is not None and free < LOW_SPACE) or any(t.lower() in (output or "").lower() for t in DISK_FULL_TEXTS):
+        fail_disk_full(path, doing)
 
 
 def ask(question, default):
@@ -1086,6 +1141,8 @@ def extract_disc(iso, forced):
     except (disc_extract.DiscError, OSError) as e:
         if sys.stdout.isatty() and not LAUNCHER:
             print()
+        if is_disk_full(e):
+            fail_disk_full(DISC_DIR, "extracting the disc", SPACE_DISC + SPACE_MARGIN)
         fail(f"Extracting the disc failed: {e}")
     if sys.stdout.isatty() and not LAUNCHER:
         print("\r" + " " * 48 + "\r", end="")
@@ -1150,6 +1207,7 @@ def run_quiet(cmd, what):
     r = subprocess.run([str(c) for c in cmd], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
     if r.returncode:
         print(r.stderr[-3000:])
+        fail_if_disk_full(ASSETS_DIR, what[0].lower() + what[1:], r.stderr)
         fail(f"{what} failed (see above). Run {SETUP_CMD} again to retry.")
 
 
@@ -1217,7 +1275,9 @@ def generate_code(iso, jobs):
     if USE_COLOR and done:
         print()
     if rc:
-        print("".join(open(CODE_LOG, errors="replace").readlines()[-30:]))
+        tail = "".join(open(CODE_LOG, errors="replace").readlines()[-30:])
+        print(tail)
+        fail_if_disk_full(CODE_ROOT, "generating the code", tail)
         fail(f"Generating the code failed (see above; the full output is in {CODE_LOG.relative_to(ROOT)}).")
     missing = [f for f in files if not (CODE_ROOT / f).is_file()]
     if missing:
@@ -1336,6 +1396,7 @@ def prepare_code(iso, forced, jobs):
             warn(f"{missing}: generating {what} again")
         print(f"  {what[0].upper() + what[1:]}...", flush=True)
         state.pop(name, None)
+        save_state(state)  # (a step that fails is not left recorded as made: the next setup makes it again; #189)
         if name == "elf":
             extract_elf(iso)
             ok(f"Copied {boot_elf(iso).relative_to(ROOT)}")
@@ -1398,6 +1459,16 @@ def default_jobs():
 
 
 BUILD_LOG = BUILD_DIR / "setup-build.log"
+
+
+def log_tail(log, size=64 << 10):
+    """The end of a log (where a full disk's error would be)."""
+    try:
+        with open(log, "rb") as f:
+            f.seek(max(0, f.seek(0, os.SEEK_END) - size))
+            return f.read().decode(errors="replace")
+    except OSError:
+        return ""
 
 
 def run_logged(cmd, log):
@@ -1585,6 +1656,7 @@ def build(jobs, native_arch=None, retry=True, kept=()):
         if WINDOWS:  # (Ninja and clang, not Visual Studio's generator and compiler: docs/platforms.md)
             cmd += ["-G", "Ninja"] + windows_compilers()
         if not run_logged(cmd, BUILD_LOG):
+            fail_if_disk_full(BUILD_DIR, "configuring the build", log_tail(BUILD_LOG))
             missing_runtime_hint()
             fail(f"CMake could not configure the build (see above). If a library is missing, install it and run {SETUP_CMD} again.")
     elif arch or vulkan_reconfigure():
@@ -1599,6 +1671,8 @@ def build(jobs, native_arch=None, retry=True, kept=()):
             fail(f"CMake could not configure the build (see above).")
     print(f"  Compiling with {jobs} parallel jobs (the first build takes several minutes)...", flush=True)
     if not run_logged(["cmake", "--build", str(BUILD_DIR), "-j", str(jobs)], BUILD_LOG):
+        # (a full disk first: building again from a fresh configuration would not help, and needs more space; #189)
+        fail_if_disk_full(BUILD_DIR, "the build", log_tail(BUILD_LOG))
         if retry and configured:
             # (a build folder kept from an earlier version or system can fail where a new one builds: files the sources
             # no longer have, a cache of another compiler. Once more from a fresh configuration before giving up; #114)
@@ -1635,8 +1709,137 @@ def load_state():
 
 
 def save_state(state):
+    # (written beside it, then put in its place: a write that fails, on a full disk, keeps the old record whole, not an
+    # empty one that would forget the data discs and redo everything; #189)
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    STATE_FILE.write_text(json.dumps(state, indent=2) + "\n")
+    tmp = STATE_FILE.with_name(STATE_FILE.name + ".tmp")
+    text = json.dumps(state, indent=2) + "\n"
+    try:
+        tmp.write_text(text)
+        os.replace(tmp, STATE_FILE)
+    except PermissionError:  # (Windows: the new file held by an antivirus that scans it; written in place then)
+        tmp.unlink(missing_ok=True)
+        STATE_FILE.write_text(text)
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+# --- The free disk space (#189) -----------------------------------------------------------------
+# What a setup writes, measured on an NTSC-U install (Linux, 2026-11): the disc's files 4017 MB (assets/disc/), the
+# generated code 52 MB (assets/generated/src/, overlay_map/, assets/dumps/), the build 1.4 to 1.8 GB (build/; Windows'
+# not measured), the moby models and textures 339 MB and the world 298 MB (assets/generated/mrp/moby/, world/; the
+# flight's in both), the level mods and their pool about 145 MB. With some room each. A data disc's own extraction
+# checks its space itself (tools/disc_extract.py: the Japanese disc about 1.7 GB, another's texts 10 MB).
+SPACE_DISC = int(4.1 * GB)
+SPACE_CODE = 64 << 20  # (assets/generated/src/: the overlay maps and the boot executable are small)
+SPACE_BUILD = int(2.0 * GB)
+SPACE_REBUILD = int(0.3 * GB)  # (a build folder that is there: what changed compiled again in place, the program anew)
+SPACE_MOBY = int(0.4 * GB)
+SPACE_WORLD = int(0.35 * GB)
+SPACE_MARGIN = int(0.5 * GB)  # (the logs, the level mods, temporary files; and a disk is not usable to its last byte)
+
+
+def tree_size(path):
+    """The bytes of the files under `path` (0 when it is not there); links not followed, but `path` itself resolved."""
+    total = 0
+    stack = [existing_dir(path)] if Path(path).exists() else []
+    while stack:
+        try:
+            with os.scandir(stack.pop()) as it:
+                for e in it:
+                    try:
+                        if e.is_dir(follow_symlinks=False):
+                            stack.append(e.path)
+                        elif e.is_file(follow_symlinks=False):
+                            total += e.stat(follow_symlinks=False).st_size
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+    return total
+
+
+def still_to_write(folder, full):
+    """What a step that makes `folder` (about `full` bytes) writes more than what is there: it rewrites in place (the
+    disc's extraction removes the old files first), so the files already there count as made."""
+    return max(0, full - tree_size(folder))
+
+
+def space_parts(iso, forced, disc=True, code=True, build=True, data=True):
+    """[(what, folder, bytes)]: what the steps still to do write, each judged as the step itself judges it (its record,
+    its files there, --force); a step up to date writes nothing. Without the disc image (iso None), the build only."""
+    state = load_state()
+    fp = disc_fingerprint(Path(iso)) if iso is not None else None
+    parts = []
+    if disc and fp is not None:
+        if ("disc" in forced or state.get("disc") != disc_step_fingerprint(fp) or
+                disc_extract.layout_missing(DISC_DIR) is not None):
+            part = existing_dir(DISC_DIR) if DISC_DIR.exists() else DISC_DIR
+            part = part.with_name(part.name + ".part")
+            parts.append(("the disc's files", DISC_DIR,
+                          max(0, SPACE_DISC - tree_size(DISC_DIR) - tree_size(part))))
+    code_due = False
+    if fp is not None:
+        code_due = any(name in forced or state.get(name) != code_step_fingerprint(name, patterns, fp, state) or
+                       step_missing(name, iso) for name, _, patterns in CODE_STEPS)
+        if code and code_due:
+            parts.append(("the generated code", GEN_SRC, still_to_write(GEN_SRC, SPACE_CODE)))
+    if build:
+        if not EXE.exists():
+            parts.append(("the build", BUILD_DIR, still_to_write(BUILD_DIR, SPACE_BUILD)))
+        elif code_due or newest_mtime(BUILD_INPUTS) > EXE.stat().st_mtime:
+            parts.append(("the build", BUILD_DIR, SPACE_REBUILD))
+    if data and fp is not None:
+        due = {name for name, _, patterns in STEPS
+               if name in forced or state.get(name) != f"{fp}:{sources_fingerprint(patterns)}" or step_missing(name, iso)}
+        if due & {"moby", "flight"}:
+            parts.append(("the moby models and textures", MRP / "moby", still_to_write(MRP / "moby", SPACE_MOBY)))
+        if due & {"world", "flight"}:
+            parts.append(("the world geometry and textures", MRP / "world", still_to_write(MRP / "world", SPACE_WORLD)))
+    return [p for p in parts if p[2] > 0]
+
+
+def short_of_space(parts, margin=SPACE_MARGIN):
+    """The disks without room for `parts` (with the margin): [(folder, free, needed, whats)], one per disk."""
+    disks = {}
+    for what, folder, need in parts:
+        where = existing_dir(folder)
+        try:
+            key = os.stat(where).st_dev
+        except OSError:
+            key = str(where)
+        d = disks.setdefault(key, [where, 0, []])
+        d[1] += need
+        d[2].append(what)
+    short = []
+    for where, need, whats in disks.values():
+        try:
+            free = shutil.disk_usage(where).free
+        except OSError:
+            continue
+        if free < need + margin:
+            short.append((where, free, need + margin, whats))
+    return short
+
+
+def check_space(iso, forced, **which):
+    """Before the steps that write (space_parts' `which`): stops with a clear error when a disk has not enough free
+    space for them, instead of a step failing half way and leaving the install half made (#189)."""
+    for where, free, need, whats in short_of_space(space_parts(iso, forced, **which)):
+        shown = ROOT if existing_dir(ROOT) == where or ROOT in where.parents else where
+        fail(f"Not enough free disk space for the setup in\n    {shown}\n"
+             f"  {free / GB:.1f} GB is free on that disk, and the setup needs about {math.ceil(need * 10 / GB) / 10:.1f} GB "
+             f"there ({', '.join(whats)}).\n"
+             f"  Free some space on that disk (or move the game's folder to a larger one), then run {SETUP_CMD} again.\n"
+             "  What is already made is kept and not made again.")
+
+
+def done_on_full_disk(what):
+    """A data step that finished with its disk all but full: not recorded as made (a file's last bytes may be missing)."""
+    free = free_bytes(MRP)
+    if free is not None and free < NO_SPACE:
+        fail_disk_full(MRP, f"generating {what}")
 
 
 def generate(iso, forced):
@@ -1660,19 +1863,31 @@ def generate(iso, forced):
             ok(f"{what[0].upper() + what[1:]}: up to date")
             continue
         cmd = [str(EXE), "--setup", "--iso", str(iso), "--step", name]
+        # (its record dropped first, on disk too: a step that fails half way - a full disk, #189 - is not left recorded as
+        # made, with a file it cut short trusted as there; the next setup makes it again, from scratch)
+        if name in state:
+            state.pop(name)
+            save_state(state)
         if current:
             # up to date but part of it deleted: the step makes again only what is not there (its exporters skip a level
             # that is), and from scratch if that was not enough
             warn(f"{missing}: generating {what} again")
             if subprocess.run(cmd, cwd=ROOT, env=game_env()).returncode:
+                fail_if_disk_full(MRP, f"generating {what}")
                 fail(f"Generating {what} failed (see the messages above). Run {SETUP_CMD} again to retry.")
+            done_on_full_disk(what)
             if step_missing(name, iso) is None:
+                state[name] = fingerprint
+                save_state(state)
                 continue
         # a step that is forced, whose sources changed, or that never finished, is redone from scratch
         if subprocess.run(cmd + ["--force"], cwd=ROOT, env=game_env()).returncode:
+            fail_if_disk_full(MRP, f"generating {what}")
             fail(f"Generating {what} failed (see the messages above). Run {SETUP_CMD} again to retry.")
+        done_on_full_disk(what)
         gone = step_missing(name, iso)
         if gone is not None:  # (reported, not fatal: the game draws without what is missing, and says so)
+            fail_if_disk_full(MRP, f"generating {what}")  # (but not recorded as made on a full disk)
             warn(f"Generating {what} left out files ({gone}).")
         state[name] = fingerprint
         save_state(state)
@@ -2416,6 +2631,8 @@ def data_discs_step(base_iso, new_paths, forced, drop):
         try:
             plan = (extract_texts_only if texts_only(gives) else disc_extract.extract)(iso, out, show)
         except (disc_extract.DiscError, OSError) as e:
+            if is_disk_full(e):
+                fail_disk_full(out, f"extracting the data disc {rel.name}")
             fail(f"Extracting the data disc {rel.name} failed: {e}")
         d["fingerprint"] = fingerprint
         ok(f"Data disc {rel.name}: {len(plan.files)} files ({plan.total / 2**30:.2f} GB) in {d['dir']}{os.sep} in "
@@ -2701,6 +2918,8 @@ def main():
         iso = check_disc(args.iso or pick.game_path, pick)
         for d in args.data_iso:  # (a wrong data disc stops the setup before anything is made)
             check_data_disc(d, disc_boot(iso))
+        # (and a disk without room for what is still to make, before any of it is written; #189)
+        check_space(iso, args.force, disc=not args.build_only, build=not args.no_build, data=not args.build_only)
         if not args.build_only:
             next_step("Extracting your disc's files")
             extract_disc(iso, args.force)
@@ -2715,6 +2934,8 @@ def main():
         data_discs_step(None, args.data_iso + auto_data_discs(pick, args), args.force, args.no_data_discs)
 
     next_step("Building the game")
+    check_space(iso, args.force, disc=False, code=False, build=not args.no_build,
+                data=not args.build_only and not no_image)
     if args.no_build:
         if not EXE.exists():
             fail(f"--no-build, but {EXE.relative_to(ROOT)} does not exist yet.")
@@ -2729,6 +2950,7 @@ def main():
         r = subprocess.run([str(EXE), "--setup", "--iso", str(iso), "--check-iso"], cwd=ROOT, env=game_env())
         if r.returncode:
             sys.exit(1)
+        check_space(iso, args.force, disc=False, code=False, build=False)
         generate(iso, args.force)
         check_disc_files(iso)
     if not args.build_only:
@@ -2744,4 +2966,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except OSError as e:  # (a write of the setup's own that found the disk full: said so, not as a traceback; #189)
+        if not is_disk_full(e):
+            raise
+        fail_disk_full(getattr(e, "filename", None) or ROOT, "the setup")
